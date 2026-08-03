@@ -3024,6 +3024,11 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_classic_respawn.cpp
         )
 
+        og_add_unit_group(og_unit_mode FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_mode_bindings.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_mode_tick.cpp
+        )
+
         og_add_unit_group(og_unit_mapgen FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_mapgen_builders.cpp
         )
