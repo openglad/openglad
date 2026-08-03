@@ -283,6 +283,7 @@
 ---@field hit_response? fun(self: og.Walker, who: og.Walker)
 ---@field level_up? fun(self: og.Guy, level_diff: integer)
 ---@field on_act_living? fun(self: og.Walker)
+---@field on_act_override? fun(self: og.Walker): boolean
 ---@field on_ani_complete? fun(self: og.Walker): boolean
 ---@field on_create? fun(self: og.Walker)
 ---@field on_death? fun(self: og.Walker): boolean
@@ -313,15 +314,19 @@
 
 -- Hook table for og.register_level_hooks.
 ---@class og.LevelHooks
----@field on_entity_death? fun(entity: og.Walker)
+---@field on_damage? fun(entity: og.Walker, entity: og.Walker, value: integer)
+---@field on_entity_death? fun(entity: og.Walker, entity: og.Walker, value: integer)
 ---@field on_entity_spawn? fun(entity: og.Walker)
 ---@field on_load? fun(level: integer)
+---@field on_mode_init? fun(level: integer)
+---@field on_mode_tick? fun(level: integer, tick: integer)
+---@field on_respawn? fun(entity: og.Walker)
 ---@field on_tick? fun(level: integer, tick: integer)
 
 -- Per-entity hook table for og.set_entity_hooks (one-shot:
 -- consumed when it fires).
 ---@class og.EntityHooks
----@field on_death? fun(entity: og.Walker)
+---@field on_death? fun(entity: og.Walker, entity: og.Walker, value: integer)
 
 -- Engine constants (og.C.*), names from the kConstants
 -- table in bindings_entity.cpp; every value is an integer.

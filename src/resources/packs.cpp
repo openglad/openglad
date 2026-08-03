@@ -683,6 +683,8 @@ void apply_presentation(const og::data::ClasspackPresentation& p,
             LogWarn("classpack {}: negative radar_jitter {} — kept\n", id,
                     *p.radar_jitter);
     }
+    if (p.radar_landmark)
+        radar.landmark = *p.radar_landmark;
 }
 
 // Folds a `specials =` list onto the three parallel slot arrays.

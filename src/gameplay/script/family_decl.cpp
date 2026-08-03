@@ -1045,12 +1045,15 @@ bool harvest_effect(Harvest& h, int tbl, const std::string& where,
         !opt_nullable(h, tbl, where, "sprite", e.sprite) ||
         !opt_string(h, tbl, where, "animation", e.animation) ||
         !harvest_presentation(h, tbl, where, e.presentation) ||
+        !opt_bool(h, tbl, where, "radar_landmark",
+                  e.presentation.radar_landmark) ||
         !harvest_tuning(h, tbl, where, e.tuning) ||
         !check_hook_types(h, tbl, where, oi))
         return false;
     std::vector<const char*> keys;
     append_common_keys(keys);
-    for (const char* k : {"loops_animation", "creates_hit_effect", "flags"})
+    for (const char* k : {"loops_animation", "creates_hit_effect", "flags",
+                          "radar_landmark"})
         keys.push_back(k);
     append_hook_keys(oi, keys);
     return check_keys(h, tbl, where, keys);
@@ -1066,12 +1069,14 @@ bool harvest_treasure(Harvest& h, int tbl, const std::string& where,
         !opt_nullable(h, tbl, where, "sprite", e.sprite) ||
         !opt_string(h, tbl, where, "animation", e.animation) ||
         !harvest_presentation(h, tbl, where, e.presentation) ||
+        !opt_bool(h, tbl, where, "radar_landmark",
+                  e.presentation.radar_landmark) ||
         !harvest_tuning(h, tbl, where, e.tuning) ||
         !check_hook_types(h, tbl, where, oi))
         return false;
     std::vector<const char*> keys;
     append_common_keys(keys);
-    for (const char* k : {"init_ignore", "init_frame"})
+    for (const char* k : {"init_ignore", "init_frame", "radar_landmark"})
         keys.push_back(k);
     append_hook_keys(oi, keys);
     return check_keys(h, tbl, where, keys);

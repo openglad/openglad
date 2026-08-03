@@ -288,6 +288,12 @@ bool living::act()
 	{
 		const auto* fd = get_family_descriptor(family());
 		og::script::hooks::on_act_living(fd, this);
+		// Scripted act override: a registered on_act_override hook returning
+		// true owns this walker's act for the tick (the effect_on_act
+		// "true = handled" contract). Early-outs on the family hook mask, so
+		// classic paths are byte-identical.
+		if (og::script::hooks::on_act_override(fd, this))
+			return 1;
 	}
 
 	// Complete previous animations (like firing)

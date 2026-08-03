@@ -306,7 +306,23 @@ bool walker::attack(walker  *target)
     if (tempdamage < 0)
         tempdamage = 0;
 
-    const short tempdamage_i = static_cast<short>(tempdamage);
+    // Scripted-mode damage gate (level on_damage hook): nil keeps the
+    // amount, a number replaces it (clamped >= 0), false cancels the hit
+    // outright — no damage, no hit_response, no attribution stamp.
+    // Early-outs on the level_hook_kinds bit, so classic paths are
+    // byte-identical. `attacker` is the resolved local (owner for
+    // projectiles), matching the score semantics above.
+    const short gated_damage = og::script::hooks::level_damage_gate(
+        target, attacker, static_cast<short>(tempdamage));
+    if (gated_damage < 0)
+        return 0;
+    const short tempdamage_i = gated_damage;
+    // Kill attribution (server-only transients): stamp the owner-chain ROOT
+    // — weapon and summon kills credit the head, exactly like the score
+    // path — AFTER the gate allowed a positive amount. A non-living root
+    // (a scripted ball fx) never stamps, so its kills read as environment.
+    if (tempdamage_i > 0 && headguy->query_order() == Order::Living)
+        target->note_attacker(headguy, current_game->world->tick_count_);
     do_combat_damage(attacker, target, tempdamage_i);
     TRACE("walker", "attack: %s deals %d damage", attacker->stats_->name.c_str(), tempdamage_i);
 

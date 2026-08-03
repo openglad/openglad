@@ -68,6 +68,11 @@ inline constexpr int kRadarColorTeam = -2;  // use the entity's team colour
 struct RadarBlip {
     int color = kRadarColorNone;
     int jitter = 0;  // adds rng(jitter) to color when > 0
+    // Landmark families (exits, teleporters, mode flags/waypoints) blip
+    // without treasure sight (radar's ignores_view_all rule). Declared by
+    // treasure/fx packs via `radar_landmark = true`; the radar consumption
+    // of this flag lands with the generic mode renderers.
+    bool landmark = false;
 
     friend constexpr bool operator==(const RadarBlip&,
                                      const RadarBlip&) = default;

@@ -57,6 +57,8 @@ struct NullableString {
 //   glyph_transparent: draw nothing (the curses Glyph::skip flag)
 //   radar_color:      palette index, or "team" / "none"
 //   radar_jitter:     rng(N) span added to radar_color (0 = no rng call)
+//   radar_landmark:   blip without treasure sight (treasure/fx orders only —
+//                     the EXIT/TELEPORTER class of map furniture)
 struct ClasspackPresentation {
     std::optional<std::string> glyph;        // UTF-8, exactly one codepoint
     std::optional<std::string> glyph_ascii;  // exactly one byte
@@ -65,6 +67,7 @@ struct ClasspackPresentation {
     std::optional<bool> glyph_transparent;
     std::optional<std::int32_t> radar_color;  // sentinels already folded in
     std::optional<std::int32_t> radar_jitter;
+    std::optional<bool> radar_landmark;       // treasure/fx declarations only
 };
 
 // One scalar value of a family entry's `tuning` map. The kind preserves
