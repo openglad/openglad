@@ -86,6 +86,21 @@ static std::filesystem::path scenario_dir()
     return std::filesystem::path("scen");
 }
 
+// Removes the scenario files a test writes into the PhysFS write dir.
+// Without this, leaked scen9xxx.fss files surface in every later
+// list_levels() call in the binary (LevelEditorHelpers fails under
+// --gtest_shuffle when this file's tests run first).
+struct ScenFileCleanup {
+    std::vector<std::filesystem::path> paths;
+    void track(std::filesystem::path p) { paths.push_back(std::move(p)); }
+    ~ScenFileCleanup()
+    {
+        std::error_code ec;
+        for (const auto& p : paths)
+            std::filesystem::remove(p, ec);
+    }
+};
+
 static walker* add_living(unsigned char family = FAMILY_SOLDIER)
 {
     walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, family);
@@ -192,6 +207,10 @@ TEST(LevelDataCoverage, level_data_load_error_codes_and_scenario_title_paths)
     const int id_bad = 9302;
     const int id_ver = 9303;
     const int id_title = 9304;
+
+    ScenFileCleanup cleanup;
+    for (int id : {id_parse, id_bad, id_ver, id_title})
+        cleanup.track(scen_dir / std::format("scen{}.fss", id));
 
     ASSERT_TRUE(write_bytes(scen_dir / std::format("scen{}.fss", id_parse), {'F', 'S', 'S'})) << "write parse-fail scenario";
     ASSERT_TRUE(write_bytes(scen_dir / std::format("scen{}.fss", id_bad), {'B', 'A', 'D', 6})) << "write invalid-header scenario";
@@ -737,6 +756,10 @@ TEST(LevelDataCoverage, level_data_round7a_title_reader_and_error_wrappers)
     const fs::path scen_dir = scenario_dir();
     fs::create_directories(scen_dir);
 
+    ScenFileCleanup cleanup;
+    for (int id : {9401, 9402, 9403})
+        cleanup.track(scen_dir / std::format("scen{}.fss", id));
+
     // Header ok, version ok, but truncated before grid/title reads.
     const int id_short = 9401;
     ASSERT_TRUE(write_bytes(scen_dir / std::format("scen{}.fss", id_short), {'F', 'S', 'S', 6})) << "write short title file";
@@ -800,6 +823,10 @@ TEST(LevelDataCoverage, level_data_round6_version6plus_and_title_read_paths)
     const auto p1 = scen_dir / std::format("scen{}.fss", id_ver_read_fail);
     const auto p2 = scen_dir / std::format("scen{}.fss", id_grid_read_fail);
     const auto p3 = scen_dir / std::format("scen{}.fss", id_title_read_fail);
+    ScenFileCleanup cleanup;
+    cleanup.track(p1);
+    cleanup.track(p2);
+    cleanup.track(p3);
     ASSERT_TRUE(write_bytes(p1, {'F', 'S', 'S'})) << "write version-read-fail title file";
     ASSERT_TRUE(write_bytes(p2, {'F', 'S', 'S', 6})) << "write grid-read-fail title file";
 
