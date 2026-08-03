@@ -12,8 +12,10 @@
 #include <openglad/core/ctf_constants.h>
 #include <openglad/core/order.h>
 #include <openglad/core/test_trace.h>
+#include <openglad/core/irandom.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/families/family_registries.h>
+#include <openglad/gameplay/families/treasure_family_descriptor.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/statistics.h>
@@ -604,4 +606,135 @@ TEST(ModeUi, respawn_camera_focus_follows_scripted_entries)
 
     s->world().respawn.respawn_queue.clear();
     v->control = old_control;
+}
+
+TEST(ModeUi, radar_landmark_families_blip_without_treasure_sight)
+{
+    FixedRandom fixed_rng(1);
+    GameContext c;
+    c.rng = &fixed_rng;
+    push_test_context(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+
+    walker* control = d.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    control->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
+    control->set_team_num(0);
+    ASSERT_LE(control->view_all(), 0)
+        << "the probe control must lack treasure sight";
+
+    // A landmark-flagged treasure family: copy a live descriptor, flag it,
+    // restore the original afterwards (registry hygiene under shuffle).
+    const TreasureFamilyDescriptor* live =
+        get_treasure_family_descriptor(FAMILY_LIFE_GEM);
+    ASSERT_NE(nullptr, live);
+    const TreasureFamilyDescriptor original = *live;
+    TreasureFamilyDescriptor flagged = original;
+    flagged.radar.color = 100;
+    flagged.radar.jitter = 0; // landmarks may not roll the game rng
+    flagged.radar.landmark = true;
+    ASSERT_TRUE(set_treasure_family_descriptor(FAMILY_LIFE_GEM, flagged));
+
+    {
+        auto fx = std::make_unique<walker>();
+        fx->set_order_family(Order::Treasure, FAMILY_LIFE_GEM);
+        fx->set_dead(0);
+        fx->setxy(GRID_SIZE * 3, GRID_SIZE * 2);
+        d.world().fxlist.push_back(std::move(fx));
+    }
+
+    viewscreen* vs = test_screen()->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    walker* saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
+    vs->control = control;
+    vs->radarstart = 0;
+
+    radar r(vs, test_screen(), 0);
+    r.force_lower_position = true;
+    r.start(&d);
+
+    trace_clear();
+    ASSERT_EQ(1, static_cast<int>(r.draw(&d)));
+    const std::string expected_trace =
+        "landmark_blip fam=" + std::to_string(static_cast<int>(FAMILY_LIFE_GEM));
+    EXPECT_TRUE(trace_contains("radar", expected_trace.c_str()))
+        << "a landmark-flagged family must blip without treasure sight";
+
+    // Un-flagged again: the loot rule — no blip without treasure sight.
+    ASSERT_TRUE(set_treasure_family_descriptor(FAMILY_LIFE_GEM, original));
+    trace_clear();
+    ASSERT_EQ(1, static_cast<int>(r.draw(&d)));
+    EXPECT_FALSE(trace_contains("radar", "landmark_blip"))
+        << "without the flag the family follows the treasure-sight rule";
+
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
+    pop_test_context();
+}
+
+TEST(ModeUi, radar_draws_beacon_blips_in_beacon_team_color)
+{
+    FixedRandom fixed_rng(1);
+    GameContext c;
+    c.rng = &fixed_rng;
+    push_test_context(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+
+    walker* control = d.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    control->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
+    control->set_team_num(0);
+
+    walker* target = d.add_ob(Order::Living, FAMILY_THIEF);
+    ASSERT_NE(nullptr, target);
+    target->setxy(GRID_SIZE * 4, GRID_SIZE * 2);
+    target->set_team_num(3);
+
+    GameWorld& world = d.world();
+    world.type |= GameWorld::TYPE_SCRIPTED;
+    world.mode.active = true;
+    world.mode.beacons[0].entity_id =
+        static_cast<std::int32_t>(target->entity_id());
+    world.mode.beacons[0].team = 3;
+
+    viewscreen* vs = test_screen()->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    walker* saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
+    vs->control = control;
+    vs->radarstart = 0;
+
+    radar r(vs, test_screen(), 0);
+    r.force_lower_position = true;
+    r.start(&d);
+
+    trace_clear();
+    ASSERT_EQ(1, static_cast<int>(r.draw(&d)));
+    const std::string expected_trace =
+        "beacon_blip id=" + std::to_string(target->entity_id());
+    EXPECT_TRUE(trace_contains("radar", expected_trace.c_str()))
+        << "an occupied beacon slot must blip on the radar";
+    EXPECT_TRUE(trace_contains("radar", "color=88"))
+        << "the blip carries the beacon team ramp (3*16+40)";
+
+    // A dead target draws nothing; neither does an inactive mode.
+    target->set_dead(1);
+    trace_clear();
+    ASSERT_EQ(1, static_cast<int>(r.draw(&d)));
+    EXPECT_FALSE(trace_contains("radar", "beacon_blip"));
+
+    target->set_dead(0);
+    world.mode.active = false;
+    trace_clear();
+    ASSERT_EQ(1, static_cast<int>(r.draw(&d)));
+    EXPECT_FALSE(trace_contains("radar", "beacon_blip"));
+
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
+    pop_test_context();
 }
