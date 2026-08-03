@@ -156,6 +156,7 @@
 ---@field s_name fun(self: og.Walker): string
 ---@field s_old_family fun(self: og.Walker): integer # Pre-transform family (cleric resurrect restores the corpse's old family).
 ---@field s_query_bit_flags fun(self: og.Walker, arg2: integer): boolean
+---@field s_refresh_front fun(self: og.Walker, commandcount: integer, com1: integer, com2: integer) # walker:s_refresh_front(iterations, com1, com2) — rewrite the FRONT queue entry's lease and payload in place, never touching its commandtype and never growing...
 ---@field s_set_armor fun(self: og.Walker, value: number)
 ---@field s_set_bit_flags fun(self: og.Walker, arg2: integer, arg3: integer)
 ---@field s_set_command fun(self: og.Walker, arg2: integer, arg3: integer, arg4: integer, arg5: integer)
@@ -399,6 +400,7 @@
 ---@field FACE_UP integer
 ---@field FACE_UP_LEFT integer
 ---@field FACE_UP_RIGHT integer
+---@field FAMILY_RESERVED_TEAM integer
 ---@field GRID_SIZE integer
 ---@field MACE_LIFE_CAP integer
 ---@field MAXOBS integer
@@ -408,6 +410,7 @@
 ---@field ORDER_FX integer
 ---@field ORDER_GENERATOR integer
 ---@field ORDER_LIVING integer
+---@field ORDER_SPECIAL integer
 ---@field ORDER_TREASURE integer
 ---@field ORDER_WEAPON integer
 ---@field SCORE_TEAM_COUNT integer
@@ -541,7 +544,7 @@
 ---@field level_tick fun(): integer
 ---@field living_count fun(): integer
 ---@field log fun(...: any)
----@field match_setting fun(s: "respawn_mode"|"respawn_ticks"|"score_limit"|"strip_troops"|"team_count"): integer # og.match_setting(name) — the lobby/save match knobs, reinterpreted as generic match settings; 0 always means "mode default".
+---@field match_setting fun(s: "difficulty"|"respawn_mode"|"respawn_ticks"|"score_limit"|"strip_troops"|"team_count"): integer # og.match_setting(name) — the lobby/save match knobs, reinterpreted as generic match settings; 0 always means "mode default".
 ---@field max fun(a: number, b: number): number # og.max(a, b) / og.min(a, b) — std::max / std::min EXACTLY: og.max answers b only when a < b, og.min answers b only when b < a, so every tie answers a (observ...
 ---@field min fun(arg1: number, arg2: number): number
 ---@field mod fun(a: integer, b: integer): integer

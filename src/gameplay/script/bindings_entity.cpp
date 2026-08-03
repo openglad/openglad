@@ -755,6 +755,25 @@ int s_front_command(lua_State* L)
     return 1;
 }
 
+// walker:s_refresh_front(iterations, com1, com2) — rewrite the FRONT queue
+// entry's lease and payload in place, never touching its commandtype and
+// never growing the queue. This is the C++ CTF director's refresh-in-place
+// idiom (issue_front_command, ctf_ai.cpp): a mode director that re-issues
+// its role order every cadence calls this when s_front_command() already
+// answers the wanted type, and s_force_command otherwise. Errors on an
+// empty queue — the caller must have read a nonzero s_front_command().
+int s_refresh_front(lua_State* L)
+{
+    statistics* stats = stats_arg(L);
+    if (!stats->has_commands())
+        return luaL_error(L, "s_refresh_front: command queue is empty");
+    command& front = stats->commands.front();
+    front.commandcount = static_cast<std::int32_t>(luaL_checkinteger(L, 2));
+    front.com1 = static_cast<std::int32_t>(luaL_checkinteger(L, 3));
+    front.com2 = static_cast<std::int32_t>(luaL_checkinteger(L, 4));
+    return 0;
+}
+
 int s_forward_blocked(lua_State* L)
 {
     lua_pushboolean(L, stats_arg(L)->forward_blocked() ? 1 : 0);
@@ -2370,7 +2389,9 @@ int og_team_color_name(lua_State* L)
 // og.match_setting(name) — the lobby/save match knobs, reinterpreted as
 // generic match settings; 0 always means "mode default". Names:
 // "team_count" (0 = Auto), "score_limit", "respawn_ticks", "strip_troops",
-// "respawn_mode" (the difficulty submenu's classic respawn selector).
+// "respawn_mode" (the difficulty submenu's classic respawn selector),
+// "difficulty" (the session difficulty percent, 100 = normal — the CTF
+// bot-squad level formula reads it).
 int og_match_setting(lua_State* L)
 {
     GameWorld* world = world_arg(L);
@@ -2386,6 +2407,8 @@ int og_match_setting(lua_State* L)
         value = world->ctf_requested_strip_scenario_troops;
     else if (std::strcmp(s, "respawn_mode") == 0)
         value = world->respawn_mode;
+    else if (std::strcmp(s, "difficulty") == 0)
+        value = world->difficulty;
     else
         return luaL_error(L, "og.match_setting: unknown setting '%s'", s);
     lua_pushinteger(L, value);
@@ -2698,6 +2721,7 @@ const luaL_Reg kWalkerMethods[] = {
     {"s_clear_command", s_clear_command},
     {"s_has_commands", s_has_commands},
     {"s_front_command", s_front_command},
+    {"s_refresh_front", s_refresh_front},
     {"s_forward_blocked", s_forward_blocked},
     {"s_force_fright", s_force_fright},
     {"s_do_command", s_do_command},
@@ -2867,6 +2891,9 @@ const NamedConst kConstants[] = {
     {"ORDER_TREASURE", static_cast<lua_Integer>(Order::Treasure)},
     {"ORDER_GENERATOR", static_cast<lua_Integer>(Order::Generator)},
     {"ORDER_FX", static_cast<lua_Integer>(Order::FX)},
+    // Team start markers (mode init consumes/strips them by team).
+    {"ORDER_SPECIAL", static_cast<lua_Integer>(Order::Special)},
+    {"FAMILY_RESERVED_TEAM", FAMILY_RESERVED_TEAM},
     // Commands
     {"COMMAND_WALK", COMMAND_WALK},
     {"COMMAND_FIRE", COMMAND_FIRE},
