@@ -230,7 +230,8 @@ TEST(MenuLayout, mainmenu_buttons_no_overlap)
     EXPECT_EQ(buttons[5].y, buttons[6].y);
     EXPECT_EQ(buttons[5].sizex, buttons[6].sizex);
     EXPECT_EQ(4, buttons[6].x - (buttons[5].x + buttons[5].sizex));
-    EXPECT_EQ(9, buttons[5].y - (buttons[4].y + buttons[4].sizey));
+    // Footer break measured from DIFFICULTY, the settings group's last row.
+    EXPECT_EQ(9, buttons[5].y - (buttons[3].y + buttons[3].sizey));
 
     // #155: the CLOUD door shares the GAME row as an aligned 68px pair
     // (always visible — reachable with zero companies), first row of the
