@@ -377,15 +377,20 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 				                static_cast<unsigned char>(RED), 1);
 			}
 
-			// Draw a bounding box (top and bottom edges) ..
+			// Draw a bounding box (top and bottom edges). The bars span the
+			// whole frame — including the scrollbar gutter when present, so
+			// the header/footer read as full-width chrome and the scrollbar
+			// sits between them. chrome_w == box_width whenever there is no
+			// gutter, keeping the short-briefing dialog byte-identical.
+			const int chrome_w = frame.frame_x2 - HELPTEXT_LEFT;
 			scr->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP-8,
-			                   HELPTEXT_LEFT+box_width-4, HELPTEXT_TOP-2);
+			                   HELPTEXT_LEFT+chrome_w-4, HELPTEXT_TOP-2);
 			scr->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP+97,
-			                   HELPTEXT_LEFT+box_width-4, HELPTEXT_TOP+103);
-			int title_x = HELPTEXT_LEFT + box_width/2 - static_cast<int>(strlen(title))*3;
+			                   HELPTEXT_LEFT+chrome_w-4, HELPTEXT_TOP+103);
+			int title_x = HELPTEXT_LEFT + chrome_w/2 - static_cast<int>(strlen(title))*3;
 			mytext.write_xy(title_x, HELPTEXT_TOP-7, title, static_cast<unsigned char>(RED), 1);
 			int cont_len = static_cast<int>(strlen(CONTINUE_ACTION_STRING " TO CONTINUE"));
-			int cont_x = HELPTEXT_LEFT + box_width/2 - cont_len*3;
+			int cont_x = HELPTEXT_LEFT + chrome_w/2 - cont_len*3;
 			mytext.write_xy(cont_x, HELPTEXT_TOP+98,
 			                CONTINUE_ACTION_STRING " TO CONTINUE", static_cast<unsigned char>(RED), 1);
 			scr->buffer_to_screen(frame.blit_x, frame.blit_y,

@@ -69,10 +69,14 @@ ScrollViewLayout compute_scroll_view_layout(int num_lines, int box_width,
     if (out.blit_x + out.blit_w > kScreenW)
         out.blit_w = kScreenW - out.blit_x;
 
+    // The header bar ends at y = kHelptextTop - 2 and the footer bar starts
+    // at y = kHelptextTop + 97 (help.cpp draws both across the full widened
+    // frame when scrollable), so the scrollbar column tucks between them
+    // with a 1px clearance on each side.
     const int gutter_x = kHelptextLeft + box_width + 2;
-    out.up = {gutter_x, kHelptextTop - 2, 14, 14};
-    out.down = {gutter_x, kHelptextTop + 83, 14, 14};
-    out.track = {gutter_x, kHelptextTop + 14, 14, 67};
+    out.up = {gutter_x, kHelptextTop, 14, 14};
+    out.down = {gutter_x, kHelptextTop + 82, 14, 14};
+    out.track = {gutter_x, kHelptextTop + 16, 14, 64};
 
     int thumb_h = num_lines > 0 ? out.track.h * kVisibleLines / num_lines
                                 : out.track.h;
