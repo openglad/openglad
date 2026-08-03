@@ -1229,6 +1229,16 @@ bool respawn_retains_player_control(const GameWorld& world,
                world.ctf.winner_team < 0 &&
                !live_duplicate_exists(world, control);
     }
+    // Scripted arm: a mode-scheduled respawn (Lua owns eligibility via
+    // og.respawn_schedule) keeps its seat while the entry is pending and the
+    // match is undecided — networked scripted respawn keep-alive depends on
+    // this, exactly like the CTF arm it generalizes.
+    if (mode_scripted_active(world))
+    {
+        return !world.mode.win_latched &&
+               already_scheduled(world.respawn, control->entity_id()) &&
+               !live_duplicate_exists(world, control);
+    }
     if (!classic_respawn_active(world))
         return false;
     const bool mode_allows_hero =

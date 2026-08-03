@@ -1267,6 +1267,9 @@ og::sim::LobbySettings make_ctf_lobby_settings(
     settings.allied_mode = 0;
     settings.ctf_team_count = team_count;
     settings.ctf_authored_team_mask = authored_team_mask;
+    // Protocol v12: the versus/shared-teams rule rides this flag (the host
+    // derives it from the campaign's matchup: yaml key).
+    settings.shared_teams = 1;
     return settings;
 }
 
@@ -1477,6 +1480,22 @@ TEST(LobbyServer, sanitize_difficulty_submenu_settings)
     transport.queue_lobby_message(11u, make_settings_change_message(gold_off));
     server.poll_incoming_messages();
     EXPECT_EQ(0, server.state().settings.infinite_gold);
+
+    // shared_teams (v12) sanitizes on the same {0, 1} matrix.
+    og::sim::LobbySettings junk_shared = make_ctf_lobby_settings();
+    junk_shared.shared_teams = 9;
+    transport.queue_lobby_message(11u,
+                                  make_settings_change_message(junk_shared));
+    server.poll_incoming_messages();
+    EXPECT_EQ(1, server.state().settings.shared_teams)
+        << "out-of-range shared_teams falls back to the accepted value";
+
+    og::sim::LobbySettings shared_off = make_ctf_lobby_settings();
+    shared_off.shared_teams = 0;
+    transport.queue_lobby_message(11u,
+                                  make_settings_change_message(shared_off));
+    server.poll_incoming_messages();
+    EXPECT_EQ(0, server.state().settings.shared_teams);
 }
 
 TEST(LobbyServer, ctf_lobby_allows_shared_teams)

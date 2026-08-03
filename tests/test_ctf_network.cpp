@@ -9,6 +9,8 @@
 #include <openglad/core/ctf_constants.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/mode/mode_state.h>
+#include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/sim_input_handler.h>
@@ -17,6 +19,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 
 #include "test_network_fixture.h"
@@ -84,6 +87,54 @@ CtfNetScenario inject_ctf_scenario(NetworkTestFixture& fixture,
         });
     }
     return scenario;
+}
+
+// Turns the loaded classic level into a scripted-mode match on the
+// authoritative server: TYPE_SCRIPTED + a hand-armed ModeState (a mounted
+// campaign pack's on_mode_init would do this on the first scripted tick) +
+// team respawn anchors. Clients keep loading the classic level; everything
+// mode reaches them via the v10 snapshot blocks.
+void inject_mode_scenario(NetworkTestFixture& fixture,
+                          std::size_t client_count,
+                          short requested_respawn_ticks)
+{
+    fixture.with_server_context([&] {
+        GameWorld& world = fixture.server_world();
+        world.type |= GameWorld::TYPE_SCRIPTED;
+        world.mode.active = true;
+        world.mode.init_attempted = true;
+        std::strncpy(world.mode.name.data(), "CTF",
+                     world.mode.name.size() - 1);
+        if (requested_respawn_ticks > 0)
+        {
+            world.ctf_requested_respawn_ticks = requested_respawn_ticks;
+            world.respawn.respawn_ticks =
+                static_cast<std::uint16_t>(requested_respawn_ticks);
+        }
+
+        const int far_x = std::max(160, static_cast<int>(world.pixmaxx) - 48);
+        const int far_y = std::max(160, static_cast<int>(world.pixmaxy) - 48);
+        walker* a0 = spawn_server_anchor(world, 0, 80, 48);
+        walker* a1 = spawn_server_anchor(world, 0, 48, 80);
+        walker* a2 = spawn_server_anchor(world, 1, far_x - 32, far_y);
+        walker* a3 = spawn_server_anchor(world, 1, far_x, far_y - 32);
+        og::sim::respawn_scan_anchors(world);
+        // The level bootstrap consumes start markers; a live marker acts.
+        for (walker* marker : {a0, a1, a2, a3})
+        {
+            if (marker != nullptr)
+                marker->set_dead(1);
+        }
+    });
+
+    // The level-type bit is authored, not replicated, so mirror it on the
+    // client worlds the way a real scripted .fss load would.
+    for (std::size_t index = 0; index < client_count; ++index)
+    {
+        fixture.with_client_context(index, [&] {
+            fixture.client_world(index).type |= GameWorld::TYPE_SCRIPTED;
+        });
+    }
 }
 
 int living_count_for_team(const GameWorld& world, unsigned char team)
@@ -203,7 +254,7 @@ OwnerLockedAlliedStage stage_owner_locked_allied_pair(NetworkTestFixture& fixtur
 
 } // namespace
 
-TEST(CtfNetwork, two_client_match_converges_through_full_lifecycle)
+TEST(CtfNetwork, two_client_scripted_match_converges_through_full_lifecycle)
 {
     NetworkTestFixture fixture({
         .player_count = 2,
@@ -211,79 +262,87 @@ TEST(CtfNetwork, two_client_match_converges_through_full_lifecycle)
         .validate_serialization = true,
     });
     fixture.load_level();
-    const CtfNetScenario scenario =
-        inject_ctf_scenario(fixture, 2, /*requested_respawn_ticks=*/8);
-    ASSERT_NE(nullptr, scenario.flag0);
-    ASSERT_NE(nullptr, scenario.flag1);
+    inject_mode_scenario(fixture, 2, /*requested_respawn_ticks=*/8);
     fixture.initial_sync();
 
-    // Lazy init runs on the first authoritative tick and must replicate.
+    // The armed mode replicates on the first authoritative ticks.
     fixture.step_ticks(2);
-    ASSERT_TRUE(fixture.server_world().ctf.active);
+    ASSERT_TRUE(fixture.server_world().mode.active);
     fixture.expect_clients_match_server();
     for (int index = 0; index < 2; ++index)
     {
         const GameWorld& client = fixture.client_world(index);
-        EXPECT_TRUE(client.ctf.active) << "client " << index;
-        EXPECT_TRUE(client.ctf.init_attempted) << "client " << index;
-        EXPECT_TRUE(client.ctf.flags[0].present) << "client " << index;
-        EXPECT_TRUE(client.ctf.flags[1].present) << "client " << index;
+        EXPECT_TRUE(client.mode.active) << "client " << index;
+        EXPECT_TRUE(client.mode.init_attempted) << "client " << index;
+        EXPECT_STREQ("CTF", client.mode.name.data()) << "client " << index;
         EXPECT_EQ(8, client.respawn.respawn_ticks) << "client " << index;
         EXPECT_GE(client.respawn.anchor_count[0], 1) << "client " << index;
     }
 
-    // A carried flag replicates: walk the bound control onto the enemy flag.
+    // Lua-owned mode state (vars, HUD, beacons) replicates: mirrors render
+    // scoreboard and beacons straight off the mode block.
     walker* runner = fixture.server_control(0);
     ASSERT_NE(nullptr, runner);
     const std::uint32_t runner_id = runner->entity_id();
     fixture.with_server_context([&] {
-        runner->setxy(scenario.flag1->xpos(),
-                      static_cast<short>(scenario.flag1->ypos() - 16));
-        ASSERT_TRUE(scenario.flag1->eat_me(runner));
+        GameWorld& world = fixture.server_world();
+        world.mode.vars[0] = 2;
+        world.mode.vars[1] = 1;
+        world.mode.hud[0].team = 0;
+        std::strncpy(world.mode.hud[0].text.data(), "RED 2 CAPS",
+                     world.mode.hud[0].text.size() - 1);
+        world.mode.beacons[0].entity_id =
+            static_cast<std::int32_t>(runner_id);
+        world.mode.beacons[0].team = runner->team_num();
     });
-    ASSERT_EQ(og::sim::CtfFlagState::Carried,
-              fixture.server_world().ctf.flags[1].state);
     fixture.step_ticks(1);
     fixture.expect_clients_match_server();
-    EXPECT_EQ(og::sim::CtfFlagState::Carried,
-              fixture.client_world(0).ctf.flags[1].state);
-    EXPECT_EQ(runner_id, fixture.client_world(1).ctf.flags[1].carrier_entity_id);
+    EXPECT_EQ(2, fixture.client_world(0).mode.vars[0]);
+    EXPECT_STREQ("RED 2 CAPS", fixture.client_world(0).mode.hud[0].text.data());
+    EXPECT_EQ(static_cast<std::int32_t>(runner_id),
+              fixture.client_world(1).mode.beacons[0].entity_id);
 
-    // A killed carrier drops the flag and enters the respawn queue; clients
-    // track the pending entry and the respawned replacement walker.
-    fixture.with_server_context([&] { runner->set_dead(1); });
+    // A killed hero enters the mode respawn queue (Lua owns eligibility via
+    // og.respawn_schedule); clients track the pending entry and the revive.
+    // The corpse needs a myguy: the dead sweep retains only player corpses,
+    // and the kind-0 revive path resolves the corpse by id.
+    fixture.with_server_context([&] {
+        runner->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+        runner->myguy->id = 41;
+        runner->set_dead(1);
+        ASSERT_TRUE(og::sim::respawn_schedule_corpse(
+            fixture.server_world(), runner, /*ticks_override=*/0));
+    });
     fixture.step_ticks(2);
     ASSERT_FALSE(fixture.server_world().respawn.respawn_queue.empty());
     fixture.expect_clients_match_server();
     EXPECT_FALSE(fixture.client_world(0).respawn.respawn_queue.empty());
-    EXPECT_NE(og::sim::CtfFlagState::Carried,
-              fixture.client_world(0).ctf.flags[1].state);
 
     fixture.step_ticks(12);
     ASSERT_TRUE(fixture.server_world().respawn.respawn_queue.empty())
         << "respawn should have fired within the configured 8 ticks";
+    ASSERT_FALSE(runner->dead());
     fixture.expect_clients_match_server();
 
-    // Match end: force the capture limit and let the win check run.
+    // Match end: the Lua win channel latches, the engine re-asserts every
+    // tick, and the decided-match shape replicates.
     fixture.with_server_context([&] {
-        GameWorld& world = fixture.server_world();
-        world.ctf.captures[0] = world.ctf.capture_limit;
+        og::sim::mode_declare_winner(fixture.server_world(), 0);
     });
     fixture.step_ticks(1);
     ASSERT_TRUE(fixture.server_world().game_ended);
-    ASSERT_EQ(0, fixture.server_world().ctf.winner_team);
+    ASSERT_EQ(0, fixture.server_world().mode.winner_team);
     fixture.expect_clients_match_server();
     for (int index = 0; index < 2; ++index)
     {
         const GameWorld& client = fixture.client_world(index);
         EXPECT_TRUE(client.game_ended) << "client " << index;
-        EXPECT_EQ(0, client.ctf.winner_team) << "client " << index;
-        EXPECT_EQ(client.ctf.capture_limit, client.ctf.captures[0])
-            << "client " << index;
+        EXPECT_EQ(0, client.mode.winner_team) << "client " << index;
+        EXPECT_TRUE(client.mode.win_latched) << "client " << index;
     }
 }
 
-TEST(CtfNetwork, four_client_match_state_replicates)
+TEST(CtfNetwork, four_client_scripted_match_state_replicates)
 {
     NetworkTestFixture fixture({
         .player_count = 4,
@@ -291,18 +350,22 @@ TEST(CtfNetwork, four_client_match_state_replicates)
         .validate_serialization = true,
     });
     fixture.load_level();
-    const CtfNetScenario scenario = inject_ctf_scenario(fixture, 4, 0);
-    ASSERT_NE(nullptr, scenario.flag0);
+    inject_mode_scenario(fixture, 4, 0);
     fixture.initial_sync();
 
+    fixture.with_server_context([&] {
+        GameWorld& world = fixture.server_world();
+        for (int i = 0; i < og::sim::kModeVarCount; ++i)
+            world.mode.vars[i] = 100 + i;
+    });
     fixture.step_ticks(20);
-    ASSERT_TRUE(fixture.server_world().ctf.active);
+    ASSERT_TRUE(fixture.server_world().mode.active);
     fixture.expect_clients_match_server();
     for (int index = 0; index < 4; ++index)
     {
         const GameWorld& client = fixture.client_world(index);
-        EXPECT_TRUE(client.ctf.active) << "client " << index;
-        EXPECT_EQ(fixture.server_world().ctf.team_count, client.ctf.team_count)
+        EXPECT_TRUE(client.mode.active) << "client " << index;
+        EXPECT_EQ(fixture.server_world().mode.vars, client.mode.vars)
             << "client " << index;
         EXPECT_EQ(fixture.server_world().respawn.respawn_serial,
                   client.respawn.respawn_serial)

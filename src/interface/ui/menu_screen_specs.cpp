@@ -2079,6 +2079,7 @@ std::vector<short> base_camp_selectable_seat_teams(const SaveData& save)
     og::sim::LobbySettings settings;
     settings.campaign_id = save.current_campaign;
     settings.ctf_team_count = save.ctf_team_count;
+    settings.shared_teams = is_versus_campaign(save) ? 1 : 0;
 
     // Use the same authored-team domain as lobby authority and CTF gameplay:
     // explicit N means the first N authored flag teams, not numeric [0,N).

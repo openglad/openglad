@@ -246,9 +246,9 @@ void clear_completed_level_entities(EntityList& entities)
 
 void apply_completed_level_cleanup(GameWorld& world)
 {
-    // CTF rematches replay the full map: flags, control points, and bot
-    // squads must survive a "level already completed" reload.
-    if (world.type & GameWorld::TYPE_CTF)
+    // CTF/scripted rematches replay the full map: flags, mode objectives,
+    // and bot squads must survive a "level already completed" reload.
+    if (world.type & (GameWorld::TYPE_CTF | GameWorld::TYPE_SCRIPTED))
         return;
 
     clear_completed_level_entities(world.oblist);

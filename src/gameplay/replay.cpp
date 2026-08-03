@@ -297,37 +297,41 @@ bool compare_entity_snapshot(const EntitySnapshot& expected,
     return true;
 }
 
-bool compare_ctf_snapshot_state(const WorldSnapshot& expected,
-                                const WorldSnapshot& actual,
-                                ReplayVerificationFailure& failure)
+bool compare_mode_snapshot_state(const WorldSnapshot& expected,
+                                 const WorldSnapshot& actual,
+                                 ReplayVerificationFailure& failure)
 {
+    const RespawnState& expected_respawn = expected.respawn;
+    const RespawnState& actual_respawn = actual.respawn;
+    if (!compare_value("respawn.respawn_ticks",
+                       expected_respawn.respawn_ticks,
+                       actual_respawn.respawn_ticks,
+                       failure) ||
+        !compare_value("respawn.respawn_serial",
+                       expected_respawn.respawn_serial,
+                       actual_respawn.respawn_serial,
+                       failure))
+    {
+        return false;
+    }
     for (int team = 0; team < 4; ++team)
     {
-        if (!compare_value(std::format("ctf_captures[{}]", team),
-                           expected.ctf_captures[team],
-                           actual.ctf_captures[team],
-                           failure) ||
-            !compare_value(std::format("ctf_team_active[{}]", team),
-                           expected.ctf_team_active[team],
-                           actual.ctf_team_active[team],
-                           failure) ||
-            !compare_value(std::format("ctf_anchor_count[{}]", team),
-                           expected.ctf_anchor_count[team],
-                           actual.ctf_anchor_count[team],
+        if (!compare_value(std::format("respawn.anchor_count[{}]", team),
+                           expected_respawn.anchor_count[team],
+                           actual_respawn.anchor_count[team],
                            failure))
         {
             return false;
         }
-
         for (int i = 0; i < kCtfMaxAnchorsPerTeam; ++i)
         {
-            if (!compare_value(std::format("ctf_anchor_x[{}][{}]", team, i),
-                               expected.ctf_anchor_x[team][i],
-                               actual.ctf_anchor_x[team][i],
+            if (!compare_value(std::format("respawn.anchor_x[{}][{}]", team, i),
+                               expected_respawn.anchor_x[team][i],
+                               actual_respawn.anchor_x[team][i],
                                failure) ||
-                !compare_value(std::format("ctf_anchor_y[{}][{}]", team, i),
-                               expected.ctf_anchor_y[team][i],
-                               actual.ctf_anchor_y[team][i],
+                !compare_value(std::format("respawn.anchor_y[{}][{}]", team, i),
+                               expected_respawn.anchor_y[team][i],
+                               actual_respawn.anchor_y[team][i],
                                failure))
             {
                 return false;
@@ -335,69 +339,18 @@ bool compare_ctf_snapshot_state(const WorldSnapshot& expected,
         }
     }
 
-    for (int t = 0; t < kCtfMaxFlags; ++t)
-    {
-        const CtfFlag& expected_flag = expected.ctf_flags[t];
-        const CtfFlag& actual_flag = actual.ctf_flags[t];
-        const std::string prefix = std::format("ctf_flags[{}].", t);
-
-#define OG_REPLAY_COMPARE(field) \
-    do { \
-        if (!compare_value(prefix + #field, \
-                           expected_flag.field, actual_flag.field, failure)) \
-            return false; \
-    } while (false)
-
-        OG_REPLAY_COMPARE(state);
-        OG_REPLAY_COMPARE(carrier_entity_id);
-        OG_REPLAY_COMPARE(x);
-        OG_REPLAY_COMPARE(y);
-        OG_REPLAY_COMPARE(home_x);
-        OG_REPLAY_COMPARE(home_y);
-        OG_REPLAY_COMPARE(return_ticks);
-        OG_REPLAY_COMPARE(flag_entity_id);
-        OG_REPLAY_COMPARE(present);
-
-#undef OG_REPLAY_COMPARE
-    }
-
-    for (int i = 0; i < kCtfMaxControlPoints; ++i)
-    {
-        const CtfControlPoint& expected_cp = expected.ctf_cps[i];
-        const CtfControlPoint& actual_cp = actual.ctf_cps[i];
-        const std::string prefix = std::format("ctf_cps[{}].", i);
-
-#define OG_REPLAY_COMPARE(field) \
-    do { \
-        if (!compare_value(prefix + #field, \
-                           expected_cp.field, actual_cp.field, failure)) \
-            return false; \
-    } while (false)
-
-        OG_REPLAY_COMPARE(owner);
-        OG_REPLAY_COMPARE(progress);
-        OG_REPLAY_COMPARE(progress_team);
-        OG_REPLAY_COMPARE(x);
-        OG_REPLAY_COMPARE(y);
-        OG_REPLAY_COMPARE(radius_tiles);
-        OG_REPLAY_COMPARE(entity_id);
-        OG_REPLAY_COMPARE(next_pulse_tick);
-
-#undef OG_REPLAY_COMPARE
-    }
-
-    if (!compare_value("ctf_respawn_queue.size",
-                       expected.ctf_respawn_queue.size(),
-                       actual.ctf_respawn_queue.size(),
+    if (!compare_value("respawn.respawn_queue.size",
+                       expected_respawn.respawn_queue.size(),
+                       actual_respawn.respawn_queue.size(),
                        failure))
     {
         return false;
     }
-    for (std::size_t i = 0; i < expected.ctf_respawn_queue.size(); ++i)
+    for (std::size_t i = 0; i < expected_respawn.respawn_queue.size(); ++i)
     {
-        const CtfRespawnEntry& expected_entry = expected.ctf_respawn_queue[i];
-        const CtfRespawnEntry& actual_entry = actual.ctf_respawn_queue[i];
-        const std::string prefix = std::format("ctf_respawn_queue[{}].", i);
+        const CtfRespawnEntry& expected_entry = expected_respawn.respawn_queue[i];
+        const CtfRespawnEntry& actual_entry = actual_respawn.respawn_queue[i];
+        const std::string prefix = std::format("respawn.respawn_queue[{}].", i);
 
 #define OG_REPLAY_COMPARE(field) \
     do { \
@@ -417,6 +370,72 @@ bool compare_ctf_snapshot_state(const WorldSnapshot& expected,
         OG_REPLAY_COMPARE(floor);
 
 #undef OG_REPLAY_COMPARE
+    }
+
+    const ModeState& expected_mode = expected.mode;
+    const ModeState& actual_mode = actual.mode;
+
+#define OG_REPLAY_COMPARE(field) \
+    do { \
+        if (!compare_value(std::string("mode.") + #field, \
+                           expected_mode.field, actual_mode.field, failure)) \
+            return false; \
+    } while (false)
+
+    OG_REPLAY_COMPARE(active);
+    OG_REPLAY_COMPARE(init_attempted);
+    OG_REPLAY_COMPARE(win_latched);
+    OG_REPLAY_COMPARE(winner_team);
+    OG_REPLAY_COMPARE(winner_is_player);
+    OG_REPLAY_COMPARE(win_ending);
+    OG_REPLAY_COMPARE(win_next_level);
+
+#undef OG_REPLAY_COMPARE
+
+    if (!compare_value("mode.name",
+                       std::string_view(expected_mode.name.data()),
+                       std::string_view(actual_mode.name.data()),
+                       failure))
+    {
+        return false;
+    }
+    for (int i = 0; i < kModeVarCount; ++i)
+    {
+        if (!compare_value(std::format("mode.vars[{}]", i),
+                           expected_mode.vars[i],
+                           actual_mode.vars[i],
+                           failure))
+        {
+            return false;
+        }
+    }
+    for (int i = 0; i < kModeHudLines; ++i)
+    {
+        if (!compare_value(std::format("mode.hud[{}].team", i),
+                           expected_mode.hud[i].team,
+                           actual_mode.hud[i].team,
+                           failure) ||
+            !compare_value(std::format("mode.hud[{}].text", i),
+                           std::string_view(expected_mode.hud[i].text.data()),
+                           std::string_view(actual_mode.hud[i].text.data()),
+                           failure))
+        {
+            return false;
+        }
+    }
+    for (int i = 0; i < kModeBeacons; ++i)
+    {
+        if (!compare_value(std::format("mode.beacons[{}].entity_id", i),
+                           expected_mode.beacons[i].entity_id,
+                           actual_mode.beacons[i].entity_id,
+                           failure) ||
+            !compare_value(std::format("mode.beacons[{}].team", i),
+                           expected_mode.beacons[i].team,
+                           actual_mode.beacons[i].team,
+                           failure))
+        {
+            return false;
+        }
     }
 
     return true;
@@ -457,17 +476,6 @@ bool compare_world_snapshot(const WorldSnapshot& expected,
     OG_REPLAY_COMPARE(paused);
     OG_REPLAY_COMPARE(pause_player_index);
     OG_REPLAY_COMPARE(weather);
-    OG_REPLAY_COMPARE(ctf_active);
-    OG_REPLAY_COMPARE(ctf_init_attempted);
-    OG_REPLAY_COMPARE(ctf_team_count);
-    OG_REPLAY_COMPARE(ctf_capture_limit);
-    OG_REPLAY_COMPARE(ctf_respawn_ticks);
-    OG_REPLAY_COMPARE(ctf_flag_return_ticks);
-    OG_REPLAY_COMPARE(ctf_time_limit_ticks);
-    OG_REPLAY_COMPARE(ctf_winner_team);
-    OG_REPLAY_COMPARE(ctf_winner_is_player);
-    OG_REPLAY_COMPARE(ctf_respawn_serial);
-    OG_REPLAY_COMPARE(ctf_cp_count);
     OG_REPLAY_COMPARE(ctf_requested_team_count);
     OG_REPLAY_COMPARE(ctf_requested_capture_limit);
     OG_REPLAY_COMPARE(ctf_requested_respawn_ticks);
@@ -492,7 +500,7 @@ bool compare_world_snapshot(const WorldSnapshot& expected,
         }
     }
 
-    if (!compare_ctf_snapshot_state(expected, actual, failure))
+    if (!compare_mode_snapshot_state(expected, actual, failure))
         return false;
 
     if (!compare_value("full_grid_data.size",

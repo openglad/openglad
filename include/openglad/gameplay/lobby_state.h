@@ -216,16 +216,26 @@ struct LobbySettings {
     // written, so this never reaches the sim or any save file.
     // sanitize_settings keeps it in {0, 1}.
     std::int16_t infinite_gold = 0;
+    // Versus-campaign flag (protocol v12): 1 when the selected campaign's
+    // yaml carries matchup: versus. Set by the HOST from
+    // campaign_matchup(campaign_id) at publish time — the joiner may not
+    // have the campaign package, so the shared-teams rule rides the wire
+    // instead of comparing campaign ids. sanitize_settings keeps it in
+    // {0, 1}.
+    std::int16_t shared_teams = 0;
 
     bool operator==(const LobbySettings&) const = default;
 };
 
-// Legacy helper name retained for the CTF-specific assignment rules (notably
-// the explicit team-count clamp). It originally distinguished modes where
-// cross-peer sharing was legal; explicit seat choices now share in all modes.
+// Legacy helper name retained for the versus-specific assignment rules
+// (notably the explicit team-count clamp). It originally distinguished modes
+// where cross-peer sharing was legal; explicit seat choices now share in all
+// modes. Since protocol v12 the rule rides the wire (the host derives
+// shared_teams from the campaign's matchup: yaml key) instead of comparing
+// campaign ids.
 inline bool lobby_settings_allow_shared_teams(const LobbySettings& settings) noexcept
 {
-    return settings.campaign_id == og::kCtfCampaignId;
+    return settings.shared_teams != 0;
 }
 
 inline constexpr std::uint8_t kAllLobbyTeamMask =

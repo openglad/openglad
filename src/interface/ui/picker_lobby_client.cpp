@@ -687,6 +687,9 @@ private:
         settings.keep_fallen_heroes = save.keep_fallen_heroes;
         settings.cross_control = save.cross_control;
         settings.infinite_gold = save.infinite_gold;
+        // Protocol v12: the shared-teams rule rides the wire, derived from
+        // the campaign's matchup: yaml key (the joiner may lack the package).
+        settings.shared_teams = og::ui::is_versus_campaign(save) ? 1 : 0;
 
         og::sim::LobbyMessage message;
         message.payload = og::sim::LobbySettingsChangeMessage{

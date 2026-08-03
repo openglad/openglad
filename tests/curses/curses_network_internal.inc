@@ -2,7 +2,7 @@
 // this orchestration in tests/ prevents coverage tools from treating it as
 // shipped curses networking logic while preserving translation-unit access.
 
-bool curses_network_testing_inject_ctf(CursesGameSession& session,
+bool curses_network_testing_inject_mode(CursesGameSession& session,
                                        short requested_respawn_ticks);
 int curses_network_testing_force_server_win(CursesGameSession& session,
                                              std::uint32_t pinned_team0_score);
@@ -706,7 +706,7 @@ int curses_network_testing_exercise_internal_helpers()
                                   join_client->local_peer_id(), 0, &err);
     check(join != nullptr);
     if (join != nullptr) {
-        check(!curses_network_testing_inject_ctf(*join, 30) &&
+        check(!curses_network_testing_inject_mode(*join, 30) &&
             curses_network_testing_force_server_win(*join, 5) == -1 &&
             curses_network_testing_clear_server_team(*join, 0) == -1);
         GameWorld& mirror = join->mirror_world();

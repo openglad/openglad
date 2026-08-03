@@ -213,10 +213,11 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	const std::vector<short> view_teams =
 		og::ui::derive_local_gameplay_seat_teams(screenp->save_data);
 
-	// Have we already done this scenario? CTF maps skip the purge: rematches
-	// replay the full map (flags, control points, and bot squads stay).
+	// Have we already done this scenario? CTF/scripted maps skip the purge:
+	// rematches replay the full map (flags, mode objectives, and bot squads
+	// stay).
 	if (og::runtime::current_session->myscreen_->save_data.is_level_completed(og::runtime::current_session->myscreen_->save_data.scen_num) &&
-	    !(og::runtime::current_session->myscreen_->world().type & GameWorld::TYPE_CTF))
+	    !(og::runtime::current_session->myscreen_->world().type & (GameWorld::TYPE_CTF | GameWorld::TYPE_SCRIPTED)))
 	{
 		//                Log("already done level\n");
 		for(auto& uptr : og::runtime::current_session->myscreen_->world().oblist)

@@ -25,17 +25,23 @@
 namespace
 {
 
-// Snapshot v9: one format byte followed by 215 bytes of fixed/default world
-// state before the grid block. Keeping this wire pin explicit makes malformed
-// payload tests fail loudly when the format is deliberately revised.
-constexpr std::size_t kSerializedWorldStateBytes = 215;
+// Snapshot v10: one format byte followed by 514 bytes of fixed/default world
+// state before the grid block (72 pre-block scalars + the empty respawn
+// block 9 + the fixed mode block 404 + 8 match-knob bytes + 21 trailing
+// scalar/player_machine bytes). Keeping this wire pin explicit makes
+// malformed payload tests fail loudly when the format is deliberately
+// revised.
+constexpr std::size_t kSerializedWorldStateBytes = 514;
 constexpr std::size_t kGridOffset = 1 + kSerializedWorldStateBytes;
 constexpr std::size_t kGridDirtyOffset = kGridOffset + 2;
 constexpr std::size_t kGridFullResendOffset = kGridOffset + 3;
 constexpr std::size_t kFullGridSizeOffset = kGridOffset + 4;
 constexpr std::size_t kDirtyTileCountOffset = kFullGridSizeOffset + 4;
 constexpr std::size_t kFirstDirtyTileOffset = kDirtyTileCountOffset + 4;
-constexpr std::size_t kFirstObEntityFlagsOffset = 244;
+// First delta oblist entity's flags byte: the 12-byte empty grid block, the
+// empty guy-snapshot count u32, the oblist count u32, then the entity's
+// guy_id i32 + entity_id u32 lead the flags byte.
+constexpr std::size_t kFirstObEntityFlagsOffset = kGridOffset + 28;
 
 void write_u16(std::vector<std::uint8_t>& bytes,
                std::size_t offset,

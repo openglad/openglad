@@ -5,6 +5,7 @@
 #include <openglad/core/test_trace.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
+#include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/gameplay/game_world.h>
@@ -1211,12 +1212,14 @@ void GameServer::bind_player(PeerId peer_id,
     client.spectator_admitted = false;
     if (control == nullptr)
     {
-        // CTF: prefer the binding player's OWN hero. Several humans may share
-        // a team in CTF lobbies, and the generic first-unclaimed scan would
-        // hand the first binder a teammate's character. Classic and allied
-        // worlds keep the original pool claim (allied deliberately treats the
-        // combined roster as a shared pool in oblist order).
-        if ((world_.type & GameWorld::TYPE_CTF) != 0)
+        // Versus matches (CTF / scripted modes): prefer the binding player's
+        // OWN hero. Several humans may share a team in versus lobbies, and
+        // the generic first-unclaimed scan would hand the first binder a
+        // teammate's character. Classic and allied worlds keep the original
+        // pool claim (allied deliberately treats the combined roster as a
+        // shared pool in oblist order).
+        if ((world_.type & (GameWorld::TYPE_CTF | GameWorld::TYPE_SCRIPTED)) !=
+            0)
         {
             for (const auto& uptr : world_.oblist)
             {
@@ -1613,7 +1616,7 @@ bool GameServer::process_disconnected_players(std::uint32_t expected_tick)
             disconnected.player_index < kMaxGlobalPlayers)
         {
             if (walker* reclaimed =
-                    find_ctf_reclaim_control(disconnected.player_index))
+                    find_match_reclaim_control(disconnected.player_index))
             {
                 disconnected.control = reclaimed;
                 player_controls_[disconnected.player_index] = reclaimed;
@@ -2480,7 +2483,7 @@ bool GameServer::apply_polled_inputs(std::uint32_t expected_tick)
             // A CTF revive restored this player's walker in place with its
             // user tag intact; rebind it (the previous_control diff below
             // broadcasts the ControlChange to every mirror).
-            if (walker* reclaimed = find_ctf_reclaim_control(player_index))
+            if (walker* reclaimed = find_match_reclaim_control(player_index))
             {
                 seat.control = reclaimed;
                 if (reclaimed->stats() != nullptr)
@@ -2632,13 +2635,14 @@ void GameServer::remember_snapshot_hash(ConnectedClientState& client,
     }
 }
 
-walker* GameServer::find_ctf_reclaim_control(std::size_t player_index) const
+walker* GameServer::find_match_reclaim_control(std::size_t player_index) const
 {
-    // Gate on an active CTF match or an active classic respawn mode so plain
-    // non-respawning behavior is untouched.
+    // Gate on an active CTF/scripted match or an active classic respawn mode
+    // so plain non-respawning behavior is untouched.
     const bool ctf_active =
         (world_.type & GameWorld::TYPE_CTF) != 0 && world_.ctf.active;
-    if (!ctf_active && !og::sim::classic_respawn_active(world_))
+    if (!ctf_active && !og::sim::mode_scripted_active(world_) &&
+        !og::sim::classic_respawn_active(world_))
         return nullptr;
 
     for (const auto& uptr : world_.oblist)

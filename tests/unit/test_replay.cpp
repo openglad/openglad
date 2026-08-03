@@ -443,23 +443,11 @@ TEST(Replay, snapshot_difference_formats_all_field_value_kinds)
     {
         og::sim::WorldSnapshot expected;
         og::sim::WorldSnapshot actual = expected;
-        expected.ctf_flags[0].state = og::sim::CtfFlagState::AtHome;
-        actual.ctf_flags[0].state = og::sim::CtfFlagState::Carried;
+        expected.mode.vars[0] = 2;
+        actual.mode.vars[0] = 4;
         expect_diff(expected,
                     actual,
-                    "ctf_flags[0].state",
-                    "0",
-                    "1");
-    }
-
-    {
-        og::sim::WorldSnapshot expected;
-        og::sim::WorldSnapshot actual = expected;
-        expected.ctf_captures[0] = 2u;
-        actual.ctf_captures[0] = 4u;
-        expect_diff(expected,
-                    actual,
-                    "ctf_captures[0]",
+                    "mode.vars[0]",
                     "2",
                     "4");
     }
@@ -467,11 +455,23 @@ TEST(Replay, snapshot_difference_formats_all_field_value_kinds)
     {
         og::sim::WorldSnapshot expected;
         og::sim::WorldSnapshot actual = expected;
-        expected.ctf_anchor_x[0][0] = 5;
-        actual.ctf_anchor_x[0][0] = 8;
+        expected.mode.win_latched = false;
+        actual.mode.win_latched = true;
         expect_diff(expected,
                     actual,
-                    "ctf_anchor_x[0][0]",
+                    "mode.win_latched",
+                    "false",
+                    "true");
+    }
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        expected.respawn.anchor_x[0][0] = 5;
+        actual.respawn.anchor_x[0][0] = 8;
+        expect_diff(expected,
+                    actual,
+                    "respawn.anchor_x[0][0]",
                     "5",
                     "8");
     }
@@ -622,10 +622,10 @@ TEST(Replay, snapshot_difference_formats_all_field_value_kinds)
 
     expect_size_difference(
         [](og::sim::WorldSnapshot& snapshot) {
-            snapshot.ctf_respawn_queue.push_back({});
+            snapshot.respawn.respawn_queue.push_back({});
         },
         [](og::sim::WorldSnapshot&) {},
-        "ctf_respawn_queue.size");
+        "respawn.respawn_queue.size");
     expect_size_difference(
         [](og::sim::WorldSnapshot& snapshot) {
             snapshot.grid_dirty_tiles.push_back({});

@@ -1689,11 +1689,14 @@ TEST(CursesNetwork, lobby_team_key_cycles_the_selected_owned_seat)
     EXPECT_TRUE(status_contains(*lobby, "Selected P1"));
 }
 
-TEST(CursesNetwork, lobby_team_key_wraps_in_explicit_two_team_ctf_domain)
+TEST(CursesNetwork, lobby_team_key_wraps_in_explicit_two_team_versus_domain)
 {
     SaveData save;
     init_team_save(save, 0, FAMILY_SOLDIER, "CTF Keyboard");
-    save.current_campaign = "org.openglad.ctf";
+    // The shared-teams rule rides the wire since protocol v12, derived from
+    // the campaign's matchup: versus yaml key — the shipped modes campaign
+    // is the versus campaign.
+    save.current_campaign = "org.openglad.modes";
     save.ctf_team_count = 2;
 
     auto server = og::sim::InProcessTransport::create_server();
@@ -1723,7 +1726,7 @@ TEST(CursesNetwork, lobby_team_key_wraps_in_explicit_two_team_ctf_domain)
     term.push_char(U't');
     lobby->poll(term, clock);
     EXPECT_EQ(0, local_team())
-        << "explicit two-team CTF must skip teams 2 and 3";
+        << "explicit two-team versus must skip teams 2 and 3";
 }
 
 // The lobby "Level:" line reads scenario titles off the LOCAL mount, so when

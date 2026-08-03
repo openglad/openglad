@@ -106,6 +106,8 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
         sanitized.cross_control = fallback.cross_control;
     if (sanitized.infinite_gold != 0 && sanitized.infinite_gold != 1)
         sanitized.infinite_gold = fallback.infinite_gold;
+    if (sanitized.shared_teams != 0 && sanitized.shared_teams != 1)
+        sanitized.shared_teams = fallback.shared_teams;
     return sanitized;
 }
 

@@ -40,7 +40,7 @@ std::unique_ptr<CursesLobby> make_join_lobby_over_transport_for_testing(
     SaveData& save, int difficulty,
     std::shared_ptr<og::sim::ITransport> transport,
     og::sim::PeerId server_peer_id);
-bool curses_network_testing_inject_ctf(CursesGameSession& session,
+bool curses_network_testing_inject_mode(CursesGameSession& session,
                                        short requested_respawn_ticks);
 } // namespace og::curses
 
@@ -305,7 +305,7 @@ TEST(CursesCtf, hud_shows_caps_line_with_flag_and_respawn_markers)
         << "no caps line on classic levels: " << row1;
 }
 
-TEST(CursesCtf, two_client_round_replicates_ctf_state_to_both_mirrors)
+TEST(CursesCtf, two_client_round_replicates_mode_state_to_both_mirrors)
 {
     SaveData host_save;
     SaveData join_save;
@@ -316,38 +316,47 @@ TEST(CursesCtf, two_client_round_replicates_ctf_state_to_both_mirrors)
     ASSERT_NE(game.host_session, nullptr) << "host session should start";
     ASSERT_NE(game.join_session, nullptr) << "join session should start";
 
-    // Stamp the authoritative server world CTF (flags + anchors + type bit)
-    // before the match ticks; the next snapshots replicate everything.
-    ASSERT_TRUE(curses_network_testing_inject_ctf(*game.host_session,
+    // Stamp the authoritative server world scripted (armed ModeState + HUD
+    // line + anchors + type bit) before the match ticks; the next snapshots
+    // replicate everything through the v10 mode block.
+    ASSERT_TRUE(curses_network_testing_inject_mode(*game.host_session,
                                                   /*respawn_ticks=*/24));
+    // The level-type bit is authored, not replicated: a real scripted .fss
+    // load stamps it on every peer, so mirror it on the joiner too.
+    game.join_session->mirror_world().type |= GameWorld::TYPE_SCRIPTED;
 
     advance_all(*game.host_session, *game.join_session, 40);
 
     const GameWorld& host_mirror = game.host_session->mirror_world();
     const GameWorld& join_mirror = game.join_session->mirror_world();
 
-    ASSERT_TRUE(host_mirror.ctf.active)
-        << "host mirror must see the activated CTF match";
-    ASSERT_TRUE(join_mirror.ctf.active)
-        << "join mirror must see the activated CTF match";
-    EXPECT_TRUE(host_mirror.ctf.flags[0].present);
-    EXPECT_TRUE(host_mirror.ctf.flags[1].present);
-    EXPECT_TRUE(join_mirror.ctf.flags[0].present);
-    EXPECT_TRUE(join_mirror.ctf.flags[1].present);
+    ASSERT_TRUE(host_mirror.mode.active)
+        << "host mirror must see the activated scripted match";
+    ASSERT_TRUE(join_mirror.mode.active)
+        << "join mirror must see the activated scripted match";
+    EXPECT_STREQ("CTF", host_mirror.mode.name.data());
+    EXPECT_STREQ("CTF", join_mirror.mode.name.data());
+    EXPECT_STREQ("Caps 0:0", host_mirror.mode.hud[0].text.data());
+    EXPECT_STREQ("Caps 0:0", join_mirror.mode.hud[0].text.data());
     EXPECT_EQ(24, host_mirror.respawn.respawn_ticks)
         << "the injected respawn config must replicate";
     EXPECT_EQ(24, join_mirror.respawn.respawn_ticks);
     for (int team = 0; team < 4; ++team) {
-        EXPECT_EQ(host_mirror.ctf.captures[team], join_mirror.ctf.captures[team])
-            << "capture counts must agree between mirrors (team " << team << ")";
+        EXPECT_EQ(host_mirror.mode.vars[team], join_mirror.mode.vars[team])
+            << "mode vars must agree between mirrors (team " << team << ")";
     }
+    EXPECT_GE(join_mirror.respawn.anchor_count[0], 1)
+        << "the anchor scan must replicate through the respawn block";
 
-    // The joiner's HUD renders the caps line straight off its mirror.
+    // The joiner's HUD renders the mode name + scoreboard line straight off
+    // its mirror.
     HeadlessTerminal term(21, 70);
     CursesRenderer renderer;
     renderer.draw(term, game.join_session->mirror_world(),
                   game.join_session->followed_entity_id());
     const std::string row1 = term.text_row(1);
-    EXPECT_NE(row1.find("Caps"), std::string::npos)
-        << "caps line should render from the join mirror: " << row1;
+    EXPECT_NE(row1.find("CTF"), std::string::npos)
+        << "mode name should render from the join mirror: " << row1;
+    EXPECT_NE(row1.find("Caps 0:0"), std::string::npos)
+        << "mode HUD line should render from the join mirror: " << row1;
 }
