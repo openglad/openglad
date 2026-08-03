@@ -2,11 +2,15 @@
 #include <openglad/resources/gloader.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/world_snapshot.h>
 #include <openglad/legacy/base.h>
 #include <openglad/interface/screen.h>
 #include <gtest/gtest.h>
 
+#include <cstdint>
 #include <memory>
+
+#include "test_game_world_fixture.h"
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
@@ -93,5 +97,72 @@ TEST(LoaderAndWalker, walker_attack_deals_damage_and_awards_score)
     ASSERT_TRUE(attacker->myguy->total_hits >= 1) << "attack should increment attacker hits";
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world_.m_score[0] > 0) << "attack should award score for team 0";
 
+}
+
+
+// Issue #150: with real loader art, a mirror entity that changes family across
+// a snapshot must end up blitting the NEW family's bitmap. Slimes grow by
+// walker::transform_to, which keeps the entity_id, so the mirror only ever sees
+// a family change on an entity it already owns. When apply_snapshot dropped the
+// PixieData* the configurator handed back, the mirror kept the 12x12 s_slime
+// buffer while sizex/sizey became m_slime's 20x20 — striped noise on screen and
+// a read past the end of the small-slime buffer.
+TEST(LoaderAndWalker, snapshot_family_change_repoints_the_render_bitmap)
+{
+    loader* l = og::runtime::current_session->myscreen_->myloader;
+    ASSERT_TRUE(l != nullptr) << "loader exists";
+    const PixieData* small_art = l->graphics_for(Order::Living, FAMILY_SMALL_SLIME);
+    const PixieData* medium_art = l->graphics_for(Order::Living, FAMILY_MEDIUM_SLIME);
+    ASSERT_TRUE(small_art != nullptr && small_art->valid());
+    ASSERT_TRUE(medium_art != nullptr && medium_art->valid());
+    ASSERT_TRUE(small_art->w != medium_art->w)
+        << "s_slime and m_slime must differ in size for this pin to mean anything";
+
+    TestGameWorld source_fx(2202);
+    TestGameWorld mirror_fx(2203);
+    GameWorld& source = source_fx.world();
+    GameWorld& mirror = mirror_fx.world();
+
+    // Leave the source slime at its default spot: walker::setworldxy indexes
+    // into current_game->world's obmap, which is the mirror here (last fixture
+    // constructed wins the ambient context), and that cross-world registration
+    // would outlive the source walker.
+    walker* slime = source.add_ob(Order::Living, FAMILY_SMALL_SLIME);
+    ASSERT_TRUE(slime != nullptr);
+    const std::uint32_t slime_id = slime->entity_id();
+
+    ASSERT_TRUE(og::sim::apply_snapshot(mirror, og::sim::capture_snapshot(source)));
+    walker* mirror_slime = mirror.find_by_id(slime_id);
+    ASSERT_TRUE(mirror_slime != nullptr);
+    ASSERT_EQ((int)small_art->w, (int)mirror_slime->sizex())
+        << "fresh mirror entity should draw the small-slime sheet";
+
+    // Grow, the way slime_grow_into does on the authoritative side.
+    const PixieData* grown =
+        source.configure_existing_entity(*slime, Order::Living, FAMILY_MEDIUM_SLIME);
+    ASSERT_TRUE(grown != nullptr);
+    slime->set_data(*grown);
+    source.set_entity_derived_stats(slime, Order::Living, FAMILY_MEDIUM_SLIME);
+
+    ASSERT_TRUE(og::sim::apply_snapshot(mirror, og::sim::capture_snapshot(source)));
+    mirror_slime = mirror.find_by_id(slime_id);
+    ASSERT_TRUE(mirror_slime != nullptr);
+    ASSERT_EQ(FAMILY_MEDIUM_SLIME, (int)mirror_slime->family());
+    ASSERT_EQ((int)medium_art->w, (int)mirror_slime->sizex());
+    ASSERT_EQ((int)medium_art->h, (int)mirror_slime->sizey());
+
+    // Pointer identity against the same world's loader: each LevelRuntimeData
+    // owns its own loader instance, so the reference sheets have to come from
+    // this mirror, not from the session's loader.
+    walker* reference_small = mirror.add_ob(Order::Living, FAMILY_SMALL_SLIME);
+    walker* reference_medium = mirror.add_ob(Order::Living, FAMILY_MEDIUM_SLIME);
+    ASSERT_TRUE(reference_small != nullptr && reference_medium != nullptr);
+    reference_small->set_frame(0);
+    reference_medium->set_frame(0);
+    mirror_slime->set_frame(0);
+    ASSERT_TRUE(reference_small->bmp_data() != reference_medium->bmp_data());
+    ASSERT_EQ(reference_medium->bmp_data(), mirror_slime->bmp_data())
+        << "grown mirror slime must blit the medium-slime sheet, not the stale "
+           "small-slime buffer at the new family's 20x20 stride";
 }
 
