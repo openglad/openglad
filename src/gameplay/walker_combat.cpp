@@ -407,7 +407,17 @@ bool walker::attack(walker  *target)
                         message = std::format("ENEMY DEATH: {} DIED!", target->stats()->name);
                         og::sim::emit_notification(current_game->sim_events, message);
                     }
-                    if(current_game->world->remaining_foes(this) == 1)  // This is the last foe
+                    // Scripted-mode (TYPE_SCRIPTED) matches own their win
+                    // channel and continue past momentary wipes, so the
+                    // classic toast stays on classic-completion worlds only
+                    // (same predicate as the tick fork; a demoted scripted
+                    // map falls back to classic rules AND this toast).
+                    const bool mode_owned =
+                        (current_game->world->type & GameWorld::TYPE_SCRIPTED) != 0 &&
+                        !(current_game->world->mode.init_attempted &&
+                          !current_game->world->mode.active);
+                    if(!mode_owned &&
+                       current_game->world->remaining_foes(this) == 1)  // This is the last foe
                     {
                         message = "All foes defeated!";
                         og::sim::emit_notification(current_game->sim_events, message);
