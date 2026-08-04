@@ -70,8 +70,17 @@ local T = {
   spin_cycle = 2048,
   spin_divisor = 8,
   ai_cadence = 15,
-  goalie_leash = 48,
-  goalie_engage = 80, -- ball this close to the goal pulls the goalie out
+  -- Keeper geometry. The intercept line sits goalie_standoff px in front
+  -- of the goal mouth's open face; the defensive box is the defended rect
+  -- grown by goalie_box on every side — a ball inside it is charged and
+  -- cleared by contact. goalie_leash bounds every commanded destination
+  -- (Manhattan from the rect center): it must cover the worst intercept,
+  -- rect_halfthickness + standoff + halfspan = 16 + 16 + 64 = 96 on the
+  -- shipped 32x128 / 128x32 mouths, so 112 leaves a step of slack while
+  -- still pinning the keeper to its goal.
+  goalie_leash = 112,
+  goalie_standoff = 16,
+  goalie_box = 64,
   approach_offset = 20, -- chasers stand this far past the ball
 }
 
@@ -638,10 +647,63 @@ local function goal_center(team)
   return cx, cy
 end
 
+-- The ball-intercept point on team T's goal mouth: the ball's cross-axis
+-- coordinate clamped to the defended rect's span, on a line goalie_standoff
+-- px in front of the open face. Wide rects (w >= h) are N/S walls whose
+-- mouth opens vertically toward the kickoff spot; tall rects are E/W walls
+-- opening horizontally — which covers the shipped pitches' E/W mouths and
+-- FOURSQUARE's four walls alike.
+local function goal_intercept(team, bx, by)
+  local pos = fget(S.GOAL_POS, team)
+  local size = fget(S.GOAL_SIZE, team)
+  local gx = core.pos_x(pos)
+  local gy = core.pos_y(pos)
+  local gw = core.pos_x(size)
+  local gh = core.pos_y(size)
+  local kpos = og.mode_get(S.KICKOFF_POS)
+  if gw >= gh then
+    local line_y = gy - T.goalie_standoff
+    if core.pos_y(kpos) >= gy + og.div(gh, 2) then
+      line_y = gy + gh + T.goalie_standoff
+    end
+    return og.clamp(bx, gx, gx + gw), line_y
+  end
+  local line_x = gx - T.goalie_standoff
+  if core.pos_x(kpos) >= gx + og.div(gw, 2) then
+    line_x = gx + gw + T.goalie_standoff
+  end
+  return line_x, og.clamp(by, gy, gy + gh)
+end
+
+-- Ball inside team T's defensive box: the defended rect grown by
+-- goalie_box on every side.
+local function ball_in_goal_box(team, bx, by)
+  local pos = fget(S.GOAL_POS, team)
+  local size = fget(S.GOAL_SIZE, team)
+  local gx = core.pos_x(pos)
+  local gy = core.pos_y(pos)
+  if bx < gx - T.goalie_box then
+    return false
+  end
+  if bx > gx + core.pos_x(size) + T.goalie_box then
+    return false
+  end
+  if by < gy - T.goalie_box then
+    return false
+  end
+  return by <= gy + core.pos_y(size) + T.goalie_box
+end
+
 -- Role partition per team, in oblist order (zero RNG):
---   GOALIE   the member nearest the defended rect, leashed there (the CTF
---            defender idiom); a ball threatening the goal pulls it onto
---            the chaser approach point to clear.
+--   GOALIE   the member nearest the defended rect. Its objective every
+--            cadence is the ball-intercept point on its own goal mouth
+--            (goal_intercept above), so it shadows the ball's cross-axis
+--            from in front of the mouth and a shot on goal runs into it;
+--            a ball inside the defensive box is charged directly —
+--            contact kicks fire along (ball - kicker), so a goal-side
+--            keeper clears automatically. The leash bounds the charge: a
+--            box ball beyond it is played from the intercept line, so
+--            every commanded destination keeps the keeper at the mouth.
 --   CHASERS  everyone else walks the approach point: approach_offset px
 --            past the ball on the line from the nearest enemy goal, so
 --            walking into the ball kicks it goalward (D7 geometry), with
@@ -702,11 +764,14 @@ local function run_team_director(livings, ball, team)
     local goalie = members[goalie_index]
     goalie:set_foe(nil)
     goalie:set_leader(ball)
-    if ai.dist_to(goalie, gcx, gcy) > T.goalie_leash then
-      ai.issue_front(goalie, C.COMMAND_GOTO, 45, gcx, gcy)
-    elseif iabs(bx - gcx) + iabs(by - gcy) <= T.goalie_engage then
-      ai.issue_front(goalie, C.COMMAND_GOTO, 30, ax, ay)
+    local tx, ty = goal_intercept(team, bx, by)
+    if ball_in_goal_box(team, bx, by) then
+      if iabs(bx - gcx) + iabs(by - gcy) <= T.goalie_leash then
+        tx = bx
+        ty = by
+      end
     end
+    ai.issue_front(goalie, C.COMMAND_GOTO, 30, tx, ty)
   end
 
   local chaser_index = 0

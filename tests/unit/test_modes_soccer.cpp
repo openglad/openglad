@@ -1418,7 +1418,7 @@ TEST_F(ModesSoccer, respawn_mode_team_one_heroes_gates_by_team)
 }
 
 // ===========================================================================
-// Director: chasers on the own-goal side, goalie leash + engage
+// Director: chasers on the own-goal side, goalkeeping
 // ===========================================================================
 
 TEST_F(ModesSoccer, chasers_walk_the_own_goal_side_approach_point)
@@ -1438,34 +1438,119 @@ TEST_F(ModesSoccer, chasers_walk_the_own_goal_side_approach_point)
     ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
     EXPECT_TRUE(front_command_is(chaser, COMMAND_GOTO, 300, 464))
         << "chaser walks (300, 464)";
-    // Goalie is inside the leash (dist 14 <= 48) and the ball is far from
-    // the goal, so it holds position with no director GOTO.
-    EXPECT_FALSE(front_command_is(goalie, COMMAND_GOTO, 300, 464));
+    // The goalie holds the intercept line instead: the ball's cross-axis
+    // 464 sits inside the mouth span, on the standoff line x = 64.
+    EXPECT_TRUE(front_command_is(goalie, COMMAND_GOTO, 64, 464))
+        << "the keeper's objective is the goal-mouth intercept";
     EXPECT_EQ(fx.var(kSocBallEntity),
               static_cast<std::int32_t>(goalie->leader_id()))
         << "everyone leads on the ball (auto-foe suppression)";
 }
 
-TEST_F(ModesSoccer, goalie_leashes_back_and_engages_a_threatening_ball)
+TEST_F(ModesSoccer, goalie_holds_the_intercept_line_and_blocks_a_shot)
 {
+    // The staged shot-block: the keeper is sent to the ball-intercept
+    // point on its own mouth, and a ball driven at the goal runs into it
+    // there — the flight contact reverses the velocity away from the
+    // mouth and the follow-up walk-in kick clears, with no goal scored.
     SoccerWorld fx;
-    walker* goalie = fx.spawn_living(FAMILY_SOLDIER, 0, 150, 464, ACT_SIT);
+    walker* goalie = fx.spawn_living(FAMILY_SOLDIER, 0, 100, 500, ACT_SIT);
     fx.tick(1);
     ASSERT_TRUE(fx.soccer_active());
-    // Beyond the 48 px leash from the goal center (32, 464): sent home.
+    fx.thaw_kickoff();
+
+    // Ball afield at (200, 448): outside the defensive box, so the
+    // objective is the intercept line x = 64 (16 + 32 + standoff 16) with
+    // the ball's y clamped into the mouth span 400..528.
+    fx.set_ball(200, 448, 0, 0);
     align_before_cadence(fx.world());
     fx.tick(1);
-    EXPECT_TRUE(front_command_is(goalie, COMMAND_GOTO, 32, 464))
-        << "leash pulls the goalie back to the defended rect";
+    ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
+    EXPECT_TRUE(front_command_is(goalie, COMMAND_GOTO, 64, 448))
+        << "the keeper moves onto the ball-intercept line";
 
-    // Inside the leash with the ball threatening the goal: the goalie
-    // walks the clearing approach point (ball 60,464 -> approach 40,464).
-    goalie->setxy(40, 470);
+    // Park the keeper on that line (center 72, 448) and fire the ball at
+    // the mouth at the full 8 px/tick. It must NOT reach the goal rect:
+    // the keeper's body takes the contact and the rebound flips vx.
+    goalie->setxy(64, 440);
+    fx.set_ball(128, 448, -8 * 256, 0);
+    fx.tick(8);
+    EXPECT_GT(fx.var(kSocBallVx), 0)
+        << "the cleared ball moves away from the mouth";
+    EXPECT_GT(fx.ball_cx(), 64) << "never past the keeper into the rect";
+    for (int team = 0; team < 4; ++team)
+        EXPECT_EQ(0, fx.team_var(kSocGoals, team)) << "no goal scored";
+    EXPECT_FALSE(has_notification(fx.events, "GOAL"));
+}
+
+TEST_F(ModesSoccer, foursquare_keepers_hold_all_four_mouths)
+{
+    // One directable keeper per team on the FOURSQUARE pitch: every mouth
+    // orientation (N/E/S/W) resolves its own standoff line, with the
+    // ball's cross-axis clamped into the mouth span.
+    SoccerFourWorld fx;
+    walker* north = fx.spawn_living(FAMILY_SOLDIER, 0, 312, 60, ACT_SIT);
+    walker* east = fx.spawn_living(FAMILY_SOLDIER, 1, 560, 312, ACT_SIT);
+    walker* south = fx.spawn_living(FAMILY_SOLDIER, 2, 312, 880, ACT_SIT);
+    walker* west = fx.spawn_living(FAMILY_SOLDIER, 3, 60, 312, ACT_SIT);
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+
+    // Ball at the kickoff spot (320, 480), inside nobody's box.
+    align_before_cadence(fx.world());
+    fx.tick(1);
+    ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
+    EXPECT_TRUE(front_command_is(north, COMMAND_GOTO, 320, 64))
+        << "north wall: line y = 16 + 32 + 16, ball x inside 256..384";
+    EXPECT_TRUE(front_command_is(east, COMMAND_GOTO, 576, 384))
+        << "east wall: line x = 592 - 16, ball y clamped down to 384";
+    EXPECT_TRUE(front_command_is(south, COMMAND_GOTO, 320, 896))
+        << "south wall: line y = 912 - 16";
+    EXPECT_TRUE(front_command_is(west, COMMAND_GOTO, 64, 384))
+        << "west wall: line x = 16 + 32 + 16";
+
+    // Ball into the north box (300, 100): the north keeper charges it
+    // directly (contact kicks fire along ball - kicker, so the goal-side
+    // charge clears); the south keeper keeps shadowing the cross-axis
+    // from its own line.
+    fx.set_ball(300, 100, 0, 0);
+    align_before_cadence(fx.world());
+    fx.tick(1);
+    EXPECT_TRUE(front_command_is(north, COMMAND_GOTO, 300, 100))
+        << "the north-wall keeper charges a ball inside its box";
+    EXPECT_TRUE(front_command_is(south, COMMAND_GOTO, 300, 896));
+}
+
+TEST_F(ModesSoccer, goalie_charges_a_box_ball_and_never_outruns_the_leash)
+{
+    SoccerWorld fx;
+    walker* goalie = fx.spawn_living(FAMILY_SOLDIER, 0, 40, 470, ACT_SIT);
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+
+    // A ball inside the defensive box and inside the leash is charged.
     fx.set_ball(60, 464, 0, 0);
     align_before_cadence(fx.world());
     fx.tick(1);
-    EXPECT_TRUE(front_command_is(goalie, COMMAND_GOTO, 40, 464))
-        << "goalie clears the ball via the approach geometry";
+    EXPECT_TRUE(front_command_is(goalie, COMMAND_GOTO, 60, 464))
+        << "box ball within the leash: charge it";
+
+    // A box ball BEYOND the leash (Manhattan 192 from the rect center) is
+    // played from the intercept line instead — the keeper never abandons
+    // the mouth (target distance 96 <= leash 112).
+    fx.set_ball(110, 350, 0, 0);
+    align_before_cadence(fx.world());
+    fx.tick(1);
+    EXPECT_TRUE(front_command_is(goalie, COMMAND_GOTO, 64, 400))
+        << "cross-axis clamped up to the mouth span, not chased";
+
+    // The same on the far post (ball y past the span, distance 128).
+    fx.set_ball(64, 560, 0, 0);
+    align_before_cadence(fx.world());
+    fx.tick(1);
+    EXPECT_TRUE(front_command_is(goalie, COMMAND_GOTO, 64, 528))
+        << "far-post clamp holds the keeper at the mouth";
+    ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
 // ===========================================================================
