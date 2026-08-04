@@ -11,8 +11,12 @@ tools/westlands_mapgen + tests/unit/test_westlands_levels.cpp.
 
 ## Campaign anatomy
 
-A campaign is `builtin/<id>.glad` (a zip): campaign.yaml (title, first_level,
-suggested_power), icon.png (32x32 indexed our.pal), scen/scenN.fss, pix/ grids.
+A campaign SHIPS as `<id>.glad` (a zip) but is COMMITTED as a plain source
+tree `campaigns/<id>/`: campaign.yaml (title, first_level, suggested_power),
+icon.png (32x32 indexed our.pal), scen/scenN.fss, pix/ grids. The build
+composes the tree into `build/<preset>/builtin/<id>.glad` deterministically
+(scripts/make_glad.py via og_builtin_campaigns; pack-bearing campaigns add
+their tools/<tool>/pack/ single-source, mapped under packs/<pack-id>/).
 Drop-in discovery — zero code registration. Scen numbers are PER-CAMPAIGN
 namespaces; use 1..N (get_accessible_levels hardcodes 1 as always-accessible).
 Only ONE campaign is mounted at a time; cross-campaign exit destinations dangle.
@@ -27,8 +31,9 @@ exist in the package, EVERY living+generator A*-reachable from the lead start
 marker (empty allowlist unless deliberate), and no walkable-adjacent PIX_AIR
 over unstandable ground (fall-line rule). The tool's expectations and the CI
 test pins move in LOCKSTEP with the package — regenerate + re-pin in one change.
-Regeneration must be content-reproducible (compare zip MEMBER hashes, not the
-container — mtimes differ).
+Regeneration must be reproducible: the tool writes campaigns/<id>/ and an
+unchanged tree must regenerate to a clean `git status` (the built archive is
+fully deterministic too — scripts/make_glad.py pins order, mtimes, method).
 
 ## Hard budgets (silently truncated or test-enforced)
 
@@ -112,8 +117,10 @@ only; the curve table lives in campaign_meta and a cheap CI test pins it.
 
 - cfg clobber: headless runs with nothing mounted rewrite repo cfg/openglad.yaml;
   mount in-test, heal PhysFS after sabotage-style tests (heal_unit_filesystem).
-- The harness reads the STAGED package (build/ci-test/builtin/) — regenerate
-  restages it (generate script does this; verify when adding new tools).
+- The harness reads the STAGED archive (build/ci-test/builtin/, composed from
+  campaigns/<id>/) — the generate scripts rebuild og_builtin_campaigns after
+  writing the tree (verify when adding new tools). Generators output FILE
+  trees; regeneration reviews as git diffs over campaigns/<id>/.
 - Engine-adjacent edits (passability, movement, spawning) are parity-gated:
   og_test_parity 187+ goldens must stay byte-identical unless the change is a
   documented deliberate fix (audit every regenerated golden, add a
