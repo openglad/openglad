@@ -1633,12 +1633,32 @@ TEST(PickerCommon, reset_for_new_game_sets_gold)
 
 // --- CTF scenario-troops toggle & label ---
 
-TEST(PickerCommon, toggle_ctf_scenario_troops_cycles_binary)
+TEST(PickerCommon, next_ctf_scenario_troops_cycle_orders)
 {
+    // Versus: all three states. Classic: state 1 is a versus/mode rule that
+    // would do nothing, so the cycle skips it rather than showing a label
+    // that lies about the outcome.
+    EXPECT_EQ(1, og::ui::next_ctf_scenario_troops(0, true));
+    EXPECT_EQ(2, og::ui::next_ctf_scenario_troops(1, true));
+    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(2, true));
+
+    EXPECT_EQ(2, og::ui::next_ctf_scenario_troops(0, false));
+    EXPECT_EQ(2, og::ui::next_ctf_scenario_troops(1, false));
+    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(2, false));
+
+    // A junk value from an older/foreign save falls back to Keep.
+    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(7, true));
+    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(-1, false));
+}
+
+TEST(PickerCommon, toggle_ctf_scenario_troops_cycles_three_states)
+{
+    // SaveData with no campaign set is not a versus campaign, so this is
+    // the classic order.
     SaveData save;
     ASSERT_EQ(0, save.ctf_strip_scenario_troops);
     og::ui::toggle_ctf_scenario_troops(save);
-    ASSERT_EQ(1, save.ctf_strip_scenario_troops);
+    ASSERT_EQ(2, save.ctf_strip_scenario_troops);
     og::ui::toggle_ctf_scenario_troops(save);
     ASSERT_EQ(0, save.ctf_strip_scenario_troops);
 }
@@ -1646,12 +1666,17 @@ TEST(PickerCommon, toggle_ctf_scenario_troops_cycles_binary)
 TEST(PickerCommon, format_ctf_troops_label_strings_fit_budget)
 {
     SaveData save;
-    ASSERT_EQ("Troops: Scen", og::ui::format_ctf_troops_label(save));
+    ASSERT_EQ("TROOPS: SCEN", og::ui::format_ctf_troops_label(save));
     save.ctf_strip_scenario_troops = 1;
-    ASSERT_EQ("Troops: Own", og::ui::format_ctf_troops_label(save));
-    ASSERT_LE(og::ui::format_ctf_troops_label(save).size(), 12u);
-    save.ctf_strip_scenario_troops = 0;
-    ASSERT_LE(og::ui::format_ctf_troops_label(save).size(), 12u);
+    ASSERT_EQ("TROOPS: OWN", og::ui::format_ctf_troops_label(save));
+    save.ctf_strip_scenario_troops = 2;
+    ASSERT_EQ("TROOPS: NONE", og::ui::format_ctf_troops_label(save));
+    // Every state fits the 80px (12-character) SCENARIO face.
+    for (short state = 0; state <= 2; ++state)
+    {
+        save.ctf_strip_scenario_troops = state;
+        ASSERT_LE(og::ui::format_ctf_troops_label(save).size(), 12u) << state;
+    }
 }
 
 TEST(PickerCommon, team_has_members_and_set_preferred_team)
@@ -4236,4 +4261,144 @@ TEST(ReadyGoSlot, cross_control_label_states)
 {
     EXPECT_EQ("CTRL: OWN", og::ui::format_cross_control_label(false));
     EXPECT_EQ("CTRL: ALL", og::ui::format_cross_control_label(true));
+}
+
+// --- Campaign browser (SET CAMPAIGN) layout pins ---
+//
+// The reported bug: long campaign titles ran under the ENTER ID face. The
+// title row and the top control row share pixels (title y = 13 height 8,
+// controls y = 10 height 10), and the centered title reached x = 208 — the
+// old ENTER ID left edge — at 17 characters. Both shipped offenders
+// ("MULTIPLAYER GAME MODES", 22; "CONCEPT PLAYGROUND", 18) cleared that.
+// ENTER ID now stacks under DELETE/RESET and the title is fitted, so the
+// pins below assert the property for EVERY title length, not just the ones
+// that ship.
+
+TEST(CampaignPickerLayout, enter_id_sits_below_the_delete_reset_cell)
+{
+    const og::ui::CampaignPickerLayout layout = og::ui::campaign_picker_layout();
+
+    EXPECT_EQ(270, layout.delete_button.x);
+    EXPECT_EQ(10, layout.delete_button.y);
+    EXPECT_EQ(38, layout.delete_button.w);
+    EXPECT_EQ(10, layout.delete_button.h);
+
+    // RESET shares the DELETE cell (only one of the two is ever visible).
+    EXPECT_EQ(layout.delete_button.x, layout.reset_button.x);
+    EXPECT_EQ(layout.delete_button.y, layout.reset_button.y);
+
+    EXPECT_EQ(256, layout.id_button.x);
+    EXPECT_EQ(22, layout.id_button.y);
+    EXPECT_EQ(52, layout.id_button.w);
+    EXPECT_EQ(10, layout.id_button.h);
+
+    // Strictly below, right edges flush.
+    EXPECT_GE(layout.id_button.y,
+              layout.delete_button.y + layout.delete_button.h);
+    EXPECT_EQ(layout.delete_button.x + layout.delete_button.w,
+              layout.id_button.x + layout.id_button.w);
+    EXPECT_FALSE(og::ui::picker_rects_overlap(layout.id_button,
+                                              layout.delete_button));
+    // ...and still on screen.
+    EXPECT_LE(layout.id_button.x + layout.id_button.w, 320);
+}
+
+TEST(CampaignPickerLayout, no_control_overlaps_another_control)
+{
+    const og::ui::CampaignPickerLayout layout = og::ui::campaign_picker_layout();
+    const std::array<og::ui::PickerRect, 6> distinct = {
+        layout.prev, layout.next, layout.choose,
+        layout.cancel, layout.delete_button, layout.id_button};
+    for (std::size_t i = 0; i < distinct.size(); ++i)
+    {
+        for (std::size_t j = i + 1; j < distinct.size(); ++j)
+        {
+            EXPECT_FALSE(og::ui::picker_rects_overlap(distinct[i], distinct[j]))
+                << "controls " << i << " and " << j << " overlap";
+        }
+    }
+}
+
+TEST(CampaignPickerLayout, title_row_clears_every_control_at_any_length)
+{
+    const og::ui::CampaignPickerLayout layout = og::ui::campaign_picker_layout();
+    const std::array<og::ui::PickerRect, 7> controls = {
+        layout.prev, layout.next, layout.choose, layout.cancel,
+        layout.delete_button, layout.reset_button, layout.id_button};
+
+    for (int chars = 0; chars <= layout.title_max_chars; ++chars)
+    {
+        const og::ui::PickerRect title = og::ui::campaign_title_rect(chars);
+        EXPECT_GE(title.x, 0) << "title of " << chars << " runs off screen";
+        EXPECT_LE(title.x + title.w, 320)
+            << "title of " << chars << " runs off screen";
+        for (const og::ui::PickerRect& control : controls)
+        {
+            EXPECT_FALSE(og::ui::picker_rects_overlap(title, control))
+                << "title of " << chars << " chars overlaps a control";
+        }
+    }
+}
+
+TEST(CampaignPickerLayout, old_geometry_really_did_clip_the_shipped_titles)
+{
+    // Regression witness: the pre-fix ENTER ID rect, kept as a literal so the
+    // pin still describes the bug after the layout moved.
+    const og::ui::PickerRect old_id_button{208, 10, 52, 10};
+    for (const int shipped : {22, 20, 18, 17})
+    {
+        EXPECT_TRUE(og::ui::picker_rects_overlap(
+            og::ui::campaign_title_rect(shipped), old_id_button))
+            << shipped << "-char title used to clip ENTER ID";
+        EXPECT_FALSE(og::ui::picker_rects_overlap(
+            og::ui::campaign_title_rect(shipped),
+            og::ui::campaign_picker_layout().id_button))
+            << shipped << "-char title must clear the moved ENTER ID";
+    }
+    // 16 chars was the longest that already fit.
+    EXPECT_FALSE(og::ui::picker_rects_overlap(
+        og::ui::campaign_title_rect(16), old_id_button));
+}
+
+TEST(CampaignPickerLayout, fit_campaign_title_budget)
+{
+    const int budget = og::ui::campaign_picker_layout().title_max_chars;
+    EXPECT_EQ(36, budget);
+
+    // Every shipped title is under budget and passes through untouched.
+    for (const char* shipped : {"Gladiator", "The Long Season",
+                                "Concept Playground", "The Endless Tower",
+                                "War of the Westlands",
+                                "Multiplayer Game Modes",
+                                "The Tryxian Chronicles"})
+    {
+        EXPECT_EQ(std::string(shipped), og::ui::fit_campaign_title(shipped))
+            << shipped << " must not be cut";
+    }
+
+    // A user-installed over-budget title is cut to exactly the budget.
+    const std::string huge(80, 'W');
+    const std::string fitted = og::ui::fit_campaign_title(huge);
+    EXPECT_EQ(static_cast<std::size_t>(budget), fitted.size());
+    EXPECT_EQ("...", fitted.substr(fitted.size() - 3));
+    EXPECT_FALSE(og::ui::picker_rects_overlap(
+        og::ui::campaign_title_rect(static_cast<int>(fitted.size())),
+        og::ui::campaign_picker_layout().delete_button))
+        << "a fitted title must never reach RESET/DELETE";
+
+    // Exactly at the budget: untouched.
+    const std::string exact(static_cast<std::size_t>(budget), 'W');
+    EXPECT_EQ(exact, og::ui::fit_campaign_title(exact));
+    EXPECT_EQ(std::string(), og::ui::fit_campaign_title(""));
+}
+
+TEST(CampaignPickerLayout, rect_overlap_helper_edges)
+{
+    const og::ui::PickerRect a{10, 10, 10, 10};
+    EXPECT_TRUE(og::ui::picker_rects_overlap(a, a));
+    EXPECT_FALSE(og::ui::picker_rects_overlap(a, og::ui::PickerRect{20, 10, 10, 10}))
+        << "edge-touching rects do not overlap";
+    EXPECT_FALSE(og::ui::picker_rects_overlap(a, og::ui::PickerRect{10, 20, 10, 10}));
+    EXPECT_TRUE(og::ui::picker_rects_overlap(a, og::ui::PickerRect{19, 19, 10, 10}));
+    EXPECT_FALSE(og::ui::picker_rects_overlap(a, og::ui::PickerRect{0, 0, 10, 10}));
 }

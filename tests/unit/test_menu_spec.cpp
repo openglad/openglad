@@ -132,14 +132,20 @@ TEST(MenuSpec, ctf_setting_labels_full_cycles)
         EXPECT_EQ(label, og::ui::menu_item_label(*caps, context_for(save)));
     }
 
+    // Three states. This save carries no campaign, so the cycle takes the
+    // classic order and skips the versus-only middle state; the labels for
+    // all three are pinned by state below.
     save.ctf_strip_scenario_troops = 0;
-    EXPECT_EQ("Troops: Scen",
+    EXPECT_EQ("TROOPS: SCEN",
               og::ui::menu_item_label(*troops, context_for(save)));
     og::ui::toggle_ctf_scenario_troops(save);
-    EXPECT_EQ("Troops: Own",
+    EXPECT_EQ("TROOPS: NONE",
               og::ui::menu_item_label(*troops, context_for(save)));
     og::ui::toggle_ctf_scenario_troops(save);
-    EXPECT_EQ("Troops: Scen",
+    EXPECT_EQ("TROOPS: SCEN",
+              og::ui::menu_item_label(*troops, context_for(save)));
+    save.ctf_strip_scenario_troops = 1;
+    EXPECT_EQ("TROOPS: OWN",
               og::ui::menu_item_label(*troops, context_for(save)));
 }
 
@@ -353,7 +359,6 @@ TEST(MenuSpec, terminal_gate_messages_guard_the_ctf_trio_verbatim)
     const PickerMenuCommand ctf_commands[] = {
         PickerMenuCommand::CycleCtfTeamCount,
         PickerMenuCommand::CycleCtfCaptureLimit,
-        PickerMenuCommand::ToggleCtfScenarioTroops,
     };
     for (const PickerMenuCommand command : ctf_commands) {
         const PickerMenuItem* item = item_of(PickerMenuId::TeamBuild, command);
@@ -361,6 +366,18 @@ TEST(MenuSpec, terminal_gate_messages_guard_the_ctf_trio_verbatim)
         EXPECT_EQ("Matchup settings apply to versus maps only.",
                   og::ui::terminal_gate_message(*item, context_for(save)));
     }
+
+    // Scenario troops is deliberately NOT in that set any more: "strip
+    // everything authored" is meaningful on a classic campaign, which is
+    // exactly why the control moved to the SCENARIO screen. It must stay
+    // reachable on the classic campaign selected above.
+    const PickerMenuItem* classic_troops =
+        item_of(PickerMenuId::Scenario,
+                PickerMenuCommand::ToggleCtfScenarioTroops);
+    ASSERT_NE(nullptr, classic_troops);
+    EXPECT_EQ("",
+              og::ui::terminal_gate_message(*classic_troops,
+                                            context_for(save)));
 
     // On the versus campaign the gate passes: no guard message.
     restore_default_campaigns();

@@ -1320,12 +1320,21 @@ TEST(LobbyServer, sanitize_strip_flag_accepts_binary_and_rejects_junk)
     // Default is 0 (keep authored troops).
     EXPECT_EQ(0, server.state().settings.ctf_strip_scenario_troops);
 
-    // Junk falls back to the current value (0).
+    // Junk falls back to the current value (0). 3 is junk; 2 is not (the
+    // knob is three-state now: keep / strip roster teams / strip ALL).
     og::sim::LobbySettings junk = make_ctf_lobby_settings();
-    junk.ctf_strip_scenario_troops = 2;
+    junk.ctf_strip_scenario_troops = 3;
     transport.queue_lobby_message(11u, make_settings_change_message(junk));
     server.poll_incoming_messages();
     EXPECT_EQ(0, server.state().settings.ctf_strip_scenario_troops);
+
+    // 2 (strip ALL) is accepted on the widened range.
+    og::sim::LobbySettings strip_all = make_ctf_lobby_settings();
+    strip_all.ctf_strip_scenario_troops = 2;
+    transport.queue_lobby_message(11u, make_settings_change_message(strip_all));
+    server.poll_incoming_messages();
+    EXPECT_EQ(2, server.state().settings.ctf_strip_scenario_troops);
+    EXPECT_EQ(2, server.build_save_data_equivalent().ctf_strip_scenario_troops);
 
     // 1 is accepted and carried into the game-start equivalent.
     og::sim::LobbySettings strip_on = make_ctf_lobby_settings();
@@ -1335,7 +1344,7 @@ TEST(LobbyServer, sanitize_strip_flag_accepts_binary_and_rejects_junk)
     EXPECT_EQ(1, server.state().settings.ctf_strip_scenario_troops);
     EXPECT_EQ(1, server.build_save_data_equivalent().ctf_strip_scenario_troops);
 
-    // Junk now falls back to the accepted value (1), not 0.
+    // Junk now falls back to the last accepted value (1), not 0.
     og::sim::LobbySettings junk_again = make_ctf_lobby_settings();
     junk_again.ctf_strip_scenario_troops = -3;
     transport.queue_lobby_message(11u, make_settings_change_message(junk_again));

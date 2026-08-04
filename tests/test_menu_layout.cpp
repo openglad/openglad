@@ -1395,8 +1395,9 @@ TEST(MenuLayout, scenariomenu_static_layout)
         {"set_campaign", "SET CAMPAIGN", 30, 40, 80, 15, MenuNav{.down = 2}},
         {"set_level", "SET LEVEL", 30, 70, 80, 15, MenuNav{.up = 1, .down = 3}},
         {"view_scenario", "VIEW LEVEL", 30, 100, 80, 15, MenuNav{.up = 2, .down = 0, .right = 4}},
-        {"matchup", "MATCHUP", 120, 100, 80, 15, MenuNav{.up = 2, .down = 0, .left = 3, .right = 5}},
+        {"matchup", "MATCHUP", 120, 100, 80, 15, MenuNav{.up = 2, .down = 6, .left = 3, .right = 5}},
         {"progress", "PROGRESS", 210, 100, 80, 15, MenuNav{.up = 2, .down = 0, .left = 4}},
+        {"troops", "TROOPS: SCEN", 120, 140, 80, 15, MenuNav{.up = 4, .down = 0}},
     };
 
     for (int i = 0; i < count; ++i)
@@ -1423,6 +1424,7 @@ TEST(MenuLayout, scenariomenu_static_layout)
     EXPECT_EQ(kScenarioMenuViewScenarioIndex, 3);
     EXPECT_EQ(kScenarioMenuTeamsIndex, 4);
     EXPECT_EQ(kScenarioMenuProgressIndex, 5);
+    EXPECT_EQ(kScenarioMenuTroopsIndex, 6);
 
     // The campaign-name / level-title strips draw from x=116 (32-char clip,
     // 6px/char): they must clear the x=30 button column's right edge.
@@ -1430,14 +1432,32 @@ TEST(MenuLayout, scenariomenu_static_layout)
                        buttons[kScenarioMenuSetCampaignIndex].sizex);
     EXPECT_LE(116 + 32 * 6, SCREEN_W);
 
+    // ...and so must the TROOPS row, which is why it sits at y=140 instead
+    // of the y=70 cell beside SET LEVEL: the strips are drawn AFTER
+    // draw_buttons, so anything under them is overprinted. The two strip
+    // bands are 8px tall at each host-gated button's y+4-1.
+    for (const int strip_index :
+         {kScenarioMenuSetCampaignIndex, kScenarioMenuSetLevelIndex})
+    {
+        const int strip_top = buttons[strip_index].y + 3;
+        const button& troops = buttons[kScenarioMenuTroopsIndex];
+        const bool vertically_clear = troops.y + troops.sizey <= strip_top ||
+                                      troops.y >= strip_top + 8;
+        const bool horizontally_clear = troops.x + troops.sizex <= 114;
+        EXPECT_TRUE(vertically_clear || horizontally_clear)
+            << "TROOPS is drawn under the strip beside button "
+            << buttons[strip_index].id;
+    }
+
     check_no_overlaps(buttons, count, "scenariomenu");
     check_bounds(buttons, count, "scenariomenu");
     check_nav_closed_and_reachable(buttons, count, kScenarioMenuBackIndex,
                                    "scenariomenu_static");
 }
 
-// Host-gating variants for the SCENARIO subscreen: SET CAMPAIGN / SET LEVEL
-// hide for joiners and the row's up-links rewire around them.
+// Host-gating variants for the SCENARIO subscreen: SET CAMPAIGN / SET LEVEL /
+// TROOPS hide for joiners and the row's up-links (plus MATCHUP's down-link)
+// rewire around them.
 TEST(MenuLayout, scenariomenu_nav_variants_keyboard_reachable)
 {
     for (const bool host_visible : {true, false})
@@ -1446,6 +1466,7 @@ TEST(MenuLayout, scenariomenu_nav_variants_keyboard_reachable)
         const int count = picker_scenariomenu_button_count();
         buttons[kScenarioMenuSetCampaignIndex].hidden = !host_visible;
         buttons[kScenarioMenuSetLevelIndex].hidden = !host_visible;
+        buttons[kScenarioMenuTroopsIndex].hidden = !host_visible;
         picker_wire_scenario_menu_nav(buttons, count, host_visible);
         check_nav_closed_and_reachable(
             buttons, count, kScenarioMenuBackIndex,
@@ -1560,7 +1581,9 @@ void apply_teams_menu_hidden_flags(button* buttons, const TeamsMenuWiring& w)
 {
     buttons[kTeamsMenuCtfTeamsIndex].hidden = !w.show_ctf;
     buttons[kTeamsMenuCtfCapsIndex].hidden = !w.show_ctf;
-    buttons[kTeamsMenuCtfTroopsIndex].hidden = !w.show_ctf;
+    // Dormant ordinal: the scenario-troops control moved to the SCENARIO
+    // screen, so this row is hidden in every MATCHUP variant.
+    buttons[kTeamsMenuCtfTroopsIndex].hidden = true;
     for (int t = 0; t < 4; ++t)
         buttons[kTeamsMenuJoinFirstIndex + t].hidden = true;
     buttons[kTeamsMenuGuyPrevIndex].hidden = true;

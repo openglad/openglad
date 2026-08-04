@@ -361,6 +361,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/render/sdl_level_render.cpp
     ${SRC_DIR}/gameplay/input_state_net.cpp
     ${SRC_DIR}/gameplay/replay.cpp
+    ${SRC_DIR}/gameplay/scenario_strip.cpp
 )
 
 set(GAME_SOURCES_NO_MAIN ${GAME_SOURCES})
@@ -398,6 +399,7 @@ set(OG_SIM_SOURCES
     ${SRC_DIR}/gameplay/world_snapshot.cpp
     ${SRC_DIR}/gameplay/input_state_net.cpp
     ${SRC_DIR}/gameplay/replay.cpp
+    ${SRC_DIR}/gameplay/scenario_strip.cpp
 )
 
 set(OG_DATA_SOURCES
@@ -2938,6 +2940,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_sim_world.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_control_policy.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_scenario_strip.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_ctf_network.cpp
         )
         if(TARGET og_platform_ws_transport)
@@ -3046,6 +3049,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_ctf.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_tdm.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_mutant.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_strip.cpp
         )
         # The modes-pack fixture zips the CURRENT repo pack sources into its
         # temp .glad so the tests always exercise the shipped bytes.

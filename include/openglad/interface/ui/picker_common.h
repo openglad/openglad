@@ -54,6 +54,56 @@ inline constexpr int kNewGameStartingGold = 5000;
 
 extern const char* const kDifficultyNames[DIFFICULTY_SETTINGS];
 
+// --- Campaign browser (SET CAMPAIGN) geometry ---
+//
+// The campaign browser is a fixed 320x200 screen whose controls used to be
+// laid out with inline literals, so nothing could pin the one property that
+// actually matters: the centered campaign title must not run under a button.
+// It did — the title row (y = icon_y - 22 = 13, 8px tall) crosses the top
+// control row (y = 10..20), and titles of 17 characters or more reached past
+// x = 208 into the old ENTER ID face. "MULTIPLAYER GAME MODES" (22) and
+// "CONCEPT PLAYGROUND" (18) both clipped. ENTER ID now sits under
+// RESET/DELETE, and the title is fitted to the width that stays clear of the
+// one control still on the title row.
+struct PickerRect
+{
+    int x = 0;
+    int y = 0;
+    int w = 0;
+    int h = 0;
+};
+
+// True when the two rects share at least one pixel. Edge-touching rects
+// (a.x + a.w == b.x) do not overlap.
+bool picker_rects_overlap(const PickerRect& a, const PickerRect& b);
+
+struct CampaignPickerLayout
+{
+    PickerRect prev;
+    PickerRect next;
+    PickerRect choose;   // OK
+    PickerRect cancel;
+    PickerRect delete_button;
+    PickerRect reset_button;  // occupies the DELETE cell; the two never co-exist
+    PickerRect id_button;     // ENTER ID, stacked under DELETE/RESET
+    PickerRect icon;          // campaign icon (title is drawn above it)
+    int title_y = 0;          // top pixel row of the centered title
+    int title_center_x = 0;
+    int title_max_chars = 0;  // widest title that clears every control
+};
+
+// The single source of the browser's control geometry. Pure, so the overlap
+// contract is unit-testable without SDL.
+CampaignPickerLayout campaign_picker_layout();
+
+// Pixel rect a centered title of `chars` glyphs occupies (6px advance, 8px
+// glyph height), given the layout above.
+PickerRect campaign_title_rect(int chars);
+
+// Title as drawn: unchanged when it fits `title_max_chars`, otherwise cut to
+// the budget with a trailing "..." so it can never reach a control.
+std::string fit_campaign_title(std::string_view title);
+
 // --- Family display helpers ---
 
 // Full display name from FamilyDescriptor (e.g. "SOLDIER", "ORC CAPTAIN").
@@ -182,6 +232,15 @@ std::uint8_t ctf_authored_team_mask_for_loaded_level(
     std::string_view mounted_campaign);
 
 // Toggle the CTF scenario-troops strip flag (0 = keep authored troops).
+// Scenario-troops knob, three states on the existing int16 field:
+//   0 Keep        — authored entities untouched (default, classic behavior)
+//   1 Strip teams — per active score team fielding a roster walker, drop its
+//                   authored livings + generators (versus/mode rule only)
+//   2 Strip ALL   — drop every authored living + generator with no roster guy,
+//                   any team, wildlife included (Onslaught keeps generators)
+// Pure cycle, exposed so the classic-vs-versus order is unit-pinnable.
+short next_ctf_scenario_troops(short current, bool versus);
+
 void toggle_ctf_scenario_troops(SaveData& save);
 
 // --- Difficulty submenu match rules ---
@@ -566,6 +625,7 @@ enum class ScenarioStripReason : std::uint8_t {
     None = 0,
     TroopsOff,     // removed by the scenario-troops strip ('*')
     InactiveTeam,  // removed by the CTF inactive-team strip ('+')
+    StripAll,      // removed by TROOPS: NONE ('!'), versus AND classic
 };
 
 struct ScenarioRosterRow {
@@ -589,6 +649,7 @@ struct ScenarioRosterReport {
     std::vector<ScenarioRosterRow> rows; // grouped, team-major
     bool any_troops_off = false;
     bool any_inactive = false;
+    bool any_strip_all = false;
 };
 
 // Scan a (scratch-loaded) world's authored entities into a roster report.

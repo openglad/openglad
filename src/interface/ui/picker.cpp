@@ -2900,13 +2900,25 @@ Sint32 change_ctf_caps()
    return MENU_OK;
 }
 
+// Refresh a SCENARIO settings button's label in both surfaces. Same recipe
+// as refresh_teamsmenu_button_label, against the scenario descriptor rows.
+static void refresh_scenariomenu_button_label(int button_index,
+                                              const std::string& label)
+{
+   if (og::runtime::current_session->allbuttons_[button_index] != nullptr)
+       og::runtime::current_session->allbuttons_[button_index]->label = label;
+   if (static_cast<int>(pks().scenariomenu_buttons.size()) > button_index)
+       pks().scenariomenu_buttons[button_index].label = label;
+}
+
 Sint32 change_ctf_troops()
 {
    SaveData& save = og::runtime::current_session->myscreen_->save_data;
    og::ui::toggle_ctf_scenario_troops(save);
 
-   refresh_teamsmenu_button_label(kTeamsMenuCtfTroopsIndex,
-                                  og::ui::format_ctf_troops_label(save));
+   // The control lives on SCENARIO now; MATCHUP's row is dormant-hidden.
+   refresh_scenariomenu_button_label(kScenarioMenuTroopsIndex,
+                                     og::ui::format_ctf_troops_label(save));
 
    picker_lobby_sync_settings_from_save();
    picker_settings_autosave();

@@ -12,6 +12,7 @@
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/obmap.h>
+#include <openglad/gameplay/scenario_strip.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/sim_event_log.h>
@@ -1888,6 +1889,17 @@ void GameWorld::tick()
     }
     else
     {
+        // Scenario troops "strip ALL" on a classic map. Latch-once on this
+        // level's first tick: the scripted modes do their own strip from Lua
+        // at on_mode_init, so this arm covers exactly the maps that have no
+        // mode script. Runs BEFORE the completion decision and before
+        // classic_respawn_run_tick, so a stripped fighter can neither count
+        // as a live foe nor be queued for respawn.
+        // A kill-all level then completes on the NEXT tick, when the foe scan
+        // reruns against the stripped world — the documented consequence of
+        // the setting, not something this block decides for itself.
+        if (level_tick_count_ == 1 && ctf_requested_strip_scenario_troops == 2)
+            og::sim::classic_strip_authored_troops(*this);
         // A foe merely awaiting a classic respawn (queued, or a corpse the
         // death scan below will queue) still counts as alive: "endless
         // battle" (respawn_mode 2) cannot be won by killing every live foe
