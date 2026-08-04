@@ -560,6 +560,56 @@ void self_check_level(const ExpectedLevel& row)
         fail(std::format("{}: {}", where, err));
     }
 
+    // Generator spawn egress: every live generator must own at least one of
+    // walker::fire()'s eight spawn positions that a spawn can both occupy
+    // and walk out of, and none that strands one in a closed cell. Runs
+    // before the reachability probes below so the temporary target livings
+    // never enter the picture. NOTE: nothing to do with row.a_star_waived,
+    // which waives only the obmap LEDGER cap above (a performance budget) —
+    // this audit and audit_reachability both run un-waived on every level,
+    // TDM 303/305 included.
+    std::vector<bool> pocket_waiver_used(row.spawn_pocket_ok.size(), false);
+    for (const std::string& err :
+         og::mapgen::audit_generator_spawn_exits(world))
+    {
+        bool waived = false;
+        if (err.find("spawn pocket") != std::string::npos)
+        {
+            for (std::size_t i = 0; i < row.spawn_pocket_ok.size(); ++i)
+            {
+                const std::string anchor =
+                    std::format("at tile ({}, {})", row.spawn_pocket_ok[i].tx,
+                                row.spawn_pocket_ok[i].ty);
+                if (err.find(anchor) != std::string::npos)
+                {
+                    waived = true;
+                    pocket_waiver_used[i] = true;
+                }
+            }
+        }
+        else if (err.find("cut off from the lead start marker") !=
+                 std::string::npos)
+        {
+            // Same question, same declaration: a generator this level
+            // already documents as unreachable on foot from the lead
+            // (scen304's teleporter-served court) cannot also be required to
+            // walk its spawns back to that lead. Reusing the reachability
+            // exception keeps ONE list instead of two that can disagree —
+            // and audit_reachability keeps proving the exception is real.
+            for (const std::string& exception : row.reachability_exceptions)
+                if (err.find(exception) != std::string::npos)
+                    waived = true;
+        }
+        if (!waived)
+            fail(std::format("{}: {}", where, err));
+    }
+    for (std::size_t i = 0; i < row.spawn_pocket_ok.size(); ++i)
+        if (!pocket_waiver_used[i])
+            fail(std::format("{}: spawn_pocket_ok ({}, {}) no longer produces "
+                             "a pocket - drop the waiver", where,
+                             row.spawn_pocket_ok[i].tx,
+                             row.spawn_pocket_ok[i].ty));
+
     // Reachability from the team-0 lead: the library audits every living,
     // generator and exit; temporary probes extend it to flags, waypoints,
     // goal centers, the kickoff and every team's lead marker.

@@ -96,6 +96,11 @@ struct ExpectedLevel
     // Documented substrings of reachability-audit failures this level is
     // allowed to keep (deliberate design, e.g. teleporter-served vaults).
     std::vector<std::string> reachability_exceptions;
+    // Generator tile anchors whose spawn-POCKET findings are a deliberate
+    // design (see the spawn-egress block in self_check_level). Tier-1 (all
+    // exits sealed) is never waivable, and a listed anchor that stops
+    // producing a pocket FAILS so the list cannot rot.
+    std::vector<TilePos> spawn_pocket_ok;
     std::vector<std::string> briefing;   // <=33 chars/line, Gamesmaster sign-off
 };
 

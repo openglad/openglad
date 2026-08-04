@@ -37,6 +37,7 @@
 #include <openglad/core/order.h>
 #include <openglad/gameplay/pixie_data.h>
 
+#include <array>
 #include <cstdint>
 #include <initializer_list>
 #include <string>
@@ -178,5 +179,45 @@ bool scatter_decor(GameWorld& w, std::uint32_t seed, int floor, int tx0,
 // GameplayContext and the world's obmap (see header note); the probe is
 // removed again, leaving the entity lists exactly as found.
 [[nodiscard]] std::vector<std::string> audit_reachability(GameWorld& world);
+
+// --- Generator spawn egress. --------------------------------------------------
+// One engine spawn position: the top-left pixel corner walker::fire() hands a
+// generator's newly created living.
+struct SpawnExit
+{
+    int x = 0;
+    int y = 0;
+};
+// The EIGHT positions walker::fire() can place a spawn at (walker.cpp
+// :526-566) for a generator whose pixel bbox is (gx, gy, gen_w, gen_h) and
+// whose spawn measures spawn_w x spawn_h. Returned in the FACE_* order of
+// fire()'s switch: RIGHT, LEFT, DOWN, UP, UP_RIGHT, UP_LEFT, DOWN_RIGHT,
+// DOWN_LEFT. act_generate rolls lastx/lasty over {-1,0,1} and forces (0,0)
+// to (1,0) (walker.cpp:1372-1376), so every one of the eight is live.
+// Pure arithmetic — the audit and the engine-pin test share it.
+[[nodiscard]] std::array<SpawnExit, 8> generator_spawn_exits(
+    int gx, int gy, int gen_w, int gen_h, int spawn_w, int spawn_h) noexcept;
+// Spawn-egress audit: for every live generator, classify the eight positions
+// above. A position is USABLE when the spawn's own body fits there (terrain
+// plus the durable obstructions below) and CONNECTED when a ground route
+// runs from it to the crew's lead start marker. Three failures:
+//   * "no usable spawn exit" -- all eight blocked, so nothing is ever born
+//     and the generator is dead scenery;
+//   * "every spawn exit is cut off from the lead start marker" -- spawns
+//     appear but land off the crew's walking map (the sealed-alcove bug).
+//     A level whose generator is deliberately served by transport rather
+//     than feet already declares that through its reachability exception,
+//     and the caller matches it against the same anchor text;
+//   * "spawn pocket at (x, y)" -- a stranded position ALONGSIDE a working
+//     one, so a deterministic share of the spawns piles up in a closed cell.
+// The obstruction model is terrain plus GENERATOR BODIES only: generators
+// never move and Onslaught flips them rather than removing them, so their
+// footprints are permanent walls, while authored livings step aside within a
+// few ticks and the generator simply retries at its next cadence. Diagonal
+// steps obey the engine's no-corner-cutting rule (gameplay_context.cpp
+// adjacent_cost). Needs an installed GameplayContext and the world's obmap;
+// probes are removed again, leaving the entity lists exactly as found.
+[[nodiscard]] std::vector<std::string> audit_generator_spawn_exits(
+    GameWorld& world);
 
 } // namespace og::mapgen
