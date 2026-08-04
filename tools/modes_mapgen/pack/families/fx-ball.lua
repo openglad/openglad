@@ -2,7 +2,11 @@
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 -- The engine effect act must never move, animate or expire the ball —
--- flight, bounces and goals all run in the soccer on_mode_tick.
+-- flight, bounces, goals and the rolling spin all run in the soccer
+-- on_mode_tick. There is deliberately no `animation` table: nothing ever
+-- calls animate() on the ball, so the impl picks the frame off the 8-frame
+-- rotation strip in sprites/ball.png itself (run_spin), and that resolved
+-- frame is what replicates to client mirrors.
 local function on_act(self)
   return true
 end

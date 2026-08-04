@@ -1,4 +1,4 @@
--- Soccer rules + AI director — N-team ball game over manifest goal rects (D7): fixed-point ball physics (kick/shot impulses, wall bounces, contact damage), last-toucher scoring, submenu-honoring respawns, chaser/goalie roles (cookbook: docs/lua-classpacks-design.md §3).
+-- Soccer rules + AI director — N-team ball game over manifest goal rects (D7): fixed-point ball physics (kick/shot impulses, wall bounces, contact damage, rolling spin), last-toucher scoring, submenu-honoring respawns, chaser/goalie roles (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C
@@ -30,6 +30,7 @@ local S = {
   GOAL_SIZE = 31, -- 31..34, +team, packed (w, h)
   SPAWN_CAP = 35, -- 35..42, +team byte 0-7, -1 = uncapped
   STALL_SINCE = 43, -- world tick the dead-ball clock started, 0 = running play
+  BALL_SPIN = 44, -- rolling-spin phase, 0..spin_cycle-1 (see run_spin)
 }
 
 local T = {
@@ -56,6 +57,15 @@ local T = {
   goal_score = 400,
   time_limit_ticks = 10800,
   respawn_ticks = 60,
+  -- Rolling spin. sprites/ball.png is an 8-frame turn of the ball's patch
+  -- lattice, so one full roll is 8 * spin_step = spin_cycle phase units
+  -- (re-frame the sprite and spin_cycle has to move with it). A full kick
+  -- (8 px/tick = 2048 in x256) advances speed/spin_divisor = 256 units a
+  -- tick, i.e. exactly one frame per tick; a half-speed ball takes two
+  -- ticks a frame, and a stopped ball holds the frame it landed on.
+  spin_step = 256,
+  spin_cycle = 2048,
+  spin_divisor = 8,
   ai_cadence = 15,
   goalie_leash = 48,
   goalie_engage = 80, -- ball this close to the goal pulls the goalie out
@@ -178,6 +188,9 @@ local function kickoff_reset(ball)
   og.mode_set(S.LAST_KICKER, 0)
   og.mode_set(S.KICKOFF_UNTIL, og.world_tick() + T.kickoff_freeze)
   og.mode_set(S.STALL_SINCE, 0)
+  -- A re-spotted ball is a dead ball: it rolls from a standstill on frame 0.
+  og.mode_set(S.BALL_SPIN, 0)
+  ball:set_frame(0)
   ball:set_team_num(C.SCORE_TEAM_COUNT)
   place_ball(ball, core.pos_x(pos), core.pos_y(pos))
   revive_wiped_teams()
@@ -351,6 +364,37 @@ local function run_flight(ball, livings)
   og.mode_set(S.BALL_PX, px)
   og.mode_set(S.BALL_PY, py)
   ball:setxy(og.div(px, 256) - half_x, og.div(py, 256) - half_y)
+end
+
+-- Rolling spin: the drawn frame is a phase-derived index into the 8-frame
+-- rotation strip. The phase advances each tick by the ball's own speed and
+-- is signed by its direction of travel, so a ball flying right rolls the
+-- frames forward (clockwise on screen) and one flying left rolls them
+-- backward; a vertical-dominant flight takes its sign from vy instead.
+-- Phase lives in a mode var and the frame lands on the walker's replicated
+-- frame field, so a client mirror draws the server's frame without
+-- re-deriving anything (mirrors never run animate()). A motionless ball
+-- does not advance and holds the frame it stopped on.
+local function run_spin(ball)
+  local vx = og.mode_get(S.BALL_VX)
+  local vy = og.mode_get(S.BALL_VY)
+  local speed = iabs(vx) + iabs(vy)
+  if speed == 0 then
+    return
+  end
+  local dir = og.sign(vx)
+  if iabs(vy) > iabs(vx) then
+    dir = og.sign(vy)
+  end
+  local phase = og.mode_get(S.BALL_SPIN) + dir * og.div(speed, T.spin_divisor)
+  -- og.mod is the C remainder (sign of the dividend), so a leftward roll
+  -- lands negative and has to be folded back into 0..spin_cycle-1.
+  phase = og.mod(phase, T.spin_cycle)
+  if phase < 0 then
+    phase = phase + T.spin_cycle
+  end
+  og.mode_set(S.BALL_SPIN, phase)
+  ball:set_frame(og.div(phase, T.spin_step))
 end
 
 -- Goal: ball center inside team T's defended rect scores for the last
@@ -799,6 +843,7 @@ local function on_mode_tick(level, tick)
       run_shots(ball)
     end
     run_flight(ball, livings)
+    run_spin(ball)
     run_goal_check(ball)
     run_dead_ball(ball, livings)
   end

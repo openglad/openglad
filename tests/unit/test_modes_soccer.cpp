@@ -58,6 +58,8 @@ enum SoccerSlot : int {
     kSocGoalPos = 27,   // +team, packed
     kSocGoalSize = 31,  // +team, packed
     kSocSpawnCap = 35,  // +team byte
+    kSocStallSince = 43,
+    kSocBallSpin = 44,
 };
 
 inline constexpr int kModeIdSoccer = 4;  // mode_core.MODE.SOCCER
@@ -541,6 +543,177 @@ TEST_F(ModesSoccer, weapon_hit_impulses_along_the_shot_motion)
     EXPECT_EQ(2, fx.var(kSocLastTouch1)) << "the shooter is the toucher";
     EXPECT_EQ(static_cast<std::int32_t>(fx.green->entity_id()),
               fx.var(kSocLastKicker));
+}
+
+// ===========================================================================
+// Rolling spin (sprites/ball.png is an 8-frame turn of the patch lattice)
+// ===========================================================================
+
+// Playing the strip forward turns the ball clockwise, so the drawn frame has
+// to track the direction of travel. Everything here reads walker::frame(),
+// which is what the renderer blits AND what EntitySnapshot replicates.
+//
+// Each case re-arms the same velocity every tick so friction cannot compound
+// and the arithmetic stays checkable by hand: a full kick (8 px/tick = 2048
+// fp) survives one friction step at 1984 fp, and run_spin advances the phase
+// by 1984 / spin_divisor(8) = 248 units — just under the 256 units a frame —
+// so the ball steps exactly one frame per tick around the strip.
+inline constexpr int kSpinCycle = 2048;   // T.spin_cycle
+inline constexpr int kSpinStep = 256;     // T.spin_step
+inline constexpr int kFullKickAdvance = 248;
+
+TEST_F(ModesSoccer, spin_steps_one_frame_per_tick_rolling_right)
+{
+    SoccerWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    fx.thaw_kickoff();
+    EXPECT_EQ(0, fx.ball()->frame()) << "a spotted ball starts on frame 0";
+
+    // Nine ticks: one full turn (0..7) and the wrap back to 0.
+    const int expect_phase[9] = {248, 496, 744, 992, 1240,
+                                 1488, 1736, 1984, 184};
+    const int expect_frame[9] = {0, 1, 2, 3, 4, 5, 6, 7, 0};
+    for (int i = 0; i < 9; ++i)
+    {
+        fx.set_ball(320, 464, 8 * 256, 0);
+        fx.tick(1);
+        EXPECT_EQ(expect_phase[i], fx.var(kSocBallSpin)) << "tick " << i;
+        EXPECT_EQ(expect_frame[i], static_cast<int>(fx.ball()->frame()))
+            << "tick " << i;
+    }
+}
+
+TEST_F(ModesSoccer, spin_runs_the_strip_backward_rolling_left)
+{
+    SoccerWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    fx.thaw_kickoff();
+
+    // Mirror of the rightward case: the phase walks down from 0 and wraps
+    // through the top of the strip (og.mod is the C remainder, so run_spin
+    // has to fold the negative result back into 0..2047).
+    const int expect_phase[9] = {1800, 1552, 1304, 1056, 808,
+                                 560, 312, 64, 1864};
+    const int expect_frame[9] = {7, 6, 5, 4, 3, 2, 1, 0, 7};
+    for (int i = 0; i < 9; ++i)
+    {
+        fx.set_ball(320, 464, -8 * 256, 0);
+        fx.tick(1);
+        EXPECT_EQ(expect_phase[i], fx.var(kSocBallSpin)) << "tick " << i;
+        EXPECT_EQ(expect_frame[i], static_cast<int>(fx.ball()->frame()))
+            << "tick " << i;
+    }
+}
+
+// A vertical-dominant flight takes its sign from vy, so a ball drifting
+// slightly left while flying hard down still rolls FORWARD.
+TEST_F(ModesSoccer, vertical_flight_takes_its_spin_direction_from_vy)
+{
+    {
+        SoccerWorld fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.soccer_active());
+        fx.thaw_kickoff();
+        // vx = -256, vy = 2048. After friction: vx = -248, vy = 1991, so
+        // |vy| dominates and the advance is (248 + 1991) / 8 = 279.
+        int previous = 0;
+        for (int i = 0; i < 3; ++i)
+        {
+            fx.set_ball(320, 400, -256, 8 * 256);
+            fx.tick(1);
+            EXPECT_EQ(279 * (i + 1), fx.var(kSocBallSpin)) << "tick " << i;
+            EXPECT_GT(fx.var(kSocBallSpin), previous)
+                << "downward flight rolls the strip forward despite vx < 0";
+            previous = fx.var(kSocBallSpin);
+        }
+        EXPECT_EQ(3, static_cast<int>(fx.ball()->frame())) << "837 / 256";
+    }
+    {
+        SoccerWorld fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.soccer_active());
+        fx.thaw_kickoff();
+        // Same magnitudes upward: the strip runs backward off frame 0.
+        fx.set_ball(320, 400, 256, -8 * 256);
+        fx.tick(1);
+        EXPECT_EQ(kSpinCycle - 279, fx.var(kSocBallSpin));
+        EXPECT_EQ(6, static_cast<int>(fx.ball()->frame())) << "1769 / 256";
+    }
+}
+
+// Spin rate is a function of speed, not a fixed cadence.
+TEST_F(ModesSoccer, spin_rate_scales_with_speed)
+{
+    SoccerWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    fx.thaw_kickoff();
+
+    fx.set_ball(320, 464, 8 * 256, 0);
+    fx.tick(1);
+    const int fast = fx.var(kSocBallSpin);
+    EXPECT_EQ(kFullKickAdvance, fast);
+
+    fx.world().mode.vars[kSocBallSpin] = 0;
+    fx.set_ball(320, 464, 4 * 256, 0);
+    fx.tick(1);
+    const int slow = fx.var(kSocBallSpin);
+    // Half the speed (1024 fp, 960 after friction) is 120 phase units.
+    EXPECT_EQ(120, slow);
+    EXPECT_GT(fast, slow * 2 - 1) << "a faster ball turns further per tick";
+}
+
+TEST_F(ModesSoccer, a_resting_ball_holds_its_frame)
+{
+    SoccerWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    fx.thaw_kickoff();
+
+    // Roll it up to a non-zero frame first, so "holds" is not just "never
+    // left frame 0".
+    for (int i = 0; i < 3; ++i)
+    {
+        fx.set_ball(320, 464, 8 * 256, 0);
+        fx.tick(1);
+    }
+    const int resting_phase = fx.var(kSocBallSpin);
+    const int resting_frame = static_cast<int>(fx.ball()->frame());
+    ASSERT_EQ(2, resting_frame) << "744 / 256";
+
+    fx.set_ball(320, 464, 0, 0);
+    for (int i = 0; i < 10; ++i)
+    {
+        fx.tick(1);
+        EXPECT_EQ(resting_phase, fx.var(kSocBallSpin)) << "tick " << i;
+        EXPECT_EQ(resting_frame, static_cast<int>(fx.ball()->frame()))
+            << "tick " << i;
+    }
+}
+
+TEST_F(ModesSoccer, kickoff_reset_spots_the_ball_on_frame_zero)
+{
+    SoccerWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    fx.thaw_kickoff();
+
+    // Spin it up, then roll it into team 0's strip for a team 1 goal.
+    for (int i = 0; i < 3; ++i)
+    {
+        fx.set_ball(320, 464, 8 * 256, 0);
+        fx.tick(1);
+    }
+    ASSERT_NE(0, fx.var(kSocBallSpin));
+    fx.world().mode.vars[kSocLastTouch1] = 2;
+    fx.set_ball(52, 464, -4 * 256, 0);
+    fx.tick(2);
+
+    ASSERT_EQ(1, fx.team_var(kSocGoals, 1)) << "the goal must have landed";
+    EXPECT_EQ(0, fx.var(kSocBallSpin)) << "a re-spotted ball rolls from rest";
+    EXPECT_EQ(0, static_cast<int>(fx.ball()->frame()));
 }
 
 // ===========================================================================
@@ -1102,6 +1275,16 @@ TEST_F(ModesSoccer, match_replicates_to_a_client_mirror_without_hash_strikes)
     EXPECT_EQ(ball->sizex(), mirrored->sizex());
     EXPECT_EQ(ball->sizey(), mirrored->sizey());
     EXPECT_EQ(ball->team_num(), mirrored->team_num());
+
+    // The rolling spin is server-authored: run_spin picks the frame and
+    // EntitySnapshot.frame carries it, so the mirror draws the authority's
+    // frame without re-deriving it (a mirror never runs animate()). The
+    // ball has been kicked around for 120 ticks by now, so this also pins
+    // that the frame it landed on is a real strip index.
+    EXPECT_EQ(ball->frame(), mirrored->frame())
+        << "the drawn ball frame must replicate";
+    EXPECT_GE(static_cast<int>(mirrored->frame()), 0);
+    EXPECT_LT(static_cast<int>(mirrored->frame()), 8);
 
     // Everything the client HUD, radar and beacon read comes over the same
     // snapshot; a stale mode block is the other way this desyncs.

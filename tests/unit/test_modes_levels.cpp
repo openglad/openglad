@@ -892,7 +892,7 @@ TEST_F(ModesLevels, pack_sprites_load_with_pinned_shapes)
         {"icon.png", 32, 32, 1},
         {"packs/org.openglad.modes.core/sprites/flag.png", 10, 14, 4},
         {"packs/org.openglad.modes.core/sprites/ctfpoint.png", 16, 16, 1},
-        {"packs/org.openglad.modes.core/sprites/ball.png", 12, 12, 1},
+        {"packs/org.openglad.modes.core/sprites/ball.png", 12, 12, 8},
         {"packs/org.openglad.modes.core/sprites/aura.png", 16, 16, 4},
     };
     for (const auto& s : sprites)

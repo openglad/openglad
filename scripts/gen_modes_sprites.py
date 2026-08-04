@@ -2,7 +2,7 @@
 """Generate the Multiplayer Game Modes pack sprites.
 
 Writes tools/modes_mapgen/pack/sprites/{flag.png,flag.json,ctfpoint.png,
-ball.png,aura.png,aura.json}. Stdlib-only (struct + zlib). Output PNGs are
+ball.png,ball.json,aura.png,aura.json}. Stdlib-only (struct + zlib). PNGs are
 indexed 8-bit with the full 256-entry OpenGlad palette parsed from
 pix/openglad.gpl, matching what read_pixie_file (src/resources/io/
 og_file.cpp) validates:
@@ -17,8 +17,9 @@ Sprite rules:
   - indices 248..255 are the team-tint band: walkputbuffer remaps
     p > 247 to teamcolor + (255 - p), so 255 is the brightest team
     shade and 248 the darkest; team tint only where a sprite is
-    team-owned (flag, ctfpoint). The ball is neutral grays and the aura
-    is fixed red/gold (the Mutant reads the same on every team).
+    team-owned (flag, ctfpoint). The ball is the neutral 16..31 ramp
+    (white body, black patches) and the aura is fixed red/gold (the
+    Mutant reads the same on every team).
 
 The flag and control-point painters were folded in from the retired
 scripts/gen_ctf_sprites.py when the core CTF families left the engine.
@@ -50,6 +51,19 @@ GRAY_DARK = 19      # ~(85,85,85)
 GRAY_MID = 21       # ~(109,109,109)
 GRAY_LIGHT = 23     # ~(133,133,133)
 GRAY_BRIGHT = 25    # ~(157,157,157)
+
+# Soccer-ball body: the near-white top of the same 16..31 ramp, plus the
+# pure black at its base for the pentagon patches. Index 16 is (0,0,0) and
+# index 31 is (230,230,230), so a real white-and-black ball needs no colors
+# outside the neutral ramp.
+BALL_WHITE = 31      # ~(230,230,230) lit crown
+BALL_WHITE_1 = 30    # ~(218,218,218)
+BALL_WHITE_2 = 29    # ~(206,206,206)
+BALL_SHADE_1 = 27    # ~(182,182,182)
+BALL_SHADE_2 = 25    # ~(157,157,157) terminator
+BALL_RIM = 20        # ~(97,97,97) shaded silhouette
+BALL_PATCH_LIT = 18  # ~(72,72,72) patch under direct light
+BALL_PATCH = 16      # (0,0,0) patch in shade
 
 TRANSPARENT = 0
 
@@ -238,34 +252,106 @@ GOLD_BRIGHT = 88
 GOLD_MID = 89
 
 
-def make_ball(size=12):
-    """The soccer ball: a neutral gray sphere with pentagon dots."""
-    px = bytearray([TRANSPARENT] * (size * size))
+def _vnorm(v):
+    n = math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+    return (v[0] / n, v[1] / n, v[2] / n)
+
+
+def _icosahedron_vertices():
+    """The 12 pentagon centers of a truncated icosahedron (a soccer ball)."""
+    p = (1.0 + math.sqrt(5.0)) / 2.0
+    out = []
+    for s1 in (-1.0, 1.0):
+        for s2 in (-1.0, 1.0):
+            out.append(_vnorm((0.0, s1, s2 * p)))
+            out.append(_vnorm((s1, s2 * p, 0.0)))
+            out.append(_vnorm((s1 * p, 0.0, s2)))
+    return out
+
+
+def _rot_x(v, a):
+    c, s = math.cos(a), math.sin(a)
+    return (v[0], v[1] * c - v[2] * s, v[1] * s + v[2] * c)
+
+
+def _rot_y(v, a):
+    c, s = math.cos(a), math.sin(a)
+    return (v[0] * c + v[2] * s, v[1], -v[0] * s + v[2] * c)
+
+
+def _rot_z(v, a):
+    c, s = math.cos(a), math.sin(a)
+    return (v[0] * c - v[1] * s, v[0] * s + v[1] * c, v[2])
+
+
+# Ball lighting and patch geometry.
+BALL_LIGHT = _vnorm((-0.55, -0.62, 0.75))  # from the upper left, toward us
+BALL_PATCH_ANGLE = 0.34   # angular radius of a pentagon patch, radians
+BALL_PATCH_LIT_AT = 0.62  # patch pixels brighter than this take BALL_PATCH_LIT
+# Lattice tilt. The spin is an in-plane rotation about the view axis, so a
+# pole-aligned icosahedron would repeat every 90 degrees and only two of the
+# eight frames would be distinct; this tilt makes all eight differ.
+BALL_TILT_X = 0.0
+BALL_TILT_Y = 0.13
+
+
+def make_ball_frames(size=12, frames=8):
+    """The soccer ball: a lit white sphere whose black pentagon patches turn.
+
+    One frame is one 1/`frames` turn of the patch lattice about the view
+    axis, so playing the frames forward reads as a CLOCKWISE roll on screen
+    (screen y points down, so a positive z-rotation carries +x toward +y)
+    and playing them backward reads as counter-clockwise. The shading is
+    fixed to the light, not to the lattice, so the ball keeps a stable
+    lit crown and shaded underside while the pattern turns — that contrast
+    is what makes the spin legible at 12x12.
+
+    lib/mode_soccer_impl.lua picks the frame each tick from the ball's
+    replicated velocity; see its run_spin.
+    """
+    base = [_rot_y(_rot_x(v, BALL_TILT_X), BALL_TILT_Y)
+            for v in _icosahedron_vertices()]
     cx = cy = (size - 1) / 2.0
-    radius = size / 2.0 - 0.5
-    for y in range(size):
-        for x in range(size):
-            d = math.hypot(x - cx, y - cy)
-            if d > radius:
-                continue
-            if d > radius - 1.0:
-                c = GRAY_DARK  # 1px outline
-            elif (x - cx) + (y - cy) > 2.0:
-                c = GRAY_LIGHT  # lower-right shading
-            else:
-                c = GRAY_BRIGHT
-            px[y * size + x] = c
-    # Pentagon dots: four dark patches in a diamond around the center.
-    for dx, dy in ((0, -3), (3, 1), (-3, 1), (0, 3)):
-        for ox, oy in ((0, 0), (1, 0), (0, 1)):
-            x = int(cx) + dx + ox
-            y = int(cy) + dy + oy
-            if math.hypot(x - cx, y - cy) <= radius - 1.0:
-                px[y * size + x] = GRAY_SHADOW
-    # Center patch.
-    px[int(cy) * size + int(cx)] = GRAY_SHADOW
-    px[int(cy) * size + int(cx) + 1] = GRAY_SHADOW
-    return bytes(px)
+    radius = size / 2.0 - 0.4
+    cos_patch = math.cos(BALL_PATCH_ANGLE)
+    out = []
+    for fi in range(frames):
+        theta = 2.0 * math.pi * fi / frames
+        spun = [_rot_z(c, theta) for c in base]
+        px = bytearray([TRANSPARENT] * (size * size))
+        for y in range(size):
+            for x in range(size):
+                nx = (x - cx) / radius
+                ny = (y - cy) / radius
+                d2 = nx * nx + ny * ny
+                if d2 > 1.0:
+                    continue
+                nz = math.sqrt(max(0.0, 1.0 - d2))
+                lam = (nx * BALL_LIGHT[0] + ny * BALL_LIGHT[1]
+                       + nz * BALL_LIGHT[2])
+                on_patch = False
+                for c in spun:
+                    if c[0] * nx + c[1] * ny + c[2] * nz >= cos_patch:
+                        on_patch = True
+                        break
+                if on_patch:
+                    px[y * size + x] = (BALL_PATCH_LIT
+                                        if lam > BALL_PATCH_LIT_AT
+                                        else BALL_PATCH)
+                elif math.sqrt(d2) > 0.88 and lam < 0.35:
+                    px[y * size + x] = BALL_RIM
+                elif lam > 0.45:
+                    px[y * size + x] = BALL_WHITE
+                elif lam > 0.20:
+                    px[y * size + x] = BALL_WHITE_1
+                elif lam > 0.00:
+                    px[y * size + x] = BALL_WHITE_2
+                elif lam > -0.25:
+                    px[y * size + x] = BALL_SHADE_1
+                else:
+                    px[y * size + x] = BALL_SHADE_2
+        out.append(bytes(px))
+    return out
 
 
 def make_aura_frames(size=16, frames=4):
@@ -338,11 +424,23 @@ def main():
                               point, palette)
     print(f"wrote {OUT}/ctfpoint.png ({n} bytes, single 16x16 frame)")
 
-    ball = make_ball()
-    check_band("ball.png", ball, team_ok=False, neutral_ok=grays)
-    n = write_indexed_png(os.path.join(OUT, "ball.png"), 12, 12, ball,
+    ball_frames = make_ball_frames()
+    ball_colors = {BALL_WHITE, BALL_WHITE_1, BALL_WHITE_2, BALL_SHADE_1,
+                   BALL_SHADE_2, BALL_RIM, BALL_PATCH_LIT, BALL_PATCH}
+    for f in ball_frames:
+        check_band("ball.png", f, team_ok=False, neutral_ok=ball_colors)
+    # The spin only reads if the frames actually differ: a lattice aligned
+    # to the spin axis silently collapses the cycle to a couple of distinct
+    # images (see BALL_TILT_Y).
+    if len(set(ball_frames)) != len(ball_frames):
+        raise SystemExit("ball.png: rotation frames are not all distinct")
+    n = write_indexed_png(os.path.join(OUT, "ball.png"), 12,
+                              12 * len(ball_frames), b"".join(ball_frames),
                               palette)
-    print(f"wrote {OUT}/ball.png ({n} bytes, single 12x12 frame)")
+    print(f"wrote {OUT}/ball.png ({n} bytes, {len(ball_frames)} frames)")
+    with open(os.path.join(OUT, "ball.json"), "w", encoding="utf-8") as f:
+        f.write(aseprite_sidecar("ball", 12, 12, len(ball_frames)))
+    print(f"wrote {OUT}/ball.json")
 
     aura_frames = make_aura_frames()
     aura_colors = {RED_BRIGHT, RED_MID, GOLD_BRIGHT, GOLD_MID}

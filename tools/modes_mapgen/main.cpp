@@ -639,7 +639,7 @@ void self_check_pack_art()
     const std::string base = std::format("packs/{}/sprites/", kPackId);
     check_sprite((base + "flag.png").c_str(), 10, 14, 4);
     check_sprite((base + "ctfpoint.png").c_str(), 16, 16, 1);
-    check_sprite((base + "ball.png").c_str(), 12, 12, 1);
+    check_sprite((base + "ball.png").c_str(), 12, 12, 8);
     check_sprite((base + "aura.png").c_str(), 16, 16, 4);
 }
 
