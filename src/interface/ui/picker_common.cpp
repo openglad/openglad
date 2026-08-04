@@ -132,6 +132,42 @@ std::string fit_campaign_title(std::string_view title)
     return std::string(title.substr(0, static_cast<std::size_t>(budget) - 3)) + "...";
 }
 
+std::array<CampaignPickerNavLinks, kCampaignPickerButtonCount>
+campaign_picker_nav(const CampaignPickerVisibility& visibility)
+{
+    std::array<CampaignPickerNavLinks, kCampaignPickerButtonCount> nav{};
+
+    nav[kCampaignPickerPrevIndex] = {.up = kCampaignPickerIdIndex,
+                                     .down = kCampaignPickerCancelIndex,
+                                     .right = kCampaignPickerNextIndex};
+    nav[kCampaignPickerNextIndex] = {
+        .up = kCampaignPickerIdIndex,
+        .down = visibility.choose_hidden ? kCampaignPickerCancelIndex
+                                         : kCampaignPickerChooseIndex,
+        .left = kCampaignPickerPrevIndex};
+    nav[kCampaignPickerChooseIndex] = {.up = kCampaignPickerNextIndex,
+                                       .left = kCampaignPickerCancelIndex};
+    nav[kCampaignPickerCancelIndex] = {
+        .up = visibility.prev_hidden
+            ? (visibility.next_hidden ? kCampaignPickerIdIndex
+                                      : kCampaignPickerNextIndex)
+            : kCampaignPickerPrevIndex,
+        .right = kCampaignPickerChooseIndex};
+
+    // DELETE / RESET share the top-right cell and drop onto ENTER ID, which
+    // sits directly below them.
+    nav[kCampaignPickerDeleteIndex] = {.down = kCampaignPickerIdIndex};
+    nav[kCampaignPickerResetIndex] = {.down = kCampaignPickerIdIndex};
+    nav[kCampaignPickerIdIndex] = {
+        .up = visibility.delete_hidden ? kCampaignPickerResetIndex
+                                       : kCampaignPickerDeleteIndex,
+        .down = visibility.next_hidden
+            ? (visibility.prev_hidden ? kCampaignPickerCancelIndex
+                                      : kCampaignPickerPrevIndex)
+            : kCampaignPickerNextIndex};
+    return nav;
+}
+
 // --- Family display helpers ---
 
 const char* family_display_name(int family)

@@ -389,13 +389,31 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
     int retvalue = 0;
 	int highlighted_button = 3;
 	
-	int prev_index = 0;
-	int next_index = 1;
-	int choose_index = 2;
-	int cancel_index = 3;
-	int delete_index = 4;
-	int id_index = 5;
-	int reset_index = 6;
+	const int prev_index = og::ui::kCampaignPickerPrevIndex;
+	const int next_index = og::ui::kCampaignPickerNextIndex;
+	const int choose_index = og::ui::kCampaignPickerChooseIndex;
+	const int cancel_index = og::ui::kCampaignPickerCancelIndex;
+	const int delete_index = og::ui::kCampaignPickerDeleteIndex;
+	const int id_index = og::ui::kCampaignPickerIdIndex;
+	const int reset_index = og::ui::kCampaignPickerResetIndex;
+
+	// Whole-graph rewire from the current visibility, applied at setup and
+	// again whenever a click changes what is showing (picker_common owns the
+	// graph so the BFS pin can walk every variant headlessly).
+	const auto apply_nav = [&](button* rows) {
+		const og::ui::CampaignPickerVisibility visibility{
+			.prev_hidden = rows[prev_index].hidden,
+			.next_hidden = rows[next_index].hidden,
+			.choose_hidden = rows[choose_index].hidden,
+			.delete_hidden = rows[delete_index].hidden,
+		};
+		const auto nav = og::ui::campaign_picker_nav(visibility);
+		for (int i = 0; i < og::ui::kCampaignPickerButtonCount; ++i)
+		{
+			rows[i].nav = MenuNav{.up = nav[i].up, .down = nav[i].down,
+			                      .left = nav[i].left, .right = nav[i].right};
+		}
+	};
 	
 	button buttons[] = {
         button("prev", "PREV", KEYSTATE_UNKNOWN, prev.x, prev.y, prev.w, prev.h, 0, -1 , MenuNav{.up=id_index, .down=cancel_index, .right=next_index}),
@@ -413,12 +431,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
 	buttons[delete_index].hidden = !enable_delete;
 	buttons[reset_index].hidden = enable_delete;
 	
-	buttons[next_index].nav.down = (buttons[choose_index].hidden? cancel_index : choose_index);
-	buttons[cancel_index].nav.up = (buttons[prev_index].hidden? (buttons[next_index].hidden? id_index : next_index) : prev_index);
-	buttons[id_index].nav.down = (buttons[next_index].hidden? (buttons[prev_index].hidden? cancel_index : prev_index) : next_index);
-	// ENTER ID moved below the DELETE/RESET cell, so its vertical link is the
-	// one that has to follow whichever of the pair is showing.
-	buttons[id_index].nav.up = (buttons[delete_index].hidden? reset_index : delete_index);
+	apply_nav(buttons);
 
     bool done = false;
 #ifdef TESTING
@@ -574,10 +587,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
             buttons[delete_index].hidden = !enable_delete;
             buttons[reset_index].hidden = enable_delete;
 
-            buttons[next_index].nav.down = (buttons[choose_index].hidden? cancel_index : choose_index);
-            buttons[cancel_index].nav.up = (buttons[prev_index].hidden? (buttons[next_index].hidden? id_index : next_index) : prev_index);
-            buttons[id_index].nav.down = (buttons[next_index].hidden? (buttons[prev_index].hidden? cancel_index : prev_index) : next_index);
-            buttons[id_index].nav.up = (buttons[delete_index].hidden? reset_index : delete_index);
+            apply_nav(buttons);
             
             if(buttons[highlighted_button].hidden)
             {

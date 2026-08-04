@@ -4402,3 +4402,88 @@ TEST(CampaignPickerLayout, rect_overlap_helper_edges)
     EXPECT_TRUE(og::ui::picker_rects_overlap(a, og::ui::PickerRect{19, 19, 10, 10}));
     EXPECT_FALSE(og::ui::picker_rects_overlap(a, og::ui::PickerRect{0, 0, 10, 10}));
 }
+
+// Keyboard reachability for the browser's nav graph across every visibility
+// variant. handle_menu_nav IGNORES a link into a hidden button (it does not
+// follow it and does not strand focus), so the property worth pinning is
+// that every VISIBLE button is still reachable from the default highlight
+// after ENTER ID moved out of the top row.
+TEST(CampaignPickerLayout, nav_variants_keyboard_reachable)
+{
+    using og::ui::CampaignPickerVisibility;
+    using og::ui::kCampaignPickerButtonCount;
+
+    for (const bool prev_hidden : {false, true})
+    for (const bool next_hidden : {false, true})
+    for (const bool choose_hidden : {false, true})
+    for (const bool delete_hidden : {false, true})
+    {
+        const CampaignPickerVisibility visibility{prev_hidden, next_hidden,
+                                                  choose_hidden, delete_hidden};
+        // RESET occupies the DELETE cell, so exactly one of the pair shows.
+        std::array<bool, kCampaignPickerButtonCount> hidden{};
+        hidden[og::ui::kCampaignPickerPrevIndex] = prev_hidden;
+        hidden[og::ui::kCampaignPickerNextIndex] = next_hidden;
+        hidden[og::ui::kCampaignPickerChooseIndex] = choose_hidden;
+        hidden[og::ui::kCampaignPickerCancelIndex] = false;
+        hidden[og::ui::kCampaignPickerDeleteIndex] = delete_hidden;
+        hidden[og::ui::kCampaignPickerIdIndex] = false;
+        hidden[og::ui::kCampaignPickerResetIndex] = !delete_hidden;
+
+        const auto nav = og::ui::campaign_picker_nav(visibility);
+        const std::string variant = std::string("prev=") +
+            (prev_hidden ? "hidden" : "shown") + " next=" +
+            (next_hidden ? "hidden" : "shown") + " ok=" +
+            (choose_hidden ? "hidden" : "shown") + " delete=" +
+            (delete_hidden ? "hidden" : "shown");
+
+        for (const auto& links : nav)
+        {
+            for (const int target :
+                 {links.up, links.down, links.left, links.right})
+            {
+                EXPECT_TRUE(target < kCampaignPickerButtonCount)
+                    << variant << ": nav index out of range";
+            }
+        }
+
+        // BFS from the browser's default highlight, following links into
+        // visible buttons only (handle_menu_nav's real rule).
+        std::array<bool, kCampaignPickerButtonCount> reached{};
+        std::vector<int> frontier{og::ui::kCampaignPickerCancelIndex};
+        reached[og::ui::kCampaignPickerCancelIndex] = true;
+        while (!frontier.empty())
+        {
+            const int current = frontier.back();
+            frontier.pop_back();
+            for (const int target : {nav[current].up, nav[current].down,
+                                     nav[current].left, nav[current].right})
+            {
+                if (target < 0 || hidden[target] || reached[target])
+                    continue;
+                reached[target] = true;
+                frontier.push_back(target);
+            }
+        }
+        for (int i = 0; i < kCampaignPickerButtonCount; ++i)
+        {
+            if (!hidden[i])
+            {
+                EXPECT_TRUE(reached[i])
+                    << variant << ": button " << i << " is unreachable";
+            }
+        }
+
+        // ENTER ID's up-link always lands on whichever of DELETE/RESET shows.
+        EXPECT_EQ(delete_hidden ? og::ui::kCampaignPickerResetIndex
+                                : og::ui::kCampaignPickerDeleteIndex,
+                  nav[og::ui::kCampaignPickerIdIndex].up)
+            << variant;
+        EXPECT_EQ(og::ui::kCampaignPickerIdIndex,
+                  nav[og::ui::kCampaignPickerDeleteIndex].down)
+            << variant << ": DELETE drops onto the button below it";
+        EXPECT_EQ(og::ui::kCampaignPickerIdIndex,
+                  nav[og::ui::kCampaignPickerResetIndex].down)
+            << variant << ": RESET drops onto the button below it";
+    }
+}

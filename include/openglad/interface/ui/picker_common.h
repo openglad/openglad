@@ -104,6 +104,44 @@ PickerRect campaign_title_rect(int chars);
 // the budget with a trailing "..." so it can never reach a control.
 std::string fit_campaign_title(std::string_view title);
 
+// Positional indices into the browser's button table. Growth is append-only
+// for the same reason every other picker screen's is.
+inline constexpr int kCampaignPickerPrevIndex = 0;
+inline constexpr int kCampaignPickerNextIndex = 1;
+inline constexpr int kCampaignPickerChooseIndex = 2;
+inline constexpr int kCampaignPickerCancelIndex = 3;
+inline constexpr int kCampaignPickerDeleteIndex = 4;
+inline constexpr int kCampaignPickerIdIndex = 5;
+inline constexpr int kCampaignPickerResetIndex = 6;
+inline constexpr int kCampaignPickerButtonCount = 7;
+
+// Which of the browser's conditional buttons are hidden this frame. CANCEL
+// and ENTER ID are always visible; DELETE and RESET share a cell, so RESET
+// shows exactly when DELETE hides.
+struct CampaignPickerVisibility
+{
+    bool prev_hidden = false;    // on the first campaign
+    bool next_hidden = false;    // on the last campaign
+    bool choose_hidden = false;  // no selectable entry
+    bool delete_hidden = false;  // browser opened without delete enabled
+};
+
+struct CampaignPickerNavLinks
+{
+    int up = -1;
+    int down = -1;
+    int left = -1;
+    int right = -1;
+};
+
+// The browser's whole keyboard graph for one visibility state (skill pattern
+// (b): recompute, don't patch). handle_menu_nav ignores a link into a hidden
+// button rather than following it, so the property that matters — and that
+// the BFS pin asserts over every variant — is that each VISIBLE button stays
+// reachable from the default highlight (CANCEL).
+std::array<CampaignPickerNavLinks, kCampaignPickerButtonCount>
+campaign_picker_nav(const CampaignPickerVisibility& visibility);
+
 // --- Family display helpers ---
 
 // Full display name from FamilyDescriptor (e.g. "SOLDIER", "ORC CAPTAIN").
