@@ -11,6 +11,7 @@
 local C = og.C
 local core = og.use("mode_core")
 local ai = og.use("mode_ai")
+local match = og.use("mode_match")
 local strip = og.use("mode_strip")
 local levels = og.use("mode_levels")
 local items = og.use("mode_items")
@@ -771,9 +772,15 @@ local function on_mode_init(level)
   og.mode_set(S.CP_COUNT, cp_count)
 
   -- Anchors were scanned engine-side before this hook (dead markers
-  -- included). Active teams: the requested count intersected with authored
-  -- flag teams, in team index order.
-  local mask = core.activate_teams(authored_mask, og.match_setting("team_count"))
+  -- included). Active teams: TROOPS:OWN with deployed rosters takes
+  -- exactly the roster flag teams (the shared rule); otherwise the
+  -- requested count intersected with authored flag teams, in team index
+  -- order.
+  local obs = og.oblist()
+  local mask = match.own_roster_activation(authored_mask, obs)
+  if mask == nil then
+    mask = core.activate_teams(authored_mask, og.match_setting("team_count"))
+  end
   local active_count = core.mask_count(mask)
   if active_count < 2 then
     error("ctf: fewer than two flag teams")
@@ -784,7 +791,6 @@ local function on_mode_init(level)
   -- Consume the active teams' start markers (their anchor positions are
   -- already recorded) so the marker entities cannot block their own
   -- respawn anchors.
-  local obs = og.oblist()
   for k = 1, #obs do
     local w = obs[k]
     if w:dead() == 0 then

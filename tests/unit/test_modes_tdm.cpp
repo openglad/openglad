@@ -345,6 +345,32 @@ TEST_F(ModesTdm, scenario_troops_strip_runs_before_the_bot_census)
         << "the census behind the strip backfills the emptied team";
 }
 
+TEST_F(ModesTdm, troops_own_activates_only_the_roster_teams)
+{
+    // The scen-841 shape on TDM: OWN with rosters deployed on teams 0 and 2
+    // activates exactly those two — the third authored team neither joins
+    // the match nor receives a bot squad.
+    ModesCtfWorld fx(kTdmLevelA);
+    fx.world().ctf_requested_strip_scenario_troops = 2;
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(1, 544, 96);
+    fx.spawn_anchor(2, 96, 800);
+    walker* soldier = fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
+    walker* barbarian = fx.spawn_hero(FAMILY_BARBARIAN, 2, 216, 760, 2);
+    fx.tick(1);
+
+    ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
+    EXPECT_EQ(1 + 4, fx.var(kTdmSlotTeamMask))
+        << "exactly the two roster teams activate";
+    EXPECT_FALSE(soldier->dead());
+    EXPECT_FALSE(barbarian->dead());
+    EXPECT_EQ(1, alive_on_team(fx.world(), 0));
+    EXPECT_EQ(0, alive_on_team(fx.world(), 1))
+        << "no bot squad on the unrostered authored team";
+    EXPECT_EQ(1, alive_on_team(fx.world(), 2));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
 TEST_F(ModesTdm, init_stamps_the_generator_hp_denominator)
 {
     // The mini HP bar skips outright at max_hp == 0, and the loader ships

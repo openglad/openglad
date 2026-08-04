@@ -443,6 +443,35 @@ TEST_F(ModesSoccer, scenario_troops_strip_takes_the_pitch_generators_too)
         << "and the emptied team is backfilled by the census behind the strip";
 }
 
+TEST_F(ModesSoccer, troops_own_activates_only_the_roster_teams)
+{
+    // The scen-841 shape on the FOURSQUARE pitch: OWN with rosters deployed
+    // on the north and south mouths activates exactly those two teams — no
+    // five-bot squads on the east/west sides, and the manifest row's
+    // teams = 4 default is not a backfill mandate.
+    SoccerPitch fx(kSoccerLevelB);
+    fx.world().ctf_requested_strip_scenario_troops = 2;
+    for (int team = 0; team < 4; ++team)
+        fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
+    walker* soldier = fx.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
+    walker* barbarian = fx.spawn_hero(FAMILY_BARBARIAN, 2, 300, 860, 2);
+    fx.tick(1);
+
+    ASSERT_TRUE(fx.soccer_active());
+    EXPECT_EQ(1 + 4, fx.var(kSocTeamMask))
+        << "exactly the two roster teams activate";
+    EXPECT_EQ(2, fx.var(kSocTeamCount));
+    EXPECT_NE(nullptr, fx.ball()) << "the match still gets its ball";
+    EXPECT_FALSE(soldier->dead());
+    EXPECT_FALSE(barbarian->dead());
+    EXPECT_EQ(1, alive_on_team(fx.world(), 0));
+    EXPECT_EQ(0, alive_on_team(fx.world(), 1))
+        << "no five-bot squads under OWN";
+    EXPECT_EQ(1, alive_on_team(fx.world(), 2));
+    EXPECT_EQ(0, alive_on_team(fx.world(), 3));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
 TEST_F(ModesSoccer, bad_manifest_rows_demote_with_recorded_errors)
 {
     // A row missing an active team's goal rect.

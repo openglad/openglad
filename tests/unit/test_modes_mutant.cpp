@@ -303,6 +303,115 @@ TEST_F(ModesMutant, scenario_troops_strip_runs_before_the_seat_census)
     EXPECT_EQ(1, alive_on_team(fx.world(), 1)) << "the emptied seat is refilled";
 }
 
+TEST_F(ModesMutant, troops_own_activates_only_the_roster_teams)
+{
+    // The user's scen-841 report, pinned: TROOPS:OWN with rosters deployed
+    // on teams 0 and 3 still fielded a GREEN archer and a BLUE elf — the
+    // one-bot-per-empty-team census backfilled the two authored teams the
+    // strip had just emptied. Under OWN the deployed rosters ARE the match:
+    // exactly the roster teams activate and nobody manufactures new sides.
+    ModesCtfWorld fx(841);
+    fx.world().ctf_requested_strip_scenario_troops = 2;
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(1, 544, 96);
+    fx.spawn_anchor(2, 96, 800);
+    fx.spawn_anchor(3, 544, 800);
+    walker* soldier = fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
+    walker* barbarian = fx.spawn_hero(FAMILY_BARBARIAN, 3, 216, 232, 2);
+    fx.tick(1);
+
+    ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId))
+        << "shipped scripts/mode_mutant.lua binds manifest id 841";
+    EXPECT_EQ(1 + 8, fx.var(kMutSlotTeamMask))
+        << "exactly the two roster teams activate";
+    EXPECT_FALSE(soldier->dead());
+    EXPECT_FALSE(barbarian->dead());
+    EXPECT_EQ(1, alive_on_team(fx.world(), 0));
+    EXPECT_EQ(0, alive_on_team(fx.world(), 1)) << "no GREEN archer backfill";
+    EXPECT_EQ(0, alive_on_team(fx.world(), 2)) << "no BLUE elf backfill";
+    EXPECT_EQ(1, alive_on_team(fx.world(), 3));
+    for (const auto& uptr : fx.world().oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        EXPECT_TRUE(w == soldier || w == barbarian)
+            << "an uninvited living joined the OWN match: family "
+            << static_cast<int>(w->family()) << " team "
+            << static_cast<int>(w->team_num());
+    }
+
+    // The two-roster match still runs and terminates (timeout ladder).
+    fx.world().mode.vars[kMutSlotScore + 3] = 4;
+    fx.world().set_level_tick_count(7200 - 2);
+    fx.tick(2);
+    EXPECT_TRUE(fx.world().game_ended);
+    EXPECT_EQ(3, fx.world().mode.winner_team);
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesMutant, troops_own_solo_roster_gets_one_bot_opponent)
+{
+    // One deployed roster team under OWN: the roster team plus the FIRST
+    // authored non-roster team in index order, which the census behind the
+    // strip backfills with the mode's one-bot seat — a solo player needs an
+    // opponent, and exactly one is manufactured.
+    ModesCtfWorld fx(kMutantLevelA);
+    fx.world().ctf_requested_strip_scenario_troops = 2;
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(1, 544, 96);
+    fx.spawn_anchor(2, 96, 800);
+    walker* hero = fx.spawn_hero(FAMILY_SOLDIER, 2, 200, 200, 1);
+    fx.tick(1);
+
+    ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
+    EXPECT_EQ(1 + 4, fx.var(kMutSlotTeamMask))
+        << "the roster team plus the first authored non-roster team";
+    EXPECT_FALSE(hero->dead());
+    EXPECT_EQ(1, alive_on_team(fx.world(), 0)) << "exactly one bot opponent";
+    EXPECT_EQ(0, alive_on_team(fx.world(), 1));
+    EXPECT_EQ(1, alive_on_team(fx.world(), 2));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesMutant, troops_own_solo_roster_without_other_teams_demotes)
+{
+    // A solo roster under OWN on a map authoring nobody else: there is no
+    // team to draft as the opponent, so the lone-team mask reaches the
+    // fewer-than-two check and the level demotes to classic rules.
+    ModesCtfWorld fx(kMutantLevelA);
+    fx.world().ctf_requested_strip_scenario_troops = 2;
+    fx.spawn_anchor(0, 96, 96);
+    walker* hero = fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
+    fx.tick(1);
+
+    EXPECT_TRUE(fx.world().mode.init_attempted);
+    EXPECT_FALSE(fx.world().mode.active);
+    EXPECT_TRUE(has_script_error(fx.world(), "fewer than two competitors"));
+    EXPECT_FALSE(hero->dead());
+}
+
+TEST_F(ModesMutant, troops_own_with_no_rosters_keeps_the_bot_match)
+{
+    // Zero deployed rosters under OWN (a bot spectacle): the requested
+    // activation and the per-empty-team backfill stand exactly as before.
+    ModesCtfWorld fx(kMutantLevelA);
+    fx.world().ctf_requested_strip_scenario_troops = 2;
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(1, 544, 96);
+    fx.spawn_anchor(2, 96, 800);
+    fx.spawn_anchor(3, 544, 800);
+    fx.tick(1);
+
+    ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
+    EXPECT_EQ(15, fx.var(kMutSlotTeamMask));
+    EXPECT_EQ(1, alive_on_team(fx.world(), 0)) << "FFA seats, not squads";
+    EXPECT_EQ(1, alive_on_team(fx.world(), 1));
+    EXPECT_EQ(1, alive_on_team(fx.world(), 2));
+    EXPECT_EQ(1, alive_on_team(fx.world(), 3));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
 // ===========================================================================
 // Crown / transfer / revert (the phase machine)
 // ===========================================================================

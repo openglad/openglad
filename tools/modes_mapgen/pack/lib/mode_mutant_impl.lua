@@ -515,7 +515,12 @@ end
 local function on_mode_init(level)
   local obs = og.oblist()
   local authored_mask = match.census_mask(obs)
-  local mask = core.activate_teams(authored_mask, og.match_setting("team_count"))
+  -- TROOPS:OWN with deployed rosters: the rosters are the match (the
+  -- shared rule); otherwise the lobby request over the authored teams.
+  local mask = match.own_roster_activation(authored_mask, obs)
+  if mask == nil then
+    mask = core.activate_teams(authored_mask, og.match_setting("team_count"))
+  end
   if core.mask_count(mask) < 2 then
     error("mutant: fewer than two competitors")
   end

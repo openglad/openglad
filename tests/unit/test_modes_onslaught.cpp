@@ -358,6 +358,41 @@ TEST_F(ModesOnslaught, scenario_troops_strip_spares_the_foundries)
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
+TEST_F(ModesOnslaught, troops_own_activates_only_the_roster_teams)
+{
+    // The scen-841 shape on Onslaught: three authored generator teams,
+    // rosters on 0 and 2 under OWN. The roster teams keep their foundries
+    // (the mid-match armies those spawn are not init backfill), the
+    // unrostered team strips like any inactive side, and no init infantry
+    // appears beyond the rosters.
+    ModesCtfWorld fx(kOnsLevelB);
+    fx.world().ctf_requested_strip_scenario_troops = 2;
+    fx.spawn_anchor(0, 96, 128);
+    fx.spawn_anchor(1, 528, 128);
+    fx.spawn_anchor(2, 96, 800);
+    walker* gen0 = fx.spawn_generator(FAMILY_TENT, 0, 128, 320);
+    walker* gen1 = fx.spawn_generator(FAMILY_TENT, 1, 480, 320);
+    walker* gen2 = fx.spawn_generator(FAMILY_TENT, 2, 128, 640);
+    walker* soldier = fx.spawn_hero(FAMILY_SOLDIER, 0, 96, 96, 1);
+    walker* barbarian = fx.spawn_hero(FAMILY_BARBARIAN, 2, 96, 760, 2);
+    fx.tick(1);
+
+    ASSERT_TRUE(fx.world().mode.active);
+    EXPECT_EQ(1 + 4, fx.var(kOnsTeamMask))
+        << "exactly the two roster teams activate";
+    EXPECT_FALSE(gen0->dead()) << "roster teams keep their foundries";
+    EXPECT_FALSE(gen2->dead());
+    EXPECT_TRUE(gen1->dead()) << "the unrostered team strips away";
+    EXPECT_FALSE(soldier->dead());
+    EXPECT_FALSE(barbarian->dead());
+    EXPECT_EQ(1, fx.team_var(kOnsGenCount, 0));
+    EXPECT_EQ(1, fx.team_var(kOnsGenCount, 2));
+    EXPECT_EQ(1, alive_on_team(fx.world(), 0));
+    EXPECT_EQ(0, alive_on_team(fx.world(), 1)) << "no init infantry under OWN";
+    EXPECT_EQ(1, alive_on_team(fx.world(), 2));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
 // ===========================================================================
 // The D5 flip (on_damage)
 // ===========================================================================

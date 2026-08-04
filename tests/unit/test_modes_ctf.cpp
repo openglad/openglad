@@ -451,6 +451,37 @@ TEST_F(ModesCtf, strip_scenario_troops_removes_every_authored_entity)
     }
 }
 
+TEST_F(ModesCtf, troops_own_activates_only_the_roster_flag_teams)
+{
+    // The scen-841 shape on CTF: a four-flag map under OWN with rosters on
+    // teams 0 and 2 fields exactly those two sides. The unrostered flag
+    // teams strip with their flags, and no bot squads appear.
+    ModesCtfWorld fx;
+    fx.world().ctf_requested_strip_scenario_troops = 2;
+    fx.spawn_flag(flag_family_, 0, 96, 96);
+    fx.spawn_flag(flag_family_, 1, 544, 96);
+    fx.spawn_flag(flag_family_, 2, 96, 800);
+    fx.spawn_flag(flag_family_, 3, 544, 800);
+    walker* soldier = fx.spawn_hero(FAMILY_SOLDIER, 0, 160, 160, 1);
+    walker* barbarian = fx.spawn_hero(FAMILY_BARBARIAN, 2, 160, 760, 2);
+    fx.tick(1);
+
+    ASSERT_TRUE(fx.ctf_active());
+    EXPECT_EQ(1 + 4, fx.var(kSlotTeamMask))
+        << "exactly the two roster flag teams activate";
+    EXPECT_EQ(2, fx.var(kSlotTeamCount));
+    EXPECT_EQ(0, fx.team_var(kSlotFlagEntity, 1))
+        << "the unrostered teams' flags strip with them";
+    EXPECT_EQ(0, fx.team_var(kSlotFlagEntity, 3));
+    EXPECT_FALSE(soldier->dead());
+    EXPECT_FALSE(barbarian->dead());
+    EXPECT_EQ(1, alive_on_team(fx.world(), 0));
+    EXPECT_EQ(0, alive_on_team(fx.world(), 1)) << "no CTF bot squads under OWN";
+    EXPECT_EQ(1, alive_on_team(fx.world(), 2));
+    EXPECT_EQ(0, alive_on_team(fx.world(), 3));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
 namespace {
 
 std::string run_strip_scenario_match(int flag_family, bool set_field,

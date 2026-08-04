@@ -6,6 +6,7 @@ local core = og.use("mode_core")
 local ai = og.use("mode_ai")
 local anchors = og.use("mode_anchors")
 local caps = og.use("mode_caps")
+local match = og.use("mode_match")
 local strip = og.use("mode_strip")
 
 -- Mode-private slot map (8+; header 0-7 is mode_core.SLOT).
@@ -667,11 +668,17 @@ local function on_mode_init(level, row)
       end
     end
   end
-  local requested = og.match_setting("team_count")
-  if requested <= 0 then
-    requested = row.teams or 0
+  -- TROOPS:OWN with deployed rosters: the rosters are the match (the
+  -- shared rule); otherwise the lobby request (manifest default) over the
+  -- authored generator/living teams.
+  local mask = match.own_roster_activation(authored_mask, obs)
+  if mask == nil then
+    local requested = og.match_setting("team_count")
+    if requested <= 0 then
+      requested = row.teams or 0
+    end
+    mask = core.activate_teams(authored_mask, requested)
   end
-  local mask = core.activate_teams(authored_mask, requested)
   local active_count = core.mask_count(mask)
   if active_count < 2 then
     error("onslaught: fewer than two teams")

@@ -1,10 +1,11 @@
--- TDM/Mutant shared match toolkit — manifest row adapter, team census, marker consumption, anchor-cursor placement, bot fielding, dead-competitor scheduling, timeout ladder (cookbook: docs/lua-classpacks-design.md §3).
+-- Shared match toolkit — manifest row adapter, team census, the TROOPS:OWN roster activation all five modes apply, marker consumption, anchor-cursor placement, bot fielding, dead-competitor scheduling, timeout ladder (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C
 local core = og.use("mode_core")
 local ai = og.use("mode_ai")
 local caps = og.use("mode_caps")
+local strip = og.use("mode_strip")
 
 -- The D9 level-id band the manifest may populate. rows_for scans it by
 -- DIRECT indexing: the manifest is a map keyed by level id with holes, and
@@ -69,6 +70,63 @@ local function census_mask(obs)
     end
   end
   return mask
+end
+
+-- TROOPS:OWN activation, the shared ruling all five modes apply: under OWN
+-- the deployed rosters ARE the match. Returns the replacement active mask,
+-- or nil when the standard requested activation stands (TROOPS:ALL, or an
+-- all-bot match with no rosters anywhere).
+--
+--   two or more roster teams  exactly those teams — init manufactures no
+--                             extra sides. The authored domain still
+--                             clamps (Soccer two on a two-goal pitch, four
+--                             on FOURSQUARE): a roster seated outside it
+--                             cannot score there and does not count, so a
+--                             three-roster group on a two-team pitch
+--                             activates the first two in index order.
+--   exactly one roster team   that team plus the FIRST authored non-roster
+--                             team in index order — a solo group needs an
+--                             opponent, and the mode's own empty-team
+--                             census behind the strip backfills exactly
+--                             that one side.
+--   zero roster teams         nil — a bot match keeps today's shape.
+local function own_roster_activation(authored_mask, obs)
+  if og.match_setting("strip_troops") <= strip.KEEP then
+    return nil
+  end
+  local roster = 0
+  for k = 1, #obs do
+    local w = obs[k]
+    if w:dead() == 0 then
+      if w:order() == C.ORDER_LIVING then
+        if w:has_guy() then
+          local team = w:team_num()
+          if team < C.SCORE_TEAM_COUNT then
+            if core.mask_has(authored_mask, team) then
+              roster = core.mask_add(roster, team)
+            end
+          end
+        end
+      end
+    end
+  end
+  local count = core.mask_count(roster)
+  if count == 0 then
+    return nil
+  end
+  if count >= 2 then
+    return roster
+  end
+  for team = 0, C.SCORE_TEAM_COUNT - 1 do
+    if core.mask_has(authored_mask, team) then
+      if not core.mask_has(roster, team) then
+        return core.mask_add(roster, team)
+      end
+    end
+  end
+  -- A solo roster on a map authoring nobody else: hand back the lone team
+  -- and let the mode's fewer-than-two check report the shape.
+  return roster
 end
 
 -- Consume the active teams' start markers (anchor positions are already
@@ -296,6 +354,7 @@ return {
   rows_for = rows_for,
   resolve_limit = resolve_limit,
   census_mask = census_mask,
+  own_roster_activation = own_roster_activation,
   consume_markers = consume_markers,
   strip_inactive_teams = strip_inactive_teams,
   place_at_anchor = place_at_anchor,
