@@ -24,10 +24,14 @@ local S = {
   WP_PROG_TEAM1 = 38, -- 38..41, +wp, contending team + 1, 0 = none
   WP_PROGRESS = 42, -- 42..45, +wp
   SPAWN_CAP = 46, -- 46..53, +team byte 0-7, -1 = uncapped
+  FLIP_GUARD = 54, -- 54..63, +og.div(rank, 2): two packed 15-bit last-flip
+  -- records per slot, keyed by the generator's rank among live generators
+  -- in entity-id order (the set is fixed after init — flips never kill).
 }
 
 local T = {
   no_gen_grace_ticks = 600, -- 50 s without a generator eliminates
+  flip_guard_ticks = 96, -- a fresh flip cannot flip again for 8 s (B6)
   wp_radius_px = 48, -- the hold disc (Euclidean, the CP geometry)
   wp_hold_ticks = 36, -- majority ticks to take a waypoint
   respawn_ticks = 120,
@@ -74,11 +78,78 @@ local function generator_label(family)
   return "POST"
 end
 
+-- Post-flip guard records (B6): last-flip world ticks per generator, two
+-- 15-bit entries per FLIP_GUARD slot. Record = og.mod(tick, GUARD_WINDOW)
+-- + 1, 0 = never flipped; the window (16384) exceeds every shipped time
+-- limit (14400), so elapsed comparisons never wrap within a match.
+-- Generators past 2 * GUARD_SLOTS ranks (no shipped map has more than 12)
+-- degrade gracefully to unguarded.
+local GUARD_SLOTS = 10
+local GUARD_WINDOW = 16384
+
+-- The target's rank among live generators in entity-id order — stable for
+-- the whole match because the D5 flip keeps every generator alive.
+local function generator_rank(target)
+  local id = og.entity_id(target)
+  local rank = 0
+  local obs = og.oblist()
+  for k = 1, #obs do
+    local w = obs[k]
+    if w:dead() == 0 then
+      if w:order() == C.ORDER_GENERATOR then
+        if og.entity_id(w) < id then
+          rank = rank + 1
+        end
+      end
+    end
+  end
+  return rank
+end
+
+local function guard_read(rank)
+  local slot = og.div(rank, 2)
+  if slot >= GUARD_SLOTS then
+    return 0
+  end
+  local packed = fget(S.FLIP_GUARD, slot)
+  if og.mod(rank, 2) == 0 then
+    return og.mod(packed, 32768)
+  end
+  return og.div(packed, 32768)
+end
+
+local function guard_write(rank, record)
+  local slot = og.div(rank, 2)
+  if slot >= GUARD_SLOTS then
+    return
+  end
+  local packed = fget(S.FLIP_GUARD, slot)
+  local lo = og.mod(packed, 32768)
+  local hi = og.div(packed, 32768)
+  if og.mod(rank, 2) == 0 then
+    lo = record
+  else
+    hi = record
+  end
+  fset(S.FLIP_GUARD, slot, hi * 32768 + lo)
+end
+
+local function flip_guarded(rank)
+  local record = guard_read(rank)
+  if record == 0 then
+    return false
+  end
+  local elapsed = og.mod(og.world_tick() - (record - 1), GUARD_WINDOW)
+  return elapsed < T.flip_guard_ticks
+end
+
 -- The D5 flip: a generator never dies. A lethal hit from a living on an
 -- active score team re-teams the intact generator (team + real team, full
 -- HP) and cancels the damage; any other lethal source — environment,
 -- weapons without a living owner, non-score attackers, the generator's
--- own team (no free self-heal) — is floored at 1 hp instead. The flip is
+-- own team (no free self-heal) — is floored at 1 hp instead. A generator
+-- that flipped within the last flip_guard_ticks shares that floor arm
+-- (no re-flip, no notification: the B6 ping-pong killer). The flip is
 -- the only ownership transition, so the unproven death-path resurrect
 -- never runs.
 local function on_damage(target, attacker, amount)
@@ -104,9 +175,17 @@ local function on_damage(target, attacker, amount)
       flip = team ~= target:team_num()
     end
   end
+  local rank = -1
+  if flip then
+    rank = generator_rank(target)
+    if flip_guarded(rank) then
+      flip = false
+    end
+  end
   if not flip then
     return og.max(og.trunc(hp) - 1, 0)
   end
+  guard_write(rank, og.mod(og.world_tick(), GUARD_WINDOW) + 1)
   target:set_team_num(team)
   target:set_real_team_num(team)
   target.hp = target.max_hp

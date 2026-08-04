@@ -43,7 +43,7 @@ M.levels = {
     mode = "tdm",
     teams = 4,
     time_limit = 7200,
-    score_limit = 20,
+    score_limit = 12,
     spawn_caps = {
       [5] = 4,
       [6] = 4,
@@ -53,7 +53,7 @@ M.levels = {
     mode = "tdm",
     teams = 4,
     time_limit = 7200,
-    score_limit = 20,
+    score_limit = 10,
     spawn_caps = {
       [7] = 8,
     },

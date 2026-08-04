@@ -249,6 +249,26 @@ TEST_F(ModesTdm, shipped_manifest_registration_binds_level_302)
     EXPECT_EQ(7200, rig.fx.var(kTdmSlotTimeLimit)) << "manifest time_limit";
 }
 
+TEST_F(ModesTdm, playtest_pace_cuts_bind_303_and_304)
+{
+    // The B3 sweep verdicts: GATEKEEPERS (5/6 timeouts) and THE CASTLE
+    // (6/6 timeouts, ~1 frag/min) end by score, not clock, at these caps.
+    {
+        TdmRig rig(303);
+        rig.fx.tick(1);
+        ASSERT_TRUE(rig.active());
+        EXPECT_EQ(12, rig.fx.var(kTdmSlotScoreLimit))
+            << "GATEKEEPERS score_limit 20 -> 12 (B3)";
+    }
+    {
+        TdmRig rig(304);
+        rig.fx.tick(1);
+        ASSERT_TRUE(rig.active());
+        EXPECT_EQ(10, rig.fx.var(kTdmSlotScoreLimit))
+            << "THE CASTLE score_limit 20 -> 10 (B3)";
+    }
+}
+
 TEST_F(ModesTdm, explicit_requests_override_manifest_and_defaults)
 {
     TdmRig rig(302);

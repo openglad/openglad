@@ -1,7 +1,9 @@
 // The Onslaught campaign-pack Lua (lib/mode_onslaught_impl.lua) behavior
 // suite: every D5 rule as a sim case — init/activation, the damage-gate
 // generator flip (lethal boundary, non-living/own-team/neutral arms, the
-// 1 hp floor, multi-hit same tick), zero-generator grace elimination with
+// 1 hp floor, the B6 post-flip guard window with its per-generator
+// records and overflow degradation, the C2 classic-toast suppression
+// arms), zero-generator grace elimination with
 // recapture reset, waypoint holds (spawn-level + schedule-time respawn
 // bonuses), fire_frequency spawn caps over the marked-spawn census,
 // corpse-stain scrubbing, HUD, director roles, timeout tiebreaks,
@@ -411,8 +413,11 @@ TEST_F(ModesOnslaught, non_active_team_attacker_floors_instead_of_flipping)
     EXPECT_FALSE(fx.red_gen_a->dead());
 }
 
-TEST_F(ModesOnslaught, two_lethal_hits_same_tick_flip_twice)
+TEST_F(ModesOnslaught, guard_window_clamps_the_same_tick_flip_back)
 {
+    // The B6 ping-pong killer: a generator that just flipped cannot flip
+    // again for flip_guard_ticks — the lethal hit lands on the 1 hp floor
+    // arm instead, silently (C1).
     OnsWorld fx;
     fx.tick(1);
     ASSERT_TRUE(fx.ons_active());
@@ -422,12 +427,90 @@ TEST_F(ModesOnslaught, two_lethal_hits_same_tick_flip_twice)
     ASSERT_EQ(1, fx.red_gen_a->team_num());
     fx.smash(red_hitter, fx.red_gen_a);
 
-    EXPECT_EQ(0, fx.red_gen_a->team_num())
-        << "the second lethal hit flips it right back";
+    EXPECT_EQ(1, fx.red_gen_a->team_num())
+        << "a fresh flip cannot flip back inside the guard window (B6)";
+    EXPECT_FALSE(fx.red_gen_a->dead());
+    EXPECT_EQ(1.0f, fx.red_gen_a->stats()->hitpoints())
+        << "the guarded lethal hit clamps to the 1 hp floor";
+    EXPECT_EQ(1, count_notifications(fx.events, "GREEN TAKES A TENT!"));
+    EXPECT_EQ(0, count_notifications(fx.events, "RED TAKES A TENT!"))
+        << "no notification for a guard-clamped hit (C1)";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesOnslaught, flip_guard_expires_after_96_ticks)
+{
+    OnsWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.ons_active());
+    fx.green->setxy(140, 340);
+    walker* red_hitter = fx.spawn_living(FAMILY_SOLDIER, 0, 116, 340);
+    fx.smash(fx.green, fx.red_gen_a);  // flip recorded at world tick 1
+    ASSERT_EQ(1, fx.red_gen_a->team_num());
+
+    // World tick 96: elapsed 95 < 96, the last window tick still guards.
+    fx.tick(95);
+    fx.smash(red_hitter, fx.red_gen_a);
+    EXPECT_EQ(1, fx.red_gen_a->team_num()) << "still guarded at elapsed 95";
+    EXPECT_EQ(1.0f, fx.red_gen_a->stats()->hitpoints());
+
+    // World tick 97: elapsed 96 >= 96, the guard expires on time.
+    fx.tick(1);
+    fx.smash(red_hitter, fx.red_gen_a);
+    EXPECT_EQ(0, fx.red_gen_a->team_num()) << "guard expired: contested again";
     EXPECT_EQ(fx.red_gen_a->stats()->max_hitpoints(),
               fx.red_gen_a->stats()->hitpoints());
-    EXPECT_EQ(1, count_notifications(fx.events, "GREEN TAKES A TENT!"));
     EXPECT_EQ(1, count_notifications(fx.events, "RED TAKES A TENT!"));
+}
+
+TEST_F(ModesOnslaught, flip_guard_is_per_generator)
+{
+    OnsWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.ons_active());
+    // Entity-id ranks: red_gen_a = 0 (low-packed), red_gen_b = 1
+    // (high-packed in the same guard slot).
+    fx.green->setxy(140, 340);
+    fx.smash(fx.green, fx.red_gen_a);
+    ASSERT_EQ(1, fx.red_gen_a->team_num());
+    // The sibling generator carries no record: it flips at once.
+    fx.green->setxy(140, 660);
+    fx.smash(fx.green, fx.red_gen_b);
+    EXPECT_EQ(1, fx.red_gen_b->team_num())
+        << "the guard keys on the flipped generator only";
+    EXPECT_EQ(2, count_notifications(fx.events, "GREEN TAKES A TENT!"));
+    // And the high-packed record now guards its own generator.
+    walker* red_hitter = fx.spawn_living(FAMILY_SOLDIER, 0, 116, 660);
+    fx.smash(red_hitter, fx.red_gen_b);
+    EXPECT_EQ(1, fx.red_gen_b->team_num()) << "rank-1 record guards rank 1";
+    EXPECT_EQ(1.0f, fx.red_gen_b->stats()->hitpoints());
+}
+
+TEST_F(ModesOnslaught, guard_table_overflow_degrades_to_unguarded)
+{
+    // 18 extra tents raise the census to 21 generators; the highest
+    // entity id ranks 20, past the 20-entry guard table, and degrades
+    // gracefully to the pre-B6 unguarded behavior (no shipped map fields
+    // more than 12 generators).
+    OnsWorld fx;
+    walker* last = nullptr;
+    for (int i = 0; i < 18; ++i)
+    {
+        last = fx.spawn_generator(FAMILY_TENT, 0,
+                                  static_cast<short>(128 + 16 * i), 480);
+    }
+    ASSERT_NE(nullptr, last);
+    fx.tick(1);
+    ASSERT_TRUE(fx.ons_active());
+    fx.green->setxy(static_cast<short>(last->xpos() + 12),
+                    static_cast<short>(last->ypos() + 20));
+    fx.smash(fx.green, last);
+    ASSERT_EQ(1, last->team_num()) << "past the table a flip still fires";
+    walker* red_hitter = fx.spawn_living(FAMILY_SOLDIER, 0, 116, 480);
+    fx.smash(red_hitter, last);
+    EXPECT_EQ(0, last->team_num())
+        << "unguarded past the table: the accepted degradation arm";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
 TEST_F(ModesOnslaught, neutral_generator_is_capturable)
@@ -733,6 +816,59 @@ TEST_F(ModesOnslaught, bot_corpses_are_scrubbed_heroes_are_not)
             hero_booked = true;
     }
     EXPECT_TRUE(hero_booked) << "hero corpses respawn instead of scrubbing";
+}
+
+// ===========================================================================
+// C2: the classic "All foes defeated!" toast stays off mode-owned levels
+// ===========================================================================
+
+TEST_F(ModesOnslaught, momentary_wipe_emits_no_classic_foes_toast)
+{
+    OnsWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.ons_active());
+    // green is the last cross-team living: killing it used to fire the
+    // classic completion toast mid-match while the mode played on (C2).
+    fx.red->setxy(static_cast<short>(fx.green->xpos() - 20),
+                  fx.green->ypos());
+    fx.smash(fx.red, fx.green);
+    ASSERT_TRUE(fx.green->dead());
+    EXPECT_EQ(0, count_notifications(fx.events, "All foes defeated!"))
+        << "mode-owned levels suppress the classic completion toast";
+    fx.tick(1);
+    EXPECT_FALSE(fx.world().game_ended)
+        << "the match itself continues past the momentary wipe";
+}
+
+TEST_F(ModesOnslaught, classic_worlds_keep_the_foes_toast)
+{
+    ModesCtfWorld fx(kOnsLevelA);
+    fx.world().type = 0;  // classic completion rules own this world
+    walker* red = fx.spawn_living(FAMILY_SOLDIER, 0, 96, 96);
+    walker* green = fx.spawn_living(FAMILY_SOLDIER, 1, 128, 96);
+    red->set_damage(5000.0f);
+    red->attack(green);
+    ASSERT_TRUE(green->dead());
+    EXPECT_EQ(1, count_notifications(fx.events, "All foes defeated!"))
+        << "classic worlds keep the classic toast";
+}
+
+TEST_F(ModesOnslaught, demoted_scripted_worlds_keep_the_foes_toast)
+{
+    // A scripted map whose init demoted (one score team) falls back to
+    // classic rules — including the completion toast.
+    ModesCtfWorld fx(kOnsLevelA);
+    fx.spawn_generator(FAMILY_TENT, 0, 128, 320);
+    walker* red = fx.spawn_living(FAMILY_SOLDIER, 0, 96, 96);
+    walker* wild = fx.spawn_living(FAMILY_SOLDIER, 4, 128, 96);
+    fx.tick(1);
+    ASSERT_TRUE(fx.world().mode.init_attempted);
+    ASSERT_FALSE(fx.world().mode.active);
+    red->set_damage(5000.0f);
+    red->attack(wild);
+    ASSERT_TRUE(wild->dead());
+    EXPECT_EQ(1, count_notifications(fx.events, "All foes defeated!"))
+        << "a demoted scripted map keeps classic completion semantics";
 }
 
 // ===========================================================================

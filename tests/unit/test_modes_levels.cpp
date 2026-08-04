@@ -733,6 +733,19 @@ TEST_F(ModesLevels, manifest_module_matches_package_and_executes)
         expr_prefix + "M.levels[800].spawn_caps[0] end)()");
     ASSERT_TRUE(cap.has_value());
     EXPECT_EQ(24, *cap) << "FOUNDRY LINE caps 24 live spawns per team";
+    // The B3 pace cuts (and a healthy-map control).
+    const auto gates_limit = probe_host.eval_integer(
+        expr_prefix + "M.levels[303].score_limit end)()");
+    ASSERT_TRUE(gates_limit.has_value());
+    EXPECT_EQ(12, *gates_limit) << "GATEKEEPERS score_limit cut to 12 (B3)";
+    const auto castle_limit = probe_host.eval_integer(
+        expr_prefix + "M.levels[304].score_limit end)()");
+    ASSERT_TRUE(castle_limit.has_value());
+    EXPECT_EQ(10, *castle_limit) << "THE CASTLE score_limit cut to 10 (B3)";
+    const auto circle_limit = probe_host.eval_integer(
+        expr_prefix + "M.levels[300].score_limit end)()");
+    ASSERT_TRUE(circle_limit.has_value());
+    EXPECT_EQ(20, *circle_limit) << "healthy TDM maps keep 20";
 }
 
 TEST_F(ModesLevels, pack_sprites_load_with_pinned_shapes)
