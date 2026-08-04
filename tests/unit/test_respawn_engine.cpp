@@ -312,6 +312,63 @@ TEST(RespawnEngine, live_duplicate_character_cancels_the_revive)
     ASSERT_TRUE(arena.world().respawn.respawn_queue.empty());
 }
 
+TEST(RespawnEngine, exported_probes_hold_null_and_impassable_guards)
+{
+    RespawnArena arena;
+    // Null walker: both exported queries refuse outright.
+    EXPECT_FALSE(og::sim::respawn_pending_for(arena.world(), nullptr));
+    EXPECT_FALSE(
+        og::sim::respawn_spot_clear(arena.world(), nullptr, 128, 128, 0));
+    // An off-grid target is never a clear spot, through both probe shapes
+    // (floor < 0 routes to the legacy same-floor probe, floor >= 0 to the
+    // floor-keyed classic probe).
+    EXPECT_FALSE(
+        og::sim::respawn_spot_clear(arena.world(), arena.runner, -64, -64, -1));
+    EXPECT_FALSE(
+        og::sim::respawn_spot_clear(arena.world(), arena.runner, -64, -64, 0));
+}
+
+TEST(RespawnEngine, fired_entry_for_an_already_live_walker_is_a_no_op)
+{
+    RespawnArena arena;
+    walker* runner = arena.runner;
+    runner->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    runner->myguy->id = 9;
+    arena.kill(runner);
+    ASSERT_TRUE(arena.schedule(runner));
+
+    // A cleric resurrects the corpse before its timer runs out: the fired
+    // entry must not re-revive (double heal / stat scrub) and must still be
+    // consumed.
+    runner->set_dead(0);
+    arena.fx.tick(7);
+    EXPECT_FALSE(runner->dead());
+    EXPECT_TRUE(arena.world().respawn.respawn_queue.empty())
+        << "a no-op fire still consumes its entry";
+}
+
+TEST(RespawnEngine, fire_time_live_duplicate_cancels_the_revive)
+{
+    RespawnArena arena;
+    walker* runner = arena.runner;
+    runner->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    runner->myguy->id = 8;
+    arena.kill(runner);
+    ASSERT_TRUE(arena.schedule(runner)) << "no duplicate yet: schedule holds";
+
+    // The character comes back through another door while the timer runs
+    // (save merge, cleric resurrect): the FIRE must re-check, not trust the
+    // schedule-time dedupe.
+    walker* duplicate = arena.fx.spawn_living(FAMILY_SOLDIER, 0, 256, 320);
+    duplicate->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    duplicate->myguy->id = 8;
+
+    arena.fx.tick(7);
+    EXPECT_TRUE(runner->dead()) << "fire-time duplicate cancels the revive";
+    EXPECT_FALSE(duplicate->dead());
+    EXPECT_TRUE(arena.world().respawn.respawn_queue.empty());
+}
+
 TEST(RespawnEngine, retains_player_control_through_pending_scripted_entry)
 {
     RespawnArena arena;

@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <initializer_list>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -462,6 +463,30 @@ TEST(Replay, snapshot_difference_formats_all_field_value_kinds)
                     "mode.win_latched",
                     "false",
                     "true");
+    }
+
+    // The two string-typed mode fields report their VALUES on divergence
+    // (value_to_string over the string_view the comparison reads; the
+    // equal path never formats, so only a real mismatch exercises it).
+    const auto set_chars = [](std::span<char> dst, std::string_view text) {
+        for (std::size_t i = 0; i < text.size() && i + 1 < dst.size(); ++i)
+            dst[i] = text[i];
+    };
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        set_chars(expected.mode.name, "CTF");
+        set_chars(actual.mode.name, "TDM");
+        expect_diff(expected, actual, "mode.name", "CTF", "TDM");
+    }
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        set_chars(expected.mode.hud[1].text, "RED 2");
+        set_chars(actual.mode.hud[1].text, "RED 3");
+        expect_diff(expected, actual, "mode.hud[1].text", "RED 2", "RED 3");
     }
 
     {

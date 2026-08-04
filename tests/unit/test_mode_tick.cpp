@@ -196,6 +196,20 @@ TEST(ModeTick, erroring_mode_init_falls_classic_next_tick)
     EXPECT_TRUE(fx.world().game_ended);
 }
 
+TEST(ModeTick, run_tick_refuses_failed_init_world_when_called_directly)
+{
+    ModeWorld fx;
+    fx.tick(1);  // no hooks: init attempted and failed, mode inactive
+    ASSERT_TRUE(fx.world().mode.init_attempted);
+    ASSERT_FALSE(fx.world().mode.active);
+    // GameWorld::tick's caller-side guard filters failed-init worlds out,
+    // so the engine function's own inactive guard must hold for direct
+    // callers too: no re-init, no phases, no win shape.
+    og::sim::mode_run_tick(fx.world());
+    EXPECT_FALSE(fx.world().mode.active);
+    EXPECT_FALSE(fx.world().game_ended);
+}
+
 // ---------------------------------------------------------------------------
 // Win latch
 // ---------------------------------------------------------------------------
