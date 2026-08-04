@@ -135,6 +135,10 @@ inline int pos_y(int v) { return v % 4096; }
 // inside the rules pack. It goes through the SAME registration path the
 // shipped mode_ctf.lua uses (mode_core.register_mode over manifest rows,
 // including a non-matching row), and adds the mode_core probe level.
+// EDITING THIS LITERAL? The coverage gate pins its sha256 in
+// scripts/coverage/runtime_only_lua.txt (the "kTestRegistrationLua" line).
+// Any byte change here MUST update that digest in the same commit, or
+// Coverage CI fails with "recorded pack script is not repository content".
 inline constexpr const char* kTestRegistrationLua =
     "-- zz_modes_test -- test-only level bindings for og_unit_modes.\n"
     "local core = og.use(\"mode_core\")\n"
