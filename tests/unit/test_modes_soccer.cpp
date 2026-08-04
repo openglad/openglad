@@ -2,7 +2,8 @@
 // fx-ball.lua) behavior suite: every D7 rule as a sim case — init/
 // activation, ball spawn, melee/weapon impulses, fixed-point friction,
 // wall reflection, contact damage with the cap, last-toucher scoring with
-// the own-goal/untouched no-score arm, kickoff resets and the freeze,
+// the scoring self-goal arms (opponent credit, last-distinct-other credit,
+// forfeit) and the untouched-ball no-score arm, kickoff resets and freeze,
 // the B1 kickoff wipe-revive backstop and dead-ball reset,
 // score-limit and timeout wins, difficulty-submenu respawn honoring,
 // director roles, spawn caps, HUD/beacons, determinism and instruction
@@ -60,6 +61,7 @@ enum SoccerSlot : int {
     kSocSpawnCap = 35,  // +team byte
     kSocStallSince = 43,
     kSocBallSpin = 44,
+    kSocLastTouch2 = 45,
 };
 
 inline constexpr int kModeIdSoccer = 4;  // mode_core.MODE.SOCCER
@@ -88,6 +90,23 @@ bool has_notification(const og::sim::SimEventLog& log,
                       const std::string& needle)
 {
     return count_notifications(log, needle) > 0;
+}
+
+// The longest announcement the log carries. D16 caps an announcement row
+// at 25 characters, and the own-goal strings are the new worst case
+// ("OWN GOAL! YELLOW +1" = 19).
+std::size_t longest_notification(const og::sim::SimEventLog& log)
+{
+    std::size_t longest = 0;
+    for (const auto& ev : log.events())
+    {
+        if (ev.kind == og::sim::EventKind::Notification &&
+            ev.text.size() > longest)
+        {
+            longest = ev.text.size();
+        }
+    }
+    return longest;
 }
 
 bool has_score_change(const og::sim::SimEventLog& log, std::uint32_t team,
@@ -211,23 +230,10 @@ using ModesSoccer = ModesPackTest;
 
 namespace {
 
-// Standard two-team pitch on kSoccerLevelA: anchors + one parked
-// (ACT_CONTROL, undirected) living per team so no bot squads spawn.
-// Kickoff (320, 464); team 0 defends the left strip, team 1 the right.
-struct SoccerWorld : ModesCtfWorld
+// Ball + match accessors shared by the two pitch fixtures.
+struct SoccerPitch : ModesCtfWorld
 {
-    walker* red = nullptr;
-    walker* green = nullptr;
-
-    explicit SoccerWorld(int level_id = kSoccerLevelA) : ModesCtfWorld(level_id)
-    {
-        spawn_anchor(0, 96, 448);
-        spawn_anchor(0, 96, 480);
-        spawn_anchor(1, 528, 448);
-        spawn_anchor(1, 528, 480);
-        red = spawn_living(FAMILY_SOLDIER, 0, 96, 96);
-        green = spawn_living(FAMILY_SOLDIER, 1, 528, 96);
-    }
+    explicit SoccerPitch(int level_id) : ModesCtfWorld(level_id) {}
 
     bool soccer_active() const { return var(kSocModeId) == kModeIdSoccer; }
     walker* ball() { return world().find_by_id(
@@ -246,6 +252,61 @@ struct SoccerWorld : ModesCtfWorld
             b->setxy(static_cast<short>(cx - 6), static_cast<short>(cy - 6));
     }
 };
+
+// Standard two-team pitch on kSoccerLevelA: anchors + one parked
+// (ACT_CONTROL, undirected) living per team so no bot squads spawn.
+// Kickoff (320, 464); team 0 defends the left strip, team 1 the right.
+struct SoccerWorld : SoccerPitch
+{
+    walker* red = nullptr;
+    walker* green = nullptr;
+
+    explicit SoccerWorld(int level_id = kSoccerLevelA) : SoccerPitch(level_id)
+    {
+        spawn_anchor(0, 96, 448);
+        spawn_anchor(0, 96, 480);
+        spawn_anchor(1, 528, 448);
+        spawn_anchor(1, 528, 480);
+        red = spawn_living(FAMILY_SOLDIER, 0, 96, 96);
+        green = spawn_living(FAMILY_SOLDIER, 1, 528, 96);
+    }
+};
+
+// FOURSQUARE pitch on kSoccerLevelB: four anchor teams, one parked living
+// each. Kickoff (320, 480); the defended strips are team 0 top
+// (256..383, 16..47), 1 right (592..623, 256..383), 2 bottom
+// (256..383, 912..943), 3 left (16..47, 256..383).
+struct SoccerFourWorld : SoccerPitch
+{
+    walker* players[4] = {nullptr, nullptr, nullptr, nullptr};
+
+    SoccerFourWorld() : SoccerPitch(kSoccerLevelB)
+    {
+        for (int team = 0; team < 4; ++team)
+        {
+            const short x = static_cast<short>(96 + 64 * team);
+            spawn_anchor(team, x, 700);
+            players[team] = spawn_living(FAMILY_SOLDIER, team, x, 700);
+        }
+    }
+};
+
+// Spots the ball at (cx, cy), walks `w` onto it and runs one tick: the
+// walk-in kick stamps `w`'s team as the toucher. A 16x16 living placed
+// here has its center 8 px left of the ball center, inside kick_radius.
+void touch_ball(SoccerPitch& fx, walker* w, int cx, int cy)
+{
+    fx.set_ball(cx, cy, 0, 0);
+    w->setxy(static_cast<short>(cx - 16), static_cast<short>(cy - 8));
+    fx.tick(1);
+}
+
+// Parks a living in the top-left corner, clear of every goal rect and of
+// the ball, so it takes no further part.
+void park_away(walker* w)
+{
+    w->setxy(96, 96);
+}
 
 }  // namespace
 
@@ -745,34 +806,269 @@ TEST_F(ModesSoccer, goal_scores_for_the_last_toucher_and_resets)
         << "post-goal freeze armed";
 }
 
-TEST_F(ModesSoccer, own_goal_and_untouched_ball_score_nothing)
+// A self-goal SCORES (this supersedes D7's own-goal-no-score arm). With
+// two teams on the pitch the other side takes the point unconditionally:
+// there is only one opponent, so no touch history is needed to name it.
+TEST_F(ModesSoccer, own_goal_two_team_credits_the_other_side)
 {
-    // Own goal: the defender was the last toucher.
+    // Team 0 puts it through its own left-hand strip.
     {
         SoccerWorld fx;
         fx.tick(1);
         ASSERT_TRUE(fx.soccer_active());
         fx.thaw_kickoff();
-        fx.world().mode.vars[kSocLastTouch1] = 1;  // team 0 touched
-        fx.set_ball(52, 464, -4 * 256, 0);          // into team 0's own strip
+        fx.world().mode.vars[kSocLastTouch1] = 1;  // team 0 touched last
+        fx.set_ball(52, 464, -4 * 256, 0);         // into team 0's own strip
         fx.tick(2);
-        EXPECT_EQ(0, fx.team_var(kSocGoals, 0));
-        EXPECT_EQ(0, fx.team_var(kSocGoals, 1));
-        EXPECT_TRUE(has_notification(fx.events, "NO GOAL!"));
+
+        EXPECT_EQ(1, fx.team_var(kSocGoals, 1)) << "the opponent banks it";
+        EXPECT_EQ(0, fx.team_var(kSocGoals, 0))
+            << "the own-goal side scores nothing";
+        EXPECT_TRUE(has_score_change(fx.events, 1, 400));
+        EXPECT_TRUE(has_notification(fx.events, "OWN GOAL! GREEN +1"));
         EXPECT_EQ(320, fx.ball_cx()) << "ball still resets";
+        EXPECT_EQ(0, fx.var(kSocLastTouch1));
     }
-    // Untouched ball: nobody is credited.
+    // Mirror direction: team 1 into its own right-hand strip.
     {
         SoccerWorld fx;
         fx.tick(1);
         ASSERT_TRUE(fx.soccer_active());
         fx.thaw_kickoff();
-        fx.set_ball(52, 464, -4 * 256, 0);
-        fx.tick(2);
-        EXPECT_EQ(0, fx.team_var(kSocGoals, 0));
+        fx.world().mode.vars[kSocLastTouch1] = 2;  // team 1 touched last
+        fx.set_ball(600, 464, 0, 0);               // inside team 1's strip
+        fx.tick(1);
+
+        EXPECT_EQ(1, fx.team_var(kSocGoals, 0));
         EXPECT_EQ(0, fx.team_var(kSocGoals, 1));
-        EXPECT_TRUE(has_notification(fx.events, "NO GOAL!"));
+        EXPECT_TRUE(has_score_change(fx.events, 0, 400));
+        EXPECT_TRUE(has_notification(fx.events, "OWN GOAL! RED +1"));
     }
+}
+
+// Three or four teams: crediting "the other side" is ambiguous, so the
+// point goes to the last DISTINCT other toucher — the side that forced
+// the play. The touch history here is built by real walk-in kicks, so
+// this also pins stamp_toucher's demotion rule.
+TEST_F(ModesSoccer, own_goal_foursquare_credits_the_last_other_toucher)
+{
+    SoccerFourWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    ASSERT_EQ(4, fx.var(kSocTeamCount));
+    ASSERT_EQ(15, fx.var(kSocTeamMask));
+    fx.thaw_kickoff();
+
+    touch_ball(fx, fx.players[2], 320, 480);
+    EXPECT_EQ(3, fx.var(kSocLastTouch1)) << "team 2 plays it";
+    EXPECT_EQ(0, fx.var(kSocLastTouch2)) << "the first touch demotes nobody";
+    park_away(fx.players[2]);
+
+    touch_ball(fx, fx.players[0], 320, 480);
+    EXPECT_EQ(1, fx.var(kSocLastTouch1)) << "team 0 takes it off them";
+    EXPECT_EQ(3, fx.var(kSocLastTouch2)) << "the outgoing toucher is demoted";
+    park_away(fx.players[0]);
+
+    // Team 0 carries it into its own top strip.
+    fx.set_ball(320, 30, 0, 0);
+    fx.tick(1);
+
+    EXPECT_EQ(1, fx.team_var(kSocGoals, 2))
+        << "the last distinct other toucher scores";
+    EXPECT_EQ(0, fx.team_var(kSocGoals, 0));
+    EXPECT_EQ(0, fx.team_var(kSocGoals, 1));
+    EXPECT_EQ(0, fx.team_var(kSocGoals, 3));
+    EXPECT_TRUE(has_score_change(fx.events, 2, 400));
+    EXPECT_TRUE(has_notification(fx.events, "OWN GOAL! BLUE +1"));
+    EXPECT_EQ(320, fx.ball_cx()) << "kickoff reset";
+    EXPECT_EQ(480, fx.ball_cy());
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+// Nobody else ever touched it: with three opponents there is no defensible
+// beneficiary, so the own-goal team forfeits one of its own. Goals may go
+// negative; the HUD prints the integer and the win check keeps working.
+TEST_F(ModesSoccer, own_goal_foursquare_without_another_toucher_forfeits)
+{
+    SoccerFourWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    fx.thaw_kickoff();
+    const std::uint32_t score_before = fx.world().m_score[3];
+
+    touch_ball(fx, fx.players[3], 320, 480);
+    ASSERT_EQ(4, fx.var(kSocLastTouch1)) << "team 3 is the only toucher";
+    ASSERT_EQ(0, fx.var(kSocLastTouch2));
+    park_away(fx.players[3]);
+
+    // Into team 3's own left strip.
+    fx.set_ball(30, 320, 0, 0);
+    fx.tick(1);
+
+    EXPECT_EQ(-1, fx.team_var(kSocGoals, 3)) << "the forfeit goes negative";
+    EXPECT_EQ(0, fx.team_var(kSocGoals, 0)) << "no opponent is credited";
+    EXPECT_EQ(0, fx.team_var(kSocGoals, 1));
+    EXPECT_EQ(0, fx.team_var(kSocGoals, 2));
+    EXPECT_TRUE(has_notification(fx.events, "OWN GOAL! YELLOW -1"));
+    EXPECT_GE(25u, longest_notification(fx.events))
+        << "announcements stay inside the 25-char row budget";
+    // og.award_score takes an UNSIGNED delta, so the forfeit deliberately
+    // leaves the match score alone rather than wrapping it to ~4.29e9.
+    EXPECT_EQ(score_before, fx.world().m_score[3]);
+    EXPECT_FALSE(has_score_change(fx.events, 3, 400));
+    EXPECT_STREQ("YELLOW -1/3", fx.world().mode.hud[3].text.data());
+
+    // A negative row does not break the ordered win comparisons.
+    fx.world().mode.vars[kSocGoals + 1] = 3;
+    fx.tick(1);
+    EXPECT_TRUE(fx.world().mode.win_latched);
+    EXPECT_EQ(1, fx.world().mode.winner_team);
+}
+
+// The two rejection arms of the FOURSQUARE credit. A LAST_TOUCH2 naming
+// the own-goal team itself is reachable in play: an uncredited impulse
+// clears LAST_TOUCH1 between two touches by the same side, so the next
+// touch demotes nobody and both slots end up on that side. A LAST_TOUCH2
+// outside the active mask is the defensive case. Both forfeit.
+TEST_F(ModesSoccer, foursquare_credit_rejects_self_and_inactive_touchers)
+{
+    // LAST_TOUCH2 == the own-goal team.
+    {
+        SoccerFourWorld fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.soccer_active());
+        fx.thaw_kickoff();
+        fx.world().mode.vars[kSocLastTouch1] = 1;
+        fx.world().mode.vars[kSocLastTouch2] = 1;  // team 0 both times
+        fx.set_ball(320, 30, 0, 0);                // team 0's own top strip
+        fx.tick(1);
+
+        EXPECT_EQ(-1, fx.team_var(kSocGoals, 0)) << "no self-credit";
+        EXPECT_TRUE(has_notification(fx.events, "OWN GOAL! RED -1"));
+    }
+    // LAST_TOUCH2 naming a team outside the active mask.
+    {
+        SoccerFourWorld fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.soccer_active());
+        fx.thaw_kickoff();
+        fx.world().mode.vars[kSocTeamMask] = 7;    // teams 0-2 active
+        fx.world().mode.vars[kSocTeamCount] = 3;
+        fx.world().mode.vars[kSocLastTouch1] = 1;
+        fx.world().mode.vars[kSocLastTouch2] = 4;  // team 3, not playing
+        fx.set_ball(320, 30, 0, 0);
+        fx.tick(1);
+
+        EXPECT_EQ(-1, fx.team_var(kSocGoals, 0));
+        EXPECT_EQ(0, fx.team_var(kSocGoals, 3))
+            << "an inactive team is never credited";
+        EXPECT_TRUE(has_notification(fx.events, "OWN GOAL! RED -1"));
+    }
+}
+
+// Defensive arm: a two-team match whose mask somehow holds only the
+// scoring side has no opponent to credit, so the forfeit rule applies.
+TEST_F(ModesSoccer, own_goal_without_an_opponent_in_the_mask_forfeits)
+{
+    SoccerWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    fx.thaw_kickoff();
+    fx.world().mode.vars[kSocTeamMask] = 1;  // team 0 alone
+    fx.world().mode.vars[kSocLastTouch1] = 1;
+    fx.set_ball(30, 464, 0, 0);
+    fx.tick(1);
+
+    EXPECT_EQ(-1, fx.team_var(kSocGoals, 0));
+    EXPECT_TRUE(has_notification(fx.events, "OWN GOAL! RED -1"));
+}
+
+// A ball nobody was ever credited for still scores nothing. The uncredited
+// impulse is the shipped path for it: an orphan weapon (weap::act self-owns
+// a shot whose parent died, so the owner is no Living) moves the ball while
+// clearing LAST_TOUCH1 — and it must NOT erase the older touch history,
+// which on its own can never score either.
+TEST_F(ModesSoccer, untouched_drift_in_still_scores_nothing)
+{
+    SoccerWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    fx.thaw_kickoff();
+
+    touch_ball(fx, fx.green, 320, 464);
+    park_away(fx.green);
+    touch_ball(fx, fx.red, 320, 464);
+    ASSERT_EQ(1, fx.var(kSocLastTouch1));
+    ASSERT_EQ(2, fx.var(kSocLastTouch2));
+    park_away(fx.red);
+
+    fx.set_ball(70, 464, 0, 0);
+    walker* shot = fx.world().add_ob(Order::Weapon, FAMILY_KNIFE);
+    ASSERT_NE(nullptr, shot);
+    shot->setxy(67, 458);    // 6x6 knife: center (70, 461), L1 3 from the ball
+    shot->set_lastx(-8.0f);  // flying left, no living owner
+    shot->set_lasty(0.0f);
+    fx.tick(1);
+
+    EXPECT_EQ(0, fx.var(kSocLastTouch1)) << "an unowned shot credits nobody";
+    EXPECT_EQ(2, fx.var(kSocLastTouch2))
+        << "but it does not erase who forced the play";
+    EXPECT_LT(fx.var(kSocBallVx), 0) << "it still imparted an impulse";
+
+    shot->set_dead(1);
+    fx.set_ball(30, 464, -256, 0);  // drifting inside team 0's strip
+    fx.tick(1);
+
+    EXPECT_EQ(0, fx.team_var(kSocGoals, 0));
+    EXPECT_EQ(0, fx.team_var(kSocGoals, 1));
+    EXPECT_TRUE(has_notification(fx.events, "NO GOAL!"));
+    EXPECT_EQ(0, count_notifications(fx.events, "OWN GOAL!"))
+        << "a stale LAST_TOUCH2 alone never scores";
+    EXPECT_EQ(320, fx.ball_cx()) << "ball still resets";
+}
+
+// Kickoff immunity: the re-spot wipes the WHOLE touch history, so no
+// pre-reset toucher can convert into a self-goal credit afterwards.
+TEST_F(ModesSoccer, kickoff_reset_clears_the_whole_touch_history)
+{
+    SoccerWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    fx.thaw_kickoff();
+
+    touch_ball(fx, fx.green, 320, 464);
+    park_away(fx.green);
+    touch_ball(fx, fx.red, 320, 464);
+    ASSERT_EQ(1, fx.var(kSocLastTouch1)) << "team 0 touched last";
+    ASSERT_EQ(2, fx.var(kSocLastTouch2)) << "team 1 before that";
+    park_away(fx.red);
+
+    fx.set_ball(600, 464, 0, 0);  // team 0 scores in team 1's strip
+    fx.tick(1);
+
+    ASSERT_EQ(1, fx.team_var(kSocGoals, 0));
+    EXPECT_EQ(0, fx.var(kSocLastTouch1)) << "slot 19 clears at kickoff";
+    EXPECT_EQ(0, fx.var(kSocLastTouch2)) << "slot 45 clears with it";
+}
+
+// The self-goal point counts for the match, not just the scoreboard.
+TEST_F(ModesSoccer, a_self_goal_can_win_the_match)
+{
+    SoccerWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    fx.thaw_kickoff();
+    fx.world().mode.vars[kSocGoals + 1] = 2;   // team 1 on match point
+    fx.world().mode.vars[kSocLastTouch1] = 1;  // team 0 touched last
+    fx.set_ball(30, 464, 0, 0);                // into team 0's own strip
+    fx.tick(1);
+
+    EXPECT_EQ(3, fx.team_var(kSocGoals, 1));
+    EXPECT_TRUE(has_notification(fx.events, "OWN GOAL! GREEN +1"));
+    EXPECT_TRUE(fx.world().mode.win_latched);
+    EXPECT_EQ(1, fx.world().mode.winner_team);
+    EXPECT_TRUE(fx.world().game_ended);
+    EXPECT_TRUE(has_notification(fx.events, "GREEN TEAM WINS!"));
 }
 
 TEST_F(ModesSoccer, score_limit_win_latches_and_reasserts)

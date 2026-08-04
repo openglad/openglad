@@ -1,4 +1,4 @@
--- Soccer rules + AI director — N-team ball game over manifest goal rects (D7): fixed-point ball physics (kick/shot impulses, wall bounces, contact damage, rolling spin), last-toucher scoring, submenu-honoring respawns, chaser/goalie roles (cookbook: docs/lua-classpacks-design.md §3).
+-- Soccer rules + AI director — N-team ball game over manifest goal rects (D7): fixed-point ball physics (kick/shot impulses, wall bounces, contact damage, rolling spin), last-toucher scoring where a self-goal still puts a point on the board, submenu-honoring respawns, chaser/goalie roles (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C
@@ -31,6 +31,7 @@ local S = {
   SPAWN_CAP = 35, -- 35..42, +team byte 0-7, -1 = uncapped
   STALL_SINCE = 43, -- world tick the dead-ball clock started, 0 = running play
   BALL_SPIN = 44, -- rolling-spin phase, 0..spin_cycle-1 (see run_spin)
+  LAST_TOUCH2 = 45, -- last DISTINCT other score team + 1, 0 = none
 }
 
 local T = {
@@ -178,13 +179,15 @@ local function revive_wiped_teams()
 end
 
 -- Dead ball at the kickoff spot; impulses stay frozen for kickoff_freeze
--- ticks and the touch history clears (an untouched goal scores nothing).
--- Every kickoff also runs the wiped-team revive backstop.
+-- ticks and the WHOLE touch history clears (an untouched goal scores
+-- nothing, and no pre-reset toucher can be credited for a self-goal after
+-- the re-spot). Every kickoff also runs the wiped-team revive backstop.
 local function kickoff_reset(ball)
   local pos = og.mode_get(S.KICKOFF_POS)
   og.mode_set(S.BALL_VX, 0)
   og.mode_set(S.BALL_VY, 0)
   og.mode_set(S.LAST_TOUCH1, 0)
+  og.mode_set(S.LAST_TOUCH2, 0)
   og.mode_set(S.LAST_KICKER, 0)
   og.mode_set(S.KICKOFF_UNTIL, og.world_tick() + T.kickoff_freeze)
   og.mode_set(S.STALL_SINCE, 0)
@@ -209,15 +212,25 @@ local function set_ball_velocity(dx, dy, speed_px)
 end
 
 -- Touch bookkeeping: the ball wears the toucher's team color; only score
--- teams can be credited with a goal.
+-- teams can be credited with a goal. A touch by a DIFFERENT score team
+-- demotes the outgoing toucher into LAST_TOUCH2 — the side a self-goal
+-- credits in a 3-4 team match. An uncredited impulse (a weapon with no
+-- living owner) clears LAST_TOUCH1 only: an unowned shot does not erase
+-- whoever forced the play.
 local function stamp_toucher(ball, kicker_id, team)
   og.mode_set(S.LAST_KICKER, kicker_id)
-  if team < C.SCORE_TEAM_COUNT then
-    og.mode_set(S.LAST_TOUCH1, team + 1)
-    ball:set_team_num(team)
-  else
+  if team >= C.SCORE_TEAM_COUNT then
     og.mode_set(S.LAST_TOUCH1, 0)
+    return
   end
+  local previous = og.mode_get(S.LAST_TOUCH1)
+  if previous > 0 then
+    if previous - 1 ~= team then
+      og.mode_set(S.LAST_TOUCH2, previous)
+    end
+  end
+  og.mode_set(S.LAST_TOUCH1, team + 1)
+  ball:set_team_num(team)
 end
 
 -- Walk-in kick: the first living (oblist order) touching the ball kicks it
@@ -397,9 +410,49 @@ local function run_spin(ball)
   ball:set_frame(og.div(phase, T.spin_step))
 end
 
+-- The one other active team in a two-team match; -1 when the mask holds
+-- nobody else.
+local function other_active_team(mask, team)
+  for other = 0, C.SCORE_TEAM_COUNT - 1 do
+    if other ~= team then
+      if core.mask_has(mask, other) then
+        return other
+      end
+    end
+  end
+  return -1
+end
+
+-- Who a self-goal by `team` credits. Two active teams: the single
+-- opponent, unconditionally — with one other side on the pitch there is
+-- no attribution question to ask. Three or four: the last DISTINCT other
+-- toucher, the side that forced the play (a shot deflected in off a
+-- defender is its goal in any reading of soccer). -1 = nobody has a claim,
+-- which is the forfeit arm below.
+local function own_goal_beneficiary(mask, team)
+  if og.mode_get(S.TEAM_COUNT) == 2 then
+    return other_active_team(mask, team)
+  end
+  local other = og.mode_get(S.LAST_TOUCH2) - 1
+  if other < 0 then
+    return -1
+  end
+  if other == team then
+    return -1
+  end
+  if not core.mask_has(mask, other) then
+    return -1
+  end
+  return other
+end
+
 -- Goal: ball center inside team T's defended rect scores for the last
--- toucher unless it IS team T (own goal) or nobody touched — those reset
--- only (D7). Either way the ball returns to the kickoff spot.
+-- toucher. A self-goal (the last toucher IS team T) still puts a point on
+-- the board — this supersedes D7's own-goal-no-score arm: the beneficiary
+-- above takes it, or, when no other team ever touched the ball, team T
+-- forfeits one of its own. A ball nobody ever touched still scores
+-- nothing: with no attribution there is no beneficiary. Either way the
+-- ball returns to the kickoff spot.
 local function run_goal_check(ball)
   local mask = og.mode_get(S.TEAM_MASK)
   local cx, cy = ball_center()
@@ -413,12 +466,28 @@ local function run_goal_check(ball)
         if cy >= gy and cy < gy + core.pos_y(size) then
           local scorer1 = og.mode_get(S.LAST_TOUCH1)
           local scorer = scorer1 - 1
-          if scorer1 > 0 and scorer ~= team then
+          if scorer1 <= 0 then
+            core.announce("NO GOAL!", C.SOUND_YO)
+          elseif scorer ~= team then
             fset(S.GOALS, scorer, fget(S.GOALS, scorer) + 1)
             og.award_score(scorer, T.goal_score)
             core.announce(og.team_color_name(scorer) .. " TEAM GOAL!", C.SOUND_MONEY)
           else
-            core.announce("NO GOAL!", C.SOUND_YO)
+            local other = own_goal_beneficiary(mask, team)
+            if other >= 0 then
+              fset(S.GOALS, other, fget(S.GOALS, other) + 1)
+              og.award_score(other, T.goal_score)
+              core.announce("OWN GOAL! " .. og.team_color_name(other) .. " +1", C.SOUND_MONEY)
+            else
+              -- Forfeit. The goals var is the mode metric and takes the
+              -- -1; the match score does NOT, because og.award_score
+              -- takes an unsigned delta (bindings_entity.cpp casts to
+              -- uint32 onto GameWorld::m_score), so a negative credit
+              -- would wrap to ~4.29e9 and hand this team the timeout
+              -- tiebreak it just lost a goal for.
+              fset(S.GOALS, team, fget(S.GOALS, team) - 1)
+              core.announce("OWN GOAL! " .. og.team_color_name(team) .. " -1", C.SOUND_YO)
+            end
           end
           kickoff_reset(ball)
           return
