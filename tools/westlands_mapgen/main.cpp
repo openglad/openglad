@@ -1,6 +1,7 @@
 /* War of the Westlands campaign generator.
  *
- * Produces builtin/org.openglad.westlands.glad: a 26-level story campaign
+ * Produces campaigns/org.openglad.westlands/ (the source tree the build
+ * composes into builtin/org.openglad.westlands.glad): a 26-level story campaign
  * (docs at scratch design + docs/z-axis-design.md) built act by act — the
  * flight east, the dark road, the war in the west, the burden's road, and
  * the convergence at the Mountain of Fire. In every battle the player's
@@ -15,7 +16,7 @@
  * validation against the registered id set.
  *
  * Usage: westlands_mapgen [output.glad]
- *        (default: builtin/org.openglad.westlands.glad)
+ *        (default: campaigns/org.openglad.westlands)
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *

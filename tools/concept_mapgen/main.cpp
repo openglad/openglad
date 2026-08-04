@@ -1,12 +1,14 @@
 /* Concept Playground campaign generator.
  *
- * Produces builtin/org.openglad.concept.glad: five small multi-floor scenarios
+ * Produces campaigns/org.openglad.concept/ (the source tree the build
+ * composes into builtin/org.openglad.concept.glad): five small multi-floor scenarios
  * that show off the Z-axis feature (levels 600-604 — stacked floors joined by
  * Z-stairs, "air" holes you fall through, see-through "glass" floors, and
  * projectile arcs) plus one scripted boss arena, "The Ninefold Court" (605),
  * that shows off Lua level scripting: its fight logic ships INSIDE the .glad
  * as the embedded pack packs/org.openglad.concept.showcase/scripts/court.lua
- * (showcase_pack.cpp). The six epic multifloor war stories that once shipped
+ * (single-sourced at tools/concept_mapgen/pack/, composed into the archive
+ * by the build). The six epic multifloor war stories that once shipped
  * here as levels 605-610 moved to the "War of the Westlands" story campaign
  * (tools/westlands_mapgen, builtin/org.openglad.westlands.glad). SDL-free;
  * reuses the headless platform glue, mirrors tools/ctf_mapgen. Builds the v10
@@ -14,7 +16,7 @@
  * package, mounts it, and self-checks every level by reloading it (the court
  * additionally runs one sim tick to prove the embedded script dispatches).
  *
- * Usage: concept_mapgen [output.glad]   (default: builtin/org.openglad.concept.glad)
+ * Usage: concept_mapgen [output-dir]   (default: campaigns/org.openglad.concept)
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *

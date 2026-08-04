@@ -1,6 +1,7 @@
 /* The Endless Tower campaign generator.
  *
- * Produces builtin/org.openglad.tower.glad: the Gate-ONLY package for the
+ * Produces campaigns/org.openglad.tower/ (the source tree the build
+ * composes into builtin/org.openglad.tower.glad): the Gate-ONLY package for the
  * Tower Climb mode (tower-triple spec §5.2, D7). Contents EXACTLY:
  * campaign.yaml (`mode: tower`, first_level 700), icon.png, and the
  * authored antechamber scen700 "The Gate" + its grid PNG. The package must
@@ -13,7 +14,7 @@
  * SDL-free; mirrors tools/concept_mapgen (headless platform glue, zips a
  * campaign package, mounts it, self-checks the level by reloading it).
  *
- * Usage: tower_mapgen [output.glad]   (default: builtin/org.openglad.tower.glad)
+ * Usage: tower_mapgen [output-dir]   (default: campaigns/org.openglad.tower)
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *

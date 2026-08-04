@@ -1,6 +1,7 @@
 /* The Long Season campaign generator.
  *
- * Produces builtin/org.openglad.longseason.glad: a 19-level story campaign
+ * Produces campaigns/org.openglad.longseason/ (the source tree the build
+ * composes into builtin/org.openglad.longseason.glad): a 19-level story campaign
  * built season by season — flood dikes in spring, two armies in summer,
  * mines in autumn, snow passes in winter, and the Reckoning at the foundry
  * gate. Every briefing is an entry in the Brass Kettle Company's ledger.
@@ -14,7 +15,7 @@
  * exit-destination validation against the registered id set.
  *
  * Usage: longseason_mapgen [output.glad]
- *        (default: builtin/org.openglad.longseason.glad)
+ *        (default: campaigns/org.openglad.longseason)
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *

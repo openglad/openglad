@@ -28,11 +28,11 @@
  * A* paths ==> identical sim, zero new RNG (probes are owner-less, so even
  * the arrow-wall gamble arm consumes nothing).
  *
- * Usage: grid_migrate <campaign_id> [output.glad]
- *        (default output: builtin/<campaign_id>.glad in the cwd)
- * Driven by scripts/migrate_stock_campaigns.sh for the three hand-authored
- * stock packages (gladiator, tryxian, arenas). Generated packages (ctf,
- * concept, westlands) regenerate from their mapgen tools instead.
+ * Usage: grid_migrate <campaign_id> [output-dir]
+ *        (default output: campaigns/<campaign_id> in the cwd)
+ * Driven by scripts/migrate_stock_campaigns.sh for the two hand-authored
+ * stock campaigns (gladiator, tryxian). Generated campaigns regenerate
+ * from their mapgen tools instead.
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *

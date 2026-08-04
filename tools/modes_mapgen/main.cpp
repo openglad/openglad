@@ -1,6 +1,7 @@
 /* Multiplayer Game Modes campaign generator.
  *
- * Produces builtin/org.openglad.modes.glad: the 28-scenario five-mode
+ * Produces campaigns/org.openglad.modes/ (the source tree the build
+ * composes into builtin/org.openglad.modes.glad): the 28-scenario five-mode
  * campaign (TDM 300-305 absorbing the arenas grids, CTF 500-509 keeping
  * the shipped CTF maps, Onslaught 800-803, Soccer 820-823, Mutant
  * 840-843), every level typed SCEN_TYPE_SCRIPTED — the mode rules live in
@@ -8,9 +9,9 @@
  * (yaml + icon + pack tree + 28 built levels), regenerates the committed
  * level manifest (pack/lib/mode_levels.lua) from the same tables that
  * build the maps, zips, remounts, and hard-fails on any self-check
- * violation before copying into builtin/.
+ * violation before exporting the campaign tree.
  *
- * Usage: modes_mapgen [output.glad]  (default: builtin/org.openglad.modes.glad)
+ * Usage: modes_mapgen [output-dir]  (default: campaigns/org.openglad.modes)
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
