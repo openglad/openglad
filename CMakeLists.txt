@@ -5,7 +5,7 @@ project(OpenGlad VERSION 1.0 LANGUAGES C CXX)
 #
 # `cmake -S . -B .` makes the build tree the WORKING tree, and from there any
 # target that owns its output directory owns tracked sources instead. That is
-# not hypothetical here: stage_runtime_assets MIRRORS builtin/ cfg/ pix/
+# not hypothetical here: stage_runtime_assets MIRRORS cfg/ pix/
 # sound/ packs/ into the build tree, and mirroring deletes the destination
 # before it copies — in-source that reads `rm -rf <srcdir>/packs` followed by
 # a copy of packs/ onto itself, i.e. unrecoverable loss of committed assets
@@ -22,7 +22,7 @@ if(OG_SOURCE_DIR_REAL STREQUAL OG_BINARY_DIR_REAL)
         "directory (${OG_SOURCE_DIR_REAL}).\n"
         "Targets here mirror runtime asset directories into the build tree, "
         "which deletes the destination first — in-source that would delete "
-        "the repository's own builtin/, cfg/, pix/, sound/ and packs/.\n"
+        "the repository's own cfg/, pix/, sound/ and packs/.\n"
         "Build out of tree instead, e.g.:\n"
         "    cmake --preset ci-test && cmake --build --preset ci-test\n"
         "Then remove the CMakeCache.txt and CMakeFiles/ this attempt left in "
@@ -895,6 +895,87 @@ else()
 endif()
 
 # --------------------------------------------------------------------------
+# Built-in campaign archives (.glad): deterministic build outputs
+# --------------------------------------------------------------------------
+# The seven shipped campaigns are committed as SOURCE TREES under
+# campaigns/<id>/ (campaign.yaml, scen/, pix/, ...). The .glad zip the game
+# mounts is composed here, at build time, by scripts/make_glad.py — a
+# deterministic writer (stored members, bytewise-sorted paths, fixed
+# timestamps), so two builds of the same tree produce byte-identical
+# archives and every campaign change reviews as a plain file diff.
+#
+# Pack-bearing campaigns keep their pack Lua single-sourced under
+# tools/<tool>/pack/; the recipe maps that tree under packs/<pack-id>/ in
+# the archive instead of duplicating it in campaigns/.
+#
+# Consumers: stage_runtime_assets hangs off og_builtin_campaigns (native),
+# the emscripten `play` target preloads ${CMAKE_BINARY_DIR}/builtin, and
+# the asset install rule packages the same directory.
+if(NOT Python3_Interpreter_FOUND)
+    message(FATAL_ERROR
+        "OpenGlad needs a Python 3 interpreter at build time: the built-in "
+        "campaign archives (builtin/*.glad) are composed from campaigns/ by "
+        "scripts/make_glad.py. Install python3 and reconfigure.")
+endif()
+
+set(OG_BUILTIN_CAMPAIGN_IDS
+    org.openglad.concept
+    org.openglad.gladiator
+    org.openglad.longseason
+    org.openglad.modes
+    org.openglad.tower
+    org.openglad.tryxian
+    org.openglad.westlands
+)
+# <id> -> extra composition root, spelled as make_glad.py's DIR@ARCPREFIX.
+set(OG_CAMPAIGN_EXTRA_ROOT_org.openglad.concept
+    "${CMAKE_SOURCE_DIR}/tools/concept_mapgen/pack@packs/org.openglad.concept.showcase")
+set(OG_CAMPAIGN_EXTRA_ROOT_org.openglad.modes
+    "${CMAKE_SOURCE_DIR}/tools/modes_mapgen/pack@packs/org.openglad.modes.core")
+
+# Stamp files decouple ninja's up-to-date tracking from the archive mtime:
+# make_glad.py leaves a byte-identical archive untouched, so an edit that
+# does not change composed bytes never re-triggers the consumers that
+# depend on the archive file (the emscripten preload link, packaging).
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/campaign_stamps")
+set(OG_BUILTIN_CAMPAIGN_STAMPS "")
+set(OG_BUILTIN_CAMPAIGN_ARCHIVES "")
+foreach(og_campaign IN LISTS OG_BUILTIN_CAMPAIGN_IDS)
+    set(og_campaign_glad "${CMAKE_BINARY_DIR}/builtin/${og_campaign}.glad")
+    set(og_campaign_stamp
+        "${CMAKE_BINARY_DIR}/campaign_stamps/${og_campaign}.stamp")
+    set(og_campaign_roots --root "${CMAKE_SOURCE_DIR}/campaigns/${og_campaign}")
+    set(og_campaign_dep_dirs "${CMAKE_SOURCE_DIR}/campaigns/${og_campaign}")
+    if(DEFINED OG_CAMPAIGN_EXTRA_ROOT_${og_campaign})
+        list(APPEND og_campaign_roots
+            --root "${OG_CAMPAIGN_EXTRA_ROOT_${og_campaign}}")
+        string(REGEX REPLACE "@.*$" "" og_campaign_extra_dir
+            "${OG_CAMPAIGN_EXTRA_ROOT_${og_campaign}}")
+        list(APPEND og_campaign_dep_dirs "${og_campaign_extra_dir}")
+    endif()
+    set(og_campaign_inputs "")
+    foreach(og_campaign_dep_dir IN LISTS og_campaign_dep_dirs)
+        file(GLOB_RECURSE og_campaign_dir_files CONFIGURE_DEPENDS
+            "${og_campaign_dep_dir}/*")
+        list(APPEND og_campaign_inputs ${og_campaign_dir_files})
+    endforeach()
+    add_custom_command(
+        OUTPUT "${og_campaign_stamp}"
+        BYPRODUCTS "${og_campaign_glad}"
+        COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/scripts/make_glad.py"
+                "${og_campaign_glad}" ${og_campaign_roots}
+        COMMAND ${CMAKE_COMMAND} -E touch "${og_campaign_stamp}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/scripts/make_glad.py"
+                ${og_campaign_inputs}
+        COMMENT "Composing builtin/${og_campaign}.glad from campaign sources"
+        VERBATIM
+    )
+    list(APPEND OG_BUILTIN_CAMPAIGN_STAMPS "${og_campaign_stamp}")
+    list(APPEND OG_BUILTIN_CAMPAIGN_ARCHIVES "${og_campaign_glad}")
+endforeach()
+add_custom_target(og_builtin_campaigns DEPENDS ${OG_BUILTIN_CAMPAIGN_STAMPS})
+
+# --------------------------------------------------------------------------
 # External dependency targets
 # --------------------------------------------------------------------------
 
@@ -1488,7 +1569,10 @@ if(NOT EMSCRIPTEN)
     # in-source-build guard at the top of this file already refuses the way
     # that happens in practice; this is the belt that holds if the guard is
     # ever bypassed or a staged path is otherwise aimed at its own source.
-    set(OG_RUNTIME_ASSET_DIRS builtin cfg pix sound packs)
+    # builtin/ is NOT in this list: the campaign archives are build outputs
+    # composed into ${CMAKE_BINARY_DIR}/builtin by og_builtin_campaigns
+    # (see "Built-in campaign archives" above), not repository files.
+    set(OG_RUNTIME_ASSET_DIRS cfg pix sound packs)
     set(OG_STAGE_ASSET_COMMANDS "")
     foreach(og_asset_dir IN LISTS OG_RUNTIME_ASSET_DIRS)
         if("${OG_SOURCE_DIR_REAL}/${og_asset_dir}" STREQUAL
@@ -1510,6 +1594,9 @@ if(NOT EMSCRIPTEN)
         COMMENT "Staging runtime asset directories"
         VERBATIM
     )
+    # Everything that runs next to staged assets also needs the built-in
+    # campaign archives in ${CMAKE_BINARY_DIR}/builtin.
+    add_dependencies(stage_runtime_assets og_builtin_campaigns)
 
     # --- openglad (main game) ---
     add_executable(openglad ${SRC_DIR}/platform/sdl/glad.cpp)
@@ -1656,7 +1743,8 @@ if(NOT EMSCRIPTEN)
     endif()
 
     # --- concept_mapgen (Z-axis "Concept Playground" campaign generator) ---
-    # SDL-free authoring tool that produces builtin/org.openglad.concept.glad.
+    # SDL-free authoring tool that writes campaigns/org.openglad.concept/
+    # (the archive is composed from that tree by og_builtin_campaigns).
     # Not part of the default build; run via scripts/generate_concept_campaign.sh.
     add_executable(concept_mapgen EXCLUDE_FROM_ALL
         ${CMAKE_SOURCE_DIR}/tools/concept_mapgen/main.cpp
@@ -1680,8 +1768,10 @@ if(NOT EMSCRIPTEN)
     add_runtime_assets_dependency(concept_mapgen)
 
     # --- modes_mapgen ("Multiplayer Game Modes" campaign generator) ---
-    # SDL-free authoring tool that produces builtin/org.openglad.modes.glad
-    # (the five-mode campaign absorbing arenas + ctf) and regenerates the
+    # SDL-free authoring tool that writes campaigns/org.openglad.modes/
+    # (the five-mode campaign absorbing arenas + ctf; the archive is composed
+    # from that tree plus tools/modes_mapgen/pack/ by og_builtin_campaigns)
+    # and regenerates the
     # committed level manifest tools/modes_mapgen/pack/lib/mode_levels.lua.
     # Not part of the default build; run via scripts/generate_modes_campaign.sh.
     add_executable(modes_mapgen EXCLUDE_FROM_ALL
@@ -1713,7 +1803,7 @@ if(NOT EMSCRIPTEN)
     add_runtime_assets_dependency(modes_mapgen)
 
     # --- westlands_mapgen ("War of the Westlands" campaign generator) ---
-    # SDL-free authoring tool that produces builtin/org.openglad.westlands.glad,
+    # SDL-free authoring tool that writes campaigns/org.openglad.westlands/,
     # the 26-level story campaign built act by act (one source file per act).
     # Not part of the default build; run via scripts/generate_westlands_campaign.sh.
     add_executable(westlands_mapgen EXCLUDE_FROM_ALL
@@ -1742,7 +1832,7 @@ if(NOT EMSCRIPTEN)
     add_runtime_assets_dependency(westlands_mapgen)
 
     # --- longseason_mapgen ("The Long Season" campaign generator) ---
-    # SDL-free authoring tool that produces builtin/org.openglad.longseason.glad,
+    # SDL-free authoring tool that writes campaigns/org.openglad.longseason/,
     # the 19-level Brass Kettle Company story campaign built season by season
     # (one source file per season). Not part of the default build; run via
     # scripts/generate_longseason_campaign.sh.
@@ -1772,7 +1862,7 @@ if(NOT EMSCRIPTEN)
     add_runtime_assets_dependency(longseason_mapgen)
 
     # --- tower_mapgen ("The Endless Tower" Gate-only package generator) ---
-    # SDL-free authoring tool that produces builtin/org.openglad.tower.glad:
+    # SDL-free authoring tool that writes campaigns/org.openglad.tower/:
     # campaign.yaml (`mode: tower`) + icon + the authored Gate (scen700)
     # ONLY — generated floors are written to the user path at run time and
     # must never ship in the package (tower-triple spec D7). Not part of the
@@ -1798,7 +1888,8 @@ if(NOT EMSCRIPTEN)
     add_runtime_assets_dependency(tower_mapgen)
 
     # --- grid_migrate (BASE + DECOR migration for hand-authored packages) ---
-    # SDL-free tool that rewrites a stock .glad so legacy combined tiles
+    # SDL-free tool that rewrites a stock campaign (campaigns/<id>/ source
+    # tree) so legacy combined tiles
     # (torches/brazier/boulders/rubble) become base ground + a decor plane
     # (.fss v11), with an in-memory old-vs-new equivalence proof (passability
     # matrix, concealment, damage, door genre, entity streams, footing) that
@@ -2052,7 +2143,10 @@ if(NOT EMSCRIPTEN)
                 ${CMAKE_SOURCE_DIR}/cfg
                 ${CMAKE_SOURCE_DIR}/pix
                 ${CMAKE_SOURCE_DIR}/sound
-                ${CMAKE_SOURCE_DIR}/builtin
+                # The campaign archives are BUILD outputs (composed from
+                # campaigns/ by og_builtin_campaigns), so they install from
+                # the build tree.
+                ${CMAKE_BINARY_DIR}/builtin
             DESTINATION ${CMAKE_INSTALL_DATADIR}/openglad
         )
     endif()
@@ -3799,13 +3893,18 @@ endif()
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/cfg@/cfg"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/pix@/pix"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/sound@/sound"
-        "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/builtin@/builtin"
+        # Build output, not a repository dir: composed by og_builtin_campaigns.
+        "SHELL:--preload-file ${CMAKE_BINARY_DIR}/builtin@/builtin"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/packs@/packs"
     )
 
+    # The preload step packs ${CMAKE_BINARY_DIR}/builtin at link time, so the
+    # archives must exist first, and a changed archive must relink.
+    add_dependencies(play og_builtin_campaigns)
+    list(JOIN OG_BUILTIN_CAMPAIGN_ARCHIVES ";" OG_PLAY_CAMPAIGN_LINK_DEPENDS)
     set_target_properties(play PROPERTIES
         LINK_DEPENDS
-            "${CMAKE_SOURCE_DIR}/web/shell.html;${CMAKE_SOURCE_DIR}/web/manifest.webmanifest;${CMAKE_SOURCE_DIR}/web/icon.svg;${CMAKE_SOURCE_DIR}/web/icon-192.png;${CMAKE_SOURCE_DIR}/web/icon-512.png;${CMAKE_SOURCE_DIR}/web/apple-touch-icon.png"
+            "${CMAKE_SOURCE_DIR}/web/shell.html;${CMAKE_SOURCE_DIR}/web/manifest.webmanifest;${CMAKE_SOURCE_DIR}/web/icon.svg;${CMAKE_SOURCE_DIR}/web/icon-192.png;${CMAKE_SOURCE_DIR}/web/icon-512.png;${CMAKE_SOURCE_DIR}/web/apple-touch-icon.png;${OG_PLAY_CAMPAIGN_LINK_DEPENDS}"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/dist"
         SUFFIX ".html"
     )
