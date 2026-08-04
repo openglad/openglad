@@ -308,7 +308,9 @@ std::vector<ExpectedLevel> tdm_expectations()
     gates.doors = 15;
     gates.spawn_caps = {{5, 4}, {6, 4}};
     gates.time_limit = 7200;
-    gates.score_limit = 20;
+    // 20 timed out 5/6 sweep runs (20-42 total frags in 10:00): the doors/
+    // keys identity caps the frag pace, so the score limit meets it (B3).
+    gates.score_limit = 12;
     gates.a_star_waived = true; // arenas heritage: always ran past the limit
     gates.decor_cells = 34;
     gates.briefing = {
@@ -335,7 +337,10 @@ std::vector<ExpectedLevel> tdm_expectations()
     castle.treasures = 112; // 100 spice + the 12 kept teleporter pads
     castle.spawn_caps = {{7, 8}};
     castle.time_limit = 7200;
-    castle.score_limit = 20;
+    // 20 timed out 6/6 sweep runs (6-14 total frags in 10:00): the pad-
+    // scatter identity makes ~1 frag/min the map's pace, so the score
+    // limit meets it (B3).
+    castle.score_limit = 10;
     castle.decor_cells = 16;
     // THE CASTLE is the teleporter-ambush map: the four team quadrants and
     // the central towers are pad-served by design (twelve kept teleporters),
