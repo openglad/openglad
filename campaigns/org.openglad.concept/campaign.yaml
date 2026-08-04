@@ -1,0 +1,15 @@
+format_version:  1
+title:           Concept Playground
+version:         1
+first_level:     600
+suggested_power: 0
+authors:         OpenGlad
+contributors:    
+
+description:     |
+    A sampler of the Z-axis: stacked
+    floors and stairs, air holes you
+    fall through, see-through glass
+    floors, arcing projectiles — and
+    a Lua-scripted boss court whose
+    warded Magistrate ends the tour.

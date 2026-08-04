@@ -1,0 +1,15 @@
+format_version:  1
+title:           The Endless Tower
+version:         1
+first_level:     700
+suggested_power: 1
+mode:            tower
+authors:         OpenGlad
+contributors:    
+
+description:     |
+    An endless, seeded climb. Every
+    floor is built when you reach
+    it; every run ends. Gold and
+    veterans persist between runs —
+    how high can your crew climb?
