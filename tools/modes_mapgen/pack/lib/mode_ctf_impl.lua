@@ -12,8 +12,11 @@ local C = og.C
 local core = og.use("mode_core")
 local ai = og.use("mode_ai")
 local strip = og.use("mode_strip")
+local levels = og.use("mode_levels")
+local items = og.use("mode_items")
 
--- Mode-private slot map (8-61; header 0-7 is mode_core.SLOT).
+-- Mode-private slot map (8-63; header 0-7 is mode_core.SLOT). The item
+-- slots take the last two frees: CTF's var budget is now FULL.
 -- Flag state is DERIVED, exactly the C++ enum: Carried while a carrier id
 -- is banked, Dropped while the return countdown runs, else AtHome.
 local S = {
@@ -35,6 +38,8 @@ local S = {
   CP_PROG_TEAM1 = 50, -- 50..53, contending team + 1, 0 = none
   CP_PULSE_AT = 54, -- 54..57, absolute world tick of the next pulse
   CP_POS = 58, -- 58..61, packed (x, y)
+  ITEM_CURSOR = 62, -- mode_items pad rotation cursor
+  ITEM_LAST = 63, -- mode_items last-spawn tick (seeded at init)
 }
 
 -- Tuning. Values are LAW (shipped C++ behavior, ctf_state.h).
@@ -52,6 +57,10 @@ local T = {
   capture_limit = 3,
   ai_cadence = 15,
   defend_radius = 96,
+  -- Respawning pickups (lib/mode_items; NOT ctf_state.h law): fallback
+  -- interval when the manifest row carries none — 25 s sustains both
+  -- offense and defense over the 20-min cap.
+  item_interval = 300,
 }
 
 local BOT_SQUAD = { "core:soldier", "core:archer", "core:elf", "core:mage", "core:thief" }
@@ -878,6 +887,7 @@ local function on_mode_init(level)
   end
 
   og.set_mode_name("CTF")
+  og.mode_set(S.ITEM_LAST, og.world_tick())
   og.mode_set(core.SLOT.PHASE, 1)
   -- The activation latch (ctf.active): written LAST, so the family hooks
   -- observe a fully initialized match or nothing.
@@ -908,6 +918,7 @@ local function on_mode_tick(level, tick)
   if og.mod(og.world_tick(), T.ai_cadence) == 0 then
     run_director(livings)
   end
+  items.run(levels.levels[level], S.ITEM_CURSOR, S.ITEM_LAST, T.item_interval)
   run_win_check(tick)
   update_hud()
 end

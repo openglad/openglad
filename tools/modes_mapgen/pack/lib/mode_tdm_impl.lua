@@ -13,6 +13,7 @@ local caps = og.use("mode_caps")
 local match = og.use("mode_match")
 local levels = og.use("mode_levels")
 local strip = og.use("mode_strip")
+local items = og.use("mode_items")
 
 -- Mode-private slot map (header 0-7 is mode_core.SLOT).
 local S = {
@@ -22,6 +23,8 @@ local S = {
   RESPAWN_TICKS = 11,
   ANCHOR_CURSOR = 12,
   KILLS = 13, -- 13..16, +team (teamkills decrement; may go negative)
+  ITEM_CURSOR = 17, -- mode_items pad rotation cursor
+  ITEM_LAST = 18, -- mode_items last-spawn tick (seeded at init)
 }
 
 -- Tuning (manifest score_limit/time_limit override the defaults; the
@@ -37,6 +40,9 @@ local T = {
   -- the authored value is always recoverable from the entity itself (R6:
   -- no Lua state between ticks).
   gen_pause_offset = 30000,
+  -- Respawning pickups (lib/mode_items): fallback interval when the
+  -- manifest row carries none — 25 s suits the 10-min attrition matches.
+  item_interval = 300,
   bot_squad = { "core:soldier", "core:archer", "core:elf", "core:mage", "core:thief" },
 }
 
@@ -112,6 +118,7 @@ local function on_mode_init(level)
   end
 
   og.set_mode_name("TDM")
+  og.mode_set(S.ITEM_LAST, og.world_tick())
   og.mode_set(core.SLOT.PHASE, 1)
   -- The activation latch: MODE_ID written LAST.
   og.mode_set(core.SLOT.MODE_ID, core.MODE.TDM)
@@ -390,6 +397,7 @@ local function on_mode_tick(level, tick)
       end
     end
   end
+  items.run(levels.levels[level], S.ITEM_CURSOR, S.ITEM_LAST, T.item_interval)
   run_win_check(mask, tick)
   update_hud(mask)
 end

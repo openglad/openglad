@@ -25,6 +25,7 @@ local ai = og.use("mode_ai")
 local match = og.use("mode_match")
 local levels = og.use("mode_levels")
 local strip = og.use("mode_strip")
+local items = og.use("mode_items")
 
 -- Mode-private slot map (header 0-7 is mode_core.SLOT; header PHASE is
 -- the phase machine: 1 FFA, 2 MUTANT).
@@ -38,6 +39,8 @@ local S = {
   MUTANT_TEAM1 = 14, -- competitor team + 1; 0 = none
   MUTANT_BASE_DAMAGE = 15, -- pre-buff damage, x256 fixed point (D16)
   SCORE = 16, -- 16..19, +team
+  ITEM_CURSOR = 20, -- mode_items pad rotation cursor
+  ITEM_LAST = 21, -- mode_items last-spawn tick (seeded at init)
 }
 
 local PHASE_FFA = 1
@@ -59,6 +62,10 @@ local T = {
   decay_hp = 1.0,
   kill_heal = 15,
   teleport_range = 160, -- px; consumed by the pack teleport overrides
+  -- Respawning pickups (lib/mode_items): fallback interval when the
+  -- manifest row carries none — 15 s, because the HP-decay economy
+  -- starves without a food trickle (the user-requested mode).
+  item_interval = 180,
   ai_cadence = 15,
   cull_radius = 120,
   -- The mutant mark, visible to observers without a mode-var read
@@ -557,6 +564,7 @@ local function on_mode_init(level)
   end
 
   og.set_mode_name("MUTANT")
+  og.mode_set(S.ITEM_LAST, og.world_tick())
   og.mode_set(core.SLOT.PHASE, PHASE_FFA)
   -- The activation latch: MODE_ID written LAST.
   og.mode_set(core.SLOT.MODE_ID, core.MODE.MUTANT)
@@ -586,6 +594,7 @@ local function on_mode_tick(level, tick)
     end
     run_director(livings, mask)
   end
+  items.run(levels.levels[level], S.ITEM_CURSOR, S.ITEM_LAST, T.item_interval)
   run_win_check(mask, tick)
   update_hud(mask)
 end
