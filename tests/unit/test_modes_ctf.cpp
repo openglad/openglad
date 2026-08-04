@@ -2509,3 +2509,36 @@ TEST(ModesRealCampaign, shipped_scen500_runs_the_lua_ctf_rules)
         (void)mount_campaign_package_with_error(previous);
     }
 }
+
+// ===========================================================================
+// Client mirror replication
+// ===========================================================================
+
+// Companion to the soccer case. Soccer desynced because its Lua-spawned ball
+// carries a class-pack family byte (>= NUM_FAMILIES) that apply_snapshot used
+// to clamp to 0. This mode spawns no pack-family entity, so it was never hit
+// -- pin that, so a future mode entity that DOES reach for one fails here
+// instead of in a player's match.
+
+TEST_F(ModesCtf, match_replicates_to_a_client_mirror_without_hash_strikes)
+{
+    ModesCtfWorld fx;
+    fx.spawn_flag(flag_family_, 0, 96, 96);
+    fx.spawn_flag(flag_family_, 1, 544, 800);
+    fx.spawn_anchor(0, 128, 128);
+    fx.spawn_anchor(1, 512, 832);
+    fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
+    fx.spawn_living(FAMILY_SOLDIER, 1, 400, 700);
+    ModeMirror mirror(kCtfLevelA);
+
+    const MirrorReplication replication = replicate_to_mirror(fx, mirror, 120);
+    EXPECT_EQ(0, replication.strikes)
+        << "the mirror first desynced at tick " << replication.first_strike_tick;
+    ASSERT_TRUE(fx.ctf_active());
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+    for (int slot = 0; slot < og::sim::kModeVarCount; ++slot)
+    {
+        EXPECT_EQ(fx.world().mode.vars[slot], mirror.world().mode.vars[slot])
+            << "mode var slot " << slot;
+    }
+}

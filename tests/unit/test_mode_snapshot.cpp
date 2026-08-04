@@ -443,6 +443,50 @@ TEST(ModeSnapshot, delta_payload_carries_mode_changes_onto_baseline)
     expect_snapshot_matches_world(baseline, world);
 }
 
+// A queued respawn names the family to spawn, and a class pack's
+// `wire_id: auto` families are numbered from NUM_FAMILIES upward
+// (packs.cpp AutoWireIds). The deserializer's family clamp took NUM_FAMILIES
+// — the CORE span — as its bound, so a queued pack-family respawn came back
+// as family 0 on every peer: the wrong class would spawn, and the client's
+// re-capture disagreed with the authority on that byte for as long as the
+// entry sat in the queue, striking the per-tick hash check. The registries'
+// real capacity is NUM_FAMILY_SLOTS, which the whole byte range fits inside.
+TEST(ModeSnapshot, respawn_queue_keeps_pack_family_ids_across_the_wire)
+{
+    constexpr std::uint8_t kPackFamily =
+        static_cast<std::uint8_t>(NUM_FAMILIES + 5);
+    static_assert(kPackFamily < NUM_FAMILY_SLOTS,
+                  "the probe family must sit inside the registry capacity");
+
+    ModeWorld source;
+    source.activate_mode();
+    og::sim::RespawnEntry entry;
+    entry.kind = 1;  // spawn from family/level
+    entry.team = 1;
+    entry.family = kPackFamily;
+    entry.level = 3;
+    entry.ticks_left = 42;
+    entry.x = 128;
+    entry.y = 160;
+    source.world().respawn.respawn_queue.push_back(entry);
+
+    const og::sim::WorldSnapshot snapshot =
+        og::sim::capture_keyframe_snapshot(source.world());
+    ASSERT_EQ(1u, snapshot.respawn.respawn_queue.size());
+    EXPECT_EQ(kPackFamily, snapshot.respawn.respawn_queue[0].family);
+
+    const og::sim::WorldSnapshot decoded =
+        og::sim::deserialize_snapshot(og::sim::serialize_snapshot(snapshot));
+    ASSERT_EQ(1u, decoded.respawn.respawn_queue.size());
+    EXPECT_EQ(kPackFamily, decoded.respawn.respawn_queue[0].family)
+        << "the wire must not collapse a pack family to 0";
+
+    ModeWorld target;
+    og::sim::apply_snapshot(target.world(), decoded);
+    ASSERT_EQ(1u, target.world().respawn.respawn_queue.size());
+    EXPECT_EQ(kPackFamily, target.world().respawn.respawn_queue[0].family);
+}
+
 // --- Hostile input caps ------------------------------------------------------
 
 TEST(ModeSnapshot, serializer_rejects_out_of_cap_counts)
@@ -560,17 +604,23 @@ TEST(ModeSnapshot, deserializer_clamps_crafted_respawn_queue_entries)
     ASSERT_EQ(1u, bad_kind.respawn.respawn_queue.size());
     EXPECT_EQ(1, bad_kind.respawn.respawn_queue[0].kind);
 
-    // family indexes the per-family tables and takes the entity block's clamp.
-    const og::sim::WorldSnapshot bad_family = decode_patched(kEntry + 2, 0xffu);
-    EXPECT_EQ(0, bad_family.respawn.respawn_queue[0].family);
-    const og::sim::WorldSnapshot edge_family =
-        decode_patched(kEntry + 2, static_cast<std::uint8_t>(NUM_FAMILIES));
-    EXPECT_EQ(0, edge_family.respawn.respawn_queue[0].family)
-        << "NUM_FAMILIES itself is out of range";
-    const og::sim::WorldSnapshot last_family =
+    // family indexes the per-family tables and takes the entity block's clamp,
+    // whose bound is the registry capacity (NUM_FAMILY_SLOTS), not the core span
+    // (NUM_FAMILIES). Ids from NUM_FAMILIES up are the free slots class packs
+    // claim with `wire_id: auto`, so they are legal wire values that must
+    // survive; an unpopulated one simply answers nullptr at every lookup and
+    // takes the loader's soldier/0 fallback when it is spawned.
+    const og::sim::WorldSnapshot last_core_family =
         decode_patched(kEntry + 2, static_cast<std::uint8_t>(NUM_FAMILIES - 1));
-    EXPECT_EQ(NUM_FAMILIES - 1, last_family.respawn.respawn_queue[0].family)
-        << "the last real family must survive";
+    EXPECT_EQ(NUM_FAMILIES - 1, last_core_family.respawn.respawn_queue[0].family)
+        << "the last core family must survive";
+    const og::sim::WorldSnapshot first_pack_family =
+        decode_patched(kEntry + 2, static_cast<std::uint8_t>(NUM_FAMILIES));
+    EXPECT_EQ(NUM_FAMILIES, first_pack_family.respawn.respawn_queue[0].family)
+        << "NUM_FAMILIES is the first pack slot, not an out-of-range value";
+    const og::sim::WorldSnapshot top_family = decode_patched(kEntry + 2, 0xffu);
+    EXPECT_EQ(255, top_family.respawn.respawn_queue[0].family)
+        << "the whole byte fits inside the registry capacity";
 
     // level 0 is not a legal walker level.
     const og::sim::WorldSnapshot zero_level = decode_patched(kEntry + 3, 0);

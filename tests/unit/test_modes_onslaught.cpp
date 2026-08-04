@@ -1349,3 +1349,31 @@ TEST_F(ModesOnslaught, full_mode_tick_fits_a_tenth_of_the_instruction_budget)
     }
     og::script::g_test_world_instruction_budget = 0;
 }
+
+// ===========================================================================
+// Client mirror replication
+// ===========================================================================
+
+// Companion to the soccer case. Soccer desynced because its Lua-spawned ball
+// carries a class-pack family byte (>= NUM_FAMILIES) that apply_snapshot used
+// to clamp to 0. This mode spawns no pack-family entity, so it was never hit
+// -- pin that, so a future mode entity that DOES reach for one fails here
+// instead of in a player's match.
+
+TEST_F(ModesOnslaught, match_replicates_to_a_client_mirror_without_hash_strikes)
+{
+    OnsWorld fx;
+    fx.spawn_point(point_family_, 320, 320);
+    ModeMirror mirror(kOnsLevelA);
+
+    const MirrorReplication replication = replicate_to_mirror(fx, mirror, 120);
+    EXPECT_EQ(0, replication.strikes)
+        << "the mirror first desynced at tick " << replication.first_strike_tick;
+    ASSERT_TRUE(fx.ons_active());
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+    for (int slot = 0; slot < og::sim::kModeVarCount; ++slot)
+    {
+        EXPECT_EQ(fx.world().mode.vars[slot], mirror.world().mode.vars[slot])
+            << "mode var slot " << slot;
+    }
+}
