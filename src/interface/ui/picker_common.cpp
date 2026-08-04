@@ -52,6 +52,122 @@ const char* const kDifficultyNames[DIFFICULTY_SETTINGS] = {
     "Slaughter",
 };
 
+// --- Campaign browser geometry ---
+
+namespace {
+
+// Small-font metrics used by every campaign-browser text row.
+constexpr int kGlyphAdvance = 6;
+constexpr int kGlyphHeight = 8;
+
+} // namespace
+
+bool picker_rects_overlap(const PickerRect& a, const PickerRect& b)
+{
+    return a.x < b.x + b.w && b.x < a.x + a.w &&
+           a.y < b.y + b.h && b.y < a.y + a.h;
+}
+
+CampaignPickerLayout campaign_picker_layout()
+{
+    constexpr int kScreenW = 320;
+    constexpr int kScreenH = 200;
+
+    CampaignPickerLayout layout;
+    layout.icon = PickerRect{kScreenW / 2 - 16, 15 + 20, 32, 32};
+
+    layout.prev = PickerRect{layout.icon.x - 30 - 20, layout.icon.y, 30, 10};
+    layout.next = PickerRect{layout.icon.x + layout.icon.w + 20, layout.icon.y, 30, 10};
+    layout.choose = PickerRect{kScreenW / 2 + 20, kScreenH - 15, 30, 10};
+    layout.cancel = PickerRect{kScreenW / 2 - 38 - 20, kScreenH - 15, 38, 10};
+
+    // DELETE and RESET share one cell (the browser shows exactly one of them).
+    layout.delete_button = PickerRect{kScreenW - 50, 10, 38, 10};
+    layout.reset_button = layout.delete_button;
+
+    // ENTER ID sits directly under DELETE/RESET, right edges flush, so the
+    // whole title row left of x = kScreenW - 50 is free.
+    layout.id_button = PickerRect{
+        layout.delete_button.x + layout.delete_button.w - 52,
+        layout.delete_button.y + layout.delete_button.h + 2,
+        52,
+        10};
+
+    layout.title_center_x = layout.icon.x + layout.icon.w / 2;
+    layout.title_y = layout.icon.y - 22;
+
+    // The title is centered, so a title of L glyphs spans
+    // center +/- 3L. DELETE/RESET is the only control left on the title row;
+    // its left edge caps the half-width, and the screen edge caps the other
+    // side. Both bounds are computed rather than written down so the budget
+    // follows the rects if the row ever moves again.
+    const int right_room = layout.delete_button.x - layout.title_center_x;
+    const int left_room = layout.title_center_x;
+    const int half_room = right_room < left_room ? right_room : left_room;
+    layout.title_max_chars = (2 * half_room) / kGlyphAdvance;
+    if (layout.title_max_chars < 0)
+        layout.title_max_chars = 0;
+    return layout;
+}
+
+PickerRect campaign_title_rect(int chars)
+{
+    const CampaignPickerLayout layout = campaign_picker_layout();
+    if (chars < 0)
+        chars = 0;
+    const int width = chars * kGlyphAdvance;
+    return PickerRect{layout.title_center_x - chars * (kGlyphAdvance / 2),
+                      layout.title_y, width, kGlyphHeight};
+}
+
+std::string fit_campaign_title(std::string_view title)
+{
+    const int budget = campaign_picker_layout().title_max_chars;
+    if (budget <= 0)
+        return std::string();
+    if (title.size() <= static_cast<std::size_t>(budget))
+        return std::string(title);
+    if (budget <= 3)
+        return std::string(title.substr(0, static_cast<std::size_t>(budget)));
+    return std::string(title.substr(0, static_cast<std::size_t>(budget) - 3)) + "...";
+}
+
+std::array<CampaignPickerNavLinks, kCampaignPickerButtonCount>
+campaign_picker_nav(const CampaignPickerVisibility& visibility)
+{
+    std::array<CampaignPickerNavLinks, kCampaignPickerButtonCount> nav{};
+
+    nav[kCampaignPickerPrevIndex] = {.up = kCampaignPickerIdIndex,
+                                     .down = kCampaignPickerCancelIndex,
+                                     .right = kCampaignPickerNextIndex};
+    nav[kCampaignPickerNextIndex] = {
+        .up = kCampaignPickerIdIndex,
+        .down = visibility.choose_hidden ? kCampaignPickerCancelIndex
+                                         : kCampaignPickerChooseIndex,
+        .left = kCampaignPickerPrevIndex};
+    nav[kCampaignPickerChooseIndex] = {.up = kCampaignPickerNextIndex,
+                                       .left = kCampaignPickerCancelIndex};
+    nav[kCampaignPickerCancelIndex] = {
+        .up = visibility.prev_hidden
+            ? (visibility.next_hidden ? kCampaignPickerIdIndex
+                                      : kCampaignPickerNextIndex)
+            : kCampaignPickerPrevIndex,
+        .right = kCampaignPickerChooseIndex};
+
+    // DELETE / RESET share the top-right cell and drop onto ENTER ID, which
+    // sits directly below them.
+    nav[kCampaignPickerDeleteIndex] = {.down = kCampaignPickerIdIndex};
+    nav[kCampaignPickerResetIndex] = {.down = kCampaignPickerIdIndex};
+    nav[kCampaignPickerIdIndex] = {
+        .up = visibility.delete_hidden ? kCampaignPickerResetIndex
+                                       : kCampaignPickerDeleteIndex,
+        .down = visibility.next_hidden
+            ? (visibility.prev_hidden ? kCampaignPickerCancelIndex
+                                      : kCampaignPickerPrevIndex)
+            : kCampaignPickerNextIndex};
+    return nav;
+}
+
 // --- Family display helpers ---
 
 const char* family_display_name(int family)
@@ -451,10 +567,24 @@ std::uint8_t ctf_authored_team_mask_for_loaded_level(
     return og::sim::authored_team_mask(world);
 }
 
+short next_ctf_scenario_troops(short current, bool versus)
+{
+    // 0 Keep -> 1 Strip teams -> 2 Strip ALL -> 0.
+    // State 1 is a versus/mode rule (per active score team that fields a
+    // roster walker); on a classic campaign it does nothing, so the cycle
+    // skips it rather than showing a label that lies about the outcome.
+    switch (current)
+    {
+        case 0: return versus ? 1 : 2;
+        case 1: return 2;
+        default: return 0;
+    }
+}
+
 void toggle_ctf_scenario_troops(SaveData& save)
 {
-    save.ctf_strip_scenario_troops =
-        static_cast<short>(save.ctf_strip_scenario_troops != 0 ? 0 : 1);
+    save.ctf_strip_scenario_troops = next_ctf_scenario_troops(
+        save.ctf_strip_scenario_troops, is_versus_campaign(save));
 }
 
 // --- Difficulty submenu match rules ---
@@ -1591,7 +1721,13 @@ std::string format_ctf_caps_label(const SaveData& save)
 
 std::string format_ctf_troops_label(const SaveData& save)
 {
-    return save.ctf_strip_scenario_troops != 0 ? "Troops: Own" : "Troops: Scen";
+    // SCENARIO-screen faces are 80px = 12 characters; all three fit exactly.
+    switch (save.ctf_strip_scenario_troops)
+    {
+        case 1: return "TROOPS: OWN";   // strip each roster team's canned troops
+        case 2: return "TROOPS: NONE";  // strip every authored fighter
+        default: return "TROOPS: SCEN"; // keep the level as authored
+    }
 }
 
 std::string format_respawn_mode_label(const SaveData& save)
@@ -2506,6 +2642,7 @@ const char* strip_suffix(ScenarioStripReason reason)
     {
         case ScenarioStripReason::TroopsOff: return "*";
         case ScenarioStripReason::InactiveTeam: return "+";
+        case ScenarioStripReason::StripAll: return "!";
         default: return "";
     }
 }
@@ -2569,8 +2706,18 @@ ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
     // the preview must not add a campaign gate the sim does not have.
     const std::vector<short> roster_teams = roster_teams_for_strip(save);
     const bool troops_strip_on = report.is_versus && report.will_activate &&
-        save.ctf_strip_scenario_troops != 0;
-    auto strip_reason_for_team = [&](int team) {
+        save.ctf_strip_scenario_troops == 1;
+    // TROOPS: NONE runs on EVERY map, versus and classic alike, on every
+    // team including wildlife. Protected named NPCs are the one exemption
+    // (the engine sweep and the mode helper both honour it), so the preview
+    // shows exactly what survives.
+    const bool strip_all_on = save.ctf_strip_scenario_troops == 2;
+    auto strip_reason_for_team = [&](int team, bool protected_npc) {
+        if (strip_all_on)
+        {
+            return protected_npc ? ScenarioStripReason::None
+                                 : ScenarioStripReason::StripAll;
+        }
         if (!report.is_versus || !report.will_activate)
             return ScenarioStripReason::None;
         // The sim's inactive-team strip removes every living/generator whose
@@ -2605,7 +2752,8 @@ ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
             {
                 row.named = true;
                 row.name = w->stats()->name;
-                row.strip_reason = strip_reason_for_team(row.team);
+                row.strip_reason =
+                    strip_reason_for_team(row.team, w->save_all_protected());
                 report.rows.push_back(std::move(row));
             }
             else
@@ -2624,7 +2772,8 @@ ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
                 }
                 else
                 {
-                    row.strip_reason = strip_reason_for_team(row.team);
+                    row.strip_reason = strip_reason_for_team(
+                        row.team, w->save_all_protected());
                     report.rows.push_back(std::move(row));
                 }
             }
@@ -2647,7 +2796,8 @@ ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
                 row.team = team;
                 row.is_generator = true;
                 row.family = static_cast<short>(w->family());
-                row.strip_reason = strip_reason_for_team(team);
+                row.strip_reason =
+                    strip_reason_for_team(team, w->save_all_protected());
                 generator_rows.push_back(std::move(row));
             }
         }
@@ -2673,6 +2823,8 @@ ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
             report.any_troops_off = true;
         else if (row.strip_reason == ScenarioStripReason::InactiveTeam)
             report.any_inactive = true;
+        else if (row.strip_reason == ScenarioStripReason::StripAll)
+            report.any_strip_all = true;
     }
     return report;
 }
@@ -2749,13 +2901,15 @@ std::vector<std::string> format_scenario_report_lines(
         lines.push_back(clip_line(std::move(text)));
     }
 
-    if (report.any_troops_off || report.any_inactive)
+    if (report.any_troops_off || report.any_inactive || report.any_strip_all)
     {
         lines.emplace_back();
         if (report.any_troops_off)
             lines.push_back(clip_line("* REMOVED: TROOPS OFF"));
         if (report.any_inactive)
             lines.push_back(clip_line("+ REMOVED: INACTIVE TEAM"));
+        if (report.any_strip_all)
+            lines.push_back(clip_line("! REMOVED: TROOPS NONE"));
     }
     return lines;
 }

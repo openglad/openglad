@@ -315,6 +315,11 @@ void picker_wire_scenario_menu_nav(button* buttons,
     buttons[kScenarioMenuViewScenarioIndex].nav.up = row_up;
     buttons[kScenarioMenuTeamsIndex].nav.up = row_up;
     buttons[kScenarioMenuProgressIndex].nav.up = row_up;
+    // TROOPS hangs off MATCHUP's down-link and is host-gated too, so the
+    // link has to fall back to BACK for joiners.
+    buttons[kScenarioMenuTeamsIndex].nav.down =
+        host_controls_visible ? kScenarioMenuTroopsIndex
+                              : kScenarioMenuBackIndex;
 }
 
 void sync_scenario_menu_host_control_visibility(button* buttons,
@@ -329,8 +334,21 @@ void sync_scenario_menu_host_control_visibility(button* buttons,
     const bool host_controls_visible = picker_lobby_host_controls_visible();
     buttons[kScenarioMenuSetCampaignIndex].hidden = !host_controls_visible;
     buttons[kScenarioMenuSetLevelIndex].hidden = !host_controls_visible;
+    buttons[kScenarioMenuTroopsIndex].hidden = !host_controls_visible;
     sync_button_hidden_state(buttons, kScenarioMenuSetCampaignIndex);
     sync_button_hidden_state(buttons, kScenarioMenuSetLevelIndex);
+    // Re-derive the label from the save every frame: a host cycling TROOPS
+    // reaches a joiner through the lobby settings, which land in the save
+    // under the open menu (both label surfaces, per the menu skill).
+    buttons[kScenarioMenuTroopsIndex].label = og::ui::format_ctf_troops_label(
+        og::runtime::current_session->myscreen_->save_data);
+    sync_button_hidden_state(buttons, kScenarioMenuTroopsIndex);
+    if (og::runtime::current_session->allbuttons_[kScenarioMenuTroopsIndex] !=
+        nullptr)
+    {
+        og::runtime::current_session->allbuttons_[kScenarioMenuTroopsIndex]
+            ->label = buttons[kScenarioMenuTroopsIndex].label;
+    }
     picker_wire_scenario_menu_nav(buttons, num_buttons, host_controls_visible);
 
     ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
@@ -446,7 +464,10 @@ void picker_wire_teams_menu_nav(button* buttons, int count,
     const int first_mid = mids.empty() ? -1 : mids.front();
     const int last_mid = mids.empty() ? -1 : mids.back();
     const int bottom_mid = -1;
-    const int bottom_right = wiring.show_ctf ? kTeamsMenuCtfTroopsIndex : -1;
+    // Dormant: the scenario-troops row lives on the SCENARIO screen now, so
+    // nothing on MATCHUP may link to it.
+    const int bottom_right = -1;
+    (void)kTeamsMenuCtfTroopsIndex;
     // §2.7 cross-control remains visible to every network peer and now sits
     // in the bottom command row vacated by the duplicate READY control.
     const int cross =
@@ -763,15 +784,17 @@ void sync_teams_menu_visibility(button* buttons,
 
     buttons[kTeamsMenuCtfTeamsIndex].hidden = !state.wiring.show_ctf;
     buttons[kTeamsMenuCtfCapsIndex].hidden = !state.wiring.show_ctf;
-    buttons[kTeamsMenuCtfTroopsIndex].hidden = !state.wiring.show_ctf;
+    // The scenario-troops control moved to the SCENARIO screen (it applies to
+    // classic campaigns too, which never see MATCHUP). The row keeps its
+    // ordinal so every positional index below it stays put, but it is dormant:
+    // permanently hidden and never relabeled.
+    buttons[kTeamsMenuCtfTroopsIndex].hidden = true;
     if (state.wiring.show_ctf)
     {
         buttons[kTeamsMenuCtfTeamsIndex].label =
             og::ui::format_ctf_teams_label(save);
         buttons[kTeamsMenuCtfCapsIndex].label =
             og::ui::format_ctf_caps_label(save);
-        buttons[kTeamsMenuCtfTroopsIndex].label =
-            og::ui::format_ctf_troops_label(save);
     }
 
     for (int t = 0; t < 4; ++t)

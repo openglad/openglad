@@ -50,7 +50,7 @@ clients, the dedicated server, and the web build.
 
 ## Match setup
 
-Three match settings appear in **MATCHUP**
+Two match settings appear in **MATCHUP**
 (Base Camp → SCENARIO → MATCHUP) when a versus campaign (one whose
 campaign.yaml carries `matchup: versus`) is active. In
 networked play, only the host can change them, and the lobby synchronizes them
@@ -61,8 +61,27 @@ to every client:
 - **Score Limit** — `Map default` uses the map's authored limit (each mode
   reads it as its own win threshold: captures, frags, goals), or force
   1–10.
-- **Scenario Troops** — keep the level's authored fighters, or field only
-  the players' selected company fighters.
+
+**TROOPS** sits one screen up, on **SCENARIO**, because it applies to every
+campaign rather than only the versus ones. It is host-only and lobby-synced
+like the pair above, and cycles three ways:
+
+- **TROOPS: SCEN** — keep the level exactly as authored (the default).
+- **TROOPS: OWN** — versus campaigns only: each team that fields company
+  fighters loses the level's canned troops and generators for that team, so
+  the match is played by the rosters. The level's wildlife and neutral
+  garrison stay.
+- **TROOPS: NONE** — remove every fighter and generator the level ships,
+  on every team, wildlife included; only the players' companies (and the AI
+  squads the modes field for empty teams) remain. Onslaught keeps its
+  generators, which are the board rather than troops. On a classic campaign
+  this makes the level a sandbox: a kill-everything level is already won,
+  and its named quest NPCs are gone — except characters the level marks
+  protected, which survive every setting. On classic campaigns the cycle
+  skips **OWN**, which has no meaning there.
+
+VIEW LEVEL previews the result: entries the setting will remove are flagged
+in the scenario report.
 
 Assign player teams with the **SEATS** rail in Base Camp. Use **+** to add a
 local seat, then open an owned **P#** card and choose **TEAM** in its editor.

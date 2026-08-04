@@ -535,7 +535,14 @@ static int campaign_enter_id_injector(void* data)
     og::runtime::ensure_thread_session();
     (void)data;
     const bool ready = wait_for_campaign_picker_ready();
-    return ready && click_campaign_picker_action(225, 15) ? 0 : 1; // ENTER ID
+    // ENTER ID lives under DELETE/RESET now; click its computed center so the
+    // injector follows og::ui::campaign_picker_layout() instead of a literal.
+    const og::ui::PickerRect id =
+        og::ui::campaign_picker_layout().id_button;
+    return ready && click_campaign_picker_action(id.x + id.w / 2,
+                                                 id.y + id.h / 2)
+        ? 0
+        : 1;
 }
 
 struct CampaignDeleteInjectorContext

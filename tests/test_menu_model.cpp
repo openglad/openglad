@@ -176,8 +176,9 @@ TEST(MenuModel, scenario_menu_lookup)
 
     ASSERT_EQ(static_cast<int>(PickerMenuId::Scenario), static_cast<int>(def.id))
         << "scenario definition should report scenario id";
-    ASSERT_EQ(6u, def.items.size())
-        << "scenario menu: campaign/level/viewer/matchup/progress + back";
+    ASSERT_EQ(7u, def.items.size())
+        << "scenario menu: campaign/level/viewer/matchup/progress/troops + "
+           "back";
 
     const struct
     {
@@ -189,6 +190,7 @@ TEST(MenuModel, scenario_menu_lookup)
         {"view_scenario", PickerMenuCommand::ViewScenario},
         {"matchup", PickerMenuCommand::Teams},
         {"progress", PickerMenuCommand::ShowProgress},
+        {"troops", PickerMenuCommand::ToggleCtfScenarioTroops},
         {"back", PickerMenuCommand::Back},
     };
     for (const auto& want : kExpected)
@@ -554,11 +556,12 @@ TEST(MenuModel, company_screens_cancel_to_back_and_leak_nowhere)
 
     // §2.1: load_company remains after the classic items; the #155 cloud
     // door is appended last. Main exposes both stable Help and Quit actions.
-    // TeamBuild/Scenario are unchanged; Difficulty grew the appended
-    // infinite-gold row.
+    // TeamBuild is unchanged (its ctf_troops row stays resolvable but
+    // dormant); Scenario grew the appended troops row; Difficulty grew the
+    // appended infinite-gold row.
     ASSERT_EQ(9u, picker_menu_definition(PickerMenuId::Main).items.size());
     ASSERT_EQ(12u, picker_menu_definition(PickerMenuId::TeamBuild).items.size());
-    ASSERT_EQ(6u, picker_menu_definition(PickerMenuId::Scenario).items.size());
+    ASSERT_EQ(7u, picker_menu_definition(PickerMenuId::Scenario).items.size());
     ASSERT_EQ(7u, picker_menu_definition(PickerMenuId::Difficulty).items.size());
 
     // load_company resolves by id and by command and keeps its 1-based

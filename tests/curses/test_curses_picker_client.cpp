@@ -2005,41 +2005,58 @@ TEST(CursesPickerClient, run_picker_through_team_build_then_quit)
 
 // --- CTF scenario-troops toggle -------------------------------------------
 
-// The troops toggle is CTF-campaign gated and flips the strip flag.
+// The troops control lives in the SCENARIO submenu now and is NOT
+// versus-gated: "strip everything authored" applies to classic campaigns
+// too. The cycle order differs per campaign kind.
 TEST(CursesPickerClient, ctf_troops_toggle_on_ctf_campaign_only)
 {
     PickerFixture f;
     const auto* troops_item = og::ui::find_picker_menu_item(
-        PickerMenuId::TeamBuild, PickerMenuCommand::ToggleCtfScenarioTroops);
+        PickerMenuId::Scenario, PickerMenuCommand::ToggleCtfScenarioTroops);
     ASSERT_NE(troops_item, nullptr);
 
-    // Classic campaign: the toggle refuses and the notice renders.
+    // Classic campaign: no refusal notice; the cycle skips the versus-only
+    // middle state, so SCEN -> NONE -> SCEN.
     f.save().current_campaign = "org.openglad.gladiator";
     dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::TeamBuild, *troops_item);
-    EXPECT_EQ(0, (int)f.save().ctf_strip_scenario_troops);
-    EXPECT_NE(f.t().dump().find("versus maps only"), std::string::npos);
+    f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
+    EXPECT_EQ(2, (int)f.save().ctf_strip_scenario_troops);
+    EXPECT_EQ(f.t().dump().find("versus maps only"), std::string::npos);
+    EXPECT_NE(f.t().dump().find("TROOPS: NONE"), std::string::npos);
 
-    // Versus campaign: Scen -> Own -> Scen.
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
+    EXPECT_EQ(0, (int)f.save().ctf_strip_scenario_troops);
+
+    // Versus campaign: SCEN -> OWN -> NONE -> SCEN.
     f.save().current_campaign = "org.openglad.modes";
     dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::TeamBuild, *troops_item);
+    f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
     EXPECT_EQ(1, (int)f.save().ctf_strip_scenario_troops);
-    EXPECT_NE(f.t().dump().find("Troops: Own"), std::string::npos);
+    EXPECT_NE(f.t().dump().find("TROOPS: OWN"), std::string::npos);
 
     dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::TeamBuild, *troops_item);
+    f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
+    EXPECT_EQ(2, (int)f.save().ctf_strip_scenario_troops);
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
     EXPECT_EQ(0, (int)f.save().ctf_strip_scenario_troops);
 }
 
-// The team-build label surfaces the live troops setting.
+// The scenario menu label surfaces the live troops setting.
 TEST(CursesPickerClient, ctf_troops_label_formats_from_save)
 {
     PickerFixture f;
     f.save().ctf_strip_scenario_troops = 1;
     f.t().push_special(KeyCode::Escape);
-    (void)f.client.present_menu(PickerMenuId::TeamBuild);
-    EXPECT_NE(f.t().dump().find("Troops: Own"), std::string::npos);
+    (void)f.client.present_menu(PickerMenuId::Scenario);
+    EXPECT_NE(f.t().dump().find("TROOPS: OWN"), std::string::npos);
+
+    f.save().ctf_strip_scenario_troops = 2;
+    f.t().push_special(KeyCode::Escape);
+    (void)f.client.present_menu(PickerMenuId::Scenario);
+    EXPECT_NE(f.t().dump().find("TROOPS: NONE"), std::string::npos);
 }
 
 // --- Matchup screen --------------------------------------------------------

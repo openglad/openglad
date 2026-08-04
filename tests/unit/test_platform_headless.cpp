@@ -911,7 +911,7 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
     // 4=deploy, 5=ready; 7=back, 8=networking, 9=Scenario); the
     // scenario-shaped commands nest under the Scenario submenu
     // (1=set_campaign, 2=set_level, 3=view_scenario, 4=matchup, 5=progress,
-    // 6=back). Main 3=difficulty opens the DIFFICULTY submenu
+    // 6=troops, 7=back). Main 3=difficulty opens the DIFFICULTY submenu
     // (1=difficulty, 2=respawns, 3=respawn delay, 4=permadeath,
     // 5=generators, 6=infinite gold, 7=back).
     const std::string input =
@@ -965,7 +965,9 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "999\n"
         "1\n"       // scenario: set campaign (blank keeps current)
         "\n"
-        "6\n"       // scenario: back -> team build
+        "6\n"       // scenario: cycle scenario troops (classic: 0 -> 2)
+        "6\n"       // scenario: cycle scenario troops (classic: 2 -> 0)
+        "7\n"       // scenario: back -> team build
         "8\n"       // team build: networking (unavailable)
         "7\n"       // team build: back -> main
         "7\n";      // main: quit
@@ -1487,7 +1489,7 @@ TEST(PlatformHeadless, text_picker_campaign_select_mounts_selection)
         "9\n"       // team build: Scenario submenu
         "1\n"       // scenario: set campaign
         "1\n"       //   entry 1 is always the default campaign
-        "6\n"       // scenario: back -> team build
+        "7\n"       // scenario: back -> team build
         "7\n"       // team build: back -> main
         "7\n";      // main: quit
 
@@ -1526,7 +1528,9 @@ TEST(PlatformHeadless, text_picker_shows_display_titles_when_campaign_mounted)
         "\n"
         "1\n"       // scenario: set campaign (blank keeps current)
         "\n"
-        "6\n"       // scenario: back -> team build
+        "6\n"       // scenario: cycle scenario troops (classic: 0 -> 2)
+        "6\n"       // scenario: cycle scenario troops (classic: 2 -> 0)
+        "7\n"       // scenario: back -> team build
         "7\n"       // team build: back -> main
         "7\n";      // main: quit
 
@@ -1575,7 +1579,7 @@ TEST(PlatformHeadless, text_picker_level_display_falls_back_when_mount_differs)
         "2\n"       // main: continue -> team build
         "9\n"       // team build: Scenario submenu (labels print)
         "5\n"       // scenario: progress
-        "6\n"       // scenario: back -> team build
+        "7\n"       // scenario: back -> team build
         "7\n"       // team build: back -> main
         "7\n";      // main: quit
 
@@ -1676,7 +1680,7 @@ TEST(PlatformHeadless, text_picker_matchup_screen_play_and_move_commands)
         "move 1 1\n"    //   valid: back to team 1
         "gibberish\n"   //   unrecognized command
         "\n"            //   blank exits matchup
-        "6\n"           // scenario: back -> team build
+        "7\n"           // scenario: back -> team build
         "7\n"           // base camp: back -> main
         "7\n";          // main: quit
 

@@ -78,6 +78,13 @@ inline constexpr int kOnsLevelA = 9401;
 inline constexpr int kOnsLevelB = 9402;
 inline constexpr int kOnsLevelC = 9403;
 
+// lib/mode_strip.lua probes (9500+): the shared scenario-troops strip the
+// five mode impls call from on_mode_init. One level per opts shape, so the
+// keep_generators arm is exercised on its own.
+inline constexpr int kStripLevelDefault = 9500;      // opts = nil
+inline constexpr int kStripLevelKeepGens = 9501;     // keep_generators = true
+inline constexpr int kStripLevelDropGens = 9502;     // keep_generators = false
+
 // The mode-var slot map of lib/mode_ctf_impl.lua (table S). The behavior
 // tests read match state straight from GameWorld::mode.vars, so a silent
 // re-map in the Lua breaks them loudly.
@@ -237,7 +244,27 @@ inline constexpr const char* kTestRegistrationLua =
     "  og.register_level_hooks(ons_rows[i].id,\n"
     "                          onslaught.make_hooks(ons_rows[i]))\n"
     "end\n"
-    "og.register_level_hooks(9409, onslaught.make_hooks(nil))\n";
+    "og.register_level_hooks(9409, onslaught.make_hooks(nil))\n"
+    "local strip_lib = og.use(\"mode_strip\")\n"
+    "local function strip_hooks(opts)\n"
+    "  return {\n"
+    "    on_mode_init = function(level)\n"
+    "      og.log(\"stripped\",\n"
+    "             strip_lib.strip_authored_troops(og.authored_team_mask(),\n"
+    "                                             opts))\n"
+    "      og.log(\"is_troop\",\n"
+    "             strip_lib.is_troop(og.C.ORDER_LIVING, true) and 1 or 0,\n"
+    "             strip_lib.is_troop(og.C.ORDER_GENERATOR, true) and 1 or 0,\n"
+    "             strip_lib.is_troop(og.C.ORDER_GENERATOR, false) and 1 or 0,\n"
+    "             strip_lib.is_troop(og.C.ORDER_TREASURE, false) and 1 or 0)\n"
+    "      og.log(\"states\", strip_lib.KEEP, strip_lib.STRIP_TEAMS,\n"
+    "             strip_lib.STRIP_ALL)\n"
+    "    end,\n"
+    "  }\n"
+    "end\n"
+    "og.register_level_hooks(9500, strip_hooks(nil))\n"
+    "og.register_level_hooks(9501, strip_hooks({ keep_generators = true }))\n"
+    "og.register_level_hooks(9502, strip_hooks({ keep_generators = false }))\n";
 
 inline bool write_text(const std::filesystem::path& path,
                        const std::string& text)

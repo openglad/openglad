@@ -85,8 +85,11 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
         sanitized.ctf_respawn_ticks =
             std::clamp<std::int16_t>(sanitized.ctf_respawn_ticks, 12, 1200);
     }
-    if (sanitized.ctf_strip_scenario_troops != 0 &&
-        sanitized.ctf_strip_scenario_troops != 1)
+    // Three states now: 0 keep / 1 strip roster teams / 2 strip everything
+    // authored. The field was already an int16 on the wire, so widening the
+    // accepted range costs no protocol bump.
+    if (sanitized.ctf_strip_scenario_troops < 0 ||
+        sanitized.ctf_strip_scenario_troops > 2)
     {
         sanitized.ctf_strip_scenario_troops = fallback.ctf_strip_scenario_troops;
     }

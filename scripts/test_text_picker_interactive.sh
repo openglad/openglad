@@ -21,8 +21,8 @@ trap 'rm -rf "$TMPHOME"; rm -f "$TMPOUT" "$TMPIN"' EXIT
 #     (n/h/b — the hire AUTOSAVES the company, §3.8), 1=Roster
 #     (deploy 2 toggles + blank exits), 4=Deploy (prompt re-deploys row 2),
 #     9=Scenario, 6=GO!, 7=Back.
-#   Scenario submenu (6 items): 4=Matchup (set preferred-team metadata, blank
-#     exits), 3=View Scenario (blank dismisses), 6=Back.
+#   Scenario submenu (7 items): 4=Matchup (set preferred-team metadata, blank
+#     exits), 3=View Scenario (blank dismisses), 6=Scenario Troops, 7=Back.
 #   Protocol session after GO!: state, quit.
 #   Main: 7=Quit.
 cat > "$TMPIN" << 'INP'
@@ -46,7 +46,7 @@ play 1
 
 3
 
-6
+7
 6
 state
 quit

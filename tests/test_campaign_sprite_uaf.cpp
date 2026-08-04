@@ -37,6 +37,7 @@
 #include <openglad/interface/button.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/base.h>
+#include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/resources/gloader.h>
@@ -226,7 +227,11 @@ int set_campaign_flow_injector(void*)
     if (!wait_for_counter_above(campaign_picker_testing_entered_count,
                                 entered_before))
         return 2;
-    if (!click_campaign_picker(225, 15)) // ENTER ID
+    // ENTER ID sits under DELETE/RESET; take its center from the pure layout.
+    const og::ui::PickerRect id_button =
+        og::ui::campaign_picker_layout().id_button;
+    if (!click_campaign_picker(id_button.x + id_button.w / 2,
+                               id_button.y + id_button.h / 2))
         return 3;
 
     // The do_pick_campaign handler mounts the fixture and reloads; only
