@@ -266,8 +266,13 @@ TEST(FamilyRegistry, every_core_family_carries_its_pack_declared_id)
         declared(get_weapon_family_descriptor(i)->declared_id, "weapon", i);
     for (int i = 0; i < 13; i++)
         declared(get_effect_family_descriptor(i)->declared_id, "effect", i);
-    for (int i = 0; i < 15; i++)
+    // Treasure core span ends at SPEED (12): wire bytes 13/14 are the
+    // retired CTF slots, free for campaign packs (they answer nullptr with
+    // no campaign mounted).
+    for (int i = 0; i < 13; i++)
         declared(get_treasure_family_descriptor(i)->declared_id, "treasure", i);
+    EXPECT_EQ(nullptr, get_treasure_family_descriptor(13));
+    EXPECT_EQ(nullptr, get_treasure_family_descriptor(14));
     for (int i = 0; i < 4; i++)
         declared(get_generator_family_descriptor(i)->declared_id, "generator", i);
 }

@@ -316,8 +316,11 @@ TEST(MenuSpec, gate_state_matrix)
               og::ui::gate_state(GateBinding{MenuGate::LocalOnly, nullptr, {}},
                                  networked_client));
 
-    // Versus campaign gate: follows the save's matchup: yaml key; a
-    // context without a save is gated closed.
+    // Versus campaign gate: follows the save's matchup: yaml key (the
+    // shipped modes package must be discoverable for the private-mount
+    // lookup); a context without a save is gated closed.
+    restore_default_campaigns();
+    og::data::clear_campaign_metadata_cache();
     save.current_campaign = "org.openglad.gladiator";
     EXPECT_EQ(RowState::Hidden,
               og::ui::gate_state(GateBinding{MenuGate::VersusCampaignOnly, nullptr, {}},
@@ -360,6 +363,8 @@ TEST(MenuSpec, terminal_gate_messages_guard_the_ctf_trio_verbatim)
     }
 
     // On the versus campaign the gate passes: no guard message.
+    restore_default_campaigns();
+    og::data::clear_campaign_metadata_cache();
     save.current_campaign = "org.openglad.modes";
     for (const PickerMenuCommand command : ctf_commands) {
         const PickerMenuItem* item = item_of(PickerMenuId::TeamBuild, command);
