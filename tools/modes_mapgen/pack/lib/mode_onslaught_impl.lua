@@ -6,6 +6,7 @@ local core = og.use("mode_core")
 local ai = og.use("mode_ai")
 local anchors = og.use("mode_anchors")
 local caps = og.use("mode_caps")
+local strip = og.use("mode_strip")
 
 -- Mode-private slot map (8+; header 0-7 is mode_core.SLOT).
 local S = {
@@ -713,6 +714,9 @@ local function on_mode_init(level, row)
       end
     end
   end
+  -- Roster-only armies on request; keep_generators because the foundries ARE
+  -- the board here, not troops.
+  strip.strip_authored_troops(mask, { keep_generators = true })
 
   caps.bank_caps(row, S.SPAWN_CAP)
   local respawn_ticks = og.match_setting("respawn_ticks")

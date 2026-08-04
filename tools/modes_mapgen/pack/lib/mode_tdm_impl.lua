@@ -12,6 +12,7 @@ local ai = og.use("mode_ai")
 local caps = og.use("mode_caps")
 local match = og.use("mode_match")
 local levels = og.use("mode_levels")
+local strip = og.use("mode_strip")
 
 -- Mode-private slot map (header 0-7 is mode_core.SLOT).
 local S = {
@@ -69,6 +70,9 @@ local function on_mode_init(level)
   og.mode_set(S.TEAM_MASK, mask)
   match.consume_markers(obs, mask)
   match.strip_inactive_teams(obs, mask)
+  -- Roster-only armies on request (shared rule set), before the bot-squad
+  -- census below so backfill sees the post-strip world.
+  strip.strip_authored_troops(mask, nil)
 
   -- Resolve config: explicit request > manifest row > defaults, per field.
   local row = levels.levels[level]

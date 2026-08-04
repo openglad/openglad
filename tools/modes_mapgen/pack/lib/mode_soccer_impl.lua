@@ -6,6 +6,7 @@ local core = og.use("mode_core")
 local ai = og.use("mode_ai")
 local anchors = og.use("mode_anchors")
 local caps = og.use("mode_caps")
+local strip = og.use("mode_strip")
 
 -- Mode-private slot map (8+; header 0-7 is mode_core.SLOT). Ball position
 -- and velocity are x256 fixed point (DECISIONS D16: int32 mode vars).
@@ -839,6 +840,9 @@ local function on_mode_init(level, row)
       end
     end
   end
+  -- Roster-only armies on request (shared rule set), before the census below
+  -- so bot backfill sees the post-strip world.
+  strip.strip_authored_troops(mask, nil)
 
   -- Bot squads for active teams that field no livings.
   local per_team = { 0, 0, 0, 0 }

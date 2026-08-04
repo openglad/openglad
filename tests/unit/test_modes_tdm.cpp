@@ -322,6 +322,29 @@ TEST_F(ModesTdm, empty_active_teams_field_five_bot_squads)
     EXPECT_EQ(5, alive_on_team(fx.world(), 1));
 }
 
+// --- Shared init helpers (lib/mode_strip, core.normalize_generator_hp) -----
+
+TEST_F(ModesTdm, scenario_troops_strip_runs_before_the_bot_census)
+{
+    // Ordering pin: the shared strip precedes the empty-team census, so a
+    // team the strip empties comes back as a bot squad instead of standing
+    // the match up with nobody on it.
+    ModesCtfWorld fx(kTdmLevelA);
+    fx.world().ctf_requested_strip_scenario_troops = 2;
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(1, 544, 800);
+    walker* hero = fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
+    walker* troop = fx.spawn_living(FAMILY_ORC, 1, 520, 780);
+    fx.tick(1);
+
+    ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
+    EXPECT_FALSE(hero->dead()) << "roster walkers are never stripped";
+    EXPECT_TRUE(troop->dead()) << "STRIP_ALL takes the authored troop";
+    EXPECT_EQ(1, alive_on_team(fx.world(), 0)) << "the hero holds team 0 alone";
+    EXPECT_EQ(5, alive_on_team(fx.world(), 1))
+        << "the census behind the strip backfills the emptied team";
+}
+
 // ===========================================================================
 // Frag scoring (the killer channel) — every arm of the ledger
 // ===========================================================================

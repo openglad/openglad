@@ -399,6 +399,23 @@ TEST_F(ModesSoccer, empty_active_teams_get_bot_squads)
     EXPECT_EQ(5, alive_on_team(fx.world(), 1));
 }
 
+TEST_F(ModesSoccer, scenario_troops_strip_takes_the_pitch_generators_too)
+{
+    // Soccer passes no keep_generators: an ally generator is scenery here,
+    // not the board, so "strip ALL" means the pitch as well as the troops.
+    SoccerWorld fx;
+    fx.world().ctf_requested_strip_scenario_troops = 2;
+    walker* tent = fx.spawn_generator(FAMILY_TENT, 0, 200, 700);
+    ASSERT_NE(nullptr, tent);
+    fx.tick(1);
+
+    ASSERT_TRUE(fx.soccer_active());
+    EXPECT_TRUE(tent->dead()) << "no keep_generators arm for soccer";
+    EXPECT_TRUE(fx.red->dead()) << "the authored livings go with it";
+    EXPECT_EQ(5, alive_on_team(fx.world(), 0))
+        << "and the emptied team is backfilled by the census behind the strip";
+}
+
 TEST_F(ModesSoccer, bad_manifest_rows_demote_with_recorded_errors)
 {
     // A row missing an active team's goal rect.

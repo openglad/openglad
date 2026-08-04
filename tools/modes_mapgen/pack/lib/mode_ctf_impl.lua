@@ -11,6 +11,7 @@
 local C = og.C
 local core = og.use("mode_core")
 local ai = og.use("mode_ai")
+local strip = og.use("mode_strip")
 
 -- Mode-private slot map (8-61; header 0-7 is mode_core.SLOT).
 -- Flag state is DERIVED, exactly the C++ enum: Carried while a carrier id
@@ -835,51 +836,10 @@ local function on_mode_init(level)
     end
   end
 
-  -- Roster-only armies on request: strip the authored livings and
-  -- generators from every active team that fields a roster walker.
-  if og.match_setting("strip_troops") ~= 0 then
-    local has_roster = { false, false, false, false }
-    for k = 1, #obs do
-      local w = obs[k]
-      if w:dead() == 0 then
-        if w:order() == C.ORDER_LIVING then
-          if w:has_guy() then
-            local team = w:team_num()
-            if team < C.SCORE_TEAM_COUNT then
-              has_roster[team + 1] = true
-            end
-          end
-        end
-      end
-    end
-    for k = 1, #obs do
-      local w = obs[k]
-      if w:dead() == 0 then
-        local order = w:order()
-        local troops = false
-        if order == C.ORDER_LIVING then
-          troops = true
-        elseif order == C.ORDER_GENERATOR then
-          troops = true
-        end
-        if troops then
-          if not w:has_guy() then
-            local team = w:team_num()
-            if team < C.SCORE_TEAM_COUNT then
-              if core.mask_has(mask, team) then
-                if has_roster[team + 1] then
-                  -- Move the corpse off the score-team range first so the
-                  -- same-tick death scan cannot respawn it.
-                  w:set_team_num(C.SCORE_TEAM_COUNT)
-                  w:set_dead(1)
-                end
-              end
-            end
-          end
-        end
-      end
-    end
-  end
+  -- Roster-only armies on request (the shared rule set — lib/mode_strip).
+  -- Runs before the bot-squad census below so backfill sees the post-strip
+  -- world; CTF fields no generators, so it keeps none.
+  strip.strip_authored_troops(mask, nil)
 
   -- Resolve config: explicit request > per-map flag level > defaults.
   local limit = T.capture_limit

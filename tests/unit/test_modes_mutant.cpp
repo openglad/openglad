@@ -284,6 +284,25 @@ TEST_F(ModesMutant, empty_competitor_teams_field_one_bot_each)
     EXPECT_EQ(1, alive_on_team(fx.world(), 3));
 }
 
+TEST_F(ModesMutant, scenario_troops_strip_runs_before_the_seat_census)
+{
+    // The shared strip (lib/mode_strip) precedes the one-bot-per-empty-seat
+    // census, so a seat the strip empties is filled rather than left vacant.
+    ModesCtfWorld fx(kMutantLevelA);
+    fx.world().ctf_requested_strip_scenario_troops = 2;
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(1, 544, 96);
+    walker* hero = fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
+    walker* troop = fx.spawn_living(FAMILY_ORC, 1, 520, 200);
+    fx.tick(1);
+
+    ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
+    EXPECT_FALSE(hero->dead()) << "roster walkers are never stripped";
+    EXPECT_TRUE(troop->dead()) << "STRIP_ALL takes the authored troop";
+    EXPECT_EQ(1, alive_on_team(fx.world(), 0));
+    EXPECT_EQ(1, alive_on_team(fx.world(), 1)) << "the emptied seat is refilled";
+}
+
 // ===========================================================================
 // Crown / transfer / revert (the phase machine)
 // ===========================================================================

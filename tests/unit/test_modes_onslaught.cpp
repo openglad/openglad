@@ -335,6 +335,29 @@ TEST_F(ModesOnslaught, genless_active_team_starts_its_grace_clock)
         << "a genless team is on the clock from init";
 }
 
+TEST_F(ModesOnslaught, scenario_troops_strip_spares_the_foundries)
+{
+    // Onslaught is the one mode that passes keep_generators to the shared
+    // strip: its generators ARE the board, so "strip ALL" clears the
+    // authored infantry and leaves every post standing.
+    OnsWorld fx;
+    fx.world().ctf_requested_strip_scenario_troops = 2;
+    walker* wildlife = fx.spawn_living(FAMILY_ORC, 5, 320, 700);
+    ASSERT_NE(nullptr, wildlife);
+    fx.tick(1);
+
+    ASSERT_TRUE(fx.ons_active());
+    EXPECT_TRUE(fx.red->dead()) << "STRIP_ALL takes the authored livings";
+    EXPECT_TRUE(fx.green->dead());
+    EXPECT_TRUE(wildlife->dead()) << "\"ALL\" reaches wildlife too";
+    EXPECT_FALSE(fx.red_gen_a->dead()) << "keep_generators spares the posts";
+    EXPECT_FALSE(fx.red_gen_b->dead());
+    EXPECT_FALSE(fx.green_gen->dead());
+    EXPECT_EQ(2, fx.team_var(kOnsGenCount, 0)) << "the census still counts them";
+    EXPECT_EQ(1, fx.team_var(kOnsGenCount, 1));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
 // ===========================================================================
 // The D5 flip (on_damage)
 // ===========================================================================
