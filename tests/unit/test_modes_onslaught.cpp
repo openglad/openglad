@@ -1,7 +1,9 @@
 // The Onslaught campaign-pack Lua (lib/mode_onslaught_impl.lua) behavior
 // suite: every D5 rule as a sim case — init/activation, the damage-gate
 // generator flip (lethal boundary, non-living/own-team/neutral arms, the
-// 1 hp floor, the B6 post-flip guard window with its per-generator
+// 1 hp floor, the init max_hp normalization + authored-hp flip restore
+// with the <= 1 hp floor cancel (INVESTIGATION-3), the B6 post-flip
+// guard window with its per-generator
 // records and overflow degradation, the C2 classic-toast suppression
 // arms), zero-generator grace elimination with
 // recapture reset, waypoint holds (spawn-level + schedule-time respawn
@@ -18,6 +20,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/script/family_hooks.h>
+#include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/script/script_host.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -557,6 +560,166 @@ TEST_F(ModesOnslaught, flip_keeps_existing_spawns_on_their_old_team)
     ASSERT_EQ(1, fx.red_gen_a->team_num());
     EXPECT_EQ(0, veteran->team_num())
         << "a captured post's old spawns fight on as a remnant";
+}
+
+// ===========================================================================
+// Authored-hp flip restore (INVESTIGATION-3)
+//
+// The loader ships TOWER/BONES/TREEHOUSE with max_hp 0 (TENT with 100)
+// while walker::set_difficulty stamps fighting hp into hitpoints only, so
+// the flip's hp = max_hp restore used to leave a fresh capture at 0 hp —
+// and the B6 guard's floor arm then returned the NUMBER 0 (a replacement
+// amount, not a cancel), letting walker::attack's hp <= 0 death check
+// explode the "immortal" generator. on_mode_init now normalizes every
+// generator's max_hp to its authored hp, and the floor arm cancels
+// outright at trunc(hp) <= 1.
+// ===========================================================================
+
+TEST_F(ModesOnslaught, flip_restores_authored_hp_for_zero_max_families)
+{
+    OnsWorld fx;
+    walker* bones = fx.spawn_generator(FAMILY_BONES, 1, 320, 480, 2);
+    walker* tower = fx.spawn_generator(FAMILY_TOWER, 1, 320, 560, 2);
+    walker* tree = fx.spawn_generator(FAMILY_TREEHOUSE, 1, 320, 640, 2);
+    ASSERT_NE(nullptr, bones);
+    ASSERT_NE(nullptr, tower);
+    ASSERT_NE(nullptr, tree);
+    walker* const gens[] = {bones, tower, tree};
+    float authored[3];
+    for (int i = 0; i < 3; ++i)
+    {
+        authored[i] = gens[i]->stats()->hitpoints();
+        ASSERT_GT(authored[i], 0.0f);
+        ASSERT_EQ(0.0f, gens[i]->stats()->max_hitpoints())
+            << "the bug's precondition: the loader ships this family with "
+               "max_hp 0 (engine follow-up A pending)";
+    }
+    fx.tick(1);
+    ASSERT_TRUE(fx.ons_active());
+    for (int i = 0; i < 3; ++i)
+    {
+        EXPECT_EQ(authored[i], gens[i]->stats()->max_hitpoints())
+            << "on_mode_init normalizes max_hp to the authored hp";
+    }
+
+    for (int i = 0; i < 3; ++i)
+    {
+        fx.red->setxy(static_cast<short>(gens[i]->xpos() + 12),
+                      static_cast<short>(gens[i]->ypos() + 20));
+        fx.smash(fx.red, gens[i]);
+        EXPECT_FALSE(gens[i]->dead()) << "generators never die (D5)";
+        EXPECT_EQ(0, gens[i]->team_num()) << "the flip lands";
+        EXPECT_EQ(authored[i], gens[i]->stats()->hitpoints())
+            << "the flip restores the AUTHORED hp, not the loader's 0";
+    }
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesOnslaught, tent_flip_restores_full_authored_hp_not_half)
+{
+    OnsWorld fx;
+    walker* tent = fx.spawn_generator(FAMILY_TENT, 1, 320, 480, 2);
+    ASSERT_NE(nullptr, tent);
+    const float authored = tent->stats()->hitpoints();
+    ASSERT_GT(authored, tent->stats()->max_hitpoints())
+        << "the bug's precondition: a difficulty-stamped tent runs above "
+           "its loader max_hp of 100";
+    fx.tick(1);
+    ASSERT_TRUE(fx.ons_active());
+    EXPECT_EQ(authored, tent->stats()->max_hitpoints());
+
+    fx.red->setxy(332, 500);
+    fx.smash(fx.red, tent);
+    EXPECT_EQ(0, tent->team_num());
+    EXPECT_EQ(authored, tent->stats()->hitpoints())
+        << "full authored hp, not the loader-max half";
+}
+
+TEST_F(ModesOnslaught, guarded_lethal_hits_on_a_fresh_flip_never_kill)
+{
+    // The exact reported kill chain: flip a zero-max family, then land
+    // enemy lethal hits inside the 96-tick guard window. Pre-fix the
+    // flipped shell sat at 0 hp and the second hit exploded it.
+    OnsWorld fx;
+    walker* bones = fx.spawn_generator(FAMILY_BONES, 1, 320, 480, 2);
+    ASSERT_NE(nullptr, bones);
+    const float authored = bones->stats()->hitpoints();
+    fx.tick(1);
+    ASSERT_TRUE(fx.ons_active());
+
+    fx.red->setxy(332, 500);
+    fx.smash(fx.red, bones);  // flip to red at world tick 1
+    ASSERT_EQ(0, bones->team_num());
+    ASSERT_EQ(authored, bones->stats()->hitpoints());
+
+    walker* green_hitter = fx.spawn_living(FAMILY_SOLDIER, 1, 344, 500);
+    fx.smash(green_hitter, bones);  // guarded lethal: the floor arm
+    EXPECT_FALSE(bones->dead()) << "the reported explode-instead-of-flip";
+    EXPECT_EQ(0, bones->team_num()) << "no re-flip inside the guard (B6)";
+    EXPECT_EQ(1.0f, bones->stats()->hitpoints()) << "floored, alive";
+
+    fx.smash(green_hitter, bones);  // guarded lethal AT the floor
+    EXPECT_FALSE(bones->dead())
+        << "trunc(hp) <= 1 cancels outright: the 0-damage death path is "
+           "unreachable";
+    EXPECT_EQ(1.0f, bones->stats()->hitpoints());
+
+    // Guard expiry: the ping-pong prevention stays intact, and the next
+    // lethal hit flips again at full authored hp.
+    fx.tick(96);
+    fx.smash(green_hitter, bones);
+    EXPECT_EQ(1, bones->team_num()) << "post-guard lethal hit flips again";
+    EXPECT_EQ(authored, bones->stats()->hitpoints());
+    EXPECT_FALSE(bones->dead());
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesOnslaught, zero_hp_shell_cannot_die_through_the_floor_arm)
+{
+    // Belt and braces: even if some future path leaves a live generator at
+    // 0 hp, the hardened floor arm cancels the hit before walker::attack's
+    // hp <= 0 death check can fire.
+    OnsWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.ons_active());
+    fx.green->setxy(140, 340);
+    fx.smash(fx.green, fx.red_gen_a);  // flip: the guard record is written
+    ASSERT_EQ(1, fx.red_gen_a->team_num());
+    fx.red_gen_a->stats()->set_hitpoints(0.0f);  // the surprise state
+
+    walker* red_hitter = fx.spawn_living(FAMILY_SOLDIER, 0, 116, 340);
+    fx.smash(red_hitter, fx.red_gen_a);
+    EXPECT_FALSE(fx.red_gen_a->dead())
+        << "pre-fix: the applied-0-damage path killed the 0-hp shell";
+    EXPECT_EQ(0.0f, fx.red_gen_a->stats()->hitpoints())
+        << "cancelled outright — nothing applied";
+    EXPECT_EQ(1, fx.red_gen_a->team_num());
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesOnslaught, adversarial_lethal_trades_never_kill_a_generator)
+{
+    // The investigator's regression net: two enemy teams trade lethal
+    // blows on a zero-max-family generator every tick across guard
+    // expiries. Pre-fix this died on the first flipped 0-max generator.
+    OnsWorld fx;
+    walker* bones = fx.spawn_generator(FAMILY_BONES, 7, 320, 480, 2);
+    ASSERT_NE(nullptr, bones);
+    fx.tick(1);
+    ASSERT_TRUE(fx.ons_active());
+    walker* red_hitter = fx.spawn_living(FAMILY_SOLDIER, 0, 308, 500);
+    walker* green_hitter = fx.spawn_living(FAMILY_SOLDIER, 1, 344, 500);
+    for (int i = 0; i < 200; ++i)
+    {
+        fx.smash(red_hitter, bones);
+        ASSERT_FALSE(bones->dead()) << "iteration " << i;
+        fx.smash(green_hitter, bones);
+        ASSERT_FALSE(bones->dead()) << "iteration " << i;
+        ASSERT_GT(bones->stats()->hitpoints(), 0.0f) << "iteration " << i;
+        fx.tick(1);
+        ASSERT_FALSE(bones->dead()) << "iteration " << i;
+    }
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
 // ===========================================================================
@@ -1376,4 +1539,201 @@ TEST_F(ModesOnslaught, match_replicates_to_a_client_mirror_without_hash_strikes)
         EXPECT_EQ(fx.world().mode.vars[slot], mirror.world().mode.vars[slot])
             << "mode var slot " << slot;
     }
+}
+
+// ===========================================================================
+// Scripted turn-undead honors the gate's replacement amount
+// (INVESTIGATION-3 finding B)
+//
+// walker::turn_undead's scripted branch used to treat ANY non-negative gate
+// result as "kill approved" — a floor-arm 1-hp (or 0) verdict on an undead
+// living became an instant kill. The contract now mirrors walker::attack's
+// gate site: gated < 0 spares the victim; gated below the offered lethal
+// amount applies as ordinary damage (positive-amount attribution stamp,
+// hp write, retaliation, NO death, NO kill credit); gated at or above the
+// offered lethal amount destroys exactly as before.
+//
+// The verdict channel is a test-only level (9490) whose on_damage answers
+// from mode var slot 60: -1 = cancel (return false), else return the
+// number. Registered per test through the pack-script registry and exactly
+// unregistered afterwards.
+// ===========================================================================
+
+namespace {
+
+inline constexpr int kGateLevel = 9490;
+inline constexpr int kGateVerdictSlot = 60;
+
+constexpr const char* kUndeadGateScript =
+    "og.register_level_hooks(9490, {\n"
+    "  on_mode_init = function(level)\n"
+    "    og.log(\"gate_init\", level)\n"
+    "  end,\n"
+    "  on_damage = function(target, attacker, amount)\n"
+    "    if target:order() ~= og.C.ORDER_LIVING then\n"
+    "      return nil\n"
+    "    end\n"
+    "    local verdict = og.mode_get(60)\n"
+    "    if verdict < 0 then\n"
+    "      return false\n"
+    "    end\n"
+    "    return verdict\n"
+    "  end,\n"
+    "})\n";
+
+// RAII registration of the verdict level: constructed BEFORE the world so
+// its VM evaluates the chunk, unregistered on scope exit so no other test
+// in the binary ever sees level 9490.
+struct GateScript
+{
+    GateScript()
+    {
+        og::script::register_pack_script(
+            {"zz.test.undeadgate", "gate.lua", kUndeadGateScript});
+    }
+    ~GateScript()
+    {
+        og::script::unregister_pack_scripts("zz.test.undeadgate");
+    }
+};
+
+// walker::turn_undead rolls rng(range*40) > rng(level*10) per target; with
+// a level-1 victim and a 200 px range the roll lands overwhelmingly. The
+// bounded retry stops on any observable landing (death or an hp change),
+// so blind-verdict shapes (cancel, zero) simply spend all eight attempts.
+int cast_turn_until_it_lands(walker* caster, walker* victim, float hp_before)
+{
+    int killed = 0;
+    for (int attempt = 0; attempt < 8; ++attempt)
+    {
+        if (victim->dead())
+            break;
+        if (victim->stats()->hitpoints() != hp_before)
+            break;
+        killed += static_cast<int>(caster->turn_undead(200, 1));
+    }
+    return killed;
+}
+
+}  // namespace
+
+TEST_F(ModesOnslaught, turn_undead_partial_replacement_damages_not_kills)
+{
+    GateScript gate;
+    ModesCtfWorld fx(kGateLevel);
+    fx.tick(1);
+    ASSERT_TRUE(fx.world().mode.active) << "the gate level must activate";
+    walker* cleric = fx.spawn_living(FAMILY_CLERIC, 0, 200, 264);
+    walker* undead = fx.spawn_living(FAMILY_SKELETON, 1, 216, 264);
+    ASSERT_NE(nullptr, cleric);
+    ASSERT_NE(nullptr, undead);
+    undead->stats()->set_level(1);
+    const float hp_before = undead->stats()->hitpoints();
+    ASSERT_GT(hp_before, 7.0f);
+    fx.world().mode.vars[kGateVerdictSlot] = 7;
+
+    const int killed = cast_turn_until_it_lands(cleric, undead, hp_before);
+    EXPECT_EQ(0, killed) << "a partial replacement is never a kill";
+    EXPECT_FALSE(undead->dead());
+    EXPECT_EQ(0, undead->death_called());
+    EXPECT_EQ(hp_before - 7.0f, undead->stats()->hitpoints())
+        << "the replaced amount lands as ordinary damage";
+    EXPECT_EQ(cleric->entity_id(), undead->last_attacker_id())
+        << "a positive amount stamps attribution, like walker::attack";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesOnslaught, turn_undead_zero_replacement_leaves_victim_untouched)
+{
+    // The floor-arm trap itself: a gate verdict of 0 used to read as "kill
+    // approved". Now it is an applied 0-damage hit — no death, no stamp.
+    GateScript gate;
+    ModesCtfWorld fx(kGateLevel);
+    fx.tick(1);
+    ASSERT_TRUE(fx.world().mode.active);
+    walker* cleric = fx.spawn_living(FAMILY_CLERIC, 0, 200, 264);
+    walker* undead = fx.spawn_living(FAMILY_SKELETON, 1, 216, 264);
+    ASSERT_NE(nullptr, cleric);
+    ASSERT_NE(nullptr, undead);
+    undead->stats()->set_level(1);
+    const float hp_before = undead->stats()->hitpoints();
+    fx.world().mode.vars[kGateVerdictSlot] = 0;
+
+    const int killed = cast_turn_until_it_lands(cleric, undead, hp_before);
+    EXPECT_EQ(0, killed);
+    EXPECT_FALSE(undead->dead()) << "pre-fix: gated == 0 destroyed the victim";
+    EXPECT_EQ(0, undead->death_called());
+    EXPECT_EQ(hp_before, undead->stats()->hitpoints());
+    EXPECT_EQ(0u, undead->last_attacker_id()) << "no stamp for a 0 amount";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesOnslaught, turn_undead_replacement_at_lethal_still_destroys)
+{
+    // The kill threshold is the OFFERED amount (hitpoints clamped to
+    // [1, 32000] and truncated): a replacement equal to it destroys even
+    // when float hp carries a fraction — the keep/no-hook path stays
+    // byte-identical to the pre-contract behavior.
+    GateScript gate;
+    ModesCtfWorld fx(kGateLevel);
+    fx.tick(1);
+    ASSERT_TRUE(fx.world().mode.active);
+    walker* cleric = fx.spawn_living(FAMILY_CLERIC, 0, 200, 264);
+    walker* undead = fx.spawn_living(FAMILY_SKELETON, 1, 216, 264);
+    ASSERT_NE(nullptr, cleric);
+    ASSERT_NE(nullptr, undead);
+    undead->stats()->set_level(1);
+    undead->stats()->set_hitpoints(60.7f);
+    fx.world().mode.vars[kGateVerdictSlot] = 60;  // == the offered lethal
+
+    const int killed = cast_turn_until_it_lands(cleric, undead, 60.7f);
+    EXPECT_EQ(1, killed);
+    EXPECT_TRUE(undead->dead());
+    EXPECT_EQ(1, undead->death_called());
+    EXPECT_EQ(0.0f, undead->stats()->hitpoints());
+    EXPECT_EQ(cleric->entity_id(), undead->last_attacker_id());
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesOnslaught, turn_undead_replacement_above_lethal_destroys_as_before)
+{
+    GateScript gate;
+    ModesCtfWorld fx(kGateLevel);
+    fx.tick(1);
+    ASSERT_TRUE(fx.world().mode.active);
+    walker* cleric = fx.spawn_living(FAMILY_CLERIC, 0, 200, 264);
+    walker* undead = fx.spawn_living(FAMILY_SKELETON, 1, 216, 264);
+    ASSERT_NE(nullptr, cleric);
+    ASSERT_NE(nullptr, undead);
+    undead->stats()->set_level(1);
+    const float hp_before = undead->stats()->hitpoints();
+    fx.world().mode.vars[kGateVerdictSlot] = 32000;
+
+    const int killed = cast_turn_until_it_lands(cleric, undead, hp_before);
+    EXPECT_EQ(1, killed);
+    EXPECT_TRUE(undead->dead());
+    EXPECT_EQ(1, undead->death_called());
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesOnslaught, turn_undead_gate_cancel_spares_the_victim)
+{
+    GateScript gate;
+    ModesCtfWorld fx(kGateLevel);
+    fx.tick(1);
+    ASSERT_TRUE(fx.world().mode.active);
+    walker* cleric = fx.spawn_living(FAMILY_CLERIC, 0, 200, 264);
+    walker* undead = fx.spawn_living(FAMILY_SKELETON, 1, 216, 264);
+    ASSERT_NE(nullptr, cleric);
+    ASSERT_NE(nullptr, undead);
+    undead->stats()->set_level(1);
+    const float hp_before = undead->stats()->hitpoints();
+    fx.world().mode.vars[kGateVerdictSlot] = -1;
+
+    const int killed = cast_turn_until_it_lands(cleric, undead, hp_before);
+    EXPECT_EQ(0, killed);
+    EXPECT_FALSE(undead->dead());
+    EXPECT_EQ(hp_before, undead->stats()->hitpoints());
+    EXPECT_EQ(0u, undead->last_attacker_id()) << "a cancel never stamps";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }

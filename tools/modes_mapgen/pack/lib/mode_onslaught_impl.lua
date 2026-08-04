@@ -156,7 +156,11 @@ end
 -- weapons without a living owner, non-score attackers, the generator's
 -- own team (no free self-heal) — is floored at 1 hp instead. A generator
 -- that flipped within the last flip_guard_ticks shares that floor arm
--- (no re-flip, no notification: the B6 ping-pong killer). The flip is
+-- (no re-flip, no notification: the B6 ping-pong killer). At 1 hp or
+-- below the floor arm cancels outright: a floor verdict of 0 is a
+-- REPLACEMENT amount to the engine, not a cancel, and walker::attack's
+-- own hp <= 0 death check would turn it into a kill on a 0-hp shell
+-- (the INVESTIGATION-3 explode-instead-of-flip chain). The flip is
 -- the only ownership transition, so the unproven death-path resurrect
 -- never runs.
 local function on_damage(target, attacker, amount)
@@ -190,7 +194,10 @@ local function on_damage(target, attacker, amount)
     end
   end
   if not flip then
-    return og.max(og.trunc(hp) - 1, 0)
+    if og.trunc(hp) <= 1 then
+      return false
+    end
+    return og.trunc(hp) - 1
   end
   guard_write(rank, og.mod(og.world_tick(), GUARD_WINDOW) + 1)
   target:set_team_num(team)
@@ -627,6 +634,13 @@ local function on_mode_init(level, row)
           authored_mask = core.mask_add(authored_mask, team)
         end
       elseif order == C.ORDER_GENERATOR then
+        -- Normalize max_hp to the authored (difficulty-stamped) hp: the
+        -- loader ships TOWER/BONES/TREEHOUSE with max_hp 0 and TENT with
+        -- 100, while set_difficulty writes fighting hp into hitpoints
+        -- only — so the flip's hp = max_hp restore would strip a fresh
+        -- capture to 0 hp (or halve a tent). Every generator, neutral
+        -- bytes included: they are all capturable.
+        w.max_hp = w.hp
         local team = w:team_num()
         if team < C.SCORE_TEAM_COUNT then
           authored_mask = core.mask_add(authored_mask, team)

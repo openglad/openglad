@@ -347,8 +347,13 @@ std::int32_t walker::turn_undead(std::int32_t range, [[maybe_unused]] std::int32
 					// hit path (dead-target early-out), so the level damage
 					// gate, the kill-attribution stamp, and the death hooks
 					// would all miss this kill class. Scripted matches route
-					// the instant kill through all three; a gate cancel means
-					// the victim is not a legal target this phase.
+					// the instant kill through all three, honoring the full
+					// gate contract: a cancel means the victim is not a legal
+					// target this phase, and a replacement BELOW the offered
+					// lethal amount is ordinary damage — hp write, positive-
+					// amount attribution stamp, retaliation — never a kill
+					// (the same semantics walker::attack applies at
+					// walker_combat.cpp's gate site).
 					const short lethal = static_cast<short>(
 					    std::clamp(w->stats()->hitpoints(), 1.0f, 32000.0f));
 					const short gated =
@@ -358,6 +363,15 @@ std::int32_t walker::turn_undead(std::int32_t range, [[maybe_unused]] std::int32
 					walker* headguy = this;
 					while (headguy->owner() && headguy->owner() != headguy)
 						headguy = headguy->owner();
+					if (gated < lethal)
+					{
+						if (gated > 0 &&
+						    headguy->query_order() == Order::Living)
+							w->note_attacker(headguy, world->tick_count_);
+						do_combat_damage(this, w, gated);
+						w->stats()->hit_response(this);
+						continue;
+					}
 					w->note_attacker(headguy, world->tick_count_);
 					w->set_dead(1);
 					w->stats()->set_hitpoints(0);
