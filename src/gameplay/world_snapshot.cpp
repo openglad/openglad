@@ -660,14 +660,41 @@ void deserialize_respawn_state(ByteReader& reader,
     for (std::uint8_t i = 0; i < queue_size; ++i)
     {
         og::sim::RespawnEntry entry;
-        entry.kind = reader.read_u8("respawn_entry.kind");
+        // Clamp-on-read, the discipline the rest of the v10 surface applies at
+        // apply time: a crafted queue entry drives classic_fire_respawn, which
+        // spawns from family/level and revives at floor. team stays a full byte
+        // on purpose — classic levels field arbitrary team bytes and every
+        // consumer takes the whole range (set_team_num is uint8).
+        //
+        // kind: only 0 (revive walker_entity_id) and 1 (spawn family/level)
+        // exist; classic_fire_respawn treats everything non-zero as AI, so
+        // collapse unknown values onto that arm instead of leaving a value no
+        // reader can name.
+        const std::uint8_t kind = reader.read_u8("respawn_entry.kind");
+        entry.kind = (kind > 1) ? std::uint8_t{1} : kind;
         entry.team = reader.read_u8("respawn_entry.team");
-        entry.family = reader.read_u8("respawn_entry.family");
-        entry.level = reader.read_u8("respawn_entry.level");
+        // family indexes the per-family tables (descriptors, graphics, names)
+        // exactly like the entity block's family, and takes the same clamp.
+        const std::uint8_t family = reader.read_u8("respawn_entry.family");
+        entry.family = (family < NUM_FAMILIES) ? family : std::uint8_t{0};
+        // level feeds set_level/set_difficulty; 0 is not a legal walker level
+        // (the struct's own default is 1).
+        const std::uint8_t level = reader.read_u8("respawn_entry.level");
+        entry.level = (level == 0) ? std::uint8_t{1} : level;
         entry.ticks_left = reader.read_u16("respawn_entry.ticks_left");
         entry.walker_entity_id = reader.read_u32("respawn_entry.walker_entity_id");
-        entry.x = reader.read_i16("respawn_entry.x");
-        entry.y = reader.read_i16("respawn_entry.y");
+        // x/y use -1/-1 as the "no recorded spot" sentinel and the fire path
+        // rejects a negative half; collapse a half-negative pair like the
+        // entity block's spawn_x/spawn_y so a crafted entry cannot invent one.
+        const std::int16_t x = reader.read_i16("respawn_entry.x");
+        const std::int16_t y = reader.read_i16("respawn_entry.y");
+        entry.x = (x < 0 || y < 0) ? std::int16_t{-1} : x;
+        entry.y = (x < 0 || y < 0) ? std::int16_t{-1} : y;
+        // floor is uint8 (>= 0) and takes the entity block's stance: the upper
+        // bound is a property of the world, not the wire, and grid_for_floor /
+        // the floor-keyed obmap both fall back safely for an unknown floor. A
+        // clamp here would need floor_count, which apply cannot promise is
+        // built yet — it would rewrite legitimate multifloor entries.
         entry.floor = reader.read_u8("respawn_entry.floor");
         respawn.respawn_queue.push_back(entry);
     }

@@ -517,6 +517,87 @@ TEST(ModeSnapshot, deserializer_nul_terminates_crafted_mode_text)
     EXPECT_EQ('A', decoded_hud.mode.hud[0].text[0]);
 }
 
+// Per-entry hardening for the respawn queue: the queue drives
+// classic_fire_respawn, which spawns from family/level and revives at floor,
+// so a crafted entry must not carry a value no reader can name.
+TEST(ModeSnapshot, deserializer_clamps_crafted_respawn_queue_entries)
+{
+    og::sim::WorldSnapshot snapshot;
+    og::sim::RespawnEntry entry;
+    entry.kind = 1;
+    entry.team = 2;
+    entry.family = 3;
+    entry.level = 4;
+    entry.ticks_left = 40;
+    entry.walker_entity_id = 77;
+    entry.x = 120;
+    entry.y = 130;
+    entry.floor = 0;
+    snapshot.respawn.respawn_queue.push_back(entry);
+
+    const std::vector<std::uint8_t> bytes = og::sim::serialize_snapshot(snapshot);
+    const std::size_t payload_length = payload_length_from_header(bytes);
+    const std::vector<std::uint8_t> raw_payload = zlib_decompress_for_test(
+        bytes.data() + og::sim::kTransportHeaderSize, payload_length);
+
+    // The one queue entry follows the queue-size byte: kind, team, family,
+    // level, ticks_left u16, walker_entity_id u32, x i16, y i16, floor.
+    constexpr std::size_t kEntry = kQueueSizeOffset + 1;
+    ASSERT_GE(raw_payload.size(), kEntry + 15);
+    ASSERT_EQ(1, raw_payload[kQueueSizeOffset]);
+    ASSERT_EQ(1, raw_payload[kEntry + 0]) << "kind";
+    ASSERT_EQ(2, raw_payload[kEntry + 1]) << "team";
+    ASSERT_EQ(3, raw_payload[kEntry + 2]) << "family";
+    ASSERT_EQ(4, raw_payload[kEntry + 3]) << "level";
+
+    const auto decode_patched = [&](std::size_t offset, std::uint8_t value) {
+        return og::sim::deserialize_snapshot(
+            rebuild_patched_snapshot_message(raw_payload, offset, value));
+    };
+
+    // kind: only 0 and 1 exist; unknown values collapse onto the AI arm.
+    const og::sim::WorldSnapshot bad_kind = decode_patched(kEntry + 0, 0xffu);
+    ASSERT_EQ(1u, bad_kind.respawn.respawn_queue.size());
+    EXPECT_EQ(1, bad_kind.respawn.respawn_queue[0].kind);
+
+    // family indexes the per-family tables and takes the entity block's clamp.
+    const og::sim::WorldSnapshot bad_family = decode_patched(kEntry + 2, 0xffu);
+    EXPECT_EQ(0, bad_family.respawn.respawn_queue[0].family);
+    const og::sim::WorldSnapshot edge_family =
+        decode_patched(kEntry + 2, static_cast<std::uint8_t>(NUM_FAMILIES));
+    EXPECT_EQ(0, edge_family.respawn.respawn_queue[0].family)
+        << "NUM_FAMILIES itself is out of range";
+    const og::sim::WorldSnapshot last_family =
+        decode_patched(kEntry + 2, static_cast<std::uint8_t>(NUM_FAMILIES - 1));
+    EXPECT_EQ(NUM_FAMILIES - 1, last_family.respawn.respawn_queue[0].family)
+        << "the last real family must survive";
+
+    // level 0 is not a legal walker level.
+    const og::sim::WorldSnapshot zero_level = decode_patched(kEntry + 3, 0);
+    EXPECT_EQ(1, zero_level.respawn.respawn_queue[0].level);
+
+    // team is a full byte on purpose: classic levels field arbitrary teams.
+    const og::sim::WorldSnapshot wild_team = decode_patched(kEntry + 1, 0xffu);
+    EXPECT_EQ(255, wild_team.respawn.respawn_queue[0].team);
+
+    // A half-negative x/y pair collapses to the full -1/-1 sentinel (the high
+    // byte of x makes it negative while y stays positive).
+    const og::sim::WorldSnapshot half_negative =
+        decode_patched(kEntry + 11, 0xffu);
+    EXPECT_EQ(-1, half_negative.respawn.respawn_queue[0].x);
+    EXPECT_EQ(-1, half_negative.respawn.respawn_queue[0].y);
+
+    // An untouched payload round-trips unchanged.
+    const og::sim::WorldSnapshot clean = og::sim::deserialize_snapshot(bytes);
+    ASSERT_EQ(1u, clean.respawn.respawn_queue.size());
+    EXPECT_EQ(1, clean.respawn.respawn_queue[0].kind);
+    EXPECT_EQ(2, clean.respawn.respawn_queue[0].team);
+    EXPECT_EQ(3, clean.respawn.respawn_queue[0].family);
+    EXPECT_EQ(4, clean.respawn.respawn_queue[0].level);
+    EXPECT_EQ(120, clean.respawn.respawn_queue[0].x);
+    EXPECT_EQ(130, clean.respawn.respawn_queue[0].y);
+}
+
 TEST(ModeSnapshot, apply_clamps_out_of_cap_counts_from_crafted_snapshots)
 {
     og::sim::WorldSnapshot snapshot;
