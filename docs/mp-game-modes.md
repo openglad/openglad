@@ -64,21 +64,21 @@ to every client:
 
 **TROOPS** sits one screen up, on **SCENARIO**, because it applies to every
 campaign rather than only the versus ones. It is host-only and lobby-synced
-like the pair above, and cycles three ways:
+like the pair above, and has two states:
 
-- **TROOPS: SCEN** — keep the level exactly as authored (the default).
-- **TROOPS: OWN** — versus campaigns only: each team that fields company
-  fighters loses the level's canned troops and generators for that team, so
-  the match is played by the rosters. The level's wildlife and neutral
-  garrison stay.
-- **TROOPS: NONE** — remove every fighter and generator the level ships,
-  on every team, wildlife included; only the players' companies (and the AI
+- **TROOPS: ALL** — keep the level exactly as authored (the default).
+- **TROOPS: OWN** — remove every fighter and generator the level ships, on
+  every team, wildlife included; only the players' companies (and the AI
   squads the modes field for empty teams) remain. Onslaught keeps its
   generators, which are the board rather than troops. On a classic campaign
   this makes the level a sandbox: a kill-everything level is already won,
   and its named quest NPCs are gone — except characters the level marks
-  protected, which survive every setting. On classic campaigns the cycle
-  skips **OWN**, which has no meaning there.
+  protected, which survive either setting.
+
+Both states apply on every campaign, so the control reads the same
+everywhere. An older save may carry a retired third state that stripped only
+the roster teams' canned troops; it now behaves as **OWN**, and cycling the
+control from it returns to **ALL**.
 
 VIEW LEVEL previews the result: entries the setting will remove are flagged
 in the scenario report.
