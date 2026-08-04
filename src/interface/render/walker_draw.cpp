@@ -11,6 +11,7 @@
 
 #include <openglad/interface/render/walker_draw.h>
 #include <openglad/core/runtime_trace.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/interface/base.h>
 #include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/walker.h>
@@ -347,6 +348,31 @@ void draw_small_health_bar(walker* w, viewscreen* view_buf)
         return;
     }
 
+    // The bar is a FRACTION, so it needs a max-HP denominator. Generators are
+    // the entity class that can arrive without one: walker::set_difficulty's
+    // Order::Generator branch writes hitpoints (100 * level, difficulty-scaled)
+    // and never max_hitpoints, so a family whose gloader row carries 0 base HP
+    // (tower, bones, treehouse) reaches render with hp > 0 and max_hp == 0.
+    // That used to divide by zero here and produce inf/NaN ratios which fell
+    // out of the `ratio < 0.95f` bar test by accident — a silent "generators
+    // never show damage".
+    //
+    // Documented choice for the max_hp == 0 arm: draw NOTHING. The remaining
+    // fraction is genuinely unknowable from render-readable state
+    // (last_hitpoints is only the pre-hit HP and decays with every hit), and a
+    // full-bar fallback would actively lie about a generator being chewed
+    // down. Once the sim hands generators a real max_hitpoints, the ordinary
+    // living rules below take over unchanged and a damaged generator gets its
+    // bar. Livings are unaffected: they always carry a positive max.
+    const float max_points = w->stats()->max_hitpoints();
+    if (!(max_points > 0.0f))
+    {
+        TRACE("hp_bar", "skip_no_max order=%d family=%d hp=%d",
+              static_cast<int>(w->query_order()), static_cast<int>(w->family()),
+              static_cast<int>(w->stats()->hitpoints()));
+        return;
+    }
+
 	ScopedGameplayUiCanvas gameplay_ui(
 		*og::runtime::current_session->myscreen_);
 
@@ -392,11 +418,17 @@ void draw_small_health_bar(walker* w, viewscreen* view_buf)
 
     // Last hit's effect
     float last_points = w->last_hitpoints();
-    float last_ratio = float(last_points)/w->stats()->max_hitpoints();
+    float last_ratio = float(last_points)/max_points;
 
     // Current HP
     float points = w->stats()->hitpoints();
-    float ratio = float(points)/w->stats()->max_hitpoints();
+    // Clamped so an entity carrying more HP than its recorded max (a
+    // drumstick overheal, or a generator whose difficulty-scaled HP outgrew
+    // its family's base max) reads as "full" instead of overflowing the bar.
+    // Byte-identical for every hp <= max case, and the hp > max case drew no
+    // bar before the clamp and still draws none after it (ratio == 1.0f fails
+    // the `< 0.95f` test), so no shipped frame changes.
+    float ratio = std::min(1.0f, float(points)/max_points);
 
     unsigned char whatcolor;
 
@@ -427,6 +459,11 @@ void draw_small_health_bar(walker* w, viewscreen* view_buf)
             const Sint32 cur_w = static_cast<Sint32>(width_f * ratio);
             og::runtime::current_session->myscreen_->draw_box(bar_x, bar_y, bar_x + cur_w, bar_y + bar_h, whatcolor, 1);
             og::runtime::current_session->myscreen_->draw_box(bar_x - 1, bar_y - 1, bar_x + max_w + 1, bar_y + bar_h + 1, BLACK, 0);
+            TRACE("hp_bar", "draw order=%d family=%d x=%d y=%d w=%d of=%d",
+                  static_cast<int>(w->query_order()),
+                  static_cast<int>(w->family()), static_cast<int>(bar_x),
+                  static_cast<int>(bar_y), static_cast<int>(cur_w),
+                  static_cast<int>(max_w));
         }
     }
 }

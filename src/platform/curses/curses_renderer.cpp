@@ -355,6 +355,13 @@ void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
         // Scripted-mode (TYPE_SCRIPTED) group: the mode name + every
         // non-empty ModeState HUD line, then the followed walker's respawn
         // seconds — the terminal twin of the SDL mode panel.
+        //
+        // Already one line, so the SDL condensation changes nothing here but
+        // one deliberate divergence: the SDL row strips each slot's leading
+        // team color word because it draws that slot in the team's ramp, and
+        // the word is then pure duplication. This row is monochrome
+        // (Color::Default), so the word is the ONLY thing naming the team —
+        // it stays. Same rule, opposite outcome.
         if ((world.type & GameWorld::TYPE_SCRIPTED) && world.mode.active) {
             if (world.mode.name[0] != '\0') {
                 line1 += "  ";

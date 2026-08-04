@@ -22,6 +22,8 @@
 #include <openglad/interface/guy_create.h>
 #include <openglad/interface/render/radar.h>
 #include <openglad/interface/render/view.h>
+#include <openglad/interface/render/walker_draw.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/results_screen.h>
 #include <openglad/interface/view_sizes.h>
@@ -36,6 +38,7 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <vector>
 
 short new_score_panel(screen* s, short do_it);
 void show_ending_popup(int ending, int nextlevel);
@@ -205,9 +208,146 @@ void silence_hud_prefs(viewscreen* v)
     v->prefs[PREF_FOES] = PREF_FOES_OFF;
 }
 
+// The mode row's own horizontal window, recomputed from the same inputs
+// draw_mode_panel uses: it starts past the classic caption's button box
+// (lm+1..lm+63) and past the caption text itself, and stops short of the
+// TEAM/FOES column while PREF_FOES is on.
+struct ModeRowWindow
+{
+    int left = 0;
+    int right = 0;
+    int budget = 0;
+};
+
+ModeRowWindow mode_row_window(viewscreen* v)
+{
+    walker* const control = v->control;
+    const bool classic_hud =
+        control != nullptr && !control->dead() && control->user() != -1;
+    ModeRowWindow w;
+    w.left = v->xloc + 2;
+    w.right = v->endx - 2;
+    if (classic_hud)
+    {
+        std::string caption;
+        if (control->myguy)
+            caption = control->myguy->name;
+        else if (!control->stats()->name.empty())
+            caption = control->stats()->name;
+        const int caption_end =
+            v->xloc + 3 + 6 * static_cast<int>(caption.size()) + 4;
+        w.left = std::max(v->xloc + 66, caption_end);
+        if (v->prefs[PREF_FOES] == PREF_FOES_ON)
+            w.right = v->endx - 60;
+    }
+    w.budget = (w.right - w.left) / 6;
+    return w;
+}
+
+// Rows in [x0, x1) that carry any lit pixel, as a first/last pair.
+// first > last means the band is empty.
+std::pair<int, int> lit_row_span(const std::array<unsigned char, 64000>& frame,
+                                 int x0, int x1, int y0, int y1)
+{
+    int first = y1;
+    int last = y0 - 1;
+    for (int y = y0; y < y1; ++y)
+    {
+        for (int x = x0; x < x1; ++x)
+        {
+            if (frame[static_cast<std::size_t>(y * 320 + x)] == 0)
+                continue;
+            first = std::min(first, y);
+            last = std::max(last, y);
+            break;
+        }
+    }
+    return {first, last};
+}
+
+int lit_pixel_count(const std::array<unsigned char, 64000>& frame)
+{
+    int n = 0;
+    for (unsigned char p : frame)
+        if (p != 0)
+            ++n;
+    return n;
+}
+
+// THE R1 clamp proof. Render the same frame twice — once with the ModeState
+// HUD slots blanked, once as authored — and diff. Every pixel that differs
+// IS the mode row, whatever else the classic HUD painted around it. Each of
+// those pixels must fall inside SOME pane's own row window and on that
+// pane's own tm+4 row band, so no row can reach a neighboring viewport.
+void expect_mode_row_confined_to_its_pane(screen* s)
+{
+    const og::sim::ModeState authored = s->world().mode;
+    og::sim::ModeState blanked = authored;
+    for (og::sim::ModeHudLine& line : blanked.hud)
+        line.text = {};
+
+    s->world().mode = blanked;
+    s->clearbuffer();
+    EXPECT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    const auto without = capture_rendered_frame(*s);
+
+    s->world().mode = authored;
+    s->clearbuffer();
+    EXPECT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    const auto with = capture_rendered_frame(*s);
+
+    struct Band { int x0, x1, y0, y1; };
+    std::vector<Band> bands;
+    for (int i = 0; i < s->numviews; ++i)
+    {
+        viewscreen* v = s->viewob[i].get();
+        if (v == nullptr)
+            continue;
+        const ModeRowWindow w = mode_row_window(v);
+        // The 5x6 font puts the tm+4 row on scanlines tm+4 .. tm+9.
+        bands.push_back({w.left, w.right, v->yloc + 4, v->yloc + 10});
+    }
+
+    int changed = 0;
+    int outside = 0;
+    std::string first_stray;
+    for (int y = 0; y < 200; ++y)
+    {
+        for (int x = 0; x < 320; ++x)
+        {
+            const std::size_t i = static_cast<std::size_t>(y * 320 + x);
+            if (with[i] == without[i])
+                continue;
+            ++changed;
+            bool inside = false;
+            for (const Band& b : bands)
+            {
+                if (x >= b.x0 && x < b.x1 && y >= b.y0 && y < b.y1)
+                {
+                    inside = true;
+                    break;
+                }
+            }
+            if (!inside)
+            {
+                ++outside;
+                if (first_stray.empty())
+                    first_stray = std::to_string(x) + "," + std::to_string(y);
+            }
+        }
+    }
+    EXPECT_GT(changed, 0) << "the mode row must actually paint something";
+    EXPECT_EQ(0, outside)
+        << outside << " mode-row pixels landed outside every pane's row "
+        << "window (first at " << first_stray << ")";
+}
+
 } // namespace
 
-TEST(ModeUi, score_panel_renders_hud_slots_at_ctf_positions)
+// The four ModeState slots collapse onto ONE row at tm+4: each slot loses
+// the team color word it duplicates from its own ramp, the remainders join
+// with " | ", and every segment keeps its team's ramp.
+TEST(ModeUi, score_panel_composes_one_row_from_the_hud_slots)
 {
     ClassicModeHudCanvasGuard classic_canvas;
     ModeScreenWorld mode;
@@ -221,54 +361,88 @@ TEST(ModeUi, score_panel_renders_hud_slots_at_ctf_positions)
     v->control = control.get();
     silence_hud_prefs(v);
 
-    mode.set_hud(0, "5:3", 0);
-    mode.set_hud(1, "ROUND 2", 1);
-    mode.set_hud(2, "WP 12/36", 2);
-    mode.set_hud(3, "BALL!", 255);
+    mode.set_hud(0, "RED 5", 0);
+    mode.set_hud(1, "BLUE 3", 2);
+    mode.set_hud(2, "", 255);
+    mode.set_hud(3, "", 255);
 
     const int tm = v->yloc;
     const int lm = v->xloc;
-    const int rm = v->endx;
+    const ModeRowWindow win = mode_row_window(v);
+    ASSERT_GT(win.budget, 10) << "a single 320-wide view has room for the row";
 
     trace_clear();
     s->clearbuffer();
     ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
     const auto frame = capture_rendered_frame(*s);
 
-    // Slot 0: right-aligned ending at rm-60 on the tm+4 caps row, in the
-    // team-0 ramp (0*16+40).
-    EXPECT_TRUE(box_pixels_all_colored(frame, rm - 60 - 3 * 6, tm + 3,
-                                       rm - 59, tm + 12, 40, 7))
-        << "slot 0 should paint right-aligned at rm-60 in the team-0 ramp";
-    EXPECT_FALSE(box_has_pixels(frame, rm - 59, tm + 3, rm - 55, tm + 12))
-        << "slot 0 must end before the TEAM/FOES column at rm-55";
+    // The composed row: "5 | 3" at tm+4, starting at the window's left edge.
+    const std::string row_trace = std::format(
+        "row y={} x={} budget={} text=5 - 3", tm + 4, win.left, win.budget);
+    EXPECT_TRUE(trace_contains("mode_hud", row_trace.c_str()))
+        << "expected the joined one-line row; trace: " << row_trace;
 
-    // Slot 1: right-aligned ending at rm-60 on the tm+28 digits row, team 1.
-    EXPECT_TRUE(box_pixels_all_colored(frame, rm - 60 - 7 * 6, tm + 27,
-                                       rm - 59, tm + 36, 56, 7))
-        << "slot 1 should paint right-aligned at rm-60 on the tm+28 row";
+    // Word-stripping: the team words never reach the draw.
+    EXPECT_FALSE(trace_contains("mode_hud", "RED"))
+        << "slot 0's team word is redundant beside its team ramp";
+    EXPECT_FALSE(trace_contains("mode_hud", "BLUE"));
 
-    // Slot 2: the WP-meter position (lm+2, tm+36), team 2.
-    EXPECT_TRUE(box_pixels_all_colored(frame, lm + 2, tm + 35,
-                                       lm + 2 + 8 * 6, tm + 44, 72, 7))
-        << "slot 2 should paint at the WP-meter position";
-
-    // Slot 3: the FLAG!-tag position (lm+2, tm+28), team 255 = HUD yellow.
-    EXPECT_TRUE(box_pixels_all_colored(frame, lm + 2, tm + 27,
-                                       lm + 2 + 5 * 6, tm + 36,
+    // Per-segment colors: "5" in the team-0 ramp, "3" in the team-2 ramp,
+    // and the " | " between them in the default HUD yellow.
+    EXPECT_TRUE(box_pixels_all_colored(frame, win.left, tm + 3,
+                                       win.left + 6, tm + 12, 40, 7))
+        << "the first segment takes the team-0 ramp";
+    EXPECT_TRUE(box_pixels_all_colored(frame, win.left + 6, tm + 3,
+                                       win.left + 24, tm + 12,
                                        static_cast<unsigned char>(YELLOW), 7))
-        << "slot 3 should paint at the FLAG!-tag position in HUD yellow";
+        << "the separator takes the default HUD color";
+    EXPECT_TRUE(box_pixels_all_colored(frame, win.left + 24, tm + 3,
+                                       win.left + 30, tm + 12, 72, 7))
+        << "the second segment takes the team-2 ramp";
 
-    EXPECT_TRUE(trace_contains("mode_hud", "slot=0 text=5:3"));
-    EXPECT_TRUE(trace_contains("mode_hud", "slot=3 text=BALL!"));
+    // The retired multi-row layout is gone: nothing paints on the old
+    // tm+28 / tm+36 slot rows, which is where the banner block begins.
+    EXPECT_FALSE(box_has_pixels(frame, lm + 2, tm + 26, win.right, tm + 46))
+        << "the old slot rows must be empty — that band belongs to the banner";
 
-    // Empty slots draw nothing: clearing slot 1 removes exactly its pixels.
+    // A slot whose team byte is unset keeps its whole text (nothing is
+    // colored to make the leading word redundant).
+    mode.set_hud(0, "", 255);
     mode.set_hud(1, "", 255);
+    mode.set_hud(2, "OVERTIME", 255);
+    trace_clear();
     s->clearbuffer();
     ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
-    EXPECT_FALSE(box_has_pixels(capture_rendered_frame(*s),
-                                rm - 60 - 7 * 6, tm + 27, rm - 59, tm + 36))
-        << "an empty HUD slot must not paint";
+    EXPECT_TRUE(trace_contains("mode_hud", "seg team=255"));
+    EXPECT_TRUE(trace_contains("mode_hud", "text=OVERTIME"))
+        << "an unteamed slot keeps its text verbatim";
+
+    // Stripping needs a real word boundary: a line that merely starts with
+    // the color's letters survives whole.
+    mode.set_hud(2, "", 255);
+    mode.set_hud(0, "REDOUBT 4", 0);
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    EXPECT_TRUE(trace_contains("mode_hud", "text=REDOUBT 4"))
+        << "only a whole leading color word is stripped";
+
+    // A line that is nothing BUT the color word keeps it, so the slot still
+    // shows something.
+    mode.set_hud(0, "RED", 0);
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    EXPECT_TRUE(trace_contains("mode_hud", "text=RED"))
+        << "stripping must never empty a slot";
+
+    // All slots empty: the row draws nothing at all.
+    mode.set_hud(0, "", 255);
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    EXPECT_FALSE(box_has_pixels(capture_rendered_frame(*s), win.left, tm + 3,
+                                win.right, tm + 12))
+        << "an all-empty ModeState paints no row";
 
     v->control = old_control;
 }
@@ -288,13 +462,21 @@ TEST(ModeUi, score_panel_mode_block_gates_on_type_and_active)
 
     mode.set_hud(0, "5:3", 0);
     const int tm = v->yloc;
-    const int rm = v->endx;
+    const ModeRowWindow win = mode_row_window(v);
+
+    // The row does paint while both gates are set — otherwise the negative
+    // probes below would pass vacuously.
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    ASSERT_TRUE(box_has_pixels(capture_rendered_frame(*s),
+                               win.left, tm + 3, win.right, tm + 12))
+        << "the mode row must paint when the mode is active and scripted";
 
     s->world().mode.active = false;
     s->clearbuffer();
     ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
     EXPECT_FALSE(box_has_pixels(capture_rendered_frame(*s),
-                                rm - 90, tm + 3, rm - 59, tm + 12))
+                                win.left, tm + 3, win.right, tm + 12))
         << "no mode HUD may paint when the mode is not active";
 
     s->world().mode.active = true;
@@ -303,21 +485,28 @@ TEST(ModeUi, score_panel_mode_block_gates_on_type_and_active)
     s->clearbuffer();
     ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
     EXPECT_FALSE(box_has_pixels(capture_rendered_frame(*s),
-                                rm - 90, tm + 3, rm - 59, tm + 12))
+                                win.left, tm + 3, win.right, tm + 12))
         << "no mode HUD may paint without the TYPE_SCRIPTED bit";
     s->world().type |= GameWorld::TYPE_SCRIPTED;
 
     v->control = old_control;
 }
 
-TEST(ModeUi, score_panel_suppresses_rightside_slots_in_small_panes)
+// The retired layout suppressed slots by view count. The budget decides it
+// now: a half-width pane that cannot hold the joined row shows only its own
+// team's segment, and never crosses into its neighbor.
+TEST(ModeUi, score_panel_small_panes_keep_only_the_local_team_segment)
 {
     ClassicModeHudCanvasGuard classic_canvas;
     ModeScreenWorld mode;
     screen* s = mode.s;
 
-    auto control = make_control(0);
-    ASSERT_NE(nullptr, control);
+    auto control0 = make_control(0);
+    auto control1 = make_control(1);
+    auto control2 = make_control(2);
+    ASSERT_NE(nullptr, control0);
+    ASSERT_NE(nullptr, control1);
+    ASSERT_NE(nullptr, control2);
 
     // Rebuild the view layout as a 3-player split; restored below.
     s->numviews = 3;
@@ -328,34 +517,50 @@ TEST(ModeUi, score_panel_suppresses_rightside_slots_in_small_panes)
     s->viewob[2] = std::make_unique<viewscreen>(
         T_LEFT_THREE_FOUR, T_UP_THREE, T_HALF_WIDTH, T_HALF_HEIGHT, 2);
     viewscreen* v = s->viewob[0].get();
-    v->control = control.get();
-    s->viewob[1]->control = nullptr;
-    s->viewob[2]->control = nullptr;
+    v->control = control0.get();
+    s->viewob[1]->control = control1.get();
+    s->viewob[2]->control = control2.get();
     for (int i = 0; i < 3; ++i)
         silence_hud_prefs(s->viewob[i].get());
 
-    mode.set_hud(0, "5:3", 0);
-    mode.set_hud(1, "ROUND 2", 1);
-    mode.set_hud(2, "WP 12/36", 2);
-    mode.set_hud(3, "BALL!", 3);
+    // Four teams' worth of score: far more than a half-width pane can hold.
+    mode.set_hud(0, "RED 1234", 0);
+    mode.set_hud(1, "GREEN 5678", 1);
+    mode.set_hud(2, "BLUE 9012", 2);
+    mode.set_hud(3, "YELLOW 3456", 3);
 
     const int tm = v->yloc;
-    const int lm = v->xloc;
+    const ModeRowWindow win = mode_row_window(v);
+    const ModeRowWindow win1 = mode_row_window(s->viewob[1].get());
+    ASSERT_GE(win.budget, 4) << "the pane must still be wide enough to draw";
+    ASSERT_LT(win.budget, 25) << "the pane must be too narrow for the join";
 
     trace_clear();
     s->clearbuffer();
     ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
     const auto frame = capture_rendered_frame(*s);
 
-    EXPECT_FALSE(trace_contains("mode_hud", "slot=0"))
-        << ">2-view panes suppress the right-aligned slots";
-    EXPECT_FALSE(trace_contains("mode_hud", "slot=1"));
-    EXPECT_TRUE(box_has_pixels(frame, lm + 2, tm + 35,
-                               lm + 2 + 8 * 6, tm + 44))
-        << "slot 2 still draws in small panes";
-    EXPECT_TRUE(box_has_pixels(frame, lm + 2, tm + 27,
-                               lm + 2 + 5 * 6, tm + 36))
-        << "slot 3 still draws in small panes";
+    // The documented narrow-pane rule: when the joined row does not fit,
+    // fall back to the LOCAL team's segment alone. Each pane keeps its own
+    // control's team — no separator, no rivals.
+    EXPECT_TRUE(trace_contains(
+        "mode_hud",
+        std::format("row y={} x={} budget={} text=1234", tm + 4, win.left,
+                    win.budget).c_str()))
+        << "the team-0 pane keeps only team 0's score";
+    EXPECT_TRUE(trace_contains(
+        "mode_hud",
+        std::format("row y={} x={} budget={} text=5678", tm + 4, win1.left,
+                    win1.budget).c_str()))
+        << "the team-1 pane keeps only team 1's score";
+    EXPECT_FALSE(trace_contains("mode_hud", " - "))
+        << "a single surviving segment needs no separator";
+    EXPECT_TRUE(box_has_pixels(frame, win.left, tm + 3, win.right, tm + 12))
+        << "the local team's score still draws in a small pane";
+
+    // R1: diff the frame against a blank-slot render — every mode-row pixel
+    // in every pane lands inside that pane's own window.
+    expect_mode_row_confined_to_its_pane(s);
 
     // Restore the single-view layout for the tests that follow.
     s->viewob[2].reset();
@@ -364,11 +569,11 @@ TEST(ModeUi, score_panel_suppresses_rightside_slots_in_small_panes)
     s->initialize_views();
 }
 
-// og.set_hud_line accepts 25 characters; a 2-view right pane has room for 16
-// between its own left edge and the rm-60 anchor. Nothing downstream clips to
-// the pane (write_xy passes the whole-canvas port), so an unclamped
-// right-aligned row paints into the LEFT pane's viewport.
-TEST(ModeUi, score_panel_truncates_rightside_slots_to_the_pane)
+// og.set_hud_line accepts 25 characters; a 2-view right pane has room for
+// fewer. Nothing downstream clips to the pane (write_xy passes the
+// whole-canvas port), so the row has to clamp itself — it starts at a bound
+// inside its own pane and truncates end-first to the remaining characters.
+TEST(ModeUi, score_panel_truncates_the_row_to_the_pane)
 {
     ClassicModeHudCanvasGuard classic_canvas;
     ModeScreenWorld mode;
@@ -395,45 +600,123 @@ TEST(ModeUi, score_panel_truncates_rightside_slots_to_the_pane)
     mode.set_hud(2, "", 255);
     mode.set_hud(3, "", 255);
 
-    const int lm = right->xloc;
-    const int rm = right->endx;
     const int tm = right->yloc;
-    // The left pane's own copy of slot 0 ends at its rm-60; everything from
-    // there to the right pane's left edge belongs to no one.
-    const int gap_x0 = left->endx - 60 + 1;
+    const ModeRowWindow win = mode_row_window(right);
+    ASSERT_GT(win.budget, 0);
+    ASSERT_LT(win.budget, 25) << "the right pane must be too narrow for 25 chars";
 
     trace_clear();
     s->clearbuffer();
     ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
     const auto frame = capture_rendered_frame(*s);
 
-    EXPECT_FALSE(box_has_pixels(frame, gap_x0, tm + 3, lm, tm + 12))
-        << "a 25-char slot-0 line must not paint left of the right pane";
-    EXPECT_TRUE(box_has_pixels(frame, lm, tm + 3, rm - 59, tm + 12))
+    EXPECT_TRUE(box_has_pixels(frame, win.left, tm + 3, win.right, tm + 12))
         << "the truncated line must still paint inside the right pane";
+    // R1: the row owns only [win.left, win.right) of its own pane. Diffing
+    // against a blank-slot render isolates the row from the classic HUD the
+    // neighboring pane also draws on this scanline.
+    expect_mode_row_confined_to_its_pane(s);
 
-    // The trace carries the truncated tail, not the authored line.
-    EXPECT_FALSE(trace_contains("mode_hud", long_line))
-        << "the full 25-char line must never reach the draw";
-    const int budget = (rm - 60 - (lm + 2)) / 6;
-    ASSERT_GT(budget, 0);
-    ASSERT_LT(budget, 25) << "the right pane must be too narrow for 25 chars";
-    const std::string expected_tail =
-        std::string("slot=0 text=") + (long_line + (25 - budget));
-    EXPECT_TRUE(trace_contains("mode_hud", expected_tail.c_str()))
-        << "truncation drops the leading characters, keeping the tail";
+    // The trace carries the truncated HEAD, not the authored line: end-first
+    // truncation drops the tail.
+    const std::string expected_head = std::format(
+        "row y={} x={} budget={} text={}", tm + 4, win.left, win.budget,
+        std::string(long_line).substr(0, static_cast<std::size_t>(win.budget)));
+    EXPECT_TRUE(trace_contains("mode_hud", expected_head.c_str()))
+        << "truncation keeps the head and drops the tail; want: "
+        << expected_head;
 
-    // A line that fits is untouched.
+    // A line that fits is untouched (past its team word — team 0 is RED, and
+    // this line names it, so the word goes).
     mode.set_hud(0, "RED 5/20", 0);
     trace_clear();
     s->clearbuffer();
     ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
-    EXPECT_TRUE(trace_contains("mode_hud", "slot=0 text=RED 5/20"))
-        << "a line inside the budget draws whole";
+    EXPECT_TRUE(trace_contains("mode_hud", "text=5/20"))
+        << "a line inside the budget draws whole, minus its team word";
 
     s->viewob[1].reset();
     s->numviews = 1;
     s->initialize_views();
+}
+
+// THE reason the row was condensed. viewscreen::display_text writes the
+// announcement banner at viewport-local y = 30, 36, 42, 48, 54; the retired
+// slot rows sat at tm+28 and tm+36 and shredded it. Render each channel
+// alone over the SAME columns and prove their lit scanlines cannot meet.
+TEST(ModeUi, mode_row_and_announcement_banner_never_share_a_scanline)
+{
+    ClassicModeHudCanvasGuard classic_canvas;
+    ModeScreenWorld mode;
+    screen* s = mode.s;
+
+    auto control = make_control(0);
+    ASSERT_NE(nullptr, control);
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v);
+    walker* old_control = v->control;
+    v->control = control.get();
+    silence_hud_prefs(v);
+
+    mode.set_hud(0, "RED 12", 0);
+    mode.set_hud(1, "BLUE 9", 2);
+    mode.set_hud(2, "", 255);
+    mode.set_hud(3, "", 255);
+
+    const int tm = v->yloc;
+    const ModeRowWindow win = mode_row_window(v);
+
+    // Pass 1: the mode row alone.
+    v->clear_text();
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    const auto row_only = capture_rendered_frame(*s);
+    const auto row_span =
+        lit_row_span(row_only, win.left, win.right, v->yloc, v->endy);
+    ASSERT_LE(row_span.first, row_span.second) << "the mode row must paint";
+
+    // Pass 2: the banner alone, over the same columns. A long announcement
+    // is centered across the pane, so it covers the mode row's columns.
+    s->do_notify("ANNOUNCEMENT LINE ONE", nullptr);
+    s->do_notify("ANNOUNCEMENT LINE TWO", nullptr);
+    s->clearbuffer();
+    v->display_text();
+    const auto banner_only = capture_rendered_frame(*s);
+    const auto banner_span =
+        lit_row_span(banner_only, win.left, win.right, v->yloc, v->endy);
+    ASSERT_LE(banner_span.first, banner_span.second)
+        << "the banner must paint over the mode row's columns";
+
+    // The proof: every lit banner scanline is strictly below every lit mode
+    // row scanline.
+    EXPECT_LT(row_span.second, banner_span.first)
+        << "mode row rows [" << row_span.first << "," << row_span.second
+        << "] must end above banner rows [" << banner_span.first << ","
+        << banner_span.second << "]";
+    EXPECT_GE(banner_span.first, v->yloc + 30)
+        << "the banner block still starts at viewport-local y=30";
+    EXPECT_EQ(tm + 4, row_span.first)
+        << "the mode row still starts on the tm+4 scanline";
+
+    // And drawn together, neither channel loses a pixel: the union is the
+    // exact sum, so nothing overdraws anything.
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    v->display_text();
+    const auto both = capture_rendered_frame(*s);
+    for (int y = row_span.first; y <= row_span.second; ++y)
+    {
+        for (int x = win.left; x < win.right; ++x)
+        {
+            const std::size_t i = static_cast<std::size_t>(y * 320 + x);
+            EXPECT_EQ(row_only[i], both[i])
+                << "the banner must not touch the mode row at " << x << ","
+                << y;
+        }
+    }
+
+    v->clear_text();
+    v->control = old_control;
 }
 
 TEST(ModeUi, beacon_pulse_marker_pulses_inside_the_view)
@@ -884,3 +1167,99 @@ TEST(ModeUi, scripted_ending_popup_reports_outcome_from_local_controls)
 
     v->control = old_control;
 }
+
+// --- Generator HP bars ---------------------------------------------------
+
+// Generators take damage like livings and get the same mini HP bar. What
+// they do NOT reliably get is a denominator: walker::set_difficulty's
+// Order::Generator branch writes hitpoints (100 * level, difficulty-scaled)
+// and never max_hitpoints, so the three stock families whose gloader row
+// carries 0 base HP (tower, bones, treehouse) reach the renderer with
+// hp > 0 and max_hp == 0. Both arms are pinned here.
+TEST(ModeUi, generator_mini_hp_bar_follows_the_living_rules)
+{
+    ClassicModeHudCanvasGuard classic_canvas;
+    ModeScreenWorld mode;
+    screen* s = mode.s;
+
+    auto control = make_control(0);
+    ASSERT_NE(nullptr, control);
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v);
+    walker* old_control = v->control;
+    v->control = control.get();
+    silence_hud_prefs(v);
+    v->topx = 0;
+    v->topy = 0;
+
+    const std::string saved_cfg = cfg.get_setting("effects", "mini_hp_bar");
+    cfg.apply_setting("effects", "mini_hp_bar", "on");
+
+    walker* gen = s->world().add_ob(Order::Generator, FAMILY_TOWER);
+    ASSERT_NE(nullptr, gen);
+    gen->setxy(160, 96);
+    gen->set_team_num(1);
+
+    // Clear, draw the bar alone, and count what landed. Coordinate-free: any
+    // lit pixel at all means a bar was drawn.
+    const auto render = [&]() {
+        trace_clear();
+        ScopedGameplayUiCanvas gameplay_ui(*s);
+        s->clearbuffer();
+        draw_small_health_bar(gen, v);
+        return lit_pixel_count(capture_rendered_frame(*s));
+    };
+
+    // Arm 1 — the stock quirk. FAMILY_TOWER's gloader row carries 0 base HP,
+    // so max_hitpoints is 0 while the entity is alive and damaged.
+    ASSERT_FLOAT_EQ(0.0f, gen->stats()->max_hitpoints())
+        << "FAMILY_TOWER is one of the max_hp == 0 generator families";
+    gen->stats()->set_hitpoints(150.0f);
+    gen->set_last_hitpoints(300.0f);
+    EXPECT_EQ(0, render())
+        << "no denominator means no bar — a full bar would lie about damage";
+    EXPECT_TRUE(trace_contains("hp_bar", "skip_no_max"))
+        << "the skip is deliberate, not a division that fell through";
+
+    // Arm 2 — normalized. A real max_hitpoints turns the ordinary living
+    // rules on and a damaged generator gets its bar.
+    gen->stats()->set_max_hitpoints(300.0f);
+    gen->stats()->set_hitpoints(150.0f);
+    EXPECT_GT(render(), 0) << "a damaged generator shows a bar";
+    EXPECT_TRUE(trace_contains(
+        "hp_bar",
+        std::format("draw order={}",
+                    static_cast<int>(Order::Generator)).c_str()))
+        << "and it is drawn through the generator arm";
+
+    // Arm 3 — undamaged. The living "hides at full" rule applies unchanged.
+    gen->stats()->set_hitpoints(300.0f);
+    gen->set_last_hitpoints(300.0f);
+    EXPECT_EQ(0, render()) << "a full-HP generator shows no bar";
+
+    // Arm 4 — hp above the recorded max (a tent's difficulty-scaled HP over
+    // its 100-HP family row) reads as full instead of overflowing the bar.
+    gen->stats()->set_max_hitpoints(100.0f);
+    gen->stats()->set_hitpoints(300.0f);
+    EXPECT_EQ(0, render()) << "hp > max reads as full, not as an overflow";
+
+    // Livings are untouched by any of it: same world, same call, a bar.
+    walker* foe = mode.spawn_living(200, 96, 1);
+    ASSERT_NE(nullptr, foe);
+    foe->stats()->set_max_hitpoints(100.0f);
+    foe->stats()->set_hitpoints(40.0f);
+    foe->set_last_hitpoints(60.0f);
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*s);
+        s->clearbuffer();
+        draw_small_health_bar(foe, v);
+        EXPECT_GT(lit_pixel_count(capture_rendered_frame(*s)), 0)
+            << "a damaged living still shows its bar";
+    }
+
+    cfg.apply_setting("effects", "mini_hp_bar", saved_cfg);
+    gen->set_dead(1);
+    foe->set_dead(1);
+    v->control = old_control;
+}
+

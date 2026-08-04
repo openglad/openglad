@@ -31,10 +31,13 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <format>
 #include <string>
+#include <string_view>
+#include <vector>
 
 static inline Uint32 rng(Uint32 max_exclusive)
 {
@@ -234,71 +237,208 @@ static unsigned char mode_hud_color(std::uint8_t team)
     return static_cast<unsigned char>(YELLOW);
 }
 
-// Per-viewport scripted-mode overlay: the four Lua-written ModeState HUD
-// lines, rendered at the slots the retired CTF panel proved out. Reads only
-// ModeState (replicated once the mode snapshot block lands), never mode
-// names in C++ — Lua is the only writer.
-//   slot 0 -> right-aligned ending at rm-60 on the tm+4 caps row
-//   slot 1 -> right-aligned ending at rm-60 on the tm+28 2-view digits row
-//   slot 2 -> lm+2, tm+36 (the WP-meter position)
-//   slot 3 -> lm+2, tm+28 (the FLAG!-tag position)
-// The >2-view suppression rule is kept: small panes cannot fit the
-// right-aligned rows beside the name, so slots 0-1 are suppressed exactly
-// like the retired CTF caps groups; left-column slots 2-3 draw in every layout.
-// Slots 0-1 are additionally truncated to the pane's own width — the Lua
-// binding allows 25 characters and a 2-view right pane only has room for 15.
-static void draw_mode_panel(screen* s, Sint32 lm, Sint32 tm, Sint32 rm)
+// Fallback captions for a walker with neither a myguy nor a stats name.
+// File scope so the mode row can measure the caption the classic HUD is
+// about to draw on the same tm+4 row (see draw_mode_panel).
+static const std::array<const char*, NUM_FAMILIES> kFamilyHudNames = {
+    "SOLDIER", "ELF", "ARCHER", "MAGE",
+    "SKELETON", "CLERIC", "ELEMENTAL",
+    "FAERIE", "SLIME", "SLIME", "SLIME",
+    "THIEF", "GHOST", "DRUID", "ORC",
+    "ORC CAPTAIN", "BARBARIAN", "ARCHMAGE",
+    "GOLEM", "GIANT SKEL", "TOWER",
+};
+
+// THE one copy of the upper-left HUD caption rule (a myguy's name wins even
+// when blank, else a non-empty stats name, else the family word).
+// new_score_panel draws it at lm+3 on the tm+4 row; draw_mode_panel measures
+// it to find where its own row may start, so the two must agree exactly.
+// The follow banner keeps its own blank-skipping variant below.
+static std::string hud_display_name(const walker* control)
+{
+    if (control == nullptr)
+        return {};
+    if (control->myguy)
+        return control->myguy->name;
+    if (!control->stats()->name.empty())
+        return control->stats()->name;
+    int fam = static_cast<int>(control->family());
+    if (fam < 0 || fam >= NUM_FAMILIES)
+        fam = 0;
+    return kFamilyHudNames[static_cast<std::size_t>(fam)];
+}
+
+// --- The condensed mode score row -------------------------------------------
+//
+// The mode row sits on ONE line, at tm+4, in every viewport.
+//
+// Why one line: the retired layout spread the four ModeState slots over
+// tm+4 / tm+28 / tm+36, and the notification banner
+// (viewscreen::display_text) writes its five messages at viewport-local
+// y = 30, 36, 42, 48, 54. Two of the three score rows therefore landed
+// inside the banner block and shredded every announcement. The banner's
+// topmost row is viewport-local 30, i.e. tm + 30 - OVERSCAN_PADDING, so its
+// worst case (REDUCE_OVERSCAN, padding 6) is tm+24. text.png is a 5x6 font,
+// so a row at tm+4 ends on tm+9 — 14 clear scanlines in that worst case, 20
+// normally. The two can never share a scanline.
+//
+// Horizontal window: the classic HUD owns the caption at lm+3 and the
+// TEAM/FOES box from rm-57 on the SAME tm+4 row, so the mode row takes the
+// channel between them. The left edge clears both the caption's own button
+// box (lm+1..lm+63) and the caption text itself, measured through the
+// shared hud_display_name; the right edge stops at rm-60 while the FOES
+// column is on. With no classic HUD (dead / AI-followed / spectated view)
+// the row takes the whole pane, lm+2..rm-2. Both bounds derive from this
+// pane's own lm/rm, so the R1 clamp holds: the row can never paint into a
+// neighboring viewport.
+//
+// Composition: the non-empty slots in index order, each stripped of its
+// leading team color word (the segment is already drawn in that team's ramp
+// — repeating "RED" costs a third of a narrow pane's budget for nothing),
+// joined with " - " in the default HUD color so the per-team ramps stay
+// legible as separate scores. The dash rather than a pipe because text.png
+// carries a blank glyph at '|' (code 124, its last frame) — an invisible
+// separator would run the scores together.
+//
+// Narrow panes: the old rule suppressed slots by view count. The budget
+// says it better — if the joined row does not fit, fall back to the LOCAL
+// team's segment alone (the only score a cramped pane's owner needs), then
+// truncate end-first to the remaining characters, and draw nothing at all
+// below three characters.
+inline constexpr std::string_view kModeRowSeparator = " - ";
+inline constexpr Sint32 kModeRowOffsetY = 4;
+inline constexpr Sint32 kModeRowMinChars = 3;
+
+// One drawn run of the row: its characters and the ramp they take.
+struct ModeRowSegment
+{
+    std::string text;
+    unsigned char color = 0;
+    int team = 255;
+};
+
+// Drop a leading team color word ("RED 5" -> "5") when the slot names the
+// team it is already colored by. Bails out unless a real word boundary and a
+// non-empty remainder follow, so a line that IS just the color word, or one
+// that merely starts with those letters ("REDOUBT 4"), survives whole.
+static std::string_view strip_team_color_word(const char* text,
+                                              std::uint8_t team)
+{
+    std::string_view line{text};
+    if (team >= SCORE_TEAM_COUNT)
+        return line;
+    const std::string_view word{og::sim::team_color_name(static_cast<int>(team))};
+    if (word.empty() || line.size() <= word.size())
+        return line;
+    for (std::size_t i = 0; i < word.size(); ++i)
+    {
+        const int a = std::toupper(static_cast<unsigned char>(line[i]));
+        const int b = std::toupper(static_cast<unsigned char>(word[i]));
+        if (a != b)
+            return line;
+    }
+    std::string_view rest = line.substr(word.size());
+    if (rest.front() != ' ' && rest.front() != ':')
+        return line;
+    while (!rest.empty() && (rest.front() == ' ' || rest.front() == ':'))
+        rest.remove_prefix(1);
+    return rest.empty() ? line : rest;
+}
+
+// only_team >= 0 keeps just that team's slots (the narrow-pane fallback).
+static std::vector<ModeRowSegment> compose_mode_row(
+    const og::sim::ModeState& mode, int only_team)
+{
+    std::vector<ModeRowSegment> segments;
+    for (const og::sim::ModeHudLine& line : mode.hud)
+    {
+        if (line.text[0] == '\0')
+            continue;
+        if (only_team >= 0 && static_cast<int>(line.team) != only_team)
+            continue;
+        const std::string_view body =
+            strip_team_color_word(line.text.data(), line.team);
+        if (body.empty())
+            continue;
+        if (!segments.empty())
+            segments.push_back({std::string(kModeRowSeparator),
+                                mode_hud_color(255), 255});
+        segments.push_back({std::string(body), mode_hud_color(line.team),
+                            static_cast<int>(line.team)});
+    }
+    return segments;
+}
+
+static Sint32 mode_row_length(const std::vector<ModeRowSegment>& segments)
+{
+    Sint32 total = 0;
+    for (const ModeRowSegment& segment : segments)
+        total += static_cast<Sint32>(segment.text.size());
+    return total;
+}
+
+static void draw_mode_panel(screen* s, viewscreen* view, Sint32 lm, Sint32 tm,
+                            Sint32 rm)
 {
     const og::sim::ModeState& mode = s->world_.mode;
     text& mytext = s->text_normal;
+    walker* const control = view->control;
 
-    if (s->numviews <= 2)
+    // The exact condition new_score_panel draws the classic HUD under.
+    const bool classic_hud =
+        control != nullptr && !control->dead() && control->user() != -1;
+
+    Sint32 left = lm + 2;
+    Sint32 right = rm - 2;
+    if (classic_hud)
     {
-        // The right-aligned rows end at rm-60, but nothing downstream clips to
-        // the pane: write_xy hands walkputbuffertext the whole-canvas port, so
-        // a line wider than this pane's own budget would paint into the
-        // neighbor's viewport. Truncate to what fits between lm+2 and rm-60 —
-        // the leading characters (the ones that would cross) are the ones
-        // dropped, so the row stays right-aligned and its score tail survives.
-        const Sint32 left_bound = lm + 2;
-        const Sint32 budget = (rm - 60 - left_bound) / 6;
-        for (int slot = 0; slot < 2; ++slot)
-        {
-            const og::sim::ModeHudLine& line =
-                mode.hud[static_cast<std::size_t>(slot)];
-            if (line.text[0] == '\0')
-                continue;
-            if (budget <= 0)
-                continue;
-            const Sint32 length =
-                static_cast<Sint32>(std::strlen(line.text.data()));
-            const Sint32 shown = std::min(length, budget);
-            const char* const shown_text = line.text.data() + (length - shown);
-            const Sint32 width = 6 * shown;
-            const Sint32 row = (slot == 0) ? tm + 4 : tm + 28;
-            mytext.write_xy(rm - 60 - width, row, shown_text,
-                            mode_hud_color(line.team),
-                            static_cast<short>(1));
-            TRACE("mode_hud", "slot=%d text=%s team=%d", slot,
-                  shown_text, static_cast<int>(line.team));
-        }
+        const std::string caption = hud_display_name(control);
+        const Sint32 caption_end =
+            lm + 3 + 6 * static_cast<Sint32>(caption.size()) + 4;
+        left = std::max<Sint32>(lm + 66, caption_end);
+        if (view->prefs[PREF_FOES] == PREF_FOES_ON)
+            right = rm - 60;
     }
-    if (mode.hud[2].text[0] != '\0')
+
+    const Sint32 budget = (right - left) / 6;
+    if (budget < kModeRowMinChars)
     {
-        mytext.write_xy(lm + 2, tm + 36, mode.hud[2].text.data(),
-                        mode_hud_color(mode.hud[2].team),
+        TRACE("mode_hud", "row_suppressed budget=%d", static_cast<int>(budget));
+        return;
+    }
+
+    std::vector<ModeRowSegment> segments = compose_mode_row(mode, -1);
+    if (mode_row_length(segments) > budget && classic_hud &&
+        control->team_num() < SCORE_TEAM_COUNT)
+    {
+        std::vector<ModeRowSegment> local =
+            compose_mode_row(mode, static_cast<int>(control->team_num()));
+        if (!local.empty())
+            segments = std::move(local);
+    }
+    if (segments.empty())
+        return;
+
+    const Sint32 row = tm + kModeRowOffsetY;
+    Sint32 x = left;
+    Sint32 drawn = 0;
+    std::string shown;
+    for (const ModeRowSegment& segment : segments)
+    {
+        if (drawn >= budget)
+            break;
+        const std::size_t room = static_cast<std::size_t>(budget - drawn);
+        const std::string piece = segment.text.substr(0, room);
+        mytext.write_xy(x, row, piece.c_str(), segment.color,
                         static_cast<short>(1));
-        TRACE("mode_hud", "slot=2 text=%s team=%d", mode.hud[2].text.data(),
-              static_cast<int>(mode.hud[2].team));
+        TRACE("mode_hud", "seg team=%d x=%d text=%s", segment.team,
+              static_cast<int>(x), piece.c_str());
+        x += 6 * static_cast<Sint32>(piece.size());
+        drawn += static_cast<Sint32>(piece.size());
+        shown += piece;
     }
-    if (mode.hud[3].text[0] != '\0')
-    {
-        mytext.write_xy(lm + 2, tm + 28, mode.hud[3].text.data(),
-                        mode_hud_color(mode.hud[3].team),
-                        static_cast<short>(1));
-        TRACE("mode_hud", "slot=3 text=%s team=%d", mode.hud[3].text.data(),
-              static_cast<int>(mode.hud[3].team));
-    }
+    TRACE("mode_hud", "row y=%d x=%d budget=%d text=%s", static_cast<int>(row),
+          static_cast<int>(left), static_cast<int>(budget), shown.c_str());
 }
 
 // A small solid triangle at the viewport edge pointing along (dx, dy) —
@@ -420,14 +560,6 @@ short new_score_panel(screen* s, short /*do_it*/)
     Sint32 rm, bm; // right and bottom margins
     char draw_button;  // do we draw a button background?
     char text_color;
-    static char namelist[NUM_FAMILIES][20] =
-        { "SOLDIER", "ELF", "ARCHER", "MAGE",
-          "SKELETON", "CLERIC", "ELEMENTAL",
-          "FAERIE", "SLIME", "SLIME", "SLIME",
-          "THIEF", "GHOST", "DRUID", "ORC",
-          "ORC CAPTAIN", "BARBARIAN", "ARCHMAGE",
-          "GOLEM", "GIANT SKEL", "TOWER",
-        };
 
     Uint32 myscore;
     static std::array<Uint32, SCORE_TEAM_COUNT> scorecountup = {
@@ -460,7 +592,7 @@ short new_score_panel(screen* s, short /*do_it*/)
             s->world_.mode.active;
         if (scripted_mode_hud)
         {
-            draw_mode_panel(s, lm, tm, rm);
+            draw_mode_panel(s, s->viewob[players].get(), lm, tm, rm);
             draw_mode_beacons(s, s->viewob[players].get(), lm, tm, rm, bm);
         }
         if (og::sim::classic_respawn_active(s->world_) || scripted_mode_hud)
@@ -484,7 +616,8 @@ short new_score_panel(screen* s, short /*do_it*/)
                 int follow_fam = static_cast<int>(control->family());
                 if (follow_fam < 0 || follow_fam >= NUM_FAMILIES)
                     follow_fam = 0;
-                follow_name = namelist[follow_fam];
+                follow_name = kFamilyHudNames[
+                    static_cast<std::size_t>(follow_fam)];
             }
             if (follow_name.size() > 12)
                 follow_name.resize(12);
@@ -537,12 +670,7 @@ short new_score_panel(screen* s, short /*do_it*/)
                 spc = 0;
 
             // Display name or type, upper left
-            if (control->myguy)
-                tempname = control->myguy->name;
-            else if (!control->stats()->name.empty())
-                tempname = control->stats()->name;
-            else
-                tempname = namelist[fam];
+            tempname = hud_display_name(control);
 
             message = tempname;
 
