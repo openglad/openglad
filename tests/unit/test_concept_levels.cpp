@@ -180,6 +180,9 @@ TEST_F(ConceptCampaignTest, demo_levels_round_trip_the_authored_structure)
         GameWorld& world = fx.world();
 
         EXPECT_EQ(expected.title, world.title) << "shipped demo title";
+        EXPECT_TRUE(fx.level.generated)
+            << "mapgen output carries the SCEN_TYPE_GENERATED provenance "
+               "mark (metadata-side, never world.type)";
         EXPECT_EQ(expected.floors, world.floor_count()) << "floor count";
         EXPECT_EQ(expected.grid_w, static_cast<int>(world.grid.w));
         EXPECT_EQ(expected.grid_h, static_cast<int>(world.grid.h));

@@ -572,6 +572,9 @@ TEST_F(WestlandsCampaignTest, levels_round_trip_the_authored_structure)
         }
         EXPECT_EQ(expected.type_bits, static_cast<int>(world.type))
             << "scenario type bits (CAN_EXIT / SAVE_ALL)";
+        EXPECT_TRUE(fx.level.generated)
+            << "mapgen output carries the SCEN_TYPE_GENERATED provenance "
+               "mark (metadata-side; world.type above stays clean)";
 
         EXPECT_GE(fx.level.description.size(), 4u) << "briefing tells the story";
         EXPECT_LE(fx.level.description.size(), 6u) << "briefing budget";

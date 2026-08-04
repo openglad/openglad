@@ -288,6 +288,14 @@ TEST_F(MigratedCampaignTest, decor_planes_are_wellformed_and_pinned)
             LevelRuntimeData level(pin.id, true, &migrated_levels_hooks());
             ASSERT_TRUE(level.load())
                 << pkg.campaign << " scen" << pin.id << " should load";
+            const bool hand_authored =
+                std::string(pkg.campaign) == "org.openglad.gladiator" ||
+                std::string(pkg.campaign) == "org.openglad.tryxian";
+            EXPECT_EQ(!hand_authored, level.generated)
+                << pkg.campaign << " scen" << pin.id
+                << ": hand-authored campaigns must never carry the "
+                   "SCEN_TYPE_GENERATED provenance mark; mapgen output "
+                   "always does";
             GameWorld& world = level.world();
 
             for (int f = 0; f < world.floor_count(); ++f)

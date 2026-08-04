@@ -451,6 +451,10 @@ TEST_F(ModesLevels, roster_structure_round_trips)
             << "scen" << pin.id
             << ": every mode level authors 0x20 ONLY (no CAN_EXIT, no "
                "SAVE_ALL, no CTF/tower bits)";
+        EXPECT_TRUE(loaded.level.generated)
+            << "scen" << pin.id
+            << ": mapgen output carries the SCEN_TYPE_GENERATED provenance "
+               "mark (metadata-side; world.type above stays clean)";
         EXPECT_EQ(pin.title, world.title) << "scen" << pin.id;
         EXPECT_LE(world.title.size(), 30u) << "scen" << pin.id;
         EXPECT_EQ(pin.par, world.par_value) << "scen" << pin.id;

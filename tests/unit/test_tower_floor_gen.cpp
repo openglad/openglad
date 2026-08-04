@@ -411,6 +411,17 @@ TEST(TowerPackage, glad_member_list_has_no_floor_ids)
     for (const std::string& name : pix)
         EXPECT_EQ("scen0700.png", name);
 
+    // The shipped Gate is tower_mapgen output: its type byte (offset 42)
+    // carries the SCEN_TYPE_GENERATED provenance mark next to the sim
+    // bits. Runtime-generated floors (701+) live in the user dir, never in
+    // the package, and are not marked.
+    const std::vector<std::uint8_t> gate_bytes =
+        og::resources::read_file((mountpoint + "/scen/scen700.fss").c_str());
+    ASSERT_GT(gate_bytes.size(), 42u);
+    EXPECT_NE(0u, gate_bytes[42] &
+                      static_cast<unsigned char>(SCEN_TYPE_GENERATED))
+        << "the committed Gate scen must carry the provenance mark";
+
     EXPECT_TRUE(og::resources::unmount(package.string().c_str()));
 }
 
