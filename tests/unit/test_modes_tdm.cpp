@@ -581,6 +581,103 @@ TEST_F(ModesTdm, combat_kill_schedules_through_the_death_hook)
 }
 
 // ===========================================================================
+// Turn undead through the damage gate (walker_specials.cpp)
+// ===========================================================================
+
+namespace {
+
+// walker::turn_undead rolls rng(range*40) > rng(level*10) per target. With a
+// level-1 victim and a 200px range the roll lands overwhelmingly; a bounded
+// retry keeps the test off the RNG's exact stream without ever spinning.
+int turn_undead_until_it_lands(walker* cleric, walker* victim)
+{
+    int killed = 0;
+    for (int attempt = 0; attempt < 8 && killed <= 0; ++attempt)
+    {
+        if (victim->dead())
+            break;
+        killed = static_cast<int>(cleric->turn_undead(200, 1));
+    }
+    return killed;
+}
+
+}  // namespace
+
+// The classic instant kill sets dead BEFORE walker::attack, whose dead-target
+// early-out then skips the whole hit path — so this kill class never reached
+// the death hook and the corpse was never respawn-scheduled for the rest of
+// the match. Scripted matches now route it through the gate, the attribution
+// stamp and walker::death.
+TEST_F(ModesTdm, turn_undead_kill_scores_the_frag_and_schedules_the_corpse)
+{
+    TdmRig rig;
+    rig.fx.world().ctf_requested_respawn_ticks = 30;
+    rig.fx.tick(1);
+    ASSERT_TRUE(rig.active());
+    ASSERT_EQ(0u, rig.fx.world().respawn.respawn_queue.size());
+
+    walker* cleric = rig.fx.spawn_living(FAMILY_CLERIC, 0, 200, 264);
+    walker* undead = rig.fx.spawn_living(FAMILY_SKELETON, 1, 216, 264);
+    ASSERT_NE(nullptr, cleric);
+    ASSERT_NE(nullptr, undead);
+    ASSERT_NE(nullptr, undead->stats());
+    undead->stats()->set_level(1);
+
+    ASSERT_GT(turn_undead_until_it_lands(cleric, undead), 0)
+        << "the turn-undead roll must land within eight attempts";
+
+    EXPECT_TRUE(undead->dead());
+    EXPECT_TRUE(undead->death_called())
+        << "scripted matches run the real death so the mode hooks see it";
+    EXPECT_EQ(cleric->entity_id(), undead->last_attacker_id())
+        << "the kill is attributed to the cleric";
+    EXPECT_EQ(1, rig.kills(0)) << "the frag lands on the cleric's team";
+    EXPECT_EQ(0, rig.kills(1));
+    EXPECT_TRUE(has_score_change(rig.fx.events, 0, 1))
+        << "a turn-undead frag awards its point like any other";
+
+    bool queued = false;
+    for (const og::sim::RespawnEntry& entry :
+         rig.fx.world().respawn.respawn_queue)
+    {
+        if (entry.walker_entity_id == undead->entity_id())
+            queued = true;
+    }
+    EXPECT_TRUE(queued) << "on_entity_death schedules the corpse immediately";
+}
+
+// The classic branch is untouched: no gate dispatch, no attribution stamp,
+// no walker::death — the engine's own scan owns the corpse (parity 256/256).
+TEST_F(ModesTdm, classic_worlds_keep_the_legacy_turn_undead_prekill)
+{
+    TdmRig rig;
+    // Never scripted: the mode cannot init, so this is a classic world on a
+    // level that DOES carry mode hooks.
+    rig.fx.world().type = 0;
+    rig.fx.tick(1);
+    ASSERT_FALSE(rig.active()) << "no TYPE_SCRIPTED, no mode";
+
+    walker* cleric = rig.fx.spawn_living(FAMILY_CLERIC, 0, 200, 264);
+    walker* undead = rig.fx.spawn_living(FAMILY_SKELETON, 1, 216, 264);
+    ASSERT_NE(nullptr, cleric);
+    ASSERT_NE(nullptr, undead);
+    ASSERT_NE(nullptr, undead->stats());
+    undead->stats()->set_level(1);
+
+    ASSERT_GT(turn_undead_until_it_lands(cleric, undead), 0)
+        << "the classic roll still kills";
+
+    EXPECT_TRUE(undead->dead());
+    EXPECT_EQ(0, undead->death_called())
+        << "the classic pre-kill leaves walker::death to the engine";
+    EXPECT_EQ(0u, undead->last_attacker_id())
+        << "the classic branch never stamps the attribution channel";
+    EXPECT_EQ(0, rig.kills(0));
+    EXPECT_EQ(0u, rig.fx.world().respawn.respawn_queue.size())
+        << "no mode hook ran, so nothing was scheduled";
+}
+
+// ===========================================================================
 // Generator spawn caps (D5 mechanism)
 // ===========================================================================
 

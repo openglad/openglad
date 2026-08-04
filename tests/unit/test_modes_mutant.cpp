@@ -484,6 +484,49 @@ TEST_F(ModesMutant, damage_matrix_blocks_only_nonmutant_on_nonmutant)
         << "a competitor's summon is void against competitors";
 }
 
+// The turn-undead instant kill used to skip walker::attack's hit path
+// entirely (the target was already dead when attack ran), so the one-way
+// damage matrix — the ONLY thing keeping competitors off each other in the
+// mutant phase — never saw it: a non-mutant cleric could erase an undead
+// competitor outright. The gate now cancels it.
+TEST_F(ModesMutant, turn_undead_on_a_competitor_is_cancelled_by_the_matrix)
+{
+    MutantRig rig;
+    rig.fx.tick(1);
+    ASSERT_TRUE(rig.active());
+    rig.crown_a();
+    ASSERT_EQ(kPhaseMutant, rig.phase());
+
+    // Two NON-mutant competitors: the crown sits on team 0.
+    walker* cleric = rig.fx.spawn_living(FAMILY_CLERIC, 2, 200, 264);
+    walker* undead = rig.fx.spawn_living(FAMILY_SKELETON, 3, 216, 264);
+    ASSERT_NE(nullptr, cleric);
+    ASSERT_NE(nullptr, undead);
+    ASSERT_NE(nullptr, undead->stats());
+    undead->stats()->set_level(1);
+    const float hp_before = undead->stats()->hitpoints();
+
+    for (int attempt = 0; attempt < 8; ++attempt)
+        (void)cleric->turn_undead(200, 1);
+
+    EXPECT_FALSE(undead->dead())
+        << "the matrix must spare a non-mutant competitor";
+    EXPECT_EQ(0, undead->death_called());
+    EXPECT_EQ(hp_before, undead->stats()->hitpoints());
+    EXPECT_EQ(kPhaseMutant, rig.phase()) << "no transfer, no revert";
+    EXPECT_EQ(0, rig.score(2)) << "a cancelled kill scores nothing";
+
+    // The Mutant itself is still a legal turn-undead target: crown the
+    // undead competitor and the same cleric may kill it.
+    rig.fx.world().mode.vars[kMutSlotMutantEntity] =
+        static_cast<std::int32_t>(undead->entity_id());
+    rig.fx.world().mode.vars[kMutSlotMutantTeam1] = 3 + 1;
+    ASSERT_GT(static_cast<int>(cleric->turn_undead(200, 1)), 0)
+        << "an undead Mutant is a legal target for turn undead";
+    EXPECT_TRUE(undead->dead());
+    EXPECT_TRUE(undead->death_called());
+}
+
 // ===========================================================================
 // Buff top-ups, HP decay, kill-heal, beacon lifecycle
 // ===========================================================================
