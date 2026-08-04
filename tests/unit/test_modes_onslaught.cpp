@@ -6,7 +6,7 @@
 // guard window with its per-generator
 // records and overflow degradation, the C2 classic-toast suppression
 // arms), zero-generator grace elimination with
-// recapture reset, waypoint holds (spawn-level + schedule-time respawn
+// recapture reset and its HUD countdown + one-shot warning, waypoint holds (spawn-level + schedule-time respawn
 // bonuses), fire_frequency spawn caps over the marked-spawn census,
 // corpse-stain scrubbing, HUD, director roles, timeout tiebreaks,
 // determinism and instruction budget headroom. Runs on the shared
@@ -801,6 +801,47 @@ TEST_F(ModesOnslaught, recapturing_a_generator_resets_the_grace_clock)
     EXPECT_FALSE(fx.world().game_ended);
 }
 
+TEST_F(ModesOnslaught, the_grace_warning_fires_once_per_clock_start)
+{
+    // The warning rides the ZERO_SINCE 0 -> now transition, so it fires on
+    // exactly one tick of a window — and on one tick of the NEXT window,
+    // after a recapture cleared the var.
+    OnsWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.ons_active());
+    EXPECT_EQ(0, count_notifications(fx.events, "HAS NO ENGINES"))
+        << "a team with a post is never warned";
+
+    fx.green_gen->set_team_num(0);
+    fx.green_gen->set_real_team_num(0);
+    fx.tick(1);
+    ASSERT_GT(fx.team_var(kOnsZeroSince, 1), 0);
+    EXPECT_EQ(1, count_notifications(fx.events, "GREEN HAS NO ENGINES!"));
+    fx.tick(200);
+    EXPECT_EQ(1, count_notifications(fx.events, "GREEN HAS NO ENGINES!"))
+        << "the running clock re-warns on no later tick";
+
+    // Green takes a post back: the clock clears, and the warning stays put.
+    fx.green->setxy(140, 340);
+    fx.smash(fx.green, fx.red_gen_a);
+    ASSERT_EQ(1, fx.red_gen_a->team_num());
+    fx.tick(1);
+    ASSERT_EQ(0, fx.team_var(kOnsZeroSince, 1));
+    EXPECT_EQ(1, count_notifications(fx.events, "GREEN HAS NO ENGINES!"));
+
+    // Red takes it straight back once the B6 guard expires: a new window,
+    // so a new warning.
+    walker* red_hitter = fx.spawn_living(FAMILY_SOLDIER, 0, 116, 340);
+    fx.tick(100);
+    fx.smash(red_hitter, fx.red_gen_a);
+    ASSERT_EQ(0, fx.red_gen_a->team_num());
+    fx.tick(1);
+    EXPECT_GT(fx.team_var(kOnsZeroSince, 1), 0);
+    EXPECT_EQ(2, count_notifications(fx.events, "GREEN HAS NO ENGINES!"))
+        << "a fresh grace window warns again";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
 TEST_F(ModesOnslaught, three_team_match_survives_one_elimination)
 {
     ModesCtfWorld fx(kOnsLevelB);
@@ -1333,6 +1374,138 @@ TEST_F(ModesOnslaught, hud_rows_carry_counts_and_the_waypoint_tag)
     fx.world().mode.vars[kOnsWpOwner1] = 1;
     fx.tick(1);
     EXPECT_STREQ("RED 2 GEN +WP", fx.world().mode.hud[0].text.data());
+}
+
+namespace {
+
+// Advance to the world tick sitting exactly `elapsed` ticks past a grace
+// start (the tick the census recorded the zero).
+void tick_to_elapsed(OnsWorld& fx, std::int32_t since, int elapsed)
+{
+    while (static_cast<std::int32_t>(fx.world().tick_count_) < since + elapsed)
+        fx.tick(1);
+}
+
+// One whole run of the countdown shape: green's only post flips away on
+// the first scripted tick, and the row is read `hold` ticks into the
+// window.
+std::string run_grace_row(int hold)
+{
+    OnsWorld fx;
+    fx.tick(1);
+    fx.green_gen->set_team_num(0);
+    fx.green_gen->set_real_team_num(0);
+    fx.tick(1 + hold);
+    EXPECT_TRUE(fx.ons_active());
+    return std::string(fx.world().mode.hud[1].text.data());
+}
+
+}  // namespace
+
+TEST_F(ModesOnslaught, hud_counts_the_recapture_window_down_in_seconds)
+{
+    OnsWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.ons_active());
+    // Green's only post flips away: the row becomes the countdown on the
+    // tick the census records the zero.
+    fx.green_gen->set_team_num(0);
+    fx.green_gen->set_real_team_num(0);
+    fx.tick(1);
+    const std::int32_t since = fx.team_var(kOnsZeroSince, 1);
+    ASSERT_GT(since, 0);
+    EXPECT_STREQ("GREEN OUT IN 50s", fx.world().mode.hud[1].text.data())
+        << "the full 600-tick window reads 50 s at 12 ticks/s";
+    EXPECT_EQ(1, fx.world().mode.hud[1].team) << "the row keeps its tint";
+    EXPECT_STREQ("RED 3 GEN", fx.world().mode.hud[0].text.data())
+        << "the captor's row is untouched";
+
+    tick_to_elapsed(fx, since, 12);
+    EXPECT_STREQ("GREEN OUT IN 49s", fx.world().mode.hud[1].text.data())
+        << "one second of ticks, one second off the row";
+    tick_to_elapsed(fx, since, 300);
+    EXPECT_STREQ("GREEN OUT IN 25s", fx.world().mode.hud[1].text.data());
+
+    // Rounding is up, so the row names the second the team is still inside.
+    tick_to_elapsed(fx, since, 587);
+    EXPECT_STREQ("GREEN OUT IN 2s", fx.world().mode.hud[1].text.data())
+        << "13 ticks left is still into the second second";
+    tick_to_elapsed(fx, since, 588);
+    EXPECT_STREQ("GREEN OUT IN 1s", fx.world().mode.hud[1].text.data());
+    tick_to_elapsed(fx, since, 599);
+    EXPECT_STREQ("GREEN OUT IN 1s", fx.world().mode.hud[1].text.data())
+        << "1s holds through the last tick of the window";
+    EXPECT_EQ(0, fx.team_var(kOnsEliminated, 1));
+
+    fx.tick(1);
+    EXPECT_EQ(1, fx.team_var(kOnsEliminated, 1));
+    EXPECT_STREQ("GREEN OUT", fx.world().mode.hud[1].text.data())
+        << "the deadline still flips the row to OUT";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesOnslaught, recapture_swaps_the_countdown_back_to_the_gen_row)
+{
+    OnsWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.ons_active());
+    fx.green_gen->set_team_num(0);
+    fx.green_gen->set_real_team_num(0);
+    fx.tick(1);
+    const std::int32_t since = fx.team_var(kOnsZeroSince, 1);
+    ASSERT_GT(since, 0);
+    tick_to_elapsed(fx, since, 120);
+    ASSERT_STREQ("GREEN OUT IN 40s", fx.world().mode.hud[1].text.data());
+
+    fx.green->setxy(140, 340);
+    fx.smash(fx.green, fx.red_gen_a);
+    ASSERT_EQ(1, fx.red_gen_a->team_num());
+    fx.tick(1);
+    EXPECT_EQ(0, fx.team_var(kOnsZeroSince, 1)) << "the clock cleared";
+    EXPECT_STREQ("GREEN 1 GEN", fx.world().mode.hud[1].text.data())
+        << "a recapture puts the count back on the row";
+    EXPECT_STREQ("RED 2 GEN", fx.world().mode.hud[0].text.data());
+    fx.tick(1);
+    EXPECT_STREQ("GREEN 1 GEN", fx.world().mode.hud[1].text.data())
+        << "and it stays there";
+}
+
+TEST_F(ModesOnslaught, the_longest_countdown_row_fits_the_hud_budget)
+{
+    // YELLOW is the worst case: "YELLOW OUT IN 50s" is 17 of the row's 25
+    // bytes. Teams 1-3 are the authored ones, so the level's three-team
+    // clamp activates GREEN/BLUE/YELLOW.
+    ModesCtfWorld fx(kOnsLevelB);
+    fx.spawn_generator(FAMILY_TENT, 1, 480, 320);
+    fx.spawn_generator(FAMILY_TENT, 2, 320, 800);
+    walker* yellow_gen = fx.spawn_generator(FAMILY_TENT, 3, 128, 320);
+    fx.spawn_living(FAMILY_SOLDIER, 1, 528, 96);
+    fx.spawn_living(FAMILY_SOLDIER, 2, 320, 860);
+    fx.spawn_living(FAMILY_SOLDIER, 3, 96, 96);
+    fx.tick(1);
+    ASSERT_TRUE(fx.world().mode.active);
+    ASSERT_EQ(14, fx.var(kOnsTeamMask)) << "GREEN | BLUE | YELLOW";
+
+    yellow_gen->set_team_num(1);
+    yellow_gen->set_real_team_num(1);
+    fx.tick(1);
+    const std::string row(fx.world().mode.hud[3].text.data());
+    EXPECT_EQ("YELLOW OUT IN 50s", row);
+    EXPECT_EQ(17u, row.size());
+    EXPECT_LT(row.size(), static_cast<std::size_t>(og::sim::kModeHudTextBytes));
+    EXPECT_EQ(1, count_notifications(fx.events, "YELLOW HAS NO ENGINES!"));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesOnslaught, the_countdown_row_replays_identically)
+{
+    // The row is a pure function of replicated state (ZERO_SINCE and the
+    // world clock), so the same match draws the same row twice — and every
+    // peer draws the row its own census produced.
+    const std::string first = run_grace_row(200);
+    const std::string second = run_grace_row(200);
+    ASSERT_EQ(first, second);
+    EXPECT_EQ("GREEN OUT IN 34s", first) << "400 ticks left rounds up to 34 s";
 }
 
 // ===========================================================================

@@ -359,7 +359,12 @@ local function run_elimination(livings, gen_count)
         if count > 0 then
           fset(S.ZERO_SINCE, team, 0)
         elseif fget(S.ZERO_SINCE, team) == 0 then
+          -- The clock starts here, and this branch IS the once: it is the
+          -- 0 -> now transition of a replicated var, so the warning fires
+          -- exactly one tick per grace window — and fires again after a
+          -- recapture clears the var — with no Lua-side flag (R6).
           fset(S.ZERO_SINCE, team, now)
+          core.announce(og.team_color_name(team) .. " HAS NO ENGINES!", C.SOUND_YO)
         elseif now - fget(S.ZERO_SINCE, team) >= T.no_gen_grace_ticks then
           local survivors = 0
           for other = 0, C.SCORE_TEAM_COUNT - 1 do
@@ -595,13 +600,32 @@ local function run_win_check(level_tick, gen_count)
   end
 end
 
--- One row per team: generator count plus the held-waypoint tag, or OUT.
+-- Whole seconds left on a grace clock that started at `since`, rounded up:
+-- the row reads 1s through the whole final second and reaches 0s only in
+-- the one shape run_elimination declines to eliminate (the last team
+-- standing, whose clock runs past the deadline for the tick it takes the
+-- win), which is what the clamp is for.
+local TICKS_PER_SECOND = 12
+
+local function grace_seconds(since)
+  local remaining = og.max(0, T.no_gen_grace_ticks - (og.world_tick() - since))
+  return og.div(remaining + TICKS_PER_SECOND - 1, TICKS_PER_SECOND)
+end
+
+-- One row per team: generator count plus the held-waypoint tag, the
+-- recapture countdown while the team is on the grace clock, or OUT. Every
+-- row renders from replicated state (run_elimination refreshed GEN_COUNT
+-- and ZERO_SINCE earlier this tick), so peers draw identical rows.
 local function update_hud(gen_count)
   local mask = og.mode_get(S.TEAM_MASK)
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
     if core.mask_has(mask, team) then
       if fget(S.ELIMINATED, team) ~= 0 then
         og.set_hud_line(team, og.team_color_name(team) .. " OUT", team)
+      elseif fget(S.ZERO_SINCE, team) ~= 0 then
+        -- "YELLOW OUT IN 50s" — 17 chars, inside the 25-byte row.
+        local left = grace_seconds(fget(S.ZERO_SINCE, team))
+        og.set_hud_line(team, og.team_color_name(team) .. " OUT IN " .. left .. "s", team)
       else
         local text = og.team_color_name(team) .. " " .. gen_count[team + 1] .. " GEN"
         if team_holds_waypoint(team) then

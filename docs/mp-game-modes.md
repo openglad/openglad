@@ -139,7 +139,8 @@ a dropped flag). Carriers run home and fight only when cornered.
   generator never destroys it — it flips, full-HP, to the attacker's team
   and starts pumping that team's fighters (existing troops keep their old
   colors). A team whose last generator flips away has a short grace to take
-  one back; otherwise it is eliminated. Last team standing wins.
+  one back — its HUD row counts the seconds down — and is eliminated when
+  the clock runs out. Last team standing wins.
 - **Soccer** (820-823): hit the ball to send it flying; a fast ball hurts
   and bounces off whoever it hits. Fully inside the enemy goal strip = a
   goal for the last-touching team. Dead heroes respawn.
