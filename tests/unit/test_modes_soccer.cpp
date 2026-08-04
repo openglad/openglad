@@ -144,6 +144,15 @@ bool front_command_is(const walker* w, std::int32_t type, std::int32_t com1,
            front.com2 == com2;
 }
 
+// The front queue entry's command type, 0 when the queue is empty.
+std::int32_t front_type(const walker* w)
+{
+    const statistics* s = w->stats();
+    if (s == nullptr || s->commands.empty())
+        return 0;
+    return s->commands.front().commandtype;
+}
+
 // A kind-0 (player revive) queue entry for this corpse id.
 bool player_revive_pending(GameWorld& world, std::uint32_t id)
 {
@@ -1551,6 +1560,151 @@ TEST_F(ModesSoccer, goalie_charges_a_box_ball_and_never_outruns_the_leash)
     EXPECT_TRUE(front_command_is(goalie, COMMAND_GOTO, 64, 528))
         << "far-post clamp holds the keeper at the mouth";
     ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+// ===========================================================================
+// Director: the two-phase striker (drive through the ball) + engage gate
+// ===========================================================================
+
+TEST_F(ModesSoccer, striker_at_the_approach_point_drives_through_the_ball)
+{
+    // The milling repro. A chaser standing ON its own approach point has
+    // its center 20 px (Manhattan) from the ball — outside the 12 px
+    // contact radius — and the pre-fix director re-issued that same point
+    // every cadence, so the bot stood next to the ball forever. It must
+    // now be sent THROUGH the ball and kick it goalward inside one
+    // cadence.
+    SoccerWorld fx;
+    walker* goalie = fx.spawn_living(FAMILY_SOLDIER, 0, 40, 470, ACT_SIT);
+    walker* striker = fx.spawn_living(FAMILY_SOLDIER, 0, 300, 464, ACT_SIT);
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    fx.thaw_kickoff();
+    fx.set_ball(320, 464, 0, 0);
+    ASSERT_EQ(20, std::abs(320 - (striker->xpos() + 8)) +
+                      std::abs(464 - (striker->ypos() + 8)))
+        << "the approach point parks the striker outside kick_radius 12";
+
+    align_before_cadence(fx.world());
+    fx.tick(1);
+    ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
+    // Through-ball: the ball center pushed drive_offset 8 px on toward
+    // the enemy goal (608, 464), less the 8 px half-body the GOTO frame
+    // needs — so the striker's CENTER, which is what the contact kick
+    // measures, is aimed at the ball itself.
+    EXPECT_TRUE(front_command_is(striker, COMMAND_GOTO, 320, 456))
+        << "the striker is commanded through the ball, not beside it";
+    EXPECT_TRUE(front_command_is(goalie, COMMAND_GOTO, 64, 464))
+        << "the keeper still keeps goal";
+
+    fx.tick(kAiCadence - 1);
+    EXPECT_GT(fx.var(kSocBallVx), 0) << "the kick carries the ball goalward";
+    EXPECT_GT(fx.var(kSocBallVx), std::abs(fx.var(kSocBallVy)))
+        << "and goalward dominates the lateral component";
+    EXPECT_EQ(1, fx.var(kSocLastTouch1)) << "team 0 is the last toucher";
+    EXPECT_EQ(static_cast<std::int32_t>(striker->entity_id()),
+              fx.var(kSocLastKicker));
+}
+
+TEST_F(ModesSoccer, a_wrong_side_chaser_takes_the_approach_point_arm)
+{
+    // Phase A: a chaser on the goal side of the BALL (nothing between it
+    // and the enemy goal to kick toward) is staged behind the ball
+    // instead — driving from there would knock the ball back downfield.
+    SoccerWorld fx;
+    fx.spawn_living(FAMILY_SOLDIER, 0, 40, 470, ACT_SIT);
+    walker* chaser = fx.spawn_living(FAMILY_SOLDIER, 0, 400, 600, ACT_SIT);
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    fx.thaw_kickoff();
+    fx.set_ball(320, 464, 0, 0);
+
+    align_before_cadence(fx.world());
+    fx.tick(1);
+    ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
+    EXPECT_TRUE(front_command_is(chaser, COMMAND_GOTO, 300, 464))
+        << "wrong side of the ball: walk the approach point";
+
+    fx.tick(kAiCadence - 1);
+    EXPECT_EQ(0, fx.var(kSocBallVx)) << "the staging walk kicks nothing";
+    EXPECT_EQ(0, fx.var(kSocBallVy));
+    EXPECT_EQ(0, fx.var(kSocLastTouch1));
+}
+
+TEST_F(ModesSoccer, the_drive_corridor_holds_once_the_chaser_is_committed)
+{
+    // Hysteresis. At a 28 px lateral miss a chaser is outside the 24 px
+    // corridor a drive may START from but inside the 32 px one a drive is
+    // HELD through, and the two arms are told apart by the chaser's own
+    // facing — replicated walker state, no script-side memory. So a ball
+    // drifting across the line cannot flip a committed chaser back to the
+    // approach point every cadence.
+    SoccerWorld fx;
+    fx.spawn_living(FAMILY_SOLDIER, 0, 40, 470, ACT_SIT);
+    walker* chaser = fx.spawn_living(FAMILY_SOLDIER, 0, 272, 484, ACT_SIT);
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    fx.thaw_kickoff();
+    fx.set_ball(320, 464, 0, 0);
+
+    // Center (280, 492): 40 px goal-side of the ball, 28 px off the line.
+    // Facing the enemy goal (FACE_RIGHT) = committed, so the drive holds.
+    chaser->setxy(272, 484);
+    chaser->stats()->clear_command();
+    chaser->set_curdir(2);
+    align_before_cadence(fx.world());
+    fx.tick(1);
+    ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
+    EXPECT_TRUE(front_command_is(chaser, COMMAND_GOTO, 320, 456))
+        << "a committed chaser holds the drive out to drive_cross_hold";
+
+    // Same spot, turned back downfield: it has to re-qualify on the tight
+    // corridor, and 28 > 24 fails it.
+    chaser->setxy(272, 484);
+    chaser->stats()->clear_command();
+    chaser->set_curdir(6);
+    align_before_cadence(fx.world());
+    fx.tick(1);
+    EXPECT_TRUE(front_command_is(chaser, COMMAND_GOTO, 300, 464))
+        << "turned away, the same spot is outside the entry corridor";
+    ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesSoccer, at_most_one_chaser_peels_off_to_fight)
+{
+    // Engage gate. Three chasers all holding a combat command: the one
+    // nearest the ball (the striker) is re-commanded onto it whatever it
+    // was doing, exactly ONE of the others keeps its fight (the earliest
+    // in oblist order), and the rest are pulled back onto the ball.
+    SoccerWorld fx;
+    fx.spawn_living(FAMILY_SOLDIER, 0, 40, 470, ACT_SIT);
+    walker* striker = fx.spawn_living(FAMILY_SOLDIER, 0, 300, 464, ACT_SIT);
+    walker* first = fx.spawn_living(FAMILY_SOLDIER, 0, 200, 300, ACT_SIT);
+    walker* second = fx.spawn_living(FAMILY_SOLDIER, 0, 250, 600, ACT_SIT);
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    fx.thaw_kickoff();
+    fx.set_ball(320, 464, 0, 0);
+
+    // All three are brawling with the parked enemy.
+    walker* enemy = fx.green;
+    ASSERT_TRUE(enemy != nullptr);
+    for (walker* w : {striker, first, second})
+    {
+        w->set_foe(enemy);
+        w->stats()->force_command(COMMAND_ATTACK, 30, 1, 1);
+    }
+    align_before_cadence(fx.world());
+    fx.tick(1);
+    ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
+
+    EXPECT_TRUE(front_command_is(striker, COMMAND_GOTO, 320, 456))
+        << "the striker's fight never outranks the ball";
+    EXPECT_EQ(COMMAND_ATTACK, front_type(first))
+        << "one defender may keep chasing its foe";
+    EXPECT_TRUE(first->foe() != nullptr) << "and keeps the foe to chase";
+    EXPECT_TRUE(front_command_is(second, COMMAND_GOTO, 300, 448))
+        << "the second brawler is pulled back onto the ball (stagger 16)";
 }
 
 // ===========================================================================

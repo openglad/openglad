@@ -82,13 +82,31 @@ local T = {
   goalie_standoff = 16,
   goalie_box = 64,
   approach_offset = 20, -- chasers stand this far past the ball
+  -- Chaser drive-through. The approach point above is a STAGING spot: it
+  -- parks the chaser approach_offset px from the ball, outside the 12 px
+  -- contact radius, so a chaser that reaches it stands next to the ball
+  -- and never kicks (the milling bug). A chaser already goal-side of the
+  -- ball is therefore commanded THROUGH it instead — at the ball's own
+  -- center, drive_offset px further on toward the attacked goal. Two
+  -- numbers make that land: the GOTO destination is the walker's
+  -- TOP-LEFT corner, so the drive target carries a half-body correction
+  -- (the contact kick reads centers), and GOTO counts itself arrived
+  -- within 12 px, which for a target on the ball is inside the contact
+  -- radius. drive_reach is the miss distance the corridor test below
+  -- budgets for; drive_cross bounds the lateral miss a chaser may start
+  -- a drive from, widened to drive_cross_hold once it is committed.
+  drive_offset = 8,
+  drive_cross = 24,
+  drive_cross_hold = 32,
+  drive_reach = 10,
 }
 
 -- Facing byte (FACE_UP = 0 .. FACE_UP_LEFT = 7, clockwise) to a unit step.
 local FACING_X = { 0, 1, 1, 1, 0, -1, -1, -1 }
 local FACING_Y = { -1, -1, 0, 1, 1, 1, 0, -1 }
 
--- Chaser lateral stagger (px) by oblist-order index mod 3.
+-- Chaser lateral stagger (px) by support index mod 3 — the striker takes
+-- no stagger, so the fan-out starts at the second chaser.
 local STAGGER = { 0, 16, -16 }
 
 local function fget(base, i)
@@ -694,6 +712,56 @@ local function ball_in_goal_box(team, bx, by)
   return by <= gy + core.pos_y(size) + T.goalie_box
 end
 
+-- Chaser drive geometry, in the CENTER frame the contact kick reads.
+-- (sx, sy) is the 8-dir step from the ball toward the attacked goal.
+-- `along` is how far the ball sits goalward of the chaser on that axis —
+-- positive means the chaser is goal-side of the ball, so a kick from here
+-- (fired along ball - kicker) carries the ball goalward — and `cross` is
+-- the chaser's lateral miss off the ball-goal line.
+local function drive_geometry(chaser, bx, by, sx, sy)
+  local cx, cy = walker_center(chaser)
+  local dx = bx - cx
+  local dy = by - cy
+  return dx * sx + dy * sy, iabs(dy * sx - dx * sy)
+end
+
+-- Phase B (drive through the ball) or phase A (walk the approach point).
+-- Three conditions:
+--   goal-side  along > 0, so the kick leaves goalward at all;
+--   corridor   a lateral miss within drive_cross, widened to
+--              drive_cross_hold for a chaser already facing goalward.
+--              That facing is the hysteresis memory, and it is replicated
+--              walker state written by the chaser's own last step, never
+--              script-side storage (R6): a ball drifting across the line
+--              cannot flip a committed chaser back to the approach point
+--              every cadence, while one turned away has to re-qualify on
+--              the tight corridor;
+--   reach      the straight line from here to the drive target has to
+--              pass close enough to the ball to touch it. That target
+--              sits drive_offset px beyond the ball, so the line crosses
+--              the ball's own plane cross * drive_offset / (along +
+--              drive_offset) px wide — the integer form below — and a
+--              drive that would sail past is refused rather than milling.
+-- All three regions shrink along the commanded path (both along and cross
+-- fall as the chaser closes, and the reach test is a ray from the drive
+-- target), so a chaser that starts a drive holds it until it has gone
+-- through the ball.
+local function chaser_drives(chaser, bx, by, sx, sy)
+  local along, cross = drive_geometry(chaser, bx, by, sx, sy)
+  if along <= 0 then
+    return false
+  end
+  local dir = chaser:curdir() + 1
+  local tol = T.drive_cross
+  if FACING_X[dir] * sx + FACING_Y[dir] * sy > 0 then
+    tol = T.drive_cross_hold
+  end
+  if cross > tol then
+    return false
+  end
+  return cross * T.drive_offset <= T.drive_reach * (along + T.drive_offset)
+end
+
 -- Role partition per team, in oblist order (zero RNG):
 --   GOALIE   the member nearest the defended rect. Its objective every
 --            cadence is the ball-intercept point on its own goal mouth
@@ -704,12 +772,25 @@ end
 --            keeper clears automatically. The leash bounds the charge: a
 --            box ball beyond it is played from the intercept line, so
 --            every commanded destination keeps the keeper at the mouth.
+--   STRIKER  the remaining member nearest the ball. It is re-commanded
+--            onto the ball EVERY cadence whatever it was doing, so an
+--            engagement can never hold on to the squad's ball player, and
+--            it plays two-phase (chaser_drives above): the approach point
+--            while it is wrong-side or badly aligned, the drive through
+--            the ball once it is goal-side and lined up.
 --   CHASERS  everyone else walks the approach point: approach_offset px
 --            past the ball on the line from the nearest enemy goal, so
 --            walking into the ball kicks it goalward (D7 geometry), with
---            a lateral stagger so they do not stack.
--- Everyone leads on the ball entity, which suppresses the tick auto-foe
--- backstop; foes are re-cleared every cadence so brawls stay brief.
+--            a lateral stagger so they do not stack — and they take the
+--            same two-phase treatment when a drive is on.
+-- Engagement: at most ONE non-striker may hold an active combat command
+-- (the earliest in oblist order — the front-command preemption discipline
+-- decides what counts). It keeps its foe and its orders, so a squad can
+-- still chase an attacker off its half; every further chaser is pulled
+-- back onto the ball. Ball play beats brawling, one defender at a time.
+-- Everyone else leads on the ball entity, which suppresses the tick
+-- auto-foe backstop; foes are re-cleared every cadence so brawls stay
+-- brief.
 local function run_team_director(livings, ball, team)
   local members = {}
   for k = 1, #livings do
@@ -745,6 +826,9 @@ local function run_team_director(livings, ball, team)
   local ay = by
   local pdx = 0
   local pdy = 0
+  -- The drive axis is the approach direction reversed: ball -> goal.
+  local dsx = 0
+  local dsy = 0
   if target_team >= 0 then
     local ex, ey = goal_center(target_team)
     local sx, sy = dir8(bx - ex, by - ey)
@@ -752,6 +836,8 @@ local function run_team_director(livings, ball, team)
     ay = by + sy * T.approach_offset
     pdx = -sy
     pdy = sx
+    dsx = -sx
+    dsy = -sy
   end
 
   local assigned = {}
@@ -774,17 +860,45 @@ local function run_team_director(livings, ball, team)
     ai.issue_front(goalie, C.COMMAND_GOTO, 30, tx, ty)
   end
 
-  local chaser_index = 0
+  local striker = ai.nearest_unassigned(members, assigned, bx, by)
+  local peeled = false
+  local support_index = 0
   for i = 1, #members do
     if not assigned[i] then
       local chaser = members[i]
-      chaser:set_foe(nil)
-      chaser:set_leader(ball)
-      if ai.may_preempt(chaser:s_front_command()) then
-        local stagger = STAGGER[og.mod(chaser_index, 3) + 1]
-        ai.issue_front(chaser, C.COMMAND_GOTO, 30, ax + pdx * stagger, ay + pdy * stagger)
+      -- The one permitted peel: a non-striker already in combat keeps its
+      -- foe and its orders. Everyone else is re-commanded onto the ball,
+      -- preemption discipline or not.
+      local peel = false
+      if i ~= striker then
+        if not ai.may_preempt(chaser:s_front_command()) then
+          peel = not peeled
+          peeled = true
+        end
       end
-      chaser_index = chaser_index + 1
+      if not peel then
+        local stagger = 0
+        if i ~= striker then
+          support_index = support_index + 1
+          stagger = STAGGER[og.mod(support_index, 3) + 1]
+        end
+        local tx = ax + pdx * stagger
+        local ty = ay + pdy * stagger
+        local drives = false
+        if target_team >= 0 then
+          drives = chaser_drives(chaser, bx, by, dsx, dsy)
+        end
+        if drives then
+          -- Through the ball. GOTO drives the walker's top-left corner,
+          -- so the half-body correction is what puts its CENTER — the
+          -- point the contact kick measures from — on the ball.
+          tx = bx + dsx * T.drive_offset - og.div(chaser:sizex(), 2)
+          ty = by + dsy * T.drive_offset - og.div(chaser:sizey(), 2)
+        end
+        chaser:set_foe(nil)
+        chaser:set_leader(ball)
+        ai.issue_front(chaser, C.COMMAND_GOTO, 30, tx, ty)
+      end
     end
   end
 end
