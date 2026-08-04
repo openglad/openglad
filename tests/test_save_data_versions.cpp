@@ -497,6 +497,44 @@ TEST(SaveDataVersions, save_data_load_v11_reads_strip_flag)
         << "v11 should read ctf_strip_scenario_troops";
 }
 
+// The knob grew a third state (2 = strip every authored fighter) on the SAME
+// int16 record field, so v11 must carry it without a format bump.
+TEST(SaveDataVersions, save_data_round_trips_strip_all_without_a_format_bump)
+{
+    for (const short state : {short{0}, short{1}, short{2}})
+    {
+        write_save_file("ver11_strip_all",
+                        /*version=*/11,
+                        /*campaign_id=*/"org.openglad.gladiator",
+                        /*scen_num=*/1,
+                        /*cash=*/100,
+                        /*score=*/200,
+                        /*allied_mode=*/1,
+                        /*numplayers=*/1,
+                        /*guys=*/nullptr,
+                        /*listsize=*/0,
+                        /*use_v8plus_campaigns=*/true,
+                        /*v5plus_levelstatus=*/true,
+                        /*levelstatus_500=*/nullptr,
+                        /*levelstatus_200=*/nullptr,
+                        /*ctf_team_count=*/2,
+                        /*ctf_capture_limit=*/0,
+                        /*ctf_respawn_ticks=*/0,
+                        /*ctf_strip_scenario_troops=*/state);
+
+        SaveData read_back;
+        ASSERT_TRUE(read_back.load("ver11_strip_all")) << "state " << state;
+        ASSERT_EQ(state, read_back.ctf_strip_scenario_troops) << "state " << state;
+
+        // ...and survives a save() the game itself writes.
+        ASSERT_TRUE(read_back.save("ver11_strip_all_rt")) << "state " << state;
+        SaveData twice;
+        ASSERT_TRUE(twice.load("ver11_strip_all_rt")) << "state " << state;
+        ASSERT_EQ(state, twice.ctf_strip_scenario_troops)
+            << "state " << state << " must survive the game's own writer";
+    }
+}
+
 
 TEST(SaveDataVersions, save_data_v11_roundtrip_preserves_strip_flag_and_version_byte)
 {
