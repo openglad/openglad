@@ -67,7 +67,7 @@ void place_markers(GameWorld& world, int team,
 
 // ---------------------------------------------------------------------------
 // 800 FOUNDRY LINE — 50x35, 2 teams. The teaching map: each team's four
-// generators (one per family) sit in walled alcoves with one gate tile;
+// generators (one per family) sit in walled alcoves with a two-tile gate;
 // two open lanes flank a walled center yard holding the waypoint.
 // ---------------------------------------------------------------------------
 void build_foundry_line(const ExpectedLevel& row)
@@ -85,6 +85,15 @@ void build_foundry_line(const ExpectedLevel& row)
     // Foundry alcoves: west column x2..7 (team 0), east x42..47 (team 1),
     // one 4x4 cobble cell per generator (the tower sprite needs the full
     // 4x4-tile footprint), gate on the field side.
+    //
+    // The gate is TWO tiles tall (r+1, r+2), not one. A mage tower is
+    // 50x58 px: parked in a 4x4 cell it leaves a single free column, and
+    // fire()'s only unwalled spawn position there is a 16x16 box straddling
+    // that column and the gate row. With a one-tile gate the box always
+    // clipped the wall beside it, so every mage the tower rolled was
+    // discarded and the alcove poured nothing at all; the two-tile mouth is
+    // the narrowest opening that lets all four families' spawns out. The
+    // spawn-egress audit pins this (og::mapgen::audit_generator_spawn_exits).
     for (const int r : {3, 12, 21, 30})
     {
         c.hline(2, 7, r - 1, PIX_H_WALL1);
@@ -93,6 +102,7 @@ void build_foundry_line(const ExpectedLevel& row)
         c.vline(7, r - 1, r + 4, PIX_H_WALL1);
         c.cobble_rect(3, r, 6, r + 3);
         c.set(7, r + 1, Canvas::cobble(7, r + 1)); // gate
+        c.set(7, r + 2, Canvas::cobble(7, r + 2));
         c.set_decor(3, r - 1, DECOR_TORCH1);
         c.set_decor(6, r - 1, DECOR_TORCH1);
 
@@ -102,6 +112,7 @@ void build_foundry_line(const ExpectedLevel& row)
         c.vline(47, r - 1, r + 4, PIX_H_WALL1);
         c.cobble_rect(43, r, 46, r + 3);
         c.set(42, r + 1, Canvas::cobble(42, r + 1)); // gate
+        c.set(42, r + 2, Canvas::cobble(42, r + 2));
         c.set_decor(43, r - 1, DECOR_TORCH1);
         c.set_decor(46, r - 1, DECOR_TORCH1);
     }
@@ -141,15 +152,26 @@ void build_foundry_line(const ExpectedLevel& row)
 
     install_painted(world, c.finish());
 
-    // Generators: one of each family per team, top to bottom, anchored at
-    // the alcove interior's top-left so every sprite footprint fits.
+    // Generators: one of each family per team, top to bottom. The west
+    // engine is anchored at its alcove's top-LEFT, flush against the back
+    // wall, which leaves the gate-side column open. The east alcove is the
+    // mirror image, so its engine is flush against ITS back wall (x47):
+    // pushed to the right edge in pixels, since the families are 25, 32 and
+    // 50 px wide and only a pixel mirror keeps the two sides' spawn
+    // geometry identical. Anchoring east engines top-left (the old code)
+    // put their bodies across the only tile beside the gate and sealed
+    // every east alcove.
     const int families[] = {FAMILY_TENT, FAMILY_TOWER, FAMILY_BONES,
                             FAMILY_TREEHOUSE};
     for (int i = 0; i < 4; ++i)
     {
         const short r = static_cast<short>(3 + 9 * i);
         place_at(world, Order::Generator, families[i], 0, {3, r}, 2);
-        place_at(world, Order::Generator, families[i], 1, {43, r}, 2);
+        walker* east = place_at(world, Order::Generator, families[i], 1,
+                                {43, r}, 2);
+        if (east != nullptr)
+            east->setxy(static_cast<short>(47 * GRID_SIZE - east->sizex()),
+                        east->ypos());
     }
 
     place_markers(world, 0,
