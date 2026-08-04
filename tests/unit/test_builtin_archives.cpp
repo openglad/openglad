@@ -1,24 +1,26 @@
 /* The build's contract for the shipped campaign archives.
  *
  * Every build/<preset>/builtin/<id>.glad is COMPOSED by the build
- * (scripts/make_glad.py via og_builtin_campaigns) from committed source
- * trees: campaigns/<id>/, plus — for the pack-bearing campaigns — the
- * single-source pack tree under tools/<tool>/pack/ mapped to
- * packs/<pack-id>/. This test pins that contract from the consumer side:
+ * (scripts/make_glad.py via og_builtin_campaigns) from ONE committed
+ * source tree per campaign, campaigns/<id>/ — the tree mirrors the
+ * archive 1:1, pack-bearing campaigns' packs/<pack-id>/ subtrees
+ * included; the per-campaign README.md (repo documentation) is the one
+ * file excluded. This test pins that contract from the consumer side:
  * the staged archive next to the test binary holds EXACTLY the members
- * the source trees produce, byte for byte, in both directions. A member
+ * the source tree produces, byte for byte, in both directions. A member
  * with no source file, a source file with no member, or a single byte of
  * drift between them fails with the offending path named.
  *
  * This is the residue of the old
  * ModesLevels.every_pack_member_matches_its_committed_source test, which
- * compared the modes pack members against tools/modes_mapgen/pack/ back
+ * compared the modes pack members against the pack source tree back
  * when the committed archive could silently drift from its sources.
  * Composition made that comparison tautological for the producer — but
  * the STAGED archive can still go stale against a fresh checkout's
- * sources (an un-rebuilt build tree), and the recipes themselves (root
- * lists, pack mappings, .gitkeep exclusion) can regress; this test, now
- * covering all seven campaigns, is what fails when they do.
+ * sources (an un-rebuilt build tree), and the recipes themselves
+ * (.gitkeep/README.md exclusion, the one-root-per-campaign rule) can
+ * regress; this test, now covering all seven campaigns, is what fails
+ * when they do.
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
@@ -45,27 +47,17 @@ namespace {
 
 namespace fs = std::filesystem;
 
-struct SourceRoot
-{
-    fs::path dir;
-    std::string arc_prefix; // "" or "packs/<pack-id>"
-};
-
-struct CampaignRecipe
-{
-    const char* id;
-    std::vector<SourceRoot> roots;
-};
-
 using MemberMap = std::map<std::string, std::vector<std::uint8_t>>;
 
 // Mirrors scripts/make_glad.py's collection rules: every regular file at
-// its root-relative path (prefixed for pack roots), .gitkeep skipped.
-void collect_source_members(const SourceRoot& root, MemberMap* out)
+// its root-relative path; .gitkeep (and dotfiles) skipped, and the
+// campaign README.md — repo documentation, not campaign content — never
+// ships.
+void collect_source_members(const fs::path& dir, MemberMap* out)
 {
-    ASSERT_TRUE(fs::is_directory(root.dir))
-        << root.dir << " missing — campaign source tree not in the checkout?";
-    for (const auto& entry : fs::recursive_directory_iterator(root.dir))
+    ASSERT_TRUE(fs::is_directory(dir))
+        << dir << " missing — campaign source tree not in the checkout?";
+    for (const auto& entry : fs::recursive_directory_iterator(dir))
     {
         if (!entry.is_regular_file())
             continue;
@@ -73,9 +65,9 @@ void collect_source_members(const SourceRoot& root, MemberMap* out)
         if (!name.empty() && name.front() == '.')
             continue; // .gitkeep and friends never ship
         std::string arcname =
-            fs::relative(entry.path(), root.dir).generic_string();
-        if (!root.arc_prefix.empty())
-            arcname = root.arc_prefix + "/" + arcname;
+            fs::relative(entry.path(), dir).generic_string();
+        if (arcname == "README.md")
+            continue; // the provenance note never ships
 
         std::ifstream in(entry.path(), std::ios::binary);
         ASSERT_TRUE(in) << "cannot read " << entry.path();
@@ -83,7 +75,7 @@ void collect_source_members(const SourceRoot& root, MemberMap* out)
             (std::istreambuf_iterator<char>(in)),
             std::istreambuf_iterator<char>());
         ASSERT_TRUE(out->emplace(arcname, std::move(bytes)).second)
-            << "source roots collide on archive path " << arcname;
+            << "source tree yields duplicate archive path " << arcname;
     }
 }
 
@@ -107,50 +99,32 @@ void collect_archive_members(const std::string& vdir, const std::string& rel,
 
 TEST(BuiltinArchives, every_member_matches_its_committed_source)
 {
-    const std::vector<CampaignRecipe> recipes = {
-        {"org.openglad.concept",
-         {{fs::path(OG_CAMPAIGNS_SOURCE_DIR) / "org.openglad.concept", ""},
-          {fs::path(OG_CONCEPT_PACK_SOURCE_DIR),
-           "packs/org.openglad.concept.showcase"}}},
-        {"org.openglad.gladiator",
-         {{fs::path(OG_CAMPAIGNS_SOURCE_DIR) / "org.openglad.gladiator", ""}}},
-        {"org.openglad.longseason",
-         {{fs::path(OG_CAMPAIGNS_SOURCE_DIR) / "org.openglad.longseason",
-           ""}}},
-        {"org.openglad.modes",
-         {{fs::path(OG_CAMPAIGNS_SOURCE_DIR) / "org.openglad.modes", ""},
-          {fs::path(OG_MODES_PACK_SOURCE_DIR),
-           "packs/org.openglad.modes.core"}}},
-        {"org.openglad.tower",
-         {{fs::path(OG_CAMPAIGNS_SOURCE_DIR) / "org.openglad.tower", ""}}},
-        {"org.openglad.tryxian",
-         {{fs::path(OG_CAMPAIGNS_SOURCE_DIR) / "org.openglad.tryxian", ""}}},
-        {"org.openglad.westlands",
-         {{fs::path(OG_CAMPAIGNS_SOURCE_DIR) / "org.openglad.westlands",
-           ""}}},
+    const std::vector<std::string> campaign_ids = {
+        "org.openglad.concept",   "org.openglad.gladiator",
+        "org.openglad.longseason", "org.openglad.modes",
+        "org.openglad.tower",     "org.openglad.tryxian",
+        "org.openglad.westlands",
     };
 
-    for (const CampaignRecipe& recipe : recipes)
+    for (const std::string& id : campaign_ids)
     {
-        SCOPED_TRACE(recipe.id);
+        SCOPED_TRACE(id);
 
         MemberMap expected;
-        for (const SourceRoot& root : recipe.roots)
-        {
-            collect_source_members(root, &expected);
-            if (::testing::Test::HasFatalFailure())
-                return;
-        }
+        collect_source_members(fs::path(OG_CAMPAIGNS_SOURCE_DIR) / id,
+                               &expected);
+        if (::testing::Test::HasFatalFailure())
+            return;
         ASSERT_FALSE(expected.empty());
 
-        const fs::path archive = fs::path(get_asset_path()) / "builtin" /
-                                 (std::string(recipe.id) + ".glad");
+        const fs::path archive =
+            fs::path(get_asset_path()) / "builtin" / (id + ".glad");
         ASSERT_TRUE(fs::exists(archive))
             << archive << " missing — the build did not compose it "
             << "(og_builtin_campaigns)";
 
         const std::string mountpoint =
-            std::string("builtin_src_check_") + recipe.id;
+            std::string("builtin_src_check_") + id;
         ASSERT_TRUE(og::resources::mount(archive.string().c_str(),
                                          mountpoint.c_str(), 1))
             << og::resources::filesystem_last_error();

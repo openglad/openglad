@@ -1056,7 +1056,7 @@ local function on_mode_init(level, row)
   -- og.add_ob, not og.add_fx_ob: the fx list never acts, while an acting
   -- ball dispatches the family on_act whose true return keeps the engine
   -- from moving, animating or expiring it (the cloud precedent).
-  local ball_family = og.family_id("effect", "modes:ball")
+  local ball_family = og.family_id("effect", "modes:ball") --[[@as integer]] -- the pack declares modes:ball; a nil would be a load bug and add_ob erroring loudly is the right failure
   local ball = og.add_ob("effect", ball_family)
   if ball == nil then
     error("soccer: cannot spawn the ball")

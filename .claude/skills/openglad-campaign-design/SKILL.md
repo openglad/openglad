@@ -13,10 +13,13 @@ tools/westlands_mapgen + tests/unit/test_westlands_levels.cpp.
 
 A campaign SHIPS as `<id>.glad` (a zip) but is COMMITTED as a plain source
 tree `campaigns/<id>/`: campaign.yaml (title, first_level, suggested_power),
-icon.png (32x32 indexed our.pal), scen/scenN.fss, pix/ grids. The build
-composes the tree into `build/<preset>/builtin/<id>.glad` deterministically
-(scripts/make_glad.py via og_builtin_campaigns; pack-bearing campaigns add
-their tools/<tool>/pack/ single-source, mapped under packs/<pack-id>/).
+icon.png (32x32 indexed our.pal), scen/scenN.fss, pix/ grids, and — for
+pack-bearing campaigns — the hand-authored `packs/<pack-id>/` subtree. The
+build composes that ONE tree into `build/<preset>/builtin/<id>.glad`
+deterministically, mirroring it 1:1 (scripts/make_glad.py via
+og_builtin_campaigns; the per-campaign README.md provenance note is the
+one file excluded). Generators rewrite only the generated entries —
+export_campaign_tree preserves packs/ and README.md.
 Drop-in discovery — zero code registration. Scen numbers are PER-CAMPAIGN
 namespaces; use 1..N (get_accessible_levels hardcodes 1 as always-accessible).
 Only ONE campaign is mounted at a time; cross-campaign exit destinations dangle.

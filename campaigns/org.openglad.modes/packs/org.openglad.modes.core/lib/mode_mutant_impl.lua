@@ -348,11 +348,7 @@ local function run_mutant_upkeep()
   if id ~= 0 then
     mut = og.find_by_id(id)
   end
-  local gone = mut == nil
-  if not gone then
-    gone = mut:dead() ~= 0
-  end
-  if gone then
+  if mut == nil or mut:dead() ~= 0 then
     -- A kill that bypassed walker::death (a bare dead-flag write) left a
     -- stale crown; revert deterministically. Real deaths already ran the
     -- transfer machine before this phase.

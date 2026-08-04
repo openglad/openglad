@@ -82,7 +82,8 @@ WHAT IS SCANNED
 Whatever scripts/lua_inventory.py calls shipped Lua — the same list the
 coverage denominator is built from, so a file cannot be game logic to one tool
 and invisible to the other. That list has a deliberate boundary: .lua files under the shipped roots
-(packs/, docs/) at any depth, .lua members of .glad campaign archives, and
+(packs/, docs/, campaigns/) at any depth, .lua members of .glad campaign
+archives, and
 declared product-C++ literals. A .lua under tests/ or scripts/ is a fixture,
 not shipped logic — never in the denominator, never linted here (spot-check
 it by passing the path explicitly if you want the rules applied anyway).

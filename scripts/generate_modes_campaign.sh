@@ -4,10 +4,11 @@
 # Configures the ci-test preset when needed, builds the (EXCLUDE_FROM_ALL)
 # modes_mapgen target, and runs it from the repo root so the committed
 # campaign source tree is rewritten in place (the shipped .glad is composed
-# from that tree plus the single-source pack at tools/modes_mapgen/pack/ by
-# the build; regeneration reviews as plain file diffs). The tool also regenerates the
-# committed level manifest tools/modes_mapgen/pack/lib/mode_levels.lua and
-# fails when the committed copy was stale (rerun after it rewrites it).
+# from that one tree by the build; the hand-authored packs/ subtree and
+# README.md are preserved, never rewritten; regeneration reviews as plain
+# file diffs). The tool also regenerates the committed level manifest
+# lib/mode_levels.lua inside the campaign's pack and fails when the
+# committed copy was stale (rerun after it rewrites it).
 # The tool self-checks the produced package and exits nonzero on any
 # validation failure.
 #

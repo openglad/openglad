@@ -218,7 +218,7 @@ end
 local function spawn_bots(team, families, cursor_slot)
   local level = og.max(1, og.div(og.match_setting("difficulty"), 100) + 1)
   for k = 1, #families do
-    local fam = og.family_id("living", families[k])
+    local fam = og.family_id("living", families[k]) --[[@as integer]] -- caller tables name core families; a nil would be a load bug and add_ob erroring loudly is the right failure
     local w = og.add_ob("living", fam)
     if w ~= nil then
       w:set_team_num(team)

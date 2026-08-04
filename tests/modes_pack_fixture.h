@@ -10,7 +10,8 @@
 // Shared fixture for the multiplayer-modes campaign-pack tests
 // (og_unit_modes now; the TDM/Mutant/Soccer/Onslaught waves reuse it).
 //
-// Builds a temporary .glad embedding the CURRENT tools/modes_mapgen/pack/**
+// Builds a temporary .glad embedding the CURRENT modes pack sources
+// (campaigns/org.openglad.modes/packs/org.openglad.modes.core/**)
 // sources (byte-copied, so the tests always exercise the shipped Lua) plus
 // one test-only registration script that binds the CTF impl to programmatic
 // level ids and registers a mode_core probe level. Mounting the campaign

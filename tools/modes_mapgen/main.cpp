@@ -193,13 +193,13 @@ void write_icon(const std::string& path)
 }
 
 // ---------------------------------------------------------------------------
-// Pack tree: byte-copy tools/modes_mapgen/pack/** (Lua, sprites, sidecars)
-// into the staging dir. The mode scripts/libs land with the Lua-mode
-// waves; whatever exists is shipped.
+// Pack tree: byte-copy kPackSourceDir/** (Lua, sprites, sidecars) into the
+// staging dir. The mode scripts/libs land with the Lua-mode waves;
+// whatever exists is shipped.
 // ---------------------------------------------------------------------------
 void copy_pack_tree(const std::string& staging_root)
 {
-    const fs::path src = "tools/modes_mapgen/pack";
+    const fs::path src = kPackSourceDir;
     const fs::path dst = fs::path(staging_root) / "packs" / kPackId;
     std::error_code ec;
     for (const char* sub : {"lib", "families", "scripts", "sprites"})
@@ -747,7 +747,7 @@ void self_check_level(const ExpectedLevel& row)
 // ---------------------------------------------------------------------------
 void self_check_manifest_chunk()
 {
-    std::ifstream in("tools/modes_mapgen/pack/lib/mode_levels.lua",
+    std::ifstream in(std::string(kPackSourceDir) + "/lib/mode_levels.lua",
                      std::ios::binary);
     if (!in)
     {
@@ -789,7 +789,7 @@ void self_check_pack_art()
 void self_check_mode_dispatch(ModeKind mode, int level_id)
 {
     const std::string script =
-        std::format("tools/modes_mapgen/pack/scripts/mode_{}.lua",
+        std::format("{}/scripts/mode_{}.lua", kPackSourceDir,
                     mode_name(mode));
     const bool script_present = fs::exists(script);
 
@@ -973,10 +973,10 @@ int main(int argc, char* argv[])
     int result = 1;
     if (g_errors == 0)
     {
-        // packs/ stays single-sourced under tools/modes_mapgen/pack/ — the
-        // build composes it into the archive; only the level data exports.
-        if (!og::toolexport::export_campaign_tree(user + "temp/", out_abs,
-                                                  {"packs"}))
+        // The hand-authored packs/ subtree (and README.md) live in the
+        // campaign dir itself; export_campaign_tree preserves them and
+        // rewrites only the generated level data.
+        if (!og::toolexport::export_campaign_tree(user + "temp/", out_abs))
         {
             fail(std::format("failed to export the campaign tree to {}",
                              out_abs.string()));

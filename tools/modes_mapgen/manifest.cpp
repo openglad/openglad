@@ -1,6 +1,7 @@
 /* Multiplayer Game Modes campaign generator — the generated level manifest.
  *
- * Emits tools/modes_mapgen/pack/lib/mode_levels.lua, the og.use("mode_levels")
+ * Emits lib/mode_levels.lua under kPackSourceDir (the campaign's embedded
+ * pack), the og.use("mode_levels")
  * data module the five mode scripts key their per-level registrations off.
  * Generated from the same ExpectedLevel rows that build the maps and drive
  * the self-check, so map content, manifest, and validation cannot drift
@@ -157,7 +158,8 @@ std::string manifest_lua_text(const std::vector<ExpectedLevel>& rows)
 
 bool check_and_refresh_manifest(const std::vector<ExpectedLevel>& rows)
 {
-    const std::string path = "tools/modes_mapgen/pack/lib/mode_levels.lua";
+    const std::string path =
+        std::string(kPackSourceDir) + "/lib/mode_levels.lua";
     const std::string fresh = manifest_lua_text(rows);
 
     std::string committed;

@@ -1,5 +1,5 @@
 // The Mutant campaign-pack Lua behavior suite
-// (tools/modes_mapgen/pack: lib/mode_mutant_impl.lua + lib/mode_match.lua +
+// (campaigns/org.openglad.modes/packs/org.openglad.modes.core: lib/mode_mutant_impl.lua + lib/mode_match.lua +
 // scripts/mode_mutant.lua), over the shared modes-pack fixture. Rule spec:
 // modes.md §7 as amended by DECISIONS D4 — FFA teams 0-3 stay, the
 // damage gate replaces team juggling, herd/Bottom-Feeder machinery is cut.

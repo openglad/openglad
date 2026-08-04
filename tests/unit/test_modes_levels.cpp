@@ -752,7 +752,7 @@ TEST_F(ModesLevels, soccer_goals_and_perimeters_match_the_manifest)
 // NOTE: the pack-vs-archive byte comparison that lived here
 // (every_pack_member_matches_its_committed_source) moved to
 // tests/unit/test_builtin_archives.cpp and now covers ALL campaigns:
-// the archive is COMPOSED from tools/modes_mapgen/pack/ by the build
+// the archive is COMPOSED from the campaign tree (pack included) by the build
 // (og_builtin_campaigns), so producer-side drift became impossible and
 // the meaningful residue is the staged-archive-vs-source contract.
 
@@ -827,8 +827,10 @@ TEST_F(ModesLevels, manifest_module_matches_package_and_executes)
     const std::vector<std::uint8_t> member = og::resources::read_file(
         "packs/org.openglad.modes.core/lib/mode_levels.lua");
     ASSERT_FALSE(member.empty()) << "manifest member missing from the .glad";
-    std::ifstream committed_in("tools/modes_mapgen/pack/lib/mode_levels.lua",
-                               std::ios::binary);
+    std::ifstream committed_in(
+        "campaigns/org.openglad.modes/packs/org.openglad.modes.core/lib/"
+        "mode_levels.lua",
+        std::ios::binary);
     ASSERT_TRUE(committed_in.good())
         << "committed manifest missing from the repo";
     std::ostringstream committed_buf;

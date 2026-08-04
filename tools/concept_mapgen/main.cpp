@@ -7,8 +7,8 @@
  * projectile arcs) plus one scripted boss arena, "The Ninefold Court" (605),
  * that shows off Lua level scripting: its fight logic ships INSIDE the .glad
  * as the embedded pack packs/org.openglad.concept.showcase/scripts/court.lua
- * (single-sourced at tools/concept_mapgen/pack/, composed into the archive
- * by the build). The six epic multifloor war stories that once shipped
+ * (hand-authored in the campaign dir's packs/ subtree, composed into the
+ * archive by the build). The six epic multifloor war stories that once shipped
  * here as levels 605-610 moved to the "War of the Westlands" story campaign
  * (tools/westlands_mapgen, builtin/org.openglad.westlands.glad). SDL-free;
  * reuses the headless platform glue, mirrors tools/ctf_mapgen. Builds the v10
@@ -98,10 +98,11 @@ namespace {
 
 namespace fs = std::filesystem;
 
-// The embedded pack's id; its single source lives at
-// tools/concept_mapgen/pack/ (composed into the archive by the build,
-// staged here for the self-checks). Loads after "core" — pack replay
-// order is pack-id lexicographic.
+// The embedded pack's id; its hand-authored source lives at
+// campaigns/org.openglad.concept/packs/org.openglad.concept.showcase/
+// (composed into the archive by the build, staged here for the
+// self-checks). Loads after "core" — pack replay order is pack-id
+// lexicographic.
 constexpr const char* kShowcasePackId = "org.openglad.concept.showcase";
 
 int g_errors = 0;
@@ -362,7 +363,7 @@ void build_arc_range()
 // tent, tower, bones, treehouse) ward the Magistrate — a named, hold-post
 // archmage on the north bench. The fight logic ships in the campaign's
 // EMBEDDED pack (packs/org.openglad.concept.showcase/scripts/court.lua,
-// single-sourced at tools/concept_mapgen/pack/ and staged for the
+// hand-authored in the campaign dir's packs/ subtree and staged for the
 // self-checks exactly as the build composes it): the boss is
 // invincible while any pillar stands, the wards fail when the last one
 // falls, ninefold judgment rings pulse after that, and every 3rd generator
@@ -813,8 +814,10 @@ int main(int argc, char* argv[])
     create_dir(user + "temp/pix/");
     write_campaign_yaml(user + "temp/campaign.yaml");
     write_icon(user + "temp/icon.png");
-    if (!og::toolexport::stage_pack_tree("tools/concept_mapgen/pack",
-                                         user + "temp/", kShowcasePackId))
+    if (!og::toolexport::stage_pack_tree(
+            "campaigns/org.openglad.concept/packs/"
+            "org.openglad.concept.showcase",
+            user + "temp/", kShowcasePackId))
         fail("failed to stage the embedded showcase pack");
 
     build_stairs();
@@ -859,10 +862,10 @@ int main(int argc, char* argv[])
     int result = 1;
     if (g_errors == 0)
     {
-        // packs/ stays single-sourced under tools/concept_mapgen/pack/ —
-        // the build composes it into the archive; only level data exports.
-        if (!og::toolexport::export_campaign_tree(user + "temp/", out_abs,
-                                                  {"packs"}))
+        // The hand-authored packs/ subtree (and README.md) live in the
+        // campaign dir itself; export_campaign_tree preserves them and
+        // rewrites only the generated level data.
+        if (!og::toolexport::export_campaign_tree(user + "temp/", out_abs))
             fail(std::format("failed to export the campaign tree to {}",
                              out_abs.string()));
         else

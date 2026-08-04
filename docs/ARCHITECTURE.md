@@ -694,9 +694,10 @@ events, or entity changes (classic parity preserved).
 
 The shipped modes campaign (28 scenarios: TDM 300-305, CTF 500-509, Onslaught 800-803,
 Soccer 820-823, Mutant 840-843) is generated into `campaigns/org.openglad.modes/` by
-`tools/modes_mapgen` via `scripts/generate_modes_campaign.sh`; the build composes that tree
-plus the pack sources (five mode scripts, shared libs, flag/waypoint/ball families, sprites —
-real files under `tools/modes_mapgen/pack/`) into the archive, so luals/lint/coverage see
+`tools/modes_mapgen` via `scripts/generate_modes_campaign.sh`; the build composes that one
+tree — including the hand-authored pack at `packs/org.openglad.modes.core/` (five mode
+scripts, shared libs, flag/waypoint/ball families, sprites), which the generator never
+rewrites — into the archive, so luals/lint/coverage see
 exactly the shipped bytes. `scripts/gen_modes_sprites.py` paints the pack sprites.
 
 ---

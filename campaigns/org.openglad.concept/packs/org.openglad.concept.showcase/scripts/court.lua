@@ -31,7 +31,7 @@ local RING_RADIUS = 4 * C.GRID_SIZE
 
 -- Family bytes resolved once at chunk load.
 local FAM_ARCHMAGE = og.family_id("living", "core:archmage")
-local FAM_EXPLOSION = og.family_id("fx", "core:explosion")
+local FAM_EXPLOSION = og.family_id("fx", "core:explosion") --[[@as integer]] -- core family always resolves; a nil would be a load bug and add_ob erroring loudly is the right failure
 
 -- The nine strikes of one judgment pulse: eight compass points on the ring
 -- plus the center — the Court judges ninefold. Offsets are percent pairs

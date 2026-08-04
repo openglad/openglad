@@ -26,9 +26,16 @@ class walker;
 
 namespace modesgen {
 
-// The pack's flag/waypoint treasure wire bytes (tools/modes_mapgen/pack/
-// families/treasure-flag.lua and treasure-waypoint.lua claim the retired
-// core CTF slots). The builders author these bytes into the .fss grids.
+// The campaign's hand-authored pack tree, committed inside the campaign
+// dir itself and composed into the archive under packs/<pack-id>/ by the
+// build. The generator only READS it (staging for self-checks, manifest
+// refresh) — export_campaign_tree never rewrites it.
+inline constexpr const char* kPackSourceDir =
+    "campaigns/org.openglad.modes/packs/org.openglad.modes.core";
+
+// The pack's flag/waypoint treasure wire bytes (families/treasure-flag.lua
+// and treasure-waypoint.lua under kPackSourceDir claim the retired core
+// CTF slots). The builders author these bytes into the .fss grids.
 inline constexpr int kFlagFamily = 13;
 inline constexpr int kWaypointFamily = 14;
 
@@ -174,7 +181,7 @@ std::vector<ExpectedLevel> all_expectations();
 
 // ---------------------------------------------------------------------------
 // Generated manifest (manifest.cpp): the committed og.use module
-// tools/modes_mapgen/pack/lib/mode_levels.lua, regenerated from the
+// lib/mode_levels.lua under kPackSourceDir, regenerated from the
 // expectation rows. Returns false (and fails) when the committed copy was
 // stale — the fresh bytes are written in place so a rerun passes.
 // ---------------------------------------------------------------------------

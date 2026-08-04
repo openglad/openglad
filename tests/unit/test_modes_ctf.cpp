@@ -1,4 +1,4 @@
-// The CTF Lua port (tools/modes_mapgen/pack) behavior suite: every RULE
+// The CTF Lua port (campaigns/org.openglad.modes/packs/org.openglad.modes.core) behavior suite: every RULE
 // case from test_ctf_core.cpp (48) and every director case from
 // test_ctf_ai.cpp (15) re-expressed against the campaign-pack Lua running
 // on scripted (0x20) levels, plus the Lua-specific additions (instruction

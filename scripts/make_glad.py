@@ -2,8 +2,8 @@
 """Deterministic .glad (zip) writer for the built-in campaigns.
 
 The campaign archives are BUILD OUTPUTS composed from committed source
-trees (campaigns/<id>/ plus, for pack-bearing campaigns, a tools/ pack
-dir mapped under packs/<pack-id>/). The container must be byte-for-byte
+trees (campaigns/<id>/ — one root per campaign, mirroring the archive
+1:1, packs/ subtrees included). The container must be byte-for-byte
 reproducible: two builds of the same tree produce identical archives on
 any machine, so archive diffs are always content diffs.
 
@@ -26,9 +26,11 @@ Usage:
 
 Each --root contributes every regular file under DIR at its DIR-relative
 path, prefixed with ARCPREFIX/ when given. Files named .gitkeep are
-git-empty-dir placeholders and are skipped; any other dotfile is an
-error (nothing hidden ships silently). Two roots contributing the same
-archive path is an error.
+git-empty-dir placeholders and are skipped; a root-level README.md is
+the campaign's provenance note (repo documentation, never campaign
+content) and is skipped too; any other dotfile is an error (nothing
+hidden ships silently). Two roots contributing the same archive path is
+an error.
 """
 
 from __future__ import annotations
@@ -61,6 +63,8 @@ def collect_members(roots: list[tuple[str, str]]) -> dict[str, str]:
                 fs_path = os.path.join(dirpath, name)
                 rel = os.path.relpath(fs_path, root)
                 arcname = rel.replace(os.sep, "/")
+                if arcname == "README.md":
+                    continue  # the provenance note never ships
                 if prefix:
                     arcname = f"{prefix}/{arcname}"
                 if arcname in members:

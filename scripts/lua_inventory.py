@@ -311,16 +311,6 @@ PRODUCT_DIRS = ("include", "src", "tools")
 # module docstring.
 SHIPPED_LUA_ROOTS = ("campaigns", "docs", "packs")
 
-# Multi-segment shipped roots: the single-source pack trees the build maps
-# under packs/<pack-id>/ inside the pack-bearing campaign archives (the
-# og_builtin_campaigns recipes in CMakeLists.txt). Their .lua ships inside
-# builtin/<id>.glad even though the files live under tools/, which is
-# otherwise a PRODUCT_DIRS (raw-string) root, never a .lua-file root.
-SHIPPED_LUA_SUBTREES = (
-    "tools/concept_mapgen/pack/",
-    "tools/modes_mapgen/pack/",
-)
-
 # "Looks like pack logic": the API root every pack script talks through, or
 # the registration entry point. A Lua blob that touches neither cannot
 # register a hook and cannot call the engine.
@@ -863,12 +853,12 @@ def _in_shipped_lua_tree(rel: str, top: str) -> bool:
     """Whether `rel` lives where shipped .lua files come from.
 
     Byte-exact membership, matching the engine and the archive recipes: a
-    top-level SHIPPED_LUA_ROOTS dir, or one of the SHIPPED_LUA_SUBTREES
-    pack trees the build composes into the campaign archives.
+    top-level SHIPPED_LUA_ROOTS dir. Campaign-embedded pack Lua lives at
+    campaigns/<id>/packs/<pack-id>/ and is covered by the campaigns root
+    (the build composes each campaign tree into its archive 1:1).
     """
-    if top in SHIPPED_LUA_ROOTS:
-        return True
-    return any(rel.startswith(subtree) for subtree in SHIPPED_LUA_SUBTREES)
+    del rel  # membership is decided by the top-level dir alone
+    return top in SHIPPED_LUA_ROOTS
 
 
 def _case_variant_shipped_root(top: str) -> Optional[str]:

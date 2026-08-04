@@ -15,35 +15,66 @@
 #pragma once
 
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
-#include <initializer_list>
 #include <string>
 #include <string_view>
 #include <system_error>
 
 namespace og::toolexport {
 
-// Mirrors `staging` into `dest`: dest is removed and rebuilt, so a file
-// that left the staging tree becomes a git deletion in the committed
-// campaign source instead of silently surviving. Top-level entries named
-// in `exclude_top` are skipped — a pack-bearing campaign's packs/ tree
-// stays single-sourced under tools/<tool>/pack/ and is composed into the
-// archive at build time, never duplicated under campaigns/. Returns false
-// (with the reason on stderr) on any filesystem error.
+// The top-level entries of campaigns/<id>/ that are HAND-AUTHORED and
+// therefore never owned by a generator: the campaign's embedded pack tree
+// (Lua + art, edited in place) and the provenance README. Everything else
+// under campaigns/<id>/ is generator output, wholesale.
+inline constexpr const char* kHandAuthoredTopLevel[] = {"packs", "README.md"};
+
+inline bool is_hand_authored_top_level(std::string_view name)
+{
+    for (const char* keep : kHandAuthoredTopLevel)
+        if (name == keep)
+            return true;
+    return false;
+}
+
+// Mirrors `staging` into `dest`: every generator-owned top-level entry of
+// dest is removed and rebuilt, so a file that left the staging tree
+// becomes a git deletion in the committed campaign source instead of
+// silently surviving. The hand-authored entries (kHandAuthoredTopLevel:
+// packs/, README.md) are preserved in dest and never copied from staging —
+// a regeneration must not clobber them, and the self-check staging copy of
+// packs/ (stage_pack_tree) must not export back over its own source.
+// Returns false (with the reason on stderr) on any filesystem error.
 inline bool export_campaign_tree(
     const std::filesystem::path& staging,
-    const std::filesystem::path& dest,
-    std::initializer_list<std::string_view> exclude_top = {})
+    const std::filesystem::path& dest)
 {
     namespace fs = std::filesystem;
     std::error_code ec;
 
-    fs::remove_all(dest, ec);
-    if (ec)
+    if (fs::exists(dest, ec))
     {
-        std::fprintf(stderr, "campaign export: cannot clear %s: %s\n",
-                     dest.string().c_str(), ec.message().c_str());
-        return false;
+        for (const auto& entry : fs::directory_iterator(dest, ec))
+        {
+            const std::string name = entry.path().filename().string();
+            if (is_hand_authored_top_level(name))
+                continue;
+            fs::remove_all(entry.path(), ec);
+            if (ec)
+            {
+                std::fprintf(stderr,
+                             "campaign export: cannot clear %s: %s\n",
+                             entry.path().string().c_str(),
+                             ec.message().c_str());
+                return false;
+            }
+        }
+        if (ec)
+        {
+            std::fprintf(stderr, "campaign export: cannot read %s: %s\n",
+                         dest.string().c_str(), ec.message().c_str());
+            return false;
+        }
     }
     fs::create_directories(dest, ec);
     if (ec)
@@ -56,11 +87,7 @@ inline bool export_campaign_tree(
     for (const auto& entry : fs::directory_iterator(staging, ec))
     {
         const std::string name = entry.path().filename().string();
-        bool excluded = false;
-        for (std::string_view ex : exclude_top)
-            if (name == ex)
-                excluded = true;
-        if (excluded)
+        if (is_hand_authored_top_level(name))
             continue;
         fs::copy(entry.path(), dest / name,
                  fs::copy_options::recursive |
@@ -83,11 +110,12 @@ inline bool export_campaign_tree(
     return true;
 }
 
-// Byte-copies a single-source pack tree (tools/<tool>/pack/**) into the
-// staging dir under packs/<pack_id>/ so the generator's self-checks run
-// against the pack exactly as the build will ship it. Git placeholders
-// (dotfiles such as .gitkeep) are skipped. Returns false (with the reason
-// on stderr) on any filesystem error.
+// Byte-copies the campaign's hand-authored pack tree
+// (campaigns/<id>/packs/<pack-id>/**) into the staging dir under
+// packs/<pack_id>/ so the generator's self-checks run against the pack
+// exactly as the build will ship it. Git placeholders (dotfiles such as
+// .gitkeep) are skipped. Returns false (with the reason on stderr) on any
+// filesystem error.
 inline bool stage_pack_tree(const std::filesystem::path& pack_src,
                             const std::filesystem::path& staging_root,
                             std::string_view pack_id)

@@ -898,15 +898,14 @@ endif()
 # Built-in campaign archives (.glad): deterministic build outputs
 # --------------------------------------------------------------------------
 # The seven shipped campaigns are committed as SOURCE TREES under
-# campaigns/<id>/ (campaign.yaml, scen/, pix/, ...). The .glad zip the game
-# mounts is composed here, at build time, by scripts/make_glad.py — a
-# deterministic writer (stored members, bytewise-sorted paths, fixed
-# timestamps), so two builds of the same tree produce byte-identical
-# archives and every campaign change reviews as a plain file diff.
-#
-# Pack-bearing campaigns keep their pack Lua single-sourced under
-# tools/<tool>/pack/; the recipe maps that tree under packs/<pack-id>/ in
-# the archive instead of duplicating it in campaigns/.
+# campaigns/<id>/ (campaign.yaml, scen/, pix/, and — for pack-bearing
+# campaigns — packs/<pack-id>/). The .glad zip the game mounts is composed
+# here, at build time, by scripts/make_glad.py — a deterministic writer
+# (stored members, bytewise-sorted paths, fixed timestamps), so two builds
+# of the same tree produce byte-identical archives and every campaign
+# change reviews as a plain file diff. The tree mirrors the archive 1:1:
+# one root per campaign, no path remapping (the per-campaign README.md is
+# repo documentation and is the one file make_glad.py excludes).
 #
 # Consumers: stage_runtime_assets hangs off og_builtin_campaigns (native),
 # the emscripten `play` target preloads ${CMAKE_BINARY_DIR}/builtin, and
@@ -927,12 +926,6 @@ set(OG_BUILTIN_CAMPAIGN_IDS
     org.openglad.tryxian
     org.openglad.westlands
 )
-# <id> -> extra composition root, spelled as make_glad.py's DIR@ARCPREFIX.
-set(OG_CAMPAIGN_EXTRA_ROOT_org.openglad.concept
-    "${CMAKE_SOURCE_DIR}/tools/concept_mapgen/pack@packs/org.openglad.concept.showcase")
-set(OG_CAMPAIGN_EXTRA_ROOT_org.openglad.modes
-    "${CMAKE_SOURCE_DIR}/tools/modes_mapgen/pack@packs/org.openglad.modes.core")
-
 # Stamp files decouple ninja's up-to-date tracking from the archive mtime:
 # make_glad.py leaves a byte-identical archive untouched, so an edit that
 # does not change composed bytes never re-triggers the consumers that
@@ -944,26 +937,14 @@ foreach(og_campaign IN LISTS OG_BUILTIN_CAMPAIGN_IDS)
     set(og_campaign_glad "${CMAKE_BINARY_DIR}/builtin/${og_campaign}.glad")
     set(og_campaign_stamp
         "${CMAKE_BINARY_DIR}/campaign_stamps/${og_campaign}.stamp")
-    set(og_campaign_roots --root "${CMAKE_SOURCE_DIR}/campaigns/${og_campaign}")
-    set(og_campaign_dep_dirs "${CMAKE_SOURCE_DIR}/campaigns/${og_campaign}")
-    if(DEFINED OG_CAMPAIGN_EXTRA_ROOT_${og_campaign})
-        list(APPEND og_campaign_roots
-            --root "${OG_CAMPAIGN_EXTRA_ROOT_${og_campaign}}")
-        string(REGEX REPLACE "@.*$" "" og_campaign_extra_dir
-            "${OG_CAMPAIGN_EXTRA_ROOT_${og_campaign}}")
-        list(APPEND og_campaign_dep_dirs "${og_campaign_extra_dir}")
-    endif()
-    set(og_campaign_inputs "")
-    foreach(og_campaign_dep_dir IN LISTS og_campaign_dep_dirs)
-        file(GLOB_RECURSE og_campaign_dir_files CONFIGURE_DEPENDS
-            "${og_campaign_dep_dir}/*")
-        list(APPEND og_campaign_inputs ${og_campaign_dir_files})
-    endforeach()
+    set(og_campaign_root "${CMAKE_SOURCE_DIR}/campaigns/${og_campaign}")
+    file(GLOB_RECURSE og_campaign_inputs CONFIGURE_DEPENDS
+        "${og_campaign_root}/*")
     add_custom_command(
         OUTPUT "${og_campaign_stamp}"
         BYPRODUCTS "${og_campaign_glad}"
         COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/scripts/make_glad.py"
-                "${og_campaign_glad}" ${og_campaign_roots}
+                "${og_campaign_glad}" --root "${og_campaign_root}"
         COMMAND ${CMAKE_COMMAND} -E touch "${og_campaign_stamp}"
         DEPENDS "${CMAKE_SOURCE_DIR}/scripts/make_glad.py"
                 ${og_campaign_inputs}
@@ -1769,9 +1750,9 @@ if(NOT EMSCRIPTEN)
     # --- modes_mapgen ("Multiplayer Game Modes" campaign generator) ---
     # SDL-free authoring tool that writes campaigns/org.openglad.modes/
     # (the five-mode campaign absorbing arenas + ctf; the archive is composed
-    # from that tree plus tools/modes_mapgen/pack/ by og_builtin_campaigns)
-    # and regenerates the
-    # committed level manifest tools/modes_mapgen/pack/lib/mode_levels.lua.
+    # from that tree — packs/ subtree included — by og_builtin_campaigns)
+    # and regenerates the committed level manifest lib/mode_levels.lua in
+    # the campaign's hand-authored pack.
     # Not part of the default build; run via scripts/generate_modes_campaign.sh.
     add_executable(modes_mapgen EXCLUDE_FROM_ALL
         ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/main.cpp
@@ -3123,13 +3104,11 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         )
 
         # test_builtin_archives byte-compares every staged-archive member
-        # against the committed campaign source trees (and the single-source
-        # pack trees the recipes map in); test_modes_levels reads the modes
-        # pack sources for its manifest checks.
+        # against the committed campaign source trees (one root per
+        # campaign — packs/ subtrees included); test_modes_levels reads the
+        # modes pack sources for its manifest checks.
         target_compile_definitions(og_unit_data PRIVATE
             OG_CAMPAIGNS_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns"
-            OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/tools/modes_mapgen/pack"
-            OG_CONCEPT_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/tools/concept_mapgen/pack"
         )
 
         og_add_unit_group(og_unit_respawn FILES
@@ -3153,21 +3132,21 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         # The modes-pack fixture zips the CURRENT repo pack sources into its
         # temp .glad so the tests always exercise the shipped bytes.
         target_compile_definitions(og_unit_modes PRIVATE
-            OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/tools/modes_mapgen/pack"
+            OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/org.openglad.modes/packs/org.openglad.modes.core"
         )
 
         og_add_unit_group(og_unit_soccer FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_soccer.cpp
         )
         target_compile_definitions(og_unit_soccer PRIVATE
-            OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/tools/modes_mapgen/pack"
+            OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/org.openglad.modes/packs/org.openglad.modes.core"
         )
 
         og_add_unit_group(og_unit_onslaught FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_onslaught.cpp
         )
         target_compile_definitions(og_unit_onslaught PRIVATE
-            OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/tools/modes_mapgen/pack"
+            OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/org.openglad.modes/packs/org.openglad.modes.core"
         )
 
         og_add_unit_group(og_unit_mapgen FILES

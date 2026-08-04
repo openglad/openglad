@@ -4,9 +4,9 @@
 # Configures the ci-test preset when needed, builds the (EXCLUDE_FROM_ALL)
 # concept_mapgen target, and runs it from the repo root so the committed
 # campaign source tree is rewritten in place (the shipped .glad is composed
-# from that tree plus the single-source showcase pack at
-# tools/concept_mapgen/pack/ by the build; regeneration reviews as plain
-# file diffs). The tool self-checks the produced
+# from that one tree by the build; the hand-authored showcase pack under
+# packs/ and README.md are preserved, never rewritten; regeneration
+# reviews as plain file diffs). The tool self-checks the produced
 # package (every level reloads with the expected floor count) and exits nonzero
 # on any validation failure.
 #

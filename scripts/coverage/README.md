@@ -383,16 +383,13 @@ but not ignored):
   the declaration that those bytes are shipped pack Lua —
   `org.openglad.concept.showcase` (a whole scripted boss arena) shipped for
   a long time only as one of these, before it became the file
-  `tools/concept_mapgen/pack/scripts/court.lua`.
+  `campaigns/org.openglad.concept/packs/org.openglad.concept.showcase/scripts/court.lua`.
 
-The pack single-source trees are also why `tools/` sits on opposite sides
-of the two halves. The shipped artifacts for concept and modes content are
-built `.glad` archives, and the trees at `tools/concept_mapgen/pack/` and
-`tools/modes_mapgen/pack/` are those archives' sources of truth — product
-Lua that happens to live under `tools/`, so it belongs in the Lua
-denominator (`SHIPPED_LUA_SUBTREES` in `scripts/lua_inventory.py`). The
-C++ of `tools/` itself is a build-time generator, not product code, which
-is why the C++ half measures `src/` only.
+The campaign-embedded packs live INSIDE their campaign trees
+(`campaigns/<id>/packs/<pack-id>/`), which the build composes 1:1 into the
+built `.glad` archives — so the `campaigns` shipped root covers their Lua
+in the denominator. The C++ of `tools/` is a build-time generator, not
+product code, which is why the C++ half measures `src/` only.
 
 Entries are deduplicated by **sha256 of the bytes**, so identical content is
 one entry however many paths, archives or mounts expose it. That is what makes
@@ -637,10 +634,9 @@ is read through; a directory symlink is the link object, never descended.
 
 Three kinds of entry, and nothing else:
 
-* `*.lua` files under the **shipped roots** — `packs/**`, `docs/**`,
-  `campaigns/**` (composed into the built-in campaign archives by the
-  build) and the single-source pack subtrees `tools/concept_mapgen/pack/**`
-  and `tools/modes_mapgen/pack/**` — at
+* `*.lua` files under the **shipped roots** — `packs/**`, `docs/**` and
+  `campaigns/**` (campaign trees, embedded packs included, composed into
+  the built-in campaign archives by the build) — at
   any depth, tracked or untracked. Those are the trees the product ships:
   the pack scripts the engine mounts, and the modding examples the docs
   distribute. Within a root there is no narrower pattern (no

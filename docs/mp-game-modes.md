@@ -14,8 +14,9 @@ Every scenario title is prefixed with its mode:
 | Mutant | 840-843 | FFA until first blood; only the Mutant can be hurt, kill it to take its place. |
 
 Every mode's rules, scoring, win logic, and AI directors live in the
-campaign's embedded Lua pack (`org.openglad.modes.core`, source under
-`tools/modes_mapgen/pack/`) — the engine provides only the generic scripted
+campaign's embedded Lua pack (`org.openglad.modes.core`, hand-authored at
+`campaigns/org.openglad.modes/packs/org.openglad.modes.core/`) — the
+engine provides only the generic scripted
 frame (`SCEN_TYPE_SCRIPTED` levels, `ModeState` replication, the respawn
 engine, and the og.* mode bindings). All five modes work in local
 split-screen, networked play (mid-join included), the text and curses

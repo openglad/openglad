@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the Multiplayer Game Modes pack sprites.
 
-Writes tools/modes_mapgen/pack/sprites/{flag.png,flag.json,ctfpoint.png,
+Writes sprites/{flag.png,flag.json,ctfpoint.png,
 ball.png,ball.json,aura.png,aura.json}. Stdlib-only (struct + zlib). PNGs are
 indexed 8-bit with the full 256-entry OpenGlad palette parsed from
 pix/openglad.gpl, matching what read_pixie_file (src/resources/io/
@@ -241,7 +241,8 @@ def check_band(name, pixels, team_ok, neutral_ok):
 
 
 
-OUT = os.path.join(REPO, "tools", "modes_mapgen", "pack", "sprites")
+OUT = os.path.join(REPO, "campaigns", "org.openglad.modes", "packs",
+                   "org.openglad.modes.core", "sprites")
 
 # Red ramp entries for the aura ring (team-red base 40..47) and gold sparks
 # (yellow ramp 88..95). Fixed colors on purpose: the Mutant's identity must

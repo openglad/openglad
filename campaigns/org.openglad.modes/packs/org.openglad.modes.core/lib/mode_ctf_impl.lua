@@ -167,15 +167,9 @@ local function run_carried_flags()
     if flag_present(team) then
       if flag_carried(team) then
         local carrier = og.find_by_id(fget(S.FLAG_CARRIER, team))
-        local invalid = carrier == nil
-        if not invalid then
-          if carrier:dead() ~= 0 then
-            invalid = true
-          elseif carrier:team_num() == team then
-            invalid = true
-          end
-        end
-        if invalid then
+        if carrier == nil then
+          drop_flag(team, carrier)
+        elseif carrier:dead() ~= 0 or carrier:team_num() == team then
           drop_flag(team, carrier)
         elseif carrier:last_self_teleport_tick() == og.world_tick() then
           local pos = fget(S.FLAG_POS, team)
@@ -705,7 +699,7 @@ end
 local function spawn_bot_squad(team)
   local level = og.max(1, og.div(og.match_setting("difficulty"), 100) + 1)
   for k = 1, #BOT_SQUAD do
-    local fam = og.family_id("living", BOT_SQUAD[k])
+    local fam = og.family_id("living", BOT_SQUAD[k]) --[[@as integer]] -- squad table names core families; a nil would be a load bug and add_ob erroring loudly is the right failure
     local w = og.add_ob("living", fam)
     if w ~= nil then
       w:set_team_num(team)
