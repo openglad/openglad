@@ -113,7 +113,26 @@ struct FakeCloudTransport {
 struct FlowState {
     bool finished = false;
     bool saw_cloud_screen = false;
+    bool clicked_all = false;
 };
+
+// Block until a trace line shows up, the way wait_for_interactable polls the
+// button list. trace_contains takes the trace mutex, so the injector thread
+// may poll it while the picker thread writes.
+bool wait_for_trace(const char* category, const char* substring, int timeout_ms)
+{
+    int elapsed = 0;
+    const int poll_interval = 50;
+    while (elapsed < timeout_ms) {
+        if (trace_contains(category, substring))
+            return true;
+        SDL_Delay(poll_interval);
+        elapsed += poll_interval;
+    }
+    fprintf(stderr, "  [test] TIMEOUT waiting for trace %s/'%s' (%d ms)\n",
+            category, substring, timeout_ms);
+    return false;
+}
 
 int cloud_flow_injector(void* data)
 {
@@ -130,16 +149,35 @@ int cloud_flow_injector(void* data)
         SDL_Delay(750);
         fprintf(stderr, "  [test] setting the passphrase (queued)\n");
         interact("cloud_passphrase");
-        // The MENU_REDRAW refresh re-enables UPLOAD on the next frames.
-        SDL_Delay(750);
-        fprintf(stderr, "  [test] clicking UPLOAD\n");
-        interact("cloud_upload");
-        SDL_Delay(750);
-        fprintf(stderr, "  [test] clicking DOWNLOAD (queued YES)\n");
-        interact("cloud_download");
-        SDL_Delay(750);
-        fprintf(stderr, "  [test] leaving the cloud screen\n");
-        interact("back");
+
+        // UPLOAD stays disabled until the passphrase lands, so wait for the
+        // button instead of guessing a delay.
+        bool ok = wait_for_interactable("cloud_upload", 5000);
+        if (ok) {
+            SDL_Delay(750);
+            fprintf(stderr, "  [test] clicking UPLOAD\n");
+            interact("cloud_upload");
+            // A request is answered on a LATER frame, and a click that lands
+            // while the previous one is still in flight is swallowed. That is
+            // the race this test hit on a loaded machine: DOWNLOAD was clicked
+            // before "Uploaded ..." came back, the GET never fired, and the
+            // transport.get_urls assertion below failed. Waiting on each
+            // request's own completion popup is the causal condition — the
+            // button being on screen is not.
+            ok = wait_for_trace("popup", "Uploaded", 15000);
+        }
+        if (ok) {
+            SDL_Delay(750);
+            fprintf(stderr, "  [test] clicking DOWNLOAD (queued YES)\n");
+            interact("cloud_download");
+            ok = wait_for_trace("popup", "Downloaded", 15000);
+        }
+        if (ok) {
+            SDL_Delay(750);
+            fprintf(stderr, "  [test] leaving the cloud screen\n");
+            interact("back");
+        }
+        state->clicked_all = ok;
     }
 
     if (wait_for_interactable("begin_new_game", 10000)) {
@@ -228,6 +266,8 @@ TEST(CloudUi, upload_then_download_through_the_cloud_screen)
 
     ASSERT_TRUE(state.finished);
     ASSERT_TRUE(state.saw_cloud_screen) << "the CLOUD door must open";
+    ASSERT_TRUE(state.clicked_all)
+        << "every cloud button must have come back interactable in time";
 
     // Passphrase: the DERIVED key persisted (D9), pinned to the D2 vector.
     EXPECT_EQ("73270125791ba273", cfg.get_setting("cloud", "key"));
