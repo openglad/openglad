@@ -375,19 +375,24 @@ but not ignored):
   roots (`tests/`, `scripts/`, ...) is a fixture, not shipped logic — see
   "Static inventory & lint" below for the boundary and why it cannot hide
   game logic;
-* every `*.lua` inside every committed `*.glad` campaign archive;
+* every `*.lua` inside every committed `*.glad` campaign archive (none are
+  committed today — the built-in campaign archives are BUILD outputs
+  composed from `campaigns/` — but the rule stays armed for any archive
+  that returns);
 * every `R"LUA( ... )LUA"` raw string literal in C++. The `LUA` delimiter is
   the declaration that those bytes are shipped pack Lua —
-  `org.openglad.concept.showcase` (a whole scripted boss arena) exists in the
-  repository only as one of these and is written into a generated `.glad`.
+  `org.openglad.concept.showcase` (a whole scripted boss arena) shipped for
+  a long time only as one of these, before it became the file
+  `tools/concept_mapgen/pack/scripts/court.lua`.
 
-That third bullet is also why `tools/` sits on opposite sides of the two
-halves. The shipped artifact for concept content is
-`builtin/org.openglad.concept.glad`, and the `R"LUA( ... )LUA"` literal in
-`tools/concept_mapgen/showcase_pack.cpp` is that archive's source of truth —
-product Lua that happens to live in a C++ file, so it belongs in the Lua
-denominator. The C++ of `tools/` itself is a build-time generator, not
-product code, which is why the C++ half measures `src/` only.
+The pack single-source trees are also why `tools/` sits on opposite sides
+of the two halves. The shipped artifacts for concept and modes content are
+built `.glad` archives, and the trees at `tools/concept_mapgen/pack/` and
+`tools/modes_mapgen/pack/` are those archives' sources of truth — product
+Lua that happens to live under `tools/`, so it belongs in the Lua
+denominator (`SHIPPED_LUA_SUBTREES` in `scripts/lua_inventory.py`). The
+C++ of `tools/` itself is a build-time generator, not product code, which
+is why the C++ half measures `src/` only.
 
 Entries are deduplicated by **sha256 of the bytes**, so identical content is
 one entry however many paths, archives or mounts expose it. That is what makes
@@ -632,7 +637,10 @@ is read through; a directory symlink is the link object, never descended.
 
 Three kinds of entry, and nothing else:
 
-* `*.lua` files under the **shipped roots** — `packs/**` and `docs/**` — at
+* `*.lua` files under the **shipped roots** — `packs/**`, `docs/**`,
+  `campaigns/**` (composed into the built-in campaign archives by the
+  build) and the single-source pack subtrees `tools/concept_mapgen/pack/**`
+  and `tools/modes_mapgen/pack/**` — at
   any depth, tracked or untracked. Those are the trees the product ships:
   the pack scripts the engine mounts, and the modding examples the docs
   distribute. Within a root there is no narrower pattern (no

@@ -297,16 +297,29 @@ CXX_SUFFIXES = {
 # pills instead. See the module docstring.
 PRODUCT_DIRS = ("include", "src", "tools")
 
-# Where shipped .lua FILES live: the pack tree the engine mounts, and the
-# modding examples the docs distribute. A .lua anywhere else — tests/,
-# scripts/, a scratch file at the repo root — does not ship and never enters
-# the denominator; if a test mounts one at runtime, the report's content-hash
-# poison pills own it (bytes the engine loaded that are not shipped content
-# hard-fail the gate). Symmetric with PRODUCT_DIRS for raw strings, and for
-# the same reason: without the boundary, a four-line helper fixture in
-# tests/data/ was "shipped game logic" at 0% and broke every build through
-# the og_gameplay lint. See the module docstring.
-SHIPPED_LUA_ROOTS = ("docs", "packs")
+# Where shipped .lua FILES live: the pack tree the engine mounts, the
+# modding examples the docs distribute, and the campaign source trees the
+# build composes into builtin/<id>.glad (anything under campaigns/ ships
+# inside an archive by construction — see scripts/make_glad.py). A .lua
+# anywhere else — tests/, scripts/, a scratch file at the repo root — does
+# not ship and never enters the denominator; if a test mounts one at
+# runtime, the report's content-hash poison pills own it (bytes the engine
+# loaded that are not shipped content hard-fail the gate). Symmetric with
+# PRODUCT_DIRS for raw strings, and for the same reason: without the
+# boundary, a four-line helper fixture in tests/data/ was "shipped game
+# logic" at 0% and broke every build through the og_gameplay lint. See the
+# module docstring.
+SHIPPED_LUA_ROOTS = ("campaigns", "docs", "packs")
+
+# Multi-segment shipped roots: the single-source pack trees the build maps
+# under packs/<pack-id>/ inside the pack-bearing campaign archives (the
+# og_builtin_campaigns recipes in CMakeLists.txt). Their .lua ships inside
+# builtin/<id>.glad even though the files live under tools/, which is
+# otherwise a PRODUCT_DIRS (raw-string) root, never a .lua-file root.
+SHIPPED_LUA_SUBTREES = (
+    "tools/concept_mapgen/pack/",
+    "tools/modes_mapgen/pack/",
+)
 
 # "Looks like pack logic": the API root every pack script talks through, or
 # the registration entry point. A Lua blob that touches neither cannot
@@ -846,6 +859,18 @@ def _declaration_problems(
                 )
 
 
+def _in_shipped_lua_tree(rel: str, top: str) -> bool:
+    """Whether `rel` lives where shipped .lua files come from.
+
+    Byte-exact membership, matching the engine and the archive recipes: a
+    top-level SHIPPED_LUA_ROOTS dir, or one of the SHIPPED_LUA_SUBTREES
+    pack trees the build composes into the campaign archives.
+    """
+    if top in SHIPPED_LUA_ROOTS:
+        return True
+    return any(rel.startswith(subtree) for subtree in SHIPPED_LUA_SUBTREES)
+
+
 def _case_variant_shipped_root(top: str) -> Optional[str]:
     """The shipped root `top` is a case-variant of, or None.
 
@@ -932,7 +957,7 @@ def _collect(
         # membership test is the engine's, and the case-variant is a
         # collected problem.
         if suffix == ".lua":
-            if top not in SHIPPED_LUA_ROOTS:
+            if not _in_shipped_lua_tree(rel, top):
                 variant_root = _case_variant_shipped_root(top)
                 if variant_root is not None:
                     problems.append(
@@ -961,7 +986,7 @@ def _collect(
                     "shrink the coverage denominator"
                 )
         elif suffix.lower() == ".lua":
-            if top in SHIPPED_LUA_ROOTS:
+            if _in_shipped_lua_tree(rel, top):
                 problems.append(
                     f"{rel}: will never load — pack scripts require a "
                     "lowercase '.lua' suffix (the engine's test in "

@@ -3116,15 +3116,20 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_westlands_levels.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_longseason_levels.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_levels.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_builtin_archives.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_decor_format.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_level_file_io_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_migrated_campaigns.cpp
         )
 
-        # test_modes_levels byte-compares every pack member against its
-        # committed source, so it needs the pack source dir too.
+        # test_builtin_archives byte-compares every staged-archive member
+        # against the committed campaign source trees (and the single-source
+        # pack trees the recipes map in); test_modes_levels reads the modes
+        # pack sources for its manifest checks.
         target_compile_definitions(og_unit_data PRIVATE
+            OG_CAMPAIGNS_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns"
             OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/tools/modes_mapgen/pack"
+            OG_CONCEPT_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/tools/concept_mapgen/pack"
         )
 
         og_add_unit_group(og_unit_respawn FILES

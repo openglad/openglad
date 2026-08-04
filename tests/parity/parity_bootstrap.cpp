@@ -85,7 +85,10 @@ BootstrapScope::BootstrapScope(const char* argv0)
     parity_write_path_ = ensure_write_dir();
     temp_scen_path_  = workspace_root_ + "/temp/scen";
     scen_path_       = workspace_root_ + "/scen";
-    builtin_path_    = workspace_root_ + "/builtin";
+    // The campaign archives are BUILD outputs staged next to the running
+    // binary (composed from campaigns/ by og_builtin_campaigns); the
+    // workspace no longer carries a builtin/ directory.
+    builtin_path_    = get_asset_path() + "builtin";
 
     owned_physfs_ = try_init_physfs(argv0);
 

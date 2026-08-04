@@ -33,6 +33,10 @@
 #include <string>
 #include <vector>
 
+// The staged-assets dir next to the running binary (unit_main links the
+// headless platform glue that defines it).
+std::string get_asset_path();
+
 namespace {
 
 namespace fs = std::filesystem;
@@ -376,10 +380,12 @@ TEST(TowerOpenStairs, type_bit_and_briefing_agree_and_boss_floors_never_open)
 
 TEST(TowerPackage, glad_member_list_has_no_floor_ids)
 {
+    // The staged archive next to the test binary — composed from
+    // campaigns/org.openglad.tower/ by the build (og_builtin_campaigns).
     const fs::path package =
-        fs::absolute("builtin/org.openglad.tower.glad");
+        fs::path(get_asset_path()) / "builtin" / "org.openglad.tower.glad";
     ASSERT_TRUE(fs::exists(package))
-        << package << " missing — run scripts/generate_tower_campaign.sh";
+        << package << " missing — the build did not compose it";
 
     const std::string mountpoint = "tower_pkg_check";
     ASSERT_TRUE(og::resources::mount(package.string().c_str(),

@@ -749,78 +749,12 @@ TEST_F(ModesLevels, soccer_goals_and_perimeters_match_the_manifest)
     }
 }
 
-// The whole pack, not just the manifest. A stale archive has shipped twice
-// on this branch: the behavior suites zip the CURRENT pack sources into
-// their own temp campaign, so they stay green against Lua that no player
-// ever runs, while the committed .glad keeps serving the old bytes. Every
-// .lua and .png the pack ships must match its repo source byte for byte,
-// and the archive must carry no pack member that no source produced.
-TEST_F(ModesLevels, every_pack_member_matches_its_committed_source)
-{
-    namespace fs = std::filesystem;
-    const fs::path source_root{OG_MODES_PACK_SOURCE_DIR};
-    ASSERT_TRUE(fs::is_directory(source_root))
-        << "pack source dir missing: " << source_root;
-
-    const std::string member_root = "packs/org.openglad.modes.core/";
-    std::set<std::string> expected_members;
-    int compared = 0;
-
-    for (const fs::directory_entry& entry :
-         fs::recursive_directory_iterator(source_root))
-    {
-        if (!entry.is_regular_file())
-            continue;
-        const std::string ext = entry.path().extension().string();
-        if (ext != ".lua" && ext != ".png")
-            continue;
-
-        const std::string relative =
-            entry.path().lexically_relative(source_root).generic_string();
-        const std::string member_path = member_root + relative;
-        expected_members.insert(relative);
-
-        std::ifstream source_in(entry.path(), std::ios::binary);
-        ASSERT_TRUE(source_in.good()) << "unreadable source: " << relative;
-        const std::string source_bytes(
-            (std::istreambuf_iterator<char>(source_in)),
-            std::istreambuf_iterator<char>());
-
-        const std::vector<std::uint8_t> member =
-            og::resources::read_file(member_path.c_str());
-        ASSERT_FALSE(member.empty())
-            << "regenerate the campaign: " << relative
-            << " is missing from the package";
-        const std::string member_bytes(member.begin(), member.end());
-        EXPECT_EQ(source_bytes, member_bytes)
-            << "regenerate the campaign: " << relative
-            << " has drifted from its committed source";
-        compared++;
-    }
-
-    EXPECT_GE(compared, 19)
-        << "the pack ships 19 Lua chunks and 4 sprites; a collapsed scan "
-           "would make this test vacuous";
-
-    // The other direction: a member the sources no longer produce (a
-    // deleted or renamed file) must not linger in the archive.
-    for (const char* sub : {"families", "lib", "scripts", "sprites"})
-    {
-        for (const std::string& name : list_files(member_root + sub))
-        {
-            const std::string relative_dir = sub;
-            const std::string relative = relative_dir + "/" + name;
-            if (name.size() < 4)
-                continue;
-            const std::string ext = name.substr(name.size() - 4);
-            if (ext != ".lua" && ext != ".png")
-                continue;
-            EXPECT_TRUE(expected_members.count(relative) == 1)
-                << "regenerate the campaign: the package carries "
-                << relative << ", which no committed source produces";
-        }
-    }
-}
+// NOTE: the pack-vs-archive byte comparison that lived here
+// (every_pack_member_matches_its_committed_source) moved to
+// tests/unit/test_builtin_archives.cpp and now covers ALL campaigns:
+// the archive is COMPOSED from tools/modes_mapgen/pack/ by the build
+// (og_builtin_campaigns), so producer-side drift became impossible and
+// the meaningful residue is the staged-archive-vs-source contract.
 
 // The SHIPPED registration scripts wire the hook set each mode's rules
 // actually need. The behavior suites bind the 9xxx test levels through
