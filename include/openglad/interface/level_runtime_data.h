@@ -210,6 +210,13 @@ public:
 
     std::list<std::string> description;
 
+    // Provenance mark from the .fss header (SCEN_TYPE_GENERATED): the scen
+    // was emitted by a campaign generator, so hand edits will be
+    // overwritten on the next regeneration. Loaded from and saved back to
+    // LevelFileMetadata::generated; the level editor warns on open when
+    // set. Never sim state.
+    bool generated = false;
+
     LevelRuntimeData(int level_id);
     LevelRuntimeData(int level_id, const LevelDataHooks* hooks);
     LevelRuntimeData(int level_id, bool headless);  // Headless constructor (no tile graphics)

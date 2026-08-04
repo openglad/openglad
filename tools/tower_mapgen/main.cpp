@@ -189,6 +189,7 @@ void build_gate()
 
     og::data::LevelFileMetadata metadata;
     metadata.grid_file = std::format("scen{:04d}", og::kTowerGateLevel);
+    metadata.generated = true; // provenance mark: this scen is tool output
     metadata.description = {
         "The Tower has no end.",
         "Each floor bears its number.",

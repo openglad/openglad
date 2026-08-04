@@ -211,15 +211,24 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
         world.title = "New Level";
     }
 
-    // Get the scenario type information
+    // Get the scenario type information. SCEN_TYPE_GENERATED is provenance
+    // metadata, not a sim rule bit: strip it into the metadata before the
+    // world sees the type (classic files carry 0 there, so their loads are
+    // bit-for-bit unchanged).
     if (version >= 5)
     {
         READ_OR_FAIL(&new_scen_type, 1, 1);
-        world.type = new_scen_type;
+        const auto raw_type = static_cast<unsigned char>(new_scen_type);
+        const auto generated_bit =
+            static_cast<unsigned char>(SCEN_TYPE_GENERATED);
+        metadata.generated = (raw_type & generated_bit) != 0;
+        world.type = static_cast<char>(raw_type &
+                                       static_cast<unsigned char>(~generated_bit));
     }
     else
     {
         world.type = 0;
+        metadata.generated = false;
     }
     world.respawn = {};
     world.mode = {};
@@ -742,8 +751,16 @@ bool write_scenario_payload(og::io::OgFile& outfile,
     if (!write_field(scentitle.data(), 30, 1))
         return false;
 
-    // Write the scenario type info
+    // Write the scenario type info, restoring the provenance mark the
+    // loader stripped (metadata.generated round-trips through editor
+    // saves; the sim-side world.type never carries the bit).
     char temp_scen_type = world.type;
+    if (metadata.generated)
+    {
+        temp_scen_type = static_cast<char>(
+            static_cast<unsigned char>(temp_scen_type) |
+            static_cast<unsigned char>(SCEN_TYPE_GENERATED));
+    }
     if (!write_field(&temp_scen_type, 1, 1))
         return false;
 

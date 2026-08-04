@@ -722,6 +722,7 @@ void save_level_files(GameWorld& world, int id, const char* title,
 
     og::data::LevelFileMetadata metadata;
     metadata.grid_file = std::format("scen{:04d}", id);
+    metadata.generated = true; // provenance mark: this scen is tool output
     for (const std::string& line : description)
         metadata.description.push_back(line);
 

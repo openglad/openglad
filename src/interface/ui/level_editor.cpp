@@ -628,7 +628,12 @@ public:
     
     bool loadLevel(int id);
     bool reloadLevel();
-    
+    void warn_if_generated();
+
+    // Latch for warn_if_generated: the last level id already warned about
+    // this session (-1 = none). One popup per generated level per session.
+    int generated_warned_level = -1;
+
     bool saveCampaignAs(const std::string& id);
     bool saveCampaign();
     
@@ -803,11 +808,29 @@ bool LevelEditorData::reloadCampaign()
 }
 
 
+// One warning per editor session per level id: a scen carrying the
+// SCEN_TYPE_GENERATED provenance mark is campaign-generator output, so
+// hand edits are doomed to be overwritten on the next regeneration. Warn
+// on open (warning only — saving stays allowed; the CI drift check is the
+// enforcement).
+void LevelEditorData::warn_if_generated()
+{
+    if (!level->generated || generated_warned_level == level->world().id)
+        return;
+    generated_warned_level = level->world().id;
+    popup_dialog("Generated Scenario",
+                 "Generated scenario - edits will be overwritten by the "
+                 "campaign generator. Port changes into the generator "
+                 "(see the campaign's README.md).");
+}
+
 bool LevelEditorData::loadLevel(int id)
 {
     level->world().id = id;
     bool result = level->load();
     eds().current_floor = 0; // start on the ground floor after a load
+    if (result)
+        warn_if_generated();
     update_menu_buttons();
     return result;
 }
@@ -815,6 +838,8 @@ bool LevelEditorData::loadLevel(int id)
 bool LevelEditorData::reloadLevel()
 {
     bool result = level->load();
+    if (result)
+        warn_if_generated();
     update_menu_buttons();
     return result;
 }

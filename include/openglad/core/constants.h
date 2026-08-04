@@ -215,8 +215,16 @@ inline constexpr char SCEN_TYPE_TOWER = 16;
 // Scripted-mode level (mirrors GameWorld::TYPE_SCRIPTED): match rules live
 // in campaign-pack Lua level hooks (on_mode_init / on_mode_tick / ...).
 // One bit for ALL scripted modes; per-mode identity comes from the pack's
-// per-level hook registration. 0x40 stays free.
+// per-level hook registration.
 inline constexpr char SCEN_TYPE_SCRIPTED = 32;
+// Provenance mark, NOT a sim rule bit: the campaign generators set it on
+// every scen they emit ("this file is regenerated — port edits into the
+// generator; the level editor warns on open"). The loader strips it into
+// LevelFileMetadata::generated BEFORE GameWorld::type is assigned and the
+// writer ORs it back from metadata, so sim state, snapshots, parity dumps
+// and the wire never carry it; classic/hand-authored files keep the bit 0
+// and load byte-identically. 0x80 stays free.
+inline constexpr char SCEN_TYPE_GENERATED = 64;
 
 // Outline colors
 inline constexpr unsigned char OUTLINE_NAMED         = 7;

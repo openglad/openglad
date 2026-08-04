@@ -858,6 +858,7 @@ bool LevelRuntimeData::load()
 
     grid_file = std::move(loaded_metadata.grid_file);
     description = std::move(loaded_metadata.description);
+    generated = loaded_metadata.generated;
     level_visuals().topx = 0;
     level_visuals().topy = 0;
 
@@ -894,6 +895,7 @@ bool LevelRuntimeData::save()
     og::data::LevelFileMetadata metadata;
     metadata.grid_file = grid_file;
     metadata.description = description;
+    metadata.generated = generated;
 
     og::data::LevelFileIoError io_error = og::data::LevelFileIoError::None;
     if (!og::data::save_level(world(), temp_filename, metadata, &io_error))

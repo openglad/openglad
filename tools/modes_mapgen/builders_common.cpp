@@ -111,6 +111,7 @@ bool save_level(GameWorld& world, const ExpectedLevel& row)
 {
     og::data::LevelFileMetadata metadata;
     metadata.grid_file = std::format("scen{:04d}", row.id);
+    metadata.generated = true; // provenance mark: this scen is tool output
     for (const std::string& line : row.briefing)
     {
         if (line.size() > 33)
