@@ -245,6 +245,8 @@ static unsigned char mode_hud_color(std::uint8_t team)
 // The >2-view suppression rule is kept: small panes cannot fit the
 // right-aligned rows beside the name, so slots 0-1 are suppressed exactly
 // like the retired CTF caps groups; left-column slots 2-3 draw in every layout.
+// Slots 0-1 are additionally truncated to the pane's own width — the Lua
+// binding allows 25 characters and a 2-view right pane only has room for 15.
 static void draw_mode_panel(screen* s, Sint32 lm, Sint32 tm, Sint32 rm)
 {
     const og::sim::ModeState& mode = s->world_.mode;
@@ -252,20 +254,33 @@ static void draw_mode_panel(screen* s, Sint32 lm, Sint32 tm, Sint32 rm)
 
     if (s->numviews <= 2)
     {
+        // The right-aligned rows end at rm-60, but nothing downstream clips to
+        // the pane: write_xy hands walkputbuffertext the whole-canvas port, so
+        // a line wider than this pane's own budget would paint into the
+        // neighbor's viewport. Truncate to what fits between lm+2 and rm-60 —
+        // the leading characters (the ones that would cross) are the ones
+        // dropped, so the row stays right-aligned and its score tail survives.
+        const Sint32 left_bound = lm + 2;
+        const Sint32 budget = (rm - 60 - left_bound) / 6;
         for (int slot = 0; slot < 2; ++slot)
         {
             const og::sim::ModeHudLine& line =
                 mode.hud[static_cast<std::size_t>(slot)];
             if (line.text[0] == '\0')
                 continue;
-            const Sint32 width = static_cast<Sint32>(
-                6 * std::strlen(line.text.data()));
+            if (budget <= 0)
+                continue;
+            const Sint32 length =
+                static_cast<Sint32>(std::strlen(line.text.data()));
+            const Sint32 shown = std::min(length, budget);
+            const char* const shown_text = line.text.data() + (length - shown);
+            const Sint32 width = 6 * shown;
             const Sint32 row = (slot == 0) ? tm + 4 : tm + 28;
-            mytext.write_xy(rm - 60 - width, row, line.text.data(),
+            mytext.write_xy(rm - 60 - width, row, shown_text,
                             mode_hud_color(line.team),
                             static_cast<short>(1));
             TRACE("mode_hud", "slot=%d text=%s team=%d", slot,
-                  line.text.data(), static_cast<int>(line.team));
+                  shown_text, static_cast<int>(line.team));
         }
     }
     if (mode.hud[2].text[0] != '\0')

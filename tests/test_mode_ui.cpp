@@ -31,6 +31,7 @@
 
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <memory>
@@ -114,7 +115,9 @@ struct ModeScreenWorld
             s->world().mode.hud[static_cast<std::size_t>(slot)];
         line.team = team;
         line.text = {};
-        std::strncpy(line.text.data(), text, line.text.size() - 1);
+        const std::size_t copied =
+            std::min(std::strlen(text), line.text.size() - 1);
+        std::memcpy(line.text.data(), text, copied);
     }
 
     walker* spawn_living(int x, int y, unsigned char team)
@@ -356,6 +359,78 @@ TEST(ModeUi, score_panel_suppresses_rightside_slots_in_small_panes)
 
     // Restore the single-view layout for the tests that follow.
     s->viewob[2].reset();
+    s->viewob[1].reset();
+    s->numviews = 1;
+    s->initialize_views();
+}
+
+// og.set_hud_line accepts 25 characters; a 2-view right pane has room for 16
+// between its own left edge and the rm-60 anchor. Nothing downstream clips to
+// the pane (write_xy passes the whole-canvas port), so an unclamped
+// right-aligned row paints into the LEFT pane's viewport.
+TEST(ModeUi, score_panel_truncates_rightside_slots_to_the_pane)
+{
+    ClassicModeHudCanvasGuard classic_canvas;
+    ModeScreenWorld mode;
+    screen* s = mode.s;
+
+    auto control = make_control(0);
+    ASSERT_NE(nullptr, control);
+
+    s->numviews = 2;
+    s->initialize_views();
+    viewscreen* left = s->viewob[0].get();
+    viewscreen* right = s->viewob[1].get();
+    ASSERT_NE(nullptr, right);
+    left->control = nullptr;
+    right->control = control.get();
+    silence_hud_prefs(left);
+    silence_hud_prefs(right);
+
+    // 25 characters — the binding's maximum.
+    const char* const long_line = "YELLOW 999/999 OVERTIME!!";
+    ASSERT_EQ(25u, std::strlen(long_line));
+    mode.set_hud(0, long_line, 0);
+    mode.set_hud(1, "", 255);
+    mode.set_hud(2, "", 255);
+    mode.set_hud(3, "", 255);
+
+    const int lm = right->xloc;
+    const int rm = right->endx;
+    const int tm = right->yloc;
+    // The left pane's own copy of slot 0 ends at its rm-60; everything from
+    // there to the right pane's left edge belongs to no one.
+    const int gap_x0 = left->endx - 60 + 1;
+
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    const auto frame = capture_rendered_frame(*s);
+
+    EXPECT_FALSE(box_has_pixels(frame, gap_x0, tm + 3, lm, tm + 12))
+        << "a 25-char slot-0 line must not paint left of the right pane";
+    EXPECT_TRUE(box_has_pixels(frame, lm, tm + 3, rm - 59, tm + 12))
+        << "the truncated line must still paint inside the right pane";
+
+    // The trace carries the truncated tail, not the authored line.
+    EXPECT_FALSE(trace_contains("mode_hud", long_line))
+        << "the full 25-char line must never reach the draw";
+    const int budget = (rm - 60 - (lm + 2)) / 6;
+    ASSERT_GT(budget, 0);
+    ASSERT_LT(budget, 25) << "the right pane must be too narrow for 25 chars";
+    const std::string expected_tail =
+        std::string("slot=0 text=") + (long_line + (25 - budget));
+    EXPECT_TRUE(trace_contains("mode_hud", expected_tail.c_str()))
+        << "truncation drops the leading characters, keeping the tail";
+
+    // A line that fits is untouched.
+    mode.set_hud(0, "RED 5/20", 0);
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    EXPECT_TRUE(trace_contains("mode_hud", "slot=0 text=RED 5/20"))
+        << "a line inside the budget draws whole";
+
     s->viewob[1].reset();
     s->numviews = 1;
     s->initialize_views();
