@@ -551,6 +551,39 @@ TEST_F(ModesMutant, decay_drops_two_hp_over_24_ticks_and_topups_hold)
         << "the beacon re-asserts every tick";
 }
 
+// The per-tick buff refresh is a FLOOR, not an assignment: a potion drunk
+// mid-reign used to be erased one tick later by the crown's flat re-stamp.
+TEST_F(ModesMutant, mid_reign_pickups_survive_the_buff_refresh)
+{
+    MutantRig rig;
+    rig.fx.tick(1);
+    ASSERT_TRUE(rig.active());
+    rig.crown_a();
+    rig.fx.tick(1);
+    ASSERT_EQ(1.0f, rig.a->speed_bonus()) << "the crown's own floor";
+    ASSERT_EQ(30, rig.a->speed_bonus_left());
+    ASSERT_EQ(100, rig.a->invisibility_left());
+
+    // What a speed potion does: add duration, set the bonus to its level.
+    rig.a->set_speed_bonus_left(rig.a->speed_bonus_left() + 50);
+    rig.a->set_speed_bonus(3.0f);
+    rig.a->set_invisibility_left(rig.a->invisibility_left() + 200);
+
+    rig.fx.tick(1);
+    EXPECT_EQ(3.0f, rig.a->speed_bonus())
+        << "a stronger pickup must not be stomped back to the crown value";
+    EXPECT_GT(rig.a->speed_bonus_left(), 30)
+        << "the pickup's longer duration must survive";
+    EXPECT_GT(rig.a->invisibility_left(), 100);
+
+    // And the crown's floor is restored once the pickup decays past it.
+    rig.a->set_speed_bonus_left(2);
+    rig.a->set_invisibility_left(2);
+    rig.fx.tick(1);
+    EXPECT_EQ(30, rig.a->speed_bonus_left()) << "the floor comes back";
+    EXPECT_EQ(100, rig.a->invisibility_left());
+}
+
 TEST_F(ModesMutant, decay_death_with_no_recent_attacker_reverts)
 {
     MutantRig rig;
@@ -823,7 +856,7 @@ TEST_F(ModesMutant, score_limit_win_and_timeout_lowest_byte_tiebreak)
             << "bot competitors: rematch shape";
         EXPECT_TRUE(has_notification(rig.fx.events, "BLUE TEAM WINS!"));
     }
-    // Timeout leader; ties to the lowest team byte.
+    // Timeout leader; an all-square tie resolves to the lowest team byte.
     {
         MutantRig rig;
         rig.fx.tick(1);
@@ -835,6 +868,21 @@ TEST_F(ModesMutant, score_limit_win_and_timeout_lowest_byte_tiebreak)
         EXPECT_TRUE(rig.fx.world().game_ended);
         EXPECT_EQ(1, rig.fx.world().mode.winner_team)
             << "leading score wins; the tie resolves to the lowest byte";
+    }
+    // m_score is the middle rung between the mode metric and the team byte
+    // (modes.md §8.2, the same ladder Soccer/Onslaught/CTF spell inline).
+    {
+        MutantRig rig;
+        rig.fx.tick(1);
+        ASSERT_TRUE(rig.active());
+        rig.fx.world().mode.vars[kMutSlotScore + 1] = 4;
+        rig.fx.world().mode.vars[kMutSlotScore + 3] = 4;
+        rig.fx.world().m_score[3] = 700;
+        rig.fx.world().set_level_tick_count(7200 - 2);
+        rig.fx.tick(2);
+        EXPECT_TRUE(rig.fx.world().game_ended);
+        EXPECT_EQ(3, rig.fx.world().mode.winner_team)
+            << "equal mutant score breaks on m_score before the team byte";
     }
 }
 

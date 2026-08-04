@@ -86,6 +86,20 @@ bool has_notification(const og::sim::SimEventLog& log,
     return count_notifications(log, needle) > 0;
 }
 
+bool has_score_change(const og::sim::SimEventLog& log, std::uint32_t team,
+                      std::uint32_t points)
+{
+    for (const auto& ev : log.events())
+    {
+        if (ev.kind == og::sim::EventKind::ScoreChange && ev.a == team &&
+            ev.b == points)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool has_script_error(GameWorld& world, const std::string& needle)
 {
     for (const auto& err : world.scripts().host().errors())
@@ -816,6 +830,214 @@ TEST_F(ModesOnslaught, bot_corpses_are_scrubbed_heroes_are_not)
             hero_booked = true;
     }
     EXPECT_TRUE(hero_booked) << "hero corpses respawn instead of scrubbing";
+}
+
+// ===========================================================================
+// Scoring (modes.md §5.5): generator 300, waypoint 50, kills 10 / 50
+// ===========================================================================
+
+TEST_F(ModesOnslaught, taking_a_generator_pays_three_hundred)
+{
+    OnsWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.ons_active());
+    ASSERT_EQ(0u, fx.world().m_score[1]);
+
+    fx.green->setxy(140, 340);
+    fx.smash(fx.green, fx.red_gen_a);
+    ASSERT_EQ(1, fx.red_gen_a->team_num()) << "the flip must land";
+    EXPECT_EQ(300u, fx.world().m_score[1]) << "the capture pays the team";
+    EXPECT_TRUE(has_score_change(fx.events, 1, 300));
+    EXPECT_EQ(0u, fx.world().m_score[0]) << "the loser pays nothing";
+}
+
+TEST_F(ModesOnslaught, a_floored_hit_pays_nothing)
+{
+    OnsWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.ons_active());
+
+    // Same-team smash: the hit floors at 1 hp, there is no flip and no pay.
+    fx.red->setxy(140, 340);
+    fx.smash(fx.red, fx.red_gen_a);
+    EXPECT_EQ(0, fx.red_gen_a->team_num());
+    EXPECT_EQ(0u, fx.world().m_score[0]);
+}
+
+TEST_F(ModesOnslaught, holding_a_waypoint_pays_fifty)
+{
+    OnsWorld fx;
+    walker* wp = fx.spawn_point(point_family_, 320, 480);
+    ASSERT_NE(nullptr, wp);
+    fx.tick(1);
+    ASSERT_TRUE(fx.ons_active());
+    ASSERT_EQ(1, fx.var(kOnsWpCount));
+
+    fx.red->setxy(320, 480);
+    fx.tick(kWpHoldTicks + 1);
+    ASSERT_EQ(1, fx.team_var(kOnsWpOwner1, 0)) << "red must take the point";
+    EXPECT_EQ(50u, fx.world().m_score[0]);
+    EXPECT_TRUE(has_score_change(fx.events, 0, 50));
+}
+
+TEST_F(ModesOnslaught, kills_pay_ten_for_a_spawn_and_fifty_for_a_hero)
+{
+    OnsWorld fx;
+    walker* hero = fx.spawn_hero(FAMILY_SOLDIER, 1, 480, 96, 9);
+    ASSERT_NE(nullptr, hero);
+    fx.tick(1);
+    ASSERT_TRUE(fx.ons_active());
+
+    // m_score also carries the engine's own per-damage credit, so the award
+    // is read off the ScoreChange events (the TDM suite's idiom).
+    fx.red->setxy(static_cast<short>(fx.green->xpos() - 20),
+                  static_cast<short>(fx.green->ypos()));
+    fx.smash(fx.red, fx.green);
+    ASSERT_TRUE(fx.green->dead());
+    EXPECT_TRUE(has_score_change(fx.events, 0, 10))
+        << "a non-hero body is small change";
+    EXPECT_FALSE(has_score_change(fx.events, 0, 50))
+        << "and it is not paid at the hero rate";
+
+    fx.red->setxy(static_cast<short>(hero->xpos() - 20),
+                  static_cast<short>(hero->ypos()));
+    fx.smash(fx.red, hero);
+    ASSERT_TRUE(hero->dead());
+    EXPECT_TRUE(has_score_change(fx.events, 0, 50))
+        << "a hero is worth five bodies";
+}
+
+TEST_F(ModesOnslaught, teamkills_and_environment_deaths_pay_nothing)
+{
+    OnsWorld fx;
+    walker* ally = fx.spawn_living(FAMILY_SOLDIER, 0, 120, 96);
+    ASSERT_NE(nullptr, ally);
+    fx.tick(1);
+    ASSERT_TRUE(fx.ons_active());
+
+    // Teamkill through the attribution channel (same-team attacks are
+    // refused at the engine gate, so stamp then flip the team).
+    ASSERT_NE(nullptr, ally->stats());
+    ally->stats()->set_hitpoints(100.0f);
+    fx.green->setxy(116, 96);
+    fx.green->attack(ally);   // stamps killer green, team 1
+    ally->set_team_num(1);    // the charm flip
+    ally->set_dead(1);
+    ally->death();
+    EXPECT_EQ(0u, fx.world().m_score[1]) << "no pay for friendly fire";
+
+    // Environment death: no stamp at all.
+    walker* stray = fx.spawn_living(FAMILY_SOLDIER, 1, 200, 700);
+    ASSERT_NE(nullptr, stray);
+    stray->set_dead(1);
+    stray->death();
+    EXPECT_EQ(0u, fx.world().m_score[0]);
+    EXPECT_EQ(0u, fx.world().m_score[1]);
+}
+
+// ===========================================================================
+// Elimination hygiene
+// ===========================================================================
+
+TEST_F(ModesOnslaught, elimination_scrubs_the_bodies_it_leaves)
+{
+    // Three teams, so the elimination does not end the match: a 2-team
+    // elimination latches the win, which flush-revives and short-circuits
+    // the sweep that this test is about.
+    OnsWorld fx(kOnsLevelB);
+    walker* blue_gen = fx.spawn_generator(FAMILY_TENT, 2, 320, 200);
+    ASSERT_NE(nullptr, blue_gen);
+    fx.spawn_anchor(2, 320, 160);
+    ASSERT_NE(nullptr, fx.spawn_living(FAMILY_SOLDIER, 2, 320, 160));
+    fx.tick(1);
+    ASSERT_TRUE(fx.ons_active());
+
+    fx.green_gen->set_team_num(0);
+    fx.green_gen->set_real_team_num(0);
+    fx.tick(1);
+    ASSERT_GT(fx.team_var(kOnsZeroSince, 1), 0);
+
+    // Age the grace clock rather than idling it out: a stain left sitting
+    // for 600 ticks expires on its own and proves nothing.
+    fx.world().mode.vars[kOnsZeroSince + 1] =
+        static_cast<std::int32_t>(fx.world().tick_count_) - kGraceTicks;
+    fx.tick(1);
+    ASSERT_EQ(1, fx.team_var(kOnsEliminated, 1)) << "green is marked";
+    ASSERT_FALSE(fx.green->dead()) << "the marking tick does not kill";
+
+    // A fresh stain under green's living, the shape a raise or a farm needs.
+    const int gx = fx.green->xpos();
+    const int gy = fx.green->ypos();
+    walker* stain = fx.world().add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    ASSERT_NE(nullptr, stain);
+    stain->setxy(static_cast<short>(gx), static_cast<short>(gy));
+    stain->set_team_num(1);
+    ASSERT_TRUE(stain_alive_at(fx.world(), gx, gy));
+
+    fx.tick(1);
+    ASSERT_TRUE(fx.green->dead()) << "the sweep kills the eliminated team";
+    ASSERT_FALSE(fx.world().game_ended) << "two teams remain";
+    EXPECT_FALSE(stain_alive_at(fx.world(), gx, gy))
+        << "run_elimination writes the dead flag directly, so walker::death "
+           "never scrubs — the sweep must scrub for it";
+}
+
+TEST_F(ModesOnslaught, an_eliminated_teams_dead_do_not_contest_waypoints)
+{
+    // Three teams so the elimination does not end the match, and a waypoint
+    // the doomed team is standing on when it falls.
+    OnsWorld fx(kOnsLevelB);
+    walker* blue_gen = fx.spawn_generator(FAMILY_TENT, 2, 320, 200);
+    ASSERT_NE(nullptr, blue_gen);
+    fx.spawn_anchor(2, 320, 160);
+    walker* blue = fx.spawn_living(FAMILY_SOLDIER, 2, 320, 160);
+    ASSERT_NE(nullptr, blue);
+    walker* wp = fx.spawn_point(point_family_, 320, 480);
+    ASSERT_NE(nullptr, wp);
+    fx.tick(1);
+    ASSERT_TRUE(fx.ons_active());
+    ASSERT_EQ(1, fx.var(kOnsWpCount));
+
+    // Green loses its only generator, so its grace clock starts.
+    fx.green_gen->set_team_num(0);
+    fx.green_gen->set_real_team_num(0);
+    fx.tick(1);
+    ASSERT_GT(fx.team_var(kOnsZeroSince, 1), 0);
+
+    // Age the clock instead of idling out the full grace: 600 ticks of
+    // generator spawns would fight this arrangement apart long before the
+    // elimination lands.
+    fx.world().mode.vars[kOnsZeroSince + 1] =
+        static_cast<std::int32_t>(fx.world().tick_count_) - kGraceTicks;
+
+    // Green outnumbers red on the disc two to one, and holds the meter.
+    walker* green_two = fx.spawn_living(FAMILY_SOLDIER, 1, 320, 484);
+    ASSERT_NE(nullptr, green_two);
+    fx.green->setxy(320, 480);
+    fx.red->setxy(324, 480);
+    fx.tick(1);
+    ASSERT_EQ(1, fx.team_var(kOnsEliminated, 1)) << "green is marked";
+    ASSERT_FALSE(fx.green->dead()) << "the marking tick does not kill";
+    ASSERT_EQ(2, fx.team_var(kOnsWpProgTeam1, 0))
+        << "green owns the meter going into its last tick";
+
+    // The next tick is the one that matters: run_elimination kills green's
+    // members, then run_waypoints runs — on the SAME census.
+    fx.green->setxy(320, 480);
+    green_two->setxy(320, 484);
+    fx.red->setxy(324, 480);
+    fx.tick(1);
+    ASSERT_TRUE(fx.green->dead());
+    ASSERT_TRUE(green_two->dead());
+    ASSERT_FALSE(fx.world().game_ended) << "two teams remain";
+
+    // A stale census still sees green's two bodies outnumbering red's one
+    // and keeps accruing for the team that just died. The re-derived one
+    // leaves red alone on the disc.
+    EXPECT_EQ(1, fx.team_var(kOnsWpProgTeam1, 0))
+        << "the dead must not contest the disc they died on";
+    EXPECT_EQ(1, fx.team_var(kOnsWpProgress, 0))
+        << "red's meter restarts on the elimination tick itself";
 }
 
 // ===========================================================================

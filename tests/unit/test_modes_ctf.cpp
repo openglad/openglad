@@ -2248,6 +2248,15 @@ TEST_F(ModesCtf, mode_core_probe_helpers_answer_exactly)
     EXPECT_TRUE(stain->dead()) << "scrub_corpse kills the fresh stain";
     EXPECT_STREQ("YELLOW 7/9", fx.world().mode.hud[0].text.data());
     EXPECT_EQ(3, fx.world().mode.hud[0].team);
+    // match.resolve_limit, the per-field manifest ladder TDM and Mutant read
+    // their limits through: request beats row beats default, and a row that
+    // omits (or zeroes) a field falls back instead of erroring on nil.
+    EXPECT_TRUE(vm_logged(fx.world(), "lim_full\t5\t7"))
+        << "the row's value, then the explicit request over it";
+    EXPECT_TRUE(vm_logged(fx.world(), "lim_sparse\t20\t7200"))
+        << "a sparse row falls back to the mode defaults, per field";
+    EXPECT_TRUE(vm_logged(fx.world(), "lim_nil_zero\t20\t7200"))
+        << "no row at all, and a zeroed field, both fall back";
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 

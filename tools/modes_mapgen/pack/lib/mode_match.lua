@@ -4,6 +4,7 @@
 local C = og.C
 local core = og.use("mode_core")
 local ai = og.use("mode_ai")
+local caps = og.use("mode_caps")
 
 -- The D9 level-id band the manifest may populate. rows_for scans it by
 -- DIRECT indexing: the manifest is a map keyed by level id with holes, and
@@ -22,6 +23,28 @@ local function rows_for(levels)
     end
   end
   return rows
+end
+
+-- Manifest limit resolution, one field at a time: an explicit match request
+-- wins, then the row's own field, then the mode default. The guards are
+-- per FIELD (Soccer's shape) so a row that omits a limit falls back instead
+-- of erroring on a nil compare. The shipped generator emits both fields for
+-- every row, so this is belt-and-braces for hand-written and future rows.
+local function resolve_limit(row, field, requested, fallback)
+  if requested > 0 then
+    return requested
+  end
+  if row == nil then
+    return fallback
+  end
+  local value = row[field]
+  if value == nil then
+    return fallback
+  end
+  if value <= 0 then
+    return fallback
+  end
+  return value
 end
 
 -- Authored score-team census: a team is authored when it fields a live
@@ -149,10 +172,27 @@ local function spawn_bots(team, families, cursor_slot)
   end
 end
 
+-- "Owns its life": may this corpse come back, and do its deaths count?
+-- A roster walker always does. An AI does only when nothing else made it:
+-- a live owner disqualifies it, and so does the durable origin mark, because
+-- clear_stale_cross_refs nulls owner() the tick the OWNER dies. Without the
+-- mark a dead tent's orphaned spawns are indistinguishable from the
+-- init-time bots, which is exactly how a score-team generator map turned
+-- into an endless frag fountain at the anchors.
+local function owns_its_life(w)
+  if w:has_guy() then
+    return true
+  end
+  if w:owner() ~= nil then
+    return false
+  end
+  return not caps.is_marked_spawn(w)
+end
+
 -- The pre-sweep corpse scan: schedules every dead score-team Living that
--- owns its life (roster walkers always; AI unless generator/summon-owned)
--- and is not already queued. Runs every tick so schedule refusals and
--- silent set_dead corpses retry, exactly like the CTF port's scan.
+-- owns its life and is not already queued. Runs every tick so schedule
+-- refusals and silent set_dead corpses retry, exactly like the CTF port's
+-- scan.
 local function schedule_dead(obs, mask, delay)
   for k = 1, #obs do
     local w = obs[k]
@@ -161,11 +201,7 @@ local function schedule_dead(obs, mask, delay)
         local team = w:team_num()
         if team < C.SCORE_TEAM_COUNT then
           if core.mask_has(mask, team) then
-            local owned = false
-            if not w:has_guy() then
-              owned = w:owner() ~= nil
-            end
-            if not owned then
+            if owns_its_life(w) then
               if not og.respawn_pending(w) then
                 og.respawn_schedule(w, delay)
               end
@@ -234,9 +270,10 @@ local function nearest_enemy(livings, mask, team, x, y, wanted_team)
   return best
 end
 
--- Timeout leader: highest score wins; ties resolve to the LOWEST team
--- byte (documented tiebreak — ascending scan, strictly-greater
--- replacement).
+-- Timeout leader, the shared three-rung ladder (modes.md §8.2, identical
+-- everywhere): mode metric, then m_score, then the LOWEST team byte
+-- (ascending scan with strictly-greater replacement). Soccer, Onslaught
+-- and CTF spell the same ladder inline over their own metrics.
 local function timeout_leader(mask, score_of)
   local winner = -1
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
@@ -245,6 +282,10 @@ local function timeout_leader(mask, score_of)
         winner = team
       elseif score_of(team) > score_of(winner) then
         winner = team
+      elseif score_of(team) == score_of(winner) then
+        if og.team_score(team) > og.team_score(winner) then
+          winner = team
+        end
       end
     end
   end
@@ -253,11 +294,13 @@ end
 
 return {
   rows_for = rows_for,
+  resolve_limit = resolve_limit,
   census_mask = census_mask,
   consume_markers = consume_markers,
   strip_inactive_teams = strip_inactive_teams,
   place_at_anchor = place_at_anchor,
   spawn_bots = spawn_bots,
+  owns_its_life = owns_its_life,
   schedule_dead = schedule_dead,
   foe_scores = foe_scores,
   nearest_enemy = nearest_enemy,

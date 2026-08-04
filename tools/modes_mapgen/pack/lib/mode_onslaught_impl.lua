@@ -30,6 +30,13 @@ local S = {
 }
 
 local T = {
+  -- Scoring (modes.md §5.5/§5.8): m_score through og.award_score. Taking a
+  -- generator is the match; a waypoint is a tenth of one; bodies are small
+  -- change, with a hero worth five gen-spawns.
+  gen_capture_score = 300,
+  wp_capture_score = 50,
+  spawn_kill_score = 10,
+  hero_kill_score = 50,
   no_gen_grace_ticks = 600, -- 50 s without a generator eliminates
   flip_guard_ticks = 96, -- a fresh flip cannot flip again for 8 s (B6)
   wp_radius_px = 48, -- the hold disc (Euclidean, the CP geometry)
@@ -189,6 +196,7 @@ local function on_damage(target, attacker, amount)
   target:set_team_num(team)
   target:set_real_team_num(team)
   target.hp = target.max_hp
+  og.award_score(team, T.gen_capture_score)
   og.emit_positional_sound(target, C.SOUND_MONEY)
   og.emit_notification(og.team_color_name(team) .. " TAKES A " .. generator_label(target:family()) .. "!")
   return false
@@ -198,11 +206,18 @@ end
 -- once, in scripts/mode_onslaught.lua): every capped scripted mode marks
 -- its generator spawns for the cap census (soccer fields ally generators
 -- too), and onslaught adds the held-waypoint spawn-level bonus.
+--
+-- TDM marks for a different reason: the mark is its durable proof that a
+-- walker's life came from a generator, which outlives the owner link the
+-- engine severs when the generator dies (mode_match.owns_its_life).
 local function customize_spawn(gen, spawn)
   local mode = og.mode_get(core.SLOT.MODE_ID)
   local marked = mode == core.MODE.ONSLAUGHT
   if not marked then
     marked = mode == core.MODE.SOCCER
+  end
+  if not marked then
+    marked = mode == core.MODE.TDM
   end
   if not marked then
     return
@@ -253,7 +268,9 @@ local function run_death_scan(obs)
 end
 
 -- Non-hero corpses never respawn here: scrub the fresh stain so they
--- cannot be score-farmed or cleric-raised (D6).
+-- cannot be score-farmed or cleric-raised (D6). Kills also pay out (§5.5):
+-- a gen-spawn is small change next to a hero, and both are small change
+-- next to a generator.
 local function on_entity_death(ent, killer, killer_team)
   if not ons_active() then
     return
@@ -261,9 +278,35 @@ local function on_entity_death(ent, killer, killer_team)
   if ent:order() ~= C.ORDER_LIVING then
     return
   end
-  if not ent:has_guy() then
+  local hero = ent:has_guy()
+  if not hero then
     core.scrub_corpse(ent)
   end
+  -- No-pay arms: environment and suicide, killers off the active mask, and
+  -- teamkills (the shared no-reward-for-friendly-fire rule).
+  if killer == nil then
+    return
+  end
+  if killer == ent then
+    return
+  end
+  if killer_team < 0 then
+    return
+  end
+  if killer_team >= C.SCORE_TEAM_COUNT then
+    return
+  end
+  if not core.mask_has(og.mode_get(S.TEAM_MASK), killer_team) then
+    return
+  end
+  if killer_team == anchors.score_team(ent) then
+    return
+  end
+  local award = T.spawn_kill_score
+  if hero then
+    award = T.hero_kill_score
+  end
+  og.award_score(killer_team, award)
 end
 
 local function on_respawn(ent)
@@ -294,7 +337,11 @@ local function run_elimination(livings, gen_count)
           local w = livings[k]
           if w:dead() == 0 then
             if w:team_num() == team then
+              -- A bare dead-flag write, so walker::death never runs and
+              -- on_entity_death never scrubs: do it here, or an eliminated
+              -- team leaves a field of stains to raise and farm.
               w:set_dead(1)
+              core.scrub_corpse(w)
             end
           end
         end
@@ -380,6 +427,7 @@ local function run_waypoints(livings)
         if wp ~= nil then
           wp:set_team_num(contender)
         end
+        og.award_score(contender, T.wp_capture_score)
         core.announce(og.team_color_name(contender) .. " HOLDS WAYPOINT!", C.SOUND_MONEY)
       end
     elseif fget(S.WP_PROGRESS, i) ~= 0 then
@@ -709,7 +757,17 @@ local function on_mode_tick(level, tick)
     end
   end
   run_elimination(livings, gen_count)
-  run_waypoints(livings)
+  -- run_elimination kills the eliminated team's members in place, so the
+  -- census above is stale by one tick: re-derive before the waypoint hold
+  -- or the just-killed still contest their team's disc.
+  local contenders = {}
+  for k = 1, #livings do
+    local w = livings[k]
+    if w:dead() == 0 then
+      contenders[#contenders + 1] = w
+    end
+  end
+  run_waypoints(contenders)
   if og.mod(og.world_tick(), T.ai_cadence) == 0 then
     caps.apply_caps(gens, spawn_count, S.SPAWN_CAP)
     run_director(livings, gens)

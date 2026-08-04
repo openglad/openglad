@@ -9,6 +9,7 @@
 local C = og.C
 local core = og.use("mode_core")
 local ai = og.use("mode_ai")
+local caps = og.use("mode_caps")
 local match = og.use("mode_match")
 local levels = og.use("mode_levels")
 
@@ -69,22 +70,14 @@ local function on_mode_init(level)
   match.consume_markers(obs, mask)
   match.strip_inactive_teams(obs, mask)
 
-  -- Resolve config: explicit request > manifest row > defaults.
+  -- Resolve config: explicit request > manifest row > defaults, per field.
   local row = levels.levels[level]
-  local limit = T.score_limit
-  local requested_limit = og.match_setting("score_limit")
-  if requested_limit > 0 then
-    limit = requested_limit
-  elseif row ~= nil then
-    if row.score_limit > 0 then
-      limit = row.score_limit
-    end
-  end
+  local limit = match.resolve_limit(row, "score_limit",
+                                    og.match_setting("score_limit"),
+                                    T.score_limit)
   og.mode_set(S.SCORE_LIMIT, og.clamp(limit, 1, 255))
-  local time_limit = T.time_limit_ticks
-  if row ~= nil then
-    time_limit = row.time_limit
-  end
+  local time_limit = match.resolve_limit(row, "time_limit", 0,
+                                         T.time_limit_ticks)
   og.mode_set(S.TIME_LIMIT, time_limit)
   local respawn_ticks = og.match_setting("respawn_ticks")
   if respawn_ticks <= 0 then
@@ -143,9 +136,7 @@ local function on_entity_death(ent, killer, killer_team)
   -- fresh stain under them (D6).
   local eligible = victim_scores
   if eligible then
-    if not ent:has_guy() then
-      eligible = ent:owner() == nil
-    end
+    eligible = match.owns_its_life(ent)
   end
   if eligible then
     if not og.respawn_pending(ent) then
@@ -164,7 +155,7 @@ local function on_entity_death(ent, killer, killer_team)
   if not victim_scores then
     return
   end
-  if ent:owner() ~= nil then
+  if not match.owns_its_life(ent) then
     return
   end
   if killer == ent then
@@ -353,9 +344,28 @@ end
 -- Per-tick phases (post-act)
 -- ---------------------------------------------------------------------------
 
+-- Durable origin marking, the other half of match.owns_its_life. Generator
+-- spawns are marked at birth by the shared customize_spawn; everything else
+-- that is owned (summons, raised undead) is marked here, on every tick it is
+-- still owned, so the mark is already in place when its owner dies and
+-- clear_stale_cross_refs nulls the link. Idempotent bit write, zero RNG.
+local function mark_owned_lives(obs)
+  for k = 1, #obs do
+    local w = obs[k]
+    if w:dead() == 0 then
+      if w:order() == C.ORDER_LIVING then
+        if w:owner() ~= nil then
+          caps.mark_spawn(w)
+        end
+      end
+    end
+  end
+end
+
 local function on_mode_tick(level, tick)
   local obs = og.oblist()
   local mask = active_mask()
+  mark_owned_lives(obs)
   match.schedule_dead(obs, mask, og.mode_get(S.RESPAWN_TICKS))
   if og.mod(og.world_tick(), T.ai_cadence) == 0 then
     local livings = {}

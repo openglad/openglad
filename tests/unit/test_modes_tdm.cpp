@@ -431,6 +431,96 @@ TEST_F(ModesTdm, owned_spawn_victims_score_nothing_and_get_scrubbed)
     }
 }
 
+// The orphan fountain: clear_stale_cross_refs nulls owner() the tick the
+// generator dies, so an owner-null eligibility test cannot tell a dead
+// tent's leftover spawns from the init-time bots. On 305 — the one shipped
+// TDM map with score-team generators — that adopted them as respawning
+// competitors, and every re-kill paid another frag toward the 20-frag win.
+TEST_F(ModesTdm, orphaned_generator_spawns_stay_out_of_the_frag_ledger)
+{
+    TdmRig rig;
+    walker* gen = rig.fx.world().add_ob(Order::Generator, FAMILY_TENT);
+    ASSERT_NE(nullptr, gen);
+    gen->setxy(432, 432);
+    gen->set_team_num(1);
+    walker* spawn = rig.fx.spawn_living(FAMILY_SKELETON, 1, 260, 200);
+    ASSERT_NE(nullptr, spawn);
+    spawn->set_owner(gen);
+    rig.fx.tick(1);
+    ASSERT_TRUE(rig.active());
+
+    // The shipped shape, reproduced as its end state. living::act kills a
+    // living whose owner is dead, so a spawn only becomes an orphan when the
+    // generator dies AFTER it has acted for the tick — which is the ordinary
+    // case, since weaplist acts after oblist and arrows are how generators
+    // die. Those spawns finish the tick untouched and end-of-tick
+    // clear_stale_cross_refs then nulls their owner.
+    gen->set_dead(1);
+    spawn->set_owner(nullptr);
+    ASSERT_EQ(nullptr, spawn->owner()) << "the orphan link is severed";
+    ASSERT_FALSE(spawn->dead());
+
+    walker* stain = rig.fx.world().add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    ASSERT_NE(nullptr, stain);
+    stain->setxy(260, 200);
+    stain->set_team_num(1);
+
+    rig.slay(rig.red, spawn);
+    EXPECT_EQ(0, rig.kills(0)) << "an orphan is still the generator's spawn";
+    EXPECT_FALSE(has_score_change(rig.fx.events, 0, 1));
+    EXPECT_TRUE(stain->dead()) << "a body that never respawns scrubs";
+
+    // Neither the death hook nor the per-tick scan may adopt it.
+    rig.fx.tick(4);
+    for (const auto& entry : rig.fx.world().respawn.respawn_queue)
+    {
+        EXPECT_NE(entry.walker_entity_id, spawn->entity_id())
+            << "an orphaned spawn must never enter the respawn queue";
+    }
+
+    // The guard must not over-block: an ordinary unowned competitor still
+    // respawns and still scores.
+    rig.slay(rig.red, rig.green);
+    EXPECT_EQ(1, rig.kills(0)) << "a real competitor still pays a frag";
+    bool green_queued = false;
+    for (const auto& entry : rig.fx.world().respawn.respawn_queue)
+    {
+        if (entry.walker_entity_id == rig.green->entity_id())
+            green_queued = true;
+    }
+    EXPECT_TRUE(green_queued) << "a real competitor still respawns";
+}
+
+// The same severed-owner shape without a generator: a summon outlives its
+// summoner, so the durable mark has to come from the mode's own tick scan.
+TEST_F(ModesTdm, orphaned_summons_stay_out_of_the_frag_ledger)
+{
+    TdmRig rig;
+    walker* summoner = rig.fx.spawn_living(FAMILY_CLERIC, 1, 300, 300);
+    ASSERT_NE(nullptr, summoner);
+    walker* pet = rig.fx.spawn_living(FAMILY_SKELETON, 1, 316, 300);
+    ASSERT_NE(nullptr, pet);
+    pet->set_owner(summoner);
+    rig.fx.tick(2);
+    ASSERT_TRUE(rig.active());
+
+    // Same end state as above: the summoner falls after the pet has acted,
+    // and the end-of-tick sweep nulls the link.
+    summoner->set_dead(1);
+    pet->set_owner(nullptr);
+    ASSERT_EQ(nullptr, pet->owner()) << "the summon is orphaned";
+    ASSERT_FALSE(pet->dead());
+
+    rig.slay(rig.red, pet);
+    EXPECT_EQ(0, rig.kills(0)) << "an orphaned summon is not a competitor";
+    rig.fx.tick(4);
+    for (const auto& entry : rig.fx.world().respawn.respawn_queue)
+    {
+        EXPECT_NE(entry.walker_entity_id, pet->entity_id())
+            << "an orphaned summon must never enter the respawn queue";
+    }
+}
+
 TEST_F(ModesTdm, killer_outside_the_active_mask_scores_nothing)
 {
     TdmRig rig;
@@ -512,8 +602,8 @@ TEST_F(ModesTdm, timeout_picks_leader_and_ties_go_to_lowest_byte)
         EXPECT_TRUE(rig.fx.world().game_ended);
         EXPECT_EQ(1, rig.fx.world().mode.winner_team);
     }
-    // Tied KILLS: the LOWEST team byte wins (the documented tiebreak —
-    // deliberately not CTF's m_score middle rung).
+    // Tied KILLS: m_score is the middle rung of the shared ladder
+    // (modes.md §8.2 — mode metric, then m_score, then lowest byte).
     {
         TdmRig rig;
         rig.fx.tick(1);
@@ -524,8 +614,23 @@ TEST_F(ModesTdm, timeout_picks_leader_and_ties_go_to_lowest_byte)
         rig.fx.world().set_level_tick_count(7200 - 2);
         rig.fx.tick(2);
         EXPECT_TRUE(rig.fx.world().game_ended);
+        EXPECT_EQ(1, rig.fx.world().mode.winner_team)
+            << "equal frags break on m_score before the team byte";
+    }
+    // Tied KILLS and tied m_score: the LOWEST team byte, the last rung.
+    {
+        TdmRig rig;
+        rig.fx.tick(1);
+        ASSERT_TRUE(rig.active());
+        rig.fx.world().mode.vars[kTdmSlotKills + 0] = 3;
+        rig.fx.world().mode.vars[kTdmSlotKills + 1] = 3;
+        rig.fx.world().m_score[0] = 900;
+        rig.fx.world().m_score[1] = 900;
+        rig.fx.world().set_level_tick_count(7200 - 2);
+        rig.fx.tick(2);
+        EXPECT_TRUE(rig.fx.world().game_ended);
         EXPECT_EQ(0, rig.fx.world().mode.winner_team)
-            << "ties resolve to the lowest team byte, m_score ignored";
+            << "an all-square tie resolves to the lowest team byte";
     }
 }
 

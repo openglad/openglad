@@ -6,8 +6,18 @@
 -- on_damage gate (non-mutant against non-mutant deals nothing), and the
 -- herd-team/charm-suppression/Bottom-Feeder machinery is cut. Scoring:
 -- +1 per kill made as the Mutant, +1 for killing the Mutant; FFA-phase
--- kills only decide who mutates. The timeout tiebreak is TDM's: leading
--- score, ties to the LOWEST team byte.
+-- kills only decide who mutates. The timeout tiebreak is the shared
+-- three-rung ladder (mode metric, m_score, lowest team byte).
+--
+-- ACCEPTED: cross-phase attribution inside the 48-tick window. The engine
+-- resolves a death's killer from the combat stamp while it is fresher than
+-- og::sim::kKillAttributionTicks (48), and that window can straddle a crown
+-- or a revert — a competitor chipped during FFA that dies seconds later in
+-- the mutant phase scores for the chipper under mutant-phase rules. It is
+-- deterministic (the same stamp on every peer), bounded to four seconds, and
+-- arguably the fair reading: the blow that mattered landed. The phase is not
+-- stamped alongside the attacker, and adding a phase to the stamp would mean
+-- a C++ wire field for a four-second edge case, so this is left as is.
 
 local C = og.C
 local core = og.use("mode_core")
@@ -103,10 +113,20 @@ end
 -- All buffs are refreshed, never accumulated: damage recomputes from the
 -- banked base every application, so a double crown or a tick top-up can
 -- never compound.
+--
+-- The timed buffs are a FLOOR, not an assignment. run_mutant_upkeep calls
+-- this every tick, so a flat write would erase a potion the Mutant picked up
+-- mid-reign (a speed potion adds duration and sets the bonus to its own
+-- level) one tick after drinking it. og.max keeps whichever is stronger, so
+-- pickups stack on top and a plain reign is unchanged: the crown value is
+-- restored the moment the pickup decays past it.
+--
+-- damage stays a plain recompute from the bank on purpose — the bank is what
+-- makes a double crown non-compounding, and de_mutate restores exactly it.
 local function apply_buffs(w)
-  w:set_invisibility_left(T.invis_ticks)
-  w:set_speed_bonus(T.speed_bonus)
-  w:set_speed_bonus_left(T.speed_ticks)
+  w:set_invisibility_left(og.max(w:invisibility_left(), T.invis_ticks))
+  w:set_speed_bonus(og.max(w:speed_bonus(), T.speed_bonus))
+  w:set_speed_bonus_left(og.max(w:speed_bonus_left(), T.speed_ticks))
   local base = og.fdiv(og.mode_get(S.MUTANT_BASE_DAMAGE), 256.0)
   w.damage = og.fmul(base, T.dmg_mult)
 end
@@ -495,22 +515,14 @@ local function on_mode_init(level)
   match.consume_markers(obs, mask)
   match.strip_inactive_teams(obs, mask)
 
-  -- Resolve config: explicit request > manifest row > defaults.
+  -- Resolve config: explicit request > manifest row > defaults, per field.
   local row = levels.levels[level]
-  local limit = T.score_limit
-  local requested_limit = og.match_setting("score_limit")
-  if requested_limit > 0 then
-    limit = requested_limit
-  elseif row ~= nil then
-    if row.score_limit > 0 then
-      limit = row.score_limit
-    end
-  end
+  local limit = match.resolve_limit(row, "score_limit",
+                                    og.match_setting("score_limit"),
+                                    T.score_limit)
   og.mode_set(S.SCORE_LIMIT, og.clamp(limit, 1, 255))
-  local time_limit = T.time_limit_ticks
-  if row ~= nil then
-    time_limit = row.time_limit
-  end
+  local time_limit = match.resolve_limit(row, "time_limit", 0,
+                                         T.time_limit_ticks)
   og.mode_set(S.TIME_LIMIT, time_limit)
   local respawn_ticks = og.match_setting("respawn_ticks")
   if respawn_ticks <= 0 then
