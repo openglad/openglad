@@ -1050,3 +1050,67 @@ TEST_F(ModesSoccer, full_mode_tick_fits_a_tenth_of_the_instruction_budget)
     }
     og::script::g_test_world_instruction_budget = 0;
 }
+
+
+// ===========================================================================
+// Client mirror replication
+// ===========================================================================
+
+// The shipping regression: modes:ball is the branch's only Lua-SPAWNED pack
+// family, so it is the first entity ever to put a family byte above the core
+// span (`wire_id: auto` numbers pack families from NUM_FAMILIES up) onto the
+// snapshot wire. apply_snapshot clamped that byte to 0, so the mirror's ball
+// was a different family from the authority's on every tick: the server's
+// hash check struck from the ball's first appearance and every forced
+// keyframe re-applied the same clamp. Soccer 820-823 disconnected the local
+// transport client at 120 strikes, ~10 s into every match.
+TEST_F(ModesSoccer, match_replicates_to_a_client_mirror_without_hash_strikes)
+{
+    // Anchors only: the init backstop fields bot squads that actually chase
+    // and kick, so the window covers init, the kickoff freeze, live ball
+    // flight and the director cadences rather than a static pitch.
+    ModesCtfWorld fx(kSoccerLevelA);
+    fx.spawn_anchor(0, 96, 432);
+    fx.spawn_anchor(0, 96, 496);
+    fx.spawn_anchor(1, 528, 432);
+    fx.spawn_anchor(1, 528, 496);
+    ModeMirror mirror(kSoccerLevelA);
+
+    // kMaxConsecutiveSnapshotHashMismatches ticks: the exact run the server
+    // needs before it disconnects a desynced client.
+    const MirrorReplication replication = replicate_to_mirror(fx, mirror, 120);
+    EXPECT_EQ(0, replication.strikes)
+        << "the mirror first desynced at tick " << replication.first_strike_tick
+        << "; 120 consecutive strikes disconnect the client";
+
+    ASSERT_TRUE(fx.world().mode.active);
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+
+    walker* const ball = fx.world().find_by_id(
+        static_cast<std::uint32_t>(fx.var(kSocBallEntity)));
+    ASSERT_NE(nullptr, ball);
+    EXPECT_GE(static_cast<int>(ball->family()), NUM_FAMILIES)
+        << "modes:ball must still be a pack family for this test to bite";
+
+    walker* const mirrored = mirror.world().find_by_id(ball->entity_id());
+    ASSERT_NE(nullptr, mirrored) << "the mirror must materialize the ball";
+    EXPECT_EQ(static_cast<int>(ball->family()),
+              static_cast<int>(mirrored->family()));
+    EXPECT_EQ(ball->query_order(), mirrored->query_order());
+    EXPECT_EQ(ball->xpos(), mirrored->xpos());
+    EXPECT_EQ(ball->ypos(), mirrored->ypos());
+    EXPECT_EQ(ball->sizex(), mirrored->sizex());
+    EXPECT_EQ(ball->sizey(), mirrored->sizey());
+    EXPECT_EQ(ball->team_num(), mirrored->team_num());
+
+    // Everything the client HUD, radar and beacon read comes over the same
+    // snapshot; a stale mode block is the other way this desyncs.
+    for (int slot = 0; slot < og::sim::kModeVarCount; ++slot)
+    {
+        EXPECT_EQ(fx.world().mode.vars[slot], mirror.world().mode.vars[slot])
+            << "mode var slot " << slot;
+    }
+    EXPECT_EQ(ball->entity_id(),
+              static_cast<std::uint32_t>(mirror.world().mode.beacons[0].entity_id))
+        << "the ball beacon must point at the replicated ball";
+}

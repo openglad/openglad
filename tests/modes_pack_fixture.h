@@ -31,6 +31,7 @@
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/world_snapshot.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
@@ -533,5 +534,79 @@ struct ModesCtfWorld : TestGameWorld
     }
     int captures(int team) const { return team_var(kSlotCaptures, team); }
 };
+
+// ---------------------------------------------------------------------------
+// Mirror replication
+//
+// Every client renders a MIRROR of the authoritative world, never its own
+// simulation: the local-transport shadow points the display GameClient at the
+// display world and feeds it the server's snapshots, and networked play uses
+// the same GameClient. The server checks that mirror every tick by comparing
+// the client's re-captured snapshot hash against its own, and disconnects a
+// client that misses kMaxConsecutiveSnapshotHashMismatches (120) in a row.
+//
+// Mode Lua runs server-side only, so everything a mode does — spawned
+// entities, mode vars, HUD, beacons — reaches the client through that
+// snapshot. A mode that puts anything on the wire the apply path cannot
+// reproduce is therefore a shipping desync, not a cosmetic bug. These helpers
+// drive that exact loop headlessly.
+// ---------------------------------------------------------------------------
+
+// A mirror world for a mode level: same shared pack loader as the authority,
+// its own sim context, no Lua of its own.
+struct ModeMirror
+{
+    LevelRuntimeData level;
+    SaveData save;
+    og::sim::SimEventLog events;
+    FixedRandom rng{0};
+
+    explicit ModeMirror(int level_id)
+        : level(level_id, true)
+    {
+        level.create_new_grid();
+        wire_modes_test_entity_services(&level.world(), &level);
+        level.set_sim_context(&save, &level.world().enemy_freeze, &events,
+                              &rng, &cfg);
+    }
+
+    GameWorld& world() { return level.world(); }
+};
+
+struct MirrorReplication
+{
+    int strikes = 0;
+    int first_strike_tick = -1;
+};
+
+// Ticks the authority `fx` for `ticks` ticks, replicating each tick onto
+// `mirror`, and counts the ticks the server's hash check would have struck.
+inline MirrorReplication replicate_to_mirror(ModesCtfWorld& fx,
+                                             ModeMirror& mirror,
+                                             int ticks)
+{
+    MirrorReplication result;
+    for (int i = 0; i < ticks; ++i)
+    {
+        fx.tick(1);
+        const og::sim::WorldSnapshot snapshot =
+            og::sim::capture_keyframe_snapshot(fx.world());
+        std::uint32_t mirror_hash = 0;
+        {
+            ScopedGameplayContext bound(mirror.level, mirror.save,
+                                        mirror.events, cfg);
+            og::sim::apply_snapshot(mirror.world(), snapshot);
+            mirror_hash = og::sim::compute_snapshot_hash(
+                og::sim::peek_keyframe_snapshot(mirror.world()));
+        }
+        if (mirror_hash != og::sim::compute_snapshot_hash(snapshot))
+        {
+            ++result.strikes;
+            if (result.first_strike_tick < 0)
+                result.first_strike_tick = i;
+        }
+    }
+    return result;
+}
 
 }  // namespace og::modes_test

@@ -674,9 +674,13 @@ void deserialize_respawn_state(ByteReader& reader,
         entry.kind = (kind > 1) ? std::uint8_t{1} : kind;
         entry.team = reader.read_u8("respawn_entry.team");
         // family indexes the per-family tables (descriptors, graphics, names)
-        // exactly like the entity block's family, and takes the same clamp.
+        // exactly like the entity block's family, and takes the same clamp --
+        // NUM_FAMILY_SLOTS, the registries' capacity, so a queued respawn of a
+        // class-pack family (`wire_id: auto`, ids from NUM_FAMILIES up) keeps
+        // its family instead of coming back as family 0 on every peer.
         const std::uint8_t family = reader.read_u8("respawn_entry.family");
-        entry.family = (family < NUM_FAMILIES) ? family : std::uint8_t{0};
+        entry.family =
+            (family < NUM_FAMILY_SLOTS) ? family : std::uint8_t{0};
         // level feeds set_level/set_difficulty; 0 is not a legal walker level
         // (the struct's own default is 1).
         const std::uint8_t level = reader.read_u8("respawn_entry.level");
@@ -1626,10 +1630,19 @@ void apply_entity_snapshot_fields(GameWorld& world,
     // Clamp the wire-supplied family to the valid range before it becomes the
     // entity's family(): family() indexes per-family tables (descriptors, special
     // names, graphics) across the sim, and a malicious peer can send any value.
-    // Mirrors loader::set_walker's family clamp so family() stays consistent with
-    // the entity's configured graphics/animation.
+    // The bound is NUM_FAMILY_SLOTS, the registries' capacity and the range
+    // loader_slot() addresses -- NOT NUM_FAMILIES, which is only the span of
+    // CORE ids the engine constants name. A class pack's `wire_id: auto`
+    // families start at NUM_FAMILIES and climb (packs.cpp AutoWireIds), so
+    // clamping here to NUM_FAMILIES stamped every pack-declared entity down to
+    // family 0 on arrival: the mirror's re-captured snapshot then disagreed
+    // with the authority's on that byte forever (a per-tick hash strike no
+    // keyframe could heal, since the keyframe re-applied the same clamp), and
+    // update_existing_entities re-ran the full reconfigure every tick because
+    // entity->family() never matched the wire. The soccer ball (modes:ball,
+    // Order::FX, auto id 21) was the first shipped entity to hit it.
     int safe_family = static_cast<int>(snapshot.family);
-    if (safe_family < 0 || safe_family >= NUM_FAMILIES)
+    if (safe_family < 0 || safe_family >= NUM_FAMILY_SLOTS)
         safe_family = 0;
     entity.set_order_family(snapshot.order, static_cast<char>(safe_family));
     entity.set_snapshot_position(snapshot.xpos, snapshot.ypos,
