@@ -85,6 +85,19 @@ inline constexpr int kStripLevelDefault = 9500;      // opts = nil
 inline constexpr int kStripLevelKeepGens = 9501;     // keep_generators = true
 inline constexpr int kStripLevelDropGens = 9502;     // keep_generators = false
 
+// lib/mode_items.lua probes (9600+): synthetic item-pad rows driven
+// straight through items.run with test-owned mode-var slots 40/41.
+// Level A: five spawnable pads (2 food + the 3 potions) plus one inert
+// "gold_bar" pad, row interval absent (the call's default 60 applies).
+// Level B: three food pads with row item_interval = 90 overriding the
+// call's 60, plus a gold-only zero-interval row probing the fallback arm.
+inline constexpr int kItemsLevelA = 9601;
+inline constexpr int kItemsLevelB = 9602;
+inline constexpr int kItemsCursorSlot = 40;
+inline constexpr int kItemsLastSlot = 41;
+inline constexpr int kItemsDefaultInterval = 60;
+inline constexpr int kItemsRowIntervalB = 90;
+
 // The mode-var slot map of lib/mode_ctf_impl.lua (table S). The behavior
 // tests read match state straight from GameWorld::mode.vars, so a silent
 // re-map in the Lua breaks them loudly.
@@ -264,7 +277,52 @@ inline constexpr const char* kTestRegistrationLua =
     "end\n"
     "og.register_level_hooks(9500, strip_hooks(nil))\n"
     "og.register_level_hooks(9501, strip_hooks({ keep_generators = true }))\n"
-    "og.register_level_hooks(9502, strip_hooks({ keep_generators = false }))\n";
+    "og.register_level_hooks(9502, strip_hooks({ keep_generators = false }))\n"
+    "local items = og.use(\"mode_items\")\n"
+    "local items_row_a = {\n"
+    "  item_pads = {\n"
+    "    { x = 168, y = 168, family = \"drumstick\" },\n"
+    "    { x = 232, y = 168, family = \"drumstick\" },\n"
+    "    { x = 296, y = 168, family = \"gold_bar\" },\n"
+    "    { x = 168, y = 232, family = \"magic_potion\" },\n"
+    "    { x = 232, y = 232, family = \"invis_potion\" },\n"
+    "    { x = 296, y = 232, family = \"speed_potion\" },\n"
+    "  },\n"
+    "}\n"
+    "og.register_level_hooks(9601, {\n"
+    "  on_mode_init = function(level)\n"
+    "    og.mode_set(41, og.world_tick())\n"
+    "    og.log(\"items_nil\", items.run(nil, 40, 41, 60) and 1 or 0,\n"
+    "           items.run({}, 40, 41, 60) and 1 or 0,\n"
+    "           items.run({ item_pads = {} }, 40, 41, 60) and 1 or 0)\n"
+    "  end,\n"
+    "  on_mode_tick = function(level, tick)\n"
+    "    items.run(items_row_a, 40, 41, 60)\n"
+    "  end,\n"
+    "})\n"
+    "local items_row_b = {\n"
+    "  item_pads = {\n"
+    "    { x = 168, y = 168, family = \"drumstick\" },\n"
+    "    { x = 232, y = 168, family = \"drumstick\" },\n"
+    "    { x = 296, y = 168, family = \"drumstick\" },\n"
+    "  },\n"
+    "  item_interval = 90,\n"
+    "}\n"
+    "local items_row_b0 = {\n"
+    "  item_pads = {\n"
+    "    { x = 360, y = 168, family = \"gold_bar\" },\n"
+    "  },\n"
+    "  item_interval = 0,\n"
+    "}\n"
+    "og.register_level_hooks(9602, {\n"
+    "  on_mode_init = function(level)\n"
+    "    og.mode_set(41, og.world_tick())\n"
+    "  end,\n"
+    "  on_mode_tick = function(level, tick)\n"
+    "    items.run(items_row_b, 40, 41, 60)\n"
+    "    items.run(items_row_b0, 40, 41, 60)\n"
+    "  end,\n"
+    "})\n";
 
 inline bool write_text(const std::filesystem::path& path,
                        const std::string& text)

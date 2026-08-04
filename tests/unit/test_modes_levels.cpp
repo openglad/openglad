@@ -52,9 +52,11 @@ inline constexpr int kModesWaypointFamily = 14;
 
 #include "test_gameplay_context_scope.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <map>
 #include <set>
@@ -216,67 +218,100 @@ struct ShippedModeLevel
     int caps_total; // sum of the manifest's spawn caps (ledger input)
     bool a_star_waived;
     int decor_cells;
+    // Respawning pickups: live respawnable treasures per family
+    // (drumstick, magic, invis, speed — the manifest item_pads mirror) and
+    // the row's item_interval (0 = the mode ships no item respawns).
+    std::array<int, 4> item_pads;
+    int item_interval;
 };
 
 const std::vector<ShippedModeLevel>& shipped_levels()
 {
     static const std::vector<ShippedModeLevel> levels = {
         {300, "tdm", "Team Deathmatch: THE CIRCLE", 10, 60, 60, 4, 20, 0, 0,
-         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 70, 0, 0, 0, false, 1},
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 70, 0, 0, 0, false, 1,
+         {24, 0, 0, 4}, 300},
         {301, "tdm", "Team Deathmatch: BLOODGLADE", 12, 60, 60, 4, 20, 0, 0,
-         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 110, 0, 0, 0, false, 1},
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 110, 0, 0, 0, false, 1,
+         {80, 0, 0, 0}, 300},
         {302, "tdm", "Team Deathmatch: ARCHIPELAGO", 14, 80, 80, 4, 20, 0, 0,
-         {0, 0, 0, 0, 2, 0, 0, 0}, 0, 100, 0, 0, 8, false, 26},
+         {0, 0, 0, 0, 2, 0, 0, 0}, 0, 100, 0, 0, 8, false, 26,
+         {40, 8, 0, 0}, 300},
         {303, "tdm", "Team Deathmatch: GATEKEEPERS", 14, 80, 80, 4, 20, 0, 0,
-         {0, 0, 0, 0, 0, 1, 1, 0}, 0, 136, 15, 0, 8, true, 34},
+         {0, 0, 0, 0, 0, 1, 1, 0}, 0, 136, 15, 0, 8, true, 34,
+         {60, 11, 13, 0}, 300},
         {304, "tdm", "Team Deathmatch: THE CASTLE", 15, 60, 60, 4, 20, 0, 0,
-         {0, 0, 0, 0, 0, 0, 0, 2}, 0, 112, 0, 0, 8, false, 16},
+         {0, 0, 0, 0, 0, 0, 0, 2}, 0, 112, 0, 0, 8, false, 16,
+         {49, 5, 6, 16}, 300},
         {305, "tdm", "Team Deathmatch: BULLSEYE", 15, 60, 60, 4, 20, 0, 0,
-         {1, 1, 1, 1, 0, 0, 0, 0}, 0, 120, 0, 0, 16, true, 24},
+         {1, 1, 1, 1, 0, 0, 0, 0}, 0, 120, 0, 0, 16, true, 24,
+         {66, 0, 17, 8}, 300},
         {500, "ctf", "CTF: FIRST BLOOD", 4, 40, 30, 2, 12, 2, 1,
-         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 7, 0, 0, 0, false, 8},
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 7, 0, 0, 0, false, 8,
+         {4, 0, 1, 2}, 300},
         {501, "ctf", "CTF: A BORDER FORT", 4, 30, 30, 2, 12, 2, 1,
-         {0, 0, 0, 0, 0, 0, 0, 0}, 5, 25, 5, 0, 0, false, 4},
+         {0, 0, 0, 0, 0, 0, 0, 0}, 5, 25, 5, 0, 0, false, 4,
+         {8, 0, 0, 1}, 300},
         {502, "ctf", "CTF: CASTLE CORNER", 4, 30, 40, 2, 12, 2, 1,
-         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 16, 0, 0, 0, false, 10},
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 16, 0, 0, 0, false, 10,
+         {8, 0, 0, 1}, 300},
         {503, "ctf", "CTF: THE OUTPOST", 5, 40, 60, 2, 12, 2, 1,
-         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 52, 5, 0, 0, false, 10},
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 52, 5, 0, 0, false, 10,
+         {8, 2, 2, 0}, 300},
         {504, "ctf", "CTF: RIVER RUN", 5, 60, 40, 2, 12, 2, 1,
-         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 7, 0, 0, 0, false, 30},
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 7, 0, 0, 0, false, 30,
+         {4, 0, 1, 2}, 300},
         {505, "ctf", "CTF: TRIAD", 6, 51, 51, 3, 12, 3, 1,
-         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 7, 0, 0, 0, false, 0},
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 7, 0, 0, 0, false, 0,
+         {3, 0, 1, 3}, 300},
         {506, "ctf", "CTF: THE UNDERPASS", 5, 60, 20, 2, 12, 2, 1,
-         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 52, 3, 16, 0, false, 0},
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 52, 3, 16, 0, false, 0,
+         {12, 0, 0, 0}, 300},
         {507, "ctf", "CTF: DUNGEON OF STARS", 6, 70, 70, 4, 12, 4, 1,
-         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 57, 22, 0, 0, false, 12},
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 57, 22, 0, 0, false, 12,
+         {16, 0, 0, 0}, 300},
         {508, "ctf", "CTF: CENTWHEIT MANOR", 6, 50, 50, 3, 12, 3, 2,
-         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 17, 0, 0, 0, false, 9},
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 17, 0, 0, 0, false, 9,
+         {5, 0, 1, 2}, 300},
         {509, "ctf", "CTF: CROSSFIRE", 6, 60, 60, 4, 12, 4, 1,
-         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 9, 0, 0, 0, false, 48},
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 9, 0, 0, 0, false, 48,
+         {4, 0, 1, 4}, 300},
         {800, "onslaught", "Onslaught: FOUNDRY LINE", 8, 50, 35, 2, 12, 0, 1,
-         {4, 4, 0, 0, 0, 0, 0, 0}, 0, 16, 4, 0, 48, false, 20},
+         {4, 4, 0, 0, 0, 0, 0, 0}, 0, 16, 4, 0, 48, false, 20,
+         {0, 0, 0, 0}, 0},
         {801, "onslaught", "Onslaught: TWIN SPIRES", 10, 60, 60, 2, 12, 0, 2,
-         {6, 6, 0, 0, 0, 0, 0, 0}, 4, 20, 0, 0, 40, false, 16},
+         {6, 6, 0, 0, 0, 0, 0, 0}, 4, 20, 0, 0, 40, false, 16,
+         {0, 0, 0, 0}, 0},
         {802, "onslaught", "Onslaught: THE MARCHES", 12, 80, 60, 3, 12, 0, 1,
-         {4, 4, 4, 0, 0, 0, 0, 0}, 0, 18, 6, 0, 42, false, 0},
+         {4, 4, 4, 0, 0, 0, 0, 0}, 0, 18, 6, 0, 42, false, 0,
+         {0, 0, 0, 0}, 0},
         {803, "onslaught", "Onslaught: LAST BASTION", 12, 70, 70, 2, 12, 0, 2,
-         {5, 5, 0, 0, 0, 0, 0, 2}, 0, 20, 8, 0, 44, false, 6},
+         {5, 5, 0, 0, 0, 0, 0, 2}, 0, 20, 8, 0, 44, false, 6,
+         {0, 0, 0, 0}, 0},
         {820, "soccer", "Soccer: THE PITCH", 6, 44, 28, 2, 12, 0, 0,
-         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 8, 0, 0, 0, false, 4},
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 8, 0, 0, 0, false, 4,
+         {0, 0, 0, 0}, 0},
         {821, "soccer", "Soccer: THE MUDBOWL", 8, 50, 30, 2, 12, 0, 0,
-         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 10, 0, 0, 0, false, 4},
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 10, 0, 0, 0, false, 4,
+         {0, 0, 0, 0}, 0},
         {822, "soccer", "Soccer: FOURSQUARE", 8, 40, 40, 4, 12, 0, 0,
-         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 8, 0, 0, 0, false, 8},
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 8, 0, 0, 0, false, 8,
+         {0, 0, 0, 0}, 0},
         {823, "soccer", "Soccer: BONEYARD CUP", 10, 46, 30, 2, 12, 0, 0,
-         {1, 1, 0, 0, 0, 0, 0, 0}, 0, 8, 0, 0, 12, false, 8},
+         {1, 1, 0, 0, 0, 0, 0, 0}, 0, 8, 0, 0, 12, false, 8,
+         {0, 0, 0, 0}, 0},
         {840, "mutant", "Mutant: THE PIT", 6, 30, 30, 4, 12, 0, 0,
-         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 8, 0, 0, 0, false, 4},
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 8, 0, 0, 0, false, 4,
+         {6, 0, 0, 2}, 180},
         {841, "mutant", "Mutant: CATACOMBS", 8, 50, 50, 4, 12, 0, 0,
-         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 12, 0, 0, 0, false, 66},
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 12, 0, 0, 0, false, 66,
+         {10, 0, 0, 2}, 180},
         {842, "mutant", "Mutant: MOONCOURT", 8, 40, 40, 4, 12, 0, 0,
-         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 12, 0, 0, 0, false, 48},
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 12, 0, 0, 0, false, 48,
+         {8, 0, 0, 4}, 180},
         {843, "mutant", "Mutant: BROKEN CROWN", 10, 45, 45, 4, 12, 0, 0,
-         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 10, 0, 0, 0, false, 20},
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 10, 0, 0, 0, false, 20,
+         {8, 0, 0, 2}, 180},
     };
     return levels;
 }
@@ -319,7 +354,24 @@ struct Census
     int livings = 0;
     int named = 0;
     int save_protected = 0;
+    // Respawnable treasures (drumstick/magic/invis/speed): per-family
+    // counts and the (family index, tx, ty) multiset the manifest
+    // item_pads must mirror exactly.
+    std::array<int, 4> items{};
+    std::vector<std::array<int, 3>> item_tiles;
 };
+
+int respawnable_index(int family)
+{
+    switch (family)
+    {
+        case FAMILY_DRUMSTICK: return 0;
+        case FAMILY_MAGIC_POTION: return 1;
+        case FAMILY_INVIS_POTION: return 2;
+        case FAMILY_SPEED_POTION: return 3;
+        default: return -1;
+    }
+}
 
 Census take_census(GameWorld& world)
 {
@@ -354,6 +406,13 @@ Census take_census(GameWorld& world)
                     ++c.treasures;
                     if (family == FAMILY_TELEPORTER)
                         ++c.teleporters;
+                    const int idx = respawnable_index(family);
+                    if (idx >= 0)
+                    {
+                        ++c.items[static_cast<std::size_t>(idx)];
+                        c.item_tiles.push_back({idx, ob->xpos() / GRID_SIZE,
+                                                ob->ypos() / GRID_SIZE});
+                    }
                 }
             }
             else if (order == Order::Weapon)
@@ -884,6 +943,99 @@ TEST_F(ModesLevels, manifest_module_matches_package_and_executes)
         expr_prefix + "M.levels[300].score_limit end)()");
     ASSERT_TRUE(circle_limit.has_value());
     EXPECT_EQ(20, *circle_limit) << "healthy TDM maps keep 20";
+}
+
+// Respawning pickups: the manifest item_pads must mirror the world's live
+// respawnable treasures EXACTLY (same multiset of family + tile — the
+// same pin the mapgen self-check enforces at generation), the per-family
+// counts must match the row table above, and the OFF modes (soccer,
+// onslaught) must ship no pads at all.
+TEST_F(ModesLevels, item_pads_mirror_the_world_and_the_off_modes_stay_off)
+{
+    const std::vector<std::uint8_t> member = og::resources::read_file(
+        "packs/org.openglad.modes.core/lib/mode_levels.lua");
+    ASSERT_FALSE(member.empty()) << "manifest member missing from the .glad";
+    const std::string member_text(member.begin(), member.end());
+    const std::string expr_prefix =
+        "(function() local M = (function() " +
+        member_text.substr(member_text.find("local M = {}")) +
+        " end)() return ";
+    og::script::ScriptHost host;
+    const std::map<std::string, int> family_index = {
+        {"drumstick", 0},
+        {"magic_potion", 1},
+        {"invis_potion", 2},
+        {"speed_potion", 3},
+    };
+
+    for (const ShippedModeLevel& pin : shipped_levels())
+    {
+        LoadedModesLevel loaded(pin.id);
+        ASSERT_TRUE(loaded.loaded) << "scen" << pin.id;
+        Census c = take_census(loaded.world());
+
+        const auto interval = host.eval_integer(
+            expr_prefix +
+            std::format("M.levels[{}].item_interval or 0 end)()", pin.id));
+        ASSERT_TRUE(interval.has_value()) << "scen" << pin.id;
+        EXPECT_EQ(pin.item_interval, *interval) << "scen" << pin.id;
+
+        if (pin.item_interval == 0)
+        {
+            // OFF modes: their worlds may author static food, but the
+            // manifest must carry no pads (item_pads means MANIFEST pads).
+            const auto absent = host.eval_boolean(
+                expr_prefix +
+                std::format("M.levels[{}].item_pads == nil end)()", pin.id));
+            ASSERT_TRUE(absent.has_value()) << "scen" << pin.id;
+            EXPECT_TRUE(*absent)
+                << "scen" << pin.id << " (" << pin.mode
+                << "): the OFF modes must ship no item pads";
+            continue;
+        }
+
+        for (std::size_t i = 0; i < 4; ++i)
+            EXPECT_EQ(pin.item_pads[i], c.items[i])
+                << "scen" << pin.id << " respawnable family " << i;
+
+        // Serialize the row's pads through the sandbox and compare the
+        // (family, tile) multiset against the loaded world.
+        const auto pads = host.eval_string(
+            expr_prefix +
+            std::format("(function() local s = \"\" "
+                        "local pads = M.levels[{}].item_pads "
+                        "for i = 1, #pads do "
+                        "s = s .. pads[i].family .. \",\" .. pads[i].x .. "
+                        "\",\" .. pads[i].y .. \";\" end "
+                        "return s end)() end)()",
+                        pin.id));
+        ASSERT_TRUE(pads.has_value()) << "scen" << pin.id;
+        std::vector<std::array<int, 3>> manifest_tiles;
+        std::stringstream stream(*pads);
+        std::string entry;
+        while (std::getline(stream, entry, ';'))
+        {
+            if (entry.empty())
+                continue;
+            std::stringstream fields(entry);
+            std::string family, x, y;
+            ASSERT_TRUE(std::getline(fields, family, ','));
+            ASSERT_TRUE(std::getline(fields, x, ','));
+            ASSERT_TRUE(std::getline(fields, y, ','));
+            const auto idx = family_index.find(family);
+            ASSERT_NE(family_index.end(), idx)
+                << "scen" << pin.id << ": pad family '" << family
+                << "' is not respawnable (gold and friends never respawn)";
+            manifest_tiles.push_back({idx->second,
+                                      std::stoi(x) / GRID_SIZE,
+                                      std::stoi(y) / GRID_SIZE});
+        }
+        std::sort(manifest_tiles.begin(), manifest_tiles.end());
+        std::sort(c.item_tiles.begin(), c.item_tiles.end());
+        EXPECT_EQ(c.item_tiles, manifest_tiles)
+            << "scen" << pin.id
+            << ": manifest item_pads drifted from the authored treasures";
+    }
 }
 
 TEST_F(ModesLevels, pack_sprites_load_with_pinned_shapes)

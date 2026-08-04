@@ -3050,6 +3050,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_tdm.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_mutant.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_strip.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_items.cpp
         )
         # The modes-pack fixture zips the CURRENT repo pack sources into its
         # temp .glad so the tests always exercise the shipped bytes.
