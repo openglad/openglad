@@ -179,10 +179,22 @@ test, but are not deployed: repository Cloudflare credentials are never made
 available to their code, and their artifacts are not promoted by a privileged
 follow-up workflow.
 
+### Production Deployment
+
+Every push or merge to `master` deploys production from the same workflow,
+after the WASM Playwright tests pass: the relay Worker (rooms + cloud-save
+vault) first, then the exact `dist/` the tests validated goes to
+`https://openglad.pages.dev`. Rapid successive pushes cancel older in-flight
+master runs so the newest commit always deploys last. The Nightly Release
+workflow also redeploys production on its 2am UTC schedule as a backstop,
+alongside the nightly native binaries.
+
 Maintainer setup for `.github/workflows/wasm-e2e.yml`:
 
 - Configure the `CLOUDFLARE_API_TOKEN` Actions secret with Account /
-  Cloudflare Pages / Edit permission.
+  Cloudflare Pages / Edit permission. The production relay deploy additionally
+  needs Workers Scripts / Edit on the same token (already required by
+  `nightly.yml`).
 - Configure the `CLOUDFLARE_ACCOUNT_ID` Actions secret for the account that
   owns the `openglad` Pages project.
 - Keep preview deployments enabled for that project. CI deploys the synthetic

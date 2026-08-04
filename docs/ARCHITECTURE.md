@@ -906,8 +906,10 @@ The main GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 5. **tsan** — ThreadSanitizer build and test
 
 Alongside it: `coverage.yml` (the line/function coverage gate), `fuzz.yml`,
-`nightly.yml` (nightly build + Cloudflare Pages production deploy), and
-`wasm-e2e.yml` (Playwright WebAssembly end-to-end tests + PR preview deploys).
+`nightly.yml` (nightly native builds + release, plus a backstop Cloudflare
+Pages production deploy), and `wasm-e2e.yml` (Playwright WebAssembly
+end-to-end tests + PR preview deploys, and the production deploy — relay
+worker then Pages — on every push to master).
 
 ---
 

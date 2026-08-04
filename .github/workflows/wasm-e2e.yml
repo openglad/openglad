@@ -10,9 +10,12 @@ permissions:
   deployments: write
 
 # Only the newest revision of a PR should be able to update its stable preview
-# alias. Push runs keep their unique run IDs and are not cancelled here.
+# alias, and only the newest master push should be able to update production —
+# without a shared group, an older master run finishing late could overwrite a
+# newer deploy. Pushes to other branches keep their unique run IDs and are not
+# cancelled here.
 concurrency:
-  group: wasm-e2e-${{ github.event.pull_request.number || github.run_id }}
+  group: wasm-e2e-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref == 'refs/heads/master' && 'master') || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -140,6 +143,55 @@ jobs:
             echo
             echo "Immutable deployment: ${IMMUTABLE_URL}"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # Production deploy: every same-repository push to master ships the
+      # exact dist/ the Playwright suite above just validated. The relay
+      # worker (rooms + cloud-save vault) deploys first so a Durable Object
+      # migration is always live before any client that needs it — the same
+      # ordering nightly.yml uses. The nightly workflow's own web deploy
+      # stays as an idempotent backstop. The relay requires Node >= 22
+      # (relay/package.json engines), hence the second setup-node.
+      - name: Set up Node.js for relay deploy
+        if: >-
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/master' &&
+          github.repository == 'openglad/openglad'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: relay/package-lock.json
+
+      - name: Install relay npm dependencies
+        if: >-
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/master' &&
+          github.repository == 'openglad/openglad'
+        working-directory: relay
+        run: npm ci
+
+      - name: Deploy relay worker
+        if: >-
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/master' &&
+          github.repository == 'openglad/openglad'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: relay
+          command: deploy
+
+      - name: Deploy production to Cloudflare Pages
+        if: >-
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/master' &&
+          github.repository == 'openglad/openglad'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=openglad
 
       - name: Upload test results
         if: ${{ !cancelled() }}
