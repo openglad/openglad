@@ -1032,6 +1032,52 @@ TEST(CursesRenderer, scripted_mode_hud_shows_name_lines_and_respawn)
     EXPECT_EQ(inactive_row1.find("RESPAWN"), std::string::npos);
 }
 
+// Consistency with the condensed SDL mode row. Both clients put the whole
+// ModeState HUD on ONE line, but the SDL row draws each slot in its team's
+// color ramp and therefore drops the leading team color word as duplication.
+// This row is monochrome, so that word is the only thing naming the team and
+// must survive verbatim — including for a slot whose team byte is set.
+TEST(CursesRenderer, scripted_mode_hud_keeps_team_words_on_its_one_line)
+{
+    HandWorld hw(20, 20);
+    walker* hero = hw.add_creature(10, 10, FAMILY_SOLDIER, 0);
+    ASSERT_NE(nullptr, hero);
+    hero->set_user(0);
+
+    GameWorld& world = hw.world();
+    world.type |= GameWorld::TYPE_SCRIPTED;
+    world.mode.active = true;
+    world.mode.hud[0].team = 0;
+    std::strncpy(world.mode.hud[0].text.data(), "RED 12",
+                 world.mode.hud[0].text.size() - 1);
+    world.mode.hud[1].team = 2;
+    std::strncpy(world.mode.hud[1].text.data(), "BLUE 9",
+                 world.mode.hud[1].text.size() - 1);
+
+    HeadlessTerminal term(24, 80);
+    CursesRenderer renderer;
+    renderer.draw(term, world, hero->entity_id());
+
+    const std::string row1 = term.text_row(1);
+    EXPECT_NE(row1.find("RED 12"), std::string::npos)
+        << "a monochrome row keeps the team word; got: " << row1;
+    EXPECT_NE(row1.find("BLUE 9"), std::string::npos)
+        << "for every teamed slot; got: " << row1;
+
+    // Still one line: nothing from the mode group reaches row 2.
+    const std::string row2 = term.text_row(2);
+    EXPECT_EQ(row2.find("RED 12"), std::string::npos)
+        << "the mode group stays on HUD row 1; got: " << row2;
+    EXPECT_EQ(row2.find("BLUE 9"), std::string::npos);
+
+    // Both slots on the same row, in slot-index order.
+    const std::size_t red = row1.find("RED 12");
+    const std::size_t blue = row1.find("BLUE 9");
+    ASSERT_NE(red, std::string::npos);
+    ASSERT_NE(blue, std::string::npos);
+    EXPECT_LT(red, blue) << "slots join in index order; got: " << row1;
+}
+
 // A beacon entity's glyph renders bold (og.set_beacon -> terminal highlight);
 // clearing the slot restores the plain glyph.
 TEST(CursesRenderer, mode_beacon_entity_glyph_renders_bold)
