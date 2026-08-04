@@ -140,6 +140,14 @@ struct HookFailure {
 const HookFailure& hook_failures();
 void reset_hook_failures();
 
+// Which level-hook kinds a level id has registered, as a bitmask over the
+// LevelHook enum's bit positions (Load 0, Tick 1, EntityDeath 2,
+// EntitySpawn 3, ModeInit 4, ModeTick 5, Damage 6, Respawn 7). Reads the
+// level's OWN registrations; the -1 "every level" wildcard is not folded
+// in. Diagnostic/test seam — no sim path reads it, so it cannot change
+// behavior. Answers 0 when no packs are loaded.
+std::uint32_t level_hook_kinds_for(int level_id);
+
 // Living-family hooks (FamilyDescriptor). Each returns the hook's result,
 // or nullopt when no hook (script or C++) ran.
 std::optional<bool> do_special(const FamilyDescriptor* fd, walker* self);

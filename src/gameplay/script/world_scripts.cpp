@@ -2055,6 +2055,26 @@ bool push_level_hook_fn(lua_State* L, VmState* st, LevelHook kind,
 
 }  // namespace
 
+std::uint32_t level_hook_kinds_for(int level_id)
+{
+    if (pack_scripts().empty())
+        return 0;
+    WorldScripts& ws = active_world_scripts();
+    lua_State* L = ws.host().impl().L;
+    VmState* st = get_vm_state(L);
+    if (st == nullptr)
+        return 0;
+    std::uint32_t kinds = 0;
+    for (const auto& h : kLevelHookNames) {
+        lua_rawgeti(L, LUA_REGISTRYINDEX, st->level_hooks_ref);
+        lua_rawgeti(L, -1, level_hook_key(h.kind, level_id));
+        if (lua_isfunction(L, -1))
+            kinds |= 1u << static_cast<unsigned>(h.kind);
+        lua_pop(L, 2);
+    }
+    return kinds;
+}
+
 void level_load(GameWorld* world)
 {
     VmState* st =

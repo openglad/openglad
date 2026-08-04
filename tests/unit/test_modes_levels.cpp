@@ -54,9 +54,11 @@ inline constexpr int kModesWaypointFamily = 14;
 
 #include <array>
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <map>
 #include <set>
+#include <iterator>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -686,6 +688,142 @@ TEST_F(ModesLevels, soccer_goals_and_perimeters_match_the_manifest)
                                   pin.kickoff_ty))
             << "scen" << pin.id << " kickoff";
     }
+}
+
+// The whole pack, not just the manifest. A stale archive has shipped twice
+// on this branch: the behavior suites zip the CURRENT pack sources into
+// their own temp campaign, so they stay green against Lua that no player
+// ever runs, while the committed .glad keeps serving the old bytes. Every
+// .lua and .png the pack ships must match its repo source byte for byte,
+// and the archive must carry no pack member that no source produced.
+TEST_F(ModesLevels, every_pack_member_matches_its_committed_source)
+{
+    namespace fs = std::filesystem;
+    const fs::path source_root{OG_MODES_PACK_SOURCE_DIR};
+    ASSERT_TRUE(fs::is_directory(source_root))
+        << "pack source dir missing: " << source_root;
+
+    const std::string member_root = "packs/org.openglad.modes.core/";
+    std::set<std::string> expected_members;
+    int compared = 0;
+
+    for (const fs::directory_entry& entry :
+         fs::recursive_directory_iterator(source_root))
+    {
+        if (!entry.is_regular_file())
+            continue;
+        const std::string ext = entry.path().extension().string();
+        if (ext != ".lua" && ext != ".png")
+            continue;
+
+        const std::string relative =
+            entry.path().lexically_relative(source_root).generic_string();
+        const std::string member_path = member_root + relative;
+        expected_members.insert(relative);
+
+        std::ifstream source_in(entry.path(), std::ios::binary);
+        ASSERT_TRUE(source_in.good()) << "unreadable source: " << relative;
+        const std::string source_bytes(
+            (std::istreambuf_iterator<char>(source_in)),
+            std::istreambuf_iterator<char>());
+
+        const std::vector<std::uint8_t> member =
+            og::resources::read_file(member_path.c_str());
+        ASSERT_FALSE(member.empty())
+            << "regenerate the campaign: " << relative
+            << " is missing from the package";
+        const std::string member_bytes(member.begin(), member.end());
+        EXPECT_EQ(source_bytes, member_bytes)
+            << "regenerate the campaign: " << relative
+            << " has drifted from its committed source";
+        compared++;
+    }
+
+    EXPECT_GE(compared, 19)
+        << "the pack ships 19 Lua chunks and 4 sprites; a collapsed scan "
+           "would make this test vacuous";
+
+    // The other direction: a member the sources no longer produce (a
+    // deleted or renamed file) must not linger in the archive.
+    for (const char* sub : {"families", "lib", "scripts", "sprites"})
+    {
+        for (const std::string& name : list_files(member_root + sub))
+        {
+            const std::string relative_dir = sub;
+            const std::string relative = relative_dir + "/" + name;
+            if (name.size() < 4)
+                continue;
+            const std::string ext = name.substr(name.size() - 4);
+            if (ext != ".lua" && ext != ".png")
+                continue;
+            EXPECT_TRUE(expected_members.count(relative) == 1)
+                << "regenerate the campaign: the package carries "
+                << relative << ", which no committed source produces";
+        }
+    }
+}
+
+// The SHIPPED registration scripts wire the hook set each mode's rules
+// actually need. The behavior suites bind the 9xxx test levels through
+// hook tables they hand-declare themselves, so a hook line dropped from
+// scripts/mode_*.lua would leave every one of them green while the real
+// campaign lost, say, its frag scoring. This reads the engine's own
+// registration for the shipped level ids.
+TEST_F(ModesLevels, shipped_registration_scripts_wire_the_expected_hooks)
+{
+    using og::script::hooks::level_hook_kinds_for;
+
+    constexpr std::uint32_t kModeInit = 1u << 4;
+    constexpr std::uint32_t kModeTick = 1u << 5;
+    constexpr std::uint32_t kDamage = 1u << 6;
+    constexpr std::uint32_t kRespawn = 1u << 7;
+    constexpr std::uint32_t kEntityDeath = 1u << 2;
+
+    // Loading any level of the campaign builds the world VM and replays the
+    // pack scripts, which is what performs the registrations.
+    LoadedModesLevel probe(300);
+    ASSERT_TRUE(probe.loaded) << "scen300 should load";
+
+    struct ModeHooks
+    {
+        int level_id;
+        const char* mode;
+        std::uint32_t expected;
+    };
+    // Per modes.md: TDM scores frags off deaths; CTF and Soccer carry
+    // neither a damage gate nor a death hook (their object rules ride the
+    // flag/ball treasure families); Onslaught flips generators through
+    // on_damage and scrubs/scores through on_entity_death; Mutant needs
+    // both (the one-way matrix and the crown transfer).
+    const ModeHooks rows[] = {
+        {300, "tdm", kModeInit | kModeTick | kEntityDeath | kRespawn},
+        {305, "tdm", kModeInit | kModeTick | kEntityDeath | kRespawn},
+        {500, "ctf", kModeInit | kModeTick | kRespawn},
+        {509, "ctf", kModeInit | kModeTick | kRespawn},
+        {800, "onslaught",
+         kModeInit | kModeTick | kDamage | kRespawn | kEntityDeath},
+        {803, "onslaught",
+         kModeInit | kModeTick | kDamage | kRespawn | kEntityDeath},
+        {820, "soccer", kModeInit | kModeTick | kRespawn},
+        {823, "soccer", kModeInit | kModeTick | kRespawn},
+        {840, "mutant",
+         kModeInit | kModeTick | kDamage | kEntityDeath | kRespawn},
+        {843, "mutant",
+         kModeInit | kModeTick | kDamage | kEntityDeath | kRespawn},
+    };
+
+    for (const ModeHooks& row : rows)
+    {
+        EXPECT_EQ(row.expected, level_hook_kinds_for(row.level_id))
+            << "scen" << row.level_id << " (" << row.mode
+            << "): the shipped registration script's hook table drifted";
+    }
+
+    // A level id the campaign does not author registers nothing, so the
+    // reader above cannot be answering a constant.
+    EXPECT_EQ(0u, level_hook_kinds_for(299))
+        << "an unauthored level id must register no hooks";
+    EXPECT_EQ(0u, level_hook_kinds_for(700));
 }
 
 TEST_F(ModesLevels, manifest_module_matches_package_and_executes)

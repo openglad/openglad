@@ -3,12 +3,17 @@
 // test_ctf_ai.cpp (15) re-expressed against the campaign-pack Lua running
 // on scripted (0x20) levels, plus the Lua-specific additions (instruction
 // budget headroom, HUD/beacon writes, anchor-cursor respawn placement,
-// schedule-time CP respawn speedup, mode_core probes). The ORIGINAL
-// og_unit_ctf suite keeps passing untouched — the C++ CTF engine stays
-// alive until the Phase III swap.
+// schedule-time CP respawn speedup, mode_core probes, and the keyframe
+// continuation across a blink boundary).
 //
-// Ported-vs-retired ledger: every section header names the C++ cases it
-// re-expresses; the four retirements and their reasons are:
+// This suite is now the ONLY CTF coverage. d44ccf88 ("The engine cut")
+// deleted src/gameplay/ctf/ along with test_ctf_core.cpp and
+// test_ctf_ai.cpp; what survived of og_unit_ctf was the respawn engine,
+// which 9f358819 renamed og_unit_respawn. There is no C++ CTF twin left to
+// pin equivalence against, so a case dropped here is coverage lost.
+//
+// Ported-vs-retired ledger. Every section header names the C++ cases it
+// re-expresses; the retirements and where each retired behavior lives now:
 //  - flag_touch_runs_entirely_through_the_pack_hook: RETIRED — the
 //    boundary it pinned (core:flag delegating to og.ctf_on_flag_touch)
 //    does not exist here; every flag case below dispatches through the
@@ -18,14 +23,18 @@
 //    replaced by waypoint_touch_is_a_no_op (the Lua no-op is now the only
 //    implementation; there is no C++ twin to pin equivalence against).
 //  - authored_flag_teams_scans_live_flags_without_rng /
-//    authored_flag_teams_empty_on_classic_world: RETIRED — they pin
-//    og::sim::ctf_authored_flag_teams, a C++ pre-init helper this port
-//    does not touch, still covered by og_unit_ctf.
+//    authored_flag_teams_empty_on_classic_world: RETIRED WITH THE ENGINE.
+//    og::sim::ctf_authored_flag_teams no longer exists in production — the
+//    pack's own census_mask does that job and is pinned by the init cases
+//    here. No twin is needed, and none exists.
 //  - walk_to_point_crosses_open_map_and_completes /
 //    walk_to_point_routes_around_wall / find_path_to_point_solves_around_
-//    wall: RETIRED — they pin the C++ COMMAND_GOTO/pathfinder machinery
-//    the director hands off to, unchanged by this port, still covered by
-//    og_unit_ctf.
+//    wall: RETIRED HERE ONLY. The C++ COMMAND_GOTO/pathfinder machinery
+//    the director hands off to is untouched by this port and still lives
+//    in walker_pathing.cpp / stats.cpp; its coverage moved with it, to
+//    test_astar.cpp, test_forest_pathing.cpp and test_new_tiles.cpp (which
+//    calls find_path_to_point directly). It was never og_unit_ctf's to
+//    keep.
 
 #include <gtest/gtest.h>
 
@@ -38,6 +47,7 @@ inline constexpr int kModesFlagFamily = 13;
 inline constexpr int kModesWaypointFamily = 14;
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/event.h>
+#include <openglad/gameplay/world_snapshot.h>
 #include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/families/treasure_family_descriptor.h>
 #include <openglad/gameplay/game_world.h>
@@ -784,6 +794,28 @@ TEST_F(ModesCtf, drop_on_impassable_tile_returns_home_instantly)
 
 namespace {
 
+// Snapshots deliberately carry no queued commands or computed paths;
+// apply_snapshot clears them on the restored side. Mirror that reset on the
+// uninterrupted world at the capture point so both runs continue from the
+// same transient state and any later divergence is a real replication gap.
+void normalize_transient_state(GameWorld& world)
+{
+    auto normalize_list = [](const auto& entities) {
+        for (const auto& uptr : entities)
+        {
+            walker* w = uptr.get();
+            if (w == nullptr)
+                continue;
+            if (w->stats() != nullptr)
+                w->stats()->commands.clear();
+            w->path_to_foe.clear();
+        }
+    };
+    normalize_list(world.oblist);
+    normalize_list(world.fxlist);
+    normalize_list(world.weaplist);
+}
+
 struct TeleportWorld : ModesCtfWorld
 {
     walker* flag1 = nullptr;
@@ -823,6 +855,68 @@ TEST_F(ModesCtf, staged_blink_drops_flag_at_departure_point)
     EXPECT_EQ(0, fx.flag1->ignore());
     EXPECT_GT(fx.team_var(kSlotFlagReturn, 1), 0);
     EXPECT_EQ(1, count_notifications(fx.events, "GREEN FLAG DROPPED!"));
+}
+
+// The v10 twin of master's retired
+// CtfSnapshot.keyframe_at_blink_tick_boundary_continues_byte_equal.
+//
+// last_self_teleport_tick is NOT on the wire, and the drop rule reads it —
+// but only as a SAME-TICK marker: the act phase stamps the current tick and
+// on_mode_tick of that same tick consumes it. Snapshots are captured and
+// applied at tick boundaries, never between the stamp and its read, so by
+// the time any restored world reads the stamp again it is stale on both
+// sides (`stamp == world_tick` is false for the original's T and for the
+// restored default 0 alike). This pins that: a keyframe taken at the blink
+// boundary continues byte-identically even though the stamp is gone.
+TEST_F(ModesCtf, keyframe_at_the_blink_boundary_continues_byte_equal)
+{
+    std::vector<std::uint8_t> boundary_bytes;
+    std::vector<std::uint8_t> uninterrupted_end;
+    std::uint32_t runner_id = 0;
+    {
+        TeleportWorld fx(flag_family_);
+        fx.tick(1);
+        ASSERT_TRUE(fx.ctf_active());
+        ASSERT_TRUE(fx.flag1->eat_me(fx.runner));
+        fx.tick(1);
+        ASSERT_TRUE(fx.flag_carried(1));
+        runner_id = fx.runner->entity_id();
+
+        // The blink itself, exactly as staged_blink_drops_flag_at_departure
+        // _point performs it.
+        fx.stage_self_teleport(fx.runner);
+        fx.runner->setxy(440, 488);
+        fx.tick(1);
+        ASSERT_TRUE(fx.flag_dropped(1));
+        ASSERT_NE(0u, fx.runner->last_self_teleport_tick())
+            << "the stamp must be live at this boundary";
+
+        normalize_transient_state(fx.world());
+        boundary_bytes = og::sim::serialize_snapshot(
+            og::sim::capture_keyframe_snapshot(fx.world()));
+        fx.tick(20);
+        uninterrupted_end = og::sim::serialize_snapshot(
+            og::sim::capture_keyframe_snapshot(fx.world()));
+    }
+
+    ModesCtfWorld restored;
+    og::sim::apply_snapshot(restored.world(),
+                            og::sim::deserialize_snapshot(boundary_bytes));
+    walker* restored_runner = restored.world().find_by_id(runner_id);
+    ASSERT_NE(nullptr, restored_runner);
+    EXPECT_EQ(0u, restored_runner->last_self_teleport_tick())
+        << "the stamp does not cross the wire — that is the whole point";
+
+    restored.tick(20);
+    const std::vector<std::uint8_t> restored_end = og::sim::serialize_snapshot(
+        og::sim::capture_keyframe_snapshot(restored.world()));
+    EXPECT_EQ(uninterrupted_end, restored_end)
+        << "a keyframe restored at the blink boundary must continue "
+           "identically: the drop already happened, and the stamp it used "
+           "is stale on the next read either way";
+    EXPECT_NE(boundary_bytes, uninterrupted_end)
+        << "the 20-tick continuation must actually move the world, or the "
+           "equality above proves nothing";
 }
 
 TEST_F(ModesCtf, real_mage_marker_teleport_special_drops_flag)

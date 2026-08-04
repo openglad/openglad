@@ -3025,6 +3025,12 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_migrated_campaigns.cpp
         )
 
+        # test_modes_levels byte-compares every pack member against its
+        # committed source, so it needs the pack source dir too.
+        target_compile_definitions(og_unit_data PRIVATE
+            OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/tools/modes_mapgen/pack"
+        )
+
         og_add_unit_group(og_unit_respawn FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_respawn_engine.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_classic_respawn.cpp
