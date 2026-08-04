@@ -45,6 +45,7 @@
 #include <openglad/resources/og_file.h>
 #include <openglad/resources/save_data.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
@@ -362,6 +363,7 @@ void self_check_level(const ExpectedLevel& row)
     int named = 0;
     int save_protected = 0;
     int guard_violations = 0;
+    std::vector<ItemPad> actual_pads;
 
     auto team_of = [](walker* ob) {
         return std::min<int>(ob->team_num(), 7);
@@ -415,6 +417,13 @@ void self_check_level(const ExpectedLevel& row)
                     ++treasures;
                     if (family == FAMILY_TELEPORTER)
                         ++teleporters;
+                    if (family == FAMILY_DRUMSTICK ||
+                        family == FAMILY_MAGIC_POTION ||
+                        family == FAMILY_INVIS_POTION ||
+                        family == FAMILY_SPEED_POTION)
+                    {
+                        actual_pads.push_back({family, t});
+                    }
                 }
             }
             else if (order == Order::Weapon)
@@ -504,6 +513,65 @@ void self_check_level(const ExpectedLevel& row)
     if (guard_violations != 0)
         fail(std::format("{}: {} allied ACT_GUARD livings without "
                          "hold-post", where, guard_violations));
+
+    // Respawnable-item pads (D8 single source): on the item-respawning
+    // modes (TDM/CTF/Mutant) the world's live treasures of the four
+    // respawnable families must be EXACTLY the row's item_pads (same
+    // multiset of (family, tile)). This is what keeps the vendored
+    // CTF/arenas transcriptions honest and prevents canvas-builder drift —
+    // on mismatch the actual multiset is printed as a paste-ready
+    // initializer. Soccer and Onslaught are OFF by ruling (Soccer's short
+    // respawn already regulates attrition; Onslaught's spawn attrition IS
+    // the mode and its var budget is full), so their rows must stay
+    // pad-free even though their maps author food.
+    if (row.mode == ModeKind::Soccer || row.mode == ModeKind::Onslaught)
+    {
+        if (!row.item_pads.empty() || row.item_interval != 0)
+            fail(std::format("{}: {} mode ships no item respawns; drop the "
+                             "item_pads/item_interval row fields", where,
+                             mode_name(row.mode)));
+    }
+    else
+    {
+        auto pad_key = [](const ItemPad& p) {
+            return (p.family << 20) | (p.at.ty << 10) | p.at.tx;
+        };
+        auto by_key = [&pad_key](const ItemPad& a, const ItemPad& b) {
+            return pad_key(a) < pad_key(b);
+        };
+        std::vector<ItemPad> expected = row.item_pads;
+        std::sort(actual_pads.begin(), actual_pads.end(), by_key);
+        std::sort(expected.begin(), expected.end(), by_key);
+        bool match = actual_pads.size() == expected.size();
+        for (std::size_t i = 0; match && i < expected.size(); ++i)
+            match = pad_key(actual_pads[i]) == pad_key(expected[i]);
+        if (!match)
+        {
+            fail(std::format("{}: item_pads do not match the world's "
+                             "respawnable treasures ({} authored, {} in the "
+                             "row); transcribe the initializer below",
+                             where, actual_pads.size(), expected.size()));
+            auto family_token = [](int family) {
+                switch (family)
+                {
+                    case FAMILY_DRUMSTICK: return "FAMILY_DRUMSTICK";
+                    case FAMILY_MAGIC_POTION: return "FAMILY_MAGIC_POTION";
+                    case FAMILY_INVIS_POTION: return "FAMILY_INVIS_POTION";
+                    case FAMILY_SPEED_POTION: return "FAMILY_SPEED_POTION";
+                    default: return "?";
+                }
+            };
+            std::fprintf(stderr, "    row.item_pads = {\n");
+            for (const ItemPad& p : actual_pads)
+                std::fprintf(stderr, "        {%s, {%d, %d}},\n",
+                             family_token(p.family), p.at.tx, p.at.ty);
+            std::fprintf(stderr, "    };\n");
+        }
+        for (const ItemPad& p : row.item_pads)
+            if (!tile_passable(world, probe.get(), p.at))
+                fail(std::format("{}: item pad ({}, {}) impassable", where,
+                                 p.at.tx, p.at.ty));
+    }
 
     // Obmap ledger.
     const int ledger = obmap_ledger(row);
@@ -636,6 +704,25 @@ void self_check_level(const ExpectedLevel& row)
         add_target(row.kickoff);
     for (int team = 1; team < row.team_count; ++team)
         add_target(lead[team]);
+    // Every item pad must be A*-reachable from the team-0 lead: an
+    // unreachable pad would bank a permanent census deficit that
+    // lib/mode_items can never fill (deduplicated — vendored scatter may
+    // stack two pads on one tile).
+    {
+        std::vector<int> pad_tiles;
+        for (const ItemPad& p : row.item_pads)
+        {
+            const int key = p.at.ty * 4096 + p.at.tx;
+            bool seen = false;
+            for (const int k : pad_tiles)
+                seen = seen || k == key;
+            if (!seen)
+            {
+                pad_tiles.push_back(key);
+                add_target(p.at);
+            }
+        }
+    }
     for (const std::string& err : og::mapgen::audit_reachability(world))
     {
         bool allowed = false;

@@ -25,6 +25,26 @@
 
 namespace modesgen {
 
+namespace {
+
+// The fixed constant->name table for respawnable-item pads. Only the four
+// respawnable families may appear in a row's item_pads (food + the three
+// shipped potions — never gold/keys/teleporters), so an unknown constant
+// is a hard authoring error, not a fallback.
+const char* item_family_name(int family)
+{
+    switch (family)
+    {
+        case FAMILY_DRUMSTICK: return "drumstick";
+        case FAMILY_MAGIC_POTION: return "magic_potion";
+        case FAMILY_INVIS_POTION: return "invis_potion";
+        case FAMILY_SPEED_POTION: return "speed_potion";
+        default: return nullptr;
+    }
+}
+
+} // namespace
+
 std::string manifest_lua_text(const std::vector<ExpectedLevel>& rows)
 {
     std::ostringstream out;
@@ -57,6 +77,17 @@ std::string manifest_lua_text(const std::vector<ExpectedLevel>& rows)
         << "--   kickoff     soccer: kickoff point, PIXEL center of the"
            " kickoff\n"
         << "--               tile\n"
+        << "--   item_pads   respawnable-item pads: PIXEL center + core"
+           " family\n"
+        << "--               (\"drumstick\" | \"magic_potion\" |"
+           " \"invis_potion\" |\n"
+        << "--               \"speed_potion\") per authored food/potion;\n"
+        << "--               lib/mode_items respawns eaten items here"
+           " (absent =\n"
+        << "--               the mode ships no item respawns)\n"
+        << "--   item_interval minimum sim ticks between item respawns"
+           " (absent =\n"
+        << "--               the consuming mode's default)\n"
         << "local M = {}\n"
         << "\n"
         << "M.levels = {\n";
@@ -93,6 +124,29 @@ std::string manifest_lua_text(const std::vector<ExpectedLevel>& rows)
                 "    kickoff = {{ x = {}, y = {} }},\n",
                 row.kickoff.tx * GRID_SIZE + GRID_SIZE / 2,
                 row.kickoff.ty * GRID_SIZE + GRID_SIZE / 2);
+        if (!row.item_pads.empty())
+        {
+            out << "    item_pads = {\n";
+            for (const ItemPad& pad : row.item_pads)
+            {
+                const char* name = item_family_name(pad.family);
+                if (name == nullptr)
+                {
+                    fail(std::format(
+                        "scen{}: item pad family {} is not respawnable",
+                        row.id, pad.family));
+                    continue;
+                }
+                out << std::format(
+                    "      {{ x = {}, y = {}, family = \"{}\" }},\n",
+                    pad.at.tx * GRID_SIZE + GRID_SIZE / 2,
+                    pad.at.ty * GRID_SIZE + GRID_SIZE / 2, name);
+            }
+            out << "    },\n";
+        }
+        if (row.item_interval > 0)
+            out << std::format("    item_interval = {},\n",
+                               row.item_interval);
         out << "  },\n";
     }
     out << "}\n"

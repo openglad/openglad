@@ -57,6 +57,15 @@ void emit_painted(GameWorld& world, const ExpectedLevel& row)
                 world.grid.w, world.grid.h);
 }
 
+// Author the row's respawnable food/potion scatter (D8 single source: the
+// same pads drive the manifest, lib/mode_items' respawner and the
+// self-check pin). Authoring order is the row list order.
+void place_item_pads(GameWorld& world, const ExpectedLevel& row)
+{
+    for (const ItemPad& pad : row.item_pads)
+        place_at(world, Order::Treasure, pad.family, 0, pad.at);
+}
+
 // Place one team's 12 markers, then emit the other three teams as exact
 // symmetric copies (FFA maps are 4-way symmetric by design): team 1
 // mirrors x, team 2 mirrors y, team 3 mirrors both. Lead-first order is
@@ -135,12 +144,7 @@ void build_the_pit(const ExpectedLevel& row)
                        {1, 6}, {2, 6}, {4, 1}, {6, 1}, {4, 2}, {6, 2}},
                       30, 30);
 
-    place_at(world, Order::Treasure, FAMILY_SPEED_POTION, 0, {14, 14});
-    place_at(world, Order::Treasure, FAMILY_SPEED_POTION, 0, {15, 15});
-    for (const TilePos t :
-         {TilePos{14, 4}, TilePos{15, 25}, TilePos{4, 15}, TilePos{25, 14},
-          TilePos{9, 9}, TilePos{20, 20}})
-        place_at(world, Order::Treasure, FAMILY_DRUMSTICK, 0, t);
+    place_item_pads(world, row);
 
     emit_painted(world, row);
 }
@@ -195,13 +199,7 @@ void build_catacombs(const ExpectedLevel& row)
                        {1, 5}, {3, 5}, {5, 5}, {1, 7}, {3, 7}, {5, 7}},
                       50, 50);
 
-    for (const TilePos t :
-         {TilePos{12, 4}, TilePos{36, 4}, TilePos{4, 20}, TilePos{44, 20},
-          TilePos{20, 12}, TilePos{28, 36}, TilePos{12, 44}, TilePos{36, 44},
-          TilePos{20, 28}, TilePos{28, 20}})
-        place_at(world, Order::Treasure, FAMILY_DRUMSTICK, 0, t);
-    place_at(world, Order::Treasure, FAMILY_SPEED_POTION, 0, {22, 22});
-    place_at(world, Order::Treasure, FAMILY_SPEED_POTION, 0, {27, 27});
+    place_item_pads(world, row);
 
     emit_painted(world, row);
 }
@@ -239,13 +237,7 @@ void build_mooncourt(const ExpectedLevel& row)
                        {2, 6}, {4, 6}, {6, 6}, {2, 8}, {4, 8}, {6, 8}},
                       40, 40);
 
-    for (const TilePos t :
-         {TilePos{19, 3}, TilePos{19, 36}, TilePos{3, 19}, TilePos{36, 19},
-          TilePos{11, 11}, TilePos{28, 11}, TilePos{11, 28}, TilePos{28, 28}})
-        place_at(world, Order::Treasure, FAMILY_DRUMSTICK, 0, t);
-    for (const TilePos t :
-         {TilePos{17, 19}, TilePos{22, 19}, TilePos{19, 17}, TilePos{19, 22}})
-        place_at(world, Order::Treasure, FAMILY_SPEED_POTION, 0, t);
+    place_item_pads(world, row);
 
     emit_painted(world, row);
 }
@@ -309,18 +301,18 @@ void build_broken_crown(const ExpectedLevel& row)
                        {1, 5}, {3, 5}, {5, 5}, {6, 2}, {6, 4}, {6, 6}},
                       45, 45);
 
-    for (const TilePos t :
-         {TilePos{22, 10}, TilePos{22, 34}, TilePos{10, 22}, TilePos{34, 22},
-          TilePos{12, 12}, TilePos{32, 12}, TilePos{12, 32}, TilePos{32, 32}})
-        place_at(world, Order::Treasure, FAMILY_DRUMSTICK, 0, t);
-    place_at(world, Order::Treasure, FAMILY_SPEED_POTION, 0, {20, 22});
-    place_at(world, Order::Treasure, FAMILY_SPEED_POTION, 0, {24, 22});
+    place_item_pads(world, row);
 
     emit_painted(world, row);
 }
 
+// Every Mutant treasure is a respawnable pad (the maps ship ONLY food and
+// speed potions), so the pad list IS the treasure scatter: the builders
+// place from it, and row.treasures must equal its length. Pad order is
+// authoring (and manifest/rotation) order. Interval 180 (15 s): the
+// HP-decay economy starves without a food trickle.
 ExpectedLevel mutant_row(int id, const char* title, int par, int w, int h,
-                         int treasures, int decor_cells,
+                         int decor_cells, std::vector<ItemPad> pads,
                          std::vector<std::string> briefing)
 {
     ExpectedLevel row;
@@ -332,7 +324,9 @@ ExpectedLevel mutant_row(int id, const char* title, int par, int w, int h,
     row.grid_h = h;
     row.team_count = 4;
     row.markers_per_team = 12;
-    row.treasures = treasures;
+    row.treasures = static_cast<int>(pads.size());
+    row.item_pads = std::move(pads);
+    row.item_interval = 180;
     row.time_limit = 7200;
     row.score_limit = 10;
     row.decor_cells = decor_cells;
@@ -346,7 +340,17 @@ std::vector<ExpectedLevel> mutant_expectations()
 {
     std::vector<ExpectedLevel> out;
 
-    out.push_back(mutant_row(840, "Mutant: THE PIT", 6, 30, 30, 8, 4,
+    out.push_back(mutant_row(840, "Mutant: THE PIT", 6, 30, 30, 4,
+                             {
+                                 {FAMILY_SPEED_POTION, {14, 14}},
+                                 {FAMILY_SPEED_POTION, {15, 15}},
+                                 {FAMILY_DRUMSTICK, {14, 4}},
+                                 {FAMILY_DRUMSTICK, {15, 25}},
+                                 {FAMILY_DRUMSTICK, {4, 15}},
+                                 {FAMILY_DRUMSTICK, {25, 14}},
+                                 {FAMILY_DRUMSTICK, {9, 9}},
+                                 {FAMILY_DRUMSTICK, {20, 20}},
+                             },
                              {
                                  "A SPECIAL PAGE OF THE BOOK.",
                                  "FIRST BLOOD MAKES A MUTANT:",
@@ -358,7 +362,21 @@ std::vector<ExpectedLevel> mutant_expectations()
                                  "-- THE GAMESMASTER",
                              }));
 
-    out.push_back(mutant_row(841, "Mutant: CATACOMBS", 8, 50, 50, 12, 66,
+    out.push_back(mutant_row(841, "Mutant: CATACOMBS", 8, 50, 50, 66,
+                             {
+                                 {FAMILY_DRUMSTICK, {12, 4}},
+                                 {FAMILY_DRUMSTICK, {36, 4}},
+                                 {FAMILY_DRUMSTICK, {4, 20}},
+                                 {FAMILY_DRUMSTICK, {44, 20}},
+                                 {FAMILY_DRUMSTICK, {20, 12}},
+                                 {FAMILY_DRUMSTICK, {28, 36}},
+                                 {FAMILY_DRUMSTICK, {12, 44}},
+                                 {FAMILY_DRUMSTICK, {36, 44}},
+                                 {FAMILY_DRUMSTICK, {20, 28}},
+                                 {FAMILY_DRUMSTICK, {28, 20}},
+                                 {FAMILY_SPEED_POTION, {22, 22}},
+                                 {FAMILY_SPEED_POTION, {27, 27}},
+                             },
                              {
                                  "THE CATACOMBS HIDE THE CURSE",
                                  "WELL. CORRIDORS TURN, TORCHES",
@@ -369,7 +387,21 @@ std::vector<ExpectedLevel> mutant_expectations()
                                  "-- THE GAMESMASTER",
                              }));
 
-    out.push_back(mutant_row(842, "Mutant: MOONCOURT", 8, 40, 40, 12, 48,
+    out.push_back(mutant_row(842, "Mutant: MOONCOURT", 8, 40, 40, 48,
+                             {
+                                 {FAMILY_DRUMSTICK, {19, 3}},
+                                 {FAMILY_DRUMSTICK, {19, 36}},
+                                 {FAMILY_DRUMSTICK, {3, 19}},
+                                 {FAMILY_DRUMSTICK, {36, 19}},
+                                 {FAMILY_DRUMSTICK, {11, 11}},
+                                 {FAMILY_DRUMSTICK, {28, 11}},
+                                 {FAMILY_DRUMSTICK, {11, 28}},
+                                 {FAMILY_DRUMSTICK, {28, 28}},
+                                 {FAMILY_SPEED_POTION, {17, 19}},
+                                 {FAMILY_SPEED_POTION, {22, 19}},
+                                 {FAMILY_SPEED_POTION, {19, 17}},
+                                 {FAMILY_SPEED_POTION, {19, 22}},
+                             },
                              {
                                  "THE MOONLIT COURT, CONTENDERS.",
                                  "COLUMNS CARVE THE PLAZA INTO",
@@ -380,7 +412,19 @@ std::vector<ExpectedLevel> mutant_expectations()
                                  "-- THE GAMESMASTER",
                              }));
 
-    out.push_back(mutant_row(843, "Mutant: BROKEN CROWN", 10, 45, 45, 10, 20,
+    out.push_back(mutant_row(843, "Mutant: BROKEN CROWN", 10, 45, 45, 20,
+                             {
+                                 {FAMILY_DRUMSTICK, {22, 10}},
+                                 {FAMILY_DRUMSTICK, {22, 34}},
+                                 {FAMILY_DRUMSTICK, {10, 22}},
+                                 {FAMILY_DRUMSTICK, {34, 22}},
+                                 {FAMILY_DRUMSTICK, {12, 12}},
+                                 {FAMILY_DRUMSTICK, {32, 12}},
+                                 {FAMILY_DRUMSTICK, {12, 32}},
+                                 {FAMILY_DRUMSTICK, {32, 32}},
+                                 {FAMILY_SPEED_POTION, {20, 22}},
+                                 {FAMILY_SPEED_POTION, {24, 22}},
+                             },
                              {
                                  "A RUINED CROWN FOR A ROTTING",
                                  "KING. HOLD THE KEEP OR STORM",

@@ -65,6 +65,20 @@ struct GoalRect
     int x0, y0, x1, y1;
 };
 
+// A respawnable-item pad: the tile of ONE authored food/potion treasure
+// (drumstick, magic/invis/speed potion — never gold/keys/teleporters).
+// lib/mode_items.lua respawns eaten items onto these pads at cadence; the
+// self-check pins the world's live treasures of the four respawnable
+// families to EXACTLY this multiset, so the lists cannot drift from the
+// maps (Mutant builders place FROM the row; TDM/CTF rows transcribe the
+// re-dressed/vendored scatter and the pin keeps them honest).
+struct ItemPad
+{
+    int family;  // FAMILY_DRUMSTICK / _MAGIC_POTION / _INVIS_POTION /
+                 // _SPEED_POTION
+    TilePos at;
+};
+
 // The single source of truth per level: the builders author from it, the
 // generated manifest serializes it, the mapgen self-check re-validates the
 // remounted package against it, and tests/unit/test_modes_levels.cpp pins
@@ -92,6 +106,9 @@ struct ExpectedLevel
     bool a_star_waived = false;          // 303/305 documented obmap overrun
     std::vector<GoalRect> goal_rects;    // soccer: index = defending team
     TilePos kickoff;                     // soccer: ball spawn tile
+    std::vector<ItemPad> item_pads;      // respawnable food/potion pads
+    int item_interval = 0;               // min ticks between item respawns
+                                         // (0 = the consuming mode default)
     int decor_cells = 0;                 // exact nonzero floor-0 decor cells
     // Documented substrings of reachability-audit failures this level is
     // allowed to keep (deliberate design, e.g. teleporter-served vaults).

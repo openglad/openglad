@@ -77,9 +77,16 @@ void build_one(const ExpectedLevel& row)
                 row.title);
 }
 
+// item_pads: hand-transcribed from the vendored layouts (the maps are
+// loaded, not built, so the row cannot author them) — the mapgen
+// self-check pins the multiset against the world's live food/potion
+// treasures exactly, and prints the paste-ready list on any drift.
+// Interval 300 (25 s): sustain both offense and defense over the 20-min
+// cap.
 ExpectedLevel ctf_row(int id, const char* title, int par, int w, int h,
                       int teams, int treasures, int doors, int other_weapons,
                       int livings, int cps, int decor_cells,
+                      std::vector<ItemPad> item_pads,
                       std::vector<std::string> briefing)
 {
     ExpectedLevel row;
@@ -97,6 +104,8 @@ ExpectedLevel ctf_row(int id, const char* title, int par, int w, int h,
     row.treasures = treasures;
     row.doors = doors;
     row.other_weapons = other_weapons;
+    row.item_pads = std::move(item_pads);
+    row.item_interval = 300;
     row.time_limit = 14400;
     row.score_limit = 0; // the flag stat level carries the capture limit
     row.decor_cells = decor_cells;
@@ -113,6 +122,15 @@ std::vector<ExpectedLevel> ctf_expectations()
     out.push_back(ctf_row(500, "CTF: FIRST BLOOD", 4, 40, 30, 2, 7, 0, 0, 0, 1,
                           8,
                           {
+                              {FAMILY_DRUMSTICK, {1, 12}},
+                              {FAMILY_DRUMSTICK, {36, 12}},
+                              {FAMILY_DRUMSTICK, {2, 17}},
+                              {FAMILY_DRUMSTICK, {37, 17}},
+                              {FAMILY_INVIS_POTION, {20, 16}},
+                              {FAMILY_SPEED_POTION, {20, 5}},
+                              {FAMILY_SPEED_POTION, {20, 24}},
+                          },
+                          {
                               "CONTENDERS, THE BANNER GAME.",
                               "STEAL THEIR FLAG AND RUN IT",
                               "HOME WHILE YOURS STILL STANDS.",
@@ -127,6 +145,17 @@ std::vector<ExpectedLevel> ctf_expectations()
     out.push_back(ctf_row(501, "CTF: A BORDER FORT", 4, 30, 30, 2, 25, 5, 0, 5,
                           1, 4,
                           {
+                              {FAMILY_DRUMSTICK, {7, 10}},
+                              {FAMILY_DRUMSTICK, {7, 10}},
+                              {FAMILY_DRUMSTICK, {7, 10}},
+                              {FAMILY_DRUMSTICK, {7, 10}},
+                              {FAMILY_DRUMSTICK, {8, 10}},
+                              {FAMILY_DRUMSTICK, {8, 10}},
+                              {FAMILY_DRUMSTICK, {9, 10}},
+                              {FAMILY_DRUMSTICK, {7, 11}},
+                              {FAMILY_SPEED_POTION, {6, 12}},
+                          },
+                          {
                               "THE BANNER GAME AT THE BORDER.",
                               "THE GARRISON KEEPS ITS FLAG IN",
                               "THE COURTYARD; THE BESIEGERS",
@@ -139,6 +168,17 @@ std::vector<ExpectedLevel> ctf_expectations()
 
     out.push_back(ctf_row(502, "CTF: CASTLE CORNER", 4, 30, 40, 2, 16, 0, 0, 0,
                           1, 10,
+                          {
+                              {FAMILY_DRUMSTICK, {14, 0}},
+                              {FAMILY_DRUMSTICK, {21, 0}},
+                              {FAMILY_DRUMSTICK, {25, 18}},
+                              {FAMILY_DRUMSTICK, {26, 18}},
+                              {FAMILY_DRUMSTICK, {25, 19}},
+                              {FAMILY_DRUMSTICK, {27, 35}},
+                              {FAMILY_DRUMSTICK, {27, 36}},
+                              {FAMILY_DRUMSTICK, {27, 36}},
+                              {FAMILY_SPEED_POTION, {28, 19}},
+                          },
                           {
                               "BANNERS AT THE CASTLE CORNER.",
                               "ONE FLIES IN THE LONG HALL,",
@@ -153,6 +193,20 @@ std::vector<ExpectedLevel> ctf_expectations()
     out.push_back(ctf_row(503, "CTF: THE OUTPOST", 5, 40, 60, 2, 52, 5, 0, 0, 1,
                           10,
                           {
+                              {FAMILY_DRUMSTICK, {14, 14}},
+                              {FAMILY_DRUMSTICK, {23, 14}},
+                              {FAMILY_DRUMSTICK, {14, 15}},
+                              {FAMILY_DRUMSTICK, {23, 15}},
+                              {FAMILY_DRUMSTICK, {14, 16}},
+                              {FAMILY_DRUMSTICK, {23, 16}},
+                              {FAMILY_DRUMSTICK, {14, 17}},
+                              {FAMILY_DRUMSTICK, {23, 17}},
+                              {FAMILY_MAGIC_POTION, {15, 18}},
+                              {FAMILY_MAGIC_POTION, {22, 18}},
+                              {FAMILY_INVIS_POTION, {15, 17}},
+                              {FAMILY_INVIS_POTION, {22, 17}},
+                          },
+                          {
                               "THE LONE OUTPOST PLAYS HOST.",
                               "ONE BANNER WAITS IN A WALLED",
                               "YARD WITH A SINGLE SOUTH GATE;",
@@ -166,6 +220,15 @@ std::vector<ExpectedLevel> ctf_expectations()
     out.push_back(ctf_row(504, "CTF: RIVER RUN", 5, 60, 40, 2, 7, 0, 0, 0, 1,
                           30,
                           {
+                              {FAMILY_DRUMSTICK, {26, 2}},
+                              {FAMILY_DRUMSTICK, {32, 2}},
+                              {FAMILY_DRUMSTICK, {26, 37}},
+                              {FAMILY_DRUMSTICK, {32, 37}},
+                              {FAMILY_INVIS_POTION, {31, 20}},
+                              {FAMILY_SPEED_POTION, {9, 19}},
+                              {FAMILY_SPEED_POTION, {50, 20}},
+                          },
+                          {
                               "THE RIVER GAME, CONTENDERS.",
                               "TWO PLANK BRIDGES FLANK A WIDE",
                               "STONE CROSSING; THE ISLAND",
@@ -177,6 +240,15 @@ std::vector<ExpectedLevel> ctf_expectations()
                           }));
 
     out.push_back(ctf_row(505, "CTF: TRIAD", 6, 51, 51, 3, 7, 0, 0, 0, 1, 0,
+                          {
+                              {FAMILY_DRUMSTICK, {17, 20}},
+                              {FAMILY_DRUMSTICK, {33, 20}},
+                              {FAMILY_DRUMSTICK, {25, 34}},
+                              {FAMILY_INVIS_POTION, {25, 26}},
+                              {FAMILY_SPEED_POTION, {25, 16}},
+                              {FAMILY_SPEED_POTION, {17, 30}},
+                              {FAMILY_SPEED_POTION, {33, 30}},
+                          },
                           {
                               "THREE BANDS, THREE BANNERS.",
                               "EVERY POCKET HAS TWO DOORS:",
@@ -191,6 +263,20 @@ std::vector<ExpectedLevel> ctf_expectations()
     out.push_back(ctf_row(506, "CTF: THE UNDERPASS", 5, 60, 20, 2, 52, 3, 16, 0,
                           1, 0,
                           {
+                              {FAMILY_DRUMSTICK, {44, 14}},
+                              {FAMILY_DRUMSTICK, {44, 14}},
+                              {FAMILY_DRUMSTICK, {46, 15}},
+                              {FAMILY_DRUMSTICK, {46, 15}},
+                              {FAMILY_DRUMSTICK, {46, 15}},
+                              {FAMILY_DRUMSTICK, {46, 15}},
+                              {FAMILY_DRUMSTICK, {46, 15}},
+                              {FAMILY_DRUMSTICK, {42, 16}},
+                              {FAMILY_DRUMSTICK, {42, 16}},
+                              {FAMILY_DRUMSTICK, {46, 16}},
+                              {FAMILY_DRUMSTICK, {46, 16}},
+                              {FAMILY_DRUMSTICK, {46, 16}},
+                          },
+                          {
                               "ONE TUNNEL JOINS THE CAMPS,",
                               "AND EVERY BANNER RUN WADES",
                               "THROUGH THE ENEMY RESPAWN",
@@ -204,6 +290,24 @@ std::vector<ExpectedLevel> ctf_expectations()
     out.push_back(ctf_row(507, "CTF: DUNGEON OF STARS", 6, 70, 70, 4, 57, 22, 0,
                           0, 1, 12,
                           {
+                              {FAMILY_DRUMSTICK, {21, 27}},
+                              {FAMILY_DRUMSTICK, {21, 27}},
+                              {FAMILY_DRUMSTICK, {22, 28}},
+                              {FAMILY_DRUMSTICK, {22, 28}},
+                              {FAMILY_DRUMSTICK, {22, 28}},
+                              {FAMILY_DRUMSTICK, {24, 28}},
+                              {FAMILY_DRUMSTICK, {24, 28}},
+                              {FAMILY_DRUMSTICK, {44, 28}},
+                              {FAMILY_DRUMSTICK, {44, 28}},
+                              {FAMILY_DRUMSTICK, {46, 28}},
+                              {FAMILY_DRUMSTICK, {47, 28}},
+                              {FAMILY_DRUMSTICK, {47, 28}},
+                              {FAMILY_DRUMSTICK, {47, 28}},
+                              {FAMILY_DRUMSTICK, {23, 29}},
+                              {FAMILY_DRUMSTICK, {23, 29}},
+                              {FAMILY_DRUMSTICK, {45, 29}},
+                          },
+                          {
                               "FOUR BANNERS IN THE DEEP.",
                               "EACH CREW CAMPS BESIDE AN",
                               "ANCIENT TELEPORTER - RIDE THEM",
@@ -215,6 +319,16 @@ std::vector<ExpectedLevel> ctf_expectations()
 
     out.push_back(ctf_row(508, "CTF: CENTWHEIT MANOR", 6, 50, 50, 3, 17, 0, 0,
                           0, 2, 9,
+                          {
+                              {FAMILY_DRUMSTICK, {2, 44}},
+                              {FAMILY_DRUMSTICK, {28, 46}},
+                              {FAMILY_DRUMSTICK, {36, 46}},
+                              {FAMILY_DRUMSTICK, {5, 48}},
+                              {FAMILY_DRUMSTICK, {34, 48}},
+                              {FAMILY_INVIS_POTION, {18, 1}},
+                              {FAMILY_SPEED_POTION, {0, 39}},
+                              {FAMILY_SPEED_POTION, {5, 40}},
+                          },
                           {
                               "THREE CREWS BRAWL ACROSS THE",
                               "MANOR GROUNDS. ONE BANNER ON",
@@ -228,6 +342,17 @@ std::vector<ExpectedLevel> ctf_expectations()
 
     out.push_back(ctf_row(509, "CTF: CROSSFIRE", 6, 60, 60, 4, 9, 0, 0, 0, 1,
                           48,
+                          {
+                              {FAMILY_DRUMSTICK, {29, 10}},
+                              {FAMILY_DRUMSTICK, {10, 29}},
+                              {FAMILY_DRUMSTICK, {49, 30}},
+                              {FAMILY_DRUMSTICK, {30, 49}},
+                              {FAMILY_INVIS_POTION, {30, 30}},
+                              {FAMILY_SPEED_POTION, {29, 22}},
+                              {FAMILY_SPEED_POTION, {37, 29}},
+                              {FAMILY_SPEED_POTION, {22, 30}},
+                              {FAMILY_SPEED_POTION, {30, 37}},
+                          },
                           {
                               "THE PINWHEEL FINALE. THE",
                               "CLOCKWISE BOULEVARD IS FAST",
