@@ -85,9 +85,9 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
         sanitized.ctf_respawn_ticks =
             std::clamp<std::int16_t>(sanitized.ctf_respawn_ticks, 12, 1200);
     }
-    // Three states now: 0 keep / 1 strip roster teams / 2 strip everything
-    // authored. The field was already an int16 on the wire, so widening the
-    // accepted range costs no protocol bump.
+    // 0 keeps the authored cast, 2 strips it. The retired middle state 1 is
+    // still accepted so a peer or save from that build syncs instead of
+    // snapping back to the host's value; every strip rule reads it as 2.
     if (sanitized.ctf_strip_scenario_troops < 0 ||
         sanitized.ctf_strip_scenario_troops > 2)
     {

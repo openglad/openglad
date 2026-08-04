@@ -1,4 +1,4 @@
-/* TROOPS: NONE on a classic (non-scripted) map.
+/* TROOPS: OWN on a classic (non-scripted) map.
  *
  * The scripted modes strip from Lua at on_mode_init; classic maps have no
  * mode script, so og::sim::classic_strip_authored_troops does it and
@@ -195,20 +195,34 @@ TEST(ScenarioStripClassic, tick_latches_the_sweep_once_on_a_classic_map)
     EXPECT_EQ(2, fx.count_order(Order::Living));
 }
 
-TEST(ScenarioStripClassic, tick_leaves_the_world_alone_for_states_0_and_1)
+TEST(ScenarioStripClassic, tick_leaves_the_world_alone_for_keep)
 {
-    for (const short state : {short{0}, short{1}})
-    {
-        StripFixture fx;
-        fx.world().type = 0;
-        fx.world().ctf_requested_strip_scenario_troops = state;
-        fx.spawn_living(FAMILY_ORC, 1);
-        fx.spawn_generator(FAMILY_TENT, 1);
+    StripFixture fx;
+    fx.world().type = 0;
+    fx.world().ctf_requested_strip_scenario_troops = 0;
+    fx.spawn_living(FAMILY_ORC, 1);
+    fx.spawn_generator(FAMILY_TENT, 1);
 
-        fx.world().tick();
-        EXPECT_EQ(1, fx.count_order(Order::Living)) << "state " << state;
-        EXPECT_EQ(1, fx.count_order(Order::Generator)) << "state " << state;
-    }
+    fx.world().tick();
+    EXPECT_EQ(1, fx.count_order(Order::Living));
+    EXPECT_EQ(1, fx.count_order(Order::Generator));
+}
+
+TEST(ScenarioStripClassic, tick_sweeps_for_the_retired_middle_state_too)
+{
+    // The menus write 2, but a save from the build that had a three-state
+    // toggle can still carry 1. Any request above 0 is "TROOPS: OWN" here,
+    // so the level is swept exactly as if it read 2.
+    StripFixture fx;
+    fx.world().type = 0;
+    fx.world().ctf_requested_strip_scenario_troops = 1;
+    fx.spawn_roster_member(FAMILY_SOLDIER, 0);
+    fx.spawn_living(FAMILY_ORC, 1);
+    fx.spawn_generator(FAMILY_TENT, 1);
+
+    fx.world().tick();
+    EXPECT_EQ(1, fx.count_order(Order::Living)) << "only the roster guy stays";
+    EXPECT_EQ(0, fx.count_order(Order::Generator));
 }
 
 TEST(ScenarioStripClassic, scripted_maps_are_left_to_their_mode_script)

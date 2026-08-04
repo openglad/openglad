@@ -2,7 +2,7 @@
  *
  * The scripted modes run their own strip from Lua at on_mode_init
  * (lib/mode_strip.lua). Classic maps have no mode script, so the engine
- * performs the "TROOPS: NONE" sweep itself.
+ * performs the "TROOPS: OWN" sweep itself.
  */
 #pragma once
 

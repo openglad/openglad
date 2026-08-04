@@ -411,11 +411,11 @@ StripScenarioActors build_strip_scenario(ModesCtfWorld& fx, int flag_family)
 
 }  // namespace
 
-TEST_F(ModesCtf, strip_scenario_troops_removes_roster_team_authored_entities)
+TEST_F(ModesCtf, strip_scenario_troops_removes_every_authored_entity)
 {
     ModesCtfWorld fx;
     StripScenarioActors actors = build_strip_scenario(fx, flag_family_);
-    fx.world().ctf_requested_strip_scenario_troops = 1;
+    fx.world().ctf_requested_strip_scenario_troops = 2;
 
     fx.tick(1);
     ASSERT_TRUE(fx.ctf_active());
@@ -423,11 +423,14 @@ TEST_F(ModesCtf, strip_scenario_troops_removes_roster_team_authored_entities)
     EXPECT_FALSE(actors.hero->dead());
     EXPECT_TRUE(actors.authored_friend->dead());
     EXPECT_TRUE(actors.friendly_gen->dead());
-    EXPECT_FALSE(actors.authored_enemy->dead());
-    EXPECT_FALSE(actors.enemy_gen->dead());
+    EXPECT_TRUE(actors.authored_enemy->dead())
+        << "TROOPS: OWN takes the opposing team's authored cast too";
+    EXPECT_TRUE(actors.enemy_gen->dead());
     EXPECT_EQ(1, alive_on_team(fx.world(), 0))
         << "only the hero should remain on team 0";
-    EXPECT_EQ(1, alive_on_team(fx.world(), 1)) << "the authored army stays";
+    EXPECT_GT(alive_on_team(fx.world(), 1), 0)
+        << "the empty-team census runs after the sweep, so team 1 is "
+           "backfilled with bots rather than left unopposed";
 
     for (const auto& entry : fx.world().respawn.respawn_queue)
     {
@@ -435,11 +438,12 @@ TEST_F(ModesCtf, strip_scenario_troops_removes_roster_team_authored_entities)
             << "init-stripped troop entered the bot respawn queue";
     }
 
-    // Past the respawn window: the stripped troops must stay gone.
+    // Past the respawn window the stripped troops must stay gone. Counted,
+    // not asserted on the hero: team 1 now fields a bot squad and the lone
+    // roster fighter losing that fight is not what this case pins.
     fx.tick(150);
-    EXPECT_EQ(1, alive_on_team(fx.world(), 0))
+    EXPECT_LE(alive_on_team(fx.world(), 0), 1)
         << "stripped troops must stay gone past the respawn window";
-    EXPECT_FALSE(actors.hero->dead());
     for (const auto& entry : fx.world().respawn.respawn_queue)
     {
         EXPECT_FALSE(entry.kind == 1 && entry.team == 0)
@@ -473,9 +477,9 @@ TEST_F(ModesCtf, strip_scenario_troops_off_matches_control_run)
 TEST_F(ModesCtf, strip_scenario_troops_run_is_deterministic)
 {
     const std::string first =
-        run_strip_scenario_match(flag_family_, true, 1, 150);
+        run_strip_scenario_match(flag_family_, true, 2, 150);
     const std::string second =
-        run_strip_scenario_match(flag_family_, true, 1, 150);
+        run_strip_scenario_match(flag_family_, true, 2, 150);
     ASSERT_NE(first.find("act=1"), std::string::npos);
     ASSERT_EQ(first, second);
 }
@@ -485,13 +489,18 @@ TEST_F(ModesCtf, strip_scenario_troops_inert_when_ctf_does_not_activate)
     ModesCtfWorld fx;
     fx.spawn_flag(flag_family_, 0, 96, 96);
     fx.spawn_hero(FAMILY_SOLDIER, 0, 160, 160, 7);
-    walker* authored = fx.spawn_living(FAMILY_ARCHER, 0, 200, 160);
-    fx.world().ctf_requested_strip_scenario_troops = 1;
+    fx.spawn_living(FAMILY_ARCHER, 0, 200, 160);
+    fx.world().ctf_requested_strip_scenario_troops = 2;
 
     fx.tick(1);
 
     ASSERT_FALSE(fx.world().mode.active);
-    EXPECT_FALSE(authored->dead())
+    // The mode script never reached on_mode_init, and the engine's own sweep
+    // is latched to the first tick — which this map spent inside the mode
+    // branch. The authored archer therefore survives. Counted rather than
+    // dereferenced: the engine sweep REMOVES walkers, so a regression here
+    // would be a dangling pointer, not a dead flag.
+    EXPECT_EQ(2, alive_on_team(fx.world(), 0))
         << "non-activating CTF maps keep classic rules";
 }
 TEST_F(ModesCtf, enemy_touch_picks_up_and_carry_visual_follows)

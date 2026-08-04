@@ -843,7 +843,7 @@ local function on_mode_init(level, row)
   -- Roster-only armies on request, then the generator HP denominators (the
   -- ally generators a pitch may field). Both before the census below, so bot
   -- backfill sees the final world.
-  strip.strip_authored_troops(mask, nil)
+  strip.strip_authored_troops(nil)
   core.normalize_generator_hp(obs)
 
   -- Bot squads for active teams that field no livings.

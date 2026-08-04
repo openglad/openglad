@@ -848,7 +848,7 @@ local function on_mode_init(level)
   -- Roster-only armies on request (the shared rule set — lib/mode_strip).
   -- Runs before the bot-squad census below so backfill sees the post-strip
   -- world; CTF fields no generators, so it keeps none.
-  strip.strip_authored_troops(mask, nil)
+  strip.strip_authored_troops(nil)
 
   -- Resolve config: explicit request > per-map flag level > defaults.
   local limit = T.capture_limit

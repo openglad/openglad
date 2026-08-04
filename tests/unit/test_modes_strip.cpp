@@ -1,10 +1,12 @@
 // lib/mode_strip.lua — the scenario-troops strip the five mode impls share.
 //
-// The three states of og.match_setting("strip_troops"):
-//   0 keep, 1 strip each ACTIVE score team that fields a roster walker,
-//   2 strip every authored living/generator on ANY team (wildlife too),
-//     minus the generators when the caller passes keep_generators
-//     (Onslaught's foundries are the board, not troops).
+// The two states of og.match_setting("strip_troops"):
+//   0 keep the level as authored ("TROOPS: ALL"),
+//   2 strip every authored living/generator on ANY team (wildlife too) —
+//     "TROOPS: OWN" — minus the generators when the caller passes
+//     keep_generators (Onslaught's foundries are the board, not troops).
+// Anything above 0 means OWN, so a stored 1 from the retired middle state
+// strips everything too.
 //
 // The levels are registered by kTestRegistrationLua in modes_pack_fixture.h,
 // which zips the CURRENT pack sources — so this suite runs the committed
@@ -89,20 +91,22 @@ TEST_F(ModesStrip, keep_leaves_every_authored_entity_alone)
     EXPECT_TRUE(rig.logged("stripped\t0")) << "state 0 returns early";
 }
 
-TEST_F(ModesStrip, strip_teams_hits_only_roster_teams)
+TEST_F(ModesStrip, legacy_middle_state_strips_everything_too)
 {
+    // State 1 was "strip only the roster teams' canned troops" before the
+    // toggle went two-state. A save written by that build still loads, and
+    // the value now means the same thing as the 2 the menus write.
     StripRig rig(kStripLevelDefault, 1);
     rig.fx.tick(1);
 
     EXPECT_TRUE(rig.alive(rig.roster)) << "a roster walker is never stripped";
-    EXPECT_FALSE(rig.alive(rig.troop0)) << "team 0 fields a roster walker";
+    EXPECT_FALSE(rig.alive(rig.troop0));
+    EXPECT_FALSE(rig.alive(rig.troop1)) << "no longer a roster-team rule";
+    EXPECT_FALSE(rig.alive(rig.troop2));
+    EXPECT_FALSE(rig.alive(rig.wildlife));
     EXPECT_FALSE(rig.alive(rig.gen0));
-    EXPECT_TRUE(rig.alive(rig.troop1)) << "team 1 fields no roster walker";
-    EXPECT_TRUE(rig.alive(rig.gen1));
-    EXPECT_TRUE(rig.alive(rig.troop2))
-        << "team 2 has no start marker, so it is outside the active mask";
-    EXPECT_TRUE(rig.alive(rig.wildlife)) << "wildlife survives state 1";
-    EXPECT_TRUE(rig.logged("stripped\t2"));
+    EXPECT_FALSE(rig.alive(rig.gen1));
+    EXPECT_TRUE(rig.logged("stripped\t6"));
 }
 
 TEST_F(ModesStrip, strip_all_takes_wildlife_and_generators_too)
@@ -113,7 +117,8 @@ TEST_F(ModesStrip, strip_all_takes_wildlife_and_generators_too)
     EXPECT_TRUE(rig.alive(rig.roster));
     EXPECT_FALSE(rig.alive(rig.troop0));
     EXPECT_FALSE(rig.alive(rig.troop1));
-    EXPECT_FALSE(rig.alive(rig.troop2)) << "the active mask does not gate state 2";
+    EXPECT_FALSE(rig.alive(rig.troop2))
+        << "the active team mask does not gate the strip";
     EXPECT_FALSE(rig.alive(rig.wildlife)) << "\"ALL\" means all";
     EXPECT_FALSE(rig.alive(rig.gen0));
     EXPECT_FALSE(rig.alive(rig.gen1));
@@ -145,16 +150,22 @@ TEST_F(ModesStrip, explicit_keep_generators_false_strips_them)
     EXPECT_TRUE(rig.logged("stripped\t6"));
 }
 
-TEST_F(ModesStrip, unknown_setting_values_strip_nothing)
+TEST_F(ModesStrip, out_of_range_settings_read_as_keep_or_own_by_sign)
 {
-    // A junk value can only reach the sim from a save or peer the lobby
-    // sanitizer did not clean; it must be inert, not a surprise wipe.
-    StripRig rig(kStripLevelDefault, 9);
-    rig.fx.tick(1);
+    // Junk can only reach the sim from a save or a peer the lobby sanitizer
+    // did not clean. The rule is a threshold, not a value list: anything
+    // above keep strips, anything at or below it keeps.
+    StripRig high(kStripLevelDefault, 9);
+    high.fx.tick(1);
+    EXPECT_FALSE(high.alive(high.troop0));
+    EXPECT_FALSE(high.alive(high.wildlife));
+    EXPECT_TRUE(high.logged("stripped\t6"));
 
-    EXPECT_TRUE(rig.alive(rig.troop0));
-    EXPECT_TRUE(rig.alive(rig.wildlife));
-    EXPECT_TRUE(rig.logged("stripped\t0"));
+    StripRig low(kStripLevelDefault, -3);
+    low.fx.tick(1);
+    EXPECT_TRUE(low.alive(low.troop0));
+    EXPECT_TRUE(low.alive(low.wildlife));
+    EXPECT_TRUE(low.logged("stripped\t0"));
 }
 
 TEST_F(ModesStrip, stripped_entities_leave_the_score_team_range)
@@ -179,6 +190,6 @@ TEST_F(ModesStrip, is_troop_classifies_orders_and_the_generator_exception)
     // living(keep_gens=true)=1, generator(keep)=0, generator(drop)=1,
     // treasure=0.
     EXPECT_TRUE(rig.logged("is_troop\t1\t0\t1\t0"));
-    EXPECT_TRUE(rig.logged("states\t0\t1\t2"));
+    EXPECT_TRUE(rig.logged("states\t0\t2"));
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }

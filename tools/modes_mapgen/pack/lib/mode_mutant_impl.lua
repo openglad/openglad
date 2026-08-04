@@ -524,7 +524,7 @@ local function on_mode_init(level)
   match.strip_inactive_teams(obs, mask)
   -- Roster-only armies on request (shared rule set), before the seat census
   -- below so bot backfill sees the post-strip world.
-  strip.strip_authored_troops(mask, nil)
+  strip.strip_authored_troops(nil)
 
   -- Resolve config: explicit request > manifest row > defaults, per field.
   local row = levels.levels[level]
