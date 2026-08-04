@@ -19,6 +19,7 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include "../campaign_export.h"
 #include "modes_mapgen.h"
 
 #include <openglad/core/constants.h>
@@ -854,9 +855,9 @@ int main(int argc, char* argv[])
     using namespace modesgen;
     namespace fs = std::filesystem;
 
-    const std::string out_glad =
-        (argc > 1) ? argv[1] : "builtin/org.openglad.modes.glad";
-    const fs::path out_abs = fs::absolute(out_glad);
+    const std::string out_tree =
+        (argc > 1) ? argv[1] : "campaigns/org.openglad.modes";
+    const fs::path out_abs = fs::absolute(out_tree);
 
     // Never touch ~/.openglad: run inside a disposable config dir unless
     // the caller already redirected it.
@@ -971,20 +972,17 @@ int main(int argc, char* argv[])
     int result = 1;
     if (g_errors == 0)
     {
-        std::error_code ec;
-        fs::create_directories(out_abs.parent_path(), ec);
-        fs::copy_file(glad_path, out_abs, fs::copy_options::overwrite_existing,
-                      ec);
-        if (ec)
+        // packs/ stays single-sourced under tools/modes_mapgen/pack/ — the
+        // build composes it into the archive; only the level data exports.
+        if (!og::toolexport::export_campaign_tree(user + "temp/", out_abs,
+                                                  {"packs"}))
         {
-            fail(std::format("failed to copy {} -> {}: {}", glad_path,
-                             out_abs.string(), ec.message()));
+            fail(std::format("failed to export the campaign tree to {}",
+                             out_abs.string()));
         }
         else
         {
-            std::printf("modes_mapgen: wrote %s (%ju bytes)\n",
-                        out_abs.c_str(),
-                        static_cast<uintmax_t>(fs::file_size(out_abs, ec)));
+            std::printf("modes_mapgen: wrote %s\n", out_abs.c_str());
             result = 0;
         }
     }

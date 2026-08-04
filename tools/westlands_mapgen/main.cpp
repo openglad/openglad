@@ -24,6 +24,7 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include "../campaign_export.h"
 #include "builders.h"
 
 #include <openglad/core/constants.h>
@@ -1434,9 +1435,9 @@ int main(int argc, char* argv[])
     using namespace westlands;
     namespace fs = std::filesystem;
 
-    const std::string out_glad =
-        (argc > 1) ? argv[1] : "builtin/org.openglad.westlands.glad";
-    const fs::path out_abs = fs::absolute(out_glad);
+    const std::string out_tree =
+        (argc > 1) ? argv[1] : "campaigns/org.openglad.westlands";
+    const fs::path out_abs = fs::absolute(out_tree);
 
     fs::path scratch;
     if (const char* preset = std::getenv("OPENGLAD_CONFIG_DIR");
@@ -1528,12 +1529,9 @@ int main(int argc, char* argv[])
     int result = 1;
     if (g_errors == 0)
     {
-        std::error_code ec;
-        fs::create_directories(out_abs.parent_path(), ec);
-        fs::copy_file(glad_path, out_abs, fs::copy_options::overwrite_existing, ec);
-        if (ec)
-            fail(std::format("failed to copy {} -> {}: {}", glad_path,
-                             out_abs.string(), ec.message()));
+        if (!og::toolexport::export_campaign_tree(user + "temp/", out_abs))
+            fail(std::format("failed to export the campaign tree to {}",
+                             out_abs.string()));
         else
         {
             std::printf("westlands_mapgen: wrote %s\n", out_abs.c_str());

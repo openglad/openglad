@@ -47,7 +47,7 @@
 #include <openglad/resources/level_file_io.h>
 #include <openglad/resources/save_data.h>
 
-#include "showcase_pack.h"
+#include "../campaign_export.h"
 
 #include <algorithm>
 #include <atomic>
@@ -95,6 +95,13 @@ namespace conceptgen {
 namespace {
 
 namespace fs = std::filesystem;
+
+// The embedded pack's id; its single source lives at
+// tools/concept_mapgen/pack/ (composed into the archive by the build,
+// staged here for the self-checks). Loads after "core" — pack replay
+// order is pack-id lexicographic.
+constexpr const char* kShowcasePackId = "org.openglad.concept.showcase";
+
 int g_errors = 0;
 
 void fail(const std::string& message)
@@ -353,7 +360,8 @@ void build_arc_range()
 // tent, tower, bones, treehouse) ward the Magistrate — a named, hold-post
 // archmage on the north bench. The fight logic ships in the campaign's
 // EMBEDDED pack (packs/org.openglad.concept.showcase/scripts/court.lua,
-// written into the staging dir by write_showcase_pack): the boss is
+// single-sourced at tools/concept_mapgen/pack/ and staged for the
+// self-checks exactly as the build composes it): the boss is
 // invincible while any pillar stands, the wards fail when the last one
 // falls, ninefold judgment rings pulse after that, and every 3rd generator
 // spawn is promoted to an Adjutant. Impossible as pure level data.
@@ -692,7 +700,7 @@ void self_check_court_script()
 {
     bool registered = false;
     for (const og::script::PackScript& ps : og::script::pack_scripts())
-        if (ps.pack_id == showcase_pack_id())
+        if (ps.pack_id == kShowcasePackId)
             registered = true;
     if (!registered)
     {
@@ -757,9 +765,9 @@ int main(int argc, char* argv[])
     using namespace conceptgen;
     namespace fs = std::filesystem;
 
-    const std::string out_glad =
-        (argc > 1) ? argv[1] : "builtin/org.openglad.concept.glad";
-    const fs::path out_abs = fs::absolute(out_glad);
+    const std::string out_tree =
+        (argc > 1) ? argv[1] : "campaigns/org.openglad.concept";
+    const fs::path out_abs = fs::absolute(out_tree);
 
     fs::path scratch;
     if (const char* preset = std::getenv("OPENGLAD_CONFIG_DIR");
@@ -803,8 +811,9 @@ int main(int argc, char* argv[])
     create_dir(user + "temp/pix/");
     write_campaign_yaml(user + "temp/campaign.yaml");
     write_icon(user + "temp/icon.png");
-    if (!write_showcase_pack(user + "temp/"))
-        fail("failed to write the embedded showcase pack into the staging dir");
+    if (!og::toolexport::stage_pack_tree("tools/concept_mapgen/pack",
+                                         user + "temp/", kShowcasePackId))
+        fail("failed to stage the embedded showcase pack");
 
     build_stairs();
     build_mind_the_gap();
@@ -848,12 +857,12 @@ int main(int argc, char* argv[])
     int result = 1;
     if (g_errors == 0)
     {
-        std::error_code ec;
-        fs::create_directories(out_abs.parent_path(), ec);
-        fs::copy_file(glad_path, out_abs, fs::copy_options::overwrite_existing, ec);
-        if (ec)
-            fail(std::format("failed to copy {} -> {}: {}", glad_path,
-                             out_abs.string(), ec.message()));
+        // packs/ stays single-sourced under tools/concept_mapgen/pack/ —
+        // the build composes it into the archive; only level data exports.
+        if (!og::toolexport::export_campaign_tree(user + "temp/", out_abs,
+                                                  {"packs"}))
+            fail(std::format("failed to export the campaign tree to {}",
+                             out_abs.string()));
         else
         {
             std::printf("concept_mapgen: wrote %s\n", out_abs.c_str());

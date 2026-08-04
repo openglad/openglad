@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Migrate the three hand-authored stock packages (gladiator, tryxian, arenas)
-# to the BASE + DECOR tile layering (.fss v11) with tools/grid_migrate.
+# Migrate the two hand-authored stock campaigns (gladiator, tryxian) to the
+# BASE + DECOR tile layering (.fss v11) with tools/grid_migrate.
 #
 # grid_migrate proves equivalence in-process (per-cell passability across the
 # five mover archetypes, concealment, damage semantics, door-frame genre,
@@ -8,16 +8,22 @@
 # successful run is the proof obligation, not just a conversion. Weather
 # outdoor-vote changes are printed per level (report-only).
 #
-# The generated packages (ctf, concept, westlands) are NOT migrated here —
-# they regenerate from their mapgen tools (scripts/generate_*.sh), which now
-# author decor planes directly. Note ctf_mapgen adapts levels from the
-# MOUNTED gladiator package, so regenerate CTF only after this script (and a
-# re-stage) has run.
+# The generated campaigns (modes, concept, westlands, longseason, tower) are
+# NOT migrated here — they regenerate from their mapgen tools
+# (scripts/generate_*.sh), which author decor planes directly.
 #
-# The tool reads its input from the staged assets next to the binary
-# (build/ci-test/builtin), so the stage_runtime_assets dependency keeps the
-# input in sync with the repo; outputs land in the repo builtin/ and the
-# script re-stages afterwards so tests see the migrated packages.
+# One-shot by design: the committed campaigns are already .fss v11, and
+# grid_migrate's equivalence prover treats pre-existing decor in its INPUT
+# as a verification failure (it expects legacy combined tiles), so re-running
+# this script on migrated data fails loudly before publishing anything. It
+# exists for the next legacy hand-authored campaign, not for repetition.
+#
+# The tool reads its input from the staged archives next to the binary
+# (build/ci-test/builtin, composed from campaigns/ by og_builtin_campaigns),
+# so the stage_runtime_assets dependency keeps the input in sync with the
+# repo; outputs land in the committed campaigns/<id>/ source trees and the
+# script recomposes the staged archives afterwards so tests see the
+# migrated campaigns.
 #
 # Usage: scripts/migrate_stock_campaigns.sh
 
@@ -34,10 +40,9 @@ fi
 
 cmake --build "${BUILD_DIR}" --target grid_migrate -- -j8
 
-for id in org.openglad.gladiator org.openglad.tryxian org.openglad.arenas; do
-    "${BUILD_DIR}/grid_migrate" "${id}" "builtin/${id}.glad"
+for id in org.openglad.gladiator org.openglad.tryxian; do
+    "${BUILD_DIR}/grid_migrate" "${id}" "campaigns/${id}"
 done
 
-# Re-stage so tests (and a subsequent CTF regeneration, which adapts from the
-# gladiator package) read the migrated inputs.
-cmake --build "${BUILD_DIR}" --target stage_runtime_assets -- -j8
+# Recompose the staged archives so tests read the migrated campaigns.
+cmake --build "${BUILD_DIR}" --target og_builtin_campaigns -- -j8

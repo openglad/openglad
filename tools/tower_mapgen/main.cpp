@@ -39,6 +39,8 @@
 #include <openglad/resources/level_file_io.h>
 #include <openglad/resources/save_data.h>
 
+#include "../campaign_export.h"
+
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
@@ -347,9 +349,9 @@ int main(int argc, char* argv[])
     using namespace towergen;
     namespace fs = std::filesystem;
 
-    const std::string out_glad =
-        (argc > 1) ? argv[1] : "builtin/org.openglad.tower.glad";
-    const fs::path out_abs = fs::absolute(out_glad);
+    const std::string out_tree =
+        (argc > 1) ? argv[1] : "campaigns/org.openglad.tower";
+    const fs::path out_abs = fs::absolute(out_tree);
 
     fs::path scratch;
     if (const char* preset = std::getenv("OPENGLAD_CONFIG_DIR");
@@ -420,13 +422,9 @@ int main(int argc, char* argv[])
     int result = 1;
     if (g_errors == 0)
     {
-        std::error_code ec;
-        fs::create_directories(out_abs.parent_path(), ec);
-        fs::copy_file(glad_path, out_abs, fs::copy_options::overwrite_existing,
-                      ec);
-        if (ec)
-            fail(std::format("failed to copy {} -> {}: {}", glad_path,
-                             out_abs.string(), ec.message()));
+        if (!og::toolexport::export_campaign_tree(user + "temp/", out_abs))
+            fail(std::format("failed to export the campaign tree to {}",
+                             out_abs.string()));
         else
         {
             std::printf("tower_mapgen: wrote %s\n", out_abs.c_str());

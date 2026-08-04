@@ -1748,7 +1748,6 @@ if(NOT EMSCRIPTEN)
     # Not part of the default build; run via scripts/generate_concept_campaign.sh.
     add_executable(concept_mapgen EXCLUDE_FROM_ALL
         ${CMAKE_SOURCE_DIR}/tools/concept_mapgen/main.cpp
-        ${CMAKE_SOURCE_DIR}/tools/concept_mapgen/showcase_pack.cpp
         ${SRC_DIR}/platform/text/platform_headless.cpp
         ${SRC_DIR}/platform/text/walker_headless.cpp
         ${SRC_DIR}/interface/input/input_state.cpp
