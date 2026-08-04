@@ -3,6 +3,7 @@
 // activation, ball spawn, melee/weapon impulses, fixed-point friction,
 // wall reflection, contact damage with the cap, last-toucher scoring with
 // the own-goal/untouched no-score arm, kickoff resets and the freeze,
+// the B1 kickoff wipe-revive backstop and dead-ball reset,
 // score-limit and timeout wins, difficulty-submenu respawn honoring,
 // director roles, spawn caps, HUD/beacons, determinism and instruction
 // budget headroom. Runs on the shared modes-pack harness
@@ -666,6 +667,118 @@ TEST_F(ModesSoccer, short_manifest_time_limit_is_honored)
     EXPECT_EQ(120, fx.var(kSocTimeLimit));
     fx.tick(125);
     EXPECT_TRUE(fx.world().game_ended) << "manifest time limit decides";
+}
+
+// ===========================================================================
+// B1: the kickoff backstop (design §6.3) + dead-ball reset (§6.2.4)
+// ===========================================================================
+
+TEST_F(ModesSoccer, goal_kickoff_reprovisions_a_wiped_bot_team)
+{
+    SoccerWorld fx;
+    walker* red_extra = fx.spawn_living(FAMILY_SOLDIER, 0, 160, 448, ACT_GUARD);
+    fx.world().respawn_mode = 0;  // permadeath submenu
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    fx.thaw_kickoff();
+    // Team 1 is wiped; team 0 loses a member but keeps red alive. The
+    // engine sweeps the unscheduled AI corpses at the end of this tick.
+    fx.green->set_dead(1);
+    red_extra->set_dead(1);
+    fx.tick(2);
+    EXPECT_EQ(0, ai_entries_for_team(fx.world(), 1))
+        << "Off keeps mid-play corpses down (no policy change)";
+    ASSERT_EQ(0, alive_on_team(fx.world(), 1));
+
+    // A goal kickoff brings the wiped side back — its corpses are gone,
+    // so the backstop reprovisions the init-style bot squad (B1).
+    fx.world().mode.vars[kSocLastTouch1] = 1;  // team 0 touched last
+    fx.set_ball(600, 464, 4 * 256, 0);         // into team 1's strip
+    fx.tick(1);
+    EXPECT_TRUE(has_notification(fx.events, "RED TEAM GOAL!"));
+    EXPECT_EQ(5, alive_on_team(fx.world(), 1))
+        << "the kickoff backstop refields the wiped team (B1)";
+    EXPECT_EQ(1, alive_on_team(fx.world(), 0))
+        << "a team with a live member is left alone";
+    EXPECT_EQ(0, ai_entries_for_team(fx.world(), 0))
+        << "no revival entries for the non-wiped team";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesSoccer, kickoff_revive_schedules_corpses_and_skips_summons)
+{
+    SoccerWorld fx;
+    walker* hero = fx.spawn_hero(FAMILY_SOLDIER, 1, 560, 448, 7);
+    walker* summon = fx.spawn_living(FAMILY_SOLDIER, 1, 560, 480, ACT_GUARD);
+    walker* red_extra = fx.spawn_living(FAMILY_SOLDIER, 0, 160, 448, ACT_GUARD);
+    summon->set_owner(fx.green);
+    fx.world().respawn_mode = 0;
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    fx.thaw_kickoff();
+    // All of team 1 plus a team-0 extra fall this tick; the corpses are
+    // still in the oblist when the goal fires.
+    fx.green->set_dead(1);
+    hero->set_dead(1);
+    summon->set_dead(1);
+    red_extra->set_dead(1);
+    fx.world().mode.vars[kSocLastTouch1] = 1;
+    fx.set_ball(600, 464, 4 * 256, 0);
+    fx.tick(1);
+
+    EXPECT_TRUE(player_revive_pending(fx.world(), hero->entity_id()))
+        << "roster corpses ride the kickoff backstop";
+    EXPECT_EQ(1, ai_entries_for_team(fx.world(), 1))
+        << "the unowned AI corpse is scheduled; the summon stays down";
+    EXPECT_EQ(0, alive_on_team(fx.world(), 1))
+        << "revives in flight: no bot-squad reprovision on top";
+    EXPECT_EQ(0, ai_entries_for_team(fx.world(), 0))
+        << "a non-wiped team's corpse stays down at kickoff";
+    fx.tick(70);  // respawn_ticks 60 + slack
+    EXPECT_FALSE(hero->dead()) << "the hero is back for the kickoff";
+    EXPECT_EQ(2, alive_on_team(fx.world(), 1))
+        << "hero + AI replacement return; the summon does not";
+    EXPECT_TRUE(red_extra->dead()) << "the non-wiped team's dead stay down";
+}
+
+TEST_F(ModesSoccer, unattended_dead_ball_resets_after_600_ticks)
+{
+    SoccerWorld fx;
+    fx.world().respawn_mode = 0;
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    // Both parked livings sit L1 > 160 px from the kickoff spot, so the
+    // stall clock runs from the first post-init tick (the MUDBOWL
+    // parked-ball shape from the sweep). Wipe green first: the reset's
+    // kickoff also runs the revive backstop.
+    fx.green->set_dead(1);
+    fx.tick(598);
+    EXPECT_EQ(0, count_notifications(fx.events, "BALL RESET")) << "not yet";
+    fx.tick(5);
+    EXPECT_EQ(1, count_notifications(fx.events, "BALL RESET"))
+        << "600 unattended motionless ticks reset the ball (B1)";
+    EXPECT_EQ(320, fx.ball_cx());
+    EXPECT_EQ(464, fx.ball_cy());
+    EXPECT_GT(fx.var(kSocKickoffUntil), 600) << "post-reset freeze armed";
+    EXPECT_EQ(5, alive_on_team(fx.world(), 1))
+        << "the dead-ball kickoff refields the wiped side too";
+}
+
+TEST_F(ModesSoccer, a_nearby_living_clears_the_stall_clock)
+{
+    SoccerWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    // Attendance: red inside the 160 px radius (but outside kick reach)
+    // keeps the ball in play indefinitely.
+    fx.red->setxy(250, 420);  // center (258, 428): L1 = 98 from the ball
+    fx.tick(700);
+    EXPECT_EQ(0, count_notifications(fx.events, "BALL RESET"))
+        << "an attended ball never dead-balls";
+    // Walking away starts the clock fresh.
+    fx.red->setxy(96, 96);
+    fx.tick(605);
+    EXPECT_EQ(1, count_notifications(fx.events, "BALL RESET"));
 }
 
 // ===========================================================================

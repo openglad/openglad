@@ -29,6 +29,7 @@ local S = {
   GOAL_POS = 27, -- 27..30, +team, packed rect top-left (x, y)
   GOAL_SIZE = 31, -- 31..34, +team, packed (w, h)
   SPAWN_CAP = 35, -- 35..42, +team byte 0-7, -1 = uncapped
+  STALL_SINCE = 43, -- world tick the dead-ball clock started, 0 = running play
 }
 
 local T = {
@@ -49,6 +50,8 @@ local T = {
   restitution = 128, -- x256: the ball keeps half its speed off a walker
   substep_px = 8, -- max px per movement sub-step in the dominant axis
   kickoff_freeze = 36, -- ticks the ball ignores impulses after a reset
+  dead_ball_ticks = 600, -- motionless + unattended this long resets to kickoff
+  dead_ball_radius = 160, -- a live Living this close (L1) keeps the ball in play
   score_limit = 3,
   goal_score = 400,
   time_limit_ticks = 10800,
@@ -105,8 +108,68 @@ local function place_ball(ball, cx, cy)
   ball:setxy(cx - og.div(ball:sizex(), 2), cy - og.div(ball:sizey(), 2))
 end
 
+-- The design §6.3 kickoff backstop: an active team with zero live
+-- Livings comes back at every kickoff, whatever the difficulty submenu
+-- says — respawn Off cannot strand a team. Roster (guy) corpses persist
+-- in the oblist and are scheduled for revival (on_respawn places them at
+-- the team anchors); summoned corpses (owner, no guy) stay down. The
+-- engine sweeps unscheduled AI corpses at the end of their death tick,
+-- so a wiped bot side whose bodies are already gone is reprovisioned
+-- with a fresh squad — the same spawn path init uses for empty active
+-- teams — unless revives are already in flight.
+local function revive_wiped_teams()
+  local mask = og.mode_get(S.TEAM_MASK)
+  local ticks = og.mode_get(S.RESPAWN_TICKS)
+  local obs = og.oblist()
+  local live = { 0, 0, 0, 0 }
+  for k = 1, #obs do
+    local w = obs[k]
+    if w:dead() == 0 then
+      if w:order() == C.ORDER_LIVING then
+        local team = w:team_num()
+        if team < C.SCORE_TEAM_COUNT then
+          live[team + 1] = live[team + 1] + 1
+        end
+      end
+    end
+  end
+  for k = 1, #obs do
+    local w = obs[k]
+    if w:dead() ~= 0 then
+      if w:order() == C.ORDER_LIVING then
+        local team = anchors.score_team(w)
+        if team < C.SCORE_TEAM_COUNT then
+          if core.mask_has(mask, team) then
+            if live[team + 1] == 0 then
+              local eligible = true
+              if not w:has_guy() then
+                eligible = w:owner() == nil
+              end
+              if eligible then
+                if not og.respawn_pending(w) then
+                  og.respawn_schedule(w, ticks)
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  for team = 0, C.SCORE_TEAM_COUNT - 1 do
+    if core.mask_has(mask, team) then
+      if live[team + 1] == 0 then
+        if og.respawn_pending_count(team) == 0 then
+          anchors.spawn_bot_squad(team, S.ANCHOR_CURSOR)
+        end
+      end
+    end
+  end
+end
+
 -- Dead ball at the kickoff spot; impulses stay frozen for kickoff_freeze
 -- ticks and the touch history clears (an untouched goal scores nothing).
+-- Every kickoff also runs the wiped-team revive backstop.
 local function kickoff_reset(ball)
   local pos = og.mode_get(S.KICKOFF_POS)
   og.mode_set(S.BALL_VX, 0)
@@ -114,8 +177,10 @@ local function kickoff_reset(ball)
   og.mode_set(S.LAST_TOUCH1, 0)
   og.mode_set(S.LAST_KICKER, 0)
   og.mode_set(S.KICKOFF_UNTIL, og.world_tick() + T.kickoff_freeze)
+  og.mode_set(S.STALL_SINCE, 0)
   ball:set_team_num(C.SCORE_TEAM_COUNT)
   place_ball(ball, core.pos_x(pos), core.pos_y(pos))
+  revive_wiped_teams()
 end
 
 -- L1-normalized impulse: |vx| + |vy| always sums to the commanded speed,
@@ -316,6 +381,36 @@ local function run_goal_check(ball)
         end
       end
     end
+  end
+end
+
+-- The design §6.2.4 dead ball: a motionless ball with no live Living
+-- within dead_ball_radius for dead_ball_ticks straight goes back to the
+-- kickoff spot (which also runs the wiped-team revive backstop). Motion
+-- or a nearby Living clears the stall clock.
+local function run_dead_ball(ball, livings)
+  local speed = iabs(og.mode_get(S.BALL_VX)) + iabs(og.mode_get(S.BALL_VY))
+  if speed > 0 then
+    og.mode_set(S.STALL_SINCE, 0)
+    return
+  end
+  local bx, by = ball_center()
+  for k = 1, #livings do
+    local wx, wy = walker_center(livings[k])
+    if iabs(bx - wx) + iabs(by - wy) <= T.dead_ball_radius then
+      og.mode_set(S.STALL_SINCE, 0)
+      return
+    end
+  end
+  local now = og.world_tick()
+  local since = og.mode_get(S.STALL_SINCE)
+  if since == 0 then
+    og.mode_set(S.STALL_SINCE, now)
+    return
+  end
+  if now - since >= T.dead_ball_ticks then
+    core.announce("BALL RESET", C.SOUND_YO)
+    kickoff_reset(ball)
   end
 end
 
@@ -705,6 +800,7 @@ local function on_mode_tick(level, tick)
     end
     run_flight(ball, livings)
     run_goal_check(ball)
+    run_dead_ball(ball, livings)
   end
   if og.mod(og.world_tick(), T.ai_cadence) == 0 then
     caps.apply_caps(gens, spawn_count, S.SPAWN_CAP)
