@@ -345,6 +345,34 @@ TEST_F(ModesTdm, scenario_troops_strip_runs_before_the_bot_census)
         << "the census behind the strip backfills the emptied team";
 }
 
+TEST_F(ModesTdm, init_stamps_the_generator_hp_denominator)
+{
+    // The mini HP bar skips outright at max_hp == 0, and the loader ships
+    // FAMILY_TOWER with exactly that while set_difficulty writes fighting hp
+    // into hitpoints only. on_mode_init normalizes, so a damaged post reads
+    // as a fraction of its authored hp instead of showing no bar at all.
+    TdmRig rig;
+    walker* tower = rig.fx.spawn_generator(FAMILY_TOWER, 0, 304, 400, 2);
+    ASSERT_NE(nullptr, tower);
+    ASSERT_NE(nullptr, tower->stats());
+    const float authored = tower->stats()->hitpoints();
+    ASSERT_GT(authored, 0.0f);
+    ASSERT_EQ(0.0f, tower->stats()->max_hitpoints())
+        << "the precondition: this family reaches the mode with max_hp 0";
+
+    rig.fx.tick(1);
+    ASSERT_TRUE(rig.active());
+    ASSERT_FALSE(tower->dead()) << "an active team's generator is kept";
+    EXPECT_EQ(authored, tower->stats()->max_hitpoints())
+        << "on_mode_init normalizes max_hp to the authored hp";
+
+    tower->stats()->set_hitpoints(authored / 2.0f);
+    EXPECT_EQ(authored, tower->stats()->max_hitpoints())
+        << "damage moves hp, never the authored denominator";
+    EXPECT_LT(tower->stats()->hitpoints(), tower->stats()->max_hitpoints())
+        << "so the bar has a fraction to draw";
+}
+
 // ===========================================================================
 // Frag scoring (the killer channel) — every arm of the ledger
 // ===========================================================================

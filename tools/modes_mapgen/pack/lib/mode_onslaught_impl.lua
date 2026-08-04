@@ -635,13 +635,6 @@ local function on_mode_init(level, row)
           authored_mask = core.mask_add(authored_mask, team)
         end
       elseif order == C.ORDER_GENERATOR then
-        -- Normalize max_hp to the authored (difficulty-stamped) hp: the
-        -- loader ships TOWER/BONES/TREEHOUSE with max_hp 0 and TENT with
-        -- 100, while set_difficulty writes fighting hp into hitpoints
-        -- only — so the flip's hp = max_hp restore would strip a fresh
-        -- capture to 0 hp (or halve a tent). Every generator, neutral
-        -- bytes included: they are all capturable.
-        w.max_hp = w.hp
         local team = w:team_num()
         if team < C.SCORE_TEAM_COUNT then
           authored_mask = core.mask_add(authored_mask, team)
@@ -715,8 +708,11 @@ local function on_mode_init(level, row)
     end
   end
   -- Roster-only armies on request; keep_generators because the foundries ARE
-  -- the board here, not troops.
+  -- the board here. Then the HP denominators every surviving generator needs
+  -- for its flip restore and its HP bar — neutral bytes included, they are
+  -- all capturable.
   strip.strip_authored_troops(mask, { keep_generators = true })
+  core.normalize_generator_hp(obs)
 
   caps.bank_caps(row, S.SPAWN_CAP)
   local respawn_ticks = og.match_setting("respawn_ticks")

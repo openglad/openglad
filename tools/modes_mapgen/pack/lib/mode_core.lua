@@ -95,6 +95,25 @@ local function declare_team_win(team)
   og.declare_winner(team)
 end
 
+-- Normalize every live generator's max_hp to its authored (difficulty-
+-- stamped) hp. The loader ships TOWER/BONES/TREEHOUSE with max_hp 0 and TENT
+-- with 100, while set_difficulty writes fighting hp into hitpoints only. Two
+-- things need the denominator: Onslaught's flip restore (hp = max_hp would
+-- strip a fresh capture to 0 hp, or halve a tent) and the generator HP bar,
+-- which skips outright at max_hp == 0 rather than draw a full bar over a
+-- damaged post. Every mode fielding generators calls this from on_mode_init,
+-- before any damage lands, so max_hp is the full authored value.
+local function normalize_generator_hp(obs)
+  for k = 1, #obs do
+    local w = obs[k]
+    if w:dead() == 0 then
+      if w:order() == C.ORDER_GENERATOR then
+        w.max_hp = w.hp
+      end
+    end
+  end
+end
+
 -- Kill the fresh stain/life-gem drops under a corpse that will never
 -- respawn (og.respawn_schedule scrubs for scheduled corpses already;
 -- TDM/Onslaught call this for permanent bodies to keep cleric resurrects
@@ -149,6 +168,7 @@ return {
   activate_teams = activate_teams,
   announce = announce,
   declare_team_win = declare_team_win,
+  normalize_generator_hp = normalize_generator_hp,
   scrub_corpse = scrub_corpse,
   hud_score_line = hud_score_line,
   register_mode = register_mode,

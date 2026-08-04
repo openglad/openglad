@@ -399,6 +399,33 @@ TEST_F(ModesSoccer, empty_active_teams_get_bot_squads)
     EXPECT_EQ(5, alive_on_team(fx.world(), 1));
 }
 
+TEST_F(ModesSoccer, init_stamps_the_generator_hp_denominator)
+{
+    // Same shared normalization the other generator modes get: the pitch's
+    // ally generators reach the renderer with a denominator, so a damaged one
+    // draws a partial bar instead of being skipped at max_hp == 0.
+    SoccerWorld fx;
+    walker* tower = fx.spawn_generator(FAMILY_TOWER, 0, 200, 700, 2);
+    ASSERT_NE(nullptr, tower);
+    ASSERT_NE(nullptr, tower->stats());
+    const float authored = tower->stats()->hitpoints();
+    ASSERT_GT(authored, 0.0f);
+    ASSERT_EQ(0.0f, tower->stats()->max_hitpoints())
+        << "the precondition: this family reaches the mode with max_hp 0";
+
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    ASSERT_FALSE(tower->dead()) << "an active team's generator is kept";
+    EXPECT_EQ(authored, tower->stats()->max_hitpoints())
+        << "on_mode_init normalizes max_hp to the authored hp";
+
+    tower->stats()->set_hitpoints(authored / 2.0f);
+    EXPECT_EQ(authored, tower->stats()->max_hitpoints())
+        << "damage moves hp, never the authored denominator";
+    EXPECT_LT(tower->stats()->hitpoints(), tower->stats()->max_hitpoints())
+        << "so the bar has a fraction to draw";
+}
+
 TEST_F(ModesSoccer, scenario_troops_strip_takes_the_pitch_generators_too)
 {
     // Soccer passes no keep_generators: an ally generator is scenery here,
