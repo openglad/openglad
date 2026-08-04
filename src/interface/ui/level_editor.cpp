@@ -2261,11 +2261,11 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                                 
                                 if(levels.size() > 0)
                                 {
-                                    // #162: reload only right before the
-                                    // level rebuild — the no-levels branch
-                                    // keeps the OLD level's walkers alive,
-                                    // and they still borrow loader pixels.
-                                    og::runtime::current_session->myscreen_->myloader->reload_graphics_if_stale();
+                                    // #162: no reload here — LevelRuntimeData::load()
+                                    // wires entity services on entry, and the SDL
+                                    // wiring chokepoint reloads a stale loader. The
+                                    // no-levels branch keeps the OLD level's walkers
+                                    // alive and deliberately leaves the loader stale.
                                     loadLevel(levels.front());
                                     // Update minimap
                                     myradar.start(level.get());
@@ -2334,13 +2334,14 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         
                         if(load_first_level)
                         {
-                            // #162: reload only when we are about to rebuild
-                            // the level. Declining the prompt keeps the OLD
-                            // campaign's level open (cross-campaign level
-                            // transfer), and its live walkers still borrow
-                            // the loader's pixel buffers — the loader then
-                            // stays stale until a level load or re-entry.
-                            og::runtime::current_session->myscreen_->myloader->reload_graphics_if_stale();
+                            // #162: no reload here — LevelRuntimeData::load()
+                            // wires entity services on entry and the SDL wiring
+                            // chokepoint reloads a stale loader, so the rebuild
+                            // gets fresh sprites either way. Declining the prompt
+                            // keeps the OLD campaign's level open (cross-campaign
+                            // level transfer) with live walkers still borrowing
+                            // the loader's pixel buffers, so the loader
+                            // deliberately stays stale until a load or re-entry.
                             // Load first scenario
                             if(loadLevel(result.first_level))
                             {

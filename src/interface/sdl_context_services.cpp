@@ -199,6 +199,29 @@ void sdl_wire_world_entity_services(GameWorld* world, LevelRuntimeData* level)
     // after the wiring with fresh pixie borrows, and every other world
     // reloads through its own enumerated flow site (or the gameplay-entry
     // safety net) before its next draw.
+    //
+    // CAUTION — reload_graphics() FREES the loader buffers that live pixies
+    // hold raw pointers into (pixieN caches facings/bmp), so anything already
+    // on screen must be re-created before the next draw. On a live menu that
+    // rests on TWO independent facts, both verified on this branch:
+    //
+    //   1. Handler-driven builds (VIEW LEVEL, SET LEVEL, pick campaign, the
+    //      new-game setup reload) return MENU_OK/MENU_REDRAW, so the frame
+    //      ends in reset_buttons() re-creating every button pixie
+    //      (menu_screen_runner.cpp, picker_input.cpp).
+    //   2. spec.frame_tick runs AFTER reset_buttons and BEFORE draw_buttons,
+    //      with no re-init in between — and SCENARIO, Base Camp and MATCHUP
+    //      all load a level from exactly there (they poll the lobby, whose
+    //      campaign sync deliberately leaves the loader stale, #162). That is
+    //      safe ONLY because none of those three specs carries an art_family
+    //      row: their buttons are text+rect and borrow no loader pixels. The
+    //      only art_family rows in the tree are the main menu's NEW GAME and
+    //      TRAIN's +/- buttons, and neither screen loads a level.
+    //
+    // So: giving SCENARIO / Base Camp / MATCHUP an art_family row, or giving
+    // the main menu or TRAIN a level-loading frame_tick (a preview on a live
+    // menu), re-opens the #162 use-after-free with no other code change. A
+    // new flow of either shape must re-init its buttons after the wiring.
     sdl_entity_loader()->reload_graphics_if_stale();
     wire_world_with_loader(world, sdl_entity_loader());
 }
