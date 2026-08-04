@@ -18,6 +18,7 @@
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/interface/ui/picker_common.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
@@ -497,11 +498,13 @@ TEST(SaveDataVersions, save_data_load_v11_reads_strip_flag)
         << "v11 should read ctf_strip_scenario_troops";
 }
 
-// The knob grew a third state (2 = strip every authored fighter) on the SAME
-// int16 record field, so v11 must carry it without a format bump.
+// The knob is 0 (keep the authored cast) or 2 (strip it) on the SAME int16
+// record field, so v11 carries either without a format bump. State 1 is the
+// retired middle state: it still round-trips verbatim, and every strip rule
+// reads it as 2 — pinned by the OWN-semantics arm below.
 TEST(SaveDataVersions, save_data_round_trips_strip_all_without_a_format_bump)
 {
-    for (const short state : {short{0}, short{1}, short{2}})
+    for (const short state : {short{0}, short{2}, short{1}})
     {
         write_save_file("ver11_strip_all",
                         /*version=*/11,
@@ -532,6 +535,11 @@ TEST(SaveDataVersions, save_data_round_trips_strip_all_without_a_format_bump)
         ASSERT_TRUE(twice.load("ver11_strip_all_rt")) << "state " << state;
         ASSERT_EQ(state, twice.ctf_strip_scenario_troops)
             << "state " << state << " must survive the game's own writer";
+
+        // What the stored value MEANS: 0 keeps, everything above it strips.
+        EXPECT_EQ(state == 0 ? "TROOPS: ALL" : "TROOPS: OWN",
+                  og::ui::format_ctf_troops_label(twice))
+            << "state " << state;
     }
 }
 

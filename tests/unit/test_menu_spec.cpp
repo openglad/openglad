@@ -132,18 +132,17 @@ TEST(MenuSpec, ctf_setting_labels_full_cycles)
         EXPECT_EQ(label, og::ui::menu_item_label(*caps, context_for(save)));
     }
 
-    // Three states. This save carries no campaign, so the cycle takes the
-    // classic order and skips the versus-only middle state; the labels for
-    // all three are pinned by state below.
+    // Two states, same cycle on every campaign.
     save.ctf_strip_scenario_troops = 0;
-    EXPECT_EQ("TROOPS: SCEN",
+    EXPECT_EQ("TROOPS: ALL",
               og::ui::menu_item_label(*troops, context_for(save)));
     og::ui::toggle_ctf_scenario_troops(save);
-    EXPECT_EQ("TROOPS: NONE",
+    EXPECT_EQ("TROOPS: OWN",
               og::ui::menu_item_label(*troops, context_for(save)));
     og::ui::toggle_ctf_scenario_troops(save);
-    EXPECT_EQ("TROOPS: SCEN",
+    EXPECT_EQ("TROOPS: ALL",
               og::ui::menu_item_label(*troops, context_for(save)));
+    // The retired middle state still labels as OWN off an older save.
     save.ctf_strip_scenario_troops = 1;
     EXPECT_EQ("TROOPS: OWN",
               og::ui::menu_item_label(*troops, context_for(save)));

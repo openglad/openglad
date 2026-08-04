@@ -269,15 +269,16 @@ std::uint8_t ctf_authored_team_mask_for_loaded_level(
     const GameWorld& world,
     std::string_view mounted_campaign);
 
-// Toggle the CTF scenario-troops strip flag (0 = keep authored troops).
-// Scenario-troops knob, three states on the existing int16 field:
-//   0 Keep        — authored entities untouched (default, classic behavior)
-//   1 Strip teams — per active score team fielding a roster walker, drop its
-//                   authored livings + generators (versus/mode rule only)
-//   2 Strip ALL   — drop every authored living + generator with no roster guy,
-//                   any team, wildlife included (Onslaught keeps generators)
-// Pure cycle, exposed so the classic-vs-versus order is unit-pinnable.
-short next_ctf_scenario_troops(short current, bool versus);
+// Scenario-troops knob, two states on the existing int16 field:
+//   0 ALL — the level's authored cast is untouched (default, classic)
+//   2 OWN — drop every authored living + generator with no roster guy, any
+//           team, wildlife included (Onslaught keeps its generators, and
+//           protected named NPCs are exempt on classic maps)
+// Both states apply on every campaign, so the cycle is a plain flip. The
+// field keeps accepting the retired middle state 1 off disk and off the
+// wire; the strip rules read anything above 0 as OWN, and cycling from it
+// lands on ALL. Pure, so the order is unit-pinnable.
+short next_ctf_scenario_troops(short current);
 
 void toggle_ctf_scenario_troops(SaveData& save);
 
@@ -661,9 +662,8 @@ bool sync_campaign_mount_to_save(const SaveData& save);
 
 enum class ScenarioStripReason : std::uint8_t {
     None = 0,
-    TroopsOff,     // removed by the scenario-troops strip ('*')
     InactiveTeam,  // removed by the CTF inactive-team strip ('+')
-    StripAll,      // removed by TROOPS: NONE ('!'), versus AND classic
+    StripAll,      // removed by TROOPS: OWN ('!'), versus AND classic
 };
 
 struct ScenarioRosterRow {
@@ -685,7 +685,6 @@ struct ScenarioRosterReport {
     std::array<bool, 4> team_active = {};    // the activation clamp
     std::array<int, 4> team_anchor_count = {};
     std::vector<ScenarioRosterRow> rows; // grouped, team-major
-    bool any_troops_off = false;
     bool any_inactive = false;
     bool any_strip_all = false;
 };
@@ -699,7 +698,7 @@ struct ScenarioRosterReport {
 ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
                                                   const SaveData& save);
 
-// Render the report as display lines, every line <= 48 chars, with '*'/'+'
+// Render the report as display lines, every line <= 48 chars, with '+'/'!'
 // strip suffixes and trailing legend lines.
 std::vector<std::string> format_scenario_report_lines(
     const ScenarioRosterReport& report);
@@ -727,8 +726,8 @@ std::string format_ctf_teams_label(const SaveData& save);
 // Format the capture limit label ("Capture Limit: Map default" or ": N").
 std::string format_ctf_caps_label(const SaveData& save);
 
-// Format the scenario-troops label ("Troops: Scen" when keeping authored
-// troops, "Troops: Own" when stripping them).
+// Format the scenario-troops label ("TROOPS: ALL" when keeping the authored
+// cast, "TROOPS: OWN" when stripping it).
 std::string format_ctf_troops_label(const SaveData& save);
 
 // "Respawns: Off" / "Respawns: Heroes" / "Respawns: Everyone" /

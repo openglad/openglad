@@ -62,10 +62,10 @@ GateBinding terminal_item_gate(PickerMenuCommand command)
     case PickerMenuCommand::CycleCtfCaptureLimit:
         return GateBinding{MenuGate::VersusCampaignOnly, nullptr,
                            kMatchupSettingsGuardMessage};
-    // Scenario troops is NOT versus-gated any more: "strip everything
-    // authored" is meaningful on classic campaigns too, which is why the
-    // control moved to the SCENARIO screen. The cycle itself skips the
-    // versus-only middle state on a classic campaign.
+    // Scenario troops is NOT versus-gated: "strip everything authored" is
+    // meaningful on classic campaigns too, which is why the control moved to
+    // the SCENARIO screen. Both states are valid on every campaign, so the
+    // cycle is the same flip everywhere.
     case PickerMenuCommand::ToggleReady:
         return GateBinding{MenuGate::NetworkedOnly, nullptr,
                            kReadyGuardMessage};

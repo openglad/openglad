@@ -567,24 +567,18 @@ std::uint8_t ctf_authored_team_mask_for_loaded_level(
     return og::sim::authored_team_mask(world);
 }
 
-short next_ctf_scenario_troops(short current, bool versus)
+short next_ctf_scenario_troops(short current)
 {
-    // 0 Keep -> 1 Strip teams -> 2 Strip ALL -> 0.
-    // State 1 is a versus/mode rule (per active score team that fields a
-    // roster walker); on a classic campaign it does nothing, so the cycle
-    // skips it rather than showing a label that lies about the outcome.
-    switch (current)
-    {
-        case 0: return versus ? 1 : 2;
-        case 1: return 2;
-        default: return 0;
-    }
+    // ALL <-> OWN. Every other stored value — the retired middle state 1, or
+    // junk from a save the lobby never sanitized — reads as OWN everywhere
+    // else, so cycling off it goes to ALL.
+    return current == 0 ? short{2} : short{0};
 }
 
 void toggle_ctf_scenario_troops(SaveData& save)
 {
-    save.ctf_strip_scenario_troops = next_ctf_scenario_troops(
-        save.ctf_strip_scenario_troops, is_versus_campaign(save));
+    save.ctf_strip_scenario_troops =
+        next_ctf_scenario_troops(save.ctf_strip_scenario_troops);
 }
 
 // --- Difficulty submenu match rules ---
@@ -1721,13 +1715,12 @@ std::string format_ctf_caps_label(const SaveData& save)
 
 std::string format_ctf_troops_label(const SaveData& save)
 {
-    // SCENARIO-screen faces are 80px = 12 characters; all three fit exactly.
-    switch (save.ctf_strip_scenario_troops)
-    {
-        case 1: return "TROOPS: OWN";   // strip each roster team's canned troops
-        case 2: return "TROOPS: NONE";  // strip every authored fighter
-        default: return "TROOPS: SCEN"; // keep the level as authored
-    }
+    // SCENARIO-screen faces are 80px = 12 characters; both labels fit.
+    // Anything above 0 strips (a stored 1 from the retired middle state
+    // included), so the label reads OWN for the whole range.
+    if (save.ctf_strip_scenario_troops > 0)
+        return "TROOPS: OWN";  // strip every authored fighter and generator
+    return "TROOPS: ALL";      // keep the level as authored
 }
 
 std::string format_respawn_mode_label(const SaveData& save)
@@ -2612,22 +2605,6 @@ bool is_score_team_index(int team)
     return team >= 0 && team < 4;
 }
 
-std::vector<short> roster_teams_for_strip(const SaveData& save)
-{
-    std::vector<short> teams;
-    for (const auto& member : save.team_list)
-    {
-        if (!member)
-            continue;
-        const short team = member->teamnum;
-        if (team < 0 || team >= MAX_PLAYERS)
-            continue;
-        if (std::find(teams.begin(), teams.end(), team) == teams.end())
-            teams.push_back(team);
-    }
-    return teams;
-}
-
 std::string clip_line(std::string line)
 {
     constexpr std::size_t kMaxLineLength = 48;
@@ -2640,7 +2617,6 @@ const char* strip_suffix(ScenarioStripReason reason)
 {
     switch (reason)
     {
-        case ScenarioStripReason::TroopsOff: return "*";
         case ScenarioStripReason::InactiveTeam: return "+";
         case ScenarioStripReason::StripAll: return "!";
         default: return "";
@@ -2702,16 +2678,12 @@ ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
     }
 
     // Strip-annotation predicates (save-side mirror of the sim rules).
-    // The sim consumes ctf_strip_scenario_troops on ANY scripted map, so
-    // the preview must not add a campaign gate the sim does not have.
-    const std::vector<short> roster_teams = roster_teams_for_strip(save);
-    const bool troops_strip_on = report.is_versus && report.will_activate &&
-        save.ctf_strip_scenario_troops == 1;
-    // TROOPS: NONE runs on EVERY map, versus and classic alike, on every
-    // team including wildlife. Protected named NPCs are the one exemption
-    // (the engine sweep and the mode helper both honour it), so the preview
-    // shows exactly what survives.
-    const bool strip_all_on = save.ctf_strip_scenario_troops == 2;
+    // TROOPS: OWN runs on EVERY map, versus and classic alike, on every team
+    // including wildlife — the sim adds no campaign gate, so neither does the
+    // preview. Protected named NPCs are the one exemption (the engine sweep
+    // and the mode helper both honour it), so the preview shows exactly what
+    // survives. Any stored value above 0 means OWN.
+    const bool strip_all_on = save.ctf_strip_scenario_troops > 0;
     auto strip_reason_for_team = [&](int team, bool protected_npc) {
         if (strip_all_on)
         {
@@ -2724,12 +2696,6 @@ ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
         // team is outside the score range or inactive on an activating map.
         if (!is_score_team_index(team) || !report.team_active[team])
             return ScenarioStripReason::InactiveTeam;
-        if (troops_strip_on &&
-            std::find(roster_teams.begin(), roster_teams.end(),
-                      static_cast<short>(team)) != roster_teams.end())
-        {
-            return ScenarioStripReason::TroopsOff;
-        }
         return ScenarioStripReason::None;
     };
 
@@ -2819,9 +2785,7 @@ ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
 
     for (const ScenarioRosterRow& row : report.rows)
     {
-        if (row.strip_reason == ScenarioStripReason::TroopsOff)
-            report.any_troops_off = true;
-        else if (row.strip_reason == ScenarioStripReason::InactiveTeam)
+        if (row.strip_reason == ScenarioStripReason::InactiveTeam)
             report.any_inactive = true;
         else if (row.strip_reason == ScenarioStripReason::StripAll)
             report.any_strip_all = true;
@@ -2901,15 +2865,13 @@ std::vector<std::string> format_scenario_report_lines(
         lines.push_back(clip_line(std::move(text)));
     }
 
-    if (report.any_troops_off || report.any_inactive || report.any_strip_all)
+    if (report.any_inactive || report.any_strip_all)
     {
         lines.emplace_back();
-        if (report.any_troops_off)
-            lines.push_back(clip_line("* REMOVED: TROOPS OFF"));
         if (report.any_inactive)
             lines.push_back(clip_line("+ REMOVED: INACTIVE TEAM"));
         if (report.any_strip_all)
-            lines.push_back(clip_line("! REMOVED: TROOPS NONE"));
+            lines.push_back(clip_line("! REMOVED: TROOPS OWN"));
     }
     return lines;
 }

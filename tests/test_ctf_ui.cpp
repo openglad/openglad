@@ -251,7 +251,7 @@ TEST(CtfUi, team_build_row_and_matchup_settings_cycle)
     (void)change_ctf_caps();
     EXPECT_EQ(1, (int)save.ctf_capture_limit);
     (void)change_ctf_troops();
-    EXPECT_EQ(1, (int)save.ctf_strip_scenario_troops);
+    EXPECT_EQ(2, (int)save.ctf_strip_scenario_troops);
 
     const auto& live_rows = og::runtime::current_session->picker_->teamsmenu_buttons;
     ASSERT_EQ(static_cast<std::size_t>(kTeamsMenuButtonCount), live_rows.size());
@@ -264,19 +264,21 @@ TEST(CtfUi, team_build_row_and_matchup_settings_cycle)
               live_scenario.size());
     EXPECT_EQ("TROOPS: OWN", live_scenario[kScenarioMenuTroopsIndex].label);
 
-    // Versus campaign: the full three-state cycle.
-    (void)change_ctf_troops();
-    EXPECT_EQ(2, (int)save.ctf_strip_scenario_troops);
-    EXPECT_EQ("TROOPS: NONE", live_scenario[kScenarioMenuTroopsIndex].label);
-
     (void)change_ctf_troops();
     EXPECT_EQ(0, (int)save.ctf_strip_scenario_troops);
-    EXPECT_EQ("TROOPS: SCEN", live_scenario[kScenarioMenuTroopsIndex].label);
+    EXPECT_EQ("TROOPS: ALL", live_scenario[kScenarioMenuTroopsIndex].label);
 
-    // Classic campaign: the versus-only middle state is skipped.
+    // Classic campaign: the same two states, no campaign gate.
     save.current_campaign = "org.openglad.gladiator";
     (void)change_ctf_troops();
     EXPECT_EQ(2, (int)save.ctf_strip_scenario_troops);
+    EXPECT_EQ("TROOPS: OWN", live_scenario[kScenarioMenuTroopsIndex].label);
+    (void)change_ctf_troops();
+    EXPECT_EQ(0, (int)save.ctf_strip_scenario_troops);
+
+    // A save carrying the retired middle state shows OWN and cycles to ALL.
+    save.ctf_strip_scenario_troops = 1;
+    EXPECT_EQ("TROOPS: OWN", og::ui::format_ctf_troops_label(save));
     (void)change_ctf_troops();
     EXPECT_EQ(0, (int)save.ctf_strip_scenario_troops);
 
@@ -448,7 +450,7 @@ struct TeamsFlowState
     // TROOPS lives on the SCENARIO screen; one flag per state it flips to.
     bool troops_row_seen = false;
     bool troops_own_seen = false;
-    bool troops_none_seen = false;
+    bool troops_all_seen = false;
 };
 
 int teams_local_flow_injector(void* data)
@@ -551,18 +553,18 @@ int teams_ctf_settings_flow_injector(void* data)
     wait_for_interactable("view_scenario", 10000);
     SDL_Delay(300);
 
-    // TROOPS is a SCENARIO row now, host-gated like SET CAMPAIGN. On this
-    // versus campaign the cycle runs SCEN -> OWN -> NONE.
+    // TROOPS is a SCENARIO row now, host-gated like SET CAMPAIGN. The cycle
+    // flips ALL <-> OWN on every campaign.
     state->troops_row_seen =
-        wait_for_interactable_label("troops", "TROOPS: SCEN", 5000);
+        wait_for_interactable_label("troops", "TROOPS: ALL", 5000);
     SDL_Delay(300);
     interact("troops");
     state->troops_own_seen =
         wait_for_interactable_label("troops", "TROOPS: OWN", 5000);
     SDL_Delay(300);
     interact("troops");
-    state->troops_none_seen =
-        wait_for_interactable_label("troops", "TROOPS: NONE", 5000);
+    state->troops_all_seen =
+        wait_for_interactable_label("troops", "TROOPS: ALL", 5000);
     SDL_Delay(300);
 
     // VIEW LEVEL on the loaded CTF map (the save0 load mounted the CTF
@@ -837,12 +839,12 @@ TEST(CtfUi, matchup_ctf_settings_flow)
     EXPECT_TRUE(state.troops_row_seen)
         << "TROOPS should be visible to the host on SCENARIO";
     EXPECT_TRUE(state.troops_own_seen) << "Troops cycle should relabel to OWN";
-    EXPECT_TRUE(state.troops_none_seen)
-        << "Troops cycle should reach the third state";
+    EXPECT_TRUE(state.troops_all_seen)
+        << "Troops cycle should flip back to ALL";
 
     EXPECT_EQ(2, (int)save.ctf_team_count);
     EXPECT_EQ(1, (int)save.ctf_capture_limit);
-    EXPECT_EQ(2, (int)save.ctf_strip_scenario_troops);
+    EXPECT_EQ(0, (int)save.ctf_strip_scenario_troops);
 
     EXPECT_TRUE(state.viewer_back_seen)
         << "VIEW LEVEL should open on the mounted CTF map";

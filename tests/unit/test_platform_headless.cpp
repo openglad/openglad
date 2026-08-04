@@ -965,8 +965,8 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "999\n"
         "1\n"       // scenario: set campaign (blank keeps current)
         "\n"
-        "6\n"       // scenario: cycle scenario troops (classic: 0 -> 2)
-        "6\n"       // scenario: cycle scenario troops (classic: 2 -> 0)
+        "6\n"       // scenario: cycle scenario troops (ALL -> OWN)
+        "6\n"       // scenario: cycle scenario troops (OWN -> ALL)
         "7\n"       // scenario: back -> team build
         "8\n"       // team build: networking (unavailable)
         "7\n"       // team build: back -> main
@@ -1528,8 +1528,8 @@ TEST(PlatformHeadless, text_picker_shows_display_titles_when_campaign_mounted)
         "\n"
         "1\n"       // scenario: set campaign (blank keeps current)
         "\n"
-        "6\n"       // scenario: cycle scenario troops (classic: 0 -> 2)
-        "6\n"       // scenario: cycle scenario troops (classic: 2 -> 0)
+        "6\n"       // scenario: cycle scenario troops (ALL -> OWN)
+        "6\n"       // scenario: cycle scenario troops (OWN -> ALL)
         "7\n"       // scenario: back -> team build
         "7\n"       // team build: back -> main
         "7\n";      // main: quit

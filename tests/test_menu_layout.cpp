@@ -1397,7 +1397,7 @@ TEST(MenuLayout, scenariomenu_static_layout)
         {"view_scenario", "VIEW LEVEL", 30, 100, 80, 15, MenuNav{.up = 2, .down = 0, .right = 4}},
         {"matchup", "MATCHUP", 120, 100, 80, 15, MenuNav{.up = 2, .down = 6, .left = 3, .right = 5}},
         {"progress", "PROGRESS", 210, 100, 80, 15, MenuNav{.up = 2, .down = 0, .left = 4}},
-        {"troops", "TROOPS: SCEN", 120, 140, 80, 15, MenuNav{.up = 4, .down = 0}},
+        {"troops", "TROOPS: ALL", 120, 140, 80, 15, MenuNav{.up = 4, .down = 0}},
     };
 
     for (int i = 0; i < count; ++i)

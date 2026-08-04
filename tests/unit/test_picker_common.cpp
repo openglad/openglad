@@ -1635,30 +1635,30 @@ TEST(PickerCommon, reset_for_new_game_sets_gold)
 
 TEST(PickerCommon, next_ctf_scenario_troops_cycle_orders)
 {
-    // Versus: all three states. Classic: state 1 is a versus/mode rule that
-    // would do nothing, so the cycle skips it rather than showing a label
-    // that lies about the outcome.
-    EXPECT_EQ(1, og::ui::next_ctf_scenario_troops(0, true));
-    EXPECT_EQ(2, og::ui::next_ctf_scenario_troops(1, true));
-    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(2, true));
+    // Two states, and both apply on every campaign, so the cycle is one flip
+    // with no campaign argument to get wrong.
+    EXPECT_EQ(2, og::ui::next_ctf_scenario_troops(0));
+    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(2));
 
-    EXPECT_EQ(2, og::ui::next_ctf_scenario_troops(0, false));
-    EXPECT_EQ(2, og::ui::next_ctf_scenario_troops(1, false));
-    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(2, false));
-
-    // A junk value from an older/foreign save falls back to Keep.
-    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(7, true));
-    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(-1, false));
+    // The retired middle state and any junk value read as OWN everywhere
+    // else, so cycling off them lands on ALL.
+    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(1));
+    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(7));
+    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(-1));
 }
 
-TEST(PickerCommon, toggle_ctf_scenario_troops_cycles_three_states)
+TEST(PickerCommon, toggle_ctf_scenario_troops_flips_two_states)
 {
-    // SaveData with no campaign set is not a versus campaign, so this is
-    // the classic order.
     SaveData save;
     ASSERT_EQ(0, save.ctf_strip_scenario_troops);
     og::ui::toggle_ctf_scenario_troops(save);
-    ASSERT_EQ(2, save.ctf_strip_scenario_troops);
+    ASSERT_EQ(2, save.ctf_strip_scenario_troops)
+        << "the menus write 2 so networked peers agree on OWN";
+    og::ui::toggle_ctf_scenario_troops(save);
+    ASSERT_EQ(0, save.ctf_strip_scenario_troops);
+
+    // A save carrying the retired middle state cycles back to ALL.
+    save.ctf_strip_scenario_troops = 1;
     og::ui::toggle_ctf_scenario_troops(save);
     ASSERT_EQ(0, save.ctf_strip_scenario_troops);
 }
@@ -1666,11 +1666,12 @@ TEST(PickerCommon, toggle_ctf_scenario_troops_cycles_three_states)
 TEST(PickerCommon, format_ctf_troops_label_strings_fit_budget)
 {
     SaveData save;
-    ASSERT_EQ("TROOPS: SCEN", og::ui::format_ctf_troops_label(save));
+    ASSERT_EQ("TROOPS: ALL", og::ui::format_ctf_troops_label(save));
+    save.ctf_strip_scenario_troops = 2;
+    ASSERT_EQ("TROOPS: OWN", og::ui::format_ctf_troops_label(save));
+    // A stored legacy 1 strips everything, so it must not read as ALL.
     save.ctf_strip_scenario_troops = 1;
     ASSERT_EQ("TROOPS: OWN", og::ui::format_ctf_troops_label(save));
-    save.ctf_strip_scenario_troops = 2;
-    ASSERT_EQ("TROOPS: NONE", og::ui::format_ctf_troops_label(save));
     // Every state fits the 80px (12-character) SCENARIO face.
     for (short state = 0; state <= 2; ++state)
     {
@@ -2189,7 +2190,7 @@ TEST(PickerCommon, scenario_report_versus_sections_and_strip_annotations)
     SaveData save;
     save.current_campaign = "org.openglad.modes";
     save.my_team = 0;
-    save.ctf_strip_scenario_troops = 1;
+    save.ctf_strip_scenario_troops = 0; // TROOPS: ALL — only activation strips
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
     save.team_list[0]->teamnum = 0;
     save.team_size = 1;
@@ -2210,11 +2211,10 @@ TEST(PickerCommon, scenario_report_versus_sections_and_strip_annotations)
 
     const auto* roster_troops = find_group_row(report, 0, FAMILY_SOLDIER, 3);
     ASSERT_TRUE(roster_troops != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::TroopsOff,
-              roster_troops->strip_reason);
+    EXPECT_EQ(og::ui::ScenarioStripReason::None, roster_troops->strip_reason);
     const auto* roster_gen = find_generator_row(report, 0);
     ASSERT_TRUE(roster_gen != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::TroopsOff, roster_gen->strip_reason);
+    EXPECT_EQ(og::ui::ScenarioStripReason::None, roster_gen->strip_reason);
 
     const auto* bot_troops = find_group_row(report, 1, FAMILY_ORC, 4);
     ASSERT_TRUE(bot_troops != nullptr);
@@ -2231,8 +2231,8 @@ TEST(PickerCommon, scenario_report_versus_sections_and_strip_annotations)
     EXPECT_EQ(og::ui::ScenarioStripReason::InactiveTeam,
               non_score->strip_reason);
 
-    EXPECT_TRUE(report.any_troops_off);
     EXPECT_TRUE(report.any_inactive);
+    EXPECT_FALSE(report.any_strip_all);
 
     const std::vector<std::string> lines =
         og::ui::format_scenario_report_lines(report);
@@ -2243,12 +2243,68 @@ TEST(PickerCommon, scenario_report_versus_sections_and_strip_annotations)
         << "score teams keep color-name headers";
     EXPECT_TRUE(any_line_contains(lines, "TEAM 5"))
         << "non-score teams keep the raw index header";
-    EXPECT_TRUE(any_line_contains(lines, "1x SOLDIER Lv 3*"));
+    EXPECT_TRUE(any_line_contains(lines, "1x SOLDIER Lv 3"));
+    EXPECT_FALSE(any_line_contains(lines, "1x SOLDIER Lv 3!"))
+        << "TROOPS: ALL leaves the authored cast unannotated";
     EXPECT_TRUE(any_line_contains(lines, "1x ELF Lv 2+"));
     EXPECT_TRUE(any_line_contains(lines, "1x ELF Lv 9+"))
         << "non-score teams carry the inactive strip suffix";
-    EXPECT_TRUE(any_line_contains(lines, "* REMOVED: TROOPS OFF"));
     EXPECT_TRUE(any_line_contains(lines, "+ REMOVED: INACTIVE TEAM"));
+    for (const auto& line : lines)
+        EXPECT_LE(line.size(), 48u) << line;
+}
+
+TEST(PickerCommon, scenario_report_troops_own_annotates_every_authored_row)
+{
+    // TROOPS: OWN outranks the activation strip: everything authored goes,
+    // on every team, wildlife and generators included. Protected named NPCs
+    // are the one exemption the sim honours, so the preview keeps them clean.
+    ReportWorld fx(true);
+    fx.spawn_anchor(0);
+    fx.spawn_anchor(1);
+    fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
+    fx.spawn_generator(FAMILY_TENT, 0);
+    fx.spawn_living_named(FAMILY_ORC, 1, 4, nullptr);
+    fx.spawn_living_named(FAMILY_ELF, 2, 2, nullptr); // no flag: inactive team
+    fx.spawn_living_named(FAMILY_ELF, 5, 9, nullptr); // non-score team
+    walker* const protected_npc =
+        fx.spawn_living_named(FAMILY_ARCHER, 1, 6, "REEVE");
+    ASSERT_TRUE(protected_npc != nullptr);
+    protected_npc->set_save_all_protected(true);
+
+    SaveData save;
+    save.current_campaign = "org.openglad.modes";
+    save.my_team = 0;
+    save.ctf_strip_scenario_troops = 2;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 0;
+    save.team_size = 1;
+
+    const og::ui::ScenarioRosterReport report =
+        og::ui::build_scenario_roster_report(fx.world(), save);
+
+    for (const auto& row : report.rows)
+    {
+        if (row.named)
+            continue;
+        EXPECT_EQ(og::ui::ScenarioStripReason::StripAll, row.strip_reason)
+            << "team " << row.team << " family " << row.family;
+    }
+    const auto* reeve = find_named_row(report, "REEVE");
+    ASSERT_TRUE(reeve != nullptr);
+    EXPECT_EQ(og::ui::ScenarioStripReason::None, reeve->strip_reason)
+        << "the protected bit is the exemption";
+
+    EXPECT_TRUE(report.any_strip_all);
+    EXPECT_FALSE(report.any_inactive)
+        << "the OWN sweep subsumes the inactive-team strip";
+
+    const std::vector<std::string> lines =
+        og::ui::format_scenario_report_lines(report);
+    EXPECT_TRUE(any_line_contains(lines, "1x SOLDIER Lv 3!"));
+    EXPECT_TRUE(any_line_contains(lines, "1x GENERATOR!"));
+    EXPECT_TRUE(any_line_contains(lines, "! REMOVED: TROOPS OWN"));
+    EXPECT_FALSE(any_line_contains(lines, "+ REMOVED: INACTIVE TEAM"));
     for (const auto& line : lines)
         EXPECT_LE(line.size(), 48u) << line;
 }
@@ -2279,16 +2335,17 @@ TEST(PickerCommon, scenario_report_preserves_local_team_colors_in_allied_mode)
     EXPECT_EQ(2, report.your_team)
         << "local Together mode keeps the selected playing team";
 
+    // The save carries the retired middle state; every team's authored cast
+    // goes, which is what the sim does with any value above 0.
     const auto* team0 = find_group_row(report, 0, FAMILY_SOLDIER, 3);
     ASSERT_TRUE(team0 != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::None, team0->strip_reason);
+    EXPECT_EQ(og::ui::ScenarioStripReason::StripAll, team0->strip_reason);
     const auto* team1 = find_group_row(report, 1, FAMILY_ORC, 4);
     ASSERT_TRUE(team1 != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::None, team1->strip_reason);
+    EXPECT_EQ(og::ui::ScenarioStripReason::StripAll, team1->strip_reason);
     const auto* team3 = find_group_row(report, 3, FAMILY_ARCHER, 5);
     ASSERT_TRUE(team3 != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::TroopsOff, team3->strip_reason)
-        << "the report must mirror the roster's actual color";
+    EXPECT_EQ(og::ui::ScenarioStripReason::StripAll, team3->strip_reason);
 }
 
 TEST(PickerCommon, scenario_report_non_activating_ctf_keeps_classic_rules)
@@ -2299,7 +2356,7 @@ TEST(PickerCommon, scenario_report_non_activating_ctf_keeps_classic_rules)
 
     SaveData save;
     save.current_campaign = "org.openglad.modes";
-    save.ctf_strip_scenario_troops = 1;
+    save.ctf_strip_scenario_troops = 0;
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
     save.team_list[0]->teamnum = 0;
     save.team_size = 1;
@@ -2312,7 +2369,7 @@ TEST(PickerCommon, scenario_report_non_activating_ctf_keeps_classic_rules)
     const auto* troops = find_group_row(report, 0, FAMILY_SOLDIER, 3);
     ASSERT_TRUE(troops != nullptr);
     EXPECT_EQ(og::ui::ScenarioStripReason::None, troops->strip_reason)
-        << "the strip is inert on non-activating versus maps";
+        << "the activation strip is inert on non-activating versus maps";
 
     const std::vector<std::string> lines =
         og::ui::format_scenario_report_lines(report);
@@ -2323,7 +2380,7 @@ TEST(PickerCommon, scenario_report_troops_strip_annotates_outside_versus_campaig
 {
     // The sim consumes ctf_strip_scenario_troops on ANY scripted map (no
     // campaign gate); the preview must mirror it exactly or a custom
-    // scripted map outside the shipped campaign strips in-sim with no '*'
+    // scripted map outside the shipped campaign strips in-sim with no '!'
     // in the viewer.
     ReportWorld fx(true);
     fx.spawn_anchor(0);
@@ -2346,10 +2403,11 @@ TEST(PickerCommon, scenario_report_troops_strip_annotates_outside_versus_campaig
     EXPECT_TRUE(report.will_activate);
     const auto* troops = find_group_row(report, 0, FAMILY_SOLDIER, 3);
     ASSERT_TRUE(troops != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::TroopsOff, troops->strip_reason);
+    EXPECT_EQ(og::ui::ScenarioStripReason::StripAll, troops->strip_reason);
     const auto* bot_troops = find_group_row(report, 1, FAMILY_ORC, 4);
     ASSERT_TRUE(bot_troops != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::None, bot_troops->strip_reason);
+    EXPECT_EQ(og::ui::ScenarioStripReason::StripAll, bot_troops->strip_reason)
+        << "OWN is not a per-roster-team rule";
 }
 
 // --- MATCHUP detail pagination (the per-team '>' pager) ---------------------

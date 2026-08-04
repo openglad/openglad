@@ -2007,38 +2007,39 @@ TEST(CursesPickerClient, run_picker_through_team_build_then_quit)
 
 // The troops control lives in the SCENARIO submenu now and is NOT
 // versus-gated: "strip everything authored" applies to classic campaigns
-// too. The cycle order differs per campaign kind.
-TEST(CursesPickerClient, ctf_troops_toggle_on_ctf_campaign_only)
+// too, and both states cycle the same way on either campaign kind.
+TEST(CursesPickerClient, ctf_troops_toggle_runs_on_every_campaign)
 {
     PickerFixture f;
     const auto* troops_item = og::ui::find_picker_menu_item(
         PickerMenuId::Scenario, PickerMenuCommand::ToggleCtfScenarioTroops);
     ASSERT_NE(troops_item, nullptr);
 
-    // Classic campaign: no refusal notice; the cycle skips the versus-only
-    // middle state, so SCEN -> NONE -> SCEN.
+    // Classic campaign: no refusal notice, ALL -> OWN -> ALL.
     f.save().current_campaign = "org.openglad.gladiator";
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
     EXPECT_EQ(2, (int)f.save().ctf_strip_scenario_troops);
     EXPECT_EQ(f.t().dump().find("versus maps only"), std::string::npos);
-    EXPECT_NE(f.t().dump().find("TROOPS: NONE"), std::string::npos);
+    EXPECT_NE(f.t().dump().find("TROOPS: OWN"), std::string::npos);
 
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
     EXPECT_EQ(0, (int)f.save().ctf_strip_scenario_troops);
 
-    // Versus campaign: SCEN -> OWN -> NONE -> SCEN.
+    // Versus campaign: the same two states.
     f.save().current_campaign = "org.openglad.modes";
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
-    EXPECT_EQ(1, (int)f.save().ctf_strip_scenario_troops);
+    EXPECT_EQ(2, (int)f.save().ctf_strip_scenario_troops);
     EXPECT_NE(f.t().dump().find("TROOPS: OWN"), std::string::npos);
 
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
-    EXPECT_EQ(2, (int)f.save().ctf_strip_scenario_troops);
+    EXPECT_EQ(0, (int)f.save().ctf_strip_scenario_troops);
 
+    // A save carrying the retired middle state cycles back to ALL.
+    f.save().ctf_strip_scenario_troops = 1;
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
     EXPECT_EQ(0, (int)f.save().ctf_strip_scenario_troops);
@@ -2048,15 +2049,15 @@ TEST(CursesPickerClient, ctf_troops_toggle_on_ctf_campaign_only)
 TEST(CursesPickerClient, ctf_troops_label_formats_from_save)
 {
     PickerFixture f;
-    f.save().ctf_strip_scenario_troops = 1;
+    f.save().ctf_strip_scenario_troops = 0;
     f.t().push_special(KeyCode::Escape);
     (void)f.client.present_menu(PickerMenuId::Scenario);
-    EXPECT_NE(f.t().dump().find("TROOPS: OWN"), std::string::npos);
+    EXPECT_NE(f.t().dump().find("TROOPS: ALL"), std::string::npos);
 
     f.save().ctf_strip_scenario_troops = 2;
     f.t().push_special(KeyCode::Escape);
     (void)f.client.present_menu(PickerMenuId::Scenario);
-    EXPECT_NE(f.t().dump().find("TROOPS: NONE"), std::string::npos);
+    EXPECT_NE(f.t().dump().find("TROOPS: OWN"), std::string::npos);
 }
 
 // --- Matchup screen --------------------------------------------------------

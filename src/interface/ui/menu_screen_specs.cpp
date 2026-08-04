@@ -1281,14 +1281,14 @@ constexpr MenuButtonSpec kScenarioMenuRows[] = {
      .x = 210, .y = 100, .w = 80, .h = 15,
      .action = ButtonAction::CreateProgressMenu, .arg = -1,
      .nav = {.up = 2, .down = 0, .left = 4}},
-    // Scenario troops: keep / strip roster teams / strip everything authored.
+    // Scenario troops: keep the authored cast, or strip all of it.
     // Host-gated like SET CAMPAIGN and SET LEVEL; joiners read the label off
     // the lobby-synced save. It sits at (120,140) rather than the y=70 cell
     // beside SET LEVEL because scenario_menu_draw_content paints the level
     // title strip from x=114 across that whole row AFTER draw_buttons, so a
     // button there would be overprinted. (120,140) is the free grid cell
     // directly under MATCHUP, which keeps it grouped with the match settings.
-    {.id = "troops", .label = "TROOPS: SCEN",
+    {.id = "troops", .label = "TROOPS: ALL",
      .x = 120, .y = 140, .w = 80, .h = 15,
      .action = ButtonAction::CycleCtfScenarioTroops, .arg = -1,
      .nav = {.up = 4, .down = 0}},
@@ -1416,7 +1416,7 @@ constexpr MenuButtonSpec kTeamsMenuRows[] = {
      .action = ButtonAction::ToggleLobbyReady, .arg = -1,
      .nav = {.up = 6, .left = 0},
      .hidden = true},
-    {.id = "ctf_troops", .label = "Troops: Scen",
+    {.id = "ctf_troops", .label = "TROOPS: ALL",
      .x = 210, .y = 170, .w = 80, .h = 20,
      .action = ButtonAction::CycleCtfScenarioTroops, .arg = -1,
      .nav = {.up = 9, .left = 0},
