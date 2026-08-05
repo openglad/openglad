@@ -313,13 +313,16 @@ endfunction()
 function(configure_openglad_runtime_target target)
     target_link_libraries(${target} PRIVATE project_warnings project_sanitizers)
     if(EMSCRIPTEN)
-        # -Wno-experimental FIRST: em++ emits "sdl3 port is still experimental"
-        # while it resolves --use-port, so the suppression has to already be in
-        # effect by the time the driver reads that argument. Ordered after it,
-        # the notice still printed once per translation unit and once per link
-        # (~150 lines the build cannot act on). The three -Wno- diagnostic flags
-        # this target used to carry now live in project_warnings, where they
-        # land after -Wall and therefore take effect.
+        # em++ prints "sdl3 port is still experimental [-Wexperimental]" once
+        # per translation unit carrying --use-port, ~149 lines per build. It is
+        # the toolchain's notice about a third-party port, not a diagnostic
+        # about this code, and -Wno-experimental does NOT suppress it on the
+        # pinned emsdk — measured, in both orderings relative to --use-port.
+        # The flag is kept because it is the documented spelling and costs
+        # nothing if a later emsdk routes the notice through -W handling; do
+        # not read its presence as evidence the notice is gone. The three -Wno-
+        # diagnostic flags this target used to carry now live in
+        # project_warnings, where they land after -Wall and take effect.
         target_compile_options(${target} PRIVATE
             -Wno-experimental
             --use-port=sdl3
