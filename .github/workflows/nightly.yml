@@ -18,7 +18,7 @@ jobs:
       has_new_commits: ${{ steps.check.outputs.has_new_commits }}
       sha_short: ${{ steps.check.outputs.sha_short }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -28,7 +28,7 @@ jobs:
 
       - name: Restore last successful nightly SHA
         id: cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: .nightly-last-sha
           key: nightly-last-sha-${{ steps.sha.outputs.sha }}
@@ -73,7 +73,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       # ── Install dependencies ──
@@ -93,7 +93,7 @@ jobs:
             libxkbcommon-dev libwayland-dev libdecor-0-dev libdrm-dev libgbm-dev \
             libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev liburing-dev
 
-      - uses: hendrikmuhs/ccache-action@v1
+      - uses: hendrikmuhs/ccache-action@v1.2.23
         if: matrix.platform == 'linux'
         with:
           key: nightly-linux
@@ -195,7 +195,7 @@ jobs:
           cd staging && 7z a "../${{ matrix.artifact_name }}.zip" openglad
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.artifact_name }}.${{ matrix.archive_ext }}
@@ -213,10 +213,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -225,7 +225,7 @@ jobs:
         working-directory: relay
         run: npm ci
       - name: Deploy relay worker
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -242,11 +242,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Setup Emscripten
-        uses: mymindstorm/setup-emsdk@v14
+        uses: emscripten-core/setup-emsdk@v16
         with:
           version: 6.0.3
 
@@ -272,7 +272,7 @@ jobs:
           cp web/index.html web/help.html web/_worker.js dist/
 
       - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -291,12 +291,12 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       - name: Download all build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -338,14 +338,14 @@ jobs:
       needs.release.result == 'success'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       - name: Save successful nightly SHA
         run: echo "${{ github.sha }}" > .nightly-last-sha
 
-      - uses: actions/cache/save@v4
+      - uses: actions/cache/save@v6
         with:
           path: .nightly-last-sha
           key: nightly-last-sha-${{ github.sha }}
