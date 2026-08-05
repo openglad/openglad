@@ -50,7 +50,8 @@ void handle_cheat_keys(walker*& control, short mynum,
 		do
 		{
 			game_screen->save_data.my_team++;
-			game_screen->save_data.my_team %= MAX_TEAM;
+			game_screen->save_data.my_team = static_cast<short>(
+			    game_screen->save_data.my_team % MAX_TEAM);
 
 			for (auto& uptr : game_screen->world().oblist)
 			{
