@@ -17,11 +17,11 @@ jobs:
     # curses, parity, and relay checks instead of cancelling a passing suite.
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -35,7 +35,7 @@ jobs:
         working-directory: relay
         run: npm ci
 
-      - uses: hendrikmuhs/ccache-action@v1
+      - uses: hendrikmuhs/ccache-action@v1.2.23
         with:
           key: ci-test
 
@@ -86,7 +86,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Install dependencies
@@ -94,7 +94,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config libssl-dev libpng-dev libgtest-dev libncurses-dev libphysfs-dev libzip-dev libyaml-dev zlib1g-dev cmake ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev
 
-      - uses: hendrikmuhs/ccache-action@v1
+      - uses: hendrikmuhs/ccache-action@v1.2.23
         with:
           key: native-build
 
@@ -112,7 +112,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Install dependencies
@@ -120,7 +120,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config libssl-dev libpng-dev libphysfs-dev libzip-dev libyaml-dev zlib1g-dev cmake ninja-build
 
-      - uses: hendrikmuhs/ccache-action@v1
+      - uses: hendrikmuhs/ccache-action@v1.2.23
         with:
           key: headless-server
 
@@ -149,7 +149,7 @@ jobs:
     # which must match for the cache to hit).
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Install dependencies
@@ -157,7 +157,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config libssl-dev libpng-dev libgtest-dev libncurses-dev libphysfs-dev libzip-dev libyaml-dev zlib1g-dev cmake ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev
 
-      - uses: hendrikmuhs/ccache-action@v1
+      - uses: hendrikmuhs/ccache-action@v1.2.23
         with:
           key: ci-test
 
@@ -204,7 +204,7 @@ jobs:
     # build and the multi-seat networking tests landed.
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Install dependencies
@@ -212,7 +212,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config libssl-dev libpng-dev libgtest-dev libncurses-dev libphysfs-dev libzip-dev libyaml-dev zlib1g-dev cmake ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev
 
-      - uses: hendrikmuhs/ccache-action@v1
+      - uses: hendrikmuhs/ccache-action@v1.2.23
         with:
           key: ci-asan
           max-size: 2G
@@ -233,7 +233,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Install dependencies
@@ -241,7 +241,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang pkg-config libpng-dev libgtest-dev libphysfs-dev libzip-dev libyaml-dev zlib1g-dev cmake ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev
 
-      - uses: hendrikmuhs/ccache-action@v1
+      - uses: hendrikmuhs/ccache-action@v1.2.23
         with:
           key: ci-tsan
 

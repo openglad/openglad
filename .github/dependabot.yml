@@ -1,0 +1,36 @@
+version: 2
+
+# Without this file Dependabot only ever ran *security* updates, so the
+# workflow actions silently rotted onto the Node 20 runtime (issue #180) and
+# the relay lockfile drifted months behind. Version updates are grouped so a
+# weekly sweep lands as one or two PRs instead of a dozen.
+updates:
+  # GitHub Actions used by .github/workflows/*.yml
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  # Playwright WASM end-to-end suite (repo root)
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      e2e:
+        patterns:
+          - "*"
+
+  # Cloudflare relay worker
+  - package-ecosystem: npm
+    directory: /relay
+    schedule:
+      interval: weekly
+    groups:
+      relay:
+        patterns:
+          - "*"
