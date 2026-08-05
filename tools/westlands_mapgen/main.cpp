@@ -477,7 +477,7 @@ bool cell_is_fall_landing(GameWorld& w, int floor, int tx, int ty)
     for (int g = floor + 1; g < w.floor_count(); ++g)
     {
         const PixieData& gg = w.grid_for_floor(g);
-        if (!gg.valid() || tx >= gg.w || ty >= gg.h ||
+        if (!gg.valid() || tx < 0 || ty < 0 || tx >= gg.w || ty >= gg.h ||
             gg.data[static_cast<std::size_t>(tx + ty * gg.w)] != PIX_AIR)
             return false; // solid above: no fall reaches this cell
         for (int dy = -1; dy <= 1; ++dy)

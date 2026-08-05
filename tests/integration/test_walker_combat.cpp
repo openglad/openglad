@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <list>
 #include <memory>
+#include <string>
 #include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -1300,6 +1301,103 @@ TEST(WalkerCombat, batch6_attack_friendly_team_death_messages_and_clamps)
     attacker->do_heal_effects(attacker, attacker, 5);
     cfg.apply_setting("effects", "heal_numbers", "on");
 
+    og::runtime::current_session->myscreen_->world_.allied_mode = saved_allied_mode;
+    og::runtime::current_session->myscreen_->world().delete_objects();
+}
+
+
+// --- #189: a named ally's death must not be announced as an enemy death -----
+//
+// attack() picks the death-message arm with `playerteam != target->team_num()`,
+// where `playerteam` is the KILLER's team. When an enemy kills one of the
+// player's own named NPCs the teams differ, so the player used to be told
+// "ENEMY DEATH: <their own ally> DIED!". Classic hardcoded `playerteam = 0`,
+// i.e. it compared the victim against the PLAYER's team, and announced a
+// player-team victim with the plain "<name> DIED!" wording.
+
+// First Notification whose text is a "<something> DIED!" death toast.
+static std::string first_death_notification()
+{
+    if (!(current_game && current_game->sim_events))
+        return {};
+    const std::string suffix = " DIED!";
+    for (const auto& ev : current_game->sim_events->events())
+    {
+        if (ev.kind != og::sim::EventKind::Notification)
+            continue;
+        if (ev.text.size() > suffix.size() &&
+            ev.text.compare(ev.text.size() - suffix.size(),
+                            suffix.size(), suffix) == 0)
+            return ev.text;
+    }
+    return {};
+}
+
+TEST(WalkerCombat, named_ally_death_is_not_announced_as_enemy_death)
+{
+    const short saved_allied_mode = og::runtime::current_session->myscreen_->world_.allied_mode;
+    const short saved_my_team = og::runtime::current_session->myscreen_->world_.my_team;
+    og::runtime::current_session->myscreen_->world_.allied_mode = 0;
+    og::runtime::current_session->myscreen_->world_.my_team = 0;
+
+    ASSERT_TRUE(current_game && current_game->sim_events) << "sim event log available";
+
+    // An enemy (team 1) strikes down the player's own named NPC (team 0).
+    walker* enemy_attacker = make_guy(FAMILY_SOLDIER, 1);
+    walker* named_ally = make_guy(FAMILY_ORC, 0);
+    ASSERT_TRUE(enemy_attacker && named_ally) << "attacker/ally created";
+    if (!(enemy_attacker && named_ally))
+    {
+        og::runtime::current_session->myscreen_->world_.my_team = saved_my_team;
+        og::runtime::current_session->myscreen_->world_.allied_mode = saved_allied_mode;
+        og::runtime::current_session->myscreen_->world().delete_objects();
+        return;
+    }
+
+    enemy_attacker->clear_myguy();
+    enemy_attacker->set_damage(500.0f);
+    named_ally->set_owner(nullptr);   // not summoned: the named-NPC arm
+    named_ally->set_lifetime(0);
+    named_ally->stats()->set_armor(0);
+    named_ally->stats()->set_hitpoints(1);
+    named_ally->stats()->name = "Commander";
+    named_ally->setxy(static_cast<short>(enemy_attacker->xpos() + 8),
+                      enemy_attacker->ypos());
+
+    current_game->sim_events->clear();
+    ASSERT_TRUE(enemy_attacker->attack(named_ally)) << "the attack should land";
+    ASSERT_TRUE(named_ally->dead()) << "the named ally must actually die";
+
+    const std::string ally_message = first_death_notification();
+    ASSERT_FALSE(ally_message.empty()) << "the named ally's death must be announced";
+    EXPECT_TRUE(ally_message.find("ENEMY DEATH") == std::string::npos)
+        << "the player's own ally is not an enemy, but was announced as: "
+        << ally_message;
+    EXPECT_EQ(std::string("Commander DIED!"), ally_message)
+        << "a player-team victim uses the classic plain death wording";
+
+    // Control: a victim on neither the player's team nor the killer's team is a
+    // genuine enemy and keeps the classic wording byte-for-byte.
+    walker* third_party = make_guy(FAMILY_ORC, 2);
+    ASSERT_TRUE(third_party != nullptr) << "third-party victim created";
+    if (third_party)
+    {
+        third_party->set_owner(nullptr);
+        third_party->set_lifetime(0);
+        third_party->stats()->set_armor(0);
+        third_party->stats()->set_hitpoints(1);
+        third_party->stats()->name = "DIRK";
+        third_party->setxy(static_cast<short>(enemy_attacker->xpos() + 8),
+                           enemy_attacker->ypos());
+
+        current_game->sim_events->clear();
+        ASSERT_TRUE(enemy_attacker->attack(third_party)) << "the attack should land";
+        ASSERT_TRUE(third_party->dead()) << "the enemy must actually die";
+        EXPECT_EQ(std::string("ENEMY DEATH: DIRK DIED!"), first_death_notification())
+            << "a victim off the player's team keeps the classic enemy wording";
+    }
+
+    og::runtime::current_session->myscreen_->world_.my_team = saved_my_team;
     og::runtime::current_session->myscreen_->world_.allied_mode = saved_allied_mode;
     og::runtime::current_session->myscreen_->world().delete_objects();
 }

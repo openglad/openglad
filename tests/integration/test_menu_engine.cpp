@@ -2044,8 +2044,14 @@ TEST(MenuEngine, main_menu_registry_and_spec_shape)
     button* buttons = spec.buttons_accessor();
     const int count = spec.count_accessor();
     ASSERT_GT(count, 2);
-    EXPECT_EQ(4, picker_mainmenu_options_index());
-    EXPECT_EQ("options", buttons[picker_mainmenu_options_index()].id);
+    // Same lookup-by-id shape: the helper falls back to rows.size() - 1,
+    // which is -1 for an empty row set. Bound it before it is used as a
+    // subscript (EXPECT below is non-fatal and would not stop the read).
+    const int options_index = picker_mainmenu_options_index();
+    ASSERT_GE(options_index, 0) << "materialized main menu is empty";
+    ASSERT_LT(options_index, count) << "options index past the button vector";
+    EXPECT_EQ(4, options_index);
+    EXPECT_EQ("options", buttons[options_index].id);
     EXPECT_EQ("load_company", buttons[count - 3].id);
     EXPECT_EQ("no_company_note", buttons[count - 2].id);
     EXPECT_EQ("cloud", buttons[count - 1].id);
@@ -2298,6 +2304,13 @@ TEST(MenuEngine, main_menu_company_gate_and_nav_rewire)
     const int i_begin = index_of("begin_new_game");
     const int i_continue = index_of("continue_game");
     const int i_level_editor = index_of("level_edit");
+    // index_of yields -1 for an id that has left the spec, and every use
+    // below is a subscript (or a highlight index handed to the rewire).
+    // Fail here, naming the missing row, instead of reading the button
+    // vector at (size_t)-1.
+    ASSERT_GE(i_begin, 0) << "main menu no longer has a begin_new_game row";
+    ASSERT_GE(i_continue, 0) << "main menu no longer has a continue_game row";
+    ASSERT_GE(i_level_editor, 0) << "main menu no longer has a level_edit row";
 
     // Absent: mimic the gate pass (mark the pair hidden), then rewire.
     for (auto& b : buttons)
@@ -2327,6 +2340,11 @@ TEST(MenuEngine, main_menu_company_gate_and_nav_rewire)
         mp, og::ui::MenuBuildVariant::Native, shown);
     int hl = 1;
     mp.nav.rewire(shown.data(), static_cast<int>(shown.size()), hl);
+    // Both company states materialize the same row set (the gate pass runs
+    // later, over the materialized vector), so the indexes taken above index
+    // this vector too. Pin that before subscripting it.
+    ASSERT_EQ(buttons.size(), shown.size())
+        << "the two materializations must agree row-for-row";
     EXPECT_EQ(i_continue, shown[static_cast<std::size_t>(i_begin)].nav.down);
 
     // §9.2 no_company_note: Hidden while a company exists, Disabled (the
@@ -2388,6 +2406,33 @@ TEST(MenuEngine, main_menu_company_gate_and_nav_rewire)
 
     // Mandatory restore (the shared-sweep contract): (true, "").
     og::ui::set_main_menu_company_view_for_tests(true, "");
+}
+
+// Companion pin for the lookup-by-id shape above: those nav pins resolve row
+// ids to indexes and then subscript the materialized button vector with the
+// result. Every id they resolve must exist, so a rename or removal fails
+// here by name — and the ASSERT_GE guards in those tests keep the read
+// itself from ever happening with -1.
+TEST(MenuEngine, main_menu_lookup_row_ids_exist)
+{
+    for (const og::ui::MenuScreenSpec* spec :
+         {&og::ui::main_menu_screen_spec_mp(),
+          &og::ui::main_menu_screen_spec_nomp()}) {
+        std::vector<button> buttons;
+        og::ui::materialize_menu_buttons_for(
+            *spec, og::ui::MenuBuildVariant::Native, buttons);
+        ASSERT_FALSE(buttons.empty()) << spec->name;
+        for (const char* id : {"begin_new_game", "continue_game", "level_edit",
+                               "options", "no_company_note"}) {
+            bool found = false;
+            for (const button& b : buttons)
+                if (std::string_view(b.id) == id)
+                    found = true;
+            EXPECT_TRUE(found)
+                << spec->name << " row '" << id
+                << "' is resolved by id and then used as a subscript";
+        }
+    }
 }
 
 // The CONTROLS mode faces: the LabelBindings must track the live control

@@ -399,6 +399,16 @@ std::vector<StairPair> find_stair_pairs(GameWorld& world)
         const PixieData& hi = world.grid_for_floor(f + 1);
         if (!lo.valid() || !hi.valid())
             continue;
+        // The pair test indexes BOTH planes with the lower floor's width,
+        // which needs the shared-footprint invariant (game_world.h). Report
+        // a violation instead of comparing the wrong cells (non-fatal: this
+        // helper returns a value, and every caller pins the dims itself).
+        EXPECT_EQ(static_cast<int>(lo.w), static_cast<int>(hi.w))
+            << "floors " << f << "/" << (f + 1) << " grid width";
+        EXPECT_EQ(static_cast<int>(lo.h), static_cast<int>(hi.h))
+            << "floors " << f << "/" << (f + 1) << " grid height";
+        if (lo.w != hi.w || lo.h != hi.h)
+            continue;
         for (int ty = 0; ty < lo.h; ++ty)
             for (int tx = 0; tx < lo.w; ++tx)
             {
@@ -569,6 +579,14 @@ TEST_F(WestlandsCampaignTest, levels_round_trip_the_authored_structure)
         {
             EXPECT_TRUE(world.grid_for_floor(f).valid())
                 << "floor " << f << " grid must round-trip";
+            // One footprint for the whole stack (game_world.h: "All floors
+            // share pixmaxx/pixmaxy"). The loader reads each plane's dims
+            // from its own PNG, so this is the pin: the cross-floor audits
+            // below index every floor with one width.
+            EXPECT_EQ(expected.grid_w, static_cast<int>(world.grid_for_floor(f).w))
+                << "floor " << f << " grid width";
+            EXPECT_EQ(expected.grid_h, static_cast<int>(world.grid_for_floor(f).h))
+                << "floor " << f << " grid height";
         }
         EXPECT_EQ(expected.type_bits, static_cast<int>(world.type))
             << "scenario type bits (CAN_EXIT / SAVE_ALL)";
@@ -1053,6 +1071,25 @@ TEST_F(WestlandsCampaignTest, air_fall_lines_land_on_standable_ground)
         LoadedWestlandsLevel fx(expected.id);
         ASSERT_TRUE(fx.loaded);
         GameWorld& world = fx.world();
+
+        // The fall column below walks DOWN through the floors while indexing
+        // each one with floor f's width. That is only sound because every
+        // floor shares one footprint (game_world.h: "All floors share
+        // pixmaxx/pixmaxy (same footprint)") -- and the loader takes each
+        // plane's dims straight from its PNG, so nothing downstream enforces
+        // it. Pin the invariant here: a mis-sized plane must fail loudly
+        // instead of silently auditing the wrong cells.
+        const PixieData& base_grid = world.grid_for_floor(0);
+        ASSERT_TRUE(base_grid.valid()) << "floor 0 grid";
+        for (int f = 0; f < world.floor_count(); ++f)
+        {
+            const PixieData& fg = world.grid_for_floor(f);
+            ASSERT_TRUE(fg.valid()) << "floor " << f << " grid";
+            ASSERT_EQ(static_cast<int>(base_grid.w), static_cast<int>(fg.w))
+                << "floor " << f << " grid width must match floor 0";
+            ASSERT_EQ(static_cast<int>(base_grid.h), static_cast<int>(fg.h))
+                << "floor " << f << " grid height must match floor 0";
+        }
 
         for (int f = 1; f < world.floor_count(); ++f)
         {

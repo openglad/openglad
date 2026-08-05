@@ -45,10 +45,19 @@ never store mutable sim state in a global or upvalue (cookbook R6).
 | `og.max(a,b)` / `og.min(a,b)` | `std::max` / `std::min` exactly: `og.max` answers `b` only when `a < b`, `og.min` answers `b` only when `b < a`, every tie answers `a`. Exact mixed integer/float ordering (never a lossy int64→double round-trip); the winning argument comes back unchanged, so integer subtype survives. Arguments must be numbers (no string coercion); NaN is an error. |
 | `og.clamp(v,lo,hi)` | `std::clamp`: `lo` when `v < lo`, else `hi` when `hi < v`, else `v` itself. `hi < lo` (std's UB precondition) is a script error. Same ordering/subtype/NaN rules as `og.max`. |
 | `og.sign(x)` | `-1`, `0` or `1` as an integer, for any number (`og.sign(-0.0)` is 0; NaN is an error) — the guarded `v /= abs(v)` idiom as a total function. |
-| `og.rand(n)` | Sim RNG, uniform over `[0, n)`. The only randomness source. Errors when `n <= 0` (C++ `next(0)` silently returns 0 — guard the call, or use `og.rand0`). |
-| `og.rand0(n)` | `og.rand` with `IRandom`'s real `n <= 0` contract: answers 0 **without advancing the stream** (C++ `next(0)` returns before the LCG step), which is what the hand-written `if n > 0 then r = og.rand(n) end` guard trios encode. Negative `n` behaves as 0 too. For `n > 0` it is `og.rand` verbatim, so swapping a guarded `og.rand` for `og.rand0` cannot move the stream. Requires an active world on every path. |
-| `og.cosmetic_rand(n)` | Draws from the parity harness's cosmetic stream when one is installed, else the sim RNG — the C++ `cosmetic_rng_override()` pattern. Use ONLY where the C++ drew through that selector (path-check cadence, elf spread). Also errors when `n <= 0`. |
+| `og.rand(n)` | Sim RNG, uniform over `[0, n)`. The only randomness source. `n` must be in `[1, 2147483647]`. Errors when `n <= 0` (C++ `next(0)` silently returns 0 — guard the call, or use `og.rand0`) and when `n > 2147483647` (see the range note below). |
+| `og.rand0(n)` | `og.rand` with `IRandom`'s real `n <= 0` contract: answers 0 **without advancing the stream** (C++ `next(0)` returns before the LCG step), which is what the hand-written `if n > 0 then r = og.rand(n) end` guard trios encode. Negative `n` behaves as 0 too. For `n > 0` it is `og.rand` verbatim — including the `n > 2147483647` error — so swapping a guarded `og.rand` for `og.rand0` cannot move the stream. Requires an active world on every path. |
+| `og.cosmetic_rand(n)` | Draws from the parity harness's cosmetic stream when one is installed, else the sim RNG — the C++ `cosmetic_rng_override()` pattern. Use ONLY where the C++ drew through that selector (path-check cadence, elf spread). Same bound range as `og.rand`: errors when `n <= 0` and when `n > 2147483647`. |
 | `og.log(...)` / `print(...)` | Diagnostics. Traces under category `script`, and appends to the host's bounded transcript. |
+
+A Lua integer is 64-bit; the C++ generator behind all three RNG bindings
+takes a `std::uint32_t` bound. A bound above `2147483647` (INT32_MAX)
+therefore cannot make the trip intact: it would reach the generator as
+`n mod 2^32` — a distribution nobody asked for — and exactly `2^32` would
+arrive as `next(0)`, answering a constant 0 without advancing the stream.
+Since a wrapped bound is a desync rather than a rounding error, the bindings
+raise a script error instead of quietly clamping. Bounds in
+`[1, 2147483647]` are passed through exactly and draw what they always drew.
 
 ## Declaring a family (`og.family`)
 

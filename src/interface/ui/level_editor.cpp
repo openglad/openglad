@@ -411,7 +411,13 @@ public:
     bool snap_to_grid;
     Order order;
     Sint32 family;
-    char team;
+    // Signed and wide enough to hold every team byte a walker can carry.
+    // walker::team_num() is an unsigned char, so a `char` member turned any
+    // value above 127 negative, and the team cycling below (`> 0` /
+    // `< MAX_TEAM`) then walked the brush out of the legal range instead of
+    // wrapping inside it. Editor-only state: the .fss record stores the team
+    // as a single byte written from walker::team_num(), never from here.
+    Sint32 team;
     Sint32 level;
     Sint32 worldz;   // authored sub-floor Z height (pixels) for placed objects
     Sint32 spawn_delay;  // authored wave delay (sim ticks) for placed Livings/Generators
@@ -434,7 +440,13 @@ public:
         {
             order = target->query_order();
             family = target->family();
-            team = static_cast<char>(target->team_num());
+            // 0..MAX_TEAM is the only range the editor can author or display,
+            // and it is the same range the scenario loader enforces
+            // (sanitize_loaded_team_num clamps a higher byte to team 0), so a
+            // picked object outside it hands the brush team 0 rather than a
+            // value the team buttons cannot cycle. Legal teams are unchanged.
+            const Sint32 picked_team = static_cast<Sint32>(target->team_num());
+            team = (picked_team > MAX_TEAM) ? 0 : picked_team;
             level = target->stats()->level();
         }
     }

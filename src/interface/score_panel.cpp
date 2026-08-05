@@ -653,8 +653,19 @@ short new_score_panel(screen* s, short /*do_it*/)
 
             // Get current number of foes
             tempfoes = remaining_foes(s, control);
-            // Get current number of team-members
-            tempallies = remaining_team(s, static_cast<char>(control->team_num()));
+            // Get current number of team-members. team_num() arrives on the
+            // same raw-byte snapshot channel as family()/current_special()
+            // below, but it is an *unsigned* byte and remaining_team() takes a
+            // signed char: a mirrored team above 127 narrows to a negative
+            // value that matches no walker, so the HUD would report zero
+            // allies. Clamp to the legal team range first, exactly as the
+            // scenario loader does (sanitize_loaded_team_num). Every team the
+            // game actually produces is 0..MAX_TEAM and passes through
+            // unchanged.
+            int hud_team = static_cast<int>(control->team_num());
+            if (hud_team > MAX_TEAM)
+                hud_team = 0;
+            tempallies = remaining_team(s, static_cast<char>(hud_team));
 
             // family()/current_special() may be attacker-controlled on a
             // network mirror (set from raw int8 snapshot bytes), so they can be

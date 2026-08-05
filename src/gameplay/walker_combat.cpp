@@ -401,11 +401,22 @@ bool walker::attack(walker  *target)
                     if (getscore)
                         award_score(team_num(), static_cast<std::uint32_t>(tempdamage_i)
                                               + static_cast<std::uint32_t>(10 * target->stats()->level()));
-                    // If named, alert us of the enemy's death
+                    // If named, alert us of the death. This arm is selected by
+                    // the KILLER's team (`playerteam`, set from headguy at the
+                    // top), so an enemy killing one of the player's OWN named
+                    // NPCs lands here too -- and used to be announced as an
+                    // "ENEMY DEATH". Classic hardcoded `playerteam = 0`, i.e.
+                    // it compared the victim against the PLAYER's team, and
+                    // reported a player-team victim with the same-team arm's
+                    // plain "<name> DIED!" text. Pick the wording off the same
+                    // comparison classic made; a victim on neither team is
+                    // still an enemy, so that text is unchanged.
                     if (target->stats()->name.size() && !(target->lifetime())
                             && (!target->owner()) ) // do we have an NPC name?
                     {
-                        message = std::format("ENEMY DEATH: {} DIED!", target->stats()->name);
+                        message = (current_game->world->my_team != target->team_num())
+                            ? std::format("ENEMY DEATH: {} DIED!", target->stats()->name)
+                            : std::format("{} DIED!", target->stats()->name);
                         og::sim::emit_notification(current_game->sim_events, message);
                     }
                     // Scripted-mode (TYPE_SCRIPTED) matches own their win

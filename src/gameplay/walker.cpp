@@ -1777,7 +1777,7 @@ bool walker::death()
 				newob->stats()->set_level(stats_->level());
 				newob->set_ani_type(ANI_EXPLODE);
 				newob->set_floor(floor());  // burn on the generator's floor (A8)
-				newob->setxy(static_cast<std::uint32_t>(xpos())+current_game->world->rng_.next(static_cast<std::uint32_t>(sizex()-8))+4, static_cast<std::uint32_t>(ypos()+4)+current_game->world->rng_.next(static_cast<std::uint32_t>(sizey()-8)) );
+				newob->setxy(static_cast<std::uint32_t>(xpos())+current_game->world->rng_.next(static_cast<std::uint32_t>(std::max<int>(sizex()-8, 0)))+4, static_cast<std::uint32_t>(ypos()+4)+current_game->world->rng_.next(static_cast<std::uint32_t>(std::max<int>(sizey()-8, 0))) );  // sizex/sizey ride in on sprite metadata AND network snapshots; a sprite narrower than 8px made sizex()-8 negative, and IRandom::next takes uint32 -- so it wrapped to a ~4e9 scatter bound. Clamping the SPAN (never the coordinate) is a no-op at every size >= 8, where next(0) == 0 already pins the offset.
 					newob->set_damage(static_cast<float>(stats_->level()) * 2.0f);
 					newob->set_frame(static_cast<short>(current_game->world->rng_.next(3)));
 				og::sim::emit_sound(current_game->sim_events, SOUND_EXPLODE);

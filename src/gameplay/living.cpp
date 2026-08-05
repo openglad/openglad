@@ -97,8 +97,8 @@ bool living::act()
 	// mid-animation or frozen while stepping off the pad.
 	update_exit_latch();
 
-	// Make sure everyone we're pointing to is valid
-	if (foe() && (foe()->dead() || (current_game->world->rng_.next(static_cast<std::uint32_t>(foe()->invisibility_left()/20)) > 0) ) )
+	// Make sure everyone we're pointing to is valid. invisibility_left is a raw short written straight from snapshots (world_snapshot.cpp) and from Lua (set_invisibility_left), so it is NOT guaranteed non-negative; a negative divided by 20 and cast to IRandom::next's uint32 wrapped to a ~4e9 bound, which drops the foe on nearly every tick. Clamp the cloak counter to 0 first: for every non-negative value this is the identical expression, and next(0) == 0 keeps the lock exactly as before.
+	if (foe() && (foe()->dead() || (current_game->world->rng_.next(static_cast<std::uint32_t>(foe()->invisibility_left() > 0 ? foe()->invisibility_left()/20 : 0)) > 0) ) )
 		set_foe(nullptr);
 	if (is_friendly(foe()))
 		set_foe(nullptr);

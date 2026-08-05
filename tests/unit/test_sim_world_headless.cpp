@@ -6,11 +6,14 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/core/constants.h>
+#include <openglad/core/irandom.h>
 #include <openglad/core/pixdefs.h>
 #include "../test_game_world_fixture.h"
 
 #include <gtest/gtest.h>
 
+#include <cstddef>
+#include <cstdint>
 #include <vector>
 
 // --- EventKind values ---
@@ -788,4 +791,387 @@ TEST(SimWorldHeadless, life_gem_halves_when_permadeath_is_off)
     ASSERT_GT(halved, 0.0f);
     EXPECT_FLOAT_EQ(full * 0.5f, halved)
         << "permadeath-off gems carry exactly half the legacy value";
+}
+
+// --- Negative values must never reach IRandom::next -------------------------
+//
+// IRandom::next takes a std::uint32_t bound (include/openglad/core/irandom.h:12)
+// and every implementation answers 0 for a bound of 0 (irandom.h:20, irandom.h:31,
+// game_world.h:56). A negative int therefore does NOT clamp on the way in — it
+// wraps to a bound just under 2^32, and SimRandom's `% max_exclusive` cannot
+// reduce it either: the raw draw is `state_ >> 16`, at most 65535, always less
+// than the wrapped bound, so the "tiny offset" comes back as an arbitrary
+// 16-bit number. Three sim sites fed next() a value that sprite metadata,
+// network snapshots or Lua can drive negative.
+//
+// These tests pin GameWorld::rng_ (og::sim::SimRandom is a plain LCG with a
+// public state_) and assert OBSERVABLE outcomes: explosion positions, foe
+// choices, and the RNG state left behind. They deliberately install no RNG
+// spy. og::sim::set_sim_random_override is only consulted by callers that
+// compiled SimRandom::next — it is inline in game_world.h — WITH -DTESTING,
+// and og_unit_sim links og_game, whose walker.cpp / living.cpp /
+// game_world.cpp live in og_gameplay and are built WITHOUT it (only
+// og_game_test gets TESTING; cmake/OpenGladTests.cmake). A spy installed from
+// this TU can therefore never observe a draw made by sim code, and every
+// assertion about what it recorded would be vacuously true.
+//
+// Reading the state instead is strictly better here: SimRandom::next returns
+// early for a bound of 0 WITHOUT advancing state_ (game_world.h:56), so
+// "state_ is untouched" is a direct, spy-free proof that no absurd bound was
+// ever requested — a wrapped ~4e9 bound always costs a step.
+
+namespace rng_bound {
+
+// SimRandom replayed (game_world.h:51..66) so the expected values below are
+// derived arithmetic rather than recorded output.
+constexpr std::uint32_t lcg_step(std::uint32_t state)
+{
+    return state * 1103515245u + 12345u;
+}
+
+constexpr std::uint32_t lcg_draw(std::uint32_t state, std::uint32_t bound)
+{
+    return (bound == 0u) ? 0u : ((lcg_step(state) >> 16) % bound);
+}
+
+// The pin used by most tests. Its first draw is (0x309cbe53 >> 16) == 12444,
+// which is what makes every pre-clamp prediction below non-zero — i.e. plainly
+// different from the clamped answer.
+inline constexpr std::uint32_t kPin = 0xC0FFEE42u;
+inline constexpr std::uint32_t kPinStepped = 0x309CBE53u;
+static_assert(lcg_step(kPin) == kPinStepped);
+static_assert((kPinStepped >> 16) == 12444u);
+
+// A second pin whose 15-wide draw is 0 (41295 == 15 * 2753), used to pin the
+// "the cloak roll succeeded" half of the legacy behavior.
+inline constexpr std::uint32_t kZeroRollPin = 0xBEEF0002u;
+inline constexpr std::uint32_t kZeroRollPinStepped = 0xA14FCD13u;
+static_assert(lcg_step(kZeroRollPin) == kZeroRollPinStepped);
+static_assert((kZeroRollPinStepped >> 16) == 41295u);
+static_assert(lcg_draw(kZeroRollPin, 300 / 20) == 0u);
+
+struct Explosion
+{
+    short x;
+    short y;
+};
+
+// Kill a generator whose sprite is size_x by size_y and report where its four
+// explosions landed, with the world RNG pinned to `pin_state` at the moment of
+// death. The generator sits at (120, 120), so a zero-width scatter span puts
+// every explosion at exactly (124, 124) — the corpse — no matter what the RNG
+// would have said.
+std::vector<Explosion> blow_up_generator(short size_x, short size_y,
+                                         std::uint32_t pin_state,
+                                         std::uint32_t* end_state = nullptr)
+{
+    TestGameWorld t;
+
+    std::vector<Explosion> out;
+    walker* gen = t.world().add_ob(Order::Generator, FAMILY_TOWER);
+    EXPECT_NE(nullptr, gen);
+    if (gen == nullptr)
+        return out;
+    gen->set_sizex(size_x);
+    gen->set_sizey(size_y);
+    gen->setxy(120, 120);
+    gen->stats()->set_level(3);
+
+    // Pin immediately before the action under test. (Walker construction draws
+    // next(10) for path_check_counter, but from walker_rng() — which the
+    // fixture points at its own FixedRandom via push_test_context ->
+    // set_gameplay_rng_override — so it never touches world state. The world
+    // stream below is only what the death scatter itself asks for.)
+    t.world().rng_.state_ = pin_state;
+
+    gen->set_dead(1);
+    gen->death();
+
+    for (const auto& uptr : t.world().oblist)
+    {
+        const walker* w = uptr.get();
+        if (w != nullptr && w->query_order() == Order::FX &&
+            w->family() == FAMILY_EXPLOSION)
+            out.push_back(Explosion{w->xpos(), w->ypos()});
+    }
+    if (end_state != nullptr)
+        *end_state = t.world().rng_.state_;
+    return out;
+}
+
+struct FoeTick
+{
+    bool kept_foe = false;
+    std::uint32_t end_state = 0;
+};
+
+// One ACT_CONTROL tick of a hunter locked onto a cloaked prey, with the world
+// RNG pinned. The foe-validity roll is the FIRST world draw living::act makes
+// (living.cpp:101) — bonus_rounds, apply_z_motion (single-floor early return)
+// and update_exit_latch draw nothing — and ACT_CONTROL returns before any
+// later draw site, so the tick costs exactly one draw of bound
+// invisibility/20, or none at all when that span is 0.
+FoeTick foe_lock_tick(short invisibility, std::uint32_t pin_state)
+{
+    TestGameWorld t;
+    exit_latch::all_grass(t.world());
+
+    walker* hunter = t.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    EXPECT_NE(nullptr, hunter);
+    walker* prey = t.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    EXPECT_NE(nullptr, prey);
+    if (hunter == nullptr || prey == nullptr)
+        return FoeTick{};
+
+    hunter->setxy(120, 120);
+    hunter->set_team_num(0);
+    hunter->set_act_type(ACT_CONTROL);
+    hunter->set_ani_type(ANI_WALK); // never return early via animate()
+
+    prey->setxy(160, 120);
+    prey->set_team_num(1);
+    prey->set_invisibility_left(invisibility);
+
+    hunter->set_foe(prey);
+    t.world().rng_.state_ = pin_state; // pinned immediately before the tick
+    hunter->act();
+
+    FoeTick out;
+    out.kept_foe = (hunter->foe() == prey);
+    out.end_state = t.world().rng_.state_;
+    return out;
+}
+
+struct FoeSearch
+{
+    bool far_found = false;
+    bool near_found = false;
+    std::uint32_t state_after_far = 0;
+    std::uint32_t state_after_near = 0;
+};
+
+// Acquisition from a clean pin, once through find_far_foe and once through
+// find_near_foe. The seeker is friendly to itself, and `is_friendly(w) == 0`
+// short-circuits ahead of the roll, so the only walker that can reach next()
+// is `hidden`: find_far_foe costs exactly one draw of bound invisibility/20.
+FoeSearch search_for_foe(short invisibility, std::uint32_t pin_state)
+{
+    TestGameWorld t;
+    exit_latch::all_grass(t.world());
+
+    walker* seeker = t.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    EXPECT_NE(nullptr, seeker);
+    walker* hidden = t.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    EXPECT_NE(nullptr, hidden);
+    if (seeker == nullptr || hidden == nullptr)
+        return FoeSearch{};
+
+    seeker->setxy(120, 120);
+    seeker->set_team_num(0);
+    hidden->setxy(160, 120);
+    hidden->set_team_num(1);
+    hidden->set_invisibility_left(invisibility);
+
+    FoeSearch out;
+    t.world().rng_.state_ = pin_state;
+    out.far_found = (t.world().find_far_foe(seeker) == hidden);
+    out.state_after_far = t.world().rng_.state_;
+
+    t.world().rng_.state_ = pin_state; // each search judged from the same pin
+    out.near_found = (t.world().find_near_foe(seeker) == hidden);
+    out.state_after_near = t.world().rng_.state_;
+    return out;
+}
+
+} // namespace rng_bound
+
+// (a) walker.cpp generator death scatter. sizex/sizey are sprite metadata, and
+// snapshot application writes them straight onto the walker, so a sprite
+// narrower than 8px makes sizex()-8 negative. The scatter span then wrapped to
+// ~4e9 and the explosion FX landed at a truncated garbage coordinate instead of
+// on the corpse.
+//
+// RED-BEFORE, exactly: from kPin the wrapped bound 0xFFFFFFFC leaves the raw
+// 16-bit draws untouched by the modulo — 12444, 48108, 36898, 29482, 18326,
+// 43937, 4229, 178 — so the four explosions land at (12568, 48232),
+// (37022, 29606), (18450, 44061) and (4353, 302), i.e. at whatever those
+// truncate to as a short, never on the corpse. Post-fix the span is
+// max(4-8, 0) == 0, next(0) == 0, and the answer is a POINT, not a range:
+// (120 + 0 + 4, 120 + 4 + 0) for every explosion and every RNG state.
+TEST(SimWorldHeadless, generator_death_scatter_clamps_undersized_sprite_span)
+{
+    std::uint32_t tiny_end = 0;
+    const std::vector<rng_bound::Explosion> tiny =
+        rng_bound::blow_up_generator(4, 4, rng_bound::kPin, &tiny_end);
+    ASSERT_EQ(4u, tiny.size()) << "a dying generator always emits 4 explosions";
+    for (std::size_t i = 0; i < tiny.size(); ++i)
+    {
+        EXPECT_EQ(124, tiny[i].x) << "explosion " << i << " must land on the generator";
+        EXPECT_EQ(124, tiny[i].y) << "explosion " << i << " must land on the generator";
+    }
+
+    // ...and it must cost the same RNG stream as the 8px sprite whose span is
+    // already 0. Both runs start from the same pin, so identical end states
+    // mean the 4px scatter asked the RNG for nothing extra. A wrapped bound
+    // cannot do that: it steps the LCG twice per explosion.
+    std::uint32_t edge_end = 0;
+    const std::vector<rng_bound::Explosion> edge =
+        rng_bound::blow_up_generator(8, 8, rng_bound::kPin, &edge_end);
+    ASSERT_EQ(4u, edge.size());
+    EXPECT_EQ(edge_end, tiny_end)
+        << "a 4px sprite must not ask the RNG for a ~4-billion scatter span";
+}
+
+// Boundary: exactly 8px is already a zero-width span today (next(0) == 0 pins
+// the offset AND leaves state_ alone), so the clamp has to reproduce that value
+// for value.
+TEST(SimWorldHeadless, generator_death_scatter_at_exactly_eight_pixels)
+{
+    const std::vector<rng_bound::Explosion> edge =
+        rng_bound::blow_up_generator(8, 8, rng_bound::kPin);
+    ASSERT_EQ(4u, edge.size());
+    for (std::size_t i = 0; i < edge.size(); ++i)
+    {
+        EXPECT_EQ(124, edge[i].x) << "explosion " << i << ": span 8-8 == 0";
+        EXPECT_EQ(124, edge[i].y) << "explosion " << i << ": span 8-8 == 0";
+    }
+}
+
+// ...and the clamp must be invisible on every real sprite: a 40px generator
+// still draws from the full legacy 32px span and still scatters.
+//
+// The world stream from kPin, per explosion, is the two setxy span draws
+// next(32) then set_frame's next(3):
+//   e0: 28, 12 | 2      e1:  2, 10 | 0
+//   e2: 22,  1 | 2      e3:  5, 18 | 1
+// Both coordinates are 120 + draw + 4, giving the pairs {152,136}, {126,134},
+// {146,125} and {129,142} — a scatter that really scatters: 8 offsets, none of
+// them the 0 that an over-clamped span would force. The two span draws are the
+// arguments of a single setxy call, so which of a pair lands on x is
+// unspecified evaluation order; the sorted pair is the exact assertion.
+TEST(SimWorldHeadless, generator_death_scatter_unchanged_for_normal_sprites)
+{
+    static_assert(rng_bound::lcg_draw(rng_bound::kPin, 40 - 8) == 28u); // 12444 % 32
+    static_assert(rng_bound::lcg_draw(rng_bound::kPinStepped, 40 - 8) == 12u); // 48108 % 32
+
+    const std::vector<rng_bound::Explosion> normal =
+        rng_bound::blow_up_generator(40, 40, rng_bound::kPin);
+    ASSERT_EQ(4u, normal.size());
+
+    const short expected_low[4] = {136, 126, 125, 129};
+    const short expected_high[4] = {152, 134, 146, 142};
+    for (std::size_t i = 0; i < normal.size(); ++i)
+    {
+        const short low = (normal[i].x < normal[i].y) ? normal[i].x : normal[i].y;
+        const short high = (normal[i].x < normal[i].y) ? normal[i].y : normal[i].x;
+        EXPECT_EQ(expected_low[i], low) << "explosion " << i;
+        EXPECT_EQ(expected_high[i], high) << "explosion " << i;
+    }
+}
+
+// (b) living.cpp foe-validity roll. invisibility_left is a short written raw
+// from snapshots (world_snapshot.cpp) and from Lua (set_invisibility_left).
+// Negative / 20 wrapped to a ~4e9 bound whose draw is > 0 for essentially every
+// RNG state, so the hunter threw its lock away on every single tick.
+//
+// RED-BEFORE, exactly: -100 / 20 == -5 wraps to the bound 0xFFFFFFFB, and from
+// kPin the draw is 12444 — greater than 0, so set_foe(nullptr). Post-fix the
+// span is 0, next(0) returns 0 without touching state_, and the lock holds for
+// every RNG state.
+TEST(SimWorldHeadless, negative_invisibility_does_not_break_the_foe_lock)
+{
+    static_assert(static_cast<std::uint32_t>(-100 / 20) == 0xFFFFFFFBu);
+    static_assert(rng_bound::lcg_draw(rng_bound::kPin, 0xFFFFFFFBu) == 12444u);
+
+    const rng_bound::FoeTick tick = rng_bound::foe_lock_tick(-100, rng_bound::kPin);
+    EXPECT_TRUE(tick.kept_foe)
+        << "a negative cloak counter must read as 'not cloaked', never 'always cloaked'";
+    EXPECT_EQ(rng_bound::kPin, tick.end_state)
+        << "a clamped zero-width span costs no draw at all; a wrapped ~4-billion"
+           " bound would have stepped the LCG";
+}
+
+// The same site, on the values the game actually produces. 0 and 19 both floor
+// to a zero-width span (next(0) == 0, state untouched) so the lock holds; a
+// real cloak rolls next(15) and drops the lock unless the draw is 0. Both
+// outcomes are pinned, and each costs exactly one LCG step.
+TEST(SimWorldHeadless, foe_lock_unchanged_for_non_negative_invisibility)
+{
+    const rng_bound::FoeTick uncloaked = rng_bound::foe_lock_tick(0, rng_bound::kPin);
+    EXPECT_TRUE(uncloaked.kept_foe) << "an uncloaked foe is never dropped";
+    EXPECT_EQ(rng_bound::kPin, uncloaked.end_state) << "0 / 20 == 0: no draw";
+
+    const rng_bound::FoeTick sub_step = rng_bound::foe_lock_tick(19, rng_bound::kPin);
+    EXPECT_TRUE(sub_step.kept_foe) << "below one full step the span is still 0";
+    EXPECT_EQ(rng_bound::kPin, sub_step.end_state) << "19 / 20 == 0: no draw";
+
+    // 300 / 20 == 15; from kPin the draw is 12444 % 15 == 9 > 0 -> lock broken.
+    static_assert(rng_bound::lcg_draw(rng_bound::kPin, 300 / 20) == 9u);
+    const rng_bound::FoeTick cloaked = rng_bound::foe_lock_tick(300, rng_bound::kPin);
+    EXPECT_FALSE(cloaked.kept_foe) << "a real cloak must still break the lock";
+    EXPECT_EQ(rng_bound::kPinStepped, cloaked.end_state)
+        << "the cloak roll is exactly one draw";
+
+    // Same cloak, a pin whose draw is 41295 % 15 == 0 -> the lock survives.
+    const rng_bound::FoeTick lucky =
+        rng_bound::foe_lock_tick(300, rng_bound::kZeroRollPin);
+    EXPECT_TRUE(lucky.kept_foe)
+        << "a cloak roll of 0 keeps the lock; that is the legacy 1-in-15";
+    EXPECT_EQ(rng_bound::kZeroRollPinStepped, lucky.end_state);
+}
+
+// (c) game_world.cpp foe acquisition, both the obmap spiral (find_near_foe) and
+// the full-list scan (find_far_foe). The same wrapped bound made the roll
+// non-zero, so a foe carrying a negative cloak counter was permanently
+// invisible to every searcher.
+//
+// RED-BEFORE, exactly: the bound wraps to 0xFFFFFFFB and the draw from kPin is
+// 12444 != 0, so find_far_foe skips the only candidate and returns nullptr;
+// find_near_foe's spiral rejects it in every cell it appears in and ends up in
+// the same find_far_foe. Post-fix both searches see it, and neither touches
+// state_ — the seeker is friendly to itself (short-circuit, no draw) and the
+// clamped span short-circuits inside next().
+TEST(SimWorldHeadless, negative_invisibility_does_not_hide_a_foe_from_search)
+{
+    const rng_bound::FoeSearch found = rng_bound::search_for_foe(-100, rng_bound::kPin);
+    EXPECT_TRUE(found.far_found)
+        << "find_far_foe must see a foe whose cloak counter is negative";
+    EXPECT_EQ(rng_bound::kPin, found.state_after_far)
+        << "no acquisition draw may run against a wrapped ~4-billion bound";
+    EXPECT_TRUE(found.near_found)
+        << "find_near_foe must see a foe whose cloak counter is negative";
+    EXPECT_EQ(rng_bound::kPin, found.state_after_near)
+        << "the spiral must not step the LCG for a clamped span either";
+}
+
+// Same acquisition site on good input: 0 and 19 stay visible for free
+// (next(0) == 0, state untouched), and a real cloak still rolls next(15) —
+// hiding its bearer on a non-zero draw, revealing them on a zero one. Exactly
+// the pre-clamp outcome, draw for draw.
+TEST(SimWorldHeadless, foe_search_unchanged_for_non_negative_invisibility)
+{
+    const rng_bound::FoeSearch uncloaked = rng_bound::search_for_foe(0, rng_bound::kPin);
+    EXPECT_TRUE(uncloaked.far_found) << "an uncloaked foe is always acquirable";
+    EXPECT_TRUE(uncloaked.near_found);
+    EXPECT_EQ(rng_bound::kPin, uncloaked.state_after_far) << "0 / 20 == 0: no draw";
+    EXPECT_EQ(rng_bound::kPin, uncloaked.state_after_near);
+
+    const rng_bound::FoeSearch sub_step = rng_bound::search_for_foe(19, rng_bound::kPin);
+    EXPECT_TRUE(sub_step.far_found) << "below one full step the span is still 0";
+    EXPECT_TRUE(sub_step.near_found);
+    EXPECT_EQ(rng_bound::kPin, sub_step.state_after_far) << "19 / 20 == 0: no draw";
+    EXPECT_EQ(rng_bound::kPin, sub_step.state_after_near);
+
+    // 300 / 20 == 15. Only find_far_foe has a pinnable draw count (one draw,
+    // for the single non-friendly candidate); the spiral's is geometry-bound.
+    const rng_bound::FoeSearch cloaked = rng_bound::search_for_foe(300, rng_bound::kPin);
+    EXPECT_FALSE(cloaked.far_found) << "a real cloak must still hide its bearer";
+    EXPECT_EQ(rng_bound::kPinStepped, cloaked.state_after_far)
+        << "the cloak roll is exactly one draw";
+
+    const rng_bound::FoeSearch lucky =
+        rng_bound::search_for_foe(300, rng_bound::kZeroRollPin);
+    EXPECT_TRUE(lucky.far_found)
+        << "a cloak roll of 0 acquires the bearer; that is the legacy 1-in-15";
+    EXPECT_EQ(rng_bound::kZeroRollPinStepped, lucky.state_after_far);
 }

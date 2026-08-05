@@ -1170,7 +1170,7 @@ walker* GameWorld::find_near_foe(walker* ob)
                 sanitize_owner_chain_link(*this, ob);
                 sanitize_owner_chain_link(*this, w);
                 if (!w->dead() && ob->is_friendly(w) == 0 &&
-                    rng_.next(static_cast<std::uint32_t>(w->invisibility_left() / 20)) == 0)
+                    rng_.next(static_cast<std::uint32_t>(std::max<int>(w->invisibility_left(), 0) / 20)) == 0)  // clamp: invisibility_left is snapshot/Lua-writable and a negative would wrap to a ~4e9 next() bound, hiding the foe forever. No-op for every value >= 0.
                 {
                     if (w->query_order() == Order::Living ||
                         w->query_order() == Order::Generator)
@@ -1221,7 +1221,7 @@ walker* GameWorld::find_far_foe(walker* ob)
         if (ob->is_friendly(foe) == 0 &&
             (foe->query_order() == Order::Living ||
              foe->query_order() == Order::Generator) &&
-            (rng_.next(static_cast<std::uint32_t>(foe->invisibility_left() / 20)) == 0))
+            (rng_.next(static_cast<std::uint32_t>(std::max<int>(foe->invisibility_left(), 0) / 20)) == 0))  // same clamp as find_near_foe: a negative cloak counter must not wrap into a ~4e9 next() bound.
         {
             const std::int32_t tempdistance = ob->distance_to_ob(foe);
             if (tempdistance < distance)
