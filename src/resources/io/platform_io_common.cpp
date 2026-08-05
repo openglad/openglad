@@ -15,6 +15,7 @@
 
 #include <openglad/resources/packs.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/core/campaign_ids.h>
 #include <openglad/core/util.h>
 #include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/filesystem.h>
@@ -598,9 +599,20 @@ void restore_default_campaigns()
         std::error_code ec;
         fs::copy_file(src, dst, fs::copy_options::overwrite_existing, ec);
         if (ec)
+        {
             LogWarn("restore_default_campaigns: {} -> {}: {}\n", src, dst, ec.message());
-        else
-            Log("Restored default campaign: {} -> {}\n", src, dst);
+            continue;
+        }
+        Log("Restored default campaign: {} -> {}\n", src, dst);
+        // Installs that predate the reverse-DNS purge left this campaign
+        // as "org.openglad.<filename>". Stock copies were overwritten from
+        // builtin/ on every restore, so the legacy twin holds no user
+        // edits; drop it rather than list the campaign twice.
+        const std::string legacy_twin = get_user_path() + "campaigns/" +
+            std::string(og::kLegacyIdPrefix) + entry.path().filename().string();
+        std::error_code twin_ec;
+        if (fs::remove(legacy_twin, twin_ec))
+            Log("Removed legacy campaign copy: {}\n", legacy_twin);
     }
     if (iter_ec)
         LogWarn("restore_default_campaigns: {}: {}\n", src_dir, iter_ec.message());

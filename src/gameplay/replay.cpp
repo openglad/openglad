@@ -1,5 +1,6 @@
 #include <openglad/gameplay/replay.h>
 
+#include <openglad/core/campaign_ids.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/order.h>
 #include <openglad/core/util.h>
@@ -788,6 +789,11 @@ std::optional<ReplayData> deserialize_replay(std::span<const std::uint8_t> bytes
     replay.header.campaign_id.assign(
         reinterpret_cast<const char*>(campaign_bytes.data()),
         campaign_bytes.size());
+    // Replays recorded before the reverse-DNS purge carry
+    // "org.openglad.<name>" campaign ids; fold them onto the plain id so
+    // the runtime mounts the renamed archive. New recordings write plain.
+    replay.header.campaign_id =
+        std::string(og::normalize_legacy_id(replay.header.campaign_id));
     if (replay.header.campaign_id.empty() || initial_snapshot_bytes.empty())
     {
         set_error(out_error, ReplayIoError::MalformedData);

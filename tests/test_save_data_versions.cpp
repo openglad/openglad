@@ -1030,6 +1030,113 @@ TEST(SaveDataVersions, save_data_v9_roundtrip_preserves_campaign_progress_maps)
 }
 
 
+// A company written before the reverse-DNS purge: the 40-byte header
+// campaign and the progress-list keys all carry "org.openglad.<name>".
+// Loading folds every stored id onto its plain spelling; the legacy keys
+// never surface in the maps.
+TEST(SaveDataVersions, save_data_load_normalizes_legacy_reverse_dns_ids)
+{
+    GuyRecord g{};
+    g.family = FAMILY_SOLDIER;
+    g.name = "LEGACY";
+    g.level = 1;
+
+    write_save_file("legacy_rdns",
+                    /*version=*/14,
+                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*scen_num=*/2,
+                    /*cash=*/100,
+                    /*score=*/200,
+                    /*allied_mode=*/1,
+                    /*numplayers=*/1,
+                    &g,
+                    /*listsize=*/1,
+                    /*use_v8plus_campaigns=*/true,
+                    /*v5plus_levelstatus=*/true,
+                    /*levelstatus_500=*/nullptr,
+                    /*levelstatus_200=*/nullptr);
+
+    SaveData tmp;
+    ASSERT_TRUE(tmp.load("legacy_rdns")) << "pre-rename saves must keep loading";
+    EXPECT_EQ("gladiator", tmp.current_campaign)
+        << "the header id folds onto the plain spelling";
+    EXPECT_EQ(0u, tmp.current_levels.count("org.openglad.gladiator"))
+        << "legacy keys must not survive the load";
+    EXPECT_EQ(0u, tmp.completed_levels.count("org.openglad.gladiator"));
+    ASSERT_TRUE(tmp.current_levels.count("gladiator") > 0);
+    EXPECT_EQ(2, tmp.current_levels["gladiator"])
+        << "the legacy entry's cursor lands on the plain key";
+    EXPECT_TRUE(tmp.completed_levels["gladiator"].count(1) > 0)
+        << "completed levels stored under the legacy key land on the plain key";
+    EXPECT_TRUE(tmp.completed_levels["gladiator"].count(3) > 0);
+}
+
+// A file carrying BOTH spellings of one campaign (a pre-rename company later
+// touched in memory by a post-rename build) merges conservatively onto the
+// plain key: completed sets union, the cursor keeps the furthest level.
+TEST(SaveDataVersions, save_data_load_merges_legacy_and_plain_progress_keys)
+{
+    SaveData src;
+    src.current_campaign = "gladiator";
+    src.scen_num = 2;
+    src.current_levels.clear();
+    src.completed_levels.clear();
+    src.current_levels["org.openglad.gladiator"] = 7;
+    src.current_levels["gladiator"] = 2;
+    src.completed_levels["org.openglad.gladiator"] = {2, 5};
+    src.completed_levels["gladiator"] = {1};
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(src.save_with_error("legacy_merge")));
+
+    SaveData loaded;
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(loaded.load_with_error("legacy_merge")));
+    EXPECT_EQ(0u, loaded.current_levels.count("org.openglad.gladiator"));
+    EXPECT_EQ(0u, loaded.completed_levels.count("org.openglad.gladiator"));
+    ASSERT_TRUE(loaded.current_levels.count("gladiator") > 0);
+    EXPECT_EQ(7, loaded.current_levels["gladiator"])
+        << "the merged cursor keeps the furthest level of the two spellings";
+    const std::set<int>& done = loaded.completed_levels["gladiator"];
+    EXPECT_TRUE(done.count(1) > 0) << "plain-key completions survive the merge";
+    EXPECT_TRUE(done.count(2) > 0) << "legacy-key completions union in";
+    EXPECT_TRUE(done.count(5) > 0);
+}
+
+// Re-saving a loaded legacy company writes plain ids only: the retired
+// prefix never reaches disk again.
+TEST(SaveDataVersions, save_data_resave_of_legacy_ids_writes_plain_bytes)
+{
+    write_save_file("legacy_rdns_resave",
+                    /*version=*/14,
+                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*scen_num=*/2,
+                    /*cash=*/100,
+                    /*score=*/200,
+                    /*allied_mode=*/1,
+                    /*numplayers=*/1,
+                    /*guys=*/nullptr,
+                    /*listsize=*/0,
+                    /*use_v8plus_campaigns=*/true,
+                    /*v5plus_levelstatus=*/true,
+                    /*levelstatus_500=*/nullptr,
+                    /*levelstatus_200=*/nullptr);
+
+    SaveData tmp;
+    ASSERT_TRUE(tmp.load("legacy_rdns_resave"));
+    ASSERT_TRUE(tmp.save("legacy_rdns_resave"));
+
+    namespace fs = std::filesystem;
+    const fs::path path =
+        fs::path(get_user_path()) / "save" / "legacy_rdns_resave.gtl";
+    std::ifstream in(path, std::ios::binary);
+    ASSERT_TRUE(in.good());
+    const std::string bytes((std::istreambuf_iterator<char>(in)),
+                            std::istreambuf_iterator<char>());
+    EXPECT_EQ(std::string::npos, bytes.find("org.openglad"))
+        << "writes always emit plain ids";
+    EXPECT_NE(std::string::npos, bytes.find("gladiator"));
+}
+
 TEST(SaveDataVersions, save_data_update_guys_copies_only_live_entries_with_myguy)
 {
     std::list<std::unique_ptr<walker>> oblist;

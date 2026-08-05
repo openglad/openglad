@@ -1143,7 +1143,7 @@ inline constexpr Mutation kMut_effect_lifetime = {
 };
 
 inline constexpr Mutation kMut_save_corrupt = {
-    "src/resources/save_data.cpp", 122,
+    "src/resources/save_data.cpp", 124,
     "std::uint8_t temp_version = 9;",
     "std::uint8_t temp_version = 0;",
     "Save header claims version 0 (below any supported save format); the round-trip load refuses the file and the post-load world is empty, flipping WalkerOfTeamAlive(team=0,1,1) and LevelDoneEquals(2)."

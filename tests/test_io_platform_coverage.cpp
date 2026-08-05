@@ -1029,6 +1029,46 @@ TEST(IoPlatformCoverage, restore_default_campaigns_ignores_nonpackages)
         << "only .glad packages may be restored into the user campaign dir";
 }
 
+// Installs that predate the reverse-DNS purge left stock campaigns as
+// "org.openglad.<id>.glad" in the user dir. Restoring the bare-named
+// builtin drops that stale twin (stock copies held no user edits — they
+// were overwritten from builtin/ on every restore), while third-party
+// archives that merely use the prefix are left alone.
+TEST(IoPlatformCoverage, restore_default_campaigns_drops_the_legacy_twin)
+{
+    namespace fs = std::filesystem;
+    const fs::path campaigns_dir = fs::path(get_user_path()) / "campaigns";
+    const fs::path legacy_twin = campaigns_dir / "org.openglad.gladiator.glad";
+    const fs::path foreign = campaigns_dir / "org.openglad.custom.glad";
+    og::test::ScopedPhysicalFileState twin_state(legacy_twin);
+    og::test::ScopedPhysicalFileState foreign_state(foreign);
+    ASSERT_TRUE(twin_state.ready()) << twin_state.error().message();
+    ASSERT_TRUE(foreign_state.ready()) << foreign_state.error().message();
+
+    std::error_code ec;
+    fs::create_directories(campaigns_dir, ec);
+    ASSERT_FALSE(ec);
+    {
+        std::ofstream stale(legacy_twin, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(stale.good());
+        stale << "pre-rename stock copy";
+    }
+    {
+        std::ofstream keeper(foreign, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(keeper.good());
+        keeper << "third-party archive";
+    }
+
+    restore_default_campaigns();
+
+    EXPECT_TRUE(fs::is_regular_file(campaigns_dir / "gladiator.glad"));
+    EXPECT_FALSE(fs::exists(legacy_twin))
+        << "restoring builtin <id>.glad removes the stale "
+           "org.openglad.<id>.glad stock copy";
+    EXPECT_TRUE(fs::is_regular_file(foreign))
+        << "only twins of restored builtins are cleaned up";
+}
+
 
 TEST(IoPlatformCoverage, read_pixie_file_truncated_header_path)
 {

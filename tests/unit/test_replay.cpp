@@ -211,6 +211,40 @@ TEST(Replay, file_roundtrip_preserves_header_and_frames)
     std::filesystem::remove(path, ec);
 }
 
+// Replays recorded before the reverse-DNS purge carry
+// "org.openglad.<name>" campaign ids in their headers. Deserializing folds
+// the id onto the plain spelling so the runtime mounts the renamed archive;
+// plain ids pass through untouched (proven by the round-trip tests above).
+TEST(Replay, deserialize_normalizes_legacy_reverse_dns_campaign_id)
+{
+    const og::sim::ReplayHeader header = {
+        .version = og::sim::kReplayFormatVersion,
+        .initial_rng_state = 3u,
+        .level_id = 4,
+        .player_count = 1,
+        .timer_wait = 6,
+        .my_team = 0,
+        .allied_mode = 1,
+        .difficulty = 100,
+        .campaign_id = "org.openglad.gladiator",
+    };
+    const og::sim::WorldSnapshot initial_snapshot = make_initial_snapshot();
+    const std::array<og::sim::InputStateMessage, 1> frames = {{
+        {7u, make_sparse_input()},
+    }};
+
+    // serialize_replay writes the header verbatim, exactly like a
+    // pre-rename recorder did.
+    const std::vector<std::uint8_t> bytes =
+        og::sim::serialize_replay(header, initial_snapshot, frames);
+
+    og::sim::ReplayIoError io_error = og::sim::ReplayIoError::None;
+    const auto replay = og::sim::deserialize_replay(bytes, &io_error);
+    ASSERT_TRUE(replay.has_value());
+    EXPECT_EQ(og::sim::ReplayIoError::None, io_error);
+    EXPECT_EQ("gladiator", replay->header.campaign_id);
+}
+
 TEST(Replay, deserialize_rejects_bad_magic_version_and_truncated_payload)
 {
     const og::sim::ReplayHeader header = {

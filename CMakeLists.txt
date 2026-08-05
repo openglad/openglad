@@ -2960,6 +2960,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         add_runtime_assets_dependency(parity_runner_smoke)
 
         og_add_unit_group(og_unit_core FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_ids.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_rate_config.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_view_layout.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_scale_mode.cpp
