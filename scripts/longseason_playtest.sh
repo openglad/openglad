@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # longseason_playtest.sh — The Long Season balance playtest harness (NOT CI).
 #
-# Clone of westlands_playtest.sh for org.openglad.longseason: drives
+# Clone of westlands_playtest.sh for longseason: drives
 # openglad_text --protocol over every Long Season level (1-19) x 3 seeds,
 # with a crew leveled per docs/campaigns/longseason/campaign_meta.md's
 # difficulty-curve table ("crew power entering each level"; where the meta
@@ -54,7 +54,7 @@ SLICE="${SLICE:-300}"
 MAX_SLICES="${MAX_SLICES:-20}"   # 20 x 300 = 6000 ticks max
 RUN_TIMEOUT="${RUN_TIMEOUT:-300}"
 CL_DELTA="${CL_DELTA:-0}"        # bracket-sweep offset from the curve level
-CAMPAIGN="org.openglad.longseason"
+CAMPAIGN="longseason"
 
 # Crew power entering each level, per docs/campaigns/longseason/
 # campaign_meta.md (ranges resolved to the level doc's own gate curve).

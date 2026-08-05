@@ -360,11 +360,11 @@ TEST(CoverageMisc, coverage_r17_save_data_reset_defaults)
 
     save.reset();
 
-    ASSERT_TRUE(save.current_campaign == "org.openglad.gladiator");
+    ASSERT_TRUE(save.current_campaign == "gladiator");
     ASSERT_TRUE(save.team_size == 0);
     ASSERT_TRUE(save.scen_num == 1);
     ASSERT_TRUE(save.my_team == 0);
-    ASSERT_TRUE(save.current_levels["org.openglad.gladiator"] == 1);
+    ASSERT_TRUE(save.current_levels["gladiator"] == 1);
 }
 } // namespace detail_coverage_r17
 

@@ -57,7 +57,7 @@ SLICE="${SLICE:-300}"
 MAX_SLICES="${MAX_SLICES:-20}"   # 20 x 300 = 6000 ticks max
 RUN_TIMEOUT="${RUN_TIMEOUT:-300}"
 CL_DELTA="${CL_DELTA:-0}"        # bracket-sweep offset from the curve level
-CAMPAIGN="org.openglad.westlands"
+CAMPAIGN="westlands"
 
 # Crew power entering each level, per scratchpad westlands campaign_meta.md
 # (upper value of ranges). 18 is the unused act gap.

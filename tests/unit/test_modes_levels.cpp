@@ -1,5 +1,5 @@
 // Shipped "Multiplayer Game Modes" campaign validation
-// (builtin/org.openglad.modes.glad, authored by tools/modes_mapgen).
+// (builtin/modes.glad, authored by tools/modes_mapgen).
 //
 // The 28-scenario five-mode campaign (TDM 300-305 absorbing the arenas
 // grids, CTF 500-509 keeping the shipped CTF maps, Onslaught 800-803,
@@ -126,8 +126,8 @@ protected:
         restore_default_campaigns();
         previous_ = get_mounted_campaign();
         ASSERT_EQ(CampaignPackageIoError::None,
-                  mount_campaign_package_with_error("org.openglad.modes"))
-            << "builtin/org.openglad.modes.glad should restore and mount";
+                  mount_campaign_package_with_error("modes"))
+            << "builtin/modes.glad should restore and mount";
     }
 
     void TearDown() override
@@ -829,10 +829,10 @@ TEST_F(ModesLevels, manifest_module_matches_package_and_executes)
     // must be the same bytes (regenerate-and-diff discipline), and the
     // chunk must execute clean in the script sandbox.
     const std::vector<std::uint8_t> member = og::resources::read_file(
-        "packs/org.openglad.modes.core/lib/mode_levels.lua");
+        "packs/modes.core/lib/mode_levels.lua");
     ASSERT_FALSE(member.empty()) << "manifest member missing from the .glad";
     std::ifstream committed_in(
-        "campaigns/org.openglad.modes/packs/org.openglad.modes.core/lib/"
+        "campaigns/modes/packs/modes.core/lib/"
         "mode_levels.lua",
         std::ios::binary);
     ASSERT_TRUE(committed_in.good())
@@ -847,7 +847,7 @@ TEST_F(ModesLevels, manifest_module_matches_package_and_executes)
 
     og::script::ScriptHost host;
     EXPECT_TRUE(host.run_chunk("mode_levels.lua", member_text,
-                               "org.openglad.modes.core"))
+                               "modes.core"))
         << "the manifest chunk failed to execute";
     EXPECT_TRUE(host.errors().empty());
 
@@ -893,7 +893,7 @@ TEST_F(ModesLevels, manifest_module_matches_package_and_executes)
 TEST_F(ModesLevels, item_pads_mirror_the_world_and_the_off_modes_stay_off)
 {
     const std::vector<std::uint8_t> member = og::resources::read_file(
-        "packs/org.openglad.modes.core/lib/mode_levels.lua");
+        "packs/modes.core/lib/mode_levels.lua");
     ASSERT_FALSE(member.empty()) << "manifest member missing from the .glad";
     const std::string member_text(member.begin(), member.end());
     const std::string expr_prefix =
@@ -982,10 +982,10 @@ TEST_F(ModesLevels, pack_sprites_load_with_pinned_shapes)
 {
     const struct { const char* path; int w; int h; int frames; } sprites[] = {
         {"icon.png", 32, 32, 1},
-        {"packs/org.openglad.modes.core/sprites/flag.png", 10, 14, 4},
-        {"packs/org.openglad.modes.core/sprites/ctfpoint.png", 16, 16, 1},
-        {"packs/org.openglad.modes.core/sprites/ball.png", 12, 12, 8},
-        {"packs/org.openglad.modes.core/sprites/aura.png", 16, 16, 4},
+        {"packs/modes.core/sprites/flag.png", 10, 14, 4},
+        {"packs/modes.core/sprites/ctfpoint.png", 16, 16, 1},
+        {"packs/modes.core/sprites/ball.png", 12, 12, 8},
+        {"packs/modes.core/sprites/aura.png", 16, 16, 4},
     };
     for (const auto& s : sprites)
     {
@@ -1001,17 +1001,17 @@ TEST_F(ModesLevels, embedded_pack_rides_the_mount_cycle)
 {
     // Mounted: the pack lib member resolves through the VFS.
     EXPECT_FALSE(og::resources::read_file(
-                     "packs/org.openglad.modes.core/lib/mode_levels.lua")
+                     "packs/modes.core/lib/mode_levels.lua")
                      .empty());
     // Unmounted: it leaves with its campaign.
     ASSERT_EQ(CampaignPackageIoError::None,
-              unmount_campaign_package_with_error("org.openglad.modes"));
+              unmount_campaign_package_with_error("modes"));
     EXPECT_TRUE(og::resources::read_file(
-                    "packs/org.openglad.modes.core/lib/mode_levels.lua")
+                    "packs/modes.core/lib/mode_levels.lua")
                     .empty());
     // Remount so teardown finds the state it expects.
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.modes"));
+              mount_campaign_package_with_error("modes"));
 }
 
 TEST_F(ModesLevels, scripted_levels_tick_clean_without_mode_lua)

@@ -1,4 +1,4 @@
-# org.openglad.longseason — provenance
+# longseason — provenance
 
 GENERATED CAMPAIGN. `scen/`, `pix/`, `campaign.yaml` and `icon.png` are
 regenerated wholesale by `tools/longseason_mapgen`

@@ -69,7 +69,7 @@ private:
 struct RestoreDefaultState {
     ~RestoreDefaultState()
     {
-        (void)mount_campaign_package_with_error("org.openglad.gladiator");
+        (void)mount_campaign_package_with_error("gladiator");
         headless_entity_loader()->reload_graphics_if_stale();
         og::test162::remove_sprite_campaign(kFixtureId);
         cleanup_unpacked_campaign();
@@ -83,12 +83,12 @@ TEST(TextCampaignSprites, protocol_session_loads_campaign_pack_sprites)
     restore_default_campaigns();
     RestoreDefaultState restore;
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.gladiator"));
+              mount_campaign_package_with_error("gladiator"));
     ASSERT_TRUE(og::test162::install_playable_sprite_campaign(kFixtureId));
     // Back on the default campaign: the SESSION must switch the mount and
     // heal the loader, exactly as a real `openglad_text --campaign` run.
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.gladiator"));
+              mount_campaign_package_with_error("gladiator"));
     headless_entity_loader()->reload_graphics_if_stale();
 
     {

@@ -178,7 +178,7 @@ int curses_network_testing_exercise_internal_helpers()
     // host and joiner must share before canonicalizing private guy ids.
     og::sim::LobbyState colliding_slots_state;
     colliding_slots_state.settings.campaign_id =
-        "org.openglad.gladiator";
+        "gladiator";
     colliding_slots_state.settings.scenario_id = 1;
     og::sim::LobbyPlayer colliding_player = player;
     colliding_player.player_index = 3;
@@ -203,7 +203,7 @@ int curses_network_testing_exercise_internal_helpers()
     // that an oversized, otherwise valid roster is rejected rather than
     // silently truncated or compacted.
     og::sim::LobbyState oversized_state;
-    oversized_state.settings.campaign_id = "org.openglad.gladiator";
+    oversized_state.settings.campaign_id = "gladiator";
     oversized_state.settings.scenario_id = 1;
     og::sim::LobbyPlayer oversized_player = player;
     oversized_player.character_slots.clear();
@@ -564,7 +564,7 @@ int curses_network_testing_exercise_internal_helpers()
         !err.empty());
 
     og::sim::LobbySaveDataEquivalent equivalent;
-    equivalent.current_campaign = "org.openglad.gladiator";
+    equivalent.current_campaign = "gladiator";
     equivalent.scen_num = 1;
     equivalent.numplayers = 1;
     equivalent.allied_mode = 0;
@@ -760,7 +760,7 @@ int curses_network_testing_exercise_internal_helpers()
     // Pin both the failed-load and successful-load paths, then restore the
     // process mount exactly so shuffled neighbors see their original package.
     CursesNetworkTestingMountRestore mount_restore;
-    const std::string ctf_campaign = "org.openglad.modes";
+    const std::string ctf_campaign = "modes";
     const CampaignPackageIoError ctf_mount =
         mount_campaign_package_with_error(ctf_campaign);
     check(ctf_mount == CampaignPackageIoError::None);

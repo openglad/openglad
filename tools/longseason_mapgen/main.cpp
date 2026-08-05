@@ -1,7 +1,7 @@
 /* The Long Season campaign generator.
  *
- * Produces campaigns/org.openglad.longseason/ (the source tree the build
- * composes into builtin/org.openglad.longseason.glad): a 19-level story campaign
+ * Produces campaigns/longseason/ (the source tree the build
+ * composes into builtin/longseason.glad): a 19-level story campaign
  * built season by season — flood dikes in spring, two armies in summer,
  * mines in autumn, snow passes in winter, and the Reckoning at the foundry
  * gate. Every briefing is an entry in the Brass Kettle Company's ledger.
@@ -15,7 +15,7 @@
  * exit-destination validation against the registered id set.
  *
  * Usage: longseason_mapgen [output.glad]
- *        (default: campaigns/org.openglad.longseason)
+ *        (default: campaigns/longseason)
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
@@ -1482,7 +1482,7 @@ int main(int argc, char* argv[])
     namespace fs = std::filesystem;
 
     const std::string out_tree =
-        (argc > 1) ? argv[1] : "campaigns/org.openglad.longseason";
+        (argc > 1) ? argv[1] : "campaigns/longseason";
     const fs::path out_abs = fs::absolute(out_tree);
 
     fs::path scratch;
@@ -1497,7 +1497,7 @@ int main(int argc, char* argv[])
 
     init_logging();
     io_init(argc, argv);
-    if (get_mounted_campaign() != "org.openglad.gladiator")
+    if (get_mounted_campaign() != "gladiator")
     {
         std::fprintf(stderr, "longseason_mapgen: ERROR: stock campaign not "
                              "mounted; run next to staged assets (build dir)\n");
@@ -1552,14 +1552,14 @@ int main(int argc, char* argv[])
             fail(std::format("scen{} registered twice", e.id));
     }
 
-    const std::string glad_path = user + "campaigns/org.openglad.longseason.glad";
+    const std::string glad_path = user + "campaigns/longseason.glad";
     std::remove(glad_path.c_str());
     if (zip_contents_with_error(user + "temp/", glad_path) != ArchiveIoError::None)
         fail(std::format("failed to zip campaign into {}", glad_path));
 
     if (g_errors == 0)
     {
-        if (mount_campaign_package_with_error("org.openglad.longseason") !=
+        if (mount_campaign_package_with_error("longseason") !=
             CampaignPackageIoError::None)
         {
             fail("failed to mount the produced campaign");
@@ -1568,7 +1568,7 @@ int main(int argc, char* argv[])
         {
             for (const ExpectedLevel& e : expectations)
                 self_check_level(e, registered);
-            (void)unmount_campaign_package_with_error("org.openglad.longseason");
+            (void)unmount_campaign_package_with_error("longseason");
         }
     }
 

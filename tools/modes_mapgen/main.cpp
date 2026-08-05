@@ -1,7 +1,7 @@
 /* Multiplayer Game Modes campaign generator.
  *
- * Produces campaigns/org.openglad.modes/ (the source tree the build
- * composes into builtin/org.openglad.modes.glad): the 28-scenario five-mode
+ * Produces campaigns/modes/ (the source tree the build
+ * composes into builtin/modes.glad): the 28-scenario five-mode
  * campaign (TDM 300-305 absorbing the arenas grids, CTF 500-509 keeping
  * the shipped CTF maps, Onslaught 800-803, Soccer 820-823, Mutant
  * 840-843), every level typed SCEN_TYPE_SCRIPTED — the mode rules live in
@@ -11,7 +11,7 @@
  * build the maps, zips, remounts, and hard-fails on any self-check
  * violation before exporting the campaign tree.
  *
- * Usage: modes_mapgen [output-dir]  (default: campaigns/org.openglad.modes)
+ * Usage: modes_mapgen [output-dir]  (default: campaigns/modes)
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
@@ -96,8 +96,8 @@ namespace {
 
 namespace fs = std::filesystem;
 
-constexpr const char* kCampaignId = "org.openglad.modes";
-constexpr const char* kPackId = "org.openglad.modes.core";
+constexpr const char* kCampaignId = "modes";
+constexpr const char* kPackId = "modes.core";
 
 // ---------------------------------------------------------------------------
 // Campaign descriptor + icon.
@@ -857,7 +857,7 @@ int main(int argc, char* argv[])
     namespace fs = std::filesystem;
 
     const std::string out_tree =
-        (argc > 1) ? argv[1] : "campaigns/org.openglad.modes";
+        (argc > 1) ? argv[1] : "campaigns/modes";
     const fs::path out_abs = fs::absolute(out_tree);
 
     // Never touch ~/.openglad: run inside a disposable config dir unless
@@ -874,7 +874,7 @@ int main(int argc, char* argv[])
 
     init_logging();
     io_init(argc, argv);
-    if (get_mounted_campaign() != "org.openglad.gladiator")
+    if (get_mounted_campaign() != "gladiator")
     {
         std::fprintf(stderr,
                      "modes_mapgen: ERROR: stock campaign not mounted; run "

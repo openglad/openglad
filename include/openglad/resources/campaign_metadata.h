@@ -13,7 +13,7 @@
 namespace og::data {
 
 // Human-readable campaign title from the package's campaign.yaml
-// ("Gladiator" for "org.openglad.gladiator"). Falls back to the raw id when
+// ("Gladiator" for "gladiator"). Falls back to the raw id when
 // the package, its campaign.yaml, or the title is missing. Memoized.
 std::string campaign_display_title(const std::string& campaign_id);
 

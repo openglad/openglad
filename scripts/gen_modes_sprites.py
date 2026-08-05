@@ -241,8 +241,8 @@ def check_band(name, pixels, team_ok, neutral_ok):
 
 
 
-OUT = os.path.join(REPO, "campaigns", "org.openglad.modes", "packs",
-                   "org.openglad.modes.core", "sprites")
+OUT = os.path.join(REPO, "campaigns", "modes", "packs",
+                   "modes.core", "sprites")
 
 # Red ramp entries for the aura ring (team-red base 40..47) and gold sparks
 # (yellow ramp 88..95). Fixed colors on purpose: the Mutant's identity must

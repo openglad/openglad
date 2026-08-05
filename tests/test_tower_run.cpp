@@ -23,7 +23,7 @@
  *     networked sessions (§5.9 backstop layer 3).
  *
  * Mount hygiene (§1.10): every test runs under the fixture, which backs up
- * save0, prunes generated floors, and remounts org.openglad.gladiator in
+ * save0, prunes generated floors, and remounts gladiator in
  * teardown (SaveData::load mounts the SAVED campaign — the --gtest_shuffle
  * trap).
  */
@@ -135,11 +135,11 @@ protected:
         // Reset the shared session save so no tower state leaks to the next
         // test, then heal the mount (§1.10).
         scr().save_data.reset();
-        scr().save_data.current_campaign = "org.openglad.gladiator";
+        scr().save_data.current_campaign = "gladiator";
         scr().save_data.scen_num = 1;
         (void)unmount_campaign_package_with_error(get_mounted_campaign());
         ASSERT_EQ(CampaignPackageIoError::None,
-                  mount_campaign_package_with_error("org.openglad.gladiator"));
+                  mount_campaign_package_with_error("gladiator"));
         scr().sync_world_from_save_data();
         scr().world().end = 0;
         trace_clear();
@@ -429,15 +429,15 @@ TEST_F(TowerRunE2E, shadow_finalize_honors_the_ctf_rematch_gate)
     // is false and the assertion would be vacuous.
     (void)unmount_campaign_package_with_error(get_mounted_campaign());
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.gladiator"));
+              mount_campaign_package_with_error("gladiator"));
     ASSERT_EQ(og::mode::ProgressionKind::Classic,
               og::mode::current_progression().kind());
 
     SaveData& save = scr().save_data;
     save.reset();
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 500;
-    save.current_levels["org.openglad.gladiator"] = 500;
+    save.current_levels["gladiator"] = 500;
     for (auto& score : save.m_score)
         score = 0;
 
@@ -575,7 +575,7 @@ TEST_F(TowerRunE2E, retry_suppressed_and_summary_lines_under_tower_mount)
     // Classic keeps retry (and adds no lines) once gladiator is remounted.
     (void)unmount_campaign_package_with_error(get_mounted_campaign());
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.gladiator"));
+              mount_campaign_package_with_error("gladiator"));
     EXPECT_FALSE(og::mode::current_progression().suppress_retry());
     EXPECT_TRUE(og::mode::current_progression()
                     .results_summary_lines(scr().save_data, scr().world())
@@ -772,7 +772,7 @@ TEST_F(TowerRunE2E, lobby_settings_echo_keeps_mount_and_save_coherent)
     ASSERT_EQ(kTowerId, get_mounted_campaign());
     SaveData& save = scr().save_data;
     save.reset();
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
     og::ui::initialize_starting_team(save, {FAMILY_SOLDIER});
     save.numplayers = 1;
@@ -780,9 +780,9 @@ TEST_F(TowerRunE2E, lobby_settings_echo_keeps_mount_and_save_coherent)
     picker_lobby_initialize_from_save();
     picker_lobby_sync_settings_from_save();
 
-    EXPECT_EQ("org.openglad.gladiator", save.current_campaign);
+    EXPECT_EQ("gladiator", save.current_campaign);
     EXPECT_EQ(1, save.scen_num);
-    EXPECT_EQ("org.openglad.gladiator", get_mounted_campaign())
+    EXPECT_EQ("gladiator", get_mounted_campaign())
         << "a campaign echo must never leave mount != save";
 
     picker_lobby_shutdown();
@@ -917,10 +917,10 @@ TEST(TowerLobbyGating, sanitize_rejects_tower_campaign_for_networked_sessions)
 
     // A legitimate campaign still passes through untouched.
     transport.queue_lobby_message(
-        11u, make_settings_change("org.openglad.ctf", 500));
+        11u, make_settings_change("ctf", 500));
     server.poll_incoming_messages();
     state = server.state();
-    EXPECT_EQ("org.openglad.ctf", state.settings.campaign_id);
+    EXPECT_EQ("ctf", state.settings.campaign_id);
     EXPECT_EQ(500, state.settings.scenario_id);
 }
 

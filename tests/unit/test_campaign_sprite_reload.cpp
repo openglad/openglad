@@ -71,7 +71,7 @@ protected:
             (get_asset_path() + "pix/").c_str(), "pix/", 1));
         previous_mount_ = get_mounted_campaign();
         ASSERT_EQ(CampaignPackageIoError::None,
-                  mount_campaign_package_with_error("org.openglad.gladiator"));
+                  mount_campaign_package_with_error("gladiator"));
 
         original_sheet_ = cfg.get_setting("graphics", "sprite_sheet");
         cfg.apply_setting("graphics", "sprite_sheet", "");

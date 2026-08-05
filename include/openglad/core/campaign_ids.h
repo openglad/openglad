@@ -13,6 +13,6 @@ namespace og {
 
 // The shipped default campaign id. Shared by the campaign-ordering helper
 // and the lobby server's default settings/fallback sites.
-inline constexpr std::string_view kDefaultCampaignId = "org.openglad.gladiator";
+inline constexpr std::string_view kDefaultCampaignId = "gladiator";
 
 } // namespace og

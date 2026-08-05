@@ -1,5 +1,5 @@
 // Shipped "War of the Westlands" campaign validation
-// (builtin/org.openglad.westlands.glad, authored by tools/westlands_mapgen).
+// (builtin/westlands.glad, authored by tools/westlands_mapgen).
 //
 // Every registered level (ids 1-17 and 19-26; 18 is the deliberate act gap)
 // is loaded through the production campaign-mount path and pinned against
@@ -114,13 +114,13 @@ protected:
         restore_default_campaigns();
         previous_ = get_mounted_campaign();
         ASSERT_EQ(CampaignPackageIoError::None,
-                  mount_campaign_package_with_error("org.openglad.westlands"))
-            << "builtin/org.openglad.westlands.glad should restore and mount";
+                  mount_campaign_package_with_error("westlands"))
+            << "builtin/westlands.glad should restore and mount";
     }
 
     void TearDown() override
     {
-        (void)unmount_campaign_package_with_error("org.openglad.westlands");
+        (void)unmount_campaign_package_with_error("westlands");
         if (!previous_.empty())
             (void)mount_campaign_package_with_error(previous_);
     }

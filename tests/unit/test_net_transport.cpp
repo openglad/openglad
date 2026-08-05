@@ -212,7 +212,7 @@ og::sim::InitialSetupGuyData make_initial_setup_guy_for_test()
 og::sim::LobbyState make_lobby_state_for_test()
 {
     og::sim::LobbyState state;
-    state.settings.campaign_id = "org.openglad.gladiator";
+    state.settings.campaign_id = "gladiator";
     state.settings.scenario_id = 7;
     state.settings.difficulty = 2;
     state.settings.allied_mode = 1;
@@ -2559,7 +2559,7 @@ TEST(NetTransport, lobby_state_and_messages_roundtrip)
         .player_index = 1u,
         .settings =
             {
-                .campaign_id = "org.openglad.gladiator",
+                .campaign_id = "gladiator",
                 .scenario_id = 8,
                 .difficulty = 1,
                 .allied_mode = 0,

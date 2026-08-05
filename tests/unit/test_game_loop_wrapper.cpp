@@ -34,7 +34,7 @@ void ensure_game_loop_wrapper_test_runtime()
 
     restore_default_campaigns();
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.gladiator"))
+              mount_campaign_package_with_error("gladiator"))
         << "default campaign should mount for screen-backed unit session";
     ASSERT_TRUE(og::resources::mount((get_asset_path() + "pix/").c_str(),
                                      "pix/",

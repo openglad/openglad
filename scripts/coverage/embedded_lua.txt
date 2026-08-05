@@ -3,7 +3,7 @@
 # Not all Lua in this repository need be a .lua file. The showcase pack — a
 # whole scripted boss arena — long existed only as a C++ raw string literal
 # that got written into a generated .glad (it is a real file now,
-# campaigns/org.openglad.concept/packs/org.openglad.concept.showcase/scripts/court.lua, composed into the archive by
+# campaigns/concept/packs/concept.showcase/scripts/court.lua, composed into the archive by
 # the build), so the coverage denominator has to be able to see Lua embedded
 # in C++. That used to work by convention: the delimiter R"LUA( declared
 # "these bytes are pack Lua", and nothing checked.

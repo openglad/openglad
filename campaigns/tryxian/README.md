@@ -1,4 +1,4 @@
-# org.openglad.tryxian — provenance
+# tryxian — provenance
 
 HAND-AUTHORED CAMPAIGN. This tree is the canonical, editable source of the
 Tryxian Realms campaign — edit it directly (openscen or otherwise); no

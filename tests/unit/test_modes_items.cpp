@@ -481,8 +481,8 @@ TEST(ModesItemsRealCampaign, tdm_scen300_eaten_drumstick_respawns_on_its_pad)
     restore_default_campaigns();
     const std::string previous = get_mounted_campaign();
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.modes"))
-        << "builtin/org.openglad.modes.glad should restore and mount";
+              mount_campaign_package_with_error("modes"))
+        << "builtin/modes.glad should restore and mount";
     {
         LoadedRealLevel fx(300);
         ASSERT_TRUE(fx.loaded) << "scen300 must load from the package";
@@ -577,7 +577,7 @@ TEST(ModesItemsRealCampaign, tdm_scen300_eaten_drumstick_respawns_on_its_pad)
         EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
     }
     const std::string now = get_mounted_campaign();
-    if (now == "org.openglad.modes")
+    if (now == "modes")
         (void)unmount_campaign_package_with_error(now);
     if (previous.empty())
     {

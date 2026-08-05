@@ -144,9 +144,9 @@ TEST(CtfUi, classic_respawn_shows_only_the_shared_countdown)
 {
     ClassicCtfHudCanvasGuard classic_canvas;
     screen* const s = test_screen();
-    if (get_mounted_campaign() != "org.openglad.gladiator") {
+    if (get_mounted_campaign() != "gladiator") {
         (void)unmount_campaign_package_with_error(get_mounted_campaign());
-        (void)mount_campaign_package_with_error("org.openglad.gladiator");
+        (void)mount_campaign_package_with_error("gladiator");
     }
     s->world().id = 1;
     ASSERT_TRUE(s->load_level()) << "level 1 should load";
@@ -206,7 +206,7 @@ TEST(CtfUi, team_build_row_and_matchup_settings_cycle)
 
     // The SCENARIO entry never depends on the campaign.
     for (const char* campaign :
-         {"org.openglad.gladiator", "org.openglad.modes"})
+         {"gladiator", "modes"})
     {
         save.current_campaign = campaign;
         button* row = picker_createmenu_buttons();
@@ -233,7 +233,7 @@ TEST(CtfUi, team_build_row_and_matchup_settings_cycle)
     // scenario-troops control moved to SCENARIO, so its MATCHUP row is
     // dormant: the ordinal still resolves, but the row never shows and
     // change_ctf_troops writes the SCENARIO descriptor instead.
-    save.current_campaign = "org.openglad.modes";
+    save.current_campaign = "modes";
     save.ctf_team_count = 2;
     save.ctf_capture_limit = 0;
     save.ctf_strip_scenario_troops = 0;
@@ -269,7 +269,7 @@ TEST(CtfUi, team_build_row_and_matchup_settings_cycle)
     EXPECT_EQ("TROOPS: ALL", live_scenario[kScenarioMenuTroopsIndex].label);
 
     // Classic campaign: the same two states, no campaign gate.
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     (void)change_ctf_troops();
     EXPECT_EQ(2, (int)save.ctf_strip_scenario_troops);
     EXPECT_EQ("TROOPS: OWN", live_scenario[kScenarioMenuTroopsIndex].label);
@@ -770,7 +770,7 @@ TEST(CtfUi, matchup_local_overview_and_viewer_flow)
 {
     trace_clear();
     SavedPickerSave save_guard;
-    write_save0_with_two_soldiers("org.openglad.gladiator", 1);
+    write_save0_with_two_soldiers("gladiator", 1);
 
     TeamsFlowState state;
     SDL_Thread* thread = SDL_CreateThread(
@@ -816,7 +816,7 @@ TEST(CtfUi, matchup_ctf_settings_flow)
     trace_clear();
     SavedPickerSave save_guard;
     // The save0 load mounts the CTF campaign; its levels start at scen 500.
-    write_save0_with_two_soldiers("org.openglad.modes", 500);
+    write_save0_with_two_soldiers("modes", 500);
 
     TeamsFlowState state;
     SDL_Thread* thread = SDL_CreateThread(
@@ -854,7 +854,7 @@ TEST(CtfUi, matchup_ctf_settings_flow)
     // The save0 load remounted the CTF campaign; restore the default mount
     // so later (or shuffled) tests load classic levels again.
     (void)unmount_campaign_package_with_error(get_mounted_campaign());
-    (void)mount_campaign_package_with_error("org.openglad.gladiator");
+    (void)mount_campaign_package_with_error("gladiator");
 }
 
 TEST(CtfUi, view_scenario_pager_flips_by_mouse_and_keyboard)
@@ -863,7 +863,7 @@ TEST(CtfUi, view_scenario_pager_flips_by_mouse_and_keyboard)
     SavedPickerSave save_guard;
     // Gladiator scen 15 (BATTLE OF THE SLIME) formats to well over one page
     // at 23 rows/page: a stable shipped multi-page fixture.
-    write_save0_with_two_soldiers("org.openglad.gladiator", 15);
+    write_save0_with_two_soldiers("gladiator", 15);
 
     // Deterministic keyboard nav: bind player-0 menu keys explicitly and
     // keep any configured joystick from shadowing them.
@@ -919,7 +919,7 @@ TEST(CtfUi, matchup_member_pager_cycles_slices)
     // The seat identity and HEROES prefix consume part of page one; the
     // widened row then packs the remaining names into three visible slices.
     write_save0_with_soldiers(
-        "org.openglad.gladiator", 1,
+        "gladiator", 1,
         {"Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf",
          "Hotel"});
 
@@ -972,7 +972,7 @@ TEST(CtfUi, matchup_pager_face_not_dimmed_by_row_bar)
     // Same 8-name roster as the pager flow: team 0's detail line overflows,
     // so team_page_0 is visible.
     write_save0_with_soldiers(
-        "org.openglad.gladiator", 1,
+        "gladiator", 1,
         {"Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf",
          "Hotel"});
 

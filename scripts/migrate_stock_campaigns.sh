@@ -40,7 +40,7 @@ fi
 
 cmake --build "${BUILD_DIR}" --target grid_migrate -- -j8
 
-for id in org.openglad.gladiator org.openglad.tryxian; do
+for id in gladiator tryxian; do
     "${BUILD_DIR}/grid_migrate" "${id}" "campaigns/${id}"
 done
 

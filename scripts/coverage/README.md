@@ -381,9 +381,9 @@ but not ignored):
   that returns);
 * every `R"LUA( ... )LUA"` raw string literal in C++. The `LUA` delimiter is
   the declaration that those bytes are shipped pack Lua —
-  `org.openglad.concept.showcase` (a whole scripted boss arena) shipped for
+  `concept.showcase` (a whole scripted boss arena) shipped for
   a long time only as one of these, before it became the file
-  `campaigns/org.openglad.concept/packs/org.openglad.concept.showcase/scripts/court.lua`.
+  `campaigns/concept/packs/concept.showcase/scripts/court.lua`.
 
 The campaign-embedded packs live INSIDE their campaign trees
 (`campaigns/<id>/packs/<pack-id>/`), which the build composes 1:1 into the

@@ -59,8 +59,8 @@ void cleanup_leftover_test_campaigns()
     // Keep this narrow: only delete known-hazard prefixes created by tests.
     for (const auto& id : list_campaigns())
     {
-        if (id.rfind("org.openglad.test.invalid_yaml.", 0) == 0 ||
-            id.rfind("org.openglad.test.missing_yaml.", 0) == 0)
+        if (id.rfind("test.invalid_yaml.", 0) == 0 ||
+            id.rfind("test.missing_yaml.", 0) == 0)
         {
             delete_campaign(id);
         }
@@ -72,7 +72,7 @@ std::string unique_test_campaign_id(std::string_view stem)
     static std::atomic<std::uint64_t> sequence{0};
     const auto nonce = std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
-    return "org.openglad.test." + std::string(stem) + "." +
+    return "test." + std::string(stem) + "." +
         std::to_string(nonce) + "." +
         std::to_string(sequence.fetch_add(1, std::memory_order_relaxed));
 }
@@ -888,7 +888,7 @@ TEST(CampaignAndLevelPicker, campaign_picker_enter_id_returns_exact_prompt_text)
     og::runtime::current_session->viewport_h_ = 200;
 
     PromptQueueGuard prompt_queue;
-    prompt_queue.push("org.openglad.manual-selection");
+    prompt_queue.push("manual-selection");
     char& end = og::runtime::current_session->myscreen_->world().end;
     WorldEndGuard end_guard(end);
     end = 0;
@@ -901,7 +901,7 @@ TEST(CampaignAndLevelPicker, campaign_picker_enter_id_returns_exact_prompt_text)
     const int thread_result = thread.join();
 
     EXPECT_EQ(0, thread_result);
-    EXPECT_EQ("org.openglad.manual-selection", result.id);
+    EXPECT_EQ("manual-selection", result.id);
     EXPECT_EQ(1, result.first_level)
         << "manual IDs retain the CampaignResult default first level";
 }
@@ -920,7 +920,7 @@ TEST(CampaignAndLevelPicker, campaign_picker_confirmed_delete_removes_only_selec
     TemporaryCampaignGuard campaign_guard{
         get_mounted_campaign(), temporary_id};
 
-    CampaignData source("org.openglad.gladiator");
+    CampaignData source("gladiator");
     ASSERT_TRUE(source.load());
     source.title = "Delete Only This Campaign";
     ASSERT_TRUE(source.save_as(temporary_id));
@@ -989,7 +989,7 @@ TEST(CampaignAndLevelPicker, campaign_picker_confirmed_reset_clears_selected_pro
     TemporaryCampaignGuard campaign_guard{
         get_mounted_campaign(), temporary_id};
 
-    CampaignData source("org.openglad.gladiator");
+    CampaignData source("gladiator");
     ASSERT_TRUE(source.load());
     source.title = "Reset Only This Campaign";
     ASSERT_TRUE(source.save_as(temporary_id));
@@ -1009,10 +1009,10 @@ TEST(CampaignAndLevelPicker, campaign_picker_confirmed_reset_clears_selected_pro
     } completed_restore{save, saved_completed_levels};
     save.add_level_completed(temporary_id, 1);
     save.add_level_completed(temporary_id, 3);
-    save.add_level_completed("org.openglad.gladiator", 77);
+    save.add_level_completed("gladiator", 77);
     ASSERT_EQ(2, save.get_num_levels_completed(temporary_id));
     ASSERT_EQ(1u,
-              save.completed_levels.at("org.openglad.gladiator").count(77));
+              save.completed_levels.at("gladiator").count(77));
 
     ViewportGuard viewport_guard;
     og::runtime::current_session->window_w_ = 320;
@@ -1042,7 +1042,7 @@ TEST(CampaignAndLevelPicker, campaign_picker_confirmed_reset_clears_selected_pro
     EXPECT_TRUE(result.id.empty());
     EXPECT_EQ(0, save.get_num_levels_completed(temporary_id));
     EXPECT_EQ(1u,
-              save.completed_levels.at("org.openglad.gladiator").count(77))
+              save.completed_levels.at("gladiator").count(77))
         << "resetting the selected campaign must preserve other progress";
 }
 
@@ -1052,7 +1052,7 @@ TEST(CampaignAndLevelPicker, load_campaign_invalid_id_reports_error)
     std::map<std::string, int> current_levels;
     const std::string old_campaign = get_mounted_campaign();
 
-    int rv = load_campaign("org.openglad.this_campaign_should_not_exist", current_levels, 1);
+    int rv = load_campaign("this_campaign_should_not_exist", current_levels, 1);
     ASSERT_EQ(-2, rv) << "load_campaign should return -2 when mount fails";
 
     // Restore environment for tests that expect a mounted campaign.
@@ -1063,14 +1063,14 @@ TEST(CampaignAndLevelPicker, load_campaign_invalid_id_reports_error)
 TEST(CampaignAndLevelPicker, load_campaign_with_error_typed_result_paths)
 {
     std::map<std::string, int> current_levels;
-    current_levels["org.openglad.gladiator"] = 7;
+    current_levels["gladiator"] = 7;
 
     const std::string old_campaign = get_mounted_campaign();
-    CampaignLoadResult typed = load_campaign_with_error("org.openglad.gladiator", current_levels, 1);
+    CampaignLoadResult typed = load_campaign_with_error("gladiator", current_levels, 1);
     ASSERT_EQ(static_cast<int>(CampaignLoadError::None), static_cast<int>(typed.error)) << "typed load_campaign should succeed for mounted campaign";
     ASSERT_EQ(7, typed.current_level) << "typed load_campaign should return mapped current level";
 
-    typed = load_campaign_with_error("org.openglad.this_campaign_should_not_exist", current_levels, 1);
+    typed = load_campaign_with_error("this_campaign_should_not_exist", current_levels, 1);
     ASSERT_EQ(static_cast<int>(CampaignLoadError::MountFailed), static_cast<int>(typed.error)) << "typed load_campaign should report MountFailed for invalid campaign";
 
     // Restore environment for tests that expect a mounted campaign.
@@ -1277,12 +1277,12 @@ TEST(CampaignAndLevelPicker, level_picker_delete_removes_only_selected_level)
     og::runtime::current_session->viewport_h_ = 200;
 
     const std::string temporary_id =
-        "org.openglad.test.level_picker_delete";
+        "test.level_picker_delete";
     TemporaryCampaignGuard campaign_guard{
         get_mounted_campaign(), temporary_id};
     delete_campaign(temporary_id);
 
-    CampaignData campaign("org.openglad.gladiator");
+    CampaignData campaign("gladiator");
     ASSERT_TRUE(campaign.load());
     ASSERT_TRUE(campaign.save_as(temporary_id));
     ASSERT_EQ(CampaignPackageIoError::None,
@@ -1335,21 +1335,21 @@ TEST(CampaignAndLevelPicker, sync_campaign_mount_follows_save_and_restores_on_fa
     const std::string old_save_campaign = save.current_campaign;
 
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.gladiator"));
+              mount_campaign_package_with_error("gladiator"));
 
-    save.current_campaign = "org.openglad.modes";
+    save.current_campaign = "modes";
     ASSERT_TRUE(og::ui::sync_campaign_mount_to_save(save))
         << "the ctf package ships with the game and should mount";
-    ASSERT_EQ(std::string("org.openglad.modes"), get_mounted_campaign());
+    ASSERT_EQ(std::string("modes"), get_mounted_campaign());
 
     // Same campaign again: success without touching the mount.
     ASSERT_TRUE(og::ui::sync_campaign_mount_to_save(save));
-    ASSERT_EQ(std::string("org.openglad.modes"), get_mounted_campaign());
+    ASSERT_EQ(std::string("modes"), get_mounted_campaign());
 
     // Missing package: report failure and restore the previous mount.
-    save.current_campaign = "org.openglad.this_campaign_should_not_exist";
+    save.current_campaign = "this_campaign_should_not_exist";
     ASSERT_FALSE(og::ui::sync_campaign_mount_to_save(save));
-    ASSERT_EQ(std::string("org.openglad.modes"), get_mounted_campaign())
+    ASSERT_EQ(std::string("modes"), get_mounted_campaign())
         << "failed sync must put the previous mount back";
 
     save.current_campaign = old_save_campaign;
@@ -1390,10 +1390,10 @@ TEST(CampaignAndLevelPicker, new_game_resets_campaign_and_mount_to_default)
 
     // Simulate "the last session played CTF": the save selects it and its
     // package is the one mounted (SaveData::load() would have done both).
-    save.current_campaign = "org.openglad.modes";
+    save.current_campaign = "modes";
     save.scen_num = 505;
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.modes"));
+              mount_campaign_package_with_error("modes"));
     // team_size == 0 keeps the flow from raising the "restart?" prompt.
     for (int i = 0; i < MAX_TEAM_SIZE; i++)
         save.team_list[i].reset();
@@ -1408,9 +1408,9 @@ TEST(CampaignAndLevelPicker, new_game_resets_campaign_and_mount_to_default)
     SDL_WaitThread(thread, nullptr);
 
     ASSERT_TRUE(ok) << "new game setup should not abort";
-    ASSERT_EQ(std::string("org.openglad.gladiator"), save.current_campaign)
+    ASSERT_EQ(std::string("gladiator"), save.current_campaign)
         << "a new game must reset to the default campaign";
-    ASSERT_EQ(std::string("org.openglad.gladiator"), get_mounted_campaign())
+    ASSERT_EQ(std::string("gladiator"), get_mounted_campaign())
         << "a new game must remount the default campaign package";
     ASSERT_EQ(1, save.scen_num) << "a new game must rewind the level cursor";
 

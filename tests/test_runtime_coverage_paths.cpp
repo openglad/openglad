@@ -344,7 +344,7 @@ TEST(RuntimeCoveragePaths, input_bridge_window_and_key_paths)
 
     SDL_Event e{};
 
-    s->save_data.current_campaign = "org.openglad.gladiator";
+    s->save_data.current_campaign = "gladiator";
     s->save_data.completed_levels[s->save_data.current_campaign].clear();
     s->save_data.scen_num = 2;
     s->save_data.allied_mode = 0;
@@ -597,7 +597,7 @@ TEST(RuntimeCoveragePaths, treasure_exit_and_teleporter_navigation_paths)
     sim_events.clear();
 
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->sync_world_from_save_data();
     og::runtime::current_session->myscreen_->level_runtime_data().level_done = 1;
     treasure* exit_fx = add_treasure(FAMILY_EXIT, 2);
@@ -677,7 +677,7 @@ TEST(RuntimeCoveragePaths, treasure_navigation_early_returns_and_withdraw_declin
 
     // Withdraw branch with decline: level is completed, current isn't, enemies still present.
     og::runtime::current_session->myscreen_->save_data.reset();
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 5;
     og::runtime::current_session->myscreen_->save_data.add_level_completed(og::runtime::current_session->myscreen_->save_data.current_campaign, 3);
     og::runtime::current_session->myscreen_->sync_world_from_save_data();
@@ -792,7 +792,7 @@ TEST(RuntimeCoveragePaths, treasure_batch3_exit_withdraw_accept_path)
     sim_events.clear();
 
     og::runtime::current_session->myscreen_->save_data.reset();
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 8; // Current level is not marked complete.
     og::runtime::current_session->myscreen_->save_data.add_level_completed(og::runtime::current_session->myscreen_->save_data.current_campaign, 5);
     (void)og::runtime::current_session->myscreen_->save_data.save("save0");
@@ -853,7 +853,7 @@ TEST(RuntimeCoveragePaths, screen_withdraw_aborts_when_autosave_load_fails)
         return;
 
     s->save_data.reset();
-    s->save_data.current_campaign = "org.openglad.missing-campaign";
+    s->save_data.current_campaign = "missing-campaign";
     s->save_data.scen_num = 7;
     ASSERT_TRUE(s->save_data.save("save0")) << "fixture save with missing campaign should write";
     s->sync_world_from_save_data();
@@ -2012,7 +2012,7 @@ TEST(RuntimeCoveragePaths, issue98_can_exit_flag_should_show_exit_not_withdraw)
     og::runtime::current_session->myscreen_->level_runtime_data().level_done = 0; // enemies still present
 
     og::runtime::current_session->myscreen_->save_data.reset();
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 5; // current level (not completed)
     og::runtime::current_session->myscreen_->save_data.add_level_completed(og::runtime::current_session->myscreen_->save_data.current_campaign, 3);
     (void)og::runtime::current_session->myscreen_->save_data.save("save0");
@@ -2074,7 +2074,7 @@ TEST(RuntimeCoveragePaths, issue98_no_double_dialog_on_withdraw_exit)
     og::runtime::current_session->myscreen_->level_runtime_data().level_done = 0; // enemies still present
 
     og::runtime::current_session->myscreen_->save_data.reset();
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 5;
     og::runtime::current_session->myscreen_->save_data.add_level_completed(og::runtime::current_session->myscreen_->save_data.current_campaign, 3);
     (void)og::runtime::current_session->myscreen_->save_data.save("save0");
@@ -2277,7 +2277,7 @@ TEST(RuntimeCoveragePaths, window_autosave_networked_lobby_is_a_merge_write)
     {
         SaveData priv;
         priv.save_name = "Bridge Merge Co";
-        priv.current_campaign = "org.openglad.gladiator";
+        priv.current_campaign = "gladiator";
         priv.scen_num = 4;
         priv.my_team = 0;
         priv.numplayers = 1;
@@ -2302,7 +2302,7 @@ TEST(RuntimeCoveragePaths, window_autosave_networked_lobby_is_a_merge_write)
     const std::int64_t saved_last_played = s->save_data.last_played_unix_s;
     const std::uint32_t saved_cash1 = s->save_data.m_totalcash[1];
 
-    s->save_data.current_campaign = "org.openglad.gladiator";
+    s->save_data.current_campaign = "gladiator";
     s->save_data.scen_num = 11; // the HOST's level, not ours
     s->save_data.my_team = 1;
     s->save_data.m_totalcash[1] = 250; // owned wallet post-spend

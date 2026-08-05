@@ -1,7 +1,7 @@
 /* The Endless Tower campaign generator.
  *
- * Produces campaigns/org.openglad.tower/ (the source tree the build
- * composes into builtin/org.openglad.tower.glad): the Gate-ONLY package for the
+ * Produces campaigns/tower/ (the source tree the build
+ * composes into builtin/tower.glad): the Gate-ONLY package for the
  * Tower Climb mode (tower-triple spec §5.2, D7). Contents EXACTLY:
  * campaign.yaml (`mode: tower`, first_level 700), icon.png, and the
  * authored antechamber scen700 "The Gate" + its grid PNG. The package must
@@ -14,7 +14,7 @@
  * SDL-free; mirrors tools/concept_mapgen (headless platform glue, zips a
  * campaign package, mounts it, self-checks the level by reloading it).
  *
- * Usage: tower_mapgen [output-dir]   (default: campaigns/org.openglad.tower)
+ * Usage: tower_mapgen [output-dir]   (default: campaigns/tower)
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
@@ -352,7 +352,7 @@ int main(int argc, char* argv[])
     namespace fs = std::filesystem;
 
     const std::string out_tree =
-        (argc > 1) ? argv[1] : "campaigns/org.openglad.tower";
+        (argc > 1) ? argv[1] : "campaigns/tower";
     const fs::path out_abs = fs::absolute(out_tree);
 
     fs::path scratch;
@@ -367,7 +367,7 @@ int main(int argc, char* argv[])
 
     init_logging();
     io_init(argc, argv);
-    if (get_mounted_campaign() != "org.openglad.gladiator")
+    if (get_mounted_campaign() != "gladiator")
     {
         std::fprintf(stderr, "tower_mapgen: ERROR: stock campaign not mounted; "
                              "run next to staged assets (build dir)\n");
@@ -401,7 +401,7 @@ int main(int argc, char* argv[])
     build_gate();
     check_no_floor_members(user + "temp/scen/");
 
-    const std::string glad_path = user + "campaigns/org.openglad.tower.glad";
+    const std::string glad_path = user + "campaigns/tower.glad";
     std::remove(glad_path.c_str());
     if (zip_contents_with_error(user + "temp/", glad_path) !=
         ArchiveIoError::None)
@@ -409,7 +409,7 @@ int main(int argc, char* argv[])
 
     if (g_errors == 0)
     {
-        if (mount_campaign_package_with_error("org.openglad.tower") !=
+        if (mount_campaign_package_with_error("tower") !=
             CampaignPackageIoError::None)
         {
             fail("failed to mount the produced campaign");
@@ -417,7 +417,7 @@ int main(int argc, char* argv[])
         else
         {
             self_check_gate();
-            (void)unmount_campaign_package_with_error("org.openglad.tower");
+            (void)unmount_campaign_package_with_error("tower");
         }
     }
 

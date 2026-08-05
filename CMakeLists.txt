@@ -918,13 +918,13 @@ if(NOT Python3_Interpreter_FOUND)
 endif()
 
 set(OG_BUILTIN_CAMPAIGN_IDS
-    org.openglad.concept
-    org.openglad.gladiator
-    org.openglad.longseason
-    org.openglad.modes
-    org.openglad.tower
-    org.openglad.tryxian
-    org.openglad.westlands
+    concept
+    gladiator
+    longseason
+    modes
+    tower
+    tryxian
+    westlands
 )
 # Stamp files decouple ninja's up-to-date tracking from the archive mtime:
 # make_glad.py leaves a byte-identical archive untouched, so an edit that
@@ -1724,7 +1724,7 @@ if(NOT EMSCRIPTEN)
     endif()
 
     # --- concept_mapgen (Z-axis "Concept Playground" campaign generator) ---
-    # SDL-free authoring tool that writes campaigns/org.openglad.concept/
+    # SDL-free authoring tool that writes campaigns/concept/
     # (the archive is composed from that tree by og_builtin_campaigns).
     # Not part of the default build; run via scripts/generate_concept_campaign.sh.
     add_executable(concept_mapgen EXCLUDE_FROM_ALL
@@ -1748,7 +1748,7 @@ if(NOT EMSCRIPTEN)
     add_runtime_assets_dependency(concept_mapgen)
 
     # --- modes_mapgen ("Multiplayer Game Modes" campaign generator) ---
-    # SDL-free authoring tool that writes campaigns/org.openglad.modes/
+    # SDL-free authoring tool that writes campaigns/modes/
     # (the five-mode campaign absorbing arenas + ctf; the archive is composed
     # from that tree — packs/ subtree included — by og_builtin_campaigns)
     # and regenerates the committed level manifest lib/mode_levels.lua in
@@ -1783,7 +1783,7 @@ if(NOT EMSCRIPTEN)
     add_runtime_assets_dependency(modes_mapgen)
 
     # --- westlands_mapgen ("War of the Westlands" campaign generator) ---
-    # SDL-free authoring tool that writes campaigns/org.openglad.westlands/,
+    # SDL-free authoring tool that writes campaigns/westlands/,
     # the 26-level story campaign built act by act (one source file per act).
     # Not part of the default build; run via scripts/generate_westlands_campaign.sh.
     add_executable(westlands_mapgen EXCLUDE_FROM_ALL
@@ -1812,7 +1812,7 @@ if(NOT EMSCRIPTEN)
     add_runtime_assets_dependency(westlands_mapgen)
 
     # --- longseason_mapgen ("The Long Season" campaign generator) ---
-    # SDL-free authoring tool that writes campaigns/org.openglad.longseason/,
+    # SDL-free authoring tool that writes campaigns/longseason/,
     # the 19-level Brass Kettle Company story campaign built season by season
     # (one source file per season). Not part of the default build; run via
     # scripts/generate_longseason_campaign.sh.
@@ -1842,7 +1842,7 @@ if(NOT EMSCRIPTEN)
     add_runtime_assets_dependency(longseason_mapgen)
 
     # --- tower_mapgen ("The Endless Tower" Gate-only package generator) ---
-    # SDL-free authoring tool that writes campaigns/org.openglad.tower/:
+    # SDL-free authoring tool that writes campaigns/tower/:
     # campaign.yaml (`mode: tower`) + icon + the authored Gate (scen700)
     # ONLY — generated floors are written to the user path at run time and
     # must never ship in the package (tower-triple spec D7). Not part of the
@@ -3132,21 +3132,21 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         # The modes-pack fixture zips the CURRENT repo pack sources into its
         # temp .glad so the tests always exercise the shipped bytes.
         target_compile_definitions(og_unit_modes PRIVATE
-            OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/org.openglad.modes/packs/org.openglad.modes.core"
+            OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/modes/packs/modes.core"
         )
 
         og_add_unit_group(og_unit_soccer FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_soccer.cpp
         )
         target_compile_definitions(og_unit_soccer PRIVATE
-            OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/org.openglad.modes/packs/org.openglad.modes.core"
+            OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/modes/packs/modes.core"
         )
 
         og_add_unit_group(og_unit_onslaught FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_onslaught.cpp
         )
         target_compile_definitions(og_unit_onslaught PRIVATE
-            OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/org.openglad.modes/packs/org.openglad.modes.core"
+            OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/modes/packs/modes.core"
         )
 
         og_add_unit_group(og_unit_mapgen FILES

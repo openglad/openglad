@@ -211,7 +211,7 @@ TEST(ResultsScreenFullUi, overview_and_troops_paths)
     SDL_FillSurfaceRect(E_Screen->render, nullptr, kWorldPixel);
 
     // Ensure deterministic campaign/level context used by results_screen internals.
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     og::runtime::current_session->myscreen_->save_data.current_levels.clear();
     og::runtime::current_session->myscreen_->save_data.m_score[0] = 200;
@@ -316,7 +316,7 @@ TEST(ResultsScreenFullUi, troop_scroll_paths_cover_bonus_losses_and_specials)
     const char saved_end = og::runtime::current_session->myscreen_->world().end;
     og::runtime::current_session->myscreen_->world().end = 0;
 
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     og::runtime::current_session->myscreen_->save_data.current_levels.clear();
     og::runtime::current_session->myscreen_->save_data.m_score[0] = 300;
@@ -398,7 +398,7 @@ TEST(ResultsScreenFullUi, defeat_overview_path_reports_foe_totals)
     const char saved_end = og::runtime::current_session->myscreen_->world().end;
     og::runtime::current_session->myscreen_->world().end = 0;
 
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     og::runtime::current_session->myscreen_->save_data.current_levels.clear();
     og::runtime::current_session->myscreen_->save_data.m_score[0] = 75;
@@ -429,7 +429,7 @@ TEST(ResultsScreenFullUi, retry_button_accepts_prompt_and_returns_retry)
     const char saved_end = og::runtime::current_session->myscreen_->world().end;
     og::runtime::current_session->myscreen_->world().end = 0;
 
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     og::runtime::current_session->myscreen_->save_data.current_levels.clear();
 
@@ -467,7 +467,7 @@ TEST(ResultsScreenFullUi, networked_results_suppress_local_retry)
     session->networked_session_ = true;
 
     session->myscreen_->save_data.current_campaign =
-        "org.openglad.gladiator";
+        "gladiator";
     session->myscreen_->save_data.scen_num = 1;
     session->myscreen_->save_data.current_levels.clear();
 
@@ -508,7 +508,7 @@ TEST(ResultsScreenFullUi, completed_victory_zeroes_bonus_cash)
     og::runtime::current_session->myscreen_->world().end = 0;
 
     auto& screen_ref = *og::runtime::current_session->myscreen_;
-    screen_ref.save_data.current_campaign = "org.openglad.gladiator";
+    screen_ref.save_data.current_campaign = "gladiator";
     screen_ref.save_data.scen_num = 1;
     screen_ref.save_data.current_levels.clear();
     screen_ref.save_data.completed_levels.clear();
@@ -555,7 +555,7 @@ TEST(ResultsScreenFullUi, ctf_bots_win_omits_mvp_line)
     const char saved_type = screen_ref.world().type;
     screen_ref.world().end = 0;
 
-    screen_ref.save_data.current_campaign = "org.openglad.gladiator";
+    screen_ref.save_data.current_campaign = "gladiator";
     screen_ref.save_data.scen_num = 1;
     screen_ref.save_data.current_levels.clear();
 
@@ -621,7 +621,7 @@ TEST(ResultsScreenFullUi, scripted_mode_win_scopes_mvp_and_draws_overview)
     const char saved_type = screen_ref.world().type;
     screen_ref.world().end = 0;
 
-    screen_ref.save_data.current_campaign = "org.openglad.gladiator";
+    screen_ref.save_data.current_campaign = "gladiator";
     screen_ref.save_data.scen_num = 1;
     screen_ref.save_data.current_levels.clear();
 
@@ -693,7 +693,7 @@ TEST(ResultsScreenFullUi, classic_mvp_ignores_foreign_company_team)
         screen_ref.world().type & ~GameWorld::TYPE_SCRIPTED);
     screen_ref.world().my_team = 0;
 
-    screen_ref.save_data.current_campaign = "org.openglad.gladiator";
+    screen_ref.save_data.current_campaign = "gladiator";
     screen_ref.save_data.scen_num = 1;
     screen_ref.save_data.current_levels.clear();
 
@@ -754,7 +754,7 @@ TEST(ResultsScreenFullUi, troop_detail_paths_show_specials_and_negative_xp)
     og::runtime::current_session->myscreen_->world().end = 0;
 
     auto& screen_ref = *og::runtime::current_session->myscreen_;
-    screen_ref.save_data.current_campaign = "org.openglad.gladiator";
+    screen_ref.save_data.current_campaign = "gladiator";
     screen_ref.save_data.scen_num = 1;
     screen_ref.save_data.current_levels.clear();
     screen_ref.save_data.m_score[0] = 150;

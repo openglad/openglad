@@ -9,7 +9,7 @@ og.family("treasure", {
   name = "FLAG",
   init_ignore = false,
   init_frame = 0,
-  sprite = "packs/org.openglad.modes.core/sprites/flag.png",
+  sprite = "packs/modes.core/sprites/flag.png",
   glyph = "F",
   glyph_ascii = "F",
   glyph_color = "team",

@@ -324,20 +324,20 @@ TEST(CursesPickerClient, prepare_new_game_populates_team_and_resets_gold)
 TEST(CursesPickerClient, prepare_new_game_resets_campaign_to_default)
 {
     PickerFixture f;
-    f.config.campaign = "org.openglad.modes";
-    f.save().current_campaign = "org.openglad.modes";
+    f.config.campaign = "modes";
+    f.save().current_campaign = "modes";
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.modes"))
+              mount_campaign_package_with_error("modes"))
         << "the modes package ships with the game and should mount";
 
     // §2.2: accept the generated company name at the name-entry prompt.
     f.t().push_special(KeyCode::Enter);
     ASSERT_TRUE(f.client.prepare_new_game());
 
-    EXPECT_EQ(f.config.campaign, "org.openglad.gladiator")
+    EXPECT_EQ(f.config.campaign, "gladiator")
         << "a stale config campaign would be copied back onto the save at GO";
-    EXPECT_EQ(f.save().current_campaign, "org.openglad.gladiator");
-    EXPECT_EQ(get_mounted_campaign(), "org.openglad.gladiator")
+    EXPECT_EQ(f.save().current_campaign, "gladiator");
+    EXPECT_EQ(get_mounted_campaign(), "gladiator")
         << "the in-picker scenario viewer reads the mounted package";
 }
 
@@ -511,14 +511,14 @@ TEST(CursesPickerClient, ctf_settings_cycle_on_ctf_campaign_only)
     ASSERT_NE(caps_item, nullptr);
 
     // Classic campaign: settings stay put and the notice renders.
-    f.save().current_campaign = "org.openglad.gladiator";
+    f.save().current_campaign = "gladiator";
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::TeamBuild, *teams_item);
     EXPECT_EQ(0, (int)f.save().ctf_team_count);
     EXPECT_NE(f.t().dump().find("versus maps only"), std::string::npos);
 
     // Versus campaign: both settings cycle (Auto -> 2).
-    f.save().current_campaign = "org.openglad.modes";
+    f.save().current_campaign = "modes";
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::TeamBuild, *teams_item);
     EXPECT_EQ(2, (int)f.save().ctf_team_count);
@@ -1103,8 +1103,8 @@ TEST(CursesPickerClient, progress_level_title_requires_matching_mount)
     ASSERT_NE(item, nullptr);
 
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.gladiator"));
-    f.config.campaign = "org.openglad.modes"; // configured != mounted
+              mount_campaign_package_with_error("gladiator"));
+    f.config.campaign = "modes"; // configured != mounted
     f.config.level = 4;
 
     dismiss(f.t());
@@ -1145,7 +1145,7 @@ bool seed_curses_company(const std::string& slot, const std::string& name,
     SaveData sd;
     sd.reset();
     sd.save_name = name;
-    sd.current_campaign = "org.openglad.gladiator";
+    sd.current_campaign = "gladiator";
     sd.last_played_unix_s = last_played;
     return sd.save_with_error(slot) == SaveDataIoError::None;
 }
@@ -1936,7 +1936,7 @@ TEST(CursesPickerClient, run_game_reports_real_session_load_failure)
     const std::string mounted_before =
         mount_restore.mounted_before();
     config.campaign =
-        "org.openglad.missing-curses-run-campaign";
+        "missing-curses-run-campaign";
     config.level = 1;
     dismiss(term);
 
@@ -2016,7 +2016,7 @@ TEST(CursesPickerClient, ctf_troops_toggle_runs_on_every_campaign)
     ASSERT_NE(troops_item, nullptr);
 
     // Classic campaign: no refusal notice, ALL -> OWN -> ALL.
-    f.save().current_campaign = "org.openglad.gladiator";
+    f.save().current_campaign = "gladiator";
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
     EXPECT_EQ(2, (int)f.save().ctf_strip_scenario_troops);
@@ -2028,7 +2028,7 @@ TEST(CursesPickerClient, ctf_troops_toggle_runs_on_every_campaign)
     EXPECT_EQ(0, (int)f.save().ctf_strip_scenario_troops);
 
     // Versus campaign: the same two states.
-    f.save().current_campaign = "org.openglad.modes";
+    f.save().current_campaign = "modes";
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
     EXPECT_EQ(2, (int)f.save().ctf_strip_scenario_troops);
@@ -2230,7 +2230,7 @@ TEST(CursesPickerClient, view_scenario_renders_roster_report)
     const auto* viewer_item = og::ui::find_picker_menu_item(
         PickerMenuId::Scenario, PickerMenuCommand::ViewScenario);
     ASSERT_NE(viewer_item, nullptr);
-    f.save().current_campaign = "org.openglad.gladiator";
+    f.save().current_campaign = "gladiator";
     f.save().scen_num = 1;
 
     dismiss(f.t());
@@ -2257,7 +2257,7 @@ TEST(CursesPickerClient, view_scenario_reports_mount_and_level_failures)
         mount_restore.mounted_before();
 
     client.save_data().current_campaign =
-        "org.openglad.missing-curses-view-campaign";
+        "missing-curses-view-campaign";
     dismiss(term);
     client.handle_menu_item(
         PickerMenuId::Scenario, *viewer_item);
@@ -2267,11 +2267,11 @@ TEST(CursesPickerClient, view_scenario_reports_mount_and_level_failures)
 
     const CampaignPackageIoError mounted =
         mount_campaign_package_with_error(
-            "org.openglad.gladiator");
+            "gladiator");
     EXPECT_EQ(CampaignPackageIoError::None, mounted);
     if (mounted == CampaignPackageIoError::None) {
         client.save_data().current_campaign =
-            "org.openglad.gladiator";
+            "gladiator";
         client.save_data().scen_num = 32000;
         dismiss(term);
         client.handle_menu_item(

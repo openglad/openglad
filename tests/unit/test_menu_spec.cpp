@@ -326,11 +326,11 @@ TEST(MenuSpec, gate_state_matrix)
     // lookup); a context without a save is gated closed.
     restore_default_campaigns();
     og::data::clear_campaign_metadata_cache();
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     EXPECT_EQ(RowState::Hidden,
               og::ui::gate_state(GateBinding{MenuGate::VersusCampaignOnly, nullptr, {}},
                                  local));
-    save.current_campaign = "org.openglad.modes";
+    save.current_campaign = "modes";
     EXPECT_EQ(RowState::Visible,
               og::ui::gate_state(GateBinding{MenuGate::VersusCampaignOnly, nullptr, {}},
                                  local));
@@ -353,7 +353,7 @@ TEST(MenuSpec, gate_state_matrix)
 TEST(MenuSpec, terminal_gate_messages_guard_the_ctf_trio_verbatim)
 {
     SaveData save;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
 
     const PickerMenuCommand ctf_commands[] = {
         PickerMenuCommand::CycleCtfTeamCount,
@@ -381,7 +381,7 @@ TEST(MenuSpec, terminal_gate_messages_guard_the_ctf_trio_verbatim)
     // On the versus campaign the gate passes: no guard message.
     restore_default_campaigns();
     og::data::clear_campaign_metadata_cache();
-    save.current_campaign = "org.openglad.modes";
+    save.current_campaign = "modes";
     for (const PickerMenuCommand command : ctf_commands) {
         const PickerMenuItem* item = item_of(PickerMenuId::TeamBuild, command);
         ASSERT_NE(nullptr, item);
@@ -393,7 +393,7 @@ TEST(MenuSpec, terminal_gate_messages_guard_the_ctf_trio_verbatim)
         item_of(PickerMenuId::TeamBuild, PickerMenuCommand::ViewTeam);
     ASSERT_NE(nullptr, view_team);
     EXPECT_EQ("", og::ui::terminal_gate_message(*view_team, context_for(save)));
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     EXPECT_EQ("", og::ui::terminal_gate_message(*view_team, context_for(save)));
 }
 

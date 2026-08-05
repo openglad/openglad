@@ -50,10 +50,10 @@ constexpr int kMaxLegacyLevels = 500;
 
 
 SaveData::SaveData()
-    : current_campaign("org.openglad.gladiator"), scen_num(1), score(0), totalcash(0), totalscore(0), my_team(0), numplayers(1), allied_mode(1)
+    : current_campaign("gladiator"), scen_num(1), score(0), totalcash(0), totalscore(0), my_team(0), numplayers(1), allied_mode(1)
 {
-    completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
-    current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
+    completed_levels.insert(std::make_pair("gladiator", std::set<int>()));
+    current_levels.insert(std::make_pair("gladiator", 1));
 
     for (size_t i = 0; i < std::size(m_score); i++)
 	{
@@ -71,11 +71,11 @@ SaveData::~SaveData()
 
 void SaveData::reset()
 {
-	current_campaign = "org.openglad.gladiator";
+	current_campaign = "gladiator";
 	completed_levels.clear();
     current_levels.clear();
-    completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
-    current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
+    completed_levels.insert(std::make_pair("gladiator", std::set<int>()));
+    current_levels.insert(std::make_pair("gladiator", 1));
 
 
 	score = totalcash = totalscore = 0;
@@ -117,7 +117,7 @@ bool SaveData::load(const std::string& filename)
 	std::array<char, 41> savedgame;
 	std::fill_n(savedgame.data(), savedgame.size(), '\0');
 	std::array<char, 41> temp_campaign;
-	snprintf(temp_campaign.data(), temp_campaign.size(), "org.openglad.gladiator");
+	snprintf(temp_campaign.data(), temp_campaign.size(), "gladiator");
 	temp_campaign[40] = '\0';
 	std::uint8_t temp_version = 9;
 	std::uint32_t newcash;
@@ -283,7 +283,7 @@ bool SaveData::load(const std::string& filename)
 		if(loaded_campaign.size() > 3 && is_safe_campaign_id(loaded_campaign))
             current_campaign = loaded_campaign;
         else
-            current_campaign = "org.openglad.gladiator";
+            current_campaign = "gladiator";
 	}
 
 	// Read scenario number
@@ -468,8 +468,8 @@ bool SaveData::load(const std::string& filename)
     }
 
     // Make sure the default campaign is included
-	completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
-	current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
+	completed_levels.insert(std::make_pair("gladiator", std::set<int>()));
+	current_levels.insert(std::make_pair("gladiator", 1));
 
     if(temp_version < 8)
     {

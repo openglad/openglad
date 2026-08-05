@@ -61,7 +61,7 @@ check_failure() {
 check_success "long help" "Usage: openglad_curses [options]" --help
 check_success "short help" "Usage: openglad_curses [options]" -h
 check_success "option parsing before help" "Usage: openglad_curses [options]" \
-    --campaign org.openglad.gladiator \
+    --campaign gladiator \
     --level 2 \
     --save cli_test_save \
     --seed 123 \
@@ -89,7 +89,7 @@ trap 'rm -rf "$tmp_config"' EXIT
 OPENGLAD_CONFIG_DIR="$tmp_config/config/" check_failure \
     "non-terminal startup" \
     "standard input/output is not a terminal" \
-    --campaign org.openglad.gladiator \
+    --campaign gladiator \
     --level 1 \
     --save cli_test_save \
     --seed 123 \

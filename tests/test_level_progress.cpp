@@ -129,7 +129,7 @@ TEST(LevelProgress, menu) {
     // Set up save data so "CONTINUE GAME" has something to load
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
     // Start the event injector thread

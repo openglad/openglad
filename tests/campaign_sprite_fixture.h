@@ -160,7 +160,7 @@ inline bool install_sprite_carrier_campaign(const std::string& id)
 // campaigns installed (restore_default_campaigns) so CampaignData can copy.
 inline bool install_playable_sprite_campaign(const std::string& id)
 {
-    CampaignData source("org.openglad.gladiator");
+    CampaignData source("gladiator");
     if (!source.load())
         return false;
     source.title = "Sprite Carrier";

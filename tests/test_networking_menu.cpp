@@ -1106,7 +1106,7 @@ TEST(NetworkingMenu, room_code_join_invalid_relay_url_stays_in_submenu)
     auto& save = og::runtime::current_session->myscreen_->save_data;
     save.scen_num = 1;
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     ASSERT_TRUE(save.save("save0"));
 
     NetworkingJoinState state;
@@ -1149,7 +1149,7 @@ TEST(NetworkingMenu, submenu_validation_errors_stay_in_place)
     auto& save = og::runtime::current_session->myscreen_->save_data;
     save.scen_num = 1;
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     ASSERT_TRUE(save.save("save0"));
 
     NetworkingValidationState state;
@@ -1225,7 +1225,7 @@ TEST(NetworkingMenu, room_list_rows_join_and_prefill_first_room)
     auto& save = og::runtime::current_session->myscreen_->save_data;
     save.scen_num = 1;
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     ASSERT_TRUE(save.save("save0"));
 
     NetworkingRoomListState state;
@@ -1305,7 +1305,7 @@ TEST(NetworkingMenu, room_click_during_refresh_joins_the_visible_snapshot)
     auto& save = og::runtime::current_session->myscreen_->save_data;
     save.scen_num = 1;
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     ASSERT_TRUE(save.save("save0"));
 
     SDL_Thread* thread = SDL_CreateThread(
@@ -1383,7 +1383,7 @@ TEST(NetworkingMenu, reentry_hides_stale_rooms_until_current_request_completes)
     auto& save = og::runtime::current_session->myscreen_->save_data;
     save.scen_num = 1;
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     ASSERT_TRUE(save.save("save0"));
 
     SDL_Thread* thread = SDL_CreateThread(
@@ -1433,7 +1433,7 @@ TEST(NetworkingMenu, empty_room_list_shows_no_rows_and_stays_usable)
     auto& save = og::runtime::current_session->myscreen_->save_data;
     save.scen_num = 1;
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     ASSERT_TRUE(save.save("save0"));
 
     NetworkingEmptyRoomListState state;
@@ -1487,7 +1487,7 @@ TEST(NetworkingMenu, host_factory_error_stays_in_submenu)
     auto& save = og::runtime::current_session->myscreen_->save_data;
     save.scen_num = 1;
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     ASSERT_TRUE(save.save("save0"));
 
     NetworkingHostFactoryErrorState state;
@@ -1532,7 +1532,7 @@ TEST(NetworkingMenu, host_flow_enters_team_build_and_returns_to_main_menu)
     auto& save = og::runtime::current_session->myscreen_->save_data;
     save.scen_num = 1;
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     ASSERT_TRUE(save.save("save0"));
 
     SDL_Thread* thread =

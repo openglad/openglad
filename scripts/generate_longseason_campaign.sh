@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerate campaigns/org.openglad.longseason/ with tools/longseason_mapgen.
+# Regenerate campaigns/longseason/ with tools/longseason_mapgen.
 #
 # Configures the ci-test preset when needed, builds the (EXCLUDE_FROM_ALL)
 # longseason_mapgen target, and runs it from the repo root so the committed
@@ -15,7 +15,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${REPO_ROOT}/build/ci-test"
-OUTPUT="${1:-campaigns/org.openglad.longseason}"
+OUTPUT="${1:-campaigns/longseason}"
 
 cd "${REPO_ROOT}"
 

@@ -1,6 +1,6 @@
 -- The Ninefold Court (scen 605) — the Concept Playground's level-script
--- showcase, shipped INSIDE builtin/org.openglad.concept.glad as the
--- embedded pack org.openglad.concept.showcase. Campaign packs mount with
+-- showcase, shipped INSIDE builtin/concept.glad as the
+-- embedded pack concept.showcase. Campaign packs mount with
 -- their campaign and unmount with it, so this fight logic exists exactly
 -- when the court does.
 --

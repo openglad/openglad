@@ -148,7 +148,7 @@ struct EditorCampaignFixture
 void setup_editor_campaign_fixture()
 {
     g_editor_campaign_fixture.tmp_id =
-        std::string("org.openglad.test.editorfixture.") + std::to_string(::getpid());
+        std::string("test.editorfixture.") + std::to_string(::getpid());
     g_editor_campaign_fixture.old_mounted_campaign = get_mounted_campaign();
     delete_campaign(g_editor_campaign_fixture.tmp_id);
 }
@@ -439,7 +439,7 @@ TEST(LevelDataOps, level_data_get_description_line)
     ASSERT_TRUE(og::runtime::current_session->myscreen_->get_level_description_line(-1) == "") << "empty list negative index";
     ASSERT_TRUE(og::runtime::current_session->myscreen_->get_level_description_line(5) == "") << "empty list out of range";
 
-    CampaignData c("org.openglad.tests");
+    CampaignData c("tests");
     c.description.clear();
     c.description.push_back("Campaign 1");
     c.description.push_back("Campaign 2");
@@ -448,9 +448,9 @@ TEST(LevelDataOps, level_data_get_description_line)
     ASSERT_TRUE(c.getDescriptionLine(10) == "") << "campaign out of range";
 
     // CampaignData load/save/save_as roundtrip on a temporary campaign.
-    const std::string src_id = "org.openglad.gladiator";
+    const std::string src_id = "gladiator";
     const std::string tmp_id =
-        std::string("org.openglad.test.coverage.") + std::to_string(::getpid());
+        std::string("test.coverage.") + std::to_string(::getpid());
 
     delete_campaign(tmp_id);
 
@@ -706,7 +706,7 @@ public:
 
 TEST_F(LevelDataOpsFixture, campaign_editor_save_load_and_remount_with_fixture)
 {
-    CampaignData src("org.openglad.gladiator");
+    CampaignData src("gladiator");
     ASSERT_EQ(static_cast<int>(CampaignData::IoError::None), static_cast<int>(src.load_with_error())) << "source campaign load_with_error should succeed";
 
     src.title = "Editor Fixture Campaign";

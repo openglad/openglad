@@ -82,15 +82,15 @@ bool prepare_default_level_load()
     set_mounted_campaign_for_testing("");
 #endif
     og::runtime::current_session->myscreen_->save_data.current_campaign =
-        "org.openglad.gladiator";
-    return mount_campaign_package_with_error("org.openglad.gladiator") ==
+        "gladiator";
+    return mount_campaign_package_with_error("gladiator") ==
            CampaignPackageIoError::None;
 }
 
 void configure_replay_team(SaveData& save, int player_count)
 {
     save.reset();
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.current_levels[save.current_campaign] = kReplayLevel;
     save.scen_num = kReplayLevel;
     save.my_team = 0;
@@ -552,7 +552,7 @@ TEST(Replay, initialize_replay_screen_rejects_unsafe_campaign_ids)
         "/tmp/escape",
         "C:\\temp\\escape",
         "org/openglad.gladiator",
-        "org.openglad:gladiator",
+        "bad:colon-id",
     };
 
     for (const std::string_view unsafe_id : unsafe_ids)

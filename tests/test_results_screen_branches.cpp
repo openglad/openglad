@@ -46,7 +46,7 @@ void dispatch_endgame_event(int ending, int next_level)
 void seed_save0_single_member(const char* name, short scen_num)
 {
     SaveData& sd = og::runtime::current_session->myscreen_->save_data;
-    sd.current_campaign = "org.openglad.gladiator";
+    sd.current_campaign = "gladiator";
     sd.scen_num = scen_num;
     sd.current_levels.clear();
     sd.completed_levels.clear();
@@ -237,7 +237,7 @@ TEST(ResultsScreenBranches, ctf_loss_popup_is_defeat_and_never_completes_level)
     const char saved_type = s->world().type;
     walker* const saved_control = s->viewob[0]->control;
 
-    sd.current_campaign = "org.openglad.gladiator";
+    sd.current_campaign = "gladiator";
     sd.scen_num = 506;
     sd.current_levels.clear();
     sd.completed_levels.clear();
@@ -288,7 +288,7 @@ TEST(ResultsScreenBranches, ctf_loss_popup_is_defeat_and_never_completes_level)
     // package serves the scen507 title.
     (void)unmount_campaign_package_with_error(get_mounted_campaign());
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.modes"));
+              mount_campaign_package_with_error("modes"));
     trace_clear();
     s->world().mode.winner_team = 0;
     s->world().mode.winner_is_player = true;
@@ -305,7 +305,7 @@ TEST(ResultsScreenBranches, ctf_loss_popup_is_defeat_and_never_completes_level)
     // Restore the default mount so later (or shuffled) tests load classic
     // levels again.
     (void)unmount_campaign_package_with_error(get_mounted_campaign());
-    (void)mount_campaign_package_with_error("org.openglad.gladiator");
+    (void)mount_campaign_package_with_error("gladiator");
 
     s->viewob[0]->control = saved_control;
     local->set_dead(1);
@@ -324,7 +324,7 @@ TEST(ResultsScreenBranches, ctf_loss_popup_neutral_fallback_without_control)
     const char saved_type = s->world().type;
     walker* const saved_control = s->viewob[0]->control;
 
-    sd.current_campaign = "org.openglad.gladiator";
+    sd.current_campaign = "gladiator";
     sd.scen_num = 506;
     sd.current_levels.clear();
     sd.completed_levels.clear();

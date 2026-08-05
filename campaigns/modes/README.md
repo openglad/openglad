@@ -1,4 +1,4 @@
-# org.openglad.modes — provenance
+# modes — provenance
 
 GENERATED CAMPAIGN. `scen/`, `pix/`, `campaign.yaml` and `icon.png` are
 regenerated wholesale by `tools/modes_mapgen`
@@ -10,7 +10,7 @@ any diff.
 
 `packs/` is hand-authored — edit freely. The generator reads it (staging,
 manifest refresh) but never rewrites it, with one exception:
-`packs/org.openglad.modes.core/lib/mode_levels.lua` is itself generated
+`packs/modes.core/lib/mode_levels.lua` is itself generated
 from the level tables and refreshed by the generator.
 
 This file is repo documentation: `scripts/make_glad.py` excludes README.md

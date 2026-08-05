@@ -25,7 +25,7 @@ namespace {
 using og::mode::IProgression;
 using og::mode::ProgressionKind;
 
-constexpr const char* kGladiatorId = "org.openglad.gladiator";
+constexpr const char* kGladiatorId = "gladiator";
 
 // ---------------------------------------------------------------------------
 // kind_for_mode_string — the pure mapping table.
@@ -285,7 +285,7 @@ TEST_F(MountedCampaignModeTest, modeless_campaign_reports_empty_and_memoizes)
 
 TEST_F(MountedCampaignModeTest, mode_key_flows_from_mounted_package)
 {
-    const std::string id = "org.openglad.test_tower_mode";
+    const std::string id = "test_tower_mode";
     ASSERT_TRUE(install_fake_package(id,
         "format_version: 1\ntitle: Fake Tower\nversion: 1\nmode: tower\n"));
     ASSERT_EQ(CampaignPackageIoError::None,
@@ -302,7 +302,7 @@ TEST_F(MountedCampaignModeTest, mode_key_flows_from_mounted_package)
 TEST_F(MountedCampaignModeTest, remount_heals_stale_cached_mode)
 {
     // v1 of the package has no mode; the lookup memoizes "".
-    const std::string id = "org.openglad.test_mode_upgrade";
+    const std::string id = "test_mode_upgrade";
     ASSERT_TRUE(install_fake_package(id,
         "format_version: 1\ntitle: Upgrades\nversion: 1\n"));
     ASSERT_EQ(CampaignPackageIoError::None,
@@ -327,7 +327,7 @@ TEST_F(MountedCampaignModeTest, remount_heals_stale_cached_mode)
 
 TEST_F(MountedCampaignModeTest, unknown_mode_string_falls_back_to_classic)
 {
-    const std::string id = "org.openglad.test_bogus_mode";
+    const std::string id = "test_bogus_mode";
     ASSERT_TRUE(install_fake_package(id,
         "format_version: 1\ntitle: Bogus\nversion: 1\nmode: hyperspace\n"));
     ASSERT_EQ(CampaignPackageIoError::None,
@@ -429,7 +429,7 @@ using CampaignMatchupTest = MountedCampaignModeTest;
 
 TEST_F(CampaignMatchupTest, matchup_reads_through_private_mount_and_fast_path)
 {
-    const std::string id = "org.openglad.test_versus_matchup";
+    const std::string id = "test_versus_matchup";
     ASSERT_TRUE(install_fake_package(id,
         "format_version: 1\ntitle: Versus Pack\nversion: 1\n"
         "matchup: versus\n"));
@@ -460,7 +460,7 @@ TEST_F(CampaignMatchupTest, absent_and_unsafe_ids_read_cooperative)
     EXPECT_EQ("", og::data::campaign_mode(""));
     EXPECT_EQ("", og::data::campaign_matchup("../escape"))
         << "unsafe ids must not steer a mount";
-    EXPECT_EQ("", og::data::campaign_matchup("org.openglad.no_such_pkg"));
+    EXPECT_EQ("", og::data::campaign_matchup("no_such_pkg"));
     EXPECT_EQ("", og::data::campaign_matchup(kGladiatorId))
         << "shipped gladiator campaign.yaml has no matchup key";
 }
@@ -473,7 +473,7 @@ TEST_F(CampaignMatchupTest, absent_and_unsafe_ids_read_cooperative)
 
 TEST_F(CampaignMatchupTest, campaign_data_round_trips_mode_and_matchup)
 {
-    const std::string id = "org.openglad.test_cd_roundtrip";
+    const std::string id = "test_cd_roundtrip";
     ASSERT_TRUE(install_fake_package(id,
         "format_version: 1\ntitle: Round Trip\nversion: 1\n"
         "mode: tower\nmatchup: versus\n"));
@@ -500,7 +500,7 @@ TEST_F(CampaignMatchupTest, campaign_data_round_trips_mode_and_matchup)
 
     // A campaign WITHOUT the keys stays without them after a repack (the
     // writer's only-when-non-empty rule, exercised end-to-end).
-    const std::string coop_id = "org.openglad.test_cd_coop";
+    const std::string coop_id = "test_cd_coop";
     ASSERT_TRUE(install_fake_package(coop_id,
         "format_version: 1\ntitle: Coop Trip\nversion: 1\n"));
     CampaignData coop(coop_id);
@@ -519,7 +519,7 @@ TEST_F(CampaignMatchupTest, campaign_data_round_trips_mode_and_matchup)
 TEST_F(CampaignMatchupTest, forget_heals_stale_matchup_entry)
 {
     // v1 has no matchup; the lookup memoizes "".
-    const std::string id = "org.openglad.test_matchup_upgrade";
+    const std::string id = "test_matchup_upgrade";
     ASSERT_TRUE(install_fake_package(id,
         "format_version: 1\ntitle: Upgrades\nversion: 1\n"));
     EXPECT_EQ("", og::data::campaign_matchup(id));

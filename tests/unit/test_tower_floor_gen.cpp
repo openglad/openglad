@@ -381,9 +381,9 @@ TEST(TowerOpenStairs, type_bit_and_briefing_agree_and_boss_floors_never_open)
 TEST(TowerPackage, glad_member_list_has_no_floor_ids)
 {
     // The staged archive next to the test binary — composed from
-    // campaigns/org.openglad.tower/ by the build (og_builtin_campaigns).
+    // campaigns/tower/ by the build (og_builtin_campaigns).
     const fs::path package =
-        fs::path(get_asset_path()) / "builtin" / "org.openglad.tower.glad";
+        fs::path(get_asset_path()) / "builtin" / "tower.glad";
     ASSERT_TRUE(fs::exists(package))
         << package << " missing — the build did not compose it";
 

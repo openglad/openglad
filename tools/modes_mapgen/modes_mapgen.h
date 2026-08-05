@@ -1,6 +1,6 @@
 /* Multiplayer Game Modes campaign generator — shared declarations.
  *
- * Builds builtin/org.openglad.modes.glad: the 28-scenario five-mode
+ * Builds builtin/modes.glad: the 28-scenario five-mode
  * campaign (Team Deathmatch 300-305, CTF 500-509, Onslaught 800-803,
  * Soccer 820-823, Mutant 840-843) that absorbs the arenas and CTF
  * packages. SDL-free; reuses the headless platform glue.
@@ -31,7 +31,7 @@ namespace modesgen {
 // build. The generator only READS it (staging for self-checks, manifest
 // refresh) — export_campaign_tree never rewrites it.
 inline constexpr const char* kPackSourceDir =
-    "campaigns/org.openglad.modes/packs/org.openglad.modes.core";
+    "campaigns/modes/packs/modes.core";
 
 // The pack's flag/waypoint treasure wire bytes (families/treasure-flag.lua
 // and treasure-waypoint.lua under kPackSourceDir claim the retired core

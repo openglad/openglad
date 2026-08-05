@@ -17,7 +17,7 @@ regeneration.
   ships a decor plane; 505/506 have none).
 
 Extraction is a plain zip-member copy (no re-encode). The `pix/*.png`
-members are re-emitted into `org.openglad.modes.glad` byte-identically;
+members are re-emitted into `modes.glad` byte-identically;
 the `.fss` files are LOADED through the production level reader (the
 generator mounts each data directory as a PhysFS root), transformed
 (mode re-dress, briefing re-voice, type byte), and re-serialized — entity
@@ -28,7 +28,7 @@ Verify grid byte-identity against an absorbed package with:
 ```
 python3 - <<'EOF'
 import zipfile, hashlib
-a = zipfile.ZipFile("builtin/org.openglad.modes.glad")
+a = zipfile.ZipFile("builtin/modes.glad")
 for n in sorted(a.namelist()):
     if n.startswith("pix/scen03") or n.startswith("pix/scen05"):
         print(hashlib.sha256(a.read(n)).hexdigest()[:16], n)

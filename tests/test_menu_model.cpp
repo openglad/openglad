@@ -276,7 +276,7 @@ TEST(MenuModel, relay_room_code_and_join_mode_helpers_support_relay_flow)
     const std::vector<og::ui::PickerRelayRoomInfo> rooms = {
         og::ui::PickerRelayRoomInfo{
             .code = "GLAD-XKCD",
-            .campaign_hash = "org.openglad.gladiator",
+            .campaign_hash = "gladiator",
             // Hosts broadcast the human campaign title as display metadata;
             // matching uses campaign_hash of the raw id.
             .campaign_name = "Gladiator",
@@ -286,7 +286,7 @@ TEST(MenuModel, relay_room_code_and_join_mode_helpers_support_relay_flow)
         },
         og::ui::PickerRelayRoomInfo{
             .code = "GLAD-ABCD",
-            .campaign_hash = "org.openglad.gladiator",
+            .campaign_hash = "gladiator",
             .campaign_name = "Gladiator",
             .host_name = "",
             .player_count = 1u,
@@ -295,7 +295,7 @@ TEST(MenuModel, relay_room_code_and_join_mode_helpers_support_relay_flow)
     };
     const std::string prompt = og::ui::build_relay_room_prompt_message(
         rooms,
-        "org.openglad.gladiator");
+        "gladiator");
     EXPECT_NE(std::string::npos, prompt.find("GLAD-XKCD"));
     EXPECT_EQ(std::string::npos, prompt.find("2 players"));
     EXPECT_NE(std::string::npos, prompt.find("Host One"));
@@ -321,7 +321,7 @@ TEST(MenuModel, relay_room_button_labels_show_code_and_host)
 {
     og::ui::PickerRelayRoomInfo room{
         .code = "GLAD-XKCD",
-        .campaign_hash = "org.openglad.gladiator",
+        .campaign_hash = "gladiator",
         .campaign_name = "Gladiator",
         .host_name = "Host One",
         .player_count = 2u,

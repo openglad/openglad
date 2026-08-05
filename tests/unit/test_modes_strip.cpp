@@ -10,7 +10,7 @@
 //
 // The levels are registered by kTestRegistrationLua in modes_pack_fixture.h,
 // which zips the CURRENT pack sources — so this suite runs the committed
-// mode_strip.lua, not the copy inside builtin/org.openglad.modes.glad.
+// mode_strip.lua, not the copy inside builtin/modes.glad.
 
 #include <gtest/gtest.h>
 

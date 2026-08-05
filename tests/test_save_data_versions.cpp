@@ -208,7 +208,7 @@ static void write_save_file(const std::string& filename_no_ext,
         rw_write_val(out, cleared2);
 
         // Campaign 2: another id (may not exist on disk; loader tolerates it)
-        rw_write_padded(out, "org.openglad.nonexistent", 40);
+        rw_write_padded(out, "nonexistent", 40);
         short cur_level2 = 1;
         rw_write_val(out, cur_level2);
         short num_levels2 = 1;
@@ -276,7 +276,7 @@ TEST(SaveDataVersions, save_data_load_v4_uses_200_levelstatus)
 
     write_save_file("ver4_200",
                     /*version=*/4,
-                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*campaign_id=*/"gladiator",
                     /*scen_num=*/1,
                     /*cash=*/111,
                     /*score=*/222,
@@ -308,7 +308,7 @@ TEST(SaveDataVersions, save_data_load_v7_reads_allied_and_scores)
 
     write_save_file("ver7_allied",
                     /*version=*/7,
-                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*campaign_id=*/"gladiator",
                     /*scen_num=*/2,
                     /*cash=*/333,
                     /*score=*/444,
@@ -341,7 +341,7 @@ TEST(SaveDataVersions, save_data_load_v9_uses_campaign_list)
 
     write_save_file("ver9_campaigns",
                     /*version=*/9,
-                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*campaign_id=*/"gladiator",
                     /*scen_num=*/1,
                     /*cash=*/555,
                     /*score=*/666,
@@ -357,8 +357,8 @@ TEST(SaveDataVersions, save_data_load_v9_uses_campaign_list)
     SaveData tmp;
     ASSERT_TRUE(tmp.load("ver9_campaigns")) << "v9 load should succeed";
     ASSERT_EQ(1, tmp.team_size) << "v9 should load 1 guy";
-    ASSERT_TRUE(tmp.current_levels.count("org.openglad.gladiator") > 0) << "v9 should populate current_levels";
-    ASSERT_TRUE(tmp.completed_levels.count("org.openglad.gladiator") > 0) << "v9 should populate completed_levels";
+    ASSERT_TRUE(tmp.current_levels.count("gladiator") > 0) << "v9 should populate current_levels";
+    ASSERT_TRUE(tmp.completed_levels.count("gladiator") > 0) << "v9 should populate completed_levels";
 }
 
 
@@ -366,7 +366,7 @@ TEST(SaveDataVersions, save_data_load_v10_reads_ctf_settings)
 {
     write_save_file("ver10_ctf",
                     /*version=*/10,
-                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*campaign_id=*/"gladiator",
                     /*scen_num=*/1,
                     /*cash=*/100,
                     /*score=*/200,
@@ -394,7 +394,7 @@ TEST(SaveDataVersions, save_data_load_v9_payload_defaults_ctf_settings)
 {
     write_save_file("ver9_no_ctf",
                     /*version=*/9,
-                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*campaign_id=*/"gladiator",
                     /*scen_num=*/1,
                     /*cash=*/100,
                     /*score=*/200,
@@ -422,7 +422,7 @@ TEST(SaveDataVersions, save_data_load_v9_payload_defaults_ctf_settings)
 TEST(SaveDataVersions, save_data_v10_roundtrip_preserves_ctf_settings)
 {
     SaveData src;
-    src.current_campaign = "org.openglad.gladiator";
+    src.current_campaign = "gladiator";
     src.ctf_team_count = 4;
     src.ctf_capture_limit = 10;
     src.ctf_respawn_ticks = 120;
@@ -445,7 +445,7 @@ TEST(SaveDataVersions, save_data_load_v10_payload_defaults_strip_flag)
 {
     write_save_file("ver10_no_strip",
                     /*version=*/10,
-                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*campaign_id=*/"gladiator",
                     /*scen_num=*/1,
                     /*cash=*/100,
                     /*score=*/200,
@@ -475,7 +475,7 @@ TEST(SaveDataVersions, save_data_load_v11_reads_strip_flag)
 {
     write_save_file("ver11_strip",
                     /*version=*/11,
-                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*campaign_id=*/"gladiator",
                     /*scen_num=*/1,
                     /*cash=*/100,
                     /*score=*/200,
@@ -508,7 +508,7 @@ TEST(SaveDataVersions, save_data_round_trips_strip_all_without_a_format_bump)
     {
         write_save_file("ver11_strip_all",
                         /*version=*/11,
-                        /*campaign_id=*/"org.openglad.gladiator",
+                        /*campaign_id=*/"gladiator",
                         /*scen_num=*/1,
                         /*cash=*/100,
                         /*score=*/200,
@@ -547,7 +547,7 @@ TEST(SaveDataVersions, save_data_round_trips_strip_all_without_a_format_bump)
 TEST(SaveDataVersions, save_data_v11_roundtrip_preserves_strip_flag_and_version_byte)
 {
     SaveData src;
-    src.current_campaign = "org.openglad.gladiator";
+    src.current_campaign = "gladiator";
     src.ctf_strip_scenario_troops = 1;
 
     ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
@@ -578,7 +578,7 @@ TEST(SaveDataVersions, save_data_load_v12_reads_difficulty_submenu_settings)
 {
     write_save_file("ver12_difficulty",
                     /*version=*/12,
-                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*campaign_id=*/"gladiator",
                     /*scen_num=*/1,
                     /*cash=*/100,
                     /*score=*/200,
@@ -610,7 +610,7 @@ TEST(SaveDataVersions, save_data_load_v11_payload_defaults_difficulty_submenu_se
 {
     write_save_file("ver11_no_difficulty",
                     /*version=*/11,
-                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*campaign_id=*/"gladiator",
                     /*scen_num=*/1,
                     /*cash=*/100,
                     /*score=*/200,
@@ -644,7 +644,7 @@ TEST(SaveDataVersions, save_data_load_v11_payload_defaults_difficulty_submenu_se
 TEST(SaveDataVersions, save_data_v12_roundtrip_preserves_difficulty_submenu_settings)
 {
     SaveData src;
-    src.current_campaign = "org.openglad.gladiator";
+    src.current_campaign = "gladiator";
     src.respawn_mode = 3;
     src.generator_rate = 50;
     src.keep_fallen_heroes = 1;
@@ -669,7 +669,7 @@ TEST(SaveDataVersions, save_data_load_v13_reads_tower_fields)
 {
     write_save_file("ver13_tower",
                     /*version=*/13,
-                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*campaign_id=*/"gladiator",
                     /*scen_num=*/1,
                     /*cash=*/100,
                     /*score=*/200,
@@ -703,7 +703,7 @@ TEST(SaveDataVersions, save_data_load_v12_payload_defaults_tower_fields)
 {
     write_save_file("ver12_no_tower",
                     /*version=*/12,
-                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*campaign_id=*/"gladiator",
                     /*scen_num=*/1,
                     /*cash=*/100,
                     /*score=*/200,
@@ -740,7 +740,7 @@ TEST(SaveDataVersions, save_data_load_v12_payload_defaults_tower_fields)
 TEST(SaveDataVersions, save_data_v13_roundtrip_preserves_tower_fields)
 {
     SaveData src;
-    src.current_campaign = "org.openglad.gladiator";
+    src.current_campaign = "gladiator";
     src.tower_best_floor = 17;
     // Both int16 halves nontrivial AND the high bit of each half set, so the
     // lo/hi reassembly and the unsigned carriage are both exercised.
@@ -788,7 +788,7 @@ TEST(SaveDataVersions, save_data_load_non_nul_terminated_save_name_is_bounded)
 
     const std::string non_nul_name(40, 'N');
     rw_write(out, non_nul_name.data(), non_nul_name.size());
-    rw_write_padded(out, "org.openglad.gladiator", 40);
+    rw_write_padded(out, "gladiator", 40);
 
     short scen_num = 1;
     uint32_t cash = 123;
@@ -816,7 +816,7 @@ TEST(SaveDataVersions, save_data_load_non_nul_terminated_save_name_is_bounded)
 
     short num_campaigns = 1;
     rw_write_val(out, num_campaigns);
-    rw_write_padded(out, "org.openglad.gladiator", 40);
+    rw_write_padded(out, "gladiator", 40);
     short cur_level = 1;
     short num_levels = 0;
     rw_write_val(out, cur_level);
@@ -871,7 +871,7 @@ TEST(SaveDataVersions, save_data_load_with_error_campaign_mount_failure)
     // current_campaign is set to an invalid package id in the save header.
     write_save_file("ver9_bad_campaign",
                     /*version=*/9,
-                    /*campaign_id=*/"org.openglad.this_campaign_should_not_exist",
+                    /*campaign_id=*/"this_campaign_should_not_exist",
                     /*scen_num=*/1,
                     /*cash=*/100,
                     /*score=*/200,
@@ -889,7 +889,7 @@ TEST(SaveDataVersions, save_data_load_with_error_campaign_mount_failure)
     ASSERT_EQ(static_cast<int>(SaveDataIoError::CampaignLoadFailed), static_cast<int>(err)) << "invalid current campaign should report CampaignLoadFailed";
 
     // Restore expected mounted campaign for other tests.
-    ASSERT_TRUE(mount_campaign_package_with_error("org.openglad.gladiator") == CampaignPackageIoError::None) << "should remount default campaign after CampaignLoadFailed test";
+    ASSERT_TRUE(mount_campaign_package_with_error("gladiator") == CampaignPackageIoError::None) << "should remount default campaign after CampaignLoadFailed test";
 }
 
 
@@ -897,7 +897,7 @@ TEST(SaveDataVersions, save_data_load_rejects_negative_team_size)
 {
     write_save_file("ver9_negative_team_size",
                     /*version=*/9,
-                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*campaign_id=*/"gladiator",
                     /*scen_num=*/1,
                     /*cash=*/100,
                     /*score=*/200,
@@ -920,7 +920,7 @@ TEST(SaveDataVersions, save_data_load_rejects_invalid_legacy_player_byte)
 {
     write_save_file("ver9_unbounded_numplayers",
                     /*version=*/9,
-                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*campaign_id=*/"gladiator",
                     /*scen_num=*/1,
                     /*cash=*/100,
                     /*score=*/200,
@@ -954,7 +954,7 @@ TEST(SaveDataVersions, save_data_v2_load_defaults_stats_added_by_later_versions)
 
     write_save_file("ver2_legacy_stat_defaults",
                     /*version=*/2,
-                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*campaign_id=*/"gladiator",
                     /*scen_num=*/4,
                     /*cash=*/100,
                     /*score=*/200,
@@ -993,7 +993,7 @@ TEST(SaveDataVersions, save_data_save_with_error_open_write_failed_for_missing_d
     std::filesystem::remove_all(bad_subdir, ec);
 
     SaveData tmp;
-    tmp.current_campaign = "org.openglad.gladiator";
+    tmp.current_campaign = "gladiator";
     SaveDataIoError err = tmp.save_with_error("typed_save_missing_dir/slot1");
     ASSERT_EQ(static_cast<int>(SaveDataIoError::OpenWriteFailed), static_cast<int>(err)) << "save_with_error should report OpenWriteFailed for missing nested directory";
 }
@@ -1002,14 +1002,14 @@ TEST(SaveDataVersions, save_data_save_with_error_open_write_failed_for_missing_d
 TEST(SaveDataVersions, save_data_v9_roundtrip_preserves_campaign_progress_maps)
 {
     SaveData src;
-    src.current_campaign = "org.openglad.gladiator";
+    src.current_campaign = "gladiator";
     src.current_levels.clear();
     src.completed_levels.clear();
-    src.current_levels["org.openglad.gladiator"] = 1;
-    src.current_levels["org.openglad.other"] = 2;
-    src.completed_levels["org.openglad.gladiator"].insert(1);
-    src.completed_levels["org.openglad.gladiator"].insert(3);
-    src.completed_levels["org.openglad.other"].insert(2);
+    src.current_levels["gladiator"] = 1;
+    src.current_levels["other"] = 2;
+    src.completed_levels["gladiator"].insert(1);
+    src.completed_levels["gladiator"].insert(3);
+    src.completed_levels["other"].insert(2);
 
     SaveDataIoError save_err = src.save_with_error("typed_save_roundtrip_v9");
     ASSERT_EQ(static_cast<int>(SaveDataIoError::None), static_cast<int>(save_err)) << "save_with_error should succeed for roundtrip save";
@@ -1018,15 +1018,15 @@ TEST(SaveDataVersions, save_data_v9_roundtrip_preserves_campaign_progress_maps)
     SaveDataIoError load_err = loaded.load_with_error("typed_save_roundtrip_v9");
     ASSERT_EQ(static_cast<int>(SaveDataIoError::None), static_cast<int>(load_err)) << "load_with_error should succeed for roundtrip save";
 
-    ASSERT_TRUE(loaded.current_levels.count("org.openglad.gladiator") > 0) << "current_levels should include default campaign";
-    ASSERT_EQ(1, loaded.current_levels["org.openglad.gladiator"]) << "default campaign current level should remain valid after reload";
-    ASSERT_TRUE(loaded.current_levels.count("org.openglad.other") > 0) << "current_levels should include secondary campaign";
-    ASSERT_EQ(2, loaded.current_levels["org.openglad.other"]) << "secondary campaign current level should roundtrip";
-    ASSERT_TRUE(loaded.completed_levels.count("org.openglad.gladiator") > 0) << "completed_levels should include default campaign";
-    ASSERT_TRUE(loaded.completed_levels["org.openglad.gladiator"].count(1) > 0) << "completed level 1 should roundtrip";
-    ASSERT_TRUE(loaded.completed_levels["org.openglad.gladiator"].count(3) > 0) << "completed level 3 should roundtrip";
-    ASSERT_TRUE(loaded.completed_levels.count("org.openglad.other") > 0) << "completed_levels should include secondary campaign";
-    ASSERT_TRUE(loaded.completed_levels["org.openglad.other"].count(2) > 0) << "secondary campaign completed level should roundtrip";
+    ASSERT_TRUE(loaded.current_levels.count("gladiator") > 0) << "current_levels should include default campaign";
+    ASSERT_EQ(1, loaded.current_levels["gladiator"]) << "default campaign current level should remain valid after reload";
+    ASSERT_TRUE(loaded.current_levels.count("other") > 0) << "current_levels should include secondary campaign";
+    ASSERT_EQ(2, loaded.current_levels["other"]) << "secondary campaign current level should roundtrip";
+    ASSERT_TRUE(loaded.completed_levels.count("gladiator") > 0) << "completed_levels should include default campaign";
+    ASSERT_TRUE(loaded.completed_levels["gladiator"].count(1) > 0) << "completed level 1 should roundtrip";
+    ASSERT_TRUE(loaded.completed_levels["gladiator"].count(3) > 0) << "completed level 3 should roundtrip";
+    ASSERT_TRUE(loaded.completed_levels.count("other") > 0) << "completed_levels should include secondary campaign";
+    ASSERT_TRUE(loaded.completed_levels["other"].count(2) > 0) << "secondary campaign completed level should roundtrip";
 }
 
 
@@ -1090,7 +1090,7 @@ TEST(SaveDataVersions, save_data_unsupported_version_and_campaign_helper_branche
 TEST(SaveDataVersions, save_data_save_with_team_entry_and_wrapper_none_path)
 {
     SaveData tmp;
-    tmp.current_campaign = "org.openglad.gladiator";
+    tmp.current_campaign = "gladiator";
     tmp.scen_num = 3;
     tmp.team_size = 1;
     tmp.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
@@ -1111,8 +1111,8 @@ TEST(SaveDataVersions, save_data_save_with_team_entry_and_wrapper_none_path)
 
     tmp.current_levels.clear();      // exercise insert branch for current campaign on save
     tmp.completed_levels.clear();
-    tmp.completed_levels["org.openglad.gladiator"].insert(1);
-    tmp.completed_levels["org.openglad.gladiator"].insert(2);
+    tmp.completed_levels["gladiator"].insert(1);
+    tmp.completed_levels["gladiator"].insert(2);
 
     ASSERT_EQ(static_cast<int>(SaveDataIoError::None), static_cast<int>(tmp.save_with_error("typed_save_with_team"))) << "save_with_error should succeed for one-team-entry save";
 
@@ -1201,12 +1201,12 @@ TEST(SaveDataVersions,
 
     SaveData seed;
     seed.save_name = "BOUNDARY SEED";
-    seed.current_campaign = "org.openglad.gladiator";
+    seed.current_campaign = "gladiator";
     seed.team_size = 0;
     seed.completed_levels.clear();
     seed.current_levels.clear();
-    seed.completed_levels["org.openglad.gladiator"] = {1, 3};
-    seed.current_levels["org.openglad.gladiator"] = 2;
+    seed.completed_levels["gladiator"] = {1, 3};
+    seed.current_levels["gladiator"] = 2;
     ASSERT_EQ(SaveDataIoError::None,
               seed.save_with_error("typed_save_v14_boundary_seed"));
 
@@ -1266,13 +1266,13 @@ TEST(SaveDataVersions,
 
     SaveData seed;
     seed.save_name = "HEADER FALLBACK";
-    seed.current_campaign = "org.openglad.gladiator";
+    seed.current_campaign = "gladiator";
     seed.scen_num = 2;
     seed.team_size = 0;
     seed.completed_levels.clear();
     seed.current_levels.clear();
-    seed.completed_levels["org.openglad.gladiator"] = {2};
-    seed.current_levels["org.openglad.gladiator"] = 2;
+    seed.completed_levels["gladiator"] = {2};
+    seed.current_levels["gladiator"] = 2;
     ASSERT_EQ(SaveDataIoError::None,
               seed.save_with_error("typed_save_v14_header_fallback"));
 
@@ -1292,10 +1292,10 @@ TEST(SaveDataVersions,
     SaveData loaded;
     ASSERT_EQ(SaveDataIoError::None,
               loaded.load_with_error("typed_save_v14_header_fallback"));
-    EXPECT_EQ("org.openglad.gladiator", loaded.current_campaign);
-    EXPECT_EQ(2, loaded.current_levels.at("org.openglad.gladiator"));
+    EXPECT_EQ("gladiator", loaded.current_campaign);
+    EXPECT_EQ(2, loaded.current_levels.at("gladiator"));
     EXPECT_TRUE(
-        loaded.completed_levels.at("org.openglad.gladiator").contains(2));
+        loaded.completed_levels.at("gladiator").contains(2));
 }
 
 TEST(SaveDataVersions, save_data_v14_writer_rejects_unsafe_campaign_ids)
@@ -1308,7 +1308,7 @@ TEST(SaveDataVersions, save_data_v14_writer_rejects_unsafe_campaign_ids)
     EXPECT_EQ(SaveDataIoError::WriteFailed, unsafe_current.last_io_error());
 
     SaveData unsafe_progress;
-    unsafe_progress.current_campaign = "org.openglad.gladiator";
+    unsafe_progress.current_campaign = "gladiator";
     unsafe_progress.completed_levels.clear();
     unsafe_progress.current_levels.clear();
     unsafe_progress.completed_levels["../outside"] = {1};
@@ -1351,7 +1351,7 @@ TEST(SaveDataVersions,
         ASSERT_TRUE(file_state.ready()) << file_state.error().message();
 
         SaveData data;
-        data.current_campaign = "org.openglad.gladiator";
+        data.current_campaign = "gladiator";
         data.completed_levels.clear();
         data.current_levels.clear();
         for (int i = 0; i < 32768; ++i)
@@ -1373,14 +1373,14 @@ TEST(SaveDataVersions,
         ASSERT_TRUE(file_state.ready()) << file_state.error().message();
 
         SaveData data;
-        data.current_campaign = "org.openglad.gladiator";
+        data.current_campaign = "gladiator";
         data.completed_levels.clear();
         data.current_levels.clear();
         std::set<int>& levels =
-            data.completed_levels["org.openglad.gladiator"];
+            data.completed_levels["gladiator"];
         for (int i = 0; i < 32768; ++i)
             levels.insert(i);
-        data.current_levels["org.openglad.gladiator"] = 1;
+        data.current_levels["gladiator"] = 1;
 
         EXPECT_EQ(SaveDataIoError::WriteFailed, data.save_with_error(slot));
         EXPECT_EQ(SaveDataIoError::WriteFailed, data.last_io_error());
@@ -1391,7 +1391,7 @@ TEST(SaveDataVersions,
 TEST(SaveDataVersions, save_data_v14_writer_retires_company_player_count)
 {
     SaveData src;
-    src.current_campaign = "org.openglad.gladiator";
+    src.current_campaign = "gladiator";
     src.save_name = "COUNT-INDEPENDENT";
     src.last_played_unix_s = 123456789;
 
@@ -1435,7 +1435,7 @@ TEST(SaveDataVersions, save_data_load_does_not_adopt_legacy_player_count)
             "ver14_legacy_player_count_" + std::to_string(legacy_count);
         write_save_file(slot,
                         /*version=*/14,
-                        /*campaign_id=*/"org.openglad.gladiator",
+                        /*campaign_id=*/"gladiator",
                         /*scen_num=*/1,
                         /*cash=*/100,
                         /*score=*/200,
@@ -1467,7 +1467,7 @@ TEST(SaveDataVersions, save_data_load_does_not_adopt_legacy_player_count)
 TEST(SaveDataVersions, save_data_v14_roundtrip_preserves_timestamp_and_deploy_flags)
 {
     SaveData src;
-    src.current_campaign = "org.openglad.gladiator";
+    src.current_campaign = "gladiator";
     // Distinct byte pattern in every one of the 8 timestamp bytes.
     src.last_played_unix_s = 0x1122334455667788LL;
     src.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
@@ -1533,7 +1533,7 @@ TEST(SaveDataVersions, save_data_load_v14_reads_timestamp_and_deployed)
     guys[1].deployed = 0;
     write_save_file("ver14_company",
                     /*version=*/14,
-                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*campaign_id=*/"gladiator",
                     /*scen_num=*/1,
                     /*cash=*/100,
                     /*score=*/200,
@@ -1574,7 +1574,7 @@ TEST(SaveDataVersions, save_data_load_v13_payload_defaults_v14_fields)
     guys[0].deployed = 0;
     write_save_file("ver13_no_company",
                     /*version=*/13,
-                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*campaign_id=*/"gladiator",
                     /*scen_num=*/1,
                     /*cash=*/100,
                     /*score=*/200,
@@ -1605,7 +1605,7 @@ TEST(SaveDataVersions, save_data_v13_shaped_reader_tolerance_proxy)
     // no new tail), exactly as a v13 binary reads a v14 file. The v14-only
     // fields fall back to their defaults.
     SaveData src;
-    src.current_campaign = "org.openglad.gladiator";
+    src.current_campaign = "gladiator";
     src.totalcash = 4321;
     src.last_played_unix_s = 0x0102030405060708LL;
     src.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
@@ -1652,7 +1652,7 @@ TEST(SaveDataVersions, save_data_load_v7_ladder_defaults_v14_fields)
     guys[0].name = "VETERAN";
     write_save_file("ver7_ladder_company",
                     /*version=*/7,
-                    /*campaign_id=*/"org.openglad.gladiator", // unused < v8
+                    /*campaign_id=*/"gladiator", // unused < v8
                     /*scen_num=*/5,
                     /*cash=*/300,
                     /*score=*/400,
@@ -1693,7 +1693,7 @@ TEST(SaveDataVersions, save_data_v13_gtl_filler_first_autosave_upgrades_in_place
     guys[0].exp = 4242;
     write_save_file("ver13_upgrade_company",
                     /*version=*/13,
-                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*campaign_id=*/"gladiator",
                     /*scen_num=*/2,
                     /*cash=*/500,
                     /*score=*/600,
@@ -1779,7 +1779,7 @@ TEST(SaveDataVersions, save_data_v13_resave_of_v14_drops_company_fields)
     // members, so the round trip drops both; the next v14 read restores the
     // defaults while every other field survives.
     SaveData src;
-    src.current_campaign = "org.openglad.gladiator";
+    src.current_campaign = "gladiator";
     src.totalcash = 7777;
     src.last_played_unix_s = 55555555LL;
     src.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);

@@ -140,7 +140,7 @@ TEST(Difficulty, submenu_door_flow) {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.scen_num = 1;
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.respawn_mode = 0;
     save.ctf_respawn_ticks = 0;
     save.keep_fallen_heroes = 0;

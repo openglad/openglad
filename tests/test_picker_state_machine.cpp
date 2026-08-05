@@ -16,7 +16,7 @@ public:
     bool configure_networking_result = true;
     bool host_game_result = true;
     bool join_game_result = true;
-    std::string campaign_result = "org.openglad.gladiator";
+    std::string campaign_result = "gladiator";
     og::ui::TeamBuildAction team_build_result = og::ui::TeamBuildAction::BackToMainMenu;
     bool load_result = true;
     bool save_result = true;

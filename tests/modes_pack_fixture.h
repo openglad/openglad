@@ -11,7 +11,7 @@
 // (og_unit_modes now; the TDM/Mutant/Soccer/Onslaught waves reuse it).
 //
 // Builds a temporary .glad embedding the CURRENT modes pack sources
-// (campaigns/org.openglad.modes/packs/org.openglad.modes.core/**)
+// (campaigns/modes/packs/modes.core/**)
 // sources (byte-copied, so the tests always exercise the shipped Lua) plus
 // one test-only registration script that binds the CTF impl to programmatic
 // level ids and registers a mode_core probe level. Mounting the campaign
@@ -52,7 +52,7 @@ std::string get_asset_path();
 namespace og::modes_test {
 
 inline constexpr const char* kCampaignId = "org.test.modespack";
-inline constexpr const char* kRulesPackId = "org.openglad.modes.core";
+inline constexpr const char* kRulesPackId = "modes.core";
 
 // Level ids the test registration script binds (all authored 0x20 by the
 // world fixture below).
@@ -132,7 +132,7 @@ inline int pos_x(int v) { return v / 4096; }
 inline int pos_y(int v) { return v % 4096; }
 
 // The test-only registration script, embedded as
-// packs/org.openglad.modes.core/scripts/zz_modes_test.lua so og.use resolves
+// packs/modes.core/scripts/zz_modes_test.lua so og.use resolves
 // inside the rules pack. It goes through the SAME registration path the
 // shipped mode_ctf.lua uses (mode_core.register_mode over manifest rows,
 // including a non-matching row), and adds the mode_core probe level.

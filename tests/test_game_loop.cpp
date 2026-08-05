@@ -320,7 +320,7 @@ static og::sim::LobbyCharacterData make_lobby_character_data(const guy& source)
 static void prepare_dense_allied_alpha_bravo_charlie_save(SaveData& save)
 {
     save.reset();
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.current_levels.clear();
     save.current_levels[save.current_campaign] = 1;
     save.scen_num = 1;
@@ -674,7 +674,7 @@ TEST(GameLoop, glad_init_and_game_frame_record_live_replay_to_file)
     ASSERT_TRUE(game_screen != nullptr);
 
     game_screen->save_data.reset();
-    game_screen->save_data.current_campaign = "org.openglad.gladiator";
+    game_screen->save_data.current_campaign = "gladiator";
     game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
     game_screen->save_data.scen_num = 1;
     game_screen->save_data.numplayers = 1;
@@ -758,7 +758,7 @@ TEST(GameLoop, glad_init_preserves_existing_timing_when_requested)
     ASSERT_TRUE(game_screen != nullptr);
 
     game_screen->save_data.reset();
-    game_screen->save_data.current_campaign = "org.openglad.gladiator";
+    game_screen->save_data.current_campaign = "gladiator";
     game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
     game_screen->save_data.scen_num = 1;
     game_screen->save_data.numplayers = 1;
@@ -794,7 +794,7 @@ TEST(GameLoop, glad_init_clears_stale_view_text_when_tick_count_restarts)
     ASSERT_TRUE(game_screen != nullptr);
 
     game_screen->save_data.reset();
-    game_screen->save_data.current_campaign = "org.openglad.gladiator";
+    game_screen->save_data.current_campaign = "gladiator";
     game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
     game_screen->save_data.scen_num = 1;
     game_screen->save_data.numplayers = 1;
@@ -821,7 +821,7 @@ TEST(GameLoop, clear_local_transport_shadow_deactivates_session_runtime)
     ASSERT_TRUE(game_screen != nullptr);
 
     game_screen->save_data.reset();
-    game_screen->save_data.current_campaign = "org.openglad.gladiator";
+    game_screen->save_data.current_campaign = "gladiator";
     game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
     game_screen->save_data.scen_num = 1;
     game_screen->save_data.numplayers = 1;
@@ -843,7 +843,7 @@ TEST(GameLoop, glad_init_uses_save_data_numplayers_for_local_transport_clients)
     ASSERT_TRUE(game_screen != nullptr);
 
     game_screen->save_data.reset();
-    game_screen->save_data.current_campaign = "org.openglad.gladiator";
+    game_screen->save_data.current_campaign = "gladiator";
     game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
     game_screen->save_data.scen_num = 1;
     game_screen->save_data.numplayers = 3;
@@ -900,7 +900,7 @@ TEST(GameLoop, glad_init_applies_lobby_start_config_before_level_load)
 
     SaveData& save = game_screen->save_data;
     save.reset();
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.current_levels[save.current_campaign] = 2;
     save.scen_num = 2;
     save.numplayers = 2;
@@ -924,7 +924,7 @@ TEST(GameLoop, glad_init_applies_lobby_start_config_before_level_load)
     std::optional<og::ui::PickerLobbyGameStartConfig> lobby_config =
         picker_lobby_consume_game_start_config();
     ASSERT_TRUE(lobby_config.has_value());
-    EXPECT_EQ("org.openglad.gladiator", lobby_config->save_data.current_campaign);
+    EXPECT_EQ("gladiator", lobby_config->save_data.current_campaign);
     EXPECT_EQ(2, lobby_config->save_data.scen_num);
     EXPECT_EQ(3, lobby_config->difficulty);
     EXPECT_EQ(0, lobby_config->my_team);
@@ -950,12 +950,12 @@ TEST(GameLoop, glad_init_applies_lobby_start_config_before_level_load)
 
     glad_init(false, &*lobby_config);
     ASSERT_TRUE(og::runtime::current_game_session != nullptr);
-    EXPECT_EQ("org.openglad.gladiator", game_screen->save_data.current_campaign);
+    EXPECT_EQ("gladiator", game_screen->save_data.current_campaign);
     EXPECT_EQ(2, static_cast<int>(game_screen->save_data.scen_num));
     EXPECT_EQ(2, static_cast<int>(game_screen->save_data.numplayers));
     EXPECT_EQ(0, static_cast<int>(game_screen->save_data.allied_mode));
     EXPECT_EQ(0, static_cast<int>(game_screen->save_data.my_team));
-    EXPECT_EQ("org.openglad.gladiator", get_mounted_campaign());
+    EXPECT_EQ("gladiator", get_mounted_campaign());
     EXPECT_EQ(2, game_screen->world().id);
     EXPECT_EQ(3, og::runtime::current_session->current_difficulty_);
     EXPECT_EQ(og::ui::difficulty_percent(3),
@@ -984,7 +984,7 @@ TEST(GameLoop, local_lobby_spawns_every_deployed_team_and_abort_preserves_compan
     SaveData& save = game_screen->save_data;
     save.reset();
     save.save_name = "Four Teams";
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.current_levels[save.current_campaign] = 1;
     save.scen_num = 1;
     save.numplayers = 1;
@@ -1089,7 +1089,7 @@ TEST(GameLoop, local_two_player_ally_mode_claims_two_team_one_heroes)
     SaveData& save = game_screen->save_data;
     save.reset();
     save.save_name = "Ally Seats";
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.current_levels[save.current_campaign] = 1;
     save.scen_num = 1;
     save.numplayers = 2;
@@ -1162,7 +1162,7 @@ TEST(GameLoop, local_gameplay_spawns_and_controls_every_selected_team_color)
 
             SaveData& save = game_screen->save_data;
             save.reset();
-            save.current_campaign = "org.openglad.gladiator";
+            save.current_campaign = "gladiator";
             save.current_levels[save.current_campaign] = 1;
             save.scen_num = 1;
             save.numplayers = 1;
@@ -1242,7 +1242,7 @@ TEST(GameLoop, glad_init_preserves_cached_spectator_lobby_start_config)
 
     SaveData& save = game_screen->save_data;
     save.reset();
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.current_levels[save.current_campaign] = 1;
     save.scen_num = 1;
     save.numplayers = 0;
@@ -1291,7 +1291,7 @@ TEST(GameLoop,
     ASSERT_TRUE(game_screen != nullptr);
 
     game_screen->save_data.reset();
-    game_screen->save_data.current_campaign = "org.openglad.gladiator";
+    game_screen->save_data.current_campaign = "gladiator";
     game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
     game_screen->save_data.scen_num = 1;
     game_screen->save_data.numplayers = 1;
@@ -1365,7 +1365,7 @@ TEST(GameLoop, local_transport_shadow_invalid_reset_paths_clear_runtime)
     ASSERT_TRUE(game_screen != nullptr);
 
     game_screen->save_data.reset();
-    game_screen->save_data.current_campaign = "org.openglad.gladiator";
+    game_screen->save_data.current_campaign = "gladiator";
     game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
     game_screen->save_data.scen_num = 1;
     game_screen->save_data.numplayers = 1;
@@ -2769,7 +2769,7 @@ TEST(GameLoop, local_transport_shadow_send_input_and_finish_tick_cover_active_pa
     ASSERT_TRUE(game_screen != nullptr);
 
     game_screen->save_data.reset();
-    game_screen->save_data.current_campaign = "org.openglad.gladiator";
+    game_screen->save_data.current_campaign = "gladiator";
     game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
     game_screen->save_data.scen_num = 1;
     game_screen->save_data.numplayers = 1;
@@ -2803,7 +2803,7 @@ TEST(GameLoop, network_client_shadow_ends_session_after_connection_loss_timeout)
     ASSERT_TRUE(game_screen != nullptr);
 
     game_screen->save_data.reset();
-    game_screen->save_data.current_campaign = "org.openglad.gladiator";
+    game_screen->save_data.current_campaign = "gladiator";
     game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
     game_screen->save_data.scen_num = 1;
     game_screen->save_data.numplayers = 1;
@@ -3604,7 +3604,7 @@ TEST(GameLoop, game_frame_escape_toggles_network_pause_when_local_transport_is_a
     ASSERT_TRUE(game_screen != nullptr);
 
     game_screen->save_data.reset();
-    game_screen->save_data.current_campaign = "org.openglad.gladiator";
+    game_screen->save_data.current_campaign = "gladiator";
     game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
     game_screen->save_data.scen_num = 1;
     game_screen->save_data.numplayers = 1;
@@ -3688,7 +3688,7 @@ TEST(GameLoop, game_frame_escape_abort_returns_aborted_mission_when_network_paus
     ASSERT_TRUE(game_screen != nullptr);
 
     game_screen->save_data.reset();
-    game_screen->save_data.current_campaign = "org.openglad.gladiator";
+    game_screen->save_data.current_campaign = "gladiator";
     game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
     game_screen->save_data.scen_num = 1;
     game_screen->save_data.numplayers = 1;
@@ -3761,7 +3761,7 @@ TEST(GameLoop, local_split_screen_background_player_exit_prompt_does_not_hang)
 
     SaveData& save = game_screen->save_data;
     save.reset();
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.current_levels[save.current_campaign] = 1;
     save.scen_num = 1;
     save.numplayers = 2;
@@ -3868,7 +3868,7 @@ TEST(GameLoop, exit_returns_to_continue_menu_single_player)
 
     SaveData& save = game_screen->save_data;
     save.reset();
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.current_levels[save.current_campaign] = 1;
     save.scen_num = 1;
     save.numplayers = 1;
@@ -4056,7 +4056,7 @@ TEST(GameLoop, accepted_withdraw_ends_level_and_persists_destination_cursor)
     } withdraw_cleanup{isolated_session, *game_screen};
 
     save.reset();
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.current_levels[save.current_campaign] = 1;
     save.scen_num = 1;
     save.numplayers = 1;
@@ -4098,7 +4098,7 @@ TEST(GameLoop, accepted_withdraw_ends_level_and_persists_destination_cursor)
 
     SaveData persisted;
     ASSERT_TRUE(persisted.load("save0"));
-    EXPECT_EQ("org.openglad.gladiator", persisted.current_campaign);
+    EXPECT_EQ("gladiator", persisted.current_campaign);
     EXPECT_EQ(2, persisted.scen_num);
     EXPECT_EQ(2, persisted.current_levels[persisted.current_campaign]);
 
@@ -4107,7 +4107,7 @@ TEST(GameLoop, accepted_withdraw_ends_level_and_persists_destination_cursor)
 static void setup_local_two_player_save(SaveData& save)
 {
     save.reset();
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.current_levels[save.current_campaign] = 1;
     save.scen_num = 1;
     save.numplayers = 2;
@@ -4293,7 +4293,7 @@ void record(const char* name, int scen, WeatherKind kind, int frames,
             int warmup_ticks)
 {
     screen* const s = og::runtime::current_session->myscreen_;
-    build_save(s, "org.openglad.gladiator", scen, 1,
+    build_save(s, "gladiator", scen, 1,
                {FAMILY_SOLDIER, FAMILY_ELF, FAMILY_MAGE}, 4);
     glad_init();
     all_capture_effects_on();
@@ -4346,7 +4346,7 @@ TEST(GameLoop, zz_capture_splitscreen_gameplay)
 
     SaveData& save = game_screen->save_data;
     save.reset();
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.current_levels.clear();
     save.current_levels[save.current_campaign] = 2;
     save.scen_num = 2;
@@ -4507,7 +4507,7 @@ bool action_center(GameWorld& w, int floor, float& out_x, float& out_y)
 void record(const char* scene, int scen, WeatherKind kind,
             const std::vector<int>& roster,
             const std::vector<Key>& keys,
-            const char* campaign = "org.openglad.westlands")
+            const char* campaign = "westlands")
 {
     screen* const s = og::runtime::current_session->myscreen_;
     // The crew deploys at the level's team-0 start position markers.
@@ -4723,7 +4723,7 @@ namespace gameplay_rec {
 
 void record_story(const char* name, int scen, WeatherKind kind,
                   const std::vector<int>& roster, int level, int frames,
-                  const char* campaign = "org.openglad.westlands")
+                  const char* campaign = "westlands")
 {
     screen* const s = og::runtime::current_session->myscreen_;
     build_save(s, campaign, scen, 1, roster, level);
@@ -4851,7 +4851,7 @@ TEST(GameLoop, zz_capture_westlands_decor)
 }
 
 // ---------------------------------------------------------------------------
-// The Long Season (org.openglad.longseason): four scenes from the Brass
+// The Long Season (longseason): four scenes from the Brass
 // Kettle Company's year. Ferry Right is real gameplay (the camera rides the
 // lead soldier plugging the causeway mouth); the other three are keyframed
 // spectator films per the epic_rec pattern. Keyframe pixel anchors come
@@ -4866,7 +4866,7 @@ TEST(GameLoop, zz_capture_longseason)
     const auto want = [&](const char* n) {
         return only == nullptr || strcmp(only, n) == 0;
     };
-    const char* const ls = "org.openglad.longseason";
+    const char* const ls = "longseason";
     // 2 The Ferry Right — spring flood, rain over the drowned river. Real
     // gameplay: the company holds the causeway's east mouth so the toll
     // runs. Knifemen open on the span; the boat wave beaches on the north
@@ -5005,7 +5005,7 @@ TEST(GameLoop, classic_respawn_e2e_revives_hero_at_entry_point_and_reclaims_cont
 
     SaveData& save = game_screen->save_data;
     save.reset();
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.current_levels[save.current_campaign] = 1;
     save.scen_num = 1;
     save.numplayers = 1;
@@ -5430,7 +5430,7 @@ TEST(GameLoop, zoom_half_gameplay_draws_real_world_on_the_grown_canvas)
     ASSERT_EQ(initial_world.w, s->world_canvas_w());
     ASSERT_EQ(initial_world.h, s->world_canvas_h());
 
-    gameplay_rec::build_save(s, "org.openglad.gladiator", 1, 1,
+    gameplay_rec::build_save(s, "gladiator", 1, 1,
                              {FAMILY_SOLDIER, FAMILY_ELF, FAMILY_MAGE}, 4);
 	s->set_active_canvas(CanvasTarget::UI);
     glad_init();
@@ -5485,7 +5485,7 @@ TEST(GameLoop, zoom_half_splitscreen_layout_tracks_window_resizes)
     ASSERT_EQ(initial_world.h, s->world_canvas_h());
 
     // ---- 2 players on the grown canvas ------------------------------------
-    gameplay_rec::build_save(s, "org.openglad.gladiator", 2, 2,
+    gameplay_rec::build_save(s, "gladiator", 2, 2,
                              {FAMILY_SOLDIER, FAMILY_BARBARIAN,
                               FAMILY_ELF, FAMILY_MAGE}, 6);
     glad_init();
@@ -5554,7 +5554,7 @@ TEST(GameLoop, zoom_half_splitscreen_layout_tracks_window_resizes)
     // ---- 4 players: quadrants on the grown canvas --------------------------
     s->world().end = 0;
     s->world().delete_objects();
-    gameplay_rec::build_save(s, "org.openglad.gladiator", 2, 4,
+    gameplay_rec::build_save(s, "gladiator", 2, 4,
                              {FAMILY_SOLDIER, FAMILY_BARBARIAN,
                               FAMILY_ELF, FAMILY_MAGE}, 6);
     glad_init();
@@ -5603,7 +5603,7 @@ TEST(GameLoop, zoom_half_mini_hp_bar_matches_projected_sprite_width)
     canvas_zoom_gameplay::WorldZoomGameGuard guard(s);
     canvas_zoom_gameplay::MiniHpBarCfgGuard hp_bar_on;
 
-    gameplay_rec::build_save(s, "org.openglad.gladiator", 1, 1,
+    gameplay_rec::build_save(s, "gladiator", 1, 1,
                              {FAMILY_SOLDIER}, 4);
     s->set_active_canvas(CanvasTarget::UI);
     glad_init();

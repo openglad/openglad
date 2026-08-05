@@ -1048,7 +1048,7 @@ appear, each where its contract is the right one.
 | A whole family, canonical style | `packs/core/families/living-00-soldier.lua` — one file: behavior, then the declaration that names it |
 | Specials, `og.rand0`, tuning reads, `add_frozen_stun` | `packs/core/families/living-14-orc.lua` |
 | `og.use` lib modules (shared preludes, parameterized AI gates, shared effect geometry) | `packs/core/lib/living_common.lua`, `packs/core/lib/ai.lua`, `packs/core/lib/effect_common.lua` |
-| Level hooks, per-entity hooks, generator `customize_spawn` | `campaigns/org.openglad.concept/packs/org.openglad.concept.showcase/scripts/court.lua` |
+| Level hooks, per-entity hooks, generator `customize_spawn` | `campaigns/concept/packs/concept.showcase/scripts/court.lua` |
 | Every descriptor key, per order | [design doc §4](../lua-classpacks-design.md) |
 | Naming, headers, comments, shim policy | [lua-style.md](../lua-style.md) (S1–S6) |
 

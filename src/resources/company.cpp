@@ -204,7 +204,7 @@ std::optional<CompanyInfo> read_header_from(const char* dir,
 
     CompanyInfo info;
     info.slot = slot_label;
-    info.campaign_id = "org.openglad.gladiator";
+    info.campaign_id = "gladiator";
 
     const auto read_exact = [&infile](void* dst, std::size_t bytes) {
         return og::io::og_read_exact(*infile, dst, 1, bytes);

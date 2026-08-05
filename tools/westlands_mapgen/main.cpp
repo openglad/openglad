@@ -1,7 +1,7 @@
 /* War of the Westlands campaign generator.
  *
- * Produces campaigns/org.openglad.westlands/ (the source tree the build
- * composes into builtin/org.openglad.westlands.glad): a 26-level story campaign
+ * Produces campaigns/westlands/ (the source tree the build
+ * composes into builtin/westlands.glad): a 26-level story campaign
  * (docs at scratch design + docs/z-axis-design.md) built act by act — the
  * flight east, the dark road, the war in the west, the burden's road, and
  * the convergence at the Mountain of Fire. In every battle the player's
@@ -16,7 +16,7 @@
  * validation against the registered id set.
  *
  * Usage: westlands_mapgen [output.glad]
- *        (default: campaigns/org.openglad.westlands)
+ *        (default: campaigns/westlands)
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
@@ -1438,7 +1438,7 @@ int main(int argc, char* argv[])
     namespace fs = std::filesystem;
 
     const std::string out_tree =
-        (argc > 1) ? argv[1] : "campaigns/org.openglad.westlands";
+        (argc > 1) ? argv[1] : "campaigns/westlands";
     const fs::path out_abs = fs::absolute(out_tree);
 
     fs::path scratch;
@@ -1453,7 +1453,7 @@ int main(int argc, char* argv[])
 
     init_logging();
     io_init(argc, argv);
-    if (get_mounted_campaign() != "org.openglad.gladiator")
+    if (get_mounted_campaign() != "gladiator")
     {
         std::fprintf(stderr, "westlands_mapgen: ERROR: stock campaign not "
                              "mounted; run next to staged assets (build dir)\n");
@@ -1508,14 +1508,14 @@ int main(int argc, char* argv[])
             fail(std::format("scen{} registered twice", e.id));
     }
 
-    const std::string glad_path = user + "campaigns/org.openglad.westlands.glad";
+    const std::string glad_path = user + "campaigns/westlands.glad";
     std::remove(glad_path.c_str());
     if (zip_contents_with_error(user + "temp/", glad_path) != ArchiveIoError::None)
         fail(std::format("failed to zip campaign into {}", glad_path));
 
     if (g_errors == 0)
     {
-        if (mount_campaign_package_with_error("org.openglad.westlands") !=
+        if (mount_campaign_package_with_error("westlands") !=
             CampaignPackageIoError::None)
         {
             fail("failed to mount the produced campaign");
@@ -1524,7 +1524,7 @@ int main(int argc, char* argv[])
         {
             for (const ExpectedLevel& e : expectations)
                 self_check_level(e, registered);
-            (void)unmount_campaign_package_with_error("org.openglad.westlands");
+            (void)unmount_campaign_package_with_error("westlands");
         }
     }
 

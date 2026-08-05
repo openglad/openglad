@@ -113,7 +113,7 @@ TEST(GoNoTeam, go_without_team) {
     // Set up save with NO team members
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     og::runtime::current_session->myscreen_->save_data.team_size = 0;
     og::runtime::current_session->myscreen_->save_data.save("save0");
@@ -150,7 +150,7 @@ TEST(GoNoTeam, train_without_team) {
 
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     og::runtime::current_session->myscreen_->save_data.team_size = 0;
     for (auto& slot : og::runtime::current_session->myscreen_->save_data.team_list)

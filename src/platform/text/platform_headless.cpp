@@ -396,7 +396,7 @@ void io_init(int argc, char* argv[])
     restore_default_campaigns();
 
     // Mount default campaign
-    if (mount_campaign_package_with_error("org.openglad.gladiator") != CampaignPackageIoError::None) {
+    if (mount_campaign_package_with_error("gladiator") != CampaignPackageIoError::None) {
         LogError("io_init(headless): Failed to mount default campaign\n");
     }
 

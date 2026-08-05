@@ -1,4 +1,4 @@
-// The CTF Lua port (campaigns/org.openglad.modes/packs/org.openglad.modes.core) behavior suite: every RULE
+// The CTF Lua port (campaigns/modes/packs/modes.core) behavior suite: every RULE
 // case from test_ctf_core.cpp (48) and every director case from
 // test_ctf_ai.cpp (15) re-expressed against the campaign-pack Lua running
 // on scripted (0x20) levels, plus the Lua-specific additions (instruction
@@ -2428,7 +2428,7 @@ TEST_F(ModesCtf, other_mode_manifest_rows_do_not_bind_ctf)
 }
 
 // ===========================================================================
-// The REAL shipped package: scen500 from builtin/org.openglad.modes.glad
+// The REAL shipped package: scen500 from builtin/modes.glad
 // must activate through the manifest registration and run the Lua touch
 // rules on its AUTHORED core-family flags — end to end, the case the
 // synthetic fixture masked.
@@ -2471,8 +2471,8 @@ TEST(ModesRealCampaign, shipped_scen500_runs_the_lua_ctf_rules)
     restore_default_campaigns();
     const std::string previous = get_mounted_campaign();
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.modes"))
-        << "builtin/org.openglad.modes.glad should restore and mount";
+              mount_campaign_package_with_error("modes"))
+        << "builtin/modes.glad should restore and mount";
     {
         LoadedRealLevel fx(500);
         ASSERT_TRUE(fx.loaded) << "scen500 must load from the package";
@@ -2536,7 +2536,7 @@ TEST(ModesRealCampaign, shipped_scen500_runs_the_lua_ctf_rules)
         EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
     }
     const std::string now = get_mounted_campaign();
-    if (now == "org.openglad.modes")
+    if (now == "modes")
         (void)unmount_campaign_package_with_error(now);
     if (previous.empty())
     {

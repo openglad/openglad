@@ -1334,16 +1334,16 @@ TEST(PickerCommon, format_ctf_labels)
 TEST(PickerCommon, is_versus_campaign_reads_matchup_key)
 {
     SaveData save;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     ASSERT_FALSE(og::ui::is_versus_campaign(save))
         << "the shipped classic campaign is cooperative";
     save.current_campaign = "";
     ASSERT_FALSE(og::ui::is_versus_campaign(save));
-    save.current_campaign = "org.openglad.pc_no_such_pkg";
+    save.current_campaign = "pc_no_such_pkg";
     ASSERT_FALSE(og::ui::is_versus_campaign(save));
 
     namespace fs = std::filesystem;
-    const std::string id = "org.openglad.pc_versus_probe";
+    const std::string id = "pc_versus_probe";
     const fs::path staging =
         fs::path(get_user_path()) / "pc_versus_staging" / id;
     std::error_code ec;
@@ -1888,22 +1888,22 @@ TEST(PickerCommon, order_campaigns_for_select_uses_the_shelf_order)
     // and leaves in shelf order: classics, the two original story
     // campaigns, the multiplayer package, concept trailing.
     std::list<std::string> ids = {
-        "org.openglad.concept",
-        "org.openglad.gladiator",
-        "org.openglad.longseason",
-        "org.openglad.modes",
-        "org.openglad.tower",
-        "org.openglad.tryxian",
-        "org.openglad.westlands",
+        "concept",
+        "gladiator",
+        "longseason",
+        "modes",
+        "tower",
+        "tryxian",
+        "westlands",
     };
     const std::list<std::string> shelf = {
-        "org.openglad.gladiator",
-        "org.openglad.tryxian",
-        "org.openglad.westlands",
-        "org.openglad.longseason",
-        "org.openglad.modes",
-        "org.openglad.tower",
-        "org.openglad.concept",
+        "gladiator",
+        "tryxian",
+        "westlands",
+        "longseason",
+        "modes",
+        "tower",
+        "concept",
     };
     og::ui::order_campaigns_for_select(ids);
     ASSERT_EQ(shelf, ids);
@@ -1915,14 +1915,14 @@ TEST(PickerCommon, order_campaigns_for_select_uses_the_shelf_order)
     // User-made packages keep their relative order after every shelved id.
     std::list<std::string> with_extras = {
         "a.campaign",
-        "org.openglad.modes",
+        "modes",
         "b.campaign",
-        "org.openglad.gladiator",
+        "gladiator",
     };
     og::ui::order_campaigns_for_select(with_extras);
     ASSERT_EQ((std::list<std::string>{
-                  "org.openglad.gladiator",
-                  "org.openglad.modes",
+                  "gladiator",
+                  "modes",
                   "a.campaign",
                   "b.campaign",
               }),
@@ -1934,9 +1934,9 @@ TEST(PickerCommon, order_campaigns_for_select_uses_the_shelf_order)
     ASSERT_EQ((std::list<std::string>{"a.campaign", "b.campaign"}), no_anchors);
 
     // Only the modes package: a single-element list stays put.
-    std::list<std::string> only_modes = {"org.openglad.modes"};
+    std::list<std::string> only_modes = {"modes"};
     og::ui::order_campaigns_for_select(only_modes);
-    ASSERT_EQ((std::list<std::string>{"org.openglad.modes"}), only_modes);
+    ASSERT_EQ((std::list<std::string>{"modes"}), only_modes);
 
     // Empty list survives.
     std::list<std::string> empty;
@@ -1949,9 +1949,9 @@ TEST(PickerCommon, order_campaigns_for_select_uses_the_shelf_order)
 TEST(PickerCommon, filter_campaigns_for_networked_lobby_drops_tower_only)
 {
     const std::list<std::string> full = {
-        "org.openglad.gladiator",
-        "org.openglad.tower",
-        "org.openglad.modes",
+        "gladiator",
+        "tower",
+        "modes",
         "a.campaign",
     };
 
@@ -1964,8 +1964,8 @@ TEST(PickerCommon, filter_campaigns_for_networked_lobby_drops_tower_only)
     std::list<std::string> networked = full;
     og::ui::filter_campaigns_for_networked_lobby(networked, true);
     ASSERT_EQ((std::list<std::string>{
-                  "org.openglad.gladiator",
-                  "org.openglad.modes",
+                  "gladiator",
+                  "modes",
                   "a.campaign",
               }),
               networked);
@@ -1987,9 +1987,9 @@ TEST(PickerCommon, filter_campaigns_for_networked_lobby_drops_tower_only)
 TEST(PickerCommon, campaign_select_labels_fall_back_to_raw_ids)
 {
     const std::vector<std::string> ids = {
-        "org.openglad.test_absent_a",
-        "org.openglad.test_absent_b",
-        "org.openglad.test_absent_a",
+        "test_absent_a",
+        "test_absent_b",
+        "test_absent_a",
     };
     ASSERT_EQ(ids, og::ui::format_campaign_select_labels(ids));
     ASSERT_TRUE(og::ui::format_campaign_select_labels({}).empty());
@@ -2188,7 +2188,7 @@ TEST(PickerCommon, scenario_report_versus_sections_and_strip_annotations)
     fx.spawn_living_named(FAMILY_ELF, 5, 9, nullptr);     // non-score team
 
     SaveData save;
-    save.current_campaign = "org.openglad.modes";
+    save.current_campaign = "modes";
     save.my_team = 0;
     save.ctf_strip_scenario_troops = 0; // TROOPS: ALL — only activation strips
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
@@ -2273,7 +2273,7 @@ TEST(PickerCommon, scenario_report_troops_own_annotates_every_authored_row)
     protected_npc->set_save_all_protected(true);
 
     SaveData save;
-    save.current_campaign = "org.openglad.modes";
+    save.current_campaign = "modes";
     save.my_team = 0;
     save.ctf_strip_scenario_troops = 2;
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
@@ -2320,7 +2320,7 @@ TEST(PickerCommon, scenario_report_preserves_local_team_colors_in_allied_mode)
     fx.spawn_living_named(FAMILY_ARCHER, 3, 5, nullptr);
 
     SaveData save;
-    save.current_campaign = "org.openglad.modes";
+    save.current_campaign = "modes";
     save.allied_mode = 1;
     save.my_team = 2;
     save.ctf_capture_limit = 5;
@@ -2355,7 +2355,7 @@ TEST(PickerCommon, scenario_report_non_activating_ctf_keeps_classic_rules)
     fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
 
     SaveData save;
-    save.current_campaign = "org.openglad.modes";
+    save.current_campaign = "modes";
     save.ctf_strip_scenario_troops = 0;
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
     save.team_list[0]->teamnum = 0;
@@ -3447,7 +3447,7 @@ TEST(BackupFormat, row_columns_level_tag_and_utc_datetime)
     info.seq = 7;
     info.filename = "iron-kettle-band.007.gtl";
     info.header.slot = "iron-kettle-band";
-    info.header.campaign_id = "org.openglad.never-mounted";
+    info.header.campaign_id = "never-mounted";
     info.header.scen_num = 7;
     info.header.valid = true;
     // 1970-01-01T23:59:59Z: pins BOTH that the format is "MM-DD HH:MM" and
@@ -3489,7 +3489,7 @@ TEST(BackupFormat, row_line_joins_columns_for_terminals)
     info.seq = 3;
     info.filename = "iron-kettle-band.003.gtl";
     info.header.slot = "iron-kettle-band";
-    info.header.campaign_id = "org.openglad.never-mounted";
+    info.header.campaign_id = "never-mounted";
     info.header.scen_num = 12;
     info.header.valid = true;
     info.header.last_played_unix_s = 86399;

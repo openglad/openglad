@@ -92,7 +92,7 @@ private:
 
 void init_team_save(SaveData& save, short team, char family, const char* name)
 {
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
     save.numplayers = 1;
     save.my_team = team;

@@ -107,7 +107,7 @@ TEST(CompanyIo, header_scan_never_disturbs_a_real_mounted_campaign)
 {
     SaveDirSandbox sandbox;
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.gladiator"));
+              mount_campaign_package_with_error("gladiator"));
 
     SaveData foreign;
     foreign.save_name = "Foreign Campaign Co";
@@ -119,11 +119,11 @@ TEST(CompanyIo, header_scan_never_disturbs_a_real_mounted_campaign)
     ASSERT_TRUE(info.has_value());
     EXPECT_TRUE(info->valid);
     EXPECT_EQ("org.openglad.ctf", info->campaign_id);
-    EXPECT_EQ("org.openglad.gladiator", get_mounted_campaign())
+    EXPECT_EQ("gladiator", get_mounted_campaign())
         << "scanning a company on another campaign must not remount (§3.5)";
 
     (void)og::data::list_companies();
-    EXPECT_EQ("org.openglad.gladiator", get_mounted_campaign())
+    EXPECT_EQ("gladiator", get_mounted_campaign())
         << "listing companies must not remount either";
 }
 

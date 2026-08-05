@@ -52,7 +52,7 @@ fi
 grep -Fq \
     'openglad_demo: 2 sessions initialized, spawning 2 worker threads' \
     <<<"$output"
-grep -Fq 'openglad_demo: campaign org.openglad.gladiator' <<<"$output"
+grep -Fq 'openglad_demo: campaign gladiator' <<<"$output"
 
 # The capture knobs are opt-in: a production run writes no frames at all.
 if [[ -n "$(find "$test_root" -name '*.bmp' -print -quit)" ]]; then
@@ -132,7 +132,7 @@ capture_output=$(
         SDL_RENDER_DRIVER=software \
         OPENGLAD_DEMO_GRID=1x1 \
         OPENGLAD_DEMO_SEED=3 \
-        OPENGLAD_DEMO_CAMPAIGN=org.openglad.concept \
+        OPENGLAD_DEMO_CAMPAIGN=concept \
         OPENGLAD_DEMO_SCENARIOS=605 \
         OPENGLAD_DEMO_TEAM_SIZE=2 \
         OPENGLAD_DEMO_CAPTURE_DIR="$test_root/capture" \
@@ -144,7 +144,7 @@ capture_output=$(
         "$demo_bin" 2>&1
 )
 printf '%s\n' "$capture_output"
-grep -Fq 'openglad_demo: campaign org.openglad.concept' <<<"$capture_output"
+grep -Fq 'openglad_demo: campaign concept' <<<"$capture_output"
 grep -Fq '  session 0: scenario 605' <<<"$capture_output"
 grep -Fq 'openglad_demo: captured 3 frames' <<<"$capture_output"
 expect_capture_frames "$test_root/capture" 3 320 200

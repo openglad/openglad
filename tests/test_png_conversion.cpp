@@ -43,12 +43,12 @@ struct CampaignFixture {
         old_campaign = get_mounted_campaign();
         if (!old_campaign.empty())
             (void)unmount_campaign_package_with_error(old_campaign);
-        (void)mount_campaign_package_with_error("org.openglad.gladiator");
+        (void)mount_campaign_package_with_error("gladiator");
     }
 
     ~CampaignFixture() {
-        (void)unmount_campaign_package_with_error("org.openglad.gladiator");
-        if (!old_campaign.empty() && old_campaign != "org.openglad.gladiator")
+        (void)unmount_campaign_package_with_error("gladiator");
+        if (!old_campaign.empty() && old_campaign != "gladiator")
             (void)mount_campaign_package_with_error(old_campaign);
     }
 };

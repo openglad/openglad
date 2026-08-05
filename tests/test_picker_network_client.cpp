@@ -353,7 +353,7 @@ void prepare_single_member_network_save(SaveData& save,
                                         const char* name,
                                         std::size_t slot_index = 0)
 {
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
     save.current_levels.clear();
     save.current_levels[save.current_campaign] = save.scen_num;
@@ -374,7 +374,7 @@ void prepare_single_member_network_save(SaveData& save,
 void prepare_allied_host_network_save(SaveData& save)
 {
     save.reset();
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.current_levels.clear();
     save.current_levels[save.current_campaign] = 1;
     save.scen_num = 1;
@@ -400,7 +400,7 @@ void prepare_allied_host_network_save(SaveData& save)
 void prepare_allied_join_network_save(SaveData& save)
 {
     save.reset();
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.current_levels.clear();
     save.current_levels[save.current_campaign] = 1;
     save.scen_num = 1;
@@ -424,7 +424,7 @@ void reset_network_save_shell(SaveData& save,
                               short allied_mode)
 {
     save.reset();
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.current_levels.clear();
     save.current_levels[save.current_campaign] = 1;
     save.scen_num = 1;
@@ -1631,7 +1631,7 @@ TEST(PickerNetworkClient, host_direct_flow_syncs_save_and_builds_start_config)
 
     const auto start_config = host_client->consume_game_start_config();
     ASSERT_TRUE(start_config.has_value());
-    EXPECT_EQ("org.openglad.gladiator", start_config->save_data.current_campaign);
+    EXPECT_EQ("gladiator", start_config->save_data.current_campaign);
     EXPECT_EQ(2, start_config->save_data.scen_num);
     EXPECT_EQ(1u, start_config->save_data.numplayers);
     EXPECT_EQ(1, start_config->save_data.allied_mode);
@@ -2625,7 +2625,7 @@ TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_
     ASSERT_TRUE(join_client->build_game_start_config().has_value());
     const auto start_config = join_client->consume_game_start_config();
     ASSERT_TRUE(start_config.has_value());
-    EXPECT_EQ("org.openglad.gladiator", start_config->save_data.current_campaign);
+    EXPECT_EQ("gladiator", start_config->save_data.current_campaign);
     EXPECT_EQ(5, start_config->save_data.scen_num);
     EXPECT_EQ(0u, start_config->save_data.numplayers);
     EXPECT_EQ(7, start_config->difficulty);
@@ -6341,7 +6341,7 @@ TEST(PickerNetworkClient,
     PickerSaveStateGuard host_save_guard(host_save);
     PickerRuntimeGuard runtime_guard;
     prepare_allied_host_network_save(host_save);
-    ASSERT_EQ("org.openglad.gladiator", host_save.current_campaign);
+    ASSERT_EQ("gladiator", host_save.current_campaign);
     ASSERT_EQ(1, host_save.scen_num);
     ASSERT_EQ(1, static_cast<int>(host_save.numplayers));
     ASSERT_EQ(1, host_save.allied_mode);
@@ -6374,7 +6374,7 @@ TEST(PickerNetworkClient,
     {
         auto join_scope = join_session.activate();
         SaveData& join_save = join_session.myscreen_->save_data;
-        ASSERT_EQ("org.openglad.gladiator", join_save.current_campaign);
+        ASSERT_EQ("gladiator", join_save.current_campaign);
         ASSERT_EQ(1, join_save.scen_num);
         ASSERT_EQ(1, static_cast<int>(join_save.numplayers));
         ASSERT_EQ(1, join_save.allied_mode);
@@ -9224,7 +9224,7 @@ TEST(PickerNetworkClient,
                   reloaded.load_with_error(kWp4F1JoinSlot));
         EXPECT_EQ(5, reloaded.scen_num)
             << "[SAVE-F1]: the private campaign cursor must survive";
-        EXPECT_EQ(5, reloaded.current_levels.at("org.openglad.gladiator"));
+        EXPECT_EQ(5, reloaded.current_levels.at("gladiator"));
         EXPECT_EQ(1, reloaded.respawn_mode)
             << "[SAVE-F1]: private settings must survive";
         EXPECT_EQ(2, reloaded.generator_rate);

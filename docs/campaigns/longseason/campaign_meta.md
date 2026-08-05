@@ -1,6 +1,6 @@
 # The Long Season — campaign meta (yaml text, icon, story bible, curve)
 
-Campaign id **org.openglad.longseason** (satisfies is_safe_campaign_id:
+Campaign id **longseason** (satisfies is_safe_campaign_id:
 alnum._-). Title "The Long Season" is distinct from every shipped campaign
 title (gladiator/ctf/arenas/tryxian/concept/westlands), so the
 select-screen dedup helper never suffixes " [raw.id]". Package built by a

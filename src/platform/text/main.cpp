@@ -81,7 +81,7 @@ void emit_headless_unsupported_warnings_probe();
 // ---------------------------------------------------------------------------
 
 struct TextClientArgs {
-    std::string campaign = "org.openglad.gladiator";
+    std::string campaign = "gladiator";
     int level = 1;
     std::vector<int> team_families; // family IDs
     std::uint32_t seed = 42;
@@ -116,7 +116,7 @@ static bool parse_args(int argc, char* argv[], TextClientArgs& args)
         } else if (arg == "--help" || arg == "-h") {
             std::fprintf(stderr,
                 "Usage: openglad_text [options]\n"
-                "  --campaign <name>   Campaign ID (default: org.openglad.gladiator)\n"
+                "  --campaign <name>   Campaign ID (default: gladiator)\n"
                 "  --level <num>       Level number (default: 1)\n"
                 "  --team <f1,f2,...>  Team family IDs, comma-separated (default: 0 = soldier)\n"
                 "  --seed <num>        RNG seed (default: 42)\n"

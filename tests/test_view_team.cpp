@@ -404,7 +404,7 @@ TEST(ViewTeam, view_team) {
     // Set up a team so view has something to show
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
 
     auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
@@ -499,7 +499,7 @@ TEST(ViewTeam, go_starts_level) {
 
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
 
     auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
@@ -592,7 +592,7 @@ TEST(ViewTeam, base_camp_name_tap_opens_train_seeded_on_that_character)
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
     og::runtime::current_session->myscreen_->save_data.current_campaign =
-        "org.openglad.gladiator";
+        "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
 
     auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
@@ -665,7 +665,7 @@ TEST(ViewTeam, base_camp_color_tap_cycles_team_without_opening_train)
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.reset();
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
     auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
     soldier->name = "COLOR TAP";
@@ -744,7 +744,7 @@ TEST(ViewTeam, base_camp_scenario_line_tap_opens_scenario_menu)
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.reset();
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
     auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
     soldier->name = "SCOUT";
@@ -903,7 +903,7 @@ TEST(ViewTeam, create_team_menu_direct_back)
 
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
     og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
@@ -932,7 +932,7 @@ TEST(ViewTeam, create_team_menu_remote_start_exits_as_start_game)
 
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
     og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
@@ -961,7 +961,7 @@ TEST(ViewTeam, create_team_menu_hides_host_only_controls_for_non_host_client)
 
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
     og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
@@ -1012,7 +1012,7 @@ TEST(ViewTeam, create_scenario_menu_hides_host_only_controls_for_non_host_client
 
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
     og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
@@ -1059,7 +1059,7 @@ TEST(ViewTeam, create_scenario_menu_shows_host_controls_for_host)
 
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
     og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
@@ -1174,7 +1174,7 @@ TEST(ViewTeam, go_level17_no_hang)
 
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 17;
 
     auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
@@ -1239,7 +1239,7 @@ TEST(ViewTeam, base_camp_win_fold_rederives_rows_and_guards_stale_clicks)
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.reset();
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
 
     // 13 members so a second page exists (8 rows/page, §9.14); M03 is
@@ -1329,7 +1329,7 @@ TEST(ViewTeam, base_camp_deploy_toggle_debounces_same_row_taps)
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.reset();
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     for (int i = 0; i < 2; ++i) {
         auto member = std::make_unique<guy>(FAMILY_SOLDIER);
         member->name = std::format("TAP{:02}", i);
@@ -1395,7 +1395,7 @@ TEST(ViewTeam, teams_cycle_guy_team_autosaves_solo_team_change)
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.reset();
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     auto member = std::make_unique<guy>(FAMILY_SOLDIER);
     member->name = "CYCLER";
     member->teamnum = 0;
@@ -1433,7 +1433,7 @@ TEST(ViewTeam, base_camp_team_chip_cycles_and_autosaves_solo_team_change)
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.reset();
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     auto member = std::make_unique<guy>(FAMILY_SOLDIER);
     member->name = "CHIPPER";
     member->teamnum = 0;
@@ -1478,7 +1478,7 @@ TEST(ViewTeam, base_camp_team_chip_keeps_private_roster_order)
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.reset();
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     constexpr std::array<std::string_view, 4> names = {
         "ALPHA", "BRAVO", "CHARLIE", "DELTA"};
     for (int slot = 0; slot < static_cast<int>(names.size()); ++slot) {
@@ -1535,7 +1535,7 @@ TEST(ViewTeam, base_camp_move_up_pages_and_autosaves_roster_order)
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.reset();
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     for (int slot = 0; slot < 9; ++slot) {
         auto member = std::make_unique<guy>(FAMILY_SOLDIER);
         member->name = std::format("MEMBER{:02}", slot);
@@ -1603,7 +1603,7 @@ TEST(ViewTeam, base_camp_team_chips_draw_one_based_labels_for_all_teams)
     screen* const output = og::runtime::current_session->myscreen_;
     SaveData& save = output->save_data;
     save.reset();
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     for (int team = 0; team < static_cast<int>(SCORE_TEAM_COUNT); ++team) {
         auto member = std::make_unique<guy>(FAMILY_SOLDIER);
         member->name = std::format("TEAM{}", team + 1);
@@ -1675,7 +1675,7 @@ TEST(ViewTeam, base_camp_seat_card_focus_preserves_neighbors_and_team_chip)
     SaveData& save = output->save_data;
     save.reset();
     save.save_name = "IRON KETTLE BAND";
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
 
     og::ui::BaseCampScreenState state;
     state.page = og::ui::PageModel::make(0, kBaseCampRosterRowsPerPage);
@@ -1809,7 +1809,7 @@ TEST(ViewTeam, base_camp_draws_crisp_identity_text_and_family_ramp_swatches)
     screen* const output = og::runtime::current_session->myscreen_;
     SaveData& save = output->save_data;
     save.reset();
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
 
     auto deployed = std::make_unique<guy>(FAMILY_ELF);
     deployed->name = "ELENA";
@@ -2110,7 +2110,7 @@ TEST(ViewTeam, base_camp_mp_columns_gate_foreign_rows_and_cap_deploys)
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.reset();
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
     save.save_name = "MY OWN BAND";
 
@@ -2263,7 +2263,7 @@ TEST(ViewTeam, base_camp_seat_rail_targets_owned_global_seat_and_clamps_page)
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.reset();
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.save_name = "MY COMPANY";
     auto hero = std::make_unique<guy>(FAMILY_SOLDIER);
     hero->name = "UNCHANGED HERO";
@@ -2392,7 +2392,7 @@ TEST(ViewTeam, base_camp_seat_rail_targets_owned_global_seat_and_clamps_page)
     // Explicit two-team versus wraps the same exact P5 target within {1,2}
     // (the shipped modes campaign carries matchup: versus).
     lobby.seat_team_accept = true;
-    save.current_campaign = "org.openglad.modes";
+    save.current_campaign = "modes";
     save.ctf_team_count = 2;
     local->team = 1;
     og::ui::base_camp_refresh_rows(state);
@@ -2410,7 +2410,7 @@ TEST(ViewTeam, base_camp_seat_rail_targets_owned_global_seat_and_clamps_page)
     // choices. Stamp start markers for teams 0 and 2 onto the mounted picker
     // world: a P5 seat on team 0 must advance directly to team 2.
     const std::string old_mounted_campaign = get_mounted_campaign();
-    set_mounted_campaign_for_testing("org.openglad.modes");
+    set_mounted_campaign_for_testing("modes");
     GameWorld& world = og::runtime::current_session->myscreen_->world();
     const int old_world_id = world.id;
     const auto old_world_type = world.type;
@@ -2824,7 +2824,7 @@ TEST(ViewTeam, base_camp_zero_seat_state_activates_only_through_plus)
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.reset();
     save.numplayers = 0;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
 
     NetworkedRosterLobbyClient lobby;
     lobby.players.push_back(
@@ -2970,7 +2970,7 @@ TEST(ViewTeam, base_camp_ready_twin_toggles_and_gates)
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.reset();
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
     save.save_name = "JOINER BAND";
 
@@ -3120,7 +3120,7 @@ TEST(ViewTeam, base_camp_go_host_gate_popups_and_denial_display)
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.reset();
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
     save.save_name = "HOST BAND";
 
@@ -3220,7 +3220,7 @@ TEST(ViewTeam, base_camp_go_uses_explicit_local_seat_teams_for_control_gate)
     save.reset();
     save.numplayers = 2;
     save.allied_mode = 0; // legacy Split would derive teams 0 and 1
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
 
     for (int slot = 0; slot < 2; ++slot)
@@ -3262,7 +3262,7 @@ TEST(ViewTeam, teams_cross_control_toggle_host_gates_and_syncs)
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.reset();
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
     save.cross_control = 0;
 
@@ -3344,7 +3344,7 @@ TEST(ViewTeam, solo_go_benched_roster_popups_deploy_at_least_one)
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.reset();
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
 
     auto own = std::make_unique<guy>(FAMILY_SOLDIER);
@@ -3434,7 +3434,7 @@ TEST(ViewTeam, base_camp_row_train_rename_renames_seeded_character)
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
     og::runtime::current_session->myscreen_->save_data.current_campaign =
-        "org.openglad.gladiator";
+        "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
 
     auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);

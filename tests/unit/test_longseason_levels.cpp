@@ -1,5 +1,5 @@
 // Shipped "The Long Season" campaign validation
-// (builtin/org.openglad.longseason.glad, authored by tools/longseason_mapgen).
+// (builtin/longseason.glad, authored by tools/longseason_mapgen).
 //
 // Every registered level (ids 1-19, contiguous) is loaded through the
 // production campaign-mount path and pinned against the authoring invariants
@@ -122,13 +122,13 @@ protected:
         restore_default_campaigns();
         previous_ = get_mounted_campaign();
         ASSERT_EQ(CampaignPackageIoError::None,
-                  mount_campaign_package_with_error("org.openglad.longseason"))
-            << "builtin/org.openglad.longseason.glad should restore and mount";
+                  mount_campaign_package_with_error("longseason"))
+            << "builtin/longseason.glad should restore and mount";
     }
 
     void TearDown() override
     {
-        (void)unmount_campaign_package_with_error("org.openglad.longseason");
+        (void)unmount_campaign_package_with_error("longseason");
         if (!previous_.empty())
             (void)mount_campaign_package_with_error(previous_);
     }

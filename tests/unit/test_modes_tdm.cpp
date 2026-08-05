@@ -1,5 +1,5 @@
 // The Team Deathmatch campaign-pack Lua behavior suite
-// (campaigns/org.openglad.modes/packs/org.openglad.modes.core: lib/mode_tdm_impl.lua + lib/mode_match.lua +
+// (campaigns/modes/packs/modes.core: lib/mode_tdm_impl.lua + lib/mode_match.lua +
 // scripts/mode_tdm.lua), over the shared modes-pack fixture. Rule spec:
 // modes.md §3 as amended (manifest limits 20/7200, 1 m_score per frag,
 // cadence 15, lowest-team-byte timeout tiebreak).

@@ -218,7 +218,7 @@ void seed_stray_company_slots_from_env()
         SaveData sd;
         sd.reset();
         sd.save_name = "STRAY " + slot;
-        sd.current_campaign = "org.openglad.gladiator";
+        sd.current_campaign = "gladiator";
         sd.last_played_unix_s = stamp++;
         if (with_soldier)
         {

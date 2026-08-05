@@ -126,7 +126,7 @@ class WestlandsCampaignTest : public MountedCampaignTest
 {
 protected:
     WestlandsCampaignTest()
-        : MountedCampaignTest("org.openglad.westlands")
+        : MountedCampaignTest("westlands")
     {
     }
 };

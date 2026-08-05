@@ -66,7 +66,7 @@ void popup_dialog(const char* title, const char* message);
 
 namespace {
 
-constexpr std::string_view kDefaultCampaignId = "org.openglad.gladiator";
+constexpr std::string_view kDefaultCampaignId = "gladiator";
 constexpr auto kJoinRetryInterval = std::chrono::milliseconds(100);
 
 struct OrderedLobbySlot {

@@ -63,7 +63,7 @@ bool seed_company(const std::string& slot, const std::string& name,
     SaveData sd;
     sd.reset();
     sd.save_name = name;
-    sd.current_campaign = "org.openglad.gladiator";
+    sd.current_campaign = "gladiator";
     sd.last_played_unix_s = last_played;
     return sd.save_with_error(slot) == SaveDataIoError::None;
 }

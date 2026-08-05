@@ -1,7 +1,7 @@
 # Multiplayer Game Modes
 
 OpenGlad ships five competitive game modes in one built-in campaign:
-**`org.openglad.modes`** ("Multiplayer Game Modes"), 28 scenarios. Pick it
+**`modes`** ("Multiplayer Game Modes"), 28 scenarios. Pick it
 from SET CAMPAIGN in the team-build screen's SCENARIO submenu and hit GO.
 Every scenario title is prefixed with its mode:
 
@@ -14,8 +14,8 @@ Every scenario title is prefixed with its mode:
 | Mutant | 840-843 | FFA until first blood; only the Mutant can be hurt, kill it to take its place. |
 
 Every mode's rules, scoring, win logic, and AI directors live in the
-campaign's embedded Lua pack (`org.openglad.modes.core`, hand-authored at
-`campaigns/org.openglad.modes/packs/org.openglad.modes.core/`) — the
+campaign's embedded Lua pack (`modes.core`, hand-authored at
+`campaigns/modes/packs/modes.core/`) — the
 engine provides only the generic scripted
 frame (`SCEN_TYPE_SCRIPTED` levels, `ModeState` replication, the respawn
 engine, and the og.* mode bindings). All five modes work in local

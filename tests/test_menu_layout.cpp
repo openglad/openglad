@@ -539,7 +539,7 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
     };
 
     for (const char* campaign :
-         {"org.openglad.gladiator", "org.openglad.modes"})
+         {"gladiator", "modes"})
     {
         save.current_campaign = campaign;
         button* buttons = picker_createmenu_buttons();

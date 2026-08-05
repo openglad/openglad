@@ -84,30 +84,30 @@ TEST(Guy, level_up) {
 // Test: Campaign level completion tracking
 TEST(Guy, campaign_progress) {
     og::runtime::current_session->myscreen_->save_data.reset();
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
 
     // Initially no levels completed
     ASSERT_TRUE(!og::runtime::current_session->myscreen_->save_data.is_level_completed(1)) << "level 1 should not be completed initially";
-    ASSERT_EQ(0, og::runtime::current_session->myscreen_->save_data.get_num_levels_completed("org.openglad.gladiator")) << "no levels should be completed initially";
+    ASSERT_EQ(0, og::runtime::current_session->myscreen_->save_data.get_num_levels_completed("gladiator")) << "no levels should be completed initially";
 
     // Mark some levels as completed
-    og::runtime::current_session->myscreen_->save_data.add_level_completed("org.openglad.gladiator", 1);
-    og::runtime::current_session->myscreen_->save_data.add_level_completed("org.openglad.gladiator", 2);
-    og::runtime::current_session->myscreen_->save_data.add_level_completed("org.openglad.gladiator", 3);
+    og::runtime::current_session->myscreen_->save_data.add_level_completed("gladiator", 1);
+    og::runtime::current_session->myscreen_->save_data.add_level_completed("gladiator", 2);
+    og::runtime::current_session->myscreen_->save_data.add_level_completed("gladiator", 3);
 
     ASSERT_TRUE(og::runtime::current_session->myscreen_->save_data.is_level_completed(1)) << "level 1 should be completed";
     ASSERT_TRUE(og::runtime::current_session->myscreen_->save_data.is_level_completed(2)) << "level 2 should be completed";
     ASSERT_TRUE(og::runtime::current_session->myscreen_->save_data.is_level_completed(3)) << "level 3 should be completed";
     ASSERT_TRUE(!og::runtime::current_session->myscreen_->save_data.is_level_completed(4)) << "level 4 should not be completed";
 
-    ASSERT_EQ(3, og::runtime::current_session->myscreen_->save_data.get_num_levels_completed("org.openglad.gladiator")) << "3 levels should be completed";
+    ASSERT_EQ(3, og::runtime::current_session->myscreen_->save_data.get_num_levels_completed("gladiator")) << "3 levels should be completed";
 
     // Different campaign should have 0 completions
     ASSERT_EQ(0, og::runtime::current_session->myscreen_->save_data.get_num_levels_completed("some.other.campaign")) << "other campaign should have 0 completions";
 
     // Reset campaign should clear completions
-    og::runtime::current_session->myscreen_->save_data.reset_campaign("org.openglad.gladiator");
-    ASSERT_EQ(0, og::runtime::current_session->myscreen_->save_data.get_num_levels_completed("org.openglad.gladiator")) << "completions should be 0 after reset_campaign";
+    og::runtime::current_session->myscreen_->save_data.reset_campaign("gladiator");
+    ASSERT_EQ(0, og::runtime::current_session->myscreen_->save_data.get_num_levels_completed("gladiator")) << "completions should be 0 after reset_campaign";
 }
 
 
@@ -123,7 +123,7 @@ TEST(Guy, save_data_reset) {
     og::runtime::current_session->myscreen_->save_data.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
     og::runtime::current_session->myscreen_->save_data.team_size = 1;
 
-    og::runtime::current_session->myscreen_->save_data.add_level_completed("org.openglad.gladiator", 1);
+    og::runtime::current_session->myscreen_->save_data.add_level_completed("gladiator", 1);
 
     // Now reset
     og::runtime::current_session->myscreen_->save_data.reset();

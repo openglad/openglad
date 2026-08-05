@@ -380,7 +380,7 @@ TEST(LobbyServer, sanitize_clamps_ctf_settings_and_equivalent_carries_them)
 
     // Out-of-range CTF settings from the host get clamped, not echoed.
     og::sim::LobbySettings wild;
-    wild.campaign_id = "org.openglad.ctf";
+    wild.campaign_id = "ctf";
     wild.scenario_id = 500;
     wild.difficulty = 1;
     wild.allied_mode = 1;
@@ -562,7 +562,7 @@ TEST(LobbyServer, ready_team_change_and_leave_update_state_and_broadcasts)
     server.poll_incoming_messages();
 
     og::sim::LobbySettings enemy_settings;
-    enemy_settings.campaign_id = "org.openglad.gladiator";
+    enemy_settings.campaign_id = "gladiator";
     enemy_settings.scenario_id = 1;
     enemy_settings.difficulty = 1;
     enemy_settings.allied_mode = 0;
@@ -935,7 +935,7 @@ TEST(LobbyServer, join_overflow_force_benches_instead_of_truncating)
     server.poll_incoming_messages();
 
     og::sim::LobbySettings enemy_settings;
-    enemy_settings.campaign_id = "org.openglad.gladiator";
+    enemy_settings.campaign_id = "gladiator";
     enemy_settings.scenario_id = 1;
     enemy_settings.difficulty = 1;
     enemy_settings.allied_mode = 0;
@@ -1072,7 +1072,7 @@ TEST(LobbyServer,
     server.poll_incoming_messages();
 
     og::sim::LobbySettings enemy_settings;
-    enemy_settings.campaign_id = "org.openglad.gladiator";
+    enemy_settings.campaign_id = "gladiator";
     enemy_settings.scenario_id = 1;
     enemy_settings.difficulty = 1;
     enemy_settings.allied_mode = 0;
@@ -1122,7 +1122,7 @@ TEST(LobbyServer, allied_mode_preserves_explicit_binding_and_combat_teams)
     server.poll_incoming_messages();
 
     og::sim::LobbySettings allied_settings;
-    allied_settings.campaign_id = "org.openglad.gladiator";
+    allied_settings.campaign_id = "gladiator";
     allied_settings.scenario_id = 1;
     allied_settings.difficulty = 1;
     allied_settings.allied_mode = 1;
@@ -1171,7 +1171,7 @@ TEST(LobbyServer, local_game_start_preserves_every_roster_team_in_both_modes)
             server.poll_incoming_messages();
 
             og::sim::LobbySettings settings;
-            settings.campaign_id = "org.openglad.gladiator";
+            settings.campaign_id = "gladiator";
             settings.scenario_id = 1;
             settings.difficulty = 1;
             settings.allied_mode = allied_mode;
@@ -1218,7 +1218,7 @@ TEST(LobbyServer, local_legacy_together_field_does_not_collapse_explicit_seats)
     server.poll_incoming_messages();
 
     og::sim::LobbySettings settings;
-    settings.campaign_id = "org.openglad.gladiator";
+    settings.campaign_id = "gladiator";
     settings.scenario_id = 1;
     settings.difficulty = 1;
     settings.allied_mode = 1;
@@ -1261,7 +1261,7 @@ og::sim::LobbySettings make_ctf_lobby_settings(
     std::uint8_t authored_team_mask = 0)
 {
     og::sim::LobbySettings settings;
-    settings.campaign_id = "org.openglad.ctf";
+    settings.campaign_id = "ctf";
     settings.scenario_id = 1;
     settings.difficulty = 1;
     settings.allied_mode = 0;
@@ -1751,7 +1751,7 @@ TEST(LobbyServer, settings_change_to_classic_preserves_shared_assignments)
     // mode-independent, so both seats remain on team 0 (with fighter colors
     // unchanged); the settings change itself still broadcasts.
     og::sim::LobbySettings classic = make_ctf_lobby_settings();
-    classic.campaign_id = "org.openglad.gladiator";
+    classic.campaign_id = "gladiator";
     transport.clear_sent_messages();
     transport.queue_lobby_message(11u, make_settings_change_message(classic));
     server.poll_incoming_messages();

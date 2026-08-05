@@ -356,7 +356,7 @@ void io_init(int argc, char* argv[])
     
     // Open up the default campaign
     Log("Mounting default campaign...\n");
-    if (mount_campaign_package_with_error("org.openglad.gladiator") != CampaignPackageIoError::None)
+    if (mount_campaign_package_with_error("gladiator") != CampaignPackageIoError::None)
     {
         std::string msg = std::format("Fatal: Failed to mount default campaign: {}",
                                       og::resources::filesystem_last_error());

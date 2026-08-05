@@ -17,7 +17,7 @@ static bool contains(const std::vector<int>& v, int x)
 TEST(PickerAccessibleLevels, picker_get_accessible_levels_always_has_level1_and_current)
 {
     og::runtime::current_session->myscreen_->save_data.reset();
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 3;
 
     std::vector<int> levels = get_accessible_levels();
@@ -29,7 +29,7 @@ TEST(PickerAccessibleLevels, picker_get_accessible_levels_always_has_level1_and_
 TEST(PickerAccessibleLevels, picker_get_accessible_levels_includes_exits_of_cleared_levels)
 {
     og::runtime::current_session->myscreen_->save_data.reset();
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
 
     // Mark level 1 as cleared; get_accessible_levels should attempt to load it and add exits.
@@ -51,7 +51,7 @@ TEST(PickerAccessibleLevels, picker_get_accessible_levels_includes_exits_of_clea
 TEST(PickerAccessibleLevels, picker_get_accessible_levels_handles_missing_leveldata)
 {
     og::runtime::current_session->myscreen_->save_data.reset();
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
 
     // Add a bogus "completed" level id to force LevelRuntimeData::load() failure path.

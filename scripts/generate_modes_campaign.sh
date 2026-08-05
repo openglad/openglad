@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerate campaigns/org.openglad.modes/ with tools/modes_mapgen.
+# Regenerate campaigns/modes/ with tools/modes_mapgen.
 #
 # Configures the ci-test preset when needed, builds the (EXCLUDE_FROM_ALL)
 # modes_mapgen target, and runs it from the repo root so the committed
@@ -18,7 +18,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${REPO_ROOT}/build/ci-test"
-OUTPUT="${1:-campaigns/org.openglad.modes}"
+OUTPUT="${1:-campaigns/modes}"
 
 cd "${REPO_ROOT}"
 

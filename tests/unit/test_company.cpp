@@ -127,7 +127,7 @@ struct HeaderFixture
 {
     std::uint8_t version = 14;
     std::string name = "FIXTURE COMPANY";
-    std::string campaign = "org.openglad.gladiator"; // v8+
+    std::string campaign = "gladiator"; // v8+
     std::int16_t scen_num = 3;
     std::uint32_t cash = 1234;
     std::int16_t listsize = 2;
@@ -473,7 +473,7 @@ TEST(CompanyScan, version_ladder_v2_v5_v6_v7_v13)
         EXPECT_TRUE(info->valid) << "v" << int(ladder_case.version);
         EXPECT_EQ(fixture.name, info->display_name)
             << "v" << int(ladder_case.version);
-        EXPECT_EQ("org.openglad.gladiator", info->campaign_id)
+        EXPECT_EQ("gladiator", info->campaign_id)
             << "pre-v8 files carry no campaign; default applies";
         EXPECT_EQ(fixture.scen_num, info->scen_num)
             << "v" << int(ladder_case.version);
@@ -512,7 +512,7 @@ TEST(CompanyScan, invalid_listsize_legacy_player_byte_and_unsafe_campaign)
     const auto hostile_info = og::data::read_company_header("hostile");
     ASSERT_TRUE(hostile_info.has_value());
     EXPECT_TRUE(hostile_info->valid);
-    EXPECT_EQ("org.openglad.gladiator", hostile_info->campaign_id)
+    EXPECT_EQ("gladiator", hostile_info->campaign_id)
         << "an unsafe campaign id falls back to the default (reader parity)";
 }
 
@@ -819,7 +819,7 @@ TEST(CompanyAtomicSave, propagates_write_and_rename_failures_without_replacement
     sandbox.write_raw("blocked.gtl/keep", "directory sentinel");
 
     SaveData valid;
-    valid.current_campaign = "org.openglad.gladiator";
+    valid.current_campaign = "gladiator";
     valid.save_name = "Rename Failure";
     EXPECT_EQ(SaveDataIoError::WriteFailed,
               og::data::atomic_company_save(valid, "blocked"));
@@ -1469,7 +1469,7 @@ TEST(CompanyAutosave, level_win_keeps_success_when_backup_path_is_blocked)
     sandbox.write_raw("backups", "not a directory");
 
     SaveData save;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.save_name = "Backup Failure Is Nonfatal";
     EXPECT_EQ(SaveDataIoError::None,
               og::data::company_autosave(
@@ -1504,7 +1504,7 @@ TEST(CompanyAutosave, networked_lobby_merge_preserves_private_state)
     {
         SaveData priv;
         priv.save_name = "Private Co";
-        priv.current_campaign = "org.openglad.gladiator";
+        priv.current_campaign = "gladiator";
         priv.scen_num = 5;
         priv.my_team = 0;
         priv.allied_mode = 1;
@@ -1532,8 +1532,8 @@ TEST(CompanyAutosave, networked_lobby_merge_preserves_private_state)
         priv.team_list[0]->strength = 10;
         priv.team_list[1] = make_test_guy(FAMILY_ELF, "Bob", 0, false);
         priv.team_size = 2;
-        priv.add_level_completed("org.openglad.gladiator", 1);
-        priv.add_level_completed("org.openglad.gladiator", 2);
+        priv.add_level_completed("gladiator", 1);
+        priv.add_level_completed("gladiator", 2);
         ASSERT_TRUE(priv.save("save0"));
     }
 
@@ -1541,7 +1541,7 @@ TEST(CompanyAutosave, networked_lobby_merge_preserves_private_state)
     // machine's PRIVATE roster on combat/wallet team 2, post-hire/train wallet
     // on team 2.
     SaveData session;
-    session.current_campaign = "org.openglad.ctf";
+    session.current_campaign = "ctf";
     session.scen_num = 502;
     session.my_team = 2;
     session.numplayers = 1;
@@ -1560,7 +1560,7 @@ TEST(CompanyAutosave, networked_lobby_merge_preserves_private_state)
     session.team_list[1] = make_test_guy(FAMILY_ELF, "Bob", 2, false);
     session.team_list[2] = make_test_guy(FAMILY_SOLDIER, "Carol", 2, true);
     session.team_size = 3;
-    session.add_level_completed("org.openglad.ctf", 500); // host history
+    session.add_level_completed("ctf", 500); // host history
 
     const og::data::CompanyAutosaveContext context =
         og::ui::company_autosave_context(session, /*networked_lobby=*/true);
@@ -1585,13 +1585,13 @@ TEST(CompanyAutosave, networked_lobby_merge_preserves_private_state)
     ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("save0"));
 
     // Preserved from disk ([SAVE-F1] contract).
-    EXPECT_EQ("org.openglad.gladiator", reloaded.current_campaign);
+    EXPECT_EQ("gladiator", reloaded.current_campaign);
     EXPECT_EQ(5, reloaded.scen_num);
-    EXPECT_EQ(5, reloaded.current_levels["org.openglad.gladiator"]);
+    EXPECT_EQ(5, reloaded.current_levels["gladiator"]);
     EXPECT_TRUE(reloaded.is_level_completed(1));
     EXPECT_TRUE(reloaded.is_level_completed(2));
     EXPECT_FALSE(
-        reloaded.completed_levels.contains("org.openglad.ctf"))
+        reloaded.completed_levels.contains("ctf"))
         << "the host's session history must never leak into the company";
     EXPECT_EQ(0, reloaded.my_team);
     EXPECT_EQ(4, static_cast<int>(reloaded.numplayers))
@@ -1645,7 +1645,7 @@ TEST(CompanyAutosave, networked_sale_persists_removed_members_wallet)
     {
         SaveData priv;
         priv.save_name = "Sale Merge Co";
-        priv.current_campaign = "org.openglad.gladiator";
+        priv.current_campaign = "gladiator";
         priv.my_team = 0;
         priv.m_totalcash[2] = 400;
         priv.team_list[0] =
@@ -1657,7 +1657,7 @@ TEST(CompanyAutosave, networked_sale_persists_removed_members_wallet)
     }
 
     SaveData session;
-    session.current_campaign = "org.openglad.ctf";
+    session.current_campaign = "ctf";
     session.my_team = 0;
     session.m_totalcash[2] = 400;
     session.team_list[0] =
@@ -1701,7 +1701,7 @@ TEST(CompanyAutosave, networked_merge_without_private_file_never_clobbers)
     ScopedCompanyClock clock(777);
 
     SaveData session;
-    session.current_campaign = "org.openglad.ctf";
+    session.current_campaign = "ctf";
     session.scen_num = 501;
     og::data::CompanyAutosaveContext context;
     context.networked_lobby = true;
@@ -1737,7 +1737,7 @@ TEST(CompanyAutosave, networked_merge_load_failure_restores_ambient_mount)
     {
         SaveData priv;
         priv.save_name = "Broken Mount Co";
-        priv.current_campaign = "org.openglad.deleted-package";
+        priv.current_campaign = "deleted-package";
         ASSERT_TRUE(priv.save("save0"));
     }
     const std::string bytes_before =
@@ -1745,10 +1745,10 @@ TEST(CompanyAutosave, networked_merge_load_failure_restores_ambient_mount)
 
     // The ambient mount is the HOST's session campaign.
     std::map<std::string, int> scratch;
-    ASSERT_GE(load_campaign("org.openglad.gladiator", scratch), 0);
+    ASSERT_GE(load_campaign("gladiator", scratch), 0);
 
     SaveData session;
-    session.current_campaign = "org.openglad.gladiator";
+    session.current_campaign = "gladiator";
     session.scen_num = 2;
     og::data::CompanyAutosaveContext context;
     context.networked_lobby = true;
@@ -1759,7 +1759,7 @@ TEST(CompanyAutosave, networked_merge_load_failure_restores_ambient_mount)
                   session, og::data::CompanyAutosaveKind::BaseCampMutation,
                   context))
         << "an unmountable private campaign surfaces as the load error";
-    EXPECT_EQ("org.openglad.gladiator", get_mounted_campaign())
+    EXPECT_EQ("gladiator", get_mounted_campaign())
         << "the merge must restore the ambient mount on the load-failure "
            "path (load_with_error unmounts the host campaign before failing)";
     EXPECT_EQ(bytes_before, read_file_bytes(sandbox.dir() / "save0.gtl"))

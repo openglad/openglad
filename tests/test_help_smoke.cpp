@@ -311,7 +311,7 @@ TEST(HelpSmoke, help_read_campaign_intro_smoke_exits_on_input)
 {
     std::string& campaign = og::runtime::current_session->myscreen_->save_data.current_campaign;
     CurrentCampaignGuard campaign_guard(campaign);
-    campaign = "org.openglad.gladiator";
+    campaign = "gladiator";
     HelpTestingInputGuard input_guard;
 
     SdlThreadJoinGuard thread(

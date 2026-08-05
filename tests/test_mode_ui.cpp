@@ -90,9 +90,9 @@ struct ModeScreenWorld
 
     ModeScreenWorld()
     {
-        if (get_mounted_campaign() != "org.openglad.gladiator") {
+        if (get_mounted_campaign() != "gladiator") {
             (void)unmount_campaign_package_with_error(get_mounted_campaign());
-            (void)mount_campaign_package_with_error("org.openglad.gladiator");
+            (void)mount_campaign_package_with_error("gladiator");
         }
         s->world().id = 1;
         EXPECT_TRUE(s->load_level()) << "level 1 should load for the stamp";

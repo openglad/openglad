@@ -114,7 +114,7 @@ protected:
         restore_default_campaigns();
         restore_default_settings();
         ASSERT_EQ(CampaignPackageIoError::None,
-                  mount_campaign_package_with_error("org.openglad.gladiator"));
+                  mount_campaign_package_with_error("gladiator"));
         og::runtime::current_session->current_difficulty_ = 1;
     }
 
@@ -188,7 +188,7 @@ TEST_F(HeadlessServerRuntimeTest,
        lobby_save_handoff_loads_level_and_spawns_headless_team)
 {
     og::sim::LobbySaveDataEquivalent lobby_save;
-    lobby_save.current_campaign = "org.openglad.gladiator";
+    lobby_save.current_campaign = "gladiator";
     lobby_save.scen_num = 1;
     lobby_save.numplayers = 2;
     lobby_save.allied_mode = 0;
@@ -199,7 +199,7 @@ TEST_F(HeadlessServerRuntimeTest,
 
     initialize_from_lobby(lobby_save);
 
-    EXPECT_EQ("org.openglad.gladiator", active_save_.current_campaign);
+    EXPECT_EQ("gladiator", active_save_.current_campaign);
     EXPECT_EQ(1, active_save_.scen_num);
     EXPECT_EQ(1, active_save_.current_levels[active_save_.current_campaign]);
     EXPECT_EQ(2u, active_save_.numplayers);
@@ -238,7 +238,7 @@ TEST_F(HeadlessServerRuntimeTest,
 {
     constexpr short kInvalidLevel = 9999;
     constexpr short kFirstGladiatorLevel = 1;
-    const std::string campaign = "org.openglad.gladiator";
+    const std::string campaign = "gladiator";
 
     active_save_.current_campaign = campaign;
     active_save_.scen_num = kInvalidLevel;
@@ -264,7 +264,7 @@ TEST_F(HeadlessServerRuntimeTest,
     EXPECT_NE(std::string::npos,
               diagnostics.find(
                   "headless_server_level_mismatch "
-                  "campaign=org.openglad.gladiator save_level=9999 "
+                  "campaign=gladiator save_level=9999 "
                   "current_level=1"));
     EXPECT_NE(std::string::npos,
               diagnostics.find(
@@ -278,7 +278,7 @@ TEST_F(HeadlessServerRuntimeTest,
        production_callback_installer_syncs_completes_exits_and_withdraws)
 {
     og::sim::LobbySaveDataEquivalent lobby_save;
-    lobby_save.current_campaign = "org.openglad.gladiator";
+    lobby_save.current_campaign = "gladiator";
     lobby_save.scen_num = 1;
     lobby_save.numplayers = 1;
     lobby_save.team_list = {
@@ -347,7 +347,7 @@ TEST_F(HeadlessServerRuntimeTest,
 TEST_F(HeadlessServerRuntimeTest, spawn_skips_benched_members_but_save_keeps_them)
 {
     og::sim::LobbySaveDataEquivalent lobby_save;
-    lobby_save.current_campaign = "org.openglad.gladiator";
+    lobby_save.current_campaign = "gladiator";
     lobby_save.scen_num = 1;
     lobby_save.numplayers = 1;
     lobby_save.allied_mode = 0;
@@ -394,7 +394,7 @@ TEST_F(HeadlessServerRuntimeTest,
     constexpr std::uint8_t private_slot = 0u;
 
     og::sim::LobbySaveDataEquivalent lobby_save;
-    lobby_save.current_campaign = "org.openglad.gladiator";
+    lobby_save.current_campaign = "gladiator";
     lobby_save.scen_num = 1;
     lobby_save.numplayers = 2;
     lobby_save.allied_mode = 0;
@@ -476,7 +476,7 @@ TEST_F(HeadlessServerRuntimeTest,
 
     og::server::apply_headless_lobby_game_start_config(active_save_, lobby_save);
 
-    EXPECT_EQ("org.openglad.gladiator", active_save_.current_campaign);
+    EXPECT_EQ("gladiator", active_save_.current_campaign);
     EXPECT_EQ(1, active_save_.scen_num);
     EXPECT_EQ(1, active_save_.current_levels[active_save_.current_campaign]);
     EXPECT_EQ(3u, active_save_.numplayers);
@@ -603,7 +603,7 @@ TEST_F(HeadlessServerRuntimeTest,
        authoritative_level_load_rolls_weather_deterministically)
 {
     og::sim::LobbySaveDataEquivalent lobby_save;
-    lobby_save.current_campaign = "org.openglad.gladiator";
+    lobby_save.current_campaign = "gladiator";
     lobby_save.scen_num = 2;
     lobby_save.numplayers = 1;
     lobby_save.team_list = {
@@ -649,7 +649,7 @@ TEST_F(HeadlessServerRuntimeTest,
 TEST_F(HeadlessServerRuntimeTest, mirror_level_load_never_rolls_weather)
 {
     og::sim::LobbySaveDataEquivalent lobby_save;
-    lobby_save.current_campaign = "org.openglad.gladiator";
+    lobby_save.current_campaign = "gladiator";
     lobby_save.scen_num = 2;
     lobby_save.numplayers = 1;
     lobby_save.team_list = {

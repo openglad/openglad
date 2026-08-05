@@ -30,7 +30,7 @@ using og::progression::WinFoldContext;
 using og::progression::apply_win_fold;
 using og::progression::mode_rematch_shape;
 
-constexpr const char* kCampaign = "org.openglad.test_fold";
+constexpr const char* kCampaign = "test_fold";
 
 // SaveData is non-copyable (owning team_list) — initialize in place.
 // SaveData::reset() seeds m_totalcash at the new-game 5000 grubstake; zero

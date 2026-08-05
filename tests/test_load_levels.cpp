@@ -57,8 +57,8 @@ bool prepare_default_level_load()
 #ifdef TESTING
     set_mounted_campaign_for_testing("");
 #endif
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
-    return mount_campaign_package_with_error("org.openglad.gladiator") == CampaignPackageIoError::None;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
+    return mount_campaign_package_with_error("gladiator") == CampaignPackageIoError::None;
 }
 
 const og::sim::EntitySnapshot* find_entity_snapshot(
@@ -144,7 +144,7 @@ TEST(LoadLevels, completed_non_ctf_level_purges_only_replayable_hostiles)
 
     SaveData& save = scr->save_data;
     save.reset();
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
     save.numplayers = 0; // spectator: no roster spawn obscures authored objects
     save.completed_levels[save.current_campaign].insert(save.scen_num);

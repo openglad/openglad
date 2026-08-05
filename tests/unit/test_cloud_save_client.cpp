@@ -35,7 +35,7 @@ std::string valid_gtl_bytes(const std::string& name = "FIXTURE COMPANY",
                             std::int16_t scen_num = 3,
                             std::int64_t last_played = 0,
                             const std::string& campaign =
-                                "org.openglad.gladiator")
+                                "gladiator")
 {
     std::string out;
     const auto append = [&out](const void* data, std::size_t size) {

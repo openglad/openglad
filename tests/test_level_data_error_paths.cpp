@@ -484,7 +484,7 @@ TEST(LevelDataErrorPaths, campaign_data_load_reports_open_read_failed_when_campa
 {
     // Create a minimal zip campaign package with no campaign.yaml so CampaignData::load
     // takes the OpenReadFailed branch.
-    const std::string id = std::string("org.openglad.test.missing_yaml.") + std::to_string(::getpid());
+    const std::string id = std::string("test.missing_yaml.") + std::to_string(::getpid());
     delete_campaign(id);
 
     const fs::path base = fs::temp_directory_path() / (std::string("openglad_missing_yaml_") + std::to_string(::getpid()));

@@ -827,7 +827,7 @@ TEST(PickerFuncs, picker_lobby_consume_game_start_config_uses_active_client_boun
     client.pending_config = og::ui::PickerLobbyGameStartConfig{
         .save_data =
             og::sim::LobbySaveDataEquivalent{
-                .current_campaign = "org.openglad.gladiator",
+                .current_campaign = "gladiator",
                 .scen_num = 1,
                 .numplayers = 2,
                 .allied_mode = 0,
@@ -1281,7 +1281,7 @@ TEST(PickerFuncs, picker_join_game_relay_prompt_replaces_client)
 
     auto& save = og::runtime::current_session->myscreen_->save_data;
     const std::string old_campaign = save.current_campaign;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
 
     picker_testing_yes_or_no_queue_clear();
     picker_testing_yes_or_no_queue_push(false);
@@ -1301,7 +1301,7 @@ TEST(PickerFuncs, picker_join_game_relay_prompt_replaces_client)
     EXPECT_EQ("GLAD-BETA", captured_options->room_code);
     EXPECT_FALSE(captured_options->relay_base_url.empty());
     EXPECT_EQ(captured_options->relay_base_url, listed_base_url);
-    EXPECT_EQ("org.openglad.gladiator", listed_campaign_tag);
+    EXPECT_EQ("gladiator", listed_campaign_tag);
     EXPECT_EQ(next_raw, current_client.get());
     EXPECT_EQ(next_raw, og::ui::active_picker_lobby_client());
     EXPECT_EQ(1, current_trace->shutdown_calls);
@@ -1859,7 +1859,7 @@ TEST(PickerFuncs, lobby_start_request_captures_game_start_config)
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
         old_team[i] = std::move(save.team_list[i]);
 
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
     save.team_size = 2;
     save.numplayers = 2;
@@ -1882,7 +1882,7 @@ TEST(PickerFuncs, lobby_start_request_captures_game_start_config)
         picker_lobby_consume_game_start_config();
     ASSERT_TRUE(config.has_value());
     EXPECT_EQ(2u, config->save_data.numplayers);
-    EXPECT_EQ("org.openglad.gladiator", config->save_data.current_campaign);
+    EXPECT_EQ("gladiator", config->save_data.current_campaign);
     EXPECT_EQ(1, config->save_data.scen_num);
     EXPECT_EQ(0, config->save_data.allied_mode);
     EXPECT_EQ(3, config->difficulty);
@@ -1921,7 +1921,7 @@ TEST(PickerFuncs, lobby_start_request_preserves_spectator_game_start_config)
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
         old_team[i] = std::move(save.team_list[i]);
 
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
     save.team_size = 1;
     save.numplayers = 0;
@@ -1941,7 +1941,7 @@ TEST(PickerFuncs, lobby_start_request_preserves_spectator_game_start_config)
         picker_lobby_consume_game_start_config();
     ASSERT_TRUE(config.has_value());
     EXPECT_EQ(0u, config->save_data.numplayers);
-    EXPECT_EQ("org.openglad.gladiator", config->save_data.current_campaign);
+    EXPECT_EQ("gladiator", config->save_data.current_campaign);
     EXPECT_EQ(1, config->save_data.scen_num);
     EXPECT_EQ(1, config->save_data.allied_mode);
     EXPECT_EQ(4, config->difficulty);
@@ -2039,7 +2039,7 @@ TEST(PickerFuncs, go_menu_starts_via_lobby_confirmation_and_reinitializes_for_re
 
     save.reset();
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
 
     auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
@@ -2167,7 +2167,7 @@ TEST(PickerFuncs, go_menu_honors_preexisting_remote_start_request)
 
     save.reset();
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
 
     auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
@@ -2896,7 +2896,7 @@ TEST(PickerFuncs, local_lobby_reconciles_sparse_versus_domain_transitions)
     save.my_team = 0;
     save.numplayers = 2;
     save.allied_mode = 0;
-    save.current_campaign = "org.openglad.modes";
+    save.current_campaign = "modes";
     save.scen_num = 7;
     save.ctf_team_count = 0;
     // A REAL mount: the versus predicate reads the campaign's matchup: yaml

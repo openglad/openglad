@@ -85,7 +85,7 @@ namespace og::curses {
 namespace {
 
 constexpr int kDefaultPort = 12345;
-constexpr std::string_view kDefaultCampaignId = "org.openglad.gladiator";
+constexpr std::string_view kDefaultCampaignId = "gladiator";
 
 // A unique-per-instance network player name for readable diagnostics. The
 // server-issued LobbySeatId is the only ownership identity; names are

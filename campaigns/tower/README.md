@@ -1,4 +1,4 @@
-# org.openglad.tower — provenance
+# tower — provenance
 
 GENERATED CAMPAIGN. `scen/`, `pix/`, `campaign.yaml` and `icon.png` are
 regenerated wholesale by `tools/tower_mapgen`

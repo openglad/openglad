@@ -100,10 +100,10 @@ void collect_archive_members(const std::string& vdir, const std::string& rel,
 TEST(BuiltinArchives, every_member_matches_its_committed_source)
 {
     const std::vector<std::string> campaign_ids = {
-        "org.openglad.concept",   "org.openglad.gladiator",
-        "org.openglad.longseason", "org.openglad.modes",
-        "org.openglad.tower",     "org.openglad.tryxian",
-        "org.openglad.westlands",
+        "concept",   "gladiator",
+        "longseason", "modes",
+        "tower",     "tryxian",
+        "westlands",
     };
 
     for (const std::string& id : campaign_ids)

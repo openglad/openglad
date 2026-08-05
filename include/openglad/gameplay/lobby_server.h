@@ -12,7 +12,7 @@
 namespace og::sim {
 
 struct LobbySaveDataEquivalent {
-    std::string current_campaign = "org.openglad.gladiator";
+    std::string current_campaign = "gladiator";
     std::int16_t scen_num = 1;
     std::uint8_t numplayers = 0;
     std::int16_t allied_mode = 1;

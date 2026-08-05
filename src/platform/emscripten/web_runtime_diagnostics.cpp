@@ -50,7 +50,7 @@ struct AppliedPreloadStartConfig
 {
     std::int32_t scenario_id = 1;
     std::int32_t difficulty = 1;
-    std::string campaign_id = "org.openglad.gladiator";
+    std::string campaign_id = "gladiator";
     std::int32_t numplayers = 1;
     std::int32_t allied_mode = 0;
     std::int32_t my_team = 0;
@@ -489,7 +489,7 @@ void seed_test_save_if_requested()
         std::clamp(web_test_seed_player_count_js(), 1, MAX_PLAYERS);
     save.reset();
     save.numplayers = static_cast<unsigned char>(requested_player_count);
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.current_levels[save.current_campaign] = 1;
     save.scen_num = 1;
 
@@ -546,7 +546,7 @@ void maybe_apply_jitter_capture_start_config(
     state.active = true;
     state.preload_start_config.scenario_id = 11;
     state.preload_start_config.difficulty = 1;
-    state.preload_start_config.campaign_id = "org.openglad.gladiator";
+    state.preload_start_config.campaign_id = "gladiator";
     state.preload_start_config.numplayers = 1;
     state.preload_start_config.allied_mode = 0;
     state.preload_start_config.my_team = 0;

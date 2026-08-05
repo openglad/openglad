@@ -10,7 +10,7 @@
  * and the popup/summary formatters for every shape.
  *
  * Mount hygiene (spec §1.10): every test that writes save0 runs under the
- * fixture, whose teardown remounts org.openglad.gladiator — SaveData::load
+ * fixture, whose teardown remounts gladiator — SaveData::load
  * mounts the SAVED campaign, the classic --gtest_shuffle trap.
  */
 #include <gtest/gtest.h>
@@ -59,7 +59,7 @@ protected:
         std::error_code ec;
         fs::remove(fs::path(get_user_path()) / "save" / "save0.gtl", ec);
         ASSERT_EQ(CampaignPackageIoError::None,
-                  mount_campaign_package_with_error("org.openglad.gladiator"));
+                  mount_campaign_package_with_error("gladiator"));
     }
 
     void TearDown() override
@@ -70,7 +70,7 @@ protected:
         // §1.10: SaveData::load mounts the saved campaign; heal the mount
         // for whatever test runs next in the shuffle.
         (void)unmount_campaign_package_with_error(get_mounted_campaign());
-        (void)mount_campaign_package_with_error("org.openglad.gladiator");
+        (void)mount_campaign_package_with_error("gladiator");
     }
 
     static IProgression& tower() { return og::mode::tower_progression(); }
@@ -493,7 +493,7 @@ TEST_F(TowerProgressionTest, run_end_is_a_noop_at_the_gate_and_off_campaign)
 
     // Foreign campaign mounted mid-classic: nothing ends either.
     SaveData classic;
-    classic.current_campaign = "org.openglad.gladiator";
+    classic.current_campaign = "gladiator";
     classic.scen_num = 705; // numerically a floor id, but not our campaign
     tower().on_run_ended(classic, world, outcome);
     EXPECT_EQ(705, classic.scen_num);

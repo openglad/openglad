@@ -34,7 +34,7 @@ TEST(LevelEditorSmoke, end_flag_exits_quickly)
 
 namespace {
 
-// Builds <user>/campaigns/org.openglad.gladiator.glad from a scratch tree
+// Builds <user>/campaigns/gladiator.glad from a scratch tree
 // whose only level is a scen1 written with the given provenance mark. The
 // editor hardcodes the gladiator campaign, mounts the archive fresh on
 // every entry (unmount + prepend-mount), and loads list_levels().front()
@@ -97,7 +97,7 @@ bool install_scratch_gladiator(bool generated)
         return false;
     }
 
-    const fs::path archive = user / "campaigns/org.openglad.gladiator.glad";
+    const fs::path archive = user / "campaigns/gladiator.glad";
     fs::remove(archive, ec);
     const ArchiveIoError zip_err =
         zip_contents_with_error(staging.string(), archive.string());
@@ -120,7 +120,7 @@ TEST(LevelEditorSmoke, generated_scen_warns_on_open_and_classic_does_not)
 {
     namespace fs = std::filesystem;
     const fs::path user{get_user_path()};
-    const fs::path archive = user / "campaigns/org.openglad.gladiator.glad";
+    const fs::path archive = user / "campaigns/gladiator.glad";
     // Keep the user dir's scen1/pix1 (install_scratch_gladiator writes and
     // moves them) and the real archive bytes restorable (shuffle-safe).
     og::test::ScopedPhysicalFileState fss_guard(user / "scen/scen1.fss");
@@ -152,7 +152,7 @@ TEST(LevelEditorSmoke, generated_scen_warns_on_open_and_classic_does_not)
 
     // The real archive bytes are back; remount so later tests read the
     // genuine campaign, not the (now-deleted) scratch mount.
-    (void)unmount_campaign_package_with_error("org.openglad.gladiator");
-    (void)mount_campaign_package_with_error("org.openglad.gladiator");
+    (void)unmount_campaign_package_with_error("gladiator");
+    (void)mount_campaign_package_with_error("gladiator");
 }
 

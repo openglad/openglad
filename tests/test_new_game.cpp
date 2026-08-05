@@ -129,7 +129,7 @@ TEST(NewGame, begin_new_game) {
     og::runtime::current_session->myscreen_->save_data.totalscore = 55555;
     og::runtime::current_session->myscreen_->save_data.scen_num = 5;
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     // §2.1: BEGIN NEW GAME's "There is already a game loaded. Do you want to
     // restart?" prompt is RETIRED — founding a company never destroys the
     // loaded game. Seed save0 with a team member (the exact team_size > 0
@@ -212,7 +212,7 @@ TEST(NewGame, name_entry_back_cancels_without_founding) {
     og::runtime::current_session->myscreen_->save_data.totalcash = 424242;
     og::runtime::current_session->myscreen_->save_data.save_name = "PRIOR COMPANY";
     og::runtime::current_session->myscreen_->save_data.current_campaign =
-        "org.openglad.gladiator";
+        "gladiator";
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
     NewGameState state = { false, false, false, false };

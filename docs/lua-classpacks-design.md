@@ -817,7 +817,7 @@ Every level dispatcher early-outs when no pack registered that hook kind, so
 script-less sims pay nothing and stay byte-identical.
 
 The worked showcase is the Ninefold Court (scen 605), whose `court.lua`
-(`campaigns/org.openglad.concept/packs/org.openglad.concept.showcase/scripts/court.lua`)
+(`campaigns/concept/packs/concept.showcase/scripts/court.lua`)
 uses `on_load` to stamp ward
 invulnerability and hang a per-entity death hook, `on_entity_death` to run
 the ward phase machine off generator deaths, `on_tick` for the judgment

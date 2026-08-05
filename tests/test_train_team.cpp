@@ -150,7 +150,7 @@ TEST(TrainTeam, train_team) {
     // Set up a team with members so train menu doesn't show "NEED A TEAM!" popup
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     og::runtime::current_session->myscreen_->save_data.totalcash = 50000;  // Enough cash for training
 

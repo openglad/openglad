@@ -301,7 +301,7 @@ TEST(IoZipUnzip, io_mount_unmount_campaign_typed_errors)
 
 TEST(IoZipUnzip, io_remount_campaign_with_open_physfs_file_is_safe)
 {
-    ASSERT_EQ(static_cast<int>(CampaignPackageIoError::None), static_cast<int>(mount_campaign_package_with_error("org.openglad.gladiator"))) << "mount default campaign should succeed";
+    ASSERT_EQ(static_cast<int>(CampaignPackageIoError::None), static_cast<int>(mount_campaign_package_with_error("gladiator"))) << "mount default campaign should succeed";
 
     PHYSFS_File* held = PHYSFS_openRead("campaign.yaml");
     ASSERT_TRUE(held != nullptr) << "campaign.yaml should open to hold a live PhysFS handle";

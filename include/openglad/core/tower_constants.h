@@ -13,7 +13,7 @@
 namespace og {
 
 // The shipped tower campaign id (campaign.yaml `mode: tower`).
-inline constexpr std::string_view kTowerCampaignId = "org.openglad.tower";
+inline constexpr std::string_view kTowerCampaignId = "tower";
 
 // The authored antechamber ("The Gate"); generated floors start just above.
 inline constexpr int kTowerGateLevel = 700;

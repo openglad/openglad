@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerate campaigns/org.openglad.tower/ with tools/tower_mapgen.
+# Regenerate campaigns/tower/ with tools/tower_mapgen.
 #
 # The package is Gate-ONLY (campaign.yaml with `mode: tower`, icon.png,
 # scen700 "The Gate" + its grid PNG) — generated floors are written to the
@@ -20,7 +20,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${REPO_ROOT}/build/ci-test"
-OUTPUT="${1:-campaigns/org.openglad.tower}"
+OUTPUT="${1:-campaigns/tower}"
 
 cd "${REPO_ROOT}"
 

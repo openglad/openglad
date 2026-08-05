@@ -168,7 +168,7 @@ TEST(Replay, file_roundtrip_preserves_header_and_frames)
         .my_team = 3,
         .allied_mode = 1,
         .difficulty = 125,
-        .campaign_id = "org.openglad.gladiator",
+        .campaign_id = "gladiator",
     };
     const og::sim::WorldSnapshot initial_snapshot = make_initial_snapshot();
 
@@ -222,7 +222,7 @@ TEST(Replay, deserialize_rejects_bad_magic_version_and_truncated_payload)
         .my_team = 1,
         .allied_mode = 0,
         .difficulty = 100,
-        .campaign_id = "org.openglad.gladiator",
+        .campaign_id = "gladiator",
     };
     const og::sim::WorldSnapshot initial_snapshot = make_initial_snapshot();
     const std::array<og::sim::InputStateMessage, 1> frames = {{
@@ -270,7 +270,7 @@ TEST(Replay, deserialize_rejects_each_malformed_replay_section)
         .my_team = 1,
         .allied_mode = 0,
         .difficulty = 100,
-        .campaign_id = "org.openglad.gladiator",
+        .campaign_id = "gladiator",
     };
     const std::array<og::sim::InputStateMessage, 1> frames = {{
         {7u, make_sparse_input()},
@@ -357,7 +357,7 @@ TEST(Replay, recorder_write_file_requires_self_contained_bootstrap_data)
         .my_team = 1,
         .allied_mode = 0,
         .difficulty = 100,
-        .campaign_id = "org.openglad.gladiator",
+        .campaign_id = "gladiator",
     });
 
     EXPECT_FALSE(missing_snapshot.write_file(path, &io_error));
@@ -720,7 +720,7 @@ TEST(Replay, file_errors_report_the_failed_operation)
     const og::sim::ReplayHeader header = {
         .version = og::sim::kReplayFormatVersion,
         .player_count = 1,
-        .campaign_id = "org.openglad.gladiator",
+        .campaign_id = "gladiator",
     };
     og::sim::ReplayRecorder recorder(header);
     recorder.set_initial_snapshot(make_initial_snapshot());
@@ -777,7 +777,7 @@ TEST(Replay, recorder_clear_and_world_snapshot_recorders_reset_state)
         .my_team = 0,
         .allied_mode = 0,
         .difficulty = 100,
-        .campaign_id = "org.openglad.gladiator",
+        .campaign_id = "gladiator",
     });
 
     recorder.record_initial_world(world);

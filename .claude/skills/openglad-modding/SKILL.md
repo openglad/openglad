@@ -26,7 +26,7 @@ canonical shape — behavior first, then the `og.family` block that names it),
 (specials with casts, `og.rand0`, tuning reads, `add_frozen_stun`, guy exp),
 `packs/core/lib/living_common.lua` + `ai.lua` + `effect_common.lua` (what
 `og.use` modules look like), and the Ninefold Court's `court.lua` at
-`campaigns/org.openglad.concept/packs/org.openglad.concept.showcase/scripts/`
+`campaigns/concept/packs/concept.showcase/scripts/`
 (level hooks, per-entity hooks, generator `customize_spawn`).
 
 ## The declaration, in one screen

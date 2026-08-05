@@ -265,7 +265,7 @@ TEST(CampaignSpriteUaf, set_campaign_flow_reloads_shipped_art_safely)
 
     restore_default_campaigns();
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.gladiator"));
+              mount_campaign_package_with_error("gladiator"));
     sdl_entity_loader()->reload_graphics_if_stale();
     ASSERT_TRUE(og::test162::install_playable_sprite_campaign(kFixtureId));
 
@@ -273,7 +273,7 @@ TEST(CampaignSpriteUaf, set_campaign_flow_reloads_shipped_art_safely)
     SaveData& save = scr->save_data;
     save.reset();
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
     save.team_size = 1;
@@ -314,7 +314,7 @@ TEST(CampaignSpriteUaf, set_campaign_flow_reloads_shipped_art_safely)
            "SET CAMPAIGN flow";
 
     save.reset();
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
 }
 
 TEST(CampaignSpriteUaf, gameplay_entry_net_reloads_before_walkers_spawn)
@@ -324,7 +324,7 @@ TEST(CampaignSpriteUaf, gameplay_entry_net_reloads_before_walkers_spawn)
 
     restore_default_campaigns();
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.gladiator"));
+              mount_campaign_package_with_error("gladiator"));
     sdl_entity_loader()->reload_graphics_if_stale();
     ASSERT_TRUE(og::test162::install_playable_sprite_campaign(kFixtureId));
 
@@ -376,7 +376,7 @@ TEST(CampaignSpriteUaf, tripwire_fires_for_a_missed_flow)
 
     restore_default_campaigns();
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.gladiator"));
+              mount_campaign_package_with_error("gladiator"));
     sdl_entity_loader()->reload_graphics_if_stale();
     ASSERT_TRUE(og::test162::install_sprite_carrier_campaign(kFixtureId));
     ASSERT_EQ(CampaignPackageIoError::None,

@@ -18,7 +18,7 @@ og.family("effect", {
   loops_animation = false,
   creates_hit_effect = false,
   flags = { "NO_COLLIDE" },
-  sprite = "packs/org.openglad.modes.core/sprites/ball.png",
+  sprite = "packs/modes.core/sprites/ball.png",
   glyph = "o",
   glyph_ascii = "o",
   glyph_color = "white",

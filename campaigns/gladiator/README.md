@@ -1,4 +1,4 @@
-# org.openglad.gladiator — provenance
+# gladiator — provenance
 
 HAND-AUTHORED CAMPAIGN. This tree is the canonical, editable source of the
 classic Gladiator campaign — edit it directly (openscen or otherwise); no

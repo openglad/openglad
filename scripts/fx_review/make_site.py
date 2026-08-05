@@ -102,7 +102,7 @@ def compose_side_by_side(dir_a, dir_b, out_dir, divider=4):
 
 
 WESTLANDS_INTRO = (
-    "A 26-level story campaign (org.openglad.westlands): a burdened thief "
+    "A 26-level story campaign (westlands): a burdened thief "
     "and his escort flee east out of a burning vale while the war for the "
     "Westlands breaks behind them. Act I is the flight, Act II the dark "
     "road under and over the mountains; at the Falls the road forks — the "
@@ -139,7 +139,7 @@ WESTLANDS = [
 ]
 
 LONGSEASON_INTRO = (
-    "A 19-level original campaign (org.openglad.longseason): the ledger of "
+    "A 19-level original campaign (longseason): the ledger of "
     "the Brass Kettle Company, hired blades, across one bad-luck year. Every "
     "briefing is a ledger entry — spring flood work, summer contracts, "
     "autumn on the Smelter's Road, a winter of holding passes for pay — and "

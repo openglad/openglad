@@ -46,7 +46,7 @@ namespace {
 // (SaveData is move-only, so callers pass a local by reference.)
 void init_test_save(SaveData& save)
 {
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
     save.numplayers = 1;
     save.my_team = 0;
@@ -212,7 +212,7 @@ TEST(CursesGameRuntimeLocal, invalid_campaign_reports_real_load_failure)
 {
     SaveData save;
     init_test_save(save);
-    save.current_campaign = "org.openglad.missing-curses-test";
+    save.current_campaign = "missing-curses-test";
     std::string err;
 
     auto session = make_local_session(save, 1, &err);
@@ -595,7 +595,7 @@ TEST(CursesGameRuntimeLocal, server_forwarded_endgame_event_durably_ends_session
 TEST(CursesGameRuntimeWin, advance_save_after_win_advances_campaign_and_persists_team)
 {
     SaveData save;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
     save.numplayers = 1;
     save.my_team = 0;
@@ -644,7 +644,7 @@ TEST(CursesGameRuntimeWin, advance_save_after_win_advances_campaign_and_persists
 TEST(CursesGameRuntimeWin, advance_save_after_win_negative_next_level_advances_by_one)
 {
     SaveData save;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 4;
     save.my_team = 0;
     og::ui::initialize_starting_team(save, {FAMILY_SOLDIER});
@@ -752,7 +752,7 @@ TEST(CursesGameRuntimeLocal, tower_loss_resets_disk_cursor_via_run_end_hook)
             }
             (void)unmount_campaign_package_with_error(get_mounted_campaign());
             (void)mount_campaign_package_with_error(
-                remount.empty() ? "org.openglad.gladiator" : remount);
+                remount.empty() ? "gladiator" : remount);
         }
     } restore{save0, had_save0, mounted_before};
 

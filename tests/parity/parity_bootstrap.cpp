@@ -109,7 +109,7 @@ BootstrapScope::BootstrapScope(const char* argv0)
         // Best-effort: ignore the error here; later mounts make scen99.fss
         // resolvable even when the campaign mount fails (e.g. archive
         // already present from a sibling init).
-        (void)mount_campaign_package_with_error("org.openglad.gladiator");
+        (void)mount_campaign_package_with_error("gladiator");
     }
 
     if (install_parity_grid_fixture(parity_write_path_) &&

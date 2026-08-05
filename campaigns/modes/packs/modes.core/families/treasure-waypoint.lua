@@ -9,7 +9,7 @@ og.family("treasure", {
   name = "WAYPOINT",
   init_ignore = false,
   init_frame = 0,
-  sprite = "packs/org.openglad.modes.core/sprites/ctfpoint.png",
+  sprite = "packs/modes.core/sprites/ctfpoint.png",
   glyph = "O",
   glyph_ascii = "O",
   glyph_color = "team",

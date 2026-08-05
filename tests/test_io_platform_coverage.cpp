@@ -282,7 +282,7 @@ TEST(IoPlatformCoverage,
     EXPECT_TRUE(initialized_after_failure)
         << "PhysFS initialization succeeds before write-dir validation fails";
     EXPECT_TRUE(write_dir_after_failure.empty());
-    EXPECT_EQ("org.openglad.gladiator", get_mounted_campaign());
+    EXPECT_EQ("gladiator", get_mounted_campaign());
 
     std::ifstream blocker_in(blocker, std::ios::binary);
     ASSERT_TRUE(blocker_in.good());
@@ -547,7 +547,7 @@ TEST(IoPlatformCoverage, platform_io_batch3_mount_switch_and_listing_filters)
     set_mounted_campaign_for_testing("same.id");
     ASSERT_EQ(static_cast<int>(CampaignPackageIoError::None), static_cast<int>(mount_campaign_package_with_error("same.id"))) << "mount should short-circuit when requested id is already mounted";
     set_mounted_campaign_for_testing("definitely.not.a.campaign");
-    ASSERT_EQ(static_cast<int>(CampaignPackageIoError::UnmountFailed), static_cast<int>(mount_campaign_package_with_error("org.openglad.gladiator"))) << "mount should report unmount failure when previous mounted id is invalid";
+    ASSERT_EQ(static_cast<int>(CampaignPackageIoError::UnmountFailed), static_cast<int>(mount_campaign_package_with_error("gladiator"))) << "mount should report unmount failure when previous mounted id is invalid";
 
     // list_campaigns should filter non-.glad files.
     {
@@ -615,7 +615,7 @@ TEST(IoPlatformCoverage, platform_io_remount_allows_files_still_open_path)
 {
     const std::string prev = get_mounted_campaign();
 
-    ASSERT_EQ(static_cast<int>(CampaignPackageIoError::None), static_cast<int>(mount_campaign_package_with_error("org.openglad.gladiator"))) << "mount default campaign should succeed";
+    ASSERT_EQ(static_cast<int>(CampaignPackageIoError::None), static_cast<int>(mount_campaign_package_with_error("gladiator"))) << "mount default campaign should succeed";
 
     PHYSFS_File* held = PHYSFS_openRead("campaign.yaml");
     ASSERT_TRUE(held != nullptr) << "campaign.yaml should open to hold a live PhysFS handle";
@@ -992,7 +992,7 @@ TEST(IoPlatformCoverage, platform_io_restore_defaults_and_load_campaign_unmount_
     const std::string prev = get_mounted_campaign();
     set_mounted_campaign_for_testing("definitely.not.a.campaign");
     std::map<std::string, int> current_levels;
-    ASSERT_EQ(-3, load_campaign("org.openglad.gladiator", current_levels, 9)) << "load_campaign should map unmount failure to -3";
+    ASSERT_EQ(-3, load_campaign("gladiator", current_levels, 9)) << "load_campaign should map unmount failure to -3";
     set_mounted_campaign_for_testing(prev);
 }
 

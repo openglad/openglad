@@ -1,4 +1,4 @@
-# org.openglad.concept — provenance
+# concept — provenance
 
 GENERATED CAMPAIGN. `scen/`, `pix/`, `campaign.yaml` and `icon.png` are
 regenerated wholesale by `tools/concept_mapgen`

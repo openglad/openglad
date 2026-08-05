@@ -124,7 +124,7 @@ TEST(HireTeam, hire_menu_browsing) {
     // Start with empty team
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
     HireState state = { false, false, false, 0 };
@@ -216,7 +216,7 @@ TEST(HireTeam, hire_from_base_camp_lands_deployed_and_autosaves) {
     // disk (it also serves as the pre-hire disk baseline).
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     {
         auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);

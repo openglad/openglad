@@ -843,7 +843,7 @@ private:
         const std::string previous_campaign = save.current_campaign;
         const short previous_scen_num = save.scen_num;
         save.current_campaign = state_->settings.campaign_id.empty()
-            ? std::string("org.openglad.gladiator")
+            ? std::string("gladiator")
             : state_->settings.campaign_id;
         save.scen_num = state_->settings.scenario_id > 0
             ? state_->settings.scenario_id

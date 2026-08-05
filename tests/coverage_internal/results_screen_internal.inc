@@ -78,7 +78,7 @@ int results_screen_test_exercise_internal()
     // Ending popup branches. Assert the title and body captured by the dialog
     // trace, rather than merely rechecking state arranged by this helper.
     save.scen_num = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.current_levels.clear();
     save.completed_levels.clear();
 

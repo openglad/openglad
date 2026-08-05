@@ -679,7 +679,7 @@ EventType handle_basic_editor_event(const void* native_event);
 #endif
 
 LevelEditorData::LevelEditorData()
-    : campaign(std::make_unique<CampaignData>("org.openglad.gladiator")), level(std::make_unique<LevelRuntimeData>(1, false, &sdl_level_data_hooks())), mode(Mode::Terrain), rect_selecting(false), dragging(false), myradar(og::runtime::current_session->myscreen_->viewob[0].get(), og::runtime::current_session->myscreen_, 0)
+    : campaign(std::make_unique<CampaignData>("gladiator")), level(std::make_unique<LevelRuntimeData>(1, false, &sdl_level_data_hooks())), mode(Mode::Terrain), rect_selecting(false), dragging(false), myradar(og::runtime::current_session->myscreen_->viewob[0].get(), og::runtime::current_session->myscreen_, 0)
     , menu_button_height(DEFAULT_EDITOR_MENU_BUTTON_HEIGHT)
     
 	, fileButton("File", OVERSCAN_PADDING, 0, 30, menu_button_height)

@@ -102,7 +102,7 @@ struct DemoSession {
 };
 
 // Default campaign for the scenario pool above.
-inline constexpr std::string_view DEFAULT_CAMPAIGN = "org.openglad.gladiator";
+inline constexpr std::string_view DEFAULT_CAMPAIGN = "gladiator";
 
 // ---------------------------------------------------------------------------
 // Environment parsing helpers

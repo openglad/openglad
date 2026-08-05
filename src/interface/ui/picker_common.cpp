@@ -1601,13 +1601,13 @@ void order_campaigns_for_select(std::list<std::string>& campaign_ids)
     // not on the shelf (user-made packages) keep their incoming enumeration
     // order and follow every shelved id.
     static constexpr std::string_view kShelf[] = {
-        og::kDefaultCampaignId, // org.openglad.gladiator
-        "org.openglad.tryxian",
-        "org.openglad.westlands",
-        "org.openglad.longseason",
-        "org.openglad.modes",   // Multiplayer Game Modes (versus)
-        og::kTowerCampaignId,   // org.openglad.tower (The Endless Tower)
-        "org.openglad.concept",
+        og::kDefaultCampaignId, // gladiator
+        "tryxian",
+        "westlands",
+        "longseason",
+        "modes",   // Multiplayer Game Modes (versus)
+        og::kTowerCampaignId,   // tower (The Endless Tower)
+        "concept",
     };
     auto anchor = campaign_ids.begin();
     for (const std::string_view id : kShelf)

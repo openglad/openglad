@@ -54,8 +54,8 @@ bool prepare_default_level_load()
     set_mounted_campaign_for_testing("");
 #endif
     og::runtime::current_session->myscreen_->save_data.current_campaign =
-        "org.openglad.gladiator";
-    return mount_campaign_package_with_error("org.openglad.gladiator") ==
+        "gladiator";
+    return mount_campaign_package_with_error("gladiator") ==
            CampaignPackageIoError::None;
 }
 
@@ -105,7 +105,7 @@ void apply_direction(PlayerInput& input, int direction_index)
 void configure_benchmark_team(SaveData& save)
 {
     save.reset();
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.current_levels[save.current_campaign] = kBenchmarkLevel;
     save.scen_num = kBenchmarkLevel;
     save.my_team = 1;

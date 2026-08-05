@@ -92,7 +92,7 @@ void apply_lobby_game_start_config(
         lobby_config.save_data;
 
     save.current_campaign = config_save.current_campaign.empty()
-        ? std::string("org.openglad.gladiator")
+        ? std::string("gladiator")
         : config_save.current_campaign;
     save.scen_num = config_save.scen_num > 0 ? config_save.scen_num : 1;
     save.current_levels[save.current_campaign] = save.scen_num;

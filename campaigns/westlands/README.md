@@ -1,4 +1,4 @@
-# org.openglad.westlands — provenance
+# westlands — provenance
 
 GENERATED CAMPAIGN. `scen/`, `pix/`, `campaign.yaml` and `icon.png` are
 regenerated wholesale by `tools/westlands_mapgen`
