@@ -33,8 +33,15 @@ if [[ "${1:-}" == "--install-hook" ]]; then
 #!/usr/bin/env bash
 # Refresh the local web preview in the background after every commit.
 # Log: ~/.local/state/openglad-preview/refresh.log
+#
+# The log directory is created HERE, not in refresh_web_preview.sh: the shell
+# evaluates the redirect below before the script runs, so the script's own
+# mkdir is too late to create its own log file's parent. Without this, every
+# commit prints "No such file or directory" and the preview never refreshes.
+LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/openglad-preview"
+mkdir -p "$LOG_DIR"
 nohup "$(git rev-parse --show-toplevel)/scripts/refresh_web_preview.sh" \
-    >> "${XDG_STATE_HOME:-$HOME/.local/state}/openglad-preview/refresh.log" 2>&1 &
+    >> "$LOG_DIR/refresh.log" 2>&1 &
 HOOKEOF
     chmod +x "$HOOK"
     echo "post-commit hook installed: $HOOK"
