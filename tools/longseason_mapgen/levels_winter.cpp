@@ -2,9 +2,10 @@
  * fort under snow), Wolf Winter (SAVE_ALL, protectee "The Reeve"; Thornby's
  * dusk wolf waves), The Frozen Ford (the collapsing-ice CAN_EXIT run).
  *
- * Built per docs/campaigns/longseason/level_14..16.md. Every map is
- * snow-filled wall to wall (thousands of tiles over the >=40 threshold),
- * so the post-roll weather override always lands WeatherKind::Snow.
+ * Built per campaigns/longseason/README.md, "Level 14" .. "Level 16".
+ * Every map is snow-filled wall to wall (thousands of tiles over the >=40
+ * threshold), so the post-roll weather override always lands
+ * WeatherKind::Snow.
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *

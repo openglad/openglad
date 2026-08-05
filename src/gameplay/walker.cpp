@@ -24,12 +24,12 @@
 #include <openglad/core/combat_math.h>
 #include <openglad/gameplay/dirty_field_bits.h>
 #include <openglad/gameplay/statistics.h>
-#include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/script/family_hooks.h>
-#include <openglad/gameplay/weapon_family_descriptor.h>
-#include <openglad/gameplay/family_registries.h>
-#include <openglad/gameplay/generator_family_descriptor.h>
+#include <openglad/gameplay/families/weapon_family_descriptor.h>
+#include <openglad/gameplay/families/family_registries.h>
+#include <openglad/gameplay/families/generator_family_descriptor.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/obmap.h>

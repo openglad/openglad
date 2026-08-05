@@ -12,7 +12,7 @@
 #include <openglad/core/decordefs.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/core/util.h>
-#include <openglad/resources/pixie_data.h>
+#include <openglad/gameplay/pixie_data.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/resources/io_common.h>

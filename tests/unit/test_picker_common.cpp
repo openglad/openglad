@@ -9,8 +9,8 @@
 #include <openglad/core/irandom.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
-#include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/resources/campaign_metadata.h>

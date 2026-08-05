@@ -1,0 +1,856 @@
+#include <openglad/legacy/base.h>
+#include <openglad/resources/io_common.h>
+#include <openglad/resources/og_file.h>
+#include <openglad/gameplay/pixie_data.h>
+#include <openglad/resources/our_palette.h>
+#include <openglad/interface/level_runtime_data.h>
+#include <openglad/core/pixdefs.h>
+#include <openglad/core/test_trace.h>
+
+#include "lodepng.h"
+#include "test_save_state_guard.h"
+
+#include <SDL3/SDL.h>
+#include <gtest/gtest.h>
+#include <physfs.h>
+
+#include <csignal>
+#include <cstdio>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <memory>
+#include <optional>
+#include <random>
+#include <string>
+#ifdef __linux__
+#include <sys/resource.h>
+#include <unistd.h>
+#endif
+#include <vector>
+
+namespace og::io {
+SDL_IOStream* physfsio_open_read(const char* path);
+SDL_IOStream* physfsio_open_write(const char* path);
+} // namespace og::io
+
+namespace {
+
+struct CampaignFixture {
+    std::string old_campaign;
+
+    CampaignFixture() {
+        old_campaign = get_mounted_campaign();
+        if (!old_campaign.empty())
+            (void)unmount_campaign_package_with_error(old_campaign);
+        (void)mount_campaign_package_with_error("gladiator");
+    }
+
+    ~CampaignFixture() {
+        (void)unmount_campaign_package_with_error("gladiator");
+        if (!old_campaign.empty() && old_campaign != "gladiator")
+            (void)mount_campaign_package_with_error(old_campaign);
+    }
+};
+
+struct SdlIoStreamCloser
+{
+    void operator()(SDL_IOStream* stream) const
+    {
+        if (stream != nullptr)
+            (void)SDL_CloseIO(stream);
+    }
+};
+
+using ScopedSdlIoStream =
+    std::unique_ptr<SDL_IOStream, SdlIoStreamCloser>;
+
+struct SdlErrorClearGuard
+{
+    SdlErrorClearGuard() { SDL_ClearError(); }
+    ~SdlErrorClearGuard() { SDL_ClearError(); }
+};
+
+#ifdef __linux__
+int descriptor_for_file(const std::filesystem::path& expected)
+{
+    std::error_code ec;
+    for (const auto& entry :
+         std::filesystem::directory_iterator("/proc/self/fd", ec))
+    {
+        if (ec)
+            break;
+        const std::filesystem::path target =
+            std::filesystem::read_symlink(entry.path(), ec);
+        if (ec)
+        {
+            ec.clear();
+            continue;
+        }
+        if (std::filesystem::equivalent(target, expected, ec))
+        {
+            const std::optional<int> descriptor = [&]() -> std::optional<int> {
+                try
+                {
+                    return std::stoi(entry.path().filename().string());
+                }
+                catch (...)
+                {
+                    return std::nullopt;
+                }
+            }();
+            if (descriptor)
+                return *descriptor;
+        }
+        ec.clear();
+    }
+    return -1;
+}
+#endif
+
+} // namespace
+
+TEST(PngConversion, tile_dimensions)
+{
+    PixieData data = read_pixie_file("16grass1.png");
+    ASSERT_TRUE(data.valid()) << "16grass1.png should load successfully";
+    ASSERT_EQ(1, static_cast<int>(data.frames)) << "16grass1.png should have 1 frame";
+    ASSERT_EQ(16, static_cast<int>(data.w)) << "16grass1.png should be 16px wide";
+    ASSERT_EQ(16, static_cast<int>(data.h)) << "16grass1.png should be 16px tall";
+}
+
+TEST(PngConversion, multiframe_sprite_dimensions)
+{
+    PixieData data = read_pixie_file("archer.png");
+    ASSERT_TRUE(data.valid()) << "archer.png should load successfully";
+    ASSERT_EQ(24, static_cast<int>(data.frames)) << "archer.png should have 24 frames";
+    ASSERT_EQ(16, static_cast<int>(data.w)) << "archer.png should be 16px wide";
+    ASSERT_EQ(16, static_cast<int>(data.h)) << "archer.png frame height should be 16px";
+}
+
+TEST(PngConversion, pixel_data_valid_palette_indices)
+{
+    PixieData data = read_pixie_file("16grass1.png");
+    ASSERT_TRUE(data.valid()) << "16grass1.png should load";
+
+    int nonzero = 0;
+    size_t total = static_cast<size_t>(data.w) * data.h * data.frames;
+    for (size_t i = 0; i < total; i++) {
+        if (data.data[i] != 0) nonzero++;
+    }
+    ASSERT_GT(nonzero, 0) << "Grass tile should have non-zero (non-transparent) pixels";
+    ASSERT_GT(nonzero, static_cast<int>(total) / 2)
+        << "Grass tile should be mostly non-transparent";
+}
+
+TEST(PngConversion, scenario_grid_loads)
+{
+    CampaignFixture fixture;
+
+    PixieData grid = read_pixie_file("scen1.png");
+    ASSERT_TRUE(grid.valid()) << "scen1.png should load from campaign";
+    ASSERT_EQ(1, static_cast<int>(grid.frames)) << "Grid should have 1 frame";
+    ASSERT_EQ(40, static_cast<int>(grid.w)) << "scen1 grid should be 40 wide";
+    ASSERT_EQ(60, static_cast<int>(grid.h)) << "scen1 grid should be 60 tall";
+}
+
+TEST(PngConversion, scenario_grid_not_all_walls)
+{
+    CampaignFixture fixture;
+
+    PixieData grid = read_pixie_file("scen1.png");
+    ASSERT_TRUE(grid.valid()) << "scen1.png should load";
+
+    size_t total = static_cast<size_t>(grid.w) * grid.h;
+    int distinct_values = 0;
+    bool seen[256] = {};
+    for (size_t i = 0; i < total; i++) {
+        if (!seen[grid.data[i]]) {
+            seen[grid.data[i]] = true;
+            distinct_values++;
+        }
+    }
+    ASSERT_GE(distinct_values, 2)
+        << "Grid should have at least 2 distinct tile types (not all walls)";
+
+    int walkable = 0;
+    for (size_t i = 0; i < total; i++) {
+        unsigned char t = grid.data[i];
+        if (t == PIX_GRASS1 || t == PIX_GRASS2 || t == PIX_GRASS3 || t == PIX_GRASS4
+            || t == PIX_FLOOR_PAVEL || t == PIX_FLOOR_PAVER
+            || t == PIX_FLOOR_PAVEU || t == PIX_FLOOR_PAVED
+            || t == PIX_PAVEMENT1 || t == PIX_PAVEMENT2 || t == PIX_PAVEMENT3)
+            walkable++;
+    }
+    ASSERT_GT(walkable, 0)
+        << "Grid should have some walkable tiles (grass/floor)";
+}
+
+TEST(PngConversion, level_load_produces_valid_grid)
+{
+    CampaignFixture fixture;
+
+    LevelRuntimeData level(1, true);
+    bool loaded = level.load();
+    ASSERT_TRUE(loaded) << "Level 1 should load successfully";
+    ASSERT_TRUE(level.world().grid.valid()) << "Level 1 grid should be valid after load";
+    ASSERT_GT(level.world().pixmaxx, 0) << "Level 1 pixmaxx should be positive";
+    ASSERT_GT(level.world().pixmaxy, 0) << "Level 1 pixmaxy should be positive";
+}
+
+TEST(PngConversion, text_sprite_dimensions)
+{
+    PixieData data = read_pixie_file("text.png");
+    ASSERT_TRUE(data.valid()) << "text.png should load successfully";
+    ASSERT_EQ(125, static_cast<int>(data.frames)) << "text.png should have 125 frames";
+    ASSERT_EQ(5, static_cast<int>(data.w)) << "text.png should be 5px wide";
+    ASSERT_EQ(6, static_cast<int>(data.h)) << "text.png frame height should be 6px";
+}
+
+TEST(PngConversion, stale_campaign_overwritten)
+{
+    CampaignFixture fixture;
+
+    PixieData grid = read_pixie_file("scen1.png");
+    ASSERT_TRUE(grid.valid()) << "scen1.png should be loadable after campaign restore";
+}
+
+#ifdef __linux__
+TEST(PngConversion, physfs_sdl_bridge_reports_broken_file_descriptors)
+{
+    SdlErrorClearGuard error_guard;
+    namespace fs = std::filesystem;
+    const std::string read_name =
+        "physfs_bridge_read_" + std::to_string(getpid()) + ".bin";
+    const std::string write_name =
+        "physfs_bridge_write_" + std::to_string(getpid()) + ".bin";
+    const std::string short_write_name =
+        "physfs_bridge_short_write_" + std::to_string(getpid()) + ".bin";
+    const fs::path read_path = fs::path(get_user_path()) / read_name;
+    const fs::path write_path = fs::path(get_user_path()) / write_name;
+    const fs::path short_write_path =
+        fs::path(get_user_path()) / short_write_name;
+    struct Cleanup
+    {
+        fs::path read_path;
+        fs::path write_path;
+        fs::path short_write_path;
+        ~Cleanup()
+        {
+            std::error_code ec;
+            fs::remove(read_path, ec);
+            fs::remove(write_path, ec);
+            fs::remove(short_write_path, ec);
+        }
+    } cleanup{read_path, write_path, short_write_path};
+
+    {
+        std::ofstream output(read_path, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(output.good());
+        const std::array<unsigned char, 8> payload{
+            0x10, 0x21, 0x32, 0x43, 0x54, 0x65, 0x76, 0x87};
+        output.write(
+            reinterpret_cast<const char*>(payload.data()), payload.size());
+        ASSERT_TRUE(output.good());
+    }
+
+    const auto broken_read_stream = [&]() {
+        ScopedSdlIoStream stream(
+            og::io::physfsio_open_read(read_name.c_str()));
+        EXPECT_NE(nullptr, stream);
+        if (stream == nullptr)
+            return stream;
+        const int descriptor = descriptor_for_file(read_path);
+        EXPECT_GE(descriptor, 0);
+        if (descriptor < 0)
+            return ScopedSdlIoStream{};
+        EXPECT_EQ(0, close(descriptor));
+        return stream;
+    };
+    const auto close_broken_stream = [](ScopedSdlIoStream& stream,
+                                        bool expect_close_error) {
+        ASSERT_NE(nullptr, stream);
+        SDL_ClearError();
+        const bool closed = SDL_CloseIO(stream.release());
+        if (expect_close_error)
+        {
+            EXPECT_FALSE(closed);
+            EXPECT_NE(std::string::npos,
+                      std::string(SDL_GetError()).find("PhysicsFS error"));
+        }
+        else
+        {
+            EXPECT_TRUE(closed)
+                << "read handles release their wrapper after an earlier "
+                   "descriptor failure";
+        }
+    };
+
+    {
+        ScopedSdlIoStream stream = broken_read_stream();
+        ASSERT_NE(nullptr, stream);
+        SDL_ClearError();
+        EXPECT_EQ(-1, SDL_SeekIO(stream.get(), 0, SDL_IO_SEEK_CUR));
+        EXPECT_NE(std::string::npos,
+                  std::string(SDL_GetError()).find(
+                      "Can't find position in file"));
+        close_broken_stream(stream, false);
+    }
+    {
+        ScopedSdlIoStream stream = broken_read_stream();
+        ASSERT_NE(nullptr, stream);
+        SDL_ClearError();
+        EXPECT_EQ(-1, SDL_SeekIO(stream.get(), 0, SDL_IO_SEEK_END));
+        EXPECT_NE(std::string::npos,
+                  std::string(SDL_GetError()).find(
+                      "Can't find end of file"));
+        close_broken_stream(stream, false);
+    }
+    {
+        ScopedSdlIoStream stream = broken_read_stream();
+        ASSERT_NE(nullptr, stream);
+        SDL_ClearError();
+        EXPECT_EQ(-1, SDL_SeekIO(stream.get(), 0, SDL_IO_SEEK_SET));
+        EXPECT_NE(std::string::npos,
+                  std::string(SDL_GetError()).find("PhysicsFS error"));
+        close_broken_stream(stream, false);
+    }
+    {
+        ScopedSdlIoStream stream = broken_read_stream();
+        ASSERT_NE(nullptr, stream);
+        std::array<unsigned char, 4> bytes{
+            0xA5, 0xA5, 0xA5, 0xA5};
+        SDL_ClearError();
+        EXPECT_EQ(0u, SDL_ReadIO(stream.get(), bytes.data(), bytes.size()));
+        EXPECT_EQ(SDL_IO_STATUS_ERROR, SDL_GetIOStatus(stream.get()));
+        EXPECT_EQ((std::array<unsigned char, 4>{
+                      0xA5, 0xA5, 0xA5, 0xA5}),
+                  bytes)
+            << "a failed read must not claim or fabricate bytes";
+        EXPECT_NE(std::string::npos,
+                  std::string(SDL_GetError()).find("PhysicsFS error"));
+        close_broken_stream(stream, false);
+    }
+    {
+        ScopedSdlIoStream stream(
+            og::io::physfsio_open_write(write_name.c_str()));
+        ASSERT_NE(nullptr, stream);
+        const int descriptor = descriptor_for_file(write_path);
+        ASSERT_GE(descriptor, 0);
+        ASSERT_EQ(0, close(descriptor));
+
+        const std::array<unsigned char, 4> bytes{
+            0xDE, 0xAD, 0xBE, 0xEF};
+        SDL_ClearError();
+        EXPECT_EQ(0u, SDL_WriteIO(stream.get(), bytes.data(), bytes.size()));
+        EXPECT_EQ(SDL_IO_STATUS_ERROR, SDL_GetIOStatus(stream.get()));
+        EXPECT_NE(std::string::npos,
+                  std::string(SDL_GetError()).find("PhysicsFS error"));
+        close_broken_stream(stream, true);
+    }
+    {
+        ScopedSdlIoStream stream(
+            og::io::physfsio_open_write(short_write_name.c_str()));
+        ASSERT_NE(nullptr, stream);
+        struct FileSizeLimitRestore
+        {
+            rlimit old_limit{};
+            using SignalHandler = void (*)(int);
+            SignalHandler old_handler = SIG_DFL;
+            bool limit_changed = false;
+            bool handler_changed = false;
+            ~FileSizeLimitRestore()
+            {
+                if (limit_changed &&
+                    setrlimit(RLIMIT_FSIZE, &old_limit) != 0)
+                {
+                    ADD_FAILURE()
+                        << "failed to restore the process file-size limit";
+                }
+                if (handler_changed &&
+                    std::signal(SIGXFSZ, old_handler) == SIG_ERR)
+                {
+                    ADD_FAILURE()
+                        << "failed to restore the SIGXFSZ handler";
+                }
+            }
+        };
+        {
+            FileSizeLimitRestore restore;
+            ASSERT_EQ(0, getrlimit(RLIMIT_FSIZE, &restore.old_limit));
+            restore.old_handler = std::signal(SIGXFSZ, SIG_IGN);
+            ASSERT_NE(SIG_ERR, restore.old_handler);
+            restore.handler_changed = true;
+            rlimit one_byte = restore.old_limit;
+            one_byte.rlim_cur = 1;
+            ASSERT_EQ(0, setrlimit(RLIMIT_FSIZE, &one_byte));
+            restore.limit_changed = true;
+
+            const std::array<unsigned char, 4> bytes{
+                0x10, 0x20, 0x30, 0x40};
+            SDL_ClearError();
+            EXPECT_EQ(1u, SDL_WriteIO(
+                              stream.get(), bytes.data(), bytes.size()));
+            EXPECT_EQ(SDL_IO_STATUS_ERROR, SDL_GetIOStatus(stream.get()));
+            EXPECT_NE(std::string::npos,
+                      std::string(SDL_GetError()).find("PhysicsFS error"));
+        }
+        EXPECT_TRUE(SDL_CloseIO(stream.release()));
+        EXPECT_EQ(1u, fs::file_size(short_write_path));
+    }
+}
+#endif
+
+namespace {
+
+bool find_png_chunk(const std::vector<unsigned char>& bytes,
+                    const char (&type)[5],
+                    std::size_t& out_offset,
+                    std::size_t& out_length)
+{
+    // PNG: 8-byte signature, then chunks of [4-byte length][4-byte type][data][4-byte CRC].
+    if (bytes.size() < 8) return false;
+    std::size_t pos = 8;
+    while (pos + 8 <= bytes.size()) {
+        const std::size_t len =
+            (static_cast<std::size_t>(bytes[pos]) << 24) |
+            (static_cast<std::size_t>(bytes[pos + 1]) << 16) |
+            (static_cast<std::size_t>(bytes[pos + 2]) << 8) |
+            (static_cast<std::size_t>(bytes[pos + 3]));
+        if (pos + 8 + len + 4 > bytes.size()) return false;
+        if (std::memcmp(&bytes[pos + 4], type, 4) == 0) {
+            out_offset = pos + 8;
+            out_length = len;
+            return true;
+        }
+        pos += 8 + len + 4;
+    }
+    return false;
+}
+
+std::vector<unsigned char> read_file_bytes(const std::string& path)
+{
+    std::vector<unsigned char> out;
+    std::FILE* f = std::fopen(path.c_str(), "rb");
+    if (!f) return out;
+    std::fseek(f, 0, SEEK_END);
+    const long sz = std::ftell(f);
+    std::fseek(f, 0, SEEK_SET);
+    if (sz > 0) {
+        out.resize(static_cast<std::size_t>(sz));
+        const std::size_t got = std::fread(out.data(), 1, out.size(), f);
+        out.resize(got);  // short read => keep only the bytes actually read
+    }
+    std::fclose(f);
+    return out;
+}
+
+void write_file_bytes(const std::string& path, const std::vector<unsigned char>& bytes)
+{
+    std::FILE* f = std::fopen(path.c_str(), "wb");
+    ASSERT_TRUE(f != nullptr) << "open for write: " << path;
+    if (!f) return;
+    std::fwrite(bytes.data(), 1, bytes.size(), f);
+    std::fclose(f);
+}
+
+// PNG CRC-32 — standard table-driven implementation (poly 0xEDB88320).
+unsigned png_crc32(const unsigned char* buf, std::size_t len)
+{
+    static unsigned table[256];
+    static bool inited = false;
+    if (!inited) {
+        for (unsigned n = 0; n < 256; ++n) {
+            unsigned c = n;
+            for (int k = 0; k < 8; ++k)
+                c = (c & 1u) ? (0xEDB88320u ^ (c >> 1)) : (c >> 1);
+            table[n] = c;
+        }
+        inited = true;
+    }
+    unsigned c = 0xFFFFFFFFu;
+    for (std::size_t i = 0; i < len; ++i)
+        c = table[(c ^ buf[i]) & 0xFFu] ^ (c >> 8);
+    return c ^ 0xFFFFFFFFu;
+}
+
+void write_be32(unsigned char* dst, unsigned v)
+{
+    dst[0] = static_cast<unsigned char>((v >> 24) & 0xFFu);
+    dst[1] = static_cast<unsigned char>((v >> 16) & 0xFFu);
+    dst[2] = static_cast<unsigned char>((v >> 8) & 0xFFu);
+    dst[3] = static_cast<unsigned char>(v & 0xFFu);
+}
+
+} // namespace
+
+TEST(IndexedPngEncoding, png_is_indexed_color)
+{
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::path("temp") / "indexed_png_encoding";
+    std::error_code ec;
+    fs::create_directories(tmp_dir, ec);
+    const fs::path path = tmp_dir / "indexed.png";
+
+    {
+        auto* buf = new unsigned char[8];
+        for (int i = 0; i < 8; ++i) buf[i] = static_cast<unsigned char>(i);
+        PixieData data(1, 8, 1, buf);
+        ASSERT_TRUE(write_pixie_png(path.string().c_str(), data));
+    }
+
+    auto bytes = read_file_bytes(path.string());
+    ASSERT_GT(bytes.size(), 33u) << "PNG must include at least signature + IHDR";
+
+    std::size_t ihdr_off = 0, ihdr_len = 0;
+    ASSERT_TRUE(find_png_chunk(bytes, "IHDR", ihdr_off, ihdr_len));
+    ASSERT_EQ(13u, ihdr_len) << "IHDR length";
+    // IHDR layout: width(4) height(4) bitdepth(1) colortype(1) compression(1) filter(1) interlace(1)
+    const unsigned char colortype_byte = bytes[ihdr_off + 9];
+    ASSERT_EQ(3, static_cast<int>(colortype_byte))
+        << "IHDR color type must be 3 (indexed)";
+
+    std::size_t plte_off = 0, plte_len = 0;
+    ASSERT_TRUE(find_png_chunk(bytes, "PLTE", plte_off, plte_len));
+    ASSERT_EQ(768u, plte_len) << "PLTE chunk should hold 256*3 bytes";
+
+    std::size_t trns_off = 0, trns_len = 0;
+    ASSERT_TRUE(find_png_chunk(bytes, "tRNS", trns_off, trns_len));
+    ASSERT_GE(trns_len, 1u) << "tRNS chunk should be present";
+    ASSERT_EQ(0, static_cast<int>(bytes[trns_off]))
+        << "tRNS[0] should mark palette entry 0 fully transparent";
+
+    // Decode via lodepng to confirm it agrees we wrote indexed color.
+    lodepng::State state;
+    state.decoder.color_convert = 0;
+    std::vector<unsigned char> pixels;
+    unsigned w = 0, h = 0;
+    const unsigned err = lodepng::decode(pixels, w, h, state, bytes.data(), bytes.size());
+    ASSERT_EQ(0u, err) << "lodepng decode: " << lodepng_error_text(err);
+    ASSERT_EQ(static_cast<unsigned>(LCT_PALETTE),
+              static_cast<unsigned>(state.info_png.color.colortype));
+    ASSERT_EQ(256u, static_cast<unsigned>(state.info_png.color.palettesize));
+
+    fs::remove(path, ec);
+}
+
+TEST(IndexedPngEncoding, round_trip_pixel_indices)
+{
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::path("temp") / "indexed_png_encoding";
+    std::error_code ec;
+    fs::create_directories(tmp_dir, ec);
+    const fs::path path = tmp_dir / "round_trip.png";
+
+    // No JSON sidecar accompanies this temp file, so read_pixie_file falls
+    // back to a single-frame sprite of height H. Pixel bytes must round-trip
+    // byte-identical regardless.
+    constexpr int W = 17;
+    constexpr int H = 27;
+    constexpr std::size_t total = static_cast<std::size_t>(W) * H;
+
+    auto* buf = new unsigned char[total];
+    std::mt19937 rng(0xc0ffeeu);
+    std::uniform_int_distribution<int> dist(0, 255);
+    std::vector<unsigned char> expected(total);
+    for (std::size_t i = 0; i < total; ++i) {
+        const auto v = static_cast<unsigned char>(dist(rng));
+        buf[i] = v;
+        expected[i] = v;
+    }
+
+    PixieData data(1, W, H, buf);
+    ASSERT_TRUE(write_pixie_png(path.string().c_str(), data));
+
+    PixieData round = read_pixie_file(path.string().c_str());
+    ASSERT_TRUE(round.valid());
+    ASSERT_EQ(1, static_cast<int>(round.frames));
+    ASSERT_EQ(W, static_cast<int>(round.w));
+    ASSERT_EQ(H, static_cast<int>(round.h));
+    ASSERT_EQ(0, std::memcmp(round.data.get(), expected.data(), total))
+        << "pixel indices must round-trip byte-identical";
+
+    fs::remove(path, ec);
+}
+
+TEST(IndexedPngEncoding, rejects_wrong_palette)
+{
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::path("temp") / "indexed_png_encoding";
+    std::error_code ec;
+    fs::create_directories(tmp_dir, ec);
+    const fs::path good = tmp_dir / "good.png";
+    const fs::path bad = tmp_dir / "wrong_palette.png";
+
+    {
+        auto* buf = new unsigned char[4];
+        buf[0] = 0; buf[1] = 1; buf[2] = 2; buf[3] = 3;
+        PixieData data(1, 4, 1, buf);
+        ASSERT_TRUE(write_pixie_png(good.string().c_str(), data));
+    }
+
+    auto bytes = read_file_bytes(good.string());
+    std::size_t plte_off = 0, plte_len = 0;
+    ASSERT_TRUE(find_png_chunk(bytes, "PLTE", plte_off, plte_len));
+    ASSERT_EQ(768u, plte_len);
+
+    // Swap palette entries 1 and 2 (RGB triplets at offsets 3..5 and 6..8).
+    for (std::size_t c = 0; c < 3; ++c)
+        std::swap(bytes[plte_off + 3 + c], bytes[plte_off + 6 + c]);
+
+    // Recompute the PLTE chunk's CRC: CRC covers chunk type + chunk data.
+    std::vector<unsigned char> crc_input;
+    crc_input.reserve(4 + plte_len);
+    crc_input.insert(crc_input.end(), bytes.begin() + plte_off - 4, bytes.begin() + plte_off);
+    crc_input.insert(crc_input.end(), bytes.begin() + plte_off, bytes.begin() + plte_off + plte_len);
+    const unsigned new_crc = png_crc32(crc_input.data(), crc_input.size());
+    write_be32(&bytes[plte_off + plte_len], new_crc);
+
+    write_file_bytes(bad.string(), bytes);
+
+    PixieData result = read_pixie_file(bad.string().c_str());
+    ASSERT_FALSE(result.valid()) << "PNG with mismatched palette must be rejected";
+
+    fs::remove(good, ec);
+    fs::remove(bad, ec);
+}
+
+namespace {
+
+// Write a PNG containing `frames` vertically-stacked frames of size W x frame_h
+// using a deterministic per-pixel index pattern.
+void write_indexed_png_strip(const std::string& path,
+                             int W, int frame_h, int frames)
+{
+    const std::size_t total = static_cast<std::size_t>(W)
+        * static_cast<std::size_t>(frame_h)
+        * static_cast<std::size_t>(frames);
+    auto* buf = new unsigned char[total];
+    for (std::size_t i = 0; i < total; ++i)
+        buf[i] = static_cast<unsigned char>((i * 17u + 3u) & 0xFFu);
+    PixieData data(static_cast<unsigned char>(frames),
+                   static_cast<unsigned char>(W),
+                   static_cast<unsigned char>(frame_h),
+                   buf);
+    ASSERT_TRUE(write_pixie_png(path.c_str(), data));
+}
+
+void write_text_file(const std::string& path, const std::string& contents)
+{
+    std::FILE* f = std::fopen(path.c_str(), "wb");
+    ASSERT_TRUE(f != nullptr) << "open for write: " << path;
+    if (!f) return;
+    if (!contents.empty())
+        std::fwrite(contents.data(), 1, contents.size(), f);
+    std::fclose(f);
+}
+
+std::string aseprite_sidecar_for(int W, int frame_h, int frames)
+{
+    std::string s = "{\n  \"frames\": {\n";
+    for (int i = 0; i < frames; ++i) {
+        s += "    \"frame_" + std::to_string(i) + "\": {\n";
+        s += "      \"frame\": { \"x\": 0, \"y\": "
+             + std::to_string(i * frame_h)
+             + ", \"w\": " + std::to_string(W)
+             + ", \"h\": " + std::to_string(frame_h) + " },\n";
+        s += "      \"rotated\": false,\n";
+        s += "      \"trimmed\": false,\n";
+        s += "      \"duration\": 100\n";
+        s += (i + 1 == frames) ? "    }\n" : "    },\n";
+    }
+    s += "  },\n  \"meta\": {\n";
+    s += "    \"app\": \"https://www.aseprite.org/\",\n";
+    s += "    \"format\": \"I8\",\n";
+    s += "    \"size\": { \"w\": " + std::to_string(W)
+         + ", \"h\": " + std::to_string(frame_h * frames) + " },\n";
+    s += "    \"frameTags\": [],\n";
+    s += "    \"layers\": [ { \"name\": \"Layer 1\", \"opacity\": 255 } ],\n";
+    s += "    \"slices\": []\n";
+    s += "  }\n}\n";
+    return s;
+}
+
+} // namespace
+
+TEST(JsonSidecar, parses_aseprite_hash_format)
+{
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::path("temp") / "json_sidecar";
+    std::error_code ec;
+    fs::create_directories(tmp_dir, ec);
+    const fs::path png = tmp_dir / "hash.png";
+    const fs::path json = tmp_dir / "hash.json";
+
+    constexpr int W = 12;
+    constexpr int FH = 9;
+    constexpr int FRAMES = 4;
+    write_indexed_png_strip(png.string(), W, FH, FRAMES);
+    write_text_file(json.string(), aseprite_sidecar_for(W, FH, FRAMES));
+
+    PixieData round = read_pixie_file(png.string().c_str());
+    ASSERT_TRUE(round.valid());
+    ASSERT_EQ(FRAMES, static_cast<int>(round.frames));
+    ASSERT_EQ(W, static_cast<int>(round.w));
+    ASSERT_EQ(FH, static_cast<int>(round.h));
+
+    fs::remove(png, ec);
+    fs::remove(json, ec);
+}
+
+TEST(JsonSidecar, missing_sidecar_treated_as_single_frame)
+{
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::path("temp") / "json_sidecar";
+    std::error_code ec;
+    fs::create_directories(tmp_dir, ec);
+    const fs::path png = tmp_dir / "no_sidecar.png";
+    // Make sure no stale sidecar lingers from a prior run.
+    fs::remove(tmp_dir / "no_sidecar.json", ec);
+
+    constexpr int W = 18;
+    constexpr int H = 23;
+    write_indexed_png_strip(png.string(), W, H, 1);
+
+    PixieData round = read_pixie_file(png.string().c_str());
+    ASSERT_TRUE(round.valid());
+    ASSERT_EQ(1, static_cast<int>(round.frames));
+    ASSERT_EQ(W, static_cast<int>(round.w));
+    ASSERT_EQ(H, static_cast<int>(round.h));
+
+    fs::remove(png, ec);
+}
+
+TEST(JsonSidecar, malformed_sidecar_logs_and_falls_back)
+{
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::path("temp") / "json_sidecar";
+    std::error_code ec;
+    fs::create_directories(tmp_dir, ec);
+    const fs::path png = tmp_dir / "malformed.png";
+    const fs::path json = tmp_dir / "malformed.json";
+
+    constexpr int W = 10;
+    constexpr int H = 7;
+    write_indexed_png_strip(png.string(), W, H, 1);
+    write_text_file(json.string(), "{\"frames\": \"not an object\"}");
+
+    trace_clear();
+    PixieData round = read_pixie_file(png.string().c_str());
+    // Malformed sidecar -> warning -> fallback: PNG decodes as single frame.
+    ASSERT_TRUE(round.valid()) << "fallback should succeed when sidecar is malformed";
+    ASSERT_EQ(1, static_cast<int>(round.frames));
+    ASSERT_EQ(W, static_cast<int>(round.w));
+    ASSERT_EQ(H, static_cast<int>(round.h));
+    ASSERT_TRUE(trace_contains("io", "malformed Aseprite sidecar"))
+        << "expected a TRACE(\"io\", ...) warning when sidecar is malformed";
+
+    fs::remove(png, ec);
+    fs::remove(json, ec);
+}
+
+TEST(JsonSidecar, malformed_json_variants_report_reason_and_fall_back)
+{
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::path("temp") / "json_sidecar";
+    std::error_code ec;
+    fs::create_directories(tmp_dir, ec);
+    ASSERT_FALSE(ec) << ec.message();
+
+    const fs::path png = tmp_dir / "malformed_variants.png";
+    const fs::path json = tmp_dir / "malformed_variants.json";
+    og::test::ScopedPhysicalFileState png_state(png);
+    og::test::ScopedPhysicalFileState json_state(json);
+    ASSERT_TRUE(png_state.ready()) << png_state.error().message();
+    ASSERT_TRUE(json_state.ready()) << json_state.error().message();
+
+    constexpr int W = 10;
+    constexpr int H = 7;
+    write_indexed_png_strip(png.string(), W, H, 1);
+
+    struct BadSidecar {
+        const char* description;
+        const char* text;
+        const char* reason;
+    };
+    const BadSidecar cases[] = {
+        {"empty file", "", "empty file"},
+        {"empty top-level object", "{}", "empty top-level object"},
+        {"top-level array", "[]", "expected top-level object"},
+        {"missing unknown value", R"({"unknown":})",
+         "unexpected character in value"},
+        {"invalid keyword", R"({"unknown":tru})", "unknown keyword"},
+        {"unsupported string escape", R"({"unknown":"bad\\escape"})",
+         "backslash escape unsupported"},
+        {"unterminated string", R"({"unknown":"unterminated})",
+         "unterminated string"},
+        {"array missing comma", R"({"unknown":[1 2]})",
+         "expected ',' or ']'"},
+        {"object missing colon", R"({"unknown":{"a" 1}})",
+         "expected ':'"},
+        {"frames is an array", R"({"frames":[]})",
+         "\"frames\" not an object"},
+        {"frame entry is an array", R"({"frames":{"a":[]}})",
+         "frame entry not an object"},
+        {"empty frame entry", R"({"frames":{"a":{}}})",
+         "frame entry empty"},
+        {"missing frame rectangle", R"({"frames":{"a":{"other":1}}})",
+         "missing \"frame\" rectangle"},
+        {"frame rectangle is an array",
+         R"({"frames":{"a":{"frame":[]}}})",
+         "\"frame\" rect not an object"},
+        {"empty frame rectangle", R"({"frames":{"a":{"frame":{}}}})",
+         "empty frame rect"},
+        {"string frame width",
+         R"({"frames":{"a":{"frame":{"w":"10","h":7}}}})",
+         "expected non-negative integer"},
+        {"fractional frame width",
+         R"({"frames":{"a":{"frame":{"w":1.5,"h":7}}}})",
+         "non-integer numeric not supported"},
+        {"overflowing frame width",
+         R"({"frames":{"a":{"frame":{"w":1000000001,"h":7}}}})",
+         "integer overflow"},
+        {"meta is an array", R"({"meta":[]})",
+         "\"meta\" not an object"},
+        {"meta size is an array", R"({"meta":{"size":[]}})",
+         "\"meta.size\" not an object"},
+        {"empty meta size", R"({"meta":{"size":{}}})",
+         "empty meta.size"},
+        {"missing meta size",
+         R"({"frames":{"a":{"frame":{"w":10,"h":7}}}})",
+         "missing \"meta.size\""},
+        {"no frames",
+         R"({"frames":{},"meta":{"size":{"w":10,"h":7}}})",
+         "no frames"},
+        {"zero frame width",
+         R"({"frames":{"a":{"frame":{"w":0,"h":7}}},"meta":{"size":{"w":0,"h":7}}})",
+         "invalid frame dimensions"},
+        {"frame width above format limit",
+         R"({"frames":{"a":{"frame":{"w":256,"h":7}}},"meta":{"size":{"w":256,"h":7}}})",
+         "frame metadata out of range"},
+        {"stacked size mismatch",
+         R"({"frames":{"a":{"frame":{"w":10,"h":7}}},"meta":{"size":{"w":9,"h":7}}})",
+         "size mismatch between meta.size and frames*frame"},
+    };
+
+    for (const BadSidecar& row : cases) {
+        SCOPED_TRACE(row.description);
+        write_text_file(json.string(), row.text);
+        trace_clear();
+
+        PixieData round = read_pixie_file(png.string().c_str());
+
+        ASSERT_TRUE(round.valid())
+            << "ordinary sidecar errors must retain the documented "
+               "single-frame PNG fallback";
+        EXPECT_EQ(1, static_cast<int>(round.frames));
+        EXPECT_EQ(W, static_cast<int>(round.w));
+        EXPECT_EQ(H, static_cast<int>(round.h));
+        ASSERT_NE(nullptr, round.data);
+        EXPECT_EQ(3, static_cast<int>(round.data[0]))
+            << "fallback must preserve decoded palette indices";
+        EXPECT_TRUE(trace_contains("io", "malformed Aseprite sidecar"));
+        EXPECT_TRUE(trace_contains("io", row.reason))
+            << "diagnostic should identify the rejected construct";
+    }
+}

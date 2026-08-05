@@ -5,8 +5,8 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
-#include <openglad/gameplay/effect_family_descriptor.h>
-#include <openglad/gameplay/family_registries.h>
+#include <openglad/gameplay/families/effect_family_descriptor.h>
+#include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>

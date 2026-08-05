@@ -5,7 +5,7 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
-#include <openglad/platform/game_context.h>
+#include <openglad/interface/game_context.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/sim_event_log.h>

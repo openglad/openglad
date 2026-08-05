@@ -2,7 +2,7 @@
 
 #include <string>
 
-// ArchiveIoError is defined in include/openglad/platform/io.h.
+// ArchiveIoError is defined in include/openglad/resources/io.h.
 // Forward declare to avoid pulling the legacy platform IO header into og::io APIs.
 enum class ArchiveIoError;
 

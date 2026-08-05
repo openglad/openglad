@@ -362,13 +362,13 @@ Estimated ~700–780 LOC: view.h ~35; view.cpp ~190; effects.h ~15; effects.cpp 
 
 | File / anchor | Edit |
 |---|---|
-| tests/test_render_effects.cpp `all_effects_off` (:2177) | add `"floor_glide"` to the key list |
-| tests/test_render_effects.cpp `EffectsCfgGuard::kKeys` (~:72-77) | add `{"floor_glide", "on"}` (save/restore with correct default) |
-| tests/test_stair_overlay.cpp `QuietEffectsGuard::kKeys` (:167-190) | add `"floor_glide"` — these tests hop floors and would otherwise render glide frames |
-| tests/test_game_loop.cpp `all_capture_effects_on` (:2629; grep for the second `gameplay_rec::` variant near :2746) | add `"floor_glide"`, `"on"` |
-| tests/test_menu_layout.cpp `graphics_fx_options_grid_geometry_and_nav` (:818-837) | kExpected gains `{"toggle_floor_glide", "Floor glide", 15, 127}`; count 13 → 14; nav pins per §7 |
+| tests/integration/test_render_effects.cpp `all_effects_off` (:2177) | add `"floor_glide"` to the key list |
+| tests/integration/test_render_effects.cpp `EffectsCfgGuard::kKeys` (~:72-77) | add `{"floor_glide", "on"}` (save/restore with correct default) |
+| tests/integration/test_stair_overlay.cpp `QuietEffectsGuard::kKeys` (:167-190) | add `"floor_glide"` — these tests hop floors and would otherwise render glide frames |
+| tests/integration/test_game_loop.cpp `all_capture_effects_on` (:2629; grep for the second `gameplay_rec::` variant near :2746) | add `"floor_glide"`, `"on"` |
+| tests/integration/test_menu_layout.cpp `graphics_fx_options_grid_geometry_and_nav` (:818-837) | kExpected gains `{"toggle_floor_glide", "Floor glide", 15, 127}`; count 13 → 14; nav pins per §7 |
 | Audit sweep | `grep -rn "set_floor\|editor_floor_override_" tests/` — any test that changes the control walker's floor and then compares pixels must either sit under an updated guard or settle ≥16 redraws. Tests driving `editor_floor_override_` are suppressed by S3 already (cloud/depth-fx capture scenes are safe). |
-| tests/test_view_redraw.cpp :404-407 | no change needed (glide never writes topx/topy outside the per-floor restore) — but run it explicitly |
+| tests/integration/test_view_redraw.cpp :404-407 | no change needed (glide never writes topx/topy outside the per-floor restore) — but run it explicitly |
 | Mutation canary | **Verified 2026-07-12: the pin map (tests/parity/scenario_table.h) contains NO pins in view.cpp, effects.cpp, gparser.cpp, or picker.cpp** — all pins live in src/gameplay + gloader/save_data/input_state. Re-verify the pin list at impl time; if any have appeared, insert below the max pin per file. |
 
 ### 10.2 New tests (og_test_rendering group unless noted; table-driven where possible — the coverage gate sits at ~90.00 % and the suppression ladder must not sink it)
@@ -388,7 +388,7 @@ Estimated ~700–780 LOC: view.h ~35; view.cpp ~190; effects.h ~15; effects.cpp 
 
 ### 10.3 fx-review capture scene (ships with the feature — the user reviews effects there)
 
-- New scene in `zz_capture_effect_scenes` (tests/test_render_effects.cpp:3954, env-gated PPM dump): 3-floor arena; hero walks up a Z-stair (~24 frames captured), pauses, walks back down (~24), then falls through a hole two stories (~20); **place pacing monsters on the departure floor for the down-stair leg** so the frame-1 entity vanish is visible; include a short look-up-hold segment during one glide.
+- New scene in `zz_capture_effect_scenes` (tests/integration/test_render_effects.cpp:3954, env-gated PPM dump): 3-floor arena; hero walks up a Z-stair (~24 frames captured), pauses, walks back down (~24), then falls through a hole two stories (~20); **place pacing monsters on the departure floor for the down-stair leg** so the frame-1 entity vanish is visible; include a short look-up-hold segment during one glide.
 - New card in `scripts/fx_review/make_site.py` `SCENES` (:197, insert before `all_together`): id `floor_glide`, title "Floor glide — stairs vs falls", body describing the three reads **and explicitly asking the reviewer to judge (a) the departing-floor entity vanish on the down-stair and (b) whether the fall squash reads in a quarter-size pane** — these gate §12 items F2/F3.
 
 ---

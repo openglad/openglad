@@ -144,8 +144,8 @@ hidden-row navigation, level reload, autosave, and ready-state clearing.
 
 The main regression layers are:
 
-- `tests/test_menu_engine.cpp` for runtime and frame behavior;
+- `tests/integration/test_menu_engine.cpp` for runtime and frame behavior;
 - `tests/unit/test_menu_spec.cpp` for specification helpers;
-- `tests/test_menu_pins.cpp` and `tests/test_menu_layout.cpp` for button tables,
+- `tests/integration/test_menu_pins.cpp` and `tests/integration/test_menu_layout.cpp` for button tables,
   ordinals, and navigation;
 - terminal and WebAssembly flows for client-specific projections.

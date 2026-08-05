@@ -3,7 +3,8 @@
  * the plain), The Warm Mint (the three-floor finale climb; The Founder;
  * the campaign's only team-1 level), and the Settlement Day epilogue (the
  * exit loops the year back to level 1 — next spring, the ledger opens
- * again). Authored against docs/campaigns/longseason/level_17..19.md.
+ * again). Authored against campaigns/longseason/README.md, "Level 17" ..
+ * "Level 19".
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *

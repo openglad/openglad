@@ -24,7 +24,7 @@
 #include <openglad/gameplay/families/classpack_data.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/families/family_string_ids.h>
-#include <openglad/gameplay/family_descriptor.h>
+#include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/script/script_coverage.h>
 #include <openglad/gameplay/walker.h>

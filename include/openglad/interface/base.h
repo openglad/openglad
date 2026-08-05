@@ -196,7 +196,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scr)
 
 #define OUTLINE_INVISIBLE query_team_color() //
 
-#include <openglad/resources/pixie_data.h>
+#include <openglad/gameplay/pixie_data.h>
 PixieData read_pixie_file(const char  * filename);
 
 // Some stuff for palette

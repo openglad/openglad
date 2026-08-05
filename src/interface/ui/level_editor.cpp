@@ -26,8 +26,8 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/families/generator_family_descriptor.h>
-#include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/smooth.h>
 #include <openglad/interface/render/walker_draw.h>
 #include <openglad/interface/input.h>

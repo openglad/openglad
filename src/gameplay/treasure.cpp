@@ -23,8 +23,8 @@
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/treasure.h>
-#include <openglad/gameplay/treasure_family_descriptor.h>
-#include <openglad/gameplay/family_registries.h>
+#include <openglad/gameplay/families/treasure_family_descriptor.h>
+#include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/guy.h>
 #include <algorithm>

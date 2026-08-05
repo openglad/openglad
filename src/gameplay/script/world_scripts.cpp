@@ -10,14 +10,14 @@
 #include <openglad/gameplay/script/family_tuning.h>
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/script/script_coverage.h>
-#include <openglad/gameplay/family_descriptor.h>
+#include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/families/family_string_ids.h>
 #include <openglad/gameplay/families/weapon_family_descriptor.h>
 #include <openglad/gameplay/families/effect_family_descriptor.h>
 #include <openglad/gameplay/families/treasure_family_descriptor.h>
 #include <openglad/gameplay/families/generator_family_descriptor.h>
-#include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/walker.h>

@@ -36,7 +36,7 @@
 #include <openglad/core/pixdefs.h>
 #include <openglad/resources/level_file_io.h>
 #include <openglad/resources/og_file.h>
-#include <openglad/resources/pixie_data.h>
+#include <openglad/gameplay/pixie_data.h>
 
 #include <gtest/gtest.h>
 

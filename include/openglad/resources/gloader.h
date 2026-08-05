@@ -18,7 +18,7 @@
 
 // Definition of LOADER class
 
-#include <openglad/resources/pixie_data.h>
+#include <openglad/gameplay/pixie_data.h>
 #include <array>
 #include <cstdint>
 #include <functional>

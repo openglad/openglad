@@ -54,7 +54,7 @@
 #include <openglad/interface/render/text.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/results_screen.h>
-#include <openglad/platform/game_context.h>
+#include <openglad/interface/game_context.h>
 // theprefs is now a macro defined in view.h (via game_session.h)
 
 namespace

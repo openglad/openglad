@@ -17,13 +17,13 @@ Frames and the site are build artifacts — regenerate them; don't commit them.
 1. **Env-gated capture tests** render P6 PPM frame sequences into
    `$OG_FX_CAPTURE_DIR/<scene>/NNN.ppm`. Without the env var they
    `GTEST_SKIP`, so normal ctest runs are untouched.
-   - `RenderEffects.zz_capture_effect_scenes` (`tests/test_render_effects.cpp`)
+   - `RenderEffects.zz_capture_effect_scenes` (`tests/integration/test_render_effects.cpp`)
      — scripted close-ups: one per effect, plus the floor-glide legs and the
      depth-mode comparison set.
    - `GameLoop.zz_capture_real_gameplay` / `zz_capture_splitscreen_gameplay` /
      `zz_capture_epic_battles` / `zz_capture_westlands` /
      `zz_capture_westlands_decor` / `zz_capture_longseason`
-     (`tests/test_game_loop.cpp`) — live sim on campaign levels, a real
+     (`tests/integration/test_game_loop.cpp`) — live sim on campaign levels, a real
      2-player split-screen session, and the War of the Westlands story
      levels: the six war epics plus the new showpieces (16 The White City,
      24 The Mountain of Fire) and the High Pass blizzard (5) in spectator
@@ -33,7 +33,7 @@ Frames and the site are build artifacts — regenerate them; don't commit them.
      Warm Mint). `OG_FX_CAPTURE_ONLY=<level id>` records a single scene.
    - `OptionsMenu.zz_capture_menu_tour` / `zz_capture_menu_effects` /
      `zz_capture_menu_difficulty`
-     (`tests/test_options_menu.cpp`) — injector-driven menu walkthroughs.
+     (`tests/integration/test_options_menu.cpp`) — injector-driven menu walkthroughs.
 2. **TESTING hooks** make the blocking menu flows filmable:
    - `screen::buffer_to_screen` dumps every 3rd presented frame when
      `OG_DUMP_DIR` is set (`src/interface/screen.cpp`).

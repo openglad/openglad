@@ -36,7 +36,7 @@
 #include <cmath>
 #include <format>
 #include <cstring>
-#include <openglad/platform/game_context.h>
+#include <openglad/interface/game_context.h>
 #include <memory>
 #include <limits>
 #include <span>

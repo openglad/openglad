@@ -13,7 +13,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/input.h>
-#include <openglad/interface/input_state.h>
+#include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/interface/level_runtime_data.h>

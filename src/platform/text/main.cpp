@@ -21,7 +21,7 @@
 
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/sim_emit.h>
-#include <openglad/gameplay/irandom.h>
+#include <openglad/core/irandom.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/save_data.h>
@@ -34,9 +34,9 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <openglad/core/weather.h>
-#include <openglad/platform/game_context.h>
-#include <openglad/interface/input_state.h>
-#include <openglad/gameplay/family_registries.h>
+#include <openglad/interface/game_context.h>
+#include <openglad/gameplay/input_state.h>
+#include <openglad/gameplay/families/family_registries.h>
 #include <openglad/interface/ui/picker.h>
 
 #include <chrono>

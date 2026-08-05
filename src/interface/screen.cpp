@@ -33,8 +33,8 @@
 #include <openglad/resources/company.h>
 #include <openglad/resources/level_file_io.h>
 #include <openglad/resources/gparser.h>
-#include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/family_registries.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/smooth.h>

@@ -38,7 +38,7 @@
 #include <openglad/resources/io.h>
 #include <openglad/platform/sai2x.h>
 #include <openglad/interface/render/view.h>
-#include <openglad/platform/game_context.h>
+#include <openglad/interface/game_context.h>
 #include <openglad/platform/game_loop.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>

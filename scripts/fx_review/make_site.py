@@ -177,7 +177,7 @@ MULTI = [
     # net_host/net_joiner capture is not wired up yet: the harness that drove
     # a genuine host+joiner session and dumped both screens at the same
     # authoritative tick was lost with its throwaway worktree. Rebuild it from
-    # the host_and_join_* e2e patterns in tests/test_game_loop.cpp, dump to
+    # the host_and_join_* e2e patterns in tests/integration/test_game_loop.cpp, dump to
     # anim/net_host and anim/net_joiner, and this card lights up again.
     ("net_sync", "Networked multiplayer — host and joiner, synchronized",
      "A genuine networked session in one capture: the HOST's screen (left) and the JOINING CLIENT's screen (right), every frame taken at the same authoritative tick. Note the same weather on both sides — the per-level weather kind is world state, rolled by the host and synced through snapshots."),

@@ -30,8 +30,8 @@
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/guy.h>
-#include <openglad/gameplay/effect_family_descriptor.h>
-#include <openglad/gameplay/family_registries.h>
+#include <openglad/gameplay/families/effect_family_descriptor.h>
+#include <openglad/gameplay/families/family_registries.h>
 #include <openglad/core/test_trace.h>
 
 effect::effect(const PixieData& data)

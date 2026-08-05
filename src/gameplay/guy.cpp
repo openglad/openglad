@@ -24,8 +24,8 @@
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
-#include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <cstring>
 #include <limits>

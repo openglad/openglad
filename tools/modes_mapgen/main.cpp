@@ -27,7 +27,7 @@
 #include <openglad/core/decordefs.h>
 #include <openglad/core/irandom.h>
 #include <openglad/core/pixdefs.h>
-#include <openglad/gameplay/family_registries.h>
+#include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/mapgen/builders.h>

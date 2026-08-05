@@ -13,7 +13,7 @@
 #include <openglad/core/util.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/legacy/colors.h>
-#include <openglad/platform/game_context.h>
+#include <openglad/interface/game_context.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/render/pal32.h>
 #include <openglad/interface/ui/results_screen.h>

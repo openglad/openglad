@@ -67,10 +67,10 @@ cd dist && python3 -m http.server 8080
 ## Module Structure
 
 The codebase is organized into **5 top-level components**, each a CMake static
-library with enforced dependency rules. (Older fine-grained module names — `sim`,
-`data`, `entities`, `io`, `runtime`, `render`, `input`, `ui` — survive only as
-transitional forwarding-header shims under `src/`; the real build/dependency
-boundary is the component.)
+library with enforced dependency rules. The component is the only build and
+dependency boundary. (Older fine-grained module names — `sim`, `data`,
+`entities`, `io`, `runtime`, `render`, `input`, `ui` — are gone entirely; every
+header lives at its canonical component path.)
 
 ```
 include/openglad/<component>/   — public headers (stable API)
@@ -177,9 +177,13 @@ brew install googletest             # macOS
 | `og_test_*` | SDL integration group binaries |
 | `openglad_text` | Headless text client exercised via CTest script entries |
 
-Integration groups use `tests/integration_main.cpp`. Headless unit groups use `tests/unit/unit_main.cpp`.
+Integration groups use `tests/integration/integration_main.cpp`. Headless unit groups use `tests/unit/unit_main.cpp`.
 
-New integration test source files must be added to `ALL_INTEGRATION_TEST_SOURCES` and assigned to `og_add_test_group(...)` in `CMakeLists.txt`. New headless unit tests should be assigned to `og_add_unit_group(...)`.
+Integration test sources live in `tests/integration/`; the shared fixture
+headers stay at `tests/` root, where `tests/unit/`, `tests/curses/` and
+`tests/parity/` also reach them.
+
+New integration test source files must be added to `ALL_INTEGRATION_TEST_SOURCES` and assigned to `og_add_test_group(...)` in `cmake/OpenGladTests.cmake`. New headless unit tests should be assigned to `og_add_unit_group(...)` in the same file.
 
 ### Writing Tests
 
@@ -262,13 +266,14 @@ The test build compiles game sources with `-DTESTING`. Use this for:
 - `TRACE(...)` calls to instrument code (no-op in production)
 - Test-only globals like `g_picker_max_mainmenu_calls`
 - Making `exit(0)` calls safe (`quit()` is a no-op under TESTING)
-- `main()` in `glad.cpp` is excluded (tests use `tests/integration_main.cpp`)
+- `main()` in `glad.cpp` is excluded (tests use `tests/integration/integration_main.cpp`)
 
 ## Adding New Code
 
-1. Place public headers in `include/openglad/<module>/`
-2. Place implementation in `src/<module>/`
-3. Add source files to the appropriate `OG_*_SOURCES` list in `CMakeLists.txt`
+1. Place public headers in `include/openglad/<component>/`
+2. Place implementation in `src/<component>/`
+3. Add source files to the matching component list in `cmake/OpenGladSources.cmake`
+   — that is the only place; `GAME_SOURCES_NO_MAIN` is derived from those lists
 4. Respect module dependency rules (see `docs/ARCHITECTURE.md`, "Dependency Direction Rules")
 5. Prefer `inline constexpr` over `#define` for constants
 6. Prefer `enum class` over plain `enum`

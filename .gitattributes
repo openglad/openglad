@@ -1,12 +1,12 @@
-# Keep vendored libraries, generated artifacts, and bulk asset data out of the
-# GitHub diff and language stats so reviews focus on hand-written code. These
-# files are still tracked and built normally; linguist-vendored / -generated
-# only collapse them in PR diffs (reviewers can expand) and exclude them from the
-# language bar and the diffstat.
-
-# Vendored upstream libraries (PhysFS, zlib, libzip, libyaml, yaml,
-# IXWebSocket, LodePNG). Not OpenGlad source — see third_party/VENDORED_LIBS.md.
-third_party/** linguist-vendored
+# Keep generated artifacts and bulk asset data out of the GitHub diff and
+# language stats so reviews focus on hand-written code. These files are still
+# tracked and built normally; linguist-generated only collapses them in PR
+# diffs (reviewers can expand) and excludes them from the language bar and the
+# diffstat.
+#
+# External dependencies are not tracked here at all — every one of them is
+# fetched at configure time into the build tree. See
+# docs/external-dependencies.md for the package targets and FetchContent pins.
 
 # Generated / regenerable parity-harness fixtures (emitted by scripts/parity/).
 tests/parity/scenario_facts_generated.json linguist-generated

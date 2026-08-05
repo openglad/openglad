@@ -11,7 +11,7 @@
 #include <openglad/gameplay/world_snapshot.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/session_state.h>
-#include <openglad/platform/game_context.h>
+#include <openglad/interface/game_context.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>

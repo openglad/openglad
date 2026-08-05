@@ -289,8 +289,8 @@ short fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], og::io::OgFile& inf
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/gameplay/guy.h>
-#include <openglad/resources/pixie_data.h>
-#include <openglad/interface/input_state.h>
+#include <openglad/gameplay/pixie_data.h>
+#include <openglad/gameplay/input_state.h>
 
 bool save_settings() { return cfg.save_settings(); }
 bool load_settings() { return cfg.load_settings(); }
@@ -352,7 +352,7 @@ void load_decor_data(PixieData*)
 // ---------------------------------------------------------------------------
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/packs.h>
-#include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/families/family_registry.h>
 
 void io_init(int argc, char* argv[])
 {

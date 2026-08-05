@@ -2,7 +2,7 @@
 #include <openglad/core/frame_rate_config.h>
 #include <openglad/core/util.h>
 #include <openglad/core/weather.h>
-#include <openglad/gameplay/family_registries.h>
+#include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
@@ -15,7 +15,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/session_state.h>
-#include <openglad/platform/game_context.h>
+#include <openglad/interface/game_context.h>
 #include <openglad/platform/net_transport_websocket_server.h>
 #include <openglad/resources/campaign_io.h>
 #include <openglad/resources/gparser.h>

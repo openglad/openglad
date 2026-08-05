@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <vector>
 #include <openglad/interface/button.h>
-#include <openglad/resources/pixie_data.h>
+#include <openglad/gameplay/pixie_data.h>
 
 class pixieN;
 class guy;

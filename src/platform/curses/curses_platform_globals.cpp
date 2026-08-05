@@ -10,7 +10,7 @@
  * Mirrors the definitions in src/server/server_main.cpp and the text client.
  */
 #include <openglad/interface/session_state.h>
-#include <openglad/platform/game_context.h>
+#include <openglad/interface/game_context.h>
 
 #include <atomic>
 #include <cstdint>

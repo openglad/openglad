@@ -296,7 +296,7 @@ code or to sim state. `og_test_parity` passes 188/188 both with the recorder
 compiled in and disabled and with it armed.
 
 Each process writes one `*.luacov` dump into the directory at exit. Harnesses
-that end in `_exit()` skip static destructors, so `tests/integration_main.cpp`
+that end in `_exit()` skip static destructors, so `tests/integration/integration_main.cpp`
 calls `og::script::coverage::flush_to_output_dir()` by hand, right where it
 already calls `__gcov_dump()` for the same reason.
 

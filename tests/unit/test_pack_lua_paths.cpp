@@ -34,7 +34,7 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/effect.h>
-#include <openglad/gameplay/effect_family_descriptor.h>
+#include <openglad/gameplay/families/effect_family_descriptor.h>
 #include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
@@ -42,11 +42,11 @@
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/treasure.h>
-#include <openglad/gameplay/treasure_family_descriptor.h>
+#include <openglad/gameplay/families/treasure_family_descriptor.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/weap.h>
-#include <openglad/gameplay/weapon_family_descriptor.h>
+#include <openglad/gameplay/families/weapon_family_descriptor.h>
 
 #include <gtest/gtest.h>
 
