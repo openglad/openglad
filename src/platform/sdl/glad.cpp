@@ -59,14 +59,9 @@
 
 namespace
 {
-inline screen* active_screen()
+[[maybe_unused]] inline screen* active_screen()
 {
     return og::runtime::current_session->myscreen_;
-}
-
-inline options* active_prefs()
-{
-    return og::runtime::current_session->theprefs_;
 }
 
 } // namespace
@@ -82,10 +77,6 @@ char g_web_arg0[] = "/play.html";
 char* g_web_argv[] = {g_web_arg0, nullptr};
 } // namespace
 #endif
-
-static inline Uint32 rng(Uint32 max_exclusive) {
-    return ctx().rng->next(max_exclusive);
-}
 
 #ifdef OUYA
 #include <openglad/legacy/OuyaController.h>
@@ -161,7 +152,7 @@ void glad_main(screen *scr, Sint32 playermode);
 // theprefs is now a macro defined in view.h (via game_session.h)
 
 // Frame state lives in GameSession::frame_state_
-static inline GameLoopFrameState& g_frame_state() {
+[[maybe_unused]] static inline GameLoopFrameState& g_frame_state() {
     return og::runtime::current_session->frame_state_;
 }
 

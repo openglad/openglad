@@ -926,8 +926,8 @@ void Screen::set_active_canvas(CanvasTarget target)
 	{
 		const auto [x, y] = window_to_active_canvas(
 			pointer_window.first, pointer_window.second);
-		mouse_state.x = static_cast<int>(x);
-		mouse_state.y = static_cast<int>(y);
+		mouse_state.x = static_cast<float>(static_cast<int>(x));
+		mouse_state.y = static_cast<float>(static_cast<int>(y));
 	}
 }
 
@@ -1086,8 +1086,8 @@ bool Screen::set_world_canvas_size(int w, int h)
 	{
 		const auto [x, y] = window_to_active_canvas(
 			pointer_window.first, pointer_window.second);
-		mouse_state.x = static_cast<int>(x);
-		mouse_state.y = static_cast<int>(y);
+		mouse_state.x = static_cast<float>(static_cast<int>(x));
+		mouse_state.y = static_cast<float>(static_cast<int>(y));
 	}
 	if (previous_texture != ui_tex_)
 		SDL_DestroyTexture(previous_texture);

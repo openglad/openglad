@@ -21,7 +21,7 @@
 #include <string>
 #include <string_view>
 
-struct SaveData;
+class SaveData;
 
 namespace og::ui {
 

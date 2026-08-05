@@ -523,9 +523,11 @@ TEST_F(ModesLevels, no_exits_no_named_npcs_no_teleporters_on_mutant)
         EXPECT_EQ(0, c.save_protected)
             << "scen" << pin.id << ": no protected bits";
         if (std::string(pin.mode) == "mutant")
+        {
             EXPECT_EQ(0, c.teleporters)
                 << "scen" << pin.id
                 << ": a pad ride would break the beacon hunt";
+        }
     }
 }
 

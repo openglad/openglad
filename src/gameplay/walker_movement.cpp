@@ -330,7 +330,7 @@ bool walker::walk(float x, float y)
         }
     }
 
-    if ( !x && !y)
+    if (x == 0.0f && y == 0.0f)
     {
         //Log("walker %d:%d walking 0,0\n",order, family);
         //this happens sometimes, and shouldn't, but it is non-fatal

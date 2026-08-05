@@ -739,11 +739,8 @@ local function on_mode_init(level, row)
     end
   end
   -- Roster-only armies on request; keep_generators because the foundries ARE
-  -- the board here. Then the HP denominators every surviving generator needs
-  -- for its flip restore and its HP bar — neutral bytes included, they are
-  -- all capturable.
+  -- the board here -- neutral bytes included, they are all capturable.
   strip.strip_authored_troops({ keep_generators = true })
-  core.normalize_generator_hp(obs)
 
   caps.bank_caps(row, S.SPAWN_CAP)
   local respawn_ticks = og.match_setting("respawn_ticks")

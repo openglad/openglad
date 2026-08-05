@@ -36,7 +36,6 @@ namespace {
 constexpr int kViewMenuTransitionTimeoutMs = 15000;
 constexpr int kGameStartTimeoutMs = 20000;
 constexpr int kGameFinishTimeoutMs = 90000;
-constexpr int kTeamBuildInterceptScope = 2;
 
 struct InputHardwareSnapshotGuard
 {

@@ -81,10 +81,9 @@ local function on_mode_init(level)
   og.mode_set(S.TEAM_MASK, mask)
   match.consume_markers(obs, mask)
   match.strip_inactive_teams(obs, mask)
-  -- Roster-only armies on request, then the generator HP denominators: both
-  -- before the bot-squad census below, so backfill sees the final world.
+  -- Roster-only armies on request, before the bot-squad census below, so
+  -- backfill sees the final world.
   strip.strip_authored_troops(nil)
-  core.normalize_generator_hp(obs)
 
   -- Resolve config: explicit request > manifest row > defaults, per field.
   local row = levels.levels[level]

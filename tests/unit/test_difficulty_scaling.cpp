@@ -155,3 +155,73 @@ TEST(DifficultyScaling, generator_spawn_gets_single_difficulty_application)
         << "regen must not accumulate across double applications";
     EXPECT_EQ(reference->damage(), spawn->damage());
 }
+
+/* A12c: the Order::Generator arm of walker::set_difficulty wrote the fighting
+ * hp and left max_hitpoints on the loader base — 0 for tower/bones/treehouse,
+ * 100 for tent — so every difficulty-stamped generator ran at hp > max_hp.
+ * Both fields move together now.
+ */
+TEST(DifficultyScaling, generator_set_difficulty_stamps_hp_and_its_denominator)
+{
+    constexpr int kFamilies[] = {FAMILY_TENT, FAMILY_TOWER, FAMILY_BONES,
+                                 FAMILY_TREEHOUSE};
+    for (const short difficulty : {short{50}, short{100}, short{200}})
+    {
+        for (const int family : kFamilies)
+        {
+            TestGameWorld tw;
+            GameWorld& w = tw.world();
+            w.difficulty = difficulty;
+
+            walker* gen = w.add_ob(Order::Generator, family);
+            ASSERT_NE(gen, nullptr) << "family " << family;
+            gen->set_team_num(1);
+            gen->stats()->set_level(3);
+            gen->set_difficulty(3);
+
+            const float expected =
+                static_cast<float>((100u * 3u * static_cast<unsigned>(
+                                                    difficulty)) / 100u);
+            EXPECT_FLOAT_EQ(expected, gen->stats()->hitpoints())
+                << "family " << family << " at " << difficulty << "%";
+            EXPECT_FLOAT_EQ(expected, gen->stats()->max_hitpoints())
+                << "family " << family << " at " << difficulty
+                << "%: the denominator must match the fighting hp";
+        }
+    }
+}
+
+// The sim consequence, not just the display one: act_generate adds 1 hp per
+// successful spawn and immediately takes it back when hp exceeds max. With the
+// denominator left at the loader base that undo always fired, so a damaged
+// generator could never recover.
+TEST(DifficultyScaling, damaged_generator_regenerates_while_it_spawns)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.difficulty = 100;
+
+    walker* gen = w.add_ob(Order::Generator, FAMILY_TOWER);
+    ASSERT_NE(gen, nullptr);
+    gen->setxy(80, 80);
+    gen->set_team_num(1);
+    gen->stats()->set_level(5);
+    gen->set_difficulty(5);
+    gen->set_act_type(ACT_GENERATE);
+
+    const float full = gen->stats()->max_hitpoints();
+    ASSERT_FLOAT_EQ(500.0f, full);
+    gen->stats()->set_hitpoints(full - 100.0f);
+
+    w.rng_.state_ = 0xC0FFEE42u;
+    for (int i = 0; i < 4000; ++i)
+    {
+        gen->act();
+        gen->set_ani_type(ANI_WALK); // keep the cadence gate rolling
+    }
+
+    EXPECT_GT(gen->stats()->hitpoints(), full - 100.0f)
+        << "a spawning generator heals back toward its authored hp";
+    EXPECT_LE(gen->stats()->hitpoints(), full)
+        << "and never past it";
+}

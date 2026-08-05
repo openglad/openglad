@@ -295,8 +295,11 @@ private:
     int floor_layer_reported_fallback_w_ = 0;
     int floor_layer_reported_fallback_h_ = 0;
     bool floor_layer_reported_budget_fallback_ = false;
-    bool fail_next_floor_layer_allocation_ = false;
-    int floor_layer_fallback_count_ = 0;
+    // Fault-injection/telemetry for the compositor tests. Only read and written
+    // under TESTING, but declared unconditionally so the class layout is the
+    // same in every build.
+    [[maybe_unused]] bool fail_next_floor_layer_allocation_ = false;
+    [[maybe_unused]] int floor_layer_fallback_count_ = 0;
 };
 
 // Installs cfg graphics/zoom + graphics/smoothing on the live display. The

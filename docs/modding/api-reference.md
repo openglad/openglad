@@ -775,6 +775,10 @@ og.register_level_hooks(level_id, {   -- level_id -1 = every level
   on_tick         = function(level, tick) ... end,
   on_entity_death = function(ent) ... end,
   on_entity_spawn = function(ent) ... end,
+  on_damage       = function(target, attacker, amount) ... end,
+  on_mode_init    = function(level) ... end,           -- scripted modes
+  on_mode_tick    = function(level, tick) ... end,     -- scripted modes
+  on_respawn      = function(ent) ... end,             -- scripted modes
 })
 
 og.set_entity_hooks(ent, { on_death = function(ent) ... end })
@@ -791,6 +795,24 @@ og.set_entity_hooks(ent, { on_death = function(ent) ... end })
 - `on_entity_spawn` fires only for sim-authored living/generator spawns
   through `add_ob`. Snapshot and replay insertion paths bypass it and stay
   silent.
+- `on_damage` gates each hit before it lands. Return `nil` (or nothing) to
+  keep `amount`, a number to replace it (clamped to 0..32767, fraction
+  truncated), or `false` to cancel the hit outright. `attacker` is `nil` for
+  environment damage, and only the first return value is read.
+
+  **`return 0` is not a cancel.** Zero is a replacement amount: the hit still
+  lands for zero damage, the target still retaliates, and the engine still
+  runs its own `hp <= 0` death check afterwards — so a zero-damage hit on a
+  target that is already at 0 hp kills it. Return `false` when the hit must
+  not happen at all, and check the target's hp before returning 0. (That
+  death check is unconditional and belongs to the engine, not to the hook: a
+  classic hit fully absorbed by damage reduction reaches it the same way with
+  no hook registered.)
+- `on_mode_init`, `on_mode_tick` and `on_respawn` are the scripted-mode hooks.
+  `on_mode_init` runs once when a mode level activates and its success is the
+  activation condition; `on_mode_tick` runs after entity acts each tick; and
+  `on_respawn` runs after the respawn engine revives an entity in place, so
+  the hook can reposition it.
 - An exact-level registration shadows a wildcard (`-1`) one **per hook kind**.
 - `og.set_entity_hooks` requires a tracked entity (`og.entity_id(h) ~= 0`).
   The registration is consumed when it fires, so a dead entity id never fires

@@ -517,38 +517,6 @@ TEST(GloaderFuncs, gore_sync_is_a_no_op_when_the_setting_is_unchanged)
 
 namespace {
 
-struct PixieSnapshot {
-    unsigned char frames = 0;
-    unsigned char w = 0;
-    unsigned char h = 0;
-    std::vector<unsigned char> pixels;
-};
-
-PixieSnapshot snapshot_pixie(const PixieData* pix)
-{
-    PixieSnapshot snap;
-    if (pix == nullptr || !pix->valid())
-        return snap;
-    snap.frames = pix->frames;
-    snap.w = pix->w;
-    snap.h = pix->h;
-    const std::size_t len =
-        static_cast<std::size_t>(pix->frames) * pix->w * pix->h;
-    snap.pixels.assign(pix->data.get(), pix->data.get() + len);
-    return snap;
-}
-
-bool operator==(const PixieSnapshot& lhs, const PixieSnapshot& rhs)
-{
-    return lhs.frames == rhs.frames && lhs.w == rhs.w && lhs.h == rhs.h &&
-        lhs.pixels == rhs.pixels;
-}
-
-bool operator!=(const PixieSnapshot& lhs, const PixieSnapshot& rhs)
-{
-    return !(lhs == rhs);
-}
-
 void write_file_bytes(const std::filesystem::path& path,
                       const std::vector<std::uint8_t>& bytes)
 {

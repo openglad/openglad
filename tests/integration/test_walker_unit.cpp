@@ -767,7 +767,7 @@ TEST(WalkerUnit, walker_r15_compute_outline_and_next_frame_and_generate_paths)
     a->compute_outline(viewer);
     ASSERT_TRUE(a->outline() == OUTLINE_FLYING || a->outline() == OUTLINE_NAMED);
 
-    a->set_outline(static_cast<short>(a->query_team_color()));
+    a->set_outline(static_cast<unsigned char>(a->query_team_color()));
     a->set_invulnerable_left(1);
     a->set_flight_left(0);
     a->compute_outline(viewer);

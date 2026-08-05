@@ -788,8 +788,8 @@ std::unique_ptr<walker> loader::create_walker_owned(Order order,
 	ob->set_data(pix);
 	ob->set_direct_frame(0);
 
-	ob->stats()->set_hitpoints(hitpoints[PIX(order, family)]);
-	ob->stats()->set_max_hitpoints(hitpoints[PIX(order, family)]);
+	ob->stats()->set_hitpoints(hitpoints[idx]);
+	ob->stats()->set_max_hitpoints(hitpoints[idx]);
 	ob->stats()->set_special_cost(0, 0); // shouldn't be used
 	ob->stats()->set_weapon_cost(1); // default value
 

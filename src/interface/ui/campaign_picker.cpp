@@ -408,10 +408,10 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
 			.delete_hidden = rows[delete_index].hidden,
 		};
 		const auto nav = og::ui::campaign_picker_nav(visibility);
-		for (int i = 0; i < og::ui::kCampaignPickerButtonCount; ++i)
+		for (int btn = 0; btn < og::ui::kCampaignPickerButtonCount; ++btn)
 		{
-			rows[i].nav = MenuNav{.up = nav[i].up, .down = nav[i].down,
-			                      .left = nav[i].left, .right = nav[i].right};
+			rows[btn].nav = MenuNav{.up = nav[btn].up, .down = nav[btn].down,
+			                        .left = nav[btn].left, .right = nav[btn].right};
 		}
 	};
 	

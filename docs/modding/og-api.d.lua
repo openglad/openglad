@@ -29,7 +29,10 @@
 -- and docs/lua-classpacks-design.md §3): handles are dispatch-scoped
 -- (stashing one across dispatches is a script error on next use); og.rand
 -- errors on n <= 0; every integer division goes through og.div/og.mod; one
--- og.f* call per float operation; no pairs in the sandbox.
+-- og.f* call per float operation; no pairs in the sandbox; a level
+-- on_damage hook returns nil (keep) / a number (replace) / false
+-- (cancel), and `return 0` is a zero-damage HIT rather than a cancel --
+-- the engine's hp <= 0 death check still runs after it.
 
 ---@alias og.OrderName "effect"|"fx"|"generator"|"living"|"treasure"|"weapon"
 ---@alias og.ListSelector "fx"|"ob"|"weap"

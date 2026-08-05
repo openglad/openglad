@@ -1610,6 +1610,75 @@ TEST(NetTransport, game_client_notifies_when_server_is_gone_for_too_long)
     EXPECT_EQ(1, connection_lost_count);
 }
 
+// #175: an installer-supplied control used to skip the bind-time claim, so the
+// initial keyframe advertised the walker as the player's control while the
+// walker itself still read user == -1. The first tick then claimed it, which
+// made tick 0 the one snapshot in a session that never matched the mirror and
+// cost the desync detector its first tick.
+TEST(NetTransport, bind_player_claims_an_unclaimed_explicit_control)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    transport.set_connected_peers({11u});
+    server.poll_incoming_messages();
+
+    walker* const control =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    ASSERT_EQ(-1, static_cast<int>(control->user()))
+        << "a freshly spawned walker is unclaimed";
+
+    server.bind_player(11u, 0u, fixture.world().my_team, control);
+
+    EXPECT_EQ(0, static_cast<int>(control->user()))
+        << "the seat must own its control before the first snapshot leaves";
+    EXPECT_EQ(ACT_CONTROL, static_cast<int>(control->act_type()));
+}
+
+// The claim is a claim, not an overwrite: a control already owned by another
+// seat keeps its owner.
+TEST(NetTransport, bind_player_leaves_an_already_claimed_control_alone)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    transport.set_connected_peers({12u});
+    server.poll_incoming_messages();
+
+    walker* const control =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    control->set_user(1);
+
+    server.bind_player(12u, 0u, fixture.world().my_team, control);
+
+    EXPECT_EQ(1, static_cast<int>(control->user()));
+}
+
+// A peer that reconnects after its released walker died binds against a
+// corpse. Claiming that would put a dead walker into ACT_CONTROL.
+TEST(NetTransport, bind_player_does_not_claim_a_dead_explicit_control)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    transport.set_connected_peers({13u});
+    server.poll_incoming_messages();
+
+    walker* const control =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    control->set_dead(1);
+
+    server.bind_player(13u, 0u, fixture.world().my_team, control);
+
+    EXPECT_EQ(-1, static_cast<int>(control->user()));
+}
+
 TEST(NetTransport,
      disconnect_grace_uses_last_pending_held_input_from_removed_peer)
 {

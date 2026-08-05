@@ -1209,6 +1209,7 @@ void GameServer::bind_player(PeerId peer_id,
 
     ConnectedClientState& client = clients_[peer_id];
     client.spectator_admitted = false;
+    const bool control_was_supplied = (control != nullptr);
     if (control == nullptr)
     {
         // Versus matches (scripted modes): prefer the binding player's OWN
@@ -1241,9 +1242,7 @@ void GameServer::bind_player(PeerId peer_id,
         }
         if (control == nullptr)
         {
-            // §4.4 site 3: the bind-time claim honors the control policy
-            // (policy off delegates to the legacy pool scan). Under
-            // owner-locked a seat with nothing claimable — a 0-deploy
+            // Under owner-locked a seat with nothing claimable — a 0-deploy
             // machine, or every candidate owned by a foreign machine —
             // binds null: a follow seat whose watched walkers keep their
             // AI. Site 4 (rebind_players_for_loaded_level) funnels through
@@ -1251,13 +1250,28 @@ void GameServer::bind_player(PeerId peer_id,
             control = og::sim::sim_find_next_control_owned(
                 world_, team_num, static_cast<short>(player_index));
         }
-        if (control != nullptr && control->user() == -1)
-        {
-            control->set_user(static_cast<signed char>(player_index));
-            control->set_act_type(ACT_CONTROL);
-            if (control->stats() != nullptr)
-                control->stats()->clear_command();
-        }
+    }
+
+    // §4.4 site 3: the bind-time claim honors the control policy (policy off
+    // delegates to the legacy pool scan). It applies to whatever control this
+    // seat ended up with, auto-selected OR supplied by the installer. An
+    // installer-supplied control used to skip it, so its walker went out in
+    // the initial keyframe still reading user == -1 while the same keyframe's
+    // InitialSetup already named it as the player's control; the first tick
+    // then claimed it in sim_process_player_input, which made the tick-0
+    // keyframe the only snapshot in the session that disagreed with the
+    // mirror the display actually renders, and cost the desync detector its
+    // first tick (issue #175). The scans above already applied the policy to
+    // a candidate they picked, so only a supplied control is re-checked here.
+    if (control != nullptr && control->user() == -1 && !control->dead() &&
+        (!control_was_supplied ||
+         og::sim::control_claim_allowed(world_, control,
+                                        static_cast<short>(player_index))))
+    {
+        control->set_user(static_cast<signed char>(player_index));
+        control->set_act_type(ACT_CONTROL);
+        if (control->stats() != nullptr)
+            control->stats()->clear_command();
     }
 
     // Upsert the seat keyed by local_slot, keeping seats sorted by slot.

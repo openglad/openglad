@@ -1371,7 +1371,7 @@ walker::act_generate()
 	{
 		set_lastx(static_cast<float>(1 - static_cast<std::int32_t>(current_game->world->rng_.next(3))));
 		set_lasty(static_cast<float>(1 - static_cast<std::int32_t>(current_game->world->rng_.next(3))));
-		if (!lastx() && !lasty())
+		if (lastx() == 0.0f && lasty() == 0.0f)
 			set_lastx(1.0f);
 		init_fire(static_cast<short>(lastx()), static_cast<short>(lasty()));
 		//    lastx = 0;
@@ -2188,6 +2188,13 @@ void walker::set_difficulty(std::uint32_t whatlevel)
 			temp = 100*whatlevel;
 			temp = (temp * dif1) / 100;
 			stats_->set_hitpoints(static_cast<float>(temp));
+			// A generator's fighting HP is also its denominator. Classic set
+			// hitpoints alone and left max_hitpoints on the loader base — 0
+			// for tower/bones/treehouse — so every generator ran at hp >
+			// max_hp: act_generate's per-spawn regen could never take, the HP
+			// bar had no fraction to draw, and an hp = max_hp restore emptied
+			// the post instead of filling it.
+			stats_->set_max_hitpoints(static_cast<float>(temp));
 			break;
 		default:  // adjust standard settings for the rest ..
 			if (team_num() != 0)  // do all EXCEPT player characters

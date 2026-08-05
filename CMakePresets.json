@@ -33,6 +33,7 @@
       "inherits": "dev-debug",
       "binaryDir": "${sourceDir}/build/ci-test",
       "cacheVariables": {
+        "OPENGLAD_WARNINGS_AS_ERRORS": "ON",
         "ENABLE_COVERAGE": "OFF",
         "ENABLE_SANITIZERS": "OFF"
       }
@@ -43,6 +44,7 @@
       "inherits": "dev-debug",
       "binaryDir": "${sourceDir}/build/ci-asan",
       "cacheVariables": {
+        "OPENGLAD_WARNINGS_AS_ERRORS": "ON",
         "ENABLE_SANITIZERS": "ON",
         "SANITIZERS": "address;undefined"
       }
@@ -53,6 +55,7 @@
       "inherits": "dev-debug",
       "binaryDir": "${sourceDir}/build/ci-tsan",
       "cacheVariables": {
+        "OPENGLAD_WARNINGS_AS_ERRORS": "ON",
         "CMAKE_C_COMPILER": "clang",
         "CMAKE_CXX_COMPILER": "clang++",
         "ENABLE_SANITIZERS": "ON",

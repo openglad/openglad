@@ -1485,7 +1485,7 @@ void GameWorld::resize_grid(int width, int height)
     const int y = 0;
     const int w = grid.w * GRID_SIZE;
     const int h = grid.h * GRID_SIZE;
-    auto off_map = [x, y, w, h](const std::unique_ptr<walker>& uptr) {
+    auto off_map = [w, h](const std::unique_ptr<walker>& uptr) {
         walker* ob = uptr.get();
         return ob == nullptr || (x > ob->xpos() || ob->xpos() >= x + w ||
                                  y > ob->ypos() || ob->ypos() >= y + h);

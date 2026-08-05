@@ -412,6 +412,70 @@ TEST(ModeTick, damage_gate_false_cancels_the_hit)
         << "a cancelled hit must not stamp attribution";
 }
 
+// #179: `return 0` is a replacement amount, not a cancel. The hit still
+// lands for zero damage, and walker::attack's own hp <= 0 check runs after
+// it — so a zero-damage hit finishes off a target already sitting at 0 hp.
+// This is the generator explode-instead-of-flip chain from #174.
+TEST(ModeTick, damage_gate_zero_still_kills_a_zero_hp_target)
+{
+    GateRig rig(
+        "og.register_level_hooks(42, {\n"
+        "  on_damage = function(target, attacker, amount)\n"
+        "    return 0\n"
+        "  end,\n"
+        "})\n");
+    rig.target->stats()->set_hitpoints(0.0f);
+    ASSERT_FALSE(rig.target->dead());
+    rig.attacker->attack(rig.target);
+    EXPECT_TRUE(rig.target->dead())
+        << "a 0 return applies zero damage but does not skip the death check";
+}
+
+// The paired negative: false is the only cancel, and it returns before the
+// death check the test above trips.
+TEST(ModeTick, damage_gate_false_spares_a_zero_hp_target)
+{
+    GateRig rig(
+        "og.register_level_hooks(42, {\n"
+        "  on_damage = function(target, attacker, amount)\n"
+        "    return false\n"
+        "  end,\n"
+        "})\n");
+    rig.target->stats()->set_hitpoints(0.0f);
+    rig.attacker->attack(rig.target);
+    EXPECT_FALSE(rig.target->dead())
+        << "false is the only return that skips the whole hit path";
+    EXPECT_EQ(0.0f, rig.target->stats()->hitpoints());
+}
+
+// `true` is not a cancel either — it is an explicit "keep the amount".
+TEST(ModeTick, damage_gate_true_keeps_authored_amount)
+{
+    GateRig rig(
+        "og.register_level_hooks(42, {\n"
+        "  on_damage = function(target, attacker, amount)\n"
+        "    return true\n"
+        "  end,\n"
+        "})\n");
+    const float before = rig.hp();
+    rig.attacker->attack(rig.target);
+    EXPECT_LT(rig.hp(), before);
+}
+
+// A non-number, non-boolean return keeps the amount rather than cancelling.
+TEST(ModeTick, damage_gate_non_number_return_keeps_amount)
+{
+    GateRig rig(
+        "og.register_level_hooks(42, {\n"
+        "  on_damage = function(target, attacker, amount)\n"
+        "    return {}\n"
+        "  end,\n"
+        "})\n");
+    const float before = rig.hp();
+    rig.attacker->attack(rig.target);
+    EXPECT_LT(rig.hp(), before);
+}
+
 TEST(ModeTick, damage_gate_error_keeps_authored_amount)
 {
     GateRig rig(

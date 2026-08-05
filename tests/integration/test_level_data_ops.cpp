@@ -585,8 +585,9 @@ TEST(LevelDataOps, level_data_save_description_serialization_bounds)
     pos += 2;  // par
     pos += 2;  // time limit
     ASSERT_TRUE(bytes.size() >= pos + 2) << "saved scenario should include object count";
-    const uint16_t object_count = static_cast<uint16_t>(bytes[pos])
-        | (static_cast<uint16_t>(bytes[pos + 1]) << 8);
+    const uint16_t object_count = static_cast<uint16_t>(
+        static_cast<uint16_t>(bytes[pos])
+        | (static_cast<uint16_t>(bytes[pos + 1]) << 8));
     ASSERT_EQ(0, (int)object_count) << "test fixture should serialize zero objects";
     pos += 2;
 

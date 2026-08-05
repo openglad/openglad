@@ -237,7 +237,6 @@ bool walker::attack(walker  *target)
     Order targetorder = target->query_order();
     char targetfamily = target->family();
     walker *attacker; // us or our owner ..
-    static short tom = 0;
 
     if (target && target->dead())
         return 0;
@@ -269,9 +268,6 @@ bool walker::attack(walker  *target)
     {
         getscore = 1;
     }
-
-    if (headguy->myguy && headguy->user() == 0 && order() == Order::Weapon)
-        tom++;
 
     // Modify attack value based on things like magical attacks, etc.
     switch (targetorder) // generally going to be livings..
@@ -376,6 +372,11 @@ bool walker::attack(walker  *target)
             headguy->myguy->exp += attack_exp;
     }
 
+    // Unconditional: how much damage the hit applied does not matter here.
+    // A hit fully absorbed by damage reduction, or replaced with 0 by a level
+    // on_damage hook, still reaches this check — which is why "return 0" from
+    // that hook kills a target already sitting at 0 hp and only "return false"
+    // (handled at the gate above) skips the hit entirely.
     if (target->stats()->hitpoints() <= 0)
     {
         if (targetorder == Order::Living)

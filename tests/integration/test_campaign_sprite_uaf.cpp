@@ -123,7 +123,7 @@ struct FixtureCleanup
 
 struct ViewportGuard
 {
-    Sint32 ow, oh, ovw, ovh, ox, oy;
+    float ow, oh, ovw, ovh, ox, oy;
 
     ViewportGuard()
     {

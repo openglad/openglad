@@ -322,7 +322,7 @@ TEST_F(ModesTdm, empty_active_teams_field_five_bot_squads)
     EXPECT_EQ(5, alive_on_team(fx.world(), 1));
 }
 
-// --- Shared init helpers (lib/mode_strip, core.normalize_generator_hp) -----
+// --- Shared init helpers (lib/mode_strip) ---------------------------------
 
 TEST_F(ModesTdm, scenario_troops_strip_runs_before_the_bot_census)
 {
@@ -373,24 +373,24 @@ TEST_F(ModesTdm, troops_own_activates_only_the_roster_teams)
 
 TEST_F(ModesTdm, init_stamps_the_generator_hp_denominator)
 {
-    // The mini HP bar skips outright at max_hp == 0, and the loader ships
-    // FAMILY_TOWER with exactly that while set_difficulty writes fighting hp
-    // into hitpoints only. on_mode_init normalizes, so a damaged post reads
-    // as a fraction of its authored hp instead of showing no bar at all.
+    // The mini HP bar skips outright at max_hp == 0, which is what the
+    // loader ships FAMILY_TOWER with. walker::set_difficulty now stamps the
+    // denominator along with the fighting hp, so a damaged post reads as a
+    // fraction of its authored hp instead of showing no bar at all.
     TdmRig rig;
     walker* tower = rig.fx.spawn_generator(FAMILY_TOWER, 0, 304, 400, 2);
     ASSERT_NE(nullptr, tower);
     ASSERT_NE(nullptr, tower->stats());
     const float authored = tower->stats()->hitpoints();
     ASSERT_GT(authored, 0.0f);
-    ASSERT_EQ(0.0f, tower->stats()->max_hitpoints())
-        << "the precondition: this family reaches the mode with max_hp 0";
+    ASSERT_EQ(authored, tower->stats()->max_hitpoints())
+        << "the engine stamps the denominator at set_difficulty";
 
     rig.fx.tick(1);
     ASSERT_TRUE(rig.active());
     ASSERT_FALSE(tower->dead()) << "an active team's generator is kept";
     EXPECT_EQ(authored, tower->stats()->max_hitpoints())
-        << "on_mode_init normalizes max_hp to the authored hp";
+        << "and mode init leaves it alone";
 
     tower->stats()->set_hitpoints(authored / 2.0f);
     EXPECT_EQ(authored, tower->stats()->max_hitpoints())

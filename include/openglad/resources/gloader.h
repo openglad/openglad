@@ -72,7 +72,13 @@ class loader
 		std::vector<float> stepsizes;
 		std::vector<std::int32_t> lineofsight;
 
-		std::vector<float> hitpoints; // sized to SIZE_ORDERS*SIZE_FAMILIES like its sibling tables
+		// Every table above and below is sized to hold the dense core block
+		// (SIZE_ORDERS*SIZE_FAMILIES) *plus* a per-order block for the mod
+		// family ids, so index them with the loader's slot mapping and never
+		// with PIX() — PIX cannot address a family id >= NUM_FAMILIES
+		// (PIX(Living, 21) == PIX(Weapon, 0)) and silently aliases onto an
+		// unrelated core entry instead.
+		std::vector<float> hitpoints;
 		std::vector<char> act_types;
 		std::vector<float> damage;
 		std::vector<float> fire_frequency;

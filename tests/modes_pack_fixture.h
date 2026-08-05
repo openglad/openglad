@@ -560,7 +560,8 @@ struct ModesCtfWorld : TestGameWorld
 
     // An authored generator (soccer/onslaught waves): ACT_GENERATE so the
     // engine spawn machinery runs, difficulty-stamped for full HP.
-    walker* spawn_generator(int family, int team, int x, int y, int level = 1)
+    walker* spawn_generator(int family, int team, int x, int y,
+                            int gen_level = 1)
     {
         walker* gen = world().add_ob(Order::Generator, family);
         if (gen == nullptr)
@@ -568,8 +569,8 @@ struct ModesCtfWorld : TestGameWorld
         gen->setxy(static_cast<short>(x), static_cast<short>(y));
         gen->set_team_num(static_cast<unsigned char>(team));
         if (gen->stats() != nullptr)
-            gen->stats()->set_level(level);
-        gen->set_difficulty(static_cast<std::uint32_t>(level));
+            gen->stats()->set_level(gen_level);
+        gen->set_difficulty(static_cast<std::uint32_t>(gen_level));
         gen->set_act_type(ACT_GENERATE);
         return gen;
     }

@@ -1108,7 +1108,7 @@ inline constexpr Mutation kMut_combat_damage = {
 };
 
 inline constexpr Mutation kMut_walker_ai_wander = {
-    "src/gameplay/walker_combat.cpp", 326,
+    "src/gameplay/walker_combat.cpp", 322,
     "do_combat_damage(attacker, target, tempdamage_i);",
     "do_combat_damage(attacker, target, 0);",
     "Forces the walker_combat dispatch site to pass tempdamage=0 into do_combat_damage; in AI-driven combat scenarios the target takes no damage so AI walkers don't lose HP. Distinct from kMut_combat_damage (line 189) which mutates the target HP decrement inside the do_combat_damage body."
@@ -4726,7 +4726,7 @@ inline constexpr FactPredicate kFacts_multiplayer_two_teams_scen99[] = {
 };
 
 inline constexpr Mutation kMut_multiplayer_two_teams_scen99 = {
-    "src/gameplay/walker.cpp", 2278,
+    "src/gameplay/walker.cpp", 2285,
     "return headus->team_num() == headtarget->team_num();",
     "return 1;",
     "Replaces the no-myguy team-number comparison with unconditional friendliness. The three-team melee never starts, every walker keeps full HP, and play_sound collapses to one event, below the floor of four."
@@ -7673,7 +7673,7 @@ inline constexpr Mutation kMut_thief_ai_bomb_flee_scen99 = {
 // engages. The `elseif self:owner():dead() == 0 and self:owner():is_friendly(w)`
 // guard asks the LIVING owner, so the tier is selected correctly; the attack that
 // follows is issued by the EXPLOSION, and walker::attack's `is_friendly(target)`
-// refusal answers 0 for a dead caller (src/gameplay/walker.cpp:2234) while an
+// refusal answers 0 for a dead caller (walker::is_friendly's first gate) while an
 // explosion is set_dead before death() runs. So the halved damage lands. True
 // since the 2002 import; gdb-verified at HEAD.
 inline constexpr SpawnSpec kFamilySpawns_effect_explosion_ally_tier_scen99[] = {

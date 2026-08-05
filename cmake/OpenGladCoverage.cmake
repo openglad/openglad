@@ -37,7 +37,7 @@ if(BUILD_TESTING)
         $<BUILD_INTERFACE:${OG_PUBLIC_INCLUDE_DIR}>
     )
     target_compile_features(og_lua_lines PRIVATE cxx_std_20)
-    target_link_libraries(og_lua_lines PRIVATE og_lua)
+    target_link_libraries(og_lua_lines PRIVATE og_lua project_warnings)
 
     set(OG_COVERAGE_DIR ${CMAKE_BINARY_DIR}/coverage)
     set(OG_LUA_RAW_DIR ${OG_COVERAGE_DIR}/lua-raw)

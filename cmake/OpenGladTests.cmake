@@ -645,7 +645,7 @@ target_include_directories(scenario_facts_dump PRIVATE
     ${CMAKE_SOURCE_DIR}/include
 )
 target_compile_features(scenario_facts_dump PRIVATE cxx_std_20)
-target_link_libraries(scenario_facts_dump PRIVATE og_game_test)
+target_link_libraries(scenario_facts_dump PRIVATE og_game_test project_warnings)
 # Coverage builds: libog_game_test.a is compiled with --coverage and
 # leaves undefined references to __gcov_init / __gcov_exit /
 # __gcov_merge_add in the static archive. Link against gcov via
@@ -653,6 +653,8 @@ target_link_libraries(scenario_facts_dump PRIVATE og_game_test)
 # / TSan presets do NOT route through configure_openglad_library
 # here because pulling in project_sanitizers transitively slows
 # og_test_view's tick budget enough to time out at 180s on CI.
+# Only the SANITIZERS are skipped: project_warnings is linked above,
+# so this tool is audited like every other first-party target.
 if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(scenario_facts_dump PRIVATE ${OG_COVERAGE_COMPILE_OPTIONS})
     target_link_options(scenario_facts_dump PRIVATE --coverage)

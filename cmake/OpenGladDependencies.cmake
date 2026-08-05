@@ -117,6 +117,7 @@ elseif(OPENGLAD_FETCH_ZLIB)
     set(ZLIB_BUILD_STATIC ON CACHE BOOL "Build zlib static library" FORCE)
     set(ZLIB_INSTALL OFF CACHE BOOL "Install zlib" FORCE)
     FetchContent_Declare(zlib
+        SYSTEM
         GIT_REPOSITORY ${OPENGLAD_ZLIB_GIT_REPOSITORY}
         GIT_TAG ${OPENGLAD_ZLIB_GIT_TAG}
         GIT_SHALLOW FALSE
@@ -149,6 +150,7 @@ elseif(OPENGLAD_FETCH_LIBYAML)
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build shared libraries" FORCE)
     set(YAML_STATIC_LIB_NAME yaml CACHE STRING "libyaml static library name" FORCE)
     FetchContent_Declare(libyaml
+        SYSTEM
         GIT_REPOSITORY ${OPENGLAD_LIBYAML_GIT_REPOSITORY}
         GIT_TAG ${OPENGLAD_LIBYAML_GIT_TAG}
         GIT_SHALLOW FALSE
@@ -192,6 +194,7 @@ elseif(OPENGLAD_FETCH_LIBZIP)
     set(LIBZIP_DO_INSTALL OFF CACHE BOOL "Install libzip" FORCE)
     set(ZLIB_LINK_LIBRARY_NAME z CACHE STRING "zlib pkg-config link name" FORCE)
     FetchContent_Declare(libzip
+        SYSTEM
         GIT_REPOSITORY ${OPENGLAD_LIBZIP_GIT_REPOSITORY}
         GIT_TAG ${OPENGLAD_LIBZIP_GIT_TAG}
         GIT_SHALLOW FALSE
@@ -238,6 +241,7 @@ elseif(OPENGLAD_FETCH_PHYSFS)
     set(PHYSFS_TARGETNAME_DIST physfs-dist CACHE STRING "Name of PhysFS dist build target" FORCE)
     set(PHYSFS_TARGETNAME_UNINSTALL physfs-uninstall CACHE STRING "Name of PhysFS uninstall build target" FORCE)
     FetchContent_Declare(physfs
+        SYSTEM
         GIT_REPOSITORY ${OPENGLAD_PHYSFS_GIT_REPOSITORY}
         GIT_TAG ${OPENGLAD_PHYSFS_GIT_TAG}
         GIT_SHALLOW FALSE
@@ -266,6 +270,7 @@ if(OG_SYSTEM_LODEPNG_INCLUDE_DIR AND OG_SYSTEM_LODEPNG_LIBRARY)
     message(STATUS "OpenGlad: using system lodepng (${OG_SYSTEM_LODEPNG_LIBRARY})")
 elseif(OPENGLAD_FETCH_LODEPNG)
     FetchContent_Declare(lodepng
+        SYSTEM
         GIT_REPOSITORY ${OPENGLAD_LODEPNG_GIT_REPOSITORY}
         GIT_TAG ${OPENGLAD_LODEPNG_GIT_TAG}
         GIT_SHALLOW FALSE
@@ -292,6 +297,7 @@ endif()
 # in the binding layer; the web build already compiles with -fexceptions).
 if(OPENGLAD_FETCH_LUA)
     FetchContent_Declare(lua
+        SYSTEM
         GIT_REPOSITORY ${OPENGLAD_LUA_GIT_REPOSITORY}
         GIT_TAG ${OPENGLAD_LUA_GIT_TAG}
         GIT_SHALLOW FALSE
@@ -336,7 +342,9 @@ if(OPENGLAD_FETCH_LUA)
     add_library(og_lua STATIC ${OG_LUA_SOURCES})
     configure_openglad_external_target(og_lua)
     set_source_files_properties(${OG_LUA_SOURCES} PROPERTIES LANGUAGE CXX)
-    target_include_directories(og_lua PUBLIC
+    # SYSTEM: first-party code includes lua.h, and -Wpedantic has nothing
+    # useful to say about a vendored C library's headers.
+    target_include_directories(og_lua SYSTEM PUBLIC
         $<BUILD_INTERFACE:${lua_SOURCE_DIR}>
     )
     # Fixed string-hash seed: table/string behavior must not vary per run or
@@ -383,6 +391,7 @@ if(NOT EMSCRIPTEN)
             set(SDL_STATIC ON CACHE BOOL "Build SDL3 static library" FORCE)
             set(SDL_TEST_LIBRARY OFF CACHE BOOL "Build SDL3 test library" FORCE)
             FetchContent_Declare(sdl3
+                SYSTEM
                 GIT_REPOSITORY ${OPENGLAD_SDL3_GIT_REPOSITORY}
                 GIT_TAG ${OPENGLAD_SDL3_GIT_TAG}
                 GIT_SHALLOW FALSE
@@ -439,6 +448,7 @@ if(NOT EMSCRIPTEN)
         set(USE_ZLIB OFF CACHE BOOL "Build IXWebSocket with zlib" FORCE)
         set(IXWEBSOCKET_INSTALL OFF CACHE BOOL "Install IXWebSocket" FORCE)
         FetchContent_Declare(ixwebsocket
+            SYSTEM
             GIT_REPOSITORY ${OPENGLAD_IXWEBSOCKET_GIT_REPOSITORY}
             GIT_TAG ${OPENGLAD_IXWEBSOCKET_GIT_TAG}
             GIT_SHALLOW FALSE

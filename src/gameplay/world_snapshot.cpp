@@ -84,9 +84,9 @@ public:
     std::uint16_t read_u16(const char* field_name)
     {
         require(2, field_name);
-        const std::uint16_t value =
+        const std::uint16_t value = static_cast<std::uint16_t>(
             static_cast<std::uint16_t>(cursor_[0]) |
-            (static_cast<std::uint16_t>(cursor_[1]) << 8);
+            (static_cast<std::uint16_t>(cursor_[1]) << 8));
         cursor_ += 2;
         return value;
     }
@@ -674,13 +674,15 @@ void deserialize_respawn_state(ByteReader& reader,
         entry.kind = (kind > 1) ? std::uint8_t{1} : kind;
         entry.team = reader.read_u8("respawn_entry.team");
         // family indexes the per-family tables (descriptors, graphics, names)
-        // exactly like the entity block's family, and takes the same clamp --
-        // NUM_FAMILY_SLOTS, the registries' capacity, so a queued respawn of a
-        // class-pack family (`wire_id: auto`, ids from NUM_FAMILIES up) keeps
-        // its family instead of coming back as family 0 on every peer.
-        const std::uint8_t family = reader.read_u8("respawn_entry.family");
-        entry.family =
-            (family < NUM_FAMILY_SLOTS) ? family : std::uint8_t{0};
+        // exactly like the entity block's family. Every value a wire byte can
+        // carry is in range, so a queued respawn of a class-pack family
+        // (`wire_id: auto`, ids from NUM_FAMILIES up) keeps its family instead
+        // of coming back as family 0 on every peer. The static_assert is the
+        // clamp: shrink the registries below a byte and this stops compiling
+        // until a runtime range check is put back.
+        static_assert(NUM_FAMILY_SLOTS > 255,
+                      "a wire family byte must always index a real slot");
+        entry.family = reader.read_u8("respawn_entry.family");
         // level feeds set_level/set_difficulty; 0 is not a legal walker level
         // (the struct's own default is 1).
         const std::uint8_t level = reader.read_u8("respawn_entry.level");

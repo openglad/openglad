@@ -330,7 +330,8 @@ TEST(ZAxis, cross_floor_ai_chases_MOVING_foe_through_stair)
         << "skeleton NEVER crossed to the foe's floor in " << TICKS << " ticks";
     EXPECT_LT(first_cross_tick, 40)
         << "skeleton mirrored the moving foe on the WRONG floor for "
-        << first_cross_tick << " ticks before climbing the Z-stair";
+        << first_cross_tick << " ticks before climbing the Z-stair ("
+        << wrong_floor_ticks << " wrong-floor ticks over the whole run)";
 }
 
 // Build a realistic SPARSE upper floor (floor 1 = mostly air) with two grass

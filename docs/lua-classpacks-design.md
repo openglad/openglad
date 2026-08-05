@@ -794,6 +794,7 @@ og.register_level_hooks(level_id, {   -- level_id -1 = every level
   on_tick         = function(level, tick) ... end,
   on_entity_death = function(ent) ... end,
   on_entity_spawn = function(ent) ... end,
+  on_damage       = function(target, attacker, amount) ... end,
 })
 og.set_entity_hooks(ent, { on_death = function(ent) ... end })
 ```
@@ -805,6 +806,11 @@ og.set_entity_hooks(ent, { on_death = function(ent) ... end })
 - `on_entity_death` fires for living **and generator** deaths. Generators
   dispatch it after their death FX, so a level script sees a tent, tower or
   pillar falling as an event rather than something to poll for.
+- `on_damage` fires before each hit lands, on levels that register it: `nil`
+  keeps the amount, a number replaces it (clamped to 0..32767), and `false`
+  cancels the hit. `return 0` is a zero-damage hit rather than a cancel — the
+  engine's `hp <= 0` death check still runs after it, so 0 against a target
+  already at 0 hp kills it.
 - `on_entity_spawn` fires only for sim-authored living/generator spawns
   through `add_ob`; snapshot and replay insertion paths stay silent.
 - An exact-level registration shadows a wildcard one **per hook kind**.

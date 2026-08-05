@@ -32,8 +32,6 @@ extern int g_picker_max_mainmenu_calls;
 void level_editor_testing_prompt_queue_clear();
 void level_editor_testing_prompt_queue_push(const char* s);
 
-static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
-
 namespace {
 
 void cleanup_picker_state()

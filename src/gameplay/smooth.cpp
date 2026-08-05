@@ -453,14 +453,14 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			}
 			else if (around == TO_RIGHT) // left, alone
 			{
-				if ( (left==TYPE_GRASS) )
+				if (left==TYPE_GRASS)
 					newvalue = PIX_GRASS_DARK_UR;
 				else
 					newvalue = PIX_GRASS_DARK_B1;
 			}
 			else if (around == TO_UP) // bottom, alone
 			{
-				if ( (down==TYPE_GRASS) )
+				if (down==TYPE_GRASS)
 					newvalue = PIX_GRASS_DARK_UR;
 				else
 					newvalue = PIX_GRASS_DARK_B1;

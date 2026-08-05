@@ -38,6 +38,12 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL "4.0" AND NOT DEFINED CMAKE_POLICY_VERSIO
     set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "Minimum CMake policy version for legacy fetched dependencies")
 endif()
 
+# CMake 4.2 warns (as a dev warning, ten times over on the Windows runner)
+# unless the project states which behaviour it wants here.
+if(POLICY CMP0205)
+    cmake_policy(SET CMP0205 NEW)
+endif()
+
 # Target C++20 (C++23 when toolchains catch up)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -68,6 +74,8 @@ option(ENABLE_SANITIZERS "Enable compiler sanitizers for project targets" OFF)
 option(ENABLE_CLANG_TIDY "Enable clang-tidy analysis during C/C++ compilation (if found)" OFF)
 option(ENABLE_CPPCHECK "Enable cppcheck analysis during C/C++ compilation (if found)" OFF)
 option(VALIDATE_SERIALIZATION "Round-trip in-process transport typed messages through serializers" OFF)
+option(OPENGLAD_WARNINGS_AS_ERRORS "Treat first-party compiler warnings as errors" OFF)
+option(OPENGLAD_WARN_SIGN_CONVERSION "Also warn on implicit signed/unsigned conversions" OFF)
 option(OPENGLAD_USE_SYSTEM_DEPS "Prefer system/package-manager dependencies over fetched upstream sources" ON)
 option(OPENGLAD_REQUIRE_SYSTEM_DEPS "Fail if OPENGLAD_USE_SYSTEM_DEPS cannot find a dependency package" OFF)
 option(OPENGLAD_FETCH_DEPS "Fetch missing upstream dependencies with CMake FetchContent" ON)
@@ -157,14 +165,46 @@ endif()
 # Tooling targets for warnings/sanitizers (project sources only)
 # --------------------------------------------------------------------------
 
+# Every first-party target links project_warnings, and the set has to mean the
+# same thing on every compiler or the gate is only as strong as its weakest
+# one. The catch: in C++, GCC's -Wconversion does NOT imply -Wsign-conversion
+# while Clang's does, so the identical flag string used to audit ~3200 more
+# sites under Clang/AppleClang/emscripten than under the GCC the CI gate runs.
+# Spell the difference out here instead: -Wsign-conversion is its own opt-in
+# switch, off by default on both, and turning it on is a deliberate (large)
+# piece of work rather than an accident of which compiler you happened to use.
 add_library(project_warnings INTERFACE)
+set(OG_WARNING_FLAGS -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+if(OPENGLAD_WARN_SIGN_CONVERSION)
+    list(APPEND OG_WARNING_FLAGS -Wsign-conversion)
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    list(APPEND OG_WARNING_FLAGS -Wno-sign-conversion)
+endif()
+if(EMSCRIPTEN)
+    # Emscripten's clang reports three diagnostics on SDL/port headers that the
+    # game cannot act on. They have to be appended HERE, after -Wall: a target's
+    # own PRIVATE options are emitted before the options it inherits from an
+    # INTERFACE library, so the same flags set on the runtime targets were
+    # ordered ahead of -Wall and silently re-enabled by it.
+    list(APPEND OG_WARNING_FLAGS
+        -Wno-constant-conversion
+        -Wno-parentheses-equality
+        -Wno-pointer-bool-conversion
+    )
+endif()
+if(OPENGLAD_WARNINGS_AS_ERRORS)
+    list(APPEND OG_WARNING_FLAGS -Werror)
+endif()
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(project_warnings INTERFACE
-        $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic -Wconversion -Wshadow>
-        $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wpedantic -Wconversion -Wshadow>
+        $<$<COMPILE_LANGUAGE:CXX>:${OG_WARNING_FLAGS}>
+        $<$<COMPILE_LANGUAGE:C>:${OG_WARNING_FLAGS}>
     )
 elseif(MSVC)
     target_compile_options(project_warnings INTERFACE /W4 /permissive-)
+    if(OPENGLAD_WARNINGS_AS_ERRORS)
+        target_compile_options(project_warnings INTERFACE /WX)
+    endif()
 endif()
 
 add_library(project_sanitizers INTERFACE)
@@ -280,14 +320,18 @@ endfunction()
 function(configure_openglad_runtime_target target)
     target_link_libraries(${target} PRIVATE project_warnings project_sanitizers)
     if(EMSCRIPTEN)
+        # -Wno-experimental: em++ prints "sdl3 port is still experimental" once
+        # per translation unit and once per link, which is ~150 lines of noise
+        # the build cannot act on. The three -Wno- diagnostic flags this target
+        # used to carry now live in project_warnings, where they land after
+        # -Wall and therefore take effect.
         target_compile_options(${target} PRIVATE
             --use-port=sdl3
-            -Wno-constant-conversion
-            -Wno-parentheses-equality
-            -Wno-pointer-bool-conversion
+            -Wno-experimental
         )
         target_link_options(${target} PRIVATE
             --use-port=sdl3
+            -Wno-experimental
         )
     else()
         # Native builds link SDL/system deps via og_runtime_deps, typically pulled
@@ -1388,6 +1432,7 @@ if(ENABLE_FUZZING)
             $<BUILD_INTERFACE:${OG_PUBLIC_INCLUDE_DIR}>
         )
         target_compile_definitions(${name} PRIVATE ${COMMON_DEFINITIONS})
+        target_link_libraries(${name} PRIVATE project_warnings)
         target_compile_options(${name} PRIVATE ${FUZZ_SANITIZER_FLAGS})
         target_link_options(${name} PRIVATE ${FUZZ_LINK_FLAGS})
     endfunction()

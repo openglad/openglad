@@ -1485,7 +1485,7 @@ void note_hook_failure(const char* where, const ScriptHost::Impl& impl,
 class HookFrame {
 public:
     explicit HookFrame(WorldScripts& ws)
-        : ws_(ws), impl_(ws.host().impl()), L_(impl_.L)
+        : impl_(ws.host().impl()), L_(impl_.L)
     {
     }
 
@@ -1619,7 +1619,6 @@ public:
     }
 
 private:
-    WorldScripts& ws_;
     ScriptHost::Impl& impl_;
     lua_State* L_;
     std::uint64_t gen_ = 0;

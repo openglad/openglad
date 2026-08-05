@@ -75,7 +75,6 @@ inline constexpr Sint32 S_RIGHT = 245;
 inline constexpr Sint32 S_UP = 1;
 inline constexpr Sint32 S_DOWN = 188;
 
-static constexpr char VERSION_NUM = 8; // save scenario type info
 inline constexpr Sint32 SCROLLSIZE = 8;
 
 #define NUM_BACKGROUNDS PIX_MAX
@@ -506,7 +505,7 @@ public:
         // display_panel via the AI/Delay info lines).
         if(level_data != nullptr)
         {
-            auto& w = level_data->world();
+            auto& lvl_world = level_data->world();
             auto alive = [&](const auto& list)
             {
                 for(const auto& up : list)
@@ -516,7 +515,8 @@ public:
                 }
                 return false;
             };
-            if(!alive(w.oblist) && !alive(w.fxlist) && !alive(w.weaplist))
+            if(!alive(lvl_world.oblist) && !alive(lvl_world.fxlist) &&
+               !alive(lvl_world.weaplist))
             {
                 clear();
                 target = nullptr;
@@ -2967,7 +2967,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             {
                 walker* newob = nullptr;
                 
-                if(rect_selecting && (fabs(selection_rect.w) > 15 || fabs(selection_rect.h > 15)))
+                if(rect_selecting && (fabs(selection_rect.w) > 15 || fabs(selection_rect.h) > 15))
                 {
                     rect_selecting = false;
                     

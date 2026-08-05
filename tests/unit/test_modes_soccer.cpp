@@ -410,7 +410,7 @@ TEST_F(ModesSoccer, empty_active_teams_get_bot_squads)
 
 TEST_F(ModesSoccer, init_stamps_the_generator_hp_denominator)
 {
-    // Same shared normalization the other generator modes get: the pitch's
+    // Same engine guarantee the other generator modes rely on: the pitch's
     // ally generators reach the renderer with a denominator, so a damaged one
     // draws a partial bar instead of being skipped at max_hp == 0.
     SoccerWorld fx;
@@ -419,14 +419,14 @@ TEST_F(ModesSoccer, init_stamps_the_generator_hp_denominator)
     ASSERT_NE(nullptr, tower->stats());
     const float authored = tower->stats()->hitpoints();
     ASSERT_GT(authored, 0.0f);
-    ASSERT_EQ(0.0f, tower->stats()->max_hitpoints())
-        << "the precondition: this family reaches the mode with max_hp 0";
+    ASSERT_EQ(authored, tower->stats()->max_hitpoints())
+        << "the engine stamps the denominator at set_difficulty";
 
     fx.tick(1);
     ASSERT_TRUE(fx.soccer_active());
     ASSERT_FALSE(tower->dead()) << "an active team's generator is kept";
     EXPECT_EQ(authored, tower->stats()->max_hitpoints())
-        << "on_mode_init normalizes max_hp to the authored hp";
+        << "and mode init leaves it alone";
 
     tower->stats()->set_hitpoints(authored / 2.0f);
     EXPECT_EQ(authored, tower->stats()->max_hitpoints())
