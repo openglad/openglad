@@ -4738,6 +4738,14 @@ void walker::set_difficulty(Uint32 whatlevel)
 			temp = 100*whatlevel;
 			temp = (temp * dif1) / 100;
 			stats->hitpoints = temp;
+			// Mirrored from the branch (issue #178): a generator's fighting
+			// HP is also its denominator. e761 set hitpoints alone and left
+			// max_hitpoints on the loader base (0 for tower/bones/treehouse),
+			// so every generator ran at hp > max_hp. Kept in step with
+			// src/gameplay/walker.cpp so a companion recapture stays
+			// comparable; no parity scenario reaches this arm today, which is
+			// why every golden is byte-identical across the change.
+			stats->max_hitpoints = temp;
 			break;
 		default:  // adjust standard settings for the rest ..
 			if (team_num != 0)  // do all EXCEPT player characters
