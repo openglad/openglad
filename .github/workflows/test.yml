@@ -173,8 +173,15 @@ jobs:
           scripts/generate_westlands_campaign.sh
 
       - name: Fail on drift
+        # Scoped to campaigns/ on purpose: this gate answers "did the
+        # committed campaign trees drift", and a repo-wide status also sees
+        # build cruft the regeneration step drops into the workspace
+        # (.ccache/ from the ccache action, scripts/__pycache__/ from the
+        # Lua-lint targets), which has nothing to do with drift. Still
+        # --porcelain rather than a diff, so a generator emitting a NEW
+        # uncommitted file under campaigns/ is caught too.
         run: |
-          if [ -n "$(git status --porcelain)" ]; then
+          if [ -n "$(git status --porcelain -- campaigns/)" ]; then
             echo "::error::Committed campaign trees drifted from their generators."
             echo "The files below differ from what the campaign generators produce."
             echo "Generated content under campaigns/<id>/ is committed like a lockfile:"
@@ -184,8 +191,8 @@ jobs:
             echo "(Hand-authored content — campaigns/<id>/packs/ and README.md, plus the"
             echo "gladiator and tryxian campaigns — is never rewritten by regeneration.)"
             echo
-            git status --porcelain
-            git --no-pager diff --stat
+            git status --porcelain -- campaigns/
+            git --no-pager diff --stat -- campaigns/
             exit 1
           fi
           echo "campaign trees match their generators"

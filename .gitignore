@@ -40,6 +40,13 @@ third_party/**/cmake_install.cmake
 /build-web/
 /dist/
 
+# Compiler / interpreter caches dropped inside the workspace. CI points
+# ccache at <workspace>/.ccache, and the Lua lint targets run
+# scripts/check_lua_statement_lines.py, which imports its sibling
+# lua_inventory and leaves scripts/__pycache__/ behind.
+/.ccache/
+__pycache__/
+
 # IDE files
 *.depend
 *.layout

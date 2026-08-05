@@ -62,6 +62,7 @@ inline constexpr int kModesWaypointFamily = 14;
 #include "../modes_pack_fixture.h"
 
 #include <array>
+#include <cstdint>
 #include <cstdlib>
 #include <format>
 #include <memory>
@@ -2366,6 +2367,15 @@ TEST_F(ModesCtf, mode_core_probe_helpers_answer_exactly)
     ASSERT_NE(nullptr, stain);
     stain->setxy(200, 200);
     stain->set_team_num(0);
+    // A second stain, far from the corpse: the scrub is position-keyed, so
+    // this one must outlive the tick. Both are read back by id afterwards --
+    // the tick reaps what it kills, so neither pointer survives it.
+    walker* far_stain = fx.world().add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    ASSERT_NE(nullptr, far_stain);
+    far_stain->setxy(480, 200);
+    far_stain->set_team_num(0);
+    const std::uint32_t stain_id = stain->entity_id();
+    const std::uint32_t far_stain_id = far_stain->entity_id();
     fx.tick(1);
 
     ASSERT_TRUE(fx.world().mode.active) << "the probe init must succeed";
@@ -2379,7 +2389,10 @@ TEST_F(ModesCtf, mode_core_probe_helpers_answer_exactly)
     EXPECT_TRUE(vm_logged(fx.world(), "madd\t1\t9"));
     // activate_teams(0b1101): all -> 13; first 2 -> {0,2} = 5; clamp(9) -> 13.
     EXPECT_TRUE(vm_logged(fx.world(), "act\t13\t5\t13"));
-    EXPECT_TRUE(stain->dead()) << "scrub_corpse kills the fresh stain";
+    EXPECT_EQ(nullptr, fx.world().find_by_id(stain_id))
+        << "scrub_corpse kills the fresh stain, and the tick reaps it";
+    EXPECT_NE(nullptr, fx.world().find_by_id(far_stain_id))
+        << "a stain away from the corpse is left alone by the scrub";
     EXPECT_STREQ("YELLOW 7/9", fx.world().mode.hud[0].text.data());
     EXPECT_EQ(3, fx.world().mode.hud[0].team);
     // match.resolve_limit, the per-field manifest ladder TDM and Mutant read
