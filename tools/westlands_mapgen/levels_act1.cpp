@@ -307,7 +307,7 @@ void build_forest_road(const LevelDataHooks& hooks)
     {
         for (int x = 0; x < w.grid.w; ++x)
         {
-            const unsigned char t = w.grid.data[x + y * w.grid.w];
+            const unsigned char t = w.grid.data[static_cast<std::size_t>(x + y * w.grid.w)];
             const bool plain_grass = (t == PIX_GRASS1 || t == PIX_GRASS2 ||
                                       t == PIX_GRASS3 || t == PIX_GRASS4);
             const bool worn_path = (t == PIX_PATH_1 || t == PIX_PATH_2 ||

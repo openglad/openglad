@@ -116,8 +116,8 @@ void fail(const std::string& message)
 // A grass field of (tw x th) tiles; PixieData owns the heap buffer.
 PixieData make_grid(int tw, int th, unsigned char fill)
 {
-    auto* buf = new unsigned char[static_cast<std::size_t>(tw) * th];
-    std::fill(buf, buf + static_cast<std::size_t>(tw) * th, fill);
+    auto* buf = new unsigned char[static_cast<std::size_t>(tw) * static_cast<std::size_t>(th)];
+    std::fill(buf, buf + static_cast<std::size_t>(tw) * static_cast<std::size_t>(th), fill);
     return PixieData(1, static_cast<unsigned char>(tw),
                      static_cast<unsigned char>(th), buf);
 }
@@ -125,7 +125,7 @@ PixieData make_grid(int tw, int th, unsigned char fill)
 void paint(PixieData& g, int tx, int ty, unsigned char tile)
 {
     if (tx >= 0 && ty >= 0 && tx < g.w && ty < g.h)
-        g.data[tx + ty * g.w] = tile;
+        g.data[static_cast<std::size_t>(tx + ty * g.w)] = tile;
 }
 
 // Fill a rectangle [tx0,tx1] x [ty0,ty1] (inclusive) with a tile.
@@ -154,7 +154,7 @@ void paint_decor(GameWorld& w, int floor, int tx, int ty,
                          tx, ty, floor));
         return;
     }
-    const unsigned char base = g.data[tx + ty * g.w];
+    const unsigned char base = g.data[static_cast<std::size_t>(tx + ty * g.w)];
     if (decor_id >= DECOR_MAX || base == PIX_AIR || base == PIX_ZSTAIR_UP ||
         base == PIX_ZSTAIR_DOWN || base == PIX_VOID1)
     {
@@ -171,7 +171,7 @@ void paint_decor(GameWorld& w, int floor, int tx, int ty,
         dec = PixieData(1, static_cast<unsigned char>(g.w),
                         static_cast<unsigned char>(g.h), buf);
     }
-    dec.data[tx + ty * dec.w] = decor_id;
+    dec.data[static_cast<std::size_t>(tx + ty * dec.w)] = decor_id;
 }
 
 namespace {
@@ -618,12 +618,12 @@ void self_check_level(const ExpectedLevel& ex)
         for (int ty = 0; ty < dec.h; ++ty)
             for (int tx = 0; tx < dec.w; ++tx)
             {
-                const unsigned char d = dec.data[tx + ty * dec.w];
+                const unsigned char d = dec.data[static_cast<std::size_t>(tx + ty * dec.w)];
                 if (d >= DECOR_MAX)
                     fail(std::format("self-check scen{}: floor {} cell "
                                      "({}, {}) decor id {} out of range",
                                      ex.id, f, tx, ty, d));
-                const unsigned char base_tile = g.data[tx + ty * g.w];
+                const unsigned char base_tile = g.data[static_cast<std::size_t>(tx + ty * g.w)];
                 if (d != DECOR_NONE &&
                     (base_tile == PIX_AIR || base_tile == PIX_ZSTAIR_UP ||
                      base_tile == PIX_ZSTAIR_DOWN || base_tile == PIX_VOID1))
@@ -646,7 +646,7 @@ void self_check_level(const ExpectedLevel& ex)
             int pairs = 0;
             const int cells = lo.w * lo.h;
             for (int i = 0; i < cells; ++i)
-                if (lo.data[i] == PIX_ZSTAIR_UP && hi.data[i] == PIX_ZSTAIR_DOWN)
+                if (lo.data[static_cast<std::size_t>(i)] == PIX_ZSTAIR_UP && hi.data[static_cast<std::size_t>(i)] == PIX_ZSTAIR_DOWN)
                     ++pairs;
             if (pairs < 1)
                 fail(std::format("self-check scen{}: no aligned stair pair on "
@@ -678,7 +678,7 @@ void self_check_level(const ExpectedLevel& ex)
             const int tx = (ob->xpos() + ob->sizex() / 2) / GRID_SIZE;
             const int ty = (ob->ypos() + ob->sizey() / 2) / GRID_SIZE;
             if (tx >= 0 && ty >= 0 && tx < g.w && ty < g.h &&
-                g.data[tx + ty * g.w] == PIX_AIR)
+                g.data[static_cast<std::size_t>(tx + ty * g.w)] == PIX_AIR)
             {
                 fail(std::format(
                     "self-check scen{}: ground unit family {} at tile ({}, {}) "

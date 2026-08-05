@@ -49,7 +49,7 @@ void marsh_over_grass(PixieData& g, int tx0, int ty0, int tx1, int ty1)
         {
             if (x < 0 || y < 0 || x >= g.w || y >= g.h)
                 continue;
-            const unsigned char t = g.data[x + y * g.w];
+            const unsigned char t = g.data[static_cast<std::size_t>(x + y * g.w)];
             if (t == PIX_GRASS1 || t == PIX_GRASS2 || t == PIX_GRASS3 ||
                 t == PIX_GRASS4)
             {

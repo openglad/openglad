@@ -62,7 +62,7 @@ void scatter_cavern_decor(GameWorld& w, int floor, int tx0, int ty0, int tx1,
                 continue;
             if ((x * 7 + y * 11) % modulus != 0)
                 continue;
-            if (g.data[x + y * g.w] != PIX_DIRT_DARK_1)
+            if (g.data[static_cast<std::size_t>(x + y * g.w)] != PIX_DIRT_DARK_1)
                 continue; // carved cavern floor only: never walls/lava/air
             paint_decor(w, floor, x, y, decor_id);
         }

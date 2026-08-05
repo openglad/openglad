@@ -113,8 +113,8 @@ void warn(const std::string& message)
 // A grass field of (tw x th) tiles; PixieData owns the heap buffer.
 PixieData make_grid(int tw, int th, unsigned char fill)
 {
-    auto* buf = new unsigned char[static_cast<std::size_t>(tw) * th];
-    std::fill(buf, buf + static_cast<std::size_t>(tw) * th, fill);
+    auto* buf = new unsigned char[static_cast<std::size_t>(tw) * static_cast<std::size_t>(th)];
+    std::fill(buf, buf + static_cast<std::size_t>(tw) * static_cast<std::size_t>(th), fill);
     return PixieData(1, static_cast<unsigned char>(tw),
                      static_cast<unsigned char>(th), buf);
 }
@@ -122,7 +122,7 @@ PixieData make_grid(int tw, int th, unsigned char fill)
 void paint(PixieData& g, int tx, int ty, unsigned char tile)
 {
     if (tx >= 0 && ty >= 0 && tx < g.w && ty < g.h)
-        g.data[tx + ty * g.w] = tile;
+        g.data[static_cast<std::size_t>(tx + ty * g.w)] = tile;
 }
 
 void paint_rect(PixieData& g, int tx0, int ty0, int tx1, int ty1, unsigned char tile)
@@ -185,7 +185,7 @@ void paint_decor(GameWorld& w, int floor, int tx, int ty,
         fail(std::format("paint_decor: decor id {} out of range", decor_id));
         return;
     }
-    const unsigned char base = g.data[tx + ty * g.w];
+    const unsigned char base = g.data[static_cast<std::size_t>(tx + ty * g.w)];
     if (base == PIX_AIR || base == PIX_ZSTAIR_UP || base == PIX_ZSTAIR_DOWN ||
         base == PIX_VOID1)
     {
@@ -206,7 +206,7 @@ void paint_decor(GameWorld& w, int floor, int tx, int ty,
         dec = PixieData(1, static_cast<unsigned char>(g.w),
                         static_cast<unsigned char>(g.h), buf);
     }
-    dec.data[tx + ty * dec.w] = decor_id;
+    dec.data[static_cast<std::size_t>(tx + ty * dec.w)] = decor_id;
 }
 
 void paint_decor_rect(GameWorld& w, int floor, int tx0, int ty0, int tx1,
@@ -451,12 +451,12 @@ bool cell_standable(GameWorld& world, int floor, int tx, int ty)
     const PixieData& g = world.grid_for_floor(floor);
     if (!g.valid() || tx < 0 || ty < 0 || tx >= g.w || ty >= g.h)
         return false;
-    if (!ground_cell_standable(g.data[tx + ty * g.w]))
+    if (!ground_cell_standable(g.data[static_cast<std::size_t>(tx + ty * g.w)]))
         return false;
     const PixieData& dec = world.decor_for_floor(floor);
     if (dec.valid() && dec.w == g.w && dec.h == g.h)
     {
-        const unsigned char d = dec.data[tx + ty * dec.w];
+        const unsigned char d = dec.data[static_cast<std::size_t>(tx + ty * dec.w)];
         if (d < DECOR_MAX &&
             kDecorRegistry[d].pass == DecorPassability::BlocksGround)
             return false;
@@ -478,7 +478,7 @@ bool cell_is_fall_landing(GameWorld& w, int floor, int tx, int ty)
     {
         const PixieData& gg = w.grid_for_floor(g);
         if (!gg.valid() || tx >= gg.w || ty >= gg.h ||
-            gg.data[tx + ty * gg.w] != PIX_AIR)
+            gg.data[static_cast<std::size_t>(tx + ty * gg.w)] != PIX_AIR)
             return false; // solid above: no fall reaches this cell
         for (int dy = -1; dy <= 1; ++dy)
             for (int dx = -1; dx <= 1; ++dx)
@@ -508,7 +508,7 @@ void scatter_base_tiles(GameWorld& w, int floor, int tx0, int ty0, int tx1,
                 continue;
             if (x < 0 || y < 0 || x >= g.w || y >= g.h)
                 continue;
-            const unsigned char t = g.data[x + y * g.w];
+            const unsigned char t = g.data[static_cast<std::size_t>(x + y * g.w)];
             if (t == PIX_ZSTAIR_UP || t == PIX_ZSTAIR_DOWN || t == PIX_VOID1)
                 continue;
             if (cell_is_fall_landing(w, floor, x, y))
@@ -518,7 +518,7 @@ void scatter_base_tiles(GameWorld& w, int floor, int tx0, int ty0, int tx1,
             paint(g, x, y, variants[(x + y) % 4]);
             PixieData& dec = w.decor_for_floor(floor);
             if (dec.valid() && x < dec.w && y < dec.h)
-                dec.data[x + y * dec.w] = DECOR_NONE;
+                dec.data[static_cast<std::size_t>(x + y * dec.w)] = DECOR_NONE;
         }
 }
 
@@ -574,7 +574,7 @@ void scatter_boulders(GameWorld& w, int floor, int tx0, int ty0, int tx1,
                 continue;
             if (x < 0 || y < 0 || x >= g.w || y >= g.h)
                 continue;
-            const unsigned char t = g.data[x + y * g.w];
+            const unsigned char t = g.data[static_cast<std::size_t>(x + y * g.w)];
             if (t == PIX_ZSTAIR_UP || t == PIX_ZSTAIR_DOWN || t == PIX_VOID1)
                 continue;
             if (blocks_weapons_or_flyers(t))
@@ -667,7 +667,7 @@ void scatter_decor(GameWorld& w, int floor, int tx0, int ty0, int tx1,
                 continue;
             if (x < 0 || y < 0 || x >= g.w || y >= g.h)
                 continue;
-            const unsigned char t = g.data[x + y * g.w];
+            const unsigned char t = g.data[static_cast<std::size_t>(x + y * g.w)];
             bool allowed = false;
             for (const ScatterGround ground : grounds)
                 if (scatter_ground_matches(t, ground))
@@ -679,7 +679,7 @@ void scatter_decor(GameWorld& w, int floor, int tx0, int ty0, int tx1,
                 continue;
             const PixieData& dec = w.decor_for_floor(floor);
             if (dec.valid() && x < dec.w && y < dec.h &&
-                dec.data[x + y * dec.w] != DECOR_NONE)
+                dec.data[static_cast<std::size_t>(x + y * dec.w)] != DECOR_NONE)
                 continue; // hand-placed decor keeps its cell
             if (cell_near_entity(w, floor, x, y, 0))
                 continue; // no one spawns standing in the set dressing
@@ -964,12 +964,12 @@ void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
         for (int ty = 0; ty < dec.h; ++ty)
             for (int tx = 0; tx < dec.w; ++tx)
             {
-                const unsigned char d = dec.data[tx + ty * dec.w];
+                const unsigned char d = dec.data[static_cast<std::size_t>(tx + ty * dec.w)];
                 if (d >= DECOR_MAX)
                     fail(std::format("self-check scen{}: floor {} cell "
                                      "({}, {}) decor id {} out of range",
                                      ex.id, f, tx, ty, d));
-                const unsigned char base = g.data[tx + ty * g.w];
+                const unsigned char base = g.data[static_cast<std::size_t>(tx + ty * g.w)];
                 if (d != DECOR_NONE &&
                     (base == PIX_AIR || base == PIX_ZSTAIR_UP ||
                      base == PIX_ZSTAIR_DOWN || base == PIX_VOID1))
@@ -1128,7 +1128,7 @@ void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
             int pairs = 0;
             const int cells = lo.w * lo.h;
             for (int i = 0; i < cells; ++i)
-                if (lo.data[i] == PIX_ZSTAIR_UP && hi.data[i] == PIX_ZSTAIR_DOWN)
+                if (lo.data[static_cast<std::size_t>(i)] == PIX_ZSTAIR_UP && hi.data[static_cast<std::size_t>(i)] == PIX_ZSTAIR_DOWN)
                     ++pairs;
             if (pairs < 1)
                 fail(std::format("self-check scen{}: no aligned stair pair on "
@@ -1157,7 +1157,7 @@ void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
             const PixieData& dec = world.decor_for_floor(pf);
             if (dec.valid() && nx < dec.w && ny < dec.h)
             {
-                const unsigned char d = dec.data[nx + ny * dec.w];
+                const unsigned char d = dec.data[static_cast<std::size_t>(nx + ny * dec.w)];
                 if (d < DECOR_MAX &&
                     kDecorRegistry[d].pass == DecorPassability::BlocksGround)
                 {
@@ -1206,8 +1206,8 @@ void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
                 for (int tx = 0; tx < lo.w; ++tx)
                 {
                     const int i = tx + ty * lo.w;
-                    if (lo.data[i] != PIX_ZSTAIR_UP ||
-                        hi.data[i] != PIX_ZSTAIR_DOWN)
+                    if (lo.data[static_cast<std::size_t>(i)] != PIX_ZSTAIR_UP ||
+                        hi.data[static_cast<std::size_t>(i)] != PIX_ZSTAIR_DOWN)
                         continue;
                     for (const auto& off : kArrivalOffsets)
                     {
@@ -1245,7 +1245,7 @@ void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
         {
             for (int tx = 0; tx < g.w; ++tx)
             {
-                if (g.data[tx + ty * g.w] != PIX_AIR)
+                if (g.data[static_cast<std::size_t>(tx + ty * g.w)] != PIX_AIR)
                     continue;
                 bool fall_entry = false;
                 for (int dy = -1; dy <= 1 && !fall_entry; ++dy)
@@ -1257,9 +1257,9 @@ void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
                     continue; // open sky no walker can step into
                 int lf = f - 1;
                 while (lf > 0 &&
-                       world.grid_for_floor(lf).data[tx + ty * g.w] == PIX_AIR)
+                       world.grid_for_floor(lf).data[static_cast<std::size_t>(tx + ty * g.w)] == PIX_AIR)
                     --lf;
-                if (world.grid_for_floor(lf).data[tx + ty * g.w] == PIX_AIR)
+                if (world.grid_for_floor(lf).data[static_cast<std::size_t>(tx + ty * g.w)] == PIX_AIR)
                     continue; // fell past floor 0: pit death by design
                 if (!cell_standable(world, lf, tx, ty))
                 {
@@ -1315,7 +1315,7 @@ void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
             const int tx = (ob->xpos() + ob->sizex() / 2) / GRID_SIZE;
             const int ty = (ob->ypos() + ob->sizey() / 2) / GRID_SIZE;
             if (tx >= 0 && ty >= 0 && tx < g.w && ty < g.h &&
-                g.data[tx + ty * g.w] == PIX_AIR)
+                g.data[static_cast<std::size_t>(tx + ty * g.w)] == PIX_AIR)
             {
                 fail(std::format(
                     "self-check scen{}: ground unit family {} at tile ({}, {}) "
@@ -1328,7 +1328,7 @@ void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
             if (dec.valid() && tx >= 0 && ty >= 0 && tx < dec.w &&
                 ty < dec.h)
             {
-                const unsigned char d = dec.data[tx + ty * dec.w];
+                const unsigned char d = dec.data[static_cast<std::size_t>(tx + ty * dec.w)];
                 if (d < DECOR_MAX &&
                     kDecorRegistry[d].pass == DecorPassability::BlocksGround)
                 {

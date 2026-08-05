@@ -44,10 +44,10 @@ void scatter_decor_worked_stone(GameWorld& w, int floor, int tx0, int ty0,
                 continue;
             if (x < 0 || y < 0 || x >= g.w || y >= g.h)
                 continue;
-            if (g.data[x + y * g.w] != PIX_FLOOR1)
+            if (g.data[static_cast<std::size_t>(x + y * g.w)] != PIX_FLOOR1)
                 continue;
             const PixieData& dec = w.decor_for_floor(floor);
-            if (dec.valid() && dec.data[x + y * dec.w] != DECOR_NONE)
+            if (dec.valid() && dec.data[static_cast<std::size_t>(x + y * dec.w)] != DECOR_NONE)
                 continue; // hand-placed decor keeps its cell
             if (cell_near_entity(w, floor, x, y, 0))
                 continue; // no one spawns standing in the set dressing
@@ -557,7 +557,7 @@ void build_old_counts_vault(const LevelDataHooks& hooks)
             if ((x + y) % 2 != 0)
                 continue;
             const PixieData& dec = w.decor_for_floor(0);
-            if (dec.valid() && dec.data[x + y * dec.w] != DECOR_NONE)
+            if (dec.valid() && dec.data[static_cast<std::size_t>(x + y * dec.w)] != DECOR_NONE)
                 continue;
             if (cell_near_entity(w, 0, x, y, 0))
                 continue;

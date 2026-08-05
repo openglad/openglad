@@ -17,8 +17,8 @@
 namespace modesgen {
 
 Canvas::Canvas(int w, int h)
-    : w_(w), h_(h), tiles_(static_cast<size_t>(w) * h),
-      decor_(static_cast<size_t>(w) * h, DECOR_NONE)
+    : w_(w), h_(h), tiles_(static_cast<size_t>(w) * static_cast<size_t>(h)),
+      decor_(static_cast<size_t>(w) * static_cast<size_t>(h), DECOR_NONE)
 {
     for (int y = 0; y < h_; ++y)
         for (int x = 0; x < w_; ++x)
@@ -28,13 +28,13 @@ Canvas::Canvas(int w, int h)
 void Canvas::set(int x, int y, unsigned char tile)
 {
     if (x >= 0 && x < w_ && y >= 0 && y < h_)
-        tiles_[static_cast<size_t>(y) * w_ + x] = tile;
+        tiles_[static_cast<size_t>(y) * static_cast<size_t>(w_) + static_cast<size_t>(x)] = tile;
 }
 
 void Canvas::set_decor(int x, int y, unsigned char decor_id)
 {
     if (x >= 0 && x < w_ && y >= 0 && y < h_)
-        decor_[static_cast<size_t>(y) * w_ + x] = decor_id;
+        decor_[static_cast<size_t>(y) * static_cast<size_t>(w_) + static_cast<size_t>(x)] = decor_id;
 }
 
 void Canvas::rect(int x0, int y0, int x1, int y1, unsigned char tile)
