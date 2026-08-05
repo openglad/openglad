@@ -3,7 +3,7 @@
 #include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/families/family_descriptor.h>
-#include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/replay.h>
@@ -12,7 +12,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/world_snapshot.h>
 #include <openglad/interface/level_runtime_data.h>
-#include <openglad/platform/game_context.h>
+#include <openglad/interface/game_context.h>
 #include <openglad/platform/net_transport_websocket_server.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>

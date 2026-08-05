@@ -28,7 +28,7 @@
 #include <openglad/core/pixdefs.h>
 #include <openglad/core/tower_constants.h>
 #include <openglad/core/util.h>
-#include <openglad/gameplay/family_registries.h>
+#include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>

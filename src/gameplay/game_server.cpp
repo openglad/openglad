@@ -6,7 +6,7 @@
 #include <openglad/core/util.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/families/family_descriptor.h>
-#include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/input_state_net.h>

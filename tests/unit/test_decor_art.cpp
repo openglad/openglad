@@ -14,7 +14,7 @@
 #include <openglad/core/decordefs.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/resources/our_palette.h>
-#include <openglad/resources/pixie_data.h>
+#include <openglad/gameplay/pixie_data.h>
 
 #include <gtest/gtest.h>
 

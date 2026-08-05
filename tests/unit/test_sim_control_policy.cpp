@@ -10,7 +10,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
-#include <openglad/gameplay/irandom.h>
+#include <openglad/core/irandom.h>
 #include <openglad/gameplay/lobby_server.h>
 #include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/sim_event_log.h>

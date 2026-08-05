@@ -3,7 +3,7 @@
 
 #include <openglad/gameplay/sim_entity.h>
 #include <openglad/gameplay/sim_event_log.h>
-#include <openglad/gameplay/irandom.h>
+#include <openglad/core/irandom.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>

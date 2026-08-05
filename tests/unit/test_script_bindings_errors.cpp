@@ -28,8 +28,8 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/families/family_registries.h>
-#include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/script/family_hooks.h>

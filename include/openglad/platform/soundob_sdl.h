@@ -10,7 +10,7 @@
 
 #include <SDL3/SDL_audio.h>
 
-#include <openglad/platform/sound.h>
+#include <openglad/interface/sound.h>
 #include <openglad/legacy/soundob.h>  // SOUND_* constants, NUMSOUNDS
 
 #include <string>

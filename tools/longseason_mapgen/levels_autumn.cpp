@@ -5,7 +5,7 @@
  * Smelter's Road (the ore-wagon escort under the first snow — a deliberate
  * SUB-40 dusting, and pure CAN_EXIT).
  *
- * Built per docs/campaigns/longseason/level_10.md .. level_13.md.
+ * Built per campaigns/longseason/README.md, "Level 10" .. "Level 13".
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *

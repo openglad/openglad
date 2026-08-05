@@ -24,8 +24,8 @@
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/zip_api.h>
 #include <openglad/resources/packs.h>
-#include <openglad/gameplay/family_registry.h>
-#include <openglad/resources/pixie_data.h>
+#include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/pixie_data.h>
 #include <openglad/core/pixdefs.h>
 #include <cstring>
 

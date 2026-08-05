@@ -18,8 +18,8 @@
 #include <cmath>
 #include <cstdint>
 #include <openglad/gameplay/statistics.h>
-#include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/core/constants.h>

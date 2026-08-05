@@ -5,8 +5,8 @@
  * any SDL dependency — the whole point of the abstraction.
  */
 #include <gtest/gtest.h>
-#include <openglad/interface/input_action.h>
-#include <openglad/platform/game_context.h>
+#include <openglad/gameplay/input_action.h>
+#include <openglad/interface/game_context.h>
 #include <cstring>
 
 // ---------------------------------------------------------------------------

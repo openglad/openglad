@@ -3,11 +3,12 @@
 #
 # Clone of westlands_playtest.sh for longseason: drives
 # openglad_text --protocol over every Long Season level (1-19) x 3 seeds,
-# with a crew leveled per docs/campaigns/longseason/campaign_meta.md's
-# difficulty-curve table ("crew power entering each level"; where the meta
-# gives a range the level doc's own calibration-gate curve position is
-# used — 11@5, 16@7, 19@8 — so the {-1,0,+1} bracket covers every gate
-# the docs name). Each run ticks in 300-tick slices up to 6000 ticks
+# with a crew leveled per the difficulty-curve table in
+# campaigns/longseason/README.md ("Campaign metadata" > "Difficulty curve":
+# "crew power entering each level"; where the table gives a range the
+# level's own calibration-gate curve position is used — 11@5, 16@7,
+# 19@8 — so the {-1,0,+1} bracket covers every gate the docs name).
+# Each run ticks in 300-tick slices up to 6000 ticks
 # (post-game slices cost 1 tick each — the protocol's tick command breaks
 # early once game_ended), taking a census every slice, and emits ONE
 # summary JSON line into $OUT.
@@ -56,8 +57,9 @@ RUN_TIMEOUT="${RUN_TIMEOUT:-300}"
 CL_DELTA="${CL_DELTA:-0}"        # bracket-sweep offset from the curve level
 CAMPAIGN="longseason"
 
-# Crew power entering each level, per docs/campaigns/longseason/
-# campaign_meta.md (ranges resolved to the level doc's own gate curve).
+# Crew power entering each level, per the "Difficulty curve" table in
+# campaigns/longseason/README.md (ranges resolved to the level doc's own
+# gate curve).
 declare -A CREW_LEVEL=(
     [1]=1  [2]=1  [3]=2  [4]=2  [5]=3  [6]=3  [7]=4  [8]=4  [9]=5
     [10]=5 [11]=5 [12]=6 [13]=6 [14]=7 [15]=7 [16]=7 [17]=8 [18]=8

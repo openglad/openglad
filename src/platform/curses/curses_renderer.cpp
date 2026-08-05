@@ -13,8 +13,8 @@
 #include <openglad/core/decordefs.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/core/terrain_types.h>
-#include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>

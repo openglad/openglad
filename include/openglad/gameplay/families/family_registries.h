@@ -7,7 +7,7 @@
  */
 #pragma once
 
-#include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/families/family_registry.h>
 
 // Forward declarations
 struct WeaponFamilyDescriptor;

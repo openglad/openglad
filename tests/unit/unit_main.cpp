@@ -6,7 +6,7 @@
 #include <filesystem>
 
 #include <openglad/core/util.h>
-#include <openglad/gameplay/family_registries.h>
+#include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/sim_event_log.h>

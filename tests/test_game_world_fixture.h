@@ -5,8 +5,8 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/save_data.h>
-#include <openglad/platform/game_context.h>
-#include <openglad/gameplay/irandom.h>
+#include <openglad/interface/game_context.h>
+#include <openglad/core/irandom.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include "test_gameplay_context_scope.h"
 

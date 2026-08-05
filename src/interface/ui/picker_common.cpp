@@ -14,8 +14,8 @@
 #include <openglad/core/scale_mode.h>
 #include <optional>
 #include <openglad/core/tower_constants.h>
-#include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>

@@ -119,10 +119,10 @@ GO / SET LEVEL / SET CAMPAIGN.
 
 ## Testing menus
 
-- Layout/nav: `tests/test_menu_layout.cpp` pins geometry, label budgets, and
+- Layout/nav: `tests/integration/test_menu_layout.cpp` pins geometry, label budgets, and
   nav graphs (including hidden variants). Re-pin in the same commit as any
   layout change.
-- Injector flows (`tests/test_ctf_ui.cpp` etc.): interact by button id, never
+- Injector flows (`tests/integration/test_ctf_ui.cpp` etc.): interact by button id, never
   coordinates; `wait_for_interactable` before clicking; `SDL_Delay(750)` after
   fadeblack-prone waits; and `SDL_Delay(300)` after ANY label/trace wait
   before the next `interact` — the click press is still held when the label

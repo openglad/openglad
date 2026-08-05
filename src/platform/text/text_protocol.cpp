@@ -9,7 +9,7 @@
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/sim_emit.h>
-#include <openglad/gameplay/irandom.h>
+#include <openglad/core/irandom.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
@@ -19,7 +19,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/statistics.h>
-#include <openglad/platform/game_context.h>
+#include <openglad/interface/game_context.h>
 
 #include <openglad/gameplay/pathfinding_grid.h>
 #include <openglad/gameplay/obmap.h>

@@ -12,7 +12,7 @@
 #include <openglad/resources/og_file.h>
 #include <openglad/core/util.h>
 #include <openglad/core/test_trace.h>
-#include <openglad/resources/pixie_data.h>
+#include <openglad/gameplay/pixie_data.h>
 #include <openglad/resources/our_palette.h>
 
 #include "physfs.h"

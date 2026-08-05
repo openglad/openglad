@@ -25,12 +25,12 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/sim_event_log.h>
-#include <openglad/gameplay/irandom.h>
-#include <openglad/gameplay/family_descriptor.h>
+#include <openglad/core/irandom.h>
+#include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/families/family_registries.h>
-#include <openglad/gameplay/weapon_family_descriptor.h>
-#include <openglad/interface/input_state.h>
+#include <openglad/gameplay/families/weapon_family_descriptor.h>
+#include <openglad/gameplay/input_state.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/combat_math.h>
 #include <gtest/gtest.h>

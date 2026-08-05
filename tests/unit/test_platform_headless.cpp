@@ -5,7 +5,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/walker.h>
-#include <openglad/interface/input_state.h>
+#include <openglad/gameplay/input_state.h>
 #include <openglad/interface/level_render.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/platform_bridge.h>
@@ -25,7 +25,7 @@
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/level_file_io.h>
 #include <openglad/resources/og_file.h>
-#include <openglad/resources/pixie_data.h>
+#include <openglad/gameplay/pixie_data.h>
 
 #include <gtest/gtest.h>
 

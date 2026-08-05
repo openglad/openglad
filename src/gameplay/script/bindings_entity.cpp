@@ -25,8 +25,8 @@
 #include <openglad/gameplay/effect.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/respawn/respawn_state.h>
-#include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/script/family_tuning.h>
 #include <openglad/gameplay/gameplay_context.h>

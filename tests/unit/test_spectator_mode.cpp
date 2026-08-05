@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/save_data.h>
-#include <openglad/interface/input_state.h>
+#include <openglad/gameplay/input_state.h>
 
 // --- Spectator mode: numviews calculation ---
 

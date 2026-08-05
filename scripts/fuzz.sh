@@ -21,7 +21,7 @@ export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BUILD_DIR="$PROJECT_DIR/build/ci-fuzz"
-CORPUS_DIR="$PROJECT_DIR/fuzz/corpus"
+CORPUS_DIR="$PROJECT_DIR/tests/fuzz/corpus"
 CRASH_DIR="$PROJECT_DIR/fuzz/crashes"
 
 TARGETS=(fuzz_scenario fuzz_savefile)

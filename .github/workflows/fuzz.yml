@@ -24,9 +24,9 @@ jobs:
       matrix:
         include:
           - target: fuzz_scenario
-            corpus: fuzz/corpus/scenario
+            corpus: tests/fuzz/corpus/scenario
           - target: fuzz_savefile
-            corpus: fuzz/corpus/savefile
+            corpus: tests/fuzz/corpus/savefile
     steps:
       - uses: actions/checkout@v7
         with:

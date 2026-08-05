@@ -60,7 +60,12 @@ openglad/
 │                           the build composes each into build/<preset>/builtin/<id>.glad)
 ├── scen/                   Scenario data files
 │
-├── CMakeLists.txt          Main build definition
+├── CMakeLists.txt          Build entry point (options, helpers, targets, install)
+├── cmake/                  Build modules included by CMakeLists.txt:
+│                           OpenGladSources (component source lists),
+│                           OpenGladDependencies (external packages/FetchContent),
+│                           OpenGladTests (test binaries + CTest),
+│                           OpenGladCoverage (the coverage gate)
 ├── CMakePresets.json        Build presets (dev, CI, web)
 └── CLAUDE.md               AI assistant instructions
 ```
@@ -748,7 +753,21 @@ Loaders record the `og::resources::sprite_source_generation()` they last rebuilt
 
 ### CMake (Primary)
 
-The project uses CMake 3.25+ with preset-based configuration. The root `CMakeLists.txt` defines all component targets, external library targets, and test binaries.
+The project uses CMake 3.25+ with preset-based configuration. The root
+`CMakeLists.txt` holds the options, the shared helper functions, and the
+component/executable/install rules; four modules under `cmake/` carry the bulk
+and are `include()`d from it, so they run in the same scope:
+
+| Module | Contents |
+|--------|----------|
+| `cmake/OpenGladSources.cmake` | The component source lists — the single place a new `.cpp` is registered |
+| `cmake/OpenGladDependencies.cmake` | External packages, with FetchContent as the fallback |
+| `cmake/OpenGladTests.cmake` | Test executables, groups, and CTest registrations |
+| `cmake/OpenGladCoverage.cmake` | The combined C++ + Lua coverage gate and the API stub drift check |
+
+`GAME_SOURCES_NO_MAIN` is derived from the component lists rather than
+maintained beside them, so a file added to a component reaches every target
+that needs it.
 
 **Configure and build:**
 ```bash
@@ -880,7 +899,7 @@ Key flags: `--use-port=sdl3`, `-sASYNCIFY`, `-sALLOW_MEMORY_GROWTH=1`, `-sINITIA
 
 All native test binaries use real GoogleTest (`<gtest/gtest.h>`).
 
-**Integration tests** (`tests/integration_main.cpp`):
+**Integration tests** (`tests/integration/integration_main.cpp`):
 - SDL-backed GoogleTest binaries grouped under `og_test_*`
 - Standard `TEST(Suite, Name)` and `TEST_F(Fixture, Name)` cases with `ASSERT_*` / `EXPECT_*`
 - Binary-local listing/filtering via `--gtest_list_tests`, `--gtest_filter`, and `--gtest_shuffle`
@@ -967,7 +986,9 @@ worker then Pages — on every push to master).
 | `include/openglad/platform/game_session.h` | GameSession + SessionScope + Config definitions |
 | `include/openglad/gameplay/families/family_descriptor.h` | `FamilyDescriptor` struct for data-driven classes |
 | `include/openglad/gameplay/families/family_registry.h` | Family registry lookup API |
-| `CMakeLists.txt` | Build system — component targets, test binaries, install rules |
+| `CMakeLists.txt` | Build entry point — options, helpers, component targets, install rules |
+| `cmake/OpenGladSources.cmake` | Component source lists — where a new `.cpp` gets registered |
+| `cmake/OpenGladTests.cmake` | Test binaries and CTest registrations |
 | `CMakePresets.json` | Build presets for dev, CI, and web |
-| `tests/integration_main.cpp` | Integration test runner entry point |
+| `tests/integration/integration_main.cpp` | Integration test runner entry point |
 | `tests/unit/unit_main.cpp` | Unit test runner entry point |

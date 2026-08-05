@@ -14,7 +14,7 @@
 
 #include <openglad/core/irandom.h>
 #include <openglad/core/util.h>
-#include <openglad/gameplay/family_registries.h>
+#include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/interface/game_context.h>
 #include <openglad/interface/input.h> // load_player_control_settings_from_cfg, set_player_control_mode

@@ -10,8 +10,8 @@
 #include <openglad/core/combat_math.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/order.h>
-#include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>

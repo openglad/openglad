@@ -7,7 +7,7 @@
  */
 #include <openglad/platform/screen_lifecycle.h>
 #include <openglad/platform/game_session.h>
-#include <openglad/platform/game_context.h>
+#include <openglad/interface/game_context.h>
 
 #include <openglad/legacy/base.h> // myscreen legacy global
 #include <openglad/interface/screen.h>

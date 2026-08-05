@@ -7,8 +7,8 @@
  */
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
-#include <openglad/gameplay/generator_family_descriptor.h>
-#include <openglad/gameplay/family_registries.h>
+#include <openglad/gameplay/families/generator_family_descriptor.h>
+#include <openglad/gameplay/families/family_registries.h>
 
 #include "family_registry_base.h"
 

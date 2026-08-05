@@ -16,11 +16,11 @@
  */
 #include <openglad/core/version.h>
 #include <openglad/gameplay/statistics.h>
-#include <openglad/resources/pixie_data.h>
+#include <openglad/gameplay/pixie_data.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
-#include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/interface/button.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/interface/render/pal32.h>

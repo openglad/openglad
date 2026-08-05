@@ -10,8 +10,8 @@
 #include <openglad/core/family_presentation.h>
 #include <openglad/core/order.h>
 #include <openglad/core/util.h>
-#include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/families/classpack_data.h>
 #include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/families/family_string_ids.h>

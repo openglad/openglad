@@ -18,8 +18,8 @@
 #include <openglad/core/text_wrap.h>
 #include <openglad/core/version.h>
 #include <openglad/gameplay/statistics.h>
-#include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/button.h>
@@ -42,8 +42,6 @@
 #include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
-#include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/family_registry.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/campaign_metadata.h>

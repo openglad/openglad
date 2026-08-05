@@ -13,8 +13,8 @@
 
 #include <gtest/gtest.h>
 
-#include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 
 inline const FamilyDescriptor& describe_family(int family_id)
 {

@@ -22,7 +22,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/level_runtime_data.h>
-#include <openglad/platform/game_context.h>
+#include <openglad/interface/game_context.h>
 #include <openglad/resources/io_common.h>
 
 #include "../modes_pack_fixture.h"

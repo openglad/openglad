@@ -1,5 +1,6 @@
 /* F4 fresh-team calibration pins for The Long Season
- * (docs/campaigns/longseason/campaign_meta.md, "F4 calibration table").
+ * (campaigns/longseason/README.md, "Campaign metadata" >
+ * "F4 CALIBRATION TABLE").
  *
  * The campaign contract: a fresh team at the campaign_meta difficulty-curve
  * crew power can reasonably attempt every level, with the campaign ANCHORED

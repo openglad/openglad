@@ -8,13 +8,13 @@
 #include <openglad/gameplay/families/family_string_ids.h>
 
 #include <openglad/core/constants.h>
-#include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/family_registry.h>
-#include <openglad/gameplay/family_registries.h>
-#include <openglad/gameplay/weapon_family_descriptor.h>
-#include <openglad/gameplay/effect_family_descriptor.h>
-#include <openglad/gameplay/treasure_family_descriptor.h>
-#include <openglad/gameplay/generator_family_descriptor.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/families/family_registries.h>
+#include <openglad/gameplay/families/weapon_family_descriptor.h>
+#include <openglad/gameplay/families/effect_family_descriptor.h>
+#include <openglad/gameplay/families/treasure_family_descriptor.h>
+#include <openglad/gameplay/families/generator_family_descriptor.h>
 #include <openglad/gameplay/statistics.h>
 
 #include <cctype>

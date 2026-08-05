@@ -19,11 +19,11 @@
 //
 
 #include <openglad/gameplay/weap.h>
-#include <openglad/gameplay/family_descriptor.h>
-#include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/script/family_hooks.h>
-#include <openglad/gameplay/weapon_family_descriptor.h>
-#include <openglad/gameplay/family_registries.h>
+#include <openglad/gameplay/families/weapon_family_descriptor.h>
+#include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/core/terrain_types.h>
 #include <openglad/core/sound_ids.h>

@@ -1,4 +1,5 @@
-# Build output
+# Build output. Every preset builds into build/<preset>/; the loose binary
+# names below are what scripts/build_native.sh copies to the repo root.
 *.o
 *.a
 *.exe
@@ -18,23 +19,13 @@ obj/
 /openglad
 /openscen
 /openglad_curses
-/openglad_test
 
-# In-source CMake configure artifacts (prefer the out-of-source build/ presets)
+# Wreckage from a hand-typed in-source `cmake .`. CMakeLists.txt refuses that
+# configure, but only after CMake has already written these two — the fatal
+# error tells the reader to delete them. Nothing further can be generated
+# in-source, so nothing further needs ignoring here.
 /CMakeCache.txt
 /CMakeFiles/
-/Makefile
-/cmake_install.cmake
-/compile_commands.json
-/component_includes/
-/OpenGladConfig.cmake
-/OpenGladConfigVersion.cmake
-/openglad_demo
-/openglad_server
-/openglad_text
-third_party/**/CMakeFiles/
-third_party/**/Makefile
-third_party/**/cmake_install.cmake
 
 # Emscripten build
 /build-web/
