@@ -206,7 +206,7 @@ struct ActivePickerLobbyClientGuard
 static void cleanup_picker_state()
 {
     for (int i = 0; i < 5; i++) {
-        pks().backdrops[i].reset();
+        pks().backdrops[static_cast<std::size_t>(i)].reset();
         pks().backpics[i].free();
     }
     clear_allbuttons();
@@ -1246,7 +1246,7 @@ TEST(ViewTeam, base_camp_win_fold_rederives_rows_and_guards_stale_clicks)
     for (int i = 0; i < 13; ++i) {
         auto member = std::make_unique<guy>(FAMILY_SOLDIER);
         member->name = std::format("M{:02}", i);
-        save.team_list[i] = std::move(member);
+        save.team_list[static_cast<std::size_t>(i)] = std::move(member);
     }
     save.team_list[3]->deployed = false;
     save.team_size = 13;
@@ -1297,16 +1297,16 @@ TEST(ViewTeam, base_camp_win_fold_rederives_rows_and_guards_stale_clicks)
     EXPECT_EQ(0, state.page.page);
     EXPECT_TRUE(state.slots[0].owned && state.slots[1].owned)
         << "solo display rows are all owned";
-    EXPECT_EQ("SURVIVOR", save.team_list[state.slots[0].save_slot]->name)
+    EXPECT_EQ("SURVIVOR", save.team_list[static_cast<std::size_t>(state.slots[0].save_slot)]->name)
         << "pass 1 seats the survivor first";
-    EXPECT_EQ("M03", save.team_list[state.slots[1].save_slot]->name)
+    EXPECT_EQ("M03", save.team_list[static_cast<std::size_t>(state.slots[1].save_slot)]->name)
         << "pass 2 appends the held-back member";
-    EXPECT_FALSE(save.team_list[state.slots[1].save_slot]->deployed)
+    EXPECT_FALSE(save.team_list[static_cast<std::size_t>(state.slots[1].save_slot)]->deployed)
         << "the held-back flag survives the fold";
 
     // A fresh click maps to the CURRENT occupant: row 1 toggles M03 back on.
     EXPECT_EQ(MENU_OK, spec.on_spec_row(1, &state));
-    EXPECT_TRUE(save.team_list[state.slots[1].save_slot]->deployed);
+    EXPECT_TRUE(save.team_list[static_cast<std::size_t>(state.slots[1].save_slot)]->deployed);
     EXPECT_TRUE(trace_contains("basecamp", "deploy slot=1 on"))
         << "the post-refresh toggle should hit the re-derived slot";
 }
@@ -1332,7 +1332,7 @@ TEST(ViewTeam, base_camp_deploy_toggle_debounces_same_row_taps)
     for (int i = 0; i < 2; ++i) {
         auto member = std::make_unique<guy>(FAMILY_SOLDIER);
         member->name = std::format("TAP{:02}", i);
-        save.team_list[i] = std::move(member);
+        save.team_list[static_cast<std::size_t>(i)] = std::move(member);
     }
     save.team_size = 2;
 
@@ -1484,7 +1484,7 @@ TEST(ViewTeam, base_camp_team_chip_keeps_private_roster_order)
         auto member = std::make_unique<guy>(FAMILY_SOLDIER);
         member->name = names[static_cast<std::size_t>(slot)];
         member->teamnum = 0;
-        save.team_list[slot] = std::move(member);
+        save.team_list[static_cast<std::size_t>(slot)] = std::move(member);
     }
     save.team_size = static_cast<unsigned char>(names.size());
 
@@ -1497,12 +1497,12 @@ TEST(ViewTeam, base_camp_team_chip_keeps_private_roster_order)
     ASSERT_EQ(MENU_OK,
               spec.on_spec_row(kBaseCampTeamChipBase + 2, &state));
     for (int slot = 0; slot < static_cast<int>(names.size()); ++slot) {
-        ASSERT_NE(nullptr, save.team_list[slot]) << "slot " << slot;
+        ASSERT_NE(nullptr, save.team_list[static_cast<std::size_t>(slot)]) << "slot " << slot;
         EXPECT_EQ(names[static_cast<std::size_t>(slot)],
-                  save.team_list[slot]->name)
+                  save.team_list[static_cast<std::size_t>(slot)]->name)
             << "a team click must not reorder private save slots";
         EXPECT_EQ(slot == 2 ? 1 : 0,
-                  static_cast<int>(save.team_list[slot]->teamnum));
+                  static_cast<int>(save.team_list[static_cast<std::size_t>(slot)]->teamnum));
     }
 
     og::ui::base_camp_refresh_rows(state);
@@ -1513,9 +1513,9 @@ TEST(ViewTeam, base_camp_team_chip_keeps_private_roster_order)
     SaveData reloaded;
     ASSERT_TRUE(reloaded.load("save0"));
     for (int slot = 0; slot < static_cast<int>(names.size()); ++slot) {
-        ASSERT_NE(nullptr, reloaded.team_list[slot]);
+        ASSERT_NE(nullptr, reloaded.team_list[static_cast<std::size_t>(slot)]);
         EXPECT_EQ(names[static_cast<std::size_t>(slot)],
-                  reloaded.team_list[slot]->name);
+                  reloaded.team_list[static_cast<std::size_t>(slot)]->name);
     }
 
     og::ui::install_base_camp_state_for_screen(nullptr);
@@ -1538,7 +1538,7 @@ TEST(ViewTeam, base_camp_move_up_pages_and_autosaves_roster_order)
     for (int slot = 0; slot < 9; ++slot) {
         auto member = std::make_unique<guy>(FAMILY_SOLDIER);
         member->name = std::format("MEMBER{:02}", slot);
-        save.team_list[slot] = std::move(member);
+        save.team_list[static_cast<std::size_t>(slot)] = std::move(member);
     }
     save.team_size = 9;
 
@@ -1607,7 +1607,7 @@ TEST(ViewTeam, base_camp_team_chips_draw_one_based_labels_for_all_teams)
         auto member = std::make_unique<guy>(FAMILY_SOLDIER);
         member->name = std::format("TEAM{}", team + 1);
         member->teamnum = static_cast<short>(team);
-        save.team_list[team] = std::move(member);
+        save.team_list[static_cast<std::size_t>(team)] = std::move(member);
     }
     save.team_size = SCORE_TEAM_COUNT;
 
@@ -3224,9 +3224,9 @@ TEST(ViewTeam, base_camp_go_uses_explicit_local_seat_teams_for_control_gate)
 
     for (int slot = 0; slot < 2; ++slot)
     {
-        save.team_list[slot] = std::make_unique<guy>(FAMILY_SOLDIER);
-        save.team_list[slot]->teamnum = 0;
-        save.team_list[slot]->deployed = true;
+        save.team_list[static_cast<std::size_t>(slot)] = std::make_unique<guy>(FAMILY_SOLDIER);
+        save.team_list[static_cast<std::size_t>(slot)]->teamnum = 0;
+        save.team_list[static_cast<std::size_t>(slot)]->deployed = true;
     }
     save.team_size = 2;
 

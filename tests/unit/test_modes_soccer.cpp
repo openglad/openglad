@@ -602,7 +602,7 @@ TEST_F(ModesSoccer, wall_bounce_reflects_the_blocked_axis)
     fx.thaw_kickoff();
     // Wall column at tile x=21 (px 336..351), rows around y=464.
     for (int gy = 27; gy <= 31; ++gy)
-        fx.world().grid.data[21 + fx.world().grid.w * gy] = PIX_H_WALL1;
+        fx.world().grid.data[static_cast<std::size_t>(21 + fx.world().grid.w * gy)] = PIX_H_WALL1;
     // Ball center 330 moving +4 px/tick: the moved footprint (328..339)
     // overlaps the wall, so vx reflects, then one friction step:
     // vx = -(1024 * 960 / 1024) = -960.
@@ -1898,7 +1898,7 @@ TEST_F(ModesSoccer, match_replicates_to_a_client_mirror_without_hash_strikes)
     // snapshot; a stale mode block is the other way this desyncs.
     for (int slot = 0; slot < og::sim::kModeVarCount; ++slot)
     {
-        EXPECT_EQ(fx.world().mode.vars[slot], mirror.world().mode.vars[slot])
+        EXPECT_EQ(fx.world().mode.vars[static_cast<std::size_t>(slot)], mirror.world().mode.vars[static_cast<std::size_t>(slot)])
             << "mode var slot " << slot;
     }
     EXPECT_EQ(ball->entity_id(),

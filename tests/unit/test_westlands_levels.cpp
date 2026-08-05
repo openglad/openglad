@@ -403,8 +403,8 @@ std::vector<StairPair> find_stair_pairs(GameWorld& world)
             for (int tx = 0; tx < lo.w; ++tx)
             {
                 const int i = tx + ty * lo.w;
-                if (lo.data[i] == PIX_ZSTAIR_UP &&
-                    hi.data[i] == PIX_ZSTAIR_DOWN)
+                if (lo.data[static_cast<std::size_t>(i)] == PIX_ZSTAIR_UP &&
+                    hi.data[static_cast<std::size_t>(i)] == PIX_ZSTAIR_DOWN)
                 {
                     pairs.push_back({f, tx, ty});
                 }
@@ -532,12 +532,12 @@ bool cell_standable(GameWorld& world, int floor, int tx, int ty)
     const PixieData& g = world.grid_for_floor(floor);
     if (!g.valid() || tx < 0 || ty < 0 || tx >= g.w || ty >= g.h)
         return false;
-    if (!ground_cell_standable(g.data[tx + ty * g.w]))
+    if (!ground_cell_standable(g.data[static_cast<std::size_t>(tx + ty * g.w)]))
         return false;
     const PixieData& dec = world.decor_for_floor(floor);
     if (dec.valid() && dec.w == g.w && dec.h == g.h)
     {
-        const unsigned char d = dec.data[tx + ty * dec.w];
+        const unsigned char d = dec.data[static_cast<std::size_t>(tx + ty * dec.w)];
         if (d < DECOR_MAX &&
             kDecorRegistry[d].pass == DecorPassability::BlocksGround)
             return false;
@@ -904,8 +904,8 @@ TEST_F(WestlandsCampaignTest, stairs_on_every_floor_boundary)
             const int cells = lo.w * lo.h;
             for (int i = 0; i < cells; ++i)
             {
-                if (lo.data[i] == PIX_ZSTAIR_UP &&
-                    hi.data[i] == PIX_ZSTAIR_DOWN)
+                if (lo.data[static_cast<std::size_t>(i)] == PIX_ZSTAIR_UP &&
+                    hi.data[static_cast<std::size_t>(i)] == PIX_ZSTAIR_DOWN)
                 {
                     ++pairs;
                 }
@@ -945,7 +945,7 @@ TEST_F(WestlandsCampaignTest, stair_cells_and_arrivals_clear_of_immobile_blocker
             const PixieData& dec = world.decor_for_floor(pf);
             if (dec.valid() && nx < dec.w && ny < dec.h)
             {
-                const unsigned char d = dec.data[nx + ny * dec.w];
+                const unsigned char d = dec.data[static_cast<std::size_t>(nx + ny * dec.w)];
                 EXPECT_FALSE(
                     d < DECOR_MAX &&
                     kDecorRegistry[d].pass == DecorPassability::BlocksGround)
@@ -1022,7 +1022,7 @@ TEST_F(WestlandsCampaignTest, entities_stand_on_passable_ground)
                 const int tx = (ob->xpos() + ob->sizex() / 2) / GRID_SIZE;
                 const int ty = (ob->ypos() + ob->sizey() / 2) / GRID_SIZE;
                 ASSERT_TRUE(tx >= 0 && ty >= 0 && tx < g.w && ty < g.h);
-                EXPECT_NE(PIX_AIR, g.data[tx + ty * g.w])
+                EXPECT_NE(PIX_AIR, g.data[static_cast<std::size_t>(tx + ty * g.w)])
                     << "ground unit family " << static_cast<int>(ob->family())
                     << " spawns over air at tile (" << tx << ", " << ty
                     << ") floor " << ob->floor();
@@ -1062,7 +1062,7 @@ TEST_F(WestlandsCampaignTest, air_fall_lines_land_on_standable_ground)
             {
                 for (int tx = 0; tx < g.w; ++tx)
                 {
-                    if (g.data[tx + ty * g.w] != PIX_AIR)
+                    if (g.data[static_cast<std::size_t>(tx + ty * g.w)] != PIX_AIR)
                         continue;
                     bool fall_entry = false;
                     for (int dy = -1; dy <= 1 && !fall_entry; ++dy)
@@ -1074,9 +1074,9 @@ TEST_F(WestlandsCampaignTest, air_fall_lines_land_on_standable_ground)
                         continue; // open sky no walker can step into
                     int lf = f - 1;
                     while (lf > 0 && world.grid_for_floor(lf)
-                                             .data[tx + ty * g.w] == PIX_AIR)
+                                             .data[static_cast<std::size_t>(tx + ty * g.w)] == PIX_AIR)
                         --lf;
-                    if (world.grid_for_floor(lf).data[tx + ty * g.w] ==
+                    if (world.grid_for_floor(lf).data[static_cast<std::size_t>(tx + ty * g.w)] ==
                         PIX_AIR)
                         continue; // fell past floor 0: pit death by design
                     EXPECT_TRUE(cell_standable(world, lf, tx, ty))
@@ -1372,7 +1372,7 @@ TEST_F(WestlandsCampaignTest, high_pass_always_snows)
         const int cells = g.w * g.h;
         for (int i = 0; i < cells; ++i)
         {
-            const unsigned char t = static_cast<unsigned char>(g.data[i]);
+            const unsigned char t = static_cast<unsigned char>(g.data[static_cast<std::size_t>(i)]);
             if (t == PIX_SNOW1 || t == PIX_SNOW2)
                 ++snow_tiles;
         }

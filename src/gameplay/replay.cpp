@@ -403,8 +403,8 @@ bool compare_mode_snapshot_state(const WorldSnapshot& expected,
     for (int i = 0; i < kModeVarCount; ++i)
     {
         if (!compare_value(std::format("mode.vars[{}]", i),
-                           expected_mode.vars[i],
-                           actual_mode.vars[i],
+                           expected_mode.vars[static_cast<std::size_t>(i)],
+                           actual_mode.vars[static_cast<std::size_t>(i)],
                            failure))
         {
             return false;
@@ -413,12 +413,12 @@ bool compare_mode_snapshot_state(const WorldSnapshot& expected,
     for (int i = 0; i < kModeHudLines; ++i)
     {
         if (!compare_value(std::format("mode.hud[{}].team", i),
-                           expected_mode.hud[i].team,
-                           actual_mode.hud[i].team,
+                           expected_mode.hud[static_cast<std::size_t>(i)].team,
+                           actual_mode.hud[static_cast<std::size_t>(i)].team,
                            failure) ||
             !compare_value(std::format("mode.hud[{}].text", i),
-                           std::string_view(expected_mode.hud[i].text.data()),
-                           std::string_view(actual_mode.hud[i].text.data()),
+                           std::string_view(expected_mode.hud[static_cast<std::size_t>(i)].text.data()),
+                           std::string_view(actual_mode.hud[static_cast<std::size_t>(i)].text.data()),
                            failure))
         {
             return false;
@@ -427,12 +427,12 @@ bool compare_mode_snapshot_state(const WorldSnapshot& expected,
     for (int i = 0; i < kModeBeacons; ++i)
     {
         if (!compare_value(std::format("mode.beacons[{}].entity_id", i),
-                           expected_mode.beacons[i].entity_id,
-                           actual_mode.beacons[i].entity_id,
+                           expected_mode.beacons[static_cast<std::size_t>(i)].entity_id,
+                           actual_mode.beacons[static_cast<std::size_t>(i)].entity_id,
                            failure) ||
             !compare_value(std::format("mode.beacons[{}].team", i),
-                           expected_mode.beacons[i].team,
-                           actual_mode.beacons[i].team,
+                           expected_mode.beacons[static_cast<std::size_t>(i)].team,
+                           actual_mode.beacons[static_cast<std::size_t>(i)].team,
                            failure))
         {
             return false;

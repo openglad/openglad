@@ -21,7 +21,7 @@ PixieData make_grid(unsigned char fill)
     pd.h = 5;
     pd.data = std::make_unique<unsigned char[]>(25);
     for (int i = 0; i < 25; ++i)
-        pd.data[i] = fill;
+        pd.data[static_cast<std::size_t>(i)] = fill;
     return pd;
 }
 
@@ -36,20 +36,20 @@ void set_neighbors(PixieData& pd,
                    unsigned char dl,
                    unsigned char dr)
 {
-    pd.data[2 + 2 * pd.w] = center;
+    pd.data[static_cast<std::size_t>(2 + 2 * pd.w)] = center;
     pd.data[2 + 1 * pd.w] = up;
-    pd.data[3 + 2 * pd.w] = right;
-    pd.data[2 + 3 * pd.w] = down;
-    pd.data[1 + 2 * pd.w] = left;
+    pd.data[static_cast<std::size_t>(3 + 2 * pd.w)] = right;
+    pd.data[static_cast<std::size_t>(2 + 3 * pd.w)] = down;
+    pd.data[static_cast<std::size_t>(1 + 2 * pd.w)] = left;
     pd.data[1 + 1 * pd.w] = ul;
     pd.data[3 + 1 * pd.w] = ur;
-    pd.data[1 + 3 * pd.w] = dl;
-    pd.data[3 + 3 * pd.w] = dr;
+    pd.data[static_cast<std::size_t>(1 + 3 * pd.w)] = dl;
+    pd.data[static_cast<std::size_t>(3 + 3 * pd.w)] = dr;
 }
 
 unsigned char center_value(const PixieData& pd)
 {
-    return pd.data[2 + 2 * pd.w];
+    return pd.data[static_cast<std::size_t>(2 + 2 * pd.w)];
 }
 
 } // namespace
@@ -67,7 +67,7 @@ TEST(SmoothUnit, smooth_query_and_genre_basics)
     ASSERT_TRUE(s.query_x_y(99, 99) == PIX_GRASS1);
     ASSERT_TRUE(s.query_genre_x_y(2, 2) == TYPE_CARPET);
 
-    pd.data[2 + 2 * pd.w] = 255;
+    pd.data[static_cast<std::size_t>(2 + 2 * pd.w)] = 255;
     ASSERT_TRUE(s.query_genre_x_y(2, 2) == TYPE_UNKNOWN);
 
     s.reset();
@@ -200,18 +200,18 @@ PixieData make_grid(unsigned char fill)
     pd.h = 7;
     pd.data = std::make_unique<unsigned char[]>(49);
     for (int i = 0; i < 49; ++i)
-        pd.data[i] = fill;
+        pd.data[static_cast<std::size_t>(i)] = fill;
     return pd;
 }
 
 void set_at(PixieData& pd, int x, int y, unsigned char v)
 {
-    pd.data[x + y * pd.w] = v;
+    pd.data[static_cast<std::size_t>(x + y * pd.w)] = v;
 }
 
 [[maybe_unused]] unsigned char get_at(const PixieData& pd, int x, int y)
 {
-    return pd.data[x + y * pd.w];
+    return pd.data[static_cast<std::size_t>(x + y * pd.w)];
 }
 
 void set_neighbors(PixieData& pd,
@@ -418,13 +418,13 @@ PixieData make_grid(unsigned char fill)
     pd.h = 7;
     pd.data = std::make_unique<unsigned char[]>(49);
     for (int i = 0; i < 49; ++i)
-        pd.data[i] = fill;
+        pd.data[static_cast<std::size_t>(i)] = fill;
     return pd;
 }
 
 void set_at(PixieData& pd, int x, int y, unsigned char v)
 {
-    pd.data[x + y * pd.w] = v;
+    pd.data[static_cast<std::size_t>(x + y * pd.w)] = v;
 }
 
 void set_neighbors(PixieData& pd, unsigned char center, unsigned char up, unsigned char right,
@@ -587,13 +587,13 @@ PixieData make_grid(unsigned char fill, int w = 9, int h = 9)
     pd.h = static_cast<unsigned char>(h);
     pd.data = std::make_unique<unsigned char[]>(static_cast<std::size_t>(w * h));
     for (int i = 0; i < w * h; ++i)
-        pd.data[i] = fill;
+        pd.data[static_cast<std::size_t>(i)] = fill;
     return pd;
 }
 
 void set_at(PixieData& pd, int x, int y, unsigned char v)
 {
-    pd.data[x + y * pd.w] = v;
+    pd.data[static_cast<std::size_t>(x + y * pd.w)] = v;
 }
 
 void set_neighbors_mask(PixieData& pd, int cx, int cy, unsigned char center,

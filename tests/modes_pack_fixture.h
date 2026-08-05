@@ -606,10 +606,10 @@ struct ModesCtfWorld : TestGameWorld
     }
 
     // Mode-var readers over the Lua slot map.
-    std::int32_t var(int slot) const { return world().mode.vars[slot]; }
+    std::int32_t var(int slot) const { return world().mode.vars[static_cast<std::size_t>(slot)]; }
     std::int32_t team_var(int base, int team) const
     {
-        return world().mode.vars[base + team];
+        return world().mode.vars[static_cast<std::size_t>(base + team)];
     }
     bool ctf_active() const { return var(kSlotModeId) == kModeIdCtf; }
     bool flag_carried(int team) const

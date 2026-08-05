@@ -332,14 +332,14 @@ bool walker::attack(walker  *target)
         owner()->set_foe(target);
         target->stats()->hit_response(owner());
         if (headguy->myguy)
-            headguy->myguy->exp += attack_exp;
+            headguy->myguy->exp += static_cast<std::uint32_t>(attack_exp);
     }
     else  //melee combat, set target to hit_response to us
     {
         target->stats()->hit_response(this);
         if (myguy)
         {
-            myguy->exp += attack_exp;
+            myguy->exp += static_cast<std::uint32_t>(attack_exp);
             if (getscore)
                 award_score(team_num(), static_cast<std::uint32_t>(tempdamage_i)
                                       + static_cast<std::uint32_t>(target->stats()->level()));
@@ -369,7 +369,7 @@ bool walker::attack(walker  *target)
             award_score(team_num(), static_cast<std::uint32_t>(tempdamage_i)
                                   + static_cast<std::uint32_t>(target->stats()->level()));
         if (order() != Order::Weapon && headguy->myguy)
-            headguy->myguy->exp += attack_exp;
+            headguy->myguy->exp += static_cast<std::uint32_t>(attack_exp);
     }
 
     // Unconditional: how much damage the hit applied does not matter here.
@@ -387,7 +387,7 @@ bool walker::attack(walker  *target)
                 {
                     if (headguy->myguy)  // headguy can == this
                     {
-                        headguy->myguy->exp += exp_from_action(ExpAction::Kill, this, target, 0);
+                        headguy->myguy->exp += static_cast<std::uint32_t>(exp_from_action(ExpAction::Kill, this, target, 0));
                         headguy->myguy->kills++;
                         headguy->myguy->scen_kills++;
                         headguy->myguy->level_kills += target->stats()->level();

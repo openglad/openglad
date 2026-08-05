@@ -519,7 +519,7 @@ walker  * walker::fire()
 	// char conversion undefined. Normal stepsizes are well under 254, so this
 	// is byte-identical for legitimate game data.
 	waver = static_cast<signed char>(std::clamp((weapon->stepsize())/2, 0.0f, 127.0f)); // Absolute amount ..
-	waver = static_cast<signed char>(current_game->world->rng_.next(waver+1) - waver/2);
+	waver = static_cast<signed char>(current_game->world->rng_.next(static_cast<std::uint32_t>(waver+1)) - static_cast<std::uint32_t>(waver/2));
 
 	switch (facing(lastx(), lasty()))
 	{
@@ -687,7 +687,7 @@ void walker::set_weapon_heading(walker *weapon)
 	// char conversion undefined. Normal stepsizes are well under 254, so this
 	// is byte-identical for legitimate game data.
 	waver = static_cast<signed char>(std::clamp((weapon->stepsize())/2, 0.0f, 127.0f)); // Absolute amount ..
-	waver = static_cast<signed char>(current_game->world->rng_.next(waver+1) - waver/2);
+	waver = static_cast<signed char>(current_game->world->rng_.next(static_cast<std::uint32_t>(waver+1)) - static_cast<std::uint32_t>(waver/2));
 
 	switch (facing(lastx(), lasty()))  // these are from the 'owner'
 	{
@@ -941,8 +941,8 @@ bool walker::act()
 					if (!current_game->world->rng_.next(20))   // a 1 in 4 then 1 in 20 chance of rand walk
 					{
 						if (!special())
-							stats_->try_command(COMMAND_WALK, current_game->world->rng_.next(30),
-							                   current_game->world->rng_.next(3)-1, current_game->world->rng_.next(3)-1);
+							stats_->try_command(COMMAND_WALK, static_cast<std::int32_t>(current_game->world->rng_.next(30)),
+							                   static_cast<std::int32_t>(current_game->world->rng_.next(3)-1), static_cast<std::int32_t>(current_game->world->rng_.next(3)-1));
 						return 1;
 					}
 					act_random(); //1 in 4 followed by 19 in 20 of doing this
@@ -1176,7 +1176,7 @@ walker  *walker::create_weapon()
 		return weapon;
 	}
 	// Normally, only livings fire
-		weapon_type = current_weapon();
+		weapon_type = static_cast<short>(current_weapon());
 
 	weapon = current_game->world->add_ob(Order::Weapon, static_cast<char>(weapon_type));
 	if (!weapon) return nullptr;
@@ -1488,7 +1488,7 @@ walker::act_guard()
 			if (!guard_hold_post())
 				set_act_type(ACT_RANDOM);
 		}
-		stats_->try_command(COMMAND_FIRE,current_game->world->rng_.next(30));
+		stats_->try_command(COMMAND_FIRE,static_cast<std::int32_t>(current_game->world->rng_.next(30)));
 		return 1;
 	}
 	else
@@ -1520,7 +1520,7 @@ walker::act_random()
 		if (fire_check(xdist, ydist))
 		{
 			init_fire(xdist, ydist);
-			stats_->set_command(COMMAND_FIRE, current_game->world->rng_.next(24), xdist, ydist);
+			stats_->set_command(COMMAND_FIRE, static_cast<std::int32_t>(current_game->world->rng_.next(24)), xdist, ydist);
 			return 1;
 		}
 		else
@@ -1777,7 +1777,7 @@ bool walker::death()
 				newob->stats()->set_level(stats_->level());
 				newob->set_ani_type(ANI_EXPLODE);
 				newob->set_floor(floor());  // burn on the generator's floor (A8)
-				newob->setxy(xpos()+current_game->world->rng_.next(sizex()-8)+4, ypos()+4+current_game->world->rng_.next(sizey()-8) );
+				newob->setxy(static_cast<std::uint32_t>(xpos())+current_game->world->rng_.next(static_cast<std::uint32_t>(sizex()-8))+4, static_cast<std::uint32_t>(ypos()+4)+current_game->world->rng_.next(static_cast<std::uint32_t>(sizey()-8)) );
 					newob->set_damage(static_cast<float>(stats_->level()) * 2.0f);
 					newob->set_frame(static_cast<short>(current_game->world->rng_.next(3)));
 				og::sim::emit_sound(current_game->sim_events, SOUND_EXPLODE);
@@ -1933,7 +1933,7 @@ static bool land_on_nearest_clear_cell(GameWorld& w, walker& faller,
 				const std::int32_t ny = cy + dy;
 				if (nx < 0 || ny < 0 || nx >= g.w || ny >= g.h)
 					continue;
-				if (avoid_air && g.data[nx + ny * g.w] == PIX_AIR)
+				if (avoid_air && g.data[static_cast<std::size_t>(nx + ny * g.w)] == PIX_AIR)
 					continue;
 				const std::int32_t px = nx * GRID_SIZE;
 				const std::int32_t py = ny * GRID_SIZE;

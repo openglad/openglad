@@ -601,8 +601,8 @@ TEST(IndexedPngEncoding, rejects_wrong_palette)
     // Recompute the PLTE chunk's CRC: CRC covers chunk type + chunk data.
     std::vector<unsigned char> crc_input;
     crc_input.reserve(4 + plte_len);
-    crc_input.insert(crc_input.end(), bytes.begin() + plte_off - 4, bytes.begin() + plte_off);
-    crc_input.insert(crc_input.end(), bytes.begin() + plte_off, bytes.begin() + plte_off + plte_len);
+    crc_input.insert(crc_input.end(), bytes.begin() + static_cast<std::ptrdiff_t>(plte_off) - 4, bytes.begin() + static_cast<std::ptrdiff_t>(plte_off));
+    crc_input.insert(crc_input.end(), bytes.begin() + static_cast<std::ptrdiff_t>(plte_off), bytes.begin() + static_cast<std::ptrdiff_t>(plte_off) + static_cast<std::ptrdiff_t>(plte_len));
     const unsigned new_crc = png_crc32(crc_input.data(), crc_input.size());
     write_be32(&bytes[plte_off + plte_len], new_crc);
 

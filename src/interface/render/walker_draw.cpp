@@ -145,7 +145,7 @@ void DamageNumberRenderContext::erase_index(std::uint32_t owner_entity_id,
 
     auto& owner_state = owner_it->second;
     if (index < owner_state.size())
-        owner_state.erase(owner_state.begin() + index);
+        owner_state.erase(owner_state.begin() + static_cast<std::ptrdiff_t>(index));
 
     if (owner_state.empty())
         state_by_owner_.erase(owner_it);
@@ -877,7 +877,7 @@ bool draw_walker_reflection(walker& w, viewscreen* view_buf,
     bool has_reflective = false;
     for (Sint32 gy = gy0; gy <= gy1 && !has_reflective; gy++)
         for (Sint32 gx = gx0; gx <= gx1; gx++)
-            if (mask[camera_grid.data[gx + gridw * gy]])
+            if (mask[camera_grid.data[static_cast<std::size_t>(gx + gridw * gy)]])
             {
                 has_reflective = true;
                 break;

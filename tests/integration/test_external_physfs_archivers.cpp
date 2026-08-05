@@ -88,7 +88,7 @@ static void append_u32le(std::vector<uint8_t>& out, uint32_t v)
     // Directory entry (64 bytes).
     std::vector<uint8_t> entry(64, 0);
     for (int i = 0; i < 56 && name56[i]; i++)
-        entry[i] = (uint8_t)name56[i];
+        entry[static_cast<std::size_t>(i)] = (uint8_t)name56[i];
     // pos, len
     entry[56] = (uint8_t)(file_pos & 0xff);
     entry[57] = (uint8_t)((file_pos >> 8) & 0xff);

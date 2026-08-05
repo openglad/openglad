@@ -75,7 +75,6 @@ option(ENABLE_CLANG_TIDY "Enable clang-tidy analysis during C/C++ compilation (i
 option(ENABLE_CPPCHECK "Enable cppcheck analysis during C/C++ compilation (if found)" OFF)
 option(VALIDATE_SERIALIZATION "Round-trip in-process transport typed messages through serializers" OFF)
 option(OPENGLAD_WARNINGS_AS_ERRORS "Treat first-party compiler warnings as errors" OFF)
-option(OPENGLAD_WARN_SIGN_CONVERSION "Also warn on implicit signed/unsigned conversions" OFF)
 option(OPENGLAD_USE_SYSTEM_DEPS "Prefer system/package-manager dependencies over fetched upstream sources" ON)
 option(OPENGLAD_REQUIRE_SYSTEM_DEPS "Fail if OPENGLAD_USE_SYSTEM_DEPS cannot find a dependency package" OFF)
 option(OPENGLAD_FETCH_DEPS "Fetch missing upstream dependencies with CMake FetchContent" ON)
@@ -167,19 +166,13 @@ endif()
 
 # Every first-party target links project_warnings, and the set has to mean the
 # same thing on every compiler or the gate is only as strong as its weakest
-# one. The catch: in C++, GCC's -Wconversion does NOT imply -Wsign-conversion
-# while Clang's does, so the identical flag string used to audit ~3200 more
-# sites under Clang/AppleClang/emscripten than under the GCC the CI gate runs.
-# Spell the difference out here instead: -Wsign-conversion is its own opt-in
-# switch, off by default on both, and turning it on is a deliberate (large)
-# piece of work rather than an accident of which compiler you happened to use.
+# one. -Wsign-conversion is spelled out because GCC's C++ -Wconversion does NOT
+# imply it while Clang's does: leaving it implicit meant the GCC the CI gate
+# runs on audited ~3200 fewer sites than the Clang/AppleClang/emscripten builds
+# CI also runs. Naming it here makes both compilers audit the same thing.
 add_library(project_warnings INTERFACE)
-set(OG_WARNING_FLAGS -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
-if(OPENGLAD_WARN_SIGN_CONVERSION)
-    list(APPEND OG_WARNING_FLAGS -Wsign-conversion)
-elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    list(APPEND OG_WARNING_FLAGS -Wno-sign-conversion)
-endif()
+set(OG_WARNING_FLAGS
+    -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow)
 if(EMSCRIPTEN)
     # Emscripten's clang reports three diagnostics on SDL/port headers that the
     # game cannot act on. They have to be appended HERE, after -Wall: a target's

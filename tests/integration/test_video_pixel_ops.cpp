@@ -51,10 +51,10 @@ TEST(VideoPixelOps, video_putpixel_and_blend_pixel_all_bpp_cases_smoke)
     if (pal) {
         std::array<SDL_Color, 256> colors{};
         for (int i = 0; i < 256; i++) {
-            colors[i].r = static_cast<Uint8>(i);
-            colors[i].g = static_cast<Uint8>(255 - i);
-            colors[i].b = static_cast<Uint8>((i * 3) & 0xFF);
-            colors[i].a = 255;
+            colors[static_cast<std::size_t>(i)].r = static_cast<Uint8>(i);
+            colors[static_cast<std::size_t>(i)].g = static_cast<Uint8>(255 - i);
+            colors[static_cast<std::size_t>(i)].b = static_cast<Uint8>((i * 3) & 0xFF);
+            colors[static_cast<std::size_t>(i)].a = 255;
         }
         SDL_SetPaletteColors(pal, colors.data(), 0, static_cast<int>(colors.size()));
         putpixel(s8.get(), 1, 1, 3);

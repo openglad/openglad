@@ -655,7 +655,7 @@ void teams_screen(Menu& menu, SaveData& save)
             int hero_count = 0;
             std::vector<std::pair<int, std::string>> members;
             for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot) {
-                const auto& member = save.team_list[slot];
+                const auto& member = save.team_list[static_cast<std::size_t>(slot)];
                 if (!member || member->teamnum != t)
                     continue;
                 ++hero_count;

@@ -188,7 +188,7 @@ TEST(SaveDataUnit, update_guys_cap_drops_new_recruits_before_held_back)
     constexpr int kHeldBack = 4;
     for (int i = 0; i < kHeldBack; ++i)
     {
-        save.team_list[i] = make_roster_guy("HELD", 9000u + static_cast<std::uint32_t>(i),
+        save.team_list[static_cast<std::size_t>(i)] = make_roster_guy("HELD", 9000u + static_cast<std::uint32_t>(i),
                                             /*deployed=*/false);
     }
     save.team_size = kHeldBack;
@@ -210,20 +210,20 @@ TEST(SaveDataUnit, update_guys_cap_drops_new_recruits_before_held_back)
     const int survivor_capacity = MAX_TEAM_SIZE - kHeldBack;
     for (int i = 0; i < survivor_capacity; ++i)
     {
-        ASSERT_TRUE(save.team_list[i] != nullptr);
-        ASSERT_TRUE(save.team_list[i]->deployed)
+        ASSERT_TRUE(save.team_list[static_cast<std::size_t>(i)] != nullptr);
+        ASSERT_TRUE(save.team_list[static_cast<std::size_t>(i)]->deployed)
             << "slot " << i << " should hold a survivor";
-        ASSERT_EQ(100u + static_cast<std::uint32_t>(i), save.team_list[i]->exp)
+        ASSERT_EQ(100u + static_cast<std::uint32_t>(i), save.team_list[static_cast<std::size_t>(i)]->exp)
             << "survivors kept in oblist order; the LAST (newly-acquired) "
                "recruits are the ones dropped";
     }
     for (int i = survivor_capacity; i < MAX_TEAM_SIZE; ++i)
     {
-        ASSERT_TRUE(save.team_list[i] != nullptr);
-        ASSERT_FALSE(save.team_list[i]->deployed)
+        ASSERT_TRUE(save.team_list[static_cast<std::size_t>(i)] != nullptr);
+        ASSERT_FALSE(save.team_list[static_cast<std::size_t>(i)]->deployed)
             << "slot " << i << " should hold a preserved held-back entry";
         ASSERT_EQ(9000u + static_cast<std::uint32_t>(i - survivor_capacity),
-                  save.team_list[i]->exp);
+                  save.team_list[static_cast<std::size_t>(i)]->exp);
     }
 }
 

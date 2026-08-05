@@ -75,7 +75,7 @@ static PixieData make_glass_tile()
 				c = FRAME;                                   // 1px pane frame
 			else if ((x + y) == 5 || (x + y) == 6 || (x + y) == 9)
 				c = SHEEN;                                   // double diagonal glint
-			glass.data[y * W + x] = c;
+			glass.data[static_cast<std::size_t>(y * W + x)] = c;
 		}
 	return glass;
 }

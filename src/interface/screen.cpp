@@ -981,7 +981,7 @@ void screen::init_common(short howmany, bool has_display)
 
 	grab_timer();
 
-	timerstart = query_timer_control();
+	timerstart = static_cast<Uint32>(query_timer_control());
 	framecount = 0;
     render_interpolation_client_ = nullptr;
     render_interpolation_speed_factor_ = 1.0f;
@@ -1170,7 +1170,7 @@ void screen::ready_for_battle(short howmany)
 
 	redrawme = 1;
 
-	timerstart = query_timer_control();
+	timerstart = static_cast<Uint32>(query_timer_control());
 	framecount = 0;
 	world_.enemy_freeze = 0;
 
@@ -1223,7 +1223,7 @@ void screen::reset(short howmany)
 	level_runtime_data_.clear();
 	sync_world_from_save_data();
 
-	timerstart = query_timer_control();
+	timerstart = static_cast<Uint32>(query_timer_control());
 	framecount = 0;
 	world_.enemy_freeze = 0;
 
@@ -1466,8 +1466,8 @@ short screen::endgame(short ending, short nextlevel)
 	// Get guys from before battle
 	for(int i = 0; i < save_data.team_size; i++)
     {
-        if(save_data.team_list[i] != nullptr)
-            before.insert(std::make_pair(save_data.team_list[i]->id, save_data.team_list[i].get()));
+        if(save_data.team_list[static_cast<std::size_t>(i)] != nullptr)
+            before.insert(std::make_pair(save_data.team_list[static_cast<std::size_t>(i)]->id, save_data.team_list[static_cast<std::size_t>(i)].get()));
     }
 	
     // Get guys from the battle

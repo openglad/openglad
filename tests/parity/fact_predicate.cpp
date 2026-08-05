@@ -664,9 +664,9 @@ struct Parser
                         {
                             char h = src[pos++];
                             code <<= 4;
-                            if (h >= '0' && h <= '9')      code |= (h - '0');
-                            else if (h >= 'a' && h <= 'f') code |= 10 + (h - 'a');
-                            else if (h >= 'A' && h <= 'F') code |= 10 + (h - 'A');
+                            if (h >= '0' && h <= '9')      code |= static_cast<unsigned>(h - '0');
+                            else if (h >= 'a' && h <= 'f') code |= static_cast<unsigned>(10 + (h - 'a'));
+                            else if (h >= 'A' && h <= 'F') code |= static_cast<unsigned>(10 + (h - 'A'));
                             else return std::nullopt;
                         }
                         out.push_back(static_cast<char>(code & 0xFF));

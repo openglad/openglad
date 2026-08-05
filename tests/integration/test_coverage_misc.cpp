@@ -127,11 +127,11 @@ void assign_basic_ani(walker* w)
     static std::array<signed char*, 16> rows{};
     for (int i = 0; i < 16; ++i)
     {
-        seqs[i][0] = 0;
-        seqs[i][1] = 1;
-        seqs[i][2] = -1;
-        seqs[i][3] = -1;
-        rows[i] = seqs[i].data();
+        seqs[static_cast<std::size_t>(i)][0] = 0;
+        seqs[static_cast<std::size_t>(i)][1] = 1;
+        seqs[static_cast<std::size_t>(i)][2] = -1;
+        seqs[static_cast<std::size_t>(i)][3] = -1;
+        rows[static_cast<std::size_t>(i)] = seqs[static_cast<std::size_t>(i)].data();
     }
     w->ani = rows.data();
 }
@@ -144,13 +144,13 @@ PixieData make_grid(unsigned char fill, int w = 9, int h = 9)
     pd.h = static_cast<unsigned char>(h);
     pd.data = std::make_unique<unsigned char[]>(static_cast<std::size_t>(w * h));
     for (int i = 0; i < w * h; ++i)
-        pd.data[i] = fill;
+        pd.data[static_cast<std::size_t>(i)] = fill;
     return pd;
 }
 
 void set_at(PixieData& pd, int x, int y, unsigned char v)
 {
-    pd.data[x + y * pd.w] = v;
+    pd.data[static_cast<std::size_t>(x + y * pd.w)] = v;
 }
 
 } // namespace
@@ -544,11 +544,11 @@ void assign_basic_ani(walker* w)
     static std::array<signed char*, 16> rows{};
     for (int i = 0; i < 16; ++i)
     {
-        seqs[i][0] = 0;
-        seqs[i][1] = 1;
-        seqs[i][2] = -1;
-        seqs[i][3] = -1;
-        rows[i] = seqs[i].data();
+        seqs[static_cast<std::size_t>(i)][0] = 0;
+        seqs[static_cast<std::size_t>(i)][1] = 1;
+        seqs[static_cast<std::size_t>(i)][2] = -1;
+        seqs[static_cast<std::size_t>(i)][3] = -1;
+        rows[static_cast<std::size_t>(i)] = seqs[static_cast<std::size_t>(i)].data();
     }
     w->ani = rows.data();
 }
@@ -559,11 +559,11 @@ void assign_resetting_ani(walker* w)
     static std::array<signed char*, 16> rows{};
     for (int i = 0; i < 16; ++i)
     {
-        seqs[i][0] = 0;
-        seqs[i][1] = -1;
-        seqs[i][2] = -1;
-        seqs[i][3] = -1;
-        rows[i] = seqs[i].data();
+        seqs[static_cast<std::size_t>(i)][0] = 0;
+        seqs[static_cast<std::size_t>(i)][1] = -1;
+        seqs[static_cast<std::size_t>(i)][2] = -1;
+        seqs[static_cast<std::size_t>(i)][3] = -1;
+        rows[static_cast<std::size_t>(i)] = seqs[static_cast<std::size_t>(i)].data();
     }
     w->ani = rows.data();
 }
@@ -575,8 +575,8 @@ void assign_long_ani_no_sentinel(walker* w)
     for (int i = 0; i < 16; ++i)
     {
         for (int j = 0; j < 128; ++j)
-            seqs[i][j] = static_cast<signed char>(j % 4);
-        rows[i] = seqs[i].data();
+            seqs[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] = static_cast<signed char>(j % 4);
+        rows[static_cast<std::size_t>(i)] = seqs[static_cast<std::size_t>(i)].data();
     }
     w->ani = rows.data();
 }
@@ -589,13 +589,13 @@ PixieData make_grid(unsigned char fill, int w = 9, int h = 9)
     pd.h = static_cast<unsigned char>(h);
     pd.data = std::make_unique<unsigned char[]>(static_cast<std::size_t>(w * h));
     for (int i = 0; i < w * h; ++i)
-        pd.data[i] = fill;
+        pd.data[static_cast<std::size_t>(i)] = fill;
     return pd;
 }
 
 void set_at(PixieData& pd, int x, int y, unsigned char v)
 {
-    pd.data[x + y * pd.w] = v;
+    pd.data[static_cast<std::size_t>(x + y * pd.w)] = v;
 }
 
 void set_neighbors_mask(PixieData& pd, int cx, int cy, unsigned char center,
@@ -804,7 +804,7 @@ TEST(CoverageMisc, coverage_r18_walker_movement_blocked_user_paths)
     const int blocked_x = (user->xpos() - 1) / GRID_SIZE;
     const int blocked_y = user->ypos() / GRID_SIZE;
     const int blocked_index = blocked_x + blocked_y * fx.level.world().grid.w;
-    fx.level.world().grid.data[blocked_index] = PIX_H_WALL1;
+    fx.level.world().grid.data[static_cast<std::size_t>(blocked_index)] = PIX_H_WALL1;
     user->set_curdir(FACE_LEFT);
     ASSERT_TRUE(!user->walk(-1.0f, 0.0f));
 }
@@ -1050,10 +1050,10 @@ void assign_short_ani(walker* w)
     static std::array<signed char*, 16> rows{};
     for (int i = 0; i < 16; ++i)
     {
-        seqs[i][0] = 0;
-        seqs[i][1] = -1;
-        seqs[i][2] = -1;
-        rows[i] = seqs[i].data();
+        seqs[static_cast<std::size_t>(i)][0] = 0;
+        seqs[static_cast<std::size_t>(i)][1] = -1;
+        seqs[static_cast<std::size_t>(i)][2] = -1;
+        rows[static_cast<std::size_t>(i)] = seqs[static_cast<std::size_t>(i)].data();
     }
     w->ani = rows.data();
 }
@@ -1256,7 +1256,7 @@ living* add_living(R20Fixture& fx, char family, unsigned char team, short x, sho
 
 void set_at(PixieData& pd, int x, int y, unsigned char v)
 {
-    pd.data[x + y * pd.w] = v;
+    pd.data[static_cast<std::size_t>(x + y * pd.w)] = v;
 }
 
 PixieData make_grid(unsigned char fill, int w = 7, int h = 7)
@@ -1267,7 +1267,7 @@ PixieData make_grid(unsigned char fill, int w = 7, int h = 7)
     pd.h = static_cast<unsigned char>(h);
     pd.data = std::make_unique<unsigned char[]>(static_cast<std::size_t>(w * h));
     for (int i = 0; i < w * h; ++i)
-        pd.data[i] = fill;
+        pd.data[static_cast<std::size_t>(i)] = fill;
     return pd;
 }
 
@@ -1847,37 +1847,37 @@ TEST(CoverageMisc, final_r16_smooth_targeted_grass_and_dark_variants)
     pd.h = 5;
     pd.data = std::make_unique<unsigned char[]>(25);
     for (int i = 0; i < 25; ++i)
-        pd.data[i] = PIX_GRASS1;
+        pd.data[static_cast<std::size_t>(i)] = PIX_GRASS1;
     s.set_target(pd);
 
     const int x = 2;
     const int y = 2;
 
     // Trigger TYPE_GRASS random cases 1 and 2.
-    pd.data[x + y * pd.w] = PIX_GRASS1;
-    pd.data[x + (y - 1) * pd.w] = PIX_GRASS1;
-    pd.data[x + 1 + y * pd.w] = PIX_GRASS1;
-    pd.data[x + (y + 1) * pd.w] = PIX_GRASS1;
-    pd.data[x - 1 + y * pd.w] = PIX_GRASS1;
+    pd.data[static_cast<std::size_t>(x + y * pd.w)] = PIX_GRASS1;
+    pd.data[static_cast<std::size_t>(x + (y - 1) * pd.w)] = PIX_GRASS1;
+    pd.data[static_cast<std::size_t>(x + 1 + y * pd.w)] = PIX_GRASS1;
+    pd.data[static_cast<std::size_t>(x + (y + 1) * pd.w)] = PIX_GRASS1;
+    pd.data[static_cast<std::size_t>(x - 1 + y * pd.w)] = PIX_GRASS1;
     ASSERT_TRUE(s.smooth(x, y) == 1);
     ASSERT_TRUE(s.query_x_y(x, y) == PIX_GRASS2);
     ASSERT_TRUE(s.smooth(x, y) == 1);
     ASSERT_TRUE(s.query_x_y(x, y) == PIX_GRASS3);
 
     // Trigger explicit water-corner conversions.
-    pd.data[x + y * pd.w] = PIX_GRASS1;
-    pd.data[x - 1 + (y - 1) * pd.w] = PIX_WATER1;
-    pd.data[x - 1 + (y + 1) * pd.w] = PIX_WATER1;
-    pd.data[x + (y - 1) * pd.w] = PIX_WATER1;
-    pd.data[x - 1 + y * pd.w] = PIX_WATER1;
-    pd.data[x + 1 + (y + 1) * pd.w] = PIX_WATER1;
+    pd.data[static_cast<std::size_t>(x + y * pd.w)] = PIX_GRASS1;
+    pd.data[static_cast<std::size_t>(x - 1 + (y - 1) * pd.w)] = PIX_WATER1;
+    pd.data[static_cast<std::size_t>(x - 1 + (y + 1) * pd.w)] = PIX_WATER1;
+    pd.data[static_cast<std::size_t>(x + (y - 1) * pd.w)] = PIX_WATER1;
+    pd.data[static_cast<std::size_t>(x - 1 + y * pd.w)] = PIX_WATER1;
+    pd.data[static_cast<std::size_t>(x + 1 + (y + 1) * pd.w)] = PIX_WATER1;
     ASSERT_TRUE(s.smooth(x, y) == 1);
     const Sint32 g = s.query_x_y(x, y);
     ASSERT_TRUE(g > 0);
 
-    pd.data[x + y * pd.w] = PIX_GRASS_DARK_1;
-    pd.data[x + (y + 1) * pd.w] = PIX_GRASS1;
-    pd.data[x + (y - 1) * pd.w] = PIX_WALL3;
+    pd.data[static_cast<std::size_t>(x + y * pd.w)] = PIX_GRASS_DARK_1;
+    pd.data[static_cast<std::size_t>(x + (y + 1) * pd.w)] = PIX_GRASS1;
+    pd.data[static_cast<std::size_t>(x + (y - 1) * pd.w)] = PIX_WALL3;
     ASSERT_TRUE(s.smooth(x, y) == 1);
     const Sint32 d = s.query_x_y(x, y);
     ASSERT_TRUE(d > 0);

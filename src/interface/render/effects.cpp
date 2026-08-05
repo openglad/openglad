@@ -586,14 +586,14 @@ struct UpperFloorCoverageMask
 			const std::size_t my0 = static_cast<std::size_t>(
 			    std::max<std::int64_t>(0, tile_world_top - mask_world_top));
 			const std::size_t my1 = static_cast<std::size_t>(
-			    std::min<std::int64_t>(mask_height,
+			    std::min<std::int64_t>(static_cast<std::int64_t>(mask_height),
 			                           tile_world_top + GRID_SIZE - mask_world_top));
 			for (Sint32 gi = gx0; gi < gx1; ++gi)
 			{
 #ifdef TESTING
 				++upper_floor_shadow_mask_stats.source_tile_probes;
 #endif
-				if (grid.data[gi + gw * gj] ==
+				if (grid.data[static_cast<std::size_t>(gi + gw * gj)] ==
 				    static_cast<unsigned char>(PIX_AIR))
 					continue;
 
@@ -602,7 +602,7 @@ struct UpperFloorCoverageMask
 				const std::size_t mx0 = static_cast<std::size_t>(
 				    std::max<std::int64_t>(0, tile_world_left - mask_world_left));
 				const std::size_t mx1 = static_cast<std::size_t>(
-				    std::min<std::int64_t>(pitch,
+				    std::min<std::int64_t>(static_cast<std::int64_t>(pitch),
 				                           tile_world_left + GRID_SIZE - mask_world_left));
 				for (std::size_t my = my0; my < my1; ++my)
 					std::fill(pixels.begin() + static_cast<std::ptrdiff_t>(my * pitch + mx0),
@@ -699,7 +699,7 @@ bool draw_walker_ripples(walker& w, viewscreen* vs,
 	const Sint32 gy = (cy + vs->topy - vs->yloc) / GRID_SIZE;
 	if (gx < 0 || gx >= camera_grid.w || gy < 0 || gy >= camera_grid.h)
 		return false;
-	const unsigned char tile = camera_grid.data[gx + camera_grid.w * gy];
+	const unsigned char tile = camera_grid.data[static_cast<std::size_t>(gx + camera_grid.w * gy)];
 	if (tile != PIX_WATER1 && tile != PIX_WATER2 && tile != PIX_WATER3 &&
 	    tile != PIX_MARSH1 && tile != PIX_MARSH2)
 		return false;
@@ -786,7 +786,7 @@ bool draw_stair_overlays(viewscreen* vs, const PixieData& camera_grid)
 		for (Sint32 gi = gx0; gi <= gx1; ++gi)
 		{
 			const unsigned char tile =
-			    camera_grid.data[gi + camera_grid.w * gj];
+			    camera_grid.data[static_cast<std::size_t>(gi + camera_grid.w * gj)];
 			if (tile != PIX_ZSTAIR_UP && tile != PIX_ZSTAIR_DOWN)
 				continue;
 			const bool up = (tile == PIX_ZSTAIR_UP);

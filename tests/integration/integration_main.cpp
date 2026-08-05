@@ -82,7 +82,7 @@ void reset_integration_ui_state()
     if (og::runtime::current_session->picker_ != nullptr) {
         PickerState& picker = *og::runtime::current_session->picker_;
         for (int i = 0; i < 5; i++) {
-            picker.backdrops[i].reset();
+            picker.backdrops[static_cast<std::size_t>(i)].reset();
             picker.backpics[i].free();
         }
         picker.main_columns_pix.reset();

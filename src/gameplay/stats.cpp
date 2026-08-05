@@ -1176,7 +1176,7 @@ bool statistics::path_toward_stair(int foe_floor)
 	for (int y = 0; y < g.h; ++y)
 		for (int x = 0; x < g.w; ++x)
 		{
-			if (g.data[x + y * g.w] != want)
+			if (g.data[static_cast<std::size_t>(x + y * g.w)] != want)
 				continue;
 			const long d = std::abs(x - mygx) + std::abs(y - mygy);
 			if (best_x < 0 || d < best_d)

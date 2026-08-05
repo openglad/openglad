@@ -1828,7 +1828,7 @@ int og_rand0(lua_State* L)
         return 1;
     }
     lua_pushinteger(L, static_cast<lua_Integer>(world->rng_.next(
-                           static_cast<std::int32_t>(n))));
+                           static_cast<std::uint32_t>(static_cast<std::int32_t>(n)))));
     return 1;
 }
 

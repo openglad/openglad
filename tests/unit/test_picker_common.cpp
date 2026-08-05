@@ -251,7 +251,7 @@ TEST(PickerCommon, add_recruit_to_team_rejects_full_and_inconsistent_roster)
     SaveData no_empty_slots;
     no_empty_slots.team_size = 0;
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        no_empty_slots.team_list[i] = std::make_unique<guy>(FAMILY_SOLDIER);
+        no_empty_slots.team_list[static_cast<std::size_t>(i)] = std::make_unique<guy>(FAMILY_SOLDIER);
 
     EXPECT_EQ(-1, og::ui::add_recruit_to_team(
         no_empty_slots, std::make_unique<guy>(FAMILY_MAGE), 1));
@@ -323,7 +323,7 @@ TEST(PickerCommon, create_recruit_unique_name)
     // Either way, it should not match an existing team member
     bool name_is_unique = true;
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        if (save.team_list[i] && save.team_list[i]->name == recruit2->name) {
+        if (save.team_list[static_cast<std::size_t>(i)] && save.team_list[static_cast<std::size_t>(i)]->name == recruit2->name) {
             name_is_unique = false;
             break;
         }
@@ -345,7 +345,7 @@ TEST(PickerCommon, reset_for_new_game)
 
     ASSERT_TRUE(save.team_size == 0);
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        ASSERT_TRUE(save.team_list[i] == nullptr);
+        ASSERT_TRUE(save.team_list[static_cast<std::size_t>(i)] == nullptr);
     }
 }
 
@@ -549,11 +549,11 @@ TEST(PickerCommon, get_unique_name_falls_back_to_numbered_duplicate)
 
     int slot = 0;
     for (const std::string& name : slime_names) {
-        save.team_list[slot] = std::make_unique<guy>(FAMILY_SLIME);
-        save.team_list[slot]->name = name;
+        save.team_list[static_cast<std::size_t>(slot)] = std::make_unique<guy>(FAMILY_SLIME);
+        save.team_list[static_cast<std::size_t>(slot)]->name = name;
         ++slot;
-        save.team_list[slot] = std::make_unique<guy>(FAMILY_SLIME);
-        save.team_list[slot]->name = name + "2";
+        save.team_list[static_cast<std::size_t>(slot)] = std::make_unique<guy>(FAMILY_SLIME);
+        save.team_list[static_cast<std::size_t>(slot)]->name = name + "2";
         ++slot;
     }
     save.team_size = static_cast<unsigned char>(slot);
@@ -562,7 +562,7 @@ TEST(PickerCommon, get_unique_name_falls_back_to_numbered_duplicate)
     const std::string unique_name = og::ui::get_unique_name(FAMILY_SLIME, save);
     EXPECT_TRUE(unique_name.ends_with("3"));
     for (int i = 0; i < save.team_size; ++i)
-        ASSERT_NE(save.team_list[i]->name, unique_name);
+        ASSERT_NE(save.team_list[static_cast<std::size_t>(i)]->name, unique_name);
 }
 
 // --- statscopy ---
@@ -619,7 +619,7 @@ TEST(PickerCommon, hire_session_cycle)
         session.next_family();
         ASSERT_TRUE(session.family_index() == i);
         ASSERT_TRUE(session.current_recruit() != nullptr);
-        ASSERT_TRUE(session.current_recruit()->family == og::ui::kAllowableGuys[i]);
+        ASSERT_TRUE(session.current_recruit()->family == og::ui::kAllowableGuys[static_cast<std::size_t>(i)]);
     }
 
     // Wraps back to 0
@@ -669,12 +669,12 @@ TEST(PickerCommon, hire_session_rename_hired)
     ASSERT_TRUE(slot >= 0);
 
     session.rename_hired(slot, "CustomName");
-    ASSERT_TRUE(save.team_list[slot]->name == "CustomName");
+    ASSERT_TRUE(save.team_list[static_cast<std::size_t>(slot)]->name == "CustomName");
 
     session.rename_hired(-1, "Ignored");
     session.rename_hired(MAX_TEAM_SIZE, "Ignored");
     session.rename_hired(3, "Ignored");
-    ASSERT_TRUE(save.team_list[slot]->name == "CustomName");
+    ASSERT_TRUE(save.team_list[static_cast<std::size_t>(slot)]->name == "CustomName");
 }
 
 TEST(PickerCommon, hire_session_team_full)
@@ -686,7 +686,7 @@ TEST(PickerCommon, hire_session_team_full)
 
     // Fill the team
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        save.team_list[i] = std::make_unique<guy>(FAMILY_SOLDIER);
+        save.team_list[static_cast<std::size_t>(i)] = std::make_unique<guy>(FAMILY_SOLDIER);
         save.team_size++;
     }
 
@@ -718,7 +718,7 @@ TEST(PickerCommon, hire_session_reports_team_and_handles_missing_empty_slot)
     EXPECT_EQ(2, session.team_num());
 
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i] = std::make_unique<guy>(FAMILY_SOLDIER);
+        save.team_list[static_cast<std::size_t>(i)] = std::make_unique<guy>(FAMILY_SOLDIER);
     save.team_size = MAX_TEAM_SIZE - 1;
     EXPECT_FALSE(session.team_full());
     EXPECT_EQ(-1, session.hire());
@@ -1036,7 +1036,7 @@ TEST(PickerCommon, train_session_sell_checkpoint_failure_is_atomic)
     EXPECT_EQ("Alpha", save.team_list[0]->name);
     EXPECT_EQ("Charlie", save.team_list[1]->name);
     for (int slot = 2; slot < MAX_TEAM_SIZE; ++slot)
-        EXPECT_EQ(nullptr, save.team_list[slot])
+        EXPECT_EQ(nullptr, save.team_list[static_cast<std::size_t>(slot)])
             << "sale must leave the serialized roster prefix dense";
     EXPECT_EQ(1, session.current_slot());
     EXPECT_EQ("Charlie", session.working_copy().name);
@@ -2705,8 +2705,8 @@ TEST(PickerCommon, hire_with_infinite_gold_is_free_and_never_writes_the_wallet)
 
     // The team-full guard still applies with infinite gold on.
     for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
-        if (!save.team_list[i]) {
-            save.team_list[i] = std::make_unique<guy>(FAMILY_SOLDIER);
+        if (!save.team_list[static_cast<std::size_t>(i)]) {
+            save.team_list[static_cast<std::size_t>(i)] = std::make_unique<guy>(FAMILY_SOLDIER);
             save.team_size++;
         }
     }
@@ -3733,7 +3733,7 @@ TEST(BaseCampRoster, positional_rows_refresh_after_update_guys_reorder)
     {
         const std::vector<int> before = og::ui::collect_base_camp_slots(save);
         ASSERT_EQ(2u, before.size());
-        EXPECT_EQ("BENCHED", save.team_list[before[0]]->name);
+        EXPECT_EQ("BENCHED", save.team_list[static_cast<std::size_t>(before[0])]->name);
     }
 
     // The win fold: only FIGHTER deployed into the level and survived.
@@ -3753,10 +3753,10 @@ TEST(BaseCampRoster, positional_rows_refresh_after_update_guys_reorder)
     // index would now point at the wrong character.
     const std::vector<int> after = og::ui::collect_base_camp_slots(save);
     ASSERT_EQ(2u, after.size());
-    EXPECT_EQ("FIGHTER", save.team_list[after[0]]->name);
-    EXPECT_TRUE(save.team_list[after[0]]->deployed);
-    EXPECT_EQ("BENCHED", save.team_list[after[1]]->name);
-    EXPECT_FALSE(save.team_list[after[1]]->deployed)
+    EXPECT_EQ("FIGHTER", save.team_list[static_cast<std::size_t>(after[0])]->name);
+    EXPECT_TRUE(save.team_list[static_cast<std::size_t>(after[0])]->deployed);
+    EXPECT_EQ("BENCHED", save.team_list[static_cast<std::size_t>(after[1])]->name);
+    EXPECT_FALSE(save.team_list[static_cast<std::size_t>(after[1])]->deployed)
         << "the held-back flag survives the fold (§3.3 [SAVE-R4])";
 }
 
@@ -4107,7 +4107,7 @@ TEST(BaseCampMpDisplay, display_slots_page_defensively_past_24)
     SaveData save;
     save.save_name = "MY BAND";
     for (int i = 0; i < 20; ++i) {
-        save.team_list[i] = make_base_camp_member("M", FAMILY_SOLDIER);
+        save.team_list[static_cast<std::size_t>(i)] = make_base_camp_member("M", FAMILY_SOLDIER);
     }
     save.team_size = 20;
     const std::vector<og::sim::LobbyPlayer> players = {
@@ -4514,20 +4514,20 @@ TEST(CampaignPickerLayout, nav_variants_keyboard_reachable)
         {
             const int current = frontier.back();
             frontier.pop_back();
-            for (const int target : {nav[current].up, nav[current].down,
-                                     nav[current].left, nav[current].right})
+            for (const int target : {nav[static_cast<std::size_t>(current)].up, nav[static_cast<std::size_t>(current)].down,
+                                     nav[static_cast<std::size_t>(current)].left, nav[static_cast<std::size_t>(current)].right})
             {
-                if (target < 0 || hidden[target] || reached[target])
+                if (target < 0 || hidden[static_cast<std::size_t>(target)] || reached[static_cast<std::size_t>(target)])
                     continue;
-                reached[target] = true;
+                reached[static_cast<std::size_t>(target)] = true;
                 frontier.push_back(target);
             }
         }
         for (int i = 0; i < kCampaignPickerButtonCount; ++i)
         {
-            if (!hidden[i])
+            if (!hidden[static_cast<std::size_t>(i)])
             {
-                EXPECT_TRUE(reached[i])
+                EXPECT_TRUE(reached[static_cast<std::size_t>(i)])
                     << variant << ": button " << i << " is unreachable";
             }
         }

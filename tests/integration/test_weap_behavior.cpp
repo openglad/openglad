@@ -338,7 +338,7 @@ static void set_world_tile(short world_x, short world_y, unsigned char tile)
     const int gy = world_y / GRID_SIZE;
     if (gx < 0 || gy < 0 || gx >= level.world().grid.w || gy >= level.world().grid.h)
         return;
-    level.world().grid.data[gx + level.world().grid.w * gy] = tile;
+    level.world().grid.data[static_cast<std::size_t>(gx + level.world().grid.w * gy)] = tile;
 }
 
 TEST(WeapBehavior, weapon_family_rock_death_bounce_matrix)

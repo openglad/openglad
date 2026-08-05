@@ -109,7 +109,7 @@ TEST(LevelDataUnit, level_data_passable_and_range_queries)
     ASSERT_TRUE(!fx.level.query_grid_passable(-1, 10, self));
 
     const int tile = 4 + 4 * fx.level.world().grid.w;
-    fx.level.world().grid.data[tile] = PIX_H_WALL1;
+    fx.level.world().grid.data[static_cast<std::size_t>(tile)] = PIX_H_WALL1;
     self->setxy(4 * GRID_SIZE, 4 * GRID_SIZE);
     ASSERT_TRUE(!fx.level.query_grid_passable(self->xpos(), self->ypos(), self));
 
@@ -291,7 +291,7 @@ TEST(LevelDataUnit, level_data_r11_query_grid_passable_terrain_branches)
     ob->setxy(static_cast<short>(gx * GRID_SIZE), static_cast<short>(gy * GRID_SIZE));
 
     // tree branch blocked/unblocked by forestwalk/flying
-    fx.level.world().grid.data[gx + gy * fx.level.world().grid.w] = PIX_TREE_M1;
+    fx.level.world().grid.data[static_cast<std::size_t>(gx + gy * fx.level.world().grid.w)] = PIX_TREE_M1;
     ASSERT_TRUE(!fx.level.query_grid_passable(ob->xpos(), ob->ypos(), ob));
     ob->stats()->set_bit_flags(BIT_FORESTWALK, 1);
     ASSERT_TRUE(fx.level.query_grid_passable(ob->xpos(), ob->ypos(), ob));
@@ -299,15 +299,15 @@ TEST(LevelDataUnit, level_data_r11_query_grid_passable_terrain_branches)
 
     // tree_b branch with weapon
     walker* weap = add_to(fx, fx.level.world().weaplist, Order::Weapon, FAMILY_ARROW, 1, ob->xpos(), ob->ypos());
-    fx.level.world().grid.data[gx + gy * fx.level.world().grid.w] = PIX_TREE_B1;
+    fx.level.world().grid.data[static_cast<std::size_t>(gx + gy * fx.level.world().grid.w)] = PIX_TREE_B1;
     ASSERT_TRUE(fx.level.query_grid_passable(weap->xpos(), weap->ypos(), weap));
 
     // hard wall path
-    fx.level.world().grid.data[gx + gy * fx.level.world().grid.w] = PIX_H_WALL1;
+    fx.level.world().grid.data[static_cast<std::size_t>(gx + gy * fx.level.world().grid.w)] = PIX_H_WALL1;
     ASSERT_TRUE(!fx.level.query_grid_passable(ob->xpos(), ob->ypos(), ob));
 
     // arrow wall + weapon owner branch
-    fx.level.world().grid.data[gx + gy * fx.level.world().grid.w] = PIX_WALL4;
+    fx.level.world().grid.data[static_cast<std::size_t>(gx + gy * fx.level.world().grid.w)] = PIX_WALL4;
     weap->set_owner(ob);
     ASSERT_TRUE(fx.level.query_grid_passable(weap->xpos(), weap->ypos(), weap))
         << "owner-adjacent weapons should be allowed through arrow wall tiles";

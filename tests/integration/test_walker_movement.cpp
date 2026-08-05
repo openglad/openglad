@@ -578,7 +578,7 @@ TEST(WalkerMovement, walker_draw_tile_phantom_and_forestwalk_paths)
         int tx = w->xpos() / GRID_SIZE;
         int ty = w->ypos() / GRID_SIZE;
         if (tx >= 0 && ty >= 0 && tx < og::runtime::current_session->myscreen_->world().grid.w && ty < og::runtime::current_session->myscreen_->world().grid.h) {
-            og::runtime::current_session->myscreen_->world().grid.data[ty * og::runtime::current_session->myscreen_->world().grid.w + tx] = PIX_TREE_T1;
+            og::runtime::current_session->myscreen_->world().grid.data[static_cast<std::size_t>(ty * og::runtime::current_session->myscreen_->world().grid.w + tx)] = PIX_TREE_T1;
             og::runtime::current_session->myscreen_->world().mysmoother.set_target(og::runtime::current_session->myscreen_->world().grid);
         }
         w->set_flight_left(0);

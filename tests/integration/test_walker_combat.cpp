@@ -87,7 +87,7 @@ static void set_world_tile(short world_x, short world_y, unsigned char tile)
     const int gy = world_y / GRID_SIZE;
     if (gx < 0 || gy < 0 || gx >= level.world().grid.w || gy >= level.world().grid.h)
         return;
-    level.world().grid.data[gx + level.world().grid.w * gy] = tile;
+    level.world().grid.data[static_cast<std::size_t>(gx + level.world().grid.w * gy)] = tile;
 }
 
 // ---------------------------------------------------------------------------
@@ -1333,7 +1333,7 @@ TEST(WalkerCombat, attack_rewards_single_credit_weapon_hit)
     target->stats()->set_max_hitpoints(200);
     target->setxy(static_cast<short>(owner->xpos() + 8), static_cast<short>(owner->ypos()));
 
-    const int exp_before = owner->myguy ? owner->myguy->exp : 0;
+    const int exp_before = static_cast<int>(owner->myguy ? owner->myguy->exp : 0);
     const Uint32 score_before = og::runtime::current_session->myscreen_->world_.m_score[owner->team_num()];
     const float hp_before = target->stats()->hitpoints();
     if (current_game && current_game->sim_events)
@@ -1347,7 +1347,7 @@ TEST(WalkerCombat, attack_rewards_single_credit_weapon_hit)
 
     const std::int32_t level_diff = weapon->stats()->level() - target->stats()->level();
     const short expected_attack_xp = compute_xp_from_attack(level_diff, static_cast<float>(dealt));
-    const int exp_after = owner->myguy ? owner->myguy->exp : 0;
+    const int exp_after = static_cast<int>(owner->myguy ? owner->myguy->exp : 0);
     ASSERT_EQ((int)expected_attack_xp, exp_after - exp_before) << "weapon hit should award attack XP exactly once";
 
     const Uint32 score_after = og::runtime::current_session->myscreen_->world_.m_score[owner->team_num()];
@@ -1436,7 +1436,7 @@ TEST(WalkerCombat, attack_rewards_single_credit_melee_kill)
     target->setxy(attacker->xpos() + 10, attacker->ypos() + 4);
     og::runtime::current_session->myscreen_->world().rng_.state_ = 0;
 
-    const int exp_before = attacker->myguy ? attacker->myguy->exp : 0;
+    const int exp_before = static_cast<int>(attacker->myguy ? attacker->myguy->exp : 0);
     const int kills_before = attacker->myguy ? attacker->myguy->kills : 0;
     const int scen_kills_before = attacker->myguy ? attacker->myguy->scen_kills : 0;
     const int level_kills_before = attacker->myguy ? attacker->myguy->level_kills : 0;
@@ -1452,7 +1452,7 @@ TEST(WalkerCombat, attack_rewards_single_credit_melee_kill)
     const std::int32_t level_diff = attacker->stats()->level() - target->stats()->level();
     const short expected_attack_xp = compute_xp_from_attack(level_diff, static_cast<float>(dealt));
     const short expected_kill_xp = compute_xp_from_kill(level_diff);
-    const int exp_after = attacker->myguy ? attacker->myguy->exp : 0;
+    const int exp_after = static_cast<int>(attacker->myguy ? attacker->myguy->exp : 0);
     ASSERT_EQ((int)(expected_attack_xp + expected_kill_xp), exp_after - exp_before) << "melee kill should award attack XP once plus one kill XP";
 
     const Uint32 score_after = og::runtime::current_session->myscreen_->world_.m_score[attacker->team_num()];

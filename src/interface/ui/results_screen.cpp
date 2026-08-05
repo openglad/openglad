@@ -482,7 +482,7 @@ Uint32 get_time_bonus(int playernum)
     // which used to let peers independently calculate different payouts.
     Uint32 frames =
         og::runtime::current_session->myscreen_->world().level_tick_count();
-    Uint32 time_limit = (og::runtime::current_session->myscreen_->world().time_bonus_limit > 0? og::runtime::current_session->myscreen_->world().time_bonus_limit : 0);
+    Uint32 time_limit = static_cast<Uint32>(og::runtime::current_session->myscreen_->world().time_bonus_limit > 0? og::runtime::current_session->myscreen_->world().time_bonus_limit : 0);
     Log("Frames used: {}\n", frames);
     if(frames >= time_limit)
         return 0;
@@ -769,7 +769,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 
         // Draw
         og::runtime::current_session->myscreen_->draw_button(area.x, area.y, area.x + area.w - 1, area.y + area.h - 1, 1, 1);
-        og::runtime::current_session->myscreen_->draw_button_inverted(area_inner.x, area_inner.y, area_inner.w, area_inner.h);
+        og::runtime::current_session->myscreen_->draw_button_inverted(area_inner.x, area_inner.y, static_cast<Uint32>(area_inner.w), static_cast<Uint32>(area_inner.h));
         bigtext.write_xy_center(area.x + area.w/2, area.y + 4, RED, "RESULTS");
         
 	        int y = 0;
@@ -940,7 +940,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                 for(auto idx : recruits)
                 {
                     BEGIN_IF_IN_SCROLL_AREA;
-                    mytext.write_xy(x, y, DARK_BLUE, " + %s the %s LVL %d", troops[idx].get_name().c_str(), troops[idx].get_class_name().c_str(), troops[idx].get_level());
+                    mytext.write_xy(x, y, DARK_BLUE, " + %s the %s LVL %d", troops[static_cast<std::size_t>(idx)].get_name().c_str(), troops[static_cast<std::size_t>(idx)].get_class_name().c_str(), troops[static_cast<std::size_t>(idx)].get_level());
                     END_IF_IN_SCROLL_AREA;
                     
                     y += 11;
@@ -958,7 +958,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                 for(auto idx : losses)
                 {
                     BEGIN_IF_IN_SCROLL_AREA;
-                    mytext.write_xy(x, y, DARK_BLUE, " - %s the %s LVL %d", troops[idx].get_name().c_str(), troops[idx].get_class_name().c_str(), troops[idx].get_level());
+                    mytext.write_xy(x, y, DARK_BLUE, " - %s the %s LVL %d", troops[static_cast<std::size_t>(idx)].get_name().c_str(), troops[static_cast<std::size_t>(idx)].get_class_name().c_str(), troops[static_cast<std::size_t>(idx)].get_level());
                     END_IF_IN_SCROLL_AREA;
                     
                     y += 11;
@@ -1083,7 +1083,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 	            if(buttons[button_i].hidden)
 	                continue; // retry suppressed by the mounted mode
 	            if((mode == 0 && button_i == overview_index) || (mode == 1 && button_i == troops_index))
-	                og::runtime::current_session->myscreen_->draw_button_inverted(buttons[button_i].x, buttons[button_i].y, buttons[button_i].sizex, buttons[button_i].sizey);
+	                og::runtime::current_session->myscreen_->draw_button_inverted(buttons[button_i].x, buttons[button_i].y, static_cast<Uint32>(buttons[button_i].sizex), static_cast<Uint32>(buttons[button_i].sizey));
 	            else
 	                og::runtime::current_session->myscreen_->draw_button(buttons[button_i].x, buttons[button_i].y, buttons[button_i].x + buttons[button_i].sizex - 1, buttons[button_i].y + buttons[button_i].sizey - 1, 1, 1);
 	            mytext.write_xy(buttons[button_i].x + buttons[button_i].sizex/2 - 3*static_cast<Sint32>(buttons[button_i].label.size()), buttons[button_i].y + 2, buttons[button_i].label.c_str(), DARK_BLUE, 1);

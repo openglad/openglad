@@ -155,7 +155,7 @@ short compute_xp_from_action(ExpAction action, std::int32_t attacker_level, std:
         return compute_xp_from_kill(level_diff);
     case ExpAction::Heal: {
         const std::int32_t denom = (attacker_level > 0) ? attacker_level : 1;
-        return static_cast<short>(rng.next(static_cast<std::uint32_t>(20 * value)) / denom);
+        return static_cast<short>(rng.next(static_cast<std::uint32_t>(20 * value)) / static_cast<std::uint32_t>(denom));
     }
     case ExpAction::TurnUndead:
         return static_cast<short>(value * 3);

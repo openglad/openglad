@@ -809,7 +809,7 @@ TEST_F(ModesCtf, drop_on_impassable_tile_returns_home_instantly)
     PixieData& grid = fx.world().grid;
     for (int gy = 20; gy <= 21; ++gy)
         for (int gx = 20; gx <= 21; ++gx)
-            grid.data[gx + grid.w * gy] = PIX_H_WALL1;
+            grid.data[static_cast<std::size_t>(gx + grid.w * gy)] = PIX_H_WALL1;
     runner->set_dead(1);
     fx.tick(1);
 
@@ -1217,7 +1217,7 @@ TEST_F(ModesCtf, teleport_drop_on_impassable_departure_returns_home)
     PixieData& grid = fx.world().grid;
     for (int gy = 20; gy <= 21; ++gy)
         for (int gx = 20; gx <= 21; ++gx)
-            grid.data[gx + grid.w * gy] = PIX_H_WALL1;
+            grid.data[static_cast<std::size_t>(gx + grid.w * gy)] = PIX_H_WALL1;
     fx.stage_self_teleport(fx.runner);
     fx.runner->setxy(96, 700);
     fx.tick(1);
@@ -2591,7 +2591,7 @@ TEST_F(ModesCtf, match_replicates_to_a_client_mirror_without_hash_strikes)
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
     for (int slot = 0; slot < og::sim::kModeVarCount; ++slot)
     {
-        EXPECT_EQ(fx.world().mode.vars[slot], mirror.world().mode.vars[slot])
+        EXPECT_EQ(fx.world().mode.vars[static_cast<std::size_t>(slot)], mirror.world().mode.vars[static_cast<std::size_t>(slot)])
             << "mode var slot " << slot;
     }
 }

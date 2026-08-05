@@ -1990,7 +1990,7 @@ bool apply_grid_snapshot(GameWorld& world, const og::sim::WorldSnapshot& snapsho
         }
 
         const std::size_t grid_index =
-            static_cast<std::size_t>(tile.y) * world.grid.w + tile.x;
+            static_cast<std::size_t>(tile.y) * world.grid.w + static_cast<std::size_t>(tile.x);
         world.grid.data[grid_index] = tile.value;
     }
     return grid_applied;
@@ -2032,7 +2032,7 @@ void apply_delta_grid(og::sim::WorldSnapshot& baseline,
         }
 
         const std::size_t grid_index =
-            static_cast<std::size_t>(tile.y) * baseline.grid_width + tile.x;
+            static_cast<std::size_t>(tile.y) * baseline.grid_width + static_cast<std::size_t>(tile.x);
         baseline.full_grid_data[grid_index] = tile.value;
     }
 
@@ -2123,7 +2123,7 @@ void capture_world_grid(const GameWorld& world,
             continue;
 
         const std::size_t grid_index =
-            static_cast<std::size_t>(y) * world.grid.w + x;
+            static_cast<std::size_t>(y) * world.grid.w + static_cast<std::size_t>(x);
         snapshot.grid_dirty_tiles.push_back(
             {x, y, world.grid.data[grid_index]});
     }

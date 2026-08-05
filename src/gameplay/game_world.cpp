@@ -721,7 +721,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor)
     {
         for (std::int32_t j = y_i / GRID_SIZE; j < ytarg; ++j)
         {
-            switch (static_cast<unsigned char>(fg.data[i + fg.w * j]))
+            switch (static_cast<unsigned char>(fg.data[static_cast<std::size_t>(i + fg.w * j)]))
             {
                 case PIX_GRASS1:
                 case PIX_GRASS2:
@@ -852,7 +852,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor)
                         dist -= (GRID_SIZE / 2);
                         if (dist < GRID_SIZE)
                             dist += GRID_SIZE;
-                        if (rng_.next(dist / GRID_SIZE))
+                        if (rng_.next(static_cast<std::uint32_t>(dist / GRID_SIZE)))
                             return false;
                     }
                     else
@@ -861,7 +861,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor)
                         dist -= (GRID_SIZE / 2);
                         if (dist < GRID_SIZE)
                             dist += GRID_SIZE;
-                        if (rng_.next(dist / GRID_SIZE))
+                        if (rng_.next(static_cast<std::uint32_t>(dist / GRID_SIZE)))
                             return false;
                     }
                     [[fallthrough]];
@@ -1170,7 +1170,7 @@ walker* GameWorld::find_near_foe(walker* ob)
                 sanitize_owner_chain_link(*this, ob);
                 sanitize_owner_chain_link(*this, w);
                 if (!w->dead() && ob->is_friendly(w) == 0 &&
-                    rng_.next(w->invisibility_left() / 20) == 0)
+                    rng_.next(static_cast<std::uint32_t>(w->invisibility_left() / 20)) == 0)
                 {
                     if (w->query_order() == Order::Living ||
                         w->query_order() == Order::Generator)
@@ -1221,7 +1221,7 @@ walker* GameWorld::find_far_foe(walker* ob)
         if (ob->is_friendly(foe) == 0 &&
             (foe->query_order() == Order::Living ||
              foe->query_order() == Order::Generator) &&
-            (rng_.next(foe->invisibility_left() / 20) == 0))
+            (rng_.next(static_cast<std::uint32_t>(foe->invisibility_left() / 20)) == 0))
         {
             const std::int32_t tempdistance = ob->distance_to_ob(foe);
             if (tempdistance < distance)
@@ -1276,7 +1276,7 @@ walker* GameWorld::find_nearest_player(walker* ob)
         walker* w = uptr.get();
         if (w && !w->dormant() && w->user() != -1)
         {
-            const std::uint32_t tempdistance = ob->distance_to_ob(w);
+            const std::uint32_t tempdistance = static_cast<std::uint32_t>(ob->distance_to_ob(w));
             if (tempdistance < distance)
             {
                 distance = tempdistance;
@@ -1417,15 +1417,15 @@ void GameWorld::create_new_grid()
     pixmaxy = grid.h * GRID_SIZE;
 
     const int size = grid.w * grid.h;
-    grid.data = std::make_unique<unsigned char[]>(size);
+    grid.data = std::make_unique<unsigned char[]>(static_cast<std::size_t>(size));
     for (int i = 0; i < size; i++)
     {
         switch (rng_.next(4))
         {
-            case 0: grid.data[i] = PIX_GRASS1; break;
-            case 1: grid.data[i] = PIX_GRASS2; break;
-            case 2: grid.data[i] = PIX_GRASS3; break;
-            case 3: grid.data[i] = PIX_GRASS4; break;
+            case 0: grid.data[static_cast<std::size_t>(i)] = PIX_GRASS1; break;
+            case 1: grid.data[static_cast<std::size_t>(i)] = PIX_GRASS2; break;
+            case 2: grid.data[static_cast<std::size_t>(i)] = PIX_GRASS3; break;
+            case 3: grid.data[static_cast<std::size_t>(i)] = PIX_GRASS4; break;
         }
     }
 
@@ -1454,7 +1454,7 @@ void GameWorld::resize_grid(int width, int height)
 
     // Create new grid
     const int size = width * height;
-    auto new_grid = std::make_unique<unsigned char[]>(size);
+    auto new_grid = std::make_unique<unsigned char[]>(static_cast<std::size_t>(size));
 
     // Copy the map data
     for (int i = 0; i < width; i++)
@@ -1462,9 +1462,9 @@ void GameWorld::resize_grid(int width, int height)
         for (int j = 0; j < height; j++)
         {
             if (i < grid.w && j < grid.h)
-                new_grid[j * width + i] = grid.data[j * grid.w + i];
+                new_grid[static_cast<std::size_t>(j * width + i)] = grid.data[static_cast<std::size_t>(j * grid.w + i)];
             else
-                new_grid[j * width + i] = random_grass_tile();
+                new_grid[static_cast<std::size_t>(j * width + i)] = random_grass_tile();
         }
     }
 
@@ -1614,8 +1614,8 @@ char GameWorld::damage_tile(short xloc, short yloc)
         decor.data[static_cast<std::size_t>(gridloc)] != DECOR_NONE)
         return 0;
 
-    unsigned char next_value = grid.data[gridloc];
-    switch (static_cast<unsigned char>(grid.data[gridloc]))
+    unsigned char next_value = grid.data[static_cast<std::size_t>(gridloc)];
+    switch (static_cast<unsigned char>(grid.data[static_cast<std::size_t>(gridloc)]))
     {
         case PIX_GRASS1:
         case PIX_GRASS2:
@@ -1627,9 +1627,9 @@ char GameWorld::damage_tile(short xloc, short yloc)
             break;
     }
 
-    if (grid.data[gridloc] != next_value)
+    if (grid.data[static_cast<std::size_t>(gridloc)] != next_value)
     {
-        grid.data[gridloc] = next_value;
+        grid.data[static_cast<std::size_t>(gridloc)] = next_value;
         const std::pair<short, short> coord{xover, yover};
         if (std::find(grid_dirty_tiles_.begin(), grid_dirty_tiles_.end(), coord) ==
             grid_dirty_tiles_.end())
@@ -1638,7 +1638,7 @@ char GameWorld::damage_tile(short xloc, short yloc)
         }
     }
 
-    return static_cast<char>(grid.data[gridloc]);
+    return static_cast<char>(grid.data[static_cast<std::size_t>(gridloc)]);
 }
 
 short GameWorld::remaining_foes(walker* myguy) const

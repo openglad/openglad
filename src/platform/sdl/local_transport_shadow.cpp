@@ -471,11 +471,11 @@ private:
 std::size_t compute_local_player_count(const screen& gameplay_screen)
 {
     return std::min<std::size_t>(
-        std::max<short>(
+        static_cast<std::size_t>(std::max<short>(
             gameplay_screen.save_data.numplayers > 0
                 ? gameplay_screen.save_data.numplayers
                 : gameplay_screen.numviews,
-            1),
+            1)),
         static_cast<std::size_t>(MAX_PLAYERS));
 }
 

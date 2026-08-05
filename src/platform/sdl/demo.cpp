@@ -512,7 +512,7 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng,
     s->continuous_input();
     s->redrawme = 1;
     s->framecount = 0;
-    s->timerstart = query_timer_control();
+    s->timerstart = static_cast<Uint32>(query_timer_control());
     og::runtime::reset_local_transport_shadow(*demo.session, *s);
     if (!og::runtime::local_transport_active(*demo.session)) {
         throw std::runtime_error(std::format(

@@ -179,7 +179,7 @@ TEST(GloaderFuncs, gloader_set_walker)
     const Order orders[] = {Order::Living, Order::Weapon, Order::Treasure, Order::FX, Order::Generator, Order::Special};
     for (Order o : orders) {
         for (int fam = 0; fam < NUM_FAMILIES; fam++) {
-            if (!l->graphics[PIX(o, fam)].valid()) {
+            if (!l->graphics[static_cast<std::size_t>(PIX(o, fam))].valid()) {
                 continue;
             }
             walker* changed = l->set_walker(wp, o, static_cast<char>(fam));

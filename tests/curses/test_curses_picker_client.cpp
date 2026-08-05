@@ -99,7 +99,7 @@ void pick(HeadlessTerminal& term, int n)
 {
     ASSERT_GE(n, 0);
     ASSERT_LE(n, 8) << "digit-jump only addresses the first 9 selectable items";
-    term.push_char(static_cast<char32_t>(U'1' + n));
+    term.push_char(static_cast<char32_t>(U'1' + static_cast<char32_t>(n)));
     term.push_special(KeyCode::Enter);
 }
 
@@ -256,7 +256,7 @@ TEST(CursesPickerClient, present_menu_digit_and_arrow_navigation)
     // Jump to the 7th selectable item (the Difficulty door) and select it.
     const int diff_idx = main_menu_item_index(PickerMenuCommand::OpenDifficultyMenu);
     ASSERT_GE(diff_idx, 0);
-    f.t().push_char(static_cast<char32_t>(U'1' + diff_idx));
+    f.t().push_char(static_cast<char32_t>(U'1' + static_cast<char32_t>(diff_idx)));
     f.t().push_special(KeyCode::Enter);
     const auto* item = f.client.present_menu(PickerMenuId::Main);
     ASSERT_NE(item, nullptr);
@@ -1965,7 +1965,7 @@ TEST(CursesPickerClient, run_picker_main_action_then_quit)
     const int diff_idx = main_menu_item_index(PickerMenuCommand::OpenDifficultyMenu);
     ASSERT_GE(diff_idx, 0);
     // First Main menu pass: open the Difficulty submenu (digit+Enter).
-    f.t().push_char(static_cast<char32_t>(U'1' + diff_idx));
+    f.t().push_char(static_cast<char32_t>(U'1' + static_cast<char32_t>(diff_idx)));
     f.t().push_special(KeyCode::Enter);
     // Submenu: the Difficulty row starts highlighted; select it, dismiss its
     // notice, then Esc backs out of the submenu (-> Back).
@@ -1991,7 +1991,7 @@ TEST(CursesPickerClient, run_picker_through_team_build_then_quit)
     // Main pass 1: "Continue Game" -> Team Build.
     const int cont_idx = main_menu_item_index(PickerMenuCommand::ContinueGame);
     ASSERT_GE(cont_idx, 0);
-    f.t().push_char(static_cast<char32_t>(U'1' + cont_idx));
+    f.t().push_char(static_cast<char32_t>(U'1' + static_cast<char32_t>(cont_idx)));
     f.t().push_special(KeyCode::Enter);
     // Team Build: Back -> Main menu.
     f.t().push_char(U'q');
@@ -2296,7 +2296,7 @@ TEST(CursesPickerClient, run_picker_through_scenario_submenu_then_quit)
     const int cont_idx = main_menu_item_index(PickerMenuCommand::ContinueGame);
     ASSERT_GE(cont_idx, 0);
     // Main pass 1: "Continue Game" -> Team Build.
-    f.t().push_char(static_cast<char32_t>(U'1' + cont_idx));
+    f.t().push_char(static_cast<char32_t>(U'1' + static_cast<char32_t>(cont_idx)));
     f.t().push_special(KeyCode::Enter);
     // Team Build: the "Scenario" item opens the submenu.
     int scenario_idx = -1;
@@ -2311,7 +2311,7 @@ TEST(CursesPickerClient, run_picker_through_scenario_submenu_then_quit)
     // The Team Build list shows non-selectable context headers, but digit
     // jump counts selectable entries only, so the item index maps 1:1.
     ASSERT_LE(scenario_idx, 8) << "digit-jump addresses the first 9 items";
-    f.t().push_char(static_cast<char32_t>(U'1' + scenario_idx));
+    f.t().push_char(static_cast<char32_t>(U'1' + static_cast<char32_t>(scenario_idx)));
     f.t().push_special(KeyCode::Enter);
     // Scenario submenu: leave with Esc (-> Back), then Team Build Esc,
     // then Main menu Esc (-> Quit).
@@ -2515,7 +2515,7 @@ TEST(CursesPickerClient, run_picker_through_difficulty_submenu_then_quit)
     ASSERT_GE(door_idx, 0);
     ASSERT_LE(door_idx, 8) << "digit-jump addresses the first 9 items";
     // Main pass 1: the Difficulty door opens the submenu.
-    f.t().push_char(static_cast<char32_t>(U'1' + door_idx));
+    f.t().push_char(static_cast<char32_t>(U'1' + static_cast<char32_t>(door_idx)));
     f.t().push_special(KeyCode::Enter);
     // Difficulty submenu: cycle Respawns (2nd selectable row), dismiss the
     // notice, then leave with Esc (-> Back), then Main menu Esc (-> Quit).
@@ -2544,7 +2544,7 @@ TEST(CursesPickerClient, run_picker_through_cloud_submenu_then_quit)
         main_menu_item_index(PickerMenuCommand::OpenCloudMenu);
     ASSERT_GE(door_idx, 0);
     ASSERT_LE(door_idx, 8) << "digit-jump addresses the first 9 items";
-    f.t().push_char(static_cast<char32_t>(U'1' + door_idx));
+    f.t().push_char(static_cast<char32_t>(U'1' + static_cast<char32_t>(door_idx)));
     f.t().push_special(KeyCode::Enter);
 
     // Cloud submenu: PASSPHRASE (row 0) -> type a phrase, accept, dismiss
@@ -2583,7 +2583,7 @@ TEST(CursesPickerClient, cloud_passphrase_length_gate_rejects_short_input)
     const int door_idx =
         main_menu_item_index(PickerMenuCommand::OpenCloudMenu);
     ASSERT_GE(door_idx, 0);
-    f.t().push_char(static_cast<char32_t>(U'1' + door_idx));
+    f.t().push_char(static_cast<char32_t>(U'1' + static_cast<char32_t>(door_idx)));
     f.t().push_special(KeyCode::Enter);
     pick(f.t(), 0);
     for (const char ch : std::string("short12")) // 7 chars -> reject
@@ -2673,7 +2673,7 @@ TEST(CursesPickerClient, cloud_download_confirms_installs_and_opens_company)
         const int door_idx =
             main_menu_item_index(PickerMenuCommand::OpenCloudMenu);
         ASSERT_GE(door_idx, 0);
-        f.t().push_char(static_cast<char32_t>(U'1' + door_idx));
+        f.t().push_char(static_cast<char32_t>(U'1' + static_cast<char32_t>(door_idx)));
         f.t().push_special(KeyCode::Enter);
 
         // PASSPHRASE (row 0) -> derived key stored.

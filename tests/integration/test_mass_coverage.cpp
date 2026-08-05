@@ -445,7 +445,7 @@ TEST(MassCoverage, video_clearbuffer_rect) { og::runtime::current_session->myscr
 TEST(MassCoverage, video_clear_window) { og::runtime::current_session->myscreen_->clear_window(); }
 TEST(MassCoverage, video_draw_rect_filled) { og::runtime::current_session->myscreen_->draw_rect_filled(10, 10, 20, 10, WHITE, 120); }
 TEST(MassCoverage, video_draw_button_rect) { SDL_Rect r{20, 20, 40, 20}; og::runtime::current_session->myscreen_->draw_button(r.x, r.y, r.x + r.w - 1, r.y + r.h - 1, 1); }
-TEST(MassCoverage, video_draw_button_inverted_rect) { SDL_Rect r{20, 50, 40, 20}; og::runtime::current_session->myscreen_->draw_button_inverted(r.x, r.y, r.w, r.h); }
+TEST(MassCoverage, video_draw_button_inverted_rect) { SDL_Rect r{20, 50, 40, 20}; og::runtime::current_session->myscreen_->draw_button_inverted(r.x, r.y, static_cast<Uint32>(r.w), static_cast<Uint32>(r.h)); }
 TEST(MassCoverage, video_putblack) { og::runtime::current_session->myscreen_->putblack(0, 0, 0, 0); }
 TEST(MassCoverage, video_fastbox_outline) { og::runtime::current_session->myscreen_->fastbox_outline(2, 2, 8, 8, DARK_GREEN); }
 TEST(MassCoverage, video_point) { og::runtime::current_session->myscreen_->point(5, 5, RED); }

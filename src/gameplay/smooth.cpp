@@ -301,7 +301,7 @@ Sint32 smoother::query_genre_x_y(Sint32 x, Sint32 y)
 	Sint32 basetype = query_x_y(x, y);
 	if (basetype < 0 || basetype >= PIX_MAX)
 		return TYPE_UNKNOWN;
-	return PIX_to_genre[basetype];
+	return PIX_to_genre[static_cast<std::size_t>(basetype)];
 }
 
 Sint32 smoother::surrounds(Sint32 x, Sint32 y, Sint32 whatgenre)

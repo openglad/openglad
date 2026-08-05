@@ -343,7 +343,7 @@ TEST(CanvasScale, buffered_hud_text_draws_in_widescreen_ui_extension)
     {
         const auto* row = reinterpret_cast<const Uint32*>(
             static_cast<const Uint8*>(E_Screen->render->pixels) +
-            static_cast<std::size_t>(y) * E_Screen->render->pitch);
+            static_cast<std::size_t>(y) * static_cast<std::size_t>(E_Screen->render->pitch));
         for (int x = 340; x < 356; ++x)
             found_glyph_pixel = found_glyph_pixel || row[x] != 0u;
     }
@@ -431,7 +431,7 @@ TEST(CanvasScale, scoped_ui_canvas_seeds_from_world_and_restores_routing)
             << "split modal UI should start with a nearest-scaled world frame";
 		const auto* hud_row = reinterpret_cast<const Uint32*>(
 			static_cast<const Uint8*>(E_Screen->render->pixels) +
-			static_cast<std::size_t>(20) * E_Screen->render->pitch);
+			static_cast<std::size_t>(20) * static_cast<std::size_t>(E_Screen->render->pitch));
 		EXPECT_EQ(overlay_pixel & 0x00ffffffu, hud_row[20] & 0x00ffffffu)
 			<< "modal backdrop should preserve the last presented gameplay UI";
     }
@@ -471,7 +471,7 @@ TEST(CanvasScale, scoped_ui_canvas_preserves_classic_smart_gameplay_overlay)
         EXPECT_FALSE(ui.entered_from_split_world());
         const auto* hud_row = reinterpret_cast<const Uint32*>(
             static_cast<const Uint8*>(E_Screen->render->pixels) +
-            static_cast<std::size_t>(14) * E_Screen->render->pitch);
+            static_cast<std::size_t>(14) * static_cast<std::size_t>(E_Screen->render->pitch));
         EXPECT_EQ(overlay_pixel & 0x00ffffffu, hud_row[12] & 0x00ffffffu)
             << "classic-size modal backdrop should preserve gameplay UI";
     }
@@ -498,18 +498,18 @@ TEST(CanvasScale, scoped_ui_canvas_uses_the_last_filtered_world_scenery)
     constexpr std::array<Uint32, 4> kPattern{
         0x00112233u, 0x00a0b0c0u, 0x00203040u, 0x00405060u};
     std::vector<Uint32> raw_rgb(
-        static_cast<std::size_t>(E_Screen->world_w()) * E_Screen->world_h());
+        static_cast<std::size_t>(E_Screen->world_w()) * static_cast<std::size_t>(E_Screen->world_h()));
     for (int y = 0; y < E_Screen->world_h(); ++y)
     {
         auto* row = reinterpret_cast<Uint32*>(
             static_cast<Uint8*>(E_Screen->render->pixels) +
-            static_cast<std::size_t>(y) * E_Screen->render->pitch);
+            static_cast<std::size_t>(y) * static_cast<std::size_t>(E_Screen->render->pitch));
         for (int x = 0; x < E_Screen->world_w(); ++x)
         {
             const Uint32 pixel = kPattern[static_cast<std::size_t>(
                 (x & 1) | ((y & 1) << 1))];
             row[x] = pixel;
-            raw_rgb[static_cast<std::size_t>(y) * E_Screen->world_w() + x] =
+            raw_rgb[static_cast<std::size_t>(y) * static_cast<std::size_t>(E_Screen->world_w()) + static_cast<std::size_t>(x)] =
                 pixel & 0x00ffffffu;
         }
     }
@@ -534,12 +534,12 @@ TEST(CanvasScale, scoped_ui_canvas_uses_the_last_filtered_world_scenery)
     {
         const auto* row = reinterpret_cast<const Uint32*>(
             static_cast<const Uint8*>(filtered_ui->pixels) +
-            static_cast<std::size_t>(y) * filtered_ui->pitch);
+            static_cast<std::size_t>(y) * static_cast<std::size_t>(filtered_ui->pitch));
         for (int x = 0; x < kUiCanvasW; ++x)
         {
             const Uint32 filtered = row[x] & 0x00ffffffu;
             const Uint32 raw = raw_rgb[
-                static_cast<std::size_t>(y) * kUiCanvasW + x];
+                static_cast<std::size_t>(y) * kUiCanvasW + static_cast<std::size_t>(x)];
             if (filtered != raw)
             {
                 probe_x = x;
@@ -556,11 +556,11 @@ TEST(CanvasScale, scoped_ui_canvas_uses_the_last_filtered_world_scenery)
         ScopedUiCanvas ui(*s);
         const auto* row = reinterpret_cast<const Uint32*>(
             static_cast<const Uint8*>(E_Screen->render->pixels) +
-            static_cast<std::size_t>(probe_y) * E_Screen->render->pitch);
+            static_cast<std::size_t>(probe_y) * static_cast<std::size_t>(E_Screen->render->pitch));
         EXPECT_EQ(expected_filtered, row[probe_x] & 0x00ffffffu)
             << "modal backdrop must downsample the last filtered scenery";
         EXPECT_NE(raw_rgb[static_cast<std::size_t>(probe_y) * kUiCanvasW +
-                          probe_x],
+                          static_cast<std::size_t>(probe_x)],
                   row[probe_x] & 0x00ffffffu)
             << "modal entry must not snap the scenery back to raw nearest";
     }
@@ -681,7 +681,7 @@ TEST(CanvasScale, smart_smoothing_composites_gameplay_ui_nearest_after_world_fil
     EXPECT_TRUE(E_Screen->last_world_present_used_smart_surface());
     const auto* filtered_row = reinterpret_cast<const Uint32*>(
         static_cast<const Uint8*>(E_Screen->render2->pixels) +
-        static_cast<std::size_t>(20) * E_Screen->render2->pitch);
+        static_cast<std::size_t>(20) * static_cast<std::size_t>(E_Screen->render2->pitch));
     EXPECT_NE(hud_pixel, filtered_row[20])
         << "the HUD pixel must not enter the SAI source or scratch";
 
@@ -693,7 +693,7 @@ TEST(CanvasScale, smart_smoothing_composites_gameplay_ui_nearest_after_world_fil
     const auto read_rgb = [captured](int x, int y) {
         const auto* row = reinterpret_cast<const Uint32*>(
             static_cast<const Uint8*>(captured->pixels) +
-            static_cast<std::size_t>(y) * captured->pitch);
+            static_cast<std::size_t>(y) * static_cast<std::size_t>(captured->pitch));
         Uint8 r = 0, g = 0, b = 0;
         SDL_GetRGB(row[x], SDL_GetPixelFormatDetails(captured->format),
                    SDL_GetSurfacePalette(captured), &r, &g, &b);
@@ -1489,7 +1489,7 @@ TEST(CanvasScale, nearest_zoom_overlay_allocation_failure_safely_aliases_world)
               E_Screen->compose_gameplay_ui_for_capture(E_Screen->render));
     const auto* last_row = reinterpret_cast<const Uint32*>(
         static_cast<const Uint8*>(world->pixels) +
-        static_cast<std::size_t>(399) * world->pitch);
+        static_cast<std::size_t>(399) * static_cast<std::size_t>(world->pitch));
     EXPECT_EQ(fallback_pixel, last_row[639])
         << "fallback HUD pixels remain part of the complete nearest frame";
 

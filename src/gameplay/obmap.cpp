@@ -348,7 +348,7 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                               && (w->family() == FAMILY_DOOR) )
                     {
                         // Can we unlock this door?
-                        if (ob->keys() & key_level_mask(w->stats()->level()))
+                        if (ob->keys() & static_cast<std::uint32_t>(key_level_mask(w->stats()->level())))
                         {
                             // Open the door ..
                             w->set_dead(1);

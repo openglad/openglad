@@ -325,7 +325,7 @@ TEST(SimWorldHeadless, arrow_wall_is_solid_for_unowned_special)
     PixieData& grid = t.world().grid;
     const int gx = 2;
     const int gy = 2;
-    grid.data[gx + grid.w * gy] = PIX_WALL4;
+    grid.data[static_cast<std::size_t>(gx + grid.w * gy)] = PIX_WALL4;
 
     walker* special = t.world().add_ob(Order::Special, FAMILY_RESERVED_TEAM);
     ASSERT_NE(nullptr, special);
@@ -522,7 +522,7 @@ void all_grass(GameWorld& w)
 {
     const int n = w.grid.w * w.grid.h;
     for (int i = 0; i < n; ++i)
-        w.grid.data[i] = PIX_GRASS1;
+        w.grid.data[static_cast<std::size_t>(i)] = PIX_GRASS1;
 }
 
 walker* make_exit_pad(TestGameWorld& t, short x, short y, short dest_level)

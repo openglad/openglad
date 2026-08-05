@@ -313,7 +313,7 @@ PickerState& picker_state()
 void cleanup_picker_state()
 {
     for (int i = 0; i < 5; i++) {
-        picker_state().backdrops[i].reset();
+        picker_state().backdrops[static_cast<std::size_t>(i)].reset();
         picker_state().backpics[i].free();
     }
     clear_allbuttons();
@@ -371,7 +371,7 @@ struct SavedPickerSave
     {
         SaveData& save = og::runtime::current_session->myscreen_->save_data;
         for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-            team_list[i] = std::move(save.team_list[i]);
+            team_list[static_cast<std::size_t>(i)] = std::move(save.team_list[static_cast<std::size_t>(i)]);
         snapshot_fields.team_size = save.team_size;
         snapshot_fields.my_team = save.my_team;
         snapshot_fields.numplayers = save.numplayers;
@@ -389,7 +389,7 @@ struct SavedPickerSave
     {
         SaveData& save = og::runtime::current_session->myscreen_->save_data;
         for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-            save.team_list[i] = std::move(team_list[i]);
+            save.team_list[static_cast<std::size_t>(i)] = std::move(team_list[static_cast<std::size_t>(i)]);
         save.team_size = snapshot_fields.team_size;
         save.my_team = snapshot_fields.my_team;
         save.numplayers = snapshot_fields.numplayers;
@@ -630,7 +630,7 @@ void hold_nav_key(SDL_Keycode key, bool down)
 void press_nav_key(SDL_Keycode key, int hold_ms)
 {
     hold_nav_key(key, true);
-    SDL_Delay(hold_ms);
+    SDL_Delay(static_cast<Uint32>(hold_ms));
     hold_nav_key(key, false);
 }
 

@@ -208,8 +208,8 @@ void query_palette_reg(unsigned char index, int *red, int *green, int *blue)
 	int tred, tgreen, tblue;
 
 	tred = static_cast<int>(og::runtime::current_session->curpal_[index*3]);
-	tgreen = static_cast<int>(og::runtime::current_session->curpal_[index*3+1]);
-	tblue = static_cast<int>(og::runtime::current_session->curpal_[index*3+2]);
+	tgreen = static_cast<int>(og::runtime::current_session->curpal_[static_cast<std::size_t>(index*3+1)]);
+	tblue = static_cast<int>(og::runtime::current_session->curpal_[static_cast<std::size_t>(index*3+2)]);
 
 	*red = tred;
 	*green = tgreen;
@@ -225,6 +225,6 @@ void set_palette_reg(unsigned char index,int red,int green,int blue)
 		return static_cast<unsigned char>(v);
 	};
 	og::runtime::current_session->curpal_[index*3] = clamp63(red);
-	og::runtime::current_session->curpal_[index*3+1] = clamp63(green);
-	og::runtime::current_session->curpal_[index*3+2] = clamp63(blue);
+	og::runtime::current_session->curpal_[static_cast<std::size_t>(index*3+1)] = clamp63(green);
+	og::runtime::current_session->curpal_[static_cast<std::size_t>(index*3+2)] = clamp63(blue);
 }

@@ -193,7 +193,7 @@ void vbutton::vdisplay()
     {
         mypixie->draw(xloc, yloc, og::runtime::current_session->myscreen_->viewob[0].get());
         if (label.size())
-            mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - ((label.size()* (mytext.letters->w+1) - 1)/2)) ,
+            mytext.write_xy( static_cast<short>( static_cast<size_t>((xloc+xend)/2) - ((label.size()* (mytext.letters->w+1) - 1)/2)) ,
                               static_cast<short>(yloc + (height-(mytext.letters->h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
     }
     else
@@ -204,7 +204,7 @@ void vbutton::vdisplay()
         og::runtime::current_session->myscreen_->draw_box(xend-1,yloc+1,xend-1,yend-2,BUTTON_RIGHT,1,1); // right
         og::runtime::current_session->myscreen_->draw_box(xloc+1,yend-1,xend-1,yend-1,BUTTON_BOTTOM,1,1); // bottom
         if (label.size())
-            mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - ((label.size()* (mytext.letters->w+1) - 1)/2)) ,
+            mytext.write_xy( static_cast<short>( static_cast<size_t>((xloc+xend)/2) - ((label.size()* (mytext.letters->w+1) - 1)/2)) ,
                               static_cast<short>(yloc + (height-(mytext.letters->h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
     }
 }
@@ -224,7 +224,7 @@ void vbutton::vdisplay(Sint32 status)
     {
         mypixie->draw(xloc, yloc, og::runtime::current_session->myscreen_->viewob[0].get());
         if (label.size())
-            mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - ((label.size()* (mytext.letters->w+1) - 1)/2)) ,
+            mytext.write_xy( static_cast<short>( static_cast<size_t>((xloc+xend)/2) - ((label.size()* (mytext.letters->w+1) - 1)/2)) ,
                               static_cast<short>(yloc + (height-(mytext.letters->h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
     }
     else
@@ -237,7 +237,7 @@ void vbutton::vdisplay(Sint32 status)
             og::runtime::current_session->myscreen_->draw_box(xend-1,yloc+1,xend-1,yend-2,BUTTON_LEFT,1,1); // right
             og::runtime::current_session->myscreen_->draw_box(xloc+1,yend-1,xend-1,yend-1,BUTTON_TOP,1,1); // bottom
             if (label.size())
-                mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - ((label.size()* (mytext.letters->w+1) - 1)/2)) ,
+                mytext.write_xy( static_cast<short>( static_cast<size_t>((xloc+xend)/2) - ((label.size()* (mytext.letters->w+1) - 1)/2)) ,
                                   static_cast<short>(yloc + (height-(mytext.letters->h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
             og::runtime::current_session->myscreen_->buffer_to_screen(xloc,yloc,xend-xloc,yend-yloc);
         }
@@ -249,7 +249,7 @@ void vbutton::vdisplay(Sint32 status)
             og::runtime::current_session->myscreen_->draw_box(xend-1,yloc+1,xend-1,yend-2,BUTTON_RIGHT+32,1,1); // right
             og::runtime::current_session->myscreen_->draw_box(xloc+1,yend-1,xend-1,yend-1,BUTTON_BOTTOM+32,1,1); // bottom
             if (label.size())
-                mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - ((label.size()* (mytext.letters->w+1) - 1)/2)) ,
+                mytext.write_xy( static_cast<short>( static_cast<size_t>((xloc+xend)/2) - ((label.size()* (mytext.letters->w+1) - 1)/2)) ,
                                   static_cast<short>(yloc + (height-(mytext.letters->h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
         }
     }
@@ -266,11 +266,11 @@ Sint32 vbutton::leftclick(button* buttons)
     Sint32 retvalue=0;
     // First check hotkeys ...
     while (whichone < static_cast<Sint32>(og::runtime::current_session->allbuttons_.size())
-           && og::runtime::current_session->allbuttons_[whichone])
+           && og::runtime::current_session->allbuttons_[static_cast<size_t>(whichone)])
     {
         if(buttons == nullptr || !buttons[whichone].hidden)
         {
-            retvalue = og::runtime::current_session->allbuttons_[whichone]->leftclick(1);
+            retvalue = og::runtime::current_session->allbuttons_[static_cast<size_t>(whichone)]->leftclick(1);
             if (retvalue != -1)
                 return retvalue;
         }
@@ -279,11 +279,11 @@ Sint32 vbutton::leftclick(button* buttons)
     // Now normal click ..
     whichone = 0;
     while (whichone < static_cast<Sint32>(og::runtime::current_session->allbuttons_.size())
-           && og::runtime::current_session->allbuttons_[whichone])
+           && og::runtime::current_session->allbuttons_[static_cast<size_t>(whichone)])
     {
         if(buttons == nullptr || !buttons[whichone].hidden)
         {
-            retvalue = og::runtime::current_session->allbuttons_[whichone]->leftclick(2);
+            retvalue = og::runtime::current_session->allbuttons_[static_cast<size_t>(whichone)]->leftclick(2);
             if (retvalue != -1)
                 return retvalue;
         }
@@ -297,11 +297,11 @@ Sint32 vbutton::rightclick(button* buttons)
     Sint32 whichone=0;
     Sint32 retvalue=0;
     while (whichone < static_cast<Sint32>(og::runtime::current_session->allbuttons_.size())
-           && og::runtime::current_session->allbuttons_[whichone])
+           && og::runtime::current_session->allbuttons_[static_cast<size_t>(whichone)])
     {
         if(buttons == nullptr || !buttons[whichone].hidden)
         {
-            retvalue = og::runtime::current_session->allbuttons_[whichone]->rightclick(whichone);
+            retvalue = og::runtime::current_session->allbuttons_[static_cast<size_t>(whichone)]->rightclick(whichone);
             if (retvalue != -1)
                 return retvalue;
         }
@@ -436,11 +436,11 @@ vbutton * init_buttons(button * buttons, Sint32 numbuttons)
                         buttons[i].sizex, buttons[i].sizey,
                         buttons[i].myfun, buttons[i].arg1,
                         buttons[i].label, buttons[i].hotkey));
-        og::runtime::current_session->allbuttons_[i] = owned_button.get();
+        og::runtime::current_session->allbuttons_[static_cast<size_t>(i)] = owned_button.get();
         owned_buttons()[static_cast<size_t>(i)] = std::move(owned_button);
-        og::runtime::current_session->allbuttons_[i]->id = buttons[i].id;
-        og::runtime::current_session->allbuttons_[i]->hidden = buttons[i].hidden;
-        og::runtime::current_session->allbuttons_[i]->no_draw = buttons[i].no_draw;
+        og::runtime::current_session->allbuttons_[static_cast<size_t>(i)]->id = buttons[i].id;
+        og::runtime::current_session->allbuttons_[static_cast<size_t>(i)]->hidden = buttons[i].hidden;
+        og::runtime::current_session->allbuttons_[static_cast<size_t>(i)]->no_draw = buttons[i].no_draw;
     }
 
     return og::runtime::current_session->allbuttons_[0];
@@ -459,8 +459,8 @@ void draw_backdrop()
 {
     Sint32 i;
     for (i=0; i < 5; i++)
-        if (pks().backdrops[i])
-            pks().backdrops[i]->draw(og::runtime::current_session->myscreen_->viewob[0].get());
+        if (pks().backdrops[static_cast<size_t>(i)])
+            pks().backdrops[static_cast<size_t>(i)]->draw(og::runtime::current_session->myscreen_->viewob[0].get());
 }
 
 void draw_buttons(button * buttons, Sint32 numbuttons)
@@ -468,20 +468,20 @@ void draw_buttons(button * buttons, Sint32 numbuttons)
     Sint32 i;
     for (i=0; i < numbuttons; i++)
     {
-        if (!og::runtime::current_session->allbuttons_[i])
+        if (!og::runtime::current_session->allbuttons_[static_cast<size_t>(i)])
             continue;
         if(buttons[i].hidden || buttons[i].no_draw)
             continue;
         
-        og::runtime::current_session->allbuttons_[i]->vdisplay();
-        if (og::runtime::current_session->allbuttons_[i]->had_focus)
+        og::runtime::current_session->allbuttons_[static_cast<size_t>(i)]->vdisplay();
+        if (og::runtime::current_session->allbuttons_[static_cast<size_t>(i)]->had_focus)
         {
             // Draw hover highlight after button draw so it survives
             // per-frame clearbuffer/redraw.
-            og::runtime::current_session->myscreen_->draw_box(og::runtime::current_session->allbuttons_[i]->xloc - 1,
-                               og::runtime::current_session->allbuttons_[i]->yloc - 1,
-                               og::runtime::current_session->allbuttons_[i]->xend,
-                               og::runtime::current_session->allbuttons_[i]->yend,
+            og::runtime::current_session->myscreen_->draw_box(og::runtime::current_session->allbuttons_[static_cast<size_t>(i)]->xloc - 1,
+                               og::runtime::current_session->allbuttons_[static_cast<size_t>(i)]->yloc - 1,
+                               og::runtime::current_session->allbuttons_[static_cast<size_t>(i)]->xend,
+                               og::runtime::current_session->allbuttons_[static_cast<size_t>(i)]->yend,
                                YELLOW,
                                0,
                                1);

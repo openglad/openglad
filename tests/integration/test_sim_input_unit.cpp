@@ -206,10 +206,10 @@ void assign_basic_ani(walker* w)
     static std::array<signed char*, kAniRows> rows{};
     for (int i = 0; i < kAniRows; ++i)
     {
-        seqs[i][0] = static_cast<signed char>(i % NUM_FACINGS);
-        seqs[i][1] = -1;
-        seqs[i][2] = -1;
-        rows[i] = seqs[i].data();
+        seqs[static_cast<std::size_t>(i)][0] = static_cast<signed char>(i % NUM_FACINGS);
+        seqs[static_cast<std::size_t>(i)][1] = -1;
+        seqs[static_cast<std::size_t>(i)][2] = -1;
+        rows[static_cast<std::size_t>(i)] = seqs[static_cast<std::size_t>(i)].data();
     }
     w->ani = rows.data();
 }

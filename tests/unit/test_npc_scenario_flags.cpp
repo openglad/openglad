@@ -822,8 +822,8 @@ TEST(NpcScenarioFlags, loaded_upper_story_objects_register_on_their_floor)
     {
         const int gw = w.grid.w;
         const int gh = w.grid.h;
-        auto* buf = new unsigned char[static_cast<std::size_t>(gw) * gh];
-        std::fill(buf, buf + static_cast<std::size_t>(gw) * gh,
+        auto* buf = new unsigned char[static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh)];
+        std::fill(buf, buf + static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh),
                   static_cast<unsigned char>(PIX_GRASS1));
         w.grid_for_floor(1) = PixieData(1, static_cast<unsigned char>(gw),
                                         static_cast<unsigned char>(gh), buf);

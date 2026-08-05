@@ -134,13 +134,13 @@ int picker_team_build_testing_exercise_internal_paths()
               current_guy(std::move(session.current_guy_))
         {
             for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-                team[i] = std::move(save.team_list[i]);
+                team[static_cast<std::size_t>(i)] = std::move(save.team_list[static_cast<std::size_t>(i)]);
         }
 
         ~SharedStateGuard()
         {
             for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-                save.team_list[i] = std::move(team[i]);
+                save.team_list[static_cast<std::size_t>(i)] = std::move(team[static_cast<std::size_t>(i)]);
             save.team_size = team_size;
             save.numplayers = numplayers;
             save.my_team = my_team;
@@ -768,7 +768,7 @@ int picker_team_build_testing_exercise_internal_paths()
         const std::string saved_slot = og::data::active_company_slot();
         std::array<std::uint32_t, 4> saved_cash;
         for (int i = 0; i < 4; ++i)
-            saved_cash[i] = save.m_totalcash[i];
+            saved_cash[static_cast<std::size_t>(i)] = save.m_totalcash[i];
         const std::int64_t saved_stamp = save.last_played_unix_s;
 
         // Guard: empty session (team_size < 1 leaves no working copy).
@@ -871,7 +871,7 @@ int picker_team_build_testing_exercise_internal_paths()
         (void)remove_user_file("save/sellcov.gtl");
         check(og::data::set_active_company_slot(saved_slot));
         for (int i = 0; i < 4; ++i)
-            save.m_totalcash[i] = saved_cash[i];
+            save.m_totalcash[i] = saved_cash[static_cast<std::size_t>(i)];
         save.last_played_unix_s = saved_stamp;
     }
 

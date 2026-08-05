@@ -200,10 +200,10 @@ TEST_F(DecorFormatTest, v11_round_trip_multifloor_planes_and_presence_flags)
     alloc_floor_grid(w, 2);
 
     PixieData& d0 = alloc_decor(w, 0);
-    d0.data[3 + d0.w * 4] = DECOR_TORCH1;
-    d0.data[5 + d0.w * 5] = DECOR_SHRUB;
+    d0.data[static_cast<std::size_t>(3 + d0.w * 4)] = DECOR_TORCH1;
+    d0.data[static_cast<std::size_t>(5 + d0.w * 5)] = DECOR_SHRUB;
     PixieData& d2 = alloc_decor(w, 2);
-    d2.data[7 + d2.w * 8] = DECOR_BOULDER_2;
+    d2.data[static_cast<std::size_t>(7 + d2.w * 8)] = DECOR_BOULDER_2;
 
     ASSERT_EQ(11, save_level_and_read_version(w, "dfmt_rt.fss", "dfmtrt"));
 
@@ -224,11 +224,11 @@ TEST_F(DecorFormatTest, v11_round_trip_multifloor_planes_and_presence_flags)
     ASSERT_TRUE(loaded.decor_for_floor(2).valid());
 
     const PixieData& l0 = loaded.decor_for_floor(0);
-    EXPECT_EQ(DECOR_TORCH1, l0.data[3 + l0.w * 4]);
-    EXPECT_EQ(DECOR_SHRUB, l0.data[5 + l0.w * 5]);
+    EXPECT_EQ(DECOR_TORCH1, l0.data[static_cast<std::size_t>(3 + l0.w * 4)]);
+    EXPECT_EQ(DECOR_SHRUB, l0.data[static_cast<std::size_t>(5 + l0.w * 5)]);
     EXPECT_EQ(DECOR_NONE, l0.data[0]);
     const PixieData& l2 = loaded.decor_for_floor(2);
-    EXPECT_EQ(DECOR_BOULDER_2, l2.data[7 + l2.w * 8]);
+    EXPECT_EQ(DECOR_BOULDER_2, l2.data[static_cast<std::size_t>(7 + l2.w * 8)]);
 
     EXPECT_EQ(static_cast<int>(loaded.grid.w), static_cast<int>(l0.w));
     EXPECT_EQ(static_cast<int>(loaded.grid.h), static_cast<int>(l0.h));
@@ -295,8 +295,8 @@ TEST_F(DecorFormatTest, decor_bytes_beyond_registry_clamp_to_none)
     TestGameWorld tw;
     GameWorld& w = tw.world();
     PixieData& d0 = alloc_decor(w, 0);
-    d0.data[2 + d0.w * 2] = DECOR_PEBBLES;
-    d0.data[3 + d0.w * 3] = 200; // hostile byte, >= DECOR_MAX
+    d0.data[static_cast<std::size_t>(2 + d0.w * 2)] = DECOR_PEBBLES;
+    d0.data[static_cast<std::size_t>(3 + d0.w * 3)] = 200; // hostile byte, >= DECOR_MAX
     ASSERT_EQ(11, save_level_and_read_version(w, "dfmt_cl.fss", "dfmtcl"));
 
     ScopedTempMount mount;
@@ -305,8 +305,8 @@ TEST_F(DecorFormatTest, decor_bytes_beyond_registry_clamp_to_none)
     ASSERT_TRUE(load_saved_level("dfmt_cl.fss", loaded));
     ASSERT_TRUE(loaded.decor_for_floor(0).valid());
     const PixieData& l0 = loaded.decor_for_floor(0);
-    EXPECT_EQ(DECOR_PEBBLES, l0.data[2 + l0.w * 2]) << "valid byte survives";
-    EXPECT_EQ(DECOR_NONE, l0.data[3 + l0.w * 3])
+    EXPECT_EQ(DECOR_PEBBLES, l0.data[static_cast<std::size_t>(2 + l0.w * 2)]) << "valid byte survives";
+    EXPECT_EQ(DECOR_NONE, l0.data[static_cast<std::size_t>(3 + l0.w * 3)])
         << "byte >= DECOR_MAX must clamp to DECOR_NONE (registry index "
            "would be OOB)";
 }
@@ -460,7 +460,7 @@ TEST_F(SpriteFootprintTest, downsample_32_to_16_uses_the_pinned_mapping)
     for (int y = 0; y < 16; ++y)
         for (int x = 0; x < 16; ++x)
             ASSERT_EQ(coord_pixel(0, 2 * y, 2 * x),
-                      p.data[y * 16 + x])
+                      p.data[static_cast<std::size_t>(y * 16 + x)])
                 << "dst(" << x << "," << y << ") must sample src(2x,2y)";
     // Literal spot checks of the pinned mapping.
     EXPECT_EQ(coord_pixel(0, 0, 0), p.data[0]);
@@ -486,7 +486,7 @@ TEST_F(SpriteFootprintTest, upsample_8_to_16_replicates_each_pixel_2x2)
     ASSERT_EQ(16, static_cast<int>(p.h));
     for (int y = 0; y < 16; ++y)
         for (int x = 0; x < 16; ++x)
-            ASSERT_EQ(coord_pixel(0, y / 2, x / 2), p.data[y * 16 + x])
+            ASSERT_EQ(coord_pixel(0, y / 2, x / 2), p.data[static_cast<std::size_t>(y * 16 + x)])
                 << "dst(" << x << "," << y
                 << ") must replicate src(x/2,y/2)";
 }
@@ -512,7 +512,7 @@ TEST_F(SpriteFootprintTest, multiframe_resamples_each_frame_independently)
         for (int y = 0; y < 16; ++y)
             for (int x = 0; x < 16; ++x)
                 ASSERT_EQ(coord_pixel(f, 2 * y, 2 * x),
-                          p.data[(f * 16 + y) * 16 + x])
+                          p.data[static_cast<std::size_t>((f * 16 + y) * 16 + x)])
                     << "frame " << f << " dst(" << x << "," << y << ")";
 }
 

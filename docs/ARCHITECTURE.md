@@ -824,7 +824,12 @@ ctest --preset ci-test         # Run tests
 
 - **C++ Standard:** C++20 (`CMAKE_CXX_STANDARD 20`)
 - **C Standard:** C11 (for fetched/package dependency C libraries)
-- **Warnings:** `-Wall -Wextra -Wpedantic -Wconversion -Wshadow` (project code only)
+- **Warnings:** `-Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion
+  -Wshadow` (project code only). `-Wsign-conversion` is named explicitly
+  because GCC's C++ `-Wconversion` does not imply it while Clang's does.
+  The tree is warning-free under both, and `OPENGLAD_WARNINGS_AS_ERRORS`
+  is ON in the `ci-test`, `ci-asan` and `ci-tsan` presets to keep it that
+  way — a new warning is a build failure, not a log line.
 - **Fetched compatibility code:** Compiled with `-w` (dependency warnings suppressed)
 - **Sanitizers:** Optional ASan + UBSan via `ENABLE_SANITIZERS`
 

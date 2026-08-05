@@ -446,7 +446,7 @@ TEST(VideoModesMore, screenshot_open_failure_preserves_the_frame)
     value->pointb(7, 9, 42);
     const std::size_t bytes =
         static_cast<std::size_t>(E_Screen->render->pitch) *
-        E_Screen->render->h;
+        static_cast<std::size_t>(E_Screen->render->h);
     const std::vector<Uint8> before(
         static_cast<const Uint8*>(E_Screen->render->pixels),
         static_cast<const Uint8*>(E_Screen->render->pixels) + bytes);
@@ -630,7 +630,7 @@ TEST(VideoModesMore, video_walkputbuffer_modes_invisible_outline_phantom)
         for (int x = 0; x < 8; x++)
         {
             const bool edge = (x == 0 || y == 0 || x == 7 || y == 7);
-            sprite[y * 8 + x] = edge ? static_cast<unsigned char>(250) : static_cast<unsigned char>(0);
+            sprite[static_cast<std::size_t>(y * 8 + x)] = edge ? static_cast<unsigned char>(250) : static_cast<unsigned char>(0);
         }
     }
     auto span = std::span<const unsigned char>(sprite.data(), sprite.size());

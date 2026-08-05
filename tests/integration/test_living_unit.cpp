@@ -229,11 +229,11 @@ void assign_basic_ani(walker* w)
     static std::array<signed char*, 16> rows{};
     for (int i = 0; i < 16; ++i)
     {
-        seqs[i][0] = 0;
-        seqs[i][1] = 1;
-        seqs[i][2] = -1;
-        seqs[i][3] = -1;
-        rows[i] = seqs[i].data();
+        seqs[static_cast<std::size_t>(i)][0] = 0;
+        seqs[static_cast<std::size_t>(i)][1] = 1;
+        seqs[static_cast<std::size_t>(i)][2] = -1;
+        seqs[static_cast<std::size_t>(i)][3] = -1;
+        rows[static_cast<std::size_t>(i)] = seqs[static_cast<std::size_t>(i)].data();
     }
     w->ani = rows.data();
 }

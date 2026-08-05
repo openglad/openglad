@@ -20,9 +20,9 @@ public:
     }
     std::size_t write(const void*, std::size_t, std::size_t) override { return 0; }
     std::int64_t seek(std::int64_t offset, int whence) override {
-        if (whence == 0) pos_ = offset;
-        else if (whence == 1) pos_ += offset;
-        else if (whence == 2) pos_ = len_ + offset;
+        if (whence == 0) pos_ = static_cast<std::size_t>(offset);
+        else if (whence == 1) pos_ += static_cast<std::size_t>(offset);
+        else if (whence == 2) pos_ = len_ + static_cast<std::size_t>(offset);
         return static_cast<std::int64_t>(pos_);
     }
     std::int64_t tell() override { return static_cast<std::int64_t>(pos_); }

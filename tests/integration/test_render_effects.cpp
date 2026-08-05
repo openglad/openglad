@@ -237,8 +237,8 @@ void fill_floor_grid(GameWorld& world, int f, unsigned char tile)
 {
     const int gw = world.grid.w;
     const int gh = world.grid.h;
-    auto* buf = new unsigned char[static_cast<std::size_t>(gw) * gh];
-    std::fill(buf, buf + static_cast<std::size_t>(gw) * gh, tile);
+    auto* buf = new unsigned char[static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh)];
+    std::fill(buf, buf + static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh), tile);
     world.grid_for_floor(f) = PixieData(1, static_cast<unsigned char>(gw),
                                         static_cast<unsigned char>(gh), buf);
     world.smoother_for_floor(f).set_target(world.grid_for_floor(f));
@@ -1156,7 +1156,7 @@ TEST_F(RenderEffects, weather_blends_survive_palette_cycling)
     GameWorld& world = scr()->world();
     for (int j = 4; j < 12; j++)
         for (int i = 4; i < 16; i++)
-            world.grid.data[i + world.grid.w * j] =
+            world.grid.data[static_cast<std::size_t>(i + world.grid.w * j)] =
                 static_cast<unsigned char>(PIX_WATER1);
 
     for (const WeatherKind kind :
@@ -3038,7 +3038,7 @@ TEST_F(RenderEffects, fall_cue_absent_for_stair_descents_teleports_and_dust_off)
     PixieData& upper = world.grid_for_floor(1);
     const Sint32 gi = (200 + mover->sizex() / 2) / GRID_SIZE;
     const Sint32 gj = (120 + mover->sizey() / 2) / GRID_SIZE;
-    upper.data[gi + static_cast<Sint32>(upper.w) * gj] =
+    upper.data[static_cast<std::size_t>(gi + static_cast<Sint32>(upper.w) * gj)] =
         static_cast<unsigned char>(PIX_ZSTAIR_DOWN);
     mover->set_floor(1);
     mover->setxy(200, 120);
@@ -3051,7 +3051,7 @@ TEST_F(RenderEffects, fall_cue_absent_for_stair_descents_teleports_and_dust_off)
     ASSERT_FALSE(trace_contains("effects", "fall_cue"))
         << "a stair descent must not read as a fall";
     ASSERT_EQ(0u, effects_fall_cue_frames_left(id));
-    upper.data[gi + static_cast<Sint32>(upper.w) * gj] =
+    upper.data[static_cast<std::size_t>(gi + static_cast<Sint32>(upper.w) * gj)] =
         static_cast<unsigned char>(PIX_GRASS1);
 
     // A cross-floor teleport: the landing lies far beyond the sim's 4-cell
@@ -3139,7 +3139,7 @@ TEST_F(RenderEffects, overhang_shadow_darkens_camera_floor_under_solid_upper_til
     ASSERT_LT(gj + 1, static_cast<Sint32>(upper.h));
     for (Sint32 j = gj; j <= gj + 1; j++)
         for (Sint32 i = gi; i <= gi + 1; i++)
-            upper.data[i + static_cast<Sint32>(upper.w) * j] =
+            upper.data[static_cast<std::size_t>(i + static_cast<Sint32>(upper.w) * j)] =
                 static_cast<unsigned char>(PIX_GRASS1);
 
     trace_clear();
@@ -3200,7 +3200,7 @@ TEST_F(RenderEffects, overhang_coverage_mask_is_pixel_identical_to_legacy_querie
         for (Sint32 gj = 0; gj < static_cast<Sint32>(grid.h); ++gj)
             for (Sint32 gi = 0; gi < static_cast<Sint32>(grid.w); ++gi)
                 if (((gi * 7 + gj * 11 + f * 3) % 7) < 4)
-                    grid.data[gi + static_cast<Sint32>(grid.w) * gj] =
+                    grid.data[static_cast<std::size_t>(gi + static_cast<Sint32>(grid.w) * gj)] =
                         static_cast<unsigned char>(PIX_GRASS1);
     }
 
@@ -3259,7 +3259,7 @@ TEST_F(RenderEffects, overhang_coverage_mask_is_pixel_identical_to_legacy_querie
                 const Sint32 gj = sy / GRID_SIZE;
                 if (gi >= gw || gj >= gh)
                     return false;
-                return grid.data[gi + gw * gj] !=
+                return grid.data[static_cast<std::size_t>(gi + gw * gj)] !=
                     static_cast<unsigned char>(PIX_AIR);
             };
 
@@ -3392,7 +3392,7 @@ TEST_F(RenderEffects, look_up_hold_swaps_shadow_frame_for_ghost_frame)
     fill_floor_grid(world, 1, static_cast<unsigned char>(PIX_COBBLE_1));
     fill_floor_grid(world, 2, static_cast<unsigned char>(PIX_GRASS1));
     PixieData& top = world.grid_for_floor(2);
-    top.data[5 + static_cast<Sint32>(top.w) * 5] =
+    top.data[static_cast<std::size_t>(5 + static_cast<Sint32>(top.w) * 5)] =
         static_cast<unsigned char>(PIX_AIR);
 
     walker* w = world.add_ob(Order::Living, FAMILY_SOLDIER);
@@ -3781,7 +3781,7 @@ TEST_F(RenderEffects, depth_fx_tint_cools_below_floor_pixels)
     world.set_floor_count(2);
     fill_floor_grid(world, 1, static_cast<unsigned char>(PIX_GRASS1));
     PixieData& top = world.grid_for_floor(1);
-    top.data[5 + top.w * 5] = static_cast<unsigned char>(PIX_AIR);
+    top.data[static_cast<std::size_t>(5 + top.w * 5)] = static_cast<unsigned char>(PIX_AIR);
     walker* w = world.add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_NE(nullptr, w);
     w->set_floor(1);
@@ -3906,7 +3906,7 @@ TEST_F(RenderEffects, lower_floor_fades_and_tints_without_look_up)
     fill_floor_grid(world, 1, static_cast<unsigned char>(PIX_GRASS1));
     fill_floor_grid(world, 2, static_cast<unsigned char>(PIX_GRASS1));
     PixieData& top = world.grid_for_floor(2);
-    top.data[5 + top.w * 5] = static_cast<unsigned char>(PIX_AIR);
+    top.data[static_cast<std::size_t>(5 + top.w * 5)] = static_cast<unsigned char>(PIX_AIR);
     w->set_floor(2);
 
     cfg.apply_setting("effects", "depth_fx", "off");
@@ -3996,7 +3996,7 @@ TEST_F(RenderEffects, floor_layer_failure_fades_tiles_and_walkers_in_direct_fall
     for (int y = 32; y < 64 && !found_dim_terrain; ++y)
         for (int x = 32; x < 64 && !found_dim_terrain; ++x)
         {
-            const std::size_t index = static_cast<std::size_t>(y) * frame_w + x;
+            const std::size_t index = static_cast<std::size_t>(y) * static_cast<std::size_t>(frame_w) + static_cast<std::size_t>(x);
             found_dim_terrain = darkened(faded_terrain[index],
                                          opaque_terrain[index]);
         }
@@ -4032,7 +4032,7 @@ TEST_F(RenderEffects, floor_layer_failure_fades_tiles_and_walkers_in_direct_fall
                 px_y >= static_cast<int>(vs->yview))
                 continue;
             const std::size_t index =
-                static_cast<std::size_t>(px_y) * frame_w + px_x;
+                static_cast<std::size_t>(px_y) * static_cast<std::size_t>(frame_w) + static_cast<std::size_t>(px_x);
             found_faded_walker =
                 !same(opaque_with_walker[index], opaque_terrain[index]) &&
                 !same(faded_with_walker[index], faded_terrain[index]) &&
@@ -4110,9 +4110,9 @@ void setup_depth_fx_scene(viewscreen* vs, int& hx, int& hy)
     PixieData& mid = world.grid_for_floor(1);
     for (int j = 4; j <= 6; j++)
         for (int i = 4; i <= 6; i++)
-            mid.data[i + mid.w * j] = static_cast<unsigned char>(PIX_AIR);
+            mid.data[static_cast<std::size_t>(i + mid.w * j)] = static_cast<unsigned char>(PIX_AIR);
     PixieData& top = world.grid_for_floor(2);
-    top.data[5 + top.w * 5] = static_cast<unsigned char>(PIX_AIR);
+    top.data[static_cast<std::size_t>(5 + top.w * 5)] = static_cast<unsigned char>(PIX_AIR);
     walker* w = world.add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_NE(nullptr, w);
     w->set_floor(2);
@@ -4530,7 +4530,7 @@ void put_tile_under(GameWorld& world, const walker* w, int floor,
         (static_cast<Sint32>(w->xpos()) + w->sizex() / 2) / GRID_SIZE;
     const Sint32 cy =
         (static_cast<Sint32>(w->ypos()) + w->sizey() / 2) / GRID_SIZE;
-    g.data[cx + static_cast<Sint32>(g.w) * cy] = pix;
+    g.data[static_cast<std::size_t>(cx + static_cast<Sint32>(g.w) * cy)] = pix;
 }
 
 // One redraw snaps whatever glide state the viewscreen carried over (S8's
@@ -5479,7 +5479,7 @@ TEST_F(RenderEffects, zz_capture_effect_scenes)
             cfg.apply_setting("effects", "reflections", "on");
             for (int j = 5; j < 11; j++)
                 for (int i = 5; i < 15; i++)
-                    world.grid.data[i + world.grid.w * j] =
+                    world.grid.data[static_cast<std::size_t>(i + world.grid.w * j)] =
                         static_cast<unsigned char>(PIX_GLASS);
             mover = world.add_ob(Order::Living, FAMILY_SOLDIER);
             mover->setxy(static_cast<short>(70), static_cast<short>(100));
@@ -5491,7 +5491,7 @@ TEST_F(RenderEffects, zz_capture_effect_scenes)
             cfg.apply_setting("effects", "reflections", "on");
             for (int j = 8; j < 13; j++)
                 for (int i = 2; i < 22; i++)
-                    world.grid.data[i + world.grid.w * j] =
+                    world.grid.data[static_cast<std::size_t>(i + world.grid.w * j)] =
                         static_cast<unsigned char>(PIX_WATER1);
             mover = world.add_ob(Order::Living, FAMILY_SOLDIER);
             mover->setxy(static_cast<short>(70), static_cast<short>(118));
@@ -5503,7 +5503,7 @@ TEST_F(RenderEffects, zz_capture_effect_scenes)
             cfg.apply_setting("effects", "ripples", "on");
             for (int j = 5; j < 13; j++)
                 for (int i = 3; i < 19; i++)
-                    world.grid.data[i + world.grid.w * j] =
+                    world.grid.data[static_cast<std::size_t>(i + world.grid.w * j)] =
                         static_cast<unsigned char>(PIX_WATER1);
             mover = world.add_ob(Order::Living, FAMILY_SOLDIER);
             mover->setxy(static_cast<short>(70), static_cast<short>(140));
@@ -5522,7 +5522,7 @@ TEST_F(RenderEffects, zz_capture_effect_scenes)
             for (int j = 0; j < static_cast<int>(world.grid.h); j++)
                 for (int i = 0; i < static_cast<int>(world.grid.w); i++)
                     if ((i + j) % 2)
-                        world.grid.data[i + world.grid.w * j] =
+                        world.grid.data[static_cast<std::size_t>(i + world.grid.w * j)] =
                             static_cast<unsigned char>(PIX_MARSH2);
             mover = world.add_ob(Order::Living, FAMILY_SOLDIER);
             mover->setxy(static_cast<short>(70), static_cast<short>(140));
@@ -5536,7 +5536,7 @@ TEST_F(RenderEffects, zz_capture_effect_scenes)
             cfg.apply_setting("effects", "weather", "on");
             for (int j = 9; j < 14; j++)
                 for (int i = 12; i < 21; i++)
-                    world.grid.data[i + world.grid.w * j] =
+                    world.grid.data[static_cast<std::size_t>(i + world.grid.w * j)] =
                         static_cast<unsigned char>(PIX_WATER1);
             world.set_weather(WeatherKind::Clouds);
         },
@@ -5547,7 +5547,7 @@ TEST_F(RenderEffects, zz_capture_effect_scenes)
             cfg.apply_setting("effects", "weather", "on");
             for (int j = 9; j < 14; j++)
                 for (int i = 12; i < 21; i++)
-                    world.grid.data[i + world.grid.w * j] =
+                    world.grid.data[static_cast<std::size_t>(i + world.grid.w * j)] =
                         static_cast<unsigned char>(PIX_WATER1);
             world.set_weather(WeatherKind::Rain);
             // Wind the deterministic weather clock so the scheduled
@@ -5608,7 +5608,7 @@ TEST_F(RenderEffects, zz_capture_effect_scenes)
             PixieData& platform = world.grid_for_floor(1);
             for (int j = 5; j < 8; j++)
                 for (int i = 5; i < 12; i++)
-                    platform.data[i + platform.w * j] =
+                    platform.data[static_cast<std::size_t>(i + platform.w * j)] =
                         static_cast<unsigned char>(PIX_GRASS1);
             mover = world.add_ob(Order::Living, FAMILY_SOLDIER);
             mover->set_floor(1);
@@ -5644,7 +5644,7 @@ TEST_F(RenderEffects, zz_capture_effect_scenes)
                 PixieData& mid = world.grid_for_floor(1);
                 for (int j = 4; j < 11; j++)
                     for (int i = 4; i < 16; i++)
-                        mid.data[i + mid.w * j] =
+                        mid.data[static_cast<std::size_t>(i + mid.w * j)] =
                             static_cast<unsigned char>(PIX_GRASS1);
                 // Stair pair at the hero's destination cell: UP on floor 0,
                 // DOWN directly above it on floor 1.
@@ -5700,12 +5700,12 @@ TEST_F(RenderEffects, zz_capture_effect_scenes)
             PixieData& mid = world.grid_for_floor(1);
             for (int j = 4; j < 9; j++)
                 for (int i = 3; i < 9; i++)
-                    mid.data[i + mid.w * j] =
+                    mid.data[static_cast<std::size_t>(i + mid.w * j)] =
                         static_cast<unsigned char>(PIX_GRASS1);
             PixieData& top = world.grid_for_floor(2);
             for (int j = 5; j < 8; j++)
                 for (int i = 4; i < 9; i++)
-                    top.data[i + top.w * j] =
+                    top.data[static_cast<std::size_t>(i + top.w * j)] =
                         static_cast<unsigned char>(PIX_GRASS1);
             vs->control->set_floor(2);
             vs->control->setxy(static_cast<short>(80), static_cast<short>(96));
@@ -5746,7 +5746,7 @@ TEST_F(RenderEffects, zz_capture_effect_scenes)
                     PixieData& g = world.grid_for_floor(fl);
                     for (int j = 4; j < 10; j++)
                         for (int i = 5; i < 13; i++)
-                            g.data[i + g.w * j] =
+                            g.data[static_cast<std::size_t>(i + g.w * j)] =
                                 static_cast<unsigned char>(PIX_AIR);
                 }
                 vs->control->set_floor(2);
@@ -5787,7 +5787,7 @@ TEST_F(RenderEffects, zz_capture_effect_scenes)
                 cfg.apply_setting("effects", key, "on");
             for (int j = 9; j < 14; j++)
                 for (int i = 2; i < 22; i++)
-                    world.grid.data[i + world.grid.w * j] =
+                    world.grid.data[static_cast<std::size_t>(i + world.grid.w * j)] =
                         static_cast<unsigned char>(PIX_WATER1);
             world.set_weather(WeatherKind::Clouds);
             mover = world.add_ob(Order::Living, FAMILY_SOLDIER);
@@ -5858,7 +5858,7 @@ TEST_F(RenderEffects, overhang_shadows_render_under_spectator_floor_override)
     PixieData& up = world.grid_for_floor(1);
     for (int j = 4; j < 8; j++)
         for (int i = 4; i < 10; i++)
-            up.data[i + up.w * j] = static_cast<unsigned char>(PIX_GRASS1);
+            up.data[static_cast<std::size_t>(i + up.w * j)] = static_cast<unsigned char>(PIX_GRASS1);
     walker* control = world.add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_NE(nullptr, control);
     control->setxy(static_cast<short>(160), static_cast<short>(120));

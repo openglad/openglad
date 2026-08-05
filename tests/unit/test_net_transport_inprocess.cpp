@@ -152,7 +152,7 @@ std::pair<short, short> find_damageable_grid_tile(const GameWorld& world)
         for (short x = 0; x < world.grid.w; ++x)
         {
             const std::size_t cell =
-                static_cast<std::size_t>(y) * world.grid.w + x;
+                static_cast<std::size_t>(y) * world.grid.w + static_cast<std::size_t>(x);
             // Decorated cells are shielded from damage_tile by design (the
             // BASE+DECOR layering keeps legacy boulder cells untransformable),
             // so a "damageable" tile must be bare grass.
@@ -179,7 +179,7 @@ std::pair<short, short> find_damageable_grid_tile(const GameWorld& world)
 
 unsigned char read_grid_tile(const GameWorld& world, short x, short y)
 {
-    return world.grid.data[static_cast<std::size_t>(y) * world.grid.w + x];
+    return world.grid.data[static_cast<std::size_t>(y) * world.grid.w + static_cast<std::size_t>(x)];
 }
 
 walker* add_network_player_character(GameWorld& world,

@@ -312,12 +312,12 @@ TEST_F(MigratedCampaignTest, decor_planes_are_wellformed_and_pinned)
                 {
                     for (int tx = 0; tx < dec.w; ++tx)
                     {
-                        const unsigned char d = dec.data[tx + ty * dec.w];
+                        const unsigned char d = dec.data[static_cast<std::size_t>(tx + ty * dec.w)];
                         ASSERT_LT(d, DECOR_MAX)
                             << pkg.campaign << " scen" << pin.id
                             << ": decor id out of range at (" << tx << ", "
                             << ty << ")";
-                        const unsigned char base = g.data[tx + ty * g.w];
+                        const unsigned char base = g.data[static_cast<std::size_t>(tx + ty * g.w)];
                         if (d != DECOR_NONE)
                         {
                             ASSERT_TRUE(base != PIX_AIR &&
@@ -390,7 +390,7 @@ TEST_F(MigratedCampaignTest, decor_composition_reproduces_legacy_semantics)
                 {
                     for (int tx = 0; tx < dec.w; ++tx)
                     {
-                        const unsigned char d = dec.data[tx + ty * dec.w];
+                        const unsigned char d = dec.data[static_cast<std::size_t>(tx + ty * dec.w)];
                         if (d == DECOR_NONE)
                             continue;
                         // The one-tile probe footprint at the far edge

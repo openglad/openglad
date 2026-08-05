@@ -1831,24 +1831,24 @@ void view_team(short left, short top, short right, short bottom)
 	for(i=0; i < MAX_TEAM_SIZE; i++)
 	{
 	    auto& ourteam = og::runtime::current_session->myscreen_->save_data.team_list;
-		if (ourteam[i])
+		if (ourteam[static_cast<std::size_t>(i)])
 		{
 			numguys++;
 
 			// Pick a nice dark color based on family type
-				namecolor = static_cast<unsigned char>(((ourteam[i]->family + 1) << 4) & 255);
-				mytext.write_xy(left+5, text_down, ourteam[i]->name.c_str(), static_cast<unsigned char>(namecolor), 1);
+				namecolor = static_cast<unsigned char>(((ourteam[static_cast<std::size_t>(i)]->family + 1) << 4) & 255);
+				mytext.write_xy(left+5, text_down, ourteam[static_cast<std::size_t>(i)]->name.c_str(), static_cast<unsigned char>(namecolor), 1);
 
 				row_message = std::format("{:4d} {:4d} {:4d} {:4d} {:4d}",
-				         ourteam[i]->strength, ourteam[i]->dexterity,
-				         ourteam[i]->constitution, ourteam[i]->intelligence,
-				         ourteam[i]->armor);
+				         ourteam[static_cast<std::size_t>(i)]->strength, ourteam[static_cast<std::size_t>(i)]->dexterity,
+				         ourteam[static_cast<std::size_t>(i)]->constitution, ourteam[static_cast<std::size_t>(i)]->intelligence,
+				         ourteam[static_cast<std::size_t>(i)]->armor);
 				mytext.write_xy(left+70, text_down, row_message.c_str(), static_cast<unsigned char>(BLACK), 1);
 
-				row_message = std::format("{:2d}", ourteam[i]->level);
+				row_message = std::format("{:2d}", ourteam[static_cast<std::size_t>(i)]->level);
 				mytext.write_xy(left+235, text_down, row_message.c_str(), static_cast<unsigned char>(BLACK), 1);
 
-			mytext.write_xy(left+260, text_down, family_name_copy(ourteam[i]->family), static_cast<unsigned char>(namecolor), 1);
+			mytext.write_xy(left+260, text_down, family_name_copy(ourteam[static_cast<std::size_t>(i)]->family), static_cast<unsigned char>(namecolor), 1);
 
 			text_down+=6;
 		}
@@ -2205,9 +2205,9 @@ Sint32 set_player_mode(Sint32 howmany)
     picker_lobby_set_player_mode(howmany);
 
 	while (count < static_cast<Sint32>(og::runtime::current_session->allbuttons_.size())
-	       && og::runtime::current_session->allbuttons_[count])
+	       && og::runtime::current_session->allbuttons_[static_cast<std::size_t>(count)])
 	{
-		og::runtime::current_session->allbuttons_[count]->vdisplay();
+		og::runtime::current_session->allbuttons_[static_cast<std::size_t>(count)]->vdisplay();
 		count++;
 	}
 	//buffers: myscreen->buffer_to_screen(0, 0, 320, 200);
@@ -2396,7 +2396,7 @@ Sint32 create_detail_menu(guy *arg1)
            const int slot = og::runtime::current_session->editguy_;
            if (slot < 0 || slot >= static_cast<int>(tl.size()))
                return MENU_REDRAW;
-           thisguy = tl[slot].get();
+           thisguy = tl[static_cast<std::size_t>(slot)].get();
        }
        if (!thisguy)
            return MENU_REDRAW;
@@ -2425,7 +2425,7 @@ Sint32 create_detail_menu(guy *arg1)
            {
                short new_level = fd->promotion_new_level ? fd->promotion_new_level(thisguy->level) : 1;
                thisguy->upgrade_to_level(new_level);
-               thisguy->family = static_cast<unsigned char>(fd->promotes_to);
+               thisguy->family = static_cast<char>(static_cast<unsigned char>(fd->promotes_to));
                // The promotion mutated the REAL team member in place: run
                // the full §3.8 mutation tail — the lobby roster push (every
                // picker menu loop starts with picker_lobby_poll(), which
@@ -2583,7 +2583,7 @@ static std::string pick_spritesheet()
                 if (item == 0) {
                     selection = "";
                 } else if (item - 1 < static_cast<int>(packs.size())) {
-                    const std::string& pack = packs[item - 1];
+                    const std::string& pack = packs[static_cast<std::size_t>(item - 1)];
                     selection = (selection == pack) ? "" : pack;
                 }
                 spritesheet_wait_for_mouse_release();
@@ -2613,7 +2613,7 @@ static std::string pick_spritesheet()
             if (item == 0)
                 draw_row(LIST_X, ry, LIST_W, ROW_H, "Standard", selection.empty());
             else
-                draw_row(LIST_X, ry, LIST_W, ROW_H, packs[item - 1], selection == packs[item - 1]);
+                draw_row(LIST_X, ry, LIST_W, ROW_H, packs[static_cast<std::size_t>(item - 1)], selection == packs[static_cast<std::size_t>(item - 1)]);
         }
         if (packs.empty())
             mytext.write_xy(LIST_X + 4, LIST_Y + ROW_H + 3, GREY, "No packs in extra_pix/");
@@ -2738,10 +2738,10 @@ static void picker_settings_autosave()
 static void refresh_difficulty_menu_button_label(int button_index,
                                                  const std::string& label)
 {
-   if (og::runtime::current_session->allbuttons_[button_index] != nullptr)
-       og::runtime::current_session->allbuttons_[button_index]->label = label;
+   if (og::runtime::current_session->allbuttons_[static_cast<std::size_t>(button_index)] != nullptr)
+       og::runtime::current_session->allbuttons_[static_cast<std::size_t>(button_index)]->label = label;
    if (static_cast<int>(pks().difficulty_menu_buttons.size()) > button_index)
-       pks().difficulty_menu_buttons[button_index].label = label;
+       pks().difficulty_menu_buttons[static_cast<std::size_t>(button_index)].label = label;
 }
 
 Sint32 set_difficulty()
@@ -2866,10 +2866,10 @@ Sint32 change_allied()
 static void refresh_teamsmenu_button_label(int button_index,
                                            const std::string& label)
 {
-   if (og::runtime::current_session->allbuttons_[button_index] != nullptr)
-       og::runtime::current_session->allbuttons_[button_index]->label = label;
+   if (og::runtime::current_session->allbuttons_[static_cast<std::size_t>(button_index)] != nullptr)
+       og::runtime::current_session->allbuttons_[static_cast<std::size_t>(button_index)]->label = label;
    if (static_cast<int>(pks().teamsmenu_buttons.size()) > button_index)
-       pks().teamsmenu_buttons[button_index].label = label;
+       pks().teamsmenu_buttons[static_cast<std::size_t>(button_index)].label = label;
 }
 
 Sint32 change_ctf_teams()
@@ -2905,10 +2905,10 @@ Sint32 change_ctf_caps()
 static void refresh_scenariomenu_button_label(int button_index,
                                               const std::string& label)
 {
-   if (og::runtime::current_session->allbuttons_[button_index] != nullptr)
-       og::runtime::current_session->allbuttons_[button_index]->label = label;
+   if (og::runtime::current_session->allbuttons_[static_cast<std::size_t>(button_index)] != nullptr)
+       og::runtime::current_session->allbuttons_[static_cast<std::size_t>(button_index)]->label = label;
    if (static_cast<int>(pks().scenariomenu_buttons.size()) > button_index)
-       pks().scenariomenu_buttons[button_index].label = label;
+       pks().scenariomenu_buttons[static_cast<std::size_t>(button_index)].label = label;
 }
 
 Sint32 change_ctf_troops()
@@ -3206,7 +3206,7 @@ static int advance_teams_menu_guy_slot(const SaveData& save, int whichway)
    for (int step = 0; step < slot_count; ++step)
    {
        slot = ((slot + whichway) % slot_count + slot_count) % slot_count;
-       if (save.team_list[slot])
+       if (save.team_list[static_cast<std::size_t>(slot)])
            return slot;
    }
    return -1;
@@ -3221,7 +3221,7 @@ int teams_menu_selected_guy_slot()
 
    const int slot_count = static_cast<int>(save.team_list.size());
    const int slot = std::clamp(pks().teams_menu_guy_slot, 0, slot_count - 1);
-   if (save.team_list[slot])
+   if (save.team_list[static_cast<std::size_t>(slot)])
        return slot;
    return advance_teams_menu_guy_slot(save, 1);
 }

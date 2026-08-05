@@ -98,7 +98,7 @@ bool living::act()
 	update_exit_latch();
 
 	// Make sure everyone we're pointing to is valid
-	if (foe() && (foe()->dead() || (current_game->world->rng_.next(foe()->invisibility_left()/20) > 0) ) )
+	if (foe() && (foe()->dead() || (current_game->world->rng_.next(static_cast<std::uint32_t>(foe()->invisibility_left()/20)) > 0) ) )
 		set_foe(nullptr);
 	if (is_friendly(foe()))
 		set_foe(nullptr);
@@ -377,7 +377,7 @@ bool living::act()
 					// Should we do our special? Are we full of magic?
 					if (stats_->magicpoints() >= stats_->special_cost(1))
 					{
-						set_current_special(static_cast<char>(current_game->world->rng_.next((stats_->level()+2)/3) + 1));
+						set_current_special(static_cast<char>(current_game->world->rng_.next(static_cast<std::uint32_t>((stats_->level()+2)/3)) + 1));
 						const FamilyDescriptor* special_fd = get_family_descriptor(family());
 						if ( (current_special() > 4) ||
 						        (current_special() < 1) ||

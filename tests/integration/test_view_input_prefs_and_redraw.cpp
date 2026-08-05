@@ -79,7 +79,7 @@ TEST(ViewInputPrefsAndRedraw, viewscreen_input_key_prefs_triggers_options_menu_b
     SDL_Thread* th = SDL_CreateThread(injector_press_and_release_escape, "esc_inject", &ks);
     ASSERT_TRUE(th != nullptr) << "escape injector started";
 
-    const SDL_Keycode prefs_key = og::runtime::current_session->player_keys_[0][KEY_PREFS];
+    const SDL_Keycode prefs_key = static_cast<SDL_Keycode>(og::runtime::current_session->player_keys_[0][KEY_PREFS]);
     (void)vs->input(keydown(prefs_key));
 
     int code = 0;
@@ -112,9 +112,9 @@ TEST(ViewInputPrefsAndRedraw, viewscreen_input_shift_slash_triggers_read_scenari
 
     KeyStateGuard ks;
     // Hold the shifter key (LSHIFT by default for player 0).
-    ks.fake[SDL_GetScancodeFromKey(og::runtime::current_session->player_keys_[0][KEY_SHIFTER], nullptr)] = true;
+    ks.fake[SDL_GetScancodeFromKey(static_cast<SDL_Keycode>(og::runtime::current_session->player_keys_[0][KEY_SHIFTER]), nullptr)] = true;
     (void)vs->input(keydown(SDLK_SLASH));
-    ks.fake[SDL_GetScancodeFromKey(og::runtime::current_session->player_keys_[0][KEY_SHIFTER], nullptr)] = false;
+    ks.fake[SDL_GetScancodeFromKey(static_cast<SDL_Keycode>(og::runtime::current_session->player_keys_[0][KEY_SHIFTER]), nullptr)] = false;
 }
 
 

@@ -146,7 +146,7 @@ TEST(MapgenBuilders, paint_and_paint_rect_exact_bytes)
     ASSERT_EQ(g.w, 6);
     ASSERT_EQ(g.h, 4);
     for (int i = 0; i < 24; ++i)
-        ASSERT_EQ(g.data[i], kExpected[i]) << "byte " << i;
+        ASSERT_EQ(g.data[static_cast<std::size_t>(i)], kExpected[i]) << "byte " << i;
 }
 
 TEST(MapgenBuilders, paint_ring_exact_bytes)
@@ -168,7 +168,7 @@ TEST(MapgenBuilders, paint_ring_exact_bytes)
         G, G, G, G, G, G, G,
     };
     for (int i = 0; i < 49; ++i)
-        ASSERT_EQ(g.data[i], kExpected[i]) << "byte " << i;
+        ASSERT_EQ(g.data[static_cast<std::size_t>(i)], kExpected[i]) << "byte " << i;
 }
 
 TEST(MapgenBuilders, stair_pair_paints_aligned_up_down)
@@ -316,7 +316,7 @@ TEST(MapgenPlacement, scatters_keep_entity_and_stair_clearance)
     for (int ty = 0; ty < 14; ++ty)
         for (int tx = 0; tx < 20; ++tx)
         {
-            const unsigned char t = g.data[tx + ty * 20];
+            const unsigned char t = g.data[static_cast<std::size_t>(tx + ty * 20)];
             const bool jagged =
                 t >= PIX_JAGGED_GROUND_1 && t <= PIX_JAGGED_GROUND_4;
             if (jagged)

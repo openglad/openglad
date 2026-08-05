@@ -52,7 +52,7 @@ static void inject_results_click(int game_x, int game_y, int delay_ms = 10)
     mouse.x = static_cast<float>(game_x);
     mouse.y = static_cast<float>(game_y);
     mouse.left = true;
-    SDL_Delay(delay_ms < 60 ? 60 : delay_ms);
+    SDL_Delay(static_cast<Uint32>(delay_ms < 60 ? 60 : delay_ms));
     mouse.left = false;
     SDL_Delay(20);
 }
@@ -518,7 +518,7 @@ TEST(ResultsScreenFullUi, completed_victory_zeroes_bonus_cash)
     screen_ref.save_data.m_score[1] = 50;
     screen_ref.world().time_bonus_limit = 500;
     screen_ref.world().par_value = 4;
-    screen_ref.framecount = screen_ref.world().time_bonus_limit;
+    screen_ref.framecount = static_cast<Uint32>(screen_ref.world().time_bonus_limit);
     screen_ref.world().set_level_tick_count(
         static_cast<std::uint32_t>(screen_ref.world().time_bonus_limit));
 

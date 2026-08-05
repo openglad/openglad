@@ -137,8 +137,8 @@ void radar::start(LevelRuntimeData* data)
 // update() always match the allocation.
 void radar::sync_to_grid(LevelRuntimeData* data)
 {
-	sizex = static_cast<unsigned short>(data->world().grid.w);
-	sizey = static_cast<unsigned short>(data->world().grid.h);
+	sizex = static_cast<short>(data->world().grid.w);
+	sizey = static_cast<short>(data->world().grid.h);
 	size = static_cast<unsigned short>((static_cast<unsigned short>(sizex))*(static_cast<unsigned short>(sizey)));
 	xview = RADAR_X;
 	yview = RADAR_Y;
@@ -262,7 +262,7 @@ short radar::draw(LevelRuntimeData* data)
         alpha = 127;
     }
 	{
-		size_t offset = radarx + (radary * sizex);
+		size_t offset = static_cast<size_t>(radarx + (radary * sizex));
 		auto radar_span = std::span<const unsigned char>{bmp.data() + offset, bmp.size() - offset};
 		og::runtime::current_session->myscreen_->putbuffer_alpha(xloc, yloc,
 		                   sizex,sizey,
@@ -373,7 +373,7 @@ short radar::draw(LevelRuntimeData* data)
 					else if (oborder == Order::Living)
 						og::runtime::current_session->myscreen_->pointb(tempx,tempy,tempcolor, alpha);
 					else if (oborder == Order::Generator)
-						og::runtime::current_session->myscreen_->pointb(tempx,tempy,static_cast<char>(tempcolor+1), alpha);
+						og::runtime::current_session->myscreen_->pointb(tempx,tempy,static_cast<unsigned char>(tempcolor+1), alpha);
 					else if (oborder == Order::Treasure) // currently life gems
 						og::runtime::current_session->myscreen_->pointb(tempx,tempy,COLOR_FIRE, alpha);
 					else
@@ -460,7 +460,7 @@ short radar::draw(LevelRuntimeData* data)
 						Log("bad radar, bad\n");
 						return 1;
 					}
-					og::runtime::current_session->myscreen_->pointb(tempx,tempy,static_cast<char>(do_show), alpha);
+					og::runtime::current_session->myscreen_->pointb(tempx,tempy,static_cast<unsigned char>(do_show), alpha);
 				}//draw the blob onto the radar
 			} // end of valid do_show
 		}  // end of if here->ob
@@ -619,7 +619,7 @@ void radar::update(LevelRuntimeData* data)
 		for (j = 0; j < sizey; j++)
 		{
 			// Check if item in background grid
-			switch (static_cast<unsigned char>(baked_grid.data[i+sizex*j]))
+			switch (static_cast<unsigned char>(baked_grid.data[static_cast<std::size_t>(i+sizex*j)]))
 			{
 				case PIX_GRASS1:  // grass is green
 				case PIX_GRASS_DARK_1:
@@ -816,9 +816,9 @@ void radar::update(LevelRuntimeData* data)
 			}
 			if (has_decor)
 				temp = decor_radar_color(
-				    static_cast<unsigned char>(decor_plane.data[i + sizex * j]),
+				    static_cast<unsigned char>(decor_plane.data[static_cast<std::size_t>(i + sizex * j)]),
 				    temp);
-			bmp[i+sizex*j] = static_cast<unsigned char>(temp);
+			bmp[static_cast<std::size_t>(i+sizex*j)] = static_cast<unsigned char>(temp);
 		}
 
 }

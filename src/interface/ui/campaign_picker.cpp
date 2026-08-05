@@ -352,7 +352,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
         entries.push_back(std::make_unique<CampaignEntry>(cid, num_completed));
 
         if(cid == old_campaign_id)
-            current_campaign_index = i;
+            current_campaign_index = static_cast<unsigned int>(i);
 
         i++;
     }
@@ -364,9 +364,9 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
         army_power = 0;
         for(int team_idx = 0; team_idx < MAX_TEAM_SIZE; team_idx++)
         {
-            if (save_data->team_list[team_idx])
+            if (save_data->team_list[static_cast<std::size_t>(team_idx)])
             {
-                army_power += 3*save_data->team_list[team_idx]->level;
+                army_power += 3*save_data->team_list[static_cast<std::size_t>(team_idx)]->level;
             }
         }
     }
@@ -410,8 +410,8 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
 		const auto nav = og::ui::campaign_picker_nav(visibility);
 		for (int btn = 0; btn < og::ui::kCampaignPickerButtonCount; ++btn)
 		{
-			rows[btn].nav = MenuNav{.up = nav[btn].up, .down = nav[btn].down,
-			                        .left = nav[btn].left, .right = nav[btn].right};
+			rows[btn].nav = MenuNav{.up = nav[static_cast<std::size_t>(btn)].up, .down = nav[static_cast<std::size_t>(btn)].down,
+			                        .left = nav[static_cast<std::size_t>(btn)].left, .right = nav[static_cast<std::size_t>(btn)].right};
 		}
 	};
 	

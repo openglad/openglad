@@ -239,7 +239,7 @@ TEST(CtfNetwork, two_client_scripted_match_converges_through_full_lifecycle)
     fixture.expect_clients_match_server();
     for (int index = 0; index < 2; ++index)
     {
-        const GameWorld& client = fixture.client_world(index);
+        const GameWorld& client = fixture.client_world(static_cast<std::size_t>(index));
         EXPECT_TRUE(client.mode.active) << "client " << index;
         EXPECT_TRUE(client.mode.init_attempted) << "client " << index;
         EXPECT_STREQ("CTF", client.mode.name.data()) << "client " << index;
@@ -303,7 +303,7 @@ TEST(CtfNetwork, two_client_scripted_match_converges_through_full_lifecycle)
     fixture.expect_clients_match_server();
     for (int index = 0; index < 2; ++index)
     {
-        const GameWorld& client = fixture.client_world(index);
+        const GameWorld& client = fixture.client_world(static_cast<std::size_t>(index));
         EXPECT_TRUE(client.game_ended) << "client " << index;
         EXPECT_EQ(0, client.mode.winner_team) << "client " << index;
         EXPECT_TRUE(client.mode.win_latched) << "client " << index;
@@ -324,14 +324,14 @@ TEST(CtfNetwork, four_client_scripted_match_state_replicates)
     fixture.with_server_context([&] {
         GameWorld& world = fixture.server_world();
         for (int i = 0; i < og::sim::kModeVarCount; ++i)
-            world.mode.vars[i] = 100 + i;
+            world.mode.vars[static_cast<std::size_t>(i)] = 100 + i;
     });
     fixture.step_ticks(20);
     ASSERT_TRUE(fixture.server_world().mode.active);
     fixture.expect_clients_match_server();
     for (int index = 0; index < 4; ++index)
     {
-        const GameWorld& client = fixture.client_world(index);
+        const GameWorld& client = fixture.client_world(static_cast<std::size_t>(index));
         EXPECT_TRUE(client.mode.active) << "client " << index;
         EXPECT_EQ(fixture.server_world().mode.vars, client.mode.vars)
             << "client " << index;

@@ -79,7 +79,7 @@ void fill_base(GameWorld& world, unsigned char tile)
 void set_base(GameWorld& world, int f, int x, int y, unsigned char tile)
 {
     PixieData& g = world.grid_for_floor(f);
-    g.data[static_cast<std::size_t>(y) * g.w + x] = tile;
+    g.data[static_cast<std::size_t>(y) * g.w + static_cast<std::size_t>(x)] = tile;
 }
 
 // Give floor f an all-`tile` grid matching the base extents (multifloor).
@@ -87,8 +87,8 @@ void fill_floor_grid(GameWorld& world, int f, unsigned char tile)
 {
     const int gw = world.grid.w;
     const int gh = world.grid.h;
-    auto* buf = new unsigned char[static_cast<std::size_t>(gw) * gh];
-    std::fill(buf, buf + static_cast<std::size_t>(gw) * gh, tile);
+    auto* buf = new unsigned char[static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh)];
+    std::fill(buf, buf + static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh), tile);
     world.grid_for_floor(f) = PixieData(1, static_cast<unsigned char>(gw),
                                         static_cast<unsigned char>(gh), buf);
     world.smoother_for_floor(f).set_target(world.grid_for_floor(f));
@@ -105,7 +105,7 @@ void give_decor_plane(GameWorld& world, int f)
 void set_decor(GameWorld& world, int f, int x, int y, unsigned char id)
 {
     PixieData& d = world.decor_for_floor(f);
-    d.data[static_cast<std::size_t>(y) * d.w + x] = id;
+    d.data[static_cast<std::size_t>(y) * d.w + static_cast<std::size_t>(x)] = id;
 }
 
 struct RGB

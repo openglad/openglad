@@ -1396,7 +1396,7 @@ TEST(CampaignAndLevelPicker, new_game_resets_campaign_and_mount_to_default)
               mount_campaign_package_with_error("modes"));
     // team_size == 0 keeps the flow from raising the "restart?" prompt.
     for (int i = 0; i < MAX_TEAM_SIZE; i++)
-        save.team_list[i].reset();
+        save.team_list[static_cast<std::size_t>(i)].reset();
     save.team_size = 0;
 
     SDL_SetAtomicInt(&s_new_game_setup_done, 0);

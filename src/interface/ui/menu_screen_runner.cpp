@@ -140,7 +140,7 @@ void apply_art_bindings(const SpecRowView& rows, int num_buttons)
         const MenuButtonSpec& row = *rows[static_cast<std::size_t>(i)];
         if (row.art_family < 0)
             continue;
-        vbutton* live = og::runtime::current_session->allbuttons_[i];
+        vbutton* live = og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)];
         if (live != nullptr)
             live->set_graphic(static_cast<char>(row.art_family));
     }
@@ -162,7 +162,7 @@ void apply_row_states(const SpecRowView& rows, button* buttons,
         states[i] = state;
         buttons[i].hidden = (state == RowState::Hidden);
         sync_button_hidden_state(buttons, i);
-        vbutton* live = og::runtime::current_session->allbuttons_[i];
+        vbutton* live = og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)];
         if (state == RowState::Disabled) {
             buttons[i].myfun = 0;
             if (live != nullptr) {
@@ -243,7 +243,7 @@ void apply_label_bindings(const SpecRowView& rows, button* buttons,
 {
     for (int i = 0; i < num_buttons && i < static_cast<int>(rows.size()); ++i) {
         const MenuButtonSpec& row = *rows[static_cast<std::size_t>(i)];
-        vbutton* live = og::runtime::current_session->allbuttons_[i];
+        vbutton* live = og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)];
         if (row.label_binding.formatter != nullptr) {
             const std::string label = row.label_binding.formatter(context);
             buttons[i].label = label;
@@ -470,7 +470,7 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
 #ifdef TESTING
             // §1.5: a click landing on a Disabled row no-ops, with a TRACE.
             for (int i = 0; i < num_buttons; ++i) {
-                vbutton* live = og::runtime::current_session->allbuttons_[i];
+                vbutton* live = og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)];
                 if (states[i] == RowState::Disabled && !buttons[i].hidden
                     && live != nullptr && live->mouse_on()) {
                     TRACE("menu_engine", "disabled_row_click %s",

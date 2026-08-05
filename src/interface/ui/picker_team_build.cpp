@@ -141,7 +141,7 @@ static void show_need_team_to_train_popup()
 static bool save_has_trainable_team_member(const SaveData& save)
 {
     for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
-        if (save.team_list[i] && picker_lobby_save_slot_editable(i))
+        if (save.team_list[static_cast<std::size_t>(i)] && picker_lobby_save_slot_editable(i))
             return true;
     }
     return false;
@@ -264,10 +264,10 @@ void sync_button_hidden_state(const button* buttons, int button_index)
 {
     if (buttons == nullptr || button_index < 0)
         return;
-    if (og::runtime::current_session->allbuttons_[button_index] == nullptr)
+    if (og::runtime::current_session->allbuttons_[static_cast<std::size_t>(button_index)] == nullptr)
         return;
 
-    og::runtime::current_session->allbuttons_[button_index]->hidden =
+    og::runtime::current_session->allbuttons_[static_cast<std::size_t>(button_index)]->hidden =
         buttons[button_index].hidden;
 }
 
@@ -402,10 +402,10 @@ og::ui::DerivedStats picker_compute_guy_derived_stats(const guy& g)
         : static_cast<int>(g.family);
     auto pix = PIX(Order::Living, fam);
 	return og::ui::compute_derived_stats(g,
-	    og::runtime::current_session->myscreen_->myloader->hitpoints[pix],
-	    og::runtime::current_session->myscreen_->myloader->damage[pix],
-	    og::runtime::current_session->myscreen_->myloader->stepsizes[pix],
-	    og::runtime::current_session->myscreen_->myloader->fire_frequency[pix]);
+	    og::runtime::current_session->myscreen_->myloader->hitpoints[static_cast<std::size_t>(pix)],
+	    og::runtime::current_session->myscreen_->myloader->damage[static_cast<std::size_t>(pix)],
+	    og::runtime::current_session->myscreen_->myloader->stepsizes[static_cast<std::size_t>(pix)],
+	    og::runtime::current_session->myscreen_->myloader->fire_frequency[static_cast<std::size_t>(pix)]);
 }
 
 // Draw the HP/MP/ATK/DEF/SPD/ATK_SPD derived stats block.
@@ -456,7 +456,7 @@ void picker_wire_teams_menu_nav(button* buttons, int count,
     std::vector<int> mids;
     for (int t = 0; t < 4; ++t)
     {
-        if (wiring.pager_visible[t])
+        if (wiring.pager_visible[static_cast<std::size_t>(t)])
             mids.push_back(kTeamsMenuPageFirstIndex + t);
     }
     const int first_mid = mids.empty() ? -1 : mids.front();
@@ -562,11 +562,11 @@ std::string matchup_company_abbreviation(std::string_view company)
 {
     std::string result;
     result.reserve(3);
-    for (const unsigned char ch : company)
+    for (const char ch : company)
     {
-        if (!std::isalnum(ch))
+        if (!std::isalnum(static_cast<unsigned char>(ch)))
             continue;
-        result.push_back(static_cast<char>(std::toupper(ch)));
+        result.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(ch))));
         if (result.size() == 3)
             break;
     }
@@ -739,7 +739,7 @@ TeamsMenuFrameState compute_teams_menu_state()
             pages = og::ui::paginate_team_detail_pages(
                 items, kTeamsDetailCharsPaged);
         }
-        state.wiring.pager_visible[t] = pages.size() > 1;
+        state.wiring.pager_visible[static_cast<std::size_t>(t)] = pages.size() > 1;
 
         // Normalize the session's raw flip counter onto this page count and
         // write it back, so a shrinking roster can't strand the page.
@@ -766,7 +766,7 @@ TeamsMenuFrameState compute_teams_menu_state()
     }
 
     for (int t = 0; t < 4; ++t)
-        state.wiring.join_visible[t] = false;
+        state.wiring.join_visible[static_cast<std::size_t>(t)] = false;
     return state;
 }
 
@@ -808,7 +808,7 @@ void sync_teams_menu_visibility(button* buttons,
     for (int t = 0; t < 4; ++t)
     {
         buttons[kTeamsMenuPageFirstIndex + t].hidden =
-            !state.wiring.pager_visible[t];
+            !state.wiring.pager_visible[static_cast<std::size_t>(t)];
     }
 
     buttons[kTeamsMenuReadyIndex].hidden = true;
@@ -827,8 +827,8 @@ void sync_teams_menu_visibility(button* buttons,
     for (int index = 0; index < kTeamsMenuButtonCount; ++index)
     {
         sync_button_hidden_state(buttons, index);
-        if (allbuttons[index] != nullptr)
-            allbuttons[index]->label = buttons[index].label;
+        if (allbuttons[static_cast<std::size_t>(index)] != nullptr)
+            allbuttons[static_cast<std::size_t>(index)]->label = buttons[index].label;
     }
     ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
 }
@@ -878,7 +878,7 @@ void draw_teams_menu_content(const TeamsMenuFrameState& state, text& mytext)
 
         // The pager column ('>' at x=297 and the p/N indicator ending at
         // x=295) narrows both the label row and the detail line.
-        const bool paged = state.wiring.pager_visible[t];
+        const bool paged = state.wiring.pager_visible[static_cast<std::size_t>(t)];
         const std::string row_label = og::ui::format_team_row_label(
             static_cast<short>(t),
             hero_count,
@@ -1653,8 +1653,8 @@ void picker_hire_menu_engine_draw_content(void* screen_state)
         l.name_box.x, l.name_box.y, l.name_box.x + l.name_box.w - 1,
         l.name_box.y + l.name_box.h - 1, 1);
     og::runtime::current_session->myscreen_->draw_button_inverted(
-        l.name_box_inner.x, l.name_box_inner.y, l.name_box_inner.w,
-        l.name_box_inner.h);
+        l.name_box_inner.x, l.name_box_inner.y, static_cast<Uint32>(l.name_box_inner.w),
+        static_cast<Uint32>(l.name_box_inner.h));
 
     text& mytext = og::runtime::current_session->myscreen_->text_normal;
     mytext.write_xy(l.name_box.x + l.name_box.w/2 - 3*static_cast<Sint32>(strlen(state->family_name)), l.name_box.y + 6, state->family_name, static_cast<unsigned char>(DARK_BLUE), 1);
@@ -1670,12 +1670,12 @@ void picker_hire_menu_engine_draw_content(void* screen_state)
         l.description_box.y + l.description_box.h - 1, 1);
     og::runtime::current_session->myscreen_->draw_button_inverted(
         l.description_box_inner.x, l.description_box_inner.y,
-        l.description_box_inner.w, l.description_box_inner.h);
+        static_cast<Uint32>(l.description_box_inner.w), static_cast<Uint32>(l.description_box_inner.h));
 
     if(og::runtime::current_session->current_guy_->family != state->last_family)
     {
         // Update description
-        state->last_family = og::runtime::current_session->current_guy_->family;
+        state->last_family = static_cast<unsigned char>(og::runtime::current_session->current_guy_->family);
         state->description = get_class_description(state->last_family);
         state->desc = og::core::wrap_text(state->description,
                                           l.description_box_content.w / 6,
@@ -1709,8 +1709,8 @@ void picker_hire_menu_engine_draw_content(void* screen_state)
         l.cost_box.x, l.cost_box.y, l.cost_box.x + l.cost_box.w - 1,
         l.cost_box.y + l.cost_box.h - 1, 1);
     og::runtime::current_session->myscreen_->draw_button_inverted(
-        l.cost_box_inner.x, l.cost_box_inner.y, l.cost_box_inner.w,
-        l.cost_box_inner.h);
+        l.cost_box_inner.x, l.cost_box_inner.y, static_cast<Uint32>(l.cost_box_inner.w),
+        static_cast<Uint32>(l.cost_box_inner.h));
 
     // current_team_num_ is derived from a save-loaded guy::teamnum (which
     // is unvalidated); clamp before indexing the MAX_PLAYERS-sized array.
@@ -1739,8 +1739,8 @@ void picker_hire_menu_engine_draw_content(void* screen_state)
         l.stat_box.y + l.stat_box.h - 1, 1);
     mytext.write_xy(l.stat_box.x + 65, l.stat_box.y + 2, DARK_BLUE, "Train");
     og::runtime::current_session->myscreen_->draw_button_inverted(
-        l.stat_box_inner.x, l.stat_box_inner.y, l.stat_box_inner.w,
-        l.stat_box_inner.h);
+        l.stat_box_inner.x, l.stat_box_inner.y, static_cast<Uint32>(l.stat_box_inner.w),
+        static_cast<Uint32>(l.stat_box_inner.h));
 
     // Stat box content
     Sint32 linesdown = 0;
@@ -1771,7 +1771,7 @@ void picker_hire_menu_engine_draw_content(void* screen_state)
     // Separator bar
     UiRect r = {l.stat_box_content.x + 10, l.stat_box_content.y + (linesdown+1)*line_height - 2, l.stat_box_content.w - 20, 2};
     og::runtime::current_session->myscreen_->draw_button_inverted(
-        r.x, r.y, r.w, r.h);
+        r.x, r.y, static_cast<Uint32>(r.w), static_cast<Uint32>(r.h));
 
     int derived_offset = 3*STAT_NUM_OFFSET/4;
     auto ds = picker_compute_guy_derived_stats(*og::runtime::current_session->current_guy_);
@@ -1800,7 +1800,7 @@ Sint32 create_hire_menu(Sint32 arg1)
 
     HireEngineState state;
     state.start_time = query_timer();
-    state.last_family = og::runtime::current_session->current_guy_->family;
+    state.last_family = static_cast<unsigned char>(og::runtime::current_session->current_guy_->family);
     state.description = get_class_description(state.last_family);
     state.desc = og::core::wrap_text(state.description,
                                      HireMenuLayout{}.description_box_content.w / 6,
@@ -2037,7 +2037,7 @@ void picker_train_menu_engine_draw_content(void* screen_state)
 		// Separator bar
 			UiRect r = {info_box_content.x + 10, info_y(linesdown) - 2, info_box_content.w - 20, 2};
 			og::runtime::current_session->myscreen_->draw_button_inverted(
-				r.x, r.y, r.w, r.h);
+				r.x, r.y, static_cast<Uint32>(r.w), static_cast<Uint32>(r.h));
         
         linesdown += 0.4f;
 
@@ -2055,7 +2055,7 @@ void picker_train_menu_engine_draw_content(void* screen_state)
 		// Separator bar
 			UiRect r2 = {info_box_content.x + 10, info_y(linesdown) - 2, info_box_content.w - 20, 2};
 			og::runtime::current_session->myscreen_->draw_button_inverted(
-				r2.x, r2.y, r2.w, r2.h);
+				r2.x, r2.y, static_cast<Uint32>(r2.w), static_cast<Uint32>(r2.h));
         
         linesdown += 0.4f;
         // teamnum is loaded verbatim from the .gtl save file with no range
@@ -2193,7 +2193,7 @@ Sint32 cycle_guy(Sint32 whichway)
         og::runtime::current_session->current_type_ = (og::runtime::current_session->current_type_ + whichway + static_cast<Sint32>(guys.size())) % static_cast<Sint32>(guys.size());
         if (og::runtime::current_session->current_type_ < 0)
             og::runtime::current_session->current_type_ = static_cast<Sint32>(guys.size()) - 1;
-        og::runtime::current_session->current_guy_ = og::ui::create_recruit(guys[og::runtime::current_session->current_type_], og::runtime::current_session->current_team_num_, og::runtime::current_session->myscreen_->save_data);
+        og::runtime::current_session->current_guy_ = og::ui::create_recruit(guys[static_cast<std::size_t>(og::runtime::current_session->current_type_)], og::runtime::current_session->current_team_num_, og::runtime::current_session->myscreen_->save_data);
         show_guy(0, 0);
         grab_mouse();
         return MENU_OK;
@@ -2281,7 +2281,7 @@ Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 		const int slot = og::runtime::current_session->editguy_;
 		if (slot < 0 || slot >= static_cast<int>(team_list.size()))
 			return MENU_REDRAW;
-		someguy = team_list[slot].get();
+		someguy = team_list[static_cast<std::size_t>(slot)].get();
 	}
 	else
 		someguy = og::runtime::current_session->current_guy_.get();
@@ -2325,7 +2325,7 @@ Sint32 add_guy([[maybe_unused]] Sint32 ignoreme)
 
 	// SDL-specific: prompt for name
 	release_mouse();
-	auto& hired = og::runtime::current_session->myscreen_->save_data.team_list[slot];
+	auto& hired = og::runtime::current_session->myscreen_->save_data.team_list[static_cast<std::size_t>(slot)];
 	std::string name = hired->name;
 	if (prompt_for_string("NAME THIS CHARACTER", name))
 		pks().hire_session->rename_hired(slot, name);
@@ -2450,7 +2450,7 @@ Sint32 delete_all()
 
 	for (int i = 0; i < og::runtime::current_session->myscreen_->save_data.team_size; i++)
     {
-        og::runtime::current_session->myscreen_->save_data.team_list[i].reset();
+        og::runtime::current_session->myscreen_->save_data.team_list[static_cast<std::size_t>(i)].reset();
     }
     
     og::runtime::current_session->myscreen_->save_data.team_size = 0;

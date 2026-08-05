@@ -972,7 +972,7 @@ int og_rand(lua_State* L)
         return luaL_error(L, "og.rand: no active world");
     lua_pushinteger(L, static_cast<lua_Integer>(
                            current_game->world->rng_.next(
-                               static_cast<std::int32_t>(n))));
+                               static_cast<std::uint32_t>(static_cast<std::int32_t>(n)))));
     return 1;
 }
 

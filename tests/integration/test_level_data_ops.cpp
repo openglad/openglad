@@ -209,7 +209,7 @@ TEST(LevelDataOps, level_data_create_new_grid)
     // Grass tile generation should stay in expected range.
     for (int i = 0; i < 25; i++)
     {
-        unsigned char t = og::runtime::current_session->myscreen_->world().grid.data[i];
+        unsigned char t = og::runtime::current_session->myscreen_->world().grid.data[static_cast<std::size_t>(i)];
         ASSERT_TRUE(t >= PIX_GRASS1 && t <= PIX_GRASS4) << "new grid tiles should be grass variants";
     }
 }

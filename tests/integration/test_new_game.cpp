@@ -33,7 +33,7 @@ constexpr int kTeamMenuTimeoutMs = 20000;
 static void cleanup_picker_state()
 {
     for (int i = 0; i < 5; i++) {
-        pks().backdrops[i].reset();
+        pks().backdrops[static_cast<std::size_t>(i)].reset();
         pks().backpics[i].free();
     }
     clear_allbuttons();
@@ -137,7 +137,7 @@ TEST(NewGame, begin_new_game) {
     // GAME now goes straight to the intro. Were the prompt still present, the
     // injector — which never answers it — would hang until timeout.
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        og::runtime::current_session->myscreen_->save_data.team_list[i].reset(nullptr);
+        og::runtime::current_session->myscreen_->save_data.team_list[static_cast<std::size_t>(i)].reset(nullptr);
     }
     og::runtime::current_session->myscreen_->save_data.team_list[0] =
         std::make_unique<guy>(FAMILY_SOLDIER);

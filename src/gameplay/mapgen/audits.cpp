@@ -85,7 +85,7 @@ std::vector<std::string> audit_footing(GameWorld& world)
             const int tx = (ob->xpos() + ob->sizex() / 2) / GRID_SIZE;
             const int ty = (ob->ypos() + ob->sizey() / 2) / GRID_SIZE;
             if (tx >= 0 && ty >= 0 && tx < g.w && ty < g.h &&
-                g.data[tx + ty * g.w] == PIX_AIR)
+                g.data[static_cast<std::size_t>(tx + ty * g.w)] == PIX_AIR)
             {
                 errors.push_back(std::format(
                     "footing: ground unit family {} at tile ({}, {}) floor "
@@ -97,7 +97,7 @@ std::vector<std::string> audit_footing(GameWorld& world)
             const PixieData& dec = world.decor_for_floor(ob->floor());
             if (dec.valid() && tx >= 0 && ty >= 0 && tx < dec.w && ty < dec.h)
             {
-                const unsigned char d = dec.data[tx + ty * dec.w];
+                const unsigned char d = dec.data[static_cast<std::size_t>(tx + ty * dec.w)];
                 if (d < DECOR_MAX &&
                     kDecorRegistry[d].pass == DecorPassability::BlocksGround)
                 {
@@ -140,8 +140,8 @@ std::vector<std::string> audit_stairs(GameWorld& world,
             int pairs = 0;
             const int cells = lo.w * lo.h;
             for (int i = 0; i < cells; ++i)
-                if (lo.data[i] == PIX_ZSTAIR_UP &&
-                    hi.data[i] == PIX_ZSTAIR_DOWN)
+                if (lo.data[static_cast<std::size_t>(i)] == PIX_ZSTAIR_UP &&
+                    hi.data[static_cast<std::size_t>(i)] == PIX_ZSTAIR_DOWN)
                     ++pairs;
             if (pairs < 1)
                 errors.push_back(std::format(
@@ -169,7 +169,7 @@ std::vector<std::string> audit_stairs(GameWorld& world,
         const PixieData& dec = world.decor_for_floor(pf);
         if (dec.valid() && nx < dec.w && ny < dec.h)
         {
-            const unsigned char d = dec.data[nx + ny * dec.w];
+            const unsigned char d = dec.data[static_cast<std::size_t>(nx + ny * dec.w)];
             if (d < DECOR_MAX &&
                 kDecorRegistry[d].pass == DecorPassability::BlocksGround)
             {
@@ -215,8 +215,8 @@ std::vector<std::string> audit_stairs(GameWorld& world,
             for (int tx = 0; tx < lo.w; ++tx)
             {
                 const int i = tx + ty * lo.w;
-                if (lo.data[i] != PIX_ZSTAIR_UP ||
-                    hi.data[i] != PIX_ZSTAIR_DOWN)
+                if (lo.data[static_cast<std::size_t>(i)] != PIX_ZSTAIR_UP ||
+                    hi.data[static_cast<std::size_t>(i)] != PIX_ZSTAIR_DOWN)
                     continue;
                 for (const auto& off : kArrivalOffsets)
                 {
@@ -249,7 +249,7 @@ std::vector<std::string> audit_fall_lines(GameWorld& world,
         {
             for (int tx = 0; tx < g.w; ++tx)
             {
-                if (g.data[tx + ty * g.w] != PIX_AIR)
+                if (g.data[static_cast<std::size_t>(tx + ty * g.w)] != PIX_AIR)
                     continue;
                 bool fall_entry = false;
                 for (int dy = -1; dy <= 1 && !fall_entry; ++dy)
@@ -261,9 +261,9 @@ std::vector<std::string> audit_fall_lines(GameWorld& world,
                     continue; // open sky no walker can step into
                 int lf = f - 1;
                 while (lf > 0 &&
-                       world.grid_for_floor(lf).data[tx + ty * g.w] == PIX_AIR)
+                       world.grid_for_floor(lf).data[static_cast<std::size_t>(tx + ty * g.w)] == PIX_AIR)
                     --lf;
-                if (world.grid_for_floor(lf).data[tx + ty * g.w] == PIX_AIR)
+                if (world.grid_for_floor(lf).data[static_cast<std::size_t>(tx + ty * g.w)] == PIX_AIR)
                     continue; // fell past floor 0: pit death by design
                 if (!cell_standable(world, lf, tx, ty))
                 {
@@ -473,7 +473,7 @@ std::vector<char> flood_spawn_reach(GameWorld& world,
     const int w = g0.w;
     const int h = g0.h;
     const int floors = world.floor_count();
-    std::vector<char> seen(static_cast<std::size_t>(floors) * w * h, 0);
+    std::vector<char> seen(static_cast<std::size_t>(floors) * static_cast<std::size_t>(w) * static_cast<std::size_t>(h), 0);
     auto index = [&](int f, int tx, int ty) {
         return static_cast<std::size_t>((f * h + ty) * w + tx);
     };
@@ -522,7 +522,7 @@ std::vector<char> flood_spawn_reach(GameWorld& world,
         if (floors > 1)
         {
             const unsigned char tile =
-                world.grid_for_floor(f).data[tx + ty * w];
+                world.grid_for_floor(f).data[static_cast<std::size_t>(tx + ty * w)];
             const int nf = (tile == PIX_ZSTAIR_UP)     ? f + 1
                            : (tile == PIX_ZSTAIR_DOWN) ? f - 1
                                                        : f;

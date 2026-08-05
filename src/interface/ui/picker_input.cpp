@@ -52,12 +52,12 @@ Sint32 leftmouse(button* buttons)
     InputHardwareState& input_hw = input_hardware_state();
 
     while (i < static_cast<Sint32>(og::runtime::current_session->allbuttons_.size())
-           && og::runtime::current_session->allbuttons_[i])
+           && og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)])
     {
         if(buttons != nullptr && !buttons[i].hidden)
         {
-            og::runtime::current_session->allbuttons_[i]->mouse_on();
-            if (og::runtime::current_session->keystates_[og::runtime::current_session->allbuttons_[i]->hotkey])
+            og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)]->mouse_on();
+            if (og::runtime::current_session->keystates_[og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)]->hotkey])
                 somebutton = i;
         }
         i++;
@@ -205,11 +205,11 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
             og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_BOW);
             if(use_global_vbuttons)
             {
-                og::runtime::current_session->allbuttons_[highlighted_button]->vdisplay(1);
-                og::runtime::current_session->allbuttons_[highlighted_button]->vdisplay();
-                if(og::runtime::current_session->allbuttons_[highlighted_button]->myfunc)
+                og::runtime::current_session->allbuttons_[static_cast<std::size_t>(highlighted_button)]->vdisplay(1);
+                og::runtime::current_session->allbuttons_[static_cast<std::size_t>(highlighted_button)]->vdisplay();
+                if(og::runtime::current_session->allbuttons_[static_cast<std::size_t>(highlighted_button)]->myfunc)
                 {
-                    retvalue = og::runtime::current_session->allbuttons_[highlighted_button]->do_call(og::runtime::current_session->allbuttons_[highlighted_button]->myfunc, og::runtime::current_session->allbuttons_[highlighted_button]->arg);
+                    retvalue = og::runtime::current_session->allbuttons_[static_cast<std::size_t>(highlighted_button)]->do_call(og::runtime::current_session->allbuttons_[static_cast<std::size_t>(highlighted_button)]->myfunc, og::runtime::current_session->allbuttons_[static_cast<std::size_t>(highlighted_button)]->arg);
                 }
             }
             else

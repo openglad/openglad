@@ -178,7 +178,7 @@ TEST(Input, key_queries_and_ascii_conversion)
 
     for (int i = 0; i < 26; ++i)
     {
-        const int key = SDLK_A + i;
+        const int key = static_cast<int>(SDLK_A + static_cast<Uint32>(i));
         const int expected = 'A' + i;
         ASSERT_EQ(expected, (int)convert_to_ascii(key)) << "alphabet key should map to uppercase ASCII";
     }

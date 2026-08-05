@@ -729,11 +729,11 @@ void Super2xSaI(SDL_Surface *src, SDL_Surface *dest, int s_x, int s_y, int d_x, 
 	
 	Super2xSaI_ex(
 			reinterpret_cast<unsigned char*>(src->pixels) + src->pitch*s_y + s_x*sbpp, 
-			src->pitch, 
-			nullptr, 
+			static_cast<Uint32>(src->pitch),
+			nullptr,
 			reinterpret_cast<unsigned char*>(dest->pixels) + dest->pitch*d_y +d_x*dbpp,
-			dest->pitch, 
-			w, h);
+			static_cast<Uint32>(dest->pitch),
+			static_cast<Uint32>(w), static_cast<Uint32>(h));
 	return;
 }
 

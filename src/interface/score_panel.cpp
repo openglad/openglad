@@ -654,7 +654,7 @@ short new_score_panel(screen* s, short /*do_it*/)
             // Get current number of foes
             tempfoes = remaining_foes(s, control);
             // Get current number of team-members
-            tempallies = remaining_team(s, control->team_num());
+            tempallies = remaining_team(s, static_cast<char>(control->team_num()));
 
             // family()/current_special() may be attacker-controlled on a
             // network mirror (set from raw int8 snapshot bytes), so they can be
@@ -677,7 +677,7 @@ short new_score_panel(screen* s, short /*do_it*/)
             if (draw_button)
                 s->draw_button(lm+1, tm+2, lm+63, tm+9, 1, 1);
 
-            mytext.write_xy(lm+3, tm+4, message.c_str(), text_color, 1);
+            mytext.write_xy(lm+3, tm+4, message.c_str(), static_cast<unsigned char>(text_color), 1);
 
             // HP/MP bars; dependent on user settings
             switch (s->viewob[players]->prefs[PREF_LIFE])
@@ -686,9 +686,9 @@ short new_score_panel(screen* s, short /*do_it*/)
                     if (draw_button)
                         s->draw_button(lm+1, tm+10, lm+63, tm+26, 1, 1);
                     message = std::format("HP: {:.0f}", ceilf(control->stats()->hitpoints()));
-                    mytext.write_xy(lm+5, tm+12, message.c_str(), text_color, static_cast<short>(1));
+                    mytext.write_xy(lm+5, tm+12, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
                     message = std::format("MP: {:.0f}", ceilf(control->stats()->magicpoints()));
-                    mytext.write_xy(lm+5, tm+20, message.c_str(), text_color, static_cast<short>(1));
+                    mytext.write_xy(lm+5, tm+20, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
                     break;
                 case PREF_LIFE_BARS: // display graphical bars only
                     new_draw_value_bar(lm+2, tm+10, control, 0, s);
@@ -743,7 +743,7 @@ short new_score_panel(screen* s, short /*do_it*/)
                 if (!can_show_team_score)
                 {
                     message = "SC: 0";
-                    mytext.write_xy(lm+2, bm-8, message.c_str(), text_color, static_cast<short>(1));
+                    mytext.write_xy(lm+2, bm-8, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
                     continue;
                 }
 
@@ -770,14 +770,14 @@ short new_score_panel(screen* s, short /*do_it*/)
                 else
                 {
                     message = std::format("SC: {}", scorecountup[team_num]);
-                    mytext.write_xy(lm+2, bm-8, message.c_str(), text_color, static_cast<short>(1));
+                    mytext.write_xy(lm+2, bm-8, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
 
                     // Level or exp, 2nd bottom left
                     if (control->myguy)
                         message = std::format("XP: {}", control->myguy->exp);
                     else
                         message = std::format("LEVEL: {}", control->stats()->level());
-                    mytext.write_xy(lm+2, bm-16, message.c_str(), text_color, static_cast<short>(1));
+                    mytext.write_xy(lm+2, bm-16, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
                 }
 
                 // Currently-select special
@@ -797,7 +797,7 @@ short new_score_panel(screen* s, short /*do_it*/)
                     TRACE("hud", "spc_disabled fam=%d spc=%d", fam, spc);
                 }
                 else if (control->stats()->magicpoints() >= control->stats()->special_cost(spc))
-                    mytext.write_xy(lm+2, special_y, message.c_str(), text_color, static_cast<short>(1));
+                    mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
                 else
                     mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));
 
@@ -809,7 +809,7 @@ short new_score_panel(screen* s, short /*do_it*/)
                     if (control->specials_disabled())
                         mytext.write_xy(lm+2, bm + special_offset + 8, message.c_str(), static_cast<unsigned char>(GREY), static_cast<short>(1));
                     else if (control->stats()->magicpoints() >= control->stats()->special_cost(spc))
-                        mytext.write_xy(lm+2, bm + special_offset + 8, message.c_str(), text_color, static_cast<short>(1));
+                        mytext.write_xy(lm+2, bm + special_offset + 8, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
                     else
                         mytext.write_xy(lm+2, bm + special_offset + 8, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));
                 }
@@ -857,9 +857,9 @@ short new_score_panel(screen* s, short /*do_it*/)
 
                 message = std::format("TEAM: {}", tempallies);
 #ifndef USE_TOUCH_INPUT
-                mytext.write_xy(rm - 55, tm+2, message.c_str(), text_color, static_cast<short>(1));
+                mytext.write_xy(rm - 55, tm+2, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
 #else
-                mytext.write_xy(rm - 55, tm+2 + 44 + 8, message.c_str(), text_color, static_cast<short>(1));
+                mytext.write_xy(rm - 55, tm+2 + 44 + 8, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
 #endif
 
                 // Number of foes, 2nd upper right
@@ -875,9 +875,9 @@ short new_score_panel(screen* s, short /*do_it*/)
                     ? std::max<Sint32>(lm, rm - 2 - 6 * static_cast<Sint32>(message.size()))
                     : rm - 55;
 #ifndef USE_TOUCH_INPUT
-                mytext.write_xy(foes_x, tm+10, message.c_str(), text_color, static_cast<short>(1));
+                mytext.write_xy(foes_x, tm+10, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
 #else
-                mytext.write_xy(foes_x, tm+10 + 44 + 8, message.c_str(), text_color, static_cast<short>(1));
+                mytext.write_xy(foes_x, tm+10 + 44 + 8, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
 #endif
 
                 if (show_wave)
@@ -887,9 +887,9 @@ short new_score_panel(screen* s, short /*do_it*/)
                     const Sint32 wave_x = std::max<Sint32>(
                         lm, rm - 2 - 6 * static_cast<Sint32>(message.size()));
 #ifndef USE_TOUCH_INPUT
-                    mytext.write_xy(wave_x, tm+18, message.c_str(), text_color, static_cast<short>(1));
+                    mytext.write_xy(wave_x, tm+18, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
 #else
-                    mytext.write_xy(wave_x, tm+18 + 44 + 8, message.c_str(), text_color, static_cast<short>(1));
+                    mytext.write_xy(wave_x, tm+18 + 44 + 8, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
 #endif
                     TRACE("hud", "next_wave awake=%d pending=%d secs=%u",
                           awake_foes,
@@ -903,9 +903,9 @@ short new_score_panel(screen* s, short /*do_it*/)
                     const Sint32 floor_x = std::max<Sint32>(
                         lm, rm - 2 - 6 * static_cast<Sint32>(floor_label.size()));
 #ifndef USE_TOUCH_INPUT
-                    mytext.write_xy(floor_x, floor_y, floor_label.c_str(), text_color, static_cast<short>(1));
+                    mytext.write_xy(floor_x, floor_y, floor_label.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
 #else
-                    mytext.write_xy(floor_x, floor_y + 44 + 8, floor_label.c_str(), text_color, static_cast<short>(1));
+                    mytext.write_xy(floor_x, floor_y + 44 + 8, floor_label.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
 #endif
                     TRACE("hud", "floor %s", floor_label.c_str());
                 }

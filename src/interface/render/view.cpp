@@ -928,7 +928,7 @@ bool viewscreen::redraw()
 						}
 						else
 						{
-						const int tile = static_cast<int>(gridp.data[i + maxx * j]);
+						const int tile = static_cast<int>(gridp.data[static_cast<std::size_t>(i + maxx * j)]);
 						// On a layer the composite fades the whole floor, so tiles draw
 						// opaque (full coverage); glass stays faint only on the directly
 						// drawn camera floor (so the floor below shows through it).
@@ -942,7 +942,7 @@ bool viewscreen::redraw()
 						// fade/tint/parallax to base+decor together.
 						if (has_decor)
 						{
-							const int d = static_cast<int>(decorp.data[i + maxx * j]);
+							const int d = static_cast<int>(decorp.data[static_cast<std::size_t>(i + maxx * j)]);
 							if (d != DECOR_NONE)
 								renderer->draw_decor(d, i*GRID_SIZE, j*GRID_SIZE, this,
 									                     layer_active ? 255 : falpha);
@@ -1214,7 +1214,7 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 						}
 						else
 						{
-						const int tile = static_cast<int>(gridp.data[i + maxx * j]);
+						const int tile = static_cast<int>(gridp.data[static_cast<std::size_t>(i + maxx * j)]);
 						// On a layer the composite fades the whole floor, so tiles draw
 						// opaque (full coverage); glass stays faint only on the directly
 						// drawn camera floor (so the floor below shows through it).
@@ -1228,7 +1228,7 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 						// fade/tint/parallax to base+decor together.
 						if (has_decor)
 						{
-							const int d = static_cast<int>(decorp.data[i + maxx * j]);
+							const int d = static_cast<int>(decorp.data[static_cast<std::size_t>(i + maxx * j)]);
 							if (d != DECOR_NONE)
 								renderer->draw_decor(d, i*GRID_SIZE, j*GRID_SIZE, this,
 									                     layer_active ? 255 : falpha);
@@ -1374,7 +1374,7 @@ short viewscreen::input(const void* native_event)
 	{
 		if (query_key_event(KEYCODE_F3, native_event))
 		{
-			totaltime = (query_timer_control() - active_screen()->timerstart)/72;
+			totaltime = (static_cast<Uint32>(query_timer_control()) - active_screen()->timerstart)/72;
 			totalframes = (active_screen()->framecount);
 			framespersec = totalframes / totaltime;
 			std::string somemessage = std::format("{} FRAMES PER SEC", framespersec);

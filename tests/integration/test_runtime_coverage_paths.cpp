@@ -99,7 +99,7 @@ void set_world_tile(short world_x, short world_y, unsigned char tile)
     const int gy = world_y / GRID_SIZE;
     if (gx < 0 || gy < 0 || gx >= level.world().grid.w || gy >= level.world().grid.h)
         return;
-    level.world().grid.data[gx + level.world().grid.w * gy] = tile;
+    level.world().grid.data[static_cast<std::size_t>(gx + level.world().grid.w * gy)] = tile;
 }
 
 og::runtime::GameSession::Config prompt_flow_session_config()
@@ -1628,10 +1628,10 @@ TEST(RuntimeCoveragePaths, runtime_score_panel_null_control_score_overlay_safe)
     }
 
     walker* old_control = v->control;
-    const unsigned char old_overlay = v->prefs[PREF_OVERLAY];
-    const unsigned char old_score = v->prefs[PREF_SCORE];
-    const unsigned char old_foes = v->prefs[PREF_FOES];
-    const unsigned char old_life = v->prefs[PREF_LIFE];
+    const unsigned char old_overlay = static_cast<unsigned char>(v->prefs[PREF_OVERLAY]);
+    const unsigned char old_score = static_cast<unsigned char>(v->prefs[PREF_SCORE]);
+    const unsigned char old_foes = static_cast<unsigned char>(v->prefs[PREF_FOES]);
+    const unsigned char old_life = static_cast<unsigned char>(v->prefs[PREF_LIFE]);
 
     v->control = nullptr;
     v->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
@@ -1642,10 +1642,10 @@ TEST(RuntimeCoveragePaths, runtime_score_panel_null_control_score_overlay_safe)
     ASSERT_EQ(1, static_cast<int>(new_score_panel(og::runtime::current_session->myscreen_, 1))) << "new_score_panel should tolerate null control when score overlay is on";
 
     v->control = old_control;
-    v->prefs[PREF_OVERLAY] = old_overlay;
-    v->prefs[PREF_SCORE] = old_score;
-    v->prefs[PREF_FOES] = old_foes;
-    v->prefs[PREF_LIFE] = old_life;
+    v->prefs[PREF_OVERLAY] = static_cast<signed char>(old_overlay);
+    v->prefs[PREF_SCORE] = static_cast<signed char>(old_score);
+    v->prefs[PREF_FOES] = static_cast<signed char>(old_foes);
+    v->prefs[PREF_LIFE] = static_cast<signed char>(old_life);
 }
 
 

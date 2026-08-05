@@ -346,7 +346,7 @@ void apply_authoritative_event_state(GameWorld& world,
                 if (tx >= 0 && ty >= 0 && tx < world.grid.w && ty < world.grid.h)
                 {
                     const std::size_t gi =
-                        static_cast<std::size_t>(ty) * world.grid.w + tx;
+                        static_cast<std::size_t>(ty) * world.grid.w + static_cast<std::size_t>(tx);
                     const std::uint8_t value = world.grid.data[gi];
                     bool present = false;
                     for (auto& tile : snapshot.grid_dirty_tiles)
@@ -1807,7 +1807,7 @@ PlayerInput GameServer::select_effective_input(BoundPlayer& seat,
         else if (expected_tick - tick <= MAX_LATE_PRESS_TICKS)
         {
             for (int key = 0; key < NUM_INPUT_KEYS; ++key)
-                late_pressed[key] = late_pressed[key] || received.pressed[key];
+                late_pressed[static_cast<std::size_t>(key)] = late_pressed[static_cast<std::size_t>(key)] || received.pressed[key];
         }
 
         seat.pending_inputs.erase(input_it);
@@ -1820,7 +1820,7 @@ PlayerInput GameServer::select_effective_input(BoundPlayer& seat,
     }
 
     for (int key = 0; key < NUM_INPUT_KEYS; ++key)
-        effective.pressed[key] = effective.pressed[key] || late_pressed[key];
+        effective.pressed[key] = effective.pressed[key] || late_pressed[static_cast<std::size_t>(key)];
 
     return effective;
 }

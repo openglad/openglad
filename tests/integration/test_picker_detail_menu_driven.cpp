@@ -62,8 +62,8 @@ struct TeamSlotGuard
 {
     int slot = 0;
     guy* saved = nullptr;
-    explicit TeamSlotGuard(int slot_) : slot(slot_), saved(og::runtime::current_session->myscreen_->save_data.team_list[slot_].release()) {}
-    ~TeamSlotGuard() { og::runtime::current_session->myscreen_->save_data.team_list[slot].reset(saved); }
+    explicit TeamSlotGuard(int slot_) : slot(slot_), saved(og::runtime::current_session->myscreen_->save_data.team_list[static_cast<std::size_t>(slot_)].release()) {}
+    ~TeamSlotGuard() { og::runtime::current_session->myscreen_->save_data.team_list[static_cast<std::size_t>(slot)].reset(saved); }
 };
 
 struct KeyStateGuard
@@ -86,9 +86,9 @@ struct KeyStateGuard
     void pulse(SDL_Scancode sc, int down_ms = 25, int up_ms = 10)
     {
         fake[sc] = true;
-        SDL_Delay(down_ms);
+        SDL_Delay(static_cast<Uint32>(down_ms));
         fake[sc] = false;
-        SDL_Delay(up_ms);
+        SDL_Delay(static_cast<Uint32>(up_ms));
     }
 };
 

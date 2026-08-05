@@ -277,7 +277,7 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
 
         const int reserved_width = (version == 2) ? 11 : 10;
         std::array<char, 20> reserved{};
-        READ_OR_FAIL(reserved.data(), reserved_width, 1);
+        READ_OR_FAIL(reserved.data(), static_cast<size_t>(reserved_width), 1);
 
         walker* new_guy = nullptr;
         if (static_cast<Order>(temporder) == Order::Treasure)
@@ -398,7 +398,7 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
 
             if (width > 0)
             {
-                READ_OR_FAIL(oneline.data(), width, 1);
+                READ_OR_FAIL(oneline.data(), static_cast<size_t>(width), 1);
                 oneline[static_cast<size_t>(width)] = 0;
 
                 if (original_width > width)
@@ -409,7 +409,7 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
                     {
                         const int chunk = std::min(
                             remaining, static_cast<int>(discard.size()));
-                        READ_OR_FAIL(discard.data(), chunk, 1);
+                        READ_OR_FAIL(discard.data(), static_cast<size_t>(chunk), 1);
                         remaining -= chunk;
                     }
                 }

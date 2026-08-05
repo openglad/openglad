@@ -306,9 +306,9 @@ int cleanup()
 
 		for (i = 0; i<256; i++)
 		{
-			red = pal[i][0];
-			green = pal[i][1];
-			blue = pal[i][2];
+			red = pal[static_cast<std::size_t>(i)][0];
+			green = pal[static_cast<std::size_t>(i)][1];
+			blue = pal[static_cast<std::size_t>(i)][2];
 			set_palette_reg(static_cast<unsigned char>(i), red, green, blue);
 		}
 	load_and_set_palette("our.pal", mypalette);
