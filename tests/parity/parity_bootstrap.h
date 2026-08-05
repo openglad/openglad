@@ -1,7 +1,10 @@
 // Parity harness bootstrap — PhysFS + campaign + scenario search-path setup.
 //
 // SYNCHRONIZE WITH ../openglad-master/tools/parity_bootstrap.h
-// Mirrored byte-for-byte at the master companion. Branch and master both
+// Mirrored at the master companion, with one deliberate divergence: the
+// master tree predates the reverse-DNS purge, so its bootstrap mounts
+// "org.openglad.gladiator" while this side mounts "gladiator". Both name
+// the same classic campaign content. Branch and master both
 // initialise PhysFS, mount the default campaign archive, and add the project
 // tree's `temp/scen/` and `scen/` directories to the search path so that
 // `scen{id}.fss` resolves regardless of where the binary is launched.
@@ -18,7 +21,7 @@
 
 namespace og::parity {
 
-// Initialise PhysFS, restore the bundled `org.openglad.gladiator` campaign,
+// Initialise PhysFS, restore the bundled `gladiator` campaign,
 // mount the project's `temp/scen/` and `scen/` directories at PhysFS
 // mount-point `scen/`, and install `sdl_level_data_hooks()` so loaded
 // walkers get their render-component / entity-services wiring.

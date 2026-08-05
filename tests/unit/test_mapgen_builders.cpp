@@ -22,10 +22,12 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/resources/gloader.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -783,6 +785,297 @@ TEST(MapgenAudits, gameplay_context_guard_smoke)
     }
     EXPECT_EQ(current_game, nullptr) << "guard must restore the prior state";
     current_game = ambient;
+}
+
+// --- Audits: generator spawn egress. ------------------------------------------
+
+// Wall a rectangle of the floor-0 grid (the alcove shells below).
+void wall_rect(GameWorld& w, int x0, int y0, int x1, int y1)
+{
+    paint_rect(w.grid, x0, y0, x1, y1, PIX_H_WALL1);
+}
+
+TEST(MapgenSpawnExits, candidate_offsets_match_the_engine)
+{
+    // Pure arithmetic pin of walker::fire()'s eight setxy() arms.
+    const auto exits = generator_spawn_exits(100, 200, 32, 58, 16, 12);
+    EXPECT_EQ(100 + 32 + 1, exits[0].x); // RIGHT
+    EXPECT_EQ(200 + (58 - 12) / 2, exits[0].y);
+    EXPECT_EQ(100 - 16 - 1, exits[1].x); // LEFT
+    EXPECT_EQ(200 + (58 - 12) / 2, exits[1].y);
+    EXPECT_EQ(100 + (32 - 16) / 2, exits[2].x); // DOWN
+    EXPECT_EQ(200 + 58 + 1, exits[2].y);
+    EXPECT_EQ(100 + (32 - 16) / 2, exits[3].x); // UP
+    EXPECT_EQ(200 - 12 - 1, exits[3].y);
+    EXPECT_EQ(exits[0].x, exits[4].x); // UP_RIGHT
+    EXPECT_EQ(exits[3].y, exits[4].y);
+    EXPECT_EQ(exits[1].x, exits[5].x); // UP_LEFT
+    EXPECT_EQ(exits[3].y, exits[5].y);
+    EXPECT_EQ(exits[0].x, exits[6].x); // DOWN_RIGHT
+    EXPECT_EQ(exits[2].y, exits[6].y);
+    EXPECT_EQ(exits[1].x, exits[7].x); // DOWN_LEFT
+    EXPECT_EQ(exits[2].y, exits[7].y);
+}
+
+// The pin that keeps the audit honest against future walker.cpp placement
+// changes WITHOUT touching walker.cpp: drive a real generator through
+// init_fire() in all eight directions and prove every position the engine
+// actually materializes is one the audit predicts.
+TEST(MapgenSpawnExits, engine_spawns_land_on_predicted_candidates)
+{
+    GameWorld w(31u);
+    init_world(w, 1, 30, 24);
+    wire_entity_services(w);
+    walker* const gen = place_generator(w, FAMILY_TENT, 3, 0, 12, 10, 4);
+    ASSERT_NE(nullptr, gen);
+    ASSERT_GT(gen->sizex(), 0) << "the test loader must supply sprite dims";
+    GameWorld* const ambient_world = current_game->world;
+    current_game->world = &w;
+
+    std::vector<std::pair<int, int>> predicted;
+    walker* const size_probe =
+        w.add_ob(Order::Living, static_cast<int>(gen->default_weapon()));
+    ASSERT_NE(nullptr, size_probe);
+    for (const SpawnExit& e :
+         generator_spawn_exits(gen->xpos(), gen->ypos(), gen->sizex(),
+                               gen->sizey(), size_probe->sizex(),
+                               size_probe->sizey()))
+        predicted.emplace_back(e.x, e.y);
+    (void)w.remove_ob(size_probe);
+
+    static constexpr int kDirs[8][2] = {{1, 0},  {-1, 0}, {0, 1},  {0, -1},
+                                        {1, -1}, {-1, -1}, {1, 1}, {-1, 1}};
+    std::vector<std::pair<int, int>> observed;
+    for (const auto& dir : kDirs)
+    {
+        const std::size_t before = w.oblist.size();
+        // init_fire() spends the first call turning/animating when the
+        // generator is mid-walk cycle; three tries is plenty.
+        for (int attempt = 0; attempt < 3 && w.oblist.size() == before;
+             ++attempt)
+        {
+            gen->set_busy(0);
+            gen->stats()->set_magicpoints(1000);
+            // fire() reads the walker's OWN lastx/lasty, which is what
+            // act_generate rolls before calling init_fire (walker.cpp
+            // :1372-1376) — the arguments only steer the turn branch.
+            gen->set_lastx(static_cast<float>(dir[0]));
+            gen->set_lasty(static_cast<float>(dir[1]));
+            (void)gen->init_fire(static_cast<short>(dir[0]),
+                                 static_cast<short>(dir[1]));
+        }
+        ASSERT_GT(w.oblist.size(), before)
+            << "no spawn for direction " << dir[0] << "," << dir[1];
+        walker* const spawn = w.oblist.back().get();
+        ASSERT_NE(nullptr, spawn);
+        observed.emplace_back(spawn->xpos(), spawn->ypos());
+        (void)w.remove_ob(spawn);
+    }
+    current_game->world = ambient_world;
+
+    for (const auto& seen : observed)
+    {
+        EXPECT_NE(std::find(predicted.begin(), predicted.end(), seen),
+                  predicted.end())
+            << "engine spawned at (" << seen.first << ", " << seen.second
+            << "), which generator_spawn_exits() does not predict";
+    }
+    // Every candidate is live: the eight directions cover the whole set.
+    std::sort(observed.begin(), observed.end());
+    observed.erase(std::unique(observed.begin(), observed.end()),
+                   observed.end());
+    std::sort(predicted.begin(), predicted.end());
+    predicted.erase(std::unique(predicted.begin(), predicted.end()),
+                    predicted.end());
+    EXPECT_EQ(predicted, observed);
+}
+
+TEST(MapgenSpawnExits, sealed_alcove_reports_no_usable_exit)
+{
+    GameWorld w(32u);
+    init_world(w, 1, 24, 20);
+    wire_entity_services(w);
+    place_start(w, 0, 2, 2);
+    walker* const gen = place_generator(w, FAMILY_TENT, 3, 0, 6, 6, 2);
+    ASSERT_NE(nullptr, gen);
+    // A wall ring flush against the 32x32 body: every one of the eight
+    // engine positions is inside masonry.
+    wall_rect(w, 5, 5, 8, 5);
+    wall_rect(w, 5, 8, 8, 8);
+    wall_rect(w, 5, 5, 5, 8);
+    wall_rect(w, 8, 5, 8, 8);
+
+    const std::vector<EntityRow> before = entity_rows(w);
+    const int living_before = w.living_count;
+    GameWorld* const ambient_world = current_game->world;
+    const auto errors = audit_generator_spawn_exits(w);
+    current_game->world = ambient_world;
+
+    ASSERT_EQ(1u, errors.size()) << join_errors(errors);
+    EXPECT_TRUE(any_error_contains(errors, "no usable spawn exit"))
+        << join_errors(errors);
+    EXPECT_TRUE(any_error_contains(errors, "at tile (6, 6)"))
+        << join_errors(errors);
+    EXPECT_EQ(before, entity_rows(w)) << "the audit leaked a spawn probe";
+    EXPECT_EQ(living_before, w.living_count);
+}
+
+TEST(MapgenSpawnExits, sealed_room_cuts_every_exit_off_from_the_lead)
+{
+    GameWorld w(33u);
+    init_world(w, 1, 24, 20);
+    wire_entity_services(w);
+    place_start(w, 0, 2, 2);
+    walker* const gen = place_generator(w, FAMILY_TENT, 3, 0, 10, 10, 2);
+    ASSERT_NE(nullptr, gen);
+    // A closed room with room to spare: spawns appear, none can walk out.
+    wall_rect(w, 8, 8, 14, 8);
+    wall_rect(w, 8, 14, 14, 14);
+    wall_rect(w, 8, 8, 8, 14);
+    wall_rect(w, 14, 8, 14, 14);
+
+    GameWorld* const ambient_world = current_game->world;
+    const auto errors = audit_generator_spawn_exits(w);
+    current_game->world = ambient_world;
+
+    ASSERT_EQ(1u, errors.size()) << join_errors(errors);
+    EXPECT_TRUE(
+        any_error_contains(errors, "cut off from the lead start marker"))
+        << join_errors(errors);
+
+    // Knock a doorway through and the same map is clean.
+    paint(w.grid, 8, 11, PIX_GRASS1);
+    const auto fixed = audit_generator_spawn_exits(w);
+    current_game->world = ambient_world;
+    EXPECT_TRUE(fixed.empty()) << join_errors(fixed);
+}
+
+TEST(MapgenSpawnExits, half_open_alcove_reports_the_pocket)
+{
+    GameWorld w(34u);
+    init_world(w, 1, 24, 20);
+    wire_entity_services(w);
+    place_start(w, 0, 2, 2);
+    walker* const gen = place_generator(w, FAMILY_TENT, 3, 0, 5, 5, 2);
+    ASSERT_NE(nullptr, gen);
+    // The 32x32 body owns tiles 5..6 x 5..6. Leave the RIGHT group
+    // (column 7, rows 5..6) open to the map and seal the DOWN group
+    // (tiles 5..6, row 7) behind walls on three sides — the generator's own
+    // body closes the fourth.
+    wall_rect(w, 4, 4, 7, 4); // north
+    wall_rect(w, 4, 4, 4, 8); // west
+    wall_rect(w, 4, 8, 7, 8); // south
+    paint(w.grid, 7, 7, PIX_H_WALL1); // seals the DOWN nook's east side
+
+    GameWorld* const ambient_world = current_game->world;
+    const auto errors = audit_generator_spawn_exits(w);
+    current_game->world = ambient_world;
+
+    ASSERT_EQ(1u, errors.size()) << join_errors(errors);
+    EXPECT_TRUE(any_error_contains(errors, "spawn pocket at ("))
+        << join_errors(errors);
+    EXPECT_TRUE(any_error_contains(errors, "at tile (5, 5)"))
+        << join_errors(errors);
+
+    // Open the nook's east side: the pocket joins the map and the level is
+    // clean.
+    paint(w.grid, 7, 7, PIX_GRASS1);
+    const auto fixed = audit_generator_spawn_exits(w);
+    current_game->world = ambient_world;
+    EXPECT_TRUE(fixed.empty()) << join_errors(fixed);
+}
+
+TEST(MapgenSpawnExits, open_ground_is_clean_and_leaves_the_lists_alone)
+{
+    GameWorld w(35u);
+    init_world(w, 1, 24, 20);
+    wire_entity_services(w);
+    place_start(w, 0, 2, 2);
+    ASSERT_NE(nullptr, place_generator(w, FAMILY_TENT, 3, 0, 10, 10, 2));
+    ASSERT_NE(nullptr, place_generator(w, FAMILY_TREEHOUSE, 3, 0, 16, 6, 2));
+
+    const std::vector<EntityRow> before = entity_rows(w);
+    const int living_before = w.living_count;
+    GameWorld* const ambient_world = current_game->world;
+    const auto errors = audit_generator_spawn_exits(w);
+    current_game->world = ambient_world;
+
+    EXPECT_TRUE(errors.empty()) << join_errors(errors);
+    EXPECT_EQ(before, entity_rows(w)) << "the audit leaked a spawn probe";
+    EXPECT_EQ(living_before, w.living_count);
+}
+
+TEST(MapgenSpawnExits, generator_free_level_and_missing_lead_marker)
+{
+    {
+        GameWorld w(36u);
+        init_world(w, 1, 12, 10);
+        wire_entity_services(w);
+        place_start(w, 0, 2, 2);
+        EXPECT_TRUE(audit_generator_spawn_exits(w).empty())
+            << "a level with no generator has nothing to audit";
+    }
+    {
+        GameWorld w(37u);
+        init_world(w, 1, 12, 10);
+        wire_entity_services(w);
+        ASSERT_NE(nullptr, place_generator(w, FAMILY_TENT, 3, 0, 5, 5, 2));
+        const auto errors = audit_generator_spawn_exits(w);
+        ASSERT_EQ(1u, errors.size());
+        EXPECT_TRUE(any_error_contains(errors, "lead start marker"))
+            << join_errors(errors);
+    }
+}
+
+TEST(MapgenSpawnExits, reports_probe_creation_failure_and_restores_context)
+{
+    GameWorld w(38u);
+    init_world(w, 1, 16, 12);
+    wire_entity_services(w);
+    place_start(w, 0, 2, 2);
+    ASSERT_NE(nullptr, place_generator(w, FAMILY_TENT, 3, 0, 8, 6, 2));
+
+    const std::vector<EntityRow> before = entity_rows(w);
+    GameWorld* const ambient_world = current_game->world;
+    w.entity_factory = nullptr;
+    const auto errors = audit_generator_spawn_exits(w);
+    GameWorld* const observed_world = current_game->world;
+    current_game->world = ambient_world;
+
+    ASSERT_EQ(1u, errors.size()) << join_errors(errors);
+    EXPECT_TRUE(any_error_contains(errors, "could not seed the spawn probe"))
+        << join_errors(errors);
+    EXPECT_EQ(before, entity_rows(w));
+    EXPECT_EQ(ambient_world, observed_world)
+        << "the failed-probe path must restore the ambient context world";
+}
+
+// Multi-floor: the flood takes the engine's positional Z-stair edge, so a
+// generator one floor up is judged against the crew's real walking map.
+TEST(MapgenSpawnExits, z_stair_edge_joins_the_floors)
+{
+    GameWorld w(39u);
+    init_world(w, 2, 16, 12);
+    wire_entity_services(w);
+    stair_pair(w, 0, 8, 6);
+    place_start(w, 0, 2, 2);
+    ASSERT_NE(nullptr, place_generator(w, FAMILY_TENT, 3, 1, 4, 4, 2));
+
+    GameWorld* const ambient_world = current_game->world;
+    const auto with_stair = audit_generator_spawn_exits(w);
+    current_game->world = ambient_world;
+    EXPECT_TRUE(with_stair.empty()) << join_errors(with_stair);
+
+    // Remove the staircase: floor 1 is now its own island and the upper
+    // generator's spawns can never reach the crew.
+    paint(w.grid_for_floor(0), 8, 6, PIX_GRASS1);
+    paint(w.grid_for_floor(1), 8, 6, PIX_GRASS1);
+    const auto without_stair = audit_generator_spawn_exits(w);
+    current_game->world = ambient_world;
+    ASSERT_EQ(1u, without_stair.size()) << join_errors(without_stair);
+    EXPECT_TRUE(any_error_contains(without_stair,
+                                   "cut off from the lead start marker"))
+        << join_errors(without_stair);
 }
 
 } // namespace

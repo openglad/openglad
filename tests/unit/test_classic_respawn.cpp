@@ -8,7 +8,6 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/pixdefs.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
@@ -16,7 +15,6 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/resources/gloader.h>
-#include <openglad/resources/gloader_ctf.h>
 
 #include "test_game_world_fixture.h"
 
@@ -30,7 +28,6 @@ loader& classic_test_loader()
 {
     static loader instance{EntityFactory{}};
     static const bool registered = [] {
-        register_ctf_loader_entries(instance);
         return true;
     }();
     (void)registered;
@@ -38,7 +35,7 @@ loader& classic_test_loader()
 }
 
 // Classic world: same loader wiring as the CTF fixtures, but the world type
-// stays 0 — the classic respawn engine gates on !(type & TYPE_CTF).
+// stays 0 — the classic respawn engine gates on no active scripted mode.
 struct ClassicWorld : TestGameWorld
 {
     explicit ClassicWorld(int level_id = 3)
@@ -177,21 +174,25 @@ TEST(ClassicRespawn, predicate_and_suppression_truth_table)
     EXPECT_TRUE(og::sim::respawn_suppress_team_wipe_endgame(w, 0));
     EXPECT_FALSE(og::sim::respawn_suppress_team_wipe_endgame(w, 1));
 
-    // CTF world type: the classic engine never activates, even with the
-    // mode set. An inactive CTF match suppresses nothing.
-    w.type = GameWorld::TYPE_CTF;
+    // Scripted world with an ACTIVE mode: the classic engine never
+    // activates, even with the mode knob set. The undecided match
+    // suppresses through the scripted arm; a latched win releases it.
+    w.type = GameWorld::TYPE_SCRIPTED;
     w.respawn_mode = 2;
-    EXPECT_FALSE(og::sim::classic_respawn_active(w));
-    EXPECT_FALSE(og::sim::respawn_suppress_team_wipe_endgame(w));
-
-    // Active undecided CTF match: CTF suppression carries through the
-    // combined predicate; a latched winner releases it.
-    w.ctf.active = true;
-    w.ctf.winner_team = -1;
+    w.mode.active = true;
+    w.mode.init_attempted = true;
+    w.mode.win_latched = false;
     EXPECT_FALSE(og::sim::classic_respawn_active(w));
     EXPECT_TRUE(og::sim::respawn_suppress_team_wipe_endgame(w));
-    w.ctf.winner_team = 0;
+    w.mode.win_latched = true;
     EXPECT_FALSE(og::sim::respawn_suppress_team_wipe_endgame(w));
+
+    // A scripted map whose mode FAILED activation falls to classic rules,
+    // including the classic respawn engine.
+    w.mode.active = false;
+    w.mode.win_latched = false;
+    EXPECT_TRUE(og::sim::classic_respawn_active(w));
+    EXPECT_TRUE(og::sim::respawn_suppress_team_wipe_endgame(w));
 }
 
 TEST(ClassicRespawn, team_one_heroes_mode_filters_corpses_and_control_retention)
@@ -225,10 +226,10 @@ TEST(ClassicRespawn, team_one_heroes_mode_filters_corpses_and_control_retention)
     EXPECT_FALSE(og::sim::respawn_retains_player_control(w, team_one_ai));
 
     og::sim::classic_respawn_run_tick(w);
-    ASSERT_EQ(1u, w.ctf.respawn_queue.size());
+    ASSERT_EQ(1u, w.respawn.respawn_queue.size());
     EXPECT_EQ(team_one_hero->entity_id(),
-              w.ctf.respawn_queue.front().walker_entity_id);
-    EXPECT_EQ(0, w.ctf.respawn_queue.front().team);
+              w.respawn.respawn_queue.front().walker_entity_id);
+    EXPECT_EQ(0, w.respawn.respawn_queue.front().team);
 }
 
 TEST(ClassicRespawn, hero_scheduled_on_death_and_revives_at_spawn_point)
@@ -239,8 +240,8 @@ TEST(ClassicRespawn, hero_scheduled_on_death_and_revives_at_spawn_point)
 
     arena.fx.kill(hero);
     arena.fx.tick();
-    ASSERT_EQ(1u, arena.world().ctf.respawn_queue.size());
-    const og::sim::CtfRespawnEntry& entry = arena.world().ctf.respawn_queue[0];
+    ASSERT_EQ(1u, arena.world().respawn.respawn_queue.size());
+    const og::sim::RespawnEntry& entry = arena.world().respawn.respawn_queue[0];
     ASSERT_EQ(0, entry.kind);
     ASSERT_EQ(corpse_id, entry.walker_entity_id);
     ASSERT_EQ(12, entry.ticks_left);
@@ -259,7 +260,7 @@ TEST(ClassicRespawn, hero_scheduled_on_death_and_revives_at_spawn_point)
     ASSERT_EQ(128, hero->xpos()) << "clear spawn point pulls the hero home";
     ASSERT_EQ(128, hero->ypos());
     ASSERT_EQ(0, hero->floor());
-    ASSERT_TRUE(arena.world().ctf.respawn_queue.empty());
+    ASSERT_TRUE(arena.world().respawn.respawn_queue.empty());
 }
 
 TEST(ClassicRespawn, hero_revives_in_place_when_spawn_point_is_blocked)
@@ -291,10 +292,10 @@ TEST(ClassicRespawn, entry_records_death_position_without_a_spawn_point)
 
     fx.kill(hero);
     fx.tick();
-    ASSERT_EQ(1u, fx.world().ctf.respawn_queue.size());
-    ASSERT_EQ(320, fx.world().ctf.respawn_queue[0].x)
+    ASSERT_EQ(1u, fx.world().respawn.respawn_queue.size());
+    ASSERT_EQ(320, fx.world().respawn.respawn_queue[0].x)
         << "no spawn point: the entry records where the corpse fell";
-    ASSERT_EQ(320, fx.world().ctf.respawn_queue[0].y);
+    ASSERT_EQ(320, fx.world().respawn.respawn_queue[0].y);
 
     fx.tick(12);
     ASSERT_FALSE(hero->dead());
@@ -310,20 +311,20 @@ TEST(ClassicRespawn, requested_delay_resolution_clamps_out_of_range_values)
         int expected_ticks;
     };
     const Case cases[] = {
-        {0, og::sim::kCtfDefaultRespawnTicks},    // unset -> default
+        {0, og::sim::kRespawnDefaultTicks},    // unset -> default
         {24, 24},                                 // in [12, 1200] -> honored
-        {6, og::sim::kCtfDefaultRespawnTicks},    // below min -> default
-        {2000, og::sim::kCtfDefaultRespawnTicks}, // above max -> default
+        {6, og::sim::kRespawnDefaultTicks},    // below min -> default
+        {2000, og::sim::kRespawnDefaultTicks}, // above max -> default
     };
     for (const Case& c : cases)
     {
         ClassicArena arena(1, c.requested);
         arena.fx.kill(arena.hero);
         arena.fx.tick();
-        ASSERT_EQ(1u, arena.world().ctf.respawn_queue.size())
+        ASSERT_EQ(1u, arena.world().respawn.respawn_queue.size())
             << "requested=" << c.requested;
         EXPECT_EQ(c.expected_ticks,
-                  static_cast<int>(arena.world().ctf.respawn_queue[0].ticks_left))
+                  static_cast<int>(arena.world().respawn.respawn_queue[0].ticks_left))
             << "requested=" << c.requested;
     }
 }
@@ -339,10 +340,10 @@ TEST(ClassicRespawn, mode2_respawns_fresh_ai_walker_at_authored_spot)
 
     arena.fx.kill(bot);
     arena.fx.tick();
-    ASSERT_EQ(1u, arena.world().ctf.respawn_queue.size());
-    ASSERT_EQ(1, arena.world().ctf.respawn_queue[0].kind);
-    ASSERT_EQ(224, arena.world().ctf.respawn_queue[0].x);
-    ASSERT_EQ(128, arena.world().ctf.respawn_queue[0].y);
+    ASSERT_EQ(1u, arena.world().respawn.respawn_queue.size());
+    ASSERT_EQ(1, arena.world().respawn.respawn_queue[0].kind);
+    ASSERT_EQ(224, arena.world().respawn.respawn_queue[0].x);
+    ASSERT_EQ(128, arena.world().respawn.respawn_queue[0].y);
 
     arena.fx.tick(12);
     walker* fresh = find_alive_with(arena.world(), FAMILY_ARCHER, 1);
@@ -355,7 +356,7 @@ TEST(ClassicRespawn, mode2_respawns_fresh_ai_walker_at_authored_spot)
     ASSERT_EQ(224, fresh->spawn_x())
         << "the replacement inherits the spawn point for later deaths";
     ASSERT_EQ(128, fresh->spawn_y());
-    ASSERT_TRUE(arena.world().ctf.respawn_queue.empty());
+    ASSERT_TRUE(arena.world().respawn.respawn_queue.empty());
 }
 
 TEST(ClassicRespawn, mode2_blocked_ai_respawn_retries_until_clear)
@@ -372,9 +373,9 @@ TEST(ClassicRespawn, mode2_blocked_ai_respawn_retries_until_clear)
 
     ASSERT_EQ(nullptr, find_alive_with(arena.world(), FAMILY_ARCHER, 1))
         << "blocked spot must not place the fresh walker";
-    ASSERT_EQ(1u, arena.world().ctf.respawn_queue.size())
+    ASSERT_EQ(1u, arena.world().respawn.respawn_queue.size())
         << "blocked fire re-enqueues the entry";
-    const og::sim::CtfRespawnEntry& retry = arena.world().ctf.respawn_queue[0];
+    const og::sim::RespawnEntry& retry = arena.world().respawn.respawn_queue[0];
     ASSERT_EQ(1, retry.kind);
     ASSERT_GT(retry.ticks_left, 0);
     ASSERT_LE(static_cast<int>(retry.ticks_left),
@@ -386,7 +387,7 @@ TEST(ClassicRespawn, mode2_blocked_ai_respawn_retries_until_clear)
     ASSERT_NE(nullptr, fresh);
     EXPECT_EQ(224, fresh->xpos());
     EXPECT_EQ(128, fresh->ypos());
-    EXPECT_TRUE(arena.world().ctf.respawn_queue.empty());
+    EXPECT_TRUE(arena.world().respawn.respawn_queue.empty());
 }
 
 TEST(ClassicRespawn, mode1_does_not_respawn_unowned_ai)
@@ -398,7 +399,7 @@ TEST(ClassicRespawn, mode1_does_not_respawn_unowned_ai)
     arena.fx.kill(bot);
     arena.fx.tick();
 
-    ASSERT_TRUE(arena.world().ctf.respawn_queue.empty())
+    ASSERT_TRUE(arena.world().respawn.respawn_queue.empty())
         << "mode 1 respawns heroes only";
 }
 
@@ -412,7 +413,7 @@ TEST(ClassicRespawn, generator_owned_and_summoned_walkers_never_respawn)
     summon->set_dead(1);
     arena.fx.tick();
 
-    ASSERT_TRUE(arena.world().ctf.respawn_queue.empty())
+    ASSERT_TRUE(arena.world().respawn.respawn_queue.empty())
         << "walkers with a live owner are the owner's business";
 }
 
@@ -427,7 +428,7 @@ TEST(ClassicRespawn, end_of_level_revives_pending_heroes_and_clears_queue)
 
     arena.fx.kill(hero);
     arena.fx.tick();
-    ASSERT_EQ(1u, arena.world().ctf.respawn_queue.size());
+    ASSERT_EQ(1u, arena.world().respawn.respawn_queue.size());
     ASSERT_FALSE(arena.world().game_ended)
         << "the surviving enemy keeps the level open";
 
@@ -442,7 +443,7 @@ TEST(ClassicRespawn, end_of_level_revives_pending_heroes_and_clears_queue)
         << "the win-tick revive-all must run before roster persistence";
     ASSERT_EQ(128, hero->xpos());
     ASSERT_EQ(128, hero->ypos());
-    ASSERT_TRUE(arena.world().ctf.respawn_queue.empty());
+    ASSERT_TRUE(arena.world().respawn.respawn_queue.empty());
 }
 
 TEST(ClassicRespawn, hero_revives_across_floors_at_its_spawn_floor)
@@ -463,33 +464,20 @@ TEST(ClassicRespawn, hero_revives_across_floors_at_its_spawn_floor)
     EXPECT_EQ(128, hero->ypos());
 }
 
-TEST(ClassicRespawn, ctf_worlds_ignore_respawn_mode)
+TEST(ClassicRespawn, scripted_active_worlds_ignore_respawn_mode)
 {
-    // Full CTF arena with respawn_mode set: the CTF engine stays
-    // authoritative — AI respawns keep rotating to team anchors and ignore
-    // the entry's recorded coordinates.
+    // A scripted world with an ACTIVE mode owns its respawns through the
+    // Lua surface: the classic engine stays off even with respawn_mode
+    // set, and the classic death scan never schedules a corpse (eligibility
+    // is the mode script's, via og.respawn_schedule).
     ClassicWorld fx;
     GameWorld& w = fx.world();
-    w.type = GameWorld::TYPE_CTF;
+    w.type = GameWorld::TYPE_SCRIPTED;
+    w.mode.active = true;
+    w.mode.init_attempted = true;
     w.respawn_mode = 2;
     w.ctf_requested_respawn_ticks = 6;
 
-    walker* flag0 = w.add_fx_ob(Order::Treasure, og::FAMILY_FLAG);
-    ASSERT_NE(nullptr, flag0);
-    flag0->setxy(96, 96);
-    flag0->set_team_num(0);
-    walker* flag1 = w.add_fx_ob(Order::Treasure, og::FAMILY_FLAG);
-    ASSERT_NE(nullptr, flag1);
-    flag1->setxy(544, 800);
-    flag1->set_team_num(1);
-    walker* anchor0 = w.add_ob(Order::Special, FAMILY_RESERVED_TEAM);
-    ASSERT_NE(nullptr, anchor0);
-    anchor0->setxy(128, 128);
-    anchor0->set_team_num(0);
-    walker* anchor1 = w.add_ob(Order::Special, FAMILY_RESERVED_TEAM);
-    ASSERT_NE(nullptr, anchor1);
-    anchor1->setxy(512, 832);
-    anchor1->set_team_num(1);
     walker* runner = fx.spawn_living(FAMILY_SOLDIER, 0, 320, 320);
     ASSERT_NE(nullptr, runner);
     walker* bot = fx.spawn_living(FAMILY_ARCHER, 1, 480, 700);
@@ -497,22 +485,15 @@ TEST(ClassicRespawn, ctf_worlds_ignore_respawn_mode)
     bot->set_spawn_point(480, 700, 0);
 
     fx.tick();
-    ASSERT_TRUE(w.ctf.active);
     ASSERT_FALSE(og::sim::classic_respawn_active(w))
-        << "TYPE_CTF worlds never activate the classic engine";
+        << "scripted-active worlds never activate the classic engine";
 
     fx.kill(bot);
-    fx.tick();
-    ASSERT_EQ(1u, w.ctf.respawn_queue.size());
-    ASSERT_EQ(480, w.ctf.respawn_queue[0].x)
-        << "the shared scheduler still records the coordinates";
-
-    fx.tick(6);
-    walker* fresh = find_alive_with(w, FAMILY_ARCHER, 1);
-    ASSERT_NE(nullptr, fresh);
-    EXPECT_EQ(512, fresh->xpos())
-        << "CTF fire paths ignore the entry coordinates: anchor placement";
-    EXPECT_EQ(832, fresh->ypos());
+    fx.tick(8);
+    ASSERT_TRUE(w.respawn.respawn_queue.empty())
+        << "no engine death scan runs on scripted-active worlds";
+    ASSERT_TRUE(bot->dead())
+        << "without a Lua schedule the corpse stays down";
 }
 
 TEST(ClassicRespawn, server_reclaims_control_after_classic_revive)
@@ -576,7 +557,7 @@ TEST(ClassicRespawn, mode2_pending_hostile_ai_blocks_extermination_win)
     arena.fx.tick();
     ASSERT_FALSE(w.game_ended)
         << "a corpse the death scan will queue is still a foe";
-    ASSERT_EQ(1u, w.ctf.respawn_queue.size());
+    ASSERT_EQ(1u, w.respawn.respawn_queue.size());
 
     // Queued ticks, the respawn itself, and the fresh foe: never a win.
     for (int i = 0; i < 30; ++i)
@@ -599,7 +580,7 @@ TEST(ClassicRespawn, end_driven_completion_flushes_and_drops_pending_ai)
     arena.fx.tick();
     ASSERT_FALSE(w.game_ended)
         << "extermination cannot win past the pending hostile AI";
-    ASSERT_EQ(2u, w.ctf.respawn_queue.size());
+    ASSERT_EQ(2u, w.respawn.respawn_queue.size());
 
     // The session layer ends the level (world.end): the end-of-level
     // revive-all must cover this end shape too.
@@ -608,7 +589,7 @@ TEST(ClassicRespawn, end_driven_completion_flushes_and_drops_pending_ai)
     ASSERT_TRUE(w.game_ended);
     ASSERT_FALSE(arena.hero->dead())
         << "the end-driven completion still revives pending heroes";
-    ASSERT_TRUE(w.ctf.respawn_queue.empty());
+    ASSERT_TRUE(w.respawn.respawn_queue.empty());
     ASSERT_EQ(nullptr, find_alive_with(w, FAMILY_SOLDIER, 1))
         << "pending AI entries are dropped at level end";
 }
@@ -628,7 +609,7 @@ TEST(ClassicRespawn, same_tick_mutual_kill_still_revives_the_hero)
     ASSERT_EQ(0, arena.world().ending);
     ASSERT_FALSE(arena.hero->dead())
         << "a hero dying on the winning tick is revived, not persisted dead";
-    ASSERT_TRUE(arena.world().ctf.respawn_queue.empty());
+    ASSERT_TRUE(arena.world().respawn.respawn_queue.empty());
 }
 
 TEST(ClassicRespawn, runtime_spawns_without_authored_placement_never_respawn)
@@ -648,13 +629,13 @@ TEST(ClassicRespawn, runtime_spawns_without_authored_placement_never_respawn)
 
     arena.fx.kill(emission);
     arena.fx.tick();
-    ASSERT_TRUE(w.ctf.respawn_queue.empty())
+    ASSERT_TRUE(w.respawn.respawn_queue.empty())
         << "an unowned runtime spawn (no spawn point) is never adopted";
     ASSERT_FALSE(w.game_ended) << "the authored enemy is still alive";
 
     arena.fx.kill(arena.enemy); // the fixture enemy has no spawn point either
     arena.fx.tick();
-    ASSERT_TRUE(w.ctf.respawn_queue.empty());
+    ASSERT_TRUE(w.respawn.respawn_queue.empty());
     ASSERT_TRUE(w.game_ended)
         << "corpses without a placement do not hold the extermination win";
 }
@@ -664,17 +645,17 @@ TEST(ClassicRespawn, pending_hostile_foe_truth_table)
     ClassicWorld fx;
     GameWorld& w = fx.world();
 
-    og::sim::CtfRespawnEntry ai_other{};
+    og::sim::RespawnEntry ai_other{};
     ai_other.kind = 1;
     ai_other.team = 1;
-    og::sim::CtfRespawnEntry hero_own{};
+    og::sim::RespawnEntry hero_own{};
     hero_own.kind = 0;
     hero_own.team = 0;
-    og::sim::CtfRespawnEntry hero_other{};
+    og::sim::RespawnEntry hero_other{};
     hero_other.kind = 0;
     hero_other.team = 2;
 
-    w.ctf.respawn_queue.push_back(ai_other);
+    w.respawn.respawn_queue.push_back(ai_other);
     w.respawn_mode = 0;
     EXPECT_FALSE(og::sim::classic_respawn_pending_hostile_foe(w))
         << "engine off";
@@ -693,11 +674,11 @@ TEST(ClassicRespawn, pending_hostile_foe_truth_table)
         << "PVP seating mode does not change AI hostility";
     w.allied_mode = 0;
 
-    w.ctf.respawn_queue.clear();
-    w.ctf.respawn_queue.push_back(hero_own);
+    w.respawn.respawn_queue.clear();
+    w.respawn.respawn_queue.push_back(hero_own);
     EXPECT_FALSE(og::sim::classic_respawn_pending_hostile_foe(w))
         << "own-team hero";
-    w.ctf.respawn_queue.push_back(hero_other);
+    w.respawn.respawn_queue.push_back(hero_other);
     w.allied_mode = 0;
     EXPECT_TRUE(og::sim::classic_respawn_pending_hostile_foe(w))
         << "an enemy player's pending hero is still a foe";
@@ -725,7 +706,7 @@ TEST(ClassicRespawn, timeout_end_shape_flushes_pending_heroes)
     ASSERT_EQ(1, arena.world().ending) << "the timeout is a loss";
     ASSERT_FALSE(arena.hero->dead())
         << "the results screen shows revived heroes, not mid-respawn corpses";
-    ASSERT_TRUE(arena.world().ctf.respawn_queue.empty());
+    ASSERT_TRUE(arena.world().respawn.respawn_queue.empty());
 }
 
 TEST(ClassicRespawn, flush_pending_covers_the_synchronous_exit_accept_shape)
@@ -747,10 +728,10 @@ TEST(ClassicRespawn, flush_pending_covers_the_synchronous_exit_accept_shape)
 
     EXPECT_FALSE(arena.hero->dead());
     EXPECT_FALSE(late->dead()) << "the flush death-scans before it fires";
-    EXPECT_TRUE(arena.world().ctf.respawn_queue.empty());
+    EXPECT_TRUE(arena.world().respawn.respawn_queue.empty());
 
     og::sim::classic_respawn_flush_pending(arena.world());
-    EXPECT_TRUE(arena.world().ctf.respawn_queue.empty()) << "idempotent";
+    EXPECT_TRUE(arena.world().respawn.respawn_queue.empty()) << "idempotent";
 }
 
 TEST(ClassicRespawn, full_queue_blocked_evict_keeps_the_incoming_corpse)
@@ -762,9 +743,9 @@ TEST(ClassicRespawn, full_queue_blocked_evict_keeps_the_incoming_corpse)
     // evict-fire is blocked and re-enqueues itself.
     walker* blocker = arena.fx.spawn_living(FAMILY_SOLDIER, 1, 224, 128);
     ASSERT_NE(nullptr, blocker);
-    for (int i = 0; i < og::sim::kCtfMaxRespawnEntries; ++i)
+    for (int i = 0; i < og::sim::kRespawnMaxQueueEntries; ++i)
     {
-        og::sim::CtfRespawnEntry entry{};
+        og::sim::RespawnEntry entry{};
         entry.kind = 1;
         entry.team = 1;
         entry.family = FAMILY_ARCHER;
@@ -773,7 +754,7 @@ TEST(ClassicRespawn, full_queue_blocked_evict_keeps_the_incoming_corpse)
         entry.x = 224;
         entry.y = 128;
         entry.floor = 0;
-        w.ctf.respawn_queue.push_back(entry);
+        w.respawn.respawn_queue.push_back(entry);
     }
 
     walker* bot = arena.fx.spawn_living(FAMILY_ARCHER, 1, 480, 700);
@@ -783,17 +764,17 @@ TEST(ClassicRespawn, full_queue_blocked_evict_keeps_the_incoming_corpse)
     arena.fx.kill(bot);
     arena.fx.tick();
 
-    ASSERT_EQ(static_cast<std::size_t>(og::sim::kCtfMaxRespawnEntries),
-              w.ctf.respawn_queue.size())
+    ASSERT_EQ(static_cast<std::size_t>(og::sim::kRespawnMaxQueueEntries),
+              w.respawn.respawn_queue.size())
         << "the serializer's queue cap holds";
-    EXPECT_EQ(corpse_id, w.ctf.respawn_queue.back().walker_entity_id)
+    EXPECT_EQ(corpse_id, w.respawn.respawn_queue.back().walker_entity_id)
         << "the incoming corpse wins the slot";
     int crafted = 0;
-    for (const og::sim::CtfRespawnEntry& entry : w.ctf.respawn_queue)
+    for (const og::sim::RespawnEntry& entry : w.respawn.respawn_queue)
     {
         if (entry.x == 224)
             ++crafted;
     }
-    EXPECT_EQ(og::sim::kCtfMaxRespawnEntries - 1, crafted)
+    EXPECT_EQ(og::sim::kRespawnMaxQueueEntries - 1, crafted)
         << "the blocked evict retry is the entry dropped, not the corpse";
 }

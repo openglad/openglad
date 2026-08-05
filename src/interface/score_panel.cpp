@@ -19,9 +19,11 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/statistics.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
+#include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/guy.h>
+
+#include <cstring>
 
 #include <openglad/interface/game_context.h>
 
@@ -29,10 +31,13 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <format>
 #include <string>
+#include <string_view>
+#include <vector>
 
 static inline Uint32 rng(Uint32 max_exclusive)
 {
@@ -100,7 +105,7 @@ void pending_hostile_wave_counts(const GameWorld& world, walker* viewer,
     if (og::sim::classic_respawn_active(world))
     {
         const unsigned char viewer_team = viewer->team_num();
-        for (const og::sim::CtfRespawnEntry& entry : world.ctf.respawn_queue)
+        for (const og::sim::RespawnEntry& entry : world.respawn.respawn_queue)
         {
             // Viewer-relative mirror of the engine's strict team-color rule.
             // entry.team is the corpse's true (charm-broken) team recorded
@@ -200,33 +205,20 @@ inline constexpr int OVERSCAN_PADDING = 6;
 inline constexpr int OVERSCAN_PADDING = 0;
 #endif
 
-// Flag-state glyph for the per-team CTF readout: that team's flag is at
-// (H)ome, (T)aken by an enemy carrier, or (D)ropped in the field.
-static char ctf_flag_state_glyph(const og::sim::CtfFlag& flag)
-{
-    switch (flag.state)
-    {
-        case og::sim::CtfFlagState::Carried: return 'T';
-        case og::sim::CtfFlagState::Dropped: return 'D';
-        case og::sim::CtfFlagState::AtHome:
-        default: return 'H';
-    }
-}
-
-// Shared CTF/classic countdown. Classic mode deliberately calls only this
-// helper: capture scores, flags and waypoint progress remain CTF-only.
+// Shared classic/scripted respawn countdown; scripted modes surface their
+// scores through the generic ModeState HUD lines.
 static void draw_respawn_countdown(screen* s, walker* control,
                                    Sint32 lm, Sint32 tm)
 {
     if (control == nullptr || !control->dead())
         return;
 
-    const og::sim::CtfState& ctf = s->world_.ctf;
-    for (const og::sim::CtfRespawnEntry& entry : ctf.respawn_queue)
+    for (const og::sim::RespawnEntry& entry :
+         s->world_.respawn.respawn_queue)
     {
         if (entry.kind != 0 || entry.walker_entity_id != control->entity_id())
             continue;
-        const int seconds = og::sim::ctf_respawn_seconds_left(ctf, entry);
+        const int seconds = og::sim::respawn_seconds_left(entry);
         const std::string message = std::format("RESPAWN IN {}", seconds);
         s->text_normal.write_xy(lm + 4, tm + 12, message.c_str(),
                                 static_cast<unsigned char>(YELLOW),
@@ -235,118 +227,319 @@ static void draw_respawn_countdown(screen* s, walker* control,
     }
 }
 
-// Per-viewport CTF overlay. Reads only replicated world state (CtfState rides
-// the snapshot), so it works identically on the server and network mirrors.
-static void draw_ctf_panel(screen* s, walker* control, Sint32 lm, Sint32 tm,
-                           Sint32 rm)
+// Ramp color for a mode HUD element: team ramp when a score team is set,
+// else the classic HUD text yellow (the un-overlaid draw_respawn_countdown
+// default).
+static unsigned char mode_hud_color(std::uint8_t team)
 {
-    const og::sim::CtfState& ctf = s->world_.ctf;
-    text& mytext = s->text_normal;
+    if (team < SCORE_TEAM_COUNT)
+        return static_cast<unsigned char>(team * 16 + 40);
+    return static_cast<unsigned char>(YELLOW);
+}
 
-    // Capture counts. Suppressed in small (>2-way) split-screen panes; the
-    // two larger layouts right-align the group ending at rm-60 so it clears
-    // both 12-char names at lm+3 and the TEAM/FOES column at rm-55.
-    if (s->numviews == 1)
-    {
-        // Full-width pane: one "<caps><flag-glyph>" segment per active team
-        // in its team ramp color, 6px apart.
-        std::array<std::string, 4> segments;
-        Sint32 total_width = 0;
-        for (int team = 0; team < 4; ++team)
-        {
-            if (!ctf.team_active[team])
-                continue;
-            segments[static_cast<std::size_t>(team)] = std::format(
-                "{}{}",
-                ctf.captures[team],
-                ctf_flag_state_glyph(ctf.flags[team]));
-            if (total_width > 0)
-                total_width += 6;
-            total_width += static_cast<Sint32>(segments[static_cast<std::size_t>(team)].size()) * 6;
-        }
-        Sint32 x = rm - 60 - total_width;
-        for (int team = 0; team < 4; ++team)
-        {
-            if (segments[static_cast<std::size_t>(team)].empty())
-                continue;
-            mytext.write_xy(x, tm + 4, segments[static_cast<std::size_t>(team)].c_str(),
-                            static_cast<unsigned char>(team * 16 + 40),
-                            static_cast<short>(1));
-            x += static_cast<Sint32>(segments[static_cast<std::size_t>(team)].size()) * 6 + 6;
-        }
-    }
-    else if (s->numviews == 2)
-    {
-        // Half-width panes cannot fit the glyph segments beside the name:
-        // compact digits-only group ("2:1:0:3", counts in team ramp colors,
-        // neutral separators) on the tm+28 row, clear of the name and the
-        // HP/MP rows. The carrier's FLAG! stays left at lm+2 on that row.
-        std::array<std::string, 7> pieces;
-        std::array<unsigned char, 7> piece_colors;
-        int piece_count = 0;
-        Sint32 total_width = 0;
-        for (int team = 0; team < 4; ++team)
-        {
-            if (!ctf.team_active[team])
-                continue;
-            if (piece_count > 0)
-            {
-                pieces[static_cast<std::size_t>(piece_count)] = ":";
-                piece_colors[static_cast<std::size_t>(piece_count)] = WHITE;
-                total_width += 6;
-                ++piece_count;
-            }
-            pieces[static_cast<std::size_t>(piece_count)] = std::format("{}", ctf.captures[team]);
-            piece_colors[static_cast<std::size_t>(piece_count)] =
-                static_cast<unsigned char>(team * 16 + 40);
-            total_width +=
-                static_cast<Sint32>(pieces[static_cast<std::size_t>(piece_count)].size()) * 6;
-            ++piece_count;
-        }
-        Sint32 x = rm - 60 - total_width;
-        for (int i = 0; i < piece_count; ++i)
-        {
-            mytext.write_xy(x, tm + 28, pieces[static_cast<std::size_t>(i)].c_str(),
-                            piece_colors[static_cast<std::size_t>(i)],
-                            static_cast<short>(1));
-            x += static_cast<Sint32>(pieces[static_cast<std::size_t>(i)].size()) * 6;
-        }
-    }
+// Fallback captions for a walker with neither a myguy nor a stats name.
+// File scope so the mode row can measure the caption the classic HUD is
+// about to draw on the same tm+4 row (see draw_mode_panel).
+static const std::array<const char*, NUM_FAMILIES> kFamilyHudNames = {
+    "SOLDIER", "ELF", "ARCHER", "MAGE",
+    "SKELETON", "CLERIC", "ELEMENTAL",
+    "FAERIE", "SLIME", "SLIME", "SLIME",
+    "THIEF", "GHOST", "DRUID", "ORC",
+    "ORC CAPTAIN", "BARBARIAN", "ARCHMAGE",
+    "GOLEM", "GIANT SKEL", "TOWER",
+};
 
-    // Waypoint capture feedback: while any control point has a contending
-    // team, a compact "WP n/36" meter in that team's ramp color shows the
-    // accruing (or decaying) progress — partial progress was previously
-    // invisible until the flip. Drawn on the tm+36 row: below the HP/MP rows
-    // (tm+10/tm+18) and the FLAG!/compact-caps row (tm+28), above the
-    // score block at the pane bottom, so it collides with nothing in any
-    // split layout. First contested point in index order (deterministic).
-    for (int i = 0; i < ctf.cp_count; ++i)
+// THE one copy of the upper-left HUD caption rule (a myguy's name wins even
+// when blank, else a non-empty stats name, else the family word).
+// new_score_panel draws it at lm+3 on the tm+4 row; draw_mode_panel measures
+// it to find where its own row may start, so the two must agree exactly.
+// The follow banner keeps its own blank-skipping variant below.
+static std::string hud_display_name(const walker* control)
+{
+    if (control == nullptr)
+        return {};
+    if (control->myguy)
+        return control->myguy->name;
+    if (!control->stats()->name.empty())
+        return control->stats()->name;
+    int fam = static_cast<int>(control->family());
+    if (fam < 0 || fam >= NUM_FAMILIES)
+        fam = 0;
+    return kFamilyHudNames[static_cast<std::size_t>(fam)];
+}
+
+// --- The condensed mode score row -------------------------------------------
+//
+// The mode row sits on ONE line, at tm+4, in every viewport.
+//
+// Why one line: the retired layout spread the four ModeState slots over
+// tm+4 / tm+28 / tm+36, and the notification banner
+// (viewscreen::display_text) writes its five messages at viewport-local
+// y = 30, 36, 42, 48, 54. Two of the three score rows therefore landed
+// inside the banner block and shredded every announcement. The banner's
+// topmost row is viewport-local 30, i.e. tm + 30 - OVERSCAN_PADDING, so its
+// worst case (REDUCE_OVERSCAN, padding 6) is tm+24. text.png is a 5x6 font,
+// so a row at tm+4 ends on tm+9 — 14 clear scanlines in that worst case, 20
+// normally. The two can never share a scanline.
+//
+// Horizontal window: the classic HUD owns the caption at lm+3 and the
+// TEAM/FOES box from rm-57 on the SAME tm+4 row, so the mode row takes the
+// channel between them. The left edge clears both the caption's own button
+// box (lm+1..lm+63) and the caption text itself, measured through the
+// shared hud_display_name; the right edge stops at rm-60 while the FOES
+// column is on. With no classic HUD (dead / AI-followed / spectated view)
+// the row takes the whole pane, lm+2..rm-2. Both bounds derive from this
+// pane's own lm/rm, so the R1 clamp holds: the row can never paint into a
+// neighboring viewport.
+//
+// Composition: the non-empty slots in index order, each stripped of its
+// leading team color word (the segment is already drawn in that team's ramp
+// — repeating "RED" costs a third of a narrow pane's budget for nothing),
+// joined with " - " in the default HUD color so the per-team ramps stay
+// legible as separate scores. The dash rather than a pipe because text.png
+// carries a blank glyph at '|' (code 124, its last frame) — an invisible
+// separator would run the scores together.
+//
+// Narrow panes: the old rule suppressed slots by view count. The budget
+// says it better — if the joined row does not fit, fall back to the LOCAL
+// team's segment alone (the only score a cramped pane's owner needs), then
+// truncate end-first to the remaining characters, and draw nothing at all
+// below three characters.
+inline constexpr std::string_view kModeRowSeparator = " - ";
+inline constexpr Sint32 kModeRowOffsetY = 4;
+inline constexpr Sint32 kModeRowMinChars = 3;
+
+// One drawn run of the row: its characters and the ramp they take.
+struct ModeRowSegment
+{
+    std::string text;
+    unsigned char color = 0;
+    int team = 255;
+};
+
+// Drop a leading team color word ("RED 5" -> "5") when the slot names the
+// team it is already colored by. Bails out unless a real word boundary and a
+// non-empty remainder follow, so a line that IS just the color word, or one
+// that merely starts with those letters ("REDOUBT 4"), survives whole.
+static std::string_view strip_team_color_word(const char* text,
+                                              std::uint8_t team)
+{
+    std::string_view line{text};
+    if (team >= SCORE_TEAM_COUNT)
+        return line;
+    const std::string_view word{og::sim::team_color_name(static_cast<int>(team))};
+    if (word.empty() || line.size() <= word.size())
+        return line;
+    for (std::size_t i = 0; i < word.size(); ++i)
     {
-        const og::sim::CtfControlPoint& cp = ctf.cps[i];
-        if (cp.progress_team < 0)
+        const int a = std::toupper(static_cast<unsigned char>(line[i]));
+        const int b = std::toupper(static_cast<unsigned char>(word[i]));
+        if (a != b)
+            return line;
+    }
+    std::string_view rest = line.substr(word.size());
+    if (rest.front() != ' ' && rest.front() != ':')
+        return line;
+    while (!rest.empty() && (rest.front() == ' ' || rest.front() == ':'))
+        rest.remove_prefix(1);
+    return rest.empty() ? line : rest;
+}
+
+// only_team >= 0 keeps just that team's slots (the narrow-pane fallback).
+static std::vector<ModeRowSegment> compose_mode_row(
+    const og::sim::ModeState& mode, int only_team)
+{
+    std::vector<ModeRowSegment> segments;
+    for (const og::sim::ModeHudLine& line : mode.hud)
+    {
+        if (line.text[0] == '\0')
             continue;
-        const std::string meter =
-            std::format("WP {}/{}", cp.progress, og::sim::kCtfCpCaptureTicks);
-        mytext.write_xy(lm + 2, tm + 36, meter.c_str(),
-                        static_cast<unsigned char>(cp.progress_team * 16 + 40),
-                        static_cast<short>(1));
-        break;
+        if (only_team >= 0 && static_cast<int>(line.team) != only_team)
+            continue;
+        const std::string_view body =
+            strip_team_color_word(line.text.data(), line.team);
+        if (body.empty())
+            continue;
+        if (!segments.empty())
+            segments.push_back({std::string(kModeRowSeparator),
+                                mode_hud_color(255), 255});
+        segments.push_back({std::string(body), mode_hud_color(line.team),
+                            static_cast<int>(line.team)});
+    }
+    return segments;
+}
+
+static Sint32 mode_row_length(const std::vector<ModeRowSegment>& segments)
+{
+    Sint32 total = 0;
+    for (const ModeRowSegment& segment : segments)
+        total += static_cast<Sint32>(segment.text.size());
+    return total;
+}
+
+static void draw_mode_panel(screen* s, viewscreen* view, Sint32 lm, Sint32 tm,
+                            Sint32 rm)
+{
+    const og::sim::ModeState& mode = s->world_.mode;
+    text& mytext = s->text_normal;
+    walker* const control = view->control;
+
+    // The exact condition new_score_panel draws the classic HUD under.
+    const bool classic_hud =
+        control != nullptr && !control->dead() && control->user() != -1;
+
+    Sint32 left = lm + 2;
+    Sint32 right = rm - 2;
+    if (classic_hud)
+    {
+        const std::string caption = hud_display_name(control);
+        const Sint32 caption_end =
+            lm + 3 + 6 * static_cast<Sint32>(caption.size()) + 4;
+        left = std::max<Sint32>(lm + 66, caption_end);
+        if (view->prefs[PREF_FOES] == PREF_FOES_ON)
+            right = rm - 60;
     }
 
-    if (control != nullptr && !control->dead())
+    const Sint32 budget = (right - left) / 6;
+    if (budget < kModeRowMinChars)
     {
-        // The viewport's control carries an enemy flag.
-        for (int team = 0; team < 4; ++team)
+        TRACE("mode_hud", "row_suppressed budget=%d", static_cast<int>(budget));
+        return;
+    }
+
+    std::vector<ModeRowSegment> segments = compose_mode_row(mode, -1);
+    if (mode_row_length(segments) > budget && classic_hud &&
+        control->team_num() < SCORE_TEAM_COUNT)
+    {
+        std::vector<ModeRowSegment> local =
+            compose_mode_row(mode, static_cast<int>(control->team_num()));
+        if (!local.empty())
+            segments = std::move(local);
+    }
+    if (segments.empty())
+        return;
+
+    const Sint32 row = tm + kModeRowOffsetY;
+    Sint32 x = left;
+    Sint32 drawn = 0;
+    std::string shown;
+    for (const ModeRowSegment& segment : segments)
+    {
+        if (drawn >= budget)
+            break;
+        const std::size_t room = static_cast<std::size_t>(budget - drawn);
+        const std::string piece = segment.text.substr(0, room);
+        mytext.write_xy(x, row, piece.c_str(), segment.color,
+                        static_cast<short>(1));
+        TRACE("mode_hud", "seg team=%d x=%d text=%s", segment.team,
+              static_cast<int>(x), piece.c_str());
+        x += 6 * static_cast<Sint32>(piece.size());
+        drawn += static_cast<Sint32>(piece.size());
+        shown += piece;
+    }
+    TRACE("mode_hud", "row y=%d x=%d budget=%d text=%s", static_cast<int>(row),
+          static_cast<int>(left), static_cast<int>(budget), shown.c_str());
+}
+
+// A small solid triangle at the viewport edge pointing along (dx, dy) —
+// exactly one of the four axis directions. (x, y) is the tip pixel.
+static void draw_beacon_arrow(screen* s, Sint32 x, Sint32 y, int dx, int dy,
+                              unsigned char color)
+{
+    for (int step = 0; step < 3; ++step)
+    {
+        const Sint32 span = static_cast<Sint32>(2 * step + 1);
+        if (dx != 0)
         {
-            const og::sim::CtfFlag& flag = ctf.flags[team];
-            if (flag.state == og::sim::CtfFlagState::Carried &&
-                flag.carrier_entity_id == control->entity_id())
-            {
-                mytext.write_xy(lm + 2, tm + 28, "FLAG!",
-                                static_cast<unsigned char>(team * 16 + 40),
-                                static_cast<short>(1));
-                break;
-            }
+            // Horizontal arrow: columns shrink toward the tip.
+            s->fastbox(x - dx * step, y - step, 1, span, color, 1);
+        }
+        else
+        {
+            // Vertical arrow: rows shrink toward the tip.
+            s->fastbox(x - step, y - dy * step, span, 1, color, 1);
+        }
+    }
+}
+
+// Off-screen beacon arrows + in-view pulse markers for the ModeState beacon
+// slots (og.set_beacon). Directional edge arrows point at out-of-view beacon
+// entities; an in-view beacon gets a pulsing underline bar. Render-only and
+// RNG-free: the pulse phase derives from the replicated tick, never from a
+// rng draw (the radar jitter-0 discipline).
+static void draw_mode_beacons(screen* s, viewscreen* view, Sint32 lm,
+                              Sint32 tm, Sint32 rm, Sint32 bm)
+{
+    const GameWorld& world = s->world_;
+    const int view_floor =
+        (view->control != nullptr) ? static_cast<int>(view->control->floor())
+                                   : 0;
+    for (int slot = 0; slot < og::sim::kModeBeacons; ++slot)
+    {
+        const og::sim::ModeBeacon& beacon =
+            world.mode.beacons[static_cast<std::size_t>(slot)];
+        if (beacon.entity_id == 0)
+            continue;
+        const walker* target =
+            world.find_by_id(static_cast<std::uint32_t>(beacon.entity_id));
+        if (target == nullptr || target->dead() || target->dormant())
+            continue;
+        // Multi-floor: beacons on another floor would project at a
+        // meaningless spot; skip them (the radar's floor rule).
+        if (world.floor_count() > 1 &&
+            static_cast<int>(target->floor()) != view_floor)
+            continue;
+
+        const unsigned char color =
+            (beacon.team < SCORE_TEAM_COUNT)
+                ? static_cast<unsigned char>(beacon.team * 16 + 40)
+                : target->query_team_color();
+
+        // Project the entity center into this viewport's screen space.
+        const Sint32 cx = view->xloc +
+            (static_cast<Sint32>(target->xpos()) +
+             target->sizex() / 2 - view->topx);
+        const Sint32 cy = view->yloc +
+            (static_cast<Sint32>(target->ypos()) +
+             target->sizey() / 2 - view->topy);
+
+        // Clamp into the viewport interior; a binding clamp = off-view.
+        const Sint32 clamped_x = std::clamp(cx, lm + 4, rm - 5);
+        const Sint32 clamped_y = std::clamp(cy, tm + 4, bm - 5);
+        const Sint32 over_x = cx - clamped_x;
+        const Sint32 over_y = cy - clamped_y;
+
+        if (over_x == 0 && over_y == 0)
+        {
+            // In view: pulsing underline bar just below the sprite. Triangle
+            // wave over a 12-tick period (one second at the sim rate).
+            const int phase =
+                static_cast<int>(world.tick_count_ % 12u);
+            const int half = (phase < 6) ? phase : (11 - phase);
+            const Sint32 bar_w = static_cast<Sint32>(8 + 2 * half);
+            const Sint32 bar_x =
+                std::clamp(cx - bar_w / 2, lm, rm - bar_w);
+            const Sint32 bar_y = std::min(
+                cy + target->sizey() / 2 + 1, bm - 2);
+            s->fastbox(bar_x, bar_y, bar_w, 2, color, 1);
+            TRACE("mode_hud", "beacon_pulse slot=%d w=%d x=%d y=%d", slot,
+                  static_cast<int>(bar_w), static_cast<int>(bar_x),
+                  static_cast<int>(bar_y));
+        }
+        else
+        {
+            // Off view: an edge arrow pointing along the dominant overshoot
+            // axis, at the clamped projection.
+            int dx = 0;
+            int dy = 0;
+            if (std::abs(over_x) >= std::abs(over_y))
+                dx = (over_x > 0) ? 1 : -1;
+            else
+                dy = (over_y > 0) ? 1 : -1;
+            draw_beacon_arrow(s, clamped_x, clamped_y, dx, dy, color);
+            TRACE("mode_hud", "beacon_edge slot=%d dx=%d dy=%d x=%d y=%d",
+                  slot, dx, dy, static_cast<int>(clamped_x),
+                  static_cast<int>(clamped_y));
         }
     }
 }
@@ -367,14 +560,6 @@ short new_score_panel(screen* s, short /*do_it*/)
     Sint32 rm, bm; // right and bottom margins
     char draw_button;  // do we draw a button background?
     char text_color;
-    static char namelist[NUM_FAMILIES][20] =
-        { "SOLDIER", "ELF", "ARCHER", "MAGE",
-          "SKELETON", "CLERIC", "ELEMENTAL",
-          "FAERIE", "SLIME", "SLIME", "SLIME",
-          "THIEF", "GHOST", "DRUID", "ORC",
-          "ORC CAPTAIN", "BARBARIAN", "ARCHMAGE",
-          "GOLEM", "GIANT SKEL", "TOWER",
-        };
 
     Uint32 myscore;
     static std::array<Uint32, SCORE_TEAM_COUNT> scorecountup = {
@@ -400,14 +585,18 @@ short new_score_panel(screen* s, short /*do_it*/)
         rm = s->viewob[players]->endx - OVERSCAN_PADDING;
         bm = s->viewob[players]->endy - OVERSCAN_PADDING;
 
-        if ((s->world_.type & GameWorld::TYPE_CTF) && s->world_.ctf.active)
-            draw_ctf_panel(s, control, lm, tm, rm);
-        if (((s->world_.type & GameWorld::TYPE_CTF) &&
-             s->world_.ctf.active) ||
-            og::sim::classic_respawn_active(s->world_))
+        // Scripted-mode (TYPE_SCRIPTED) worlds render the generic ModeState
+        // HUD (mode Lua owns the scoreboard text).
+        const bool scripted_mode_hud =
+            (s->world_.type & GameWorld::TYPE_SCRIPTED) &&
+            s->world_.mode.active;
+        if (scripted_mode_hud)
         {
-            draw_respawn_countdown(s, control, lm, tm);
+            draw_mode_panel(s, s->viewob[players].get(), lm, tm, rm);
+            draw_mode_beacons(s, s->viewob[players].get(), lm, tm, rm, bm);
         }
+        if (og::sim::classic_respawn_active(s->world_) || scripted_mode_hud)
+            draw_respawn_countdown(s, control, lm, tm);
 
         // §2.8 follow caption: a follow-engaged view names its watched
         // target on a black strip at the viewport's bottom-center,
@@ -427,7 +616,8 @@ short new_score_panel(screen* s, short /*do_it*/)
                 int follow_fam = static_cast<int>(control->family());
                 if (follow_fam < 0 || follow_fam >= NUM_FAMILIES)
                     follow_fam = 0;
-                follow_name = namelist[follow_fam];
+                follow_name = kFamilyHudNames[
+                    static_cast<std::size_t>(follow_fam)];
             }
             if (follow_name.size() > 12)
                 follow_name.resize(12);
@@ -480,12 +670,7 @@ short new_score_panel(screen* s, short /*do_it*/)
                 spc = 0;
 
             // Display name or type, upper left
-            if (control->myguy)
-                tempname = control->myguy->name;
-            else if (!control->stats()->name.empty())
-                tempname = control->stats()->name;
-            else
-                tempname = namelist[fam];
+            tempname = hud_display_name(control);
 
             message = tempname;
 

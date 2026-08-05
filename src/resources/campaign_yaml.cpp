@@ -135,6 +135,11 @@ void apply_campaign_pair(CampaignYaml& out, const std::string& key, const std::s
         out.mode = value;
         out.saw_mode = true;
     }
+    else if(key == "matchup")
+    {
+        out.matchup = value;
+        out.saw_matchup = true;
+    }
 }
 
 std::string_view trim_ascii(std::string_view value)
@@ -341,6 +346,10 @@ CampaignYamlWriteResult write_campaign_yaml_with_result(const char* path, const 
     // byte-stable (LOAD-BEARING — pinned by a writer unit test).
     if(!data.mode.empty())
         ok = ok && emit_pair(emitter, "mode", data.mode);
+    // `matchup` follows the same only-when-non-empty rule (and sits right
+    // after `mode`), so coop repacks stay byte-stable too.
+    if(!data.matchup.empty())
+        ok = ok && emit_pair(emitter, "matchup", data.matchup);
 
     if(ok && yaml_mapping_end_event_initialize(&event))
         ok = emit_event(emitter, &event);

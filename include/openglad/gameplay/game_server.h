@@ -282,9 +282,10 @@ private:
     // CTF respawn reclaim: a revived player walker keeps its user tag, but a
     // player whose control was nulled at death (no fallback body) has no
     // rebind path through sim_find_next_control (which only claims user==-1
-    // walkers). During an active CTF match, find the live walker still
+    // walkers). During an active CTF/scripted match, find the live walker
+    // still
     // wearing this player's exact user tag so the caller can rebind it.
-    [[nodiscard]] walker* find_ctf_reclaim_control(
+    [[nodiscard]] walker* find_match_reclaim_control(
         std::size_t player_index) const;
     void maybe_resolve_world_events(SimEventBatch& batch, WorldSnapshot& snapshot);
     void maybe_broadcast_special_state();

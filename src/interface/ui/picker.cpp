@@ -1074,6 +1074,10 @@ public:
         og::runtime::current_session->myscreen_->save_data.current_campaign = result.id;
         og::runtime::current_session->myscreen_->save_data.scen_num = static_cast<short>(
             load_campaign(result.id, og::runtime::current_session->myscreen_->save_data.current_levels, result.first_level));
+        // #162: the campaign just mounted may ship its own entity art or pack
+        // families. Between screens here — the next screen re-inits its
+        // buttons before anything draws from the loader.
+        sdl_entity_loader()->reload_graphics_if_stale();
         picker_lobby_sync_settings_from_save();
         return result.id;
     }
@@ -2638,11 +2642,13 @@ Sint32 do_pick_spritesheet(Sint32)
     if (!apply_sprite_sheet_setting()) {
         cfg.apply_setting("graphics", "sprite_sheet", old_selection);
         if (apply_sprite_sheet_setting())
-            sdl_entity_loader()->reload_graphics();
+            sdl_entity_loader()->reload_graphics_if_stale();
         popup_dialog("Sprite Sheet", "Could not load\nselected sprite sheet.");
         return MENU_REDRAW;
     }
-    sdl_entity_loader()->reload_graphics();
+    // The generation check makes a same-sheet re-pick free; a real change
+    // was bumped by apply_sprite_sheet_setting and reloads here.
+    sdl_entity_loader()->reload_graphics_if_stale();
     return MENU_REDRAW;
 }
 
@@ -2655,6 +2661,11 @@ Sint32 do_pick_campaign(Sint32 arg1)
         // Load new campaign
         og::runtime::current_session->myscreen_->save_data.current_campaign = result.id;
         og::runtime::current_session->myscreen_->save_data.scen_num = static_cast<short>(load_campaign(result.id, og::runtime::current_session->myscreen_->save_data.current_levels, result.first_level));
+        // #162: same MENU_REDRAW position as do_pick_spritesheet — the frame
+        // skeleton re-creates every button pixie (reset_buttons) and the
+        // SCENARIO spec's guard frame_tick reloads the preview level before
+        // this frame draws, so freeing loader buffers here is safe.
+        sdl_entity_loader()->reload_graphics_if_stale();
         picker_lobby_sync_settings_from_save();
    }
    return MENU_REDRAW;
@@ -2889,13 +2900,25 @@ Sint32 change_ctf_caps()
    return MENU_OK;
 }
 
+// Refresh a SCENARIO settings button's label in both surfaces. Same recipe
+// as refresh_teamsmenu_button_label, against the scenario descriptor rows.
+static void refresh_scenariomenu_button_label(int button_index,
+                                              const std::string& label)
+{
+   if (og::runtime::current_session->allbuttons_[button_index] != nullptr)
+       og::runtime::current_session->allbuttons_[button_index]->label = label;
+   if (static_cast<int>(pks().scenariomenu_buttons.size()) > button_index)
+       pks().scenariomenu_buttons[button_index].label = label;
+}
+
 Sint32 change_ctf_troops()
 {
    SaveData& save = og::runtime::current_session->myscreen_->save_data;
    og::ui::toggle_ctf_scenario_troops(save);
 
-   refresh_teamsmenu_button_label(kTeamsMenuCtfTroopsIndex,
-                                  og::ui::format_ctf_troops_label(save));
+   // The control lives on SCENARIO now; MATCHUP's row is dormant-hidden.
+   refresh_scenariomenu_button_label(kScenarioMenuTroopsIndex,
+                                     og::ui::format_ctf_troops_label(save));
 
    picker_lobby_sync_settings_from_save();
    picker_settings_autosave();

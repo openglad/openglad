@@ -1610,6 +1610,89 @@ TEST(WorldSnapshot,
     EXPECT_EQ(Order::FX, mirror.oblist.front()->query_order());
 }
 
+// A class pack's `wire_id: auto` families are numbered from NUM_FAMILIES
+// upward, per order (packs.cpp AutoWireIds), so family bytes above the core
+// span ride the wire as a matter of course — the shipped soccer ball
+// (modes:ball, Order::FX) is family 21 exactly.
+//
+// apply_snapshot used to clamp anything >= NUM_FAMILIES to 0, which rewrote
+// every pack entity's identity on arrival. The damage was not cosmetic: the
+// mirror's own re-capture then disagreed with the authority on that byte
+// FOREVER, so the server's per-tick snapshot hash check struck on every tick
+// from the entity's first appearance, and no keyframe could heal it because
+// the keyframe re-applied the same clamp. At 120 consecutive strikes the
+// server disconnects the client (kMaxConsecutiveSnapshotHashMismatches).
+//
+// NUM_FAMILIES is only the span of CORE ids the engine constants name; the
+// registries' capacity — and the range loader_slot() addresses — is
+// NUM_FAMILY_SLOTS.
+TEST(WorldSnapshot, apply_snapshot_preserves_pack_family_ids_above_the_core_span)
+{
+    constexpr int kPackFamily = NUM_FAMILIES + 3;
+    static_assert(kPackFamily < NUM_FAMILY_SLOTS,
+                  "the probe family must sit inside the registry capacity");
+
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    configure_snapshot_test_services(source);
+
+    walker* ball = source.add_ob(Order::FX, kPackFamily);
+    ASSERT_NE(nullptr, ball);
+    ball->setxy(48, 64);
+    ASSERT_EQ(kPackFamily, static_cast<int>(ball->family()));
+
+    const og::sim::WorldSnapshot snapshot =
+        og::sim::capture_keyframe_snapshot(source);
+    ASSERT_EQ(1u, snapshot.oblist.size());
+    EXPECT_EQ(kPackFamily, static_cast<int>(snapshot.oblist.front().family))
+        << "capture must carry the pack family byte unchanged";
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+    ASSERT_TRUE(og::sim::apply_snapshot(mirror, snapshot));
+
+    ASSERT_EQ(1u, mirror.oblist.size());
+    walker* const mirrored = mirror.oblist.front().get();
+    ASSERT_NE(nullptr, mirrored);
+    EXPECT_EQ(kPackFamily, static_cast<int>(mirrored->family()))
+        << "the mirror must keep the pack family, not collapse it to 0";
+
+    // The invariant the server's per-tick hash check actually enforces.
+    EXPECT_EQ(og::sim::compute_snapshot_hash(snapshot),
+              og::sim::compute_snapshot_hash(
+                  og::sim::peek_keyframe_snapshot(mirror)))
+        << "a pack-family entity must leave the mirror byte-identical to the "
+           "authority";
+}
+
+// The wire's upper bound is the byte itself: a crafted family of 255 lands on
+// a free (unpopulated) registry slot, which every consumer already answers
+// with nullptr, and loader_slot() maps inside its tables. Negatives cannot
+// reach a table index.
+TEST(WorldSnapshot, apply_snapshot_clamps_only_negative_wire_families)
+{
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    configure_snapshot_test_services(source);
+    walker* actor = source.add_ob(Order::FX, FAMILY_FLASH);
+    ASSERT_NE(nullptr, actor);
+
+    og::sim::WorldSnapshot snapshot = og::sim::capture_keyframe_snapshot(source);
+    ASSERT_EQ(1u, snapshot.oblist.size());
+    snapshot.oblist.front().family = static_cast<std::int8_t>(-7);
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+    ASSERT_TRUE(og::sim::apply_snapshot(mirror, snapshot));
+
+    ASSERT_EQ(1u, mirror.oblist.size());
+    ASSERT_NE(nullptr, mirror.oblist.front().get());
+    EXPECT_EQ(0, static_cast<int>(mirror.oblist.front()->family()))
+        << "a negative wire family must still collapse to 0";
+}
+
 TEST(WorldSnapshot, apply_snapshot_works_for_attached_external_worlds)
 {
     og::sim::WorldSnapshot snapshot;
@@ -1655,6 +1738,14 @@ TEST(WorldSnapshot, apply_snapshot_clamps_out_of_range_family_and_special)
     // Security: family/current_special arrive straight off the wire and are used
     // to index per-family/per-special tables across the sim. A malicious peer can
     // put any value here, so apply_snapshot must clamp them into range.
+    //
+    // "In range" for family is [0, NUM_FAMILY_SLOTS) — the registry capacity and
+    // the span loader_slot() addresses — not [0, NUM_FAMILIES). Ids at or above
+    // NUM_FAMILIES are the free slots class packs claim with `wire_id: auto`,
+    // and they must survive the wire; the sibling test
+    // apply_snapshot_preserves_pack_family_ids_above_the_core_span pins that.
+    // Since the wire field is an int8_t, the only values that can actually fall
+    // outside the capacity are negative ones, so that is what this forges.
     og::sim::WorldSnapshot snapshot;
     std::uint32_t actor_id = 0;
     {
@@ -1669,7 +1760,7 @@ TEST(WorldSnapshot, apply_snapshot_clamps_out_of_range_family_and_special)
     }
     ASSERT_EQ(1u, snapshot.oblist.size());
     // Forge attacker-controlled out-of-range indices.
-    snapshot.oblist[0].family = static_cast<std::int8_t>(99);
+    snapshot.oblist[0].family = static_cast<std::int8_t>(-99);
     snapshot.oblist[0].current_special = static_cast<std::int8_t>(99);
 
     TestGameWorld mirror_fx;
@@ -1683,7 +1774,7 @@ TEST(WorldSnapshot, apply_snapshot_clamps_out_of_range_family_and_special)
     walker* applied = mirror.find_by_id(actor_id);
     ASSERT_NE(nullptr, applied) << "entity should still be applied";
     EXPECT_GE(static_cast<int>(applied->family()), 0);
-    EXPECT_LT(static_cast<int>(applied->family()), NUM_FAMILIES)
+    EXPECT_LT(static_cast<int>(applied->family()), NUM_FAMILY_SLOTS)
         << "out-of-range family must be clamped";
     EXPECT_GE(static_cast<int>(applied->current_special()), 0);
     EXPECT_LT(static_cast<int>(applied->current_special()), NUM_SPECIALS)
@@ -2319,10 +2410,11 @@ TEST(WorldSnapshot, deserialize_snapshot_and_delta_reject_oversized_payloads_and
         decode_delta_payload_for_test(delta_bytes);
 
     // Offset of grid.full_grid_size in a default delta payload: format byte +
-    // 212 bytes of world scalars (the CTF block adds 120, the difficulty
-    // submenu scalars 4, and the v9 control_policy + u8[16] player_machine
-    // map 17) + 4 grid bytes.
-    constexpr std::size_t kEntityCountOffset = 217;
+    // 514 bytes of world state (72 pre-block scalars, the v10 respawn block
+    // at its empty size 9, the fixed 404-byte mode block, the 8 match-knob
+    // bytes, and the trailing respawn_mode/generator_rate/control_policy/
+    // player_machine 21) + 4 grid bytes.
+    constexpr std::size_t kEntityCountOffset = 519;
     ASSERT_GE(raw_payload.size(), kEntityCountOffset + sizeof(std::uint32_t));
     raw_payload[kEntityCountOffset + 0] = 0xffu;
     raw_payload[kEntityCountOffset + 1] = 0xffu;

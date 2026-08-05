@@ -64,7 +64,7 @@ TEST(GameLaunch, reordered_same_team_roster_sets_initial_player_controls)
     screen* const game = og::runtime::current_session->myscreen_;
     SaveData& save = game->save_data;
     save.reset();
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
     save.numplayers = 2;
     save.my_team = 0;

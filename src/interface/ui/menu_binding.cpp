@@ -86,8 +86,8 @@ RowState gate_state(GateBinding binding, const MenuLabelContext& context)
         return context.is_networked ? RowState::Visible : RowState::Hidden;
     case MenuGate::LocalOnly:
         return context.is_networked ? RowState::Hidden : RowState::Visible;
-    case MenuGate::CtfCampaignOnly:
-        return (context.save != nullptr && is_ctf_campaign(*context.save))
+    case MenuGate::VersusCampaignOnly:
+        return (context.save != nullptr && is_versus_campaign(*context.save))
             ? RowState::Visible
             : RowState::Hidden;
     case MenuGate::Custom:

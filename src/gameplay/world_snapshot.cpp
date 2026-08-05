@@ -583,79 +583,38 @@ og::sim::GuySnapshot deserialize_guy_snapshot(ByteReader& reader)
     return snapshot;
 }
 
-void serialize_ctf_state(std::vector<std::uint8_t>& buffer,
-                         const og::sim::WorldSnapshot& snapshot)
+// Respawn-engine block (snapshot v10). Bound-and-throw on both directions:
+// snapshot input is attacker-controlled (anchors <= 16/team, queue <= 64).
+void serialize_respawn_state(std::vector<std::uint8_t>& buffer,
+                             const og::sim::WorldSnapshot& snapshot)
 {
-    append_bool(buffer, snapshot.ctf_active);
-    append_bool(buffer, snapshot.ctf_init_attempted);
-    append_u8(buffer, snapshot.ctf_team_count);
-    append_u8(buffer, snapshot.ctf_capture_limit);
-    append_u16(buffer, snapshot.ctf_respawn_ticks);
-    append_u16(buffer, snapshot.ctf_flag_return_ticks);
-    append_u32(buffer, snapshot.ctf_time_limit_ticks);
-    append_u8(buffer, static_cast<std::uint8_t>(snapshot.ctf_winner_team));
-    append_bool(buffer, snapshot.ctf_winner_is_player);
-    for (std::uint16_t captures : snapshot.ctf_captures)
-        append_u16(buffer, captures);
-    append_u16(buffer, snapshot.ctf_respawn_serial);
-    for (bool team_active : snapshot.ctf_team_active)
-        append_bool(buffer, team_active);
-
-    for (const og::sim::CtfFlag& flag : snapshot.ctf_flags)
-    {
-        append_u8(buffer, static_cast<std::uint8_t>(flag.state));
-        append_u32(buffer, flag.carrier_entity_id);
-        append_i16(buffer, flag.x);
-        append_i16(buffer, flag.y);
-        append_i16(buffer, flag.home_x);
-        append_i16(buffer, flag.home_y);
-        append_u16(buffer, flag.return_ticks);
-        append_u32(buffer, flag.flag_entity_id);
-        append_bool(buffer, flag.present);
-    }
-
-    if (snapshot.ctf_cp_count > og::sim::kCtfMaxControlPoints)
-    {
-        throw std::runtime_error(
-            "snapshot serialization: ctf control point count exceeds maximum");
-    }
-    append_u8(buffer, snapshot.ctf_cp_count);
-    for (int i = 0; i < snapshot.ctf_cp_count; ++i)
-    {
-        const og::sim::CtfControlPoint& cp = snapshot.ctf_cps[i];
-        append_u8(buffer, static_cast<std::uint8_t>(cp.owner));
-        append_i16(buffer, cp.progress);
-        append_u8(buffer, static_cast<std::uint8_t>(cp.progress_team));
-        append_i16(buffer, cp.x);
-        append_i16(buffer, cp.y);
-        append_u8(buffer, cp.radius_tiles);
-        append_u32(buffer, cp.entity_id);
-        append_u32(buffer, cp.next_pulse_tick);
-    }
+    const og::sim::RespawnState& respawn = snapshot.respawn;
+    append_u16(buffer, respawn.respawn_ticks);
+    append_u16(buffer, respawn.respawn_serial);
 
     for (int team = 0; team < 4; ++team)
     {
-        if (snapshot.ctf_anchor_count[team] > og::sim::kCtfMaxAnchorsPerTeam)
+        if (respawn.anchor_count[team] > og::sim::kRespawnMaxAnchorsPerTeam)
         {
             throw std::runtime_error(
-                "snapshot serialization: ctf anchor count exceeds maximum");
+                "snapshot serialization: respawn anchor count exceeds maximum");
         }
-        append_u8(buffer, snapshot.ctf_anchor_count[team]);
-        for (int i = 0; i < snapshot.ctf_anchor_count[team]; ++i)
+        append_u8(buffer, respawn.anchor_count[team]);
+        for (int i = 0; i < respawn.anchor_count[team]; ++i)
         {
-            append_i16(buffer, snapshot.ctf_anchor_x[team][i]);
-            append_i16(buffer, snapshot.ctf_anchor_y[team][i]);
+            append_i16(buffer, respawn.anchor_x[team][i]);
+            append_i16(buffer, respawn.anchor_y[team][i]);
         }
     }
 
-    if (snapshot.ctf_respawn_queue.size() >
-        static_cast<std::size_t>(og::sim::kCtfMaxRespawnEntries))
+    if (respawn.respawn_queue.size() >
+        static_cast<std::size_t>(og::sim::kRespawnMaxQueueEntries))
     {
         throw std::runtime_error(
-            "snapshot serialization: ctf respawn queue exceeds maximum");
+            "snapshot serialization: respawn queue exceeds maximum");
     }
-    append_u8(buffer, static_cast<std::uint8_t>(snapshot.ctf_respawn_queue.size()));
-    for (const og::sim::CtfRespawnEntry& entry : snapshot.ctf_respawn_queue)
+    append_u8(buffer, static_cast<std::uint8_t>(respawn.respawn_queue.size()));
+    for (const og::sim::RespawnEntry& entry : respawn.respawn_queue)
     {
         append_u8(buffer, entry.kind);
         append_u8(buffer, entry.team);
@@ -667,100 +626,159 @@ void serialize_ctf_state(std::vector<std::uint8_t>& buffer,
         append_i16(buffer, entry.y);
         append_u8(buffer, entry.floor);
     }
+}
 
+void deserialize_respawn_state(ByteReader& reader,
+                               og::sim::WorldSnapshot& snapshot)
+{
+    og::sim::RespawnState& respawn = snapshot.respawn;
+    respawn.respawn_ticks = reader.read_u16("world.respawn_ticks");
+    respawn.respawn_serial = reader.read_u16("world.respawn_serial");
+
+    for (int team = 0; team < 4; ++team)
+    {
+        respawn.anchor_count[team] = reader.read_u8("world.respawn_anchor_count");
+        if (respawn.anchor_count[team] > og::sim::kRespawnMaxAnchorsPerTeam)
+        {
+            throw std::runtime_error(
+                "respawn anchor count exceeds maximum count");
+        }
+        for (int i = 0; i < respawn.anchor_count[team]; ++i)
+        {
+            respawn.anchor_x[team][i] = reader.read_i16("respawn_anchor.x");
+            respawn.anchor_y[team][i] = reader.read_i16("respawn_anchor.y");
+        }
+    }
+
+    const std::uint8_t queue_size = reader.read_u8("world.respawn_queue_size");
+    if (queue_size > og::sim::kRespawnMaxQueueEntries)
+    {
+        throw std::runtime_error("respawn queue exceeds maximum count");
+    }
+    respawn.respawn_queue.clear();
+    respawn.respawn_queue.reserve(queue_size);
+    for (std::uint8_t i = 0; i < queue_size; ++i)
+    {
+        og::sim::RespawnEntry entry;
+        // Clamp-on-read, the discipline the rest of the v10 surface applies at
+        // apply time: a crafted queue entry drives classic_fire_respawn, which
+        // spawns from family/level and revives at floor. team stays a full byte
+        // on purpose — classic levels field arbitrary team bytes and every
+        // consumer takes the whole range (set_team_num is uint8).
+        //
+        // kind: only 0 (revive walker_entity_id) and 1 (spawn family/level)
+        // exist; classic_fire_respawn treats everything non-zero as AI, so
+        // collapse unknown values onto that arm instead of leaving a value no
+        // reader can name.
+        const std::uint8_t kind = reader.read_u8("respawn_entry.kind");
+        entry.kind = (kind > 1) ? std::uint8_t{1} : kind;
+        entry.team = reader.read_u8("respawn_entry.team");
+        // family indexes the per-family tables (descriptors, graphics, names)
+        // exactly like the entity block's family, and takes the same clamp --
+        // NUM_FAMILY_SLOTS, the registries' capacity, so a queued respawn of a
+        // class-pack family (`wire_id: auto`, ids from NUM_FAMILIES up) keeps
+        // its family instead of coming back as family 0 on every peer.
+        const std::uint8_t family = reader.read_u8("respawn_entry.family");
+        entry.family =
+            (family < NUM_FAMILY_SLOTS) ? family : std::uint8_t{0};
+        // level feeds set_level/set_difficulty; 0 is not a legal walker level
+        // (the struct's own default is 1).
+        const std::uint8_t level = reader.read_u8("respawn_entry.level");
+        entry.level = (level == 0) ? std::uint8_t{1} : level;
+        entry.ticks_left = reader.read_u16("respawn_entry.ticks_left");
+        entry.walker_entity_id = reader.read_u32("respawn_entry.walker_entity_id");
+        // x/y use -1/-1 as the "no recorded spot" sentinel and the fire path
+        // rejects a negative half; collapse a half-negative pair like the
+        // entity block's spawn_x/spawn_y so a crafted entry cannot invent one.
+        const std::int16_t x = reader.read_i16("respawn_entry.x");
+        const std::int16_t y = reader.read_i16("respawn_entry.y");
+        entry.x = (x < 0 || y < 0) ? std::int16_t{-1} : x;
+        entry.y = (x < 0 || y < 0) ? std::int16_t{-1} : y;
+        // floor is uint8 (>= 0) and takes the entity block's stance: the upper
+        // bound is a property of the world, not the wire, and grid_for_floor /
+        // the floor-keyed obmap both fall back safely for an unknown floor. A
+        // clamp here would need floor_count, which apply cannot promise is
+        // built yet — it would rewrite legitimate multifloor entries.
+        entry.floor = reader.read_u8("respawn_entry.floor");
+        respawn.respawn_queue.push_back(entry);
+    }
+}
+
+// Scripted-mode block (snapshot v10): ModeState replicated wholesale, fixed
+// size (no counts to bound). Text bytes ride raw; NUL termination is enforced
+// on deserialize so a crafted payload cannot smuggle unterminated text into
+// the HUD renderers.
+void serialize_mode_state(std::vector<std::uint8_t>& buffer,
+                          const og::sim::WorldSnapshot& snapshot)
+{
+    const og::sim::ModeState& mode = snapshot.mode;
+    append_bool(buffer, mode.active);
+    append_bool(buffer, mode.init_attempted);
+    append_bool(buffer, mode.win_latched);
+    append_u8(buffer, static_cast<std::uint8_t>(mode.winner_team));
+    append_bool(buffer, mode.winner_is_player);
+    append_u8(buffer, static_cast<std::uint8_t>(mode.win_ending));
+    append_i16(buffer, mode.win_next_level);
+    for (char c : mode.name)
+        append_u8(buffer, static_cast<std::uint8_t>(c));
+    for (std::int32_t var : mode.vars)
+        append_i32(buffer, var);
+    for (const og::sim::ModeHudLine& line : mode.hud)
+    {
+        append_u8(buffer, line.team);
+        for (char c : line.text)
+            append_u8(buffer, static_cast<std::uint8_t>(c));
+    }
+    for (const og::sim::ModeBeacon& beacon : mode.beacons)
+    {
+        append_i32(buffer, beacon.entity_id);
+        append_u8(buffer, beacon.team);
+    }
+}
+
+void deserialize_mode_state(ByteReader& reader, og::sim::WorldSnapshot& snapshot)
+{
+    og::sim::ModeState& mode = snapshot.mode;
+    mode.active = reader.read_bool("world.mode_active");
+    mode.init_attempted = reader.read_bool("world.mode_init_attempted");
+    mode.win_latched = reader.read_bool("world.mode_win_latched");
+    mode.winner_team =
+        static_cast<std::int8_t>(reader.read_u8("world.mode_winner_team"));
+    mode.winner_is_player = reader.read_bool("world.mode_winner_is_player");
+    mode.win_ending =
+        static_cast<std::int8_t>(reader.read_u8("world.mode_win_ending"));
+    mode.win_next_level = reader.read_i16("world.mode_win_next_level");
+    for (char& c : mode.name)
+        c = static_cast<char>(reader.read_u8("mode.name"));
+    mode.name.back() = '\0';
+    for (std::int32_t& var : mode.vars)
+        var = reader.read_i32("mode.vars");
+    for (og::sim::ModeHudLine& line : mode.hud)
+    {
+        line.team = reader.read_u8("mode_hud.team");
+        for (char& c : line.text)
+            c = static_cast<char>(reader.read_u8("mode_hud.text"));
+        line.text.back() = '\0';
+    }
+    for (og::sim::ModeBeacon& beacon : mode.beacons)
+    {
+        beacon.entity_id = reader.read_i32("mode_beacon.entity_id");
+        beacon.team = reader.read_u8("mode_beacon.team");
+    }
+}
+
+void serialize_match_knobs(std::vector<std::uint8_t>& buffer,
+                           const og::sim::WorldSnapshot& snapshot)
+{
     append_i16(buffer, snapshot.ctf_requested_team_count);
     append_i16(buffer, snapshot.ctf_requested_capture_limit);
     append_i16(buffer, snapshot.ctf_requested_respawn_ticks);
     append_i16(buffer, snapshot.ctf_requested_strip_scenario_troops);
 }
 
-void deserialize_ctf_state(ByteReader& reader, og::sim::WorldSnapshot& snapshot)
+void deserialize_match_knobs(ByteReader& reader,
+                             og::sim::WorldSnapshot& snapshot)
 {
-    snapshot.ctf_active = reader.read_bool("world.ctf_active");
-    snapshot.ctf_init_attempted = reader.read_bool("world.ctf_init_attempted");
-    snapshot.ctf_team_count = reader.read_u8("world.ctf_team_count");
-    snapshot.ctf_capture_limit = reader.read_u8("world.ctf_capture_limit");
-    snapshot.ctf_respawn_ticks = reader.read_u16("world.ctf_respawn_ticks");
-    snapshot.ctf_flag_return_ticks = reader.read_u16("world.ctf_flag_return_ticks");
-    snapshot.ctf_time_limit_ticks = reader.read_u32("world.ctf_time_limit_ticks");
-    snapshot.ctf_winner_team =
-        static_cast<std::int8_t>(reader.read_u8("world.ctf_winner_team"));
-    snapshot.ctf_winner_is_player = reader.read_bool("world.ctf_winner_is_player");
-    for (std::uint16_t& captures : snapshot.ctf_captures)
-        captures = reader.read_u16("world.ctf_captures");
-    snapshot.ctf_respawn_serial = reader.read_u16("world.ctf_respawn_serial");
-    for (bool& team_active : snapshot.ctf_team_active)
-        team_active = reader.read_bool("world.ctf_team_active");
-
-    for (og::sim::CtfFlag& flag : snapshot.ctf_flags)
-    {
-        flag.state =
-            static_cast<og::sim::CtfFlagState>(reader.read_u8("ctf_flag.state"));
-        flag.carrier_entity_id = reader.read_u32("ctf_flag.carrier_entity_id");
-        flag.x = reader.read_i16("ctf_flag.x");
-        flag.y = reader.read_i16("ctf_flag.y");
-        flag.home_x = reader.read_i16("ctf_flag.home_x");
-        flag.home_y = reader.read_i16("ctf_flag.home_y");
-        flag.return_ticks = reader.read_u16("ctf_flag.return_ticks");
-        flag.flag_entity_id = reader.read_u32("ctf_flag.flag_entity_id");
-        flag.present = reader.read_bool("ctf_flag.present");
-    }
-
-    snapshot.ctf_cp_count = reader.read_u8("world.ctf_cp_count");
-    if (snapshot.ctf_cp_count > og::sim::kCtfMaxControlPoints)
-    {
-        throw std::runtime_error("ctf control point count exceeds maximum count");
-    }
-    for (int i = 0; i < snapshot.ctf_cp_count; ++i)
-    {
-        og::sim::CtfControlPoint& cp = snapshot.ctf_cps[i];
-        cp.owner = static_cast<std::int8_t>(reader.read_u8("ctf_cp.owner"));
-        cp.progress = reader.read_i16("ctf_cp.progress");
-        cp.progress_team =
-            static_cast<std::int8_t>(reader.read_u8("ctf_cp.progress_team"));
-        cp.x = reader.read_i16("ctf_cp.x");
-        cp.y = reader.read_i16("ctf_cp.y");
-        cp.radius_tiles = reader.read_u8("ctf_cp.radius_tiles");
-        cp.entity_id = reader.read_u32("ctf_cp.entity_id");
-        cp.next_pulse_tick = reader.read_u32("ctf_cp.next_pulse_tick");
-    }
-
-    for (int team = 0; team < 4; ++team)
-    {
-        snapshot.ctf_anchor_count[team] = reader.read_u8("world.ctf_anchor_count");
-        if (snapshot.ctf_anchor_count[team] > og::sim::kCtfMaxAnchorsPerTeam)
-        {
-            throw std::runtime_error("ctf anchor count exceeds maximum count");
-        }
-        for (int i = 0; i < snapshot.ctf_anchor_count[team]; ++i)
-        {
-            snapshot.ctf_anchor_x[team][i] = reader.read_i16("ctf_anchor.x");
-            snapshot.ctf_anchor_y[team][i] = reader.read_i16("ctf_anchor.y");
-        }
-    }
-
-    const std::uint8_t queue_size = reader.read_u8("world.ctf_respawn_queue_size");
-    if (queue_size > og::sim::kCtfMaxRespawnEntries)
-    {
-        throw std::runtime_error("ctf respawn queue exceeds maximum count");
-    }
-    snapshot.ctf_respawn_queue.clear();
-    snapshot.ctf_respawn_queue.reserve(queue_size);
-    for (std::uint8_t i = 0; i < queue_size; ++i)
-    {
-        og::sim::CtfRespawnEntry entry;
-        entry.kind = reader.read_u8("ctf_respawn.kind");
-        entry.team = reader.read_u8("ctf_respawn.team");
-        entry.family = reader.read_u8("ctf_respawn.family");
-        entry.level = reader.read_u8("ctf_respawn.level");
-        entry.ticks_left = reader.read_u16("ctf_respawn.ticks_left");
-        entry.walker_entity_id = reader.read_u32("ctf_respawn.walker_entity_id");
-        entry.x = reader.read_i16("ctf_respawn.x");
-        entry.y = reader.read_i16("ctf_respawn.y");
-        entry.floor = reader.read_u8("ctf_respawn.floor");
-        snapshot.ctf_respawn_queue.push_back(entry);
-    }
-
     snapshot.ctf_requested_team_count =
         reader.read_i16("world.ctf_requested_team_count");
     snapshot.ctf_requested_capture_limit =
@@ -801,9 +819,12 @@ void serialize_world_state(std::vector<std::uint8_t>& buffer,
     append_u8(buffer, snapshot.pause_player_index);
     append_u8(buffer, snapshot.weather);
     append_u32(buffer, snapshot.snapshot_hash);
-    serialize_ctf_state(buffer, snapshot);
-    // Appended AFTER the CTF block so the raw CTF payload-offset pins in
-    // test_ctf_snapshot.cpp stay valid.
+    // Snapshot v10 block order: respawn engine, scripted-mode state, match
+    // knobs. The raw payload-offset pins in test_mode_snapshot.cpp key off
+    // this order.
+    serialize_respawn_state(buffer, snapshot);
+    serialize_mode_state(buffer, snapshot);
+    serialize_match_knobs(buffer, snapshot);
     append_i16(buffer, snapshot.respawn_mode);
     append_i16(buffer, snapshot.generator_rate);
     // Snapshot v9: control policy + per-player machine map.
@@ -841,7 +862,9 @@ void deserialize_world_state(ByteReader& reader, og::sim::WorldSnapshot& snapsho
     snapshot.pause_player_index = reader.read_u8("world.pause_player_index");
     snapshot.weather = reader.read_u8("world.weather");
     snapshot.snapshot_hash = reader.read_u32("world.snapshot_hash");
-    deserialize_ctf_state(reader, snapshot);
+    deserialize_respawn_state(reader, snapshot);
+    deserialize_mode_state(reader, snapshot);
+    deserialize_match_knobs(reader, snapshot);
     snapshot.respawn_mode = reader.read_i16("world.respawn_mode");
     snapshot.generator_rate = reader.read_i16("world.generator_rate");
     snapshot.control_policy = reader.read_u8("world.control_policy");
@@ -1607,10 +1630,19 @@ void apply_entity_snapshot_fields(GameWorld& world,
     // Clamp the wire-supplied family to the valid range before it becomes the
     // entity's family(): family() indexes per-family tables (descriptors, special
     // names, graphics) across the sim, and a malicious peer can send any value.
-    // Mirrors loader::set_walker's family clamp so family() stays consistent with
-    // the entity's configured graphics/animation.
+    // The bound is NUM_FAMILY_SLOTS, the registries' capacity and the range
+    // loader_slot() addresses -- NOT NUM_FAMILIES, which is only the span of
+    // CORE ids the engine constants name. A class pack's `wire_id: auto`
+    // families start at NUM_FAMILIES and climb (packs.cpp AutoWireIds), so
+    // clamping here to NUM_FAMILIES stamped every pack-declared entity down to
+    // family 0 on arrival: the mirror's re-captured snapshot then disagreed
+    // with the authority's on that byte forever (a per-tick hash strike no
+    // keyframe could heal, since the keyframe re-applied the same clamp), and
+    // update_existing_entities re-ran the full reconfigure every tick because
+    // entity->family() never matched the wire. The soccer ball (modes:ball,
+    // Order::FX, auto id 21) was the first shipped entity to hit it.
     int safe_family = static_cast<int>(snapshot.family);
-    if (safe_family < 0 || safe_family >= NUM_FAMILIES)
+    if (safe_family < 0 || safe_family >= NUM_FAMILY_SLOTS)
         safe_family = 0;
     entity.set_order_family(snapshot.order, static_cast<char>(safe_family));
     entity.set_snapshot_position(snapshot.xpos, snapshot.ypos,
@@ -2275,51 +2307,33 @@ std::vector<std::pair<short, short>> copy_grid_dirty_tiles(const GameWorld& worl
                                                 world.grid_dirty_tiles().end());
 }
 
-// Copies the live CtfState into the snapshot, normalized: only the counted
-// control points, anchors, and queue entries are carried, so a snapshot of a
-// world holding stale data past a count (inactive-team strip leaves anchor
-// coordinates behind) still compares equal to its wire round trip.
-void capture_ctf_state(const GameWorld& world, og::sim::WorldSnapshot& snapshot)
+// Copies the live respawn-engine + scripted-mode state into the snapshot,
+// normalized: only the counted anchors and queue entries are carried (a
+// world holding stale data past a count still compares equal to its wire
+// round trip), and mode text keeps its NUL terminators by construction.
+void capture_mode_state(const GameWorld& world, og::sim::WorldSnapshot& snapshot)
 {
-    const og::sim::CtfState& ctf = world.ctf;
-    snapshot.ctf_active = ctf.active;
-    snapshot.ctf_init_attempted = ctf.init_attempted;
-    snapshot.ctf_team_count = ctf.team_count;
-    snapshot.ctf_capture_limit = ctf.capture_limit;
-    snapshot.ctf_respawn_ticks = ctf.respawn_ticks;
-    snapshot.ctf_flag_return_ticks = ctf.flag_return_ticks;
-    snapshot.ctf_time_limit_ticks = ctf.time_limit_ticks;
-    snapshot.ctf_winner_team = ctf.winner_team;
-    snapshot.ctf_winner_is_player = ctf.winner_is_player;
-    std::copy(std::begin(ctf.captures), std::end(ctf.captures),
-              std::begin(snapshot.ctf_captures));
-    snapshot.ctf_respawn_serial = ctf.respawn_serial;
-    std::copy(std::begin(ctf.team_active), std::end(ctf.team_active),
-              std::begin(snapshot.ctf_team_active));
-    std::copy(std::begin(ctf.flags), std::end(ctf.flags),
-              std::begin(snapshot.ctf_flags));
-
-    snapshot.ctf_cp_count = std::min<std::uint8_t>(
-        ctf.cp_count, og::sim::kCtfMaxControlPoints);
-    for (int i = 0; i < snapshot.ctf_cp_count; ++i)
-        snapshot.ctf_cps[i] = ctf.cps[i];
-
+    const og::sim::RespawnState& respawn = world.respawn;
+    snapshot.respawn.respawn_ticks = respawn.respawn_ticks;
+    snapshot.respawn.respawn_serial = respawn.respawn_serial;
     for (int team = 0; team < 4; ++team)
     {
-        snapshot.ctf_anchor_count[team] = std::min<std::uint8_t>(
-            ctf.anchor_count[team], og::sim::kCtfMaxAnchorsPerTeam);
-        for (int i = 0; i < snapshot.ctf_anchor_count[team]; ++i)
+        snapshot.respawn.anchor_count[team] = std::min<std::uint8_t>(
+            respawn.anchor_count[team], og::sim::kRespawnMaxAnchorsPerTeam);
+        for (int i = 0; i < snapshot.respawn.anchor_count[team]; ++i)
         {
-            snapshot.ctf_anchor_x[team][i] = ctf.anchor_x[team][i];
-            snapshot.ctf_anchor_y[team][i] = ctf.anchor_y[team][i];
+            snapshot.respawn.anchor_x[team][i] = respawn.anchor_x[team][i];
+            snapshot.respawn.anchor_y[team][i] = respawn.anchor_y[team][i];
         }
     }
-
-    snapshot.ctf_respawn_queue.assign(
-        ctf.respawn_queue.begin(),
-        ctf.respawn_queue.begin() +
+    snapshot.respawn.respawn_queue.assign(
+        respawn.respawn_queue.begin(),
+        respawn.respawn_queue.begin() +
             static_cast<std::ptrdiff_t>(std::min<std::size_t>(
-                ctf.respawn_queue.size(), og::sim::kCtfMaxRespawnEntries)));
+                respawn.respawn_queue.size(),
+                og::sim::kRespawnMaxQueueEntries)));
+
+    snapshot.mode = world.mode;
 
     snapshot.ctf_requested_team_count = world.ctf_requested_team_count;
     snapshot.ctf_requested_capture_limit = world.ctf_requested_capture_limit;
@@ -2328,54 +2342,40 @@ void capture_ctf_state(const GameWorld& world, og::sim::WorldSnapshot& snapshot)
         world.ctf_requested_strip_scenario_troops;
 }
 
-// Rebuilds the world's CtfState from the snapshot. Constructing a fresh state
-// zeroes everything past the carried counts, mirroring capture normalization,
-// and the counts are clamped so a hand-crafted snapshot cannot overflow.
-void apply_ctf_state(GameWorld& world, const og::sim::WorldSnapshot& snapshot)
+// Rebuilds the world's RespawnState + ModeState from the snapshot.
+// Constructing a fresh respawn state zeroes everything past the carried
+// counts, mirroring capture normalization; counts are clamped and mode text
+// NUL-terminated so a hand-crafted snapshot cannot overflow or smuggle
+// unterminated text into the HUD renderers.
+void apply_mode_state(GameWorld& world, const og::sim::WorldSnapshot& snapshot)
 {
-    og::sim::CtfState ctf;
-    ctf.active = snapshot.ctf_active;
-    ctf.init_attempted = snapshot.ctf_init_attempted;
-    ctf.team_count = snapshot.ctf_team_count;
-    ctf.capture_limit = snapshot.ctf_capture_limit;
-    ctf.respawn_ticks = snapshot.ctf_respawn_ticks;
-    ctf.flag_return_ticks = snapshot.ctf_flag_return_ticks;
-    ctf.time_limit_ticks = snapshot.ctf_time_limit_ticks;
-    ctf.winner_team = snapshot.ctf_winner_team;
-    ctf.winner_is_player = snapshot.ctf_winner_is_player;
-    std::copy(std::begin(snapshot.ctf_captures), std::end(snapshot.ctf_captures),
-              std::begin(ctf.captures));
-    ctf.respawn_serial = snapshot.ctf_respawn_serial;
-    std::copy(std::begin(snapshot.ctf_team_active),
-              std::end(snapshot.ctf_team_active),
-              std::begin(ctf.team_active));
-    std::copy(std::begin(snapshot.ctf_flags), std::end(snapshot.ctf_flags),
-              std::begin(ctf.flags));
-
-    ctf.cp_count = std::min<std::uint8_t>(snapshot.ctf_cp_count,
-                                          og::sim::kCtfMaxControlPoints);
-    for (int i = 0; i < ctf.cp_count; ++i)
-        ctf.cps[i] = snapshot.ctf_cps[i];
-
+    og::sim::RespawnState respawn;
+    respawn.respawn_ticks = snapshot.respawn.respawn_ticks;
+    respawn.respawn_serial = snapshot.respawn.respawn_serial;
     for (int team = 0; team < 4; ++team)
     {
-        ctf.anchor_count[team] = std::min<std::uint8_t>(
-            snapshot.ctf_anchor_count[team], og::sim::kCtfMaxAnchorsPerTeam);
-        for (int i = 0; i < ctf.anchor_count[team]; ++i)
+        respawn.anchor_count[team] = std::min<std::uint8_t>(
+            snapshot.respawn.anchor_count[team],
+            og::sim::kRespawnMaxAnchorsPerTeam);
+        for (int i = 0; i < respawn.anchor_count[team]; ++i)
         {
-            ctf.anchor_x[team][i] = snapshot.ctf_anchor_x[team][i];
-            ctf.anchor_y[team][i] = snapshot.ctf_anchor_y[team][i];
+            respawn.anchor_x[team][i] = snapshot.respawn.anchor_x[team][i];
+            respawn.anchor_y[team][i] = snapshot.respawn.anchor_y[team][i];
         }
     }
-
-    ctf.respawn_queue.assign(
-        snapshot.ctf_respawn_queue.begin(),
-        snapshot.ctf_respawn_queue.begin() +
+    respawn.respawn_queue.assign(
+        snapshot.respawn.respawn_queue.begin(),
+        snapshot.respawn.respawn_queue.begin() +
             static_cast<std::ptrdiff_t>(std::min<std::size_t>(
-                snapshot.ctf_respawn_queue.size(),
-                og::sim::kCtfMaxRespawnEntries)));
+                snapshot.respawn.respawn_queue.size(),
+                og::sim::kRespawnMaxQueueEntries)));
+    world.respawn = std::move(respawn);
 
-    world.ctf = std::move(ctf);
+    world.mode = snapshot.mode;
+    world.mode.name.back() = '\0';
+    for (og::sim::ModeHudLine& line : world.mode.hud)
+        line.text.back() = '\0';
+
     world.ctf_requested_team_count = snapshot.ctf_requested_team_count;
     world.ctf_requested_capture_limit = snapshot.ctf_requested_capture_limit;
     world.ctf_requested_respawn_ticks = snapshot.ctf_requested_respawn_ticks;
@@ -2417,7 +2417,7 @@ og::sim::WorldSnapshot capture_snapshot_impl(GameWorld& world,
     snapshot.paused = world.paused;
     snapshot.pause_player_index = world.pause_player_index;
     snapshot.weather = static_cast<std::uint8_t>(world.weather());
-    capture_ctf_state(world, snapshot);
+    capture_mode_state(world, snapshot);
     snapshot.respawn_mode = world.respawn_mode;
     snapshot.generator_rate = world.generator_rate;
     snapshot.control_policy = world.control_policy;
@@ -2865,7 +2865,7 @@ bool apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
         snapshot.weather <= static_cast<std::uint8_t>(WeatherKind::Snow)
             ? static_cast<WeatherKind>(snapshot.weather)
             : WeatherKind::None);
-    apply_ctf_state(world, snapshot);
+    apply_mode_state(world, snapshot);
     world.respawn_mode = snapshot.respawn_mode;
     world.generator_rate = snapshot.generator_rate;
     world.control_policy = snapshot.control_policy;
@@ -2963,37 +2963,8 @@ void apply_delta(WorldSnapshot& baseline, const WorldSnapshot& delta)
     baseline.weather = delta.weather;
     baseline.snapshot_hash = delta.snapshot_hash;
 
-    baseline.ctf_active = delta.ctf_active;
-    baseline.ctf_init_attempted = delta.ctf_init_attempted;
-    baseline.ctf_team_count = delta.ctf_team_count;
-    baseline.ctf_capture_limit = delta.ctf_capture_limit;
-    baseline.ctf_respawn_ticks = delta.ctf_respawn_ticks;
-    baseline.ctf_flag_return_ticks = delta.ctf_flag_return_ticks;
-    baseline.ctf_time_limit_ticks = delta.ctf_time_limit_ticks;
-    baseline.ctf_winner_team = delta.ctf_winner_team;
-    baseline.ctf_winner_is_player = delta.ctf_winner_is_player;
-    std::copy(std::begin(delta.ctf_captures), std::end(delta.ctf_captures),
-              std::begin(baseline.ctf_captures));
-    baseline.ctf_respawn_serial = delta.ctf_respawn_serial;
-    std::copy(std::begin(delta.ctf_team_active), std::end(delta.ctf_team_active),
-              std::begin(baseline.ctf_team_active));
-    std::copy(std::begin(delta.ctf_flags), std::end(delta.ctf_flags),
-              std::begin(baseline.ctf_flags));
-    baseline.ctf_cp_count = delta.ctf_cp_count;
-    std::copy(std::begin(delta.ctf_cps), std::end(delta.ctf_cps),
-              std::begin(baseline.ctf_cps));
-    std::copy(std::begin(delta.ctf_anchor_count), std::end(delta.ctf_anchor_count),
-              std::begin(baseline.ctf_anchor_count));
-    for (int team = 0; team < 4; ++team)
-    {
-        std::copy(std::begin(delta.ctf_anchor_x[team]),
-                  std::end(delta.ctf_anchor_x[team]),
-                  std::begin(baseline.ctf_anchor_x[team]));
-        std::copy(std::begin(delta.ctf_anchor_y[team]),
-                  std::end(delta.ctf_anchor_y[team]),
-                  std::begin(baseline.ctf_anchor_y[team]));
-    }
-    baseline.ctf_respawn_queue = delta.ctf_respawn_queue;
+    baseline.respawn = delta.respawn;
+    baseline.mode = delta.mode;
     baseline.ctf_requested_team_count = delta.ctf_requested_team_count;
     baseline.ctf_requested_capture_limit = delta.ctf_requested_capture_limit;
     baseline.ctf_requested_respawn_ticks = delta.ctf_requested_respawn_ticks;

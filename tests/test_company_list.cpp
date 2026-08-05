@@ -82,7 +82,7 @@ bool seed_company(const std::string& slot, const std::string& name,
     SaveData sd;
     sd.reset();
     sd.save_name = name;
-    sd.current_campaign = "org.openglad.gladiator";
+    sd.current_campaign = "gladiator";
     sd.last_played_unix_s = last_played;
     return sd.save_with_error(slot) == SaveDataIoError::None;
 }
@@ -119,7 +119,7 @@ bool seed_company_with_soldier(const std::string& slot, const std::string& name,
     SaveData sd;
     sd.reset();
     sd.save_name = name;
-    sd.current_campaign = "org.openglad.gladiator";
+    sd.current_campaign = "gladiator";
     sd.current_levels[sd.current_campaign] = 1;
     sd.scen_num = 1;
     sd.numplayers = 1;
@@ -1149,14 +1149,14 @@ TEST(CompanyList, restore_recovers_corrupt_company)
 TEST(CompanyList, backup_row_level_titles_follow_the_mount_guard)
 {
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.gladiator"));
+              mount_campaign_package_with_error("gladiator"));
 
     og::data::CompanyBackupInfo info;
     info.slot = "wp3fmt";
     info.seq = 1;
     info.filename = "wp3fmt.001.gtl";
     info.header.slot = "wp3fmt";
-    info.header.campaign_id = "org.openglad.gladiator";
+    info.header.campaign_id = "gladiator";
     info.header.scen_num = 2;
     info.header.valid = true;
 
@@ -1173,7 +1173,7 @@ TEST(CompanyList, backup_row_level_titles_follow_the_mount_guard)
 
     // Foreign campaign: the mount guard keeps the bare tag.
     info.header.scen_num = 2;
-    info.header.campaign_id = "org.openglad.never-mounted";
+    info.header.campaign_id = "never-mounted";
     EXPECT_EQ("L2", og::ui::format_backup_row(info).level);
 }
 

@@ -1,6 +1,5 @@
 #include <openglad/gameplay/game_client.h>
 #include <openglad/core/runtime_trace.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/world_snapshot.h>
@@ -472,7 +471,7 @@ TEST(ViewRedraw, redraw_uses_interpolated_control_position_for_camera_follow)
     vs->control = nullptr;
 }
 
-TEST(ViewRedraw, classic_respawn_countdown_focuses_queued_spawn_not_ctf_hint)
+TEST(ViewRedraw, classic_respawn_countdown_focuses_queued_spawn)
 {
     viewscreen* const vs =
         og::runtime::current_session->myscreen_->viewob[0].get();
@@ -508,13 +507,12 @@ TEST(ViewRedraw, classic_respawn_countdown_focuses_queued_spawn_not_ctf_hint)
 
     const short saved_respawn_mode = world.respawn_mode;
     const char saved_type = world.type;
-    const og::sim::CtfState saved_ctf = world.ctf;
     world.respawn_mode = og::sim::kRespawnModeHeroes;
     world.type = 0;
-    world.ctf = {};
-    world.ctf.respawn_ticks = 120;
+    world.respawn = {};
+    world.respawn.respawn_ticks = 120;
 
-    og::sim::CtfRespawnEntry entry;
+    og::sim::RespawnEntry entry;
     entry.kind = 0;
     entry.team = 0;
     entry.ticks_left = 60;
@@ -522,7 +520,7 @@ TEST(ViewRedraw, classic_respawn_countdown_focuses_queued_spawn_not_ctf_hint)
     entry.x = 160;
     entry.y = 176;
     entry.floor = 1;
-    world.ctf.respawn_queue.push_back(entry);
+    world.respawn.respawn_queue.push_back(entry);
     vs->control = control;
 
     ASSERT_TRUE(vs->redraw(&active->level_runtime_data(), false));
@@ -534,19 +532,9 @@ TEST(ViewRedraw, classic_respawn_countdown_focuses_queued_spawn_not_ctf_hint)
     EXPECT_EQ(spawn_topy, vs->topy);
     EXPECT_EQ(1, vs->current_floor_);
 
-    // CTF ignores entry.x/y when it fires and rotates through team anchors;
-    // its queue metadata must therefore never redirect the camera.
-    world.type = GameWorld::TYPE_CTF;
-    world.ctf.active = true;
-    world.ctf.team_active[0] = true;
-    ASSERT_TRUE(vs->redraw(&active->level_runtime_data(), false));
-    const Sint32 corpse_topx =
-        control->xpos() - (vs->xview - control->sizex()) / 2;
-    const Sint32 corpse_topy =
-        control->ypos() - (vs->yview - control->sizey()) / 2;
-    EXPECT_EQ(corpse_topx, vs->topx);
-    EXPECT_EQ(corpse_topy, vs->topy);
-    EXPECT_EQ(0, vs->current_floor_);
+    // (The CTF-hint exclusion sub-case retired with the CTF engine: every
+    // surviving fire path writes honest entry x/y, and the scripted-entry
+    // camera focus is pinned by test_mode_ui.)
 
     vs->control = nullptr;
     world.delete_objects();
@@ -554,7 +542,6 @@ TEST(ViewRedraw, classic_respawn_countdown_focuses_queued_spawn_not_ctf_hint)
     world.mysmoother.set_target(world.grid);
     world.respawn_mode = saved_respawn_mode;
     world.type = saved_type;
-    world.ctf = saved_ctf;
 }
 
 TEST(ViewRedrawJitter, render_sample_preserves_float_camera_while_camera_snaps)

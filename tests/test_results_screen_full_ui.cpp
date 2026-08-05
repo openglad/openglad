@@ -1,5 +1,4 @@
 #include <openglad/core/test_trace.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
@@ -13,6 +12,7 @@
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 
+#include <cstring>
 #include <map>
 #include <memory>
 #include <string>
@@ -211,7 +211,7 @@ TEST(ResultsScreenFullUi, overview_and_troops_paths)
     SDL_FillSurfaceRect(E_Screen->render, nullptr, kWorldPixel);
 
     // Ensure deterministic campaign/level context used by results_screen internals.
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     og::runtime::current_session->myscreen_->save_data.current_levels.clear();
     og::runtime::current_session->myscreen_->save_data.m_score[0] = 200;
@@ -316,7 +316,7 @@ TEST(ResultsScreenFullUi, troop_scroll_paths_cover_bonus_losses_and_specials)
     const char saved_end = og::runtime::current_session->myscreen_->world().end;
     og::runtime::current_session->myscreen_->world().end = 0;
 
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     og::runtime::current_session->myscreen_->save_data.current_levels.clear();
     og::runtime::current_session->myscreen_->save_data.m_score[0] = 300;
@@ -398,7 +398,7 @@ TEST(ResultsScreenFullUi, defeat_overview_path_reports_foe_totals)
     const char saved_end = og::runtime::current_session->myscreen_->world().end;
     og::runtime::current_session->myscreen_->world().end = 0;
 
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     og::runtime::current_session->myscreen_->save_data.current_levels.clear();
     og::runtime::current_session->myscreen_->save_data.m_score[0] = 75;
@@ -429,7 +429,7 @@ TEST(ResultsScreenFullUi, retry_button_accepts_prompt_and_returns_retry)
     const char saved_end = og::runtime::current_session->myscreen_->world().end;
     og::runtime::current_session->myscreen_->world().end = 0;
 
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     og::runtime::current_session->myscreen_->save_data.current_levels.clear();
 
@@ -467,7 +467,7 @@ TEST(ResultsScreenFullUi, networked_results_suppress_local_retry)
     session->networked_session_ = true;
 
     session->myscreen_->save_data.current_campaign =
-        "org.openglad.gladiator";
+        "gladiator";
     session->myscreen_->save_data.scen_num = 1;
     session->myscreen_->save_data.current_levels.clear();
 
@@ -508,7 +508,7 @@ TEST(ResultsScreenFullUi, completed_victory_zeroes_bonus_cash)
     og::runtime::current_session->myscreen_->world().end = 0;
 
     auto& screen_ref = *og::runtime::current_session->myscreen_;
-    screen_ref.save_data.current_campaign = "org.openglad.gladiator";
+    screen_ref.save_data.current_campaign = "gladiator";
     screen_ref.save_data.scen_num = 1;
     screen_ref.save_data.current_levels.clear();
     screen_ref.save_data.completed_levels.clear();
@@ -555,18 +555,17 @@ TEST(ResultsScreenFullUi, ctf_bots_win_omits_mvp_line)
     const char saved_type = screen_ref.world().type;
     screen_ref.world().end = 0;
 
-    screen_ref.save_data.current_campaign = "org.openglad.gladiator";
+    screen_ref.save_data.current_campaign = "gladiator";
     screen_ref.save_data.scen_num = 1;
     screen_ref.save_data.current_levels.clear();
 
-    screen_ref.world().type |= GameWorld::TYPE_CTF;
-    screen_ref.world().ctf = og::sim::CtfState{};
-    screen_ref.world().ctf.active = true;
-    screen_ref.world().ctf.winner_team = 1; // bots won
-    screen_ref.world().ctf.winner_is_player = false;
-    screen_ref.world().ctf.team_active[0] = true;
-    screen_ref.world().ctf.team_active[1] = true;
-
+    screen_ref.world().type |= GameWorld::TYPE_SCRIPTED;
+    screen_ref.world().mode = og::sim::ModeState{};
+    screen_ref.world().mode.active = true;
+    screen_ref.world().mode.init_attempted = true;
+    screen_ref.world().mode.win_latched = true;
+    screen_ref.world().mode.winner_team = 1; // bots won
+    screen_ref.world().mode.winner_is_player = false;
     // One rostered human on the LOSING team with huge classic MVP points.
     std::map<int, guy*> before;
     std::map<int, walker*> after;
@@ -606,7 +605,79 @@ TEST(ResultsScreenFullUi, ctf_bots_win_omits_mvp_line)
         << "a losing-team human must not be picked as MVP";
     EXPECT_FALSE(trace_contains("results", "LOSERHERO"));
 
-    screen_ref.world().ctf = og::sim::CtfState{};
+    screen_ref.world().mode = og::sim::ModeState{};
+    screen_ref.world().type = saved_type;
+    screen_ref.world().end = saved_end;
+}
+
+// Scripted-mode twin of the CTF bots-win case: in a decided scripted match
+// the MVP pool is the WINNING team's rostered humans only, and the overview
+// page draws the generic winner banner + the mode's own scoreboard line
+// (HUD slot 0 verbatim) at the CTF slot.
+TEST(ResultsScreenFullUi, scripted_mode_win_scopes_mvp_and_draws_overview)
+{
+    auto& screen_ref = *og::runtime::current_session->myscreen_;
+    const char saved_end = screen_ref.world().end;
+    const char saved_type = screen_ref.world().type;
+    screen_ref.world().end = 0;
+
+    screen_ref.save_data.current_campaign = "gladiator";
+    screen_ref.save_data.scen_num = 1;
+    screen_ref.save_data.current_levels.clear();
+
+    screen_ref.world().type |= GameWorld::TYPE_SCRIPTED;
+    screen_ref.world().mode = og::sim::ModeState{};
+    screen_ref.world().mode.active = true;
+    screen_ref.world().mode.winner_team = 1; // bots won
+    screen_ref.world().mode.winner_is_player = false;
+    screen_ref.world().mode.hud[0].team = 1;
+    std::strncpy(screen_ref.world().mode.hud[0].text.data(), "FRAGS 2:9",
+                 screen_ref.world().mode.hud[0].text.size() - 1);
+
+    // One rostered human on the LOSING team with huge classic MVP points.
+    std::map<int, guy*> before;
+    std::map<int, walker*> after;
+    auto* loser = screen_ref.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_TRUE(loser != nullptr) << "expected walker for mode MVP test";
+    loser->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    loser->set_team_num(0);
+    loser->myguy->name = "MODELOSER";
+    loser->myguy->family = FAMILY_SOLDIER;
+    loser->myguy->exp = calculate_exp(2) + 5;
+    loser->myguy->scen_damage = 40;
+    loser->myguy->scen_damage_taken = 100;
+    loser->myguy->scen_min_hp = 1;
+    loser->stats()->set_max_hitpoints(10);
+    loser->stats()->set_hitpoints(5);
+    after[1] = loser;
+
+    trace_clear();
+    results_screen_testing_set_force_full(true);
+
+    ResultsThreadState st{};
+    SDL_Thread* thread = SDL_CreateThread(
+        results_ui_ok_injector, "results_mode_mvp_injector", &st);
+    ASSERT_TRUE(thread != nullptr) << "failed to create OK injector thread";
+
+    const bool retry = results_screen(0, 1, before, after);
+
+    int rc = 0;
+    SDL_WaitThread(thread, &rc);
+
+    results_screen_testing_set_force_full(false);
+
+    ASSERT_TRUE(st.started && st.finished) << "OK injector should run";
+    ASSERT_TRUE(!retry);
+    EXPECT_TRUE(trace_contains("results", "mvp_none"))
+        << "bots-win must leave the MVP unset (line omitted)";
+    EXPECT_FALSE(trace_contains("results", "mvp_pick"))
+        << "a losing-team human must not be picked as MVP";
+    EXPECT_TRUE(trace_contains("results", "mode_winner_banner team=1"))
+        << "the overview page draws the generic winner banner";
+    EXPECT_TRUE(trace_contains("results", "mode_scoreboard FRAGS 2:9"))
+        << "the overview page draws the mode's own scoreboard line";
+
+    screen_ref.world().mode = og::sim::ModeState{};
     screen_ref.world().type = saved_type;
     screen_ref.world().end = saved_end;
 }
@@ -619,10 +690,10 @@ TEST(ResultsScreenFullUi, classic_mvp_ignores_foreign_company_team)
     const short saved_my_team = screen_ref.world().my_team;
     screen_ref.world().end = 0;
     screen_ref.world().type = static_cast<char>(
-        screen_ref.world().type & ~GameWorld::TYPE_CTF);
+        screen_ref.world().type & ~GameWorld::TYPE_SCRIPTED);
     screen_ref.world().my_team = 0;
 
-    screen_ref.save_data.current_campaign = "org.openglad.gladiator";
+    screen_ref.save_data.current_campaign = "gladiator";
     screen_ref.save_data.scen_num = 1;
     screen_ref.save_data.current_levels.clear();
 
@@ -683,7 +754,7 @@ TEST(ResultsScreenFullUi, troop_detail_paths_show_specials_and_negative_xp)
     og::runtime::current_session->myscreen_->world().end = 0;
 
     auto& screen_ref = *og::runtime::current_session->myscreen_;
-    screen_ref.save_data.current_campaign = "org.openglad.gladiator";
+    screen_ref.save_data.current_campaign = "gladiator";
     screen_ref.save_data.scen_num = 1;
     screen_ref.save_data.current_levels.clear();
     screen_ref.save_data.m_score[0] = 150;

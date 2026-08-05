@@ -22,8 +22,9 @@
 #include <openglad/core/order.h>
 #include <openglad/core/sound_ids.h>
 #include <openglad/core/terrain_types.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/effect.h>
+#include <openglad/gameplay/mode/mode_state.h>
+#include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/gameplay/game_world.h>
@@ -40,6 +41,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/weap.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <list>
@@ -734,6 +736,41 @@ int s_has_commands(lua_State* L)
 {
     lua_pushboolean(L, stats_arg(L)->has_commands() ? 1 : 0);
     return 1;
+}
+
+// walker:s_front_command() — the front queue entry's commandtype, 0 when the
+// queue is empty. Mode directors read it to apply the preemption discipline
+// (only preempt an idle/SEARCH/GOTO/FOLLOW front) and the refresh-in-place
+// idiom the CTF director used.
+int s_front_command(lua_State* L)
+{
+    statistics* stats = stats_arg(L);
+    if (!stats->has_commands()) {
+        lua_pushinteger(L, 0);
+        return 1;
+    }
+    lua_pushinteger(L,
+                    static_cast<lua_Integer>(stats->commands.front().commandtype));
+    return 1;
+}
+
+// walker:s_refresh_front(iterations, com1, com2) — rewrite the FRONT queue
+// entry's lease and payload in place, never touching its commandtype and
+// never growing the queue. This is the C++ CTF director's refresh-in-place
+// idiom (issue_front_command, ctf_ai.cpp): a mode director that re-issues
+// its role order every cadence calls this when s_front_command() already
+// answers the wanted type, and s_force_command otherwise. Errors on an
+// empty queue — the caller must have read a nonzero s_front_command().
+int s_refresh_front(lua_State* L)
+{
+    statistics* stats = stats_arg(L);
+    if (!stats->has_commands())
+        return luaL_error(L, "s_refresh_front: command queue is empty");
+    command& front = stats->commands.front();
+    front.commandcount = static_cast<std::int32_t>(luaL_checkinteger(L, 2));
+    front.com1 = static_cast<std::int32_t>(luaL_checkinteger(L, 3));
+    front.com2 = static_cast<std::int32_t>(luaL_checkinteger(L, 4));
+    return 0;
 }
 
 int s_forward_blocked(lua_State* L)
@@ -1742,18 +1779,6 @@ int og_scenario_title(lua_State* L)
     return 1;
 }
 
-// og.ctf_on_flag_touch(flag, eater) → bool — the whole CTF flag-touch
-// operation (og::sim::ctf_on_flag_touch, src/gameplay/ctf/ctf.cpp), wrapped
-// as one call exactly like the C++ treasure hook delegates to it. CTF rules
-// stay in the CTF engine.
-int og_ctf_on_flag_touch(lua_State* L)
-{
-    walker* flag = resolve_walker(L, 1, /*required=*/true);
-    walker* eater = resolve_walker(L, 2, /*required=*/true);
-    lua_pushboolean(L, og::sim::ctf_on_flag_touch(flag, eater) ? 1 : 0);
-    return 1;
-}
-
 // ---------------------------------------------------------------------------
 // Deterministic arithmetic / branch helpers
 // ---------------------------------------------------------------------------
@@ -2102,6 +2127,453 @@ int walker_newindex(lua_State* L)
 }
 
 // ---------------------------------------------------------------------------
+// Scripted-mode (TYPE_SCRIPTED) bindings: mode state, win channel, respawn
+// surface, director support. Backends live in mode/mode_tick.cpp and the
+// respawn engine (respawn/respawn_state.h).
+// ---------------------------------------------------------------------------
+
+// og.end_level(ending, next_level) — arm the scripted-mode win latch:
+// ending 0 = win/advance, 1 = loss; next_level id+1 advance | id rematch |
+// -1 terminal. Safe to call once — mode_run_tick re-asserts the world end
+// fields from the latch every tick. Calling again overwrites (last write
+// wins). First arming revives every pending respawn.
+int og_end_level(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    const lua_Integer ending = luaL_checkinteger(L, 1);
+    if (ending != 0 && ending != 1)
+        return luaL_error(L, "og.end_level: ending must be 0 (win) or 1 "
+                             "(loss)");
+    const lua_Integer next_level = luaL_checkinteger(L, 2);
+    if (next_level < -1 || next_level > 32767)
+        return luaL_error(L, "og.end_level: next_level out of range "
+                             "[-1, 32767]");
+    og::sim::mode_end_level(*world, static_cast<int>(ending),
+                            static_cast<int>(next_level));
+    return 0;
+}
+
+// og.declare_winner(team) — convenience win latch: records winner_team,
+// computes winner_is_player (live myguy on the winning team, after the
+// first-arming revive flush), and latches ending 0 with next_level id+1 on
+// a player win, id (rematch) otherwise. Emits no notification/sound — the
+// mode's Lua owns its own announcements.
+int og_declare_winner(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    const lua_Integer team = luaL_checkinteger(L, 1);
+    if (team < 0 || team >= SCORE_TEAM_COUNT)
+        return luaL_error(L, "team %d out of range [0, %d]",
+                          static_cast<int>(team), SCORE_TEAM_COUNT - 1);
+    og::sim::mode_declare_winner(*world, static_cast<int>(team));
+    return 0;
+}
+
+// og.mode_winner() — ModeState.winner_team; -1 while undecided.
+int og_mode_winner(lua_State* L)
+{
+    lua_pushinteger(
+        L, static_cast<lua_Integer>(world_arg(L)->mode.winner_team));
+    return 1;
+}
+
+// og.mode_get(i) — read replicated mode var i (0-based, error outside
+// [0, 63]). The ONLY durable home for Lua mode state (R6).
+int og_mode_get(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    const lua_Integer i = luaL_checkinteger(L, 1);
+    if (i < 0 || i >= og::sim::kModeVarCount)
+        return luaL_error(L, "mode var index %d out of range [0, %d]",
+                          static_cast<int>(i), og::sim::kModeVarCount - 1);
+    lua_pushinteger(L, static_cast<lua_Integer>(
+                           world->mode.vars[static_cast<std::size_t>(i)]));
+    return 1;
+}
+
+// og.mode_set(i, v) — write mode var i; v truncates to int32 (og.i32
+// semantics; non-integer numbers error).
+int og_mode_set(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    const lua_Integer i = luaL_checkinteger(L, 1);
+    if (i < 0 || i >= og::sim::kModeVarCount)
+        return luaL_error(L, "mode var index %d out of range [0, %d]",
+                          static_cast<int>(i), og::sim::kModeVarCount - 1);
+    const lua_Integer v = luaL_checkinteger(L, 2);
+    world->mode.vars[static_cast<std::size_t>(i)] =
+        static_cast<std::int32_t>(v);
+    return 0;
+}
+
+// og.set_mode_name(s) — the HUD/results mode label, clamped to 11 bytes.
+int og_set_mode_name(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    size_t len = 0;
+    const char* s = luaL_checklstring(L, 1, &len);
+    auto& name = world->mode.name;
+    name.fill('\0');
+    const size_t n = std::min(len, static_cast<size_t>(
+                                       og::sim::kModeNameBytes - 1));
+    std::memcpy(name.data(), s, n);
+    return 0;
+}
+
+// og.set_hud_line(slot, text [, team]) — write a generic mode HUD line:
+// slot 0-3, text clamped to 25 bytes, team tints the line (nil = default
+// HUD color). Replicated; each client renders it its own way.
+int og_set_hud_line(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    const lua_Integer slot = luaL_checkinteger(L, 1);
+    if (slot < 0 || slot >= og::sim::kModeHudLines)
+        return luaL_error(L, "slot %d out of range [0, %d]",
+                          static_cast<int>(slot), og::sim::kModeHudLines - 1);
+    size_t len = 0;
+    const char* s = luaL_checklstring(L, 2, &len);
+    std::uint8_t team = 255;
+    if (!lua_isnoneornil(L, 3)) {
+        const lua_Integer t = luaL_checkinteger(L, 3);
+        if (t < 0 || t >= SCORE_TEAM_COUNT)
+            return luaL_error(L, "team %d out of range [0, %d]",
+                              static_cast<int>(t), SCORE_TEAM_COUNT - 1);
+        team = static_cast<std::uint8_t>(t);
+    }
+    og::sim::ModeHudLine& line =
+        world->mode.hud[static_cast<std::size_t>(slot)];
+    line.team = team;
+    line.text.fill('\0');
+    const size_t n = std::min(len, static_cast<size_t>(
+                                       og::sim::kModeHudTextBytes - 1));
+    std::memcpy(line.text.data(), s, n);
+    return 0;
+}
+
+// og.clear_hud_line(slot) — reset a HUD line to empty/default.
+int og_clear_hud_line(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    const lua_Integer slot = luaL_checkinteger(L, 1);
+    if (slot < 0 || slot >= og::sim::kModeHudLines)
+        return luaL_error(L, "slot %d out of range [0, %d]",
+                          static_cast<int>(slot), og::sim::kModeHudLines - 1);
+    world->mode.hud[static_cast<std::size_t>(slot)] = og::sim::ModeHudLine{};
+    return 0;
+}
+
+// og.set_beacon(slot, entity_or_nil [, team]) — mark an entity for the
+// off-screen/radar beacon channel (the Mutant marker, a flag carrier).
+// nil clears the slot.
+int og_set_beacon(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    const lua_Integer slot = luaL_checkinteger(L, 1);
+    if (slot < 0 || slot >= og::sim::kModeBeacons)
+        return luaL_error(L, "slot %d out of range [0, %d]",
+                          static_cast<int>(slot), og::sim::kModeBeacons - 1);
+    og::sim::ModeBeacon& beacon =
+        world->mode.beacons[static_cast<std::size_t>(slot)];
+    walker* w = resolve_walker_or_nil(L, 2);
+    if (w == nullptr) {
+        beacon = og::sim::ModeBeacon{};
+        return 0;
+    }
+    std::uint8_t team = 255;
+    if (!lua_isnoneornil(L, 3)) {
+        const lua_Integer t = luaL_checkinteger(L, 3);
+        if (t < 0 || t >= SCORE_TEAM_COUNT)
+            return luaL_error(L, "team %d out of range [0, %d]",
+                              static_cast<int>(t), SCORE_TEAM_COUNT - 1);
+        team = static_cast<std::uint8_t>(t);
+    }
+    beacon.entity_id = static_cast<std::int32_t>(w->entity_id());
+    beacon.team = team;
+    return 0;
+}
+
+// og.team_score(t) — read GameWorld::m_score[t] (og.award_score's counter);
+// errors outside [0, 3].
+int og_team_score(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    const lua_Integer team = luaL_checkinteger(L, 1);
+    if (team < 0 || team >= SCORE_TEAM_COUNT)
+        return luaL_error(L, "team %d out of range [0, %d]",
+                          static_cast<int>(team), SCORE_TEAM_COUNT - 1);
+    lua_pushinteger(L, static_cast<lua_Integer>(
+                           world->m_score[static_cast<std::size_t>(team)]));
+    return 1;
+}
+
+// og.find_by_id(id) — entity id -> handle; nil for 0, absent, or
+// dead-and-swept ids. The id -> handle resolver every replicated mode var
+// holding an entity id needs.
+int og_find_by_id(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    const lua_Integer id = luaL_checkinteger(L, 1);
+    if (id <= 0) {
+        lua_pushnil(L);
+        return 1;
+    }
+    push_walker_here(L, world->find_by_id(static_cast<std::uint32_t>(id)));
+    return 1;
+}
+
+// og.fxlist() — the fx entity list in list order (flags, exit pads, balls
+// live here; og.oblist covers livings/generators only).
+int og_fxlist(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    lua_newtable(L);
+    lua_Integer i = 1;
+    for (const auto& uptr : world->fxlist) {
+        if (uptr == nullptr)
+            continue;
+        push_walker_here(L, uptr.get());
+        lua_rawseti(L, -2, i++);
+    }
+    return 1;
+}
+
+// og.weaplist() — the weapon entity list in list order.
+int og_weaplist(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    lua_newtable(L);
+    lua_Integer i = 1;
+    for (const auto& uptr : world->weaplist) {
+        if (uptr == nullptr)
+            continue;
+        push_walker_here(L, uptr.get());
+        lua_rawseti(L, -2, i++);
+    }
+    return 1;
+}
+
+// og.world_tick() — the absolute world tick counter (snapshotted, safe
+// across a mid-level restore; og.level_tick is the per-level counter).
+int og_world_tick(lua_State* L)
+{
+    lua_pushinteger(L,
+                    static_cast<lua_Integer>(world_arg(L)->tick_count_));
+    return 1;
+}
+
+// og.team_color_name(t) — "RED"/"GREEN"/"BLUE"/"YELLOW", matching the
+// rendered palette ramps; errors outside [0, 3].
+int og_team_color_name(lua_State* L)
+{
+    const lua_Integer team = luaL_checkinteger(L, 1);
+    if (team < 0 || team >= SCORE_TEAM_COUNT)
+        return luaL_error(L, "team %d out of range [0, %d]",
+                          static_cast<int>(team), SCORE_TEAM_COUNT - 1);
+    lua_pushstring(L, og::sim::team_color_name(static_cast<int>(team)));
+    return 1;
+}
+
+// og.match_setting(name) — the lobby/save match knobs, reinterpreted as
+// generic match settings; 0 always means "mode default". Names:
+// "team_count" (0 = Auto), "score_limit", "respawn_ticks", "strip_troops",
+// "respawn_mode" (the difficulty submenu's classic respawn selector),
+// "difficulty" (the session difficulty percent, 100 = normal — the CTF
+// bot-squad level formula reads it).
+int og_match_setting(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    const char* s = luaL_checkstring(L, 1);
+    lua_Integer value = 0;
+    if (std::strcmp(s, "team_count") == 0)
+        value = world->ctf_requested_team_count;
+    else if (std::strcmp(s, "score_limit") == 0)
+        value = world->ctf_requested_capture_limit;
+    else if (std::strcmp(s, "respawn_ticks") == 0)
+        value = world->ctf_requested_respawn_ticks;
+    else if (std::strcmp(s, "strip_troops") == 0)
+        value = world->ctf_requested_strip_scenario_troops;
+    else if (std::strcmp(s, "respawn_mode") == 0)
+        value = world->respawn_mode;
+    else if (std::strcmp(s, "difficulty") == 0)
+        value = world->difficulty;
+    else
+        return luaL_error(L, "og.match_setting: unknown setting '%s'", s);
+    lua_pushinteger(L, value);
+    return 1;
+}
+
+// og.authored_team_mask() — bitmask of teams with authored start markers
+// (dead ones included; the versus-map team domain).
+int og_authored_team_mask(lua_State* L)
+{
+    lua_pushinteger(L, static_cast<lua_Integer>(
+                           og::sim::authored_team_mask(*world_arg(L))));
+    return 1;
+}
+
+// og.effective_team_mask() — authored mask clamped by the requested team
+// count (the ONE copy of the activation rule, shared with the lobby).
+int og_effective_team_mask(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    lua_pushinteger(
+        L, static_cast<lua_Integer>(og::sim::effective_team_mask(
+               og::sim::authored_team_mask(*world),
+               world->ctf_requested_team_count)));
+    return 1;
+}
+
+// og.respawn_schedule(ent [, ticks]) — queue a dead Living for the engine
+// respawn (dedupe by queued id and live duplicate; queue cap 64 with bot
+// eviction; stain/life-gem scrub). ticks overrides the resolved match
+// delay for this entry (error when not positive). Returns true when a new
+// entry was queued.
+int og_respawn_schedule(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    walker* w = resolve_walker(L, 1, /*required=*/true);
+    int ticks_override = -1;
+    if (!lua_isnoneornil(L, 2)) {
+        const lua_Integer ticks = luaL_checkinteger(L, 2);
+        if (ticks <= 0 || ticks > 65535)
+            return luaL_error(L, "og.respawn_schedule: ticks out of range "
+                                 "[1, 65535]");
+        ticks_override = static_cast<int>(ticks);
+    }
+    lua_pushboolean(
+        L, og::sim::respawn_schedule_corpse(*world, w, ticks_override) ? 1
+                                                                       : 0);
+    return 1;
+}
+
+// og.respawn_pending(ent) — true while an engine respawn entry (player
+// revive or AI replacement) is queued for this entity id.
+int og_respawn_pending(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    walker* w = resolve_walker(L, 1, /*required=*/true);
+    lua_pushboolean(L, og::sim::respawn_pending_for(*world, w) ? 1 : 0);
+    return 1;
+}
+
+// og.respawn_pending_count(team) — queued entries for a team (error
+// outside [0, 3]).
+int og_respawn_pending_count(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    const lua_Integer team = luaL_checkinteger(L, 1);
+    if (team < 0 || team >= SCORE_TEAM_COUNT)
+        return luaL_error(L, "team %d out of range [0, %d]",
+                          static_cast<int>(team), SCORE_TEAM_COUNT - 1);
+    lua_pushinteger(L,
+                    static_cast<lua_Integer>(og::sim::respawn_pending_count(
+                        *world, static_cast<int>(team))));
+    return 1;
+}
+
+// og.respawn_anchor_count(team) — authored start-marker anchors recorded
+// for a team (filled at CTF init / the first scripted tick).
+int og_respawn_anchor_count(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    const lua_Integer team = luaL_checkinteger(L, 1);
+    if (team < 0 || team >= SCORE_TEAM_COUNT)
+        return luaL_error(L, "team %d out of range [0, %d]",
+                          static_cast<int>(team), SCORE_TEAM_COUNT - 1);
+    lua_pushinteger(
+        L, static_cast<lua_Integer>(
+               world->respawn.anchor_count[static_cast<std::size_t>(team)]));
+    return 1;
+}
+
+// og.respawn_anchor(team, i) — anchor i (0-based) for a team as x, y;
+// errors when i is outside the recorded count.
+int og_respawn_anchor(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    const lua_Integer team = luaL_checkinteger(L, 1);
+    if (team < 0 || team >= SCORE_TEAM_COUNT)
+        return luaL_error(L, "team %d out of range [0, %d]",
+                          static_cast<int>(team), SCORE_TEAM_COUNT - 1);
+    const lua_Integer i = luaL_checkinteger(L, 2);
+    const int count = static_cast<int>(
+        world->respawn.anchor_count[static_cast<std::size_t>(team)]);
+    if (i < 0 || i >= count)
+        return luaL_error(L, "og.respawn_anchor: index %d out of range "
+                             "[0, %d]",
+                          static_cast<int>(i), count - 1);
+    lua_pushinteger(L, static_cast<lua_Integer>(
+                           world->respawn.anchor_x[team][i]));
+    lua_pushinteger(L, static_cast<lua_Integer>(
+                           world->respawn.anchor_y[team][i]));
+    return 2;
+}
+
+// og.spawn_spot_clear(ent, x, y [, floor]) — the eat-free placement probe
+// (NEVER og.query_passable: its obmap route dispatches eat_me, so a probe
+// could eat a drumstick or pick up a flag). floor omitted probes the
+// walker's own grid floor; floor given is the floor-explicit variant.
+int og_spawn_spot_clear(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    walker* w = resolve_walker(L, 1, /*required=*/true);
+    const short x = static_cast<short>(luaL_checkinteger(L, 2));
+    const short y = static_cast<short>(luaL_checkinteger(L, 3));
+    int floor = -1;
+    if (!lua_isnoneornil(L, 4))
+        floor = static_cast<int>(luaL_checkinteger(L, 4));
+    lua_pushboolean(
+        L, og::sim::respawn_spot_clear(*world, w, x, y, floor) ? 1 : 0);
+    return 1;
+}
+
+// og.scrub_corpse_stain(x, y [, floor]) — kill the fresh STAIN/LIFE_GEM
+// drops at a corpse position (its top-left) so a non-respawning body
+// cannot be cleric-resurrected into a duplicate or farm gem score. floor
+// omitted scrubs every floor.
+int og_scrub_corpse_stain(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    const short x = static_cast<short>(luaL_checkinteger(L, 1));
+    const short y = static_cast<short>(luaL_checkinteger(L, 2));
+    int floor = -1;
+    if (!lua_isnoneornil(L, 3))
+        floor = static_cast<int>(luaL_checkinteger(L, 3));
+    og::sim::respawn_scrub_stains_at(*world, x, y, floor);
+    return 0;
+}
+
+// walker:set_act_type(n) — write the AI act type. ACT_CONTROL is refused
+// (the level-loader rule: a script must not steal player control).
+int m_set_act_type(lua_State* L)
+{
+    walker* w = self_arg(L);
+    const lua_Integer n = luaL_checkinteger(L, 2);
+    if (n == ACT_CONTROL)
+        return luaL_error(L, "set_act_type: ACT_CONTROL is reserved for "
+                             "player seats");
+    w->set_act_type(static_cast<short>(n));
+    return 0;
+}
+
+// walker:restore_act_type() — one-deep undo of set_act_type.
+int m_restore_act_type(lua_State* L)
+{
+    self_arg(L)->restore_act_type();
+    return 0;
+}
+
+// walker:last_self_teleport_tick() — the world tick this walker last began
+// a SELF-teleport (blinks and marker beacons; map teleporter pads never
+// stamp). Compare against og.world_tick() for the CTF drop rule.
+int m_last_self_teleport_tick(lua_State* L)
+{
+    lua_pushinteger(L, static_cast<lua_Integer>(
+                           self_arg(L)->last_self_teleport_tick()));
+    return 1;
+}
+
+// ---------------------------------------------------------------------------
 // Registration tables
 // ---------------------------------------------------------------------------
 
@@ -2137,7 +2609,9 @@ const luaL_Reg kWalkerMethods[] = {
     {"set_current_weapon", m_set_current_weapon},
     {"default_weapon", m_default_weapon},
     {"set_default_weapon", m_set_default_weapon},
-    {"act_type", m_act_type},
+    {"act_type", m_act_type}, {"set_act_type", m_set_act_type},
+    {"restore_act_type", m_restore_act_type},
+    {"last_self_teleport_tick", m_last_self_teleport_tick},
     {"ani_type", m_ani_type}, {"set_ani_type", m_set_ani_type},
     {"cycle", m_cycle}, {"set_cycle", m_set_cycle},
     {"drawcycle", m_drawcycle},
@@ -2233,6 +2707,8 @@ const luaL_Reg kWalkerMethods[] = {
     {"s_set_command", s_set_command},
     {"s_clear_command", s_clear_command},
     {"s_has_commands", s_has_commands},
+    {"s_front_command", s_front_command},
+    {"s_refresh_front", s_refresh_front},
     {"s_forward_blocked", s_forward_blocked},
     {"s_force_fright", s_force_fright},
     {"s_do_command", s_do_command},
@@ -2288,6 +2764,9 @@ const luaL_Reg kOgWorldFuncs[] = {
     {"find_foe_weapons_in_range", og_find_foe_weapons_in_range},
     {"foes_in_range", og_foes_in_range},
     {"oblist", og_oblist},
+    {"fxlist", og_fxlist},
+    {"weaplist", og_weaplist},
+    {"find_by_id", og_find_by_id},
     {"query_passable", og_query_passable},
     {"query_grid_passable", og_query_grid_passable},
     {"query_object_passable", og_query_object_passable},
@@ -2295,6 +2774,7 @@ const luaL_Reg kOgWorldFuncs[] = {
     {"cosmetic_rand", og_cosmetic_rand},
     {"level_id", og_level_id},
     {"level_tick", og_level_tick},
+    {"world_tick", og_world_tick},
     {"level_done", og_level_done},
     {"game_ended", og_game_ended},
     {"remaining_foes", og_remaining_foes},
@@ -2331,11 +2811,28 @@ const luaL_Reg kOgWorldFuncs[] = {
     {"emit_exit_confirmation", og_emit_exit_confirmation},
     {"emit_withdraw_to_level", og_emit_withdraw_to_level},
     {"scenario_title", og_scenario_title},
-    // Both spellings resolve to the same wrapper: ctf_on_flag_touch matches
-    // the C++ entry point it delegates to, ctf_flag_touch the og.* verb
-    // shape used elsewhere in this table.
-    {"ctf_on_flag_touch", og_ctf_on_flag_touch},
-    {"ctf_flag_touch", og_ctf_on_flag_touch},
+    // Scripted-mode (TYPE_SCRIPTED) surface.
+    {"end_level", og_end_level},
+    {"declare_winner", og_declare_winner},
+    {"mode_winner", og_mode_winner},
+    {"mode_get", og_mode_get},
+    {"mode_set", og_mode_set},
+    {"set_mode_name", og_set_mode_name},
+    {"set_hud_line", og_set_hud_line},
+    {"clear_hud_line", og_clear_hud_line},
+    {"set_beacon", og_set_beacon},
+    {"team_score", og_team_score},
+    {"team_color_name", og_team_color_name},
+    {"match_setting", og_match_setting},
+    {"authored_team_mask", og_authored_team_mask},
+    {"effective_team_mask", og_effective_team_mask},
+    {"respawn_schedule", og_respawn_schedule},
+    {"respawn_pending", og_respawn_pending},
+    {"respawn_pending_count", og_respawn_pending_count},
+    {"respawn_anchor_count", og_respawn_anchor_count},
+    {"respawn_anchor", og_respawn_anchor},
+    {"spawn_spot_clear", og_spawn_spot_clear},
+    {"scrub_corpse_stain", og_scrub_corpse_stain},
     // Deterministic arithmetic/branch helpers; definitions and
     // exact-semantics contracts are above.
     {"rand0", og_rand0},
@@ -2376,6 +2873,9 @@ const NamedConst kConstants[] = {
     {"ORDER_TREASURE", static_cast<lua_Integer>(Order::Treasure)},
     {"ORDER_GENERATOR", static_cast<lua_Integer>(Order::Generator)},
     {"ORDER_FX", static_cast<lua_Integer>(Order::FX)},
+    // Team start markers (mode init consumes/strips them by team).
+    {"ORDER_SPECIAL", static_cast<lua_Integer>(Order::Special)},
+    {"FAMILY_RESERVED_TEAM", FAMILY_RESERVED_TEAM},
     // Commands
     {"COMMAND_WALK", COMMAND_WALK},
     {"COMMAND_FIRE", COMMAND_FIRE},
@@ -2388,6 +2888,7 @@ const NamedConst kConstants[] = {
     {"COMMAND_SET_WEAPON", COMMAND_SET_WEAPON},
     {"COMMAND_RESET_WEAPON", COMMAND_RESET_WEAPON},
     {"COMMAND_SEARCH", COMMAND_SEARCH},
+    {"COMMAND_GOTO", COMMAND_GOTO},
     {"COMMAND_ATTACK", COMMAND_ATTACK},
     {"COMMAND_RIGHT_WALK", COMMAND_RIGHT_WALK},
     {"COMMAND_UNCHARM", COMMAND_UNCHARM},
@@ -2499,6 +3000,7 @@ const NamedConst kConstants[] = {
     // Misc
     {"NUM_SPECIALS", NUM_SPECIALS},
     {"MAXOBS", MAXOBS},
+    {"SCORE_TEAM_COUNT", SCORE_TEAM_COUNT},
 };
 
 // ---------------------------------------------------------------------------
@@ -2619,18 +3121,6 @@ void install_entity_bindings_into_og(lua_State* L, VmState* st)
     for (const luaL_Reg* r = kOgWorldFuncs; r->name != nullptr; r++) {
         if (is_unfenced(r->name))
             continue;
-        // Two spellings of one entry point (og.ctf_flag_touch /
-        // og.ctf_on_flag_touch) must stay the SAME Lua value: a pack may
-        // compare them, and a test does. Wrapping each row independently
-        // would hand out two closures that behave alike and compare unequal,
-        // so an alias copies the wrapper its twin already got.
-        const luaL_Reg* twin = kOgWorldFuncs;
-        for (; twin != r && twin->func != r->func; twin++) {}
-        if (twin != r) {
-            lua_getfield(L, -1, twin->name);
-            lua_setfield(L, -2, r->name);
-            continue;
-        }
         fence_world_entry(L, st, r->name);
     }
     lua_newtable(L);

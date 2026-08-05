@@ -21,7 +21,6 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/radar.h>
 #include <openglad/core/constants.h>
-#include <openglad/core/ctf_constants.h>
 #include <openglad/core/decordefs.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/walker.h>
@@ -629,7 +628,12 @@ public:
     
     bool loadLevel(int id);
     bool reloadLevel();
-    
+    void warn_if_generated();
+
+    // Latch for warn_if_generated: the last level id already warned about
+    // this session (-1 = none). One popup per generated level per session.
+    int generated_warned_level = -1;
+
     bool saveCampaignAs(const std::string& id);
     bool saveCampaign();
     
@@ -675,7 +679,7 @@ EventType handle_basic_editor_event(const void* native_event);
 #endif
 
 LevelEditorData::LevelEditorData()
-    : campaign(std::make_unique<CampaignData>("org.openglad.gladiator")), level(std::make_unique<LevelRuntimeData>(1, false, &sdl_level_data_hooks())), mode(Mode::Terrain), rect_selecting(false), dragging(false), myradar(og::runtime::current_session->myscreen_->viewob[0].get(), og::runtime::current_session->myscreen_, 0)
+    : campaign(std::make_unique<CampaignData>("gladiator")), level(std::make_unique<LevelRuntimeData>(1, false, &sdl_level_data_hooks())), mode(Mode::Terrain), rect_selecting(false), dragging(false), myradar(og::runtime::current_session->myscreen_->viewob[0].get(), og::runtime::current_session->myscreen_, 0)
     , menu_button_height(DEFAULT_EDITOR_MENU_BUTTON_HEIGHT)
     
 	, fileButton("File", OVERSCAN_PADDING, 0, 30, menu_button_height)
@@ -804,11 +808,29 @@ bool LevelEditorData::reloadCampaign()
 }
 
 
+// One warning per editor session per level id: a scen carrying the
+// SCEN_TYPE_GENERATED provenance mark is campaign-generator output, so
+// hand edits are doomed to be overwritten on the next regeneration. Warn
+// on open (warning only — saving stays allowed; the CI drift check is the
+// enforcement).
+void LevelEditorData::warn_if_generated()
+{
+    if (!level->generated || generated_warned_level == level->world().id)
+        return;
+    generated_warned_level = level->world().id;
+    popup_dialog("Generated Scenario",
+                 "Generated scenario - edits will be overwritten by the "
+                 "campaign generator. Port changes into the generator "
+                 "(see the campaign's README.md).");
+}
+
 bool LevelEditorData::loadLevel(int id)
 {
     level->world().id = id;
     bool result = level->load();
     eds().current_floor = 0; // start on the ground floor after a load
+    if (result)
+        warn_if_generated();
     update_menu_buttons();
     return result;
 }
@@ -816,6 +838,8 @@ bool LevelEditorData::loadLevel(int id)
 bool LevelEditorData::reloadLevel()
 {
     bool result = level->load();
+    if (result)
+        warn_if_generated();
     update_menu_buttons();
     return result;
 }
@@ -1587,7 +1611,6 @@ Sint32 LevelEditorData::display_panel(screen* s)
 	    { blood_string, "DRUMSTICK", "GOLD", "SILVER",
 	      "MAGIC", "INVIS", "INVULN", "FLIGHT",
 	      "EXIT", "TELEPORTER", "LIFE GEM", "KEY", "SPEED",
-	      "FLAG", "CTF POINT",
 	    };
 	const char* weapons[NUM_FAMILIES] =
 	    { "KNIFE", "ROCK", "ARROW", "FIREBALL",
@@ -2263,6 +2286,11 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                                 
                                 if(levels.size() > 0)
                                 {
+                                    // #162: no reload here — LevelRuntimeData::load()
+                                    // wires entity services on entry, and the SDL
+                                    // wiring chokepoint reloads a stale loader. The
+                                    // no-levels branch keeps the OLD level's walkers
+                                    // alive and deliberately leaves the loader stale.
                                     loadLevel(levels.front());
                                     // Update minimap
                                     myradar.start(level.get());
@@ -2331,6 +2359,14 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         
                         if(load_first_level)
                         {
+                            // #162: no reload here — LevelRuntimeData::load()
+                            // wires entity services on entry and the SDL wiring
+                            // chokepoint reloads a stale loader, so the rebuild
+                            // gets fresh sprites either way. Declining the prompt
+                            // keeps the OLD campaign's level open (cross-campaign
+                            // level transfer) with live walkers still borrowing
+                            // the loader's pixel buffers, so the loader
+                            // deliberately stays stale until a load or re-entry.
                             // Load first scenario
                             if(loadLevel(result.first_level))
                             {
@@ -3328,10 +3364,6 @@ std::string get_editor_level_label(Order order, Sint32 family, Sint32 level)
                 return std::format("GROUP: {}", level);
             if (family == FAMILY_EXIT)
                 return std::format("EXIT TO: {}", level);
-            if (family == og::FAMILY_FLAG)
-                return std::format("CAPS TO WIN: {}", level);
-            if (family == og::FAMILY_CTF_POINT)
-                return "";
             if (family != FAMILY_STAIN)
                 return std::format("POWER: {}", level);
             return "";
@@ -3566,7 +3598,11 @@ Sint32 level_editor()
     if(old_campaign.size() > 0)
         (void)unmount_campaign_package_with_error(old_campaign);
     (void)mount_campaign_package_with_error(data.campaign->id);
-    
+    // #162: pick up campaign-shipped entity art before any editor level
+    // objects or pane previews are built from the loader (the editor's
+    // SimpleButtons are text+rects and hold no loader pixies).
+    og::runtime::current_session->myscreen_->myloader->reload_graphics_if_stale();
+
 
     std::list<int> levels = list_levels();
     if(levels.size() > 0)

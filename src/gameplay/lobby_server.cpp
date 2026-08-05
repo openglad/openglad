@@ -1,8 +1,8 @@
 #include <openglad/gameplay/lobby_server.h>
 
-#include <openglad/core/ctf_constants.h>
+#include <openglad/core/campaign_ids.h>
+#include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/core/tower_constants.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 
 #include <algorithm>
 #include <format>
@@ -85,8 +85,11 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
         sanitized.ctf_respawn_ticks =
             std::clamp<std::int16_t>(sanitized.ctf_respawn_ticks, 12, 1200);
     }
-    if (sanitized.ctf_strip_scenario_troops != 0 &&
-        sanitized.ctf_strip_scenario_troops != 1)
+    // 0 keeps the authored cast, 2 strips it. The retired middle state 1 is
+    // still accepted so a peer or save from that build syncs instead of
+    // snapping back to the host's value; every strip rule reads it as 2.
+    if (sanitized.ctf_strip_scenario_troops < 0 ||
+        sanitized.ctf_strip_scenario_troops > 2)
     {
         sanitized.ctf_strip_scenario_troops = fallback.ctf_strip_scenario_troops;
     }
@@ -106,6 +109,8 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
         sanitized.cross_control = fallback.cross_control;
     if (sanitized.infinite_gold != 0 && sanitized.infinite_gold != 1)
         sanitized.infinite_gold = fallback.infinite_gold;
+    if (sanitized.shared_teams != 0 && sanitized.shared_teams != 1)
+        sanitized.shared_teams = fallback.shared_teams;
     return sanitized;
 }
 

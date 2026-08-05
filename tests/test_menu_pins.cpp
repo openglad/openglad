@@ -536,7 +536,7 @@ TEST(MenuEnginePins, progress_menu_exact_layout)
     const std::string old_campaign = save.current_campaign;
     save.scen_num = 1;
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
 
     clear_events();
     auto& input_hw = input_hardware_state();

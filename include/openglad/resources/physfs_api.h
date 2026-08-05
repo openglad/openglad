@@ -25,7 +25,7 @@ std::list<std::string> physfs_enumerate_files_sorted(const std::string& dirname)
 bool physfs_is_directory(const std::string& path);
 
 // The real directory or archive a virtual path resolves to — the mount source
-// the file actually came from ("<repo>/packs", "<repo>/builtin/x.glad", a
+// the file actually came from ("<repo>/packs", "<build>/builtin/x.glad", a
 // downloaded pack's cache dir). Empty when the path is not mounted.
 std::string physfs_real_dir(const std::string& path);
 

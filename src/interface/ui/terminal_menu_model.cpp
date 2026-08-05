@@ -47,11 +47,11 @@ std::vector<std::string> team_build_context_lines(const SaveData& save)
     return lines;
 }
 
-// Terminal guards: CTF match settings outside the CTF campaign, and the §2.5
+// Terminal guards: match settings outside a versus campaign, and the §2.5
 // READY item outside a networked lobby (solo/local sessions have no ready
 // machinery — §2.6 state 1).
-constexpr std::string_view kCtfSettingsGuardMessage =
-    "CTF settings apply to CTF maps only.";
+constexpr std::string_view kMatchupSettingsGuardMessage =
+    "Matchup settings apply to versus maps only.";
 constexpr std::string_view kReadyGuardMessage =
     "Ready applies to networked lobbies only.";
 
@@ -60,9 +60,12 @@ GateBinding terminal_item_gate(PickerMenuCommand command)
     switch (command) {
     case PickerMenuCommand::CycleCtfTeamCount:
     case PickerMenuCommand::CycleCtfCaptureLimit:
-    case PickerMenuCommand::ToggleCtfScenarioTroops:
-        return GateBinding{MenuGate::CtfCampaignOnly, nullptr,
-                           kCtfSettingsGuardMessage};
+        return GateBinding{MenuGate::VersusCampaignOnly, nullptr,
+                           kMatchupSettingsGuardMessage};
+    // Scenario troops is NOT versus-gated: "strip everything authored" is
+    // meaningful on classic campaigns too, which is why the control moved to
+    // the SCENARIO screen. Both states are valid on every campaign, so the
+    // cycle is the same flip everywhere.
     case PickerMenuCommand::ToggleReady:
         return GateBinding{MenuGate::NetworkedOnly, nullptr,
                            kReadyGuardMessage};

@@ -827,7 +827,7 @@ TEST(PickerFuncs, picker_lobby_consume_game_start_config_uses_active_client_boun
     client.pending_config = og::ui::PickerLobbyGameStartConfig{
         .save_data =
             og::sim::LobbySaveDataEquivalent{
-                .current_campaign = "org.openglad.gladiator",
+                .current_campaign = "gladiator",
                 .scen_num = 1,
                 .numplayers = 2,
                 .allied_mode = 0,
@@ -1281,7 +1281,7 @@ TEST(PickerFuncs, picker_join_game_relay_prompt_replaces_client)
 
     auto& save = og::runtime::current_session->myscreen_->save_data;
     const std::string old_campaign = save.current_campaign;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
 
     picker_testing_yes_or_no_queue_clear();
     picker_testing_yes_or_no_queue_push(false);
@@ -1301,7 +1301,7 @@ TEST(PickerFuncs, picker_join_game_relay_prompt_replaces_client)
     EXPECT_EQ("GLAD-BETA", captured_options->room_code);
     EXPECT_FALSE(captured_options->relay_base_url.empty());
     EXPECT_EQ(captured_options->relay_base_url, listed_base_url);
-    EXPECT_EQ("org.openglad.gladiator", listed_campaign_tag);
+    EXPECT_EQ("gladiator", listed_campaign_tag);
     EXPECT_EQ(next_raw, current_client.get());
     EXPECT_EQ(next_raw, og::ui::active_picker_lobby_client());
     EXPECT_EQ(1, current_trace->shutdown_calls);
@@ -1859,7 +1859,7 @@ TEST(PickerFuncs, lobby_start_request_captures_game_start_config)
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
         old_team[i] = std::move(save.team_list[i]);
 
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
     save.team_size = 2;
     save.numplayers = 2;
@@ -1882,7 +1882,7 @@ TEST(PickerFuncs, lobby_start_request_captures_game_start_config)
         picker_lobby_consume_game_start_config();
     ASSERT_TRUE(config.has_value());
     EXPECT_EQ(2u, config->save_data.numplayers);
-    EXPECT_EQ("org.openglad.gladiator", config->save_data.current_campaign);
+    EXPECT_EQ("gladiator", config->save_data.current_campaign);
     EXPECT_EQ(1, config->save_data.scen_num);
     EXPECT_EQ(0, config->save_data.allied_mode);
     EXPECT_EQ(3, config->difficulty);
@@ -1921,7 +1921,7 @@ TEST(PickerFuncs, lobby_start_request_preserves_spectator_game_start_config)
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
         old_team[i] = std::move(save.team_list[i]);
 
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
     save.team_size = 1;
     save.numplayers = 0;
@@ -1941,7 +1941,7 @@ TEST(PickerFuncs, lobby_start_request_preserves_spectator_game_start_config)
         picker_lobby_consume_game_start_config();
     ASSERT_TRUE(config.has_value());
     EXPECT_EQ(0u, config->save_data.numplayers);
-    EXPECT_EQ("org.openglad.gladiator", config->save_data.current_campaign);
+    EXPECT_EQ("gladiator", config->save_data.current_campaign);
     EXPECT_EQ(1, config->save_data.scen_num);
     EXPECT_EQ(1, config->save_data.allied_mode);
     EXPECT_EQ(4, config->difficulty);
@@ -2039,7 +2039,7 @@ TEST(PickerFuncs, go_menu_starts_via_lobby_confirmation_and_reinitializes_for_re
 
     save.reset();
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
 
     auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
@@ -2167,7 +2167,7 @@ TEST(PickerFuncs, go_menu_honors_preexisting_remote_start_request)
 
     save.reset();
     save.numplayers = 1;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
 
     auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
@@ -2853,7 +2853,7 @@ TEST(PickerFuncs,
     save.allied_mode = original_allied_mode;
 }
 
-TEST(PickerFuncs, local_lobby_reconciles_sparse_ctf_domain_transitions)
+TEST(PickerFuncs, local_lobby_reconciles_sparse_versus_domain_transitions)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     GameWorld& world = og::runtime::current_session->myscreen_->world();
@@ -2871,16 +2871,16 @@ TEST(PickerFuncs, local_lobby_reconciles_sparse_ctf_domain_transitions)
     const std::string original_mount = get_mounted_campaign();
     const int original_world_id = world.id;
     const char original_world_type = world.type;
-    const std::size_t original_fx_size = world.fxlist.size();
-    std::vector<std::pair<walker*, unsigned char>> original_flag_teams;
-    for (const auto& effect : world.fxlist)
+    const std::size_t original_ob_size = world.oblist.size();
+    std::vector<std::pair<walker*, unsigned char>> original_marker_teams;
+    for (const auto& ob : world.oblist)
     {
-        if (effect != nullptr &&
-            effect->query_order() == Order::Treasure &&
-            effect->family() == og::FAMILY_FLAG)
+        if (ob != nullptr &&
+            ob->query_order() == Order::Special &&
+            ob->family() == FAMILY_RESERVED_TEAM)
         {
-            original_flag_teams.emplace_back(effect.get(), effect->team_num());
-            effect->set_team_num(SCORE_TEAM_COUNT);
+            original_marker_teams.emplace_back(ob.get(), ob->team_num());
+            ob->set_team_num(SCORE_TEAM_COUNT);
         }
     }
 
@@ -2896,17 +2896,21 @@ TEST(PickerFuncs, local_lobby_reconciles_sparse_ctf_domain_transitions)
     save.my_team = 0;
     save.numplayers = 2;
     save.allied_mode = 0;
-    save.current_campaign = "org.openglad.ctf";
+    save.current_campaign = "modes";
     save.scen_num = 7;
     save.ctf_team_count = 0;
-    set_mounted_campaign_for_testing(save.current_campaign);
+    // A REAL mount: the versus predicate reads the campaign's matchup: yaml
+    // key through the mounted package (a faked mount id would read another
+    // campaign's yaml).
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(save.current_campaign));
     world.id = save.scen_num;
-    world.type |= GameWorld::TYPE_CTF;
+    world.type |= GameWorld::TYPE_SCRIPTED;
     for (const short team : {short{0}, short{2}, short{3}})
     {
-        walker* flag = world.add_fx_ob(Order::Treasure, og::FAMILY_FLAG);
-        ASSERT_NE(nullptr, flag);
-        flag->set_team_num(static_cast<unsigned char>(team));
+        walker* marker = world.add_ob(Order::Special, FAMILY_RESERVED_TEAM);
+        ASSERT_NE(nullptr, marker);
+        marker->set_team_num(static_cast<unsigned char>(team));
     }
 
     {
@@ -2934,14 +2938,14 @@ TEST(PickerFuncs, local_lobby_reconciles_sparse_ctf_domain_transitions)
         // A next level with sparse authored {1,3} in Auto invalidates both
         // old assignments; the client adopts the server's deterministic team
         // 1 normalization without recoloring the saved heroes.
-        while (world.fxlist.size() > original_fx_size)
-            world.fxlist.pop_back();
-        walker* flag1 = world.add_fx_ob(Order::Treasure, og::FAMILY_FLAG);
-        walker* flag3 = world.add_fx_ob(Order::Treasure, og::FAMILY_FLAG);
-        ASSERT_NE(nullptr, flag1);
-        ASSERT_NE(nullptr, flag3);
-        flag1->set_team_num(1);
-        flag3->set_team_num(3);
+        while (world.oblist.size() > original_ob_size)
+            world.oblist.pop_back();
+        walker* marker1 = world.add_ob(Order::Special, FAMILY_RESERVED_TEAM);
+        walker* marker3 = world.add_ob(Order::Special, FAMILY_RESERVED_TEAM);
+        ASSERT_NE(nullptr, marker1);
+        ASSERT_NE(nullptr, marker3);
+        marker1->set_team_num(1);
+        marker3->set_team_num(3);
         save.ctf_team_count = 0;
         client->sync_settings_from_save();
         players = client->lobby_players();
@@ -2953,13 +2957,14 @@ TEST(PickerFuncs, local_lobby_reconciles_sparse_ctf_domain_transitions)
         client->shutdown();
     }
 
-    for (const auto& [flag, team] : original_flag_teams)
-        flag->set_team_num(team);
-    while (world.fxlist.size() > original_fx_size)
-        world.fxlist.pop_back();
+    for (const auto& [marker, team] : original_marker_teams)
+        marker->set_team_num(team);
+    while (world.oblist.size() > original_ob_size)
+        world.oblist.pop_back();
     world.id = original_world_id;
     world.type = original_world_type;
-    set_mounted_campaign_for_testing(original_mount);
+    if (!original_mount.empty())
+        (void)mount_campaign_package_with_error(original_mount);
     for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot)
         save.team_list[slot] = std::move(original_roster[slot]);
     save.team_size = original_team_size;

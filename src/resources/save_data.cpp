@@ -16,6 +16,7 @@
  */
 
 #include <openglad/resources/save_data.h>
+#include <openglad/core/campaign_ids.h>
 #include <openglad/core/util.h>
 #include <openglad/core/test_trace.h>
 #include <format>
@@ -46,14 +47,15 @@ constexpr unsigned char kMaxLegacyPlayers = kMaxLegacySavePlayers;
 // session's actual choice into the company.
 constexpr std::uint8_t kLegacyPlayerCountCompatibility = 1;
 constexpr int kMaxLegacyLevels = 500;
+const std::string kDefaultCampaign{og::kDefaultCampaignId};
 }
 
 
 SaveData::SaveData()
-    : current_campaign("org.openglad.gladiator"), scen_num(1), score(0), totalcash(0), totalscore(0), my_team(0), numplayers(1), allied_mode(1)
+    : current_campaign(kDefaultCampaign), scen_num(1), score(0), totalcash(0), totalscore(0), my_team(0), numplayers(1), allied_mode(1)
 {
-    completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
-    current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
+    completed_levels.insert(std::make_pair(kDefaultCampaign, std::set<int>()));
+    current_levels.insert(std::make_pair(kDefaultCampaign, 1));
 
     for (size_t i = 0; i < std::size(m_score); i++)
 	{
@@ -71,11 +73,11 @@ SaveData::~SaveData()
 
 void SaveData::reset()
 {
-	current_campaign = "org.openglad.gladiator";
+	current_campaign = kDefaultCampaign;
 	completed_levels.clear();
     current_levels.clear();
-    completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
-    current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
+    completed_levels.insert(std::make_pair(kDefaultCampaign, std::set<int>()));
+    current_levels.insert(std::make_pair(kDefaultCampaign, 1));
 
 
 	score = totalcash = totalscore = 0;
@@ -117,7 +119,7 @@ bool SaveData::load(const std::string& filename)
 	std::array<char, 41> savedgame;
 	std::fill_n(savedgame.data(), savedgame.size(), '\0');
 	std::array<char, 41> temp_campaign;
-	snprintf(temp_campaign.data(), temp_campaign.size(), "org.openglad.gladiator");
+	snprintf(temp_campaign.data(), temp_campaign.size(), "%s", kDefaultCampaign.c_str());
 	temp_campaign[40] = '\0';
 	std::uint8_t temp_version = 9;
 	std::uint32_t newcash;
@@ -281,9 +283,11 @@ bool SaveData::load(const std::string& filename)
 		temp_campaign[40] = '\0';
         const std::string loaded_campaign = temp_campaign.data();
 		if(loaded_campaign.size() > 3 && is_safe_campaign_id(loaded_campaign))
-            current_campaign = loaded_campaign;
+            // Saves written before the reverse-DNS purge store
+            // "org.openglad.<name>"; fold them onto the plain id.
+            current_campaign = std::string(og::normalize_legacy_id(loaded_campaign));
         else
-            current_campaign = "org.openglad.gladiator";
+            current_campaign = kDefaultCampaign;
 	}
 
 	// Read scenario number
@@ -468,8 +472,8 @@ bool SaveData::load(const std::string& filename)
     }
 
     // Make sure the default campaign is included
-	completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
-	current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
+	completed_levels.insert(std::make_pair(kDefaultCampaign, std::set<int>()));
+	current_levels.insert(std::make_pair(kDefaultCampaign, 1));
 
     if(temp_version < 8)
     {
@@ -515,10 +519,21 @@ bool SaveData::load(const std::string& filename)
                 return false;
             }
 
+            // Legacy "org.openglad." keys fold onto their plain id. When a
+            // save carries both spellings of one campaign the progress
+            // merges conservatively: the campaign cursor keeps the furthest
+            // level, and completed sets union (add_level_completed below is
+            // a set insert). New writes only ever emit plain keys.
+            const std::string campaign_key(
+                og::normalize_legacy_id(campaign.data()));
+
             short index = 1;
             // Get the current level for this campaign
             READ_OR_FAIL(&index, 2, 1);
-            current_levels[campaign.data()] = index;
+            const auto [cursor, inserted] =
+                current_levels.emplace(campaign_key, index);
+            if (!inserted)
+                cursor->second = std::max(cursor->second, static_cast<int>(index));
 
             // Get the number of cleared levels
             READ_OR_FAIL(&num_levels, 2, 1);
@@ -535,7 +550,7 @@ bool SaveData::load(const std::string& filename)
                 READ_OR_FAIL(&index, 2, 1);
 
                 // Add it to our list
-                add_level_completed(campaign.data(), index);
+                add_level_completed(campaign_key, index);
             }
         }
     }

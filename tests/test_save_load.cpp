@@ -15,8 +15,8 @@ bool prepare_default_save_load_state()
 #ifdef TESTING
     set_mounted_campaign_for_testing("");
 #endif
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
-    return mount_campaign_package_with_error("org.openglad.gladiator") == CampaignPackageIoError::None;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
+    return mount_campaign_package_with_error("gladiator") == CampaignPackageIoError::None;
 }
 
 } // namespace
@@ -92,7 +92,7 @@ TEST(SaveLoad, load_saved_game_reads_named_save_into_fresh_screen)
     ASSERT_TRUE(source_screen != nullptr);
 
     source_screen->save_data.reset();
-    source_screen->save_data.current_campaign = "org.openglad.gladiator";
+    source_screen->save_data.current_campaign = "gladiator";
     source_screen->save_data.scen_num = 17;
     source_screen->save_data.numplayers = 1;
     ASSERT_TRUE(source_screen->save_data.save("test_shadow_load"))

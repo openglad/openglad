@@ -54,6 +54,94 @@ inline constexpr int kNewGameStartingGold = 5000;
 
 extern const char* const kDifficultyNames[DIFFICULTY_SETTINGS];
 
+// --- Campaign browser (SET CAMPAIGN) geometry ---
+//
+// The campaign browser is a fixed 320x200 screen whose controls used to be
+// laid out with inline literals, so nothing could pin the one property that
+// actually matters: the centered campaign title must not run under a button.
+// It did — the title row (y = icon_y - 22 = 13, 8px tall) crosses the top
+// control row (y = 10..20), and titles of 17 characters or more reached past
+// x = 208 into the old ENTER ID face. "MULTIPLAYER GAME MODES" (22) and
+// "CONCEPT PLAYGROUND" (18) both clipped. ENTER ID now sits under
+// RESET/DELETE, and the title is fitted to the width that stays clear of the
+// one control still on the title row.
+struct PickerRect
+{
+    int x = 0;
+    int y = 0;
+    int w = 0;
+    int h = 0;
+};
+
+// True when the two rects share at least one pixel. Edge-touching rects
+// (a.x + a.w == b.x) do not overlap.
+bool picker_rects_overlap(const PickerRect& a, const PickerRect& b);
+
+struct CampaignPickerLayout
+{
+    PickerRect prev;
+    PickerRect next;
+    PickerRect choose;   // OK
+    PickerRect cancel;
+    PickerRect delete_button;
+    PickerRect reset_button;  // occupies the DELETE cell; the two never co-exist
+    PickerRect id_button;     // ENTER ID, stacked under DELETE/RESET
+    PickerRect icon;          // campaign icon (title is drawn above it)
+    int title_y = 0;          // top pixel row of the centered title
+    int title_center_x = 0;
+    int title_max_chars = 0;  // widest title that clears every control
+};
+
+// The single source of the browser's control geometry. Pure, so the overlap
+// contract is unit-testable without SDL.
+CampaignPickerLayout campaign_picker_layout();
+
+// Pixel rect a centered title of `chars` glyphs occupies (6px advance, 8px
+// glyph height), given the layout above.
+PickerRect campaign_title_rect(int chars);
+
+// Title as drawn: unchanged when it fits `title_max_chars`, otherwise cut to
+// the budget with a trailing "..." so it can never reach a control.
+std::string fit_campaign_title(std::string_view title);
+
+// Positional indices into the browser's button table. Growth is append-only
+// for the same reason every other picker screen's is.
+inline constexpr int kCampaignPickerPrevIndex = 0;
+inline constexpr int kCampaignPickerNextIndex = 1;
+inline constexpr int kCampaignPickerChooseIndex = 2;
+inline constexpr int kCampaignPickerCancelIndex = 3;
+inline constexpr int kCampaignPickerDeleteIndex = 4;
+inline constexpr int kCampaignPickerIdIndex = 5;
+inline constexpr int kCampaignPickerResetIndex = 6;
+inline constexpr int kCampaignPickerButtonCount = 7;
+
+// Which of the browser's conditional buttons are hidden this frame. CANCEL
+// and ENTER ID are always visible; DELETE and RESET share a cell, so RESET
+// shows exactly when DELETE hides.
+struct CampaignPickerVisibility
+{
+    bool prev_hidden = false;    // on the first campaign
+    bool next_hidden = false;    // on the last campaign
+    bool choose_hidden = false;  // no selectable entry
+    bool delete_hidden = false;  // browser opened without delete enabled
+};
+
+struct CampaignPickerNavLinks
+{
+    int up = -1;
+    int down = -1;
+    int left = -1;
+    int right = -1;
+};
+
+// The browser's whole keyboard graph for one visibility state (skill pattern
+// (b): recompute, don't patch). handle_menu_nav ignores a link into a hidden
+// button rather than following it, so the property that matters — and that
+// the BFS pin asserts over every variant — is that each VISIBLE button stays
+// reachable from the default highlight (CANCEL).
+std::array<CampaignPickerNavLinks, kCampaignPickerButtonCount>
+campaign_picker_nav(const CampaignPickerVisibility& visibility);
+
 // --- Family display helpers ---
 
 // Full display name from FamilyDescriptor (e.g. "SOLDIER", "ORC CAPTAIN").
@@ -165,7 +253,13 @@ void cycle_ctf_team_count(SaveData& save);
 void cycle_ctf_capture_limit(SaveData& save);
 
 // True when the save's current campaign is the CTF campaign.
-bool is_ctf_campaign(const SaveData& save);
+
+// True when the save's current campaign declares `matchup: versus` in its
+// campaign.yaml — the generic competitive-matchup predicate. New scripted-mode
+// surfaces key on this; the retired CTF campaign-id compares (the
+// MATCHUP settings gate, the lobby shared-teams rule) stay untouched until
+// the CTF engine retirement swaps them over.
+bool is_versus_campaign(const SaveData& save);
 
 // Authored flag-team mask for a level known to match this save. Returns zero
 // when campaign/mount/scenario metadata is not yet synchronized; lobby
@@ -175,7 +269,17 @@ std::uint8_t ctf_authored_team_mask_for_loaded_level(
     const GameWorld& world,
     std::string_view mounted_campaign);
 
-// Toggle the CTF scenario-troops strip flag (0 = keep authored troops).
+// Scenario-troops knob, two states on the existing int16 field:
+//   0 ALL — the level's authored cast is untouched (default, classic)
+//   2 OWN — drop every authored living + generator with no roster guy, any
+//           team, wildlife included (Onslaught keeps its generators, and
+//           protected named NPCs are exempt on classic maps)
+// Both states apply on every campaign, so the cycle is a plain flip. The
+// field keeps accepting the retired middle state 1 off disk and off the
+// wire; the strip rules read anything above 0 as OWN, and cycling from it
+// lands on ALL. Pure, so the order is unit-pinnable.
+short next_ctf_scenario_troops(short current);
+
 void toggle_ctf_scenario_troops(SaveData& save);
 
 // --- Difficulty submenu match rules ---
@@ -558,8 +662,8 @@ bool sync_campaign_mount_to_save(const SaveData& save);
 
 enum class ScenarioStripReason : std::uint8_t {
     None = 0,
-    TroopsOff,     // removed by the scenario-troops strip ('*')
     InactiveTeam,  // removed by the CTF inactive-team strip ('+')
+    StripAll,      // removed by TROOPS: OWN ('!'), versus AND classic
 };
 
 struct ScenarioRosterRow {
@@ -574,28 +678,27 @@ struct ScenarioRosterRow {
 };
 
 struct ScenarioRosterReport {
-    bool is_ctf = false;            // world.type & TYPE_CTF
-    bool ctf_will_activate = false; // >= 2 authored flag teams
+    bool is_versus = false;         // world.type & TYPE_SCRIPTED
+    bool will_activate = false;     // >= 2 authored marker teams
     short your_team = 0;            // 0 when allied, else save.my_team
-    int cp_count = 0;
-    int capture_limit = 0;          // effective: requested > map > default
-    std::array<bool, 4> team_has_flag = {};
-    std::array<bool, 4> team_active = {}; // mirror of the init clamp
+    std::array<bool, 4> team_authored = {};  // start-marker teams
+    std::array<bool, 4> team_active = {};    // the activation clamp
     std::array<int, 4> team_anchor_count = {};
     std::vector<ScenarioRosterRow> rows; // grouped, team-major
-    bool any_troops_off = false;
     bool any_inactive = false;
+    bool any_strip_all = false;
 };
 
 // Scan a (scratch-loaded) world's authored entities into a roster report.
 // Named NPCs get individual rows; unnamed livings group by (team, family,
-// level); generators aggregate per team. Strip annotations mirror the CTF
-// init rules using save-side knowledge (roster teams = distinct team_list
-// teamnums, collapsed to {0} when allied).
+// level); generators aggregate per team. Strip annotations mirror the
+// scripted-mode init rules (authored team mask = start markers, activation
+// = og::sim::effective_team_mask) using save-side knowledge (roster teams =
+// distinct team_list teamnums, collapsed to {0} when allied).
 ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
                                                   const SaveData& save);
 
-// Render the report as display lines, every line <= 48 chars, with '*'/'+'
+// Render the report as display lines, every line <= 48 chars, with '+'/'!'
 // strip suffixes and trailing legend lines.
 std::vector<std::string> format_scenario_report_lines(
     const ScenarioRosterReport& report);
@@ -623,8 +726,8 @@ std::string format_ctf_teams_label(const SaveData& save);
 // Format the capture limit label ("Capture Limit: Map default" or ": N").
 std::string format_ctf_caps_label(const SaveData& save);
 
-// Format the scenario-troops label ("Troops: Scen" when keeping authored
-// troops, "Troops: Own" when stripping them).
+// Format the scenario-troops label ("TROOPS: ALL" when keeping the authored
+// cast, "TROOPS: OWN" when stripping it).
 std::string format_ctf_troops_label(const SaveData& save);
 
 // "Respawns: Off" / "Respawns: Heroes" / "Respawns: Everyone" /

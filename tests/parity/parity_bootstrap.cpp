@@ -85,7 +85,10 @@ BootstrapScope::BootstrapScope(const char* argv0)
     parity_write_path_ = ensure_write_dir();
     temp_scen_path_  = workspace_root_ + "/temp/scen";
     scen_path_       = workspace_root_ + "/scen";
-    builtin_path_    = workspace_root_ + "/builtin";
+    // The campaign archives are BUILD outputs staged next to the running
+    // binary (composed from campaigns/ by og_builtin_campaigns); the
+    // workspace no longer carries a builtin/ directory.
+    builtin_path_    = get_asset_path() + "builtin";
 
     owned_physfs_ = try_init_physfs(argv0);
 
@@ -106,7 +109,7 @@ BootstrapScope::BootstrapScope(const char* argv0)
         // Best-effort: ignore the error here; later mounts make scen99.fss
         // resolvable even when the campaign mount fails (e.g. archive
         // already present from a sibling init).
-        (void)mount_campaign_package_with_error("org.openglad.gladiator");
+        (void)mount_campaign_package_with_error("gladiator");
     }
 
     if (install_parity_grid_fixture(parity_write_path_) &&

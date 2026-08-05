@@ -11,6 +11,8 @@ the check level under an ENFORCED root fails the run:
     docs/modding/    the stub file itself and the teaching examples — a
                      type-dirty example teaches the dirt, and a stub file
                      that contradicts itself is a generator bug
+    campaigns/       campaign-embedded pack Lua (campaigns/<id>/packs/),
+                     shipped inside the composed .glad archives
 
 Diagnostics elsewhere (test fixtures, scratch trees) are PRINTED as
 advisory so drift stays visible, but only the enforced roots gate. Fix
@@ -51,7 +53,7 @@ import tempfile
 import urllib.parse
 from typing import Dict, List, Tuple
 
-ENFORCED_ROOTS = ("packs/", "docs/modding/")
+ENFORCED_ROOTS = ("packs/", "docs/modding/", "campaigns/")
 
 SEVERITY = {1: "error", 2: "warning", 3: "information", 4: "hint"}
 

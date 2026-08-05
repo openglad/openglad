@@ -50,7 +50,7 @@ class LongSeasonCalibration : public MountedCampaignTest
 {
 protected:
     LongSeasonCalibration()
-        : MountedCampaignTest("org.openglad.longseason")
+        : MountedCampaignTest("longseason")
     {
     }
 };

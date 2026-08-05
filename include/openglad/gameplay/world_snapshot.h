@@ -5,7 +5,8 @@
 #pragma once
 
 #include <openglad/core/order.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
+#include <openglad/gameplay/mode/mode_state.h>
+#include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/dirty_field_bits.h>
 #include <openglad/gameplay/event.h>
 #include <openglad/gameplay/net_transport.h>
@@ -31,7 +32,7 @@ namespace og::sim {
 inline constexpr std::size_t kEntitySnapshotDirtyMaskWords = 2;
 inline constexpr std::int32_t kNoGuyId = -1;
 inline constexpr std::uint8_t kNoPausePlayerIndex = 0xff;
-inline constexpr std::uint8_t kSnapshotFormatVersion = 9;
+inline constexpr std::uint8_t kSnapshotFormatVersion = 10;
 inline constexpr std::uint8_t kSnapshotProtocolVersion = kNetworkProtocolVersion;
 inline constexpr std::uint8_t kDeltaPayloadUncompressedFlag = 0x01;
 inline constexpr std::size_t kDeltaPayloadHeaderSize = 1;
@@ -235,35 +236,21 @@ struct WorldSnapshot {
     std::uint8_t weather = 0;
     std::uint32_t snapshot_hash = 0;
 
-    // CTF match state (flattened og::sim::CtfState plus the lobby-requested
-    // GameWorld config shorts). Captured normalized: control points, anchors,
-    // and the respawn queue carry exactly the counted entries; everything past
-    // a count stays default so struct comparison matches the wire encoding.
-    bool ctf_active = false;
-    bool ctf_init_attempted = false;
-    std::uint8_t ctf_team_count = 2;
-    std::uint8_t ctf_capture_limit = kCtfDefaultCaptureLimit;
-    std::uint16_t ctf_respawn_ticks = kCtfDefaultRespawnTicks;
-    std::uint16_t ctf_flag_return_ticks = kCtfDefaultFlagReturnTicks;
-    std::uint32_t ctf_time_limit_ticks = kCtfDefaultTimeLimitTicks;
-    std::int8_t ctf_winner_team = -1;
-    bool ctf_winner_is_player = false;
-    std::uint16_t ctf_captures[4] = {};
-    std::uint16_t ctf_respawn_serial = 0;
-    bool ctf_team_active[4] = {};
-    CtfFlag ctf_flags[kCtfMaxFlags];
-    std::uint8_t ctf_cp_count = 0;
-    CtfControlPoint ctf_cps[kCtfMaxControlPoints];
-    std::uint8_t ctf_anchor_count[4] = {};
-    std::int16_t ctf_anchor_x[4][kCtfMaxAnchorsPerTeam] = {};
-    std::int16_t ctf_anchor_y[4][kCtfMaxAnchorsPerTeam] = {};
-    std::vector<CtfRespawnEntry> ctf_respawn_queue;
+    // Snapshot v10: the CTF block is replaced by the respawn-engine block +
+    // the scripted-mode block. Captured normalized: anchors and the respawn
+    // queue carry exactly the counted entries (everything past a count stays
+    // default), and mode name/HUD text is NUL-terminated, so struct
+    // comparison matches the wire encoding.
+    og::sim::RespawnState respawn;
+    og::sim::ModeState mode;
+    // Lobby-requested match knobs (GameWorld config shorts). Storage names
+    // keep the ctf_ prefix on purpose: they are the generic match settings
+    // (og.match_setting) and renaming them would cost a SaveData bump.
     std::int16_t ctf_requested_team_count = 0; // 0 = Auto
     std::int16_t ctf_requested_capture_limit = 0;
     std::int16_t ctf_requested_respawn_ticks = 0;
     std::int16_t ctf_requested_strip_scenario_troops = 0;
-    // Classic respawn / generator knobs (GameWorld scalars). Serialized AFTER
-    // the CTF block so the CTF payload-offset pins stay valid.
+    // Classic respawn / generator knobs (GameWorld scalars).
     std::int16_t respawn_mode = 0;
     std::int16_t generator_rate = 0;
     // Snapshot v9 (protocol v8, company-basecamp design §4.1/§4.4): the

@@ -98,7 +98,7 @@ TEST(SaveLoadTeam, save_team_then_load) {
     // Build a team with specific guys
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 3;
     og::runtime::current_session->myscreen_->save_data.totalcash = 77777;
     og::runtime::current_session->myscreen_->save_data.totalscore = 42000;
@@ -166,7 +166,7 @@ TEST(SaveLoadTeam, promoted_archmage_round_trips_through_save) {
     auto& save_data = og::runtime::current_session->myscreen_->save_data;
     save_data.reset();
     save_data.numplayers = 1;
-    save_data.current_campaign = "org.openglad.gladiator";
+    save_data.current_campaign = "gladiator";
 
     auto mage = std::make_unique<guy>(FAMILY_MAGE);
     mage->name = "PROMOTEME";
@@ -219,7 +219,7 @@ TEST(SaveLoadTeam, merge_owned_guys_persists_only_own_characters) {
     // survive untouched.
     scr->save_data.reset();
     scr->save_data.numplayers = 1;
-    scr->save_data.current_campaign = "org.openglad.gladiator";
+    scr->save_data.current_campaign = "gladiator";
     {
         auto a = std::make_unique<guy>(FAMILY_SOLDIER); a->name = "MINE_A"; a->id = 1; a->exp = 0;
         auto b = std::make_unique<guy>(FAMILY_ARCHER);  b->name = "KEEP_B"; b->id = 2; b->exp = 0;
@@ -288,7 +288,7 @@ TEST(SaveLoadTeam, merge_owned_guys_drops_dead_own_characters) {
 
     scr->save_data.reset();
     scr->save_data.numplayers = 1;
-    scr->save_data.current_campaign = "org.openglad.gladiator";
+    scr->save_data.current_campaign = "gladiator";
     {
         auto a = std::make_unique<guy>(FAMILY_SOLDIER); a->name = "ALIVE_A"; a->id = 1; a->exp = 0;
         auto b = std::make_unique<guy>(FAMILY_ARCHER);  b->name = "DIES_B";  b->id = 2; b->exp = 0;
@@ -410,7 +410,7 @@ TEST(SaveLoadTeam, base_camp_deploy_toggle_autosaves_and_round_trips) {
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     {
         auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
         soldier->name = "KEEPER";
@@ -521,7 +521,7 @@ TEST(SaveLoadTeam, merge_owned_guys_keep_fallen_preserves_died_slot) {
 
     scr->save_data.reset();
     scr->save_data.numplayers = 1;
-    scr->save_data.current_campaign = "org.openglad.gladiator";
+    scr->save_data.current_campaign = "gladiator";
     scr->save_data.keep_fallen_heroes = 1;
     {
         auto a = std::make_unique<guy>(FAMILY_SOLDIER); a->name = "ALIVE_A";  a->id = 1; a->exp = 0;
@@ -593,7 +593,7 @@ TEST(SaveLoadTeam, networked_persist_reads_session_keep_fallen_not_disk) {
     // Pre-session on-disk save0: permadeath ON (flag 0, today's default).
     scr->save_data.reset();
     scr->save_data.numplayers = 1;
-    scr->save_data.current_campaign = "org.openglad.gladiator";
+    scr->save_data.current_campaign = "gladiator";
     scr->save_data.keep_fallen_heroes = 0;
     {
         auto a = std::make_unique<guy>(FAMILY_SOLDIER); a->name = "ALIVE_A";    a->id = 1; a->exp = 0;
@@ -757,18 +757,18 @@ TEST(SaveLoadTeam, networked_finalize_span_persists_every_owned_seat_only)
     ASSERT_NE(ambient_screen, scr);
     GameWorld& world = scr->world();
 
-    if (get_mounted_campaign() != "org.openglad.gladiator")
+    if (get_mounted_campaign() != "gladiator")
     {
         ASSERT_EQ(CampaignPackageIoError::None,
                   mount_campaign_package_with_error(
-                      "org.openglad.gladiator"));
+                      "gladiator"));
     }
     ASSERT_EQ(og::mode::ProgressionKind::Classic,
               og::mode::current_progression().kind());
 
     SaveData private_save;
     private_save.reset();
-    private_save.current_campaign = "org.openglad.gladiator";
+    private_save.current_campaign = "gladiator";
     private_save.current_levels[private_save.current_campaign] = 1;
     private_save.scen_num = 1;
     auto add_private = [&](std::size_t slot,
@@ -917,7 +917,7 @@ TEST(SaveLoadTeam,
 
     SaveData private_save;
     private_save.reset();
-    private_save.current_campaign = "org.openglad.gladiator";
+    private_save.current_campaign = "gladiator";
     private_save.current_levels[private_save.current_campaign] = 1;
     private_save.scen_num = 1;
     for (std::size_t team = 0; team < std::size(private_save.m_totalcash);
@@ -1025,11 +1025,11 @@ TEST(SaveLoadTeam, networked_persist_banks_baseline_plus_owned_team_share)
 
     SaveData disk;
     disk.reset();
-    disk.current_campaign = "org.openglad.gladiator";
+    disk.current_campaign = "gladiator";
     disk.scen_num = 1;
     disk.completed_levels[disk.current_campaign] = {4};
-    disk.completed_levels["org.openglad.private-history"] = {8};
-    disk.current_levels["org.openglad.private-history"] = 9;
+    disk.completed_levels["private-history"] = {8};
+    disk.current_levels["private-history"] = 9;
     for (std::size_t team = 0; team < std::size(disk.m_totalcash); ++team)
     {
         disk.m_totalcash[team] = 5100u + static_cast<std::uint32_t>(team);
@@ -1042,7 +1042,7 @@ TEST(SaveLoadTeam, networked_persist_banks_baseline_plus_owned_team_share)
     scr->save_data.scen_num = 2;
     scr->save_data.completed_levels[disk.current_campaign].insert(1);
     scr->save_data.completed_levels[disk.current_campaign].insert(7);
-    scr->save_data.completed_levels["org.openglad.host-history"] = {11};
+    scr->save_data.completed_levels["host-history"] = {11};
     scr->world().id = 1;
     // The session (combined) wallet totals are deliberately WRONG values: §4.6
     // banks the disk baseline plus this machine's SHARE of the fold DELTA, never
@@ -1103,9 +1103,9 @@ TEST(SaveLoadTeam, networked_persist_banks_baseline_plus_owned_team_share)
     EXPECT_FALSE(after.is_level_completed(7))
         << "the host/session's unrelated completion history must not leak";
     EXPECT_EQ((std::set<int>{8}),
-              after.completed_levels["org.openglad.private-history"]);
+              after.completed_levels["private-history"]);
     EXPECT_EQ(after.completed_levels.end(),
-              after.completed_levels.find("org.openglad.host-history"));
+              after.completed_levels.find("host-history"));
 
     scr->world().id = 0;
     scr->save_data.reset();
@@ -1117,7 +1117,7 @@ TEST(SaveLoadTeam, network_client_withdraw_persists_private_cursor_only)
 
     SaveData disk;
     disk.reset();
-    disk.current_campaign = "org.openglad.gladiator";
+    disk.current_campaign = "gladiator";
     disk.scen_num = 2;
     disk.completed_levels[disk.current_campaign] = {1, 4};
     disk.current_levels[disk.current_campaign] = 2;
@@ -1171,7 +1171,7 @@ TEST(SaveLoadTeam,
 
     SaveData disk;
     disk.reset();
-    disk.current_campaign = "org.openglad.gladiator";
+    disk.current_campaign = "gladiator";
     disk.scen_num = 1;
     disk.completed_levels[disk.current_campaign] = {4};
     disk.m_totalcash[0] = 3000u;
@@ -1225,7 +1225,7 @@ TEST(SaveLoadTeam,
 
     SaveData private_save;
     private_save.reset();
-    private_save.current_campaign = "org.openglad.gladiator";
+    private_save.current_campaign = "gladiator";
     private_save.scen_num = 3;
     private_save.completed_levels[private_save.current_campaign] = {1, 2};
     private_save.m_totalcash[0] = 2468u;

@@ -1,6 +1,6 @@
 # The Long Season — original campaign skeleton (Fable's design, draft 1)
 
-Campaign id org.openglad.longseason, title "The Long Season", first_level 1.
+Campaign id longseason, title "The Long Season", first_level 1.
 AN ORIGINAL STORY, no adapted saga. Voice: the original gladiator campaign's
 LOGBOOK style — every briefing is an entry in the company ledger of the
 BRASS KETTLE COMPANY, a broke, unfashionable free company taking whatever

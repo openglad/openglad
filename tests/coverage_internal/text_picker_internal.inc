@@ -794,7 +794,7 @@ int text_picker_testing_exercise_internal_paths()
     SaveData listed_company;
     listed_company.reset();
     listed_company.save_name = "TEXT COVERAGE COMPANY";
-    listed_company.current_campaign = "org.openglad.gladiator";
+    listed_company.current_campaign = "gladiator";
     listed_company.last_played_unix_s = 9000000000000000LL;
     check(listed_company.save_with_error("textcov-list") ==
           SaveDataIoError::None);
@@ -853,9 +853,9 @@ int text_picker_testing_exercise_internal_paths()
 
     // Exercise the CTF-only settings through the same terminal gate and
     // dispatch path users reach from the final three Base Camp rows.
-    config.campaign = "org.openglad.ctf";
+    config.campaign = "modes";
     check(client.save_game() &&
-          save.current_campaign == "org.openglad.ctf");
+          save.current_campaign == "modes");
     const short previous_ctf_teams = save.ctf_team_count;
     handle_team_item(PickerMenuCommand::CycleCtfTeamCount, "", [&] {
         return save.ctf_team_count != previous_ctf_teams;
@@ -875,12 +875,12 @@ int text_picker_testing_exercise_internal_paths()
         ScopedTextPickerStdoutCapture output;
         check(output.ready());
         handle_team_item(PickerMenuCommand::ViewScenario, "", [&] {
-            return config.campaign == "org.openglad.ctf";
+            return config.campaign == "modes";
         });
         const std::string text = output.finish();
         check(output.finish_ok() &&
             text.find(
-                "Campaign 'org.openglad.ctf' is not mounted.") !=
+                "Campaign 'modes' is not mounted.") !=
                 std::string::npos);
     }
 

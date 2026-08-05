@@ -20,9 +20,10 @@
 	buffers: 7/31/02: *include cleanup
 */
 #include <openglad/core/colors.h>
-#include <openglad/core/ctf_constants.h>
+#include <openglad/core/constants.h>
 #include <openglad/core/decordefs.h>
 #include <openglad/core/family_presentation.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/families/treasure_family_descriptor.h>
 #include <openglad/gameplay/walker.h>
@@ -410,16 +411,21 @@ short radar::draw(LevelRuntimeData* data)
 				const og::RadarBlip blip = td ? td->radar : og::RadarBlip{};
 				const bool has_blip =
 					blip.color > 0 || blip.color == og::kRadarColorTeam;
-				// The one family fact left here: WHICH treasures ignore
-				// view_all. The descriptor schema carries no "always visible"
-				// bit, and the split is a gameplay rule rather than a look —
-				// navigation markers and CTF objectives are landmarks every
-				// player can see, everything else is loot that needs treasure
-				// sight. A pack family follows the loot rule.
+				// WHICH treasures ignore view_all: navigation markers and
+				// mode objectives are landmarks every player can see;
+				// everything else is loot that needs treasure sight. Pack
+				// families declare this via `radar_landmark`; the two core
+				// navigation families keep their hardcoded entries (their
+				// descriptors declare no landmark flag, and classic
+				// behavior must stay identical).
 				const bool ignores_view_all =
 					obfamily == FAMILY_EXIT || obfamily == FAMILY_TELEPORTER
-					|| obfamily == og::FAMILY_FLAG
-					|| obfamily == og::FAMILY_CTF_POINT;
+					|| blip.landmark;
+				if (has_blip && blip.landmark && !can_see)
+				{
+					TRACE("radar", "landmark_blip fam=%d",
+					      static_cast<int>(obfamily));
+				}
 				if (has_blip && (can_see || ignores_view_all))
 				{
 					const Uint32 base =
@@ -459,6 +465,53 @@ short radar::draw(LevelRuntimeData* data)
 			} // end of valid do_show
 		}  // end of if here->ob
 	} // end of while (here)
+
+	// Scripted-mode beacon blips (og.set_beacon): unconditional landmarks in
+	// the beacon team color, resolved through the replicated entity id. The
+	// jitter-0 discipline applies — this render path draws from the game rng
+	// whose call count is part of the stream, so a beacon makes NO rng call.
+	{
+		const GameWorld& beacon_world = data->world();
+		if ((beacon_world.type & GameWorld::TYPE_SCRIPTED) &&
+		    beacon_world.mode.active)
+		{
+			for (const og::sim::ModeBeacon& beacon : beacon_world.mode.beacons)
+			{
+				if (beacon.entity_id == 0)
+					continue;
+				const walker* target = beacon_world.find_by_id(
+					static_cast<std::uint32_t>(beacon.entity_id));
+				if (target == nullptr || target->dead() || target->dormant())
+					continue;
+				if (beacon_world.floor_count() > 1 &&
+				    static_cast<int>(target->floor()) !=
+				        static_cast<int>(bmp_floor_))
+					continue;
+				if (!on_screen(
+				        static_cast<short>((target->xpos() + 1) / GRID_SIZE),
+				        static_cast<short>((target->ypos() + 1) / GRID_SIZE),
+				        radarx, radary))
+					continue;
+				const Sint32 bx =
+					xloc + ((target->xpos() + 1) / GRID_SIZE - radarx);
+				const Sint32 by =
+					yloc + ((target->ypos() + 1) / GRID_SIZE - radary);
+				if (bx < xloc || bx > (xloc + xview) ||
+				    by < yloc || by > (yloc + yview))
+					continue;
+				const unsigned char beacon_color =
+					(beacon.team < SCORE_TEAM_COUNT)
+						? static_cast<unsigned char>(beacon.team * 16 + 40)
+						: target->query_team_color();
+				og::runtime::current_session->myscreen_->pointb(
+					bx, by, beacon_color, alpha);
+				TRACE("radar", "beacon_blip id=%d x=%d y=%d color=%d",
+				      static_cast<int>(beacon.entity_id),
+				      static_cast<int>(bx), static_cast<int>(by),
+				      static_cast<int>(beacon_color));
+			}
+		}
+	}
 
 	return 1;
 }

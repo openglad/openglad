@@ -1,5 +1,12 @@
 # Game Modes — the Two-Tier Seam
 
+> **Superseded (Phase III of the mp-game-modes work):** the Tier-A
+> sim-ruleset recipe below described the C++ CTF engine, which has been
+> retired — CTF and its four sibling modes now live in campaign-pack Lua on
+> TYPE_SCRIPTED levels (see docs/mp-game-modes.md and
+> docs/ARCHITECTURE.md § Multiplayer Game Modes). New modes should follow
+> the scripted-mode recipe, not Tier A.
+
 How OpenGlad adds game modes without forking the engine. The seam ships in
 `og_resources`:
 

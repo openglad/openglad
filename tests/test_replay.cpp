@@ -82,15 +82,15 @@ bool prepare_default_level_load()
     set_mounted_campaign_for_testing("");
 #endif
     og::runtime::current_session->myscreen_->save_data.current_campaign =
-        "org.openglad.gladiator";
-    return mount_campaign_package_with_error("org.openglad.gladiator") ==
+        "gladiator";
+    return mount_campaign_package_with_error("gladiator") ==
            CampaignPackageIoError::None;
 }
 
 void configure_replay_team(SaveData& save, int player_count)
 {
     save.reset();
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.current_levels[save.current_campaign] = kReplayLevel;
     save.scen_num = kReplayLevel;
     save.my_team = 0;
@@ -506,15 +506,15 @@ TEST(Replay, phase11_roundtrip_matches_final_state_for_four_players)
     run_replay_roundtrip(4);
 }
 
-TEST(Replay, format_version_13_rejects_v12)
+TEST(Replay, format_version_14_rejects_v13)
 {
-    static_assert(og::sim::kReplayFormatVersion == 13);
+    static_assert(og::sim::kReplayFormatVersion == 14);
     std::array<std::uint8_t, og::sim::kReplayHeaderSize> old_header{};
     old_header[0] = static_cast<std::uint8_t>('O');
     old_header[1] = static_cast<std::uint8_t>('G');
     old_header[2] = static_cast<std::uint8_t>('R');
     old_header[3] = static_cast<std::uint8_t>('P');
-    old_header[4] = 12;
+    old_header[4] = 13;
 
     og::sim::ReplayIoError error = og::sim::ReplayIoError::None;
     EXPECT_FALSE(og::sim::deserialize_replay(old_header, &error).has_value());
@@ -552,7 +552,7 @@ TEST(Replay, initialize_replay_screen_rejects_unsafe_campaign_ids)
         "/tmp/escape",
         "C:\\temp\\escape",
         "org/openglad.gladiator",
-        "org.openglad:gladiator",
+        "bad:colon-id",
     };
 
     for (const std::string_view unsafe_id : unsafe_ids)

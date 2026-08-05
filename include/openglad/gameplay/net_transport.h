@@ -115,7 +115,16 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 // gates the picker's hire/train purchases and never reaches the sim — but the
 // snapshot/input protocol byte follows the network version, so replay format
 // moves to v13.
-inline constexpr std::uint8_t kNetworkProtocolVersion = 11;
+// v12: snapshot format v10 — the flattened CTF world block (flags, control
+// points, captures) is replaced by two generic blocks: the RespawnState
+// engine block (respawn_ticks/serial, team anchors, respawn queue) and the
+// ModeState block (64 vars, HUD lines, beacons, mode name, win latch) that
+// every scripted mode replicates through. LobbySettings gains a thirteenth
+// i16, shared_teams (host sets it from campaign_matchup(id) == "versus";
+// sanitized to {0,1}), appended after infinite_gold — the lobby's
+// shared-teams rule now rides the wire instead of comparing campaign ids.
+// Replay format moves to v14.
+inline constexpr std::uint8_t kNetworkProtocolVersion = 12;
 
 // Global networked player-index cap (seats across ALL peers). Distinct from
 // MAX_PLAYERS, which stays 4 and caps the seats of ONE machine (input slots,

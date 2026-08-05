@@ -56,7 +56,8 @@ openglad/
 ├── cfg/                    Runtime configuration (openglad.yaml)
 ├── pix/                    Indexed-color sprite PNGs + Aseprite JSON sidecars (see [docs/sprite-format.md](sprite-format.md))
 ├── sound/                  Audio files (WAV, OGG)
-├── builtin/                Core game resources (incl. default campaign packages)
+├── campaigns/              Built-in campaign SOURCE trees (one dir per campaign id;
+│                           the build composes each into build/<preset>/builtin/<id>.glad)
 ├── scen/                   Scenario data files
 │
 ├── CMakeLists.txt          Main build definition
@@ -507,10 +508,13 @@ contribute up to 4 local seats, with up to 16 seats lobby-wide. The same
 machinery also runs single-player and local split-screen — see [Local Transport
 Shadow](#local-transport-shadow).
 
-The current network compatibility line is lobby/gameplay protocol **v9**, world
-snapshot format **v9**, and replay format **v11**. Protocol v9 adds stable,
-server-issued lobby seat identity and authoritative per-recipient ownership on
-top of the Company/Base Camp multiplayer state introduced by v8. Team changes
+The current network compatibility line is lobby/gameplay protocol **v12**, world
+snapshot format **v10**, and replay format **v14**. Protocol v12 replaces the
+flattened CTF snapshot block with the generic RespawnState + ModeState blocks
+(every scripted mode replicates through them) and appends
+`LobbySettings.shared_teams`; v9 added stable, server-issued lobby seat
+identity and authoritative per-recipient ownership on top of the
+Company/Base Camp multiplayer state introduced by v8. Team changes
 and exact-seat removal use that identity rather than the mutable dense `P#`.
 Peers reject incompatible versions during the handshake, while snapshot and
 replay readers independently reject unsupported payload formats.
@@ -611,7 +615,7 @@ tags carried on the snapshot wire), advanced as if it had played solo — see
 
 ### Structure
 
-- **Campaign** — A collection of levels with a progression order. Shipped as `.glad` packages under `builtin/`.
+- **Campaign** — A collection of levels with a progression order. Shipped as `.glad` packages (zip archives). The seven built-in campaigns are committed as plain source trees under `campaigns/<id>/` (campaign.yaml, scen/, pix/, icon.png); the build composes each tree into `build/<preset>/builtin/<id>.glad` with `scripts/make_glad.py` — a deterministic writer (stored members, bytewise-sorted paths, fixed timestamps), so identical trees always produce byte-identical archives. Pack-bearing campaigns (modes, concept) keep their pack Lua single-sourced under `tools/<tool>/pack/`, mapped to `packs/<pack-id>/` in the archive at composition time. `tests/unit/test_builtin_archives.cpp` pins the staged archives against the source trees byte-for-byte.
 - **Level** — A single scenario file defining a tile grid, entity placements, objectives, and intro text.
 - **Scenario** — The in-game term for a level. Each has a numeric ID; the player progresses through them sequentially.
 
@@ -655,39 +659,46 @@ live in the shared configuration, outside company storage.
 
 Campaigns can be distributed as ZIP archives. The `zip_api` module handles creation and extraction. PhysFS mounts campaign directories as virtual filesystems, allowing the game to load assets from ZIP files transparently.
 
-### Capture the Flag
+### Multiplayer Game Modes (scripted levels)
 
-CTF is a level-driven game mode (player guide: [docs/ctf-mode.md](ctf-mode.md)). A level whose
-type byte carries `GameWorld::TYPE_CTF` (0x8) lazily initializes `og::sim::CtfState`
-(a value member of `GameWorld`, declared in `include/openglad/gameplay/ctf/ctf_state.h`) on its
-first tick: it scans the authored `FAMILY_FLAG`/`FAMILY_CTF_POINT` treasures (ids 13/14, declared
-in `core/ctf_constants.h`, registered post-construction by `gloader_ctf.cpp` so the base loader
-tables stay untouched), records team start markers as respawn anchors, strips teams beyond the
-requested count, and spawns bot squads for unmanned teams.
+The five competitive modes (player guide: [docs/mp-game-modes.md](mp-game-modes.md)) are
+level-driven Lua: a level whose type byte carries `GameWorld::TYPE_SCRIPTED` (0x20) hands its
+match rules to the mounted campaign pack's per-level hook registrations
+(`og.register_level_hooks`: `on_mode_init`/`on_mode_tick`/`on_damage`/`on_respawn`/
+`on_entity_death`). `og::sim::mode_run_tick` (src/gameplay/mode/mode_tick.cpp) owns the fixed
+frame: lazy activation (a scripted map whose init fails falls to classic rules the next tick),
+the per-tick win-latch re-assert (`og.end_level`/`og.declare_winner` write the latch; the tick
+entry zeroes the world's end fields), the respawn timers, and the `on_mode_tick` dispatch.
+`og::sim::ModeState` (64 replicated int32 vars + a generic HUD channel: 4 text lines, 4 entity
+beacons, a mode name) is the ONLY durable home for Lua mode state; clients render ModeState,
+never mode names in C++.
 
-All per-tick CTF logic lives in `src/gameplay/ctf/ctf.cpp` (`ctf_run_tick`, called from a single
-gated branch in `GameWorld::tick`'s completion block) and `ctf_ai.cpp` (a stateless AI director
-issuing roles each cadence via the command queue, including the position-goal `COMMAND_GOTO`
-backed by `walker::find_path_to_point`). Flag pickup/return/capture ride the normal treasure
-`on_eat` collision path. Respawns revive the same walker in place (corpses persist in `oblist`),
-so control bindings and per-player save merging survive; team wipes never end a CTF match (gated
-at the GameServer/display endgame consumers).
+The respawn engine (`src/gameplay/respawn/respawn.cpp`, state in
+`respawn/respawn_state.h`) survived the CTF engine retirement: queue, timers, team anchor
+arrays, RNG-free revive/placement paths, and the classic difficulty-submenu modes. Scripted
+modes schedule through `og.respawn_schedule` (eligibility is Lua's) and reposition in
+`on_respawn`; corpses persist in `oblist` so control bindings and per-player save merging
+survive, and team wipes never end an undecided scripted match.
 
-The whole `CtfState` is replicated in the `WorldSnapshot` world-scalar block.
-That support was introduced in snapshot format v4 and replay format v5 and is
-retained by the current v9/v11 formats, so mirrors, late joiners, replays, and
-the curses/text HUDs need no extra wire messages. Match settings
-(`ctf_team_count`/`ctf_capture_limit`/`ctf_respawn_ticks`; 0 = Auto/map
-default) follow the versioned SaveData (GTL v10) → LobbySettings → game start →
-`GameWorld::ctf_requested_*` path. Protocol v9 also carries the loaded map's
-authored-team mask so every peer agrees on sparse flag-team domains. With the
-type bit clear, every CTF path reduces to one false branch: zero extra RNG
-draws, events, or entity changes (classic parity preserved).
+`RespawnState` and `ModeState` replicate as their own `WorldSnapshot` blocks (snapshot v10,
+protocol v12, replay v14), so mirrors, late joiners, replays, and the curses/text HUDs need no
+extra wire messages — a mid-join keyframe restore carries a running match. Match settings
+(`ctf_team_count`/`ctf_capture_limit`/`ctf_respawn_ticks`/`ctf_strip_scenario_troops` — the
+storage names keep their historical prefix; Lua reads them as `og.match_setting`) follow the
+versioned SaveData (GTL v10) → LobbySettings → game start → `GameWorld::ctf_requested_*` path.
+`LobbySettings.shared_teams` (v12) carries the versus/shared-teams rule on the wire (the host
+derives it from the campaign's `matchup: versus` yaml key), and the lobby also carries the
+loaded map's authored-team mask (start markers) so every peer agrees on sparse team domains.
+With the type bit clear, every scripted path reduces to one false branch: zero extra RNG draws,
+events, or entity changes (classic parity preserved).
 
-The shipped campaign `builtin/org.openglad.ctf.glad` (levels 500–509: six adapted classic maps +
-four originals) is generated by `tools/ctf_mapgen` via `scripts/generate_ctf_campaign.sh`; the team-tinting
-sprites `pix/flag.png`/`pix/ctfpoint.png` are generated separately by
-`scripts/gen_ctf_sprites.py`.
+The shipped modes campaign (28 scenarios: TDM 300-305, CTF 500-509, Onslaught 800-803,
+Soccer 820-823, Mutant 840-843) is generated into `campaigns/modes/` by
+`tools/modes_mapgen` via `scripts/generate_modes_campaign.sh`; the build composes that one
+tree — including the hand-authored pack at `packs/modes.core/` (five mode
+scripts, shared libs, flag/waypoint/ball families, sprites), which the generator never
+rewrites — into the archive, so luals/lint/coverage see
+exactly the shipped bytes. `scripts/gen_modes_sprites.py` paints the pack sprites.
 
 ---
 
@@ -712,15 +723,23 @@ Each subdirectory name is the pack identifier. Files shadow built-in `pix/` asse
 ### How It Works
 
 1. **Settings persistence** — Active pack stored in `openglad.yaml` under `graphics` / `sprite_sheet` (empty string = no override).
-2. **Startup mount** — `apply_sprite_sheet_setting()` in `src/resources/platform_io.cpp` is called in `glad.cpp` after `cfg.load_settings()` and before `GameSession` construction. It mounts the chosen pack directory at the PhysFS `"pix/"` mount point with prepend priority.
-3. **Hot-swap** — When the user changes the selection from the Options menu, `apply_sprite_sheet_setting()` unmounts the old pack and mounts the new one, then `loader::reload_graphics()` reloads all sprite data. This is safe because no live walkers exist while the options menu is open.
+2. **Startup mount** — `apply_sprite_sheet_setting()` in `src/resources/io/platform_io_common.cpp` is called in `glad.cpp` after `cfg.load_settings()` and before `GameSession` construction. It mounts the chosen pack directory at the PhysFS `"pix/"` mount point with prepend priority.
+3. **Hot-swap** — When the user changes the selection from the Options menu, `apply_sprite_sheet_setting()` unmounts the old pack and mounts the new one, then `loader::reload_graphics_if_stale()` reloads all sprite data. Reloading frees buffers that live render components still borrow (menu buttons hold `pixieN` facings pointers into loader memory, and the SCENARIO screen keeps a loaded world), so it is only safe from a handler that returns `MENU_REDRAW`: the menu frame skeleton then re-creates every button pixie (`reset_buttons` → `init_buttons`) and re-runs the level-reload guard **before** anything draws. It is *not* safe because "no live walkers exist while the options menu is open" — that was never true.
+
+### Precedence vs. campaign art (issue #162)
+
+Campaign packages (`.glad`) also PREPEND on mount and may ship their own `pix/` entity art, which would silently outrank the sheet after any mid-session campaign switch. The rule is: **an explicitly configured user sprite sheet wins `pix/` lookups for the exact filenames it ships; the campaign wins for everything else.** `mount_campaign_package_with_error()` enforces it by calling `reassert_sprite_sheet_mount()` (re-prepend of the sheet) after every successful campaign mount, so the outcome no longer depends on mount order. Campaign class-pack sprites (`packs/<id>/sprites/*.png`) resolve by full virtual path and can never be shadowed by a sheet.
+
+### Campaign-switch reloads (issue #162)
+
+Loaders record the `og::resources::sprite_source_generation()` they last rebuilt at; campaign mounts/unmounts and sprite-sheet (re)mounts bump the counter (the editor-save `remount_campaign_package_with_error()` deliberately does **not** — it restores the identical source set). Every campaign-switch flow calls `loader::reload_graphics_if_stale()` at a render-safe point (picker campaign handlers, the gameplay-entry net in `game.cpp`, editor entry/campaign-switch, replay bootstrap, the headless wire chokepoint in `platform_headless.cpp`, and the text/curses pickers); a same-campaign level advance is a generation-check no-op. The networked lobby-poll campaign sync deliberately never reloads mid-menu-frame — the gameplay-entry net covers it. Under `TESTING`, `create_walker_owned` traces when a walker is created from a stale loader so tests can pin that the enumerated flows never enter gameplay stale.
 
 ### Key Files
 
 | File | Role |
 |------|------|
-| `src/resources/platform_io.cpp` | `apply_sprite_sheet_setting()` — PhysFS mount/unmount logic |
-| `include/openglad/resources/gloader.h` | `loader::reload_graphics()` public method |
+| `src/resources/io/platform_io_common.cpp` | `apply_sprite_sheet_setting()` / `reassert_sprite_sheet_mount()` — PhysFS mount/unmount logic, campaign-mount precedence |
+| `include/openglad/resources/gloader.h` | `loader::reload_graphics()` / `reload_graphics_if_stale()`, `og::resources::sprite_source_generation()` |
 | `src/interface/ui/picker.cpp` | `pick_spritesheet()` submenu and Options menu button |
 
 ---

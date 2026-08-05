@@ -51,6 +51,22 @@ std::string followed_name(const walker* w)
     return og::ui::family_display_name(w->family());
 }
 
+// True when this entity id sits in an active scripted-mode beacon slot
+// (og.set_beacon): its glyph renders bold so the beacon target (the Mutant,
+// the ball carrier) stands out in the terminal.
+bool is_mode_beacon_entity(const GameWorld& world, std::uint32_t id)
+{
+    if (id == 0 || !(world.type & GameWorld::TYPE_SCRIPTED) ||
+        !world.mode.active)
+        return false;
+    for (const og::sim::ModeBeacon& beacon : world.mode.beacons) {
+        if (beacon.entity_id != 0 &&
+            static_cast<std::uint32_t>(beacon.entity_id) == id)
+            return true;
+    }
+    return false;
+}
+
 // Name of the walker's currently selected special ability, or "" if it has none
 // (family with no specials, or the special slot is empty/"NONE").
 std::string current_special_name(const walker* w)
@@ -252,8 +268,13 @@ void CursesRenderer::draw_viewport(ITerminal& term, const GameWorld& world,
                                          static_cast<unsigned char>(world.my_team));
             if (g.skip)
                 continue;
+            // Scripted-mode beacon targets render bold (glyph_map already
+            // team-tints; boldness is the terminal's beacon highlight).
+            const bool beacon_bold =
+                is_mode_beacon_entity(world, w->entity_id());
             term.put(top + row, left + col, g.pick(allow_unicode),
-                     resolve_color(g.fg, allow_color), Color::Default, g.bold);
+                     resolve_color(g.fg, allow_color), Color::Default,
+                     g.bold || beacon_bold);
         }
     };
     draw_entities(world.fxlist);
@@ -331,49 +352,36 @@ void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
             if (!flr.empty())
                 line1 += "  " + flr;
         }
-        if (world.ctf.active) {
-            // Per-team capture counts (replicated CtfState; the mirror world
-            // carries it in every snapshot). Active teams only, matching the
-            // SDL panel's filter.
-            line1 += "  Caps ";
-            bool first = true;
-            for (int t = 0; t < 4; ++t) {
-                if (!world.ctf.team_active[t])
+        // Scripted-mode (TYPE_SCRIPTED) group: the mode name + every
+        // non-empty ModeState HUD line, then the followed walker's respawn
+        // seconds — the terminal twin of the SDL mode panel.
+        //
+        // Already one line, so the SDL condensation changes nothing here but
+        // one deliberate divergence: the SDL row strips each slot's leading
+        // team color word because it draws that slot in the team's ramp, and
+        // the word is then pure duplication. This row is monochrome
+        // (Color::Default), so the word is the ONLY thing naming the team —
+        // it stays. Same rule, opposite outcome.
+        if ((world.type & GameWorld::TYPE_SCRIPTED) && world.mode.active) {
+            if (world.mode.name[0] != '\0') {
+                line1 += "  ";
+                line1 += world.mode.name.data();
+            }
+            for (const og::sim::ModeHudLine& hud : world.mode.hud) {
+                if (hud.text[0] == '\0')
                     continue;
-                if (!first)
-                    line1 += ":";
-                first = false;
-                line1 += std::to_string(world.ctf.captures[t]);
+                line1 += "  ";
+                line1 += hud.text.data();
             }
             if (followed_id != 0) {
-                for (int t = 0; t < 4; ++t) {
-                    const auto& flag = world.ctf.flags[t];
-                    if (flag.state == og::sim::CtfFlagState::Carried &&
-                        flag.carrier_entity_id == followed_id) {
-                        line1 += "  FLAG";
-                        break;
-                    }
-                }
-                for (const auto& entry : world.ctf.respawn_queue) {
+                for (const auto& entry : world.respawn.respawn_queue) {
                     if (entry.kind == 0 &&
                         entry.walker_entity_id == followed_id) {
                         line1 += "  RESPAWN " + std::to_string(
-                            og::sim::ctf_respawn_seconds_left(world.ctf,
-                                                              entry));
+                            og::sim::respawn_seconds_left(entry));
                         break;
                     }
                 }
-            }
-            // Waypoint capture meter: first contested control point in index
-            // order, mirroring the SDL panel's "WP n/36" readout. Rides the
-            // CTF group so narrow terminals clip Sp:/Score first.
-            for (int i = 0; i < world.ctf.cp_count; ++i) {
-                const auto& cp = world.ctf.cps[i];
-                if (cp.progress_team < 0)
-                    continue;
-                line1 += "  WP " + std::to_string(cp.progress) + "/" +
-                         std::to_string(og::sim::kCtfCpCaptureTicks);
-                break;
             }
         }
         // Currently selected special (Tab/SwitchSpecial cycles it). Shown so the

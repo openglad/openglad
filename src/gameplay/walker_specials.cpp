@@ -15,6 +15,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+#include <algorithm>
 #include <cstdint>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/family_descriptor.h>
@@ -336,6 +337,48 @@ std::int32_t walker::turn_undead(std::int32_t range, [[maybe_unused]] std::int32
 		{
 			if (current_game->world->rng_.next(range*40) > current_game->world->rng_.next(w->stats()->level()*10) )
 			{
+				GameWorld* const world = current_game->world;
+				const bool scripted_mode =
+				    (world->type & GameWorld::TYPE_SCRIPTED) &&
+				    !(world->mode.init_attempted && !world->mode.active);
+				if (scripted_mode)
+				{
+					// The classic pre-kill below never enters walker::attack's
+					// hit path (dead-target early-out), so the level damage
+					// gate, the kill-attribution stamp, and the death hooks
+					// would all miss this kill class. Scripted matches route
+					// the instant kill through all three, honoring the full
+					// gate contract: a cancel means the victim is not a legal
+					// target this phase, and a replacement BELOW the offered
+					// lethal amount is ordinary damage — hp write, positive-
+					// amount attribution stamp, retaliation — never a kill
+					// (the same semantics walker::attack applies at
+					// walker_combat.cpp's gate site).
+					const short lethal = static_cast<short>(
+					    std::clamp(w->stats()->hitpoints(), 1.0f, 32000.0f));
+					const short gated =
+					    og::script::hooks::level_damage_gate(w, this, lethal);
+					if (gated < 0)
+						continue;
+					walker* headguy = this;
+					while (headguy->owner() && headguy->owner() != headguy)
+						headguy = headguy->owner();
+					if (gated < lethal)
+					{
+						if (gated > 0 &&
+						    headguy->query_order() == Order::Living)
+							w->note_attacker(headguy, world->tick_count_);
+						do_combat_damage(this, w, gated);
+						w->stats()->hit_response(this);
+						continue;
+					}
+					w->note_attacker(headguy, world->tick_count_);
+					w->set_dead(1);
+					w->stats()->set_hitpoints(0);
+					w->death();
+					killed++;
+					continue;
+				}
 				w->set_dead(1);
 				w->stats()->set_hitpoints(0);
 				//w->death();

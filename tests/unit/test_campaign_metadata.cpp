@@ -16,8 +16,8 @@
 
 namespace {
 
-constexpr const char* kGladiatorId = "org.openglad.gladiator";
-constexpr const char* kCtfId = "org.openglad.ctf";
+constexpr const char* kGladiatorId = "gladiator";
+constexpr const char* kModesId = "modes";
 
 // Mounts the shipped Gladiator campaign for the duration of one test and
 // restores the previous mount in teardown so sibling tests see an untouched
@@ -33,7 +33,7 @@ protected:
         previous_ = get_mounted_campaign();
         ASSERT_EQ(CampaignPackageIoError::None,
                   mount_campaign_package_with_error(kGladiatorId))
-            << "builtin/org.openglad.gladiator.glad should restore and mount";
+            << "builtin/gladiator.glad should restore and mount";
     }
 
     void TearDown() override
@@ -89,7 +89,8 @@ TEST_F(CampaignMetadataTest, mounted_campaign_title_from_yaml)
 
 TEST_F(CampaignMetadataTest, unmounted_campaign_title_via_private_mount)
 {
-    ASSERT_EQ("Capture the Flag", og::data::campaign_display_title(kCtfId));
+    ASSERT_EQ("Multiplayer Game Modes",
+              og::data::campaign_display_title(kModesId));
 
     // The private-mountpoint lookup must not disturb the active mount.
     ASSERT_EQ(kGladiatorId, get_mounted_campaign());
@@ -100,7 +101,7 @@ TEST_F(CampaignMetadataTest, unmounted_campaign_title_via_private_mount)
 
 TEST_F(CampaignMetadataTest, unknown_campaign_falls_back_to_raw_id)
 {
-    const std::string id = "org.openglad.does_not_exist";
+    const std::string id = "does_not_exist";
     ASSERT_EQ(id, og::data::campaign_display_title(id));
     ASSERT_EQ("", og::data::campaign_display_title(""));
 }
@@ -108,20 +109,20 @@ TEST_F(CampaignMetadataTest, unknown_campaign_falls_back_to_raw_id)
 TEST_F(CampaignMetadataTest, package_without_usable_title_falls_back_to_raw_id)
 {
     // No campaign.yaml at all.
-    const std::string no_yaml = "org.openglad.test_no_yaml";
+    const std::string no_yaml = "test_no_yaml";
     ASSERT_TRUE(install_fake_package(no_yaml, ""));
     EXPECT_EQ(no_yaml, og::data::campaign_display_title(no_yaml));
     remove_fake_package(no_yaml);
 
     // campaign.yaml present but no title key.
-    const std::string no_title = "org.openglad.test_no_title";
+    const std::string no_title = "test_no_title";
     ASSERT_TRUE(install_fake_package(no_title,
         "format_version: 1\nversion: 1\n"));
     EXPECT_EQ(no_title, og::data::campaign_display_title(no_title));
     remove_fake_package(no_title);
 
     // title key present but empty.
-    const std::string empty_title = "org.openglad.test_empty_title";
+    const std::string empty_title = "test_empty_title";
     ASSERT_TRUE(install_fake_package(empty_title,
         "format_version: 1\ntitle: ''\nversion: 1\n"));
     EXPECT_EQ(empty_title, og::data::campaign_display_title(empty_title));
@@ -131,7 +132,7 @@ TEST_F(CampaignMetadataTest, package_without_usable_title_falls_back_to_raw_id)
 TEST_F(CampaignMetadataTest, mounted_package_without_title_falls_back_to_raw_id)
 {
     // Exercise the fast-path fallback: the broken package is the ACTIVE mount.
-    const std::string no_title = "org.openglad.test_mounted_no_title";
+    const std::string no_title = "test_mounted_no_title";
     ASSERT_TRUE(install_fake_package(no_title,
         "format_version: 1\nversion: 1\n"));
     ASSERT_EQ(CampaignPackageIoError::None,
@@ -162,10 +163,10 @@ TEST_F(CampaignMetadataTest, scenario_names_are_keyed_by_mounted_campaign)
     const std::string gladiator_name = og::data::scenario_display_name(1);
     ASSERT_NE("1. Level 1", gladiator_name);
 
-    // CTF levels start at 500, so scen1 only resolves under gladiator. A
+    // Modes levels start at 300, so scen1 only resolves under gladiator. A
     // stale cache entry keyed on number alone would leak the gladiator title.
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error(kCtfId));
+              mount_campaign_package_with_error(kModesId));
     EXPECT_EQ("1. Level 1", og::data::scenario_display_name(1));
 
     ASSERT_EQ(CampaignPackageIoError::None,
@@ -177,11 +178,11 @@ TEST_F(CampaignMetadataTest, scenario_names_are_keyed_by_mounted_campaign)
 // scalars are illegal YAML; the YAML stream wrapper must surface libyaml's
 // parser error instead of looping forever.
 // This content is byte-exact from a real third-party package
-// (org.openglad.tryxian): CRLF line endings, title BEFORE the broken
+// (tryxian): CRLF line endings, title BEFORE the broken
 // description — so the title parses, then the stream errors.
 TEST_F(CampaignMetadataTest, malformed_yaml_terminates_and_keeps_parsed_title)
 {
-    const std::string id = "org.openglad.test_tab_yaml";
+    const std::string id = "test_tab_yaml";
     ASSERT_TRUE(install_fake_package(id,
         "---\r\n"
         "format_version:  1\r\n"
@@ -204,7 +205,7 @@ TEST_F(CampaignMetadataTest, malformed_yaml_terminates_and_keeps_parsed_title)
 
 TEST_F(CampaignMetadataTest, yaml_error_before_title_falls_back_to_raw_id)
 {
-    const std::string id = "org.openglad.test_tab_first";
+    const std::string id = "test_tab_first";
     ASSERT_TRUE(install_fake_package(id,
         "---\r\n"
         "\tbroken: tab\r\n"
@@ -216,7 +217,7 @@ TEST_F(CampaignMetadataTest, yaml_error_before_title_falls_back_to_raw_id)
 TEST_F(CampaignMetadataTest, failed_lookup_heals_once_package_is_mounted)
 {
     // A lookup before the package exists memoizes the raw-id fallback...
-    const std::string id = "org.openglad.test_late_install";
+    const std::string id = "test_late_install";
     ASSERT_EQ(id, og::data::campaign_display_title(id));
 
     // ...but mounting the package after an out-of-band install must serve
@@ -234,16 +235,16 @@ TEST_F(CampaignMetadataTest, failed_lookup_heals_once_package_is_mounted)
 
 TEST_F(CampaignMetadataTest, cache_survives_repeat_calls_and_clear)
 {
-    const std::string title_first = og::data::campaign_display_title(kCtfId);
+    const std::string title_first = og::data::campaign_display_title(kModesId);
     const std::string scen_first = og::data::scenario_display_name(1);
 
     // Memoized second call.
-    ASSERT_EQ(title_first, og::data::campaign_display_title(kCtfId));
+    ASSERT_EQ(title_first, og::data::campaign_display_title(kModesId));
     ASSERT_EQ(scen_first, og::data::scenario_display_name(1));
 
     // Fresh lookups after invalidation return the same values.
     og::data::clear_campaign_metadata_cache();
-    ASSERT_EQ(title_first, og::data::campaign_display_title(kCtfId));
+    ASSERT_EQ(title_first, og::data::campaign_display_title(kModesId));
     ASSERT_EQ(scen_first, og::data::scenario_display_name(1));
 }
 

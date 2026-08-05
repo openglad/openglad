@@ -26,7 +26,6 @@
 #include <openglad/core/irandom.h>
 #include <openglad/core/text_wrap.h>
 #include <openglad/core/util.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/platform_bridge.h>
@@ -41,6 +40,7 @@
 #include <openglad/platform/curses/curses_renderer.h>
 #include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/company.h>
+#include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/save_data.h>
@@ -644,7 +644,7 @@ void teams_screen(Menu& menu, SaveData& save)
             actions.push_back(RowAction{});
             entries.push_back(ListEntry{std::format(
                 "P1 plays {}",
-                og::sim::ctf_team_color_name(save.my_team)), true});
+                og::sim::team_color_name(save.my_team)), true});
             actions.push_back(RowAction{.cycle_player = true});
         }
 
@@ -1099,6 +1099,9 @@ bool CursesPickerClient::prepare_new_game()
     // mount so the in-picker scenario viewer stays coherent.
     config_.campaign = save_data_.current_campaign;
     (void)og::ui::sync_campaign_mount_to_save(save_data_);
+    // #162: glyph client, no pixies — refresh the loader with the mount so
+    // walker sizes match the campaign the next level build will use.
+    headless_entity_loader()->reload_graphics_if_stale();
     config_.team_families = og::ui::collect_team_families(save_data_);
     return true;
 }
@@ -1150,6 +1153,8 @@ std::string CursesPickerClient::show_campaign_select()
     // The launch path self-heals the mount, but the in-picker scenario
     // viewer reads the mounted package directly — follow the selection now.
     (void)og::ui::sync_campaign_mount_to_save(save_data_);
+    // #162: same for the sprite set (glyph client, no pixie borrows).
+    headless_entity_loader()->reload_graphics_if_stale();
     return config_.campaign;
 }
 
@@ -1220,7 +1225,7 @@ void CursesPickerClient::run_game()
     const GameRunResult result =
         run_level_loop(*session, term_, clock_, input, renderer, LevelLoopOptions{});
 
-    if (result.ended && result.ending == 0 && !result.ctf_rematch) {
+    if (result.ended && result.ending == 0 && !result.mode_rematch) {
         // §3.8: the curses win commit (run_level_loop already folded the win
         // into save_data_ via commit_result_to_save, gated on this same
         // shape) persists through the company autosave choke point against
@@ -1241,7 +1246,7 @@ void CursesPickerClient::run_game()
         // back to "N. Level N" if it cannot be read.
         menu.show_text("Mission complete",
             {mission_verdict_line(result),
-             (result.next_level >= 0 && !result.ctf_rematch)
+             (result.next_level >= 0 && !result.mode_rematch)
                  ? std::format("Next level: {}",
                        og::data::scenario_display_name(result.next_level))
                  : std::string("Returning to team build.")});

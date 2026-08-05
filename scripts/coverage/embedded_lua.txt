@@ -1,10 +1,12 @@
 # Which PRODUCT C++ files carry shipped embedded Lua.
 #
-# Not all Lua in this repository is a .lua file. The showcase pack — a whole
-# scripted boss arena — exists only as a C++ raw string literal that gets
-# written into a generated .glad, so the coverage denominator has to be able
-# to see Lua embedded in C++. That used to work by convention: the delimiter
-# R"LUA( declared "these bytes are pack Lua", and nothing checked.
+# Not all Lua in this repository need be a .lua file. The showcase pack — a
+# whole scripted boss arena — long existed only as a C++ raw string literal
+# that got written into a generated .glad (it is a real file now,
+# campaigns/concept/packs/concept.showcase/scripts/court.lua, composed into the archive by
+# the build), so the coverage denominator has to be able to see Lua embedded
+# in C++. That used to work by convention: the delimiter R"LUA( declared
+# "these bytes are pack Lua", and nothing checked.
 #
 # Convention leaked in both directions, and both were demonstrated:
 #
@@ -46,5 +48,6 @@
 # non-product path, a file that no longer exists, or a file whose literals
 # are gone is itself a failure, so a stale entry cannot sit here silencing a
 # path somebody later re-creates.
-
-shipped tools/concept_mapgen/showcase_pack.cpp
+#
+# No product file carries embedded shipped Lua today; the declaration list
+# is empty. The enforcement machinery above still runs on every build.

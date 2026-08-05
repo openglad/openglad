@@ -282,7 +282,7 @@ TEST(IoPlatformCoverage,
     EXPECT_TRUE(initialized_after_failure)
         << "PhysFS initialization succeeds before write-dir validation fails";
     EXPECT_TRUE(write_dir_after_failure.empty());
-    EXPECT_EQ("org.openglad.gladiator", get_mounted_campaign());
+    EXPECT_EQ("gladiator", get_mounted_campaign());
 
     std::ifstream blocker_in(blocker, std::ios::binary);
     ASSERT_TRUE(blocker_in.good());
@@ -547,7 +547,7 @@ TEST(IoPlatformCoverage, platform_io_batch3_mount_switch_and_listing_filters)
     set_mounted_campaign_for_testing("same.id");
     ASSERT_EQ(static_cast<int>(CampaignPackageIoError::None), static_cast<int>(mount_campaign_package_with_error("same.id"))) << "mount should short-circuit when requested id is already mounted";
     set_mounted_campaign_for_testing("definitely.not.a.campaign");
-    ASSERT_EQ(static_cast<int>(CampaignPackageIoError::UnmountFailed), static_cast<int>(mount_campaign_package_with_error("org.openglad.gladiator"))) << "mount should report unmount failure when previous mounted id is invalid";
+    ASSERT_EQ(static_cast<int>(CampaignPackageIoError::UnmountFailed), static_cast<int>(mount_campaign_package_with_error("gladiator"))) << "mount should report unmount failure when previous mounted id is invalid";
 
     // list_campaigns should filter non-.glad files.
     {
@@ -615,7 +615,7 @@ TEST(IoPlatformCoverage, platform_io_remount_allows_files_still_open_path)
 {
     const std::string prev = get_mounted_campaign();
 
-    ASSERT_EQ(static_cast<int>(CampaignPackageIoError::None), static_cast<int>(mount_campaign_package_with_error("org.openglad.gladiator"))) << "mount default campaign should succeed";
+    ASSERT_EQ(static_cast<int>(CampaignPackageIoError::None), static_cast<int>(mount_campaign_package_with_error("gladiator"))) << "mount default campaign should succeed";
 
     PHYSFS_File* held = PHYSFS_openRead("campaign.yaml");
     ASSERT_TRUE(held != nullptr) << "campaign.yaml should open to hold a live PhysFS handle";
@@ -992,7 +992,7 @@ TEST(IoPlatformCoverage, platform_io_restore_defaults_and_load_campaign_unmount_
     const std::string prev = get_mounted_campaign();
     set_mounted_campaign_for_testing("definitely.not.a.campaign");
     std::map<std::string, int> current_levels;
-    ASSERT_EQ(-3, load_campaign("org.openglad.gladiator", current_levels, 9)) << "load_campaign should map unmount failure to -3";
+    ASSERT_EQ(-3, load_campaign("gladiator", current_levels, 9)) << "load_campaign should map unmount failure to -3";
     set_mounted_campaign_for_testing(prev);
 }
 
@@ -1027,6 +1027,46 @@ TEST(IoPlatformCoverage, restore_default_campaigns_ignores_nonpackages)
     EXPECT_TRUE(fs::is_regular_file(source));
     EXPECT_FALSE(fs::exists(destination))
         << "only .glad packages may be restored into the user campaign dir";
+}
+
+// Installs that predate the reverse-DNS purge left stock campaigns as
+// "org.openglad.<id>.glad" in the user dir. Restoring the bare-named
+// builtin drops that stale twin (stock copies held no user edits — they
+// were overwritten from builtin/ on every restore), while third-party
+// archives that merely use the prefix are left alone.
+TEST(IoPlatformCoverage, restore_default_campaigns_drops_the_legacy_twin)
+{
+    namespace fs = std::filesystem;
+    const fs::path campaigns_dir = fs::path(get_user_path()) / "campaigns";
+    const fs::path legacy_twin = campaigns_dir / "org.openglad.gladiator.glad";
+    const fs::path foreign = campaigns_dir / "org.openglad.custom.glad";
+    og::test::ScopedPhysicalFileState twin_state(legacy_twin);
+    og::test::ScopedPhysicalFileState foreign_state(foreign);
+    ASSERT_TRUE(twin_state.ready()) << twin_state.error().message();
+    ASSERT_TRUE(foreign_state.ready()) << foreign_state.error().message();
+
+    std::error_code ec;
+    fs::create_directories(campaigns_dir, ec);
+    ASSERT_FALSE(ec);
+    {
+        std::ofstream stale(legacy_twin, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(stale.good());
+        stale << "pre-rename stock copy";
+    }
+    {
+        std::ofstream keeper(foreign, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(keeper.good());
+        keeper << "third-party archive";
+    }
+
+    restore_default_campaigns();
+
+    EXPECT_TRUE(fs::is_regular_file(campaigns_dir / "gladiator.glad"));
+    EXPECT_FALSE(fs::exists(legacy_twin))
+        << "restoring builtin <id>.glad removes the stale "
+           "org.openglad.<id>.glad stock copy";
+    EXPECT_TRUE(fs::is_regular_file(foreign))
+        << "only twins of restored builtins are cleaned up";
 }
 
 

@@ -2,7 +2,7 @@
 // this orchestration in tests/ prevents coverage tools from treating it as
 // shipped curses networking logic while preserving translation-unit access.
 
-bool curses_network_testing_inject_ctf(CursesGameSession& session,
+bool curses_network_testing_inject_mode(CursesGameSession& session,
                                        short requested_respawn_ticks);
 int curses_network_testing_force_server_win(CursesGameSession& session,
                                              std::uint32_t pinned_team0_score);
@@ -178,7 +178,7 @@ int curses_network_testing_exercise_internal_helpers()
     // host and joiner must share before canonicalizing private guy ids.
     og::sim::LobbyState colliding_slots_state;
     colliding_slots_state.settings.campaign_id =
-        "org.openglad.gladiator";
+        "gladiator";
     colliding_slots_state.settings.scenario_id = 1;
     og::sim::LobbyPlayer colliding_player = player;
     colliding_player.player_index = 3;
@@ -203,7 +203,7 @@ int curses_network_testing_exercise_internal_helpers()
     // that an oversized, otherwise valid roster is rejected rather than
     // silently truncated or compacted.
     og::sim::LobbyState oversized_state;
-    oversized_state.settings.campaign_id = "org.openglad.gladiator";
+    oversized_state.settings.campaign_id = "gladiator";
     oversized_state.settings.scenario_id = 1;
     og::sim::LobbyPlayer oversized_player = player;
     oversized_player.character_slots.clear();
@@ -515,9 +515,11 @@ int curses_network_testing_exercise_internal_helpers()
     GameWorld rematch_world;
     rematch_world.id = 7;
     rematch_world.type = static_cast<char>(
-        rematch_world.type | GameWorld::TYPE_CTF);
-    rematch_world.ctf.active = true;
-    rematch_world.ctf.winner_team = 1;
+        rematch_world.type | GameWorld::TYPE_SCRIPTED);
+    rematch_world.mode.active = true;
+    rematch_world.mode.init_attempted = true;
+    rematch_world.mode.win_latched = true;
+    rematch_world.mode.winner_team = 1;
     const std::string active_company_before =
         og::data::active_company_slot();
     const std::string rematch_probe_slot =
@@ -562,7 +564,7 @@ int curses_network_testing_exercise_internal_helpers()
         !err.empty());
 
     og::sim::LobbySaveDataEquivalent equivalent;
-    equivalent.current_campaign = "org.openglad.gladiator";
+    equivalent.current_campaign = "gladiator";
     equivalent.scen_num = 1;
     equivalent.numplayers = 1;
     equivalent.allied_mode = 0;
@@ -657,13 +659,14 @@ int curses_network_testing_exercise_internal_helpers()
         if (pending_corpse != nullptr) {
             const short dead_before = pending_corpse->dead();
             const char type_before = mirror.type;
-            const og::sim::CtfState ctf_before = mirror.ctf;
+            const og::sim::ModeState mode_before = mirror.mode;
             pending_corpse->set_dead(1);
             mirror.type = static_cast<char>(
-                mirror.type | GameWorld::TYPE_CTF);
-            mirror.ctf.active = true;
-            mirror.ctf.respawn_queue.push_back(
-                og::sim::CtfRespawnEntry{
+                mirror.type | GameWorld::TYPE_SCRIPTED);
+            mirror.mode.active = true;
+            mirror.mode.init_attempted = true;
+            mirror.respawn.respawn_queue.push_back(
+                og::sim::RespawnEntry{
                     .kind = 0,
                     .walker_entity_id =
                         pending_corpse->entity_id(),
@@ -678,7 +681,7 @@ int curses_network_testing_exercise_internal_helpers()
                 pending_follow.target_entity_id == 0);
             pending_corpse->set_dead(dead_before);
             mirror.type = type_before;
-            mirror.ctf = ctf_before;
+            mirror.mode = mode_before;
         }
 
         host->request_abort();
@@ -706,7 +709,7 @@ int curses_network_testing_exercise_internal_helpers()
                                   join_client->local_peer_id(), 0, &err);
     check(join != nullptr);
     if (join != nullptr) {
-        check(!curses_network_testing_inject_ctf(*join, 30) &&
+        check(!curses_network_testing_inject_mode(*join, 30) &&
             curses_network_testing_force_server_win(*join, 5) == -1 &&
             curses_network_testing_clear_server_team(*join, 0) == -1);
         GameWorld& mirror = join->mirror_world();
@@ -757,7 +760,7 @@ int curses_network_testing_exercise_internal_helpers()
     // Pin both the failed-load and successful-load paths, then restore the
     // process mount exactly so shuffled neighbors see their original package.
     CursesNetworkTestingMountRestore mount_restore;
-    const std::string ctf_campaign = "org.openglad.ctf";
+    const std::string ctf_campaign = "modes";
     const CampaignPackageIoError ctf_mount =
         mount_campaign_package_with_error(ctf_campaign);
     check(ctf_mount == CampaignPackageIoError::None);

@@ -1,6 +1,7 @@
 /* The Endless Tower campaign generator.
  *
- * Produces builtin/org.openglad.tower.glad: the Gate-ONLY package for the
+ * Produces campaigns/tower/ (the source tree the build
+ * composes into builtin/tower.glad): the Gate-ONLY package for the
  * Tower Climb mode (tower-triple spec §5.2, D7). Contents EXACTLY:
  * campaign.yaml (`mode: tower`, first_level 700), icon.png, and the
  * authored antechamber scen700 "The Gate" + its grid PNG. The package must
@@ -13,7 +14,7 @@
  * SDL-free; mirrors tools/concept_mapgen (headless platform glue, zips a
  * campaign package, mounts it, self-checks the level by reloading it).
  *
- * Usage: tower_mapgen [output.glad]   (default: builtin/org.openglad.tower.glad)
+ * Usage: tower_mapgen [output-dir]   (default: campaigns/tower)
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
@@ -38,6 +39,8 @@
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/level_file_io.h>
 #include <openglad/resources/save_data.h>
+
+#include "../campaign_export.h"
 
 #include <atomic>
 #include <cstdint>
@@ -186,6 +189,7 @@ void build_gate()
 
     og::data::LevelFileMetadata metadata;
     metadata.grid_file = std::format("scen{:04d}", og::kTowerGateLevel);
+    metadata.generated = true; // provenance mark: this scen is tool output
     metadata.description = {
         "The Tower has no end.",
         "Each floor bears its number.",
@@ -347,9 +351,9 @@ int main(int argc, char* argv[])
     using namespace towergen;
     namespace fs = std::filesystem;
 
-    const std::string out_glad =
-        (argc > 1) ? argv[1] : "builtin/org.openglad.tower.glad";
-    const fs::path out_abs = fs::absolute(out_glad);
+    const std::string out_tree =
+        (argc > 1) ? argv[1] : "campaigns/tower";
+    const fs::path out_abs = fs::absolute(out_tree);
 
     fs::path scratch;
     if (const char* preset = std::getenv("OPENGLAD_CONFIG_DIR");
@@ -363,7 +367,7 @@ int main(int argc, char* argv[])
 
     init_logging();
     io_init(argc, argv);
-    if (get_mounted_campaign() != "org.openglad.gladiator")
+    if (get_mounted_campaign() != "gladiator")
     {
         std::fprintf(stderr, "tower_mapgen: ERROR: stock campaign not mounted; "
                              "run next to staged assets (build dir)\n");
@@ -397,7 +401,7 @@ int main(int argc, char* argv[])
     build_gate();
     check_no_floor_members(user + "temp/scen/");
 
-    const std::string glad_path = user + "campaigns/org.openglad.tower.glad";
+    const std::string glad_path = user + "campaigns/tower.glad";
     std::remove(glad_path.c_str());
     if (zip_contents_with_error(user + "temp/", glad_path) !=
         ArchiveIoError::None)
@@ -405,7 +409,7 @@ int main(int argc, char* argv[])
 
     if (g_errors == 0)
     {
-        if (mount_campaign_package_with_error("org.openglad.tower") !=
+        if (mount_campaign_package_with_error("tower") !=
             CampaignPackageIoError::None)
         {
             fail("failed to mount the produced campaign");
@@ -413,20 +417,16 @@ int main(int argc, char* argv[])
         else
         {
             self_check_gate();
-            (void)unmount_campaign_package_with_error("org.openglad.tower");
+            (void)unmount_campaign_package_with_error("tower");
         }
     }
 
     int result = 1;
     if (g_errors == 0)
     {
-        std::error_code ec;
-        fs::create_directories(out_abs.parent_path(), ec);
-        fs::copy_file(glad_path, out_abs, fs::copy_options::overwrite_existing,
-                      ec);
-        if (ec)
-            fail(std::format("failed to copy {} -> {}: {}", glad_path,
-                             out_abs.string(), ec.message()));
+        if (!og::toolexport::export_campaign_tree(user + "temp/", out_abs))
+            fail(std::format("failed to export the campaign tree to {}",
+                             out_abs.string()));
         else
         {
             std::printf("tower_mapgen: wrote %s\n", out_abs.c_str());

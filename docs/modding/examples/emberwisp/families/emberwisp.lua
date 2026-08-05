@@ -17,7 +17,7 @@
 -- at packs/<pack id>/.
 
 og.pack{
-  id = "org.openglad.example.emberwisp",
+  id = "emberwisp",
   version = "1",
   title = "Ember Wisp",
   authors = { "the OpenGlad project" },

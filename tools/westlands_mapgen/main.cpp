@@ -1,6 +1,7 @@
 /* War of the Westlands campaign generator.
  *
- * Produces builtin/org.openglad.westlands.glad: a 26-level story campaign
+ * Produces campaigns/westlands/ (the source tree the build
+ * composes into builtin/westlands.glad): a 26-level story campaign
  * (docs at scratch design + docs/z-axis-design.md) built act by act — the
  * flight east, the dark road, the war in the west, the burden's road, and
  * the convergence at the Mountain of Fire. In every battle the player's
@@ -15,7 +16,7 @@
  * validation against the registered id set.
  *
  * Usage: westlands_mapgen [output.glad]
- *        (default: builtin/org.openglad.westlands.glad)
+ *        (default: campaigns/westlands)
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
@@ -24,6 +25,7 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include "../campaign_export.h"
 #include "builders.h"
 
 #include <openglad/core/constants.h>
@@ -720,6 +722,7 @@ void save_level_files(GameWorld& world, int id, const char* title,
 
     og::data::LevelFileMetadata metadata;
     metadata.grid_file = std::format("scen{:04d}", id);
+    metadata.generated = true; // provenance mark: this scen is tool output
     for (const std::string& line : description)
         metadata.description.push_back(line);
 
@@ -1434,9 +1437,9 @@ int main(int argc, char* argv[])
     using namespace westlands;
     namespace fs = std::filesystem;
 
-    const std::string out_glad =
-        (argc > 1) ? argv[1] : "builtin/org.openglad.westlands.glad";
-    const fs::path out_abs = fs::absolute(out_glad);
+    const std::string out_tree =
+        (argc > 1) ? argv[1] : "campaigns/westlands";
+    const fs::path out_abs = fs::absolute(out_tree);
 
     fs::path scratch;
     if (const char* preset = std::getenv("OPENGLAD_CONFIG_DIR");
@@ -1450,7 +1453,7 @@ int main(int argc, char* argv[])
 
     init_logging();
     io_init(argc, argv);
-    if (get_mounted_campaign() != "org.openglad.gladiator")
+    if (get_mounted_campaign() != "gladiator")
     {
         std::fprintf(stderr, "westlands_mapgen: ERROR: stock campaign not "
                              "mounted; run next to staged assets (build dir)\n");
@@ -1505,14 +1508,14 @@ int main(int argc, char* argv[])
             fail(std::format("scen{} registered twice", e.id));
     }
 
-    const std::string glad_path = user + "campaigns/org.openglad.westlands.glad";
+    const std::string glad_path = user + "campaigns/westlands.glad";
     std::remove(glad_path.c_str());
     if (zip_contents_with_error(user + "temp/", glad_path) != ArchiveIoError::None)
         fail(std::format("failed to zip campaign into {}", glad_path));
 
     if (g_errors == 0)
     {
-        if (mount_campaign_package_with_error("org.openglad.westlands") !=
+        if (mount_campaign_package_with_error("westlands") !=
             CampaignPackageIoError::None)
         {
             fail("failed to mount the produced campaign");
@@ -1521,19 +1524,16 @@ int main(int argc, char* argv[])
         {
             for (const ExpectedLevel& e : expectations)
                 self_check_level(e, registered);
-            (void)unmount_campaign_package_with_error("org.openglad.westlands");
+            (void)unmount_campaign_package_with_error("westlands");
         }
     }
 
     int result = 1;
     if (g_errors == 0)
     {
-        std::error_code ec;
-        fs::create_directories(out_abs.parent_path(), ec);
-        fs::copy_file(glad_path, out_abs, fs::copy_options::overwrite_existing, ec);
-        if (ec)
-            fail(std::format("failed to copy {} -> {}: {}", glad_path,
-                             out_abs.string(), ec.message()));
+        if (!og::toolexport::export_campaign_tree(user + "temp/", out_abs))
+            fail(std::format("failed to export the campaign tree to {}",
+                             out_abs.string()));
         else
         {
             std::printf("westlands_mapgen: wrote %s\n", out_abs.c_str());

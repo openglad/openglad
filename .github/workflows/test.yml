@@ -134,6 +134,69 @@ jobs:
       - name: Build headless server target
         run: cmake --build build/headless-server --target openglad_server -j"$(nproc)"
 
+  campaign-drift:
+    name: Campaign Regeneration Drift Check
+    runs-on: ubuntu-latest
+    # Generated campaign content under campaigns/<id>/ is committed like a
+    # lockfile: the generator (tools/<x>_mapgen) is the source of truth.
+    # This job reruns every generator against the checkout and fails when
+    # the committed trees drift — a hand edit to generated content must be
+    # ported into its generator (or reverted), never left to be silently
+    # clobbered by the next regeneration. Builds only the five SDL-free
+    # generator tools plus the archive composition step; the dominant cost
+    # is compiling og_core/og_gameplay/og_resources once, shared with the
+    # test job through the ci-test ccache key (and its configure flags,
+    # which must match for the cache to hit).
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev libpng-dev libgtest-dev libncurses-dev libphysfs-dev libzip-dev libyaml-dev zlib1g-dev cmake ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev
+
+      - uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: ci-test
+
+      - name: Configure (ci-test preset)
+        run: cmake --preset ci-test -DVALIDATE_SERIALIZATION=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Regenerate every campaign
+        run: |
+          scripts/generate_concept_campaign.sh
+          scripts/generate_longseason_campaign.sh
+          scripts/generate_modes_campaign.sh
+          scripts/generate_tower_campaign.sh
+          scripts/generate_westlands_campaign.sh
+
+      - name: Fail on drift
+        # Scoped to campaigns/ on purpose: this gate answers "did the
+        # committed campaign trees drift", and a repo-wide status also sees
+        # build cruft the regeneration step drops into the workspace
+        # (.ccache/ from the ccache action, scripts/__pycache__/ from the
+        # Lua-lint targets), which has nothing to do with drift. Still
+        # --porcelain rather than a diff, so a generator emitting a NEW
+        # uncommitted file under campaigns/ is caught too.
+        run: |
+          if [ -n "$(git status --porcelain -- campaigns/)" ]; then
+            echo "::error::Committed campaign trees drifted from their generators."
+            echo "The files below differ from what the campaign generators produce."
+            echo "Generated content under campaigns/<id>/ is committed like a lockfile:"
+            echo "the GENERATOR is the source of truth. Either port your hand edit into"
+            echo "the matching tools/<x>_mapgen generator and rerun"
+            echo "scripts/generate_<x>_campaign.sh, or revert the edit."
+            echo "(Hand-authored content — campaigns/<id>/packs/ and README.md, plus the"
+            echo "gladiator and tryxian campaigns — is never rewritten by regeneration.)"
+            echo
+            git status --porcelain -- campaigns/
+            git --no-pager diff --stat -- campaigns/
+            exit 1
+          fi
+          echo "campaign trees match their generators"
+
   asan:
     name: ASan+UBSan
     runs-on: ubuntu-latest

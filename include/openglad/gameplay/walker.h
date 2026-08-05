@@ -375,6 +375,36 @@ class walker : public og::sim::SimEntity
 			last_self_teleport_tick_ = tick;
 		}
 
+		// Kill-attribution transients (server-only, like the teleport stamp
+		// above: no dirty bit, not in EntitySnapshot). The combat path stamps
+		// the OWNER-CHAIN-ROOT Living that last landed a positive-damage hit
+		// on this walker, plus its team and the world tick. on_entity_death
+		// passes the killer to Lua only while the stamp is fresh
+		// (og::sim::kKillAttributionTicks); non-combat deaths (drowning,
+		// lifetime expiry, pit falls) never stamp, so they read as
+		// environment deaths. The team is stamped separately so attribution
+		// survives the killer dying first (mutual kills).
+		[[nodiscard]] std::uint32_t last_attacker_id() const noexcept
+		{
+			return last_attacker_id_;
+		}
+		[[nodiscard]] std::int16_t last_attacker_team() const noexcept
+		{
+			return last_attacker_team_;
+		}
+		[[nodiscard]] std::uint32_t last_attacker_tick() const noexcept
+		{
+			return last_attacker_tick_;
+		}
+		void note_attacker(const walker* who, std::uint32_t tick) noexcept
+		{
+			if (who == nullptr)
+				return;
+			last_attacker_id_ = who->entity_id();
+			last_attacker_team_ = static_cast<std::int16_t>(who->team_num());
+			last_attacker_tick_ = tick;
+		}
+
 		// TODO: Move this to screen class so it doesn't get overlapped by other walkers drawing
 		class DamageNumber
 		{
@@ -476,6 +506,11 @@ class walker : public og::sim::SimEntity
 		std::int16_t spawn_y_ = -1;
 		std::uint8_t spawn_floor_ = 0;
 		std::uint32_t last_self_teleport_tick_ = 0;
+		// Kill-attribution stamp (see the accessors above): server-only,
+		// never replicated.
+		std::uint32_t last_attacker_id_ = 0;
+		std::int16_t last_attacker_team_ = -1;
+		std::uint32_t last_attacker_tick_ = 0;
 		// Server-only transient (not replicated, like path_to_foe): ticks until
 		// the next Z transition is allowed, throttling fall/denial re-probes.
 		// Always 0 on single-floor (apply_z_motion early-returns), so

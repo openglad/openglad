@@ -1326,7 +1326,7 @@ og::data::CompanyBackupInfo make_backup_info(const std::string& slot, int seq,
     info.filename = std::format("{}.{:03}.gtl", slot, seq);
     info.header.slot = slot;
     info.header.display_name = "COMPANY " + slot;
-    info.header.campaign_id = "org.openglad.gladiator";
+    info.header.campaign_id = "gladiator";
     info.header.scen_num = static_cast<short>(seq);
     info.header.last_played_unix_s = ts;
     info.header.valid = valid;
@@ -1582,7 +1582,7 @@ TEST(MenuEngine, base_camp_reload_publishes_authored_teams_after_level_load)
     } restore{picker_screen, save, original_campaign, original_level,
               original_mount};
 
-    save.current_campaign = "org.openglad.ctf";
+    save.current_campaign = "modes";
     save.scen_num = 500;
     ASSERT_TRUE(og::ui::sync_campaign_mount_to_save(save));
 
@@ -2957,14 +2957,14 @@ TEST(MenuEngine, base_camp_draw_clips_headers_skips_stale_rows_and_locks_team)
     const std::uint64_t blank_campaign =
         indexed_region_hash(output, 114, campaign_y - 1,
                             310, campaign_y + 7);
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     scenario.draw_content(nullptr);
     const std::uint64_t gladiator_campaign =
         indexed_region_hash(output, 114, campaign_y - 1,
                             310, campaign_y + 7);
     EXPECT_NE(blank_campaign, gladiator_campaign);
     output.clearbuffer();
-    save.current_campaign = "org.openglad.ctf";
+    save.current_campaign = "modes";
     scenario.draw_content(nullptr);
     const std::uint64_t ctf_campaign =
         indexed_region_hash(output, 114, campaign_y - 1,

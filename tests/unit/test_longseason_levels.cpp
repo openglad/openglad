@@ -1,5 +1,5 @@
 // Shipped "The Long Season" campaign validation
-// (builtin/org.openglad.longseason.glad, authored by tools/longseason_mapgen).
+// (builtin/longseason.glad, authored by tools/longseason_mapgen).
 //
 // Every registered level (ids 1-19, contiguous) is loaded through the
 // production campaign-mount path and pinned against the authoring invariants
@@ -122,13 +122,13 @@ protected:
         restore_default_campaigns();
         previous_ = get_mounted_campaign();
         ASSERT_EQ(CampaignPackageIoError::None,
-                  mount_campaign_package_with_error("org.openglad.longseason"))
-            << "builtin/org.openglad.longseason.glad should restore and mount";
+                  mount_campaign_package_with_error("longseason"))
+            << "builtin/longseason.glad should restore and mount";
     }
 
     void TearDown() override
     {
-        (void)unmount_campaign_package_with_error("org.openglad.longseason");
+        (void)unmount_campaign_package_with_error("longseason");
         if (!previous_.empty())
             (void)mount_campaign_package_with_error(previous_);
     }
@@ -608,6 +608,9 @@ TEST_F(LongseasonCampaignTest, levels_round_trip_the_authored_structure)
         }
         EXPECT_EQ(expected.type_bits, static_cast<int>(world.type))
             << "scenario type bits (CAN_EXIT / SAVE_ALL)";
+        EXPECT_TRUE(fx.level.generated)
+            << "mapgen output carries the SCEN_TYPE_GENERATED provenance "
+               "mark (metadata-side; world.type above stays clean)";
 
         EXPECT_GE(fx.level.description.size(), 4u)
             << "the ledger tells the story";

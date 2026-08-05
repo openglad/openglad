@@ -174,7 +174,7 @@ TEST(ScreenExtended, screen_endgame_clears_mission_score_after_payout)
     const char saved_end = og::runtime::current_session->myscreen_->world().end;
 
     og::runtime::current_session->myscreen_->save_data.reset();
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
 
     og::runtime::current_session->myscreen_->save_data.m_totalscore[0] = 1000;
@@ -214,7 +214,7 @@ TEST(ScreenExtended, level_win_snapshots_one_company_backup)
     const char saved_end = scr->world().end;
 
     scr->save_data.reset();
-    scr->save_data.current_campaign = "org.openglad.gladiator";
+    scr->save_data.current_campaign = "gladiator";
     scr->save_data.scen_num = 1;
     scr->sync_world_from_save_data();
     scr->world().end = 0;

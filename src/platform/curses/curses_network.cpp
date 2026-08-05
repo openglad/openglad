@@ -28,9 +28,9 @@
 #include <openglad/platform/curses/terminal.h>
 
 #include <openglad/core/constants.h>
-#include <openglad/core/ctf_constants.h>
 #include <openglad/core/util.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
+#include <openglad/gameplay/mode/mode_state.h>
+#include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/game_world.h>
@@ -52,6 +52,8 @@
 #include <openglad/platform/net_transport_websocket_server.h>
 #include <openglad/platform/curses/curses_game_runtime.h>
 #include <openglad/resources/campaign_metadata.h>
+
+#include <cstring>
 #include <openglad/resources/company.h>
 #include <openglad/resources/gparser.h> // cfg
 #include <openglad/resources/io_common.h>
@@ -83,7 +85,7 @@ namespace og::curses {
 namespace {
 
 constexpr int kDefaultPort = 12345;
-constexpr std::string_view kDefaultCampaignId = "org.openglad.gladiator";
+constexpr std::string_view kDefaultCampaignId = "gladiator";
 
 // A unique-per-instance network player name for readable diagnostics. The
 // server-issued LobbySeatId is the only ownership identity; names are
@@ -233,7 +235,7 @@ og::sim::LobbyMessage make_join_message(const SaveData& save,
 
 std::uint8_t ctf_authored_team_mask_for_save(const SaveData& save)
 {
-    if (!og::ui::is_ctf_campaign(save) ||
+    if (!og::ui::is_versus_campaign(save) ||
         get_mounted_campaign() != save.current_campaign)
     {
         return 0;
@@ -267,6 +269,8 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save, int difficulty
     settings.keep_fallen_heroes = save.keep_fallen_heroes;
     settings.cross_control = save.cross_control;
     settings.infinite_gold = save.infinite_gold;
+    // Protocol v12: shared-teams rule rides the wire (matchup: versus).
+    settings.shared_teams = og::ui::is_versus_campaign(save) ? 1 : 0;
 
     og::sim::LobbyMessage message;
     message.payload = og::sim::LobbySettingsChangeMessage{
@@ -475,13 +479,13 @@ void maintain_curses_follow(CursesFollowState& follow,
 
     // A dead own corpse with a pending revive entry keeps today's
     // "(spectating)" respawn-countdown shape instead of engaging.
-    if (((mirror.type & GameWorld::TYPE_CTF) && mirror.ctf.active) ||
+    if (og::sim::mode_scripted_active(mirror) ||
         og::sim::classic_respawn_active(mirror)) {
         for (const auto& up : mirror.oblist) {
             const walker* w = up.get();
             if (w && w->dead() && w->myguy != nullptr &&
                 w->user() == static_cast<int>(local_player_index) &&
-                og::sim::ctf_pending_player_respawn(mirror.ctf,
+                og::sim::respawn_pending_player(mirror.respawn,
                                                     w->entity_id())) {
                 follow = {};
                 return;
@@ -628,7 +632,7 @@ std::vector<og::sim::TypedReceivedMessage> poll_lobby_transport_messages(
 void persist_curses_networked_win(SaveData& session_save, const GameWorld& world,
                                   std::size_t player_index, int next_level)
 {
-    if (is_ctf_rematch_end(world, /*ending=*/0, next_level))
+    if (is_mode_rematch_end(world, /*ending=*/0, next_level))
         return;
 
     og::server::sync_headless_server_save_data_from_world(session_save, world);
@@ -637,7 +641,7 @@ void persist_curses_networked_win(SaveData& session_save, const GameWorld& world
     for (std::size_t team = 0; team < fold_ctx.time_bonus.size(); ++team)
         fold_ctx.time_bonus[team] = og::progression::calculate_win_time_bonus(
             world, session_save, static_cast<int>(team));
-    fold_ctx.rematch_shape = og::progression::ctf_rematch_shape(
+    fold_ctx.rematch_shape = og::progression::mode_rematch_shape(
         world, session_save, static_cast<short>(next_level));
     fold_ctx.finished_level = session_save.scen_num;
     fold_ctx.outcome.ending = 0;
@@ -760,28 +764,31 @@ public:
 
 #ifdef TESTING
     // Turn the loaded classic level into a CTF map on the authoritative server
-    // world: flags + respawn anchors for teams 0/1 and the TYPE_CTF bit. Runs
+    // world: armed ModeState + respawn anchors for teams 0/1. Runs
     // under the server context so the obmap writes land in the server's grid;
     // the host's own mirror gets the (authored, non-replicated) type bit too.
-    bool inject_ctf_scenario_for_testing(short requested_respawn_ticks)
+    bool inject_mode_scenario_for_testing(short requested_respawn_ticks)
     {
         GameplayContext* const saved = current_game;
         current_game = &server_ctx_;
         GameWorld& world = server_world();
-        world.type |= GameWorld::TYPE_CTF;
-        if (requested_respawn_ticks > 0)
+        world.type |= GameWorld::TYPE_SCRIPTED;
+        // Hand-arm the mode (a mounted pack's on_mode_init would do this on
+        // the first scripted tick) with a name and a scoreboard HUD line so
+        // the mirror renderers have replicated text to show.
+        world.mode.active = true;
+        world.mode.init_attempted = true;
+        std::strncpy(world.mode.name.data(), "CTF", world.mode.name.size() - 1);
+        world.mode.hud[0].team = 0;
+        std::strncpy(world.mode.hud[0].text.data(), "Caps 0:0",
+                     world.mode.hud[0].text.size() - 1);
+        if (requested_respawn_ticks > 0) {
             world.ctf_requested_respawn_ticks = requested_respawn_ticks;
+            world.respawn.respawn_ticks =
+                static_cast<std::uint16_t>(requested_respawn_ticks);
+        }
 
         bool ok = true;
-        const auto spawn_flag = [&world, &ok](int team, int x, int y) {
-            walker* const flag = world.add_fx_ob(Order::Treasure, og::FAMILY_FLAG);
-            if (flag == nullptr) {
-                ok = false;
-                return;
-            }
-            flag->setxy(static_cast<short>(x), static_cast<short>(y));
-            flag->set_team_num(static_cast<unsigned char>(team));
-        };
         const auto spawn_anchor = [&world, &ok](int team, int x, int y) {
             walker* const marker = world.add_ob(Order::Special, FAMILY_RESERVED_TEAM);
             if (marker == nullptr) {
@@ -790,18 +797,20 @@ public:
             }
             marker->setxy(static_cast<short>(x), static_cast<short>(y));
             marker->set_team_num(static_cast<unsigned char>(team));
+            // The level bootstrap consumes start markers (the anchor scan
+            // reads dead markers by design); a live marker acts.
+            marker->set_dead(1);
         };
 
         const int far_x = std::max(160, static_cast<int>(world.pixmaxx) - 48);
         const int far_y = std::max(160, static_cast<int>(world.pixmaxy) - 48);
-        spawn_flag(0, 48, 48);
-        spawn_flag(1, far_x, far_y);
         spawn_anchor(0, 80, 48);
         spawn_anchor(0, 48, 80);
         spawn_anchor(1, far_x - 32, far_y);
         spawn_anchor(1, far_x, far_y - 32);
+        og::sim::respawn_scan_anchors(world);
 
-        client_level_->world().type |= GameWorld::TYPE_CTF;
+        client_level_->world().type |= GameWorld::TYPE_SCRIPTED;
         current_game = saved;
         return ok;
     }
@@ -1479,7 +1488,7 @@ public:
                 last_team_request_seat_id_ = selected->seat_id;
                 team_status_ = "Requested P" +
                     std::to_string(selected->player_index + 1) + " -> " +
-                    og::sim::ctf_team_color_name(target);
+                    og::sim::team_color_name(target);
                 if (request_seat_team_change(
                         selected->player_index, selected->seat_id, target)) {
                     last_team_request_ = -1;
@@ -1567,7 +1576,7 @@ public:
                     is_me && player.seat_id == selected_local_seat_id_;
                 std::string line =
                     "  Player " + std::to_string(player.player_index + 1) +
-                    " (" + og::sim::ctf_team_color_name(player.team) + ")" +
+                    " (" + og::sim::team_color_name(player.team) + ")" +
                     (player.is_host ? " [host]" : "") +
                     (player.ready ? " [ready]" : "") +
                     (is_me ? " [you]" : "") +
@@ -2164,13 +2173,13 @@ curses_network_testing_build_join_save_equivalent(
     return build_join_save_equivalent_from_state(state);
 }
 
-bool curses_network_testing_inject_ctf(CursesGameSession& session,
-                                       short requested_respawn_ticks)
+bool curses_network_testing_inject_mode(CursesGameSession& session,
+                                        short requested_respawn_ticks)
 {
     auto* const host = dynamic_cast<HostCursesSession*>(&session);
     if (host == nullptr)
         return false;
-    return host->inject_ctf_scenario_for_testing(requested_respawn_ticks);
+    return host->inject_mode_scenario_for_testing(requested_respawn_ticks);
 }
 
 int curses_network_testing_force_server_win(CursesGameSession& session,

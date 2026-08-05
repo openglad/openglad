@@ -17,6 +17,7 @@
 
 #include <openglad/resources/company.h>
 
+#include <openglad/core/campaign_ids.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/resources/campaign_io.h>
@@ -204,7 +205,7 @@ std::optional<CompanyInfo> read_header_from(const char* dir,
 
     CompanyInfo info;
     info.slot = slot_label;
-    info.campaign_id = "org.openglad.gladiator";
+    info.campaign_id = "gladiator";
 
     const auto read_exact = [&infile](void* dst, std::size_t bytes) {
         return og::io::og_read_exact(*infile, dst, 1, bytes);
@@ -249,7 +250,10 @@ std::optional<CompanyInfo> read_header_from(const char* dir,
         campaign[40] = '\0';
         const std::string loaded_campaign = campaign.data();
         if (loaded_campaign.size() > 3 && is_safe_campaign_id(loaded_campaign))
-            info.campaign_id = loaded_campaign;
+            // Pre-rename saves store "org.openglad.<name>"; report the
+            // plain id, matching what SaveData::load will mount.
+            info.campaign_id =
+                std::string(og::normalize_legacy_id(loaded_campaign));
     }
 
     std::int16_t scen = 0;

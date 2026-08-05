@@ -233,7 +233,10 @@ inline constexpr int kScenarioMenuSetLevelIndex = 2;
 inline constexpr int kScenarioMenuViewScenarioIndex = 3;
 inline constexpr int kScenarioMenuTeamsIndex = 4;
 inline constexpr int kScenarioMenuProgressIndex = 5;
-inline constexpr int kScenarioMenuButtonCount = 6;
+// Appended (index contract: growth is append-only). Host-gated like
+// SET CAMPAIGN / SET LEVEL.
+inline constexpr int kScenarioMenuTroopsIndex = 6;
+inline constexpr int kScenarioMenuButtonCount = 7;
 
 // --- MATCHUP subscreen layout contract ------------------------------------
 // Positional indices into k_teamsmenu_buttons / picker_teamsmenu_buttons().

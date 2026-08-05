@@ -116,7 +116,6 @@ std::string get_asset_path()
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/gloader.h>
-#include <openglad/resources/gloader_ctf.h>
 
 // Safe no-op: view controls are an SDL render concern; headless has no views.
 void headless_clear_stale_view_controls(LevelRuntimeData*) {}
@@ -176,7 +175,6 @@ loader* headless_entity_loader()
     static auto game_loader = [] {
         auto entity_loader =
             std::make_unique<loader>(headless_create_entity_factory());
-        register_ctf_loader_entries(*entity_loader);
         return entity_loader;
     }();
     return game_loader.get();
@@ -206,6 +204,12 @@ void wire_world_with_loader(GameWorld* world, loader* game_loader)
 void headless_wire_world_entity_services(GameWorld* world, LevelRuntimeData* level)
 {
     (void)level;
+    // #162 chokepoint: wiring runs at every headless LevelRuntimeData
+    // construction AND load(), so every curses/text/server level build gets
+    // a loader that matches the currently mounted campaign. Headless render
+    // components hold no pixie borrows (attach_render is empty; walkers copy
+    // size/frame scalars at attach), so rebuilding here is always safe.
+    headless_entity_loader()->reload_graphics_if_stale();
     wire_world_with_loader(world, headless_entity_loader());
 }
 
@@ -392,7 +396,7 @@ void io_init(int argc, char* argv[])
     restore_default_campaigns();
 
     // Mount default campaign
-    if (mount_campaign_package_with_error("org.openglad.gladiator") != CampaignPackageIoError::None) {
+    if (mount_campaign_package_with_error("gladiator") != CampaignPackageIoError::None) {
         LogError("io_init(headless): Failed to mount default campaign\n");
     }
 

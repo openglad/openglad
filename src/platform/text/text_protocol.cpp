@@ -11,6 +11,7 @@
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/irandom.h>
 #include <openglad/interface/level_runtime_data.h>
+#include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/save_data.h>
@@ -138,39 +139,44 @@ static void cmd_tick(GameWorld& world, int count)
     std::cout.flush();
 }
 
-static void json_ctf(std::ostream& os, const og::sim::CtfState& ctf)
+// Generic scripted-mode observability block (framework: clients render
+// ModeState, never mode names in C++). Emitted under a "mode" key whenever
+// the level authors TYPE_SCRIPTED — active:false before/without a
+// successful on_mode_init, so harnesses can watch activation itself. The
+// hud array carries only non-empty lines; beacons only occupied slots.
+static void json_mode(std::ostream& os, const GameWorld& world)
 {
-    os << "{\"active\":" << (ctf.active ? "true" : "false")
-       << ",\"team_count\":" << static_cast<int>(ctf.team_count)
-       << ",\"capture_limit\":" << static_cast<int>(ctf.capture_limit)
-       << ",\"winner_team\":" << static_cast<int>(ctf.winner_team)
-       << ",\"captures\":[";
-    for (int team = 0; team < 4; team++) {
-        if (team > 0) os << ",";
-        os << static_cast<int>(ctf.captures[team]);
+    const og::sim::ModeState& mode = world.mode;
+    os << "{\"active\":" << (mode.active ? "true" : "false")
+       << ",\"name\":";
+    json_string(os, mode.name.data());
+    os << ",\"winner_team\":" << static_cast<int>(mode.winner_team)
+       << ",\"vars\":[";
+    for (int i = 0; i < og::sim::kModeVarCount; i++) {
+        if (i > 0) os << ",";
+        os << mode.vars[static_cast<std::size_t>(i)];
     }
-    os << "],\"flags\":[";
+    os << "],\"hud\":[";
     bool first = true;
-    for (int team = 0; team < 4; team++) {
-        const og::sim::CtfFlag& flag = ctf.flags[team];
-        if (!flag.present)
+    for (const og::sim::ModeHudLine& line : mode.hud) {
+        if (line.text[0] == '\0')
             continue;
         if (!first) os << ",";
         first = false;
-        os << "{\"team\":" << team
-           << ",\"state\":" << static_cast<int>(flag.state)
-           << ",\"carrier\":" << flag.carrier_entity_id
-           << ",\"x\":" << flag.x
-           << ",\"y\":" << flag.y
-           << "}";
+        os << "{\"team\":" << static_cast<int>(line.team)
+           << ",\"text\":";
+        json_string(os, line.text.data());
+        os << "}";
     }
-    os << "],\"cps\":[";
-    for (int index = 0; index < static_cast<int>(ctf.cp_count); index++) {
-        const og::sim::CtfControlPoint& cp = ctf.cps[index];
-        if (index > 0) os << ",";
-        os << "{\"owner\":" << static_cast<int>(cp.owner)
-           << ",\"x\":" << cp.x
-           << ",\"y\":" << cp.y
+    os << "],\"beacons\":[";
+    first = true;
+    for (const og::sim::ModeBeacon& beacon : mode.beacons) {
+        if (beacon.entity_id == 0)
+            continue;
+        if (!first) os << ",";
+        first = false;
+        os << "{\"id\":" << beacon.entity_id
+           << ",\"team\":" << static_cast<int>(beacon.team)
            << "}";
     }
     os << "]}";
@@ -197,8 +203,8 @@ static void cmd_state(const LevelRuntimeData& level)
         if (idx > 0) os << ",";
         json_entity(os, uptr.get(), idx++);
     }
-    os << "],\"ctf\":";
-    json_ctf(os, level.world().ctf);
+    os << "],\"mode\":";
+    json_mode(os, level.world());
     os << "}";
     std::cout << os.str() << "\n";
     std::cout.flush();
@@ -448,6 +454,16 @@ std::string text_protocol_testing_format_event_text(std::string_view text)
     json_event(os, event);
     return os.str();
 }
+
+// Deterministic literal-shape probe for the "mode" block (the json_ctf
+// literal pin's scripted twin): tests hand-build a ModeState and byte-pin
+// the emitted JSON without driving a whole session.
+std::string text_protocol_testing_json_mode(const GameWorld& world)
+{
+    std::ostringstream os;
+    json_mode(os, world);
+    return os.str();
+}
 #endif
 
 int run_text_protocol_session(const TextProtocolArgs& args)
@@ -483,6 +499,13 @@ int run_text_protocol_session(const TextProtocolArgs& args)
         set_gameplay_rng_override(nullptr);
         return 1;
     }
+
+    // #162: the LevelRuntimeData above realized the headless loader BEFORE
+    // the --campaign mount; refresh it so campaign-shipped entity art and
+    // pack-family sprites resolve (level.load() re-checks too, via the
+    // headless wire chokepoint — this keeps the session correct even if
+    // that path changes).
+    headless_entity_loader()->reload_graphics_if_stale();
 
     level.set_sim_context(&save, &world.enemy_freeze, &events, &world.rng_, &cfg);
 

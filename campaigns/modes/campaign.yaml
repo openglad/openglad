@@ -1,0 +1,19 @@
+format_version:  1
+title:           Multiplayer Game Modes
+version:         1
+first_level:     300
+suggested_power: 60
+matchup:         versus
+authors:         OpenGlad
+contributors:    Forgotten Sages (arena grids)
+
+description:     |
+    One arena, five games, one book.
+    The Gamesmaster calls team
+    deathmatch, capture the flag,
+    onslaught, mutant, and soccer
+    across twenty-eight fields old
+    and new. The bots know the rules.
+    Respawns honor your difficulty.
+    First to the posted score takes
+    the purse.

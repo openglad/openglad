@@ -628,7 +628,7 @@ private:
         restore_default_campaigns();
         restore_default_settings();
         const CampaignPackageIoError error =
-            mount_campaign_package_with_error("org.openglad.gladiator");
+            mount_campaign_package_with_error("gladiator");
         if (error != CampaignPackageIoError::None)
         {
             throw std::runtime_error(

@@ -23,6 +23,7 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/level_data_hooks.h>
+#include <openglad/resources/level_file_io.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/resources/pixie_data.h>
 
@@ -251,6 +252,7 @@ PixieData make_pixie(unsigned char frames = 3, unsigned char w = 2, unsigned cha
 namespace og::ui {
 int text_picker_testing_exercise_internal_paths();
 std::string text_protocol_testing_format_event_text(std::string_view text);
+std::string text_protocol_testing_json_mode(const GameWorld& world);
 }
 
 TEST(PlatformHeadless, production_platform_globals_preserve_headless_contracts)
@@ -311,7 +313,7 @@ TEST(PlatformHeadless, hooks_and_entity_services_are_wired)
 
     restore_default_campaigns();
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.gladiator"));
+              mount_campaign_package_with_error("gladiator"));
 
     GameWorld world(0);
     wire_world_with_loader(nullptr, headless_entity_loader());
@@ -602,7 +604,7 @@ TEST(PlatformHeadless, text_protocol_session_covers_commands_and_load_failure)
     // does not mount anything itself.
     restore_default_campaigns();
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.gladiator"));
+              mount_campaign_package_with_error("gladiator"));
 
     {
         StdinRedirect input(
@@ -675,7 +677,7 @@ TEST(PlatformHeadless, text_protocol_session_covers_commands_and_load_failure)
         CoutRedirect output;
 
         og::ui::TextProtocolArgs args;
-        args.campaign = "org.openglad.missing-protocol-campaign";
+        args.campaign = "missing-protocol-campaign";
         args.level = 1;
         EXPECT_EQ(1, og::ui::run_text_protocol_session(args))
             << "a missing campaign package must fail before level loading";
@@ -691,14 +693,14 @@ TEST(PlatformHeadless, text_protocol_census_reports_teams_named_heroes_and_crew)
     // the crew guys' level.
     restore_default_campaigns();
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.westlands"));
+              mount_campaign_package_with_error("westlands"));
 
     {
         StdinRedirect input("census\ntick 3\ncensus\nquit\n");
         CoutRedirect output;
 
         og::ui::TextProtocolArgs args;
-        args.campaign = "org.openglad.westlands";
+        args.campaign = "westlands";
         args.level = 2;
         args.team_families = {FAMILY_SOLDIER, FAMILY_ELF};
         args.seed = 7;
@@ -726,7 +728,7 @@ TEST(PlatformHeadless, text_protocol_census_reports_teams_named_heroes_and_crew)
         CoutRedirect output;
 
         og::ui::TextProtocolArgs args;
-        args.campaign = "org.openglad.westlands";
+        args.campaign = "westlands";
         args.level = 2;
         args.team_families = {FAMILY_SOLDIER};
         args.seed = 7;
@@ -740,28 +742,28 @@ TEST(PlatformHeadless, text_protocol_census_reports_teams_named_heroes_and_crew)
 
     // Leave the default campaign mounted for order-independence.
     ASSERT_EQ(CampaignPackageIoError::None,
-                  mount_campaign_package_with_error("org.openglad.gladiator"));
+                  mount_campaign_package_with_error("gladiator"));
 }
 
-TEST(PlatformHeadless, text_protocol_serializes_shipped_ctf_state)
+TEST(PlatformHeadless, text_protocol_serializes_shipped_mode_state)
 {
     restore_default_campaigns();
     struct RestoreDefaultCampaignMount
     {
         ~RestoreDefaultCampaignMount()
         {
-            (void)mount_campaign_package_with_error("org.openglad.gladiator");
+            (void)mount_campaign_package_with_error("gladiator");
         }
     } restore_default_campaign_mount;
 
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.ctf"));
+              mount_campaign_package_with_error("modes"));
 
-    StdinRedirect input("tick 1\nstate\nquit\n");
+    StdinRedirect input("tick 2\nstate\nquit\n");
     CoutRedirect output;
 
     og::ui::TextProtocolArgs args;
-    args.campaign = "org.openglad.ctf";
+    args.campaign = "modes";
     args.level = 500;
     args.team_families = {FAMILY_SOLDIER};
     args.seed = 7;
@@ -772,25 +774,120 @@ TEST(PlatformHeadless, text_protocol_serializes_shipped_ctf_state)
               text.find("\"status\":\"ready\",\"level\":500,"
                         "\"title\":\"CTF: FIRST BLOOD\""));
     EXPECT_NE(std::string::npos,
-              text.find("\"cmd\":\"tick\",\"count\":1"));
+              text.find("\"cmd\":\"tick\",\"count\":2"));
     EXPECT_NE(std::string::npos, text.find("\"cmd\":\"state\""));
 
-    const std::string expected_ctf =
-        "\"ctf\":{\"active\":true,\"team_count\":2,"
-        "\"capture_limit\":3,\"winner_team\":-1,"
-        "\"captures\":[0,0,0,0],"
-        "\"flags\":[{\"team\":0,\"state\":0,\"carrier\":0,"
-        "\"x\":80,\"y\":240},{\"team\":1,\"state\":0,"
-        "\"carrier\":0,\"x\":544,\"y\":240}],"
-        "\"cps\":[{\"owner\":-1,\"x\":320,\"y\":240}]}";
-    EXPECT_NE(std::string::npos, text.find(expected_ctf))
-        << "the shipped two-flag/one-control-point arena must retain the "
-           "protocol's complete CTF JSON shape";
+    // The shipped CTF Lua activates on the first scripted tick and names
+    // itself through og.set_mode_name; its scoreboard HUD line carries the
+    // 0:0 caps readout. The mode block is the ONLY match-state channel.
+    EXPECT_NE(std::string::npos,
+              text.find("\"mode\":{\"active\":true,\"name\":\"CTF\","
+                        "\"winner_team\":-1"))
+        << "the shipped scen500 must activate the Lua CTF mode";
+    EXPECT_NE(std::string::npos, text.find("\"hud\":["))
+        << "the mode block carries the HUD channel";
+    EXPECT_EQ(std::string::npos, text.find("\"ctf\":"))
+        << "the retired CTF JSON block must not be emitted";
     EXPECT_NE(std::string::npos,
               text.find("\"cmd\":\"quit\",\"status\":\"ok\""));
 
     EXPECT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.gladiator"));
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// The scripted-mode observability block, byte-pinned (the json_ctf literal
+// pin's twin). The emitter reads only ModeState, so a hand-built world pins
+// the exact JSON shape all headless harnesses will parse.
+TEST(PlatformHeadless, text_protocol_json_mode_literal_shape)
+{
+    GameWorld world(997);
+    world.type |= SCEN_TYPE_SCRIPTED;
+    world.mode.active = true;
+    std::strncpy(world.mode.name.data(), "CTF", world.mode.name.size() - 1);
+    world.mode.vars[0] = 5;
+    world.mode.vars[63] = -2;
+    world.mode.hud[1].team = 0;
+    std::strncpy(world.mode.hud[1].text.data(), "2H",
+                 world.mode.hud[1].text.size() - 1);
+    world.mode.beacons[2].entity_id = 123;
+    world.mode.beacons[2].team = 2;
+
+    std::string vars = "5";
+    for (int i = 1; i < og::sim::kModeVarCount - 1; ++i)
+        vars += ",0";
+    vars += ",-2";
+    const std::string expected =
+        "{\"active\":true,\"name\":\"CTF\",\"winner_team\":-1,"
+        "\"vars\":[" + vars + "],"
+        "\"hud\":[{\"team\":0,\"text\":\"2H\"}],"
+        "\"beacons\":[{\"id\":123,\"team\":2}]}";
+    EXPECT_EQ(expected, og::ui::text_protocol_testing_json_mode(world));
+
+    // The pre-activation shape: everything default, empty hud/beacons.
+    GameWorld blank(998);
+    std::string zeros = "0";
+    for (int i = 1; i < og::sim::kModeVarCount; ++i)
+        zeros += ",0";
+    EXPECT_EQ("{\"active\":false,\"name\":\"\",\"winner_team\":-1,"
+              "\"vars\":[" + zeros + "],\"hud\":[],\"beacons\":[]}",
+              og::ui::text_protocol_testing_json_mode(blank));
+}
+
+// End-to-end: a level authored with SCEN_TYPE_SCRIPTED makes cmd_state emit
+// the "mode" key (active:false without a registered on_mode_init — the
+// activation itself is observable).
+TEST(PlatformHeadless, text_protocol_emits_mode_block_for_scripted_levels)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path fss = fs::path(get_user_path()) / "scen" / "scen997.fss";
+    const fs::path grid_png =
+        fs::path(get_user_path()) / "pix" / "modep997.png";
+    fs::remove(fss, ec);
+    fs::remove(grid_png, ec);
+
+    {
+        // The tower user-dir pipeline writes the .fss + grid png exactly
+        // where the og_file fallback chain loads them from.
+        GameWorld world(997);
+        world.create_new_grid();
+        world.type = SCEN_TYPE_SCRIPTED;
+        world.title = "MODE PROBE";
+        og::data::LevelFileMetadata metadata;
+        metadata.grid_file = "modep997";
+        og::data::LevelFileIoError err = og::data::LevelFileIoError::None;
+        ASSERT_TRUE(og::data::save_level_to_user_dir(world, 997, metadata,
+                                                     &err))
+            << "authoring the scripted probe level should succeed";
+    }
+
+    {
+        StdinRedirect input("state\nquit\n");
+        CoutRedirect output;
+
+        og::ui::TextProtocolArgs args;
+        args.campaign = "gladiator";
+        args.level = 997;
+        args.team_families = {FAMILY_SOLDIER};
+        args.seed = 7;
+        EXPECT_EQ(0, og::ui::run_text_protocol_session(args));
+
+        const std::string text = output.str();
+        EXPECT_NE(std::string::npos, text.find("\"cmd\":\"state\""));
+        EXPECT_NE(std::string::npos,
+                  text.find("\"mode\":{\"active\":false,\"name\":\"\","
+                            "\"winner_team\":-1"))
+            << "scripted levels must carry the mode block";
+        EXPECT_EQ(std::string::npos, text.find("\"ctf\":"))
+            << "the retired CTF JSON block must not be emitted";
+    }
+
+    fs::remove(fss, ec);
+    fs::remove(grid_png, ec);
 }
 
 TEST(PlatformHeadless, text_protocol_event_text_is_valid_json_escaped)
@@ -814,7 +911,7 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
     // 4=deploy, 5=ready; 7=back, 8=networking, 9=Scenario); the
     // scenario-shaped commands nest under the Scenario submenu
     // (1=set_campaign, 2=set_level, 3=view_scenario, 4=matchup, 5=progress,
-    // 6=back). Main 3=difficulty opens the DIFFICULTY submenu
+    // 6=troops, 7=back). Main 3=difficulty opens the DIFFICULTY submenu
     // (1=difficulty, 2=respawns, 3=respawn delay, 4=permadeath,
     // 5=generators, 6=infinite gold, 7=back).
     const std::string input =
@@ -868,7 +965,9 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "999\n"
         "1\n"       // scenario: set campaign (blank keeps current)
         "\n"
-        "6\n"       // scenario: back -> team build
+        "6\n"       // scenario: cycle scenario troops (ALL -> OWN)
+        "6\n"       // scenario: cycle scenario troops (OWN -> ALL)
+        "7\n"       // scenario: back -> team build
         "8\n"       // team build: networking (unavailable)
         "7\n"       // team build: back -> main
         "7\n";      // main: quit
@@ -937,7 +1036,7 @@ TEST(PlatformHeadless, text_picker_internal_help_and_error_paths)
     // internal paths read scenarios from.
     restore_default_campaigns();
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.gladiator"));
+              mount_campaign_package_with_error("gladiator"));
 
     StdoutSilencer stdout_silencer;
     EXPECT_EQ(0,
@@ -955,7 +1054,7 @@ TEST(PlatformHeadless, text_picker_reports_protocol_start_failure)
 {
     restore_default_campaigns();
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.gladiator"));
+              mount_campaign_package_with_error("gladiator"));
 
     StdinRedirect input(
         "2\n"  // main: continue -> team build
@@ -984,8 +1083,8 @@ TEST(PlatformHeadless, text_picker_new_game_resets_campaign_and_mount)
 {
     restore_default_campaigns(); // order-independent: install the packages
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.ctf"))
-        << "the ctf package ships with the game and should mount";
+              mount_campaign_package_with_error("modes"))
+        << "the modes package ships with the game and should mount";
 
     const std::string input =
         "1\n"       // main: begin new game -> §2.2 name entry
@@ -999,19 +1098,19 @@ TEST(PlatformHeadless, text_picker_new_game_resets_campaign_and_mount)
     StdoutSilencer stdout_silencer;
 
     og::ui::TextPickerConfig config;
-    config.campaign = "org.openglad.ctf"; // stale campaign from a prior session
+    config.campaign = "modes"; // stale campaign from a prior session
     config.team_families = {FAMILY_SOLDIER};
     og::ui::TextPickerError error;
     og::ui::run_text_picker(config, &error);
 
     EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
-    EXPECT_EQ("org.openglad.gladiator", config.campaign)
+    EXPECT_EQ("gladiator", config.campaign)
         << "a new game must reset the session campaign to the default";
-    EXPECT_EQ("org.openglad.gladiator", get_mounted_campaign())
+    EXPECT_EQ("gladiator", get_mounted_campaign())
         << "a new game must remount the default campaign package";
 
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.gladiator"));
+              mount_campaign_package_with_error("gladiator"));
 }
 
 // --- §2.3 Company List: text-client flow ----------------------------------
@@ -1063,7 +1162,7 @@ bool seed_headless_company(const std::string& slot, const std::string& name,
     SaveData sd;
     sd.reset();
     sd.save_name = name;
-    sd.current_campaign = "org.openglad.gladiator";
+    sd.current_campaign = "gladiator";
     sd.last_played_unix_s = last_played;
     return sd.save_with_error(slot) == SaveDataIoError::None;
 }
@@ -1353,18 +1452,18 @@ TEST(PlatformHeadless, campaign_select_labels_disambiguate_duplicate_titles)
 {
     restore_default_campaigns(); // order-independent: install the packages
 
-    const std::string id_a = "org.openglad.test_dup_a";
-    const std::string id_b = "org.openglad.test_dup_b";
+    const std::string id_a = "test_dup_a";
+    const std::string id_b = "test_dup_b";
     ASSERT_TRUE(install_titled_package(id_a, "Twin Peaks"));
     ASSERT_TRUE(install_titled_package(id_b, "Twin Peaks"));
     og::data::clear_campaign_metadata_cache(); // drop stale negative entries
 
     const std::vector<std::string> labels =
         og::ui::format_campaign_select_labels(
-            {id_a, id_b, "org.openglad.gladiator"});
+            {id_a, id_b, "gladiator"});
     ASSERT_EQ(3u, labels.size());
-    EXPECT_EQ("Twin Peaks [org.openglad.test_dup_a]", labels[0]);
-    EXPECT_EQ("Twin Peaks [org.openglad.test_dup_b]", labels[1]);
+    EXPECT_EQ("Twin Peaks [test_dup_a]", labels[0]);
+    EXPECT_EQ("Twin Peaks [test_dup_b]", labels[1]);
     EXPECT_EQ("Gladiator", labels[2]);
 
     namespace fs = std::filesystem;
@@ -1382,15 +1481,15 @@ TEST(PlatformHeadless, text_picker_campaign_select_mounts_selection)
 {
     restore_default_campaigns(); // order-independent: install the packages
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.ctf"))
-        << "the ctf package ships with the game and should mount";
+              mount_campaign_package_with_error("modes"))
+        << "the modes package ships with the game and should mount";
 
     const std::string input =
         "2\n"       // main: continue -> team build
         "9\n"       // team build: Scenario submenu
         "1\n"       // scenario: set campaign
         "1\n"       //   entry 1 is always the default campaign
-        "6\n"       // scenario: back -> team build
+        "7\n"       // scenario: back -> team build
         "7\n"       // team build: back -> main
         "7\n";      // main: quit
 
@@ -1404,12 +1503,12 @@ TEST(PlatformHeadless, text_picker_campaign_select_mounts_selection)
     og::ui::run_text_picker(config, &error);
 
     EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
-    EXPECT_EQ("org.openglad.gladiator", config.campaign);
-    EXPECT_EQ("org.openglad.gladiator", get_mounted_campaign())
+    EXPECT_EQ("gladiator", config.campaign);
+    EXPECT_EQ("gladiator", get_mounted_campaign())
         << "campaign selection must re-point the mount, not just strings";
 
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.gladiator"));
+              mount_campaign_package_with_error("gladiator"));
 }
 
 // Users must see human titles, never raw campaign ids: "Gladiator" from the
@@ -1419,7 +1518,7 @@ TEST(PlatformHeadless, text_picker_shows_display_titles_when_campaign_mounted)
 {
     restore_default_campaigns(); // order-independent: install the packages
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.gladiator"));
+              mount_campaign_package_with_error("gladiator"));
 
     const std::string input =
         "2\n"       // main: continue -> team build
@@ -1429,7 +1528,9 @@ TEST(PlatformHeadless, text_picker_shows_display_titles_when_campaign_mounted)
         "\n"
         "1\n"       // scenario: set campaign (blank keeps current)
         "\n"
-        "6\n"       // scenario: back -> team build
+        "6\n"       // scenario: cycle scenario troops (ALL -> OWN)
+        "6\n"       // scenario: cycle scenario troops (OWN -> ALL)
+        "7\n"       // scenario: back -> team build
         "7\n"       // team build: back -> main
         "7\n";      // main: quit
 
@@ -1444,9 +1545,9 @@ TEST(PlatformHeadless, text_picker_shows_display_titles_when_campaign_mounted)
 
     const std::string out = stdout_capture.restore();
     EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
-    EXPECT_EQ("org.openglad.gladiator", config.campaign)
+    EXPECT_EQ("gladiator", config.campaign)
         << "display titles must not leak into the selection state";
-    EXPECT_EQ("org.openglad.gladiator", get_mounted_campaign());
+    EXPECT_EQ("gladiator", get_mounted_campaign());
 
     EXPECT_NE(std::string::npos, out.find("Set Campaign (Gladiator)"));
     EXPECT_NE(std::string::npos,
@@ -1458,7 +1559,7 @@ TEST(PlatformHeadless, text_picker_shows_display_titles_when_campaign_mounted)
               out.find("Set level (current 1. SOUTH OF TALWOOD (BEGINNING)): "));
     EXPECT_NE(std::string::npos, out.find("  1. Gladiator\n"))
         << "campaign select must list titles, default campaign first";
-    EXPECT_NE(std::string::npos, out.find("Capture the Flag"))
+    EXPECT_NE(std::string::npos, out.find("Multiplayer Game Modes"))
         << "campaign select must list every package by title";
     EXPECT_EQ(std::string::npos, out.find("org.openglad."))
         << "raw campaign ids must never reach the display";
@@ -1471,14 +1572,14 @@ TEST(PlatformHeadless, text_picker_level_display_falls_back_when_mount_differs)
 {
     restore_default_campaigns(); // order-independent: install the packages
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.ctf"))
-        << "the ctf package ships with the game and should mount";
+              mount_campaign_package_with_error("modes"))
+        << "the modes package ships with the game and should mount";
 
     const std::string input =
         "2\n"       // main: continue -> team build
         "9\n"       // team build: Scenario submenu (labels print)
         "5\n"       // scenario: progress
-        "6\n"       // scenario: back -> team build
+        "7\n"       // scenario: back -> team build
         "7\n"       // team build: back -> main
         "7\n";      // main: quit
 
@@ -1487,7 +1588,7 @@ TEST(PlatformHeadless, text_picker_level_display_falls_back_when_mount_differs)
     StdoutCapture stdout_capture;
 
     og::ui::TextPickerConfig config;
-    config.campaign = "org.openglad.gladiator"; // diverges from the ctf mount
+    config.campaign = "gladiator"; // diverges from the ctf mount
     config.team_families = {FAMILY_SOLDIER};
     og::ui::TextPickerError error;
     og::ui::run_text_picker(config, &error);
@@ -1504,7 +1605,7 @@ TEST(PlatformHeadless, text_picker_level_display_falls_back_when_mount_differs)
         << "titles must never be read from a package other than the mount";
 
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.gladiator"));
+              mount_campaign_package_with_error("gladiator"));
 }
 
 // §2.5 per-row TRAIN (text shape): 'train 2' opens the train flow SEEDED on
@@ -1579,7 +1680,7 @@ TEST(PlatformHeadless, text_picker_matchup_screen_play_and_move_commands)
         "move 1 1\n"    //   valid: back to team 1
         "gibberish\n"   //   unrecognized command
         "\n"            //   blank exits matchup
-        "6\n"           // scenario: back -> team build
+        "7\n"           // scenario: back -> team build
         "7\n"           // base camp: back -> main
         "7\n";          // main: quit
 

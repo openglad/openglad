@@ -300,9 +300,9 @@ int level_editor_test_mouse_release_workflows()
     LevelEditorTestingPromptGuard prompt_guard;
     LevelEditorTestingMouseEventGuard mouse_event_guard;
 
-    check(mount_guard.switch_to("org.openglad.gladiator"));
+    check(mount_guard.switch_to("gladiator"));
     LevelEditorData data;
-    check(data.loadCampaign("org.openglad.gladiator"));
+    check(data.loadCampaign("gladiator"));
     check(data.loadLevel(1));
     data.level->delete_objects();
     data.level->create_new_grid();
@@ -569,7 +569,7 @@ int level_editor_test_exercise_internal_helpers()
     LevelEditorTestingStateGuard editor_state_guard;
     LevelEditorTestingPromptGuard prompt_guard;
     LevelEditorTestingYesNoGuard yes_no_guard;
-    const std::string helper_campaign_id = "org.openglad.coverage.editor_helper";
+    const std::string helper_campaign_id = "coverage.editor_helper";
     LevelEditorTestingMountGuard mount_guard;
     const auto mount_campaign_only = [&](const std::string& campaign_id) {
         const bool success = mount_guard.switch_to(campaign_id);
@@ -579,7 +579,7 @@ int level_editor_test_exercise_internal_helpers()
 
     mount_campaign_only("");
     restore_default_campaigns();
-    mount_campaign_only("org.openglad.gladiator");
+    mount_campaign_only("gladiator");
     delete_campaign(helper_campaign_id);
 
     Rect r;
@@ -728,7 +728,7 @@ int level_editor_test_exercise_internal_helpers()
 	        data.level->world().id = 1;
 	        check(data.loadLevel(1));
 	        check(data.reloadLevel());
-	        check(data.loadCampaign("org.openglad.gladiator"));
+	        check(data.loadCampaign("gladiator"));
         check(data.reloadCampaign());
 
         walker* inside = data.level->add_ob(Order::Living, FAMILY_SOLDIER);
@@ -1694,7 +1694,7 @@ int level_editor_test_decor_migrated_roundtrip()
             failed_check = check_index;
     };
     LevelEditorTestingStateGuard editor_state_guard;
-    const std::string copy_id = "org.openglad.coverage.decor_migrated";
+    const std::string copy_id = "coverage.decor_migrated";
     LevelEditorTestingMountGuard mount_guard;
     const auto mount_campaign_only = [&](const std::string& campaign_id) {
         const bool success = mount_guard.switch_to(campaign_id);
@@ -1704,7 +1704,7 @@ int level_editor_test_decor_migrated_roundtrip()
 
     mount_campaign_only("");
     restore_default_campaigns();
-    mount_campaign_only("org.openglad.gladiator");
+    mount_campaign_only("gladiator");
     delete_campaign(copy_id);
 
     {
@@ -1712,7 +1712,7 @@ int level_editor_test_decor_migrated_roundtrip()
         check(data.level != nullptr);
         if (data.level != nullptr)
         {
-            check(data.loadCampaign("org.openglad.gladiator"));
+            check(data.loadCampaign("gladiator"));
             check(data.loadLevel(1));
             eds().current_floor = 0;
             eds().decor_mode = false;

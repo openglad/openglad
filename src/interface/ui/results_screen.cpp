@@ -21,7 +21,6 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/walker_draw.h>
 #include <openglad/core/test_trace.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -91,28 +90,23 @@ bool show_mode_ending_popup(int ending, int nextlevel)
     return true;
 }
 
-// CTF match end carries the classic WIN shape (ending == 0) even when the
-// local player LOST, so the popup must be derived from the match outcome,
-// never from ending alone. Returns true when it showed the CTF popup.
-//
-// Title: VICTORY!/DEFEAT! from the local viewports' controls vs the winner —
-// NEVER ctf.winner_is_player, which is global (any human on the winning team)
-// and would tell a losing networked client "VICTORY". Null/stale controls or
-// split-screen panes spanning both sides fall back to a neutral MATCH OVER.
-// Flow line: chosen from the end shape itself, evaluated BEFORE screen::
-// endgame rewrites scen_num — the loss/rematch shape keeps nextlevel == the
-// current level.
-bool show_ctf_ending_popup(int nextlevel)
+// Scripted-mode (TYPE_SCRIPTED) match end: the retired CTF popup's logic read from
+// ModeState. Gated on a DECIDED match (winner_team >= 0, og.declare_winner);
+// an og.end_level without a winner keeps the generic ending popups. Title
+// from the LOCAL viewports' controls vs the winner — never winner_is_player,
+// which is global (any human on the winning team) and would tell a losing
+// networked client "VICTORY". The body leads with the mode's own name.
+bool show_scripted_mode_ending_popup(int nextlevel)
 {
     screen* const s = og::runtime::current_session->myscreen_;
     const GameWorld& world = s->world();
-    if (!(world.type & GameWorld::TYPE_CTF) || !world.ctf.active ||
-        world.ctf.winner_team < 0)
+    if (!(world.type & GameWorld::TYPE_SCRIPTED) || !world.mode.active ||
+        world.mode.winner_team < 0)
     {
         return false;
     }
 
-    const int winner = world.ctf.winner_team;
+    const int winner = world.mode.winner_team;
     bool any_winner = false;
     bool any_loser = false;
     for (int i = 0; i < s->numviews; ++i)
@@ -132,15 +126,14 @@ bool show_ctf_ending_popup(int nextlevel)
     else if (any_loser && !any_winner)
         title = "DEFEAT!";
 
-    std::string body =
-        std::format("{} TEAM WINS!", og::sim::ctf_team_color_name(winner));
+    std::string body;
+    if (world.mode.name[0] != '\0')
+        body = std::format("{}: ", world.mode.name.data());
+    body += std::format("{} TEAM WINS!", og::sim::team_color_name(winner));
     if (nextlevel == s->save_data.scen_num)
         body += "\nGet ready for a rematch!";
     else
     {
-        // The scenario name sits on its own line: popup_dialog sizes itself
-        // to the longest line, and "Moving on to <NNN. TITLE>" can run the
-        // full 320px screen width.
         body += std::format(
             "\nMoving on to\n{}", og::data::scenario_display_name(nextlevel));
     }
@@ -178,8 +171,8 @@ void show_ending_popup(int ending, int nextlevel)
 	{
 		if (show_mode_ending_popup(ending, nextlevel))
 			return; // mode-owned win popup (tower floor cleared) shown
-		if (show_ctf_ending_popup(nextlevel))
-			return; // decided CTF match: outcome-aware popup shown
+		if (show_scripted_mode_ending_popup(nextlevel))
+			return; // decided scripted-mode match: outcome-aware popup shown
 		if (og::runtime::current_session->myscreen_->save_data.is_level_completed(og::runtime::current_session->myscreen_->save_data.scen_num)) // this scenario is completed ..
 		{
 		    std::string buf = std::format("Moving on to\n{}", og::data::scenario_display_name(nextlevel));
@@ -441,27 +434,25 @@ if(area_inner.y < y && y + 10 < area_inner.y + area_inner.h) {
 #define END_IF_IN_SCROLL_AREA \
 }
 
-std::string format_ctf_winner_banner(int winner_team)
+std::string format_winner_banner(int winner_team)
 {
     // Same wording as the sim's match-end notification: color name, never a
     // bare 1-indexed team number (players see tints, not indices).
-    return std::format("{} TEAM WINS!", og::sim::ctf_team_color_name(winner_team));
+    return std::format("{} TEAM WINS!", og::sim::team_color_name(winner_team));
 }
 
-std::vector<CtfCapsSegment> format_ctf_caps_segments(const og::sim::CtfState& ctf)
+std::vector<ScoreboardSegment> format_mode_scoreboard_segments(
+    const og::sim::ModeState& mode)
 {
-    std::vector<CtfCapsSegment> segments;
-    segments.push_back({"CAPS ", -1});
-    bool first = true;
-    for (int team = 0; team < 4; ++team)
-    {
-        if (!ctf.team_active[team])
-            continue;
-        if (!first)
-            segments.push_back({":", -1});
-        first = false;
-        segments.push_back({std::format("{}", ctf.captures[team]), team});
-    }
+    // The mode's own scoreboard text is HUD slot 0, verbatim — the generic
+    // twin of the CAPS line (Lua owns the wording, C++ never knows modes).
+    std::vector<ScoreboardSegment> segments;
+    const og::sim::ModeHudLine& line = mode.hud[0];
+    if (line.text[0] == '\0')
+        return segments;
+    const int team =
+        (line.team < SCORE_TEAM_COUNT) ? static_cast<int>(line.team) : -1;
+    segments.push_back({line.text.data(), team});
     return segments;
 }
 
@@ -588,16 +579,17 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
     }
     
     // MVP. A foreign-color company member is an opponent in this mission and
-    // must never headline the local team's results. In a decided CTF match,
-    // scope to the winning team instead. If that side fielded no rostered
-    // humans, mvp stays null and the line is omitted below.
+    // must never headline the local team's results. In a decided
+    // scripted-mode match, scope to the winning team instead. If that side
+    // fielded no rostered humans, mvp stays null and the line is omitted
+    // below.
     const GameWorld& mvp_world = og::runtime::current_session->myscreen_->world();
-    const bool ctf_winner_scope =
-        (mvp_world.type & GameWorld::TYPE_CTF) && mvp_world.ctf.active &&
-        mvp_world.ctf.winner_team >= 0;
-    const short mvp_team = ctf_winner_scope
-        ? mvp_world.ctf.winner_team
-        : mvp_world.my_team;
+    const bool mode_winner_scope =
+        (mvp_world.type & GameWorld::TYPE_SCRIPTED) && mvp_world.mode.active &&
+        mvp_world.mode.winner_team >= 0;
+    const short mvp_team =
+        mode_winner_scope ? static_cast<short>(mvp_world.mode.winner_team)
+                          : mvp_world.my_team;
     walker* mvp = nullptr;
     float mvp_points = 0;
     for(auto& troop : troops)
@@ -787,42 +779,52 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
             int x = area.x + 12;
 	            y = static_cast<int>(static_cast<float>(area.y + 30) - scroll);
 
-            // CTF match summary: winner banner + a single capture line
-            // ("CAPS 3:5:1:0", counts in their team ramps), at a tight 8px
-            // pitch so the classic gold/foes block stays on the first screen.
             const GameWorld& ctf_world =
                 og::runtime::current_session->myscreen_->world();
-            if ((ctf_world.type & GameWorld::TYPE_CTF) && ctf_world.ctf.active)
+            // Scripted-mode match summary: winner banner + the mode's own
+            // scoreboard line (HUD slot 0 verbatim), at a tight 8px pitch
+            // so the classic gold/foes block stays on the first screen.
+            if ((ctf_world.type & GameWorld::TYPE_SCRIPTED) &&
+                ctf_world.mode.active)
             {
-                if (ctf_world.ctf.winner_team >= 0)
+                if (ctf_world.mode.winner_team >= 0)
                 {
                     BEGIN_IF_IN_SCROLL_AREA;
                     mytext.write_xy_center_shadow(
                         area.x + area.w/2, y,
-                        static_cast<unsigned char>(ctf_world.ctf.winner_team * 16 + 40),
+                        static_cast<unsigned char>(
+                            ctf_world.mode.winner_team * 16 + 40),
                         "%s",
-                        format_ctf_winner_banner(ctf_world.ctf.winner_team).c_str());
+                        format_winner_banner(
+                            ctf_world.mode.winner_team).c_str());
+                    TRACE("results", "mode_winner_banner team=%d",
+                          static_cast<int>(ctf_world.mode.winner_team));
                     END_IF_IN_SCROLL_AREA;
                     y += 8;
                 }
-                BEGIN_IF_IN_SCROLL_AREA;
-                const std::vector<CtfCapsSegment> caps_segments =
-                    format_ctf_caps_segments(ctf_world.ctf);
-                Sint32 caps_width = 0;
-                for (const CtfCapsSegment& segment : caps_segments)
-                    caps_width += static_cast<Sint32>(segment.text.size()) * 6;
-                Sint32 caps_x = area.x + area.w/2 - caps_width/2;
-                for (const CtfCapsSegment& segment : caps_segments)
+                const std::vector<ScoreboardSegment> mode_segments =
+                    format_mode_scoreboard_segments(ctf_world.mode);
+                if (!mode_segments.empty())
                 {
-                    const unsigned char color = (segment.team < 0)
-                        ? PURE_WHITE
-                        : static_cast<unsigned char>(segment.team * 16 + 40);
-                    mytext.write_xy_shadow(caps_x, y, color, "%s",
-                                           segment.text.c_str());
-                    caps_x += static_cast<Sint32>(segment.text.size()) * 6;
+                    BEGIN_IF_IN_SCROLL_AREA;
+                    Sint32 seg_width = 0;
+                    for (const ScoreboardSegment& segment : mode_segments)
+                        seg_width += static_cast<Sint32>(segment.text.size()) * 6;
+                    Sint32 seg_x = area.x + area.w/2 - seg_width/2;
+                    for (const ScoreboardSegment& segment : mode_segments)
+                    {
+                        const unsigned char color = (segment.team < 0)
+                            ? PURE_WHITE
+                            : static_cast<unsigned char>(segment.team * 16 + 40);
+                        mytext.write_xy_shadow(seg_x, y, color, "%s",
+                                               segment.text.c_str());
+                        seg_x += static_cast<Sint32>(segment.text.size()) * 6;
+                    }
+                    TRACE("results", "mode_scoreboard %s",
+                          mode_segments.front().text.c_str());
+                    END_IF_IN_SCROLL_AREA;
+                    y += 8;
                 }
-                END_IF_IN_SCROLL_AREA;
-                y += 8;
             }
 
             // Tier-B mode summary (tower-triple §2.7): the mounted mode may

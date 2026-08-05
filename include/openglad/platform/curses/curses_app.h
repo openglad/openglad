@@ -14,7 +14,7 @@ namespace og::curses {
 
 // Parsed command-line options for the curses client.
 struct AppOptions {
-    std::string campaign = "org.openglad.gladiator";
+    std::string campaign = "gladiator";
     int level = 1;
     std::string save_name = "curses_quicksave";
     std::uint32_t seed = 42;

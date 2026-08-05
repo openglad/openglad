@@ -28,9 +28,9 @@ namespace {
 
 using og::progression::WinFoldContext;
 using og::progression::apply_win_fold;
-using og::progression::ctf_rematch_shape;
+using og::progression::mode_rematch_shape;
 
-constexpr const char* kCampaign = "org.openglad.test_fold";
+constexpr const char* kCampaign = "test_fold";
 
 // SaveData is non-copyable (owning team_list) — initialize in place.
 // SaveData::reset() seeds m_totalcash at the new-game 5000 grubstake; zero
@@ -254,9 +254,9 @@ TEST(WinFold, apply_twice_equals_apply_once)
 }
 
 // ---------------------------------------------------------------------------
-// CTF rematch predicate + fold gating.
+// Scripted-mode rematch predicate + fold gating.
 
-TEST(WinFold, ctf_rematch_shape_truth_table)
+TEST(WinFold, mode_rematch_shape_truth_table)
 {
     TestGameWorld fx;
     GameWorld& world = fx.world();
@@ -264,33 +264,33 @@ TEST(WinFold, ctf_rematch_shape_truth_table)
     init_save(save, 500);
 
     // All four conditions hold -> rematch shape.
-    world.type = static_cast<char>(world.type | GameWorld::TYPE_CTF);
-    world.ctf.active = true;
-    world.ctf.winner_team = 1;
-    EXPECT_TRUE(ctf_rematch_shape(world, save, 500));
+    world.type = static_cast<char>(world.type | GameWorld::TYPE_SCRIPTED);
+    world.mode.active = true;
+    world.mode.win_latched = true;
+    EXPECT_TRUE(mode_rematch_shape(world, save, 500));
 
     // next_level != current level -> a genuine advance, not a rematch.
-    EXPECT_FALSE(ctf_rematch_shape(world, save, 501));
+    EXPECT_FALSE(mode_rematch_shape(world, save, 501));
 
-    // No decided winner.
-    world.ctf.winner_team = -1;
-    EXPECT_FALSE(ctf_rematch_shape(world, save, 500));
-    world.ctf.winner_team = 1;
+    // No decided match (win latch unarmed).
+    world.mode.win_latched = false;
+    EXPECT_FALSE(mode_rematch_shape(world, save, 500));
+    world.mode.win_latched = true;
 
-    // CTF state not active.
-    world.ctf.active = false;
-    EXPECT_FALSE(ctf_rematch_shape(world, save, 500));
-    world.ctf.active = true;
+    // Mode state not active.
+    world.mode.active = false;
+    EXPECT_FALSE(mode_rematch_shape(world, save, 500));
+    world.mode.active = true;
 
-    // Not a CTF-typed level at all.
-    world.type = static_cast<char>(world.type & ~GameWorld::TYPE_CTF);
-    EXPECT_FALSE(ctf_rematch_shape(world, save, 500));
+    // Not a scripted-typed level at all.
+    world.type = static_cast<char>(world.type & ~GameWorld::TYPE_SCRIPTED);
+    EXPECT_FALSE(mode_rematch_shape(world, save, 500));
 
     // The (world, current_level, next_level) core matches the SaveData
-    // convenience (the curses is_ctf_rematch_end adapter path).
-    world.type = static_cast<char>(world.type | GameWorld::TYPE_CTF);
-    EXPECT_TRUE(ctf_rematch_shape(world, static_cast<short>(500), 500));
-    EXPECT_FALSE(ctf_rematch_shape(world, static_cast<short>(499), 500));
+    // convenience (the curses is_mode_rematch_end adapter path).
+    world.type = static_cast<char>(world.type | GameWorld::TYPE_SCRIPTED);
+    EXPECT_TRUE(mode_rematch_shape(world, static_cast<short>(500), 500));
+    EXPECT_FALSE(mode_rematch_shape(world, static_cast<short>(499), 500));
 }
 
 TEST(WinFold, rematch_shape_folds_money_but_never_marks_completed)

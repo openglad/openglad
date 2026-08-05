@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 
 #include <openglad/gameplay/game_world.h>
+#include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/campaign_yaml.h>
 #include <openglad/resources/game_mode.h>
@@ -24,7 +25,7 @@ namespace {
 using og::mode::IProgression;
 using og::mode::ProgressionKind;
 
-constexpr const char* kGladiatorId = "org.openglad.gladiator";
+constexpr const char* kGladiatorId = "gladiator";
 
 // ---------------------------------------------------------------------------
 // kind_for_mode_string — the pure mapping table.
@@ -284,7 +285,7 @@ TEST_F(MountedCampaignModeTest, modeless_campaign_reports_empty_and_memoizes)
 
 TEST_F(MountedCampaignModeTest, mode_key_flows_from_mounted_package)
 {
-    const std::string id = "org.openglad.test_tower_mode";
+    const std::string id = "test_tower_mode";
     ASSERT_TRUE(install_fake_package(id,
         "format_version: 1\ntitle: Fake Tower\nversion: 1\nmode: tower\n"));
     ASSERT_EQ(CampaignPackageIoError::None,
@@ -301,7 +302,7 @@ TEST_F(MountedCampaignModeTest, mode_key_flows_from_mounted_package)
 TEST_F(MountedCampaignModeTest, remount_heals_stale_cached_mode)
 {
     // v1 of the package has no mode; the lookup memoizes "".
-    const std::string id = "org.openglad.test_mode_upgrade";
+    const std::string id = "test_mode_upgrade";
     ASSERT_TRUE(install_fake_package(id,
         "format_version: 1\ntitle: Upgrades\nversion: 1\n"));
     ASSERT_EQ(CampaignPackageIoError::None,
@@ -326,7 +327,7 @@ TEST_F(MountedCampaignModeTest, remount_heals_stale_cached_mode)
 
 TEST_F(MountedCampaignModeTest, unknown_mode_string_falls_back_to_classic)
 {
-    const std::string id = "org.openglad.test_bogus_mode";
+    const std::string id = "test_bogus_mode";
     ASSERT_TRUE(install_fake_package(id,
         "format_version: 1\ntitle: Bogus\nversion: 1\nmode: hyperspace\n"));
     ASSERT_EQ(CampaignPackageIoError::None,
@@ -337,6 +338,208 @@ TEST_F(MountedCampaignModeTest, unknown_mode_string_falls_back_to_classic)
 
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error(kGladiatorId));
+    remove_fake_package(id);
+}
+
+// ---------------------------------------------------------------------------
+// campaign.yaml `matchup:` — the versus axis. Same LOAD-BEARING
+// emit-only-when-non-empty stability rule as `mode:`, one line after it.
+
+TEST(GameModeYaml, writer_omits_matchup_when_empty)
+{
+    const std::string bytes =
+        emitted_yaml_bytes(sample_campaign(), "matchup_seam_a.yaml");
+    EXPECT_EQ(std::string::npos, bytes.find("matchup:"))
+        << "empty matchup must not appear in emitter output:\n" << bytes;
+}
+
+TEST(GameModeYaml, writer_matchup_line_is_the_only_delta)
+{
+    const std::string without =
+        emitted_yaml_bytes(sample_campaign(), "matchup_seam_b.yaml");
+
+    og::data::CampaignYaml with_matchup = sample_campaign();
+    with_matchup.matchup = "versus";
+    const std::string with =
+        emitted_yaml_bytes(with_matchup, "matchup_seam_c.yaml");
+
+    std::vector<std::string> with_lines = split_lines(with);
+    const auto matchup_line = std::find(with_lines.begin(), with_lines.end(),
+                                        "matchup: versus");
+    ASSERT_NE(with_lines.end(), matchup_line)
+        << "emitted document must carry 'matchup: versus':\n" << with;
+    with_lines.erase(matchup_line);
+    EXPECT_EQ(split_lines(without), with_lines)
+        << "the matchup pair must be the ONLY emitter delta";
+}
+
+TEST(GameModeYaml, matchup_emits_right_after_mode_when_both_set)
+{
+    og::data::CampaignYaml data = sample_campaign();
+    data.mode = "tower";
+    data.matchup = "versus";
+    const std::string bytes =
+        emitted_yaml_bytes(data, "matchup_seam_d.yaml");
+    const std::vector<std::string> lines = split_lines(bytes);
+    const auto mode_line =
+        std::find(lines.begin(), lines.end(), "mode: tower");
+    ASSERT_NE(lines.end(), mode_line) << bytes;
+    ASSERT_NE(lines.end(), mode_line + 1) << bytes;
+    EXPECT_EQ("matchup: versus", *(mode_line + 1))
+        << "matchup sits on the line after mode";
+}
+
+TEST(GameModeYaml, matchup_round_trips_through_writer_and_parser)
+{
+    og::data::CampaignYaml data = sample_campaign();
+    data.matchup = "versus";
+    ASSERT_EQ(og::data::CampaignYamlWriteResult::Ok,
+              og::data::write_campaign_yaml_with_result("matchup_seam_rt.yaml",
+                                                        data));
+
+    og::data::CampaignYaml parsed;
+    ASSERT_EQ(og::data::CampaignYamlReadResult::Ok,
+              og::data::read_campaign_yaml("matchup_seam_rt.yaml", parsed));
+    EXPECT_TRUE(parsed.saw_matchup);
+    EXPECT_EQ("versus", parsed.matchup);
+    EXPECT_FALSE(parsed.saw_mode) << "matchup is orthogonal to mode";
+
+    og::data::CampaignYaml parsed_absent;
+    ASSERT_EQ(og::data::CampaignYamlWriteResult::Ok,
+              og::data::write_campaign_yaml_with_result("matchup_seam_rt2.yaml",
+                                                        sample_campaign()));
+    ASSERT_EQ(og::data::CampaignYamlReadResult::Ok,
+              og::data::read_campaign_yaml("matchup_seam_rt2.yaml",
+                                           parsed_absent));
+    EXPECT_FALSE(parsed_absent.saw_matchup);
+    EXPECT_TRUE(parsed_absent.matchup.empty());
+
+    std::error_code ec;
+    std::filesystem::remove(
+        std::filesystem::path(get_user_path()) / "matchup_seam_rt.yaml", ec);
+    std::filesystem::remove(
+        std::filesystem::path(get_user_path()) / "matchup_seam_rt2.yaml", ec);
+}
+
+// ---------------------------------------------------------------------------
+// campaign_matchup / campaign_mode by-id accessors + the mounted twins.
+// Reuses the MountedCampaignModeTest mount hygiene (exact-restore fixture).
+
+using CampaignMatchupTest = MountedCampaignModeTest;
+
+TEST_F(CampaignMatchupTest, matchup_reads_through_private_mount_and_fast_path)
+{
+    const std::string id = "test_versus_matchup";
+    ASSERT_TRUE(install_fake_package(id,
+        "format_version: 1\ntitle: Versus Pack\nversion: 1\n"
+        "matchup: versus\n"));
+
+    // Slow path: the package is NOT mounted (gladiator is). The lookup rides
+    // a throwaway private mount and must not disturb the active mount.
+    EXPECT_EQ("versus", og::data::campaign_matchup(id));
+    EXPECT_EQ(kGladiatorId, get_mounted_campaign());
+    EXPECT_EQ("", og::data::campaign_mode(id))
+        << "matchup-only package carries no mode";
+    EXPECT_EQ("", og::data::mounted_campaign_matchup())
+        << "gladiator is cooperative";
+
+    // Fast path: mount it and read the mounted twins.
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(id));
+    EXPECT_EQ("versus", og::data::mounted_campaign_matchup());
+    EXPECT_EQ("", og::data::mounted_campaign_mode());
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(kGladiatorId));
+    remove_fake_package(id);
+}
+
+TEST_F(CampaignMatchupTest, absent_and_unsafe_ids_read_cooperative)
+{
+    EXPECT_EQ("", og::data::campaign_matchup(""));
+    EXPECT_EQ("", og::data::campaign_mode(""));
+    EXPECT_EQ("", og::data::campaign_matchup("../escape"))
+        << "unsafe ids must not steer a mount";
+    EXPECT_EQ("", og::data::campaign_matchup("no_such_pkg"));
+    EXPECT_EQ("", og::data::campaign_matchup(kGladiatorId))
+        << "shipped gladiator campaign.yaml has no matchup key";
+}
+
+// ---------------------------------------------------------------------------
+// CampaignData (the editor's campaign-info round-trip) must carry BOTH yaml
+// identity axes. Before this, an editor save dropped `mode:`/`matchup:` on
+// the floor (documented deferred gap in docs/game-modes.md) because
+// campaign_data_to_yaml never copied them into the rewritten campaign.yaml.
+
+TEST_F(CampaignMatchupTest, campaign_data_round_trips_mode_and_matchup)
+{
+    const std::string id = "test_cd_roundtrip";
+    ASSERT_TRUE(install_fake_package(id,
+        "format_version: 1\ntitle: Round Trip\nversion: 1\n"
+        "mode: tower\nmatchup: versus\n"));
+
+    CampaignData loaded(id);
+    ASSERT_TRUE(loaded.load());
+    EXPECT_EQ("tower", loaded.mode);
+    EXPECT_EQ("versus", loaded.matchup);
+    EXPECT_EQ("Round Trip", loaded.title);
+
+    // The editor flow: load -> edit an unrelated field -> save (repack).
+    loaded.title = "Round Trip v2";
+    ASSERT_TRUE(loaded.save());
+
+    // A fresh load of the repacked archive still carries both keys.
+    og::data::clear_campaign_metadata_cache();
+    CampaignData reloaded(id);
+    ASSERT_TRUE(reloaded.load());
+    EXPECT_EQ("Round Trip v2", reloaded.title);
+    EXPECT_EQ("tower", reloaded.mode)
+        << "the editor round-trip must not drop mode:";
+    EXPECT_EQ("versus", reloaded.matchup)
+        << "the editor round-trip must not drop matchup:";
+
+    // A campaign WITHOUT the keys stays without them after a repack (the
+    // writer's only-when-non-empty rule, exercised end-to-end).
+    const std::string coop_id = "test_cd_coop";
+    ASSERT_TRUE(install_fake_package(coop_id,
+        "format_version: 1\ntitle: Coop Trip\nversion: 1\n"));
+    CampaignData coop(coop_id);
+    ASSERT_TRUE(coop.load());
+    EXPECT_TRUE(coop.mode.empty());
+    EXPECT_TRUE(coop.matchup.empty());
+    ASSERT_TRUE(coop.save());
+    og::data::clear_campaign_metadata_cache();
+    EXPECT_EQ("", og::data::campaign_mode(coop_id));
+    EXPECT_EQ("", og::data::campaign_matchup(coop_id));
+
+    remove_fake_package(id);
+    remove_fake_package(coop_id);
+}
+
+TEST_F(CampaignMatchupTest, forget_heals_stale_matchup_entry)
+{
+    // v1 has no matchup; the lookup memoizes "".
+    const std::string id = "test_matchup_upgrade";
+    ASSERT_TRUE(install_fake_package(id,
+        "format_version: 1\ntitle: Upgrades\nversion: 1\n"));
+    EXPECT_EQ("", og::data::campaign_matchup(id));
+
+    // The package is rebuilt WITH a matchup. The memo serves the stale ""
+    // until invalidation; forget_campaign_display_title heals exactly this id.
+    ASSERT_TRUE(install_fake_package(id,
+        "format_version: 1\ntitle: Upgrades\nversion: 2\n"
+        "matchup: versus\n"));
+    EXPECT_EQ("", og::data::campaign_matchup(id)) << "memoized pre-rebuild";
+    og::data::forget_campaign_display_title(id);
+    EXPECT_EQ("versus", og::data::campaign_matchup(id));
+
+    // clear_campaign_metadata_cache also drops the entry.
+    ASSERT_TRUE(install_fake_package(id,
+        "format_version: 1\ntitle: Upgrades\nversion: 3\n"));
+    EXPECT_EQ("versus", og::data::campaign_matchup(id)) << "memoized again";
+    og::data::clear_campaign_metadata_cache();
+    EXPECT_EQ("", og::data::campaign_matchup(id));
+
     remove_fake_package(id);
 }
 

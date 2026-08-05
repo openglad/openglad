@@ -294,7 +294,7 @@ TEST(CursesAppOptions, parses_every_supported_option)
 {
     std::vector<std::string> args{
         "openglad_curses",
-        "--campaign", "org.openglad.test",
+        "--campaign", "test",
         "--level", "4",
         "--save", "slot7",
         "--seed", "123456",
@@ -313,7 +313,7 @@ TEST(CursesAppOptions, parses_every_supported_option)
     ASSERT_TRUE(og::curses::parse_app_options(
         static_cast<int>(argv.size()), argv.data(), options, &should_exit));
     ASSERT_FALSE(should_exit);
-    ASSERT_EQ("org.openglad.test", options.campaign);
+    ASSERT_EQ("test", options.campaign);
     ASSERT_EQ(4, options.level);
     ASSERT_EQ("slot7", options.save_name);
     ASSERT_EQ(static_cast<std::uint32_t>(123456), options.seed);

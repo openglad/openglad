@@ -1,9 +1,11 @@
 /* Curses-client CTF presentation and replication: terminal glyphs for flags
  * and control points, the HUD caps/FLAG/RESPAWN line read from a mirror
- * world's replicated CtfState, and an in-process 2-client round where the
+ * world's replicated ModeState, and an in-process 2-client round where the
  * host's authoritative server world is stamped CTF and both mirrors converge.
  */
 #include <gtest/gtest.h>
+
+#include <cstring>
 
 #include <openglad/platform/curses/curses_network.h>
 #include <openglad/platform/curses/curses_renderer.h>
@@ -12,10 +14,9 @@
 #include <openglad/platform/curses/clock.h>
 
 #include <openglad/core/constants.h>
-#include <openglad/core/ctf_constants.h>
+#include <openglad/core/campaign_ids.h>
 #include <openglad/core/order.h>
 #include <openglad/core/pixdefs.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/net_transport.h>
@@ -40,7 +41,7 @@ std::unique_ptr<CursesLobby> make_join_lobby_over_transport_for_testing(
     SaveData& save, int difficulty,
     std::shared_ptr<og::sim::ITransport> transport,
     og::sim::PeerId server_peer_id);
-bool curses_network_testing_inject_ctf(CursesGameSession& session,
+bool curses_network_testing_inject_mode(CursesGameSession& session,
                                        short requested_respawn_ticks);
 } // namespace og::curses
 
@@ -91,7 +92,7 @@ private:
 
 void init_team_save(SaveData& save, short team, char family, const char* name)
 {
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
     save.numplayers = 1;
     save.my_team = team;
@@ -180,34 +181,7 @@ void advance_all(CursesGameSession& host, CursesGameSession& join, int frames)
 
 } // namespace
 
-TEST(CursesCtf, ctf_constants_visible_without_sdl)
-{
-    ASSERT_EQ(13, og::FAMILY_FLAG);
-    ASSERT_EQ(14, og::FAMILY_CTF_POINT);
-    ASSERT_EQ(3, og::sim::kCtfDefaultCaptureLimit);
-}
-
-TEST(CursesCtf, glyphs_for_flag_and_control_point_take_team_colors)
-{
-    const Glyph flag = entity_glyph(Order::Treasure, og::FAMILY_FLAG,
-                                    /*team=*/1, false, 0);
-    EXPECT_EQ('F', flag.ascii);
-    EXPECT_EQ(team_color(1), flag.fg) << "flag tints by its owning team";
-    EXPECT_TRUE(flag.bold);
-    EXPECT_FALSE(flag.skip);
-
-    const Glyph point = entity_glyph(Order::Treasure, og::FAMILY_CTF_POINT,
-                                     /*team=*/2, false, 0);
-    EXPECT_EQ('O', point.ascii);
-    EXPECT_EQ(team_color(2), point.fg) << "control point tints by its owner";
-    EXPECT_FALSE(point.skip);
-
-    // Classic treasures keep their table glyphs.
-    const Glyph exit_glyph = entity_glyph(Order::Treasure, FAMILY_EXIT, 0, false, 0);
-    EXPECT_EQ('>', exit_glyph.ascii);
-}
-
-TEST(CursesCtf, hud_shows_caps_line_with_flag_and_respawn_markers)
+TEST(CursesCtf, hud_shows_mode_lines_with_respawn_marker)
 {
     HandWorld hw(16, 16);
     walker* hero = hw.add_entity(Order::Living, FAMILY_SOLDIER, 8, 8, 0);
@@ -215,97 +189,65 @@ TEST(CursesCtf, hud_shows_caps_line_with_flag_and_respawn_markers)
     const std::uint32_t id = hero->entity_id();
     hw.world().my_team = 0;
 
-    // Mirror-style replicated CTF state (the renderer reads it directly).
-    og::sim::CtfState& ctf = hw.world().ctf;
-    ctf.active = true;
-    ctf.team_active[0] = true;
-    ctf.team_active[1] = true;
-    ctf.captures[0] = 1;
-    ctf.captures[1] = 2;
+    // Mirror-style replicated mode state (the renderer reads it directly).
+    hw.world().type |= GameWorld::TYPE_SCRIPTED;
+    og::sim::ModeState& mode = hw.world().mode;
+    mode.active = true;
+    mode.init_attempted = true;
+    std::strncpy(mode.name.data(), "CTF", mode.name.size() - 1);
+    mode.hud[0].team = 0;
+    std::strncpy(mode.hud[0].text.data(), "Caps 1:2",
+                 mode.hud[0].text.size() - 1);
 
     HeadlessTerminal term(21, 60);
     CursesRenderer renderer;
     renderer.draw(term, hw.world(), id);
     std::string row1 = term.text_row(1);
+    EXPECT_NE(row1.find("CTF"), std::string::npos)
+        << "mode name on HUD row 1: " << row1;
     EXPECT_NE(row1.find("Caps 1:2"), std::string::npos)
-        << "caps line on HUD row 1: " << row1;
-    EXPECT_EQ(row1.find("FLAG"), std::string::npos)
-        << "no carrier marker without a carried flag: " << row1;
+        << "mode HUD line on HUD row 1: " << row1;
 
-    // The followed avatar picks up team 1's flag.
-    ctf.flags[1].state = og::sim::CtfFlagState::Carried;
-    ctf.flags[1].carrier_entity_id = id;
-    renderer.draw(term, hw.world(), id);
-    row1 = term.text_row(1);
-    EXPECT_NE(row1.find("FLAG"), std::string::npos)
-        << "carrier marker expected: " << row1;
-
-    // Priority order: the CTF fields ride right behind HP/MP/Lv, ahead of
-    // the special and score, so narrow terminals clip the low-value tail.
+    // Priority order: the mode fields ride ahead of the score tail, so
+    // narrow terminals clip the low-value end.
     ASSERT_NE(row1.find("Score"), std::string::npos) << row1;
     EXPECT_LT(row1.find("Caps"), row1.find("Score")) << row1;
-    EXPECT_LT(row1.find("FLAG"), row1.find("Score")) << row1;
-    if (row1.find("Sp:") != std::string::npos)
-    {
-        EXPECT_LT(row1.find("Caps"), row1.find("Sp:")) << row1;
-        EXPECT_LT(row1.find("FLAG"), row1.find("Sp:")) << row1;
-    }
 
-    // A terminal too narrow for the whole line keeps Caps/FLAG and loses
-    // Score (the regression: clipping used to eat exactly the CTF tail).
-    const int narrow_cols = static_cast<int>(row1.find("FLAG")) + 5;
+    // A terminal too narrow for the whole line keeps the mode text and
+    // loses Score.
+    const int narrow_cols = static_cast<int>(row1.find("Caps 1:2")) + 12;
     HeadlessTerminal narrow(21, narrow_cols);
     renderer.draw(narrow, hw.world(), id);
     const std::string narrow_row1 = narrow.text_row(1);
     EXPECT_NE(narrow_row1.find("Caps 1:2"), std::string::npos) << narrow_row1;
-    EXPECT_NE(narrow_row1.find("FLAG"), std::string::npos) << narrow_row1;
     EXPECT_EQ(narrow_row1.find("Score"), std::string::npos) << narrow_row1;
 
     // The followed avatar dies into the respawn queue.
-    ctf.flags[1].state = og::sim::CtfFlagState::AtHome;
-    ctf.flags[1].carrier_entity_id = 0;
-    og::sim::CtfRespawnEntry entry;
+    og::sim::RespawnEntry entry;
     entry.kind = 0;
     entry.ticks_left = 36; // 3 s at 12 ticks/s
     entry.walker_entity_id = id;
-    ctf.respawn_queue.push_back(entry);
+    hw.world().respawn.respawn_queue.push_back(entry);
     renderer.draw(term, hw.world(), id);
     row1 = term.text_row(1);
     EXPECT_NE(row1.find("RESPAWN 3"), std::string::npos)
         << "respawn countdown expected: " << row1;
-    ctf.respawn_queue.clear();
+    hw.world().respawn.respawn_queue.clear();
 
-    // A contested waypoint shows the capture meter, riding the CTF group
-    // (after Caps, before Sp:/Score) so narrow terminals clip Score first.
-    ctf.cp_count = 1;
-    ctf.cps[0].owner = 1;
-    ctf.cps[0].progress = 12;
-    ctf.cps[0].progress_team = 0;
     HeadlessTerminal wide(21, 90);
     renderer.draw(wide, hw.world(), id);
     row1 = wide.text_row(1);
-    EXPECT_NE(row1.find("WP 12/36"), std::string::npos)
-        << "waypoint capture meter expected: " << row1;
-    ASSERT_NE(row1.find("Score"), std::string::npos) << row1;
-    EXPECT_LT(row1.find("Caps"), row1.find("WP 12/36")) << row1;
-    EXPECT_LT(row1.find("WP 12/36"), row1.find("Score")) << row1;
+    EXPECT_NE(row1.find("Caps 1:2"), std::string::npos) << row1;
 
-    // No contender: no meter.
-    ctf.cps[0].progress_team = -1;
-    renderer.draw(wide, hw.world(), id);
-    row1 = wide.text_row(1);
-    EXPECT_EQ(row1.find("WP "), std::string::npos)
-        << "no meter without a contending team: " << row1;
-
-    // Inactive CTF leaves the classic HUD untouched.
-    ctf.active = false;
+    // An inactive mode leaves the classic HUD untouched.
+    mode.active = false;
     renderer.draw(term, hw.world(), id);
     row1 = term.text_row(1);
     EXPECT_EQ(row1.find("Caps"), std::string::npos)
-        << "no caps line on classic levels: " << row1;
+        << "no mode lines on classic levels: " << row1;
 }
 
-TEST(CursesCtf, two_client_round_replicates_ctf_state_to_both_mirrors)
+TEST(CursesCtf, two_client_round_replicates_mode_state_to_both_mirrors)
 {
     SaveData host_save;
     SaveData join_save;
@@ -316,38 +258,47 @@ TEST(CursesCtf, two_client_round_replicates_ctf_state_to_both_mirrors)
     ASSERT_NE(game.host_session, nullptr) << "host session should start";
     ASSERT_NE(game.join_session, nullptr) << "join session should start";
 
-    // Stamp the authoritative server world CTF (flags + anchors + type bit)
-    // before the match ticks; the next snapshots replicate everything.
-    ASSERT_TRUE(curses_network_testing_inject_ctf(*game.host_session,
+    // Stamp the authoritative server world scripted (armed ModeState + HUD
+    // line + anchors + type bit) before the match ticks; the next snapshots
+    // replicate everything through the v10 mode block.
+    ASSERT_TRUE(curses_network_testing_inject_mode(*game.host_session,
                                                   /*respawn_ticks=*/24));
+    // The level-type bit is authored, not replicated: a real scripted .fss
+    // load stamps it on every peer, so mirror it on the joiner too.
+    game.join_session->mirror_world().type |= GameWorld::TYPE_SCRIPTED;
 
     advance_all(*game.host_session, *game.join_session, 40);
 
     const GameWorld& host_mirror = game.host_session->mirror_world();
     const GameWorld& join_mirror = game.join_session->mirror_world();
 
-    ASSERT_TRUE(host_mirror.ctf.active)
-        << "host mirror must see the activated CTF match";
-    ASSERT_TRUE(join_mirror.ctf.active)
-        << "join mirror must see the activated CTF match";
-    EXPECT_TRUE(host_mirror.ctf.flags[0].present);
-    EXPECT_TRUE(host_mirror.ctf.flags[1].present);
-    EXPECT_TRUE(join_mirror.ctf.flags[0].present);
-    EXPECT_TRUE(join_mirror.ctf.flags[1].present);
-    EXPECT_EQ(24, host_mirror.ctf.respawn_ticks)
+    ASSERT_TRUE(host_mirror.mode.active)
+        << "host mirror must see the activated scripted match";
+    ASSERT_TRUE(join_mirror.mode.active)
+        << "join mirror must see the activated scripted match";
+    EXPECT_STREQ("CTF", host_mirror.mode.name.data());
+    EXPECT_STREQ("CTF", join_mirror.mode.name.data());
+    EXPECT_STREQ("Caps 0:0", host_mirror.mode.hud[0].text.data());
+    EXPECT_STREQ("Caps 0:0", join_mirror.mode.hud[0].text.data());
+    EXPECT_EQ(24, host_mirror.respawn.respawn_ticks)
         << "the injected respawn config must replicate";
-    EXPECT_EQ(24, join_mirror.ctf.respawn_ticks);
+    EXPECT_EQ(24, join_mirror.respawn.respawn_ticks);
     for (int team = 0; team < 4; ++team) {
-        EXPECT_EQ(host_mirror.ctf.captures[team], join_mirror.ctf.captures[team])
-            << "capture counts must agree between mirrors (team " << team << ")";
+        EXPECT_EQ(host_mirror.mode.vars[team], join_mirror.mode.vars[team])
+            << "mode vars must agree between mirrors (team " << team << ")";
     }
+    EXPECT_GE(join_mirror.respawn.anchor_count[0], 1)
+        << "the anchor scan must replicate through the respawn block";
 
-    // The joiner's HUD renders the caps line straight off its mirror.
+    // The joiner's HUD renders the mode name + scoreboard line straight off
+    // its mirror.
     HeadlessTerminal term(21, 70);
     CursesRenderer renderer;
     renderer.draw(term, game.join_session->mirror_world(),
                   game.join_session->followed_entity_id());
     const std::string row1 = term.text_row(1);
-    EXPECT_NE(row1.find("Caps"), std::string::npos)
-        << "caps line should render from the join mirror: " << row1;
+    EXPECT_NE(row1.find("CTF"), std::string::npos)
+        << "mode name should render from the join mirror: " << row1;
+    EXPECT_NE(row1.find("Caps 0:0"), std::string::npos)
+        << "mode HUD line should render from the join mirror: " << row1;
 }

@@ -3,6 +3,7 @@
  * tests remain order-independent under repeated shuffled runs. */
 #include "../test_save_state_guard.h"
 
+#include <openglad/core/constants.h>
 #include <openglad/core/order.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/pixie_data.h>
@@ -810,5 +811,76 @@ TEST_F(LevelFileIoCoverage,
     }
 }
 #endif
+
+// The SCEN_TYPE_GENERATED provenance mark: metadata-side only. The writer
+// ORs it into the on-disk type byte (offset 42: 'FSS' + version + 8-byte
+// grid name + 30-byte title), the loader strips it back into
+// LevelFileMetadata::generated, and GameWorld::type never carries it — so
+// snapshots, parity dumps and the wire are untouched. A classic byte (no
+// mark) defaults to generated == false.
+TEST_F(LevelFileIoCoverage,
+       generated_mark_round_trips_and_classic_type_bytes_default_clear)
+{
+    constexpr std::size_t kTypeByteOffset = 42;
+
+    constexpr int marked_id = 9405;
+    const fs::path marked_fss = user_ / "scen/scen9405.fss";
+    const fs::path marked_pix = user_ / "pix/scen9405.png";
+    constexpr int classic_id = 9406;
+    const fs::path classic_fss = user_ / "scen/scen9406.fss";
+    const fs::path classic_pix = user_ / "pix/scen9406.png";
+    ScopedFilesAbsent files(
+        {marked_fss, marked_pix, classic_fss, classic_pix});
+    ASSERT_TRUE(files.ready());
+
+    GameWorld world(47);
+    world.create_new_grid();
+    world.type = SCEN_TYPE_CAN_EXIT;
+
+    LevelFileMetadata metadata;
+    metadata.generated = true;
+    LevelFileIoError err = LevelFileIoError::SerializeFailed;
+    ASSERT_TRUE(
+        og::data::save_level_to_user_dir(world, marked_id, metadata, &err));
+    EXPECT_EQ(LevelFileIoError::None, err);
+
+    const std::vector<std::uint8_t> marked_bytes = read_bytes(marked_fss);
+    ASSERT_GT(marked_bytes.size(), kTypeByteOffset);
+    EXPECT_EQ(static_cast<unsigned char>(SCEN_TYPE_CAN_EXIT) |
+                  static_cast<unsigned char>(SCEN_TYPE_GENERATED),
+              marked_bytes[kTypeByteOffset]);
+
+    GameWorld reloaded(47);
+    LevelFileMetadata reloaded_metadata;
+    err = LevelFileIoError::SerializeFailed;
+    ASSERT_TRUE(og::data::load_level("scen9405.fss", reloaded,
+                                     reloaded_metadata, &err));
+    EXPECT_TRUE(reloaded_metadata.generated)
+        << "the loader must surface the provenance mark in metadata";
+    EXPECT_EQ(SCEN_TYPE_CAN_EXIT, reloaded.type)
+        << "the sim-side type must never carry the provenance bit";
+
+    // Round-trip through an unmarking save (metadata cleared): the byte
+    // reverts to the classic value and the loader answers false — hand
+    // campaigns stay byte-identical.
+    metadata.generated = false;
+    err = LevelFileIoError::SerializeFailed;
+    ASSERT_TRUE(
+        og::data::save_level_to_user_dir(world, classic_id, metadata, &err));
+    const std::vector<std::uint8_t> classic_bytes = read_bytes(classic_fss);
+    ASSERT_GT(classic_bytes.size(), kTypeByteOffset);
+    EXPECT_EQ(static_cast<unsigned char>(SCEN_TYPE_CAN_EXIT),
+              classic_bytes[kTypeByteOffset]);
+
+    GameWorld classic(47);
+    LevelFileMetadata classic_metadata;
+    classic_metadata.generated = true; // stale caller value must be reset
+    err = LevelFileIoError::SerializeFailed;
+    ASSERT_TRUE(og::data::load_level("scen9406.fss", classic,
+                                     classic_metadata, &err));
+    EXPECT_FALSE(classic_metadata.generated)
+        << "a classic type byte must load as generated == false";
+    EXPECT_EQ(SCEN_TYPE_CAN_EXIT, classic.type);
+}
 
 } // namespace

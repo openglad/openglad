@@ -101,7 +101,7 @@ int campaign_picker_testing_exercise_entry_draw_paths()
     // The deliberately absent package leaves a self-contained entry with no
     // icon allocation. Populate the same metadata shapes supplied by real
     // campaign.yaml files, then exercise each presentation arm directly.
-    CampaignEntry entry("org.openglad.test.draw-entry-does-not-exist", -1);
+    CampaignEntry entry("test.draw-entry-does-not-exist", -1);
     entry.title = "Rendered Campaign";
     entry.version = "2.5";
     entry.rating = 3.5f;

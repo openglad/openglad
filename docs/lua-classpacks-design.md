@@ -816,8 +816,9 @@ og.set_entity_hooks(ent, { on_death = function(ent) ... end })
 Every level dispatcher early-outs when no pack registered that hook kind, so
 script-less sims pay nothing and stay byte-identical.
 
-The worked showcase is `tools/concept_mapgen/showcase_pack.cpp` — the
-Ninefold Court (scen 605), whose `court.lua` uses `on_load` to stamp ward
+The worked showcase is the Ninefold Court (scen 605), whose `court.lua`
+(`campaigns/concept/packs/concept.showcase/scripts/court.lua`)
+uses `on_load` to stamp ward
 invulnerability and hang a per-entity death hook, `on_entity_death` to run
 the ward phase machine off generator deaths, `on_tick` for the judgment
 cadence, and a generator `customize_spawn` to promote every third spawn.

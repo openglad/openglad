@@ -230,7 +230,7 @@ async function mutateRoomState(
 
 async function createRoom(options: CreateRoomOptions = {}): Promise<CreatedRoom> {
   const params = new URLSearchParams();
-  params.set("campaign", options.campaign ?? "org.openglad.gladiator");
+  params.set("campaign", options.campaign ?? "gladiator");
   if (options.campaignName) {
     params.set("campaign_name", options.campaignName);
   }

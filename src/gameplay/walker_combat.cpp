@@ -306,7 +306,23 @@ bool walker::attack(walker  *target)
     if (tempdamage < 0)
         tempdamage = 0;
 
-    const short tempdamage_i = static_cast<short>(tempdamage);
+    // Scripted-mode damage gate (level on_damage hook): nil keeps the
+    // amount, a number replaces it (clamped >= 0), false cancels the hit
+    // outright — no damage, no hit_response, no attribution stamp.
+    // Early-outs on the level_hook_kinds bit, so classic paths are
+    // byte-identical. `attacker` is the resolved local (owner for
+    // projectiles), matching the score semantics above.
+    const short gated_damage = og::script::hooks::level_damage_gate(
+        target, attacker, static_cast<short>(tempdamage));
+    if (gated_damage < 0)
+        return 0;
+    const short tempdamage_i = gated_damage;
+    // Kill attribution (server-only transients): stamp the owner-chain ROOT
+    // — weapon and summon kills credit the head, exactly like the score
+    // path — AFTER the gate allowed a positive amount. A non-living root
+    // (a scripted ball fx) never stamps, so its kills read as environment.
+    if (tempdamage_i > 0 && headguy->query_order() == Order::Living)
+        target->note_attacker(headguy, current_game->world->tick_count_);
     do_combat_damage(attacker, target, tempdamage_i);
     TRACE("walker", "attack: %s deals %d damage", attacker->stats_->name.c_str(), tempdamage_i);
 
@@ -391,7 +407,17 @@ bool walker::attack(walker  *target)
                         message = std::format("ENEMY DEATH: {} DIED!", target->stats()->name);
                         og::sim::emit_notification(current_game->sim_events, message);
                     }
-                    if(current_game->world->remaining_foes(this) == 1)  // This is the last foe
+                    // Scripted-mode (TYPE_SCRIPTED) matches own their win
+                    // channel and continue past momentary wipes, so the
+                    // classic toast stays on classic-completion worlds only
+                    // (same predicate as the tick fork; a demoted scripted
+                    // map falls back to classic rules AND this toast).
+                    const bool mode_owned =
+                        (current_game->world->type & GameWorld::TYPE_SCRIPTED) != 0 &&
+                        !(current_game->world->mode.init_attempted &&
+                          !current_game->world->mode.active);
+                    if(!mode_owned &&
+                       current_game->world->remaining_foes(this) == 1)  // This is the last foe
                     {
                         message = "All foes defeated!";
                         og::sim::emit_notification(current_game->sim_events, message);

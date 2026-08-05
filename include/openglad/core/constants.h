@@ -207,11 +207,24 @@ inline constexpr int SHIFT_BLOCKY       = 6;
 inline constexpr char SCEN_TYPE_CAN_EXIT = 1;
 inline constexpr char SCEN_TYPE_GEN_EXIT = 2;
 inline constexpr char SCEN_TYPE_SAVE_ALL = 4;
-// 8 is SCEN_TYPE_CTF (ctf_constants.h, mirroring GameWorld::TYPE_CTF).
+// 8 was SCEN_TYPE_CTF, retired with the CTF engine (bit stays reserved).
 // Tower-authored level (mirrors GameWorld::TYPE_TOWER). Display-only in v1:
 // the sole reader is floor_hud_label; sim rules never consult it, and it is
 // never runtime-mutated (unlike CTF's activation-time bit drop).
 inline constexpr char SCEN_TYPE_TOWER = 16;
+// Scripted-mode level (mirrors GameWorld::TYPE_SCRIPTED): match rules live
+// in campaign-pack Lua level hooks (on_mode_init / on_mode_tick / ...).
+// One bit for ALL scripted modes; per-mode identity comes from the pack's
+// per-level hook registration.
+inline constexpr char SCEN_TYPE_SCRIPTED = 32;
+// Provenance mark, NOT a sim rule bit: the campaign generators set it on
+// every scen they emit ("this file is regenerated — port edits into the
+// generator; the level editor warns on open"). The loader strips it into
+// LevelFileMetadata::generated BEFORE GameWorld::type is assigned and the
+// writer ORs it back from metadata, so sim state, snapshots, parity dumps
+// and the wire never carry it; classic/hand-authored files keep the bit 0
+// and load byte-identically. 0x80 stays free.
+inline constexpr char SCEN_TYPE_GENERATED = 64;
 
 // Outline colors
 inline constexpr unsigned char OUTLINE_NAMED         = 7;

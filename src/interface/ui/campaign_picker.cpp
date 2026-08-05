@@ -57,13 +57,9 @@ void campaign_picker_testing_mark_action();
 
 namespace
 {
-struct UiRect
-{
-    int x = 0;
-    int y = 0;
-    int w = 0;
-    int h = 0;
-};
+// The browser's control geometry lives in picker_common (pure, unit-pinned):
+// see og::ui::campaign_picker_layout().
+using UiRect = og::ui::PickerRect;
 
 constexpr std::int32_t kReleaseWaitPollLimit = 5000;
 
@@ -215,8 +211,11 @@ void CampaignEntry::draw(const UiRect& area, int team_power)
     
     text& loadtext = og::runtime::current_session->myscreen_->text_normal;
 
-    // Print title
-    loadtext.write_xy(x + w/2 - static_cast<Sint32>(title.size())*3, y - 22, title.c_str(), WHITE, 1);
+    // Print title. Fitted to the width that clears the RESET/DELETE face on
+    // the same pixel row (issue: long campaign names clipped into ENTER ID,
+    // which now lives a row lower).
+    const std::string shown_title = og::ui::fit_campaign_title(title);
+    loadtext.write_xy(x + w/2 - static_cast<Sint32>(shown_title.size())*3, y - 22, shown_title.c_str(), WHITE, 1);
 
     // Rating stars
     std::string rating_text = "";
@@ -372,46 +371,58 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
         }
     }
     
-    // Campaign icon positioning
-    UiRect area;
-    area.x = 160 - 16;
-    area.y = 15 + 20;
-    area.w = 32;
-    area.h = 32;
+    // Campaign icon positioning + buttons (single source: picker_common).
+    const og::ui::CampaignPickerLayout layout = og::ui::campaign_picker_layout();
+    const UiRect area = layout.icon;
 
-    // Buttons
-    int screenW = 320;
-    int screenH = 200;
-    UiRect prev = {area.x - 30 - 20, area.y, 30, 10};
-    UiRect next = {area.x + area.w + 20, area.y, 30, 10};
+    const UiRect prev = layout.prev;
+    const UiRect next = layout.next;
+    const UiRect choose = layout.choose;
+    const UiRect cancel = layout.cancel;
+    const UiRect delete_button = layout.delete_button;
+    // ENTER ID stacks UNDER DELETE/RESET so the title row is clear.
+    const UiRect id_button = layout.id_button;
+    const UiRect reset_button = layout.reset_button;
 
-    UiRect choose = {screenW/2 + 20, screenH - 15, 30, 10};
-    UiRect cancel = {screenW/2 - 38 - 20, screenH - 15, 38, 10};
-    UiRect delete_button = {screenW - 50, 10, 38, 10};
-    UiRect id_button = {delete_button.x - 52 - 10, 10, 52, 10};
-    UiRect reset_button = delete_button;
-    
     
     // Controller input
     int retvalue = 0;
 	int highlighted_button = 3;
 	
-	int prev_index = 0;
-	int next_index = 1;
-	int choose_index = 2;
-	int cancel_index = 3;
-	int delete_index = 4;
-	int id_index = 5;
-	int reset_index = 6;
+	const int prev_index = og::ui::kCampaignPickerPrevIndex;
+	const int next_index = og::ui::kCampaignPickerNextIndex;
+	const int choose_index = og::ui::kCampaignPickerChooseIndex;
+	const int cancel_index = og::ui::kCampaignPickerCancelIndex;
+	const int delete_index = og::ui::kCampaignPickerDeleteIndex;
+	const int id_index = og::ui::kCampaignPickerIdIndex;
+	const int reset_index = og::ui::kCampaignPickerResetIndex;
+
+	// Whole-graph rewire from the current visibility, applied at setup and
+	// again whenever a click changes what is showing (picker_common owns the
+	// graph so the BFS pin can walk every variant headlessly).
+	const auto apply_nav = [&](button* rows) {
+		const og::ui::CampaignPickerVisibility visibility{
+			.prev_hidden = rows[prev_index].hidden,
+			.next_hidden = rows[next_index].hidden,
+			.choose_hidden = rows[choose_index].hidden,
+			.delete_hidden = rows[delete_index].hidden,
+		};
+		const auto nav = og::ui::campaign_picker_nav(visibility);
+		for (int i = 0; i < og::ui::kCampaignPickerButtonCount; ++i)
+		{
+			rows[i].nav = MenuNav{.up = nav[i].up, .down = nav[i].down,
+			                      .left = nav[i].left, .right = nav[i].right};
+		}
+	};
 	
 	button buttons[] = {
         button("prev", "PREV", KEYSTATE_UNKNOWN, prev.x, prev.y, prev.w, prev.h, 0, -1 , MenuNav{.up=id_index, .down=cancel_index, .right=next_index}),
         button("next", "NEXT", KEYSTATE_UNKNOWN, next.x, next.y, next.w, next.h, 0, -1 , MenuNav{.up=id_index, .down=choose_index, .left=prev_index}),
         button("ok", "OK", KEYSTATE_UNKNOWN, choose.x, choose.y, choose.w, choose.h, 0, -1 , MenuNav{.up=next_index, .left=cancel_index}),
         button("cancel", "CANCEL", KEYSTATE_ESCAPE, cancel.x, cancel.y, cancel.w, cancel.h, 0, -1 , MenuNav{.up=prev_index, .right=choose_index}),
-        button("delete", "DELETE", KEYSTATE_UNKNOWN, delete_button.x, delete_button.y, delete_button.w, delete_button.h, 0, -1 , MenuNav{.down=choose_index, .left=id_index}),
-        button("enter_id", "ENTER ID", KEYSTATE_UNKNOWN, id_button.x, id_button.y, id_button.w, id_button.h, 0, -1 , MenuNav{.down=next_index, .right=delete_index}),
-        button("reset", "RESET", KEYSTATE_UNKNOWN, delete_button.x, delete_button.y, delete_button.w, delete_button.h, 0, -1 , MenuNav{.down=choose_index, .left=id_index}),
+        button("delete", "DELETE", KEYSTATE_UNKNOWN, delete_button.x, delete_button.y, delete_button.w, delete_button.h, 0, -1 , MenuNav{.down=id_index}),
+        button("enter_id", "ENTER ID", KEYSTATE_UNKNOWN, id_button.x, id_button.y, id_button.w, id_button.h, 0, -1 , MenuNav{.up=delete_index, .down=next_index}),
+        button("reset", "RESET", KEYSTATE_UNKNOWN, reset_button.x, reset_button.y, reset_button.w, reset_button.h, 0, -1 , MenuNav{.down=id_index}),
 	};
 	
 	buttons[prev_index].hidden = (current_campaign_index == 0);
@@ -420,10 +431,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
 	buttons[delete_index].hidden = !enable_delete;
 	buttons[reset_index].hidden = enable_delete;
 	
-	buttons[next_index].nav.down = (buttons[choose_index].hidden? cancel_index : choose_index);
-	buttons[cancel_index].nav.up = (buttons[prev_index].hidden? (buttons[next_index].hidden? id_index : next_index) : prev_index);
-	buttons[id_index].nav.down = (buttons[next_index].hidden? (buttons[prev_index].hidden? cancel_index : prev_index) : next_index);
-	buttons[id_index].nav.right = (buttons[delete_index].hidden? reset_index : delete_index);
+	apply_nav(buttons);
 
     bool done = false;
 #ifdef TESTING
@@ -579,10 +587,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
             buttons[delete_index].hidden = !enable_delete;
             buttons[reset_index].hidden = enable_delete;
 
-            buttons[next_index].nav.down = (buttons[choose_index].hidden? cancel_index : choose_index);
-            buttons[cancel_index].nav.up = (buttons[prev_index].hidden? (buttons[next_index].hidden? id_index : next_index) : prev_index);
-            buttons[id_index].nav.down = (buttons[next_index].hidden? (buttons[prev_index].hidden? cancel_index : prev_index) : next_index);
-            buttons[id_index].nav.right = (buttons[delete_index].hidden? reset_index : delete_index);
+            apply_nav(buttons);
             
             if(buttons[highlighted_button].hidden)
             {

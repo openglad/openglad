@@ -113,6 +113,7 @@
 ---@field invulnerable_left fun(self: og.Walker): integer
 ---@field is_friendly fun(self: og.Walker, other: og.Walker): boolean
 ---@field keys fun(self: og.Walker): integer
+---@field last_self_teleport_tick fun(self: og.Walker): integer # walker:last_self_teleport_tick() — the world tick this walker last began a SELF-teleport (blinks and marker beacons; map teleporter pads never stamp).
 ---@field lastx fun(self: og.Walker): number
 ---@field lasty fun(self: og.Walker): number
 ---@field leader fun(self: og.Walker): og.Walker?
@@ -126,6 +127,7 @@
 ---@field order fun(self: og.Walker): integer
 ---@field owner fun(self: og.Walker): og.Walker?
 ---@field real_team_num fun(self: og.Walker): integer
+---@field restore_act_type fun(self: og.Walker) # walker:restore_act_type() — one-deep undo of set_act_type.
 ---@field s_add_command fun(self: og.Walker, arg2: integer, arg3: integer, arg4: integer, arg5: integer)
 ---@field s_armor fun(self: og.Walker): number
 ---@field s_clear_command fun(self: og.Walker)
@@ -137,6 +139,7 @@
 ---@field s_force_command fun(self: og.Walker, arg2: integer, arg3: integer, arg4: integer, arg5: integer)
 ---@field s_force_fright fun(self: og.Walker, iterations: integer, info1: integer, info2: integer) # walker:s_force_fright(iterations, info1, info2) — statistics::force_fright, the ghost-scare fright injection (stats.cpp).
 ---@field s_forward_blocked fun(self: og.Walker): boolean
+---@field s_front_command fun(self: og.Walker): integer # walker:s_front_command() — the front queue entry's commandtype, 0 when the queue is empty.
 ---@field s_frozen_delay fun(self: og.Walker): integer
 ---@field s_frozen_delay_raw fun(self: og.Walker): integer # Raw (unmasked) frozen_delay: negatives are the thaw-immunity phase, which the masked s_frozen_delay getter hides (orc howl needs the raw value).
 ---@field s_has_commands fun(self: og.Walker): boolean
@@ -153,6 +156,7 @@
 ---@field s_name fun(self: og.Walker): string
 ---@field s_old_family fun(self: og.Walker): integer # Pre-transform family (cleric resurrect restores the corpse's old family).
 ---@field s_query_bit_flags fun(self: og.Walker, arg2: integer): boolean
+---@field s_refresh_front fun(self: og.Walker, commandcount: integer, com1: integer, com2: integer) # walker:s_refresh_front(iterations, com1, com2) — rewrite the FRONT queue entry's lease and payload in place, never touching its commandtype and never growing...
 ---@field s_set_armor fun(self: og.Walker, value: number)
 ---@field s_set_bit_flags fun(self: og.Walker, arg2: integer, arg3: integer)
 ---@field s_set_command fun(self: og.Walker, arg2: integer, arg3: integer, arg4: integer, arg5: integer)
@@ -176,6 +180,7 @@
 ---@field s_special_cost fun(self: og.Walker, idx: integer): integer
 ---@field s_weapon_cost fun(self: og.Walker): integer
 ---@field save_all_protected fun(self: og.Walker): boolean
+---@field set_act_type fun(self: og.Walker, n: integer) # walker:set_act_type(n) — write the AI act type.
 ---@field set_ani_type fun(self: og.Walker, value: integer)
 ---@field set_bonus_rounds fun(self: og.Walker, value: integer)
 ---@field set_busy fun(self: og.Walker, value: number)
@@ -283,6 +288,7 @@
 ---@field hit_response? fun(self: og.Walker, who: og.Walker)
 ---@field level_up? fun(self: og.Guy, level_diff: integer)
 ---@field on_act_living? fun(self: og.Walker)
+---@field on_act_override? fun(self: og.Walker): boolean
 ---@field on_ani_complete? fun(self: og.Walker): boolean
 ---@field on_create? fun(self: og.Walker)
 ---@field on_death? fun(self: og.Walker): boolean
@@ -313,15 +319,19 @@
 
 -- Hook table for og.register_level_hooks.
 ---@class og.LevelHooks
----@field on_entity_death? fun(entity: og.Walker)
+---@field on_damage? fun(entity: og.Walker, entity: og.Walker, value: integer)
+---@field on_entity_death? fun(entity: og.Walker, entity: og.Walker, value: integer)
 ---@field on_entity_spawn? fun(entity: og.Walker)
 ---@field on_load? fun(level: integer)
+---@field on_mode_init? fun(level: integer)
+---@field on_mode_tick? fun(level: integer, tick: integer)
+---@field on_respawn? fun(entity: og.Walker)
 ---@field on_tick? fun(level: integer, tick: integer)
 
 -- Per-entity hook table for og.set_entity_hooks (one-shot:
 -- consumed when it fires).
 ---@class og.EntityHooks
----@field on_death? fun(entity: og.Walker)
+---@field on_death? fun(entity: og.Walker, entity: og.Walker, value: integer)
 
 -- Engine constants (og.C.*), names from the kConstants
 -- table in bindings_entity.cpp; every value is an integer.
@@ -365,6 +375,7 @@
 ---@field COMMAND_DIE integer
 ---@field COMMAND_FIRE integer
 ---@field COMMAND_FOLLOW integer
+---@field COMMAND_GOTO integer
 ---@field COMMAND_MULTIDO integer
 ---@field COMMAND_QUICK_FIRE integer
 ---@field COMMAND_RANDOM_WALK integer
@@ -389,6 +400,7 @@
 ---@field FACE_UP integer
 ---@field FACE_UP_LEFT integer
 ---@field FACE_UP_RIGHT integer
+---@field FAMILY_RESERVED_TEAM integer
 ---@field GRID_SIZE integer
 ---@field MACE_LIFE_CAP integer
 ---@field MAXOBS integer
@@ -398,8 +410,10 @@
 ---@field ORDER_FX integer
 ---@field ORDER_GENERATOR integer
 ---@field ORDER_LIVING integer
+---@field ORDER_SPECIAL integer
 ---@field ORDER_TREASURE integer
 ---@field ORDER_WEAPON integer
+---@field SCORE_TEAM_COUNT integer
 ---@field SHOT_DRAIN_CAP integer
 ---@field SOUND_BLAST integer
 ---@field SOUND_BOLT integer
@@ -475,15 +489,17 @@
 ---@field anims fun(name: string, arg2: table)
 ---@field apply_difficulty_scaling fun(lv: og.Walker, level: integer, arg3: number, arg4: number, arg5: number, arg6: number)
 ---@field apply_level_up fun(self: og.Guy|og.Walker, diff: integer, arg3: integer, arg4: integer, arg5: integer, arg6: integer, arg7: integer)
+---@field authored_team_mask fun(): integer # og.authored_team_mask() — bitmask of teams with authored start markers (dead ones included; the versus-map team domain).
 ---@field award_score fun(team: integer, points: integer) # og.award_score(team, points) — the treasure families' score credit: bump GameWorld::m_score and emit ScoreChange with the same payload.
 ---@field charm_duration fun(arg1: integer): integer
 ---@field check_special_ai_distance fun(lv: og.Walker, threshold: integer): boolean
 ---@field clamp fun(v: number, lo: number, hi: number): number # og.clamp(v, lo, hi) — std::clamp: lo when v < lo, else hi when hi < v, else v itself (so ties answer v: math.type(og.clamp(5, 5.0, 6.0)) is 'integer').
+---@field clear_hud_line fun(slot: integer) # og.clear_hud_line(slot) — reset a HUD line to empty/default.
 ---@field cosmetic_rand fun(n: integer): integer # og.cosmetic_rand(n): draw from the parity harness's cosmetic libc-rand override when installed (so captured dumps match master's dual-RNG-stream behavior wit...
----@field ctf_flag_touch fun(flag: og.Walker, eater: og.Walker): boolean # og.ctf_on_flag_touch(flag, eater) → bool — the whole CTF flag-touch operation (og::sim::ctf_on_flag_touch, src/gameplay/ctf/ctf.cpp), wrapped as one call exa...
----@field ctf_on_flag_touch fun(flag: og.Walker, eater: og.Walker): boolean # og.ctf_on_flag_touch(flag, eater) → bool — the whole CTF flag-touch operation (og::sim::ctf_on_flag_touch, src/gameplay/ctf/ctf.cpp), wrapped as one call exa...
 ---@field current_scenario fun(): integer
+---@field declare_winner fun(team: integer) # og.declare_winner(team) — convenience win latch: records winner_team, computes winner_is_player (live myguy on the winning team, after the first-arming reviv...
 ---@field div fun(a: integer, b: integer): integer
+---@field effective_team_mask fun(): integer # og.effective_team_mask() — authored mask clamped by the requested team count (the ONE copy of the activation rule, shared with the lobby).
 ---@field elemental_lifetime fun(arg1: integer): integer
 ---@field emit_event fun(kind: integer, a: integer?, b: integer?) # og.emit_event(kind, a, b) — raw sim event (kinds in og.C.EVENT_*).
 ---@field emit_exit_confirmation fun(prompt: string, dest: integer, is_withdraw: integer?) # og.emit_exit_confirmation(prompt, dest_level, is_withdraw) — EventKind::RequestExitConfirmation with the exit pad's payload (a = dest_level, b = 1 for the wi...
@@ -491,6 +507,7 @@
 ---@field emit_positional_sound fun(entity: og.Walker, arg2: integer)
 ---@field emit_sound fun(arg1: integer)
 ---@field emit_withdraw_to_level fun(level: integer) # og.emit_withdraw_to_level(level) — EventKind::WithdrawToLevel (a = level).
+---@field end_level fun(ending: integer, next_level: integer) # og.end_level(ending, next_level) — arm the scripted-mode win latch: ending 0 = win/advance, 1 = loss; next_level id+1 advance | id rematch | -1 terminal.
 ---@field enemy_freeze fun(): integer
 ---@field entity_display_name fun(entity: og.Walker, fallback: string?): string
 ---@field entity_id fun(entity: og.Walker): integer # og.entity_id(handle) → stable sim entity id (0 for untracked).
@@ -500,6 +517,7 @@
 ---@field family_flag fun(order: og.OrderName, fam: integer, flag: "has_returning_weapon"|"is_stationary"|"is_undead"|"leaves_bloodspot"): boolean? # og.family_flag("living", family_byte, flag_name) → descriptor boolean.
 ---@field family_id fun(order_str: og.OrderName, family_str: string): integer? # og.family_id(order, family_str) → wire byte (tests/diagnostics; also lets scripts compare walker:family() against named families).
 ---@field fdiv fun(a: number, b: number): number
+---@field find_by_id fun(id: integer): og.Walker? # og.find_by_id(id) — entity id -> handle; nil for 0, absent, or dead-and-swept ids.
 ---@field find_foe_weapons_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer
 ---@field find_foes_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer # og.find_foes_in_range(list_sel, range, self) → array, count
 ---@field find_friends_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer
@@ -510,6 +528,7 @@
 ---@field foes_in_range fun(entity: og.Walker, range: integer): og.Walker[] # og.foes_in_range(self, range) → array (for_each_foe_in_range order)
 ---@field freeze_duration fun(arg1: integer, arg2: integer): integer
 ---@field fsub fun(a: number, b: number): number
+---@field fxlist fun(): og.Walker[] # og.fxlist() — the fx entity list in list order (flags, exit pads, balls live here; og.oblist covers livings/generators only).
 ---@field game_ended fun(): boolean
 ---@field heal_amount fun(arg1: integer, arg2: integer): integer, integer
 ---@field i16 fun(v: integer): integer # Narrowing helpers reproducing C++ integer truncation (modular, C++20).
@@ -523,9 +542,13 @@
 ---@field level_tick fun(): integer
 ---@field living_count fun(): integer
 ---@field log fun(...: any)
+---@field match_setting fun(s: "difficulty"|"respawn_mode"|"respawn_ticks"|"score_limit"|"strip_troops"|"team_count"): integer # og.match_setting(name) — the lobby/save match knobs, reinterpreted as generic match settings; 0 always means "mode default".
 ---@field max fun(a: number, b: number): number # og.max(a, b) / og.min(a, b) — std::max / std::min EXACTLY: og.max answers b only when a < b, og.min answers b only when b < a, so every tie answers a (observ...
 ---@field min fun(arg1: number, arg2: number): number
 ---@field mod fun(a: integer, b: integer): integer
+---@field mode_get fun(i: integer): integer # og.mode_get(i) — read replicated mode var i (0-based, error outside [0, 63]).
+---@field mode_set fun(i: integer, v: integer) # og.mode_set(i, v) — write mode var i; v truncates to int32 (og.i32 semantics; non-integer numbers error).
+---@field mode_winner fun(): integer # og.mode_winner() — ModeState.winner_team; -1 while undecided.
 ---@field my_team fun(): integer
 ---@field oblist fun(): og.Walker[]
 ---@field pack fun(arg1: table)
@@ -538,20 +561,34 @@
 ---@field register_hooks fun(order_str: og.OrderName, family_str: string, hooks: og.FxHooks|og.GeneratorHooks|og.LivingHooks|og.TreasureHooks|og.WeaponHooks)
 ---@field register_level_hooks fun(level_id: integer, hooks: og.LevelHooks) # og.register_level_hooks(level_id, { on_load=, on_tick=, on_entity_death=, on_entity_spawn= }).
 ---@field remaining_foes fun(entity: og.Walker): integer
+---@field respawn_anchor fun(team: integer, i: integer): integer, integer # og.respawn_anchor(team, i) — anchor i (0-based) for a team as x, y; errors when i is outside the recorded count.
+---@field respawn_anchor_count fun(team: integer): integer # og.respawn_anchor_count(team) — authored start-marker anchors recorded for a team (filled at CTF init / the first scripted tick).
+---@field respawn_pending fun(entity: og.Walker): boolean # og.respawn_pending(ent) — true while an engine respawn entry (player revive or AI replacement) is queued for this entity id.
+---@field respawn_pending_count fun(team: integer): integer # og.respawn_pending_count(team) — queued entries for a team (error outside [0, 3]).
+---@field respawn_schedule fun(entity: og.Walker, ticks: integer?): boolean # og.respawn_schedule(ent [, ticks]) — queue a dead Living for the engine respawn (dedupe by queued id and live duplicate; queue cap 64 with bot eviction; stai...
 ---@field scare_duration fun(arg1: integer): integer
 ---@field scare_radius fun(arg1: integer): integer
 ---@field scenario_title fun(name: string): string # og.scenario_title(name) → title string ("none" when unreadable).
+---@field scrub_corpse_stain fun(x: integer, y: integer, floor: integer?) # og.scrub_corpse_stain(x, y [, floor]) — kill the fresh STAIN/LIFE_GEM drops at a corpse position (its top-left) so a non-respawning body cannot be cleric-res...
+---@field set_beacon fun(slot: integer, entity: og.Walker?, t: integer?) # og.set_beacon(slot, entity_or_nil [, team]) — mark an entity for the off-screen/radar beacon channel (the Mutant marker, a flag carrier).
 ---@field set_enemy_freeze fun(enemy_freeze: integer)
 ---@field set_entity_hooks fun(entity: og.Walker, hooks: og.EntityHooks) # og.set_entity_hooks(handle, { on_death = fn }) — per-entity overrides, registered from a level script (typically in on_load after finding the entity).
+---@field set_hud_line fun(slot: integer, s: string, t: integer?) # og.set_hud_line(slot, text [, team]) — write a generic mode HUD line: slot 0-3, text clamped to 25 bytes, team tints the line (nil = default HUD color).
+---@field set_mode_name fun(s: string) # og.set_mode_name(s) — the HUD/results mode label, clamped to 11 bytes.
 ---@field set_palette fun(current_palette_id: integer)
 ---@field set_withdraw_request fun(withdraw_level: integer) # og.set_withdraw_request(level) — set both fields in the exit pad's withdraw latch together.
 ---@field sign fun(x: number): integer # og.sign(x) — the sign-extraction idiom the movement code spells `v /= abs(v)` behind a v != 0 guard, as a total function: -1, 0 or 1 as an INTEGER for any nu...
 ---@field soften fun(arg1: integer, arg2: integer, arg3: integer): integer
+---@field spawn_spot_clear fun(entity: og.Walker, x: integer, y: integer, floor: integer?): boolean # og.spawn_spot_clear(ent, x, y [, floor]) — the eat-free placement probe (NEVER og.query_passable: its obmap route dispatches eat_me, so a probe could eat a d...
 ---@field summon fun(summoner: og.Walker, order: og.OrderName, fam: integer): og.Walker?
 ---@field summon_configured fun(summoner: og.Walker, order: og.OrderName, fam: integer, arg4: table): og.Walker? # og.summon_configured(self, order, family, {ani_type=, lifetime=, hp_add=, max_hp_from_hp=, damage_add=}) → handle | nil — summon plus setters in fixed, parit...
+---@field team_color_name fun(team: integer): string # og.team_color_name(t) — "RED"/"GREEN"/"BLUE"/"YELLOW", matching the rendered palette ramps; errors outside [0, 3].
+---@field team_score fun(team: integer): integer # og.team_score(t) — read GameWorld::m_score[t] (og.award_score's counter); errors outside [0, 3].
 ---@field trunc fun(x: number): integer
 ---@field tuning fun(entity: og.Walker): table<string, any> # og.tuning(self) → the `tuning` map self's family declared, as a frozen read-only table — key access only; writes raise; no iteration is provided (and none is...
 ---@field u8 fun(v: integer): integer # Narrowing helpers reproducing C++ integer truncation (modular, C++20).
 ---@field use fun(name: string): any # TODO(stubgen): signature not fully inferred — og.use("name") → the frozen export of packs/<current pack>/lib/<name>.lua.
+---@field weaplist fun(): og.Walker[] # og.weaplist() — the weapon entity list in list order.
 ---@field world_can_exit_whenever fun(): boolean
+---@field world_tick fun(): integer # og.world_tick() — the absolute world tick counter (snapshotted, safe across a mid-level restore; og.level_tick is the per-level counter).
 og = {}

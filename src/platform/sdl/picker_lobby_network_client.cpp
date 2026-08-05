@@ -66,7 +66,7 @@ void popup_dialog(const char* title, const char* message);
 
 namespace {
 
-constexpr std::string_view kDefaultCampaignId = "org.openglad.gladiator";
+constexpr std::string_view kDefaultCampaignId = "gladiator";
 constexpr auto kJoinRetryInterval = std::chrono::milliseconds(100);
 
 struct OrderedLobbySlot {
@@ -1952,6 +1952,8 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save)
     settings.keep_fallen_heroes = save.keep_fallen_heroes;
     settings.cross_control = save.cross_control;
     settings.infinite_gold = save.infinite_gold;
+    // Protocol v12: shared-teams rule rides the wire (matchup: versus).
+    settings.shared_teams = og::ui::is_versus_campaign(save) ? 1 : 0;
 
     og::sim::LobbyMessage message;
     message.payload = og::sim::LobbySettingsChangeMessage{

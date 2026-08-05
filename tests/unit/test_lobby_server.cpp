@@ -380,7 +380,7 @@ TEST(LobbyServer, sanitize_clamps_ctf_settings_and_equivalent_carries_them)
 
     // Out-of-range CTF settings from the host get clamped, not echoed.
     og::sim::LobbySettings wild;
-    wild.campaign_id = "org.openglad.ctf";
+    wild.campaign_id = "ctf";
     wild.scenario_id = 500;
     wild.difficulty = 1;
     wild.allied_mode = 1;
@@ -562,7 +562,7 @@ TEST(LobbyServer, ready_team_change_and_leave_update_state_and_broadcasts)
     server.poll_incoming_messages();
 
     og::sim::LobbySettings enemy_settings;
-    enemy_settings.campaign_id = "org.openglad.gladiator";
+    enemy_settings.campaign_id = "gladiator";
     enemy_settings.scenario_id = 1;
     enemy_settings.difficulty = 1;
     enemy_settings.allied_mode = 0;
@@ -935,7 +935,7 @@ TEST(LobbyServer, join_overflow_force_benches_instead_of_truncating)
     server.poll_incoming_messages();
 
     og::sim::LobbySettings enemy_settings;
-    enemy_settings.campaign_id = "org.openglad.gladiator";
+    enemy_settings.campaign_id = "gladiator";
     enemy_settings.scenario_id = 1;
     enemy_settings.difficulty = 1;
     enemy_settings.allied_mode = 0;
@@ -1072,7 +1072,7 @@ TEST(LobbyServer,
     server.poll_incoming_messages();
 
     og::sim::LobbySettings enemy_settings;
-    enemy_settings.campaign_id = "org.openglad.gladiator";
+    enemy_settings.campaign_id = "gladiator";
     enemy_settings.scenario_id = 1;
     enemy_settings.difficulty = 1;
     enemy_settings.allied_mode = 0;
@@ -1122,7 +1122,7 @@ TEST(LobbyServer, allied_mode_preserves_explicit_binding_and_combat_teams)
     server.poll_incoming_messages();
 
     og::sim::LobbySettings allied_settings;
-    allied_settings.campaign_id = "org.openglad.gladiator";
+    allied_settings.campaign_id = "gladiator";
     allied_settings.scenario_id = 1;
     allied_settings.difficulty = 1;
     allied_settings.allied_mode = 1;
@@ -1171,7 +1171,7 @@ TEST(LobbyServer, local_game_start_preserves_every_roster_team_in_both_modes)
             server.poll_incoming_messages();
 
             og::sim::LobbySettings settings;
-            settings.campaign_id = "org.openglad.gladiator";
+            settings.campaign_id = "gladiator";
             settings.scenario_id = 1;
             settings.difficulty = 1;
             settings.allied_mode = allied_mode;
@@ -1218,7 +1218,7 @@ TEST(LobbyServer, local_legacy_together_field_does_not_collapse_explicit_seats)
     server.poll_incoming_messages();
 
     og::sim::LobbySettings settings;
-    settings.campaign_id = "org.openglad.gladiator";
+    settings.campaign_id = "gladiator";
     settings.scenario_id = 1;
     settings.difficulty = 1;
     settings.allied_mode = 1;
@@ -1261,12 +1261,15 @@ og::sim::LobbySettings make_ctf_lobby_settings(
     std::uint8_t authored_team_mask = 0)
 {
     og::sim::LobbySettings settings;
-    settings.campaign_id = "org.openglad.ctf";
+    settings.campaign_id = "ctf";
     settings.scenario_id = 1;
     settings.difficulty = 1;
     settings.allied_mode = 0;
     settings.ctf_team_count = team_count;
     settings.ctf_authored_team_mask = authored_team_mask;
+    // Protocol v12: the versus/shared-teams rule rides this flag (the host
+    // derives it from the campaign's matchup: yaml key).
+    settings.shared_teams = 1;
     return settings;
 }
 
@@ -1317,14 +1320,25 @@ TEST(LobbyServer, sanitize_strip_flag_accepts_binary_and_rejects_junk)
     // Default is 0 (keep authored troops).
     EXPECT_EQ(0, server.state().settings.ctf_strip_scenario_troops);
 
-    // Junk falls back to the current value (0).
+    // Junk falls back to the current value (0). 3 is junk; 2 is not. The
+    // accepted range stays {0,1,2}: the menus write 0 or 2, and 1 is the
+    // retired middle state a peer on an older build can still send.
     og::sim::LobbySettings junk = make_ctf_lobby_settings();
-    junk.ctf_strip_scenario_troops = 2;
+    junk.ctf_strip_scenario_troops = 3;
     transport.queue_lobby_message(11u, make_settings_change_message(junk));
     server.poll_incoming_messages();
     EXPECT_EQ(0, server.state().settings.ctf_strip_scenario_troops);
 
-    // 1 is accepted and carried into the game-start equivalent.
+    // 2 (strip ALL) is accepted on the widened range.
+    og::sim::LobbySettings strip_all = make_ctf_lobby_settings();
+    strip_all.ctf_strip_scenario_troops = 2;
+    transport.queue_lobby_message(11u, make_settings_change_message(strip_all));
+    server.poll_incoming_messages();
+    EXPECT_EQ(2, server.state().settings.ctf_strip_scenario_troops);
+    EXPECT_EQ(2, server.build_save_data_equivalent().ctf_strip_scenario_troops);
+
+    // 1 is accepted and carried into the game-start equivalent verbatim;
+    // the strip rules downstream read it as OWN.
     og::sim::LobbySettings strip_on = make_ctf_lobby_settings();
     strip_on.ctf_strip_scenario_troops = 1;
     transport.queue_lobby_message(11u, make_settings_change_message(strip_on));
@@ -1332,7 +1346,7 @@ TEST(LobbyServer, sanitize_strip_flag_accepts_binary_and_rejects_junk)
     EXPECT_EQ(1, server.state().settings.ctf_strip_scenario_troops);
     EXPECT_EQ(1, server.build_save_data_equivalent().ctf_strip_scenario_troops);
 
-    // Junk now falls back to the accepted value (1), not 0.
+    // Junk now falls back to the last accepted value (1), not 0.
     og::sim::LobbySettings junk_again = make_ctf_lobby_settings();
     junk_again.ctf_strip_scenario_troops = -3;
     transport.queue_lobby_message(11u, make_settings_change_message(junk_again));
@@ -1477,6 +1491,22 @@ TEST(LobbyServer, sanitize_difficulty_submenu_settings)
     transport.queue_lobby_message(11u, make_settings_change_message(gold_off));
     server.poll_incoming_messages();
     EXPECT_EQ(0, server.state().settings.infinite_gold);
+
+    // shared_teams (v12) sanitizes on the same {0, 1} matrix.
+    og::sim::LobbySettings junk_shared = make_ctf_lobby_settings();
+    junk_shared.shared_teams = 9;
+    transport.queue_lobby_message(11u,
+                                  make_settings_change_message(junk_shared));
+    server.poll_incoming_messages();
+    EXPECT_EQ(1, server.state().settings.shared_teams)
+        << "out-of-range shared_teams falls back to the accepted value";
+
+    og::sim::LobbySettings shared_off = make_ctf_lobby_settings();
+    shared_off.shared_teams = 0;
+    transport.queue_lobby_message(11u,
+                                  make_settings_change_message(shared_off));
+    server.poll_incoming_messages();
+    EXPECT_EQ(0, server.state().settings.shared_teams);
 }
 
 TEST(LobbyServer, ctf_lobby_allows_shared_teams)
@@ -1721,7 +1751,7 @@ TEST(LobbyServer, settings_change_to_classic_preserves_shared_assignments)
     // mode-independent, so both seats remain on team 0 (with fighter colors
     // unchanged); the settings change itself still broadcasts.
     og::sim::LobbySettings classic = make_ctf_lobby_settings();
-    classic.campaign_id = "org.openglad.gladiator";
+    classic.campaign_id = "gladiator";
     transport.clear_sent_messages();
     transport.queue_lobby_message(11u, make_settings_change_message(classic));
     server.poll_incoming_messages();

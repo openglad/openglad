@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <initializer_list>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -167,7 +168,7 @@ TEST(Replay, file_roundtrip_preserves_header_and_frames)
         .my_team = 3,
         .allied_mode = 1,
         .difficulty = 125,
-        .campaign_id = "org.openglad.gladiator",
+        .campaign_id = "gladiator",
     };
     const og::sim::WorldSnapshot initial_snapshot = make_initial_snapshot();
 
@@ -210,6 +211,40 @@ TEST(Replay, file_roundtrip_preserves_header_and_frames)
     std::filesystem::remove(path, ec);
 }
 
+// Replays recorded before the reverse-DNS purge carry
+// "org.openglad.<name>" campaign ids in their headers. Deserializing folds
+// the id onto the plain spelling so the runtime mounts the renamed archive;
+// plain ids pass through untouched (proven by the round-trip tests above).
+TEST(Replay, deserialize_normalizes_legacy_reverse_dns_campaign_id)
+{
+    const og::sim::ReplayHeader header = {
+        .version = og::sim::kReplayFormatVersion,
+        .initial_rng_state = 3u,
+        .level_id = 4,
+        .player_count = 1,
+        .timer_wait = 6,
+        .my_team = 0,
+        .allied_mode = 1,
+        .difficulty = 100,
+        .campaign_id = "org.openglad.gladiator",
+    };
+    const og::sim::WorldSnapshot initial_snapshot = make_initial_snapshot();
+    const std::array<og::sim::InputStateMessage, 1> frames = {{
+        {7u, make_sparse_input()},
+    }};
+
+    // serialize_replay writes the header verbatim, exactly like a
+    // pre-rename recorder did.
+    const std::vector<std::uint8_t> bytes =
+        og::sim::serialize_replay(header, initial_snapshot, frames);
+
+    og::sim::ReplayIoError io_error = og::sim::ReplayIoError::None;
+    const auto replay = og::sim::deserialize_replay(bytes, &io_error);
+    ASSERT_TRUE(replay.has_value());
+    EXPECT_EQ(og::sim::ReplayIoError::None, io_error);
+    EXPECT_EQ("gladiator", replay->header.campaign_id);
+}
+
 TEST(Replay, deserialize_rejects_bad_magic_version_and_truncated_payload)
 {
     const og::sim::ReplayHeader header = {
@@ -221,7 +256,7 @@ TEST(Replay, deserialize_rejects_bad_magic_version_and_truncated_payload)
         .my_team = 1,
         .allied_mode = 0,
         .difficulty = 100,
-        .campaign_id = "org.openglad.gladiator",
+        .campaign_id = "gladiator",
     };
     const og::sim::WorldSnapshot initial_snapshot = make_initial_snapshot();
     const std::array<og::sim::InputStateMessage, 1> frames = {{
@@ -269,7 +304,7 @@ TEST(Replay, deserialize_rejects_each_malformed_replay_section)
         .my_team = 1,
         .allied_mode = 0,
         .difficulty = 100,
-        .campaign_id = "org.openglad.gladiator",
+        .campaign_id = "gladiator",
     };
     const std::array<og::sim::InputStateMessage, 1> frames = {{
         {7u, make_sparse_input()},
@@ -356,7 +391,7 @@ TEST(Replay, recorder_write_file_requires_self_contained_bootstrap_data)
         .my_team = 1,
         .allied_mode = 0,
         .difficulty = 100,
-        .campaign_id = "org.openglad.gladiator",
+        .campaign_id = "gladiator",
     });
 
     EXPECT_FALSE(missing_snapshot.write_file(path, &io_error));
@@ -443,23 +478,11 @@ TEST(Replay, snapshot_difference_formats_all_field_value_kinds)
     {
         og::sim::WorldSnapshot expected;
         og::sim::WorldSnapshot actual = expected;
-        expected.ctf_flags[0].state = og::sim::CtfFlagState::AtHome;
-        actual.ctf_flags[0].state = og::sim::CtfFlagState::Carried;
+        expected.mode.vars[0] = 2;
+        actual.mode.vars[0] = 4;
         expect_diff(expected,
                     actual,
-                    "ctf_flags[0].state",
-                    "0",
-                    "1");
-    }
-
-    {
-        og::sim::WorldSnapshot expected;
-        og::sim::WorldSnapshot actual = expected;
-        expected.ctf_captures[0] = 2u;
-        actual.ctf_captures[0] = 4u;
-        expect_diff(expected,
-                    actual,
-                    "ctf_captures[0]",
+                    "mode.vars[0]",
                     "2",
                     "4");
     }
@@ -467,11 +490,47 @@ TEST(Replay, snapshot_difference_formats_all_field_value_kinds)
     {
         og::sim::WorldSnapshot expected;
         og::sim::WorldSnapshot actual = expected;
-        expected.ctf_anchor_x[0][0] = 5;
-        actual.ctf_anchor_x[0][0] = 8;
+        expected.mode.win_latched = false;
+        actual.mode.win_latched = true;
         expect_diff(expected,
                     actual,
-                    "ctf_anchor_x[0][0]",
+                    "mode.win_latched",
+                    "false",
+                    "true");
+    }
+
+    // The two string-typed mode fields report their VALUES on divergence
+    // (value_to_string over the string_view the comparison reads; the
+    // equal path never formats, so only a real mismatch exercises it).
+    const auto set_chars = [](std::span<char> dst, std::string_view text) {
+        for (std::size_t i = 0; i < text.size() && i + 1 < dst.size(); ++i)
+            dst[i] = text[i];
+    };
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        set_chars(expected.mode.name, "CTF");
+        set_chars(actual.mode.name, "TDM");
+        expect_diff(expected, actual, "mode.name", "CTF", "TDM");
+    }
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        set_chars(expected.mode.hud[1].text, "RED 2");
+        set_chars(actual.mode.hud[1].text, "RED 3");
+        expect_diff(expected, actual, "mode.hud[1].text", "RED 2", "RED 3");
+    }
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        expected.respawn.anchor_x[0][0] = 5;
+        actual.respawn.anchor_x[0][0] = 8;
+        expect_diff(expected,
+                    actual,
+                    "respawn.anchor_x[0][0]",
                     "5",
                     "8");
     }
@@ -622,10 +681,10 @@ TEST(Replay, snapshot_difference_formats_all_field_value_kinds)
 
     expect_size_difference(
         [](og::sim::WorldSnapshot& snapshot) {
-            snapshot.ctf_respawn_queue.push_back({});
+            snapshot.respawn.respawn_queue.push_back({});
         },
         [](og::sim::WorldSnapshot&) {},
-        "ctf_respawn_queue.size");
+        "respawn.respawn_queue.size");
     expect_size_difference(
         [](og::sim::WorldSnapshot& snapshot) {
             snapshot.grid_dirty_tiles.push_back({});
@@ -695,7 +754,7 @@ TEST(Replay, file_errors_report_the_failed_operation)
     const og::sim::ReplayHeader header = {
         .version = og::sim::kReplayFormatVersion,
         .player_count = 1,
-        .campaign_id = "org.openglad.gladiator",
+        .campaign_id = "gladiator",
     };
     og::sim::ReplayRecorder recorder(header);
     recorder.set_initial_snapshot(make_initial_snapshot());
@@ -752,7 +811,7 @@ TEST(Replay, recorder_clear_and_world_snapshot_recorders_reset_state)
         .my_team = 0,
         .allied_mode = 0,
         .difficulty = 100,
-        .campaign_id = "org.openglad.gladiator",
+        .campaign_id = "gladiator",
     });
 
     recorder.record_initial_world(world);

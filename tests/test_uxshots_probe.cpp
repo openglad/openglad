@@ -196,7 +196,7 @@ bool seed_company_with_roster(const std::string &slot, const std::string &name,
   SaveData sd;
   sd.reset();
   sd.save_name = name;
-  sd.current_campaign = "org.openglad.gladiator";
+  sd.current_campaign = "gladiator";
   sd.last_played_unix_s = last_played;
   int i = 0;
   for (const RosterSeed &seed : roster) {
@@ -589,7 +589,7 @@ TEST(UxShots, f_backups) {
     SaveData sd;
     sd.reset();
     sd.save_name = "IRON KETTLE BAND";
-    sd.current_campaign = "org.openglad.gladiator";
+    sd.current_campaign = "gladiator";
     sd.last_played_unix_s = 1700000000 + i * 90000;
     sd.scen_num = static_cast<short>(1 + i * 2);
     const std::vector<RosterSeed> roster = playtest_roster();
@@ -877,7 +877,7 @@ void seed_session_save_for_net() {
   SaveData &save = og::runtime::current_session->myscreen_->save_data;
   save.reset();
   save.save_name = "IRON KETTLE BAND";
-  save.current_campaign = "org.openglad.gladiator";
+  save.current_campaign = "gladiator";
   save.scen_num = 1;
   save.numplayers = 1;
   const std::vector<RosterSeed> own = {

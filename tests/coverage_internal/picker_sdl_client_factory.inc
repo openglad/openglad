@@ -128,7 +128,7 @@ struct PickerSdlClientTestAccess
         set_relay_environment("https://relay.example.test/api");
 
         SaveData& save = og::runtime::current_session->myscreen_->save_data;
-        save.current_campaign = "org.openglad.relay-state-test";
+        save.current_campaign = "relay-state-test";
 
         enum class BeginBehavior
         {
@@ -330,7 +330,7 @@ struct PickerSdlClientTestAccess
             client.relay_rooms_.view_generation;
         client.ensure_relay_room_list_view_is_current();
         check(client.relay_rooms_.view_generation == generation_before);
-        save.current_campaign = "org.openglad.relay-state-test.changed";
+        save.current_campaign = "relay-state-test.changed";
         client.ensure_relay_room_list_view_is_current();
         check(client.relay_rooms_.view_generation == generation_before + 1);
         check(client.relay_rooms_.view_campaign_tag == save.current_campaign);

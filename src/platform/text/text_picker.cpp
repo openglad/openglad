@@ -8,11 +8,11 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/irandom.h>
 #include <openglad/core/util.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/company.h>
+#include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/interface/level_runtime_data.h>
@@ -191,6 +191,8 @@ public:
         // previously loaded save selected.
         config_.campaign = save_data_.current_campaign;
         (void)sync_campaign_mount_to_save(save_data_);
+        // #162: between prompts in a printf/read_line client — no pixies.
+        headless_entity_loader()->reload_graphics_if_stale();
 
         sync_config_from_save();
         show_new_game_team_build_notice_ = true;
@@ -251,6 +253,9 @@ public:
         // GO loads levels straight from the mounted package; selecting a
         // campaign without mounting it would silently play the old one.
         (void)sync_campaign_mount_to_save(save_data_);
+        // #162: follow the mount with the sprite set (campaign entity art,
+        // pack families) before GO builds the level.
+        headless_entity_loader()->reload_graphics_if_stale();
         return config_.campaign;
     }
 
@@ -948,7 +953,7 @@ private:
                 } else {
                     std::printf("Preferred-team metadata is now %s; "
                                 "the text simulator has no player controls.\n",
-                        og::sim::ctf_team_color_name(value - 1));
+                        og::sim::team_color_name(value - 1));
                 }
                 continue;
             }
@@ -966,7 +971,7 @@ private:
                     std::printf("Invalid slot or team.\n");
                 } else {
                     std::printf("Moved slot %d to %s.\n", slot,
-                        og::sim::ctf_team_color_name(value - 1));
+                        og::sim::team_color_name(value - 1));
                     autosave_company_after_mutation();  // §3.8 team cycle
                 }
                 continue;
@@ -997,7 +1002,7 @@ private:
                     t, hero_count, false, false, false, "").c_str());
             std::printf("%s", members.c_str());
         }
-        if (is_ctf_campaign(save_data_))
+        if (is_versus_campaign(save_data_))
             std::printf("[%s]\n", format_ctf_teams_label(save_data_).c_str());
     }
 

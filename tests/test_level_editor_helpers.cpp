@@ -419,7 +419,7 @@ TEST(LevelEditorHelpers, level_editor_some_hit_checks_all_lists)
 
 TEST(LevelEditorHelpers, level_editor_create_new_campaign_and_detect_exists)
 {
-    std::string id = std::string("org.openglad.test.") + std::to_string(::getpid());
+    std::string id = std::string("test.") + std::to_string(::getpid());
     // Ensure a clean slate.
     delete_campaign(id);
 

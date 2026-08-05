@@ -195,7 +195,7 @@ TEST(PickerDetailMenuDriven, picker_detail_menu_promote_mage_to_archmage_branch)
 
     og::runtime::current_session->editguy_ = 0;
     og::runtime::current_session->myscreen_->save_data.team_size = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.team_list[0].reset(new guy(FAMILY_MAGE));
     og::runtime::current_session->myscreen_->save_data.team_list[0]->name = "TEAM_MAGE";
     og::runtime::current_session->myscreen_->save_data.team_list[0]->level = 6;

@@ -5,7 +5,7 @@
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/resources/save_data.h>
-#include <openglad/core/ctf_constants.h>
+#include <openglad/core/campaign_ids.h>
 #include <openglad/core/irandom.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
@@ -13,13 +13,16 @@
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/gloader.h>
-#include <openglad/resources/gloader_ctf.h>
+#include <openglad/resources/io_common.h>
 #include "test_game_world_fixture.h"
 #include <array>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <format>
+#include <fstream>
 #include <list>
 #include <limits>
 #include <memory>
@@ -1328,16 +1331,44 @@ TEST(PickerCommon, format_ctf_labels)
     ASSERT_LE(og::ui::format_ctf_caps_label(save).size(), 12u);
 }
 
-TEST(PickerCommon, is_ctf_campaign_matches_id_exactly)
+TEST(PickerCommon, is_versus_campaign_reads_matchup_key)
 {
     SaveData save;
-    ASSERT_FALSE(og::ui::is_ctf_campaign(save))
-        << "the classic campaign is not CTF";
-    save.current_campaign = "org.openglad.ctf";
-    ASSERT_TRUE(og::ui::is_ctf_campaign(save));
-    save.current_campaign = "org.openglad.ctf2";
-    ASSERT_FALSE(og::ui::is_ctf_campaign(save))
-        << "the match is exact, not a prefix";
+    save.current_campaign = "gladiator";
+    ASSERT_FALSE(og::ui::is_versus_campaign(save))
+        << "the shipped classic campaign is cooperative";
+    save.current_campaign = "";
+    ASSERT_FALSE(og::ui::is_versus_campaign(save));
+    save.current_campaign = "pc_no_such_pkg";
+    ASSERT_FALSE(og::ui::is_versus_campaign(save));
+
+    namespace fs = std::filesystem;
+    const std::string id = "pc_versus_probe";
+    const fs::path staging =
+        fs::path(get_user_path()) / "pc_versus_staging" / id;
+    std::error_code ec;
+    fs::create_directories(staging, ec);
+    ASSERT_FALSE(ec) << ec.message();
+    {
+        std::ofstream out(staging / "campaign.yaml");
+        out << "format_version: 1\ntitle: Versus Probe\nversion: 1\n"
+               "matchup: versus\n";
+        ASSERT_TRUE(out.good());
+    }
+    const fs::path archive =
+        fs::path(get_user_path()) / "campaigns" / (id + ".glad");
+    fs::remove(archive, ec);
+    ASSERT_EQ(ArchiveIoError::None,
+              zip_contents_with_error(staging.string(), archive.string()));
+
+    og::data::clear_campaign_metadata_cache();
+    save.current_campaign = id;
+    EXPECT_TRUE(og::ui::is_versus_campaign(save))
+        << "matchup: versus makes the campaign a versus matchup";
+
+    fs::remove(archive, ec);
+    fs::remove_all(fs::path(get_user_path()) / "pc_versus_staging", ec);
+    og::data::clear_campaign_metadata_cache();
 }
 
 // --- set_player_count ---
@@ -1602,12 +1633,32 @@ TEST(PickerCommon, reset_for_new_game_sets_gold)
 
 // --- CTF scenario-troops toggle & label ---
 
-TEST(PickerCommon, toggle_ctf_scenario_troops_cycles_binary)
+TEST(PickerCommon, next_ctf_scenario_troops_cycle_orders)
+{
+    // Two states, and both apply on every campaign, so the cycle is one flip
+    // with no campaign argument to get wrong.
+    EXPECT_EQ(2, og::ui::next_ctf_scenario_troops(0));
+    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(2));
+
+    // The retired middle state and any junk value read as OWN everywhere
+    // else, so cycling off them lands on ALL.
+    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(1));
+    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(7));
+    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(-1));
+}
+
+TEST(PickerCommon, toggle_ctf_scenario_troops_flips_two_states)
 {
     SaveData save;
     ASSERT_EQ(0, save.ctf_strip_scenario_troops);
     og::ui::toggle_ctf_scenario_troops(save);
-    ASSERT_EQ(1, save.ctf_strip_scenario_troops);
+    ASSERT_EQ(2, save.ctf_strip_scenario_troops)
+        << "the menus write 2 so networked peers agree on OWN";
+    og::ui::toggle_ctf_scenario_troops(save);
+    ASSERT_EQ(0, save.ctf_strip_scenario_troops);
+
+    // A save carrying the retired middle state cycles back to ALL.
+    save.ctf_strip_scenario_troops = 1;
     og::ui::toggle_ctf_scenario_troops(save);
     ASSERT_EQ(0, save.ctf_strip_scenario_troops);
 }
@@ -1615,25 +1666,19 @@ TEST(PickerCommon, toggle_ctf_scenario_troops_cycles_binary)
 TEST(PickerCommon, format_ctf_troops_label_strings_fit_budget)
 {
     SaveData save;
-    ASSERT_EQ("Troops: Scen", og::ui::format_ctf_troops_label(save));
+    ASSERT_EQ("TROOPS: ALL", og::ui::format_ctf_troops_label(save));
+    save.ctf_strip_scenario_troops = 2;
+    ASSERT_EQ("TROOPS: OWN", og::ui::format_ctf_troops_label(save));
+    // A stored legacy 1 strips everything, so it must not read as ALL.
     save.ctf_strip_scenario_troops = 1;
-    ASSERT_EQ("Troops: Own", og::ui::format_ctf_troops_label(save));
-    ASSERT_LE(og::ui::format_ctf_troops_label(save).size(), 12u);
-    save.ctf_strip_scenario_troops = 0;
-    ASSERT_LE(og::ui::format_ctf_troops_label(save).size(), 12u);
+    ASSERT_EQ("TROOPS: OWN", og::ui::format_ctf_troops_label(save));
+    // Every state fits the 80px (12-character) SCENARIO face.
+    for (short state = 0; state <= 2; ++state)
+    {
+        save.ctf_strip_scenario_troops = state;
+        ASSERT_LE(og::ui::format_ctf_troops_label(save).size(), 12u) << state;
+    }
 }
-
-TEST(PickerCommon, is_ctf_campaign_matches_constant)
-{
-    SaveData save;
-    save.current_campaign = std::string(og::kCtfCampaignId);
-    ASSERT_TRUE(og::ui::is_ctf_campaign(save));
-    ASSERT_EQ("org.openglad.ctf", std::string(og::kCtfCampaignId));
-    save.current_campaign = "org.openglad.gladiator";
-    ASSERT_FALSE(og::ui::is_ctf_campaign(save));
-}
-
-// --- Team choice helpers ---
 
 TEST(PickerCommon, team_has_members_and_set_preferred_team)
 {
@@ -1841,26 +1886,24 @@ TEST(PickerCommon, order_campaigns_for_select_uses_the_shelf_order)
 {
     // The full shipped set arrives in alphabetical list_campaigns() order
     // and leaves in shelf order: classics, the two original story
-    // campaigns, the multiplayer packages, concept trailing.
+    // campaigns, the multiplayer package, concept trailing.
     std::list<std::string> ids = {
-        "org.openglad.arenas",
-        "org.openglad.concept",
-        "org.openglad.ctf",
-        "org.openglad.gladiator",
-        "org.openglad.longseason",
-        "org.openglad.tower",
-        "org.openglad.tryxian",
-        "org.openglad.westlands",
+        "concept",
+        "gladiator",
+        "longseason",
+        "modes",
+        "tower",
+        "tryxian",
+        "westlands",
     };
     const std::list<std::string> shelf = {
-        "org.openglad.gladiator",
-        "org.openglad.tryxian",
-        "org.openglad.westlands",
-        "org.openglad.longseason",
-        "org.openglad.ctf",
-        "org.openglad.arenas",
-        "org.openglad.tower",
-        "org.openglad.concept",
+        "gladiator",
+        "tryxian",
+        "westlands",
+        "longseason",
+        "modes",
+        "tower",
+        "concept",
     };
     og::ui::order_campaigns_for_select(ids);
     ASSERT_EQ(shelf, ids);
@@ -1872,14 +1915,14 @@ TEST(PickerCommon, order_campaigns_for_select_uses_the_shelf_order)
     // User-made packages keep their relative order after every shelved id.
     std::list<std::string> with_extras = {
         "a.campaign",
-        "org.openglad.ctf",
+        "modes",
         "b.campaign",
-        "org.openglad.gladiator",
+        "gladiator",
     };
     og::ui::order_campaigns_for_select(with_extras);
     ASSERT_EQ((std::list<std::string>{
-                  "org.openglad.gladiator",
-                  "org.openglad.ctf",
+                  "gladiator",
+                  "modes",
                   "a.campaign",
                   "b.campaign",
               }),
@@ -1890,10 +1933,10 @@ TEST(PickerCommon, order_campaigns_for_select_uses_the_shelf_order)
     og::ui::order_campaigns_for_select(no_anchors);
     ASSERT_EQ((std::list<std::string>{"a.campaign", "b.campaign"}), no_anchors);
 
-    // Only CTF: a single-element list stays put.
-    std::list<std::string> only_ctf = {"org.openglad.ctf"};
-    og::ui::order_campaigns_for_select(only_ctf);
-    ASSERT_EQ((std::list<std::string>{"org.openglad.ctf"}), only_ctf);
+    // Only the modes package: a single-element list stays put.
+    std::list<std::string> only_modes = {"modes"};
+    og::ui::order_campaigns_for_select(only_modes);
+    ASSERT_EQ((std::list<std::string>{"modes"}), only_modes);
 
     // Empty list survives.
     std::list<std::string> empty;
@@ -1906,9 +1949,9 @@ TEST(PickerCommon, order_campaigns_for_select_uses_the_shelf_order)
 TEST(PickerCommon, filter_campaigns_for_networked_lobby_drops_tower_only)
 {
     const std::list<std::string> full = {
-        "org.openglad.gladiator",
-        "org.openglad.tower",
-        "org.openglad.ctf",
+        "gladiator",
+        "tower",
+        "modes",
         "a.campaign",
     };
 
@@ -1921,8 +1964,8 @@ TEST(PickerCommon, filter_campaigns_for_networked_lobby_drops_tower_only)
     std::list<std::string> networked = full;
     og::ui::filter_campaigns_for_networked_lobby(networked, true);
     ASSERT_EQ((std::list<std::string>{
-                  "org.openglad.gladiator",
-                  "org.openglad.ctf",
+                  "gladiator",
+                  "modes",
                   "a.campaign",
               }),
               networked);
@@ -1944,9 +1987,9 @@ TEST(PickerCommon, filter_campaigns_for_networked_lobby_drops_tower_only)
 TEST(PickerCommon, campaign_select_labels_fall_back_to_raw_ids)
 {
     const std::vector<std::string> ids = {
-        "org.openglad.test_absent_a",
-        "org.openglad.test_absent_b",
-        "org.openglad.test_absent_a",
+        "test_absent_a",
+        "test_absent_b",
+        "test_absent_a",
     };
     ASSERT_EQ(ids, og::ui::format_campaign_select_labels(ids));
     ASSERT_TRUE(og::ui::format_campaign_select_labels({}).empty());
@@ -1960,7 +2003,6 @@ loader& report_test_loader()
 {
     static loader instance{EntityFactory{}};
     static const bool registered = [] {
-        register_ctf_loader_entries(instance);
         return true;
     }();
     (void)registered;
@@ -1991,7 +2033,7 @@ struct ReportWorld : TestGameWorld
                 if (entity != nullptr)
                     game_loader->set_derived_stats(entity, order, family);
             };
-        world().type = ctf_map ? GameWorld::TYPE_CTF : 0;
+        world().type = ctf_map ? GameWorld::TYPE_SCRIPTED : 0;
     }
 
     walker* spawn_living_named(int family, int team, int guy_level,
@@ -2015,23 +2057,6 @@ struct ReportWorld : TestGameWorld
         w->setxy(256, 256);
         w->set_team_num(static_cast<unsigned char>(team));
         return w;
-    }
-
-    walker* spawn_flag(int team, int flag_level = 0)
-    {
-        walker* flag = world().add_fx_ob(Order::Treasure, og::FAMILY_FLAG);
-        flag->setxy(96, 96);
-        flag->set_team_num(static_cast<unsigned char>(team));
-        if (flag_level > 0 && flag->stats() != nullptr)
-            flag->stats()->set_level(flag_level);
-        return flag;
-    }
-
-    walker* spawn_point()
-    {
-        walker* point = world().add_fx_ob(Order::Treasure, og::FAMILY_CTF_POINT);
-        point->setxy(320, 320);
-        return point;
     }
 
     walker* spawn_anchor(int team)
@@ -2110,7 +2135,7 @@ TEST(PickerCommon, scenario_report_groups_classic_roster)
     const og::ui::ScenarioRosterReport report =
         og::ui::build_scenario_roster_report(fx.world(), save);
 
-    EXPECT_FALSE(report.is_ctf);
+    EXPECT_FALSE(report.is_versus);
     EXPECT_EQ(0, report.your_team);
 
     const auto* grouped = find_group_row(report, 0, FAMILY_SOLDIER, 3);
@@ -2145,17 +2170,14 @@ TEST(PickerCommon, scenario_report_groups_classic_roster)
     EXPECT_TRUE(any_line_contains(lines, "2x SOLDIER Lv 3"));
     EXPECT_TRUE(any_line_contains(lines, "GONZO - ARCHER Lv 5"));
     EXPECT_TRUE(any_line_contains(lines, "2x GENERATOR"));
-    EXPECT_FALSE(any_line_contains(lines, "CTF"));
+    EXPECT_FALSE(any_line_contains(lines, "MATCH:"));
     for (const auto& line : lines)
         EXPECT_LE(line.size(), 48u) << line;
 }
 
-TEST(PickerCommon, scenario_report_ctf_sections_and_strip_annotations)
+TEST(PickerCommon, scenario_report_versus_sections_and_strip_annotations)
 {
     ReportWorld fx(true);
-    fx.spawn_flag(0, /*level=*/7); // map capture limit 7
-    fx.spawn_flag(1);
-    fx.spawn_point();
     fx.spawn_anchor(0);
     fx.spawn_anchor(0);
     fx.spawn_anchor(1);
@@ -2166,9 +2188,9 @@ TEST(PickerCommon, scenario_report_ctf_sections_and_strip_annotations)
     fx.spawn_living_named(FAMILY_ELF, 5, 9, nullptr);     // non-score team
 
     SaveData save;
-    save.current_campaign = std::string(og::kCtfCampaignId);
+    save.current_campaign = "modes";
     save.my_team = 0;
-    save.ctf_strip_scenario_troops = 1;
+    save.ctf_strip_scenario_troops = 0; // TROOPS: ALL — only activation strips
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
     save.team_list[0]->teamnum = 0;
     save.team_size = 1;
@@ -2176,26 +2198,23 @@ TEST(PickerCommon, scenario_report_ctf_sections_and_strip_annotations)
     const og::ui::ScenarioRosterReport report =
         og::ui::build_scenario_roster_report(fx.world(), save);
 
-    EXPECT_TRUE(report.is_ctf);
-    EXPECT_TRUE(report.ctf_will_activate);
-    EXPECT_TRUE(report.team_has_flag[0]);
-    EXPECT_TRUE(report.team_has_flag[1]);
-    EXPECT_FALSE(report.team_has_flag[2]);
+    EXPECT_TRUE(report.is_versus);
+    EXPECT_TRUE(report.will_activate);
+    EXPECT_TRUE(report.team_authored[0]);
+    EXPECT_TRUE(report.team_authored[1]);
+    EXPECT_FALSE(report.team_authored[2]);
     EXPECT_TRUE(report.team_active[0]);
     EXPECT_TRUE(report.team_active[1]);
     EXPECT_FALSE(report.team_active[2]);
-    EXPECT_EQ(1, report.cp_count);
     EXPECT_EQ(2, report.team_anchor_count[0]);
     EXPECT_EQ(1, report.team_anchor_count[1]);
-    EXPECT_EQ(7, report.capture_limit) << "map flag level drives the limit";
 
     const auto* roster_troops = find_group_row(report, 0, FAMILY_SOLDIER, 3);
     ASSERT_TRUE(roster_troops != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::TroopsOff,
-              roster_troops->strip_reason);
+    EXPECT_EQ(og::ui::ScenarioStripReason::None, roster_troops->strip_reason);
     const auto* roster_gen = find_generator_row(report, 0);
     ASSERT_TRUE(roster_gen != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::TroopsOff, roster_gen->strip_reason);
+    EXPECT_EQ(og::ui::ScenarioStripReason::None, roster_gen->strip_reason);
 
     const auto* bot_troops = find_group_row(report, 1, FAMILY_ORC, 4);
     ASSERT_TRUE(bot_troops != nullptr);
@@ -2212,25 +2231,80 @@ TEST(PickerCommon, scenario_report_ctf_sections_and_strip_annotations)
     EXPECT_EQ(og::ui::ScenarioStripReason::InactiveTeam,
               non_score->strip_reason);
 
-    EXPECT_TRUE(report.any_troops_off);
     EXPECT_TRUE(report.any_inactive);
+    EXPECT_FALSE(report.any_strip_all);
 
     const std::vector<std::string> lines =
         og::ui::format_scenario_report_lines(report);
-    EXPECT_TRUE(any_line_contains(lines, "CTF: 2 FLAG TEAMS, 1 CONTROL POINTS"));
-    EXPECT_TRUE(any_line_contains(lines, "CAPTURE LIMIT: 7"));
-    EXPECT_TRUE(any_line_contains(lines, "RED FLAG  ANCHORS: 2  ACTIVE"));
+    EXPECT_TRUE(any_line_contains(lines, "MATCH: 2 AUTHORED TEAMS"));
+    EXPECT_TRUE(any_line_contains(lines, "RED TEAM  MARKERS: 2  ACTIVE"));
     EXPECT_TRUE(any_line_contains(lines, "RED TEAM (YOURS)"));
     EXPECT_TRUE(any_line_contains(lines, "BLUE TEAM"))
         << "score teams keep color-name headers";
     EXPECT_TRUE(any_line_contains(lines, "TEAM 5"))
         << "non-score teams keep the raw index header";
-    EXPECT_TRUE(any_line_contains(lines, "1x SOLDIER Lv 3*"));
+    EXPECT_TRUE(any_line_contains(lines, "1x SOLDIER Lv 3"));
+    EXPECT_FALSE(any_line_contains(lines, "1x SOLDIER Lv 3!"))
+        << "TROOPS: ALL leaves the authored cast unannotated";
     EXPECT_TRUE(any_line_contains(lines, "1x ELF Lv 2+"));
     EXPECT_TRUE(any_line_contains(lines, "1x ELF Lv 9+"))
         << "non-score teams carry the inactive strip suffix";
-    EXPECT_TRUE(any_line_contains(lines, "* REMOVED: TROOPS OFF"));
     EXPECT_TRUE(any_line_contains(lines, "+ REMOVED: INACTIVE TEAM"));
+    for (const auto& line : lines)
+        EXPECT_LE(line.size(), 48u) << line;
+}
+
+TEST(PickerCommon, scenario_report_troops_own_annotates_every_authored_row)
+{
+    // TROOPS: OWN outranks the activation strip: everything authored goes,
+    // on every team, wildlife and generators included. Protected named NPCs
+    // are the one exemption the sim honours, so the preview keeps them clean.
+    ReportWorld fx(true);
+    fx.spawn_anchor(0);
+    fx.spawn_anchor(1);
+    fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
+    fx.spawn_generator(FAMILY_TENT, 0);
+    fx.spawn_living_named(FAMILY_ORC, 1, 4, nullptr);
+    fx.spawn_living_named(FAMILY_ELF, 2, 2, nullptr); // no flag: inactive team
+    fx.spawn_living_named(FAMILY_ELF, 5, 9, nullptr); // non-score team
+    walker* const protected_npc =
+        fx.spawn_living_named(FAMILY_ARCHER, 1, 6, "REEVE");
+    ASSERT_TRUE(protected_npc != nullptr);
+    protected_npc->set_save_all_protected(true);
+
+    SaveData save;
+    save.current_campaign = "modes";
+    save.my_team = 0;
+    save.ctf_strip_scenario_troops = 2;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 0;
+    save.team_size = 1;
+
+    const og::ui::ScenarioRosterReport report =
+        og::ui::build_scenario_roster_report(fx.world(), save);
+
+    for (const auto& row : report.rows)
+    {
+        if (row.named)
+            continue;
+        EXPECT_EQ(og::ui::ScenarioStripReason::StripAll, row.strip_reason)
+            << "team " << row.team << " family " << row.family;
+    }
+    const auto* reeve = find_named_row(report, "REEVE");
+    ASSERT_TRUE(reeve != nullptr);
+    EXPECT_EQ(og::ui::ScenarioStripReason::None, reeve->strip_reason)
+        << "the protected bit is the exemption";
+
+    EXPECT_TRUE(report.any_strip_all);
+    EXPECT_FALSE(report.any_inactive)
+        << "the OWN sweep subsumes the inactive-team strip";
+
+    const std::vector<std::string> lines =
+        og::ui::format_scenario_report_lines(report);
+    EXPECT_TRUE(any_line_contains(lines, "1x SOLDIER Lv 3!"));
+    EXPECT_TRUE(any_line_contains(lines, "1x GENERATOR!"));
+    EXPECT_TRUE(any_line_contains(lines, "! REMOVED: TROOPS OWN"));
+    EXPECT_FALSE(any_line_contains(lines, "+ REMOVED: INACTIVE TEAM"));
     for (const auto& line : lines)
         EXPECT_LE(line.size(), 48u) << line;
 }
@@ -2238,15 +2312,15 @@ TEST(PickerCommon, scenario_report_ctf_sections_and_strip_annotations)
 TEST(PickerCommon, scenario_report_preserves_local_team_colors_in_allied_mode)
 {
     ReportWorld fx(true);
-    fx.spawn_flag(0, /*level=*/7);
-    fx.spawn_flag(1);
-    fx.spawn_flag(3);
+    fx.spawn_anchor(0);
+    fx.spawn_anchor(1);
+    fx.spawn_anchor(3);
     fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
     fx.spawn_living_named(FAMILY_ORC, 1, 4, nullptr);
     fx.spawn_living_named(FAMILY_ARCHER, 3, 5, nullptr);
 
     SaveData save;
-    save.current_campaign = std::string(og::kCtfCampaignId);
+    save.current_campaign = "modes";
     save.allied_mode = 1;
     save.my_team = 2;
     save.ctf_capture_limit = 5;
@@ -2258,31 +2332,31 @@ TEST(PickerCommon, scenario_report_preserves_local_team_colors_in_allied_mode)
     const og::ui::ScenarioRosterReport report =
         og::ui::build_scenario_roster_report(fx.world(), save);
 
-    EXPECT_EQ(5, report.capture_limit) << "explicit request beats the map";
     EXPECT_EQ(2, report.your_team)
         << "local Together mode keeps the selected playing team";
 
+    // The save carries the retired middle state; every team's authored cast
+    // goes, which is what the sim does with any value above 0.
     const auto* team0 = find_group_row(report, 0, FAMILY_SOLDIER, 3);
     ASSERT_TRUE(team0 != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::None, team0->strip_reason);
+    EXPECT_EQ(og::ui::ScenarioStripReason::StripAll, team0->strip_reason);
     const auto* team1 = find_group_row(report, 1, FAMILY_ORC, 4);
     ASSERT_TRUE(team1 != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::None, team1->strip_reason);
+    EXPECT_EQ(og::ui::ScenarioStripReason::StripAll, team1->strip_reason);
     const auto* team3 = find_group_row(report, 3, FAMILY_ARCHER, 5);
     ASSERT_TRUE(team3 != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::TroopsOff, team3->strip_reason)
-        << "the report must mirror the roster's actual color";
+    EXPECT_EQ(og::ui::ScenarioStripReason::StripAll, team3->strip_reason);
 }
 
 TEST(PickerCommon, scenario_report_non_activating_ctf_keeps_classic_rules)
 {
     ReportWorld fx(true);
-    fx.spawn_flag(0); // single flag team: the match will not activate
+    fx.spawn_anchor(0); // single authored team: the match will not activate
     fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
 
     SaveData save;
-    save.current_campaign = std::string(og::kCtfCampaignId);
-    save.ctf_strip_scenario_troops = 1;
+    save.current_campaign = "modes";
+    save.ctf_strip_scenario_troops = 0;
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
     save.team_list[0]->teamnum = 0;
     save.team_size = 1;
@@ -2290,26 +2364,27 @@ TEST(PickerCommon, scenario_report_non_activating_ctf_keeps_classic_rules)
     const og::ui::ScenarioRosterReport report =
         og::ui::build_scenario_roster_report(fx.world(), save);
 
-    EXPECT_TRUE(report.is_ctf);
-    EXPECT_FALSE(report.ctf_will_activate);
+    EXPECT_TRUE(report.is_versus);
+    EXPECT_FALSE(report.will_activate);
     const auto* troops = find_group_row(report, 0, FAMILY_SOLDIER, 3);
     ASSERT_TRUE(troops != nullptr);
     EXPECT_EQ(og::ui::ScenarioStripReason::None, troops->strip_reason)
-        << "the strip is inert on non-activating CTF maps";
+        << "the activation strip is inert on non-activating versus maps";
 
     const std::vector<std::string> lines =
         og::ui::format_scenario_report_lines(report);
-    EXPECT_TRUE(any_line_contains(lines, "CTF INACTIVE"));
+    EXPECT_TRUE(any_line_contains(lines, "MATCH INACTIVE"));
 }
 
-TEST(PickerCommon, scenario_report_troops_strip_annotates_outside_ctf_campaign)
+TEST(PickerCommon, scenario_report_troops_strip_annotates_outside_versus_campaign)
 {
-    // The sim consumes ctf_strip_scenario_troops on ANY TYPE_CTF map (no
-    // campaign gate); the preview must mirror it exactly or a custom CTF map
-    // outside the shipped campaign strips in-sim with no '*' in the viewer.
+    // The sim consumes ctf_strip_scenario_troops on ANY scripted map (no
+    // campaign gate); the preview must mirror it exactly or a custom
+    // scripted map outside the shipped campaign strips in-sim with no '!'
+    // in the viewer.
     ReportWorld fx(true);
-    fx.spawn_flag(0);
-    fx.spawn_flag(1);
+    fx.spawn_anchor(0);
+    fx.spawn_anchor(1);
     fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
     fx.spawn_living_named(FAMILY_ORC, 1, 4, nullptr);
 
@@ -2324,14 +2399,15 @@ TEST(PickerCommon, scenario_report_troops_strip_annotates_outside_ctf_campaign)
     const og::ui::ScenarioRosterReport report =
         og::ui::build_scenario_roster_report(fx.world(), save);
 
-    EXPECT_TRUE(report.is_ctf);
-    EXPECT_TRUE(report.ctf_will_activate);
+    EXPECT_TRUE(report.is_versus);
+    EXPECT_TRUE(report.will_activate);
     const auto* troops = find_group_row(report, 0, FAMILY_SOLDIER, 3);
     ASSERT_TRUE(troops != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::TroopsOff, troops->strip_reason);
+    EXPECT_EQ(og::ui::ScenarioStripReason::StripAll, troops->strip_reason);
     const auto* bot_troops = find_group_row(report, 1, FAMILY_ORC, 4);
     ASSERT_TRUE(bot_troops != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::None, bot_troops->strip_reason);
+    EXPECT_EQ(og::ui::ScenarioStripReason::StripAll, bot_troops->strip_reason)
+        << "OWN is not a per-roster-team rule";
 }
 
 // --- MATCHUP detail pagination (the per-team '>' pager) ---------------------
@@ -3371,7 +3447,7 @@ TEST(BackupFormat, row_columns_level_tag_and_utc_datetime)
     info.seq = 7;
     info.filename = "iron-kettle-band.007.gtl";
     info.header.slot = "iron-kettle-band";
-    info.header.campaign_id = "org.openglad.never-mounted";
+    info.header.campaign_id = "never-mounted";
     info.header.scen_num = 7;
     info.header.valid = true;
     // 1970-01-01T23:59:59Z: pins BOTH that the format is "MM-DD HH:MM" and
@@ -3413,7 +3489,7 @@ TEST(BackupFormat, row_line_joins_columns_for_terminals)
     info.seq = 3;
     info.filename = "iron-kettle-band.003.gtl";
     info.header.slot = "iron-kettle-band";
-    info.header.campaign_id = "org.openglad.never-mounted";
+    info.header.campaign_id = "never-mounted";
     info.header.scen_num = 12;
     info.header.valid = true;
     info.header.last_played_unix_s = 86399;
@@ -4243,4 +4319,229 @@ TEST(ReadyGoSlot, cross_control_label_states)
 {
     EXPECT_EQ("CTRL: OWN", og::ui::format_cross_control_label(false));
     EXPECT_EQ("CTRL: ALL", og::ui::format_cross_control_label(true));
+}
+
+// --- Campaign browser (SET CAMPAIGN) layout pins ---
+//
+// The reported bug: long campaign titles ran under the ENTER ID face. The
+// title row and the top control row share pixels (title y = 13 height 8,
+// controls y = 10 height 10), and the centered title reached x = 208 — the
+// old ENTER ID left edge — at 17 characters. Both shipped offenders
+// ("MULTIPLAYER GAME MODES", 22; "CONCEPT PLAYGROUND", 18) cleared that.
+// ENTER ID now stacks under DELETE/RESET and the title is fitted, so the
+// pins below assert the property for EVERY title length, not just the ones
+// that ship.
+
+TEST(CampaignPickerLayout, enter_id_sits_below_the_delete_reset_cell)
+{
+    const og::ui::CampaignPickerLayout layout = og::ui::campaign_picker_layout();
+
+    EXPECT_EQ(270, layout.delete_button.x);
+    EXPECT_EQ(10, layout.delete_button.y);
+    EXPECT_EQ(38, layout.delete_button.w);
+    EXPECT_EQ(10, layout.delete_button.h);
+
+    // RESET shares the DELETE cell (only one of the two is ever visible).
+    EXPECT_EQ(layout.delete_button.x, layout.reset_button.x);
+    EXPECT_EQ(layout.delete_button.y, layout.reset_button.y);
+
+    EXPECT_EQ(256, layout.id_button.x);
+    EXPECT_EQ(22, layout.id_button.y);
+    EXPECT_EQ(52, layout.id_button.w);
+    EXPECT_EQ(10, layout.id_button.h);
+
+    // Strictly below, right edges flush.
+    EXPECT_GE(layout.id_button.y,
+              layout.delete_button.y + layout.delete_button.h);
+    EXPECT_EQ(layout.delete_button.x + layout.delete_button.w,
+              layout.id_button.x + layout.id_button.w);
+    EXPECT_FALSE(og::ui::picker_rects_overlap(layout.id_button,
+                                              layout.delete_button));
+    // ...and still on screen.
+    EXPECT_LE(layout.id_button.x + layout.id_button.w, 320);
+}
+
+TEST(CampaignPickerLayout, no_control_overlaps_another_control)
+{
+    const og::ui::CampaignPickerLayout layout = og::ui::campaign_picker_layout();
+    const std::array<og::ui::PickerRect, 6> distinct = {
+        layout.prev, layout.next, layout.choose,
+        layout.cancel, layout.delete_button, layout.id_button};
+    for (std::size_t i = 0; i < distinct.size(); ++i)
+    {
+        for (std::size_t j = i + 1; j < distinct.size(); ++j)
+        {
+            EXPECT_FALSE(og::ui::picker_rects_overlap(distinct[i], distinct[j]))
+                << "controls " << i << " and " << j << " overlap";
+        }
+    }
+}
+
+TEST(CampaignPickerLayout, title_row_clears_every_control_at_any_length)
+{
+    const og::ui::CampaignPickerLayout layout = og::ui::campaign_picker_layout();
+    const std::array<og::ui::PickerRect, 7> controls = {
+        layout.prev, layout.next, layout.choose, layout.cancel,
+        layout.delete_button, layout.reset_button, layout.id_button};
+
+    for (int chars = 0; chars <= layout.title_max_chars; ++chars)
+    {
+        const og::ui::PickerRect title = og::ui::campaign_title_rect(chars);
+        EXPECT_GE(title.x, 0) << "title of " << chars << " runs off screen";
+        EXPECT_LE(title.x + title.w, 320)
+            << "title of " << chars << " runs off screen";
+        for (const og::ui::PickerRect& control : controls)
+        {
+            EXPECT_FALSE(og::ui::picker_rects_overlap(title, control))
+                << "title of " << chars << " chars overlaps a control";
+        }
+    }
+}
+
+TEST(CampaignPickerLayout, old_geometry_really_did_clip_the_shipped_titles)
+{
+    // Regression witness: the pre-fix ENTER ID rect, kept as a literal so the
+    // pin still describes the bug after the layout moved.
+    const og::ui::PickerRect old_id_button{208, 10, 52, 10};
+    for (const int shipped : {22, 20, 18, 17})
+    {
+        EXPECT_TRUE(og::ui::picker_rects_overlap(
+            og::ui::campaign_title_rect(shipped), old_id_button))
+            << shipped << "-char title used to clip ENTER ID";
+        EXPECT_FALSE(og::ui::picker_rects_overlap(
+            og::ui::campaign_title_rect(shipped),
+            og::ui::campaign_picker_layout().id_button))
+            << shipped << "-char title must clear the moved ENTER ID";
+    }
+    // 16 chars was the longest that already fit.
+    EXPECT_FALSE(og::ui::picker_rects_overlap(
+        og::ui::campaign_title_rect(16), old_id_button));
+}
+
+TEST(CampaignPickerLayout, fit_campaign_title_budget)
+{
+    const int budget = og::ui::campaign_picker_layout().title_max_chars;
+    EXPECT_EQ(36, budget);
+
+    // Every shipped title is under budget and passes through untouched.
+    for (const char* shipped : {"Gladiator", "The Long Season",
+                                "Concept Playground", "The Endless Tower",
+                                "War of the Westlands",
+                                "Multiplayer Game Modes",
+                                "The Tryxian Chronicles"})
+    {
+        EXPECT_EQ(std::string(shipped), og::ui::fit_campaign_title(shipped))
+            << shipped << " must not be cut";
+    }
+
+    // A user-installed over-budget title is cut to exactly the budget.
+    const std::string huge(80, 'W');
+    const std::string fitted = og::ui::fit_campaign_title(huge);
+    EXPECT_EQ(static_cast<std::size_t>(budget), fitted.size());
+    EXPECT_EQ("...", fitted.substr(fitted.size() - 3));
+    EXPECT_FALSE(og::ui::picker_rects_overlap(
+        og::ui::campaign_title_rect(static_cast<int>(fitted.size())),
+        og::ui::campaign_picker_layout().delete_button))
+        << "a fitted title must never reach RESET/DELETE";
+
+    // Exactly at the budget: untouched.
+    const std::string exact(static_cast<std::size_t>(budget), 'W');
+    EXPECT_EQ(exact, og::ui::fit_campaign_title(exact));
+    EXPECT_EQ(std::string(), og::ui::fit_campaign_title(""));
+}
+
+TEST(CampaignPickerLayout, rect_overlap_helper_edges)
+{
+    const og::ui::PickerRect a{10, 10, 10, 10};
+    EXPECT_TRUE(og::ui::picker_rects_overlap(a, a));
+    EXPECT_FALSE(og::ui::picker_rects_overlap(a, og::ui::PickerRect{20, 10, 10, 10}))
+        << "edge-touching rects do not overlap";
+    EXPECT_FALSE(og::ui::picker_rects_overlap(a, og::ui::PickerRect{10, 20, 10, 10}));
+    EXPECT_TRUE(og::ui::picker_rects_overlap(a, og::ui::PickerRect{19, 19, 10, 10}));
+    EXPECT_FALSE(og::ui::picker_rects_overlap(a, og::ui::PickerRect{0, 0, 10, 10}));
+}
+
+// Keyboard reachability for the browser's nav graph across every visibility
+// variant. handle_menu_nav IGNORES a link into a hidden button (it does not
+// follow it and does not strand focus), so the property worth pinning is
+// that every VISIBLE button is still reachable from the default highlight
+// after ENTER ID moved out of the top row.
+TEST(CampaignPickerLayout, nav_variants_keyboard_reachable)
+{
+    using og::ui::CampaignPickerVisibility;
+    using og::ui::kCampaignPickerButtonCount;
+
+    for (const bool prev_hidden : {false, true})
+    for (const bool next_hidden : {false, true})
+    for (const bool choose_hidden : {false, true})
+    for (const bool delete_hidden : {false, true})
+    {
+        const CampaignPickerVisibility visibility{prev_hidden, next_hidden,
+                                                  choose_hidden, delete_hidden};
+        // RESET occupies the DELETE cell, so exactly one of the pair shows.
+        std::array<bool, kCampaignPickerButtonCount> hidden{};
+        hidden[og::ui::kCampaignPickerPrevIndex] = prev_hidden;
+        hidden[og::ui::kCampaignPickerNextIndex] = next_hidden;
+        hidden[og::ui::kCampaignPickerChooseIndex] = choose_hidden;
+        hidden[og::ui::kCampaignPickerCancelIndex] = false;
+        hidden[og::ui::kCampaignPickerDeleteIndex] = delete_hidden;
+        hidden[og::ui::kCampaignPickerIdIndex] = false;
+        hidden[og::ui::kCampaignPickerResetIndex] = !delete_hidden;
+
+        const auto nav = og::ui::campaign_picker_nav(visibility);
+        const std::string variant = std::string("prev=") +
+            (prev_hidden ? "hidden" : "shown") + " next=" +
+            (next_hidden ? "hidden" : "shown") + " ok=" +
+            (choose_hidden ? "hidden" : "shown") + " delete=" +
+            (delete_hidden ? "hidden" : "shown");
+
+        for (const auto& links : nav)
+        {
+            for (const int target :
+                 {links.up, links.down, links.left, links.right})
+            {
+                EXPECT_TRUE(target < kCampaignPickerButtonCount)
+                    << variant << ": nav index out of range";
+            }
+        }
+
+        // BFS from the browser's default highlight, following links into
+        // visible buttons only (handle_menu_nav's real rule).
+        std::array<bool, kCampaignPickerButtonCount> reached{};
+        std::vector<int> frontier{og::ui::kCampaignPickerCancelIndex};
+        reached[og::ui::kCampaignPickerCancelIndex] = true;
+        while (!frontier.empty())
+        {
+            const int current = frontier.back();
+            frontier.pop_back();
+            for (const int target : {nav[current].up, nav[current].down,
+                                     nav[current].left, nav[current].right})
+            {
+                if (target < 0 || hidden[target] || reached[target])
+                    continue;
+                reached[target] = true;
+                frontier.push_back(target);
+            }
+        }
+        for (int i = 0; i < kCampaignPickerButtonCount; ++i)
+        {
+            if (!hidden[i])
+            {
+                EXPECT_TRUE(reached[i])
+                    << variant << ": button " << i << " is unreachable";
+            }
+        }
+
+        // ENTER ID's up-link always lands on whichever of DELETE/RESET shows.
+        EXPECT_EQ(delete_hidden ? og::ui::kCampaignPickerResetIndex
+                                : og::ui::kCampaignPickerDeleteIndex,
+                  nav[og::ui::kCampaignPickerIdIndex].up)
+            << variant;
+        EXPECT_EQ(og::ui::kCampaignPickerIdIndex,
+                  nav[og::ui::kCampaignPickerDeleteIndex].down)
+            << variant << ": DELETE drops onto the button below it";
+        EXPECT_EQ(og::ui::kCampaignPickerIdIndex,
+                  nav[og::ui::kCampaignPickerResetIndex].down)
+            << variant << ": RESET drops onto the button below it";
+    }
 }

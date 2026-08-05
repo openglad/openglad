@@ -1,20 +1,22 @@
 /* Concept Playground campaign generator.
  *
- * Produces builtin/org.openglad.concept.glad: five small multi-floor scenarios
+ * Produces campaigns/concept/ (the source tree the build
+ * composes into builtin/concept.glad): five small multi-floor scenarios
  * that show off the Z-axis feature (levels 600-604 — stacked floors joined by
  * Z-stairs, "air" holes you fall through, see-through "glass" floors, and
  * projectile arcs) plus one scripted boss arena, "The Ninefold Court" (605),
  * that shows off Lua level scripting: its fight logic ships INSIDE the .glad
- * as the embedded pack packs/org.openglad.concept.showcase/scripts/court.lua
- * (showcase_pack.cpp). The six epic multifloor war stories that once shipped
+ * as the embedded pack packs/concept.showcase/scripts/court.lua
+ * (hand-authored in the campaign dir's packs/ subtree, composed into the
+ * archive by the build). The six epic multifloor war stories that once shipped
  * here as levels 605-610 moved to the "War of the Westlands" story campaign
- * (tools/westlands_mapgen, builtin/org.openglad.westlands.glad). SDL-free;
+ * (tools/westlands_mapgen, builtin/westlands.glad). SDL-free;
  * reuses the headless platform glue, mirrors tools/ctf_mapgen. Builds the v10
  * multi-floor scenario format (docs/z-axis-design.md), zips a campaign
  * package, mounts it, and self-checks every level by reloading it (the court
  * additionally runs one sim tick to prove the embedded script dispatches).
  *
- * Usage: concept_mapgen [output.glad]   (default: builtin/org.openglad.concept.glad)
+ * Usage: concept_mapgen [output-dir]   (default: campaigns/concept)
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
@@ -47,7 +49,7 @@
 #include <openglad/resources/level_file_io.h>
 #include <openglad/resources/save_data.h>
 
-#include "showcase_pack.h"
+#include "../campaign_export.h"
 
 #include <algorithm>
 #include <atomic>
@@ -95,6 +97,14 @@ namespace conceptgen {
 namespace {
 
 namespace fs = std::filesystem;
+
+// The embedded pack's id; its hand-authored source lives at
+// campaigns/concept/packs/concept.showcase/
+// (composed into the archive by the build, staged here for the
+// self-checks). Loads after "core" — pack replay order is pack-id
+// lexicographic.
+constexpr const char* kShowcasePackId = "concept.showcase";
+
 int g_errors = 0;
 
 void fail(const std::string& message)
@@ -193,6 +203,7 @@ void save_level_files(GameWorld& world, int id, const char* title,
 
     og::data::LevelFileMetadata metadata;
     metadata.grid_file = std::format("scen{:04d}", id);
+    metadata.generated = true; // provenance mark: this scen is tool output
     for (const std::string& line : description)
         metadata.description.push_back(line);
 
@@ -352,8 +363,9 @@ void build_arc_range()
 // court on a single floor; four corner pillar generators (the four colleges:
 // tent, tower, bones, treehouse) ward the Magistrate — a named, hold-post
 // archmage on the north bench. The fight logic ships in the campaign's
-// EMBEDDED pack (packs/org.openglad.concept.showcase/scripts/court.lua,
-// written into the staging dir by write_showcase_pack): the boss is
+// EMBEDDED pack (packs/concept.showcase/scripts/court.lua,
+// hand-authored in the campaign dir's packs/ subtree and staged for the
+// self-checks exactly as the build composes it): the boss is
 // invincible while any pillar stands, the wards fail when the last one
 // falls, ninefold judgment rings pulse after that, and every 3rd generator
 // spawn is promoted to an Adjutant. Impossible as pure level data.
@@ -692,7 +704,7 @@ void self_check_court_script()
 {
     bool registered = false;
     for (const og::script::PackScript& ps : og::script::pack_scripts())
-        if (ps.pack_id == showcase_pack_id())
+        if (ps.pack_id == kShowcasePackId)
             registered = true;
     if (!registered)
     {
@@ -757,9 +769,9 @@ int main(int argc, char* argv[])
     using namespace conceptgen;
     namespace fs = std::filesystem;
 
-    const std::string out_glad =
-        (argc > 1) ? argv[1] : "builtin/org.openglad.concept.glad";
-    const fs::path out_abs = fs::absolute(out_glad);
+    const std::string out_tree =
+        (argc > 1) ? argv[1] : "campaigns/concept";
+    const fs::path out_abs = fs::absolute(out_tree);
 
     fs::path scratch;
     if (const char* preset = std::getenv("OPENGLAD_CONFIG_DIR");
@@ -773,7 +785,7 @@ int main(int argc, char* argv[])
 
     init_logging();
     io_init(argc, argv);
-    if (get_mounted_campaign() != "org.openglad.gladiator")
+    if (get_mounted_campaign() != "gladiator")
     {
         std::fprintf(stderr, "concept_mapgen: ERROR: stock campaign not mounted; "
                              "run next to staged assets (build dir)\n");
@@ -803,8 +815,11 @@ int main(int argc, char* argv[])
     create_dir(user + "temp/pix/");
     write_campaign_yaml(user + "temp/campaign.yaml");
     write_icon(user + "temp/icon.png");
-    if (!write_showcase_pack(user + "temp/"))
-        fail("failed to write the embedded showcase pack into the staging dir");
+    if (!og::toolexport::stage_pack_tree(
+            "campaigns/concept/packs/"
+            "concept.showcase",
+            user + "temp/", kShowcasePackId))
+        fail("failed to stage the embedded showcase pack");
 
     build_stairs();
     build_mind_the_gap();
@@ -813,14 +828,14 @@ int main(int argc, char* argv[])
     build_arc_range();
     build_ninefold_court();
 
-    const std::string glad_path = user + "campaigns/org.openglad.concept.glad";
+    const std::string glad_path = user + "campaigns/concept.glad";
     std::remove(glad_path.c_str());
     if (zip_contents_with_error(user + "temp/", glad_path) != ArchiveIoError::None)
         fail(std::format("failed to zip campaign into {}", glad_path));
 
     if (g_errors == 0)
     {
-        if (mount_campaign_package_with_error("org.openglad.concept") !=
+        if (mount_campaign_package_with_error("concept") !=
             CampaignPackageIoError::None)
         {
             fail("failed to mount the produced campaign");
@@ -841,19 +856,19 @@ int main(int argc, char* argv[])
             for (const ExpectedLevel& e : expectations)
                 self_check_level(e);
             self_check_court_script();
-            (void)unmount_campaign_package_with_error("org.openglad.concept");
+            (void)unmount_campaign_package_with_error("concept");
         }
     }
 
     int result = 1;
     if (g_errors == 0)
     {
-        std::error_code ec;
-        fs::create_directories(out_abs.parent_path(), ec);
-        fs::copy_file(glad_path, out_abs, fs::copy_options::overwrite_existing, ec);
-        if (ec)
-            fail(std::format("failed to copy {} -> {}: {}", glad_path,
-                             out_abs.string(), ec.message()));
+        // The hand-authored packs/ subtree (and README.md) live in the
+        // campaign dir itself; export_campaign_tree preserves them and
+        // rewrites only the generated level data.
+        if (!og::toolexport::export_campaign_tree(user + "temp/", out_abs))
+            fail(std::format("failed to export the campaign tree to {}",
+                             out_abs.string()));
         else
         {
             std::printf("concept_mapgen: wrote %s\n", out_abs.c_str());

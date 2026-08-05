@@ -24,6 +24,12 @@ namespace og::data {
 struct LevelFileMetadata {
     std::string grid_file;
     std::list<std::string> description;
+    // Provenance mark (SCEN_TYPE_GENERATED in the .fss type byte): true
+    // when a campaign generator emitted the scen. File-side metadata only —
+    // the loader strips the bit before GameWorld::type is assigned and the
+    // writer ORs it back from here, so the sim never sees it. Classic
+    // files carry 0 and default to false.
+    bool generated = false;
 };
 
 enum class LevelFileIoError {

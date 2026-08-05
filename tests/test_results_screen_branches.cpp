@@ -3,7 +3,6 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/legacy/base.h>
 #include <openglad/core/test_trace.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/event.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/world_snapshot.h>
@@ -47,7 +46,7 @@ void dispatch_endgame_event(int ending, int next_level)
 void seed_save0_single_member(const char* name, short scen_num)
 {
     SaveData& sd = og::runtime::current_session->myscreen_->save_data;
-    sd.current_campaign = "org.openglad.gladiator";
+    sd.current_campaign = "gladiator";
     sd.scen_num = scen_num;
     sd.current_levels.clear();
     sd.completed_levels.clear();
@@ -238,20 +237,19 @@ TEST(ResultsScreenBranches, ctf_loss_popup_is_defeat_and_never_completes_level)
     const char saved_type = s->world().type;
     walker* const saved_control = s->viewob[0]->control;
 
-    sd.current_campaign = "org.openglad.gladiator";
+    sd.current_campaign = "gladiator";
     sd.scen_num = 506;
     sd.current_levels.clear();
     sd.completed_levels.clear();
     s->world().completed_levels.clear(); // endgame syncs save from world
 
-    s->world().type |= GameWorld::TYPE_CTF;
-    s->world().ctf = og::sim::CtfState{};
-    s->world().ctf.active = true;
-    s->world().ctf.winner_team = 1;       // GREEN bots won
-    s->world().ctf.winner_is_player = false;
-    s->world().ctf.team_active[0] = true;
-    s->world().ctf.team_active[1] = true;
-
+    s->world().type |= GameWorld::TYPE_SCRIPTED;
+    s->world().mode = og::sim::ModeState{};
+    s->world().mode.active = true;
+    s->world().mode.init_attempted = true;
+    s->world().mode.win_latched = true;
+    s->world().mode.winner_team = 1;       // GREEN bots won
+    s->world().mode.winner_is_player = false;
     // A live local control on the LOSING team drives the DEFEAT! title.
     walker* const local = s->world().add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_NE(nullptr, local);
@@ -290,10 +288,10 @@ TEST(ResultsScreenBranches, ctf_loss_popup_is_defeat_and_never_completes_level)
     // package serves the scen507 title.
     (void)unmount_campaign_package_with_error(get_mounted_campaign());
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.ctf"));
+              mount_campaign_package_with_error("modes"));
     trace_clear();
-    s->world().ctf.winner_team = 0;
-    s->world().ctf.winner_is_player = true;
+    s->world().mode.winner_team = 0;
+    s->world().mode.winner_is_player = true;
     dispatch_endgame_event(0, 507);
     EXPECT_TRUE(trace_contains("popup", "VICTORY!"));
     EXPECT_TRUE(trace_contains("popup", "RED TEAM WINS!"));
@@ -307,11 +305,11 @@ TEST(ResultsScreenBranches, ctf_loss_popup_is_defeat_and_never_completes_level)
     // Restore the default mount so later (or shuffled) tests load classic
     // levels again.
     (void)unmount_campaign_package_with_error(get_mounted_campaign());
-    (void)mount_campaign_package_with_error("org.openglad.gladiator");
+    (void)mount_campaign_package_with_error("gladiator");
 
     s->viewob[0]->control = saved_control;
     local->set_dead(1);
-    s->world().ctf = og::sim::CtfState{};
+    s->world().mode = og::sim::ModeState{};
     s->world().type = saved_type;
     s->world().end = saved_end;
 }
@@ -326,18 +324,20 @@ TEST(ResultsScreenBranches, ctf_loss_popup_neutral_fallback_without_control)
     const char saved_type = s->world().type;
     walker* const saved_control = s->viewob[0]->control;
 
-    sd.current_campaign = "org.openglad.gladiator";
+    sd.current_campaign = "gladiator";
     sd.scen_num = 506;
     sd.current_levels.clear();
     sd.completed_levels.clear();
 
-    s->world().type |= GameWorld::TYPE_CTF;
-    s->world().ctf = og::sim::CtfState{};
-    s->world().ctf.active = true;
-    s->world().ctf.winner_team = 1;
+    s->world().type |= GameWorld::TYPE_SCRIPTED;
+    s->world().mode = og::sim::ModeState{};
+    s->world().mode.active = true;
+    s->world().mode.init_attempted = true;
+    s->world().mode.win_latched = true;
+    s->world().mode.winner_team = 1;
     // winner_is_player=true must NOT produce VICTORY! — it is global (any
     // human on the winning team), not this client's outcome.
-    s->world().ctf.winner_is_player = true;
+    s->world().mode.winner_is_player = true;
     s->viewob[0]->control = nullptr;
 
     trace_clear();
@@ -348,7 +348,7 @@ TEST(ResultsScreenBranches, ctf_loss_popup_neutral_fallback_without_control)
     EXPECT_FALSE(trace_contains("popup", "Victory!"));
 
     s->viewob[0]->control = saved_control;
-    s->world().ctf = og::sim::CtfState{};
+    s->world().mode = og::sim::ModeState{};
     s->world().type = saved_type;
     s->world().end = saved_end;
 }

@@ -15,7 +15,6 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 #include <openglad/resources/gloader.h>
-#include <openglad/resources/gloader_ctf.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/core/util.h>
@@ -506,7 +505,7 @@ loader::loader(EntityFactory entity_factory)
 
 void loader::reload_graphics()
 {
-	std::fill(std::begin(hitpoints), std::end(hitpoints), 0.0f);
+	built_generation_ = og::resources::sprite_source_generation(); std::fill(std::begin(hitpoints), std::end(hitpoints), 0.0f); // one line: pinned line numbers below must not shift
 
 	// Pack slots are entirely descriptor-driven, so a reload rebuilds them
 	// from nothing: unmounting a pack frees its registry slot, and the
@@ -663,21 +662,31 @@ void loader::reload_graphics()
 	graphics[PIX(Order::Treasure, FAMILY_FLIGHT_POTION)] = data_copy(graphics[PIX(Order::Treasure, FAMILY_MAGIC_POTION)]);
 	graphics[PIX(Order::Treasure, FAMILY_SPEED_POTION)] = data_copy(graphics[PIX(Order::Treasure, FAMILY_MAGIC_POTION)]);
 
-	register_ctf_loader_entries(*this);
-
-	// Pack-claimed families of the four non-living orders. Their core ids all
-	// come from the EntityDef table above; ids >= NUM_FAMILIES exist only
-	// while a class pack is mounted.
-	for (int i = NUM_FAMILIES; i < NUM_FAMILY_SLOTS; i++)
+	// Pack-claimed families of the four non-living orders. Ids >=
+	// NUM_FAMILIES exist only while a class pack is mounted; a campaign pack
+	// may also reclaim a retired core slot (the modes pack ships its flag/
+	// waypoint treasures on wire ids 13/14), so sub-core slots install too —
+	// but only when the claiming descriptor ships its own art, keeping every
+	// legacy core slot byte-identical (no shipped core descriptor of these
+	// four orders declares a pix_filename).
+	const auto claims_art = [](const auto* d) {
+		return d != nullptr && d->pix_filename != nullptr;
+	};
+	for (int i = 0; i < NUM_FAMILY_SLOTS; i++)
 	{
-		install_pack_entity(*this, Order::Weapon, i,
-		                    get_weapon_family_descriptor(i));
-		install_pack_entity(*this, Order::FX, i,
-		                    get_effect_family_descriptor(i));
-		install_pack_entity(*this, Order::Treasure, i,
-		                    get_treasure_family_descriptor(i));
-		install_pack_entity(*this, Order::Generator, i,
-		                    get_generator_family_descriptor(i));
+		const bool core_slot = i < NUM_FAMILIES;
+		const auto* weapon_d = get_weapon_family_descriptor(i);
+		const auto* effect_d = get_effect_family_descriptor(i);
+		const auto* treasure_d = get_treasure_family_descriptor(i);
+		const auto* generator_d = get_generator_family_descriptor(i);
+		if (!core_slot || claims_art(weapon_d))
+			install_pack_entity(*this, Order::Weapon, i, weapon_d);
+		if (!core_slot || claims_art(effect_d))
+			install_pack_entity(*this, Order::FX, i, effect_d);
+		if (!core_slot || claims_art(treasure_d))
+			install_pack_entity(*this, Order::Treasure, i, treasure_d);
+		if (!core_slot || claims_art(generator_d))
+			install_pack_entity(*this, Order::Generator, i, generator_d);
 	}
 
 	// Record each animation table's length (parallel to `animations`) so animate()
@@ -735,7 +744,7 @@ std::unique_ptr<walker> loader::create_walker_owned(Order order,
                                                     std::int32_t family)
 {
 	std::unique_ptr<walker> ob;
-    order = sanitize_order(order);
+    order = sanitize_order(order); trace_if_sprites_stale(); // one line: pinned line numbers below must not shift
 
 	int idx = loader_slot(order, family);
 	// Keep the legacy "bad living family" fallback to soldier; others clamp
@@ -937,4 +946,57 @@ void loader::sync_gore_graphics()
 	std::swap(graphics[PIX(Order::Treasure, FAMILY_STAIN)], gore_alt_stain_);
 	gore_graphics_gory_ = want_gory;
 	TRACE("gore", "blood/stain sprites now %s", want_gory ? "gory" : "friendly");
+}
+
+// ---------------------------------------------------------------------------
+// Sprite-source generation (issue #162). Appended at the bottom, after the
+// pinned lines, for the same reason as sync_gore_graphics above; the two
+// one-line edits this feature made higher up (the reload_graphics stamp and
+// the create_walker_owned tripwire call) each replaced a single line with a
+// single line so the pin anchors keep their numbers.
+// ---------------------------------------------------------------------------
+
+namespace og::resources {
+
+namespace {
+unsigned s_sprite_source_generation = 0;
+} // namespace
+
+unsigned sprite_source_generation()
+{
+	return s_sprite_source_generation;
+}
+
+void note_sprite_source_changed()
+{
+	++s_sprite_source_generation;
+}
+
+} // namespace og::resources
+
+bool loader::reload_graphics_if_stale()
+{
+	if (built_generation_ == og::resources::sprite_source_generation())
+		return false;
+	// reload_graphics() re-stamps built_generation_ as its first statement.
+	reload_graphics();
+	TRACE("gloader", "reloaded stale graphics generation=%u", built_generation_);
+	return true;
+}
+
+// The #162 fix is an opt-in list of reload points; this is the tripwire that
+// keeps the list honest. Creating a walker while the loader is stale means
+// some campaign-switch flow reached entity creation without passing one of
+// the enumerated reload_graphics_if_stale() calls — tests assert this trace
+// never fires on those flows. (Deliberately reachable mid-menu: the lobby
+// poll leaves the loader stale on purpose until the gameplay-entry net.)
+void loader::trace_if_sprites_stale() const
+{
+#ifdef TESTING
+	if (built_generation_ != og::resources::sprite_source_generation())
+	{
+		TRACE("gloader", "create_walker stale sprites built=%u current=%u",
+		      built_generation_, og::resources::sprite_source_generation());
+	}
+#endif
 }

@@ -687,6 +687,9 @@ private:
         settings.keep_fallen_heroes = save.keep_fallen_heroes;
         settings.cross_control = save.cross_control;
         settings.infinite_gold = save.infinite_gold;
+        // Protocol v12: the shared-teams rule rides the wire, derived from
+        // the campaign's matchup: yaml key (the joiner may lack the package).
+        settings.shared_teams = og::ui::is_versus_campaign(save) ? 1 : 0;
 
         og::sim::LobbyMessage message;
         message.payload = og::sim::LobbySettingsChangeMessage{
@@ -840,7 +843,7 @@ private:
         const std::string previous_campaign = save.current_campaign;
         const short previous_scen_num = save.scen_num;
         save.current_campaign = state_->settings.campaign_id.empty()
-            ? std::string("org.openglad.gladiator")
+            ? std::string("gladiator")
             : state_->settings.campaign_id;
         save.scen_num = state_->settings.scenario_id > 0
             ? state_->settings.scenario_id
@@ -853,6 +856,13 @@ private:
         // shape). sync_campaign_mount_to_save no-ops when already coherent;
         // if the package cannot be mounted, refuse the override and keep the
         // save on the campaign that IS mounted.
+        //
+        // #162: deliberately NO reload_graphics_if_stale() here. This runs
+        // from picker_lobby_poll at the TOP of a live menu frame; the
+        // handler return stays 0, so reset_buttons never re-inits and the
+        // frame's draw_buttons would read the freed pixels. The loader stays
+        // stale (joiner previews may show the old campaign's sprites) until
+        // the gameplay-entry safety net in game.cpp reloads it.
         if (!og::ui::sync_campaign_mount_to_save(save))
         {
             // The failed mount put the previously mounted package back;

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <openglad/core/constants.h>
-#include <openglad/core/ctf_constants.h>
+#include <openglad/gameplay/mode/mode_state.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -189,7 +189,7 @@ struct LobbySettings {
     std::int16_t scenario_id = 0;
     std::int16_t difficulty = 0;
     std::int16_t allied_mode = 0;
-    // CTF match settings; only TYPE_CTF maps consume them (0 = map/default).
+    // Match settings (og.match_setting); scripted maps consume them (0 = map/default).
     std::int16_t ctf_team_count = 0; // 0 = Auto
     // Lower SCORE_TEAM_COUNT bits identify the teams with authored flags in
     // the selected CTF level (protocol v9). Zero means the level metadata is
@@ -215,16 +215,26 @@ struct LobbySettings {
     // written, so this never reaches the sim or any save file.
     // sanitize_settings keeps it in {0, 1}.
     std::int16_t infinite_gold = 0;
+    // Versus-campaign flag (protocol v12): 1 when the selected campaign's
+    // yaml carries matchup: versus. Set by the HOST from
+    // campaign_matchup(campaign_id) at publish time — the joiner may not
+    // have the campaign package, so the shared-teams rule rides the wire
+    // instead of comparing campaign ids. sanitize_settings keeps it in
+    // {0, 1}.
+    std::int16_t shared_teams = 0;
 
     bool operator==(const LobbySettings&) const = default;
 };
 
-// Legacy helper name retained for the CTF-specific assignment rules (notably
-// the explicit team-count clamp). It originally distinguished modes where
-// cross-peer sharing was legal; explicit seat choices now share in all modes.
+// Legacy helper name retained for the versus-specific assignment rules
+// (notably the explicit team-count clamp). It originally distinguished modes
+// where cross-peer sharing was legal; explicit seat choices now share in all
+// modes. Since protocol v12 the rule rides the wire (the host derives
+// shared_teams from the campaign's matchup: yaml key) instead of comparing
+// campaign ids.
 inline bool lobby_settings_allow_shared_teams(const LobbySettings& settings) noexcept
 {
-    return settings.campaign_id == og::kCtfCampaignId;
+    return settings.shared_teams != 0;
 }
 
 inline constexpr std::uint8_t kAllLobbyTeamMask =
@@ -233,7 +243,9 @@ inline constexpr std::uint8_t kAllLobbyTeamMask =
 // Team domain used by every lobby surface and by server authority. Gameplay
 // activates authored flag teams in numeric order, stopping after explicit N;
 // this therefore deliberately differs from a numeric [0,N) clamp on sparse
-// maps (authored {0,2,3}, N=2 means teams {0,2}).
+// maps (authored {0,2,3}, N=2 means teams {0,2}). The clamp itself is
+// og::sim::effective_team_mask — the ONE copy of the rule, shared with the
+// og.effective_team_mask binding (mode/mode_state.h).
 inline std::uint8_t
 lobby_effective_team_mask(const LobbySettings& settings) noexcept
 {
@@ -244,26 +256,7 @@ lobby_effective_team_mask(const LobbySettings& settings) noexcept
     const std::uint8_t authored = published_authored == 0
         ? kAllLobbyTeamMask
         : published_authored;
-    if (settings.ctf_team_count <= 0)
-        return authored;
-
-    int remaining = settings.ctf_team_count;
-    if (remaining < 2)
-        remaining = 2;
-    if (remaining > SCORE_TEAM_COUNT)
-        remaining = SCORE_TEAM_COUNT;
-
-    std::uint8_t effective = 0;
-    for (int team = 0; team < SCORE_TEAM_COUNT && remaining > 0; ++team)
-    {
-        const std::uint8_t bit =
-            static_cast<std::uint8_t>(1u << static_cast<unsigned>(team));
-        if ((authored & bit) == 0)
-            continue;
-        effective = static_cast<std::uint8_t>(effective | bit);
-        --remaining;
-    }
-    return effective;
+    return og::sim::effective_team_mask(authored, settings.ctf_team_count);
 }
 
 inline bool lobby_team_is_selectable(const LobbySettings& settings,

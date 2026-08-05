@@ -25,9 +25,9 @@ canonical shape — behavior first, then the `og.family` block that names it),
 `packs/core/families/living-14-orc.lua`
 (specials with casts, `og.rand0`, tuning reads, `add_frozen_stun`, guy exp),
 `packs/core/lib/living_common.lua` + `ai.lua` + `effect_common.lua` (what
-`og.use` modules look like), and `tools/concept_mapgen/showcase_pack.cpp`
-(the Ninefold Court's `court.lua` — level hooks, per-entity hooks, generator
-`customize_spawn`).
+`og.use` modules look like), and the Ninefold Court's `court.lua` at
+`campaigns/concept/packs/concept.showcase/scripts/`
+(level hooks, per-entity hooks, generator `customize_spawn`).
 
 ## The declaration, in one screen
 

@@ -679,7 +679,6 @@ Row layout matches the built-in tables: `row = ani_type * 8 + curdir`.
 | `og.set_withdraw_request(level)` | Latches the exit pad's withdraw request (`withdraw_requested` + `withdraw_level` together). |
 | `og.emit_exit_confirmation(prompt, dest_level [, is_withdraw])` | `RequestExitConfirmation` with the exit pad's payload. |
 | `og.emit_withdraw_to_level(level)` | `WithdrawToLevel`. |
-| `og.ctf_on_flag_touch(flag, eater) → bool` | The whole CTF flag-touch operation, wrapped as one call exactly as the C++ treasure hook delegates to it. CTF rules stay in the CTF engine. `og.ctf_flag_touch` is the same function under the `og.*` verb spelling. |
 
 ### Shared helpers
 
@@ -871,9 +870,15 @@ explicitly instead — the mount point is what fixes the pack id and makes the
 
 ```cpp
 og::resources::mount("docs/modding/examples/emberwisp", "packs/emberwisp/", 1);
-og::resources::refresh_pack_scripts();   // re-evaluates and reinstalls
-loader.reload_graphics();                // picks up the pack's sprites
+og::resources::refresh_pack_scripts();      // re-evaluates and reinstalls
+og::resources::note_sprite_source_changed(); // raw mounts don't auto-bump
+loader.reload_graphics_if_stale();          // picks up the pack's sprites
 ```
+
+(A campaign-embedded pack needs none of this by hand: mounting the campaign
+bumps the sprite-source generation and every campaign-switch flow calls
+`reload_graphics_if_stale()` — see `docs/ARCHITECTURE.md`, "Campaign-switch
+reloads".)
 
 Its README covers the art pipeline. The parts worth reading here are the
 data block, the animation table, and the hooks — all three in one file.
@@ -1043,7 +1048,7 @@ appear, each where its contract is the right one.
 | A whole family, canonical style | `packs/core/families/living-00-soldier.lua` — one file: behavior, then the declaration that names it |
 | Specials, `og.rand0`, tuning reads, `add_frozen_stun` | `packs/core/families/living-14-orc.lua` |
 | `og.use` lib modules (shared preludes, parameterized AI gates, shared effect geometry) | `packs/core/lib/living_common.lua`, `packs/core/lib/ai.lua`, `packs/core/lib/effect_common.lua` |
-| Level hooks, per-entity hooks, generator `customize_spawn` | `court.lua`, embedded in `tools/concept_mapgen/showcase_pack.cpp` |
+| Level hooks, per-entity hooks, generator `customize_spawn` | `campaigns/concept/packs/concept.showcase/scripts/court.lua` |
 | Every descriptor key, per order | [design doc §4](../lua-classpacks-design.md) |
 | Naming, headers, comments, shim policy | [lua-style.md](../lua-style.md) (S1–S6) |
 

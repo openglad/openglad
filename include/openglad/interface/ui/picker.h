@@ -42,7 +42,7 @@ struct TextPickerError
 
 struct TextPickerConfig
 {
-    std::string campaign = "org.openglad.gladiator";
+    std::string campaign = "gladiator";
     int level = 1;
     std::vector<int> team_families;
     std::uint32_t seed = 42;

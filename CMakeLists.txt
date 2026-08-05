@@ -5,7 +5,7 @@ project(OpenGlad VERSION 1.0 LANGUAGES C CXX)
 #
 # `cmake -S . -B .` makes the build tree the WORKING tree, and from there any
 # target that owns its output directory owns tracked sources instead. That is
-# not hypothetical here: stage_runtime_assets MIRRORS builtin/ cfg/ pix/
+# not hypothetical here: stage_runtime_assets MIRRORS cfg/ pix/
 # sound/ packs/ into the build tree, and mirroring deletes the destination
 # before it copies — in-source that reads `rm -rf <srcdir>/packs` followed by
 # a copy of packs/ onto itself, i.e. unrecoverable loss of committed assets
@@ -22,7 +22,7 @@ if(OG_SOURCE_DIR_REAL STREQUAL OG_BINARY_DIR_REAL)
         "directory (${OG_SOURCE_DIR_REAL}).\n"
         "Targets here mirror runtime asset directories into the build tree, "
         "which deletes the destination first — in-source that would delete "
-        "the repository's own builtin/, cfg/, pix/, sound/ and packs/.\n"
+        "the repository's own cfg/, pix/, sound/ and packs/.\n"
         "Build out of tree instead, e.g.:\n"
         "    cmake --preset ci-test && cmake --build --preset ci-test\n"
         "Then remove the CMakeCache.txt and CMakeFiles/ this attempt left in "
@@ -311,7 +311,6 @@ set(GAME_SOURCES
 		    ${SRC_DIR}/resources/io/og_file.cpp
 		    ${SRC_DIR}/resources/gparser.cpp
 		    ${SRC_DIR}/resources/gloader.cpp
-    ${SRC_DIR}/resources/gloader_ctf.cpp
     ${SRC_DIR}/resources/campaign_metadata.cpp
     ${SRC_DIR}/resources/game_mode.cpp
     ${SRC_DIR}/resources/progression.cpp
@@ -350,8 +349,8 @@ set(GAME_SOURCES
     ${SRC_DIR}/gameplay/gameplay_context.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
     ${SRC_DIR}/gameplay/game_world_weather.cpp
-    ${SRC_DIR}/gameplay/ctf/ctf.cpp
-    ${SRC_DIR}/gameplay/ctf/ctf_ai.cpp
+    ${SRC_DIR}/gameplay/respawn/respawn.cpp
+    ${SRC_DIR}/gameplay/mode/mode_tick.cpp
     ${SRC_DIR}/gameplay/world_snapshot.cpp
     ${SRC_DIR}/gameplay/sim_input_handler.cpp
     ${SRC_DIR}/gameplay/sim_control_policy.cpp
@@ -362,6 +361,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/render/sdl_level_render.cpp
     ${SRC_DIR}/gameplay/input_state_net.cpp
     ${SRC_DIR}/gameplay/replay.cpp
+    ${SRC_DIR}/gameplay/scenario_strip.cpp
 )
 
 set(GAME_SOURCES_NO_MAIN ${GAME_SOURCES})
@@ -399,12 +399,12 @@ set(OG_SIM_SOURCES
     ${SRC_DIR}/gameplay/world_snapshot.cpp
     ${SRC_DIR}/gameplay/input_state_net.cpp
     ${SRC_DIR}/gameplay/replay.cpp
+    ${SRC_DIR}/gameplay/scenario_strip.cpp
 )
 
 set(OG_DATA_SOURCES
     ${SRC_DIR}/resources/gparser.cpp
     ${SRC_DIR}/resources/gloader.cpp
-    ${SRC_DIR}/resources/gloader_ctf.cpp
     ${SRC_DIR}/resources/campaign_metadata.cpp
     ${SRC_DIR}/resources/game_mode.cpp
     ${SRC_DIR}/resources/progression.cpp
@@ -551,8 +551,8 @@ set(OG_GAMEPLAY_COMPONENT_SOURCES
     ${SRC_DIR}/gameplay/gameplay_context.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
     ${SRC_DIR}/gameplay/game_world_weather.cpp
-    ${SRC_DIR}/gameplay/ctf/ctf.cpp
-    ${SRC_DIR}/gameplay/ctf/ctf_ai.cpp
+    ${SRC_DIR}/gameplay/respawn/respawn.cpp
+    ${SRC_DIR}/gameplay/mode/mode_tick.cpp
     ${SRC_DIR}/gameplay/sim_input_handler.cpp
     ${SRC_DIR}/gameplay/sim_control_policy.cpp
     ${SRC_DIR}/gameplay/smooth.cpp
@@ -893,6 +893,68 @@ else()
         VERBATIM
     )
 endif()
+
+# --------------------------------------------------------------------------
+# Built-in campaign archives (.glad): deterministic build outputs
+# --------------------------------------------------------------------------
+# The seven shipped campaigns are committed as SOURCE TREES under
+# campaigns/<id>/ (campaign.yaml, scen/, pix/, and — for pack-bearing
+# campaigns — packs/<pack-id>/). The .glad zip the game mounts is composed
+# here, at build time, by scripts/make_glad.py — a deterministic writer
+# (stored members, bytewise-sorted paths, fixed timestamps), so two builds
+# of the same tree produce byte-identical archives and every campaign
+# change reviews as a plain file diff. The tree mirrors the archive 1:1:
+# one root per campaign, no path remapping (the per-campaign README.md is
+# repo documentation and is the one file make_glad.py excludes).
+#
+# Consumers: stage_runtime_assets hangs off og_builtin_campaigns (native),
+# the emscripten `play` target preloads ${CMAKE_BINARY_DIR}/builtin, and
+# the asset install rule packages the same directory.
+if(NOT Python3_Interpreter_FOUND)
+    message(FATAL_ERROR
+        "OpenGlad needs a Python 3 interpreter at build time: the built-in "
+        "campaign archives (builtin/*.glad) are composed from campaigns/ by "
+        "scripts/make_glad.py. Install python3 and reconfigure.")
+endif()
+
+set(OG_BUILTIN_CAMPAIGN_IDS
+    concept
+    gladiator
+    longseason
+    modes
+    tower
+    tryxian
+    westlands
+)
+# Stamp files decouple ninja's up-to-date tracking from the archive mtime:
+# make_glad.py leaves a byte-identical archive untouched, so an edit that
+# does not change composed bytes never re-triggers the consumers that
+# depend on the archive file (the emscripten preload link, packaging).
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/campaign_stamps")
+set(OG_BUILTIN_CAMPAIGN_STAMPS "")
+set(OG_BUILTIN_CAMPAIGN_ARCHIVES "")
+foreach(og_campaign IN LISTS OG_BUILTIN_CAMPAIGN_IDS)
+    set(og_campaign_glad "${CMAKE_BINARY_DIR}/builtin/${og_campaign}.glad")
+    set(og_campaign_stamp
+        "${CMAKE_BINARY_DIR}/campaign_stamps/${og_campaign}.stamp")
+    set(og_campaign_root "${CMAKE_SOURCE_DIR}/campaigns/${og_campaign}")
+    file(GLOB_RECURSE og_campaign_inputs CONFIGURE_DEPENDS
+        "${og_campaign_root}/*")
+    add_custom_command(
+        OUTPUT "${og_campaign_stamp}"
+        BYPRODUCTS "${og_campaign_glad}"
+        COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/scripts/make_glad.py"
+                "${og_campaign_glad}" --root "${og_campaign_root}"
+        COMMAND ${CMAKE_COMMAND} -E touch "${og_campaign_stamp}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/scripts/make_glad.py"
+                ${og_campaign_inputs}
+        COMMENT "Composing builtin/${og_campaign}.glad from campaign sources"
+        VERBATIM
+    )
+    list(APPEND OG_BUILTIN_CAMPAIGN_STAMPS "${og_campaign_stamp}")
+    list(APPEND OG_BUILTIN_CAMPAIGN_ARCHIVES "${og_campaign_glad}")
+endforeach()
+add_custom_target(og_builtin_campaigns DEPENDS ${OG_BUILTIN_CAMPAIGN_STAMPS})
 
 # --------------------------------------------------------------------------
 # External dependency targets
@@ -1488,7 +1550,10 @@ if(NOT EMSCRIPTEN)
     # in-source-build guard at the top of this file already refuses the way
     # that happens in practice; this is the belt that holds if the guard is
     # ever bypassed or a staged path is otherwise aimed at its own source.
-    set(OG_RUNTIME_ASSET_DIRS builtin cfg pix sound packs)
+    # builtin/ is NOT in this list: the campaign archives are build outputs
+    # composed into ${CMAKE_BINARY_DIR}/builtin by og_builtin_campaigns
+    # (see "Built-in campaign archives" above), not repository files.
+    set(OG_RUNTIME_ASSET_DIRS cfg pix sound packs)
     set(OG_STAGE_ASSET_COMMANDS "")
     foreach(og_asset_dir IN LISTS OG_RUNTIME_ASSET_DIRS)
         if("${OG_SOURCE_DIR_REAL}/${og_asset_dir}" STREQUAL
@@ -1510,6 +1575,9 @@ if(NOT EMSCRIPTEN)
         COMMENT "Staging runtime asset directories"
         VERBATIM
     )
+    # Everything that runs next to staged assets also needs the built-in
+    # campaign archives in ${CMAKE_BINARY_DIR}/builtin.
+    add_dependencies(stage_runtime_assets og_builtin_campaigns)
 
     # --- openglad (main game) ---
     add_executable(openglad ${SRC_DIR}/platform/sdl/glad.cpp)
@@ -1587,8 +1655,8 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/gameplay/gameplay_context.cpp
         ${SRC_DIR}/gameplay/game_world.cpp
         ${SRC_DIR}/gameplay/game_world_weather.cpp
-        ${SRC_DIR}/gameplay/ctf/ctf.cpp
-        ${SRC_DIR}/gameplay/ctf/ctf_ai.cpp
+        ${SRC_DIR}/gameplay/respawn/respawn.cpp
+        ${SRC_DIR}/gameplay/mode/mode_tick.cpp
         ${SRC_DIR}/gameplay/sim_input_handler.cpp
         ${SRC_DIR}/gameplay/sim_control_policy.cpp
         ${SRC_DIR}/interface/session_state.cpp
@@ -1655,36 +1723,12 @@ if(NOT EMSCRIPTEN)
         add_runtime_assets_dependency(openglad_server)
     endif()
 
-    # --- ctf_mapgen (CTF campaign generator) ---
-    # SDL-free authoring tool that produces builtin/org.openglad.ctf.glad.
-    # Not part of the default build; run via scripts/generate_ctf_campaign.sh.
-    add_executable(ctf_mapgen EXCLUDE_FROM_ALL
-        ${CMAKE_SOURCE_DIR}/tools/ctf_mapgen/main.cpp
-        ${CMAKE_SOURCE_DIR}/tools/ctf_mapgen/grid_painters.cpp
-        ${SRC_DIR}/platform/text/platform_headless.cpp
-        ${SRC_DIR}/platform/text/walker_headless.cpp
-        ${SRC_DIR}/interface/input/input_state.cpp
-        ${SRC_DIR}/platform/game_context.cpp
-        ${SRC_DIR}/interface/session_state.cpp
-        ${SRC_DIR}/interface/level_runtime_data.cpp
-        ${SRC_DIR}/interface/platform_bridge.cpp
-    )
-    configure_openglad_library(ctf_mapgen)
-    target_link_libraries(ctf_mapgen PRIVATE
-        og_core
-        og_gameplay
-        og_resources
-        m
-        pthread
-    )
-    add_runtime_assets_dependency(ctf_mapgen)
-
     # --- concept_mapgen (Z-axis "Concept Playground" campaign generator) ---
-    # SDL-free authoring tool that produces builtin/org.openglad.concept.glad.
+    # SDL-free authoring tool that writes campaigns/concept/
+    # (the archive is composed from that tree by og_builtin_campaigns).
     # Not part of the default build; run via scripts/generate_concept_campaign.sh.
     add_executable(concept_mapgen EXCLUDE_FROM_ALL
         ${CMAKE_SOURCE_DIR}/tools/concept_mapgen/main.cpp
-        ${CMAKE_SOURCE_DIR}/tools/concept_mapgen/showcase_pack.cpp
         ${SRC_DIR}/platform/text/platform_headless.cpp
         ${SRC_DIR}/platform/text/walker_headless.cpp
         ${SRC_DIR}/interface/input/input_state.cpp
@@ -1703,8 +1747,43 @@ if(NOT EMSCRIPTEN)
     )
     add_runtime_assets_dependency(concept_mapgen)
 
+    # --- modes_mapgen ("Multiplayer Game Modes" campaign generator) ---
+    # SDL-free authoring tool that writes campaigns/modes/
+    # (the five-mode campaign absorbing arenas + ctf; the archive is composed
+    # from that tree — packs/ subtree included — by og_builtin_campaigns)
+    # and regenerates the committed level manifest lib/mode_levels.lua in
+    # the campaign's hand-authored pack.
+    # Not part of the default build; run via scripts/generate_modes_campaign.sh.
+    add_executable(modes_mapgen EXCLUDE_FROM_ALL
+        ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/main.cpp
+        ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/builders_common.cpp
+        ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/grid_canvas.cpp
+        ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/manifest.cpp
+        ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/levels_tdm.cpp
+        ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/levels_ctf.cpp
+        ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/levels_onslaught.cpp
+        ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/levels_soccer.cpp
+        ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/levels_mutant.cpp
+        ${SRC_DIR}/platform/text/platform_headless.cpp
+        ${SRC_DIR}/platform/text/walker_headless.cpp
+        ${SRC_DIR}/interface/input/input_state.cpp
+        ${SRC_DIR}/platform/game_context.cpp
+        ${SRC_DIR}/interface/session_state.cpp
+        ${SRC_DIR}/interface/level_runtime_data.cpp
+        ${SRC_DIR}/interface/platform_bridge.cpp
+    )
+    configure_openglad_library(modes_mapgen)
+    target_link_libraries(modes_mapgen PRIVATE
+        og_core
+        og_gameplay
+        og_resources
+        m
+        pthread
+    )
+    add_runtime_assets_dependency(modes_mapgen)
+
     # --- westlands_mapgen ("War of the Westlands" campaign generator) ---
-    # SDL-free authoring tool that produces builtin/org.openglad.westlands.glad,
+    # SDL-free authoring tool that writes campaigns/westlands/,
     # the 26-level story campaign built act by act (one source file per act).
     # Not part of the default build; run via scripts/generate_westlands_campaign.sh.
     add_executable(westlands_mapgen EXCLUDE_FROM_ALL
@@ -1733,7 +1812,7 @@ if(NOT EMSCRIPTEN)
     add_runtime_assets_dependency(westlands_mapgen)
 
     # --- longseason_mapgen ("The Long Season" campaign generator) ---
-    # SDL-free authoring tool that produces builtin/org.openglad.longseason.glad,
+    # SDL-free authoring tool that writes campaigns/longseason/,
     # the 19-level Brass Kettle Company story campaign built season by season
     # (one source file per season). Not part of the default build; run via
     # scripts/generate_longseason_campaign.sh.
@@ -1763,7 +1842,7 @@ if(NOT EMSCRIPTEN)
     add_runtime_assets_dependency(longseason_mapgen)
 
     # --- tower_mapgen ("The Endless Tower" Gate-only package generator) ---
-    # SDL-free authoring tool that produces builtin/org.openglad.tower.glad:
+    # SDL-free authoring tool that writes campaigns/tower/:
     # campaign.yaml (`mode: tower`) + icon + the authored Gate (scen700)
     # ONLY — generated floors are written to the user path at run time and
     # must never ship in the package (tower-triple spec D7). Not part of the
@@ -1789,7 +1868,8 @@ if(NOT EMSCRIPTEN)
     add_runtime_assets_dependency(tower_mapgen)
 
     # --- grid_migrate (BASE + DECOR migration for hand-authored packages) ---
-    # SDL-free tool that rewrites a stock .glad so legacy combined tiles
+    # SDL-free tool that rewrites a stock campaign (campaigns/<id>/ source
+    # tree) so legacy combined tiles
     # (torches/brazier/boulders/rubble) become base ground + a decor plane
     # (.fss v11), with an in-memory old-vs-new equivalence proof (passability
     # matrix, concealment, damage, door genre, entity streams, footing) that
@@ -2043,7 +2123,10 @@ if(NOT EMSCRIPTEN)
                 ${CMAKE_SOURCE_DIR}/cfg
                 ${CMAKE_SOURCE_DIR}/pix
                 ${CMAKE_SOURCE_DIR}/sound
-                ${CMAKE_SOURCE_DIR}/builtin
+                # The campaign archives are BUILD outputs (composed from
+                # campaigns/ by og_builtin_campaigns), so they install from
+                # the build tree.
+                ${CMAKE_BINARY_DIR}/builtin
             DESTINATION ${CMAKE_INSTALL_DATADIR}/openglad
         )
     endif()
@@ -2220,6 +2303,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_stair_overlay.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_text_rendering.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_campaign_and_level_picker.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_campaign_sprite_uaf.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_intro_smoke.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_dirty_tracking_safety.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sai2x_scaler.cpp
@@ -2359,6 +2443,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_scenarios.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_coverage_gate.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_ctf_ui.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_mode_ui.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_tower_run.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_menu_pins.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_menu_engine.cpp
@@ -2579,6 +2664,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             test_palette.cpp
             test_loader_and_walker.cpp
             test_gloader_funcs.cpp
+            test_campaign_sprite_uaf.cpp
             test_game_loop.cpp
             test_game_launch.cpp
             test_go_no_team.cpp
@@ -2788,8 +2874,9 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             golden_evaluation_helper.cpp
         )
 
-        og_add_test_group(og_test_ctf FILES
+        og_add_test_group(og_test_matchup FILES
             test_ctf_ui.cpp
+            test_mode_ui.cpp
         )
         target_include_directories(og_test_parity PRIVATE
             ${CMAKE_SOURCE_DIR}/tests/parity
@@ -2873,6 +2960,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         add_runtime_assets_dependency(parity_runner_smoke)
 
         og_add_unit_group(og_unit_core FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_ids.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_rate_config.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_view_layout.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_scale_mode.cpp
@@ -2927,6 +3015,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_sim_world.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_control_policy.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_scenario_strip.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_ctf_network.cpp
         )
         if(TARGET og_platform_ws_transport)
@@ -2998,6 +3087,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_zip_api.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_metadata.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_packs.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_sprite_reload.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_game_mode.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_progression.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_win_shares.cpp
@@ -3007,18 +3097,57 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_concept_levels.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_westlands_levels.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_longseason_levels.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_levels.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_builtin_archives.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_decor_format.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_level_file_io_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_migrated_campaigns.cpp
         )
 
-        og_add_unit_group(og_unit_ctf FILES
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_ctf_core.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_ctf_respawn.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_ctf_ai.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_ctf_snapshot.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_ctf_levels.cpp
+        # test_builtin_archives byte-compares every staged-archive member
+        # against the committed campaign source trees (one root per
+        # campaign — packs/ subtrees included); test_modes_levels reads the
+        # modes pack sources for its manifest checks.
+        target_compile_definitions(og_unit_data PRIVATE
+            OG_CAMPAIGNS_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns"
+        )
+
+        og_add_unit_group(og_unit_respawn FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_respawn_engine.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_classic_respawn.cpp
+        )
+
+        og_add_unit_group(og_unit_mode FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_mode_bindings.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_mode_snapshot.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_mode_tick.cpp
+        )
+
+        og_add_unit_group(og_unit_modes FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_ctf.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_tdm.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_mutant.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_strip.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_items.cpp
+        )
+        # The modes-pack fixture zips the CURRENT repo pack sources into its
+        # temp .glad so the tests always exercise the shipped bytes.
+        target_compile_definitions(og_unit_modes PRIVATE
+            OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/modes/packs/modes.core"
+        )
+
+        og_add_unit_group(og_unit_soccer FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_soccer.cpp
+        )
+        target_compile_definitions(og_unit_soccer PRIVATE
+            OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/modes/packs/modes.core"
+        )
+
+        og_add_unit_group(og_unit_onslaught FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_onslaught.cpp
+        )
+        target_compile_definitions(og_unit_onslaught PRIVATE
+            OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/modes/packs/modes.core"
         )
 
         og_add_unit_group(og_unit_mapgen FILES
@@ -3075,6 +3204,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         add_executable(og_unit_headless_platform
             ${CMAKE_SOURCE_DIR}/tests/unit/headless_unit_main.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_platform_headless.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_text_campaign_sprites.cpp
             ${SRC_DIR}/test_trace.cpp
             ${HEADLESS_TEST_SOURCES}
         )
@@ -3747,13 +3877,18 @@ endif()
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/cfg@/cfg"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/pix@/pix"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/sound@/sound"
-        "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/builtin@/builtin"
+        # Build output, not a repository dir: composed by og_builtin_campaigns.
+        "SHELL:--preload-file ${CMAKE_BINARY_DIR}/builtin@/builtin"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/packs@/packs"
     )
 
+    # The preload step packs ${CMAKE_BINARY_DIR}/builtin at link time, so the
+    # archives must exist first, and a changed archive must relink.
+    add_dependencies(play og_builtin_campaigns)
+    list(JOIN OG_BUILTIN_CAMPAIGN_ARCHIVES ";" OG_PLAY_CAMPAIGN_LINK_DEPENDS)
     set_target_properties(play PROPERTIES
         LINK_DEPENDS
-            "${CMAKE_SOURCE_DIR}/web/shell.html;${CMAKE_SOURCE_DIR}/web/manifest.webmanifest;${CMAKE_SOURCE_DIR}/web/icon.svg;${CMAKE_SOURCE_DIR}/web/icon-192.png;${CMAKE_SOURCE_DIR}/web/icon-512.png;${CMAKE_SOURCE_DIR}/web/apple-touch-icon.png"
+            "${CMAKE_SOURCE_DIR}/web/shell.html;${CMAKE_SOURCE_DIR}/web/manifest.webmanifest;${CMAKE_SOURCE_DIR}/web/icon.svg;${CMAKE_SOURCE_DIR}/web/icon-192.png;${CMAKE_SOURCE_DIR}/web/icon-512.png;${CMAKE_SOURCE_DIR}/web/apple-touch-icon.png;${OG_PLAY_CAMPAIGN_LINK_DEPENDS}"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/dist"
         SUFFIX ".html"
     )

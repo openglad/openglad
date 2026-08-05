@@ -90,7 +90,7 @@ bool parse_app_options(int argc, char* argv[], AppOptions& out, bool* should_exi
         } else if (arg == "--help" || arg == "-h") {
             std::printf(
                 "Usage: openglad_curses [options]\n"
-                "  --campaign <id>   Campaign ID (default: org.openglad.gladiator)\n"
+                "  --campaign <id>   Campaign ID (default: gladiator)\n"
                 "  --level <n>       Starting level (default: 1)\n"
                 "  --save <name>     Save slot name (default: curses_quicksave)\n"
                 "  --seed <num>      RNG seed (default: 42)\n"

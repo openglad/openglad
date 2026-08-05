@@ -335,7 +335,7 @@ TEST(LevelDataCoverage, level_data_query_grid_passable_edge_cases)
 
 TEST(LevelDataCoverage, campaign_data_save_and_save_as_fail_for_missing_campaign)
 {
-    const std::string missing_id = "org.openglad.test.missing.save.coverage";
+    const std::string missing_id = "test.missing.save.coverage";
     delete_campaign(missing_id);
 
     CampaignData cd(missing_id);
@@ -1448,10 +1448,10 @@ static void clear_stale_hook(LevelRuntimeData*)
 TEST(LevelDataCoverage, level_data_round17_grid_resize_campaign_wrappers_and_delete_object_hooks)
 {
     // Campaign wrapper passthroughs.
-    CampaignData missing("org.openglad.round9b.missing");
+    CampaignData missing("round9b.missing");
     ASSERT_EQ((int)CampaignData::IoError::PackageMountFailed, (int)missing.load_with_error()) << "load_with_error should forward mount failures";
     ASSERT_EQ((int)CampaignData::IoError::PackageUnpackFailed, (int)missing.save_with_error()) << "save_with_error should forward unpack failures";
-    ASSERT_EQ((int)CampaignData::IoError::PackageUnpackFailed, (int)missing.save_as_with_error("org.openglad.round9b.copy")) << "save_as_with_error should forward unpack failures";
+    ASSERT_EQ((int)CampaignData::IoError::PackageUnpackFailed, (int)missing.save_as_with_error("round9b.copy")) << "save_as_with_error should forward unpack failures";
 
     // create_new_grid + resize copy/fill + off-map erase paths.
     og::runtime::current_session->myscreen_->world().create_new_grid();

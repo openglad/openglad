@@ -12,6 +12,7 @@
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/obmap.h>
+#include <openglad/gameplay/scenario_strip.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/sim_event_log.h>
@@ -1877,16 +1878,30 @@ void GameWorld::tick()
         return;
 
     // --- Level completion check ---
-    // A TYPE_CTF map that failed activation (init attempted, <2 flag teams)
-    // falls through to the classic completion rules.
-    if ((type & TYPE_CTF) && !(ctf.init_attempted && !ctf.active))
+    // A TYPE_SCRIPTED map whose campaign pack registered no on_mode_init
+    // (or whose init errored) falls through to the classic completion rules
+    // starting the NEXT tick (the four-state activation discipline).
+    if ((type & TYPE_SCRIPTED) && !(mode.init_attempted && !mode.active))
     {
-        og::sim::ctf_run_tick(*this);
+        og::sim::mode_run_tick(*this);
         if (game_ended)
             return;
     }
     else
     {
+        // "TROOPS: OWN" on a classic map. Latch-once on this level's first
+        // tick: the scripted modes do their own strip from Lua at
+        // on_mode_init, so this arm covers exactly the maps that have no
+        // mode script. Runs BEFORE the completion decision and before
+        // classic_respawn_run_tick, so a stripped fighter can neither count
+        // as a live foe nor be queued for respawn.
+        // Any request above 0 means OWN: the menus write 2, and a save or a
+        // peer from a build with the retired middle state hands us a 1.
+        // A kill-all level then completes on the NEXT tick, when the foe scan
+        // reruns against the stripped world — the documented consequence of
+        // the setting, not something this block decides for itself.
+        if (level_tick_count_ == 1 && ctf_requested_strip_scenario_troops >= 1)
+            og::sim::classic_strip_authored_troops(*this);
         // A foe merely awaiting a classic respawn (queued, or a corpse the
         // death scan below will queue) still counts as alive: "endless
         // battle" (respawn_mode 2) cannot be won by killing every live foe

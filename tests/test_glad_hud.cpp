@@ -1041,7 +1041,7 @@ TEST_F(GladHud, pending_hostile_wave_counts_includes_classic_respawn_queue)
     const std::uint32_t saved_ltc = world.level_tick_count();
     const short saved_mode = world.respawn_mode;
     const short saved_allied = world.allied_mode;
-    const auto saved_queue = world.ctf.respawn_queue;
+    const auto saved_queue = world.respawn.respawn_queue;
 
     auto control = make_player(0);
     auto dormant_foe = make_living(FAMILY_ORC, 1);
@@ -1055,23 +1055,23 @@ TEST_F(GladHud, pending_hostile_wave_counts_includes_classic_respawn_queue)
     world.set_level_tick_count(12);
     world.respawn_mode = 2;
     world.allied_mode = 1;
-    world.ctf.respawn_queue.clear();
+    world.respawn.respawn_queue.clear();
 
-    og::sim::CtfRespawnEntry ai_foe; // mode-2 AI replacement: hostile
+    og::sim::RespawnEntry ai_foe; // mode-2 AI replacement: hostile
     ai_foe.kind = 1;
     ai_foe.team = 1;
     ai_foe.ticks_left = 30;
-    og::sim::CtfRespawnEntry same_team; // the viewer's own team: never hostile
+    og::sim::RespawnEntry same_team; // the viewer's own team: never hostile
     same_team.kind = 1;
     same_team.team = 0;
     same_team.ticks_left = 5;
-    og::sim::CtfRespawnEntry hero; // different-color company hero: hostile
+    og::sim::RespawnEntry hero; // different-color company hero: hostile
     hero.kind = 0;
     hero.team = 2;
     hero.ticks_left = 3;
-    world.ctf.respawn_queue.push_back(ai_foe);
-    world.ctf.respawn_queue.push_back(same_team);
-    world.ctf.respawn_queue.push_back(hero);
+    world.respawn.respawn_queue.push_back(ai_foe);
+    world.respawn.respawn_queue.push_back(same_team);
+    world.respawn.respawn_queue.push_back(hero);
 
     short pending = 0;
     short respawn = 0;
@@ -1095,7 +1095,7 @@ TEST_F(GladHud, pending_hostile_wave_counts_includes_classic_respawn_queue)
     EXPECT_EQ(0, static_cast<int>(respawn));
     EXPECT_EQ(89u, ticks);
 
-    world.ctf.respawn_queue = saved_queue;
+    world.respawn.respawn_queue = saved_queue;
     world.respawn_mode = saved_mode;
     world.allied_mode = saved_allied;
     world.set_level_tick_count(saved_ltc);
@@ -1171,7 +1171,7 @@ TEST_F(GladHud, score_panel_counts_respawn_pending_foe_in_wave)
     HudObListSwap swap;
     GameWorld& world = s->world();
     const short saved_mode = world.respawn_mode;
-    const auto saved_queue = world.ctf.respawn_queue;
+    const auto saved_queue = world.respawn.respawn_queue;
 
     auto control = make_player(0);
     ASSERT_TRUE(control != nullptr);
@@ -1183,12 +1183,12 @@ TEST_F(GladHud, score_panel_counts_respawn_pending_foe_in_wave)
     world.oblist.push_back(std::move(control));
 
     world.respawn_mode = 2;
-    world.ctf.respawn_queue.clear();
-    og::sim::CtfRespawnEntry entry;
+    world.respawn.respawn_queue.clear();
+    og::sim::RespawnEntry entry;
     entry.kind = 1;
     entry.team = 1;
     entry.ticks_left = 55; // (55 + 11) / 12 -> 5 s at 12 Hz
-    world.ctf.respawn_queue.push_back(entry);
+    world.respawn.respawn_queue.push_back(entry);
 
     walker* const old_control = v->control;
     const char old_pref_life = v->prefs[PREF_LIFE];
@@ -1207,7 +1207,7 @@ TEST_F(GladHud, score_panel_counts_respawn_pending_foe_in_wave)
 
     // The end-of-level flush clears the queue (every end shape does): the
     // classic FOES readout returns with no NEXT WAVE line.
-    world.ctf.respawn_queue.clear();
+    world.respawn.respawn_queue.clear();
     trace_clear();
     s->clearbuffer();
     ASSERT_EQ(1, (int)new_score_panel(s, 1));
@@ -1217,7 +1217,7 @@ TEST_F(GladHud, score_panel_counts_respawn_pending_foe_in_wave)
     v->prefs[PREF_LIFE] = old_pref_life;
     v->prefs[PREF_SCORE] = old_pref_score;
     v->prefs[PREF_FOES] = old_pref_foes;
-    world.ctf.respawn_queue = saved_queue;
+    world.respawn.respawn_queue = saved_queue;
     world.respawn_mode = saved_mode;
 }
 

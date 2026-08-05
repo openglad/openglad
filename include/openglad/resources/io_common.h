@@ -24,6 +24,12 @@ class PixieData;
 void io_init(int argc, char* argv[]);
 void io_exit();
 bool apply_sprite_sheet_setting();
+// Re-prepends the active extra_pix sprite-sheet mount so it stays in front
+// of any campaign package mounted after it: a user's explicitly selected
+// sheet wins pix/ lookups for the exact filenames it ships, the campaign
+// wins everything else. mount_campaign_package_with_error calls this after
+// every successful campaign mount; a no-op (true) when no sheet is mounted.
+bool reassert_sprite_sheet_mount();
 
 std::string get_user_path();
 bool create_dir(const std::string& dirname);

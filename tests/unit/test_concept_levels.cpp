@@ -1,5 +1,5 @@
 // Shipped Concept Playground campaign validation. The five Z-axis demo
-// levels (600-604 in builtin/org.openglad.concept.glad) plus the scripted
+// levels (600-604 in builtin/concept.glad) plus the scripted
 // boss arena "The Ninefold Court" (605) are loaded through the production
 // campaign-mount path and pinned against the authoring invariants
 // tools/concept_mapgen promises: floor counts and grid geometry, the start
@@ -7,13 +7,13 @@
 // exit chain (600→…→604→605, with the court looping home to 600), aligned
 // Z-stair pairs on the boundaries that have them, and every authored
 // entity standing on ground its own footprint can occupy. The court's
-// embedded pack (packs/org.openglad.concept.showcase/scripts/court.lua
+// embedded pack (packs/concept.showcase/scripts/court.lua
 // inside the .glad) is additionally pinned end to end: registered on
 // mount, and its ward/judgment/victory phases driven through real sim
 // ticks. This test is the regression pin for the committed package.
 //
 // The six epic multifloor war stories that used to ship here as levels
-// 605-610 moved to builtin/org.openglad.westlands.glad
+// 605-610 moved to builtin/westlands.glad
 // (tools/westlands_mapgen, ids 15/14/8/6/17/7); that package is pinned by
 // tests/unit/test_westlands_levels.cpp.
 
@@ -96,13 +96,13 @@ protected:
         restore_default_campaigns();
         previous_ = get_mounted_campaign();
         ASSERT_EQ(CampaignPackageIoError::None,
-                  mount_campaign_package_with_error("org.openglad.concept"))
-            << "builtin/org.openglad.concept.glad should restore and mount";
+                  mount_campaign_package_with_error("concept"))
+            << "builtin/concept.glad should restore and mount";
     }
 
     void TearDown() override
     {
-        (void)unmount_campaign_package_with_error("org.openglad.concept");
+        (void)unmount_campaign_package_with_error("concept");
         if (!previous_.empty())
             (void)mount_campaign_package_with_error(previous_);
     }
@@ -180,6 +180,9 @@ TEST_F(ConceptCampaignTest, demo_levels_round_trip_the_authored_structure)
         GameWorld& world = fx.world();
 
         EXPECT_EQ(expected.title, world.title) << "shipped demo title";
+        EXPECT_TRUE(fx.level.generated)
+            << "mapgen output carries the SCEN_TYPE_GENERATED provenance "
+               "mark (metadata-side, never world.type)";
         EXPECT_EQ(expected.floors, world.floor_count()) << "floor count";
         EXPECT_EQ(expected.grid_w, static_cast<int>(world.grid.w));
         EXPECT_EQ(expected.grid_h, static_cast<int>(world.grid.h));
@@ -346,7 +349,7 @@ TEST_F(ConceptCampaignTest, demo_level_entities_stand_on_passable_ground)
 
 namespace {
 
-constexpr const char* kShowcasePackId = "org.openglad.concept.showcase";
+constexpr const char* kShowcasePackId = "concept.showcase";
 
 std::vector<std::string> drain_notifications(og::sim::SimEventLog& events)
 {
@@ -367,7 +370,7 @@ bool contains_text(const std::vector<std::string>& lines, const char* needle)
 
 } // namespace
 
-// The .glad carries packs/org.openglad.concept.showcase/scripts/court.lua;
+// The .glad carries packs/concept.showcase/scripts/court.lua;
 // campaign packs follow campaign mounts (test_campaign_packs.cpp pins the
 // mechanism, this pins the shipped payload).
 TEST_F(ConceptCampaignTest, court_embedded_pack_registers_on_mount)

@@ -101,6 +101,14 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	screenp->initialize_views();
 	screenp->sync_world_from_save_data();
 
+	// #162 safety net: every path into gameplay funnels through here after
+	// the save's campaign is mounted — including the networked joiner's
+	// lobby sync, which deliberately never reloads mid-menu-frame. The old
+	// world was just torn down and nothing draws until load_level() rebuilds
+	// it, so freeing loader buffers is safe; a same-campaign level advance
+	// is a generation-check no-op.
+	screenp->myloader->reload_graphics_if_stale();
+
 	// And load the scenario ..
 	screenp->world().id = screenp->save_data.scen_num;
 	if(!screenp->load_level())
@@ -205,10 +213,10 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	const std::vector<short> view_teams =
 		og::ui::derive_local_gameplay_seat_teams(screenp->save_data);
 
-	// Have we already done this scenario? CTF maps skip the purge: rematches
-	// replay the full map (flags, control points, and bot squads stay).
+	// Have we already done this scenario? Scripted maps skip the purge:
+	// rematches replay the full map (mode objectives and bot squads stay).
 	if (og::runtime::current_session->myscreen_->save_data.is_level_completed(og::runtime::current_session->myscreen_->save_data.scen_num) &&
-	    !(og::runtime::current_session->myscreen_->world().type & GameWorld::TYPE_CTF))
+	    !(og::runtime::current_session->myscreen_->world().type & GameWorld::TYPE_SCRIPTED))
 	{
 		//                Log("already done level\n");
 		for(auto& uptr : og::runtime::current_session->myscreen_->world().oblist)

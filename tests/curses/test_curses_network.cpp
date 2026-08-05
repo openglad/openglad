@@ -300,7 +300,7 @@ bool poll_external_client_until(og::sim::WebSocketClientTransport& client,
 
 void init_team_save(SaveData& save, short team, char family, const char* name)
 {
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
     save.numplayers = 1;
     save.my_team = team;
@@ -1243,7 +1243,7 @@ TEST(CursesNetwork, networked_win_persists_deploy_share_to_company_save)
     // copies at the two private slots for the win merges to overwrite.
     SaveData base;
     base.reset();
-    base.current_campaign = "org.openglad.gladiator";
+    base.current_campaign = "gladiator";
     base.scen_num = 1;
     base.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
     base.team_list[0]->name = "Stale Host";
@@ -1689,11 +1689,14 @@ TEST(CursesNetwork, lobby_team_key_cycles_the_selected_owned_seat)
     EXPECT_TRUE(status_contains(*lobby, "Selected P1"));
 }
 
-TEST(CursesNetwork, lobby_team_key_wraps_in_explicit_two_team_ctf_domain)
+TEST(CursesNetwork, lobby_team_key_wraps_in_explicit_two_team_versus_domain)
 {
     SaveData save;
     init_team_save(save, 0, FAMILY_SOLDIER, "CTF Keyboard");
-    save.current_campaign = "org.openglad.ctf";
+    // The shared-teams rule rides the wire since protocol v12, derived from
+    // the campaign's matchup: versus yaml key — the shipped modes campaign
+    // is the versus campaign.
+    save.current_campaign = "modes";
     save.ctf_team_count = 2;
 
     auto server = og::sim::InProcessTransport::create_server();
@@ -1723,7 +1726,7 @@ TEST(CursesNetwork, lobby_team_key_wraps_in_explicit_two_team_ctf_domain)
     term.push_char(U't');
     lobby->poll(term, clock);
     EXPECT_EQ(0, local_team())
-        << "explicit two-team CTF must skip teams 2 and 3";
+        << "explicit two-team versus must skip teams 2 and 3";
 }
 
 // The lobby "Level:" line reads scenario titles off the LOCAL mount, so when
@@ -1734,11 +1737,11 @@ TEST(CursesNetwork, lobby_level_title_requires_matching_mount)
 {
     SaveData save;
     init_team_save(save, 2, FAMILY_ELF, "Mismatch");
-    save.current_campaign = "org.openglad.ctf"; // not the mounted campaign
+    save.current_campaign = "modes"; // not the mounted campaign
     save.scen_num = 1; // collides with gladiator's scen1
 
     ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("org.openglad.gladiator"));
+              mount_campaign_package_with_error("gladiator"));
 
     auto server = og::sim::InProcessTransport::create_server();
     server->accept_connections();
@@ -1751,7 +1754,7 @@ TEST(CursesNetwork, lobby_level_title_requires_matching_mount)
     FakeClock clock;
     lobby->poll(term, clock);
 
-    EXPECT_TRUE(status_contains(*lobby, "Campaign: Capture the Flag"));
+    EXPECT_TRUE(status_contains(*lobby, "Campaign: Multiplayer Game Modes"));
     EXPECT_TRUE(status_contains(*lobby, "Level: 1"));
     EXPECT_FALSE(status_contains(*lobby, "Level: 1."))
         << "a mismatched mount must not serve another campaign's scen1 title";
@@ -1995,7 +1998,7 @@ TEST(CursesNetwork, ctf_lobby_team_change_and_ready_round_trip)
     SaveData join_save;
     init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
     init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
-    host_save.current_campaign = "org.openglad.ctf"; // shared-team lobby
+    host_save.current_campaign = "ctf"; // shared-team lobby
 
     auto server = og::sim::InProcessTransport::create_server();
     server->accept_connections();

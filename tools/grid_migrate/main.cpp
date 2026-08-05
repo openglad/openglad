@@ -28,11 +28,11 @@
  * A* paths ==> identical sim, zero new RNG (probes are owner-less, so even
  * the arrow-wall gamble arm consumes nothing).
  *
- * Usage: grid_migrate <campaign_id> [output.glad]
- *        (default output: builtin/<campaign_id>.glad in the cwd)
- * Driven by scripts/migrate_stock_campaigns.sh for the three hand-authored
- * stock packages (gladiator, tryxian, arenas). Generated packages (ctf,
- * concept, westlands) regenerate from their mapgen tools instead.
+ * Usage: grid_migrate <campaign_id> [output-dir]
+ *        (default output: campaigns/<campaign_id> in the cwd)
+ * Driven by scripts/migrate_stock_campaigns.sh for the two hand-authored
+ * stock campaigns (gladiator, tryxian). Generated campaigns regenerate
+ * from their mapgen tools instead.
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
@@ -854,13 +854,13 @@ int main(int argc, char* argv[])
     if (argc < 2)
     {
         std::fprintf(stderr,
-                     "usage: grid_migrate <campaign_id> [output.glad]\n");
+                     "usage: grid_migrate <campaign_id> [output-dir]\n");
         return 2;
     }
     const std::string campaign_id = argv[1];
-    const std::string out_glad =
-        (argc > 2) ? argv[2] : ("builtin/" + campaign_id + ".glad");
-    const fs::path out_abs = fs::absolute(out_glad);
+    const std::string out_tree =
+        (argc > 2) ? argv[2] : ("campaigns/" + campaign_id);
+    const fs::path out_abs = fs::absolute(out_tree);
 
     fs::path scratch;
     if (const char* preset = std::getenv("OPENGLAD_CONFIG_DIR");
@@ -1032,15 +1032,23 @@ int main(int argc, char* argv[])
         if (g_errors != 0)
             break;
 
-        // 5. Publish.
+        // 5. Publish: unpack the migrated archive into the committed
+        // campaign source tree (the shipped .glad is composed from that
+        // tree by the build — see scripts/make_glad.py).
         std::error_code ec;
-        fs::create_directories(out_abs.parent_path(), ec);
-        fs::copy_file(get_user_path() + "campaigns/" + campaign_id + ".glad",
-                      out_abs, fs::copy_options::overwrite_existing, ec);
+        fs::remove_all(out_abs, ec);
         if (ec)
         {
-            fail(std::format("failed to copy output to {}: {}",
-                             out_abs.string(), ec.message()));
+            fail(std::format("failed to clear {}: {}", out_abs.string(),
+                             ec.message()));
+            break;
+        }
+        if (unzip_into_with_error(
+                get_user_path() + "campaigns/" + campaign_id + ".glad",
+                out_abs.string()) != ArchiveIoError::None)
+        {
+            fail(std::format("failed to unpack the migrated campaign into {}",
+                             out_abs.string()));
             break;
         }
         std::printf("grid_migrate: wrote %s\n", out_abs.c_str());

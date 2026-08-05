@@ -10,6 +10,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/campaign_io.h>
+#include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/progression.h>
 #include <openglad/resources/save_data.h>
@@ -245,9 +246,9 @@ void clear_completed_level_entities(EntityList& entities)
 
 void apply_completed_level_cleanup(GameWorld& world)
 {
-    // CTF rematches replay the full map: flags, control points, and bot
+    // Scripted rematches replay the full map: mode objectives and bot
     // squads must survive a "level already completed" reload.
-    if (world.type & GameWorld::TYPE_CTF)
+    if (world.type & GameWorld::TYPE_SCRIPTED)
         return;
 
     clear_completed_level_entities(world.oblist);
@@ -338,7 +339,7 @@ void apply_headless_lobby_game_start_config(
     const og::sim::LobbySaveDataEquivalent& config_save)
 {
     save.current_campaign = config_save.current_campaign.empty()
-        ? std::string("org.openglad.gladiator")
+        ? std::string("gladiator")
         : config_save.current_campaign;
     save.scen_num = config_save.scen_num > 0 ? config_save.scen_num : 1;
     save.current_levels[save.current_campaign] = save.scen_num;
@@ -413,6 +414,13 @@ bool load_headless_level_from_save(LevelRuntimeData& level_data,
                  current_level);
     }
 
+    // #162: server_main constructs LevelRuntimeData (and with it the headless
+    // loader) before this per-level campaign load; refresh so entity sprites
+    // (and the sizex/sizey they feed into collision) match the mounted
+    // campaign. Runs once per level, so between-level campaign changes are
+    // covered; a same-campaign advance is a generation-check no-op.
+    headless_entity_loader()->reload_graphics_if_stale();
+
     GameWorld& world = level_data.world();
     sync_world_from_save_data(world, save);
     world.id = save.scen_num;
@@ -486,7 +494,7 @@ bool complete_headless_level_and_load_next(LevelRuntimeData& level_data,
             active_save,
             static_cast<int>(team_index));
     }
-    fold_ctx.rematch_shape = og::progression::ctf_rematch_shape(
+    fold_ctx.rematch_shape = og::progression::mode_rematch_shape(
         world, active_save, static_cast<short>(next_level));
     fold_ctx.finished_level = active_save.scen_num;
     fold_ctx.outcome.ending = 0;

@@ -19,7 +19,7 @@
 namespace og::script {
 
 struct PackScript {
-    std::string pack_id;     // e.g. "org.openglad.core"
+    std::string pack_id;     // e.g. "core"
     std::string chunk_name;  // e.g. "core/scripts/soldier.lua" (diagnostics)
     std::string source;      // Lua source text
     // The real directory or archive PhysFS resolved the chunk out of, for
@@ -135,7 +135,7 @@ unsigned pack_family_generation();
 // closure upvalues.
 
 struct PackLibModule {
-    std::string pack_id;     // e.g. "org.openglad.core"
+    std::string pack_id;     // e.g. "core"
     std::string name;        // og.use key: the file stem, e.g. "living_common"
     std::string chunk_name;  // e.g. "packs/core/lib/living_common.lua"
     std::string source;      // Lua source text

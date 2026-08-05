@@ -773,7 +773,8 @@ int picker_lobby_network_testing_exercise_internal_helpers()
     }
     check(resolve_pending_local_team(full_state, 3) == 3);
     og::sim::LobbyState sparse_ctf_state;
-    sparse_ctf_state.settings.campaign_id = std::string(og::kCtfCampaignId);
+    sparse_ctf_state.settings.campaign_id = "modes";
+    sparse_ctf_state.settings.shared_teams = 1;
     sparse_ctf_state.settings.ctf_team_count = 2;
     sparse_ctf_state.settings.ctf_authored_team_mask = 0b1101u;
     check(resolve_pending_local_team(sparse_ctf_state, 2) == 2);

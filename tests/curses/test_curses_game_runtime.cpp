@@ -46,7 +46,7 @@ namespace {
 // (SaveData is move-only, so callers pass a local by reference.)
 void init_test_save(SaveData& save)
 {
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
     save.numplayers = 1;
     save.my_team = 0;
@@ -111,14 +111,14 @@ TEST(CursesGameRuntimeVerdict, mission_verdict_line_is_ctf_aware)
     EXPECT_EQ("Defeat.", mission_verdict_line(classic_loss));
 
     GameRunResult ctf_win = classic_win;
-    ctf_win.ctf_match = true;
-    ctf_win.ctf_winner_team = 0;
+    ctf_win.mode_match = true;
+    ctf_win.mode_winner_team = 0;
     ctf_win.local_team = 0;
     EXPECT_EQ("Victory!", mission_verdict_line(ctf_win));
 
     // The CTF loss still has ending==0 — the team comparison must decide.
     GameRunResult ctf_loss = ctf_win;
-    ctf_loss.ctf_winner_team = 1;
+    ctf_loss.mode_winner_team = 1;
     EXPECT_EQ("Defeat.", mission_verdict_line(ctf_loss));
 
     // Unknown local team (spectator/unresolved avatar): neutral, never a
@@ -128,35 +128,37 @@ TEST(CursesGameRuntimeVerdict, mission_verdict_line_is_ctf_aware)
     EXPECT_EQ("Match over.", mission_verdict_line(ctf_unknown));
 }
 
-// The CTF loss/rematch shape (ending==0, next_level == this level) must be
+// The mode loss/rematch shape (ending==0, next_level == this level) must be
 // recognized so a loss never marks the campaign level completed; a real win
 // (next level advances) and classic shapes are not rematches.
-TEST(CursesGameRuntimeVerdict, is_ctf_rematch_end_matches_loss_shape_only)
+TEST(CursesGameRuntimeVerdict, is_mode_rematch_end_matches_loss_shape_only)
 {
     GameWorld world(0);
     world.id = 500;
-    world.type = GameWorld::TYPE_CTF;
-    world.ctf.active = true;
-    world.ctf.winner_team = 1;
+    world.type = GameWorld::TYPE_SCRIPTED;
+    world.mode.active = true;
+    world.mode.init_attempted = true;
+    world.mode.win_latched = true;
+    world.mode.winner_team = 1;
 
-    EXPECT_TRUE(is_ctf_rematch_end(world, /*ending=*/0, /*next_level=*/500));
-    EXPECT_FALSE(is_ctf_rematch_end(world, /*ending=*/0, /*next_level=*/501))
+    EXPECT_TRUE(is_mode_rematch_end(world, /*ending=*/0, /*next_level=*/500));
+    EXPECT_FALSE(is_mode_rematch_end(world, /*ending=*/0, /*next_level=*/501))
         << "an advancing win is not a rematch";
-    EXPECT_FALSE(is_ctf_rematch_end(world, /*ending=*/1, /*next_level=*/500))
+    EXPECT_FALSE(is_mode_rematch_end(world, /*ending=*/1, /*next_level=*/500))
         << "classic loss shape is handled by the existing loss path";
 
-    world.ctf.winner_team = -1;
-    EXPECT_FALSE(is_ctf_rematch_end(world, 0, 500))
+    world.mode.win_latched = false;
+    EXPECT_FALSE(is_mode_rematch_end(world, 0, 500))
         << "an undecided match is never a rematch shape";
 
-    world.ctf.winner_team = 1;
-    world.ctf.active = false;
-    EXPECT_FALSE(is_ctf_rematch_end(world, 0, 500));
+    world.mode.win_latched = true;
+    world.mode.active = false;
+    EXPECT_FALSE(is_mode_rematch_end(world, 0, 500));
 
-    world.ctf.active = true;
+    world.mode.active = true;
     world.type = 0;
-    EXPECT_FALSE(is_ctf_rematch_end(world, 0, 500))
-        << "classic levels never take the CTF rematch shape";
+    EXPECT_FALSE(is_mode_rematch_end(world, 0, 500))
+        << "classic levels never take the mode rematch shape";
 }
 
 TEST(CursesGameRuntimeLocal, session_loads_level_and_populates_mirror)
@@ -210,7 +212,7 @@ TEST(CursesGameRuntimeLocal, invalid_campaign_reports_real_load_failure)
 {
     SaveData save;
     init_test_save(save);
-    save.current_campaign = "org.openglad.missing-curses-test";
+    save.current_campaign = "missing-curses-test";
     std::string err;
 
     auto session = make_local_session(save, 1, &err);
@@ -455,7 +457,7 @@ TEST(CursesGameRuntimeLocal, messages_are_logged_and_default_pacing_runs)
     EXPECT_GT(clock.now_ms(), 0u);
 }
 
-TEST(CursesGameRuntimeLocal, ended_ctf_session_reports_winner_and_local_team)
+TEST(CursesGameRuntimeLocal, ended_mode_session_reports_winner_and_local_team)
 {
     FakeExitSession session;
     session.pending_ = false;
@@ -463,9 +465,11 @@ TEST(CursesGameRuntimeLocal, ended_ctf_session_reports_winner_and_local_team)
     session.ending_ = 0;
     session.next_level_ = 44;
     session.world_.id = 44;
-    session.world_.type = GameWorld::TYPE_CTF;
-    session.world_.ctf.active = true;
-    session.world_.ctf.winner_team = 1;
+    session.world_.type = GameWorld::TYPE_SCRIPTED;
+    session.world_.mode.active = true;
+    session.world_.mode.init_attempted = true;
+    session.world_.mode.win_latched = true;
+    session.world_.mode.winner_team = 1;
     session.world_.entity_factory = [](Order, std::int32_t) {
         return std::make_unique<walker>();
     };
@@ -482,10 +486,10 @@ TEST(CursesGameRuntimeLocal, ended_ctf_session_reports_winner_and_local_team)
         session, term, clock, input, renderer,
         LevelLoopOptions{.max_frames = 1, .no_pacing = true, .render = false});
 
-    EXPECT_TRUE(result.ctf_match);
-    EXPECT_EQ(1, result.ctf_winner_team);
+    EXPECT_TRUE(result.mode_match);
+    EXPECT_EQ(1, result.mode_winner_team);
     EXPECT_EQ(1, result.local_team);
-    EXPECT_TRUE(result.ctf_rematch);
+    EXPECT_TRUE(result.mode_rematch);
 }
 
 // [BLOCKER lock-in] A real, server-forwarded level end must (a) terminate the
@@ -591,7 +595,7 @@ TEST(CursesGameRuntimeLocal, server_forwarded_endgame_event_durably_ends_session
 TEST(CursesGameRuntimeWin, advance_save_after_win_advances_campaign_and_persists_team)
 {
     SaveData save;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 1;
     save.numplayers = 1;
     save.my_team = 0;
@@ -640,7 +644,7 @@ TEST(CursesGameRuntimeWin, advance_save_after_win_advances_campaign_and_persists
 TEST(CursesGameRuntimeWin, advance_save_after_win_negative_next_level_advances_by_one)
 {
     SaveData save;
-    save.current_campaign = "org.openglad.gladiator";
+    save.current_campaign = "gladiator";
     save.scen_num = 4;
     save.my_team = 0;
     og::ui::initialize_starting_team(save, {FAMILY_SOLDIER});
@@ -748,7 +752,7 @@ TEST(CursesGameRuntimeLocal, tower_loss_resets_disk_cursor_via_run_end_hook)
             }
             (void)unmount_campaign_package_with_error(get_mounted_campaign());
             (void)mount_campaign_package_with_error(
-                remount.empty() ? "org.openglad.gladiator" : remount);
+                remount.empty() ? "gladiator" : remount);
         }
     } restore{save0, had_save0, mounted_before};
 

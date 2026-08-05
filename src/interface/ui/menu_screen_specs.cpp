@@ -18,7 +18,6 @@
 
 #include <openglad/core/irandom.h>
 #include <openglad/core/test_trace.h>
-#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/interface/base.h>
@@ -1277,11 +1276,22 @@ constexpr MenuButtonSpec kScenarioMenuRows[] = {
     {.id = "matchup", .label = "MATCHUP",
      .x = 120, .y = 100, .w = 80, .h = 15,
      .action = ButtonAction::CreateTeamsMenu, .arg = -1,
-     .nav = {.up = 2, .down = 0, .left = 3, .right = 5}},
+     .nav = {.up = 2, .down = 6, .left = 3, .right = 5}},
     {.id = "progress", .label = "PROGRESS",
      .x = 210, .y = 100, .w = 80, .h = 15,
      .action = ButtonAction::CreateProgressMenu, .arg = -1,
      .nav = {.up = 2, .down = 0, .left = 4}},
+    // Scenario troops: keep the authored cast, or strip all of it.
+    // Host-gated like SET CAMPAIGN and SET LEVEL; joiners read the label off
+    // the lobby-synced save. It sits at (120,140) rather than the y=70 cell
+    // beside SET LEVEL because scenario_menu_draw_content paints the level
+    // title strip from x=114 across that whole row AFTER draw_buttons, so a
+    // button there would be overprinted. (120,140) is the free grid cell
+    // directly under MATCHUP, which keeps it grouped with the match settings.
+    {.id = "troops", .label = "TROOPS: ALL",
+     .x = 120, .y = 140, .w = 80, .h = 15,
+     .action = ButtonAction::CycleCtfScenarioTroops, .arg = -1,
+     .nav = {.up = 4, .down = 0}},
 };
 
 // The campaign-name / level-title strips sit beside the buttons that change
@@ -1406,7 +1416,7 @@ constexpr MenuButtonSpec kTeamsMenuRows[] = {
      .action = ButtonAction::ToggleLobbyReady, .arg = -1,
      .nav = {.up = 6, .left = 0},
      .hidden = true},
-    {.id = "ctf_troops", .label = "Troops: Scen",
+    {.id = "ctf_troops", .label = "TROOPS: ALL",
      .x = 210, .y = 170, .w = 80, .h = 20,
      .action = ButtonAction::CycleCtfScenarioTroops, .arg = -1,
      .nav = {.up = 9, .left = 0},
@@ -2079,6 +2089,7 @@ std::vector<short> base_camp_selectable_seat_teams(const SaveData& save)
     og::sim::LobbySettings settings;
     settings.campaign_id = save.current_campaign;
     settings.ctf_team_count = save.ctf_team_count;
+    settings.shared_teams = is_versus_campaign(save) ? 1 : 0;
 
     // Use the same authored-team domain as lobby authority and CTF gameplay:
     // explicit N means the first N authored flag teams, not numeric [0,N).

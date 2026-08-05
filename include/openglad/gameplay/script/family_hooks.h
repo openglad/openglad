@@ -77,6 +77,10 @@ enum class FamilyHook : std::uint8_t {
     TreasureOnEat,
     // generator
     GeneratorCustomizeSpawn,
+    // living (appended so existing bit positions stay stable): a scripted
+    // act override — returning true means the walker's act is DONE this
+    // tick (the effect_on_act "true = handled" contract, for livings).
+    OnActOverride,
     Count,
 };
 
@@ -136,6 +140,14 @@ struct HookFailure {
 const HookFailure& hook_failures();
 void reset_hook_failures();
 
+// Which level-hook kinds a level id has registered, as a bitmask over the
+// LevelHook enum's bit positions (Load 0, Tick 1, EntityDeath 2,
+// EntitySpawn 3, ModeInit 4, ModeTick 5, Damage 6, Respawn 7). Reads the
+// level's OWN registrations; the -1 "every level" wildcard is not folded
+// in. Diagnostic/test seam — no sim path reads it, so it cannot change
+// behavior. Answers 0 when no packs are loaded.
+std::uint32_t level_hook_kinds_for(int level_id);
+
 // Living-family hooks (FamilyDescriptor). Each returns the hook's result,
 // or nullopt when no hook (script or C++) ran.
 std::optional<bool> do_special(const FamilyDescriptor* fd, walker* self);
@@ -146,6 +158,10 @@ bool set_difficulty(const FamilyDescriptor* fd, living* self,
 bool level_up(const FamilyDescriptor* fd, guy* self, std::int32_t level_diff);
 std::optional<bool> on_death(const FamilyDescriptor* fd, walker* self);
 bool on_act_living(const FamilyDescriptor* fd, living* self);
+// True when a registered on_act_override hook ran and returned true: the
+// walker's act is handled for this tick (living::act returns immediately).
+// Pure script hook — descriptors carry no C++ callback for it.
+bool on_act_override(const FamilyDescriptor* fd, living* self);
 bool on_shoved(const FamilyDescriptor* fd, walker* target);
 std::optional<bool> on_fire_weapon(const FamilyDescriptor* fd, walker* self,
                                    walker* weapon);
@@ -185,8 +201,29 @@ bool generator_customize_spawn(int generator_family, walker* generator,
 // script-less sims stay byte-identical.
 void level_load(GameWorld* world);         // first tick of a level id
 void level_tick(GameWorld* world);         // every tick, before entity acts
-void level_entity_death(walker* self);     // living deaths
+// Living + generator deaths. Passes the kill-attribution channel to Lua:
+// on_entity_death(ent, killer, killer_team) — killer is the owner-chain-root
+// Living stamped by the combat path within og::sim::kKillAttributionTicks
+// of the death (nil when stale/absent/swept; killer_team -1 = environment).
+// Per-entity og.set_entity_hooks on_death receives the same args.
+void level_entity_death(walker* self);
 void level_entity_spawn(walker* spawned);  // sim-authored living/generator
+
+// Scripted-mode level hooks (TYPE_SCRIPTED):
+// on_mode_init(level) dispatch; true iff a hook was registered for this
+// level (exact or wildcard) AND it ran without error — the mode activation
+// condition.
+bool level_mode_init(GameWorld* world);
+// on_mode_tick(level, tick) — post-act slot, called by mode_run_tick.
+void level_mode_tick(GameWorld* world);
+// on_respawn(ent) — dispatched by the respawn engine after an in-place
+// scripted-mode revive; the hook repositions via anchors + probes.
+void level_respawn(GameWorld* world, walker* revived);
+// Pre-damage gate: on_damage(target, attacker, amount) -> nil keep /
+// number replace (clamped >= 0) / false cancel. Returns the amount to
+// apply, or -1 for a cancelled hit. Early-outs on the level_hook_kinds
+// bit, so classic paths stay byte-identical.
+short level_damage_gate(walker* target, walker* attacker, short amount);
 
 }  // namespace hooks
 

@@ -6,7 +6,6 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/core/colors.h>
-#include <openglad/core/ctf_constants.h>
 #include <openglad/core/decordefs.h>
 #include <openglad/core/family_presentation.h>
 #include <openglad/core/irandom.h>

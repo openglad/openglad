@@ -243,7 +243,7 @@ TEST(OverpoweredTeam, overpowered_team) {
     // Start with empty team
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
     OpState state = { false, false, og::runtime::current_session->g_game_speed_factor_, 0 };

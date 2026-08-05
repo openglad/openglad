@@ -212,7 +212,7 @@ og::sim::InitialSetupGuyData make_initial_setup_guy_for_test()
 og::sim::LobbyState make_lobby_state_for_test()
 {
     og::sim::LobbyState state;
-    state.settings.campaign_id = "org.openglad.gladiator";
+    state.settings.campaign_id = "gladiator";
     state.settings.scenario_id = 7;
     state.settings.difficulty = 2;
     state.settings.allied_mode = 1;
@@ -225,6 +225,8 @@ og::sim::LobbyState make_lobby_state_for_test()
     state.settings.cross_control = 1;
     // v11: host-only infinite-gold setting (the twelfth LobbySettings i16).
     state.settings.infinite_gold = 1;
+    // v12: versus-campaign shared-teams flag (the thirteenth i16).
+    state.settings.shared_teams = 1;
     state.host_player_id = 1u;
     state.last_start_denial =
         og::sim::start_denial_reason_value(
@@ -254,7 +256,7 @@ TEST(NetTransport, header_helpers_roundtrip_envelope)
     std::vector<std::uint8_t> bytes;
     og::sim::append_transport_header(bytes, og::sim::kHelloMessageType, 0x2211u);
 
-    const std::vector<std::uint8_t> expected = {0x0b, 0x01, 0x11, 0x22};
+    const std::vector<std::uint8_t> expected = {0x0c, 0x01, 0x11, 0x22};
     EXPECT_EQ(expected, bytes);
 
     og::sim::TransportEnvelope envelope;
@@ -478,6 +480,8 @@ TEST(NetTransport, v8_deploy_company_cross_control_and_denial_fields_round_trip)
     EXPECT_EQ(1, decoded_state->settings.cross_control);
     EXPECT_EQ(1, decoded_state->settings.infinite_gold)
         << "protocol v11 appends infinite_gold after cross_control";
+    EXPECT_EQ(1, decoded_state->settings.shared_teams)
+        << "protocol v12 appends shared_teams after infinite_gold";
     EXPECT_EQ(og::sim::start_denial_reason_value(
                   og::sim::StartDenialReason::MachinesNotReady),
               decoded_state->last_start_denial);
@@ -976,8 +980,8 @@ TEST(NetTransport, serialize_hello_emits_expected_wire_format)
 
     constexpr std::array<std::uint8_t, og::sim::kSerializedHelloMessageSize>
         expected = {
-            0x0b, 0x01, 0x17, 0x00,
-            0x0b, 0x0b, 0x03,
+            0x0c, 0x01, 0x17, 0x00,
+            0x0c, 0x0c, 0x03,
             0x00, 0x01, 0x02, 0x03,
             0x04, 0x05, 0x06, 0x07,
             0x08, 0x09, 0x0a, 0x0b,
@@ -2555,7 +2559,7 @@ TEST(NetTransport, lobby_state_and_messages_roundtrip)
         .player_index = 1u,
         .settings =
             {
-                .campaign_id = "org.openglad.gladiator",
+                .campaign_id = "gladiator",
                 .scenario_id = 8,
                 .difficulty = 1,
                 .allied_mode = 0,
@@ -2577,11 +2581,11 @@ TEST(NetTransport, lobby_state_and_messages_roundtrip)
 TEST(NetTransport,
      deserialize_lobby_messages_rejects_unknown_kinds_and_oversized_counts)
 {
-    // Wire layout of an empty LobbyState (protocol v9): 4-byte transport
-    // header, then the settings block (4-byte empty campaign string + 11 i16
-    // fields and the authored-team-mask u8 = 27 bytes), then the 1-byte host
+    // Wire layout of an empty LobbyState (protocol v12): 4-byte transport
+    // header, then the settings block (4-byte empty campaign string + 13 i16
+    // fields and the authored-team-mask u8 = 31 bytes), then the 1-byte host
     // player id, 1-byte last_start_denial echo, and u32 request correlation —
-    // so player-count sits at offset 37. A trailing u8 local-seat-id count
+    // so player-count sits at offset 41. A trailing u8 local-seat-id count
     // follows the players, then a u32 recipient-specific Join acknowledgement
     // and a bool recipient-host flag.
     const auto empty_state_bytes =
@@ -2589,7 +2593,7 @@ TEST(NetTransport,
     auto oversized_player_count =
         std::vector<std::uint8_t>(empty_state_bytes.begin(),
                                   empty_state_bytes.end());
-    write_u32_le(oversized_player_count, 37, 0xffffffffu);
+    write_u32_le(oversized_player_count, 41, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_lobby_state_message(oversized_player_count)
             .has_value());
@@ -2642,8 +2646,9 @@ TEST(NetTransport,
                                   player_state_bytes.end());
     // First player record (v9): index u8 + seat-id u32 + machine-id u32 +
     // empty-name u32 + empty-company u32 + team i16 + ready/host bools =
-    // 21 bytes after the count, putting its slot-count u32 at 62.
-    write_u32_le(oversized_slot_count, 62, 0xffffffffu);
+    // 21 bytes after the player-count u32 at 41 (v12 settings block), putting
+    // its slot-count u32 at 66.
+    write_u32_le(oversized_slot_count, 66, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_lobby_state_message(oversized_slot_count)
             .has_value());

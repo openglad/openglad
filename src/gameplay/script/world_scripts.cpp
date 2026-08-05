@@ -67,6 +67,7 @@ constexpr HookName kLivingHooks[] = {
     {"customize_weapon", FamilyHook::CustomizeWeapon},
     {"on_ani_complete", FamilyHook::OnAniComplete},
     {"on_melee_hit", FamilyHook::OnMeleeHit},
+    {"on_act_override", FamilyHook::OnActOverride},
 };
 
 constexpr HookName kWeaponHooks[] = {
@@ -1017,6 +1018,10 @@ constexpr LevelHookName kLevelHookNames[] = {
     {"on_tick", LevelHook::Tick},
     {"on_entity_death", LevelHook::EntityDeath},
     {"on_entity_spawn", LevelHook::EntitySpawn},
+    {"on_mode_init", LevelHook::ModeInit},
+    {"on_mode_tick", LevelHook::ModeTick},
+    {"on_damage", LevelHook::Damage},
+    {"on_respawn", LevelHook::Respawn},
 };
 
 // og.register_level_hooks(level_id, { on_load=, on_tick=, on_entity_death=,
@@ -1288,7 +1293,29 @@ void install_vm_scaffolding(ScriptHost::Impl& impl, VmState& st)
 // WorldScripts
 // ---------------------------------------------------------------------------
 
-WorldScripts::WorldScripts() : host_(std::make_unique<ScriptHost>())
+// Test-only budget override: a world VM built while this is positive uses it
+// as the per-entry instruction budget instead of ScriptLimits' 5M default.
+// The og_unit_modes headroom proof runs a full scripted-mode tick under a
+// 10x-reduced budget; set it BEFORE the world's first dispatch (the VM is
+// built lazily) and restore 0 afterwards. Nothing in production writes it
+// (unconditional rather than TESTING-gated because the unit binaries link
+// the production og_gameplay archive).
+std::int64_t g_test_world_instruction_budget = 0;
+
+namespace {
+
+ScriptLimits world_script_limits()
+{
+    ScriptLimits limits;
+    if (g_test_world_instruction_budget > 0)
+        limits.instructions_per_call = g_test_world_instruction_budget;
+    return limits;
+}
+
+}  // namespace
+
+WorldScripts::WorldScripts()
+    : host_(std::make_unique<ScriptHost>(world_script_limits()))
 {
     ScriptHost::Impl& impl = host_->impl();
     lua_State* L = impl.L;
@@ -1624,6 +1651,7 @@ const char* hook_where(FamilyHook hook)
         case FamilyHook::TreasureOnEat: return "hook:treasure.on_eat";
         case FamilyHook::GeneratorCustomizeSpawn:
             return "hook:generator.customize_spawn";
+        case FamilyHook::OnActOverride: return "hook:on_act_override";
         default: return "hook:?";
     }
 }
@@ -1780,6 +1808,17 @@ bool on_act_living(const FamilyDescriptor* fd, living* self)
         fd->on_act_living(self);
         return true;
     }
+    return false;
+}
+
+bool on_act_override(const FamilyDescriptor* fd, living* self)
+{
+    if (fd == nullptr)
+        return false;
+    if (auto r = try_script_hook(Order::Living, fd->family_id,
+                                 FamilyHook::OnActOverride, true,
+                                 static_cast<walker*>(self)))
+        return *r;
     return false;
 }
 
@@ -2016,6 +2055,26 @@ bool push_level_hook_fn(lua_State* L, VmState* st, LevelHook kind,
 
 }  // namespace
 
+std::uint32_t level_hook_kinds_for(int level_id)
+{
+    if (pack_scripts().empty())
+        return 0;
+    WorldScripts& ws = active_world_scripts();
+    lua_State* L = ws.host().impl().L;
+    VmState* st = get_vm_state(L);
+    if (st == nullptr)
+        return 0;
+    std::uint32_t kinds = 0;
+    for (const auto& h : kLevelHookNames) {
+        lua_rawgeti(L, LUA_REGISTRYINDEX, st->level_hooks_ref);
+        lua_rawgeti(L, -1, level_hook_key(h.kind, level_id));
+        if (lua_isfunction(L, -1))
+            kinds |= 1u << static_cast<unsigned>(h.kind);
+        lua_pop(L, 2);
+    }
+    return kinds;
+}
+
 void level_load(GameWorld* world)
 {
     VmState* st =
@@ -2059,6 +2118,22 @@ void level_entity_death(walker* self)
     ScriptHost::Impl& impl = ws.host().impl();
     lua_State* L = impl.L;
 
+    GameWorld* world =
+        (current_game != nullptr) ? current_game->world : nullptr;
+
+    // Kill attribution (D3): resolve the combat stamp into (killer,
+    // killer_team) for BOTH hook arms. The stamp must be fresh
+    // (kKillAttributionTicks); a stale or absent stamp is an environment
+    // death (nil, -1). The killer handle may be a corpse (mutual kills) —
+    // only a swept id resolves to nil; the stamped TEAM survives either way.
+    walker* killer = nullptr;
+    lua_Integer killer_team = -1;
+    if (world != nullptr && self->last_attacker_id() != 0 &&
+        world->tick_count_ - self->last_attacker_tick() <=
+            og::sim::kKillAttributionTicks) {
+        killer = world->find_by_id(self->last_attacker_id());
+        killer_team = static_cast<lua_Integer>(self->last_attacker_team());
+    }
     // Per-entity hook first (registered via og.set_entity_hooks); the entry
     // is consumed — a dead entity id never fires twice.
     if (st->has_entity_hooks && self->entity_id() != 0) {
@@ -2075,7 +2150,12 @@ void level_entity_death(walker* self)
                 lua_remove(L, -2);   // entity_hooks root
                 const std::uint64_t gen = push_dispatch_gen(L);
                 push_walker_handle(L, self, gen);
-                impl.protected_call("entity:on_death", 1, 0);
+                if (killer != nullptr)
+                    push_walker_handle(L, killer, gen);
+                else
+                    lua_pushnil(L);
+                lua_pushinteger(L, killer_team);
+                impl.protected_call("entity:on_death", 3, 0);
                 pop_dispatch_gen(L, gen);
             } else {
                 lua_pop(L, 3);
@@ -2089,15 +2169,18 @@ void level_entity_death(walker* self)
     if ((st->level_hook_kinds &
          (1u << static_cast<unsigned>(LevelHook::EntityDeath))) == 0)
         return;
-    GameWorld* world =
-        (current_game != nullptr) ? current_game->world : nullptr;
     if (world == nullptr)
         return;
     if (!push_level_hook_fn(L, st, LevelHook::EntityDeath, world->id))
         return;
     const std::uint64_t gen = push_dispatch_gen(L);
     push_walker_handle(L, self, gen);
-    impl.protected_call("level:on_entity_death", 1, 0);
+    if (killer != nullptr)
+        push_walker_handle(L, killer, gen);
+    else
+        lua_pushnil(L);
+    lua_pushinteger(L, killer_team);
+    impl.protected_call("level:on_entity_death", 3, 0);
     pop_dispatch_gen(L, gen);
 }
 
@@ -2120,6 +2203,105 @@ void level_entity_spawn(walker* spawned)
     push_walker_handle(impl.L, spawned, gen);
     impl.protected_call("level:on_entity_spawn", 1, 0);
     pop_dispatch_gen(impl.L, gen);
+}
+
+bool level_mode_init(GameWorld* world)
+{
+    VmState* st =
+        level_vm_state(1u << static_cast<unsigned>(LevelHook::ModeInit));
+    if (st == nullptr || world == nullptr)
+        return false;
+    ScriptHost::Impl& impl = st->owner->host().impl();
+    if (!push_level_hook_fn(impl.L, st, LevelHook::ModeInit, world->id))
+        return false;
+    const std::uint64_t gen = push_dispatch_gen(impl.L);
+    lua_pushinteger(impl.L, world->id);
+    // A failing init reports false so mode_run_tick leaves the mode
+    // inactive and the level falls to classic rules next tick (the CTF
+    // fewer-than-two-flag-teams shape). The error itself is recorded by
+    // protected_call (script host error store).
+    const bool ok = impl.protected_call("level:on_mode_init", 1, 0);
+    pop_dispatch_gen(impl.L, gen);
+    return ok;
+}
+
+void level_mode_tick(GameWorld* world)
+{
+    VmState* st =
+        level_vm_state(1u << static_cast<unsigned>(LevelHook::ModeTick));
+    if (st == nullptr || world == nullptr)
+        return;
+    ScriptHost::Impl& impl = st->owner->host().impl();
+    if (!push_level_hook_fn(impl.L, st, LevelHook::ModeTick, world->id))
+        return;
+    const std::uint64_t gen = push_dispatch_gen(impl.L);
+    lua_pushinteger(impl.L, world->id);
+    lua_pushinteger(impl.L,
+                    static_cast<lua_Integer>(world->level_tick_count()));
+    impl.protected_call("level:on_mode_tick", 2, 0);
+    pop_dispatch_gen(impl.L, gen);
+}
+
+void level_respawn(GameWorld* world, walker* revived)
+{
+    VmState* st =
+        level_vm_state(1u << static_cast<unsigned>(LevelHook::Respawn));
+    if (st == nullptr || world == nullptr || revived == nullptr)
+        return;
+    ScriptHost::Impl& impl = st->owner->host().impl();
+    if (!push_level_hook_fn(impl.L, st, LevelHook::Respawn, world->id))
+        return;
+    const std::uint64_t gen = push_dispatch_gen(impl.L);
+    push_walker_handle(impl.L, revived, gen);
+    impl.protected_call("level:on_respawn", 1, 0);
+    pop_dispatch_gen(impl.L, gen);
+}
+
+short level_damage_gate(walker* target, walker* attacker, short amount)
+{
+    VmState* st =
+        level_vm_state(1u << static_cast<unsigned>(LevelHook::Damage));
+    if (st == nullptr || target == nullptr)
+        return amount;
+    GameWorld* world =
+        (current_game != nullptr) ? current_game->world : nullptr;
+    if (world == nullptr)
+        return amount;
+    ScriptHost::Impl& impl = st->owner->host().impl();
+    lua_State* L = impl.L;
+    if (!push_level_hook_fn(L, st, LevelHook::Damage, world->id))
+        return amount;
+    const std::uint64_t gen = push_dispatch_gen(L);
+    push_walker_handle(L, target, gen);
+    if (attacker != nullptr)
+        push_walker_handle(L, attacker, gen);
+    else
+        lua_pushnil(L);
+    lua_pushinteger(L, static_cast<lua_Integer>(amount));
+    short result = amount;
+    // A hook ERROR keeps the authored amount (R9: the hook counts as absent
+    // for this dispatch; deterministic on every peer since only the
+    // authoritative world dispatches).
+    if (impl.protected_call("level:on_damage", 3, 1)) {
+        if (lua_isboolean(L, -1)) {
+            // false = cancel the hit outright; true = keep the amount.
+            if (!lua_toboolean(L, -1))
+                result = -1;
+        } else if (lua_isnumber(L, -1)) {
+            // Replacement amount, clamped to [0, 32767]; fractions truncate
+            // toward zero (deterministic on every peer).
+            lua_Number v = lua_tonumber(L, -1);
+            if (v < 0)
+                v = 0;
+            if (v > 32767)
+                v = 32767;
+            result = static_cast<short>(v);
+        }
+        // nil (or any other value) keeps the amount.
+        lua_pop(L, 1);
+    }
+    pop_dispatch_gen(L, gen);
+    return result;
 }
 
 }  // namespace hooks
