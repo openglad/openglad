@@ -14,7 +14,7 @@
   "keywords": [],
   "license": "GPL-2.0",
   "devDependencies": {
-    "@playwright/test": "^1.58.2",
+    "@playwright/test": "^1.62.1",
     "http-server": "^14.1.1"
   }
 }
