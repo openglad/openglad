@@ -1204,7 +1204,7 @@ std::vector<std::uint8_t> decompress_zlib_payload(const std::uint8_t* data,
             inflateEnd(&stream);
             throw std::runtime_error("snapshot decompression: payload exceeds maximum size");
         }
-        output.insert(output.end(), chunk.begin(), chunk.begin() + produced);
+        output.insert(output.end(), chunk.begin(), chunk.begin() + static_cast<decltype(chunk)::difference_type>(produced));
     } while (rc != Z_STREAM_END);
 
     inflateEnd(&stream);

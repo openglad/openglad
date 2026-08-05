@@ -69,6 +69,9 @@ void init_logging()
 }
 
 #ifdef __EMSCRIPTEN__
+// EM_ASM's $-placeholders are lexed as C++ identifiers; silence that here.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdollar-in-identifier-extension"
 void LogImpl(const char* msg)
 {
     EM_ASM({ console.log(UTF8ToString($0)); }, msg);
@@ -83,6 +86,7 @@ void LogErrorImpl(const char* msg)
 {
     EM_ASM({ console.error(UTF8ToString($0)); }, msg);
 }
+#pragma clang diagnostic pop
 #else
 void LogImpl(const char* msg)
 {

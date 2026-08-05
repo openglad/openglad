@@ -313,18 +313,20 @@ endfunction()
 function(configure_openglad_runtime_target target)
     target_link_libraries(${target} PRIVATE project_warnings project_sanitizers)
     if(EMSCRIPTEN)
-        # -Wno-experimental: em++ prints "sdl3 port is still experimental" once
-        # per translation unit and once per link, which is ~150 lines of noise
-        # the build cannot act on. The three -Wno- diagnostic flags this target
-        # used to carry now live in project_warnings, where they land after
-        # -Wall and therefore take effect.
+        # -Wno-experimental FIRST: em++ emits "sdl3 port is still experimental"
+        # while it resolves --use-port, so the suppression has to already be in
+        # effect by the time the driver reads that argument. Ordered after it,
+        # the notice still printed once per translation unit and once per link
+        # (~150 lines the build cannot act on). The three -Wno- diagnostic flags
+        # this target used to carry now live in project_warnings, where they
+        # land after -Wall and therefore take effect.
         target_compile_options(${target} PRIVATE
-            --use-port=sdl3
             -Wno-experimental
+            --use-port=sdl3
         )
         target_link_options(${target} PRIVATE
-            --use-port=sdl3
             -Wno-experimental
+            --use-port=sdl3
         )
     else()
         # Native builds link SDL/system deps via og_runtime_deps, typically pulled

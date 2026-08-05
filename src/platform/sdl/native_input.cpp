@@ -584,6 +584,11 @@ void start_text_input(const char* initial_value, int max_bytes,
     refresh_web_keyboard_state();
     // SDL3's emscripten backend has no screen-keyboard support, so the shell
     // provides a DOM text-entry overlay on touch devices. Signal it here.
+// EM_ASM is spelled with $-placeholders and JS '' literals; both are lexed as
+// C++ tokens here, so silence the lexer's complaints around this block only.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdollar-in-identifier-extension"
+#pragma clang diagnostic ignored "-Winvalid-pp-token"
     EM_ASM({
         window.dispatchEvent(new CustomEvent('openglad-text-input',
             { detail: {
@@ -595,6 +600,7 @@ void start_text_input(const char* initial_value, int max_bytes,
             } }));
     }, initial_value, std::max(0, max_bytes), prompt,
        multiline ? 1 : 0);
+#pragma clang diagnostic pop
 #endif
     if (SDL_Window* w = text_input_window())
         SDL_StartTextInput(w);

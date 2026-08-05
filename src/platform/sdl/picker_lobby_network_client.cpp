@@ -2138,7 +2138,7 @@ PendingLocalLobbyState build_pending_local_lobby_state(
     return merged;
 }
 
-std::string select_lan_ipv4_address(
+[[maybe_unused]] std::string select_lan_ipv4_address(
     const std::optional<std::string>& route_address,
     const std::optional<std::string>& hostname_address)
 {

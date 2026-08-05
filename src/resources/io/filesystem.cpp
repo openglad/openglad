@@ -88,7 +88,7 @@ std::vector<std::uint8_t> read_file(const char* path)
         const std::size_t got = file->read(chunk.data(), 1, chunk.size());
         if (got == 0)
             break;
-        bytes.insert(bytes.end(), chunk.begin(), chunk.begin() + got);
+        bytes.insert(bytes.end(), chunk.begin(), chunk.begin() + static_cast<decltype(chunk)::difference_type>(got));
         if (got < chunk.size())
         {
             break;

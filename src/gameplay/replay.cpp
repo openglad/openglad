@@ -667,7 +667,7 @@ std::vector<std::uint8_t> read_file_bytes(const std::filesystem::path& path,
         return {};
     }
 
-    const std::streamsize size = infile.tellg();
+    const std::streamsize size = static_cast<std::streamsize>(infile.tellg());
     if (size < 0)
     {
         set_error(out_error, ReplayIoError::MalformedData);

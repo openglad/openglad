@@ -280,9 +280,9 @@ private:
 	// Leaving fullscreen is asynchronous on some window systems, and SDL
 	// ignores SDL_SetWindowSize while the window is still fullscreen. Retain
 	// the requested logical restore until the completed LEAVE/RESIZED event.
-	int pending_windowed_w_ = 0;
-	int pending_windowed_h_ = 0;
-	SDL_DisplayID pending_windowed_display_ = 0;
+	[[maybe_unused]] int pending_windowed_w_ = 0;
+	[[maybe_unused]] int pending_windowed_h_ = 0;
+	[[maybe_unused]] SDL_DisplayID pending_windowed_display_ = 0;
 
     // Off-screen compositing scratch for the multi-floor vertical parallax
     // (floor_layer_begin/floor_layer_end). Lazily created at the render size,

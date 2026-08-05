@@ -52,9 +52,9 @@ static Uint32 colorMask = 0xF7DEF7DE;
 static Uint32 lowPixelMask = 0x08210821;
 static Uint32 qcolorMask = 0xE79CE79C;
 static Uint32 qlowpixelMask = 0x18631863;
-static Uint32 redblueMask = 0xF81F;
-static Uint32 greenMask = 0x7E0;
-static int PixelsPerMask = 2;
+[[maybe_unused]] static Uint32 redblueMask = 0xF81F;
+[[maybe_unused]] static Uint32 greenMask = 0x7E0;
+[[maybe_unused]] static int PixelsPerMask = 2;
 static int xsai_depth = 0;
 
 static std::array<unsigned char*, 4> src_line{};

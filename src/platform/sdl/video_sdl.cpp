@@ -75,8 +75,8 @@ static inline Uint32 rng(Uint32 max_exclusive) {
 // Defined with the pixel-format memo below; must run alongside SDL_Quit.
 static void reset_format_detail_cache();
 // Defined with the display-settings apply below; shared with the boot path.
-static SDL_DisplayID display_for_window();
-static bool apply_exclusive_mode(SDL_DisplayID display, int w, int h);
+[[maybe_unused]] static SDL_DisplayID display_for_window();
+[[maybe_unused]] static bool apply_exclusive_mode(SDL_DisplayID display, int w, int h);
 
 static constexpr int kMaxConfiguredDisplayDimension = 16384;
 
@@ -119,7 +119,7 @@ static void video_create_display(int windowed_base_w, int windowed_base_h)
 	// the configured fullscreen request through the tracked live-apply path.
 	// SDL3 exposes create-time pending flags through its getters; a Windowed
 	// baseline gives timeout handling a real confirmed state to preserve.
-	const og::ui::DisplayMode boot_display_mode =
+	[[maybe_unused]] const og::ui::DisplayMode boot_display_mode =
 	    og::ui::parse_display_mode(cfg.get_setting("graphics", "fullscreen"));
 
 	// graphics/render (the legacy whole-canvas present engine) is retired:
@@ -250,8 +250,8 @@ void restore_web_canvas_backing_size(int logical_w, int logical_h)
 
 	const bool session_size_changed =
 		og::runtime::current_session != nullptr &&
-		(og::runtime::current_session->window_w_ != logical_w ||
-		 og::runtime::current_session->window_h_ != logical_h);
+		(og::runtime::current_session->window_w_ != static_cast<float>(logical_w) ||
+		 og::runtime::current_session->window_h_ != static_cast<float>(logical_h));
 	if (session_size_changed)
 	{
 		og::runtime::current_session->window_w_ =
@@ -2899,7 +2899,7 @@ bool sdl_video::world_smoothing_supported() const
 // The display every display-settings decision should target: the one the
 // window actually sits on (the user may have dragged it to a secondary
 // monitor); primary only as the fallback headless drivers need.
-static SDL_DisplayID display_for_window()
+[[maybe_unused]] static SDL_DisplayID display_for_window()
 {
 	const SDL_DisplayID display = SDL_GetDisplayForWindow(E_Screen->window);
 	return display != 0 ? display : SDL_GetPrimaryDisplay();
@@ -2910,7 +2910,7 @@ static SDL_DisplayID display_for_window()
 // can make another output fall outside its bounds; the target CRTC may then
 // never be re-enabled. Preflight the topology because SDL reports success too
 // early for an application rollback to be reliable (SDL issue #9560).
-static bool current_topology_allows_exclusive_mode_switch()
+[[maybe_unused]] static bool current_topology_allows_exclusive_mode_switch()
 {
 	const char* driver = SDL_GetCurrentVideoDriver();
 	if (driver == nullptr || std::string_view(driver) != "x11")
@@ -2931,7 +2931,7 @@ static bool current_topology_allows_exclusive_mode_switch()
 // then release the list after SDL has accepted it. Equal physical sizes favor
 // the desktop's exact density/layout for the desktop request, otherwise a
 // density nearest 1.0 and a refresh nearest the desktop.
-static bool apply_exclusive_mode(SDL_DisplayID display, int w, int h)
+[[maybe_unused]] static bool apply_exclusive_mode(SDL_DisplayID display, int w, int h)
 {
 	const SDL_DisplayMode* desktop = SDL_GetDesktopDisplayMode(display);
 	const std::pair<int, int> desktop_pixels = desktop != nullptr
@@ -3096,7 +3096,7 @@ og::platform::DisplayStateSnapshot sdl_video::confirmed_snapshot_from_window(
 	        remembered_window_w_, remembered_window_h_};
 }
 
-static std::pair<int, int> update_runtime_window_metrics()
+[[maybe_unused]] static std::pair<int, int> update_runtime_window_metrics()
 {
 	int actual_w = 0;
 	int actual_h = 0;
@@ -3112,7 +3112,7 @@ static std::pair<int, int> update_runtime_window_metrics()
 }
 
 void sdl_video::reflect_display_settings_from_window(
-	DisplayStateConfirmation confirmation, std::uint64_t event_timestamp_ns)
+	[[maybe_unused]] DisplayStateConfirmation confirmation, [[maybe_unused]] std::uint64_t event_timestamp_ns)
 {
 #ifndef __EMSCRIPTEN__
 	if (!E_Screen || !E_Screen->window)
