@@ -421,3 +421,39 @@ TEST(CombatMath, round11_edge_branches)
     ASSERT_TRUE(base > 13.0f && base < 14.0f) << "null RNG fallback should use zero return with floor(sqrt(base))";
 }
 
+
+// The quintic rises without bound to the left, so a big enough level gap ran
+// it past SHRT_MAX. Classic returned that straight out of a `short` function
+// (undefined; in practice it wrapped negative), and walker::attack casts the
+// result to uint32_t before adding it -- so a wrapped -20425 landed as
+// +4294946871 exp on the character. It saturates now.
+TEST(CombatMath, xp_from_attack_saturates_instead_of_wrapping_negative)
+{
+    // A level-1 attacker against a level-21 target: the value that showed up
+    // as "45111.3 is outside the range of representable values" under UBSan.
+    const short xp = compute_xp_from_attack(-20, 20.0f);
+    EXPECT_GT(xp, 0) << "a huge reward must not come back negative";
+    EXPECT_EQ(32767, xp) << "it saturates at the short ceiling";
+}
+
+// The saturation must not touch the range the game actually plays in: the
+// polynomial was fitted over level_diff 0..9 and those all stay well under
+// the ceiling.
+TEST(CombatMath, xp_from_attack_is_unchanged_across_the_fitted_range)
+{
+    for (std::int32_t diff = 0; diff <= 9; ++diff)
+    {
+        const short xp = compute_xp_from_attack(diff, 20.0f);
+        EXPECT_GE(xp, 0) << "level_diff " << diff;
+        EXPECT_LT(xp, 32767) << "level_diff " << diff << " must not saturate";
+    }
+    // Monotonically decreasing across the fit, which is the property the
+    // curve exists to have; the absolute values are already pinned by
+    // xp_from_attack_same_level and xp_from_attack_higher_level_attacker.
+    for (std::int32_t diff = 1; diff <= 9; ++diff)
+    {
+        EXPECT_LE(compute_xp_from_attack(diff, 20.0f),
+                  compute_xp_from_attack(diff - 1, 20.0f))
+            << "level_diff " << diff << " must not pay more than " << diff - 1;
+    }
+}

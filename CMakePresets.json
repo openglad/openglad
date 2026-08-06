@@ -46,7 +46,7 @@
       "cacheVariables": {
         "OPENGLAD_WARNINGS_AS_ERRORS": "ON",
         "ENABLE_SANITIZERS": "ON",
-        "SANITIZERS": "address;undefined"
+        "SANITIZERS": "address;undefined;float-cast-overflow"
       }
     },
     {

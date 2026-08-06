@@ -136,6 +136,15 @@ short compute_xp_from_attack(std::int32_t level_diff, float damage)
     float result = 6.0f * damage * poly / 20.0f;
     if (result <= 0)
         return 0;
+    // The odd order is deliberate (see above), so a big enough level gap runs
+    // the fit off to several tens of thousands. Classic returned that straight
+    // out of a `short` function, which is undefined behavior past 32767 and in
+    // practice wrapped NEGATIVE -- and walker::attack casts this to uint32_t
+    // before adding it, so a wrapped -20425 became +4294946871 exp. Saturating
+    // keeps the intent ("killing far above your level is worth a lot") without
+    // the wrap. Reachable at a level gap around -20.
+    if (result > 32767.0f)
+        return 32767;
     return static_cast<short>(result);
 }
 
