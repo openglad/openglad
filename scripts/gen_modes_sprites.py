@@ -467,13 +467,19 @@ def make_bshadow_frames(size=12, frames=4):
 
     The impl picks the frame from the ball's height —
     clamp(div(z_px, shadow_band), 0, 3) — so frame 0 is the ball on the
-    deck and frame 3 is the apex of a shot. Sizes shrink monotonically;
-    the softer outer ring keeps a 12x12 blob from reading as a brick.
+    deck and frame 3 is the apex of a shot. Sizes shrink monotonically.
+    The shadow is a gameplay affordance, not decoration: it is where a
+    shot will land, so it must survive every floor it can fall on. The
+    court key is the 100+ gray cobble ramp and the 60/85 grays vanished
+    into it; a pure-black core (index 16, the soccer-pentagon black)
+    under a GRAY_SHADOW rim stays legible on cobble, hardwood and
+    carpet alike, and the apex frame keeps a 5x3 footprint so a
+    three-pointer's landing spot never disappears mid-flight.
     """
     out = []
     cx = cy = (size - 1) / 2.0
-    half_w = (5.0, 3.9, 3.1, 1.9)
-    half_h = (2.4, 1.45, 1.1, 0.9)
+    half_w = (5.5, 4.6, 3.6, 2.6)
+    half_h = (3.2, 2.6, 2.0, 1.5)
     for fi in range(frames):
         a, b = half_w[fi], half_h[fi]
         px = bytearray([TRANSPARENT] * (size * size))
@@ -484,7 +490,7 @@ def make_bshadow_frames(size=12, frames=4):
                 d = u * u + v * v
                 if d > 1.0:
                     continue
-                px[y * size + x] = GRAY_SHADOW if d <= 0.55 else GRAY_DARK
+                px[y * size + x] = BALL_PATCH if d <= 0.55 else GRAY_SHADOW
         out.append(bytes(px))
     return out
 
@@ -596,7 +602,8 @@ def main():
 
     bshadow_frames = make_bshadow_frames()
     for f in bshadow_frames:
-        check_band("bshadow.png", f, team_ok=False, neutral_ok=grays)
+        check_band("bshadow.png", f, team_ok=False,
+                   neutral_ok=grays | {BALL_PATCH})
     # The height read only works if the blob actually shrinks per frame.
     covered = [sum(1 for p in f if p != TRANSPARENT) for f in bshadow_frames]
     if any(a <= b for a, b in zip(covered, covered[1:])):
