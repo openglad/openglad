@@ -146,7 +146,7 @@ TEST(MapgenBuilders, paint_and_paint_rect_exact_bytes)
     ASSERT_EQ(g.w, 6);
     ASSERT_EQ(g.h, 4);
     for (int i = 0; i < 24; ++i)
-        ASSERT_EQ(g.data[i], kExpected[i]) << "byte " << i;
+        ASSERT_EQ(g.data[static_cast<std::size_t>(i)], kExpected[i]) << "byte " << i;
 }
 
 TEST(MapgenBuilders, paint_ring_exact_bytes)
@@ -168,7 +168,7 @@ TEST(MapgenBuilders, paint_ring_exact_bytes)
         G, G, G, G, G, G, G,
     };
     for (int i = 0; i < 49; ++i)
-        ASSERT_EQ(g.data[i], kExpected[i]) << "byte " << i;
+        ASSERT_EQ(g.data[static_cast<std::size_t>(i)], kExpected[i]) << "byte " << i;
 }
 
 TEST(MapgenBuilders, stair_pair_paints_aligned_up_down)
@@ -316,7 +316,7 @@ TEST(MapgenPlacement, scatters_keep_entity_and_stair_clearance)
     for (int ty = 0; ty < 14; ++ty)
         for (int tx = 0; tx < 20; ++tx)
         {
-            const unsigned char t = g.data[tx + ty * 20];
+            const unsigned char t = g.data[static_cast<std::size_t>(tx + ty * 20)];
             const bool jagged =
                 t >= PIX_JAGGED_GROUND_1 && t <= PIX_JAGGED_GROUND_4;
             if (jagged)
@@ -589,6 +589,49 @@ TEST(MapgenAudits, invalid_floor_grids_are_reported_or_safely_skipped)
         << "the optional stair audit must skip an invalid boundary";
     EXPECT_TRUE(audit_fall_lines(w, 4).empty())
         << "fall-line scanning must skip an invalid upper floor";
+}
+
+// --- Standability primitives: out-of-grid coordinates. ------------------------
+
+// cell_is_fall_landing must reject negative tiles the same way its sibling
+// cell_standable does. A negative tx still produces an IN-RANGE linear index
+// (tx + ty * w wraps onto the previous row), so an unguarded probe silently
+// answers for a cell on the wrong row instead of answering "off the grid";
+// a negative ty indexes before the allocation outright. Every caller today
+// filters negatives before probing (builders.cpp scatter_base_tiles /
+// scatter_boulders both `continue` on x < 0 || y < 0 first), so this is a
+// guard against the next caller, not a behavior change for the current ones.
+TEST(MapgenBuilders, fall_landing_rejects_out_of_grid_tiles)
+{
+    GameWorld w(31u);
+    init_world(w, 2, 10, 8);
+    // Floor 1: an air field with a single standable grass cell on the left
+    // edge at (0, 3). Any air cell 8-adjacent to it is a fall entry, so the
+    // floor-0 cell beneath is a fall landing.
+    paint_rect(w.grid_for_floor(1), 0, 0, 9, 7, PIX_AIR);
+    paint(w.grid_for_floor(1), 0, 3, PIX_GRASS1);
+
+    // Good input is unchanged: (1, 3) sits under an air cell whose neighbor
+    // (0, 3) is standable -> a landing; (5, 5) is under air with no standable
+    // neighbor -> not a landing.
+    EXPECT_TRUE(cell_is_fall_landing(w, 0, 1, 3));
+    EXPECT_FALSE(cell_is_fall_landing(w, 0, 5, 5));
+
+    // tx = -1 with ty = 3 computes index (-1 + 3 * 10) = 29, an in-range byte
+    // belonging to tile (9, 2) — air — and the 8-neighborhood of (-1, 3)
+    // includes the standable (0, 3). Unguarded, that answers TRUE for a tile
+    // that is not on the map at all.
+    EXPECT_FALSE(cell_is_fall_landing(w, 0, -1, 3))
+        << "negative tx must be rejected, not wrapped onto the previous row";
+    // ty < 0 indexes before the grid allocation (an out-of-bounds read the
+    // sanitizer build traps).
+    EXPECT_FALSE(cell_is_fall_landing(w, 0, 3, -1));
+    EXPECT_FALSE(cell_is_fall_landing(w, 0, -4, -7));
+
+    // The sibling primitive has always rejected these; the pair must agree.
+    EXPECT_FALSE(cell_standable(w, 1, -1, 3));
+    EXPECT_FALSE(cell_standable(w, 1, 3, -1));
+    EXPECT_TRUE(cell_standable(w, 1, 0, 3));
 }
 
 // --- Audits: fall lines + depth. ----------------------------------------------

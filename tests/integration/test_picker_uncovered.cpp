@@ -65,8 +65,8 @@ struct TeamSlotGuard
 {
 	int slot;
 	guy* saved;
-	TeamSlotGuard(int slot_) : slot(slot_), saved(og::runtime::current_session->myscreen_->save_data.team_list[slot_].release()) {}
-	~TeamSlotGuard() { og::runtime::current_session->myscreen_->save_data.team_list[slot].reset(saved); }
+	TeamSlotGuard(int slot_) : slot(slot_), saved(og::runtime::current_session->myscreen_->save_data.team_list[static_cast<std::size_t>(slot_)].release()) {}
+	~TeamSlotGuard() { og::runtime::current_session->myscreen_->save_data.team_list[static_cast<std::size_t>(slot)].reset(saved); }
 };
 
 struct SaveRosterGuard
@@ -81,14 +81,14 @@ struct SaveRosterGuard
     SaveRosterGuard()
     {
         for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot)
-            team[slot] = std::move(save.team_list[slot]);
+            team[static_cast<std::size_t>(slot)] = std::move(save.team_list[static_cast<std::size_t>(slot)]);
     }
 
     ~SaveRosterGuard()
     {
         picker_lobby_shutdown();
         for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot)
-            save.team_list[slot] = std::move(team[slot]);
+            save.team_list[static_cast<std::size_t>(slot)] = std::move(team[static_cast<std::size_t>(slot)]);
         save.team_size = team_size;
         save.numplayers = numplayers;
         save.my_team = my_team;
@@ -100,8 +100,8 @@ struct ButtonSlotGuard
 {
 	int slot;
 	vbutton* saved;
-	ButtonSlotGuard(int slot_) : slot(slot_), saved(og::runtime::current_session->allbuttons_[slot_]) {}
-	~ButtonSlotGuard() { og::runtime::current_session->allbuttons_[slot] = saved; }
+	ButtonSlotGuard(int slot_) : slot(slot_), saved(og::runtime::current_session->allbuttons_[static_cast<std::size_t>(slot_)]) {}
+	~ButtonSlotGuard() { og::runtime::current_session->allbuttons_[static_cast<std::size_t>(slot)] = saved; }
 };
 
 struct OwnedButtonReplacementGuard
@@ -110,15 +110,15 @@ struct OwnedButtonReplacementGuard
     vbutton* saved;
 
     OwnedButtonReplacementGuard(int slot_, const char* name)
-        : slot(slot_), saved(og::runtime::current_session->allbuttons_[slot_])
+        : slot(slot_), saved(og::runtime::current_session->allbuttons_[static_cast<std::size_t>(slot_)])
     {
-        og::runtime::current_session->allbuttons_[slot] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, name, KEYSTATE_UNKNOWN);
+        og::runtime::current_session->allbuttons_[static_cast<std::size_t>(slot)] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, name, KEYSTATE_UNKNOWN);
     }
 
     ~OwnedButtonReplacementGuard()
     {
-        delete og::runtime::current_session->allbuttons_[slot];
-        og::runtime::current_session->allbuttons_[slot] = saved;
+        delete og::runtime::current_session->allbuttons_[static_cast<std::size_t>(slot)];
+        og::runtime::current_session->allbuttons_[static_cast<std::size_t>(slot)] = saved;
     }
 };
 

@@ -1165,7 +1165,7 @@ TEST(LevelDataCoverage, level_data_round11_wrappers_draw_and_query_grid_entry_pa
     og::runtime::current_session->myscreen_->world().pixmaxy = GRID_SIZE * 2;
     og::runtime::current_session->myscreen_->world().grid.data = std::make_unique<unsigned char[]>(4);
     for (int i = 0; i < 4; i++)
-        og::runtime::current_session->myscreen_->world().grid.data[i] = PIX_GRASS1;
+        og::runtime::current_session->myscreen_->world().grid.data[static_cast<std::size_t>(i)] = PIX_GRASS1;
 
     living->setxy(0, 0);
     living->set_sizex(GRID_SIZE); // force xover/yover exact-grid-edge path
@@ -1482,8 +1482,8 @@ TEST(LevelDataCoverage, level_data_round17_grid_resize_campaign_wrappers_and_del
     const int resized_h = og::runtime::current_session->myscreen_->world().grid.h;
     og::runtime::current_session->myscreen_->world().resize_grid(resized_w + 1, resized_h + 1);
     const int tail_idx = og::runtime::current_session->myscreen_->world().grid.w * og::runtime::current_session->myscreen_->world().grid.h - 1;
-    ASSERT_TRUE(og::runtime::current_session->myscreen_->world().grid.data[tail_idx] >= PIX_GRASS1 &&
-                og::runtime::current_session->myscreen_->world().grid.data[tail_idx] <= PIX_GRASS4) << "resize should seed newly grown cells with grass variants";
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->world().grid.data[static_cast<std::size_t>(tail_idx)] >= PIX_GRASS1 &&
+                og::runtime::current_session->myscreen_->world().grid.data[static_cast<std::size_t>(tail_idx)] <= PIX_GRASS4) << "resize should seed newly grown cells with grass variants";
 
     // delete_objects hook + stale-obmap clearing.
     LevelDataHooks hooks;

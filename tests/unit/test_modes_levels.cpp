@@ -523,9 +523,11 @@ TEST_F(ModesLevels, no_exits_no_named_npcs_no_teleporters_on_mutant)
         EXPECT_EQ(0, c.save_protected)
             << "scen" << pin.id << ": no protected bits";
         if (std::string(pin.mode) == "mutant")
+        {
             EXPECT_EQ(0, c.teleporters)
                 << "scen" << pin.id
                 << ": a pad ride would break the beacon hunt";
+        }
     }
 }
 
@@ -545,7 +547,7 @@ TEST_F(ModesLevels, decor_planes_well_formed_and_pinned)
             for (int ty = 0; ty < dec.h; ++ty)
                 for (int tx = 0; tx < dec.w; ++tx)
                 {
-                    const unsigned char d = dec.data[tx + ty * dec.w];
+                    const unsigned char d = dec.data[static_cast<std::size_t>(tx + ty * dec.w)];
                     if (d == DECOR_NONE)
                         continue;
                     ++cells;
@@ -743,7 +745,7 @@ TEST_F(ModesLevels, soccer_goals_and_perimeters_match_the_manifest)
             for (int ty = g.y0; ty <= g.y1; ++ty)
                 for (int tx = g.x0; tx <= g.x1; ++tx)
                     EXPECT_EQ(PIX_CARPET_M,
-                              world.grid.data[tx + ty * world.grid.w])
+                              world.grid.data[static_cast<std::size_t>(tx + ty * world.grid.w)])
                         << "scen" << pin.id << " goal tile (" << tx << ", "
                         << ty << ")";
         }

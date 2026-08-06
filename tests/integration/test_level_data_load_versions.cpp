@@ -666,7 +666,7 @@ static void append_v6_object_record(std::vector<uint8_t>& out, uint8_t order, ui
 
     std::array<char, 12> nbuf{};
     for (int i = 0; i < 12 && name12 && name12[i] != '\0'; i++)
-        nbuf[i] = name12[i];
+        nbuf[static_cast<std::size_t>(i)] = name12[i];
     append_bytes(out, nbuf.data(), nbuf.size());
     for (int i = 0; i < 10; i++)
         append_u8(out, 0);

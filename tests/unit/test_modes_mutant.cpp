@@ -197,7 +197,7 @@ struct MutantRig
     }
     int score(int team) const
     {
-        return fx.world().mode.vars[kMutSlotScore + team];
+        return fx.world().mode.vars[static_cast<std::size_t>(kMutSlotScore + team)];
     }
 
     void slay(walker* attacker, walker* victim)
@@ -1111,8 +1111,8 @@ TEST_F(ModesMutant, match_replicates_to_a_client_mirror_without_hash_strikes)
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
     for (int slot = 0; slot < og::sim::kModeVarCount; ++slot)
     {
-        EXPECT_EQ(rig.fx.world().mode.vars[slot],
-                  mirror.world().mode.vars[slot])
+        EXPECT_EQ(rig.fx.world().mode.vars[static_cast<std::size_t>(slot)],
+                  mirror.world().mode.vars[static_cast<std::size_t>(slot)])
             << "mode var slot " << slot;
     }
 }

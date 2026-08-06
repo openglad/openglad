@@ -52,9 +52,9 @@ static Uint32 colorMask = 0xF7DEF7DE;
 static Uint32 lowPixelMask = 0x08210821;
 static Uint32 qcolorMask = 0xE79CE79C;
 static Uint32 qlowpixelMask = 0x18631863;
-static Uint32 redblueMask = 0xF81F;
-static Uint32 greenMask = 0x7E0;
-static int PixelsPerMask = 2;
+[[maybe_unused]] static Uint32 redblueMask = 0xF81F;
+[[maybe_unused]] static Uint32 greenMask = 0x7E0;
+[[maybe_unused]] static int PixelsPerMask = 2;
 static int xsai_depth = 0;
 
 static std::array<unsigned char*, 4> src_line{};
@@ -729,11 +729,11 @@ void Super2xSaI(SDL_Surface *src, SDL_Surface *dest, int s_x, int s_y, int d_x, 
 	
 	Super2xSaI_ex(
 			reinterpret_cast<unsigned char*>(src->pixels) + src->pitch*s_y + s_x*sbpp, 
-			src->pitch, 
-			nullptr, 
+			static_cast<Uint32>(src->pitch),
+			nullptr,
 			reinterpret_cast<unsigned char*>(dest->pixels) + dest->pitch*d_y +d_x*dbpp,
-			dest->pitch, 
-			w, h);
+			static_cast<Uint32>(dest->pitch),
+			static_cast<Uint32>(w), static_cast<Uint32>(h));
 	return;
 }
 
@@ -926,8 +926,8 @@ void Screen::set_active_canvas(CanvasTarget target)
 	{
 		const auto [x, y] = window_to_active_canvas(
 			pointer_window.first, pointer_window.second);
-		mouse_state.x = static_cast<int>(x);
-		mouse_state.y = static_cast<int>(y);
+		mouse_state.x = static_cast<float>(static_cast<int>(x));
+		mouse_state.y = static_cast<float>(static_cast<int>(y));
 	}
 }
 
@@ -1086,8 +1086,8 @@ bool Screen::set_world_canvas_size(int w, int h)
 	{
 		const auto [x, y] = window_to_active_canvas(
 			pointer_window.first, pointer_window.second);
-		mouse_state.x = static_cast<int>(x);
-		mouse_state.y = static_cast<int>(y);
+		mouse_state.x = static_cast<float>(static_cast<int>(x));
+		mouse_state.y = static_cast<float>(static_cast<int>(y));
 	}
 	if (previous_texture != ui_tex_)
 		SDL_DestroyTexture(previous_texture);

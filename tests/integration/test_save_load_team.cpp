@@ -38,7 +38,7 @@ static inline PickerState& pks() { return *og::runtime::current_session->picker_
 static void cleanup_picker_state()
 {
     for (int i = 0; i < 5; i++) {
-        pks().backdrops[i].reset();
+        pks().backdrops[static_cast<std::size_t>(i)].reset();
         pks().backpics[i].free();
     }
     clear_allbuttons();
@@ -331,11 +331,11 @@ TEST(SaveLoadTeam, merge_owned_guys_drops_dead_own_characters) {
     bool found_c = false;
     for (int i = 0; i < merged.team_size; ++i)
     {
-        ASSERT_TRUE(merged.team_list[i] != nullptr)
+        ASSERT_TRUE(merged.team_list[static_cast<std::size_t>(i)] != nullptr)
             << "roster must stay dense after dropping the dead character";
-        if (merged.team_list[i]->name == "DIES_B") found_dead = true;
-        if (merged.team_list[i]->name == "ALIVE_A") found_a = true;
-        if (merged.team_list[i]->name == "ALIVE_C") found_c = true;
+        if (merged.team_list[static_cast<std::size_t>(i)]->name == "DIES_B") found_dead = true;
+        if (merged.team_list[static_cast<std::size_t>(i)]->name == "ALIVE_A") found_a = true;
+        if (merged.team_list[static_cast<std::size_t>(i)]->name == "ALIVE_C") found_c = true;
     }
     EXPECT_FALSE(found_dead) << "death must stick — DIES_B must not survive the win";
     EXPECT_TRUE(found_a);

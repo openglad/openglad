@@ -114,8 +114,8 @@ void fill_floor_grid(GameWorld& world, int f, unsigned char tile)
 {
     const int gw = world.grid.w;
     const int gh = world.grid.h;
-    auto* buf = new unsigned char[static_cast<std::size_t>(gw) * gh];
-    std::fill(buf, buf + static_cast<std::size_t>(gw) * gh, tile);
+    auto* buf = new unsigned char[static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh)];
+    std::fill(buf, buf + static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh), tile);
     world.grid_for_floor(f) = PixieData(1, static_cast<unsigned char>(gw),
                                         static_cast<unsigned char>(gh), buf);
     world.smoother_for_floor(f).set_target(world.grid_for_floor(f));
@@ -124,7 +124,7 @@ void fill_floor_grid(GameWorld& world, int f, unsigned char tile)
 void set_tile(PixieData& grid, int gx, int gy, unsigned char t)
 {
     if (gx >= 0 && gy >= 0 && gx < grid.w && gy < grid.h)
-        grid.data[gx + grid.w * gy] = t;
+        grid.data[static_cast<std::size_t>(gx + grid.w * gy)] = t;
 }
 
 // Screen-space top-left corner of tile (gx, gy) — valid AFTER a redraw has

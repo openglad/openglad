@@ -46,7 +46,7 @@ extern std::atomic<int> g_test_game_epoch;
 static void cleanup_picker_state()
 {
     for (int i = 0; i < 5; i++) {
-        pks().backdrops[i].reset();
+        pks().backdrops[static_cast<std::size_t>(i)].reset();
         pks().backpics[i].free();
     }
     clear_allbuttons();
@@ -169,7 +169,7 @@ static int op_injector(void* data)
     state->num_hired = og::runtime::current_session->myscreen_->save_data.team_size;
     fprintf(stderr, "  [test] hired %d characters, cheating stats\n", state->num_hired);
     for (int i = 0; i < og::runtime::current_session->myscreen_->save_data.team_size; i++) {
-        guy* g = og::runtime::current_session->myscreen_->save_data.team_list[i].get();
+        guy* g = og::runtime::current_session->myscreen_->save_data.team_list[static_cast<std::size_t>(i)].get();
         if (g) {
             g->strength = 200;
             g->dexterity = 200;

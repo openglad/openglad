@@ -301,7 +301,7 @@ Sint32 smoother::query_genre_x_y(Sint32 x, Sint32 y)
 	Sint32 basetype = query_x_y(x, y);
 	if (basetype < 0 || basetype >= PIX_MAX)
 		return TYPE_UNKNOWN;
-	return PIX_to_genre[basetype];
+	return PIX_to_genre[static_cast<std::size_t>(basetype)];
 }
 
 Sint32 smoother::surrounds(Sint32 x, Sint32 y, Sint32 whatgenre)
@@ -453,14 +453,14 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			}
 			else if (around == TO_RIGHT) // left, alone
 			{
-				if ( (left==TYPE_GRASS) )
+				if (left==TYPE_GRASS)
 					newvalue = PIX_GRASS_DARK_UR;
 				else
 					newvalue = PIX_GRASS_DARK_B1;
 			}
 			else if (around == TO_UP) // bottom, alone
 			{
-				if ( (down==TYPE_GRASS) )
+				if (down==TYPE_GRASS)
 					newvalue = PIX_GRASS_DARK_UR;
 				else
 					newvalue = PIX_GRASS_DARK_B1;

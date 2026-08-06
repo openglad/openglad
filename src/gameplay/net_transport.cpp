@@ -176,9 +176,9 @@ public:
             return 0;
         }
 
-        const std::uint16_t value =
+        const std::uint16_t value = static_cast<std::uint16_t>(
             static_cast<std::uint16_t>(payload_[offset_]) |
-            (static_cast<std::uint16_t>(payload_[offset_ + 1]) << 8);
+            (static_cast<std::uint16_t>(payload_[offset_ + 1]) << 8));
         offset_ += 2;
         return static_cast<std::int16_t>(value);
     }

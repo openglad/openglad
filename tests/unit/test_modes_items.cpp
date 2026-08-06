@@ -43,7 +43,7 @@ inline constexpr int kTdmItemCursor = 17;
 inline constexpr int kTdmItemLast = 18;
 inline constexpr int kMutItemCursor = 20;
 inline constexpr int kMutItemLast = 21;
-inline constexpr int kCtfItemCursor = 62;
+[[maybe_unused]] inline constexpr int kCtfItemCursor = 62;
 inline constexpr int kCtfItemLast = 63;
 
 struct ItemCensus

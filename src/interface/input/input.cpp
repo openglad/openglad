@@ -444,8 +444,8 @@ void handle_mouse_event(const void* native_event)
             const auto [x, y] = window_to_active_canvas(
                 static_cast<float>(event.motion_x),
                 static_cast<float>(event.motion_y));
-            mouse_state.x = static_cast<int>(x);
-            mouse_state.y = static_cast<int>(y);
+            mouse_state.x = static_cast<float>(static_cast<int>(x));
+            mouse_state.y = static_cast<float>(static_cast<int>(y));
         }
         break;
     case og::input_native::EventType::MouseButtonUp:
@@ -470,8 +470,8 @@ void handle_mouse_event(const void* native_event)
             const auto [x, y] = window_to_active_canvas(
                 static_cast<float>(event.button_x),
                 static_cast<float>(event.button_y));
-            mouse_state.x = static_cast<int>(x);
-            mouse_state.y = static_cast<int>(y);
+            mouse_state.x = static_cast<float>(static_cast<int>(x));
+            mouse_state.y = static_cast<float>(static_cast<int>(y));
         }
         break;
     case og::input_native::EventType::MouseButtonDown:
@@ -500,8 +500,8 @@ void handle_mouse_event(const void* native_event)
             const auto [x, y] = window_to_active_canvas(
                 static_cast<float>(event.button_x),
                 static_cast<float>(event.button_y));
-            mouse_state.x = static_cast<int>(x);
-            mouse_state.y = static_cast<int>(y);
+            mouse_state.x = static_cast<float>(static_cast<int>(x));
+            mouse_state.y = static_cast<float>(static_cast<int>(y));
         }
         break;
 #else

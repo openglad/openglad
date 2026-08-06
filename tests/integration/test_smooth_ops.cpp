@@ -70,7 +70,7 @@ TEST(SmoothOps, smooth_query_genre_grass)
     pd.frames = 1;
     pd.data = std::make_unique<unsigned char[]>(16);
     for (int i = 0; i < 16; i++)
-        pd.data[i] = PIX_GRASS1;
+        pd.data[static_cast<std::size_t>(i)] = PIX_GRASS1;
 
     smoother s;
     s.set_target(pd);
@@ -88,7 +88,7 @@ TEST(SmoothOps, smooth_query_genre_water)
     pd.frames = 1;
     pd.data = std::make_unique<unsigned char[]>(16);
     for (int i = 0; i < 16; i++)
-        pd.data[i] = PIX_WATER1;
+        pd.data[static_cast<std::size_t>(i)] = PIX_WATER1;
 
     smoother s;
     s.set_target(pd);
@@ -106,7 +106,7 @@ TEST(SmoothOps, smooth_query_genre_wall)
     pd.frames = 1;
     pd.data = std::make_unique<unsigned char[]>(16);
     for (int i = 0; i < 16; i++)
-        pd.data[i] = PIX_H_WALL1;
+        pd.data[static_cast<std::size_t>(i)] = PIX_H_WALL1;
 
     smoother s;
     s.set_target(pd);
@@ -124,7 +124,7 @@ TEST(SmoothOps, smooth_query_genre_trees)
     pd.frames = 1;
     pd.data = std::make_unique<unsigned char[]>(16);
     for (int i = 0; i < 16; i++)
-        pd.data[i] = PIX_TREE_B1;
+        pd.data[static_cast<std::size_t>(i)] = PIX_TREE_B1;
 
     smoother s;
     s.set_target(pd);
@@ -142,7 +142,7 @@ TEST(SmoothOps, smooth_query_genre_dirt)
     pd.frames = 1;
     pd.data = std::make_unique<unsigned char[]>(16);
     for (int i = 0; i < 16; i++)
-        pd.data[i] = PIX_DIRT_1;
+        pd.data[static_cast<std::size_t>(i)] = PIX_DIRT_1;
 
     smoother s;
     s.set_target(pd);
@@ -160,7 +160,7 @@ TEST(SmoothOps, smooth_query_genre_carpet)
     pd.frames = 1;
     pd.data = std::make_unique<unsigned char[]>(16);
     for (int i = 0; i < 16; i++)
-        pd.data[i] = PIX_CARPET_M;
+        pd.data[static_cast<std::size_t>(i)] = PIX_CARPET_M;
 
     smoother s;
     s.set_target(pd);
@@ -178,7 +178,7 @@ TEST(SmoothOps, smooth_query_genre_cobble)
     pd.frames = 1;
     pd.data = std::make_unique<unsigned char[]>(16);
     for (int i = 0; i < 16; i++)
-        pd.data[i] = PIX_COBBLE_1;
+        pd.data[static_cast<std::size_t>(i)] = PIX_COBBLE_1;
 
     smoother s;
     s.set_target(pd);
@@ -196,7 +196,7 @@ TEST(SmoothOps, smooth_query_genre_dark_grass)
     pd.frames = 1;
     pd.data = std::make_unique<unsigned char[]>(16);
     for (int i = 0; i < 16; i++)
-        pd.data[i] = PIX_GRASS_DARK_1;
+        pd.data[static_cast<std::size_t>(i)] = PIX_GRASS_DARK_1;
 
     smoother s;
     s.set_target(pd);
@@ -214,7 +214,7 @@ TEST(SmoothOps, smooth_query_genre_light_grass)
     pd.frames = 1;
     pd.data = std::make_unique<unsigned char[]>(16);
     for (int i = 0; i < 16; i++)
-        pd.data[i] = PIX_GRASS_LIGHT_1;
+        pd.data[static_cast<std::size_t>(i)] = PIX_GRASS_LIGHT_1;
 
     smoother s;
     s.set_target(pd);
@@ -253,7 +253,7 @@ TEST(SmoothOps, smooth_smooth_single_grass)
     pd.frames = 1;
     pd.data = std::make_unique<unsigned char[]>(25);
     for (int i = 0; i < 25; i++)
-        pd.data[i] = PIX_GRASS1;
+        pd.data[static_cast<std::size_t>(i)] = PIX_GRASS1;
 
     smoother s;
     bind_zero_rng(s);
@@ -273,7 +273,7 @@ TEST(SmoothOps, smooth_smooth_water_surrounded)
     pd.data = std::make_unique<unsigned char[]>(25);
     // Fill with water
     for (int i = 0; i < 25; i++)
-        pd.data[i] = PIX_WATER1;
+        pd.data[static_cast<std::size_t>(i)] = PIX_WATER1;
 
     smoother s;
     bind_zero_rng(s);
@@ -291,7 +291,7 @@ TEST(SmoothOps, smooth_smooth_wall_surrounded)
     pd.frames = 1;
     pd.data = std::make_unique<unsigned char[]>(25);
     for (int i = 0; i < 25; i++)
-        pd.data[i] = PIX_H_WALL1;
+        pd.data[static_cast<std::size_t>(i)] = PIX_H_WALL1;
 
     smoother s;
     bind_zero_rng(s);
@@ -311,7 +311,7 @@ TEST(SmoothOps, smooth_smooth_grass_water_border)
     // Top half grass, bottom half water
     for (int j = 0; j < 5; j++)
         for (int i = 0; i < 5; i++)
-            pd.data[j*5+i] = (j < 3) ? PIX_GRASS1 : PIX_WATER1;
+            pd.data[static_cast<std::size_t>(j*5+i)] = (j < 3) ? PIX_GRASS1 : PIX_WATER1;
 
     smoother s;
     bind_zero_rng(s);
@@ -331,7 +331,7 @@ TEST(SmoothOps, smooth_smooth_tree_border)
     pd.data = std::make_unique<unsigned char[]>(25);
     // Grass with a tree in the middle
     for (int i = 0; i < 25; i++)
-        pd.data[i] = PIX_GRASS1;
+        pd.data[static_cast<std::size_t>(i)] = PIX_GRASS1;
     pd.data[12] = PIX_TREE_B1;
 
     smoother s;
@@ -351,7 +351,7 @@ TEST(SmoothOps, smooth_smooth_dirt_border)
     // Left half dirt, right half grass
     for (int j = 0; j < 5; j++)
         for (int i = 0; i < 5; i++)
-            pd.data[j*5+i] = (i < 3) ? PIX_DIRT_1 : PIX_GRASS1;
+            pd.data[static_cast<std::size_t>(j*5+i)] = (i < 3) ? PIX_DIRT_1 : PIX_GRASS1;
 
     smoother s;
     bind_zero_rng(s);
@@ -370,13 +370,13 @@ TEST(SmoothOps, smooth_smooth_carpet_border)
     pd.data = std::make_unique<unsigned char[]>(25);
     // All carpet except edges
     for (int i = 0; i < 25; i++)
-        pd.data[i] = PIX_CARPET_M;
+        pd.data[static_cast<std::size_t>(i)] = PIX_CARPET_M;
     // Grass border
     for (int i = 0; i < 5; i++) {
-        pd.data[i] = PIX_GRASS1;
-        pd.data[20+i] = PIX_GRASS1;
-        pd.data[i*5] = PIX_GRASS1;
-        pd.data[i*5+4] = PIX_GRASS1;
+        pd.data[static_cast<std::size_t>(i)] = PIX_GRASS1;
+        pd.data[static_cast<std::size_t>(20+i)] = PIX_GRASS1;
+        pd.data[static_cast<std::size_t>(i*5)] = PIX_GRASS1;
+        pd.data[static_cast<std::size_t>(i*5+4)] = PIX_GRASS1;
     }
 
     smoother s;
@@ -396,7 +396,7 @@ TEST(SmoothOps, smooth_smooth_cobble_border)
     pd.frames = 1;
     pd.data = std::make_unique<unsigned char[]>(25);
     for (int i = 0; i < 25; i++)
-        pd.data[i] = PIX_COBBLE_1;
+        pd.data[static_cast<std::size_t>(i)] = PIX_COBBLE_1;
     pd.data[0] = PIX_GRASS1;
 
     smoother s;
@@ -417,7 +417,7 @@ TEST(SmoothOps, smooth_smooth_dark_grass_border)
     pd.data = std::make_unique<unsigned char[]>(25);
     for (int j = 0; j < 5; j++)
         for (int i = 0; i < 5; i++)
-            pd.data[j*5+i] = (j < 3) ? PIX_GRASS_DARK_1 : PIX_GRASS1;
+            pd.data[static_cast<std::size_t>(j*5+i)] = (j < 3) ? PIX_GRASS_DARK_1 : PIX_GRASS1;
 
     smoother s;
     bind_zero_rng(s);
@@ -436,7 +436,7 @@ TEST(SmoothOps, smooth_smooth_light_grass_border)
     pd.data = std::make_unique<unsigned char[]>(25);
     for (int j = 0; j < 5; j++)
         for (int i = 0; i < 5; i++)
-            pd.data[j*5+i] = (j < 3) ? PIX_GRASS_LIGHT_1 : PIX_GRASS1;
+            pd.data[static_cast<std::size_t>(j*5+i)] = (j < 3) ? PIX_GRASS_LIGHT_1 : PIX_GRASS1;
 
     smoother s;
     bind_zero_rng(s);
@@ -454,7 +454,7 @@ TEST(SmoothOps, smooth_smooth_all_edges)
     pd.frames = 1;
     pd.data = std::make_unique<unsigned char[]>(25);
     for (int i = 0; i < 25; i++)
-        pd.data[i] = PIX_GRASS1;
+        pd.data[static_cast<std::size_t>(i)] = PIX_GRASS1;
 
     smoother s;
     bind_zero_rng(s);
@@ -478,7 +478,7 @@ TEST(SmoothOps, smooth_smooth_mixed_terrain)
     unsigned char types[] = { PIX_GRASS1, PIX_WATER1, PIX_DIRT_1, PIX_H_WALL1 };
     for (int j = 0; j < 7; j++)
         for (int i = 0; i < 7; i++)
-            pd.data[j*7+i] = types[(i+j)%4];
+            pd.data[static_cast<std::size_t>(j*7+i)] = types[(i+j)%4];
 
     smoother s;
     bind_zero_rng(s);
@@ -661,15 +661,15 @@ static PixieData make_uniform_grid(int w, int h, unsigned char fill)
     pd.w = static_cast<unsigned char>(w);
     pd.h = static_cast<unsigned char>(h);
     pd.frames = 1;
-    pd.data = std::make_unique<unsigned char[]>(w * h);
+    pd.data = std::make_unique<unsigned char[]>(static_cast<std::size_t>(w * h));
     for (int i = 0; i < w * h; ++i)
-        pd.data[i] = fill;
+        pd.data[static_cast<std::size_t>(i)] = fill;
     return pd;
 }
 
 static void set_tile(PixieData& pd, int x, int y, unsigned char v)
 {
-    pd.data[y * pd.w + x] = v;
+    pd.data[static_cast<std::size_t>(y * pd.w + x)] = v;
 }
 
 static PixieData make_center_pattern(unsigned char fill, unsigned char center,

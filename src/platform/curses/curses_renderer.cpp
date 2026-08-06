@@ -206,7 +206,7 @@ void CursesRenderer::draw_viewport(ITerminal& term, const GameWorld& world,
                 if (genre == TYPE_ZSTAIRS && cam_grid.valid() &&
                     tx >= 0 && ty >= 0 && tx < grid_w && ty < grid_h) {
                     const unsigned char pix =
-                        cam_grid.data[tx + grid_w * ty];
+                        cam_grid.data[static_cast<std::size_t>(tx + grid_w * ty)];
                     g = zstair_glyph(pix == PIX_ZSTAIR_UP);
                 } else {
                     g = tile_glyph(genre);
@@ -214,7 +214,7 @@ void CursesRenderer::draw_viewport(ITerminal& term, const GameWorld& world,
                 // Decor override (in-bounds here: `outside` is false and
                 // have_decor implies have_bounds via the dims match).
                 if (have_decor) {
-                    const unsigned char d = cam_decor.data[tx + grid_w * ty];
+                    const unsigned char d = cam_decor.data[static_cast<std::size_t>(tx + grid_w * ty)];
                     if (d != DECOR_NONE) {
                         if (const auto dg = decor_glyph(d))
                             g = *dg;

@@ -90,7 +90,7 @@ void SaveData::reset()
 
 	for(int i = 0; i < team_size; i++)
     {
-        team_list[i].reset();
+        team_list[static_cast<std::size_t>(i)].reset();
     }
 	team_size = 0;
 
@@ -237,7 +237,7 @@ bool SaveData::load(const std::string& filename)
 
 	for(int i = 0; i < team_size; i++)
     {
-        team_list[i].reset();
+        team_list[static_cast<std::size_t>(i)].reset();
     }
     team_size = 0;
 
@@ -371,7 +371,7 @@ bool SaveData::load(const std::string& filename)
         {
             auto temp_guy = std::make_unique<guy>();
             temp_guy_ptr = temp_guy.get();
-            team_list[i] = std::move(temp_guy);
+            team_list[static_cast<std::size_t>(i)] = std::move(temp_guy);
             team_size++;
         }
 
@@ -669,9 +669,9 @@ void SaveData::update_guys(const std::list<std::unique_ptr<walker>>& oblist)
     int held_back_count = 0;
     for (int i = 0; i < team_size; i++)
     {
-        if (team_list[i] != nullptr && !team_list[i]->deployed)
+        if (team_list[static_cast<std::size_t>(i)] != nullptr && !team_list[static_cast<std::size_t>(i)]->deployed)
         {
-            held_back[held_back_count] = std::move(team_list[i]);
+            held_back[static_cast<std::size_t>(held_back_count)] = std::move(team_list[static_cast<std::size_t>(i)]);
             held_back_count++;
         }
     }
@@ -679,7 +679,7 @@ void SaveData::update_guys(const std::list<std::unique_ptr<walker>>& oblist)
     // Delete our old guys
 	for(int i = 0; i < team_size; i++)
     {
-        team_list[i].reset();
+        team_list[static_cast<std::size_t>(i)].reset();
     }
     team_size = 0;
 
@@ -713,7 +713,7 @@ void SaveData::update_guys(const std::list<std::unique_ptr<walker>>& oblist)
     // are in use — UI must not hold positional slot indices across a win.
     for (int i = 0; i < held_back_count; i++)
     {
-        team_list[team_size] = std::move(held_back[i]);
+        team_list[team_size] = std::move(held_back[static_cast<std::size_t>(i)]);
         team_size++;
     }
 }
@@ -1016,7 +1016,7 @@ bool SaveData::save(const std::string& filename)
 	// Okay, we've written header .. now dump the data ..
 	for(int team_idx = 0; team_idx < team_size; team_idx++)
 	{
-	    guy* temp_guy = team_list[team_idx].get();
+	    guy* temp_guy = team_list[static_cast<std::size_t>(team_idx)].get();
 
         // Get temp values to be saved
         temp_order = static_cast<unsigned char>(Order::Living);

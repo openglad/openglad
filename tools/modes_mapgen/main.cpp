@@ -143,7 +143,7 @@ void write_icon(const std::string& path)
     std::memset(icon.data.get(), 0, kSize * kSize);
     auto put = [&icon](int x, int y, unsigned char c) {
         if (x >= 0 && x < kSize && y >= 0 && y < kSize)
-            icon.data[y * kSize + x] = c;
+            icon.data[static_cast<std::size_t>(y * kSize + x)] = c;
     };
 
     // Shield border: 2px, dark outer ring, mid inner ring.
@@ -323,7 +323,7 @@ void self_check_level(const ExpectedLevel& row)
         for (int ty = 0; ty < dec.h; ++ty)
             for (int tx = 0; tx < dec.w; ++tx)
             {
-                const unsigned char d = dec.data[tx + ty * dec.w];
+                const unsigned char d = dec.data[static_cast<std::size_t>(tx + ty * dec.w)];
                 if (d == DECOR_NONE)
                     continue;
                 ++decor_cells;
@@ -331,7 +331,7 @@ void self_check_level(const ExpectedLevel& row)
                     fail(std::format("{}: decor id {} out of range at "
                                      "({}, {})", where, d, tx, ty));
                 const unsigned char base =
-                    world.grid.data[tx + ty * world.grid.w];
+                    world.grid.data[static_cast<std::size_t>(tx + ty * world.grid.w)];
                 if (base == PIX_AIR || base == PIX_ZSTAIR_UP ||
                     base == PIX_ZSTAIR_DOWN || base == PIX_VOID1)
                     fail(std::format("{}: decor {} over air/stair/void at "
@@ -458,10 +458,10 @@ void self_check_level(const ExpectedLevel& row)
             fail(std::format("{}: team {} has {} markers, expected {}",
                              where, team, markers_per_team[team], expect));
         if (team < row.team_count &&
-            !lead_clearance(world, probe.get(), lead[team]))
+            !lead_clearance(world, probe.get(), lead[static_cast<std::size_t>(team)]))
             fail(std::format("{}: team {} lead marker ({}, {}) lacks 2x2 "
-                             "clearance", where, team, lead[team].tx,
-                             lead[team].ty));
+                             "clearance", where, team, lead[static_cast<std::size_t>(team)].tx,
+                             lead[static_cast<std::size_t>(team)].ty));
     }
     int total_flags = 0;
     for (int team = 0; team < 8; ++team)
@@ -503,10 +503,10 @@ void self_check_level(const ExpectedLevel& row)
         fail(std::format("{}: {} livings exceed the 120 authoring cap",
                          where, livings));
     for (int team = 0; team < 8; ++team)
-        if (gens_per_team[team] != row.generators_per_team[team])
+        if (gens_per_team[team] != row.generators_per_team[static_cast<std::size_t>(team)])
             fail(std::format("{}: team {} has {} generators, expected {}",
                              where, team, gens_per_team[team],
-                             row.generators_per_team[team]));
+                             row.generators_per_team[static_cast<std::size_t>(team)]));
     if (named != 0)
         fail(std::format("{}: {} named NPCs survived", where, named));
     if (save_protected != 0)
@@ -609,7 +609,7 @@ void self_check_level(const ExpectedLevel& row)
         for (const GoalRect& g : row.goal_rects)
             for (int ty = g.y0; ty <= g.y1; ++ty)
                 for (int tx = g.x0; tx <= g.x1; ++tx)
-                    if (world.grid.data[tx + ty * world.grid.w] !=
+                    if (world.grid.data[static_cast<std::size_t>(tx + ty * world.grid.w)] !=
                         PIX_CARPET_M)
                         fail(std::format("{}: goal tile ({}, {}) is not the "
                                          "goal carpet", where, tx, ty));
@@ -705,7 +705,7 @@ void self_check_level(const ExpectedLevel& row)
     if (row.kickoff.tx >= 0)
         add_target(row.kickoff);
     for (int team = 1; team < row.team_count; ++team)
-        add_target(lead[team]);
+        add_target(lead[static_cast<std::size_t>(team)]);
     // Every item pad must be A*-reachable from the team-0 lead: an
     // unreachable pad would bank a permanent census deficit that
     // lib/mode_items can never fill (deduplicated — vendored scatter may

@@ -176,8 +176,8 @@ TEST(WinFold, second_pass_reports_zero_applied_delta)
     apply_win_fold(save, fx.world(), ctx);
     for (int t = 0; t < 4; ++t)
     {
-        EXPECT_EQ(0u, ctx.applied_cash_delta[t]) << "team " << t;
-        EXPECT_EQ(0u, ctx.applied_score_delta[t]) << "team " << t;
+        EXPECT_EQ(0u, ctx.applied_cash_delta[static_cast<std::size_t>(t)]) << "team " << t;
+        EXPECT_EQ(0u, ctx.applied_score_delta[static_cast<std::size_t>(t)]) << "team " << t;
     }
 }
 

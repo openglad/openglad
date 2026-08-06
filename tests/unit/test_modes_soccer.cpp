@@ -410,7 +410,7 @@ TEST_F(ModesSoccer, empty_active_teams_get_bot_squads)
 
 TEST_F(ModesSoccer, init_stamps_the_generator_hp_denominator)
 {
-    // Same shared normalization the other generator modes get: the pitch's
+    // Same engine guarantee the other generator modes rely on: the pitch's
     // ally generators reach the renderer with a denominator, so a damaged one
     // draws a partial bar instead of being skipped at max_hp == 0.
     SoccerWorld fx;
@@ -419,14 +419,14 @@ TEST_F(ModesSoccer, init_stamps_the_generator_hp_denominator)
     ASSERT_NE(nullptr, tower->stats());
     const float authored = tower->stats()->hitpoints();
     ASSERT_GT(authored, 0.0f);
-    ASSERT_EQ(0.0f, tower->stats()->max_hitpoints())
-        << "the precondition: this family reaches the mode with max_hp 0";
+    ASSERT_EQ(authored, tower->stats()->max_hitpoints())
+        << "the engine stamps the denominator at set_difficulty";
 
     fx.tick(1);
     ASSERT_TRUE(fx.soccer_active());
     ASSERT_FALSE(tower->dead()) << "an active team's generator is kept";
     EXPECT_EQ(authored, tower->stats()->max_hitpoints())
-        << "on_mode_init normalizes max_hp to the authored hp";
+        << "and mode init leaves it alone";
 
     tower->stats()->set_hitpoints(authored / 2.0f);
     EXPECT_EQ(authored, tower->stats()->max_hitpoints())
@@ -602,7 +602,7 @@ TEST_F(ModesSoccer, wall_bounce_reflects_the_blocked_axis)
     fx.thaw_kickoff();
     // Wall column at tile x=21 (px 336..351), rows around y=464.
     for (int gy = 27; gy <= 31; ++gy)
-        fx.world().grid.data[21 + fx.world().grid.w * gy] = PIX_H_WALL1;
+        fx.world().grid.data[static_cast<std::size_t>(21 + fx.world().grid.w * gy)] = PIX_H_WALL1;
     // Ball center 330 moving +4 px/tick: the moved footprint (328..339)
     // overlaps the wall, so vx reflects, then one friction step:
     // vx = -(1024 * 960 / 1024) = -960.
@@ -1898,7 +1898,7 @@ TEST_F(ModesSoccer, match_replicates_to_a_client_mirror_without_hash_strikes)
     // snapshot; a stale mode block is the other way this desyncs.
     for (int slot = 0; slot < og::sim::kModeVarCount; ++slot)
     {
-        EXPECT_EQ(fx.world().mode.vars[slot], mirror.world().mode.vars[slot])
+        EXPECT_EQ(fx.world().mode.vars[static_cast<std::size_t>(slot)], mirror.world().mode.vars[static_cast<std::size_t>(slot)])
             << "mode var slot " << slot;
     }
     EXPECT_EQ(ball->entity_id(),

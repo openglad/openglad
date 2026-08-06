@@ -120,9 +120,9 @@ TEST(DecorArt, composites_reproduce_the_legacy_combined_tiles)
         int worst_delta = 0;
         for (int i = 0; i < kTilePixels; i++)
         {
-            const int d = decor.data[i];
-            const int composed = (d != 0) ? d : base.data[i];
-            const int want = legacy.data[i];
+            const int d = decor.data[static_cast<std::size_t>(i)];
+            const int composed = (d != 0) ? d : base.data[static_cast<std::size_t>(i)];
+            const int want = legacy.data[static_cast<std::size_t>(i)];
             if (composed == want)
                 continue;
             residual++;
@@ -170,7 +170,7 @@ TEST(DecorArt, palette_budgets_pin_transparency_and_cycled_band_rules)
             recolor = 0;
         for (int i = 0; i < kTilePixels; i++)
         {
-            const int v = p.data[i];
+            const int v = p.data[static_cast<std::size_t>(i)];
             if (v == 0)
             {
                 transparent++;

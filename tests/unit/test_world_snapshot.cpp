@@ -1302,7 +1302,7 @@ TEST(WorldSnapshot, explosion_death_emits_damage_tile_event)
     const short tile_x = static_cast<short>(damage_x / GRID_SIZE);
     const short tile_y = static_cast<short>(damage_y / GRID_SIZE);
     const std::size_t tile_index =
-        static_cast<std::size_t>(tile_y) * world.grid.w + tile_x;
+        static_cast<std::size_t>(tile_y) * world.grid.w + static_cast<std::size_t>(tile_x);
     world.grid.data[tile_index] = PIX_GRASS1;
 
     (void)explosion->death();
@@ -1347,7 +1347,7 @@ TEST(WorldSnapshot, grid_dirty_overflow_falls_back_to_full_grid_send)
         for (short x = 0; x < world.grid.w && damaged <= static_cast<int>(og::sim::MAX_GRID_DIRTY_TILES); ++x)
         {
             const std::size_t tile_index =
-                static_cast<std::size_t>(y) * world.grid.w + x;
+                static_cast<std::size_t>(y) * world.grid.w + static_cast<std::size_t>(x);
             world.grid.data[tile_index] = PIX_GRASS1;
             world.damage_tile(static_cast<short>(x * GRID_SIZE),
                               static_cast<short>(y * GRID_SIZE));
@@ -2062,7 +2062,7 @@ TEST(WorldSnapshot, snow_weather_kind_survives_the_wire_and_pins_the_clamp)
     // Blizzard country: enough snow tiles to trip the after-roll override,
     // whatever the base roll was.
     for (int i = 0; i < og::kSnowWeatherTileThreshold; ++i)
-        source.grid.data[i] = static_cast<unsigned char>(PIX_SNOW1);
+        source.grid.data[static_cast<std::size_t>(i)] = static_cast<unsigned char>(PIX_SNOW1);
     source.id = 7;
     source.roll_weather();
     og::set_weather_roll_sequence(saved_seq);

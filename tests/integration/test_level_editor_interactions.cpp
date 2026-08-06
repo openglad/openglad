@@ -15,6 +15,8 @@ static inline LevelEditorState& eds() { return *og::runtime::current_session->ed
 
 // From level_editor.cpp
 Sint32 level_editor();
+// From level_editor.cpp (TESTING): object-brush team-range regression seam.
+int level_editor_test_object_brush_team_range();
 
 // From picker_dialogs.cpp (TESTING): queue answers for yes_or_no_prompt().
 void picker_testing_yes_or_no_queue_clear();
@@ -746,4 +748,15 @@ TEST(LevelEditorInteractions, level_editor_delay_button_authors_spawn_delay)
         << "Select-mode Delay should author the walker's spawn_delay and leave it awake";
     ASSERT_TRUE(trace_contains("editor", "spawn_delay set=0 order=0 dormant=0"))
         << "0 should clear the delay again";
+}
+
+// The object brush's team is picked straight off a walker, whose team_num() is
+// an unsigned byte. While the brush stored it in a `char`, a team above 127
+// arrived negative and the team buttons — which compare against 0 and MAX_TEAM
+// — cycled it further out of the authorable range instead of wrapping inside
+// it. Legal teams (0..MAX_TEAM) must be completely unaffected.
+TEST(LevelEditorInteractions, object_brush_team_stays_in_the_authorable_range)
+{
+    ASSERT_EQ(0, level_editor_test_object_brush_team_range())
+        << "object-brush team range failed at the negated check index";
 }

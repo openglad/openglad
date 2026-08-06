@@ -554,6 +554,102 @@ int level_editor_test_mouse_release_workflows()
     return failed_check == 0 ? 0 : -failed_check;
 }
 
+// Regression: EditorObjectBrush::team must stay a team the editor can author
+// for every walker the picker can land on. walker::team_num() is an *unsigned*
+// byte, so while the brush member was a `char` any team above 127 arrived
+// negative, and the team buttons ("< TEAM" / "TEAM >") compare it against 0 and
+// MAX_TEAM with signed comparisons: from a negative team the "next" button
+// walked further out of range instead of wrapping inside it, and the placed
+// object was then stamped with whatever byte that wrapped back to.
+int level_editor_test_object_brush_team_range()
+{
+    int check_index = 0;
+    int failed_check = 0;
+    const auto check = [&check_index, &failed_check](bool condition) {
+        ++check_index;
+        if (!condition && failed_check == 0)
+        {
+            failed_check = check_index;
+            Log("level-editor brush-team check {} failed\n", check_index);
+        }
+    };
+
+    LevelEditorTestingStateGuard editor_state_guard;
+    LevelEditorTestingMountGuard mount_guard;
+    check(mount_guard.switch_to("gladiator"));
+
+    LevelEditorData data;
+    check(data.level != nullptr);
+    if (data.level != nullptr)
+    {
+        data.level->delete_objects();
+        data.level->create_new_grid();
+        eds().current_floor = 0;
+        data.mode = Mode::Object;
+        data.reset_mode_buttons();
+
+        walker* target = data.level->add_ob(Order::Living, FAMILY_SOLDIER);
+        check(target != nullptr);
+        if (target != nullptr)
+        {
+            // Every authorable team round-trips through a pick untouched:
+            // this is the behaviour the fix must not disturb.
+            for (int team = 0; team <= MAX_TEAM; ++team)
+            {
+                target->set_team_num(static_cast<unsigned char>(team));
+                data.object_brush.set(target);
+                check(data.object_brush.team == team);
+            }
+
+            // Picking a team byte above MAX_TEAM (the scenario loader clamps
+            // those to team 0 on load, so nothing the editor saves can produce
+            // one) must still leave the brush on an authorable team.
+            for (const int raw_team : {128, 200, 255})
+            {
+                target->set_team_num(static_cast<unsigned char>(raw_team));
+                data.object_brush.set(target);
+                check(data.object_brush.team >= 0);
+                check(data.object_brush.team <= MAX_TEAM);
+
+                // ... and the team buttons keep cycling inside the range.
+                data.activate_mode_button(&data.nextTeamButton);
+                check(data.object_brush.team >= 0 &&
+                      data.object_brush.team <= MAX_TEAM);
+                data.activate_mode_button(&data.prevTeamButton);
+                check(data.object_brush.team >= 0 &&
+                      data.object_brush.team <= MAX_TEAM);
+
+                // The byte a placement would stamp (set_team_num takes the
+                // brush team through an unsigned char) is a team the level
+                // format keeps instead of sanitizing away.
+                check(static_cast<int>(static_cast<unsigned char>(
+                          data.object_brush.team)) <= MAX_TEAM);
+            }
+
+            // A full wrap in both directions stays inside the range.
+            data.object_brush.team = 0;
+            for (int i = 0; i <= MAX_TEAM + 1; ++i)
+            {
+                data.activate_mode_button(&data.prevTeamButton);
+                check(data.object_brush.team >= 0 &&
+                      data.object_brush.team <= MAX_TEAM);
+            }
+            for (int i = 0; i <= MAX_TEAM + 1; ++i)
+            {
+                data.activate_mode_button(&data.nextTeamButton);
+                check(data.object_brush.team >= 0 &&
+                      data.object_brush.team <= MAX_TEAM);
+            }
+
+            data.level->remove_ob(target);
+        }
+        data.level->delete_objects();
+    }
+
+    check(mount_guard.restore());
+    return failed_check == 0 ? 0 : -failed_check;
+}
+
 int level_editor_test_exercise_internal_helpers()
 {
     int check_index = 0;

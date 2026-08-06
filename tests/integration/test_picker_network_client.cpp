@@ -164,7 +164,7 @@ struct PickerSaveStateGuard
         , infinite_gold(save.infinite_gold)
     {
         for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-            team_list[i] = std::move(save.team_list[i]);
+            team_list[i] = std::move(save.team_list[static_cast<std::size_t>(i)]);
     }
 
     ~PickerSaveStateGuard()
@@ -182,7 +182,7 @@ struct PickerSaveStateGuard
         save.cross_control = cross_control;
         save.infinite_gold = infinite_gold;
         for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-            save.team_list[i] = std::move(team_list[i]);
+            save.team_list[static_cast<std::size_t>(i)] = std::move(team_list[i]);
     }
 };
 
@@ -362,7 +362,7 @@ void prepare_single_member_network_save(SaveData& save,
     save.allied_mode = static_cast<short>(0);
     save.my_team = team;
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i].reset();
+        save.team_list[static_cast<std::size_t>(i)].reset();
 
     auto member = std::make_unique<guy>(FAMILY_SOLDIER);
     member->name = name ? std::string(name) : std::string("Network Tester");
@@ -4289,9 +4289,9 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
         ASSERT_EQ(3u, state.slots.size())
             << "join view: one own row + the host's two replicated rows";
         ASSERT_TRUE(state.slots[0].owned);
-        ASSERT_TRUE(join_save.team_list[state.slots[0].save_slot] != nullptr);
+        ASSERT_TRUE(join_save.team_list[static_cast<std::size_t>(state.slots[0].save_slot)] != nullptr);
         EXPECT_EQ("Joiner",
-                  join_save.team_list[state.slots[0].save_slot]->name);
+                  join_save.team_list[static_cast<std::size_t>(state.slots[0].save_slot)]->name);
         ASSERT_FALSE(state.slots[1].owned);
         ASSERT_FALSE(state.slots[2].owned);
         EXPECT_EQ("IRON KETTLE BAND", state.slots[1].company);
@@ -4330,8 +4330,8 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
         for (std::size_t i = 0; i < state.slots.size(); ++i)
         {
             const og::ui::BaseCampDisplaySlot& slot = state.slots[i];
-            if (slot.owned && host_save.team_list[slot.save_slot] != nullptr &&
-                host_save.team_list[slot.save_slot]->name == "Bravo")
+            if (slot.owned && host_save.team_list[static_cast<std::size_t>(slot.save_slot)] != nullptr &&
+                host_save.team_list[static_cast<std::size_t>(slot.save_slot)]->name == "Bravo")
             {
                 bravo_row = static_cast<int>(i);
             }
@@ -5029,12 +5029,12 @@ TEST(PickerNetworkClient, overflow_join_reconciles_echoed_bench_flags_and_preser
     // joiner is zero.
     for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot)
     {
-        if (host_save.team_list[slot] == nullptr)
+        if (host_save.team_list[static_cast<std::size_t>(slot)] == nullptr)
         {
             auto member = std::make_unique<guy>(FAMILY_SOLDIER);
             member->name = std::format("Host{}", slot);
             member->teamnum = 0;
-            host_save.team_list[slot] = std::move(member);
+            host_save.team_list[static_cast<std::size_t>(slot)] = std::move(member);
         }
     }
     host_save.team_size = static_cast<unsigned char>(MAX_TEAM_SIZE);

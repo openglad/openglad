@@ -46,7 +46,7 @@ struct KeyStateGuard
     void pulse(int scancode, int down_ms = 30)
     {
         fake[static_cast<std::size_t>(scancode)] = true;
-        SDL_Delay(down_ms);
+        SDL_Delay(static_cast<Uint32>(down_ms));
         fake[static_cast<std::size_t>(scancode)] = false;
         SDL_Delay(5);
     }

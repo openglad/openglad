@@ -12,7 +12,7 @@ TEST(VideoBuffers, video_putdata_putdata_alpha_and_get_pixel_smoke)
     // 4x4 image with non-zero palette indices.
     std::array<unsigned char, 16> img{};
     for (int i = 0; i < 16; i++)
-        img[i] = static_cast<unsigned char>(10 + i);
+        img[static_cast<std::size_t>(i)] = static_cast<unsigned char>(10 + i);
 
     og::runtime::current_session->myscreen_->putdata(0, 0, 4, 4, img);
     og::runtime::current_session->myscreen_->putdata_alpha(10, 0, 4, 4, img, 128);

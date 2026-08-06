@@ -925,7 +925,7 @@ TEST(VideoEffectsPrims, floor_layer_end_guards_and_canvas_routing_are_transactio
     EXPECT_FALSE(s->floor_layer_redirect_active_for_testing());
 
     const std::size_t bytes =
-        static_cast<std::size_t>(real_render->pitch) * real_render->h;
+        static_cast<std::size_t>(real_render->pitch) * static_cast<std::size_t>(real_render->h);
     const std::vector<Uint8> before(
         static_cast<const Uint8*>(real_render->pixels),
         static_cast<const Uint8*>(real_render->pixels) + bytes);

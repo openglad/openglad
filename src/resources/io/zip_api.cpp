@@ -211,7 +211,7 @@ ArchiveIoError unzip_into_with_error(const std::string& infile, const std::strin
     zip_uint64_t total_uncompressed = 0;
     for (zip_int64_t i = 0; i < num_entries; i++)
     {
-        if (zip_stat_index(archive, i, 0, &st) != 0 || st.name == nullptr)
+        if (zip_stat_index(archive, static_cast<zip_uint64_t>(i), 0, &st) != 0 || st.name == nullptr)
         {
             result = ArchiveIoError::OpenEntryFailed;
             continue;
@@ -249,7 +249,7 @@ ArchiveIoError unzip_into_with_error(const std::string& infile, const std::strin
 
         fs::create_directories(dest.parent_path(), ec);
 
-        zip_file_t* zf = zip_fopen_index(archive, i, 0);
+        zip_file_t* zf = zip_fopen_index(archive, static_cast<zip_uint64_t>(i), 0);
         if (zf == nullptr)
         {
             result = ArchiveIoError::OpenEntryFailed;

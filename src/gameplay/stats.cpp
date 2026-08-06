@@ -938,9 +938,9 @@ bool statistics::right_walk()
 				ydelta = 0;
 			if (std::fabs(ydelta) > std::fabs(3 * xdelta))
 				xdelta = 0;
-			if (xdelta)
+			if (xdelta != 0.0f)
 				xdelta /= std::fabs(xdelta);
-			if (ydelta)
+			if (ydelta != 0.0f)
 				ydelta /= std::fabs(ydelta);
 			//              return controller_->walk();
 			return controller_->walkstep(xdelta, ydelta);
@@ -1085,9 +1085,9 @@ bool statistics::direct_walk()
 		return 1;
 	}
 
-	if (xdelta)
+	if (xdelta != 0.0f)
 		xdelta = xdelta / std::fabs(xdelta);
-	if (ydelta)
+	if (ydelta != 0.0f)
 		ydelta = ydelta / std::fabs(ydelta);
 
 	xdeltastep = xdelta*controller_->stepsize();
@@ -1110,7 +1110,7 @@ bool statistics::direct_walk()
 			}
 			else //y ok
 			{
-				if (!ydelta)
+				if (ydelta == 0.0f)
 				{
 					return 0;
 				}
@@ -1121,7 +1121,7 @@ bool statistics::direct_walk()
 		} //end if(xd,0)
 		else //x ok
 		{
-			if (!xdelta)
+			if (xdelta == 0.0f)
 			{
 				return 0;
 			}
@@ -1133,7 +1133,7 @@ bool statistics::direct_walk()
 	}
 	else //x and y ok
 	{
-		if (!xdelta && !ydelta)
+		if (xdelta == 0.0f && ydelta == 0.0f)
 		{
 			return 0;
 		}
@@ -1176,7 +1176,7 @@ bool statistics::path_toward_stair(int foe_floor)
 	for (int y = 0; y < g.h; ++y)
 		for (int x = 0; x < g.w; ++x)
 		{
-			if (g.data[x + y * g.w] != want)
+			if (g.data[static_cast<std::size_t>(x + y * g.w)] != want)
 				continue;
 			const long d = std::abs(x - mygx) + std::abs(y - mygy);
 			if (best_x < 0 || d < best_d)
@@ -1415,9 +1415,9 @@ bool statistics::direct_walk_to_point(short x, short y)
 	if (std::fabs(ydelta) > std::fabs(3 * xdelta))
 		xdelta = 0;
 
-	if (xdelta)
+	if (xdelta != 0.0f)
 		xdelta = xdelta / std::fabs(xdelta);
-	if (ydelta)
+	if (ydelta != 0.0f)
 		ydelta = ydelta / std::fabs(ydelta);
 
 	xdeltastep = xdelta * controller_->stepsize();
@@ -1434,7 +1434,7 @@ bool statistics::direct_walk_to_point(short x, short y)
 			}
 			else // y ok
 			{
-				if (!ydelta)
+				if (ydelta == 0.0f)
 					return 0;
 				controller_->walkstep(0.0f, ydelta);
 				return 1;
@@ -1442,7 +1442,7 @@ bool statistics::direct_walk_to_point(short x, short y)
 		}
 		else // x ok
 		{
-			if (!xdelta)
+			if (xdelta == 0.0f)
 				return 0;
 			controller_->walkstep(xdelta, 0.0f);
 			return 1;
@@ -1450,7 +1450,7 @@ bool statistics::direct_walk_to_point(short x, short y)
 	}
 	else // x and y ok
 	{
-		if (!xdelta && !ydelta)
+		if (xdelta == 0.0f && ydelta == 0.0f)
 			return 0;
 		controller_->walkstep(xdelta, ydelta);
 		return 1;
@@ -1475,9 +1475,9 @@ bool statistics::right_walk_to_point(short x, short y)
 				ydelta = 0;
 			if (std::fabs(ydelta) > std::fabs(3 * xdelta))
 				xdelta = 0;
-			if (xdelta)
+			if (xdelta != 0.0f)
 				xdelta /= std::fabs(xdelta);
-			if (ydelta)
+			if (ydelta != 0.0f)
 				ydelta /= std::fabs(ydelta);
 			return controller_->walkstep(xdelta, ydelta);
 		}

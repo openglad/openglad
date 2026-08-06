@@ -179,7 +179,7 @@ TEST(GloaderFuncs, gloader_set_walker)
     const Order orders[] = {Order::Living, Order::Weapon, Order::Treasure, Order::FX, Order::Generator, Order::Special};
     for (Order o : orders) {
         for (int fam = 0; fam < NUM_FAMILIES; fam++) {
-            if (!l->graphics[PIX(o, fam)].valid()) {
+            if (!l->graphics[static_cast<std::size_t>(PIX(o, fam))].valid()) {
                 continue;
             }
             walker* changed = l->set_walker(wp, o, static_cast<char>(fam));
@@ -516,38 +516,6 @@ TEST(GloaderFuncs, gore_sync_is_a_no_op_when_the_setting_is_unchanged)
 // ---------------------------------------------------------------------------
 
 namespace {
-
-struct PixieSnapshot {
-    unsigned char frames = 0;
-    unsigned char w = 0;
-    unsigned char h = 0;
-    std::vector<unsigned char> pixels;
-};
-
-PixieSnapshot snapshot_pixie(const PixieData* pix)
-{
-    PixieSnapshot snap;
-    if (pix == nullptr || !pix->valid())
-        return snap;
-    snap.frames = pix->frames;
-    snap.w = pix->w;
-    snap.h = pix->h;
-    const std::size_t len =
-        static_cast<std::size_t>(pix->frames) * pix->w * pix->h;
-    snap.pixels.assign(pix->data.get(), pix->data.get() + len);
-    return snap;
-}
-
-bool operator==(const PixieSnapshot& lhs, const PixieSnapshot& rhs)
-{
-    return lhs.frames == rhs.frames && lhs.w == rhs.w && lhs.h == rhs.h &&
-        lhs.pixels == rhs.pixels;
-}
-
-bool operator!=(const PixieSnapshot& lhs, const PixieSnapshot& rhs)
-{
-    return !(lhs == rhs);
-}
 
 void write_file_bytes(const std::filesystem::path& path,
                       const std::vector<std::uint8_t>& bytes)

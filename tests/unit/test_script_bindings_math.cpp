@@ -198,6 +198,106 @@ TEST_F(ScriptBindingMathTest, rand0_requires_an_active_world)
 }
 
 // ---------------------------------------------------------------------------
+// og.rand / og.rand0 / og.cosmetic_rand — the upper bound
+// ---------------------------------------------------------------------------
+
+// A Lua integer is 64-bit; IRandom::next takes a std::uint32_t. Anything
+// above INT32_MAX therefore cannot reach the generator intact: it used to
+// arrive as n mod 2^32 — a different distribution than the one the script
+// asked for — and exactly 2^32 arrived as next(0), which answers 0 without
+// advancing the stream. Both are silent desyncs in a deterministic sim, so
+// the bindings refuse the bound instead of drawing from a bound nobody
+// asked for.
+TEST_F(ScriptBindingMathTest, rand_bounds_above_int32_max_are_refused)
+{
+    TestGameWorld tw;
+    walker* self = tw.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, self);
+
+    tw.world().rng_.state_ = 0xBADB0Du;
+
+    // 2^31: the first bound that no longer survives the trip to next().
+    expect_errored_with(run_do_special("    og.rand(2147483648)", self),
+                        "og.rand: n out of range");
+    expect_errored_with(run_do_special("    og.rand0(2147483648)", self),
+                        "og.rand0: n out of range");
+    expect_errored_with(
+        run_do_special("    og.cosmetic_rand(2147483648)", self),
+        "og.cosmetic_rand: n out of range");
+
+    // 2^32: the worst shape, because it used to look like a well-formed
+    // answer. It truncates to next(0), which returns 0 — a script asking
+    // for a 4-billion-wide roll got a constant.
+    expect_errored_with(run_do_special("    og.rand(4294967296)", self),
+                        "og.rand: n out of range");
+    expect_errored_with(run_do_special("    og.rand0(4294967296)", self),
+                        "og.rand0: n out of range");
+    expect_errored_with(
+        run_do_special("    og.cosmetic_rand(4294967296)", self),
+        "og.cosmetic_rand: n out of range");
+
+    // 2^32 + 5 used to be a five-sided die.
+    expect_errored_with(run_do_special("    og.rand(4294967301)", self),
+                        "og.rand: n out of range");
+    expect_errored_with(run_do_special("    og.rand0(4294967301)", self),
+                        "og.rand0: n out of range");
+
+    expect_errored_with(run_do_special("    og.rand(math.maxinteger)", self),
+                        "og.rand: n out of range");
+    expect_errored_with(run_do_special("    og.rand0(math.maxinteger)", self),
+                        "og.rand0: n out of range");
+
+    // A refused bound draws nothing: the generator must sit exactly where
+    // the test left it, so a rejected call cannot desync the stream either.
+    EXPECT_EQ(0xBADB0Du, tw.world().rng_.state_)
+        << "a refused bound must not advance the generator";
+}
+
+// The whole point of the guard is that it is invisible to every bound a
+// script actually uses. INT32_MAX is the widest accepted value — the last
+// one where lua_Integer → std::uint32_t is exact — and it must draw exactly
+// what the world's own SimRandom draws, as must an ordinary small bound.
+// Expected values come from the same generator the binding calls, so this
+// pins the draw, not a transcription of it.
+TEST_F(ScriptBindingMathTest, rand_bounds_up_to_int32_max_draw_unchanged)
+{
+    TestGameWorld tw;
+    walker* self = tw.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, self);
+
+    constexpr std::uint32_t kSeed = 0x5EED1234u;
+    constexpr std::uint32_t kMaxBound = 2147483647u;  // INT32_MAX
+
+    og::sim::SimRandom probe(kSeed);
+    const std::uint32_t normal = probe.next(1000u);
+    const std::uint32_t widest_rand = probe.next(kMaxBound);
+    const std::uint32_t widest_rand0 = probe.next(kMaxBound);
+
+    tw.world().rng_.state_ = kSeed;
+    expect_ran_clean(run_do_special(
+        "    local a = og.rand(1000)\n"
+        "    if a ~= " + std::to_string(normal) +
+            " then\n"
+            "      error('rand(1000): got ' .. tostring(a))\n"
+            "    end\n"
+            "    local b = og.rand(2147483647)\n"
+            "    if b ~= " +
+            std::to_string(widest_rand) +
+            " then\n"
+            "      error('rand(INT32_MAX): got ' .. tostring(b))\n"
+            "    end\n"
+            "    local c = og.rand0(2147483647)\n"
+            "    if c ~= " +
+            std::to_string(widest_rand0) +
+            " then\n"
+            "      error('rand0(INT32_MAX): got ' .. tostring(c))\n"
+            "    end",
+        self));
+    EXPECT_EQ(probe.state_, tw.world().rng_.state_)
+        << "three accepted draws, three LCG steps — the guard adds none";
+}
+
+// ---------------------------------------------------------------------------
 // og.max / og.min / og.clamp / og.sign
 // ---------------------------------------------------------------------------
 

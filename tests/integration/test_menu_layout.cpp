@@ -1018,7 +1018,7 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_keyboard_reachable)
     // Snapshot + rebuild the roster per shape.
     std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> saved_team;
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        saved_team[i] = std::move(save.team_list[i]);
+        saved_team[static_cast<std::size_t>(i)] = std::move(save.team_list[static_cast<std::size_t>(i)]);
     const unsigned char old_team_size = save.team_size;
 
     const og::ui::MenuScreenSpec* spec_ptr =
@@ -1033,11 +1033,11 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_keyboard_reachable)
     for (const int roster_size : {0, 5, 12, 15, 24})
     {
         for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-            save.team_list[i].reset();
+            save.team_list[static_cast<std::size_t>(i)].reset();
         for (int i = 0; i < roster_size; ++i)
         {
-            save.team_list[i] = std::make_unique<guy>(FAMILY_SOLDIER);
-            save.team_list[i]->name = std::format("G{}", i);
+            save.team_list[static_cast<std::size_t>(i)] = std::make_unique<guy>(FAMILY_SOLDIER);
+            save.team_list[static_cast<std::size_t>(i)]->name = std::format("G{}", i);
         }
         save.team_size = static_cast<unsigned char>(roster_size);
 
@@ -1141,7 +1141,7 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_keyboard_reachable)
     }
 
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i] = std::move(saved_team[i]);
+        save.team_list[static_cast<std::size_t>(i)] = std::move(saved_team[static_cast<std::size_t>(i)]);
     save.team_size = old_team_size;
     (void)picker_createmenu_buttons();
 }
@@ -1160,7 +1160,7 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_networked_ownership)
 
     std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> saved_team;
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        saved_team[i] = std::move(save.team_list[i]);
+        saved_team[static_cast<std::size_t>(i)] = std::move(save.team_list[static_cast<std::size_t>(i)]);
     const unsigned char old_team_size = save.team_size;
     const std::string old_save_name = save.save_name;
     save.save_name = "LAYOUT OWN BAND";
@@ -1222,11 +1222,11 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_networked_ownership)
     for (const auto& [own_size, foreign_size] : shapes)
     {
         for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-            save.team_list[i].reset();
+            save.team_list[static_cast<std::size_t>(i)].reset();
         for (int i = 0; i < own_size; ++i)
         {
-            save.team_list[i] = std::make_unique<guy>(FAMILY_SOLDIER);
-            save.team_list[i]->name = std::format("OWN{}", i);
+            save.team_list[static_cast<std::size_t>(i)] = std::make_unique<guy>(FAMILY_SOLDIER);
+            save.team_list[static_cast<std::size_t>(i)]->name = std::format("OWN{}", i);
         }
         save.team_size = static_cast<unsigned char>(own_size);
 
@@ -1367,7 +1367,7 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_networked_ownership)
 
     og::ui::install_active_picker_lobby_client(saved_client);
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i] = std::move(saved_team[i]);
+        save.team_list[static_cast<std::size_t>(i)] = std::move(saved_team[static_cast<std::size_t>(i)]);
     save.team_size = old_team_size;
     save.save_name = old_save_name;
     (void)picker_createmenu_buttons();
@@ -1592,7 +1592,7 @@ void apply_teams_menu_hidden_flags(button* buttons, const TeamsMenuWiring& w)
     buttons[kTeamsMenuReadyIndex].hidden = true;
     buttons[kTeamsMenuCrossControlIndex].hidden = !w.cross_control;
     for (int t = 0; t < 4; ++t)
-        buttons[kTeamsMenuPageFirstIndex + t].hidden = !w.pager_visible[t];
+        buttons[kTeamsMenuPageFirstIndex + t].hidden = !w.pager_visible[static_cast<std::size_t>(t)];
 }
 
 // Every nav link must land on a VISIBLE button (nav does not skip hidden

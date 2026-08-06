@@ -214,7 +214,7 @@ void inject_mouse_click(int x, int y, int delay_ms = 50)
     event.button.y = static_cast<float>(sy);
     SDL_PushEvent(&event);
 
-    SDL_Delay(delay_ms);
+    SDL_Delay(static_cast<Uint32>(delay_ms));
 
     std::memset(&event, 0, sizeof(event));
     event.type = SDL_EVENT_MOUSE_BUTTON_UP;
@@ -654,8 +654,8 @@ TEST(PickerFuncs, how_many_empty_team)
     const unsigned char orig_size = og::runtime::current_session->myscreen_->save_data.team_size;
     guy* orig_list[MAX_TEAM_SIZE];
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        orig_list[i] = og::runtime::current_session->myscreen_->save_data.team_list[i].release();
-        og::runtime::current_session->myscreen_->save_data.team_list[i].reset(nullptr);
+        orig_list[i] = og::runtime::current_session->myscreen_->save_data.team_list[static_cast<std::size_t>(i)].release();
+        og::runtime::current_session->myscreen_->save_data.team_list[static_cast<std::size_t>(i)].reset(nullptr);
     }
 
     Sint32 count = how_many(FAMILY_SOLDIER);
@@ -663,7 +663,7 @@ TEST(PickerFuncs, how_many_empty_team)
 
     // Restore
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        og::runtime::current_session->myscreen_->save_data.team_list[i].reset(orig_list[i]);
+        og::runtime::current_session->myscreen_->save_data.team_list[static_cast<std::size_t>(i)].reset(orig_list[i]);
     }
     og::runtime::current_session->myscreen_->save_data.team_size = orig_size;
 }
@@ -675,8 +675,8 @@ TEST(PickerFuncs, how_many_with_team)
     const unsigned char orig_size = og::runtime::current_session->myscreen_->save_data.team_size;
     guy* orig_list[MAX_TEAM_SIZE];
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        orig_list[i] = og::runtime::current_session->myscreen_->save_data.team_list[i].release();
-        og::runtime::current_session->myscreen_->save_data.team_list[i].reset(nullptr);
+        orig_list[i] = og::runtime::current_session->myscreen_->save_data.team_list[static_cast<std::size_t>(i)].release();
+        og::runtime::current_session->myscreen_->save_data.team_list[static_cast<std::size_t>(i)].reset(nullptr);
     }
 
     // Add some guys
@@ -694,7 +694,7 @@ TEST(PickerFuncs, how_many_with_team)
 
     // Cleanup
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        og::runtime::current_session->myscreen_->save_data.team_list[i].reset(orig_list[i]);
+        og::runtime::current_session->myscreen_->save_data.team_list[static_cast<std::size_t>(i)].reset(orig_list[i]);
     }
     og::runtime::current_session->myscreen_->save_data.team_size = orig_size;
 
@@ -763,8 +763,8 @@ TEST(PickerFuncs, how_many_with_team)
     const unsigned char saved_team_size = og::runtime::current_session->myscreen_->save_data.team_size;
     guy* saved_team_list[MAX_TEAM_SIZE];
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        saved_team_list[i] = og::runtime::current_session->myscreen_->save_data.team_list[i].release();
-        og::runtime::current_session->myscreen_->save_data.team_list[i].reset(nullptr);
+        saved_team_list[i] = og::runtime::current_session->myscreen_->save_data.team_list[static_cast<std::size_t>(i)].release();
+        og::runtime::current_session->myscreen_->save_data.team_list[static_cast<std::size_t>(i)].reset(nullptr);
     }
     og::runtime::current_session->myscreen_->save_data.team_size = static_cast<unsigned char>(0);
 
@@ -814,7 +814,7 @@ TEST(PickerFuncs, how_many_with_team)
     og::runtime::current_session->allbuttons_[kTrainMenuChangeTeamIndex] = old18;
 
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        og::runtime::current_session->myscreen_->save_data.team_list[i].reset(saved_team_list[i]);
+        og::runtime::current_session->myscreen_->save_data.team_list[static_cast<std::size_t>(i)].reset(saved_team_list[i]);
     }
     og::runtime::current_session->myscreen_->save_data.team_size = saved_team_size;
 }
@@ -1685,7 +1685,7 @@ TEST(PickerFuncs, lobby_sync_preserves_sparse_team_assignments)
     const unsigned char old_numplayers = save.numplayers;
     std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        old_team[i] = std::move(save.team_list[i]);
+        old_team[i] = std::move(save.team_list[static_cast<std::size_t>(i)]);
 
     save.team_size = 2;
     save.numplayers = 2;
@@ -1707,7 +1707,7 @@ TEST(PickerFuncs, lobby_sync_preserves_sparse_team_assignments)
 
     picker_lobby_shutdown();
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i] = std::move(old_team[i]);
+        save.team_list[static_cast<std::size_t>(i)] = std::move(old_team[i]);
     save.team_size = old_team_size;
     save.numplayers = old_numplayers;
 }
@@ -1721,7 +1721,7 @@ TEST(PickerFuncs, lobby_sync_preserves_single_player_team_four_assignment)
     const unsigned char old_numplayers = save.numplayers;
     std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        old_team[i] = std::move(save.team_list[i]);
+        old_team[i] = std::move(save.team_list[static_cast<std::size_t>(i)]);
 
     save.team_size = 1;
     save.numplayers = 1;
@@ -1737,7 +1737,7 @@ TEST(PickerFuncs, lobby_sync_preserves_single_player_team_four_assignment)
 
     picker_lobby_shutdown();
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i] = std::move(old_team[i]);
+        save.team_list[static_cast<std::size_t>(i)] = std::move(old_team[i]);
     save.team_size = old_team_size;
     save.numplayers = old_numplayers;
 }
@@ -1751,7 +1751,7 @@ TEST(PickerFuncs, lobby_set_player_mode_honors_requested_positive_count)
     const unsigned char old_numplayers = save.numplayers;
     std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        old_team[i] = std::move(save.team_list[i]);
+        old_team[i] = std::move(save.team_list[static_cast<std::size_t>(i)]);
 
     save.team_size = 1;
     save.numplayers = 1;
@@ -1767,7 +1767,7 @@ TEST(PickerFuncs, lobby_set_player_mode_honors_requested_positive_count)
 
     picker_lobby_shutdown();
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i] = std::move(old_team[i]);
+        save.team_list[static_cast<std::size_t>(i)] = std::move(old_team[i]);
     save.team_size = old_team_size;
     save.numplayers = old_numplayers;
 }
@@ -1781,15 +1781,15 @@ TEST(PickerFuncs, lobby_set_player_mode_allows_return_to_single_player_without_d
     const unsigned char old_numplayers = save.numplayers;
     std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        old_team[i] = std::move(save.team_list[i]);
+        old_team[i] = std::move(save.team_list[static_cast<std::size_t>(i)]);
 
     save.team_size = 4;
     save.numplayers = 4;
     for (int i = 0; i < 4; ++i)
     {
-        save.team_list[i] = std::make_unique<guy>(FAMILY_SOLDIER);
-        save.team_list[i]->name = std::format("Team {}", i + 1);
-        save.team_list[i]->teamnum = static_cast<short>(i);
+        save.team_list[static_cast<std::size_t>(i)] = std::make_unique<guy>(FAMILY_SOLDIER);
+        save.team_list[static_cast<std::size_t>(i)]->name = std::format("Team {}", i + 1);
+        save.team_list[static_cast<std::size_t>(i)]->teamnum = static_cast<short>(i);
     }
 
     picker_lobby_initialize_from_save();
@@ -1799,14 +1799,14 @@ TEST(PickerFuncs, lobby_set_player_mode_allows_return_to_single_player_without_d
     EXPECT_EQ(4, static_cast<int>(save.team_size));
     for (int i = 0; i < 4; ++i)
     {
-        ASSERT_TRUE(save.team_list[i]) << "team slot " << i << " should be preserved";
-        EXPECT_EQ(static_cast<int>(i), static_cast<int>(save.team_list[i]->teamnum));
-        EXPECT_EQ(std::format("Team {}", i + 1), save.team_list[i]->name);
+        ASSERT_TRUE(save.team_list[static_cast<std::size_t>(i)]) << "team slot " << i << " should be preserved";
+        EXPECT_EQ(static_cast<int>(i), static_cast<int>(save.team_list[static_cast<std::size_t>(i)]->teamnum));
+        EXPECT_EQ(std::format("Team {}", i + 1), save.team_list[static_cast<std::size_t>(i)]->name);
     }
 
     picker_lobby_shutdown();
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i] = std::move(old_team[i]);
+        save.team_list[static_cast<std::size_t>(i)] = std::move(old_team[i]);
     save.team_size = old_team_size;
     save.numplayers = old_numplayers;
 }
@@ -1820,7 +1820,7 @@ TEST(PickerFuncs, lobby_start_request_sets_start_flag_after_confirmation)
     const unsigned char old_numplayers = save.numplayers;
     std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        old_team[i] = std::move(save.team_list[i]);
+        old_team[i] = std::move(save.team_list[static_cast<std::size_t>(i)]);
 
     save.team_size = 1;
     save.numplayers = 1;
@@ -1837,7 +1837,7 @@ TEST(PickerFuncs, lobby_start_request_sets_start_flag_after_confirmation)
 
     picker_lobby_shutdown();
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i] = std::move(old_team[i]);
+        save.team_list[static_cast<std::size_t>(i)] = std::move(old_team[i]);
     save.team_size = old_team_size;
     save.numplayers = old_numplayers;
     g_start_game_requested = false;
@@ -1857,7 +1857,7 @@ TEST(PickerFuncs, lobby_start_request_captures_game_start_config)
         og::runtime::current_session->current_difficulty_;
     std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        old_team[i] = std::move(save.team_list[i]);
+        old_team[i] = std::move(save.team_list[static_cast<std::size_t>(i)]);
 
     save.current_campaign = "gladiator";
     save.scen_num = 1;
@@ -1895,7 +1895,7 @@ TEST(PickerFuncs, lobby_start_request_captures_game_start_config)
 
     picker_lobby_shutdown();
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i] = std::move(old_team[i]);
+        save.team_list[static_cast<std::size_t>(i)] = std::move(old_team[i]);
     save.current_campaign = old_campaign;
     save.scen_num = old_scen_num;
     save.team_size = old_team_size;
@@ -1919,7 +1919,7 @@ TEST(PickerFuncs, lobby_start_request_preserves_spectator_game_start_config)
         og::runtime::current_session->current_difficulty_;
     std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        old_team[i] = std::move(save.team_list[i]);
+        old_team[i] = std::move(save.team_list[static_cast<std::size_t>(i)]);
 
     save.current_campaign = "gladiator";
     save.scen_num = 1;
@@ -1952,7 +1952,7 @@ TEST(PickerFuncs, lobby_start_request_preserves_spectator_game_start_config)
 
     picker_lobby_shutdown();
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i] = std::move(old_team[i]);
+        save.team_list[static_cast<std::size_t>(i)] = std::move(old_team[i]);
     save.current_campaign = old_campaign;
     save.scen_num = old_scen_num;
     save.team_size = old_team_size;
@@ -1971,7 +1971,7 @@ TEST(PickerFuncs, lobby_reinitialize_after_game_allows_second_confirmed_start)
     const unsigned char old_numplayers = save.numplayers;
     std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        old_team[i] = std::move(save.team_list[i]);
+        old_team[i] = std::move(save.team_list[static_cast<std::size_t>(i)]);
 
     save.team_size = 1;
     save.numplayers = 1;
@@ -1996,7 +1996,7 @@ TEST(PickerFuncs, lobby_reinitialize_after_game_allows_second_confirmed_start)
 
     picker_lobby_shutdown();
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i] = std::move(old_team[i]);
+        save.team_list[static_cast<std::size_t>(i)] = std::move(old_team[i]);
     save.team_size = old_team_size;
     save.numplayers = old_numplayers;
     g_start_game_requested = false;
@@ -2030,7 +2030,7 @@ TEST(PickerFuncs, go_menu_starts_via_lobby_confirmation_and_reinitializes_for_re
     const short old_allied_mode = save.allied_mode;
     std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        old_team[i] = std::move(save.team_list[i]);
+        old_team[i] = std::move(save.team_list[static_cast<std::size_t>(i)]);
     const float old_speed = og::runtime::current_session->g_game_speed_factor_;
 #ifdef TESTING
     const bool old_remove_exits = g_test_remove_exits;
@@ -2099,7 +2099,7 @@ TEST(PickerFuncs, go_menu_starts_via_lobby_confirmation_and_reinitializes_for_re
         save.m_totalscore[i] = old_m_totalscore[i];
     }
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i] = std::move(old_team[i]);
+        save.team_list[static_cast<std::size_t>(i)] = std::move(old_team[i]);
     save.team_size = old_team_size;
     save.numplayers = old_numplayers;
     save.allied_mode = old_allied_mode;
@@ -2158,7 +2158,7 @@ TEST(PickerFuncs, go_menu_honors_preexisting_remote_start_request)
     const short old_allied_mode = save.allied_mode;
     std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        old_team[i] = std::move(save.team_list[i]);
+        old_team[i] = std::move(save.team_list[static_cast<std::size_t>(i)]);
     const float old_speed = og::runtime::current_session->g_game_speed_factor_;
 #ifdef TESTING
     const bool old_remove_exits = g_test_remove_exits;
@@ -2248,7 +2248,7 @@ TEST(PickerFuncs, go_menu_honors_preexisting_remote_start_request)
         save.m_totalscore[i] = old_m_totalscore[i];
     }
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i] = std::move(old_team[i]);
+        save.team_list[static_cast<std::size_t>(i)] = std::move(old_team[i]);
     save.team_size = old_team_size;
     save.numplayers = old_numplayers;
     save.allied_mode = old_allied_mode;
@@ -2272,7 +2272,7 @@ TEST(PickerFuncs, train_team_change_immediately_syncs_saved_roster)
         old_cash[i] = save.m_totalcash[i];
     std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        old_team[i] = std::move(save.team_list[i]);
+        old_team[i] = std::move(save.team_list[static_cast<std::size_t>(i)]);
 
     std::unique_ptr<guy> old_current = std::move(og::runtime::current_session->current_guy_);
     const short old_team_num = og::runtime::current_session->current_team_num_;
@@ -2335,7 +2335,7 @@ TEST(PickerFuncs, train_team_change_immediately_syncs_saved_roster)
     og::runtime::current_session->current_guy_ = std::move(old_current);
     og::runtime::current_session->current_team_num_ = old_team_num;
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i] = std::move(old_team[i]);
+        save.team_list[static_cast<std::size_t>(i)] = std::move(old_team[i]);
     save.team_size = old_team_size;
     save.numplayers = old_numplayers;
     for (int i = 0; i < 4; ++i)
@@ -2352,7 +2352,7 @@ TEST(PickerFuncs, create_train_menu_rejects_team_without_editable_local_slots)
     const unsigned char old_numplayers = save.numplayers;
     std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        old_team[i] = std::move(save.team_list[i]);
+        old_team[i] = std::move(save.team_list[static_cast<std::size_t>(i)]);
 
     std::unique_ptr<guy> old_current =
         std::move(og::runtime::current_session->current_guy_);
@@ -2377,7 +2377,7 @@ TEST(PickerFuncs, create_train_menu_rejects_team_without_editable_local_slots)
     og::runtime::current_session->current_guy_ = std::move(old_current);
     pks().train_session = old_train_session;
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i] = std::move(old_team[i]);
+        save.team_list[static_cast<std::size_t>(i)] = std::move(old_team[i]);
     save.team_size = old_team_size;
     save.numplayers = old_numplayers;
 }
@@ -2388,7 +2388,7 @@ TEST(PickerFuncs, change_teamnum_ignores_non_editable_lobby_slot)
     const unsigned char old_team_size = save.team_size;
     std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        old_team[i] = std::move(save.team_list[i]);
+        old_team[i] = std::move(save.team_list[static_cast<std::size_t>(i)]);
 
     std::unique_ptr<guy> old_current =
         std::move(og::runtime::current_session->current_guy_);
@@ -2422,7 +2422,7 @@ TEST(PickerFuncs, change_teamnum_ignores_non_editable_lobby_slot)
     og::runtime::current_session->current_team_num_ = old_team_num;
     og::runtime::current_session->editguy_ = old_editguy;
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i] = std::move(old_team[i]);
+        save.team_list[static_cast<std::size_t>(i)] = std::move(old_team[i]);
     save.team_size = old_team_size;
 }
 
@@ -2436,7 +2436,7 @@ TEST(PickerFuncs, train_session_survives_team_slot_replacement_after_accept)
         old_cash[i] = save.m_totalcash[i];
     std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        old_team[i] = std::move(save.team_list[i]);
+        old_team[i] = std::move(save.team_list[static_cast<std::size_t>(i)]);
 
     save.team_size = 1;
     save.numplayers = 1;
@@ -2462,7 +2462,7 @@ TEST(PickerFuncs, train_session_survives_team_slot_replacement_after_accept)
     EXPECT_EQ(save.team_list[0]->strength, session.working_copy().strength);
 
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i] = std::move(old_team[i]);
+        save.team_list[static_cast<std::size_t>(i)] = std::move(old_team[i]);
     save.team_size = old_team_size;
     save.numplayers = old_numplayers;
     for (int i = 0; i < 4; ++i)
@@ -2537,7 +2537,7 @@ TEST(PickerFuncs, local_lobby_hoists_my_team_to_player_one)
     // Stash what this test mutates.
     std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> orig_list;
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        orig_list[i] = std::move(save.team_list[i]);
+        orig_list[static_cast<std::size_t>(i)] = std::move(save.team_list[static_cast<std::size_t>(i)]);
     const unsigned char orig_size = save.team_size;
     const short orig_my_team = save.my_team;
     const unsigned char orig_numplayers = save.numplayers;
@@ -2570,7 +2570,7 @@ TEST(PickerFuncs, local_lobby_hoists_my_team_to_player_one)
 
     // Restore.
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i] = std::move(orig_list[i]);
+        save.team_list[static_cast<std::size_t>(i)] = std::move(orig_list[static_cast<std::size_t>(i)]);
     save.team_size = orig_size;
     save.my_team = orig_my_team;
     save.numplayers = orig_numplayers;
@@ -2585,7 +2585,7 @@ TEST(PickerFuncs,
     // Stash what this test mutates.
     std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> orig_list;
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        orig_list[i] = std::move(save.team_list[i]);
+        orig_list[static_cast<std::size_t>(i)] = std::move(save.team_list[static_cast<std::size_t>(i)]);
     const unsigned char orig_size = save.team_size;
     const short orig_my_team = save.my_team;
     const unsigned char orig_numplayers = save.numplayers;
@@ -2753,7 +2753,7 @@ TEST(PickerFuncs,
 
     // Restore.
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i] = std::move(orig_list[i]);
+        save.team_list[static_cast<std::size_t>(i)] = std::move(orig_list[static_cast<std::size_t>(i)]);
     save.team_size = orig_size;
     save.my_team = orig_my_team;
     save.numplayers = orig_numplayers;
@@ -2768,7 +2768,7 @@ TEST(PickerFuncs,
 
     std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> original_roster;
     for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot)
-        original_roster[slot] = std::move(save.team_list[slot]);
+        original_roster[static_cast<std::size_t>(slot)] = std::move(save.team_list[static_cast<std::size_t>(slot)]);
     const unsigned char original_team_size = save.team_size;
     const short original_my_team = save.my_team;
     const unsigned char original_numplayers = save.numplayers;
@@ -2778,9 +2778,9 @@ TEST(PickerFuncs,
         member.reset();
     for (int slot = 0; slot < 3; ++slot)
     {
-        save.team_list[slot] = std::make_unique<guy>(FAMILY_SOLDIER);
-        save.team_list[slot]->name = std::format("Seat {}", slot + 1);
-        save.team_list[slot]->teamnum = static_cast<short>(slot);
+        save.team_list[static_cast<std::size_t>(slot)] = std::make_unique<guy>(FAMILY_SOLDIER);
+        save.team_list[static_cast<std::size_t>(slot)]->name = std::format("Seat {}", slot + 1);
+        save.team_list[static_cast<std::size_t>(slot)]->teamnum = static_cast<short>(slot);
     }
     save.team_size = 3;
     save.my_team = 0;
@@ -2846,7 +2846,7 @@ TEST(PickerFuncs,
     }
 
     for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot)
-        save.team_list[slot] = std::move(original_roster[slot]);
+        save.team_list[static_cast<std::size_t>(slot)] = std::move(original_roster[static_cast<std::size_t>(slot)]);
     save.team_size = original_team_size;
     save.my_team = original_my_team;
     save.numplayers = original_numplayers;
@@ -2860,7 +2860,7 @@ TEST(PickerFuncs, local_lobby_reconciles_sparse_versus_domain_transitions)
 
     std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> original_roster;
     for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot)
-        original_roster[slot] = std::move(save.team_list[slot]);
+        original_roster[static_cast<std::size_t>(slot)] = std::move(save.team_list[static_cast<std::size_t>(slot)]);
     const unsigned char original_team_size = save.team_size;
     const short original_my_team = save.my_team;
     const unsigned char original_numplayers = save.numplayers;
@@ -2966,7 +2966,7 @@ TEST(PickerFuncs, local_lobby_reconciles_sparse_versus_domain_transitions)
     if (!original_mount.empty())
         (void)mount_campaign_package_with_error(original_mount);
     for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot)
-        save.team_list[slot] = std::move(original_roster[slot]);
+        save.team_list[static_cast<std::size_t>(slot)] = std::move(original_roster[static_cast<std::size_t>(slot)]);
     save.team_size = original_team_size;
     save.my_team = original_my_team;
     save.numplayers = original_numplayers;
@@ -2983,7 +2983,7 @@ TEST(PickerFuncs, local_lobby_start_preserves_all_team_colors_in_both_modes)
 
     std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> orig_list;
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        orig_list[i] = std::move(save.team_list[i]);
+        orig_list[static_cast<std::size_t>(i)] = std::move(save.team_list[static_cast<std::size_t>(i)]);
     const unsigned char orig_size = save.team_size;
     const short orig_my_team = save.my_team;
     const unsigned char orig_numplayers = save.numplayers;
@@ -3021,7 +3021,7 @@ TEST(PickerFuncs, local_lobby_start_preserves_all_team_colors_in_both_modes)
     }
 
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i] = std::move(orig_list[i]);
+        save.team_list[static_cast<std::size_t>(i)] = std::move(orig_list[static_cast<std::size_t>(i)]);
     save.team_size = orig_size;
     save.my_team = orig_my_team;
     save.numplayers = orig_numplayers;
@@ -3035,7 +3035,7 @@ TEST(PickerFuncs, local_lobby_rejects_every_uncontrollable_seat_shape)
 
     std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> orig_list;
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        orig_list[i] = std::move(save.team_list[i]);
+        orig_list[static_cast<std::size_t>(i)] = std::move(save.team_list[static_cast<std::size_t>(i)]);
     const unsigned char orig_size = save.team_size;
     const short orig_my_team = save.my_team;
     const unsigned char orig_numplayers = save.numplayers;
@@ -3086,7 +3086,7 @@ TEST(PickerFuncs, local_lobby_rejects_every_uncontrollable_seat_shape)
     }
 
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i] = std::move(orig_list[i]);
+        save.team_list[static_cast<std::size_t>(i)] = std::move(orig_list[static_cast<std::size_t>(i)]);
     save.team_size = orig_size;
     save.my_team = orig_my_team;
     save.numplayers = orig_numplayers;
@@ -3103,7 +3103,7 @@ TEST(PickerFuncs, local_lobby_one_player_start_carries_the_full_mixed_team_roste
 
     std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> orig_list;
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        orig_list[i] = std::move(save.team_list[i]);
+        orig_list[static_cast<std::size_t>(i)] = std::move(save.team_list[static_cast<std::size_t>(i)]);
     const unsigned char orig_size = save.team_size;
     const short orig_my_team = save.my_team;
     const unsigned char orig_numplayers = save.numplayers;
@@ -3141,7 +3141,7 @@ TEST(PickerFuncs, local_lobby_one_player_start_carries_the_full_mixed_team_roste
     }
 
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i] = std::move(orig_list[i]);
+        save.team_list[static_cast<std::size_t>(i)] = std::move(orig_list[static_cast<std::size_t>(i)]);
     save.team_size = orig_size;
     save.my_team = orig_my_team;
     save.numplayers = orig_numplayers;
@@ -3161,7 +3161,7 @@ TEST(PickerFuncs, local_lobby_roundtrip_preserves_benched_members)
     // Stash what this test mutates.
     std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> orig_list;
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        orig_list[i] = std::move(save.team_list[i]);
+        orig_list[static_cast<std::size_t>(i)] = std::move(save.team_list[static_cast<std::size_t>(i)]);
     const unsigned char orig_size = save.team_size;
     const short orig_my_team = save.my_team;
     const unsigned char orig_numplayers = save.numplayers;
@@ -3204,7 +3204,7 @@ TEST(PickerFuncs, local_lobby_roundtrip_preserves_benched_members)
 
     // Restore.
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
-        save.team_list[i] = std::move(orig_list[i]);
+        save.team_list[static_cast<std::size_t>(i)] = std::move(orig_list[static_cast<std::size_t>(i)]);
     save.team_size = orig_size;
     save.my_team = orig_my_team;
     save.numplayers = orig_numplayers;

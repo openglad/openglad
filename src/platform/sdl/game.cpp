@@ -152,7 +152,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	// Cycle through the team list ..
 	for(int guy_idx = 0; guy_idx < screenp->save_data.team_size; guy_idx++)
     {
-	    temp_guy = screenp->save_data.team_list[guy_idx].get();
+	    temp_guy = screenp->save_data.team_list[static_cast<std::size_t>(guy_idx)].get();
 	    if (!temp_guy) continue;
 	    // §4.2: benched members stay in the save but never enter the level —
 	    // must match spawn_team_from_save (the authoritative server world) or

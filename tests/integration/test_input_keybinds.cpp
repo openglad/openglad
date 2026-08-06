@@ -1048,10 +1048,10 @@ TEST(InputKeybinds, compact_controls_rotates_every_valid_active_range)
             {
                 set_player_control_mode(p, kFour);
                 set_player_key_binding(
-                    p, KEY_CHEAT, SDLK_F1 + p);
+                    p, KEY_CHEAT, static_cast<int>(SDLK_F1 + static_cast<unsigned int>(p)));
                 set_player_control_mode(p, kEight);
                 set_player_key_binding(
-                    p, KEY_CHEAT, SDLK_F5 + p);
+                    p, KEY_CHEAT, static_cast<int>(SDLK_F5 + static_cast<unsigned int>(p)));
                 set_player_control_mode(
                     p, (p % 2 == 0) ? kFour : kEight);
                 player_joy[p].index = 50 + p;
@@ -1080,13 +1080,13 @@ TEST(InputKeybinds, compact_controls_rotates_every_valid_active_range)
                 const int source = expected_sources[
                     static_cast<std::size_t>(p)];
                 EXPECT_EQ(
-                    SDLK_F1 + source,
+                    SDLK_F1 + static_cast<unsigned int>(source),
                     get_player_key_binding_for_mode(
                         p, kFour, KEY_CHEAT))
                     << "active_count=" << active_count
                     << " removed=" << removed << " slot=" << p;
                 EXPECT_EQ(
-                    SDLK_F5 + source,
+                    SDLK_F5 + static_cast<unsigned int>(source),
                     get_player_key_binding_for_mode(
                         p, kEight, KEY_CHEAT));
                 const int expected_mode =
@@ -1094,8 +1094,8 @@ TEST(InputKeybinds, compact_controls_rotates_every_valid_active_range)
                 EXPECT_EQ(expected_mode, get_player_control_mode(p));
                 EXPECT_EQ(
                     expected_mode == kFour
-                        ? SDLK_F1 + source
-                        : SDLK_F5 + source,
+                        ? SDLK_F1 + static_cast<unsigned int>(source)
+                        : SDLK_F5 + static_cast<unsigned int>(source),
                     og::runtime::current_session
                         ->player_keys_[p][KEY_CHEAT]);
                 EXPECT_EQ(50 + source, player_joy[p].index);
@@ -1341,9 +1341,9 @@ TEST(InputKeybinds, controls_reset_defaults_action_resets_controls_only)
     for (int p = 0; p < 4; ++p)
     {
         set_player_control_mode(p, static_cast<int>(ControlDirectionMode::FourDirection));
-        set_player_key_binding(p, KEY_UP, SDLK_F1 + p);
+        set_player_key_binding(p, KEY_UP, static_cast<int>(SDLK_F1 + static_cast<unsigned int>(p)));
         set_player_control_mode(p, static_cast<int>(ControlDirectionMode::EightDirection));
-        set_player_key_binding(p, KEY_UP_RIGHT, SDLK_F5 + p);
+        set_player_key_binding(p, KEY_UP_RIGHT, static_cast<int>(SDLK_F5 + static_cast<unsigned int>(p)));
     }
 
     const std::string old_render = cfg.get_setting("graphics", "render");

@@ -322,7 +322,7 @@ void glad_init(bool preserve_frame_timing,
     }
     current_screen->redrawme = 1;
     current_screen->framecount = 0;
-    current_screen->timerstart = query_timer_control();
+    current_screen->timerstart = static_cast<Uint32>(query_timer_control());
     og::runtime::begin_replay_recording(*current_screen);
 
     GameLoopFrameState fresh_state;

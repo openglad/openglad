@@ -1067,8 +1067,8 @@ template<typename Fn>
 void for_each_team_member(const SaveData& save, Fn&& fn)
 {
     for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
-        if (save.team_list[i])
-            fn(i, *save.team_list[i]);
+        if (save.team_list[static_cast<std::size_t>(i)])
+            fn(i, *save.team_list[static_cast<std::size_t>(i)]);
     }
 }
 

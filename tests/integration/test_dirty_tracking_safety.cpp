@@ -213,7 +213,7 @@ void apply_scripted_setter_churn(GameWorld& world,
     actor->set_invisibility_left(static_cast<short>((tick + 1) % 3));
     actor->set_flight_left(static_cast<short>(tick % 2));
     actor->set_view_all(static_cast<short>(tick % 5));
-    actor->set_keys(static_cast<std::uint32_t>(tick * 17 + actor->entity_id()));
+    actor->set_keys(static_cast<std::uint32_t>(tick * 17) + actor->entity_id());
     actor->set_speed_bonus(0.5f +
                            0.25f * static_cast<float>(tick % 4));
     actor->set_speed_bonus_left(2 + (tick % 6));
@@ -245,7 +245,7 @@ void apply_scripted_setter_churn(GameWorld& world,
     actor->stats()->set_old_family((tick % 2) == 0 ? FAMILY_SOLDIER
                                                     : FAMILY_ROCK);
     actor->stats()->set_last_distance(
-        static_cast<std::uint32_t>(tick * 13 + actor->entity_id()));
+        static_cast<std::uint32_t>(tick * 13) + actor->entity_id());
     actor->stats()->set_current_distance(tick * 9);
     actor->stats()->set_controller(controller);
 }

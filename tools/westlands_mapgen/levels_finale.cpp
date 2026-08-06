@@ -361,21 +361,21 @@ void build_mountain_of_fire(const LevelDataHooks& hooks)
         for (int y = 0; y < g1.h; ++y)
             for (int x = 0; x < g1.w; ++x)
             {
-                const unsigned char dec = d1.data[x + y * d1.w];
+                const unsigned char dec = d1.data[static_cast<std::size_t>(x + y * d1.w)];
                 if (dec < DECOR_BOULDER_1 || dec > DECOR_BOULDER_4)
                     continue;
-                bool near_lava = is_lava(g1.data[x + y * g1.w]);
+                bool near_lava = is_lava(g1.data[static_cast<std::size_t>(x + y * g1.w)]);
                 for (int dy = -1; dy <= 1 && !near_lava; ++dy)
                     for (int dx = -1; dx <= 1 && !near_lava; ++dx)
                     {
                         const int nx = x + dx;
                         const int ny = y + dy;
                         if (nx >= 0 && ny >= 0 && nx < g1.w && ny < g1.h &&
-                            is_lava(g1.data[nx + ny * g1.w]))
+                            is_lava(g1.data[static_cast<std::size_t>(nx + ny * g1.w)]))
                             near_lava = true;
                     }
                 if (near_lava)
-                    d1.data[x + y * d1.w] = DECOR_NONE;
+                    d1.data[static_cast<std::size_t>(x + y * d1.w)] = DECOR_NONE;
             }
     }
     // E7 ambience: the plain has been a battlefield for an age — the old

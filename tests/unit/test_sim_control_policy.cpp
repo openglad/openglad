@@ -506,7 +506,7 @@ TEST(SimControlPolicy, cycle_filter_conjunction_skips_foreign_heroes)
 
     const short my_team = 0;
     walker* const oldcontrol = current;
-    const auto legacy_filter = [oldcontrol, my_team](const walker* w) {
+    const auto legacy_filter = [oldcontrol](const walker* w) {
         return !w->dead() && !w->dormant() &&
                w->query_order() == Order::Living &&
                w->is_friendly(oldcontrol) && w->team_num() == my_team &&

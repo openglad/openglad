@@ -297,7 +297,7 @@ bool compact_player_controls_after_removal(int removed_player_index, int active_
     for (int mode = kModeFourIndex; mode <= kModeEightIndex; ++mode)
     {
         for (int k = 0; k < NUM_KEYS; ++k)
-            removed_keys[mode][k] =
+            removed_keys[static_cast<std::size_t>(mode)][static_cast<std::size_t>(k)] =
                 hw().player_mode_keys[removed_player_index][mode][k];
     }
     const int removed_mode =
@@ -331,7 +331,7 @@ bool compact_player_controls_after_removal(int removed_player_index, int active_
     {
         for (int k = 0; k < NUM_KEYS; ++k)
             hw().player_mode_keys[inactive_tail][mode][k] =
-                removed_keys[mode][k];
+                removed_keys[static_cast<std::size_t>(mode)][static_cast<std::size_t>(k)];
     }
     hw().player_control_modes[inactive_tail] = removed_mode;
     hw().player_control_default_profiles[inactive_tail] =

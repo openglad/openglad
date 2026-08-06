@@ -33,12 +33,12 @@ void handle_cheat_keys(walker*& control, short mynum,
 	walker* newob;
 
 	// Change team (Cheat+Switch)
-	if (og::runtime::current_session->changedteam_[mynum] && !pi.was_pressed(InputAction::SwitchChar))
-		og::runtime::current_session->changedteam_[mynum] = 0;
-	if (pi.was_pressed(InputAction::SwitchChar) && !og::runtime::current_session->changedteam_[mynum])
+	if (og::runtime::current_session->changedteam_[static_cast<std::size_t>(mynum)] && !pi.was_pressed(InputAction::SwitchChar))
+		og::runtime::current_session->changedteam_[static_cast<std::size_t>(mynum)] = 0;
+	if (pi.was_pressed(InputAction::SwitchChar) && !og::runtime::current_session->changedteam_[static_cast<std::size_t>(mynum)])
 	{
 		// to debounce keys
-		og::runtime::current_session->changedteam_[mynum] = 1;
+		og::runtime::current_session->changedteam_[static_cast<std::size_t>(mynum)] = 1;
 
 		walker* result = nullptr;
 		control->set_user(-1);
@@ -50,7 +50,8 @@ void handle_cheat_keys(walker*& control, short mynum,
 		do
 		{
 			game_screen->save_data.my_team++;
-			game_screen->save_data.my_team %= MAX_TEAM;
+			game_screen->save_data.my_team = static_cast<short>(
+			    game_screen->save_data.my_team % MAX_TEAM);
 
 			for (auto& uptr : game_screen->world().oblist)
 			{

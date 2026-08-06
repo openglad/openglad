@@ -309,7 +309,7 @@ namespace {
 bool has_name_in_save(const char* name, const SaveData& save)
 {
     for (int i = 0; i < save.team_size && i < MAX_TEAM_SIZE; i++) {
-        if (save.team_list[i] && save.team_list[i]->name == name)
+        if (save.team_list[static_cast<std::size_t>(i)] && save.team_list[static_cast<std::size_t>(i)]->name == name)
             return true;
     }
     return false;
@@ -419,7 +419,7 @@ int count_family_members(int family, const SaveData& save)
 {
     int counter = 0;
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        if (save.team_list[i] && save.team_list[i]->family == family)
+        if (save.team_list[static_cast<std::size_t>(i)] && save.team_list[static_cast<std::size_t>(i)]->family == family)
             counter++;
     }
     return counter;
@@ -436,8 +436,8 @@ int add_recruit_to_team(SaveData& save, std::unique_ptr<guy> recruit, int team_n
 
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
         // found an empty slot
-        if (!save.team_list[i]) {
-            save.team_list[i] = std::move(recruit);
+        if (!save.team_list[static_cast<std::size_t>(i)]) {
+            save.team_list[static_cast<std::size_t>(i)] = std::move(recruit);
             save.team_size++;
             return i;
         }
@@ -1072,7 +1072,7 @@ std::vector<int> collect_base_camp_slots(const SaveData& save)
 {
     std::vector<int> slots;
     for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
-        if (save.team_list[i])
+        if (save.team_list[static_cast<std::size_t>(i)])
             slots.push_back(i);
     }
     return slots;
@@ -1090,22 +1090,22 @@ int count_deployed_members(const SaveData& save)
 
 bool toggle_deploy_slot(SaveData& save, int slot)
 {
-    if (slot < 0 || slot >= MAX_TEAM_SIZE || !save.team_list[slot])
+    if (slot < 0 || slot >= MAX_TEAM_SIZE || !save.team_list[static_cast<std::size_t>(slot)])
         return false;
-    guy& member = *save.team_list[slot];
+    guy& member = *save.team_list[static_cast<std::size_t>(slot)];
     member.deployed = !member.deployed;
     return member.deployed;
 }
 
 int move_team_member_up(SaveData& save, int slot)
 {
-    if (slot <= 0 || slot >= MAX_TEAM_SIZE || !save.team_list[slot])
+    if (slot <= 0 || slot >= MAX_TEAM_SIZE || !save.team_list[static_cast<std::size_t>(slot)])
         return -1;
 
     for (int previous = slot - 1; previous >= 0; --previous) {
-        if (!save.team_list[previous])
+        if (!save.team_list[static_cast<std::size_t>(previous)])
             continue;
-        std::swap(save.team_list[previous], save.team_list[slot]);
+        std::swap(save.team_list[static_cast<std::size_t>(previous)], save.team_list[static_cast<std::size_t>(slot)]);
         return previous;
     }
     return -1;
@@ -1195,12 +1195,12 @@ std::vector<BaseCampDisplaySlot> collect_base_camp_display_slots(
     // Own rows first (§2.5 MP roster rule), read from the PRIVATE save so
     // toggles/train edits show the same frame. Solo: this is the whole list.
     for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
-        if (!save.team_list[i])
+        if (!save.team_list[static_cast<std::size_t>(i)])
             continue;
         BaseCampDisplaySlot slot;
         slot.owned = true;
         slot.save_slot = i;
-        slot.deployed = save.team_list[i]->deployed;
+        slot.deployed = save.team_list[static_cast<std::size_t>(i)]->deployed;
         if (networked)
             slot.company = save.save_name;
         slots.push_back(std::move(slot));
@@ -1249,9 +1249,9 @@ BaseCampDeployCounts count_base_camp_display_deploys(
         bool deployed = slot.deployed;
         if (slot.owned && slot.save_slot >= 0 &&
             slot.save_slot < MAX_TEAM_SIZE &&
-            save.team_list[slot.save_slot])
+            save.team_list[static_cast<std::size_t>(slot.save_slot)])
         {
-            deployed = save.team_list[slot.save_slot]->deployed;
+            deployed = save.team_list[static_cast<std::size_t>(slot.save_slot)]->deployed;
         }
         if (deployed)
             ++counts.deployed;
@@ -1986,8 +1986,8 @@ std::vector<int> collect_team_families(const SaveData& save)
 {
     std::vector<int> families;
     for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
-        if (save.team_list[i])
-            families.push_back(static_cast<int>(save.team_list[i]->family));
+        if (save.team_list[static_cast<std::size_t>(i)])
+            families.push_back(static_cast<int>(save.team_list[static_cast<std::size_t>(i)]->family));
     }
     return families;
 }
@@ -2104,13 +2104,13 @@ int HireSession::hire()
     recruit_->exp = calculate_exp(recruit_->level);
 
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        if (!save_.team_list[i]) {
+        if (!save_.team_list[static_cast<std::size_t>(i)]) {
             // Save a copy of the hired recruit's stats for the next recruit
             auto next = std::make_unique<guy>(newfamily);
             statscopy(next.get(), recruit_.get());
             next->name = get_unique_name(static_cast<unsigned char>(newfamily), save_);
 
-            save_.team_list[i] = std::move(recruit_);
+            save_.team_list[static_cast<std::size_t>(i)] = std::move(recruit_);
             save_.team_size++;
 
             // Next recruit starts with same stats as the one just hired
@@ -2125,8 +2125,8 @@ int HireSession::hire()
 
 void HireSession::rename_hired(int slot, const std::string& name)
 {
-    if (slot >= 0 && slot < MAX_TEAM_SIZE && save_.team_list[slot])
-        save_.team_list[slot]->name = name;
+    if (slot >= 0 && slot < MAX_TEAM_SIZE && save_.team_list[static_cast<std::size_t>(slot)])
+        save_.team_list[static_cast<std::size_t>(slot)]->name = name;
 }
 
 const guy* HireSession::current_recruit() const
@@ -2158,7 +2158,7 @@ bool HireSession::team_full() const
 
 void HireSession::make_recruit()
 {
-    int family = kAllowableGuys[current_type_];
+    int family = kAllowableGuys[static_cast<std::size_t>(current_type_)];
     recruit_ = create_recruit(family, team_num_, save_);
 
     // Clamp stats up to family base values
@@ -2190,7 +2190,7 @@ TrainSession::TrainSession(SaveData& save)
     // Find first editable team slot. Network lobbies render remote players in
     // the shared save view, but only the local player's slots may be trained.
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        if (save_.team_list[i] && picker_lobby_save_slot_editable(i)) {
+        if (save_.team_list[static_cast<std::size_t>(i)] && picker_lobby_save_slot_editable(i)) {
             edit_slot_ = i;
             break;
         }
@@ -2214,7 +2214,7 @@ void TrainSession::next_member()
         edit_slot_++;
         if (edit_slot_ >= MAX_TEAM_SIZE)
             edit_slot_ = 0;
-    } while ((!save_.team_list[edit_slot_] ||
+    } while ((!save_.team_list[static_cast<std::size_t>(edit_slot_)] ||
               !picker_lobby_save_slot_editable(edit_slot_)) &&
              edit_slot_ != start);
 
@@ -2223,7 +2223,7 @@ void TrainSession::next_member()
 
 bool TrainSession::seek_slot(int slot)
 {
-    if (slot < 0 || slot >= MAX_TEAM_SIZE || !save_.team_list[slot] ||
+    if (slot < 0 || slot >= MAX_TEAM_SIZE || !save_.team_list[static_cast<std::size_t>(slot)] ||
         !picker_lobby_save_slot_editable(slot))
     {
         return false;
@@ -2243,7 +2243,7 @@ void TrainSession::prev_member()
         edit_slot_--;
         if (edit_slot_ < 0)
             edit_slot_ = MAX_TEAM_SIZE - 1;
-    } while ((!save_.team_list[edit_slot_] ||
+    } while ((!save_.team_list[static_cast<std::size_t>(edit_slot_)] ||
               !picker_lobby_save_slot_editable(edit_slot_)) &&
              edit_slot_ != start);
 
@@ -2433,7 +2433,7 @@ TrainSession::SellResult TrainSession::sell_current(
     int preferred_slot = 0;
     for (int read_slot = 0; read_slot < MAX_TEAM_SIZE; ++read_slot)
     {
-        if (!save_.team_list[read_slot])
+        if (!save_.team_list[static_cast<std::size_t>(read_slot)])
             continue;
         if (read_slot == sold_slot)
         {
@@ -2441,12 +2441,12 @@ TrainSession::SellResult TrainSession::sell_current(
             continue;
         }
         if (write_slot != read_slot)
-            save_.team_list[write_slot] =
-                std::move(save_.team_list[read_slot]);
+            save_.team_list[static_cast<std::size_t>(write_slot)] =
+                std::move(save_.team_list[static_cast<std::size_t>(read_slot)]);
         ++write_slot;
     }
     for (int slot = write_slot; slot < MAX_TEAM_SIZE; ++slot)
-        save_.team_list[slot].reset();
+        save_.team_list[static_cast<std::size_t>(slot)].reset();
     save_.team_size = static_cast<unsigned char>(write_slot);
 
     if (write_slot == 0)
@@ -2463,7 +2463,7 @@ TrainSession::SellResult TrainSession::sell_current(
     for (int offset = 0; offset < write_slot; ++offset)
     {
         const int candidate = (first_candidate + offset) % write_slot;
-        if (save_.team_list[candidate] &&
+        if (save_.team_list[static_cast<std::size_t>(candidate)] &&
             picker_lobby_save_slot_editable(candidate))
         {
             edit_slot_ = candidate;
@@ -2561,7 +2561,7 @@ guy* TrainSession::original_member()
         return nullptr;
     if (!picker_lobby_save_slot_editable(edit_slot_))
         return nullptr;
-    return save_.team_list[edit_slot_].get();
+    return save_.team_list[static_cast<std::size_t>(edit_slot_)].get();
 }
 
 const guy* TrainSession::original_member() const
@@ -2570,7 +2570,7 @@ const guy* TrainSession::original_member() const
         return nullptr;
     if (!picker_lobby_save_slot_editable(edit_slot_))
         return nullptr;
-    return save_.team_list[edit_slot_].get();
+    return save_.team_list[static_cast<std::size_t>(edit_slot_)].get();
 }
 
 void TrainSession::clamp_working_stats()
@@ -2639,7 +2639,7 @@ ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
         // init + anchor machinery run.
         const std::uint8_t authored = og::sim::authored_team_mask(world);
         for (int t = 0; t < 4; ++t)
-            report.team_authored[t] = (authored & (1u << t)) != 0;
+            report.team_authored[static_cast<std::size_t>(t)] = (authored & (1u << t)) != 0;
 
         // Respawn anchors per team (the same markers, counted).
         for (const auto& uptr : world.oblist)
@@ -2652,10 +2652,10 @@ ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
             }
             const int team = w->team_num();
             if (is_score_team_index(team) &&
-                report.team_anchor_count[team] <
+                report.team_anchor_count[static_cast<std::size_t>(team)] <
                     og::sim::kRespawnMaxAnchorsPerTeam)
             {
-                report.team_anchor_count[team]++;
+                report.team_anchor_count[static_cast<std::size_t>(team)]++;
             }
         }
 
@@ -2666,8 +2666,8 @@ ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
         int active_count = 0;
         for (int t = 0; t < 4; ++t)
         {
-            report.team_active[t] = (effective & (1u << t)) != 0;
-            active_count += report.team_active[t] ? 1 : 0;
+            report.team_active[static_cast<std::size_t>(t)] = (effective & (1u << t)) != 0;
+            active_count += report.team_active[static_cast<std::size_t>(t)] ? 1 : 0;
         }
         report.will_activate = active_count >= 2;
         if (!report.will_activate)
@@ -2694,7 +2694,7 @@ ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
             return ScenarioStripReason::None;
         // The sim's inactive-team strip removes every living/generator whose
         // team is outside the score range or inactive on an activating map.
-        if (!is_score_team_index(team) || !report.team_active[team])
+        if (!is_score_team_index(team) || !report.team_active[static_cast<std::size_t>(team)])
             return ScenarioStripReason::InactiveTeam;
         return ScenarioStripReason::None;
     };
@@ -2809,13 +2809,13 @@ std::vector<std::string> format_scenario_report_lines(
         {
             for (int t = 0; t < 4; ++t)
             {
-                if (!report.team_authored[t])
+                if (!report.team_authored[static_cast<std::size_t>(t)])
                     continue;
                 lines.push_back(clip_line(std::format(
                     "  {} TEAM  MARKERS: {}  {}",
                     og::sim::team_color_name(t),
-                    report.team_anchor_count[t],
-                    report.team_active[t] ? "ACTIVE" : "INACTIVE")));
+                    report.team_anchor_count[static_cast<std::size_t>(t)],
+                    report.team_active[static_cast<std::size_t>(t)] ? "ACTIVE" : "INACTIVE")));
             }
         }
         else

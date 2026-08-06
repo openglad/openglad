@@ -291,8 +291,8 @@ TEST(Decor, shrub_conceals_for_living_and_weapon_but_bones_does_not)
         GameWorld& w = tw.world();
         EXPECT_FALSE(w.decor_conceals_at(0, 5, 5)) << "no plane -> false";
         PixieData& dp = alloc_decor(w, 0);
-        dp.data[5 + dp.w * 5] = DECOR_SHRUB;
-        dp.data[6 + dp.w * 5] = DECOR_BOULDER_1;
+        dp.data[static_cast<std::size_t>(5 + dp.w * 5)] = DECOR_SHRUB;
+        dp.data[static_cast<std::size_t>(6 + dp.w * 5)] = DECOR_BOULDER_1;
         EXPECT_TRUE(w.decor_conceals_at(0, 5, 5)) << "shrub conceals";
         EXPECT_FALSE(w.decor_conceals_at(0, 6, 5)) << "boulder does not";
         EXPECT_FALSE(w.decor_conceals_at(0, 4, 5)) << "empty cell";
@@ -361,19 +361,19 @@ TEST(Decor, damage_tile_skips_decorated_cells)
     GameWorld& w = tw.world();
     fill_grid(w, PIX_GRASS1);
     PixieData& dp = alloc_decor(w, 0);
-    dp.data[6 + dp.w * 6] = DECOR_BOULDER_1;
+    dp.data[static_cast<std::size_t>(6 + dp.w * 6)] = DECOR_BOULDER_1;
 
     // Undecorated grass chars and reports the dirty tile.
     const char bare = w.damage_tile(3 * GRID_SIZE, 3 * GRID_SIZE);
     EXPECT_EQ(PIX_GRASS1_DAMAGED, static_cast<unsigned char>(bare));
-    EXPECT_EQ(PIX_GRASS1_DAMAGED, w.grid.data[3 + w.grid.w * 3]);
+    EXPECT_EQ(PIX_GRASS1_DAMAGED, w.grid.data[static_cast<std::size_t>(3 + w.grid.w * 3)]);
     ASSERT_EQ(1u, w.grid_dirty_tiles().size());
 
     // The decorated cell is exempt: byte untouched, no dirty tile, 0 return
     // (skipping the caller's no-op dirty fold).
     const char shielded = w.damage_tile(6 * GRID_SIZE, 6 * GRID_SIZE);
     EXPECT_EQ(0, shielded);
-    EXPECT_EQ(PIX_GRASS1, w.grid.data[6 + w.grid.w * 6])
+    EXPECT_EQ(PIX_GRASS1, w.grid.data[static_cast<std::size_t>(6 + w.grid.w * 6)])
         << "decor shields the base tile from the charred transform";
     EXPECT_EQ(1u, w.grid_dirty_tiles().size())
         << "no dirty-tile entry for the shielded cell";
@@ -390,7 +390,7 @@ TEST(Decor, grounder_routes_around_decor_boulder_strip_flyer_crosses)
     GameWorld& w = tw.world();
     PixieData& dp = alloc_decor(w, 0);
     for (int gy = 0; gy <= 14; gy++)
-        dp.data[12 + gy * dp.w] = DECOR_BOULDER_1;
+        dp.data[static_cast<std::size_t>(12 + gy * dp.w)] = DECOR_BOULDER_1;
 
     walker* grounder = w.add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_NE(grounder, nullptr);

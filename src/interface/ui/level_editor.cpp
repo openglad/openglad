@@ -75,7 +75,6 @@ inline constexpr Sint32 S_RIGHT = 245;
 inline constexpr Sint32 S_UP = 1;
 inline constexpr Sint32 S_DOWN = 188;
 
-static constexpr char VERSION_NUM = 8; // save scenario type info
 inline constexpr Sint32 SCROLLSIZE = 8;
 
 #define NUM_BACKGROUNDS PIX_MAX
@@ -140,7 +139,7 @@ Rect::Rect(int x_, int y_, unsigned int w_, unsigned int h_)
 
 bool Rect::contains(int px, int py) const
 {
-    return (this->x <= px && px < int(this->x + w) && this->y <= py && py < int(this->y + h));
+    return (this->x <= px && px < int(static_cast<unsigned int>(this->x) + w) && this->y <= py && py < int(static_cast<unsigned int>(this->y) + h));
 }
 
 class Rectf
@@ -331,16 +330,16 @@ SimpleButton::SimpleButton(const std::string& label_, int x_, int y_, unsigned i
 
 void SimpleButton::draw(screen* s)
 {
-    s->draw_button_colored(area.x, area.y, area.x + area.w - 1, area.y + area.h - 1, !remove_border, base_color, high_color, shadow_color);
+    s->draw_button_colored(area.x, area.y, static_cast<Sint32>(static_cast<unsigned int>(area.x) + area.w - 1), static_cast<Sint32>(static_cast<unsigned int>(area.y) + area.h - 1), !remove_border, base_color, high_color, shadow_color);
     if(remove_border && draw_top_separator)
-        s->hor_line(area.x, area.y, area.w, shadow_color);
+        s->hor_line(area.x, area.y, static_cast<Sint32>(area.w), shadow_color);
 	    
     text& mytext = s->text_normal;
 	    
     if(centered)
-        mytext.write_xy(area.x + area.w/2 - 3*static_cast<Sint32>(label.size()), area.y + area.h/2 - 2, label.c_str(), static_cast<unsigned char>(text_color), 1);
+        mytext.write_xy(static_cast<Sint32>(static_cast<unsigned int>(area.x) + area.w/2 - static_cast<unsigned int>(3*static_cast<Sint32>(label.size()))), static_cast<Sint32>(static_cast<unsigned int>(area.y) + area.h/2 - 2), label.c_str(), static_cast<unsigned char>(text_color), 1);
     else
-        mytext.write_xy(area.x + 2, area.y + area.h/2 - 2, label.c_str(), static_cast<unsigned char>(text_color), 1);
+        mytext.write_xy(area.x + 2, static_cast<Sint32>(static_cast<unsigned int>(area.y) + area.h/2 - 2), label.c_str(), static_cast<unsigned char>(text_color), 1);
 }
 
 bool SimpleButton::contains(int x, int y) const
@@ -412,7 +411,13 @@ public:
     bool snap_to_grid;
     Order order;
     Sint32 family;
-    char team;
+    // Signed and wide enough to hold every team byte a walker can carry.
+    // walker::team_num() is an unsigned char, so a `char` member turned any
+    // value above 127 negative, and the team cycling below (`> 0` /
+    // `< MAX_TEAM`) then walked the brush out of the legal range instead of
+    // wrapping inside it. Editor-only state: the .fss record stores the team
+    // as a single byte written from walker::team_num(), never from here.
+    Sint32 team;
     Sint32 level;
     Sint32 worldz;   // authored sub-floor Z height (pixels) for placed objects
     Sint32 spawn_delay;  // authored wave delay (sim ticks) for placed Livings/Generators
@@ -435,7 +440,13 @@ public:
         {
             order = target->query_order();
             family = target->family();
-            team = target->team_num();
+            // 0..MAX_TEAM is the only range the editor can author or display,
+            // and it is the same range the scenario loader enforces
+            // (sanitize_loaded_team_num clamps a higher byte to team 0), so a
+            // picked object outside it hands the brush team 0 rather than a
+            // value the team buttons cannot cycle. Legal teams are unchanged.
+            const Sint32 picked_team = static_cast<Sint32>(target->team_num());
+            team = (picked_team > MAX_TEAM) ? 0 : picked_team;
             level = target->stats()->level();
         }
     }
@@ -485,8 +496,8 @@ public:
             name = target_->stats()->name;
             x = target_->xpos();
             y = target_->ypos();
-            w = target_->sizex();
-            h = target_->sizey();
+            w = static_cast<unsigned short>(target_->sizex());
+            h = static_cast<unsigned short>(target_->sizey());
             order = target_->query_order();
             family = target_->family();
             level = target_->stats()->level();
@@ -506,7 +517,7 @@ public:
         // display_panel via the AI/Delay info lines).
         if(level_data != nullptr)
         {
-            auto& w = level_data->world();
+            auto& lvl_world = level_data->world();
             auto alive = [&](const auto& list)
             {
                 for(const auto& up : list)
@@ -516,7 +527,8 @@ public:
                 }
                 return false;
             };
-            if(!alive(w.oblist) && !alive(w.fxlist) && !alive(w.weaplist))
+            if(!alive(lvl_world.oblist) && !alive(lvl_world.fxlist) &&
+               !alive(lvl_world.weaplist))
             {
                 clear();
                 target = nullptr;
@@ -683,83 +695,83 @@ LevelEditorData::LevelEditorData()
     , menu_button_height(DEFAULT_EDITOR_MENU_BUTTON_HEIGHT)
     
 	, fileButton("File", OVERSCAN_PADDING, 0, 30, menu_button_height)
-	, fileCampaignButton("Campaign >", OVERSCAN_PADDING, fileButton.area.y + fileButton.area.h, 65, menu_button_height, true)
-	, fileLevelButton("Level >", OVERSCAN_PADDING, fileCampaignButton.area.y + fileCampaignButton.area.h, 65, menu_button_height, true, true)
-	, fileQuitButton("Exit", OVERSCAN_PADDING, fileLevelButton.area.y + fileLevelButton.area.h, 65, menu_button_height, true, true)
+	, fileCampaignButton("Campaign >", OVERSCAN_PADDING, static_cast<int>(static_cast<unsigned int>(fileButton.area.y) + fileButton.area.h), 65, menu_button_height, true)
+	, fileLevelButton("Level >", OVERSCAN_PADDING, static_cast<int>(static_cast<unsigned int>(fileCampaignButton.area.y) + fileCampaignButton.area.h), 65, menu_button_height, true, true)
+	, fileQuitButton("Exit", OVERSCAN_PADDING, static_cast<int>(static_cast<unsigned int>(fileLevelButton.area.y) + fileLevelButton.area.h), 65, menu_button_height, true, true)
 	
-	, fileCampaignImportButton("Import...", fileCampaignButton.area.x + fileCampaignButton.area.w, fileCampaignButton.area.y, 65, menu_button_height, true)
-	, fileCampaignShareButton("Share...", fileCampaignImportButton.area.x, fileCampaignImportButton.area.y + fileCampaignImportButton.area.h, 65, menu_button_height, true, true)
+	, fileCampaignImportButton("Import...", static_cast<int>(static_cast<unsigned int>(fileCampaignButton.area.x) + fileCampaignButton.area.w), fileCampaignButton.area.y, 65, menu_button_height, true)
+	, fileCampaignShareButton("Share...", fileCampaignImportButton.area.x, static_cast<int>(static_cast<unsigned int>(fileCampaignImportButton.area.y) + fileCampaignImportButton.area.h), 65, menu_button_height, true, true)
 	//, fileCampaignNewButton("New", fileCampaignImportButton.area.x, fileCampaignShareButton.area.y + fileCampaignShareButton.area.h, 65, menu_button_height, true, true)
-	, fileCampaignNewButton("New", fileCampaignButton.area.x + fileCampaignButton.area.w, fileCampaignButton.area.y, 65, menu_button_height, true)
-	, fileCampaignLoadButton("Load...", fileCampaignImportButton.area.x, fileCampaignNewButton.area.y + fileCampaignNewButton.area.h, 65, menu_button_height, true, true)
-	, fileCampaignSaveButton("Save", fileCampaignImportButton.area.x, fileCampaignLoadButton.area.y + fileCampaignLoadButton.area.h, 65, menu_button_height, true, true)
-	, fileCampaignSaveAsButton("Save As...", fileCampaignImportButton.area.x, fileCampaignSaveButton.area.y + fileCampaignSaveButton.area.h, 65, menu_button_height, true, true)
+	, fileCampaignNewButton("New", static_cast<int>(static_cast<unsigned int>(fileCampaignButton.area.x) + fileCampaignButton.area.w), fileCampaignButton.area.y, 65, menu_button_height, true)
+	, fileCampaignLoadButton("Load...", fileCampaignImportButton.area.x, static_cast<int>(static_cast<unsigned int>(fileCampaignNewButton.area.y) + fileCampaignNewButton.area.h), 65, menu_button_height, true, true)
+	, fileCampaignSaveButton("Save", fileCampaignImportButton.area.x, static_cast<int>(static_cast<unsigned int>(fileCampaignLoadButton.area.y) + fileCampaignLoadButton.area.h), 65, menu_button_height, true, true)
+	, fileCampaignSaveAsButton("Save As...", fileCampaignImportButton.area.x, static_cast<int>(static_cast<unsigned int>(fileCampaignSaveButton.area.y) + fileCampaignSaveButton.area.h), 65, menu_button_height, true, true)
 	
-	, fileLevelNewButton("New", fileLevelButton.area.x + fileLevelButton.area.w, fileLevelButton.area.y, 65, menu_button_height, true)
-	, fileLevelLoadButton("Load...", fileLevelNewButton.area.x, fileLevelNewButton.area.y + fileLevelNewButton.area.h, 65, menu_button_height, true, true)
-	, fileLevelSaveButton("Save", fileLevelNewButton.area.x, fileLevelLoadButton.area.y + fileLevelLoadButton.area.h, 65, menu_button_height, true, true)
-	, fileLevelSaveAsButton("Save As...", fileLevelNewButton.area.x, fileLevelSaveButton.area.y + fileLevelSaveButton.area.h, 65, menu_button_height, true, true)
+	, fileLevelNewButton("New", static_cast<int>(static_cast<unsigned int>(fileLevelButton.area.x) + fileLevelButton.area.w), fileLevelButton.area.y, 65, menu_button_height, true)
+	, fileLevelLoadButton("Load...", fileLevelNewButton.area.x, static_cast<int>(static_cast<unsigned int>(fileLevelNewButton.area.y) + fileLevelNewButton.area.h), 65, menu_button_height, true, true)
+	, fileLevelSaveButton("Save", fileLevelNewButton.area.x, static_cast<int>(static_cast<unsigned int>(fileLevelLoadButton.area.y) + fileLevelLoadButton.area.h), 65, menu_button_height, true, true)
+	, fileLevelSaveAsButton("Save As...", fileLevelNewButton.area.x, static_cast<int>(static_cast<unsigned int>(fileLevelSaveButton.area.y) + fileLevelSaveButton.area.h), 65, menu_button_height, true, true)
 	
-	, campaignButton("Campaign", fileButton.area.x + fileButton.area.w, 0, 55, menu_button_height)
-	, campaignInfoButton("Info...", campaignButton.area.x, campaignButton.area.y + campaignButton.area.h, 59, menu_button_height, true)
-	, campaignProfileButton("Profile >", campaignButton.area.x, campaignInfoButton.area.y + campaignInfoButton.area.h, 59, menu_button_height, true, true)
-	, campaignDetailsButton("Details >", campaignButton.area.x, campaignProfileButton.area.y + campaignProfileButton.area.h, 59, menu_button_height, true, true)
-	, campaignValidateButton("Validate", campaignButton.area.x, campaignDetailsButton.area.y + campaignDetailsButton.area.h, 59, menu_button_height, true, true)
+	, campaignButton("Campaign", static_cast<int>(static_cast<unsigned int>(fileButton.area.x) + fileButton.area.w), 0, 55, menu_button_height)
+	, campaignInfoButton("Info...", campaignButton.area.x, static_cast<int>(static_cast<unsigned int>(campaignButton.area.y) + campaignButton.area.h), 59, menu_button_height, true)
+	, campaignProfileButton("Profile >", campaignButton.area.x, static_cast<int>(static_cast<unsigned int>(campaignInfoButton.area.y) + campaignInfoButton.area.h), 59, menu_button_height, true, true)
+	, campaignDetailsButton("Details >", campaignButton.area.x, static_cast<int>(static_cast<unsigned int>(campaignProfileButton.area.y) + campaignProfileButton.area.h), 59, menu_button_height, true, true)
+	, campaignValidateButton("Validate", campaignButton.area.x, static_cast<int>(static_cast<unsigned int>(campaignDetailsButton.area.y) + campaignDetailsButton.area.h), 59, menu_button_height, true, true)
 	
-	, campaignProfileTitleButton("Title...", campaignProfileButton.area.x + campaignProfileButton.area.w, campaignProfileButton.area.y, 95, menu_button_height, true)
-	, campaignProfileDescriptionButton("Description...", campaignProfileTitleButton.area.x, campaignProfileTitleButton.area.y + campaignProfileTitleButton.area.h, 95, menu_button_height, true, true)
-	, campaignProfileIconButton("Icon...", campaignProfileTitleButton.area.x, campaignProfileDescriptionButton.area.y + campaignProfileDescriptionButton.area.h, 95, menu_button_height, true, true)
+	, campaignProfileTitleButton("Title...", static_cast<int>(static_cast<unsigned int>(campaignProfileButton.area.x) + campaignProfileButton.area.w), campaignProfileButton.area.y, 95, menu_button_height, true)
+	, campaignProfileDescriptionButton("Description...", campaignProfileTitleButton.area.x, static_cast<int>(static_cast<unsigned int>(campaignProfileTitleButton.area.y) + campaignProfileTitleButton.area.h), 95, menu_button_height, true, true)
+	, campaignProfileIconButton("Icon...", campaignProfileTitleButton.area.x, static_cast<int>(static_cast<unsigned int>(campaignProfileDescriptionButton.area.y) + campaignProfileDescriptionButton.area.h), 95, menu_button_height, true, true)
 	//, campaignProfileAuthorsButton("Authors...", campaignProfileTitleButton.area.x, campaignProfileIconButton.area.y + campaignProfileIconButton.area.h, 95, menu_button_height, true, true)
-	, campaignProfileAuthorsButton("Authors...", campaignProfileTitleButton.area.x, campaignProfileDescriptionButton.area.y + campaignProfileDescriptionButton.area.h, 95, menu_button_height, true, true)
-	, campaignProfileContributorsButton("Contributors...", campaignProfileTitleButton.area.x, campaignProfileAuthorsButton.area.y + campaignProfileAuthorsButton.area.h, 95, menu_button_height, true, true)
+	, campaignProfileAuthorsButton("Authors...", campaignProfileTitleButton.area.x, static_cast<int>(static_cast<unsigned int>(campaignProfileDescriptionButton.area.y) + campaignProfileDescriptionButton.area.h), 95, menu_button_height, true, true)
+	, campaignProfileContributorsButton("Contributors...", campaignProfileTitleButton.area.x, static_cast<int>(static_cast<unsigned int>(campaignProfileAuthorsButton.area.y) + campaignProfileAuthorsButton.area.h), 95, menu_button_height, true, true)
 	
-	, campaignDetailsVersionButton("Version...", campaignDetailsButton.area.x + campaignDetailsButton.area.w, campaignDetailsButton.area.y, 113, menu_button_height, true)
-	, campaignDetailsSuggestedPowerButton("Suggested power...", campaignDetailsVersionButton.area.x, campaignDetailsVersionButton.area.y + campaignDetailsVersionButton.area.h, 113, menu_button_height, true, true)
-	, campaignDetailsFirstLevelButton("First level...", campaignDetailsVersionButton.area.x, campaignDetailsSuggestedPowerButton.area.y + campaignDetailsSuggestedPowerButton.area.h, 113, menu_button_height, true, true)
+	, campaignDetailsVersionButton("Version...", static_cast<int>(static_cast<unsigned int>(campaignDetailsButton.area.x) + campaignDetailsButton.area.w), campaignDetailsButton.area.y, 113, menu_button_height, true)
+	, campaignDetailsSuggestedPowerButton("Suggested power...", campaignDetailsVersionButton.area.x, static_cast<int>(static_cast<unsigned int>(campaignDetailsVersionButton.area.y) + campaignDetailsVersionButton.area.h), 113, menu_button_height, true, true)
+	, campaignDetailsFirstLevelButton("First level...", campaignDetailsVersionButton.area.x, static_cast<int>(static_cast<unsigned int>(campaignDetailsSuggestedPowerButton.area.y) + campaignDetailsSuggestedPowerButton.area.h), 113, menu_button_height, true, true)
 	
-	, levelButton("Level", campaignButton.area.x + campaignButton.area.w, 0, 40, menu_button_height)
-	, levelInfoButton("Info...", levelButton.area.x, levelButton.area.y + levelButton.area.h, 110, menu_button_height, true)
-	, levelProfileButton("Profile >", levelButton.area.x, levelInfoButton.area.y + levelInfoButton.area.h, 110, menu_button_height, true, true)
-	, levelDetailsButton("Details >", levelButton.area.x, levelProfileButton.area.y + levelProfileButton.area.h, 110, menu_button_height, true, true)
-	, levelGoalsButton("Goals >", levelButton.area.x, levelDetailsButton.area.y + levelDetailsButton.area.h, 110, menu_button_height, true, true)
-	, levelResmoothButton("Resmooth terrain", levelButton.area.x, levelGoalsButton.area.y + levelGoalsButton.area.h, 110, menu_button_height, true, true)
-	, levelDeleteTerrainButton("Clear all terrain", levelButton.area.x, levelResmoothButton.area.y + levelResmoothButton.area.h, 110, menu_button_height, true, true)
-	, levelDeleteObjectsButton("Clear all objects", levelButton.area.x, levelDeleteTerrainButton.area.y + levelDeleteTerrainButton.area.h, 110, menu_button_height, true, true)
+	, levelButton("Level", static_cast<int>(static_cast<unsigned int>(campaignButton.area.x) + campaignButton.area.w), 0, 40, menu_button_height)
+	, levelInfoButton("Info...", levelButton.area.x, static_cast<int>(static_cast<unsigned int>(levelButton.area.y) + levelButton.area.h), 110, menu_button_height, true)
+	, levelProfileButton("Profile >", levelButton.area.x, static_cast<int>(static_cast<unsigned int>(levelInfoButton.area.y) + levelInfoButton.area.h), 110, menu_button_height, true, true)
+	, levelDetailsButton("Details >", levelButton.area.x, static_cast<int>(static_cast<unsigned int>(levelProfileButton.area.y) + levelProfileButton.area.h), 110, menu_button_height, true, true)
+	, levelGoalsButton("Goals >", levelButton.area.x, static_cast<int>(static_cast<unsigned int>(levelDetailsButton.area.y) + levelDetailsButton.area.h), 110, menu_button_height, true, true)
+	, levelResmoothButton("Resmooth terrain", levelButton.area.x, static_cast<int>(static_cast<unsigned int>(levelGoalsButton.area.y) + levelGoalsButton.area.h), 110, menu_button_height, true, true)
+	, levelDeleteTerrainButton("Clear all terrain", levelButton.area.x, static_cast<int>(static_cast<unsigned int>(levelResmoothButton.area.y) + levelResmoothButton.area.h), 110, menu_button_height, true, true)
+	, levelDeleteObjectsButton("Clear all objects", levelButton.area.x, static_cast<int>(static_cast<unsigned int>(levelDeleteTerrainButton.area.y) + levelDeleteTerrainButton.area.h), 110, menu_button_height, true, true)
 	
-	, levelProfileTitleButton("Title...", levelProfileButton.area.x + levelProfileButton.area.w, levelProfileButton.area.y, 95, menu_button_height, true)
-	, levelProfileDescriptionButton("Description...", levelProfileTitleButton.area.x, levelProfileTitleButton.area.y + levelProfileTitleButton.area.h, 95, menu_button_height, true, true)
+	, levelProfileTitleButton("Title...", static_cast<int>(static_cast<unsigned int>(levelProfileButton.area.x) + levelProfileButton.area.w), levelProfileButton.area.y, 95, menu_button_height, true)
+	, levelProfileDescriptionButton("Description...", levelProfileTitleButton.area.x, static_cast<int>(static_cast<unsigned int>(levelProfileTitleButton.area.y) + levelProfileTitleButton.area.h), 95, menu_button_height, true, true)
 	
-	, levelDetailsMapSizeButton("Map size...", levelDetailsButton.area.x + levelDetailsButton.area.w, levelDetailsButton.area.y, 95, menu_button_height, true)
-	, levelDetailsParValueButton("Par value...", levelDetailsMapSizeButton.area.x, levelDetailsMapSizeButton.area.y + levelDetailsMapSizeButton.area.h, 95, menu_button_height, true, true)
-	, levelDetailsTimeLimitButton("Time limit...", levelDetailsParValueButton.area.x, levelDetailsParValueButton.area.y + levelDetailsParValueButton.area.h, 95, menu_button_height, true, true)
+	, levelDetailsMapSizeButton("Map size...", static_cast<int>(static_cast<unsigned int>(levelDetailsButton.area.x) + levelDetailsButton.area.w), levelDetailsButton.area.y, 95, menu_button_height, true)
+	, levelDetailsParValueButton("Par value...", levelDetailsMapSizeButton.area.x, static_cast<int>(static_cast<unsigned int>(levelDetailsMapSizeButton.area.y) + levelDetailsMapSizeButton.area.h), 95, menu_button_height, true, true)
+	, levelDetailsTimeLimitButton("Time limit...", levelDetailsParValueButton.area.x, static_cast<int>(static_cast<unsigned int>(levelDetailsParValueButton.area.y) + levelDetailsParValueButton.area.h), 95, menu_button_height, true, true)
 	
-	, levelGoalsEnemiesButton("Defeat enemies: On", levelGoalsButton.area.x + levelGoalsButton.area.w - 2*OVERSCAN_PADDING, levelGoalsButton.area.y, 125, menu_button_height, true)
-	, levelGoalsGeneratorsButton("Beat generators: Off", levelGoalsEnemiesButton.area.x, levelGoalsEnemiesButton.area.y + levelGoalsEnemiesButton.area.h, 125, menu_button_height, true, true)
-	, levelGoalsNPCsButton("Protect NPCs: Off", levelGoalsEnemiesButton.area.x, levelGoalsGeneratorsButton.area.y + levelGoalsGeneratorsButton.area.h, 125, menu_button_height, true, true)
+	, levelGoalsEnemiesButton("Defeat enemies: On", static_cast<int>(static_cast<unsigned int>(levelGoalsButton.area.x) + levelGoalsButton.area.w - 2*OVERSCAN_PADDING), levelGoalsButton.area.y, 125, menu_button_height, true)
+	, levelGoalsGeneratorsButton("Beat generators: Off", levelGoalsEnemiesButton.area.x, static_cast<int>(static_cast<unsigned int>(levelGoalsEnemiesButton.area.y) + levelGoalsEnemiesButton.area.h), 125, menu_button_height, true, true)
+	, levelGoalsNPCsButton("Protect NPCs: Off", levelGoalsEnemiesButton.area.x, static_cast<int>(static_cast<unsigned int>(levelGoalsGeneratorsButton.area.y) + levelGoalsGeneratorsButton.area.h), 125, menu_button_height, true, true)
 	
-	, modeButton("Edit (Terrain)", levelButton.area.x + levelButton.area.w, 0, 90, menu_button_height)
-	, modeTerrainButton("Terrain Mode", modeButton.area.x, modeButton.area.y + modeButton.area.h, 75, menu_button_height, true)
-	, modeObjectButton("Object Mode", modeButton.area.x, modeTerrainButton.area.y + modeTerrainButton.area.h, 75, menu_button_height, true, true)
-	, modeSelectButton("Select Mode", modeButton.area.x, modeObjectButton.area.y + modeObjectButton.area.h, 75, menu_button_height, true, true)
+	, modeButton("Edit (Terrain)", static_cast<int>(static_cast<unsigned int>(levelButton.area.x) + levelButton.area.w), 0, 90, menu_button_height)
+	, modeTerrainButton("Terrain Mode", modeButton.area.x, static_cast<int>(static_cast<unsigned int>(modeButton.area.y) + modeButton.area.h), 75, menu_button_height, true)
+	, modeObjectButton("Object Mode", modeButton.area.x, static_cast<int>(static_cast<unsigned int>(modeTerrainButton.area.y) + modeTerrainButton.area.h), 75, menu_button_height, true, true)
+	, modeSelectButton("Select Mode", modeButton.area.x, static_cast<int>(static_cast<unsigned int>(modeObjectButton.area.y) + modeObjectButton.area.h), 75, menu_button_height, true, true)
     
     , pickerButton("Pick", OVERSCAN_PADDING, 20, 27, 15)
-    , gridSnapButton("Snap", pickerButton.area.x+pickerButton.area.w+2, 20, 27, 15)
-    , terrainSmoothButton("Smooth", pickerButton.area.x+pickerButton.area.w+2, 20, 39, 15)  // Same place as gridSnapButton
-    , decorButton("Decor", terrainSmoothButton.area.x+terrainSmoothButton.area.w+2, 20, 35, 15)  // Terrain mode: toggle base/decor painting
-    , setNameButton("Set Name", OVERSCAN_PADDING, 10+gridSnapButton.area.y+gridSnapButton.area.h, 52, 15)
-    , prevTeamButton("< Team", OVERSCAN_PADDING, setNameButton.area.y+setNameButton.area.h, 40, 15)
-    , nextTeamButton("Team >", prevTeamButton.area.x + prevTeamButton.area.w, prevTeamButton.area.y, 40, 15)
-    , prevLevelButton("< Lvl", OVERSCAN_PADDING, prevTeamButton.area.y+prevTeamButton.area.h, 40, 15)
-    , nextLevelButton("Lvl >", prevLevelButton.area.x + prevLevelButton.area.w, prevLevelButton.area.y, 40, 15)
-    , prevClassButton("< Class", OVERSCAN_PADDING, prevLevelButton.area.y+prevLevelButton.area.h, 48, 15)
-    , nextClassButton("Class >", prevClassButton.area.x + prevClassButton.area.w, prevClassButton.area.y, 48, 15)
-    , facingButton("Facing >", OVERSCAN_PADDING, prevClassButton.area.y+prevClassButton.area.h, 52, 15)
-    , aiButton("AI >", facingButton.area.x+facingButton.area.w, facingButton.area.y, 30, 15)
+    , gridSnapButton("Snap", static_cast<int>(static_cast<unsigned int>(pickerButton.area.x)+pickerButton.area.w+2), 20, 27, 15)
+    , terrainSmoothButton("Smooth", static_cast<int>(static_cast<unsigned int>(pickerButton.area.x)+pickerButton.area.w+2), 20, 39, 15)  // Same place as gridSnapButton
+    , decorButton("Decor", static_cast<int>(static_cast<unsigned int>(terrainSmoothButton.area.x)+terrainSmoothButton.area.w+2), 20, 35, 15)  // Terrain mode: toggle base/decor painting
+    , setNameButton("Set Name", OVERSCAN_PADDING, static_cast<int>(static_cast<unsigned int>(10+gridSnapButton.area.y)+gridSnapButton.area.h), 52, 15)
+    , prevTeamButton("< Team", OVERSCAN_PADDING, static_cast<int>(static_cast<unsigned int>(setNameButton.area.y)+setNameButton.area.h), 40, 15)
+    , nextTeamButton("Team >", static_cast<int>(static_cast<unsigned int>(prevTeamButton.area.x) + prevTeamButton.area.w), prevTeamButton.area.y, 40, 15)
+    , prevLevelButton("< Lvl", OVERSCAN_PADDING, static_cast<int>(static_cast<unsigned int>(prevTeamButton.area.y)+prevTeamButton.area.h), 40, 15)
+    , nextLevelButton("Lvl >", static_cast<int>(static_cast<unsigned int>(prevLevelButton.area.x) + prevLevelButton.area.w), prevLevelButton.area.y, 40, 15)
+    , prevClassButton("< Class", OVERSCAN_PADDING, static_cast<int>(static_cast<unsigned int>(prevLevelButton.area.y)+prevLevelButton.area.h), 48, 15)
+    , nextClassButton("Class >", static_cast<int>(static_cast<unsigned int>(prevClassButton.area.x) + prevClassButton.area.w), prevClassButton.area.y, 48, 15)
+    , facingButton("Facing >", OVERSCAN_PADDING, static_cast<int>(static_cast<unsigned int>(prevClassButton.area.y)+prevClassButton.area.h), 52, 15)
+    , aiButton("AI >", static_cast<int>(static_cast<unsigned int>(facingButton.area.x)+facingButton.area.w), facingButton.area.y, 30, 15)
     // Sits to the RIGHT of "AI >" on the same row so no existing button moves
     // (the select-panel rows below are addressed by fixed coordinates in the
     // editor interaction tests).
-    , delayButton("Delay", aiButton.area.x+aiButton.area.w, aiButton.area.y, 46, 15)
-    , deleteButton("Delete", OVERSCAN_PADDING, 10+facingButton.area.y+facingButton.area.h, 40, 15)
+    , delayButton("Delay", static_cast<int>(static_cast<unsigned int>(aiButton.area.x)+aiButton.area.w), aiButton.area.y, 46, 15)
+    , deleteButton("Delete", OVERSCAN_PADDING, static_cast<int>(static_cast<unsigned int>(10+facingButton.area.y)+facingButton.area.h), 40, 15)
     , panUpButton("U", OVERSCAN_PADDING + 18, 200 - 51, 15, 15)
     , panDownButton("D", OVERSCAN_PADDING + 18, 200 - 21, 15, 15)
     , panLeftButton("L", OVERSCAN_PADDING + 3, 200 - 36, 15, 15)
@@ -921,7 +933,7 @@ bool LevelEditorData::mouse_on_menus(int mx, int my)
     }
     
     // Count anything in the area of the pan buttons
-    if(pan_buttons.size() > 0 && Rect(panLeftButton.area.x, panUpButton.area.y, panRightButton.area.x + panRightButton.area.w - panLeftButton.area.x, panDownButton.area.y + panDownButton.area.h - panUpButton.area.y).contains(mx, my))
+    if(pan_buttons.size() > 0 && Rect(panLeftButton.area.x, panUpButton.area.y, static_cast<unsigned int>(panRightButton.area.x) + panRightButton.area.w - static_cast<unsigned int>(panLeftButton.area.x), static_cast<unsigned int>(panDownButton.area.y) + panDownButton.area.h - static_cast<unsigned int>(panUpButton.area.y)).contains(mx, my))
         return true;
     
     for(const auto& e : current_menu)
@@ -1583,8 +1595,8 @@ Sint32 LevelEditorData::display_panel(screen* s)
         
     if(pan_buttons.size() > 0)
     {
-        Rect r(panLeftButton.area.x, panUpButton.area.y, panRightButton.area.x + panRightButton.area.w - panLeftButton.area.x, panDownButton.area.y + panDownButton.area.h - panUpButton.area.y);
-        s->fastbox(r.x, r.y, r.w, r.h, 13);
+        Rect r(panLeftButton.area.x, panUpButton.area.y, static_cast<unsigned int>(panRightButton.area.x) + panRightButton.area.w - static_cast<unsigned int>(panLeftButton.area.x), static_cast<unsigned int>(panDownButton.area.y) + panDownButton.area.h - static_cast<unsigned int>(panUpButton.area.y));
+        s->fastbox(r.x, r.y, static_cast<Sint32>(r.w), static_cast<Sint32>(r.h), 13);
         for(auto* btn : pan_buttons)
             btn->draw(s);
     }
@@ -1625,7 +1637,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
 	if (!livings_init) {
 	    for (int family_index = 0; family_index < NUM_FAMILIES; family_index++) {
 	        const auto* fd = get_family_descriptor(family_index);
-	        livings[family_index] = (fd && fd->name) ? fd->name : "BEAST";
+	        livings[static_cast<std::size_t>(family_index)] = (fd && fd->name) ? fd->name : "BEAST";
 	    }
 	    livings_init = true;
 	}
@@ -1817,7 +1829,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
                 whichback = (i + (j + eds().rowsdown) * 4)
                     % static_cast<Sint32>(backgrounds().size());
                 {
-                    auto& pix = s->level_visuals_.pixdata[ backgrounds()[whichback] ];
+                    auto& pix = s->level_visuals_.pixdata[ backgrounds()[static_cast<std::size_t>(whichback)] ];
                     s->putbuffer(S_RIGHT+i*GRID_SIZE, PIX_TOP+j*GRID_SIZE,
                                         GRID_SIZE, GRID_SIZE,
                                         0, 0, 320, 200,
@@ -1859,7 +1871,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
         // Guy
         walker* newob = level->add_ob(Order::Living, FAMILY_ELF);
         newob->setxy(lm+25 + level->level_visuals().topx, PIX_TOP-16-1 + level->level_visuals().topy);
-        newob->set_data(s->myloader->graphics[PIX(object_brush.order, object_brush.family)]);
+        newob->set_data(s->myloader->graphics[static_cast<std::size_t>(PIX(object_brush.order, object_brush.family))]);
         s->myloader->set_walker(newob, object_brush.order, object_brush.family);
         newob->set_team_num(static_cast<unsigned char>(object_brush.team));
         draw_walker_tile(*newob, s->viewob[0].get());
@@ -1881,8 +1893,8 @@ Sint32 LevelEditorData::display_panel(screen* s)
                 {
                     index = (i + ((j+eds().rowsdown) * PIX_OVER)) % pane_size;
                     newob->setxy(S_RIGHT+i*GRID_SIZE + level->level_visuals().topx, PIX_TOP+j*GRID_SIZE + level->level_visuals().topy);
-                    newob->set_data(s->myloader->graphics[PIX(object_pane()[index].order, object_pane()[index].family)]);
-                    s->myloader->set_walker(newob, object_pane()[index].order, object_pane()[index].family);
+                    newob->set_data(s->myloader->graphics[static_cast<std::size_t>(PIX(object_pane()[static_cast<std::size_t>(index)].order, object_pane()[static_cast<std::size_t>(index)].family))]);
+                    s->myloader->set_walker(newob, object_pane()[static_cast<std::size_t>(index)].order, object_pane()[static_cast<std::size_t>(index)].family);
                     newob->set_team_num(static_cast<unsigned char>(object_brush.team));
                     draw_walker_tile(*newob, s->viewob[0].get());
                 }
@@ -1899,12 +1911,12 @@ Sint32 LevelEditorData::display_panel(screen* s)
         bool over_radar = (mx > s->viewob[0]->endx - myradar.xview - 4
                         && my > s->viewob[0]->endy - myradar.yview - 4
                         && mx < s->viewob[0]->endx - 4 && my < s->viewob[0]->endy - 4);
-        bool over_info = Rect(lm-4, L_D(-1)+4, 315 - (lm-4), L_D(7)-2 - L_D(-1)).contains(mx, my);
+        bool over_info = Rect(lm-4, L_D(-1)+4, static_cast<unsigned int>(315 - (lm-4)), L_D(7)-2 - L_D(-1)).contains(mx, my);
         if(!over_radar && !over_info && !Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mx, my) && !mouse_on_menus(mx, my))
         {
             // Prepare object sprite
             newob->setxy(mx + level->level_visuals().topx, my + level->level_visuals().topy);
-            newob->set_data(s->myloader->graphics[PIX(object_brush.order, object_brush.family)]);
+            newob->set_data(s->myloader->graphics[static_cast<std::size_t>(PIX(object_brush.order, object_brush.family))]);
             s->myloader->set_walker(newob, object_brush.order, object_brush.family);
             newob->set_team_num(static_cast<unsigned char>(object_brush.team));
             
@@ -1984,8 +1996,8 @@ void LevelEditorData::add_floor()
     w.set_floor_count(nf + 1);
     const int gw = w.grid.w;
     const int gh = w.grid.h;
-    auto* buf = new unsigned char[static_cast<std::size_t>(gw) * gh];
-    std::fill_n(buf, static_cast<std::size_t>(gw) * gh, static_cast<unsigned char>(PIX_AIR));
+    auto* buf = new unsigned char[static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh)];
+    std::fill_n(buf, static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh), static_cast<unsigned char>(PIX_AIR));
     w.grid_for_floor(nf) = PixieData(1, static_cast<unsigned char>(gw),
                                      static_cast<unsigned char>(gh), buf);
     w.smoother_for_floor(nf).set_target(w.grid_for_floor(nf));
@@ -2967,7 +2979,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             {
                 walker* newob = nullptr;
                 
-                if(rect_selecting && (fabs(selection_rect.w) > 15 || fabs(selection_rect.h > 15)))
+                if(rect_selecting && (fabs(selection_rect.w) > 15 || fabs(selection_rect.h) > 15))
                 {
                     rect_selecting = false;
                     
@@ -3049,8 +3061,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     if(pane_size > 0)
                     {
                         const int index = (windowx + ((windowy+eds().rowsdown) * PIX_OVER)) % pane_size;
-                        object_brush.order = object_pane()[index].order;
-                        object_brush.family = object_pane()[index].family;
+                        object_brush.order = object_pane()[static_cast<std::size_t>(index)].order;
+                        object_brush.family = object_pane()[static_cast<std::size_t>(index)].family;
                         // The brush order decides whether "Delay" is offered.
                         reset_mode_buttons();
                     }
@@ -3131,8 +3143,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     else
                     {
                         terrain_brush.terrain = backgrounds()[
-                            (windowx + ((windowy + eds().rowsdown) * PIX_OVER))
-                            % static_cast<Sint32>(backgrounds().size())];
+                            static_cast<std::size_t>((windowx + ((windowy + eds().rowsdown) * PIX_OVER))
+                            % static_cast<Sint32>(backgrounds().size()))];
                         terrain_brush.terrain %= NUM_BACKGROUNDS;
                     }
                 } // end of background grid window
@@ -3215,7 +3227,7 @@ unsigned char LevelEditorData::get_terrain(int x, int y)
     // (the renderer guards tile_index < PIX_MAX, so out-of-range tiles survive).
     // Clamp here so a poisoned tile can never become an out-of-bounds pixdata[] index.
     const PixieData& g = level->world().grid_for_floor(eds().current_floor);
-    unsigned char t = g.data[y*g.w + x];
+    unsigned char t = g.data[static_cast<std::size_t>(y*g.w + x)];
     return (t < PIX_MAX) ? t : static_cast<unsigned char>(PIX_GRASS1);
 }
 
@@ -3225,7 +3237,7 @@ void LevelEditorData::set_terrain(int x, int y, unsigned char terrain)
         return;
 
     PixieData& g = level->world().grid_for_floor(eds().current_floor);
-    g.data[y*g.w + x] = terrain;
+    g.data[static_cast<std::size_t>(y*g.w + x)] = terrain;
 }
 
 // Decor byte at a cell of the current floor's decor plane (0 when the plane
@@ -3242,7 +3254,7 @@ unsigned char LevelEditorData::get_decor(int x, int y)
     const PixieData& g = level->world().grid_for_floor(eds().current_floor);
     if(dp.w != g.w || dp.h != g.h)
         return DECOR_NONE; // stale plane (e.g. after a resize) — treat as empty
-    const unsigned char d = dp.data[y*dp.w + x];
+    const unsigned char d = dp.data[static_cast<std::size_t>(y*dp.w + x)];
     return (d < DECOR_MAX) ? d : static_cast<unsigned char>(DECOR_NONE);
 }
 
@@ -3262,7 +3274,7 @@ bool LevelEditorData::set_decor(int x, int y, unsigned char decor_id)
 
     GameWorld& w = level->world();
     const PixieData& g = w.grid_for_floor(eds().current_floor);
-    const unsigned char base = g.data[y*g.w + x];
+    const unsigned char base = g.data[static_cast<std::size_t>(y*g.w + x)];
     if(decor_id != DECOR_NONE &&
        (base == PIX_AIR || base == PIX_ZSTAIR_UP || base == PIX_ZSTAIR_DOWN))
         return false;
@@ -3280,7 +3292,7 @@ bool LevelEditorData::set_decor(int x, int y, unsigned char decor_id)
         std::fill_n(buf, cells, static_cast<unsigned char>(DECOR_NONE));
         dp = PixieData(1, g.w, g.h, buf);
     }
-    dp.data[y*dp.w + x] = decor_id;
+    dp.data[static_cast<std::size_t>(y*dp.w + x)] = decor_id;
     return true;
 }
 
@@ -4190,7 +4202,7 @@ Sint32 get_random_matching_tile(Sint32 whatback)
 {
 	Sint32 i;
 
-	i = random(4);  // max # of types of any particular ..
+	i = static_cast<Sint32>(random(4));  // max # of types of any particular ..
 
 	switch (whatback)
 	{
@@ -4277,7 +4289,7 @@ Sint32 get_random_matching_tile(Sint32 whatback)
 			}
 			//break;
 		case PIX_COBBLE_1:
-			switch (random(i))
+			switch (random(static_cast<Uint32>(i)))
 			{
 				case 0:
 					return PIX_COBBLE_1;
@@ -4292,7 +4304,7 @@ Sint32 get_random_matching_tile(Sint32 whatback)
 			}
 			//break;
 		case PIX_BOULDER_1:
-			switch (random(i))
+			switch (random(static_cast<Uint32>(i)))
 			{
 				case 0:
 					return PIX_BOULDER_1;

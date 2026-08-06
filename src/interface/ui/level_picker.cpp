@@ -411,7 +411,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
     // Figure out the list index for the current scen_level, so we can start there.
     for(int i = 0; i < level_list_length; i++)
     {
-        if(level_list[i] == default_level)
+        if(level_list[static_cast<std::size_t>(i)] == default_level)
             current_level_index = i;
     }
 
@@ -425,9 +425,9 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
     for(int i = 0; i < NUM_BROWSE_RADARS; i++)
     {
         if(current_level_index + i < level_list_length)
-            entries[i] = std::make_unique<BrowserEntry>(og::runtime::current_session->myscreen_, i, level_list[current_level_index + i]);
+            entries[static_cast<std::size_t>(i)] = std::make_unique<BrowserEntry>(og::runtime::current_session->myscreen_, i, level_list[static_cast<std::size_t>(current_level_index + i)]);
         else
-            entries[i].reset();
+            entries[static_cast<std::size_t>(i)].reset();
     }
     
     int selected_entry = -1;
@@ -436,9 +436,9 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
     int army_power = 0;
 	for(int i=0; i<MAX_TEAM_SIZE; i++)
 	{
-		if (og::runtime::current_session->myscreen_->save_data.team_list[i])
+		if (og::runtime::current_session->myscreen_->save_data.team_list[static_cast<std::size_t>(i)])
 		{
-		    army_power += 3*og::runtime::current_session->myscreen_->save_data.team_list[i]->level;
+		    army_power += 3*og::runtime::current_session->myscreen_->save_data.team_list[static_cast<std::size_t>(i)]->level;
 		}
 	}
     
@@ -566,13 +566,13 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
 	                    entries[NUM_BROWSE_RADARS-1].reset();
 	                    for(int i = NUM_BROWSE_RADARS-1; i > 0; i--)
 	                    {
-	                        entries[i] = std::move(entries[i-1]);
-	                        if(entries[i] != nullptr)
-	                            entries[i]->updateIndex(i);
+	                        entries[static_cast<std::size_t>(i)] = std::move(entries[static_cast<std::size_t>(i-1)]);
+	                        if(entries[static_cast<std::size_t>(i)] != nullptr)
+	                            entries[static_cast<std::size_t>(i)]->updateIndex(i);
 	                    }
 	                    // Load the new top one
 	                    if(current_level_index < level_list_length)
-	                        entries[0] = std::make_unique<BrowserEntry>(og::runtime::current_session->myscreen_, 0, level_list[current_level_index]);
+	                        entries[0] = std::make_unique<BrowserEntry>(og::runtime::current_session->myscreen_, 0, level_list[static_cast<std::size_t>(current_level_index)]);
 	                }
 	           }
         // Next
@@ -589,13 +589,13 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
 	                    entries[0].reset();
 	                    for(int i = 0; i < NUM_BROWSE_RADARS-1; i++)
 	                    {
-	                        entries[i] = std::move(entries[i+1]);
-	                        if(entries[i] != nullptr)
-	                            entries[i]->updateIndex(i);
+	                        entries[static_cast<std::size_t>(i)] = std::move(entries[static_cast<std::size_t>(i+1)]);
+	                        if(entries[static_cast<std::size_t>(i)] != nullptr)
+	                            entries[static_cast<std::size_t>(i)]->updateIndex(i);
 	                    }
 	                    // Load the new bottom one
 	                    if(current_level_index + NUM_BROWSE_RADARS-1 < level_list_length)
-	                        entries[NUM_BROWSE_RADARS-1] = std::make_unique<BrowserEntry>(og::runtime::current_session->myscreen_, NUM_BROWSE_RADARS-1, level_list[current_level_index + NUM_BROWSE_RADARS-1]);
+	                        entries[NUM_BROWSE_RADARS-1] = std::make_unique<BrowserEntry>(og::runtime::current_session->myscreen_, NUM_BROWSE_RADARS-1, level_list[static_cast<std::size_t>(current_level_index + NUM_BROWSE_RADARS-1)]);
 	                }
 	           }
         // Choose
@@ -603,7 +603,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
            {
                if(selected_entry != -1)
                {
-                   result = level_list[current_level_index + selected_entry];
+                   result = level_list[static_cast<std::size_t>(current_level_index + selected_entry)];
                    done = true;
                    break;
                }
@@ -620,7 +620,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
            {
                if(yes_or_no_prompt("Delete level", "Delete this level permanently?", false))
                {
-                   delete_level(level_list[current_level_index + selected_entry]);
+                   delete_level(level_list[static_cast<std::size_t>(current_level_index + selected_entry)]);
                    
 	                   // Reload the picker
 	                   level_list = list_levels_v();
@@ -639,9 +639,9 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
 	                    for(int i = 0; i < NUM_BROWSE_RADARS; i++)
 	                    {
 	                        if(i < level_list_length)
-	                            entries[i] = std::make_unique<BrowserEntry>(og::runtime::current_session->myscreen_, i, level_list[current_level_index + i]);
+	                            entries[static_cast<std::size_t>(i)] = std::make_unique<BrowserEntry>(og::runtime::current_session->myscreen_, i, level_list[static_cast<std::size_t>(current_level_index + i)]);
 	                        else
-	                            entries[i].reset();
+	                            entries[static_cast<std::size_t>(i)].reset();
 	                    }
                     
                     selected_entry = -1;
@@ -673,12 +673,12 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
             // Select
             for(int i = 0; i < NUM_BROWSE_RADARS; i++)
             {
-                if(i < level_list_length && entries[i] != nullptr)
+                if(i < level_list_length && entries[static_cast<std::size_t>(i)] != nullptr)
                 {
-                    int x = entries[i]->myradar.xloc;
-                    int y = entries[i]->myradar.yloc;
-                    int w = entries[i]->myradar.xview;
-                    int h = entries[i]->myradar.yview;
+                    int x = entries[static_cast<std::size_t>(i)]->myradar.xloc;
+                    int y = entries[static_cast<std::size_t>(i)]->myradar.yloc;
+                    int w = entries[static_cast<std::size_t>(i)]->myradar.xview;
+                    int h = entries[static_cast<std::size_t>(i)]->myradar.yview;
                     UiRect b = {x - 2, y - 2, w + 2, h + 2};
                     if((do_click && b.x <= mx && mx <= b.x+b.w
                        && b.y <= my && my <= b.y+b.h) || (retvalue == OK && highlighted_button - entry1_index == i))
@@ -713,11 +713,11 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         loadtext.write_xy(prev.x + 2, prev.y + 2, "Prev", DARK_BLUE, 1);
         og::runtime::current_session->myscreen_->draw_button(next.x, next.y, next.x + next.w, next.y + next.h, 1, 1);
         loadtext.write_xy(next.x + 2, next.y + 2, "Next", DARK_BLUE, 1);
-        if(selected_entry != -1 && selected_entry < level_list_length && entries[selected_entry] != nullptr)
+        if(selected_entry != -1 && selected_entry < level_list_length && entries[static_cast<std::size_t>(selected_entry)] != nullptr)
         {
             og::runtime::current_session->myscreen_->draw_button(choose.x, choose.y, choose.x + choose.w, choose.y + choose.h, 1, 1);
             loadtext.write_xy(choose.x + 9, choose.y + 2, "OK", DARK_GREEN, 1);
-            loadtext.write_xy(next.x, choose.y + 20, entries[selected_entry]->level_name.c_str(), DARK_GREEN, 1);
+            loadtext.write_xy(next.x, choose.y + 20, entries[static_cast<std::size_t>(selected_entry)]->level_name.c_str(), DARK_GREEN, 1);
         }
         og::runtime::current_session->myscreen_->draw_button(cancel.x, cancel.y, cancel.x + cancel.w, cancel.y + cancel.h, 1, 1);
         loadtext.write_xy(cancel.x + 2, cancel.y + 2, "Cancel", RED, 1);
@@ -733,30 +733,30 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         if(selected_entry != -1)
         {
             int i = selected_entry;
-            if(i < level_list_length && entries[i] != nullptr)
+            if(i < level_list_length && entries[static_cast<std::size_t>(i)] != nullptr)
             {
-                int x = entries[i]->myradar.xloc - 4;
-                int y = entries[i]->myradar.yloc - 4;
-                int w = entries[i]->myradar.xview + 8;
-                int h = entries[i]->myradar.yview + 8;
+                int x = entries[static_cast<std::size_t>(i)]->myradar.xloc - 4;
+                int y = entries[static_cast<std::size_t>(i)]->myradar.yloc - 4;
+                int w = entries[static_cast<std::size_t>(i)]->myradar.xview + 8;
+                int h = entries[static_cast<std::size_t>(i)]->myradar.yview + 8;
                 og::runtime::current_session->myscreen_->draw_box(x, y, x + w, y + h, DARK_BLUE, 1, 1);
             }
         }
         for(int i = 0; i < NUM_BROWSE_RADARS; i++)
         {
-            if(i < level_list_length && entries[i] != nullptr)
-                entries[i]->draw(og::runtime::current_session->myscreen_);
+            if(i < level_list_length && entries[static_cast<std::size_t>(i)] != nullptr)
+                entries[static_cast<std::size_t>(i)]->draw(og::runtime::current_session->myscreen_);
         }
         
         // Description, flowed to the box's character budget (issue #152):
         // scenario briefings are authored for the 33-char SCENARIO
         // INFORMATION dialog and overflow this 30-char box without wrapping.
-        if(selected_entry != -1 && selected_entry < level_list_length && entries[selected_entry] != nullptr)
+        if(selected_entry != -1 && selected_entry < level_list_length && entries[static_cast<std::size_t>(selected_entry)] != nullptr)
         {
             og::runtime::current_session->myscreen_->draw_box(descbox.x, descbox.y, descbox.x + descbox.w, descbox.y + descbox.h, GREY, 1, 1);
             std::list<std::string> raw_desc;
-            for(int i = 0; i < entries[selected_entry]->scentextlines; i++)
-                raw_desc.push_back(entries[selected_entry]->scentext[static_cast<std::size_t>(i)]);
+            for(int i = 0; i < entries[static_cast<std::size_t>(selected_entry)]->scentextlines; i++)
+                raw_desc.push_back(entries[static_cast<std::size_t>(selected_entry)]->scentext[static_cast<std::size_t>(i)]);
             const std::vector<std::string> desc_lines =
                 og::core::wrap_lines(raw_desc, descbox.w / 6);
             for(std::size_t i = 0; i < desc_lines.size(); i++)

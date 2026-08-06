@@ -226,6 +226,7 @@ struct ClasspackWeaponEntry {
     std::optional<float> gravity;
     std::optional<std::int32_t> sizez;     // WeaponFamilyDescriptor.init_sizez
     std::optional<bool> can_drop_floors;
+    std::optional<float> hp;          // base hitpoints (0/absent = keep the core row)
     NullableString sprite;
     std::optional<std::string> animation;  // og.anims set name
     ClasspackPresentation presentation;
@@ -241,6 +242,7 @@ struct ClasspackEffectEntry {
     std::optional<bool> loops_animation;
     std::optional<bool> creates_hit_effect;
     std::optional<std::vector<std::string>> init_bit_flags;
+    std::optional<float> hp;          // base hitpoints (0/absent = keep the core row)
     NullableString sprite;
     std::optional<std::string> animation;  // og.anims set name
     ClasspackPresentation presentation;
@@ -255,6 +257,7 @@ struct ClasspackTreasureEntry {
     std::optional<std::string> name;
     std::optional<bool> init_ignore;
     std::optional<std::int32_t> init_frame;
+    std::optional<float> hp;          // base hitpoints (0/absent = keep the core row)
     NullableString sprite;
     std::optional<std::string> animation;  // og.anims set name
     ClasspackPresentation presentation;
@@ -272,6 +275,7 @@ struct ClasspackGeneratorEntry {
     std::optional<bool> has_lifetime;
     std::optional<std::int32_t> spawn_ani_type;
     std::optional<bool> clear_owner;
+    std::optional<float> hp;          // base hitpoints (0/absent = keep the core row)
     NullableString sprite;
     std::optional<std::string> animation;  // og.anims set name
     std::optional<std::string> editor_label;  // level-editor palette caption

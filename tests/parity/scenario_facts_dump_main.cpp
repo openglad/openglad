@@ -218,6 +218,9 @@ int arg0_order_for_symbol(og::parity::FactKind k)
         case FactKind::WeaponSpeed:
         case FactKind::WeaponNetTravel:
             return og::parity::kOrderWeapon;
+        // arg0 is not a family id in these, so there is no symbolic name to
+        // render for it (WalkerOfTeamAlive's arg0 is a team number).
+        case FactKind::WalkerOfTeamAlive:
         case FactKind::TickReached:
         case FactKind::LevelDoneEquals:
         case FactKind::ScoreDelta:

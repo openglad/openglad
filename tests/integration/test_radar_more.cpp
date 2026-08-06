@@ -35,7 +35,7 @@ static void set_tile(LevelRuntimeData& d, int x, int y, unsigned char t)
 {
     if (x < 0 || y < 0 || x >= d.world().grid.w || y >= d.world().grid.h)
         return;
-    d.world().grid.data[y * d.world().grid.w + x] = t;
+    d.world().grid.data[static_cast<std::size_t>(y * d.world().grid.w + x)] = t;
 }
 
 // Give floor f an own grid filled with `tile`, matching the base extents.
@@ -43,8 +43,8 @@ static void fill_floor_grid(GameWorld& world, int f, unsigned char tile)
 {
     const int gw = world.grid.w;
     const int gh = world.grid.h;
-    auto* buf = new unsigned char[static_cast<std::size_t>(gw) * gh];
-    std::fill(buf, buf + static_cast<std::size_t>(gw) * gh, tile);
+    auto* buf = new unsigned char[static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh)];
+    std::fill(buf, buf + static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh), tile);
     world.grid_for_floor(f) = PixieData(1, static_cast<unsigned char>(gw),
                                         static_cast<unsigned char>(gh), buf);
 }
@@ -107,7 +107,7 @@ TEST_F(RadarMore, radar_update_and_draw_covers_key_paths)
     int idx = 0;
     for (int y = 0; y < d.world().grid.h && idx < (int)tiles.size(); y++)
         for (int x = 0; x < d.world().grid.w && idx < (int)tiles.size(); x++)
-            set_tile(d, x, y, tiles[idx++]);
+            set_tile(d, x, y, tiles[static_cast<std::size_t>(idx++)]);
 
     // Place a few objects to exercise radar::draw object filtering and colors.
     walker* control = d.add_ob(Order::Living, FAMILY_SOLDIER);

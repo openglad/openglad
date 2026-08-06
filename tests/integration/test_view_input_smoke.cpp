@@ -51,7 +51,7 @@ TEST(ViewInputSmoke, viewscreen_input_f3_f4_smoke)
     v->my_team = 0;
 
     // Avoid divide-by-zero in the F3 FPS branch.
-    og::runtime::current_session->myscreen_->timerstart = query_timer_control() - 200;
+    og::runtime::current_session->myscreen_->timerstart = static_cast<Uint32>(query_timer_control() - 200);
     og::runtime::current_session->myscreen_->framecount = 1234;
 
     // Exercise a couple of key-event branches.

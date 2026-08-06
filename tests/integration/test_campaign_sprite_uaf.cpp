@@ -97,7 +97,7 @@ PixieSnapshot snapshot_pixie(const PixieData* pix)
 void cleanup_picker_state()
 {
     for (int i = 0; i < 5; i++) {
-        pks().backdrops[i].reset();
+        pks().backdrops[static_cast<std::size_t>(i)].reset();
         pks().backpics[i].free();
     }
     clear_allbuttons();
@@ -123,7 +123,7 @@ struct FixtureCleanup
 
 struct ViewportGuard
 {
-    Sint32 ow, oh, ovw, ovh, ox, oy;
+    float ow, oh, ovw, ovh, ox, oy;
 
     ViewportGuard()
     {

@@ -202,7 +202,7 @@ static void expect_browser_wrapper_immediate_step_runs_one_tick(
     ASSERT_TRUE(load_minimal_game_loop_scenario(save_name));
 
     const std::uint32_t tick_count_before = game_screen->world().tick_count_;
-    const int framecount_before = game_screen->framecount;
+    const int framecount_before = static_cast<int>(game_screen->framecount);
     int tick_count = 0;
 
     GameLoopFrameState st;
@@ -3564,7 +3564,7 @@ TEST(GameLoop, game_frame_options_menu_via_key_prefs_completes)
     EventScript script;
     SDL_Event e{};
     e.type = SDL_EVENT_KEY_DOWN;
-    e.key.key = og::runtime::current_session->player_keys_[0][KEY_PREFS];
+    e.key.key = static_cast<SDL_Keycode>(og::runtime::current_session->player_keys_[0][KEY_PREFS]);
     e.key.scancode = SDL_GetScancodeFromKey(e.key.key, nullptr);
     e.key.repeat = false;
     script.events.push_back(e);

@@ -161,7 +161,7 @@ bool capture_frame(const char *name) {
 
 void cleanup_picker_state() {
   for (int i = 0; i < 5; i++) {
-    pks().backdrops[i].reset();
+    pks().backdrops[static_cast<std::size_t>(i)].reset();
     pks().backpics[i].free();
   }
   clear_allbuttons();
@@ -204,7 +204,7 @@ bool seed_company_with_roster(const std::string &slot, const std::string &name,
     g->name = seed.name;
     g->upgrade_to_level(seed.level, true);
     g->deployed = seed.deployed;
-    sd.team_list[i] = std::move(g);
+    sd.team_list[static_cast<std::size_t>(i)] = std::move(g);
     ++i;
   }
   sd.team_size = static_cast<unsigned char>(i);
@@ -891,7 +891,7 @@ void seed_session_save_for_net() {
     g->name = seed.name;
     g->upgrade_to_level(seed.level, true);
     g->deployed = seed.deployed;
-    save.team_list[i++] = std::move(g);
+    save.team_list[static_cast<std::size_t>(i++)] = std::move(g);
   }
   save.team_size = static_cast<unsigned char>(i);
 }

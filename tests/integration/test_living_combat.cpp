@@ -42,7 +42,7 @@ TEST(LivingCombat, living_set_difficulty_levels)
             if (!l) continue;
             auto w = l->create_walker_owned(Order::Living, families[i]);
             if (w) {
-                static_cast<living*>(w.get())->set_difficulty(level);
+                static_cast<living*>(w.get())->set_difficulty(static_cast<std::uint32_t>(level));
                 ASSERT_TRUE(w->stats()->max_hitpoints() > 0) << "HP positive for all families at all levels";
             }
         }
@@ -712,7 +712,7 @@ TEST(LivingCombat, living_round8_dead_outline_forestwalk_and_offmap_walk_paths)
     if (w->myguy)
         w->myguy->dexterity = 120;
     og::runtime::current_session->myscreen_->world().create_new_grid();
-    og::runtime::current_session->myscreen_->world().grid.data[(w->ypos() / GRID_SIZE) * og::runtime::current_session->myscreen_->world().grid.w + (w->xpos() / GRID_SIZE)] = PIX_TREE_B1;
+    og::runtime::current_session->myscreen_->world().grid.data[static_cast<std::size_t>((w->ypos() / GRID_SIZE) * og::runtime::current_session->myscreen_->world().grid.w + (w->xpos() / GRID_SIZE))] = PIX_TREE_B1;
     const float normal = lv->normal_stepsize();
     (void)w->act();
     ASSERT_TRUE(lv->stepsize() >= 1.0f) << "forestwalk path should keep stepsize >= 1";

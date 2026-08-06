@@ -284,7 +284,7 @@ TEST(CursesCtf, two_client_round_replicates_mode_state_to_both_mirrors)
         << "the injected respawn config must replicate";
     EXPECT_EQ(24, join_mirror.respawn.respawn_ticks);
     for (int team = 0; team < 4; ++team) {
-        EXPECT_EQ(host_mirror.mode.vars[team], join_mirror.mode.vars[team])
+        EXPECT_EQ(host_mirror.mode.vars[static_cast<std::size_t>(team)], join_mirror.mode.vars[static_cast<std::size_t>(team)])
             << "mode vars must agree between mirrors (team " << team << ")";
     }
     EXPECT_GE(join_mirror.respawn.anchor_count[0], 1)

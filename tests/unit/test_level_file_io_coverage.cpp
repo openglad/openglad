@@ -749,7 +749,7 @@ TEST_F(LevelFileIoCoverage,
         const FailurePoint& row = cases[i];
         SCOPED_TRACE(row.field);
 
-        GameWorld world(static_cast<int>(70 + i));
+        GameWorld world(static_cast<std::uint32_t>(static_cast<int>(70 + i)));
         world.create_new_grid();
         world.title = "quota-boundary";
         LevelFileMetadata metadata;

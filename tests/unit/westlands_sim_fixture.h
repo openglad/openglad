@@ -181,7 +181,7 @@ inline std::vector<walker*> deploy_crew(LevelRuntimeData& level,
         {
             w->set_team_num(0);
             w->set_real_team_num(0);
-            w->set_user(static_cast<signed char>(i < 4 ? i : -1));
+            w->set_user(static_cast<signed char>(i < 4 ? i : static_cast<std::size_t>(-1)));
             auto g = std::make_unique<guy>(family);
             g->family = static_cast<char>(family);
             g->name = std::format("Player{}", i + 1);

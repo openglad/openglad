@@ -964,7 +964,7 @@ TEST(CursesRenderer, hud_line1_shows_floor_on_multifloor)
         // pass renders (the HUD is what we assert on).
         const int gw = w.grid.w;
         const int gh = w.grid.h;
-        auto* cells = new unsigned char[static_cast<std::size_t>(gw) * gh];
+        auto* cells = new unsigned char[static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh)];
         for (int i = 0; i < gw * gh; ++i)
             cells[i] = PIX_GRASS1;
         w.grid_for_floor(1) = PixieData(1, static_cast<unsigned char>(gw),

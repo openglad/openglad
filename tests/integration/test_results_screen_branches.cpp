@@ -98,7 +98,7 @@ TEST(ResultsScreenBranches, results_screen_overload_calls_smoke)
 TEST(ResultsScreenBranches, time_bonus_uses_authoritative_level_tick)
 {
     screen& current_screen = *og::runtime::current_session->myscreen_;
-    const int old_framecount = current_screen.framecount;
+    const int old_framecount = static_cast<int>(current_screen.framecount);
     const std::uint32_t old_level_ticks =
         current_screen.world().level_tick_count();
     const short old_limit = current_screen.world().time_bonus_limit;
@@ -114,7 +114,7 @@ TEST(ResultsScreenBranches, time_bonus_uses_authoritative_level_tick)
     EXPECT_EQ(75u, get_time_bonus(0))
         << "network peers must derive the payout from snapshotted sim time";
 
-    current_screen.framecount = old_framecount;
+    current_screen.framecount = static_cast<Uint32>(old_framecount);
     current_screen.world().set_level_tick_count(old_level_ticks);
     current_screen.world().time_bonus_limit = old_limit;
     current_screen.world().par_value = old_par;

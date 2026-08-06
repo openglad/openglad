@@ -33,10 +33,10 @@ static void fill_pattern(std::vector<unsigned char>& buf, int w, int h)
         for (int x = 0; x < w; x++)
         {
             const int i = (y * w + x) * 4;
-            buf[i + 0] = 0xFF;                       // A
-            buf[i + 1] = static_cast<unsigned char>(x * 40 + y * 5); // R
-            buf[i + 2] = static_cast<unsigned char>(y * 40 + x * 3); // G
-            buf[i + 3] = static_cast<unsigned char>(x * 20);         // B
+            buf[static_cast<std::size_t>(i + 0)] = 0xFF;                       // A
+            buf[static_cast<std::size_t>(i + 1)] = static_cast<unsigned char>(x * 40 + y * 5); // R
+            buf[static_cast<std::size_t>(i + 2)] = static_cast<unsigned char>(y * 40 + x * 3); // G
+            buf[static_cast<std::size_t>(i + 3)] = static_cast<unsigned char>(x * 20);         // B
         }
     }
 }

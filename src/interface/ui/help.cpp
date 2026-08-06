@@ -662,7 +662,7 @@ static const char* get_content_line(const TabContent& content, int index)
 	if (index < 0 || index >= content.num_lines)
 		return "";
 	if (content.is_dynamic && content.dynamic_lines)
-		return (*content.dynamic_lines)[index].c_str();
+		return (*content.dynamic_lines)[static_cast<std::size_t>(index)].c_str();
 	else if (content.static_lines)
 		return content.static_lines[index];
 	return "";

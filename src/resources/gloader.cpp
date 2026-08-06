@@ -65,7 +65,7 @@ static constexpr int kTotalLoaderSlots =
 
 // Table index for one order/family pair, or -1 when the family byte is
 // outside the registries' capacity. `order` must already be sanitized.
-static int loader_slot(Order order, int family)
+int loader::slot_for(Order order, std::int32_t family) noexcept
 {
     if (family < 0 || family >= NUM_FAMILY_SLOTS)
         return -1;
@@ -435,12 +435,12 @@ static void set_animation_slot(loader& l, int idx,
 {
 	if (pack_table != nullptr && pack_rows > 0)
 	{
-		l.animations[idx] = pack_table;
-		l.animation_counts[idx] = pack_rows;
+		l.animations[static_cast<std::size_t>(idx)] = pack_table;
+		l.animation_counts[static_cast<std::size_t>(idx)] = pack_rows;
 		return;
 	}
-	l.animations[idx] = builtin_table;
-	l.animation_counts[idx] = anim_table_count(builtin_table);
+	l.animations[static_cast<std::size_t>(idx)] = builtin_table;
+	l.animation_counts[static_cast<std::size_t>(idx)] = anim_table_count(builtin_table);
 }
 
 // Installs one pack-claimed slot of a non-living order. The four non-living
@@ -454,11 +454,16 @@ static void install_pack_entity(loader& l, Order order, int family,
 {
 	if (d == nullptr)
 		return;
-	const int idx = loader_slot(order, family);
+	const int idx = loader::slot_for(order, family);
 	if (idx < 0)
 		return;
 	if (d->pix_filename)
-		l.graphics[idx] = read_pixie_file(d->pix_filename);
+		l.graphics[static_cast<std::size_t>(idx)] = read_pixie_file(d->pix_filename);
+	// 0 = "keep the EntityDef row", so a pack that declares nothing leaves core
+	// families byte-identical and a pack-shipped family keeps the 0 the tables
+	// were zeroed to. Only an explicit declaration writes here.
+	if (d->hp > 0.0f)
+		l.hitpoints[static_cast<std::size_t>(idx)] = d->hp;
 	set_animation_slot(l, idx, d->anim_table, d->anim_row_count, nullptr);
 }
 
@@ -513,14 +518,14 @@ void loader::reload_graphics()
 	// cleared — every core entry is unconditionally rewritten below.)
 	for (int i = kCoreLoaderSlots; i < kTotalLoaderSlots; i++)
 	{
-		graphics[i].free();
-		animations[i] = nullptr;
-		animation_counts[i] = 0;
-		act_types[i] = static_cast<char>(ACT_RANDOM);
-		stepsizes[i] = 0.0f;
-		lineofsight[i] = 0;
-		damage[i] = 0.0f;
-		fire_frequency[i] = 0.0f;
+		graphics[static_cast<std::size_t>(i)].free();
+		animations[static_cast<std::size_t>(i)] = nullptr;
+		animation_counts[static_cast<std::size_t>(i)] = 0;
+		act_types[static_cast<std::size_t>(i)] = static_cast<char>(ACT_RANDOM);
+		stepsizes[static_cast<std::size_t>(i)] = 0.0f;
+		lineofsight[static_cast<std::size_t>(i)] = 0;
+		damage[static_cast<std::size_t>(i)] = 0.0f;
+		fire_frequency[static_cast<std::size_t>(i)] = 0.0f;
 	}
 
 	// Livings — all data driven from family descriptors. The scan covers the
@@ -531,17 +536,17 @@ void loader::reload_graphics()
 		const auto* fd = get_family_descriptor(i);
 		if (!fd || !fd->pix_filename)
 			continue;
-		const int idx = loader_slot(Order::Living, i);
-		graphics[idx] = read_pixie_file(fd->pix_filename);
-		act_types[idx] = ACT_RANDOM;
+		const int idx = slot_for(Order::Living, i);
+		graphics[static_cast<std::size_t>(idx)] = read_pixie_file(fd->pix_filename);
+		act_types[static_cast<std::size_t>(idx)] = ACT_RANDOM;
 		set_animation_slot(*this, idx, fd->anim_table, fd->anim_row_count,
 		                   animation_for_type(fd->animation_type));
-		lineofsight[idx] = fd->ai_line_of_sight;
-		hitpoints[idx] = fd->combat.hp;
+		lineofsight[static_cast<std::size_t>(idx)] = fd->ai_line_of_sight;
+		hitpoints[static_cast<std::size_t>(idx)] = fd->combat.hp;
 		// Strength of melee attack
-		damage[idx] = fd->combat.melee_damage;
-		stepsizes[idx] = fd->combat.stepsize;
-		fire_frequency[idx] = fd->combat.fire_delay;
+		damage[static_cast<std::size_t>(idx)] = fd->combat.melee_damage;
+		stepsizes[static_cast<std::size_t>(idx)] = fd->combat.stepsize;
+		fire_frequency[static_cast<std::size_t>(idx)] = fd->combat.fire_delay;
 	}
 
 	// Table-driven entity initialization for non-Living entities
@@ -627,15 +632,15 @@ void loader::reload_graphics()
 	for (const auto& e : defs) {
 		int idx = PIX(e.order, e.family);
 		if (e.pix_file)
-			graphics[idx] = read_pixie_file(e.pix_file);
-		hitpoints[idx] = e.hp;
-		act_types[idx] = static_cast<char>(e.act_type);
+			graphics[static_cast<std::size_t>(idx)] = read_pixie_file(e.pix_file);
+		hitpoints[static_cast<std::size_t>(idx)] = e.hp;
+		act_types[static_cast<std::size_t>(idx)] = static_cast<char>(e.act_type);
 		if (e.anim)
-			animations[idx] = e.anim;
-		stepsizes[idx] = e.stepsize;
-		lineofsight[idx] = e.los;
-		damage[idx] = e.dmg;
-		fire_frequency[idx] = e.fire_freq;
+			animations[static_cast<std::size_t>(idx)] = e.anim;
+		stepsizes[static_cast<std::size_t>(idx)] = e.stepsize;
+		lineofsight[static_cast<std::size_t>(idx)] = e.los;
+		damage[static_cast<std::size_t>(idx)] = e.dmg;
+		fire_frequency[static_cast<std::size_t>(idx)] = e.fire_freq;
 	}
 
 	// Gore toggle: BLOOD and STAIN use alternate graphics when gore is off.
@@ -716,11 +721,11 @@ loader::~loader(void)
 const PixieData* loader::graphics_for(Order order, std::int32_t family) const
 {
     order = sanitize_order(order);
-    int idx = loader_slot(order, family);
+    int idx = slot_for(order, family);
     if (idx < 0)
         idx = PIX(order, 0);  // legacy clamp for an out-of-capacity byte
 
-    const PixieData& pix = graphics[idx];
+    const PixieData& pix = graphics[static_cast<std::size_t>(idx)];
     if (!pix.valid())
         return nullptr;
     return &pix;
@@ -729,15 +734,15 @@ const PixieData* loader::graphics_for(Order order, std::int32_t family) const
 void loader::set_derived_stats(walker* w, Order order, std::int32_t family)
 {
     order = sanitize_order(order);
-	int idx = loader_slot(order, family);
+	int idx = slot_for(order, family);
 	if (idx < 0)
 		idx = PIX(order, 0);
 
-	w->set_stepsize(stepsizes[idx]);
+	w->set_stepsize(stepsizes[static_cast<std::size_t>(idx)]);
 	w->set_normal_stepsize(w->stepsize());
-	w->set_lineofsight(lineofsight[idx]);
-	w->set_damage(damage[idx]);
-	w->set_fire_frequency(fire_frequency[idx]);
+	w->set_lineofsight(lineofsight[static_cast<std::size_t>(idx)]);
+	w->set_damage(damage[static_cast<std::size_t>(idx)]);
+	w->set_fire_frequency(fire_frequency[static_cast<std::size_t>(idx)]);
 }
 
 std::unique_ptr<walker> loader::create_walker_owned(Order order,
@@ -746,19 +751,19 @@ std::unique_ptr<walker> loader::create_walker_owned(Order order,
 	std::unique_ptr<walker> ob;
     order = sanitize_order(order); trace_if_sprites_stale(); // one line: pinned line numbers below must not shift
 
-	int idx = loader_slot(order, family);
+	int idx = slot_for(order, family);
 	// Keep the legacy "bad living family" fallback to soldier; others clamp
 	// to 0. A pack id whose slot is empty — no pack mounted, or a pack that
 	// ships no sprite for it — takes the same fallback, so a stale save or
 	// level byte still yields an entity instead of a null.
-	if ((idx < 0 || !graphics[idx].valid()) &&
+	if ((idx < 0 || !graphics[static_cast<std::size_t>(idx)].valid()) &&
 	    (family < 0 || family >= NUM_FAMILIES))
 	{
 		family = (order == Order::Living) ? FAMILY_SOLDIER : 0;
 		idx = PIX(order, family);
 	}
 
-	if (!graphics[idx].valid())
+	if (!graphics[static_cast<std::size_t>(idx)].valid())
 	{
 	    std::string buf = std::format("No valid graphics for walker!\nOrder: {}, Family {}\nPlease report this to the developer!", static_cast<int>(order), static_cast<int>(family));
 		entity_factory_.report_error(buf);
@@ -766,7 +771,7 @@ std::unique_ptr<walker> loader::create_walker_owned(Order order,
 	}
 
 	// Render component wiring is callback-driven by the platform layer.
-	const auto& pix = graphics[idx];
+	const auto& pix = graphics[static_cast<std::size_t>(idx)];
 
 	if (order == Order::Living)
 		ob = std::make_unique<living>();
@@ -788,8 +793,8 @@ std::unique_ptr<walker> loader::create_walker_owned(Order order,
 	ob->set_data(pix);
 	ob->set_direct_frame(0);
 
-	ob->stats()->set_hitpoints(hitpoints[PIX(order, family)]);
-	ob->stats()->set_max_hitpoints(hitpoints[PIX(order, family)]);
+	ob->stats()->set_hitpoints(hitpoints[static_cast<std::size_t>(idx)]);
+	ob->stats()->set_max_hitpoints(hitpoints[static_cast<std::size_t>(idx)]);
 	ob->stats()->set_special_cost(0, 0); // shouldn't be used
 	ob->stats()->set_weapon_cost(1); // default value
 
@@ -807,7 +812,7 @@ walker  *loader::set_walker(walker *ob,
 	short i;
     order = sanitize_order(order);
 
-	int idx = loader_slot(order, family);
+	int idx = slot_for(order, family);
 	if (idx < 0)
 	{
 		family = 0;
@@ -815,9 +820,9 @@ walker  *loader::set_walker(walker *ob,
 	}
 
 	ob->set_order_family(order, static_cast<char>(family));
-	ob->set_act_type(act_types[idx]);
-	ob->ani = animations[idx];
-	ob->ani_count = animation_counts[idx];
+	ob->set_act_type(act_types[static_cast<std::size_t>(idx)]);
+	ob->ani = animations[static_cast<std::size_t>(idx)];
+	ob->ani_count = animation_counts[static_cast<std::size_t>(idx)];
 
 	set_derived_stats(ob, order, family);
 

@@ -959,12 +959,12 @@ private:
             }
             if (std::sscanf(line.c_str(), "move %d %d", &slot, &value) == 2) {
                 if (slot < 1 || slot > MAX_TEAM_SIZE || value < 1 || value > 4
-                    || !save_data_.team_list[slot - 1]) {
+                    || !save_data_.team_list[static_cast<std::size_t>(slot - 1)]) {
                     std::printf("Invalid slot or team.\n");
                     continue;
                 }
                 const short current =
-                    save_data_.team_list[slot - 1]->teamnum;
+                    save_data_.team_list[static_cast<std::size_t>(slot - 1)]->teamnum;
                 const short moved = cycle_guy_team(save_data_, slot - 1,
                     (value - 1) - static_cast<int>(current));
                 if (moved < 0) {
@@ -987,7 +987,7 @@ private:
             int hero_count = 0;
             std::string members;
             for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot) {
-                const auto& member = save_data_.team_list[slot];
+                const auto& member = save_data_.team_list[static_cast<std::size_t>(slot)];
                 if (!member || member->teamnum != t)
                     continue;
                 ++hero_count;
@@ -1091,7 +1091,7 @@ private:
         }
         const int slot = slots[static_cast<std::size_t>(value - 1)];
         const bool deployed = toggle_deploy_slot(save_data_, slot);
-        std::printf("%s %s.\n", save_data_.team_list[slot]->name.c_str(),
+        std::printf("%s %s.\n", save_data_.team_list[static_cast<std::size_t>(slot)]->name.c_str(),
             deployed ? "deployed" : "benched");
         autosave_company_after_mutation();
     }
@@ -1239,7 +1239,7 @@ private:
                     std::printf("Can't hire (not enough gold or team full).\n");
                     continue;
                 }
-                std::printf("Hired %s!\n", save_data_.team_list[slot]->name.c_str());
+                std::printf("Hired %s!\n", save_data_.team_list[static_cast<std::size_t>(slot)]->name.c_str());
                 sync_config_from_save();
                 autosave_company_after_mutation();  // §3.8
                 if (session.team_full()) {

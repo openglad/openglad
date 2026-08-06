@@ -35,7 +35,7 @@ static inline PickerState& pks() { return *og::runtime::current_session->picker_
 static void cleanup_picker_state()
 {
     for (int i = 0; i < 5; i++) {
-        pks().backdrops[i].reset();
+        pks().backdrops[static_cast<std::size_t>(i)].reset();
         pks().backpics[i].free();
     }
     clear_allbuttons();

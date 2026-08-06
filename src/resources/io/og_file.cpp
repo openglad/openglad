@@ -52,7 +52,7 @@ public:
         if (!file_ || size == 0 || count == 0)
             return 0;
         const PHYSFS_sint64 total = static_cast<PHYSFS_sint64>(size * count);
-        const PHYSFS_sint64 got = PHYSFS_readBytes(file_, buf, total);
+        const PHYSFS_sint64 got = PHYSFS_readBytes(file_, buf, static_cast<PHYSFS_uint64>(total));
         if (got < 0)
             return 0;
         return static_cast<std::size_t>(got) / size;
@@ -63,7 +63,7 @@ public:
         if (!file_ || size == 0 || count == 0)
             return 0;
         const PHYSFS_sint64 total = static_cast<PHYSFS_sint64>(size * count);
-        const PHYSFS_sint64 wrote = PHYSFS_writeBytes(file_, buf, total);
+        const PHYSFS_sint64 wrote = PHYSFS_writeBytes(file_, buf, static_cast<PHYSFS_uint64>(total));
         if (wrote < 0)
             return 0;
         return static_cast<std::size_t>(wrote) / size;

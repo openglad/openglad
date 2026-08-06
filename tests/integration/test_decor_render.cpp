@@ -31,6 +31,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdio>
+#include <format>
 #include <cstdlib>
 #include <filesystem>
 #include <string>
@@ -78,7 +79,7 @@ void fill_base(GameWorld& world, unsigned char tile)
 void set_base(GameWorld& world, int f, int x, int y, unsigned char tile)
 {
     PixieData& g = world.grid_for_floor(f);
-    g.data[static_cast<std::size_t>(y) * g.w + x] = tile;
+    g.data[static_cast<std::size_t>(y) * g.w + static_cast<std::size_t>(x)] = tile;
 }
 
 // Give floor f an all-`tile` grid matching the base extents (multifloor).
@@ -86,8 +87,8 @@ void fill_floor_grid(GameWorld& world, int f, unsigned char tile)
 {
     const int gw = world.grid.w;
     const int gh = world.grid.h;
-    auto* buf = new unsigned char[static_cast<std::size_t>(gw) * gh];
-    std::fill(buf, buf + static_cast<std::size_t>(gw) * gh, tile);
+    auto* buf = new unsigned char[static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh)];
+    std::fill(buf, buf + static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh), tile);
     world.grid_for_floor(f) = PixieData(1, static_cast<unsigned char>(gw),
                                         static_cast<unsigned char>(gh), buf);
     world.smoother_for_floor(f).set_target(world.grid_for_floor(f));
@@ -104,7 +105,7 @@ void give_decor_plane(GameWorld& world, int f)
 void set_decor(GameWorld& world, int f, int x, int y, unsigned char id)
 {
     PixieData& d = world.decor_for_floor(f);
-    d.data[static_cast<std::size_t>(y) * d.w + x] = id;
+    d.data[static_cast<std::size_t>(y) * d.w + static_cast<std::size_t>(x)] = id;
 }
 
 struct RGB
@@ -648,8 +649,7 @@ TEST_F(DecorRender, zz_capture_decor_sampler)
     }
 
     const char* base_dir = getenv("OG_FX_CAPTURE_DIR");
-    char dir[512];
-    snprintf(dir, sizeof(dir), "%s/decor_sampler", base_dir);
+    const std::string dir = std::string(base_dir) + "/decor_sampler";
     std::filesystem::create_directories(dir);
     Sint32 cyc = 0;
     for (int f = 0; f < 60; f++)
@@ -659,9 +659,8 @@ TEST_F(DecorRender, zz_capture_decor_sampler)
         const std::vector<RGB> shot = grab_rect(
             static_cast<int>(vs->xloc), static_cast<int>(vs->yloc),
             static_cast<int>(vs->xview), static_cast<int>(vs->yview));
-        char path[512];
-        snprintf(path, sizeof(path), "%s/%03d.ppm", dir, f);
-        FILE* fp = fopen(path, "wb");
+        const std::string path = dir + std::format("/{:03d}.ppm", f);
+        FILE* fp = fopen(path.c_str(), "wb");
         ASSERT_NE(nullptr, fp);
         fprintf(fp, "P6\n%d %d\n255\n", static_cast<int>(vs->xview),
                 static_cast<int>(vs->yview));

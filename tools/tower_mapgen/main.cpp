@@ -97,8 +97,8 @@ void fail(const std::string& message)
 
 PixieData make_grid(int tw, int th, unsigned char fill)
 {
-    auto* buf = new unsigned char[static_cast<std::size_t>(tw) * th];
-    std::fill(buf, buf + static_cast<std::size_t>(tw) * th, fill);
+    auto* buf = new unsigned char[static_cast<std::size_t>(tw) * static_cast<std::size_t>(th)];
+    std::fill(buf, buf + static_cast<std::size_t>(tw) * static_cast<std::size_t>(th), fill);
     return PixieData(1, static_cast<unsigned char>(tw),
                      static_cast<unsigned char>(th), buf);
 }
@@ -106,7 +106,7 @@ PixieData make_grid(int tw, int th, unsigned char fill)
 void paint(PixieData& g, int tx, int ty, unsigned char tile)
 {
     if (tx >= 0 && ty >= 0 && tx < g.w && ty < g.h)
-        g.data[tx + ty * g.w] = tile;
+        g.data[static_cast<std::size_t>(tx + ty * g.w)] = tile;
 }
 
 void paint_rect(PixieData& g, int tx0, int ty0, int tx1, int ty1,

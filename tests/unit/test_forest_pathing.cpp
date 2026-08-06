@@ -54,12 +54,12 @@ namespace {
 // weapons blocked — the Westlands corridor material).
 void tree_at(GameWorld& w, int cx, int cy)
 {
-    w.grid.data[cx + cy * w.grid.w] = PIX_TREE_M1;
+    w.grid.data[static_cast<std::size_t>(cx + cy * w.grid.w)] = PIX_TREE_M1;
 }
 
 void water_at(GameWorld& w, int cx, int cy)
 {
-    w.grid.data[cx + cy * w.grid.w] = PIX_WATER1;
+    w.grid.data[static_cast<std::size_t>(cx + cy * w.grid.w)] = PIX_WATER1;
 }
 
 // Fill the whole default grid with uniform grass so maze geometry is exact.
@@ -67,7 +67,7 @@ void all_grass(GameWorld& w)
 {
     const int n = w.grid.w * w.grid.h;
     for (int i = 0; i < n; ++i)
-        w.grid.data[i] = PIX_GRASS1;
+        w.grid.data[static_cast<std::size_t>(i)] = PIX_GRASS1;
 }
 
 walker* spawn_living(GameWorld& w, int family, int team, int cx, int cy)

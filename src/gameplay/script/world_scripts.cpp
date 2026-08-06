@@ -962,17 +962,32 @@ int og_register_hooks(lua_State* L)
     return 0;
 }
 
-// og.rand(n) → deterministic sim RNG (world-owned). n must be > 0.
+// The widest bound og.rand accepts; bindings_entity.cpp holds the matching
+// copy for og.rand0/og.cosmetic_rand (the value is shared by exactly those
+// two translation units, so neither gets to own a header for it). Every
+// draw lands in IRandom::next(std::uint32_t): a Lua 64-bit n above this
+// used to reach the generator as n mod 2^32 — a silently different
+// distribution, and exactly 2^32 arrived as next(0), which answers 0
+// WITHOUT advancing the stream. A wrapped bound is a desync in a
+// deterministic sim, so an over-wide n is a script error, never a clamp.
+constexpr lua_Integer kMaxRandBound = 2147483647;  // INT32_MAX
+
+// og.rand(n) → deterministic sim RNG (world-owned). n must lie in
+// [1, kMaxRandBound]; within that range the conversion to next()'s
+// std::uint32_t is exact, so every bound a script actually uses draws
+// exactly what it always drew.
 int og_rand(lua_State* L)
 {
     const lua_Integer n = luaL_checkinteger(L, 1);
     if (n <= 0)
         return luaL_error(L, "og.rand: n must be positive");
+    if (n > kMaxRandBound)
+        return luaL_error(L, "og.rand: n out of range [1, 2147483647]");
     if (current_game == nullptr || current_game->world == nullptr)
         return luaL_error(L, "og.rand: no active world");
     lua_pushinteger(L, static_cast<lua_Integer>(
                            current_game->world->rng_.next(
-                               static_cast<std::int32_t>(n))));
+                               static_cast<std::uint32_t>(n))));
     return 1;
 }
 
@@ -1485,7 +1500,7 @@ void note_hook_failure(const char* where, const ScriptHost::Impl& impl,
 class HookFrame {
 public:
     explicit HookFrame(WorldScripts& ws)
-        : ws_(ws), impl_(ws.host().impl()), L_(impl_.L)
+        : impl_(ws.host().impl()), L_(impl_.L)
     {
     }
 
@@ -1619,7 +1634,6 @@ public:
     }
 
 private:
-    WorldScripts& ws_;
     ScriptHost::Impl& impl_;
     lua_State* L_;
     std::uint64_t gen_ = 0;
@@ -2291,9 +2305,14 @@ short level_damage_gate(walker* target, walker* attacker, short amount)
             // Replacement amount, clamped to [0, 32767]; fractions truncate
             // toward zero (deterministic on every peer).
             lua_Number v = lua_tonumber(L, -1);
-            if (v < 0)
+            // Negated tests on purpose: NaN compares false against everything,
+            // so `v < 0` would let it through to a cast that is undefined
+            // behavior (UBSan flags it as float-cast-overflow). Written this
+            // way NaN takes the first branch and lands on 0. Every ordinary
+            // value behaves exactly as before.
+            if (!(v >= 0))
                 v = 0;
-            if (v > 32767)
+            else if (!(v <= 32767))
                 v = 32767;
             result = static_cast<short>(v);
         }

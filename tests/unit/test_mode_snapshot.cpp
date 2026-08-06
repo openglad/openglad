@@ -132,16 +132,16 @@ void populate_full_mode_state(GameWorld& world)
     mode.win_next_level = 503;
     set_mode_text(mode.name, "CTF");
     for (int i = 0; i < og::sim::kModeVarCount; ++i)
-        mode.vars[i] = 1000 + i * 7;
+        mode.vars[static_cast<std::size_t>(i)] = 1000 + i * 7;
     for (int i = 0; i < og::sim::kModeHudLines; ++i)
     {
-        mode.hud[i].team = static_cast<std::uint8_t>(i);
-        set_hud_text(mode.hud[i].text, i % 2 == 0 ? "2H" : "FLAG!");
+        mode.hud[static_cast<std::size_t>(i)].team = static_cast<std::uint8_t>(i);
+        set_hud_text(mode.hud[static_cast<std::size_t>(i)].text, i % 2 == 0 ? "2H" : "FLAG!");
     }
     for (int i = 0; i < og::sim::kModeBeacons; ++i)
     {
-        mode.beacons[i].entity_id = 100 + i;
-        mode.beacons[i].team = static_cast<std::uint8_t>(3 - i);
+        mode.beacons[static_cast<std::size_t>(i)].entity_id = 100 + i;
+        mode.beacons[static_cast<std::size_t>(i)].team = static_cast<std::uint8_t>(3 - i);
     }
 
     world.ctf_requested_team_count = 4;
@@ -202,14 +202,14 @@ void expect_snapshot_matches_world(const og::sim::WorldSnapshot& snapshot,
     EXPECT_EQ(mode.vars, snapshot.mode.vars);
     for (int i = 0; i < og::sim::kModeHudLines; ++i)
     {
-        EXPECT_EQ(mode.hud[i].team, snapshot.mode.hud[i].team) << "hud " << i;
-        EXPECT_EQ(mode.hud[i].text, snapshot.mode.hud[i].text) << "hud " << i;
+        EXPECT_EQ(mode.hud[static_cast<std::size_t>(i)].team, snapshot.mode.hud[static_cast<std::size_t>(i)].team) << "hud " << i;
+        EXPECT_EQ(mode.hud[static_cast<std::size_t>(i)].text, snapshot.mode.hud[static_cast<std::size_t>(i)].text) << "hud " << i;
     }
     for (int i = 0; i < og::sim::kModeBeacons; ++i)
     {
-        EXPECT_EQ(mode.beacons[i].entity_id, snapshot.mode.beacons[i].entity_id)
+        EXPECT_EQ(mode.beacons[static_cast<std::size_t>(i)].entity_id, snapshot.mode.beacons[static_cast<std::size_t>(i)].entity_id)
             << "beacon " << i;
-        EXPECT_EQ(mode.beacons[i].team, snapshot.mode.beacons[i].team)
+        EXPECT_EQ(mode.beacons[static_cast<std::size_t>(i)].team, snapshot.mode.beacons[static_cast<std::size_t>(i)].team)
             << "beacon " << i;
     }
 
@@ -246,14 +246,14 @@ void expect_snapshot_mode_defaults(const og::sim::WorldSnapshot& snapshot)
     EXPECT_EQ(-1, snapshot.mode.win_next_level);
     EXPECT_EQ('\0', snapshot.mode.name[0]);
     for (int i = 0; i < og::sim::kModeVarCount; ++i)
-        EXPECT_EQ(0, snapshot.mode.vars[i]) << "var " << i;
+        EXPECT_EQ(0, snapshot.mode.vars[static_cast<std::size_t>(i)]) << "var " << i;
     for (int i = 0; i < og::sim::kModeHudLines; ++i)
     {
-        EXPECT_EQ(255, snapshot.mode.hud[i].team) << "hud " << i;
-        EXPECT_EQ('\0', snapshot.mode.hud[i].text[0]) << "hud " << i;
+        EXPECT_EQ(255, snapshot.mode.hud[static_cast<std::size_t>(i)].team) << "hud " << i;
+        EXPECT_EQ('\0', snapshot.mode.hud[static_cast<std::size_t>(i)].text[0]) << "hud " << i;
     }
     for (int i = 0; i < og::sim::kModeBeacons; ++i)
-        EXPECT_EQ(0, snapshot.mode.beacons[i].entity_id) << "beacon " << i;
+        EXPECT_EQ(0, snapshot.mode.beacons[static_cast<std::size_t>(i)].entity_id) << "beacon " << i;
     EXPECT_EQ(defaults.ctf_requested_team_count,
               snapshot.ctf_requested_team_count);
     EXPECT_EQ(defaults.ctf_requested_capture_limit,

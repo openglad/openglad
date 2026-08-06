@@ -135,6 +135,6 @@ private:
 
     bool initialized_ = false;
     DefaultsFn defaults_ = nullptr;
-    bool populated_[CAPACITY]{};
-    Descriptor entries_[CAPACITY]{};
+    bool populated_[static_cast<unsigned>(CAPACITY)]{};
+    Descriptor entries_[static_cast<unsigned>(CAPACITY)]{};
 };

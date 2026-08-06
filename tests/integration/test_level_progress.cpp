@@ -110,7 +110,7 @@ static void cleanup_picker_state()
     // Clean up picker globals without deleting myscreen
     // (picker_quit() deletes myscreen which other tests still need)
     for (int i = 0; i < 5; i++) {
-        pks().backdrops[i].reset();
+        pks().backdrops[static_cast<std::size_t>(i)].reset();
         pks().backpics[i].free();
     }
     // localbuttons == allbuttons[0] (returned by init_buttons), so just

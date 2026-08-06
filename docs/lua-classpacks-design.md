@@ -412,6 +412,7 @@ og.family("weapon", {
   init_ani_type = 0,
   vz = 0.35, gravity = 0.05, sizez = 0,
   can_drop_floors = true,
+  hp = 50,                           -- base hitpoints; see the note below
 })
 
 og.family("effect", {                -- "fx" is accepted as an alias
@@ -419,12 +420,14 @@ og.family("effect", {                -- "fx" is accepted as an alias
   loops_animation = false,
   creates_hit_effect = false,
   flags = {},
+  hp = 0,
 })
 
 og.family("treasure", {
   id = "core:stain", wire_id = 0, name = "STAIN",
   init_ignore = true,
   init_frame = -1,
+  hp = 0,
 })
 
 og.family("generator", {
@@ -434,8 +437,18 @@ og.family("generator", {
   spawn_ani_type = 0,
   clear_owner = false,
   editor_label = "TENT",             -- level-editor palette caption
+  hp = 100,
 })
 ```
+
+`hp` on a non-living family is its base hitpoints. Non-livings have no
+`stats`/`combat` block, so this is the only place to declare one — and it
+matters most for scenery a pack ships, because weapon HP doubles as
+durability: core's TREE is 50 and its DOOR is 5000, which is what makes them
+take several hits instead of breaking on the first. Omitting the key (or
+declaring `0`) means "keep whatever the engine's own row supplies", so a pack
+that says nothing about `hp` changes nothing — including for a core family
+whose art it overrides.
 
 ### The living blocks: `stats` / `combat` / `costs` / `specials`
 
@@ -794,6 +807,7 @@ og.register_level_hooks(level_id, {   -- level_id -1 = every level
   on_tick         = function(level, tick) ... end,
   on_entity_death = function(ent) ... end,
   on_entity_spawn = function(ent) ... end,
+  on_damage       = function(target, attacker, amount) ... end,
 })
 og.set_entity_hooks(ent, { on_death = function(ent) ... end })
 ```
@@ -805,6 +819,11 @@ og.set_entity_hooks(ent, { on_death = function(ent) ... end })
 - `on_entity_death` fires for living **and generator** deaths. Generators
   dispatch it after their death FX, so a level script sees a tent, tower or
   pillar falling as an event rather than something to poll for.
+- `on_damage` fires before each hit lands, on levels that register it: `nil`
+  keeps the amount, a number replaces it (clamped to 0..32767), and `false`
+  cancels the hit. `return 0` is a zero-damage hit rather than a cancel — the
+  engine's `hp <= 0` death check still runs after it, so 0 against a target
+  already at 0 hp kills it.
 - `on_entity_spawn` fires only for sim-authored living/generator spawns
   through `add_ob`; snapshot and replay insertion paths stay silent.
 - An exact-level registration shadows a wildcard one **per hook kind**.

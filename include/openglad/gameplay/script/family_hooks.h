@@ -220,9 +220,30 @@ void level_mode_tick(GameWorld* world);
 // scripted-mode revive; the hook repositions via anchors + probes.
 void level_respawn(GameWorld* world, walker* revived);
 // Pre-damage gate: on_damage(target, attacker, amount) -> nil keep /
-// number replace (clamped >= 0) / false cancel. Returns the amount to
-// apply, or -1 for a cancelled hit. Early-outs on the level_hook_kinds
-// bit, so classic paths stay byte-identical.
+// number replace / false cancel / true keep. Only the hook's first return
+// value is read; a number is clamped to [0, 32767] with the fraction
+// truncated toward zero, and any other type — as well as a hook that
+// errors — keeps the offered amount. Returns the amount to apply, or -1
+// for a cancelled hit, so callers must offer a non-negative `amount` or
+// "keep" and "cancel" become indistinguishable. Early-outs on the
+// level_hook_kinds bit, so classic paths stay byte-identical.
+//
+// RETURNING 0 IS NOT A CANCEL. Zero is a replacement amount: the hit
+// still lands, for no damage. The target still takes the hit-effect and
+// retaliation path, and — in walker::attack — the caller's own
+// `hitpoints() <= 0` death check runs afterwards regardless of how much
+// damage was applied. A 0-damage hit on a target that is already at or
+// below 0 hp therefore KILLS it. That check is unconditional and belongs
+// to the caller: a classic hit fully absorbed by damage reduction reaches
+// it the same way with no hook registered at all. Only `false` returns
+// before any of it. A hook that means "this hit does not happen" must
+// return false; a hook that shaves damage to nothing must check the
+// target's hp first. This is the generator explode-instead-of-flip bug
+// (#174): the mode's floor arm returned 0 against a 0-hp shell.
+//
+// walker::turn_undead's scripted arm runs no death check of its own, so
+// there a replacement below the offered lethal amount is always ordinary
+// damage and only a replacement >= it kills.
 short level_damage_gate(walker* target, walker* attacker, short amount);
 
 }  // namespace hooks

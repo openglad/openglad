@@ -1162,8 +1162,8 @@ void main_menu_draw_content(void* /*screen_state*/)
     // frames overlap begin_new_game; buttons must win that overlap).
     int count = 0;
     while (count < static_cast<int>(og::runtime::current_session->allbuttons_.size())
-           && og::runtime::current_session->allbuttons_[count]) {
-        og::runtime::current_session->allbuttons_[count]->vdisplay();
+           && og::runtime::current_session->allbuttons_[static_cast<std::size_t>(count)]) {
+        og::runtime::current_session->allbuttons_[static_cast<std::size_t>(count)]->vdisplay();
         count++;
     }
 
@@ -1308,7 +1308,7 @@ void scenario_menu_draw_content(void* /*screen_state*/)
         if (value.size() > 32)
             value.resize(32);
         const int strip_w = static_cast<int>(value.size()) * 6;
-        myscreen->draw_rect_filled(114, y - 1, strip_w + 4, 8, PURE_BLACK,
+        myscreen->draw_rect_filled(114, y - 1, static_cast<Uint32>(strip_w + 4), 8, PURE_BLACK,
                                    150);
         mytext.write_xy(116, y, WHITE, "%s", value.c_str());
     };
@@ -2050,10 +2050,10 @@ std::string base_camp_company_abbreviation(std::string_view company)
 {
     std::string result;
     result.reserve(3);
-    for (const unsigned char ch : company) {
-        if (!std::isalnum(ch))
+    for (const char ch : company) {
+        if (!std::isalnum(static_cast<unsigned char>(ch)))
             continue;
-        result.push_back(static_cast<char>(std::toupper(ch)));
+        result.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(ch))));
         if (result.size() == 3)
             break;
     }
@@ -2282,7 +2282,7 @@ void sync_seat_settings_label(button* buttons, int index,
             og::runtime::current_session->allbuttons_.size()))
     {
         if (vbutton* const live =
-                og::runtime::current_session->allbuttons_[index])
+                og::runtime::current_session->allbuttons_[static_cast<std::size_t>(index)])
         {
             live->label = label;
         }
@@ -2622,7 +2622,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         card_button.label = base_camp_seat_label(*st, seat);
         if (vbutton* const live =
                 og::runtime::current_session
-                    ->allbuttons_[kBaseCampSeatCardBase + card])
+                    ->allbuttons_[static_cast<std::size_t>(kBaseCampSeatCardBase + card)])
         {
             live->label = card_button.label;
         }
@@ -2712,7 +2712,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
             st->slots[static_cast<std::size_t>(first + r)];
         const guy* member = (own && display.save_slot >= 0 &&
                              display.save_slot < MAX_TEAM_SIZE)
-            ? save.team_list[display.save_slot].get()
+            ? save.team_list[static_cast<std::size_t>(display.save_slot)].get()
             : nullptr;
         // §2.5 deploy glyph: "X" deployed / "" benched on OWN rows; foreign
         // rows draw their X/- glyph in the content pass (the button is a
@@ -2722,7 +2722,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         dep.no_draw = !own;
         dep.x = own ? 23 : 12;
         dep.sizex = own ? 14 : 300;
-        vbutton* live = og::runtime::current_session->allbuttons_[r];
+        vbutton* live = og::runtime::current_session->allbuttons_[static_cast<std::size_t>(r)];
         if (live != nullptr) {
             live->label = dep.label;
             live->no_draw = dep.no_draw;
@@ -2962,7 +2962,7 @@ void base_camp_draw_content(void* screen_state)
         if (value.empty())
             return;
         const int width = static_cast<int>(value.size()) * 6;
-        game->draw_rect_filled(x - 2, y - 1, width + 4, 8, PURE_BLACK, 150);
+        game->draw_rect_filled(x - 2, y - 1, static_cast<Uint32>(width + 4), 8, PURE_BLACK, 150);
         game->text_normal.write_xy(x, y, color, "%s", value.c_str());
     };
 
@@ -2976,7 +2976,7 @@ void base_camp_draw_content(void* screen_state)
         company.resize(26);
     {
         const int width = (9 + static_cast<int>(company.size())) * 6;
-        game->draw_rect_filled(6, 2, width + 4, 8, PURE_BLACK, 150);
+        game->draw_rect_filled(6, 2, static_cast<Uint32>(width + 4), 8, PURE_BLACK, 150);
         mytext.write_xy(8, 3, "COMPANY:", GREY, 1);
         mytext.write_xy(62, 3, company.c_str(), WHITE, 1);
     }
@@ -3085,11 +3085,11 @@ void base_camp_draw_content(void* screen_state)
         bool deployed = display.deployed;
         if (display.owned) {
             if (display.save_slot < 0 || display.save_slot >= MAX_TEAM_SIZE ||
-                !save.team_list[display.save_slot])
+                !save.team_list[static_cast<std::size_t>(display.save_slot)])
             {
                 continue;
             }
-            member = save.team_list[display.save_slot].get();
+            member = save.team_list[static_cast<std::size_t>(display.save_slot)].get();
             deployed = member->deployed;
         } else {
             foreign_guy = make_base_camp_display_guy(display.character);
@@ -3363,7 +3363,7 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
     }
 
     const int slot = display.save_slot;
-    if (slot < 0 || slot >= MAX_TEAM_SIZE || !save.team_list[slot])
+    if (slot < 0 || slot >= MAX_TEAM_SIZE || !save.team_list[static_cast<std::size_t>(slot)])
         return 0;
 
     if (is_move_up) {
@@ -3420,7 +3420,7 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
         // §2.5 client-side 24-cap guard: a toggle-ON that would exceed 24
         // deployed across the merged lobby roster is denied with a popup,
         // pre-empting the server's §4.2 force-bench path.
-        if (picker_lobby_is_networked() && !save.team_list[slot]->deployed) {
+        if (picker_lobby_is_networked() && !save.team_list[static_cast<std::size_t>(slot)]->deployed) {
             const BaseCampDeployCounts counts =
                 count_base_camp_display_deploys(st->slots, save);
             if (counts.deployed >= MAX_TEAM_SIZE) {
@@ -3788,7 +3788,7 @@ void company_list_rewire(button* buttons, int count, int& /*highlighted*/)
         // §2.3 U4: the active company's row wears the red outline (the
         // player-count grammar). Live surface only — do_outline is a vbutton
         // field; null-guarded for accessor-only test paths.
-        vbutton* live = og::runtime::current_session->allbuttons_[r];
+        vbutton* live = og::runtime::current_session->allbuttons_[static_cast<std::size_t>(r)];
         if (live != nullptr) {
             live->do_outline =
                 (on && st != nullptr
@@ -4163,7 +4163,7 @@ void company_backups_draw_content(void* screen_state)
 
     const auto strip_text = [game](int x, int y, const std::string& text) {
         const int width = static_cast<int>(text.size()) * 6;
-        game->draw_rect_filled(x - 2, y - 1, width + 4, 8, PURE_BLACK, 150);
+        game->draw_rect_filled(x - 2, y - 1, static_cast<Uint32>(width + 4), 8, PURE_BLACK, 150);
         game->text_normal.write_xy(x, y, WHITE, "%s", text.c_str());
     };
 

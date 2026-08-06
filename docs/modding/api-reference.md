@@ -45,10 +45,19 @@ never store mutable sim state in a global or upvalue (cookbook R6).
 | `og.max(a,b)` / `og.min(a,b)` | `std::max` / `std::min` exactly: `og.max` answers `b` only when `a < b`, `og.min` answers `b` only when `b < a`, every tie answers `a`. Exact mixed integer/float ordering (never a lossy int64→double round-trip); the winning argument comes back unchanged, so integer subtype survives. Arguments must be numbers (no string coercion); NaN is an error. |
 | `og.clamp(v,lo,hi)` | `std::clamp`: `lo` when `v < lo`, else `hi` when `hi < v`, else `v` itself. `hi < lo` (std's UB precondition) is a script error. Same ordering/subtype/NaN rules as `og.max`. |
 | `og.sign(x)` | `-1`, `0` or `1` as an integer, for any number (`og.sign(-0.0)` is 0; NaN is an error) — the guarded `v /= abs(v)` idiom as a total function. |
-| `og.rand(n)` | Sim RNG, uniform over `[0, n)`. The only randomness source. Errors when `n <= 0` (C++ `next(0)` silently returns 0 — guard the call, or use `og.rand0`). |
-| `og.rand0(n)` | `og.rand` with `IRandom`'s real `n <= 0` contract: answers 0 **without advancing the stream** (C++ `next(0)` returns before the LCG step), which is what the hand-written `if n > 0 then r = og.rand(n) end` guard trios encode. Negative `n` behaves as 0 too. For `n > 0` it is `og.rand` verbatim, so swapping a guarded `og.rand` for `og.rand0` cannot move the stream. Requires an active world on every path. |
-| `og.cosmetic_rand(n)` | Draws from the parity harness's cosmetic stream when one is installed, else the sim RNG — the C++ `cosmetic_rng_override()` pattern. Use ONLY where the C++ drew through that selector (path-check cadence, elf spread). Also errors when `n <= 0`. |
+| `og.rand(n)` | Sim RNG, uniform over `[0, n)`. The only randomness source. `n` must be in `[1, 2147483647]`. Errors when `n <= 0` (C++ `next(0)` silently returns 0 — guard the call, or use `og.rand0`) and when `n > 2147483647` (see the range note below). |
+| `og.rand0(n)` | `og.rand` with `IRandom`'s real `n <= 0` contract: answers 0 **without advancing the stream** (C++ `next(0)` returns before the LCG step), which is what the hand-written `if n > 0 then r = og.rand(n) end` guard trios encode. Negative `n` behaves as 0 too. For `n > 0` it is `og.rand` verbatim — including the `n > 2147483647` error — so swapping a guarded `og.rand` for `og.rand0` cannot move the stream. Requires an active world on every path. |
+| `og.cosmetic_rand(n)` | Draws from the parity harness's cosmetic stream when one is installed, else the sim RNG — the C++ `cosmetic_rng_override()` pattern. Use ONLY where the C++ drew through that selector (path-check cadence, elf spread). Same bound range as `og.rand`: errors when `n <= 0` and when `n > 2147483647`. |
 | `og.log(...)` / `print(...)` | Diagnostics. Traces under category `script`, and appends to the host's bounded transcript. |
+
+A Lua integer is 64-bit; the C++ generator behind all three RNG bindings
+takes a `std::uint32_t` bound. A bound above `2147483647` (INT32_MAX)
+therefore cannot make the trip intact: it would reach the generator as
+`n mod 2^32` — a distribution nobody asked for — and exactly `2^32` would
+arrive as `next(0)`, answering a constant 0 without advancing the stream.
+Since a wrapped bound is a desync rather than a rounding error, the bindings
+raise a script error instead of quietly clamping. Bounds in
+`[1, 2147483647]` are passed through exactly and draw what they always drew.
 
 ## Declaring a family (`og.family`)
 
@@ -81,6 +90,11 @@ Three companions live in the same chunk:
 
 None of the world API works at a chunk's top level — see R4 in the design
 doc. Declare, bind, and ask the world from inside a hook.
+
+Non-living orders (`weapon`, `effect`/`fx`, `treasure`, `generator`) take an
+`hp` key for base hitpoints — they have no `stats` block of their own, and
+weapon HP is what gives shipped scenery its durability. Omit it (or declare
+`0`) to keep whatever the engine's row supplies.
 
 `description` is plain prose: the HIRE screen auto-flows it to its box at
 render time, so do NOT hand-wrap it to a column or pad it with trailing
@@ -775,6 +789,10 @@ og.register_level_hooks(level_id, {   -- level_id -1 = every level
   on_tick         = function(level, tick) ... end,
   on_entity_death = function(ent) ... end,
   on_entity_spawn = function(ent) ... end,
+  on_damage       = function(target, attacker, amount) ... end,
+  on_mode_init    = function(level) ... end,           -- scripted modes
+  on_mode_tick    = function(level, tick) ... end,     -- scripted modes
+  on_respawn      = function(ent) ... end,             -- scripted modes
 })
 
 og.set_entity_hooks(ent, { on_death = function(ent) ... end })
@@ -791,6 +809,24 @@ og.set_entity_hooks(ent, { on_death = function(ent) ... end })
 - `on_entity_spawn` fires only for sim-authored living/generator spawns
   through `add_ob`. Snapshot and replay insertion paths bypass it and stay
   silent.
+- `on_damage` gates each hit before it lands. Return `nil` (or nothing) to
+  keep `amount`, a number to replace it (clamped to 0..32767, fraction
+  truncated), or `false` to cancel the hit outright. `attacker` is `nil` for
+  environment damage, and only the first return value is read.
+
+  **`return 0` is not a cancel.** Zero is a replacement amount: the hit still
+  lands for zero damage, the target still retaliates, and the engine still
+  runs its own `hp <= 0` death check afterwards — so a zero-damage hit on a
+  target that is already at 0 hp kills it. Return `false` when the hit must
+  not happen at all, and check the target's hp before returning 0. (That
+  death check is unconditional and belongs to the engine, not to the hook: a
+  classic hit fully absorbed by damage reduction reaches it the same way with
+  no hook registered.)
+- `on_mode_init`, `on_mode_tick` and `on_respawn` are the scripted-mode hooks.
+  `on_mode_init` runs once when a mode level activates and its success is the
+  activation condition; `on_mode_tick` runs after entity acts each tick; and
+  `on_respawn` runs after the respawn engine revives an entity in place, so
+  the hook can reposition it.
 - An exact-level registration shadows a wildcard (`-1`) one **per hook kind**.
 - `og.set_entity_hooks` requires a tracked entity (`og.entity_id(h) ~= 0`).
   The registration is consumed when it fires, so a dead entity id never fires

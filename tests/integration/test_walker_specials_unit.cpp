@@ -153,7 +153,7 @@ void paint_floor(GameWorld& w, int floor, unsigned char tile)
 {
     const int gw = w.grid.w;
     const int gh = w.grid.h;
-    const std::size_t size = static_cast<std::size_t>(gw) * gh;
+    const std::size_t size = static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh);
     if (floor == 0)
     {
         std::fill(w.grid.data.get(), w.grid.data.get() + size, tile);
@@ -168,7 +168,7 @@ void paint_floor(GameWorld& w, int floor, unsigned char tile)
 
 void paint_cell(GameWorld& w, int floor, int cx, int cy, unsigned char tile)
 {
-    w.grid_for_floor(floor).data[cx + cy * w.grid.w] = tile;
+    w.grid_for_floor(floor).data[static_cast<std::size_t>(cx + cy * w.grid.w)] = tile;
 }
 
 // Ground-rules landing check used by the assertions below: grid passability

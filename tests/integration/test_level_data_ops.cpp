@@ -209,7 +209,7 @@ TEST(LevelDataOps, level_data_create_new_grid)
     // Grass tile generation should stay in expected range.
     for (int i = 0; i < 25; i++)
     {
-        unsigned char t = og::runtime::current_session->myscreen_->world().grid.data[i];
+        unsigned char t = og::runtime::current_session->myscreen_->world().grid.data[static_cast<std::size_t>(i)];
         ASSERT_TRUE(t >= PIX_GRASS1 && t <= PIX_GRASS4) << "new grid tiles should be grass variants";
     }
 }
@@ -585,8 +585,9 @@ TEST(LevelDataOps, level_data_save_description_serialization_bounds)
     pos += 2;  // par
     pos += 2;  // time limit
     ASSERT_TRUE(bytes.size() >= pos + 2) << "saved scenario should include object count";
-    const uint16_t object_count = static_cast<uint16_t>(bytes[pos])
-        | (static_cast<uint16_t>(bytes[pos + 1]) << 8);
+    const uint16_t object_count = static_cast<uint16_t>(
+        static_cast<uint16_t>(bytes[pos])
+        | (static_cast<uint16_t>(bytes[pos + 1]) << 8));
     ASSERT_EQ(0, (int)object_count) << "test fixture should serialize zero objects";
     pos += 2;
 

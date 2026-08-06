@@ -263,6 +263,59 @@ TEST(ExampleClassPack, ships_its_own_sprite_and_animation_table)
                                  og::script::FamilyHook::OnFireWeapon));
 }
 
+// Base HP has to come out of the pack's own descriptor. The loader keeps mod
+// families in a second block above the dense core block, so the only correct
+// way to read any of its tables is the slot mapping; PIX() cannot address a
+// family id >= NUM_FAMILIES at all and lands on an unrelated core entry.
+TEST(ExampleClassPack, base_hitpoints_come_from_the_packs_own_descriptor)
+{
+    ExamplePackMount pack;
+    ASSERT_TRUE(pack.ok()) << "mount " << kExamplePackDir;
+
+    const int family = og::families::resolve_family_string_id(
+        Order::Living, "example:emberwisp");
+    ASSERT_GE(family, NUM_FAMILIES);
+    const FamilyDescriptor* fd = get_family_descriptor(family);
+    ASSERT_NE(fd, nullptr);
+    ASSERT_GT(fd->combat.hp, 0.0f) << "the example pack declares a base hp";
+
+    loader l{EntityFactory{}};
+    std::unique_ptr<walker> w = l.create_walker_owned(Order::Living, family);
+    ASSERT_NE(w, nullptr);
+    EXPECT_FLOAT_EQ(fd->combat.hp, w->stats()->max_hitpoints())
+        << "a mod family's base hp is its own declared hp, not whatever core "
+           "slot PIX(order, family) aliases onto";
+    EXPECT_FLOAT_EQ(fd->combat.hp, w->stats()->hitpoints());
+}
+
+// The point is the indexing rule, not the arithmetic coincidence that a
+// particular alias slot happens to hold a harmless number. Poison the slot
+// PIX() would have reached and the spawn must not notice.
+TEST(ExampleClassPack, spawning_never_reads_the_pix_alias_slot)
+{
+    ExamplePackMount pack;
+    ASSERT_TRUE(pack.ok()) << "mount " << kExamplePackDir;
+
+    const int family = og::families::resolve_family_string_id(
+        Order::Living, "example:emberwisp");
+    ASSERT_GE(family, NUM_FAMILIES);
+    const FamilyDescriptor* fd = get_family_descriptor(family);
+    ASSERT_NE(fd, nullptr);
+
+    // A loader built here owns its own tables, so the tripwire cannot leak
+    // into another test in this binary.
+    loader l{EntityFactory{}};
+    const int alias = PIX(Order::Living, family);
+    ASSERT_GE(alias, 0);
+    ASSERT_LT(static_cast<std::size_t>(alias), l.hitpoints.size());
+    l.hitpoints[static_cast<std::size_t>(alias)] = 4242.0f;
+
+    std::unique_ptr<walker> w = l.create_walker_owned(Order::Living, family);
+    ASSERT_NE(w, nullptr);
+    EXPECT_FLOAT_EQ(fd->combat.hp, w->stats()->max_hitpoints())
+        << "the tripwire value proves the spawn read the aliased core slot";
+}
+
 // The frame sidecar is resolved beside the PNG that actually opened. This is
 // not hypothetical: pix/ takes a user-chosen sprite pack (graphics.sprite_sheet),
 // so a file mounted there at a pack sprite's path would otherwise supply that

@@ -28,7 +28,7 @@ static void set_all_tiles(unsigned char tile)
         lvl.create_new_grid();
     const int size = static_cast<int>(lvl.world().grid.w) * static_cast<int>(lvl.world().grid.h);
     for (int i = 0; i < size; i++)
-        lvl.world().grid.data[i] = tile;
+        lvl.world().grid.data[static_cast<std::size_t>(i)] = tile;
 }
 
 static void set_tile(int tx, int ty, unsigned char tile)
@@ -38,7 +38,7 @@ static void set_tile(int tx, int ty, unsigned char tile)
         lvl.create_new_grid();
     if (tx < 0 || ty < 0 || tx >= lvl.world().grid.w || ty >= lvl.world().grid.h)
         return;
-    lvl.world().grid.data[ty * lvl.world().grid.w + tx] = tile;
+    lvl.world().grid.data[static_cast<std::size_t>(ty * lvl.world().grid.w + tx)] = tile;
 }
 } // namespace
 

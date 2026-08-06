@@ -75,8 +75,8 @@ static inline Uint32 rng(Uint32 max_exclusive) {
 // Defined with the pixel-format memo below; must run alongside SDL_Quit.
 static void reset_format_detail_cache();
 // Defined with the display-settings apply below; shared with the boot path.
-static SDL_DisplayID display_for_window();
-static bool apply_exclusive_mode(SDL_DisplayID display, int w, int h);
+[[maybe_unused]] static SDL_DisplayID display_for_window();
+[[maybe_unused]] static bool apply_exclusive_mode(SDL_DisplayID display, int w, int h);
 
 static constexpr int kMaxConfiguredDisplayDimension = 16384;
 
@@ -103,8 +103,8 @@ static void video_init_palettes(sdl_video& v)
 	// Create the red-shifted palette
 	for (Sint32 i = 32; i < 256; i++)
 	{
-		v.redpalette[i*3+1] /= 2;
-		v.redpalette[i*3+2] /= 2;
+		v.redpalette[static_cast<std::size_t>(i*3+1)] /= 2;
+		v.redpalette[static_cast<std::size_t>(i*3+2)] /= 2;
 	}
 
 	load_palette("our.pal", v.bluepalette);
@@ -119,7 +119,7 @@ static void video_create_display(int windowed_base_w, int windowed_base_h)
 	// the configured fullscreen request through the tracked live-apply path.
 	// SDL3 exposes create-time pending flags through its getters; a Windowed
 	// baseline gives timeout handling a real confirmed state to preserve.
-	const og::ui::DisplayMode boot_display_mode =
+	[[maybe_unused]] const og::ui::DisplayMode boot_display_mode =
 	    og::ui::parse_display_mode(cfg.get_setting("graphics", "fullscreen"));
 
 	// graphics/render (the legacy whole-canvas present engine) is retired:
@@ -250,8 +250,8 @@ void restore_web_canvas_backing_size(int logical_w, int logical_h)
 
 	const bool session_size_changed =
 		og::runtime::current_session != nullptr &&
-		(og::runtime::current_session->window_w_ != logical_w ||
-		 og::runtime::current_session->window_h_ != logical_h);
+		(og::runtime::current_session->window_w_ != static_cast<float>(logical_w) ||
+		 og::runtime::current_session->window_h_ != static_cast<float>(logical_h));
 	if (session_size_changed)
 	{
 		og::runtime::current_session->window_w_ =
@@ -470,7 +470,7 @@ void sdl_video::draw_box(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned ch
 void sdl_video::draw_rect_filled(Sint32 x, Sint32 y, Uint32 w, Uint32 h, unsigned char color, Uint8 alpha)
 {
     for (Uint32 i = 0; i < h; i++)
-        hor_line_alpha(x, y+i, w, color, alpha);
+        hor_line_alpha(x, static_cast<Sint32>(static_cast<Uint32>(y)+i), static_cast<Sint32>(w), color, alpha);
 }
 
 
@@ -486,7 +486,7 @@ void sdl_video::draw_button_inverted(const SDL_Rect& rect)
 
 void sdl_video::draw_button_inverted(Sint32 x, Sint32 y, Uint32 w, Uint32 h)
 {
-    draw_text_bar(x, y, x + w - 1, y + h - 1);
+    draw_text_bar(x, y, static_cast<Sint32>(static_cast<Uint32>(x) + w - 1), static_cast<Sint32>(static_cast<Uint32>(y) + h - 1));
 }
 
 
@@ -816,12 +816,12 @@ void sdl_video::pointb(Sint32 x, Sint32 y, unsigned char color)
 
 	query_palette_reg(color,&r,&g,&b);
 
-	c = map_surface_rgb_fast(E_Screen->render,
+	c = static_cast<int>(map_surface_rgb_fast(E_Screen->render,
 	               static_cast<Uint8>(r * 4),
 	               static_cast<Uint8>(g * 4),
-	               static_cast<Uint8>(b * 4));
+	               static_cast<Uint8>(b * 4)));
 
-    putpixel(E_Screen->render, x, y, c);
+    putpixel(E_Screen->render, x, y, static_cast<Uint32>(c));
 }
 
 void blend_pixel(SDL_Surface* surface, int x, int y, Uint32 color, Uint8 alpha)
@@ -978,12 +978,12 @@ void sdl_video::pointb(Sint32 x, Sint32 y, unsigned char color, unsigned char al
 
 	query_palette_reg(color,&r,&g,&b);
 
-	c = map_surface_rgb_fast(E_Screen->render,
+	c = static_cast<int>(map_surface_rgb_fast(E_Screen->render,
 	               static_cast<Uint8>(r * 4),
 	               static_cast<Uint8>(g * 4),
-	               static_cast<Uint8>(b * 4));
-	
-    blend_pixel(E_Screen->render, x, y, c, alpha);
+	               static_cast<Uint8>(b * 4)));
+
+    blend_pixel(E_Screen->render, x, y, static_cast<Uint32>(c), alpha);
 }
 
 //buffers: this sets the color using raw RGB values. no *4...
@@ -991,16 +991,16 @@ void sdl_video::pointb(Sint32 x, Sint32 y, int r, int g, int b)
 {
 	SDL_Rect  rect;
 	int c;
-	c = map_surface_rgb_fast(E_Screen->render,
+	c = static_cast<int>(map_surface_rgb_fast(E_Screen->render,
 	               static_cast<Uint8>(r),
 	               static_cast<Uint8>(g),
-	               static_cast<Uint8>(b));
+	               static_cast<Uint8>(b)));
 
 	rect.x = x;
 	rect.y = y;
 	rect.w = 1;
 	rect.h = 1;
-	SDL_FillSurfaceRect(E_Screen->render,&rect,c);
+	SDL_FillSurfaceRect(E_Screen->render,&rect,static_cast<Uint32>(c));
 }
 
 //buffers: draw color using an offset
@@ -1150,8 +1150,8 @@ void sdl_video::do_cycle(Sint32 curmode, Sint32 maxmode)
 		                  &tempcol[1], &tempcol[2]);        // get first color
 		for (i=ORANGE_END; i > ORANGE_START; i--)
 		{
-			query_palette_reg(static_cast<char>(i-1), &curcol[0], &curcol[1], &curcol[2]);
-			set_palette_reg(static_cast<char>(i), static_cast<char>(curcol[0]),static_cast<char>(curcol[1]), static_cast<char>(curcol[2]));
+			query_palette_reg(static_cast<unsigned char>(static_cast<char>(i-1)), &curcol[0], &curcol[1], &curcol[2]);
+			set_palette_reg(static_cast<unsigned char>(static_cast<char>(i)), static_cast<char>(curcol[0]),static_cast<char>(curcol[1]), static_cast<char>(curcol[2]));
 		}
 		set_palette_reg(ORANGE_START, tempcol[0],
 		                tempcol[1], tempcol[2]);        // reassign last to first
@@ -1161,8 +1161,8 @@ void sdl_video::do_cycle(Sint32 curmode, Sint32 maxmode)
 		                  &tempcol[1], &tempcol[2]);        // get first color
 		for (i=WATER_END; i > WATER_START; i--)
 		{
-			query_palette_reg(static_cast<char>(i-1), &curcol[0], &curcol[1], &curcol[2]);
-			set_palette_reg(static_cast<char>(i), curcol[0], curcol[1], curcol[2]);
+			query_palette_reg(static_cast<unsigned char>(static_cast<char>(i-1)), &curcol[0], &curcol[1], &curcol[2]);
+			set_palette_reg(static_cast<unsigned char>(static_cast<char>(i)), curcol[0], curcol[1], curcol[2]);
 		}
 		set_palette_reg(WATER_START, tempcol[0],
 		                tempcol[1], tempcol[2]);        // reassign last to first
@@ -1233,7 +1233,7 @@ void sdl_video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 y
 			rect.w = 1;
 			rect.h = 1;
 			Log("test\n");
-			SDL_FillSurfaceRect(E_Screen->render,&rect,color);
+			SDL_FillSurfaceRect(E_Screen->render,&rect,static_cast<Uint32>(color));
 		}
     	}
 }
@@ -1288,7 +1288,7 @@ void sdl_video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 y
             rect.y = cury;
 			rect.w = 1;	
 			rect.h = 1;
-			SDL_FillSurfaceRect(E_Screen->render,&rect,scolor);
+			SDL_FillSurfaceRect(E_Screen->render,&rect,static_cast<Uint32>(scolor));
 		}
 }
 
@@ -1947,7 +1947,7 @@ void sdl_video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 	Sint32 curx, cury;
 	unsigned char curcolor;
 	Sint32 xmin = 0, xmax= walkerwidth , ymin= 0 , ymax= walkerheight;
-	Sint32 walkoff=0,buffoff=0,walkshift=0,buffshift=0;
+	Sint32 walkoff=0,walkshift=0;
 	Sint32 totrows,rowsize;
 
 	if (walkerstartx >= portendx || walkerstarty >= portendy)
@@ -1980,10 +1980,8 @@ void sdl_video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 	// the view it will be clipped to in either dimension!!!
 
 	walkshift = walkerwidth - rowsize;
-	buffshift = active_canvas_w() - rowsize;
 
 	walkoff   = (ymin * walkerwidth) + xmin;
-	buffoff   = (walkerstarty*active_canvas_w()) + walkerstartx;
 
 	SDL_Surface* const target = E_Screen->render;
 	if (cached_format_details(target->format)->bytes_per_pixel == 4 &&
@@ -2007,7 +2005,7 @@ void sdl_video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 					static_cast<std::size_t>(target->pitch)) + walkerstartx;
 			for (curx = 0; curx < rowsize; ++curx)
 			{
-				curcolor = sourceptr[walkoff++];
+				curcolor = sourceptr[static_cast<std::size_t>(walkoff++)];
 				if (!curcolor)
 					continue;
 				if (curcolor > static_cast<unsigned char>(247))
@@ -2024,19 +2022,15 @@ void sdl_video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 	{
 		for(curx=0;curx<rowsize;curx++)
 		{
-			curcolor = sourceptr[walkoff++];
+			curcolor = sourceptr[static_cast<std::size_t>(walkoff++)];
 			if (!curcolor)
-			{
-				buffoff++;
 				continue;
-			}
 			if (curcolor > static_cast<unsigned char>(247))
 				curcolor = static_cast<unsigned char>(teamcolor+(255-curcolor));
 			//buffers: PORT: videobuffer[buffoff++] = curcolor;
 			pointb(walkerstartx+curx,walkerstarty+cury,curcolor);
 		}
 		walkoff += walkshift;
-		buffoff += buffshift;
 	}
 }
 
@@ -2094,7 +2088,7 @@ void sdl_video::walkputbuffer_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
 		{
 			for (curx = 0; curx < rowsize; ++curx)
 			{
-				curcolor = sourceptr[walkoff++];
+				curcolor = sourceptr[static_cast<std::size_t>(walkoff++)];
 				if (!curcolor)
 					continue;
 				if (curcolor > static_cast<unsigned char>(247))
@@ -2112,7 +2106,7 @@ void sdl_video::walkputbuffer_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
 	{
 		for(curx=0;curx<rowsize;curx++)
 		{
-			curcolor = sourceptr[walkoff++];
+			curcolor = sourceptr[static_cast<std::size_t>(walkoff++)];
 			if (!curcolor)
 				continue;
 			if (curcolor > static_cast<unsigned char>(247))
@@ -2169,7 +2163,7 @@ void sdl_video::walkputbuffer_shadow(Sint32 walkerstartx, Sint32 walkerstarty,
 		Sint32 walkoff = (walkerheight-1 - t*height_divisor) * walkerwidth;
 		for (curx = xmin; curx < xmax; curx++)
 		{
-			if (!sourceptr[walkoff + curx])
+			if (!sourceptr[static_cast<std::size_t>(walkoff + curx)])
 				continue;
 			pointb(walkerstartx+curx, desty, PURE_BLACK, alpha);
 		}
@@ -2227,7 +2221,7 @@ void sdl_video::walkputbuffer_reflect(Sint32 walkerstartx, Sint32 walkerstarty,
 		Sint32 desty = walkerstarty + cury;
 		for(curx=0;curx<rowsize;curx++)
 		{
-			curcolor = sourceptr[walkoff + curx];
+			curcolor = sourceptr[static_cast<std::size_t>(walkoff + curx)];
 			if (!curcolor)
 				continue;
 			Sint32 destx = walkerstartx + curx;
@@ -2235,7 +2229,7 @@ void sdl_video::walkputbuffer_reflect(Sint32 walkerstartx, Sint32 walkerstarty,
 			Sint32 gy = (desty + world_offset_y) / GRID_SIZE;
 			if (gx < 0 || gx >= gridw || gy < 0 || gy >= gridh)
 				continue;
-			if (!reflect_mask[grid[gx + gridw*gy]])
+			if (!reflect_mask[grid[static_cast<std::size_t>(gx + gridw*gy)]])
 				continue;
 			if (curcolor > static_cast<unsigned char>(247))
 				curcolor = static_cast<unsigned char>(teamcolor+(255-curcolor));
@@ -2253,7 +2247,7 @@ void sdl_video::walkputbuffer_flash(Sint32 walkerstartx, Sint32 walkerstarty,
 	Sint32 curx, cury;
 	unsigned char curcolor;
 	Sint32 xmin = 0, xmax= walkerwidth , ymin= 0 , ymax= walkerheight;
-	Sint32 walkoff=0,buffoff=0,walkshift=0,buffshift=0;
+	Sint32 walkoff=0,walkshift=0;
 	Sint32 totrows,rowsize;
 
 	if (walkerstartx >= portendx || walkerstarty >= portendy)
@@ -2286,23 +2280,18 @@ void sdl_video::walkputbuffer_flash(Sint32 walkerstartx, Sint32 walkerstarty,
 	// the view it will be clipped to in either dimension!!!
 
 	walkshift = walkerwidth - rowsize;
-	buffshift = active_canvas_w() - rowsize;
 
 	walkoff   = (ymin * walkerwidth) + xmin;
-	buffoff   = (walkerstarty*active_canvas_w()) + walkerstartx;
 
 
 	for(cury = 0; cury < totrows;cury++)
 	{
 		for(curx=0;curx<rowsize;curx++)
 		{
-			curcolor = sourceptr[walkoff++];
+			curcolor = sourceptr[static_cast<std::size_t>(walkoff++)];
 			if (!curcolor)
-			{
-				buffoff++;
 				continue;
-			}
-			
+
 			if (curcolor > static_cast<unsigned char>(247))
 				curcolor = static_cast<unsigned char>(teamcolor+(255-curcolor));
 			
@@ -2332,7 +2321,6 @@ void sdl_video::walkputbuffer_flash(Sint32 walkerstartx, Sint32 walkerstarty,
 			pointb(walkerstartx+curx,walkerstarty+cury,r, g, b);
 		}
 		walkoff += walkshift;
-		buffoff += buffshift;
 	}
 }
 
@@ -2345,7 +2333,7 @@ void sdl_video::walkputbuffertext(Sint32 walkerstartx, Sint32 walkerstarty,
         Sint32 curx, cury;
         unsigned char curcolor;
         Sint32 xmin = 0, xmax= walkerwidth , ymin= 0 , ymax= walkerheight;
-        Sint32 walkoff=0,buffoff=0,walkshift=0,buffshift=0;
+        Sint32 walkoff=0,walkshift=0;
         Sint32 totrows,rowsize;
 	int color;
 	SDL_Rect rect;
@@ -2379,21 +2367,16 @@ void sdl_video::walkputbuffertext(Sint32 walkerstartx, Sint32 walkerstarty,
         // the view it will be clipped to in either dimension!!!
 
         walkshift = walkerwidth - rowsize;
-        buffshift = active_canvas_w() - rowsize;
 
         walkoff   = (ymin * walkerwidth) + xmin;
-        buffoff   = (walkerstarty*active_canvas_w()) + walkerstartx;
 
         for(cury = 0; cury < totrows;cury++)
         {
                 for(curx=0;curx<rowsize;curx++)
                 {
-                        curcolor = sourceptr[walkoff++];
+                        curcolor = sourceptr[static_cast<std::size_t>(walkoff++)];
                         if (!curcolor)
-                        {
-                                buffoff++;
                                 continue;
-                        }
 		        if (curcolor > static_cast<unsigned char>(247))
 		        {
 		                curcolor = static_cast<unsigned char>(teamcolor+(255-curcolor));
@@ -2404,10 +2387,9 @@ void sdl_video::walkputbuffertext(Sint32 walkerstartx, Sint32 walkerstarty,
                         rect.y = (cury + walkerstarty);
                         rect.w = 1;
                         rect.h = 1;
-                        SDL_FillSurfaceRect(E_Screen->render,&rect,color);
+                        SDL_FillSurfaceRect(E_Screen->render,&rect,static_cast<Uint32>(color));
                 }
                 walkoff += walkshift;
-                buffoff += buffshift;
         }
 }
 
@@ -2420,7 +2402,7 @@ void sdl_video::walkputbuffertext_alpha(Sint32 walkerstartx, Sint32 walkerstarty
         Sint32 curx, cury;
         unsigned char curcolor;
         Sint32 xmin = 0, xmax= walkerwidth , ymin= 0 , ymax= walkerheight;
-        Sint32 walkoff=0,buffoff=0,walkshift=0,buffshift=0;
+        Sint32 walkoff=0,walkshift=0;
         Sint32 totrows,rowsize;
 
         if (walkerstartx >= portendx || walkerstarty >= portendy)
@@ -2452,28 +2434,22 @@ void sdl_video::walkputbuffertext_alpha(Sint32 walkerstartx, Sint32 walkerstarty
         // the view it will be clipped to in either dimension!!!
 
         walkshift = walkerwidth - rowsize;
-        buffshift = active_canvas_w() - rowsize;
 
         walkoff   = (ymin * walkerwidth) + xmin;
-        buffoff   = (walkerstarty*active_canvas_w()) + walkerstartx;
 
         for(cury = 0; cury < totrows;cury++)
         {
                 for(curx=0;curx<rowsize;curx++)
                 {
-                        curcolor = sourceptr[walkoff++];
+                        curcolor = sourceptr[static_cast<std::size_t>(walkoff++)];
                         if (!curcolor)
-                        {
-                                buffoff++;
                                 continue;
-                        }
                         if (curcolor > static_cast<unsigned char>(247))
                                 curcolor = static_cast<unsigned char>(teamcolor+(255-curcolor));
                         
                         pointb(curx + walkerstartx, cury + walkerstarty, teamcolor, alpha);
                 }
                 walkoff += walkshift;
-                buffoff += buffshift;
         }
 }
 
@@ -2542,14 +2518,14 @@ void sdl_video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 			{
 				for(curx=0;curx<rowsize;curx++)
 				{
-					curcolor = sourceptr[walkoff++];
+					curcolor = sourceptr[static_cast<std::size_t>(walkoff++)];
 					if (!curcolor)
 					{
 						if (outline)
 						{
 							if (curx>0)
 							{
-								if (sourceptr[walkoff-2])
+								if (sourceptr[static_cast<std::size_t>(walkoff-2)])
 								{
 									pointb(xval++, yval, outline);
 									continue;
@@ -2558,7 +2534,7 @@ void sdl_video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 
 							if (curx<(rowsize-1))
 							{
-								if (sourceptr[walkoff])
+								if (sourceptr[static_cast<std::size_t>(walkoff)])
 								{
 									pointb(xval++, yval, outline);
 									continue;
@@ -2567,7 +2543,7 @@ void sdl_video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 
 							if (cury>0)
 							{
-								if (sourceptr[walkoff-1-walkerwidth])
+								if (sourceptr[static_cast<std::size_t>(walkoff-1-walkerwidth)])
 								{
 									pointb(xval++, yval, outline);
 									continue;
@@ -2576,7 +2552,7 @@ void sdl_video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 
 							if (cury<(totrows-1))
 							{
-								if (sourceptr[walkoff-1+walkerwidth])
+								if (sourceptr[static_cast<std::size_t>(walkoff-1+walkerwidth)])
 								{
 									pointb(xval++, yval, outline);
 									continue;
@@ -2600,7 +2576,7 @@ void sdl_video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 						}
 					} // end outline
 
-					if (rng(invisibility) > 8)
+					if (rng(static_cast<Uint32>(invisibility)) > 8)
 					{
 						xval++;
 						//videobuffer[buffoff++] = teamcolor+rng(7);
@@ -2622,12 +2598,12 @@ void sdl_video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 			{
 				for(curx=0;curx<rowsize;curx++)
 				{
-					curcolor = sourceptr[walkoff++];
+					curcolor = sourceptr[static_cast<std::size_t>(walkoff++)];
 					if (!curcolor)
 					{
 						if (curx>0)
 						{
-							if (sourceptr[walkoff-2])
+							if (sourceptr[static_cast<std::size_t>(walkoff-2)])
 							{
 								pointb(xval++, yval, outline);
 								continue;
@@ -2636,7 +2612,7 @@ void sdl_video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 
 						if (curx<(rowsize-1))
 						{
-							if (sourceptr[walkoff])
+							if (sourceptr[static_cast<std::size_t>(walkoff)])
 							{
 								pointb(xval++, yval, outline);
 								continue;
@@ -2645,7 +2621,7 @@ void sdl_video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 
 						if (cury>0)
 						{
-							if (sourceptr[walkoff-1-walkerwidth])
+							if (sourceptr[static_cast<std::size_t>(walkoff-1-walkerwidth)])
 							{
 								pointb(xval++, yval, outline);
 								continue;
@@ -2654,7 +2630,7 @@ void sdl_video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 
 						if (cury<(totrows-1))
 						{
-							if (sourceptr[walkoff-1+walkerwidth])
+							if (sourceptr[static_cast<std::size_t>(walkoff-1+walkerwidth)])
 							{
 								pointb(xval++, yval, outline);
 								continue;
@@ -2709,7 +2685,7 @@ void sdl_video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 			{
 				for(curx=0;curx<rowsize;curx++)
 				{
-					curcolor = sourceptr[walkoff++];
+					curcolor = sourceptr[static_cast<std::size_t>(walkoff++)];
 					if (!curcolor)
 					{
 						buffoff++;
@@ -2720,7 +2696,7 @@ void sdl_video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 					if (shifttype == SHIFT_RANDOM)
 					{
 						//pointb(buffoff++,get_pixel(buffoff+rng(2)));
-						tempbuf = buffoff+rng(2);
+						tempbuf = static_cast<int>(static_cast<Uint32>(buffoff)+rng(2));
 						ty = tempbuf/active_canvas_w();
 						tx = tempbuf-ty*active_canvas_w();
 						get_pixel(tx,ty,&r,&g,&b);
@@ -2783,7 +2759,7 @@ void sdl_video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 				{
 					for(curx=0;curx<rowsize;curx++)
 					{
-						curcolor = sourceptr[walkoff++];
+						curcolor = sourceptr[static_cast<std::size_t>(walkoff++)];
 						if (!curcolor)
 						{
 							buffoff++;
@@ -2923,7 +2899,7 @@ bool sdl_video::world_smoothing_supported() const
 // The display every display-settings decision should target: the one the
 // window actually sits on (the user may have dragged it to a secondary
 // monitor); primary only as the fallback headless drivers need.
-static SDL_DisplayID display_for_window()
+[[maybe_unused]] static SDL_DisplayID display_for_window()
 {
 	const SDL_DisplayID display = SDL_GetDisplayForWindow(E_Screen->window);
 	return display != 0 ? display : SDL_GetPrimaryDisplay();
@@ -2934,7 +2910,7 @@ static SDL_DisplayID display_for_window()
 // can make another output fall outside its bounds; the target CRTC may then
 // never be re-enabled. Preflight the topology because SDL reports success too
 // early for an application rollback to be reliable (SDL issue #9560).
-static bool current_topology_allows_exclusive_mode_switch()
+[[maybe_unused]] static bool current_topology_allows_exclusive_mode_switch()
 {
 	const char* driver = SDL_GetCurrentVideoDriver();
 	if (driver == nullptr || std::string_view(driver) != "x11")
@@ -2955,7 +2931,7 @@ static bool current_topology_allows_exclusive_mode_switch()
 // then release the list after SDL has accepted it. Equal physical sizes favor
 // the desktop's exact density/layout for the desktop request, otherwise a
 // density nearest 1.0 and a refresh nearest the desktop.
-static bool apply_exclusive_mode(SDL_DisplayID display, int w, int h)
+[[maybe_unused]] static bool apply_exclusive_mode(SDL_DisplayID display, int w, int h)
 {
 	const SDL_DisplayMode* desktop = SDL_GetDesktopDisplayMode(display);
 	const std::pair<int, int> desktop_pixels = desktop != nullptr
@@ -3120,7 +3096,7 @@ og::platform::DisplayStateSnapshot sdl_video::confirmed_snapshot_from_window(
 	        remembered_window_w_, remembered_window_h_};
 }
 
-static std::pair<int, int> update_runtime_window_metrics()
+[[maybe_unused]] static std::pair<int, int> update_runtime_window_metrics()
 {
 	int actual_w = 0;
 	int actual_h = 0;
@@ -3136,7 +3112,7 @@ static std::pair<int, int> update_runtime_window_metrics()
 }
 
 void sdl_video::reflect_display_settings_from_window(
-	DisplayStateConfirmation confirmation, std::uint64_t event_timestamp_ns)
+	[[maybe_unused]] DisplayStateConfirmation confirmation, [[maybe_unused]] std::uint64_t event_timestamp_ns)
 {
 #ifndef __EMSCRIPTEN__
 	if (!E_Screen || !E_Screen->window)
@@ -3205,7 +3181,7 @@ void sdl_video::reflect_display_settings_from_window(
 			const SDL_DisplayID display = pending_windowed_display_ != 0
 				? pending_windowed_display_
 				: display_for_window();
-			const int centered = SDL_WINDOWPOS_CENTERED_DISPLAY(display);
+			const int centered = static_cast<int>(SDL_WINDOWPOS_CENTERED_DISPLAY(display));
 			SDL_SetWindowPosition(E_Screen->window, centered, centered);
 			if (size_accepted && !SDL_SyncWindow(E_Screen->window))
 			{
@@ -3658,7 +3634,7 @@ void sdl_video::FadeBetween24(
 	const int amount)	//(in) mixing ratio (in increments of 'fadeDuration')
 {
 	Uint8 *pw = static_cast<Uint8*>(pSurface->pixels);
-	Uint32 size = pSurface->pitch * pSurface->h;
+	Uint32 size = static_cast<Uint32>(pSurface->pitch * pSurface->h);
 
 	const int nOldAmt = fadeDuration-amount;
 
@@ -3772,7 +3748,7 @@ int sdl_video::FadeBetween(
 	if(bpp != 4)	//24-bit color only supported
         return fail("unsupported BytesPerPixel (expected 4)");
 
-	Uint32 size = pOldSurface->pitch * pOldSurface->h;
+	Uint32 size = static_cast<Uint32>(pOldSurface->pitch * pOldSurface->h);
 	std::vector<Uint8> colorsf(size);
 	std::vector<Uint8> colorst(size);
 

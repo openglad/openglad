@@ -25,7 +25,7 @@ static PixieData make_grid(unsigned char w, unsigned char h, unsigned char fill)
 
 static unsigned char& at(PixieData& g, int x, int y)
 {
-    return g.data[x + y * g.w];
+    return g.data[static_cast<std::size_t>(x + y * g.w)];
 }
 
 static bool is_dark_grass_branch_tile(int pix)

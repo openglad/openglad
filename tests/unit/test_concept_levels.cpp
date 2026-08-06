@@ -290,8 +290,8 @@ TEST_F(ConceptCampaignTest, demo_levels_have_stairs_on_flagged_boundaries)
             const int cells = lo.w * lo.h;
             for (int i = 0; i < cells; ++i)
             {
-                if (lo.data[i] == PIX_ZSTAIR_UP &&
-                    hi.data[i] == PIX_ZSTAIR_DOWN)
+                if (lo.data[static_cast<std::size_t>(i)] == PIX_ZSTAIR_UP &&
+                    hi.data[static_cast<std::size_t>(i)] == PIX_ZSTAIR_DOWN)
                 {
                     ++pairs;
                 }
@@ -330,7 +330,7 @@ TEST_F(ConceptCampaignTest, demo_level_entities_stand_on_passable_ground)
                 const int tx = (ob->xpos() + ob->sizex() / 2) / GRID_SIZE;
                 const int ty = (ob->ypos() + ob->sizey() / 2) / GRID_SIZE;
                 ASSERT_TRUE(tx >= 0 && ty >= 0 && tx < g.w && ty < g.h);
-                EXPECT_NE(PIX_AIR, g.data[tx + ty * g.w])
+                EXPECT_NE(PIX_AIR, g.data[static_cast<std::size_t>(tx + ty * g.w)])
                     << "ground unit family " << static_cast<int>(ob->family())
                     << " spawns over air at tile (" << tx << ", " << ty
                     << ") floor " << ob->floor();

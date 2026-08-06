@@ -648,16 +648,16 @@ TEST_F(ModesOnslaught, flip_restores_authored_hp_for_zero_max_families)
     {
         authored[i] = gens[i]->stats()->hitpoints();
         ASSERT_GT(authored[i], 0.0f);
-        ASSERT_EQ(0.0f, gens[i]->stats()->max_hitpoints())
-            << "the bug's precondition: the loader ships this family with "
-               "max_hp 0 (engine follow-up A pending)";
+        ASSERT_EQ(authored[i], gens[i]->stats()->max_hitpoints())
+            << "the engine stamps the denominator at set_difficulty, even for "
+               "the families the loader ships with base hp 0";
     }
     fx.tick(1);
     ASSERT_TRUE(fx.ons_active());
     for (int i = 0; i < 3; ++i)
     {
         EXPECT_EQ(authored[i], gens[i]->stats()->max_hitpoints())
-            << "on_mode_init normalizes max_hp to the authored hp";
+            << "and mode init leaves it alone";
     }
 
     for (int i = 0; i < 3; ++i)
@@ -679,9 +679,9 @@ TEST_F(ModesOnslaught, tent_flip_restores_full_authored_hp_not_half)
     walker* tent = fx.spawn_generator(FAMILY_TENT, 1, 320, 480, 2);
     ASSERT_NE(nullptr, tent);
     const float authored = tent->stats()->hitpoints();
-    ASSERT_GT(authored, tent->stats()->max_hitpoints())
-        << "the bug's precondition: a difficulty-stamped tent runs above "
-           "its loader max_hp of 100";
+    ASSERT_EQ(authored, tent->stats()->max_hitpoints())
+        << "a difficulty-stamped tent used to run above its loader max_hp "
+           "of 100; set_difficulty now moves both";
     fx.tick(1);
     ASSERT_TRUE(fx.ons_active());
     EXPECT_EQ(authored, tent->stats()->max_hitpoints());
@@ -1767,7 +1767,7 @@ TEST_F(ModesOnslaught, match_replicates_to_a_client_mirror_without_hash_strikes)
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
     for (int slot = 0; slot < og::sim::kModeVarCount; ++slot)
     {
-        EXPECT_EQ(fx.world().mode.vars[slot], mirror.world().mode.vars[slot])
+        EXPECT_EQ(fx.world().mode.vars[static_cast<std::size_t>(slot)], mirror.world().mode.vars[static_cast<std::size_t>(slot)])
             << "mode var slot " << slot;
     }
 }

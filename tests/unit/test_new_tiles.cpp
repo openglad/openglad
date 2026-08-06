@@ -88,7 +88,7 @@ TEST(NewTiles, genres_map_and_autotiler_is_inert)
         w.mysmoother.smooth();
         bool untouched = true;
         for (int i = 0; i < n; i++)
-            if (w.grid.data[i] != row.pix)
+            if (w.grid.data[static_cast<std::size_t>(i)] != row.pix)
                 untouched = false;
         EXPECT_TRUE(untouched)
             << "smooth() must be inert over pix " << static_cast<int>(row.pix);
@@ -166,7 +166,7 @@ TEST(NewTiles, grounder_routes_around_lava_strip_flyer_crosses)
     TestGameWorld tw;
     GameWorld& w = tw.world();
     for (int gy = 0; gy <= 14; gy++)
-        w.grid.data[12 + gy * w.grid.w] = PIX_LAVA1;
+        w.grid.data[static_cast<std::size_t>(12 + gy * w.grid.w)] = PIX_LAVA1;
 
     walker* grounder = w.add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_NE(grounder, nullptr);
@@ -242,7 +242,7 @@ TEST(NewTiles, committed_tile_art_loads_and_pins_palette_budgets)
 
         std::array<int, 256> hist{};
         for (int i = 0; i < 16 * 16; i++)
-            hist[p.data[i]]++;
+            hist[p.data[static_cast<std::size_t>(i)]]++;
 
         EXPECT_EQ(0, hist[0]) << label << ": opaque floors never use index 0";
         int water_band = 0, orange_band = 0;

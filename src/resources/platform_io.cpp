@@ -449,7 +449,7 @@ NewFileIoError create_new_map_pix_with_error(const std::string& filename, int w,
     const std::array<unsigned char, 4> grass_tiles = {PIX_GRASS1, PIX_GRASS2, PIX_GRASS3, PIX_GRASS4};
     for(int i = 0; i < size; i++)
     {
-        grid.data[i] = grass_tiles[static_cast<size_t>(grass_dist(grass_rng))];
+        grid.data[static_cast<size_t>(i)] = grass_tiles[static_cast<size_t>(grass_dist(grass_rng))];
     }
 
     if (!write_pixie_png(filename.c_str(), grid))

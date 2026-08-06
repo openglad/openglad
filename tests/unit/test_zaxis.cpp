@@ -28,8 +28,8 @@ void set_floor1_grid(GameWorld& w, int tx, int ty, unsigned char tile)
 {
     const int gw = w.grid.w;
     const int gh = w.grid.h;
-    auto* buf = new unsigned char[static_cast<std::size_t>(gw) * gh];
-    std::fill(buf, buf + static_cast<std::size_t>(gw) * gh,
+    auto* buf = new unsigned char[static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh)];
+    std::fill(buf, buf + static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh),
               static_cast<unsigned char>(PIX_GRASS1));
     if (tx >= 0 && ty >= 0 && tx < gw && ty < gh)
         buf[tx + ty * gw] = tile;
@@ -51,8 +51,8 @@ unsigned char* set_floor1_all_air(GameWorld& w)
 {
     const int gw = w.grid.w;
     const int gh = w.grid.h;
-    auto* buf = new unsigned char[static_cast<std::size_t>(gw) * gh];
-    std::fill(buf, buf + static_cast<std::size_t>(gw) * gh,
+    auto* buf = new unsigned char[static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh)];
+    std::fill(buf, buf + static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh),
               static_cast<unsigned char>(PIX_AIR));
     w.grid_for_floor(1) = PixieData(1, static_cast<unsigned char>(gw),
                                     static_cast<unsigned char>(gh), buf);
@@ -66,8 +66,8 @@ unsigned char* set_floor1_fill(GameWorld& w, unsigned char tile)
 {
     const int gw = w.grid.w;
     const int gh = w.grid.h;
-    auto* buf = new unsigned char[static_cast<std::size_t>(gw) * gh];
-    std::fill(buf, buf + static_cast<std::size_t>(gw) * gh, tile);
+    auto* buf = new unsigned char[static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh)];
+    std::fill(buf, buf + static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh), tile);
     w.grid_for_floor(1) = PixieData(1, static_cast<unsigned char>(gw),
                                     static_cast<unsigned char>(gh), buf);
     w.smoother_for_floor(1).set_target(w.grid_for_floor(1));
@@ -164,7 +164,7 @@ TEST(ZAxis, zstair_up_moves_to_floor_above)
 
     int cx, cy;
     center_cell(a, cx, cy);
-    w.grid.data[cx + cy * w.grid.w] = PIX_ZSTAIR_UP; // paint stair under it
+    w.grid.data[static_cast<std::size_t>(cx + cy * w.grid.w)] = PIX_ZSTAIR_UP; // paint stair under it
     // Author the destination floor (all grass): set_floor_count leaves extra
     // floors' grids for the caller, and the landing validation correctly
     // refuses to transition onto a floor with no grid.
@@ -194,7 +194,7 @@ TEST(ZAxis, cross_floor_ai_chases_foe_through_stair)
     ASSERT_EQ(2, w.floor_count());
 
     // Floor 0: ZSTAIR_UP at grid (10,8). Floor 1: grass + ZSTAIR_DOWN at (10,8).
-    w.grid.data[10 + 8 * w.grid.w] = PIX_ZSTAIR_UP;
+    w.grid.data[static_cast<std::size_t>(10 + 8 * w.grid.w)] = PIX_ZSTAIR_UP;
     set_floor1_grid(w, 10, 8, PIX_ZSTAIR_DOWN);
 
     // The fixture's FixedRandom{0} makes walk_to_foe() a no-op every tick (its
@@ -265,7 +265,7 @@ TEST(ZAxis, cross_floor_ai_chases_MOVING_foe_through_stair)
     ASSERT_EQ(2, w.floor_count());
 
     // Floor 0: ZSTAIR_UP at grid (10,8). Floor 1: grass + ZSTAIR_DOWN at (10,8).
-    w.grid.data[10 + 8 * w.grid.w] = PIX_ZSTAIR_UP;
+    w.grid.data[static_cast<std::size_t>(10 + 8 * w.grid.w)] = PIX_ZSTAIR_UP;
     set_floor1_grid(w, 10, 8, PIX_ZSTAIR_DOWN);
 
     w.rng_.state_ = 0x9E3779B9u;
@@ -330,7 +330,8 @@ TEST(ZAxis, cross_floor_ai_chases_MOVING_foe_through_stair)
         << "skeleton NEVER crossed to the foe's floor in " << TICKS << " ticks";
     EXPECT_LT(first_cross_tick, 40)
         << "skeleton mirrored the moving foe on the WRONG floor for "
-        << first_cross_tick << " ticks before climbing the Z-stair";
+        << first_cross_tick << " ticks before climbing the Z-stair ("
+        << wrong_floor_ticks << " wrong-floor ticks over the whole run)";
 }
 
 // Build a realistic SPARSE upper floor (floor 1 = mostly air) with two grass
@@ -368,7 +369,7 @@ TEST(ZAxis, cross_floor_ai_MOVING_foe_air_unreachable_still_climbs_toward_stair)
     GameWorld& w = tw.world();
     w.set_floor_count(2);
 
-    w.grid.data[16 + 8 * w.grid.w] = PIX_ZSTAIR_UP; // floor 0 stair
+    w.grid.data[static_cast<std::size_t>(16 + 8 * w.grid.w)] = PIX_ZSTAIR_UP; // floor 0 stair
     build_air_floor1(w, /*connect=*/false);
     w.rng_.state_ = 0x9E3779B9u;
 
@@ -435,7 +436,7 @@ TEST(ZAxis, cross_floor_ai_MOVING_foe_air_REACHABLE_crosses)
     GameWorld& w = tw.world();
     w.set_floor_count(2);
 
-    w.grid.data[16 + 8 * w.grid.w] = PIX_ZSTAIR_UP;
+    w.grid.data[static_cast<std::size_t>(16 + 8 * w.grid.w)] = PIX_ZSTAIR_UP;
     build_air_floor1(w, /*connect=*/true);
     w.rng_.state_ = 0x9E3779B9u;
 
@@ -495,7 +496,7 @@ TEST(ZAxis, cross_floor_ai_MOVING_foe_climbs_without_waiting_for_reachability)
     GameWorld& w = tw.world();
     w.set_floor_count(2);
 
-    w.grid.data[16 + 8 * w.grid.w] = PIX_ZSTAIR_UP;
+    w.grid.data[static_cast<std::size_t>(16 + 8 * w.grid.w)] = PIX_ZSTAIR_UP;
     build_air_floor1(w, /*connect=*/false); // two DISCONNECTED platforms
     w.rng_.state_ = 0x9E3779B9u;
 
@@ -621,7 +622,7 @@ TEST(ZAxis, stair_up_into_occupied_cell_lands_beside_the_blocker)
     ASSERT_EQ(8, cy);
     // Stairs are authored as vertically aligned pairs: UP on floor 0, DOWN at
     // the same cell on floor 1 — with B standing ON the pair cell.
-    w.grid.data[cx + cy * w.grid.w] = PIX_ZSTAIR_UP;
+    w.grid.data[static_cast<std::size_t>(cx + cy * w.grid.w)] = PIX_ZSTAIR_UP;
     set_floor1_grid(w, cx, cy, PIX_ZSTAIR_DOWN);
     b->set_floor(1);
     b->setxy(a->xpos(), a->ypos());
@@ -698,7 +699,7 @@ TEST(ZAxis, stair_with_no_clear_arrival_within_radius_denied_until_clear)
     center_cell(a, cx, cy);
     ASSERT_EQ(8, cx);
     ASSERT_EQ(8, cy);
-    w.grid.data[cx + cy * w.grid.w] = PIX_ZSTAIR_UP;
+    w.grid.data[static_cast<std::size_t>(cx + cy * w.grid.w)] = PIX_ZSTAIR_UP;
 
     // Floor 1: walls on rings 1..2 around the stair, the aligned DOWN stair
     // at the center (occupied by B), clear grass from ring 3 outward.
@@ -753,7 +754,7 @@ TEST(ZAxis, stair_nudge_never_lands_on_air)
     center_cell(a, cx, cy);
     ASSERT_EQ(8, cx);
     ASSERT_EQ(8, cy);
-    w.grid.data[cx + cy * w.grid.w] = PIX_ZSTAIR_UP;
+    w.grid.data[static_cast<std::size_t>(cx + cy * w.grid.w)] = PIX_ZSTAIR_UP;
 
     // Floor 1: open sky except the 1-cell stair platform — occupied by B.
     unsigned char* f1 = set_floor1_all_air(w);
@@ -797,7 +798,7 @@ TEST(ZAxis, arrival_on_paired_stair_does_not_bounce_back)
     int cx, cy;
     center_cell(a, cx, cy);
     // The authored aligned pair: UP on floor 0, DOWN on floor 1.
-    w.grid.data[cx + cy * w.grid.w] = PIX_ZSTAIR_UP;
+    w.grid.data[static_cast<std::size_t>(cx + cy * w.grid.w)] = PIX_ZSTAIR_UP;
     set_floor1_grid(w, cx, cy, PIX_ZSTAIR_DOWN);
 
     a->apply_z_motion();
@@ -840,7 +841,7 @@ TEST(ZAxis, leaving_the_stair_cell_rearms_the_transition)
     a->setxy(8 * GRID_SIZE, 8 * GRID_SIZE);
     int cx, cy;
     center_cell(a, cx, cy);
-    w.grid.data[cx + cy * w.grid.w] = PIX_ZSTAIR_UP;
+    w.grid.data[static_cast<std::size_t>(cx + cy * w.grid.w)] = PIX_ZSTAIR_UP;
     set_floor1_grid(w, cx, cy, PIX_ZSTAIR_DOWN);
 
     a->apply_z_motion();
@@ -886,7 +887,7 @@ TEST(ZAxis, nudged_arrival_leaves_the_paired_stair_armed)
     a->setxy(8 * GRID_SIZE, 8 * GRID_SIZE);
     int cx, cy;
     center_cell(a, cx, cy);
-    w.grid.data[cx + cy * w.grid.w] = PIX_ZSTAIR_UP;
+    w.grid.data[static_cast<std::size_t>(cx + cy * w.grid.w)] = PIX_ZSTAIR_UP;
     set_floor1_grid(w, cx, cy, PIX_ZSTAIR_DOWN);
     b->set_floor(1);
     b->setxy(a->xpos(), a->ypos()); // blocker on the pair cell
@@ -916,7 +917,7 @@ TEST(ZAxis, running_over_stair_with_walled_destination_never_lands_in_walls)
     w.set_floor_count(2);
 
     // Floor 0: grass with a ZSTAIR_UP at (8,8). Floor 1: solid walls.
-    w.grid.data[8 + 8 * w.grid.w] = PIX_ZSTAIR_UP;
+    w.grid.data[static_cast<std::size_t>(8 + 8 * w.grid.w)] = PIX_ZSTAIR_UP;
     set_floor1_fill(w, PIX_H_WALL1);
 
     walker* a = w.add_ob(Order::Living, FAMILY_SOLDIER);
@@ -966,7 +967,7 @@ TEST(ZAxis, air_fall_over_wall_lands_on_nearest_passable_cell)
     ASSERT_EQ(7, cy);
 
     set_floor1_grid(w, cx, cy, PIX_AIR);            // air hole under the walker
-    w.grid.data[cx + cy * w.grid.w] = PIX_H_WALL1;  // wall top directly below
+    w.grid.data[static_cast<std::size_t>(cx + cy * w.grid.w)] = PIX_H_WALL1;  // wall top directly below
 
     a->apply_z_motion();
     EXPECT_EQ(0, a->floor()) << "faller must still reach the floor below";
@@ -996,7 +997,7 @@ TEST(ZAxis, air_fall_nudge_probes_rings_outward_deterministically)
     set_floor1_grid(w, 7, 7, PIX_AIR);
     for (int dy = -1; dy <= 1; ++dy)
         for (int dx = -1; dx <= 1; ++dx)
-            w.grid.data[(7 + dx) + (7 + dy) * w.grid.w] = PIX_H_WALL1;
+            w.grid.data[static_cast<std::size_t>((7 + dx) + (7 + dy) * w.grid.w)] = PIX_H_WALL1;
 
     a->apply_z_motion();
     EXPECT_EQ(0, a->floor());
@@ -1062,7 +1063,7 @@ TEST(ZAxis, flyer_with_cross_floor_foe_shadows_it_and_never_parks_on_stair)
     w.set_floor_count(2);
 
     // Stair pair at (10,8); floor 1 is grass with the paired DOWN stair.
-    w.grid.data[10 + 8 * w.grid.w] = PIX_ZSTAIR_UP;
+    w.grid.data[static_cast<std::size_t>(10 + 8 * w.grid.w)] = PIX_ZSTAIR_UP;
     set_floor1_grid(w, 10, 8, PIX_ZSTAIR_DOWN);
 
     w.rng_.state_ = 0x9E3779B9u; // live LCG: walk_to_foe's rng guards must run
@@ -1141,8 +1142,8 @@ TEST(ZAxis, multifloor_astar_never_emits_diagonals_past_blocked_flanks)
     // X-pinch at (10,10): west and north are walls, so the NW diagonal to
     // (9,9) is pixel-impassable at every offset; the only real route is
     // around, through row 11.
-    w.grid.data[9 + 10 * w.grid.w] = PIX_H_WALL1;
-    w.grid.data[10 + 9 * w.grid.w] = PIX_H_WALL1;
+    w.grid.data[static_cast<std::size_t>(9 + 10 * w.grid.w)] = PIX_H_WALL1;
+    w.grid.data[static_cast<std::size_t>(10 + 9 * w.grid.w)] = PIX_H_WALL1;
 
     w.rng_.state_ = 0x9E3779B9u;
 
@@ -1232,9 +1233,9 @@ TEST(ZAxis, misaligned_walker_aligns_and_turns_a_one_lane_corner)
     // (10,11) — the cell the chaser's misaligned body currently spills into.
     for (int x = 0; x < w.grid.w; ++x)
     {
-        w.grid.data[x + 9 * w.grid.w] = PIX_H_WALL1;
+        w.grid.data[static_cast<std::size_t>(x + 9 * w.grid.w)] = PIX_H_WALL1;
         if (x != 10)
-            w.grid.data[x + 11 * w.grid.w] = PIX_H_WALL1;
+            w.grid.data[static_cast<std::size_t>(x + 11 * w.grid.w)] = PIX_H_WALL1;
     }
 
     w.rng_.state_ = 0x9E3779B9u;
@@ -1342,8 +1343,8 @@ unsigned char* set_upper_floor_fill(GameWorld& w, int f, unsigned char tile)
 {
     const int gw = w.grid.w;
     const int gh = w.grid.h;
-    auto* buf = new unsigned char[static_cast<std::size_t>(gw) * gh];
-    std::fill(buf, buf + static_cast<std::size_t>(gw) * gh, tile);
+    auto* buf = new unsigned char[static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh)];
+    std::fill(buf, buf + static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh), tile);
     w.grid_for_floor(f) = PixieData(1, static_cast<unsigned char>(gw),
                                     static_cast<unsigned char>(gh), buf);
     w.smoother_for_floor(f).set_target(w.grid_for_floor(f));
@@ -1513,7 +1514,7 @@ TEST(ZAxis, stair_reset_next_fall_charges_only_its_own_stories)
     GameWorld& w = tw.world();
     build_shaft(w, 3, 7, 7, /*lowest_air=*/1);
     // A stair on floor 1 away from the shaft (its floor-2 landing is grass).
-    w.grid_for_floor(1).data[10 + 10 * w.grid.w] =
+    w.grid_for_floor(1).data[static_cast<std::size_t>(10 + 10 * w.grid.w)] =
         static_cast<unsigned char>(PIX_ZSTAIR_UP);
 
     walker* a = spawn_on_cell(w, 2, 7, 7);
@@ -1665,7 +1666,7 @@ TEST(ZAxis, pit_death_unchanged)
     ASSERT_NE(a, nullptr);
     a->set_invulnerable_left(100); // invulnerability does NOT save pit death
     // Paint the pit (air on floor 0) in place, under the walker's centre.
-    w.grid.data[7 + 7 * w.grid.w] = static_cast<unsigned char>(PIX_AIR);
+    w.grid.data[static_cast<std::size_t>(7 + 7 * w.grid.w)] = static_cast<unsigned char>(PIX_AIR);
 
     run_z(a, 5);
     EXPECT_TRUE(a->dead())

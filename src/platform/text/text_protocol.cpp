@@ -69,7 +69,7 @@ static void json_string(std::ostream& os, std::string_view value)
     static constexpr std::string_view kHex = "0123456789abcdef";
 
     os << '"';
-    for (unsigned char c : value) {
+    for (char raw : value) { const unsigned char c = static_cast<unsigned char>(raw);
         switch (c) {
         case '"':
             os << "\\\"";
@@ -368,7 +368,7 @@ static void cmd_grid(GameWorld& world, int floor, int x0, int y0, int x1,
             if (x < 0) continue;
             if (!first_cell) os << ",";
             first_cell = false;
-            const int tile = g.data[x + y * g.w];
+            const int tile = g.data[static_cast<std::size_t>(x + y * g.w)];
             const bool pass = world.query_grid_passable(
                 static_cast<float>(x * GRID_SIZE),
                 static_cast<float>(y * GRID_SIZE), nullptr,
@@ -559,7 +559,7 @@ int run_text_protocol_session(const TextProtocolArgs& args)
         if (w) {
             w->set_team_num(0);
             w->set_real_team_num(0);
-            w->set_user(static_cast<signed char>(i < 4 ? i : -1));
+            w->set_user(static_cast<signed char>(i < 4 ? i : static_cast<std::size_t>(-1)));
 
             // Playtest crews (--team-level > 0) use the family ctor so the
             // guy carries the family baseline attributes a hired character

@@ -473,8 +473,8 @@ void carve_halls(GameWorld& w, const BuildPlan& plan, Layout& lay,
     const int cols = s.range(2, 3);
     const int rows = s.range(2, 3);
     // Door offsets are picked ONCE and reused per story (same skeleton).
-    std::vector<int> vdoor((static_cast<std::size_t>(cols) - 1) * rows);
-    std::vector<int> hdoor(static_cast<std::size_t>(cols) * (rows - 1));
+    std::vector<int> vdoor((static_cast<std::size_t>(cols) - 1) * static_cast<std::size_t>(rows));
+    std::vector<int> hdoor(static_cast<std::size_t>(cols) * static_cast<std::size_t>(rows - 1));
     for (int& d : vdoor)
         d = s.range(2, 100); // scaled into the cell span below
     for (int& d : hdoor)
@@ -811,7 +811,7 @@ void repair_fall_landings(GameWorld& w, const BuildPlan& plan)
         for (int ty = 0; ty < g.h; ++ty)
             for (int tx = 0; tx < g.w; ++tx)
             {
-                if (g.data[tx + ty * g.w] != PIX_AIR)
+                if (g.data[static_cast<std::size_t>(tx + ty * g.w)] != PIX_AIR)
                     continue;
                 bool entry = false;
                 for (int dy = -1; dy <= 1 && !entry; ++dy)
@@ -823,9 +823,9 @@ void repair_fall_landings(GameWorld& w, const BuildPlan& plan)
                     continue;
                 int lf = f - 1;
                 while (lf > 0 &&
-                       w.grid_for_floor(lf).data[tx + ty * g.w] == PIX_AIR)
+                       w.grid_for_floor(lf).data[static_cast<std::size_t>(tx + ty * g.w)] == PIX_AIR)
                     --lf;
-                if (w.grid_for_floor(lf).data[tx + ty * g.w] == PIX_AIR)
+                if (w.grid_for_floor(lf).data[static_cast<std::size_t>(tx + ty * g.w)] == PIX_AIR)
                     continue; // pit: designed death
                 if (!cell_standable(w, lf, tx, ty))
                     paint(w.grid_for_floor(lf), tx, ty, plan.band->base_tile);
@@ -1207,10 +1207,10 @@ void clear_stair_cross_blocking_decor(GameWorld& w, const BuildPlan& plan)
                 const int ny = sc.ty + off[1];
                 if (nx < 0 || ny < 0 || nx >= dec.w || ny >= dec.h)
                     continue;
-                const unsigned char d = dec.data[nx + ny * dec.w];
+                const unsigned char d = dec.data[static_cast<std::size_t>(nx + ny * dec.w)];
                 if (d < DECOR_MAX &&
                     kDecorRegistry[d].pass == DecorPassability::BlocksGround)
-                    dec.data[nx + ny * dec.w] = DECOR_NONE;
+                    dec.data[static_cast<std::size_t>(nx + ny * dec.w)] = DECOR_NONE;
             }
         }
 }

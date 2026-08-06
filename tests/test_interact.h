@@ -36,16 +36,16 @@ inline std::vector<Interactable> get_interactables()
     AllButtonsLock lock;
     std::vector<Interactable> result;
     for (int i = 0; i < MAX_BUTTONS; i++) {
-        if (!og::runtime::current_session->allbuttons_[i])
+        if (!og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)])
             continue; // allbuttons[] can contain holes during transitions
         Interactable item;
-        item.id = og::runtime::current_session->allbuttons_[i]->id;
-        item.label = og::runtime::current_session->allbuttons_[i]->label;
-        item.x = og::runtime::current_session->allbuttons_[i]->xloc;
-        item.y = og::runtime::current_session->allbuttons_[i]->yloc;
-        item.width = og::runtime::current_session->allbuttons_[i]->width;
-        item.height = og::runtime::current_session->allbuttons_[i]->height;
-        item.hidden = og::runtime::current_session->allbuttons_[i]->hidden;
+        item.id = og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)]->id;
+        item.label = og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)]->label;
+        item.x = og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)]->xloc;
+        item.y = og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)]->yloc;
+        item.width = og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)]->width;
+        item.height = og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)]->height;
+        item.hidden = og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)]->hidden;
         result.push_back(item);
     }
     return result;
@@ -60,9 +60,9 @@ inline std::vector<std::string> get_button_ids()
     AllButtonsLock lock;
     std::vector<std::string> result;
     for (int i = 0; i < MAX_BUTTONS; ++i) {
-        if (og::runtime::current_session->allbuttons_[i])
+        if (og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)])
             result.push_back(
-                og::runtime::current_session->allbuttons_[i]->id);
+                og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)]->id);
     }
     return result;
 }
@@ -74,9 +74,9 @@ inline bool has_interactable(const std::string& id)
     AllButtonsLock lock;
     bool found = false;
     for (int i = 0; i < MAX_BUTTONS; i++) {
-        if (!og::runtime::current_session->allbuttons_[i])
+        if (!og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)])
             continue;
-        if (og::runtime::current_session->allbuttons_[i]->id == id && !og::runtime::current_session->allbuttons_[i]->hidden) {
+        if (og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)]->id == id && !og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)]->hidden) {
             found = true;
             break;
         }
@@ -92,7 +92,7 @@ inline bool wait_for_interactable(const std::string& id, int timeout_ms = 5000)
     while (elapsed < timeout_ms) {
         if (has_interactable(id))
             return true;
-        SDL_Delay(poll_interval);
+        SDL_Delay(static_cast<Uint32>(poll_interval));
         elapsed += poll_interval;
     }
     fprintf(stderr, "  [interact] TIMEOUT waiting for '%s' (%d ms)\n", id.c_str(), timeout_ms);
@@ -109,12 +109,12 @@ inline void interact(const std::string& id)
     {
         AllButtonsLock lock;
         for (int i = 0; i < MAX_BUTTONS; i++) {
-            if (!og::runtime::current_session->allbuttons_[i])
+            if (!og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)])
                 continue;
-            if (og::runtime::current_session->allbuttons_[i]->id == id && !og::runtime::current_session->allbuttons_[i]->hidden) {
+            if (og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)]->id == id && !og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)]->hidden) {
                 // Compute center in game coords (320x200 space)
-                int game_x = og::runtime::current_session->allbuttons_[i]->xloc + og::runtime::current_session->allbuttons_[i]->width / 2;
-                int game_y = og::runtime::current_session->allbuttons_[i]->yloc + og::runtime::current_session->allbuttons_[i]->height / 2;
+                int game_x = og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)]->xloc + og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)]->width / 2;
+                int game_y = og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)]->yloc + og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)]->height / 2;
 
                 // Menus live on the fixed UI canvas. Use the UI-canvas-pinned
                 // aspect-fit transform: this thread races the main thread's

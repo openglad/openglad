@@ -64,9 +64,9 @@ TEST(Palette, cycle_basic)
     // Encode 4 palette entries (0..3) with distinct RGB triplets.
     // Entry i uses (i, i+1, i+2).
     for (int idx = 0; idx <= 3; idx++) {
-        pal[idx * 3 + 0] = static_cast<unsigned char>(idx);
-        pal[idx * 3 + 1] = static_cast<unsigned char>(idx + 1);
-        pal[idx * 3 + 2] = static_cast<unsigned char>(idx + 2);
+        pal[static_cast<std::size_t>(idx * 3 + 0)] = static_cast<unsigned char>(idx);
+        pal[static_cast<std::size_t>(idx * 3 + 1)] = static_cast<unsigned char>(idx + 1);
+        pal[static_cast<std::size_t>(idx * 3 + 2)] = static_cast<unsigned char>(idx + 2);
     }
 
     // Cycle entries 1..3 by shift=1. Entry 1 should take on old entry 2's color.

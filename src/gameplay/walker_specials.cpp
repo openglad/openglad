@@ -335,7 +335,7 @@ std::int32_t walker::turn_undead(std::int32_t range, [[maybe_unused]] std::int32
 		const auto* target_fd = w ? get_family_descriptor(w->family()) : nullptr;
 		if (w && target_fd && target_fd->is_undead)
 		{
-			if (current_game->world->rng_.next(range*40) > current_game->world->rng_.next(w->stats()->level()*10) )
+			if (current_game->world->rng_.next(static_cast<std::uint32_t>(range*40)) > current_game->world->rng_.next(static_cast<std::uint32_t>(w->stats()->level()*10)) )
 			{
 				GameWorld* const world = current_game->world;
 				const bool scripted_mode =
@@ -351,9 +351,10 @@ std::int32_t walker::turn_undead(std::int32_t range, [[maybe_unused]] std::int32
 					// gate contract: a cancel means the victim is not a legal
 					// target this phase, and a replacement BELOW the offered
 					// lethal amount is ordinary damage — hp write, positive-
-					// amount attribution stamp, retaliation — never a kill
-					// (the same semantics walker::attack applies at
-					// walker_combat.cpp's gate site).
+					// amount attribution stamp, retaliation — never a kill.
+					// This arm runs no hp <= 0 check of its own, so unlike
+					// walker::attack even a 0 replacement cannot finish off a
+					// target that is already at 0 hp.
 					const short lethal = static_cast<short>(
 					    std::clamp(w->stats()->hitpoints(), 1.0f, 32000.0f));
 					const short gated =

@@ -44,7 +44,7 @@ void GameWorld::roll_weather()
         for (int i = 0;
              i < n && snow_tiles < og::kSnowWeatherTileThreshold; i++)
         {
-            const unsigned char t = static_cast<unsigned char>(g.data[i]);
+            const unsigned char t = static_cast<unsigned char>(g.data[static_cast<std::size_t>(i)]);
             if (t == PIX_SNOW1 || t == PIX_SNOW2)
                 snow_tiles++;
         }

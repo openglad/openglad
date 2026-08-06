@@ -616,7 +616,7 @@ std::uint32_t seed_whose_first_draw_is(std::int32_t n, std::uint32_t want)
 {
     for (std::uint32_t seed = 0; seed < 4096u; seed++) {
         og::sim::SimRandom probe(seed);
-        if (probe.next(n) == want)
+        if (probe.next(static_cast<std::uint32_t>(n)) == want)
             return seed;
     }
     ADD_FAILURE() << "no seed produced the wanted first draw";
@@ -866,7 +866,7 @@ TEST(PackLuaTreasure, a_life_gem_never_awards_negative_score)
     walker* gem = spawn(w, Order::Treasure, FAMILY_LIFE_GEM, 10, 10, 0);
     ASSERT_NE(nullptr, gem);
     gem->stats()->set_hitpoints(-50.0f);
-    const std::int32_t before = w.m_score[0];
+    const std::int32_t before = static_cast<std::int32_t>(w.m_score[0]);
     (void)og::test::on_eat(*tfd, static_cast<treasure*>(gem), eater);
     EXPECT_EQ(before, w.m_score[0])
         << "a negative bank must not cost the team score";
@@ -880,7 +880,7 @@ TEST(PackLuaTreasure, a_life_gem_never_awards_negative_score)
     EXPECT_GT(w.m_score[0], before) << "a real gem pays out";
 
     // Another team's gem pays nobody.
-    const std::int32_t mid = w.m_score[0];
+    const std::int32_t mid = static_cast<std::int32_t>(w.m_score[0]);
     walker* theirs = spawn(w, Order::Treasure, FAMILY_LIFE_GEM, 10, 10, 3);
     ASSERT_NE(nullptr, theirs);
     theirs->stats()->set_hitpoints(500.0f);
@@ -1833,7 +1833,7 @@ TEST(PackLuaTreasure, a_monster_cannot_cash_in_a_gold_bar)
     ASSERT_NE(nullptr, bar);
     bar->stats()->set_level(3);
 
-    const std::int32_t score_before = w.m_score[2];
+    const std::int32_t score_before = static_cast<std::int32_t>(w.m_score[2]);
     (void)og::test::on_eat(*tfd, static_cast<treasure*>(bar), monster);
     EXPECT_EQ(score_before, w.m_score[2])
         << "an ownerless monster banks nothing";
@@ -1877,7 +1877,7 @@ TEST(PackLuaDruid, a_faerie_summoned_into_a_wall_is_cancelled)
     // Wall off every tile the shot could land on to the right of the druid.
     for (int col = 10; col < grid.w; col++) {
         for (int row = 9; row <= 11 && row < grid.h; row++)
-            grid.data[static_cast<std::size_t>(row) * grid.w + col] =
+            grid.data[static_cast<std::size_t>(row) * grid.w + static_cast<std::size_t>(col)] =
                 static_cast<unsigned char>(PIX_WALL4);
     }
 
@@ -1988,7 +1988,7 @@ TEST(PackLuaArchmage, a_true_summon_with_nowhere_to_stand_is_cancelled)
     ASSERT_GT(grid.h, 14);
     for (int row = 8; row <= 12 && row < grid.h; row++) {
         for (int col = 8; col <= 12 && col < grid.w; col++)
-            grid.data[static_cast<std::size_t>(row) * grid.w + col] =
+            grid.data[static_cast<std::size_t>(row) * grid.w + static_cast<std::size_t>(col)] =
                 static_cast<unsigned char>(PIX_WALL4);
     }
 

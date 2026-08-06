@@ -59,6 +59,13 @@ class loader
 		loader& operator=(const loader&) = delete;
 		loader(loader&&) = delete;
 		loader& operator=(loader&&) = delete;
+		// Table index for one order/family pair, or -1 when the family byte is
+		// outside the registries' capacity. This is the ONLY correct way to
+		// index the parallel tables below: PIX() addresses the dense core block
+		// only, and silently aliases a mod family id onto an unrelated core
+		// entry (PIX(Living, 21) == PIX(Weapon, 0)). `order` must already be
+		// sanitized to <= Order::Button1.
+		[[nodiscard]] static int slot_for(Order order, std::int32_t family) noexcept;
 		[[nodiscard]] std::unique_ptr<walker> create_walker_owned(Order order, std::int32_t family);
 		[[nodiscard]] std::unique_ptr<pixieN> create_pixieN_owned(Order order, std::int32_t family);
 		[[nodiscard]] const PixieData* graphics_for(Order order, std::int32_t family) const;
@@ -72,7 +79,13 @@ class loader
 		std::vector<float> stepsizes;
 		std::vector<std::int32_t> lineofsight;
 
-		std::vector<float> hitpoints; // sized to SIZE_ORDERS*SIZE_FAMILIES like its sibling tables
+		// Every table above and below is sized to hold the dense core block
+		// (SIZE_ORDERS*SIZE_FAMILIES) *plus* a per-order block for the mod
+		// family ids, so index them with the loader's slot mapping and never
+		// with PIX() — PIX cannot address a family id >= NUM_FAMILIES
+		// (PIX(Living, 21) == PIX(Weapon, 0)) and silently aliases onto an
+		// unrelated core entry instead.
+		std::vector<float> hitpoints;
 		std::vector<char> act_types;
 		std::vector<float> damage;
 		std::vector<float> fire_frequency;

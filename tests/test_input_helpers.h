@@ -43,7 +43,7 @@ inline void inject_mouse_up(int x, int y)
 inline void inject_click(int x, int y, int delay_ms = 50)
 {
     inject_mouse_down(x, y);
-    SDL_Delay(delay_ms);
+    SDL_Delay(static_cast<Uint32>(delay_ms));
     inject_mouse_up(x, y);
 }
 
@@ -79,7 +79,7 @@ inline void inject_key_up(int keycode)
 inline void inject_key_press(int keycode, int delay_ms = 50)
 {
     inject_key_down(keycode);
-    SDL_Delay(delay_ms);
+    SDL_Delay(static_cast<Uint32>(delay_ms));
     inject_key_up(keycode);
 }
 

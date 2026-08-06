@@ -129,8 +129,8 @@ void apply_floor_setup(GameWorld& world, const ScenarioSpec& spec)
     const int gh = world.grid.h;
     for (int f = 1; f < spec.floor_count; ++f)
     {
-        auto* buf = new unsigned char[static_cast<std::size_t>(gw) * gh];
-        std::fill(buf, buf + static_cast<std::size_t>(gw) * gh,
+        auto* buf = new unsigned char[static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh)];
+        std::fill(buf, buf + static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh),
                   static_cast<unsigned char>(PIX_GRASS1));
         world.grid_for_floor(f) = PixieData(1, static_cast<unsigned char>(gw),
                                             static_cast<unsigned char>(gh), buf);

@@ -59,6 +59,18 @@ namespace {
 // Common argument helpers
 // ---------------------------------------------------------------------------
 
+// The widest bound the RNG bindings accept. Every draw lands in
+// IRandom::next(std::uint32_t), so a Lua 64-bit n above this used to reach
+// the generator as n mod 2^32: a silently different distribution, and
+// exactly 2^32 arrived as next(0), which answers 0 WITHOUT advancing the
+// stream. A wrapped bound is a desync in a deterministic sim — worse, one
+// that can differ with the width of whatever the truncation lands in — so
+// an over-wide n is a script error, never a clamp. Within [1, kMaxRandBound]
+// the conversion is exact and the draw is byte-for-byte what it always was.
+// (world_scripts.cpp keeps its own copy for og.rand; script_internal.h has
+// no place for a value shared by exactly these two translation units.)
+constexpr lua_Integer kMaxRandBound = 2147483647;  // INT32_MAX
+
 walker* self_arg(lua_State* L)
 {
     return resolve_walker(L, 1, /*required=*/true);
@@ -1205,6 +1217,9 @@ int og_cosmetic_rand(lua_State* L)
     const lua_Integer n = luaL_checkinteger(L, 1);
     if (n <= 0)
         return luaL_error(L, "og.cosmetic_rand: n must be positive");
+    if (n > kMaxRandBound)
+        return luaL_error(L,
+                          "og.cosmetic_rand: n out of range [1, 2147483647]");
     if (IRandom* cos = cosmetic_rng_override()) {
         lua_pushinteger(L, static_cast<lua_Integer>(
                                cos->next(static_cast<std::uint32_t>(n))));
@@ -1818,7 +1833,10 @@ void check_number_arg(lua_State* L, int idx)
 // world RNG — so replacing a guarded og.rand with og.rand0 cannot move the
 // stream. An active world is required on EVERY path (n <= 0 included): the
 // answer is a property of the world's generator, and calling without one
-// is a bug worth hearing about.
+// is a bug worth hearing about. n above kMaxRandBound is the one place the
+// two spellings still differ from "verbatim" only in wording: both refuse
+// it, because a bound that cannot survive the trip to
+// IRandom::next(std::uint32_t) intact has no meaning to hand back.
 int og_rand0(lua_State* L)
 {
     GameWorld* world = world_arg(L);
@@ -1827,8 +1845,10 @@ int og_rand0(lua_State* L)
         lua_pushinteger(L, 0);
         return 1;
     }
-    lua_pushinteger(L, static_cast<lua_Integer>(world->rng_.next(
-                           static_cast<std::int32_t>(n))));
+    if (n > kMaxRandBound)
+        return luaL_error(L, "og.rand0: n out of range [1, 2147483647]");
+    lua_pushinteger(L, static_cast<lua_Integer>(
+                           world->rng_.next(static_cast<std::uint32_t>(n))));
     return 1;
 }
 

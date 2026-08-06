@@ -175,6 +175,18 @@ bool is_classic_display_text_notification(std::string_view text)
                      died_suffix.size(), died_suffix) == 0)
         return true;
 
+    // Same channel, ally wording. walker_combat.cpp's named-death toast says
+    // "<name> DIED!" when the victim is on the player's team (classic
+    // walker.cpp:2077, reached because classic hardcoded playerteam = 0) and
+    // "ENEMY DEATH: <name> DIED!" otherwise. Master routes BOTH through
+    // viewob[0]->set_display_text (walker.cpp:2062 / :2128), which the master
+    // recorder never sees, so both are dropped here. Nothing else in the sim
+    // emits a " DIED!" suffix, so this cannot swallow an unrelated event.
+    if (text.size() > died_suffix.size() &&
+        text.compare(text.size() - died_suffix.size(),
+                     died_suffix.size(), died_suffix) == 0)
+        return true;
+
     constexpr std::string_view dispelled_suffix = " Dispelled!";
     if (text.size() > dispelled_suffix.size() &&
         text.compare(text.size() - dispelled_suffix.size(),

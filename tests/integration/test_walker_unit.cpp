@@ -252,11 +252,11 @@ void assign_basic_ani(walker* w)
     static std::array<signed char*, 16> rows{};
     for (int i = 0; i < 16; ++i)
     {
-        seqs[i][0] = 0;
-        seqs[i][1] = 1;
-        seqs[i][2] = -1;
-        seqs[i][3] = -1;
-        rows[i] = seqs[i].data();
+        seqs[static_cast<std::size_t>(i)][0] = 0;
+        seqs[static_cast<std::size_t>(i)][1] = 1;
+        seqs[static_cast<std::size_t>(i)][2] = -1;
+        seqs[static_cast<std::size_t>(i)][3] = -1;
+        rows[static_cast<std::size_t>(i)] = seqs[static_cast<std::size_t>(i)].data();
     }
     w->ani = rows.data();
 }
@@ -267,11 +267,11 @@ void assign_wide_ani(walker* w)
     static std::array<signed char*, 256> rows{};
     for (int i = 0; i < 256; ++i)
     {
-        seqs[i][0] = 0;
-        seqs[i][1] = 1;
-        seqs[i][2] = -1;
-        seqs[i][3] = -1;
-        rows[i] = seqs[i].data();
+        seqs[static_cast<std::size_t>(i)][0] = 0;
+        seqs[static_cast<std::size_t>(i)][1] = 1;
+        seqs[static_cast<std::size_t>(i)][2] = -1;
+        seqs[static_cast<std::size_t>(i)][3] = -1;
+        rows[static_cast<std::size_t>(i)] = seqs[static_cast<std::size_t>(i)].data();
     }
     w->ani = rows.data();
 }
@@ -613,11 +613,11 @@ void assign_wide_ani(walker* w)
     static std::array<signed char*, 256> rows{};
     for (int i = 0; i < 256; ++i)
     {
-        seqs[i][0] = 0;
-        seqs[i][1] = 1;
-        seqs[i][2] = -1;
-        seqs[i][3] = -1;
-        rows[i] = seqs[i].data();
+        seqs[static_cast<std::size_t>(i)][0] = 0;
+        seqs[static_cast<std::size_t>(i)][1] = 1;
+        seqs[static_cast<std::size_t>(i)][2] = -1;
+        seqs[static_cast<std::size_t>(i)][3] = -1;
+        rows[static_cast<std::size_t>(i)] = seqs[static_cast<std::size_t>(i)].data();
     }
     w->ani = rows.data();
 }
@@ -767,7 +767,7 @@ TEST(WalkerUnit, walker_r15_compute_outline_and_next_frame_and_generate_paths)
     a->compute_outline(viewer);
     ASSERT_TRUE(a->outline() == OUTLINE_FLYING || a->outline() == OUTLINE_NAMED);
 
-    a->set_outline(static_cast<short>(a->query_team_color()));
+    a->set_outline(static_cast<unsigned char>(a->query_team_color()));
     a->set_invulnerable_left(1);
     a->set_flight_left(0);
     a->compute_outline(viewer);
