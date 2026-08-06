@@ -887,6 +887,8 @@ bool install_weapon(const og::data::ClasspackWeaponEntry& e, int id,
         d.init_sizez = static_cast<short>(*e.sizez);
     if (e.can_drop_floors)
         d.can_drop_floors = *e.can_drop_floors;
+    if (e.hp)
+        d.hp = *e.hp;
     if (e.sprite.present)
         d.pix_filename = nullable_cstr(e.sprite);
     if (e.animation)
@@ -926,6 +928,8 @@ bool install_effect(const og::data::ClasspackEffectEntry& e, int id,
         if (fold_bit_flags(*e.init_bit_flags, flags, e.id))
             d.init_bit_flags = flags;
     }
+    if (e.hp)
+        d.hp = *e.hp;
     if (e.sprite.present)
         d.pix_filename = nullable_cstr(e.sprite);
     if (e.animation)
@@ -960,6 +964,8 @@ bool install_treasure(const og::data::ClasspackTreasureEntry& e, int id,
         d.init_ignore = *e.init_ignore;
     if (e.init_frame)
         d.init_frame = static_cast<short>(*e.init_frame);
+    if (e.hp)
+        d.hp = *e.hp;
     if (e.sprite.present)
         d.pix_filename = nullable_cstr(e.sprite);
     if (e.animation)
@@ -1003,6 +1009,8 @@ bool install_generator(const og::data::ClasspackGeneratorEntry& e, int id,
         d.spawn_ani_type = static_cast<char>(*e.spawn_ani_type);
     if (e.clear_owner)
         d.clear_owner = *e.clear_owner;
+    if (e.hp)
+        d.hp = *e.hp;
     if (e.sprite.present)
         d.pix_filename = nullable_cstr(e.sprite);
     if (e.animation)

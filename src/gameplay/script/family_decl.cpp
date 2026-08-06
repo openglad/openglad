@@ -1017,6 +1017,7 @@ bool harvest_weapon(Harvest& h, int tbl, const std::string& where,
         !opt_number(h, tbl, where, "gravity", e.gravity) ||
         !opt_int(h, tbl, where, "sizez", e.sizez) ||
         !opt_bool(h, tbl, where, "can_drop_floors", e.can_drop_floors) ||
+        !opt_number(h, tbl, where, "hp", e.hp) ||
         !opt_nullable(h, tbl, where, "sprite", e.sprite) ||
         !opt_string(h, tbl, where, "animation", e.animation) ||
         !harvest_presentation(h, tbl, where, e.presentation) ||
@@ -1028,7 +1029,7 @@ bool harvest_weapon(Harvest& h, int tbl, const std::string& where,
     for (const char* k :
          {"fire_sound", "skip_sit_notify", "is_auto_attackable", "flags",
           "init_lifetime", "init_ani_type", "vz", "gravity", "sizez",
-          "can_drop_floors"})
+          "can_drop_floors", "hp"})
         keys.push_back(k);
     append_hook_keys(oi, keys);
     return check_keys(h, tbl, where, keys);
@@ -1042,6 +1043,7 @@ bool harvest_effect(Harvest& h, int tbl, const std::string& where,
         !opt_bool(h, tbl, where, "loops_animation", e.loops_animation) ||
         !opt_bool(h, tbl, where, "creates_hit_effect", e.creates_hit_effect) ||
         !opt_string_list(h, tbl, where, "flags", e.init_bit_flags) ||
+        !opt_number(h, tbl, where, "hp", e.hp) ||
         !opt_nullable(h, tbl, where, "sprite", e.sprite) ||
         !opt_string(h, tbl, where, "animation", e.animation) ||
         !harvest_presentation(h, tbl, where, e.presentation) ||
@@ -1053,7 +1055,7 @@ bool harvest_effect(Harvest& h, int tbl, const std::string& where,
     std::vector<const char*> keys;
     append_common_keys(keys);
     for (const char* k : {"loops_animation", "creates_hit_effect", "flags",
-                          "radar_landmark"})
+                          "radar_landmark", "hp"})
         keys.push_back(k);
     append_hook_keys(oi, keys);
     return check_keys(h, tbl, where, keys);
@@ -1066,6 +1068,7 @@ bool harvest_treasure(Harvest& h, int tbl, const std::string& where,
         !opt_string(h, tbl, where, "name", e.name) ||
         !opt_bool(h, tbl, where, "init_ignore", e.init_ignore) ||
         !opt_int(h, tbl, where, "init_frame", e.init_frame) ||
+        !opt_number(h, tbl, where, "hp", e.hp) ||
         !opt_nullable(h, tbl, where, "sprite", e.sprite) ||
         !opt_string(h, tbl, where, "animation", e.animation) ||
         !harvest_presentation(h, tbl, where, e.presentation) ||
@@ -1076,7 +1079,7 @@ bool harvest_treasure(Harvest& h, int tbl, const std::string& where,
         return false;
     std::vector<const char*> keys;
     append_common_keys(keys);
-    for (const char* k : {"init_ignore", "init_frame", "radar_landmark"})
+    for (const char* k : {"init_ignore", "init_frame", "radar_landmark", "hp"})
         keys.push_back(k);
     append_hook_keys(oi, keys);
     return check_keys(h, tbl, where, keys);
@@ -1092,6 +1095,7 @@ bool harvest_generator(Harvest& h, int tbl, const std::string& where,
         !opt_bool(h, tbl, where, "has_lifetime", e.has_lifetime) ||
         !opt_int(h, tbl, where, "spawn_ani_type", e.spawn_ani_type) ||
         !opt_bool(h, tbl, where, "clear_owner", e.clear_owner) ||
+        !opt_number(h, tbl, where, "hp", e.hp) ||
         !opt_nullable(h, tbl, where, "sprite", e.sprite) ||
         !opt_string(h, tbl, where, "animation", e.animation) ||
         !opt_string(h, tbl, where, "editor_label", e.editor_label) ||
@@ -1102,7 +1106,7 @@ bool harvest_generator(Harvest& h, int tbl, const std::string& where,
     std::vector<const char*> keys;
     append_common_keys(keys);
     for (const char* k : {"default_weapon", "has_lifetime", "spawn_ani_type",
-                          "clear_owner", "editor_label"})
+                          "clear_owner", "editor_label", "hp"})
         keys.push_back(k);
     append_hook_keys(oi, keys);
     return check_keys(h, tbl, where, keys);

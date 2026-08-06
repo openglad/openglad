@@ -91,6 +91,11 @@ Three companions live in the same chunk:
 None of the world API works at a chunk's top level — see R4 in the design
 doc. Declare, bind, and ask the world from inside a hook.
 
+Non-living orders (`weapon`, `effect`/`fx`, `treasure`, `generator`) take an
+`hp` key for base hitpoints — they have no `stats` block of their own, and
+weapon HP is what gives shipped scenery its durability. Omit it (or declare
+`0`) to keep whatever the engine's row supplies.
+
 `description` is plain prose: the HIRE screen auto-flows it to its box at
 render time, so do NOT hand-wrap it to a column or pad it with trailing
 spaces. `'\n\n'` is a paragraph break (the core families use it before

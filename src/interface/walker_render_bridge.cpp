@@ -126,11 +126,12 @@ walker::~walker()
 // This is used for grabbing a pixieN directly, not through a walker
 std::unique_ptr<pixieN> loader::create_pixieN_owned(Order order, std::int32_t family)
 {
-	if (!graphics[static_cast<std::size_t>(PIX(order, family))].valid())
+	const int idx = slot_for(order, family);
+	if (idx < 0 || !graphics[static_cast<std::size_t>(idx)].valid())
 	{
 		Log("Alert! No valid graphics for pixieN\n");
 		return nullptr;
 	}
 
-	return std::make_unique<pixieN>(graphics[static_cast<std::size_t>(PIX(order, family))]);
+	return std::make_unique<pixieN>(graphics[static_cast<std::size_t>(idx)]);
 }

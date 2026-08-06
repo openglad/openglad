@@ -1257,9 +1257,9 @@ void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
                     continue; // open sky no walker can step into
                 int lf = f - 1;
                 while (lf > 0 &&
-                       world.grid_for_floor(lf).data[static_cast<std::size_t>(tx + ty * g.w)] == PIX_AIR)
+                       world.grid_for_floor(lf).data[static_cast<std::size_t>(tx + ty * world.grid_for_floor(lf).w)] == PIX_AIR)
                     --lf;
-                if (world.grid_for_floor(lf).data[static_cast<std::size_t>(tx + ty * g.w)] == PIX_AIR)
+                if (world.grid_for_floor(lf).data[static_cast<std::size_t>(tx + ty * world.grid_for_floor(lf).w)] == PIX_AIR)
                     continue; // fell past floor 0: pit death by design
                 if (!cell_standable(world, lf, tx, ty))
                 {

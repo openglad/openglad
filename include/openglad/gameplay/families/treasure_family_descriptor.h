@@ -19,6 +19,15 @@ struct TreasureFamilyDescriptor {
     short init_frame;         // -1 = no override
 
     // Pack-shipped art + motion (see FamilyDescriptor for the contract).
+
+    // Base hitpoints for this family, written into the loader's table at
+    // install. 0 = the gloader EntityDef row keeps supplying it (the same
+    // sentinel contract as pix_filename/anim_table above). Non-living
+    // families have no stats block of their own, so this is where a pack
+    // declares durability for scenery it ships -- weapon HP is what makes a
+    // TREE take 50 damage and a DOOR 5000 before it breaks.
+    float hp = 0.0f;
+
     const char* pix_filename = nullptr;
     const signed char* const* anim_table = nullptr;
     int anim_row_count = 0;

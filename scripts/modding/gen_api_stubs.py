@@ -747,6 +747,31 @@ def parse_family_hook_signatures(
     return out
 
 
+# Semantic parameter names the C++ side cannot express. The inference below
+# reads pushes, so every push_walker_handle looks alike ("entity") and every
+# lua_pushinteger that is not the level id or the tick looks alike ("value").
+# For hooks whose parameters mean genuinely different things, spell them out
+# here. The arity is cross-checked against the inferred signature, so a
+# dispatcher that gains or loses an argument fails the build instead of
+# silently shipping stale names.
+LEVEL_HOOK_ARG_OVERRIDES: Dict[str, List[Tuple[str, str]]] = {
+    # on_damage(target, attacker, amount); attacker is nil for environment
+    # damage, hence the optional type.
+    "level:on_damage": [
+        ("target", "og.Walker"),
+        ("attacker", "og.Walker?"),
+        ("amount", "integer"),
+    ],
+    # on_entity_death(ent, killer, killer_team); killer is nil when the
+    # attribution is stale/absent, killer_team is -1 for environment kills.
+    "level:on_entity_death": [
+        ("ent", "og.Walker"),
+        ("killer", "og.Walker?"),
+        ("killer_team", "integer"),
+    ],
+}
+
+
 def parse_level_dispatch_signatures(
     src: str,
 ) -> Dict[str, List[Tuple[str, str]]]:
@@ -775,6 +800,14 @@ def parse_level_dispatch_signatures(
         args = [(n, t) for _, n, t in pushes]
         if len(args) != nargs:
             args = [(f"arg{i + 1}", TODO_ANY) for i in range(nargs)]
+        override = LEVEL_HOOK_ARG_OVERRIDES.get(label)
+        if override is not None:
+            if len(override) != nargs:
+                raise SystemExit(
+                    f"gen_api_stubs: {label} pushes {nargs} argument(s) but "
+                    f"LEVEL_HOOK_ARG_OVERRIDES names {len(override)}"
+                )
+            args = list(override)
         out[label] = args
     return out
 

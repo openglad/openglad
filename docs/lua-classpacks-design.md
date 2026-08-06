@@ -412,6 +412,7 @@ og.family("weapon", {
   init_ani_type = 0,
   vz = 0.35, gravity = 0.05, sizez = 0,
   can_drop_floors = true,
+  hp = 50,                           -- base hitpoints; see the note below
 })
 
 og.family("effect", {                -- "fx" is accepted as an alias
@@ -419,12 +420,14 @@ og.family("effect", {                -- "fx" is accepted as an alias
   loops_animation = false,
   creates_hit_effect = false,
   flags = {},
+  hp = 0,
 })
 
 og.family("treasure", {
   id = "core:stain", wire_id = 0, name = "STAIN",
   init_ignore = true,
   init_frame = -1,
+  hp = 0,
 })
 
 og.family("generator", {
@@ -434,8 +437,18 @@ og.family("generator", {
   spawn_ani_type = 0,
   clear_owner = false,
   editor_label = "TENT",             -- level-editor palette caption
+  hp = 100,
 })
 ```
+
+`hp` on a non-living family is its base hitpoints. Non-livings have no
+`stats`/`combat` block, so this is the only place to declare one — and it
+matters most for scenery a pack ships, because weapon HP doubles as
+durability: core's TREE is 50 and its DOOR is 5000, which is what makes them
+take several hits instead of breaking on the first. Omitting the key (or
+declaring `0`) means "keep whatever the engine's own row supplies", so a pack
+that says nothing about `hp` changes nothing — including for a core family
+whose art it overrides.
 
 ### The living blocks: `stats` / `combat` / `costs` / `specials`
 

@@ -65,7 +65,7 @@ static constexpr int kTotalLoaderSlots =
 
 // Table index for one order/family pair, or -1 when the family byte is
 // outside the registries' capacity. `order` must already be sanitized.
-static int loader_slot(Order order, int family)
+int loader::slot_for(Order order, std::int32_t family) noexcept
 {
     if (family < 0 || family >= NUM_FAMILY_SLOTS)
         return -1;
@@ -454,11 +454,16 @@ static void install_pack_entity(loader& l, Order order, int family,
 {
 	if (d == nullptr)
 		return;
-	const int idx = loader_slot(order, family);
+	const int idx = loader::slot_for(order, family);
 	if (idx < 0)
 		return;
 	if (d->pix_filename)
 		l.graphics[static_cast<std::size_t>(idx)] = read_pixie_file(d->pix_filename);
+	// 0 = "keep the EntityDef row", so a pack that declares nothing leaves core
+	// families byte-identical and a pack-shipped family keeps the 0 the tables
+	// were zeroed to. Only an explicit declaration writes here.
+	if (d->hp > 0.0f)
+		l.hitpoints[static_cast<std::size_t>(idx)] = d->hp;
 	set_animation_slot(l, idx, d->anim_table, d->anim_row_count, nullptr);
 }
 
@@ -531,7 +536,7 @@ void loader::reload_graphics()
 		const auto* fd = get_family_descriptor(i);
 		if (!fd || !fd->pix_filename)
 			continue;
-		const int idx = loader_slot(Order::Living, i);
+		const int idx = slot_for(Order::Living, i);
 		graphics[static_cast<std::size_t>(idx)] = read_pixie_file(fd->pix_filename);
 		act_types[static_cast<std::size_t>(idx)] = ACT_RANDOM;
 		set_animation_slot(*this, idx, fd->anim_table, fd->anim_row_count,
@@ -716,7 +721,7 @@ loader::~loader(void)
 const PixieData* loader::graphics_for(Order order, std::int32_t family) const
 {
     order = sanitize_order(order);
-    int idx = loader_slot(order, family);
+    int idx = slot_for(order, family);
     if (idx < 0)
         idx = PIX(order, 0);  // legacy clamp for an out-of-capacity byte
 
@@ -729,7 +734,7 @@ const PixieData* loader::graphics_for(Order order, std::int32_t family) const
 void loader::set_derived_stats(walker* w, Order order, std::int32_t family)
 {
     order = sanitize_order(order);
-	int idx = loader_slot(order, family);
+	int idx = slot_for(order, family);
 	if (idx < 0)
 		idx = PIX(order, 0);
 
@@ -746,7 +751,7 @@ std::unique_ptr<walker> loader::create_walker_owned(Order order,
 	std::unique_ptr<walker> ob;
     order = sanitize_order(order); trace_if_sprites_stale(); // one line: pinned line numbers below must not shift
 
-	int idx = loader_slot(order, family);
+	int idx = slot_for(order, family);
 	// Keep the legacy "bad living family" fallback to soldier; others clamp
 	// to 0. A pack id whose slot is empty — no pack mounted, or a pack that
 	// ships no sprite for it — takes the same fallback, so a stale save or
@@ -807,7 +812,7 @@ walker  *loader::set_walker(walker *ob,
 	short i;
     order = sanitize_order(order);
 
-	int idx = loader_slot(order, family);
+	int idx = slot_for(order, family);
 	if (idx < 0)
 	{
 		family = 0;

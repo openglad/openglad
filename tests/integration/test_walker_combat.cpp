@@ -1258,7 +1258,9 @@ TEST(WalkerCombat, batch6_attack_friendly_team_death_messages_and_clamps)
     attacker->clear_myguy();
     attacker->set_damage(500.0f);
 
-    // Team-0 target death paths (playerteam==target team) that select various message branches.
+    // Team-0 targets killed by a team-1 attacker. NOTE: `playerteam` is the
+    // KILLER's team, so these take the playerteam != target arm, not the
+    // same-team one; the wording is chosen separately off world.my_team.
     walker* t_dispelled = make_guy(FAMILY_ORC, 0);
     walker* t_named = make_guy(FAMILY_ORC, 0);
     walker* t_myguy_name = make_guy(FAMILY_ORC, 0);

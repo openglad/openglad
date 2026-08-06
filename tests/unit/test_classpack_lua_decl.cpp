@@ -333,6 +333,46 @@ og.family("generator", { id = "v3:five",  name = "FIVE", editor_label = "FIVE" }
         << "each declaration is provenance, whatever its order";
 }
 
+// Non-living families have no stats block, so `hp` is where a pack declares
+// durability for scenery it ships -- weapon HP is what makes a TREE take 50
+// damage and a DOOR 5000 before it breaks. Before this existed, every
+// pack-shipped non-living arrived with base HP 0 and broke on the first hit.
+TEST_F(LuaFamilyDeclTest, every_non_living_order_declares_hp)
+{
+    ClasspackData data;
+    const DeclareResult r = declare(R"LUA(
+og.family("weapon",    { id = "v3:plank", name = "PLANK", hp = 50 })
+og.family("effect",    { id = "v3:puff",  name = "PUFF",  hp = 1 })
+og.family("treasure",  { id = "v3:chest", name = "CHEST", hp = 12 })
+og.family("generator", { id = "v3:kiln",  name = "KILN",  hp = 300 })
+)LUA", data);
+    ASSERT_TRUE(r.ok) << r.error;
+    ASSERT_EQ(1u, data.weapons.size());
+    ASSERT_EQ(1u, data.effects.size());
+    ASSERT_EQ(1u, data.treasures.size());
+    ASSERT_EQ(1u, data.generators.size());
+    ASSERT_TRUE(data.weapons[0].hp.has_value());
+    EXPECT_FLOAT_EQ(50.0f, *data.weapons[0].hp);
+    ASSERT_TRUE(data.effects[0].hp.has_value());
+    EXPECT_FLOAT_EQ(1.0f, *data.effects[0].hp);
+    ASSERT_TRUE(data.treasures[0].hp.has_value());
+    EXPECT_FLOAT_EQ(12.0f, *data.treasures[0].hp);
+    ASSERT_TRUE(data.generators[0].hp.has_value());
+    EXPECT_FLOAT_EQ(300.0f, *data.generators[0].hp);
+}
+
+// Absent means "keep whatever the core row supplies", which is what makes the
+// field safe to add: a pack that says nothing changes nothing.
+TEST_F(LuaFamilyDeclTest, omitted_hp_stays_unset)
+{
+    ClasspackData data;
+    ASSERT_TRUE(declare(R"LUA(
+og.family("weapon", { id = "v3:plank", name = "PLANK" })
+)LUA", data).ok);
+    ASSERT_EQ(1u, data.weapons.size());
+    EXPECT_FALSE(data.weapons[0].hp.has_value());
+}
+
 // V1's other half: one file may declare a whole family GROUP. The slime
 // trio shares closures and a flagged RNG ordering comment, and splitting it
 // into three files to satisfy a one-per-file rule would split the comment

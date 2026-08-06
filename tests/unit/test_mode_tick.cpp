@@ -476,6 +476,31 @@ TEST(ModeTick, damage_gate_non_number_return_keeps_amount)
     EXPECT_LT(rig.hp(), before);
 }
 
+// NaN compares false against everything, so the clamp's `v < 0` and
+// `v > 32767` both missed it and it reached static_cast<short>(NaN) --
+// undefined behavior. It lands on 0 now.
+//
+// This pins the CONTRACT, not the old bug: UB has no defined outcome to
+// assert against, and on x86-64 the pre-fix cast happened to produce 0 too,
+// so this test passes either way. Catching it mechanically needs
+// -fsanitize=float-cast-overflow, which GCC's -fsanitize=undefined does NOT
+// include; turning that on is its own piece of work because it also fires on
+// a pre-existing overflow in compute_xp_from_attack.
+TEST(ModeTick, damage_gate_nan_replacement_is_treated_as_zero)
+{
+    GateRig rig(
+        "og.register_level_hooks(42, {\n"
+        "  on_damage = function(target, attacker, amount)\n"
+        "    return 0/0\n"
+        "  end,\n"
+        "})\n");
+    const float before = rig.hp();
+    rig.attacker->attack(rig.target);
+    EXPECT_EQ(before, rig.hp())
+        << "a NaN replacement applies zero damage rather than invoking UB";
+    EXPECT_FALSE(rig.target->dead());
+}
+
 TEST(ModeTick, damage_gate_error_keeps_authored_amount)
 {
     GateRig rig(

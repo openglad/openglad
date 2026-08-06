@@ -393,19 +393,23 @@ void sync_difficulty_menu_visibility(button* buttons,
 // computes per-row derived hitpoints through this too.
 og::ui::DerivedStats picker_compute_guy_derived_stats(const guy& g)
 {
-    // guy::family comes verbatim from the .gtl save file with no range check;
-    // a malicious/negative value would index the loader stat arrays out of
-    // bounds. Clamp to a valid living family (matching the soldier fallback
-    // used by create_walker_owned / set_derived_stats) before indexing.
-    const int fam = (g.family < 0 || g.family >= NUM_FAMILIES)
-        ? FAMILY_SOLDIER
-        : static_cast<int>(g.family);
-    auto pix = PIX(Order::Living, fam);
-	return og::ui::compute_derived_stats(g,
-	    og::runtime::current_session->myscreen_->myloader->hitpoints[static_cast<std::size_t>(pix)],
-	    og::runtime::current_session->myscreen_->myloader->damage[static_cast<std::size_t>(pix)],
-	    og::runtime::current_session->myscreen_->myloader->stepsizes[static_cast<std::size_t>(pix)],
-	    og::runtime::current_session->myscreen_->myloader->fire_frequency[static_cast<std::size_t>(pix)]);
+    // guy::family comes verbatim from the .gtl save file with no range check,
+    // so an out-of-capacity value must not index the loader stat arrays.
+    // loader::slot_for answers -1 for those; anything it accepts — including a
+    // class-pack family, whose id is >= NUM_FAMILIES and which PIX() cannot
+    // address at all — reads its OWN row, so a pack class's panel now shows its
+    // declared stats instead of the soldier's.
+    int pix = loader::slot_for(Order::Living, g.family);
+    if (pix < 0)
+    {
+        pix = loader::slot_for(Order::Living, FAMILY_SOLDIER);
+    }
+    const auto* l = og::runtime::current_session->myscreen_->myloader;
+    return og::ui::compute_derived_stats(g,
+        l->hitpoints[static_cast<std::size_t>(pix)],
+        l->damage[static_cast<std::size_t>(pix)],
+        l->stepsizes[static_cast<std::size_t>(pix)],
+        l->fire_frequency[static_cast<std::size_t>(pix)]);
 }
 
 // Draw the HP/MP/ATK/DEF/SPD/ATK_SPD derived stats block.

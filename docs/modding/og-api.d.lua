@@ -322,8 +322,8 @@
 
 -- Hook table for og.register_level_hooks.
 ---@class og.LevelHooks
----@field on_damage? fun(entity: og.Walker, entity: og.Walker, value: integer)
----@field on_entity_death? fun(entity: og.Walker, entity: og.Walker, value: integer)
+---@field on_damage? fun(target: og.Walker, attacker: og.Walker?, amount: integer)
+---@field on_entity_death? fun(ent: og.Walker, killer: og.Walker?, killer_team: integer)
 ---@field on_entity_spawn? fun(entity: og.Walker)
 ---@field on_load? fun(level: integer)
 ---@field on_mode_init? fun(level: integer)

@@ -2305,9 +2305,14 @@ short level_damage_gate(walker* target, walker* attacker, short amount)
             // Replacement amount, clamped to [0, 32767]; fractions truncate
             // toward zero (deterministic on every peer).
             lua_Number v = lua_tonumber(L, -1);
-            if (v < 0)
+            // Negated tests on purpose: NaN compares false against everything,
+            // so `v < 0` would let it through to a cast that is undefined
+            // behavior (UBSan flags it as float-cast-overflow). Written this
+            // way NaN takes the first branch and lands on 0. Every ordinary
+            // value behaves exactly as before.
+            if (!(v >= 0))
                 v = 0;
-            if (v > 32767)
+            else if (!(v <= 32767))
                 v = 32767;
             result = static_cast<short>(v);
         }
