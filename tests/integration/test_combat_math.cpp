@@ -457,3 +457,59 @@ TEST(CombatMath, xp_from_attack_is_unchanged_across_the_fitted_range)
             << "level_diff " << diff << " must not pay more than " << diff - 1;
     }
 }
+
+
+// "Unchanged for normal play" needs to be shown over the whole 2-D domain, not
+// just a level_diff sweep: the award is 0.3 * damage * poly(level_diff), so a
+// large damage saturates at a much smaller gap than a small one. The clamp is
+// only reachable above 32767, so "nothing in the envelope reaches the ceiling"
+// IS the proof that the envelope is bit-identical to the pre-clamp code.
+TEST(CombatMath, xp_never_saturates_in_the_playable_envelope)
+{
+    // Core livings declare melee_damage 0..60 (packs/core/families/living-*),
+    // which level and difficulty scale up; 500 is far past anything the game
+    // produces. A gap of -10 means attacking something ten levels above you.
+    for (std::int32_t diff = -10; diff <= 10; ++diff)
+    {
+        for (float dmg : {1.0f, 5.0f, 20.0f, 60.0f, 100.0f, 200.0f, 500.0f})
+        {
+            const short xp = compute_xp_from_attack(diff, dmg);
+            EXPECT_GE(xp, 0) << "diff " << diff << " dmg " << dmg;
+            EXPECT_LT(xp, 32767)
+                << "diff " << diff << " dmg " << dmg
+                << ": saturation must not reach into normal play";
+        }
+    }
+    // The kill award is always damage 20, so it has far more headroom: an
+    // eighteen-level gap still fits.
+    for (std::int32_t diff = -18; diff <= 10; ++diff)
+        EXPECT_LT(compute_xp_from_kill(diff), 32767) << "kill gap " << diff;
+}
+
+// Pin the boundary itself, so retuning the curve (or the damage scale) cannot
+// quietly pull saturation into the range the game plays in.
+TEST(CombatMath, xp_saturation_boundary_sits_outside_normal_play)
+{
+    EXPECT_LT(compute_xp_from_kill(-18), 32767) << "an 18-level gap still fits";
+    EXPECT_EQ(32767, compute_xp_from_kill(-19)) << "and 19 is where it clamps";
+    // At the top of the plausible damage band the boundary is nearer, but
+    // still past a ten-level gap.
+    EXPECT_LT(compute_xp_from_attack(-10, 500.0f), 32767);
+    EXPECT_EQ(32767, compute_xp_from_attack(-11, 500.0f));
+}
+
+// The award is what walker::attack casts to uint32_t before adding to exp, so
+// it must never come back negative at ANY input -- that cast is what turned the
+// old wrapped -20425 into +4294946871.
+TEST(CombatMath, xp_is_never_negative_at_any_level_gap)
+{
+    for (std::int32_t diff = -60; diff <= 60; ++diff)
+    {
+        for (float dmg : {0.0f, 1.0f, 20.0f, 500.0f, 30000.0f})
+        {
+            const short xp = compute_xp_from_attack(diff, dmg);
+            ASSERT_GE(xp, 0) << "diff " << diff << " dmg " << dmg
+                             << ": a negative award becomes ~4e9 exp";
+        }
+    }
+}

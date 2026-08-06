@@ -1,5 +1,6 @@
 #include <openglad/core/test_trace.h>
 #include <gtest/gtest.h>
+#include <openglad/core/combat_math.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/button.h>
 #include <openglad/resources/save_data.h>
@@ -312,3 +313,76 @@ TEST(Guy, upgrade_to_level_different_families)
     ASSERT_TRUE(soldier.strength != mage.strength || soldier.intelligence != mage.intelligence) << "different families should have different stat distributions at same level";
 }
 
+
+// ---------------------------------------------------------------------------
+// Combat XP -> leveling, end to end
+// ---------------------------------------------------------------------------
+// calculate_exp/calculate_level are well covered above, and combat_math covers
+// the award curve, but nothing joined the two: does a realistic run of kills
+// produce the level it should? These pin that, and specifically that the XP
+// saturation clamp never reaches into ordinary progression.
+//
+// They assert CONCRETE award values on purpose. Asserting "below the clamp"
+// would be vacuous -- any clamp value satisfies it, including one pulled down
+// into normal play, which is the regression worth catching.
+
+namespace {
+
+// Exactly what walker::attack does with the award: a short, widened to the
+// uint32 exp counter. That cast is the hazard -- a negative short lands as
+// ~4.29e9 here.
+void award(Uint32& exp, short xp)
+{
+    exp += static_cast<Uint32>(xp);
+}
+
+}  // namespace
+
+TEST(Guy, combat_xp_levels_a_character_at_the_expected_rate)
+{
+    // A level-1 character killing level-1 foes. 181 is the unclamped award and
+    // is pinned here: if saturation ever moved down into normal play this is
+    // the assertion that notices.
+    const short per_kill = compute_xp_from_kill(0);
+    ASSERT_EQ(181, per_kill) << "even-level kill award";
+
+    Uint32 exp = 0;
+    int kills = 0;
+    while (calculate_level(exp) < 2)
+    {
+        award(exp, per_kill);
+        ++kills;
+        ASSERT_LT(kills, 10000) << "leveling must terminate";
+    }
+    // calculate_exp(2) is 10000, so 56 kills (55 leaves you 5 xp short).
+    EXPECT_EQ(56, kills) << "kills to reach level 2";
+    EXPECT_EQ(2, calculate_level(exp));
+}
+
+TEST(Guy, leveling_over_a_campaign_never_reaches_the_xp_clamp)
+{
+    // Walk a character up through the levels a campaign covers, killing foes
+    // across the whole spread of gaps the game presents -- five levels above
+    // down to five below. The clamp is only reachable above 32767, so pinning
+    // the exact total proves every award in that range is the unclamped value
+    // and progression is bit-identical to the pre-clamp code.
+    Uint32 exp = 0;
+    for (Sint32 my_level = 1; my_level <= 20; ++my_level)
+    {
+        for (Sint32 foe_level = my_level - 5; foe_level <= my_level + 5;
+             ++foe_level)
+        {
+            if (foe_level < 1)
+                continue;
+            const short xp = compute_xp_from_kill(my_level - foe_level);
+            ASSERT_GE(xp, 0) << "level " << my_level << " vs " << foe_level;
+            award(exp, xp);
+        }
+    }
+    // A measured canary, not a derived constant: there is no closed form for
+    // a sum over 200 awards. Its job is to move the moment any award in this
+    // range does -- a clamp pulled down into normal play, or a retune of the
+    // curve. If you change the curve deliberately, re-measure it.
+    EXPECT_EQ(26976u, exp) << "total XP for a 20-level campaign sweep";
+    EXPECT_EQ(3, calculate_level(exp));
+}
