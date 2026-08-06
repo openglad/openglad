@@ -1,4 +1,4 @@
--- Scenario-troops strip, shared by all five modes: one rule set for the "bring your own fighters" setting so the modes cannot drift apart.
+-- Scenario-troops strip, shared by all six modes: one rule set for the "bring your own fighters" setting so the modes cannot drift apart.
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C

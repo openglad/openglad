@@ -1,7 +1,7 @@
 # Multiplayer Game Modes
 
-OpenGlad ships five competitive game modes in one built-in campaign:
-**`modes`** ("Multiplayer Game Modes"), 28 scenarios. Pick it
+OpenGlad ships six competitive game modes in one built-in campaign:
+**`modes`** ("Multiplayer Game Modes"), 33 scenarios. Pick it
 from SET CAMPAIGN in the team-build screen's SCENARIO submenu and hit GO.
 Every scenario title is prefixed with its mode:
 
@@ -11,6 +11,7 @@ Every scenario title is prefixed with its mode:
 | Capture the Flag | 500-509 | Carry enemy flags home; first to the capture limit wins. |
 | Onslaught | 800-803 | Destroy generators to FLIP them to your team; a team with none left is eliminated. |
 | Soccer | 820-823 | Smack the ball into the enemy goal; first to the goal limit wins. |
+| Basketball | 824-828 | Carry or shoot the ball through an enemy hoop; first to the point limit wins. |
 | Mutant | 840-843 | FFA until first blood; only the Mutant can be hurt, kill it to take its place. |
 
 Every mode's rules, scoring, win logic, and AI directors live in the
@@ -18,7 +19,7 @@ campaign's embedded Lua pack (`modes.core`, hand-authored at
 `campaigns/modes/packs/modes.core/`) — the
 engine provides only the generic scripted
 frame (`SCEN_TYPE_SCRIPTED` levels, `ModeState` replication, the respawn
-engine, and the og.* mode bindings). All five modes work in local
+engine, and the og.* mode bindings). All six modes work in local
 split-screen, networked play (mid-join included), the text and curses
 clients, the dedicated server, and the web build.
 
@@ -131,6 +132,74 @@ enemy flag), escorts (shadow the carrier), defenders (hold the flag home),
 interceptors (hunt the enemy carrying *your* flag), and a retriever (race to
 a dropped flag). Carriers run home and fight only when cornered.
 
+## Basketball rules
+
+- The ball opens at center court with a **jump ball**, and every basket or
+  reset restarts it there: three seconds where nobody may touch it, then it
+  pops up and the first fighter to reach it owns it. There is no possession
+  arrow — every restart is a scramble.
+- Walk onto a loose ball to pick it up. You then **carry** it: it rides with
+  you, and the carrier is marked on every radar. The shadow on the floor is
+  the ball's real position; the ball itself is drawn at its height above it.
+- **Throwing is your fire input.** The next weapon you fire while carrying is
+  spent on the throw instead, and where you aim decides which throw it is: an
+  arc shot at a hoop in range, a pass to the teammate you are pointing at (a
+  fast chest pass up close, a floating lob further out), or a flat throw at
+  nothing in particular. Aiming dead at a cutter passes even when a hoop sits
+  behind them.
+- **Two ways to score.** Carry the ball into the carpet under an enemy hoop
+  and you **dunk** it for 2 — it cannot miss, but you have to walk it through
+  the defense. An arc shot is worth **2 from inside the painted ring, 3 from
+  beyond it**; the further out you release, the wider it scatters, and every
+  enemy crowding you at release scatters it further. The dunk ignores pressure
+  entirely.
+- **The shot clock is 35 seconds**, and it belongs to the team rather than the
+  carrier. Releasing a shot clears it. Losing the ball loose does not: a
+  fumble your own side scoops back up, an uncaught pass, a throw rolled dead —
+  all keep the same deadline, so missing on purpose buys nothing. Your score
+  line grows a countdown at 10 seconds and calls "SHOT CLOCK!" at 3. Let it
+  run out and the ball turns over, with your team barred from it for the next
+  10 seconds.
+- **Take a hit and you fumble.** Any real hit on the carrier pops the ball
+  loose — scratch damage never does, and you get a moment's grace right after
+  a pickup. That is the steal, and hounding the carrier is the on-ball
+  defender's whole job.
+- **Blocks and goaltending.** Nobody blocks a shot with their body: only a
+  weapon reaching the ball low swats it away, which is a clean block and
+  leaves the ball live. The top of an arc is out of reach by design. Swatting
+  a *falling* shot near the rim is **goaltending**, and the basket counts
+  anyway. Chest passes fly low enough to be picked off by hand; a lob floats
+  over everyone's heads and is only contestable at its ends.
+- **Rebounds and banks.** A miss clangs off the rim into a live scramble;
+  anyone may tip it in the air or scoop it off the floor. A ball dropping
+  through any hoop scores **2 for whoever touched it last** — tip-ins,
+  put-backs and bank shots all count. Low throws bounce off walls (that is the
+  bank); shots and lobs clear them. Knock it through your *own* hoop and the
+  points go to the opposition.
+- First team to the point limit (21, or 11 on THE PLAYGROUND) wins; otherwise
+  the clock decides it on points, and a shot already in the air at the buzzer
+  is allowed to land. Fallen fighters respawn on the usual difficulty setting
+  (five seconds by default), and a team wiped off the floor is put back at the
+  next restart.
+- Bots play the scheme rather than the ball: a handler who shoots when open,
+  drives when pressed and passes when covered, two cutters working the wings,
+  a rim protector in the dunk lane, and an on-ball defender hunting the
+  fumble.
+
+## The basketball courts
+
+| # | Court | Teams | Size | Twist |
+|---|-------|-------|------|-------|
+| 824 | Basketball: CENTER COURT | 2 | 45×25 | the reference floor — full arc, nothing in the way |
+| 825 | Basketball: THE PLAYGROUND | 2 | 31×19 | cramped, short arc, everything is a three; plays to 11 |
+| 826 | Basketball: FOUR HOOPS | 4 | 41×41 | a hoop on every wall; every rebound has four claimants |
+| 827 | Basketball: THE BANKHOUSE | 2 | 45×27 | jutting backboards and pillars — straight passes die, banks live |
+| 828 | Basketball: BENCHWARMERS | 2 | 47×29 | a tent per side raising skeleton substitutes, four at a time |
+
+Rim size never changes; the courts vary the arc, the walk and the furniture.
+FOUR HOOPS fielded with fewer than four teams simply leaves the unused hoops
+dead — they neither score nor need defending.
+
 ## The other modes, briefly
 
 - **Team Deathmatch** (300-305, the six adapted arenas): kills of fighters
@@ -164,7 +233,11 @@ generates the shipped campaign and is the reference for authoring:
 3. CTF maps place one **flag** treasure (wire byte 13, `modes:flag`) per
    team and optional **waypoint** treasures (wire byte 14,
    `modes:waypoint`); both families ship IN the campaign pack.
-4. Remove exits (mode maps should not have portals).
+4. Basketball maps paint a 3×3 dunk carpet per hoop — its center tile is the
+   rim — and the manifest records each hoop center, the three-point radius,
+   and the jump-ball spot. The ball and its shadow are spawned by the mode,
+   not authored.
+5. Remove exits (mode maps should not have portals).
 
 The mode's Lua validates maps at match start; a scripted map whose mode
 fails to activate (or that registers no hooks) falls back to classic

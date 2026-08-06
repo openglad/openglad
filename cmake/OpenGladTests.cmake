@@ -876,6 +876,7 @@ og_add_unit_group(og_unit_modes FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_mutant.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_strip.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_items.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_basketball.cpp
 )
 # The modes-pack fixture zips the CURRENT repo pack sources into its
 # temp .glad so the tests always exercise the shipped bytes.

@@ -906,7 +906,7 @@ if(NOT EMSCRIPTEN)
 
     # --- modes_mapgen ("Multiplayer Game Modes" campaign generator) ---
     # SDL-free authoring tool that writes campaigns/modes/
-    # (the five-mode campaign absorbing arenas + ctf; the archive is composed
+    # (the six-mode campaign absorbing arenas + ctf; the archive is composed
     # from that tree — packs/ subtree included — by og_builtin_campaigns)
     # and regenerates the committed level manifest lib/mode_levels.lua in
     # the campaign's hand-authored pack.
@@ -920,6 +920,7 @@ if(NOT EMSCRIPTEN)
         ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/levels_ctf.cpp
         ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/levels_onslaught.cpp
         ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/levels_soccer.cpp
+        ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/levels_basketball.cpp
         ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/levels_mutant.cpp
         ${SRC_DIR}/platform/text/platform_headless.cpp
         ${SRC_DIR}/platform/text/walker_headless.cpp

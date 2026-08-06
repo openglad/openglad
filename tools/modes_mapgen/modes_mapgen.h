@@ -1,9 +1,9 @@
 /* Multiplayer Game Modes campaign generator — shared declarations.
  *
- * Builds builtin/modes.glad: the 28-scenario five-mode
+ * Builds builtin/modes.glad: the 33-scenario six-mode
  * campaign (Team Deathmatch 300-305, CTF 500-509, Onslaught 800-803,
- * Soccer 820-823, Mutant 840-843) that absorbs the arenas and CTF
- * packages. SDL-free; reuses the headless platform glue.
+ * Soccer 820-823, Basketball 824-828, Mutant 840-843) that absorbs the
+ * arenas and CTF packages. SDL-free; reuses the headless platform glue.
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
@@ -51,6 +51,7 @@ enum class ModeKind
     Ctf,
     Onslaught,
     Soccer,
+    Basketball,
     Mutant
 };
 
@@ -116,6 +117,13 @@ struct ExpectedLevel
     std::vector<ItemPad> item_pads;      // respawnable food/potion pads
     int item_interval = 0;               // min ticks between item respawns
                                          // (0 = the consuming mode default)
+    // Basketball (default-empty; non-basketball rows untouched):
+    std::vector<TilePos> hoops;          // index = DEFENDING team; the
+                                         // PIX_CARPET_M2 rim tile at the
+                                         // dunk-carpet center
+    int arc_radius = 0;                  // three-point distance, PIXELS
+                                         // from each rim center
+    TilePos jump_ball;                   // center-court jump-ball tile
     int decor_cells = 0;                 // exact nonzero floor-0 decor cells
     // Documented substrings of reachability-audit failures this level is
     // allowed to keep (deliberate design, e.g. teleporter-served vaults).
@@ -169,12 +177,14 @@ void build_tdm();
 void build_ctf();
 void build_onslaught();
 void build_soccer();
+void build_basketball();
 void build_mutant();
 
 std::vector<ExpectedLevel> tdm_expectations();
 std::vector<ExpectedLevel> ctf_expectations();
 std::vector<ExpectedLevel> onslaught_expectations();
 std::vector<ExpectedLevel> soccer_expectations();
+std::vector<ExpectedLevel> basketball_expectations();
 std::vector<ExpectedLevel> mutant_expectations();
 
 std::vector<ExpectedLevel> all_expectations();

@@ -1,4 +1,4 @@
--- Shared match toolkit — manifest row adapter, team census, the TROOPS:OWN roster activation all five modes apply, marker consumption, anchor-cursor placement, bot fielding, dead-competitor scheduling, timeout ladder (cookbook: docs/lua-classpacks-design.md §3).
+-- Shared match toolkit — manifest row adapter, team census, the TROOPS:OWN roster activation all six modes apply, marker consumption, anchor-cursor placement, bot fielding, dead-competitor scheduling, timeout ladder (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C
@@ -72,7 +72,7 @@ local function census_mask(obs)
   return mask
 end
 
--- TROOPS:OWN activation, the shared ruling all five modes apply: under OWN
+-- TROOPS:OWN activation, the shared ruling all six modes apply: under OWN
 -- the deployed rosters ARE the match. Returns the replacement active mask,
 -- or nil when the standard requested activation stands (TROOPS:ALL, or an
 -- all-bot match with no rosters anywhere).
@@ -271,6 +271,110 @@ local function schedule_dead(obs, mask, delay)
   end
 end
 
+-- Corpse eligibility mirroring the classic difficulty-submenu semantics
+-- the engine applies on non-scripted maps (0 off, 1 heroes, 2 everyone,
+-- 3 Team-1 heroes; ctf.cpp classic_respawn_corpse_eligible), minus the
+-- spawn-point gate no binding exposes: an "everyone" AI corpse respawns
+-- while it has no live owner. This is the SUBMENU-HONORING scan a ball
+-- game wants. CTF and Onslaught keep their own — neither reads the
+-- submenu, and Onslaught halves the delay off a held waypoint — so the
+-- three variants stay separate on purpose.
+--
+-- `anchors` is the caller's mode_anchors module. og.use is load-time only
+-- and rejects cycles, and mode_anchors already uses THIS module, so the
+-- score-team read arrives as an argument rather than an import.
+local function run_death_scan(anchors, obs, mask, ticks)
+  local mode = og.match_setting("respawn_mode")
+  if mode == 0 then
+    return
+  end
+  for k = 1, #obs do
+    local w = obs[k]
+    if w:dead() ~= 0 then
+      if w:order() == C.ORDER_LIVING then
+        local team = anchors.score_team(w)
+        if team < C.SCORE_TEAM_COUNT then
+          if core.mask_has(mask, team) then
+            local eligible = false
+            if w:has_guy() then
+              eligible = true
+              if mode == 3 then
+                eligible = team == 0
+              end
+            elseif mode == 2 then
+              eligible = w:owner() == nil
+            end
+            if eligible then
+              if not og.respawn_pending(w) then
+                og.respawn_schedule(w, ticks)
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+end
+
+-- The neutral-reset backstop (soccer's design §6.3 kickoff rule, shared):
+-- an active team with zero live Livings comes back at every re-spot,
+-- whatever the difficulty submenu says — respawn
+-- Off cannot strand a team out of a ball game. Roster (guy) corpses
+-- persist in the oblist and are scheduled for revival (on_respawn places
+-- them at the team anchors); summoned corpses (owner, no guy) stay down.
+-- The engine sweeps unscheduled AI corpses at the end of their death tick,
+-- so a wiped bot side whose bodies are already gone is reprovisioned with
+-- a fresh squad — the same spawn path init uses for empty active teams —
+-- unless revives are already in flight. `anchors` is the caller's
+-- mode_anchors module, an argument for the reason run_death_scan gives.
+local function revive_wiped_teams(anchors, mask, ticks, cursor_slot)
+  local obs = og.oblist()
+  local live = { 0, 0, 0, 0 }
+  for k = 1, #obs do
+    local w = obs[k]
+    if w:dead() == 0 then
+      if w:order() == C.ORDER_LIVING then
+        local team = w:team_num()
+        if team < C.SCORE_TEAM_COUNT then
+          live[team + 1] = live[team + 1] + 1
+        end
+      end
+    end
+  end
+  for k = 1, #obs do
+    local w = obs[k]
+    if w:dead() ~= 0 then
+      if w:order() == C.ORDER_LIVING then
+        local team = anchors.score_team(w)
+        if team < C.SCORE_TEAM_COUNT then
+          if core.mask_has(mask, team) then
+            if live[team + 1] == 0 then
+              local eligible = true
+              if not w:has_guy() then
+                eligible = w:owner() == nil
+              end
+              if eligible then
+                if not og.respawn_pending(w) then
+                  og.respawn_schedule(w, ticks)
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  for team = 0, C.SCORE_TEAM_COUNT - 1 do
+    if core.mask_has(mask, team) then
+      if live[team + 1] == 0 then
+        if og.respawn_pending_count(team) == 0 then
+          anchors.spawn_bot_squad(team, cursor_slot)
+        end
+      end
+    end
+  end
+end
+
 -- A foe worth having: a live Living on an active enemy team. The engine's
 -- pre-act backstop (find_far_foe) fills empty foes before any post-act
 -- director runs, and it happily hands out wildlife — so director repair
@@ -361,6 +465,8 @@ return {
   spawn_bots = spawn_bots,
   owns_its_life = owns_its_life,
   schedule_dead = schedule_dead,
+  run_death_scan = run_death_scan,
+  revive_wiped_teams = revive_wiped_teams,
   foe_scores = foe_scores,
   nearest_enemy = nearest_enemy,
   timeout_leader = timeout_leader,

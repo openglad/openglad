@@ -1,4 +1,4 @@
-// lib/mode_strip.lua — the scenario-troops strip the five mode impls share.
+// lib/mode_strip.lua — the scenario-troops strip the six mode impls share.
 //
 // The two states of og.match_setting("strip_troops"):
 //   0 keep the level as authored ("TROOPS: ALL"),

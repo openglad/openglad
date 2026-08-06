@@ -8,7 +8,8 @@
  */
 
 // Shared fixture for the multiplayer-modes campaign-pack tests
-// (og_unit_modes now; the TDM/Mutant/Soccer/Onslaught waves reuse it).
+// (og_unit_modes now; the TDM/Mutant/Soccer/Onslaught/Basketball waves
+// reuse it).
 //
 // Builds a temporary .glad embedding the CURRENT modes pack sources
 // (campaigns/modes/packs/modes.core/**)
@@ -80,7 +81,7 @@ inline constexpr int kOnsLevelB = 9402;
 inline constexpr int kOnsLevelC = 9403;
 
 // lib/mode_strip.lua probes (9500+): the shared scenario-troops strip the
-// five mode impls call from on_mode_init. One level per opts shape, so the
+// six mode impls call from on_mode_init. One level per opts shape, so the
 // keep_generators arm is exercised on its own.
 inline constexpr int kStripLevelDefault = 9500;      // opts = nil
 inline constexpr int kStripLevelKeepGens = 9501;     // keep_generators = true
@@ -98,6 +99,33 @@ inline constexpr int kItemsCursorSlot = 40;
 inline constexpr int kItemsLastSlot = 41;
 inline constexpr int kItemsDefaultInterval = 60;
 inline constexpr int kItemsRowIntervalB = 90;
+
+// Basketball test courts (9700+, D13). Rows live in kTestRegistrationLua
+// below and register through bball.make_hooks, laid out on the default
+// 40x60 test grid (640x960 px). 9701 is the reference two-team court: the
+// hoops face each other across the middle row, 512 px apart, with the jump
+// spot exactly between them; 9702 hangs one hoop on each of the four
+// sides. 9703 and 9706-9709 are the manifest-error arms, one missing field
+// each, so every on_mode_init refusal has its own row.
+inline constexpr int kBballLevelA = 9701;         // two-team reference court
+inline constexpr int kBballLevelB = 9702;         // four-hoop court
+inline constexpr int kBballLevelNoHoops = 9703;   // hoops field absent
+inline constexpr int kBballLevelCaps = 9704;      // reference court + caps
+inline constexpr int kBballLevelShort = 9705;     // 120-tick time limit
+inline constexpr int kBballLevelNoArc = 9706;     // arc_radius absent
+inline constexpr int kBballLevelNoJump = 9707;    // jump_ball absent
+inline constexpr int kBballLevelHalfHoops = 9708; // hoop for team 0 only
+inline constexpr int kBballLevelNoRow = 9709;     // make_hooks(nil)
+
+// Reference-court geometry (rows 9701, 9704, 9705; 9702 reuses the radius
+// and the jump spot). Pixel centers, matching the Lua rows byte for byte.
+inline constexpr int kBballArcRadius = 128;
+inline constexpr int kBballHoop0X = 64;   // the hoop team 0 defends
+inline constexpr int kBballHoop0Y = 480;
+inline constexpr int kBballHoop1X = 576;  // the hoop team 1 defends
+inline constexpr int kBballHoop1Y = 480;
+inline constexpr int kBballJumpX = 320;
+inline constexpr int kBballJumpY = 480;
 
 // The mode-var slot map of lib/mode_ctf_impl.lua (table S). The behavior
 // tests read match state straight from GameWorld::mode.vars, so a silent
@@ -324,7 +352,54 @@ inline constexpr const char* kTestRegistrationLua =
     "    items.run(items_row_b, 40, 41, 60)\n"
     "    items.run(items_row_b0, 40, 41, 60)\n"
     "  end,\n"
-    "})\n";
+    "})\n"
+    "local bball = og.use(\"mode_basketball_impl\")\n"
+    "local bball_rows = {\n"
+    "  { id = 9701, mode = \"basketball\", teams = 2, time_limit = 7200,\n"
+    "    score_limit = 6, arc_radius = 128,\n"
+    "    hoops = { [0] = { x = 64, y = 480 },\n"
+    "              [1] = { x = 576, y = 480 } },\n"
+    "    jump_ball = { x = 320, y = 480 } },\n"
+    "  { id = 9702, mode = \"basketball\", teams = 4, time_limit = 7200,\n"
+    "    score_limit = 6, arc_radius = 128,\n"
+    "    hoops = { [0] = { x = 320, y = 64 },\n"
+    "              [1] = { x = 576, y = 480 },\n"
+    "              [2] = { x = 320, y = 896 },\n"
+    "              [3] = { x = 64, y = 480 } },\n"
+    "    jump_ball = { x = 320, y = 480 } },\n"
+    "  { id = 9703, mode = \"basketball\", teams = 2, time_limit = 7200,\n"
+    "    score_limit = 6, arc_radius = 128,\n"
+    "    jump_ball = { x = 320, y = 480 } },\n"
+    "  { id = 9704, mode = \"basketball\", teams = 2, time_limit = 7200,\n"
+    "    score_limit = 6, arc_radius = 128,\n"
+    "    spawn_caps = { [0] = 2, [1] = 2 },\n"
+    "    hoops = { [0] = { x = 64, y = 480 },\n"
+    "              [1] = { x = 576, y = 480 } },\n"
+    "    jump_ball = { x = 320, y = 480 } },\n"
+    "  { id = 9705, mode = \"basketball\", teams = 2, time_limit = 120,\n"
+    "    score_limit = 21, arc_radius = 128,\n"
+    "    hoops = { [0] = { x = 64, y = 480 },\n"
+    "              [1] = { x = 576, y = 480 } },\n"
+    "    jump_ball = { x = 320, y = 480 } },\n"
+    "  { id = 9706, mode = \"basketball\", teams = 2, time_limit = 7200,\n"
+    "    score_limit = 6,\n"
+    "    hoops = { [0] = { x = 64, y = 480 },\n"
+    "              [1] = { x = 576, y = 480 } },\n"
+    "    jump_ball = { x = 320, y = 480 } },\n"
+    "  { id = 9707, mode = \"basketball\", teams = 2, time_limit = 7200,\n"
+    "    score_limit = 6, arc_radius = 128,\n"
+    "    hoops = { [0] = { x = 64, y = 480 },\n"
+    "              [1] = { x = 576, y = 480 } } },\n"
+    "  { id = 9708, mode = \"basketball\", teams = 2, time_limit = 7200,\n"
+    "    score_limit = 6, arc_radius = 128,\n"
+    "    hoops = { [0] = { x = 64, y = 480 } },\n"
+    "    jump_ball = { x = 320, y = 480 } },\n"
+    "}\n"
+    "for i = 1, #bball_rows do\n"
+    "  og.register_level_hooks(bball_rows[i].id,\n"
+    "                          bball.make_hooks(bball_rows[i]))\n"
+    "end\n"
+    "og.register_level_hooks(9709, bball.make_hooks(nil))\n";
 
 inline bool write_text(const std::filesystem::path& path,
                        const std::string& text)

@@ -1,20 +1,22 @@
 // Shipped "Multiplayer Game Modes" campaign validation
 // (builtin/modes.glad, authored by tools/modes_mapgen).
 //
-// The 28-scenario five-mode campaign (TDM 300-305 absorbing the arenas
+// The 33-scenario six-mode campaign (TDM 300-305 absorbing the arenas
 // grids, CTF 500-509 keeping the shipped CTF maps, Onslaught 800-803,
-// Soccer 820-823, Mutant 840-843) is loaded through the production
-// campaign-mount path and pinned against the authoring invariants the
-// generator promises: every level SCEN_TYPE_SCRIPTED with no exit
-// treasures, Gamesmaster briefings inside the 33-char budget with the
-// exact sign-off, per-mode entity inventories (markers, flags, waypoints,
-// per-team generators, treasures, doors), the migrated decor-cell pins
-// (arenas + CTF values carried over from test_migrated_campaigns), the
-// kept CTF door/key/capture-limit content, the §2.3 obmap ledger with its
-// documented 303/305 A* waivers, closed soccer perimeters whose painted
-// goal strips match the generated manifest, footing + A*-reachability,
-// and the committed og.use("mode_levels") module byte-matching the
-// archive member and executing clean in the script sandbox.
+// Soccer 820-823, Basketball 824-828, Mutant 840-843) is loaded through
+// the production campaign-mount path and pinned against the authoring
+// invariants the generator promises: every level SCEN_TYPE_SCRIPTED with
+// no exit treasures, Gamesmaster briefings inside the 33-char budget with
+// the exact sign-off, per-mode entity inventories (markers, flags,
+// waypoints, per-team generators, treasures, doors), the migrated
+// decor-cell pins (arenas + CTF values carried over from
+// test_migrated_campaigns), the kept CTF door/key/capture-limit content,
+// the §2.3 obmap ledger with its documented 303/305 A* waivers, closed
+// soccer perimeters whose painted goal strips match the generated
+// manifest, closed basketball perimeters whose 3x3 dunk carpets and jump
+// tile match the generated manifest, footing + A*-reachability, and the
+// committed og.use("mode_levels") module byte-matching the archive member
+// and executing clean in the script sandbox.
 //
 // This test is the regression pin for the committed package: if it drifts
 // from tools/modes_mapgen, regenerate the package (the tool self-checks
@@ -55,6 +57,7 @@ inline constexpr int kModesWaypointFamily = 14;
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -195,13 +198,13 @@ bool tile_passable(GameWorld& world, walker* probe, int tx, int ty)
 }
 
 // ---------------------------------------------------------------------------
-// The 28-row pin table (mirrors tools/modes_mapgen's ExpectedLevel rows —
+// The 33-row pin table (mirrors tools/modes_mapgen's ExpectedLevel rows —
 // tool and test move in lockstep).
 // ---------------------------------------------------------------------------
 struct ShippedModeLevel
 {
     int id;
-    const char* mode; // manifest tag: tdm/ctf/onslaught/soccer/mutant
+    const char* mode; // manifest tag: tdm/ctf/onslaught/soccer/basketball/mutant
     const char* title;
     int par;
     int grid_w;
@@ -300,6 +303,21 @@ const std::vector<ShippedModeLevel>& shipped_levels()
         {823, "soccer", "Soccer: BONEYARD CUP", 10, 46, 30, 2, 12, 0, 0,
          {1, 1, 0, 0, 0, 0, 0, 0}, 0, 8, 0, 0, 12, false, 8,
          {0, 0, 0, 0}, 0},
+        {824, "basketball", "Basketball: CENTER COURT", 6, 45, 25, 2, 5, 0, 0,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 6, 0, 0, 0, false, 4,
+         {0, 0, 0, 0}, 0},
+        {825, "basketball", "Basketball: THE PLAYGROUND", 6, 31, 19, 2, 5, 0, 0,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 2, 0, 0, 0, false, 4,
+         {0, 0, 0, 0}, 0},
+        {826, "basketball", "Basketball: FOUR HOOPS", 8, 41, 41, 4, 5, 0, 0,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 8, 0, 0, 0, false, 8,
+         {0, 0, 0, 0}, 0},
+        {827, "basketball", "Basketball: THE BANKHOUSE", 8, 45, 27, 2, 5, 0, 0,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 6, 0, 0, 0, false, 4,
+         {0, 0, 0, 0}, 0},
+        {828, "basketball", "Basketball: BENCHWARMERS", 10, 47, 29, 2, 5, 0, 0,
+         {1, 1, 0, 0, 0, 0, 0, 0}, 0, 6, 0, 0, 8, false, 6,
+         {0, 0, 0, 0}, 0},
         {840, "mutant", "Mutant: THE PIT", 6, 30, 30, 4, 12, 0, 0,
          {0, 0, 0, 0, 0, 0, 0, 0}, 0, 8, 0, 0, 0, false, 4,
          {6, 0, 0, 2}, 180},
@@ -335,6 +353,30 @@ const std::vector<SoccerPins>& soccer_pins()
          {{16, 1, 23, 2}, {37, 16, 38, 23}, {16, 37, 23, 38}, {1, 16, 2, 23}},
          19, 19},
         {823, {{1, 11, 2, 18}, {43, 11, 44, 18}}, 22, 14},
+    };
+    return pins;
+}
+
+// Basketball court contracts (tile coords; the manifest carries the rim
+// centers and the jump spot in pixels). A hoop tile is the PIX_CARPET_M2
+// center of a 3x3 PIX_CARPET_M dunk carpet — the painted carpet IS the
+// Chebyshev dunk box the mode reads, so paint and manifest must agree.
+struct BasketballPins
+{
+    int id;
+    std::vector<std::array<int, 2>> hoops; // index = defending team
+    int arc_radius;                        // three-point release px
+    int jump_tx, jump_ty;
+};
+
+const std::vector<BasketballPins>& basketball_pins()
+{
+    static const std::vector<BasketballPins> pins = {
+        {824, {{3, 12}, {41, 12}}, 160, 22, 12},
+        {825, {{3, 9}, {27, 9}}, 96, 15, 9},
+        {826, {{20, 3}, {37, 20}, {20, 37}, {3, 20}}, 144, 20, 20},
+        {827, {{3, 13}, {41, 13}}, 176, 22, 13},
+        {828, {{3, 14}, {43, 14}}, 160, 23, 14},
     };
     return pins;
 }
@@ -441,7 +483,7 @@ using ModesLevels = ModesCampaignTest;
 TEST_F(ModesLevels, roster_structure_round_trips)
 {
     const std::vector<int> listed = list_levels_v();
-    EXPECT_EQ(28u, listed.size()) << "the package must ship 28 scenarios";
+    EXPECT_EQ(33u, listed.size()) << "the package must ship 33 scenarios";
     for (const ShippedModeLevel& pin : shipped_levels())
     {
         LoadedModesLevel loaded(pin.id);
@@ -678,15 +720,17 @@ TEST_F(ModesLevels, crossfire_capture_limit_is_five)
 TEST_F(ModesLevels, obmap_budget_ledger_holds)
 {
     // §2.3 model: authored ground load + capped spawns + 16 heroes +
-    // 20 corpse/stain transients + 25 projectiles (+ the soccer ball)
-    // stays <= 190 so A* never short-circuits mid-match. 303 and 305 are
-    // the documented arenas-heritage waivers.
+    // 20 corpse/stain transients + 25 projectiles (+ the mode's own ball
+    // entities: soccer spawns 1, basketball 2 — the ball plus its ground
+    // shadow) stays <= 190 so A* never short-circuits mid-match. 303 and
+    // 305 are the documented arenas-heritage waivers.
     for (const ShippedModeLevel& pin : shipped_levels())
     {
         int gens = 0;
         for (const int g : pin.gens)
             gens += g;
-        const int ball = (std::string(pin.mode) == "soccer") ? 1 : 0;
+        const std::string mode(pin.mode);
+        const int ball = (mode == "soccer") ? 1 : (mode == "basketball") ? 2 : 0;
         int flags = pin.flags;
         const int ledger = gens + pin.treasures + flags + pin.cps +
                            pin.doors + pin.livings + pin.caps_total + 16 +
@@ -755,6 +799,157 @@ TEST_F(ModesLevels, soccer_goals_and_perimeters_match_the_manifest)
     }
 }
 
+TEST_F(ModesLevels, basketball_courts_match_the_manifest)
+{
+    const std::vector<std::uint8_t> member = og::resources::read_file(
+        "packs/modes.core/lib/mode_levels.lua");
+    ASSERT_FALSE(member.empty()) << "manifest member missing from the .glad";
+    const std::string member_text(member.begin(), member.end());
+    const std::string expr_prefix =
+        "(function() local M = (function() " +
+        member_text.substr(member_text.find("local M = {}")) +
+        " end)() return ";
+    og::script::ScriptHost host;
+
+    for (const BasketballPins& pin : basketball_pins())
+    {
+        LoadedModesLevel loaded(pin.id);
+        ASSERT_TRUE(loaded.loaded) << "scen" << pin.id;
+        GameWorld& world = loaded.world();
+        std::unique_ptr<walker> probe = make_tile_probe(world);
+        ASSERT_NE(nullptr, probe);
+        auto tile_at = [&world](int tx, int ty) {
+            return world.grid.data[static_cast<std::size_t>(
+                tx + ty * world.grid.w)];
+        };
+
+        // Closed perimeter: neither the players nor the ball can leave.
+        for (int tx = 0; tx < world.grid.w; ++tx)
+        {
+            EXPECT_FALSE(tile_passable(world, probe.get(), tx, 0))
+                << "scen" << pin.id << " (" << tx << ", 0)";
+            EXPECT_FALSE(
+                tile_passable(world, probe.get(), tx, world.grid.h - 1))
+                << "scen" << pin.id << " (" << tx << ", " << world.grid.h - 1
+                << ")";
+        }
+        for (int ty = 0; ty < world.grid.h; ++ty)
+        {
+            EXPECT_FALSE(tile_passable(world, probe.get(), 0, ty))
+                << "scen" << pin.id << " (0, " << ty << ")";
+            EXPECT_FALSE(
+                tile_passable(world, probe.get(), world.grid.w - 1, ty))
+                << "scen" << pin.id << " (" << world.grid.w - 1 << ", " << ty
+                << ")";
+        }
+
+        const auto mode = host.eval_string(
+            expr_prefix + std::format("M.levels[{}].mode end)()", pin.id));
+        ASSERT_TRUE(mode.has_value()) << "scen" << pin.id;
+        EXPECT_EQ("basketball", *mode) << "scen" << pin.id;
+
+        // Arc sanity: a real three-point line that still fits the court
+        // (the mapgen self-check enforces the same bounds at generation).
+        const auto arc = host.eval_integer(
+            expr_prefix +
+            std::format("M.levels[{}].arc_radius end)()", pin.id));
+        ASSERT_TRUE(arc.has_value()) << "scen" << pin.id;
+        EXPECT_EQ(pin.arc_radius, *arc) << "scen" << pin.id << " arc_radius";
+        EXPECT_LE(32, *arc) << "scen" << pin.id;
+        EXPECT_LT(*arc, std::min(world.grid.w, world.grid.h) * GRID_SIZE / 2)
+            << "scen" << pin.id << ": the arc must fit inside the court";
+
+        for (std::size_t t = 0; t < pin.hoops.size(); ++t)
+        {
+            const int hx = pin.hoops[t][0];
+            const int hy = pin.hoops[t][1];
+
+            // The 3x3 dunk carpet: PIX_CARPET_M2 rim center inside eight
+            // PIX_CARPET_M tiles, all nine walkable (the dunk box the mode
+            // reads is exactly this painted square).
+            EXPECT_EQ(PIX_CARPET_M2, tile_at(hx, hy))
+                << "scen" << pin.id << " hoop " << t << " (" << hx << ", "
+                << hy << ") is not the rim tile";
+            for (int dy = -1; dy <= 1; ++dy)
+                for (int dx = -1; dx <= 1; ++dx)
+                {
+                    if (dx != 0 || dy != 0)
+                    {
+                        EXPECT_EQ(PIX_CARPET_M, tile_at(hx + dx, hy + dy))
+                            << "scen" << pin.id << " hoop " << t
+                            << " dunk carpet (" << hx + dx << ", " << hy + dy
+                            << ")";
+                    }
+                    EXPECT_TRUE(
+                        tile_passable(world, probe.get(), hx + dx, hy + dy))
+                        << "scen" << pin.id << " hoop " << t
+                        << " dunk carpet (" << hx + dx << ", " << hy + dy
+                        << ") impassable";
+                }
+
+            // The manifest carries the PIXEL center of that rim tile.
+            const auto mx = host.eval_integer(
+                expr_prefix +
+                std::format("M.levels[{}].hoops[{}].x end)()", pin.id, t));
+            const auto my = host.eval_integer(
+                expr_prefix +
+                std::format("M.levels[{}].hoops[{}].y end)()", pin.id, t));
+            ASSERT_TRUE(mx.has_value() && my.has_value())
+                << "scen" << pin.id << " hoop " << t
+                << ": the manifest must bank a hoop per active team";
+            EXPECT_EQ(hx * GRID_SIZE + GRID_SIZE / 2, *mx)
+                << "scen" << pin.id << " hoop " << t;
+            EXPECT_EQ(hy * GRID_SIZE + GRID_SIZE / 2, *my)
+                << "scen" << pin.id << " hoop " << t;
+        }
+
+        // Hoop separation > 2 * (scatter_cap_total + rim_r + rim_lip) = 84
+        // px, so a scattered shot can never land inside a rival rim.
+        for (std::size_t a = 0; a + 1 < pin.hoops.size(); ++a)
+            for (std::size_t b = a + 1; b < pin.hoops.size(); ++b)
+            {
+                const int l1 =
+                    std::abs(pin.hoops[a][0] - pin.hoops[b][0]) * GRID_SIZE +
+                    std::abs(pin.hoops[a][1] - pin.hoops[b][1]) * GRID_SIZE;
+                EXPECT_GT(l1, 84)
+                    << "scen" << pin.id << ": hoops " << a << " and " << b
+                    << " are close enough for cross-rim landings";
+            }
+
+        // The jump spot: a walkable tile whose pixel center the manifest
+        // carries as the neutral re-spot.
+        EXPECT_TRUE(
+            tile_passable(world, probe.get(), pin.jump_tx, pin.jump_ty))
+            << "scen" << pin.id << " jump ball tile";
+        const auto jx = host.eval_integer(
+            expr_prefix +
+            std::format("M.levels[{}].jump_ball.x end)()", pin.id));
+        const auto jy = host.eval_integer(
+            expr_prefix +
+            std::format("M.levels[{}].jump_ball.y end)()", pin.id));
+        ASSERT_TRUE(jx.has_value() && jy.has_value()) << "scen" << pin.id;
+        EXPECT_EQ(pin.jump_tx * GRID_SIZE + GRID_SIZE / 2, *jx)
+            << "scen" << pin.id << " jump_ball x";
+        EXPECT_EQ(pin.jump_ty * GRID_SIZE + GRID_SIZE / 2, *jy)
+            << "scen" << pin.id << " jump_ball y";
+
+        // No basketball court authors item pads (the mode ships no
+        // respawning pickups); the drumsticks are static food.
+        const auto no_pads = host.eval_boolean(
+            expr_prefix +
+            std::format("M.levels[{}].item_pads == nil end)()", pin.id));
+        ASSERT_TRUE(no_pads.has_value()) << "scen" << pin.id;
+        EXPECT_TRUE(*no_pads) << "scen" << pin.id;
+    }
+
+    // Only the five authored courts are basketball rows: an unauthored id
+    // in the band carries no manifest entry at all.
+    const auto spare = host.eval_boolean(expr_prefix +
+                                         "M.levels[829] == nil end)()");
+    ASSERT_TRUE(spare.has_value());
+    EXPECT_TRUE(*spare) << "829-839 is spare band, not a shipped court";
+}
+
 // NOTE: the pack-vs-archive byte comparison that lived here
 // (every_pack_member_matches_its_committed_source) moved to
 // tests/unit/test_builtin_archives.cpp and now covers ALL campaigns:
@@ -793,7 +988,9 @@ TEST_F(ModesLevels, shipped_registration_scripts_wire_the_expected_hooks)
     // neither a damage gate nor a death hook (their object rules ride the
     // flag/ball treasure families); Onslaught flips generators through
     // on_damage and scrubs/scores through on_entity_death; Mutant needs
-    // both (the one-way matrix and the crown transfer).
+    // both (the one-way matrix and the crown transfer); Basketball adds
+    // on_damage (the carrier fumble) but no death hook — the carrier's
+    // death is caught by the mode tick's liveness sweep.
     const ModeHooks rows[] = {
         {300, "tdm", kModeInit | kModeTick | kEntityDeath | kRespawn},
         {305, "tdm", kModeInit | kModeTick | kEntityDeath | kRespawn},
@@ -805,6 +1002,8 @@ TEST_F(ModesLevels, shipped_registration_scripts_wire_the_expected_hooks)
          kModeInit | kModeTick | kDamage | kRespawn | kEntityDeath},
         {820, "soccer", kModeInit | kModeTick | kRespawn},
         {823, "soccer", kModeInit | kModeTick | kRespawn},
+        {824, "basketball", kModeInit | kModeTick | kRespawn | kDamage},
+        {828, "basketball", kModeInit | kModeTick | kRespawn | kDamage},
         {840, "mutant",
          kModeInit | kModeTick | kDamage | kEntityDeath | kRespawn},
         {843, "mutant",
@@ -987,6 +1186,8 @@ TEST_F(ModesLevels, pack_sprites_load_with_pinned_shapes)
         {"packs/modes.core/sprites/flag.png", 10, 14, 4},
         {"packs/modes.core/sprites/ctfpoint.png", 16, 16, 1},
         {"packs/modes.core/sprites/ball.png", 12, 12, 8},
+        {"packs/modes.core/sprites/bball.png", 12, 12, 8},
+        {"packs/modes.core/sprites/bshadow.png", 12, 12, 4},
         {"packs/modes.core/sprites/aura.png", 16, 16, 4},
     };
     for (const auto& s : sprites)
@@ -1022,7 +1223,7 @@ TEST_F(ModesLevels, scripted_levels_tick_clean_without_mode_lua)
     // scripts landed yet the scripted fork must be a clean no-op — no
     // script errors, no spurious level end. (The per-mode dispatch smokes
     // arrive with the Lua-mode waves.)
-    for (const int id : {300, 500, 800, 820, 840})
+    for (const int id : {300, 500, 800, 820, 824, 840})
     {
         LoadedModesLevel loaded(id, 7u);
         ASSERT_TRUE(loaded.loaded) << "scen" << id;

@@ -92,18 +92,20 @@ local T = {
   -- TOP-LEFT corner, so the drive target carries a half-body correction
   -- (the contact kick reads centers), and GOTO counts itself arrived
   -- within 12 px, which for a target on the ball is inside the contact
-  -- radius. drive_reach is the miss distance the corridor test below
-  -- budgets for; drive_cross bounds the lateral miss a chaser may start
-  -- a drive from, widened to drive_cross_hold once it is committed.
+  -- radius. drive_reach is the miss distance ai.chaser_drives' corridor
+  -- test budgets for; drive_cross bounds the lateral miss a chaser may
+  -- start a drive from, widened to drive_cross_hold once it is committed.
+  -- This whole table is the geometry argument ai.chaser_drives reads.
   drive_offset = 8,
   drive_cross = 24,
   drive_cross_hold = 32,
   drive_reach = 10,
 }
 
--- Facing byte (FACE_UP = 0 .. FACE_UP_LEFT = 7, clockwise) to a unit step.
-local FACING_X = { 0, 1, 1, 1, 0, -1, -1, -1 }
-local FACING_Y = { -1, -1, 0, 1, 1, 1, 0, -1 }
+-- The shared scalar helpers, bound to locals at load time: soccer's L1
+-- geometry calls them on every walker, every tick.
+local iabs = core.iabs
+local walker_center = core.walker_center
 
 -- Chaser lateral stagger (px) by support index mod 3 — the striker takes
 -- no stagger, so the fan-out starts at the second chaser.
@@ -121,19 +123,6 @@ local function soccer_active()
   return og.mode_get(core.SLOT.MODE_ID) == core.MODE.SOCCER
 end
 
-local function iabs(v)
-  if v < 0 then
-    return -v
-  end
-  return v
-end
-
-local function walker_center(w)
-  local cx = w:xpos() + og.div(w:sizex(), 2)
-  local cy = w:ypos() + og.div(w:sizey(), 2)
-  return cx, cy
-end
-
 local function ball_center()
   local bx = og.div(og.mode_get(S.BALL_PX), 256)
   local by = og.div(og.mode_get(S.BALL_PY), 256)
@@ -146,65 +135,6 @@ local function place_ball(ball, cx, cy)
   og.mode_set(S.BALL_PX, cx * 256)
   og.mode_set(S.BALL_PY, cy * 256)
   ball:setxy(cx - og.div(ball:sizex(), 2), cy - og.div(ball:sizey(), 2))
-end
-
--- The design §6.3 kickoff backstop: an active team with zero live
--- Livings comes back at every kickoff, whatever the difficulty submenu
--- says — respawn Off cannot strand a team. Roster (guy) corpses persist
--- in the oblist and are scheduled for revival (on_respawn places them at
--- the team anchors); summoned corpses (owner, no guy) stay down. The
--- engine sweeps unscheduled AI corpses at the end of their death tick,
--- so a wiped bot side whose bodies are already gone is reprovisioned
--- with a fresh squad — the same spawn path init uses for empty active
--- teams — unless revives are already in flight.
-local function revive_wiped_teams()
-  local mask = og.mode_get(S.TEAM_MASK)
-  local ticks = og.mode_get(S.RESPAWN_TICKS)
-  local obs = og.oblist()
-  local live = { 0, 0, 0, 0 }
-  for k = 1, #obs do
-    local w = obs[k]
-    if w:dead() == 0 then
-      if w:order() == C.ORDER_LIVING then
-        local team = w:team_num()
-        if team < C.SCORE_TEAM_COUNT then
-          live[team + 1] = live[team + 1] + 1
-        end
-      end
-    end
-  end
-  for k = 1, #obs do
-    local w = obs[k]
-    if w:dead() ~= 0 then
-      if w:order() == C.ORDER_LIVING then
-        local team = anchors.score_team(w)
-        if team < C.SCORE_TEAM_COUNT then
-          if core.mask_has(mask, team) then
-            if live[team + 1] == 0 then
-              local eligible = true
-              if not w:has_guy() then
-                eligible = w:owner() == nil
-              end
-              if eligible then
-                if not og.respawn_pending(w) then
-                  og.respawn_schedule(w, ticks)
-                end
-              end
-            end
-          end
-        end
-      end
-    end
-  end
-  for team = 0, C.SCORE_TEAM_COUNT - 1 do
-    if core.mask_has(mask, team) then
-      if live[team + 1] == 0 then
-        if og.respawn_pending_count(team) == 0 then
-          anchors.spawn_bot_squad(team, S.ANCHOR_CURSOR)
-        end
-      end
-    end
-  end
 end
 
 -- Dead ball at the kickoff spot; impulses stay frozen for kickoff_freeze
@@ -225,7 +155,7 @@ local function kickoff_reset(ball)
   ball:set_frame(0)
   ball:set_team_num(C.SCORE_TEAM_COUNT)
   place_ball(ball, core.pos_x(pos), core.pos_y(pos))
-  revive_wiped_teams()
+  match.revive_wiped_teams(anchors, og.mode_get(S.TEAM_MASK), og.mode_get(S.RESPAWN_TICKS), S.ANCHOR_CURSOR)
 end
 
 -- L1-normalized impulse: |vx| + |vy| always sums to the commanded speed,
@@ -278,8 +208,17 @@ local function run_kicks(ball, livings)
       local dy = by - ky
       if dx == 0 then
         if dy == 0 then
-          dx = FACING_X[kicker:curdir() + 1]
-          dy = FACING_Y[kicker:curdir() + 1]
+          -- Dead-center: kick along the kicker's facing. Core-family
+          -- specials (soldier whirlwind, archer volley) park curdir at
+          -- the -1 sentinel while their command burst drains; a
+          -- facing-less kicker punts FACE_DOWN deterministically.
+          local fdir = kicker:curdir() + 1
+          dx = ai.FACING_X[fdir]
+          dy = ai.FACING_Y[fdir]
+          if dx == nil then
+            dx = 0
+            dy = 1
+          end
         end
       end
       local speed_px = og.clamp(og.trunc(kicker:damage()), T.kick_min_px, T.kick_max_px)
@@ -556,46 +495,6 @@ local function run_dead_ball(ball, livings)
   end
 end
 
--- Corpse eligibility mirrors the classic difficulty-submenu semantics the
--- engine applies on non-scripted maps (0 off, 1 heroes, 2 everyone,
--- 3 Team-1 heroes; ctf.cpp classic_respawn_corpse_eligible), minus the
--- spawn-point gate no binding exposes: an "everyone" AI corpse respawns
--- while it has no live owner.
-local function run_death_scan(obs)
-  local mode = og.match_setting("respawn_mode")
-  if mode == 0 then
-    return
-  end
-  local mask = og.mode_get(S.TEAM_MASK)
-  local ticks = og.mode_get(S.RESPAWN_TICKS)
-  for k = 1, #obs do
-    local w = obs[k]
-    if w:dead() ~= 0 then
-      if w:order() == C.ORDER_LIVING then
-        local team = anchors.score_team(w)
-        if team < C.SCORE_TEAM_COUNT then
-          if core.mask_has(mask, team) then
-            local eligible = false
-            if w:has_guy() then
-              eligible = true
-              if mode == 3 then
-                eligible = team == 0
-              end
-            elseif mode == 2 then
-              eligible = w:owner() == nil
-            end
-            if eligible then
-              if not og.respawn_pending(w) then
-                og.respawn_schedule(w, ticks)
-              end
-            end
-          end
-        end
-      end
-    end
-  end
-end
-
 local function on_respawn(ent)
   if not soccer_active() then
     return
@@ -638,23 +537,6 @@ local function run_win_check(level_tick)
   if winner >= 0 then
     core.declare_team_win(winner)
   end
-end
-
--- 8-dir snap of a vector (components engage inside the 2:1 octant rule);
--- a zero vector snaps to +x so callers always get a direction.
-local function dir8(dx, dy)
-  local sx = 0
-  local sy = 0
-  if 2 * iabs(dx) >= iabs(dy) then
-    sx = og.sign(dx)
-  end
-  if 2 * iabs(dy) >= iabs(dx) then
-    sy = og.sign(dy)
-  end
-  if sx == 0 and sy == 0 then
-    sx = 1
-  end
-  return sx, sy
 end
 
 local function goal_center(team)
@@ -712,56 +594,6 @@ local function ball_in_goal_box(team, bx, by)
   return by <= gy + core.pos_y(size) + T.goalie_box
 end
 
--- Chaser drive geometry, in the CENTER frame the contact kick reads.
--- (sx, sy) is the 8-dir step from the ball toward the attacked goal.
--- `along` is how far the ball sits goalward of the chaser on that axis —
--- positive means the chaser is goal-side of the ball, so a kick from here
--- (fired along ball - kicker) carries the ball goalward — and `cross` is
--- the chaser's lateral miss off the ball-goal line.
-local function drive_geometry(chaser, bx, by, sx, sy)
-  local cx, cy = walker_center(chaser)
-  local dx = bx - cx
-  local dy = by - cy
-  return dx * sx + dy * sy, iabs(dy * sx - dx * sy)
-end
-
--- Phase B (drive through the ball) or phase A (walk the approach point).
--- Three conditions:
---   goal-side  along > 0, so the kick leaves goalward at all;
---   corridor   a lateral miss within drive_cross, widened to
---              drive_cross_hold for a chaser already facing goalward.
---              That facing is the hysteresis memory, and it is replicated
---              walker state written by the chaser's own last step, never
---              script-side storage (R6): a ball drifting across the line
---              cannot flip a committed chaser back to the approach point
---              every cadence, while one turned away has to re-qualify on
---              the tight corridor;
---   reach      the straight line from here to the drive target has to
---              pass close enough to the ball to touch it. That target
---              sits drive_offset px beyond the ball, so the line crosses
---              the ball's own plane cross * drive_offset / (along +
---              drive_offset) px wide — the integer form below — and a
---              drive that would sail past is refused rather than milling.
--- All three regions shrink along the commanded path (both along and cross
--- fall as the chaser closes, and the reach test is a ray from the drive
--- target), so a chaser that starts a drive holds it until it has gone
--- through the ball.
-local function chaser_drives(chaser, bx, by, sx, sy)
-  local along, cross = drive_geometry(chaser, bx, by, sx, sy)
-  if along <= 0 then
-    return false
-  end
-  local dir = chaser:curdir() + 1
-  local tol = T.drive_cross
-  if FACING_X[dir] * sx + FACING_Y[dir] * sy > 0 then
-    tol = T.drive_cross_hold
-  end
-  if cross > tol then
-    return false
-  end
-  return cross * T.drive_offset <= T.drive_reach * (along + T.drive_offset)
-end
-
 -- Role partition per team, in oblist order (zero RNG):
 --   GOALIE   the member nearest the defended rect. Its objective every
 --            cadence is the ball-intercept point on its own goal mouth
@@ -775,7 +607,7 @@ end
 --   STRIKER  the remaining member nearest the ball. It is re-commanded
 --            onto the ball EVERY cadence whatever it was doing, so an
 --            engagement can never hold on to the squad's ball player, and
---            it plays two-phase (chaser_drives above): the approach point
+--            it plays two-phase (ai.chaser_drives): the approach point
 --            while it is wrong-side or badly aligned, the drive through
 --            the ball once it is goal-side and lined up.
 --   CHASERS  everyone else walks the approach point: approach_offset px
@@ -831,7 +663,7 @@ local function run_team_director(livings, ball, team)
   local dsy = 0
   if target_team >= 0 then
     local ex, ey = goal_center(target_team)
-    local sx, sy = dir8(bx - ex, by - ey)
+    local sx, sy = ai.dir8(bx - ex, by - ey)
     ax = bx + sx * T.approach_offset
     ay = by + sy * T.approach_offset
     pdx = -sy
@@ -886,7 +718,7 @@ local function run_team_director(livings, ball, team)
         local ty = ay + pdy * stagger
         local drives = false
         if target_team >= 0 then
-          drives = chaser_drives(chaser, bx, by, dsx, dsy)
+          drives = ai.chaser_drives(chaser, bx, by, dsx, dsy, T)
         end
         if drives then
           -- Through the ball. GOTO drives the walker's top-left corner,
@@ -1074,7 +906,7 @@ end
 -- and owns the win-latch short-circuit).
 local function on_mode_tick(level, tick)
   local obs = og.oblist()
-  run_death_scan(obs)
+  match.run_death_scan(anchors, obs, og.mode_get(S.TEAM_MASK), og.mode_get(S.RESPAWN_TICKS))
   local livings = {}
   local gens = {}
   local spawn_count = { 0, 0, 0, 0, 0, 0, 0, 0 }
