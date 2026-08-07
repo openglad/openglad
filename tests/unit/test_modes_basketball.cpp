@@ -439,6 +439,15 @@ struct BballCourt : ModesCtfWorld
         return w;
     }
 
+    // A weapon the throw scan consumes is erased by the SAME tick's dead
+    // sweep (GameWorld::tick), so its pointer dangles after fx.tick() —
+    // judge weapon fate by id lookup, never by dereferencing the spawn
+    // pointer across a tick.
+    bool weapon_present(std::uint32_t id)
+    {
+        return world().find_by_id(id) != nullptr;
+    }
+
     // A lethal-or-staged C++ melee hit through the real attack path (the
     // damage gate dispatches the Lua on_damage). d < 4.0 keeps
     // compute_base_damage deterministic: floor(sqrt(d)) <= 1, so the RNG
@@ -813,9 +822,10 @@ TEST_F(ModesBasketball, throw_consumes_weapon_and_classifies)
         fx.give_ball(fx.red, 450, 480);
         walker* shot = fx.spawn_weapon(fx.red, 460, 560, 8.0f, 0.0f);
         ASSERT_NE(nullptr, shot);
+        const std::uint32_t shot_id = shot->entity_id();
         fx.tick(1);
 
-        EXPECT_NE(0, static_cast<int>(shot->dead()))
+        EXPECT_FALSE(fx.weapon_present(shot_id))
             << "the consumed weapon dies at release";
         EXPECT_EQ(kStateShot, fx.var(kBbBallState));
         EXPECT_EQ(0, fx.carrier()) << "possession cleared";
@@ -836,9 +846,10 @@ TEST_F(ModesBasketball, throw_consumes_weapon_and_classifies)
         fx.give_ball(fx.red, 320, 480);
         walker* shot = fx.spawn_weapon(fx.red, 400, 560, 0.0f, -8.0f);
         ASSERT_NE(nullptr, shot);
+        const std::uint32_t shot_id = shot->entity_id();
         fx.tick(1);
 
-        EXPECT_NE(0, static_cast<int>(shot->dead()));
+        EXPECT_FALSE(fx.weapon_present(shot_id));
         EXPECT_EQ(kStatePass, fx.var(kBbBallState));
         EXPECT_EQ(static_cast<std::int32_t>(mate->entity_id()),
                   fx.var(kBbPassTarget));
@@ -1252,6 +1263,7 @@ TEST_F(ModesBasketball, block_window_by_height)
         vars[kBbBallVy] = 0;
         vars[kBbBallVz] = 300;
         walker* swat = fx.spawn_weapon(fx.green, 317, 297, 3.0f, -1.0f);
+        const std::uint32_t swat_id = swat->entity_id();
         ASSERT_NE(nullptr, swat);
         swat->set_damage(5.0f);  // clamp(trunc(5)*2, 4, 12) = 10 px/tick
         fx.tick(1);
@@ -1271,7 +1283,7 @@ TEST_F(ModesBasketball, block_window_by_height)
         EXPECT_EQ(2, fx.var(kBbLastTouch1))
             << "restamped to the swatting owner's team";
         EXPECT_EQ(0, fx.var(kBbShotValue)) << "flight facts cleared";
-        EXPECT_EQ(0, static_cast<int>(swat->dead()))
+        EXPECT_TRUE(fx.weapon_present(swat_id))
             << "the swatting weapon is NOT consumed";
     }
     // The impulse clamp bounds: damage 20 tops out at 12 px/tick; damage
@@ -1342,6 +1354,7 @@ TEST_F(ModesBasketball, block_window_by_height)
         vars[kBbBallVy] = 0;
         vars[kBbBallVz] = 300;
         walker* frozen = fx.spawn_weapon(fx.green, 317, 297, 0.0f, 0.0f);
+        const std::uint32_t frozen_id = frozen->entity_id();
         ASSERT_NE(nullptr, frozen);  // a boomerang at turnaround
         walker* live = fx.spawn_weapon(fx.green, 315, 299, 4.0f, 0.0f);
         ASSERT_NE(nullptr, live);
@@ -1351,7 +1364,7 @@ TEST_F(ModesBasketball, block_window_by_height)
             << "the zero-step weapon does not shield the ball (§3.5)";
         EXPECT_EQ(10 * 256, fx.var(kBbBallVx))
             << "the later real-step weapon lands the block";
-        EXPECT_EQ(0, static_cast<int>(frozen->dead()));
+        EXPECT_TRUE(fx.weapon_present(frozen_id));
     }
     // Between the windows the arc is untouchable — the apex sanctuary.
     {
@@ -2344,8 +2357,9 @@ TEST_F(ModesBasketball, stale_inflight_weapon_not_consumed)
     // A weapon fired AFTER the pickup IS consumed.
     walker* fresh = fx.spawn_weapon(fx.red, 400, 560, 0.0f, -8.0f);
     ASSERT_NE(nullptr, fresh);
+    const std::uint32_t fresh_id = fresh->entity_id();
     fx.tick(1);
-    EXPECT_NE(0, static_cast<int>(fresh->dead())) << "consumed";
+    EXPECT_FALSE(fx.weapon_present(fresh_id)) << "consumed";
     EXPECT_EQ(kStatePass, fx.var(kBbBallState)) << "a flat throw north";
     EXPECT_EQ(0, static_cast<int>(stale->dead()))
         << "only the above-watermark weapon was eaten";
