@@ -54,12 +54,14 @@ clients, the dedicated server, and the web build.
 
 Two match settings appear in **MATCHUP**
 (Base Camp → SCENARIO → MATCHUP) when a versus campaign (one whose
-campaign.yaml carries `matchup: versus`) is active. In
+campaign.yaml carries `matchup: versus`) is active; the curses client still
+titles that screen `CTF Teams`, from when the versus campaign was CTF only. In
 networked play, only the host can change them, and the lobby synchronizes them
 to every client:
 
 - **Match Teams** — `Auto` fields every team the map authors (2, 3, or 4);
-  or force 2/3/4. Teams without human players get AI squads.
+  or force 2/3/4. `Match` fields the same teams `Auto` does and sizes the AI
+  squads to the players (below). Teams without human players get AI squads.
 - **Score Limit** — `Map default` uses the map's authored limit (each mode
   reads it as its own win threshold: captures, frags, goals), or force
   1–10.
@@ -99,6 +101,36 @@ company file. A fighter's color remains its combat allegiance, so changing a
 player-seat assignment does not recolor the company roster. The assignments
 work locally, in split-screen and networked games, and through the dedicated
 server.
+
+### Matched teams
+
+**Teams: Match** is the value after 4 on Match Teams. It fields exactly the
+teams `Auto` would; what changes is how strong the AI squads are.
+
+- The mode weighs every player's fighters on the field — health, armor,
+  damage, firing rate, footspeed — and averages that across the human teams.
+  Each AI squad is then fielded at whichever level lands closest to that
+  number, with the first few of its members promoted one level further to
+  fine-tune the fit.
+- Squad size never moves: five fighters as usual, one per seat in Mutant.
+  Only levels move, and only between 1 and 9. A lone level-1 soldier still
+  faces a full squad — matching gets you as close as five bodies allow, not
+  level with you.
+- The match announces itself once at the start: **TEAMS MATCHED**, or
+  **TEAMS MATCHED (LIMIT)** when a squad hit the level floor or ceiling and
+  the fit is as close as it can get.
+- DIFFICULTY still applies on top, and it bites harder than it looks: it
+  scales health and damage together, so Easy leaves a matched squad far
+  under your strength and Hard far over it. Normal is the fair fight.
+- Teams with players on them are never filled or altered, and a squad wiped
+  out and re-fielded comes back at the strength it was matched to. If
+  players occupy every team the map authors there is nothing to fill, and
+  Match plays identically to `Auto`.
+- Onslaught ignores it: its fighters come out of generators rather than
+  squads, so Match behaves as `Auto` there.
+
+With several human teams the target is their average, so an even match for
+one side can still be a hard one for a weaker ally.
 
 ## The CTF maps
 

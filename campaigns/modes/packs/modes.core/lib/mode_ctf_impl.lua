@@ -696,21 +696,6 @@ end
 -- Init (transcribes ctf_initialize_for_level)
 -- ---------------------------------------------------------------------------
 
-local function spawn_bot_squad(team)
-  local level = og.max(1, og.div(og.match_setting("difficulty"), 100) + 1)
-  for k = 1, #BOT_SQUAD do
-    local fam = og.family_id("living", BOT_SQUAD[k]) --[[@as integer]] -- squad table names core families; a nil would be a load bug and add_ob erroring loudly is the right failure
-    local w = og.add_ob("living", fam)
-    if w ~= nil then
-      w:set_team_num(team)
-      w:set_real_team_num(255)
-      w:s_set_level(level)
-      w:set_difficulty(level)
-      place_at_anchor(w, team, true)
-    end
-  end
-end
-
 -- Lazy init, first scripted tick. Raising reports the failed-init shape
 -- (fewer than two flag teams): the engine latches inactive and classic
 -- rules own the level from the NEXT tick — the surplus-flag kills already
@@ -881,7 +866,10 @@ local function on_mode_init(level)
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
     if core.mask_has(mask, team) then
       if per_team[team + 1] == 0 then
-        spawn_bot_squad(team)
+        -- The one shared squad spawner (matched-teams D16), with CTF's own
+        -- placer so blocked anchors still fall back to the flag-home
+        -- square before the teleport draw.
+        match.spawn_bots(team, BOT_SQUAD, S.ANCHOR_CURSOR, place_at_anchor)
       end
     end
   end

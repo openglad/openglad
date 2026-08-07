@@ -16,7 +16,7 @@ struct LobbySaveDataEquivalent {
     std::int16_t scen_num = 1;
     std::uint8_t numplayers = 0;
     std::int16_t allied_mode = 1;
-    std::int16_t ctf_team_count = 0; // 0 = Auto
+    std::int16_t ctf_team_count = 0; // 0 = Auto; 5 = Matched (kTeamCountMatched)
     std::int16_t ctf_capture_limit = 0;
     std::int16_t ctf_respawn_ticks = 0;
     std::int16_t ctf_strip_scenario_troops = 0;

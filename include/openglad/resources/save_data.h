@@ -74,7 +74,7 @@ public:
     unsigned char numplayers; //numviews
     short allied_mode;
     // Match settings (scripted maps read them via og.match_setting; 0 = map/default). Storage names keep the ctf_ prefix: renaming costs a save format bump.
-    short ctf_team_count = 0; // 0 = Auto: every team the map authors
+    short ctf_team_count = 0; // 0 = Auto: every team the map authors; 5 = Matched (og::sim::kTeamCountMatched)
     short ctf_capture_limit = 0;
     short ctf_respawn_ticks = 0;
     short ctf_strip_scenario_troops = 0; // 0 = keep authored troops (classic)

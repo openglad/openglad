@@ -184,13 +184,24 @@ inline bool lobby_join_seats_content_identical(
     return true;
 }
 
+// Requested-team-count sentinel for "Teams: Match" (matched-teams design
+// D2): bot squads on empty active teams are filled to match the human
+// census. Positive on purpose — sanitize_settings snaps every <= 0 value to
+// 0 (Auto), so a negative sentinel would be silently destroyed (the solo
+// picker round-trips its own settings through LocalPickerLobbyClient). For
+// every mask/activation purpose the sentinel behaves exactly like Auto
+// (og::sim::effective_team_mask treats it as <= 0); the only behavioral
+// delta lives in the bot spawn seam. Old builds degrade it safely: their
+// sanitize clamps 5 -> 4 and their cycler wraps 5 -> Auto.
+inline constexpr std::int16_t kTeamCountMatched = 5;
+
 struct LobbySettings {
     std::string campaign_id;
     std::int16_t scenario_id = 0;
     std::int16_t difficulty = 0;
     std::int16_t allied_mode = 0;
     // Match settings (og.match_setting); scripted maps consume them (0 = map/default).
-    std::int16_t ctf_team_count = 0; // 0 = Auto
+    std::int16_t ctf_team_count = 0; // 0 = Auto; 5 = Matched (kTeamCountMatched)
     // Lower SCORE_TEAM_COUNT bits identify the teams with authored flags in
     // the selected CTF level (protocol v9). Zero means the level metadata is
     // not available yet, so clients and authority behave as if all four were

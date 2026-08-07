@@ -117,7 +117,7 @@ TEST(MenuSpec, ctf_setting_labels_full_cycles)
     save.ctf_team_count = 0;
     EXPECT_EQ("Teams: Auto", og::ui::menu_item_label(*teams, context_for(save)));
     const char* team_labels[] = {"Teams: 2", "Teams: 3", "Teams: 4",
-                                 "Teams: Auto"};
+                                 "Teams: Match", "Teams: Auto"};
     for (const char* label : team_labels) {
         og::ui::cycle_ctf_team_count(save);
         EXPECT_EQ(label, og::ui::menu_item_label(*teams, context_for(save)));

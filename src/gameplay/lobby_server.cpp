@@ -67,7 +67,12 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
         sanitized.scenario_id = fallback.scenario_id;
     if (sanitized.allied_mode != 0 && sanitized.allied_mode != 1)
         sanitized.allied_mode = fallback.allied_mode;
-    if (sanitized.ctf_team_count > 0)
+    if (sanitized.ctf_team_count == og::sim::kTeamCountMatched)
+    {
+        // Teams: Match — the one legal value above 4 (matched-teams D6).
+        // 6+ still clamps to 4 below, keeping the junk-rejection posture.
+    }
+    else if (sanitized.ctf_team_count > 0)
     {
         sanitized.ctf_team_count =
             std::clamp<std::int16_t>(sanitized.ctf_team_count, 2, 4);

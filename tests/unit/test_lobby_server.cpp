@@ -425,6 +425,88 @@ TEST(LobbyServer, sanitize_clamps_ctf_settings_and_equivalent_carries_them)
     EXPECT_EQ(0, equivalent.ctf_respawn_ticks);
 }
 
+TEST(LobbyServer, sanitize_admits_matched_sentinel_and_equivalent_carries_it)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    server.poll_incoming_messages();
+
+    // Exactly kTeamCountMatched (5) passes sanitize (matched-teams D6) —
+    // it is the one legal value above 4.
+    og::sim::LobbySettings matched = server.state().settings;
+    matched.ctf_team_count = og::sim::kTeamCountMatched;
+    og::sim::LobbyMessage matched_message;
+    matched_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = matched,
+    };
+    transport.queue_lobby_message(11u, matched_message);
+    server.poll_incoming_messages();
+    EXPECT_EQ(og::sim::kTeamCountMatched,
+              server.state().settings.ctf_team_count);
+
+    // The junk-rejection posture is unchanged: 6 (one past the sentinel)
+    // still clamps to 4.
+    og::sim::LobbySettings junk = matched;
+    junk.ctf_team_count = 6;
+    og::sim::LobbyMessage junk_message;
+    junk_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = junk,
+    };
+    transport.queue_lobby_message(11u, junk_message);
+    server.poll_incoming_messages();
+    EXPECT_EQ(4, server.state().settings.ctf_team_count);
+
+    // Restore the sentinel: the game-start save-data equivalent carries the
+    // raw 5 verbatim (D7 — the value rides the existing field end to end).
+    transport.queue_lobby_message(11u, matched_message);
+    server.poll_incoming_messages();
+    const og::sim::LobbySaveDataEquivalent equivalent =
+        server.build_save_data_equivalent();
+    EXPECT_EQ(og::sim::kTeamCountMatched, equivalent.ctf_team_count);
+}
+
+TEST(LobbyServer, non_host_matched_settings_change_is_dropped)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        22u,
+        make_join_message("Guest", 1,
+                          {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    // A guest's SettingsChange carrying the Matched sentinel is silently
+    // dropped like any other non-host settings message (D19: the gating
+    // shape is unchanged — guests cycle cosmetically, the host echo wins).
+    transport.clear_sent_messages();
+    og::sim::LobbySettings settings = server.state().settings;
+    ASSERT_EQ(0, settings.ctf_team_count);
+    settings.ctf_team_count = og::sim::kTeamCountMatched;
+    og::sim::LobbyMessage settings_message;
+    settings_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 1u,
+        .settings = settings,
+    };
+    transport.queue_lobby_message(22u, settings_message);
+    server.poll_incoming_messages();
+
+    EXPECT_TRUE(transport.sent_messages().empty());
+    EXPECT_EQ(0, server.state().settings.ctf_team_count);
+}
+
 TEST(LobbyServer, local_session_sanitize_preserves_tower_campaign_pair)
 {
     // Tower-triple §5.9 layer 3, locality amendment: the solo picker

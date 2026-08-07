@@ -589,6 +589,82 @@ int teams_ctf_settings_flow_injector(void* data)
     return 0;
 }
 
+struct MatchedTeamsFlowState
+{
+    bool started = false;
+    bool finished = false;
+    bool subscreen_opened = false;
+    bool start_at_four = false;
+    bool match_live_label = false;
+    bool auto_wrap_label = false;
+    // Captured while the setting reads Match: the descriptor row that backs
+    // later redraws (the second label surface).
+    std::string match_descriptor_label;
+};
+
+// Matched teams (design D4): the Teams cycler appends Match after 4 and
+// wraps to Auto. The save carries Teams: 4, so the flow exercises exactly
+// 4 -> Match -> Auto against the real MATCHUP subscreen.
+int teams_matched_cycle_flow_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    MatchedTeamsFlowState* state = static_cast<MatchedTeamsFlowState*>(data);
+    state->started = true;
+
+    wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);
+    interact("continue_game");
+
+    // Team build -> SCENARIO submenu -> MATCHUP.
+    SDL_Delay(500);
+    wait_for_interactable("scenario", 10000);
+    SDL_Delay(750);
+    interact("scenario");
+    wait_for_interactable("matchup", 10000);
+    SDL_Delay(300);
+    interact("matchup");
+
+    state->subscreen_opened = wait_for_interactable("ctf_teams", 10000);
+    SDL_Delay(300);
+    state->start_at_four =
+        wait_for_interactable_label("ctf_teams", "Teams: 4", 5000);
+    SDL_Delay(300);
+
+    // 4 -> Match. Assert the new label on BOTH surfaces: the live vbutton
+    // (via the interactables) and the mutable descriptor row (read under the
+    // same lock the frame sync publishes it with).
+    interact("ctf_teams");
+    state->match_live_label =
+        wait_for_interactable_label("ctf_teams", "Teams: Match", 5000);
+    SDL_Delay(300);
+    {
+        AllButtonsLock lock;
+        state->match_descriptor_label =
+            og::runtime::current_session->picker_
+                ->teamsmenu_buttons[kTeamsMenuCtfTeamsIndex].label;
+    }
+
+    // Match -> Auto: the wrap.
+    interact("ctf_teams");
+    state->auto_wrap_label =
+        wait_for_interactable_label("ctf_teams", "Teams: Auto", 5000);
+    SDL_Delay(300);
+
+    // Unwind: MATCHUP -> SCENARIO -> team build -> main menu.
+    interact("back");
+    SDL_Delay(300);
+    wait_for_interactable("view_scenario", 10000);
+    SDL_Delay(300);
+    interact("back");
+    SDL_Delay(300);
+    wait_for_interactable("go", 10000);
+    SDL_Delay(300);
+    interact("back");
+
+    state->finished = true;
+    return 0;
+}
+
 // Count picker traces whose message carries the given substring (trace_count
 // is per-category only; the page-flip assertions need the page number).
 int count_picker_trace_containing(const char* substring)
@@ -853,6 +929,54 @@ TEST(CtfUi, matchup_ctf_settings_flow)
 
     // The save0 load remounted the CTF campaign; restore the default mount
     // so later (or shuffled) tests load classic levels again.
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    (void)mount_campaign_package_with_error("gladiator");
+}
+
+// Matched teams (design D3/D4): from a save carrying Teams: 4, one cycle
+// lands on the new Match value and the next wraps to Auto. "Teams: Match"
+// must appear on both label surfaces — the live vbutton and the descriptor
+// row that backs later redraws.
+TEST(CtfUi, matchup_teams_cycle_reaches_match_then_auto)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    // The save0 load mounts the versus campaign; its levels start at scen 500.
+    write_save0_with_two_soldiers("modes", 500);
+    {
+        SaveData& save = og::runtime::current_session->myscreen_->save_data;
+        save.ctf_team_count = 4;
+        ASSERT_TRUE(save.save("save0"));
+    }
+
+    MatchedTeamsFlowState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        teams_matched_cycle_flow_injector, "teams_matched_flow", &state);
+    ASSERT_NE(nullptr, thread);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    EXPECT_TRUE(state.finished) << "injector should complete the flow";
+    EXPECT_TRUE(state.subscreen_opened)
+        << "versus campaign + host shows the settings in the subscreen";
+    EXPECT_TRUE(state.start_at_four) << "the save carried Teams: 4";
+    EXPECT_TRUE(state.match_live_label)
+        << "4 -> Match must relabel the live button 'Teams: Match'";
+    EXPECT_EQ("Teams: Match", state.match_descriptor_label)
+        << "the descriptor row must carry the Match label too";
+    EXPECT_TRUE(state.auto_wrap_label)
+        << "Match -> Auto wrap must relabel 'Teams: Auto'";
+    EXPECT_EQ(0, (int)save.ctf_team_count)
+        << "the wrap should land the save back on Auto";
+
+    // The save0 load remounted the versus campaign; restore the default
+    // mount so later (or shuffled) tests load classic levels again.
     (void)unmount_campaign_package_with_error(get_mounted_campaign());
     (void)mount_campaign_package_with_error("gladiator");
 }

@@ -25,6 +25,7 @@
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/event.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/script_host.h>
@@ -33,12 +34,14 @@
 
 #include "../modes_pack_fixture.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <format>
 #include <string>
 #include <utility>
+#include <vector>
 
 using namespace og::modes_test;
 
@@ -2243,20 +2246,8 @@ TEST_F(ModesBasketball, slot_budget_leaves_63_spare)
 // §11.2 #24 — instruction-budget headroom (10x-reduced budget)
 // ===========================================================================
 
-namespace {
-
-// RAII so an early ASSERT return cannot leak the 10x-reduced budget into
-// every later test in the binary.
-struct BudgetOverride
-{
-    explicit BudgetOverride(std::int64_t v)
-    {
-        og::script::g_test_world_instruction_budget = v;
-    }
-    ~BudgetOverride() { og::script::g_test_world_instruction_budget = 0; }
-};
-
-}  // namespace
+// BudgetOverride (RAII budget restore) now lives in modes_pack_fixture.h,
+// shared with the matched-teams budget probe in test_modes_tdm.cpp.
 
 TEST_F(ModesBasketball, instruction_budget_headroom)
 {
@@ -3228,4 +3219,143 @@ TEST(ModesBasketballRealCampaign, bot_games_score_on_every_shipped_court)
     {
         (void)mount_campaign_package_with_error(previous);
     }
+}
+
+// ===========================================================================
+// Teams: Match system tests (matched-teams WP-F, spec §8)
+// ===========================================================================
+
+namespace {
+
+// Sorted walker-stats levels of a team's live Livings.
+std::vector<int> team_levels_sorted(GameWorld& world, int team)
+{
+    std::vector<int> levels;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        if (w->team_num() != static_cast<unsigned char>(team))
+            continue;
+        if (w->stats() == nullptr)
+            continue;
+        levels.push_back(w->stats()->level());
+    }
+    std::sort(levels.begin(), levels.end());
+    return levels;
+}
+
+// The reference court with a solo LEVELED roster hero on team 0 and an
+// empty team 1 — the shape where Auto and Matched differ only inside the
+// bot spawn seam.
+struct BballSoloRosterCourt : ModesCtfWorld
+{
+    walker* hero = nullptr;
+
+    explicit BballSoloRosterCourt(short guy_level)
+        : ModesCtfWorld(kBballLevelA)
+    {
+        spawn_anchor(0, 128, 448);
+        spawn_anchor(0, 128, 512);
+        spawn_anchor(1, 512, 448);
+        spawn_anchor(1, 512, 512);
+        hero = spawn_leveled_hero(FAMILY_SOLDIER, 0, 128, 96, 1, guy_level);
+    }
+
+    bool basketball_active() const
+    {
+        return var(kBbModeId) == kModeIdBasketball;
+    }
+};
+
+}  // namespace
+
+// The Matched-mask == Auto-mask twin (D5): basketball substitutes
+// row.teams for any requested count <= 0 before activate_teams, and the
+// sentinel must ride the same arm — same mask, same 5v5 game shape; ONLY
+// the squad strength differs.
+TEST_F(ModesBasketball, matched_mask_equals_auto_mask_with_a_solo_roster)
+{
+    BballSoloRosterCourt matched(4);
+    matched.world().ctf_requested_team_count = og::sim::kTeamCountMatched;
+    matched.tick(1);
+    ASSERT_TRUE(matched.basketball_active());
+
+    BballSoloRosterCourt automatic(4);
+    automatic.tick(1);
+    ASSERT_TRUE(automatic.basketball_active());
+
+    EXPECT_EQ(automatic.var(kBbTeamMask), matched.var(kBbTeamMask))
+        << "Matched-mask == Auto-mask (D5)";
+    EXPECT_EQ(alive_on_team(automatic.world(), 0),
+              alive_on_team(matched.world(), 0));
+    EXPECT_EQ(alive_on_team(automatic.world(), 1),
+              alive_on_team(matched.world(), 1))
+        << "the same teams are filled with the same member count (D12)";
+    EXPECT_EQ(5, alive_on_team(matched.world(), 1))
+        << "5v5 basketball keeps its game shape";
+
+    const std::vector<int> auto_levels =
+        team_levels_sorted(automatic.world(), 1);
+    ASSERT_EQ(5u, auto_levels.size());
+    EXPECT_EQ(2, auto_levels.front()) << "Auto keeps the legacy L2 squad";
+    EXPECT_EQ(2, auto_levels.back());
+    EXPECT_EQ(0, automatic.var(kSlotMatchedTarget));
+
+    ASSERT_GT(matched.var(kSlotMatchedTarget), 0);
+    const int code = matched_plan_code(matched.var(kSlotMatchedPlan), 1);
+    ASSERT_NE(0, code) << "the matched twin solved team 1";
+    const std::vector<int> matched_levels =
+        team_levels_sorted(matched.world(), 1);
+    ASSERT_EQ(5u, matched_levels.size());
+    EXPECT_EQ(code / 10, matched_levels.front())
+        << "squad levels follow the stored plan";
+    EXPECT_EQ(code / 10 + (code % 10 > 0 ? 1 : 0), matched_levels.back());
+    EXPECT_EQ(1, count_notifications(matched.events, "TEAMS MATCHED"));
+    EXPECT_EQ(0, count_notifications(automatic.events, "TEAMS MATCHED"));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+// I5/E4 for basketball: the wipe watchdog's reset backstop refields a
+// wiped MATCHED team at the STORED (L*, k*) — identical strength, never
+// the legacy formula — and stays silent mid-match.
+TEST_F(ModesBasketball, wipe_watchdog_refields_a_matched_team_at_strength)
+{
+    BballSoloRosterCourt fx(4);
+    fx.world().ctf_requested_team_count = og::sim::kTeamCountMatched;
+    fx.world().respawn_mode = 0;
+    fx.tick(1);
+    ASSERT_TRUE(fx.basketball_active());
+    const std::vector<int> at_init = team_levels_sorted(fx.world(), 1);
+    ASSERT_EQ(5u, at_init.size());
+    const int code = matched_plan_code(fx.var(kSlotMatchedPlan), 1);
+    ASSERT_NE(0, code);
+    ASSERT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"));
+
+    for (const auto& uptr : fx.world().oblist)
+    {
+        walker* w = uptr.get();
+        if (w != nullptr && !w->dead() &&
+            w->query_order() == Order::Living && w->team_num() == 1)
+            w->set_dead(1);
+    }
+    fx.tick(2);  // the engine sweeps the unscheduled AI corpses
+    ASSERT_EQ(0, alive_on_team(fx.world(), 1));
+
+    fx.tick(598);
+    for (int i = 0;
+         i < 120 && count_notifications(fx.events, "BALL RESET") == 0; ++i)
+        fx.tick(1);
+    ASSERT_EQ(1, count_notifications(fx.events, "BALL RESET"))
+        << "the wipe watchdog must reset the dead ball";
+    EXPECT_EQ(5, alive_on_team(fx.world(), 1))
+        << "revive_wiped_teams refields the wiped matched side";
+    EXPECT_EQ(at_init, team_levels_sorted(fx.world(), 1))
+        << "the replacement squad reproduces the stored (L*, k*)";
+    EXPECT_EQ(code, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
+        << "the plan is durable across the wipe";
+    EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"))
+        << "mid-match reprovision stays silent (§7)";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }

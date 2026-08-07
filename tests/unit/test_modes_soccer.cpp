@@ -16,6 +16,7 @@
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/event.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/script_host.h>
@@ -24,9 +25,11 @@
 
 #include "../modes_pack_fixture.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <format>
 #include <string>
+#include <vector>
 
 using namespace og::modes_test;
 
@@ -1904,4 +1907,188 @@ TEST_F(ModesSoccer, match_replicates_to_a_client_mirror_without_hash_strikes)
     EXPECT_EQ(ball->entity_id(),
               static_cast<std::uint32_t>(mirror.world().mode.beacons[0].entity_id))
         << "the ball beacon must point at the replicated ball";
+}
+
+// ===========================================================================
+// Teams: Match system tests (matched-teams WP-F, spec §8)
+// ===========================================================================
+
+namespace {
+
+// Sorted walker-stats levels of a team's live Livings.
+std::vector<int> team_levels_sorted(GameWorld& world, int team)
+{
+    std::vector<int> levels;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        if (w->team_num() != static_cast<unsigned char>(team))
+            continue;
+        if (w->stats() == nullptr)
+            continue;
+        levels.push_back(w->stats()->level());
+    }
+    std::sort(levels.begin(), levels.end());
+    return levels;
+}
+
+// A pitch with a solo LEVELED roster hero on team 0 and an empty team 1:
+// the shape where Auto and Matched differ only inside the bot spawn seam.
+struct SoccerSoloRosterWorld : SoccerPitch
+{
+    walker* hero = nullptr;
+
+    explicit SoccerSoloRosterWorld(short guy_level)
+        : SoccerPitch(kSoccerLevelA)
+    {
+        spawn_anchor(0, 96, 448);
+        spawn_anchor(0, 96, 480);
+        spawn_anchor(1, 528, 448);
+        spawn_anchor(1, 528, 480);
+        hero = spawn_leveled_hero(FAMILY_SOLDIER, 0, 96, 96, 1, guy_level);
+    }
+};
+
+}  // namespace
+
+// The Matched-mask == Auto-mask twin (D5): soccer substitutes row.teams
+// for any requested count <= 0 before activate_teams, and the sentinel
+// must ride the same arm — same mask, same fill counts; ONLY the squad
+// strength differs.
+TEST_F(ModesSoccer, matched_mask_equals_auto_mask_with_a_solo_roster)
+{
+    SoccerSoloRosterWorld matched(4);
+    matched.world().ctf_requested_team_count = og::sim::kTeamCountMatched;
+    matched.tick(1);
+    ASSERT_TRUE(matched.soccer_active());
+
+    SoccerSoloRosterWorld automatic(4);
+    automatic.tick(1);
+    ASSERT_TRUE(automatic.soccer_active());
+
+    EXPECT_EQ(automatic.var(kSocTeamMask), matched.var(kSocTeamMask))
+        << "Matched-mask == Auto-mask (D5)";
+    EXPECT_EQ(alive_on_team(automatic.world(), 0),
+              alive_on_team(matched.world(), 0));
+    EXPECT_EQ(alive_on_team(automatic.world(), 1),
+              alive_on_team(matched.world(), 1))
+        << "the same teams are filled with the same member count (D12)";
+    EXPECT_EQ(5, alive_on_team(matched.world(), 1));
+
+    const std::vector<int> auto_levels =
+        team_levels_sorted(automatic.world(), 1);
+    ASSERT_EQ(5u, auto_levels.size());
+    EXPECT_EQ(2, auto_levels.front()) << "Auto keeps the legacy L2 squad";
+    EXPECT_EQ(2, auto_levels.back());
+    EXPECT_EQ(0, automatic.var(kSlotMatchedTarget));
+
+    ASSERT_GT(matched.var(kSlotMatchedTarget), 0);
+    const int code = matched_plan_code(matched.var(kSlotMatchedPlan), 1);
+    ASSERT_NE(0, code) << "the matched twin solved team 1";
+    const std::vector<int> matched_levels =
+        team_levels_sorted(matched.world(), 1);
+    ASSERT_EQ(5u, matched_levels.size());
+    EXPECT_EQ(code / 10, matched_levels.front())
+        << "squad levels follow the stored plan";
+    EXPECT_EQ(code / 10 + (code % 10 > 0 ? 1 : 0), matched_levels.back());
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+// I5/E4 for soccer: a wiped MATCHED team's kickoff reprovision refills at
+// the STORED (L*, k*) — identical strength, not the legacy formula.
+TEST_F(ModesSoccer, kickoff_reprovisions_a_wiped_matched_team_at_strength)
+{
+    SoccerSoloRosterWorld fx(4);
+    fx.world().ctf_requested_team_count = og::sim::kTeamCountMatched;
+    fx.world().respawn_mode = 0;  // permadeath submenu
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    const std::vector<int> at_init = team_levels_sorted(fx.world(), 1);
+    ASSERT_EQ(5u, at_init.size());
+    const int code = matched_plan_code(fx.var(kSlotMatchedPlan), 1);
+    ASSERT_NE(0, code);
+    ASSERT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"));
+
+    fx.thaw_kickoff();
+    park_away(fx.hero);
+    for (const auto& uptr : fx.world().oblist)
+    {
+        walker* w = uptr.get();
+        if (w != nullptr && !w->dead() &&
+            w->query_order() == Order::Living && w->team_num() == 1)
+            w->set_dead(1);
+    }
+    fx.tick(2);  // the engine sweeps the unscheduled AI corpses
+    ASSERT_EQ(0, alive_on_team(fx.world(), 1));
+
+    fx.world().mode.vars[kSocLastTouch1] = 1;  // team 0 touched last
+    fx.set_ball(600, 464, 4 * 256, 0);         // into team 1's strip
+    fx.tick(1);
+    EXPECT_TRUE(has_notification(fx.events, "RED TEAM GOAL!"));
+    EXPECT_EQ(5, alive_on_team(fx.world(), 1))
+        << "the kickoff backstop refields the wiped matched team";
+    EXPECT_EQ(at_init, team_levels_sorted(fx.world(), 1))
+        << "the replacement squad reproduces the stored (L*, k*) — never "
+           "the legacy formula";
+    EXPECT_EQ(code, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
+        << "the plan is durable across the wipe";
+    EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"))
+        << "mid-match reprovision stays silent (§7)";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+// E4/D24: a wiped HUMAN team whose corpses are all gone gets a squad
+// matched to the STORED target — measured and solved at backstop time,
+// never the legacy formula — and the solve stays silent mid-match.
+TEST_F(ModesSoccer, kickoff_backstop_matches_a_wiped_human_team_to_target)
+{
+    SoccerPitch fx(kSoccerLevelA);
+    fx.spawn_anchor(0, 96, 448);
+    fx.spawn_anchor(0, 96, 480);
+    fx.spawn_anchor(1, 528, 448);
+    fx.spawn_anchor(1, 528, 480);
+    walker* red_hero = fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 96, 96, 1, 1);
+    walker* green_hero =
+        fx.spawn_leveled_hero(FAMILY_SOLDIER, 1, 560, 96, 2, 1);
+    fx.world().ctf_requested_team_count = og::sim::kTeamCountMatched;
+    fx.world().respawn_mode = 0;
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    // Both teams human: no fill, no plan, no announcement — but the
+    // census stored T (two fresh soldiers -> mean 2306, derived §4.2).
+    ASSERT_EQ(2306, fx.var(kSlotMatchedTarget));
+    ASSERT_EQ(0, fx.var(kSlotMatchedPlan));
+    ASSERT_EQ(0, count_notifications(fx.events, "TEAMS MATCHED"));
+    ASSERT_EQ(1, alive_on_team(fx.world(), 1));
+
+    fx.thaw_kickoff();
+    park_away(red_hero);
+    // The green hero falls AND loses its guy record (a destroyed-corpse
+    // stand-in): the engine sweeps the now-guyless unscheduled corpse, so
+    // the kickoff backstop finds zero live, zero pending, zero corpses.
+    green_hero->set_dead(1);
+    green_hero->clear_myguy();
+    fx.tick(2);
+    ASSERT_EQ(0, alive_on_team(fx.world(), 1));
+
+    fx.world().mode.vars[kSocLastTouch1] = 1;
+    fx.set_ball(600, 464, 4 * 256, 0);
+    fx.tick(1);
+    EXPECT_TRUE(has_notification(fx.events, "RED TEAM GOAL!"));
+    EXPECT_EQ(5, alive_on_team(fx.world(), 1))
+        << "the formerly-human team is refielded (today's behavior, D24)";
+    // T = 2306 < B(1): the D24 measure-and-solve arm floors at uniform L1
+    // — visibly NOT the legacy L2 squad the pre-matched backstop fielded.
+    EXPECT_EQ(10, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
+        << "the backstop solved NOW against the stored target and "
+           "persisted the plan";
+    const std::vector<int> levels = team_levels_sorted(fx.world(), 1);
+    ASSERT_EQ(5u, levels.size());
+    EXPECT_EQ(1, levels.front());
+    EXPECT_EQ(1, levels.back());
+    EXPECT_EQ(0, count_notifications(fx.events, "TEAMS MATCHED"))
+        << "the mid-match D24 solve never announces (§7)";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }

@@ -81,15 +81,43 @@ local function mask_count(mask)
   return count
 end
 
+-- The Teams: Match sentinel — must equal the C++ kTeamCountMatched
+-- (lobby_state.h); the equality is pinned via an og.match_setting
+-- round-trip in test_mode_bindings (matched-teams D2/D18).
+local MATCHED_TEAM_COUNT = 5
+
+-- One normalization rule for every team-count consumer: Auto (raw <= 0)
+-- and Matched (raw == MATCHED_TEAM_COUNT) both mean "no numeric clamp" —
+-- count 0 — because matching changes bot strength, never which teams
+-- activate (matched-teams D5). The boolean reports a Matched request for
+-- the power seam; junk counts (6+) pass through to activate_teams' clamp.
+local function normalize_team_count(raw)
+  if raw == MATCHED_TEAM_COUNT then
+    return 0, true
+  end
+  if raw <= 0 then
+    return 0, false
+  end
+  return raw, false
+end
+
+-- The lobby team-count request, normalized: (count, matched) with count 0
+-- for Auto OR Matched (matched-teams D18).
+local function team_count_request()
+  return normalize_team_count(og.match_setting("team_count"))
+end
+
 -- The team-activation clamp (og.effective_team_mask's rule applied to an
 -- arbitrary authored domain — CTF activates flag teams, not marker teams):
--- requested <= 0 takes every authored team; otherwise the first
--- clamp(requested, 2, 4) authored teams in index order.
+-- a normalized count of 0 (requested <= 0, or the Matched sentinel) takes
+-- every authored team; otherwise the first clamp(count, 2, 4) authored
+-- teams in index order.
 local function activate_teams(authored_mask, requested)
-  if requested <= 0 then
+  local count = normalize_team_count(requested)
+  if count <= 0 then
     return authored_mask
   end
-  local remaining = og.clamp(requested, 2, C.SCORE_TEAM_COUNT)
+  local remaining = og.clamp(count, 2, C.SCORE_TEAM_COUNT)
   local mask = 0
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
     if remaining > 0 then
@@ -161,6 +189,8 @@ return {
   SLOT = SLOT,
   MODE = MODE,
   TEAM_BIT = TEAM_BIT,
+  MATCHED_TEAM_COUNT = MATCHED_TEAM_COUNT,
+  team_count_request = team_count_request,
   pos_pack = pos_pack,
   pos_x = pos_x,
   pos_y = pos_y,

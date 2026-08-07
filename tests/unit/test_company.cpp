@@ -8,6 +8,7 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/campaign_io.h>
 #include <openglad/resources/filesystem.h>
@@ -1631,6 +1632,29 @@ TEST(CompanyAutosave, networked_lobby_merge_preserves_private_state)
         << "lobby hires must persist";
     EXPECT_EQ(3, static_cast<int>(reloaded.team_size));
     EXPECT_EQ(999, reloaded.last_played_unix_s);
+}
+
+// Matched-teams D7: the Teams: Match sentinel (kTeamCountMatched = 5) rides
+// the existing ctf_team_count short in the GTL v10 block — no format bump.
+// Both halves of the round-trip: the writer stores the raw 5, the full
+// loader returns it verbatim (no clamp anywhere on the persistence path).
+TEST(CompanyAutosave, matched_team_count_sentinel_round_trips)
+{
+    SaveDirSandbox sandbox;
+    ScopedMountRestore mount_guard;
+    restore_default_campaigns();
+
+    {
+        SaveData priv;
+        priv.save_name = "Matched Co";
+        priv.current_campaign = "gladiator";
+        priv.ctf_team_count = og::sim::kTeamCountMatched;
+        ASSERT_TRUE(priv.save("save0"));
+    }
+
+    SaveData reloaded;
+    ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("save0"));
+    EXPECT_EQ(og::sim::kTeamCountMatched, reloaded.ctf_team_count);
 }
 
 TEST(CompanyAutosave, networked_sale_persists_removed_members_wallet)

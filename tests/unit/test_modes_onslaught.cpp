@@ -18,6 +18,7 @@
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/event.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/pack_scripts.h>
@@ -27,10 +28,13 @@
 
 #include "../modes_pack_fixture.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <format>
 #include <string>
+#include <tuple>
+#include <vector>
 
 using namespace og::modes_test;
 
@@ -390,6 +394,75 @@ TEST_F(ModesOnslaught, troops_own_activates_only_the_roster_teams)
     EXPECT_EQ(1, alive_on_team(fx.world(), 0));
     EXPECT_EQ(0, alive_on_team(fx.world(), 1)) << "no init infantry under OWN";
     EXPECT_EQ(1, alive_on_team(fx.world(), 2));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+// Matched teams D17/E8: Onslaught treats the Teams: Match sentinel exactly
+// as Auto for masks — the normalized request stays 0, so the row.teams
+// manifest default still substitutes (a raw 5 would skip the substitution
+// and activate all three authored teams) — and ignores matched POWER
+// entirely: no plan is solved, nothing announces, and the generators field
+// the same armies as the Auto twin. Only the shared census (which rides
+// own_roster_activation on every mode) latches a target.
+TEST_F(ModesOnslaught, matched_request_masks_like_auto_and_ignores_power)
+{
+    auto author = [](ModesCtfWorld& fx) {
+        fx.spawn_anchor(0, 96, 128);
+        fx.spawn_generator(FAMILY_TENT, 0, 128, 320);
+        fx.spawn_generator(FAMILY_TENT, 1, 480, 320);
+        fx.spawn_generator(FAMILY_TENT, 2, 128, 640);
+        fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 96, 96, 1, 2);
+    };
+    // (team, family, level) of every live Living, sorted — the twin worlds
+    // are deterministic, so equal multisets mean the generators kept their
+    // legacy spawn levels under Matched.
+    auto fielded = [](GameWorld& world) {
+        std::vector<std::tuple<int, int, int>> out;
+        for (const auto& uptr : world.oblist)
+        {
+            const walker* w = uptr.get();
+            if (w == nullptr || w->dead() ||
+                w->query_order() != Order::Living || w->stats() == nullptr)
+                continue;
+            out.emplace_back(static_cast<int>(w->team_num()),
+                             static_cast<int>(w->family()),
+                             w->stats()->level());
+        }
+        std::sort(out.begin(), out.end());
+        return out;
+    };
+
+    // The twin worlds run strictly one after the other (the E3 twin idiom:
+    // construct-and-tick the first fully before constructing the second —
+    // the script bindings resolve the CURRENT world).
+    ModesCtfWorld matched(kOnsLevelA);
+    matched.world().ctf_requested_team_count = og::sim::kTeamCountMatched;
+    author(matched);
+    matched.tick(90);
+    ModesCtfWorld automatic(kOnsLevelA);
+    author(automatic);
+    automatic.tick(90);
+    ASSERT_EQ(kModeIdOnslaught, matched.var(kOnsModeId));
+    ASSERT_EQ(kModeIdOnslaught, automatic.var(kOnsModeId));
+
+    // kOnsLevelA's manifest row says teams = 2 over three authored
+    // generator teams: the sentinel must land on the first two authored
+    // teams like Auto, never on a numeric-clamp mask of three.
+    EXPECT_EQ(3, matched.var(kOnsTeamMask))
+        << "row.teams = 2 substitution must survive the sentinel";
+    EXPECT_EQ(automatic.var(kOnsTeamMask), matched.var(kOnsTeamMask))
+        << "Matched-mask == Auto-mask (D5/E8)";
+    EXPECT_EQ(automatic.var(kOnsTeamCount), matched.var(kOnsTeamCount));
+
+    EXPECT_EQ(fielded(automatic.world()), fielded(matched.world()))
+        << "matched power must not touch onslaught's generator armies (D17)";
+
+    EXPECT_GT(matched.var(kSlotMatchedTarget), 0)
+        << "the shared census still runs (matched request + a human)";
+    EXPECT_EQ(0, automatic.var(kSlotMatchedTarget));
+    EXPECT_EQ(0, matched.var(kSlotMatchedPlan)) << "no seat ever solves";
+    EXPECT_EQ(0, matched.var(kSlotMatchedAnnounced));
+    EXPECT_FALSE(has_notification(matched.events, "TEAMS MATCHED"));
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 

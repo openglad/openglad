@@ -52,6 +52,7 @@ inline constexpr int kModesWaypointFamily = 14;
 #include <openglad/gameplay/families/treasure_family_descriptor.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/script/family_hooks.h>
@@ -325,6 +326,62 @@ TEST_F(ModesCtf, init_strips_teams_beyond_requested_count)
     EXPECT_EQ(5, alive_on_team(fx.world(), 0));
     EXPECT_EQ(5, alive_on_team(fx.world(), 1));
     EXPECT_EQ(0, alive_on_team(fx.world(), 2));
+}
+
+// Matched-teams D16 acceptance: the init squad fill goes through the one
+// shared spawner (match.spawn_bots) but keeps CTF's OWN placer — when every
+// team anchor probe fails, the first squad member lands on the team's
+// flag-home square, NOT on a teleport draw. A naive re-point at
+// mode_match's placer would lose the flag-home fallback and teleport all
+// five; this pins the fallback chain anchor -> flag home -> teleport.
+TEST_F(ModesCtf, blocked_anchor_bot_fill_falls_back_to_flag_home)
+{
+    ModesCtfWorld fx;
+    fx.spawn_flag(flag_family_, 0, 96, 96);
+    fx.spawn_flag(flag_family_, 1, 544, 800);
+    fx.spawn_anchor(1, 512, 832);
+    fx.spawn_anchor(1, 512, 128);
+    // Team-0 livings stand exactly on both team-1 anchors, so every anchor
+    // probe fails for the empty team's squad. They also keep team 0
+    // populated (no squad there).
+    fx.spawn_living(FAMILY_SOLDIER, 0, 512, 832);
+    fx.spawn_living(FAMILY_SOLDIER, 0, 512, 128);
+
+    fx.tick(1);
+
+    ASSERT_TRUE(fx.ctf_active());
+    EXPECT_EQ(3, fx.var(kSlotTeamMask));
+    EXPECT_EQ(2, alive_on_team(fx.world(), 0)) << "the blockers, no squad";
+    EXPECT_EQ(5, alive_on_team(fx.world(), 1)) << "the empty team's squad";
+
+    // The first squad member (soldier, squad index 0) took the flag-home
+    // fallback; the four behind it found the square occupied and fell to
+    // the blessed init-time teleport. Exactly one bot at flag home proves
+    // the placer probed the flag home BEFORE any teleport draw.
+    int at_flag_home = 0;
+    const walker* home_bot = nullptr;
+    for (const auto& uptr : fx.world().oblist)
+    {
+        const walker* w = uptr.get();
+        if (w != nullptr && !w->dead() &&
+            w->query_order() == Order::Living && w->team_num() == 1)
+        {
+            EXPECT_FALSE(w->xpos() == 512 && w->ypos() == 832)
+                << "no bot may land on a blocked anchor";
+            EXPECT_FALSE(w->xpos() == 512 && w->ypos() == 128)
+                << "no bot may land on a blocked anchor";
+            if (w->xpos() == 544 && w->ypos() == 800)
+            {
+                at_flag_home++;
+                home_bot = w;
+            }
+        }
+    }
+    ASSERT_EQ(1, at_flag_home);
+    ASSERT_NE(nullptr, home_bot);
+    EXPECT_EQ(FAMILY_SOLDIER, home_bot->family())
+        << "the FIRST squad member is the one the flag-home fallback placed";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
 // The modes.md §4.10 sparse-activation shape: flags on {0, 2, 3} with a
@@ -2594,4 +2651,79 @@ TEST_F(ModesCtf, match_replicates_to_a_client_mirror_without_hash_strikes)
         EXPECT_EQ(fx.world().mode.vars[static_cast<std::size_t>(slot)], mirror.world().mode.vars[static_cast<std::size_t>(slot)])
             << "mode var slot " << slot;
     }
+}
+
+// ===========================================================================
+// Teams: Match — the engine-respawn survival path (matched-teams WP-F, I5)
+// ===========================================================================
+
+// I5(b): a dead MATCHED bot's replacement is a FRESH walker whose level
+// the engine re-derives from the corpse's stamped s_level snapshot — no
+// Lua runs on that path. The test asserts the replacement's s_level
+// equals the matched level, never walker-object identity.
+TEST_F(ModesCtf, dead_matched_bot_respawns_at_its_matched_level)
+{
+    ModesCtfWorld fx;
+    fx.world().ctf_requested_team_count = og::sim::kTeamCountMatched;
+    fx.spawn_flag(flag_family_, 0, 96, 96);
+    fx.spawn_flag(flag_family_, 1, 544, 800);
+    fx.spawn_anchor(1, 256, 256);
+    fx.spawn_anchor(1, 256, 320);
+    fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 200, 200, 1, 5);
+    fx.world().ctf_requested_respawn_ticks = 10;
+    fx.tick(1);
+    ASSERT_TRUE(fx.ctf_active());
+    ASSERT_EQ(5, alive_on_team(fx.world(), 1)) << "the matched init fill";
+    EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"))
+        << "the CTF fill runs before the MODE_ID latch, so the one-shot "
+           "init announcement still fires (§7)";
+
+    const int code = matched_plan_code(fx.var(kSlotMatchedPlan), 1);
+    ASSERT_NE(0, code) << "team 1 solved against the L5 hero's target";
+    // Squad member 1 is the soldier: L*+1 when k* >= 1, else L*.
+    const int expected_level = code / 10 + (code % 10 >= 1 ? 1 : 0);
+
+    walker* bot = nullptr;
+    for (const auto& uptr : fx.world().oblist)
+    {
+        walker* w = uptr.get();
+        if (w != nullptr && !w->dead() &&
+            w->query_order() == Order::Living && w->team_num() == 1 &&
+            w->family() == FAMILY_SOLDIER)
+            bot = w;
+    }
+    ASSERT_NE(nullptr, bot);
+    ASSERT_NE(nullptr, bot->stats());
+    ASSERT_EQ(expected_level, bot->stats()->level())
+        << "the spawned soldier carries the plan's level stamp";
+    const std::uint32_t corpse_id = bot->entity_id();
+
+    bot->set_dead(1);
+    fx.tick(1);
+    ASSERT_EQ(1u, fx.world().respawn.respawn_queue.size());
+    EXPECT_EQ(1, fx.world().respawn.respawn_queue.front().kind)
+        << "a matched bot corpse queues as an AI replacement";
+    EXPECT_EQ(expected_level, fx.world().respawn.respawn_queue.front().level)
+        << "the queue snapshots the corpse's matched level";
+
+    fx.tick(10);
+    ASSERT_EQ(5, alive_on_team(fx.world(), 1));
+    const walker* replacement = nullptr;
+    for (const auto& uptr : fx.world().oblist)
+    {
+        const walker* w = uptr.get();
+        if (w != nullptr && !w->dead() &&
+            w->query_order() == Order::Living && w->team_num() == 1 &&
+            w->family() == FAMILY_SOLDIER)
+            replacement = w;
+    }
+    ASSERT_NE(nullptr, replacement);
+    ASSERT_NE(nullptr, replacement->stats());
+    EXPECT_NE(corpse_id, replacement->entity_id())
+        << "the replacement is a FRESH walker, not the revived corpse";
+    EXPECT_EQ(expected_level, replacement->stats()->level())
+        << "matched strength survives the engine respawn queue (I5)";
+    EXPECT_EQ(code, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
+        << "the stored plan is untouched by the engine path";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }

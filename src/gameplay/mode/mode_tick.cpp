@@ -12,6 +12,7 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/walker.h>
@@ -65,7 +66,10 @@ std::uint8_t effective_team_mask(std::uint8_t authored, int requested) noexcept
     const auto all_mask =
         static_cast<std::uint8_t>((1u << SCORE_TEAM_COUNT) - 1u);
     authored = static_cast<std::uint8_t>(authored & all_mask);
-    if (requested <= 0)
+    // Matched (kTeamCountMatched) keeps Auto's mask: matching changes bot
+    // STRENGTH in the mode spawn seam, never which teams activate
+    // (matched-teams design D5/D18).
+    if (requested <= 0 || requested == kTeamCountMatched)
         return authored;
     int remaining = std::clamp(requested, 2, static_cast<int>(SCORE_TEAM_COUNT));
     std::uint8_t effective = 0;

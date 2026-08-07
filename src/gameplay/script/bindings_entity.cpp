@@ -2394,8 +2394,11 @@ int og_team_color_name(lua_State* L)
 }
 
 // og.match_setting(name) — the lobby/save match knobs, reinterpreted as
-// generic match settings; 0 always means "mode default". Names:
-// "team_count" (0 = Auto), "score_limit", "respawn_ticks", "strip_troops",
+// generic match settings; 0 always means "mode default" (team_count 5 =
+// Matched). Names: "team_count" (0 = Auto; 5 = Matched, the "Teams: Match"
+// lobby value — every team-mask reading treats it exactly as Auto, and only
+// the bot-squad power model reads it as itself), "score_limit",
+// "respawn_ticks", "strip_troops",
 // "respawn_mode" (the difficulty submenu's classic respawn selector),
 // "difficulty" (the session difficulty percent, 100 = normal — the CTF
 // bot-squad level formula reads it).

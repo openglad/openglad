@@ -18,6 +18,7 @@
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/core/irandom.h>
@@ -526,10 +527,14 @@ bool is_allied_mode(const SaveData& save)
 
 void cycle_ctf_team_count(SaveData& save)
 {
-    // Auto (0 = every team the map authors) -> 2 -> 3 -> 4 -> Auto.
+    // Auto (0 = every team the map authors) -> 2 -> 3 -> 4 -> Match -> Auto.
+    // Match (kTeamCountMatched = 5) keeps Auto's team mask and fills empty
+    // active teams with bot squads matched to the human census; on a map
+    // with no empty active team it plays identically to Auto. Stored junk
+    // (6+) still wraps straight to Auto via the >= branch.
     if (save.ctf_team_count <= 0)
         save.ctf_team_count = 2;
-    else if (save.ctf_team_count >= 4)
+    else if (save.ctf_team_count >= og::sim::kTeamCountMatched)
         save.ctf_team_count = 0;
     else
         save.ctf_team_count = static_cast<short>(save.ctf_team_count + 1);
@@ -1701,6 +1706,10 @@ std::string format_allied_mode_label(const SaveData& save)
 
 std::string format_ctf_teams_label(const SaveData& save)
 {
+    // 12 chars — fills the SDL 80px/12-char face budget exactly (design D3;
+    // "Teams: Even" is the recorded fallback if headroom is ever needed).
+    if (save.ctf_team_count == og::sim::kTeamCountMatched)
+        return "Teams: Match";
     if (save.ctf_team_count <= 0)
         return "Teams: Auto";
     return std::format("Teams: {}", save.ctf_team_count);

@@ -15,6 +15,7 @@
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/script/family_hooks.h>
@@ -1115,4 +1116,246 @@ TEST_F(ModesMutant, match_replicates_to_a_client_mirror_without_hash_strikes)
                   mirror.world().mode.vars[static_cast<std::size_t>(slot)])
             << "mode var slot " << slot;
     }
+}
+
+// ===========================================================================
+// Teams: Match power model — the n = 1 seat shape (matched-teams WP-E)
+// ===========================================================================
+
+// Every empty mutant seat is a one-bot squad, so each seat solves its own
+// (L, 0) against the shared target with its own family base (§5.3 mutant
+// carve-out: no k-interpolation, family disparity still priced).
+TEST_F(ModesMutant, matched_seats_solve_independently_per_family)
+{
+    ModesCtfWorld fx(kMutantLevelA);
+    fx.world().ctf_requested_team_count = og::sim::kTeamCountMatched;
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(1, 544, 96);
+    fx.spawn_anchor(2, 96, 800);
+    fx.spawn_anchor(3, 544, 800);
+    fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 200, 200, 1, 3);
+    fx.tick(1);
+    ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
+
+    // Derived: the L3 soldier hero's f (trunc discipline) is the target.
+    EXPECT_EQ(5182, fx.var(kSlotMatchedTarget))
+        << "solo roster -> T is the hero's own f (derived pin, §4.2)";
+    const std::int32_t plan = fx.var(kSlotMatchedPlan);
+    EXPECT_EQ(0, matched_plan_code(plan, 0)) << "the human seat never solves";
+    for (int team = 1; team <= 3; ++team)
+    {
+        const int code = matched_plan_code(plan, team);
+        EXPECT_EQ(0, code % 10) << "n = 1 admits no upgrades (seat " << team
+                                << ")";
+        EXPECT_EQ(1, alive_on_team(fx.world(), team));
+    }
+    // Derived seat solves against T = 5182 over the seat families
+    // (archer / elf / thief loader bases): every seat answers L3 here.
+    EXPECT_EQ(30, matched_plan_code(plan, 1));
+    EXPECT_EQ(30, matched_plan_code(plan, 2));
+    EXPECT_EQ(30, matched_plan_code(plan, 3));
+    for (const auto& uptr : fx.world().oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        if (w->team_num() == 0 || w->stats() == nullptr)
+            continue;
+        EXPECT_EQ(matched_plan_code(plan, w->team_num()) / 10,
+                  w->stats()->level())
+            << "seat " << static_cast<int>(w->team_num());
+    }
+    EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"));
+}
+
+namespace {
+
+// C++ twin of mode_match.walker_power under the same §4.1 trunc-on-read
+// discipline (static_cast truncates the positive float stats exactly like
+// og.trunc). For a single L1 seat bot with an integer tuple row, measured
+// f IS the model's B(1) exactly, so the borderline tests can pin their
+// clamp premises instead of asserting them in comments.
+long long measured_walker_f(const walker* w)
+{
+    const statistics* s = w->stats();
+    if (s == nullptr)
+        return 0;
+    const long long hp = static_cast<long long>(s->max_hitpoints());
+    const long long mp = static_cast<long long>(s->max_magicpoints());
+    const long long armor = static_cast<long long>(s->armor());
+    const long long dmg = static_cast<long long>(w->damage());
+    const long long sp = static_cast<long long>(w->stepsize());
+    long long ff = static_cast<long long>(w->fire_frequency());
+    if (ff < 1)
+        ff = 1;
+    const long long level = s->level();
+    const long long ed = dmg * (level + 3) / 4;
+    const long long rate = 120 / ff;
+    const long long off = ed * rate + 5 * sp;
+    const long long ehp = hp + 4 * armor + mp / 2;
+    return ehp * (off + 60) / 60;
+}
+
+// The single guy-less Living a mutant seat fielded.
+const walker* seat_bot(GameWorld& world, int team)
+{
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        if (w->myguy != nullptr)
+            continue;
+        if (w->team_num() == static_cast<unsigned char>(team))
+            return w;
+    }
+    return nullptr;
+}
+
+}  // namespace
+
+// The documented first-solve announce limitation (spec §7 / WP-E report):
+// the one-shot announcement takes its LIMIT flag from the FIRST solved
+// seat. A fresh archer's target (921, derived) sits between the archer
+// seat's B(1) (834 — inside range, no clamp) and the elf/thief seats'
+// B(1) (958/969 — clamped low), so the match announces the plain variant
+// even though two later seats clamped. The B(1) premises are PINNED below
+// on the fielded L1 bots (integer tuple rows make measured f the model's
+// B(1) exactly), so an elf/thief rebalance that drops their B(1) under the
+// target cannot silently turn this into a nothing-clamped world. If the
+// announce pin moves because it learned to aggregate clamps across seats,
+// update the spec note instead of the test.
+TEST_F(ModesMutant, matched_borderline_seat_announce_follows_first_solve)
+{
+    ModesCtfWorld fx(kMutantLevelA);
+    fx.world().ctf_requested_team_count = og::sim::kTeamCountMatched;
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(1, 544, 96);
+    fx.spawn_anchor(2, 96, 800);
+    fx.spawn_anchor(3, 544, 800);
+    fx.spawn_leveled_hero(FAMILY_ARCHER, 0, 200, 200, 1, 1);
+    fx.tick(1);
+    ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
+
+    EXPECT_EQ(921, fx.var(kSlotMatchedTarget))
+        << "fresh archer f (derived pin, §4.2)";
+    const std::int32_t plan = fx.var(kSlotMatchedPlan);
+    EXPECT_EQ(10, matched_plan_code(plan, 1)) << "archer seat: L1, in range";
+    EXPECT_EQ(10, matched_plan_code(plan, 2)) << "elf seat: clamped to L1";
+    EXPECT_EQ(10, matched_plan_code(plan, 3)) << "thief seat: clamped to L1";
+
+    // The clamp premises, pinned on the fielded L1 bots (measured f ==
+    // model B(1), integer tuple rows): the FIRST solved seat sat in range
+    // while both later seats clamped low. If a loader/tuple rebalance
+    // moves any of these across the 921 target, the derived pins red out
+    // — recompute them (spec §4.2) and re-check which seats clamp.
+    const walker* archer_bot = seat_bot(fx.world(), 1);
+    const walker* elf_bot = seat_bot(fx.world(), 2);
+    const walker* thief_bot = seat_bot(fx.world(), 3);
+    ASSERT_NE(nullptr, archer_bot);
+    ASSERT_NE(nullptr, elf_bot);
+    ASSERT_NE(nullptr, thief_bot);
+    EXPECT_EQ(834, measured_walker_f(archer_bot)) << "archer seat B(1)";
+    EXPECT_LT(measured_walker_f(archer_bot), 921)
+        << "premise: the first solved seat did NOT clamp";
+    EXPECT_EQ(958, measured_walker_f(elf_bot)) << "elf seat B(1)";
+    EXPECT_GT(measured_walker_f(elf_bot), 921)
+        << "premise: the elf seat clamped low";
+    EXPECT_EQ(969, measured_walker_f(thief_bot)) << "thief seat B(1)";
+    EXPECT_GT(measured_walker_f(thief_bot), 921)
+        << "premise: the thief seat clamped low";
+
+    EXPECT_EQ(1, fx.var(kSlotMatchedAnnounced))
+        << "the first seat did not clamp, so the plain variant announced";
+    EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"));
+    EXPECT_EQ(0, count_notifications(fx.events, "TEAMS MATCHED (LIMIT)"));
+}
+
+// The reverse direction of the first-solve rule: when the FIRST solved
+// seat itself clamps, the one-shot announcement carries the LIMIT flag.
+// A pre-latched target (D24: init trusts a stored MATCHED_TARGET) below
+// every seat's B(1) — 500 < 834/958/969, pinned above — makes seat 1's
+// solve clamp low, and the announce latched by that first solve is the
+// LIMIT variant. Together with the test above this pins "announced
+// follows the FIRST solve" from both sides.
+TEST_F(ModesMutant, matched_first_seat_clamp_announces_the_limit)
+{
+    ModesCtfWorld fx(kMutantLevelA);
+    fx.world().ctf_requested_team_count = og::sim::kTeamCountMatched;
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(1, 544, 96);
+    fx.spawn_anchor(2, 96, 800);
+    fx.spawn_anchor(3, 544, 800);
+    fx.spawn_leveled_hero(FAMILY_ARCHER, 0, 200, 200, 1, 1);
+    fx.world().mode.vars[kSlotMatchedTarget] = 500;
+    fx.tick(1);
+    ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
+
+    EXPECT_EQ(500, fx.var(kSlotMatchedTarget))
+        << "a stored target is never re-censused (D24 latch)";
+    const std::int32_t plan = fx.var(kSlotMatchedPlan);
+    EXPECT_EQ(10, matched_plan_code(plan, 1)) << "archer seat: clamped to L1";
+    EXPECT_EQ(10, matched_plan_code(plan, 2)) << "elf seat: clamped to L1";
+    EXPECT_EQ(10, matched_plan_code(plan, 3)) << "thief seat: clamped to L1";
+    EXPECT_EQ(2, fx.var(kSlotMatchedAnnounced))
+        << "the FIRST solved seat clamped, so LIMIT announced";
+    EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED (LIMIT)"));
+}
+
+// E3: humans on every authored seat leave MATCHED nothing to do — no seat
+// is empty, so no bot spawns anywhere and the match plays identically to
+// Auto (the :306 oblist-sweep idiom, extended with an Auto twin world).
+// The recorded target is the proof the census RAN and found nothing to
+// fill, rather than never running.
+TEST_F(ModesMutant, matched_with_humans_on_every_seat_is_an_auto_noop)
+{
+    auto author = [](ModesCtfWorld& fx) {
+        fx.spawn_anchor(0, 96, 96);
+        fx.spawn_anchor(1, 544, 96);
+        fx.spawn_anchor(2, 96, 800);
+        fx.spawn_anchor(3, 544, 800);
+        fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 200, 200, 1, 2);
+        fx.spawn_leveled_hero(FAMILY_ARCHER, 1, 232, 200, 2, 2);
+        fx.spawn_leveled_hero(FAMILY_ELF, 2, 264, 200, 3, 2);
+        fx.spawn_leveled_hero(FAMILY_THIEF, 3, 296, 200, 4, 2);
+    };
+
+    ModesCtfWorld matched(kMutantLevelA);
+    matched.world().ctf_requested_team_count = og::sim::kTeamCountMatched;
+    author(matched);
+    matched.tick(1);
+    ASSERT_EQ(kModeIdMutant, matched.var(kMutSlotModeId));
+
+    ModesCtfWorld automatic(kMutantLevelA);
+    author(automatic);
+    automatic.tick(1);
+    ASSERT_EQ(kModeIdMutant, automatic.var(kMutSlotModeId));
+
+    EXPECT_EQ(automatic.var(kMutSlotTeamMask), matched.var(kMutSlotTeamMask))
+        << "Matched-mask == Auto-mask (D5)";
+    for (int team = 0; team < 4; ++team)
+    {
+        EXPECT_EQ(1, alive_on_team(matched.world(), team))
+            << "team " << team << " keeps exactly its human";
+        EXPECT_EQ(alive_on_team(automatic.world(), team),
+                  alive_on_team(matched.world(), team))
+            << "team " << team;
+    }
+    for (const auto& uptr : matched.world().oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        EXPECT_TRUE(w->myguy != nullptr)
+            << "an uninvited living joined the full-human matched match: "
+               "family " << static_cast<int>(w->family()) << " team "
+            << static_cast<int>(w->team_num());
+    }
+    EXPECT_GT(matched.var(kSlotMatchedTarget), 0)
+        << "the census ran (matched request + humans) and found no seat "
+           "to fill";
+    EXPECT_EQ(0, matched.var(kSlotMatchedPlan)) << "no seat ever solved";
+    EXPECT_EQ(0, matched.var(kSlotMatchedAnnounced));
+    EXPECT_EQ(0, count_notifications(matched.events, "TEAMS MATCHED"));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }

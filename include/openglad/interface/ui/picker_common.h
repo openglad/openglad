@@ -246,7 +246,9 @@ bool is_allied_mode(const SaveData& save);
 
 // --- CTF match settings ---
 
-// Cycle the requested CTF team count: 2 -> 3 -> 4 -> 2.
+// Cycle the requested team count: Auto -> 2 -> 3 -> 4 -> Match -> Auto.
+// Match (og::sim::kTeamCountMatched) keeps Auto's team mask; it only changes
+// bot-squad strength in the mode spawn seam.
 void cycle_ctf_team_count(SaveData& save);
 
 // Cycle the capture limit: 0 (map default) -> 1 -> 3 -> 5 -> 10 -> 0.
@@ -720,7 +722,7 @@ std::string format_difficulty_label(int difficulty);
 // combat allegiance always comes from character colors.
 std::string format_allied_mode_label(const SaveData& save);
 
-// Format the CTF team count label ("CTF Teams: N").
+// Format the team count label ("Teams: N" / "Teams: Auto" / "Teams: Match").
 std::string format_ctf_teams_label(const SaveData& save);
 
 // Format the capture limit label ("Capture Limit: Map default" or ": N").

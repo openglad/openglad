@@ -27,6 +27,7 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/interface/ui/cloud_save_client.h>
 #include <openglad/interface/ui/menu_model.h>
@@ -547,6 +548,23 @@ TEST(CursesPickerClient, ctf_menu_labels_format_from_save)
     const std::string dump = f.t().dump();
     EXPECT_NE(dump.find("Teams: 4"), std::string::npos) << dump;
     EXPECT_NE(dump.find("Limit: Map"), std::string::npos) << dump;
+}
+
+// Matched teams (design D3): the sentinel value 5 renders the shared
+// formatter's "Teams: Match" label in the terminal list too.
+TEST(CursesPickerClient, ctf_menu_labels_render_matched_sentinel)
+{
+    PickerFixture f;
+    f.save().ctf_team_count = og::sim::kTeamCountMatched;
+    const auto* teams_item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::CycleCtfTeamCount);
+    ASSERT_NE(teams_item, nullptr);
+
+    // Drive present_menu so the dynamic label renders in the list.
+    f.t().push_special(KeyCode::Escape);
+    (void)f.client.present_menu(PickerMenuId::TeamBuild);
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("Teams: Match"), std::string::npos) << dump;
 }
 
 // --- view roster ---------------------------------------------------------

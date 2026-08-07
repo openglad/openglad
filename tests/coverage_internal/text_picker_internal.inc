@@ -868,9 +868,28 @@ int text_picker_testing_exercise_internal_paths()
     handle_team_item(PickerMenuCommand::ToggleCtfScenarioTroops, "", [&] {
         return save.ctf_strip_scenario_troops != previous_ctf_troops;
     });
-    handle_team_item(PickerMenuCommand::Teams, "\n", [&] {
-        return save.ctf_team_count != previous_ctf_teams;
-    });
+    // The Matchup dump prints the SHARED formatter's label, so the matched
+    // sentinel reaches the terminal with no client-side string of its own.
+    // Cycle up to it (bounded — the control wraps within five steps) and
+    // read the dump back.
+    for (int step = 0;
+         step < 5 && save.ctf_team_count != og::sim::kTeamCountMatched;
+         ++step) {
+        handle_team_item(PickerMenuCommand::CycleCtfTeamCount, "", [&] {
+            return true;
+        });
+    }
+    check(save.ctf_team_count == og::sim::kTeamCountMatched);
+    {
+        ScopedTextPickerStdoutCapture output;
+        check(output.ready());
+        handle_team_item(PickerMenuCommand::Teams, "\n", [&] {
+            return save.ctf_team_count != previous_ctf_teams;
+        });
+        const std::string text = output.finish();
+        check(output.finish_ok() &&
+            text.find("[Teams: Match]") != std::string::npos);
+    }
     {
         ScopedTextPickerStdoutCapture output;
         check(output.ready());

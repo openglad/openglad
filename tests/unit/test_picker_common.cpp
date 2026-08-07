@@ -9,6 +9,7 @@
 #include <openglad/core/irandom.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/statistics.h>
@@ -1272,7 +1273,7 @@ TEST(PickerCommon, toggle_allied_mode)
 
 // --- CTF match settings ---
 
-TEST(PickerCommon, cycle_ctf_team_count_wraps_auto_2_3_4)
+TEST(PickerCommon, cycle_ctf_team_count_wraps_auto_2_3_4_match)
 {
     SaveData save;
     ASSERT_EQ(0, (int)save.ctf_team_count)
@@ -1285,12 +1286,19 @@ TEST(PickerCommon, cycle_ctf_team_count_wraps_auto_2_3_4)
     og::ui::cycle_ctf_team_count(save);
     ASSERT_EQ(4, (int)save.ctf_team_count);
     og::ui::cycle_ctf_team_count(save);
+    ASSERT_EQ((int)og::sim::kTeamCountMatched, (int)save.ctf_team_count)
+        << "after 4 comes Teams: Match (matched-teams D4)";
+    og::ui::cycle_ctf_team_count(save);
     ASSERT_EQ(0, (int)save.ctf_team_count) << "cycle wraps back to Auto";
 
-    // Out-of-range values normalize back into the cycle.
+    // Out-of-range values normalize back into the cycle: junk above the
+    // sentinel wraps straight to Auto, junk below the cycle floor steps to 2.
     save.ctf_team_count = 9;
     og::ui::cycle_ctf_team_count(save);
     ASSERT_EQ(0, (int)save.ctf_team_count);
+    save.ctf_team_count = 1;
+    og::ui::cycle_ctf_team_count(save);
+    ASSERT_EQ(2, (int)save.ctf_team_count);
 }
 
 TEST(PickerCommon, cycle_ctf_capture_limit_sequence)
@@ -1322,9 +1330,20 @@ TEST(PickerCommon, format_ctf_labels)
     save.ctf_capture_limit = 5;
     ASSERT_EQ("Limit: 5", og::ui::format_ctf_caps_label(save));
 
+    // Matched sentinel (D3): the label is exactly "Teams: Match" — 12 chars,
+    // filling the 80px/12-char face budget tight. The literal-equality assert
+    // is deliberate: test_menu_layout's budget sweep only walks STATIC label
+    // strings and never sees this formatted one, so this is where a future
+    // rename re-trips the budget consciously ("Teams: Even" is the recorded
+    // fallback).
+    save.ctf_team_count = og::sim::kTeamCountMatched;
+    const std::string match_label = og::ui::format_ctf_teams_label(save);
+    ASSERT_EQ("Teams: Match", match_label);
+    ASSERT_LE(match_label.size(), 12u);
+
     // The SDL team-build buttons are 80px faces drawing 6px/char centered
     // text with no clipping: every label must stay inside the classic
-    // 12-char budget (longest is "Limit: 10" / "Teams: Auto").
+    // 12-char budget (longest is "Teams: Match" / "Limit: 10").
     save.ctf_team_count = 0;
     save.ctf_capture_limit = 10;
     ASSERT_LE(og::ui::format_ctf_teams_label(save).size(), 12u);
