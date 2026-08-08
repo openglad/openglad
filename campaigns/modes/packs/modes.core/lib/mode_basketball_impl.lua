@@ -881,27 +881,52 @@ local function release_throw(ball, livings, carrier, ax, ay)
   return tx, ty
 end
 
--- Consumed-throw scan (§3.1): the FIRST live weapon in weaplist order
--- owned by the carrier AND above the possession watermark (D19) becomes
--- the throw — set_dead(1), its per-tick step is the aim vector, a (0,0)
--- step aims along the carrier's facing (soccer's dead-center rule). One
--- weapon per tick; later same-tick weapons fly on normally. Ammo and mana
--- costs stand — throwing spends a shot, deliberately. A weapon already
--- dead by its own act (point-blank wall hit) is never consumed (§9 #24).
+-- Consumed-throw scan (§3.1): the FIRST QUALIFYING weapon in weaplist
+-- order owned by the carrier AND above the possession watermark (D19)
+-- becomes the throw. Qualifying (D27): ALIVE (the original rule); dead by
+-- its OWN act this tick (death_called() == 1 — the point-blank weapon
+-- that walked into a wall or adjacent enemy; still on the list until the
+-- post-mode dead sweep, owner and aim step intact, contact damage
+-- stands); or dead under a PLAYER-controlled carrier (ACT_CONTROL — the
+-- fire()-time pad-blocked spawn dies via bare set_dead(1), per-weapon
+-- indistinguishable from a walker::fire_check ray probe, but ACT_CONTROL
+-- walkers never execute fire_check, so no probe can exist there). A dead
+-- death_called() == 0 weapon under an AI carrier is exactly as likely a
+-- costless scratch probe and is NEVER consumed — consuming it released
+-- phantom throws and minted the D28 refund (see D27 and edge #29); such
+-- a weapon does not stop the scan. set_dead(1) (a no-op on an
+-- already-dead weapon), the carrier's weapon_cost refunds to its
+-- magicpoints clamped at max (D28: throwing is mana-neutral; ammo still
+-- stands — every qualifying arm implies fire() paid the cost this tick),
+-- and its per-tick step is the aim vector — a (0,0) step aims along the
+-- carrier's facing (soccer's dead-center rule). One weapon per
+-- possession (D27): the release clears CARRIER, so a later same-tick
+-- weapon flies on normally and never qualifies again.
 local function consume_throw(ball, livings, carrier)
   local watermark = og.mode_get(S.THROW_WATERMARK)
   local carrier_id = og.mode_get(S.CARRIER)
   local weapons = og.weaplist()
   for k = 1, #weapons do
     local shot = weapons[k]
-    if shot:dead() == 0 then
-      if og.entity_id(shot) > watermark then
-        local shooter = shot:owner()
-        if shooter ~= nil then
-          if og.entity_id(shooter) == carrier_id then
+    if og.entity_id(shot) > watermark then
+      local shooter = shot:owner()
+      if shooter ~= nil then
+        if og.entity_id(shooter) == carrier_id then
+          local qualifies = shot:dead() == 0
+          if not qualifies then
+            qualifies = shot:death_called() == 1
+          end
+          if not qualifies then
+            qualifies = carrier:act_type() == C.ACT_CONTROL
+          end
+          if qualifies then
             local ax = og.trunc(shot:lastx())
             local ay = og.trunc(shot:lasty())
             shot:set_dead(1)
+            local cost = carrier:s_weapon_cost()
+            if cost > 0 then
+              carrier.magicpoints = og.min(og.fadd(carrier.magicpoints, cost), carrier.max_magicpoints)
+            end
             if ax == 0 then
               if ay == 0 then
                 -- Dead-center step: aim along the carrier's facing.

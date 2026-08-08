@@ -8,7 +8,12 @@ Status: **approved design, pre-implementation, red-team revised**. This
 document is the single authority for the basketball mode; it supersedes the
 three designer drafts it was synthesized from. A two-auditor red team
 (engine-truth + gameplay) reviewed the first synthesis; every finding was
-applied — decisions D19-D26 and the amended D6/D7/D17 record the changes. The
+applied — decisions D19-D26 and the amended D6/D7/D17 record the changes. A
+post-implementation playtest amendment (2026-08-08, anchors verified at
+`456fafb7`) added D27-D28 — the throw now releases under point-blank contact
+and refunds its mana; an adversarial review of the first cut then narrowed
+D27 to a qualify gate (`fire_check` probes must never be consumed) — with
+edge #24 rewritten, edges #28-#29 added, and test-plan rows 38-41. The
 player doc is `docs/mp-game-modes.md`; the pack cookbook every script cites is
 `docs/lua-classpacks-design.md`.
 
@@ -62,6 +67,8 @@ Later sections cite decisions by id.
 | D24 | Grace pinned to an entity | `GRACE_TEAM1 = 0` dereferenced LAST_TOUCHER live, so any swat restamp migrated the bar onto the blocker (barring the defender the rule exists to reward, freeing the ex-carrier). Ruling: `GRACE_ENTITY` (slot 59) is written at every grace ARM (T5 fumble -> ex-carrier; pass/flat release -> thrower) and the entity-scoped pickup bar checks it, never LAST_TOUCHER. Cleared wherever GRACE_UNTIL clears; the newest grace event overwrites both slots. |
 | D25 | Turnover + wipe watchdog | T7 now CLEARS `CLOCK_*` like every other clock exit (leaving it armed re-fired T7 every regrab — announce spam and an unwinnable poison loop), and the lockout is the grace: `turnover_grace` raised 24 -> **120** ticks. Babysit deadlock (respawn-off, wiped opponents, winner loitering by the ball so the dead-ball reset never fires): `STALL_SINCE` doubles as a **wipe watchdog** — while any ACTIVE team has zero live Livings and zero pending revives, the reset countdown runs in EVERY ball state and ignores attendance; at `dead_ball_ticks` it forces a center reset, whose `revive_wiped_teams` backstop restores the wiped team. No deadlock, no babysit, no extra slot. |
 | D26 | Release readability + public-geometry AI | Shot, lob, chest and flat all looked identical at release. Ruling: positional release sounds — SHOT = SOUND_BOLT, LOB = SOUND_YO, chest/flat silent — and a release announce `"THREE UP!"` when SHOT_VALUE = 3. The rebounder AI pre-positions off the target HOOP center (public, replicated geometry), never off `SHOT_LAND` — the exact scatter outcome stays sim-internal, killing the psychic boxout. |
+| D27 | Point-blank release: consume QUALIFYING dead weapons | Playtest: a guarded carrier's shoot key often released nothing — a point-blank weapon dies on its own act step (blocked `walk()` → `attack(collide_ob)` → `set_dead(1)` + `death()`, `walker.cpp:1428-1448`) BEFORE pipeline step 6, and the live-only scan skipped it. Edge #24's design-time acceptance was wrong in practice: being guarded is the normal state when release matters most. Ruling: `consume_throw` consumes the FIRST **qualifying** weapon in `og.weaplist()` order owned by the carrier and above THROW_WATERMARK. Qualifying = **alive** (the original rule), OR **dead with `death_called() == 1`** (died in its own act this tick — the point-blank walk-in, wall hit, or spent range; any carrier), OR **dead under an ACT_CONTROL carrier** (the `fire()`-time pad-blocked spawn: `walker::fire()` deducts cost `walker.cpp:514`, melees the pad blocker and bare-`set_dead(1)`s its own weapon, `:594-628` — `death()` is never called there). A blanket alive-or-dead rule (the first cut of this decision) was falsified in adversarial review: **`walker::fire_check` (`walker.cpp:1245-1346`) creates a REAL weaplist weapon as its ray probe** — owner set by `create_weapon`, heading by `set_weapon_heading` — and bare-`set_dead(1)`s it on every denial/miss/success path **without paying `weapon_cost`**; an AI carrier engaging an in-range foe produces one per engagement tick (`act_random` `living.cpp:772`, COMMAND_FIRE/ATTACK/SEARCH dispatch `stats.cpp:407/548/1080`), so the blanket rule released phantom throws the carrier never triggered and the D28 refund minted unpaid mana (empirically: bot carrier + in-range foe → phantom release + `+weapon_cost` within 4 ticks). Gate soundness: probes never reach `death()` (every `fire_check` exit is a bare `set_dead(1)`), so the `death_called() == 1` arm is probe-proof, while every act-phase weapon death runs `set_dead(1)` + `death()` (`walker.cpp:1428-1448`). The `fire()`-time death is per-weapon indistinguishable from a probe (both dead, `death_called() == 0`, owner = carrier, aim set, at the pad) — the discriminator is the CARRIER: **ACT_CONTROL walkers never execute `fire_check`** (player input fires via bare `init_fire()`, `sim_input_handler.cpp:354-374`; `hit_response` returns before queueing anything on ACT_CONTROL, `stats.cpp:653`; every COMMAND_FIRE/ATTACK/SEARCH enqueue site sits inside AI acts; `mode_ai.is_directable` skips ACT_CONTROL and user-bound walkers), so a dead `death_called() == 0` weapon under an ACT_CONTROL carrier can only be that carrier's own `fire()`-time spawn. Non-qualifying dead weapons do NOT stop the scan (a later same-tick live weapon still releases). Engine soundness of consuming the dead: `GameWorld::tick` order is act phase (`game_world.cpp:1796-1846`) → `mode_run_tick` (`:1886`) → cross-ref scrub + dead sweep (`:1955-2002`; the weaplist `std::erase_if` reaps every dead weapon unconditionally), so any dead weapon the scan sees died THIS tick, its `owner()` still resolves (the scrub runs after the mode tick), and its `lastx/lasty` aim step survives death — no death path writes them (`weap::death()` `weap.cpp:158-172`; a blocked `walk()` never touches them; the only writers are ctor zeroing and the fire aim-sets). The consumption's `set_dead(1)` on an already-dead weapon is a no-op. Non-cases, verified: same-pass re-consumption is impossible (the scan `return`s after release); a weapon fired BEFORE pickup that dies this tick still fails the strict `>` watermark gate (watermark = highest weapon id at possession gain); the swat scan kills no weapons and runs after consumption anyway. Two carrier weapons fired the same tick: the FIRST qualifying one in weaplist order becomes the throw; the release clears CARRIER and leaves an airborne state, so the scan does not run again that possession — the second flies on as a plain weapon forever. "One weapon per tick" is really **one weapon per possession**. Watermark stamp timing unchanged (T1/T2/T13 only). Accepted residual: an **AI carrier's** `fire()`-time pad-blocked spawn stays unconsumed (indistinguishable from a probe from Lua; cost stands, no release — the pre-D27 behavior for exactly that shape). It is moot for bot play quality: bot throws are the director's script-invoked `release_throw` (§4.2), never weapon consumption; the AI's weapons are incidental combat. A clean fix (engine-side probe marking, or keeping probes off the weaplist) needs a `src/` change and is out of scope for this pack-Lua amendment. Supersedes the §3.1 live-only scan, the original #24 acceptance, and this decision's own first-cut blanket rule. Pinned by tests 38 (all three consumable shapes) and 41 (probe immunity). |
+| D28 | Throw refunds its mana | Playtest: "throwing spends a shot" drained carriers until they could not throw at all — `walker::fire()` spawns nothing when `magicpoints < weapon_cost` (`walker.cpp:506-507`), so there was nothing to consume. Ruling: when a weapon is consumed as a throw, **refund the carrier's `weapon_cost` to its `magicpoints`** — passing and shooting are mana-neutral; non-carrying combat still costs. Exact bindings (verified): cost read `carrier:s_weapon_cost()` (integer getter, `bindings_entity.cpp:638`, registered `:2705`, declared `og-api.d.lua:184`); mp read/write via the `magicpoints` value property (`:2083`; it is in the no-method value-read list, `:2054-2056`). **The setter does NOT clamp** — `S_SET_FLT` (`:600-606`) narrows into `OG_STATS_DIRTY_FIELD`'s plain assignment (`statistics.h:64-70`) — so the Lua clamps: `carrier.magicpoints = og.min(og.fadd(carrier.magicpoints, cost), carrier.max_magicpoints)`, guarded by `cost > 0`. Float discipline: exactly one float op (`og.fadd`, C++ per-op rounding); `og.min` is a compare (std tie semantics, no rounding); **no `og.trunc`** — the value feeds a float field, not an integer branch, and truncation would destroy magic-regen fractions. Placement: the refund lands at the consumption site, immediately after `set_dead(1)` and before `release_throw` — observationally neutral today (nothing in the throw resolution reads `magicpoints`; the impl is grep-clean) and it makes *consumed ⟺ refunded* a single-site invariant. Implemented inline in `consume_throw` — no new Lua function, so the func=100 denominator is unchanged. Exploit review (revised after adversarial review): net zero holds **because of D27's qualify gate, not by construction** — the first cut refunded on any dead consumption, and `walker::fire_check`'s costless dead probes then MINTED `weapon_cost` (a drained bot self-refueled through NoMagic-denial probes, bypassing edge #28). Under the gate, every qualifying arm implies `walker::fire()` deducted the same field this tick (`walker.cpp:514`): alive and `death_called() == 1` weapons exist only via a real `fire()`, and the ACT_CONTROL dead arm is that carrier's own `fire()`-time spawn (D27's soundness argument); probes pay nothing and are never consumed (edge #29, test 41). Cost 0 families refund nothing (guard skips); a negative cost (unshipped) is refused by the same guard; the clamp kills any overfill; the AI director's weaponless `release_throw` entrance (§3.1) deducted nothing and refunds nothing. Known engine leak, accepted and out of Lua reach: `fire_check`'s no-foe exit leaves its probe ALIVE on the weaplist (`walker.cpp:1265-1283` — the one path with no `set_dead`), indistinguishable from a real shot; it was consumable before D27/D28 too (phantom), and now also refunds ≤ cost — reachable only when a queued COMMAND_FIRE dispatches after the carrier's foe slot has emptied (the per-tick auto-foe normally refills it). Known residual, accepted: a carrier already below `weapon_cost` cannot fire at all — the gate is pre-spawn in the engine, out of Lua reach; magic regen must climb past the cost before the next release (edge #28, pinned by test 40). |
 | Errata | — | M's L1-diamond arc superseded by D4; M/S's 28→32 superseded by D1 (33); S §1.5 attribution ruling superseded by D5; A's shown ledger arithmetic for 825/826 was garbled but the final values (65/71) are correct — recomputed in §6. Red-team pass: first-synthesis scatter constants (48/6/20), shot_clock 288, turnover_grace 24, shot_sweet 144, dunk_drive_range 96, the owner-only throw scan, the clock-clears-on-loose-ball rule and the LAST_TOUCHER-dereferenced grace are all superseded by D19-D25. |
 
 ---
@@ -486,19 +493,32 @@ strip the ball.
 ### 3.1 Throw resolution (consumed weapon → shot / lob / chest / flat)
 
 Runs while CARRIED (pipeline step 6). Scan `og.weaplist()` in list order for
-the FIRST live weapon whose `owner()` is the carrier **and whose entity id is
-above THROW_WATERMARK** (D19 — a weapon fired before possession, a returning
-boomerang included, is never consumed; it flies on as a plain weapon). Note
-the real soccer precedent is proximity-gated, not owner-gated
+the FIRST **qualifying** weapon whose `owner()` is the carrier **and whose
+entity id is above THROW_WATERMARK** (D19 — a weapon fired before
+possession, a returning boomerang included, is never consumed; it flies on as
+a plain weapon, and the strict `>` gate excludes it even on the tick it dies).
+Qualifying (D27): alive; dead with `death_called() == 1` (died in its OWN
+act this tick — point-blank wall/enemy contact; the dead sweep runs after
+the mode tick, `game_world.cpp:1996`, so it is still on the list with owner
+and aim step intact, and its contact damage stands); or dead under an
+ACT_CONTROL carrier (the `fire()`-time pad-blocked spawn). A dead
+`death_called() == 0` weapon under an AI carrier is treated as a
+`walker::fire_check` scratch probe and skipped WITHOUT stopping the scan
+(D27 — consuming probes released phantom throws and minted the D28 refund;
+edge #29). Note the
+real soccer precedent is proximity-gated, not owner-gated
 (`run_shots` requires `hit_radius` of the ball, `mode_soccer_impl.lua:308`);
 the watermark is basketball's provenance gate. The matched weapon is
-**consumed** — `shot:set_dead(1)` — and its per-tick step
+**consumed** — `shot:set_dead(1)`, a no-op when it is already dead — the
+carrier's `weapon_cost` is refunded to its `magicpoints`, clamped at
+`max_magicpoints` (D28: throwing is mana-neutral; ammo still stands), and its
+per-tick step
 `(ax, ay) = (og.trunc(shot:lastx()), og.trunc(shot:lasty()))` is the aim
 vector; a (0,0) step aims along the carrier's facing (`ai.FACING_X/Y`, soccer's
-dead-center rule). One weapon per tick; later same-tick weapons fly on
-normally. Ammo/mana costs stand — throwing spends a shot, deliberately.
-Exploding families die without attacking (the engine reaps; a cosmetic death
-puff is accepted).
+dead-center rule). One weapon per **possession** (D27): the release clears
+CARRIER, so a later same-tick weapon flies on normally and never qualifies
+again. Exploding families die without attacking (the engine reaps; a cosmetic
+death puff is accepted).
 
 Classification (D23d): build ONE candidate set — hoops of OTHER active teams
 (own hoop is never a shot target, so a SHOT can never be an own basket) with
@@ -1373,11 +1393,20 @@ family-byte clamp bug and for I5 ordinality.
 23. **Buzzer PASS / lob toss-in** — the timeout deferral covers SHOT only
     (§3.7). A pass crossing the rim plane after the buzzer does not count —
     accepted and intended: only a genuine shot attempt earns the buzzer.
-24. **Fired weapon dies before consumption** — a point-blank weapon that hits
-    a wall or adjacent enemy on its own act step is dead before pipeline step
-    6 and is never consumed (the scan takes LIVE weapons only): melee-range
-    fire keeps its normal function and the throw cost binds only clean
-    releases. Accepted — the carrier still paid ammo/mana and took the swing.
+24. **Fired weapon dies before consumption** — CONSUMED ANYWAY when it
+    qualifies (D27, reversing this row's original live-only acceptance after
+    playtest): a point-blank weapon that hits a wall or adjacent enemy on its
+    own act step dies with `death_called() == 1` and is still on the weaplist
+    during the mode tick (the dead sweep runs last, `game_world.cpp:1996`),
+    with its owner and `lastx/lasty` aim step intact — the throw releases
+    for every carrier, and the incidental contact damage it dealt stands.
+    The `fire()`-time pad-blocked spawn (dead, `death_called() == 0`)
+    releases under an ACT_CONTROL carrier; under an AI carrier it is
+    indistinguishable from a fire_check probe and stays unconsumed (D27
+    residual — bots throw via the director's script release, §4.2). The
+    scan's `set_dead(1)` is a no-op on the dead (`death_called` guard,
+    `weap.cpp:164-167`). Melee-range fire while NOT carrying is untouched.
+    Pinned by test 38.
 25. **Rebounder AI foreknowledge** — resolved by D26: the director boxes out
     at the target HOOP center (public geometry); SHOT_LAND is never read by
     AI, so bots have no psychic edge over humans on the scatter outcome.
@@ -1390,6 +1419,28 @@ family-byte clamp bug and for I5 ordinality.
     box does not dunk until the catcher exits and re-enters (DUNK_OK, D23b);
     ground put-backs are exempt. The defense has real answers: contest the
     catch, fumble the re-entry drive, or hold the box.
+28. **Carrier below `weapon_cost` cannot release** — engine-gated pre-spawn:
+    `walker::fire()` returns before creating any weapon when
+    `magicpoints < weapon_cost` (`walker.cpp:506-507`), so nothing exists for
+    the mode to consume and no Lua hook fires. Accepted residual of D28: with
+    refunds, a carrier only lands here when it arrived at possession already
+    drained; magic regen must climb past the cost before the next release.
+    Out of Lua reach by design. Pinned by test 40.
+29. **`fire_check` scratch probes on the weaplist** — the engine's aim probe
+    is a REAL weapon (owner = the prober, heading set) bare-`set_dead(1)`d
+    on every denial/miss/success path without paying `weapon_cost`
+    (`walker.cpp:1245-1346`); an engaged AI carrier makes one per engagement
+    tick. D27's qualify gate keeps them out of the throw scan (probes never
+    reach `death()`, and the ACT_CONTROL dead arm cannot see AI probes), so
+    no phantom release and no D28 mint — pinned by test 41. Two accepted
+    engine leaks stay out of Lua reach: the no-foe exit leaves its probe
+    ALIVE (`walker.cpp:1265-1283`, no `set_dead`) and therefore consumable
+    as if genuinely fired (pre-existing phantom, now also refunded ≤ cost;
+    reachable only when a queued COMMAND_FIRE dispatches after the foe slot
+    empties), and an AI carrier's `fire()`-time pad-blocked spawn is
+    probe-indistinguishable and stays unconsumed (see #24). An engine-side
+    probe marker would close both; that is a `src/` change beyond this
+    amendment.
 
 ---
 
@@ -1549,6 +1600,48 @@ caps row.
     team NOT defending the attacked hoop sends its one vulture at the
     carrier and posts its remaining member ON its own hoop (§4.4's home
     fan), never at the carrier midpoint.
+38. `point_blank_release_still_throws` — D27: a defender parked adjacent in
+    the fired weapon's path so the weapon dies on its own act tick
+    (`death_called() == 1`); the throw still releases (BALL_STATE leaves
+    CARRIED per the aim), the weapon is gone by id (`weapon_present` — dead
+    pointers dangle after the tick, judge by id only), the defender keeps
+    the chip damage, possession cleared. Second arm: two carrier weapons
+    spawned the same tick → the first in weaplist order is consumed, the
+    second stays alive (`weapon_present` true), flies on over subsequent
+    ticks, and never triggers a second release. Third arm: a defender ON
+    the weapon spawn pad — `walker::fire()` deducts cost, melees, kills its
+    own spawn (`death_called() == 0`) and returns nullptr; the dead weapon
+    (captured from `weaplist.back()` pre-tick) is consumed via the
+    ACT_CONTROL arm, the throw releases, and mp returns float-exactly to
+    the pre-fire value (D28 net zero across a `fire()`-time death). A gate
+    keyed on `death_called() == 1` alone flips this arm. Edge #24 had NO
+    pinned test before this row — nothing flips;
+    `stale_inflight_weapon_not_consumed` (row 26) stays green because the
+    watermark gate, not the dead gate, excludes its stale weapon.
+39. `throw_refund_is_mana_neutral` — D28: drive `walker::fire()` directly on
+    the carrier (aim staged via `set_lastx/set_lasty`) so the engine really
+    deducts `weapon_cost` (`walker.cpp:514`), then tick; post-release
+    `magicpoints` equals the pre-fire value float-exactly (net zero across
+    fire + consume). Clamp arm: set `magicpoints = max_magicpoints` and
+    consume a fixture-spawned (unpaid) weapon → mp stays exactly max (the
+    setter does not clamp; the Lua `og.min` must). Control arm: a
+    NON-carrier's fired weapon still costs — no refund without consumption.
+40. `drained_carrier_release_residual` — edge #28 pin: carrier `magicpoints`
+    set below `weapon_cost`; `fire()` returns nullptr (`walker.cpp:506-507`),
+    no weapon spawns, no throw releases, BALL_STATE stays CARRIED, mp
+    unchanged. Documents the accepted engine-gated residual of D28.
+41. `fire_check_probes_never_release_or_mint` — D27 probe immunity / edge
+    #29 pin: the carrier is morphed into an engine-AI bot (ACT_RANDOM,
+    `user` 0 so `is_directable` skips it and the director's script release
+    stays out; specials disabled, regen inert, `busy` staged huge so
+    `init_fire` refuses and no real `fire()` can occur), an in-range foe is
+    kept set, and COMMAND_FIRE is forced every tick so the dispatch runs
+    `fire_check` each tick. Arm 1: mp staged below cost → NoMagic-denial
+    probes; eight ticks of CARRIED + float-exact mp (the drained self-refuel
+    exploit must not bypass edge #28). Arm 2: mp available, curdir aligned →
+    the ray probe (`collide_ob` set on a hit), the shape closest to a real
+    `fire()`-time death; same assertions. Both arms fail against the
+    blanket alive-or-dead scan (phantom release tick 0), proving teeth.
 
 ### 11.3 Function-coverage matrix (Lua function = 100 gate)
 
@@ -1563,7 +1656,7 @@ untestable may be written (I3).
 | `on_mode_init`, `center_reset`, `sync_render`, small helpers (`fget/fset/bball_active/ball_ground/euclid2/isqrt/in_dunk_box/dist_l1/hoop_center/lone_rival/points_of`) | 1, 3, 7, 16 |
 | `run_pickup`, `try_catch`, `gain_possession`, `stamp_toucher`, `grace_barred`, `arm_grace`, `weapon_watermark`, `enemy_box_at` (watermark + POSSESS_SINCE stamps, late-regain check, DUNK_OK arming) | 3, 4, 22, 26, 27, 33 |
 | `run_carry`, `drop_ball` | 4, 11, 12 |
-| `consume_throw` (watermark gate), `release_throw` (joint classification, open/aligned compares), `solve_flight` (all 3 arms + scatter + pressure), `press_count` | 6, 7, 20, 26, 30, 36 |
+| `consume_throw` (watermark gate; D27 qualify gate — alive / `death_called` / ACT_CONTROL arms, probe skip; D28 inline refund + clamp — no new function, denominator unchanged), `release_throw` (joint classification, open/aligned compares), `solve_flight` (all 3 arms + scatter + pressure), `press_count` | 6, 7, 20, 26, 30, 36, 38, 39, 40, 41 |
 | `run_air`, `move_substeps`, `run_free`, `run_ground_touch` (substeps, reflection, gravity, bounce, settle; contested-catch race) | 5, 8, 9, 25, 33, 34 |
 | `run_swat`, `swat_velocity`, `in_goaltend_window`, `owner_root` (block + goaltend arms; exact impulse pin; zero-step pass-over; GRACE_ENTITY pinning) | 14, 15, 29 |
 | `resolve_shot`, `run_crossing`, `score_basket`, `own_basket` | 7, 8, 9, 15, 18 |

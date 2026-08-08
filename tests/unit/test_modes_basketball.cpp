@@ -11,7 +11,9 @@
 // the D20 scatter curve with the pressure term, rim resolution (basket /
 // clang / airball), backboard banks (z-gated reflection + crossing scores),
 // dunks with the D23b DUNK_OK gate, fumbles with the D21 damage floor and
-// possession grace, the D7/D25 shot-clock lifecycle (persistence across
+// possession grace, the D27 dead-weapon release + D28 mana-neutral refund
+// (and its engine-gated drained-carrier residual, edge #28),
+// the D7/D25 shot-clock lifecycle (persistence across
 // loose balls, late-regain turnovers, the 120-tick team grace), D24
 // entity-pinned grace bars, D22 receiver leading and the contested-catch
 // race, landing legality, the dead-ball and wipe watchdogs, win/timeout/
@@ -3101,6 +3103,363 @@ TEST_F(ModesBasketball, pressure_scatter_applies)
                            kBballHoop1Y + open_off.second),
                   fx.var(kBbShotLand))
             << "one px outside press_radius (24) is not pressure";
+    }
+}
+
+// ===========================================================================
+// §11.2 #38 — D27: a point-blank weapon dies on its own act tick and is
+// consumed anyway; one weapon per possession
+// ===========================================================================
+
+TEST_F(ModesBasketball, point_blank_release_still_throws)
+{
+    // A defender parked over the weapon's first step: the walk is blocked,
+    // the weapon melees the defender and dies (walker.cpp act_fire) BEFORE
+    // the mode tick — the old live-only scan skipped it and the shoot key
+    // released nothing. D27: the dead weapon is still on the weaplist
+    // (the sweep runs after the mode tick) and the throw releases.
+    {
+        BballCourt fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        fx.give_ball(fx.red, 450, 480);
+        walker* defender = fx.spawn_living(FAMILY_SOLDIER, 1, 468, 556);
+        ASSERT_NE(nullptr, defender);
+        const float defender_hp = defender->stats()->hitpoints();
+        walker* shot = fx.spawn_weapon(fx.red, 460, 560, 8.0f, 0.0f);
+        ASSERT_NE(nullptr, shot);
+        // Aligned curdir: the first act WALKS (no turn tick) straight into
+        // the defender and dies this tick. Staged d < 4.0 keeps the chip
+        // deterministic (see smash()).
+        shot->set_curdir(FACE_RIGHT);
+        shot->set_damage(3.0f);
+        const std::uint32_t shot_id = shot->entity_id();
+        fx.tick(1);
+
+        EXPECT_LT(defender->stats()->hitpoints(), defender_hp)
+            << "the point-blank melee landed — the weapon really died on "
+            << "its own act, not in the consumption";
+        EXPECT_FALSE(fx.weapon_present(shot_id))
+            << "the dead weapon is consumed as the throw (D27)";
+        EXPECT_EQ(kStateShot, fx.var(kBbBallState))
+            << "aim (8,0) from (450,480): the release still happens";
+        EXPECT_EQ(2, fx.var(kBbShotHoop1));
+        EXPECT_EQ(0, fx.carrier()) << "possession cleared by the release";
+        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+    }
+    // Two carrier weapons the same tick: the FIRST in weaplist order is
+    // the throw; the second flies on and never triggers a second release
+    // (one weapon per POSSESSION — the release clears CARRIER).
+    {
+        BballCourt fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        fx.give_ball(fx.red, 450, 480);
+        walker* first = fx.spawn_weapon(fx.red, 460, 560, 8.0f, 0.0f);
+        ASSERT_NE(nullptr, first);
+        walker* second = fx.spawn_weapon(fx.red, 400, 560, 0.0f, -8.0f);
+        ASSERT_NE(nullptr, second);
+        second->set_lineofsight(50);  // outlive the assertion window
+        const std::uint32_t first_id = first->entity_id();
+        const std::uint32_t second_id = second->entity_id();
+        fx.tick(1);
+
+        EXPECT_FALSE(fx.weapon_present(first_id))
+            << "the first in weaplist order becomes the throw";
+        EXPECT_TRUE(fx.weapon_present(second_id))
+            << "the second same-tick weapon is NOT consumed";
+        EXPECT_EQ(kStateShot, fx.var(kBbBallState))
+            << "the first weapon's (8,0) aim classified: the east hoop";
+        for (int i = 0; i < 3; ++i)
+        {
+            fx.tick(1);
+            EXPECT_TRUE(fx.weapon_present(second_id))
+                << "tick +" << (i + 1) << ": it flies on as a plain weapon";
+            EXPECT_EQ(kStateShot, fx.var(kBbBallState))
+                << "tick +" << (i + 1) << ": no second release mid-flight";
+        }
+        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+    }
+    // Third arm: the OTHER point-blank shape — the defender already parked
+    // ON the weapon spawn pad, so walker::fire() itself melees and kills
+    // its own spawn (walker.cpp:594-628: set_dead(1), return nullptr) with
+    // death_called() still 0, AFTER deducting weapon_cost (walker.cpp:514).
+    // Consumed via D27's ACT_CONTROL arm; the refund makes the fire()-time
+    // death net zero too. A future gate keyed on death_called() == 1 alone
+    // would regress exactly this shape — this arm is its tripwire.
+    {
+        BballCourt fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        fx.give_ball(fx.red, 450, 480);
+        statistics* st = fx.red->stats();
+        st->set_max_magicpoints(30.0f);
+        st->set_magicpoints(20.0f);  // below max: the clamp never engages
+        st->set_magic_per_round(0.0f);
+        st->set_current_magic_delay(0);
+        st->set_max_magic_delay(1000);
+        const float pre = st->magicpoints();
+        const float cost = static_cast<float>(st->weapon_cost());
+        ASSERT_GT(cost, 0.0f);
+        // Carrier top-left (442,472): the FACE_RIGHT pad starts at x = 459.
+        // (460,468) overlaps every knife-sized pad rect while staying clear
+        // of the carrier's own 16x16 box (ends at x = 458).
+        walker* defender = fx.spawn_living(FAMILY_SOLDIER, 1, 460, 468);
+        ASSERT_NE(nullptr, defender);
+        const float defender_hp = defender->stats()->hitpoints();
+        fx.red->set_damage(3.0f);  // deterministic chip (see smash())
+        fx.red->set_lastx(8.0f);
+        fx.red->set_lasty(0.0f);
+        ASSERT_EQ(nullptr, fx.red->fire())
+            << "pad blocked: fire() melees and returns no weapon";
+        ASSERT_EQ(pre - cost, st->magicpoints())
+            << "the engine deducted before the pad probe (walker.cpp:514)";
+        ASSERT_FALSE(fx.world().weaplist.empty());
+        walker* dead_shot = fx.world().weaplist.back().get();
+        ASSERT_NE(nullptr, dead_shot);
+        ASSERT_NE(0, static_cast<int>(dead_shot->dead()));
+        ASSERT_EQ(0, static_cast<int>(dead_shot->death_called()))
+            << "the fire()-time pad death never calls death()";
+        ASSERT_EQ(fx.red, dead_shot->owner());
+        const std::uint32_t shot_id = dead_shot->entity_id();
+        fx.tick(1);
+
+        EXPECT_LT(defender->stats()->hitpoints(), defender_hp)
+            << "the pad melee chip landed before the consumption";
+        EXPECT_FALSE(fx.weapon_present(shot_id))
+            << "the fire()-time dead weapon is consumed (D27 ACT_CONTROL arm)";
+        EXPECT_EQ(kStateShot, fx.var(kBbBallState))
+            << "aim (8,0): the throw still releases";
+        EXPECT_EQ(0, fx.carrier()) << "possession cleared by the release";
+        EXPECT_EQ(pre, st->magicpoints())
+            << "float-exact net zero across fire()-time death + consume (D28)";
+        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+    }
+}
+
+// ===========================================================================
+// §11.2 #39 — D28: a consumed throw refunds the carrier's weapon_cost
+// ===========================================================================
+
+TEST_F(ModesBasketball, throw_refund_is_mana_neutral)
+{
+    // Net zero across fire + consume: drive walker::fire() for real so the
+    // engine deducts weapon_cost (walker.cpp:514), then the consumption
+    // refunds it. Regen is staged inert (per_round 0, delay far from its
+    // pulse) so the equality below isolates the refund.
+    {
+        BballCourt fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        fx.give_ball(fx.red, 450, 480);
+        statistics* st = fx.red->stats();
+        st->set_max_magicpoints(30.0f);
+        st->set_magicpoints(20.0f);  // below max: the clamp never engages
+        st->set_magic_per_round(0.0f);
+        st->set_current_magic_delay(0);
+        st->set_max_magic_delay(1000);
+        const float pre = st->magicpoints();
+        const float cost = static_cast<float>(st->weapon_cost());
+        ASSERT_GT(cost, 0.0f) << "soldier fire_mp_cost must be > 0";
+        fx.red->set_lastx(8.0f);
+        fx.red->set_lasty(0.0f);
+        walker* shot = fx.red->fire();
+        ASSERT_NE(nullptr, shot) << "mp >= cost: the engine gate passes";
+        const std::uint32_t shot_id = shot->entity_id();
+        ASSERT_EQ(pre - cost, st->magicpoints())
+            << "the engine really deducted (walker.cpp:514)";
+        fx.tick(1);
+
+        EXPECT_FALSE(fx.weapon_present(shot_id)) << "consumed as the throw";
+        EXPECT_NE(kStateCarried, fx.var(kBbBallState)) << "released";
+        EXPECT_EQ(pre, st->magicpoints())
+            << "float-exact net zero across fire + consume (D28)";
+        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+    }
+    // Clamp arm: a full-mp carrier consuming an UNPAID fixture weapon must
+    // stay exactly at max — the C++ setter does not clamp, the Lua og.min
+    // must.
+    {
+        BballCourt fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        fx.give_ball(fx.red, 450, 480);
+        statistics* st = fx.red->stats();
+        st->set_max_magicpoints(30.0f);
+        st->set_magicpoints(30.0f);
+        ASSERT_GT(st->weapon_cost(), 0);
+        walker* shot = fx.spawn_weapon(fx.red, 460, 560, 8.0f, 0.0f);
+        ASSERT_NE(nullptr, shot);
+        const std::uint32_t shot_id = shot->entity_id();
+        fx.tick(1);
+
+        EXPECT_FALSE(fx.weapon_present(shot_id));
+        EXPECT_EQ(30.0f, st->magicpoints())
+            << "refund clamped at max_magicpoints (D28)";
+        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+    }
+    // Control arm: a NON-carrier's fired weapon is never consumed, so its
+    // cost stays spent — no refund without consumption.
+    {
+        BballCourt fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        fx.give_ball(fx.red, 450, 480);
+        statistics* gst = fx.green->stats();
+        gst->set_max_magicpoints(30.0f);
+        gst->set_magicpoints(20.0f);
+        gst->set_magic_per_round(0.0f);
+        gst->set_current_magic_delay(0);
+        gst->set_max_magic_delay(1000);
+        const float gpre = gst->magicpoints();
+        const float gcost = static_cast<float>(gst->weapon_cost());
+        ASSERT_GT(gcost, 0.0f);
+        fx.green->set_lastx(8.0f);
+        fx.green->set_lasty(0.0f);
+        walker* shot = fx.green->fire();
+        ASSERT_NE(nullptr, shot);
+        const std::uint32_t shot_id = shot->entity_id();
+        fx.tick(1);
+
+        EXPECT_TRUE(fx.weapon_present(shot_id))
+            << "not the carrier's weapon: never consumed";
+        EXPECT_EQ(kStateCarried, fx.var(kBbBallState)) << "red still carries";
+        EXPECT_EQ(gpre - gcost, gst->magicpoints())
+            << "non-carrying combat still costs (D28 control)";
+        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+    }
+}
+
+// ===========================================================================
+// §11.2 #40 — edge #28 pin: a carrier below weapon_cost cannot release
+// (engine-gated pre-spawn; the accepted residual of D28)
+// ===========================================================================
+
+TEST_F(ModesBasketball, drained_carrier_release_residual)
+{
+    BballCourt fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.basketball_active());
+    fx.give_ball(fx.red, 450, 480);
+    statistics* st = fx.red->stats();
+    st->set_max_magicpoints(30.0f);
+    st->set_magic_per_round(0.0f);
+    st->set_current_magic_delay(0);
+    st->set_max_magic_delay(1000);
+    const float cost = static_cast<float>(st->weapon_cost());
+    ASSERT_GT(cost, 0.0f);
+    st->set_magicpoints(cost - 1.0f);  // below the engine's pre-spawn gate
+    const float pre = st->magicpoints();
+    fx.red->set_lastx(8.0f);
+    fx.red->set_lasty(0.0f);
+
+    EXPECT_EQ(nullptr, fx.red->fire())
+        << "walker.cpp:506-507: no weapon spawns below weapon_cost";
+    fx.tick(1);
+
+    EXPECT_EQ(kStateCarried, fx.var(kBbBallState))
+        << "nothing to consume: no release (edge #28, out of Lua reach)";
+    EXPECT_EQ(static_cast<std::int32_t>(fx.red->entity_id()), fx.carrier());
+    EXPECT_EQ(pre, st->magicpoints()) << "nothing spent, nothing refunded";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+// ===========================================================================
+// §11.2 #41 — D27 probe immunity: fire_check scratch weapons are never
+// consumed as throws and never mint mana (edge #29)
+// ===========================================================================
+
+TEST_F(ModesBasketball, fire_check_probes_never_release_or_mint)
+{
+    // walker::fire_check (walker.cpp:1245-1346) creates a REAL weaplist
+    // weapon as its ray probe — owner set, heading set — and set_dead(1)s
+    // it on every denial/miss/success path WITHOUT paying weapon_cost. An
+    // AI carrier engaging an in-range foe produces one per engagement tick
+    // (act_random, and every COMMAND_FIRE/ATTACK dispatch). An unqualified
+    // dead-weapon scan consumed them — a phantom release the carrier never
+    // triggered — and the D28 refund credited a cost that was never paid.
+    // Both arms drive the COMMAND_FIRE dispatch (stats.cpp:407), which
+    // runs fire_check on every dispatch tick.
+    //
+    // Arm 1 — the self-refuel exploit: a DRAINED bot carrier (mp < cost)
+    // produces NoMagic-denial probes. Nothing may release, and mp must not
+    // move: edge #28's engine gate must not be bypassable through probes.
+    {
+        BballCourt fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        fx.give_ball(fx.red, 450, 480);
+        walker* foe = fx.spawn_living(FAMILY_SOLDIER, 1, 476, 472);
+        ASSERT_NE(nullptr, foe);
+        // Morph the carrier into an engine-AI bot the mode director skips
+        // (user != -1 fails is_directable, so the script-invoked release
+        // ladder stays out of the picture), with every non-probe mana
+        // writer staged inert: regen off, specials off, and init_fire
+        // busy-blocked so no REAL fire() can occur during the window.
+        fx.red->set_act_type(ACT_RANDOM);
+        fx.red->set_user(0);
+        fx.red->set_specials_disabled(true);
+        fx.red->set_busy(10000.0f);
+        statistics* st = fx.red->stats();
+        st->set_max_magicpoints(30.0f);
+        st->set_magic_per_round(0.0f);
+        st->set_current_magic_delay(0);
+        st->set_max_magic_delay(1000);
+        const float cost = static_cast<float>(st->weapon_cost());
+        ASSERT_GT(cost, 0.0f);
+        st->set_magicpoints(cost - 1.0f);  // below the engine's fire gate
+        const float pre = st->magicpoints();
+        for (int i = 0; i < 8; ++i)
+        {
+            fx.red->set_foe(foe);  // fire_check's no-foe path must not run
+            st->force_command(COMMAND_FIRE, 1, 8, 0);
+            fx.tick(1);
+            ASSERT_EQ(kStateCarried, fx.var(kBbBallState))
+                << "tick " << i << ": a dead probe was consumed as a throw";
+            ASSERT_EQ(static_cast<std::int32_t>(fx.red->entity_id()),
+                      fx.carrier());
+            ASSERT_EQ(pre, st->magicpoints())
+                << "tick " << i << ": the refund minted unpaid mana";
+        }
+        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+    }
+    // Arm 2 — mana available, facing aligned: fire_check passes every gate
+    // and dies as a RAY probe (collide_ob set when the ray hits the foe),
+    // the hardest probe to tell from a real fire()-time death. busy keeps
+    // init_fire refusing, so no real fire() can follow the probe. Still no
+    // release, still no mana movement.
+    {
+        BballCourt fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        fx.give_ball(fx.red, 450, 480);
+        walker* foe = fx.spawn_living(FAMILY_SOLDIER, 1, 476, 472);
+        ASSERT_NE(nullptr, foe);
+        fx.red->set_act_type(ACT_RANDOM);
+        fx.red->set_user(0);
+        fx.red->set_specials_disabled(true);
+        fx.red->set_busy(10000.0f);
+        fx.red->set_curdir(FACE_RIGHT);  // aligned: the Facing gate passes
+        statistics* st = fx.red->stats();
+        st->set_max_magicpoints(30.0f);
+        st->set_magicpoints(20.0f);
+        st->set_magic_per_round(0.0f);
+        st->set_current_magic_delay(0);
+        st->set_max_magic_delay(1000);
+        const float pre = st->magicpoints();
+        for (int i = 0; i < 8; ++i)
+        {
+            fx.red->set_foe(foe);
+            st->force_command(COMMAND_FIRE, 1, 8, 0);
+            fx.tick(1);
+            ASSERT_EQ(kStateCarried, fx.var(kBbBallState))
+                << "tick " << i << ": a dead probe was consumed as a throw";
+            ASSERT_EQ(static_cast<std::int32_t>(fx.red->entity_id()),
+                      fx.carrier());
+            ASSERT_EQ(pre, st->magicpoints())
+                << "tick " << i << ": mana moved without any real fire()";
+        }
+        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
     }
 }
 
