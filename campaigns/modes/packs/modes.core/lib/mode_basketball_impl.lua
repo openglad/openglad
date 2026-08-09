@@ -185,6 +185,9 @@ local T = {
   fumble_pop = 640,
   fumble_scatter = 3,
   toss_pop = 768, -- jump-ball toss (apex ~12 px)
+  deny_speed = 4, -- body-denial carom speed (D33) = the run_swat impulse
+  -- clamp floor (a body is the weakest legal swat); the deny vz is SET to
+  -- fumble_pop — a scramble, not a sail
 
   -- Clocks (D7, D25). 420 = 35 s, sized so the worst defensive-stop
   -- advance (828's ~430 px backcourt at the 1 px/tick slow-family floor)
@@ -1064,8 +1067,89 @@ local function swat_velocity(dx, dy, speed_px)
   og.mode_set(S.BALL_VY, og.div(scaled * dy, total))
 end
 
--- Weapon swat scan (§3.5) — airborne states, after throw consumption,
--- before movement; jump freeze guards it. First live weapon in weaplist
+-- Body-denial scan (D33/D34) — state SHOT only, and only in the low
+-- window z_px <= grab_z: physically the release ascent alone (a solved
+-- shot clears 20 px within 2-3 ticks and its descent terminates AT
+-- rim_z > grab_z, so no body goaltending exists and a deny can never
+-- collide with a score tick). The first live ENEMY score-team Living in
+-- oblist order within catch_radius L1 of the ball GROUND center caroms
+-- the shot off its body into a live REBOUND — a face-stuff scramble,
+-- deliberately not a catch (passes keep try_catch's clean interception).
+-- Exclusions, two prongs: the team prong (enemy score teams only, read
+-- LIVE at the contact tick — press_count's definition; charm moves the
+-- read, edge #35) and the id prong (LAST_TOUCHER names the releasing
+-- entity for the whole flight, so even a CHARMED shooter walking into
+-- its own slow shot cannot self-deny, edge #34). Grace bars do NOT gate
+-- the deny: they bar TAKING the ball, not contesting it. Impulse, zero
+-- RNG: swat_velocity along ball − defender at deny_speed (the run_swat
+-- clamp floor — a body is the weakest legal swat), dead-center contact
+-- falls back to the defender's facing (consume_throw's rule), and vz is
+-- SET to fumble_pop — the T5 scramble pop, never the block's +512 sail.
+-- Then the block arm's bookkeeping verbatim, minus any grace write
+-- (denier and shooter may both grab the carom, D24). Precedence: runs
+-- BEFORE run_swat (D34 — in the shared z band the body is the physical
+-- surface at the contact point; the same tick's weapon scan may still
+-- tip the fresh REBOUND, silently). The JUMP_UNTIL guard is a tripwire:
+-- no SHOT can exist during the freeze (§9 #5).
+local function run_deny(ball, livings)
+  if og.mode_get(S.BALL_STATE) ~= STATE_SHOT then
+    return
+  end
+  if og.world_tick() < og.mode_get(S.JUMP_UNTIL) then
+    return
+  end
+  local z_px = og.div(og.mode_get(S.BALL_PZ), 256)
+  if z_px > T.grab_z then
+    return
+  end
+  local shooter_team = og.mode_get(S.SHOT_TEAM1) - 1
+  local shooter_id = og.mode_get(S.LAST_TOUCHER)
+  local gx, gy = ball_ground()
+  for k = 1, #livings do
+    local w = livings[k]
+    local wt = w:team_num()
+    local denies = wt < C.SCORE_TEAM_COUNT
+    if denies then
+      denies = wt ~= shooter_team
+    end
+    if denies then
+      denies = og.entity_id(w) ~= shooter_id
+    end
+    if denies then
+      local wx, wy = walker_center(w)
+      if dist_l1(gx, gy, wx, wy) <= T.catch_radius then
+        local dx = gx - wx
+        local dy = gy - wy
+        if dx == 0 then
+          if dy == 0 then
+            -- Dead-center contact: carom along the defender's facing
+            -- (consume_throw's dead-center rule; the -1 curdir sentinel
+            -- deflects FACE_DOWN deterministically).
+            local fdir = w:curdir() + 1
+            dx = ai.FACING_X[fdir]
+            dy = ai.FACING_Y[fdir]
+            if dx == nil then
+              dx = 0
+              dy = 1
+            end
+          end
+        end
+        swat_velocity(dx, dy, T.deny_speed)
+        og.mode_set(S.BALL_VZ, T.fumble_pop)
+        og.mode_set(S.BALL_STATE, STATE_REBOUND)
+        clear_flight()
+        stamp_toucher(ball, og.entity_id(w), wt)
+        core.announce("DENIED!", C.SOUND_ROAR)
+        landing_legal(ball)
+        return
+      end
+    end
+  end
+end
+
+-- Weapon swat scan (§3.5) — airborne states, after throw consumption and
+-- the body-denial scan, before movement; jump freeze guards it. First live
+-- weapon in weaplist
 -- order within swat_radius L1 of the GROUND center that CAN swat; weapon
 -- z is ignored (weapons fly flat; their reach is the abstraction). A
 -- weapon whose per-tick step is (0, 0) — a boomerang at turnaround — has
@@ -2040,7 +2124,8 @@ end
 
 -- The per-tick ball pipeline (§2.8 steps 3-11), in decided order: carrier
 -- liveness (T6), fumble resolution (T5), dunk (beats the throw), throw
--- consumption, the swat scan (before movement), physics by state, the
+-- consumption, the body-denial scan then the weapon swat scan (both
+-- before movement; body before weapon, D34), physics by state, the
 -- pickup scan, the reset watchdog and the shot clock. The on_damage hook
 -- already ran in the act phase, strictly before all of this — a hit
 -- carrier's fired weapon is NOT consumed and flies as a plain weapon.
@@ -2071,6 +2156,7 @@ local function run_ball_logic(ball, livings, live_count)
       end
     end
   end
+  run_deny(ball, livings)
   run_swat(ball)
   local st = og.mode_get(S.BALL_STATE)
   if st == STATE_FREE then

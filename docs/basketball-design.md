@@ -78,6 +78,8 @@ Later sections cite decisions by id.
 | D30 | Hoop family + spawn | **`families/fx-hoop.lua`**, hookless (the fx-bshadow precedent, D11 — fx-list entities never act, an `on_act` would be a permanently uncovered function). Ordinality VERIFIED in-repo: `families/` holds exactly `fx-ball.lua, fx-bball.lua, fx-bshadow.lua, treasure-flag.lua, treasure-waypoint.lua`, and C-locale sort puts `fx-hoop.lua` after `fx-bshadow.lua` ('h' > 'b') and before `treasure-*`; auto wire ids are allocated **per order** (`src/resources/packs.cpp:260-276` — `AutoWireIds.next[8]`, `take(order)`), so `modes:hoop` takes effect id **24** and the treasure ids cannot move by construction. The existing mirror pin `ball + 1 == shadow` (`tests/unit/test_modes_basketball.cpp:2166-2168`) is untouched; test 46 adds `hoop == shadow + 1`. Declaration: `id = "modes:hoop"`, `wire_id = "auto"`, `name = "HOOP"`, `flags = { "NO_COLLIDE" }`, `sprite = .../hoop.png`, glyph `"O"` yellow bold, `radar_landmark = false` (four identical anonymous blips would only clutter the ball/carrier beacons). **Spawn** in `on_mode_init`, AFTER the shadow spawn (`mode_basketball_impl.lua:2133-2137`) and BEFORE `center_reset` (`:2140`) — ball/shadow entity ids stay byte-identical for every existing test — via `spawn_hoops()`: for t = 0..3, `og.add_fx_ob` iff `fget(S.HOOP_POS, t) ~= 0`, i.e. exactly the ACTIVE teams' banked hoops (`:2071-2083`; inactive-team hoops on 2/3-team FOUR HOOPS get **no sprite**, matching which goals score — the bare carpet is the dead-goal tell, edge #30). Per hoop: `set_team_num(t)` (the tint), `setxy(hx - sizex/2, hy - sizey/2)` centering the rim on the manifest center, `set_frame(0)`. **No per-hoop entity-id slots — slot 63 stays the last spare (R4).** Hoops survive every center reset untouched (`center_reset` `:458-490` touches only the ball + mode vars). Render layering (engine contract): fx draw above floor and below livings/weapons, so the ball and carrier pass OVER the rim — accepted, the swish carries the "through the net" read (edge #31). |
 | D31 | Slot-free lookup + frame driving | **Lookup**: `find_hoop(team)` = one `og.fxlist()` scan (`bindings_entity.cpp:2346`, registered `:2790`) for `family == hoop_family and team_num() == team`, with `hoop_family = og.family_id("effect", "modes:hoop")` bound once at chunk load. Chosen over the nearest-manifest-position match: `team_num` is the spawn-time defending-team stamp, unique per hoop (one hoop per active team by construction), and NEVER restamped — `stamp_toucher` touches only the ball (`:385-399`) and nothing else writes fx teams — so it is an exact key with zero arithmetic; the position match answers the same hoop with more work. Cost: fxlist here = shadow + ≤4 hoops + transient engine fx — O(≤10) compares per call. **Anim state lives in the hoop entity's `cycle` field** (signed char; Lua `cycle`/`set_cycle` at `bindings_entity.cpp:2639`, declared in `og-api.d.lua:67,194` — no binding or stub change): 0 = idle, +n = swish with n ticks left (armed at **+12**), −n = clang with n ticks left (armed at **−8**). The field is provably exclusive: fx entities never act (engine act loop skips fxlist), `set_frame` never touches cycle (`walker_render_bridge.cpp:78-86`, `walker_headless.cpp:53-59`), and it snapshot-replicates coherently (`walker.h:237` BIT_CYCLE; `world_snapshot.cpp:2231/1709`). Rejected: a mode var (4 hoops of state cannot fit slot 63, and R4 reserves it) and a JUMP_UNTIL derivation (after `center_reset` scrubs SHOT_*/LAST_TOUCH nothing names WHICH hoop scored, and dead-ball/wipe resets arm the same freeze with no basket). **I4 discipline**: the sim reads hoop fields ONLY inside the hoop-frame driver and writes only hoop frame/cycle — hoop existence/frames never feed any other sim branch (the "except to drive their frames" carve-out). **Driver** `run_hoop_anims()`, called unconditionally from `on_mode_tick` after `update_hud()` (`:2196`) — deliberately outside the ball/shadow `handles` gate so a vanished ball (§9 #13) cannot freeze the nets: per hoop, c = cycle(); c == 0 → `set_frame(0)` (idempotent, self-healing); c > 0 → `set_frame(1 + og.div(12 - c, 4))` (12..9→1, 8..5→2, 4..1→3), then `set_cycle(c - 1)`; c < 0 → n = −c, `set_frame(4 + og.div(8 - n, 4))` (8..5→4, 4..1→5), then `set_cycle(c + 1)`. 4 ticks per frame: swish 1.0 s, clang 0.67 s at 12 tps. Mirrors receive only the replicated per-tick `set_frame` results (I4; mirrors never animate). **Arm sites** (arm = `set_cycle` on `find_hoop(hoop_team)`; the same tick's step-14 driver draws the first frame; the newest event overwrites a running program): swish — `score_basket` (`:566-571`) gains a `hoop_team` parameter, armed BEFORE its `center_reset` so the ripple plays through the 36-tick jump freeze; callers pass the scored-on hoop: `resolve_shot` T8 `:1100` (SHOT_HOOP1−1), `run_crossing` `:640` (the crossed hoop t), `run_dunk` `:1371` (the `enemy_box_at` team), goaltend T12 `:1040` (SHOT_HOOP1−1 — **goaltend uses the swish**, per concept); `own_basket` (`:593-617`) swishes `hoop_team` directly (the ball went in regardless of credit). Clang — `resolve_shot` T9 rim band `:1105-1114`, beside SOUND_CLANG `:1109`, on SHOT_HOOP1−1. **Win latch**: the engine runs no more Lua after a win (`mode_tick.cpp` re-assert), so a winning basket freezes the net mid-ripple — accepted, the §9 #6 frozen-ball parity (edge #32). |
 | D32 | Blast radius | Enumerated; update, never weaken. **Mapgen** `tools/modes_mapgen/main.cpp`: `obmap_ledger` basketball arm `ball = 2` (`:239-251`) → `2 + hoop count` (= authored `row.hoops.size()`, the peak activation); `self_check_pack_art()` `:927-933` += `check_sprite(... "hoop.png", 24, 20, 6)`. No tile, manifest or briefing bytes change, so campaign regeneration stays byte-identical (§11.5 step 1 proves it); the only `campaigns/` diffs are the generated `sprites/hoop.png` + `hoop.json` and the new `families/fx-hoop.lua`. **Ledger values** (§6): 824 69→**71**, 825 65→**67**, 826 71→**75**, 827 69→**71**, 828 79→**81** — all ≤ 190. **tests/unit/test_modes_levels.cpp**: ledger expression `:733` `(mode == "basketball") ? 2 : 0` → `2 + <per-row hoop count>` (826: 4, others 2 — extend the pin table); sprite-pin table `:1189-1190` += `{"packs/modes.core/sprites/hoop.png", 24, 20, 6}`. **tests/unit/test_modes_basketball.cpp**: the grep-verified full set of fxlist/census assertions is — shadow-membership `:513-519` (still true), digest fxlist walk `:271-310` (hoops join the digest automatically; static frames, deterministic), mirror test `:2120-2199` (extend per test 46). No existing test pins an fxlist SIZE or a literal ball/shadow entity id, and the after-shadow spawn order (D30) keeps those ids unchanged — nothing else shifts. **tests/modes_pack_fixture.h**: rows 9701-9709 already author `hoops` (`:401-441`), so fixture worlds grow 2 hoops (9701/9704/9705) or 4 (9702) with NO literal change; `kTestRegistrationLua` bytes change ⟺ a new row is added, and only then does `scripts/coverage/runtime_only_lua.txt` need the sha256 update in the same commit (R2). `test_modes_soccer.cpp`: untouched (soccer rows author no hoops). **Docs**: `docs/mp-game-modes.md` basketball section gains the hoop-visual sentence. **Media refresh** (DELIVERED 2026-08-09 to `build/media/basketball/`, reproduction lines in that directory's manifest.md "Hoop sprite refresh" section; the push to openglad-screenshots `pr-190/` and the SHA-pinned raw URLs in the PR body are the orchestrator's landing step): (1) `hoop-idle-824.png` — 824 idle rims, both tints, as a two-crop composite (one 320x200 window cannot hold rims 608 px apart, on any court); (2) `hoop-swish-824.png` — full frame, "BASKET! GREEN +2" on screen with the scored-on net at swish frame 2, plus `hoop-swish-strip-824.png` rim close-ups through the whole ripple; (3) `hoop-clang-824.png` — full frame, rim gold-flashed at clang frame 4 with the missed ball popping away, plus `hoop-clang-strip-824.png`; (4) `hoop-tints-826.png` — FOUR HOOPS all four tick tints as a 2x2 of per-goal crops (656x656 px court, same single-frame impossibility); (5) RE-SCOPED — the 826 two-team partial spawn is not capturable by `openglad_demo`: the activation clamp reads the lobby `team_count` (`og.match_setting` → `world.ctf_requested_team_count`), which is save-file state the demo bootstraps to Auto (fresh save0 in `init_session_game`) with no env override, Auto activates all four authored anchor teams on shipped 826, and adding a demo knob would be a src/ change outside this delta. The partial-spawn behavior stays pinned by test 43 (`hoop_partial_spawn_two_of_four`: exactly two rims, nil for both dead goals); `hoop-frames.png` — the generator-truth sprite sheet (6 frames x neutral+4 team tints via the walkputbuffer remap, over court grounds) — ships as the fifth visual. |
+| D33 | Body denial of low shots | User-approved playtest rule ("if I shoot a ball right into a guard's face, shouldn't the guard intercept it?"): during a SHOT's low-flight window a nearby ENEMY body DEFLECTS the shot into a live REBOUND — a carom off the chest, deliberately NOT a clean catch (face-stuffs scramble; passes keep `try_catch`'s clean interception). **Window**: state SHOT and `z_px <= grab_z` (20 = head_z — body reach, the catch convention: `try_catch`'s interceptor arm is the same compare, `mode_basketball_impl.lua:1350-1355`; `block_ceiling` 24 is the WEAPON reach abstraction, §3.5, and stays weapons-only). The window is physically the release ascent alone: a shot leaves at carry_z 12 with `vz0` 944-1562 fp across Tf ∈ [10, 30] (§2.6), crosses 20 px within 2-3 ticks, and the descent terminates AT rim_z 32 > grab_z — so a body can NEVER touch a descending shot, **no body goaltending exists** (the deny band [0, 20] and the goaltend window (32, 48] are disjoint by arithmetic) and a basket cannot be body-denied at the rim: denial is exclusively a release-vicinity event, open from the release tick itself (release re-pins the ball to the shooter's center at z = carry_z, `:843-845`). **Candidates**: live ENEMY score-team Livings only — `team_num() < C.SCORE_TEAM_COUNT` and `~= SHOT_TEAM1 - 1`, read LIVE at the contact tick (`press_count`'s enemy definition, `:361-376`; charm follows §9 #12) — within `catch_radius` (12, the body-contact scale) L1 of the ball GROUND center; first in livings (oblist) order wins (§9 #4). **Teammate carom REJECTED**: the director's own spacing (cutter posts, seam holders) crosses the release lane routinely and rung 1's press gate counts only enemies (`:1863-1870`), so teammate-carom would self-deny normal bot offense and make human spacing a liability; and it mirrors the pass asymmetry — a teammate body in a pass lane is a benign CATCH (`try_catch` admits teammates), while a teammate body worsening a SHOT has no benign reading. Grace bars do NOT gate the deny (they bar TAKING the ball; the weapon-swat precedent, §9 #26 — a barred body still contests, and still cannot grab the carom until its bar lifts). **Shooter exclusion, two prongs**: SHOT_TEAM1 holds a TEAM, not an id (`:44-48`); the id naming the releasing entity for the whole flight is **LAST_TOUCHER** (slot 28) — `release_throw` stamps it to the carrier at every release (`:964`) and its only other writers are `gain_possession` `:799` (exits into CARRIED), `run_swat` `:1230/:1232` (converts to REBOUND in the same block, `:1227`) and `center_reset` `:484` (state FREE), so while BALL_STATE == SHOT, LAST_TOUCHER == the shooter's entity id invariantly. Prong 1: the enemy-team predicate already excludes the shooter. Prong 2: `og.entity_id(w) ~= LAST_TOUCHER` — this makes "the shooter can never deny its own shot" literally true even when the shooter is CHARMED mid-flight and walks into the path of its own slow shot (edge #34). **Impulse** (deterministic, ZERO RNG draws — the stream is untouched, unlike the fumble's scatter): horizontal = `swat_velocity(dx, dy, T.deny_speed)` with `(dx, dy)` = ball ground center − defender center (a carom away from the body) and `deny_speed = 4` — the `run_swat` impulse clamp FLOOR (`clamp(trunc(damage) * 2, 4, 12)`, `:1225`): a body has no damage operand, so it takes the weakest legal swat. Zero-vector degenerate (defender center exactly under the ball; `swat_velocity` divides by |dx|+|dy|, `:1063-1068`): fall back to the defender's facing via `curdir() + 1` → `ai.FACING_X/Y`, nil → (0, 1) — `consume_throw`'s dead-center rule verbatim (`:1015-1027`). **vz is SET to `T.fumble_pop`** (640), NOT the block path's `+512` add (`:1226`): adding to the 944-1562 fp ascent would sail the carom to a ~50-60 px apex, while fumble_pop from z <= 20 apexes ~8-10 px higher and falls straight back into grab range — the T5 loose-ball scramble grammar (`:747`), which IS the face-stuff scramble. Then exactly the block arm's bookkeeping: state REBOUND, `clear_flight`, `stamp_toucher(ball, defender id, defender team)` (LAST_TOUCH2 demotion and ball tint for free; grace bars never move, D24), NO grace write (the denier earned the scramble and may grab immediately; so may the shooter, which never had a self grace on a shot — the ARC arm arms none, `:915-944`), `landing_legal`, announce `"DENIED!"` + SOUND_ROAR (7 <= 25 bytes; distinct from the block's `"BLOCK!"`/SOUND_BOLT and the rim's CLANG; `og-api.d.lua:433`). **AI unaffected in the common case, by arithmetic**: rung 1 releases only at press_count == 0 — no enemy within 24 L1 of the shooter — while a deny needs an enemy within 12 L1 of the ball during the 2-3-tick low window, when the ball is <= ~18 px out. A defender parked beyond press_radius exactly on the lane CAN meet a long shot's tick-2 point — rare, legal, accepted (a lane camper is playing defense). **No new slots** (LAST_TOUCHER reused; 63 stays the last spare, R4); one new T key (`deny_speed`); one new function (`run_deny`). |
+| D34 | Deny ordering, clock and blast radius | **Pipeline**: `run_deny(ball, livings)` is a new scan called from `run_ball_logic` immediately BEFORE `run_swat` (`:2159`), same guard shape (STATE_SHOT only; `now >= JUMP_UNTIL` as a tripwire — a SHOT cannot exist during the freeze, §9 #5, edge #37). **Body before weapon**: the deny band is a strict z subset of the block window (20 < 24); in the overlap the ball is at body height and the body is the physical surface at the contact point — the weapon's flat-flight reach abstraction (§3.5) must not preempt an actual chest, and the rule completes the 4c695a48 throw-consumption story: the thrown weapon already dies on the adjacent guard, now the ball caroms off them too. After a deny the state is REBOUND and the SAME tick's weapon scan still runs on it (`run_swat` admits st >= STATE_SHOT, `:1171-1174`): a same-tick weapon tip of the fresh carom is legal and silent (was_shot false) — the ordinary rebound rule, accepted. **Score-tick collision impossible**: a SHOT scores only via `resolve_shot` at FLIGHT_TICKS == 0 (`:1430-1437`; SHOT skips `run_crossing`, `:1406`), where pre-move z > rim_z 32 — never <= grab_z; deny-vs-basket precedence has no case (edge #36). **Clock**: the release already cleared CLOCK_* (`:937-938`) and the deny writes neither slot — byte-identical to the weapon-block path (`run_swat` touches no CLOCK_*); the next possession gain arms fresh via §3.6 rule 3 (`:802-805`), either team. **No stall shape**: the deny fires only in STATE_SHOT and produces REBOUND, never another SHOT; the next SHOT costs a possession gain (clock arms) plus a release (clock clears), and the D25 wipe watchdog runs in EVERY state — deny-rebound loops are bounded exactly like block-rebound loops (edge #39). **Blast radius**: `mode_basketball_impl.lua` only (`T.deny_speed`, `run_deny`, the `run_ball_logic` call) plus this doc (§2.3, §2.4 SHOT, T20, §2.8 step 7, §3.5, §8 roster, edges #34-#39, tests 48-54, §11.3 row) and one sentence in `docs/mp-game-modes.md`. No src/ (I1), no manifest/sprite/slot/fixture-row change (`kTestRegistrationLua` bytes untouched — no runtime_only_lua digest churn); campaign regen stays byte-identical. Tests must survive ci-asan: judge the defender and any consumed weapon by entity id after ticks, never by stale handle. |
 | Errata | — | M's L1-diamond arc superseded by D4; M/S's 28→32 superseded by D1 (33); S §1.5 attribution ruling superseded by D5; A's shown ledger arithmetic for 825/826 was garbled but the final values (65/71) are correct — recomputed in §6. Red-team pass: first-synthesis scatter constants (48/6/20), shot_clock 288, turnover_grace 24, shot_sweet 144, dunk_drive_range 96, the owner-only throw scan, the clock-clears-on-loose-ball rule and the LAST_TOUCHER-dereferenced grace are all superseded by D19-D25. |
 
 ---
@@ -300,6 +302,9 @@ local T = {
   fumble_pop = 640,
   fumble_scatter = 3,
   toss_pop = 768,       -- jump-ball toss (apex ~12 px)
+  deny_speed = 4,       -- body-denial carom speed (D33) = the run_swat impulse
+                        -- clamp floor (a body is the weakest legal swat);
+                        -- deny vz is SET to fumble_pop — scramble, not sail
 
   -- Clocks (D7, D25). 420 = 35 s; countdown suffix at <= clock_hud remaining;
   -- one-shot announce at exactly clock_warn remaining. The deadline clears
@@ -370,7 +375,11 @@ enemy dunk box, DUNK_OK re-arms to 1.
 **SHOT** — ballistic arc at a specific hoop; outcome frozen at release
 (SHOT_VALUE/HOOP1/TEAM1/LAND, FLIGHT_TICKS). Constant vx/vy toward SHOT_LAND;
 z += vz, vz -= gravity. Wall reflection only while `z_px < wall_top` (D12).
-Walkers never touch a SHOT — bodies do not block shots, weapons do (§3.5).
+Bodies touch a SHOT only inside the D33 deny window (`z_px <= grab_z`, the
+release ascent): an ENEMY body within `catch_radius` deflects it into a live
+REBOUND — the body denial (§3.5). Above grab_z the arc is body-proof and
+weapons are the only contest (§3.5); the descent lands at rim_z > grab_z, so
+a descending shot is body-proof outright.
 FLIGHT_TICKS decrements; at 0 the shot resolves at the rim (§3.2). Timer-based
 resolution deliberately avoids crossing-detection degeneracy on short flat arcs.
 
@@ -424,6 +433,7 @@ ACTIVE hoop scores 2 for LAST_TOUCH1 (§3.3).
 | T17 | REBOUND | FREE | ground settle (clock stays armed, D25) |
 | T18 | any | FREE | center reset after every score, dead-ball reset or wipe-watchdog firing (D25); landing-legality relocation (§2.7) re-spots in place instead |
 | T19 | FREE | REBOUND | jump toss at `now == JUMP_UNTIL` exactly: one-shot `toss_pop`, vz only |
+| T20 | SHOT | REBOUND | body denial (D33): first enemy Living within `catch_radius` of the ground center at `z_px <= grab_z` — carom (`swat_velocity` at `deny_speed`, vz = `fumble_pop`), restamp to the defender, no grace write, `"DENIED!"`; runs BEFORE the weapon scan (D34) |
 
 Every `(score)` funnels through one `score_basket(team, value, label)` /
 `own_basket(hoop_team, value)` pair (§3.3), which always ends in `center_reset`
@@ -470,7 +480,8 @@ shots sailing over a backboard stub into the perimeter and lobs onto scenery.
 4. Fumble resolution: FUMBLE_TICK set and still CARRIED → T5 (* scatter).
 5. Dunk check (§3.4) — a dunk beats a same-tick throw.
 6. Throw consumption + release (§3.1) (* shot scatter).
-7. Swat scan (§3.5).
+7. Body-denial scan (D33/D34; SHOT only, body before weapon), then the weapon
+   swat scan (§3.5).
 8. Ball physics by state (§2.4): movement, catches/intercepts, rim resolution
    (* rim scatter), crossings, ground bounce, landing legality.
 9. Pickup scan (T1/T2).
@@ -612,9 +623,28 @@ every enemy dunk box; set to 0 at a catch INSIDE an enemy box. While CARRIED,
 the first tick the carrier center is outside all enemy boxes re-arms it to 1 —
 a box-camping catcher must step out and drive back in through the defense.
 
-### 3.5 Block windows and goaltending (weapon swats)
+### 3.5 Block windows, goaltending (weapon swats) and body denial
 
-Swat scan (airborne states, after throw consumption, before movement): first
+**Body-denial scan (D33/D34)** — runs immediately BEFORE the weapon scan,
+state SHOT only, `z_px <= grab_z`, `now >= JUMP_UNTIL` (tripwire; no SHOT
+exists while frozen). The first live ENEMY Living in livings (oblist) order —
+score team differing from SHOT_TEAM1-1, read live at the contact tick, and
+never the shooter: `og.entity_id(w) ~= LAST_TOUCHER`, the charm-proof prong —
+within `catch_radius` L1 of the ball GROUND center DEFLECTS the shot into a
+live REBOUND: horizontal `swat_velocity(ball − defender, deny_speed)`
+(zero-vector → the defender's facing, the dead-center rule), vz SET to
+`fumble_pop` (scramble, not sail), `clear_flight`, restamp to the defender,
+NO grace write (D24 — denier and shooter may both grab the carom),
+`landing_legal`, announce `"DENIED!"` + SOUND_ROAR. A carom off the body, not
+a catch — passes keep `try_catch`'s clean interception. Grace bars do not
+gate the deny (they bar taking the ball, not contesting it). Bodies can never
+reach a descending shot (the arc lands at rim_z 32 > grab_z 20), so no body
+goaltending exists — the deny band and the goaltend window are disjoint, and
+the weapon rules below are unchanged. A same-tick weapon may still tip the
+fresh carom silently (the ordinary rebound rule, D34).
+
+Swat scan (airborne states, after throw consumption and the body-denial scan,
+before movement): first
 live weapon in weaplist order within `swat_radius` L1 of the ball GROUND
 center that CAN swat; weapon z ignored (weapons fly flat; their reach is the
 abstraction); jump freeze guards it. **Zero-step ruling**: a weapon whose
@@ -1345,7 +1375,9 @@ sorts after `fx-bshadow.lua`, keeping ids 21/22/23.
   `"JUMP BALL!"` + SOUND_YO; `"BASKET! {COLOR} +2"` / `"THREE! {COLOR} +3"` +
   SOUND_MONEY; `"DUNK! {COLOR} +2"` + SOUND_MONEY; `"GOALTEND! {COLOR} +N"` +
   SOUND_MONEY; `"OWN BASKET! {COLOR} +2"` / `"OWN BASKET! {COLOR} -2"`;
-  `"TURNOVER!"` + SOUND_YO; `"BLOCK!"` + SOUND_BOLT; `"SHOT CLOCK!"` +
+  `"TURNOVER!"` + SOUND_YO; `"BLOCK!"` + SOUND_BOLT; `"DENIED!"` + SOUND_ROAR
+  (body denial, D33 — 7 bytes; ROAR keeps the stuff distinct from the block's
+  BOLT and the rim's CLANG); `"SHOT CLOCK!"` +
   SOUND_YO; `"BALL RESET"` + SOUND_YO; rim clang = positional SOUND_CLANG, no
   text; win via `core.declare_team_win`.
 - **Release readability (D26)**: SHOT release = positional SOUND_BOLT at the
@@ -1496,6 +1528,33 @@ sorts after `fx-bshadow.lua`, keeping ids 21/22/23.
     answers nil and the arm no-ops; `run_hoop_anims` simply drives the
     hoops that remain. No respawn, no sim consequence (I4: hoops never feed
     back into sim decisions); the mode plays on with a bare carpet.
+34. **Shooter walks into its own slow shot** — excluded twice (D33): the
+    candidate set is enemy-teams-only (the shooter's team fails the
+    predicate), and the LAST_TOUCHER id compare — invariantly the shooter's
+    id while STATE_SHOT — holds even when the shooter is charmed onto an
+    enemy team mid-flight. No self-deny exists.
+35. **Defender charmed / team-swapped mid-flight** — "enemy" is read live at
+    the contact tick (`press_count`'s definition): a defender charmed onto
+    the shooter's team loses the deny; an ex-teammate charmed onto an enemy
+    team gains it; the restamp pays the live team (the §9 #12 rule). Grace
+    bars never move (D24).
+36. **Deny on the tick the shot would score** — impossible by z arithmetic:
+    the deny band is [0, grab_z 20]; `resolve_shot` fires with pre-move
+    z > rim_z 32, and a SHOT never runs `run_crossing`. Deny-vs-basket
+    precedence has no case (D33/D34).
+37. **DENIED during the kickoff freeze** — unreachable like §9 #5: a center
+    reset scrubs to FREE and the freeze bars pickup, so no SHOT can exist
+    while frozen; the deny scan wears the JUMP_UNTIL guard as a tripwire
+    anyway.
+38. **Multiple defenders inside the deny radius** — first in livings (oblist)
+    order, the §9 #4 contention rule; players in earlier slots win ties.
+    Accepted.
+39. **Deny-rebound-deny stall** — cannot cycle: a deny consumes a SHOT and
+    produces a REBOUND, never another SHOT; the next SHOT costs a possession
+    gain (clock arms, §3.6) plus a release (clock clears), the dead-ball arm
+    ignores non-FREE states only while play is live, and the D25 wipe
+    watchdog runs in EVERY state. Deny-rebound loops are bounded exactly
+    like block-rebound loops (D34).
 
 ---
 
@@ -1529,6 +1588,7 @@ Parallelism: {WP1, WP3} first wave; WP2 after WP1; WP4 after {WP2, WP3};
 | WP11 | Hoop sprite + family | `scripts/gen_modes_sprites.py` (`make_hoop_frames` + roll-call, D29); generated `campaigns/modes/packs/modes.core/sprites/hoop.png` + `hoop.json`; new `campaigns/modes/packs/modes.core/families/fx-hoop.lua` (D30) | — |
 | WP12 | Frame driving | `campaigns/modes/packs/modes.core/lib/mode_basketball_impl.lua` only: `spawn_hoops` in `on_mode_init` (after the shadow spawn `:2133-2137`, before `center_reset` `:2140`), `find_hoop`/`arm_hoop_anim`/`run_hoop_anims` (D31), `score_basket` hoop_team parameter + its five callers, `own_basket` swish, T9 clang arm | WP11 |
 | WP13 | Gates + tests + media | `tools/modes_mapgen/main.cpp` (ledger `:239-251`, `self_check_pack_art` `:927-933`); `tests/unit/test_modes_levels.cpp` (ledger `:733`, sprite pins `:1189-1190`); `tests/unit/test_modes_basketball.cpp` (tests 42-47, mirror-test extension `:2120-2199`); `docs/mp-game-modes.md`; media refresh per D32 (screenshots repo `pr-190/`); `tests/modes_pack_fixture.h` + `scripts/coverage/runtime_only_lua.txt` ONLY if a new fixture row proves necessary (same-commit digest rule, R2) | WP12 |
+| WP14 | Body denial (D33/D34) | `campaigns/modes/packs/modes.core/lib/mode_basketball_impl.lua` (`T.deny_speed`, `run_deny`, the `run_ball_logic` call immediately before `run_swat`); `tests/unit/test_modes_basketball.cpp` (tests 48-54); `docs/mp-game-modes.md` (one denial sentence). No fixture-row, sprite, manifest or mapgen change; slot 63 untouched | WP12 (ships against the current impl) |
 
 Gate run for the amendment = §11.5 unchanged (regen byte-stability now also
 proves the hoop change emitted no map bytes); every new Lua function needs
@@ -1742,6 +1802,46 @@ caps row.
     latch, the scoring hoop's frame holds its caught swish frame across
     subsequent ticks (no Lua runs — edge #32), and no hook failures are
     recorded.
+48. `body_denial_point_blank` — enemy defender staged goal-side on the
+    release lane (the face-stuff): the deny fires inside the 2-3-tick low
+    window — BALL_STATE REBOUND, `"DENIED!"` announced (never `"BLOCK!"`),
+    LAST_TOUCHER/LAST_TOUCH1 and ball tint restamp to the defender, exact
+    impulse pin: `swat_velocity` L1-normalized at `deny_speed` 4 along
+    ball − defender, vz == `fumble_pop`; GRACE_* slots unchanged (no bar
+    written, D24); the defender grabs the carom on a following tick.
+    Dead-center arm: contact exactly under the ball caroms along the
+    defender's FACING (a grace-barred body still contests — the bar only
+    delays the scoop, keeping the impulse observable); sentinel arm: a
+    facing-less denier (curdir at the −1 sentinel, so `FACING_X[0]` is
+    nil) takes the (0, 1) fallback and heaves the carom FACE_DOWN at full
+    `deny_speed` — `consume_throw`'s sentinel rule, pinned.
+49. `denial_z_boundary_sails_over` — the same lane with the defender far
+    enough downrange that every contact tick has `z_px > grab_z`: no deny,
+    the flight completes (the body sanctuary); boundary arm: contact staged
+    at exactly `z_px == grab_z` denies (the `<=` compare).
+50. `shooter_never_self_denies` — release tick: ball ground == shooter
+    center, no deny (team prong); charm arm: the shooter team-swapped
+    mid-flight while inside `catch_radius` of its own slow shot — still no
+    deny (the LAST_TOUCHER id prong, edge #34); the flight resolves
+    normally.
+51. `teammate_body_never_caroms` — teammate parked on the lane inside
+    `catch_radius` at `z_px <= grab_z`: the shot sails through (enemies
+    only, D33); the same body swapped to an enemy team before contact
+    denies (the live-read arm, edge #35).
+52. `deny_beats_weapon_swat_same_tick` — enemy body AND an in-range live
+    weapon on the contact tick: `"DENIED!"` with the body constants, not
+    the weapon impulse (D34 ordering); the post-deny same-tick weapon tip
+    of the fresh REBOUND stays silent (no `"BLOCK!"` — was_shot false).
+53. `deny_clock_state_matches_block` — CLOCK_UNTIL/CLOCK_TEAM1 stay 0 from
+    release through the deny (byte-identical to the weapon-block path);
+    the next possession gain by either team arms a fresh clock (§3.6 rule
+    3); determinism arm: pinned `world().rng_.state_` is unchanged across
+    the deny tick (the deny draws zero RNG).
+54. `director_open_shot_undenied_regression` — the rung-1 open-release
+    staging of test 31 (press_count == 0, nearest enemy at standoff):
+    the shot completes un-denied — the AI open-shot gate keeps bot
+    offense out of the deny window in the common case (D33 arithmetic);
+    existing director tests stay green.
 
 ### 11.3 Function-coverage matrix (Lua function = 100 gate)
 
@@ -1774,6 +1874,7 @@ untestable may be written (I3).
 | fx-bshadow | declares NO functions (D11 — deliberate) |
 | fx-hoop | declares NO functions (D30 — the fx-bshadow ruling) |
 | `spawn_hoops`, `find_hoop`, `arm_hoop_anim`, `run_hoop_anims` (D30/D31); `score_basket`/`own_basket` hoop_team arms | 42, 43, 44, 45, 46, 47 |
+| `run_deny` (D33/D34: window gate, enemy/shooter prongs, impulse + zero-vector fallback, restamp, ordering vs run_swat) | 48, 49, 50, 51, 52, 53, 54 |
 | hoisted `ai.dir8/drive_geometry/chaser_drives`, `match.revive_wiped_teams/run_death_scan`, `core.iabs/walker_center` | existing soccer suite + tests 16, 19, 20 |
 
 ### 11.4 Levels-sweep updates and the 28→33 literal ledger

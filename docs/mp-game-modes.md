@@ -201,12 +201,16 @@ a dropped flag). Carriers run home and fight only when cornered.
   loose — scratch damage never does, and you get a moment's grace right after
   a pickup. That is the steal, and hounding the carrier is the on-ball
   defender's whole job.
-- **Blocks and goaltending.** Nobody blocks a shot with their body: only a
-  weapon reaching the ball low swats it away, which is a clean block and
-  leaves the ball live. The top of an arc is out of reach by design. Swatting
-  a *falling* shot near the rim is **goaltending**, and the basket counts
-  anyway. Chest passes fly low enough to be picked off by hand; a lob floats
-  over everyone's heads and is only contestable at its ends.
+- **Blocks and goaltending.** Shoot straight into an enemy's face and they
+  **deny** it: while the ball is still at body height in the first instants
+  after release, an enemy on it caroms the shot off their chest into a live
+  scramble — "DENIED!", a deflection, never a catch. Past that window nobody
+  blocks a shot with their body: only a weapon reaching the ball low swats it
+  away, which is a clean block and leaves the ball live. The top of an
+  arc is out of reach by design. Swatting a *falling* shot near the rim
+  is **goaltending**, and the basket counts anyway. Chest passes fly low
+  enough to be picked off by hand; a lob floats over everyone's heads
+  and is only contestable at its ends.
 - **Rebounds and banks.** A miss clangs off the rim into a live scramble;
   anyone may tip it in the air or scoop it off the floor. A ball dropping
   through any hoop scores **2 for whoever touched it last** — tip-ins,

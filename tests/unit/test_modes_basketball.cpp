@@ -19,9 +19,11 @@
 // race, landing legality, the dead-ball and wipe watchdogs, win/timeout/
 // buzzer, the AI director's role scheme, spawn caps, mirror replication,
 // the determinism digest, instruction-budget headroom, the R4 slot
-// budget, and the D29-D31 hoop furniture (spawn counts and tints, the
+// budget, the D29-D31 hoop furniture (spawn counts and tints, the
 // tick-exact swish/clang frame programs, wire replication, the win-latch
-// freeze).
+// freeze), and the D33/D34 body denial (the low window and its z boundary,
+// the shooter/teammate exclusion prongs, body-before-weapon precedence,
+// clock/RNG parity with the weapon block, the open-release regression).
 
 #include <gtest/gtest.h>
 
@@ -4189,4 +4191,530 @@ TEST_F(ModesBasketball, wipe_watchdog_refields_a_matched_team_at_strength)
     EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"))
         << "mid-match reprovision stays silent (§7)";
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+// ===========================================================================
+// §11.2 #48 — D33 body denial: the point-blank face-stuff
+// ===========================================================================
+
+TEST_F(ModesBasketball, body_denial_point_blank)
+{
+    BballCourt fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.basketball_active());
+    fx.thaw();
+    auto& vars = fx.world().mode.vars;
+    vars[kBbBallState] = kStateShot;
+    vars[kBbShotValue] = 2;
+    vars[kBbShotHoop1] = 2;
+    vars[kBbShotTeam1] = 1;  // red released it
+    vars[kBbShotLand] = pos_pack(576, 480);
+    vars[kBbFlightTicks] = 20;
+    vars[kBbLastToucher] = static_cast<std::int32_t>(fx.red->entity_id());
+    vars[kBbLastTouch1] = 1;
+    vars[kBbBallPx] = 320 * 256;
+    vars[kBbBallPy] = 300 * 256;
+    vars[kBbBallPz] = 14 * 256;  // inside the deny band [0, grab_z]
+    vars[kBbBallVx] = 0;
+    vars[kBbBallVy] = 0;
+    vars[kBbBallVz] = 900;       // the release ascent
+    fx.ball()->set_team_num(0);
+    // Green parked goal-side on the release lane: center (311, 297) is
+    // 12 L1 from the ball's ground center — contact at exactly
+    // catch_radius also pins the <= compare.
+    fx.green->setxy(303, 289);
+    fx.tick(1);
+
+    EXPECT_EQ(kStateRebound, fx.var(kBbBallState)) << "T20 body denial";
+    EXPECT_EQ(1, count_notifications(fx.events, "DENIED!"));
+    EXPECT_EQ(0, count_notifications(fx.events, "BLOCK!"))
+        << "a face-stuff announces the deny, never the weapon swat";
+    EXPECT_GE(25u, longest_notification(fx.events)) << "I8 budget";
+    // Exact impulse pin: ball - defender = (9, 3), L1-normalized at
+    // deny_speed 4 -> vx = 1024*9/12 = 768, vy = 1024*3/12 = 256; the
+    // horizontal pair survives the same-tick run_air on open floor.
+    EXPECT_EQ(768, fx.var(kBbBallVx))
+        << "swat_velocity along ball - defender at the deny_speed floor";
+    EXPECT_EQ(256, fx.var(kBbBallVy));
+    EXPECT_EQ(kFumblePop - kGravity, fx.var(kBbBallVz))
+        << "vz is SET to fumble_pop (a scramble, not the block's +512 "
+           "sail), then one tick of gravity";
+    EXPECT_EQ(static_cast<std::int32_t>(fx.green->entity_id()),
+              fx.var(kBbLastToucher))
+        << "the toucher restamps to the defender";
+    EXPECT_EQ(2, fx.var(kBbLastTouch1));
+    EXPECT_EQ(1, fx.var(kBbLastTouch2)) << "the shooter demotes to touch2";
+    EXPECT_EQ(1, static_cast<int>(fx.ball()->team_num())) << "ball tint";
+    EXPECT_EQ(0, fx.var(kBbShotValue)) << "flight facts cleared";
+    EXPECT_EQ(0, fx.var(kBbShotTeam1));
+    EXPECT_EQ(0, fx.var(kBbFlightTicks));
+    EXPECT_EQ(0, fx.var(kBbGraceUntil))
+        << "no grace write (D24): denier and shooter may both grab";
+    EXPECT_EQ(0, fx.var(kBbGraceTeam1));
+    EXPECT_EQ(0, fx.var(kBbGraceEntity));
+
+    // No bar was written, so the denier grabs the carom once it settles.
+    const int ran = tick_until_state_leaves(fx, kStateRebound, 400);
+    ASSERT_LT(ran, 400) << "the carom must settle";
+    ASSERT_EQ(kStateFree, fx.var(kBbBallState));
+    fx.green->setxy(static_cast<short>(fx.ball_cx() - 8),
+                    static_cast<short>(fx.ball_cy() - 8));
+    fx.tick(1);
+    EXPECT_EQ(static_cast<std::int32_t>(fx.green->entity_id()), fx.carrier())
+        << "the defender scoops what it earned";
+    ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
+
+    // Dead-center degenerate: the defender's center exactly under the
+    // ball leaves swat_velocity no direction, so the carom follows the
+    // defender's FACING — consume_throw's dead-center rule verbatim. The
+    // defender wears an entity grace bar: it STILL denies (grace bars
+    // bar taking the ball, never contesting it, §3.5) but cannot scoop
+    // the carom the same tick, which keeps the impulse observable.
+    {
+        BballCourt dc;
+        dc.tick(1);
+        ASSERT_TRUE(dc.basketball_active());
+        dc.thaw();
+        auto& dvars = dc.world().mode.vars;
+        dvars[kBbBallState] = kStateShot;
+        dvars[kBbShotValue] = 2;
+        dvars[kBbShotHoop1] = 2;
+        dvars[kBbShotTeam1] = 1;
+        dvars[kBbShotLand] = pos_pack(576, 480);
+        dvars[kBbFlightTicks] = 20;
+        dvars[kBbLastToucher] =
+            static_cast<std::int32_t>(dc.red->entity_id());
+        dvars[kBbLastTouch1] = 1;
+        dvars[kBbBallPx] = 320 * 256;
+        dvars[kBbBallPy] = 300 * 256;
+        dvars[kBbBallPz] = 14 * 256;
+        dvars[kBbBallVx] = 0;
+        dvars[kBbBallVy] = 0;
+        dvars[kBbBallVz] = 900;
+        dvars[kBbGraceUntil] = 1000;
+        dvars[kBbGraceTeam1] = 0;
+        dvars[kBbGraceEntity] =
+            static_cast<std::int32_t>(dc.green->entity_id());
+        dc.green->setxy(312, 292);  // center == ball ground center
+        dc.green->set_curdir(FACE_RIGHT);
+        dc.green->set_enddir(FACE_RIGHT);  // no act-phase turn-in-place
+        dc.tick(1);
+        EXPECT_EQ(kStateRebound, dc.var(kBbBallState))
+            << "a grace-barred body still contests the shot";
+        EXPECT_EQ(1, count_notifications(dc.events, "DENIED!"));
+        EXPECT_EQ(4 * 256, dc.var(kBbBallVx))
+            << "the carom rides the defender's facing (east), full "
+               "deny_speed on one axis";
+        EXPECT_EQ(0, dc.var(kBbBallVy));
+        EXPECT_EQ(kFumblePop - kGravity, dc.var(kBbBallVz));
+        EXPECT_EQ(1000, dc.var(kBbGraceUntil))
+            << "the deny never moves a grace bar (D24)";
+        EXPECT_EQ(static_cast<std::int32_t>(dc.green->entity_id()),
+                  dc.var(kBbGraceEntity));
+    }
+
+    // Facing-less denier: core-family specials park curdir at the -1
+    // sentinel while their command burst drains, so FACING_X[curdir + 1]
+    // indexes slot 0 and answers nil. The dead-center carom must then take
+    // the (0, 1) fallback and heave FACE_DOWN deterministically —
+    // consume_throw's sentinel rule, applied to the deny.
+    {
+        BballCourt sc;
+        sc.tick(1);
+        ASSERT_TRUE(sc.basketball_active());
+        sc.thaw();
+        auto& svars = sc.world().mode.vars;
+        svars[kBbBallState] = kStateShot;
+        svars[kBbShotValue] = 2;
+        svars[kBbShotHoop1] = 2;
+        svars[kBbShotTeam1] = 1;
+        svars[kBbShotLand] = pos_pack(576, 480);
+        svars[kBbFlightTicks] = 20;
+        svars[kBbLastToucher] =
+            static_cast<std::int32_t>(sc.red->entity_id());
+        svars[kBbLastTouch1] = 1;
+        svars[kBbBallPx] = 320 * 256;
+        svars[kBbBallPy] = 300 * 256;
+        svars[kBbBallPz] = 14 * 256;
+        svars[kBbBallVx] = 0;
+        svars[kBbBallVy] = 0;
+        svars[kBbBallVz] = 900;
+        svars[kBbGraceUntil] = 1000;
+        svars[kBbGraceTeam1] = 0;
+        svars[kBbGraceEntity] =
+            static_cast<std::int32_t>(sc.green->entity_id());
+        sc.green->setxy(312, 292);  // center == ball ground center
+        sc.green->set_curdir(static_cast<signed char>(-1));
+        sc.green->set_enddir(static_cast<signed char>(-1));
+        sc.tick(1);
+        EXPECT_EQ(kStateRebound, sc.var(kBbBallState))
+            << "a facing-less body still denies";
+        EXPECT_EQ(1, count_notifications(sc.events, "DENIED!"));
+        EXPECT_EQ(0, sc.var(kBbBallVx))
+            << "nil facing falls back to (0, 1): the carom heaves "
+               "FACE_DOWN at full deny_speed";
+        EXPECT_EQ(4 * 256, sc.var(kBbBallVy));
+        EXPECT_EQ(kFumblePop - kGravity, sc.var(kBbBallVz));
+        ASSERT_EQ(0u, og::script::hooks::hook_failures().count)
+            << "the nil-guard arm must not raise";
+    }
+}
+
+// ===========================================================================
+// §11.2 #49 — the deny band's z boundary: above grab_z the arc is body-proof
+// ===========================================================================
+
+TEST_F(ModesBasketball, denial_z_boundary_sails_over)
+{
+    // Every contact tick above grab_z: the body sanctuary — no deny, the
+    // flight completes. Staged to ASCEND for its whole 10-tick life
+    // (vz 900 stays positive through tick 9), so z never re-enters the
+    // band while the defender stands in radius.
+    {
+        BballCourt fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        fx.thaw();
+        auto& vars = fx.world().mode.vars;
+        vars[kBbBallState] = kStateShot;
+        vars[kBbShotValue] = 2;
+        vars[kBbShotHoop1] = 2;
+        vars[kBbShotTeam1] = 1;
+        vars[kBbShotLand] = pos_pack(576, 480);
+        vars[kBbFlightTicks] = 10;
+        vars[kBbLastToucher] = static_cast<std::int32_t>(fx.red->entity_id());
+        vars[kBbLastTouch1] = 1;
+        vars[kBbBallPx] = 320 * 256;
+        vars[kBbBallPy] = 300 * 256;
+        vars[kBbBallPz] = 21 * 256;  // one px over grab_z
+        vars[kBbBallVx] = 0;
+        vars[kBbBallVy] = 0;
+        vars[kBbBallVz] = 900;
+        fx.green->setxy(303, 289);   // 12 L1: in contact the whole flight
+        fx.tick(1);
+        EXPECT_EQ(kStateShot, fx.var(kBbBallState))
+            << "z 21 > grab_z: a body cannot reach the shot";
+        EXPECT_EQ(9, fx.var(kBbFlightTicks)) << "the flight continues";
+        fx.tick(9);
+        EXPECT_EQ(0, count_notifications(fx.events, "DENIED!"))
+            << "no contact tick ever entered the deny band";
+        EXPECT_NE(kStateShot, fx.var(kBbBallState))
+            << "the flight completed (airball resolution)";
+    }
+    // The boundary arm: contact staged at exactly z == grab_z denies —
+    // the window compare is <=.
+    {
+        BballCourt fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        fx.thaw();
+        auto& vars = fx.world().mode.vars;
+        vars[kBbBallState] = kStateShot;
+        vars[kBbShotValue] = 2;
+        vars[kBbShotHoop1] = 2;
+        vars[kBbShotTeam1] = 1;
+        vars[kBbShotLand] = pos_pack(576, 480);
+        vars[kBbFlightTicks] = 20;
+        vars[kBbLastToucher] = static_cast<std::int32_t>(fx.red->entity_id());
+        vars[kBbLastTouch1] = 1;
+        vars[kBbBallPx] = 320 * 256;
+        vars[kBbBallPy] = 300 * 256;
+        vars[kBbBallPz] = kGrabZ * 256;
+        vars[kBbBallVx] = 0;
+        vars[kBbBallVy] = 0;
+        vars[kBbBallVz] = 900;
+        fx.green->setxy(303, 289);
+        fx.tick(1);
+        EXPECT_EQ(kStateRebound, fx.var(kBbBallState))
+            << "z == grab_z is inside the deny band (<=)";
+        EXPECT_EQ(1, count_notifications(fx.events, "DENIED!"));
+    }
+}
+
+// ===========================================================================
+// §11.2 #50 — the shooter can never deny its own shot (both prongs)
+// ===========================================================================
+
+TEST_F(ModesBasketball, shooter_never_self_denies)
+{
+    // Release-tick geometry: ball ground == shooter center, deep inside
+    // radius and band — the team prong (SHOT_TEAM1) refuses the shooter.
+    {
+        BballCourt fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        fx.thaw();
+        auto& vars = fx.world().mode.vars;
+        vars[kBbBallState] = kStateShot;
+        vars[kBbShotValue] = 2;
+        vars[kBbShotHoop1] = 2;
+        vars[kBbShotTeam1] = 1;
+        vars[kBbShotLand] = pos_pack(576, 480);
+        vars[kBbFlightTicks] = 3;
+        vars[kBbLastToucher] = static_cast<std::int32_t>(fx.red->entity_id());
+        vars[kBbLastTouch1] = 1;
+        vars[kBbBallPx] = 320 * 256;
+        vars[kBbBallPy] = 300 * 256;
+        vars[kBbBallPz] = 14 * 256;
+        vars[kBbBallVx] = 0;
+        vars[kBbBallVy] = 0;
+        vars[kBbBallVz] = 900;
+        fx.red->setxy(312, 292);  // shooter center == ball ground center
+        fx.tick(1);
+        EXPECT_EQ(kStateShot, fx.var(kBbBallState))
+            << "no self deny at the release point (team prong)";
+        EXPECT_EQ(2, fx.var(kBbFlightTicks));
+        fx.tick(2);
+        EXPECT_EQ(0, count_notifications(fx.events, "DENIED!"));
+        EXPECT_EQ(kStateRebound, fx.var(kBbBallState))
+            << "the flight resolved normally (airball)";
+    }
+    // The charm arm (edge #34): the shooter swapped onto an ENEMY team
+    // mid-flight, standing in its own slow shot. The team prong now
+    // passes — only the LAST_TOUCHER id prong refuses it.
+    {
+        BballCourt fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        fx.thaw();
+        auto& vars = fx.world().mode.vars;
+        vars[kBbBallState] = kStateShot;
+        vars[kBbShotValue] = 2;
+        vars[kBbShotHoop1] = 2;
+        vars[kBbShotTeam1] = 1;
+        vars[kBbShotLand] = pos_pack(576, 480);
+        vars[kBbFlightTicks] = 3;
+        vars[kBbLastToucher] = static_cast<std::int32_t>(fx.red->entity_id());
+        vars[kBbLastTouch1] = 1;
+        vars[kBbBallPx] = 320 * 256;
+        vars[kBbBallPy] = 300 * 256;
+        vars[kBbBallPz] = 14 * 256;
+        vars[kBbBallVx] = 0;
+        vars[kBbBallVy] = 0;
+        vars[kBbBallVz] = 900;
+        fx.red->setxy(312, 292);
+        fx.red->set_team_num(1);  // charmed onto the enemy team
+        fx.tick(1);
+        EXPECT_EQ(kStateShot, fx.var(kBbBallState))
+            << "the id prong is charm-proof (edge #34)";
+        fx.tick(2);
+        EXPECT_EQ(0, count_notifications(fx.events, "DENIED!"));
+        EXPECT_NE(kStateShot, fx.var(kBbBallState));
+    }
+}
+
+// ===========================================================================
+// §11.2 #51 — teammate bodies never carom; "enemy" is read live (edge #35)
+// ===========================================================================
+
+TEST_F(ModesBasketball, teammate_body_never_caroms)
+{
+    BballCourt fx;
+    walker* mate = fx.spawn_living(FAMILY_SOLDIER, 0, 303, 289, ACT_SIT);
+    ASSERT_NE(nullptr, mate);  // center (311, 297): 12 L1 on the lane
+    fx.tick(1);
+    ASSERT_TRUE(fx.basketball_active());
+    fx.thaw();
+    auto& vars = fx.world().mode.vars;
+    vars[kBbBallState] = kStateShot;
+    vars[kBbShotValue] = 2;
+    vars[kBbShotHoop1] = 2;
+    vars[kBbShotTeam1] = 1;  // red's shot; the mate shares team 0
+    vars[kBbShotLand] = pos_pack(576, 480);
+    vars[kBbFlightTicks] = 20;
+    vars[kBbLastToucher] = static_cast<std::int32_t>(fx.red->entity_id());
+    vars[kBbLastTouch1] = 1;
+    vars[kBbBallPx] = 320 * 256;
+    vars[kBbBallPy] = 300 * 256;
+    vars[kBbBallPz] = 14 * 256;
+    vars[kBbBallVx] = 0;
+    vars[kBbBallVy] = 0;
+    vars[kBbBallVz] = 900;
+    fx.tick(1);
+    EXPECT_EQ(kStateShot, fx.var(kBbBallState))
+        << "a teammate body on the lane never caroms the shot (enemies "
+           "only, D33)";
+    EXPECT_EQ(0, count_notifications(fx.events, "DENIED!"));
+    EXPECT_EQ(19, fx.var(kBbFlightTicks));
+
+    // The live-read arm (edge #35): the SAME body charmed onto an enemy
+    // team before the next contact tick (z 17, still in radius) gains
+    // the deny, and the restamp pays the live team.
+    mate->set_team_num(1);
+    fx.tick(1);
+    EXPECT_EQ(kStateRebound, fx.var(kBbBallState));
+    EXPECT_EQ(1, count_notifications(fx.events, "DENIED!"));
+    EXPECT_EQ(static_cast<std::int32_t>(mate->entity_id()),
+              fx.var(kBbLastToucher));
+    EXPECT_EQ(2, fx.var(kBbLastTouch1)) << "paid to the live team";
+    ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+// ===========================================================================
+// §11.2 #52 — D34 precedence: the body beats a same-tick weapon in the
+// shared band, and the weapon's follow-up tip of the carom stays silent
+// ===========================================================================
+
+TEST_F(ModesBasketball, deny_beats_weapon_swat_same_tick)
+{
+    BballCourt fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.basketball_active());
+    fx.thaw();
+    auto& vars = fx.world().mode.vars;
+    vars[kBbBallState] = kStateShot;
+    vars[kBbShotValue] = 2;
+    vars[kBbShotHoop1] = 2;
+    vars[kBbShotTeam1] = 1;
+    vars[kBbShotLand] = pos_pack(576, 480);
+    vars[kBbFlightTicks] = 20;
+    vars[kBbLastToucher] = static_cast<std::int32_t>(fx.red->entity_id());
+    vars[kBbLastTouch1] = 1;
+    vars[kBbBallPx] = 320 * 256;
+    vars[kBbBallPy] = 300 * 256;
+    vars[kBbBallPz] = 14 * 256;  // inside BOTH windows (deny 20, block 24)
+    vars[kBbBallVx] = 0;
+    vars[kBbBallVy] = 0;
+    vars[kBbBallVz] = 900;
+    fx.green->setxy(303, 289);   // body at 12 L1
+    walker* swat = fx.spawn_weapon(fx.green, 317, 297, 4.0f, 0.0f);
+    ASSERT_NE(nullptr, swat);
+    swat->set_damage(5.0f);      // a 10 px/tick weapon impulse, if it led
+    const std::uint32_t swat_id = swat->entity_id();
+    fx.tick(1);
+
+    EXPECT_EQ(kStateRebound, fx.var(kBbBallState));
+    EXPECT_EQ(1, count_notifications(fx.events, "DENIED!"))
+        << "the body owns the shared band (D34: body before weapon)";
+    EXPECT_EQ(0, count_notifications(fx.events, "BLOCK!"))
+        << "the same-tick weapon tip of the fresh REBOUND is silent "
+           "(was_shot false)";
+    // The ordering, pinned in the velocities: the deny SET vz to
+    // fumble_pop, the silent tip then ADDED its +512 pop and overwrote
+    // the horizontal with the weapon impulse (10 px/tick along (4,0));
+    // gravity closes the tick. Flipped precedence would read
+    // 900 + 512 - 96 here and announce BLOCK!.
+    EXPECT_EQ(kFumblePop + 512 - kGravity, fx.var(kBbBallVz));
+    EXPECT_EQ(10 * 256, fx.var(kBbBallVx));
+    EXPECT_EQ(0, fx.var(kBbBallVy));
+    EXPECT_EQ(static_cast<std::int32_t>(fx.green->entity_id()),
+              fx.var(kBbLastToucher));
+    EXPECT_EQ(2, fx.var(kBbLastTouch1));
+    EXPECT_TRUE(fx.weapon_present(swat_id))
+        << "neither the deny nor the tip consumes the weapon";
+    ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+// ===========================================================================
+// §11.2 #53 — the deny writes no CLOCK_* and draws zero RNG; the next gain
+// arms a fresh clock (§3.6 rule 3)
+// ===========================================================================
+
+TEST_F(ModesBasketball, deny_clock_state_matches_block)
+{
+    // Twin runs (sequential — the harness holds one world at a time),
+    // identical except the defender: in `a` the green body stands at
+    // contact (12 L1, denies); in `b` one px out (13 L1, the shot sails
+    // on). Fixture construction is deterministic, so equal pre-tick AND
+    // post-tick LCG states prove the deny itself draws nothing.
+    auto stage = [](BballCourt& fx, int green_cx) {
+        fx.tick(1);
+        fx.thaw();
+        auto& vars = fx.world().mode.vars;
+        vars[kBbBallState] = kStateShot;
+        vars[kBbShotValue] = 2;
+        vars[kBbShotHoop1] = 2;
+        vars[kBbShotTeam1] = 1;
+        vars[kBbShotLand] = pos_pack(576, 480);
+        vars[kBbFlightTicks] = 20;
+        vars[kBbLastToucher] =
+            static_cast<std::int32_t>(fx.red->entity_id());
+        vars[kBbLastTouch1] = 1;
+        vars[kBbBallPx] = 320 * 256;
+        vars[kBbBallPy] = 300 * 256;
+        vars[kBbBallPz] = 14 * 256;
+        vars[kBbBallVx] = 0;
+        vars[kBbBallVy] = 0;
+        vars[kBbBallVz] = 900;
+        fx.green->setxy(green_cx - 8, 289);
+    };
+    std::uint32_t rng_before_a = 0;
+    std::uint32_t rng_after_a = 0;
+    {
+        BballCourt a;
+        stage(a, 311);
+        ASSERT_TRUE(a.basketball_active());
+        rng_before_a = a.world().rng_.state_;
+        a.tick(1);
+        rng_after_a = a.world().rng_.state_;
+        ASSERT_EQ(kStateRebound, a.var(kBbBallState));
+        ASSERT_EQ(1, count_notifications(a.events, "DENIED!"));
+        // The release already cleared CLOCK_* and the deny writes
+        // neither slot — byte-identical to the weapon-block path.
+        EXPECT_EQ(0, a.var(kBbClockUntil));
+        EXPECT_EQ(0, a.var(kBbClockTeam1));
+
+        // The next possession gain arms fresh: walk the denier onto the
+        // carom until it grabs.
+        int grabbed = -1;
+        for (int i = 0; i < 80 && grabbed < 0; ++i)
+        {
+            a.green->setxy(static_cast<short>(a.ball_cx() - 8),
+                           static_cast<short>(a.ball_cy() - 8));
+            a.tick(1);
+            if (a.carrier() ==
+                static_cast<std::int32_t>(a.green->entity_id()))
+                grabbed = i;
+        }
+        ASSERT_GE(grabbed, 0) << "the denier must eventually grab the carom";
+        EXPECT_EQ(2, a.var(kBbClockTeam1))
+            << "fresh clock for the gaining team (§3.6 rule 3)";
+        const std::int32_t remaining =
+            a.var(kBbClockUntil) -
+            static_cast<std::int32_t>(a.world().tick_count_);
+        EXPECT_GE(remaining, kShotClock - 2);
+        EXPECT_LE(remaining, kShotClock);
+    }
+    {
+        BballCourt b;
+        stage(b, 310);
+        ASSERT_TRUE(b.basketball_active());
+        ASSERT_EQ(rng_before_a, b.world().rng_.state_)
+            << "twins must enter the tick in the same RNG state";
+        b.tick(1);
+        ASSERT_EQ(kStateShot, b.var(kBbBallState))
+            << "13 L1 is out of contact: the shot sails on";
+        ASSERT_EQ(0, count_notifications(b.events, "DENIED!"));
+        EXPECT_EQ(rng_after_a, b.world().rng_.state_)
+            << "the deny draws ZERO RNG (D33) — the stream is untouched";
+    }
+}
+
+// ===========================================================================
+// §11.2 #54 — the director's open-shot rung never feeds the deny (D33
+// arithmetic: press_count == 0 at release keeps every body out of range)
+// ===========================================================================
+
+TEST_F(ModesBasketball, director_open_shot_undenied_regression)
+{
+    // The rung-1 open release (the §11.2 #31 staging): press_count == 0
+    // at the release tick — the nearest enemy stands hundreds of px off
+    // the lane, so no body can reach the 2-3-tick low window and bot
+    // offense never feeds the deny.
+    BballCourt fx;
+    walker* bot = fx.spawn_living(FAMILY_SOLDIER, 0, 492, 472, ACT_SIT);
+    ASSERT_NE(nullptr, bot);
+    fx.tick(1);
+    ASSERT_TRUE(fx.basketball_active());
+    fx.give_ball(bot, 500, 480);  // 76 px Euclid <= sweet 88, nobody near
+    align_before_cadence(fx.world());
+    fx.tick(1);
+    ASSERT_EQ(kStateShot, fx.var(kBbBallState))
+        << "the open bot releases the jumper";
+    const int ran = tick_until_state_leaves(fx, kStateShot, 40);
+    ASSERT_LT(ran, 40) << "the flight must resolve";
+    EXPECT_EQ(0, count_notifications(fx.events, "DENIED!"))
+        << "an open release never meets a body in the low window";
+    EXPECT_EQ(0, count_notifications(fx.events, "BLOCK!"));
+    ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
 }
