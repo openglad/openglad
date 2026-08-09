@@ -81,37 +81,36 @@ local function mask_count(mask)
   return count
 end
 
--- The Teams: Match sentinel — must equal the C++ kTeamCountMatched
--- (lobby_state.h); the equality is pinned via an og.match_setting
--- round-trip in test_mode_bindings (matched-teams D2/D18).
-local MATCHED_TEAM_COUNT = 5
+-- The TROOPS: FAIR sentinel — the third value of the scenario-troops
+-- setting; must equal the C++ kTroopsMatched (lobby_state.h). The equality
+-- is pinned via an og.match_setting("strip_troops") round-trip in
+-- test_mode_bindings (matched-teams D27/D29).
+local MATCHED_TROOPS = 3
 
 -- One normalization rule for every team-count consumer: Auto (raw <= 0)
--- and Matched (raw == MATCHED_TEAM_COUNT) both mean "no numeric clamp" —
--- count 0 — because matching changes bot strength, never which teams
--- activate (matched-teams D5). The boolean reports a Matched request for
--- the power seam; junk counts (6+) pass through to activate_teams' clamp.
+-- means "no numeric clamp" — count 0; junk counts (5+) pass through to
+-- activate_teams' clamp.
 local function normalize_team_count(raw)
-  if raw == MATCHED_TEAM_COUNT then
-    return 0, true
-  end
   if raw <= 0 then
-    return 0, false
+    return 0
   end
-  return raw, false
+  return raw
 end
 
 -- The lobby team-count request, normalized: (count, matched) with count 0
--- for Auto OR Matched (matched-teams D18).
+-- for Auto. The matched boolean reports a TROOPS: FAIR request for the
+-- power seam (matched-teams D29): matching rides the scenario-troops
+-- setting, not the team count, so it strips and roster-activates exactly
+-- like TROOPS: OWN and differs only in generated-squad strength (D26).
 local function team_count_request()
-  return normalize_team_count(og.match_setting("team_count"))
+  local count = normalize_team_count(og.match_setting("team_count"))
+  return count, og.match_setting("strip_troops") == MATCHED_TROOPS
 end
 
 -- The team-activation clamp (og.effective_team_mask's rule applied to an
 -- arbitrary authored domain — CTF activates flag teams, not marker teams):
--- a normalized count of 0 (requested <= 0, or the Matched sentinel) takes
--- every authored team; otherwise the first clamp(count, 2, 4) authored
--- teams in index order.
+-- a normalized count of 0 (requested <= 0) takes every authored team;
+-- otherwise the first clamp(count, 2, 4) authored teams in index order.
 local function activate_teams(authored_mask, requested)
   local count = normalize_team_count(requested)
   if count <= 0 then
@@ -189,7 +188,7 @@ return {
   SLOT = SLOT,
   MODE = MODE,
   TEAM_BIT = TEAM_BIT,
-  MATCHED_TEAM_COUNT = MATCHED_TEAM_COUNT,
+  MATCHED_TROOPS = MATCHED_TROOPS,
   team_count_request = team_count_request,
   pos_pack = pos_pack,
   pos_x = pos_x,

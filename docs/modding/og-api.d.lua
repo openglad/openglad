@@ -545,7 +545,7 @@
 ---@field level_tick fun(): integer
 ---@field living_count fun(): integer
 ---@field log fun(...: any)
----@field match_setting fun(s: "difficulty"|"respawn_mode"|"respawn_ticks"|"score_limit"|"strip_troops"|"team_count"): integer # og.match_setting(name) — the lobby/save match knobs, reinterpreted as generic match settings; 0 always means "mode default" (team_count 5 = Matched).
+---@field match_setting fun(s: "difficulty"|"respawn_mode"|"respawn_ticks"|"score_limit"|"strip_troops"|"team_count"): integer # og.match_setting(name) — the lobby/save match knobs, reinterpreted as generic match settings; 0 always means "mode default" (strip_troops: 0 keep, 2 own, 3 m...
 ---@field max fun(a: number, b: number): number # og.max(a, b) / og.min(a, b) — std::max / std::min EXACTLY: og.max answers b only when a < b, og.min answers b only when b < a, so every tie answers a (observ...
 ---@field min fun(arg1: number, arg2: number): number
 ---@field mod fun(a: integer, b: integer): integer

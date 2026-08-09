@@ -184,16 +184,16 @@ inline bool lobby_join_seats_content_identical(
     return true;
 }
 
-// Requested-team-count sentinel for "Teams: Match" (matched-teams design
-// D2): bot squads on empty active teams are filled to match the human
-// census. Positive on purpose — sanitize_settings snaps every <= 0 value to
-// 0 (Auto), so a negative sentinel would be silently destroyed (the solo
-// picker round-trips its own settings through LocalPickerLobbyClient). For
-// every mask/activation purpose the sentinel behaves exactly like Auto
-// (og::sim::effective_team_mask treats it as <= 0); the only behavioral
-// delta lives in the bot spawn seam. Old builds degrade it safely: their
-// sanitize clamps 5 -> 4 and their cycler wraps 5 -> Auto.
-inline constexpr std::int16_t kTeamCountMatched = 5;
+// Scenario-troops sentinel for "TROOPS: FAIR" (matched-teams design
+// D25-D27): the third value of ctf_strip_scenario_troops. It strips the
+// authored cast exactly like OWN (2) — every strip consumer reads any value
+// above 0 as strip-on — and additionally sizes the bot squads the scripted
+// modes generate to the human census instead of the difficulty formula.
+// 3 because 1 is the retired middle state (legacy saves and peers still
+// hand it over meaning OWN) and 2 is OWN itself. Old builds degrade it to
+// plain OWN: their strip rules read it as strip-on, their sanitize reverts
+// it at publish, and their toggle cycles it back to ALL.
+inline constexpr std::int16_t kTroopsMatched = 3;
 
 struct LobbySettings {
     std::string campaign_id;
@@ -201,7 +201,7 @@ struct LobbySettings {
     std::int16_t difficulty = 0;
     std::int16_t allied_mode = 0;
     // Match settings (og.match_setting); scripted maps consume them (0 = map/default).
-    std::int16_t ctf_team_count = 0; // 0 = Auto; 5 = Matched (kTeamCountMatched)
+    std::int16_t ctf_team_count = 0; // 0 = Auto
     // Lower SCORE_TEAM_COUNT bits identify the teams with authored flags in
     // the selected CTF level (protocol v9). Zero means the level metadata is
     // not available yet, so clients and authority behave as if all four were
@@ -210,7 +210,7 @@ struct LobbySettings {
     std::uint8_t ctf_authored_team_mask = 0;
     std::int16_t ctf_capture_limit = 0;
     std::int16_t ctf_respawn_ticks = 0;
-    std::int16_t ctf_strip_scenario_troops = 0; // 0 = keep authored troops
+    std::int16_t ctf_strip_scenario_troops = 0; // 0 = keep; 2 = own; 3 = Fair (kTroopsMatched)
     // Difficulty submenu settings (0 = legacy default behavior for all three).
     // 0 = off, 1 = heroes, 2 = everyone, 3 = Team 1 heroes only.
     std::int16_t respawn_mode = 0;

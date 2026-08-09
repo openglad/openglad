@@ -1634,11 +1634,17 @@ TEST(CompanyAutosave, networked_lobby_merge_preserves_private_state)
     EXPECT_EQ(999, reloaded.last_played_unix_s);
 }
 
-// Matched-teams D7: the Teams: Match sentinel (kTeamCountMatched = 5) rides
-// the existing ctf_team_count short in the GTL v10 block — no format bump.
-// Both halves of the round-trip: the writer stores the raw 5, the full
-// loader returns it verbatim (no clamp anywhere on the persistence path).
-TEST(CompanyAutosave, matched_team_count_sentinel_round_trips)
+// Matched-teams D27 (amendment): the TROOPS: FAIR sentinel
+// (kTroopsMatched = 3) rides the existing ctf_strip_scenario_troops short
+// in the GTL v11 block — no format bump. Both halves of the round-trip:
+// the writer stores the raw 3, the full loader returns it verbatim (no
+// clamp anywhere on the persistence path). The D30 migration case rides
+// along: a playtest-era save carrying the retired teams sentinel 5 loads
+// VERBATIM too — the load path never sanitizes — and heals only at the
+// first lobby publish (5 -> 4, pinned in test_lobby_server) or manual
+// cycle (5 -> 0); matching is OFF either way because the teams field no
+// longer arms it.
+TEST(CompanyAutosave, troops_matched_sentinel_round_trips)
 {
     SaveDirSandbox sandbox;
     ScopedMountRestore mount_guard;
@@ -1648,13 +1654,16 @@ TEST(CompanyAutosave, matched_team_count_sentinel_round_trips)
         SaveData priv;
         priv.save_name = "Matched Co";
         priv.current_campaign = "gladiator";
-        priv.ctf_team_count = og::sim::kTeamCountMatched;
+        priv.ctf_strip_scenario_troops = og::sim::kTroopsMatched;
+        priv.ctf_team_count = 5;  // the retired playtest sentinel (D30)
         ASSERT_TRUE(priv.save("save0"));
     }
 
     SaveData reloaded;
     ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("save0"));
-    EXPECT_EQ(og::sim::kTeamCountMatched, reloaded.ctf_team_count);
+    EXPECT_EQ(og::sim::kTroopsMatched, reloaded.ctf_strip_scenario_troops);
+    EXPECT_EQ(5, reloaded.ctf_team_count)
+        << "the load path reads any short; the heal happens at sanitize";
 }
 
 TEST(CompanyAutosave, networked_sale_persists_removed_members_wallet)

@@ -1119,16 +1119,18 @@ TEST_F(ModesMutant, match_replicates_to_a_client_mirror_without_hash_strikes)
 }
 
 // ===========================================================================
-// Teams: Match power model — the n = 1 seat shape (matched-teams WP-E)
+// TROOPS: FAIR power model — the n = 1 seat shape (matched-teams WP-E)
 // ===========================================================================
 
-// Every empty mutant seat is a one-bot squad, so each seat solves its own
-// (L, 0) against the shared target with its own family base (§5.3 mutant
-// carve-out: no k-interpolation, family disparity still priced).
-TEST_F(ModesMutant, matched_seats_solve_independently_per_family)
+// The D26 bundle in mutant shape: FAIR inherits OWN's roster activation,
+// so a solo roster pairs with exactly ONE opponent seat — the old
+// every-empty-seat pile-on is retired (D33(b) re-ruling of the original
+// multi-seat solo test). The paired seat is a one-bot squad solved against
+// the hero's own f on its own family base (§5.3 mutant carve-out).
+TEST_F(ModesMutant, matched_solo_roster_pairs_with_one_seat)
 {
     ModesCtfWorld fx(kMutantLevelA);
-    fx.world().ctf_requested_team_count = og::sim::kTeamCountMatched;
+    fx.arm_matched();
     fx.spawn_anchor(0, 96, 96);
     fx.spawn_anchor(1, 544, 96);
     fx.spawn_anchor(2, 96, 800);
@@ -1140,8 +1142,56 @@ TEST_F(ModesMutant, matched_seats_solve_independently_per_family)
     // Derived: the L3 soldier hero's f (trunc discipline) is the target.
     EXPECT_EQ(5182, fx.var(kSlotMatchedTarget))
         << "solo roster -> T is the hero's own f (derived pin, §4.2)";
+    EXPECT_EQ(3, fx.var(kMutSlotTeamMask))
+        << "solo roster: the hero's seat plus the FIRST authored non-roster "
+           "seat — never every empty seat (D26)";
     const std::int32_t plan = fx.var(kSlotMatchedPlan);
     EXPECT_EQ(0, matched_plan_code(plan, 0)) << "the human seat never solves";
+    const int code = matched_plan_code(plan, 1);
+    EXPECT_EQ(0, code % 10) << "n = 1 admits no upgrades";
+    EXPECT_EQ(30, code)
+        << "the archer seat solves L3 against T = 5182 (derived, §4.2)";
+    EXPECT_EQ(1, alive_on_team(fx.world(), 1));
+    EXPECT_EQ(0, alive_on_team(fx.world(), 2)) << "outside the pair: no bot";
+    EXPECT_EQ(0, alive_on_team(fx.world(), 3)) << "outside the pair: no bot";
+    for (const auto& uptr : fx.world().oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        if (w->myguy != nullptr || w->stats() == nullptr)
+            continue;
+        EXPECT_EQ(1, static_cast<int>(w->team_num()));
+        EXPECT_EQ(3, w->stats()->level())
+            << "the fielded bot carries the solve";
+    }
+    EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"));
+}
+
+// Every empty mutant seat is a one-bot squad, so each seat solves its own
+// (L, 0) against the shared target with its own family base (§5.3 mutant
+// carve-out: no k-interpolation, family disparity still priced).
+// D33(b) re-ruling: a solo roster now pairs with ONE seat (above), so the
+// only remaining multi-seat matched shape is the D24 arm — a pre-latched
+// MATCHED_TARGET with every authored seat empty (no roster anywhere).
+// Init trusts the stored target and measure-solves each seat
+// independently; the authored domain skips seat 0 so the original
+// archer/elf/thief derived pins carry over verbatim.
+TEST_F(ModesMutant, matched_seats_solve_independently_per_family)
+{
+    ModesCtfWorld fx(kMutantLevelA);
+    fx.arm_matched();
+    fx.spawn_anchor(1, 544, 96);
+    fx.spawn_anchor(2, 96, 800);
+    fx.spawn_anchor(3, 544, 800);
+    fx.world().mode.vars[kSlotMatchedTarget] = 5182;
+    fx.tick(1);
+    ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
+
+    EXPECT_EQ(5182, fx.var(kSlotMatchedTarget))
+        << "a stored target is never re-censused (D24 latch)";
+    const std::int32_t plan = fx.var(kSlotMatchedPlan);
+    EXPECT_EQ(0, matched_plan_code(plan, 0)) << "seat 0 is not authored";
     for (int team = 1; team <= 3; ++team)
     {
         const int code = matched_plan_code(plan, team);
@@ -1159,13 +1209,12 @@ TEST_F(ModesMutant, matched_seats_solve_independently_per_family)
         const walker* w = uptr.get();
         if (w == nullptr || w->dead() || w->query_order() != Order::Living)
             continue;
-        if (w->team_num() == 0 || w->stats() == nullptr)
+        if (w->stats() == nullptr)
             continue;
         EXPECT_EQ(matched_plan_code(plan, w->team_num()) / 10,
                   w->stats()->level())
             << "seat " << static_cast<int>(w->team_num());
     }
-    EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"));
 }
 
 namespace {
@@ -1216,29 +1265,32 @@ const walker* seat_bot(GameWorld& world, int team)
 
 // The documented first-solve announce limitation (spec §7 / WP-E report):
 // the one-shot announcement takes its LIMIT flag from the FIRST solved
-// seat. A fresh archer's target (921, derived) sits between the archer
-// seat's B(1) (834 — inside range, no clamp) and the elf/thief seats'
-// B(1) (958/969 — clamped low), so the match announces the plain variant
-// even though two later seats clamped. The B(1) premises are PINNED below
-// on the fielded L1 bots (integer tuple rows make measured f the model's
-// B(1) exactly), so an elf/thief rebalance that drops their B(1) under the
-// target cannot silently turn this into a nothing-clamped world. If the
-// announce pin moves because it learned to aggregate clamps across seats,
-// update the spec note instead of the test.
+// seat. D33(b) re-ruling: a solo roster now pairs with a single seat, so
+// the multi-seat shape left is the D24 all-bot arm — a pre-latched target
+// with authored seats 1..3 empty (seat 0 unauthored, so the archer seat
+// still solves first and the original derived pins carry over). The
+// latched target 921 sits between the archer seat's B(1) (834 — inside
+// range, no clamp) and the elf/thief seats' B(1) (958/969 — clamped low),
+// so the match announces the plain variant even though two later seats
+// clamped. The B(1) premises are PINNED below on the fielded L1 bots
+// (integer tuple rows make measured f the model's B(1) exactly), so an
+// elf/thief rebalance that drops their B(1) under the target cannot
+// silently turn this into a nothing-clamped world. If the announce pin
+// moves because it learned to aggregate clamps across seats, update the
+// spec note instead of the test.
 TEST_F(ModesMutant, matched_borderline_seat_announce_follows_first_solve)
 {
     ModesCtfWorld fx(kMutantLevelA);
-    fx.world().ctf_requested_team_count = og::sim::kTeamCountMatched;
-    fx.spawn_anchor(0, 96, 96);
+    fx.arm_matched();
     fx.spawn_anchor(1, 544, 96);
     fx.spawn_anchor(2, 96, 800);
     fx.spawn_anchor(3, 544, 800);
-    fx.spawn_leveled_hero(FAMILY_ARCHER, 0, 200, 200, 1, 1);
+    fx.world().mode.vars[kSlotMatchedTarget] = 921;
     fx.tick(1);
     ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
 
     EXPECT_EQ(921, fx.var(kSlotMatchedTarget))
-        << "fresh archer f (derived pin, §4.2)";
+        << "a stored target is never re-censused (D24 latch)";
     const std::int32_t plan = fx.var(kSlotMatchedPlan);
     EXPECT_EQ(10, matched_plan_code(plan, 1)) << "archer seat: L1, in range";
     EXPECT_EQ(10, matched_plan_code(plan, 2)) << "elf seat: clamped to L1";
@@ -1277,16 +1329,15 @@ TEST_F(ModesMutant, matched_borderline_seat_announce_follows_first_solve)
 // every seat's B(1) — 500 < 834/958/969, pinned above — makes seat 1's
 // solve clamp low, and the announce latched by that first solve is the
 // LIMIT variant. Together with the test above this pins "announced
-// follows the FIRST solve" from both sides.
+// follows the FIRST solve" from both sides. Same D33(b) all-bot re-shape
+// as its sibling: authored seats 1..3, no roster.
 TEST_F(ModesMutant, matched_first_seat_clamp_announces_the_limit)
 {
     ModesCtfWorld fx(kMutantLevelA);
-    fx.world().ctf_requested_team_count = og::sim::kTeamCountMatched;
-    fx.spawn_anchor(0, 96, 96);
+    fx.arm_matched();
     fx.spawn_anchor(1, 544, 96);
     fx.spawn_anchor(2, 96, 800);
     fx.spawn_anchor(3, 544, 800);
-    fx.spawn_leveled_hero(FAMILY_ARCHER, 0, 200, 200, 1, 1);
     fx.world().mode.vars[kSlotMatchedTarget] = 500;
     fx.tick(1);
     ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
@@ -1304,9 +1355,11 @@ TEST_F(ModesMutant, matched_first_seat_clamp_announces_the_limit)
 
 // E3: humans on every authored seat leave MATCHED nothing to do — no seat
 // is empty, so no bot spawns anywhere and the match plays identically to
-// Auto (the :306 oblist-sweep idiom, extended with an Auto twin world).
-// The recorded target is the proof the census RAN and found nothing to
-// fill, rather than never running.
+// its unmatched twin (the :306 oblist-sweep idiom, extended with a twin
+// world). D33(a): the twin is TROOPS: OWN, not ALL — FAIR bundles OWN's
+// roster activation, and with an all-guy fixture the assertions survive
+// verbatim. The recorded target is the proof the census RAN and found
+// nothing to fill, rather than never running.
 TEST_F(ModesMutant, matched_with_humans_on_every_seat_is_an_auto_noop)
 {
     auto author = [](ModesCtfWorld& fx) {
@@ -1321,23 +1374,24 @@ TEST_F(ModesMutant, matched_with_humans_on_every_seat_is_an_auto_noop)
     };
 
     ModesCtfWorld matched(kMutantLevelA);
-    matched.world().ctf_requested_team_count = og::sim::kTeamCountMatched;
+    arm_matched(matched.world());
     author(matched);
     matched.tick(1);
     ASSERT_EQ(kModeIdMutant, matched.var(kMutSlotModeId));
 
-    ModesCtfWorld automatic(kMutantLevelA);
-    author(automatic);
-    automatic.tick(1);
-    ASSERT_EQ(kModeIdMutant, automatic.var(kMutSlotModeId));
+    ModesCtfWorld own(kMutantLevelA);
+    own.world().ctf_requested_strip_scenario_troops = 2;  // the OWN twin
+    author(own);
+    own.tick(1);
+    ASSERT_EQ(kModeIdMutant, own.var(kMutSlotModeId));
 
-    EXPECT_EQ(automatic.var(kMutSlotTeamMask), matched.var(kMutSlotTeamMask))
-        << "Matched-mask == Auto-mask (D5)";
+    EXPECT_EQ(own.var(kMutSlotTeamMask), matched.var(kMutSlotTeamMask))
+        << "FAIR-mask == OWN-mask (D26/D33)";
     for (int team = 0; team < 4; ++team)
     {
         EXPECT_EQ(1, alive_on_team(matched.world(), team))
             << "team " << team << " keeps exactly its human";
-        EXPECT_EQ(alive_on_team(automatic.world(), team),
+        EXPECT_EQ(alive_on_team(own.world(), team),
                   alive_on_team(matched.world(), team))
             << "team " << team;
     }

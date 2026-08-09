@@ -9,6 +9,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/order.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/guy_create.h>
@@ -265,14 +266,23 @@ TEST(CtfUi, team_build_row_and_matchup_settings_cycle)
     EXPECT_EQ("TROOPS: OWN", live_scenario[kScenarioMenuTroopsIndex].label);
 
     (void)change_ctf_troops();
+    EXPECT_EQ((int)og::sim::kTroopsMatched,
+              (int)save.ctf_strip_scenario_troops)
+        << "after OWN comes FAIR (matched-teams D28)";
+    EXPECT_EQ("TROOPS: FAIR", live_scenario[kScenarioMenuTroopsIndex].label);
+    (void)change_ctf_troops();
     EXPECT_EQ(0, (int)save.ctf_strip_scenario_troops);
     EXPECT_EQ("TROOPS: ALL", live_scenario[kScenarioMenuTroopsIndex].label);
 
-    // Classic campaign: the same two states, no campaign gate.
+    // Classic campaign: the same three states, no campaign gate.
     save.current_campaign = "gladiator";
     (void)change_ctf_troops();
     EXPECT_EQ(2, (int)save.ctf_strip_scenario_troops);
     EXPECT_EQ("TROOPS: OWN", live_scenario[kScenarioMenuTroopsIndex].label);
+    (void)change_ctf_troops();
+    EXPECT_EQ((int)og::sim::kTroopsMatched,
+              (int)save.ctf_strip_scenario_troops);
+    EXPECT_EQ("TROOPS: FAIR", live_scenario[kScenarioMenuTroopsIndex].label);
     (void)change_ctf_troops();
     EXPECT_EQ(0, (int)save.ctf_strip_scenario_troops);
 
@@ -450,6 +460,7 @@ struct TeamsFlowState
     // TROOPS lives on the SCENARIO screen; one flag per state it flips to.
     bool troops_row_seen = false;
     bool troops_own_seen = false;
+    bool troops_fair_seen = false;
     bool troops_all_seen = false;
 };
 
@@ -554,13 +565,18 @@ int teams_ctf_settings_flow_injector(void* data)
     SDL_Delay(300);
 
     // TROOPS is a SCENARIO row now, host-gated like SET CAMPAIGN. The cycle
-    // flips ALL <-> OWN on every campaign.
+    // walks ALL -> OWN -> FAIR -> ALL on every campaign (matched-teams
+    // D28), and every label is the shared formatter's on the live surface.
     state->troops_row_seen =
         wait_for_interactable_label("troops", "TROOPS: ALL", 5000);
     SDL_Delay(300);
     interact("troops");
     state->troops_own_seen =
         wait_for_interactable_label("troops", "TROOPS: OWN", 5000);
+    SDL_Delay(300);
+    interact("troops");
+    state->troops_fair_seen =
+        wait_for_interactable_label("troops", "TROOPS: FAIR", 5000);
     SDL_Delay(300);
     interact("troops");
     state->troops_all_seen =
@@ -589,72 +605,65 @@ int teams_ctf_settings_flow_injector(void* data)
     return 0;
 }
 
-struct MatchedTeamsFlowState
+struct MatchedTroopsFlowState
 {
     bool started = false;
     bool finished = false;
-    bool subscreen_opened = false;
-    bool start_at_four = false;
-    bool match_live_label = false;
-    bool auto_wrap_label = false;
-    // Captured while the setting reads Match: the descriptor row that backs
+    bool row_visible = false;
+    bool start_at_own = false;
+    bool fair_live_label = false;
+    bool all_wrap_label = false;
+    // Captured while the setting reads FAIR: the descriptor row that backs
     // later redraws (the second label surface).
-    std::string match_descriptor_label;
+    std::string fair_descriptor_label;
 };
 
-// Matched teams (design D4): the Teams cycler appends Match after 4 and
-// wraps to Auto. The save carries Teams: 4, so the flow exercises exactly
-// 4 -> Match -> Auto against the real MATCHUP subscreen.
-int teams_matched_cycle_flow_injector(void* data)
+// Matched troops (design D28): the Troops cycler appends FAIR after OWN
+// and wraps to ALL. The save carries TROOPS: OWN, so the flow exercises
+// exactly OWN -> FAIR -> ALL against the real SCENARIO subscreen.
+int troops_matched_cycle_flow_injector(void* data)
 {
     og::runtime::ensure_thread_session();
-    MatchedTeamsFlowState* state = static_cast<MatchedTeamsFlowState*>(data);
+    MatchedTroopsFlowState* state = static_cast<MatchedTroopsFlowState*>(data);
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
     SDL_Delay(750);
     interact("continue_game");
 
-    // Team build -> SCENARIO submenu -> MATCHUP.
+    // Team build -> SCENARIO submenu (the troops row's home).
     SDL_Delay(500);
     wait_for_interactable("scenario", 10000);
     SDL_Delay(750);
     interact("scenario");
-    wait_for_interactable("matchup", 10000);
-    SDL_Delay(300);
-    interact("matchup");
 
-    state->subscreen_opened = wait_for_interactable("ctf_teams", 10000);
+    state->row_visible = wait_for_interactable("troops", 10000);
     SDL_Delay(300);
-    state->start_at_four =
-        wait_for_interactable_label("ctf_teams", "Teams: 4", 5000);
+    state->start_at_own =
+        wait_for_interactable_label("troops", "TROOPS: OWN", 5000);
     SDL_Delay(300);
 
-    // 4 -> Match. Assert the new label on BOTH surfaces: the live vbutton
+    // OWN -> FAIR. Assert the new label on BOTH surfaces: the live vbutton
     // (via the interactables) and the mutable descriptor row (read under the
     // same lock the frame sync publishes it with).
-    interact("ctf_teams");
-    state->match_live_label =
-        wait_for_interactable_label("ctf_teams", "Teams: Match", 5000);
+    interact("troops");
+    state->fair_live_label =
+        wait_for_interactable_label("troops", "TROOPS: FAIR", 5000);
     SDL_Delay(300);
     {
         AllButtonsLock lock;
-        state->match_descriptor_label =
+        state->fair_descriptor_label =
             og::runtime::current_session->picker_
-                ->teamsmenu_buttons[kTeamsMenuCtfTeamsIndex].label;
+                ->scenariomenu_buttons[kScenarioMenuTroopsIndex].label;
     }
 
-    // Match -> Auto: the wrap.
-    interact("ctf_teams");
-    state->auto_wrap_label =
-        wait_for_interactable_label("ctf_teams", "Teams: Auto", 5000);
+    // FAIR -> ALL: the wrap.
+    interact("troops");
+    state->all_wrap_label =
+        wait_for_interactable_label("troops", "TROOPS: ALL", 5000);
     SDL_Delay(300);
 
-    // Unwind: MATCHUP -> SCENARIO -> team build -> main menu.
-    interact("back");
-    SDL_Delay(300);
-    wait_for_interactable("view_scenario", 10000);
-    SDL_Delay(300);
+    // Unwind: SCENARIO -> team build -> main menu.
     interact("back");
     SDL_Delay(300);
     wait_for_interactable("go", 10000);
@@ -915,8 +924,10 @@ TEST(CtfUi, matchup_ctf_settings_flow)
     EXPECT_TRUE(state.troops_row_seen)
         << "TROOPS should be visible to the host on SCENARIO";
     EXPECT_TRUE(state.troops_own_seen) << "Troops cycle should relabel to OWN";
+    EXPECT_TRUE(state.troops_fair_seen)
+        << "Troops cycle should relabel to FAIR after OWN (D28)";
     EXPECT_TRUE(state.troops_all_seen)
-        << "Troops cycle should flip back to ALL";
+        << "Troops cycle should wrap back to ALL";
 
     EXPECT_EQ(2, (int)save.ctf_team_count);
     EXPECT_EQ(1, (int)save.ctf_capture_limit);
@@ -933,11 +944,11 @@ TEST(CtfUi, matchup_ctf_settings_flow)
     (void)mount_campaign_package_with_error("gladiator");
 }
 
-// Matched teams (design D3/D4): from a save carrying Teams: 4, one cycle
-// lands on the new Match value and the next wraps to Auto. "Teams: Match"
+// Matched troops (design D28): from a save carrying TROOPS: OWN, one cycle
+// lands on the new FAIR value and the next wraps to ALL. "TROOPS: FAIR"
 // must appear on both label surfaces — the live vbutton and the descriptor
 // row that backs later redraws.
-TEST(CtfUi, matchup_teams_cycle_reaches_match_then_auto)
+TEST(CtfUi, scenario_troops_cycle_reaches_fair_then_all)
 {
     trace_clear();
     SavedPickerSave save_guard;
@@ -945,13 +956,13 @@ TEST(CtfUi, matchup_teams_cycle_reaches_match_then_auto)
     write_save0_with_two_soldiers("modes", 500);
     {
         SaveData& save = og::runtime::current_session->myscreen_->save_data;
-        save.ctf_team_count = 4;
+        save.ctf_strip_scenario_troops = 2;
         ASSERT_TRUE(save.save("save0"));
     }
 
-    MatchedTeamsFlowState state;
+    MatchedTroopsFlowState state;
     SDL_Thread* thread = SDL_CreateThread(
-        teams_matched_cycle_flow_injector, "teams_matched_flow", &state);
+        troops_matched_cycle_flow_injector, "troops_matched_flow", &state);
     ASSERT_NE(nullptr, thread);
 
     g_picker_mainmenu_calls = 0;
@@ -963,17 +974,17 @@ TEST(CtfUi, matchup_teams_cycle_reaches_match_then_auto)
 
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     EXPECT_TRUE(state.finished) << "injector should complete the flow";
-    EXPECT_TRUE(state.subscreen_opened)
-        << "versus campaign + host shows the settings in the subscreen";
-    EXPECT_TRUE(state.start_at_four) << "the save carried Teams: 4";
-    EXPECT_TRUE(state.match_live_label)
-        << "4 -> Match must relabel the live button 'Teams: Match'";
-    EXPECT_EQ("Teams: Match", state.match_descriptor_label)
-        << "the descriptor row must carry the Match label too";
-    EXPECT_TRUE(state.auto_wrap_label)
-        << "Match -> Auto wrap must relabel 'Teams: Auto'";
-    EXPECT_EQ(0, (int)save.ctf_team_count)
-        << "the wrap should land the save back on Auto";
+    EXPECT_TRUE(state.row_visible)
+        << "the troops row is host-visible on SCENARIO";
+    EXPECT_TRUE(state.start_at_own) << "the save carried TROOPS: OWN";
+    EXPECT_TRUE(state.fair_live_label)
+        << "OWN -> FAIR must relabel the live button 'TROOPS: FAIR'";
+    EXPECT_EQ("TROOPS: FAIR", state.fair_descriptor_label)
+        << "the descriptor row must carry the FAIR label too";
+    EXPECT_TRUE(state.all_wrap_label)
+        << "FAIR -> ALL wrap must relabel 'TROOPS: ALL'";
+    EXPECT_EQ(0, (int)save.ctf_strip_scenario_troops)
+        << "the wrap should land the save back on ALL";
 
     // The save0 load remounted the versus campaign; restore the default
     // mount so later (or shuffled) tests load classic levels again.

@@ -397,14 +397,14 @@ TEST_F(ModesOnslaught, troops_own_activates_only_the_roster_teams)
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
-// Matched teams D17/E8: Onslaught treats the Teams: Match sentinel exactly
-// as Auto for masks — the normalized request stays 0, so the row.teams
-// manifest default still substitutes (a raw 5 would skip the substitution
-// and activate all three authored teams) — and ignores matched POWER
+// Matched teams D17/E8 (amendment re-ruling): the matched request now
+// arrives via the strip field (TROOPS: FAIR), so Onslaught runs its strip
+// with keep_generators — the foundries stay — and ignores matched POWER
 // entirely: no plan is solved, nothing announces, and the generators field
-// the same armies as the Auto twin. Only the shared census (which rides
-// own_roster_activation on every mode) latches a target.
-TEST_F(ModesOnslaught, matched_request_masks_like_auto_and_ignores_power)
+// the same armies as the OWN twin (D33(a): FAIR's twin is OWN, the strip
+// states being identical apart from power). Only the shared census (which
+// rides own_roster_activation on every mode) latches a target.
+TEST_F(ModesOnslaught, matched_request_masks_like_own_and_ignores_power)
 {
     auto author = [](ModesCtfWorld& fx) {
         fx.spawn_anchor(0, 96, 128);
@@ -436,30 +436,48 @@ TEST_F(ModesOnslaught, matched_request_masks_like_auto_and_ignores_power)
     // construct-and-tick the first fully before constructing the second —
     // the script bindings resolve the CURRENT world).
     ModesCtfWorld matched(kOnsLevelA);
-    matched.world().ctf_requested_team_count = og::sim::kTeamCountMatched;
+    arm_matched(matched.world());
     author(matched);
     matched.tick(90);
-    ModesCtfWorld automatic(kOnsLevelA);
-    author(automatic);
-    automatic.tick(90);
+    ModesCtfWorld own(kOnsLevelA);
+    own.world().ctf_requested_strip_scenario_troops = 2;  // the OWN twin
+    author(own);
+    own.tick(90);
     ASSERT_EQ(kModeIdOnslaught, matched.var(kOnsModeId));
-    ASSERT_EQ(kModeIdOnslaught, automatic.var(kOnsModeId));
+    ASSERT_EQ(kModeIdOnslaught, own.var(kOnsModeId));
 
-    // kOnsLevelA's manifest row says teams = 2 over three authored
-    // generator teams: the sentinel must land on the first two authored
-    // teams like Auto, never on a numeric-clamp mask of three.
+    // The solo roster (team 0) pairs with the first authored non-roster
+    // generator team under OWN's activation — identically for strip 2 and
+    // strip 3, the D26 invariant applied where no squad seam exists.
     EXPECT_EQ(3, matched.var(kOnsTeamMask))
-        << "row.teams = 2 substitution must survive the sentinel";
-    EXPECT_EQ(automatic.var(kOnsTeamMask), matched.var(kOnsTeamMask))
-        << "Matched-mask == Auto-mask (D5/E8)";
-    EXPECT_EQ(automatic.var(kOnsTeamCount), matched.var(kOnsTeamCount));
+        << "solo roster: team 0 plus the first authored non-roster team";
+    EXPECT_EQ(own.var(kOnsTeamMask), matched.var(kOnsTeamMask))
+        << "FAIR-mask == OWN-mask (D26/D33/E8)";
+    EXPECT_EQ(own.var(kOnsTeamCount), matched.var(kOnsTeamCount));
 
-    EXPECT_EQ(fielded(automatic.world()), fielded(matched.world()))
+    EXPECT_EQ(fielded(own.world()), fielded(matched.world()))
         << "matched power must not touch onslaught's generator armies (D17)";
+    auto foundries_alive = [](GameWorld& world) {
+        int alive = 0;
+        for (const auto& uptr : world.oblist)
+        {
+            const walker* w = uptr.get();
+            if (w != nullptr && !w->dead() &&
+                w->query_order() == Order::Generator)
+                ++alive;
+        }
+        return alive;
+    };
+    EXPECT_EQ(foundries_alive(own.world()), foundries_alive(matched.world()))
+        << "FAIR and OWN keep the same foundries";
+    EXPECT_EQ(2, foundries_alive(matched.world()))
+        << "the FAIR strip keeps the ACTIVE teams' generators "
+           "(keep_generators, E8); the team-2 tent goes with its inactive "
+           "team, not with the troops strip";
 
     EXPECT_GT(matched.var(kSlotMatchedTarget), 0)
         << "the shared census still runs (matched request + a human)";
-    EXPECT_EQ(0, automatic.var(kSlotMatchedTarget));
+    EXPECT_EQ(0, own.var(kSlotMatchedTarget));
     EXPECT_EQ(0, matched.var(kSlotMatchedPlan)) << "no seat ever solves";
     EXPECT_EQ(0, matched.var(kSlotMatchedAnnounced));
     EXPECT_FALSE(has_notification(matched.events, "TEAMS MATCHED"));

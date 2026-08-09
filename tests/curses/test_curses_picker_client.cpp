@@ -550,21 +550,21 @@ TEST(CursesPickerClient, ctf_menu_labels_format_from_save)
     EXPECT_NE(dump.find("Limit: Map"), std::string::npos) << dump;
 }
 
-// Matched teams (design D3): the sentinel value 5 renders the shared
-// formatter's "Teams: Match" label in the terminal list too.
+// Matched troops (design D28): the sentinel value 3 renders the shared
+// formatter's "TROOPS: FAIR" label in the terminal list too.
 TEST(CursesPickerClient, ctf_menu_labels_render_matched_sentinel)
 {
     PickerFixture f;
-    f.save().ctf_team_count = og::sim::kTeamCountMatched;
-    const auto* teams_item = og::ui::find_picker_menu_item(
-        PickerMenuId::TeamBuild, PickerMenuCommand::CycleCtfTeamCount);
-    ASSERT_NE(teams_item, nullptr);
+    f.save().ctf_strip_scenario_troops = og::sim::kTroopsMatched;
+    const auto* troops_item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::ToggleCtfScenarioTroops);
+    ASSERT_NE(troops_item, nullptr);
 
     // Drive present_menu so the dynamic label renders in the list.
     f.t().push_special(KeyCode::Escape);
     (void)f.client.present_menu(PickerMenuId::TeamBuild);
     const std::string dump = f.t().dump();
-    EXPECT_NE(dump.find("Teams: Match"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("TROOPS: FAIR"), std::string::npos) << dump;
 }
 
 // --- view roster ---------------------------------------------------------
@@ -2025,7 +2025,8 @@ TEST(CursesPickerClient, run_picker_through_team_build_then_quit)
 
 // The troops control lives in the SCENARIO submenu now and is NOT
 // versus-gated: "strip everything authored" applies to classic campaigns
-// too, and both states cycle the same way on either campaign kind.
+// too, and all three states cycle the same way on either campaign kind
+// (ALL -> OWN -> FAIR -> ALL, matched-teams D28).
 TEST(CursesPickerClient, ctf_troops_toggle_runs_on_every_campaign)
 {
     PickerFixture f;
@@ -2033,7 +2034,7 @@ TEST(CursesPickerClient, ctf_troops_toggle_runs_on_every_campaign)
         PickerMenuId::Scenario, PickerMenuCommand::ToggleCtfScenarioTroops);
     ASSERT_NE(troops_item, nullptr);
 
-    // Classic campaign: no refusal notice, ALL -> OWN -> ALL.
+    // Classic campaign: no refusal notice, ALL -> OWN -> FAIR -> ALL.
     f.save().current_campaign = "gladiator";
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
@@ -2043,14 +2044,26 @@ TEST(CursesPickerClient, ctf_troops_toggle_runs_on_every_campaign)
 
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
+    EXPECT_EQ((int)og::sim::kTroopsMatched,
+              (int)f.save().ctf_strip_scenario_troops);
+    EXPECT_NE(f.t().dump().find("TROOPS: FAIR"), std::string::npos);
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
     EXPECT_EQ(0, (int)f.save().ctf_strip_scenario_troops);
 
-    // Versus campaign: the same two states.
+    // Versus campaign: the same three states.
     f.save().current_campaign = "modes";
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
     EXPECT_EQ(2, (int)f.save().ctf_strip_scenario_troops);
     EXPECT_NE(f.t().dump().find("TROOPS: OWN"), std::string::npos);
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);
+    EXPECT_EQ((int)og::sim::kTroopsMatched,
+              (int)f.save().ctf_strip_scenario_troops);
+    EXPECT_NE(f.t().dump().find("TROOPS: FAIR"), std::string::npos);
 
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::Scenario, *troops_item);

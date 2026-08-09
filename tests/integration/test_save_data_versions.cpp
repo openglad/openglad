@@ -18,6 +18,7 @@
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
@@ -498,13 +499,14 @@ TEST(SaveDataVersions, save_data_load_v11_reads_strip_flag)
         << "v11 should read ctf_strip_scenario_troops";
 }
 
-// The knob is 0 (keep the authored cast) or 2 (strip it) on the SAME int16
-// record field, so v11 carries either without a format bump. State 1 is the
-// retired middle state: it still round-trips verbatim, and every strip rule
-// reads it as 2 — pinned by the OWN-semantics arm below.
+// The knob is 0 (keep the authored cast), 2 (strip it), or 3 (strip plus
+// census-matched squads, TROOPS: FAIR — matched-teams D27) on the SAME
+// int16 record field, so v11 carries any of them without a format bump.
+// State 1 is the retired middle state: it still round-trips verbatim, and
+// every strip rule reads it as 2 — pinned by the OWN-semantics arm below.
 TEST(SaveDataVersions, save_data_round_trips_strip_all_without_a_format_bump)
 {
-    for (const short state : {short{0}, short{2}, short{1}})
+    for (const short state : {short{0}, short{2}, short{1}, short{3}})
     {
         write_save_file("ver11_strip_all",
                         /*version=*/11,
@@ -536,9 +538,14 @@ TEST(SaveDataVersions, save_data_round_trips_strip_all_without_a_format_bump)
         ASSERT_EQ(state, twice.ctf_strip_scenario_troops)
             << "state " << state << " must survive the game's own writer";
 
-        // What the stored value MEANS: 0 keeps, everything above it strips.
-        EXPECT_EQ(state == 0 ? "TROOPS: ALL" : "TROOPS: OWN",
-                  og::ui::format_ctf_troops_label(twice))
+        // What the stored value MEANS: 0 keeps, everything above it strips,
+        // and exactly 3 additionally sizes the generated squads (FAIR).
+        const char* expected_label = "TROOPS: OWN";
+        if (state == 0)
+            expected_label = "TROOPS: ALL";
+        else if (state == og::sim::kTroopsMatched)
+            expected_label = "TROOPS: FAIR";
+        EXPECT_EQ(expected_label, og::ui::format_ctf_troops_label(twice))
             << "state " << state;
     }
 }

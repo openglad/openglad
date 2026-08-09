@@ -4055,7 +4055,7 @@ TEST(ModesBasketballRealCampaign, bot_games_score_on_every_shipped_court)
 }
 
 // ===========================================================================
-// Teams: Match system tests (matched-teams WP-F, spec §8)
+// TROOPS: FAIR system tests (matched-teams WP-F, spec §8)
 // ===========================================================================
 
 namespace {
@@ -4080,7 +4080,7 @@ std::vector<int> team_levels_sorted(GameWorld& world, int team)
 }
 
 // The reference court with a solo LEVELED roster hero on team 0 and an
-// empty team 1 — the shape where Auto and Matched differ only inside the
+// empty team 1 — the shape where OWN and FAIR differ only inside the
 // bot spawn seam.
 struct BballSoloRosterCourt : ModesCtfWorld
 {
@@ -4104,37 +4104,37 @@ struct BballSoloRosterCourt : ModesCtfWorld
 
 }  // namespace
 
-// The Matched-mask == Auto-mask twin (D5): basketball substitutes
-// row.teams for any requested count <= 0 before activate_teams, and the
-// sentinel must ride the same arm — same mask, same 5v5 game shape; ONLY
-// the squad strength differs.
-TEST_F(ModesBasketball, matched_mask_equals_auto_mask_with_a_solo_roster)
+// The FAIR-mask == OWN-mask twin (D26/D33(a)): FAIR bundles OWN's whole
+// deployment policy — same mask, same 5v5 game shape, same fill sites;
+// the ONLY delta is the generated squad's strength.
+TEST_F(ModesBasketball, matched_mask_equals_own_mask_with_a_solo_roster)
 {
     BballSoloRosterCourt matched(4);
-    matched.world().ctf_requested_team_count = og::sim::kTeamCountMatched;
+    arm_matched(matched.world());
     matched.tick(1);
     ASSERT_TRUE(matched.basketball_active());
 
-    BballSoloRosterCourt automatic(4);
-    automatic.tick(1);
-    ASSERT_TRUE(automatic.basketball_active());
+    BballSoloRosterCourt own(4);
+    own.world().ctf_requested_strip_scenario_troops = 2;  // the OWN twin
+    own.tick(1);
+    ASSERT_TRUE(own.basketball_active());
 
-    EXPECT_EQ(automatic.var(kBbTeamMask), matched.var(kBbTeamMask))
-        << "Matched-mask == Auto-mask (D5)";
-    EXPECT_EQ(alive_on_team(automatic.world(), 0),
+    EXPECT_EQ(own.var(kBbTeamMask), matched.var(kBbTeamMask))
+        << "FAIR-mask == OWN-mask (D26/D33)";
+    EXPECT_EQ(alive_on_team(own.world(), 0),
               alive_on_team(matched.world(), 0));
-    EXPECT_EQ(alive_on_team(automatic.world(), 1),
+    EXPECT_EQ(alive_on_team(own.world(), 1),
               alive_on_team(matched.world(), 1))
         << "the same teams are filled with the same member count (D12)";
     EXPECT_EQ(5, alive_on_team(matched.world(), 1))
         << "5v5 basketball keeps its game shape";
 
-    const std::vector<int> auto_levels =
-        team_levels_sorted(automatic.world(), 1);
-    ASSERT_EQ(5u, auto_levels.size());
-    EXPECT_EQ(2, auto_levels.front()) << "Auto keeps the legacy L2 squad";
-    EXPECT_EQ(2, auto_levels.back());
-    EXPECT_EQ(0, automatic.var(kSlotMatchedTarget));
+    const std::vector<int> own_levels =
+        team_levels_sorted(own.world(), 1);
+    ASSERT_EQ(5u, own_levels.size());
+    EXPECT_EQ(2, own_levels.front()) << "OWN keeps the legacy L2 squad";
+    EXPECT_EQ(2, own_levels.back());
+    EXPECT_EQ(0, own.var(kSlotMatchedTarget));
 
     ASSERT_GT(matched.var(kSlotMatchedTarget), 0);
     const int code = matched_plan_code(matched.var(kSlotMatchedPlan), 1);
@@ -4146,7 +4146,7 @@ TEST_F(ModesBasketball, matched_mask_equals_auto_mask_with_a_solo_roster)
         << "squad levels follow the stored plan";
     EXPECT_EQ(code / 10 + (code % 10 > 0 ? 1 : 0), matched_levels.back());
     EXPECT_EQ(1, count_notifications(matched.events, "TEAMS MATCHED"));
-    EXPECT_EQ(0, count_notifications(automatic.events, "TEAMS MATCHED"));
+    EXPECT_EQ(0, count_notifications(own.events, "TEAMS MATCHED"));
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
@@ -4156,7 +4156,7 @@ TEST_F(ModesBasketball, matched_mask_equals_auto_mask_with_a_solo_roster)
 TEST_F(ModesBasketball, wipe_watchdog_refields_a_matched_team_at_strength)
 {
     BballSoloRosterCourt fx(4);
-    fx.world().ctf_requested_team_count = og::sim::kTeamCountMatched;
+    arm_matched(fx.world());
     fx.world().respawn_mode = 0;
     fx.tick(1);
     ASSERT_TRUE(fx.basketball_active());

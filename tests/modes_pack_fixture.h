@@ -30,6 +30,7 @@
 #include <openglad/gameplay/families/family_string_ids.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -135,7 +136,7 @@ inline constexpr int kBballLevelNoJump = 9707;    // jump_ball absent
 inline constexpr int kBballLevelHalfHoops = 9708; // hoop for team 0 only
 inline constexpr int kBballLevelNoRow = 9709;     // make_hooks(nil)
 
-// Teams: Match power-model probes (9095/9096, matched-teams WP-E).
+// TROOPS: FAIR power-model probes (9095/9096, matched-teams WP-E).
 // 9095 logs the pure-function arms (census, walker_power, predicted_power,
 // solver, bot_level_for) plus the model-pin ladder over whatever world the
 // test authored. 9096 drives match.spawn_bots directly at team 1, cursor
@@ -160,6 +161,19 @@ inline int matched_plan_code(std::int32_t plan, int team)
 {
     static constexpr std::int32_t kBase[4] = {1, 100, 10000, 1000000};
     return static_cast<int>((plan / kBase[team]) % 100);
+}
+
+// Arm matched power for a world — the ONE place tests name the trigger, so
+// a future control move is a one-line change here (the amendment moved it
+// once already: the team_count sentinel 5 -> the scenario-troops sentinel,
+// matched-teams D25/D33(c)). NOTE the bundle (D26): arming means
+// TROOPS: FAIR, so the world ALSO strips authored non-guy troops and
+// roster-activates exactly like TROOPS: OWN — a fixture world holding
+// authored non-guy livings, or asserting fills beyond the roster-activation
+// mask, changes meaning when armed (D33(b)).
+inline void arm_matched(GameWorld& world)
+{
+    world.ctf_requested_strip_scenario_troops = og::sim::kTroopsMatched;
 }
 
 // Reference-court geometry (rows 9701, 9704, 9705; 9702 reuses the radius
@@ -838,6 +852,9 @@ struct ModesCtfWorld : TestGameWorld
         w->myguy->update_derived_stats(w);
         return w;
     }
+
+    // Arm matched power for this world (see the free arm_matched above).
+    void arm_matched() { og::modes_test::arm_matched(world()); }
 
     void tick(int count = 1)
     {

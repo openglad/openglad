@@ -60,15 +60,14 @@ networked play, only the host can change them, and the lobby synchronizes them
 to every client:
 
 - **Match Teams** — `Auto` fields every team the map authors (2, 3, or 4);
-  or force 2/3/4. `Match` fields the same teams `Auto` does and sizes the AI
-  squads to the players (below). Teams without human players get AI squads.
+  or force 2/3/4. Teams without human players get AI squads.
 - **Score Limit** — `Map default` uses the map's authored limit (each mode
   reads it as its own win threshold: captures, frags, goals), or force
   1–10.
 
 **TROOPS** sits one screen up, on **SCENARIO**, because it applies to every
 campaign rather than only the versus ones. It is host-only and lobby-synced
-like the pair above, and has two states:
+like the pair above, and has three states:
 
 - **TROOPS: ALL** — keep the level exactly as authored (the default).
 - **TROOPS: OWN** — remove every fighter and generator the level ships, on
@@ -78,11 +77,14 @@ like the pair above, and has two states:
   this makes the level a sandbox: a kill-everything level is already won,
   and its named quest NPCs are gone — except characters the level marks
   protected, which survive either setting.
+- **TROOPS: FAIR** — strip exactly as `OWN` does, and size the AI squads the
+  modes field to the players (see "Matched squads" below). On a classic
+  campaign — where no mode fields squads — it plays exactly as `OWN`.
 
-Both states apply on every campaign, so the control reads the same
-everywhere. An older save may carry a retired third state that stripped only
-the roster teams' canned troops; it now behaves as **OWN**, and cycling the
-control from it returns to **ALL**.
+Every state applies on every campaign, so the control reads the same
+everywhere. An older save may carry a retired in-between state that stripped
+only the roster teams' canned troops; it now behaves as **OWN**, and cycling
+the control from it returns to **ALL**.
 
 VIEW LEVEL previews the result: entries the setting will remove are flagged
 in the scenario report.
@@ -102,10 +104,12 @@ player-seat assignment does not recolor the company roster. The assignments
 work locally, in split-screen and networked games, and through the dedicated
 server.
 
-### Matched teams
+### Matched squads (TROOPS: FAIR)
 
-**Teams: Match** is the value after 4 on Match Teams. It fields exactly the
-teams `Auto` would; what changes is how strong the AI squads are.
+**TROOPS: FAIR** is the third state of the SCENARIO screen's TROOPS control.
+It clears the board exactly as `OWN` does — the deployed companies are the
+match — and then any AI squad a mode fields is sized to the players instead
+of to the difficulty formula.
 
 - The mode weighs every player's fighters on the field — health, armor,
   damage, firing rate, footspeed — and averages that across the human teams.
@@ -123,11 +127,12 @@ teams `Auto` would; what changes is how strong the AI squads are.
   scales health and damage together, so Easy leaves a matched squad far
   under your strength and Hard far over it. Normal is the fair fight.
 - Teams with players on them are never filled or altered, and a squad wiped
-  out and re-fielded comes back at the strength it was matched to. If
-  players occupy every team the map authors there is nothing to fill, and
-  Match plays identically to `Auto`.
-- Onslaught ignores it: its fighters come out of generators rather than
-  squads, so Match behaves as `Auto` there.
+  out and re-fielded comes back at the strength it was matched to. Who gets
+  a squad follows `OWN`'s rule: a lone company gets one AI opponent; two or
+  more companies fight each other and no squad is fielded at all.
+- Onslaught ignores the sizing: its fighters come out of generators rather
+  than squads, so FAIR strips there like `OWN` and the armies are unchanged.
+- On a classic campaign no mode fields squads, so FAIR is simply `OWN`.
 
 With several human teams the target is their average, so an even match for
 one side can still be a hard one for a weaker ally.

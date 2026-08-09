@@ -1273,7 +1273,7 @@ TEST(PickerCommon, toggle_allied_mode)
 
 // --- CTF match settings ---
 
-TEST(PickerCommon, cycle_ctf_team_count_wraps_auto_2_3_4_match)
+TEST(PickerCommon, cycle_ctf_team_count_wraps_auto_2_3_4)
 {
     SaveData save;
     ASSERT_EQ(0, (int)save.ctf_team_count)
@@ -1286,13 +1286,10 @@ TEST(PickerCommon, cycle_ctf_team_count_wraps_auto_2_3_4_match)
     og::ui::cycle_ctf_team_count(save);
     ASSERT_EQ(4, (int)save.ctf_team_count);
     og::ui::cycle_ctf_team_count(save);
-    ASSERT_EQ((int)og::sim::kTeamCountMatched, (int)save.ctf_team_count)
-        << "after 4 comes Teams: Match (matched-teams D4)";
-    og::ui::cycle_ctf_team_count(save);
     ASSERT_EQ(0, (int)save.ctf_team_count) << "cycle wraps back to Auto";
 
-    // Out-of-range values normalize back into the cycle: junk above the
-    // sentinel wraps straight to Auto, junk below the cycle floor steps to 2.
+    // Out-of-range values normalize back into the cycle: junk above 4
+    // wraps straight to Auto, junk below the cycle floor steps to 2.
     save.ctf_team_count = 9;
     og::ui::cycle_ctf_team_count(save);
     ASSERT_EQ(0, (int)save.ctf_team_count);
@@ -1330,20 +1327,9 @@ TEST(PickerCommon, format_ctf_labels)
     save.ctf_capture_limit = 5;
     ASSERT_EQ("Limit: 5", og::ui::format_ctf_caps_label(save));
 
-    // Matched sentinel (D3): the label is exactly "Teams: Match" — 12 chars,
-    // filling the 80px/12-char face budget tight. The literal-equality assert
-    // is deliberate: test_menu_layout's budget sweep only walks STATIC label
-    // strings and never sees this formatted one, so this is where a future
-    // rename re-trips the budget consciously ("Teams: Even" is the recorded
-    // fallback).
-    save.ctf_team_count = og::sim::kTeamCountMatched;
-    const std::string match_label = og::ui::format_ctf_teams_label(save);
-    ASSERT_EQ("Teams: Match", match_label);
-    ASSERT_LE(match_label.size(), 12u);
-
     // The SDL team-build buttons are 80px faces drawing 6px/char centered
     // text with no clipping: every label must stay inside the classic
-    // 12-char budget (longest is "Teams: Match" / "Limit: 10").
+    // 12-char budget (longest is "Teams: Auto" / "Limit: 10").
     save.ctf_team_count = 0;
     save.ctf_capture_limit = 10;
     ASSERT_LE(og::ui::format_ctf_teams_label(save).size(), 12u);
@@ -1654,25 +1640,33 @@ TEST(PickerCommon, reset_for_new_game_sets_gold)
 
 TEST(PickerCommon, next_ctf_scenario_troops_cycle_orders)
 {
-    // Two states, and both apply on every campaign, so the cycle is one flip
-    // with no campaign argument to get wrong.
+    // Three states, and every state applies on every campaign:
+    // ALL -> OWN -> FAIR -> ALL (matched-teams D28).
     EXPECT_EQ(2, og::ui::next_ctf_scenario_troops(0));
-    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(2));
+    EXPECT_EQ((short)og::sim::kTroopsMatched,
+              og::ui::next_ctf_scenario_troops(2))
+        << "after OWN comes TROOPS: FAIR";
+    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(og::sim::kTroopsMatched))
+        << "the cycle wraps back to ALL";
 
     // The retired middle state and any junk value read as OWN everywhere
     // else, so cycling off them lands on ALL.
     EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(1));
     EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(7));
+    EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(9));
     EXPECT_EQ(0, og::ui::next_ctf_scenario_troops(-1));
 }
 
-TEST(PickerCommon, toggle_ctf_scenario_troops_flips_two_states)
+TEST(PickerCommon, toggle_ctf_scenario_troops_walks_three_states)
 {
     SaveData save;
     ASSERT_EQ(0, save.ctf_strip_scenario_troops);
     og::ui::toggle_ctf_scenario_troops(save);
     ASSERT_EQ(2, save.ctf_strip_scenario_troops)
         << "the menus write 2 so networked peers agree on OWN";
+    og::ui::toggle_ctf_scenario_troops(save);
+    ASSERT_EQ((short)og::sim::kTroopsMatched, save.ctf_strip_scenario_troops)
+        << "the menus write 3 (kTroopsMatched) for TROOPS: FAIR";
     og::ui::toggle_ctf_scenario_troops(save);
     ASSERT_EQ(0, save.ctf_strip_scenario_troops);
 
@@ -1691,8 +1685,20 @@ TEST(PickerCommon, format_ctf_troops_label_strings_fit_budget)
     // A stored legacy 1 strips everything, so it must not read as ALL.
     save.ctf_strip_scenario_troops = 1;
     ASSERT_EQ("TROOPS: OWN", og::ui::format_ctf_troops_label(save));
+
+    // FAIR (D28): the label is exactly "TROOPS: FAIR" — 12 chars, filling
+    // the 80px/12-char face budget tight. The literal-equality assert is
+    // deliberate: test_menu_layout's budget sweep only walks STATIC label
+    // strings and never sees this formatted one, so this is where a future
+    // rename re-trips the budget consciously ("TROOPS: EVEN" is the
+    // recorded alternate).
+    save.ctf_strip_scenario_troops = og::sim::kTroopsMatched;
+    const std::string fair_label = og::ui::format_ctf_troops_label(save);
+    ASSERT_EQ("TROOPS: FAIR", fair_label);
+    ASSERT_LE(fair_label.size(), 12u);
+
     // Every state fits the 80px (12-character) SCENARIO face.
-    for (short state = 0; state <= 2; ++state)
+    for (short state = 0; state <= og::sim::kTroopsMatched; ++state)
     {
         save.ctf_strip_scenario_troops = state;
         ASSERT_LE(og::ui::format_ctf_troops_label(save).size(), 12u) << state;
@@ -2326,6 +2332,18 @@ TEST(PickerCommon, scenario_report_troops_own_annotates_every_authored_row)
     EXPECT_FALSE(any_line_contains(lines, "+ REMOVED: INACTIVE TEAM"));
     for (const auto& line : lines)
         EXPECT_LE(line.size(), 48u) << line;
+
+    // FAIR strips identically (D26) but the footer must name the mode the
+    // player chose, not report OWN for a FAIR lobby.
+    save.ctf_strip_scenario_troops = og::sim::kTroopsMatched;
+    const og::ui::ScenarioRosterReport fair_report =
+        og::ui::build_scenario_roster_report(fx.world(), save);
+    EXPECT_TRUE(fair_report.any_strip_all);
+    EXPECT_TRUE(fair_report.strip_is_fair);
+    const std::vector<std::string> fair_lines =
+        og::ui::format_scenario_report_lines(fair_report);
+    EXPECT_TRUE(any_line_contains(fair_lines, "! REMOVED: TROOPS FAIR"));
+    EXPECT_FALSE(any_line_contains(fair_lines, "! REMOVED: TROOPS OWN"));
 }
 
 TEST(PickerCommon, scenario_report_preserves_local_team_colors_in_allied_mode)

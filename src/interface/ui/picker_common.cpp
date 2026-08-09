@@ -527,14 +527,10 @@ bool is_allied_mode(const SaveData& save)
 
 void cycle_ctf_team_count(SaveData& save)
 {
-    // Auto (0 = every team the map authors) -> 2 -> 3 -> 4 -> Match -> Auto.
-    // Match (kTeamCountMatched = 5) keeps Auto's team mask and fills empty
-    // active teams with bot squads matched to the human census; on a map
-    // with no empty active team it plays identically to Auto. Stored junk
-    // (6+) still wraps straight to Auto via the >= branch.
+    // Auto (0 = every team the map authors) -> 2 -> 3 -> 4 -> Auto.
     if (save.ctf_team_count <= 0)
         save.ctf_team_count = 2;
-    else if (save.ctf_team_count >= og::sim::kTeamCountMatched)
+    else if (save.ctf_team_count >= 4)
         save.ctf_team_count = 0;
     else
         save.ctf_team_count = static_cast<short>(save.ctf_team_count + 1);
@@ -574,10 +570,16 @@ std::uint8_t ctf_authored_team_mask_for_loaded_level(
 
 short next_ctf_scenario_troops(short current)
 {
-    // ALL <-> OWN. Every other stored value — the retired middle state 1, or
-    // junk from a save the lobby never sanitized — reads as OWN everywhere
-    // else, so cycling off it goes to ALL.
-    return current == 0 ? short{2} : short{0};
+    // ALL -> OWN -> FAIR -> ALL. FAIR (kTroopsMatched = 3) strips exactly
+    // like OWN and additionally sizes the generated bot squads to the human
+    // census (matched-teams design D25-D28). Every other stored value — the
+    // retired middle state 1, or junk from a save the lobby never sanitized
+    // — reads as OWN everywhere else, so cycling off it goes to ALL.
+    if (current == 0)
+        return short{2};
+    if (current == 2)
+        return og::sim::kTroopsMatched;
+    return short{0};
 }
 
 void toggle_ctf_scenario_troops(SaveData& save)
@@ -1706,10 +1708,6 @@ std::string format_allied_mode_label(const SaveData& save)
 
 std::string format_ctf_teams_label(const SaveData& save)
 {
-    // 12 chars — fills the SDL 80px/12-char face budget exactly (design D3;
-    // "Teams: Even" is the recorded fallback if headroom is ever needed).
-    if (save.ctf_team_count == og::sim::kTeamCountMatched)
-        return "Teams: Match";
     if (save.ctf_team_count <= 0)
         return "Teams: Auto";
     return std::format("Teams: {}", save.ctf_team_count);
@@ -1724,9 +1722,13 @@ std::string format_ctf_caps_label(const SaveData& save)
 
 std::string format_ctf_troops_label(const SaveData& save)
 {
-    // SCENARIO-screen faces are 80px = 12 characters; both labels fit.
-    // Anything above 0 strips (a stored 1 from the retired middle state
-    // included), so the label reads OWN for the whole range.
+    // SCENARIO-screen faces are 80px = 12 characters; FAIR fills the budget
+    // exactly ("Even" is the recorded alternate if headroom is ever needed).
+    // The FAIR branch must precede the > 0 branch or OWN eats it. Anything
+    // else above 0 strips (a stored 1 from the retired middle state
+    // included), so the label reads OWN for the rest of the range.
+    if (save.ctf_strip_scenario_troops == og::sim::kTroopsMatched)
+        return "TROOPS: FAIR"; // strip like OWN + census-matched bot squads
     if (save.ctf_strip_scenario_troops > 0)
         return "TROOPS: OWN";  // strip every authored fighter and generator
     return "TROOPS: ALL";      // keep the level as authored
@@ -2799,6 +2801,8 @@ ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
         else if (row.strip_reason == ScenarioStripReason::StripAll)
             report.any_strip_all = true;
     }
+    report.strip_is_fair =
+        save.ctf_strip_scenario_troops == og::sim::kTroopsMatched;
     return report;
 }
 
@@ -2880,7 +2884,9 @@ std::vector<std::string> format_scenario_report_lines(
         if (report.any_inactive)
             lines.push_back(clip_line("+ REMOVED: INACTIVE TEAM"));
         if (report.any_strip_all)
-            lines.push_back(clip_line("! REMOVED: TROOPS OWN"));
+            lines.push_back(clip_line(report.strip_is_fair
+                                          ? "! REMOVED: TROOPS FAIR"
+                                          : "! REMOVED: TROOPS OWN"));
     }
     return lines;
 }

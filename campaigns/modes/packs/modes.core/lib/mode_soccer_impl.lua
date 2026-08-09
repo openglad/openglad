@@ -778,7 +778,7 @@ local function on_mode_init(level, row)
   -- authored anchor teams.
   local mask = match.own_roster_activation(authored_mask, og.oblist())
   if mask == nil then
-    -- Normalized request: Teams: Match counts as Auto for masks (D5).
+    -- Normalized request: Auto (raw <= 0) means no numeric clamp.
     local requested = core.team_count_request()
     if requested <= 0 then
       requested = row.teams or 0

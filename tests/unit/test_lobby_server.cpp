@@ -425,7 +425,7 @@ TEST(LobbyServer, sanitize_clamps_ctf_settings_and_equivalent_carries_them)
     EXPECT_EQ(0, equivalent.ctf_respawn_ticks);
 }
 
-TEST(LobbyServer, sanitize_admits_matched_sentinel_and_equivalent_carries_it)
+TEST(LobbyServer, sanitize_admits_troops_matched_and_equivalent_carries_it)
 {
     MockLobbyTransport transport;
     og::sim::LobbyServer server(transport);
@@ -436,10 +436,25 @@ TEST(LobbyServer, sanitize_admits_matched_sentinel_and_equivalent_carries_it)
                           {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
     server.poll_incoming_messages();
 
-    // Exactly kTeamCountMatched (5) passes sanitize (matched-teams D6) —
-    // it is the one legal value above 4.
+    // The retired TEAMS sentinel 5 no longer passes: it clamps to 4 like
+    // any junk above the numeric range — the D30 migration heal for the
+    // playtest-era saves that stored it.
+    og::sim::LobbySettings retired = server.state().settings;
+    retired.ctf_team_count = 5;
+    og::sim::LobbyMessage retired_message;
+    retired_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = retired,
+    };
+    transport.queue_lobby_message(11u, retired_message);
+    server.poll_incoming_messages();
+    EXPECT_EQ(4, server.state().settings.ctf_team_count)
+        << "the old Teams: Match sentinel heals to 4 (D30)";
+
+    // Exactly kTroopsMatched (3) passes the troops sanitize (D27) — the
+    // one new legal value; TROOPS: FAIR rides this field.
     og::sim::LobbySettings matched = server.state().settings;
-    matched.ctf_team_count = og::sim::kTeamCountMatched;
+    matched.ctf_strip_scenario_troops = og::sim::kTroopsMatched;
     og::sim::LobbyMessage matched_message;
     matched_message.payload = og::sim::LobbySettingsChangeMessage{
         .player_index = 0u,
@@ -447,13 +462,14 @@ TEST(LobbyServer, sanitize_admits_matched_sentinel_and_equivalent_carries_it)
     };
     transport.queue_lobby_message(11u, matched_message);
     server.poll_incoming_messages();
-    EXPECT_EQ(og::sim::kTeamCountMatched,
-              server.state().settings.ctf_team_count);
+    EXPECT_EQ(og::sim::kTroopsMatched,
+              server.state().settings.ctf_strip_scenario_troops);
 
-    // The junk-rejection posture is unchanged: 6 (one past the sentinel)
-    // still clamps to 4.
+    // The junk-rejection posture is unchanged: 4 (one past the sentinel)
+    // still reverts to the fallback, and the retired middle state 1 is
+    // still accepted as legacy OWN.
     og::sim::LobbySettings junk = matched;
-    junk.ctf_team_count = 6;
+    junk.ctf_strip_scenario_troops = 4;
     og::sim::LobbyMessage junk_message;
     junk_message.payload = og::sim::LobbySettingsChangeMessage{
         .player_index = 0u,
@@ -461,15 +477,30 @@ TEST(LobbyServer, sanitize_admits_matched_sentinel_and_equivalent_carries_it)
     };
     transport.queue_lobby_message(11u, junk_message);
     server.poll_incoming_messages();
-    EXPECT_EQ(4, server.state().settings.ctf_team_count);
+    EXPECT_EQ(og::sim::kTroopsMatched,
+              server.state().settings.ctf_strip_scenario_troops)
+        << "junk above the sentinel reverts to the fallback (the previous "
+           "value), never to a clamp";
+    og::sim::LobbySettings legacy = matched;
+    legacy.ctf_strip_scenario_troops = 1;
+    og::sim::LobbyMessage legacy_message;
+    legacy_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = legacy,
+    };
+    transport.queue_lobby_message(11u, legacy_message);
+    server.poll_incoming_messages();
+    EXPECT_EQ(1, server.state().settings.ctf_strip_scenario_troops)
+        << "the retired middle state still syncs (read as OWN everywhere)";
 
     // Restore the sentinel: the game-start save-data equivalent carries the
-    // raw 5 verbatim (D7 — the value rides the existing field end to end).
+    // raw 3 verbatim (D27 — the value rides the existing field end to end).
     transport.queue_lobby_message(11u, matched_message);
     server.poll_incoming_messages();
     const og::sim::LobbySaveDataEquivalent equivalent =
         server.build_save_data_equivalent();
-    EXPECT_EQ(og::sim::kTeamCountMatched, equivalent.ctf_team_count);
+    EXPECT_EQ(og::sim::kTroopsMatched, equivalent.ctf_strip_scenario_troops);
+    EXPECT_EQ(4, equivalent.ctf_team_count) << "the healed team count rides";
 }
 
 TEST(LobbyServer, non_host_matched_settings_change_is_dropped)
@@ -488,13 +519,14 @@ TEST(LobbyServer, non_host_matched_settings_change_is_dropped)
                           {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
     server.poll_incoming_messages();
 
-    // A guest's SettingsChange carrying the Matched sentinel is silently
-    // dropped like any other non-host settings message (D19: the gating
-    // shape is unchanged — guests cycle cosmetically, the host echo wins).
+    // A guest's SettingsChange carrying the TROOPS: FAIR sentinel is
+    // silently dropped like any other non-host settings message (D19: the
+    // gating shape is unchanged — guests cycle cosmetically, the host echo
+    // wins).
     transport.clear_sent_messages();
     og::sim::LobbySettings settings = server.state().settings;
-    ASSERT_EQ(0, settings.ctf_team_count);
-    settings.ctf_team_count = og::sim::kTeamCountMatched;
+    ASSERT_EQ(0, settings.ctf_strip_scenario_troops);
+    settings.ctf_strip_scenario_troops = og::sim::kTroopsMatched;
     og::sim::LobbyMessage settings_message;
     settings_message.payload = og::sim::LobbySettingsChangeMessage{
         .player_index = 1u,
@@ -504,7 +536,7 @@ TEST(LobbyServer, non_host_matched_settings_change_is_dropped)
     server.poll_incoming_messages();
 
     EXPECT_TRUE(transport.sent_messages().empty());
-    EXPECT_EQ(0, server.state().settings.ctf_team_count);
+    EXPECT_EQ(0, server.state().settings.ctf_strip_scenario_troops);
 }
 
 TEST(LobbyServer, local_session_sanitize_preserves_tower_campaign_pair)
@@ -1402,11 +1434,12 @@ TEST(LobbyServer, sanitize_strip_flag_accepts_binary_and_rejects_junk)
     // Default is 0 (keep authored troops).
     EXPECT_EQ(0, server.state().settings.ctf_strip_scenario_troops);
 
-    // Junk falls back to the current value (0). 3 is junk; 2 is not. The
-    // accepted range stays {0,1,2}: the menus write 0 or 2, and 1 is the
+    // Junk falls back to the current value (0). 4 is junk; 3 is not (any
+    // more). The accepted range is {0,1,2,3}: the menus write 0, 2, or 3
+    // (kTroopsMatched, "TROOPS: FAIR" — matched-teams D27), and 1 is the
     // retired middle state a peer on an older build can still send.
     og::sim::LobbySettings junk = make_ctf_lobby_settings();
-    junk.ctf_strip_scenario_troops = 3;
+    junk.ctf_strip_scenario_troops = 4;
     transport.queue_lobby_message(11u, make_settings_change_message(junk));
     server.poll_incoming_messages();
     EXPECT_EQ(0, server.state().settings.ctf_strip_scenario_troops);

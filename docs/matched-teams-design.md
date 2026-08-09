@@ -14,18 +14,24 @@ touches any file under `src/gameplay/` or `src/resources/`.**
 
 ---
 
+> **AMENDED 2026-08-09 (branch @ 30fb2664):** the CONTROL moved from the Teams
+> cycler to the Troops cycler — see **"Amendment: control moved to TROOPS"**
+> (D25-D33) at the end of this document. Rows D1-D8 below are kept as history
+> and are individually marked. The machinery (census, solver, spawn seam,
+> announces — PARTs III-IV) stands unchanged.
+
 ## 0. Decision record (conflict resolutions — binding)
 
 | # | Decision | Ruling & rationale |
 |---|----------|--------------------|
-| D1 | **Control = one new VALUE on the existing Teams cycler; no new row** | The user's phrasing ("a TEAMS: lobby option") names the existing cycler, and MATCHED *is* a team-count policy ("all authored teams, empties filled to match"), not an orthogonal knob. Cost: ~3 source files + ~6 pin sites vs ~30 sites, GTL v15, protocol v13, 5 wire-byte pins, ButtonAction 103, nav rewire, and a MATCHUP screen with no free 80px slot. Folding it into the cycler also makes the Teams-vs-BotPower combination space impossible to misconfigure. |
-| D2 | **Sentinel = `kTeamCountMatched = 5`, positive, defined in `include/openglad/gameplay/lobby_state.h` next to the `:193` field** | A negative sentinel is silently destroyed today: `sanitize_settings` (`src/gameplay/lobby_server.cpp:70-78`) snaps every `<= 0` to `0`, and the SOLO picker round-trips its own settings through `LocalPickerLobbyClient`. `1` degrades on old builds to `2` (least Auto-like); `5` degrades to `4` (old sanitize) or Auto (old cycler wrap) — both close to MATCHED's real semantics — and reads naturally as "the value after 4". Interface may include gameplay headers, so the constant is visible to the picker. This overrides the power draft's "any value <= 0 = OFF" phrasing: the Lua-side check is `raw == 5`, not a sign test. |
-| D3 | **Label = `"Teams: Match"`** (12 chars, 72px) | Fits the 12-char pin (`tests/unit/test_picker_common.cpp:1330`) and the 80px face exactly; names the feature. `"Teams: Even"` (11) is the fallback if headroom is ever needed. One shared formatter serves all three clients — this is the only label string. |
-| D4 | **Cycle order: `Auto -> 2 -> 3 -> 4 -> Match -> Auto`** (append after 4) | Preserves every "first step from Auto is 2" and "2 -> 3" pin verbatim (`test_ctf_ui.cpp:249-250,541-543,845`, `test_curses_picker_client.cpp:524`); only wrap/full-cycle pins move. Stored junk `9` still wraps straight to Auto (the `>= kTeamCountMatched` branch), so the existing `9 -> 0` pin survives unchanged. |
-| D5 | **MATCHED = Auto team count + matched bot power** | For every mask/activation purpose the sentinel is **indistinguishable from Auto** — which per mode may mean the `row.teams` manifest default, NOT the full authored mask: soccer (`mode_soccer_impl.lua:783`), basketball (`:2028`), and onslaught (`:678`) substitute `row.teams` for any requested count `<= 0` before `activate_teams`. The operative invariant is "Matched-mask == Auto-mask" (`team_count_request()` returns count 0 for both), pinned by the twin-mask test — do NOT write "Matched activates all authored teams" assertions; they fail on those three modes. The ONLY behavioral delta is inside the bot spawn seam. This makes I3 free: which teams get squads is unchanged from Auto — the seam already fills only fully-empty active teams; teams with any human/roster presence were never touched and still aren't. |
-| D6 | **Sanitize: exactly `5` passes; `6+` still clamps to `4`; `<= 0` still snaps to `0`** | Preserves the `9 -> 4` pins (`tests/unit/test_lobby_server.cpp:387,399`) and keeps the junk-rejection posture. Only the one legal new value is admitted. |
-| D7 | **No protocol bump, no GTL bump, no snapshot/replay change** | The sentinel rides the existing `SaveData::ctf_team_count` (v10 read block, `save_data.cpp:558-575`), `LobbySettings::ctf_team_count` i16 (any short fits), and `GameWorld::ctf_requested_team_count`. Writer stays GTL v14; `kNetworkProtocolVersion` stays 12; the 5 literal wire-byte pins and the offset-41 pin stay put. Campaign generator (`mode_levels.lua`) untouched — matched is a lobby setting, not level data. |
-| D8 | **Mixed-BUILD lobbies are possible and fail soft** (correction to the "version-gated, impossible" claim) | Because D7 keeps protocol v12, old binaries CAN share a lobby with new ones. All shapes degrade safely: old guest adopts `5`, renders `"Teams: 5"` (ugly, transient), gameplay unaffected (mode Lua and masks are host-authoritative); old host can never produce `5` and sanitizes an inherited `5` to `4` at publish. Old build reading a new `.gtl`: loads fine (v10 block reads any short), self-heals on first sanitize (`5 -> 4`) or first manual cycle (`5 -> 0`). No crash, no desync — exact behavior table in §2.6. |
+| D1 | **[SUPERSEDED by D25]** ~~Control = one new VALUE on the existing Teams cycler; no new row~~ | The user's phrasing ("a TEAMS: lobby option") names the existing cycler, and MATCHED *is* a team-count policy ("all authored teams, empties filled to match"), not an orthogonal knob. Cost: ~3 source files + ~6 pin sites vs ~30 sites, GTL v15, protocol v13, 5 wire-byte pins, ButtonAction 103, nav rewire, and a MATCHUP screen with no free 80px slot. Folding it into the cycler also makes the Teams-vs-BotPower combination space impossible to misconfigure. |
+| D2 | **[SUPERSEDED by D27]** ~~Sentinel = `kTeamCountMatched = 5`~~, positive, defined in `include/openglad/gameplay/lobby_state.h` next to the `:193` field | A negative sentinel is silently destroyed today: `sanitize_settings` (`src/gameplay/lobby_server.cpp:70-78`) snaps every `<= 0` to `0`, and the SOLO picker round-trips its own settings through `LocalPickerLobbyClient`. `1` degrades on old builds to `2` (least Auto-like); `5` degrades to `4` (old sanitize) or Auto (old cycler wrap) — both close to MATCHED's real semantics — and reads naturally as "the value after 4". Interface may include gameplay headers, so the constant is visible to the picker. This overrides the power draft's "any value <= 0 = OFF" phrasing: the Lua-side check is `raw == 5`, not a sign test. |
+| D3 | **[SUPERSEDED by D28]** ~~Label = `"Teams: Match"`~~ (12 chars, 72px) | Fits the 12-char pin (`tests/unit/test_picker_common.cpp:1330`) and the 80px face exactly; names the feature. `"Teams: Even"` (11) is the fallback if headroom is ever needed. One shared formatter serves all three clients — this is the only label string. |
+| D4 | **[SUPERSEDED by D28]** ~~Cycle order: `Auto -> 2 -> 3 -> 4 -> Match -> Auto`~~ (append after 4) | Preserves every "first step from Auto is 2" and "2 -> 3" pin verbatim (`test_ctf_ui.cpp:249-250,541-543,845`, `test_curses_picker_client.cpp:524`); only wrap/full-cycle pins move. Stored junk `9` still wraps straight to Auto (the `>= kTeamCountMatched` branch), so the existing `9 -> 0` pin survives unchanged. |
+| D5 | **[SUPERSEDED by D26/D29 — the mask twin is now OWN, not Auto]** ~~MATCHED = Auto team count + matched bot power~~ | For every mask/activation purpose the sentinel is **indistinguishable from Auto** — which per mode may mean the `row.teams` manifest default, NOT the full authored mask: soccer (`mode_soccer_impl.lua:783`), basketball (`:2028`), and onslaught (`:678`) substitute `row.teams` for any requested count `<= 0` before `activate_teams`. The operative invariant is "Matched-mask == Auto-mask" (`team_count_request()` returns count 0 for both), pinned by the twin-mask test — do NOT write "Matched activates all authored teams" assertions; they fail on those three modes. The ONLY behavioral delta is inside the bot spawn seam. This makes I3 free: which teams get squads is unchanged from Auto — the seam already fills only fully-empty active teams; teams with any human/roster presence were never touched and still aren't. |
+| D6 | **[SUPERSEDED by D27/D30 — team-count sanitize reverts to plain [2,4]]** ~~Sanitize: exactly `5` passes; `6+` still clamps to `4`; `<= 0` still snaps to `0`~~ | Preserves the `9 -> 4` pins (`tests/unit/test_lobby_server.cpp:387,399`) and keeps the junk-rejection posture. Only the one legal new value is admitted. |
+| D7 | **[AMENDED by D27 — still no bumps, but the sentinel now rides `ctf_strip_scenario_troops`]** No protocol bump, no GTL bump, no snapshot/replay change | The sentinel rides the existing `SaveData::ctf_team_count` (v10 read block, `save_data.cpp:558-575`), `LobbySettings::ctf_team_count` i16 (any short fits), and `GameWorld::ctf_requested_team_count`. Writer stays GTL v14; `kNetworkProtocolVersion` stays 12; the 5 literal wire-byte pins and the offset-41 pin stay put. Campaign generator (`mode_levels.lua`) untouched — matched is a lobby setting, not level data. |
+| D8 | **[SUPERSEDED by D31 — the mixed-build table is redone for the TROOPS field]** Mixed-BUILD lobbies are possible and fail soft (correction to the "version-gated, impossible" claim) | Because D7 keeps protocol v12, old binaries CAN share a lobby with new ones. All shapes degrade safely: old guest adopts `5`, renders `"Teams: 5"` (ugly, transient), gameplay unaffected (mode Lua and masks are host-authoritative); old host can never produce `5` and sanitizes an inherited `5` to `4` at publish. Old build reading a new `.gtl`: loads fine (v10 block reads any short), self-heals on first sanitize (`5 -> 4`) or first manual cycle (`5 -> 0`). No crash, no desync — exact behavior table in §2.6. |
 | D9 | **Power metric = pure-Lua `f(walker)` in `mode_match.lua`; NO `g_heart_value` binding** | `guy::query_heart_value()` (guy.cpp:289-328) loses on three counts: it prices only guys (bots have no guy record, so half the comparison is unreachable anyway); it prices gold, not lethality (train-cost weights: soldier int 25/pt vs str 6/pt — a worked L4 soldier's heart is ~56% intelligence, which buys only mp); it ignores loader combat bases (two untrained families differ only by hiring cost while soldier/mage walker stats differ enormously). Heart value is kept as the **rank-order oracle in C++ tests** (callable directly, no binding). No new `og.*` name ⇒ no api_stub_check churn. |
 | D10 | **`f` definition is fixed (§4.1); weights 4 / ½ / 5 / 60 are tuned, not sacred** | The `(L+3)//4` projectile term and the fire-frequency floor are **engine-shaped truncating approximations**, not engine copies: the real multiplier is FLOAT and applies to the WEAPON's base damage (`set_damage((weapon->damage() * (level + 3.0f)) / 4.0f)`, walker.cpp:1186-1187, never truncated), and the guy bonuses are float divisions (guy.cpp:447-465). `og.div(D*(L+3), 4)` is a deliberate integer weight that inherits the engine's *shape*. The multiplicative pool-times-throughput core matches the superlinear heart curve in shape. The oracle test pins team-level rank agreement; weights may be retuned there, never ad hoc. |
 | D11 | **Target with multiple human teams = MEAN of human team sums** | Max rejected (one stacked roster makes every bot squad stomp the weaker human team); per-empty-team pairing rejected (an empty team has no pairing key; any invented key is arbitrary and order-fragile). Mean is order-independent, integer, and degrades to "that team's power" in the dominant solo case. **Known residual:** mean HALVES the kingmaker effect, it does not remove it — with a 50k roster vs a 10k roster the bot team lands at 30k (3.0x the weak team, 0.6x the strong one) and can decide the human-vs-human outcome by farming the weak team. Rejected-but-plausible alternative for the next balance pass: match to the WEAKEST human team (ties low) — rejected because it makes stacked-roster players face free-win bots and rewards sandbagging. Per-human-team f-sums are assertable in tests by calling the census directly; no extra telemetry mode vars are spent on them (var slots are scarce). |
@@ -672,3 +678,199 @@ All verified by the three fact scouts at 429ec46e (see also their caveats).
   `:1727-1744` (500k per probe, 5M per host entry).
 - Menu/wire pin inventory: §2.7 of this document (distilled from the lobby-ui
   scout §3, which is the exhaustive source).
+
+---
+
+# Amendment: control moved to TROOPS (2026-08-09, branch @ 30fb2664)
+
+User correction, verbatim: *"TEAMS: was the wrong place for MATCH! It should
+be TROOPS: MATCH (in scenario), not TEAMS: MATCH (in seats)."* The
+matched-power MACHINERY (census, solver, spawn seam, announces — PARTs
+III-IV, D9-D24) is correct and stays. Only the CONTROL moves: the Teams
+cycler returns to `Auto -> 2 -> 3 -> 4 -> Auto`, and matching becomes the
+third value of the SCENARIO screen's Troops cycler. All anchors below were
+re-verified at 30fb2664 (the branch has WP-A..WP-H fully landed, so the
+"restoration" rows name real code, not spec intentions).
+
+## A.0 Amendment decision record (D25-D33 — binding; supersedes D1-D8 as marked)
+
+| # | Decision | Ruling & rationale |
+|---|----------|--------------------|
+| D25 | **Control = a third VALUE on the existing Troops cycler (SCENARIO screen); the Teams cycler is fully restored** | Supersedes D1. TROOPS is the "what fights" knob: ALL = the authored cast fights, OWN = only deployed rosters fight, MATCH = deployed rosters plus generated comparative-power opposition. That family is where matching belongs; team COUNT stays a pure count. Same cost shape as D1: no new row, no ButtonAction (`CycleCtfScenarioTroops = 64`, `button.h:278`, reused), no `PickerMenuCommand` (`ToggleCtfScenarioTroops`, `menu_model.h:55`, reused), no protocol/GTL bump. |
+| D26 | **THE BUNDLE RULING — TROOPS:MATCH is OWN-like for occupied teams. Invariant: MATCH differs from OWN in exactly one way — generated squads spawn at matched power instead of the difficulty formula.** Everything else — the strip of every authored non-guy Living/generator, `own_roster_activation`'s mask replacement, fill sites, revive backstops — is byte-identical to TROOPS:OWN. | **USER CONFIRMED 2026-08-09** (the veto reserved by the first draft of this row was not exercised). Rationale from the user's own framing ("generate a comparative-power team to my own team(s)"): the census measures deployed ROSTER walkers (`has_guy`, mode_match.lua:266-276); an authored cast is neither "my team" nor a generated one, and a team occupied by authored troops at authored levels is opposition the solver neither measures nor rebalances — keeping it defeats "comparative power". Mechanically the ruling is free: every existing consumer already reads any value above KEEP as strip-on — `format_ctf_troops_label` `> 0` (picker_common.cpp:1730), the Matchup strip preview `> 0` (:2695), the classic-map latch `>= 1` (game_world.cpp:1903), and both Lua gates `<= KEEP` (mode_strip.lua:61, mode_match.lua:342) — so MATCH=3 inherits OWN's whole deployment policy with ZERO consumer edits; a KEEP-like ruling would instead need a `== OWN` rewrite at every one of those sites. **Rejected reading (KEEP-like):** keep the authored cast and matched-fill only authored-empty teams. **Expressiveness lost vs the old TEAMS:Match x TROOPS:{ALL,OWN} matrix:** (i) the (Match, ALL) cell — matched fills coexisting with an authored cast — is gone; (ii) the multi-matched-squad pile-on is gone: under OWN's roster activation (mode_match.lua:336-, "two or more roster teams -> exactly those teams") a >= 2-roster group gets pure OWN with no bots at all, and a solo roster gets exactly ONE matched opponent (the E6 flagship), never "every empty authored team gets a T-strength squad". Loss (i) is judged marginal (unmatched authored power on the board contradicts the feature); loss (ii) is judged an improvement (the old design fielded one T-strength squad PER empty team against a lone human — an unruled pile-on). If the veto lands, the fallback is KEEP-like with the consumer-rewrite cost above. |
+| D27 | **Sentinel = `kTroopsMatched = 3` on `ctf_strip_scenario_troops`; troops sanitize widens `> 2` to `> 3`; `kTeamCountMatched` is DELETED** | The field's value set today: `0` = KEEP ("TROOPS: ALL"), `2` = OWN ("TROOPS: OWN"), `1` = the RETIRED middle state — accepted by sanitize and read as OWN everywhere (lobby_server.cpp:93-100, picker_common.cpp:577-581, mode_strip.lua:9-13). `1` is therefore NOT reusable: legacy saves/peers still hand it over meaning OWN. `3` was never legal, collides with nothing, and — because every consumer reads `> 0`/`>= 1`/`> KEEP` as strip-on — degrades on old builds to exactly OWN, which under D26 is MATCH minus power: the best possible degrade. Sanitize for THIS field is fallback-revert, not clamp (`< 0 \|\| > 2 -> fallback.ctf_strip_scenario_troops`, lobby_server.cpp:96-99); the amendment widens it to `< 0 \|\| > 3` so exactly `3` passes both directions (host publish keeps 3 -> `broadcast_state` -> guest adopt `picker_lobby_network_client.cpp:1638`; the solo `LocalPickerLobbyClient` round-trip returns 3), `1` stays accepted-as-legacy-OWN, `4+` still reverts. The constant lives in `lobby_state.h` next to the `:213` field; `kTeamCountMatched` (`lobby_state.h:196`) is deleted outright — after restoration nothing references it, and a kept-deprecated constant invites accidental reuse of 5 on the wrong field. |
+| D28 | **Label = `"TROOPS: FAIR"` (12 chars — exact budget fit; USER-DECIDED 2026-08-09, `"TROOPS: EVEN"` is the recorded alternate); cycle `ALL(0) -> OWN(2) -> FAIR(3) -> ALL(0)`; junk `1 -> 0` preserved** | `"TROOPS: MATCH"` and `"Troops: Match"` are 13 chars — one over the SCENARIO-face budget (80px = 12 chars, stated at picker_common.cpp:1726-1727; both existing labels are 11). Dropping the space (`"TROOPS:MATCH"`, 12) breaks the two-sibling `"TROOPS: "` prefix and reads as a typo — rejected. The user chose `"Fair"` over this row's earlier `"Even"` draft ("Even" stays the recorded alternate if the name is ever revisited); the word is rendered in the troops formatter's existing all-caps convention. MATCH stays the internal name (`kTroopsMatched`, `core.MATCHED_TROOPS`, announce strings unchanged). Cycle: `next_ctf_scenario_troops` (picker_common.cpp:575-581) becomes `0 -> 2; 2 -> 3; else -> 0` — the first-step pin (ALL -> OWN, test_ctf_ui.cpp:254) survives verbatim; the wrap pin (OWN -> ALL, :268) moves to OWN -> FAIR -> ALL; junk `1 -> 0` and `9 -> 0` keep (the `else` arm). Formatter: the `== kTroopsMatched -> "TROOPS: FAIR"` branch must be inserted BEFORE the `> 0` OWN branch (picker_common.cpp:1730) or OWN eats it. |
+| D29 | **Arming rewire = ONE Lua edit: `core.team_count_request()` keeps its `(count, matched)` signature; `matched` is now `og.match_setting("strip_troops") == core.MATCHED_TROOPS`; `normalize_team_count` drops the sentinel arm** | The whole downstream machinery is trigger-agnostic by construction: `record_match_target` (mode_match.lua:266-276) is the ONLY consumer of the `matched` boolean, and everything after it — TARGET latch, plan, solver, `spawn_matched_bots`, `bot_level_for`, `announce_matched` — keys off mode vars alone (mode_match.lua:460-533). Keeping the helper's name and signature means the three first-return call sites (soccer_impl:782, onslaught_impl:678, basketball_impl:2253) and the census (mode_match.lua:267) need zero edits. `core.MATCHED_TEAM_COUNT` (mode_core.lua:87) becomes `core.MATCHED_TROOPS = 3`, constant-pinned against `og::sim::kTroopsMatched` via the existing `og.match_setting("strip_troops")` round-trip idiom. Under MATCH the `own_roster_activation` early return (mode_match.lua:342, `<= strip.KEEP`) never fires — matched implies strip-on — so census placement (before the strip, strip-invariant, E6) is unchanged. C++ `effective_team_mask` loses its matched clause (mode_tick.cpp:69-72 reverts to `requested <= 0`): the strip field feeds no mask anywhere, so lobby seat re-resolution, Base Camp chips, and client mask fallbacks are back to master shape — and cycling TROOPS moves no seats, ever (already true for ALL <-> OWN; the E11 test re-targets to assert exactly that). |
+| D30 | **MIGRATION — the playtest `.gtl` `ctf_team_count = 5` takes the simple heal: sanitize clamps `5 -> 4` (or a manual cycle wraps `5 -> 0`), matching OFF. One-time, documented, no remap.** | The load path itself never sanitizes (the v10 block reads any short, save_data.cpp:558-575), but no real flow reaches gameplay without a sanitize round-trip: the solo picker round-trips through `LocalPickerLobbyClient` and every lobby publishes through `sanitize_settings`, so the restored plain clamp (`> 0 -> [2,4]`) heals `5 -> 4` before the world ever sees it; the restored cycler wrap (`>= 4 -> 0`) heals it on the first manual touch; and even an unhealed 5 reaching Lua is soft (`activate_teams` clamps to 4, `matched` is false). The fancy remap — load-time `temp_ctf_teams == 5 -> {team_count = 0, strip = 3}` — was priced: ~4 lines plus a save-version story to distinguish "5 written by the playtest build" from hand-edited junk (writer stays v14, save_data.cpp:841, so there is no version signal), a permanent cross-field coupling at load, and its beneficiaries are exclusively this developer's own playtest saves (PR #190 never merged; no user save can contain 5). Rejected. GTL round-trip of troops `= 3` gets its own value case instead. |
+| D31 | **Mixed-build / downgrade table redone for the TROOPS field — every shape fails soft, and strictly better than the D8/§2.6 Teams table** | Exact table in §A.2. Headline: an old build reading `strip = 3` — from a `.gtl` (v11 block reads any short, save_data.cpp:578-588, no load sanitize) or from a same-protocol settings broadcast (`read_lobby_settings`, net_transport.cpp:373, plain i16) — plays it as TROOPS:OWN and LABELS it "TROOPS: OWN": semantically honest (the host really is stripping), unlike the old cosmetic-junk `"Teams: 5"`. Old HOST: can never produce 3; sanitize reverts an inherited 3 to its fallback value at publish. No bump anywhere: protocol, GTL writer, snapshot (`world_snapshot.h:252` already carries the field, replicated at world_snapshot.cpp:778/790/2343/2384/2973), replay compare (replay.cpp:483) all untouched. |
+| D32 | **Classic (non-scripted) maps: TROOPS:MATCH behaves exactly as TROOPS:OWN — strip, no matched fill** | The classic latch `ctf_requested_strip_scenario_troops >= 1` (game_world.cpp:1903) already admits 3, and matched fill exists only in mode Lua (modes campaign). This is the D26 invariant applied where no generation seam exists: the "generated squads" delta is vacuous, so MATCH degenerates to OWN. No code change at that site (comment note only — and only BELOW game_world.cpp's max mutation pin at :1803, so no pin shifts; `check_mutation_pins.py` runs regardless). Documented in `og-api.d.lua` alongside the sentinel. |
+| D33 | **Test-delta rules: the twin-mask oracle re-targets from Auto to OWN; behavior tests re-arm via the strip field through one fixture helper; premise re-adjudication is mandatory wherever a fixture authors non-guy walkers** | Full ledger in §A.4. The load-bearing changes of meaning: (a) the twin invariant is now "MATCH's masks == OWN's masks for every team-count value" — NOT "matched == plain-N", because MATCH inherits OWN's roster activation, which differs from TROOPS:ALL masks in the solo case; the task-level statement "matched-with-N-teams equals plain-N-teams" holds only in the zero-roster (nil-activation) shape; (b) arming MATCH in a fixture now ALSO strips and roster-activates, so any matched test whose world contains authored non-guy walkers, or which asserted multi-team fills under a solo roster, has a changed premise and must be re-adjudicated, not mechanically re-armed; (c) a `modes_pack_fixture.h` `arm_matched()` helper centralizes the trigger so a future move is one line. |
+
+## A.1 The Troops control surface today (restoration baseline, verified at 30fb2664)
+
+- **Field:** `SaveData::ctf_strip_scenario_troops` (`save_data.h:80`, short,
+  `0 = keep`), `LobbySettings::ctf_strip_scenario_troops`
+  (`lobby_state.h:213`, i16), `lobby_server.h:22`, world mirror
+  `GameWorld::ctf_requested_strip_scenario_troops` (`game_world.h:433`),
+  snapshot `world_snapshot.h:252`. Lua: `og.match_setting("strip_troops")`
+  (`bindings_entity.cpp:2416-2417`).
+- **Value set:** `0` KEEP / `2` OWN / `1` retired-middle-state
+  (accepted, read as OWN); constants `strip.KEEP = 0`, `strip.OWN = 2`
+  (mode_strip.lua:12-13). After the amendment: `3` = MATCH.
+- **Cycler/formatter:** `next_ctf_scenario_troops` /
+  `toggle_ctf_scenario_troops` (picker_common.cpp:575-587; header
+  picker_common.h:274-285), `format_ctf_troops_label`
+  (picker_common.cpp:1725-1732; header :731-733).
+- **Three clients, zero new handlers:** SDL `change_ctf_troops`
+  (picker.cpp:2914-2927; button.cpp:631-632) refreshes the SCENARIO row
+  label, lobby-syncs, autosaves; text `text_picker.cpp:833-837` and curses
+  `curses_picker_client.cpp:1039-1044` toggle + print the shared formatter
+  (curses screen title "Scenario Troops" here; the stale "CTF Teams" title
+  at :1030 belongs to the TEAMS command and stays recorded-not-fixed).
+  Menu-model rows: `{"ctf_troops", ...}` menu_model.cpp:57 and
+  `{"troops", ...}` :73; binding label `menu_binding.cpp:61-62`.
+- **Button homes:** SCENARIO screen `{"troops", "TROOPS: ALL", 120,140,80,15}`
+  (menu_screen_specs.cpp:1291-1295; static label also pinned at
+  test_menu_layout.cpp:1400); MATCHUP's `ctf_troops` row is dormant-hidden
+  (menu_screen_specs.cpp:1419-1423, picker_team_build.cpp:469, :789).
+- **Host gating:** hidden for non-hosts with SET CAMPAIGN / SET LEVEL
+  (`sync_scenario_menu_host_control_visibility`,
+  picker_team_build.cpp:323-341, nav re-target :312-319); label re-derived
+  from the lobby-synced save every frame (:338-341) so joiners see the
+  host's value. Non-host `SettingsChange` dropped server-side
+  (lobby_server.cpp:1077-1085) — shape unchanged (D19 stands).
+- **Replication/persistence:** lobby settings i16
+  (net_transport.cpp:353/:373; field since protocol v3, net_transport.h:55);
+  GTL v11 read block (save_data.cpp:578-588) / writer (:1141-1143), writer
+  version 14 (:841); carriers `screen.cpp:1247`,
+  `headless_server_runtime.cpp:89/:307/:351`, `glad_gameplay.cpp:104`,
+  `level_runtime_data.cpp:289/:639`, curses_network.cpp:266/:356,
+  picker_lobby_client.cpp:684/:885, picker_lobby_network_client.cpp:1584/
+  :1638/:1949, lobby_server.cpp:1342 — all plain copies; value 3 rides.
+- **Sanitize:** lobby_server.cpp:93-100, fallback-revert outside `[0,2]`
+  (amendment: `[0,3]`).
+- **Sim consumers:** classic latch game_world.cpp:1903 (`>= 1`); scripted
+  strip mode_strip.lua:61 (`<= KEEP`); activation gate mode_match.lua:342;
+  Matchup preview picker_common.cpp:2690-2695 + removal footer :2883.
+  The removal footer names the chosen mode on NEW builds — `"! REMOVED:
+  TROOPS FAIR"` via `ScenarioRosterReport.strip_is_fair` — while the strip
+  MECHANISM stays byte-identical to OWN (D26's one-delta rule holds; only
+  the label differs). Old builds render OWN for value 3 (§A.2 below).
+
+## A.2 Downgrade / mixed-build behavior for `strip = 3` (replaces §2.6's role)
+
+| Shape | What happens |
+|---|---|
+| Old build loads a new `.gtl` with `strip = 3` | v11 block reads any short (save_data.cpp:578-588), no load sanitize. Every old consumer reads `> 0`/`>= 1` as strip-on: plays as TROOPS:OWN, labels `"TROOPS: OWN"` — semantically honest (MATCH minus power). First lobby publish: old sanitize `3 > 2 -> fallback` reverts to the previous value; first manual cycle: old toggle (`!= 0 -> 0`) lands on ALL. Self-heals; no crash, no corruption. |
+| Old GUEST in a new host's lobby (same protocol) | Adopts 3 from the settings broadcast (plain i16), renders `"TROOPS: OWN"` — correct in substance: the host IS stripping. Gameplay host-authoritative; guests apply snapshots. No desync. |
+| Old HOST | Can never produce 3; sanitizes an inherited 3 to its fallback at publish; guests see the fallback label. |
+| New build, old `.gtl`/peer hands over `1` | Unchanged legacy path: accepted, read as OWN (never as MATCH — D27 refuses to reuse 1). |
+| New-build guest under new host | Trivial; formatter shows `"TROOPS: FAIR"` on all three clients via the one shared formatter. |
+| Teams-field residue (`ctf_team_count = 5` from the playtest build) | D30: heals to 4 at first sanitize or 0 at first cycle; matching OFF; old `"Teams: 5"` cosmetic rendering can appear once, transiently. |
+
+## A.3 Restoration ledger — every site that reverts, moves, or appears
+
+**C++ (all in pin-free files except the game_world.cpp comment, which sits
+below its max pin):**
+
+| Site | Change |
+|---|---|
+| `lobby_state.h:196` | DELETE `kTeamCountMatched`; ADD `inline constexpr std::int16_t kTroopsMatched = 3;` next to the `:213` field |
+| `lobby_state.h:204`, `lobby_server.h:19`, `save_data.h:77` | field comments revert to plain `0 = Auto` |
+| `lobby_state.h:213`, `lobby_server.h:22`, `save_data.h:80`, `game_world.h:433`, `world_snapshot.h:252` | field comments gain `3 = Match (kTroopsMatched)` |
+| `picker_common.cpp:528-541` | `cycle_ctf_team_count` reverts to `Auto -> 2 -> 3 -> 4 -> Auto` (`>= 4 -> 0` wrap); comment reverts |
+| `picker_common.cpp:1707-1716` | `format_ctf_teams_label` drops the Match branch |
+| `picker_common.cpp:575-587` | `next_ctf_scenario_troops` gains the third state (`0 -> 2; 2 -> 3; else -> 0`) |
+| `picker_common.cpp:1725-1732` | `format_ctf_troops_label` gains `== og::sim::kTroopsMatched -> "TROOPS: FAIR"` BEFORE the `> 0` branch |
+| `picker_common.h:249-250` | teams cycler comment reverts; `:274-285`/`:731-733` troops comments document the third state |
+| `lobby_server.cpp:70-80` | teams sanitize reverts to the plain `> 0 -> clamp[2,4]` / `<= 0 -> 0` pair |
+| `lobby_server.cpp:93-100` | troops sanitize widens to `< 0 \|\| > 3 -> fallback` |
+| `mode_tick.cpp:64-72` | `effective_team_mask` drops the `== kTeamCountMatched` clause (back to `<= 0`) |
+| `game_world.cpp:1898-1903` | comment note only: `>= 1` intentionally admits 3 (D32); NO code change; below max pin 1803 |
+
+**Lua:**
+
+| Site | Change |
+|---|---|
+| `mode_core.lua:87` | `MATCHED_TEAM_COUNT = 5` becomes `MATCHED_TROOPS = 3` (export renamed, :192) |
+| `mode_core.lua:94-103` | `normalize_team_count` drops the sentinel arm (`raw <= 0 -> 0`; else raw); `matched` sourced from `og.match_setting("strip_troops") == MATCHED_TROOPS` |
+| `mode_core.lua:106-108` | `team_count_request()` keeps name and `(count, matched)` signature (D29) — call sites soccer:782 / onslaught:678 / basketball:2253 / mode_match:267 untouched |
+| `mode_match.lua:260-276, 318-342` | comments only: census self-gates on the TROOPS request; the `<= strip.KEEP` early return never fires under MATCH |
+| `mode_strip.lua:6-13` | comment documents the third state (MATCH strips identically to OWN) |
+| `docs/modding/og-api.d.lua:548` | `(team_count 5 = Matched)` becomes `(strip_troops: 0 keep, 2 own, 3 match; 1 legacy = own)` |
+
+## A.4 Test delta (descends from §2.7 and the WP-C/WP-F waves)
+
+**Reverts / re-targets (control-surface pins):**
+
+| Site | Change |
+|---|---|
+| `test_picker_common.cpp:1275-1294` | cycle pin reverts: `4 -> 0` wrap (the `:1289-1290` Match step goes); keep `9 -> 0`, `1 -> 2` |
+| `test_picker_common.cpp:1333-1347` | `format(5) == "Teams: Match"` case removed; ADD troops-formatter cases: `format(3) == "TROOPS: FAIR"` with its own `<= 12` budget + literal-equality pin, `format(1) == "TROOPS: OWN"` kept (test_ctf_ui.cpp:280-283 idiom) |
+| `test_menu_spec.cpp:120` | teams cycle array drops `"Teams: Match"`; a troops cycle array gains `{"TROOPS: OWN","TROOPS: FAIR","TROOPS: ALL"}` |
+| `test_lobby_server.cpp:439-500` | `5` passes sanitize -> `5 -> 4` clamps; `equivalent` carries-5 (:472) drops; ADD troops: `3` kept both directions, `4 -> fallback`, `1` kept, non-host `SettingsChange(strip=3)` dropped |
+| `test_company.cpp:1637-1657` | GTL `= 5` teams case becomes the troops `= 3` round-trip case |
+| `test_ctf_ui.cpp:638, 937-975` | teams 4 -> Match -> Auto injector flow becomes the troops ALL -> OWN -> FAIR -> ALL flow on both live label surfaces; :239-288 first-step pins (0 -> 2) survive, wrap pins move per D28 |
+| `test_curses_picker_client.cpp:554-567` | save=5 "Teams: Match" render becomes strip=3 "TROOPS: FAIR" render |
+| `text_picker_internal.inc:889-891` | `[Teams: Match]` assert reverts to a numeric/Auto value; the existing troops block (:867-869) gains the `TROOPS: FAIR` print assert |
+| `test_picker_funcs.cpp:3058-3115` | E11 re-targets: cycling TROOPS to MATCH re-resolves seats against an UNCHANGED mask — no seat moves (strip feeds no mask) |
+| `test_headless_server_runtime.cpp:678-703` | ordering test re-arms: save strip=3 -> `world.ctf_requested_strip_scenario_troops == 3` before first tick |
+| `test_mode_bindings.cpp:278-400` | sentinel read-back + constant pin re-target: `og.match_setting("strip_troops")` round-trip, `core.MATCHED_TROOPS == og::sim::kTroopsMatched` |
+| `test_save_data_versions.cpp:526-540` | v11 state loop gains state 3; label expectation table gains `"TROOPS: FAIR"` |
+
+**Re-arm (trigger-agnostic machinery tests — census/solver/announce/model-pin/
+oracle):** all ~28 `world().ctf_requested_team_count = kTeamCountMatched`
+fixture lines across `test_modes_{tdm,mutant,soccer,basketball,ctf,onslaught}.cpp`
+and the sites above become `arm_matched()` (new `modes_pack_fixture.h` helper
+setting `ctf_requested_strip_scenario_troops = og::sim::kTroopsMatched`).
+These tests assert mode vars, spawn levels, announce latches — none read the
+trigger — so they survive with the one-line re-arm, SUBJECT to D33(b)
+premise re-adjudication: arming now also strips and roster-activates, so any
+fixture world containing authored non-guy walkers, or asserting fills on
+more than the roster-activation mask, changes meaning and is re-ruled by
+hand, not sed.
+
+**Changed-meaning rows:**
+
+- Twin-mask tests (`..._masks_like_auto...`, tdm:1222-1235 helper-arm suite,
+  onslaught:400-439 E8): re-target to **MATCH-vs-OWN mask equality** for each
+  Teams value (Auto/2/3/4) — D33(a). The old matched-vs-Auto twins are wrong
+  under the bundle and must not be mechanically kept.
+- E3 (`matched_with_humans_on_every_seat_is_an_auto_noop`): still zero fills
+  and TARGET latched > 0, but the world-sweep comparison twin is OWN, not
+  ALL — with an all-guy fixture the assertions survive verbatim.
+- E6 (`matched_troops_own_solo_roster_gets_a_matched_opponent`): becomes THE
+  flagship MATCH test; arming collapses from (team_count=5 + strip=2) to
+  (strip=3). The separate "OWN without matching" arm now pins strip=2 spawns
+  at legacy levels.
+- E8 onslaught: matched request arrives via the strip field; the strip runs
+  with `keep_generators` (foundries stay), power ignored, TARGET still
+  latched (D17 stands).
+
+**New pins:** troops cycle triple + junk; formatter budget/equality;
+sanitize 3-kept/4-fallback/1-kept; GTL troops=3 round-trip; D30 migration
+case (v14 `.gtl` with `ctf_team_count = 5` -> sanitize heals to 4, matched
+false); D26 one-delta twins (MATCH vs OWN: same masks, same fill sites,
+levels differ only where a squad was generated); D32 classic-map arm
+(strip=3 fires `classic_strip_authored_troops` — pins the `>= 1` latch).
+
+**Untouched (verified):** `test_menu_layout.cpp:1400` static `"TROOPS: ALL"`
+spec label (the budget sweep never walks cycles — §2.7's own finding);
+menu-model command resolution / ordinals (no new command); all 5 wire-byte
+pins and the offset-41 pin (no protocol change); mutation pins (only
+comment edits land in pinned files, below max pins; run
+`check_mutation_pins.py` regardless); parity goldens (modes Lua stays
+parity-invisible; the strip field was already snapshot/replay-carried);
+announce strings `"TEAMS MATCHED"` / `"TEAMS MATCHED (LIMIT)"` (they name
+the effect, not the knob); power-model probes 9095/9096 and the whole
+§4/§5 machinery test suite bodies.
+
+## A.5 Amendment work packages
+
+| WP | Depends | Scope |
+|---|---|---|
+| **WP-A1 restore-teams** | — | D25/D27 C++ half: delete `kTeamCountMatched`, revert cycler/formatter/sanitize/`effective_team_mask`, header comments; revert the §A.4 teams-side unit pins (picker_common, menu_spec, lobby_server, company, ctf_ui teams flow, curses, text inc, picker_funcs, headless ordering, mode_bindings) |
+| **WP-A2 troops-control** | WP-A1 | D27/D28: `kTroopsMatched`, troops cycler third state, `"TROOPS: FAIR"` formatter branch, troops sanitize widen, new control-surface pins incl. the troops injector flow and save_data_versions state 3 |
+| **WP-A3 lua-rewire** | WP-A1 | D29: `core.MATCHED_TROOPS`, `normalize_team_count`/`team_count_request` rewire, comment sweep (mode_core/mode_match/mode_strip), `og-api.d.lua:548`, constant pin |
+| **WP-A4 rearm-and-readjudicate** | WP-A2, WP-A3 | D33: `arm_matched()` fixture helper, the ~28-site re-arm, twin re-target to OWN, E3/E6/E8 re-rulings, D26 one-delta twins, D30 migration case, D32 classic-map pin |
+| **WP-A5 gate-sweep** | all | `ctest --preset ci-test` clean, `check_mutation_pins.py`, Lua gates on edited pack Lua, parity untouched, docs cross-refs (`docs/game-modes.md` / `docs/mp-game-modes.md` Matched section re-pointed at TROOPS) |

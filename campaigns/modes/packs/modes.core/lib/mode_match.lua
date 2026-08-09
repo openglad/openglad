@@ -1,4 +1,4 @@
--- Shared match toolkit — manifest row adapter, team census, the TROOPS:OWN roster activation all six modes apply, marker consumption, anchor-cursor placement, bot fielding with the Teams: Match power model, dead-competitor scheduling, timeout ladder (cookbook: docs/lua-classpacks-design.md §3).
+-- Shared match toolkit — manifest row adapter, team census, the TROOPS:OWN roster activation all six modes apply, marker consumption, anchor-cursor placement, bot fielding with the TROOPS: FAIR power model, dead-competitor scheduling, timeout ladder (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C
@@ -49,7 +49,7 @@ local function resolve_limit(row, field, requested, fallback)
 end
 
 -- ---------------------------------------------------------------------------
--- Teams: Match power model (docs/matched-teams-design.md §4-§5)
+-- TROOPS: FAIR power model (docs/matched-teams-design.md §4-§5)
 -- ---------------------------------------------------------------------------
 
 -- Mode-var slots. The design's per-team MATCHED_LEVEL/MATCHED_UP footprint
@@ -259,10 +259,11 @@ end
 
 -- Census-at-init (D15): runs from own_roster_activation — the one shared
 -- call every mode makes in on_mode_init — only when the lobby requested
--- Teams: Match, and latches through MATCHED.TARGET so mid-match spawns
--- never re-census the live battle (D24). The has_guy census is immune to
--- the troops strip (authored troops carry no guy record) and the roster is
--- already in the oblist (spawn_team_from_save precedes the first tick).
+-- TROOPS: FAIR (the scenario-troops sentinel, D25/D29), and latches through
+-- MATCHED.TARGET so mid-match spawns never re-census the live battle (D24).
+-- The has_guy census is immune to the troops strip (authored troops carry
+-- no guy record) and the roster is already in the oblist
+-- (spawn_team_from_save precedes the first tick).
 local function record_match_target(obs)
   local _, matched = core.team_count_request()
   if not matched then
@@ -334,10 +335,12 @@ end
 --                             that one side.
 --   zero roster teams         nil — a bot match keeps today's shape.
 local function own_roster_activation(authored_mask, obs)
-  -- The Teams: Match census (D15) rides this call — the one walk of the
+  -- The TROOPS: FAIR census (D15) rides this call — the one walk of the
   -- oblist every mode's on_mode_init shares — so activation and matching
   -- can never disagree about which teams are human. It self-gates on the
-  -- Matched request and runs before the TROOPS:ALL early return.
+  -- matched request and runs before the TROOPS:ALL early return — which
+  -- never fires under FAIR, because the sentinel (3) is itself above KEEP:
+  -- matching implies strip-on (D26/D29).
   record_match_target(obs)
   if og.match_setting("strip_troops") <= strip.KEEP then
     return nil

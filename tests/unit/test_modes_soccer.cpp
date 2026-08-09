@@ -1910,7 +1910,7 @@ TEST_F(ModesSoccer, match_replicates_to_a_client_mirror_without_hash_strikes)
 }
 
 // ===========================================================================
-// Teams: Match system tests (matched-teams WP-F, spec §8)
+// TROOPS: FAIR system tests (matched-teams WP-F, spec §8)
 // ===========================================================================
 
 namespace {
@@ -1935,7 +1935,7 @@ std::vector<int> team_levels_sorted(GameWorld& world, int team)
 }
 
 // A pitch with a solo LEVELED roster hero on team 0 and an empty team 1:
-// the shape where Auto and Matched differ only inside the bot spawn seam.
+// the shape where OWN and FAIR differ only inside the bot spawn seam.
 struct SoccerSoloRosterWorld : SoccerPitch
 {
     walker* hero = nullptr;
@@ -1953,36 +1953,36 @@ struct SoccerSoloRosterWorld : SoccerPitch
 
 }  // namespace
 
-// The Matched-mask == Auto-mask twin (D5): soccer substitutes row.teams
-// for any requested count <= 0 before activate_teams, and the sentinel
-// must ride the same arm — same mask, same fill counts; ONLY the squad
-// strength differs.
-TEST_F(ModesSoccer, matched_mask_equals_auto_mask_with_a_solo_roster)
+// The FAIR-mask == OWN-mask twin (D26/D33(a)): FAIR bundles OWN's whole
+// deployment policy — same mask, same fill sites, same member counts; the
+// ONLY delta is the generated squad's strength.
+TEST_F(ModesSoccer, matched_mask_equals_own_mask_with_a_solo_roster)
 {
     SoccerSoloRosterWorld matched(4);
-    matched.world().ctf_requested_team_count = og::sim::kTeamCountMatched;
+    arm_matched(matched.world());
     matched.tick(1);
     ASSERT_TRUE(matched.soccer_active());
 
-    SoccerSoloRosterWorld automatic(4);
-    automatic.tick(1);
-    ASSERT_TRUE(automatic.soccer_active());
+    SoccerSoloRosterWorld own(4);
+    own.world().ctf_requested_strip_scenario_troops = 2;  // the OWN twin
+    own.tick(1);
+    ASSERT_TRUE(own.soccer_active());
 
-    EXPECT_EQ(automatic.var(kSocTeamMask), matched.var(kSocTeamMask))
-        << "Matched-mask == Auto-mask (D5)";
-    EXPECT_EQ(alive_on_team(automatic.world(), 0),
+    EXPECT_EQ(own.var(kSocTeamMask), matched.var(kSocTeamMask))
+        << "FAIR-mask == OWN-mask (D26/D33)";
+    EXPECT_EQ(alive_on_team(own.world(), 0),
               alive_on_team(matched.world(), 0));
-    EXPECT_EQ(alive_on_team(automatic.world(), 1),
+    EXPECT_EQ(alive_on_team(own.world(), 1),
               alive_on_team(matched.world(), 1))
         << "the same teams are filled with the same member count (D12)";
     EXPECT_EQ(5, alive_on_team(matched.world(), 1));
 
-    const std::vector<int> auto_levels =
-        team_levels_sorted(automatic.world(), 1);
-    ASSERT_EQ(5u, auto_levels.size());
-    EXPECT_EQ(2, auto_levels.front()) << "Auto keeps the legacy L2 squad";
-    EXPECT_EQ(2, auto_levels.back());
-    EXPECT_EQ(0, automatic.var(kSlotMatchedTarget));
+    const std::vector<int> own_levels =
+        team_levels_sorted(own.world(), 1);
+    ASSERT_EQ(5u, own_levels.size());
+    EXPECT_EQ(2, own_levels.front()) << "OWN keeps the legacy L2 squad";
+    EXPECT_EQ(2, own_levels.back());
+    EXPECT_EQ(0, own.var(kSlotMatchedTarget));
 
     ASSERT_GT(matched.var(kSlotMatchedTarget), 0);
     const int code = matched_plan_code(matched.var(kSlotMatchedPlan), 1);
@@ -2001,7 +2001,7 @@ TEST_F(ModesSoccer, matched_mask_equals_auto_mask_with_a_solo_roster)
 TEST_F(ModesSoccer, kickoff_reprovisions_a_wiped_matched_team_at_strength)
 {
     SoccerSoloRosterWorld fx(4);
-    fx.world().ctf_requested_team_count = og::sim::kTeamCountMatched;
+    arm_matched(fx.world());
     fx.world().respawn_mode = 0;  // permadeath submenu
     fx.tick(1);
     ASSERT_TRUE(fx.soccer_active());
@@ -2052,7 +2052,7 @@ TEST_F(ModesSoccer, kickoff_backstop_matches_a_wiped_human_team_to_target)
     walker* red_hero = fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 96, 96, 1, 1);
     walker* green_hero =
         fx.spawn_leveled_hero(FAMILY_SOLDIER, 1, 560, 96, 2, 1);
-    fx.world().ctf_requested_team_count = og::sim::kTeamCountMatched;
+    arm_matched(fx.world());
     fx.world().respawn_mode = 0;
     fx.tick(1);
     ASSERT_TRUE(fx.soccer_active());

@@ -3055,10 +3055,11 @@ struct LocalLobbySessionGuard
 
 }  // namespace
 
-// Matched teams E11: MATCHED (kTeamCountMatched) keeps Auto's effective
-// mask, so the settings echo re-resolves every seat against an UNCHANGED
-// domain — cycling Auto <-> Matched moves no seats, and per-seat
-// reassignment obeys the same authored-mask rule as Auto.
+// Matched teams E11 (amendment re-target): the matched request rides the
+// TROOPS field (kTroopsMatched), which feeds no mask anywhere (D29) — so
+// the settings echo re-resolves every seat against an UNCHANGED domain,
+// cycling TROOPS to/from FAIR moves no seats, and per-seat reassignment
+// obeys the same authored-mask rule as before.
 TEST(PickerFuncs, local_lobby_matched_setting_keeps_auto_seat_behavior)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
@@ -3102,19 +3103,19 @@ TEST(PickerFuncs, local_lobby_matched_setting_keeps_auto_seat_behavior)
         EXPECT_EQ(0, players[0].team);
         EXPECT_EQ(3, players[1].team);
 
-        // Auto -> Matched: the effective mask is Auto's, so the settings
+        // ALL -> FAIR: the strip field feeds no mask, so the settings
         // echo moves no seats, and the sentinel survives the lobby
-        // round-trip unclamped (sanitize keeps exactly 5).
-        save.ctf_team_count = og::sim::kTeamCountMatched;
+        // round-trip unclamped (sanitize keeps exactly 3, D27).
+        save.ctf_strip_scenario_troops = og::sim::kTroopsMatched;
         client->sync_settings_from_save();
         players = client->lobby_players();
         ASSERT_EQ(2u, players.size());
         EXPECT_EQ(0, players[0].team);
         EXPECT_EQ(3, players[1].team);
-        EXPECT_EQ(og::sim::kTeamCountMatched, save.ctf_team_count);
+        EXPECT_EQ(og::sim::kTroopsMatched, save.ctf_strip_scenario_troops);
 
-        // Seat changes under Matched follow the authored mask exactly as
-        // under Auto: 2 is authored, 1 is not.
+        // Seat changes under FAIR follow the authored mask exactly as
+        // before: 2 is authored, 1 is not.
         EXPECT_TRUE(client->request_seat_team_change(
             players[1].player_index, 2));
         EXPECT_FALSE(client->request_seat_team_change(
@@ -3123,8 +3124,8 @@ TEST(PickerFuncs, local_lobby_matched_setting_keeps_auto_seat_behavior)
         ASSERT_EQ(2u, players.size());
         EXPECT_EQ(2, players[1].team);
 
-        // Matched -> Auto: same domain again, so still no seat movement.
-        save.ctf_team_count = 0;
+        // FAIR -> ALL: same domain again, so still no seat movement.
+        save.ctf_strip_scenario_troops = 0;
         client->sync_settings_from_save();
         players = client->lobby_players();
         ASSERT_EQ(2u, players.size());

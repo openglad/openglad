@@ -674,13 +674,13 @@ TEST_F(HeadlessServerRuntimeTest, mirror_level_load_never_rolls_weather)
         << "level load must reset the kind; only snapshots set it on mirrors";
 }
 
-// Matched-teams I4 ordering (docs/matched-teams-design.md §3.2): the
-// Teams: Match sentinel rides the existing SaveData -> world chain and is
-// in `world.ctf_requested_team_count` strictly BEFORE the first
-// world.tick() runs on_mode_init, with the lobby roster already in the
-// oblist — so the mode census can see both. The mode var written by
-// on_mode_init (slot 2, mode_match.MATCHED.TARGET) is the proof Lua saw
-// the sentinel and censused the roster.
+// Matched-teams I4 ordering (docs/matched-teams-design.md §3.2, amended
+// D25/D27): the TROOPS: FAIR sentinel rides the existing SaveData -> world
+// chain and is in `world.ctf_requested_strip_scenario_troops` strictly
+// BEFORE the first world.tick() runs on_mode_init, with the lobby roster
+// already in the oblist — so the mode census can see both. The mode var
+// written by on_mode_init (slot 2, mode_match.MATCHED.TARGET) is the proof
+// Lua saw the sentinel and censused the roster.
 TEST_F(HeadlessServerRuntimeTest,
        matched_sentinel_reaches_world_before_first_tick_and_lua_sees_it)
 {
@@ -689,7 +689,7 @@ TEST_F(HeadlessServerRuntimeTest,
     lobby_save.scen_num = 302; // shipped TDM level
     lobby_save.numplayers = 2;
     lobby_save.allied_mode = 0;
-    lobby_save.ctf_team_count = og::sim::kTeamCountMatched;
+    lobby_save.ctf_strip_scenario_troops = og::sim::kTroopsMatched;
     lobby_save.team_list = {
         make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER, 0),
         make_slot(3u, 200, "Guest Guy", FAMILY_ARCHER, 1),
@@ -697,10 +697,12 @@ TEST_F(HeadlessServerRuntimeTest,
 
     initialize_from_lobby(lobby_save);
 
-    EXPECT_EQ(og::sim::kTeamCountMatched, active_save_.ctf_team_count)
+    EXPECT_EQ(og::sim::kTroopsMatched,
+              active_save_.ctf_strip_scenario_troops)
         << "the start config carries the sentinel into the SaveData";
     GameWorld& world = level_data_->world();
-    EXPECT_EQ(og::sim::kTeamCountMatched, world.ctf_requested_team_count)
+    EXPECT_EQ(og::sim::kTroopsMatched,
+              world.ctf_requested_strip_scenario_troops)
         << "sync_world_from_save_data ran before the first tick (I4)";
     EXPECT_EQ(0u, world.tick_count_);
     EXPECT_FALSE(world.mode.active) << "on_mode_init has not run yet";
@@ -718,9 +720,9 @@ TEST_F(HeadlessServerRuntimeTest,
            "sentinel through og.match_setting before any other tick ran";
 }
 
-// The Auto twin: the identical lobby handoff without the sentinel leaves
-// the matched census idle — the target var stays 0 and the flow is
-// byte-identical to today's Auto behavior.
+// The unmatched twin: the identical lobby handoff without the sentinel
+// leaves the matched census idle — the target var stays 0 and the flow is
+// byte-identical to today's behavior.
 TEST_F(HeadlessServerRuntimeTest,
        auto_team_count_lobby_handoff_writes_no_matched_target)
 {
@@ -729,7 +731,7 @@ TEST_F(HeadlessServerRuntimeTest,
     lobby_save.scen_num = 302;
     lobby_save.numplayers = 2;
     lobby_save.allied_mode = 0;
-    lobby_save.ctf_team_count = 0;
+    lobby_save.ctf_strip_scenario_troops = 0;
     lobby_save.team_list = {
         make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER, 0),
         make_slot(3u, 200, "Guest Guy", FAMILY_ARCHER, 1),

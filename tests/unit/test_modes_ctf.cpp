@@ -2654,7 +2654,7 @@ TEST_F(ModesCtf, match_replicates_to_a_client_mirror_without_hash_strikes)
 }
 
 // ===========================================================================
-// Teams: Match — the engine-respawn survival path (matched-teams WP-F, I5)
+// TROOPS: FAIR — the engine-respawn survival path (matched-teams WP-F, I5)
 // ===========================================================================
 
 // I5(b): a dead MATCHED bot's replacement is a FRESH walker whose level
@@ -2664,7 +2664,7 @@ TEST_F(ModesCtf, match_replicates_to_a_client_mirror_without_hash_strikes)
 TEST_F(ModesCtf, dead_matched_bot_respawns_at_its_matched_level)
 {
     ModesCtfWorld fx;
-    fx.world().ctf_requested_team_count = og::sim::kTeamCountMatched;
+    arm_matched(fx.world());
     fx.spawn_flag(flag_family_, 0, 96, 96);
     fx.spawn_flag(flag_family_, 1, 544, 800);
     fx.spawn_anchor(1, 256, 256);

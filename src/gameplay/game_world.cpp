@@ -1895,8 +1895,11 @@ void GameWorld::tick()
         // mode script. Runs BEFORE the completion decision and before
         // classic_respawn_run_tick, so a stripped fighter can neither count
         // as a live foe nor be queued for respawn.
-        // Any request above 0 means OWN: the menus write 2, and a save or a
-        // peer from a build with the retired middle state hands us a 1.
+        // Any request above 0 means OWN: the menus write 2, a save or a
+        // peer from a build with the retired middle state hands us a 1, and
+        // the >= 1 latch intentionally admits 3 (kTroopsMatched, "TROOPS:
+        // FAIR") too — matched fill exists only in mode Lua, so on a
+        // classic map FAIR degenerates to plain OWN (matched-teams D32).
         // A kill-all level then completes on the NEXT tick, when the foe scan
         // reruns against the stripped world — the documented consequence of
         // the setting, not something this block decides for itself.

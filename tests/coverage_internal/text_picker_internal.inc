@@ -868,18 +868,22 @@ int text_picker_testing_exercise_internal_paths()
     handle_team_item(PickerMenuCommand::ToggleCtfScenarioTroops, "", [&] {
         return save.ctf_strip_scenario_troops != previous_ctf_troops;
     });
-    // The Matchup dump prints the SHARED formatter's label, so the matched
-    // sentinel reaches the terminal with no client-side string of its own.
-    // Cycle up to it (bounded — the control wraps within five steps) and
-    // read the dump back.
-    for (int step = 0;
-         step < 5 && save.ctf_team_count != og::sim::kTeamCountMatched;
-         ++step) {
-        handle_team_item(PickerMenuCommand::CycleCtfTeamCount, "", [&] {
-            return true;
+    // The troops toggle prints the SHARED formatter's label, so the FAIR
+    // sentinel reaches the terminal with no client-side string of its own
+    // (matched-teams D28). The toggle above landed on OWN (2); the next
+    // step is FAIR (3), and the dispatch echoes the new label.
+    {
+        ScopedTextPickerStdoutCapture output;
+        check(output.ready());
+        handle_team_item(PickerMenuCommand::ToggleCtfScenarioTroops, "", [&] {
+            return save.ctf_strip_scenario_troops == og::sim::kTroopsMatched;
         });
+        const std::string text = output.finish();
+        check(output.finish_ok() &&
+            text.find("TROOPS: FAIR") != std::string::npos);
     }
-    check(save.ctf_team_count == og::sim::kTeamCountMatched);
+    // The Matchup dump prints the teams label in its plain numeric/Auto
+    // form — the retired Teams: Match rendering is gone.
     {
         ScopedTextPickerStdoutCapture output;
         check(output.ready());
@@ -888,7 +892,8 @@ int text_picker_testing_exercise_internal_paths()
         });
         const std::string text = output.finish();
         check(output.finish_ok() &&
-            text.find("[Teams: Match]") != std::string::npos);
+            text.find("[Teams: ") != std::string::npos &&
+            text.find("Match]") == std::string::npos);
     }
     {
         ScopedTextPickerStdoutCapture output;
