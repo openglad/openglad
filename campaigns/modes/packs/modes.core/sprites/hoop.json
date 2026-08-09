@@ -5,7 +5,7 @@
         "x": 0,
         "y": 0,
         "w": 24,
-        "h": 20
+        "h": 26
       },
       "rotated": false,
       "trimmed": false,
@@ -13,20 +13,20 @@
         "x": 0,
         "y": 0,
         "w": 24,
-        "h": 20
+        "h": 26
       },
       "sourceSize": {
         "w": 24,
-        "h": 20
+        "h": 26
       },
       "duration": 100
     },
     "hoop 1.aseprite": {
       "frame": {
         "x": 0,
-        "y": 20,
+        "y": 26,
         "w": 24,
-        "h": 20
+        "h": 26
       },
       "rotated": false,
       "trimmed": false,
@@ -34,20 +34,20 @@
         "x": 0,
         "y": 0,
         "w": 24,
-        "h": 20
+        "h": 26
       },
       "sourceSize": {
         "w": 24,
-        "h": 20
+        "h": 26
       },
       "duration": 100
     },
     "hoop 2.aseprite": {
       "frame": {
         "x": 0,
-        "y": 40,
+        "y": 52,
         "w": 24,
-        "h": 20
+        "h": 26
       },
       "rotated": false,
       "trimmed": false,
@@ -55,20 +55,20 @@
         "x": 0,
         "y": 0,
         "w": 24,
-        "h": 20
+        "h": 26
       },
       "sourceSize": {
         "w": 24,
-        "h": 20
+        "h": 26
       },
       "duration": 100
     },
     "hoop 3.aseprite": {
       "frame": {
         "x": 0,
-        "y": 60,
+        "y": 78,
         "w": 24,
-        "h": 20
+        "h": 26
       },
       "rotated": false,
       "trimmed": false,
@@ -76,20 +76,20 @@
         "x": 0,
         "y": 0,
         "w": 24,
-        "h": 20
+        "h": 26
       },
       "sourceSize": {
         "w": 24,
-        "h": 20
+        "h": 26
       },
       "duration": 100
     },
     "hoop 4.aseprite": {
       "frame": {
         "x": 0,
-        "y": 80,
+        "y": 104,
         "w": 24,
-        "h": 20
+        "h": 26
       },
       "rotated": false,
       "trimmed": false,
@@ -97,20 +97,20 @@
         "x": 0,
         "y": 0,
         "w": 24,
-        "h": 20
+        "h": 26
       },
       "sourceSize": {
         "w": 24,
-        "h": 20
+        "h": 26
       },
       "duration": 100
     },
     "hoop 5.aseprite": {
       "frame": {
         "x": 0,
-        "y": 100,
+        "y": 130,
         "w": 24,
-        "h": 20
+        "h": 26
       },
       "rotated": false,
       "trimmed": false,
@@ -118,11 +118,11 @@
         "x": 0,
         "y": 0,
         "w": 24,
-        "h": 20
+        "h": 26
       },
       "sourceSize": {
         "w": 24,
-        "h": 20
+        "h": 26
       },
       "duration": 100
     }
@@ -134,7 +134,7 @@
     "format": "I8",
     "size": {
       "w": 24,
-      "h": 120
+      "h": 156
     },
     "scale": "1",
     "frameTags": [],

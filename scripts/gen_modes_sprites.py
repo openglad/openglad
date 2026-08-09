@@ -503,157 +503,139 @@ def make_bshadow_frames(size=12, frames=4):
 # net hangs below the rim, so from above it reads as a cone: strands
 # zigzag inward through two mesh rings to a small bottom ring, and the
 # floor shows through the mouth.
-HOOP_RIM_IN = 0.74      # rim band inner edge, normalized radius
-HOOP_TUBE_EDGE = 0.62   # |tube coordinate| past this darkens one step
-HOOP_SPOKES = 8
-HOOP_TICK_HALF = math.radians(10.0)  # team-tick angular half-width
-# Net pose per swish frame: (mesh ring radius, bottom ring radius, sway)
-# — normalized radii plus the angular lean (radians) of the zigzag
-# junctions. The ripple is the ball punching through: pushed wide and
-# swung one way (1), stretched deep and narrow the other (2), snap-back
-# overshoot (3). Frame 0 is the net at rest; the clang frames reuse it.
-# One mesh ring only: at 24x20 a second ring fills the cone solid and
-# the whole interior reads as a gray donut instead of webbing.
-HOOP_NET_POSE = (
-    (0.46, 0.24, 0.0),
-    (0.52, 0.30, 0.30),
-    (0.36, 0.15, -0.22),
-    (0.49, 0.27, 0.14),
-)
+def make_hoop_frames(w=24, h=26, frames=6):
+    """The basket in 3/4 view: backboard, solid rim, hanging white net.
 
-
-def make_hoop_frames(w=24, h=20, frames=6):
-    """The basket: an orange rim ring over a gray net cone, team-trimmed.
-
-    Orientation-neutral top-down view, so the one sprite serves a hoop on
-    any wall. The rim never moves; only the net and the rim's light
-    change: frame 0 rests, 1-3 play the made-basket net ripple, 4-5 flash
-    the rim gold for a rim-lip clang (bright, then dim). Four compass
-    tick marks in the team band keep the owner readable in every frame.
+    The first take drew the hoop top-down-literal and it read as a donut
+    on the floor. The genre answer (every top-down sports game) is
+    iconography: the unmistakable hoop silhouette as seen from a high
+    sideline seat — backboard slab on top, solid orange rim in front of
+    it, bright net hanging below — one south-facing sprite for every
+    wall. Frame 0 rests; 1-3 play the made-basket swish (the net bulges
+    under the ball, sways, settles); 4-5 flash the rim gold for a
+    rim-lip clang (hard, then dim; the rim jumps a pixel on the hard
+    hit). The team read is the backboard's filled target block in the
+    tint band — one big square instead of the old compass specks.
     lib/mode_basketball_impl.lua drives playback (run_hoop_anims);
     mirrors only ever see the replicated set_frame results.
     """
-    cx, cy = (w - 1) / 2.0, (h - 1) / 2.0
-    a, b = w / 2.0 - 0.1, h / 2.0 - 0.1
-    lnorm = math.hypot(BALL_LIGHT[0], BALL_LIGHT[1])
-    lx, ly = BALL_LIGHT[0] / lnorm, BALL_LIGHT[1] / lnorm
-    ramp = (BBALL_LIT, BBALL_MID, BBALL_SHADE, BBALL_DARK)
-    gray = (GRAY_SHADOW, GRAY_DARK, GRAY_MID, GRAY_LIGHT, GRAY_BRIGHT)
-    rim_mid = (1.0 + HOOP_RIM_IN) / 2.0
-    rim_half = (1.0 - HOOP_RIM_IN) / 2.0
-    compass = (0.0, math.pi / 2.0, math.pi, -math.pi / 2.0)
+    # Fixed geometry (x spans, y rows). The rim hangs at the board's
+    # foot; the net's hem row and lean come from the per-frame pose.
+    board_l, board_r, board_t, board_b = 2, 21, 0, 7
+    tgt_l, tgt_r, tgt_t, tgt_b = 8, 15, 2, 6
+    rim_cx, rim_cy = (w - 1) / 2.0, 10.0
+    rim_a, rim_b_ax = 7.6, 2.4       # outer semi-axes of the rim tube
+    rim_ia, rim_ib = 5.4, 1.2        # inner (mouth) semi-axes
+    # Net pose per frame: (hem_y, bulge_px, sway_px). The swish is the
+    # ball pushing through: deepest and widest on 1, swinging on 2,
+    # settling on 3. Clang frames keep the idle net — the ball never
+    # entered.
+    poses = ((22, 0, 0), (25, 2, 0), (24, 1, -2), (23, 0, 1),
+             (22, 0, 0), (22, 0, 0))
     out = []
     for fi in range(frames):
+        hem_y, bulge, sway = poses[fi]
+        rim_dy = -1 if fi == 4 else 0  # the hard clang jolts the rim up
         px = bytearray([TRANSPARENT] * (w * h))
-        pose = HOOP_NET_POSE[fi] if fi < len(HOOP_NET_POSE) \
-            else HOOP_NET_POSE[0]
-        rm, rb, sway = pose
 
-        def plot(fx, fy, c):
-            x, y = int(round(fx)), int(round(fy))
+        def put(x, y, c):
             if 0 <= x < w and 0 <= y < h:
                 px[y * w + x] = c
 
-        def net_gray(rr):
-            # Deeper strands sit further from the light; the fully
-            # stretched net (frame 2) is taut and catches one step more.
-            # The whole ramp sits low: the court key is gray cobble, and
-            # a mid-light net vanishes into it (the bshadow lesson) —
-            # dark cords survive stone, and hue carries them on the
-            # carpet pad and hardwood.
-            if rr > 0.55:
-                gi = 2
-            elif rr > 0.32:
-                gi = 1
-            else:
-                gi = 0
-            if fi == 2:
-                gi = min(gi + 1, len(gray) - 1)
-            return gray[gi]
-
-        def strand(ang0, r0, ang1, r_end):
-            steps = 14
-            for i in range(steps + 1):
-                t = i / steps
-                rr = r0 + (r_end - r0) * t
-                ang = ang0 + (ang1 - ang0) * t
-                plot(cx + a * rr * math.cos(ang),
-                     cy + b * rr * math.sin(ang), net_gray(rr))
-
-        def ring(rr):
-            steps = 48
-            for i in range(steps):
-                ang = 2.0 * math.pi * i / steps
-                plot(cx + a * rr * math.cos(ang),
-                     cy + b * rr * math.sin(ang), net_gray(rr))
-
-        # Net first — the rim overpaints the strand attachments. Adjacent
-        # rim anchors drop in V pairs to a shared mesh-ring junction
-        # (symmetric diamonds, not a pinwheel), and each junction sends
-        # one strand on to the bottom ring; the floor stays visible
-        # between strands (the see-through mouth is the point). The sway
-        # leans the junctions so the swish visibly swings.
-        half = math.pi / HOOP_SPOKES  # the diamond half-step
-        for k in range(0, HOOP_SPOKES, 2):
-            ang = (2 * k + 1) * half  # offset keeps the compass ticks clear
-            junc = ang + half + sway
-            strand(ang, 0.76, junc, rm)
-            strand(ang + 2.0 * half, 0.76, junc, rm)
-            strand(junc, rm, junc + sway * 0.5, rb)
-        ring(rm)
-        ring(rb)
-
-        # Rim: fixed light from the pack's shared upper-left BALL_LIGHT,
-        # tube edges one step darker, the whole ring one step brighter on
-        # the hard clang frame. Compass pixels become the team ticks.
-        for y in range(h):
-            for x in range(w):
-                nx = (x - cx) / a
-                ny = (y - cy) / b
-                r = math.hypot(nx, ny)
-                if r < HOOP_RIM_IN or r > 1.0:
-                    continue
-                ux, uy = nx / r, ny / r
-                lam = ux * lx + uy * ly
-                edge = abs(r - rim_mid) > rim_half * HOOP_TUBE_EDGE
-                ang = math.atan2(ny, nx)
-                near = min(abs(math.remainder(ang - c0, 2.0 * math.pi))
-                           for c0 in compass)
-                if near <= HOOP_TICK_HALF:
-                    if lam > 0.0:
-                        c = TEAM_MID if edge else TEAM_LIGHT
-                    else:
-                        c = TEAM_DARK if edge else TEAM_MID
-                    px[y * w + x] = c
-                    continue
-                if lam > 0.55:
-                    band = 0
-                elif lam > 0.0:
-                    band = 1
-                elif lam > -0.55:
-                    band = 2
+        # Backboard: shadow outline, near-white face, glass highlight on
+        # the top inner row, shaded foot. Drawn first; everything else
+        # overlaps it.
+        for y in range(board_t, board_b + 1):
+            for x in range(board_l, board_r + 1):
+                on_edge = (x in (board_l, board_r)
+                           or y in (board_t, board_b))
+                if on_edge:
+                    put(x, y, GRAY_SHADOW)
+                elif y == board_t + 1:
+                    put(x, y, BALL_WHITE)
+                elif y == board_b - 1:
+                    put(x, y, GRAY_LIGHT)
                 else:
-                    band = 3
-                if edge:
-                    band = min(band + 1, len(ramp) - 1)
-                if fi == 4:
-                    band = max(band - 1, 0)
-                px[y * w + x] = ramp[band]
+                    put(x, y, BALL_WHITE_2)
+        # The team target: filled block, dark border, one bright spark.
+        for y in range(tgt_t, tgt_b + 1):
+            for x in range(tgt_l, tgt_r + 1):
+                on_edge = (x in (tgt_l, tgt_r) or y in (tgt_t, tgt_b))
+                put(x, y, TEAM_DARK if on_edge else TEAM_MID)
+        put(tgt_l + 1, tgt_t + 1, TEAM_BRIGHT)
 
-        # Clang glints: gold sparks on the rim crest, offset to miss the
-        # team ticks; everywhere and bright on 4, sparse and dim on 5.
+        # Net before rim, so the rim's front lip overpaints the anchor
+        # row. Junction rows taper from the rim mouth to the hem; two
+        # strand families zigzag between them, and the transparent
+        # holes let the court show through (a solid cone reads as a
+        # lampshade, not a net).
+        rows = []
+        n_rows = 4
+        top_y = 12
+        for ri in range(n_rows):
+            t = ri / (n_rows - 1)
+            y = round(top_y + (hem_y + (bulge if ri >= 2 else 0) - top_y) * t)
+            halfw = 6.5 - 2.6 * t + (bulge * 0.7 if ri >= 2 else 0)
+            cxr = rim_cx + sway * t
+            rows.append((y, cxr, halfw))
+        n_str = 5
+        for s in range(n_str):
+            u = s / (n_str - 1) - 0.5           # -0.5 .. +0.5
+            for ri in range(n_rows - 1):
+                y0, cx0, hw0 = rows[ri]
+                y1, cx1, hw1 = rows[ri + 1]
+                zig = 1.0 if (s + ri) % 2 == 0 else -1.0
+                x0 = cx0 + u * 2.0 * hw0
+                x1 = cx1 + (u + zig * 0.12) * 2.0 * hw1
+                steps = max(2, y1 - y0)
+                for i in range(steps + 1):
+                    t = i / steps
+                    xx = round(x0 + (x1 - x0) * t)
+                    yy = round(y0 + (y1 - y0) * t)
+                    c = BALL_WHITE if abs(u) > 0.3 else BALL_WHITE_2
+                    put(xx, yy, c)
+        # Hem: a bright scalloped bottom row ties the strands off.
+        hy, hcx, hhw = rows[-1]
+        for x in range(round(hcx - hhw), round(hcx + hhw) + 1):
+            put(x, hy, BALL_WHITE if (x % 2 == 0) else BALL_WHITE_1)
+
+        # Rim: a solid elliptical tube in the static orange ramp —
+        # back arc in shade against the board, front lip lit toward the
+        # viewer, dark underside seam. Clang frame 4 brightens one step
+        # everywhere and throws gold glints on the crest.
+        y_lo = int(rim_cy - rim_b_ax - 1)
+        y_hi = int(rim_cy + rim_b_ax + 2)
+        for y in range(y_lo, y_hi + 1):
+            for x in range(w):
+                nx = (x - rim_cx) / rim_a
+                ny = (y - (rim_cy + rim_dy)) / rim_b_ax
+                ix = (x - rim_cx) / rim_ia
+                iy = (y - (rim_cy + rim_dy)) / rim_ib
+                if nx * nx + ny * ny > 1.0:
+                    continue
+                if ix * ix + iy * iy < 1.0:
+                    continue  # the mouth: see through to the floor
+                rel = y - (rim_cy + rim_dy)
+                if rel < -0.8:
+                    band = 2      # back arc, in the board's shadow
+                elif rel < 0.9:
+                    band = 1      # tube crest
+                else:
+                    band = 0      # front lip, brightest
+                if fi == 4:
+                    band = min(band + 1, 3)
+                ramp = (BBALL_DARK, BBALL_SHADE, BBALL_MID, BBALL_LIT)
+                # Bands index from dark; flip so the front lip is lit.
+                # Frame 5 is the AFTERGLOW, not a dimming: idle shading
+                # with the sparse glints above carrying the fade.
+                put(x, y, ramp[3 - band])
         if fi >= 4:
-            n_glint = 8 if fi == 4 else 4
+            n_glint = 6 if fi == 4 else 3
             gold = GOLD_BRIGHT if fi == 4 else GOLD_MID
             for i in range(n_glint):
-                ang = 2.0 * math.pi * i / n_glint + math.pi / 8.0
-                gx = cx + a * rim_mid * math.cos(ang)
-                gy = cy + b * rim_mid * math.sin(ang)
-                plot(gx, gy, gold)
-                if fi == 4:
-                    # Stretch the hard-hit glint along the ring tangent.
-                    plot(gx - math.sin(ang) * 1.2,
-                         gy + math.cos(ang) * 1.0, gold)
+                gx = rim_cx + rim_a * (i / (n_glint - 1) - 0.5) * 1.9
+                put(round(gx), round(rim_cy + rim_dy - rim_b_ax), gold)
+
         out.append(bytes(px))
     return out
 
@@ -782,7 +764,9 @@ def main():
 
     hoop_frames = make_hoop_frames()
     hoop_colors = ({BBALL_LIT, BBALL_MID, BBALL_SHADE, BBALL_DARK}
-                   | grays | {GOLD_BRIGHT, GOLD_MID})
+                   | grays
+                   | {GOLD_BRIGHT, GOLD_MID, BALL_WHITE, BALL_WHITE_1,
+                      BALL_WHITE_2})
     for f in hoop_frames:
         check_band("hoop.png", f, team_ok=True, neutral_ok=hoop_colors)
     # Frames carry the swish/clang read; a collapsed pair would silently
@@ -790,11 +774,11 @@ def main():
     if len(set(hoop_frames)) != len(hoop_frames):
         raise SystemExit("hoop.png: frames are not all distinct")
     n = write_indexed_png(os.path.join(OUT, "hoop.png"), 24,
-                              20 * len(hoop_frames), b"".join(hoop_frames),
+                              26 * len(hoop_frames), b"".join(hoop_frames),
                               palette)
     print(f"wrote {OUT}/hoop.png ({n} bytes, {len(hoop_frames)} frames)")
     with open(os.path.join(OUT, "hoop.json"), "w", encoding="utf-8") as f:
-        f.write(aseprite_sidecar("hoop", 24, 20, len(hoop_frames)))
+        f.write(aseprite_sidecar("hoop", 24, 26, len(hoop_frames)))
     print(f"wrote {OUT}/hoop.json")
 
     aura_frames = make_aura_frames()

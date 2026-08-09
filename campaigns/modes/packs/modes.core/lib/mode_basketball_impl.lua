@@ -2133,7 +2133,13 @@ local function spawn_hoops()
         error("basketball: cannot spawn the hoop for team " .. team)
       end
       hoop:set_team_num(team)
-      hoop:setxy(hx - og.div(hoop:sizex(), 2), hy - og.div(hoop:sizey(), 2))
+      -- The 3/4-view sprite hangs its net BELOW the rim: the rim tube's
+      -- center sits 10 rows into the 26-row frame (make_hoop_frames'
+      -- rim_cy), so anchoring THAT row on the manifest hoop center puts
+      -- the ball's landing point visually through the ring, with the
+      -- net swishing beneath it. A plain sizey/2 center would land the
+      -- ball in the middle of the net instead.
+      hoop:setxy(hx - og.div(hoop:sizex(), 2), hy - 10)
       hoop:set_frame(0)
     end
   end

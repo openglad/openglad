@@ -1203,7 +1203,7 @@ TEST_F(ModesLevels, pack_sprites_load_with_pinned_shapes)
         {"packs/modes.core/sprites/ball.png", 12, 12, 8},
         {"packs/modes.core/sprites/bball.png", 12, 12, 8},
         {"packs/modes.core/sprites/bshadow.png", 12, 12, 4},
-        {"packs/modes.core/sprites/hoop.png", 24, 20, 6},
+        {"packs/modes.core/sprites/hoop.png", 24, 26, 6},
         {"packs/modes.core/sprites/aura.png", 16, 16, 4},
     };
     for (const auto& s : sprites)

@@ -935,7 +935,7 @@ void self_check_pack_art()
     check_sprite((base + "ball.png").c_str(), 12, 12, 8);
     check_sprite((base + "bball.png").c_str(), 12, 12, 8);
     check_sprite((base + "bshadow.png").c_str(), 12, 12, 4);
-    check_sprite((base + "hoop.png").c_str(), 24, 20, 6);
+    check_sprite((base + "hoop.png").c_str(), 24, 26, 6);
     check_sprite((base + "aura.png").c_str(), 16, 16, 4);
 }
 
