@@ -18,8 +18,10 @@
 // entity-pinned grace bars, D22 receiver leading and the contested-catch
 // race, landing legality, the dead-ball and wipe watchdogs, win/timeout/
 // buzzer, the AI director's role scheme, spawn caps, mirror replication,
-// the determinism digest, instruction-budget headroom and the R4 slot
-// budget.
+// the determinism digest, instruction-budget headroom, the R4 slot
+// budget, and the D29-D31 hoop furniture (spawn counts and tints, the
+// tick-exact swish/clang frame programs, wire replication, the win-latch
+// freeze).
 
 #include <gtest/gtest.h>
 
@@ -474,6 +476,43 @@ int tick_until_state_leaves(BballCourt& fx, int state, int bound)
         ran++;
     }
     return ran;
+}
+
+// The installed modes:hoop family byte (D30) — resolvable only after the
+// fixture mounts the pack, so tests call this, never a static.
+int hoop_family_byte()
+{
+    return og::families::resolve_family_string_id(Order::FX, "modes:hoop");
+}
+
+// The C++ twin of the impl's find_hoop (D31): one fxlist scan for the hoop
+// family member wearing this team's spawn stamp. The pointer is valid while
+// the hoop lives (hoops never die); cross-tick fate is still judged by
+// entity id where the world keeps ticking past a latch.
+walker* find_hoop_fx(GameWorld& world, int hoop_family, int team)
+{
+    for (const auto& uptr : world.fxlist)
+    {
+        walker* w = uptr.get();
+        if (w != nullptr && static_cast<int>(w->family()) == hoop_family &&
+            w->team_num() == static_cast<unsigned char>(team))
+        {
+            return w;
+        }
+    }
+    return nullptr;
+}
+
+int count_hoop_fx(GameWorld& world, int hoop_family)
+{
+    int count = 0;
+    for (const auto& uptr : world.fxlist)
+    {
+        const walker* w = uptr.get();
+        if (w != nullptr && static_cast<int>(w->family()) == hoop_family)
+            count++;
+    }
+    return count;
 }
 
 }  // namespace
@@ -2115,7 +2154,8 @@ TEST_F(ModesBasketball, spawn_caps_pause_generators)
 }
 
 // ===========================================================================
-// §11.2 #22 — mirror replication: ball + shadow + frames on the wire (I4)
+// §11.2 #22 — mirror replication: ball + shadow + frames on the wire (I4);
+// extended per #46 with the hoops (family byte, tint, mid-swish frames)
 // ===========================================================================
 
 TEST_F(ModesBasketball, mirror_replication_120_ticks)
@@ -2145,6 +2185,17 @@ TEST_F(ModesBasketball, mirror_replication_120_ticks)
     wpn->set_lasty(0.0f);
     fx.tick(1);
     ASSERT_EQ(kStateShot, fx.var(kBbBallState)) << "the arc is in the air";
+
+    // Test 46 (D31): arm a swish BEFORE the window so a mid-ripple frame
+    // program plays inside it — the per-tick set_frame results must ride
+    // the wire tick-for-tick (mirrors never animate; the hash check below
+    // strikes on any tick where they diverge).
+    const int hoop_family = hoop_family_byte();
+    ASSERT_GE(hoop_family, 0) << "modes:hoop must install on mount";
+    walker* const armed = find_hoop_fx(fx.world(), hoop_family, 1);
+    ASSERT_NE(nullptr, armed) << "the east hoop must have spawned";
+    const std::uint32_t armed_id = armed->entity_id();
+    armed->set_cycle(12);  // == arm_hoop_anim(1, hoop_swish_ticks)
 
     ModeMirror mirror(kBballLevelA);
     const MirrorReplication replication = replicate_to_mirror(fx, mirror, 120);
@@ -2185,6 +2236,31 @@ TEST_F(ModesBasketball, mirror_replication_120_ticks)
     EXPECT_EQ(shadow->ypos(), m_shadow->ypos());
     EXPECT_EQ(shadow->frame(), m_shadow->frame())
         << "the altitude frame replicates";
+
+    // Test 46 — the hoops on the wire (D30/D31): family byte directly
+    // after the shadow's, position/team/frame/cycle replicated. Judged by
+    // id — 120 ticks of bot play ran since the pointers above were taken.
+    walker* const hoop = fx.world().find_by_id(armed_id);
+    ASSERT_NE(nullptr, hoop) << "the armed hoop must survive the window";
+    EXPECT_EQ(static_cast<int>(shadow->family()) + 1,
+              static_cast<int>(hoop->family()))
+        << "fx-hoop sorts (and numbers) directly after fx-bshadow (D30)";
+    EXPECT_EQ(2, count_hoop_fx(fx.world(), hoop_family))
+        << "one hoop per active team on the authority";
+    EXPECT_EQ(2, count_hoop_fx(mirror.world(), hoop_family))
+        << "both hoops crossed the wire";
+    walker* const m_hoop = mirror.world().find_by_id(armed_id);
+    ASSERT_NE(nullptr, m_hoop) << "the mirror must materialize the hoop";
+    EXPECT_EQ(static_cast<int>(hoop->family()),
+              static_cast<int>(m_hoop->family()));
+    EXPECT_EQ(hoop->xpos(), m_hoop->xpos());
+    EXPECT_EQ(hoop->ypos(), m_hoop->ypos());
+    EXPECT_EQ(hoop->team_num(), m_hoop->team_num())
+        << "the tint stamp replicates";
+    EXPECT_EQ(hoop->frame(), m_hoop->frame())
+        << "the driven net frame replicates — mirrors never animate";
+    EXPECT_EQ(hoop->cycle(), m_hoop->cycle())
+        << "the anim countdown replicates coherently (BIT_CYCLE)";
 
     for (int slot = 0; slot < og::sim::kModeVarCount; ++slot)
     {
@@ -3461,6 +3537,402 @@ TEST_F(ModesBasketball, fire_check_probes_never_release_or_mint)
         }
         EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
     }
+}
+
+// ===========================================================================
+// §11.2 #42 — D29/D30: hoop spawn counts, tint stamps, placement, lifecycle
+// ===========================================================================
+
+TEST_F(ModesBasketball, hoop_spawn_count_and_tint)
+{
+    // 9701: exactly one team-tinted rim per active team, spawned AFTER the
+    // shadow so the ball/shadow entity ids every older test observed stay
+    // put (the D30 spawn-order pin).
+    {
+        BballCourt fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        const int hoop_family = hoop_family_byte();
+        ASSERT_GE(hoop_family, 0) << "modes:hoop must install on mount";
+        walker* ball = fx.ball();
+        walker* shadow = fx.shadow();
+        ASSERT_NE(nullptr, ball);
+        ASSERT_NE(nullptr, shadow);
+        EXPECT_EQ(static_cast<int>(shadow->family()) + 1, hoop_family)
+            << "fx-hoop sorts (and numbers) directly after fx-bshadow (D30)";
+        EXPECT_EQ(2, count_hoop_fx(fx.world(), hoop_family))
+            << "a two-team court hangs exactly two rims";
+
+        walker* west = find_hoop_fx(fx.world(), hoop_family, 0);
+        walker* east = find_hoop_fx(fx.world(), hoop_family, 1);
+        ASSERT_NE(nullptr, west) << "team 0's rim carries its tint stamp";
+        ASSERT_NE(nullptr, east) << "team 1's rim carries its tint stamp";
+        EXPECT_EQ(kBballHoop0X - 12, west->xpos())
+            << "the 24x20 rim is centered on the manifest hoop pixel";
+        EXPECT_EQ(kBballHoop0Y - 10, west->ypos());
+        EXPECT_EQ(kBballHoop1X - 12, east->xpos());
+        EXPECT_EQ(kBballHoop1Y - 10, east->ypos());
+        EXPECT_EQ(0, static_cast<int>(west->frame())) << "spawned idle";
+        EXPECT_EQ(0, static_cast<int>(east->frame()));
+        EXPECT_EQ(0, static_cast<int>(west->cycle())) << "no program armed";
+        EXPECT_EQ(0, static_cast<int>(east->cycle()));
+        EXPECT_EQ(ball->entity_id() + 1, shadow->entity_id())
+            << "ball then shadow — byte-identical to the pre-hoop order";
+        EXPECT_EQ(shadow->entity_id() + 1, west->entity_id())
+            << "hoops take the ids AFTER the shadow (D30)";
+        EXPECT_EQ(shadow->entity_id() + 2, east->entity_id());
+
+        // Lifecycle: a scoring center reset moves the BALL, never the
+        // hoops — position, team and the unscored rim's idle all hold.
+        const std::uint32_t west_id = west->entity_id();
+        const std::uint32_t east_id = east->entity_id();
+        fx.give_ball(fx.red, 450, 480);
+        fx.red->setxy(552, 472);  // the east dunk box forces a reset
+        fx.tick(1);
+        ASSERT_TRUE(has_notification(fx.events, "DUNK! RED +2"));
+        ASSERT_EQ(kBballJumpX, fx.ball_cx()) << "the reset re-spotted play";
+        walker* west_after = fx.world().find_by_id(west_id);
+        walker* east_after = fx.world().find_by_id(east_id);
+        ASSERT_NE(nullptr, west_after) << "the reset must not despawn rims";
+        ASSERT_NE(nullptr, east_after);
+        EXPECT_EQ(kBballHoop0X - 12, west_after->xpos());
+        EXPECT_EQ(kBballHoop0Y - 10, west_after->ypos());
+        EXPECT_EQ(kBballHoop1X - 12, east_after->xpos());
+        EXPECT_EQ(kBballHoop1Y - 10, east_after->ypos());
+        EXPECT_EQ(0, west_after->team_num()) << "never restamped";
+        EXPECT_EQ(1, east_after->team_num());
+        EXPECT_EQ(0, static_cast<int>(west_after->frame()))
+            << "the unscored rim stays idle through the reset";
+        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+    }
+    // 9702: all four teams active — four rims, four tints, each centered
+    // on its own wall's manifest hoop.
+    {
+        BballFourCourt fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.world().mode.active);
+        const int hoop_family = hoop_family_byte();
+        ASSERT_GE(hoop_family, 0);
+        EXPECT_EQ(4, count_hoop_fx(fx.world(), hoop_family));
+        const int hoop_x[4] = {320, 576, 320, 64};
+        const int hoop_y[4] = {64, 480, 896, 480};
+        for (int team = 0; team < 4; ++team)
+        {
+            walker* hoop = find_hoop_fx(fx.world(), hoop_family, team);
+            ASSERT_NE(nullptr, hoop) << "team " << team;
+            EXPECT_EQ(hoop_x[team] - 12, hoop->xpos()) << "team " << team;
+            EXPECT_EQ(hoop_y[team] - 10, hoop->ypos()) << "team " << team;
+            EXPECT_EQ(0, static_cast<int>(hoop->frame())) << "team " << team;
+        }
+        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+    }
+}
+
+// ===========================================================================
+// §11.2 #43 — edge #30: inactive-team goals on the four-hoop court get NO
+// sprite — the bare carpet is the dead-goal tell
+// ===========================================================================
+
+TEST_F(ModesBasketball, hoop_partial_spawn_two_of_four)
+{
+    // Teams 0 and 2 field anchors on the four-hoop court: a two-team
+    // activation. Only the goals that can score get rims.
+    ModesCtfWorld fx(kBballLevelB);
+    for (int team = 0; team < 4; team += 2)
+    {
+        const short x = static_cast<short>(128 + 64 * team);
+        fx.spawn_anchor(team, x, 700);
+        fx.spawn_living(FAMILY_SOLDIER, team, x, 700);
+    }
+    fx.tick(1);
+    ASSERT_TRUE(fx.world().mode.active);
+    ASSERT_EQ(5, fx.var(kBbTeamMask));
+    ASSERT_EQ(0, fx.team_var(kBbHoopPos, 1)) << "inactive teams bank no hoop";
+    ASSERT_EQ(0, fx.team_var(kBbHoopPos, 3));
+
+    const int hoop_family = hoop_family_byte();
+    ASSERT_GE(hoop_family, 0);
+    EXPECT_EQ(2, count_hoop_fx(fx.world(), hoop_family))
+        << "exactly the ACTIVE teams' rims spawn (edge #30)";
+    walker* north = find_hoop_fx(fx.world(), hoop_family, 0);
+    walker* south = find_hoop_fx(fx.world(), hoop_family, 2);
+    ASSERT_NE(nullptr, north);
+    ASSERT_NE(nullptr, south);
+    EXPECT_EQ(320 - 12, north->xpos());
+    EXPECT_EQ(64 - 10, north->ypos());
+    EXPECT_EQ(320 - 12, south->xpos());
+    EXPECT_EQ(896 - 10, south->ypos());
+    EXPECT_EQ(nullptr, find_hoop_fx(fx.world(), hoop_family, 1))
+        << "a dead goal gets no rim sprite";
+    EXPECT_EQ(nullptr, find_hoop_fx(fx.world(), hoop_family, 3));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+// ===========================================================================
+// §11.2 #44 — D31: the swish program, tick-exact, from every scoring arm
+// ===========================================================================
+
+TEST_F(ModesBasketball, hoop_swish_sequence_tick_exact)
+{
+    // Dunk arm — drives the FULL program: frame 1 on the score tick, 2 at
+    // +4, 3 at +8, idle at +12, playing THROUGH the same-tick center
+    // reset's jump freeze (armed before the reset, D31). The other rim
+    // never moves.
+    {
+        BballCourt fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        const int hoop_family = hoop_family_byte();
+        ASSERT_GE(hoop_family, 0);
+        fx.give_ball(fx.red, 450, 480);
+        fx.red->setxy(552, 472);
+        fx.tick(1);  // the dunk scores, arms the swish and resets
+        ASSERT_TRUE(has_notification(fx.events, "DUNK! RED +2"));
+        ASSERT_GT(fx.var(kBbJumpUntil),
+                  static_cast<std::int32_t>(fx.world().tick_count_))
+            << "the reset froze play — the ripple must outlive it";
+        walker* scored = find_hoop_fx(fx.world(), hoop_family, 1);
+        walker* other = find_hoop_fx(fx.world(), hoop_family, 0);
+        ASSERT_NE(nullptr, scored);
+        ASSERT_NE(nullptr, other);
+        EXPECT_EQ(1, static_cast<int>(scored->frame()))
+            << "score tick: the ripple starts the SAME tick";
+        EXPECT_EQ(11, static_cast<int>(scored->cycle()));
+        EXPECT_EQ(0, static_cast<int>(other->frame()));
+        fx.tick(3);
+        EXPECT_EQ(1, static_cast<int>(scored->frame())) << "+3: frame 1";
+        fx.tick(1);
+        EXPECT_EQ(2, static_cast<int>(scored->frame())) << "+4: frame 2";
+        fx.tick(4);
+        EXPECT_EQ(3, static_cast<int>(scored->frame())) << "+8: frame 3";
+        fx.tick(3);
+        EXPECT_EQ(3, static_cast<int>(scored->frame()))
+            << "+11: the last swish tick";
+        fx.tick(1);
+        EXPECT_EQ(0, static_cast<int>(scored->frame())) << "+12: idle again";
+        EXPECT_EQ(0, static_cast<int>(scored->cycle()));
+        fx.tick(2);
+        EXPECT_EQ(0, static_cast<int>(scored->frame()))
+            << "idle is idempotent (the c == 0 self-heal)";
+        EXPECT_EQ(0, static_cast<int>(other->frame()))
+            << "the unscored rim held frame 0 throughout";
+        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+    }
+    // Arc-shot arm (T8): idle through the flight, ripple on resolution.
+    {
+        BballCourt fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        const int hoop_family = hoop_family_byte();
+        fx.give_ball(fx.red, 500, 480);
+        walker* shot = fx.spawn_weapon(fx.red, 460, 560, 8.0f, 0.0f);
+        ASSERT_NE(nullptr, shot);
+        fx.world().rng_.state_ = find_scatter_seed(10, 0, 8);
+        fx.tick(1);
+        ASSERT_EQ(kStateShot, fx.var(kBbBallState));
+        walker* target = find_hoop_fx(fx.world(), hoop_family, 1);
+        ASSERT_NE(nullptr, target);
+        EXPECT_EQ(0, static_cast<int>(target->frame()))
+            << "no ripple while the arc is still in the air";
+        tick_until_state_leaves(fx, kStateShot, 40);
+        ASSERT_TRUE(has_notification(fx.events, "BASKET! RED +2"));
+        EXPECT_EQ(1, static_cast<int>(target->frame()))
+            << "T8 resolution swishes the target rim the same tick";
+        EXPECT_EQ(11, static_cast<int>(target->cycle()));
+        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+    }
+    // Goaltend arm (T12): the frozen award swishes — never the clang.
+    {
+        BballCourt fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        const int hoop_family = hoop_family_byte();
+        fx.thaw();
+        auto& vars = fx.world().mode.vars;
+        vars[kBbBallState] = kStateShot;
+        vars[kBbShotValue] = 3;
+        vars[kBbShotHoop1] = 2;
+        vars[kBbShotTeam1] = 1;
+        vars[kBbShotLand] = pos_pack(576, 480);
+        vars[kBbFlightTicks] = 20;
+        vars[kBbBallPx] = 570 * 256;
+        vars[kBbBallPy] = 480 * 256;
+        vars[kBbBallPz] = 40 * 256;
+        vars[kBbBallVx] = 0;
+        vars[kBbBallVy] = 0;
+        vars[kBbBallVz] = -200;
+        walker* swat = fx.spawn_weapon(fx.green, 567, 477, 4.0f, 0.0f);
+        ASSERT_NE(nullptr, swat);
+        fx.tick(1);
+        ASSERT_TRUE(has_notification(fx.events, "GOALTEND! RED +3"));
+        walker* target = find_hoop_fx(fx.world(), hoop_family, 1);
+        walker* other = find_hoop_fx(fx.world(), hoop_family, 0);
+        ASSERT_NE(nullptr, target);
+        ASSERT_NE(nullptr, other);
+        EXPECT_EQ(1, static_cast<int>(target->frame()))
+            << "goaltend pays the basket, so it SWISHES (concept ruling)";
+        EXPECT_EQ(11, static_cast<int>(target->cycle()))
+            << "a positive program — the clang would read -7 here";
+        EXPECT_EQ(0, static_cast<int>(other->frame()));
+        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+    }
+    // Crossing arm (T16): a descending rim-plane crossing swishes the
+    // DEFENDING rim it crossed.
+    {
+        BballCourt fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        const int hoop_family = hoop_family_byte();
+        fx.thaw();
+        auto& vars = fx.world().mode.vars;
+        vars[kBbBallState] = kStateRebound;
+        vars[kBbLastTouch1] = 1;  // team 0 touched: the tip-in credits it
+        vars[kBbBallPx] = 576 * 256;
+        vars[kBbBallPy] = 480 * 256;
+        vars[kBbBallPz] = 33 * 256;
+        vars[kBbBallVx] = 0;
+        vars[kBbBallVy] = 0;
+        vars[kBbBallVz] = -300;
+        fx.tick(1);
+        ASSERT_TRUE(has_notification(fx.events, "BASKET! RED +2"));
+        walker* crossed = find_hoop_fx(fx.world(), hoop_family, 1);
+        walker* other = find_hoop_fx(fx.world(), hoop_family, 0);
+        ASSERT_NE(nullptr, crossed);
+        ASSERT_NE(nullptr, other);
+        EXPECT_EQ(1, static_cast<int>(crossed->frame()));
+        EXPECT_EQ(11, static_cast<int>(crossed->cycle()));
+        EXPECT_EQ(0, static_cast<int>(other->frame()));
+        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+    }
+    // Own-basket arm: the ball went in regardless of credit — the CROSSED
+    // rim ripples even though the points go to the rival (D31).
+    {
+        BballCourt fx;
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        const int hoop_family = hoop_family_byte();
+        fx.thaw();
+        auto& vars = fx.world().mode.vars;
+        vars[kBbBallState] = kStateRebound;
+        vars[kBbLastTouch1] = 1;  // team 0 into its OWN west hoop
+        vars[kBbBallPx] = 64 * 256;
+        vars[kBbBallPy] = 480 * 256;
+        vars[kBbBallPz] = 33 * 256;
+        vars[kBbBallVx] = 0;
+        vars[kBbBallVy] = 0;
+        vars[kBbBallVz] = -300;
+        fx.tick(1);
+        ASSERT_TRUE(has_notification(fx.events, "OWN BASKET! GREEN +2"));
+        walker* crossed = find_hoop_fx(fx.world(), hoop_family, 0);
+        walker* other = find_hoop_fx(fx.world(), hoop_family, 1);
+        ASSERT_NE(nullptr, crossed);
+        ASSERT_NE(nullptr, other);
+        EXPECT_EQ(1, static_cast<int>(crossed->frame()))
+            << "the crossed rim swishes, not the beneficiary's";
+        EXPECT_EQ(11, static_cast<int>(crossed->cycle()));
+        EXPECT_EQ(0, static_cast<int>(other->frame()));
+        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+    }
+}
+
+// ===========================================================================
+// §11.2 #45 — D31: the clang flash, tick-exact, and the newest-event
+// overwrite
+// ===========================================================================
+
+TEST_F(ModesBasketball, hoop_clang_flash_sequence)
+{
+    // The pinned rim-lip miss from #8: frame 4 on the clang tick, 5 at +4,
+    // idle at +8.
+    BballCourt fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.basketball_active());
+    const int hoop_family = hoop_family_byte();
+    ASSERT_GE(hoop_family, 0);
+    fx.give_ball(fx.red, 416, 480);
+    walker* shot = fx.spawn_weapon(fx.red, 460, 560, 8.0f, 0.0f);
+    ASSERT_NE(nullptr, shot);
+    fx.world().rng_.state_ = find_scatter_seed(16, 15, 16);
+    fx.tick(1);
+    ASSERT_EQ(kStateShot, fx.var(kBbBallState));
+    tick_until_state_leaves(fx, kStateShot, 40);
+    ASSERT_EQ(kStateRebound, fx.var(kBbBallState)) << "the lip clang scrum";
+    walker* rim = find_hoop_fx(fx.world(), hoop_family, 1);
+    walker* other = find_hoop_fx(fx.world(), hoop_family, 0);
+    ASSERT_NE(nullptr, rim);
+    ASSERT_NE(nullptr, other);
+    EXPECT_EQ(4, static_cast<int>(rim->frame()))
+        << "clang tick: the bright flash, the same tick as SOUND_CLANG";
+    EXPECT_EQ(-7, static_cast<int>(rim->cycle()))
+        << "a negative program (the swish would read +11 here)";
+    fx.tick(3);
+    EXPECT_EQ(4, static_cast<int>(rim->frame())) << "+3: still bright";
+    fx.tick(1);
+    EXPECT_EQ(5, static_cast<int>(rim->frame())) << "+4: the dim flash";
+    EXPECT_EQ(0, static_cast<int>(other->frame()));
+
+    // A put-back crossing DURING the flash: the newest event overwrites
+    // the countdown — swish from the top, mid-program (D31).
+    auto& vars = fx.world().mode.vars;
+    vars[kBbBallState] = kStateRebound;
+    vars[kBbLastTouch1] = 1;
+    vars[kBbBallPx] = 576 * 256;
+    vars[kBbBallPy] = 480 * 256;
+    vars[kBbBallPz] = 33 * 256;
+    vars[kBbBallVx] = 0;
+    vars[kBbBallVy] = 0;
+    vars[kBbBallVz] = -300;
+    fx.tick(1);
+    ASSERT_TRUE(has_notification(fx.events, "BASKET! RED +2"));
+    EXPECT_EQ(1, static_cast<int>(rim->frame()))
+        << "the put-back swish overwrites the flash";
+    EXPECT_EQ(11, static_cast<int>(rim->cycle()));
+    fx.tick(12);
+    EXPECT_EQ(0, static_cast<int>(rim->frame()))
+        << "the overwritten program completes normally";
+    EXPECT_EQ(0, static_cast<int>(rim->cycle()));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+// ===========================================================================
+// §11.2 #47 — edge #32: a winning basket freezes the net mid-ripple
+// ===========================================================================
+
+TEST_F(ModesBasketball, hoop_freezes_on_win_latch)
+{
+    // One dunk from the score limit: the winning basket's swish is armed
+    // and drawn on the win tick, then the engine runs no more Lua — the
+    // caught frame holds, the §9 #6 frozen-ball parity.
+    BballCourt fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.basketball_active());
+    const int hoop_family = hoop_family_byte();
+    ASSERT_GE(hoop_family, 0);
+    fx.world().mode.vars[kBbPoints + 0] = 5;  // limit is 6
+    fx.give_ball(fx.red, 450, 480);
+    fx.red->setxy(552, 472);
+    fx.tick(1);  // the dunk: 5 + 2 >= 6 latches the win THIS tick
+
+    ASSERT_TRUE(has_notification(fx.events, "DUNK! RED +2"));
+    ASSERT_TRUE(fx.world().mode.win_latched);
+    EXPECT_EQ(0, fx.world().mode.winner_team);
+    ASSERT_TRUE(fx.world().game_ended);
+    walker* rim = find_hoop_fx(fx.world(), hoop_family, 1);
+    ASSERT_NE(nullptr, rim);
+    const std::uint32_t rim_id = rim->entity_id();
+    EXPECT_EQ(1, static_cast<int>(rim->frame()))
+        << "the win tick still ran its own driver pass";
+    EXPECT_EQ(11, static_cast<int>(rim->cycle()));
+
+    fx.tick(5);  // decided: no further Lua runs (mode_tick step 1)
+    walker* held = fx.world().find_by_id(rim_id);
+    ASSERT_NE(nullptr, held) << "the rim survives the latched ticks";
+    EXPECT_EQ(1, static_cast<int>(held->frame()))
+        << "the ripple freezes mid-frame after the latch (edge #32)";
+    EXPECT_EQ(11, static_cast<int>(held->cycle()))
+        << "the countdown froze with it";
+    EXPECT_TRUE(fx.world().game_ended) << "the win re-asserts";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
 // ===========================================================================

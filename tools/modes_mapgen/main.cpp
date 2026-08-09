@@ -234,8 +234,10 @@ void copy_pack_tree(const std::string& staging_root)
 
 // Obmap peak ledger (§2.3 model): authored ground load + capped spawns +
 // 16 heroes + 20 corpse/stain transients + 25 projectiles (+ the soccer
-// ball; + basketball's ball AND its shadow fx, D11). Must stay <= 190
-// unless the row carries the documented waiver.
+// ball; + basketball's ball AND its shadow fx, D11, AND one hoop sprite
+// per authored hoop, D29/D32 — the peak activation, even when a 2/3-team
+// game on a 4-hoop court spawns fewer). Must stay <= 190 unless the row
+// carries the documented waiver.
 int obmap_ledger(const ExpectedLevel& row)
 {
     int gens = 0;
@@ -248,7 +250,7 @@ int obmap_ledger(const ExpectedLevel& row)
     if (row.mode == ModeKind::Soccer)
         ball = 1;
     else if (row.mode == ModeKind::Basketball)
-        ball = 2; // ball + shadow
+        ball = 2 + static_cast<int>(row.hoops.size()); // ball + shadow + rims
     return gens + row.treasures + row.flags + row.control_points + row.doors +
            row.authored_livings + caps + 16 + 20 + 25 + ball;
 }
@@ -933,6 +935,7 @@ void self_check_pack_art()
     check_sprite((base + "ball.png").c_str(), 12, 12, 8);
     check_sprite((base + "bball.png").c_str(), 12, 12, 8);
     check_sprite((base + "bshadow.png").c_str(), 12, 12, 4);
+    check_sprite((base + "hoop.png").c_str(), 24, 20, 6);
     check_sprite((base + "aura.png").c_str(), 16, 16, 4);
 }
 

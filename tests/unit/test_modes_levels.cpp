@@ -720,17 +720,32 @@ TEST_F(ModesLevels, crossfire_capture_limit_is_five)
 TEST_F(ModesLevels, obmap_budget_ledger_holds)
 {
     // §2.3 model: authored ground load + capped spawns + 16 heroes +
-    // 20 corpse/stain transients + 25 projectiles (+ the mode's own ball
-    // entities: soccer spawns 1, basketball 2 — the ball plus its ground
-    // shadow) stays <= 190 so A* never short-circuits mid-match. 303 and
-    // 305 are the documented arenas-heritage waivers.
+    // 20 corpse/stain transients + 25 projectiles (+ the mode's own fx
+    // entities: soccer spawns 1 ball; basketball 2 — the ball plus its
+    // ground shadow — plus one hoop sprite per authored hoop, the peak
+    // activation, D29/D32) stays <= 190 so A* never short-circuits
+    // mid-match. 303 and 305 are the documented arenas-heritage waivers.
     for (const ShippedModeLevel& pin : shipped_levels())
     {
         int gens = 0;
         for (const int g : pin.gens)
             gens += g;
         const std::string mode(pin.mode);
-        const int ball = (mode == "soccer") ? 1 : (mode == "basketball") ? 2 : 0;
+        int ball = (mode == "soccer") ? 1 : 0;
+        if (mode == "basketball")
+        {
+            // 2 (ball + shadow) + the row's authored hoops, taken from the
+            // basketball_pins() hoop lists so the two pin tables cannot
+            // drift apart (826 fields 4 rims, the two-hoop courts 2).
+            int hoops = 0;
+            for (const BasketballPins& bp : basketball_pins())
+                if (bp.id == pin.id)
+                    hoops = static_cast<int>(bp.hoops.size());
+            ASSERT_GT(hoops, 0)
+                << "scen" << pin.id
+                << ": basketball row missing from basketball_pins()";
+            ball = 2 + hoops;
+        }
         int flags = pin.flags;
         const int ledger = gens + pin.treasures + flags + pin.cps +
                            pin.doors + pin.livings + pin.caps_total + 16 +
@@ -1188,6 +1203,7 @@ TEST_F(ModesLevels, pack_sprites_load_with_pinned_shapes)
         {"packs/modes.core/sprites/ball.png", 12, 12, 8},
         {"packs/modes.core/sprites/bball.png", 12, 12, 8},
         {"packs/modes.core/sprites/bshadow.png", 12, 12, 4},
+        {"packs/modes.core/sprites/hoop.png", 24, 20, 6},
         {"packs/modes.core/sprites/aura.png", 16, 16, 4},
     };
     for (const auto& s : sprites)

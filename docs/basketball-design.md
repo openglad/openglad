@@ -13,7 +13,12 @@ post-implementation playtest amendment (2026-08-08, anchors verified at
 `456fafb7`) added D27-D28 — the throw now releases under point-blank contact
 and refunds its mana; an adversarial review of the first cut then narrowed
 D27 to a qualify gate (`fire_check` probes must never be consumed) — with
-edge #24 rewritten, edges #28-#29 added, and test-plan rows 38-41. The
+edge #24 rewritten, edges #28-#29 added, and test-plan rows 38-41. A hoop
+sprite amendment (2026-08-09, anchors verified at `4c695a48`) added D29-D32 —
+a dedicated team-tinted `modes:hoop` fx sprite with swish/clang animation
+replaces the carpet tile as the hoop's VISUAL (the carpet stays as court
+paint; no gameplay change) — with edges #30-#33, test rows 42-47 and the
+WP11-WP13 work plan; it also resolves risk R9. The
 player doc is `docs/mp-game-modes.md`; the pack cookbook every script cites is
 `docs/lua-classpacks-design.md`.
 
@@ -69,6 +74,10 @@ Later sections cite decisions by id.
 | D26 | Release readability + public-geometry AI | Shot, lob, chest and flat all looked identical at release. Ruling: positional release sounds — SHOT = SOUND_BOLT, LOB = SOUND_YO, chest/flat silent — and a release announce `"THREE UP!"` when SHOT_VALUE = 3. The rebounder AI pre-positions off the target HOOP center (public, replicated geometry), never off `SHOT_LAND` — the exact scatter outcome stays sim-internal, killing the psychic boxout. |
 | D27 | Point-blank release: consume QUALIFYING dead weapons | Playtest: a guarded carrier's shoot key often released nothing — a point-blank weapon dies on its own act step (blocked `walk()` → `attack(collide_ob)` → `set_dead(1)` + `death()`, `walker.cpp:1428-1448`) BEFORE pipeline step 6, and the live-only scan skipped it. Edge #24's design-time acceptance was wrong in practice: being guarded is the normal state when release matters most. Ruling: `consume_throw` consumes the FIRST **qualifying** weapon in `og.weaplist()` order owned by the carrier and above THROW_WATERMARK. Qualifying = **alive** (the original rule), OR **dead with `death_called() == 1`** (died in its own act this tick — the point-blank walk-in, wall hit, or spent range; any carrier), OR **dead under an ACT_CONTROL carrier** (the `fire()`-time pad-blocked spawn: `walker::fire()` deducts cost `walker.cpp:514`, melees the pad blocker and bare-`set_dead(1)`s its own weapon, `:594-628` — `death()` is never called there). A blanket alive-or-dead rule (the first cut of this decision) was falsified in adversarial review: **`walker::fire_check` (`walker.cpp:1245-1346`) creates a REAL weaplist weapon as its ray probe** — owner set by `create_weapon`, heading by `set_weapon_heading` — and bare-`set_dead(1)`s it on every denial/miss/success path **without paying `weapon_cost`**; an AI carrier engaging an in-range foe produces one per engagement tick (`act_random` `living.cpp:772`, COMMAND_FIRE/ATTACK/SEARCH dispatch `stats.cpp:407/548/1080`), so the blanket rule released phantom throws the carrier never triggered and the D28 refund minted unpaid mana (empirically: bot carrier + in-range foe → phantom release + `+weapon_cost` within 4 ticks). Gate soundness: probes never reach `death()` (every `fire_check` exit is a bare `set_dead(1)`), so the `death_called() == 1` arm is probe-proof, while every act-phase weapon death runs `set_dead(1)` + `death()` (`walker.cpp:1428-1448`). The `fire()`-time death is per-weapon indistinguishable from a probe (both dead, `death_called() == 0`, owner = carrier, aim set, at the pad) — the discriminator is the CARRIER: **ACT_CONTROL walkers never execute `fire_check`** (player input fires via bare `init_fire()`, `sim_input_handler.cpp:354-374`; `hit_response` returns before queueing anything on ACT_CONTROL, `stats.cpp:653`; every COMMAND_FIRE/ATTACK/SEARCH enqueue site sits inside AI acts; `mode_ai.is_directable` skips ACT_CONTROL and user-bound walkers), so a dead `death_called() == 0` weapon under an ACT_CONTROL carrier can only be that carrier's own `fire()`-time spawn. Non-qualifying dead weapons do NOT stop the scan (a later same-tick live weapon still releases). Engine soundness of consuming the dead: `GameWorld::tick` order is act phase (`game_world.cpp:1796-1846`) → `mode_run_tick` (`:1886`) → cross-ref scrub + dead sweep (`:1955-2002`; the weaplist `std::erase_if` reaps every dead weapon unconditionally), so any dead weapon the scan sees died THIS tick, its `owner()` still resolves (the scrub runs after the mode tick), and its `lastx/lasty` aim step survives death — no death path writes them (`weap::death()` `weap.cpp:158-172`; a blocked `walk()` never touches them; the only writers are ctor zeroing and the fire aim-sets). The consumption's `set_dead(1)` on an already-dead weapon is a no-op. Non-cases, verified: same-pass re-consumption is impossible (the scan `return`s after release); a weapon fired BEFORE pickup that dies this tick still fails the strict `>` watermark gate (watermark = highest weapon id at possession gain); the swat scan kills no weapons and runs after consumption anyway. Two carrier weapons fired the same tick: the FIRST qualifying one in weaplist order becomes the throw; the release clears CARRIER and leaves an airborne state, so the scan does not run again that possession — the second flies on as a plain weapon forever. "One weapon per tick" is really **one weapon per possession**. Watermark stamp timing unchanged (T1/T2/T13 only). Accepted residual: an **AI carrier's** `fire()`-time pad-blocked spawn stays unconsumed (indistinguishable from a probe from Lua; cost stands, no release — the pre-D27 behavior for exactly that shape). It is moot for bot play quality: bot throws are the director's script-invoked `release_throw` (§4.2), never weapon consumption; the AI's weapons are incidental combat. A clean fix (engine-side probe marking, or keeping probes off the weaplist) needs a `src/` change and is out of scope for this pack-Lua amendment. Supersedes the §3.1 live-only scan, the original #24 acceptance, and this decision's own first-cut blanket rule. Pinned by tests 38 (all three consumable shapes) and 41 (probe immunity). |
 | D28 | Throw refunds its mana | Playtest: "throwing spends a shot" drained carriers until they could not throw at all — `walker::fire()` spawns nothing when `magicpoints < weapon_cost` (`walker.cpp:506-507`), so there was nothing to consume. Ruling: when a weapon is consumed as a throw, **refund the carrier's `weapon_cost` to its `magicpoints`** — passing and shooting are mana-neutral; non-carrying combat still costs. Exact bindings (verified): cost read `carrier:s_weapon_cost()` (integer getter, `bindings_entity.cpp:638`, registered `:2705`, declared `og-api.d.lua:184`); mp read/write via the `magicpoints` value property (`:2083`; it is in the no-method value-read list, `:2054-2056`). **The setter does NOT clamp** — `S_SET_FLT` (`:600-606`) narrows into `OG_STATS_DIRTY_FIELD`'s plain assignment (`statistics.h:64-70`) — so the Lua clamps: `carrier.magicpoints = og.min(og.fadd(carrier.magicpoints, cost), carrier.max_magicpoints)`, guarded by `cost > 0`. Float discipline: exactly one float op (`og.fadd`, C++ per-op rounding); `og.min` is a compare (std tie semantics, no rounding); **no `og.trunc`** — the value feeds a float field, not an integer branch, and truncation would destroy magic-regen fractions. Placement: the refund lands at the consumption site, immediately after `set_dead(1)` and before `release_throw` — observationally neutral today (nothing in the throw resolution reads `magicpoints`; the impl is grep-clean) and it makes *consumed ⟺ refunded* a single-site invariant. Implemented inline in `consume_throw` — no new Lua function, so the func=100 denominator is unchanged. Exploit review (revised after adversarial review): net zero holds **because of D27's qualify gate, not by construction** — the first cut refunded on any dead consumption, and `walker::fire_check`'s costless dead probes then MINTED `weapon_cost` (a drained bot self-refueled through NoMagic-denial probes, bypassing edge #28). Under the gate, every qualifying arm implies `walker::fire()` deducted the same field this tick (`walker.cpp:514`): alive and `death_called() == 1` weapons exist only via a real `fire()`, and the ACT_CONTROL dead arm is that carrier's own `fire()`-time spawn (D27's soundness argument); probes pay nothing and are never consumed (edge #29, test 41). Cost 0 families refund nothing (guard skips); a negative cost (unshipped) is refused by the same guard; the clamp kills any overfill; the AI director's weaponless `release_throw` entrance (§3.1) deducted nothing and refunds nothing. Known engine leak, accepted and out of Lua reach: `fire_check`'s no-foe exit leaves its probe ALIVE on the weaplist (`walker.cpp:1265-1283` — the one path with no `set_dead`), indistinguishable from a real shot; it was consumable before D27/D28 too (phantom), and now also refunds ≤ cost — reachable only when a queued COMMAND_FIRE dispatches after the carrier's foe slot has emptied (the per-tick auto-foe normally refills it). Known residual, accepted: a carrier already below `weapon_cost` cannot fire at all — the gate is pre-spawn in the engine, out of Lua reach; magic regen must climb past the cost before the next release (edge #28, pinned by test 40). |
+| D29 | Hoop sprite | User-approved concept: the hoop gets a dedicated fx sprite; the painted carpet is DEMOTED to court paint (kept, not removed — the D3 3x3-carpet/M2 self-checks stay valid and no tile, manifest byte or rim number changes). **`hoop.png` 24x20, 6 frames** (24x120 strip) + `hoop.json` sidecar `(24, 20, 6)`, NO `footprint` member (world size = frame size, the D11 ruling; the og_file FATAL machinery stays disengaged). 24 px outer width = the rim_r 12 scoring diameter (D14) so the drawn ring IS the basket band; 20 px height is the same top-down foreshortening the bshadow ellipse uses, and the sprite stays inside one dunk-carpet tile row. **Orientation-NEUTRAL top-down rim + net**: an elliptical orange rim ring with gray net webbing converging to the center opening — one sprite serves E/W/N/S hoops including FOUR HOOPS' four walls; backboards remain authored wall geometry (D3, explicitly out of scope). Frames: **0 idle; 1-3 net-ripple swish; 4 bright clang flash, 5 dim clang flash**. Palette (all named in `scripts/gen_modes_sprites.py`): rim from the STATIC fire-ramp copy 232-239 — `BBALL_LIT 235 / BBALL_MID 234 / BBALL_SHADE 233 / BBALL_DARK 232` (`:78-84`); NEVER 224-231 or 208-223, which `screen::do_cycle` rotates (`:24-26`); net in neutral grays `GRAY_SHADOW/DARK/MID/LIGHT/BRIGHT` = 17/19/21/23/25 (`:53-57`); clang-flash glint on the rim in the aura's fixed golds `GOLD_BRIGHT 88 / GOLD_MID 89` (`:270-271`); **team-tinted trim** = four compass tick marks on the rim in `TEAM_LIGHT/TEAM_MID/TEAM_DARK` (248-255 band, `:46-50`; walkputbuffer remaps p > 247 to teamcolor + (255-p), `:17-21` — the flag.png precedent, `make_flag_frames` `:148-195`). Painter `make_hoop_frames(w=24, h=20, frames=6)` beside `make_bball_frames`; `check_band(..., team_ok=True, neutral_ok=oranges|grays|golds)`, the all-frames-distinct assertion, and a `main()` roll-call block. Resolves **R9**: rim legibility no longer rides PIX_CARPET_M2. |
+| D30 | Hoop family + spawn | **`families/fx-hoop.lua`**, hookless (the fx-bshadow precedent, D11 — fx-list entities never act, an `on_act` would be a permanently uncovered function). Ordinality VERIFIED in-repo: `families/` holds exactly `fx-ball.lua, fx-bball.lua, fx-bshadow.lua, treasure-flag.lua, treasure-waypoint.lua`, and C-locale sort puts `fx-hoop.lua` after `fx-bshadow.lua` ('h' > 'b') and before `treasure-*`; auto wire ids are allocated **per order** (`src/resources/packs.cpp:260-276` — `AutoWireIds.next[8]`, `take(order)`), so `modes:hoop` takes effect id **24** and the treasure ids cannot move by construction. The existing mirror pin `ball + 1 == shadow` (`tests/unit/test_modes_basketball.cpp:2166-2168`) is untouched; test 46 adds `hoop == shadow + 1`. Declaration: `id = "modes:hoop"`, `wire_id = "auto"`, `name = "HOOP"`, `flags = { "NO_COLLIDE" }`, `sprite = .../hoop.png`, glyph `"O"` yellow bold, `radar_landmark = false` (four identical anonymous blips would only clutter the ball/carrier beacons). **Spawn** in `on_mode_init`, AFTER the shadow spawn (`mode_basketball_impl.lua:2133-2137`) and BEFORE `center_reset` (`:2140`) — ball/shadow entity ids stay byte-identical for every existing test — via `spawn_hoops()`: for t = 0..3, `og.add_fx_ob` iff `fget(S.HOOP_POS, t) ~= 0`, i.e. exactly the ACTIVE teams' banked hoops (`:2071-2083`; inactive-team hoops on 2/3-team FOUR HOOPS get **no sprite**, matching which goals score — the bare carpet is the dead-goal tell, edge #30). Per hoop: `set_team_num(t)` (the tint), `setxy(hx - sizex/2, hy - sizey/2)` centering the rim on the manifest center, `set_frame(0)`. **No per-hoop entity-id slots — slot 63 stays the last spare (R4).** Hoops survive every center reset untouched (`center_reset` `:458-490` touches only the ball + mode vars). Render layering (engine contract): fx draw above floor and below livings/weapons, so the ball and carrier pass OVER the rim — accepted, the swish carries the "through the net" read (edge #31). |
+| D31 | Slot-free lookup + frame driving | **Lookup**: `find_hoop(team)` = one `og.fxlist()` scan (`bindings_entity.cpp:2346`, registered `:2790`) for `family == hoop_family and team_num() == team`, with `hoop_family = og.family_id("effect", "modes:hoop")` bound once at chunk load. Chosen over the nearest-manifest-position match: `team_num` is the spawn-time defending-team stamp, unique per hoop (one hoop per active team by construction), and NEVER restamped — `stamp_toucher` touches only the ball (`:385-399`) and nothing else writes fx teams — so it is an exact key with zero arithmetic; the position match answers the same hoop with more work. Cost: fxlist here = shadow + ≤4 hoops + transient engine fx — O(≤10) compares per call. **Anim state lives in the hoop entity's `cycle` field** (signed char; Lua `cycle`/`set_cycle` at `bindings_entity.cpp:2639`, declared in `og-api.d.lua:67,194` — no binding or stub change): 0 = idle, +n = swish with n ticks left (armed at **+12**), −n = clang with n ticks left (armed at **−8**). The field is provably exclusive: fx entities never act (engine act loop skips fxlist), `set_frame` never touches cycle (`walker_render_bridge.cpp:78-86`, `walker_headless.cpp:53-59`), and it snapshot-replicates coherently (`walker.h:237` BIT_CYCLE; `world_snapshot.cpp:2231/1709`). Rejected: a mode var (4 hoops of state cannot fit slot 63, and R4 reserves it) and a JUMP_UNTIL derivation (after `center_reset` scrubs SHOT_*/LAST_TOUCH nothing names WHICH hoop scored, and dead-ball/wipe resets arm the same freeze with no basket). **I4 discipline**: the sim reads hoop fields ONLY inside the hoop-frame driver and writes only hoop frame/cycle — hoop existence/frames never feed any other sim branch (the "except to drive their frames" carve-out). **Driver** `run_hoop_anims()`, called unconditionally from `on_mode_tick` after `update_hud()` (`:2196`) — deliberately outside the ball/shadow `handles` gate so a vanished ball (§9 #13) cannot freeze the nets: per hoop, c = cycle(); c == 0 → `set_frame(0)` (idempotent, self-healing); c > 0 → `set_frame(1 + og.div(12 - c, 4))` (12..9→1, 8..5→2, 4..1→3), then `set_cycle(c - 1)`; c < 0 → n = −c, `set_frame(4 + og.div(8 - n, 4))` (8..5→4, 4..1→5), then `set_cycle(c + 1)`. 4 ticks per frame: swish 1.0 s, clang 0.67 s at 12 tps. Mirrors receive only the replicated per-tick `set_frame` results (I4; mirrors never animate). **Arm sites** (arm = `set_cycle` on `find_hoop(hoop_team)`; the same tick's step-14 driver draws the first frame; the newest event overwrites a running program): swish — `score_basket` (`:566-571`) gains a `hoop_team` parameter, armed BEFORE its `center_reset` so the ripple plays through the 36-tick jump freeze; callers pass the scored-on hoop: `resolve_shot` T8 `:1100` (SHOT_HOOP1−1), `run_crossing` `:640` (the crossed hoop t), `run_dunk` `:1371` (the `enemy_box_at` team), goaltend T12 `:1040` (SHOT_HOOP1−1 — **goaltend uses the swish**, per concept); `own_basket` (`:593-617`) swishes `hoop_team` directly (the ball went in regardless of credit). Clang — `resolve_shot` T9 rim band `:1105-1114`, beside SOUND_CLANG `:1109`, on SHOT_HOOP1−1. **Win latch**: the engine runs no more Lua after a win (`mode_tick.cpp` re-assert), so a winning basket freezes the net mid-ripple — accepted, the §9 #6 frozen-ball parity (edge #32). |
+| D32 | Blast radius | Enumerated; update, never weaken. **Mapgen** `tools/modes_mapgen/main.cpp`: `obmap_ledger` basketball arm `ball = 2` (`:239-251`) → `2 + hoop count` (= authored `row.hoops.size()`, the peak activation); `self_check_pack_art()` `:927-933` += `check_sprite(... "hoop.png", 24, 20, 6)`. No tile, manifest or briefing bytes change, so campaign regeneration stays byte-identical (§11.5 step 1 proves it); the only `campaigns/` diffs are the generated `sprites/hoop.png` + `hoop.json` and the new `families/fx-hoop.lua`. **Ledger values** (§6): 824 69→**71**, 825 65→**67**, 826 71→**75**, 827 69→**71**, 828 79→**81** — all ≤ 190. **tests/unit/test_modes_levels.cpp**: ledger expression `:733` `(mode == "basketball") ? 2 : 0` → `2 + <per-row hoop count>` (826: 4, others 2 — extend the pin table); sprite-pin table `:1189-1190` += `{"packs/modes.core/sprites/hoop.png", 24, 20, 6}`. **tests/unit/test_modes_basketball.cpp**: the grep-verified full set of fxlist/census assertions is — shadow-membership `:513-519` (still true), digest fxlist walk `:271-310` (hoops join the digest automatically; static frames, deterministic), mirror test `:2120-2199` (extend per test 46). No existing test pins an fxlist SIZE or a literal ball/shadow entity id, and the after-shadow spawn order (D30) keeps those ids unchanged — nothing else shifts. **tests/modes_pack_fixture.h**: rows 9701-9709 already author `hoops` (`:401-441`), so fixture worlds grow 2 hoops (9701/9704/9705) or 4 (9702) with NO literal change; `kTestRegistrationLua` bytes change ⟺ a new row is added, and only then does `scripts/coverage/runtime_only_lua.txt` need the sha256 update in the same commit (R2). `test_modes_soccer.cpp`: untouched (soccer rows author no hoops). **Docs**: `docs/mp-game-modes.md` basketball section gains the hoop-visual sentence. **Media refresh** (DELIVERED 2026-08-09 to `build/media/basketball/`, reproduction lines in that directory's manifest.md "Hoop sprite refresh" section; the push to openglad-screenshots `pr-190/` and the SHA-pinned raw URLs in the PR body are the orchestrator's landing step): (1) `hoop-idle-824.png` — 824 idle rims, both tints, as a two-crop composite (one 320x200 window cannot hold rims 608 px apart, on any court); (2) `hoop-swish-824.png` — full frame, "BASKET! GREEN +2" on screen with the scored-on net at swish frame 2, plus `hoop-swish-strip-824.png` rim close-ups through the whole ripple; (3) `hoop-clang-824.png` — full frame, rim gold-flashed at clang frame 4 with the missed ball popping away, plus `hoop-clang-strip-824.png`; (4) `hoop-tints-826.png` — FOUR HOOPS all four tick tints as a 2x2 of per-goal crops (656x656 px court, same single-frame impossibility); (5) RE-SCOPED — the 826 two-team partial spawn is not capturable by `openglad_demo`: the activation clamp reads the lobby `team_count` (`og.match_setting` → `world.ctf_requested_team_count`), which is save-file state the demo bootstraps to Auto (fresh save0 in `init_session_game`) with no env override, Auto activates all four authored anchor teams on shipped 826, and adding a demo knob would be a src/ change outside this delta. The partial-spawn behavior stays pinned by test 43 (`hoop_partial_spawn_two_of_four`: exactly two rims, nil for both dead goals); `hoop-frames.png` — the generator-truth sprite sheet (6 frames x neutral+4 team tints via the walkputbuffer remap, over court grounds) — ships as the fifth visual. |
 | Errata | — | M's L1-diamond arc superseded by D4; M/S's 28→32 superseded by D1 (33); S §1.5 attribution ruling superseded by D5; A's shown ledger arithmetic for 825/826 was garbled but the final values (65/71) are correct — recomputed in §6. Red-team pass: first-synthesis scatter constants (48/6/20), shot_clock 288, turnover_grace 24, shot_sweet 144, dunk_drive_range 96, the owner-only throw scan, the clock-clears-on-loose-ball rule and the LAST_TOUCHER-dereferenced grace are all superseded by D19-D25. |
 
 ---
@@ -923,7 +932,9 @@ run exits nonzero by design (regenerate-and-diff rewrites the stale
    landings impossible; trivially true on all five courts).
 6. Reachability probes at every hoop tile and the jump tile — every rebound
    scrum spot is provably walkable.
-7. Ledger `+2` term, pad-free arm, dispatch roll-call (§5.4).
+7. Ledger `+2 + hoops` term (D32; was `+2` pre-D29), pad-free arm, dispatch
+   roll-call (§5.4); `check_sprite(... "hoop.png", 24, 20, 6)` joins the
+   pack-art roll-call.
 
 ---
 
@@ -986,7 +997,8 @@ shared by all five: `flags = 0`, `control_points = 0`, `doors = 0`,
 <= 30 bytes; briefings <= 33 chars/line ending `-- THE GAMESMASTER`.
 
 Obmap ledger formula per row: `gens + treasures + flags + cps + doors +
-livings + caps_total + 16 + 20 + 25 + 2(ball+shadow)`.
+livings + caps_total + 16 + 20 + 25 + 2(ball+shadow) + hoops` (one hoop fx
+per authored hoop, D29-D32; 826: 4, others 2).
 
 ### 6.1 Arena 824 — "Basketball: CENTER COURT" (par 6)
 
@@ -1026,7 +1038,8 @@ THE COURT.
 ```
 
 Pins: teams 2, markers 5/team, treasures 6, gens 0, decor_cells **4**, grid
-45x25, par 6, time 7200, score 21. Ledger 0+6+0+0+0+0+0+16+20+25+2 = **69**.
+45x25, par 6, time 7200, score 21. Ledger 0+6+0+0+0+0+0+16+20+25+2+2 = **71**
+(D32; 69 pre-D29).
 
 ### 6.2 Arena 825 — "Basketball: THE PLAYGROUND" (par 6)
 
@@ -1064,7 +1077,7 @@ SHORT TEMPERS. FIRST TO 11.
 ```
 
 Pins: teams 2, markers 5, treasures 2, gens 0, decor_cells **4**, grid 31x19,
-par 6. Ledger 0+2+0+0+0+0+0+16+20+25+2 = **65**.
+par 6. Ledger 0+2+0+0+0+0+0+16+20+25+2+2 = **67** (D32; 65 pre-D29).
 
 ### 6.3 Arena 826 — "Basketball: FOUR HOOPS" (par 8)
 
@@ -1117,7 +1130,8 @@ FIRST TO 21 TAKES THE CIRCUS.
 ```
 
 Pins: teams 4, markers 5/team (20 anchors), treasures 8, gens 0, decor_cells
-**8**, grid 41x41, par 8. Ledger 0+8+0+0+0+0+0+16+20+25+2 = **71**.
+**8**, grid 41x41, par 8. Ledger 0+8+0+0+0+0+0+16+20+25+2+4 = **75** (D32;
+71 pre-D29; four authored hoops).
 
 ### 6.4 Arena 827 — "Basketball: THE BANKHOUSE" (par 8)
 
@@ -1170,7 +1184,7 @@ FIRST TO 21.
 ```
 
 Pins: teams 2, markers 5, treasures 6, gens 0, decor_cells **4**, grid 45x27,
-par 8. Ledger **69**.
+par 8. Ledger **71** (D32; 69 pre-D29).
 
 ### 6.5 Arena 828 — "Basketball: BENCHWARMERS" (par 10)
 
@@ -1228,7 +1242,8 @@ FOULS. FIRST TO 21.
 ```
 
 Pins: teams 2, markers 5, treasures 6, gens 1/team, caps_total 8, decor_cells
-**6**, grid 47x29, par 10. Ledger 2+6+0+0+0+0+8+16+20+25+2 = **79**.
+**6**, grid 47x29, par 10. Ledger 2+6+0+0+0+0+8+16+20+25+2+2 = **81** (D32;
+79 pre-D29).
 
 ### 6.6 Cross-arena matrix
 
@@ -1268,6 +1283,18 @@ Neither sidecar carries a `footprint` member — world size 12x12; the FATAL
 footprint machinery is not engaged. `main()`'s roll-call gains both write
 blocks.
 
+3. **`make_hoop_frames(w=24, h=20, frames=6)`** (D29) — orientation-neutral
+   top-down rim + net: elliptical orange rim ring (static fire-ramp copy
+   `BBALL_LIT/MID/SHADE/DARK` 235/234/233/232 — never the do_cycle ramps
+   224-231/208-223), gray net webbing (`GRAY_*` 17-25) converging to a
+   center opening, four team-tinted compass tick marks on the rim
+   (`TEAM_LIGHT/MID/DARK`, 248-255 band — the flag.png remap precedent),
+   gold rim glint (`GOLD_BRIGHT 88`/`GOLD_MID 89`) on the clang frames.
+   Frames: 0 idle; 1-3 net-ripple swish; 4-5 clang flash (bright, dim).
+   Output `hoop.png` 24x120 + `aseprite_sidecar("hoop", 24, 20, 6)`; no
+   `footprint` member. `check_band(..., team_ok=True)`, all-frames-distinct
+   assertion, `main()` roll-call block.
+
 ### 7.2 Families (I5, D11)
 
 **`families/fx-bball.lua`** — clone of `fx-ball.lua`'s one-call shape: effect
@@ -1285,6 +1312,18 @@ drives `set_frame`, and the resolved frame replicates — mirrors never run
 Both family bytes (22, 23 >= NUM_FAMILIES) travel the snapshot wire — the
 mirror-replication test (§11.2 #22) is the regression for the historic
 family-byte clamp bug and for I5 ordinality.
+
+**`families/fx-hoop.lua`** (D29-D31) — same hookless shape as fx-bshadow
+(fx-list entities never act; an `on_act` would be permanently uncovered
+under function = 100): `id = "modes:hoop"`, `wire_id = "auto"` (→ 24 —
+per-order allocation, `src/resources/packs.cpp:260-276`, so the treasure
+ids cannot shift), `name = "HOOP"`, `flags = { "NO_COLLIDE" }`,
+`sprite = "packs/modes.core/sprites/hoop.png"`, glyph `"O"` yellow bold,
+`radar_landmark = false`. Spawned with **`og.add_fx_ob`** by
+`spawn_hoops()` at init for ACTIVE teams' banked hoops only; team-tinted
+via `set_team_num(defending team)`; frames driven by the impl per D31
+(cycle-encoded countdown, `run_hoop_anims`). Satisfies I5: `fx-hoop.lua`
+sorts after `fx-bshadow.lua`, keeping ids 21/22/23.
 
 ---
 
@@ -1441,6 +1480,22 @@ family-byte clamp bug and for I5 ordinality.
     probe-indistinguishable and stays unconsumed (see #24). An engine-side
     probe marker would close both; that is a `src/` change beyond this
     amendment.
+30. **Inactive-team hoop on 2/3-team FOUR HOOPS** — no sprite: `spawn_hoops`
+    keys off banked `HOOP_POS ~= 0` (D30), exactly the hoops that can score
+    (§6.3). The bare dunk carpet is the dead-goal tell — intended, not a
+    bug. Pinned by test 43.
+31. **Ball draws over the net** — the engine fx pass renders fx above floor
+    and below livings/weapons, so the ball, carrier and weapons pass OVER
+    the rim sprite. Accepted: the swish/clang animation carries the
+    "through the net" read; reordering draw passes is a `src/` change (I1).
+32. **Win latch mid-animation** — a winning basket's swish freezes on
+    whatever frame the latch caught (no more Lua runs after the win
+    re-assert): the §9 #6 frozen-ball parity, declared accepted. Pinned by
+    test 47.
+33. **Hoop handle vanishes** (editor abuse, debug kill-alls) — `find_hoop`
+    answers nil and the arm no-ops; `run_hoop_anims` simply drives the
+    hoops that remain. No respawn, no sim consequence (I4: hoops never feed
+    back into sim decisions); the mode plays on with a bare carpet.
 
 ---
 
@@ -1466,6 +1521,20 @@ one agent and owns its files exclusively.
 
 Parallelism: {WP1, WP3} first wave; WP2 after WP1; WP4 after {WP2, WP3};
 {WP5, WP6} after WP4; {WP7, WP8, WP9} next; WP10 last.
+
+### Hoop-sprite amendment work plan (D29-D32; WP1-WP10 are shipped history)
+
+| WP | Name | Owned files | Depends on |
+|----|------|-------------|------------|
+| WP11 | Hoop sprite + family | `scripts/gen_modes_sprites.py` (`make_hoop_frames` + roll-call, D29); generated `campaigns/modes/packs/modes.core/sprites/hoop.png` + `hoop.json`; new `campaigns/modes/packs/modes.core/families/fx-hoop.lua` (D30) | — |
+| WP12 | Frame driving | `campaigns/modes/packs/modes.core/lib/mode_basketball_impl.lua` only: `spawn_hoops` in `on_mode_init` (after the shadow spawn `:2133-2137`, before `center_reset` `:2140`), `find_hoop`/`arm_hoop_anim`/`run_hoop_anims` (D31), `score_basket` hoop_team parameter + its five callers, `own_basket` swish, T9 clang arm | WP11 |
+| WP13 | Gates + tests + media | `tools/modes_mapgen/main.cpp` (ledger `:239-251`, `self_check_pack_art` `:927-933`); `tests/unit/test_modes_levels.cpp` (ledger `:733`, sprite pins `:1189-1190`); `tests/unit/test_modes_basketball.cpp` (tests 42-47, mirror-test extension `:2120-2199`); `docs/mp-game-modes.md`; media refresh per D32 (screenshots repo `pr-190/`); `tests/modes_pack_fixture.h` + `scripts/coverage/runtime_only_lua.txt` ONLY if a new fixture row proves necessary (same-commit digest rule, R2) | WP12 |
+
+Gate run for the amendment = §11.5 unchanged (regen byte-stability now also
+proves the hoop change emitted no map bytes); every new Lua function needs
+function = 100 coverage (§11.3's new row); ci-asan must pass on the new
+tests (judge entity fate by id, never stale pointers). No `src/` changes
+(I1); never commit — the orchestrator lands it after gates.
 
 ---
 
@@ -1642,6 +1711,37 @@ caps row.
     the ray probe (`collide_ob` set on a hit), the shape closest to a real
     `fire()`-time death; same assertions. Both arms fail against the
     blanket alive-or-dead scan (phantom release tick 0), proving teeth.
+42. `hoop_spawn_count_and_tint` — D29/D30: 9701 (2-team) spawns exactly 2
+    hoop fx, 9702 (4-team) exactly 4; each on the fxlist with family ==
+    shadow family + 1 (id 24), `team_num` == its defending team,
+    rim centered on the manifest hoop pixel center, frame 0, cycle 0;
+    ball/shadow entity ids unchanged from the pre-hoop values (the
+    after-shadow spawn-order pin). A center reset leaves every hoop's
+    position, team and frame untouched (lifecycle rule).
+43. `hoop_partial_spawn_two_of_four` — 9702 with a 2-team activation
+    request: exactly 2 hoops spawn, and `HOOP_POS == 0` teams have NO hoop
+    fx (edge #30); the two spawned tints match the two active teams.
+44. `hoop_swish_sequence_tick_exact` — a made basket arms the scored-on
+    hoop only: same tick frame 1, then 2 at 4 ticks, 3 at 8, back to 0 at
+    12; every other hoop stays at frame 0 throughout. Arms: arc shot (T8),
+    dunk (§3.4), goaltend (T12 — the swish, not the flash), crossing
+    tip-in (T16) and own basket — each swishes the DEFENDING hoop of the
+    rim crossed. The ripple survives the same-tick center reset (D31:
+    armed before `center_reset`, plays through the jump freeze).
+45. `hoop_clang_flash_sequence` — a rim-lip miss (pinned rng state, T9):
+    target hoop shows frame 4 on the clang tick, frame 5 at 4 ticks, 0 at
+    8; a put-back crossing during the flash re-arms swish (newest event
+    overwrites the cycle countdown).
+46. `hoop_mirror_replication` — extend §11.2 #22: hoop family byte 24 on
+    the wire (`hoop == shadow + 1` beside the existing `ball + 1 ==
+    shadow` pin), hoop position/team replicate, and a mid-swish frame
+    change replicates tick-for-tick over the 120-tick window (mirrors
+    never animate; 0 hash strikes with hoops present). The §11.2 #23
+    digest picks hoops up automatically via its fxlist walk.
+47. `hoop_freezes_on_win_latch` — a score-limit winning basket: after the
+    latch, the scoring hoop's frame holds its caught swish frame across
+    subsequent ticks (no Lua runs — edge #32), and no hook failures are
+    recorded.
 
 ### 11.3 Function-coverage matrix (Lua function = 100 gate)
 
@@ -1672,6 +1772,8 @@ untestable may be written (I3).
 | `landing_legal`, `respot_at` (ring scan) | 25 |
 | fx-bball `on_act` | any ticking test (engine dispatches it) |
 | fx-bshadow | declares NO functions (D11 — deliberate) |
+| fx-hoop | declares NO functions (D30 — the fx-bshadow ruling) |
+| `spawn_hoops`, `find_hoop`, `arm_hoop_anim`, `run_hoop_anims` (D30/D31); `score_basket`/`own_basket` hoop_team arms | 42, 43, 44, 45, 46, 47 |
 | hoisted `ai.dir8/drive_geometry/chaser_drives`, `match.revive_wiped_teams/run_death_scan`, `core.iabs/walker_center` | existing soccer suite + tests 16, 19, 20 |
 
 ### 11.4 Levels-sweep updates and the 28→33 literal ledger
@@ -1680,7 +1782,9 @@ untestable may be written (I3).
 `EXPECT_EQ(28u, ...)` → 33u (`:444`); ledger expression gains the basketball
 +2 term (`:678-705`); hook-mask rows for 824 and 828 =
 `kModeInit|kModeTick|kRespawn|kDamage` (`:797-812`); sprite pin rows
-`bball.png` 12x12x8 and `bshadow.png` 12x12x4 (`:983-1000`); tick-clean list
+`bball.png` 12x12x8 and `bshadow.png` 12x12x4 (`:983-1000`) — D32 adds
+`hoop.png` 24x20x6 beside them and moves the basketball ledger term to
+`2 + hoops`; tick-clean list
 += 824 (`:1025`); new sweep `basketball_courts_match_the_manifest` over
 `bball_pins()` (the `soccer_pins()` analog): closed perimeter, 3x3 dunk
 carpet with M2 center per hoop, jump tile passable, manifest field spot-checks
@@ -1726,7 +1830,7 @@ description, `mode_levels.lua`, `scen/scen824-828.fss`,
 | R6 | `audit_generator_spawn_exits` flags 828's 1-wide alcove mouths | low | BONEYARD-shape copy passes today; documented fallback = widen the mouth to 2 tiles, never a waiver |
 | R7 | Ballistic truncation drift — landing off SHOT_LAND by accumulated `og.div` truncation | low | error bound < 0.06 px per solve (§2.6), absorbed by rim bands; test #7 pins exact landing distances |
 | R8 | D17 hoist changes soccer behavior | medium | pure parameterization, no math change; og_unit_soccer's director tests pin exact GOTO targets and the soccer determinism digest must stay green before WP4 builds on the hoisted libs |
-| R9 | PIX_CARPET_M2 reads poorly as "the hoop" at a glance (art legibility) | low | human eyeball item at first playtest; fallback is a decor mark or a distinct carpet id — a paint change only, no schema impact |
+| R9 | PIX_CARPET_M2 reads poorly as "the hoop" at a glance (art legibility) | low | **RESOLVED by D29** (2026-08-09): the dedicated `modes:hoop` sprite is the hoop read; the carpet is demoted to court paint. The eyeball item moves to the D32 media refresh |
 | R10 | 826 four-team scrums: announce/sound spam from frequent rim clangs | low | rim clang is positional-only (no text); if playtest confirms spam, add a per-sound cooldown var from the spare slots |
 | R11 | Campaign regeneration not byte-stable (env-dependent output) | high | the third-run check in §11.5 step 1; the generator already redirects OPENGLAD_CONFIG_DIR and runs from the repo root |
 

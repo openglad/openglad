@@ -1,0 +1,150 @@
+{
+  "frames": {
+    "hoop 0.aseprite": {
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 20
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 20
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 20
+      },
+      "duration": 100
+    },
+    "hoop 1.aseprite": {
+      "frame": {
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 20
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 20
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 20
+      },
+      "duration": 100
+    },
+    "hoop 2.aseprite": {
+      "frame": {
+        "x": 0,
+        "y": 40,
+        "w": 24,
+        "h": 20
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 20
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 20
+      },
+      "duration": 100
+    },
+    "hoop 3.aseprite": {
+      "frame": {
+        "x": 0,
+        "y": 60,
+        "w": 24,
+        "h": 20
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 20
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 20
+      },
+      "duration": 100
+    },
+    "hoop 4.aseprite": {
+      "frame": {
+        "x": 0,
+        "y": 80,
+        "w": 24,
+        "h": 20
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 20
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 20
+      },
+      "duration": 100
+    },
+    "hoop 5.aseprite": {
+      "frame": {
+        "x": 0,
+        "y": 100,
+        "w": 24,
+        "h": 20
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 20
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 20
+      },
+      "duration": 100
+    }
+  },
+  "meta": {
+    "app": "https://www.aseprite.org/",
+    "version": "1.3.7",
+    "image": "hoop.png",
+    "format": "I8",
+    "size": {
+      "w": 24,
+      "h": 120
+    },
+    "scale": "1",
+    "frameTags": [],
+    "layers": [
+      {
+        "name": "Layer 1",
+        "opacity": 255,
+        "blendMode": "normal"
+      }
+    ],
+    "slices": []
+  }
+}

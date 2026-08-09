@@ -185,6 +185,11 @@ a dropped flag). Carriers run home and fight only when cornered.
   beyond it**; the further out you release, the wider it scatters, and every
   enemy crowding you at release scatters it further. The dunk ignores pressure
   entirely.
+- **Reading the hoops.** A live hoop is an orange rim marked at four points
+  in its defending team's colour, standing on the painted carpet that is the
+  dunk zone. Its net ripples when a ball drops through and the rim flashes
+  when a shot clangs off it, so you can call a make or a miss from the far
+  end of the court.
 - **The shot clock is 35 seconds**, and it belongs to the team rather than the
   carrier. Releasing a shot clears it. Losing the ball loose does not: a
   fumble your own side scoops back up, an uncaught pass, a throw rolled dead —
@@ -230,7 +235,8 @@ a dropped flag). Carriers run home and fight only when cornered.
 
 Rim size never changes; the courts vary the arc, the walk and the furniture.
 FOUR HOOPS fielded with fewer than four teams simply leaves the unused hoops
-dead — they neither score nor need defending.
+dead — they neither score nor need defending, and a dead goal is bare carpet
+with no rim standing on it, so the live baskets are obvious at a glance.
 
 ## The other modes, briefly
 
@@ -265,10 +271,10 @@ generates the shipped campaign and is the reference for authoring:
 3. CTF maps place one **flag** treasure (wire byte 13, `modes:flag`) per
    team and optional **waypoint** treasures (wire byte 14,
    `modes:waypoint`); both families ship IN the campaign pack.
-4. Basketball maps paint a 3×3 dunk carpet per hoop — its center tile is the
-   rim — and the manifest records each hoop center, the three-point radius,
-   and the jump-ball spot. The ball and its shadow are spawned by the mode,
-   not authored.
+4. Basketball maps paint a 3×3 dunk carpet per hoop — its center tile marks
+   the rim — and the manifest records each hoop center, the three-point
+   radius, and the jump-ball spot. The ball, its shadow and the rims are
+   spawned by the mode, not authored.
 5. Remove exits (mode maps should not have portals).
 
 The mode's Lua validates maps at match start; a scripted map whose mode

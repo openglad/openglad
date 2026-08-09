@@ -231,6 +231,14 @@ local T = {
   drive_reach = 10, -- soccer chaser_drives constants, read via ai.* (D17)
   oob_ring_max = 8, -- landing-legality ring scan bound (tiles)
   shadow_band = 12, -- shadow frame = clamp(div(z_px, 12), 0, 3)
+
+  -- Hoop furniture animation (D29/D31): the hoop's cycle field counts
+  -- ticks left in a frame program, hoop_frame_ticks per sprite frame —
+  -- swish = frames 1-3 over 12 ticks (1.0 s), clang = frames 4-5 over
+  -- 8 ticks (0.67 s at 12 tps).
+  hoop_frame_ticks = 4,
+  hoop_swish_ticks = 12,
+  hoop_clang_ticks = 8,
 }
 
 -- Solver sanity (§2.6 derivations): a Tf=20 shot rises
@@ -249,6 +257,12 @@ local walker_center = core.walker_center
 -- (§4.3's {0, +16, -16}; soccer spends the 0 slot on its striker, a role
 -- basketball's seam does not have).
 local STAGGER = { 0, 16, -16 }
+
+-- The hoop family byte for the D31 fx-list scans, bound once per VM. In
+-- the declare pass og.family_id answers an inert truthy placeholder
+-- instead — harmless, since no hook (so no compare) ever runs there; in a
+-- world VM a missing family fails this assert loudly at chunk load.
+local HOOP_FAMILY = assert(og.family_id("effect", "modes:hoop"))
 
 local function fget(base, i)
   return og.mode_get(base + i)
@@ -560,13 +574,79 @@ local function points_of(team)
   return fget(S.POINTS, team)
 end
 
+-- ---------------------------------------------------------------------------
+-- Hoop furniture (D29-D31). One team-tinted modes:hoop fx entity marks each
+-- ACTIVE team's rim. Fx entities never act and never collide; the sim only
+-- ever writes their frame/cycle and reads their cycle back inside the
+-- driver below — the I4 carve-out. Their existence feeds no other branch.
+-- ---------------------------------------------------------------------------
+
+-- The slot-free lookup (D31): one fx-list scan for the hoop family member
+-- wearing this team's stamp. team_num is written exactly once, at spawn —
+-- stamp_toucher touches only the ball and nothing else restamps fx — so it
+-- is an exact key; the list is the shadow + up to four hoops + transient
+-- engine fx, O(<=10) compares. Answers nil for a team with no hoop.
+local function find_hoop(team)
+  local fxlist = og.fxlist()
+  for k = 1, #fxlist do
+    local e = fxlist[k]
+    if e:family() == HOOP_FAMILY then
+      if e:team_num() == team then
+        return e
+      end
+    end
+  end
+  return nil
+end
+
+-- Arm a frame program on team's hoop: positive ticks = swish, negative =
+-- clang. The newest event overwrites a running program; a missing hoop (an
+-- inactive team, or the -1 of an unbanked SHOT_HOOP1) is a silent no-op.
+-- The same tick's driver draws the first frame.
+local function arm_hoop_anim(team, program)
+  local hoop = find_hoop(team)
+  if hoop ~= nil then
+    hoop:set_cycle(program)
+  end
+end
+
+-- The frame driver, unconditional in the tick — deliberately outside the
+-- ball-handle gate, so a vanished ball (§9 #13) cannot freeze the nets.
+-- Anim state is the hoop's replicated cycle field, provably exclusive: fx
+-- never act and set_frame never touches cycle. Zero idles (idempotent,
+-- self-healing), positive counts a swish down through frames 1-3, negative
+-- a clang through 4-5; mirrors replay the per-tick set_frame results and
+-- never animate on their own (I4).
+local function run_hoop_anims()
+  local fxlist = og.fxlist()
+  for k = 1, #fxlist do
+    local e = fxlist[k]
+    if e:family() == HOOP_FAMILY then
+      local c = e:cycle()
+      if c == 0 then
+        e:set_frame(0)
+      elseif c > 0 then
+        e:set_frame(1 + og.div(T.hoop_swish_ticks - c, T.hoop_frame_ticks))
+        e:set_cycle(c - 1)
+      else
+        local n = -c
+        e:set_frame(4 + og.div(T.hoop_clang_ticks - n, T.hoop_frame_ticks))
+        e:set_cycle(c + 1)
+      end
+    end
+  end
+end
+
 -- Every scored basket funnels through here (§2.5): points on the mode
 -- metric, the match score (always a POSITIVE delta — og.award_score is
--- unsigned, I3), the announce, and the center reset that restarts play.
-local function score_basket(ball, team, value, label)
+-- unsigned, I3), the announce, the scored-on hoop's net ripple (armed
+-- BEFORE the reset so it plays through the jump freeze, D31), and the
+-- center reset that restarts play.
+local function score_basket(ball, team, value, label, hoop_team)
   fset(S.POINTS, team, points_of(team) + value)
   og.award_score(team, value * T.point_score)
   core.announce(label, C.SOUND_MONEY)
+  arm_hoop_anim(hoop_team, T.hoop_swish_ticks)
   center_reset(ball)
 end
 
@@ -613,6 +693,8 @@ local function own_basket(ball, hoop_team, value)
     fset(S.POINTS, hoop_team, points_of(hoop_team) - value)
     core.announce("OWN BASKET! " .. og.team_color_name(hoop_team) .. " -" .. value, C.SOUND_YO)
   end
+  -- The ball went in regardless of credit: the crossed hoop ripples (D31).
+  arm_hoop_anim(hoop_team, T.hoop_swish_ticks)
   center_reset(ball)
 end
 
@@ -637,7 +719,7 @@ local function run_crossing(ball)
             own_basket(ball, t, 2)
             return true
           end
-          score_basket(ball, scorer, 2, "BASKET! " .. og.team_color_name(scorer) .. " +2")
+          score_basket(ball, scorer, 2, "BASKET! " .. og.team_color_name(scorer) .. " +2", t)
           return true
         end
       end
@@ -1035,9 +1117,10 @@ local function run_swat(ball)
             end
             if defensive then
               -- T12 GOALTENDING: the frozen outcome pays out in full.
-              -- No step needed — the interference is the offense.
+              -- No step needed — the interference is the offense. The
+              -- basket counts, so the target hoop swishes (D31).
               local label = "GOALTEND! " .. og.team_color_name(shooter_team) .. " +" .. og.mode_get(S.SHOT_VALUE)
-              score_basket(ball, shooter_team, og.mode_get(S.SHOT_VALUE), label)
+              score_basket(ball, shooter_team, og.mode_get(S.SHOT_VALUE), label, og.mode_get(S.SHOT_HOOP1) - 1)
               return
             end
             -- Offensive (or unowned) tip in the window: fall through to
@@ -1083,7 +1166,10 @@ end
 -- Only the TARGET hoop is tested; the §5.5 hoop-separation authoring rule
 -- makes cross-rim landings impossible.
 local function resolve_shot(ball)
-  local hx, hy = hoop_center(og.mode_get(S.SHOT_HOOP1) - 1)
+  -- Read the target hoop's team BEFORE the miss arm's clear_flight scrubs
+  -- SHOT_HOOP1: the T9 rim flash needs it after the scrub (D31).
+  local hoop_team = og.mode_get(S.SHOT_HOOP1) - 1
+  local hx, hy = hoop_center(hoop_team)
   local gx, gy = ball_ground()
   local shooter = og.mode_get(S.SHOT_TEAM1) - 1
   local value = og.mode_get(S.SHOT_VALUE)
@@ -1097,16 +1183,18 @@ local function resolve_shot(ball)
     if value == 3 then
       label = "THREE! " .. og.team_color_name(shooter) .. " +3"
     end
-    score_basket(ball, shooter, value, label)
+    score_basket(ball, shooter, value, label, hoop_team)
     return
   end
   og.mode_set(S.BALL_STATE, STATE_REBOUND)
   clear_flight()
   if d <= T.rim_r + T.rim_lip then
-    -- T9 rim clang: pop, push away from the hoop, per-axis deflection.
-    -- The scrum is live; LAST_TOUCH stays the shooter until someone
-    -- touches — a rattled-in re-crossing is that shooter's tip-in.
+    -- T9 rim clang: pop, push away from the hoop, per-axis deflection —
+    -- and the rim flash rides the clang sound (D31). The scrum is live;
+    -- LAST_TOUCH stays the shooter until someone touches — a rattled-in
+    -- re-crossing is that shooter's tip-in.
     og.emit_positional_sound(ball, C.SOUND_CLANG)
+    arm_hoop_anim(hoop_team, -T.hoop_clang_ticks)
     local sx, sy = ai.dir8(gx - hx, gy - hy)
     og.mode_set(S.BALL_VZ, T.rim_pop)
     og.mode_set(S.BALL_VX, sx * T.rim_speed + og.rand(2 * T.rim_scatter + 1) - T.rim_scatter)
@@ -1368,7 +1456,7 @@ local function run_dunk(ball, carrier)
     return
   end
   if og.mode_get(S.DUNK_OK) == 1 then
-    score_basket(ball, team, 2, "DUNK! " .. og.team_color_name(team) .. " +2")
+    score_basket(ball, team, 2, "DUNK! " .. og.team_color_name(team) .. " +2", boxed)
   end
 end
 
@@ -2030,6 +2118,27 @@ local function on_respawn(ent)
   anchors.place_at_anchor(ent, ent:team_num(), S.ANCHOR_CURSOR, false)
 end
 
+-- One rim sprite per ACTIVE team's banked hoop (D30): inactive-team hoops
+-- on a 2-3 team FOUR HOOPS court get no sprite, matching which goals score
+-- — the bare carpet is the dead-goal tell (edge #30). set_team_num is the
+-- tint (the sprite's 248-255 band remaps to the defending team's color)
+-- AND the find_hoop key. Spawned after the shadow so the ball/shadow
+-- entity ids stay put; center resets never touch these.
+local function spawn_hoops()
+  for team = 0, C.SCORE_TEAM_COUNT - 1 do
+    local hx, hy = hoop_center(team)
+    if hx ~= nil then
+      local hoop = og.add_fx_ob("effect", HOOP_FAMILY)
+      if hoop == nil then
+        error("basketball: cannot spawn the hoop for team " .. team)
+      end
+      hoop:set_team_num(team)
+      hoop:setxy(hx - og.div(hoop:sizex(), 2), hy - og.div(hoop:sizey(), 2))
+      hoop:set_frame(0)
+    end
+  end
+end
+
 -- Lazy init, first scripted tick. Raising reports the failed-init shape:
 -- the engine latches inactive and classic rules own the level from the
 -- next tick (the CTF discipline).
@@ -2137,6 +2246,7 @@ local function on_mode_init(level, row)
   end
   og.mode_set(S.BALL_ENTITY, og.entity_id(ball))
   og.mode_set(S.SHADOW_ENTITY, og.entity_id(shadow))
+  spawn_hoops()
   center_reset(ball)
   og.set_mode_name("BASKETBALL")
   og.mode_set(core.SLOT.PHASE, 1)
@@ -2194,6 +2304,7 @@ local function on_mode_tick(level, tick)
   end
   run_win_check(tick, handles)
   update_hud()
+  run_hoop_anims()
   if handles then
     sync_render(ball, shadow)
   end
