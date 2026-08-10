@@ -2004,8 +2004,9 @@ TEST_F(ModesCtf, director_sends_nearest_retriever_to_dropped_own_flag)
 
     EXPECT_TRUE(front_command_is(near_member, COMMAND_GOTO, drop_x, drop_y));
     EXPECT_EQ(45, near_member->stats()->commands.front().commandcount);
-    EXPECT_TRUE(front_command_is(far_member, COMMAND_GOTO, 544, 800))
-        << "the remaining member defends the (empty) flag home";
+    EXPECT_TRUE(front_command_is(far_member, COMMAND_GOTO, 96, 96))
+        << "the sole member left after the retriever ATTACKS the enemy "
+           "flag (D38: a lone free member never camps an empty home)";
 }
 
 TEST_F(ModesCtf, director_sends_two_nearest_interceptors_after_enemy_carrier)
@@ -2030,8 +2031,9 @@ TEST_F(ModesCtf, director_sends_two_nearest_interceptors_after_enemy_carrier)
     EXPECT_EQ(thief, near2->foe());
     EXPECT_TRUE(front_command_is(near2, COMMAND_SEARCH, 0, 0));
 
-    EXPECT_TRUE(front_command_is(far1, COMMAND_GOTO, 544, 800))
-        << "the remaining member defends rather than joining the chase";
+    EXPECT_TRUE(front_command_is(far1, COMMAND_GOTO, 96, 96))
+        << "the sole member left after the interceptors ATTACKS the enemy "
+           "flag rather than camping home (D38) or joining the chase";
     EXPECT_FALSE(queue_contains(far1, COMMAND_SEARCH));
 }
 
@@ -2055,8 +2057,10 @@ TEST_F(ModesCtf, director_never_touches_player_walkers)
     EXPECT_EQ(nullptr, control->leader());
     EXPECT_FALSE(bound->stats()->has_commands());
     EXPECT_EQ(nullptr, bound->leader());
-    // The lone directable walker was assigned (sole member => defender,
-    // beyond the leash => ordered home): the gate is per-walker.
+    // The lone directable walker was assigned: live PLAYER teammates
+    // fight on, so the D38 desperation gate (team_live <= #members) does
+    // not fire and the bot holds the home defender role (beyond the
+    // leash => ordered home). The gate is per-walker.
     EXPECT_TRUE(front_command_is(bot, COMMAND_GOTO, 96, 96));
 }
 
@@ -2081,7 +2085,9 @@ TEST_F(ModesCtf, director_skips_frozen_and_dead_members)
     EXPECT_FALSE(frozen->stats()->has_commands());
     EXPECT_FALSE(dead->stats()->has_commands());
     EXPECT_TRUE(front_command_is(live, COMMAND_GOTO, 96, 96))
-        << "the one eligible member is the whole roster (sole => defender)";
+        << "the FROZEN teammate is alive, so the live member is not the "
+           "whole team (team_live > #members): it defends home rather "
+           "than taking the D38 desperation attack";
 }
 
 TEST_F(ModesCtf, carrier_runs_home_distance_shrinks_each_cadence_then_captures)
@@ -2153,6 +2159,96 @@ TEST_F(ModesCtf, attacker_reaches_and_picks_up_enemy_flag_through_collision)
                 carrier == defender->entity_id());
     ASSERT_EQ(attacker->entity_id(), carrier)
         << "the attacker role (2nd member) is the one sent across the map";
+}
+
+// The matched-teams D38 pin: a SOLE free member becomes the attacker. The
+// old ceil(remaining/3) split pinned a permanent lone defender, so a 1v1
+// (a matched solo match, or a whittled squad's last bot) could never
+// produce a director-driven capture; the reactive arms (carrier,
+// interceptor, retriever) still defend when the own flag is touched.
+// n = 2 keeps 1 defender + 1 attacker (the test above).
+TEST_F(ModesCtf, sole_free_member_attacks_and_takes_the_enemy_flag)
+{
+    ModesCtfWorld fx;
+    fx.spawn_flag(flag_family_, 0, 96, 96);
+    fx.spawn_flag(flag_family_, 1, 480, 160);
+    fx.spawn_anchor(0, 128, 96);
+    fx.spawn_anchor(1, 512, 96);
+    walker* lone = fx.spawn_living(FAMILY_SOLDIER, 0, 128, 160, ACT_RANDOM);
+    fx.spawn_living(FAMILY_SOLDIER, 1, 480, 192, ACT_CONTROL);
+    fx.world().ctf_requested_respawn_ticks = 5000;
+    fx.tick(1);
+    ASSERT_TRUE(fx.ctf_active());
+
+    align_before_cadence(fx.world());
+    fx.tick(1);
+    EXPECT_TRUE(front_command_is(lone, COMMAND_GOTO, 480, 160))
+        << "the sole free member heads for the enemy flag, never home";
+
+    bool picked_up = false;
+    for (int i = 0; i < 800 && !picked_up; ++i)
+    {
+        fx.tick(1);
+        picked_up = fx.flag_carried(1);
+    }
+    ASSERT_TRUE(picked_up)
+        << "a 1v1 must be able to produce a director-driven pickup";
+    EXPECT_EQ(lone->entity_id(), fx.carrier_id(1));
+}
+
+// D38 as fixed (adversarial review): with a TEAMMATE carrying the enemy
+// flag, the one free member guards the bank spot the carrier needs —
+// banking requires our flag home. The first cut zeroed the defender and
+// left the free member COMMANDLESS: the attacker arm has no target while
+// our own carrier secures the only enemy flag.
+TEST_F(ModesCtf, free_member_guards_home_while_a_teammate_carries)
+{
+    ModesCtfWorld fx;
+    fx.spawn_flag(flag_family_, 0, 96, 96);
+    walker* flag1 = fx.spawn_flag(flag_family_, 1, 544, 800);
+    walker* carrier = fx.spawn_living(FAMILY_SOLDIER, 0, 480, 760, ACT_SIT);
+    walker* free_member =
+        fx.spawn_living(FAMILY_SOLDIER, 0, 384, 480, ACT_SIT);
+    fx.spawn_living(FAMILY_SOLDIER, 1, 544, 700, ACT_CONTROL);
+    fx.tick(1);
+    ASSERT_TRUE(fx.ctf_active());
+    ASSERT_TRUE(flag1->eat_me(carrier));
+
+    align_before_cadence(fx.world());
+    fx.tick(1);
+
+    EXPECT_TRUE(queue_contains(carrier, COMMAND_GOTO))
+        << "the carrier runs the flag home";
+    EXPECT_TRUE(front_command_is(free_member, COMMAND_GOTO, 96, 96))
+        << "the free member is the bank guard: commanded HOME — never "
+           "commandless, never sent to the enemy base (D38 as fixed)";
+}
+
+// D38 as fixed (adversarial review): a live HUMAN teammate fights on, so
+// the lone bot is not the whole team (team_live > #members) and keeps the
+// home defender role instead of the desperation attack — is_directable
+// excludes player walkers, which is exactly why the gate censuses
+// team_live rather than the directable count.
+TEST_F(ModesCtf, lone_bot_defends_home_while_a_human_teammate_fights_on)
+{
+    ModesCtfWorld fx;
+    fx.spawn_flag(flag_family_, 0, 96, 96);
+    fx.spawn_flag(flag_family_, 1, 544, 800);
+    walker* human =
+        fx.spawn_living(FAMILY_SOLDIER, 0, 320, 480, ACT_CONTROL);
+    walker* bot = fx.spawn_living(FAMILY_SOLDIER, 0, 384, 480, ACT_SIT);
+    fx.spawn_living(FAMILY_SOLDIER, 1, 544, 700, ACT_CONTROL);
+    fx.tick(1);
+    ASSERT_TRUE(fx.ctf_active());
+
+    align_before_cadence(fx.world());
+    fx.tick(1);
+
+    EXPECT_FALSE(human->stats()->has_commands())
+        << "players are never commanded";
+    EXPECT_TRUE(front_command_is(bot, COMMAND_GOTO, 96, 96))
+        << "the bot holds the home defender role while its human "
+           "teammate plays offense (D38 as fixed)";
 }
 
 TEST_F(ModesCtf, defender_stays_leashed_while_attackers_leave)
@@ -2673,7 +2769,9 @@ TEST_F(ModesCtf, dead_matched_bot_respawns_at_its_matched_level)
     fx.world().ctf_requested_respawn_ticks = 10;
     fx.tick(1);
     ASSERT_TRUE(fx.ctf_active());
-    ASSERT_EQ(5, alive_on_team(fx.world(), 1)) << "the matched init fill";
+    ASSERT_EQ(1, alive_on_team(fx.world(), 1))
+        << "the matched init fill is a 1v1 against the solo hero (D34)";
+    EXPECT_EQ(1, fx.var(kSlotMatchedSize));
     EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"))
         << "the CTF fill runs before the MODE_ID latch, so the one-shot "
            "init announcement still fires (§7)";
@@ -2707,7 +2805,8 @@ TEST_F(ModesCtf, dead_matched_bot_respawns_at_its_matched_level)
         << "the queue snapshots the corpse's matched level";
 
     fx.tick(10);
-    ASSERT_EQ(5, alive_on_team(fx.world(), 1));
+    ASSERT_EQ(1, alive_on_team(fx.world(), 1))
+        << "the engine queue replaces one-for-one: the 1v1 stays a 1v1";
     const walker* replacement = nullptr;
     for (const auto& uptr : fx.world().oblist)
     {

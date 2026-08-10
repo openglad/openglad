@@ -1465,8 +1465,11 @@ TEST_F(ModesSoccer, goalie_holds_the_intercept_line_and_blocks_a_shot)
     // point on its own mouth, and a ball driven at the goal runs into it
     // there — the flight contact reverses the velocity away from the
     // mouth and the follow-up walk-in kick clears, with no goal scored.
+    // A second member plays afield (a sole member is all striker under
+    // D38, so the mouth geometry needs a two-member squad to pin).
     SoccerWorld fx;
     walker* goalie = fx.spawn_living(FAMILY_SOLDIER, 0, 100, 500, ACT_SIT);
+    fx.spawn_living(FAMILY_SOLDIER, 0, 400, 800, ACT_SIT);  // afield striker
     fx.tick(1);
     ASSERT_TRUE(fx.soccer_active());
     fx.thaw_kickoff();
@@ -1499,12 +1502,19 @@ TEST_F(ModesSoccer, foursquare_keepers_hold_all_four_mouths)
 {
     // One directable keeper per team on the FOURSQUARE pitch: every mouth
     // orientation (N/E/S/W) resolves its own standoff line, with the
-    // ball's cross-axis clamped into the mouth span.
+    // ball's cross-axis clamped into the mouth span. Each team also
+    // fields an afield striker (a sole member is all striker under D38,
+    // so the keeper pins need two-member squads), placed farther from its
+    // own mouth than the keeper designate.
     SoccerFourWorld fx;
     walker* north = fx.spawn_living(FAMILY_SOLDIER, 0, 312, 60, ACT_SIT);
     walker* east = fx.spawn_living(FAMILY_SOLDIER, 1, 560, 312, ACT_SIT);
     walker* south = fx.spawn_living(FAMILY_SOLDIER, 2, 312, 880, ACT_SIT);
     walker* west = fx.spawn_living(FAMILY_SOLDIER, 3, 60, 312, ACT_SIT);
+    fx.spawn_living(FAMILY_SOLDIER, 0, 200, 400, ACT_SIT);
+    fx.spawn_living(FAMILY_SOLDIER, 1, 440, 600, ACT_SIT);
+    fx.spawn_living(FAMILY_SOLDIER, 2, 200, 560, ACT_SIT);
+    fx.spawn_living(FAMILY_SOLDIER, 3, 440, 360, ACT_SIT);
     fx.tick(1);
     ASSERT_TRUE(fx.soccer_active());
 
@@ -1535,8 +1545,11 @@ TEST_F(ModesSoccer, foursquare_keepers_hold_all_four_mouths)
 
 TEST_F(ModesSoccer, goalie_charges_a_box_ball_and_never_outruns_the_leash)
 {
+    // The afield second member keeps this a two-member squad, so the
+    // keeper role exists at all (a sole member is all striker, D38).
     SoccerWorld fx;
     walker* goalie = fx.spawn_living(FAMILY_SOLDIER, 0, 40, 470, ACT_SIT);
+    fx.spawn_living(FAMILY_SOLDIER, 0, 400, 800, ACT_SIT);  // afield striker
     fx.tick(1);
     ASSERT_TRUE(fx.soccer_active());
 
@@ -1563,6 +1576,69 @@ TEST_F(ModesSoccer, goalie_charges_a_box_ball_and_never_outruns_the_leash)
     EXPECT_TRUE(front_command_is(goalie, COMMAND_GOTO, 64, 528))
         << "far-post clamp holds the keeper at the mouth";
     ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+// The matched-teams D38 pin: a bot that is its team's ONLY live member
+// plays STRIKER, never goalkeeper. The pre-amendment director assigned
+// the goalie first, so a singleton squad (a matched 1v1, or a whittled
+// team's last bot) camped its own mouth forever and could never score.
+// The lone bot must be commanded through the ball and actually kick it
+// goalward — asserted on the command target and the ball's displacement,
+// not role internals. Staged as a TRUE solo (no parked teammate): a live
+// human teammate would flip it back to goalie (the mixed-team rule, the
+// test below). Accepted residual, stated in the spec: the rule ignores
+// score state — a LEADING true-solo survivor still chases.
+TEST_F(ModesSoccer, sole_member_plays_striker_and_kicks_never_keeps_goal)
+{
+    SoccerPitch fx(kSoccerLevelA);
+    fx.spawn_anchor(0, 96, 448);
+    fx.spawn_anchor(0, 96, 480);
+    fx.spawn_anchor(1, 528, 448);
+    fx.spawn_anchor(1, 528, 480);
+    // The same spot the two-member striker test uses: center 20 px from
+    // the ball, outside kick_radius, inside the drive corridor.
+    walker* lone = fx.spawn_living(FAMILY_SOLDIER, 0, 300, 464, ACT_SIT);
+    fx.spawn_living(FAMILY_SOLDIER, 1, 528, 96);  // parked enemy player
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    fx.thaw_kickoff();
+    fx.set_ball(320, 464, 0, 0);
+
+    align_before_cadence(fx.world());
+    fx.tick(1);
+    ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
+    EXPECT_TRUE(front_command_is(lone, COMMAND_GOTO, 320, 456))
+        << "the singleton takes the striker arm — through the ball, never "
+           "the goal-mouth intercept (64, 464)";
+
+    fx.tick(kAiCadence - 1);
+    EXPECT_GT(fx.var(kSocBallVx), 0)
+        << "the lone bot kicks the ball goalward instead of camping";
+    EXPECT_EQ(1, fx.var(kSocLastTouch1)) << "and is the last toucher";
+}
+
+// D38 as fixed (adversarial review): a live HUMAN teammate can score, so
+// the lone bot keeps the GOALIE assignment — the small-team gate censuses
+// the team's live count, not the directable count (is_directable excludes
+// player walkers, so the first cut read human + 1 bot as a desperate
+// n = 1 and abandoned the mouth).
+TEST_F(ModesSoccer, lone_bot_keeps_goal_while_a_human_teammate_plays_on)
+{
+    SoccerWorld fx;  // red = parked ACT_CONTROL human on team 0
+    walker* bot = fx.spawn_living(FAMILY_SOLDIER, 0, 40, 470, ACT_SIT);
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+
+    align_before_cadence(fx.world());
+    fx.tick(1);
+    ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
+    // Ball at the kickoff spot (320, 464): the keeper's objective is the
+    // intercept line x = 64 with the ball's cross-axis inside the mouth.
+    EXPECT_TRUE(front_command_is(bot, COMMAND_GOTO, 64, 464))
+        << "the lone bot takes the GOALIE assignment, not the striker "
+           "chase, while its human teammate plays on (D38 as fixed)";
+    EXPECT_FALSE(fx.red->stats()->has_commands())
+        << "the human is never commanded";
 }
 
 // ===========================================================================
@@ -1953,9 +2029,11 @@ struct SoccerSoloRosterWorld : SoccerPitch
 
 }  // namespace
 
-// The FAIR-mask == OWN-mask twin (D26/D33(a)): FAIR bundles OWN's whole
-// deployment policy — same mask, same fill sites, same member counts; the
-// ONLY delta is the generated squad's strength.
+// The FAIR-mask == OWN-mask twin (D26/D33(a), one-delta restated by D39):
+// FAIR bundles OWN's whole deployment policy — same mask, same fill sites
+// — and the ONLY delta is the generated squad, which spawns at matched
+// power AND matched headcount: the solo roster's opponent is one bot, not
+// OWN's legacy five (D34).
 TEST_F(ModesSoccer, matched_mask_equals_own_mask_with_a_solo_roster)
 {
     SoccerSoloRosterWorld matched(4);
@@ -1971,11 +2049,13 @@ TEST_F(ModesSoccer, matched_mask_equals_own_mask_with_a_solo_roster)
     EXPECT_EQ(own.var(kSocTeamMask), matched.var(kSocTeamMask))
         << "FAIR-mask == OWN-mask (D26/D33)";
     EXPECT_EQ(alive_on_team(own.world(), 0),
-              alive_on_team(matched.world(), 0));
-    EXPECT_EQ(alive_on_team(own.world(), 1),
-              alive_on_team(matched.world(), 1))
-        << "the same teams are filled with the same member count (D12)";
-    EXPECT_EQ(5, alive_on_team(matched.world(), 1));
+              alive_on_team(matched.world(), 0))
+        << "the roster team is untouched under both";
+    EXPECT_EQ(5, alive_on_team(own.world(), 1))
+        << "OWN keeps the full legacy squad";
+    EXPECT_EQ(1, alive_on_team(matched.world(), 1))
+        << "FAIR's generated squad matches the solo headcount (D34/D39)";
+    EXPECT_EQ(1, matched.var(kSlotMatchedSize));
 
     const std::vector<int> own_levels =
         team_levels_sorted(own.world(), 1);
@@ -1987,17 +2067,19 @@ TEST_F(ModesSoccer, matched_mask_equals_own_mask_with_a_solo_roster)
     ASSERT_GT(matched.var(kSlotMatchedTarget), 0);
     const int code = matched_plan_code(matched.var(kSlotMatchedPlan), 1);
     ASSERT_NE(0, code) << "the matched twin solved team 1";
+    EXPECT_EQ(0, code % 10) << "n = 1 admits no upgrades (D36)";
     const std::vector<int> matched_levels =
         team_levels_sorted(matched.world(), 1);
-    ASSERT_EQ(5u, matched_levels.size());
+    ASSERT_EQ(1u, matched_levels.size());
     EXPECT_EQ(code / 10, matched_levels.front())
-        << "squad levels follow the stored plan";
-    EXPECT_EQ(code / 10 + (code % 10 > 0 ? 1 : 0), matched_levels.back());
+        << "the lone bot's level follows the stored plan";
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
 // I5/E4 for soccer: a wiped MATCHED team's kickoff reprovision refills at
-// the STORED (L*, k*) — identical strength, not the legacy formula.
+// the STORED (L*, k*) AND the stored headcount — identical strength and
+// size, not the legacy formula (the solo-roster fixture makes this a 1v1,
+// D34/D39).
 TEST_F(ModesSoccer, kickoff_reprovisions_a_wiped_matched_team_at_strength)
 {
     SoccerSoloRosterWorld fx(4);
@@ -2006,7 +2088,8 @@ TEST_F(ModesSoccer, kickoff_reprovisions_a_wiped_matched_team_at_strength)
     fx.tick(1);
     ASSERT_TRUE(fx.soccer_active());
     const std::vector<int> at_init = team_levels_sorted(fx.world(), 1);
-    ASSERT_EQ(5u, at_init.size());
+    ASSERT_EQ(1u, at_init.size())
+        << "the solo roster's matched opponent is a single bot (D34)";
     const int code = matched_plan_code(fx.var(kSlotMatchedPlan), 1);
     ASSERT_NE(0, code);
     ASSERT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"));
@@ -2027,8 +2110,9 @@ TEST_F(ModesSoccer, kickoff_reprovisions_a_wiped_matched_team_at_strength)
     fx.set_ball(600, 464, 4 * 256, 0);         // into team 1's strip
     fx.tick(1);
     EXPECT_TRUE(has_notification(fx.events, "RED TEAM GOAL!"));
-    EXPECT_EQ(5, alive_on_team(fx.world(), 1))
-        << "the kickoff backstop refields the wiped matched team";
+    EXPECT_EQ(1, alive_on_team(fx.world(), 1))
+        << "the kickoff backstop refields the wiped matched team at the "
+           "stored headcount (D39)";
     EXPECT_EQ(at_init, team_levels_sorted(fx.world(), 1))
         << "the replacement squad reproduces the stored (L*, k*) — never "
            "the legacy formula";
@@ -2040,8 +2124,11 @@ TEST_F(ModesSoccer, kickoff_reprovisions_a_wiped_matched_team_at_strength)
 }
 
 // E4/D24: a wiped HUMAN team whose corpses are all gone gets a squad
-// matched to the STORED target — measured and solved at backstop time,
-// never the legacy formula — and the solve stays silent mid-match.
+// matched to the STORED target AND the stored min-headcount — measured
+// and solved at backstop time, never the legacy formula — and the solve
+// stays silent mid-match. Two 1-guy human teams latch H = min(1, 1) = 1,
+// so the replacement that faces the SURVIVING solo human is one bot —
+// exactly why D34 mins instead of averaging.
 TEST_F(ModesSoccer, kickoff_backstop_matches_a_wiped_human_team_to_target)
 {
     SoccerPitch fx(kSoccerLevelA);
@@ -2057,8 +2144,10 @@ TEST_F(ModesSoccer, kickoff_backstop_matches_a_wiped_human_team_to_target)
     fx.tick(1);
     ASSERT_TRUE(fx.soccer_active());
     // Both teams human: no fill, no plan, no announcement — but the
-    // census stored T (two fresh soldiers -> mean 2306, derived §4.2).
+    // census stored T (two fresh soldiers -> mean 2306, derived §4.2)
+    // and the min headcount (D34).
     ASSERT_EQ(2306, fx.var(kSlotMatchedTarget));
+    ASSERT_EQ(1, fx.var(kSlotMatchedSize));
     ASSERT_EQ(0, fx.var(kSlotMatchedPlan));
     ASSERT_EQ(0, count_notifications(fx.events, "TEAMS MATCHED"));
     ASSERT_EQ(1, alive_on_team(fx.world(), 1));
@@ -2077,17 +2166,19 @@ TEST_F(ModesSoccer, kickoff_backstop_matches_a_wiped_human_team_to_target)
     fx.set_ball(600, 464, 4 * 256, 0);
     fx.tick(1);
     EXPECT_TRUE(has_notification(fx.events, "RED TEAM GOAL!"));
-    EXPECT_EQ(5, alive_on_team(fx.world(), 1))
-        << "the formerly-human team is refielded (today's behavior, D24)";
-    // T = 2306 < B(1): the D24 measure-and-solve arm floors at uniform L1
-    // — visibly NOT the legacy L2 squad the pre-matched backstop fielded.
+    EXPECT_EQ(1, alive_on_team(fx.world(), 1))
+        << "the formerly-human team is refielded (today's behavior, D24) "
+           "at the min headcount — the survivor stays un-outnumbered";
+    // T = 2306 is INTERIOR to the single soldier's [B(1), B(9)] =
+    // [1643, ...] now that the squad is the 1-prefix (D37): the D24
+    // measure-and-solve arm answers L1/k0 — visibly NOT the legacy L2
+    // squad the pre-matched backstop fielded.
     EXPECT_EQ(10, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
         << "the backstop solved NOW against the stored target and "
            "persisted the plan";
     const std::vector<int> levels = team_levels_sorted(fx.world(), 1);
-    ASSERT_EQ(5u, levels.size());
+    ASSERT_EQ(1u, levels.size());
     EXPECT_EQ(1, levels.front());
-    EXPECT_EQ(1, levels.back());
     EXPECT_EQ(0, count_notifications(fx.events, "TEAMS MATCHED"))
         << "the mid-match D24 solve never announces (§7)";
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);

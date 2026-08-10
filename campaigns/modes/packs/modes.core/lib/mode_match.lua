@@ -60,11 +60,16 @@ end
 -- census not run, or no human power — both mean "legacy"); PLAN carries one
 -- base-100 code per team, code = L * 10 + k (0 = unsolved, L in 1..9,
 -- k in 0..4, max packed value 94 * 1010101 = 94,949,494 < 2^31); ANNOUNCED
--- latches the one-shot init announcement (0 none, 1 normal, 2 limit).
+-- latches the one-shot init announcement (0 none, 1 normal, 2 limit);
+-- SIZE latches the census headcount H (D34: one human team = its live
+-- has_guy headcount, several = the MIN of the per-team counts; 0 = census
+-- not run, or no human power) — the spawn seam truncates every generated
+-- squad to its table's first min(SIZE, #families) members (D39).
 local MATCHED = {
   TARGET = 2,
   PLAN = 3,
   ANNOUNCED = 4,
+  SIZE = 5,
 }
 
 -- D20: any census total past this cap is far beyond B(9) and solves to the
@@ -159,9 +164,13 @@ end
 -- The human census (D11/D15): mean of the human team f-sums, where a human
 -- team fields at least one live has_guy Living (the own_roster_activation
 -- predicate — every g_/stat read stays behind the has_guy guard). Returns
--- (T, per-team sums); T = 0 means no human power server-side.
+-- (T, per-team sums, H); T = 0 means no human power server-side. H is the
+-- headcount the same walk counts (D34): one human team = its live has_guy
+-- count, several = the MIN across them — the guarantee is per-human-team,
+-- and only min keeps every survivor un-outnumbered on the backstop path.
 local function census_power(obs)
   local sums = { 0, 0, 0, 0 }
+  local counts = { 0, 0, 0, 0 }
   for k = 1, #obs do
     local w = obs[k]
     if w:dead() == 0 then
@@ -170,6 +179,7 @@ local function census_power(obs)
           local team = w:team_num()
           if team < C.SCORE_TEAM_COUNT then
             sums[team + 1] = sums[team + 1] + walker_power(w)
+            counts[team + 1] = counts[team + 1] + 1
           end
         end
       end
@@ -177,16 +187,22 @@ local function census_power(obs)
   end
   local total = 0
   local teams = 0
+  local size = 0
   for t = 1, C.SCORE_TEAM_COUNT do
     if sums[t] > 0 then
       total = total + sums[t]
       teams = teams + 1
+      if size == 0 then
+        size = counts[t]
+      elseif counts[t] < size then
+        size = counts[t]
+      end
     end
   end
   if teams == 0 then
-    return 0, sums
+    return 0, sums, 0
   end
-  return og.div(total, teams), sums
+  return og.div(total, teams), sums, size
 end
 
 -- The D22 solver: single argmin of |P(L, k) - T| over the FULL reachable
@@ -272,8 +288,9 @@ local function record_match_target(obs)
   if og.mode_get(MATCHED.TARGET) ~= 0 then
     return
   end
-  local target = census_power(obs)
+  local target, _, size = census_power(obs)
   og.mode_set(MATCHED.TARGET, og.min(target, TARGET_CAP))
+  og.mode_set(MATCHED.SIZE, size)
 end
 
 -- Per-member spawn level (§5.4): a stored plan answers L (or L + 1 for the
@@ -464,6 +481,27 @@ local function place_at_anchor(w, team, cursor_slot, allow_teleport)
   return false
 end
 
+-- The headcount rule (D34/D39): a generated squad never outnumbers the
+-- roster it was measured against. A latched SIZE truncates the mode's
+-- squad table to its first min(SIZE, #families) members — soldier-first
+-- for the standard tables (D35); SIZE = 0 (no census, or no human power)
+-- keeps the full table, so the legacy arm and the direct spawn-probe arms
+-- stay byte-identical.
+local function matched_families(families)
+  local size = og.mode_get(MATCHED.SIZE)
+  if size <= 0 then
+    return families
+  end
+  if size >= #families then
+    return families
+  end
+  local prefix = {}
+  for k = 1, size do
+    prefix[k] = families[k]
+  end
+  return prefix
+end
+
 local function add_squad_member(team, family_name)
   local fam = og.family_id("living", family_name) --[[@as integer]] -- caller tables name core families; a nil would be a load bug and add_ob erroring loudly is the right failure
   local w = og.add_ob("living", fam)
@@ -535,23 +573,28 @@ local function spawn_matched_bots(team, families, cursor_slot, placer)
   announce_matched(clamped)
 end
 
--- Fields one bot per family for an active team that authored no livings.
--- Level source (§5.4, one rule for every scripted spawn): a stored matched
--- plan wins; else a stored match target takes the D24 measure-and-solve
--- arm; else the legacy session-difficulty formula, byte-identical to the
--- pre-matched spawner. placer is an optional placement override,
--- placer(w, team, allow_teleport) (matched-teams D16): CTF passes its own
--- anchor rotation, which falls back to the flag-home square before the
--- teleport draw; nil keeps mode_match's rotation over cursor_slot.
+-- Fields one bot per family for an active team that authored no livings,
+-- over the SIZE-truncated prefix of the caller's table (D34/D39 — every
+-- caller keeps its signature; the headcount rule lives inside this one
+-- seam, so init fills, the wiped-team backstops and the mutant seats all
+-- honor it identically). Level source (§5.4, one rule for every scripted
+-- spawn): a stored matched plan wins; else a stored match target takes
+-- the D24 measure-and-solve arm; else the legacy session-difficulty
+-- formula, byte-identical to the pre-matched spawner. placer is an
+-- optional placement override, placer(w, team, allow_teleport)
+-- (matched-teams D16): CTF passes its own anchor rotation, which falls
+-- back to the flag-home square before the teleport draw; nil keeps
+-- mode_match's rotation over cursor_slot.
 local function spawn_bots(team, families, cursor_slot, placer)
+  local squad = matched_families(families)
   if plan_code(team) == 0 then
     if og.mode_get(MATCHED.TARGET) > 0 then
-      spawn_matched_bots(team, families, cursor_slot, placer)
+      spawn_matched_bots(team, squad, cursor_slot, placer)
       return
     end
   end
-  for k = 1, #families do
-    local w = add_squad_member(team, families[k])
+  for k = 1, #squad do
+    local w = add_squad_member(team, squad[k])
     if w ~= nil then
       local level = bot_level_for(team, k)
       w:s_set_level(level)

@@ -529,7 +529,11 @@ end
 --                leader = lead carrier, COMMAND_FOLLOW.
 local function run_team_director(livings, team)
   local members = {}
+  local team_live = 0
   for k = 1, #livings do
+    if livings[k]:team_num() == team then
+      team_live = team_live + 1
+    end
     if ai.is_directable(livings[k], team) then
       members[#members + 1] = livings[k]
     end
@@ -614,8 +618,23 @@ local function run_team_director(livings, team)
 
   -- DEFENDERS: the first ceil(remaining/3) members hold the flag home,
   -- leashed back whenever they stray past the defend radius. R1:
-  -- og.div(n + 2, 3) is the C ceiling.
+  -- og.div(n + 2, 3) is the C ceiling. A SOLE free member attacks
+  -- instead (matched-teams D38, general to every whittled squad): the
+  -- ceiling pinned a permanent lone defender, so a 1v1 could never
+  -- produce a director-driven capture — and the reactive arms above
+  -- (carrier, interceptor, retriever) already supply defense at n = 1.
   local defender_count = og.div(#remaining + 2, 3)
+  -- Desperation applies only when the sole free member IS the whole
+  -- team: with a teammate carrying the enemy flag the free member
+  -- guards the bank spot the carrier needs (banking requires our flag
+  -- home), and with a live human teammate the bot holds home while the
+  -- human fights on (is_directable excludes players, so #remaining
+  -- undercounts the team — both review findings on the first cut).
+  if #remaining == 1 and lead_carrier == nil then
+    if team_live <= #members then
+      defender_count = 0
+    end
+  end
   for i = 1, defender_count do
     local defender = remaining[i]
     ai.clear_stale_leader(defender, leader_is_flag_entity)

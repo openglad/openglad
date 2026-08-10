@@ -595,7 +595,9 @@ local function ball_in_goal_box(team, bx, by)
 end
 
 -- Role partition per team, in oblist order (zero RNG):
---   GOALIE   the member nearest the defended rect. Its objective every
+--   GOALIE   the member nearest the defended rect — assigned only when
+--            the team fields two or more (a singleton squad is all
+--            striker, matched-teams D38). Its objective every
 --            cadence is the ball-intercept point on its own goal mouth
 --            (goal_intercept above), so it shadows the ball's cross-axis
 --            from in front of the mouth and a shot on goal runs into it;
@@ -625,7 +627,11 @@ end
 -- brief.
 local function run_team_director(livings, ball, team)
   local members = {}
+  local team_live = 0
   for k = 1, #livings do
+    if livings[k]:team_num() == team then
+      team_live = team_live + 1
+    end
     if ai.is_directable(livings[k], team) then
       members[#members + 1] = livings[k]
     end
@@ -676,20 +682,32 @@ local function run_team_director(livings, ball, team)
   for i = 1, #members do
     assigned[i] = false
   end
-  local goalie_index = ai.nearest_unassigned(members, assigned, gcx, gcy)
-  if goalie_index ~= nil then
-    assigned[goalie_index] = true
-    local goalie = members[goalie_index]
-    goalie:set_foe(nil)
-    goalie:set_leader(ball)
-    local tx, ty = goal_intercept(team, bx, by)
-    if ball_in_goal_box(team, bx, by) then
-      if iabs(bx - gcx) + iabs(by - gcy) <= T.goalie_leash then
-        tx = bx
-        ty = by
+  -- The small-team rule (matched-teams D38, general to every whittled
+  -- squad): a sole member plays STRIKER, never goalkeeper — a lone keeper
+  -- camps its mouth and can never score, so a 1v1 would stall for the
+  -- whole clock. Defense degrades gracefully: the striker plays the ball
+  -- wherever it lies, and a touch near its own goal clears goalward (the
+  -- approach-point geometry). Two members keep goalie + striker.
+  -- The gate is the TEAM's live count, not the directable count: a lone
+  -- BOT beside a live human teammate keeps the mouth — the human can
+  -- score, so the desperation reading does not apply (review finding on
+  -- mixed human+bot teams; is_directable excludes player walkers).
+  if #members > 1 or team_live > #members then
+    local goalie_index = ai.nearest_unassigned(members, assigned, gcx, gcy)
+    if goalie_index ~= nil then
+      assigned[goalie_index] = true
+      local goalie = members[goalie_index]
+      goalie:set_foe(nil)
+      goalie:set_leader(ball)
+      local tx, ty = goal_intercept(team, bx, by)
+      if ball_in_goal_box(team, bx, by) then
+        if iabs(bx - gcx) + iabs(by - gcy) <= T.goalie_leash then
+          tx = bx
+          ty = by
+        end
       end
+      ai.issue_front(goalie, C.COMMAND_GOTO, 30, tx, ty)
     end
-    ai.issue_front(goalie, C.COMMAND_GOTO, 30, tx, ty)
   end
 
   local striker = ai.nearest_unassigned(members, assigned, bx, by)

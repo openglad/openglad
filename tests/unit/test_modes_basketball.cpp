@@ -2050,6 +2050,50 @@ TEST_F(ModesBasketball, director_nonthreatened_defense_stays_home)
            "the carrier midpoint (410,688)";
 }
 
+// The matched-teams D38 coverage gap, defense half: at n = 1 every
+// scheme's FIRST greedy pick is the ball-relevant role, so a threatened
+// team's sole member is the ON-BALL defender — commanded onto the carrier
+// with the steal foe set, never parked at the rim or the HELP fan. No
+// impl change: this pins that basketball already degrades correctly.
+TEST_F(ModesBasketball, sole_defender_takes_the_ball_not_the_rim)
+{
+    BballCourt fx;
+    walker* lone = fx.spawn_living(FAMILY_SOLDIER, 1, 490, 540, ACT_SIT);
+    fx.tick(1);
+    ASSERT_TRUE(fx.basketball_active());
+    // Human carrier at (450,480): hoop 1 (576,480) is the nearest enemy
+    // hoop, so team 1 is THREATENED — the on-ball pick must still come
+    // first (the D38 walk: run_defense assigns it before the threatened
+    // branch).
+    fx.give_ball(fx.red, 450, 480);
+    align_before_cadence(fx.world());
+    fx.tick(1);
+    ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
+    EXPECT_EQ(fx.red, lone->foe()) << "the steal: foe set on the carrier";
+    EXPECT_TRUE(front_command_is(lone, COMMAND_GOTO, 442, 472))
+        << "the sole defender drives onto the carrier center (450,480), "
+           "not the rim lane or its own hoop";
+}
+
+// The matched-teams D38 coverage gap, loose-ball half: a sole member
+// races onto the ground center — arriving IS pickup — instead of holding
+// the own-hoop seam. No impl change: a gap pin only.
+TEST_F(ModesBasketball, sole_member_races_the_loose_ball)
+{
+    BballCourt fx;
+    walker* lone = fx.spawn_living(FAMILY_SOLDIER, 0, 212, 372, ACT_SIT);
+    fx.tick(1);
+    ASSERT_TRUE(fx.basketball_active());
+    fx.thaw();
+    fx.set_ball_free(320, 480);
+    align_before_cadence(fx.world());
+    fx.tick(1);
+    ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
+    EXPECT_TRUE(front_command_is(lone, COMMAND_GOTO, 312, 472))
+        << "the singleton is commanded onto the ball's ground center "
+           "(320,480), not the seam midpoint";
+}
+
 TEST_F(ModesBasketball, director_loose_shot_flight_and_faceoff)
 {
     // Loose ball: the nearest TWO race onto the ground center; the rest
@@ -4104,9 +4148,11 @@ struct BballSoloRosterCourt : ModesCtfWorld
 
 }  // namespace
 
-// The FAIR-mask == OWN-mask twin (D26/D33(a)): FAIR bundles OWN's whole
-// deployment policy — same mask, same 5v5 game shape, same fill sites;
-// the ONLY delta is the generated squad's strength.
+// The FAIR-mask == OWN-mask twin (D26/D33(a), one-delta restated by D39):
+// FAIR bundles OWN's whole deployment policy — same mask, same fill sites
+// — and the ONLY delta is the generated squad, which spawns at matched
+// power AND matched headcount: the solo hero's court is a 1v1, not the
+// 5v5 the pre-amendment game shape pinned (D34 supersedes D12 here).
 TEST_F(ModesBasketball, matched_mask_equals_own_mask_with_a_solo_roster)
 {
     BballSoloRosterCourt matched(4);
@@ -4122,12 +4168,13 @@ TEST_F(ModesBasketball, matched_mask_equals_own_mask_with_a_solo_roster)
     EXPECT_EQ(own.var(kBbTeamMask), matched.var(kBbTeamMask))
         << "FAIR-mask == OWN-mask (D26/D33)";
     EXPECT_EQ(alive_on_team(own.world(), 0),
-              alive_on_team(matched.world(), 0));
-    EXPECT_EQ(alive_on_team(own.world(), 1),
-              alive_on_team(matched.world(), 1))
-        << "the same teams are filled with the same member count (D12)";
-    EXPECT_EQ(5, alive_on_team(matched.world(), 1))
-        << "5v5 basketball keeps its game shape";
+              alive_on_team(matched.world(), 0))
+        << "the roster team is untouched under both";
+    EXPECT_EQ(5, alive_on_team(own.world(), 1))
+        << "OWN keeps the full legacy squad";
+    EXPECT_EQ(1, alive_on_team(matched.world(), 1))
+        << "FAIR's generated squad matches the solo headcount (D34/D39)";
+    EXPECT_EQ(1, matched.var(kSlotMatchedSize));
 
     const std::vector<int> own_levels =
         team_levels_sorted(own.world(), 1);
@@ -4139,20 +4186,21 @@ TEST_F(ModesBasketball, matched_mask_equals_own_mask_with_a_solo_roster)
     ASSERT_GT(matched.var(kSlotMatchedTarget), 0);
     const int code = matched_plan_code(matched.var(kSlotMatchedPlan), 1);
     ASSERT_NE(0, code) << "the matched twin solved team 1";
+    EXPECT_EQ(0, code % 10) << "n = 1 admits no upgrades (D36)";
     const std::vector<int> matched_levels =
         team_levels_sorted(matched.world(), 1);
-    ASSERT_EQ(5u, matched_levels.size());
+    ASSERT_EQ(1u, matched_levels.size());
     EXPECT_EQ(code / 10, matched_levels.front())
-        << "squad levels follow the stored plan";
-    EXPECT_EQ(code / 10 + (code % 10 > 0 ? 1 : 0), matched_levels.back());
+        << "the lone bot's level follows the stored plan";
     EXPECT_EQ(1, count_notifications(matched.events, "TEAMS MATCHED"));
     EXPECT_EQ(0, count_notifications(own.events, "TEAMS MATCHED"));
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
 // I5/E4 for basketball: the wipe watchdog's reset backstop refields a
-// wiped MATCHED team at the STORED (L*, k*) — identical strength, never
-// the legacy formula — and stays silent mid-match.
+// wiped MATCHED team at the STORED (L*, k*) AND the stored headcount —
+// identical strength and size, never the legacy formula — and stays
+// silent mid-match (the solo-roster fixture makes this a 1v1, D34/D39).
 TEST_F(ModesBasketball, wipe_watchdog_refields_a_matched_team_at_strength)
 {
     BballSoloRosterCourt fx(4);
@@ -4161,7 +4209,8 @@ TEST_F(ModesBasketball, wipe_watchdog_refields_a_matched_team_at_strength)
     fx.tick(1);
     ASSERT_TRUE(fx.basketball_active());
     const std::vector<int> at_init = team_levels_sorted(fx.world(), 1);
-    ASSERT_EQ(5u, at_init.size());
+    ASSERT_EQ(1u, at_init.size())
+        << "the solo roster's matched opponent is a single bot (D34)";
     const int code = matched_plan_code(fx.var(kSlotMatchedPlan), 1);
     ASSERT_NE(0, code);
     ASSERT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"));
@@ -4182,8 +4231,9 @@ TEST_F(ModesBasketball, wipe_watchdog_refields_a_matched_team_at_strength)
         fx.tick(1);
     ASSERT_EQ(1, count_notifications(fx.events, "BALL RESET"))
         << "the wipe watchdog must reset the dead ball";
-    EXPECT_EQ(5, alive_on_team(fx.world(), 1))
-        << "revive_wiped_teams refields the wiped matched side";
+    EXPECT_EQ(1, alive_on_team(fx.world(), 1))
+        << "revive_wiped_teams refields the wiped matched side at the "
+           "stored headcount (D39)";
     EXPECT_EQ(at_init, team_levels_sorted(fx.world(), 1))
         << "the replacement squad reproduces the stored (L*, k*)";
     EXPECT_EQ(code, matched_plan_code(fx.var(kSlotMatchedPlan), 1))

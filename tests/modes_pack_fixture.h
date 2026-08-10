@@ -141,20 +141,27 @@ inline constexpr int kBballLevelNoRow = 9709;     // make_hooks(nil)
 // solver, bot_level_for) plus the model-pin ladder over whatever world the
 // test authored. 9096 drives match.spawn_bots directly at team 1, cursor
 // slot 12, parameterized through input mode vars the C++ test sets before
-// the first tick (mode vars are NOT cleared by lazy init).
+// the first tick (mode vars are NOT cleared by lazy init): target, plan,
+// mid-match flag, and the MATCHED.SIZE headcount latch (D34/D40).
 inline constexpr int kMatchProbeLevel = 9095;
 inline constexpr int kMatchSpawnProbeLevel = 9096;
 
 // The shared matched-teams header slots of lib/mode_match.lua (table
-// MATCHED — packed PLAN codes are base-100 per team, code = L * 10 + k).
+// MATCHED — packed PLAN codes are base-100 per team, code = L * 10 + k;
+// SIZE is the census headcount H the spawn seam truncates squads to,
+// matched-teams D34/D40).
 inline constexpr int kSlotMatchedTarget = 2;
 inline constexpr int kSlotMatchedPlan = 3;
 inline constexpr int kSlotMatchedAnnounced = 4;
+inline constexpr int kSlotMatchedSize = 5;
 
-// 9096 probe inputs (test-owned scratch slots).
-inline constexpr int kMatchProbeInTarget = 5;
-inline constexpr int kMatchProbeInPlan = 6;
-inline constexpr int kMatchProbeInMidMatch = 7;
+// 9096 probe inputs (test-owned scratch slots — mode-private on the probe
+// level, which registers its own hooks; relocated 5/6/7 -> 8/9/10 when
+// MATCHED.SIZE claimed header slot 5, matched-teams D40).
+inline constexpr int kMatchProbeInTarget = 8;
+inline constexpr int kMatchProbeInPlan = 9;
+inline constexpr int kMatchProbeInMidMatch = 10;
+inline constexpr int kMatchProbeInSize = 11;
 
 // Decode one team's packed matched-plan code.
 inline int matched_plan_code(std::int32_t plan, int team)
@@ -470,8 +477,8 @@ inline constexpr const char* kTestRegistrationLua =
     "                             \"core:druid\" }\n"
     "og.register_level_hooks(9095, {\n"
     "  on_mode_init = function(level)\n"
-    "    local t, sums = match_lib.census_power(og.oblist())\n"
-    "    og.log(\"census\", t, sums[1], sums[2], sums[3], sums[4])\n"
+    "    local t, sums, hsize = match_lib.census_power(og.oblist())\n"
+    "    og.log(\"census\", t, sums[1], sums[2], sums[3], sums[4], hsize)\n"
     "    for _, w in ipairs(og.oblist()) do\n"
     "      if w:dead() == 0 and w:order() == og.C.ORDER_LIVING then\n"
     "        og.log(\"wp\", w:team_num(), match_lib.walker_power(w))\n"
@@ -552,11 +559,12 @@ inline constexpr const char* kTestRegistrationLua =
     "})\n"
     "og.register_level_hooks(9096, {\n"
     "  on_mode_init = function(level)\n"
-    "    if og.mode_get(7) == 1 then\n"
+    "    if og.mode_get(10) == 1 then\n"
     "      og.mode_set(0, 99)\n"
     "    end\n"
-    "    og.mode_set(2, og.mode_get(5))\n"
-    "    og.mode_set(3, og.mode_get(6))\n"
+    "    og.mode_set(2, og.mode_get(8))\n"
+    "    og.mode_set(3, og.mode_get(9))\n"
+    "    og.mode_set(5, og.mode_get(11))\n"
     "    match_lib.spawn_bots(2, {}, 12)\n"
     "    match_lib.spawn_bots(1, match_squad, 12)\n"
     "    og.log(\"spawned\", og.mode_get(2), og.mode_get(3), og.mode_get(4))\n"
