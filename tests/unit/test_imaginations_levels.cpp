@@ -154,7 +154,7 @@ struct ShippedLevel
 };
 
 constexpr ShippedLevel kLevels[] = {
-    {1, "The Raspberry Isle", 1, 42, 42, 12, 9, 1, 1, 1},
+    {1, "The Raspberry Isle", 1, 64, 64, 16, 25, 3, 1, 1},
 };
 
 // SCENARIO INFORMATION dialog budget (33 glyphs per briefing line).
@@ -242,12 +242,12 @@ TEST_F(ImaginationsCampaignTest, isle_is_an_island_with_a_moated_castle)
         g.data[static_cast<std::size_t>((g.h - 1) * g.w)]));
     EXPECT_TRUE(is_water_class(
         g.data[static_cast<std::size_t>(g.h * g.w - 1)]));
-    // The moat is the submitted "sea in the middle": northwest of the
-    // castle wall, off the paved causeways, sits water.
-    EXPECT_TRUE(is_water_class(g.data[static_cast<std::size_t>(17 + 12 * g.w)]));
+    // The moat is the submitted "sea in the middle": the square band
+    // north of the bailey wall, off the paved causeways, sits water.
+    EXPECT_TRUE(is_water_class(g.data[static_cast<std::size_t>(24 + 18 * g.w)]));
     // And the crew's landing ring is dry ground where the lead deploys.
     EXPECT_TRUE(og::mapgen::ground_cell_standable(
-        g.data[static_cast<std::size_t>(20 + 33 * g.w)]));
+        g.data[static_cast<std::size_t>(31 + 55 * g.w)]));
 }
 
 TEST_F(ImaginationsCampaignTest, shipped_package_passes_the_ground_audits)

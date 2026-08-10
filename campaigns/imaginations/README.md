@@ -28,7 +28,7 @@ generator's `write_campaign_yaml`).
 
 | scen | title | submitted idea (condensed) |
 |------|-------|----------------------------|
-| 1 | The Raspberry Isle | "We start at the edges of the island, at every corner. The sea is all around us. The enemies start in the middle, in a castle, near the water. We must run at them right away." |
+| 1 | The Raspberry Isle | "We start at the edges of the island, at every corner. The sea is all around us. The enemies start in the middle, in a castle, near the water. We must run at them right away." (64x64; double-walled castle — bailey + keep — 25 posted foes, 3 college generators, two timed reinforcement waves, reef atolls, landing piers, bramble groves.) |
 
 Growth rule: new ideas append new scens (2, 3, …). The newest level's
 walk-out exit loops home to 1; when its successor lands, the generator
@@ -42,6 +42,17 @@ foe on such a map is a POSTED guard (ambush wake); roamers are legal
 only where their chase ground is open (generator spawns on the crew's
 side of the water are fine).
 
+Two more engine rules from the epic rework:
+- NO standable ground across open water. Mages and skeletons
+  self-teleport when pressed; a walkable reef islet let the Sea Wizard
+  himself strand the kill-all across the sea (observed in an unattended
+  sim). Off-island decoration must be tree atolls or plain water, and
+  the boss carries specials_disabled so his escape trick cannot
+  softlock the throne fight.
+- Gates 3 tiles wide on every wall ring. The hunt AI funnels by
+  wall-sliding; two-wide mouths on a double-walled castle starved the
+  funnel and unattended runs stalled short of the 6000-tick budget.
+
 ## Difficulty curve (campaign_meta)
 
 Fresh teams are the audience: every level must be clearable by a new
@@ -53,11 +64,15 @@ save's level-1 crew (crew power 1 in the longseason README's terms).
 
 Gate (kill-all): 8-mixed at crew 1 reaches `level_done == 1` within 6000
 ticks on >= 2/3 seeds, and 3/3 at crew 2. Measured with
-`scripts/imaginations_playtest.sh` on 2026-08-10 (final posted-garrison
-geometry with the shore rim and field copses): PASS — all 12 bracket
-runs (both rosters x crew {1, 2} x 3 seeds) cleared between ticks 646
-and 2140 with zero stand-in crew deaths on every run. The isle is
-intentionally a gentle opener; the drama lives in the layout, not the
-attrition. (An earlier mid-court garrison variant wiped the 4-soldier
-stand-in on one seed — the dais-bodyguard split into a gate fight then
-a throne fight is what restored the fresh-team margin.)
+`scripts/imaginations_playtest.sh` on 2026-08-10 (final epic geometry:
+64x64, bailey + keep, 25 posted foes + 3 generators + 2 timed waves):
+PASS — all 12 bracket runs (both rosters x crew {1, 2} x 3 seeds)
+cleared between ticks 956 and 2547 with all foes dead; the 8-mixed gate
+roster kept all 8 alive on every run (the 4-soldier pessimistic floor
+lost at most 1). The isle stays a gentle opener despite its size: the
+drama lives in the staged assault — causeway sentries, the bailey, the
+keep, the throne, and the NEXT-WAVE reliefs at ticks 500/800 — not in
+attrition. (Design history: a mid-court garrison variant wiped the
+4-soldier stand-in — staggered posts fixed it; walkable reef islets let
+teleporting foes strand the kill-all — tree atolls fixed it; two-wide
+gates stalled unattended runs — three-wide gates fixed it.)

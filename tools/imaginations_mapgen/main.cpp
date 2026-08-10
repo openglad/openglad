@@ -182,154 +182,250 @@ void save_level_files(GameWorld& world, int id, const char* title,
 // water" — honored twice: the sea rings the island AND a moat rings the
 // castle). Kill-all with a walk-out exit at the landing beach.
 //
-// Geometry, all from center (20.5, 20.5) on a 42x42 grid:
-//   r >= 16.5        open sea
-//   [13.5, 16.5)     sunlit shore meadow (the landing ring)
-//   [10.5, 13.5)     island grass (the approach ring)
-//   [8.0, 10.5)      the moat ("the sea in the middle")
-//   wall rect 15..26 the castle, cobbled court inside, carpet dais at
-//                    19..22 where the Sea Wizard waits
-// Four paved causeways cross the moat at the compass points into four
-// 2-tile gates. A flight potion near the south landing offers the "very
-// magical" alternative: fly the moat and the wall face straight into
-// the court.
+// Geometry, from center (31.5, 31.5) on a 64x64 grid:
+//   r >= 28.5        open sea, with four reef islets in the far corners
+//   [26.0, 28.5)     the raspberry shore — the speckled landing sand
+//   [22.5, 26.0)     sunlit shore meadow (the landing ring, four piers)
+//   inside 22.5      the berry fields: bramble groves, copses, boulders
+//   rect 17..46      the moat, a square band 3 tiles wide ("the sea in
+//   minus 20..43     the middle"), bridged by four paved causeways
+//   wall 22..41      the outer bailey: cobbled ring, arrow turrets,
+//                    posted garrison
+//   wall 27..36      the keep: cobbled court, gate wards, and the
+//                    carpet dais at 30..33 where the Sea Wizard waits
+//                    between his bodyguards
+// Reinforcement waves sleep in the bailey and the court (spawn_delay)
+// and wake mid-assault with the NEXT WAVE flash. A flight potion near
+// the south landing offers the "very magical" alternative — fly the
+// moat and the wall face straight into the court — and the reef islets
+// hold flight-gated treasure for whoever keeps wings long enough.
 void build_raspberry_isle()
 {
     LevelRuntimeData level(1, true, &headless_level_data_hooks());
     GameWorld& w = level.world();
-    og::mapgen::init_world(w, 1, 42, 42);
+    og::mapgen::init_world(w, 1, 64, 64);
     PixieData& g = w.grid;
-    const double cx = 20.5;
-    const double cy = 20.5;
+    const double cx = 31.5;
+    const double cy = 31.5;
 
     // Terrain, inside out (genre tiles only; the autotiler shapes every
     // shore and wall face in smooth_world below).
-    og::mapgen::paint_ring(g, cx, cy, 16.5, 100.0, PIX_WATER1); // open sea
-    og::mapgen::paint_ring(g, cx, cy, 15.0, 16.5, PIX_DIRT_1); // landing sand
-    og::mapgen::paint_ring(g, cx, cy, 13.5, 15.0, PIX_GRASS_LIGHT_1);
-    og::mapgen::paint_ring(g, cx, cy, 8.0, 10.5, PIX_WATER1);   // the moat
-    og::mapgen::paint_rect(g, 15, 15, 26, 26, PIX_WALL2);       // castle wall
-    og::mapgen::paint_rect(g, 16, 16, 25, 25, PIX_COBBLE_1);    // the court
-    og::mapgen::paint_rect(g, 19, 19, 22, 22, PIX_CARPET_M);    // the dais
-    // Four 2-tile gates at the compass midpoints of the wall.
-    og::mapgen::paint_rect(g, 20, 15, 21, 15, PIX_COBBLE_1); // north gate
-    og::mapgen::paint_rect(g, 20, 26, 21, 26, PIX_COBBLE_1); // south gate
-    og::mapgen::paint_rect(g, 15, 20, 15, 21, PIX_COBBLE_1); // west gate
-    og::mapgen::paint_rect(g, 26, 20, 26, 21, PIX_COBBLE_1); // east gate
-    // Field copses on the meadow ring ("in the field", the submitted
-    // words) — four 2x2 clumps, all >= 2 tiles clear of every landing
-    // marker and causeway so no route or deploy square is touched.
-    og::mapgen::paint_rect(g, 9, 13, 10, 14, PIX_TREE_M1);   // northwest
-    og::mapgen::paint_rect(g, 33, 16, 34, 17, PIX_TREE_M1);  // east, below
-                                                             // the mage tower
-    og::mapgen::paint_rect(g, 14, 31, 15, 32, PIX_TREE_M1);  // southwest
-    og::mapgen::paint_rect(g, 26, 30, 27, 31, PIX_TREE_M1);  // southeast
+    og::mapgen::paint_ring(g, cx, cy, 28.5, 100.0, PIX_WATER1); // open sea
+    og::mapgen::paint_ring(g, cx, cy, 26.0, 28.5, PIX_DIRT_1);  // landing sand
+    og::mapgen::paint_ring(g, cx, cy, 22.5, 26.0, PIX_GRASS_LIGHT_1);
+    // Four reef atolls in the deep water, one per compass corner — TREE
+    // rings on purpose, with no standable cell: mages and skeletons
+    // self-teleport, and any walkable ground off the island would let a
+    // pressed foe (the Sea Wizard included — it happened) strand the
+    // kill-all across open water.
+    for (const auto& islet : {std::pair{8.0, 8.0}, {55.0, 8.0},
+                              {8.0, 55.0}, {55.0, 55.0}})
+    {
+        og::mapgen::paint_ring(g, islet.first, islet.second, 0.0, 2.3,
+                               PIX_TREE_M1);
+    }
+    // Raspberry brambles: three dark-grass groves on the field ring (the
+    // shrub scatter below dresses them into berry thickets).
+    og::mapgen::paint_rect(g, 12, 18, 17, 22, PIX_GRASS_DARK_1);
+    og::mapgen::paint_rect(g, 44, 40, 50, 44, PIX_GRASS_DARK_1);
+    og::mapgen::paint_rect(g, 24, 50, 30, 53, PIX_GRASS_DARK_1);
+    // The moat: a square band 3 tiles wide around the bailey.
+    og::mapgen::paint_rect(g, 17, 17, 46, 46, PIX_WATER1);
+    og::mapgen::paint_rect(g, 20, 20, 43, 43, PIX_GRASS1);
+    // The castle: outer bailey wall and ring, then the keep and court.
+    og::mapgen::paint_rect(g, 22, 22, 41, 41, PIX_WALL2);   // bailey wall
+    og::mapgen::paint_rect(g, 23, 23, 40, 40, PIX_COBBLE_1); // bailey ring
+    og::mapgen::paint_rect(g, 27, 27, 36, 36, PIX_WALL2);   // keep wall
+    og::mapgen::paint_rect(g, 28, 28, 35, 35, PIX_COBBLE_1); // the court
+    og::mapgen::paint_rect(g, 30, 30, 33, 33, PIX_CARPET_M); // the dais
+    // Gates, two tiles wide at every compass midpoint of both walls.
+    // Gates three tiles wide: the hunt AI reaches foes by wall-sliding
+    // into openings, and a two-wide mouth on a double-walled castle
+    // starves the funnel (unattended sims stalled short of the 6000-tick
+    // budget before this widening).
+    og::mapgen::paint_rect(g, 30, 22, 32, 22, PIX_COBBLE_1); // bailey north
+    og::mapgen::paint_rect(g, 30, 41, 32, 41, PIX_COBBLE_1); // bailey south
+    og::mapgen::paint_rect(g, 22, 30, 22, 32, PIX_COBBLE_1); // bailey west
+    og::mapgen::paint_rect(g, 41, 30, 41, 32, PIX_COBBLE_1); // bailey east
+    og::mapgen::paint_rect(g, 30, 27, 32, 27, PIX_COBBLE_1); // keep north
+    og::mapgen::paint_rect(g, 30, 36, 32, 36, PIX_COBBLE_1); // keep south
+    og::mapgen::paint_rect(g, 27, 30, 27, 32, PIX_COBBLE_1); // keep west
+    og::mapgen::paint_rect(g, 36, 30, 36, 32, PIX_COBBLE_1); // keep east
+    // Field copses on the meadow and field rings, all >= 2 tiles clear
+    // of every landing marker, pier, grove and causeway.
+    og::mapgen::paint_rect(g, 28, 10, 29, 11, PIX_TREE_M1);  // north field
+    og::mapgen::paint_rect(g, 37, 12, 38, 13, PIX_TREE_M1);
+    og::mapgen::paint_rect(g, 10, 40, 11, 41, PIX_TREE_M1);  // west field
+    og::mapgen::paint_rect(g, 52, 24, 53, 25, PIX_TREE_M1);  // east field
+    og::mapgen::paint_rect(g, 42, 52, 43, 53, PIX_TREE_M1);  // south field
+    og::mapgen::paint_rect(g, 14, 51, 15, 52, PIX_TREE_M1);
 
     og::mapgen::smooth_world(w);
 
-    // The causeways cross the moat into the gates — pavement is
-    // autotiler-inert, so they go in after the smooth and stay crisp.
-    paint_pavement(g, 20, 9, 21, 14);  // north
-    paint_pavement(g, 20, 27, 21, 32); // south
-    paint_pavement(g, 9, 20, 14, 21);  // west
-    paint_pavement(g, 27, 20, 32, 21); // east
+    // Post-smooth inert tiles: the four moat causeways and the four
+    // landing piers running off the beaches into open water.
+    paint_pavement(g, 31, 14, 32, 21); // north causeway
+    paint_pavement(g, 31, 42, 32, 49); // south causeway
+    paint_pavement(g, 14, 31, 21, 32); // west causeway
+    paint_pavement(g, 42, 31, 49, 32); // east causeway
+    paint_pavement(g, 12, 50, 13, 58); // southwest pier
+    paint_pavement(g, 50, 5, 51, 13);  // northeast pier
+    paint_pavement(g, 4, 12, 12, 13);  // northwest pier
+    paint_pavement(g, 51, 50, 59, 51); // southeast pier
 
-    // --- The garrison (team 1). ---------------------------------------------
-    // The Sea Wizard on the dais: an ambush post (guard wake policy) — he
-    // holds the keep until the crew breaches the court, then fights.
+    // --- The garrison (team 1). Every foe is a POSTED guard: the hunt
+    // AI (ACT_RANDOM) beelines with no pathfinding, and a moat ring
+    // turns distant roamers into walkers jittering at the water's edge.
+    // Posts wake at true sight of the charging crew — the submitted
+    // design ("WE run at THEM") in engine terms — staged in beats:
+    // causeway heads, then the bailey, then the keep, then the throne.
+    // ------------------------------------------------------------------
+    // Causeway-head sentries, one per compass approach.
+    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 31, 13, 1, true);
+    og::mapgen::place_living(w, FAMILY_ORC, 1, 0, 31, 50, 1, true);
+    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 13, 30, 1, true);
+    og::mapgen::place_living(w, FAMILY_ORC, 1, 0, 50, 30, 1, true);
+    // The bailey: posted garrison in the ring corners and gate flanks,
+    // plus two immobile arrow turrets watching the north and south
+    // gates from the ring's far corners.
+    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 24, 24, 1, true);
+    og::mapgen::place_living(w, FAMILY_ORC, 1, 0, 39, 24, 1, true);
+    og::mapgen::place_living(w, FAMILY_ORC, 1, 0, 24, 39, 1, true);
+    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 39, 39, 1, true);
+    og::mapgen::place_living(w, FAMILY_ELF, 1, 0, 31, 24, 1, true);
+    og::mapgen::place_living(w, FAMILY_ELF, 1, 0, 32, 39, 1, true);
+    og::mapgen::place_living(w, FAMILY_TOWER1, 1, 0, 25, 31, 1, true);
+    og::mapgen::place_living(w, FAMILY_TOWER1, 1, 0, 38, 32, 1, true);
+    // The keep: a bone ward inside each of the four gates.
+    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 31, 29, 1, true);
+    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 32, 34, 1, true);
+    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 29, 32, 1, true);
+    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 34, 31, 1, true);
+    // The throne: the Sea Wizard between his dais bodyguards.
+    // The boss's teleport special is DISABLED (npc_flags bit0): a
+    // pressed mage teleports at random, and the one thing worse than a
+    // boss without his escape trick is a boss stranded on a reef atoll
+    // with the kill-all softlocked behind him.
     walker* boss =
-        og::mapgen::place_living(w, FAMILY_MAGE, 1, 0, 20, 20, 4, true);
+        og::mapgen::place_living(w, FAMILY_MAGE, 1, 0, 31, 31, 4, true,
+                                 true);
     if (boss != nullptr)
         boss->stats()->name = "Sea Wizard"; // 10 chars: fits the 11-char field
-    // A bone ward just inside each gate, posted (they wake one by one as
-    // the crew reaches their gate — four small fights, not one big one).
-    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 20, 17, 1, true);
-    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 21, 24, 1, true);
-    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 17, 21, 1, true);
-    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 24, 20, 1, true);
-    // Every other defender is POSTED too, not roaming: the hunt AI
-    // (ACT_RANDOM) beelines at its foe with no pathfinding, and a level
-    // whose middle is a water ring turns every distant roamer into a
-    // walker jittering against the moat edge — the "sides that never
-    // engage" pathology. Ambush posts instead: they stand their ground
-    // and wake at true sight of the charging crew, which is the
-    // submitted design ("WE run at THEM") in engine terms.
-    // Dais bodyguards flank the wizard, a tile off the gate wards' wake
-    // chain, so a small crew fights the gate first and the throne second
-    // instead of the whole court at once.
-    og::mapgen::place_living(w, FAMILY_ORC, 1, 0, 19, 21, 1, true);
-    og::mapgen::place_living(w, FAMILY_ELF, 1, 0, 22, 20, 1, true);
-    // Two shore sentries on the approach ring for first contact — on the
-    // crew's side of the moat, so once woken their straight-line chase
-    // has clear ground.
-    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 12, 28, 1, true);
-    og::mapgen::place_living(w, FAMILY_ORC, 1, 0, 29, 13, 1, true);
-    // The wizard's college: a mage tower on the northeast meadow, its
-    // slow level-1 trickle marching for the causeways. Open ground on
-    // every side (the spawn-egress audit holds it to that).
-    og::mapgen::place_generator(w, FAMILY_TOWER, 1, 0, 29, 10, 1);
+    og::mapgen::place_living(w, FAMILY_ORC, 1, 0, 30, 32, 1, true);
+    og::mapgen::place_living(w, FAMILY_ELF, 1, 0, 33, 31, 1, true);
+    // Reinforcement waves, dormant behind the walls (NEXT WAVE HUD):
+    // the bailey relief at tick 500, the throne guard at tick 800. They
+    // wake mid-assault, inside the fight the crew is already carrying.
+    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 26, 26, 1, true,
+                             false, 500);
+    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 37, 37, 1, true,
+                             false, 500);
+    og::mapgen::place_living(w, FAMILY_ORC, 1, 0, 26, 37, 1, true,
+                             false, 500);
+    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 29, 29, 1, true,
+                             false, 800);
+    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 34, 34, 1, true,
+                             false, 800);
+    og::mapgen::place_living(w, FAMILY_ORC, 1, 0, 34, 29, 1, true,
+                             false, 800);
+    // The wizard's colleges on the field ring, one trickle per art: the
+    // mage tower northeast, the bone tent southwest, the elf treehouse
+    // by the northwest grove. All on the crew's side of the moat, so
+    // their roaming spawns chase over open ground.
+    og::mapgen::place_generator(w, FAMILY_TOWER, 1, 0, 43, 11, 1);
+    og::mapgen::place_generator(w, FAMILY_TENT, 1, 0, 10, 43, 1);
+    og::mapgen::place_generator(w, FAMILY_TREEHOUSE, 1, 0, 19, 11, 1);
 
     // --- The crew (team 0). --------------------------------------------------
-    // Twelve start markers spread around the landing ring — the whole
-    // point of the submitted design. Lead FIRST (south beach, facing the
-    // causeway); deploy consumes markers in oblist order, so a small crew
-    // lands scattered around the island and regroups on the charge.
-    og::mapgen::place_start(w, 0, 20, 33); // lead, south landing
-    og::mapgen::place_start(w, 0, 20, 7);  // north
-    og::mapgen::place_start(w, 0, 33, 20); // east
-    og::mapgen::place_start(w, 0, 7, 20);  // west
-    og::mapgen::place_start(w, 0, 11, 11); // the four corners of the isle
-    og::mapgen::place_start(w, 0, 30, 11);
-    og::mapgen::place_start(w, 0, 11, 30);
-    og::mapgen::place_start(w, 0, 30, 30);
-    og::mapgen::place_start(w, 0, 17, 34); // second-wave beach flanks
-    og::mapgen::place_start(w, 0, 24, 34);
-    og::mapgen::place_start(w, 0, 17, 6);
-    og::mapgen::place_start(w, 0, 24, 6);
+    // Sixteen start markers spread around the landing ring — the whole
+    // point of the submitted design. Lead FIRST (south beach, facing
+    // the causeway); deploy consumes markers in oblist order, so a
+    // small crew lands scattered around the island and regroups on the
+    // charge, and a full four-player lobby fills every shore.
+    og::mapgen::place_start(w, 0, 31, 55); // lead, south landing
+    og::mapgen::place_start(w, 0, 31, 7);  // north
+    og::mapgen::place_start(w, 0, 55, 31); // east
+    og::mapgen::place_start(w, 0, 7, 31);  // west
+    og::mapgen::place_start(w, 0, 14, 14); // the four corners of the isle
+    og::mapgen::place_start(w, 0, 48, 14);
+    og::mapgen::place_start(w, 0, 14, 48);
+    og::mapgen::place_start(w, 0, 48, 48);
+    og::mapgen::place_start(w, 0, 25, 55); // second-wave beach flanks
+    og::mapgen::place_start(w, 0, 38, 55);
+    og::mapgen::place_start(w, 0, 25, 7);
+    og::mapgen::place_start(w, 0, 38, 7);
+    og::mapgen::place_start(w, 0, 7, 25);
+    og::mapgen::place_start(w, 0, 7, 38);
+    og::mapgen::place_start(w, 0, 55, 25);
+    og::mapgen::place_start(w, 0, 55, 38);
 
     // --- Treasure. -----------------------------------------------------------
-    // The magic: potions on the west and east approaches, and a flight
-    // potion by the south landing — drink it and cross the moat and the
-    // wall face on wings instead of fighting through a gate.
-    og::mapgen::place(w, Order::Treasure, FAMILY_MAGIC_POTION, 0, 0, 12, 21);
-    og::mapgen::place(w, Order::Treasure, FAMILY_MAGIC_POTION, 0, 0, 29, 20);
-    og::mapgen::place(w, Order::Treasure, FAMILY_FLIGHT_POTION, 0, 0, 17, 31);
-    // Rations for the long walk around the moat.
-    og::mapgen::place(w, Order::Treasure, FAMILY_DRUMSTICK, 0, 0, 10, 20);
-    og::mapgen::place(w, Order::Treasure, FAMILY_DRUMSTICK, 0, 0, 31, 21);
-    og::mapgen::place(w, Order::Treasure, FAMILY_DRUMSTICK, 0, 0, 20, 5);
-    // The wizard's hoard, in the four corners of the court.
-    og::mapgen::place(w, Order::Treasure, FAMILY_GOLD_BAR, 0, 0, 17, 17);
-    og::mapgen::place(w, Order::Treasure, FAMILY_GOLD_BAR, 0, 0, 24, 24);
-    og::mapgen::place(w, Order::Treasure, FAMILY_SILVER_BAR, 0, 0, 17, 24);
-    og::mapgen::place(w, Order::Treasure, FAMILY_SILVER_BAR, 0, 0, 24, 17);
+    // The magic: potions on the west and east causeway approaches, and
+    // a flight potion by the south landing — drink it and cross the
+    // moat and the wall face on wings instead of fighting for a gate.
+    og::mapgen::place(w, Order::Treasure, FAMILY_MAGIC_POTION, 0, 0, 16, 33);
+    og::mapgen::place(w, Order::Treasure, FAMILY_MAGIC_POTION, 0, 0, 47, 30);
+    og::mapgen::place(w, Order::Treasure, FAMILY_FLIGHT_POTION, 0, 0, 28, 52);
+    // Riches hidden in the brambles and out on the pier ends.
+    og::mapgen::place(w, Order::Treasure, FAMILY_INVULNERABLE_POTION, 0, 0,
+                      14, 20);
+    og::mapgen::place(w, Order::Treasure, FAMILY_SPEED_POTION, 0, 0, 48, 42);
+    og::mapgen::place(w, Order::Treasure, FAMILY_GOLD_BAR, 0, 0, 5, 12);
+    og::mapgen::place(w, Order::Treasure, FAMILY_GOLD_BAR, 0, 0, 58, 51);
+    // Rations along the shore ring and the pier heads.
+    og::mapgen::place(w, Order::Treasure, FAMILY_DRUMSTICK, 0, 0, 10, 30);
+    og::mapgen::place(w, Order::Treasure, FAMILY_DRUMSTICK, 0, 0, 53, 33);
+    og::mapgen::place(w, Order::Treasure, FAMILY_DRUMSTICK, 0, 0, 31, 5);
+    og::mapgen::place(w, Order::Treasure, FAMILY_DRUMSTICK, 0, 0, 13, 53);
+    og::mapgen::place(w, Order::Treasure, FAMILY_DRUMSTICK, 0, 0, 50, 10);
+    // The wizard's hoard: bailey strongrooms and the court corners.
+    og::mapgen::place(w, Order::Treasure, FAMILY_GOLD_BAR, 0, 0, 23, 31);
+    og::mapgen::place(w, Order::Treasure, FAMILY_GOLD_BAR, 0, 0, 40, 32);
+    og::mapgen::place(w, Order::Treasure, FAMILY_SILVER_BAR, 0, 0, 28, 35);
+    og::mapgen::place(w, Order::Treasure, FAMILY_SILVER_BAR, 0, 0, 35, 28);
+    og::mapgen::place(w, Order::Treasure, FAMILY_GOLD_BAR, 0, 0, 28, 28);
+    og::mapgen::place(w, Order::Treasure, FAMILY_GOLD_BAR, 0, 0, 35, 35);
     // The walk-out exit on the south landing beach, beside the lead
     // marker: clear the isle, then sail home. Destination 1 = itself —
     // the loop-home rule for the newest level of a growing campaign.
-    og::mapgen::place_exit(w, 0, 23, 35, 1);
+    og::mapgen::place_exit(w, 0, 34, 57, 1);
 
     // --- Set dressing (after every entity, so scatters keep clearance). -----
-    // Torches on the wall corners and flanking every gate; braziers on
-    // the dais back row behind the wizard. All on blocking bases or the
-    // dais back rank — off every fight lane.
-    for (const auto& t : {std::pair{15, 15}, {26, 15}, {15, 26}, {26, 26},
-                          {18, 15}, {23, 15}, {18, 26}, {23, 26}})
+    // Torches on both wall rings: corners and gate flanks.
+    for (const auto& t : {std::pair{22, 22}, {41, 22}, {22, 41}, {41, 41},
+                          {29, 22}, {34, 22}, {29, 41}, {34, 41},
+                          {22, 29}, {22, 34}, {41, 29}, {41, 34}})
         og::mapgen::paint_decor(w, 0, t.first, t.second, DECOR_TORCH1);
-    for (const auto& t : {std::pair{15, 18}, {15, 23}, {26, 18}, {26, 23}})
+    for (const auto& t : {std::pair{27, 27}, {36, 27}, {27, 36}, {36, 36},
+                          {29, 27}, {34, 27}, {29, 36}, {34, 36}})
         og::mapgen::paint_decor(w, 0, t.first, t.second, DECOR_TORCH1);
-    og::mapgen::paint_decor(w, 0, 19, 19, DECOR_BRAZIER);
-    og::mapgen::paint_decor(w, 0, 22, 19, DECOR_BRAZIER);
-    // Old landings: bones where the shore patrols walk.
-    og::mapgen::paint_decor(w, 0, 13, 26, DECOR_BONES);
-    og::mapgen::paint_decor(w, 0, 28, 15, DECOR_BONES);
-    // Non-blocking ambience over the whole isle: shrubs on the approach
-    // grass, pebbles on the shore meadow.
-    og::mapgen::scatter_decor(w, kScatterSeed, 0, 4, 4, 37, 37, 17,
+    // Braziers on the dais back row behind the wizard.
+    og::mapgen::paint_decor(w, 0, 30, 30, DECOR_BRAZIER);
+    og::mapgen::paint_decor(w, 0, 33, 30, DECOR_BRAZIER);
+    // Old landings: bones where the causeway sentries stand watch.
+    og::mapgen::paint_decor(w, 0, 29, 13, DECOR_BONES);
+    og::mapgen::paint_decor(w, 0, 34, 50, DECOR_BONES);
+    og::mapgen::paint_decor(w, 0, 13, 33, DECOR_BONES);
+    og::mapgen::paint_decor(w, 0, 50, 33, DECOR_BONES);
+    // The brambles: dense shrub over the three dark-grass groves, light
+    // shrub over the whole field, pebbles on the shore meadow, and a
+    // sparse boulder scatter across the open field ring.
+    og::mapgen::scatter_decor(w, kScatterSeed, 0, 12, 18, 17, 22, 2,
+                              DECOR_SHRUB,
+                              {og::mapgen::ScatterGround::DarkGrass});
+    og::mapgen::scatter_decor(w, kScatterSeed, 0, 44, 40, 50, 44, 2,
+                              DECOR_SHRUB,
+                              {og::mapgen::ScatterGround::DarkGrass});
+    og::mapgen::scatter_decor(w, kScatterSeed, 0, 24, 50, 30, 53, 2,
+                              DECOR_SHRUB,
+                              {og::mapgen::ScatterGround::DarkGrass});
+    og::mapgen::scatter_decor(w, kScatterSeed, 0, 4, 4, 59, 59, 23,
                               DECOR_SHRUB,
                               {og::mapgen::ScatterGround::Grass});
-    og::mapgen::scatter_decor(w, kScatterSeed, 0, 4, 4, 37, 37, 11,
+    og::mapgen::scatter_decor(w, kScatterSeed, 0, 4, 4, 59, 59, 13,
                               DECOR_PEBBLES,
                               {og::mapgen::ScatterGround::LightGrass});
+    og::mapgen::scatter_boulders(w, kScatterSeed, 0, 4, 4, 59, 59, 41);
 
     save_level_files(w, 1, "The Raspberry Isle",
                      {
@@ -337,10 +433,12 @@ void build_raspberry_isle()
                          "commander: an island, the sea",
                          "all around us. We land on the",
                          "shores and charge the middle!",
-                         "The Sea Wizard holds the keep",
-                         "beyond the moat. Storm it!",
+                         "The Sea Wizard's castle waits",
+                         "beyond the moat: breach the",
+                         "bailey, storm the keep, and",
+                         "take the throne.",
                      },
-                     2, 5000);
+                     2, 8000);
 }
 
 void write_campaign_yaml(const std::string& path)
@@ -601,7 +699,7 @@ int main(int argc, char* argv[])
             const ExpectedLevel expectations[] = {
                 // {id, floors, title, starts, t0 liv/gen, t1 liv/gen,
                 //  delayed, specials-disabled, exit destinations}
-                {1, 1, "The Raspberry Isle", 12, 0, 0, 9, 1, 0, 0, {1}},
+                {1, 1, "The Raspberry Isle", 16, 0, 0, 25, 3, 6, 1, {1}},
             };
             for (const ExpectedLevel& e : expectations)
                 self_check_level(e, registered);
