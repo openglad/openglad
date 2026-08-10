@@ -10,6 +10,7 @@
 #include <openglad/core/order.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/scenario_strip.h>
 #include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/statistics.h>
@@ -223,6 +224,25 @@ TEST(ScenarioStripClassic, tick_sweeps_for_the_retired_middle_state_too)
     fx.world().tick();
     EXPECT_EQ(1, fx.count_order(Order::Living)) << "only the roster guy stays";
     EXPECT_EQ(0, fx.count_order(Order::Generator));
+}
+
+TEST(ScenarioStripClassic, tick_sweeps_for_the_matched_state_too)
+{
+    // D32: TROOPS: FAIR (kTroopsMatched = 3) on a classic map behaves
+    // exactly as OWN — the >= 1 latch intentionally admits it, and matched
+    // fill exists only in mode Lua, so the "generated squads" delta is
+    // vacuous here: strip, no fill.
+    StripFixture fx;
+    fx.world().type = 0;
+    fx.world().ctf_requested_strip_scenario_troops = og::sim::kTroopsMatched;
+    fx.spawn_roster_member(FAMILY_SOLDIER, 0);
+    fx.spawn_living(FAMILY_ORC, 1);
+    fx.spawn_generator(FAMILY_TENT, 1);
+
+    fx.world().tick();
+    EXPECT_EQ(1, fx.count_order(Order::Living)) << "only the roster guy stays";
+    EXPECT_EQ(0, fx.count_order(Order::Generator))
+        << "FAIR strips generators on classic maps exactly like OWN";
 }
 
 TEST(ScenarioStripClassic, scripted_maps_are_left_to_their_mode_script)

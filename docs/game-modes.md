@@ -36,6 +36,14 @@ substate with `ctf.active == false`) that composes with modes via the
 `respawn_mode` knob; the seam's `clamp_respawn_mode` hook is how a mode
 constrains it.
 
+**Matched squads are NOT a mode either.** "TROOPS: FAIR" is one extra value
+(`kTroopsMatched = 3`) on the lobby's existing scenario-troops knob: it
+strips the authored cast exactly as TROOPS: OWN does, and the only behavior
+it adds lives in the scripted modes' own Lua, which sizes the AI squads it
+fields to the human roster instead of to the difficulty percent. No seam, no
+`IProgression`, no wire change, no protocol bump — see
+docs/matched-teams-design.md (the "control moved to TROOPS" amendment).
+
 ## Mode identity
 
 Source of truth: campaign package metadata. `campaign.yaml` carries an
@@ -195,6 +203,11 @@ Deferred upgrades, named so they land on the right feature's bill:
   returns to the team-build menu between levels; a seamless mode must fund
   the currently-unreachable in-session reload path
   (`prepare_clients_for_loaded_level` beyond return-to-lobby mode).
+- **Matched power for Onslaught**: onslaught fields no bot squads — its
+  fighters come out of generators — so "TROOPS: FAIR" strips there like OWN
+  (foundries stay) and the power model never runs. Matching it needs a rule
+  at the generator level (scale generator level and count against the human
+  census); fund it as its own design, not as a patch to the squad solver.
 - **Editor repack of moded packages**: the editor's campaign-info round-trip
   (`campaign_data_to_yaml`, level_runtime_data.cpp) does not carry `mode:`;
   editing a moded campaign's info in the editor drops the key. Acceptable

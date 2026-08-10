@@ -132,16 +132,16 @@ TEST(MenuSpec, ctf_setting_labels_full_cycles)
         EXPECT_EQ(label, og::ui::menu_item_label(*caps, context_for(save)));
     }
 
-    // Two states, same cycle on every campaign.
+    // Three states, same cycle on every campaign (matched-teams D28).
     save.ctf_strip_scenario_troops = 0;
     EXPECT_EQ("TROOPS: ALL",
               og::ui::menu_item_label(*troops, context_for(save)));
-    og::ui::toggle_ctf_scenario_troops(save);
-    EXPECT_EQ("TROOPS: OWN",
-              og::ui::menu_item_label(*troops, context_for(save)));
-    og::ui::toggle_ctf_scenario_troops(save);
-    EXPECT_EQ("TROOPS: ALL",
-              og::ui::menu_item_label(*troops, context_for(save)));
+    const char* troops_labels[] = {"TROOPS: OWN", "TROOPS: FAIR",
+                                   "TROOPS: ALL"};
+    for (const char* label : troops_labels) {
+        og::ui::toggle_ctf_scenario_troops(save);
+        EXPECT_EQ(label, og::ui::menu_item_label(*troops, context_for(save)));
+    }
     // The retired middle state still labels as OWN off an older save.
     save.ctf_strip_scenario_troops = 1;
     EXPECT_EQ("TROOPS: OWN",

@@ -249,7 +249,7 @@ struct WorldSnapshot {
     std::int16_t ctf_requested_team_count = 0; // 0 = Auto
     std::int16_t ctf_requested_capture_limit = 0;
     std::int16_t ctf_requested_respawn_ticks = 0;
-    std::int16_t ctf_requested_strip_scenario_troops = 0;
+    std::int16_t ctf_requested_strip_scenario_troops = 0; // 0 = keep; 2 = own; 3 = Fair (kTroopsMatched)
     // Classic respawn / generator knobs (GameWorld scalars).
     std::int16_t respawn_mode = 0;
     std::int16_t generator_rate = 0;

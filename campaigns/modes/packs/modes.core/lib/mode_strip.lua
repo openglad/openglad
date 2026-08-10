@@ -1,14 +1,16 @@
--- Scenario-troops strip, shared by all five modes: one rule set for the "bring your own fighters" setting so the modes cannot drift apart.
+-- Scenario-troops strip, shared by all six modes: one rule set for the "bring your own fighters" setting so the modes cannot drift apart.
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C
 
 -- og.match_setting("strip_troops") states. KEEP is the level exactly as
 -- authored (the menus call it "TROOPS: ALL"); OWN drops the whole authored
--- cast so the groups fight with their own fighters ("TROOPS: OWN").
--- The menus only ever write these two, but a save or a peer from a build
--- with the retired middle state can hand us a 1 -- anything above KEEP is
--- read as OWN.
+-- cast so the groups fight with their own fighters ("TROOPS: OWN"). The
+-- third menu state, 3 ("TROOPS: FAIR", core.MATCHED_TROOPS), strips
+-- IDENTICALLY to OWN -- anything above KEEP is read as strip-on here -- and
+-- differs only in mode_match's power seam, which sizes generated bot squads
+-- to the human census (matched-teams D26). A save or a peer from an old
+-- build can also hand us the retired middle state 1; it reads as OWN.
 local KEEP = 0
 local OWN = 2
 

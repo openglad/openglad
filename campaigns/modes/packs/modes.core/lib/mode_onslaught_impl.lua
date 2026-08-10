@@ -673,7 +673,9 @@ local function on_mode_init(level, row)
   -- authored generator/living teams.
   local mask = match.own_roster_activation(authored_mask, obs)
   if mask == nil then
-    local requested = og.match_setting("team_count")
+    -- Normalized request: Auto (raw <= 0) means no numeric clamp — matched
+    -- POWER is out of scope for Onslaught entirely (D17).
+    local requested = core.team_count_request()
     if requested <= 0 then
       requested = row.teams or 0
     end

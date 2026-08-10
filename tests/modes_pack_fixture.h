@@ -8,7 +8,8 @@
  */
 
 // Shared fixture for the multiplayer-modes campaign-pack tests
-// (og_unit_modes now; the TDM/Mutant/Soccer/Onslaught waves reuse it).
+// (og_unit_modes now; the TDM/Mutant/Soccer/Onslaught/Basketball waves
+// reuse it).
 //
 // Builds a temporary .glad embedding the CURRENT modes pack sources
 // (campaigns/modes/packs/modes.core/**)
@@ -29,6 +30,7 @@
 #include <openglad/gameplay/families/family_string_ids.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -49,7 +51,25 @@
 std::string get_user_path();
 std::string get_asset_path();
 
+namespace og::script {
+extern std::int64_t g_test_world_instruction_budget;
+}
+
 namespace og::modes_test {
+
+// RAII override of the per-world Lua instruction budget. The restore runs
+// on every exit path, so an early fatal ASSERT inside a budget-probed test
+// cannot leak a reduced budget into every later test in the binary.
+struct BudgetOverride
+{
+    explicit BudgetOverride(std::int64_t v)
+    {
+        og::script::g_test_world_instruction_budget = v;
+    }
+    ~BudgetOverride() { og::script::g_test_world_instruction_budget = 0; }
+    BudgetOverride(const BudgetOverride&) = delete;
+    BudgetOverride& operator=(const BudgetOverride&) = delete;
+};
 
 inline constexpr const char* kCampaignId = "org.test.modespack";
 inline constexpr const char* kRulesPackId = "modes.core";
@@ -80,7 +100,7 @@ inline constexpr int kOnsLevelB = 9402;
 inline constexpr int kOnsLevelC = 9403;
 
 // lib/mode_strip.lua probes (9500+): the shared scenario-troops strip the
-// five mode impls call from on_mode_init. One level per opts shape, so the
+// six mode impls call from on_mode_init. One level per opts shape, so the
 // keep_generators arm is exercised on its own.
 inline constexpr int kStripLevelDefault = 9500;      // opts = nil
 inline constexpr int kStripLevelKeepGens = 9501;     // keep_generators = true
@@ -98,6 +118,80 @@ inline constexpr int kItemsCursorSlot = 40;
 inline constexpr int kItemsLastSlot = 41;
 inline constexpr int kItemsDefaultInterval = 60;
 inline constexpr int kItemsRowIntervalB = 90;
+
+// Basketball test courts (9700+, D13). Rows live in kTestRegistrationLua
+// below and register through bball.make_hooks, laid out on the default
+// 40x60 test grid (640x960 px). 9701 is the reference two-team court: the
+// hoops face each other across the middle row, 512 px apart, with the jump
+// spot exactly between them; 9702 hangs one hoop on each of the four
+// sides. 9703 and 9706-9709 are the manifest-error arms, one missing field
+// each, so every on_mode_init refusal has its own row.
+inline constexpr int kBballLevelA = 9701;         // two-team reference court
+inline constexpr int kBballLevelB = 9702;         // four-hoop court
+inline constexpr int kBballLevelNoHoops = 9703;   // hoops field absent
+inline constexpr int kBballLevelCaps = 9704;      // reference court + caps
+inline constexpr int kBballLevelShort = 9705;     // 120-tick time limit
+inline constexpr int kBballLevelNoArc = 9706;     // arc_radius absent
+inline constexpr int kBballLevelNoJump = 9707;    // jump_ball absent
+inline constexpr int kBballLevelHalfHoops = 9708; // hoop for team 0 only
+inline constexpr int kBballLevelNoRow = 9709;     // make_hooks(nil)
+
+// TROOPS: FAIR power-model probes (9095/9096, matched-teams WP-E).
+// 9095 logs the pure-function arms (census, walker_power, predicted_power,
+// solver, bot_level_for) plus the model-pin ladder over whatever world the
+// test authored. 9096 drives match.spawn_bots directly at team 1, cursor
+// slot 12, parameterized through input mode vars the C++ test sets before
+// the first tick (mode vars are NOT cleared by lazy init): target, plan,
+// mid-match flag, and the MATCHED.SIZE headcount latch (D34/D40).
+inline constexpr int kMatchProbeLevel = 9095;
+inline constexpr int kMatchSpawnProbeLevel = 9096;
+
+// The shared matched-teams header slots of lib/mode_match.lua (table
+// MATCHED — packed PLAN codes are base-100 per team, code = L * 10 + k;
+// SIZE is the census headcount H the spawn seam truncates squads to,
+// matched-teams D34/D40).
+inline constexpr int kSlotMatchedTarget = 2;
+inline constexpr int kSlotMatchedPlan = 3;
+inline constexpr int kSlotMatchedAnnounced = 4;
+inline constexpr int kSlotMatchedSize = 5;
+
+// 9096 probe inputs (test-owned scratch slots — mode-private on the probe
+// level, which registers its own hooks; relocated 5/6/7 -> 8/9/10 when
+// MATCHED.SIZE claimed header slot 5, matched-teams D40).
+inline constexpr int kMatchProbeInTarget = 8;
+inline constexpr int kMatchProbeInPlan = 9;
+inline constexpr int kMatchProbeInMidMatch = 10;
+inline constexpr int kMatchProbeInSize = 11;
+
+// Decode one team's packed matched-plan code.
+inline int matched_plan_code(std::int32_t plan, int team)
+{
+    static constexpr std::int32_t kBase[4] = {1, 100, 10000, 1000000};
+    return static_cast<int>((plan / kBase[team]) % 100);
+}
+
+// Arm matched power for a world — the ONE place tests name the trigger, so
+// a future control move is a one-line change here (the amendment moved it
+// once already: the team_count sentinel 5 -> the scenario-troops sentinel,
+// matched-teams D25/D33(c)). NOTE the bundle (D26): arming means
+// TROOPS: FAIR, so the world ALSO strips authored non-guy troops and
+// roster-activates exactly like TROOPS: OWN — a fixture world holding
+// authored non-guy livings, or asserting fills beyond the roster-activation
+// mask, changes meaning when armed (D33(b)).
+inline void arm_matched(GameWorld& world)
+{
+    world.ctf_requested_strip_scenario_troops = og::sim::kTroopsMatched;
+}
+
+// Reference-court geometry (rows 9701, 9704, 9705; 9702 reuses the radius
+// and the jump spot). Pixel centers, matching the Lua rows byte for byte.
+inline constexpr int kBballArcRadius = 128;
+inline constexpr int kBballHoop0X = 64;   // the hoop team 0 defends
+inline constexpr int kBballHoop0Y = 480;
+inline constexpr int kBballHoop1X = 576;  // the hoop team 1 defends
+inline constexpr int kBballHoop1Y = 480;
+inline constexpr int kBballJumpX = 320;
+inline constexpr int kBballJumpY = 480;
 
 // The mode-var slot map of lib/mode_ctf_impl.lua (table S). The behavior
 // tests read match state straight from GameWorld::mode.vars, so a silent
@@ -323,6 +417,157 @@ inline constexpr const char* kTestRegistrationLua =
     "  on_mode_tick = function(level, tick)\n"
     "    items.run(items_row_b, 40, 41, 60)\n"
     "    items.run(items_row_b0, 40, 41, 60)\n"
+    "  end,\n"
+    "})\n"
+    "local bball = og.use(\"mode_basketball_impl\")\n"
+    "local bball_rows = {\n"
+    "  { id = 9701, mode = \"basketball\", teams = 2, time_limit = 7200,\n"
+    "    score_limit = 6, arc_radius = 128,\n"
+    "    hoops = { [0] = { x = 64, y = 480 },\n"
+    "              [1] = { x = 576, y = 480 } },\n"
+    "    jump_ball = { x = 320, y = 480 } },\n"
+    "  { id = 9702, mode = \"basketball\", teams = 4, time_limit = 7200,\n"
+    "    score_limit = 6, arc_radius = 128,\n"
+    "    hoops = { [0] = { x = 320, y = 64 },\n"
+    "              [1] = { x = 576, y = 480 },\n"
+    "              [2] = { x = 320, y = 896 },\n"
+    "              [3] = { x = 64, y = 480 } },\n"
+    "    jump_ball = { x = 320, y = 480 } },\n"
+    "  { id = 9703, mode = \"basketball\", teams = 2, time_limit = 7200,\n"
+    "    score_limit = 6, arc_radius = 128,\n"
+    "    jump_ball = { x = 320, y = 480 } },\n"
+    "  { id = 9704, mode = \"basketball\", teams = 2, time_limit = 7200,\n"
+    "    score_limit = 6, arc_radius = 128,\n"
+    "    spawn_caps = { [0] = 2, [1] = 2 },\n"
+    "    hoops = { [0] = { x = 64, y = 480 },\n"
+    "              [1] = { x = 576, y = 480 } },\n"
+    "    jump_ball = { x = 320, y = 480 } },\n"
+    "  { id = 9705, mode = \"basketball\", teams = 2, time_limit = 120,\n"
+    "    score_limit = 21, arc_radius = 128,\n"
+    "    hoops = { [0] = { x = 64, y = 480 },\n"
+    "              [1] = { x = 576, y = 480 } },\n"
+    "    jump_ball = { x = 320, y = 480 } },\n"
+    "  { id = 9706, mode = \"basketball\", teams = 2, time_limit = 7200,\n"
+    "    score_limit = 6,\n"
+    "    hoops = { [0] = { x = 64, y = 480 },\n"
+    "              [1] = { x = 576, y = 480 } },\n"
+    "    jump_ball = { x = 320, y = 480 } },\n"
+    "  { id = 9707, mode = \"basketball\", teams = 2, time_limit = 7200,\n"
+    "    score_limit = 6, arc_radius = 128,\n"
+    "    hoops = { [0] = { x = 64, y = 480 },\n"
+    "              [1] = { x = 576, y = 480 } } },\n"
+    "  { id = 9708, mode = \"basketball\", teams = 2, time_limit = 7200,\n"
+    "    score_limit = 6, arc_radius = 128,\n"
+    "    hoops = { [0] = { x = 64, y = 480 } },\n"
+    "    jump_ball = { x = 320, y = 480 } },\n"
+    "}\n"
+    "for i = 1, #bball_rows do\n"
+    "  og.register_level_hooks(bball_rows[i].id,\n"
+    "                          bball.make_hooks(bball_rows[i]))\n"
+    "end\n"
+    "og.register_level_hooks(9709, bball.make_hooks(nil))\n"
+    "local match_squad = { \"core:soldier\", \"core:archer\", \"core:elf\",\n"
+    "                      \"core:mage\", \"core:thief\" }\n"
+    "-- Every TUPLE row of mode_match.lua: the 5 squad families plus the\n"
+    "-- other hook-declaring core families the table carries for future\n"
+    "-- rosters (beast's family string id is core:#18).\n"
+    "local match_pin_families = { \"core:soldier\", \"core:archer\",\n"
+    "                             \"core:elf\", \"core:mage\", \"core:thief\",\n"
+    "                             \"core:orc\", \"core:#18\", \"core:cleric\",\n"
+    "                             \"core:druid\" }\n"
+    "og.register_level_hooks(9095, {\n"
+    "  on_mode_init = function(level)\n"
+    "    local t, sums, hsize = match_lib.census_power(og.oblist())\n"
+    "    og.log(\"census\", t, sums[1], sums[2], sums[3], sums[4], hsize)\n"
+    "    for _, w in ipairs(og.oblist()) do\n"
+    "      if w:dead() == 0 and w:order() == og.C.ORDER_LIVING then\n"
+    "        og.log(\"wp\", w:team_num(), match_lib.walker_power(w))\n"
+    "      end\n"
+    "    end\n"
+    "    local sfam = og.family_id(\"living\", \"core:soldier\")\n"
+    "    local floor_probe = og.add_ob(\"living\", sfam)\n"
+    "    floor_probe:set_damage(0)\n"
+    "    floor_probe:set_stepsize(0)\n"
+    "    og.log(\"wp_floor\", match_lib.walker_power(floor_probe),\n"
+    "           og.trunc(floor_probe:s_max_hitpoints()),\n"
+    "           og.trunc(floor_probe:s_max_magicpoints()))\n"
+    "    local fresh = og.add_ob(\"living\", sfam)\n"
+    "    local base = match_lib.measured_base(fresh)\n"
+    "    og.log(\"base\", base.hp, base.mp, base.armor, base.dmg,\n"
+    "           base.sp, base.ff)\n"
+    "    og.log(\"pred\", match_lib.predicted_power(\"core:soldier\", base, 2),\n"
+    "           match_lib.predicted_power(\"core:notatuple\", base, 2),\n"
+    "           match_lib.predicted_power(\"core:mage\", base, 2),\n"
+    "           match_lib.predicted_power(\"core:mage\", base, 3))\n"
+    "    local sb = { hp = 100, mp = 0, armor = 0, dmg = 20, sp = 0, ff = 6 }\n"
+    "    local bases = {}\n"
+    "    for i = 1, 5 do\n"
+    "      bases[i] = { family = match_squad[i], stats = sb }\n"
+    "    end\n"
+    "    local b1, b3, b4, b9 = 0, 0, 0, 0\n"
+    "    for i = 1, 5 do\n"
+    "      b1 = b1 + match_lib.predicted_power(match_squad[i], sb, 1)\n"
+    "      b3 = b3 + match_lib.predicted_power(match_squad[i], sb, 3)\n"
+    "      b4 = b4 + match_lib.predicted_power(match_squad[i], sb, 4)\n"
+    "      b9 = b9 + match_lib.predicted_power(match_squad[i], sb, 9)\n"
+    "    end\n"
+    "    local inc = match_lib.predicted_power(match_squad[1], sb, 4)\n"
+    "                - match_lib.predicted_power(match_squad[1], sb, 3)\n"
+    "    og.log(\"solve_tie_parity\", og.mod(inc, 2))\n"
+    "    local l, k, c = match_lib.solve_matched_levels(b3 + og.div(inc, 2),\n"
+    "                                                   bases)\n"
+    "    og.log(\"solve_tie\", l, k, c and 1 or 0)\n"
+    "    local p42 = b4\n"
+    "    for i = 1, 2 do\n"
+    "      p42 = p42 + match_lib.predicted_power(match_squad[i], sb, 5)\n"
+    "                - match_lib.predicted_power(match_squad[i], sb, 4)\n"
+    "    end\n"
+    "    l, k, c = match_lib.solve_matched_levels(p42, bases)\n"
+    "    og.log(\"solve_exact\", l, k, c and 1 or 0)\n"
+    "    l, k, c = match_lib.solve_matched_levels(og.div(b1, 2), bases)\n"
+    "    og.log(\"solve_low\", l, k, c and 1 or 0)\n"
+    "    l, k, c = match_lib.solve_matched_levels(b9 * 2, bases)\n"
+    "    og.log(\"solve_high\", l, k, c and 1 or 0)\n"
+    "    l, k, c = match_lib.solve_matched_levels(\n"
+    "        match_lib.predicted_power(\"core:archer\", sb, 4),\n"
+    "        { { family = \"core:archer\", stats = sb } })\n"
+    "    og.log(\"solve_n1\", l, k, c and 1 or 0)\n"
+    "    og.mode_set(3, 430000)\n"
+    "    og.log(\"blf\", match_lib.bot_level_for(2, 1),\n"
+    "           match_lib.bot_level_for(2, 3), match_lib.bot_level_for(2, 4),\n"
+    "           match_lib.bot_level_for(0, 1))\n"
+    "    og.mode_set(3, 0)\n"
+    "    og.mode_set(2, 4242)\n"
+    "    match_lib.own_roster_activation(15, og.oblist())\n"
+    "    og.log(\"census_latch\", og.mode_get(2))\n"
+    "    og.mode_set(2, 0)\n"
+    "    for i = 1, #match_pin_families do\n"
+    "      local fam = og.family_id(\"living\", match_pin_families[i])\n"
+    "      local fam_base = match_lib.measured_base(og.add_ob(\"living\", fam))\n"
+    "      for _, lv in ipairs({ 1, 3, 5 }) do\n"
+    "        local w = og.add_ob(\"living\", fam)\n"
+    "        w:set_team_num(1)\n"
+    "        w:s_set_level(lv)\n"
+    "        w:set_difficulty(lv)\n"
+    "        og.log(\"modelpin\", match_pin_families[i], lv,\n"
+    "               match_lib.walker_power(w),\n"
+    "               match_lib.predicted_power(match_pin_families[i],\n"
+    "                                         fam_base, lv))\n"
+    "      end\n"
+    "    end\n"
+    "  end,\n"
+    "})\n"
+    "og.register_level_hooks(9096, {\n"
+    "  on_mode_init = function(level)\n"
+    "    if og.mode_get(10) == 1 then\n"
+    "      og.mode_set(0, 99)\n"
+    "    end\n"
+    "    og.mode_set(2, og.mode_get(8))\n"
+    "    og.mode_set(3, og.mode_get(9))\n"
+    "    og.mode_set(5, og.mode_get(11))\n"
+    "    match_lib.spawn_bots(2, {}, 12)\n"
+    "    match_lib.spawn_bots(1, match_squad, 12)\n"
+    "    og.log(\"spawned\", og.mode_get(2), og.mode_get(3), og.mode_get(4))\n"
     "  end,\n"
     "})\n";
 
@@ -598,6 +843,26 @@ struct ModesCtfWorld : TestGameWorld
         w->myguy->id = guy_id;
         return w;
     }
+
+    // A LEVELED roster hero, the authority-path production shape
+    // (headless_server_runtime.cpp create_team_walker): level the guy
+    // through the family level_up hook, mirror the level into walker
+    // stats, then derive combat stats from the trained guy.
+    walker* spawn_leveled_hero(int family, int team, int x, int y, int guy_id,
+                               short guy_level, int act_type = ACT_CONTROL)
+    {
+        walker* w = spawn_hero(family, team, x, y, guy_id, act_type);
+        if (w == nullptr)
+            return nullptr;
+        w->myguy->upgrade_to_level(guy_level, true);
+        if (w->stats() != nullptr)
+            w->stats()->set_level(w->myguy->level);
+        w->myguy->update_derived_stats(w);
+        return w;
+    }
+
+    // Arm matched power for this world (see the free arm_matched above).
+    void arm_matched() { og::modes_test::arm_matched(world()); }
 
     void tick(int count = 1)
     {

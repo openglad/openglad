@@ -2006,10 +2006,14 @@ TEST_F(CoverageReportGate, each_half_must_meet_the_bar_not_only_the_union)
 
     // C++: every tracked TU present, enormous and fully covered, so the
     // UNION clears the line bar on C++ slack alone (and the completeness
-    // check has nothing to say — this test is about the bars).
+    // check has nothing to say — this test is about the bars). The forged
+    // slack must dominate the REAL Lua inventory (the denominator is the
+    // live repo): at 95% each uncovered Lua line needs ~19 covered C++
+    // lines, so size generously — 2000/TU held ~2x headroom over the
+    // ~9.7k-line inventory when the basketball mode landed.
     ASSERT_FALSE(tracked_src_cpp().empty());
     const std::string cpp_args =
-        forge_cpp_tracefile({}, {}, /*lines_per_file=*/1000);
+        forge_cpp_tracefile({}, {}, /*lines_per_file=*/2000);
 
     const ReportRun run =
         run_report(manifest_args({"og_unit_script"}) + fixtures_args() +

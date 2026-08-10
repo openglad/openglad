@@ -2394,8 +2394,13 @@ int og_team_color_name(lua_State* L)
 }
 
 // og.match_setting(name) — the lobby/save match knobs, reinterpreted as
-// generic match settings; 0 always means "mode default". Names:
-// "team_count" (0 = Auto), "score_limit", "respawn_ticks", "strip_troops",
+// generic match settings; 0 always means "mode default" (strip_troops:
+// 0 keep, 2 own, 3 match; 1 legacy = own). Names: "team_count" (0 = Auto),
+// "score_limit", "respawn_ticks", "strip_troops" (0 keeps the authored
+// cast; 2 strips it; 3 = "TROOPS: FAIR" strips it AND sizes the generated
+// bot squads to the human census — the bot-squad power model is the only
+// reader that separates 3 from 2, and classic maps play 3 as plain own;
+// the retired middle state 1 reads as own),
 // "respawn_mode" (the difficulty submenu's classic respawn selector),
 // "difficulty" (the session difficulty percent, 100 = normal — the CTF
 // bot-squad level formula reads it).

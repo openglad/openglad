@@ -2,7 +2,7 @@
  *
  * Emits lib/mode_levels.lua under kPackSourceDir (the campaign's embedded
  * pack), the og.use("mode_levels")
- * data module the five mode scripts key their per-level registrations off.
+ * data module the six mode scripts key their per-level registrations off.
  * Generated from the same ExpectedLevel rows that build the maps and drive
  * the self-check, so map content, manifest, and validation cannot drift
  * (single source, D8). The module is COMMITTED (so luals, the statement
@@ -56,7 +56,8 @@ std::string manifest_lua_text(const std::vector<ExpectedLevel>& rows)
         << "-- Pure data for the mode scripts (og.use(\"mode_levels\"))."
            " Fields per level id:\n"
         << "--   mode        \"tdm\" | \"ctf\" | \"onslaught\" | \"soccer\""
-           " | \"mutant\"\n"
+           " | \"basketball\" |\n"
+        << "--               \"mutant\"\n"
         << "--   teams       active score-team count (team bytes 0.."
            "teams-1)\n"
         << "--   time_limit  sim ticks (12/s) the match may run before the"
@@ -78,6 +79,18 @@ std::string manifest_lua_text(const std::vector<ExpectedLevel>& rows)
         << "--   kickoff     soccer: kickoff point, PIXEL center of the"
            " kickoff\n"
         << "--               tile\n"
+        << "--   hoops       basketball: team byte -> PIXEL center of the"
+           " rim tile\n"
+        << "--               that team DEFENDS (the PIX_CARPET_M2 center"
+           " of the\n"
+        << "--               3x3 dunk carpet)\n"
+        << "--   arc_radius  basketball: three-point release distance in"
+           " PIXELS\n"
+        << "--               from each rim center (+64 px = the shot-range"
+           " bound)\n"
+        << "--   jump_ball   basketball: PIXEL center of the center-court"
+           " jump\n"
+        << "--               tile (the neutral re-spot)\n"
         << "--   item_pads   respawnable-item pads: PIXEL center + core"
            " family\n"
         << "--               (\"drumstick\" | \"magic_potion\" |"
@@ -125,6 +138,23 @@ std::string manifest_lua_text(const std::vector<ExpectedLevel>& rows)
                 "    kickoff = {{ x = {}, y = {} }},\n",
                 row.kickoff.tx * GRID_SIZE + GRID_SIZE / 2,
                 row.kickoff.ty * GRID_SIZE + GRID_SIZE / 2);
+        if (!row.hoops.empty())
+        {
+            out << "    hoops = {\n";
+            for (std::size_t team = 0; team < row.hoops.size(); ++team)
+                out << std::format(
+                    "      [{}] = {{ x = {}, y = {} }},\n", team,
+                    row.hoops[team].tx * GRID_SIZE + GRID_SIZE / 2,
+                    row.hoops[team].ty * GRID_SIZE + GRID_SIZE / 2);
+            out << "    },\n";
+        }
+        if (row.arc_radius > 0)
+            out << std::format("    arc_radius = {},\n", row.arc_radius);
+        if (row.jump_ball.tx >= 0)
+            out << std::format(
+                "    jump_ball = {{ x = {}, y = {} }},\n",
+                row.jump_ball.tx * GRID_SIZE + GRID_SIZE / 2,
+                row.jump_ball.ty * GRID_SIZE + GRID_SIZE / 2);
         if (!row.item_pads.empty())
         {
             out << "    item_pads = {\n";

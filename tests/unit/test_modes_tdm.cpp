@@ -15,9 +15,11 @@
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/script/family_hooks.h>
+#include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/script/script_host.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -1135,4 +1137,1100 @@ TEST_F(ModesTdm, match_replicates_to_a_client_mirror_without_hash_strikes)
                   mirror.world().mode.vars[static_cast<std::size_t>(slot)])
             << "mode var slot " << slot;
     }
+}
+
+// ===========================================================================
+// mode_core team-count helper arms (matched-teams D18)
+// ===========================================================================
+
+namespace {
+
+// The probe's own level id (nothing in the fixture manifest binds it) and
+// the slots its init writes — no mode impl runs on this level, so the
+// whole var file belongs to the probe.
+inline constexpr int kHelperProbeLevel = 9091;
+inline constexpr int kProbeSlotCount = 60;
+inline constexpr int kProbeSlotMatched = 61;
+inline constexpr int kProbeSlotConstant = 62;
+inline constexpr int kProbeSlotMask = 63;
+
+// RAII registration of the helper probe, under the RULES pack id so
+// og.use resolves the mounted mode_core module. Init reports
+// core.team_count_request() and feeds the RAW og.match_setting value to
+// core.activate_teams over the sparse authored mask 13 = {0, 2, 3} (the
+// same domain the 9090 probe pins). The dtor swaps in an empty chunk so
+// no later world in this binary re-registers level 9091 (the next test's
+// mount clears the registry outright).
+struct TeamCountProbeScript
+{
+    TeamCountProbeScript()
+    {
+        og::script::register_pack_script(
+            {kRulesPackId, "zz_team_count_probe.lua",
+             "local core = og.use(\"mode_core\")\n"
+             "og.register_level_hooks(9091, {\n"
+             "  on_mode_init = function(level)\n"
+             "    local count, matched = core.team_count_request()\n"
+             "    og.mode_set(60, count)\n"
+             "    og.mode_set(61, matched and 1 or 0)\n"
+             "    og.mode_set(62, core.MATCHED_TROOPS)\n"
+             "    og.mode_set(63, core.activate_teams(13,\n"
+             "                    og.match_setting(\"team_count\")))\n"
+             "  end,\n"
+             "})\n"});
+    }
+
+    ~TeamCountProbeScript()
+    {
+        og::script::register_pack_script(
+            {kRulesPackId, "zz_team_count_probe.lua", ""});
+    }
+};
+
+}  // namespace
+
+TEST_F(ModesTdm, team_count_request_auto_arm_reports_no_clamp)
+{
+    TeamCountProbeScript probe;
+    ModesCtfWorld fx(kHelperProbeLevel);
+    fx.tick(1);
+
+    ASSERT_TRUE(fx.world().mode.active) << "the probe init must succeed";
+    EXPECT_EQ(0, fx.var(kProbeSlotCount))
+        << "Auto (raw 0) normalizes to count 0";
+    EXPECT_EQ(0, fx.var(kProbeSlotMatched)) << "Auto is not Matched";
+    EXPECT_EQ(13, fx.var(kProbeSlotMask))
+        << "activate_teams over raw 0 takes every authored team";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesTdm, team_count_request_numeric_arm_passes_through)
+{
+    TeamCountProbeScript probe;
+    ModesCtfWorld fx(kHelperProbeLevel);
+    fx.world().ctf_requested_team_count = 2;
+    fx.tick(1);
+
+    ASSERT_TRUE(fx.world().mode.active) << "the probe init must succeed";
+    EXPECT_EQ(2, fx.var(kProbeSlotCount)) << "2..4 pass through unchanged";
+    EXPECT_EQ(0, fx.var(kProbeSlotMatched)) << "a numeric request is not Matched";
+    EXPECT_EQ(5, fx.var(kProbeSlotMask))
+        << "activate_teams(13, 2) takes the first two authored teams {0, 2}";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesTdm, team_count_request_matched_arm_rides_the_troops_field)
+{
+    TeamCountProbeScript probe;
+    ModesCtfWorld fx(kHelperProbeLevel);
+    fx.arm_matched();  // TROOPS: FAIR — the team count stays Auto
+    fx.tick(1);
+
+    ASSERT_TRUE(fx.world().mode.active) << "the probe init must succeed";
+    EXPECT_EQ(0, fx.var(kProbeSlotCount))
+        << "an Auto team count normalizes to count 0 regardless of matching";
+    EXPECT_EQ(1, fx.var(kProbeSlotMatched))
+        << "the matched flag is derived from strip_troops == FAIR (D29)";
+    EXPECT_EQ(og::sim::kTroopsMatched, fx.var(kProbeSlotConstant))
+        << "core.MATCHED_TROOPS must equal the C++ sentinel";
+    EXPECT_EQ(13, fx.var(kProbeSlotMask))
+        << "the strip field feeds no mask — activation is Auto's (D29)";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesTdm, team_count_request_matched_composes_with_a_numeric_count)
+{
+    // The old TEAMS: Match sentinel could not coexist with a numeric count;
+    // the TROOPS: FAIR trigger is orthogonal to it by construction (D25) —
+    // the count clamps the mask exactly as unmatched 2 does while the
+    // matched flag still reports the power request.
+    TeamCountProbeScript probe;
+    ModesCtfWorld fx(kHelperProbeLevel);
+    fx.arm_matched();
+    fx.world().ctf_requested_team_count = 2;
+    fx.tick(1);
+
+    ASSERT_TRUE(fx.world().mode.active) << "the probe init must succeed";
+    EXPECT_EQ(2, fx.var(kProbeSlotCount)) << "the numeric count passes through";
+    EXPECT_EQ(1, fx.var(kProbeSlotMatched)) << "matched rides the troops field";
+    EXPECT_EQ(5, fx.var(kProbeSlotMask))
+        << "activate_teams(13, 2) takes the first two authored teams {0, 2}";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesTdm, matched_mask_equals_own_mask_at_every_numeric_count)
+{
+    // The §A.4 twin promise, count-swept: FAIR is mask-invisible at 3 and
+    // 4 exactly as at Auto and 2 — the strip trigger feeds power, never
+    // activation. Twin worlds run strictly SEQUENTIALLY (two live
+    // fixtures resolve script bindings against the last-constructed
+    // world — the harness trap).
+    for (const int count : {3, 4})
+    {
+        std::int32_t own_mask = 0;
+        {
+            TeamCountProbeScript probe;
+            ModesCtfWorld own(kHelperProbeLevel);
+            own.world().ctf_requested_strip_scenario_troops = 2;  // OWN
+            own.world().ctf_requested_team_count =
+                static_cast<short>(count);
+            own.tick(1);
+            ASSERT_TRUE(own.world().mode.active) << "count " << count;
+            own_mask = own.var(kProbeSlotMask);
+        }
+        TeamCountProbeScript probe;
+        ModesCtfWorld fair(kHelperProbeLevel);
+        fair.arm_matched();
+        fair.world().ctf_requested_team_count = static_cast<short>(count);
+        fair.tick(1);
+        ASSERT_TRUE(fair.world().mode.active) << "count " << count;
+        EXPECT_EQ(own_mask, fair.var(kProbeSlotMask))
+            << "FAIR must clamp identically to OWN at count " << count;
+        EXPECT_EQ(1, fair.var(kProbeSlotMatched)) << "count " << count;
+        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+    }
+}
+
+// ===========================================================================
+// TROOPS: FAIR power model (matched-teams WP-E, spec §4-§5 + §7)
+// ===========================================================================
+
+namespace {
+
+// Log lines the 9095/9096 probes emit, filtered by their first tab field.
+std::vector<std::string> matched_log_lines(GameWorld& world,
+                                           const std::string& prefix)
+{
+    std::vector<std::string> out;
+    for (const auto& line : world.scripts().host().log())
+    {
+        if (line.rfind(prefix + "\t", 0) == 0)
+            out.push_back(line);
+    }
+    return out;
+}
+
+std::vector<std::string> split_tabs(const std::string& line)
+{
+    std::vector<std::string> out;
+    std::size_t start = 0;
+    while (true)
+    {
+        const std::size_t tab = line.find('\t', start);
+        if (tab == std::string::npos)
+        {
+            out.push_back(line.substr(start));
+            return out;
+        }
+        out.push_back(line.substr(start, tab - start));
+        start = tab + 1;
+    }
+}
+
+// Non-fatal on a missing field (a matched_log miss returns {}), so a lost
+// probe line reads as its own clean failure and the rest of the test's
+// assertions still run and print their evidence.
+long long tab_int(const std::vector<std::string>& fields, std::size_t index)
+{
+    if (index >= fields.size())
+    {
+        ADD_FAILURE() << "probe field " << index << " missing (line has "
+                      << fields.size() << " fields)";
+        return 0;
+    }
+    return std::stoll(fields[index]);
+}
+
+// One line by prefix, split; asserts exactly one match.
+std::vector<std::string> matched_log(GameWorld& world,
+                                     const std::string& prefix)
+{
+    const auto lines = matched_log_lines(world, prefix);
+    EXPECT_EQ(1u, lines.size()) << "probe line " << prefix;
+    if (lines.empty())
+        return {};
+    return split_tabs(lines.front());
+}
+
+// The five squad families in spawn order, keyed to engine family bytes.
+struct SquadLevels
+{
+    int soldier = 0;
+    int archer = 0;
+    int elf = 0;
+    int mage = 0;
+    int thief = 0;
+};
+
+SquadLevels squad_levels_on_team(GameWorld& world, int team)
+{
+    SquadLevels levels;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        if (w->team_num() != static_cast<unsigned char>(team))
+            continue;
+        if (w->stats() == nullptr)
+            continue;
+        const int level = w->stats()->level();
+        switch (w->family())
+        {
+        case FAMILY_SOLDIER: levels.soldier = level; break;
+        case FAMILY_ARCHER:  levels.archer = level; break;
+        case FAMILY_ELF:     levels.elf = level; break;
+        case FAMILY_MAGE:    levels.mage = level; break;
+        case FAMILY_THIEF:   levels.thief = level; break;
+        default: break;
+        }
+    }
+    return levels;
+}
+
+// A fresh (level 1) roster squad of the five bot families on one team —
+// the §4.2 stock calibration point.
+void author_fresh_squad(ModesCtfWorld& fx, int team, int y)
+{
+    fx.spawn_leveled_hero(FAMILY_SOLDIER, team, 200, y, 1, 1);
+    fx.spawn_leveled_hero(FAMILY_ARCHER, team, 232, y, 2, 1);
+    fx.spawn_leveled_hero(FAMILY_ELF, team, 264, y, 3, 1);
+    fx.spawn_leveled_hero(FAMILY_MAGE, team, 296, y, 4, 1);
+    fx.spawn_leveled_hero(FAMILY_THIEF, team, 328, y, 5, 1);
+}
+
+}  // namespace
+
+// Pure-function arms over the 9095 probe: the walker_power zero-offense
+// floor, the measured bot base (§4.2: armor 0, mp 50 at bot base — the
+// statistics default the loader leaves in place), the predicted_power
+// tuple/default/half-armor arms, every solver arm with its tie-break, and
+// both bot_level_for arms. All pinned values are DERIVED — the probe
+// computes them from the shipped tuples over the shipped loader base
+// (soldier 120/50/0/20/4/6), and the comments show the arithmetic.
+TEST_F(ModesTdm, matched_power_metric_and_solver_arms)
+{
+    ModesCtfWorld fx(kMatchProbeLevel);
+    // Matched requested, so the probe's own_roster_activation call reaches
+    // the census latch: a nonzero stored target is never re-censused.
+    fx.arm_matched();
+    fx.tick(1);
+    ASSERT_TRUE(fx.world().mode.active) << "the probe init must succeed";
+    ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
+
+    const auto latch = matched_log(fx.world(), "census_latch");
+    EXPECT_EQ(4242, tab_int(latch, 1))
+        << "a stored target must survive a repeat census attempt (D24)";
+    EXPECT_EQ(0, fx.var(kSlotMatchedSize))
+        << "the TARGET latch guards SIZE too — no repeat census wrote it";
+
+    // Census of a world with no has_guy walker: T = 0, all team sums 0,
+    // headcount 0 (D34: no humans -> nothing to match).
+    const auto census = matched_log(fx.world(), "census");
+    ASSERT_EQ(7u, census.size());
+    EXPECT_EQ(0, tab_int(census, 1)) << "no humans -> T = 0 (E1)";
+    for (std::size_t i = 2; i < 6; ++i)
+        EXPECT_EQ(0, tab_int(census, i));
+    EXPECT_EQ(0, tab_int(census, 6)) << "no humans -> H = 0";
+
+    // Zero-offense floor: OFF = 0 collapses f to the pool EHP =
+    // hp + mp / 2 (armor is 0 at bot base).
+    const auto floor_line = matched_log(fx.world(), "wp_floor");
+    ASSERT_EQ(4u, floor_line.size());
+    EXPECT_EQ(tab_int(floor_line, 2) + tab_int(floor_line, 3) / 2,
+              tab_int(floor_line, 1))
+        << "f of a zero-offense walker is exactly its pool (the +60 arm)";
+    EXPECT_GT(tab_int(floor_line, 1), 0);
+
+    // The measured bot base. The spec's §4.2 aside claimed bot base mp is
+    // 0 (the families declare init_max_magicpoints = 0) — MEASURED reality
+    // is mp 50, the statistics default the loader leaves in place. This is
+    // exactly why D13 measures instead of shipping constants; armor 0 does
+    // hold, so the 4*A term vanishes at bot base while M/2 does not.
+    const auto base = matched_log(fx.world(), "base");
+    ASSERT_EQ(7u, base.size());
+    EXPECT_EQ(120, tab_int(base, 1)) << "soldier loader hp";
+    EXPECT_EQ(50, tab_int(base, 2)) << "bot base mp (statistics default)";
+    EXPECT_EQ(0, tab_int(base, 3)) << "bot base armor is 0";
+    EXPECT_EQ(20, tab_int(base, 4)) << "soldier melee damage";
+    EXPECT_EQ(4, tab_int(base, 5)) << "soldier stepsize";
+    EXPECT_EQ(6, tab_int(base, 6)) << "soldier fire delay";
+
+    // predicted_power over that base (hp 120, mp 50, armor 0, dmg 20,
+    // sp 4, ff 6 -> RATE 20):
+    //  soldier L2 (13/8/5/2): H 172, M 82, D 30, A 8 -> ED 37, OFF 760,
+    //    EHP 245 -> f = (245 * 820) / 60 = 3348
+    //  unknown family -> default row (11/11/4/2): EHP 243, OFF 720 ->
+    //    f = (243 * 780) / 60 = 3159
+    //  mage L2 (7/14/3/0.5): armor trunc(2.0) = 2 -> EHP 209, OFF 660 ->
+    //    f = (209 * 720) / 60 = 2508
+    //  mage L3: armor trunc(4.5) = 4 (the half-armor floor) -> EHP 287,
+    //    OFF 880 -> f = (287 * 940) / 60 = 4496
+    const auto pred = matched_log(fx.world(), "pred");
+    ASSERT_EQ(5u, pred.size());
+    EXPECT_EQ(3348, tab_int(pred, 1)) << "soldier tuple row";
+    EXPECT_EQ(3159, tab_int(pred, 2)) << "default tuple row";
+    EXPECT_EQ(2508, tab_int(pred, 3)) << "mage row, integral armor term";
+    EXPECT_EQ(4496, tab_int(pred, 4)) << "mage row, floored 0.5 * 9 armor";
+
+    // Solver arms over synthetic bases (hp 100, dmg 20, sp 0, ff 6):
+    // the tie target is the exact midpoint of P(3,0) and P(3,1) — parity 0
+    // proves the tie is real, and tie-break answers the LOWER k (D22).
+    const auto parity = matched_log(fx.world(), "solve_tie_parity");
+    EXPECT_EQ(0, tab_int(parity, 1)) << "the tie case must be an exact tie";
+    const auto tie = matched_log(fx.world(), "solve_tie");
+    EXPECT_EQ(3, tab_int(tie, 1));
+    EXPECT_EQ(0, tab_int(tie, 2)) << "ties break to lower k";
+    EXPECT_EQ(0, tab_int(tie, 3));
+    const auto exact = matched_log(fx.world(), "solve_exact");
+    EXPECT_EQ(4, tab_int(exact, 1)) << "T = P(4,2) solves exactly";
+    EXPECT_EQ(2, tab_int(exact, 2));
+    EXPECT_EQ(0, tab_int(exact, 3));
+    const auto low = matched_log(fx.world(), "solve_low");
+    EXPECT_EQ(1, tab_int(low, 1)) << "T < B(1) clamps to uniform L1";
+    EXPECT_EQ(0, tab_int(low, 2));
+    EXPECT_EQ(1, tab_int(low, 3)) << "low clamp reports LIMIT";
+    const auto high = matched_log(fx.world(), "solve_high");
+    EXPECT_EQ(9, tab_int(high, 1)) << "T > B(9) clamps to uniform L9";
+    EXPECT_EQ(0, tab_int(high, 2)) << "L9 admits no upgrades";
+    EXPECT_EQ(1, tab_int(high, 3)) << "high clamp reports LIMIT";
+    const auto n1 = matched_log(fx.world(), "solve_n1");
+    EXPECT_EQ(4, tab_int(n1, 1)) << "n = 1 (mutant seat) solves on levels";
+    EXPECT_EQ(0, tab_int(n1, 2));
+    EXPECT_EQ(0, tab_int(n1, 3));
+
+    // bot_level_for: plan code 43 at team 2 -> first 3 members L5, rest
+    // L4; team 0 unsolved -> the legacy formula (percent 100 -> L2).
+    const auto blf = matched_log(fx.world(), "blf");
+    ASSERT_EQ(5u, blf.size());
+    EXPECT_EQ(5, tab_int(blf, 1));
+    EXPECT_EQ(5, tab_int(blf, 2));
+    EXPECT_EQ(4, tab_int(blf, 3));
+    EXPECT_EQ(2, tab_int(blf, 4)) << "unsolved team takes the legacy level";
+}
+
+// The model-pin tripwire (D13/§8): for EVERY family with a TUPLE row (the
+// 5 squad families plus the orc/beast/cleric/druid rows carried for future
+// rosters) the probe spawns a real bot, applies s_set_level +
+// set_difficulty at L in {1, 3, 5}, and logs measured-with-trunc f beside
+// the tuple-table prediction. A core-pack family rebalance that drifts the
+// copied tuples, or a misreading of the living::set_difficulty override,
+// reds this out on day one. Percent 100 only — other percents would
+// compare a scaled measurement to an unscaled model (§4.3).
+TEST_F(ModesTdm, matched_model_pin_measured_within_ten_percent_of_predicted)
+{
+    ModesCtfWorld fx(kMatchProbeLevel);
+    fx.tick(1);
+    ASSERT_TRUE(fx.world().mode.active);
+
+    const auto lines = matched_log_lines(fx.world(), "modelpin");
+    ASSERT_EQ(27u, lines.size())
+        << "9 families (every TUPLE row, incl. the orc/beast/cleric/druid "
+           "rows carried for future rosters) x 3 levels";
+    for (const auto& line : lines)
+    {
+        const auto fields = split_tabs(line);
+        ASSERT_EQ(5u, fields.size()) << line;
+        const long long measured = tab_int(fields, 3);
+        const long long predicted = tab_int(fields, 4);
+        ASSERT_GT(predicted, 0) << line;
+        const long long miss = measured > predicted ? measured - predicted
+                                                    : predicted - measured;
+        EXPECT_LE(miss * 10, predicted)
+            << fields[1] << " L" << fields[2] << ": measured " << measured
+            << " vs predicted " << predicted << " misses by more than 10%";
+    }
+}
+
+// Census arms: a single human team's T is that team's f-sum, and walkers
+// without a guy record never enter it (the has_guy guard) — the two worlds
+// differ by one big guy-less Living and must census identically.
+TEST_F(ModesTdm, matched_census_single_team_sum_ignores_guyless_livings)
+{
+    long long with_bot = 0;
+    long long without_bot = 0;
+    long long team_sum = 0;
+    {
+        ModesCtfWorld fx(kMatchProbeLevel);
+        author_fresh_squad(fx, 0, 200);
+        fx.spawn_living(FAMILY_ORC, 0, 424, 200);  // no guy record
+        fx.tick(1);
+        const auto census = matched_log(fx.world(), "census");
+        with_bot = tab_int(census, 1);
+        team_sum = tab_int(census, 2);
+        EXPECT_EQ(0, tab_int(census, 3));
+        EXPECT_EQ(0, tab_int(census, 4));
+        EXPECT_EQ(0, tab_int(census, 5));
+        EXPECT_EQ(5, tab_int(census, 6))
+            << "one human team -> H is its headcount, guy-less Livings "
+               "excluded (D34)";
+    }
+    {
+        ModesCtfWorld fx(kMatchProbeLevel);
+        author_fresh_squad(fx, 0, 200);
+        fx.tick(1);
+        const auto census = matched_log(fx.world(), "census");
+        without_bot = tab_int(census, 1);
+    }
+    EXPECT_EQ(without_bot, with_bot)
+        << "a guy-less Living must never enter the census";
+    EXPECT_EQ(team_sum, with_bot) << "one human team -> T is its f-sum";
+    // Derived calibration (§4.2): the fresh five-family squad's f-sum under
+    // the trunc-on-read discipline. Soldier alone is 2306 (the §4.2 worked
+    // example): H 166, M 34, D 23, A 9, SP 4, FF trunc(5.87) = 5 -> RATE 24,
+    // ED 23, OFF 572, EHP 219 -> (219 * 632) / 60 = 2306.
+    EXPECT_EQ(6520, with_bot) << "fresh squad f-sum drifted — recalibrate "
+                                 "the derived pins (spec §4.2)";
+}
+
+// The multi-team mean (D11) and the heart-value oracle (§8): three rosters
+// of strictly increasing worth — fresh squad, mixed L4 trio, an
+// archmage-anchored roster — must rank identically under f-sums and under
+// guy::query_heart_value sums. Within-roster inversions are expected;
+// TEAM-level rank agreement is the contract. The absolute sums are the
+// derived calibration table (recorded from the census itself, §4.2).
+TEST_F(ModesTdm, matched_census_mean_and_heart_value_rank_oracle)
+{
+    ModesCtfWorld fx(kMatchProbeLevel);
+    author_fresh_squad(fx, 0, 200);
+    fx.spawn_leveled_hero(FAMILY_SOLDIER, 1, 200, 400, 11, 4);
+    fx.spawn_leveled_hero(FAMILY_ARCHER, 1, 232, 400, 12, 4);
+    fx.spawn_leveled_hero(FAMILY_ELF, 1, 264, 400, 13, 4);
+    fx.spawn_leveled_hero(FAMILY_MAGE, 2, 200, 600, 21, 9);
+    fx.spawn_leveled_hero(FAMILY_SOLDIER, 2, 232, 600, 22, 4);
+    fx.spawn_leveled_hero(FAMILY_THIEF, 2, 264, 600, 23, 1);
+    fx.tick(1);
+    ASSERT_TRUE(fx.world().mode.active);
+
+    const auto census = matched_log(fx.world(), "census");
+    const long long mean = tab_int(census, 1);
+    const long long fresh = tab_int(census, 2);
+    const long long mixed = tab_int(census, 3);
+    const long long archmage = tab_int(census, 4);
+    EXPECT_EQ((fresh + mixed + archmage) / 3, mean)
+        << "T is the MEAN of the human team f-sums (D11)";
+    EXPECT_EQ(3, tab_int(census, 6))
+        << "H is the MIN of the per-team headcounts (5, 3, 3 -> 3; D34 — "
+           "T averages because power is level-solvable, H mins because "
+           "headcount is the dimension the solver cannot compensate)";
+
+    // f-sum rank must agree with the engine's own price of the rosters.
+    long long hearts[3] = {0, 0, 0};
+    for (const auto& uptr : fx.world().oblist)
+    {
+        walker* w = uptr.get();
+        if (w == nullptr || w->myguy == nullptr)
+            continue;
+        const int team = w->team_num();
+        if (team >= 0 && team < 3)
+            hearts[team] += w->myguy->query_heart_value();
+    }
+    EXPECT_LT(hearts[0], hearts[1]);
+    EXPECT_LT(hearts[1], hearts[2]);
+    EXPECT_LT(fresh, mixed) << "f must rank the rosters like heart value";
+    EXPECT_LT(mixed, archmage) << "f must rank the rosters like heart value";
+
+    // Derived calibration values (recorded from this census — §4.2).
+    EXPECT_EQ(6520, fresh);
+    EXPECT_EQ(14590, mixed);
+    EXPECT_EQ(27947, archmage);
+}
+
+// spawn_bots legacy arm: no plan, no target — bots take the session
+// difficulty formula (percent 100 -> L2) and no matched state appears.
+// The direct-arm twin of the real-mode empty_active_teams cases.
+TEST_F(ModesTdm, matched_spawn_bots_legacy_arm_is_unchanged)
+{
+    ModesCtfWorld fx(kMatchSpawnProbeLevel);
+    for (int i = 0; i < 5; ++i)
+        fx.spawn_anchor(1, 96 + 96 * i, 96);
+    fx.tick(1);
+    ASSERT_TRUE(fx.world().mode.active);
+
+    EXPECT_EQ(5, alive_on_team(fx.world(), 1));
+    const SquadLevels levels = squad_levels_on_team(fx.world(), 1);
+    EXPECT_EQ(2, levels.soldier);
+    EXPECT_EQ(2, levels.archer);
+    EXPECT_EQ(2, levels.elf);
+    EXPECT_EQ(2, levels.mage);
+    EXPECT_EQ(2, levels.thief);
+    EXPECT_EQ(0, fx.var(kSlotMatchedTarget));
+    EXPECT_EQ(0, fx.var(kSlotMatchedPlan));
+    EXPECT_EQ(0, fx.var(kSlotMatchedAnnounced));
+    EXPECT_FALSE(has_notification(fx.events, "TEAMS MATCHED"));
+}
+
+// spawn_bots planned arm: a stored plan wins over everything — the first
+// k members spawn one level above L, and nothing announces (a stored plan
+// only exists after the init solve already ran).
+TEST_F(ModesTdm, matched_spawn_bots_planned_arm_applies_stored_plan)
+{
+    ModesCtfWorld fx(kMatchSpawnProbeLevel);
+    for (int i = 0; i < 5; ++i)
+        fx.spawn_anchor(1, 96 + 96 * i, 96);
+    // Team 1 code 43: L4, first 3 members upgraded.
+    fx.world().mode.vars[kMatchProbeInPlan] = 4300;
+    fx.tick(1);
+    ASSERT_TRUE(fx.world().mode.active);
+
+    EXPECT_EQ(5, alive_on_team(fx.world(), 1));
+    const SquadLevels levels = squad_levels_on_team(fx.world(), 1);
+    EXPECT_EQ(5, levels.soldier) << "member 1 of the k = 3 prefix";
+    EXPECT_EQ(5, levels.archer) << "member 2 of the k = 3 prefix";
+    EXPECT_EQ(5, levels.elf) << "member 3 of the k = 3 prefix";
+    EXPECT_EQ(4, levels.mage) << "past the prefix: L4";
+    EXPECT_EQ(4, levels.thief) << "past the prefix: L4";
+    EXPECT_EQ(4300, fx.var(kSlotMatchedPlan)) << "the plan is durable";
+    EXPECT_EQ(0, fx.var(kSlotMatchedAnnounced));
+    EXPECT_FALSE(has_notification(fx.events, "TEAMS MATCHED"));
+}
+
+// spawn_bots D24 arm at init: a stored target with no plan measures the
+// real squad, solves, persists the plan and announces once. T = B(2) of
+// the real loader bases lands the exact stock squad (uniform L2).
+TEST_F(ModesTdm, matched_spawn_bots_measures_solves_and_announces)
+{
+    ModesCtfWorld fx(kMatchSpawnProbeLevel);
+    for (int i = 0; i < 5; ++i)
+        fx.spawn_anchor(1, 96 + 96 * i, 96);
+    // Derived: B(2) over the shipped loader bases (soldier 3348 +
+    // archer 1857 + elf 2244 + mage 1282 + thief 2260).
+    fx.world().mode.vars[kMatchProbeInTarget] = 10991;
+    fx.tick(1);
+    ASSERT_TRUE(fx.world().mode.active);
+
+    EXPECT_EQ(5, alive_on_team(fx.world(), 1));
+    EXPECT_EQ(20, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
+        << "T = B(2) must solve to the exact stock squad";
+    const SquadLevels levels = squad_levels_on_team(fx.world(), 1);
+    EXPECT_EQ(2, levels.soldier);
+    EXPECT_EQ(2, levels.archer);
+    EXPECT_EQ(2, levels.elf);
+    EXPECT_EQ(2, levels.mage);
+    EXPECT_EQ(2, levels.thief);
+    EXPECT_EQ(1, fx.var(kSlotMatchedAnnounced));
+    EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"));
+    EXPECT_FALSE(has_notification(fx.events, "TEAMS MATCHED (LIMIT)"));
+}
+
+// The two clamp shapes announce the LIMIT variant (§7): a target below
+// B(1) floors the squad at uniform L1, the capped ceiling target lands
+// uniform L9 (E13 low end, D20 cap high end).
+TEST_F(ModesTdm, matched_spawn_bots_clamps_announce_the_limit)
+{
+    {
+        ModesCtfWorld fx(kMatchSpawnProbeLevel);
+        for (int i = 0; i < 5; ++i)
+            fx.spawn_anchor(1, 96 + 96 * i, 96);
+        fx.world().mode.vars[kMatchProbeInTarget] = 1;
+        fx.tick(1);
+        ASSERT_TRUE(fx.world().mode.active);
+        EXPECT_EQ(10, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
+            << "sub-B(1) target -> uniform L1 (E13)";
+        EXPECT_EQ(2, fx.var(kSlotMatchedAnnounced));
+        EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED (LIMIT)"));
+    }
+    {
+        ModesCtfWorld fx(kMatchSpawnProbeLevel);
+        for (int i = 0; i < 5; ++i)
+            fx.spawn_anchor(1, 96 + 96 * i, 96);
+        fx.world().mode.vars[kMatchProbeInTarget] = 1 << 30;  // the D20 cap
+        fx.tick(1);
+        ASSERT_TRUE(fx.world().mode.active);
+        EXPECT_EQ(90, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
+            << "capped target -> uniform L9";
+        EXPECT_EQ(2, fx.var(kSlotMatchedAnnounced));
+        EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED (LIMIT)"));
+    }
+}
+
+// The D24 backstop shape mid-match: once init is over (MODE_ID != 0) a
+// measure-and-solve spawn still stores the plan and levels the squad, but
+// stays silent — the announcement belongs to on_mode_init alone (§7).
+TEST_F(ModesTdm, matched_backstop_solve_stores_plan_but_stays_silent)
+{
+    ModesCtfWorld fx(kMatchSpawnProbeLevel);
+    for (int i = 0; i < 5; ++i)
+        fx.spawn_anchor(1, 96 + 96 * i, 96);
+    fx.world().mode.vars[kMatchProbeInTarget] = 10991;  // B(2), derived
+    fx.world().mode.vars[kMatchProbeInMidMatch] = 1;
+    fx.tick(1);
+    ASSERT_TRUE(fx.world().mode.active);
+
+    EXPECT_EQ(20, matched_plan_code(fx.var(kSlotMatchedPlan), 1));
+    const SquadLevels levels = squad_levels_on_team(fx.world(), 1);
+    EXPECT_EQ(2, levels.soldier) << "the squad still levels to the solve";
+    EXPECT_EQ(0, fx.var(kSlotMatchedAnnounced));
+    EXPECT_FALSE(has_notification(fx.events, "TEAMS MATCHED"));
+}
+
+// E1 through the real TDM flow: TROOPS: FAIR with no human power
+// server-side stores nothing and fields the legacy squad — no
+// announcement. Premise re-ruled under the D26 bundle: arming now ALSO
+// strips, so the authored (guy-less) soldier is retired like any authored
+// troop and BOTH emptied teams backfill at the legacy formula.
+TEST_F(ModesTdm, matched_request_without_humans_keeps_legacy_bots)
+{
+    ModesCtfWorld fx(kTdmLevelA);
+    fx.arm_matched();
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(1, 544, 800);
+    walker* troop = fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
+    fx.tick(1);
+    ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
+
+    EXPECT_TRUE(troop->dead())
+        << "FAIR strips the authored troop exactly as OWN does (D26)";
+    EXPECT_EQ(5, alive_on_team(fx.world(), 0))
+        << "the emptied team backfills like the OWN twin";
+    EXPECT_EQ(5, alive_on_team(fx.world(), 1));
+    const SquadLevels levels = squad_levels_on_team(fx.world(), 1);
+    EXPECT_EQ(2, levels.soldier) << "legacy formula at percent 100";
+    EXPECT_EQ(2, levels.thief);
+    EXPECT_EQ(0, fx.var(kSlotMatchedTarget));
+    EXPECT_EQ(0, fx.var(kSlotMatchedPlan));
+    EXPECT_EQ(0, fx.var(kSlotMatchedAnnounced));
+    EXPECT_FALSE(has_notification(fx.events, "TEAMS MATCHED"));
+}
+
+// The flagship WP-E flow: a fresh solo squad on team 0, TROOPS: FAIR, an
+// empty authored team 1. Init censuses the roster (T = 6520, the derived
+// §4.2 value), solves the real squad against it and fields a mixed L1/L2
+// rival — an even match, not today's flat L2 wall.
+//
+// SPEC DEVIATION, recorded: §4.2/§5.3 hoped the fresh-squad target lands
+// within one k-step of B(2) = 10991 (the stock squad). The DERIVED numbers
+// say otherwise: T = 6520 = 0.59 * B(2), because stock L2 bots genuinely
+// outgun a fresh human squad. The solver answers (L1, k1) — P(1,1) = 6711
+// misses by 191 where B(1) = 5006 misses by 1514 — the closer match. The
+// continuity anchor was aspirational; the derived calibration wins (§4.2:
+// no hand-shipped numbers).
+TEST_F(ModesTdm, matched_solo_fresh_squad_fields_an_even_rival)
+{
+    ModesCtfWorld fx(kTdmLevelA);
+    fx.arm_matched();
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(1, 544, 800);
+    author_fresh_squad(fx, 0, 200);
+    fx.tick(1);
+    ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
+
+    EXPECT_EQ(6520, fx.var(kSlotMatchedTarget))
+        << "the census target persists for later spawns (D20)";
+    EXPECT_EQ(5, fx.var(kSlotMatchedSize))
+        << "H = 5 -> n = 5: a full roster keeps the full squad (D34)";
+    EXPECT_EQ(11, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
+        << "T = 6520 between B(1) = 5006 and B(2) = 10991 -> L1, 1 upgrade";
+    EXPECT_EQ(0, matched_plan_code(fx.var(kSlotMatchedPlan), 0))
+        << "the human team is never solved (I3)";
+    EXPECT_EQ(5, alive_on_team(fx.world(), 1));
+    const SquadLevels levels = squad_levels_on_team(fx.world(), 1);
+    EXPECT_EQ(2, levels.soldier) << "upgrade prefix member 1";
+    EXPECT_EQ(1, levels.archer) << "past the k = 1 prefix";
+    EXPECT_EQ(1, levels.elf);
+    EXPECT_EQ(1, levels.mage);
+    EXPECT_EQ(1, levels.thief);
+    EXPECT_EQ(5, alive_on_team(fx.world(), 0)) << "the roster is untouched";
+    EXPECT_EQ(1, fx.var(kSlotMatchedAnnounced));
+    EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"));
+    EXPECT_FALSE(has_notification(fx.events, "TEAMS MATCHED (LIMIT)"));
+}
+
+// The D26 one-delta twin, replacing the retired multi-team pile-on case
+// (the old TEAMS: Match filled EVERY empty authored team; under the bundle
+// a solo roster pairs with exactly ONE opponent). OWN (strip 2) and FAIR
+// (strip 3) over the identical authored world must agree on everything —
+// mask, fill sites, alive counts — except the generated squads, which
+// spawn at matched power AND matched headcount (D39's restated one-delta;
+// this twin's 5-guy roster keeps H = 5, so its counts stay verbatim), and
+// only FAIR announces (once).
+TEST_F(ModesTdm, matched_differs_from_own_only_in_generated_squad_levels)
+{
+    auto author = [](ModesCtfWorld& fx) {
+        fx.spawn_anchor(0, 96, 96);
+        fx.spawn_anchor(1, 544, 800);
+        fx.spawn_anchor(2, 96, 800);
+        author_fresh_squad(fx, 0, 200);
+        fx.tick(1);
+        ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
+    };
+    ModesCtfWorld own(kTdmLevelA);
+    own.world().ctf_requested_strip_scenario_troops = 2;  // OWN
+    author(own);
+    ModesCtfWorld fair(kTdmLevelA);
+    fair.arm_matched();  // FAIR
+    author(fair);
+
+    EXPECT_EQ(own.var(kTdmSlotTeamMask), fair.var(kTdmSlotTeamMask))
+        << "FAIR's masks are OWN's masks, always (D26/D33)";
+    EXPECT_EQ(3, fair.var(kTdmSlotTeamMask))
+        << "solo roster: team 0 plus the FIRST authored non-roster team";
+    for (int team = 0; team < 3; ++team)
+    {
+        EXPECT_EQ(alive_on_team(own.world(), team),
+                  alive_on_team(fair.world(), team))
+            << "fill sites must not differ on team " << team;
+    }
+    EXPECT_EQ(0, alive_on_team(fair.world(), 2))
+        << "no pile-on: the third authored team stays empty under both";
+
+    // The one delta: OWN fields the legacy formula squad (percent 100 ->
+    // uniform L2), FAIR solves T = 6520 to L1 with a k = 1 prefix.
+    EXPECT_EQ(0, own.var(kSlotMatchedTarget)) << "OWN never censuses";
+    EXPECT_EQ(0, matched_plan_code(own.var(kSlotMatchedPlan), 1));
+    const SquadLevels own_levels = squad_levels_on_team(own.world(), 1);
+    EXPECT_EQ(2, own_levels.soldier) << "OWN spawns at legacy levels";
+    EXPECT_EQ(2, own_levels.archer);
+    EXPECT_EQ(2, own_levels.thief);
+    EXPECT_EQ(6520, fair.var(kSlotMatchedTarget));
+    EXPECT_EQ(11, matched_plan_code(fair.var(kSlotMatchedPlan), 1));
+    const SquadLevels fair_levels = squad_levels_on_team(fair.world(), 1);
+    EXPECT_EQ(2, fair_levels.soldier) << "the k = 1 upgrade prefix";
+    EXPECT_EQ(1, fair_levels.archer);
+    EXPECT_EQ(1, fair_levels.thief);
+
+    EXPECT_EQ(0, count_notifications(own.events, "TEAMS MATCHED"));
+    EXPECT_EQ(1, count_notifications(fair.events, "TEAMS MATCHED"))
+        << "one announcement per match (D23)";
+}
+
+// ===========================================================================
+// TROOPS: FAIR system tests (matched-teams WP-F, spec §8)
+// ===========================================================================
+
+namespace {
+
+// C++ twin of mode_match.walker_power under the same §4.1 trunc-on-read
+// discipline (static_cast truncates the positive float stats exactly like
+// og.trunc). Used to cross-check the Lua census against an independent
+// implementation and to measure spawned squads.
+long long measured_walker_f(const walker* w)
+{
+    const statistics* s = w->stats();
+    if (s == nullptr)
+        return 0;
+    const long long hp = static_cast<long long>(s->max_hitpoints());
+    const long long mp = static_cast<long long>(s->max_magicpoints());
+    const long long armor = static_cast<long long>(s->armor());
+    const long long dmg = static_cast<long long>(w->damage());
+    const long long sp = static_cast<long long>(w->stepsize());
+    long long ff = static_cast<long long>(w->fire_frequency());
+    if (ff < 1)
+        ff = 1;
+    const long long level = s->level();
+    const long long ed = dmg * (level + 3) / 4;
+    const long long rate = 120 / ff;
+    const long long off = ed * rate + 5 * sp;
+    const long long ehp = hp + 4 * armor + mp / 2;
+    return ehp * (off + 60) / 60;
+}
+
+long long team_f_sum(GameWorld& world, int team)
+{
+    long long sum = 0;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        if (w->team_num() != static_cast<unsigned char>(team))
+            continue;
+        sum += measured_walker_f(w);
+    }
+    return sum;
+}
+
+// The matched TDM flow the determinism/mirror/budget probes share: a fresh
+// roster squad on team 0, TROOPS: FAIR, empty authored teams 1 and 2 (the
+// solo roster pairs with team 1 only under the D26 bundle).
+void author_matched_tdm(ModesCtfWorld& fx)
+{
+    og::modes_test::arm_matched(fx.world());
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(1, 544, 800);
+    fx.spawn_anchor(2, 96, 800);
+    author_fresh_squad(fx, 0, 200);
+}
+
+std::string run_matched_tdm_digest(int ticks)
+{
+    ModesCtfWorld fx(kTdmLevelA);
+    author_matched_tdm(fx);
+    fx.world().ctf_requested_respawn_ticks = 30;
+    fx.tick(ticks);
+    EXPECT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
+    EXPECT_GT(fx.var(kSlotMatchedTarget), 0);
+    return digest_world(fx.world());
+}
+
+}  // namespace
+
+// The WP-F headline (spec §5.3 accuracy contract): a solo LEVELED roster's
+// opponent squad measures within ±15% of the stored target. The target is
+// interior (announce is the plain variant, so T sat inside [B(1), B(9)])
+// and the C++ f twin is validated against the Lua census on the solo arm
+// (T = the roster team's own f-sum, D11).
+TEST_F(ModesTdm, matched_solo_l5_roster_squad_lands_within_fifteen_percent)
+{
+    ModesCtfWorld fx(kTdmLevelA);
+    fx.arm_matched();
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(1, 544, 800);
+    fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 200, 200, 1, 5);
+    fx.spawn_leveled_hero(FAMILY_ARCHER, 0, 232, 200, 2, 5);
+    fx.spawn_leveled_hero(FAMILY_ELF, 0, 264, 200, 3, 5);
+    fx.spawn_leveled_hero(FAMILY_MAGE, 0, 296, 200, 4, 5);
+    fx.spawn_leveled_hero(FAMILY_THIEF, 0, 328, 200, 5, 5);
+    fx.tick(1);
+    ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
+
+    const long long target = fx.var(kSlotMatchedTarget);
+    ASSERT_GT(target, 0);
+    EXPECT_EQ(team_f_sum(fx.world(), 0), target)
+        << "solo roster: the stored target is the roster's own f-sum, and "
+           "the C++ twin must agree with the Lua census byte for byte";
+    ASSERT_NE(0, matched_plan_code(fx.var(kSlotMatchedPlan), 1));
+    EXPECT_EQ(1, fx.var(kSlotMatchedAnnounced))
+        << "an interior target announces the plain variant";
+
+    ASSERT_EQ(5, alive_on_team(fx.world(), 1));
+    const long long squad = team_f_sum(fx.world(), 1);
+    const long long miss = squad > target ? squad - target : target - squad;
+    EXPECT_LE(miss * 100, target * 15)
+        << "squad f " << squad << " vs target " << target
+        << " misses by more than 15%";
+}
+
+// E6, THE flagship MATCH test: TROOPS: FAIR bundles the OWN deployment
+// policy (D26), and the matched census runs at the TOP of
+// own_roster_activation — BEFORE the strip — and is strip-invariant:
+// authored troops carry no guy record, so the has_guy filter keeps them
+// out of T in either order. The solo roster pulls in exactly the FIRST
+// authored non-roster team, and that team's fill is the MATCHED squad —
+// the flagship solo experience. (The strip-before-census ordering pinned
+// by scenario_troops_strip_runs_before_the_bot_census above concerns the
+// empty-team FILL census, a different pass.)
+TEST_F(ModesTdm, matched_troops_own_solo_roster_gets_a_matched_opponent)
+{
+    ModesCtfWorld fx(kTdmLevelA);
+    fx.arm_matched();  // FAIR: strips AND matches (D26 — one knob now)
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(1, 544, 800);
+    fx.spawn_anchor(2, 96, 800);
+    author_fresh_squad(fx, 0, 200);
+    fx.spawn_living(FAMILY_ORC, 1, 544, 700);  // authored troops: no guy
+    fx.spawn_living(FAMILY_ORC, 2, 96, 700);   // record, censusless (E6)
+    fx.tick(1);
+    ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
+
+    EXPECT_EQ(3, fx.var(kTdmSlotTeamMask))
+        << "solo roster under OWN: team 0 plus the first authored "
+           "non-roster team";
+    EXPECT_EQ(6520, fx.var(kSlotMatchedTarget))
+        << "stripped authored troops never pollute the census (E6)";
+    EXPECT_EQ(5, fx.var(kSlotMatchedSize))
+        << "stripped authored troops never pollute the headcount either";
+    EXPECT_EQ(11, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
+        << "the OWN opponent solves like the TROOPS:ALL twin";
+    EXPECT_EQ(5, alive_on_team(fx.world(), 1));
+    const SquadLevels levels = squad_levels_on_team(fx.world(), 1);
+    EXPECT_EQ(2, levels.soldier) << "the k = 1 upgrade prefix";
+    EXPECT_EQ(1, levels.archer);
+    EXPECT_EQ(1, levels.thief);
+    EXPECT_EQ(0, alive_on_team(fx.world(), 2))
+        << "the team outside the OWN mask stays stripped and unfilled";
+    EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+// THE playtest ruling (D34/D37, the headcount amendment's flagship): a
+// solo fresh soldier's matched opponent is ONE L1 soldier — never the
+// five-bot wall the superseded E13 clamp fielded. With n = 1 the target
+// T = 2306 is INTERIOR to the single soldier's [B(1), B(9)] = [1643, ...]
+// (|1643 - 2306| = 663 beats |3348 - 2306| = 1042), so the solve is
+// L1/k0, plan 10, PLAIN announce — the old LIMIT died with the clamp
+// that produced it.
+TEST_F(ModesTdm, matched_solo_fresh_soldier_faces_a_single_matched_rival)
+{
+    ModesCtfWorld fx(kTdmLevelA);
+    fx.arm_matched();
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(1, 544, 800);
+    fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 200, 200, 1, 1);
+    fx.tick(1);
+    ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
+
+    EXPECT_EQ(2306, fx.var(kSlotMatchedTarget))
+        << "the fresh soldier f (derived pin, §4.2)";
+    EXPECT_EQ(1, fx.var(kSlotMatchedSize))
+        << "the census latches the human headcount (D34)";
+    EXPECT_EQ(1, alive_on_team(fx.world(), 1))
+        << "the squad never outnumbers the roster it measured (D34)";
+    const SquadLevels levels = squad_levels_on_team(fx.world(), 1);
+    EXPECT_EQ(1, levels.soldier)
+        << "the 1-prefix of the squad table is the soldier (D35)";
+    EXPECT_EQ(0, levels.archer) << "nobody past the prefix spawns";
+    EXPECT_EQ(0, levels.elf);
+    EXPECT_EQ(0, levels.mage);
+    EXPECT_EQ(0, levels.thief);
+    EXPECT_EQ(10, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
+        << "interior solve at n = 1: L1, no upgrades";
+    // The felt result, derived from the built world: one L1 soldier bot
+    // at f 1643 — 71% of the human's 2306, a 29% undershoot inside the
+    // n = 1 ±35% band (D36), erring player-friendly (D37).
+    EXPECT_EQ(1643, team_f_sum(fx.world(), 1))
+        << "the fielded rival's measured f (pred soldier L1, derived)";
+    EXPECT_EQ(1, fx.var(kSlotMatchedAnnounced))
+        << "no clamp fired, so the announce is the plain variant (D37)";
+    EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"));
+    EXPECT_FALSE(has_notification(fx.events, "TEAMS MATCHED (LIMIT)"));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+// D37: LIMIT fires only on a GENUINE clamp. The old solo-soldier target
+// (2306) is interior at n = 1 — plain announce — while a target under the
+// single soldier's B(1) = 1643 still floors at uniform L1 and says LIMIT.
+TEST_F(ModesTdm, matched_size_one_announces_limit_only_on_genuine_clamp)
+{
+    {
+        ModesCtfWorld fx(kMatchSpawnProbeLevel);
+        for (int i = 0; i < 5; ++i)
+            fx.spawn_anchor(1, 96 + 96 * i, 96);
+        fx.world().mode.vars[kMatchProbeInTarget] = 2306;
+        fx.world().mode.vars[kMatchProbeInSize] = 1;
+        fx.tick(1);
+        ASSERT_TRUE(fx.world().mode.active);
+        EXPECT_EQ(1, alive_on_team(fx.world(), 1));
+        EXPECT_EQ(10, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
+            << "T = 2306 is interior at n = 1 (closest single-soldier "
+               "rung is L1)";
+        EXPECT_EQ(1, fx.var(kSlotMatchedAnnounced))
+            << "the playtest shape no longer saturates (D37)";
+        EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"));
+        EXPECT_FALSE(has_notification(fx.events, "TEAMS MATCHED (LIMIT)"));
+    }
+    {
+        ModesCtfWorld fx(kMatchSpawnProbeLevel);
+        for (int i = 0; i < 5; ++i)
+            fx.spawn_anchor(1, 96 + 96 * i, 96);
+        fx.world().mode.vars[kMatchProbeInTarget] = 1000;  // < B(1) = 1643
+        fx.world().mode.vars[kMatchProbeInSize] = 1;
+        fx.tick(1);
+        ASSERT_TRUE(fx.world().mode.active);
+        EXPECT_EQ(1, alive_on_team(fx.world(), 1));
+        EXPECT_EQ(10, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
+            << "a genuinely sub-B(1) target still floors at uniform L1";
+        EXPECT_EQ(2, fx.var(kSlotMatchedAnnounced));
+        EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED (LIMIT)"));
+    }
+}
+
+// D39/D40 through the 9096 probe: a latched SIZE truncates EVERY
+// spawn_bots arm to the n-prefix — planned, measure-and-solve, and the
+// mid-match backstop alike — while every caller keeps its signature.
+TEST_F(ModesTdm, matched_size_latch_truncates_every_spawn_arm)
+{
+    // Planned arm at n = 1: plan code 43 -> the 1-prefix soldier is
+    // member 1 of the k = 3 upgrade prefix (L5).
+    {
+        ModesCtfWorld fx(kMatchSpawnProbeLevel);
+        for (int i = 0; i < 5; ++i)
+            fx.spawn_anchor(1, 96 + 96 * i, 96);
+        fx.world().mode.vars[kMatchProbeInPlan] = 4300;
+        fx.world().mode.vars[kMatchProbeInSize] = 1;
+        fx.tick(1);
+        ASSERT_TRUE(fx.world().mode.active);
+        EXPECT_EQ(1, alive_on_team(fx.world(), 1));
+        const SquadLevels levels = squad_levels_on_team(fx.world(), 1);
+        EXPECT_EQ(5, levels.soldier) << "member 1 of the k = 3 prefix";
+        EXPECT_EQ(0, levels.archer) << "the squad ends at the n = 1 prefix";
+    }
+    // Measure-and-solve at n = 2: the §B.1 duo target over the soldier +
+    // archer prefix. Derived rungs: P(1,1) = 3348 + 834 = 4182 misses
+    // T = 4612 by 430 where P(2,0) = 3348 + 1857 = 5205 misses by 593 ->
+    // L1/k1, a 2v2 against an L2 soldier and an L1 archer.
+    {
+        ModesCtfWorld fx(kMatchSpawnProbeLevel);
+        for (int i = 0; i < 5; ++i)
+            fx.spawn_anchor(1, 96 + 96 * i, 96);
+        fx.world().mode.vars[kMatchProbeInTarget] = 4612;
+        fx.world().mode.vars[kMatchProbeInSize] = 2;
+        fx.tick(1);
+        ASSERT_TRUE(fx.world().mode.active);
+        EXPECT_EQ(2, alive_on_team(fx.world(), 1));
+        EXPECT_EQ(11, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
+            << "the duo solves L1 with one upgrade (D36 n = 2 rungs)";
+        const SquadLevels levels = squad_levels_on_team(fx.world(), 1);
+        EXPECT_EQ(2, levels.soldier) << "upgrade prefix member 1";
+        EXPECT_EQ(1, levels.archer);
+        EXPECT_EQ(0, levels.elf) << "the squad ends at the n = 2 prefix";
+        EXPECT_EQ(1, fx.var(kSlotMatchedAnnounced));
+    }
+    // The D24 backstop truncates identically and stays silent (§7).
+    {
+        ModesCtfWorld fx(kMatchSpawnProbeLevel);
+        for (int i = 0; i < 5; ++i)
+            fx.spawn_anchor(1, 96 + 96 * i, 96);
+        fx.world().mode.vars[kMatchProbeInTarget] = 2306;
+        fx.world().mode.vars[kMatchProbeInMidMatch] = 1;
+        fx.world().mode.vars[kMatchProbeInSize] = 1;
+        fx.tick(1);
+        ASSERT_TRUE(fx.world().mode.active);
+        EXPECT_EQ(1, alive_on_team(fx.world(), 1));
+        EXPECT_EQ(10, matched_plan_code(fx.var(kSlotMatchedPlan), 1));
+        EXPECT_EQ(0, fx.var(kSlotMatchedAnnounced));
+        EXPECT_FALSE(has_notification(fx.events, "TEAMS MATCHED"));
+    }
+}
+
+// Run-twice determinism: the same matched flow (census, solve, spawns,
+// respawns, directors) must replay byte-identically — mode vars, RNG,
+// positions, command queues.
+TEST_F(ModesTdm, matched_census_and_solve_replay_deterministically)
+{
+    const std::string first = run_matched_tdm_digest(120);
+    const std::string second = run_matched_tdm_digest(120);
+    ASSERT_EQ(first, second)
+        << "the matched census/solve must be a pure function of the world";
+}
+
+// Matched bots are ordinary replicated entities: the mirror harness must
+// stay strike-free and the matched mode vars must reach the client mirror
+// bit for bit (I1: no client twin of the power model exists).
+TEST_F(ModesTdm, matched_bots_replicate_to_a_client_mirror_without_strikes)
+{
+    ModesCtfWorld fx(kTdmLevelA);
+    author_matched_tdm(fx);
+    ModeMirror mirror(kTdmLevelA);
+
+    const MirrorReplication replication = replicate_to_mirror(fx, mirror, 120);
+    EXPECT_EQ(0, replication.strikes)
+        << "the mirror first desynced at tick " << replication.first_strike_tick;
+    ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
+    EXPECT_GT(fx.var(kSlotMatchedTarget), 0);
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+    for (int slot = 0; slot < og::sim::kModeVarCount; ++slot)
+    {
+        EXPECT_EQ(fx.world().mode.vars[static_cast<std::size_t>(slot)],
+                  mirror.world().mode.vars[static_cast<std::size_t>(slot)])
+            << "mode var slot " << slot;
+    }
+}
+
+// Budget headroom (E12): the census pass plus the <= 45 model evaluations
+// ride the init dispatch, which must still clear the 10x-reduced budget —
+// budgets are measured, never bumped.
+TEST_F(ModesTdm, matched_init_fits_a_tenth_of_the_instruction_budget)
+{
+    const BudgetOverride budget(500000);
+    ModesCtfWorld fx(kTdmLevelA);
+    author_matched_tdm(fx);
+    fx.world().ctf_requested_respawn_ticks = 30;
+    fx.tick(1);  // init: census + solve + the paired squad fill
+    ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
+    ASSERT_GT(fx.var(kSlotMatchedTarget), 0);
+    fx.tick(45);  // 3 director cadences + every per-tick phase
+    EXPECT_FALSE(has_script_error(fx.world(), "instruction budget"))
+        << "a 10x-reduced budget must never trip with matching on";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }

@@ -674,6 +674,83 @@ TEST_F(HeadlessServerRuntimeTest, mirror_level_load_never_rolls_weather)
         << "level load must reset the kind; only snapshots set it on mirrors";
 }
 
+// Matched-teams I4 ordering (docs/matched-teams-design.md §3.2, amended
+// D25/D27): the TROOPS: FAIR sentinel rides the existing SaveData -> world
+// chain and is in `world.ctf_requested_strip_scenario_troops` strictly
+// BEFORE the first world.tick() runs on_mode_init, with the lobby roster
+// already in the oblist — so the mode census can see both. The mode var
+// written by on_mode_init (slot 2, mode_match.MATCHED.TARGET) is the proof
+// Lua saw the sentinel and censused the roster.
+TEST_F(HeadlessServerRuntimeTest,
+       matched_sentinel_reaches_world_before_first_tick_and_lua_sees_it)
+{
+    og::sim::LobbySaveDataEquivalent lobby_save;
+    lobby_save.current_campaign = "modes";
+    lobby_save.scen_num = 302; // shipped TDM level
+    lobby_save.numplayers = 2;
+    lobby_save.allied_mode = 0;
+    lobby_save.ctf_strip_scenario_troops = og::sim::kTroopsMatched;
+    lobby_save.team_list = {
+        make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER, 0),
+        make_slot(3u, 200, "Guest Guy", FAMILY_ARCHER, 1),
+    };
+
+    initialize_from_lobby(lobby_save);
+
+    EXPECT_EQ(og::sim::kTroopsMatched,
+              active_save_.ctf_strip_scenario_troops)
+        << "the start config carries the sentinel into the SaveData";
+    GameWorld& world = level_data_->world();
+    EXPECT_EQ(og::sim::kTroopsMatched,
+              world.ctf_requested_strip_scenario_troops)
+        << "sync_world_from_save_data ran before the first tick (I4)";
+    EXPECT_EQ(0u, world.tick_count_);
+    EXPECT_FALSE(world.mode.active) << "on_mode_init has not run yet";
+    EXPECT_EQ(0, world.mode.vars[2]);
+    ASSERT_NE(nullptr, find_team_member(world, 100))
+        << "the roster is in the oblist before init — censusable (D15)";
+    ASSERT_NE(nullptr, find_team_member(world, 200));
+
+    with_context([&] { world.tick(); });
+
+    EXPECT_TRUE(world.mode.active) << "the first tick ran on_mode_init";
+    EXPECT_NE(0, world.mode.vars[0]) << "the mode id var is written";
+    EXPECT_GT(world.mode.vars[2], 0)
+        << "on_mode_init stored the matched census target — Lua saw the "
+           "sentinel through og.match_setting before any other tick ran";
+}
+
+// The unmatched twin: the identical lobby handoff without the sentinel
+// leaves the matched census idle — the target var stays 0 and the flow is
+// byte-identical to today's behavior.
+TEST_F(HeadlessServerRuntimeTest,
+       auto_team_count_lobby_handoff_writes_no_matched_target)
+{
+    og::sim::LobbySaveDataEquivalent lobby_save;
+    lobby_save.current_campaign = "modes";
+    lobby_save.scen_num = 302;
+    lobby_save.numplayers = 2;
+    lobby_save.allied_mode = 0;
+    lobby_save.ctf_strip_scenario_troops = 0;
+    lobby_save.team_list = {
+        make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER, 0),
+        make_slot(3u, 200, "Guest Guy", FAMILY_ARCHER, 1),
+    };
+
+    initialize_from_lobby(lobby_save);
+
+    GameWorld& world = level_data_->world();
+    EXPECT_EQ(0, world.ctf_requested_team_count);
+
+    with_context([&] { world.tick(); });
+
+    EXPECT_TRUE(world.mode.active);
+    EXPECT_NE(0, world.mode.vars[0]);
+    EXPECT_EQ(0, world.mode.vars[2])
+        << "no matched request -> the census never stores a target (E1 "
+           "posture: byte-identical to Auto)";
+}
+
 // §3.4 dropped-field bug class: the server/checkpoint copies must carry the
 // GTL v14 company fields — the last-played timestamp explicitly, the per-guy
 // deploy flag via the guy deep copies. (The tower fields were the previous

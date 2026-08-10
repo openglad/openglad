@@ -184,6 +184,17 @@ inline bool lobby_join_seats_content_identical(
     return true;
 }
 
+// Scenario-troops sentinel for "TROOPS: FAIR" (matched-teams design
+// D25-D27): the third value of ctf_strip_scenario_troops. It strips the
+// authored cast exactly like OWN (2) — every strip consumer reads any value
+// above 0 as strip-on — and additionally sizes the bot squads the scripted
+// modes generate to the human census instead of the difficulty formula.
+// 3 because 1 is the retired middle state (legacy saves and peers still
+// hand it over meaning OWN) and 2 is OWN itself. Old builds degrade it to
+// plain OWN: their strip rules read it as strip-on, their sanitize reverts
+// it at publish, and their toggle cycles it back to ALL.
+inline constexpr std::int16_t kTroopsMatched = 3;
+
 struct LobbySettings {
     std::string campaign_id;
     std::int16_t scenario_id = 0;
@@ -199,7 +210,7 @@ struct LobbySettings {
     std::uint8_t ctf_authored_team_mask = 0;
     std::int16_t ctf_capture_limit = 0;
     std::int16_t ctf_respawn_ticks = 0;
-    std::int16_t ctf_strip_scenario_troops = 0; // 0 = keep authored troops
+    std::int16_t ctf_strip_scenario_troops = 0; // 0 = keep; 2 = own; 3 = Fair (kTroopsMatched)
     // Difficulty submenu settings (0 = legacy default behavior for all three).
     // 0 = off, 1 = heroes, 2 = everyone, 3 = Team 1 heroes only.
     std::int16_t respawn_mode = 0;

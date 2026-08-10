@@ -430,7 +430,7 @@ public:
     short ctf_requested_team_count = 0;
     short ctf_requested_capture_limit = 0;
     short ctf_requested_respawn_ticks = 0;
-    short ctf_requested_strip_scenario_troops = 0;
+    short ctf_requested_strip_scenario_troops = 0; // 0 = keep; 2 = own; 3 = Fair (kTroopsMatched)
     // Classic (non-CTF) respawn mode: 0 = off (legacy), 1 = heroes respawn,
     // 2 = heroes + level-authored AI livings respawn ("endless battle"),
     // 3 = only Team 1 heroes respawn (player-facing Team 1 = internal team 0).

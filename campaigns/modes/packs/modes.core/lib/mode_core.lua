@@ -1,4 +1,4 @@
--- modes shared toolkit — slot/header conventions, team masks + the activation clamp, packed positions, announce/win/HUD/scrub helpers, manifest registration (cookbook: docs/lua-classpacks-design.md §3).
+-- modes shared toolkit — slot/header conventions, team masks + the activation clamp, packed positions, absolute value and walker centers, announce/win/HUD/scrub helpers, manifest registration (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C
@@ -19,6 +19,7 @@ local MODE = {
   ONSLAUGHT = 3,
   SOCCER = 4,
   MUTANT = 5,
+  BASKETBALL = 6,
 }
 
 -- Packed pixel positions: one int32 mode var carries (x, y), each within
@@ -33,6 +34,26 @@ end
 
 local function pos_y(v)
   return og.mod(v, 4096)
+end
+
+-- Absolute value. The sandbox has no math library, so every mode's L1
+-- geometry, every sign-free compare and every magnitude clamp spells it
+-- here rather than once per impl.
+local function iabs(v)
+  if v < 0 then
+    return -v
+  end
+  return v
+end
+
+-- A walker's CENTER pixel. Mode geometry reads centers — contact radii,
+-- aim vectors, drive targets — while xpos/ypos AND the GOTO destination
+-- are the top-left corner, so the half-body correction lives in one place
+-- and the two frames never get mixed up by accident.
+local function walker_center(w)
+  local cx = w:xpos() + og.div(w:sizex(), 2)
+  local cy = w:ypos() + og.div(w:sizey(), 2)
+  return cx, cy
 end
 
 -- Team bitmask helpers over the 4 score teams (integer arithmetic only —
@@ -60,15 +81,42 @@ local function mask_count(mask)
   return count
 end
 
+-- The TROOPS: FAIR sentinel — the third value of the scenario-troops
+-- setting; must equal the C++ kTroopsMatched (lobby_state.h). The equality
+-- is pinned via an og.match_setting("strip_troops") round-trip in
+-- test_mode_bindings (matched-teams D27/D29).
+local MATCHED_TROOPS = 3
+
+-- One normalization rule for every team-count consumer: Auto (raw <= 0)
+-- means "no numeric clamp" — count 0; junk counts (5+) pass through to
+-- activate_teams' clamp.
+local function normalize_team_count(raw)
+  if raw <= 0 then
+    return 0
+  end
+  return raw
+end
+
+-- The lobby team-count request, normalized: (count, matched) with count 0
+-- for Auto. The matched boolean reports a TROOPS: FAIR request for the
+-- power seam (matched-teams D29): matching rides the scenario-troops
+-- setting, not the team count, so it strips and roster-activates exactly
+-- like TROOPS: OWN and differs only in generated-squad strength (D26).
+local function team_count_request()
+  local count = normalize_team_count(og.match_setting("team_count"))
+  return count, og.match_setting("strip_troops") == MATCHED_TROOPS
+end
+
 -- The team-activation clamp (og.effective_team_mask's rule applied to an
 -- arbitrary authored domain — CTF activates flag teams, not marker teams):
--- requested <= 0 takes every authored team; otherwise the first
--- clamp(requested, 2, 4) authored teams in index order.
+-- a normalized count of 0 (requested <= 0) takes every authored team;
+-- otherwise the first clamp(count, 2, 4) authored teams in index order.
 local function activate_teams(authored_mask, requested)
-  if requested <= 0 then
+  local count = normalize_team_count(requested)
+  if count <= 0 then
     return authored_mask
   end
-  local remaining = og.clamp(requested, 2, C.SCORE_TEAM_COUNT)
+  local remaining = og.clamp(count, 2, C.SCORE_TEAM_COUNT)
   local mask = 0
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
     if remaining > 0 then
@@ -140,9 +188,13 @@ return {
   SLOT = SLOT,
   MODE = MODE,
   TEAM_BIT = TEAM_BIT,
+  MATCHED_TROOPS = MATCHED_TROOPS,
+  team_count_request = team_count_request,
   pos_pack = pos_pack,
   pos_x = pos_x,
   pos_y = pos_y,
+  iabs = iabs,
+  walker_center = walker_center,
   mask_has = mask_has,
   mask_add = mask_add,
   mask_count = mask_count,

@@ -18,6 +18,7 @@
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/event.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/pack_scripts.h>
@@ -27,10 +28,13 @@
 
 #include "../modes_pack_fixture.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <format>
 #include <string>
+#include <tuple>
+#include <vector>
 
 using namespace og::modes_test;
 
@@ -390,6 +394,93 @@ TEST_F(ModesOnslaught, troops_own_activates_only_the_roster_teams)
     EXPECT_EQ(1, alive_on_team(fx.world(), 0));
     EXPECT_EQ(0, alive_on_team(fx.world(), 1)) << "no init infantry under OWN";
     EXPECT_EQ(1, alive_on_team(fx.world(), 2));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+// Matched teams D17/E8 (amendment re-ruling): the matched request now
+// arrives via the strip field (TROOPS: FAIR), so Onslaught runs its strip
+// with keep_generators — the foundries stay — and ignores matched POWER
+// entirely: no plan is solved, nothing announces, and the generators field
+// the same armies as the OWN twin (D33(a): FAIR's twin is OWN, the strip
+// states being identical apart from power). Only the shared census (which
+// rides own_roster_activation on every mode) latches a target.
+TEST_F(ModesOnslaught, matched_request_masks_like_own_and_ignores_power)
+{
+    auto author = [](ModesCtfWorld& fx) {
+        fx.spawn_anchor(0, 96, 128);
+        fx.spawn_generator(FAMILY_TENT, 0, 128, 320);
+        fx.spawn_generator(FAMILY_TENT, 1, 480, 320);
+        fx.spawn_generator(FAMILY_TENT, 2, 128, 640);
+        fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 96, 96, 1, 2);
+    };
+    // (team, family, level) of every live Living, sorted — the twin worlds
+    // are deterministic, so equal multisets mean the generators kept their
+    // legacy spawn levels under Matched.
+    auto fielded = [](GameWorld& world) {
+        std::vector<std::tuple<int, int, int>> out;
+        for (const auto& uptr : world.oblist)
+        {
+            const walker* w = uptr.get();
+            if (w == nullptr || w->dead() ||
+                w->query_order() != Order::Living || w->stats() == nullptr)
+                continue;
+            out.emplace_back(static_cast<int>(w->team_num()),
+                             static_cast<int>(w->family()),
+                             w->stats()->level());
+        }
+        std::sort(out.begin(), out.end());
+        return out;
+    };
+
+    // The twin worlds run strictly one after the other (the E3 twin idiom:
+    // construct-and-tick the first fully before constructing the second —
+    // the script bindings resolve the CURRENT world).
+    ModesCtfWorld matched(kOnsLevelA);
+    arm_matched(matched.world());
+    author(matched);
+    matched.tick(90);
+    ModesCtfWorld own(kOnsLevelA);
+    own.world().ctf_requested_strip_scenario_troops = 2;  // the OWN twin
+    author(own);
+    own.tick(90);
+    ASSERT_EQ(kModeIdOnslaught, matched.var(kOnsModeId));
+    ASSERT_EQ(kModeIdOnslaught, own.var(kOnsModeId));
+
+    // The solo roster (team 0) pairs with the first authored non-roster
+    // generator team under OWN's activation — identically for strip 2 and
+    // strip 3, the D26 invariant applied where no squad seam exists.
+    EXPECT_EQ(3, matched.var(kOnsTeamMask))
+        << "solo roster: team 0 plus the first authored non-roster team";
+    EXPECT_EQ(own.var(kOnsTeamMask), matched.var(kOnsTeamMask))
+        << "FAIR-mask == OWN-mask (D26/D33/E8)";
+    EXPECT_EQ(own.var(kOnsTeamCount), matched.var(kOnsTeamCount));
+
+    EXPECT_EQ(fielded(own.world()), fielded(matched.world()))
+        << "matched power must not touch onslaught's generator armies (D17)";
+    auto foundries_alive = [](GameWorld& world) {
+        int alive = 0;
+        for (const auto& uptr : world.oblist)
+        {
+            const walker* w = uptr.get();
+            if (w != nullptr && !w->dead() &&
+                w->query_order() == Order::Generator)
+                ++alive;
+        }
+        return alive;
+    };
+    EXPECT_EQ(foundries_alive(own.world()), foundries_alive(matched.world()))
+        << "FAIR and OWN keep the same foundries";
+    EXPECT_EQ(2, foundries_alive(matched.world()))
+        << "the FAIR strip keeps the ACTIVE teams' generators "
+           "(keep_generators, E8); the team-2 tent goes with its inactive "
+           "team, not with the troops strip";
+
+    EXPECT_GT(matched.var(kSlotMatchedTarget), 0)
+        << "the shared census still runs (matched request + a human)";
+    EXPECT_EQ(0, own.var(kSlotMatchedTarget));
+    EXPECT_EQ(0, matched.var(kSlotMatchedPlan)) << "no seat ever solves";
+    EXPECT_EQ(0, matched.var(kSlotMatchedAnnounced));
+    EXPECT_FALSE(has_notification(matched.events, "TEAMS MATCHED"));
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 

@@ -246,7 +246,7 @@ bool is_allied_mode(const SaveData& save);
 
 // --- CTF match settings ---
 
-// Cycle the requested CTF team count: 2 -> 3 -> 4 -> 2.
+// Cycle the requested team count: Auto -> 2 -> 3 -> 4 -> Auto.
 void cycle_ctf_team_count(SaveData& save);
 
 // Cycle the capture limit: 0 (map default) -> 1 -> 3 -> 5 -> 10 -> 0.
@@ -269,15 +269,20 @@ std::uint8_t ctf_authored_team_mask_for_loaded_level(
     const GameWorld& world,
     std::string_view mounted_campaign);
 
-// Scenario-troops knob, two states on the existing int16 field:
-//   0 ALL — the level's authored cast is untouched (default, classic)
-//   2 OWN — drop every authored living + generator with no roster guy, any
-//           team, wildlife included (Onslaught keeps its generators, and
-//           protected named NPCs are exempt on classic maps)
-// Both states apply on every campaign, so the cycle is a plain flip. The
-// field keeps accepting the retired middle state 1 off disk and off the
-// wire; the strip rules read anything above 0 as OWN, and cycling from it
-// lands on ALL. Pure, so the order is unit-pinnable.
+// Scenario-troops knob, three states on the existing int16 field:
+//   0 ALL  — the level's authored cast is untouched (default, classic)
+//   2 OWN  — drop every authored living + generator with no roster guy, any
+//            team, wildlife included (Onslaught keeps its generators, and
+//            protected named NPCs are exempt on classic maps)
+//   3 FAIR — strip exactly like OWN, and the scripted modes size the bot
+//            squads they generate to the human census instead of the
+//            difficulty formula (og::sim::kTroopsMatched, matched-teams
+//            design D25-D28); classic maps play it as plain OWN
+// Every state applies on every campaign, so the cycle is a plain walk:
+// ALL -> OWN -> FAIR -> ALL. The field keeps accepting the retired middle
+// state 1 off disk and off the wire; the strip rules read it as OWN, and
+// cycling from it (or any junk) lands on ALL. Pure, so the order is
+// unit-pinnable.
 short next_ctf_scenario_troops(short current);
 
 void toggle_ctf_scenario_troops(SaveData& save);
@@ -687,6 +692,9 @@ struct ScenarioRosterReport {
     std::vector<ScenarioRosterRow> rows; // grouped, team-major
     bool any_inactive = false;
     bool any_strip_all = false;
+    // FAIR (matched troops) strips exactly like OWN (D26 one-delta rule);
+    // the removal footer still names the mode the player actually chose.
+    bool strip_is_fair = false;
 };
 
 // Scan a (scratch-loaded) world's authored entities into a roster report.
@@ -720,14 +728,15 @@ std::string format_difficulty_label(int difficulty);
 // combat allegiance always comes from character colors.
 std::string format_allied_mode_label(const SaveData& save);
 
-// Format the CTF team count label ("CTF Teams: N").
+// Format the team count label ("Teams: N" / "Teams: Auto").
 std::string format_ctf_teams_label(const SaveData& save);
 
 // Format the capture limit label ("Capture Limit: Map default" or ": N").
 std::string format_ctf_caps_label(const SaveData& save);
 
 // Format the scenario-troops label ("TROOPS: ALL" when keeping the authored
-// cast, "TROOPS: OWN" when stripping it).
+// cast, "TROOPS: OWN" when stripping it, "TROOPS: FAIR" when stripping plus
+// census-matched bot squads).
 std::string format_ctf_troops_label(const SaveData& save);
 
 // "Respawns: Off" / "Respawns: Heroes" / "Respawns: Everyone" /

@@ -85,11 +85,13 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
         sanitized.ctf_respawn_ticks =
             std::clamp<std::int16_t>(sanitized.ctf_respawn_ticks, 12, 1200);
     }
-    // 0 keeps the authored cast, 2 strips it. The retired middle state 1 is
-    // still accepted so a peer or save from that build syncs instead of
-    // snapping back to the host's value; every strip rule reads it as 2.
+    // 0 keeps the authored cast, 2 strips it, 3 (kTroopsMatched, "TROOPS:
+    // FAIR") strips it and sizes the generated bot squads to the human
+    // census. The retired middle state 1 is still accepted so a peer or save
+    // from that build syncs instead of snapping back to the host's value;
+    // every strip rule reads it as 2. 4+ still reverts to the fallback.
     if (sanitized.ctf_strip_scenario_troops < 0 ||
-        sanitized.ctf_strip_scenario_troops > 2)
+        sanitized.ctf_strip_scenario_troops > og::sim::kTroopsMatched)
     {
         sanitized.ctf_strip_scenario_troops = fallback.ctf_strip_scenario_troops;
     }

@@ -2,7 +2,9 @@
 """Generate the Multiplayer Game Modes pack sprites.
 
 Writes sprites/{flag.png,flag.json,ctfpoint.png,
-ball.png,ball.json,aura.png,aura.json}. Stdlib-only (struct + zlib). PNGs are
+ball.png,ball.json,bball.png,bball.json,bshadow.png,bshadow.json,
+hoop.png,hoop.json,aura.png,aura.json}. Stdlib-only (struct + zlib).
+PNGs are
 indexed 8-bit with the full 256-entry OpenGlad palette parsed from
 pix/openglad.gpl, matching what read_pixie_file (src/resources/io/
 og_file.cpp) validates:
@@ -17,9 +19,13 @@ Sprite rules:
   - indices 248..255 are the team-tint band: walkputbuffer remaps
     p > 247 to teamcolor + (255 - p), so 255 is the brightest team
     shade and 248 the darkest; team tint only where a sprite is
-    team-owned (flag, ctfpoint). The ball is the neutral 16..31 ramp
-    (white body, black patches) and the aura is fixed red/gold (the
-    Mutant reads the same on every team).
+    team-owned (flag, ctfpoint, the hoop's rim ticks). The ball is the
+    neutral 16..31 ramp (white body, black patches) and the aura is
+    fixed red/gold (the Mutant reads the same on every team).
+  - 208..223 (WATER) and 224..231 (ORANGE) are rotated every frame by
+    screen::do_cycle; art painted there strobes. The basketball and
+    the hoop rim take the static duplicate of the fire ramp at
+    232..239 instead.
 
 The flag and control-point painters were folded in from the retired
 scripts/gen_ctf_sprites.py when the core CTF families left the engine.
@@ -64,6 +70,20 @@ BALL_SHADE_2 = 25    # ~(157,157,157) terminator
 BALL_RIM = 20        # ~(97,97,97) shaded silhouette
 BALL_PATCH_LIT = 18  # ~(72,72,72) patch under direct light
 BALL_PATCH = 16      # (0,0,0) patch in shade
+
+# Basketball body: four adjacent oranges from the STATIC copy of the fire
+# ramp at 232..239. The identical copy one ramp lower, 224..231, is
+# ORANGE_START..ORANGE_END (include/openglad/interface/base.h:136-137) —
+# screen::do_cycle rotates those eight entries every frame, so a ball
+# painted there would strobe like a torch. 232+ holds still. The seams and
+# the shaded silhouette come from the dark end of the leather ramp.
+BBALL_LIT = 235       # ~(230,133,0) lit crown
+BBALL_MID = 234       # ~(230,109,0) basketball orange
+BBALL_SHADE = 233     # ~(230,85,0)
+BBALL_DARK = 232      # ~(230,60,0) terminator
+BBALL_RIM = 133       # ~(129,64,0) shaded silhouette
+BBALL_SEAM_LIT = 134  # ~(109,44,0) seam crossing the lit crown
+BBALL_SEAM = 135      # ~(89,24,0) seam in shade
 
 TRANSPARENT = 0
 
@@ -295,6 +315,25 @@ BALL_PATCH_LIT_AT = 0.62  # patch pixels brighter than this take BALL_PATCH_LIT
 BALL_TILT_X = 0.0
 BALL_TILT_Y = 0.13
 
+# Basketball seam geometry. Two ORTHOGONAL great circles stand in for the
+# eight-panel seam pattern; each is stored as its plane normal, and a surface
+# point sits on a seam when |dot(normal, point)| is inside the half-width
+# (a sine, so the painted band keeps a constant angular width and fattens
+# toward the limb exactly as a real seam does under foreshortening).
+BBALL_SEAM_HALF = 0.115
+# The pair is tilted out of the view plane before it spins about the view
+# axis: an untilted pair projects to a plain cross, which repeats every 90
+# degrees and collapses the eight frames to two seam patterns (measured;
+# see the ball's BALL_TILT_Y for the same trap). Tilting either one is
+# enough, and tilting both gives the seams their elliptical curve.
+BBALL_SEAM_TILT_X = 0.42
+BBALL_SEAM_TILT_Y = 0.30
+# Pebbling: the grain is quantized in the ball's OWN frame (the pixel normal
+# is un-spun before hashing) so it turns with the seams instead of crawling
+# across the sprite like a screen-door dither. It only ever darkens the body
+# by one ramp step, never enough to be read as a seam.
+BBALL_PEBBLE_Q = 7.0
+
 
 def make_ball_frames(size=12, frames=8):
     """The soccer ball: a lit white sphere whose black pentagon patches turn.
@@ -351,6 +390,252 @@ def make_ball_frames(size=12, frames=8):
                     px[y * size + x] = BALL_SHADE_1
                 else:
                     px[y * size + x] = BALL_SHADE_2
+        out.append(bytes(px))
+    return out
+
+
+def make_bball_frames(size=12, frames=8):
+    """The basketball: a lit orange sphere whose seam circles turn.
+
+    Same lit-sphere loop as make_ball_frames — fixed light, spinning
+    pattern — with the soccer patch lattice replaced by two orthogonal
+    dark-brown great circles plus a dark silhouette rim. One frame is one
+    1/`frames` turn about the view axis, so forward play reads as a
+    clockwise roll and backward as counter-clockwise, matching the ball.
+
+    At 12x12 the seams are what carry the roll: the shading is pinned to
+    the light, so a lit crown and a shaded underside stay put while the
+    two arcs sweep across them.
+    """
+    base = [_vnorm(_rot_y(_rot_x(v, BBALL_SEAM_TILT_X), BBALL_SEAM_TILT_Y))
+            for v in ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0))]
+    body = (BBALL_LIT, BBALL_MID, BBALL_SHADE, BBALL_DARK)
+    cx = cy = (size - 1) / 2.0
+    radius = size / 2.0 - 0.4
+    out = []
+    for fi in range(frames):
+        theta = 2.0 * math.pi * fi / frames
+        seams = [_rot_z(n, theta) for n in base]
+        px = bytearray([TRANSPARENT] * (size * size))
+        for y in range(size):
+            for x in range(size):
+                nx = (x - cx) / radius
+                ny = (y - cy) / radius
+                d2 = nx * nx + ny * ny
+                if d2 > 1.0:
+                    continue
+                nz = math.sqrt(max(0.0, 1.0 - d2))
+                lam = (nx * BALL_LIGHT[0] + ny * BALL_LIGHT[1]
+                       + nz * BALL_LIGHT[2])
+                on_seam = False
+                for n in seams:
+                    away = n[0] * nx + n[1] * ny + n[2] * nz
+                    if abs(away) <= BBALL_SEAM_HALF:
+                        on_seam = True
+                        break
+                if on_seam:
+                    px[y * size + x] = (BBALL_SEAM_LIT if lam > 0.45
+                                        else BBALL_SEAM)
+                    continue
+                if math.sqrt(d2) > 0.88 and lam < 0.45:
+                    px[y * size + x] = BBALL_RIM
+                    continue
+                # Body ramp as a band INDEX, so the pebble step below can
+                # darken by one entry without caring which direction the
+                # chosen ramp runs in.
+                if lam > 0.45:
+                    band = 0
+                elif lam > 0.10:
+                    band = 1
+                elif lam > -0.25:
+                    band = 2
+                else:
+                    band = 3
+                # Pebble grain: un-spin the pixel's normal so the hash lands
+                # on the same patch of leather every frame.
+                sx, sy, sz = _rot_z((nx, ny, nz), -theta)
+                grain = (int(math.floor(sx * BBALL_PEBBLE_Q))
+                         + int(math.floor(sy * BBALL_PEBBLE_Q))
+                         + int(math.floor(sz * BBALL_PEBBLE_Q)))
+                if grain % 2 and band > 0:
+                    band = min(band + 1, len(body) - 1)
+                px[y * size + x] = body[band]
+        out.append(bytes(px))
+    return out
+
+
+def make_bshadow_frames(size=12, frames=4):
+    """The basketball's ground spot: a dark ellipse that shrinks with height.
+
+    The impl picks the frame from the ball's height —
+    clamp(div(z_px, shadow_band), 0, 3) — so frame 0 is the ball on the
+    deck and frame 3 is the apex of a shot. Sizes shrink monotonically.
+    The shadow is a gameplay affordance, not decoration: it is where a
+    shot will land, so it must survive every floor it can fall on. The
+    court key is the 100+ gray cobble ramp and the 60/85 grays vanished
+    into it; a pure-black core (index 16, the soccer-pentagon black)
+    under a GRAY_SHADOW rim stays legible on cobble, hardwood and
+    carpet alike, and the apex frame keeps a 5x3 footprint so a
+    three-pointer's landing spot never disappears mid-flight.
+    """
+    out = []
+    cx = cy = (size - 1) / 2.0
+    half_w = (5.5, 4.6, 3.6, 2.6)
+    half_h = (3.2, 2.6, 2.0, 1.5)
+    for fi in range(frames):
+        a, b = half_w[fi], half_h[fi]
+        px = bytearray([TRANSPARENT] * (size * size))
+        for y in range(size):
+            for x in range(size):
+                u = (x - cx) / a
+                v = (y - cy) / b
+                d = u * u + v * v
+                if d > 1.0:
+                    continue
+                px[y * size + x] = BALL_PATCH if d <= 0.55 else GRAY_SHADOW
+        out.append(bytes(px))
+    return out
+
+
+# Hoop geometry. The rim is a torus seen from above: an elliptical orange
+# ring whose 24 px outer width IS the rim_r 12 scoring diameter (design
+# doc D14/D29), foreshortened to 20 px tall like the bshadow ellipse. The
+# net hangs below the rim, so from above it reads as a cone: strands
+# zigzag inward through two mesh rings to a small bottom ring, and the
+# floor shows through the mouth.
+def make_hoop_frames(w=24, h=26, frames=6):
+    """The basket in 3/4 view: backboard, solid rim, hanging white net.
+
+    The first take drew the hoop top-down-literal and it read as a donut
+    on the floor. The genre answer (every top-down sports game) is
+    iconography: the unmistakable hoop silhouette as seen from a high
+    sideline seat — backboard slab on top, solid orange rim in front of
+    it, bright net hanging below — one south-facing sprite for every
+    wall. Frame 0 rests; 1-3 play the made-basket swish (the net bulges
+    under the ball, sways, settles); 4-5 flash the rim gold for a
+    rim-lip clang (hard, then dim; the rim jumps a pixel on the hard
+    hit). The team read is the backboard's filled target block in the
+    tint band — one big square instead of the old compass specks.
+    lib/mode_basketball_impl.lua drives playback (run_hoop_anims);
+    mirrors only ever see the replicated set_frame results.
+    """
+    # Fixed geometry (x spans, y rows). The rim hangs at the board's
+    # foot; the net's hem row and lean come from the per-frame pose.
+    board_l, board_r, board_t, board_b = 2, 21, 0, 7
+    tgt_l, tgt_r, tgt_t, tgt_b = 8, 15, 2, 6
+    rim_cx, rim_cy = (w - 1) / 2.0, 10.0
+    rim_a, rim_b_ax = 7.6, 2.4       # outer semi-axes of the rim tube
+    rim_ia, rim_ib = 5.4, 1.2        # inner (mouth) semi-axes
+    # Net pose per frame: (hem_y, bulge_px, sway_px). The swish is the
+    # ball pushing through: deepest and widest on 1, swinging on 2,
+    # settling on 3. Clang frames keep the idle net — the ball never
+    # entered.
+    poses = ((22, 0, 0), (25, 2, 0), (24, 1, -2), (23, 0, 1),
+             (22, 0, 0), (22, 0, 0))
+    out = []
+    for fi in range(frames):
+        hem_y, bulge, sway = poses[fi]
+        rim_dy = -1 if fi == 4 else 0  # the hard clang jolts the rim up
+        px = bytearray([TRANSPARENT] * (w * h))
+
+        def put(x, y, c):
+            if 0 <= x < w and 0 <= y < h:
+                px[y * w + x] = c
+
+        # Backboard: shadow outline, near-white face, glass highlight on
+        # the top inner row, shaded foot. Drawn first; everything else
+        # overlaps it.
+        for y in range(board_t, board_b + 1):
+            for x in range(board_l, board_r + 1):
+                on_edge = (x in (board_l, board_r)
+                           or y in (board_t, board_b))
+                if on_edge:
+                    put(x, y, GRAY_SHADOW)
+                elif y == board_t + 1:
+                    put(x, y, BALL_WHITE)
+                elif y == board_b - 1:
+                    put(x, y, GRAY_LIGHT)
+                else:
+                    put(x, y, BALL_WHITE_2)
+        # The team target: filled block, dark border, one bright spark.
+        for y in range(tgt_t, tgt_b + 1):
+            for x in range(tgt_l, tgt_r + 1):
+                on_edge = (x in (tgt_l, tgt_r) or y in (tgt_t, tgt_b))
+                put(x, y, TEAM_DARK if on_edge else TEAM_MID)
+        put(tgt_l + 1, tgt_t + 1, TEAM_BRIGHT)
+
+        # Net before rim, so the rim's front lip overpaints the anchor
+        # row. Junction rows taper from the rim mouth to the hem; two
+        # strand families zigzag between them, and the transparent
+        # holes let the court show through (a solid cone reads as a
+        # lampshade, not a net).
+        rows = []
+        n_rows = 4
+        top_y = 12
+        for ri in range(n_rows):
+            t = ri / (n_rows - 1)
+            y = round(top_y + (hem_y + (bulge if ri >= 2 else 0) - top_y) * t)
+            halfw = 6.5 - 2.6 * t + (bulge * 0.7 if ri >= 2 else 0)
+            cxr = rim_cx + sway * t
+            rows.append((y, cxr, halfw))
+        n_str = 5
+        for s in range(n_str):
+            u = s / (n_str - 1) - 0.5           # -0.5 .. +0.5
+            for ri in range(n_rows - 1):
+                y0, cx0, hw0 = rows[ri]
+                y1, cx1, hw1 = rows[ri + 1]
+                zig = 1.0 if (s + ri) % 2 == 0 else -1.0
+                x0 = cx0 + u * 2.0 * hw0
+                x1 = cx1 + (u + zig * 0.12) * 2.0 * hw1
+                steps = max(2, y1 - y0)
+                for i in range(steps + 1):
+                    t = i / steps
+                    xx = round(x0 + (x1 - x0) * t)
+                    yy = round(y0 + (y1 - y0) * t)
+                    c = BALL_WHITE if abs(u) > 0.3 else BALL_WHITE_2
+                    put(xx, yy, c)
+        # Hem: a bright scalloped bottom row ties the strands off.
+        hy, hcx, hhw = rows[-1]
+        for x in range(round(hcx - hhw), round(hcx + hhw) + 1):
+            put(x, hy, BALL_WHITE if (x % 2 == 0) else BALL_WHITE_1)
+
+        # Rim: a solid elliptical tube in the static orange ramp —
+        # back arc in shade against the board, front lip lit toward the
+        # viewer, dark underside seam. Clang frame 4 brightens one step
+        # everywhere and throws gold glints on the crest.
+        y_lo = int(rim_cy - rim_b_ax - 1)
+        y_hi = int(rim_cy + rim_b_ax + 2)
+        for y in range(y_lo, y_hi + 1):
+            for x in range(w):
+                nx = (x - rim_cx) / rim_a
+                ny = (y - (rim_cy + rim_dy)) / rim_b_ax
+                ix = (x - rim_cx) / rim_ia
+                iy = (y - (rim_cy + rim_dy)) / rim_ib
+                if nx * nx + ny * ny > 1.0:
+                    continue
+                if ix * ix + iy * iy < 1.0:
+                    continue  # the mouth: see through to the floor
+                rel = y - (rim_cy + rim_dy)
+                if rel < -0.8:
+                    band = 2      # back arc, in the board's shadow
+                elif rel < 0.9:
+                    band = 1      # tube crest
+                else:
+                    band = 0      # front lip, brightest
+                if fi == 4:
+                    band = min(band + 1, 3)
+                ramp = (BBALL_DARK, BBALL_SHADE, BBALL_MID, BBALL_LIT)
+                # Bands index from dark; flip so the front lip is lit.
+                # Frame 5 is the AFTERGLOW, not a dimming: idle shading
+                # with the sparse glints above carrying the fade.
+                put(x, y, ramp[3 - band])
+        if fi >= 4:
+            n_glint = 6 if fi == 4 else 3
+            gold = GOLD_BRIGHT if fi == 4 else GOLD_MID
+            for i in range(n_glint):
+                gx = rim_cx + rim_a * (i / (n_glint - 1) - 0.5) * 1.9
+                put(round(gx), round(rim_cy + rim_dy - rim_b_ax), gold)
+
         out.append(bytes(px))
     return out
 
@@ -442,6 +727,59 @@ def main():
     with open(os.path.join(OUT, "ball.json"), "w", encoding="utf-8") as f:
         f.write(aseprite_sidecar("ball", 12, 12, len(ball_frames)))
     print(f"wrote {OUT}/ball.json")
+
+    bball_frames = make_bball_frames()
+    bball_colors = {BBALL_LIT, BBALL_MID, BBALL_SHADE, BBALL_DARK,
+                    BBALL_RIM, BBALL_SEAM_LIT, BBALL_SEAM}
+    for f in bball_frames:
+        check_band("bball.png", f, team_ok=False, neutral_ok=bball_colors)
+    # Same trap as ball.png: a seam pair aligned to the spin axis collapses
+    # the cycle to a couple of distinct images (see BBALL_SEAM_TILT_X/Y).
+    if len(set(bball_frames)) != len(bball_frames):
+        raise SystemExit("bball.png: rotation frames are not all distinct")
+    n = write_indexed_png(os.path.join(OUT, "bball.png"), 12,
+                              12 * len(bball_frames), b"".join(bball_frames),
+                              palette)
+    print(f"wrote {OUT}/bball.png ({n} bytes, {len(bball_frames)} frames)")
+    with open(os.path.join(OUT, "bball.json"), "w", encoding="utf-8") as f:
+        f.write(aseprite_sidecar("bball", 12, 12, len(bball_frames)))
+    print(f"wrote {OUT}/bball.json")
+
+    bshadow_frames = make_bshadow_frames()
+    for f in bshadow_frames:
+        check_band("bshadow.png", f, team_ok=False,
+                   neutral_ok=grays | {BALL_PATCH})
+    # The height read only works if the blob actually shrinks per frame.
+    covered = [sum(1 for p in f if p != TRANSPARENT) for f in bshadow_frames]
+    if any(a <= b for a, b in zip(covered, covered[1:])):
+        raise SystemExit(f"bshadow.png: frames must shrink, got {covered}")
+    n = write_indexed_png(os.path.join(OUT, "bshadow.png"), 12,
+                              12 * len(bshadow_frames),
+                              b"".join(bshadow_frames), palette)
+    print(f"wrote {OUT}/bshadow.png ({n} bytes, "
+          f"{len(bshadow_frames)} frames)")
+    with open(os.path.join(OUT, "bshadow.json"), "w", encoding="utf-8") as f:
+        f.write(aseprite_sidecar("bshadow", 12, 12, len(bshadow_frames)))
+    print(f"wrote {OUT}/bshadow.json")
+
+    hoop_frames = make_hoop_frames()
+    hoop_colors = ({BBALL_LIT, BBALL_MID, BBALL_SHADE, BBALL_DARK}
+                   | grays
+                   | {GOLD_BRIGHT, GOLD_MID, BALL_WHITE, BALL_WHITE_1,
+                      BALL_WHITE_2})
+    for f in hoop_frames:
+        check_band("hoop.png", f, team_ok=True, neutral_ok=hoop_colors)
+    # Frames carry the swish/clang read; a collapsed pair would silently
+    # kill an animation state (see ball.png's matching assertion).
+    if len(set(hoop_frames)) != len(hoop_frames):
+        raise SystemExit("hoop.png: frames are not all distinct")
+    n = write_indexed_png(os.path.join(OUT, "hoop.png"), 24,
+                              26 * len(hoop_frames), b"".join(hoop_frames),
+                              palette)
+    print(f"wrote {OUT}/hoop.png ({n} bytes, {len(hoop_frames)} frames)")
+    with open(os.path.join(OUT, "hoop.json"), "w", encoding="utf-8") as f:
+        f.write(aseprite_sidecar("hoop", 24, 26, len(hoop_frames)))
+    print(f"wrote {OUT}/hoop.json")
 
     aura_frames = make_aura_frames()
     aura_colors = {RED_BRIGHT, RED_MID, GOLD_BRIGHT, GOLD_MID}

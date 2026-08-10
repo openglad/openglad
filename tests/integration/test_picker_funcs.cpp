@@ -1,4 +1,5 @@
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/interface/button.h>
 #include "../../src/interface/ui/picker_sdl_defs.h"
 #include <openglad/core/test_trace.h>
@@ -2974,6 +2975,165 @@ TEST(PickerFuncs, local_lobby_reconciles_sparse_versus_domain_transitions)
     save.current_campaign = original_campaign;
     save.scen_num = original_scenario;
     save.ctf_team_count = original_ctf_team_count;
+}
+
+namespace {
+
+// RAII capture of the long-lived session state the local-lobby seat tests
+// mutate: the real roster (moved OUT of the save — losing it would delete
+// the session roster for every later test), the save's lobby fields, the
+// campaign mount, the world identity and the pre-existing team markers
+// (parked outside the score range for the test's duration). Restoration
+// runs on EVERY exit path, so a fatal ASSERT mid-test cannot leak any of
+// it into the rest of the binary. The oblist restore pops entries past the
+// captured size, which is sound because GameWorld::add_ob APPENDS
+// (add_to_list with atstart = false) and the tests only add, never remove.
+struct LocalLobbySessionGuard
+{
+    SaveData& save;
+    GameWorld& world;
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> roster;
+    unsigned char team_size;
+    short my_team;
+    unsigned char numplayers;
+    short allied_mode;
+    std::string campaign;
+    short scen_num;
+    short ctf_team_count;
+    std::string mount;
+    int world_id;
+    char world_type;
+    std::size_t ob_size;
+    std::vector<std::pair<walker*, unsigned char>> marker_teams;
+
+    LocalLobbySessionGuard(SaveData& s, GameWorld& w)
+        : save(s), world(w), team_size(s.team_size), my_team(s.my_team),
+          numplayers(s.numplayers), allied_mode(s.allied_mode),
+          campaign(s.current_campaign), scen_num(s.scen_num),
+          ctf_team_count(s.ctf_team_count), mount(get_mounted_campaign()),
+          world_id(w.id), world_type(w.type), ob_size(w.oblist.size())
+    {
+        for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot)
+            roster[static_cast<std::size_t>(slot)] =
+                std::move(save.team_list[static_cast<std::size_t>(slot)]);
+        for (const auto& ob : world.oblist)
+        {
+            if (ob != nullptr && ob->query_order() == Order::Special &&
+                ob->family() == FAMILY_RESERVED_TEAM)
+            {
+                marker_teams.emplace_back(ob.get(), ob->team_num());
+                ob->set_team_num(SCORE_TEAM_COUNT);
+            }
+        }
+    }
+
+    ~LocalLobbySessionGuard()
+    {
+        for (const auto& [marker, team] : marker_teams)
+            marker->set_team_num(team);
+        while (world.oblist.size() > ob_size)
+            world.oblist.pop_back();
+        world.id = world_id;
+        world.type = world_type;
+        if (!mount.empty())
+            (void)mount_campaign_package_with_error(mount);
+        for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot)
+            save.team_list[static_cast<std::size_t>(slot)] =
+                std::move(roster[static_cast<std::size_t>(slot)]);
+        save.team_size = team_size;
+        save.my_team = my_team;
+        save.numplayers = numplayers;
+        save.allied_mode = allied_mode;
+        save.current_campaign = campaign;
+        save.scen_num = scen_num;
+        save.ctf_team_count = ctf_team_count;
+    }
+
+    LocalLobbySessionGuard(const LocalLobbySessionGuard&) = delete;
+    LocalLobbySessionGuard& operator=(const LocalLobbySessionGuard&) = delete;
+};
+
+}  // namespace
+
+// Matched teams E11 (amendment re-target): the matched request rides the
+// TROOPS field (kTroopsMatched), which feeds no mask anywhere (D29) — so
+// the settings echo re-resolves every seat against an UNCHANGED domain,
+// cycling TROOPS to/from FAIR moves no seats, and per-seat reassignment
+// obeys the same authored-mask rule as before.
+TEST(PickerFuncs, local_lobby_matched_setting_keeps_auto_seat_behavior)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    LocalLobbySessionGuard guard(save, world);
+
+    for (auto& member : save.team_list)
+        member.reset();
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Host";
+    save.team_list[0]->teamnum = 0;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_ARCHER);
+    save.team_list[1]->name = "Guest";
+    save.team_list[1]->teamnum = 3;
+    save.team_size = 2;
+    save.my_team = 0;
+    save.numplayers = 2;
+    save.allied_mode = 0;
+    save.current_campaign = "modes";
+    save.scen_num = 7;
+    save.ctf_team_count = 0;
+    // A REAL mount: the versus predicate reads the campaign's matchup: yaml
+    // key through the mounted package.
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(save.current_campaign));
+    world.id = save.scen_num;
+    world.type |= GameWorld::TYPE_SCRIPTED;
+    for (const short team : {short{0}, short{2}, short{3}})
+    {
+        walker* marker = world.add_ob(Order::Special, FAMILY_RESERVED_TEAM);
+        ASSERT_NE(nullptr, marker);
+        marker->set_team_num(static_cast<unsigned char>(team));
+    }
+
+    {
+        auto client = og::ui::create_local_picker_lobby_client();
+        client->initialize_from_save();
+        // Auto over authored {0,2,3}: both saved seats are valid.
+        std::vector<og::sim::LobbyPlayer> players = client->lobby_players();
+        ASSERT_EQ(2u, players.size());
+        EXPECT_EQ(0, players[0].team);
+        EXPECT_EQ(3, players[1].team);
+
+        // ALL -> FAIR: the strip field feeds no mask, so the settings
+        // echo moves no seats, and the sentinel survives the lobby
+        // round-trip unclamped (sanitize keeps exactly 3, D27).
+        save.ctf_strip_scenario_troops = og::sim::kTroopsMatched;
+        client->sync_settings_from_save();
+        players = client->lobby_players();
+        ASSERT_EQ(2u, players.size());
+        EXPECT_EQ(0, players[0].team);
+        EXPECT_EQ(3, players[1].team);
+        EXPECT_EQ(og::sim::kTroopsMatched, save.ctf_strip_scenario_troops);
+
+        // Seat changes under FAIR follow the authored mask exactly as
+        // before: 2 is authored, 1 is not.
+        EXPECT_TRUE(client->request_seat_team_change(
+            players[1].player_index, 2));
+        EXPECT_FALSE(client->request_seat_team_change(
+            players[1].player_index, 1));
+        players = client->lobby_players();
+        ASSERT_EQ(2u, players.size());
+        EXPECT_EQ(2, players[1].team);
+
+        // FAIR -> ALL: same domain again, so still no seat movement.
+        save.ctf_strip_scenario_troops = 0;
+        client->sync_settings_from_save();
+        players = client->lobby_players();
+        ASSERT_EQ(2u, players.size());
+        EXPECT_EQ(0, players[0].team);
+        EXPECT_EQ(2, players[1].team);
+        client->shutdown();
+    }
+    // Session state restores via the guard on every exit path.
 }
 
 TEST(PickerFuncs, local_lobby_start_preserves_all_team_colors_in_both_modes)

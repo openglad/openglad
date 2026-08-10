@@ -868,9 +868,33 @@ int text_picker_testing_exercise_internal_paths()
     handle_team_item(PickerMenuCommand::ToggleCtfScenarioTroops, "", [&] {
         return save.ctf_strip_scenario_troops != previous_ctf_troops;
     });
-    handle_team_item(PickerMenuCommand::Teams, "\n", [&] {
-        return save.ctf_team_count != previous_ctf_teams;
-    });
+    // The troops toggle prints the SHARED formatter's label, so the FAIR
+    // sentinel reaches the terminal with no client-side string of its own
+    // (matched-teams D28). The toggle above landed on OWN (2); the next
+    // step is FAIR (3), and the dispatch echoes the new label.
+    {
+        ScopedTextPickerStdoutCapture output;
+        check(output.ready());
+        handle_team_item(PickerMenuCommand::ToggleCtfScenarioTroops, "", [&] {
+            return save.ctf_strip_scenario_troops == og::sim::kTroopsMatched;
+        });
+        const std::string text = output.finish();
+        check(output.finish_ok() &&
+            text.find("TROOPS: FAIR") != std::string::npos);
+    }
+    // The Matchup dump prints the teams label in its plain numeric/Auto
+    // form — the retired Teams: Match rendering is gone.
+    {
+        ScopedTextPickerStdoutCapture output;
+        check(output.ready());
+        handle_team_item(PickerMenuCommand::Teams, "\n", [&] {
+            return save.ctf_team_count != previous_ctf_teams;
+        });
+        const std::string text = output.finish();
+        check(output.finish_ok() &&
+            text.find("[Teams: ") != std::string::npos &&
+            text.find("Match]") == std::string::npos);
+    }
     {
         ScopedTextPickerStdoutCapture output;
         check(output.ready());

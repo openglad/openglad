@@ -1,12 +1,13 @@
 /* Multiplayer Game Modes campaign generator.
  *
  * Produces campaigns/modes/ (the source tree the build
- * composes into builtin/modes.glad): the 28-scenario five-mode
+ * composes into builtin/modes.glad): the 33-scenario six-mode
  * campaign (TDM 300-305 absorbing the arenas grids, CTF 500-509 keeping
- * the shipped CTF maps, Onslaught 800-803, Soccer 820-823, Mutant
- * 840-843), every level typed SCEN_TYPE_SCRIPTED — the mode rules live in
- * the campaign's embedded Lua pack. This tool assembles the package
- * (yaml + icon + pack tree + 28 built levels), regenerates the committed
+ * the shipped CTF maps, Onslaught 800-803, Soccer 820-823, Basketball
+ * 824-828, Mutant 840-843), every level typed SCEN_TYPE_SCRIPTED — the
+ * mode rules live in the campaign's embedded Lua pack. This tool
+ * assembles the package (yaml + icon + pack tree + 33 built levels),
+ * regenerates the committed
  * level manifest (pack/lib/mode_levels.lua) from the same tables that
  * build the maps, zips, remounts, and hard-fails on any self-check
  * violation before exporting the campaign tree.
@@ -117,15 +118,15 @@ void write_campaign_yaml(const std::string& path)
         << "contributors:    Forgotten Sages (arena grids)\n"
         << "\n"
         << "description:     |\n"
-        << "    One arena, five games, one book.\n"
+        << "    One arena, six games, one book.\n"
         << "    The Gamesmaster calls team\n"
         << "    deathmatch, capture the flag,\n"
-        << "    onslaught, mutant, and soccer\n"
-        << "    across twenty-eight fields old\n"
-        << "    and new. The bots know the rules.\n"
-        << "    Respawns honor your difficulty.\n"
-        << "    First to the posted score takes\n"
-        << "    the purse.\n";
+        << "    onslaught, mutant, soccer, and\n"
+        << "    basketball across thirty-three\n"
+        << "    fields old and new. The bots\n"
+        << "    know the rules. Respawns honor\n"
+        << "    your difficulty. First to the\n"
+        << "    posted score takes the purse.\n";
     if (!out)
         fail(std::format("cannot write {}", path));
 }
@@ -233,7 +234,10 @@ void copy_pack_tree(const std::string& staging_root)
 
 // Obmap peak ledger (§2.3 model): authored ground load + capped spawns +
 // 16 heroes + 20 corpse/stain transients + 25 projectiles (+ the soccer
-// ball). Must stay <= 190 unless the row carries the documented waiver.
+// ball; + basketball's ball AND its shadow fx, D11, AND one hoop sprite
+// per authored hoop, D29/D32 — the peak activation, even when a 2/3-team
+// game on a 4-hoop court spawns fewer). Must stay <= 190 unless the row
+// carries the documented waiver.
 int obmap_ledger(const ExpectedLevel& row)
 {
     int gens = 0;
@@ -242,7 +246,11 @@ int obmap_ledger(const ExpectedLevel& row)
     int caps = 0;
     for (const SpawnCap& cap : row.spawn_caps)
         caps += cap.cap;
-    const int ball = (row.mode == ModeKind::Soccer) ? 1 : 0;
+    int ball = 0;
+    if (row.mode == ModeKind::Soccer)
+        ball = 1;
+    else if (row.mode == ModeKind::Basketball)
+        ball = 2 + static_cast<int>(row.hoops.size()); // ball + shadow + rims
     return gens + row.treasures + row.flags + row.control_points + row.doors +
            row.authored_livings + caps + 16 + 20 + 25 + ball;
 }
@@ -525,8 +533,10 @@ void self_check_level(const ExpectedLevel& row)
     // initializer. Soccer and Onslaught are OFF by ruling (Soccer's short
     // respawn already regulates attrition; Onslaught's spawn attrition IS
     // the mode and its var budget is full), so their rows must stay
-    // pad-free even though their maps author food.
-    if (row.mode == ModeKind::Soccer || row.mode == ModeKind::Onslaught)
+    // pad-free even though their maps author food. Basketball extends the
+    // ruling (D2): its rows carry no pads either.
+    if (row.mode == ModeKind::Soccer || row.mode == ModeKind::Onslaught ||
+        row.mode == ModeKind::Basketball)
     {
         if (!row.item_pads.empty() || row.item_interval != 0)
             fail(std::format("{}: {} mode ships no item respawns; drop the "
@@ -583,8 +593,9 @@ void self_check_level(const ExpectedLevel& row)
         fail(std::format("{}: ledger {} no longer needs its A* waiver",
                          where, ledger));
 
-    // Soccer: closed perimeter, carpet goals, passable kickoff.
-    if (row.mode == ModeKind::Soccer)
+    // Soccer + Basketball: closed perimeter on all four edges (the ball
+    // must never leave the court).
+    if (row.mode == ModeKind::Soccer || row.mode == ModeKind::Basketball)
     {
         for (int tx = 0; tx < world.grid.w; ++tx)
         {
@@ -606,6 +617,11 @@ void self_check_level(const ExpectedLevel& row)
                 fail(std::format("{}: open perimeter at ({}, {})", where,
                                  world.grid.w - 1, ty));
         }
+    }
+
+    // Soccer: carpet goals, passable kickoff.
+    if (row.mode == ModeKind::Soccer)
+    {
         for (const GoalRect& g : row.goal_rects)
             for (int ty = g.y0; ty <= g.y1; ++ty)
                 for (int tx = g.x0; tx <= g.x1; ++tx)
@@ -616,6 +632,138 @@ void self_check_level(const ExpectedLevel& row)
         if (!tile_passable(world, probe.get(), row.kickoff))
             fail(std::format("{}: kickoff ({}, {}) impassable", where,
                              row.kickoff.tx, row.kickoff.ty));
+    }
+
+    // Basketball structural arm (design doc §5.5): dunk carpets, centered
+    // jump tile, arc sanity + per-quadrant runner presence, hoop
+    // separation.
+    if (row.mode == ModeKind::Basketball)
+    {
+        auto base_at = [&world](int tx, int ty) {
+            return world.grid.data[static_cast<std::size_t>(
+                tx + ty * world.grid.w)];
+        };
+
+        // Manifest completeness: exactly one hoop per manifest team. A
+        // short (or empty) hoops list would sail through every per-hoop
+        // check below, yet on_mode_init refuses such a row and the level
+        // silently falls back to classic play.
+        if (static_cast<int>(row.hoops.size()) != row.team_count)
+            fail(std::format("{}: {} hoops authored for {} teams", where,
+                             row.hoops.size(), row.team_count));
+
+        // Per authored hoop: the 3x3 dunk carpet — 8 outer PIX_CARPET_M
+        // tiles around the PIX_CARPET_M2 rim tile (the hoop tile IS the
+        // carpet center, D3), all nine passable (the painted carpet is
+        // exactly the Chebyshev dunk box).
+        for (const TilePos& hoop : row.hoops)
+        {
+            if (base_at(hoop.tx, hoop.ty) != PIX_CARPET_M2)
+                fail(std::format("{}: hoop tile ({}, {}) is not the "
+                                 "PIX_CARPET_M2 rim tile", where, hoop.tx,
+                                 hoop.ty));
+            for (int dy = -1; dy <= 1; ++dy)
+                for (int dx = -1; dx <= 1; ++dx)
+                {
+                    const TilePos t{static_cast<short>(hoop.tx + dx),
+                                    static_cast<short>(hoop.ty + dy)};
+                    if ((dx != 0 || dy != 0) &&
+                        base_at(t.tx, t.ty) != PIX_CARPET_M)
+                        fail(std::format("{}: dunk-carpet tile ({}, {}) is "
+                                         "not PIX_CARPET_M", where, t.tx,
+                                         t.ty));
+                    if (!tile_passable(world, probe.get(), t))
+                        fail(std::format("{}: dunk-carpet tile ({}, {}) "
+                                         "impassable", where, t.tx, t.ty));
+                }
+        }
+
+        // Jump tile: passable and the exact court center (all grids are
+        // odd-dimensioned by the court grammar, so a true center exists).
+        if (!tile_passable(world, probe.get(), row.jump_ball))
+            fail(std::format("{}: jump-ball tile ({}, {}) impassable", where,
+                             row.jump_ball.tx, row.jump_ball.ty));
+        if (row.jump_ball.tx != (row.grid_w - 1) / 2 ||
+            row.jump_ball.ty != (row.grid_h - 1) / 2)
+            fail(std::format("{}: jump-ball tile ({}, {}) is not the court "
+                             "center ({}, {})", where, row.jump_ball.tx,
+                             row.jump_ball.ty, (row.grid_w - 1) / 2,
+                             (row.grid_h - 1) / 2));
+
+        // Arc sanity bounds (D18: the manifest number is the sim truth,
+        // the paint is advisory).
+        if (row.arc_radius < 32 ||
+            row.arc_radius >=
+                std::min(row.grid_w, row.grid_h) * GRID_SIZE / 2)
+            fail(std::format("{}: arc_radius {} outside sanity bounds",
+                             where, row.arc_radius));
+
+        // Hoop separation: pairwise L1 > 2 * (scatter_cap_total 24 +
+        // rim_r 12 + rim_lip 6) = 84 px — cross-rim landings impossible,
+        // so shot resolution may test only its target hoop.
+        for (std::size_t a = 0; a < row.hoops.size(); ++a)
+            for (std::size_t b = a + 1; b < row.hoops.size(); ++b)
+            {
+                const int l1 =
+                    std::abs(row.hoops[a].tx - row.hoops[b].tx) * GRID_SIZE +
+                    std::abs(row.hoops[a].ty - row.hoops[b].ty) * GRID_SIZE;
+                if (l1 <= 84)
+                    fail(std::format("{}: hoops {} and {} only {} px apart "
+                                     "(need > 84)", where, a, b, l1));
+            }
+
+        // Per-quadrant arc-runner presence (the D18/D26 amendment): for
+        // every hoop, each axis-aligned quadrant (N/E/S/W half-planes
+        // split at the diagonals; ties go east/west like the painter's
+        // VER pick) that holds at least one PASSABLE tile whose center
+        // distance^2 lies in the painted band [(r-8)^2, (r+8)^2) must
+        // keep >= 2 carpet runners in that band, and every hoop keeps
+        // >= 8 band runners total — a player must never lose a point of
+        // shot value on an invisible boundary.
+        for (std::size_t i = 0; i < row.hoops.size(); ++i)
+        {
+            const TilePos& hoop = row.hoops[i];
+            const int hx = hoop.tx * GRID_SIZE + GRID_SIZE / 2;
+            const int hy = hoop.ty * GRID_SIZE + GRID_SIZE / 2;
+            const int r = row.arc_radius;
+            int band_passable[4] = {};
+            int band_runners[4] = {};
+            int total_runners = 0;
+            for (int ty = 1; ty < world.grid.h - 1; ++ty)
+                for (int tx = 1; tx < world.grid.w - 1; ++tx)
+                {
+                    const int dx = tx * GRID_SIZE + GRID_SIZE / 2 - hx;
+                    const int dy = ty * GRID_SIZE + GRID_SIZE / 2 - hy;
+                    const int d2 = dx * dx + dy * dy;
+                    if (d2 < (r - 8) * (r - 8) || d2 >= (r + 8) * (r + 8))
+                        continue;
+                    const int quadrant = (dx * dx >= dy * dy)
+                                             ? ((dx >= 0) ? 1 : 3)
+                                             : ((dy >= 0) ? 2 : 0);
+                    if (tile_passable(world, probe.get(),
+                                      {static_cast<short>(tx),
+                                       static_cast<short>(ty)}))
+                        ++band_passable[quadrant];
+                    const unsigned char base = base_at(tx, ty);
+                    if (base == PIX_CARPET_SMALL_HOR ||
+                        base == PIX_CARPET_SMALL_VER)
+                    {
+                        ++band_runners[quadrant];
+                        ++total_runners;
+                    }
+                }
+            static constexpr const char* kQuadrantName[4] = {"N", "E", "S",
+                                                             "W"};
+            for (int q = 0; q < 4; ++q)
+                if (band_passable[q] > 0 && band_runners[q] < 2)
+                    fail(std::format("{}: hoop {} arc quadrant {} has {} "
+                                     "painted runners (need >= 2)", where, i,
+                                     kQuadrantName[q], band_runners[q]));
+            if (total_runners < 8)
+                fail(std::format("{}: hoop {} arc has {} painted runners "
+                                 "total (need >= 8)", where, i,
+                                 total_runners));
+        }
     }
 
     // 6. Footing for every authored entity. RESERVED_TEAM markers are
@@ -704,6 +852,12 @@ void self_check_level(const ExpectedLevel& row)
                     static_cast<short>((g.y0 + g.y1) / 2)});
     if (row.kickoff.tx >= 0)
         add_target(row.kickoff);
+    // Basketball: every rebound scrum spot is provably walkable — probe
+    // each hoop tile and the jump tile (§5.5).
+    for (const TilePos& hoop : row.hoops)
+        add_target(hoop);
+    if (row.jump_ball.tx >= 0)
+        add_target(row.jump_ball);
     for (int team = 1; team < row.team_count; ++team)
         add_target(lead[static_cast<std::size_t>(team)]);
     // Every item pad must be A*-reachable from the team-0 lead: an
@@ -779,6 +933,9 @@ void self_check_pack_art()
     check_sprite((base + "flag.png").c_str(), 10, 14, 4);
     check_sprite((base + "ctfpoint.png").c_str(), 16, 16, 1);
     check_sprite((base + "ball.png").c_str(), 12, 12, 8);
+    check_sprite((base + "bball.png").c_str(), 12, 12, 8);
+    check_sprite((base + "bshadow.png").c_str(), 12, 12, 4);
+    check_sprite((base + "hoop.png").c_str(), 24, 26, 6);
     check_sprite((base + "aura.png").c_str(), 16, 16, 4);
 }
 
@@ -901,8 +1058,8 @@ int main(int argc, char* argv[])
 
     // The committed manifest must match the build tables (D8).
     const std::vector<ExpectedLevel> rows = all_expectations();
-    if (rows.size() != 28)
-        fail(std::format("expected 28 levels, tables carry {}", rows.size()));
+    if (rows.size() != 33)
+        fail(std::format("expected 33 levels, tables carry {}", rows.size()));
     (void)check_and_refresh_manifest(rows);
 
     // Assemble the campaign under <user>/temp/ (the repack layout).
@@ -937,6 +1094,7 @@ int main(int argc, char* argv[])
     build_ctf();
     build_onslaught();
     build_soccer();
+    build_basketball();
     build_mutant();
 
     (void)unmount_campaign_package_with_error(kCampaignId);
@@ -965,6 +1123,7 @@ int main(int argc, char* argv[])
             self_check_mode_dispatch(ModeKind::Ctf, 500);
             self_check_mode_dispatch(ModeKind::Onslaught, 800);
             self_check_mode_dispatch(ModeKind::Soccer, 820);
+            self_check_mode_dispatch(ModeKind::Basketball, 824);
             self_check_mode_dispatch(ModeKind::Mutant, 840);
             (void)unmount_campaign_package_with_error(kCampaignId);
         }

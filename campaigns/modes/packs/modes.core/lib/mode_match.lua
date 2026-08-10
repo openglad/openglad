@@ -1,4 +1,4 @@
--- Shared match toolkit — manifest row adapter, team census, the TROOPS:OWN roster activation all five modes apply, marker consumption, anchor-cursor placement, bot fielding, dead-competitor scheduling, timeout ladder (cookbook: docs/lua-classpacks-design.md §3).
+-- Shared match toolkit — manifest row adapter, team census, the TROOPS:OWN roster activation all six modes apply, marker consumption, anchor-cursor placement, bot fielding with the TROOPS: FAIR power model, dead-competitor scheduling, timeout ladder (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C
@@ -48,6 +48,267 @@ local function resolve_limit(row, field, requested, fallback)
   return value
 end
 
+-- ---------------------------------------------------------------------------
+-- TROOPS: FAIR power model (docs/matched-teams-design.md §4-§5)
+-- ---------------------------------------------------------------------------
+
+-- Mode-var slots. The design's per-team MATCHED_LEVEL/MATCHED_UP footprint
+-- (D20) does not fit repo reality: CTF and Onslaught use every mode-private
+-- slot 8..63 and Basketball leaves only 63, so the solved plan is PACKED
+-- into the shared header band (slots 0-7, mode-neutral by convention, 2-7
+-- free everywhere) instead. TARGET is the capped mean human-team f (0 =
+-- census not run, or no human power — both mean "legacy"); PLAN carries one
+-- base-100 code per team, code = L * 10 + k (0 = unsolved, L in 1..9,
+-- k in 0..4, max packed value 94 * 1010101 = 94,949,494 < 2^31); ANNOUNCED
+-- latches the one-shot init announcement (0 none, 1 normal, 2 limit);
+-- SIZE latches the census headcount H (D34: one human team = its live
+-- has_guy headcount, several = the MIN of the per-team counts; 0 = census
+-- not run, or no human power) — the spawn seam truncates every generated
+-- squad to its table's first min(SIZE, #families) members (D39).
+local MATCHED = {
+  TARGET = 2,
+  PLAN = 3,
+  ANNOUNCED = 4,
+  SIZE = 5,
+}
+
+-- D20: any census total past this cap is far beyond B(9) and solves to the
+-- uniform-L9 clamp regardless, so capping the STORED value loses nothing
+-- while keeping the int32 mode var safe from maxed infinite-gold rosters.
+local TARGET_CAP = 1073741824
+
+local PLAN_BASE = { 1, 100, 10000, 1000000 }
+
+-- Difficulty tuples — a COPY of pack data (D13), guarded by the model-pin
+-- test in test_modes_tdm.cpp, which iterates EVERY row here. The table
+-- carries a row for every core family that declares an
+-- og.apply_difficulty_scaling hook, so any core-family roster a mode may
+-- ever name is priced correctly; the default row is genuinely correct for
+-- every hookless family (the engine falls back to 11/11/4/2 —
+-- living.cpp, living::set_difficulty default formula). A NON-core pack
+-- family with its own hook would need a row here before a matched roster
+-- may name it — the fallback would silently mis-model it. Sources:
+--   core:soldier  packs/core/families/living-00-soldier.lua:133
+--   core:archer   packs/core/families/living-02-archer.lua:82
+--   core:mage     packs/core/families/living-03-mage.lua:64
+--   core:orc      packs/core/families/living-14-orc.lua:88
+--   core:#18      packs/core/families/living-18-beast.lua:8 (BEAST)
+--   core:cleric   packs/core/families/living-05-cleric.lua:290
+--   core:druid    packs/core/families/living-13-druid.lua:145
+--   core:elf / core:thief declare no hook (living-01-elf.lua,
+--   living-11-thief.lua) and take the engine default.
+-- hp/mp/armor scale L*L, damage scales L (guy.cpp apply_difficulty_scaling).
+local TUPLE_DEFAULT = { hp = 11, mp = 11, dmg = 4, armor = 2 }
+local TUPLE = {
+  ["core:soldier"] = { hp = 13, mp = 8, dmg = 5, armor = 2 },
+  ["core:archer"] = { hp = 11, mp = 12, dmg = 4, armor = 1 },
+  ["core:mage"] = { hp = 7, mp = 14, dmg = 3, armor = 0.5 },
+  ["core:elf"] = TUPLE_DEFAULT,
+  ["core:thief"] = TUPLE_DEFAULT,
+  ["core:orc"] = { hp = 14, mp = 7, dmg = 6, armor = 3 },
+  ["core:#18"] = { hp = 18, mp = 5, dmg = 7, armor = 4 },
+  ["core:cleric"] = { hp = 9, mp = 12, dmg = 4, armor = 0.5 },
+  ["core:druid"] = { hp = 9, mp = 12, dmg = 4, armor = 0.5 },
+}
+
+-- The f core over already-truncated integer stats (§4.1): offense
+-- throughput times survivable pool, +60 flooring zero-offense walkers.
+local function stat_power(hp, mp, armor, dmg, sp, ff, level)
+  local ed = og.div(dmg * (level + 3), 4)
+  local rate = og.div(120, ff)
+  local off = ed * rate + 5 * sp
+  local ehp = hp + 4 * armor + og.div(mp, 2)
+  return og.div(ehp * (off + 60), 60)
+end
+
+-- The §4.1 truncation discipline: every stat getter pushes a FLOAT (the
+-- guy bonuses are float divisions; og.div/og.mod would raise "number has
+-- no integer representation"), so every read truncates at the boundary.
+-- The fire-frequency floor keeps RATE finite on degenerate stats.
+local function measured_base(w)
+  return {
+    hp = og.trunc(w:s_max_hitpoints()),
+    mp = og.trunc(w:s_max_magicpoints()),
+    armor = og.trunc(w:s_armor()),
+    dmg = og.trunc(w:damage()),
+    sp = og.trunc(w:stepsize()),
+    ff = og.max(1, og.trunc(w:fire_frequency())),
+  }
+end
+
+-- f(walker): the power metric (§4.1), integer arithmetic over truncated
+-- reads. s_level is the one integer-typed getter.
+local function walker_power(w)
+  local base = measured_base(w)
+  return stat_power(base.hp, base.mp, base.armor, base.dmg, base.sp,
+                    base.ff, w:s_level())
+end
+
+-- pred_i(L): the family difficulty tuple applied to a MEASURED base inside
+-- f (§4.3). hp/mp scale L*L, damage L, armor L*L — og.trunc floors the
+-- mage's fractional 0.5 * L * L armor term (the walker keeps the fraction;
+-- the model floors it, absorbed by the model-pin band). stepsize and
+-- fire_frequency are untouched by difficulty scaling.
+local function predicted_power(family, base, level)
+  local row = TUPLE[family]
+  if row == nil then
+    row = TUPLE_DEFAULT
+  end
+  local hp = base.hp + row.hp * level * level
+  local mp = base.mp + row.mp * level * level
+  local dmg = base.dmg + row.dmg * level
+  local armor = base.armor + og.trunc(row.armor * level * level)
+  return stat_power(hp, mp, armor, dmg, base.sp, base.ff, level)
+end
+
+-- The human census (D11/D15): mean of the human team f-sums, where a human
+-- team fields at least one live has_guy Living (the own_roster_activation
+-- predicate — every g_/stat read stays behind the has_guy guard). Returns
+-- (T, per-team sums, H); T = 0 means no human power server-side. H is the
+-- headcount the same walk counts (D34): one human team = its live has_guy
+-- count, several = the MIN across them — the guarantee is per-human-team,
+-- and only min keeps every survivor un-outnumbered on the backstop path.
+local function census_power(obs)
+  local sums = { 0, 0, 0, 0 }
+  local counts = { 0, 0, 0, 0 }
+  for k = 1, #obs do
+    local w = obs[k]
+    if w:dead() == 0 then
+      if w:order() == C.ORDER_LIVING then
+        if w:has_guy() then
+          local team = w:team_num()
+          if team < C.SCORE_TEAM_COUNT then
+            sums[team + 1] = sums[team + 1] + walker_power(w)
+            counts[team + 1] = counts[team + 1] + 1
+          end
+        end
+      end
+    end
+  end
+  local total = 0
+  local teams = 0
+  local size = 0
+  for t = 1, C.SCORE_TEAM_COUNT do
+    if sums[t] > 0 then
+      total = total + sums[t]
+      teams = teams + 1
+      if size == 0 then
+        size = counts[t]
+      elseif counts[t] < size then
+        size = counts[t]
+      end
+    end
+  end
+  if teams == 0 then
+    return 0, sums, 0
+  end
+  return og.div(total, teams), sums, size
+end
+
+-- The D22 solver: single argmin of |P(L, k) - T| over the FULL reachable
+-- set {L in 1..9, k in 0..n-1, L = 9 forces k = 0}, ties to lower L then
+-- lower k (ascending scan with strictly-smaller replacement). P(L, k) =
+-- B(L) plus the first k members upgraded one level. Returns
+-- (level, upgrades, clamped) where clamped reports T outside [B(1), B(9)]
+-- (the §7 LIMIT announce condition).
+local function solve_matched_levels(target, bases)
+  local n = #bases
+  local pred = {}
+  for i = 1, n do
+    local row = {}
+    for level = 1, 9 do
+      row[level] = predicted_power(bases[i].family, bases[i].stats, level)
+    end
+    pred[i] = row
+  end
+  local b1 = 0
+  local b9 = 0
+  for i = 1, n do
+    b1 = b1 + pred[i][1]
+    b9 = b9 + pred[i][9]
+  end
+  local best_level = 1
+  local best_up = 0
+  local best_miss = -1
+  for level = 1, 9 do
+    local p = 0
+    for i = 1, n do
+      p = p + pred[i][level]
+    end
+    local up_max = n - 1
+    if level == 9 then
+      up_max = 0
+    end
+    for up = 0, up_max do
+      if up > 0 then
+        p = p + pred[up][level + 1] - pred[up][level]
+      end
+      local miss = core.iabs(p - target)
+      local better = best_miss < 0
+      if not better then
+        better = miss < best_miss
+      end
+      if better then
+        best_level = level
+        best_up = up
+        best_miss = miss
+      end
+    end
+  end
+  local clamped = target < b1
+  if target > b9 then
+    clamped = true
+  end
+  return best_level, best_up, clamped
+end
+
+local function plan_code(team)
+  return og.mod(og.div(og.mode_get(MATCHED.PLAN), PLAN_BASE[team + 1]), 100)
+end
+
+local function store_plan(team, level, up)
+  local plan = og.mode_get(MATCHED.PLAN)
+  local code = level * 10 + up
+  plan = plan + (code - plan_code(team)) * PLAN_BASE[team + 1]
+  og.mode_set(MATCHED.PLAN, plan)
+end
+
+-- Census-at-init (D15): runs from own_roster_activation — the one shared
+-- call every mode makes in on_mode_init — only when the lobby requested
+-- TROOPS: FAIR (the scenario-troops sentinel, D25/D29), and latches through
+-- MATCHED.TARGET so mid-match spawns never re-census the live battle (D24).
+-- The has_guy census is immune to the troops strip (authored troops carry
+-- no guy record) and the roster is already in the oblist
+-- (spawn_team_from_save precedes the first tick).
+local function record_match_target(obs)
+  local _, matched = core.team_count_request()
+  if not matched then
+    return
+  end
+  if og.mode_get(MATCHED.TARGET) ~= 0 then
+    return
+  end
+  local target, _, size = census_power(obs)
+  og.mode_set(MATCHED.TARGET, og.min(target, TARGET_CAP))
+  og.mode_set(MATCHED.SIZE, size)
+end
+
+-- Per-member spawn level (§5.4): a stored plan answers L (or L + 1 for the
+-- first k members); an unsolved team takes the legacy session-difficulty
+-- formula (50/100/200 percent -> L1/L2/L3), byte-identical to the
+-- pre-matched spawner.
+local function bot_level_for(team, index)
+  local code = plan_code(team)
+  if code == 0 then
+    return og.max(1, og.div(og.match_setting("difficulty"), 100) + 1)
+  end
+  local level = og.div(code, 10)
+  if index <= og.mod(code, 10) then
+    return level + 1
+  end
+  return level
+end
+
 -- Authored score-team census: a team is authored when it fields a live
 -- Living or any respawn anchors (the engine anchor scan ran before
 -- on_mode_init and includes dead markers).
@@ -72,7 +333,7 @@ local function census_mask(obs)
   return mask
 end
 
--- TROOPS:OWN activation, the shared ruling all five modes apply: under OWN
+-- TROOPS:OWN activation, the shared ruling all six modes apply: under OWN
 -- the deployed rosters ARE the match. Returns the replacement active mask,
 -- or nil when the standard requested activation stands (TROOPS:ALL, or an
 -- all-bot match with no rosters anywhere).
@@ -91,6 +352,13 @@ end
 --                             that one side.
 --   zero roster teams         nil — a bot match keeps today's shape.
 local function own_roster_activation(authored_mask, obs)
+  -- The TROOPS: FAIR census (D15) rides this call — the one walk of the
+  -- oblist every mode's on_mode_init shares — so activation and matching
+  -- can never disagree about which teams are human. It self-gates on the
+  -- matched request and runs before the TROOPS:ALL early return — which
+  -- never fires under FAIR, because the sentinel (3) is itself above KEEP:
+  -- matching implies strip-on (D26/D29).
+  record_match_target(obs)
   if og.match_setting("strip_troops") <= strip.KEEP then
     return nil
   end
@@ -213,19 +481,125 @@ local function place_at_anchor(w, team, cursor_slot, allow_teleport)
   return false
 end
 
--- Fields one bot per family for an active team that authored no livings
--- (level scales with the session difficulty, the CTF squad rule).
-local function spawn_bots(team, families, cursor_slot)
-  local level = og.max(1, og.div(og.match_setting("difficulty"), 100) + 1)
+-- The headcount rule (D34/D39): a generated squad never outnumbers the
+-- roster it was measured against. A latched SIZE truncates the mode's
+-- squad table to its first min(SIZE, #families) members — soldier-first
+-- for the standard tables (D35); SIZE = 0 (no census, or no human power)
+-- keeps the full table, so the legacy arm and the direct spawn-probe arms
+-- stay byte-identical.
+local function matched_families(families)
+  local size = og.mode_get(MATCHED.SIZE)
+  if size <= 0 then
+    return families
+  end
+  if size >= #families then
+    return families
+  end
+  local prefix = {}
+  for k = 1, size do
+    prefix[k] = families[k]
+  end
+  return prefix
+end
+
+local function add_squad_member(team, family_name)
+  local fam = og.family_id("living", family_name) --[[@as integer]] -- caller tables name core families; a nil would be a load bug and add_ob erroring loudly is the right failure
+  local w = og.add_ob("living", fam)
+  if w == nil then
+    return nil
+  end
+  w:set_team_num(team)
+  w:set_real_team_num(255)
+  return w
+end
+
+local function place_member(w, team, cursor_slot, placer)
+  if placer ~= nil then
+    placer(w, team, true)
+    return
+  end
+  place_at_anchor(w, team, cursor_slot, true)
+end
+
+-- The one-shot in-game signal (D23/§7): fired only while on_mode_init is
+-- still running (MODE_ID is written LAST by every impl, so it reads 0
+-- exactly during init), latched in a mode var, LIMIT when the first solve
+-- clamped at either end. Mid-match D24 backstop solves stay silent.
+local function announce_matched(clamped)
+  if og.mode_get(core.SLOT.MODE_ID) ~= 0 then
+    return
+  end
+  if og.mode_get(MATCHED.ANNOUNCED) ~= 0 then
+    return
+  end
+  if clamped then
+    core.announce("TEAMS MATCHED (LIMIT)", C.SOUND_CHARGE)
+    og.mode_set(MATCHED.ANNOUNCED, 2)
+    return
+  end
+  core.announce("TEAMS MATCHED", C.SOUND_CHARGE)
+  og.mode_set(MATCHED.ANNOUNCED, 1)
+end
+
+-- The D24 measure-and-solve arm: spawn the real squad, read the spawn-time
+-- stats back as the model bases (no guessed constants ship — D13), solve
+-- against the stored target, persist the plan, then level each member
+-- exactly once (s_set_level BEFORE set_difficulty, both once per walker
+-- object — D14). Placement stays in member order, before the leveling
+-- pass; neither placement nor the probe reads levels.
+local function spawn_matched_bots(team, families, cursor_slot, placer)
+  local members = {}
+  local bases = {}
   for k = 1, #families do
-    local fam = og.family_id("living", families[k]) --[[@as integer]] -- caller tables name core families; a nil would be a load bug and add_ob erroring loudly is the right failure
-    local w = og.add_ob("living", fam)
+    local w = add_squad_member(team, families[k])
     if w ~= nil then
-      w:set_team_num(team)
-      w:set_real_team_num(255)
+      members[#members + 1] = w
+      bases[#bases + 1] = { family = families[k], stats = measured_base(w) }
+      place_member(w, team, cursor_slot, placer)
+    end
+  end
+  if #members == 0 then
+    return
+  end
+  local target = og.mode_get(MATCHED.TARGET)
+  local level, up, clamped = solve_matched_levels(target, bases)
+  store_plan(team, level, up)
+  for k = 1, #members do
+    local w = members[k]
+    local member_level = bot_level_for(team, k)
+    w:s_set_level(member_level)
+    w:set_difficulty(member_level)
+  end
+  announce_matched(clamped)
+end
+
+-- Fields one bot per family for an active team that authored no livings,
+-- over the SIZE-truncated prefix of the caller's table (D34/D39 — every
+-- caller keeps its signature; the headcount rule lives inside this one
+-- seam, so init fills, the wiped-team backstops and the mutant seats all
+-- honor it identically). Level source (§5.4, one rule for every scripted
+-- spawn): a stored matched plan wins; else a stored match target takes
+-- the D24 measure-and-solve arm; else the legacy session-difficulty
+-- formula, byte-identical to the pre-matched spawner. placer is an
+-- optional placement override, placer(w, team, allow_teleport)
+-- (matched-teams D16): CTF passes its own anchor rotation, which falls
+-- back to the flag-home square before the teleport draw; nil keeps
+-- mode_match's rotation over cursor_slot.
+local function spawn_bots(team, families, cursor_slot, placer)
+  local squad = matched_families(families)
+  if plan_code(team) == 0 then
+    if og.mode_get(MATCHED.TARGET) > 0 then
+      spawn_matched_bots(team, squad, cursor_slot, placer)
+      return
+    end
+  end
+  for k = 1, #squad do
+    local w = add_squad_member(team, squad[k])
+    if w ~= nil then
+      local level = bot_level_for(team, k)
       w:s_set_level(level)
       w:set_difficulty(level)
-      place_at_anchor(w, team, cursor_slot, true)
+      place_member(w, team, cursor_slot, placer)
     end
   end
 end
@@ -265,6 +639,110 @@ local function schedule_dead(obs, mask, delay)
               end
             end
           end
+        end
+      end
+    end
+  end
+end
+
+-- Corpse eligibility mirroring the classic difficulty-submenu semantics
+-- the engine applies on non-scripted maps (0 off, 1 heroes, 2 everyone,
+-- 3 Team-1 heroes; ctf.cpp classic_respawn_corpse_eligible), minus the
+-- spawn-point gate no binding exposes: an "everyone" AI corpse respawns
+-- while it has no live owner. This is the SUBMENU-HONORING scan a ball
+-- game wants. CTF and Onslaught keep their own — neither reads the
+-- submenu, and Onslaught halves the delay off a held waypoint — so the
+-- three variants stay separate on purpose.
+--
+-- `anchors` is the caller's mode_anchors module. og.use is load-time only
+-- and rejects cycles, and mode_anchors already uses THIS module, so the
+-- score-team read arrives as an argument rather than an import.
+local function run_death_scan(anchors, obs, mask, ticks)
+  local mode = og.match_setting("respawn_mode")
+  if mode == 0 then
+    return
+  end
+  for k = 1, #obs do
+    local w = obs[k]
+    if w:dead() ~= 0 then
+      if w:order() == C.ORDER_LIVING then
+        local team = anchors.score_team(w)
+        if team < C.SCORE_TEAM_COUNT then
+          if core.mask_has(mask, team) then
+            local eligible = false
+            if w:has_guy() then
+              eligible = true
+              if mode == 3 then
+                eligible = team == 0
+              end
+            elseif mode == 2 then
+              eligible = w:owner() == nil
+            end
+            if eligible then
+              if not og.respawn_pending(w) then
+                og.respawn_schedule(w, ticks)
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+end
+
+-- The neutral-reset backstop (soccer's design §6.3 kickoff rule, shared):
+-- an active team with zero live Livings comes back at every re-spot,
+-- whatever the difficulty submenu says — respawn
+-- Off cannot strand a team out of a ball game. Roster (guy) corpses
+-- persist in the oblist and are scheduled for revival (on_respawn places
+-- them at the team anchors); summoned corpses (owner, no guy) stay down.
+-- The engine sweeps unscheduled AI corpses at the end of their death tick,
+-- so a wiped bot side whose bodies are already gone is reprovisioned with
+-- a fresh squad — the same spawn path init uses for empty active teams —
+-- unless revives are already in flight. `anchors` is the caller's
+-- mode_anchors module, an argument for the reason run_death_scan gives.
+local function revive_wiped_teams(anchors, mask, ticks, cursor_slot)
+  local obs = og.oblist()
+  local live = { 0, 0, 0, 0 }
+  for k = 1, #obs do
+    local w = obs[k]
+    if w:dead() == 0 then
+      if w:order() == C.ORDER_LIVING then
+        local team = w:team_num()
+        if team < C.SCORE_TEAM_COUNT then
+          live[team + 1] = live[team + 1] + 1
+        end
+      end
+    end
+  end
+  for k = 1, #obs do
+    local w = obs[k]
+    if w:dead() ~= 0 then
+      if w:order() == C.ORDER_LIVING then
+        local team = anchors.score_team(w)
+        if team < C.SCORE_TEAM_COUNT then
+          if core.mask_has(mask, team) then
+            if live[team + 1] == 0 then
+              local eligible = true
+              if not w:has_guy() then
+                eligible = w:owner() == nil
+              end
+              if eligible then
+                if not og.respawn_pending(w) then
+                  og.respawn_schedule(w, ticks)
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  for team = 0, C.SCORE_TEAM_COUNT - 1 do
+    if core.mask_has(mask, team) then
+      if live[team + 1] == 0 then
+        if og.respawn_pending_count(team) == 0 then
+          anchors.spawn_bot_squad(team, cursor_slot)
         end
       end
     end
@@ -353,6 +831,13 @@ end
 return {
   rows_for = rows_for,
   resolve_limit = resolve_limit,
+  MATCHED = MATCHED,
+  measured_base = measured_base,
+  walker_power = walker_power,
+  predicted_power = predicted_power,
+  census_power = census_power,
+  solve_matched_levels = solve_matched_levels,
+  bot_level_for = bot_level_for,
   census_mask = census_mask,
   own_roster_activation = own_roster_activation,
   consume_markers = consume_markers,
@@ -361,6 +846,8 @@ return {
   spawn_bots = spawn_bots,
   owns_its_life = owns_its_life,
   schedule_dead = schedule_dead,
+  run_death_scan = run_death_scan,
+  revive_wiped_teams = revive_wiped_teams,
   foe_scores = foe_scores,
   nearest_enemy = nearest_enemy,
   timeout_leader = timeout_leader,

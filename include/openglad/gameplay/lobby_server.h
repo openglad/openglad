@@ -19,7 +19,7 @@ struct LobbySaveDataEquivalent {
     std::int16_t ctf_team_count = 0; // 0 = Auto
     std::int16_t ctf_capture_limit = 0;
     std::int16_t ctf_respawn_ticks = 0;
-    std::int16_t ctf_strip_scenario_troops = 0;
+    std::int16_t ctf_strip_scenario_troops = 0; // 0 = keep; 2 = own; 3 = Fair (kTroopsMatched)
     // Difficulty submenu settings (respawn_mode: 0 off, 1 heroes,
     // 2 everyone, 3 Team 1 heroes only).
     std::int16_t respawn_mode = 0;

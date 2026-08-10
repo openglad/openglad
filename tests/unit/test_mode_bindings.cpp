@@ -11,6 +11,7 @@
 #include <openglad/gameplay/script/family_decl.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/script/family_hooks.h>
@@ -22,7 +23,9 @@
 
 #include "../test_game_world_fixture.h"
 
+#include <fstream>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -292,6 +295,81 @@ TEST(ModeBindings, match_setting_reads_all_five_knobs)
     EXPECT_TRUE(fx.logged("err\t0"));
 }
 
+TEST(ModeBindings, match_setting_reads_back_matched_sentinel_raw)
+{
+    ModeBindingsWorld fx;
+    fx.world().ctf_requested_strip_scenario_troops = og::sim::kTroopsMatched;
+    fx.run_on_load(
+        "    og.log('troops', og.match_setting('strip_troops'))\n");
+    // og.match_setting returns the RAW short: mode Lua sees 3, never a
+    // normalized boolean — the Lua-side matched check is raw == 3
+    // (matched-teams D27/D29).
+    EXPECT_TRUE(fx.logged("troops\t3"));
+}
+
+// RAII registration of the SHIPPED mode_core.lua as a lib module of the
+// test pack, so the probe below can og.use it (og.use is pack-relative).
+// The chunk name stays outside packs/ on purpose: these bytes are measured
+// where the pack genuinely mounts (og_unit_modes), not here.
+struct ShippedModeCoreModule
+{
+    bool loaded = false;
+
+    ShippedModeCoreModule()
+    {
+        std::ifstream in(
+            "campaigns/modes/packs/modes.core/lib/mode_core.lua",
+            std::ios::binary);
+        if (!in.good())
+            return;
+        std::ostringstream buf;
+        buf << in.rdbuf();
+        og::script::register_pack_lib_module(
+            {"test.mode", "mode_core", "test.mode/mode_core.lua",
+             buf.str()});
+        loaded = true;
+    }
+
+    ~ShippedModeCoreModule()
+    {
+        og::script::unregister_pack_lib_modules("test.mode");
+    }
+};
+
+TEST(ModeBindings, matched_constant_equals_the_mode_core_lua_constant)
+{
+    // The D29 constant-equality pin: the world field is stamped from the
+    // C++ og::sim::kTroopsMatched sentinel and round-tripped through
+    // og.match_setting('strip_troops'); the SHIPPED mode_core.lua must
+    // (a) carry the same value in core.MATCHED_TROOPS and (b) classify it
+    // as matched — matched true, with the team count independently Auto —
+    // in core.team_count_request().
+    ShippedModeCoreModule mode_core;
+    ASSERT_TRUE(mode_core.loaded)
+        << "mode_core.lua unreadable — run from the repo root (ctest does)";
+    ModeBindingsWorld fx;
+    fx.world().ctf_requested_strip_scenario_troops = og::sim::kTroopsMatched;
+    og::script::clear_pack_scripts();
+    og::script::register_pack_script(
+        {"test.mode", "probe.lua",
+         "local core = og.use('mode_core')\n"
+         "og.register_level_hooks(42, {\n"
+         "  on_load = function(level)\n"
+         "    og.log('constant', core.MATCHED_TROOPS)\n"
+         "    og.log('pin', core.MATCHED_TROOPS ==\n"
+         "           og.match_setting('strip_troops') and 1 or 0)\n"
+         "    local count, matched = core.team_count_request()\n"
+         "    og.log('req', count, matched and 1 or 0)\n"
+         "  end,\n"
+         "})\n"});
+    fx.world().tick();
+    EXPECT_TRUE(fx.logged(
+        "constant\t" + std::to_string(og::sim::kTroopsMatched)))
+        << fx.script_errors();
+    EXPECT_TRUE(fx.logged("pin\t1")) << fx.script_errors();
+    EXPECT_TRUE(fx.logged("req\t0\t1")) << fx.script_errors();
+}
+
 TEST(ModeBindings, team_masks_follow_markers_and_requested_count)
 {
     ModeBindingsWorld fx;
@@ -305,6 +383,38 @@ TEST(ModeBindings, team_masks_follow_markers_and_requested_count)
         "    og.log('masks', og.authored_team_mask(),\n"
         "           og.effective_team_mask())\n");
     EXPECT_TRUE(fx.logged("masks\t13\t5"));
+}
+
+TEST(ModeBindings, matched_troops_request_feeds_no_mask)
+{
+    ModeBindingsWorld fx;
+    // Same sparse authored set {0, 2, 3} as above, with the TROOPS: FAIR
+    // sentinel armed: the strip field feeds no mask anywhere (matched-teams
+    // D29 — effective_team_mask reads only the team count), so an Auto
+    // count still activates the whole authored mask and a numeric count
+    // still clamps it. The retired teams sentinel 5 is junk again and
+    // clamps like any value above 4.
+    fx.spawn_marker(0, 128, 128);
+    fx.spawn_marker(2, 256, 128);
+    fx.spawn_marker(3, 384, 128);
+    fx.world().ctf_requested_strip_scenario_troops = og::sim::kTroopsMatched;
+    fx.run_on_load(
+        "    og.log('masks', og.authored_team_mask(),\n"
+        "           og.effective_team_mask())\n");
+    EXPECT_TRUE(fx.logged("masks\t13\t13"));
+
+    ModeBindingsWorld clamped;
+    clamped.spawn_marker(0, 128, 128);
+    clamped.spawn_marker(2, 256, 128);
+    clamped.spawn_marker(3, 384, 128);
+    clamped.world().ctf_requested_strip_scenario_troops =
+        og::sim::kTroopsMatched;
+    clamped.world().ctf_requested_team_count = 5;  // retired sentinel = junk
+    clamped.run_on_load(
+        "    og.log('masks', og.authored_team_mask(),\n"
+        "           og.effective_team_mask())\n");
+    EXPECT_TRUE(clamped.logged("masks\t13\t13"))
+        << "5 clamps to 4, and only 3 authored teams exist";
 }
 
 TEST(ModeBindings, find_by_id_resolves_and_nils)
