@@ -142,7 +142,7 @@ jobs:
     # This job reruns every generator against the checkout and fails when
     # the committed trees drift — a hand edit to generated content must be
     # ported into its generator (or reverted), never left to be silently
-    # clobbered by the next regeneration. Builds only the five SDL-free
+    # clobbered by the next regeneration. Builds only the six SDL-free
     # generator tools plus the archive composition step; the dominant cost
     # is compiling og_core/og_gameplay/og_resources once, shared with the
     # test job through the ci-test ccache key (and its configure flags,
@@ -167,6 +167,7 @@ jobs:
       - name: Regenerate every campaign
         run: |
           scripts/generate_concept_campaign.sh
+          scripts/generate_imaginations_campaign.sh
           scripts/generate_longseason_campaign.sh
           scripts/generate_modes_campaign.sh
           scripts/generate_tower_campaign.sh

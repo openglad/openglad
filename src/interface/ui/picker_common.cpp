@@ -1607,6 +1607,7 @@ void order_campaigns_for_select(std::list<std::string>& campaign_ids)
         "longseason",
         "modes",   // Multiplayer Game Modes (versus)
         og::kTowerCampaignId,   // tower (The Endless Tower)
+        "imaginations", // the community dream-log (kid-submitted levels)
         "concept",
     };
     auto anchor = campaign_ids.begin();

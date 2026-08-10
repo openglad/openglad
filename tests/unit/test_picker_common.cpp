@@ -1890,6 +1890,7 @@ TEST(PickerCommon, order_campaigns_for_select_uses_the_shelf_order)
     std::list<std::string> ids = {
         "concept",
         "gladiator",
+        "imaginations",
         "longseason",
         "modes",
         "tower",
@@ -1903,6 +1904,7 @@ TEST(PickerCommon, order_campaigns_for_select_uses_the_shelf_order)
         "longseason",
         "modes",
         "tower",
+        "imaginations",
         "concept",
     };
     og::ui::order_campaigns_for_select(ids);

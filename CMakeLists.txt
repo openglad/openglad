@@ -539,7 +539,7 @@ endif()
 # --------------------------------------------------------------------------
 # Built-in campaign archives (.glad): deterministic build outputs
 # --------------------------------------------------------------------------
-# The seven shipped campaigns are committed as SOURCE TREES under
+# The eight shipped campaigns are committed as SOURCE TREES under
 # campaigns/<id>/ (campaign.yaml, scen/, pix/, and — for pack-bearing
 # campaigns — packs/<pack-id>/). The .glad zip the game mounts is composed
 # here, at build time, by scripts/make_glad.py — a deterministic writer
@@ -562,6 +562,7 @@ endif()
 set(OG_BUILTIN_CAMPAIGN_IDS
     concept
     gladiator
+    imaginations
     longseason
     modes
     tower
@@ -903,6 +904,31 @@ if(NOT EMSCRIPTEN)
         pthread
     )
     add_runtime_assets_dependency(concept_mapgen)
+
+    # --- imaginations_mapgen ("Imaginations" dream-log campaign generator) ---
+    # SDL-free authoring tool that writes campaigns/imaginations/
+    # (the archive is composed from that tree by og_builtin_campaigns).
+    # Not part of the default build; run via
+    # scripts/generate_imaginations_campaign.sh.
+    add_executable(imaginations_mapgen EXCLUDE_FROM_ALL
+        ${CMAKE_SOURCE_DIR}/tools/imaginations_mapgen/main.cpp
+        ${SRC_DIR}/platform/text/platform_headless.cpp
+        ${SRC_DIR}/platform/text/walker_headless.cpp
+        ${SRC_DIR}/interface/input/input_state.cpp
+        ${SRC_DIR}/platform/game_context.cpp
+        ${SRC_DIR}/interface/session_state.cpp
+        ${SRC_DIR}/interface/level_runtime_data.cpp
+        ${SRC_DIR}/interface/platform_bridge.cpp
+    )
+    configure_openglad_library(imaginations_mapgen)
+    target_link_libraries(imaginations_mapgen PRIVATE
+        og_core
+        og_gameplay
+        og_resources
+        m
+        pthread
+    )
+    add_runtime_assets_dependency(imaginations_mapgen)
 
     # --- modes_mapgen ("Multiplayer Game Modes" campaign generator) ---
     # SDL-free authoring tool that writes campaigns/modes/
