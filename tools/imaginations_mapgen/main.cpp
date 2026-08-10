@@ -205,7 +205,8 @@ void build_raspberry_isle()
     // Terrain, inside out (genre tiles only; the autotiler shapes every
     // shore and wall face in smooth_world below).
     og::mapgen::paint_ring(g, cx, cy, 16.5, 100.0, PIX_WATER1); // open sea
-    og::mapgen::paint_ring(g, cx, cy, 13.5, 16.5, PIX_GRASS_LIGHT_1);
+    og::mapgen::paint_ring(g, cx, cy, 15.0, 16.5, PIX_DIRT_1); // landing sand
+    og::mapgen::paint_ring(g, cx, cy, 13.5, 15.0, PIX_GRASS_LIGHT_1);
     og::mapgen::paint_ring(g, cx, cy, 8.0, 10.5, PIX_WATER1);   // the moat
     og::mapgen::paint_rect(g, 15, 15, 26, 26, PIX_WALL2);       // castle wall
     og::mapgen::paint_rect(g, 16, 16, 25, 25, PIX_COBBLE_1);    // the court
@@ -215,6 +216,14 @@ void build_raspberry_isle()
     og::mapgen::paint_rect(g, 20, 26, 21, 26, PIX_COBBLE_1); // south gate
     og::mapgen::paint_rect(g, 15, 20, 15, 21, PIX_COBBLE_1); // west gate
     og::mapgen::paint_rect(g, 26, 20, 26, 21, PIX_COBBLE_1); // east gate
+    // Field copses on the meadow ring ("in the field", the submitted
+    // words) — four 2x2 clumps, all >= 2 tiles clear of every landing
+    // marker and causeway so no route or deploy square is touched.
+    og::mapgen::paint_rect(g, 9, 13, 10, 14, PIX_TREE_M1);   // northwest
+    og::mapgen::paint_rect(g, 33, 16, 34, 17, PIX_TREE_M1);  // east, below
+                                                             // the mage tower
+    og::mapgen::paint_rect(g, 14, 31, 15, 32, PIX_TREE_M1);  // southwest
+    og::mapgen::paint_rect(g, 26, 30, 27, 31, PIX_TREE_M1);  // southeast
 
     og::mapgen::smooth_world(w);
 
@@ -238,13 +247,23 @@ void build_raspberry_isle()
     og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 21, 24, 1, true);
     og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 17, 21, 1, true);
     og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 24, 20, 1, true);
-    // Two court roamers that spill out over the causeways to meet the
-    // charge halfway — the submitted design says to run at them at once.
-    og::mapgen::place_living(w, FAMILY_ORC, 1, 0, 18, 22, 1);
-    og::mapgen::place_living(w, FAMILY_ELF, 1, 0, 23, 18, 1);
-    // Two shore patrols on the approach ring for first contact.
-    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 12, 28, 1);
-    og::mapgen::place_living(w, FAMILY_ORC, 1, 0, 29, 13, 1);
+    // Every other defender is POSTED too, not roaming: the hunt AI
+    // (ACT_RANDOM) beelines at its foe with no pathfinding, and a level
+    // whose middle is a water ring turns every distant roamer into a
+    // walker jittering against the moat edge — the "sides that never
+    // engage" pathology. Ambush posts instead: they stand their ground
+    // and wake at true sight of the charging crew, which is the
+    // submitted design ("WE run at THEM") in engine terms.
+    // Dais bodyguards flank the wizard, a tile off the gate wards' wake
+    // chain, so a small crew fights the gate first and the throne second
+    // instead of the whole court at once.
+    og::mapgen::place_living(w, FAMILY_ORC, 1, 0, 19, 21, 1, true);
+    og::mapgen::place_living(w, FAMILY_ELF, 1, 0, 22, 20, 1, true);
+    // Two shore sentries on the approach ring for first contact — on the
+    // crew's side of the moat, so once woken their straight-line chase
+    // has clear ground.
+    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 12, 28, 1, true);
+    og::mapgen::place_living(w, FAMILY_ORC, 1, 0, 29, 13, 1, true);
     // The wizard's college: a mage tower on the northeast meadow, its
     // slow level-1 trickle marching for the causeways. Open ground on
     // every side (the spawn-egress audit holds it to that).

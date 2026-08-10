@@ -34,6 +34,14 @@ Growth rule: new ideas append new scens (2, 3, …). The newest level's
 walk-out exit loops home to 1; when its successor lands, the generator
 retargets that exit to the new scen. `first_level` stays 1.
 
+Engine rule for moat/water-ring layouts (learned in playtest): place NO
+roaming (ACT_RANDOM) foes whose straight line to the crew crosses
+water — the hunt AI beelines with no pathfinding and jitters in place
+against the moat edge ("stuck spinning" to the player). Every placed
+foe on such a map is a POSTED guard (ambush wake); roamers are legal
+only where their chase ground is open (generator spawns on the crew's
+side of the water are fine).
+
 ## Difficulty curve (campaign_meta)
 
 Fresh teams are the audience: every level must be clearable by a new
@@ -45,8 +53,11 @@ save's level-1 crew (crew power 1 in the longseason README's terms).
 
 Gate (kill-all): 8-mixed at crew 1 reaches `level_done == 1` within 6000
 ticks on >= 2/3 seeds, and 3/3 at crew 2. Measured with
-`scripts/imaginations_playtest.sh` on 2026-08-10: PASS — all 12 bracket
-runs (both rosters x crew {1, 2} x 3 seeds) cleared between ticks 563
-and 1549 with zero stand-in crew deaths (worst min-hp 100/200 on the
-8-mixed roster). The isle is intentionally a gentle opener; the drama
-lives in the layout, not the attrition.
+`scripts/imaginations_playtest.sh` on 2026-08-10 (final posted-garrison
+geometry with the shore rim and field copses): PASS — all 12 bracket
+runs (both rosters x crew {1, 2} x 3 seeds) cleared between ticks 646
+and 2140 with zero stand-in crew deaths on every run. The isle is
+intentionally a gentle opener; the drama lives in the layout, not the
+attrition. (An earlier mid-court garrison variant wiped the 4-soldier
+stand-in on one seed — the dais-bodyguard split into a gate fight then
+a throne fight is what restored the fresh-team margin.)
