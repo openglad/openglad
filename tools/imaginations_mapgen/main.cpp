@@ -38,6 +38,10 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/mapgen/builders.h>
+#include <openglad/gameplay/script/family_hooks.h>
+#include <openglad/gameplay/script/pack_scripts.h>
+#include <openglad/gameplay/script/script_host.h>
+#include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/level_runtime_data.h>
@@ -93,6 +97,13 @@ namespace imaggen {
 namespace {
 
 namespace fs = std::filesystem;
+
+// The embedded pack's id; its hand-authored source lives at
+// campaigns/imaginations/packs/imaginations.dreams/ (composed into the
+// archive by the build, staged here for the self-checks). Loads after
+// "core" — pack replay order is pack-id lexicographic.
+constexpr const char* kDreamsPackId = "imaginations.dreams";
+
 int g_errors = 0;
 
 // SCENARIO INFORMATION dialog budget (33 glyphs per briefing line) and the
@@ -623,6 +634,72 @@ void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
         fail(std::format("self-check scen{}: {}", ex.id, err));
 }
 
+// The isle's embedded dream script must actually dispatch, not merely
+// ride along in the zip: with the produced campaign mounted, the pack
+// script registry must carry it, and one sim tick of scen 1 must run
+// isle.lua's on_load — watchtower-ward notification emitted, the ward
+// stamped on the Sea Wizard, and zero recorded script errors.
+void self_check_isle_script()
+{
+    bool registered = false;
+    for (const og::script::PackScript& ps : og::script::pack_scripts())
+        if (ps.pack_id == kDreamsPackId)
+            registered = true;
+    if (!registered)
+    {
+        fail("self-check: dreams pack script not registered on mount");
+        return;
+    }
+
+    LevelRuntimeData level(1, true, &headless_level_data_hooks());
+    SaveData save;
+    og::sim::SimEventLog events;
+    FixedRandom script_rng{0};
+    level.set_sim_context(&save, &level.world().enemy_freeze, &events,
+                          &script_rng, &cfg);
+    GameplayContext script_ctx;
+    script_ctx.world = &level.world();
+    script_ctx.save = &save;
+    script_ctx.sim_events = &events;
+    script_ctx.config = &cfg;
+    GameplayContext* prev = current_game;
+    current_game = &script_ctx;
+
+    if (!level.load())
+    {
+        fail("self-check: scen1 failed to load for the script check");
+        current_game = prev;
+        return;
+    }
+    level.world().tick();
+
+    bool ward_announced = false;
+    for (const og::sim::Event& ev : events.drain())
+        if (ev.kind == og::sim::EventKind::Notification &&
+            ev.text.find("watchtowers") != std::string::npos)
+            ward_announced = true;
+    if (!ward_announced)
+        fail("self-check: isle on_load did not announce the watchtower ward");
+
+    walker* boss = nullptr;
+    for (const auto& uptr : level.world().oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob != nullptr && ob->query_order() == Order::Living &&
+            ob->family() == FAMILY_MAGE && ob->team_num() == 1)
+            boss = ob;
+    }
+    if (boss == nullptr || !boss->stats()->query_bit_flags(BIT_INVINCIBLE))
+        fail("self-check: the Sea Wizard is not warded after on_load");
+
+    for (const og::script::ScriptError& err :
+         level.world().scripts().host().errors())
+        fail(std::format("self-check: script error at {}: {}", err.where,
+                         err.message));
+
+    current_game = prev;
+}
+
 } // namespace
 } // namespace imaggen
 
@@ -677,6 +754,10 @@ int main(int argc, char* argv[])
     create_dir(user + "temp/pix/");
     write_campaign_yaml(user + "temp/campaign.yaml");
     write_icon(user + "temp/icon.png");
+    if (!og::toolexport::stage_pack_tree(
+            "campaigns/imaginations/packs/imaginations.dreams",
+            user + "temp/", kDreamsPackId))
+        fail("failed to stage the embedded dreams pack");
 
     build_raspberry_isle();
 
@@ -703,6 +784,7 @@ int main(int argc, char* argv[])
             };
             for (const ExpectedLevel& e : expectations)
                 self_check_level(e, registered);
+            self_check_isle_script();
             (void)unmount_campaign_package_with_error("imaginations");
         }
     }
