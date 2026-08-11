@@ -90,6 +90,22 @@ fully deterministic too — scripts/make_glad.py pins order, mtimes, method).
   conceals (forestwalk + LOS decay) — keep it off battle lanes or smoke bounds
   shift. Writer downgrades v11→v10/v9 when all decor planes are empty.
 
+## Twitchers (units jammed in place, spinning)
+
+Two distinct jam classes — do not misdiagnose one as the other:
+(a) a hunter whose beeline crosses impassable terrain (water, wall)
+jams at the boundary; (b) a woken posted guard in ACT_RANDOM whose
+target left jams mid-field against scenery or other units. Cures:
+re-post disengaged hostiles from the level script; never place a roamer
+where its straight line to a likely foe crosses a barrier.
+
+The unattended-sim regression test is MANDATORY for every new level:
+run ~1800 ticks with the player crew parked, assert no living has
+near-zero net displacement while alive, and include a phase that wakes
+the garrison and then walks away. Copy the shape of
+tests/unit/test_imaginations_twitchers.cpp (ships with the Imaginations
+campaign; the recipe above is complete on its own).
+
 ## Story rules (the "story bible" discipline)
 
 One narrative voice across all briefings; briefings are the ONLY narrative

@@ -143,6 +143,57 @@ GO / SET LEVEL / SET CAMPAIGN.
 - Coverage gate: every new `src/` line needs ~90% execution; pure helpers in
   `picker_common` are cheap to cover, SDL screens need an injector flow.
 
+## Visual verification (a green suite says nothing about layout)
+
+Any menu/HUD/render change: capture a PNG (scripts/media/capture_showcase.sh
+or `save_screenshot()` into gitignored build/media/), then READ the image
+back and describe what you see BEFORE claiming success. Playwright pixel
+assertions are not visual verification. Gotcha: capture must follow the
+single real `SDL_RenderPresent` — a second present eats the HUD overlay;
+test builds emit BMP/PPM, convert losslessly before viewing.
+
+Restoring or matching a legacy screen: never reconstruct it from memory,
+docs, or code reading. (1) `git worktree add` the pre-migration commit,
+(2) build it and dump SETTLED frames through its own render loop (the
+async screenshot probe captures mid-fade), (3) capture the current screen
+at the same 320x200 through the same hook, (4) crop-compare the
+must-be-unchanged regions and require RMSE 0, (5) capture a NON-full data
+state too (e.g. 4 of 10 saves — that is what exposed the missing EMPTY
+SLOT rows). For "make it look like X" tasks generally: capture the
+master-branch reference shot and put both images side by side in one
+message.
+
+## Setting scope: TEAMS/SEATS vs TROOPS/SCENARIO
+
+Before adding any cycler value, ask "does this change with the map or
+with the players?" TEAMS/SEATS settings describe who is sitting at the
+game (per-machine, host-owned, packed into header slots 2/3/4).
+TROOPS and other SCENARIO settings describe what the level contains.
+Smell test: if your new value needs a special case to behave identically
+to an existing one, it is on the wrong axis. Getting this wrong costs a
+save migration — sentinel values persist in saves (MATCH shipped as
+TEAMS team_count=5 and had to be moved to TROOPS).
+
+## Teams are authoritative (the team/seat test matrix)
+
+Company/save ownership NEVER implies friendliness: same team can never
+damage each other, different teams are always hostile, a player can
+never take control of a foreign-team character. These call sites all
+independently re-derive teams and must agree: melee/attack predicate, AI
+targeting, collision auto-attack, projectile/summon owner chains, mage
+freeze-time, SAVE_ALL scoping, remaining-foes/victory counting,
+results/MVP, kill+XP+score credit, respawn accounting, replay
+reconstruction.
+
+Team assignment changes are never "a small UI change". Required matrix,
+driven through the REAL Base Camp → seat-assignment launch path (never a
+hand-built launch struct): {1,2,4 seats} × {ally, pvp} × {team
+assignments 1..4, incl. a seat with no team-1 character}, asserting
+(a) every roster character spawns, (b) at ITS OWN team's spawn point,
+(c) same-team can't damage / cross-team can, (d) no character dropped
+from the save on launch, (e) remove-and-re-add a seat yields disjoint
+key mappings.
+
 ## Checklist: adding one menu entry
 
 1. menu_model item (id + command) + `test_menu_model` resolution case.
