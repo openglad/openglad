@@ -1875,9 +1875,17 @@ void draw_version_number()
 	int y = 200 - 12;
 	og::runtime::current_session->myscreen_->fastbox(x, y, w, h, PURE_BLACK);
 	mytext.write_xy(x, y, OPENGLAD_VERSION_STRING, static_cast<unsigned char>(DARK_BLUE), 1);
+}
 
-	// The build's commit, bottom-left: a running binary can always be
-	// matched to its source ("is this fix even in the build I launched?").
+// The build's commit, bottom-left of the main menu ON EVERY PLATFORM —
+// the deployed web preview is exactly where "is this fix even in the
+// build I'm playing?" needs an in-game answer (the version number stays
+// native-only; the web help UI shows it instead).
+void draw_git_hash()
+{
+	text& mytext = og::runtime::current_session->myscreen_->text_normal;
+	int h = 8;
+	int y = 200 - 12;
 	int hw = static_cast<int>(std::string(OPENGLAD_GIT_HASH).size())*6;
 	og::runtime::current_session->myscreen_->fastbox(2, y, hw, h, PURE_BLACK);
 	mytext.write_xy(2, y, OPENGLAD_GIT_HASH, static_cast<unsigned char>(DARK_BLUE), 1);
