@@ -145,6 +145,12 @@ local function customize_spawn(generator, spawn)
   if og.level_id() ~= ISLE_LEVEL then
     return
   end
+  -- Every college spawn is BORN POSTED: the hunt AI beelines with no
+  -- pathfinding, and a roamer whose foe is across the moat jams at the
+  -- water's edge twitching (the stuck-twitcher regression test parks an
+  -- idle crew and fails on exactly that). Posted spawns thicken the
+  -- picket where they stand and fight whoever truly comes into sight.
+  spawn:set_act_type(C.ACT_GUARD)
   if og.mod(og.entity_id(spawn), 5) ~= 0 then
     return
   end
