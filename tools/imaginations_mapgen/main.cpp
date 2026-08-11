@@ -301,34 +301,49 @@ void build_raspberry_isle()
     // design ("WE run at THEM") in engine terms — staged in beats:
     // causeway heads, then the bailey, then the keep, then the throne.
     // ------------------------------------------------------------------
-    // Causeway-head sentries, one per compass approach.
+    // Causeway-head sentries, one per compass approach — all bone. The
+    // heads are every landing party's FIRST fight, usually one lander
+    // alone; the statue-era mix posted orc bruisers on two heads, and a
+    // woken orc beats a fresh soldier one-on-one. Skeletons keep the
+    // beat (ranged harassment over the approach) and lose the duel the
+    // level's contract requires a new team to win. The orcs still live
+    // deeper in: the bailey ring, the throne guard, the last wave.
     og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 31, 13, 1, true);
-    og::mapgen::place_living(w, FAMILY_ORC, 1, 0, 31, 50, 1, true);
+    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 31, 50, 1, true);
     og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 13, 30, 1, true);
-    og::mapgen::place_living(w, FAMILY_ORC, 1, 0, 50, 30, 1, true);
-    // The bailey: posted garrison in the ring corners and gate flanks,
-    // plus two immobile arrow turrets watching the north and south
-    // gates from the ring's far corners.
+    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 50, 30, 1, true);
+    // The bailey: posted garrison on opposite ring corners and both
+    // gate flanks, plus two immobile arrow turrets watching the north
+    // and south gates from the ring's far corners. (The ring held six
+    // mobiles when the posts were accidentally frozen statues; with
+    // the wake fixed, a causeway fight pulls every in-sight ring guard
+    // out through the gate, and six-deep pile-ons wiped fresh landers
+    // in the playtest sweeps. Four keeps the ring alive on every side
+    // without the grinder.)
     og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 24, 24, 1, true);
-    og::mapgen::place_living(w, FAMILY_ORC, 1, 0, 39, 24, 1, true);
-    og::mapgen::place_living(w, FAMILY_ORC, 1, 0, 24, 39, 1, true);
-    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 39, 39, 1, true);
+    og::mapgen::place_living(w, FAMILY_ORC, 1, 0, 39, 39, 1, true);
     og::mapgen::place_living(w, FAMILY_ELF, 1, 0, 31, 24, 1, true);
     og::mapgen::place_living(w, FAMILY_ELF, 1, 0, 32, 39, 1, true);
     og::mapgen::place_living(w, FAMILY_TOWER1, 1, 0, 25, 31, 1, true);
     og::mapgen::place_living(w, FAMILY_TOWER1, 1, 0, 38, 32, 1, true);
-    // The keep: a bone ward inside each of the four gates.
+    // The keep: a bone ward inside three of the four gates — the west
+    // gate stands unwarded, a soft way in for a bled crew (the fourth
+    // ward joined the same statue-era pile-on budget).
     og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 31, 29, 1, true);
     og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 32, 34, 1, true);
-    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 29, 32, 1, true);
     og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 34, 31, 1, true);
     // The throne: the Sea Wizard between his dais bodyguards.
     // The boss's teleport special is DISABLED (npc_flags bit0): a
     // pressed mage teleports at random, and the one thing worse than a
     // boss without his escape trick is a boss stranded on a reef atoll
     // with the kill-all softlocked behind him.
+    // Level 2, down from the statue-era 4: a crew now fights its way
+    // through a garrison that fights back and reaches the dais bled;
+    // the level-4 bolt grinder ended every playtest run that got there.
+    // Two keeps him the strongest mage on the isle (the ward arc keys
+    // on that) and beatable by the survivors of an honest assault.
     walker* boss =
-        og::mapgen::place_living(w, FAMILY_MAGE, 1, 0, 31, 31, 4, true,
+        og::mapgen::place_living(w, FAMILY_MAGE, 1, 0, 31, 31, 2, true,
                                  true);
     if (boss != nullptr)
         boss->stats()->name = "Sea Wizard"; // 10 chars: fits the 11-char field
@@ -337,16 +352,15 @@ void build_raspberry_isle()
     // Reinforcement waves, dormant behind the walls (NEXT WAVE HUD):
     // the bailey relief at tick 500, the throne guard at tick 800. They
     // wake mid-assault, inside the fight the crew is already carrying.
+    // Sized for a garrison that FIGHTS: six wave units were budgeted
+    // when the posts were accidentally frozen statues; with the wake
+    // fixed, the full six landed exactly in a fresh crew's mid-assault
+    // collapse window and wiped it in every playtest seed. Three keeps
+    // the two-beat wave drama and a clearable dream.
     og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 26, 26, 1, true,
                              false, 500);
     og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 37, 37, 1, true,
                              false, 500);
-    og::mapgen::place_living(w, FAMILY_ORC, 1, 0, 26, 37, 1, true,
-                             false, 500);
-    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 29, 29, 1, true,
-                             false, 800);
-    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 34, 34, 1, true,
-                             false, 800);
     og::mapgen::place_living(w, FAMILY_ORC, 1, 0, 34, 29, 1, true,
                              false, 800);
     // The wizard's colleges on the field ring, one trickle per art: the
@@ -357,12 +371,38 @@ void build_raspberry_isle()
     og::mapgen::place_generator(w, FAMILY_TENT, 1, 0, 10, 43, 1);
     og::mapgen::place_generator(w, FAMILY_TREEHOUSE, 1, 0, 19, 11, 1);
 
+    // Hostile posts must WAKE. og::mapgen::place_living stamps hold-post
+    // on every team<=1 guard (the shared builders treat teams 0/1 as
+    // allied escorts that must never leave their chokepoint), but on
+    // this isle team 1 IS the enemy garrison. A hold-post guard never
+    // converts to the hunt AI — walker::act_guard skips the wake — and
+    // its parting COMMAND_FIRE carries no direction, so the facing gate
+    // eats every shot: the shipped castle sat in the open, pivoting at
+    // a crew two tiles away and doing literally nothing. Clear the flag
+    // on the whole garrison (the builder documents this exact per-caller
+    // override): posts wake at true sight and fight, the submitted
+    // design. The immobile watchtowers wake too — on a stationary
+    // family ACT_RANDOM turns and fires (walkstep is a facing turn),
+    // which is the whole job of an arrow turret; hold-post would lock
+    // its aim to the one facing the fire command defaults to.
+    for (const auto& uptr : w.oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob != nullptr && ob->query_order() == Order::Living &&
+            ob->team_num() == 1 && ob->act_type() == ACT_GUARD)
+            ob->set_guard_hold_post(false);
+    }
+
     // --- The crew (team 0). --------------------------------------------------
     // Sixteen start markers spread around the landing ring — the whole
     // point of the submitted design. Lead FIRST (south beach, facing
     // the causeway); deploy consumes markers in oblist order, so a
     // small crew lands scattered around the island and regroups on the
-    // charge, and a full four-player lobby fills every shore.
+    // charge, and a full four-player lobby fills every shore. (A
+    // clustered southern landing was tried when the garrison learned
+    // to fight and measured strictly worse — one blob feeds the whole
+    // south garrison at a single causeway funnel, while the scatter
+    // splits the defense into local fights the crew can win.)
     og::mapgen::place_start(w, 0, 31, 55); // lead, south landing
     og::mapgen::place_start(w, 0, 31, 7);  // north
     og::mapgen::place_start(w, 0, 55, 31); // east
@@ -572,6 +612,16 @@ void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
             !ob->guard_hold_post())
             fail(std::format("self-check scen{}: allied guard (family {}) "
                              "must hold post", ex.id,
+                             static_cast<int>(ob->family())));
+        // The garrison rule, inverted: a HOSTILE post that holds is a
+        // statue — act_guard never wakes it and its undirected fire
+        // command never releases, the shipped sit-and-twitch bug. Every
+        // enemy guard must carry hold-post OFF so true sight wakes it.
+        if (ob->query_order() == Order::Living && ob->team_num() >= 1 &&
+            ob->act_type() == ACT_GUARD && ob->guard_hold_post())
+            fail(std::format("self-check scen{}: hostile guard (family {}) "
+                             "holds post — garrison posts must wake at "
+                             "sight", ex.id,
                              static_cast<int>(ob->family())));
         const int team = ob->team_num();
         if (team < 0 || team > MAX_TEAM)
@@ -790,7 +840,7 @@ int main(int argc, char* argv[])
             const ExpectedLevel expectations[] = {
                 // {id, floors, title, starts, t0 liv/gen, t1 liv/gen,
                 //  delayed, specials-disabled, exit destinations}
-                {1, 1, "The Raspberry Isle", 16, 0, 0, 25, 3, 6, 1, {1}},
+                {1, 1, "The Raspberry Isle", 16, 0, 0, 19, 3, 3, 1, {1}},
             };
             for (const ExpectedLevel& e : expectations)
                 self_check_level(e, registered);

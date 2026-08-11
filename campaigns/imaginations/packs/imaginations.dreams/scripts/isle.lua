@@ -64,6 +64,33 @@ local function find_wizard()
   return wizard
 end
 
+-- The isle dreams in sea-mist: hostile sight caps at seven tiles,
+-- the isle's own sentry norm (skeleton and mage families see 7).
+-- The orc family's twenty-tile hunt radius (fine on Westlands' open
+-- fields) turns the authored staged assault into one island-wide
+-- swarm — with the garrison posts genuinely waking, every south-half
+-- foe converged on beat one and wiped scattered fresh landings. Under
+-- the cap the beats hold: causeway heads engage at their causeways,
+-- the bailey when the moat is crossed, the keep when its wall is
+-- breached, and a landing fights its local battles one at a time.
+-- Idempotent and re-derived from the world on every call (R6); the
+-- cap runs from on_load, so fresh starts and mid-joins agree, and
+-- college spawns are born within a tile of the cap (elf sight 8).
+local SIGHT_CAP_TILES = 7
+
+local function mist_cap_sight()
+  local obs = og.oblist()
+  for i = 1, #obs do
+    local ob = obs[i]
+    if ob:order() == C.ORDER_LIVING
+        and ob:team_num() ~= 0
+        and ob:dead() == 0
+        and ob:lineofsight() > SIGHT_CAP_TILES then
+      ob:set_lineofsight(SIGHT_CAP_TILES)
+    end
+  end
+end
+
 -- Per-entity death hook (consumed when it fires): the dream is won. The
 -- engine's own win logic is untouched — the level still completes the
 -- standard way (every hostile dead, then walk out at the landing).
@@ -79,6 +106,7 @@ end
 -- everything derives from the world and is idempotent. The ward state is
 -- a pure function of the live watchtower census.
 local function on_load(level)
+  mist_cap_sight()
   local wizard = find_wizard()
   if wizard == nil then
     return
@@ -109,17 +137,23 @@ local function on_tick(level, tick)
   -- is unreachable — across the moat, behind a wall — stands in place
   -- turning toward it forever. The cure is the engine's own sight
   -- test: act_guard fires at genuinely sighted foes and RE-WAKES on
-  -- the next tick of any clear sighting, so cycling every hostile
-  -- hunter (and every Dreamkin) back onto a post costs an engaged
-  -- fighter nothing while a blocked one stands down cleanly. Never the
-  -- dreamer's own crew, which must keep hunting.
+  -- the next tick of any clear sighting (the garrison ships with
+  -- hold-post OFF for exactly this reason — a held post never wakes),
+  -- so cycling every hostile hunter (and every Dreamkin) back onto a
+  -- post costs an engaged fighter nothing while a blocked one stands
+  -- down cleanly. Two kinds of hunter are never posted: the dreamer's
+  -- own crew (team 0), and ANY walker carrying a saved character
+  -- (has_guy) — a company member on a foreign roster color is a
+  -- player's hero without a seat here, and posting it would park
+  -- someone's save on the beach for the whole dream.
   if og.mod(tick, 50) == 0 then
     local obs = og.oblist()
     for i = 1, #obs do
       local ob = obs[i]
       if ob:order() == C.ORDER_LIVING
           and ob:dead() == 0
-          and ob:act_type() == C.ACT_RANDOM then
+          and ob:act_type() == C.ACT_RANDOM
+          and not ob:has_guy() then
         local reposts = ob:team_num() ~= 0
         if not reposts and ob:s_name() == "Dreamkin" then
           reposts = true

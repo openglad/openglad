@@ -28,7 +28,7 @@ generator's `write_campaign_yaml`).
 
 | scen | title | submitted idea (condensed) |
 |------|-------|----------------------------|
-| 1 | The Raspberry Isle | "We start at the edges of the island, at every corner. The sea is all around us. The enemies start in the middle, in a castle, near the water. We must run at them right away." (64x64; double-walled castle — bailey + keep — 25 posted foes, 3 college generators, two timed reinforcement waves, reef atolls, landing piers, bramble groves.) |
+| 1 | The Raspberry Isle | "We start at the edges of the island, at every corner. The sea is all around us. The enemies start in the middle, in a castle, near the water. We must run at them right away." (64x64; double-walled castle — bailey + keep — 19 posted foes, 3 college generators, two timed reinforcement waves, reef atolls, landing piers, bramble groves. Rebalanced 2026-08-11 down from the statue-era 25 when the hold-post wake bug was fixed and the garrison started genuinely fighting.) |
 
 Growth rule: new ideas append new scens (2, 3, …). The newest level's
 walk-out exit loops home to 1; when its successor lands, the generator
@@ -40,7 +40,17 @@ water — the hunt AI beelines with no pathfinding and jitters in place
 against the moat edge ("stuck spinning" to the player). Every placed
 foe on such a map is a POSTED guard (ambush wake); roamers are legal
 only where their chase ground is open (generator spawns on the crew's
-side of the water are fine).
+side of the water are fine). Corollary learned the hard way: a posted
+ENEMY must never carry the builders' hold-post flag. og::mapgen's
+place_living stamps hold-post on every team<=1 guard (the allied-escort
+rule), and a held post NEVER wakes — walker::act_guard skips the
+ACT_RANDOM conversion and its undirected fire command dies on the
+facing gate, so the whole garrison sat in the open twitching at an
+adjacent crew, forever. The generator clears the flag on every hostile
+guard (the builders document the per-caller override) and self-checks
+that no hostile guard holds post; the level script additionally caps
+hostile sight at seven tiles (the isle's sea-mist) so the wake keeps
+the staged beats instead of an island-wide swarm.
 
 Two more engine rules from the epic rework:
 - NO standable ground across open water. Mages and skeletons
@@ -60,19 +70,21 @@ save's level-1 crew (crew power 1 in the longseason README's terms).
 
 | level | crew power entering | calibration floor (8-mixed, tick 600, min over seeds 42/1337/2025) |
 |-------|---------------------|--------------------------------------------------------------------|
-| 1 | 1 | 8 (measured 8/8/8 on 2026-08-10; pinned in tests/unit/test_imaginations_calibration.cpp) |
+| 1 | 1 | 7 (measured 8/7/8 on 2026-08-11; pinned in tests/unit/test_imaginations_calibration.cpp) |
 
 Gate (kill-all): 8-mixed at crew 1 reaches `level_done == 1` within 6000
-ticks on >= 2/3 seeds, and 3/3 at crew 2. Measured with
-`scripts/imaginations_playtest.sh` on 2026-08-10 (final epic geometry:
-64x64, bailey + keep, 25 posted foes + 3 generators + 2 timed waves):
-PASS — all 12 bracket runs (both rosters x crew {1, 2} x 3 seeds)
-cleared between ticks 956 and 2547 with all foes dead; the 8-mixed gate
-roster kept all 8 alive on every run (the 4-soldier pessimistic floor
-lost at most 1). The isle stays a gentle opener despite its size: the
-drama lives in the staged assault — causeway sentries, the bailey, the
-keep, the throne, and the NEXT-WAVE reliefs at ticks 500/800 — not in
-attrition. (Design history: a mid-court garrison variant wiped the
-4-soldier stand-in — staggered posts fixed it; walkable reef islets let
-teleporting foes strand the kill-all — tree atolls fixed it; two-wide
-gates stalled unattended runs — three-wide gates fixed it.)
+ticks on 3/3 seeds. Measured with `scripts/imaginations_playtest.sh` on
+2026-08-11 (post-wake-fix geometry: 64x64, bailey + keep, 19 posted
+foes + 3 generators + 2 timed waves, sea-mist sight cap, level-2 Sea
+Wizard): PASS — the 8-mixed gate roster cleared all foes on every seed
+between ticks 870 and 996 with 7-8 of 8 alive. The isle stays a gentle
+opener despite its size: the drama lives in the staged assault —
+causeway sentries, the bailey, the keep, the throne, and the NEXT-WAVE
+reliefs at ticks 500/800 — not in attrition. (Design history: a
+mid-court garrison variant wiped the 4-soldier stand-in — staggered
+posts fixed it; walkable reef islets let teleporting foes strand the
+kill-all — tree atolls fixed it; two-wide gates stalled unattended
+runs — three-wide gates fixed it; and when the hold-post wake bug fell,
+the statue-era balance had to fall with it: 25 foes, six wave units and
+a level-4 boss all beat a fresh crew that now had to FIGHT for the
+castle — trimmed to 19/3/level-2, measured back to a fresh-team win.)

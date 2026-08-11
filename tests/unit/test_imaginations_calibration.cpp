@@ -49,12 +49,14 @@ struct CurvePin
     int floor;      // min 8-mixed-crew survivors at tick 600 across 3 seeds
 };
 
-// The Raspberry Isle at the fresh-team anchor. The measured floor is high
-// on purpose: the garrison holds its posts behind the moat until the crew
-// closes, so a scattered fresh landing bleeds little in the first 600
-// ticks — accessibility for new teams IS the level's design contract.
+// The Raspberry Isle at the fresh-team anchor. The garrison genuinely
+// fights now (the statue-era hold-post bug is fixed and the floor was
+// re-measured 2026-08-11: 8/7/8 across the three seeds), so a scattered
+// fresh landing can lose a member in the opening exchanges — the floor
+// is 7, not 8. Accessibility for new teams stays the design contract:
+// the full kill-all gate cleared 3/3 seeds with 7-8 survivors.
 constexpr CurvePin kCurve[] = {
-    {1, 1, 8},
+    {1, 1, 7},
 };
 
 constexpr int kCalibrationTicks = 600;

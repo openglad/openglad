@@ -156,7 +156,7 @@ struct ShippedLevel
 };
 
 constexpr ShippedLevel kLevels[] = {
-    {1, "The Raspberry Isle", 1, 64, 64, 16, 25, 3, 1, 1},
+    {1, "The Raspberry Isle", 1, 64, 64, 16, 19, 3, 1, 1},
 };
 
 // SCENARIO INFORMATION dialog budget (33 glyphs per briefing line).
