@@ -104,6 +104,47 @@ local function on_tick(level, tick)
     og.emit_notification("...is the sea in the middle, or", 90)
     og.emit_notification("around? BOTH. It is my dream.", 90)
   end
+  -- Dream soldiers return to their posts: a once-woken guard hunts
+  -- (ACT_RANDOM) forever, and with no pathfinding a hunter whose foe
+  -- moved away jams mid-field against walls, trees or the moat,
+  -- twitching in place. Every 100 ticks, any hostile hunter with no
+  -- enemy within 8 tiles is re-posted where it stands (never the
+  -- dreamer's own team — the crew must keep hunting).
+  if og.mod(tick, 100) == 0 then
+    local obs = og.oblist()
+    for i = 1, #obs do
+      local ob = obs[i]
+      if ob:order() == C.ORDER_LIVING
+          and ob:dead() == 0
+          and ob:team_num() ~= 0
+          and ob:act_type() == C.ACT_RANDOM then
+        local x = ob:xpos()
+        local y = ob:ypos()
+        local near = false
+        for j = 1, #obs do
+          local foe = obs[j]
+          if foe:order() == C.ORDER_LIVING
+              and foe:dead() == 0
+              and foe:team_num() ~= ob:team_num() then
+            local dx = foe:xpos() - x
+            if dx < 0 then
+              dx = -dx
+            end
+            local dy = foe:ypos() - y
+            if dy < 0 then
+              dy = -dy
+            end
+            if dx < 128 and dy < 128 then
+              near = true
+            end
+          end
+        end
+        if not near then
+          ob:set_act_type(C.ACT_GUARD)
+        end
+      end
+    end
+  end
 end
 
 -- Level-wide death hook: watchtowers falling are events, not polls.

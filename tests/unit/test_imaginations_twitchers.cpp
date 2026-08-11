@@ -75,6 +75,23 @@ TEST_F(ImaginationsTwitchers, no_living_jams_against_the_moat)
     std::map<walker*, std::pair<float, float>> last_pos;
     for (int sample = 0; sample < kSamples; ++sample)
     {
+        // Halfway through, march the parked crew to the north shore:
+        // everything it woke in the south (once-woken guards hunt
+        // forever) must either re-engage or settle back onto a post —
+        // NOT jam twitching mid-field where its quarry used to be.
+        if (sample == kSamples / 2)
+        {
+            for (std::size_t m = 0; m < crew.size(); ++m)
+            {
+                walker* member = crew[m];
+                if (member == nullptr || member->dead())
+                    continue;
+                member->setxy(
+                    static_cast<short>((26 + 2 * static_cast<int>(m)) * 16),
+                    static_cast<short>(7 * 16));
+            }
+            last_pos.clear();
+        }
         for (int t = 0; t < kSampleTicks; ++t)
             world.tick();
         for (const auto& uptr : world.oblist)
