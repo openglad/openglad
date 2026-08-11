@@ -559,6 +559,17 @@ if(NOT Python3_Interpreter_FOUND)
         "scripts/make_glad.py. Install python3 and reconfigure.")
 endif()
 
+# Build-time git stamp: og_git_hash.h in the build tree, regenerated every
+# build, rewritten only on change (see cmake/GitHash.cmake).
+add_custom_target(og_git_hash_gen
+    COMMAND ${CMAKE_COMMAND}
+        -DSRC_ROOT=${CMAKE_SOURCE_DIR}
+        -DOUT_FILE=${CMAKE_BINARY_DIR}/og_git_hash.h
+        -P ${CMAKE_SOURCE_DIR}/cmake/GitHash.cmake
+    BYPRODUCTS ${CMAKE_BINARY_DIR}/og_git_hash.h
+    COMMENT "Stamping git hash"
+)
+
 set(OG_BUILTIN_CAMPAIGN_IDS
     concept
     gladiator
@@ -648,7 +659,8 @@ if(NOT EMSCRIPTEN)
     configure_openglad_sdl_target(og_interface)
     # og_interface contains src/interface/render/; enforce render stays read-only
     # on synced entity state (the drawcycle-class guard).
-    add_dependencies(og_interface check_render_no_sim_writes)
+    add_dependencies(og_interface check_render_no_sim_writes og_git_hash_gen)
+    target_include_directories(og_interface PRIVATE ${CMAKE_BINARY_DIR})
     target_link_libraries(og_interface PUBLIC
         og_core
         og_gameplay
@@ -1477,6 +1489,8 @@ endif()
 
 	if(EMSCRIPTEN)
 	    add_library(og_game_web STATIC ${GAME_SOURCES_NO_MAIN})
+	    add_dependencies(og_game_web og_git_hash_gen)
+	    target_include_directories(og_game_web PRIVATE ${CMAKE_BINARY_DIR})
 	    configure_openglad_library(og_game_web)
 	    configure_openglad_runtime_target(og_game_web)
 	    target_link_libraries(og_game_web PUBLIC ${OG_IO_EXTERNAL_LIBS})

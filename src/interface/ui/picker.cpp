@@ -15,6 +15,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 #include <openglad/core/version.h>
+#include "og_git_hash.h"
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/pixie_data.h>
 #include <openglad/gameplay/guy.h>
@@ -1874,6 +1875,12 @@ void draw_version_number()
 	int y = 200 - 12;
 	og::runtime::current_session->myscreen_->fastbox(x, y, w, h, PURE_BLACK);
 	mytext.write_xy(x, y, OPENGLAD_VERSION_STRING, static_cast<unsigned char>(DARK_BLUE), 1);
+
+	// The build's commit, bottom-left: a running binary can always be
+	// matched to its source ("is this fix even in the build I launched?").
+	int hw = static_cast<int>(std::string(OPENGLAD_GIT_HASH).size())*6;
+	og::runtime::current_session->myscreen_->fastbox(2, y, hw, h, PURE_BLACK);
+	mytext.write_xy(2, y, OPENGLAD_GIT_HASH, static_cast<unsigned char>(DARK_BLUE), 1);
 }
 
 
