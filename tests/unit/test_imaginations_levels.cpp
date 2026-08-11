@@ -23,6 +23,8 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/mapgen/builders.h>
 #include <openglad/gameplay/pixie_data.h>
+#include <openglad/gameplay/script/family_hooks.h>
+#include <openglad/gameplay/script/script_host.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -248,6 +250,61 @@ TEST_F(ImaginationsCampaignTest, isle_is_an_island_with_a_moated_castle)
     // And the crew's landing ring is dry ground where the lead deploys.
     EXPECT_TRUE(og::mapgen::ground_cell_standable(
         g.data[static_cast<std::size_t>(31 + 55 * g.w)]));
+}
+
+TEST_F(ImaginationsCampaignTest, watchtower_ward_arc_plays_out)
+{
+    LoadedImaginationsLevel fx(1);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+    world.tick(); // on_load: the ward stamps
+
+    walker* wizard = nullptr;
+    std::vector<walker*> towers;
+    for (const auto& uptr : world.oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob == nullptr || ob->query_order() != Order::Living ||
+            ob->team_num() != 1)
+            continue;
+        if (ob->family() == FAMILY_MAGE)
+            wizard = ob;
+        else if (ob->family() == FAMILY_TOWER1)
+            towers.push_back(ob);
+    }
+    ASSERT_NE(nullptr, wizard);
+    ASSERT_EQ(2u, towers.size());
+    EXPECT_TRUE(wizard->stats()->query_bit_flags(BIT_INVINCIBLE))
+        << "the ward holds while the watchtowers stand";
+
+    // Fell both towers through the sim's death path so on_entity_death
+    // dispatches for each (first: one remains; second: the ward fails).
+    for (walker* tower : towers)
+    {
+        tower->stats()->set_hitpoints(0);
+        tower->set_dead(1);  // the sim flags dead before the death path runs
+        tower->death();      // — the level hook observes that order
+        world.tick();
+    }
+    EXPECT_FALSE(wizard->stats()->query_bit_flags(BIT_INVINCIBLE))
+        << "both towers down must drop the ward";
+
+    // The throne falls: the dream-won fanfare fires via the per-entity
+    // death hook.
+    wizard->stats()->set_hitpoints(0);
+    wizard->set_dead(1);
+    wizard->death();
+    world.tick();
+
+    bool dream_won = false;
+    for (const og::sim::Event& ev : fx.events.drain())
+        if (ev.kind == og::sim::EventKind::Notification &&
+            ev.text.find("Dream won") != std::string::npos)
+            dream_won = true;
+    EXPECT_TRUE(dream_won) << "the wizard's death narrates the win";
+
+    for (const auto& err : world.scripts().host().errors())
+        ADD_FAILURE() << err.where << ": " << err.message;
 }
 
 TEST_F(ImaginationsCampaignTest, shipped_package_passes_the_ground_audits)
