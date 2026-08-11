@@ -90,21 +90,31 @@ fully deterministic too — scripts/make_glad.py pins order, mtimes, method).
   conceals (forestwalk + LOS decay) — keep it off battle lanes or smoke bounds
   shift. Writer downgrades v11→v10/v9 when all decor planes are empty.
 
-## Twitchers (units jammed in place, spinning)
+## The hunt AI does not pathfind — design for it
 
-Two distinct jam classes — do not misdiagnose one as the other:
-(a) a hunter whose beeline crosses impassable terrain (water, wall)
-jams at the boundary; (b) a woken posted guard in ACT_RANDOM whose
-target left jams mid-field against scenery or other units. Cures:
-re-post disengaged hostiles from the level script; never place a roamer
-where its straight line to a likely foe crosses a barrier.
+ACT_RANDOM hunters walk a STRAIGHT line at their acquired foe
+(walker::act_random -> walkstep with wall-slide only); there is no
+routing. Consequences for every level layout:
 
-The unattended-sim regression test is MANDATORY for every new level:
-run ~1800 ticks with the player crew parked, assert no living has
-near-zero net displacement while alive, and include a phase that wakes
-the garrison and then walks away. Copy the shape of
-tests/unit/test_imaginations_twitchers.cpp (ships with the Imaginations
-campaign; the recipe above is complete on its own).
+- Any impassable band (water, walls, tree lines) between two forces
+  turns approaching units into visible statues grinding at the
+  boundary. Either keep opposing forces' likely sight lines free of
+  barriers, or provide crossings wide and frequent enough that the
+  slide finds one within a couple of tiles from any angle.
+- A woken guard hunts forever; if its target leaves, it jams against
+  whatever stands where it happens to be. Levels that post guards need
+  a level-script rule that stands disengaged hunters back down (the
+  engine's own act_guard sight test then re-wakes them honestly).
+- Every AI unit follows these rules regardless of origin — placed,
+  generator-spawned, or script-converted.
+
+Every level whose layout puts ANY blocker between opposing forces must
+ship an unattended-sim stationarity test: run the level headless for
+~1800+ ticks under the scenarios players actually create (crew parked
+near the front line; garrison woken then abandoned), and fail on any
+living with near-zero displacement that is neither posted nor in
+contact with an enemy. Prove the test red on a layout that jams before
+trusting it green.
 
 ## Verify behavior rules per construction path
 
