@@ -24,38 +24,31 @@ completion report.
 - Report on state change only (first red, final verdict) — not a
   narration of every poll.
 
-## Playtest-report response protocol (paid for by four failed twitcher fixes)
+## Responding to bug reports
 
-A human report of in-game misbehavior ("units stuck twitching") is an
-OBSERVATION, not a diagnosis. The four-round fumble pattern to never
-repeat: theorize from code reading -> patch the theory -> build a test
-around the same theory -> pass -> declare victory -> user sees the same
-bug. Rules:
+A human report of misbehavior is an OBSERVATION, not a diagnosis. The
+anti-pattern: theorize from code reading, patch the theory, build a
+test around the same theory, pass, declare victory, bug survives.
+Rules, in order:
 
-1. REPRODUCE UNDER OBSERVATION FIRST. Before any fix: dump live entity
-   state at the reported spot (openglad_text --protocol `state`), or
-   pixel-diff capture frames there. The cheap observability tools find
-   in seconds what hypothesis-stacking misses for days.
-2. PIN THE OBSERVATION. If the report is ambiguous, ask ONE question up
-   front — which units (color/family), where, doing what — instead of
-   burning a fix-deploy-playtest round per guess. "Yellow guys sitting
-   in open grass ignoring an adjacent enemy" identified in one sentence
-   what four patches never touched.
-3. THE REGRESSION TEST MUST FAIL FIRST — on the tree the user reported
-   against, reproducing THEIR scenario (their position, crew shape,
-   timing), not a scenario shaped by your current theory. A net that
-   passes pre-fix has proven it does not cover the bug; do not ship the
-   fix it "validates". Teeth are red-then-green, nothing less.
-4. NO EXTINCTION CLAIMS. Never state a bug class "cannot recur" from
-   tests that never reproduced the user's report. Completion reports
-   state what the test actually exercises.
-5. EPICYCLE ALARM. If a fix needs a fix that needs a fix (posted ->
-   re-post cycle -> distance carve-out -> geometry), stop patching and
-   map the full state machine you are scripting around — every
-   transition and its INPUTS — then verify each input for EVERY unit
-   class you touch. Placed and generator-spawned units differ in
-   derived stats; a rule proven on one class silently fails on the
-   other.
+1. Observe before hypothesizing. Reproduce the reported behavior under
+   instrumentation (live state dumps, frame captures, logs) before
+   changing anything. Cheap observability beats clever inference.
+2. Pin ambiguity with one question. If the report underdetermines the
+   subject (which component, which entity, where, when), ask once up
+   front. One question costs a message; a wrong guess costs a full
+   fix-deploy-verify round.
+3. The regression test must fail first — on the tree the report was
+   made against, reproducing the REPORTER's scenario, not a scenario
+   shaped by your hypothesis. A test that passes pre-fix does not cover
+   the bug; do not ship the fix it "validates". Teeth are
+   red-then-green, nothing less.
+4. Claim only what the tests exercise. Never state a bug class cannot
+   recur on the strength of tests that never reproduced the report.
+5. Epicycle alarm. When a fix needs a follow-up fix that needs another,
+   stop patching: model the underlying mechanism end to end (states,
+   transitions, and each transition's inputs), then verify every input
+   for every variant the change touches.
 
 ## Banned dispositions
 
