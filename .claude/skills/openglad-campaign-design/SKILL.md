@@ -106,6 +106,18 @@ the garrison and then walks away. Copy the shape of
 tests/unit/test_imaginations_twitchers.cpp (ships with the Imaginations
 campaign; the recipe above is complete on its own).
 
+## Unit-class lifecycle audit (the twitcher postmortem)
+
+Any level/script rule that touches AI act types must be verified per
+UNIT CLASS, not per rule: placed livings, generator spawns
+(customize_spawn runs at birth — derived stats may not match placed
+units), delayed-wave walkers, defectors/team-changed units, and
+woken-then-re-posted hunters each walk a different path through
+born -> posted -> wake (lineofsight stat + clear ray + find_near_foe
+target) -> hunt -> blocked. The wake-guarantee shape: for every hostile
+class, an enemy 2 tiles away on open grass must produce an attack
+within 300 ticks, proven RED on the broken tree before the fix ships.
+
 ## Story rules (the "story bible" discipline)
 
 One narrative voice across all briefings; briefings are the ONLY narrative
