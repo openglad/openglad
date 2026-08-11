@@ -275,10 +275,20 @@ void build_raspberry_isle()
 
     // Post-smooth inert tiles: the four moat causeways and the four
     // landing piers running off the beaches into open water.
-    paint_pavement(g, 31, 14, 32, 21); // north causeway
-    paint_pavement(g, 31, 42, 32, 49); // south causeway
-    paint_pavement(g, 14, 31, 21, 32); // west causeway
-    paint_pavement(g, 42, 31, 49, 32); // east causeway
+    // Eight moat crossings: WIDE cardinal causeways plus paved corner
+    // plazas. The hunt AI beelines and slides; with a crossing within a
+    // short slide of any approach angle, teammates and woken foes FLOW
+    // over the moat instead of grinding against the bank in front of
+    // the player (the water stays as eight ribbon segments — the
+    // submitted "sea in the middle" survives).
+    paint_pavement(g, 29, 14, 34, 21); // north causeway
+    paint_pavement(g, 29, 42, 34, 49); // south causeway
+    paint_pavement(g, 14, 29, 21, 34); // west causeway
+    paint_pavement(g, 42, 29, 49, 34); // east causeway
+    paint_pavement(g, 17, 17, 22, 22); // corner plazas
+    paint_pavement(g, 41, 17, 46, 22);
+    paint_pavement(g, 17, 41, 22, 46);
+    paint_pavement(g, 41, 41, 46, 46);
     paint_pavement(g, 12, 50, 13, 58); // southwest pier
     paint_pavement(g, 50, 5, 51, 13);  // northeast pier
     paint_pavement(g, 4, 12, 12, 13);  // northwest pier

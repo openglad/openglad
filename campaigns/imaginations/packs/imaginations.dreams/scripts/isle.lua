@@ -105,41 +105,26 @@ local function on_tick(level, tick)
     og.emit_notification("around? BOTH. It is my dream.", 90)
   end
   -- Dream soldiers return to their posts: a once-woken guard hunts
-  -- (ACT_RANDOM) forever, and with no pathfinding a hunter whose foe
-  -- moved away jams mid-field against walls, trees or the moat,
-  -- twitching in place. Every 100 ticks, any hostile hunter with no
-  -- enemy within 8 tiles is re-posted where it stands (never the
-  -- dreamer's own team — the crew must keep hunting).
-  if og.mod(tick, 100) == 0 then
+  -- (ACT_RANDOM) forever, and with no pathfinding a hunter whose prey
+  -- is unreachable — across the moat, behind a wall — stands in place
+  -- turning toward it forever. The cure is the engine's own sight
+  -- test: act_guard fires at genuinely sighted foes and RE-WAKES on
+  -- the next tick of any clear sighting, so cycling every hostile
+  -- hunter (and every Dreamkin) back onto a post costs an engaged
+  -- fighter nothing while a blocked one stands down cleanly. Never the
+  -- dreamer's own crew, which must keep hunting.
+  if og.mod(tick, 50) == 0 then
     local obs = og.oblist()
     for i = 1, #obs do
       local ob = obs[i]
       if ob:order() == C.ORDER_LIVING
           and ob:dead() == 0
-          and ob:team_num() ~= 0
           and ob:act_type() == C.ACT_RANDOM then
-        local x = ob:xpos()
-        local y = ob:ypos()
-        local near = false
-        for j = 1, #obs do
-          local foe = obs[j]
-          if foe:order() == C.ORDER_LIVING
-              and foe:dead() == 0
-              and foe:team_num() ~= ob:team_num() then
-            local dx = foe:xpos() - x
-            if dx < 0 then
-              dx = -dx
-            end
-            local dy = foe:ypos() - y
-            if dy < 0 then
-              dy = -dy
-            end
-            if dx < 128 and dy < 128 then
-              near = true
-            end
-          end
+        local reposts = ob:team_num() ~= 0
+        if not reposts and ob:s_name() == "Dreamkin" then
+          reposts = true
         end
-        if not near then
+        if reposts then
           ob:set_act_type(C.ACT_GUARD)
         end
       end

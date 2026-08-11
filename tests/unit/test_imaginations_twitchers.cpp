@@ -42,7 +42,8 @@ protected:
 constexpr int kSampleTicks = 300;
 constexpr int kSamples = 6; // 1800 ticks total
 constexpr float kMoveEpsilon = 8.0f;        // < half a tile per window
-constexpr float kEngageRange = 4.0f * 16.0f; // fighting, not stuck
+constexpr float kEngageRange = 1.5f * 16.0f; // in CONTACT; a foe merely
+// nearby across the moat is exactly the twitch case, not an exemption
 
 } // namespace
 
@@ -63,13 +64,33 @@ TEST_F(ImaginationsTwitchers, no_living_jams_against_the_moat)
                           FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER,
                           FAMILY_CLERIC, FAMILY_BARBARIAN}, 1);
     ASSERT_EQ(8u, crew.size());
-    // Park the crew where it landed (an idle human player, the situation
-    // the twitchers were reported in): posted hold guards never move, so
-    // every foe with a will to reach them must actually path there.
-    for (walker* member : crew)
+    // Park the crew ON the south assault line, two tiles off the moat —
+    // where a real player stands while fighting at the causeway. Posted
+    // hold guards never move, so every woken foe across the water has
+    // live prey in close sight the whole run.
     {
-        member->set_act_type(ACT_GUARD);
-        member->set_guard_hold_post(true);
+        static constexpr int kLineX[8] = {24, 26, 28, 34, 36, 38, 40, 22};
+        for (std::size_t m = 0; m < crew.size(); ++m)
+        {
+            walker* member = crew[m];
+            member->setxy(static_cast<short>(kLineX[m] * 16),
+                          static_cast<short>(48 * 16));
+            member->set_act_type(ACT_GUARD);
+            member->set_guard_hold_post(true);
+        }
+    }
+
+    // Aggro the whole island the way a real player does: every placed
+    // hostile wakes into the hunt AI. The dream script must stand the
+    // unreachable ones back down; anything left beelining at prey it
+    // cannot reach shows up as a stationary far-from-foe twitcher.
+    for (const auto& uptr : world.oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob != nullptr && ob->query_order() == Order::Living &&
+            !ob->dead() && ob->team_num() == 1 && ob->spawn_delay() == 0 &&
+            ob->stepsize() >= 1.0f)
+            ob->set_act_type(ACT_RANDOM);
     }
 
     std::map<walker*, std::pair<float, float>> last_pos;
