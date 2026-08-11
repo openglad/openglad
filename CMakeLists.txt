@@ -281,6 +281,13 @@ endif()
 # --------------------------------------------------------------------------
 
 function(configure_openglad_library target)
+    # Every target that can compile src/interface/ui/picker.cpp needs the
+    # generated og_git_hash.h (main-menu commit stamp) — wire the include
+    # dir and the generator dependency centrally, not per-target.
+    target_include_directories(${target} PRIVATE ${CMAKE_BINARY_DIR})
+    if(TARGET og_git_hash_gen)
+        add_dependencies(${target} og_git_hash_gen)
+    endif()
     target_include_directories(${target} PUBLIC
         $<BUILD_INTERFACE:${OG_PUBLIC_INCLUDE_DIR}>
         $<INSTALL_INTERFACE:include>
