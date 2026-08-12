@@ -69,7 +69,9 @@ if [[ -n "${EMSDK:-}" ]] && [[ -d "$EMSDK/upstream/bin" ]]; then
 LLVM_ROOT = '$EMSDK/upstream/bin'
 BINARYEN_ROOT = '$EMSDK/upstream'
 EOF
-    emsdk_node="$(ls -d "$EMSDK"/node/*/bin/node 2>/dev/null | head -1)"
+    # `|| true`: an emsdk without a bundled node (system-node layouts) must
+    # fall through, not abort the script via set -e/pipefail.
+    emsdk_node="$(ls -d "$EMSDK"/node/*/bin/node 2>/dev/null | head -1 || true)"
     if [[ -n "$emsdk_node" ]]; then
         sed -i '/^NODE_JS = /d' "$EM_CONFIG_FILE"
         printf "NODE_JS = '%s'\n" "$emsdk_node" >>"$EM_CONFIG_FILE"

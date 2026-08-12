@@ -391,7 +391,7 @@ SDL_RenderPresent (once)
 The main loop runs in one of two modes, decided once at startup:
 
 - **Uncapped** (the default): the sim stays at exactly one tick per 81.6 ms of wall clock (a `FixedStepAccumulator` runs 0–8 catch-up ticks per loop pass; a stall past 8 periods drops the backlog with a log line instead of slowing the game), while the loop renders and presents on every pass with no sleep and vsync off. Compositing is GPU per-cell: each session surface streams into its own texture and the renderer scales it into its display cell.
-- **Lockstep**: one sim tick per rendered frame, software compositing, sleep to the 81.6 ms frame period. This is the pixel-pinned path — `scripts/test_demo_smoke.sh` byte-compares its composite dumps.
+- **Lockstep**: one sim tick per rendered frame, software compositing, sleep to the 81.6 ms frame period — except frame-capture runs, which never sleep (no viewer; the capture takes frames as fast as the sim produces them). This is the pixel-pinned path — `scripts/test_demo_smoke.sh` byte-compares its composite dumps.
 
 Lockstep is selected automatically whenever the run dumps pixels — frame capture (`OPENGLAD_DEMO_CAPTURE_DIR`) or a composite dump (`OPENGLAD_DEMO_COMPOSITE_DUMP`) — and can be forced with `OPENGLAD_DEMO_LOCKSTEP=1`. The chosen mode is logged as `openglad_demo: pacing lockstep|uncapped`.
 

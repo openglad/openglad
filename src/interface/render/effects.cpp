@@ -19,6 +19,7 @@
 
 #include <openglad/core/colors.h>
 #include <openglad/core/constants.h>
+#include <openglad/core/frame_pacing.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/core/terrain_types.h>
@@ -36,6 +37,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -966,7 +968,63 @@ int depth_fog_alpha_at(int x, int y, std::uint32_t tick, int stories)
 	return a;
 }
 
+namespace
+{
+
+// Wall-clock cadence for uncapped rendering: 14 ms per effects tick, i.e. the
+// classic 72 fps render rate ((1000 + 36) / 72), so cosmetics animate exactly
+// as a 72 fps capped game shows regardless of the present rate. Off by
+// default; every capped path and test keeps one advance per call.
+inline constexpr std::uint32_t kWallClockCadenceIntervalMs = 14;
+bool wall_clock_cadence = false;
+og::core::FrameDeadlinePacer cadence_pacer;
+
+void advance_frame_state();
+
+void advance_frame_if_due(std::uint32_t now_ms)
+{
+	if (cadence_pacer.interval_ms() != kWallClockCadenceIntervalMs)
+		cadence_pacer.configure(kWallClockCadenceIntervalMs, now_ms);
+	if (cadence_pacer.tick(now_ms).run_tick)
+		advance_frame_state();
+}
+
+} // namespace
+
+void effects_set_wall_clock_cadence(bool on)
+{
+	wall_clock_cadence = on;
+}
+
 void effects_advance_frame()
+{
+	if (!wall_clock_cadence)
+	{
+		advance_frame_state();
+		return;
+	}
+	advance_frame_if_due(static_cast<std::uint32_t>(
+	    std::chrono::duration_cast<std::chrono::milliseconds>(
+	        std::chrono::steady_clock::now().time_since_epoch())
+	        .count()));
+}
+
+#ifdef TESTING
+void effects_advance_frame_at(std::uint32_t now_ms)
+{
+	if (!wall_clock_cadence)
+	{
+		advance_frame_state();
+		return;
+	}
+	advance_frame_if_due(now_ms);
+}
+#endif
+
+namespace
+{
+
+void advance_frame_state()
 {
 	++frame_tick;
 	// Drop history for entities no viewport has drawn in kStoreMaxAge ticks
@@ -1005,6 +1063,8 @@ void effects_advance_frame()
 			++it;
 	}
 }
+
+} // namespace
 
 bool draw_walker_trail(walker& w, viewscreen* vs)
 {
@@ -1582,6 +1642,8 @@ UpperFloorShadowMaskStats upper_floor_shadow_mask_stats_for_testing()
 void effects_reset_for_testing()
 {
 	frame_tick = 0;
+	wall_clock_cadence = false;
+	cadence_pacer = og::core::FrameDeadlinePacer{};
 	cloud_noise_ready = false;
 	depth_noise_ready = false;
 	glow_kernel_ready = false;

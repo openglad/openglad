@@ -39,6 +39,7 @@
 #include <openglad/legacy/base.h>
 #include <openglad/resources/io.h>
 #include <openglad/platform/sai2x.h>
+#include <openglad/interface/render/effects.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/game_context.h>
 #include <openglad/platform/game_loop.h>
@@ -779,6 +780,12 @@ int main(int argc, char* argv[])
              (std::string_view(lockstep_env) == "1" ||
               std::string_view(lockstep_env) == "on"));
         Log("openglad_demo: pacing {}\n", lockstep ? "lockstep" : "uncapped");
+        // Machine-rate presenting would otherwise animate every render-only
+        // cosmetic (weather, ripples, trails) at hardware speed; the wall
+        // clock holds them at the classic 72 fps cadence. Lockstep keeps the
+        // per-redraw advance its byte-pinned dumps rely on.
+        if (!lockstep)
+            effects_set_wall_clock_cadence(true);
 
         // OPENGLAD_DEMO_MAX_FRAMES bounds only the main loop. Grid sizing and
         // scenario selection remain the real demo paths; automation can pick a
@@ -945,6 +952,13 @@ int main(int argc, char* argv[])
             for (int i = 0; i < num_sessions; i++) {
                 SDL_Surface* src =
                     demos[static_cast<size_t>(i)].session->session_surface_;
+                // GameSession treats a failed session-surface allocation as
+                // non-fatal; degrade to a blank cell like the software
+                // compositor does instead of dereferencing null.
+                if (src == nullptr) {
+                    cell_tex.emplace_back(nullptr, SDL_DestroyTexture);
+                    continue;
+                }
                 SdlTexturePtr tex(
                     SDL_CreateTexture(E_Screen->renderer, src->format,
                                       SDL_TEXTUREACCESS_STREAMING,
@@ -1036,8 +1050,10 @@ int main(int argc, char* argv[])
         auto last_time = std::chrono::steady_clock::now();
         const auto run_start = last_time;
         bool running = true;
-        int frames_run = 0;       // sim ticks, in both pacing modes
-        int rendered_frames = 0;  // loop passes that presented
+        // 64-bit: an unattended uncapped run presents at machine rate, and a
+        // 32-bit rendered-frame counter would overflow within days.
+        long long frames_run = 0;       // sim ticks, in both pacing modes
+        long long rendered_frames = 0;  // loop passes that presented
         int captured_frames = 0;
 
         // Phases 2+3: one barriered sim generation across all sessions.
@@ -1097,8 +1113,8 @@ int main(int argc, char* argv[])
                 }
                 ticks_this_iter = due.ticks;
                 if (max_frames > 0) {
-                    ticks_this_iter = std::min(ticks_this_iter,
-                                               max_frames - frames_run);
+                    ticks_this_iter = static_cast<int>(std::min<long long>(
+                        ticks_this_iter, max_frames - frames_run));
                 }
             }
             for (int t = 0; t < ticks_this_iter; ++t)
@@ -1245,6 +1261,10 @@ int main(int argc, char* argv[])
                 for (int i = 0; i < num_sessions; i++) {
                     SDL_Surface* src =
                         demos[static_cast<size_t>(i)].session->session_surface_;
+                    if (src == nullptr ||
+                        !cell_tex[static_cast<size_t>(i)]) {
+                        continue;  // surface allocation failed: blank cell
+                    }
                     SDL_UpdateTexture(cell_tex[static_cast<size_t>(i)].get(),
                                       nullptr, src->pixels, src->pitch);
                     const CellRects r = cell_rects(
@@ -1356,8 +1376,8 @@ int main(int argc, char* argv[])
             "openglad_demo: {} sim ticks, {} rendered frames in {:.3f} s "
             "({:.1f} fps, {:.2f} ticks/s)\n",
             frames_run, rendered_frames, run_secs,
-            rendered_frames / std::max(run_secs, 1e-6),
-            frames_run / std::max(run_secs, 1e-6)));
+            static_cast<double>(rendered_frames) / std::max(run_secs, 1e-6),
+            static_cast<double>(frames_run) / std::max(run_secs, 1e-6)));
 
         if (capture_writer) {
             Log("openglad_demo: captured {} frames to {}\n",

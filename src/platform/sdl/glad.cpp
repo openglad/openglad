@@ -24,6 +24,7 @@
 #include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/interface/render/effects.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <openglad/platform/emscripten/web_runtime_diagnostics.h>
@@ -228,9 +229,15 @@ void bootstrap_runtime(int argc, char* argv[])
     og::core::apply_target_fps_to_cfg(cfg, fps);
     og::runtime::current_session->target_fps_ = fps;
     // Uncapped means "as fast as the hardware allows": the display-rate cap
-    // vsync imposes would defeat the setting outright.
-    if (fps == og::core::kUncappedTargetFps && E_Screen)
-        E_Screen->set_vsync(false);
+    // vsync imposes would defeat the setting outright. Render-only cosmetics
+    // switch to the wall clock so they animate at the classic 72 fps cadence
+    // rather than at whatever rate the hardware presents.
+    if (fps == og::core::kUncappedTargetFps)
+    {
+        if (E_Screen)
+            E_Screen->set_vsync(false);
+        effects_set_wall_clock_cadence(true);
+    }
     og::runtime::current_session->show_fps_ = cfg.is_on("graphics", "show_fps");
     cfg.save_settings();
 #if defined(__EMSCRIPTEN__) && !defined(TESTING)

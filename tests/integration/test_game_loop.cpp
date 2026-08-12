@@ -3567,9 +3567,11 @@ TEST(MasterSpeedRegression, uncapped_render_renders_every_call_at_master_cadence
             << "scenario must keep running across all 600 uncapped frames";
     }
 
-    // Render must fire on every call — no pacer gating. A 240 fps cap over a
-    // 600 ms drive window would allow at most ~150 renders, so exact equality
-    // is the uncapped-specific pin.
+    // Render must fire on every call — no pacer gating. If the capped branch
+    // consumed the sentinel instead, target_frame_interval_ms(0) == 1 ms
+    // would gate exactly the first of the 600 one-millisecond steps (599
+    // renders), so exact equality still discriminates — by one frame, with
+    // the pacer-unconfigured and no-sleep pins below carrying the rest.
     EXPECT_EQ(kFrames, render_count)
         << "uncapped render must fire on every game_frame_with_result call";
 
