@@ -231,19 +231,50 @@ void generate_depth_noise()
 // half spatial frequency and drifts faster, so the banks evolve instead of
 // sliding past as one rigid sheet. Negative world coords wrap fine under
 // two's-complement & kNoiseMask.
-int cloud_sample(int wx, int wy, std::uint32_t tick)
+//
+// Walked one world row at a time: for a fixed world y both layers sit on a
+// fixed lattice row, and one world pixel to the right advances layer 1 by
+// one lattice column and layer 2 — sampling at half frequency — by one
+// every other pixel. sample() must return exactly what the two-layer
+// formula gives for (wx, wy): the weather pins compare rendered pixels byte
+// for byte.
+class CloudRow
 {
-	const int t = static_cast<int>(tick & 0x0FFFFFFFu);
-	const int x1 = (wx + t / 2) & kNoiseMask;
-	const int y1 = (wy + t / 4) & kNoiseMask;
-	const int x2 = ((wx >> 1) + t) & kNoiseMask;
-	const int y2 = ((wy >> 1) - t / 8) & kNoiseMask;
-	const int s1 = cloud_noise[static_cast<std::size_t>(x1 + kNoiseSize * y1)];
-	const int s2 = cloud_noise[static_cast<std::size_t>(x2 + kNoiseSize * y2)];
-	return (s1 + s2) / 2;
-}
+public:
+	CloudRow(int wx, int wy, std::uint32_t tick)
+	{
+		const int t = static_cast<int>(tick & 0x0FFFFFFFu);
+		row1_ = cloud_noise.data() +
+		    static_cast<std::size_t>(kNoiseSize * ((wy + t / 4) & kNoiseMask));
+		row2_ = cloud_noise.data() +
+		    static_cast<std::size_t>(kNoiseSize *
+		                             (((wy >> 1) - t / 8) & kNoiseMask));
+		x1_ = (wx + t / 2) & kNoiseMask;
+		x2_ = ((wx >> 1) + t) & kNoiseMask;
+		// (wx >> 1) gains one on the step INTO an even column, i.e. on the
+		// step out of an odd one.
+		half_ = wx & 1;
+	}
 
-// Depth-fog drift: like cloud_sample, two layers of the depth field evolve
+	int sample() const { return (row1_[x1_] + row2_[x2_]) / 2; }
+
+	void step()
+	{
+		x1_ = (x1_ + 1) & kNoiseMask;
+		if (half_)
+			x2_ = (x2_ + 1) & kNoiseMask;
+		half_ ^= 1;
+	}
+
+private:
+	const unsigned char* row1_;
+	const unsigned char* row2_;
+	int x1_;
+	int x2_;
+	int half_;
+};
+
+// Depth-fog drift: like the cloud field, two layers of the depth field evolve
 // against each other, but slower and along different headings (E+N vs the
 // clouds' W+S), so fog banks crawl rather than race and never track the sky.
 int depth_fog_sample(int x, int y, std::uint32_t tick)
@@ -1433,55 +1464,71 @@ void draw_cloud_overlay(viewscreen* vs, GameWorld& world)
 	screen* dest = og::runtime::current_session->myscreen_;
 	bool rained = false;
 	// World-anchored sampling: a world pixel keeps its cloud regardless of
-	// camera scroll; only the tick moves the banks and drops the rain.
-	for (Sint32 y = vs->yloc; y < vs->endy; y++)
+	// camera scroll; only the tick moves the banks and drops the rain. The
+	// three kinds are mutually exclusive, so each drives its own pixel loop.
+	if (clouds_on)
 	{
-		const int wy = static_cast<int>(y - vs->yloc + vs->topy);
-		for (Sint32 x = vs->xloc; x < vs->endx; x++)
+		for (Sint32 y = vs->yloc; y < vs->endy; y++)
 		{
-			const int wx = static_cast<int>(x - vs->xloc + vs->topx);
-			if (clouds_on)
+			const int wy = static_cast<int>(y - vs->yloc + vs->topy);
+			const int wx0 = static_cast<int>(vs->topx);
+			CloudRow shadow(wx0 + kCloudShadowOffsetX, wy + kCloudShadowOffsetY,
+			                frame_tick);
+			CloudRow bank(wx0, wy, frame_tick);
+			for (Sint32 x = vs->xloc; x < vs->endx; x++)
 			{
 				// Ground shadow first, so a bank blends over its own shadow
 				// where the two overlap: the shadow of the bank overhead
 				// lands displaced by the fixed sun offset.
-				const int cast_a = cloud_alpha(cloud_sample(
-				    wx + kCloudShadowOffsetX, wy + kCloudShadowOffsetY,
-				    frame_tick));
+				const int cast_a = cloud_alpha(shadow.sample());
 				if (cast_a > 0)
 					dest->pointb(x, y, PURE_BLACK,
 					             static_cast<unsigned char>(
 					                 cast_a * kCloudShadowScale / 100));
-				const int a = cloud_alpha(cloud_sample(wx, wy, frame_tick));
+				const int a = cloud_alpha(bank.sample());
 				if (a > 0)
 					dest->pointb(x, y, PURE_WHITE,
 					             static_cast<unsigned char>(a));
+				shadow.step();
+				bank.step();
 			}
-			if (rain_on || snow_on)
+		}
+	}
+	else if (rain_on || snow_on)
+	{
+		// Full-screen fall: density comes from the cell-occupancy hash
+		// alone. Rain streaks lean ~14 degrees (1px right per 4 down, wind
+		// from the left): q = 4*wx - wy is constant along that slant, so
+		// hashing q's cell keys whole slanted rails, and the falling phase
+		// below makes each segment slide DOWN-ALONG its rail — angled fall
+		// for free. The per-rail hash de-phases neighbors and the per-cell
+		// hash leaves most cells dry. Snow rails are twice as steep (1px
+		// per 8 down) and alternate lean direction per 32px world-column
+		// band.
+		for (Sint32 y = vs->yloc; y < vs->endy; y++)
+		{
+			const int wy = static_cast<int>(y - vs->yloc + vs->topy);
+			const std::uint32_t vbase =
+			    static_cast<std::uint32_t>(wy) - frame_tick * fall;
+			const int wx0 = static_cast<int>(vs->topx);
+			// q is a multiple of the rail divisor in wx (4 and >>2 for rain,
+			// 8 and >>3 for snow), so the hashed rail key is wx plus a row
+			// constant — one step per pixel along the row. Snow re-bases at
+			// each 32px band edge, where the lean flips.
+			int rail = rain_on ? wx0 + ((-wy) >> 2) : 0;
+			int wx = wx0;
+			for (Sint32 x = vs->xloc; x < vs->endx; x++, wx++)
 			{
-				// Full-screen fall: density comes from the cell-occupancy
-				// hash alone. Rain streaks lean ~14 degrees (1px right per 4
-				// down, wind from the left): q = 4*wx - wy is constant along
-				// that slant, so hashing q's cell keys whole slanted rails,
-				// and the falling phase below makes each segment slide
-				// DOWN-ALONG its rail — angled fall for free. The per-rail
-				// hash de-phases neighbors and the per-cell hash leaves most
-				// cells dry. Snow rails are twice as steep (1px per 8 down)
-				// and alternate lean direction per 32px world-column band.
-				int q;
-				if (rain_on)
-					q = 4 * wx - wy;
-				else
+				if (snow_on && (wx == wx0 || (wx & 31) == 0))
 				{
 					const int s =
 					    (hash_u32(static_cast<std::uint32_t>(wx >> 5)) & 1u)
 					        ? 1 : -1;
-					q = 8 * wx - s * wy;
+					rail = wx + ((-s * wy) >> 3);
 				}
-				const std::uint32_t col = hash_u32(
-				    static_cast<std::uint32_t>(rain_on ? (q >> 2) : (q >> 3)));
-				const std::uint32_t v = static_cast<std::uint32_t>(wy) -
-				    frame_tick * fall + col;
+				const std::uint32_t col =
+				    hash_u32(static_cast<std::uint32_t>(rail));
+				const std::uint32_t v = vbase + col;
 				const std::uint32_t pos = v & kRainPeriodMask;
 				if (pos < streak_len &&
 				    (hash_u32(col + (v >> 6) * kRainCellStride) & 7u) <
@@ -1494,6 +1541,7 @@ void draw_cloud_overlay(viewscreen* vs, GameWorld& world)
 					                 static_cast<int>(pos) * alpha_step));
 					rained = true;
 				}
+				rail++;
 			}
 		}
 	}
