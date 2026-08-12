@@ -468,48 +468,59 @@ TEST(SessionRaii, session_state_modification_isolation)
 
 TEST(SessionRaii, demo_grid_layout_non_overlapping)
 {
-    // Verify the 4x3 grid layout produces 12 non-overlapping sub-regions.
-    constexpr int COLS = 4;
-    constexpr int ROWS = 3;
-    constexpr int W = 320;
-    constexpr int H = 200;
+    // Verify the demo compositor's 6x4 display-cell layout (per-index
+    // rounding, matching composite_session in demo.cpp) produces 24
+    // non-overlapping sub-regions that tile the whole display, including
+    // displays that don't divide evenly.
+    constexpr int COLS = 6;
+    constexpr int ROWS = 4;
     constexpr int TOTAL = COLS * ROWS;
 
     struct Rect { int x, y, w, h; };
-    std::vector<Rect> rects;
 
-    for (int i = 0; i < TOTAL; i++) {
-        int col = i % COLS;
-        int row = i / COLS;
-        rects.push_back({col * W, row * H, W, H});
-    }
-
-    ASSERT_TRUE(rects.size() == 12);
-
-    // Verify no two rects overlap
-    for (size_t i = 0; i < rects.size(); i++) {
-        for (size_t j = i + 1; j < rects.size(); j++) {
-            const auto& a = rects[i];
-            const auto& b = rects[j];
-            bool overlaps = (a.x < b.x + b.w) && (a.x + a.w > b.x) &&
-                            (a.y < b.y + b.h) && (a.y + a.h > b.y);
-            ASSERT_TRUE(!overlaps);
+    for (const auto& [DISPLAY_W, DISPLAY_H] :
+         {std::pair{1536, 960}, std::pair{1024, 768}, std::pair{1366, 767}}) {
+        std::vector<Rect> rects;
+        for (int i = 0; i < TOTAL; i++) {
+            int col = i % COLS;
+            int row = i / COLS;
+            int x = col * DISPLAY_W / COLS;
+            int y = row * DISPLAY_H / ROWS;
+            rects.push_back({x, y,
+                             (col + 1) * DISPLAY_W / COLS - x,
+                             (row + 1) * DISPLAY_H / ROWS - y});
         }
-    }
 
-    // Verify they tile the full display
-    int total_area = 0;
-    for (const auto& r : rects) {
-        total_area += r.w * r.h;
-    }
-    ASSERT_TRUE(total_area == COLS * W * ROWS * H);
+        ASSERT_TRUE(rects.size() == 24);
 
-    // Verify bounds
-    for (const auto& r : rects) {
-        ASSERT_TRUE(r.x >= 0);
-        ASSERT_TRUE(r.y >= 0);
-        ASSERT_TRUE(r.x + r.w <= COLS * W);
-        ASSERT_TRUE(r.y + r.h <= ROWS * H);
+        // Verify no two rects overlap
+        for (size_t i = 0; i < rects.size(); i++) {
+            for (size_t j = i + 1; j < rects.size(); j++) {
+                const auto& a = rects[i];
+                const auto& b = rects[j];
+                bool overlaps = (a.x < b.x + b.w) && (a.x + a.w > b.x) &&
+                                (a.y < b.y + b.h) && (a.y + a.h > b.y);
+                ASSERT_TRUE(!overlaps);
+            }
+        }
+
+        // Verify they tile the full display: total area matches and every
+        // rect stays in bounds, which together with non-overlap means full
+        // coverage (no seams).
+        int total_area = 0;
+        for (const auto& r : rects) {
+            total_area += r.w * r.h;
+        }
+        ASSERT_TRUE(total_area == DISPLAY_W * DISPLAY_H);
+
+        for (const auto& r : rects) {
+            ASSERT_TRUE(r.w > 0);
+            ASSERT_TRUE(r.h > 0);
+            ASSERT_TRUE(r.x >= 0);
+            ASSERT_TRUE(r.y >= 0);
+            ASSERT_TRUE(r.x + r.w <= DISPLAY_W);
+            ASSERT_TRUE(r.y + r.h <= DISPLAY_H);
+        }
     }
 }
 
