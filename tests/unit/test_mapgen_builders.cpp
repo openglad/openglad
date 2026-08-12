@@ -331,25 +331,54 @@ TEST(MapgenPlacement, scatters_keep_entity_and_stair_clearance)
     EXPECT_GT(littered, 100) << "modulus-1 scatter barely painted";
 }
 
-TEST(MapgenPlacement, allied_guards_hold_their_authored_posts)
+TEST(MapgenPlacement, hold_post_is_explicit_and_never_inferred_from_team)
 {
     GameWorld w(15u);
     init_world(w, 1, 8, 6);
     wire_entity_services(w);
 
+    // Team implies NOTHING: an allied-team (1) guard and an enemy-team
+    // (2) guard both default to the wakeable ambush post. (An earlier
+    // revision stamped hold-post on every team<=1 guard — the Westlands
+    // allied-escort convention — which froze the Imaginations campaign's
+    // team-1 enemy garrison into never-waking statues.)
     walker* allied =
         place_living(w, FAMILY_SOLDIER, 1, 0, 2, 2, 1, /*guard=*/true);
     walker* enemy =
         place_living(w, FAMILY_SOLDIER, 2, 0, 5, 2, 1, /*guard=*/true);
     ASSERT_NE(allied, nullptr);
     ASSERT_NE(enemy, nullptr);
-
     EXPECT_EQ(ACT_GUARD, allied->act_type());
-    EXPECT_TRUE(allied->guard_hold_post())
-        << "allied authored guards are stationary posts";
+    EXPECT_FALSE(allied->guard_hold_post())
+        << "team must not imply hold-post";
     EXPECT_EQ(ACT_GUARD, enemy->act_type());
     EXPECT_FALSE(enemy->guard_hold_post())
-        << "enemy guards keep the sight-triggered ambush policy";
+        << "guards default to the sight-triggered ambush policy";
+
+    // The stationary-sentry policy is the explicit hold_post argument —
+    // and it works identically on ANY team.
+    walker* allied_sentry =
+        place_living(w, FAMILY_SOLDIER, 1, 0, 2, 4, 1, /*guard=*/true,
+                     /*hold_post=*/true);
+    walker* enemy_sentry =
+        place_living(w, FAMILY_SOLDIER, 2, 0, 5, 4, 1, /*guard=*/true,
+                     /*hold_post=*/true);
+    ASSERT_NE(allied_sentry, nullptr);
+    ASSERT_NE(enemy_sentry, nullptr);
+    EXPECT_EQ(ACT_GUARD, allied_sentry->act_type());
+    EXPECT_TRUE(allied_sentry->guard_hold_post())
+        << "hold_post=true posts a stationary sentry";
+    EXPECT_EQ(ACT_GUARD, enemy_sentry->act_type());
+    EXPECT_TRUE(enemy_sentry->guard_hold_post())
+        << "hold_post=true works on enemy teams too";
+
+    // hold_post without guard is meaningless: no post, no flag.
+    walker* roamer = place_living(w, FAMILY_SOLDIER, 1, 0, 6, 4, 1,
+                                  /*guard=*/false, /*hold_post=*/true);
+    ASSERT_NE(roamer, nullptr);
+    EXPECT_NE(ACT_GUARD, roamer->act_type());
+    EXPECT_FALSE(roamer->guard_hold_post())
+        << "hold_post is a guard-post policy, not a free-standing flag";
 }
 
 TEST(MapgenScatters, invalid_bounds_modulus_zero_and_litter_decor_replacement)

@@ -94,9 +94,17 @@ void init_world(GameWorld& world, int floors, int tw, int th);
 // callers audit / reroll).
 walker* place(GameWorld& world, Order order, int family, int team, int floor,
               int tx, int ty);
+// `guard` posts the living (ACT_GUARD): an ambush post that wakes into the
+// hunt AI at true sight (walker::act_guard). `hold_post` (npc_flags bit 1,
+// meaningful only with guard) makes it the classic never-move sentry
+// instead — escorts, door-wards, chokepoint garrisons. The policy is the
+// CALLER's: team number implies nothing (an earlier revision stamped
+// hold-post on every team<=1 guard — a Westlands allied-escort convention
+// that froze the Imaginations campaign's team-1 enemy garrison solid).
 walker* place_living(GameWorld& w, int family, int team, int floor, int tx,
                      int ty, int level, bool guard = false,
-                     bool specials_disabled = false, int spawn_delay = 0);
+                     bool hold_post = false, bool specials_disabled = false,
+                     int spawn_delay = 0);
 walker* place_generator(GameWorld& w, int family, int team, int floor, int tx,
                         int ty, int level);
 // A team-0 player START MARKER (Order::Special, FAMILY_RESERVED_TEAM). At

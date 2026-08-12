@@ -72,8 +72,16 @@ struct FloorPin
 // §5.11 "wipe rate monotone in f" shape; the real clearability gates live
 // in WP-7's openglad_text bracket sweeps, not here. Pins are the measured
 // minima — re-measure with TOWER_CALIBRATION_MEASURE=1 before touching.
+// (Recalibrated 2026-08-11 for the directional-guard-fire engine fix,
+// docs/GAMEPLAY_FIXES_FROM_CLASSIC.md: tower posts — every placed foe is
+// an ACT_GUARD ambush post — now land their parting shot the tick they
+// sight the crew instead of face-dancing, so the room-entry exchanges
+// bite first blood earlier. Re-measured: f1 8 6 6 (pin 7 -> 6),
+// f5 3 5 8 (pin 1 -> 3; the openers thin the crew before the balcony
+// crossfire, and the worst seed now survives it better), f10/f15/f20
+// all 0 0 0 unchanged. WP-7 bracket sweeps still pending as before.)
 constexpr FloorPin kPins[] = {
-    {1, 1, 7}, {5, 2, 1}, {10, 3, 0}, {15, 4, 0}, {20, 6, 0},
+    {1, 1, 6}, {5, 2, 3}, {10, 3, 0}, {15, 4, 0}, {20, 6, 0},
 };
 
 void prune_all_floors()

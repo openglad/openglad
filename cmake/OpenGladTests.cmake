@@ -754,6 +754,8 @@ og_add_unit_group(og_unit_sim FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_melee_standoff.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_westlands_calibration.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_longseason_calibration.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_imaginations_calibration.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_imaginations_twitchers.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_difficulty_scaling.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_game_world_entity_ids.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_weather.cpp
@@ -845,6 +847,7 @@ og_add_unit_group(og_unit_data FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_westlands_levels.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_longseason_levels.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_levels.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_imaginations_levels.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_builtin_archives.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_decor_format.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_level_file_io_coverage.cpp

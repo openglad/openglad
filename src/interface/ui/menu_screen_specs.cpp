@@ -63,6 +63,7 @@ void draw_cycle_effect_button(button& b, const std::string& category,
                               const std::string& setting);
 void draw_sprite_sheet_button(button& b);
 void draw_version_number();
+void draw_git_hash();
 void sync_button_hidden_state(const button* buttons, int button_index);
 void ensure_highlighted_button_visible(const button* buttons, int num_buttons,
                                        int& highlighted_button);
@@ -1176,6 +1177,7 @@ void main_menu_draw_content(void* /*screen_state*/)
 #ifndef __EMSCRIPTEN__
     draw_version_number();
 #endif
+    draw_git_hash();
 }
 
 // The classic picker frame: clear, then the tiled backdrop (the shape every

@@ -4929,6 +4929,32 @@ TEST(GameLoop, zz_capture_longseason)
             ls);
 }
 
+TEST(GameLoop, zz_capture_imaginations)
+{
+    if (!getenv("OG_FX_CAPTURE_DIR"))
+        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
+    const char* only = getenv("OG_FX_CAPTURE_ONLY");
+    const auto want = [&](const char* n) {
+        return only == nullptr || strcmp(only, n) == 0;
+    };
+    // 1 The Raspberry Isle — the dream-log's island assault. Open on the
+    // south landing beach, ride the charge up the paved causeway past its
+    // sentry, breach the bailey's south gate, hold the two-ring castle
+    // fight, then cut out to the mage tower and the bone tent on the
+    // field ring before settling on the keep for the throne battle and
+    // the tick-800 wave flash.
+    if (want("imag_1"))
+        epic_rec::record("imag_1", 1, WeatherKind::None,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF,
+             FAMILY_ELF, FAMILY_ARCHER, FAMILY_CLERIC, FAMILY_BARBARIAN},
+            {{0, 504, 880, 0, true}, {80, 504, 760, 0, false},
+             {200, 504, 688, 0, true}, {320, 504, 624, 0, false},
+             {460, 504, 504, 0, true}, {560, 704, 240, 0, true},
+             {660, 240, 704, 0, true}, {780, 504, 504, 0, true},
+             {950, 504, 504, 0, false}},
+            "imaginations");
+}
+
 // ---------------------------------------------------------------------------
 // Classic respawn e2e (difficulty submenu "Respawns: Heroes"): on a real
 // level driven through the full local-transport game loop (authoritative

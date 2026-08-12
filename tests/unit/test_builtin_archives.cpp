@@ -101,9 +101,9 @@ TEST(BuiltinArchives, every_member_matches_its_committed_source)
 {
     const std::vector<std::string> campaign_ids = {
         "concept",   "gladiator",
-        "longseason", "modes",
-        "tower",     "tryxian",
-        "westlands",
+        "imaginations", "longseason",
+        "modes",     "tower",
+        "tryxian",   "westlands",
     };
 
     for (const std::string& id : campaign_ids)

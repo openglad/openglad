@@ -387,7 +387,12 @@ walker* place_validated(GameWorld& w, const BuildPlan& plan, SeedStream& s,
             return nullptr;
         walker* ob = nullptr;
         if (order == Order::Living)
-            ob = place_living(w, family, team, story, tx, ty, level, guard);
+            // Tower posts are ambush guards, never hold-post sentries:
+            // explicit false preserves the pre-hold_post-parameter output
+            // byte-identically (every tower placement is team 2/3, which
+            // the old team<=1 inference never stamped either).
+            ob = place_living(w, family, team, story, tx, ty, level, guard,
+                              /*hold_post=*/false);
         else if (order == Order::Generator)
             ob = place_generator(w, family, team, story, tx, ty, level);
         else
