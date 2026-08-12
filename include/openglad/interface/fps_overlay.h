@@ -11,7 +11,10 @@ class screen;
 // compositor needs the same measurement for its whole-grid readout; keeping one
 // definition keeps the two overlays reporting the same quantity.
 struct FpsCounter {
-    static constexpr std::size_t kCap = 256;
+    // Ring capacity. Samples leave the window by age, but a full ring
+    // overwrites its oldest entry, so the readout is only honest up to
+    // kCap / (kWindowMs / 1000) frames per second and saturates above it.
+    static constexpr std::size_t kCap = 2048;
     static constexpr std::uint64_t kWindowMs = 500;
     std::array<std::uint64_t, kCap> ts{};
     std::size_t head = 0;

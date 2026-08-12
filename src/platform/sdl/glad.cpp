@@ -30,6 +30,7 @@
 #include <openglad/platform/game_loop.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
+#include <openglad/platform/sai2x.h>
 #include <openglad/platform/screen_lifecycle.h>
 #include <openglad/platform/video_sdl.h>
 #ifdef __EMSCRIPTEN__
@@ -226,6 +227,10 @@ void bootstrap_runtime(int argc, char* argv[])
     const int fps = og::core::target_fps_from_cfg(cfg);
     og::core::apply_target_fps_to_cfg(cfg, fps);
     og::runtime::current_session->target_fps_ = fps;
+    // Uncapped means "as fast as the hardware allows": the display-rate cap
+    // vsync imposes would defeat the setting outright.
+    if (fps == og::core::kUncappedTargetFps && E_Screen)
+        E_Screen->set_vsync(false);
     og::runtime::current_session->show_fps_ = cfg.is_on("graphics", "show_fps");
     cfg.save_settings();
 #if defined(__EMSCRIPTEN__) && !defined(TESTING)
