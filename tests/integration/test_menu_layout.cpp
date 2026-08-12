@@ -867,7 +867,8 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
                     (seat_count > 1 && player_index == seat_count - 1);
                 const char* const owner =
                     !local ? "IRO"
-                           : (player_index == 0 ? "WASD" : "ARROW");
+                           : (player_index == 0 ? "WASD"
+                                                : og::input::kArrowGlyphs);
                 // Design §2.3: a local card names its INPUT mapping. The
                 // 57px face is exactly nine characters INCLUDING the
                 // load-bearing trailing pad, so a two-digit global P#

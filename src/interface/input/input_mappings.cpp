@@ -180,13 +180,22 @@ std::string derive_mapping_name(const KeyMap& keys)
     return derive_mapping_name(keys.data());
 }
 
+std::string mapping_display_name(const std::string& name)
+{
+    if (name == "ARROWS")
+        return kArrowGlyphs;
+    return name;
+}
+
 std::string mapping_short_name(const std::string& name)
 {
-    // "CUSTOM" truncated is "CUSTO", which reads like a typo on a seat card.
+    // The arrow glyph cluster (4 chars) beats the "ARROW" truncation, which
+    // read like a typo on a seat card.
+    if (name == "ARROWS")
+        return kArrowGlyphs;
+    // "CUSTOM" truncated is "CUSTO" — same problem.
     if (name == kCustomMappingName)
         return "CUST";
-    // "ARROWS" -> "ARROW" falls out of the truncation; nothing else in the
-    // vocabulary is longer than five characters to begin with.
     if (name.size() <= static_cast<std::size_t>(kMappingShortNameMaxLength))
         return name;
     return name.substr(0, static_cast<std::size_t>(kMappingShortNameMaxLength));

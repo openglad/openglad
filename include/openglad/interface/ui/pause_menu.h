@@ -105,9 +105,13 @@ std::string pause_player_row_label(const PauseSeatInfo& seat);
 struct PauseMenuScreenState {
     const PauseMenuHost* host = nullptr;
     PauseMenuResult outcome = PauseMenuResult::Resumed;
-    // Re-seed + darken the world snapshot on the next background pass (set
-    // at entry and after any nested dialog/screen scribbled on the canvas).
-    bool background_dirty = true;
+    // The darkened world snapshot as raw RGB triples, captured once on the
+    // first background pass and restored every frame. Pixel restore (not
+    // re-seed + re-darken) because at default canvas dims the world/UI
+    // canvases share a surface — the re-seed silently no-ops there and
+    // repeated darkening compounds to black. Raw RGB (not palette indices)
+    // because darkening blends to colors outside the palette.
+    std::vector<unsigned char> backdrop;
     // Esc-close edge machine: require an observed release after entry so the
     // opening press (or a held web Backspace autorepeating) cannot close the
     // menu it just opened.

@@ -282,31 +282,61 @@ void pause_menu_draw_background(void* screen_state)
     if (scr == nullptr)
         return;
 
-    if (state != nullptr && state->background_dirty)
+    // Darkening must never repeat on the same pixels (it accumulates to
+    // black), and prepare_ui_canvas_from_world cannot be the per-frame reset:
+    // at default canvas dims the world and UI canvases SHARE one surface and
+    // the seed is a silent no-op. So: darken ONCE, capture the darkened
+    // pixels, and restore them every frame. The full-canvas restore erases
+    // the previous frame's pulsing highlight ring (and any nested dialog's
+    // scribbles), so nothing needs backing pads over the world.
+    if (state == nullptr)
     {
-        // ONE darken per seed (never per frame — it accumulates): re-seed the
-        // fixed UI canvas from the world frame, then dim it. Set again after
-        // any nested dialog/screen scribbled on the canvas.
+        // Bare engine/pin shape (no installed state): one-shot look only.
         scr->prepare_ui_canvas_from_world();
         scr->darken_screen();
-        state->background_dirty = false;
+        return;
     }
 
-    // Per-frame halo pads behind the title/divider bands and each visible
-    // button: the pulsing keyboard highlight paints up to 3px OUTSIDE a
-    // button face, and without a repaint a moved highlight leaves its old
-    // ring burned into the (otherwise static) darkened backdrop.
-    scr->draw_box(60, 4, 260, 29, PURE_BLACK, 1, 1);
-    scr->draw_box(kPauseColumnX, 86, kPauseColumnX + kPauseColumnW, 96,
-                  PURE_BLACK, 1, 1);
-    const button* const buttons = g_pause_menu_buttons.data();
-    for (std::size_t i = 0; i < g_pause_menu_buttons.size(); ++i)
+    if (state->backdrop.empty())
     {
-        if (buttons[i].hidden)
-            continue;
-        scr->draw_box(buttons[i].x - 5, buttons[i].y - 5,
-                      buttons[i].x + buttons[i].sizex + 5,
-                      buttons[i].y + buttons[i].sizey + 5, PURE_BLACK, 1, 1);
+        scr->prepare_ui_canvas_from_world();
+        scr->darken_screen();
+        // One extra dimming pass on the title strip so PAUSED reads over the
+        // viewport HUD text at the top edge — a brightness step on the
+        // already-dark image, not a hard box.
+        for (int y = 3; y <= 31; ++y)
+            for (int x = 0; x < kUiCanvasW; ++x)
+                scr->pointb(x, y, PURE_BLACK, 100);
+        // Capture RAW RGB, never palette indices: darken_screen blends to
+        // arbitrary RGB values, and the indexed get_pixel's exact-match
+        // palette scan crushes every miss to black.
+        state->backdrop.resize(static_cast<std::size_t>(kUiCanvasW) *
+                               static_cast<std::size_t>(kUiCanvasH) * 3u);
+        std::size_t at = 0;
+        for (int y = 0; y < kUiCanvasH; ++y)
+        {
+            for (int x = 0; x < kUiCanvasW; ++x)
+            {
+                Uint8 r = 0, g = 0, b = 0;
+                scr->get_pixel(x, y, &r, &g, &b);
+                state->backdrop[at++] = r;
+                state->backdrop[at++] = g;
+                state->backdrop[at++] = b;
+            }
+        }
+        return;
+    }
+
+    std::size_t at = 0;
+    for (int y = 0; y < kUiCanvasH; ++y)
+    {
+        for (int x = 0; x < kUiCanvasW; ++x)
+        {
+            const int r = state->backdrop[at++];
+            const int g = state->backdrop[at++];
+            const int b = state->backdrop[at++];
+            scr->pointb(x, y, r, g, b);
+        }
     }
 }
 
@@ -385,7 +415,6 @@ Sint32 pause_menu_on_spec_row(int row, void* screen_state)
     {
         const bool confirmed = yes_or_no_prompt(
             "Restart Mission", "Restart this mission?", false);
-        state->background_dirty = true;
         if (!confirmed)
             return MENU_OK;
         TRACE("pause_menu", "restart_confirmed");
@@ -396,7 +425,6 @@ Sint32 pause_menu_on_spec_row(int row, void* screen_state)
     {
         const bool confirmed =
             yes_or_no_prompt("Abort Mission", "Quit this mission?", false);
-        state->background_dirty = true;
         if (!confirmed)
             return MENU_OK;
         TRACE("pause_menu", "quit_confirmed");
@@ -413,7 +441,6 @@ Sint32 pause_menu_on_spec_row(int row, void* screen_state)
         else
         {
             popup_dialog("PLAYERS", "COULD NOT ADD");
-            state->background_dirty = true;
         }
         return MENU_OK;
     }
@@ -429,7 +456,6 @@ Sint32 pause_menu_on_spec_row(int row, void* screen_state)
             (void)run_pause_player_screen(
                 seats[static_cast<std::size_t>(seat_order)], state->host,
                 session_ended);
-            state->background_dirty = true;
             if (session_ended)
             {
                 state->outcome = PauseMenuResult::SessionEnded;
@@ -856,7 +882,8 @@ std::vector<PauseSeatInfo> collect_pause_seats(bool networked)
 std::string pause_player_row_label(const PauseSeatInfo& seat)
 {
     return std::format("P{}: {}", seat.player_number,
-                       current_input_selection(seat.seat).name);
+                       og::input::mapping_display_name(
+                           current_input_selection(seat.seat).name));
 }
 
 void install_pause_menu_state_for_screen(PauseMenuScreenState* state)
@@ -917,7 +944,6 @@ PauseMenuResult run_pause_menu(const PauseMenuHost& host)
 
     PauseMenuScreenState state;
     state.host = &host;
-    state.background_dirty = true;
     state.last_keepalive_ms = og::input_native::ticks_ms();
     PauseMenuScreenState* const previous = g_pause_state;
     g_pause_state = &state;

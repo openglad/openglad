@@ -487,7 +487,8 @@ TEST(PauseMenuLabels, seat_collection_and_player_row_labels)
         }
         // Factory defaults: profile 0 = WASD, 1 = ARROWS, 2 = IJKL.
         EXPECT_EQ("P1: WASD", og::ui::pause_player_row_label(seats[0]));
-        EXPECT_EQ("P2: ARROWS", og::ui::pause_player_row_label(seats[1]));
+        EXPECT_EQ(std::string("P2: ") + og::input::kArrowGlyphs,
+                  og::ui::pause_player_row_label(seats[1]));
         EXPECT_EQ("P3: IJKL", og::ui::pause_player_row_label(seats[2]));
     }
 
@@ -764,15 +765,14 @@ TEST(PauseMenuHandlers, resume_quit_restart_and_add_rows)
               spec.on_spec_row(og::ui::kPauseMenuResumeIndex, &state));
     EXPECT_EQ(PauseMenuResult::Resumed, state.outcome);
 
-    // QUIT declined: stays open, backdrop re-seeds after the dialog.
+    // QUIT declined: stays open (the backdrop re-seeds every frame, so a
+    // dialog's scribbles vanish on the next background pass).
     state = og::ui::PauseMenuScreenState{};
     state.host = &host;
-    state.background_dirty = false;
     picker_testing_yes_or_no_queue_clear();
     picker_testing_yes_or_no_queue_push(false);
     EXPECT_EQ(MENU_OK, spec.on_spec_row(og::ui::kPauseMenuQuitIndex, &state));
     EXPECT_EQ(PauseMenuResult::Resumed, state.outcome);
-    EXPECT_TRUE(state.background_dirty);
 
     // QUIT confirmed.
     picker_testing_yes_or_no_queue_push(true);

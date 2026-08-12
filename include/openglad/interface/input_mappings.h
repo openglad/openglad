@@ -65,8 +65,15 @@ int factory_profile_for_name(const std::string& name);
 // keys must hold NUM_KEYS entries; only the four cardinal slots are read.
 std::string derive_mapping_name(const int* keys);
 std::string derive_mapping_name(const KeyMap& keys);
+// The bitmap font's arrow glyphs in up/left/down/right order — the SDL
+// display form of the canonical "ARROWS" name (glyph bytes never enter cfg
+// or the library; they are meaningless outside the bitmap font).
+inline constexpr const char* kArrowGlyphs = "\x01\x03\x02\x04";
+// SDL display form of a canonical mapping name: "ARROWS" renders as the four
+// arrow glyphs, every other name renders as itself.
+std::string mapping_display_name(const std::string& name);
 // Base Camp seat-card form (<= kMappingShortNameMaxLength chars):
-// "ARROWS" -> "ARROW", everything else truncated.
+// "ARROWS" -> arrow glyphs, "CUSTOM" -> "CUST", everything else truncated.
 std::string mapping_short_name(const std::string& name);
 // 1-based device slot: device 0 -> "JOY1". A negative device yields "JOY".
 std::string joystick_mapping_name(int device_index);

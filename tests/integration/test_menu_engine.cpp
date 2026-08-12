@@ -2889,8 +2889,9 @@ TEST(MenuEngine, seat_settings_rejects_stale_spectator_and_persists_mode)
                   0, static_cast<int>(ControlDirectionMode::EightDirection),
                   KEY_UP));
     spec.nav.rewire(buttons, count, highlighted);
-    EXPECT_EQ("INPUT: ARROW", buttons[kSeatSettingsInputRow].label)
-        << "the 98px face carries the five-character short name";
+    EXPECT_EQ(std::string("INPUT: ") + og::input::kArrowGlyphs,
+              buttons[kSeatSettingsInputRow].label)
+        << "the 98px face carries the arrow-glyph short name";
     EXPECT_LE(buttons[kSeatSettingsInputRow].label.size(),
               static_cast<std::size_t>(
                   (buttons[kSeatSettingsInputRow].sizex - 8) / 6));

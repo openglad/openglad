@@ -31,6 +31,7 @@ using og::input::factory_mapping;
 using og::input::factory_mapping_name;
 using og::input::factory_profile_for_name;
 using og::input::joystick_mapping_name;
+using og::input::mapping_display_name;
 using og::input::KeyMap;
 using og::input::load_mapping_library;
 using og::input::MappingDefinition;
@@ -213,8 +214,11 @@ TEST(InputMappings, unspellable_clusters_fall_back_to_custom)
 
 TEST(InputMappings, short_names_fit_the_base_camp_seat_card)
 {
-    // "P2 ARROW " is exactly the nine characters the 57px card face holds.
-    ASSERT_EQ("ARROW", mapping_short_name("ARROWS"));
+    // ARROWS renders as the font's arrow glyphs (up/left/down/right) on
+    // every SDL display surface; "P2 \x01\x03\x02\x04 " is eight of the nine
+    // characters the 57px card face holds.
+    ASSERT_EQ(og::input::kArrowGlyphs, mapping_short_name("ARROWS"));
+    ASSERT_EQ("\x01\x03\x02\x04", mapping_short_name("ARROWS"));
     ASSERT_EQ("WASD", mapping_short_name("WASD"));
     ASSERT_EQ("IJKL", mapping_short_name("IJKL"));
     ASSERT_EQ("TFGH", mapping_short_name("TFGH"));
@@ -231,6 +235,18 @@ TEST(InputMappings, short_names_fit_the_base_camp_seat_card)
                   static_cast<std::size_t>(og::input::kMappingShortNameMaxLength))
             << name;
     }
+}
+
+TEST(InputMappings, display_name_substitutes_arrow_glyphs)
+{
+    // The canonical name stays ASCII "ARROWS" (cfg/library identity); only
+    // the display form becomes glyphs. Nothing else is rewritten.
+    ASSERT_EQ(og::input::kArrowGlyphs, mapping_display_name("ARROWS"));
+    ASSERT_EQ("WASD", mapping_display_name("WASD"));
+    ASSERT_EQ("JOY1", mapping_display_name("JOY1"));
+    ASSERT_EQ("WQSE", mapping_display_name("WQSE"));
+    ASSERT_EQ(og::input::kCustomMappingName,
+              mapping_display_name(og::input::kCustomMappingName));
 }
 
 TEST(InputMappings, joystick_names_are_one_based_device_slots)
