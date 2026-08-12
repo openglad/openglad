@@ -801,10 +801,10 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
     // game away to black. Request the SDL2-default opaque context everywhere.
     SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
 
-    #ifdef TESTING
     renderer = SDL_CreateRenderer(window, nullptr);
-    #else
-    renderer = SDL_CreateRenderer(window, nullptr);
+    if (renderer == nullptr)
+        LogError("SDL_CreateRenderer failed: {}\n", SDL_GetError());
+    #ifndef TESTING
     SDL_SetRenderVSync(renderer, 1);
     #endif
 

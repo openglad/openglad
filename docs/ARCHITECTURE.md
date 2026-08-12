@@ -381,10 +381,30 @@ Composite all surfaces into grid
 SDL_RenderPresent (once)
 ```
 
-- Queries native display resolution to calculate grid size (e.g., 4×3 on 1280×600+)
+- Fixed 6×4 grid by default; each 320×200 session surface is cover-scaled into its display cell
 - 1 host session (owns SDL window) + N sub-sessions (headless render targets)
 - Each sub-session gets a unique random seed and random scenario assignment
 - All sessions run in spectator mode (0-player, fully AI-controlled)
+
+#### Environment knobs
+
+Every knob is opt-in: unset, the demo takes its production path.
+
+| Variable | Effect |
+|---|---|
+| `OPENGLAD_DEMO_GRID` | `COLSxROWS` grid topology (default `6x4`) |
+| `OPENGLAD_DEMO_ZOOM` | Extra magnification on top of the cover scale, clamped to ≥ 1.0 (default 1.1) |
+| `OPENGLAD_DEMO_SEED` | Unsigned seed for scenario shuffle and per-session RNG |
+| `OPENGLAD_DEMO_MAX_FRAMES` | Stop after N main-loop frames (0 = run forever) |
+| `OPENGLAD_DEMO_CAMPAIGN` | Campaign the scenarios are loaded from (default `gladiator`) |
+| `OPENGLAD_DEMO_SCENARIOS` | Comma-separated scenario ids assigned to cells in order, replacing the shuffled pool |
+| `OPENGLAD_DEMO_TEAM_SIZE` | Force the generated player team size |
+| `OPENGLAD_DEMO_SHOW_FPS` | One whole-grid FPS readout, top-right of the composite. Unset falls back to the `graphics`/`show_fps` setting (`--show-fps`); `0` or `off` disables. Never appears in capture frames |
+| `OPENGLAD_DEMO_COMPOSITE_DUMP` | BMP path for the final presented composite, written when the run ends via `OPENGLAD_DEMO_MAX_FRAMES` |
+| `OPENGLAD_DEMO_CAPTURE_DIR` | Enables showcase frame capture into this directory (indexed BMPs) |
+| `OPENGLAD_DEMO_CAPTURE_SESSION` | Cell index to capture, or `-1` for the whole grid at native cell resolution |
+| `OPENGLAD_DEMO_CAPTURE_FOCUS` | Capture camera: `player`, `boss` or `center` |
+| `OPENGLAD_DEMO_CAPTURE_EVERY` / `_START` / `_LIMIT` | Capture frame stride, first frame, and frame count cap |
 
 ### Spectator Mode (0-Player)
 

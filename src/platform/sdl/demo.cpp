@@ -33,6 +33,7 @@
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/interface/fps_overlay.h>
 #include <openglad/interface/input.h>
 #include <openglad/legacy/base.h>
 #include <openglad/resources/io.h>
@@ -49,6 +50,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <charconv>
 #include <chrono>
 #include <climits>
@@ -73,12 +75,26 @@
 void init_input();
 short load_saved_game(const char* filename, screen* scr);
 
-// Demo sessions are PINNED to the classic 320x200 canvas: the compositor
-// assumes every session surface is exactly one CELL_W x CELL_H cell, and demo
-// sessions never call Screen::set_world_canvas_size, so their world canvas
-// stays shared with the fixed-size UI canvas.
+// Demo sessions are PINNED to the classic 320x200 canvas: every session
+// surface is exactly CELL_W x CELL_H, and demo sessions never call
+// Screen::set_world_canvas_size, so their world canvas stays shared with the
+// fixed-size UI canvas. The compositor scales each surface into its display
+// cell (aspect-preserving cover + center crop), so cells need not be 320x200
+// on screen.
 inline constexpr int CELL_W = 320;
 inline constexpr int CELL_H = 200;
+
+// Extra magnification applied on top of the cover scale when compositing a
+// session into its display cell. Values above 1.0 crop deeper into the
+// 320x200 frame. Overridable via OPENGLAD_DEMO_ZOOM (clamped to >= 1.0; below
+// 1.0 the cell would no longer be filled).
+inline constexpr float DEFAULT_CELL_ZOOM = 1.1f;
+
+// Backing strip for the whole-grid FPS readout, in host-canvas pixels. Wide
+// enough for "FPS: 99999" at the 5x6 normal font (6px advance per glyph) with
+// a 2px inset, so the text is never clipped by the strip edge.
+inline constexpr int FPS_STRIP_W = 64;
+inline constexpr int FPS_STRIP_H = 10;
 
 // Scenario pool — diverse levels from the main campaign plus bonus maps.
 static const std::array<int, 20> SCENARIO_POOL = {
@@ -129,6 +145,22 @@ static int env_int(const char* name, int fallback, int minimum)
     if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size()) {
         throw std::runtime_error(std::format(
             "{} must be an integer, got '{}'", name, text));
+    }
+    return std::max(minimum, value);
+}
+
+static float env_float(const char* name, float fallback, float minimum)
+{
+    const char* raw = env_or_null(name);
+    if (raw == nullptr)
+        return fallback;
+    const std::string_view text(raw);
+    float value = 0.0f;
+    const auto parsed = std::from_chars(
+        text.data(), text.data() + text.size(), value);
+    if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size()) {
+        throw std::runtime_error(std::format(
+            "{} must be a number, got '{}'", name, text));
     }
     return std::max(minimum, value);
 }
@@ -268,8 +300,7 @@ public:
     // Writes `src` (the session's 32bpp canvas) to `path` as an 8-bit BMP,
     // using `pal6` (the session's live 6-bit palette) as the colour table.
     // `width`/`height` of 0 mean the whole surface; otherwise only that
-    // top-left region is written (the composite surface is display-sized but
-    // only its grid area carries sessions).
+    // top-left region is written.
     bool write(SDL_Surface* src, const std::array<unsigned char, 768>& pal6,
                const std::string& path, int width = 0, int height = 0)
     {
@@ -605,17 +636,37 @@ static void render_session_frame(screen& s, SDL_Surface* session_surface)
     }
 }
 
-// Blit a 320x200 session surface into a sub-region of the composite surface.
+// Blit a 320x200 session surface into its cell of the composite surface.
+// Cells split the composite evenly (per-index rounding, so the grid always
+// covers the full display with no seams). The source is cover-scaled: magnify
+// uniformly until the frame fills the cell in both dimensions, times the zoom
+// boost, then center-crop the excess.
 static void composite_session(SDL_Surface* dst, SDL_Surface* src,
-                              int grid_col, int grid_row)
+                              int grid_col, int grid_row,
+                              int grid_cols, int grid_rows, float zoom_boost)
 {
     if (!src || !dst) return;
     SDL_Rect dst_rect;
-    dst_rect.x = grid_col * CELL_W;
-    dst_rect.y = grid_row * CELL_H;
-    dst_rect.w = CELL_W;
-    dst_rect.h = CELL_H;
-    SDL_BlitSurface(src, nullptr, dst, &dst_rect);
+    dst_rect.x = grid_col * dst->w / grid_cols;
+    dst_rect.y = grid_row * dst->h / grid_rows;
+    dst_rect.w = (grid_col + 1) * dst->w / grid_cols - dst_rect.x;
+    dst_rect.h = (grid_row + 1) * dst->h / grid_rows - dst_rect.y;
+
+    const float cover = std::max(
+        static_cast<float>(dst_rect.w) / static_cast<float>(CELL_W),
+        static_cast<float>(dst_rect.h) / static_cast<float>(CELL_H));
+    const float zoom = cover * std::max(1.0f, zoom_boost);
+    SDL_Rect src_rect;
+    src_rect.w = std::clamp(
+        static_cast<int>(std::lround(static_cast<float>(dst_rect.w) / zoom)),
+        1, CELL_W);
+    src_rect.h = std::clamp(
+        static_cast<int>(std::lround(static_cast<float>(dst_rect.h) / zoom)),
+        1, CELL_H);
+    src_rect.x = (CELL_W - src_rect.w) / 2;
+    src_rect.y = (CELL_H - src_rect.h) / 2;
+    SDL_BlitSurfaceScaled(src, &src_rect, dst, &dst_rect,
+                          SDL_SCALEMODE_LINEAR);
 }
 
 int main(int argc, char* argv[])
@@ -655,6 +706,22 @@ int main(int argc, char* argv[])
         const std::vector<int> scenario_override =
             env_scenario_list("OPENGLAD_DEMO_SCENARIOS");
         const int forced_team_size = env_int("OPENGLAD_DEMO_TEAM_SIZE", 0, 0);
+
+        // OPENGLAD_DEMO_SHOW_FPS overrides the graphics/show_fps setting the
+        // main game exposes as --show-fps; unset (or empty) defers to it, so a
+        // fresh config dir means off. The log line is emitted here, not at the
+        // first draw, so even a one-frame run records the decision — and it is
+        // prefixed because gparser already logs a bare "FPS overlay on." for
+        // the command-line flag.
+        const char* fps_env = env_or_null("OPENGLAD_DEMO_SHOW_FPS");
+        const bool show_fps =
+            fps_env != nullptr
+                ? (std::string_view(fps_env) != "0" &&
+                   std::string_view(fps_env) != "off")
+                : cfg.is_on("graphics", "show_fps");
+        if (show_fps)
+            Log("openglad_demo: FPS overlay on\n");
+
         const CaptureSettings capture = capture_settings_from_env();
         std::unique_ptr<IndexedFrameWriter> capture_writer;
         if (capture.enabled()) {
@@ -687,30 +754,32 @@ int main(int argc, char* argv[])
             display_w = dm->w;
             display_h = dm->h;
         }
-        int grid_cols = display_w / CELL_W;
-        int grid_rows = display_h / CELL_H;
-        // The render loop is sequential on the main thread, so cell count
-        // drives steady-state frame cost linearly. Cap to the documented
-        // demo intent (4x3 = 12 cells, see CMakeLists.txt:1086) so a 4K+
-        // desktop doesn't drop FPS into the single digits. Power users can
-        // opt back in via OPENGLAD_DEMO_GRID=COLSxROWS.
+        // The compositor cover-scales each 320x200 session into its display
+        // cell, so the grid is a fixed choice rather than a function of
+        // display size. 6x4 = 24 cells is the documented demo intent (see
+        // CMakeLists.txt, openglad_demo); the render loop is sequential on
+        // the main thread, so cell count drives steady-state frame cost
+        // linearly — tune with OPENGLAD_DEMO_GRID=COLSxROWS.
+        int grid_cols = 6;
+        int grid_rows = 4;
         if (const char* grid_env = std::getenv("OPENGLAD_DEMO_GRID")) {
             int gc = 0, gr = 0;
             if (std::sscanf(grid_env, "%dx%d", &gc, &gr) == 2 && gc >= 1 && gr >= 1) {
                 grid_cols = gc;
                 grid_rows = gr;
             }
-        } else {
-            grid_cols = std::min(grid_cols, 4);
-            grid_rows = std::min(grid_rows, 3);
         }
         const int num_sessions = grid_cols * grid_rows;
+        const float cell_zoom =
+            env_float("OPENGLAD_DEMO_ZOOM", DEFAULT_CELL_ZOOM, 1.0f);
 
-        Log("Display: {}x{}, grid: {}x{} = {} sessions\n",
-            display_w, display_h, grid_cols, grid_rows, num_sessions);
+        Log("Display: {}x{}, grid: {}x{} = {} sessions, cell zoom {:.2f}\n",
+            display_w, display_h, grid_cols, grid_rows, num_sessions,
+            cell_zoom);
 
-        if (num_sessions <= 0) {
-            LogError("Display too small for even one {}x{} cell\n", CELL_W, CELL_H);
+        if (display_w < grid_cols || display_h < grid_rows) {
+            LogError("Display too small for a {}x{} grid\n",
+                     grid_cols, grid_rows);
             return 1;
         }
 
@@ -752,12 +821,47 @@ int main(int argc, char* argv[])
                               SDL_TEXTUREACCESS_STREAMING, display_w, display_h),
             SDL_DestroyTexture);
         if (!composite_surface || !composite_tex) {
-            LogError("Failed to create composite surface/texture\n");
+            LogError("Failed to create composite {} ({}x{}, renderer={}): {}\n",
+                     !composite_surface ? "surface" : "texture",
+                     display_w, display_h,
+                     static_cast<void*>(E_Screen->renderer), SDL_GetError());
             return 1;
         }
         // SDL3 defaults alpha-format textures to BLEND; the composite pixels
         // are XRGB (alpha=0), so blending would present nothing.
         SDL_SetTextureBlendMode(composite_tex.get(), SDL_BLENDMODE_NONE);
+
+        // Whole-grid captures bypass the scaled on-screen composite: the
+        // indexed writer depends on palette-exact pixels, so capture frames
+        // are assembled from unscaled 1:1 cell blits at native resolution.
+        std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>
+            capture_grid_surface(nullptr, SDL_DestroySurface);
+        if (capture.enabled() && capture.session_index < 0) {
+            capture_grid_surface.reset(SDL_CreateSurface(
+                grid_cols * CELL_W, grid_rows * CELL_H,
+                SDL_PIXELFORMAT_XRGB8888));
+            if (!capture_grid_surface) {
+                LogError("Failed to create capture grid surface: {}\n",
+                         SDL_GetError());
+                return 1;
+            }
+        }
+
+        // Private scratch for the FPS readout. The host canvas cannot be used:
+        // it is the surface every cell is copied out of in render_session_frame,
+        // so anything left there reaches the next frame's capture output.
+        std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)> fps_strip(
+            nullptr, SDL_DestroySurface);
+        FpsCounter fps_counter;
+        if (show_fps) {
+            fps_strip.reset(SDL_CreateSurface(FPS_STRIP_W, FPS_STRIP_H,
+                                              SDL_PIXELFORMAT_XRGB8888));
+            if (!fps_strip) {
+                LogError("Failed to create FPS overlay surface: {}\n",
+                         SDL_GetError());
+                return 1;
+            }
+        }
 
         // --- Create sub-sessions (main thread) ---
         std::vector<DemoSession> demos(static_cast<size_t>(num_sessions));
@@ -923,22 +1027,71 @@ int main(int argc, char* argv[])
                 SDL_Surface* src = demos[static_cast<size_t>(i)].session->session_surface_;
                 int col = i % grid_cols;
                 int row = i / grid_cols;
-                composite_session(composite_surface.get(), src, col, row);
+                composite_session(composite_surface.get(), src, col, row,
+                                  grid_cols, grid_rows, cell_zoom);
             }
 
-            // Whole-grid dump: every cell at once, cropped to the grid area
-            // (the composite surface itself is display-sized).
+            // Whole-grid dump: every cell at once, at native cell resolution
+            // (the on-screen composite is scaled, so it is unusable here).
             if (capture_this_frame && capture.session_index < 0) {
+                for (int i = 0; i < num_sessions; i++) {
+                    SDL_Surface* src =
+                        demos[static_cast<size_t>(i)].session->session_surface_;
+                    SDL_Rect cell{(i % grid_cols) * CELL_W,
+                                  (i / grid_cols) * CELL_H, CELL_W, CELL_H};
+                    SDL_BlitSurface(src, nullptr, capture_grid_surface.get(),
+                                    &cell);
+                }
                 const std::string path = capture_path();
-                if (!capture_writer->write(composite_surface.get(),
-                                           host_session.curpal_, path,
-                                           grid_cols * CELL_W,
-                                           grid_rows * CELL_H)) {
+                if (!capture_writer->write(capture_grid_surface.get(),
+                                           host_session.curpal_, path)) {
                     throw std::runtime_error(std::format(
                         "openglad_demo failed to write capture frame {}: {}",
                         path, SDL_GetError()));
                 }
                 captured_frames++;
+            }
+
+            // One readout for the whole grid, sampled once per presented
+            // frame, so it measures the compositor loop rather than any one
+            // session. It lands here — after both capture paths have consumed
+            // the session surfaces, before the present — so it reaches the
+            // screen and OPENGLAD_DEMO_COMPOSITE_DUMP but never a capture
+            // frame, which must stay palette-exact.
+            if (show_fps) {
+                const int fps = fps_counter.update(SDL_GetTicks());
+                const std::string fps_text = std::format("FPS: {}", fps);
+                // Text draws through og::runtime::current_session and
+                // E_Screen->render, not through the screen it is called on;
+                // both must name the host for the palette lookup to resolve.
+                auto host_scope = host_session.activate();
+                text& font = host_session.myscreen_->text_normal;
+                const int text_w = std::clamp(font.query_width(fps_text) + 4,
+                                              1, FPS_STRIP_W);
+                SDL_Surface* saved_render = E_Screen->render;
+                E_Screen->render = fps_strip.get();
+                SDL_FillSurfaceRect(fps_strip.get(), nullptr, 0x000000);
+                font.write_xy(2, 2, fps_text, YELLOW, static_cast<short>(1));
+                E_Screen->render = saved_render;
+
+                // Blit only the used span so the backing box hugs the text
+                // instead of trailing the strip's worst-case width.
+                const SDL_Rect strip_src{0, 0, text_w, FPS_STRIP_H};
+
+                // Integer magnification keeps the 5x6 font crisp on HiDPI
+                // displays; the clamps hold the strip on-surface when the
+                // display is smaller than the strip plus its margin.
+                const int fps_scale = std::max(1, display_w / 1024);
+                const int strip_w = text_w * fps_scale;
+                const int strip_h = FPS_STRIP_H * fps_scale;
+                const int margin = 8 * fps_scale;
+                SDL_Rect strip_dst{
+                    std::max(0, display_w - strip_w - margin),
+                    std::clamp(margin, 0, std::max(0, display_h - strip_h)),
+                    strip_w, strip_h};
+                SDL_BlitSurfaceScaled(fps_strip.get(), &strip_src,
+                                      composite_surface.get(), &strip_dst,
+                                      SDL_SCALEMODE_NEAREST);
             }
 
             SDL_UpdateTexture(composite_tex.get(), nullptr,
@@ -980,6 +1133,19 @@ int main(int argc, char* argv[])
             if (capture.limit > 0 && captured_frames >= capture.limit) {
                 running = false;
             }
+
+            // Opt-in debug dump of the final presented composite (the scaled
+            // grid exactly as shown on screen), for eyeballing the layout
+            // without a screen recorder.
+            if (!running) {
+                if (const char* dump =
+                        env_or_null("OPENGLAD_DEMO_COMPOSITE_DUMP")) {
+                    if (!SDL_SaveBMP(composite_surface.get(), dump)) {
+                        LogError("composite dump to '{}' failed: {}\n",
+                                 dump, SDL_GetError());
+                    }
+                }
+            }
         }
 
         if (capture_writer) {
@@ -1001,6 +1167,8 @@ int main(int argc, char* argv[])
         // Cleanup (the unique_ptr deleters also free on any early-return/throw path)
         composite_tex.reset();
         composite_surface.reset();
+        capture_grid_surface.reset();
+        fps_strip.reset();
         for (auto& d : demos) {
             d.session.reset();
         }
