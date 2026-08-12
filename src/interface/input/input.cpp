@@ -828,6 +828,9 @@ void handle_mouse_event(const void* native_event)
 
 // Per-tick gameplay reads joystick state by polling (JoyData::getState); the
 // event stream's one job here is feeding "press any key" waits.
+// Gameplay reads joysticks by polling (isPlayerHoldingKey -> JoyData::getState).
+// This should not be in an event or else it's jerky. Events only feed the
+// "any key pressed" edge that continue/menu screens wait on.
 void handle_joy_event(const void* native_event)
 {
     og::input_native::EventData event;
