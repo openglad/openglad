@@ -53,6 +53,8 @@ grep -Fq \
     'openglad_demo: 2 sessions initialized, spawning 2 worker threads' \
     <<<"$output"
 grep -Fq 'openglad_demo: campaign gladiator' <<<"$output"
+# No capture or dump knob set, so this run takes the uncapped pacing path.
+grep -Fq 'openglad_demo: pacing uncapped' <<<"$output"
 
 # The capture knobs are opt-in: a production run writes no frames at all.
 if [[ -n "$(find "$test_root" -name '*.bmp' -print -quit)" ]]; then
@@ -146,6 +148,8 @@ capture_output=$(
 printf '%s\n' "$capture_output"
 grep -Fq 'openglad_demo: campaign concept' <<<"$capture_output"
 grep -Fq '  session 0: scenario 605' <<<"$capture_output"
+# Capture depends on frame N being sim tick N, so enabling it forces lockstep.
+grep -Fq 'openglad_demo: pacing lockstep' <<<"$capture_output"
 grep -Fq 'openglad_demo: captured 3 frames' <<<"$capture_output"
 expect_capture_frames "$test_root/capture" 3 320 200
 
@@ -236,6 +240,9 @@ fps_on_output=$(
 )
 printf '%s\n' "$fps_on_output"
 grep -Fq 'openglad_demo: FPS overlay on' <<<"$fps_on_output"
+# A composite dump also forces lockstep: the dumped pixels are the byte-pinned
+# software-compositor output the reproducibility checks below rely on.
+grep -Fq 'openglad_demo: pacing lockstep' <<<"$fps_on_output"
 
 # Unset knob with a fresh config dir: graphics/show_fps is off, so is the
 # overlay.
@@ -308,3 +315,38 @@ if cmp -s "$test_root/fps-on.bmp" "$test_root/fps-off.bmp"; then
     printf 'FPS overlay left the presented composite unchanged\n' >&2
     exit 1
 fi
+
+# --- Pacing modes -----------------------------------------------------------
+# OPENGLAD_DEMO_MAX_FRAMES counts sim ticks in both modes, so an uncapped run
+# reports exactly its budget in the exit summary. The rendered-frame count is
+# hardware-dependent and deliberately unasserted.
+uncapped_ticks_output=$(
+    env \
+        SDL_VIDEODRIVER=dummy \
+        SDL_AUDIODRIVER=dummy \
+        SDL_RENDER_DRIVER=software \
+        OPENGLAD_DEMO_GRID=1x1 \
+        OPENGLAD_DEMO_MAX_FRAMES=3 \
+        OPENGLAD_DEMO_SEED=6 \
+        OPENGLAD_CONFIG_DIR="$test_root/uncapped-ticks-config" \
+        "$demo_bin" 2>&1
+)
+printf '%s\n' "$uncapped_ticks_output"
+grep -Fq 'openglad_demo: pacing uncapped' <<<"$uncapped_ticks_output"
+grep -Fq 'openglad_demo: 3 sim ticks,' <<<"$uncapped_ticks_output"
+
+# OPENGLAD_DEMO_LOCKSTEP forces the lockstep path without a capture or dump.
+lockstep_forced_output=$(
+    env \
+        SDL_VIDEODRIVER=dummy \
+        SDL_AUDIODRIVER=dummy \
+        SDL_RENDER_DRIVER=software \
+        OPENGLAD_DEMO_GRID=1x1 \
+        OPENGLAD_DEMO_MAX_FRAMES=1 \
+        OPENGLAD_DEMO_SEED=6 \
+        OPENGLAD_DEMO_LOCKSTEP=1 \
+        OPENGLAD_CONFIG_DIR="$test_root/lockstep-forced-config" \
+        "$demo_bin" 2>&1
+)
+printf '%s\n' "$lockstep_forced_output"
+grep -Fq 'openglad_demo: pacing lockstep' <<<"$lockstep_forced_output"

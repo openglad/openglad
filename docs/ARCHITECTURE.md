@@ -386,6 +386,23 @@ SDL_RenderPresent (once)
 - Each sub-session gets a unique random seed and random scenario assignment
 - All sessions run in spectator mode (0-player, fully AI-controlled)
 
+#### Pacing modes
+
+The main loop runs in one of two modes, decided once at startup:
+
+- **Uncapped** (the default): the sim stays at exactly one tick per 81.6 ms of wall clock (a `FixedStepAccumulator` runs 0–8 catch-up ticks per loop pass; a stall past 8 periods drops the backlog with a log line instead of slowing the game), while the loop renders and presents on every pass with no sleep and vsync off. Compositing is GPU per-cell: each session surface streams into its own texture and the renderer scales it into its display cell.
+- **Lockstep**: one sim tick per rendered frame, software compositing, sleep to the 81.6 ms frame period. This is the pixel-pinned path — `scripts/test_demo_smoke.sh` byte-compares its composite dumps.
+
+Lockstep is selected automatically whenever the run dumps pixels — frame capture (`OPENGLAD_DEMO_CAPTURE_DIR`) or a composite dump (`OPENGLAD_DEMO_COMPOSITE_DUMP`) — and can be forced with `OPENGLAD_DEMO_LOCKSTEP=1`. The chosen mode is logged as `openglad_demo: pacing lockstep|uncapped`.
+
+In both modes `OPENGLAD_DEMO_MAX_FRAMES` counts **sim ticks**, so a run's game-time duration is deterministic regardless of render speed. Every run ends with an exit summary:
+
+```
+openglad_demo: 61 sim ticks, 3459 rendered frames in 4.901 s (705.7 fps, 12.25 ticks/s)
+```
+
+`ticks/s` holding ≈12.25 under load is the proof that render cost no longer slows the game; `fps` is the render benchmark.
+
 #### Environment knobs
 
 Every knob is opt-in: unset, the demo takes its production path.
@@ -395,7 +412,9 @@ Every knob is opt-in: unset, the demo takes its production path.
 | `OPENGLAD_DEMO_GRID` | `COLSxROWS` grid topology (default `6x4`) |
 | `OPENGLAD_DEMO_ZOOM` | Extra magnification on top of the cover scale, clamped to ≥ 1.0 (default 1.1) |
 | `OPENGLAD_DEMO_SEED` | Unsigned seed for scenario shuffle and per-session RNG |
-| `OPENGLAD_DEMO_MAX_FRAMES` | Stop after N main-loop frames (0 = run forever) |
+| `OPENGLAD_DEMO_MAX_FRAMES` | Stop after N sim ticks (0 = run forever) |
+| `OPENGLAD_DEMO_LOCKSTEP` | `1` or `on` forces lockstep pacing without a capture or dump |
+| `OPENGLAD_DEMO_VSYNC` | Set to anything but `0` to keep vsync on in uncapped mode (default: off) |
 | `OPENGLAD_DEMO_CAMPAIGN` | Campaign the scenarios are loaded from (default `gladiator`) |
 | `OPENGLAD_DEMO_SCENARIOS` | Comma-separated scenario ids assigned to cells in order, replacing the shuffled pool |
 | `OPENGLAD_DEMO_TEAM_SIZE` | Force the generated player team size |
@@ -502,6 +521,8 @@ game_frame(screen& s, GameLoopFrameState& st)
       ├── Radar minimap
       └── Present to display
 ```
+
+Sim and render are paced independently: the sim tick interval comes solely from `world.timer_wait`, while render frequency follows the `graphics` / `target_fps` setting in `openglad.yaml` (clamped to 10–240). `target_fps: 0` is the uncapped sentinel — the render pacer is bypassed entirely, every loop pass renders, and vsync is switched off at bootstrap. It is a config-file-only knob with no Options menu entry; game speed is unaffected either way.
 
 ### Emscripten (Web) Build Flow
 
