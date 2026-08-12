@@ -5989,3 +5989,41 @@ TEST_F(RenderEffects, zz_bench_large_canvas_redraw)
     scr()->relayout_views();
     restore_world(vs);
 }
+
+// Uncapped render paths advance the effects frame tick on the wall clock (one
+// advance per 14 ms, the classic 72 fps cadence) instead of once per call, so
+// machine-rate presenting cannot speed up weather/ripple/trail animation. The
+// gate is exercised through the injected-clock entry point; the default
+// per-call behavior every other test relies on is pinned at the end.
+TEST(EffectsCadence, wall_clock_gates_frame_advancement)
+{
+	effects_reset_for_testing();
+	ASSERT_EQ(0u, effects_frame_tick());
+
+	effects_set_wall_clock_cadence(true);
+	// First call configures the pacer: deadline lands one interval out, so
+	// no advance yet.
+	effects_advance_frame_at(100000);
+	ASSERT_EQ(0u, effects_frame_tick())
+	    << "first gated call must only arm the 14 ms deadline";
+	effects_advance_frame_at(100014);
+	ASSERT_EQ(1u, effects_frame_tick()) << "deadline reached: one advance";
+	effects_advance_frame_at(100020);
+	ASSERT_EQ(1u, effects_frame_tick())
+	    << "mid-interval call must not advance";
+	effects_advance_frame_at(100028);
+	ASSERT_EQ(2u, effects_frame_tick()) << "next deadline: one advance";
+	// A machine-rate burst inside one interval still yields zero advances.
+	for (std::uint32_t now = 100029; now < 100042; ++now)
+		effects_advance_frame_at(now);
+	ASSERT_EQ(2u, effects_frame_tick())
+	    << "13 calls inside one interval must not advance the tick";
+
+	effects_set_wall_clock_cadence(false);
+	effects_advance_frame();
+	ASSERT_EQ(3u, effects_frame_tick())
+	    << "with the cadence off every call advances, as all capped paths "
+	       "and tests rely on";
+
+	effects_reset_for_testing();
+}

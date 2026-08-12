@@ -279,8 +279,10 @@ SolveResult AStar::solve(State start,
                 {
                     child->parent = node;
                     child->cost_from_start = new_cost;
-                    child->est_to_goal =
-                        impl_->graph.least_cost_estimate(child->state, end);
+                    // est_to_goal was already computed when the node was first
+                    // reached; the Graph contract (astar.h) makes the heuristic
+                    // a pure function of (state, end) within one solve, so the
+                    // stored value is bit-identical to a recomputation.
                     child->total_cost = calc_total_cost(*child);
                     if (child->in_open)
                         open.update(child);

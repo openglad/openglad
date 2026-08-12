@@ -88,4 +88,35 @@ FrameDeadlineDecision FrameDeadlinePacer::tick(std::uint32_t now_ms)
     return FrameDeadlineDecision{true, true, 0u, next_deadline_ms_};
 }
 
+FixedStepAccumulator::FixedStepAccumulator(std::chrono::microseconds period,
+                                           int max_catchup)
+    : period_(std::max(std::chrono::microseconds{1}, period)),
+      max_catchup_(max_catchup),
+      accumulated_(period_)
+{
+}
+
+FixedStepAccumulator::Result FixedStepAccumulator::advance(
+    std::chrono::microseconds elapsed)
+{
+    accumulated_ += elapsed;
+
+    // Duration division is exact integer math; the remainder stays in
+    // accumulated_ so fractional periods carry across calls without drift.
+    const auto due = accumulated_ / period_;
+    if (due > max_catchup_)
+    {
+        accumulated_ = std::chrono::microseconds::zero();
+        return Result{max_catchup_, static_cast<int>(due) - max_catchup_};
+    }
+
+    accumulated_ -= due * period_;
+    return Result{static_cast<int>(due), 0};
+}
+
+void FixedStepAccumulator::reset()
+{
+    accumulated_ = period_;
+}
+
 } // namespace og::core

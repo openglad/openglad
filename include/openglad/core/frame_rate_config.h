@@ -16,6 +16,11 @@ inline constexpr int kDefaultTargetFps = 60;
 inline constexpr int kMinTargetFps = 10;
 inline constexpr int kMaxTargetFps = 240;
 
+// Sentinel for "no render frame cap": the loop renders on every pass with no
+// pacer and vsync off. Any configured value <= 0 means this. Sim cadence is
+// unaffected — it still comes solely from world.timer_wait.
+inline constexpr int kUncappedTargetFps = 0;
+
 // Templated on the cfg type so this header does not need to include
 // <openglad/resources/gparser.h>, which is outside og_core's component
 // include sandbox. Callers (glad.cpp, tests) instantiate with cfg_store,
@@ -27,12 +32,22 @@ template <typename Cfg>
     const auto parsed = parse_int_strict(raw);
     if (!parsed)
         return kDefaultTargetFps;
+    if (*parsed <= 0)
+        return kUncappedTargetFps;
     return std::clamp(*parsed, kMinTargetFps, kMaxTargetFps);
 }
 
 template <typename Cfg>
 void apply_target_fps_to_cfg(Cfg& cfg, int fps)
 {
+    // The sentinel must survive the boot-time read/write round trip: clamping
+    // it here would rewrite a user's uncapped setting as kMinTargetFps.
+    if (fps <= 0)
+    {
+        cfg.apply_setting("graphics", "target_fps",
+                          std::to_string(kUncappedTargetFps));
+        return;
+    }
     const int clamped = std::clamp(fps, kMinTargetFps, kMaxTargetFps);
     cfg.apply_setting("graphics", "target_fps", std::to_string(clamped));
 }

@@ -49,6 +49,25 @@ static short floor_numx_offset(const walker* ob)
 	return static_cast<short>(f * OB_FLOOR_STRIDE);
 }
 
+// Injective for every (short, short) pair: 16 bits per coordinate. Hash-derived
+// coordinates are always non-negative, but crafted keys (tests) round-trip
+// safely through the uint16 casts too.
+static inline std::uint32_t pack_cell(short numx, short numy)
+{
+	return (static_cast<std::uint32_t>(static_cast<std::uint16_t>(numx)) << 16) |
+	       static_cast<std::uint32_t>(static_cast<std::uint16_t>(numy));
+}
+
+// The only external mutation of pos_to_walker in the codebase is a wholesale
+// clear() at level teardown (game_world / level_runtime_data), after which the
+// map stays empty until the next obmap call. So "map empty, index non-empty"
+// is exactly (and only) the stale-after-external-clear state.
+void obmap::sync_cell_index()
+{
+	if (!cell_index_.empty() && pos_to_walker.empty())
+		cell_index_.clear();
+}
+
 // These are passed in as PIXEL coordinates now...
 obmap::obmap()
 {
@@ -81,21 +100,35 @@ short obmap::query_list(walker  *ob, short x, short y)
 	startnumy = hash(y);
 	endnumy   = hash( static_cast<short>(y+ob->sizey()) );
 
+	sync_cell_index();
+
 	// For each y grid row we are in...
 	for (numx = startnumx; numx <= endnumx; numx++)
 	{
 		for (numy = startnumy; numy <= endnumy; numy++)
 		{
-			// Avoid default-constructing empty piles during queries.
-			auto it = pos_to_walker.find(std::make_pair(numx, numy));
-			if (it == pos_to_walker.end())
-				continue;
+			const std::list<walker*>* pile;
+			const std::uint32_t key = pack_cell(numx, numy);
+			auto cached = cell_index_.find(key);
+			if (cached != cell_index_.end())
+			{
+				pile = cached->second;
+			}
+			else
+			{
+				// Avoid default-constructing empty piles during queries.
+				auto it = pos_to_walker.find(std::make_pair(numx, numy));
+				if (it == pos_to_walker.end())
+					continue;
+				pile = &it->second;
+				cell_index_.emplace(key, &it->second);
+			}
 			// Snapshot the pile: collision handlers inside ob_pass_check
 			// (e.g. walker::death → obmap::remove) can erase this
 			// pos_to_walker entry, which would leave a dangling reference
 			// and corrupt iterator traversal — the root cause of the
 			// walker_to_pos.find() infinite-loop hang.
-			auto pile_snapshot = it->second;
+			auto pile_snapshot = *pile;
 			if (!ob_pass_check(x, y, ob, pile_snapshot, this))
 				return 0;
 		}
@@ -110,6 +143,8 @@ short obmap::remove(walker  *ob)  // This goes in walker's destructor
     // Some of this is redundant, but its worth avoiding segfaults, IMO :-)
     if (!ob)
         return 0;
+
+    sync_cell_index();
 
     // Fast path only: removal is driven by walker_to_pos bookkeeping.
     // Do not scan the entire pos_to_walker map in production; that can turn
@@ -145,7 +180,10 @@ short obmap::remove(walker  *ob)  // This goes in walker's destructor
                 if (g->second.size() != before)
                     removed_any = true;
                 if (g->second.empty())
+                {
+                    cell_index_.erase(pack_cell(numx, numy));
                     pos_to_walker.erase(g);
+                }
             }
         }
         return removed_any ? 1 : 0;
@@ -160,7 +198,10 @@ short obmap::remove(walker  *ob)  // This goes in walker's destructor
             continue;
         g->second.remove(ob);
         if (g->second.empty())
+        {
+            cell_index_.erase(pack_cell(pos.first, pos.second));
             pos_to_walker.erase(g);
+        }
     }
 
     // Erase the walker from the walker map too
@@ -178,6 +219,8 @@ short obmap::add(walker  *ob, short x, short y)  // This goes in walker's constr
 
 	if (x < 0 || y < 0)
 		return 0;
+
+	sync_cell_index();
 
 	// Tighten invariants: a walker may only be present once. If callers try to
 	// add it again, remove via O(1) bookkeeping first.
@@ -198,11 +241,22 @@ short obmap::add(walker  *ob, short x, short y)  // This goes in walker's constr
 		{
 		    // Store this position
 		    pos.push_back(std::make_pair(numx, numy));
-		    
+
 			// Put the walker here too (no duplicates).
-			auto& pile = pos_to_walker[std::make_pair(numx, numy)];
-			if (std::find(pile.begin(), pile.end(), ob) == pile.end())
-				pile.push_back(ob);
+			const std::uint32_t key = pack_cell(numx, numy);
+			std::list<walker*>* pile;
+			auto cached = cell_index_.find(key);
+			if (cached != cell_index_.end())
+			{
+				pile = cached->second;
+			}
+			else
+			{
+				pile = &pos_to_walker[std::make_pair(numx, numy)];
+				cell_index_.emplace(key, pile);
+			}
+			if (std::find(pile->begin(), pile->end(), ob) == pile->end())
+				pile->push_back(ob);
 				}
 			}
 		
@@ -248,7 +302,19 @@ std::list<walker*>& obmap::obmap_get_list(short x, short y, int floor)
 	if (floor < 0) floor = 0;
 	if (floor > 120) floor = 120;
 	const short fo = static_cast<short>(floor * OB_FLOOR_STRIDE);
-	return pos_to_walker[std::make_pair(static_cast<short>(hash(x) + fo), hash(y))];
+	const short numx = static_cast<short>(hash(x) + fo);
+	const short numy = hash(y);
+	sync_cell_index();
+	const std::uint32_t key = pack_cell(numx, numy);
+	auto cached = cell_index_.find(key);
+	if (cached != cell_index_.end())
+		return *cached->second;
+	// A miss still default-constructs the empty pile node (the historical
+	// operator[] semantics): diagnostics iterate pos_to_walker and observe
+	// these nodes, so queries must keep creating them.
+	std::list<walker*>& pile = pos_to_walker[std::make_pair(numx, numy)];
+	cell_index_.emplace(key, &pile);
+	return pile;
 }
 
 /***********************************************

@@ -19,6 +19,7 @@
 // Definition of OBMAP class
 
 #include <cstddef>
+#include <cstdint>
 #include <map>
 #include <unordered_map>
 #include <list>
@@ -30,6 +31,10 @@ class obmap
 	public:
 		obmap();
 		~obmap();
+		// cell_index_ holds pointers into pos_to_walker nodes; a copied obmap
+		// would alias the source's piles.
+		obmap(const obmap&) = delete;
+		obmap& operator=(const obmap&) = delete;
 		short query_list(walker  *ob, short x, short y);
 		short remove(walker  *ob);  // This goes in walker's destructor
 		short add(walker  *ob, short x, short y);  // This goes in walker's constructor
@@ -43,4 +48,16 @@ class obmap
 
 		static short hash(short y);
 		static short unhash(short y);
+
+	private:
+		// O(1) shadow index over pos_to_walker, keyed by packed (numx, numy).
+		// std::map nodes are pointer-stable, so an entry stays valid until its
+		// node is erased; every erase inside obmap.cpp forgets its key, and a
+		// wholesale external pos_to_walker.clear() (level teardown) is caught
+		// by sync_cell_index() before any cached pointer is dereferenced.
+		// External code may insert piles into pos_to_walker directly (tests
+		// do; the index tolerates unknown keys) but must never erase
+		// individual piles behind obmap's back.
+		std::unordered_map<std::uint32_t, std::list<walker*>*> cell_index_;
+		void sync_cell_index();
 };

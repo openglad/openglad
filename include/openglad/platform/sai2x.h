@@ -199,6 +199,13 @@ class Screen
 
 		void clear_window();
 
+		// Vsync for the presenting renderer. The choice is remembered and
+		// replayed at every renderer creation (construction and
+		// recreate_render_backend), so a lost device cannot restore the
+		// display-rate cap that an uncapped frame rate turned off.
+		void set_vsync(bool on);
+		[[nodiscard]] bool vsync_enabled() const { return vsync_enabled_; }
+
 	private:
 		// Ensures an atomic surface/texture pair exists at 2x source size.
 		// Rejects overflow, the renderer's maximum texture dimension and the
@@ -252,6 +259,7 @@ class Screen
 		bool last_world_present_used_render2_ = false;
 		bool fail_next_gameplay_ui_allocation_ = false;
 		bool fail_next_world_canvas_allocation_ = false;
+		bool vsync_enabled_ = true;
 };
 
 extern std::unique_ptr<Screen> E_Screen;

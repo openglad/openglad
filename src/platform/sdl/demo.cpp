@@ -26,6 +26,7 @@
  */
 
 #include <openglad/core/constants.h>
+#include <openglad/core/frame_pacing.h>
 #include <openglad/core/util.h>
 #include <openglad/core/version.h>
 #include <openglad/resources/company.h>
@@ -38,6 +39,7 @@
 #include <openglad/legacy/base.h>
 #include <openglad/resources/io.h>
 #include <openglad/platform/sai2x.h>
+#include <openglad/interface/render/effects.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/game_context.h>
 #include <openglad/platform/game_loop.h>
@@ -636,37 +638,59 @@ static void render_session_frame(screen& s, SDL_Surface* session_surface)
     }
 }
 
-// Blit a 320x200 session surface into its cell of the composite surface.
-// Cells split the composite evenly (per-index rounding, so the grid always
-// covers the full display with no seams). The source is cover-scaled: magnify
-// uniformly until the frame fills the cell in both dimensions, times the zoom
-// boost, then center-crop the excess.
+// Cell geometry for compositing a 320x200 session frame into its display
+// cell. Cells split the destination evenly (per-index rounding, so the grid
+// always covers the full display with no seams). The source is cover-scaled:
+// magnify uniformly until the frame fills the cell in both dimensions, times
+// the zoom boost, then center-crop the excess.
+//
+// Shared by the software (lockstep) and GPU (uncapped) compositors so the two
+// paths cannot disagree about layout. The lockstep pixel output is pinned by
+// scripts/test_demo_smoke.sh; keep the arithmetic bit-exact.
+struct CellRects {
+    SDL_Rect src;
+    SDL_Rect dst;
+};
+
+static CellRects cell_rects(int dst_w, int dst_h, int grid_col, int grid_row,
+                            int grid_cols, int grid_rows, float zoom_boost)
+{
+    CellRects r;
+    r.dst.x = grid_col * dst_w / grid_cols;
+    r.dst.y = grid_row * dst_h / grid_rows;
+    r.dst.w = (grid_col + 1) * dst_w / grid_cols - r.dst.x;
+    r.dst.h = (grid_row + 1) * dst_h / grid_rows - r.dst.y;
+
+    const float cover = std::max(
+        static_cast<float>(r.dst.w) / static_cast<float>(CELL_W),
+        static_cast<float>(r.dst.h) / static_cast<float>(CELL_H));
+    const float zoom = cover * std::max(1.0f, zoom_boost);
+    r.src.w = std::clamp(
+        static_cast<int>(std::lround(static_cast<float>(r.dst.w) / zoom)),
+        1, CELL_W);
+    r.src.h = std::clamp(
+        static_cast<int>(std::lround(static_cast<float>(r.dst.h) / zoom)),
+        1, CELL_H);
+    r.src.x = (CELL_W - r.src.w) / 2;
+    r.src.y = (CELL_H - r.src.h) / 2;
+    return r;
+}
+
+static SDL_FRect to_frect(const SDL_Rect& r)
+{
+    return SDL_FRect{static_cast<float>(r.x), static_cast<float>(r.y),
+                     static_cast<float>(r.w), static_cast<float>(r.h)};
+}
+
+// Software compositor cell blit (lockstep mode).
 static void composite_session(SDL_Surface* dst, SDL_Surface* src,
                               int grid_col, int grid_row,
                               int grid_cols, int grid_rows, float zoom_boost)
 {
     if (!src || !dst) return;
-    SDL_Rect dst_rect;
-    dst_rect.x = grid_col * dst->w / grid_cols;
-    dst_rect.y = grid_row * dst->h / grid_rows;
-    dst_rect.w = (grid_col + 1) * dst->w / grid_cols - dst_rect.x;
-    dst_rect.h = (grid_row + 1) * dst->h / grid_rows - dst_rect.y;
-
-    const float cover = std::max(
-        static_cast<float>(dst_rect.w) / static_cast<float>(CELL_W),
-        static_cast<float>(dst_rect.h) / static_cast<float>(CELL_H));
-    const float zoom = cover * std::max(1.0f, zoom_boost);
-    SDL_Rect src_rect;
-    src_rect.w = std::clamp(
-        static_cast<int>(std::lround(static_cast<float>(dst_rect.w) / zoom)),
-        1, CELL_W);
-    src_rect.h = std::clamp(
-        static_cast<int>(std::lround(static_cast<float>(dst_rect.h) / zoom)),
-        1, CELL_H);
-    src_rect.x = (CELL_W - src_rect.w) / 2;
-    src_rect.y = (CELL_H - src_rect.h) / 2;
-    SDL_BlitSurfaceScaled(src, &src_rect, dst, &dst_rect,
-                          SDL_SCALEMODE_LINEAR);
+    CellRects r = cell_rects(dst->w, dst->h, grid_col, grid_row,
+                             grid_cols, grid_rows, zoom_boost);
+    SDL_BlitSurfaceScaled(src, &r.src, dst, &r.dst, SDL_SCALEMODE_LINEAR);
 }
 
 int main(int argc, char* argv[])
@@ -739,6 +763,30 @@ int main(int argc, char* argv[])
                 capture.start, capture.limit);
         }
 
+        // Pacing mode, decided once at startup. Lockstep is the pixel-pinned
+        // path — one sim tick per rendered frame, software compositing, sleep
+        // to FRAME_PERIOD — and every run that dumps pixels (capture or
+        // composite dump) must take it, or the byte-identity pins in
+        // scripts/test_demo_smoke.sh and scripts/media/capture_showcase.sh
+        // would depend on machine speed. Uncapped holds the sim at
+        // FRAME_PERIOD on the wall clock and renders as fast as the machine
+        // allows. OPENGLAD_DEMO_LOCKSTEP=1 forces lockstep for reproducible
+        // debugging without a dump.
+        const char* composite_dump = env_or_null("OPENGLAD_DEMO_COMPOSITE_DUMP");
+        const char* lockstep_env = env_or_null("OPENGLAD_DEMO_LOCKSTEP");
+        const bool lockstep =
+            capture.enabled() || composite_dump != nullptr ||
+            (lockstep_env != nullptr &&
+             (std::string_view(lockstep_env) == "1" ||
+              std::string_view(lockstep_env) == "on"));
+        Log("openglad_demo: pacing {}\n", lockstep ? "lockstep" : "uncapped");
+        // Machine-rate presenting would otherwise animate every render-only
+        // cosmetic (weather, ripples, trails) at hardware speed; the wall
+        // clock holds them at the classic 72 fps cadence. Lockstep keeps the
+        // per-redraw advance its byte-pinned dumps rely on.
+        if (!lockstep)
+            effects_set_wall_clock_cadence(true);
+
         // OPENGLAD_DEMO_MAX_FRAMES bounds only the main loop. Grid sizing and
         // scenario selection remain the real demo paths; automation can pick a
         // cheap topology explicitly with OPENGLAD_DEMO_GRID=1x1.
@@ -808,6 +856,15 @@ int main(int argc, char* argv[])
         // also survives resize/fullscreen events for the demo's lifetime.
         E_Screen->set_world_canvas_pinned_classic(true);
         host_session.myscreen_->relayout_views();
+
+        // Uncapped mode measures how fast the machine can render; vsync would
+        // pin that to the display refresh. OPENGLAD_DEMO_VSYNC=1 keeps the
+        // driver default for tear-free viewing.
+        if (!lockstep) {
+            const char* vsync_env = env_or_null("OPENGLAD_DEMO_VSYNC");
+            if (vsync_env == nullptr || std::string_view(vsync_env) == "0")
+                E_Screen->set_vsync(false);
+        }
 
         init_input();
         load_player_control_settings_from_cfg(cfg);
@@ -880,6 +937,60 @@ int main(int argc, char* argv[])
                 std::make_unique<og::runtime::GameSession>(sub_cfg);
         }
 
+        // Uncapped-mode GPU compositor: one streaming texture per cell, so
+        // the renderer scales cells itself and the per-frame CPU cost is N
+        // small uploads instead of a full-display software blit plus one
+        // display-sized upload. Lockstep keeps the software compositor: its
+        // pixel output is pinned by scripts/test_demo_smoke.sh. The textures
+        // share the session surface format so SDL_UpdateTexture is a straight
+        // row copy.
+        using SdlTexturePtr =
+            std::unique_ptr<SDL_Texture, decltype(&SDL_DestroyTexture)>;
+        std::vector<SdlTexturePtr> cell_tex;
+        SdlTexturePtr fps_tex(nullptr, SDL_DestroyTexture);
+        if (!lockstep) {
+            for (int i = 0; i < num_sessions; i++) {
+                SDL_Surface* src =
+                    demos[static_cast<size_t>(i)].session->session_surface_;
+                // GameSession treats a failed session-surface allocation as
+                // non-fatal; degrade to a blank cell like the software
+                // compositor does instead of dereferencing null.
+                if (src == nullptr) {
+                    cell_tex.emplace_back(nullptr, SDL_DestroyTexture);
+                    continue;
+                }
+                SdlTexturePtr tex(
+                    SDL_CreateTexture(E_Screen->renderer, src->format,
+                                      SDL_TEXTUREACCESS_STREAMING,
+                                      CELL_W, CELL_H),
+                    SDL_DestroyTexture);
+                if (!tex) {
+                    LogError("Failed to create cell texture {}: {}\n", i,
+                             SDL_GetError());
+                    return 1;
+                }
+                // XRGB pixels carry alpha 0; blending would present nothing.
+                SDL_SetTextureBlendMode(tex.get(), SDL_BLENDMODE_NONE);
+                // Matches the software compositor's SDL_SCALEMODE_LINEAR.
+                SDL_SetTextureScaleMode(tex.get(), SDL_SCALEMODE_LINEAR);
+                cell_tex.push_back(std::move(tex));
+            }
+            if (show_fps) {
+                fps_tex.reset(SDL_CreateTexture(
+                    E_Screen->renderer, fps_strip->format,
+                    SDL_TEXTUREACCESS_STREAMING, FPS_STRIP_W, FPS_STRIP_H));
+                if (!fps_tex) {
+                    LogError("Failed to create FPS overlay texture: {}\n",
+                             SDL_GetError());
+                    return 1;
+                }
+                SDL_SetTextureBlendMode(fps_tex.get(), SDL_BLENDMODE_NONE);
+                // Integer-magnified 5x6 font: NEAREST keeps it crisp, as in
+                // the software path's scaled blit.
+                SDL_SetTextureScaleMode(fps_tex.get(), SDL_SCALEMODE_NEAREST);
+            }
+        }
+
         // Build a shuffled list of scenario IDs.
         std::mt19937 demo_rng(demo_seed);
         auto pick_scenarios = [&]() {
@@ -930,10 +1041,39 @@ int main(int argc, char* argv[])
         // --- Main loop ---
         constexpr int TIMER_WAIT_TICKS = 6;
         constexpr std::chrono::microseconds FRAME_PERIOD{TIMER_WAIT_TICKS * 13600};
+        // Uncapped-mode sim scheduler: 0..8 wall-clock-due ticks per loop
+        // pass, so game speed holds at exactly one tick per FRAME_PERIOD
+        // until a single render pass exceeds 8 periods (~653 ms); past that
+        // the backlog is dropped with a log line instead of slowing the game.
+        og::core::FixedStepAccumulator sim_clock{FRAME_PERIOD, /*max_catchup=*/8};
 
+        auto last_time = std::chrono::steady_clock::now();
+        const auto run_start = last_time;
         bool running = true;
-        int frames_run = 0;
+        // 64-bit: an unattended uncapped run presents at machine rate, and a
+        // 32-bit rendered-frame counter would overflow within days.
+        long long frames_run = 0;       // sim ticks, in both pacing modes
+        long long rendered_frames = 0;  // loop passes that presented
         int captured_frames = 0;
+
+        // Phases 2+3: one barriered sim generation across all sessions.
+        auto run_generation = [&] {
+            // --- Phase 2: Signal workers to simulate one frame ---
+            {
+                std::lock_guard lock(sync.mtx);
+                sync.workers_done = 0;
+                sync.generation++;
+            }
+            sync.start_cv.notify_all();
+
+            // --- Phase 3: Wait for all workers to finish simulation ---
+            {
+                std::unique_lock lock(sync.mtx);
+                sync.done_cv.wait(lock, [&] {
+                    return sync.workers_done >= num_sessions;
+                });
+            }
+        };
 
         while (running) {
             auto frame_start = std::chrono::steady_clock::now();
@@ -957,21 +1097,28 @@ int main(int argc, char* argv[])
 
             if (!running) break;
 
-            // --- Phase 2: Signal workers to simulate one frame ---
-            {
-                std::lock_guard lock(sync.mtx);
-                sync.workers_done = 0;
-                sync.generation++;
+            // Lockstep: exactly one sim tick per rendered frame. Uncapped:
+            // whatever the wall clock owes, clamped so the run never exceeds
+            // its OPENGLAD_DEMO_MAX_FRAMES tick budget.
+            int ticks_this_iter = 1;
+            if (!lockstep) {
+                const auto now = std::chrono::steady_clock::now();
+                const auto due = sim_clock.advance(
+                    std::chrono::duration_cast<std::chrono::microseconds>(
+                        now - last_time));
+                last_time = now;
+                if (due.dropped_ticks > 0) {
+                    Log("openglad_demo: dropped {} sim ticks after a stall\n",
+                        due.dropped_ticks);
+                }
+                ticks_this_iter = due.ticks;
+                if (max_frames > 0) {
+                    ticks_this_iter = static_cast<int>(std::min<long long>(
+                        ticks_this_iter, max_frames - frames_run));
+                }
             }
-            sync.start_cv.notify_all();
-
-            // --- Phase 3: Wait for all workers to finish simulation ---
-            {
-                std::unique_lock lock(sync.mtx);
-                sync.done_cv.wait(lock, [&] {
-                    return sync.workers_done >= num_sessions;
-                });
-            }
+            for (int t = 0; t < ticks_this_iter; ++t)
+                run_generation();
 
             // Frame gating for the opt-in capture, decided once so the
             // single-cell and whole-grid paths cannot disagree.
@@ -1022,85 +1169,153 @@ int main(int argc, char* argv[])
             E_Screen->suppress_present = false;
 
             // --- Phase 5: Composite and present (main thread only) ---
-            SDL_FillSurfaceRect(composite_surface.get(), nullptr, 0x000000);
-            for (int i = 0; i < num_sessions; i++) {
-                SDL_Surface* src = demos[static_cast<size_t>(i)].session->session_surface_;
-                int col = i % grid_cols;
-                int row = i / grid_cols;
-                composite_session(composite_surface.get(), src, col, row,
-                                  grid_cols, grid_rows, cell_zoom);
-            }
+            if (lockstep) {
+                // Software compositor: this branch's pixel output (and the
+                // composite dump written from it) is byte-pinned by
+                // scripts/test_demo_smoke.sh.
+                SDL_FillSurfaceRect(composite_surface.get(), nullptr, 0x000000);
+                for (int i = 0; i < num_sessions; i++) {
+                    SDL_Surface* src = demos[static_cast<size_t>(i)].session->session_surface_;
+                    int col = i % grid_cols;
+                    int row = i / grid_cols;
+                    composite_session(composite_surface.get(), src, col, row,
+                                      grid_cols, grid_rows, cell_zoom);
+                }
 
-            // Whole-grid dump: every cell at once, at native cell resolution
-            // (the on-screen composite is scaled, so it is unusable here).
-            if (capture_this_frame && capture.session_index < 0) {
+                // Whole-grid dump: every cell at once, at native cell resolution
+                // (the on-screen composite is scaled, so it is unusable here).
+                if (capture_this_frame && capture.session_index < 0) {
+                    for (int i = 0; i < num_sessions; i++) {
+                        SDL_Surface* src =
+                            demos[static_cast<size_t>(i)].session->session_surface_;
+                        SDL_Rect cell{(i % grid_cols) * CELL_W,
+                                      (i / grid_cols) * CELL_H, CELL_W, CELL_H};
+                        SDL_BlitSurface(src, nullptr, capture_grid_surface.get(),
+                                        &cell);
+                    }
+                    const std::string path = capture_path();
+                    if (!capture_writer->write(capture_grid_surface.get(),
+                                               host_session.curpal_, path)) {
+                        throw std::runtime_error(std::format(
+                            "openglad_demo failed to write capture frame {}: {}",
+                            path, SDL_GetError()));
+                    }
+                    captured_frames++;
+                }
+
+                // One readout for the whole grid, sampled once per presented
+                // frame, so it measures the compositor loop rather than any one
+                // session. It lands here — after both capture paths have consumed
+                // the session surfaces, before the present — so it reaches the
+                // screen and OPENGLAD_DEMO_COMPOSITE_DUMP but never a capture
+                // frame, which must stay palette-exact.
+                if (show_fps) {
+                    const int fps = fps_counter.update(SDL_GetTicks());
+                    const std::string fps_text = std::format("FPS: {}", fps);
+                    // Text draws through og::runtime::current_session and
+                    // E_Screen->render, not through the screen it is called on;
+                    // both must name the host for the palette lookup to resolve.
+                    auto host_scope = host_session.activate();
+                    text& font = host_session.myscreen_->text_normal;
+                    const int text_w = std::clamp(font.query_width(fps_text) + 4,
+                                                  1, FPS_STRIP_W);
+                    SDL_Surface* saved_render = E_Screen->render;
+                    E_Screen->render = fps_strip.get();
+                    SDL_FillSurfaceRect(fps_strip.get(), nullptr, 0x000000);
+                    font.write_xy(2, 2, fps_text, YELLOW, static_cast<short>(1));
+                    E_Screen->render = saved_render;
+
+                    // Blit only the used span so the backing box hugs the text
+                    // instead of trailing the strip's worst-case width.
+                    const SDL_Rect strip_src{0, 0, text_w, FPS_STRIP_H};
+
+                    // Integer magnification keeps the 5x6 font crisp on HiDPI
+                    // displays; the clamps hold the strip on-surface when the
+                    // display is smaller than the strip plus its margin.
+                    const int fps_scale = std::max(1, display_w / 1024);
+                    const int strip_w = text_w * fps_scale;
+                    const int strip_h = FPS_STRIP_H * fps_scale;
+                    const int margin = 8 * fps_scale;
+                    SDL_Rect strip_dst{
+                        std::max(0, display_w - strip_w - margin),
+                        std::clamp(margin, 0, std::max(0, display_h - strip_h)),
+                        strip_w, strip_h};
+                    SDL_BlitSurfaceScaled(fps_strip.get(), &strip_src,
+                                          composite_surface.get(), &strip_dst,
+                                          SDL_SCALEMODE_NEAREST);
+                }
+
+                SDL_UpdateTexture(composite_tex.get(), nullptr,
+                                  composite_surface->pixels,
+                                  composite_surface->pitch);
+                SDL_RenderClear(E_Screen->renderer);
+                SDL_RenderTexture(E_Screen->renderer, composite_tex.get(),
+                               nullptr, nullptr);
+                SDL_RenderPresent(E_Screen->renderer);
+            } else {
+                // GPU compositor: the renderer scales each cell straight from
+                // its streaming texture. No capture path runs here — capture
+                // and composite dumps force lockstep at startup.
+                SDL_SetRenderDrawColor(E_Screen->renderer, 0, 0, 0, 255);
+                SDL_RenderClear(E_Screen->renderer);
                 for (int i = 0; i < num_sessions; i++) {
                     SDL_Surface* src =
                         demos[static_cast<size_t>(i)].session->session_surface_;
-                    SDL_Rect cell{(i % grid_cols) * CELL_W,
-                                  (i / grid_cols) * CELL_H, CELL_W, CELL_H};
-                    SDL_BlitSurface(src, nullptr, capture_grid_surface.get(),
-                                    &cell);
+                    if (src == nullptr ||
+                        !cell_tex[static_cast<size_t>(i)]) {
+                        continue;  // surface allocation failed: blank cell
+                    }
+                    SDL_UpdateTexture(cell_tex[static_cast<size_t>(i)].get(),
+                                      nullptr, src->pixels, src->pitch);
+                    const CellRects r = cell_rects(
+                        display_w, display_h, i % grid_cols, i / grid_cols,
+                        grid_cols, grid_rows, cell_zoom);
+                    const SDL_FRect src_f = to_frect(r.src);
+                    const SDL_FRect dst_f = to_frect(r.dst);
+                    SDL_RenderTexture(E_Screen->renderer,
+                                      cell_tex[static_cast<size_t>(i)].get(),
+                                      &src_f, &dst_f);
                 }
-                const std::string path = capture_path();
-                if (!capture_writer->write(capture_grid_surface.get(),
-                                           host_session.curpal_, path)) {
-                    throw std::runtime_error(std::format(
-                        "openglad_demo failed to write capture frame {}: {}",
-                        path, SDL_GetError()));
+
+                if (show_fps) {
+                    const int fps = fps_counter.update(SDL_GetTicks());
+                    const std::string fps_text = std::format("FPS: {}", fps);
+                    // Text draws through og::runtime::current_session and
+                    // E_Screen->render, not through the screen it is called on;
+                    // both must name the host for the palette lookup to resolve.
+                    auto host_scope = host_session.activate();
+                    text& font = host_session.myscreen_->text_normal;
+                    const int text_w = std::clamp(font.query_width(fps_text) + 4,
+                                                  1, FPS_STRIP_W);
+                    SDL_Surface* saved_render = E_Screen->render;
+                    E_Screen->render = fps_strip.get();
+                    SDL_FillSurfaceRect(fps_strip.get(), nullptr, 0x000000);
+                    font.write_xy(2, 2, fps_text, YELLOW, static_cast<short>(1));
+                    E_Screen->render = saved_render;
+
+                    SDL_UpdateTexture(fps_tex.get(), nullptr,
+                                      fps_strip->pixels, fps_strip->pitch);
+
+                    // Same strip geometry as the software path, rendered from
+                    // only the used span so the backing box hugs the text.
+                    const SDL_Rect strip_src{0, 0, text_w, FPS_STRIP_H};
+                    const int fps_scale = std::max(1, display_w / 1024);
+                    const int strip_w = text_w * fps_scale;
+                    const int strip_h = FPS_STRIP_H * fps_scale;
+                    const int margin = 8 * fps_scale;
+                    const SDL_Rect strip_dst{
+                        std::max(0, display_w - strip_w - margin),
+                        std::clamp(margin, 0, std::max(0, display_h - strip_h)),
+                        strip_w, strip_h};
+                    const SDL_FRect strip_src_f = to_frect(strip_src);
+                    const SDL_FRect strip_dst_f = to_frect(strip_dst);
+                    SDL_RenderTexture(E_Screen->renderer, fps_tex.get(),
+                                      &strip_src_f, &strip_dst_f);
                 }
-                captured_frames++;
+
+                SDL_RenderPresent(E_Screen->renderer);
             }
-
-            // One readout for the whole grid, sampled once per presented
-            // frame, so it measures the compositor loop rather than any one
-            // session. It lands here — after both capture paths have consumed
-            // the session surfaces, before the present — so it reaches the
-            // screen and OPENGLAD_DEMO_COMPOSITE_DUMP but never a capture
-            // frame, which must stay palette-exact.
-            if (show_fps) {
-                const int fps = fps_counter.update(SDL_GetTicks());
-                const std::string fps_text = std::format("FPS: {}", fps);
-                // Text draws through og::runtime::current_session and
-                // E_Screen->render, not through the screen it is called on;
-                // both must name the host for the palette lookup to resolve.
-                auto host_scope = host_session.activate();
-                text& font = host_session.myscreen_->text_normal;
-                const int text_w = std::clamp(font.query_width(fps_text) + 4,
-                                              1, FPS_STRIP_W);
-                SDL_Surface* saved_render = E_Screen->render;
-                E_Screen->render = fps_strip.get();
-                SDL_FillSurfaceRect(fps_strip.get(), nullptr, 0x000000);
-                font.write_xy(2, 2, fps_text, YELLOW, static_cast<short>(1));
-                E_Screen->render = saved_render;
-
-                // Blit only the used span so the backing box hugs the text
-                // instead of trailing the strip's worst-case width.
-                const SDL_Rect strip_src{0, 0, text_w, FPS_STRIP_H};
-
-                // Integer magnification keeps the 5x6 font crisp on HiDPI
-                // displays; the clamps hold the strip on-surface when the
-                // display is smaller than the strip plus its margin.
-                const int fps_scale = std::max(1, display_w / 1024);
-                const int strip_w = text_w * fps_scale;
-                const int strip_h = FPS_STRIP_H * fps_scale;
-                const int margin = 8 * fps_scale;
-                SDL_Rect strip_dst{
-                    std::max(0, display_w - strip_w - margin),
-                    std::clamp(margin, 0, std::max(0, display_h - strip_h)),
-                    strip_w, strip_h};
-                SDL_BlitSurfaceScaled(fps_strip.get(), &strip_src,
-                                      composite_surface.get(), &strip_dst,
-                                      SDL_SCALEMODE_NEAREST);
-            }
-
-            SDL_UpdateTexture(composite_tex.get(), nullptr,
-                              composite_surface->pixels,
-                              composite_surface->pitch);
-            SDL_RenderClear(E_Screen->renderer);
-            SDL_RenderTexture(E_Screen->renderer, composite_tex.get(),
-                           nullptr, nullptr);
-            SDL_RenderPresent(E_Screen->renderer);
+            rendered_frames++;
 
             // If all sessions are done, restart them with new scenarios.
             if (active_count == 0) {
@@ -1113,12 +1328,19 @@ int main(int argc, char* argv[])
                                       demo_campaign, forced_team_size);
                 }
                 E_Screen->suppress_present = false;
+                if (!lockstep) {
+                    // Re-init takes seconds of wall time; a stale elapsed
+                    // base would burst catch-up ticks into fresh scenarios.
+                    sim_clock.reset();
+                    last_time = std::chrono::steady_clock::now();
+                }
             }
 
             // Frame pacing: sleep remainder of the target frame period.
             // A capture run has no viewer, so it takes the frames as fast as
-            // the simulation produces them.
-            if (!capture.enabled()) {
+            // the simulation produces them. Uncapped never sleeps: the
+            // present rate is the point.
+            if (lockstep && !capture.enabled()) {
                 auto elapsed = std::chrono::steady_clock::now() - frame_start;
                 auto remaining = FRAME_PERIOD - elapsed;
                 if (remaining > std::chrono::microseconds(1000)) {
@@ -1126,7 +1348,7 @@ int main(int argc, char* argv[])
                 }
             }
 
-            frames_run++;
+            frames_run += ticks_this_iter;
             if (max_frames > 0 && frames_run >= max_frames) {
                 running = false;
             }
@@ -1136,17 +1358,26 @@ int main(int argc, char* argv[])
 
             // Opt-in debug dump of the final presented composite (the scaled
             // grid exactly as shown on screen), for eyeballing the layout
-            // without a screen recorder.
-            if (!running) {
-                if (const char* dump =
-                        env_or_null("OPENGLAD_DEMO_COMPOSITE_DUMP")) {
-                    if (!SDL_SaveBMP(composite_surface.get(), dump)) {
-                        LogError("composite dump to '{}' failed: {}\n",
-                                 dump, SDL_GetError());
-                    }
+            // without a screen recorder. Setting it implies lockstep, so the
+            // composite surface always holds the presented frame here.
+            if (!running && composite_dump != nullptr) {
+                if (!SDL_SaveBMP(composite_surface.get(), composite_dump)) {
+                    LogError("composite dump to '{}' failed: {}\n",
+                             composite_dump, SDL_GetError());
                 }
             }
         }
+
+        // Pre-formatted with std::format: Log's own {} substitution ignores
+        // precision specifiers.
+        const double run_secs = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - run_start).count();
+        Log(std::format(
+            "openglad_demo: {} sim ticks, {} rendered frames in {:.3f} s "
+            "({:.1f} fps, {:.2f} ticks/s)\n",
+            frames_run, rendered_frames, run_secs,
+            static_cast<double>(rendered_frames) / std::max(run_secs, 1e-6),
+            static_cast<double>(frames_run) / std::max(run_secs, 1e-6)));
 
         if (capture_writer) {
             Log("openglad_demo: captured {} frames to {}\n",
@@ -1165,6 +1396,8 @@ int main(int argc, char* argv[])
         }
 
         // Cleanup (the unique_ptr deleters also free on any early-return/throw path)
+        cell_tex.clear();
+        fps_tex.reset();
         composite_tex.reset();
         composite_surface.reset();
         capture_grid_surface.reset();

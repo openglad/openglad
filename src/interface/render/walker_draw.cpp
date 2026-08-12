@@ -338,12 +338,12 @@ static void draw_damage_number(walker::DamageNumber& dn, viewscreen* view_buf)
 
 void draw_small_health_bar(walker* w, viewscreen* view_buf)
 {
-    if(!cfg.is_on("effects", "mini_hp_bar"))
+    if(w->query_order() != Order::Living && w->query_order() != Order::Generator)
     {
         return;
     }
 
-    if(w->query_order() != Order::Living && w->query_order() != Order::Generator)
+    if(!cfg.is_on("effects", "mini_hp_bar"))
     {
         return;
     }
@@ -485,13 +485,10 @@ static bool mark_player_controls_outline()
 bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha,
                  bool layer_active)
 {
-    const bool show_attack_lunge = cfg.is_on("effects", "attack_lunge");
-    const bool show_hit_recoil = cfg.is_on("effects", "hit_recoil");
-    const bool show_hit_flash = cfg.is_on("effects", "hit_flash");
-    const bool show_hit_anim = cfg.is_on("effects", "hit_anim");
-    const bool show_damage_numbers = cfg.is_on("effects", "damage_numbers");
-    const bool show_heal_numbers = cfg.is_on("effects", "heal_numbers");
-
+    // Every "effects" gate below is read at the point of use, behind the
+    // cheap entity test that decides whether the effect can apply at all:
+    // cfg.is_on walks two string maps, and draw_walker runs once per drawn
+    // entity per viewport per frame.
     const WalkerRenderPosition draw_pos =
         resolve_walker_render_position(w, view_buf->interpolation_alpha);
     const short draw_x = static_cast<short>(draw_pos.worldx);
@@ -514,8 +511,8 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha,
 	// NOT here — render must not write sim-read entity state (it freezes in the
 	// headless server). Enforced by scripts/check_render_no_sim_writes.sh.
 
-    if (!show_hit_anim && w.query_order() == Order::FX &&
-        w.family() == FAMILY_HIT)
+    if (w.query_order() == Order::FX && w.family() == FAMILY_HIT &&
+        !cfg.is_on("effects", "hit_anim"))
     {
         return true;
     }
@@ -530,7 +527,7 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha,
 	// thrown rock arcing, a fireball drifting). worldz==0 leaves output unchanged.
 	yscreen -= static_cast<Sint32>(w.worldz());
 
-		if(show_attack_lunge && w.attack_lunge() > 0.0f)
+		if(w.attack_lunge() > 0.0f && cfg.is_on("effects", "attack_lunge"))
 	    {
 	        const float dx = w.attack_lunge() * ATTACK_LUNGE_SIZE * cosf(w.attack_lunge_angle());
 	        const float dy = w.attack_lunge() * ATTACK_LUNGE_SIZE * sinf(w.attack_lunge_angle());
@@ -538,7 +535,7 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha,
 	        yscreen += static_cast<Sint32>(dy);
 	    }
 
-		if(show_hit_recoil && w.hit_recoil() > 0.0f)
+		if(w.hit_recoil() > 0.0f && cfg.is_on("effects", "hit_recoil"))
 	    {
 	        const float dx = w.hit_recoil() * HIT_RECOIL_SIZE * cosf(w.hit_recoil_angle());
 	        const float dy = w.hit_recoil() * HIT_RECOIL_SIZE * sinf(w.hit_recoil_angle());
@@ -620,7 +617,7 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha,
 	}
 
 	// Draw me
-		if(show_hit_flash && w.hurt_flash())
+		if(w.hurt_flash() && cfg.is_on("effects", "hit_flash"))
 	    {
         auto bmp_span = std::span<const unsigned char>{w.bmp_data(), static_cast<size_t>(w.sizex() * w.sizey())};
         og::runtime::current_session->myscreen_->walkputbuffer_flash(xscreen, yscreen, w.sizex(), w.sizey(),
@@ -665,6 +662,15 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha,
         render_context->trim_owner(owner_entity_id, w.damage_numbers.size());
     }
 
+    // The gates are only worth reading when the block below can do
+    // something: with no numbers to advance its entire effect is the
+    // null-screen early return.
+    const bool damage_numbers_matter =
+        !w.damage_numbers.empty() || game_screen == nullptr;
+    const bool show_damage_numbers =
+        damage_numbers_matter && cfg.is_on("effects", "damage_numbers");
+    const bool show_heal_numbers =
+        damage_numbers_matter && cfg.is_on("effects", "heal_numbers");
     if (show_damage_numbers || show_heal_numbers)
     {
         if (game_screen == nullptr)
@@ -778,7 +784,7 @@ void ground_plane_anchor(walker& w, viewscreen* view_buf,
         draw_pos.worldy - static_cast<float>(view_buf->topy) +
         static_cast<float>(view_buf->yloc));
 
-    if(cfg.is_on("effects", "attack_lunge") && w.attack_lunge() > 0.0f)
+    if(w.attack_lunge() > 0.0f && cfg.is_on("effects", "attack_lunge"))
     {
         const float dx = w.attack_lunge() * ATTACK_LUNGE_SIZE * cosf(w.attack_lunge_angle());
         const float dy = w.attack_lunge() * ATTACK_LUNGE_SIZE * sinf(w.attack_lunge_angle());
@@ -786,7 +792,7 @@ void ground_plane_anchor(walker& w, viewscreen* view_buf,
         yscreen += static_cast<Sint32>(dy);
     }
 
-    if(cfg.is_on("effects", "hit_recoil") && w.hit_recoil() > 0.0f)
+    if(w.hit_recoil() > 0.0f && cfg.is_on("effects", "hit_recoil"))
     {
         const float dx = w.hit_recoil() * HIT_RECOIL_SIZE * cosf(w.hit_recoil_angle());
         const float dy = w.hit_recoil() * HIT_RECOIL_SIZE * sinf(w.hit_recoil_angle());
@@ -897,8 +903,8 @@ bool draw_walker_reflection(walker& w, viewscreen* view_buf,
 
 bool draw_walker_tile(walker& w, viewscreen* view_buf)
 {
-    if (!cfg.is_on("effects", "hit_anim") &&
-        w.query_order() == Order::FX && w.family() == FAMILY_HIT)
+    if (w.query_order() == Order::FX && w.family() == FAMILY_HIT &&
+        !cfg.is_on("effects", "hit_anim"))
     {
         return true;
     }

@@ -25,9 +25,22 @@ class walker;
 
 // Advance all render-only effect state — the frame tick driving weather
 // drift, ripple/trail/dust phases and the fire-glow flicker, plus pruning of
-// the per-entity position store. Called exactly once per rendered frame
+// the per-entity position store. Called once per rendered frame
 // (screen::redraw); never read by the sim.
 void effects_advance_frame();
+
+// Uncapped render paths present at machine rate, so a per-redraw frame-tick
+// advance would animate every frame_tick-keyed cosmetic at hardware speed.
+// With this on, effects_advance_frame gates the advance to the wall clock at
+// the classic 72 fps render cadence instead. Off (the default) keeps the
+// exact one-advance-per-call behavior every capped path and test relies on.
+void effects_set_wall_clock_cadence(bool on);
+
+#ifdef TESTING
+// Drives the same wall-clock gate with an injected clock, so the cadence is
+// testable without real time.
+void effects_advance_frame_at(std::uint32_t now_ms);
+#endif
 
 // The current render-only effects frame tick, for callers that thread it
 // into stateless per-pixel effects (the depth-fog drift in DepthFxParams).
