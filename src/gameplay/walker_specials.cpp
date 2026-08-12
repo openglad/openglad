@@ -333,7 +333,13 @@ std::int32_t walker::turn_undead(std::int32_t range, [[maybe_unused]] std::int32
     for(auto* w : deadlist)
 	{
 		const auto* target_fd = w ? get_family_descriptor(w->family()) : nullptr;
-		if (w && target_fd && target_fd->is_undead)
+		// A warded (BIT_INVINCIBLE / invulnerable) undead is skipped before
+		// the resistance rolls: turning is damage, and both classic arms
+		// below kill without ever entering walker::attack's gate.
+		const bool warded =
+		    w != nullptr && (w->stats()->query_bit_flags(BIT_INVINCIBLE) ||
+		                     w->invulnerable_left() != 0);
+		if (w && target_fd && target_fd->is_undead && !warded)
 		{
 			if (current_game->world->rng_.next(static_cast<std::uint32_t>(range*40)) > current_game->world->rng_.next(static_cast<std::uint32_t>(w->stats()->level()*10)) )
 			{

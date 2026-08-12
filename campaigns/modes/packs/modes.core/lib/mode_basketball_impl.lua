@@ -2354,7 +2354,7 @@ end
 -- logic this tick (§9 #13).
 local function on_mode_tick(level, tick)
   local obs = og.oblist()
-  match.run_death_scan(anchors, obs, og.mode_get(S.TEAM_MASK), og.mode_get(S.RESPAWN_TICKS))
+  match.schedule_dead(obs, og.mode_get(S.TEAM_MASK), og.mode_get(S.RESPAWN_TICKS))
   local livings = {}
   local gens = {}
   local spawn_count = { 0, 0, 0, 0, 0, 0, 0, 0 }

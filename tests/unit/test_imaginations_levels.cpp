@@ -28,6 +28,7 @@
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/world_snapshot.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/game_context.h>
 #include <openglad/resources/gloader.h>
@@ -277,6 +278,17 @@ TEST_F(ImaginationsCampaignTest, watchtower_ward_arc_plays_out)
     EXPECT_TRUE(wizard->stats()->query_bit_flags(BIT_INVINCIBLE))
         << "the ward holds while the watchtowers stand";
 
+    // The ward must block a LIVE attack, not just wear the flag: a raider
+    // whose blow demonstrably lands once the ward drops deals nothing now.
+    const float warded_hp = wizard->stats()->hitpoints();
+    walker* raider = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, raider);
+    raider->set_team_num(0);
+    raider->set_damage(50);
+    raider->attack(wizard);
+    EXPECT_EQ(warded_hp, wizard->stats()->hitpoints())
+        << "the warded wizard shrugs off a landed blow";
+
     // Fell both towers through the sim's death path so on_entity_death
     // dispatches for each (first: one remains; second: the ward fails).
     for (walker* tower : towers)
@@ -288,6 +300,9 @@ TEST_F(ImaginationsCampaignTest, watchtower_ward_arc_plays_out)
     }
     EXPECT_FALSE(wizard->stats()->query_bit_flags(BIT_INVINCIBLE))
         << "both towers down must drop the ward";
+    raider->attack(wizard);
+    EXPECT_LT(wizard->stats()->hitpoints(), warded_hp)
+        << "the same blow lands once the ward is down";
 
     // The throne falls: the dream-won fanfare fires via the per-entity
     // death hook.
@@ -302,6 +317,40 @@ TEST_F(ImaginationsCampaignTest, watchtower_ward_arc_plays_out)
             ev.text.find("Dream won") != std::string::npos)
             dream_won = true;
     EXPECT_TRUE(dream_won) << "the wizard's death narrates the win";
+
+    for (const auto& err : world.scripts().host().errors())
+        ADD_FAILURE() << err.where << ": " << err.message;
+}
+
+// Real play seeds the authoritative world from a level-START keyframe
+// (the transport-shadow installs: reset_level_progress, apply_snapshot,
+// then the first tick). apply_snapshot used to claim the level-change
+// latch even for a tick-0 seed, so isle.lua's on_load never ran in the
+// SDL flow and the Sea Wizard spawned unwarded — while the unlatched
+// on_tick / on_entity_death hooks still fired, masking the breakage.
+TEST_F(ImaginationsCampaignTest, ward_survives_the_level_start_snapshot_seed)
+{
+    LoadedImaginationsLevel fx(1);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+    const og::sim::WorldSnapshot seed =
+        og::sim::capture_keyframe_snapshot(world);
+    ASSERT_EQ(0u, seed.level_tick_count) << "a level-start keyframe";
+    world.reset_level_progress();
+    ASSERT_TRUE(og::sim::apply_snapshot(world, seed));
+    world.tick();
+
+    walker* wizard = nullptr;
+    for (const auto& uptr : world.oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob != nullptr && ob->query_order() == Order::Living &&
+            ob->team_num() == 1 && ob->family() == FAMILY_MAGE)
+            wizard = ob;
+    }
+    ASSERT_NE(nullptr, wizard);
+    EXPECT_TRUE(wizard->stats()->query_bit_flags(BIT_INVINCIBLE))
+        << "a level-start seed must leave on_load armed";
 
     for (const auto& err : world.scripts().host().errors())
         ADD_FAILURE() << err.where << ": " << err.message;

@@ -1231,21 +1231,24 @@ TEST_F(ModesSoccer, goal_kickoff_reprovisions_a_wiped_bot_team)
 {
     SoccerWorld fx;
     walker* red_extra = fx.spawn_living(FAMILY_SOLDIER, 0, 160, 448, ACT_GUARD);
-    fx.world().respawn_mode = 0;  // permadeath submenu
+    fx.world().respawn_mode = 0;  // the submenu no longer gates a ball game
     fx.tick(1);
     ASSERT_TRUE(fx.soccer_active());
     fx.thaw_kickoff();
-    // Team 1 is wiped; team 0 loses a member but keeps red alive. The
-    // engine sweeps the unscheduled AI corpses at the end of this tick.
+    // Team 1 is wiped; team 0 loses a member but keeps red alive. Every
+    // corpse schedules the tick it falls — submenu Off included.
     fx.green->set_dead(1);
     red_extra->set_dead(1);
     fx.tick(2);
-    EXPECT_EQ(0, ai_entries_for_team(fx.world(), 1))
-        << "Off keeps mid-play corpses down (no policy change)";
+    EXPECT_EQ(1, ai_entries_for_team(fx.world(), 1))
+        << "always-on scheduling covers the wiped side";
+    EXPECT_EQ(1, ai_entries_for_team(fx.world(), 0))
+        << "and the non-wiped side's corpse too";
     ASSERT_EQ(0, alive_on_team(fx.world(), 1));
 
-    // A goal kickoff brings the wiped side back — its corpses are gone,
-    // so the backstop reprovisions the init-style bot squad (B1).
+    // The B1 reprovision arm still guards the no-revives-in-flight edge
+    // (evicted or flushed entries): drain the queue, then score.
+    fx.world().respawn.respawn_queue.clear();
     fx.world().mode.vars[kSocLastTouch1] = 1;  // team 0 touched last
     fx.set_ball(600, 464, 4 * 256, 0);         // into team 1's strip
     fx.tick(1);
@@ -1254,8 +1257,6 @@ TEST_F(ModesSoccer, goal_kickoff_reprovisions_a_wiped_bot_team)
         << "the kickoff backstop refields the wiped team (B1)";
     EXPECT_EQ(1, alive_on_team(fx.world(), 0))
         << "a team with a live member is left alone";
-    EXPECT_EQ(0, ai_entries_for_team(fx.world(), 0))
-        << "no revival entries for the non-wiped team";
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
@@ -1281,24 +1282,27 @@ TEST_F(ModesSoccer, kickoff_revive_schedules_corpses_and_skips_summons)
     fx.tick(1);
 
     EXPECT_TRUE(player_revive_pending(fx.world(), hero->entity_id()))
-        << "roster corpses ride the kickoff backstop";
+        << "roster corpses are scheduled the tick they fall";
     EXPECT_EQ(1, ai_entries_for_team(fx.world(), 1))
         << "the unowned AI corpse is scheduled; the summon stays down";
     EXPECT_EQ(0, alive_on_team(fx.world(), 1))
         << "revives in flight: no bot-squad reprovision on top";
-    EXPECT_EQ(0, ai_entries_for_team(fx.world(), 0))
-        << "a non-wiped team's corpse stays down at kickoff";
+    EXPECT_EQ(1, ai_entries_for_team(fx.world(), 0))
+        << "the non-wiped team's corpse is scheduled too — always-on";
     fx.tick(70);  // respawn_ticks 60 + slack
     EXPECT_FALSE(hero->dead()) << "the hero is back for the kickoff";
     EXPECT_EQ(2, alive_on_team(fx.world(), 1))
         << "hero + AI replacement return; the summon does not";
-    EXPECT_TRUE(red_extra->dead()) << "the non-wiped team's dead stay down";
+    EXPECT_EQ(2, alive_on_team(fx.world(), 0))
+        << "red + the fallen extra's replacement";
 }
 
 TEST_F(ModesSoccer, unattended_dead_ball_resets_after_600_ticks)
 {
     SoccerWorld fx;
-    fx.world().respawn_mode = 0;
+    // Hold the wiped side's revive past the whole stall window so the
+    // dead-ball clock (not the respawn delay) is what this test times.
+    fx.world().ctf_requested_respawn_ticks = 1200;
     fx.tick(1);
     ASSERT_TRUE(fx.soccer_active());
     // Both parked livings sit L1 > 160 px from the kickoff spot, so the
@@ -1314,8 +1318,10 @@ TEST_F(ModesSoccer, unattended_dead_ball_resets_after_600_ticks)
     EXPECT_EQ(320, fx.ball_cx());
     EXPECT_EQ(464, fx.ball_cy());
     EXPECT_GT(fx.var(kSocKickoffUntil), 600) << "post-reset freeze armed";
-    EXPECT_EQ(5, alive_on_team(fx.world(), 1))
-        << "the dead-ball kickoff refields the wiped side too";
+    EXPECT_EQ(0, alive_on_team(fx.world(), 1))
+        << "the revive rides its long delay — no squad reprovision on top";
+    EXPECT_EQ(1, ai_entries_for_team(fx.world(), 1))
+        << "the wiped side's revive stays in flight";
 }
 
 TEST_F(ModesSoccer, a_nearby_living_clears_the_stall_clock)
@@ -1336,7 +1342,8 @@ TEST_F(ModesSoccer, a_nearby_living_clears_the_stall_clock)
 }
 
 // ===========================================================================
-// Respawns honor the difficulty submenu (og.match_setting("respawn_mode"))
+// Respawns are always on: a ball game ignores the difficulty submenu's
+// respawn choice — every corpse that owns its life comes back.
 // ===========================================================================
 
 namespace {
@@ -1363,7 +1370,7 @@ struct SoccerRespawnWorld : SoccerWorld
 
 }  // namespace
 
-TEST_F(ModesSoccer, respawn_mode_off_schedules_nothing)
+TEST_F(ModesSoccer, submenu_off_still_schedules_everyone)
 {
     SoccerRespawnWorld fx;
     fx.world().respawn_mode = 0;
@@ -1371,13 +1378,15 @@ TEST_F(ModesSoccer, respawn_mode_off_schedules_nothing)
     ASSERT_TRUE(fx.soccer_active());
     fx.kill_both();
     fx.tick(3);
-    EXPECT_FALSE(player_revive_pending(fx.world(), fx.hero->entity_id()));
-    EXPECT_EQ(0, ai_entries_for_team(fx.world(), 0));
+    EXPECT_TRUE(player_revive_pending(fx.world(), fx.hero->entity_id()));
+    EXPECT_EQ(1, ai_entries_for_team(fx.world(), 0));
     fx.tick(70);
-    EXPECT_TRUE(fx.hero->dead()) << "Off means nobody comes back";
+    EXPECT_FALSE(fx.hero->dead()) << "Off no longer keeps anyone down";
+    EXPECT_EQ(3, alive_on_team(fx.world(), 0))
+        << "red + hero + the bot's replacement";
 }
 
-TEST_F(ModesSoccer, respawn_mode_heroes_revives_heroes_at_anchors)
+TEST_F(ModesSoccer, hero_revives_on_anchor_whatever_the_submenu_says)
 {
     SoccerRespawnWorld fx;
     fx.world().respawn_mode = 1;
@@ -1386,8 +1395,8 @@ TEST_F(ModesSoccer, respawn_mode_heroes_revives_heroes_at_anchors)
     fx.kill_both();
     fx.tick(2);
     EXPECT_TRUE(player_revive_pending(fx.world(), fx.hero->entity_id()));
-    EXPECT_EQ(0, ai_entries_for_team(fx.world(), 0))
-        << "Heroes mode never schedules AI corpses";
+    EXPECT_EQ(1, ai_entries_for_team(fx.world(), 0))
+        << "the AI corpse is scheduled regardless of the Heroes choice";
     fx.tick(70);  // delay 60 + slack
     EXPECT_FALSE(fx.hero->dead());
     const bool at_anchor =
@@ -1396,7 +1405,6 @@ TEST_F(ModesSoccer, respawn_mode_heroes_revives_heroes_at_anchors)
     EXPECT_TRUE(at_anchor) << "revive lands on a team-0 anchor, got ("
                            << fx.hero->xpos() << "," << fx.hero->ypos() << ")";
     EXPECT_GT(fx.var(kSocAnchorCursor), 0) << "anchor cursor rotated";
-    EXPECT_TRUE(fx.bot->dead());
 }
 
 TEST_F(ModesSoccer, respawn_mode_everyone_includes_unowned_ai)
@@ -1409,10 +1417,10 @@ TEST_F(ModesSoccer, respawn_mode_everyone_includes_unowned_ai)
     fx.tick(2);
     EXPECT_TRUE(player_revive_pending(fx.world(), fx.hero->entity_id()));
     EXPECT_EQ(1, ai_entries_for_team(fx.world(), 0))
-        << "Everyone mode schedules the unowned AI corpse too";
+        << "the always-on scan matches the old Everyone semantics";
 }
 
-TEST_F(ModesSoccer, respawn_mode_team_one_heroes_gates_by_team)
+TEST_F(ModesSoccer, submenu_team_gate_is_ignored_every_hero_returns)
 {
     SoccerRespawnWorld fx;
     walker* green_hero = fx.spawn_hero(FAMILY_SOLDIER, 1, 560, 448, 8);
@@ -1422,11 +1430,48 @@ TEST_F(ModesSoccer, respawn_mode_team_one_heroes_gates_by_team)
     fx.kill_both();
     green_hero->set_dead(1);
     fx.tick(2);
-    EXPECT_TRUE(player_revive_pending(fx.world(), fx.hero->entity_id()))
-        << "Team 1 (internal team 0) heroes respawn";
-    EXPECT_FALSE(player_revive_pending(fx.world(), green_hero->entity_id()))
-        << "other teams' heroes stay down";
-    EXPECT_EQ(0, ai_entries_for_team(fx.world(), 0));
+    EXPECT_TRUE(player_revive_pending(fx.world(), fx.hero->entity_id()));
+    EXPECT_TRUE(player_revive_pending(fx.world(), green_hero->entity_id()))
+        << "the Team 1-only choice no longer strands other teams";
+    EXPECT_EQ(1, ai_entries_for_team(fx.world(), 0));
+}
+
+TEST_F(ModesSoccer, camped_anchors_cannot_stall_a_respawn)
+{
+    SoccerRespawnWorld fx;
+    // Campers parked EXACTLY on both team-0 anchors: the rotation probe
+    // fails everywhere, and before the ring fallback the revive stayed
+    // wherever the corpse fell. Wildlife team (outside the score range)
+    // so neither the strip nor the AI director ever moves them — a
+    // Living blocks a spawn probe whatever its team.
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    // Spawn the campers AFTER init (mid-match camping): init-time census
+    // and stripping never see them.
+    walker* c1 = fx.spawn_living(FAMILY_SOLDIER, 4, 96, 448, ACT_SIT);
+    walker* c2 = fx.spawn_living(FAMILY_SOLDIER, 4, 96, 480, ACT_SIT);
+    ASSERT_NE(nullptr, c1);
+    ASSERT_NE(nullptr, c2);
+    fx.hero->setxy(400, 300);  // die far from the spawn line
+    fx.hero->set_dead(1);
+    fx.tick(2);
+    ASSERT_EQ(0, c1->dead()) << "the camper holds its post";
+    ASSERT_EQ(0, c2->dead()) << "the camper holds its post";
+    ASSERT_TRUE(player_revive_pending(fx.world(), fx.hero->entity_id()));
+    fx.tick(70);  // delay 60 + slack
+    ASSERT_FALSE(fx.hero->dead());
+    ASSERT_EQ(0, c1->dead()) << "the camper still holds the anchor";
+    ASSERT_EQ(0, c2->dead()) << "the camper still holds the anchor";
+    // The ring walk lands on a clear tile within 3 tiles (48 px L1) of an
+    // anchor — never at the corpse spot, and never merely at the hero's
+    // own 64-px-away recorded home (the engine's revive-home move).
+    const int d1 = std::abs(fx.hero->xpos() - 96) +
+                   std::abs(fx.hero->ypos() - 448);
+    const int d2 = std::abs(fx.hero->xpos() - 96) +
+                   std::abs(fx.hero->ypos() - 480);
+    EXPECT_LE(std::min(d1, d2), 48)
+        << "revive lands beside the camped spawn line, got ("
+        << fx.hero->xpos() << "," << fx.hero->ypos() << ")";
 }
 
 // ===========================================================================
@@ -2103,8 +2148,13 @@ TEST_F(ModesSoccer, kickoff_reprovisions_a_wiped_matched_team_at_strength)
             w->query_order() == Order::Living && w->team_num() == 1)
             w->set_dead(1);
     }
-    fx.tick(2);  // the engine sweeps the unscheduled AI corpses
+    fx.tick(2);  // corpses sweep; their revive entries ride the queue
     ASSERT_EQ(0, alive_on_team(fx.world(), 1));
+    EXPECT_EQ(1, ai_entries_for_team(fx.world(), 1))
+        << "always-on scheduling covers the matched bot too";
+    // The D39 reprovision arm still guards the no-revives-in-flight edge
+    // (evicted or flushed entries): drain the queue, then score.
+    fx.world().respawn.respawn_queue.clear();
 
     fx.world().mode.vars[kSocLastTouch1] = 1;  // team 0 touched last
     fx.set_ball(600, 464, 4 * 256, 0);         // into team 1's strip
@@ -2155,12 +2205,15 @@ TEST_F(ModesSoccer, kickoff_backstop_matches_a_wiped_human_team_to_target)
     fx.thaw_kickoff();
     park_away(red_hero);
     // The green hero falls AND loses its guy record (a destroyed-corpse
-    // stand-in): the engine sweeps the now-guyless unscheduled corpse, so
-    // the kickoff backstop finds zero live, zero pending, zero corpses.
+    // stand-in): the engine sweeps the now-guyless corpse this tick.
     green_hero->set_dead(1);
     green_hero->clear_myguy();
     fx.tick(2);
     ASSERT_EQ(0, alive_on_team(fx.world(), 1));
+    // The guyless corpse scheduled as a plain AI revive under the
+    // always-on scan; the D24 measure-and-solve arm guards the
+    // drained-queue edge — clear it so the backstop refields.
+    fx.world().respawn.respawn_queue.clear();
 
     fx.world().mode.vars[kSocLastTouch1] = 1;
     fx.set_ball(600, 464, 4 * 256, 0);
