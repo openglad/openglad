@@ -90,6 +90,45 @@ fully deterministic too — scripts/make_glad.py pins order, mtimes, method).
   conceals (forestwalk + LOS decay) — keep it off battle lanes or smoke bounds
   shift. Writer downgrades v11→v10/v9 when all decor planes are empty.
 
+## The hunt AI does not pathfind — design for it
+
+ACT_RANDOM hunters walk a STRAIGHT line at their acquired foe
+(walker::act_random -> walkstep with wall-slide only); there is no
+routing. Consequences for every level layout:
+
+- Any impassable band (water, walls, tree lines) between two forces
+  turns approaching units into visible statues grinding at the
+  boundary. Either keep opposing forces' likely sight lines free of
+  barriers, or provide crossings wide and frequent enough that the
+  slide finds one within a couple of tiles from any angle.
+- A woken guard hunts forever; if its target leaves, it jams against
+  whatever stands where it happens to be. Levels that post guards need
+  a level-script rule that stands disengaged hunters back down (the
+  engine's own act_guard sight test then re-wakes them honestly).
+- Every AI unit follows these rules regardless of origin — placed,
+  generator-spawned, or script-converted.
+
+Every level whose layout puts ANY blocker between opposing forces must
+ship an unattended-sim stationarity test: run the level headless for
+~1800+ ticks under the scenarios players actually create (crew parked
+near the front line; garrison woken then abandoned), and fail on any
+living with near-zero displacement that is neither posted nor in
+contact with an enemy. Prove the test red on a layout that jams before
+trusting it green.
+
+## Verify behavior rules per construction path
+
+Entities that belong to one category can be built by different paths
+(authored placement, runtime generation, delayed activation, team
+conversion, state conversion), and the paths do NOT share guarantees —
+derived stats, hook timing, and AI state can all differ. Any rule that
+targets a category ("all X behave like Y") must be validated against
+EVERY path that produces members of that category, with a behavioral
+test per path proven red on a broken tree before the rule ships. A rule
+proven on one construction path and assumed for the rest is the
+standard way levels ship invisible statues, dead triggers, and
+unreachable objectives.
+
 ## Story rules (the "story bible" discipline)
 
 One narrative voice across all briefings; briefings are the ONLY narrative
