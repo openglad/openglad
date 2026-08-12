@@ -1,4 +1,4 @@
--- Soccer rules + AI director — N-team ball game over manifest goal rects (D7): fixed-point ball physics (kick/shot impulses, wall bounces, contact damage, rolling spin), last-toucher scoring where a self-goal still puts a point on the board, submenu-honoring respawns, chaser/goalie roles (cookbook: docs/lua-classpacks-design.md §3).
+-- Soccer rules + AI director — N-team ball game over manifest goal rects (D7): fixed-point ball physics (kick/shot impulses, wall bounces, contact damage, rolling spin), last-toucher scoring where a self-goal still puts a point on the board, always-on respawns (a ball game never strands a side), chaser/goalie roles (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C
@@ -925,7 +925,7 @@ end
 -- and owns the win-latch short-circuit).
 local function on_mode_tick(level, tick)
   local obs = og.oblist()
-  match.run_death_scan(anchors, obs, og.mode_get(S.TEAM_MASK), og.mode_get(S.RESPAWN_TICKS))
+  match.schedule_dead(obs, og.mode_get(S.TEAM_MASK), og.mode_get(S.RESPAWN_TICKS))
   local livings = {}
   local gens = {}
   local spawn_count = { 0, 0, 0, 0, 0, 0, 0, 0 }

@@ -449,10 +449,28 @@ local function strip_inactive_teams(obs, mask)
   end
 end
 
+-- The L1 ring cell at index i (0 .. 4*r-1) of tile radius r, clockwise
+-- from due north — the deterministic ring-walk idiom shared with the
+-- ball games' landing-legality re-spot.
+local function ring_offset(i, r)
+  local edge = og.div(i, r)
+  local k = og.mod(i, r)
+  if edge == 0 then
+    return k, k - r
+  elseif edge == 1 then
+    return r - k, k
+  elseif edge == 2 then
+    return -k, r - k
+  end
+  return k - r, -k
+end
+
 -- Anchor rotation placement (DECISIONS D1): the mode-var cursor +
 -- probe-eats-safe checks. Deterministic and zero-RNG on the respawn path;
 -- init-time bot placement passes allow_teleport (the one blessed RNG
--- fallback, same as the CTF port).
+-- fallback, same as the CTF port). When every anchor is blocked — a
+-- camped spawn line must never stall respawns — a bounded ring walk
+-- around each anchor in index order takes the first clear tile instead.
 local function place_at_anchor(w, team, cursor_slot, allow_teleport)
   local final_x = -1
   local final_y = 0
@@ -467,6 +485,30 @@ local function place_at_anchor(w, team, cursor_slot, allow_teleport)
           final_x = ax
           final_y = ay
           break
+        end
+      end
+      if final_x < 0 then
+        -- Ring fallback, RNG-free and probe-eats-safe like the rotation
+        -- above. Rings cap at 3 tiles: past that the caller's own
+        -- fallback (engine revive-in-place, or the blocked-fire retry
+        -- cadence) is the honest answer.
+        for r = 1, 3 do
+          for a = 0, count - 1 do
+            local ax, ay = og.respawn_anchor(team, a)
+            for i = 0, 4 * r - 1 do
+              if final_x < 0 then
+                local dx, dy = ring_offset(i, r)
+                local px = ax + dx * 16
+                local py = ay + dy * 16
+                if px >= 0 and py >= 0 then
+                  if og.spawn_spot_clear(w, px, py) then
+                    final_x = px
+                    final_y = py
+                  end
+                end
+              end
+            end
+          end
         end
       end
     end
@@ -645,51 +687,6 @@ local function schedule_dead(obs, mask, delay)
   end
 end
 
--- Corpse eligibility mirroring the classic difficulty-submenu semantics
--- the engine applies on non-scripted maps (0 off, 1 heroes, 2 everyone,
--- 3 Team-1 heroes; ctf.cpp classic_respawn_corpse_eligible), minus the
--- spawn-point gate no binding exposes: an "everyone" AI corpse respawns
--- while it has no live owner. This is the SUBMENU-HONORING scan a ball
--- game wants. CTF and Onslaught keep their own — neither reads the
--- submenu, and Onslaught halves the delay off a held waypoint — so the
--- three variants stay separate on purpose.
---
--- `anchors` is the caller's mode_anchors module. og.use is load-time only
--- and rejects cycles, and mode_anchors already uses THIS module, so the
--- score-team read arrives as an argument rather than an import.
-local function run_death_scan(anchors, obs, mask, ticks)
-  local mode = og.match_setting("respawn_mode")
-  if mode == 0 then
-    return
-  end
-  for k = 1, #obs do
-    local w = obs[k]
-    if w:dead() ~= 0 then
-      if w:order() == C.ORDER_LIVING then
-        local team = anchors.score_team(w)
-        if team < C.SCORE_TEAM_COUNT then
-          if core.mask_has(mask, team) then
-            local eligible = false
-            if w:has_guy() then
-              eligible = true
-              if mode == 3 then
-                eligible = team == 0
-              end
-            elseif mode == 2 then
-              eligible = w:owner() == nil
-            end
-            if eligible then
-              if not og.respawn_pending(w) then
-                og.respawn_schedule(w, ticks)
-              end
-            end
-          end
-        end
-      end
-    end
-  end
-end
-
 -- The neutral-reset backstop (soccer's design §6.3 kickoff rule, shared):
 -- an active team with zero live Livings comes back at every re-spot,
 -- whatever the difficulty submenu says — respawn
@@ -700,7 +697,9 @@ end
 -- so a wiped bot side whose bodies are already gone is reprovisioned with
 -- a fresh squad — the same spawn path init uses for empty active teams —
 -- unless revives are already in flight. `anchors` is the caller's
--- mode_anchors module, an argument for the reason run_death_scan gives.
+-- mode_anchors module: og.use is load-time only and rejects cycles, and
+-- mode_anchors already uses THIS module, so the score-team read arrives
+-- as an argument rather than an import.
 local function revive_wiped_teams(anchors, mask, ticks, cursor_slot)
   local obs = og.oblist()
   local live = { 0, 0, 0, 0 }
@@ -846,7 +845,6 @@ return {
   spawn_bots = spawn_bots,
   owns_its_life = owns_its_life,
   schedule_dead = schedule_dead,
-  run_death_scan = run_death_scan,
   revive_wiped_teams = revive_wiped_teams,
   foe_scores = foe_scores,
   nearest_enemy = nearest_enemy,

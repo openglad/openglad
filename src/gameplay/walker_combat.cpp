@@ -198,6 +198,14 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
 
 void walker::do_combat_damage(walker* attacker, walker* target, short tempdamage)
 {
+    // Every damage sink honors the ward. attack() gates earlier (its
+    // early-out also skips retaliation and score), but a caller reaching
+    // this sink directly — turn-undead's scripted arm — must not pierce
+    // BIT_INVINCIBLE or a running invulnerability.
+    if (target->stats()->query_bit_flags(BIT_INVINCIBLE) ||
+        target->invulnerable_left() != 0)
+        return;
+
     // Record damage done for records ..
     if (attacker && attacker->myguy && target->query_order() == Order::Living)  // hit a living
     {

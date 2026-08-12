@@ -2837,7 +2837,16 @@ bool apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
     SimEventLogSuppressGuard event_guard(*gameplay_context.sim_events);
 
     world.tick_count_ = snapshot.tick_count;
-    world.set_level_tick_count(snapshot.level_tick_count);
+    // A MID-level snapshot claims the level-change latch so the restored
+    // counter survives the next tick (set_level_tick_count's contract). A
+    // level-START seed (tick 0 — the transport-shadow installs seed the
+    // authoritative world this way) must instead leave the latch armed:
+    // the world's first tick still owes the level on_load dispatch, and a
+    // tick-0 counter has nothing to protect from the latch's zeroing.
+    if (snapshot.level_tick_count > 0)
+        world.set_level_tick_count(snapshot.level_tick_count);
+    else
+        world.reset_level_progress();
 
     world.level_done = snapshot.level_done;
     world.game_ended = snapshot.game_ended;

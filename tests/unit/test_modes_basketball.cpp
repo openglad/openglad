@@ -1612,21 +1612,26 @@ TEST_F(ModesBasketball, dead_ball_resets_and_revives_wiped_team)
             << "post-reset freeze armed";
     }
     // Wipe arm: an ATTENDED free ball still resets when a team is wiped
-    // (D25 — the watchdog ignores attendance), and the reset's backstop
-    // refields the wiped side.
+    // (D25 — the watchdog ignores attendance). Under always-on respawns
+    // the revive normally owns the comeback, so the watchdog arms only
+    // for a side with zero live AND zero pending — drain the entry to
+    // exercise exactly that backstop.
     {
         BballCourt fx;
-        fx.world().respawn_mode = 0;
         fx.tick(1);
         ASSERT_TRUE(fx.basketball_active());
         fx.thaw();
         fx.red->setxy(292, 452);  // center (300,460): 40 px from the ball —
                                   // attending, but NOT on it (no pickup)
         fx.green->set_dead(1);
-        fx.tick(598);
-        EXPECT_EQ(0, count_notifications(fx.events, "BALL RESET"));
+        fx.tick(1);
         ASSERT_EQ(0, alive_on_team(fx.world(), 1));
-        fx.tick(5);
+        EXPECT_EQ(1, ai_entries_for_team(fx.world(), 1))
+            << "the corpse scheduled the tick it fell — always-on";
+        fx.world().respawn.respawn_queue.clear();
+        fx.tick(597);
+        EXPECT_EQ(0, count_notifications(fx.events, "BALL RESET"));
+        fx.tick(6);
         EXPECT_EQ(1, count_notifications(fx.events, "BALL RESET"))
             << "attendance cannot stall the wipe watchdog";
         EXPECT_EQ(5, alive_on_team(fx.world(), 1))
@@ -1904,9 +1909,10 @@ struct BballRespawnCourt : BballCourt
 
 }  // namespace
 
-TEST_F(ModesBasketball, respawn_honors_submenu)
+TEST_F(ModesBasketball, respawn_ignores_submenu_everyone_returns)
 {
-    // Off: nobody comes back.
+    // Off: everyone still comes back — the submenu no longer gates a
+    // ball game.
     {
         BballRespawnCourt fx;
         fx.world().respawn_mode = 0;
@@ -1914,12 +1920,13 @@ TEST_F(ModesBasketball, respawn_honors_submenu)
         ASSERT_TRUE(fx.basketball_active());
         fx.kill_both();
         fx.tick(3);
-        EXPECT_FALSE(player_revive_pending(fx.world(), fx.hero->entity_id()));
-        EXPECT_EQ(0, ai_entries_for_team(fx.world(), 0));
+        EXPECT_TRUE(player_revive_pending(fx.world(), fx.hero->entity_id()));
+        EXPECT_EQ(1, ai_entries_for_team(fx.world(), 0));
         fx.tick(70);
-        EXPECT_TRUE(fx.hero->dead());
+        EXPECT_FALSE(fx.hero->dead()) << "Off no longer keeps anyone down";
     }
-    // Heroes: the roster corpse revives at its own anchors; AI stays down.
+    // Heroes: scheduling identical to Off; the roster corpse still lands
+    // on its own anchors.
     {
         BballRespawnCourt fx;
         fx.world().respawn_mode = 1;
@@ -1928,7 +1935,8 @@ TEST_F(ModesBasketball, respawn_honors_submenu)
         fx.kill_both();
         fx.tick(2);
         EXPECT_TRUE(player_revive_pending(fx.world(), fx.hero->entity_id()));
-        EXPECT_EQ(0, ai_entries_for_team(fx.world(), 0));
+        EXPECT_EQ(1, ai_entries_for_team(fx.world(), 0))
+            << "the AI corpse is scheduled regardless of the choice";
         fx.tick(70);  // respawn_ticks 60 + slack
         EXPECT_FALSE(fx.hero->dead());
         const bool at_anchor =
@@ -1938,9 +1946,8 @@ TEST_F(ModesBasketball, respawn_honors_submenu)
             << "on_respawn places at a team-0 anchor, got ("
             << fx.hero->xpos() << "," << fx.hero->ypos() << ")";
         EXPECT_GT(fx.var(kBbAnchorCursor), 0) << "anchor cursor rotated";
-        EXPECT_TRUE(fx.bot->dead());
     }
-    // Everyone: the unowned AI corpse is scheduled too.
+    // Everyone: the same always-on semantics, spelled by the submenu.
     {
         BballRespawnCourt fx;
         fx.world().respawn_mode = 2;
@@ -3126,7 +3133,6 @@ TEST_F(ModesBasketball, moving_receiver_pass_completes)
 TEST_F(ModesBasketball, wipe_watchdog_resets_and_revives)
 {
     BballCourt fx;
-    fx.world().respawn_mode = 0;
     fx.tick(1);
     ASSERT_TRUE(fx.basketball_active());
     fx.give_ball(fx.red, 350, 480);
@@ -3136,9 +3142,13 @@ TEST_F(ModesBasketball, wipe_watchdog_resets_and_revives)
         static_cast<std::int32_t>(fx.world().tick_count_) + 5000;
     fx.green->set_dead(1);
     fx.tick(1);
+    ASSERT_EQ(0, alive_on_team(fx.world(), 1));
+    // The always-on revive would own this comeback; drain it — the
+    // watchdog arms only for a side with zero live AND zero pending.
+    fx.world().respawn.respawn_queue.clear();
+    fx.tick(1);
     const std::int32_t since = fx.var(kBbStallSince);
     ASSERT_GT(since, 0) << "the wipe watchdog armed";
-    ASSERT_EQ(0, alive_on_team(fx.world(), 1));
 
     while (static_cast<std::int32_t>(fx.world().tick_count_) <
            since + kDeadBallTicks - 1)
@@ -4205,7 +4215,6 @@ TEST_F(ModesBasketball, wipe_watchdog_refields_a_matched_team_at_strength)
 {
     BballSoloRosterCourt fx(4);
     arm_matched(fx.world());
-    fx.world().respawn_mode = 0;
     fx.tick(1);
     ASSERT_TRUE(fx.basketball_active());
     const std::vector<int> at_init = team_levels_sorted(fx.world(), 1);
@@ -4222,8 +4231,11 @@ TEST_F(ModesBasketball, wipe_watchdog_refields_a_matched_team_at_strength)
             w->query_order() == Order::Living && w->team_num() == 1)
             w->set_dead(1);
     }
-    fx.tick(2);  // the engine sweeps the unscheduled AI corpses
+    fx.tick(2);  // corpses sweep; their revive entries ride the queue
     ASSERT_EQ(0, alive_on_team(fx.world(), 1));
+    // The D39 reprovision arm guards the drained-queue edge: clear the
+    // in-flight revives so the watchdog reset refields from the plan.
+    fx.world().respawn.respawn_queue.clear();
 
     fx.tick(598);
     for (int i = 0;
