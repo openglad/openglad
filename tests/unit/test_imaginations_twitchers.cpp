@@ -376,6 +376,45 @@ TEST_F(ImaginationsTwitchers, posted_hostiles_wake_and_attack_adjacent_enemy)
     }
 }
 
+// The engine half of the statue bug, isolated: a HOLD-POST guard never
+// wakes — that is its contract — but it must still DEFEND its post.
+// walker::act_guard's parting COMMAND_FIRE carried no direction, so
+// fire_check(0, 0) resolved facing UP and the facing gate denied every
+// shot except due north: a held hostile sentry pivoted at prey two
+// tiles EAST forever and never fired. With the foe delta passed through
+// (act_random's arg shape), a held post is a live turret: it lands
+// damage within the wake window WITHOUT ever leaving ACT_GUARD.
+TEST_F(ImaginationsTwitchers, hold_post_guard_fires_on_adjacent_east_enemy)
+{
+#if defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__)
+    GTEST_SKIP() << "sim-shape pin enforced on the ci-test/coverage lanes";
+#elif defined(__has_feature)
+#if __has_feature(thread_sanitizer) || __has_feature(address_sanitizer)
+    GTEST_SKIP() << "sim-shape pin enforced on the ci-test/coverage lanes";
+#endif
+#endif
+    LoadedWestlandsLevel fx(1, 42u);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+    world.enemy_freeze = 0;
+    world.end = 0;
+    walker* subject = find_placed_living(world, FAMILY_SKELETON, 31, 13);
+    ASSERT_NE(nullptr, subject) << "north causeway skeleton";
+    ASSERT_EQ(ACT_GUARD, subject->act_type());
+    subject->set_guard_hold_post(true); // a deliberately held sentry
+    walker* victim = spawn_victim(world, 33, 13);
+    ASSERT_NE(nullptr, victim);
+    const WakeResult r = observe_attack(world, subject, victim);
+    EXPECT_FALSE(r.woke) << "hold-post must keep the guard in ACT_GUARD";
+    EXPECT_EQ(ACT_GUARD, subject->act_type())
+        << "hold-post must keep the guard posted";
+    EXPECT_TRUE(r.victim_hurt)
+        << "held skeleton at (31, 13) never damaged an enemy two tiles "
+           "east in " << kWakeWindowTicks << " ticks (woke=" << r.woke
+        << " closed=" << r.closed
+        << ") — the undirected COMMAND_FIRE statue bug";
+}
+
 // A saved company member on a foreign roster color (yellow, team 3) is
 // a player's hero without a local seat, not garrison: the dream
 // script's reposter must never post it. Pre-fix it matched the

@@ -175,8 +175,8 @@ walker* place(GameWorld& world, Order order, int family, int team, int floor,
 }
 
 walker* place_living(GameWorld& w, int family, int team, int floor, int tx,
-                     int ty, int level, bool guard, bool specials_disabled,
-                     int spawn_delay)
+                     int ty, int level, bool guard, bool hold_post,
+                     bool specials_disabled, int spawn_delay)
 {
     walker* ob = place(w, Order::Living, family, team, floor, tx, ty);
     if (ob == nullptr)
@@ -185,15 +185,16 @@ walker* place_living(GameWorld& w, int family, int team, int floor, int tx,
     if (guard)
     {
         ob->set_act_type(ACT_GUARD);
-        // Guard wake policy (npc_flags bit 1): enemy guards are ambush
-        // posts — they hold until a foe walks into genuine sight (range +
-        // clear ray, walker::act_guard) and then hunt. Allied guards
-        // (teams 0/1) are the opposite kind of post: escorts, door-wards,
-        // garrisons — waking would march them off the very chokepoint they
-        // exist to hold, so they keep the classic stationary-sentry policy.
-        // A caller with a deliberate exception can override on the
-        // returned walker.
-        if (team <= 1)
+        // Guard wake policy (npc_flags bit 1): a plain guard is an ambush
+        // post — it holds until a foe walks into genuine sight (range +
+        // clear ray, walker::act_guard) and then hunts. hold_post makes it
+        // the classic stationary sentry instead (escorts, door-wards,
+        // chokepoint garrisons — posts that must never march off their
+        // spot). The policy is EXPLICITLY the caller's: team number
+        // implies nothing here. (An earlier revision inferred hold-post
+        // from team <= 1 — the Westlands allied-escort convention — which
+        // froze any campaign whose ENEMY garrison lives on team 1.)
+        if (hold_post)
             ob->set_guard_hold_post(true);
     }
     ob->set_specials_disabled(specials_disabled);

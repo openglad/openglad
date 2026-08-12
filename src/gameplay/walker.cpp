@@ -1463,6 +1463,8 @@ walker::act_guard()
 	set_foe(current_game->world->find_near_foe(this));
 	if (foe())
 	{
+		const short xdist = foe()->xpos() - xpos();
+		const short ydist = foe()->ypos() - ypos();
 		// 2026-07-10 guard facing gate (docs/GAMEPLAY_FIXES_FROM_CLASSIC.md).
 		// find_near_foe has no range or sight limit, so a guard posted
 		// beside a tree band pivoted to face the 2D-nearest foe THROUGH the
@@ -1476,7 +1478,16 @@ walker::act_guard()
 		if (distance_to_ob(foe()) <= lineofsight() * GRID_SIZE &&
 		    current_game->world->clear_sight_line(this, foe()))
 		{
-			set_curdir(static_cast<signed char>(facing(foe()->xpos() - xpos(), foe()->ypos()-ypos())));
+			// 2026-08-11 (directional guard fire, see below): the facing
+			// turn is face_delta, not a bare set_curdir. A posted guard
+			// never walks, so curdir alone was UNDONE next tick by
+			// living::act's pre-command turn toward the stale enddir (the
+			// posted-guard pivot twitch), and its lastx/lasty — the heading
+			// walker::fire() aims the released weapon by — stayed at the
+			// spawn default, launching any shot that DID release due north.
+			// face_delta pins all three channels; it consumes no RNG and
+			// never moves the walker.
+			face_delta(xdist, ydist);
 			// 2026-07-11 guard wake rule (docs/GAMEPLAY_FIXES_FROM_CLASSIC.md).
 			// Genuine sighting — the same deterministic range+ray test as
 			// the facing gate — WAKES the guard: it converts to ACT_RANDOM
@@ -1488,7 +1499,14 @@ walker::act_guard()
 			if (!guard_hold_post())
 				set_act_type(ACT_RANDOM);
 		}
-		stats_->try_command(COMMAND_FIRE,static_cast<std::int32_t>(current_game->world->rng_.next(30)));
+		// 2026-08-11 directional guard fire (docs/GAMEPLAY_FIXES_FROM_CLASSIC.md).
+		// The classic parting COMMAND_FIRE carried no direction, so
+		// fire_check(0, 0) resolved facing UP and the facing gate denied
+		// every shot except due north — a hold-post guard could not defend
+		// its post from any other direction. Pass the foe delta the way
+		// act_random does; the rng(30) draw (and the whole draw order) is
+		// unchanged, the delta computation is RNG-free.
+		stats_->try_command(COMMAND_FIRE,static_cast<std::int32_t>(current_game->world->rng_.next(30)), xdist, ydist);
 		return 1;
 	}
 	else

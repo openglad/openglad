@@ -50,13 +50,17 @@ struct CurvePin
 };
 
 // The Raspberry Isle at the fresh-team anchor. The garrison genuinely
-// fights now (the statue-era hold-post bug is fixed and the floor was
-// re-measured 2026-08-11: 8/7/8 across the three seeds), so a scattered
-// fresh landing can lose a member in the opening exchanges — the floor
-// is 7, not 8. Accessibility for new teams stays the design contract:
-// the full kill-all gate cleared 3/3 seeds with 7-8 survivors.
+// fights now — and since the engine-level directional-guard-fire fix
+// (2026-08-11, docs/GAMEPLAY_FIXES_FROM_CLASSIC.md) it also genuinely
+// SHOOTS: posted guards land their parting shot the tick they sight the
+// crew instead of face-dancing, so the opening exchanges cost a
+// scattered fresh landing more than the wake-only era did. Re-measured
+// 2026-08-11 under the live engine: 5/6/8 across seeds {42, 1337, 2025}
+// (was 8/7/8 when only the wake was fixed). Accessibility for new teams
+// stays the design contract: the full kill-all sweep cleared 3/3 seeds
+// (level_done at ticks 868/989/910) with 5-8 survivors.
 constexpr CurvePin kCurve[] = {
-    {1, 1, 7},
+    {1, 1, 5},
 };
 
 constexpr int kCalibrationTicks = 600;

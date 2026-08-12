@@ -343,8 +343,9 @@ void build_raspberry_isle()
     // Two keeps him the strongest mage on the isle (the ward arc keys
     // on that) and beatable by the survivors of an honest assault.
     walker* boss =
-        og::mapgen::place_living(w, FAMILY_MAGE, 1, 0, 31, 31, 2, true,
-                                 true);
+        og::mapgen::place_living(w, FAMILY_MAGE, 1, 0, 31, 31, 2,
+                                 /*guard=*/true, /*hold_post=*/false,
+                                 /*specials_disabled=*/true);
     if (boss != nullptr)
         boss->stats()->name = "Sea Wizard"; // 10 chars: fits the 11-char field
     og::mapgen::place_living(w, FAMILY_ORC, 1, 0, 30, 32, 1, true);
@@ -357,12 +358,15 @@ void build_raspberry_isle()
     // fixed, the full six landed exactly in a fresh crew's mid-assault
     // collapse window and wiped it in every playtest seed. Three keeps
     // the two-beat wave drama and a clearable dream.
-    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 26, 26, 1, true,
-                             false, 500);
-    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 37, 37, 1, true,
-                             false, 500);
-    og::mapgen::place_living(w, FAMILY_ORC, 1, 0, 34, 29, 1, true,
-                             false, 800);
+    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 26, 26, 1,
+                             /*guard=*/true, /*hold_post=*/false,
+                             /*specials_disabled=*/false, 500);
+    og::mapgen::place_living(w, FAMILY_SKELETON, 1, 0, 37, 37, 1,
+                             /*guard=*/true, /*hold_post=*/false,
+                             /*specials_disabled=*/false, 500);
+    og::mapgen::place_living(w, FAMILY_ORC, 1, 0, 34, 29, 1,
+                             /*guard=*/true, /*hold_post=*/false,
+                             /*specials_disabled=*/false, 800);
     // The wizard's colleges on the field ring, one trickle per art: the
     // mage tower northeast, the bone tent southwest, the elf treehouse
     // by the northwest grove. All on the crew's side of the moat, so
@@ -371,27 +375,15 @@ void build_raspberry_isle()
     og::mapgen::place_generator(w, FAMILY_TENT, 1, 0, 10, 43, 1);
     og::mapgen::place_generator(w, FAMILY_TREEHOUSE, 1, 0, 19, 11, 1);
 
-    // Hostile posts must WAKE. og::mapgen::place_living stamps hold-post
-    // on every team<=1 guard (the shared builders treat teams 0/1 as
-    // allied escorts that must never leave their chokepoint), but on
-    // this isle team 1 IS the enemy garrison. A hold-post guard never
-    // converts to the hunt AI — walker::act_guard skips the wake — and
-    // its parting COMMAND_FIRE carries no direction, so the facing gate
-    // eats every shot: the shipped castle sat in the open, pivoting at
-    // a crew two tiles away and doing literally nothing. Clear the flag
-    // on the whole garrison (the builder documents this exact per-caller
-    // override): posts wake at true sight and fight, the submitted
-    // design. The immobile watchtowers wake too — on a stationary
-    // family ACT_RANDOM turns and fires (walkstep is a facing turn),
-    // which is the whole job of an arrow turret; hold-post would lock
-    // its aim to the one facing the fire command defaults to.
-    for (const auto& uptr : w.oblist)
-    {
-        walker* ob = uptr.get();
-        if (ob != nullptr && ob->query_order() == Order::Living &&
-            ob->team_num() == 1 && ob->act_type() == ACT_GUARD)
-            ob->set_guard_hold_post(false);
-    }
+    // Hostile posts must WAKE — and they do by construction: hold_post is
+    // an explicit place_living parameter now (no team-inferred stamping),
+    // and every garrison call above leaves it false, so posts wake at
+    // true sight and fight — the submitted design. The immobile
+    // watchtowers wake too: on a stationary family ACT_RANDOM turns and
+    // fires (walkstep is a facing turn), which is the whole job of an
+    // arrow turret. The self-check below still enforces the inversion on
+    // the reloaded package: any hostile guard carrying hold-post fails
+    // the build.
 
     // --- The crew (team 0). --------------------------------------------------
     // Sixteen start markers spread around the landing ring — the whole

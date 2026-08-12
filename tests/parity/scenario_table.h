@@ -4726,7 +4726,7 @@ inline constexpr FactPredicate kFacts_multiplayer_two_teams_scen99[] = {
 };
 
 inline constexpr Mutation kMut_multiplayer_two_teams_scen99 = {
-    "src/gameplay/walker.cpp", 2285,
+    "src/gameplay/walker.cpp", 2303,
     "return headus->team_num() == headtarget->team_num();",
     "return 1;",
     "Replaces the no-myguy team-number comparison with unconditional friendliness. The three-team melee never starts, every walker keeps full HP, and play_sound collapses to one event, below the floor of four."
