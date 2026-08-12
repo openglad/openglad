@@ -5716,3 +5716,493 @@ TEST(GameLoop, zoom_half_mini_hp_bar_matches_projected_sprite_width)
               canvas_zoom_gameplay::pixel_index(s, bar_x + sprite_w + 1, bar_y))
         << "nothing may be drawn out at the unprojected sprite width";
 }
+
+// --- Mid-game local player add/remove (pause-menu design §5) ---------------
+//
+// These drive the real local shadow built by glad_init (the idiom of
+// local_split_screen_background_player_exit_prompt_does_not_hang above):
+// one in-process peer per seat, display client 0, authoritative server
+// session. The new seat functions live in local_transport_shadow.cpp.
+
+#include <openglad/core/test_trace.h>
+#include <openglad/core/constants.h>
+#include <openglad/gameplay/respawn/respawn_state.h>
+#include <openglad/interface/render/view_layout.h>
+
+namespace {
+
+// One display frame's worth of shadow traffic: input for every seat, then
+// the authoritative step + mirror drain.
+void midgame_pump(og::runtime::GameSession& session, int frames,
+                  std::uint32_t& tick)
+{
+    for (int i = 0; i < frames; ++i)
+    {
+        og::runtime::local_transport_shadow_send_input(
+            session, InputState{}, tick++);
+        og::runtime::local_transport_shadow_finish_tick(session);
+    }
+}
+
+walker* midgame_find_walker_by_user(screen* which_screen, int user)
+{
+    if (which_screen == nullptr)
+        return nullptr;
+    for (const auto& uptr : which_screen->world().oblist)
+    {
+        walker* const entity = uptr.get();
+        if (entity != nullptr && entity->user() == user)
+            return entity;
+    }
+    return nullptr;
+}
+
+walker* midgame_find_living_on_team(screen* which_screen, short team)
+{
+    if (which_screen == nullptr)
+        return nullptr;
+    for (const auto& uptr : which_screen->world().oblist)
+    {
+        walker* const entity = uptr.get();
+        if (entity != nullptr && !entity->dead() &&
+            entity->query_order() == Order::Living &&
+            static_cast<short>(entity->team_num()) == team)
+        {
+            return entity;
+        }
+    }
+    return nullptr;
+}
+
+// Feed held movement on ONE input slot until its walker moves (four
+// directions tried — the seat's spawn spot is probe-clear but a wall may
+// still block a given side).
+bool midgame_slot_moves_walker(og::runtime::GameSession& session,
+                               std::size_t slot, walker* w,
+                               std::uint32_t& tick)
+{
+    static constexpr int kDirections[4] = {
+        KEY_RIGHT, KEY_DOWN, KEY_LEFT, KEY_UP};
+    for (const int direction : kDirections)
+    {
+        const short before_x = w->xpos();
+        const short before_y = w->ypos();
+        for (int i = 0; i < 15; ++i)
+        {
+            InputState input{};
+            input.players[slot].held[direction] = true;
+            if (i == 0)
+                input.players[slot].pressed[direction] = true;
+            og::runtime::local_transport_shadow_send_input(
+                session, input, tick++);
+            og::runtime::local_transport_shadow_finish_tick(session);
+        }
+        midgame_pump(session, 1, tick); // release the key
+        if (w->xpos() != before_x || w->ypos() != before_y)
+            return true;
+    }
+    return false;
+}
+
+// Every live display view must sit exactly where viewscreen::resize projects
+// it for the current numviews (compute_view_layout at gameplay-UI dims,
+// projected onto the world canvas).
+void midgame_expect_view_layouts(screen* game_screen)
+{
+    for (int i = 0; i < game_screen->numviews; ++i)
+    {
+        viewscreen* const view = game_screen->viewob[i].get();
+        ASSERT_NE(nullptr, view) << "view " << i << " must be live";
+        const int ui_w = game_screen->gameplay_ui_canvas_w();
+        const int ui_h = game_screen->gameplay_ui_canvas_h();
+        const og::view_layout::ViewLayout baseline =
+            og::view_layout::compute_view_layout(
+                game_screen->numviews, i, view->prefs[PREF_VIEW], ui_w, ui_h);
+        const og::view_layout::ViewLayout expected =
+            og::view_layout::project_view_layout(
+                baseline, ui_w, ui_h,
+                game_screen->world_canvas_w(), game_screen->world_canvas_h());
+        EXPECT_EQ(expected.x, view->xloc) << "view " << i;
+        EXPECT_EQ(expected.y, view->yloc) << "view " << i;
+        EXPECT_EQ(expected.w, view->xview) << "view " << i;
+        EXPECT_EQ(expected.h, view->yview) << "view " << i;
+    }
+}
+
+} // namespace
+
+TEST(GameLoop, midgame_add_third_local_player)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    reset_default_player_controls();
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 2;
+    save.allied_mode = 0;
+    save.my_team = 0;
+
+    auto leader = std::make_unique<guy>(FAMILY_SOLDIER);
+    leader->name = "Leader";
+    leader->teamnum = 0;
+    auto scout = std::make_unique<guy>(FAMILY_ARCHER);
+    scout->name = "Scout";
+    scout->teamnum = 1;
+    save.team_list[0] = std::move(leader);
+    save.team_list[1] = std::move(scout);
+    save.team_size = 2;
+    ASSERT_TRUE(save.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(
+        og::runtime::local_transport_active(*og::runtime::current_session));
+    ASSERT_EQ(2u, og::runtime::local_transport_client_count(session));
+
+    std::uint32_t tick = 0;
+    midgame_pump(session, 8, tick);
+
+    ASSERT_TRUE(og::runtime::local_transport_shadow_can_add_player(session));
+
+    trace_clear();
+    ASSERT_TRUE(og::runtime::local_transport_shadow_add_local_player(session));
+    ASSERT_TRUE(trace_contains("seats", "add_player index=2"));
+
+    // Display: seat count, live third view, re-projected split layout.
+    EXPECT_EQ(3, static_cast<int>(game_screen->save_data.numplayers));
+    ASSERT_EQ(3, static_cast<int>(game_screen->numviews));
+    ASSERT_EQ(3u, og::runtime::local_transport_client_count(session));
+    viewscreen* const new_view = game_screen->viewob[2].get();
+    ASSERT_NE(nullptr, new_view);
+    EXPECT_EQ(2, static_cast<int>(new_view->mynum));
+    EXPECT_EQ(2, static_cast<int>(new_view->global_player_index_));
+    EXPECT_EQ(game_screen->viewob[0]->my_team, new_view->my_team)
+        << "the joiner plays view 0's team";
+    midgame_expect_view_layouts(game_screen);
+
+    // The new seat's key profile is whatever slot 2 of the pool holds — the
+    // rotation seeded IJKL there and the add must not reset it.
+    EXPECT_EQ(SDLK_I,
+              get_player_key_binding_for_mode(
+                  2, static_cast<int>(ControlDirectionMode::FourDirection),
+                  KEY_UP));
+
+    // Server: seat 2 bound to a live walker wearing user tag 2.
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server_screen);
+    walker* const seat2_walker = midgame_find_walker_by_user(server_screen, 2);
+    ASSERT_NE(nullptr, seat2_walker);
+    EXPECT_FALSE(seat2_walker->dead());
+    EXPECT_EQ(game_screen->viewob[0]->my_team,
+              static_cast<short>(seat2_walker->team_num()));
+    EXPECT_EQ(ACT_CONTROL, static_cast<int>(seat2_walker->act_type()));
+
+    // After a few frames the ControlChange + snapshot reach the display: the
+    // new view renders a control wearing the seat's tag.
+    midgame_pump(session, 8, tick);
+    ASSERT_NE(nullptr, new_view->control);
+    EXPECT_EQ(2, static_cast<int>(new_view->control->user()));
+
+    // Input routing: slot-2 keys move seat 2's walker (they were sampled all
+    // along — the add routed them).
+    EXPECT_TRUE(midgame_slot_moves_walker(session, 2u, seat2_walker, tick))
+        << "slot-2 input must drive the new seat's walker";
+
+    // Roster purity: whether the seat claimed an existing walker or spawned a
+    // stock one, the level-end roster rebuild must still hold exactly the two
+    // company heroes (a spawned joiner carries no myguy).
+    const bool spawned = trace_contains("seats", "source=spawned");
+    if (spawned)
+    {
+        EXPECT_EQ(nullptr, seat2_walker->myguy);
+    }
+    server_screen->save_data.update_guys(server_screen->world().oblist);
+    EXPECT_EQ(2, static_cast<int>(server_screen->save_data.team_size));
+    int roster_members = 0;
+    for (const auto& member : server_screen->save_data.team_list)
+    {
+        if (member != nullptr)
+            ++roster_members;
+    }
+    EXPECT_EQ(2, roster_members)
+        << "a mid-game joiner must not recruit itself into the company";
+
+    reset_default_player_controls();
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+}
+
+TEST(GameLoop, midgame_remove_middle_player_of_three)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    reset_default_player_controls();
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 3;
+    save.allied_mode = 0;
+    save.my_team = 0;
+
+    auto leader = std::make_unique<guy>(FAMILY_SOLDIER);
+    leader->name = "Leader";
+    leader->teamnum = 0;
+    auto scout = std::make_unique<guy>(FAMILY_ARCHER);
+    scout->name = "Scout";
+    scout->teamnum = 1;
+    auto third = std::make_unique<guy>(FAMILY_ARCHER);
+    third->name = "Third";
+    third->teamnum = 2;
+    save.team_list[0] = std::move(leader);
+    save.team_list[1] = std::move(scout);
+    save.team_list[2] = std::move(third);
+    save.team_size = 3;
+    ASSERT_TRUE(save.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(
+        og::runtime::local_transport_active(*og::runtime::current_session));
+    ASSERT_EQ(3u, og::runtime::local_transport_client_count(session));
+
+    std::uint32_t tick = 0;
+    midgame_pump(session, 8, tick);
+
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server_screen);
+    walker* const seat0_walker = midgame_find_walker_by_user(server_screen, 0);
+    walker* const seat1_walker = midgame_find_walker_by_user(server_screen, 1);
+    walker* const seat2_walker = midgame_find_walker_by_user(server_screen, 2);
+    ASSERT_NE(nullptr, seat0_walker);
+    ASSERT_NE(nullptr, seat1_walker);
+    ASSERT_NE(nullptr, seat2_walker);
+    const short seat2_team = game_screen->viewob[2]->my_team;
+
+    ASSERT_TRUE(
+        og::runtime::local_transport_shadow_can_remove_player(session, 1));
+
+    trace_clear();
+    ASSERT_TRUE(
+        og::runtime::local_transport_shadow_remove_local_player(session, 1));
+    ASSERT_TRUE(trace_contains("seats", "remove_player index=1"));
+
+    // Display: two seats, two live views, re-projected split; the surviving
+    // top seat's view renumbered down with its team.
+    EXPECT_EQ(2, static_cast<int>(game_screen->save_data.numplayers));
+    ASSERT_EQ(2, static_cast<int>(game_screen->numviews));
+    ASSERT_EQ(2u, og::runtime::local_transport_client_count(session));
+    ASSERT_NE(nullptr, game_screen->viewob[1].get());
+    EXPECT_EQ(nullptr, game_screen->viewob[2].get());
+    EXPECT_EQ(seat2_team, game_screen->viewob[1]->my_team)
+        << "old seat 2's team must follow it down to view 1";
+    midgame_expect_view_layouts(game_screen);
+
+    // Server: renumbered tags — seat 0 untouched, old seat 2 is player 1 now,
+    // the removed walker lives on as AI.
+    EXPECT_EQ(0, static_cast<int>(seat0_walker->user()));
+    EXPECT_EQ(1, static_cast<int>(seat2_walker->user()));
+    EXPECT_EQ(-1, static_cast<int>(seat1_walker->user()));
+    EXPECT_FALSE(seat1_walker->dead());
+    EXPECT_NE(ACT_CONTROL, static_cast<int>(seat1_walker->act_type()))
+        << "the removed seat's walker must fall back to its AI act type";
+
+    // Key profiles compacted: seat 1 now holds old seat 2's IJKL profile and
+    // the freed ARROWS profile rotated to the first inactive slot (2).
+    constexpr int kFour = static_cast<int>(ControlDirectionMode::FourDirection);
+    EXPECT_EQ(SDLK_I, get_player_key_binding_for_mode(1, kFour, KEY_UP));
+    EXPECT_EQ(SDLK_UP, get_player_key_binding_for_mode(2, kFour, KEY_UP));
+
+    // Input routing after the renumber: each surviving slot drives ITS walker.
+    midgame_pump(session, 4, tick);
+    EXPECT_TRUE(midgame_slot_moves_walker(session, 0u, seat0_walker, tick))
+        << "slot-0 input must still drive seat 0's walker";
+    EXPECT_TRUE(midgame_slot_moves_walker(session, 1u, seat2_walker, tick))
+        << "slot-1 input must drive the renumbered (old seat 2) walker";
+
+    reset_default_player_controls();
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+}
+
+TEST(GameLoop, midgame_seat_gating_networked_and_count_limits)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    reset_default_player_controls();
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.allied_mode = 1;
+    save.my_team = 0;
+
+    auto leader = std::make_unique<guy>(FAMILY_SOLDIER);
+    leader->name = "Leader";
+    leader->teamnum = 0;
+    save.team_list[0] = std::move(leader);
+    save.team_size = 1;
+    ASSERT_TRUE(save.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(
+        og::runtime::local_transport_active(*og::runtime::current_session));
+
+    std::uint32_t tick = 0;
+    midgame_pump(session, 8, tick);
+
+    // One seat: no removal, but room to add.
+    EXPECT_FALSE(
+        og::runtime::local_transport_shadow_can_remove_player(session, 0));
+    EXPECT_TRUE(og::runtime::local_transport_shadow_can_add_player(session));
+
+    // Networked sessions are out of scope (§5): both gates close.
+    session.networked_session_ = true;
+    EXPECT_FALSE(og::runtime::local_transport_shadow_can_add_player(session));
+    EXPECT_FALSE(
+        og::runtime::local_transport_shadow_can_remove_player(session, 0));
+    EXPECT_FALSE(og::runtime::local_transport_shadow_add_local_player(session));
+    session.networked_session_ = false;
+
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server_screen);
+    GameWorld& server_world = server_screen->world();
+
+    // Spawn-failure path: point view 0 at a team with no live walkers — the
+    // claim scan and the stock spawn (no teammate to anchor the ring probe
+    // on) both come up empty, so the add must fail cleanly with the seat
+    // count unchanged.
+    short empty_team = -1;
+    for (short t = 0; t < 4 && empty_team < 0; ++t)
+    {
+        if (midgame_find_living_on_team(server_screen, t) == nullptr)
+            empty_team = t;
+    }
+    ASSERT_NE(-1, static_cast<int>(empty_team))
+        << "gladiator scen 1 must leave at least one of the four seat teams "
+           "unpopulated";
+    const short lead_team = game_screen->viewob[0]->my_team;
+    game_screen->viewob[0]->my_team = empty_team;
+    trace_clear();
+    EXPECT_TRUE(og::runtime::local_transport_shadow_can_add_player(session));
+    EXPECT_FALSE(og::runtime::local_transport_shadow_add_local_player(session));
+    EXPECT_TRUE(trace_contains("seats", "add_player_failed"));
+    ASSERT_EQ(1u, og::runtime::local_transport_client_count(session));
+    game_screen->viewob[0]->my_team = lead_team;
+
+    // Every unclaimed walker on the lead team gets parked on the empty team:
+    // each add below must SPAWN its stock joiner (never claim) so the ring
+    // and anchor placement paths both run deterministically.
+    for (const auto& uptr : server_world.oblist)
+    {
+        walker* const entity = uptr.get();
+        if (entity != nullptr && !entity->dead() &&
+            entity->query_order() == Order::Living && entity->user() == -1 &&
+            static_cast<short>(entity->team_num()) == lead_team)
+        {
+            entity->set_team_num(static_cast<unsigned char>(empty_team));
+        }
+    }
+    walker* const seat0_walker = midgame_find_walker_by_user(server_screen, 0);
+    ASSERT_NE(nullptr, seat0_walker);
+
+    // 1 -> 2 seats: no anchors published on a classic level, so the joiner
+    // lands on the ring probe around the live teammate.
+    trace_clear();
+    ASSERT_TRUE(og::runtime::local_transport_shadow_add_local_player(session));
+    ASSERT_TRUE(trace_contains("seats", "source=spawned"));
+
+    // 2 -> 3 seats: publish a respawn anchor at a probed-clear spot; the
+    // joiner must land exactly on it (the anchor path precedes the ring).
+    short anchor_x = -1;
+    short anchor_y = -1;
+    static constexpr short kProbeRing[8][2] = {
+        {1, 0}, {-1, 0}, {0, 1}, {0, -1},
+        {1, 1}, {-1, 1}, {1, -1}, {-1, -1},
+    };
+    for (short radius = 3; radius >= 1 && anchor_x < 0; --radius)
+    {
+        for (const auto& dir : kProbeRing)
+        {
+            const short x = static_cast<short>(
+                seat0_walker->xpos() + dir[0] * radius * GRID_SIZE);
+            const short y = static_cast<short>(
+                seat0_walker->ypos() + dir[1] * radius * GRID_SIZE);
+            if (og::sim::respawn_spot_clear(server_world, seat0_walker, x, y,
+                                            /*floor=*/0))
+            {
+                anchor_x = x;
+                anchor_y = y;
+                break;
+            }
+        }
+    }
+    ASSERT_GE(anchor_x, 0) << "no probe-clear spot near the level 1 start";
+    server_world.respawn.anchor_count[lead_team] = 1;
+    server_world.respawn.anchor_x[lead_team][0] = anchor_x;
+    server_world.respawn.anchor_y[lead_team][0] = anchor_y;
+    trace_clear();
+    ASSERT_TRUE(og::runtime::local_transport_shadow_add_local_player(session));
+    ASSERT_TRUE(trace_contains("seats", "source=spawned"));
+    walker* const seat2_walker = midgame_find_walker_by_user(server_screen, 2);
+    ASSERT_NE(nullptr, seat2_walker);
+    EXPECT_EQ(anchor_x, seat2_walker->xpos());
+    EXPECT_EQ(anchor_y, seat2_walker->ypos());
+
+    // 3 -> 4 seats: the published anchor is occupied now, so this joiner
+    // falls back to the ring again. Then the cap closes the add gate.
+    trace_clear();
+    ASSERT_TRUE(og::runtime::local_transport_shadow_add_local_player(session));
+    ASSERT_TRUE(trace_contains("seats", "source=spawned"));
+    ASSERT_EQ(4u, og::runtime::local_transport_client_count(session));
+    EXPECT_EQ(4, static_cast<int>(game_screen->numviews));
+    EXPECT_FALSE(og::runtime::local_transport_shadow_can_add_player(session));
+    EXPECT_FALSE(og::runtime::local_transport_shadow_add_local_player(session));
+
+    // Removal index bounds at four seats.
+    EXPECT_FALSE(
+        og::runtime::local_transport_shadow_can_remove_player(session, -1));
+    EXPECT_FALSE(
+        og::runtime::local_transport_shadow_can_remove_player(session, 4));
+    EXPECT_TRUE(
+        og::runtime::local_transport_shadow_can_remove_player(session, 3));
+    EXPECT_FALSE(
+        og::runtime::local_transport_shadow_remove_local_player(session, 4));
+
+    // Removing seat 0 keeps peer 0 (the display client) alive: bindings shift
+    // down across the fixed peers and only the vacated TOP peer disconnects.
+    walker* const old_seat1_walker =
+        midgame_find_walker_by_user(server_screen, 1);
+    ASSERT_NE(nullptr, old_seat1_walker);
+    ASSERT_TRUE(
+        og::runtime::local_transport_shadow_remove_local_player(session, 0));
+    ASSERT_EQ(3u, og::runtime::local_transport_client_count(session));
+    EXPECT_EQ(3, static_cast<int>(game_screen->numviews));
+    EXPECT_EQ(old_seat1_walker, midgame_find_walker_by_user(server_screen, 0))
+        << "old seat 1's walker must renumber down to player 0";
+    EXPECT_EQ(-1, static_cast<int>(seat0_walker->user()))
+        << "the removed seat's walker must be released to AI";
+    midgame_pump(session, 6, tick);
+    EXPECT_EQ(0, static_cast<int>(game_screen->world().end))
+        << "the display session must survive removing seat 0";
+
+    reset_default_player_controls();
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+}

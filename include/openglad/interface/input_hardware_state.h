@@ -6,12 +6,19 @@
 // Requires: MouseState, JoyData (from input.h).
 
 #include <cstdint>
+#include <string>
 
 #include <openglad/interface/input_direction_grace.h>
 
 struct InputHardwareState {
     MouseState mouse{};
     JoyData player_joy[4]{};
+    // Explicit joystick assignment identity (SDL joystick GUID text; "" =
+    // none). Written by assign_joystick_to_player, cleared by
+    // clear_player_joystick and the setKeyFromEvent takeover, persisted as
+    // controls: playerN_joystick_guid. Survives an unplug (player_joy index
+    // drops to -1) so the seat re-attaches when the device returns.
+    std::string player_joystick_guids[4]{};
     int player_control_modes[4]{};
     // Factory keymap identity follows a profile when seats compact. This lets
     // per-seat RESET restore that profile's own layout after remove/add.

@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <cstddef>
+#include <string>
 
 namespace og::input_native
 {
@@ -24,6 +25,8 @@ enum class EventType : std::uint8_t
     JoyHatMotion,
     JoyButtonDown,
     JoyButtonUp,
+    JoyDeviceAdded,
+    JoyDeviceRemoved,
     Quit
 };
 
@@ -75,6 +78,13 @@ struct EventData
     int joy_hat_which = 0;
     int joy_hat_hat = 0;
     int joy_hat_value = 0;
+
+    // Hotplug (JoyDeviceAdded/Removed): the 0-based device index when the
+    // instance id is still enumerable (Added fires after the device joins the
+    // list), or -1 when it is not (Removed fires after the device left). The
+    // raw SDL instance id rides alongside for logging/diagnostics.
+    int joy_device_index = -1;
+    int joy_device_instance = 0;
 
     WindowEventType window_event = WindowEventType::Unknown;
     int window_data1 = 0;
@@ -138,6 +148,10 @@ int joystick_num_hats(JoystickHandle joystick);
 int joystick_get_axis(JoystickHandle joystick, int axis);
 int joystick_get_button(JoystickHandle joystick, int button);
 int joystick_get_hat(JoystickHandle joystick, int hat);
+// Stable device-model identity for persistence (SDL joystick GUID as text).
+// "" when device_index is out of range. Note SDL GUIDs identify the device
+// model, not the unit: two identical pads share one GUID.
+std::string joystick_device_guid(int device_index);
 void joystick_set_event_state(bool enabled);
 bool joystick_subsystem_initialized();
 void joystick_quit_subsystem();

@@ -105,6 +105,12 @@ private:
         GameSession& session,
         std::span<const std::pair<std::uint8_t, std::string>> companies);
     friend bool local_transport_shadow_toggle_pause(GameSession& session);
+    friend bool local_transport_shadow_can_add_player(GameSession& session);
+    friend bool local_transport_shadow_add_local_player(GameSession& session);
+    friend bool local_transport_shadow_can_remove_player(GameSession& session,
+                                                         int player_index);
+    friend bool local_transport_shadow_remove_local_player(GameSession& session,
+                                                           int player_index);
     friend bool local_transport_shadow_abort_level(GameSession& session);
     friend void local_transport_shadow_send_input(GameSession& session,
                                                   const InputState& input,

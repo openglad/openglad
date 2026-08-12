@@ -332,6 +332,30 @@ class JoyData
     bool hasButtonSet(int key_enum) const;
 };
 
+// --- Explicit per-seat joystick assignment (docs/pause-menu-design.md §4).
+// A seat only gets a joystick through these (or a persisted-GUID re-attach);
+// there is no positional device-i-to-player-i auto-bind at boot.
+// Assigning a device already held by another seat clears it from that seat.
+// Uses JoyData(device_index) default layout synthesis. SDL builds only.
+bool assign_joystick_to_player(int player, int device_index);
+// Full unbind: drops the device, the layout, and the persisted GUID claim.
+void clear_player_joystick(int player);
+// 0-based device index driving this seat, -1 if none.
+int player_joystick_device(int player);
+// Connected devices usable for assignment (clamped to the handle table).
+int joystick_device_count();
+// Re-attach any seat whose saved GUID matches a connected device (boot,
+// controls reload, hotplug add). SDL builds only (implemented in input.cpp).
+void reattach_saved_joysticks();
+// GUID persistence lives in SDL-free input_state.cpp, which cannot resolve a
+// GUID against hardware. input.cpp registers the re-attach hook here (from
+// init_input); headless builds leave it unset and carry GUIDs as opaque text.
+void set_joystick_guid_reattach_hook(void (*hook)());
+// Pure display formatter for a joystick binding: "B0", "A0+", "A1-",
+// "HU"/"HR"/"HD"/"HL"; "--" for NONE and the ignored diagonal hat kinds.
+// SDL-free (input_state.cpp) so headless UIs and unit tests can use it.
+std::string joy_binding_display_name(int key_type, int key_index);
+
 struct MouseState
 {
     float x, y;
@@ -372,7 +396,6 @@ short& input_text_input_event_ref();
 inline bool playerHasJoystick(int player_num) { return (player_joy[player_num].index >= 0); }
 inline void disablePlayerJoystick(int player_num) { player_joy[player_num].index = -1; }
 
-void resetJoystick(int player_num);
 bool isPlayerHoldingKey(int player_index, int key_enum);
 bool didPlayerPressKey(int player_index, int key_enum, const void* native_event);
 template <typename EventT>
@@ -527,9 +550,7 @@ void draw_touch_controls(screen* vob);
 bool input_touch_has_alternate();
 #define CONTINUE_ACTION_STRING "TAP"
 #else
-#ifdef OUYA
-#define CONTINUE_ACTION_STRING "PRESS 'O'"
-#elif defined(__EMSCRIPTEN__)
+#ifdef __EMSCRIPTEN__
 // Web: Escape is reserved for browser fullscreen exit; taps and clicks
 // dismiss too (see the input_continue_ click hook).
 #define CONTINUE_ACTION_STRING "TAP OR BACKSPACE"

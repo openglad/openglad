@@ -13,6 +13,8 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <format>
+#include <string>
 #include <vector>
 
 extern cfg_store cfg;
@@ -115,6 +117,7 @@ struct FullControlSnapshotGuard
     int mode8[4][NUM_KEYS];
     int active[4][NUM_KEYS];
     JoyData joy[4];
+    std::string joystick_guids[4];
     DirectionGraceState direction_grace[4];
     bool touch_keystate[4][NUM_KEYS];
 
@@ -127,6 +130,7 @@ struct FullControlSnapshotGuard
             default_profiles[p] =
                 hw.player_control_default_profiles[p];
             joy[p] = player_joy[p];
+            joystick_guids[p] = hw.player_joystick_guids[p];
             direction_grace[p] = hw.direction_grace[p];
             for (int k = 0; k < NUM_KEYS; ++k)
             {
@@ -161,6 +165,7 @@ struct FullControlSnapshotGuard
                     active[p][k];
             }
             player_joy[p] = joy[p];
+            hw.player_joystick_guids[p] = joystick_guids[p];
             hw.direction_grace[p] = direction_grace[p];
             for (int k = 0; k < NUM_KEYS; ++k)
                 hw.touch_keystate[p][k] = touch_keystate[p][k];
@@ -971,6 +976,7 @@ TEST(InputKeybinds, compact_controls_after_first_of_four_keeps_readded_mapping_u
         player_joy[p].index = 20 + p;
         player_joy[p].key_type[KEY_YELL] = JoyData::BUTTON;
         player_joy[p].key_index[KEY_YELL] = p;
+        hw.player_joystick_guids[p] = std::format("guid-{}", p);
         hw.direction_grace[p] = {
             .prev_raw = 3, .hold_mask = 3, .ticks_left = 2};
         for (int k = 0; k < NUM_KEYS; ++k)
@@ -996,6 +1002,10 @@ TEST(InputKeybinds, compact_controls_after_first_of_four_keeps_readded_mapping_u
         EXPECT_EQ(expected_up[p],
                   og::runtime::current_session->player_keys_[p][KEY_UP]);
         EXPECT_EQ(expected_joy[p], player_joy[p].index);
+        EXPECT_EQ(std::format("guid-{}", (p + 1) % 4),
+                  hw.player_joystick_guids[p])
+            << "the joystick GUID must ride with the profile through "
+               "compaction";
         EXPECT_EQ(
             (p + 1) % 4,
             hw.player_control_default_profiles[p]);

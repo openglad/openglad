@@ -78,11 +78,6 @@ char* g_web_argv[] = {g_web_arg0, nullptr};
 } // namespace
 #endif
 
-#ifdef OUYA
-#include <openglad/legacy/OuyaController.h>
-#endif
-
-
 #ifdef __EMSCRIPTEN__
 // Game state machine for Emscripten - allows single main loop to handle all states
 enum class GameState {
@@ -203,10 +198,6 @@ void initialize_runtime_config(int argc, char* argv[])
 
 void bootstrap_runtime(int argc, char* argv[])
 {
-#ifdef OUYA
-    OuyaControllerManager::init();
-#endif
-
     //buffers: setting the seed
     srand(static_cast<unsigned int>(time(nullptr)));
 

@@ -149,6 +149,38 @@ void local_transport_shadow_set_player_companies(
     GameSession& session,
     std::span<const std::pair<std::uint8_t, std::string>> companies);
 bool local_transport_shadow_toggle_pause(GameSession& session);
+// --- Mid-game LOCAL seat add/remove (design §5; non-networked shadows only) --
+// True only when a plain local (non-networked, non-spectator) authoritative
+// shadow is live and the current seat count is below MAX_PLAYERS.
+bool local_transport_shadow_can_add_player(GameSession& session);
+// Add seat N (N = current count). Server side: claim an unclaimed walker of
+// view 0's team via the existing scan, else spawn a stock non-roster soldier
+// at a deterministically probed spot (team anchors, then a ring around a live
+// teammate — never a world.rng_ draw); new in-process peer, bind_player +
+// send_initial_snapshot + set_player_control (the ControlChange broadcast —
+// bind alone is silent). Display side: numplayers first, then numviews, then
+// the new view via compute_view_layout + relayout_views. The new seat reads
+// key-profile slot N exactly as the profile-pool rotation seeded it. Safe to
+// call while the server pause is pending; the seat count change follows
+// save_data.numplayers back to Base Camp (the lobby resizes from it on
+// resume_after_level). Returns false (and changes nothing) when no walker
+// could be claimed or placed.
+bool local_transport_shadow_add_local_player(GameSession& session);
+// True when a local shadow is live with >= 2 seats and player_index is a
+// valid seat. Any seat may be removed (including seat 0): seats above it are
+// renumbered down while peer 0's transport stays owned by the display client,
+// so the host peer is never disconnected.
+bool local_transport_shadow_can_remove_player(GameSession& session,
+                                              int player_index);
+// Remove one local seat. Server side: set_player_control(idx, nullptr) FIRST
+// (the disconnect path never clears player_controls_), release the walker to
+// AI (set_user(-1) + restore_act_type), shift the surviving seats' bindings
+// down in sorted player-index order across the fixed peers, then disconnect
+// the vacated LAST peer (never peer 0). Display side: numplayers, view
+// rebuild for the new count, relayout_views,
+// compact_player_controls_after_removal, view_follow reset for dropped slots.
+bool local_transport_shadow_remove_local_player(GameSession& session,
+                                                int player_index);
 // Abort the current mission. Host / local play ends it authoritatively and
 // returns true. A networked client instead asks the server to withdraw ALL
 // players and returns false, signalling the caller to keep the display loop

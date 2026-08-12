@@ -2229,16 +2229,8 @@ void viewscreen::options_menu()
 	active_screen()->draw_box(45,OPLINES(10),275,OPLINES(10)+6,PANEL_COLOR,1,1);
 	optiontext.write_xy(LEFT_OPS,OPLINES(10),message.c_str(),static_cast<unsigned char>(BLACK),1);
 
-	//if (prefs[PREF_JOY] == PREF_NO_JOY)
-	if(!playerHasJoystick(mynum))
-		message = "Joystick Mode (J)      : OFF ";
-	else
-		message = "Joystick Mode (J)      : ON ";
-	active_screen()->draw_box(45,OPLINES(11),275,OPLINES(11)+6,PANEL_COLOR,1,1);
-	optiontext.write_xy(LEFT_OPS,OPLINES(11),message.c_str(),static_cast<unsigned char>(BLACK),1);
-
-	optiontext.write_xy(LEFT_OPS, OPLINES(12), "Configure controls from main menu", static_cast<unsigned char>(BLACK), 1);
-	optiontext.write_xy(LEFT_OPS, OPLINES(13), "  Options -> Player Controls", static_cast<unsigned char>(BLACK), 1);
+	optiontext.write_xy(LEFT_OPS, OPLINES(11), "Configure controls from main menu", static_cast<unsigned char>(BLACK), 1);
+	optiontext.write_xy(LEFT_OPS, OPLINES(12), "  Options -> Player Controls", static_cast<unsigned char>(BLACK), 1);
 
 	// Draw the current screen
 	active_screen()->buffer_to_screen(0, 0, 320, 200);
@@ -2499,26 +2491,6 @@ void viewscreen::options_menu()
 			optiontext.write_xy(LEFT_OPS,OPLINES(10),message.c_str(),static_cast<unsigned char>(BLACK),1);
 			active_screen()->buffer_to_screen(0, 0, 320, 200);
 
-		}
-
-		if (og::runtime::current_session->keystates_[KEYSTATE_j]) // toggle joystick display
-		{
-		    if(playerHasJoystick(mynum))
-                disablePlayerJoystick(mynum);
-		    else
-                resetJoystick(mynum);
-		    
-		    // Update joystick display message
-            if(!playerHasJoystick(mynum))
-                message = "Joystick Mode (J)      : OFF ";
-            else
-                message = "Joystick Mode (J)      : ON ";
-            active_screen()->draw_box(45,OPLINES(11),275,OPLINES(11)+6,PANEL_COLOR,1,1);
-            optiontext.write_xy(LEFT_OPS,OPLINES(11),message.c_str(),static_cast<unsigned char>(BLACK),1);
-			active_screen()->buffer_to_screen(0, 0, 320, 200);
-            
-            YIELD_SLEEP(500);
-            clear_events();
 		}
 
 			if (og::runtime::current_session->keystates_[KEYSTATE_b]) // toggle button display

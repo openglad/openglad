@@ -2,6 +2,7 @@
 
 #include <openglad/interface/input.h>
 #include <openglad/interface/input_hardware_state.h>
+#include <openglad/interface/input_mappings.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/core/util.h>
 
@@ -245,7 +246,43 @@ int current_player_mode_keymap_index(int player_index)
 
 void sync_runtime_keys_to_active_mode(int player_index);
 void activate_mode_keymap_for_player(int player_index, int mode);
+
+// Resolving a saved joystick GUID against connected hardware needs SDL, which
+// this file must not touch. input.cpp registers the re-attach hook from
+// init_input; headless builds (which never compile input.cpp) leave it unset
+// and carry GUIDs as opaque strings.
+void (*g_joystick_guid_reattach_hook)() = nullptr;
 } // namespace
+
+void set_joystick_guid_reattach_hook(void (*hook)())
+{
+    g_joystick_guid_reattach_hook = hook;
+}
+
+std::string joy_binding_display_name(int key_type, int key_index)
+{
+    switch (key_type)
+    {
+    case JoyData::BUTTON:
+        return std::format("B{}", key_index);
+    case JoyData::POS_AXIS:
+        return std::format("A{}+", key_index);
+    case JoyData::NEG_AXIS:
+        return std::format("A{}-", key_index);
+    case JoyData::HAT_UP:
+        return "HU";
+    case JoyData::HAT_RIGHT:
+        return "HR";
+    case JoyData::HAT_DOWN:
+        return "HD";
+    case JoyData::HAT_LEFT:
+        return "HL";
+    default:
+        // NONE and the ignored diagonal hat kinds read as unbound: diagonal
+        // hat mappings never produce input (getState returns false).
+        return "--";
+    }
+}
 
 bool reset_default_player_controls_for_player(int player_index, bool web_mode)
 {
@@ -305,6 +342,8 @@ bool compact_player_controls_after_removal(int removed_player_index, int active_
     const int removed_default_profile =
         hw().player_control_default_profiles[removed_player_index];
     const JoyData removed_joy = player_joy[removed_player_index];
+    const std::string removed_joy_guid =
+        hw().player_joystick_guids[removed_player_index];
 
     for (int source = removed_player_index + 1; source < active_player_count; ++source)
     {
@@ -322,6 +361,8 @@ bool compact_player_controls_after_removal(int removed_player_index, int active_
         hw().player_control_default_profiles[destination] =
             hw().player_control_default_profiles[source];
         player_joy[destination] = player_joy[source];
+        hw().player_joystick_guids[destination] =
+            hw().player_joystick_guids[source];
         activate_mode_keymap_for_player(
             destination, hw().player_control_modes[destination]);
     }
@@ -337,6 +378,7 @@ bool compact_player_controls_after_removal(int removed_player_index, int active_
     hw().player_control_default_profiles[inactive_tail] =
         removed_default_profile;
     player_joy[inactive_tail] = removed_joy;
+    hw().player_joystick_guids[inactive_tail] = removed_joy_guid;
     activate_mode_keymap_for_player(inactive_tail, removed_mode);
 
     // Held input is transient, not part of the profile. Do not let the menu
@@ -537,7 +579,21 @@ void load_player_control_settings_from_cfg(cfg_store& config, bool web_mode)
                   kDefaultControlModes[static_cast<std::size_t>(
                       default_profile)]));
         activate_mode_keymap_for_player(p, hw().player_control_modes[p]);
+
+        // Joystick assignment identity ("" = none). The cfg is authoritative:
+        // a changed GUID drops any live attachment; the re-attach hook below
+        // resolves the stored GUIDs against connected devices (SDL builds).
+        const std::string saved_joystick_guid = config.get_setting(
+            "controls", std::format("player{}_joystick_guid", p + 1));
+        if (saved_joystick_guid != hw().player_joystick_guids[p])
+        {
+            player_joy[p] = JoyData();
+            hw().player_joystick_guids[p] = saved_joystick_guid;
+        }
     }
+
+    if (g_joystick_guid_reattach_hook != nullptr)
+        g_joystick_guid_reattach_hook();
 
     if (web_mode)
     {
@@ -561,6 +617,9 @@ void save_player_control_settings_to_cfg(cfg_store& config)
                 hw().player_control_default_profiles[p] + 1));
         config.apply_setting("controls", std::format("player{}_mode", p + 1),
             std::to_string(get_player_control_mode(p)));
+        config.apply_setting("controls",
+            std::format("player{}_joystick_guid", p + 1),
+            hw().player_joystick_guids[p]);
         for (int k = 0; k < NUM_KEYS; ++k)
         {
             const int mode_index = current_player_mode_keymap_index(p);
@@ -817,3 +876,28 @@ void note_direction_key_event(int keycode)
         }
     }
 }
+
+namespace og::input
+{
+
+// Factory-table readers for the named-mapping library (input_mappings.cpp).
+// The tables above stay file-static — they are pinned by the static_asserts
+// next to them, and a second copy in another translation unit would rot the
+// moment one of the two moved.
+int factory_default_key(int profile, int mode_index, int key_enum)
+{
+    if (profile < 0 || profile >= 4 || key_enum < 0 || key_enum >= NUM_KEYS)
+        return KEYCODE_UNKNOWN;
+    return (mode_index == kModeEightIndex)
+        ? kDefaultEightDirKeys[profile][key_enum]
+        : kDefaultFourDirKeys[profile][key_enum];
+}
+
+int factory_default_mode(int profile)
+{
+    if (profile < 0 || profile >= 4)
+        return static_cast<int>(ControlDirectionMode::FourDirection);
+    return kDefaultControlModes[static_cast<std::size_t>(profile)];
+}
+
+} // namespace og::input

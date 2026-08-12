@@ -720,6 +720,7 @@ og_add_unit_group(og_unit_core FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_text_wrap.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_web_back_key.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_web_control_defaults.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_input_mappings.cpp
 )
 
 og_add_unit_group(og_unit_sim FILES

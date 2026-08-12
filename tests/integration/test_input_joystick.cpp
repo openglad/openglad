@@ -1,10 +1,12 @@
 #include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
+#include <openglad/core/test_trace.h>
+#include <openglad/resources/gparser.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include <algorithm>
+#include <string>
 extern void wait_for_key(int somekey);
-extern void resetJoystick(int player_num);
 extern og::input_native::JoystickHandle joysticks[10];
 
 namespace
@@ -93,21 +95,55 @@ public:
 
     ~VirtualJoystick()
     {
-        if (joystick_ != nullptr)
-            SDL_CloseJoystick(joystick_);
-        if (instance_id_ != 0)
-            SDL_DetachVirtualJoystick(instance_id_);
+        detach();
     }
 
     VirtualJoystick(const VirtualJoystick&) = delete;
     VirtualJoystick& operator=(const VirtualJoystick&) = delete;
 
     SDL_Joystick* get() const { return joystick_; }
+    SDL_JoystickID instance_id() const { return instance_id_; }
+
+    // Simulates an unplug mid-test (the destructor then has nothing to do).
+    void detach()
+    {
+        if (joystick_ != nullptr)
+        {
+            SDL_CloseJoystick(joystick_);
+            joystick_ = nullptr;
+        }
+        if (instance_id_ != 0)
+        {
+            SDL_DetachVirtualJoystick(instance_id_);
+            instance_id_ = 0;
+        }
+    }
 
 private:
     SDL_JoystickID instance_id_ = 0;
     SDL_Joystick* joystick_ = nullptr;
 };
+
+// 0-based device index of an attached instance id, -1 when not enumerable.
+int device_index_of(SDL_JoystickID instance)
+{
+    int count = 0;
+    SDL_JoystickID* ids = SDL_GetJoysticks(&count);
+    int found = -1;
+    if (ids != nullptr)
+    {
+        for (int i = 0; i < count; ++i)
+        {
+            if (ids[i] == instance)
+            {
+                found = i;
+                break;
+            }
+        }
+        SDL_free(ids);
+    }
+    return found;
+}
 } // namespace
 
 TEST(InputJoystick, input_joydata_setKeyFromEvent_and_takeover)
@@ -297,10 +333,12 @@ TEST(InputJoystick, input_joydata_press_release_helpers_and_player_queries)
 
     wait_for_key(SDLK_SPACE); // TESTING build: should return immediately.
 
-    resetJoystick(0);
-    const bool has_device = og::input_native::num_joysticks() > 0;
-    ASSERT_EQ(has_device, playerHasJoystick(0))
-        << "playerHasJoystick should reflect whether a joystick device was detected";
+    player_joy[0] = j;
+    clear_player_joystick(0);
+    ASSERT_TRUE(!playerHasJoystick(0))
+        << "clear_player_joystick should leave the seat keyboard-driven";
+    ASSERT_EQ(JoyData::NONE, player_joy[0].key_type[KEY_FIRE])
+        << "clear_player_joystick is a full unbind, not just an index drop";
 }
 
 
@@ -348,10 +386,11 @@ namespace
 {
 // This test used to be order-dependent (failed standalone / under shuffle):
 // nothing in it initialized SDL's joystick subsystem, so it only worked when
-// an earlier test happened to leave the subsystem up (resetJoystick in the
-// press/release test), and SDL_UpdateJoysticks() is a silent no-op while the
-// subsystem is down — the virtual button press never landed. Subsystem init
-// is refcounted, so the paired init/quit restores the prior state exactly.
+// an earlier test happened to leave the subsystem up, and
+// SDL_UpdateJoysticks() is a silent no-op while the subsystem is down — the
+// virtual button press never landed. init_input now brings the subsystem up
+// at binary startup, but the paired init/quit keeps each test standalone;
+// subsystem init is refcounted, so it restores the prior state exactly.
 struct JoystickSubsystemGuard
 {
     JoystickSubsystemGuard()
@@ -450,9 +489,14 @@ TEST(InputJoystick, init_input_opens_attached_virtual_devices)
     VirtualJoystick device(2, 6, 1, "OpenGlad init test pad");
     ASSERT_NE(nullptr, device.get()) << SDL_GetError();
     JoystickHandleGuard handle_guard;
+    // No saved GUIDs: init_input must not attach anything to any seat.
+    for (int p = 0; p < 4; ++p)
+        clear_player_joystick(p);
 
     init_input();
 
+    EXPECT_TRUE(og::input_native::joystick_subsystem_initialized())
+        << "boot init must bring the joystick subsystem up";
     const int count = std::min(
         og::input_native::num_joysticks(), 10);
     ASSERT_GT(count, 0);
@@ -461,6 +505,12 @@ TEST(InputJoystick, init_input_opens_attached_virtual_devices)
         opened_device = opened_device || joysticks[i] != nullptr;
     EXPECT_TRUE(opened_device);
     EXPECT_TRUE(SDL_JoystickEventsEnabled());
+    for (int p = 0; p < 4; ++p)
+    {
+        EXPECT_FALSE(playerHasJoystick(p))
+            << "the positional device-i-to-player-i auto-bind is gone; seat "
+            << p << " must stay keyboard-driven";
+    }
 
     // init_input owns no shutdown phase, so close the handles acquired by
     // this test before the global slot guard restores the process state.
@@ -558,4 +608,352 @@ TEST(InputJoystick, input_joydata_null_and_wrong_event_paths)
     handle_joy_event(axis);
     EXPECT_EQ(1, query_key_press_event())
         << "crossing the negative joystick dead zone is an input press";
+}
+
+TEST(InputJoystick, hat_motion_dispatch_sets_key_press_event)
+{
+    clear_keyboard();
+    SDL_Event e{};
+    e.type = SDL_EVENT_JOYSTICK_HAT_MOTION;
+    e.jhat.which = 3;
+    e.jhat.hat = 0;
+    e.jhat.value = SDL_HAT_UP;
+    handle_events(e);
+    EXPECT_EQ(1, query_key_press_event())
+        << "hat-only d-pads must reach press-any-key waits through handle_events";
+
+    clear_keyboard();
+    e.jhat.value = SDL_HAT_CENTERED;
+    handle_events(e);
+    EXPECT_EQ(0, query_key_press_event())
+        << "a hat returning to center is a release, not a press";
+
+    // Sub-deadzone axis noise must not count as a press either.
+    clear_keyboard();
+    SDL_Event axis{};
+    axis.type = SDL_EVENT_JOYSTICK_AXIS_MOTION;
+    axis.jaxis.which = 3;
+    axis.jaxis.axis = 0;
+    axis.jaxis.value = 7999;
+    handle_events(axis);
+    EXPECT_EQ(0, query_key_press_event());
+}
+
+TEST(InputJoystick, joy_binding_display_name_formats)
+{
+    EXPECT_EQ("B0", joy_binding_display_name(JoyData::BUTTON, 0));
+    EXPECT_EQ("B11", joy_binding_display_name(JoyData::BUTTON, 11));
+    EXPECT_EQ("A0+", joy_binding_display_name(JoyData::POS_AXIS, 0));
+    EXPECT_EQ("A1-", joy_binding_display_name(JoyData::NEG_AXIS, 1));
+    EXPECT_EQ("HU", joy_binding_display_name(JoyData::HAT_UP, 0));
+    EXPECT_EQ("HR", joy_binding_display_name(JoyData::HAT_RIGHT, 0));
+    EXPECT_EQ("HD", joy_binding_display_name(JoyData::HAT_DOWN, 0));
+    EXPECT_EQ("HL", joy_binding_display_name(JoyData::HAT_LEFT, 1));
+    EXPECT_EQ("--", joy_binding_display_name(JoyData::NONE, 0));
+    // Diagonal hat kinds never produce input, so they read as unbound.
+    EXPECT_EQ("--", joy_binding_display_name(JoyData::HAT_UP_RIGHT, 0));
+    EXPECT_EQ("--", joy_binding_display_name(JoyData::HAT_DOWN_LEFT, 0));
+    EXPECT_EQ("--", joy_binding_display_name(999, 3));
+}
+
+TEST(InputJoystick, assignment_api_assign_steal_clear)
+{
+    JoystickSubsystemGuard subsystem_guard;
+    CompleteInputStateGuard input_guard;
+    BackgroundJoystickEventsGuard background_events_guard;
+    VirtualJoystick pad_a(2, 6, 0, "OpenGlad assign pad A");
+    VirtualJoystick pad_b(2, 6, 0, "OpenGlad assign pad B");
+    ASSERT_NE(nullptr, pad_a.get()) << SDL_GetError();
+    ASSERT_NE(nullptr, pad_b.get()) << SDL_GetError();
+    JoystickHandleGuard handle_guard;
+    const int d_a = device_index_of(pad_a.instance_id());
+    const int d_b = device_index_of(pad_b.instance_id());
+    ASSERT_GE(d_a, 0);
+    ASSERT_GE(d_b, 0);
+    ASSERT_LT(d_a, 10);
+    ASSERT_LT(d_b, 10);
+    joysticks[d_a] = pad_a.get();
+    joysticks[d_b] = pad_b.get();
+    for (int p = 0; p < 4; ++p)
+        clear_player_joystick(p);
+
+    // Rejections: bad seat, bad device index, empty table slot.
+    EXPECT_FALSE(assign_joystick_to_player(-1, d_a));
+    EXPECT_FALSE(assign_joystick_to_player(4, d_a));
+    EXPECT_FALSE(assign_joystick_to_player(0, -1));
+    EXPECT_FALSE(assign_joystick_to_player(0, 10));
+    int empty_slot = -1;
+    for (int i = 0; i < 10; ++i)
+    {
+        if (i != d_a && i != d_b)
+        {
+            empty_slot = i;
+            break;
+        }
+    }
+    EXPECT_FALSE(assign_joystick_to_player(0, empty_slot));
+    EXPECT_FALSE(playerHasJoystick(0));
+
+    // Happy path: default layout synthesis plus a GUID claim.
+    ASSERT_TRUE(assign_joystick_to_player(0, d_a));
+    EXPECT_EQ(d_a, player_joystick_device(0));
+    EXPECT_TRUE(playerHasJoystick(0));
+    EXPECT_EQ(JoyData::BUTTON, player_joy[0].key_type[KEY_FIRE]);
+    EXPECT_EQ(JoyData::POS_AXIS, player_joy[0].key_type[KEY_RIGHT]);
+    const std::string guid_a =
+        input_hardware_state().player_joystick_guids[0];
+    EXPECT_FALSE(guid_a.empty());
+    EXPECT_EQ(guid_a, og::input_native::joystick_device_guid(d_a));
+
+    ASSERT_TRUE(assign_joystick_to_player(1, d_b));
+    EXPECT_EQ(d_b, player_joystick_device(1));
+
+    // Steal: assigning a held device clears it from the previous seat.
+    ASSERT_TRUE(assign_joystick_to_player(2, d_a));
+    EXPECT_EQ(d_a, player_joystick_device(2));
+    EXPECT_EQ(-1, player_joystick_device(0));
+    EXPECT_TRUE(input_hardware_state().player_joystick_guids[0].empty())
+        << "the robbed seat's persisted claim must be voided";
+    EXPECT_EQ(d_b, player_joystick_device(1)) << "unrelated seat untouched";
+
+    clear_player_joystick(2);
+    EXPECT_EQ(-1, player_joystick_device(2));
+    EXPECT_TRUE(input_hardware_state().player_joystick_guids[2].empty());
+    EXPECT_EQ(JoyData::NONE, player_joy[2].key_type[KEY_FIRE])
+        << "clear_player_joystick fully unbinds the layout";
+
+    EXPECT_EQ(-1, player_joystick_device(-1));
+    EXPECT_EQ(-1, player_joystick_device(4));
+    EXPECT_GE(joystick_device_count(), 2);
+}
+
+TEST(InputJoystick, joystick_device_guid_seam_bounds_and_identity)
+{
+    JoystickSubsystemGuard subsystem_guard;
+    VirtualJoystick pad(2, 6, 0, "OpenGlad guid pad");
+    ASSERT_NE(nullptr, pad.get()) << SDL_GetError();
+
+    const int d = device_index_of(pad.instance_id());
+    ASSERT_GE(d, 0);
+    const std::string guid = og::input_native::joystick_device_guid(d);
+    EXPECT_FALSE(guid.empty()) << "an attached device has a GUID";
+
+    const int count = og::input_native::num_joysticks();
+    EXPECT_EQ("", og::input_native::joystick_device_guid(-1));
+    EXPECT_EQ("", og::input_native::joystick_device_guid(count));
+
+    // GUIDs identify the device model: an identical descriptor yields the
+    // same GUID (this is what makes replug re-attach possible), while a
+    // different one yields a different GUID.
+    VirtualJoystick twin(2, 6, 0, "OpenGlad guid pad");
+    VirtualJoystick other(1, 2, 1, "OpenGlad other guid pad");
+    ASSERT_NE(nullptr, twin.get()) << SDL_GetError();
+    ASSERT_NE(nullptr, other.get()) << SDL_GetError();
+    const int d_twin = device_index_of(twin.instance_id());
+    const int d_other = device_index_of(other.instance_id());
+    ASSERT_GE(d_twin, 0);
+    ASSERT_GE(d_other, 0);
+    EXPECT_EQ(guid, og::input_native::joystick_device_guid(d_twin));
+    EXPECT_NE(guid, og::input_native::joystick_device_guid(d_other));
+}
+
+TEST(InputJoystick, guid_persists_and_reattaches_through_local_cfg_store)
+{
+    JoystickSubsystemGuard subsystem_guard;
+    CompleteInputStateGuard input_guard;
+    BackgroundJoystickEventsGuard background_events_guard;
+    VirtualJoystick pad(2, 6, 0, "OpenGlad persist pad");
+    ASSERT_NE(nullptr, pad.get()) << SDL_GetError();
+    JoystickHandleGuard handle_guard;
+    const int d = device_index_of(pad.instance_id());
+    ASSERT_GE(d, 0);
+    ASSERT_LT(d, 10);
+    joysticks[d] = pad.get();
+    for (int p = 0; p < 4; ++p)
+        clear_player_joystick(p);
+
+    ASSERT_TRUE(assign_joystick_to_player(1, d));
+    const std::string guid =
+        input_hardware_state().player_joystick_guids[1];
+    ASSERT_FALSE(guid.empty());
+
+    // LOCAL store only — never disk (the cfg clobber hazard).
+    cfg_store config;
+    save_player_control_settings_to_cfg(config);
+    EXPECT_EQ(guid, config.get_setting("controls", "player2_joystick_guid"));
+    EXPECT_EQ("", config.get_setting("controls", "player1_joystick_guid"));
+
+    // Wipe the seat, then reload: the SDL-free loader stores the GUID and
+    // the registered re-attach hook resolves it against connected hardware.
+    clear_player_joystick(1);
+    ASSERT_FALSE(playerHasJoystick(1));
+    load_player_control_settings_from_cfg(config);
+    EXPECT_EQ(guid, input_hardware_state().player_joystick_guids[1]);
+    EXPECT_EQ(d, player_joystick_device(1))
+        << "the saved GUID must re-attach to the connected device";
+    EXPECT_EQ(JoyData::BUTTON, player_joy[1].key_type[KEY_FIRE])
+        << "a fresh GUID attach synthesizes the default layout";
+
+    // A cfg whose GUID differs from the live one drops the attachment.
+    cfg_store other_config;
+    other_config.apply_setting(
+        "controls", "player2_joystick_guid", "not-a-connected-device");
+    load_player_control_settings_from_cfg(other_config);
+    EXPECT_EQ(-1, player_joystick_device(1));
+    EXPECT_EQ("not-a-connected-device",
+              input_hardware_state().player_joystick_guids[1])
+        << "an unresolved GUID stays stored, waiting for a hotplug add";
+
+    // Two seats claiming the same GUID (identical pad models, one unit
+    // connected): the lower seat wins, the other keeps waiting.
+    cfg_store twin_config;
+    twin_config.apply_setting("controls", "player1_joystick_guid", guid);
+    twin_config.apply_setting("controls", "player2_joystick_guid", guid);
+    load_player_control_settings_from_cfg(twin_config);
+    EXPECT_EQ(d, player_joystick_device(0));
+    EXPECT_EQ(-1, player_joystick_device(1));
+    EXPECT_EQ(guid, input_hardware_state().player_joystick_guids[1]);
+}
+
+TEST(InputJoystick, hotplug_remove_falls_back_and_replug_reattaches)
+{
+    JoystickSubsystemGuard subsystem_guard;
+    CompleteInputStateGuard input_guard;
+    BackgroundJoystickEventsGuard background_events_guard;
+    JoystickHandleGuard handle_guard;
+    og::input_native::joystick_set_event_state(true);
+    for (int p = 0; p < 4; ++p)
+        clear_player_joystick(p);
+    trace_clear();
+
+    VirtualJoystick decoy(1, 2, 0, "OpenGlad hotplug decoy");
+    VirtualJoystick pad(2, 6, 0, "OpenGlad hotplug pad");
+    ASSERT_NE(nullptr, decoy.get()) << SDL_GetError();
+    ASSERT_NE(nullptr, pad.get()) << SDL_GetError();
+    const int d_decoy = device_index_of(decoy.instance_id());
+    const int d = device_index_of(pad.instance_id());
+    ASSERT_GE(d_decoy, 0);
+    ASSERT_GE(d, 0);
+    ASSERT_LT(d, 10);
+    joysticks[d_decoy] = decoy.get();
+    joysticks[d] = pad.get();
+    ASSERT_TRUE(assign_joystick_to_player(0, d));
+    const std::string guid =
+        input_hardware_state().player_joystick_guids[0];
+    ASSERT_FALSE(guid.empty());
+    // Customize the layout to prove a replug keeps the session's bindings.
+    player_joy[0].key_index[KEY_YELL] = 5;
+
+    // Drain the attach events before the controlled unplugs.
+    clear_events();
+
+    // Removing an UNRELATED device re-anchors the seat onto its device's
+    // (possibly shifted) new index instead of dropping it.
+    decoy.detach();
+    get_input_events(POLL);
+    EXPECT_EQ(device_index_of(pad.instance_id()), player_joystick_device(0))
+        << "an unrelated removal must keep the seat on its own device";
+    EXPECT_EQ(5, player_joy[0].key_index[KEY_YELL]);
+
+    pad.detach();
+    get_input_events(POLL);
+    EXPECT_EQ(-1, player_joystick_device(0))
+        << "unplugging the assigned device falls the seat back to keyboard";
+    EXPECT_EQ(guid, input_hardware_state().player_joystick_guids[0])
+        << "the GUID survives the unplug so the seat can re-attach";
+    EXPECT_TRUE(trace_contains("joystick", "device_removed player=0"));
+
+    // Replug (same descriptor = same GUID): the added event re-opens the
+    // device table and re-attaches the seat, keeping its customized layout.
+    VirtualJoystick replug(2, 6, 0, "OpenGlad hotplug pad");
+    ASSERT_NE(nullptr, replug.get()) << SDL_GetError();
+    get_input_events(POLL);
+    const int d_replug = device_index_of(replug.instance_id());
+    ASSERT_GE(d_replug, 0);
+    EXPECT_EQ(d_replug, player_joystick_device(0));
+    EXPECT_TRUE(trace_contains("joystick", "device_added"));
+    EXPECT_TRUE(trace_contains("joystick", "guid_reattach player=0"));
+    EXPECT_EQ(5, player_joy[0].key_index[KEY_YELL])
+        << "a replug re-anchors the device without resetting the layout";
+
+    // Legacy seat (takeover-bound, no GUID) pointing past the table after a
+    // removal: falls back and stays unbound.
+    player_joy[1].index = 9;
+    player_joy[1].key_type[KEY_FIRE] = JoyData::BUTTON;
+    player_joy[1].key_index[KEY_FIRE] = 0;
+    trace_clear();
+    replug.detach();
+    get_input_events(POLL);
+    EXPECT_EQ(-1, player_joystick_device(0));
+    EXPECT_EQ(guid, input_hardware_state().player_joystick_guids[0]);
+    EXPECT_EQ(-1, player_joystick_device(1));
+    EXPECT_TRUE(trace_contains("joystick", "device_removed player=1"));
+}
+
+TEST(InputJoystick, remap_ignores_other_devices_when_seat_is_assigned)
+{
+    JoystickSubsystemGuard subsystem_guard;
+    CompleteInputStateGuard input_guard;
+    BackgroundJoystickEventsGuard background_events_guard;
+    VirtualJoystick pad(2, 6, 0, "OpenGlad remap-lock pad");
+    ASSERT_NE(nullptr, pad.get()) << SDL_GetError();
+    JoystickHandleGuard handle_guard;
+    const int d = device_index_of(pad.instance_id());
+    ASSERT_GE(d, 0);
+    ASSERT_LT(d, 10);
+    joysticks[d] = pad.get();
+    for (int p = 0; p < 4; ++p)
+        clear_player_joystick(p);
+
+    ASSERT_TRUE(assign_joystick_to_player(0, d));
+    ASSERT_EQ(3, player_joy[0].key_index[KEY_YELL]) << "default layout";
+
+    // Another device's press during remap must be ignored: no re-point, no
+    // mapping change. (4096 is not an attached device, so the decode seam's
+    // pass-through delivers it as that raw index.)
+    SDL_Event e{};
+    e.type = SDL_EVENT_JOYSTICK_BUTTON_DOWN;
+    e.jbutton.which = 4096;
+    e.jbutton.button = 2;
+    player_joy[0].setKeyFromEvent(KEY_YELL, e);
+    EXPECT_EQ(d, player_joy[0].index)
+        << "an assigned seat must not follow another device";
+    EXPECT_EQ(3, player_joy[0].key_index[KEY_YELL])
+        << "the ignored event must not touch the mapping";
+
+    // Same rule for axis and hat events from another device.
+    SDL_Event axis{};
+    axis.type = SDL_EVENT_JOYSTICK_AXIS_MOTION;
+    axis.jaxis.which = 4096;
+    axis.jaxis.axis = 1;
+    axis.jaxis.value = 20000;
+    player_joy[0].setKeyFromEvent(KEY_FIRE, axis);
+    EXPECT_EQ(JoyData::BUTTON, player_joy[0].key_type[KEY_FIRE]);
+    EXPECT_EQ(d, player_joy[0].index);
+    SDL_Event hat{};
+    hat.type = SDL_EVENT_JOYSTICK_HAT_MOTION;
+    hat.jhat.which = 4096;
+    hat.jhat.hat = 0;
+    hat.jhat.value = SDL_HAT_UP;
+    player_joy[0].setKeyFromEvent(KEY_UP, hat);
+    EXPECT_EQ(JoyData::NEG_AXIS, player_joy[0].key_type[KEY_UP])
+        << "default axis layout must survive the foreign hat event";
+    EXPECT_EQ(d, player_joy[0].index);
+
+    // The seat's own device still remaps (instance id resolves to index d).
+    e.jbutton.which = static_cast<SDL_JoystickID>(pad.instance_id());
+    e.jbutton.button = 5;
+    player_joy[0].setKeyFromEvent(KEY_YELL, e);
+    EXPECT_EQ(5, player_joy[0].key_index[KEY_YELL]);
+    EXPECT_EQ(d, player_joy[0].index);
+
+    // Legacy behavior on an unassigned seat: last device pressed wins and
+    // robs the assigned seat, voiding its GUID claim.
+    e.jbutton.button = 1;
+    player_joy[1].setKeyFromEvent(KEY_FIRE, e);
+    EXPECT_EQ(d, player_joy[1].index);
+    EXPECT_EQ(-1, player_joy[0].index)
+        << "the takeover must release the previous holder";
+    EXPECT_TRUE(input_hardware_state().player_joystick_guids[0].empty())
+        << "the robbed seat's GUID claim must be cleared";
 }

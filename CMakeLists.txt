@@ -835,6 +835,7 @@ if(NOT EMSCRIPTEN)
         ${OG_RESOURCES_DATA_SOURCES}
         ${OG_RESOURCES_IO_SOURCES}
         # interface (SDL-free data structs and session plumbing only)
+        ${SRC_DIR}/interface/input/input_mappings.cpp
         ${SRC_DIR}/interface/input/input_state.cpp
         ${SRC_DIR}/interface/session_state.cpp
         ${SRC_DIR}/interface/level_runtime_data.cpp
@@ -848,6 +849,7 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/server/headless_tick_interval.cpp
         ${SRC_DIR}/platform/text/platform_headless.cpp
         ${SRC_DIR}/platform/text/walker_headless.cpp
+        ${SRC_DIR}/interface/input/input_mappings.cpp
         ${SRC_DIR}/interface/input/input_state.cpp
         ${SRC_DIR}/platform/game_context.cpp
         ${SRC_DIR}/interface/session_state.cpp
@@ -908,6 +910,7 @@ if(NOT EMSCRIPTEN)
         ${CMAKE_SOURCE_DIR}/tools/concept_mapgen/main.cpp
         ${SRC_DIR}/platform/text/platform_headless.cpp
         ${SRC_DIR}/platform/text/walker_headless.cpp
+        ${SRC_DIR}/interface/input/input_mappings.cpp
         ${SRC_DIR}/interface/input/input_state.cpp
         ${SRC_DIR}/platform/game_context.cpp
         ${SRC_DIR}/interface/session_state.cpp
@@ -933,6 +936,7 @@ if(NOT EMSCRIPTEN)
         ${CMAKE_SOURCE_DIR}/tools/imaginations_mapgen/main.cpp
         ${SRC_DIR}/platform/text/platform_headless.cpp
         ${SRC_DIR}/platform/text/walker_headless.cpp
+        ${SRC_DIR}/interface/input/input_mappings.cpp
         ${SRC_DIR}/interface/input/input_state.cpp
         ${SRC_DIR}/platform/game_context.cpp
         ${SRC_DIR}/interface/session_state.cpp
@@ -969,6 +973,7 @@ if(NOT EMSCRIPTEN)
         ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/levels_mutant.cpp
         ${SRC_DIR}/platform/text/platform_headless.cpp
         ${SRC_DIR}/platform/text/walker_headless.cpp
+        ${SRC_DIR}/interface/input/input_mappings.cpp
         ${SRC_DIR}/interface/input/input_state.cpp
         ${SRC_DIR}/platform/game_context.cpp
         ${SRC_DIR}/interface/session_state.cpp
@@ -998,6 +1003,7 @@ if(NOT EMSCRIPTEN)
         ${CMAKE_SOURCE_DIR}/tools/westlands_mapgen/levels_finale.cpp
         ${SRC_DIR}/platform/text/platform_headless.cpp
         ${SRC_DIR}/platform/text/walker_headless.cpp
+        ${SRC_DIR}/interface/input/input_mappings.cpp
         ${SRC_DIR}/interface/input/input_state.cpp
         ${SRC_DIR}/platform/game_context.cpp
         ${SRC_DIR}/interface/session_state.cpp
@@ -1028,6 +1034,7 @@ if(NOT EMSCRIPTEN)
         ${CMAKE_SOURCE_DIR}/tools/longseason_mapgen/levels_reckoning.cpp
         ${SRC_DIR}/platform/text/platform_headless.cpp
         ${SRC_DIR}/platform/text/walker_headless.cpp
+        ${SRC_DIR}/interface/input/input_mappings.cpp
         ${SRC_DIR}/interface/input/input_state.cpp
         ${SRC_DIR}/platform/game_context.cpp
         ${SRC_DIR}/interface/session_state.cpp
@@ -1054,6 +1061,7 @@ if(NOT EMSCRIPTEN)
         ${CMAKE_SOURCE_DIR}/tools/tower_mapgen/main.cpp
         ${SRC_DIR}/platform/text/platform_headless.cpp
         ${SRC_DIR}/platform/text/walker_headless.cpp
+        ${SRC_DIR}/interface/input/input_mappings.cpp
         ${SRC_DIR}/interface/input/input_state.cpp
         ${SRC_DIR}/platform/game_context.cpp
         ${SRC_DIR}/interface/session_state.cpp
@@ -1082,6 +1090,7 @@ if(NOT EMSCRIPTEN)
         ${CMAKE_SOURCE_DIR}/tools/grid_migrate/main.cpp
         ${SRC_DIR}/platform/text/platform_headless.cpp
         ${SRC_DIR}/platform/text/walker_headless.cpp
+        ${SRC_DIR}/interface/input/input_mappings.cpp
         ${SRC_DIR}/interface/input/input_state.cpp
         ${SRC_DIR}/platform/game_context.cpp
         ${SRC_DIR}/interface/session_state.cpp
