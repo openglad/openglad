@@ -60,9 +60,11 @@ struct LocalTransportClient {
 };
 
 // On web the back/cancel key is Backspace (see web_back_key.h), so the pause
-// overlay hint names the key that actually works there.
-constexpr std::string_view kPauseOverlayEscHint =
-    og::input::kWebBackKeyMode ? "BKSP again: Quit?" : "ESC again: Quit?";
+// overlay hint names the key that actually works there. The hint is shown
+// only for a REMOTE peer's pause — the local pauser is looking at the pause
+// menu itself — and points at the menu that hosts RESUME/QUIT now.
+constexpr std::string_view kPauseOverlayMenuHint =
+    og::input::kWebBackKeyMode ? "BKSP: Menu" : "ESC: Menu";
 
 walker* resolve_control_from_entity_id(GameWorld& world, std::uint32_t entity_id);
 
@@ -910,14 +912,43 @@ std::string pause_overlay_text(const og::sim::PauseBroadcastMessage* pause)
     return "PAUSED by " + pause->player_name;
 }
 
-void refresh_pause_overlay_text(viewscreen& view, const std::string& text)
+// True when the pause owner's seat does NOT belong to this machine. Local
+// (non-networked) shadows own every seat, so their pause is always local; a
+// networked machine compares against its own_seats.
+bool pause_owner_is_remote(const og::runtime::LocalTransportRuntime& runtime,
+                           std::size_t owner)
+{
+    if (!runtime.networked)
+        return false;
+    return std::none_of(
+        runtime.own_seats.begin(), runtime.own_seats.end(),
+        [owner](const og::runtime::LocalSeatBinding& seat) {
+            return seat.player_index == owner;
+        });
+}
+
+bool pause_owned_by_remote_peer(
+    const og::runtime::LocalTransportRuntime& runtime,
+    const og::sim::GameClient& game_client)
+{
+    if (!game_client.last_pause_broadcast().has_value())
+        return false;
+    return pause_owner_is_remote(
+        runtime, game_client.last_pause_broadcast()->player_index);
+}
+
+void refresh_pause_overlay_text(viewscreen& view,
+                                const std::string& text,
+                                bool include_menu_hint)
 {
     view.refresh_display_text(text, 1);
-    view.refresh_display_text(kPauseOverlayEscHint, 1);
+    if (include_menu_hint)
+        view.refresh_display_text(kPauseOverlayMenuHint, 1);
 }
 
 void render_pause_overlay(screen& gameplay_screen,
-                          const og::sim::GameClient& game_client)
+                          const og::sim::GameClient& game_client,
+                          bool remote_pause)
 {
     if (!game_client.baseline().has_value() ||
         !game_client.baseline()->paused)
@@ -935,7 +966,7 @@ void render_pause_overlay(screen& gameplay_screen,
         if (view == nullptr)
             continue;
 
-        refresh_pause_overlay_text(*view, text);
+        refresh_pause_overlay_text(*view, text, remote_pause);
     }
     gameplay_screen.redrawme = 1;
 }
@@ -1269,8 +1300,12 @@ void configure_display_game_client(
                 gameplay_screen, *display_client_ptr, prompt);
         });
     display_client.set_pause_broadcast_callback(
-        [&gameplay_screen](const og::sim::PauseBroadcastMessage& pause) {
+        [&gameplay_screen,
+         runtime_ptr = &runtime](const og::sim::PauseBroadcastMessage& pause) {
             const std::string text = pause_overlay_text(&pause);
+            const bool remote_pause =
+                runtime_ptr != nullptr &&
+                pause_owner_is_remote(*runtime_ptr, pause.player_index);
             for (int view_index = 0; view_index < gameplay_screen.numviews;
                  ++view_index)
             {
@@ -1278,7 +1313,7 @@ void configure_display_game_client(
                     gameplay_screen.viewob[view_index].get();
                 if (view == nullptr)
                     continue;
-                refresh_pause_overlay_text(*view, text);
+                refresh_pause_overlay_text(*view, text, remote_pause);
             }
             gameplay_screen.redrawme = 1;
         });
@@ -1722,6 +1757,51 @@ bool local_transport_shadow_abort_level(GameSession& session)
     }
 
     return true; // no client to relay through: fall back to a local end
+}
+
+bool local_transport_shadow_restart_level(GameSession& session)
+{
+    const auto runtime = session.local_transport_runtime_;
+    if (runtime == nullptr || runtime->networked ||
+        !runtime->authoritative_mode() || runtime->server == nullptr)
+    {
+        return false;
+    }
+
+    screen* const server_screen = runtime->server_screen();
+    if (server_screen == nullptr)
+        return false;
+
+    auto server_scope = runtime->server_session->activate();
+    GameplayContextGuard server_gameplay_scope(&runtime->server_session->game_);
+    // The abort recipe (see local_transport_shadow_abort_level): route the
+    // mode's run-end policy once on the authoritative save, end the level
+    // with no results screen and no roster persist...
+    {
+        og::mode::LevelOutcome run_outcome;
+        run_outcome.ending = 1;
+        run_outcome.next_level =
+            static_cast<short>(server_screen->world().current_scenario);
+        run_outcome.networked = false;
+        run_outcome.withdrawn = true;
+        og::mode::current_progression().on_run_ended(
+            server_screen->save_data, server_screen->world(), run_outcome);
+    }
+    // ...PLUS retry, set BEFORE the final broadcast so a drained snapshot
+    // mirrors it. The display copy is also stamped directly: the caller
+    // returns from the frame without another drain, and the native
+    // `do { glad_main } while (world().retry)` loop (and the web
+    // Playing-on-done re-entry) read the DISPLAY world.
+    server_screen->world().retry = true;
+    server_screen->world().end = 1;
+    runtime->server->broadcast_current_state(
+        og::sim::SnapshotCaptureMode::Peek,
+        og::sim::EventDeliveryMode::Skip);
+    if (session.myscreen_ != nullptr)
+        session.myscreen_->world().retry = true;
+    TRACE("pause_menu", "restart_level scen=%d",
+          static_cast<int>(server_screen->world().current_scenario));
+    return true;
 }
 
 bool local_transport_shadow_can_add_player(GameSession& session)
@@ -2629,14 +2709,22 @@ void local_transport_shadow_send_input(GameSession& session,
     }
 }
 
-void local_transport_shadow_finish_tick(GameSession& session)
+namespace {
+
+// Shared body of finish_tick and pump_paused: one authoritative server step
+// (when this machine hosts one) followed by a full client-mirror drain.
+// Returns false when the display session/world ended underneath the caller.
+// The runtime is passed in because only the named friend functions may read
+// session.local_transport_runtime_.
+bool local_transport_shadow_step_and_drain(
+    GameSession& session,
+    const std::shared_ptr<LocalTransportRuntime>& runtime)
 {
-    const auto runtime = session.local_transport_runtime_;
     if (runtime == nullptr)
-        return;
+        return false;
 
     if (session.myscreen_ == nullptr)
-        return;
+        return false;
 
     if (!runtime->awaiting_level_transition &&
         (runtime->display_session_finished ||
@@ -2647,7 +2735,7 @@ void local_transport_shadow_finish_tick(GameSession& session)
                 "local_transport_shadow", "finish_tick_display_finished"));
         runtime->display_session_finished = true;
         session.myscreen_->world().end = 1;
-        return;
+        return false;
     }
 
     if (runtime->authoritative_mode() &&
@@ -2697,20 +2785,76 @@ void local_transport_shadow_finish_tick(GameSession& session)
                         "local_transport_shadow", "finish_tick_client_drain_end"));
                 runtime->display_session_finished = true;
                 session.myscreen_->world().end = 1;
-                return;
+                return false;
             }
         }
         if (runtime->display_client_index < runtime->clients.size() &&
             runtime->clients[runtime->display_client_index].game_client)
         {
+            og::sim::GameClient& display_client =
+                *runtime->clients[runtime->display_client_index].game_client;
             render_pause_overlay(
                 *session.myscreen_,
-                *runtime->clients[runtime->display_client_index].game_client);
+                display_client,
+                pause_owned_by_remote_peer(*runtime, display_client));
         }
         og::runtime::emit_runtime_trace(
             og::runtime::make_runtime_trace_record(
                 "local_transport_shadow", "finish_tick_client_drain_end"));
     }
+    return true;
+}
+
+} // namespace
+
+void local_transport_shadow_finish_tick(GameSession& session)
+{
+    (void)local_transport_shadow_step_and_drain(
+        session, session.local_transport_runtime_);
+}
+
+bool local_transport_shadow_pump_paused(GameSession& session)
+{
+    return local_transport_shadow_step_and_drain(
+        session, session.local_transport_runtime_);
+}
+
+void local_transport_shadow_request_pause_keepalive(GameSession& session)
+{
+    const auto runtime = session.local_transport_runtime_;
+    og::sim::GameClient* const display_client =
+        runtime != nullptr ? runtime->display_client() : nullptr;
+    if (display_client == nullptr)
+        return;
+
+    // Deliberately NOT a toggle: the pause menu sends this both to open its
+    // pause and to keep it alive. Server-side, a repeat from the pause's
+    // owner refreshes the auto-resume deadline instead of being rejected.
+    display_client->send_pause_request();
+}
+
+std::string local_transport_shadow_remote_pause_owner(GameSession& session)
+{
+    const auto runtime = session.local_transport_runtime_;
+    const og::sim::GameClient* const display_client =
+        runtime != nullptr ? runtime->display_client() : nullptr;
+    if (display_client == nullptr ||
+        !display_client->baseline().has_value() ||
+        !display_client->baseline()->paused)
+    {
+        return {};
+    }
+    if (!pause_owned_by_remote_peer(*runtime, *display_client))
+        return {};
+
+    const auto& broadcast = display_client->last_pause_broadcast();
+    if (broadcast.has_value() && !broadcast->player_name.empty())
+        return broadcast->player_name;
+    return "P" +
+        std::to_string(
+            static_cast<int>(
+                display_client->baseline()->pause_player_index) +
+            1);
 }
 
 } // namespace og::runtime

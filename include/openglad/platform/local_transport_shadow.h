@@ -149,6 +149,28 @@ void local_transport_shadow_set_player_companies(
     GameSession& session,
     std::span<const std::pair<std::uint8_t, std::string>> companies);
 bool local_transport_shadow_toggle_pause(GameSession& session);
+// --- Pause-menu transport support (design §2.1) ------------------------------
+// One transport pump while a blocking pause menu owns the frame: runs the
+// authoritative server step (the pending pause already suspends world ticks)
+// and drains every client mirror, so networked peers keep their keepalives
+// and the inbound queue never overflows. Returns false when the session or
+// world ended underneath the menu (the menu must close).
+bool local_transport_shadow_pump_paused(GameSession& session);
+// Send one pause request from the display client. Used both to open the
+// menu's pause and as its ~20s keep-alive: the server refreshes a pending
+// pause's auto-resume deadline when the request comes from the pause owner.
+void local_transport_shadow_request_pause_keepalive(GameSession& session);
+// Display name of a REMOTE peer that owns the current pause ("PAUSED by X"),
+// or "" when there is no pause or this machine's own seat owns it. Local
+// (non-networked) sessions always return "".
+std::string local_transport_shadow_remote_pause_owner(GameSession& session);
+// Pause-menu RESTART (non-networked authoritative shadows only): the abort
+// recipe (run-end routing, ending=1 withdrawn, no roster persist) plus
+// world.retry=1 on the server world before the final broadcast AND on the
+// display world, so the native retry loop / web done-transition relaunch the
+// level from the pre-level save. Returns false (and changes nothing) for
+// networked or client-only sessions.
+bool local_transport_shadow_restart_level(GameSession& session);
 // --- Mid-game LOCAL seat add/remove (design §5; non-networked shadows only) --
 // True only when a plain local (non-networked, non-spectator) authoritative
 // shadow is live and the current seat count is below MAX_PLAYERS.

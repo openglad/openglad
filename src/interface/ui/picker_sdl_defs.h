@@ -208,6 +208,9 @@ inline constexpr int kBaseCampAddSeatIndex = 40;
 // expose one; activating it swaps that member with its predecessor.
 inline constexpr int kBaseCampMoveUpBase = 41; // roster_up_0..7 = 41..48
 inline constexpr int kBaseCampSeatCardsPerPage = 4;
+// The compact 57px seat card is drawn without the beveled inset, so its
+// budget is the full face: 57 / 6 = 9 characters, trailing pad included.
+inline constexpr int kBaseCampSeatCardLabelBudget = 9;
 inline constexpr int kCreateMenuButtonCount = 49;
 
 // --- LOCAL SEAT SETTINGS subscreen -----------------------------------------
@@ -220,8 +223,21 @@ inline constexpr int kSeatSettingsModeIndex = 2;
 inline constexpr int kSeatSettingsRemapIndex = 3;
 inline constexpr int kSeatSettingsResetIndex = 4;
 inline constexpr int kSeatSettingsRemoveIndex = 5;
-inline constexpr int kSeatSettingsButtonCountMP = 6;
-inline constexpr int kSeatSettingsButtonCountNoMP = 5;
+// The INPUT cycler (design §2.2) is APPENDED so ordinals 0..5 and the
+// default_highlight stay put. Its MenuSpecRow arg is 6 in BOTH tables; the
+// multiplayer-disabled table has no REMOVE row, so the same row materializes
+// one slot earlier there. kSeatSettingsInputRow is the position the label
+// sync and the nav links use; kSeatSettingsInputIndex is the dispatch arg.
+inline constexpr int kSeatSettingsInputIndex = 6;
+inline constexpr int kSeatSettingsInputRowMP = 6;
+inline constexpr int kSeatSettingsInputRowNoMP = 5;
+#ifndef DISABLE_MULTIPLAYER
+inline constexpr int kSeatSettingsInputRow = kSeatSettingsInputRowMP;
+#else
+inline constexpr int kSeatSettingsInputRow = kSeatSettingsInputRowNoMP;
+#endif
+inline constexpr int kSeatSettingsButtonCountMP = 7;
+inline constexpr int kSeatSettingsButtonCountNoMP = 6;
 
 // --- SCENARIO subscreen layout contract ------------------------------------
 // Positional indices into k_scenariomenu_buttons / picker_scenariomenu_buttons().

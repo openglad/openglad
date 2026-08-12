@@ -26,7 +26,9 @@
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/core/runtime_trace.h>
 #include <openglad/interface/replay_runtime.h>
+#include <openglad/interface/ui/pause_menu.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/platform/game_loop.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
@@ -3598,7 +3600,11 @@ TEST(GameLoop, game_frame_options_menu_via_key_prefs_completes)
 }
 
 
-TEST(GameLoop, game_frame_escape_toggles_network_pause_when_local_transport_is_active)
+// Esc now opens the PAUSED menu (docs/pause-menu-design.md §2.1): one Esc
+// pauses the world under the menu, a key-repeat Esc opens nothing, and a
+// RESUME outcome releases the pause. The scripted-outcome queue stands in for
+// the blocking menu loop (the real loop is driven by PauseMenuFlow tests).
+TEST(GameLoop, game_frame_escape_opens_pause_menu_and_resume_releases_pause)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(game_screen != nullptr);
@@ -3651,38 +3657,60 @@ TEST(GameLoop, game_frame_escape_toggles_network_pause_when_local_transport_is_a
         };
     };
 
+    // Esc #1: the menu opens and pauses; the scripted outcome keeps the
+    // pause pending (the "menu is open" state).
+    trace_clear();
+    og::ui::pause_menu_testing_clear_queue();
+    og::ui::pause_menu_testing_queue_outcome(
+        og::ui::PauseMenuResult::Resumed, /*release_pause=*/false);
     const EscapeFrameOutcome pause_frame = run_escape_frame();
     EXPECT_EQ(GameFrameResult::Continue, pause_frame.result);
     EXPECT_FALSE(pause_frame.done);
     EXPECT_EQ(1, pause_frame.redrawme);
+    EXPECT_TRUE(trace_contains("pause_menu", "open"));
+    EXPECT_EQ(0, og::ui::pause_menu_testing_queue_remaining());
     EXPECT_TRUE(game_screen->world().paused);
     EXPECT_EQ(0u, game_screen->world().pause_player_index);
     ASSERT_FALSE(primary_view->textlist[0].empty());
     EXPECT_EQ(0, primary_view->textlist[0].compare(0, 6, "PAUSED"));
-    EXPECT_EQ(std::string("ESC again: Quit?"), primary_view->textlist[1]);
+    // The old "ESC again: Quit?" hint is gone for the LOCAL pauser — the
+    // menu IS the hint (remote peers keep an "ESC: Menu" overlay line).
+    EXPECT_TRUE(primary_view->textlist[1].empty())
+        << "unexpected second overlay line: " << primary_view->textlist[1];
 
+    // A key-repeat Esc must not open (or close) anything: web Backspace
+    // autorepeats aggressively.
+    trace_clear();
     const EscapeFrameOutcome repeat_frame = run_escape_frame(true);
     EXPECT_EQ(GameFrameResult::Continue, repeat_frame.result);
     EXPECT_FALSE(repeat_frame.done);
     EXPECT_EQ(1, repeat_frame.redrawme);
+    EXPECT_FALSE(trace_contains("pause_menu", "open"));
     EXPECT_TRUE(game_screen->world().paused);
     EXPECT_EQ(0u, game_screen->world().pause_player_index);
 
-    picker_testing_yes_or_no_queue_clear();
-    picker_testing_yes_or_no_queue_push(false);
+    // Esc #2 with a RESUME outcome: the pause releases and the owner index
+    // resets.
+    og::ui::pause_menu_testing_queue_outcome(
+        og::ui::PauseMenuResult::Resumed, /*release_pause=*/true);
     const EscapeFrameOutcome resume_frame = run_escape_frame();
     EXPECT_EQ(GameFrameResult::Continue, resume_frame.result);
     EXPECT_FALSE(resume_frame.done);
     EXPECT_EQ(1, resume_frame.redrawme);
     EXPECT_FALSE(game_screen->world().paused);
     EXPECT_EQ(og::sim::kNoPausePlayerIndex, game_screen->world().pause_player_index);
+    EXPECT_EQ(0, og::ui::pause_menu_testing_queue_remaining());
 
-    picker_testing_yes_or_no_queue_clear();
+    og::ui::pause_menu_testing_clear_queue();
     og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
     game_screen->world().delete_objects();
 }
 
-TEST(GameLoop, game_frame_escape_abort_returns_aborted_mission_when_network_pause_confirmed)
+// A QUIT outcome from the menu keeps the old abort semantics verbatim:
+// authoritative end, st.done, AbortedMission — from ONE Esc press (no more
+// "second Esc" stage). A RESTART outcome additionally leaves world().retry
+// set so the picker's `do { glad_main } while (retry)` relaunches.
+TEST(GameLoop, game_frame_escape_pause_menu_quit_and_restart_outcomes)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(game_screen != nullptr);
@@ -3693,10 +3721,6 @@ TEST(GameLoop, game_frame_escape_abort_returns_aborted_mission_when_network_paus
     game_screen->save_data.scen_num = 1;
     game_screen->save_data.numplayers = 1;
     ASSERT_TRUE(game_screen->save_data.save("save0"));
-
-    glad_init();
-    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
-    ASSERT_TRUE(og::runtime::local_transport_active(*og::runtime::current_session));
 
     GameSpeedGuard speed_guard(0.0f);
     struct EscapeFrameOutcome {
@@ -3730,21 +3754,54 @@ TEST(GameLoop, game_frame_escape_abort_returns_aborted_mission_when_network_paus
         };
     };
 
-    const EscapeFrameOutcome pause_frame = run_escape_frame();
-    ASSERT_EQ(GameFrameResult::Continue, pause_frame.result);
-    ASSERT_FALSE(pause_frame.done);
-    ASSERT_EQ(1, pause_frame.redrawme);
-    ASSERT_TRUE(game_screen->world().paused);
+    // --- QUIT ---
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    ASSERT_TRUE(og::runtime::local_transport_active(*og::runtime::current_session));
 
-    picker_testing_yes_or_no_queue_clear();
-    picker_testing_yes_or_no_queue_push(true);
+    og::ui::pause_menu_testing_clear_queue();
+    og::ui::pause_menu_testing_queue_outcome(
+        og::ui::PauseMenuResult::Quit, /*release_pause=*/false);
     const EscapeFrameOutcome abort_frame = run_escape_frame();
     EXPECT_EQ(GameFrameResult::AbortedMission, abort_frame.result);
     EXPECT_TRUE(abort_frame.done);
     EXPECT_EQ(1, abort_frame.redrawme);
+    EXPECT_FALSE(game_screen->world().retry)
+        << "a plain quit must not arm the retry relaunch loop";
 
-    picker_testing_yes_or_no_queue_clear();
     og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+    game_screen->world().end = 0;
+    game_screen->world().retry = false;
+
+    // --- RESTART ---
+    glad_init();
+    ASSERT_TRUE(og::runtime::local_transport_active(*og::runtime::current_session));
+
+    og::ui::pause_menu_testing_queue_outcome(
+        og::ui::PauseMenuResult::Restart, /*release_pause=*/false);
+    const EscapeFrameOutcome restart_frame = run_escape_frame();
+    EXPECT_EQ(GameFrameResult::AbortedMission, restart_frame.result);
+    EXPECT_TRUE(restart_frame.done);
+    EXPECT_TRUE(game_screen->world().retry)
+        << "restart must arm the display world's retry for the picker loop";
+    EXPECT_TRUE(trace_contains("pause_menu", "restart_level"));
+
+    // The picker relaunch reads world().retry AFTER glad_main's teardown
+    // (clear shadow + delete_objects) — prove the flag survives it, exactly
+    // as picker_team_build.cpp's do/while will read it...
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+    EXPECT_TRUE(game_screen->world().retry)
+        << "world().retry must survive glad_main teardown to reach the loop";
+
+    // ...and the next iteration's ready_for_battle clears it so the relaunch
+    // is not sticky.
+    game_screen->ready_for_battle(1);
+    EXPECT_FALSE(game_screen->world().retry);
+
+    og::ui::pause_menu_testing_clear_queue();
+    game_screen->world().end = 0;
     game_screen->world().delete_objects();
 }
 

@@ -12,7 +12,8 @@
  *     field-merge save0 write; the mirrored server+display pair CONVERGES on
  *     identical disk bytes rather than writing exactly once globally), across
  *     all five routing sites: screen::endgame, the shadow withdraw finalize,
- *     Esc-abort (local_transport_shadow_abort_level), and the curses loss
+ *     the pause menu's QUIT (local_transport_shadow_abort_level; the pause
+ *     menu also hides RESTART under suppress_retry()), and the curses loss
  *     branch (og_test_curses); the fifth site, the headless withdraw, is
  *     exercised under Classic in test_headless_server_runtime — a tower-mode
  *     dedicated server is unreachable by design (networked gating),
@@ -285,8 +286,8 @@ TEST_F(TowerRunE2E, every_non_win_exit_shape_routes_on_run_ended_and_converges)
 {
     // The display-route shapes converge on screen::endgame. Team wipe and
     // mission timeout produce the byte-identical (1, -1) shape by
-    // construction, so one row carries both; the server-side quit/Esc-abort
-    // sites (the shadow withdraw finalize and
+    // construction, so one row carries both; the server-side quit sites (the
+    // shadow withdraw finalize and the pause menu QUIT's
     // local_transport_shadow_abort_level) are pinned by their own tests
     // below — here the display-side (1, dest) shape stands in for the
     // mirrored hook they pair with.
@@ -505,13 +506,15 @@ TEST_F(TowerRunE2E, shadow_withdraw_finalize_routes_the_run_end)
     EXPECT_EQ(777u, disk.tower_run_seed);
 }
 
-TEST_F(TowerRunE2E, esc_abort_routes_the_run_end_on_the_server_save)
+TEST_F(TowerRunE2E, pause_menu_quit_routes_the_run_end_on_the_server_save)
 {
-    // The FIFTH run-end routing site (docs/game-modes.md):
-    // local_transport_shadow_abort_level ends the run on the AUTHORITATIVE
-    // server save without passing screen::endgame or the withdraw finalize.
-    // Build the real thing: a tower mid-run save0 whose generated floor
-    // glad_init loads, with the authoritative local shadow installed.
+    // The FIFTH run-end routing site (docs/game-modes.md): the pause menu's
+    // QUIT MISSION drives local_transport_shadow_abort_level, which ends the
+    // run on the AUTHORITATIVE server save without passing screen::endgame
+    // or the withdraw finalize. Build the real thing: a tower mid-run save0
+    // whose generated floor glad_init loads, with the authoritative local
+    // shadow installed; the abort primitive is driven directly (the menu's
+    // Esc->QUIT plumbing is pinned by test_pause_menu / test_game_loop).
     arm_session(static_cast<short>(og::kTowerGateLevel + 2), 20250u, 2);
     og::ui::initialize_starting_team(scr().save_data, {FAMILY_SOLDIER});
     scr().save_data.numplayers = 1;

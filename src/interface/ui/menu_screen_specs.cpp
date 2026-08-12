@@ -23,12 +23,14 @@
 #include <openglad/interface/base.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/input_mappings.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/sound.h>
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/interface/ui/cloud_save_client.h>
+#include <openglad/interface/ui/input_cycler.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_ui_state.h>
@@ -2062,28 +2064,52 @@ std::string base_camp_company_abbreviation(std::string_view company)
     return result.empty() ? "NET" : result;
 }
 
-bool base_camp_seat_is_local(const BaseCampScreenState& state,
-                             std::uint8_t player_index)
+// A card's controller profile is its POSITION in this machine's local seat
+// list, never the card index and never the global P# (menu_system.md §3.1 —
+// displayed P1 once drove profile 3). Seat settings resolves it the same way
+// off the same list, so the card and the editor always name one profile.
+int base_camp_seat_local_slot(const BaseCampScreenState& state,
+                              std::uint8_t player_index)
 {
-    return std::find(state.local_seat_indices.begin(),
-                     state.local_seat_indices.end(),
-                     player_index) != state.local_seat_indices.end();
+    const auto local = std::find(state.local_seat_indices.begin(),
+                                 state.local_seat_indices.end(),
+                                 player_index);
+    if (local == state.local_seat_indices.end())
+        return -1;
+    return static_cast<int>(
+        std::distance(state.local_seat_indices.begin(), local));
 }
 
 std::string base_camp_seat_label(const BaseCampScreenState& state,
                                  const og::sim::LobbyPlayer& seat)
 {
-    const bool local =
-        base_camp_seat_is_local(state, seat.player_index);
-    const std::string owner =
-        local && picker_lobby_local_seat_count() == 0
-        ? std::string("SPEC")
-        : (local ? std::string("YOU")
-                 : base_camp_company_abbreviation(seat.company));
+    const int local_slot =
+        base_camp_seat_local_slot(state, seat.player_index);
+    // Design §2.3: a local card names the seat's INPUT mapping, so the roster
+    // rail answers "which controller am I?" without opening the editor.
+    const bool named = local_slot >= 0 && local_slot < MAX_PLAYERS &&
+        picker_lobby_local_seat_count() > 0;
+    std::string owner =
+        named ? og::input::mapping_short_name(
+                    og::ui::current_input_selection(local_slot).name)
+              : (local_slot >= 0
+                     ? std::string("SPEC")
+                     : base_camp_company_abbreviation(seat.company));
     // The trailing visual pad shifts the visible centered ink one half-cell
     // left, keeping the 8px numbered team chip clear on the compact 57px face.
-    return std::format("P{} {} ", static_cast<int>(seat.player_index) + 1,
-                       owner);
+    // The pad is part of the 9-char face budget, and so is a two-digit P#:
+    // a global P16 seat keeps its mapping name one character shorter.
+    const std::string prefix =
+        std::format("P{} ", static_cast<int>(seat.player_index) + 1);
+    const std::size_t room =
+        prefix.size() + 1 < static_cast<std::size_t>(
+                                kBaseCampSeatCardLabelBudget)
+        ? static_cast<std::size_t>(kBaseCampSeatCardLabelBudget) -
+              prefix.size() - 1
+        : 0u;
+    if (owner.size() > room)
+        owner.resize(room);
+    return prefix + owner + " ";
 }
 
 std::vector<short> base_camp_selectable_seat_teams(const SaveData& save)
@@ -2211,35 +2237,40 @@ constexpr MenuButtonSpec kSeatSettingsRowsMP[] = {
     {.id = "seat_team", .label = "TEAM 1",
      .x = 16, .y = 169, .w = 138, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsTeamIndex,
-     .nav = {.up = kSeatSettingsModeIndex,
+     .nav = {.up = kSeatSettingsInputRowMP,
              .down = kSeatSettingsBackIndex,
              .right = kSeatSettingsRemoveIndex}},
     {.id = "seat_direction", .label = "4-DIRECTION",
      .x = 16, .y = 38, .w = 98, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsModeIndex,
      .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsTeamIndex,
+             .down = kSeatSettingsInputRowMP,
              .right = kSeatSettingsRemapIndex}},
     {.id = "seat_remap", .label = "REMAP",
      .x = 123, .y = 38, .w = 86, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsRemapIndex,
      .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsRemoveIndex,
+             .down = kSeatSettingsInputRowMP,
              .left = kSeatSettingsModeIndex,
              .right = kSeatSettingsResetIndex}},
     {.id = "seat_reset", .label = "RESET",
      .x = 218, .y = 38, .w = 86, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsResetIndex,
      .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsRemoveIndex,
+             .down = kSeatSettingsInputRowMP,
              .left = kSeatSettingsRemapIndex}},
     {.id = "seat_remove", .label = "REMOVE PLAYER",
      .x = 166, .y = 169, .w = 138, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsRemoveIndex,
-     .nav = {.up = kSeatSettingsResetIndex,
+     .nav = {.up = kSeatSettingsInputRowMP,
              .down = kSeatSettingsBackIndex,
              .left = kSeatSettingsTeamIndex},
      .state_override = &seat_settings_remove_row_state},
+    {.id = "seat_input", .label = "INPUT: WASD",
+     .x = 16, .y = 62, .w = 98, .h = 18,
+     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsInputIndex,
+     .nav = {.up = kSeatSettingsModeIndex,
+             .down = kSeatSettingsTeamIndex}},
 };
 
 constexpr MenuButtonSpec kSeatSettingsRowsNoMP[] = {
@@ -2252,28 +2283,40 @@ constexpr MenuButtonSpec kSeatSettingsRowsNoMP[] = {
     {.id = "seat_team", .label = "TEAM 1",
      .x = 91, .y = 169, .w = 138, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsTeamIndex,
-     .nav = {.up = kSeatSettingsRemapIndex,
+     .nav = {.up = kSeatSettingsInputRowNoMP,
              .down = kSeatSettingsBackIndex}},
     {.id = "seat_direction", .label = "4-DIRECTION",
      .x = 16, .y = 38, .w = 98, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsModeIndex,
      .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsTeamIndex,
+             .down = kSeatSettingsInputRowNoMP,
              .right = kSeatSettingsRemapIndex}},
     {.id = "seat_remap", .label = "REMAP",
      .x = 123, .y = 38, .w = 86, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsRemapIndex,
      .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsTeamIndex,
+             .down = kSeatSettingsInputRowNoMP,
              .left = kSeatSettingsModeIndex,
              .right = kSeatSettingsResetIndex}},
     {.id = "seat_reset", .label = "RESET",
      .x = 218, .y = 38, .w = 86, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsResetIndex,
      .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsTeamIndex,
+             .down = kSeatSettingsInputRowNoMP,
              .left = kSeatSettingsRemapIndex}},
+    {.id = "seat_input", .label = "INPUT: WASD",
+     .x = 16, .y = 62, .w = 98, .h = 18,
+     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsInputIndex,
+     .nav = {.up = kSeatSettingsModeIndex,
+             .down = kSeatSettingsTeamIndex}},
 };
+
+static_assert(static_cast<int>(std::size(kSeatSettingsRowsMP))
+                  == kSeatSettingsButtonCountMP,
+              "seat settings MP ordinals are the layout contract");
+static_assert(static_cast<int>(std::size(kSeatSettingsRowsNoMP))
+                  == kSeatSettingsButtonCountNoMP,
+              "seat settings no-MP ordinals are the layout contract");
 
 void sync_seat_settings_label(button* buttons, int index,
                               const std::string& label)
@@ -2318,6 +2361,10 @@ void seat_settings_rewire(button* buttons, int count,
     sync_seat_settings_label(
         buttons, kSeatSettingsModeIndex,
         eight_dir ? "8-DIRECTION" : "4-DIRECTION");
+    sync_seat_settings_label(
+        buttons, kSeatSettingsInputRow,
+        og::ui::input_cycle_button_label(
+            g_seat_settings_state->local_slot));
 #ifndef DISABLE_MULTIPLAYER
     sync_seat_settings_label(
         buttons, kSeatSettingsRemoveIndex,
@@ -2349,9 +2396,11 @@ void seat_settings_draw_content(void* screen_state)
                     static_cast<int>(player.player_index) + 1)
             .c_str());
 
-    game->draw_button(12, 62, 308, 159, 2, 1);
-    mytext.write_xy(20, 66, DARK_BLUE, "%s", "MOVEMENT");
-    mytext.write_xy(164, 66, DARK_BLUE, "%s", "ACTIONS");
+    // The INPUT cycler row occupies y=62..80, so the live binding panel
+    // starts below it and packs its nine 6px lines at an 8px pitch.
+    game->draw_button(12, 84, 308, 164, 2, 1);
+    mytext.write_xy(20, 88, DARK_BLUE, "%s", "MOVEMENT");
+    mytext.write_xy(164, 88, DARK_BLUE, "%s", "ACTIONS");
 
     struct BindingLine {
         const char* label;
@@ -2380,24 +2429,34 @@ void seat_settings_draw_content(void* screen_state)
     const bool eight_dir =
         get_player_control_mode(state->local_slot) ==
         static_cast<int>(ControlDirectionMode::EightDirection);
+    // A joystick-driven seat reads its own device bindings; showing the
+    // (still-stored, still-reserved) keyboard names there would be a lie.
+    const int slot = state->local_slot;
+    const bool joystick = slot >= 0 && slot < MAX_PLAYERS &&
+        playerHasJoystick(slot);
+    const auto binding_value = [slot, joystick](int key) {
+        return joystick
+            ? joy_binding_display_name(player_joy[slot].key_type[key],
+                                       player_joy[slot].key_index[key])
+            : player_control_key_display_name(slot, key);
+    };
 
     for (std::size_t index = 0; index < movement.size(); ++index) {
         const BindingLine& binding = movement[index];
         const bool active = !binding.diagonal || eight_dir;
         const std::string value = active
-            ? player_control_key_display_name(state->local_slot, binding.key)
+            ? binding_value(binding.key)
             : std::string("--");
         const std::string line =
             std::format("{}: {}", binding.label, value);
-        mytext.write_xy(20, 77 + static_cast<int>(index) * 10,
+        mytext.write_xy(20, 99 + static_cast<int>(index) * 8,
                         active ? DARK_BLUE : GREY, "%s", line.c_str());
     }
     for (std::size_t index = 0; index < actions.size(); ++index) {
         const BindingLine& binding = actions[index];
         const std::string line = std::format(
-            "{}: {}", binding.label,
-            player_control_key_display_name(state->local_slot, binding.key));
-        mytext.write_xy(164, 77 + static_cast<int>(index) * 10,
+            "{}: {}", binding.label, binding_value(binding.key));
+        mytext.write_xy(164, 99 + static_cast<int>(index) * 8,
                         DARK_BLUE, "%s", line.c_str());
     }
 }
@@ -2471,12 +2530,35 @@ Sint32 seat_settings_on_spec_row(int row, void* screen_state)
     }
     if (row == kSeatSettingsRemapIndex) {
         (void)edit_player_keymap(state->local_slot);
+        // Design §3.2: a remap writes through to the mapping library under
+        // the seat's re-derived name, so cycling away and back — or
+        // restarting — keeps the customization. A factory-identical result
+        // returns false and drops any stale entry; that is success.
+        (void)og::input::save_player_mapping_to_library(
+            cfg, state->local_slot);
         persist_player_controls();
         return MENU_OK;
     }
+    if (row == kSeatSettingsInputIndex) {
+        // The cycler skips names held by another ACTIVE seat, so it needs the
+        // same machine-local seat count the REMOVE guard uses.
+        const std::string name = og::ui::cycle_player_input(
+            cfg, state->local_slot,
+            static_cast<int>(picker_lobby_local_seat_count()));
+        persist_player_controls();
+        TRACE("basecamp", "seat_input slot=%d name=%s",
+              state->local_slot + 1, name.c_str());
+        return MENU_OK;
+    }
     if (row == kSeatSettingsResetIndex) {
-        if (reset_default_player_controls_for_player(state->local_slot))
+        if (reset_default_player_controls_for_player(state->local_slot)) {
+            // RESET undoes a customization, so the library entry it wrote
+            // must go with it (same write-through call: factory-identical
+            // erases).
+            (void)og::input::save_player_mapping_to_library(
+                cfg, state->local_slot);
             persist_player_controls();
+        }
         return MENU_OK;
     }
 
@@ -3300,7 +3382,9 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
 
         const og::sim::LobbyPlayer& seat =
             st->seats[static_cast<std::size_t>(seat_index)];
-        if (!base_camp_seat_is_local(*st, seat.player_index)) {
+        const int local_slot =
+            base_camp_seat_local_slot(*st, seat.player_index);
+        if (local_slot < 0) {
             const std::string owner = std::format(
                 "P{}  {}",
                 static_cast<int>(seat.player_index) + 1,
@@ -3314,13 +3398,6 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
             return MENU_OK;
         }
 
-        const auto local = std::find(
-            st->local_seat_indices.begin(),
-            st->local_seat_indices.end(), seat.player_index);
-        if (local == st->local_seat_indices.end())
-            return MENU_OK;
-        const int local_slot = static_cast<int>(
-            std::distance(st->local_seat_indices.begin(), local));
         const Sint32 ret = run_seat_settings_menu(seat, local_slot);
         base_camp_refresh_rows(*st);
         if ((ret & MENU_EXIT) && team_build_start_selected())
@@ -5435,6 +5512,11 @@ Sint32 main_controls_options()
     // CONTROLS can be entered from GAME SETTINGS without necessarily
     // returning through main_options()'s family-wide persistence epilogue
     // (tests and compatibility callers invoke this wrapper directly too).
+    // Customized keymaps also write through to the named-mapping library so
+    // a remap made here survives cycling INPUT away and back (design §3.2);
+    // factory-identical seats are skipped by the library call itself.
+    for (int player = 0; player < 4; ++player)
+        (void)og::input::save_player_mapping_to_library(cfg, player);
     save_player_control_settings_to_cfg(cfg);
     cfg.save_settings();
     return result;

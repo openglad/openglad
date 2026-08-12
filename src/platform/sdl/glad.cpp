@@ -358,6 +358,25 @@ static void emscripten_frame_wrapper() {
 					pacing);
 				}
 			if (g_frame_state().done) {
+				if (current_screen->world().retry) {
+					// Pause-menu RESTART (design §2.1): the native build's
+					// `do { glad_main } while (world().retry)` loop has no
+					// browser analogue, so re-enter Playing instead of
+					// falling back to the picker. The Playing init path
+					// reloads the save and level from scratch; ready_for_
+					// battle clears world().retry so the relaunch is not
+					// sticky.
+					Log("Game done with retry, restarting level\n");
+					og::runtime::current_session->gameplay_active_ = false;
+					if (og::runtime::current_game_session != nullptr)
+						og::runtime::clear_local_transport_shadow(
+						    *og::runtime::current_game_session);
+					clear_keyboard();
+					current_screen->world().delete_objects();
+					g_web_game_start_config.reset();
+					g_state_initialized = false;
+					break;
+				}
 				Log("Game done, transitioning back to PICKER\n");
 				og::runtime::current_session->gameplay_active_ = false;
 				if (og::runtime::current_game_session != nullptr)

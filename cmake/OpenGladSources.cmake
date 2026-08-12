@@ -185,6 +185,7 @@ set(OG_INTERFACE_COMPONENT_SOURCES
     ${SRC_DIR}/interface/ui/input_cycler.cpp
     ${SRC_DIR}/interface/ui/menu_screen_runner.cpp
     ${SRC_DIR}/interface/ui/menu_screen_specs.cpp
+    ${SRC_DIR}/interface/ui/pause_menu.cpp
     ${SRC_DIR}/interface/ui/picker.cpp
     ${SRC_DIR}/interface/ui/picker_accessible_levels.cpp
     ${SRC_DIR}/interface/ui/picker_common.cpp

@@ -2410,7 +2410,7 @@ std::size_t GameServer::infer_exit_triggering_player_index() const noexcept
 
 void GameServer::handle_pause_request(PeerId peer_id)
 {
-    if (pending_exit_prompt_state_.has_value() || pending_pause_state_.has_value())
+    if (pending_exit_prompt_state_.has_value())
         return;
 
     const auto client_it = clients_.find(peer_id);
@@ -2419,7 +2419,33 @@ void GameServer::handle_pause_request(PeerId peer_id)
 
     ConnectedClientState& client = client_it->second;
     const std::uint64_t now = now_ms();
-    if (client.last_pause_request_ms != 0 &&
+
+    if (pending_pause_state_.has_value())
+    {
+        // Keep-alive: a repeat request from the peer whose seat OWNS the
+        // pending pause refreshes the auto-resume deadline (the pause menu
+        // re-requests while open, defeating PAUSE_TIMEOUT_MS). No
+        // re-broadcast, no rate-limit stamp; any other peer's repeat is
+        // still rejected.
+        const std::size_t owner = pending_pause_state_->player_index;
+        const bool owns_pause = std::any_of(
+            client.bound_players.begin(), client.bound_players.end(),
+            [owner](const BoundPlayer& seat) {
+                return seat.player_index == owner;
+            });
+        if (owns_pause)
+            pending_pause_state_->opened_at_ms = now;
+        return;
+    }
+
+    // The anti-grief rate limit applies to REMOTE peers only. The host peer
+    // is this machine's own display client: its pause menu must always be
+    // able to re-pause (close + reopen within the window), and there is no
+    // one for the local machine to grief.
+    const bool host_peer =
+        host_peer_id_.has_value() && *host_peer_id_ == peer_id;
+    if (!host_peer &&
+        client.last_pause_request_ms != 0 &&
         now >= client.last_pause_request_ms &&
         now - client.last_pause_request_ms < PAUSE_RATE_LIMIT_MS)
     {

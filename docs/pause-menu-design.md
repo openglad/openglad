@@ -43,19 +43,22 @@ recipe):
 ```
                     P A U S E D
         [ RESUME                    ]
-        [ RESTART MISSION           ]      hidden when networked
-        [ QUIT MISSION              ]
+        [ RESTART MISSION           ]      hidden when networked or when the
+        [ QUIT MISSION              ]      progression suppresses retry
         ---- PLAYERS ----
-        [ P1 · WASD                 ]      one row per LOCAL seat
-        [ P2 · ARROWS               ]
+        [ P1: WASD                  ]      one row per LOCAL seat
+        [ P2: ARROWS                ]
         [ + ADD PLAYER              ]      hidden when networked / 4 seats
 ```
+
+(The separator is ":" — the bitmap font has glyphs 0..124 only, so "·" would
+render as the fallback glyph.)
 
 - Buttons are 140px wide (23-char budget), centered column, MenuSpecRow
   dispatch, ids `pause_resume`, `pause_restart`, `pause_quit`,
   `pause_player_0..3`, `pause_add_player` (distinctive ids — stale picker
   `back` buttons survive `glad_main`, tests must not collide).
-- Player rows are labeled `P{n} · {mapping display name}` — the named-mapping
+- Player rows are labeled `P{n}: {mapping display name}` — the named-mapping
   feature is visible right here.
 - QUIT keeps the existing confirm (`yes_or_no_prompt("Abort Mission", ...)`)
   and the existing per-role abort semantics (authoritative ends the level for
@@ -115,8 +118,9 @@ seat settings, minus TEAM):
   Entries already held by another *active* seat are skipped (two players can
   only share a mapping through deliberate remapping, never through the
   cycler).
-- Base Camp seat settings gains the same INPUT cycler row (new row band at
-  y≈62 — the y=38 band is full). Both screens share the row handlers.
+- Base Camp seat settings gains the same INPUT cycler row (at y=62, under the
+  full y=38 band; the live-bindings panel moved down to y=84 to make room).
+  Both screens share the cycler helper (`og::ui::cycle_player_input`).
 - REMOVE PLAYER mid-game performs the local mid-game seat removal (§5) after
   a `no_or_yes_prompt` confirm. In Base Camp it keeps today's behavior.
 - REMAP keeps the existing wizard, which already accepts joystick events.

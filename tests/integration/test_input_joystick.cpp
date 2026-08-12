@@ -1,11 +1,14 @@
 #include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
+#include <openglad/interface/ui/input_cycler.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/resources/gparser.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include <algorithm>
+#include <format>
 #include <string>
+#include <vector>
 extern void wait_for_key(int somekey);
 extern og::input_native::JoystickHandle joysticks[10];
 
@@ -956,4 +959,210 @@ TEST(InputJoystick, remap_ignores_other_devices_when_seat_is_assigned)
         << "the takeover must release the previous holder";
     EXPECT_TRUE(input_hardware_state().player_joystick_guids[0].empty())
         << "the robbed seat's GUID claim must be cleared";
+}
+
+// ---------------------------------------------------------------------------
+// The per-seat INPUT cycler (og::ui, design §2.2): keyboard mapping names
+// first, then JOY{n} for each connected device not held by another active
+// seat. All through a LOCAL cfg_store — never disk (the cfg clobber hazard).
+
+namespace
+{
+std::vector<std::string> cycle_option_names(
+    const std::vector<og::ui::InputCycleOption>& options)
+{
+    std::vector<std::string> names;
+    names.reserve(options.size());
+    for (const og::ui::InputCycleOption& option : options)
+        names.push_back(option.name);
+    return names;
+}
+} // namespace
+
+TEST(InputJoystick, input_cycler_enumerates_devices_and_skips_held_elsewhere)
+{
+    JoystickSubsystemGuard subsystem_guard;
+    CompleteInputStateGuard input_guard;
+    BackgroundJoystickEventsGuard background_events_guard;
+    VirtualJoystick pad_a(2, 6, 0, "OpenGlad cycler pad A");
+    VirtualJoystick pad_b(2, 6, 0, "OpenGlad cycler pad B");
+    ASSERT_NE(nullptr, pad_a.get()) << SDL_GetError();
+    ASSERT_NE(nullptr, pad_b.get()) << SDL_GetError();
+    JoystickHandleGuard handle_guard;
+    const int d_a = device_index_of(pad_a.instance_id());
+    const int d_b = device_index_of(pad_b.instance_id());
+    ASSERT_GE(d_a, 0);
+    ASSERT_GE(d_b, 0);
+    ASSERT_LT(d_a, 10);
+    ASSERT_LT(d_b, 10);
+    joysticks[d_a] = pad_a.get();
+    joysticks[d_b] = pad_b.get();
+    reset_default_player_controls();
+    for (int p = 0; p < 4; ++p)
+        clear_player_joystick(p);
+
+    // LOCAL store only — never disk (the cfg clobber hazard).
+    cfg_store config;
+
+    // Both devices free: seat 0 sees its keyboard names (minus seat 1's
+    // ARROWS) and then every connected device, 1-based, in index order.
+    {
+        const std::vector<og::ui::InputCycleOption> options =
+            og::ui::input_cycle_options(config, 0, 2);
+        std::vector<std::string> expected = {"WASD", "IJKL", "TFGH"};
+        for (int device = 0; device < joystick_device_count(); ++device)
+            expected.push_back(std::format("JOY{}", device + 1));
+        EXPECT_EQ(expected, cycle_option_names(options));
+        for (const og::ui::InputCycleOption& option : options)
+        {
+            if (option.is_joystick)
+            {
+                EXPECT_EQ(std::format("JOY{}", option.joystick_device + 1),
+                          option.name);
+            }
+            else
+            {
+                EXPECT_EQ(-1, option.joystick_device) << option.name;
+            }
+        }
+    }
+
+    // A device held by ANOTHER active seat is skipped...
+    ASSERT_TRUE(assign_joystick_to_player(1, d_b));
+    {
+        const std::vector<og::ui::InputCycleOption> options =
+            og::ui::input_cycle_options(config, 0, 2);
+        std::vector<std::string> expected = {"WASD", "IJKL", "TFGH"};
+        for (int device = 0; device < joystick_device_count(); ++device)
+        {
+            if (device != d_b)
+                expected.push_back(std::format("JOY{}", device + 1));
+        }
+        EXPECT_EQ(expected, cycle_option_names(options));
+    }
+
+    // ...but not from the seat that holds it,
+    {
+        const std::vector<og::ui::InputCycleOption> options =
+            og::ui::input_cycle_options(config, 1, 2);
+        std::vector<std::string> expected = {"ARROWS", "IJKL", "TFGH"};
+        for (int device = 0; device < joystick_device_count(); ++device)
+            expected.push_back(std::format("JOY{}", device + 1));
+        EXPECT_EQ(expected, cycle_option_names(options));
+    }
+
+    // ...and not from a roster that does not include the holder (seat 1 is
+    // outside a 1-seat roster, so its claim is invisible).
+    {
+        const std::vector<og::ui::InputCycleOption> options =
+            og::ui::input_cycle_options(config, 0, 1);
+        std::vector<std::string> expected = {"WASD", "ARROWS", "IJKL", "TFGH"};
+        for (int device = 0; device < joystick_device_count(); ++device)
+            expected.push_back(std::format("JOY{}", device + 1));
+        EXPECT_EQ(expected, cycle_option_names(options));
+    }
+
+    // current_input_selection reflects the assigned device.
+    const og::ui::InputCycleOption current =
+        og::ui::current_input_selection(1);
+    EXPECT_TRUE(current.is_joystick);
+    EXPECT_EQ(d_b, current.joystick_device);
+    EXPECT_EQ(std::format("JOY{}", d_b + 1), current.name);
+}
+
+TEST(InputJoystick, input_cycler_cycles_between_keyboard_and_joystick)
+{
+    JoystickSubsystemGuard subsystem_guard;
+    CompleteInputStateGuard input_guard;
+    BackgroundJoystickEventsGuard background_events_guard;
+    VirtualJoystick pad(2, 6, 0, "OpenGlad cycler landing pad");
+    ASSERT_NE(nullptr, pad.get()) << SDL_GetError();
+    JoystickHandleGuard handle_guard;
+    const int d = device_index_of(pad.instance_id());
+    ASSERT_GE(d, 0);
+    ASSERT_LT(d, 10);
+    joysticks[d] = pad.get();
+    reset_default_player_controls();
+    for (int p = 0; p < 4; ++p)
+        clear_player_joystick(p);
+
+    // LOCAL store only — never disk (the cfg clobber hazard).
+    cfg_store config;
+    const std::string joy_name = std::format("JOY{}", d + 1);
+
+    // A joystick option pointing at an unopened device slot is refused.
+    int empty_slot = -1;
+    for (int i = 0; i < 10; ++i)
+    {
+        if (i != d)
+        {
+            empty_slot = i;
+            break;
+        }
+    }
+    EXPECT_FALSE(og::ui::apply_input_cycle_selection(
+        config, 0,
+        {.name = "JOY?", .is_joystick = true, .joystick_device = empty_slot}));
+    EXPECT_FALSE(playerHasJoystick(0));
+
+    // Park the solo seat on the LAST keyboard option (no joystick assigned,
+    // so the keyboard branch skips the clear)...
+    ASSERT_TRUE(og::ui::apply_input_cycle_selection(config, 0,
+                                                    {.name = "TFGH"}));
+    ASSERT_EQ("TFGH", og::ui::current_input_selection(0).name);
+
+    // ...so the next cycle lands on the joystick: device assigned, JOY name.
+    EXPECT_EQ(joy_name, og::ui::cycle_player_input(config, 0, 1));
+    EXPECT_EQ(d, player_joystick_device(0));
+    const og::ui::InputCycleOption current =
+        og::ui::current_input_selection(0);
+    EXPECT_TRUE(current.is_joystick);
+    EXPECT_EQ(d, current.joystick_device);
+    EXPECT_EQ(joy_name, current.name);
+    EXPECT_EQ(std::format("INPUT: {}", joy_name),
+              og::ui::input_cycle_button_label(0));
+    EXPECT_EQ(JoyData::BUTTON, player_joy[0].key_type[KEY_FIRE])
+        << "landing on a JOY option synthesizes the default device layout";
+
+    // Cycling off the joystick wraps to WASD: device cleared, mapping loaded.
+    EXPECT_EQ("WASD", og::ui::cycle_player_input(config, 0, 1));
+    EXPECT_EQ(-1, player_joystick_device(0));
+    EXPECT_FALSE(playerHasJoystick(0));
+    EXPECT_FALSE(og::ui::current_input_selection(0).is_joystick);
+    EXPECT_EQ("WASD", og::ui::current_input_selection(0).name)
+        << "the factory WASD mapping must actually load into the seat";
+
+    // A seat whose current JOY selection vanished from the options (device
+    // detached, hotplug not yet pumped) restarts the cycle at the first
+    // option instead of getting stuck.
+    ASSERT_TRUE(og::ui::apply_input_cycle_selection(
+        config, 0,
+        {.name = joy_name, .is_joystick = true, .joystick_device = d}));
+    ASSERT_TRUE(playerHasJoystick(0));
+    joysticks[d] = nullptr;
+    pad.detach();
+    ASSERT_EQ(0, joystick_device_count())
+        << "the detached virtual pad must leave enumeration immediately";
+    EXPECT_EQ("WASD", og::ui::cycle_player_input(config, 0, 1));
+    EXPECT_EQ(-1, player_joystick_device(0));
+}
+
+TEST(InputJoystick, input_cycler_single_option_is_a_no_op)
+{
+    CompleteInputStateGuard input_guard;
+    JoystickHandleGuard handle_guard;
+    reset_default_player_controls();
+    for (int p = 0; p < 4; ++p)
+        clear_player_joystick(p);
+
+    // LOCAL store only — never disk (the cfg clobber hazard).
+    cfg_store config;
+    ASSERT_EQ(0, joystick_device_count())
+        << "this test needs a joystick-free device table";
+
+    // Four active seats hold all four factory names and no devices are
+    // connected: seat 0's only option is its own WASD, so the cycle is a
+    // no-op that reports the current name.
+    EXPECT_EQ("WASD", og::ui::cycle_player_input(config, 0, 4));
+    EXPECT_EQ("WASD", og::ui::current_input_selection(0).name);
 }

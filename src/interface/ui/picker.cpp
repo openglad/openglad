@@ -2100,7 +2100,8 @@ static bool poll_lobby_during_control_remap()
         !picker_lobby_has_game_start_config();
 }
 
-static void remap_player_keys(int player_index)
+static void remap_player_keys(int player_index,
+                              KeyWaitPollCallback poll_callback)
 {
     if (player_index < 0 || player_index >= 4)
         return;
@@ -2147,7 +2148,7 @@ static void remap_player_keys(int player_index)
         const auto& prompt = prompts[idx];
         draw_remap_prompt(std::format("P{} {}", player_index + 1, prompt.label), player_index);
         if (!assignKeyFromWaitEventPolling(
-                player_index, prompt.key, &poll_lobby_during_control_remap))
+                player_index, prompt.key, poll_callback))
         {
             break;
         }
@@ -2170,7 +2171,19 @@ Sint32 toggle_player_control_mode(Sint32 arg)
 
 Sint32 edit_player_keymap(Sint32 arg)
 {
-    remap_player_keys(static_cast<int>(arg));
+    remap_player_keys(static_cast<int>(arg),
+                      &poll_lobby_during_control_remap);
+    return MENU_REDRAW;
+}
+
+// In-game variant (the pause menu's player screen): the same remap wizard
+// with a caller-supplied per-poll callback — it pumps the paused transport
+// instead of the picker lobby, and cancels the prompt sequence by returning
+// false when the session dies underneath the menu.
+Sint32 edit_player_keymap_with_poll(Sint32 arg,
+                                    KeyWaitPollCallback poll_callback)
+{
+    remap_player_keys(static_cast<int>(arg), poll_callback);
     return MENU_REDRAW;
 }
 

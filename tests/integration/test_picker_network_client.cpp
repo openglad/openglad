@@ -14,6 +14,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/ui/cloud_save_client.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
+#include <openglad/interface/ui/pause_menu.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_lobby_network_client.h>
 #include <openglad/legacy/base.h>
@@ -3080,6 +3081,238 @@ TEST(PickerNetworkClient,
     join_client->shutdown();
 }
 
+// Remote-pause attribution on a networked joiner (design §2.1): the pause
+// overlay names the pausing peer and adds the menu hint, and
+// local_transport_shadow_remote_pause_owner feeds the PAUSED menu's
+// "by <name>" subtitle. Driven with a hand-rolled server transport so every
+// broadcast shape is reachable: missing (a peer that never saw the
+// broadcast), anonymous (the P{n} fallback), named, and own-seat.
+TEST(PickerNetworkClient,
+     join_runtime_remote_pause_owner_and_overlay_menu_hint)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 1, "Joiner");
+    save.allied_mode = 0;
+    g_start_game_requested = false;
+
+    const int port = ix::getFreePort();
+    auto server_transport =
+        std::make_shared<og::sim::WebSocketServerTransport>(port);
+    server_transport->accept_connections();
+
+    og::ui::PickerJoinGameOptions options;
+    options.mode = og::ui::PickerJoinMode::Direct;
+    options.direct_endpoint = std::format("127.0.0.1:{}", port);
+    auto join_client = og::ui::create_join_picker_lobby_client(options);
+    join_client->initialize_from_save();
+
+    og::sim::PeerId join_peer_id = 0;
+    og::sim::LobbyMessage join_message;
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        for (auto& [peer_id, message] : poll_lobby_messages(*server_transport))
+        {
+            if (message.kind() != og::sim::LobbyMessageKind::Join)
+                continue;
+
+            join_peer_id = peer_id;
+            join_message = std::move(message);
+            return true;
+        }
+        return false;
+    })) << "join client should connect and send its join message";
+
+    ASSERT_EQ(og::sim::LobbyMessageKind::Join, join_message.kind());
+    const std::uint32_t join_request_id =
+        std::get<og::sim::LobbyJoinMessage>(join_message.payload).request_id;
+    og::sim::LobbyPlayer join_player =
+        std::get<og::sim::LobbyJoinMessage>(join_message.payload).player;
+    join_player.player_index = 1u;
+    join_player.seat_id = 502u;
+    join_player.machine_id = 2u;
+    join_player.ready = false;
+    join_player.is_host = false;
+    join_player.team = 1;
+    for (auto& slot : join_player.character_slots)
+        slot.character.teamnum = 1;
+
+    og::sim::LobbyState state;
+    state.settings.campaign_id = save.current_campaign;
+    state.settings.scenario_id = save.scen_num;
+    state.settings.difficulty = 2;
+    state.settings.allied_mode = 0;
+    state.players.push_back(og::sim::LobbyPlayer{
+        .player_index = 0u,
+        .seat_id = 501u,
+        .machine_id = 1u,
+        .name = "Remote Host",
+        .company = "Remote Host Company",
+        .team = 0,
+        .character_slots = {make_lobby_slot(0u, "Remote Host", 0)},
+        .ready = false,
+        .is_host = true,
+    });
+    state.players.push_back(join_player);
+    state.local_seat_ids = {join_player.seat_id};
+    state.last_join_request_id = join_request_id;
+    server_transport->send_lobby_state(
+        join_peer_id, std::make_shared<og::sim::LobbyState>(state));
+
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        return status_lines_contain_exact(
+            join_client->status_lines(),
+            "Lobby: 2 players");
+    })) << "join client should receive lobby state before runtime handoff";
+
+    send_start_game_message(*server_transport, join_peer_id, 0u);
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        return join_client->has_game_start_config();
+    })) << "join client should receive the host start-game handoff";
+
+    ASSERT_NE(nullptr, active_game_session());
+    // The production handoff (ready_screen_for_game_start) marks the session
+    // networked before the runtime install; this synthetic fixture must do
+    // the same or the shadow treats every pause as locally owned.
+    struct NetworkedSessionFlagGuard
+    {
+        og::runtime::GameSession* session;
+        bool saved = session->networked_session_;
+        ~NetworkedSessionFlagGuard() { session->networked_session_ = saved; }
+    } networked_flag_guard{active_game_session()};
+    active_game_session()->networked_session_ = true;
+    ASSERT_TRUE(install_gameplay_runtime_from_handoff(*join_client));
+    ASSERT_TRUE(og::runtime::local_transport_active(*active_game_session()));
+    og::runtime::GameSession& session = *active_game_session();
+
+    screen* const gameplay_screen = session.myscreen_;
+    ASSERT_NE(nullptr, gameplay_screen);
+    ASSERT_NE(nullptr, gameplay_screen->viewob[0]);
+
+    og::sim::InitialSetupMessage initial_setup;
+    initial_setup.level_id = 1;
+    initial_setup.current_scenario = 1;
+    initial_setup.my_team = 1;
+    initial_setup.allied_mode = 0;
+    server_transport->send_initial_setup(
+        join_peer_id,
+        std::make_shared<og::sim::InitialSetupMessage>(initial_setup));
+    og::sim::WorldSnapshot initial_snapshot =
+        og::sim::capture_keyframe_snapshot(gameplay_screen->world());
+    initial_snapshot.my_team = initial_setup.my_team;
+    initial_snapshot.allied_mode = initial_setup.allied_mode;
+    initial_snapshot.snapshot_hash =
+        og::sim::compute_snapshot_hash(initial_snapshot);
+    server_transport->send_snapshot(
+        join_peer_id,
+        std::make_shared<og::sim::WorldSnapshot>(std::move(initial_snapshot)));
+
+    ASSERT_TRUE(wait_until([&] {
+        og::runtime::local_transport_shadow_finish_tick(session);
+        return gameplay_screen->world().my_team == 1;
+    })) << "client runtime should apply the authoritative initial setup";
+
+    viewscreen* const view = gameplay_screen->viewob[0].get();
+    const auto overlay_shown = [view](std::string_view line) {
+        for (int slot = 0; slot < MAX_MESSAGES; ++slot)
+        {
+            if (view->textlist[slot] == line)
+                return true;
+        }
+        return false;
+    };
+
+    // 1. A paused snapshot with NO broadcast: the world freezes and the
+    //    overlay shows plain PAUSED, but the pause cannot be attributed to a
+    //    remote peer, so there is no owner name and no menu hint.
+    og::sim::WorldSnapshot paused_snapshot =
+        og::sim::capture_keyframe_snapshot(gameplay_screen->world());
+    paused_snapshot.my_team = 1;
+    paused_snapshot.allied_mode = 0;
+    paused_snapshot.paused = true;
+    paused_snapshot.pause_player_index = 0;
+    paused_snapshot.snapshot_hash =
+        og::sim::compute_snapshot_hash(paused_snapshot);
+    server_transport->send_snapshot(
+        join_peer_id,
+        std::make_shared<og::sim::WorldSnapshot>(paused_snapshot));
+    ASSERT_TRUE(wait_until([&] {
+        og::runtime::local_transport_shadow_finish_tick(session);
+        return gameplay_screen->world().paused;
+    })) << "the paused snapshot should freeze the display world";
+    EXPECT_TRUE(
+        og::runtime::local_transport_shadow_remote_pause_owner(session)
+            .empty())
+        << "a pause with no observed broadcast has no attributable owner";
+    EXPECT_TRUE(overlay_shown("PAUSED"));
+    EXPECT_FALSE(overlay_shown("ESC: Menu"))
+        << "no menu hint until the pause is known to be a remote peer's";
+
+    // 2. An anonymous broadcast (name omitted) for a remote seat: the owner
+    //    falls back to P{index+1} and the overlay gains the menu hint.
+    og::sim::PauseBroadcastMessage anonymous_pause;
+    anonymous_pause.player_index = 0;
+    anonymous_pause.player_name.clear();
+    server_transport->send_pause_broadcast(
+        join_peer_id,
+        std::make_shared<og::sim::PauseBroadcastMessage>(anonymous_pause));
+    ASSERT_TRUE(wait_until([&] {
+        og::runtime::local_transport_shadow_finish_tick(session);
+        return og::runtime::local_transport_shadow_remote_pause_owner(
+                   session) == "P1";
+    })) << "an anonymous remote pause should name its owner P{index+1}";
+    EXPECT_TRUE(overlay_shown("ESC: Menu"))
+        << "a remote peer's pause must point at the pause menu";
+
+    // 3. A named broadcast: the peer's name wins over the P{n} fallback,
+    //    on both the owner seam and the overlay line.
+    og::sim::PauseBroadcastMessage named_pause;
+    named_pause.player_index = 0;
+    named_pause.player_name = "Remote Host";
+    server_transport->send_pause_broadcast(
+        join_peer_id,
+        std::make_shared<og::sim::PauseBroadcastMessage>(named_pause));
+    ASSERT_TRUE(wait_until([&] {
+        og::runtime::local_transport_shadow_finish_tick(session);
+        return og::runtime::local_transport_shadow_remote_pause_owner(
+                   session) == "Remote Host";
+    })) << "a named remote pause should surface the peer's name";
+    EXPECT_TRUE(overlay_shown("PAUSED by Remote Host"));
+
+    // 4. A broadcast owned by this machine's OWN seat is not remote: the
+    //    subtitle seam goes quiet again (the local pauser is looking at the
+    //    pause menu itself).
+    og::sim::PauseBroadcastMessage own_pause;
+    own_pause.player_index = 1;
+    own_pause.player_name = "Joiner";
+    server_transport->send_pause_broadcast(
+        join_peer_id,
+        std::make_shared<og::sim::PauseBroadcastMessage>(own_pause));
+    ASSERT_TRUE(wait_until([&] {
+        og::runtime::local_transport_shadow_finish_tick(session);
+        const og::sim::GameClient* const display_client =
+            gameplay_screen->render_interpolation_client();
+        return display_client != nullptr &&
+            display_client->last_pause_broadcast().has_value() &&
+            display_client->last_pause_broadcast()->player_index == 1;
+    })) << "the own-seat broadcast should reach the display client";
+    EXPECT_TRUE(
+        og::runtime::local_transport_shadow_remote_pause_owner(session)
+            .empty())
+        << "a pause owned by this machine's own seat is not a remote pause";
+
+    // The display screen is shared across picker tests: release the pause
+    // and the overlay lines before handing it back.
+    gameplay_screen->world().paused = false;
+    gameplay_screen->world().pause_player_index = og::sim::kNoPausePlayerIndex;
+    view->clear_text();
+    og::runtime::clear_local_transport_shadow(*active_game_session());
+    join_client->shutdown();
+}
+
 TEST(PickerNetworkClient, host_escape_abort_signals_join_runtime_to_end_session)
 {
     IxNetSystemScope net_system;
@@ -3285,16 +3518,24 @@ TEST(PickerNetworkClient, host_escape_abort_signals_join_runtime_to_end_session)
             };
         };
 
+        // Esc opens the PAUSED menu; the scripted outcome keeps the pause
+        // pending (the "menu is open" state) so the host world freezes.
+        og::ui::pause_menu_testing_clear_queue();
+        og::ui::pause_menu_testing_queue_outcome(
+            og::ui::PauseMenuResult::Resumed, /*release_pause=*/false);
         const EscapeFrameOutcome pause_frame = run_host_escape_frame();
         ASSERT_EQ(GameFrameResult::Continue, pause_frame.result);
         ASSERT_FALSE(pause_frame.done);
         ASSERT_EQ(1, pause_frame.redrawme);
         ASSERT_TRUE(host_gameplay_screen->world().paused);
 
-        picker_testing_yes_or_no_queue_push(true);
+        // QUIT MISSION from the menu ends the level authoritatively.
+        og::ui::pause_menu_testing_queue_outcome(
+            og::ui::PauseMenuResult::Quit, /*release_pause=*/false);
         const EscapeFrameOutcome abort_frame = run_host_escape_frame();
         EXPECT_EQ(GameFrameResult::AbortedMission, abort_frame.result);
         EXPECT_TRUE(abort_frame.done);
+        og::ui::pause_menu_testing_clear_queue();
     }
     picker_testing_yes_or_no_queue_clear();
 

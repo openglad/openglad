@@ -116,6 +116,12 @@ private:
                                                   const InputState& input,
                                                   std::uint32_t tick);
     friend void local_transport_shadow_finish_tick(GameSession& session);
+    friend bool local_transport_shadow_pump_paused(GameSession& session);
+    friend void local_transport_shadow_request_pause_keepalive(
+        GameSession& session);
+    friend std::string local_transport_shadow_remote_pause_owner(
+        GameSession& session);
+    friend bool local_transport_shadow_restart_level(GameSession& session);
 #ifdef TESTING
     friend screen* local_transport_shadow_testing_server_screen(
         GameSession& session);

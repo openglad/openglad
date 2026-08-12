@@ -1,6 +1,9 @@
 #include <openglad/interface/button.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/interface/input.h>
+#include <openglad/interface/input_hardware_state.h>
+#include <openglad/interface/input_mappings.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -13,6 +16,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstring>
 #include <format>
 #include <memory>
 #include <optional>
@@ -54,6 +58,44 @@ struct PlayerControlSnapshotGuard
         for (int k = 0; k < NUM_KEYS; ++k)
             set_player_key_binding(player, k, old_eight[k]);
         set_player_control_mode(player, old_mode);
+    }
+};
+
+// Seat-card labels are derived from each local profile's live movement keys
+// (design §2.3), so any test that pins one needs a known starting mapping —
+// and must hand the whole hardware block back, since claiming a factory NAME
+// also permutes the RESET identities.
+struct FactoryMappingGuard
+{
+    InputHardwareState hardware = input_hardware_state();
+    int active[4][NUM_KEYS]{};
+
+    FactoryMappingGuard()
+    {
+        for (int player = 0; player < 4; ++player)
+        {
+            for (int key = 0; key < NUM_KEYS; ++key)
+            {
+                active[player][key] =
+                    og::runtime::current_session->player_keys_[player][key];
+            }
+            clear_player_joystick(player);
+            og::input::assign_mapping_to_player(
+                player, og::input::factory_mapping(player));
+        }
+    }
+
+    ~FactoryMappingGuard()
+    {
+        input_hardware_state() = hardware;
+        for (int player = 0; player < 4; ++player)
+        {
+            for (int key = 0; key < NUM_KEYS; ++key)
+            {
+                og::runtime::current_session->player_keys_[player][key] =
+                    active[player][key];
+            }
+        }
     }
 };
 } // namespace
@@ -657,6 +699,9 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
 #else
     constexpr bool kAddSeatCompiledIn = true;
 #endif
+    FactoryMappingGuard mapping_guard;
+    EXPECT_EQ(9, kBaseCampSeatCardLabelBudget)
+        << "57px card face / 6px per character";
 
     struct LocalSeatRailLobby final : og::ui::IPickerLobbyClient
     {
@@ -814,14 +859,41 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
                     continue;
 
                 const int player_index = first + card;
+                // Local seat zero is this machine's first controller
+                // profile; the trailing seat is its second (the fixture
+                // hands the lobby exactly those two local indices).
                 const bool local =
                     player_index == 0 ||
                     (seat_count > 1 && player_index == seat_count - 1);
-                EXPECT_EQ(
-                    std::format("P{} {} ", player_index + 1,
-                                local ? "YOU" : "IRO"),
-                    card_button.label)
+                const char* const owner =
+                    !local ? "IRO"
+                           : (player_index == 0 ? "WASD" : "ARROW");
+                // Design §2.3: a local card names its INPUT mapping. The
+                // 57px face is exactly nine characters INCLUDING the
+                // load-bearing trailing pad, so a two-digit global P#
+                // shortens the name rather than overflowing the bevel.
+                std::string expected =
+                    std::format("P{} {} ", player_index + 1, owner);
+                if (expected.size() >
+                    static_cast<std::size_t>(kBaseCampSeatCardLabelBudget))
+                {
+                    expected = std::format(
+                        "P{} {} ", player_index + 1,
+                        std::string(owner).substr(
+                            0, std::strlen(owner) -
+                                   (expected.size() -
+                                    static_cast<std::size_t>(
+                                        kBaseCampSeatCardLabelBudget))));
+                }
+                EXPECT_EQ(expected, card_button.label)
                     << variant << " card " << card;
+                EXPECT_LE(card_button.label.size(),
+                          static_cast<std::size_t>(
+                              kBaseCampSeatCardLabelBudget))
+                    << variant << " card " << card << " '"
+                    << card_button.label << "'";
+                EXPECT_EQ(' ', card_button.label.back())
+                    << "the team-chip clearance pad is load-bearing";
                 rail.push_back(kBaseCampSeatCardBase + card);
             }
             if (paged)
@@ -1004,6 +1076,62 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
     EXPECT_EQ(kAddSeatCompiledIn ? og::ui::RowState::Disabled
                                 : og::ui::RowState::Hidden,
               local_cap_state);
+}
+
+// Design §2.2: the seat editor's INPUT cycler needed a band of its own —
+// the y=38 band is exactly full (16+98 | 123+86 | 218+86 = 304 of 320). Pin
+// both build variants: geometry, no overlaps, closed+reachable nav, and the
+// face budget for the widest short mapping name.
+TEST(MenuLayout, seat_settings_input_row_layout_and_nav)
+{
+    for (const og::ui::MenuScreenSpec* spec :
+         {&og::ui::seat_settings_menu_screen_spec_mp(),
+          &og::ui::seat_settings_menu_screen_spec_nomp()})
+    {
+        const bool mp = spec->row_count == kSeatSettingsButtonCountMP;
+        const char* const variant =
+            mp ? "seat_settings_mp" : "seat_settings_nomp";
+        const int input_row =
+            mp ? kSeatSettingsInputRowMP : kSeatSettingsInputRowNoMP;
+
+        std::vector<button> rows;
+        og::ui::materialize_menu_buttons(*spec, rows);
+        ASSERT_EQ(spec->row_count, static_cast<int>(rows.size())) << variant;
+
+        check_no_overlaps(rows.data(), spec->row_count, variant);
+        check_bounds(rows.data(), spec->row_count, variant);
+        check_nav_closed_and_reachable(rows.data(), spec->row_count,
+                                       spec->default_highlight, variant);
+
+        const button& input = rows[static_cast<std::size_t>(input_row)];
+        const button& mode =
+            rows[static_cast<std::size_t>(kSeatSettingsModeIndex)];
+        const button& team =
+            rows[static_cast<std::size_t>(kSeatSettingsTeamIndex)];
+        EXPECT_EQ("seat_input", input.id) << variant;
+        EXPECT_EQ(16, input.x) << variant;
+        EXPECT_EQ(62, input.y) << variant;
+        EXPECT_EQ(98, input.sizex) << variant;
+        EXPECT_EQ(18, input.sizey) << variant;
+        EXPECT_EQ(mode.x, input.x)
+            << variant << ": the cycler shares the MODE column";
+        EXPECT_LT(mode.y + mode.sizey, input.y)
+            << variant << ": the cycler clears the whole y=38 band";
+        EXPECT_LT(input.y + input.sizey, team.y)
+            << variant << ": the cycler clears the bottom command band";
+
+        // "INPUT: " + a five-character short name on a beveled 98px face.
+        const std::string widest = std::format(
+            "INPUT: {}",
+            std::string(static_cast<std::size_t>(
+                            og::input::kMappingShortNameMaxLength),
+                        'W'));
+        EXPECT_LE(static_cast<int>(widest.size()), (input.sizex - 8) / 6)
+            << variant << " '" << widest << "'";
+        EXPECT_LE(static_cast<int>(std::strlen(input.label.c_str())),
+                  (input.sizex - 8) / 6)
+            << variant << " '" << input.label << "'";
+    }
 }
 
 // §2.5 keyboard-nav BFS matrix (pattern b): the per-frame full-graph rewire

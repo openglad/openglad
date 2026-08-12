@@ -22,7 +22,9 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/input_mappings.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/ui/input_cycler.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -2074,11 +2076,29 @@ TEST(MenuEngine, seat_settings_registry_and_global_controls_ownership)
         og::ui::seat_settings_menu_screen_spec_mp();
     const og::ui::MenuScreenSpec& seat_nomp =
         og::ui::seat_settings_menu_screen_spec_nomp();
+    EXPECT_EQ(7, kSeatSettingsButtonCountMP);
+    EXPECT_EQ(6, kSeatSettingsButtonCountNoMP);
     EXPECT_EQ(kSeatSettingsButtonCountMP, seat_mp.row_count);
     EXPECT_EQ(kSeatSettingsButtonCountNoMP, seat_nomp.row_count);
     EXPECT_STREQ("seat_settings_back", seat_mp.rows[kSeatSettingsBackIndex].id);
     EXPECT_STREQ("seat_remove", seat_mp.rows[kSeatSettingsRemoveIndex].id);
     EXPECT_STREQ("seat_reset", seat_nomp.rows[kSeatSettingsResetIndex].id);
+    // The INPUT cycler is appended, so ordinals 0..5 and the highlight seed
+    // are unchanged. Its dispatch arg is 6 in both tables; the no-MP table
+    // has no REMOVE row so the same row materializes one slot earlier.
+    EXPECT_EQ(6, kSeatSettingsInputIndex);
+    EXPECT_EQ(6, kSeatSettingsInputRowMP);
+    EXPECT_EQ(5, kSeatSettingsInputRowNoMP);
+    EXPECT_STREQ("seat_input", seat_mp.rows[kSeatSettingsInputRowMP].id);
+    EXPECT_STREQ("seat_input", seat_nomp.rows[kSeatSettingsInputRowNoMP].id);
+    EXPECT_EQ(kSeatSettingsInputIndex,
+              seat_mp.rows[kSeatSettingsInputRowMP].arg);
+    EXPECT_EQ(kSeatSettingsInputIndex,
+              seat_nomp.rows[kSeatSettingsInputRowNoMP].arg);
+    EXPECT_EQ(ButtonAction::MenuSpecRow,
+              seat_mp.rows[kSeatSettingsInputRowMP].action);
+    EXPECT_EQ(ButtonAction::MenuSpecRow,
+              seat_nomp.rows[kSeatSettingsInputRowNoMP].action);
     EXPECT_EQ(kSeatSettingsModeIndex, seat_mp.default_highlight);
     EXPECT_EQ(kSeatSettingsModeIndex, seat_nomp.default_highlight);
 
@@ -2090,14 +2110,21 @@ TEST(MenuEngine, seat_settings_registry_and_global_controls_ownership)
         EXPECT_EQ(h, row.h) << row.id;
     };
     for (const og::ui::MenuScreenSpec* spec : {&seat_mp, &seat_nomp}) {
+        const bool mp = spec == &seat_mp;
+        const int input_row =
+            mp ? kSeatSettingsInputRowMP : kSeatSettingsInputRowNoMP;
         expect_geometry(spec->rows[kSeatSettingsModeIndex],
                         16, 38, 98, 18);
         expect_geometry(spec->rows[kSeatSettingsRemapIndex],
                         123, 38, 86, 18);
         expect_geometry(spec->rows[kSeatSettingsResetIndex],
                         218, 38, 86, 18);
+        // The y=38 band is exactly full (16+98 | 123+86 | 218+86 = 304), so
+        // the cycler takes its own band above the live binding panel.
+        expect_geometry(spec->rows[input_row], 16, 62, 98, 18);
         EXPECT_STREQ("RESET",
                      spec->rows[kSeatSettingsResetIndex].label);
+        EXPECT_STREQ("INPUT: WASD", spec->rows[input_row].label);
         EXPECT_EQ(kSeatSettingsModeIndex,
                   spec->rows[kSeatSettingsBackIndex].nav.down);
         EXPECT_EQ(kSeatSettingsRemapIndex,
@@ -2106,6 +2133,27 @@ TEST(MenuEngine, seat_settings_registry_and_global_controls_ownership)
                   spec->rows[kSeatSettingsRemapIndex].nav.right);
         EXPECT_EQ(kSeatSettingsRemapIndex,
                   spec->rows[kSeatSettingsResetIndex].nav.left);
+        // The whole y=38 band drops into the cycler, and the cycler drops
+        // into the bottom band.
+        EXPECT_EQ(input_row, spec->rows[kSeatSettingsModeIndex].nav.down);
+        EXPECT_EQ(input_row, spec->rows[kSeatSettingsRemapIndex].nav.down);
+        EXPECT_EQ(input_row, spec->rows[kSeatSettingsResetIndex].nav.down);
+        EXPECT_EQ(kSeatSettingsModeIndex, spec->rows[input_row].nav.up);
+        EXPECT_EQ(kSeatSettingsTeamIndex, spec->rows[input_row].nav.down);
+        EXPECT_EQ(-1, spec->rows[input_row].nav.left);
+        EXPECT_EQ(-1, spec->rows[input_row].nav.right);
+        EXPECT_EQ(input_row, spec->rows[kSeatSettingsTeamIndex].nav.up);
+        // Every link stays inside the variant's own row table.
+        for (int row = 0; row < spec->row_count; ++row) {
+            for (const int link : {spec->rows[row].nav.up,
+                                   spec->rows[row].nav.down,
+                                   spec->rows[row].nav.left,
+                                   spec->rows[row].nav.right}) {
+                EXPECT_LT(link, spec->row_count)
+                    << spec->rows[row].id << (mp ? " (mp)" : " (no-mp)");
+                EXPECT_GE(link, -1) << spec->rows[row].id;
+            }
+        }
     }
     expect_geometry(seat_mp.rows[kSeatSettingsTeamIndex],
                     16, 169, 138, 18);
@@ -2115,10 +2163,38 @@ TEST(MenuEngine, seat_settings_registry_and_global_controls_ownership)
               seat_mp.rows[kSeatSettingsTeamIndex].nav.right);
     EXPECT_EQ(kSeatSettingsTeamIndex,
               seat_mp.rows[kSeatSettingsRemoveIndex].nav.left);
+    EXPECT_EQ(kSeatSettingsInputRowMP,
+              seat_mp.rows[kSeatSettingsRemoveIndex].nav.up);
     expect_geometry(seat_nomp.rows[kSeatSettingsTeamIndex],
                     91, 169, 138, 18);
-    EXPECT_EQ(kSeatSettingsRemapIndex,
-              seat_nomp.rows[kSeatSettingsTeamIndex].nav.up);
+
+    // BFS over both variants: every row reachable from the highlight seed,
+    // and the cycler is not a dead end in either.
+    for (const og::ui::MenuScreenSpec* spec : {&seat_mp, &seat_nomp}) {
+        std::vector<bool> seen(
+            static_cast<std::size_t>(spec->row_count), false);
+        std::vector<int> queue{spec->default_highlight};
+        seen[static_cast<std::size_t>(spec->default_highlight)] = true;
+        while (!queue.empty()) {
+            const int row = queue.back();
+            queue.pop_back();
+            for (const int link : {spec->rows[row].nav.up,
+                                   spec->rows[row].nav.down,
+                                   spec->rows[row].nav.left,
+                                   spec->rows[row].nav.right}) {
+                if (link < 0 || link >= spec->row_count)
+                    continue;
+                if (seen[static_cast<std::size_t>(link)])
+                    continue;
+                seen[static_cast<std::size_t>(link)] = true;
+                queue.push_back(link);
+            }
+        }
+        for (int row = 0; row < spec->row_count; ++row) {
+            EXPECT_TRUE(seen[static_cast<std::size_t>(row)])
+                << "unreachable seat-settings row " << spec->rows[row].id;
+        }
+    }
 
     const og::ui::MenuScreenHost& controls_host =
         og::ui::menu_screen_host(og::ui::MenuScreenId::ControlSettings);
@@ -2790,6 +2866,42 @@ TEST(MenuEngine, seat_settings_rejects_stale_spectator_and_persists_mode)
     EXPECT_EQ(std::to_string(expected_mode),
               cfg.get_setting("controls", "player1_mode"));
 
+    // INPUT: seat the profile on a known factory mapping so the cycle order
+    // is deterministic under --gtest_shuffle, then prove one click moves the
+    // live keymap, the derived name, and the button face together.
+    ASSERT_TRUE(og::input::assign_mapping_to_player(
+        0, og::input::factory_mapping(0)));
+    ASSERT_EQ("WASD", og::ui::current_input_selection(0).name);
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("INPUT: WASD", buttons[kSeatSettingsInputRow].label);
+
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kSeatSettingsInputIndex, &state));
+    EXPECT_EQ("ARROWS", og::ui::current_input_selection(0).name);
+    EXPECT_EQ(og::input::factory_default_key(
+                  1, 0, KEY_UP),
+              get_player_key_binding_for_mode(
+                  0, static_cast<int>(ControlDirectionMode::FourDirection),
+                  KEY_UP))
+        << "cycling loads the named mapping into BOTH mode keymaps";
+    EXPECT_EQ(og::input::factory_default_key(1, 1, KEY_UP),
+              get_player_key_binding_for_mode(
+                  0, static_cast<int>(ControlDirectionMode::EightDirection),
+                  KEY_UP));
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("INPUT: ARROW", buttons[kSeatSettingsInputRow].label)
+        << "the 98px face carries the five-character short name";
+    EXPECT_LE(buttons[kSeatSettingsInputRow].label.size(),
+              static_cast<std::size_t>(
+                  (buttons[kSeatSettingsInputRow].sizex - 8) / 6));
+    EXPECT_TRUE(trace_contains("basecamp", "seat_input slot=1 name=ARROWS"));
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kSeatSettingsInputIndex, &state));
+    EXPECT_EQ("IJKL", og::ui::current_input_selection(0).name)
+        << "the cycler advances through the factory names in order";
+    ASSERT_TRUE(og::input::assign_mapping_to_player(
+        0, og::input::factory_mapping(0)));
+
     const int old_up = og::runtime::current_session->player_keys_[0][KEY_UP];
     const int polls_before_remap = lobby.poll_count;
     lobby.start_on_next_poll = true;
@@ -2820,6 +2932,33 @@ TEST(MenuEngine, seat_settings_rejects_stale_spectator_and_persists_mode)
     }
     EXPECT_FALSE(state.removed);
     EXPECT_TRUE(trace_contains("popup", "REMOVE DENIED"));
+
+    // Design §3.2: REMAP writes the seat's live layout through to the mapping
+    // library under its re-derived name, and RESET drops that entry again so
+    // cycling away and back cannot resurrect an undone customization. (The
+    // wizard itself cancels immediately under TESTING; the write-through is
+    // what this drives.)
+    const auto library_entry = [](cfg_store& config, const char* name) {
+        const std::vector<og::input::MappingDefinition> library =
+            og::input::load_mapping_library(config);
+        return std::find_if(
+            library.begin(), library.end(),
+            [name](const og::input::MappingDefinition& entry) {
+                return entry.name == name;
+            }) != library.end();
+    };
+    EXPECT_FALSE(library_entry(cfg, "WASD"))
+        << "an untouched factory layout is implicit";
+    set_player_control_mode(
+        0, static_cast<int>(ControlDirectionMode::FourDirection));
+    set_player_key_binding(0, KEY_YELL, SDLK_P);
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kSeatSettingsRemapIndex, &state));
+    EXPECT_TRUE(library_entry(cfg, "WASD"))
+        << "a customized WASD is saved under the WASD name";
+
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kSeatSettingsResetIndex, &state));
+    EXPECT_FALSE(library_entry(cfg, "WASD"))
+        << "RESET drops the entry the customization wrote";
 }
 
 TEST(MenuEngine, base_camp_rail_and_add_seat_boundaries_are_behavioral)

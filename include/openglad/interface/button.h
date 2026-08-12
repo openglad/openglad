@@ -199,6 +199,10 @@ Sint32 change_display_mode(); // DISPLAY mode selector (cfg graphics/fullscreen)
 Sint32 display_settings_options(); // the DISPLAY subscreen blocking loop
 Sint32 toggle_player_control_mode(Sint32 arg);
 Sint32 edit_player_keymap(Sint32 arg);
+// The same remap wizard with a caller-supplied per-poll callback (the pause
+// menu pumps the paused transport there; false cancels the prompt sequence).
+Sint32 edit_player_keymap_with_poll(Sint32 arg,
+                                    KeyWaitPollCallback poll_callback);
 std::string build_player_control_summary(int player_index);
 std::array<std::string, 2> build_player_control_summary_lines(int player_index, bool remap_mode);
 std::string player_control_key_display_name(int player_index, int key_enum);
