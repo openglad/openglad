@@ -7,6 +7,10 @@
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
+// TESTING seam (view.cpp): one-shot pass budget for the compiled-out wait
+// loop, driving the optional poll callback like real wait passes.
+void view_team_testing_set_poll_passes(int passes);
+
 TEST(ViewTeamList, viewscreen_view_team_renders_entries_for_my_team)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
@@ -49,5 +53,40 @@ TEST(ViewTeamList, viewscreen_view_team_renders_entries_for_my_team)
     vs->view_team();
 
     vs->control = nullptr;
+}
+
+namespace
+{
+int s_poll_count = 0;
+bool counting_poll()
+{
+    // True for the first two passes, false on the third: the wait must end
+    // on the first false.
+    return ++s_poll_count < 3;
+}
+} // namespace
+
+// The optional poll callback (design §7.2 VIEW TEAM hosting): invoked once
+// per wait pass, false ends the wait. Under TESTING the blocking loop is
+// compiled out; the one-shot pass seam drives the same contract.
+TEST(ViewTeamList, viewscreen_view_team_poll_runs_per_pass_and_false_ends_wait)
+{
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_TRUE(vs != nullptr) << "viewscreen exists";
+    if (!vs)
+        return;
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+
+    // A 10-pass budget, but the callback denies on pass 3: exactly 3 polls.
+    view_team_testing_set_poll_passes(10);
+    s_poll_count = 0;
+    vs->view_team(&counting_poll);
+    EXPECT_EQ(3, s_poll_count)
+        << "the wait must end on the first false return from the poll";
+
+    // The pass budget is one-shot: a plain call afterwards never polls.
+    s_poll_count = 0;
+    vs->view_team(&counting_poll);
+    EXPECT_EQ(0, s_poll_count) << "the TESTING pass budget must not persist";
 }
 

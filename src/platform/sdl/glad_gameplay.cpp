@@ -23,6 +23,7 @@
 #include <openglad/legacy/base.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
@@ -226,6 +227,23 @@ void apply_lobby_seat_assignments(
 
 } // namespace
 
+// The two global settings GAME SETTINGS / GRAPHICS FX took over from the
+// retired in-game options menu (docs/pause-menu-design.md §7.3), applied to
+// the world every mission starts with: the sim cadence (which the old menu
+// changed live and never persisted) and the lava/water palette rotation
+// (which the screen constructor hardcoded on). Namespace scope so the
+// seeding can be driven without standing up a whole level.
+void apply_level_start_global_settings(screen& game_screen)
+{
+    game_screen.world().timer_wait = static_cast<signed char>(
+        og::ui::parse_timer_wait(cfg.get_setting("gameplay", "timer_wait")));
+    // Absent key => ON. This setting's identity state is the classic
+    // rotation, so a config that never mentioned it (a process that never
+    // ran load_settings) must still cycle, unlike every other effects key.
+    const std::string cycling = cfg.get_setting("effects", "color_cycling");
+    game_screen.cyclemode = cycling.empty() || cycling == "on" ? 1 : 0;
+}
+
 void glad_init(bool preserve_frame_timing,
                const og::ui::PickerLobbyGameStartConfig* lobby_config);
 
@@ -283,6 +301,9 @@ void glad_init(bool preserve_frame_timing,
     current_screen->world().reset_level_progress();
     current_screen->world().clear_removed_entity_ids();
     current_screen->world().clear_grid_dirty_tiles();
+    // Seeded before the replay recorder is armed below, so the header
+    // captures the speed the mission actually runs at.
+    apply_level_start_global_settings(*current_screen);
     if (current_game != nullptr && current_game->sim_events != nullptr)
         current_game->sim_events->clear();
 

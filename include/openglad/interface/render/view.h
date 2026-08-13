@@ -26,6 +26,10 @@
 #include <string_view>
 #include <utility>
 
+// Blocking-wait poll hook (canonical definition in openglad/interface/input.h;
+// identical alias redeclaration keeps this header off input.h's include cost).
+using KeyWaitPollCallback = bool (*)();
+
 // Viewscreen-related defines
 inline constexpr signed char PREF_LIFE = 0;
   inline constexpr signed char PREF_LIFE_TEXT  = 0;
@@ -70,6 +74,46 @@ class radar;
 unsigned char compute_hp_color(float hp, float maxhp);
 unsigned char compute_mp_color(float mp, float maxmp);
 void reset_viewscreen_input_debounce();
+
+namespace og {
+
+// Interface-side mirror of sdl_video::kFloorLayerSourcePixelBudget (the
+// platform header is unreachable from og_interface; a test pins the two
+// equal). The per-view zoom cycle and the per-frame zoom decision both
+// check the padded layer window against this before asking for a layer.
+inline constexpr std::int64_t kPerViewZoomLayerPixelBudget = 4'096'000;
+
+// Pure budget math for one padded floor-layer window (§7.1 per-view zoom):
+// a pass at scale s < 1 draws a (xview + 2*ceil(xview*(1/s-1)/2)) wide
+// window at (xloc, yloc); the layer allocates
+// max(canvas, extent) per axis (video_sdl floor_layer_begin). True when
+// that allocation fits `budget`. Scale >= 1 always fits (no pad).
+[[nodiscard]] constexpr bool view_zoom_window_fits_budget(
+    Sint32 xloc, Sint32 yloc, Sint32 xview, Sint32 yview,
+    Sint32 canvas_w, Sint32 canvas_h, float scale,
+    std::int64_t budget = kPerViewZoomLayerPixelBudget)
+{
+    if (scale >= 1.0f)
+        return true;
+    if (scale <= 0.0f || xview <= 0 || yview <= 0)
+        return false;
+    const float grow = (1.0f / scale - 1.0f) * 0.5f;
+    const auto ceil_i = [](float v) constexpr -> Sint32 {
+        const Sint32 t = static_cast<Sint32>(v);
+        return (static_cast<float>(t) < v) ? t + 1 : t;
+    };
+    const Sint32 pad_x = ceil_i(static_cast<float>(xview) * grow);
+    const Sint32 pad_y = ceil_i(static_cast<float>(yview) * grow);
+    const std::int64_t extent_w =
+        static_cast<std::int64_t>(xloc) + xview + 2 * pad_x;
+    const std::int64_t extent_h =
+        static_cast<std::int64_t>(yloc) + yview + 2 * pad_y;
+    const std::int64_t need_w = extent_w > canvas_w ? extent_w : canvas_w;
+    const std::int64_t need_h = extent_h > canvas_h ? extent_h : canvas_h;
+    return need_w * need_h <= budget;
+}
+
+} // namespace og
 
 // This is a child object of all viewscreens
 //  It is used to save and load all prefs
@@ -161,8 +205,45 @@ class viewscreen
 		// pane is a projection of this rectangle at reduced zoom.
 		[[nodiscard]] std::pair<Sint32, Sint32>
 		project_world_point_to_gameplay_ui(float x, float y) const;
-		void view_team();
-		void view_team(short left, short top, short right, short bottom);
+
+		// ---- Per-view zoom-out (§7.1). Cycle position 0 = GAME (no override
+		// — follow graphics/zoom), 1..5 = 0.9x..0.5x. Runtime carrier beside
+		// prefs[]; persisted as cfg controls/playerN_view_zoom.
+		Sint32 view_zoom_step_ = 0;
+		static constexpr Sint32 kViewZoomStepCount = 6;
+		[[nodiscard]] static constexpr float per_view_zoom_scale_for_step(
+			Sint32 step)
+		{
+			const Sint32 clamped = step < 0 ? 0
+				: (step >= kViewZoomStepCount ? kViewZoomStepCount - 1 : step);
+			return 1.0f - 0.1f * static_cast<float>(clamped);
+		}
+		[[nodiscard]] float per_view_zoom_scale() const
+		{
+			return per_view_zoom_scale_for_step(view_zoom_step_);
+		}
+		// The zoom cycle's clamp: whether `step`'s padded camera-floor layer
+		// window fits the compositor budget on the current WORLD canvas.
+		[[nodiscard]] bool view_zoom_step_fits_budget(Sint32 step) const;
+		// The zoom to apply THIS frame: per_view_zoom_scale() when every
+		// floor pass's padded window fits the layer budget, else 1.0f (the
+		// whole frame renders unzoomed — never a mixed composite).
+		[[nodiscard]] float resolve_frame_zoom(const GameWorld& vworld,
+		                                       bool ghosts_on,
+		                                       Sint32 floor_top) const;
+		// §7.1 persistence: overlay the cfg-carried HUD/zoom values onto the
+		// keyprefs-loaded prefs (called once from the constructor). When this
+		// player's cfg keys were never written, seeds them from the legacy
+		// keyprefs.dat prefs instead (one-shot; apply_setting only).
+		void apply_hud_settings_from_cfg();
+		// Blocking team roster. The optional poll callback runs once per
+		// wait-loop pass (the pause menu pumps its transport + pause
+		// keep-alive through it); returning false ends the wait. Under
+		// TESTING the blocking wait is compiled out (returns immediately);
+		// view_team_testing_set_poll_passes drives the poll contract.
+		void view_team(KeyWaitPollCallback poll = nullptr);
+		void view_team(short left, short top, short right, short bottom,
+		               KeyWaitPollCallback poll = nullptr);
 		void options_menu();   // display the options menu
 		Sint32 set_key_prefs(); // get player keyboard info
 		void view_key_bindings(); // display current key bindings

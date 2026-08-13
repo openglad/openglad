@@ -901,3 +901,78 @@ int factory_default_mode(int profile)
 }
 
 } // namespace og::input
+
+// ---------------------------------------------------------------------------
+// §7.1 per-player HUD/zoom cfg persistence (docs/pause-menu-design.md).
+// Appended helpers following save/load_player_control_settings_to_cfg's
+// shape: SDL-free, values as ints, cfg is the only side effect.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+std::string hud_setting_name(int player_index, const char* suffix)
+{
+    return std::format("player{}_{}", player_index + 1, suffix);
+}
+
+int clamp_zoom_step(int step)
+{
+    // 0 = GAME, 1..5 = 0.9x..0.5x (viewscreen::kViewZoomStepCount - 1; a
+    // unit test pins the two equal).
+    if (step < 0)
+        return 0;
+    if (step > 5)
+        return 5;
+    return step;
+}
+} // namespace
+
+bool load_player_hud_settings_from_cfg(cfg_store& config, int player_index,
+                                       PlayerHudSettings& out)
+{
+    if (player_index < 0 || player_index >= 4)
+        return false;
+    const auto read_flag = [&](const char* suffix, int fallback) {
+        return parse_int_strict(
+                   config.get_setting(
+                       "controls", hud_setting_name(player_index, suffix)))
+                       .value_or(fallback) != 0
+            ? 1
+            : 0;
+    };
+    out.radar = read_flag("hud_radar", 1);
+    out.life_on = read_flag("hud_life", 1);
+    out.foes = read_flag("hud_foes", 1);
+    out.score = read_flag("hud_score", 1);
+    out.zoom_step = clamp_zoom_step(
+        parse_int_strict(
+            config.get_setting(
+                "controls", hud_setting_name(player_index, "view_zoom")))
+            .value_or(0));
+    // The migration marker is deliberately NOT defaulted in
+    // cfg_store::load_settings (web_default_keys_version precedent): its
+    // absence means this player's keys were never written and the caller
+    // must run the one-shot keyprefs.dat seed.
+    return !config
+                .get_setting("controls",
+                             hud_setting_name(player_index, "hud_migrated"))
+                .empty();
+}
+
+void save_player_hud_settings_to_cfg(cfg_store& config, int player_index,
+                                     const PlayerHudSettings& settings)
+{
+    if (player_index < 0 || player_index >= 4)
+        return;
+    const auto write = [&](const char* suffix, int value) {
+        config.apply_setting("controls",
+                             hud_setting_name(player_index, suffix),
+                             std::to_string(value));
+    };
+    write("hud_radar", settings.radar != 0 ? 1 : 0);
+    write("hud_life", settings.life_on != 0 ? 1 : 0);
+    write("hud_foes", settings.foes != 0 ? 1 : 0);
+    write("hud_score", settings.score != 0 ? 1 : 0);
+    write("view_zoom", clamp_zoom_step(settings.zoom_step));
+    write("hud_migrated", 1);
+}

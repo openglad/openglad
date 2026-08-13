@@ -352,6 +352,15 @@ enum class ButtonAction : Sint32
     MenuSpecRow = 101,
     // DIFFICULTY subscreen: flip free hire/train purchases (host-only).
     ToggleInfiniteGold = 102,
+    // The three settings the retired in-game options menu owned (issue #169,
+    // docs/pause-menu-design.md §7.3). GAME SETTINGS cycles the sim speed
+    // (cfg gameplay/timer_wait, live-applied like viewscreen::change_speed);
+    // GRAPHICS FX toggles palette cycling (cfg effects/color_cycling);
+    // DISPLAY steps brightness by arg's sign, the overscan -/+ idiom (cfg
+    // graphics/brightness).
+    CycleGameSpeed = 103,
+    ToggleColorCycling = 104,
+    BrightnessAdjust = 105,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

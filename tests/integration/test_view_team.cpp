@@ -9,6 +9,7 @@
 #include <openglad/interface/input_mappings.h>
 #include <openglad/interface/ui/input_cycler.h>
 #include <openglad/interface/render/pixien.h>
+#include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
@@ -2598,6 +2599,28 @@ TEST(ViewTeam, seat_settings_draws_selected_identity_and_direction_mode)
     EXPECT_EQ("INPUT: WASD", buttons[kSeatSettingsInputRow].label)
         << "the cycler face names the seat's derived mapping";
 
+    // §7.1: the ZOOM + HUD labels ride the same rewire pass, live from the
+    // seat's viewscreen prefs (slot 0 -> viewob[0]).
+    {
+        viewscreen* const seat_view0 = output->viewob[0].get();
+        ASSERT_NE(nullptr, seat_view0);
+        const signed char old_radar = seat_view0->prefs[PREF_RADAR];
+        const signed char old_life = seat_view0->prefs[PREF_LIFE];
+        const Sint32 old_zoom = seat_view0->view_zoom_step_;
+        seat_view0->prefs[PREF_RADAR] = PREF_RADAR_OFF;
+        seat_view0->prefs[PREF_LIFE] = PREF_LIFE_TEXT;  // legacy => ON
+        seat_view0->view_zoom_step_ = 2;
+        spec.nav.rewire(buttons, count, highlighted);
+        EXPECT_EQ("RADAR: OFF", buttons[kSeatSettingsHudRadarRowMP].label);
+        EXPECT_EQ("HP: ON", buttons[kSeatSettingsHudLifeRowMP].label)
+            << "legacy TEXT displays as ON";
+        EXPECT_EQ("ZOOM: 0.8X", buttons[kSeatSettingsZoomRowMP].label);
+        seat_view0->prefs[PREF_RADAR] = old_radar;
+        seat_view0->prefs[PREF_LIFE] = old_life;
+        seat_view0->view_zoom_step_ = old_zoom;
+        spec.nav.rewire(buttons, count, highlighted);
+    }
+
     set_player_control_mode(
         0, static_cast<int>(ControlDirectionMode::EightDirection));
     spec.nav.rewire(buttons, count, highlighted);
@@ -2609,10 +2632,12 @@ TEST(ViewTeam, seat_settings_draws_selected_identity_and_direction_mode)
     // A joystick-driven seat reads the DEVICE bindings, not the keyboard
     // names it still reserves. Bind the profile directly: the content pass
     // only reads JoyData, so no SDL device is needed.
+    // §7.1: the panel narrows to x=12..208 and the ACTIONS column moved to
+    // x=104, so the movement-line hash stops short of it.
     const auto movement_line_hash = [&] {
         std::uint64_t hash = 1469598103934665603ULL;
         for (int y = 99; y < 99 + font.sizey; ++y) {
-            for (int x = 12; x < 160; ++x) {
+            for (int x = 12; x < 104; ++x) {
                 int pixel = 0;
                 output->get_pixel(x, y, &pixel);
                 hash ^= static_cast<std::uint8_t>(pixel);
@@ -2623,7 +2648,7 @@ TEST(ViewTeam, seat_settings_draws_selected_identity_and_direction_mode)
     };
     const auto expected_movement_hash = [&](const std::string& line) {
         output->clearbuffer();
-        output->draw_button(12, 84, 308, 164, 2, 1);
+        output->draw_button(12, 84, 208, 164, 2, 1);
         font.write_xy(20, 99, DARK_BLUE, "%s", line.c_str());
         return movement_line_hash();
     };

@@ -9,6 +9,8 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/pathfinding_grid.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/interface/ui/picker_common.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/interface/render/pal32.h>
 #include <openglad/interface/render/view.h>
@@ -34,6 +36,10 @@
 #include <vector>
 
 extern cfg_store cfg;
+
+// The GRAPHICS FX click handler (button.cpp), driven directly for the live
+// cyclemode pin.
+Sint32 toggle_color_cycling();
 
 namespace
 {
@@ -82,6 +88,9 @@ private:
         {"mini_hp_bar", "on"},    {"hit_flash", "on"},
         {"hit_anim", "on"},       {"damage_numbers", "off"},
         {"heal_numbers", "on"},
+        // The one key whose identity state is ON (palette cycling has run
+        // since the screen constructor) — see the color-cycling pins.
+        {"color_cycling", "on"},
     };
     std::vector<std::pair<std::string, std::string>> saved_;
 };
@@ -5988,4 +5997,247 @@ TEST_F(RenderEffects, zz_bench_large_canvas_redraw)
     scr()->set_active_canvas(CanvasTarget::UI);
     scr()->relayout_views();
     restore_world(vs);
+}
+
+// ---------------------------------------------------------------------------
+// The two global settings that moved out of the retired in-game options menu
+// and into GRAPHICS FX / DISPLAY (docs/pause-menu-design.md §7.3).
+//
+// COLOR CYCLING inverts this suite's usual convention. Every other effects/*
+// key is "off => no extra work => byte-identical"; palette cycling has been
+// ON since the screen constructor, so ON is the identity state and OFF is
+// the change. The pins below are written that way round on purpose.
+
+namespace
+{
+// An independent oracle for adjust_palette's transform: each component is
+// scaled by (100 + 10 * steps)% and offset by `steps`, then clamped to the
+// 6-bit VGA range.
+unsigned char gamma_component(unsigned char value, int steps)
+{
+    int scaled = (static_cast<int>(value) * (100 + steps * 10)) / 100 + steps;
+    return static_cast<unsigned char>(std::clamp(scaled, 0, 63));
+}
+
+std::array<unsigned char, 768> gamma_expected(
+    const std::array<unsigned char, 768>& source, int steps)
+{
+    std::array<unsigned char, 768> out{};
+    for (std::size_t i = 0; i < out.size(); ++i)
+        out[i] = gamma_component(source[i], steps);
+    return out;
+}
+
+// The SetPalette sim event the server emits on every keyframe (and on the
+// cheat palette flip): screen.cpp turns it into a raw set_palette, which is
+// exactly what used to wipe the player's brightness.
+void dispatch_set_palette_event(int palette_id)
+{
+    og::sim::SimEventBatch batch;
+    og::sim::Event event;
+    event.kind = og::sim::EventKind::SetPalette;
+    event.a = static_cast<std::uint32_t>(palette_id);
+    event.b = 0u;
+    batch.events.push_back(std::move(event));
+    scr()->dispatch_cosmetic_events(batch);
+}
+
+class BrightnessGuard
+{
+public:
+    BrightnessGuard()
+        : saved_cfg_(cfg.get_setting("graphics", "brightness"))
+        , saved_steps_(display_brightness_steps())
+    {}
+    ~BrightnessGuard()
+    {
+        cfg.apply_setting("graphics", "brightness",
+                          saved_cfg_.empty() ? "0" : saved_cfg_);
+        set_display_brightness_steps(saved_steps_);
+        set_palette(scr()->ourpalette);
+    }
+    BrightnessGuard(const BrightnessGuard&) = delete;
+    BrightnessGuard& operator=(const BrightnessGuard&) = delete;
+
+private:
+    std::string saved_cfg_;
+    Sint32 saved_steps_;
+};
+} // namespace
+
+// BRIGHTNESS: the applied gamma now lives in session state and set_palette
+// re-applies it, so the palette swaps that used to silently reset it (the
+// keyframe SetPalette event, the cheat palette, level start) no longer can.
+TEST_F(RenderEffects, brightness_survives_every_palette_set)
+{
+    BrightnessGuard guard;
+    const std::array<unsigned char, 768> base = scr()->ourpalette;
+    const std::array<unsigned char, 768> blue = scr()->bluepalette;
+
+    set_display_brightness_steps(2);
+    set_palette(scr()->ourpalette);
+    const std::array<unsigned char, 768> lit = gamma_expected(base, 2);
+    EXPECT_TRUE(std::equal(lit.begin(), lit.end(),
+                           og::runtime::current_session->curpal_.begin()))
+        << "set_palette must hand the display the gamma-corrected palette";
+    EXPECT_FALSE(std::equal(base.begin(), base.end(),
+                            og::runtime::current_session->curpal_.begin()))
+        << "a +2 brightness must actually change the displayed colors";
+
+    // The regression: a keyframe palette sync re-sets the base palette.
+    dispatch_set_palette_event(0);
+    EXPECT_TRUE(std::equal(lit.begin(), lit.end(),
+                           og::runtime::current_session->curpal_.begin()))
+        << "the keyframe SetPalette event must not wipe brightness";
+
+    // The cheat/blue palette takes the same correction.
+    dispatch_set_palette_event(1);
+    const std::array<unsigned char, 768> lit_blue = gamma_expected(blue, 2);
+    EXPECT_TRUE(std::equal(lit_blue.begin(), lit_blue.end(),
+                           og::runtime::current_session->curpal_.begin()))
+        << "the blue palette must be corrected too, not reset to raw";
+
+    // Darkening is the same path with the opposite sign.
+    set_display_brightness_steps(-3);
+    dispatch_set_palette_event(0);
+    const std::array<unsigned char, 768> dark = gamma_expected(base, -3);
+    EXPECT_TRUE(std::equal(dark.begin(), dark.end(),
+                           og::runtime::current_session->curpal_.begin()));
+
+    // Identity: at the shipped default the palette reaches the display
+    // byte-for-byte, exactly as before this hook existed.
+    set_display_brightness_steps(0);
+    dispatch_set_palette_event(0);
+    EXPECT_TRUE(std::equal(base.begin(), base.end(),
+                           og::runtime::current_session->curpal_.begin()))
+        << "brightness 0 must be byte-identical to the un-hooked path";
+}
+
+// The boot seed: the applied gamma comes from cfg, which is what the old
+// prefs[PREF_GAMMA] never did (viewscreen::gamma was constructed at 0 and
+// the stored pref was never read back).
+TEST_F(RenderEffects, brightness_seeds_and_reloads_from_cfg)
+{
+    BrightnessGuard guard;
+
+    cfg.apply_setting("graphics", "brightness", "-2");
+    reload_display_brightness_from_cfg();
+    EXPECT_EQ(-2, display_brightness_steps());
+    set_palette(scr()->ourpalette);
+    const std::array<unsigned char, 768> dark =
+        gamma_expected(scr()->ourpalette, -2);
+    EXPECT_TRUE(std::equal(dark.begin(), dark.end(),
+                           og::runtime::current_session->curpal_.begin()));
+
+    // Out-of-range and unparseable stored values never reach the palette.
+    cfg.apply_setting("graphics", "brightness", "99");
+    reload_display_brightness_from_cfg();
+    EXPECT_EQ(og::ui::kBrightnessStepMax, display_brightness_steps());
+    cfg.apply_setting("graphics", "brightness", "bright");
+    reload_display_brightness_from_cfg();
+    EXPECT_EQ(0, display_brightness_steps());
+}
+
+// COLOR CYCLING: ON is today's behavior. The palette bands rotate exactly as
+// they always have; OFF is the new state, and it is the one that changes
+// what the player sees.
+TEST_F(RenderEffects, color_cycling_on_is_the_classic_rotation)
+{
+    EffectsCfgGuard guard;
+    const short saved_mode = scr()->cyclemode;
+
+    cfg.apply_setting("effects", "color_cycling", "on");
+    scr()->cyclemode = cfg.is_on("effects", "color_cycling") ? 1 : 0;
+    ASSERT_EQ(1, scr()->cyclemode) << "ON must drive the live cycle flag";
+
+    set_palette(scr()->ourpalette);
+    const std::array<unsigned char, 768> before =
+        og::runtime::current_session->curpal_;
+
+    // What the game loop does once per sim tick (game_loop.cpp: if
+    // (s.cyclemode) s.do_cycle(...)).
+    if (scr()->cyclemode)
+        scr()->do_cycle(0, 1);
+    const std::array<unsigned char, 768> after =
+        og::runtime::current_session->curpal_;
+
+    // One rotation step: each orange index takes the color of the index
+    // below it, and the band's first index takes the old last one.
+    for (int index = ORANGE_END; index > ORANGE_START; --index)
+    {
+        const std::size_t dst = static_cast<std::size_t>(index) * 3;
+        const std::size_t src = static_cast<std::size_t>(index - 1) * 3;
+        for (std::size_t c = 0; c < 3; ++c)
+            EXPECT_EQ(before[src + c], after[dst + c])
+                << "orange index " << index << " component " << c;
+    }
+    for (std::size_t c = 0; c < 3; ++c)
+        EXPECT_EQ(before[static_cast<std::size_t>(ORANGE_END) * 3 + c],
+                  after[static_cast<std::size_t>(ORANGE_START) * 3 + c]);
+    // The water band rotates on the same tick.
+    for (int index = WATER_END; index > WATER_START; --index)
+    {
+        const std::size_t dst = static_cast<std::size_t>(index) * 3;
+        const std::size_t src = static_cast<std::size_t>(index - 1) * 3;
+        for (std::size_t c = 0; c < 3; ++c)
+            EXPECT_EQ(before[src + c], after[dst + c])
+                << "water index " << index << " component " << c;
+    }
+    // Nothing outside the two cycling bands moves.
+    for (std::size_t i = 0; i < before.size(); ++i)
+    {
+        const std::size_t index = i / 3;
+        if (index >= WATER_START && index <= ORANGE_END)
+            continue;
+        EXPECT_EQ(before[i], after[i]) << "palette byte " << i;
+    }
+
+    scr()->cyclemode = saved_mode;
+    set_palette(scr()->ourpalette);
+}
+
+// OFF freezes the bands: the loop's guard skips do_cycle entirely, so lava
+// and water stop moving and the palette stays exactly where it was.
+TEST_F(RenderEffects, color_cycling_off_freezes_the_bands)
+{
+    EffectsCfgGuard guard;
+    const short saved_mode = scr()->cyclemode;
+
+    cfg.apply_setting("effects", "color_cycling", "off");
+    scr()->cyclemode = cfg.is_on("effects", "color_cycling") ? 1 : 0;
+    ASSERT_EQ(0, scr()->cyclemode);
+
+    set_palette(scr()->ourpalette);
+    const std::array<unsigned char, 768> before =
+        og::runtime::current_session->curpal_;
+    for (int tick = 0; tick < 4; ++tick)
+        if (scr()->cyclemode)
+            scr()->do_cycle(tick, 1);
+    EXPECT_TRUE(std::equal(before.begin(), before.end(),
+                           og::runtime::current_session->curpal_.begin()))
+        << "with cycling off no palette index may move";
+
+    scr()->cyclemode = saved_mode;
+    set_palette(scr()->ourpalette);
+}
+
+// The live toggle: clicking the GRAPHICS FX row flips cfg AND the live
+// cyclemode, so the change is visible without leaving the menu.
+TEST_F(RenderEffects, color_cycling_toggle_flips_cfg_and_the_live_flag)
+{
+    EffectsCfgGuard guard;
+    const short saved_mode = scr()->cyclemode;
+
+    cfg.apply_setting("effects", "color_cycling", "on");
+    scr()->cyclemode = 1;
+
+    toggle_color_cycling();
+    EXPECT_FALSE(cfg.is_on("effects", "color_cycling"));
+    EXPECT_EQ(0, scr()->cyclemode) << "the click must reach the live flag";
+
+    toggle_color_cycling();
+    EXPECT_TRUE(cfg.is_on("effects", "color_cycling"));
+    EXPECT_EQ(1, scr()->cyclemode);
+
+    scr()->cyclemode = saved_mode;
 }

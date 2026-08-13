@@ -34,6 +34,7 @@
 #include <openglad/platform/game_loop.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
+#include <openglad/platform/sai2x.h>
 #include <openglad/resources/save_data.h>
 
 #include "../../src/interface/ui/picker_sdl_defs.h"
@@ -45,6 +46,10 @@
 void glad_init(bool preserve_frame_timing = false);
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
+// TESTING seams: help.cpp's real-scroll-view switch and view.cpp's one-shot
+// pass budget for view_team's compiled-out wait loop.
+void help_testing_set_force_scroll_text(bool enabled);
+void view_team_testing_set_poll_passes(int passes);
 extern og::input_native::JoystickHandle joysticks[10];
 
 // Picker entry points for the full-flow RESTART regression (the fairy_death
@@ -301,28 +306,37 @@ TEST(PauseMenuPins, pause_menu_exact_table)
     static const ExpectedButton kExpected[] = {
         {"pause_resume", "RESUME", KEYSTATE_UNKNOWN, 90, 32, 140, 15,
          button_action_id(ButtonAction::MenuSpecRow), 0,
-         MenuNav{.up = 7, .down = 1}},
+         MenuNav{.up = 9, .down = 1}},
         {"pause_restart", "RESTART MISSION", KEYSTATE_UNKNOWN, 90, 50, 140, 15,
          button_action_id(ButtonAction::MenuSpecRow), 1,
          MenuNav{.up = 0, .down = 2}},
         {"pause_quit", "QUIT MISSION", KEYSTATE_UNKNOWN, 90, 68, 140, 15,
          button_action_id(ButtonAction::MenuSpecRow), 2,
          MenuNav{.up = 1, .down = 3}},
-        {"pause_player_0", "P1", KEYSTATE_UNKNOWN, 90, 100, 140, 15,
+        // Design §7.2: the half-width pair shares the y=86 band — 66px faces
+        // at x=90 and x=164 spanning the same 90..230 column, linked
+        // left/right, chaining up/down like one row.
+        {"pause_view_team", "VIEW TEAM", KEYSTATE_UNKNOWN, 90, 86, 66, 15,
          button_action_id(ButtonAction::MenuSpecRow), 3,
-         MenuNav{.up = 2, .down = 4}},
-        {"pause_player_1", "P2", KEYSTATE_UNKNOWN, 90, 118, 140, 15,
+         MenuNav{.up = 2, .down = 5, .right = 4}},
+        {"pause_briefing", "BRIEFING", KEYSTATE_UNKNOWN, 164, 86, 66, 15,
          button_action_id(ButtonAction::MenuSpecRow), 4,
-         MenuNav{.up = 3, .down = 5}, true},
-        {"pause_player_2", "P3", KEYSTATE_UNKNOWN, 90, 136, 140, 15,
+         MenuNav{.up = 2, .down = 5, .left = 3}},
+        {"pause_player_0", "P1", KEYSTATE_UNKNOWN, 90, 112, 140, 15,
          button_action_id(ButtonAction::MenuSpecRow), 5,
-         MenuNav{.up = 4, .down = 6}, true},
-        {"pause_player_3", "P4", KEYSTATE_UNKNOWN, 90, 154, 140, 15,
+         MenuNav{.up = 3, .down = 6}},
+        {"pause_player_1", "P2", KEYSTATE_UNKNOWN, 90, 130, 140, 15,
          button_action_id(ButtonAction::MenuSpecRow), 6,
          MenuNav{.up = 5, .down = 7}, true},
-        {"pause_add_player", "+ ADD PLAYER", KEYSTATE_UNKNOWN, 90, 172, 140,
-         15, button_action_id(ButtonAction::MenuSpecRow), 7,
-         MenuNav{.up = 6, .down = 0}},
+        {"pause_player_2", "P3", KEYSTATE_UNKNOWN, 90, 148, 140, 15,
+         button_action_id(ButtonAction::MenuSpecRow), 7,
+         MenuNav{.up = 6, .down = 8}, true},
+        {"pause_player_3", "P4", KEYSTATE_UNKNOWN, 90, 166, 140, 15,
+         button_action_id(ButtonAction::MenuSpecRow), 8,
+         MenuNav{.up = 7, .down = 9}, true},
+        {"pause_add_player", "+ ADD PLAYER", KEYSTATE_UNKNOWN, 90, 182, 140,
+         15, button_action_id(ButtonAction::MenuSpecRow), 9,
+         MenuNav{.up = 8, .down = 0}},
     };
 
     og::ui::install_pause_menu_state_for_screen(nullptr);
@@ -342,25 +356,43 @@ TEST(PauseMenuPins, pause_menu_exact_table)
 
 TEST(PauseMenuPins, pause_player_exact_table)
 {
+    // §7.1 unified geometry: identical to Base Camp seat settings (minus
+    // TEAM) — y=38 mode band, y=62 INPUT+ZOOM band, the HUD stack at x=214
+    // beside the narrowed binding panel, REMOVE at y=169.
     static const ExpectedButton kExpected[] = {
         {"pause_player_back", "BACK", KEYSTATE_ESCAPE, 10, 8, 50, 15,
          button_action_id(ButtonAction::ReturnMenu), MENU_REDRAW,
-         MenuNav{.up = 5, .down = 1}},
-        {"pause_input", "INPUT: WASD", KEYSTATE_UNKNOWN, 16, 38, 98, 18,
+         MenuNav{.up = 5, .down = 2}},
+        {"pause_input", "INPUT: WASD", KEYSTATE_UNKNOWN, 16, 62, 98, 18,
          button_action_id(ButtonAction::MenuSpecRow), 1,
-         MenuNav{.up = 0, .down = 5, .right = 2}},
-        {"pause_direction", "4-DIRECTION", KEYSTATE_UNKNOWN, 118, 38, 74, 18,
+         MenuNav{.up = 2, .down = 5, .right = 6}},
+        {"pause_direction", "4-DIRECTION", KEYSTATE_UNKNOWN, 16, 38, 98, 18,
          button_action_id(ButtonAction::MenuSpecRow), 2,
-         MenuNav{.up = 0, .down = 5, .left = 1, .right = 3}},
-        {"pause_remap", "REMAP", KEYSTATE_UNKNOWN, 196, 38, 56, 18,
+         MenuNav{.up = 0, .down = 1, .right = 3}},
+        {"pause_remap", "REMAP", KEYSTATE_UNKNOWN, 123, 38, 86, 18,
          button_action_id(ButtonAction::MenuSpecRow), 3,
-         MenuNav{.up = 0, .down = 5, .left = 2, .right = 4}},
-        {"pause_reset", "RESET", KEYSTATE_UNKNOWN, 256, 38, 56, 18,
+         MenuNav{.up = 0, .down = 6, .left = 2, .right = 4}},
+        {"pause_reset", "RESET", KEYSTATE_UNKNOWN, 218, 38, 86, 18,
          button_action_id(ButtonAction::MenuSpecRow), 4,
-         MenuNav{.up = 0, .down = 5, .left = 3}},
+         MenuNav{.up = 0, .down = 7, .left = 3}},
         {"pause_remove", "REMOVE PLAYER", KEYSTATE_UNKNOWN, 166, 169, 138, 18,
          button_action_id(ButtonAction::MenuSpecRow), 5,
-         MenuNav{.up = 1, .down = 0}},
+         MenuNav{.up = 10, .down = 0}},
+        {"pause_zoom", "ZOOM: GAME", KEYSTATE_UNKNOWN, 122, 62, 88, 18,
+         button_action_id(ButtonAction::MenuSpecRow), 6,
+         MenuNav{.up = 3, .down = 7, .left = 1}},
+        {"pause_hud_radar", "RADAR: ON", KEYSTATE_UNKNOWN, 214, 84, 90, 18,
+         button_action_id(ButtonAction::MenuSpecRow), 7,
+         MenuNav{.up = 4, .down = 8, .left = 6}},
+        {"pause_hud_life", "HP: ON", KEYSTATE_UNKNOWN, 214, 106, 90, 18,
+         button_action_id(ButtonAction::MenuSpecRow), 8,
+         MenuNav{.up = 7, .down = 9, .left = 1}},
+        {"pause_hud_foes", "FOES: ON", KEYSTATE_UNKNOWN, 214, 128, 90, 18,
+         button_action_id(ButtonAction::MenuSpecRow), 9,
+         MenuNav{.up = 8, .down = 10, .left = 1}},
+        {"pause_hud_score", "SCORE: ON", KEYSTATE_UNKNOWN, 214, 150, 90, 18,
+         button_action_id(ButtonAction::MenuSpecRow), 10,
+         MenuNav{.up = 9, .down = 5, .left = 1}},
     };
 
     og::ui::install_pause_player_state_for_screen(nullptr);
@@ -393,20 +425,24 @@ TEST(PauseMenuNav, pause_menu_gating_variants_reachable)
     };
     const std::vector<Variant> variants = {
         {"local_solo", false, true, true, 1, {},
-         {"pause_resume", "pause_restart", "pause_quit", "pause_player_0",
-          "pause_add_player"}},
+         {"pause_resume", "pause_restart", "pause_quit", "pause_view_team",
+          "pause_briefing", "pause_player_0", "pause_add_player"}},
         {"local_splitscreen", false, true, true, 2, {},
-         {"pause_resume", "pause_restart", "pause_quit", "pause_player_0",
-          "pause_player_1", "pause_add_player"}},
-        // 4 seats: ADD PLAYER is Disabled, not Hidden — still nav-visible.
-        {"local_four_seats", false, true, false, 4, {},
-         {"pause_resume", "pause_restart", "pause_quit", "pause_player_0",
-          "pause_player_1", "pause_player_2", "pause_player_3",
+         {"pause_resume", "pause_restart", "pause_quit", "pause_view_team",
+          "pause_briefing", "pause_player_0", "pause_player_1",
           "pause_add_player"}},
+        // 4 seats: ADD PLAYER is Hidden (design §7.2) — the row would only
+        // say no, and hiding it keeps the nav ring clean.
+        {"local_four_seats", false, true, false, 4, {},
+         {"pause_resume", "pause_restart", "pause_quit", "pause_view_team",
+          "pause_briefing", "pause_player_0", "pause_player_1",
+          "pause_player_2", "pause_player_3"}},
         {"networked_host", true, false, true, 1, {0, 1},
-         {"pause_resume", "pause_quit", "pause_player_0", "pause_player_1"}},
+         {"pause_resume", "pause_quit", "pause_view_team", "pause_briefing",
+          "pause_player_0", "pause_player_1"}},
         {"networked_joiner", true, false, true, 1, {2},
-         {"pause_resume", "pause_quit", "pause_player_0"}},
+         {"pause_resume", "pause_quit", "pause_view_team",
+          "pause_briefing", "pause_player_0"}},
     };
 
     const og::ui::MenuScreenSpec& spec = og::ui::pause_menu_screen_spec();
@@ -436,6 +472,26 @@ TEST(PauseMenuNav, pause_menu_gating_variants_reachable)
         }
         EXPECT_EQ(variant.expect_visible, visible);
         check_pause_nav(buttons, variant.name);
+
+        // The half-width pair after every rewire: left/right link the two
+        // faces, BRIEFING mirrors VIEW TEAM's vertical links, and the
+        // vertical ring passes through the band exactly once (nothing
+        // chains up/down INTO BRIEFING).
+        const MenuNav& vt = buttons[og::ui::kPauseMenuViewTeamIndex].nav;
+        const MenuNav& bf = buttons[og::ui::kPauseMenuBriefingIndex].nav;
+        EXPECT_EQ(og::ui::kPauseMenuBriefingIndex, vt.right);
+        EXPECT_EQ(og::ui::kPauseMenuViewTeamIndex, bf.left);
+        EXPECT_EQ(vt.up, bf.up);
+        EXPECT_EQ(vt.down, bf.down);
+        EXPECT_EQ(og::ui::kPauseMenuQuitIndex, vt.up);
+        EXPECT_EQ(og::ui::kPauseMenuPlayerBaseIndex, vt.down);
+        for (const button& b : buttons)
+        {
+            if (b.hidden)
+                continue;
+            EXPECT_NE(og::ui::kPauseMenuBriefingIndex, b.nav.up) << b.id;
+            EXPECT_NE(og::ui::kPauseMenuBriefingIndex, b.nav.down) << b.id;
+        }
     }
     og::ui::install_pause_menu_state_for_screen(nullptr);
 }
@@ -684,19 +740,21 @@ TEST(PausePlayerDraw, binding_grid_shows_joystick_names_for_assigned_seat)
     const int pitch = scr->text_normal.sizex + 1;
 
     // Keyboard seat first: the movement grid shows key names ("UP: W").
+    // §7.1 unified geometry: movement column x=20, actions x=104, first
+    // binding line y=99.
     spec.draw_background(&state);
     spec.draw_content(&state);
-    expect_glyph_at(scr, 'W', 20 + 4 * pitch, 77, DARK_BLUE);
+    expect_glyph_at(scr, 'W', 20 + 4 * pitch, 99, DARK_BLUE);
 
     // Assign the pad: the same cells now show joy_binding_display_name
     // output — "UP: A1-" and "FIRE: B0" for the default two-axis layout.
     ASSERT_TRUE(assign_joystick_to_player(0, d));
     spec.draw_background(&state);
     spec.draw_content(&state);
-    expect_glyph_at(scr, 'A', 20 + 4 * pitch, 77, DARK_BLUE);
-    expect_glyph_at(scr, '1', 20 + 5 * pitch, 77, DARK_BLUE);
-    expect_glyph_at(scr, 'B', 164 + 6 * pitch, 77, DARK_BLUE);
-    expect_glyph_at(scr, '0', 164 + 7 * pitch, 77, DARK_BLUE);
+    expect_glyph_at(scr, 'A', 20 + 4 * pitch, 99, DARK_BLUE);
+    expect_glyph_at(scr, '1', 20 + 5 * pitch, 99, DARK_BLUE);
+    expect_glyph_at(scr, 'B', 104 + 6 * pitch, 99, DARK_BLUE);
+    expect_glyph_at(scr, '0', 104 + 7 * pitch, 99, DARK_BLUE);
     // joy_binding_display_name is the oracle for those grid values.
     EXPECT_EQ("A1-", joy_binding_display_name(
                          player_joy[0].key_type[KEY_UP],
@@ -820,6 +878,259 @@ TEST(PauseMenuHandlers, resume_quit_restart_and_add_rows)
 }
 
 // ---------------------------------------------------------------------------
+// VIEW TEAM row (design §7.2): hosts viewscreen::view_team with a poll
+// callback that pumps the paused transport and keeps the pause alive; a dead
+// session ends the wait AND closes the menu.
+
+TEST(PauseMenuHandlers, view_team_row_polls_pump_keepalive_and_session_death)
+{
+    const og::ui::MenuScreenSpec& spec = og::ui::pause_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.on_spec_row);
+    ASSERT_NE(nullptr, og::runtime::current_session->myscreen_->viewob[0]);
+
+    g_stub = StubHostState{};
+    PauseMenuHost host = make_stub_host(false, true);
+    og::ui::PauseMenuScreenState state;
+    state.host = &host;
+    og::ui::install_pause_menu_state_for_screen(&state);
+
+    // Plain activation: view_team runs (returns immediately under TESTING)
+    // and the menu stays open.
+    trace_clear();
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(og::ui::kPauseMenuViewTeamIndex, &state));
+    EXPECT_TRUE(trace_contains("pause_menu", "view_team"));
+    EXPECT_EQ(PauseMenuResult::Resumed, state.outcome);
+
+    // Each wait pass polls: 3 budgeted passes = 3 transport pumps.
+    g_stub.pump_calls = 0;
+    view_team_testing_set_poll_passes(3);
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(og::ui::kPauseMenuViewTeamIndex, &state));
+    EXPECT_EQ(3, g_stub.pump_calls)
+        << "the poll must pump the paused transport once per wait pass";
+
+    // The keep-alive cadence runs inside the wait: a stale stamp plus a 1ms
+    // interval override re-requests the pause during the polled wait.
+    og::ui::pause_menu_testing_set_keepalive_interval_ms(1);
+    state.last_keepalive_ms = og::input_native::ticks_ms() - 100;
+    g_stub.request_calls = 0;
+    view_team_testing_set_poll_passes(1);
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(og::ui::kPauseMenuViewTeamIndex, &state));
+    EXPECT_EQ(1, g_stub.request_calls)
+        << "the pause keep-alive must run while the roster blocks";
+    og::ui::pause_menu_testing_set_keepalive_interval_ms(0);
+
+    // Session death during the wait: the poll ends the wait on its first
+    // false and the handler closes the menu with SessionEnded.
+    g_stub.pump_calls = 0;
+    g_stub.pump_result = false;
+    view_team_testing_set_poll_passes(5);
+    EXPECT_EQ(MENU_EXIT,
+              spec.on_spec_row(og::ui::kPauseMenuViewTeamIndex, &state));
+    EXPECT_EQ(PauseMenuResult::SessionEnded, state.outcome);
+    EXPECT_EQ(1, g_stub.pump_calls)
+        << "the wait must end on the first failed pump, not run the budget";
+
+    // No installed pause state (bare engine shape): the poll defaults open
+    // and never touches a transport.
+    og::ui::install_pause_menu_state_for_screen(nullptr);
+    g_stub.pump_calls = 0;
+    g_stub.pump_result = true;
+    state.outcome = PauseMenuResult::Resumed;
+    view_team_testing_set_poll_passes(2);
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(og::ui::kPauseMenuViewTeamIndex, &state));
+    EXPECT_EQ(0, g_stub.pump_calls)
+        << "without an installed pause state the poll must not pump";
+}
+
+// ---------------------------------------------------------------------------
+// BRIEFING row (design §7.2): read_scenario over the pause backdrop. The row
+// is Disabled when the level has no description lines; the scroll view's
+// full-screen scribbles are healed by the next backdrop restore pass.
+
+namespace
+{
+
+struct PauseLevelDescriptionGuard {
+    std::list<std::string>& description;
+    std::list<std::string> saved;
+    explicit PauseLevelDescriptionGuard(std::list<std::string>& lines)
+        : description(lines), saved(lines) {}
+    ~PauseLevelDescriptionGuard() { description = std::move(saved); }
+};
+
+struct ForceScrollTextGuard {
+    ForceScrollTextGuard() { help_testing_set_force_scroll_text(true); }
+    ~ForceScrollTextGuard() { help_testing_set_force_scroll_text(false); }
+};
+
+std::atomic<bool> g_briefing_dismissed{false};
+
+// The scroll view dismisses on any key; repeat Escape until the main thread
+// confirms on_spec_row returned (scroll_text_view clears the keyboard at
+// entry, so a single early press can be eaten).
+int briefing_dismiss_injector(void* /*data*/)
+{
+    og::runtime::ensure_thread_session();
+    SDL_Delay(120);
+    while (!g_briefing_dismissed.load(std::memory_order_acquire))
+    {
+        inject_key_press(SDLK_ESCAPE, 10);
+        SDL_Delay(40);
+    }
+    return 0;
+}
+
+int count_backdrop_mismatches(screen* scr,
+                              const std::vector<unsigned char>& backdrop)
+{
+    int mismatches = 0;
+    std::size_t at = 0;
+    for (int y = 0; y < kUiCanvasH; ++y)
+    {
+        for (int x = 0; x < kUiCanvasW; ++x)
+        {
+            Uint8 r = 0, g = 0, b = 0;
+            scr->get_pixel(x, y, &r, &g, &b);
+            if (r != backdrop[at] || g != backdrop[at + 1] ||
+                b != backdrop[at + 2])
+            {
+                ++mismatches;
+            }
+            at += 3;
+        }
+    }
+    return mismatches;
+}
+
+} // namespace
+
+TEST(PauseMenuHandlers, briefing_row_disabled_without_description_lines)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, scr);
+    PauseLevelDescriptionGuard description(scr->level_description());
+
+    const og::ui::MenuScreenSpec& spec = og::ui::pause_menu_screen_spec();
+    const std::vector<const og::ui::MenuButtonSpec*> rows =
+        og::ui::materialized_spec_rows(spec);
+    ASSERT_LT(og::ui::kPauseMenuBriefingIndex,
+              static_cast<int>(rows.size()));
+    const og::ui::MenuButtonSpec& briefing =
+        *rows[og::ui::kPauseMenuBriefingIndex];
+    ASSERT_STREQ("pause_briefing", briefing.id);
+    ASSERT_NE(nullptr, briefing.state_override);
+
+    og::ui::MenuLabelContext context{};
+    scr->level_description().clear();
+    EXPECT_EQ(og::ui::RowState::Disabled, briefing.state_override(context))
+        << "no description lines -> the row must read Disabled";
+    scr->level_description().push_back("A briefing line");
+    EXPECT_EQ(og::ui::RowState::Visible, briefing.state_override(context));
+}
+
+TEST(PauseMenuHandlers, briefing_row_scroll_view_scribbles_healed_by_backdrop)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, scr);
+    ForceScrollTextGuard force_scroll;
+    PauseLevelDescriptionGuard description(scr->level_description());
+    scr->level_description().clear();
+    for (int i = 0; i < 40; ++i)
+        scr->level_description().push_back("Briefing line " +
+                                           std::to_string(i));
+
+    g_stub = StubHostState{};
+    PauseMenuHost host = make_stub_host(false, true);
+    og::ui::PauseMenuScreenState state;
+    state.host = &host;
+    og::ui::install_pause_menu_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec = og::ui::pause_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.draw_background);
+    ASSERT_NE(nullptr, spec.on_spec_row);
+
+    {
+        // The menu's fixed modal canvas, as run_pause_menu establishes it.
+        ScopedUiCanvas ui_canvas(*scr);
+
+        // First background pass darkens the world frame and captures it.
+        spec.draw_background(&state);
+        ASSERT_FALSE(state.backdrop.empty());
+        ASSERT_EQ(0, count_backdrop_mismatches(scr, state.backdrop))
+            << "the capture pass must leave the canvas at the captured image";
+
+        // BRIEFING blocks in the real scroll view until dismissed.
+        g_briefing_dismissed.store(false, std::memory_order_release);
+        SDL_Thread* const injector = SDL_CreateThread(
+            briefing_dismiss_injector, "briefing_dismiss", nullptr);
+        ASSERT_NE(nullptr, injector);
+        trace_clear();
+        const Sint32 result =
+            spec.on_spec_row(og::ui::kPauseMenuBriefingIndex, &state);
+        g_briefing_dismissed.store(true, std::memory_order_release);
+        int injector_result = -1;
+        SDL_WaitThread(injector, &injector_result);
+        EXPECT_EQ(0, injector_result);
+        EXPECT_EQ(MENU_OK, result);
+        EXPECT_TRUE(trace_contains("pause_menu", "briefing"));
+        // The keep-alive window is refreshed at entry (the scroll view has
+        // no poll hook) and the transport pumped once on return.
+        EXPECT_EQ(1, g_stub.request_calls)
+            << "BRIEFING must refresh the pause keep-alive before blocking";
+        EXPECT_EQ(1, g_stub.pump_calls)
+            << "BRIEFING must pump the paused transport on return";
+
+        // The scroll view scribbled the shared 320x200 canvas...
+        EXPECT_GT(count_backdrop_mismatches(scr, state.backdrop), 0)
+            << "the scroll view must actually have painted over the menu";
+
+        // ...and the next backdrop pass heals every pixel (no stale chrome).
+        spec.draw_background(&state);
+        EXPECT_EQ(0, count_backdrop_mismatches(scr, state.backdrop))
+            << "the backdrop restore must heal the scroll view's scribbles";
+    }
+
+    // Drain any surplus injected Escapes so they cannot leak into later
+    // tests' event polling.
+    SDL_PumpEvents();
+    SDL_Event drained;
+    while (SDL_PollEvent(&drained))
+    {
+    }
+
+    og::ui::install_pause_menu_state_for_screen(nullptr);
+}
+
+// A dead session on the post-briefing pump closes the menu.
+TEST(PauseMenuHandlers, briefing_row_session_death_on_return_closes_menu)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, scr);
+    PauseLevelDescriptionGuard description(scr->level_description());
+    scr->level_description().clear();
+    scr->level_description().push_back("One line");
+
+    g_stub = StubHostState{};
+    g_stub.pump_result = false;
+    PauseMenuHost host = make_stub_host(false, true);
+    og::ui::PauseMenuScreenState state;
+    state.host = &host;
+    og::ui::install_pause_menu_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec = og::ui::pause_menu_screen_spec();
+
+    // Without the force flag read_scenario returns immediately under
+    // TESTING; the handler's return pump still sees the dead session.
+    EXPECT_EQ(MENU_EXIT,
+              spec.on_spec_row(og::ui::kPauseMenuBriefingIndex, &state));
+    EXPECT_EQ(PauseMenuResult::SessionEnded, state.outcome);
+
+    og::ui::install_pause_menu_state_for_screen(nullptr);
+}
+
+// ---------------------------------------------------------------------------
 // Player-screen row handlers.
 
 TEST(PausePlayerHandlers, input_mode_remap_reset_rows)
@@ -935,6 +1246,235 @@ TEST(PausePlayerHandlers, remove_row_confirms_and_removes)
     EXPECT_EQ(0, g_stub.remove_calls);
 
     picker_testing_yes_or_no_queue_clear();
+    og::ui::install_pause_player_state_for_screen(nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// §7.1 HUD toggle + ZOOM rows (shared helpers behind both player screens).
+
+// Save/restore the §7.1 cfg keys and the live view prefs one seat touches.
+struct HudStateGuard {
+    int seat;
+    std::array<std::string, 6> saved;
+    signed char prefs[4]{};
+    Sint32 zoom = 0;
+    static constexpr const char* kSuffixes[6] = {
+        "hud_radar", "hud_life", "hud_foes", "hud_score", "view_zoom",
+        "hud_migrated"};
+
+    explicit HudStateGuard(int seat_index) : seat(seat_index)
+    {
+        for (int k = 0; k < 6; ++k)
+            saved[static_cast<std::size_t>(k)] = cfg.get_setting(
+                "controls", std::format("player{}_{}", seat + 1,
+                                        kSuffixes[k]));
+        if (viewscreen* const view = seat_viewob(seat))
+        {
+            prefs[0] = view->prefs[PREF_RADAR];
+            prefs[1] = view->prefs[PREF_LIFE];
+            prefs[2] = view->prefs[PREF_FOES];
+            prefs[3] = view->prefs[PREF_SCORE];
+            zoom = view->view_zoom_step_;
+        }
+    }
+    ~HudStateGuard()
+    {
+        for (int k = 0; k < 6; ++k)
+            cfg.apply_setting(
+                "controls",
+                std::format("player{}_{}", seat + 1, kSuffixes[k]),
+                saved[static_cast<std::size_t>(k)]);
+        // The handlers under test persisted mid-test values to disk; put the
+        // restored ones back so later binaries never inherit toggled HUD keys.
+        cfg.save_settings();
+        if (viewscreen* const view = seat_viewob(seat))
+        {
+            view->prefs[PREF_RADAR] = prefs[0];
+            view->prefs[PREF_LIFE] = prefs[1];
+            view->prefs[PREF_FOES] = prefs[2];
+            view->prefs[PREF_SCORE] = prefs[3];
+            view->view_zoom_step_ = zoom;
+        }
+    }
+    static viewscreen* seat_viewob(int seat_index)
+    {
+        screen* const scr = og::runtime::current_session->myscreen_;
+        if (scr == nullptr || seat_index < 0 || seat_index >= scr->numviews)
+            return nullptr;
+        return scr->viewob[static_cast<std::size_t>(seat_index)].get();
+    }
+};
+
+TEST(PausePlayerHandlers, hud_toggle_rows_flip_prefs_labels_and_cfg)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, scr);
+    viewscreen* const view = HudStateGuard::seat_viewob(0);
+    ASSERT_NE(nullptr, view) << "seat 0 must have a live viewscreen";
+    HudStateGuard guard(0);
+
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::pause_player_menu_screen_spec();
+    g_stub = StubHostState{};
+    PauseMenuHost host = make_stub_host(false, true);
+    og::ui::PausePlayerScreenState state;
+    state.host = &host;
+    state.seat = 0;
+    state.player_number = 1;
+    og::ui::install_pause_player_state_for_screen(&state);
+
+    // RADAR: pref flip + label flip + cfg mirror + immediate redraw request.
+    view->prefs[PREF_RADAR] = PREF_RADAR_ON;
+    EXPECT_EQ("RADAR: ON",
+              og::ui::player_hud_row_label(0, og::ui::PlayerHudRow::Radar));
+    scr->redrawme = 0;
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(og::ui::kPausePlayerHudRadarIndex, &state));
+    EXPECT_EQ(PREF_RADAR_OFF, view->prefs[PREF_RADAR]);
+    EXPECT_EQ("RADAR: OFF",
+              og::ui::player_hud_row_label(0, og::ui::PlayerHudRow::Radar));
+    EXPECT_EQ("0", cfg.get_setting("controls", "player1_hud_radar"));
+    EXPECT_EQ(1, scr->redrawme) << "the toggle must request a redraw";
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(og::ui::kPausePlayerHudRadarIndex, &state));
+    EXPECT_EQ(PREF_RADAR_ON, view->prefs[PREF_RADAR]);
+    EXPECT_EQ("1", cfg.get_setting("controls", "player1_hud_radar"));
+
+    // The live vbutton surface gets the flipped label through the rewire.
+    view->prefs[PREF_FOES] = PREF_FOES_ON;
+    std::vector<button> buttons;
+    og::ui::materialize_menu_buttons(spec, buttons);
+    int highlighted = spec.default_highlight;
+    apply_gates_and_rewire(spec, buttons, highlighted);
+    EXPECT_EQ("FOES: ON",
+              buttons[og::ui::kPausePlayerHudFoesIndex].label);
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(og::ui::kPausePlayerHudFoesIndex, &state));
+    apply_gates_and_rewire(spec, buttons, highlighted);
+    EXPECT_EQ("FOES: OFF",
+              buttons[og::ui::kPausePlayerHudFoesIndex].label);
+    EXPECT_EQ(PREF_FOES_OFF, view->prefs[PREF_FOES]);
+
+    // SCORE follows the same shape.
+    view->prefs[PREF_SCORE] = PREF_SCORE_ON;
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(og::ui::kPausePlayerHudScoreIndex, &state));
+    EXPECT_EQ(PREF_SCORE_OFF, view->prefs[PREF_SCORE]);
+    EXPECT_EQ("0", cfg.get_setting("controls", "player1_hud_score"));
+
+    og::ui::install_pause_player_state_for_screen(nullptr);
+}
+
+TEST(PausePlayerHandlers, hp_row_is_on_off_and_normalizes_legacy_values)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, scr);
+    viewscreen* const view = HudStateGuard::seat_viewob(0);
+    ASSERT_NE(nullptr, view);
+    HudStateGuard guard(0);
+
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::pause_player_menu_screen_spec();
+    g_stub = StubHostState{};
+    PauseMenuHost host = make_stub_host(false, true);
+    og::ui::PausePlayerScreenState state;
+    state.host = &host;
+    state.seat = 0;
+    state.player_number = 1;
+    og::ui::install_pause_player_state_for_screen(&state);
+
+    // Every legacy non-OFF state displays as ON...
+    for (const signed char legacy :
+         {PREF_LIFE_TEXT, PREF_LIFE_BARS, PREF_LIFE_BOTH, PREF_LIFE_SMALL})
+    {
+        view->prefs[PREF_LIFE] = legacy;
+        EXPECT_EQ("HP: ON",
+                  og::ui::player_hud_row_label(0, og::ui::PlayerHudRow::Life))
+            << "legacy value " << static_cast<int>(legacy);
+    }
+    // ...and the first toggle normalizes: legacy TEXT -> OFF -> BOTH.
+    view->prefs[PREF_LIFE] = PREF_LIFE_TEXT;
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(og::ui::kPausePlayerHudLifeIndex, &state));
+    EXPECT_EQ(PREF_LIFE_OFF, view->prefs[PREF_LIFE]);
+    EXPECT_EQ("0", cfg.get_setting("controls", "player1_hud_life"));
+    EXPECT_EQ("HP: OFF",
+              og::ui::player_hud_row_label(0, og::ui::PlayerHudRow::Life));
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(og::ui::kPausePlayerHudLifeIndex, &state));
+    EXPECT_EQ(PREF_LIFE_BOTH, view->prefs[PREF_LIFE])
+        << "ON always writes BOTH, never a legacy TEXT/BARS/SMALL state";
+    EXPECT_EQ("1", cfg.get_setting("controls", "player1_hud_life"));
+
+    og::ui::install_pause_player_state_for_screen(nullptr);
+}
+
+TEST(PausePlayerHandlers, zoom_row_cycles_labels_persists_and_clamps)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, scr);
+    viewscreen* const view = HudStateGuard::seat_viewob(0);
+    ASSERT_NE(nullptr, view);
+    HudStateGuard guard(0);
+
+    ASSERT_TRUE(og::ui::per_view_zoom_available())
+        << "the SDL video backend has the floor-layer compositor";
+
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::pause_player_menu_screen_spec();
+    g_stub = StubHostState{};
+    PauseMenuHost host = make_stub_host(false, true);
+    og::ui::PausePlayerScreenState state;
+    state.host = &host;
+    state.seat = 0;
+    state.player_number = 1;
+    og::ui::install_pause_player_state_for_screen(&state);
+
+    // Full cycle on the default canvas: GAME -> 0.9 .. 0.5 -> GAME.
+    view->view_zoom_step_ = 0;
+    EXPECT_EQ("ZOOM: GAME", og::ui::player_view_zoom_label(0));
+    const char* const expected_labels[5] = {
+        "ZOOM: 0.9X", "ZOOM: 0.8X", "ZOOM: 0.7X", "ZOOM: 0.6X",
+        "ZOOM: 0.5X"};
+    for (int step = 1; step <= 5; ++step)
+    {
+        EXPECT_EQ(MENU_OK,
+                  spec.on_spec_row(og::ui::kPausePlayerZoomIndex, &state));
+        EXPECT_EQ(step, static_cast<int>(view->view_zoom_step_));
+        EXPECT_EQ(expected_labels[step - 1],
+                  og::ui::player_view_zoom_label(0));
+        EXPECT_EQ(std::to_string(step),
+                  cfg.get_setting("controls", "player1_view_zoom"));
+    }
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(og::ui::kPausePlayerZoomIndex, &state));
+    EXPECT_EQ(0, static_cast<int>(view->view_zoom_step_));
+    EXPECT_EQ("ZOOM: GAME", og::ui::player_view_zoom_label(0));
+    EXPECT_EQ("0", cfg.get_setting("controls", "player1_view_zoom"));
+
+    // Budget clamp: a 1600x1000 pane blows the compositor budget at 0.6x
+    // and below ((1600/0.6)*(1000/0.6) > 4.096M), so the cycle skips those
+    // steps and wraps from 0.7x straight back to GAME.
+    const Sint32 old_xloc = view->xloc, old_yloc = view->yloc;
+    const Sint32 old_xview = view->xview, old_yview = view->yview;
+    view->xloc = 0;
+    view->yloc = 0;
+    view->xview = 1600;
+    view->yview = 1000;
+    EXPECT_TRUE(view->view_zoom_step_fits_budget(3));
+    EXPECT_FALSE(view->view_zoom_step_fits_budget(4));
+    EXPECT_FALSE(view->view_zoom_step_fits_budget(5));
+    view->view_zoom_step_ = 3;
+    cfg.apply_setting("controls", "player1_view_zoom", "3");
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(og::ui::kPausePlayerZoomIndex, &state));
+    EXPECT_EQ(0, static_cast<int>(view->view_zoom_step_))
+        << "over-budget steps are skipped; the cycle wraps to GAME";
+    view->xloc = old_xloc;
+    view->yloc = old_yloc;
+    view->xview = old_xview;
+    view->yview = old_yview;
+
     og::ui::install_pause_player_state_for_screen(nullptr);
 }
 
@@ -1228,6 +1768,132 @@ TEST(PauseMenuFlow, real_menu_resume_add_remove_player_and_quit_via_interact)
     game_screen->world().delete_objects();
     game_screen->world().end = 0;
     game_screen->world().retry = false;
+}
+
+// ---------------------------------------------------------------------------
+// Regression, re-homed from the retired options_menu (design §7.2): VIEW
+// TEAM return must redraw the SPLIT world canvas — with zoom active the
+// world surface is wider than the fixed 320px UI canvas, and a modal that
+// only repaints the UI region leaves the extension stale. The pause menu's
+// exit dance (World-target redraw + swap) is the mechanism under test.
+
+namespace
+{
+
+int pause_view_team_return_injector(void* /*data*/)
+{
+    og::runtime::ensure_thread_session();
+    if (!wait_for_interactable("pause_view_team", 10'000))
+        return 1;
+    SDL_Delay(300);
+    interact("pause_view_team");
+    SDL_Delay(300);
+    if (!wait_for_interactable("pause_resume", 10'000))
+        return 2;
+    interact("pause_resume");
+    return 0;
+}
+
+} // namespace
+
+TEST(PauseMenuFlow, view_team_return_redraws_the_split_world_canvas)
+{
+    screen* const game = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game);
+    viewscreen* const vs = game->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    ASSERT_NE(nullptr, E_Screen);
+
+    if (!game->world().grid.valid())
+        game->world().create_new_grid();
+    walker* const saved_control = vs->control;
+    walker* created_control = nullptr;
+    if (!vs->control)
+    {
+        created_control = game->world().add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, created_control);
+        created_control->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
+        created_control->set_team_num(0);
+        created_control->set_user(0);
+        vs->control = created_control;
+    }
+
+    const int saved_zoom = E_Screen->world_zoom_steps();
+    og::WorldScaleMode saved_smoothing = E_Screen->world_scale().mode;
+    if (saved_smoothing == og::WorldScaleMode::Legacy)
+        saved_smoothing = og::WorldScaleMode::Integer;
+    const CanvasTarget saved_target = E_Screen->active_canvas();
+    const signed char saved_view = vs->prefs[PREF_VIEW];
+
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Sai);
+    vs->prefs[PREF_VIEW] = PREF_VIEW_FULL;
+    game->relayout_views();
+    E_Screen->set_active_canvas(CanvasTarget::World);
+    ASSERT_EQ(game->world_canvas_w(), E_Screen->render->w);
+    ASSERT_EQ(game->world_canvas_h(), E_Screen->render->h);
+    ASSERT_GT(E_Screen->render->w, kUiCanvasW)
+        << "the test requires a split world canvas";
+
+    constexpr Uint8 sentinel_r = 231;
+    constexpr Uint8 sentinel_g = 17;
+    constexpr Uint8 sentinel_b = 199;
+    const SDL_PixelFormatDetails* const details =
+        SDL_GetPixelFormatDetails(E_Screen->render->format);
+    ASSERT_NE(nullptr, details);
+    const Uint32 sentinel = SDL_MapRGB(
+        details, nullptr, sentinel_r, sentinel_g, sentinel_b);
+    ASSERT_TRUE(SDL_FillSurfaceRect(E_Screen->render, nullptr, sentinel));
+
+    g_stub = StubHostState{};
+    PauseMenuHost host = make_stub_host(false, true);
+    og::ui::pause_menu_testing_set_force_real(true);
+    SDL_Thread* const injector = SDL_CreateThread(
+        pause_view_team_return_injector, "pause_vt_injector", nullptr);
+    ASSERT_NE(nullptr, injector);
+
+    trace_clear();
+    const PauseMenuResult outcome = og::ui::run_pause_menu(host);
+
+    int injector_result = -1;
+    SDL_WaitThread(injector, &injector_result);
+    og::ui::pause_menu_testing_set_force_real(false);
+    EXPECT_EQ(0, injector_result) << "injector leg " << injector_result
+                                  << " timed out";
+    EXPECT_EQ(PauseMenuResult::Resumed, outcome);
+    EXPECT_TRUE(trace_contains("pause_menu", "view_team"))
+        << "the VIEW TEAM row must actually have hosted the roster";
+
+    EXPECT_EQ(CanvasTarget::World, E_Screen->active_canvas())
+        << "the modal must restore gameplay canvas routing";
+    bool extended_world_changed = false;
+    for (int y = 16; y < 384 && !extended_world_changed; y += 11)
+    {
+        for (int x = 336; x < 624; x += 13)
+        {
+            Uint8 r = 0;
+            Uint8 g = 0;
+            Uint8 b = 0;
+            game->get_pixel(x, y, &r, &g, &b);
+            if (r != sentinel_r || g != sentinel_g || b != sentinel_b)
+            {
+                extended_world_changed = true;
+                break;
+            }
+        }
+    }
+    EXPECT_TRUE(extended_world_changed)
+        << "VIEW TEAM return must redraw beyond the fixed 320px UI width";
+
+    E_Screen->set_world_zoom(saved_zoom, saved_smoothing);
+    E_Screen->set_active_canvas(saved_target);
+    vs->prefs[PREF_VIEW] = saved_view;
+    game->relayout_views();
+    og::runtime::current_session->theprefs_->save(vs);
+    vs->control = saved_control;
+    if (created_control != nullptr)
+    {
+        EXPECT_TRUE(game->world().remove_ob(created_control));
+    }
 }
 
 // ---------------------------------------------------------------------------

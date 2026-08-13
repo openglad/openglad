@@ -9,6 +9,7 @@
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_lobby_network_client.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/resources/save_data.h>
 #include "../../src/interface/ui/picker_sdl_defs.h"
 #include <gtest/gtest.h>
@@ -1132,6 +1133,76 @@ TEST(MenuLayout, seat_settings_input_row_layout_and_nav)
         EXPECT_LE(static_cast<int>(std::strlen(input.label.c_str())),
                   (input.sizex - 8) / 6)
             << variant << " '" << input.label << "'";
+
+        // §7.1 unified player screen: ZOOM shares the y=62 band; the four
+        // HUD toggles stack right of the narrowed binding panel (x=12..208)
+        // at x=214 on a 22px pitch, clearing the y=169 command band.
+        const int zoom_row =
+            mp ? kSeatSettingsZoomRowMP : kSeatSettingsZoomRowNoMP;
+        const int radar_row =
+            mp ? kSeatSettingsHudRadarRowMP : kSeatSettingsHudRadarRowNoMP;
+        const button& zoom = rows[static_cast<std::size_t>(zoom_row)];
+        EXPECT_EQ("seat_zoom", zoom.id) << variant;
+        EXPECT_EQ(122, zoom.x) << variant;
+        EXPECT_EQ(62, zoom.y) << variant;
+        EXPECT_EQ(88, zoom.sizex) << variant;
+        EXPECT_EQ(18, zoom.sizey) << variant;
+        EXPECT_GT(zoom.x, input.x + input.sizex)
+            << variant << ": ZOOM clears the INPUT face";
+        const char* const hud_ids[4] = {"seat_hud_radar", "seat_hud_life",
+                                        "seat_hud_foes", "seat_hud_score"};
+        const char* const hud_labels[4] = {"RADAR: OFF", "HP: OFF",
+                                           "FOES: OFF", "SCORE: OFF"};
+        for (int k = 0; k < 4; ++k)
+        {
+            const button& hud =
+                rows[static_cast<std::size_t>(radar_row + k)];
+            EXPECT_EQ(hud_ids[k], hud.id) << variant;
+            EXPECT_EQ(214, hud.x) << variant << " " << hud.id;
+            EXPECT_EQ(84 + 22 * k, hud.y) << variant << " " << hud.id;
+            EXPECT_EQ(90, hud.sizex) << variant << " " << hud.id;
+            EXPECT_EQ(18, hud.sizey) << variant << " " << hud.id;
+            EXPECT_GT(hud.x, 208)
+                << variant << ": the stack clears the binding panel";
+            // Both label states fit the 90px face budget.
+            EXPECT_LE(static_cast<int>(std::strlen(hud_labels[k])),
+                      (hud.sizex - 8) / 6)
+                << variant << " '" << hud_labels[k] << "'";
+            EXPECT_LE(static_cast<int>(std::strlen(hud.label.c_str())),
+                      (hud.sizex - 8) / 6)
+                << variant << " '" << hud.label << "'";
+        }
+        const button& score =
+            rows[static_cast<std::size_t>(radar_row + 3)];
+        EXPECT_LT(score.y + score.sizey, team.y)
+            << variant << ": the stack clears the bottom command band";
+        // Widest zoom label fits the 88px face.
+        EXPECT_LE(static_cast<int>(std::strlen("ZOOM: GAME")),
+                  (zoom.sizex - 8) / 6)
+            << variant;
+
+        // The two binding-panel columns stay inside their budgets with the
+        // widest possible binding value (get_key_display_name_short caps at
+        // 9 chars; joystick forms are at most 4): movement must clear the
+        // ACTIONS column at x=104, actions must clear the panel edge x=208.
+        const std::string widest_value(9, 'W');
+        for (const char* const label :
+             {"UP", "UP-R", "RIGHT", "DN-R", "DOWN", "DN-L", "LEFT", "UP-L"})
+        {
+            const std::string line = og::ui::format_binding_panel_line(
+                label, widest_value, og::ui::kBindingPanelMovementChars);
+            EXPECT_LE(20 + static_cast<int>(line.size()) * 6, 104)
+                << variant << " movement '" << line << "'";
+        }
+        for (const char* const label :
+             {"FIRE", "SPECIAL", "YELL", "SHIFTER", "LOOK UP", "CHAR SW",
+              "SPEC SW"})
+        {
+            const std::string line = og::ui::format_binding_panel_line(
+                label, widest_value, og::ui::kBindingPanelActionsChars);
+            EXPECT_LE(104 + static_cast<int>(line.size()) * 6, 208)
+                << variant << " actions '" << line << "'";
+        }
     }
 }
 
@@ -1887,9 +1958,9 @@ TEST(MenuLayout, main_options_index_contract_and_nav)
 {
     button* buttons = picker_main_options_buttons();
     const int count = picker_main_options_button_count();
-    ASSERT_EQ(9, count)
+    ASSERT_EQ(10, count)
         << "main options is BACK + Sound + DISPLAY + sprite sheet + "
-           "3 FX doors + CONTROLS + RESTORE SETTINGS";
+           "3 FX doors + CONTROLS + RESTORE SETTINGS + SPEED";
 
     static const char* kExpectedIds[] = {
         "options_back",       // 0
@@ -1901,6 +1972,7 @@ TEST(MenuLayout, main_options_index_contract_and_nav)
         "ui_fx",              // 6: opens the UI FX subscreen
         "graphics_fx",        // 7: opens the GRAPHICS FX subscreen
         "control_settings",   // 8: opens persistent player profiles
+        "game_speed",         // 9: cfg gameplay/timer_wait cycler
     };
     for (int i = 0; i < count; ++i)
     {
@@ -1926,6 +1998,28 @@ TEST(MenuLayout, main_options_index_contract_and_nav)
     EXPECT_EQ(button_action_id(ButtonAction::OpenDisplaySettings), buttons[2].myfun);
     EXPECT_EQ(button_action_id(ButtonAction::OpenControlSettings), buttons[8].myfun);
 
+    // SPEED closes the right column (RESTORE SETTINGS / Sprite Sheet / SPEED
+    // share x=210). It sits at y=171 because the left column's 90px door
+    // faces reach x=220 on every row between 56 and 148.
+    EXPECT_EQ(button_action_id(ButtonAction::CycleGameSpeed), buttons[9].myfun);
+    EXPECT_EQ(buttons[4].x, buttons[9].x);
+    EXPECT_EQ(buttons[5].x, buttons[9].x);
+    EXPECT_EQ(171, buttons[9].y);
+    EXPECT_GT(buttons[9].y, buttons[8].y + buttons[8].sizey)
+        << "SPEED must clear the last left-column door's row";
+    // Every SPEED the cycler can store fits the 90px face (15 chars).
+    {
+        std::string value = cfg.get_setting("gameplay", "timer_wait");
+        for (int step = 0; step < 11; ++step)
+        {
+            EXPECT_LE(
+                static_cast<int>(og::ui::format_game_speed_label(value).size()) * 6,
+                buttons[9].sizex)
+                << og::ui::format_game_speed_label(value);
+            value = og::ui::cycle_game_speed(value);
+        }
+    }
+
     check_nav_closed_and_reachable(buttons, count, 0, "main_options");
 }
 
@@ -1936,9 +2030,9 @@ TEST(MenuLayout, display_settings_index_contract_and_nav)
 {
     button* buttons = picker_display_settings_buttons();
     const int count = picker_display_settings_button_count();
-    ASSERT_EQ(7, count)
+    ASSERT_EQ(9, count)
         << "display settings is BACK + mode + resolution + overscan pair + "
-           "zoom + smoothing";
+           "zoom + smoothing + brightness pair";
 
     static const char* kExpectedIds[] = {
         "display_back",        // 0
@@ -1948,6 +2042,8 @@ TEST(MenuLayout, display_settings_index_contract_and_nav)
         "overscan_plus",       // 4
         "display_zoom",        // 5: label synced from graphics/zoom
         "display_smoothing",   // 6: label synced from graphics/smoothing
+        "brightness_minus",    // 7: cfg graphics/brightness, one gamma step
+        "brightness_plus",     // 8
     };
     for (int i = 0; i < count; ++i)
     {
@@ -1979,6 +2075,18 @@ TEST(MenuLayout, display_settings_index_contract_and_nav)
     EXPECT_EQ(buttons[2].y + 23, buttons[3].y);
     EXPECT_EQ(buttons[3].y + 23, buttons[5].y);
     EXPECT_EQ(buttons[5].y + 23, buttons[6].y);
+    // BRIGHTNESS takes the overscan pair's shape one row further down: same
+    // 30px faces at the same two x, one adjust action, opposite args.
+    EXPECT_EQ(buttons[6].y + 23, buttons[7].y);
+    EXPECT_EQ(buttons[7].y, buttons[8].y);
+    EXPECT_EQ(buttons[3].x, buttons[7].x);
+    EXPECT_EQ(buttons[4].x, buttons[8].x);
+    EXPECT_EQ(buttons[3].sizex, buttons[7].sizex);
+    EXPECT_EQ(buttons[4].sizex, buttons[8].sizex);
+    EXPECT_EQ(button_action_id(ButtonAction::BrightnessAdjust), buttons[7].myfun);
+    EXPECT_EQ(button_action_id(ButtonAction::BrightnessAdjust), buttons[8].myfun);
+    EXPECT_EQ(-1, buttons[7].arg1);
+    EXPECT_EQ(1, buttons[8].arg1);
 
     check_nav_closed_and_reachable(buttons, count, 0, "display_settings");
 }
@@ -2053,9 +2161,9 @@ TEST(MenuLayout, ui_fx_options_layout_and_nav)
     check_fx_options_screen(buttons, count, kExpected, 4, "ui_fx_options");
 }
 
-// GRAPHICS FX subscreen: unique BACK id + 13 effects/* visual toggles on the
+// GRAPHICS FX subscreen: unique BACK id + 14 effects/* visual toggles on the
 // three-column x=15/115/215 grid (4 full rows at 23px pitch from y=35, plus
-// the lone floor-glide toggle on a fifth row). Weather is the single display
+// floor glide and color cycling on a fifth row). Weather is the single display
 // opt-out for the per-level sim weather (the old Clouds/Rain pair merged).
 TEST(MenuLayout, graphics_fx_options_grid_geometry_and_nav)
 {
@@ -2074,10 +2182,11 @@ TEST(MenuLayout, graphics_fx_options_grid_geometry_and_nav)
         {"toggle_ripples", "Ripples", 115, 104},
         {"toggle_screen_shake", "Screen shake", 215, 104},
         {"toggle_floor_glide", "Floor glide", 15, 127},
+        {"toggle_color_cycling", "Color cycling", 115, 127},
     };
     button* buttons = picker_graphics_fx_options_buttons();
     const int count = picker_graphics_fx_options_button_count();
-    check_fx_options_screen(buttons, count, kExpected, 14, "graphics_fx_options");
+    check_fx_options_screen(buttons, count, kExpected, 15, "graphics_fx_options");
 
     // The depth row is a five-way CYCLE (id "depth_fx"), addressed by index
     // from change_depth_fx(); pin the index contract and that every label

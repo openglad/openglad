@@ -23,6 +23,7 @@
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/input_mappings.h>
+#include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/input_cycler.h>
 #include <openglad/interface/ui/menu_model.h>
@@ -39,9 +40,11 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
+#include <format>
 #include <map>
 #include <memory>
 #include <set>
@@ -1806,7 +1809,7 @@ TEST(MenuEngine, main_options_content_index_pins_and_sprite_label_binding)
 
     button* buttons = spec.buttons_accessor();
     const int count = spec.count_accessor();
-    ASSERT_EQ(9, count);
+    ASSERT_EQ(10, count);
     EXPECT_EQ("toggle_sound", buttons[1].id);
     EXPECT_EQ("display_settings", buttons[2].id);
     EXPECT_EQ("gameplay_fx", buttons[3].id);
@@ -1814,6 +1817,8 @@ TEST(MenuEngine, main_options_content_index_pins_and_sprite_label_binding)
     EXPECT_EQ("control_settings", buttons[8].id);
     EXPECT_EQ(button_action_id(ButtonAction::OpenControlSettings),
               buttons[8].myfun);
+    // SPEED was appended AFTER the historical ordinals the draw hook reads.
+    EXPECT_EQ("game_speed", buttons[9].id);
 
     const og::ui::LabelFormatter sprite_formatter =
         spec.rows[5].label_binding.formatter;
@@ -1821,6 +1826,26 @@ TEST(MenuEngine, main_options_content_index_pins_and_sprite_label_binding)
         << "the sprite-sheet dual-surface label restore must be a binding";
     og::ui::MenuLabelContext context;
     EXPECT_EQ("Sprite Sheet", sprite_formatter(context));
+
+    // SPEED re-derives from cfg gameplay/timer_wait every frame, and a full
+    // 11-step lap must come back to where it started (the display number is
+    // the inverted (20 - wait) / 2 + 1 the retired options menu showed).
+    const og::ui::LabelFormatter speed_formatter =
+        spec.rows[9].label_binding.formatter;
+    ASSERT_NE(nullptr, speed_formatter)
+        << "the SPEED face must re-derive from cfg, not from a click write";
+    const std::string previous_speed = cfg.get_setting("gameplay", "timer_wait");
+    cfg.apply_setting("gameplay", "timer_wait", "6");
+    EXPECT_EQ("SPEED: 8", speed_formatter(context))
+        << "the shipped default wait must read as SPEED 8";
+    std::string wait = "6";
+    for (int step = 0; step < 11; ++step) {
+        wait = og::ui::cycle_game_speed(wait);
+        cfg.apply_setting("gameplay", "timer_wait", wait);
+        EXPECT_EQ(og::ui::format_game_speed_label(wait), speed_formatter(context));
+    }
+    EXPECT_EQ("6", wait) << "eleven clicks must restore the selector";
+    cfg.apply_setting("gameplay", "timer_wait", previous_speed);
 }
 
 // ---------------------------------------------------------------------------
@@ -1840,7 +1865,7 @@ TEST(MenuEngine, display_settings_index_drift_pins_and_label_bindings)
 
     button* buttons = spec.buttons_accessor();
     const int count = spec.count_accessor();
-    ASSERT_EQ(7, count);
+    ASSERT_EQ(9, count);
     EXPECT_EQ("display_back", buttons[kDisplayMenuBackIndex].id);
     EXPECT_EQ("display_mode", buttons[kDisplayMenuModeIndex].id);
     EXPECT_EQ("display_resolution", buttons[kDisplayMenuResolutionIndex].id);
@@ -1848,6 +1873,13 @@ TEST(MenuEngine, display_settings_index_drift_pins_and_label_bindings)
     EXPECT_EQ("overscan_plus", buttons[kDisplayMenuOverscanPlusIndex].id);
     EXPECT_EQ("display_zoom", buttons[kDisplayMenuZoomIndex].id);
     EXPECT_EQ("display_smoothing", buttons[kDisplayMenuSmoothingIndex].id);
+    // The brightness pair appends after the constants' block; like the
+    // overscan pair it has no label binding (its live value is content-pass
+    // text, so the faces stay plain "- " / "+ ").
+    EXPECT_EQ("brightness_minus", buttons[7].id);
+    EXPECT_EQ("brightness_plus", buttons[8].id);
+    EXPECT_EQ(nullptr, spec.rows[7].label_binding.formatter);
+    EXPECT_EQ(nullptr, spec.rows[8].label_binding.formatter);
 
     og::ui::MenuLabelContext context;
     const og::ui::LabelFormatter mode_formatter =
@@ -2076,8 +2108,8 @@ TEST(MenuEngine, seat_settings_registry_and_global_controls_ownership)
         og::ui::seat_settings_menu_screen_spec_mp();
     const og::ui::MenuScreenSpec& seat_nomp =
         og::ui::seat_settings_menu_screen_spec_nomp();
-    EXPECT_EQ(7, kSeatSettingsButtonCountMP);
-    EXPECT_EQ(6, kSeatSettingsButtonCountNoMP);
+    EXPECT_EQ(12, kSeatSettingsButtonCountMP);
+    EXPECT_EQ(11, kSeatSettingsButtonCountNoMP);
     EXPECT_EQ(kSeatSettingsButtonCountMP, seat_mp.row_count);
     EXPECT_EQ(kSeatSettingsButtonCountNoMP, seat_nomp.row_count);
     EXPECT_STREQ("seat_settings_back", seat_mp.rows[kSeatSettingsBackIndex].id);
@@ -2133,16 +2165,38 @@ TEST(MenuEngine, seat_settings_registry_and_global_controls_ownership)
                   spec->rows[kSeatSettingsRemapIndex].nav.right);
         EXPECT_EQ(kSeatSettingsRemapIndex,
                   spec->rows[kSeatSettingsResetIndex].nav.left);
-        // The whole y=38 band drops into the cycler, and the cycler drops
-        // into the bottom band.
+        // §7.1: the y=62 band is INPUT + ZOOM; the y=38 band drops into it
+        // (MODE onto INPUT, REMAP onto ZOOM) and RESET drops onto the HUD
+        // stack; INPUT still drops into the bottom band.
+        const int zoom_row =
+            mp ? kSeatSettingsZoomRowMP : kSeatSettingsZoomRowNoMP;
+        const int radar_row =
+            mp ? kSeatSettingsHudRadarRowMP : kSeatSettingsHudRadarRowNoMP;
+        const int score_row =
+            mp ? kSeatSettingsHudScoreRowMP : kSeatSettingsHudScoreRowNoMP;
         EXPECT_EQ(input_row, spec->rows[kSeatSettingsModeIndex].nav.down);
-        EXPECT_EQ(input_row, spec->rows[kSeatSettingsRemapIndex].nav.down);
-        EXPECT_EQ(input_row, spec->rows[kSeatSettingsResetIndex].nav.down);
+        EXPECT_EQ(zoom_row, spec->rows[kSeatSettingsRemapIndex].nav.down);
+        EXPECT_EQ(radar_row, spec->rows[kSeatSettingsResetIndex].nav.down);
         EXPECT_EQ(kSeatSettingsModeIndex, spec->rows[input_row].nav.up);
         EXPECT_EQ(kSeatSettingsTeamIndex, spec->rows[input_row].nav.down);
         EXPECT_EQ(-1, spec->rows[input_row].nav.left);
-        EXPECT_EQ(-1, spec->rows[input_row].nav.right);
+        EXPECT_EQ(zoom_row, spec->rows[input_row].nav.right);
         EXPECT_EQ(input_row, spec->rows[kSeatSettingsTeamIndex].nav.up);
+        // ZOOM + HUD stack geometry and dispatch args (args are the MP
+        // positions in BOTH variants — the seat_input precedent).
+        expect_geometry(spec->rows[zoom_row], 122, 62, 88, 18);
+        EXPECT_STREQ("seat_zoom", spec->rows[zoom_row].id);
+        EXPECT_EQ(kSeatSettingsZoomIndex, spec->rows[zoom_row].arg);
+        expect_geometry(spec->rows[radar_row], 214, 84, 90, 18);
+        expect_geometry(spec->rows[radar_row + 1], 214, 106, 90, 18);
+        expect_geometry(spec->rows[radar_row + 2], 214, 128, 90, 18);
+        expect_geometry(spec->rows[score_row], 214, 150, 90, 18);
+        EXPECT_STREQ("seat_hud_radar", spec->rows[radar_row].id);
+        EXPECT_STREQ("seat_hud_life", spec->rows[radar_row + 1].id);
+        EXPECT_STREQ("seat_hud_foes", spec->rows[radar_row + 2].id);
+        EXPECT_STREQ("seat_hud_score", spec->rows[score_row].id);
+        EXPECT_EQ(kSeatSettingsHudRadarIndex, spec->rows[radar_row].arg);
+        EXPECT_EQ(kSeatSettingsHudScoreIndex, spec->rows[score_row].arg);
         // Every link stays inside the variant's own row table.
         for (int row = 0; row < spec->row_count; ++row) {
             for (const int link : {spec->rows[row].nav.up,
@@ -2163,7 +2217,7 @@ TEST(MenuEngine, seat_settings_registry_and_global_controls_ownership)
               seat_mp.rows[kSeatSettingsTeamIndex].nav.right);
     EXPECT_EQ(kSeatSettingsTeamIndex,
               seat_mp.rows[kSeatSettingsRemoveIndex].nav.left);
-    EXPECT_EQ(kSeatSettingsInputRowMP,
+    EXPECT_EQ(kSeatSettingsHudScoreRowMP,
               seat_mp.rows[kSeatSettingsRemoveIndex].nav.up);
     expect_geometry(seat_nomp.rows[kSeatSettingsTeamIndex],
                     91, 169, 138, 18);
@@ -2216,10 +2270,10 @@ TEST(MenuEngine, seat_settings_registry_and_global_controls_ownership)
     ASSERT_EQ(og::ui::MenuScreenHost::Kind::Engine, options_host.kind);
     ASSERT_NE(nullptr, options_host.spec);
     const og::ui::MenuScreenSpec& options = *options_host.spec;
-    ASSERT_EQ(9, options.row_count);
+    // 9 doors/toggles + the SPEED cycler appended after them.
+    ASSERT_EQ(10, options.row_count);
     EXPECT_EQ(og::ui::RemoteStartScope::MainScope, options.remote_start);
-    const og::ui::MenuButtonSpec& door =
-        options.rows[options.row_count - 1];
+    const og::ui::MenuButtonSpec& door = options.rows[8];
     EXPECT_STREQ("control_settings", door.id);
     EXPECT_EQ(ButtonAction::OpenControlSettings, door.action);
 }
@@ -3037,6 +3091,107 @@ TEST(MenuEngine, base_camp_rail_and_add_seat_boundaries_are_behavioral)
     EXPECT_EQ(1, lobby.add_seat_calls);
     EXPECT_TRUE(trace_contains("popup", "ADD DENIED"));
 #endif
+}
+
+// §7.1: the seat editor's ZOOM + HUD rows flip the seat's runtime prefs
+// (viewob[slot] when live), mirror to cfg, and keep both label surfaces
+// live through the rewire; seats without a live viewscreen carry cfg alone.
+TEST(MenuEngine, seat_settings_hud_and_zoom_rows_toggle_and_persist)
+{
+    EngineTestGuard engine_guard;
+    MenuCallbackStateGuard callback_guard;
+    FakeLobbyClient lobby;
+    lobby.networked = false;
+    lobby.local_seats = 1;
+    lobby.players = {make_menu_lobby_player(0, "LOCAL COMPANY")};
+    lobby.local_indices = {0};
+    og::ui::install_active_picker_lobby_client(&lobby);
+
+    screen& output = *og::runtime::current_session->myscreen_;
+    viewscreen* const view = output.viewob[0].get();
+    ASSERT_NE(nullptr, view);
+    // Save/restore the §7.1 cfg keys + live prefs this test touches.
+    struct Saved {
+        std::array<std::pair<std::string, std::string>, 12> cfg_keys;
+        signed char radar, life;
+        Sint32 zoom;
+    } saved;
+    int at = 0;
+    for (int player : {1, 3})
+        for (const char* suffix :
+             {"hud_radar", "hud_life", "hud_foes", "hud_score", "view_zoom",
+              "hud_migrated"})
+        {
+            const std::string key =
+                std::format("player{}_{}", player, suffix);
+            saved.cfg_keys[static_cast<std::size_t>(at++)] = {
+                key, cfg.get_setting("controls", key)};
+        }
+    saved.radar = view->prefs[PREF_RADAR];
+    saved.life = view->prefs[PREF_LIFE];
+    saved.zoom = view->view_zoom_step_;
+
+    og::ui::SeatSettingsScreenState state{
+        .seat_id = lobby.players.front().seat_id,
+        .player_index = lobby.players.front().player_index,
+        .local_slot = 0,
+    };
+    og::ui::install_seat_settings_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::seat_settings_menu_screen_spec_mp();
+    button* buttons = spec.buttons_accessor();
+    const int count = spec.count_accessor();
+    int highlighted = kSeatSettingsModeIndex;
+
+    // RADAR: prefs flip on viewob[0], cfg mirror, label flip on the rewire.
+    view->prefs[PREF_RADAR] = PREF_RADAR_ON;
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("RADAR: ON", buttons[kSeatSettingsHudRadarRowMP].label);
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kSeatSettingsHudRadarIndex, &state));
+    EXPECT_EQ(PREF_RADAR_OFF, view->prefs[PREF_RADAR]);
+    EXPECT_EQ("0", cfg.get_setting("controls", "player1_hud_radar"));
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("RADAR: OFF", buttons[kSeatSettingsHudRadarRowMP].label);
+
+    // HP normalization through the seat screen: legacy SMALL -> OFF -> BOTH.
+    view->prefs[PREF_LIFE] = PREF_LIFE_SMALL;
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("HP: ON", buttons[kSeatSettingsHudLifeRowMP].label);
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kSeatSettingsHudLifeIndex, &state));
+    EXPECT_EQ(PREF_LIFE_OFF, view->prefs[PREF_LIFE]);
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kSeatSettingsHudLifeIndex, &state));
+    EXPECT_EQ(PREF_LIFE_BOTH, view->prefs[PREF_LIFE]);
+
+    // ZOOM: the cycle advances and persists; the label rides the rewire.
+    ASSERT_TRUE(og::ui::per_view_zoom_available());
+    view->view_zoom_step_ = 0;
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kSeatSettingsZoomIndex, &state));
+    EXPECT_EQ(1, static_cast<int>(view->view_zoom_step_));
+    EXPECT_EQ("1", cfg.get_setting("controls", "player1_view_zoom"));
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("ZOOM: 0.9X", buttons[kSeatSettingsZoomRowMP].label);
+
+    // A seat WITHOUT a live viewscreen (Base Camp slot beyond numviews):
+    // cfg is the carrier, and the label reads it back.
+    og::ui::toggle_player_hud_row(2, og::ui::PlayerHudRow::Radar);
+    EXPECT_EQ("0", cfg.get_setting("controls", "player3_hud_radar"));
+    EXPECT_EQ("RADAR: OFF",
+              og::ui::player_hud_row_label(2, og::ui::PlayerHudRow::Radar));
+    og::ui::toggle_player_hud_row(2, og::ui::PlayerHudRow::Radar);
+    EXPECT_EQ("1", cfg.get_setting("controls", "player3_hud_radar"));
+
+    for (const auto& [key, value] : saved.cfg_keys)
+        cfg.apply_setting("controls", key, value);
+    // The handlers persisted mid-test values to disk; re-save the restored
+    // ones so later binaries never inherit toggled HUD keys.
+    cfg.save_settings();
+    view->prefs[PREF_RADAR] = saved.radar;
+    view->prefs[PREF_LIFE] = saved.life;
+    view->view_zoom_step_ = saved.zoom;
+    og::ui::install_seat_settings_state_for_screen(nullptr);
 }
 
 TEST(MenuEngine, networked_seat_editor_and_matchup_propagate_remote_start)

@@ -19,6 +19,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_state.h>
+#include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/core/irandom.h>
@@ -707,6 +708,77 @@ std::string format_depth_fx_label(const std::string& value)
 bool depth_fx_is_active(const std::string& value)
 {
     return normalize_depth_fx_value(value) != "off";
+}
+
+// --- GAME SETTINGS speed selector (cfg gameplay/timer_wait) ---
+
+// The stored value is the sim's per-tick wait (GameWorld::timer_wait, 0..20
+// as the host-request clamp in game_server.cpp allows); the player-facing
+// number is the inverted 1..11 the retired in-game options menu showed.
+int parse_timer_wait(const std::string& value)
+{
+    const std::optional<int> parsed = parse_int_strict(value);
+    if (!parsed)
+        return og::sim::DEFAULT_TIMER_WAIT;
+    return std::clamp(*parsed, kTimerWaitFastest, kTimerWaitSlowest);
+}
+
+int game_speed_from_timer_wait(int timer_wait)
+{
+    const int wait = std::clamp(timer_wait, kTimerWaitFastest, kTimerWaitSlowest);
+    return (kTimerWaitSlowest - wait) / 2 + 1;
+}
+
+int timer_wait_from_game_speed(int speed)
+{
+    const int step = std::clamp(speed, kGameSpeedMin, kGameSpeedMax);
+    return kTimerWaitSlowest - (step - 1) * 2;
+}
+
+// One click = one step faster, wrapping from the fastest back to the
+// slowest. An odd stored wait (nothing writes one today, but a hand-edited
+// cfg can) normalizes onto the even lap at the first click.
+std::string cycle_game_speed(const std::string& current)
+{
+    const int speed = game_speed_from_timer_wait(parse_timer_wait(current));
+    const int next = speed >= kGameSpeedMax ? kGameSpeedMin : speed + 1;
+    return std::to_string(timer_wait_from_game_speed(next));
+}
+
+std::string format_game_speed_label(const std::string& value)
+{
+    return "SPEED: " +
+           std::to_string(game_speed_from_timer_wait(parse_timer_wait(value)));
+}
+
+// --- DISPLAY brightness (cfg graphics/brightness) ---
+
+// Gamma steps as adjust_palette() consumes them: each step is a 10%
+// multiplier plus a flat offset on every palette component. The range is
+// clamped because the transform saturates — beyond about +5 every color has
+// hit 63 (white) and beyond -5 everything is black, so further steps would
+// only give the -/+ pair dead travel.
+int parse_brightness_steps(const std::string& value)
+{
+    const std::optional<int> parsed = parse_int_strict(value);
+    if (!parsed)
+        return 0;
+    return std::clamp(*parsed, kBrightnessStepMin, kBrightnessStepMax);
+}
+
+std::string adjust_brightness_steps(const std::string& current, int direction)
+{
+    const int step = direction > 0 ? 1 : (direction < 0 ? -1 : 0);
+    return std::to_string(std::clamp(parse_brightness_steps(current) + step,
+                                     kBrightnessStepMin, kBrightnessStepMax));
+}
+
+std::string format_brightness_label(int steps)
+{
+    const int clamped =
+        std::clamp(steps, kBrightnessStepMin, kBrightnessStepMax);
+    return clamped > 0 ? "Brightness: +" + std::to_string(clamped)
+                       : "Brightness: " + std::to_string(clamped);
 }
 
 // --- DISPLAY zoom and smoothing selectors ---

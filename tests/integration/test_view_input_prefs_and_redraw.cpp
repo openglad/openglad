@@ -88,7 +88,12 @@ TEST(ViewInputPrefsAndRedraw, viewscreen_input_key_prefs_triggers_options_menu_b
 }
 
 
-TEST(ViewInputPrefsAndRedraw, viewscreen_input_shift_slash_triggers_read_scenario_branch)
+// Design §7.2: the Shift+/ briefing chord is DELETED (raw '/' was player
+// 2's SPECIAL key; the briefing lives on the PAUSED menu now). The old
+// handler called read_scenario and set redrawme=1 — under TESTING
+// read_scenario returns immediately, so redrawme is the observable: it must
+// stay untouched when the chord arrives.
+TEST(ViewInputPrefsAndRedraw, viewscreen_input_shift_slash_chord_is_gone)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     ASSERT_TRUE(vs != nullptr) << "viewscreen exists";
@@ -110,11 +115,16 @@ TEST(ViewInputPrefsAndRedraw, viewscreen_input_shift_slash_triggers_read_scenari
     vs->mynum = 0;
     vs->my_team = 0;
 
+    const short saved_redrawme = og::runtime::current_session->myscreen_->redrawme;
     KeyStateGuard ks;
     // Hold the shifter key (LSHIFT by default for player 0).
     ks.fake[SDL_GetScancodeFromKey(static_cast<SDL_Keycode>(og::runtime::current_session->player_keys_[0][KEY_SHIFTER]), nullptr)] = true;
+    og::runtime::current_session->myscreen_->redrawme = 0;
     (void)vs->input(keydown(SDLK_SLASH));
+    EXPECT_EQ(0, og::runtime::current_session->myscreen_->redrawme)
+        << "Shift+/ must no longer dispatch the scenario briefing";
     ks.fake[SDL_GetScancodeFromKey(static_cast<SDL_Keycode>(og::runtime::current_session->player_keys_[0][KEY_SHIFTER]), nullptr)] = false;
+    og::runtime::current_session->myscreen_->redrawme = saved_redrawme;
 }
 
 

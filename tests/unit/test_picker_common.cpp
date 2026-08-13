@@ -3135,6 +3135,124 @@ TEST(PickerCommon, zoom_and_smoothing_labels_fit_the_button_face)
     ASSERT_EQ("off", smoothing) << "three steps must complete the lap";
 }
 
+// --- GAME SETTINGS speed selector (cfg gameplay/timer_wait) --------------
+
+TEST(PickerCommon, game_speed_maps_the_stored_wait_to_the_classic_number)
+{
+    // The number the retired in-game options menu showed: (20 - wait)/2 + 1.
+    ASSERT_EQ(8, og::ui::game_speed_from_timer_wait(6));
+    ASSERT_EQ(1, og::ui::game_speed_from_timer_wait(20));
+    ASSERT_EQ(11, og::ui::game_speed_from_timer_wait(0));
+    // Out-of-range waits clamp instead of producing off-scale numbers.
+    ASSERT_EQ(11, og::ui::game_speed_from_timer_wait(-4));
+    ASSERT_EQ(1, og::ui::game_speed_from_timer_wait(99));
+
+    ASSERT_EQ(6, og::ui::timer_wait_from_game_speed(8));
+    ASSERT_EQ(20, og::ui::timer_wait_from_game_speed(1));
+    ASSERT_EQ(0, og::ui::timer_wait_from_game_speed(11));
+    ASSERT_EQ(20, og::ui::timer_wait_from_game_speed(0));
+    ASSERT_EQ(0, og::ui::timer_wait_from_game_speed(50));
+}
+
+TEST(PickerCommon, parse_timer_wait_falls_back_to_the_shipped_default)
+{
+    ASSERT_EQ(6, og::ui::parse_timer_wait("6"));
+    ASSERT_EQ(0, og::ui::parse_timer_wait("0"));
+    ASSERT_EQ(20, og::ui::parse_timer_wait("20"));
+    // An absent key, a hand-edited word, or a partially numeric value all
+    // read as the shipped default rather than 0 (the FASTEST speed).
+    ASSERT_EQ(6, og::ui::parse_timer_wait(""));
+    ASSERT_EQ(6, og::ui::parse_timer_wait("fast"));
+    ASSERT_EQ(6, og::ui::parse_timer_wait("6x"));
+    // Out of range clamps to the wire-legal 0..20 the server enforces.
+    ASSERT_EQ(20, og::ui::parse_timer_wait("400"));
+    ASSERT_EQ(0, og::ui::parse_timer_wait("-3"));
+}
+
+TEST(PickerCommon, cycle_game_speed_laps_in_eleven_clicks)
+{
+    std::string wait = "6";
+    std::vector<int> seen;
+    for (int step = 0; step < 11; ++step)
+    {
+        wait = og::ui::cycle_game_speed(wait);
+        seen.push_back(og::ui::game_speed_from_timer_wait(
+            og::ui::parse_timer_wait(wait)));
+    }
+    ASSERT_EQ("6", wait) << "eleven clicks must return to the default wait";
+    const std::vector<int> expected{9, 10, 11, 1, 2, 3, 4, 5, 6, 7, 8};
+    ASSERT_EQ(expected, seen) << "one speed step per click, wrapping 11 -> 1";
+
+    // A hand-edited odd wait normalizes onto the even lap at the first click.
+    ASSERT_EQ("4", og::ui::cycle_game_speed("5"));
+}
+
+TEST(PickerCommon, format_game_speed_label_exact_strings)
+{
+    ASSERT_EQ("SPEED: 8", og::ui::format_game_speed_label("6"));
+    ASSERT_EQ("SPEED: 11", og::ui::format_game_speed_label("0"));
+    ASSERT_EQ("SPEED: 1", og::ui::format_game_speed_label("20"));
+    ASSERT_EQ("SPEED: 8", og::ui::format_game_speed_label(""));
+    // The 90px face is a 15-character budget; the widest is 9.
+    std::string wait = "6";
+    for (int step = 0; step < 11; ++step)
+    {
+        EXPECT_LE(og::ui::format_game_speed_label(wait).size(), 15u) << wait;
+        wait = og::ui::cycle_game_speed(wait);
+    }
+}
+
+// --- DISPLAY brightness (cfg graphics/brightness) ------------------------
+
+TEST(PickerCommon, brightness_steps_parse_and_clamp)
+{
+    ASSERT_EQ(0, og::ui::parse_brightness_steps("0"));
+    ASSERT_EQ(3, og::ui::parse_brightness_steps("3"));
+    ASSERT_EQ(-2, og::ui::parse_brightness_steps("-2"));
+    ASSERT_EQ(0, og::ui::parse_brightness_steps(""));
+    ASSERT_EQ(0, og::ui::parse_brightness_steps("bright"));
+    // Past the saturation range a stored value clamps, so the row can never
+    // present a value the palette transform cannot show.
+    ASSERT_EQ(og::ui::kBrightnessStepMax, og::ui::parse_brightness_steps("40"));
+    ASSERT_EQ(og::ui::kBrightnessStepMin, og::ui::parse_brightness_steps("-40"));
+}
+
+TEST(PickerCommon, adjust_brightness_steps_moves_one_step_and_stops_at_the_ends)
+{
+    ASSERT_EQ("1", og::ui::adjust_brightness_steps("0", 1));
+    ASSERT_EQ("-1", og::ui::adjust_brightness_steps("0", -1));
+    // The old change_gamma took +-2 because its guards were > 1 / < -1; the
+    // pair passes a plain sign and every click moves exactly one step.
+    ASSERT_EQ("1", og::ui::adjust_brightness_steps("0", 2));
+    ASSERT_EQ("-1", og::ui::adjust_brightness_steps("0", -2));
+    ASSERT_EQ("0", og::ui::adjust_brightness_steps("0", 0));
+
+    ASSERT_EQ(std::to_string(og::ui::kBrightnessStepMax),
+              og::ui::adjust_brightness_steps(
+                  std::to_string(og::ui::kBrightnessStepMax), 1));
+    ASSERT_EQ(std::to_string(og::ui::kBrightnessStepMin),
+              og::ui::adjust_brightness_steps(
+                  std::to_string(og::ui::kBrightnessStepMin), -1));
+
+    // A full sweep from one end to the other takes exactly the range.
+    std::string value = std::to_string(og::ui::kBrightnessStepMin);
+    for (int step = og::ui::kBrightnessStepMin; step < og::ui::kBrightnessStepMax;
+         ++step)
+        value = og::ui::adjust_brightness_steps(value, 1);
+    ASSERT_EQ(std::to_string(og::ui::kBrightnessStepMax), value);
+}
+
+TEST(PickerCommon, format_brightness_label_signs_the_offset)
+{
+    ASSERT_EQ("Brightness: 0", og::ui::format_brightness_label(0));
+    ASSERT_EQ("Brightness: +2", og::ui::format_brightness_label(2));
+    ASSERT_EQ("Brightness: -3", og::ui::format_brightness_label(-3));
+    // The text starts at x=200 on a 320px canvas: 20 characters of room.
+    for (int step = og::ui::kBrightnessStepMin;
+         step <= og::ui::kBrightnessStepMax; ++step)
+        EXPECT_LE(og::ui::format_brightness_label(step).size(), 20u) << step;
+}
+
 // --- Company autosave context (design §3.8 [SAVE-F1] / §1.2 G12) ----------
 
 TEST(PickerCommon, company_autosave_context_local_is_plain)

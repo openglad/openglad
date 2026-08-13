@@ -28,6 +28,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_train_team.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_save_load_team.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_view_team.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_player_hud_zoom.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_options_menu.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_networking_menu.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_menu_layout.cpp
@@ -452,6 +453,7 @@ og_add_test_group(og_test_view FILES
     test_view_menu_driven.cpp
     test_view_options_menu_driven.cpp
     test_view_team.cpp
+    test_player_hud_zoom.cpp
 )
 
 og_add_test_group(og_test_rendering FILES
@@ -723,6 +725,7 @@ og_add_unit_group(og_unit_core FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_web_back_key.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_web_control_defaults.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_input_mappings.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_player_hud_settings.cpp
 )
 
 og_add_unit_group(og_unit_sim FILES

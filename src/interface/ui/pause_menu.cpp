@@ -20,6 +20,7 @@
 #include <openglad/interface/input.h>
 #include <openglad/interface/input_mappings.h>
 #include <openglad/interface/native_input.h>
+#include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/ui/input_cycler.h>
@@ -121,13 +122,17 @@ bool pause_state_networked()
 }
 
 // --------------------------------------------------------------------------
-// PAUSED screen (design §2.1): a centered 140px column over the darkened
-// world. Row geometry: x=90 w=140 h=15, 18px pitch; the PLAYERS divider and
-// the title are content text, not buttons.
+// PAUSED screen (design §2.1/§7.2): a centered 140px column over the
+// darkened world. Full rows are x=90 w=140 h=15 on an 18px pitch; the VIEW
+// TEAM / BRIEFING pair is two 66px half-width faces sharing the y=86 band.
+// The PLAYERS divider and the title are content text, not buttons.
 
 constexpr Sint32 kPauseColumnX = 90;
 constexpr Sint32 kPauseColumnW = 140;
 constexpr Sint32 kPauseRowH = 15;
+// Half-width pair: 90..156 and 164..230 span the same 90..230 column.
+constexpr Sint32 kPauseHalfW = 66;
+constexpr Sint32 kPauseHalfRightX = 164;
 
 RowState pause_restart_row_state(const MenuLabelContext& /*context*/)
 {
@@ -135,6 +140,18 @@ RowState pause_restart_row_state(const MenuLabelContext& /*context*/)
         return RowState::Visible;  // bare engine/pin shape
     return g_pause_state->host->restart_allowed ? RowState::Visible
                                                 : RowState::Hidden;
+}
+
+RowState pause_briefing_row_state(const MenuLabelContext& /*context*/)
+{
+    // Gated on the level, not the pause host: no description lines means
+    // nothing to show, so the row reads Disabled (visible for nav, inert).
+    screen* const scr = og::runtime::current_session != nullptr
+        ? og::runtime::current_session->myscreen_
+        : nullptr;
+    if (scr == nullptr) return RowState::Visible;  // bare engine/pin shape
+    return scr->level_description().empty() ? RowState::Disabled
+                                            : RowState::Visible;
 }
 
 RowState pause_add_player_row_state(const MenuLabelContext& /*context*/)
@@ -145,7 +162,7 @@ RowState pause_add_player_row_state(const MenuLabelContext& /*context*/)
     if (host.networked)
         return RowState::Hidden;
     if (host.can_add_player != nullptr && !host.can_add_player())
-        return RowState::Disabled;  // 4 seats: visible for nav, inert
+        return RowState::Hidden;  // 4 seats: the row would only say no
     return RowState::Visible;
 }
 
@@ -173,36 +190,47 @@ constexpr MenuButtonSpec kPauseMenuRows[] = {
      .x = kPauseColumnX, .y = 68, .w = kPauseColumnW, .h = kPauseRowH,
      .action = ButtonAction::MenuSpecRow, .arg = kPauseMenuQuitIndex,
      .nav = {.up = kPauseMenuRestartIndex,
-             .down = kPauseMenuPlayerBaseIndex}},
+             .down = kPauseMenuViewTeamIndex}},
+    {.id = "pause_view_team", .label = "VIEW TEAM",
+     .x = kPauseColumnX, .y = 86, .w = kPauseHalfW, .h = kPauseRowH,
+     .action = ButtonAction::MenuSpecRow, .arg = kPauseMenuViewTeamIndex,
+     .nav = {.up = kPauseMenuQuitIndex, .down = kPauseMenuPlayerBaseIndex,
+             .right = kPauseMenuBriefingIndex}},
+    {.id = "pause_briefing", .label = "BRIEFING",
+     .x = kPauseHalfRightX, .y = 86, .w = kPauseHalfW, .h = kPauseRowH,
+     .action = ButtonAction::MenuSpecRow, .arg = kPauseMenuBriefingIndex,
+     .nav = {.up = kPauseMenuQuitIndex, .down = kPauseMenuPlayerBaseIndex,
+             .left = kPauseMenuViewTeamIndex},
+     .state_override = &pause_briefing_row_state},
     {.id = "pause_player_0", .label = "P1",
-     .x = kPauseColumnX, .y = 100, .w = kPauseColumnW, .h = kPauseRowH,
+     .x = kPauseColumnX, .y = 112, .w = kPauseColumnW, .h = kPauseRowH,
      .action = ButtonAction::MenuSpecRow, .arg = kPauseMenuPlayerBaseIndex,
-     .nav = {.up = kPauseMenuQuitIndex,
+     .nav = {.up = kPauseMenuViewTeamIndex,
              .down = kPauseMenuPlayerBaseIndex + 1},
      .state_override = &pause_player_row_state<0>},
     {.id = "pause_player_1", .label = "P2",
-     .x = kPauseColumnX, .y = 118, .w = kPauseColumnW, .h = kPauseRowH,
+     .x = kPauseColumnX, .y = 130, .w = kPauseColumnW, .h = kPauseRowH,
      .action = ButtonAction::MenuSpecRow,
      .arg = kPauseMenuPlayerBaseIndex + 1,
      .nav = {.up = kPauseMenuPlayerBaseIndex,
              .down = kPauseMenuPlayerBaseIndex + 2},
      .state_override = &pause_player_row_state<1>, .hidden = true},
     {.id = "pause_player_2", .label = "P3",
-     .x = kPauseColumnX, .y = 136, .w = kPauseColumnW, .h = kPauseRowH,
+     .x = kPauseColumnX, .y = 148, .w = kPauseColumnW, .h = kPauseRowH,
      .action = ButtonAction::MenuSpecRow,
      .arg = kPauseMenuPlayerBaseIndex + 2,
      .nav = {.up = kPauseMenuPlayerBaseIndex + 1,
              .down = kPauseMenuPlayerBaseIndex + 3},
      .state_override = &pause_player_row_state<2>, .hidden = true},
     {.id = "pause_player_3", .label = "P4",
-     .x = kPauseColumnX, .y = 154, .w = kPauseColumnW, .h = kPauseRowH,
+     .x = kPauseColumnX, .y = 166, .w = kPauseColumnW, .h = kPauseRowH,
      .action = ButtonAction::MenuSpecRow,
      .arg = kPauseMenuPlayerBaseIndex + 3,
      .nav = {.up = kPauseMenuPlayerBaseIndex + 2,
              .down = kPauseMenuAddPlayerIndex},
      .state_override = &pause_player_row_state<3>, .hidden = true},
     {.id = "pause_add_player", .label = "+ ADD PLAYER",
-     .x = kPauseColumnX, .y = 172, .w = kPauseColumnW, .h = kPauseRowH,
+     .x = kPauseColumnX, .y = 182, .w = kPauseColumnW, .h = kPauseRowH,
      .action = ButtonAction::MenuSpecRow, .arg = kPauseMenuAddPlayerIndex,
      .nav = {.up = kPauseMenuPlayerBaseIndex + 3,
              .down = kPauseMenuResumeIndex},
@@ -257,20 +285,28 @@ void pause_menu_rewire(button* buttons, int count, int& highlighted_button)
         }
     }
 
-    std::vector<int> visible;
-    visible.reserve(static_cast<std::size_t>(kPauseMenuButtonCount));
+    // Vertical ring over the visible rows, treating the VIEW TEAM/BRIEFING
+    // half-width pair as one band anchored on VIEW TEAM: BRIEFING mirrors
+    // its vertical links and the two faces link left/right. Both faces are
+    // always visible (BRIEFING may be Disabled — still nav-visible).
+    std::vector<int> column;
+    column.reserve(static_cast<std::size_t>(kPauseMenuButtonCount));
     for (int i = 0; i < kPauseMenuButtonCount; ++i)
     {
-        if (!buttons[i].hidden)
-            visible.push_back(i);
+        if (!buttons[i].hidden && i != kPauseMenuBriefingIndex)
+            column.push_back(i);
     }
-    for (std::size_t order = 0; order < visible.size(); ++order)
+    for (std::size_t order = 0; order < column.size(); ++order)
     {
-        const int index = visible[order];
-        const int up = visible[(order + visible.size() - 1) % visible.size()];
-        const int down = visible[(order + 1) % visible.size()];
+        const int index = column[order];
+        const int up = column[(order + column.size() - 1) % column.size()];
+        const int down = column[(order + 1) % column.size()];
         buttons[index].nav = {.up = up, .down = down};
     }
+    buttons[kPauseMenuBriefingIndex].nav =
+        buttons[kPauseMenuViewTeamIndex].nav;
+    buttons[kPauseMenuViewTeamIndex].nav.right = kPauseMenuBriefingIndex;
+    buttons[kPauseMenuBriefingIndex].nav.left = kPauseMenuViewTeamIndex;
 
     ensure_highlighted_button_visible(buttons, count, highlighted_button);
 }
@@ -359,7 +395,7 @@ void pause_menu_draw_content(void* screen_state)
                                          ("by " + owner).c_str());
     }
     if (!collect_pause_seats(pause_state_networked()).empty())
-        scr->text_normal.write_xy_center(160, 89, WHITE, "%s", "- PLAYERS -");
+        scr->text_normal.write_xy_center(160, 105, WHITE, "%s", "- PLAYERS -");
 }
 
 bool pause_menu_frame_tick(void* screen_state, int /*frame*/)
@@ -400,6 +436,22 @@ Sint32 run_pause_player_screen(const PauseSeatInfo& seat,
                                const PauseMenuHost* host,
                                bool& session_ended);
 
+// KeyWaitPollCallback for view_team's blocking wait: pump the paused
+// transport once per wait pass and keep the pause alive; false ends the
+// wait when the session died underneath the open roster.
+bool pause_view_team_poll()
+{
+    PauseMenuScreenState* const state = g_pause_state;
+    if (state == nullptr || state->host == nullptr) return true;
+    if (state->host->pump_paused != nullptr && !state->host->pump_paused())
+    {
+        state->outcome = PauseMenuResult::SessionEnded;
+        return false;
+    }
+    maintain_pause_keepalive(*state->host, state->last_keepalive_ms);
+    return true;
+}
+
 Sint32 pause_menu_on_spec_row(int row, void* screen_state)
 {
     auto* const state = static_cast<PauseMenuScreenState*>(screen_state);
@@ -430,6 +482,51 @@ Sint32 pause_menu_on_spec_row(int row, void* screen_state)
         TRACE("pause_menu", "quit_confirmed");
         state->outcome = PauseMenuResult::Quit;
         return MENU_EXIT;
+    }
+    if (row == kPauseMenuViewTeamIndex)
+    {
+        screen* const scr = og::runtime::current_session->myscreen_;
+        if (scr != nullptr && scr->viewob[0] != nullptr)
+        {
+            TRACE("pause_menu", "view_team");
+            // The poll keeps the transport pumped and the pause alive for
+            // as long as the roster blocks. The menu's per-frame backdrop
+            // restore heals its scribbles; the world-canvas rebuild happens
+            // in run_pause_menu's exit dance.
+            scr->viewob[0]->view_team(&pause_view_team_poll);
+            if (state->outcome == PauseMenuResult::SessionEnded)
+                return MENU_EXIT;
+        }
+        return MENU_OK;
+    }
+    if (row == kPauseMenuBriefingIndex)
+    {
+        // Only reachable with description lines present (Disabled gate).
+        screen* const scr = og::runtime::current_session->myscreen_;
+        if (scr != nullptr)
+        {
+            // read_scenario's scroll view blocks without a poll hook, so
+            // the frame-tick pump is silent while it is open. Bound the
+            // exposure: refresh the pause keep-alive window at entry (the
+            // view dismisses on any key/click, so the window is
+            // user-controlled), and pump immediately on return.
+            if (state->host != nullptr &&
+                state->host->request_pause != nullptr)
+            {
+                state->host->request_pause();
+                state->last_keepalive_ms = og::input_native::ticks_ms();
+            }
+            TRACE("pause_menu", "briefing");
+            (void)read_scenario(scr);
+            if (state->host != nullptr &&
+                state->host->pump_paused != nullptr &&
+                !state->host->pump_paused())
+            {
+                state->outcome = PauseMenuResult::SessionEnded;
+                return MENU_EXIT;
+            }
+        }
+        return MENU_OK;
     }
     if (row == kPauseMenuAddPlayerIndex)
     {
@@ -467,8 +564,10 @@ Sint32 pause_menu_on_spec_row(int row, void* screen_state)
 }
 
 // --------------------------------------------------------------------------
-// Player screen (design §2.2): BACK / INPUT cycler / direction toggle /
-// REMAP / RESET / REMOVE PLAYER over the live binding grid.
+// Player screen (design §2.2, geometry unified with Base Camp seat settings
+// per §7.1): BACK / the y=38 mode band / the y=62 INPUT+ZOOM band / the
+// narrowed binding panel with the RADAR/HP/FOES/SCORE stack on its right /
+// REMOVE PLAYER.
 
 RowState pause_player_remove_row_state(const MenuLabelContext& /*context*/)
 {
@@ -488,45 +587,83 @@ RowState pause_player_remove_row_state(const MenuLabelContext& /*context*/)
     return RowState::Visible;
 }
 
+RowState pause_player_zoom_row_state(const MenuLabelContext& /*context*/)
+{
+    // A backend without the off-screen floor-layer compositor can never
+    // zoom: the row reads Disabled instead of silently doing nothing.
+    return per_view_zoom_available() ? RowState::Visible
+                                     : RowState::Disabled;
+}
+
 constexpr MenuButtonSpec kPausePlayerRows[] = {
     {.id = "pause_player_back", .label = "BACK",
      .hotkey = KEYSTATE_ESCAPE,
      .x = 10, .y = 8, .w = 50, .h = 15,
      .action = ButtonAction::ReturnMenu, .arg = MENU_REDRAW,
      .nav = {.up = kPausePlayerRemoveIndex,
-             .down = kPausePlayerInputIndex}},
+             .down = kPausePlayerModeIndex}},
     {.id = "pause_input", .label = "INPUT: WASD",
-     .x = 16, .y = 38, .w = 98, .h = 18,
+     .x = 16, .y = 62, .w = 98, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerInputIndex,
-     .nav = {.up = kPausePlayerBackIndex,
+     .nav = {.up = kPausePlayerModeIndex,
              .down = kPausePlayerRemoveIndex,
-             .right = kPausePlayerModeIndex}},
+             .right = kPausePlayerZoomIndex}},
     {.id = "pause_direction", .label = "4-DIRECTION",
-     .x = 118, .y = 38, .w = 74, .h = 18,
+     .x = 16, .y = 38, .w = 98, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerModeIndex,
      .nav = {.up = kPausePlayerBackIndex,
-             .down = kPausePlayerRemoveIndex,
-             .left = kPausePlayerInputIndex,
+             .down = kPausePlayerInputIndex,
              .right = kPausePlayerRemapIndex}},
     {.id = "pause_remap", .label = "REMAP",
-     .x = 196, .y = 38, .w = 56, .h = 18,
+     .x = 123, .y = 38, .w = 86, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerRemapIndex,
      .nav = {.up = kPausePlayerBackIndex,
-             .down = kPausePlayerRemoveIndex,
+             .down = kPausePlayerZoomIndex,
              .left = kPausePlayerModeIndex,
              .right = kPausePlayerResetIndex}},
     {.id = "pause_reset", .label = "RESET",
-     .x = 256, .y = 38, .w = 56, .h = 18,
+     .x = 218, .y = 38, .w = 86, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerResetIndex,
      .nav = {.up = kPausePlayerBackIndex,
-             .down = kPausePlayerRemoveIndex,
+             .down = kPausePlayerHudRadarIndex,
              .left = kPausePlayerRemapIndex}},
     {.id = "pause_remove", .label = "REMOVE PLAYER",
      .x = 166, .y = 169, .w = 138, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerRemoveIndex,
-     .nav = {.up = kPausePlayerInputIndex,
+     .nav = {.up = kPausePlayerHudScoreIndex,
              .down = kPausePlayerBackIndex},
      .state_override = &pause_player_remove_row_state},
+    {.id = "pause_zoom", .label = "ZOOM: GAME",
+     .x = 122, .y = 62, .w = 88, .h = 18,
+     .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerZoomIndex,
+     .nav = {.up = kPausePlayerRemapIndex,
+             .down = kPausePlayerHudRadarIndex,
+             .left = kPausePlayerInputIndex},
+     .state_override = &pause_player_zoom_row_state},
+    {.id = "pause_hud_radar", .label = "RADAR: ON",
+     .x = 214, .y = 84, .w = 90, .h = 18,
+     .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerHudRadarIndex,
+     .nav = {.up = kPausePlayerResetIndex,
+             .down = kPausePlayerHudLifeIndex,
+             .left = kPausePlayerZoomIndex}},
+    {.id = "pause_hud_life", .label = "HP: ON",
+     .x = 214, .y = 106, .w = 90, .h = 18,
+     .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerHudLifeIndex,
+     .nav = {.up = kPausePlayerHudRadarIndex,
+             .down = kPausePlayerHudFoesIndex,
+             .left = kPausePlayerInputIndex}},
+    {.id = "pause_hud_foes", .label = "FOES: ON",
+     .x = 214, .y = 128, .w = 90, .h = 18,
+     .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerHudFoesIndex,
+     .nav = {.up = kPausePlayerHudLifeIndex,
+             .down = kPausePlayerHudScoreIndex,
+             .left = kPausePlayerInputIndex}},
+    {.id = "pause_hud_score", .label = "SCORE: ON",
+     .x = 214, .y = 150, .w = 90, .h = 18,
+     .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerHudScoreIndex,
+     .nav = {.up = kPausePlayerHudFoesIndex,
+             .down = kPausePlayerRemoveIndex,
+             .left = kPausePlayerInputIndex}},
 };
 static_assert(static_cast<int>(std::size(kPausePlayerRows)) ==
               kPausePlayerButtonCount);
@@ -547,21 +684,27 @@ void pause_player_rewire(button* buttons, int count, int& highlighted_button)
         static_cast<int>(ControlDirectionMode::EightDirection);
     sync_pause_label(buttons, kPausePlayerModeIndex,
                      eight_dir ? "8-DIRECTION" : "4-DIRECTION");
+    sync_pause_label(buttons, kPausePlayerZoomIndex,
+                     player_view_zoom_label(state->seat));
+    sync_pause_label(buttons, kPausePlayerHudRadarIndex,
+                     player_hud_row_label(state->seat, PlayerHudRow::Radar));
+    sync_pause_label(buttons, kPausePlayerHudLifeIndex,
+                     player_hud_row_label(state->seat, PlayerHudRow::Life));
+    sync_pause_label(buttons, kPausePlayerHudFoesIndex,
+                     player_hud_row_label(state->seat, PlayerHudRow::Foes));
+    sync_pause_label(buttons, kPausePlayerHudScoreIndex,
+                     player_hud_row_label(state->seat, PlayerHudRow::Score));
 
     // The gate pass ran first, so REMOVE's hidden flag is current: route the
-    // vertical chain around it when it is gone.
+    // vertical chains around it when it is gone (ZOOM is only ever Disabled
+    // — still nav-visible — so the static links through it stand).
     const bool remove_visible = !buttons[kPausePlayerRemoveIndex].hidden;
-    const int below_band = remove_visible ? kPausePlayerRemoveIndex
-                                          : kPausePlayerBackIndex;
-    for (const int index : {kPausePlayerInputIndex, kPausePlayerModeIndex,
-                            kPausePlayerRemapIndex, kPausePlayerResetIndex})
-    {
-        buttons[index].nav.up = kPausePlayerBackIndex;
-        buttons[index].nav.down = below_band;
-    }
-    buttons[kPausePlayerBackIndex].nav.down = kPausePlayerInputIndex;
+    buttons[kPausePlayerInputIndex].nav.down =
+        remove_visible ? kPausePlayerRemoveIndex : kPausePlayerBackIndex;
+    buttons[kPausePlayerHudScoreIndex].nav.down =
+        remove_visible ? kPausePlayerRemoveIndex : kPausePlayerBackIndex;
     buttons[kPausePlayerBackIndex].nav.up =
-        remove_visible ? kPausePlayerRemoveIndex : kPausePlayerInputIndex;
+        remove_visible ? kPausePlayerRemoveIndex : kPausePlayerHudScoreIndex;
 
     ensure_highlighted_button_visible(buttons, count, highlighted_button);
 }
@@ -595,24 +738,29 @@ void pause_player_draw_content(void* screen_state)
                     state->player_number)
             .c_str());
 
-    scr->draw_button(12, 62, 308, 159, 2, 1);
-    mytext.write_xy(20, 66, DARK_BLUE, "%s", "MOVEMENT");
-    mytext.write_xy(164, 66, DARK_BLUE, "%s", "ACTIONS");
+    // §7.1 unified geometry: the binding panel narrows to x=12..208 (the
+    // HUD stack sits to its right at x=214) with the seat-settings 8px line
+    // pitch; movement column x=20, actions x=104, both budget-clamped.
+    scr->draw_button(12, 84, 208, 164, 2, 1);
+    mytext.write_xy(20, 88, DARK_BLUE, "%s", "MOVEMENT");
+    mytext.write_xy(104, 88, DARK_BLUE, "%s", "ACTIONS");
 
     struct BindingLine {
         const char* label;
         int key;
         bool diagonal;
     };
+    // Compact diagonal labels: the movement column has 14 chars before the
+    // ACTIONS column at x=104 ((104-20)/6).
     static constexpr std::array<BindingLine, 8> movement{{
         {"UP", KEY_UP, false},
-        {"UP-RIGHT", KEY_UP_RIGHT, true},
+        {"UP-R", KEY_UP_RIGHT, true},
         {"RIGHT", KEY_RIGHT, false},
-        {"DOWN-RIGHT", KEY_DOWN_RIGHT, true},
+        {"DN-R", KEY_DOWN_RIGHT, true},
         {"DOWN", KEY_DOWN, false},
-        {"DOWN-LEFT", KEY_DOWN_LEFT, true},
+        {"DN-L", KEY_DOWN_LEFT, true},
         {"LEFT", KEY_LEFT, false},
-        {"UP-LEFT", KEY_UP_LEFT, true},
+        {"UP-L", KEY_UP_LEFT, true},
     }};
     static constexpr std::array<BindingLine, 7> actions{{
         {"FIRE", KEY_FIRE, false},
@@ -645,17 +793,18 @@ void pause_player_draw_content(void* screen_state)
         const bool active = !binding.diagonal || eight_dir;
         const std::string value =
             active ? binding_value(binding.key) : std::string("--");
-        const std::string line =
-            std::format("{}: {}", binding.label, value);
-        mytext.write_xy(20, 77 + static_cast<int>(index) * 10,
+        const std::string line = format_binding_panel_line(
+            binding.label, value, kBindingPanelMovementChars);
+        mytext.write_xy(20, 99 + static_cast<int>(index) * 8,
                         active ? DARK_BLUE : GREY, "%s", line.c_str());
     }
     for (std::size_t index = 0; index < actions.size(); ++index)
     {
         const BindingLine& binding = actions[index];
-        const std::string line = std::format(
-            "{}: {}", binding.label, binding_value(binding.key));
-        mytext.write_xy(164, 77 + static_cast<int>(index) * 10,
+        const std::string line = format_binding_panel_line(
+            binding.label, binding_value(binding.key),
+            kBindingPanelActionsChars);
+        mytext.write_xy(104, 99 + static_cast<int>(index) * 8,
                         DARK_BLUE, "%s", line.c_str());
     }
 }
@@ -738,6 +887,28 @@ Sint32 pause_player_on_spec_row(int row, void* screen_state)
     {
         if (reset_default_player_controls_for_player(state->seat))
             persist_pause_player_controls();
+        return MENU_OK;
+    }
+    if (row == kPausePlayerZoomIndex)
+    {
+        if (per_view_zoom_available())
+        {
+            (void)cycle_player_view_zoom(state->seat);
+            persist_pause_player_controls();
+        }
+        return MENU_OK;
+    }
+    if (row == kPausePlayerHudRadarIndex || row == kPausePlayerHudLifeIndex ||
+        row == kPausePlayerHudFoesIndex || row == kPausePlayerHudScoreIndex)
+    {
+        const PlayerHudRow hud_row = row == kPausePlayerHudRadarIndex
+            ? PlayerHudRow::Radar
+            : row == kPausePlayerHudLifeIndex
+                ? PlayerHudRow::Life
+                : row == kPausePlayerHudFoesIndex ? PlayerHudRow::Foes
+                                                  : PlayerHudRow::Score;
+        toggle_player_hud_row(state->seat, hud_row);
+        persist_pause_player_controls();
         return MENU_OK;
     }
     if (row == kPausePlayerRemoveIndex)
@@ -832,6 +1003,196 @@ Sint32 run_pause_player_screen(const PauseSeatInfo& seat,
 }
 
 } // namespace
+
+// --------------------------------------------------------------------------
+// §7.1 shared per-player HUD/zoom helpers (declared in picker_sdl_defs.h;
+// one implementation behind both the pause player screen and Base Camp seat
+// settings). The seat's live viewscreen (viewob[seat]) is the runtime
+// carrier when present; cfg is the carrier otherwise and always the mirror.
+
+namespace {
+
+viewscreen* seat_view(int seat)
+{
+    screen* const scr = og::runtime::current_session != nullptr
+        ? og::runtime::current_session->myscreen_
+        : nullptr;
+    if (scr == nullptr || seat < 0 || seat >= scr->numviews ||
+        seat >= MAX_VIEWS)
+    {
+        return nullptr;
+    }
+    return scr->viewob[static_cast<std::size_t>(seat)].get();
+}
+
+// Effective settings for `seat`: cfg first (also the no-live-view carrier),
+// overlaid by the live viewscreen prefs when one exists.
+PlayerHudSettings gather_player_hud(int seat)
+{
+    PlayerHudSettings hud;
+    (void)load_player_hud_settings_from_cfg(cfg, seat, hud);
+    if (const viewscreen* const view = seat_view(seat))
+    {
+        hud.radar = view->prefs[PREF_RADAR] != PREF_RADAR_OFF ? 1 : 0;
+        hud.life_on = view->prefs[PREF_LIFE] != PREF_LIFE_OFF ? 1 : 0;
+        hud.foes = view->prefs[PREF_FOES] != PREF_FOES_OFF ? 1 : 0;
+        hud.score = view->prefs[PREF_SCORE] != PREF_SCORE_OFF ? 1 : 0;
+        hud.zoom_step = static_cast<int>(view->view_zoom_step_);
+    }
+    return hud;
+}
+
+bool view_zoom_step_allowed(int seat, int step)
+{
+    if (step == 0)
+        return true;  // GAME is always selectable
+    if (const viewscreen* const view = seat_view(seat))
+        return view->view_zoom_step_fits_budget(step);
+    // No live view (Base Camp seat): clamp against the full world canvas —
+    // the worst window any future single-view layout could ask for.
+    screen* const scr = og::runtime::current_session != nullptr
+        ? og::runtime::current_session->myscreen_
+        : nullptr;
+    if (scr == nullptr)
+        return false;
+    const Sint32 canvas_w = scr->world_canvas_w();
+    const Sint32 canvas_h = scr->world_canvas_h();
+    return og::view_zoom_window_fits_budget(
+        0, 0, canvas_w, canvas_h, canvas_w, canvas_h,
+        viewscreen::per_view_zoom_scale_for_step(step));
+}
+
+} // namespace
+
+std::string player_hud_row_label(int seat, PlayerHudRow row)
+{
+    const PlayerHudSettings hud = gather_player_hud(seat);
+    switch (row)
+    {
+    case PlayerHudRow::Radar:
+        return hud.radar != 0 ? "RADAR: ON" : "RADAR: OFF";
+    case PlayerHudRow::Life:
+        return hud.life_on != 0 ? "HP: ON" : "HP: OFF";
+    case PlayerHudRow::Foes:
+        return hud.foes != 0 ? "FOES: ON" : "FOES: OFF";
+    case PlayerHudRow::Score:
+        return hud.score != 0 ? "SCORE: ON" : "SCORE: OFF";
+    }
+    return "--";
+}
+
+void toggle_player_hud_row(int seat, PlayerHudRow row)
+{
+    PlayerHudSettings hud = gather_player_hud(seat);
+    viewscreen* const view = seat_view(seat);
+    switch (row)
+    {
+    case PlayerHudRow::Radar:
+        hud.radar = hud.radar != 0 ? 0 : 1;
+        if (view != nullptr)
+            view->prefs[PREF_RADAR] =
+                hud.radar != 0 ? PREF_RADAR_ON : PREF_RADAR_OFF;
+        break;
+    case PlayerHudRow::Life:
+        // ON/OFF only: the first toggle normalizes a legacy TEXT/BARS/SMALL
+        // value (all of which display as ON) to BOTH/OFF.
+        hud.life_on = hud.life_on != 0 ? 0 : 1;
+        if (view != nullptr)
+            view->prefs[PREF_LIFE] =
+                hud.life_on != 0 ? PREF_LIFE_BOTH : PREF_LIFE_OFF;
+        break;
+    case PlayerHudRow::Foes:
+        hud.foes = hud.foes != 0 ? 0 : 1;
+        if (view != nullptr)
+            view->prefs[PREF_FOES] =
+                hud.foes != 0 ? PREF_FOES_ON : PREF_FOES_OFF;
+        break;
+    case PlayerHudRow::Score:
+        hud.score = hud.score != 0 ? 0 : 1;
+        if (view != nullptr)
+            view->prefs[PREF_SCORE] =
+                hud.score != 0 ? PREF_SCORE_ON : PREF_SCORE_OFF;
+        break;
+    }
+    save_player_hud_settings_to_cfg(cfg, seat, hud);
+    if (screen* const scr = og::runtime::current_session != nullptr
+            ? og::runtime::current_session->myscreen_
+            : nullptr)
+    {
+        scr->redrawme = 1;  // the toggle takes effect on the next redraw
+    }
+    TRACE("pause_menu", "hud_toggle seat=%d row=%d radar=%d life=%d foes=%d score=%d",
+          seat, static_cast<int>(row), hud.radar, hud.life_on, hud.foes,
+          hud.score);
+}
+
+std::string player_view_zoom_label(int seat)
+{
+    const int step = gather_player_hud(seat).zoom_step;
+    if (step <= 0)
+        return "ZOOM: GAME";
+    return std::format("ZOOM: 0.{}X", 10 - step);
+}
+
+int cycle_player_view_zoom(int seat)
+{
+    PlayerHudSettings hud = gather_player_hud(seat);
+    if (!per_view_zoom_available())
+        return hud.zoom_step;
+    int step = hud.zoom_step;
+    for (int probe = 0; probe < viewscreen::kViewZoomStepCount; ++probe)
+    {
+        step = (step + 1) % viewscreen::kViewZoomStepCount;
+        if (view_zoom_step_allowed(seat, step))
+            break;  // budget clamp: over-budget steps are skipped
+    }
+    hud.zoom_step = step;
+    if (viewscreen* const view = seat_view(seat))
+        view->view_zoom_step_ = static_cast<Sint32>(step);
+    save_player_hud_settings_to_cfg(cfg, seat, hud);
+    if (screen* const scr = og::runtime::current_session != nullptr
+            ? og::runtime::current_session->myscreen_
+            : nullptr)
+    {
+        scr->redrawme = 1;
+    }
+    TRACE("pause_menu", "view_zoom seat=%d step=%d", seat, step);
+    return step;
+}
+
+bool per_view_zoom_available()
+{
+    // Probe the off-screen floor-layer compositor once. Balanced begin/end
+    // on a tiny window: begin clears an 8x8 layer region + redirects, end
+    // restores the redirect and composites transparent pixels (no-op).
+    static int cached = -1;
+    if (cached < 0)
+    {
+        screen* const scr = og::runtime::current_session != nullptr
+            ? og::runtime::current_session->myscreen_
+            : nullptr;
+        if (scr == nullptr)
+            return false;  // do not cache a null-screen probe
+        const bool ok = scr->floor_layer_begin(0, 0, 8, 8);
+        if (ok)
+            scr->floor_layer_end(0, 0, 8, 8, 1.0f, 0, 0, 0);
+        cached = ok ? 1 : 0;
+    }
+    return cached == 1;
+}
+
+std::string format_binding_panel_line(const char* label,
+                                      const std::string& value,
+                                      int budget_chars)
+{
+    std::string line = std::format("{}: {}", label, value);
+    if (budget_chars > 0 &&
+        static_cast<int>(line.size()) > budget_chars)
+    {
+        line.resize(static_cast<std::size_t>(budget_chars));
+    }
+    return line;
+}
 
 const MenuScreenSpec& pause_menu_screen_spec()
 {

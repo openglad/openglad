@@ -281,6 +281,31 @@ void load_player_control_settings_from_cfg(
     cfg_store& config, bool web_mode = og::input::kWebControlDefaults);
 void save_player_control_settings_to_cfg(cfg_store& config);
 
+// --- §7.1 per-player HUD/zoom cfg persistence (SDL-free, input_state.cpp).
+// The live viewscreen's prefs[] stays the runtime carrier; these cfg keys
+// (controls: playerN_hud_radar/_hud_life/_hud_foes/_hud_score/_view_zoom)
+// are the persistence layer, written by the two player screens' persist
+// paths. hud_life is a plain ON/OFF int in cfg: the legacy TEXT/BARS/SMALL
+// prefs states all display as ON and normalize on the first toggle.
+struct PlayerHudSettings
+{
+    int radar = 1;     // 0/1
+    int life_on = 1;   // 0/1 (1 => PREF_LIFE_BOTH, 0 => PREF_LIFE_OFF)
+    int foes = 1;      // 0/1
+    int score = 1;     // 0/1
+    int zoom_step = 0; // 0 = GAME (follow graphics/zoom), 1..5 = 0.9x..0.5x
+};
+// Fills `out` (clamped/sanitized). Returns false when this player's keys
+// were never written — the playerN_hud_migrated version marker is absent
+// (web_default_keys_version precedent) — and the caller runs the one-shot
+// keyprefs.dat seed by saving its keyprefs-loaded prefs.
+bool load_player_hud_settings_from_cfg(cfg_store& config, int player_index,
+                                       PlayerHudSettings& out);
+// Writes the five keys and stamps the migration marker. apply_setting only:
+// the caller owns cfg.save_settings() timing.
+void save_player_hud_settings_to_cfg(cfg_store& config, int player_index,
+                                     const PlayerHudSettings& settings);
+
 
 class JoyData
 {

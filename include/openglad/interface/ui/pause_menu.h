@@ -70,9 +70,11 @@ const MenuScreenSpec& pause_player_menu_screen_spec();
 inline constexpr int kPauseMenuResumeIndex = 0;
 inline constexpr int kPauseMenuRestartIndex = 1;
 inline constexpr int kPauseMenuQuitIndex = 2;
-inline constexpr int kPauseMenuPlayerBaseIndex = 3;  // .. +MAX_PLAYERS-1
-inline constexpr int kPauseMenuAddPlayerIndex = 7;
-inline constexpr int kPauseMenuButtonCount = 8;
+inline constexpr int kPauseMenuViewTeamIndex = 3;
+inline constexpr int kPauseMenuBriefingIndex = 4;
+inline constexpr int kPauseMenuPlayerBaseIndex = 5;  // .. +MAX_PLAYERS-1
+inline constexpr int kPauseMenuAddPlayerIndex = 9;
+inline constexpr int kPauseMenuButtonCount = 10;
 
 // Player screen row ordinals.
 inline constexpr int kPausePlayerBackIndex = 0;
@@ -81,7 +83,15 @@ inline constexpr int kPausePlayerModeIndex = 2;
 inline constexpr int kPausePlayerRemapIndex = 3;
 inline constexpr int kPausePlayerResetIndex = 4;
 inline constexpr int kPausePlayerRemoveIndex = 5;
-inline constexpr int kPausePlayerButtonCount = 6;
+// §7.1 unified player screen: ZOOM + the RADAR/HP/FOES/SCORE stack are
+// APPENDED so ordinals 0..5 (and the default highlight) stay put; the
+// geometry matches Base Camp seat settings exactly.
+inline constexpr int kPausePlayerZoomIndex = 6;
+inline constexpr int kPausePlayerHudRadarIndex = 7;
+inline constexpr int kPausePlayerHudLifeIndex = 8;
+inline constexpr int kPausePlayerHudFoesIndex = 9;
+inline constexpr int kPausePlayerHudScoreIndex = 10;
+inline constexpr int kPausePlayerButtonCount = 11;
 
 // One local seat shown as a PAUSED-screen player row: the controller-profile
 // slot this machine samples (seat) and the displayed P# (global player index

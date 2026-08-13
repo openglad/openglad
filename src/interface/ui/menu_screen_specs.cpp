@@ -24,6 +24,7 @@
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/input_mappings.h>
+#include <openglad/interface/render/pal32.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
@@ -440,7 +441,15 @@ constexpr MenuButtonSpec kGraphicsFxRows[] = {
     {.id = "toggle_floor_glide", .label = "Floor glide",
      .x = 15, .y = fx_row_y(4), .w = 90, .h = 15,
      .action = ButtonAction::ToggleFloorGlide, .arg = -1,
-     .nav = {.up = 10, .down = 0}},
+     .nav = {.up = 10, .down = 0, .left = 14, .right = 14}},
+    // COLOR CYCLING, from the retired in-game options menu. Unlike every
+    // other effects/* key this one's identity state is ON — the classic
+    // lava/water/flame palette rotation — so turning it OFF is the change,
+    // not the other way round.
+    {.id = "toggle_color_cycling", .label = "Color cycling",
+     .x = 115, .y = fx_row_y(4), .w = 90, .h = 15,
+     .action = ButtonAction::ToggleColorCycling, .arg = -1,
+     .nav = {.up = 11, .down = 0, .left = 13, .right = 13}},
 };
 
 constexpr FxToggleDraw kGraphicsFxToggleDraws[] = {
@@ -457,6 +466,7 @@ constexpr FxToggleDraw kGraphicsFxToggleDraws[] = {
     {11, "effects", "ripples"},
     {12, "effects", "screen_shake"},
     {13, "effects", "floor_glide"},
+    {14, "effects", "color_cycling"},
 };
 
 void graphics_fx_draw_content(void* /*screen_state*/)
@@ -578,7 +588,7 @@ constexpr MenuButtonSpec kDisplaySettingsRows[] = {
     {.id = "display_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 10, .y = 10, .w = 50, .h = 15,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 6, .down = 1}},
+     .nav = {.up = 7, .down = 1}},
     {.id = "display_mode", .label = "Mode: Windowed",
      .x = 115, .y = fx_row_y(0), .w = 102, .h = 15,
      .action = ButtonAction::CycleDisplayMode, .arg = -1,
@@ -605,8 +615,19 @@ constexpr MenuButtonSpec kDisplaySettingsRows[] = {
     {.id = "display_smoothing", .label = "Smooth: Off",
      .x = 115, .y = fx_row_y(4), .w = 102, .h = 15,
      .action = ButtonAction::CycleSmoothing, .arg = -1,
-     .nav = {.up = 5, .down = 0},
+     .nav = {.up = 5, .down = 7},
      .label_binding = {.formatter = &display_smoothing_row_label}},
+    // BRIGHTNESS: a signed gamma step, not an enumerable list, so it takes
+    // the overscan pair's shape (30px -/+ faces plus the live value text the
+    // content pass draws at x=200) rather than a cycler face.
+    {.id = "brightness_minus", .label = "- ",
+     .x = 115, .y = fx_row_y(5), .w = 30, .h = 15,
+     .action = ButtonAction::BrightnessAdjust, .arg = -1,
+     .nav = {.up = 6, .down = 0, .right = 8}},
+    {.id = "brightness_plus", .label = "+ ",
+     .x = 159, .y = fx_row_y(5), .w = 30, .h = 15,
+     .action = ButtonAction::BrightnessAdjust, .arg = 1,
+     .nav = {.up = 6, .down = 0, .left = 7}},
 };
 
 // No window to size or mode to pick: TV/mobile targets are always
@@ -649,6 +670,11 @@ void display_settings_draw_content(void* /*screen_state*/)
                     static_cast<int>(
                         og::runtime::current_session->overscan_percentage_ *
                             100.0f + 0.5f));
+    // Live brightness beside its own pair — the APPLIED gamma (what
+    // set_palette re-applies), not just the stored cfg string.
+    mytext.write_xy(200, fx_row_y(5) + 4, DARK_BLUE, "%s",
+                    format_brightness_label(
+                        static_cast<int>(display_brightness_steps())).c_str());
 }
 
 const MenuScreenSpec& display_settings_menu_screen_spec()
@@ -803,6 +829,12 @@ std::string sprite_sheet_row_label(const MenuLabelContext& /*context*/)
     return "Sprite Sheet";
 }
 
+// SPEED re-derives from cfg every frame, like every other cfg-backed face.
+std::string game_speed_row_label(const MenuLabelContext& /*context*/)
+{
+    return format_game_speed_label(cfg.get_setting("gameplay", "timer_wait"));
+}
+
 constexpr MenuButtonSpec kMainOptionsRows[] = {
     {.id = "options_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 10, .y = 10, .w = 50, .h = 15,
@@ -829,7 +861,7 @@ constexpr MenuButtonSpec kMainOptionsRows[] = {
     {.id = "pick_sprite_sheet", .label = "Sprite Sheet",
      .x = 210, .y = options_col_y(1), .w = 90, .h = 15,
      .action = ButtonAction::PickSpriteSheet, .arg = 0,
-     .nav = {.up = 4, .down = 2, .left = 1},
+     .nav = {.up = 4, .down = 9, .left = 1},
      .label_binding = {.formatter = &sprite_sheet_row_label}},
     {.id = "ui_fx", .label = "UI FX",
      .x = 130, .y = options_col_y(4), .w = 90, .h = 15,
@@ -842,7 +874,20 @@ constexpr MenuButtonSpec kMainOptionsRows[] = {
     {.id = "control_settings", .label = "CONTROLS",
      .x = 130, .y = options_col_y(6), .w = 90, .h = 15,
      .action = ButtonAction::OpenControlSettings, .arg = -1,
-     .nav = {.up = 7, .down = 0}},
+     .nav = {.up = 7, .down = 0, .right = 9}},
+    // SPEED: the sim cadence the retired in-game options menu owned
+    // (docs/pause-menu-design.md §7.3). It is game-wide and always was — a
+    // GameWorld field, host-authoritative over the wire — so it belongs
+    // here and not on a per-player screen. It closes the right column: the
+    // rows at y=56..148 only LOOK free, because the 90px door faces at
+    // x=130 run to x=220 and would clip an x=210 face. y=171 is the first
+    // row clear of them (and of the "Controls:" caption, which reads down
+    // the left column).
+    {.id = "game_speed", .label = "SPEED: 8",
+     .x = 210, .y = options_col_y(7), .w = 90, .h = 15,
+     .action = ButtonAction::CycleGameSpeed, .arg = -1,
+     .nav = {.up = 5, .down = 4, .left = 8},
+     .label_binding = {.formatter = &game_speed_row_label}},
 };
 
 void main_options_draw_content(void* /*screen_state*/)
@@ -2227,6 +2272,17 @@ RowState seat_settings_remove_row_state(
     return RowState::Visible;
 }
 
+RowState seat_settings_zoom_row_state(const MenuLabelContext& /*context*/)
+{
+    // §7.1: a backend without the off-screen floor-layer compositor can
+    // never zoom — the row reads Disabled instead of silently doing nothing.
+    return per_view_zoom_available() ? RowState::Visible
+                                     : RowState::Disabled;
+}
+
+// §7.1 unified player screen: ZOOM rides the y=62 band beside INPUT; the
+// RADAR/HP/FOES/SCORE stack sits right of the narrowed binding panel at
+// x=214, 22px pitch. Appended after seat_input (index contract).
 constexpr MenuButtonSpec kSeatSettingsRowsMP[] = {
     {.id = "seat_settings_back", .label = "BACK",
      .hotkey = KEYSTATE_ESCAPE,
@@ -2250,19 +2306,19 @@ constexpr MenuButtonSpec kSeatSettingsRowsMP[] = {
      .x = 123, .y = 38, .w = 86, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsRemapIndex,
      .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsInputRowMP,
+             .down = kSeatSettingsZoomRowMP,
              .left = kSeatSettingsModeIndex,
              .right = kSeatSettingsResetIndex}},
     {.id = "seat_reset", .label = "RESET",
      .x = 218, .y = 38, .w = 86, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsResetIndex,
      .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsInputRowMP,
+             .down = kSeatSettingsHudRadarRowMP,
              .left = kSeatSettingsRemapIndex}},
     {.id = "seat_remove", .label = "REMOVE PLAYER",
      .x = 166, .y = 169, .w = 138, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsRemoveIndex,
-     .nav = {.up = kSeatSettingsInputRowMP,
+     .nav = {.up = kSeatSettingsHudScoreRowMP,
              .down = kSeatSettingsBackIndex,
              .left = kSeatSettingsTeamIndex},
      .state_override = &seat_settings_remove_row_state},
@@ -2270,7 +2326,39 @@ constexpr MenuButtonSpec kSeatSettingsRowsMP[] = {
      .x = 16, .y = 62, .w = 98, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsInputIndex,
      .nav = {.up = kSeatSettingsModeIndex,
-             .down = kSeatSettingsTeamIndex}},
+             .down = kSeatSettingsTeamIndex,
+             .right = kSeatSettingsZoomRowMP}},
+    {.id = "seat_zoom", .label = "ZOOM: GAME",
+     .x = 122, .y = 62, .w = 88, .h = 18,
+     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsZoomIndex,
+     .nav = {.up = kSeatSettingsRemapIndex,
+             .down = kSeatSettingsHudRadarRowMP,
+             .left = kSeatSettingsInputRowMP},
+     .state_override = &seat_settings_zoom_row_state},
+    {.id = "seat_hud_radar", .label = "RADAR: ON",
+     .x = 214, .y = 84, .w = 90, .h = 18,
+     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudRadarIndex,
+     .nav = {.up = kSeatSettingsResetIndex,
+             .down = kSeatSettingsHudLifeRowMP,
+             .left = kSeatSettingsZoomRowMP}},
+    {.id = "seat_hud_life", .label = "HP: ON",
+     .x = 214, .y = 106, .w = 90, .h = 18,
+     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudLifeIndex,
+     .nav = {.up = kSeatSettingsHudRadarRowMP,
+             .down = kSeatSettingsHudFoesRowMP,
+             .left = kSeatSettingsInputRowMP}},
+    {.id = "seat_hud_foes", .label = "FOES: ON",
+     .x = 214, .y = 128, .w = 90, .h = 18,
+     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudFoesIndex,
+     .nav = {.up = kSeatSettingsHudLifeRowMP,
+             .down = kSeatSettingsHudScoreRowMP,
+             .left = kSeatSettingsInputRowMP}},
+    {.id = "seat_hud_score", .label = "SCORE: ON",
+     .x = 214, .y = 150, .w = 90, .h = 18,
+     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudScoreIndex,
+     .nav = {.up = kSeatSettingsHudFoesRowMP,
+             .down = kSeatSettingsRemoveIndex,
+             .left = kSeatSettingsInputRowMP}},
 };
 
 constexpr MenuButtonSpec kSeatSettingsRowsNoMP[] = {
@@ -2295,20 +2383,52 @@ constexpr MenuButtonSpec kSeatSettingsRowsNoMP[] = {
      .x = 123, .y = 38, .w = 86, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsRemapIndex,
      .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsInputRowNoMP,
+             .down = kSeatSettingsZoomRowNoMP,
              .left = kSeatSettingsModeIndex,
              .right = kSeatSettingsResetIndex}},
     {.id = "seat_reset", .label = "RESET",
      .x = 218, .y = 38, .w = 86, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsResetIndex,
      .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsInputRowNoMP,
+             .down = kSeatSettingsHudRadarRowNoMP,
              .left = kSeatSettingsRemapIndex}},
     {.id = "seat_input", .label = "INPUT: WASD",
      .x = 16, .y = 62, .w = 98, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsInputIndex,
      .nav = {.up = kSeatSettingsModeIndex,
-             .down = kSeatSettingsTeamIndex}},
+             .down = kSeatSettingsTeamIndex,
+             .right = kSeatSettingsZoomRowNoMP}},
+    {.id = "seat_zoom", .label = "ZOOM: GAME",
+     .x = 122, .y = 62, .w = 88, .h = 18,
+     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsZoomIndex,
+     .nav = {.up = kSeatSettingsRemapIndex,
+             .down = kSeatSettingsHudRadarRowNoMP,
+             .left = kSeatSettingsInputRowNoMP},
+     .state_override = &seat_settings_zoom_row_state},
+    {.id = "seat_hud_radar", .label = "RADAR: ON",
+     .x = 214, .y = 84, .w = 90, .h = 18,
+     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudRadarIndex,
+     .nav = {.up = kSeatSettingsResetIndex,
+             .down = kSeatSettingsHudLifeRowNoMP,
+             .left = kSeatSettingsZoomRowNoMP}},
+    {.id = "seat_hud_life", .label = "HP: ON",
+     .x = 214, .y = 106, .w = 90, .h = 18,
+     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudLifeIndex,
+     .nav = {.up = kSeatSettingsHudRadarRowNoMP,
+             .down = kSeatSettingsHudFoesRowNoMP,
+             .left = kSeatSettingsInputRowNoMP}},
+    {.id = "seat_hud_foes", .label = "FOES: ON",
+     .x = 214, .y = 128, .w = 90, .h = 18,
+     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudFoesIndex,
+     .nav = {.up = kSeatSettingsHudLifeRowNoMP,
+             .down = kSeatSettingsHudScoreRowNoMP,
+             .left = kSeatSettingsInputRowNoMP}},
+    {.id = "seat_hud_score", .label = "SCORE: ON",
+     .x = 214, .y = 150, .w = 90, .h = 18,
+     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudScoreIndex,
+     .nav = {.up = kSeatSettingsHudFoesRowNoMP,
+             .down = kSeatSettingsTeamIndex,
+             .left = kSeatSettingsInputRowNoMP}},
 };
 
 static_assert(static_cast<int>(std::size(kSeatSettingsRowsMP))
@@ -2365,6 +2485,18 @@ void seat_settings_rewire(button* buttons, int count,
         buttons, kSeatSettingsInputRow,
         og::ui::input_cycle_button_label(
             g_seat_settings_state->local_slot));
+    // §7.1 live per-frame labels for the ZOOM + HUD rows.
+    const int slot = g_seat_settings_state->local_slot;
+    sync_seat_settings_label(buttons, kSeatSettingsZoomRow,
+                             player_view_zoom_label(slot));
+    sync_seat_settings_label(buttons, kSeatSettingsHudRadarRow,
+                             player_hud_row_label(slot, PlayerHudRow::Radar));
+    sync_seat_settings_label(buttons, kSeatSettingsHudLifeRow,
+                             player_hud_row_label(slot, PlayerHudRow::Life));
+    sync_seat_settings_label(buttons, kSeatSettingsHudFoesRow,
+                             player_hud_row_label(slot, PlayerHudRow::Foes));
+    sync_seat_settings_label(buttons, kSeatSettingsHudScoreRow,
+                             player_hud_row_label(slot, PlayerHudRow::Score));
 #ifndef DISABLE_MULTIPLAYER
     sync_seat_settings_label(
         buttons, kSeatSettingsRemoveIndex,
@@ -2396,26 +2528,29 @@ void seat_settings_draw_content(void* screen_state)
                     static_cast<int>(player.player_index) + 1)
             .c_str());
 
-    // The INPUT cycler row occupies y=62..80, so the live binding panel
-    // starts below it and packs its nine 6px lines at an 8px pitch.
-    game->draw_button(12, 84, 308, 164, 2, 1);
+    // §7.1 unified geometry: the binding panel narrows to x=12..208 so the
+    // RADAR/HP/FOES/SCORE stack fits at x=214; movement column x=20, actions
+    // x=104, 8px line pitch, both columns budget-clamped.
+    game->draw_button(12, 84, 208, 164, 2, 1);
     mytext.write_xy(20, 88, DARK_BLUE, "%s", "MOVEMENT");
-    mytext.write_xy(164, 88, DARK_BLUE, "%s", "ACTIONS");
+    mytext.write_xy(104, 88, DARK_BLUE, "%s", "ACTIONS");
 
     struct BindingLine {
         const char* label;
         int key;
         bool diagonal;
     };
+    // Compact diagonal labels: the movement column has 14 chars before the
+    // ACTIONS column at x=104 ((104-20)/6).
     static constexpr std::array<BindingLine, 8> movement{{
         {"UP", KEY_UP, false},
-        {"UP-RIGHT", KEY_UP_RIGHT, true},
+        {"UP-R", KEY_UP_RIGHT, true},
         {"RIGHT", KEY_RIGHT, false},
-        {"DOWN-RIGHT", KEY_DOWN_RIGHT, true},
+        {"DN-R", KEY_DOWN_RIGHT, true},
         {"DOWN", KEY_DOWN, false},
-        {"DOWN-LEFT", KEY_DOWN_LEFT, true},
+        {"DN-L", KEY_DOWN_LEFT, true},
         {"LEFT", KEY_LEFT, false},
-        {"UP-LEFT", KEY_UP_LEFT, true},
+        {"UP-L", KEY_UP_LEFT, true},
     }};
     static constexpr std::array<BindingLine, 7> actions{{
         {"FIRE", KEY_FIRE, false},
@@ -2447,16 +2582,17 @@ void seat_settings_draw_content(void* screen_state)
         const std::string value = active
             ? binding_value(binding.key)
             : std::string("--");
-        const std::string line =
-            std::format("{}: {}", binding.label, value);
+        const std::string line = format_binding_panel_line(
+            binding.label, value, kBindingPanelMovementChars);
         mytext.write_xy(20, 99 + static_cast<int>(index) * 8,
                         active ? DARK_BLUE : GREY, "%s", line.c_str());
     }
     for (std::size_t index = 0; index < actions.size(); ++index) {
         const BindingLine& binding = actions[index];
-        const std::string line = std::format(
-            "{}: {}", binding.label, binding_value(binding.key));
-        mytext.write_xy(164, 99 + static_cast<int>(index) * 8,
+        const std::string line = format_binding_panel_line(
+            binding.label, binding_value(binding.key),
+            kBindingPanelActionsChars);
+        mytext.write_xy(104, 99 + static_cast<int>(index) * 8,
                         DARK_BLUE, "%s", line.c_str());
     }
 }
@@ -2559,6 +2695,27 @@ Sint32 seat_settings_on_spec_row(int row, void* screen_state)
                 cfg, state->local_slot);
             persist_player_controls();
         }
+        return MENU_OK;
+    }
+    if (row == kSeatSettingsZoomIndex) {
+        if (per_view_zoom_available()) {
+            (void)cycle_player_view_zoom(state->local_slot);
+            persist_player_controls();
+        }
+        return MENU_OK;
+    }
+    if (row == kSeatSettingsHudRadarIndex ||
+        row == kSeatSettingsHudLifeIndex ||
+        row == kSeatSettingsHudFoesIndex ||
+        row == kSeatSettingsHudScoreIndex) {
+        const PlayerHudRow hud_row = row == kSeatSettingsHudRadarIndex
+            ? PlayerHudRow::Radar
+            : row == kSeatSettingsHudLifeIndex
+                ? PlayerHudRow::Life
+                : row == kSeatSettingsHudFoesIndex ? PlayerHudRow::Foes
+                                                   : PlayerHudRow::Score;
+        toggle_player_hud_row(state->local_slot, hud_row);
+        persist_player_controls();
         return MENU_OK;
     }
 

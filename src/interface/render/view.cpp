@@ -447,6 +447,9 @@ viewscreen::viewscreen(short x, short y, short width,
 	*/
 	//load_key_prefs(); // load key prefs, if present
 	prefsob->load(this);
+	// §7.1: cfg overlays the keyprefs-loaded HUD prefs + per-view zoom
+	// (one-shot legacy seed when this player's cfg keys were never written).
+	apply_hud_settings_from_cfg();
 
 	myradar = std::make_unique<radar>(this, active_screen(), mynum);
 	radarstart = 0; //the radar has not yet been started
@@ -725,6 +728,50 @@ viewscreen::FloorPassParams viewscreen::compute_floor_pass(
 	return p;
 }
 
+// ---- Per-view zoom-out (§7.1): every floor pass rides the floor-layer
+// composite at fscale * frame_zoom, reusing the below-floor pad recipe for
+// the camera floor. GAME (step 0) executes zero new code — byte-identical.
+
+bool viewscreen::view_zoom_step_fits_budget(Sint32 step) const
+{
+	const screen* const out = active_screen();
+	const Sint32 canvas_w = out != nullptr ? out->world_canvas_w() : xview;
+	const Sint32 canvas_h = out != nullptr ? out->world_canvas_h() : yview;
+	return og::view_zoom_window_fits_budget(
+	    xloc, yloc, xview, yview, canvas_w, canvas_h,
+	    per_view_zoom_scale_for_step(step));
+}
+
+float viewscreen::resolve_frame_zoom(const GameWorld& vworld, bool ghosts_on,
+                                     Sint32 floor_top) const
+{
+	const float zoom = per_view_zoom_scale();
+	if (zoom >= 1.0f)
+		return 1.0f;
+	const screen* const out = active_screen();
+	if (out == nullptr)
+		return 1.0f;
+	for (Sint32 f = 0; f <= floor_top; ++f)
+	{
+		const FloorPassParams fp = compute_floor_pass(f, vworld, ghosts_on);
+		if (fp.skip)
+			continue;
+		if (!og::view_zoom_window_fits_budget(
+		        xloc, yloc, xview, yview,
+		        out->world_canvas_w(), out->world_canvas_h(),
+		        fp.fscale * zoom))
+		{
+			// One pass over budget unzooms the WHOLE frame: a zoomed camera
+			// floor over an unzoomed (fallen-back) lower floor would show
+			// misaligned world through air holes — never wrong output.
+			TRACE("render", "view_zoom_budget_fallback step=%d floor=%d",
+			      static_cast<int>(view_zoom_step_), static_cast<int>(f));
+			return 1.0f;
+		}
+	}
+	return zoom;
+}
+
 bool viewscreen::redraw()
 {
 	Sint32 i,j;
@@ -837,6 +884,21 @@ bool viewscreen::redraw()
 		               std::min(static_cast<Sint32>(vworld.floor_count() - 1),
 		                        static_cast<Sint32>(std::ceil(glide_camera_z_))))
 		    : steady_top;
+		// Per-view zoom-out (§7.1): 1.0 at ZOOM: GAME (zero new code — byte-
+		// identical), else the selected 0.9x..0.5x when every pass's padded
+		// layer window fits the compositor budget this frame.
+		const float frame_zoom = resolve_frame_zoom(vworld, ghosts_on, floor_top);
+		if (frame_zoom < 1.0f)
+		{
+			TRACE("render", "view_zoom step=%d view=%d",
+			      static_cast<int>(view_zoom_step_), static_cast<int>(mynum));
+			// Single-floor levels skip the multifloor clear above, but a
+			// declined layer (alloc failure) leaves padded-window gaps that
+			// must composite over stable black, not last frame's pixels.
+			if (vworld.floor_count() <= 1)
+				active_screen()->clearbuffer(xloc, yloc, xview, yview);
+		}
+		bool zoom_shadows_drawn = false;
 		for (Sint32 f = 0; f <= floor_top; ++f)
 		{
 			// Per-floor presentation (alpha/scale/scroll + the skip and
@@ -854,7 +916,7 @@ bool viewscreen::redraw()
 			// off-screen layer below, so they slide + recede as the player moves.
 			// topx/topy restored after this floor draws; fscale/fcx/fcy -> layer_end.
 			const Sint32 par_topx = topx, par_topy = topy;
-			float fscale = fp.fscale;
+			float fscale = fp.fscale * frame_zoom;
 			const Sint32 fcx = xloc + xview / 2;
 			const Sint32 fcy = yloc + yview / 2;
 			if (fp.shift)
@@ -865,8 +927,12 @@ bool viewscreen::redraw()
 			// A faded/ghosted non-camera floor (alpha<255) renders 1:1 onto an
 			// off-screen layer, then composites back smoothly scaled about the
 			// viewport centre + faded (seam-free). The camera floor and opaque
-			// (ghosting-off) floors draw straight to the screen, byte-identical.
-			const bool use_layer = (vworld.floor_count() > 1 && falpha < 255);
+			// (ghosting-off) floors draw straight to the screen, byte-identical —
+			// unless a per-view zoom is active, which routes EVERY pass through
+			// the layer at fscale*frame_zoom (the pad recipe below covers the
+			// full viewport, so the composite still overwrites every pixel).
+			const bool use_layer = (vworld.floor_count() > 1 && falpha < 255) ||
+			    frame_zoom < 1.0f;
 			// A below-camera floor (fscale<1) shrunk about the centre from a
 			// viewport-sized layer would leave a black ring around the
 			// composite: instead draw a 1/fscale-larger world window (pad on
@@ -931,8 +997,11 @@ bool viewscreen::redraw()
 						const int tile = static_cast<int>(gridp.data[static_cast<std::size_t>(i + maxx * j)]);
 						// On a layer the composite fades the whole floor, so tiles draw
 						// opaque (full coverage); glass stays faint only on the directly
-						// drawn camera floor (so the floor below shows through it).
-						const unsigned char talpha = layer_active ? 255
+						// drawn camera floor (so the floor below shows through it) — and
+						// on a ZOOMED camera floor's layer (falpha 255 only under zoom),
+						// where the faint glass pixels ride the composite instead.
+						const unsigned char talpha = layer_active
+						    ? ((tile == PIX_GLASS && falpha == 255) ? kGlassAlpha : 255)
 						    : ((tile == PIX_GLASS && falpha > kGlassAlpha) ? kGlassAlpha : falpha);
 						renderer->draw_tile(tile, i*GRID_SIZE, j*GRID_SIZE, this, talpha);
 						// Decor rides right on top of its base tile, through the
@@ -953,6 +1022,16 @@ bool viewscreen::redraw()
 			if (fp.entities)
 				draw_floor_entities(&level, static_cast<int>(f), falpha,
 				                    layer_active); //radar drawn after
+			// Under zoom the upper-floor shadow pass must ride the camera
+			// floor's padded layer (it places blits from topx/topy at world
+			// scale — drawn post-loop it would land misaligned on the
+			// squeezed composite).
+			if (layer_active && frame_zoom < 1.0f && f == current_floor_ &&
+			    !ghosts_on && !editor_authoring_view_)
+			{
+				draw_upper_floor_shadows(this, vworld);
+				zoom_shadows_drawn = true;
+			}
 			if (layer_active)
 			{
 				// A floor d levels below the camera composites through the
@@ -986,8 +1065,9 @@ bool viewscreen::redraw()
 		// NOT drawn; their solid tiles + entities cast shadows down onto the
 		// camera floor instead — after the camera floor's entities, before
 		// weather/HUD. Render-only; never in the editor's authoring draw; a
-		// single-floor world short-circuits inside (byte-identical).
-		if (!ghosts_on && !editor_authoring_view_)
+		// single-floor world short-circuits inside (byte-identical). Skipped
+		// when the zoomed camera-floor pass already drew them into its layer.
+		if (!ghosts_on && !editor_authoring_view_ && !zoom_shadows_drawn)
 			draw_upper_floor_shadows(this, vworld);
 	}
 	// Weather (per the world's synced WeatherKind: cloud banks + ground
@@ -1123,6 +1203,21 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 		               std::min(static_cast<Sint32>(vworld.floor_count() - 1),
 		                        static_cast<Sint32>(std::ceil(glide_camera_z_))))
 		    : steady_top;
+		// Per-view zoom-out (§7.1): 1.0 at ZOOM: GAME (zero new code — byte-
+		// identical), else the selected 0.9x..0.5x when every pass's padded
+		// layer window fits the compositor budget this frame.
+		const float frame_zoom = resolve_frame_zoom(vworld, ghosts_on, floor_top);
+		if (frame_zoom < 1.0f)
+		{
+			TRACE("render", "view_zoom step=%d view=%d",
+			      static_cast<int>(view_zoom_step_), static_cast<int>(mynum));
+			// Single-floor levels skip the multifloor clear above, but a
+			// declined layer (alloc failure) leaves padded-window gaps that
+			// must composite over stable black, not last frame's pixels.
+			if (vworld.floor_count() <= 1)
+				active_screen()->clearbuffer(xloc, yloc, xview, yview);
+		}
+		bool zoom_shadows_drawn = false;
 		for (Sint32 f = 0; f <= floor_top; ++f)
 		{
 			// Per-floor presentation (alpha/scale/scroll + the skip and
@@ -1140,7 +1235,7 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 			// off-screen layer below, so they slide + recede as the player moves.
 			// topx/topy restored after this floor draws; fscale/fcx/fcy -> layer_end.
 			const Sint32 par_topx = topx, par_topy = topy;
-			float fscale = fp.fscale;
+			float fscale = fp.fscale * frame_zoom;
 			const Sint32 fcx = xloc + xview / 2;
 			const Sint32 fcy = yloc + yview / 2;
 			if (fp.shift)
@@ -1151,8 +1246,12 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 			// A faded/ghosted non-camera floor (alpha<255) renders 1:1 onto an
 			// off-screen layer, then composites back smoothly scaled about the
 			// viewport centre + faded (seam-free). The camera floor and opaque
-			// (ghosting-off) floors draw straight to the screen, byte-identical.
-			const bool use_layer = (vworld.floor_count() > 1 && falpha < 255);
+			// (ghosting-off) floors draw straight to the screen, byte-identical —
+			// unless a per-view zoom is active, which routes EVERY pass through
+			// the layer at fscale*frame_zoom (the pad recipe below covers the
+			// full viewport, so the composite still overwrites every pixel).
+			const bool use_layer = (vworld.floor_count() > 1 && falpha < 255) ||
+			    frame_zoom < 1.0f;
 			// A below-camera floor (fscale<1) shrunk about the centre from a
 			// viewport-sized layer would leave a black ring around the
 			// composite: instead draw a 1/fscale-larger world window (pad on
@@ -1217,8 +1316,11 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 						const int tile = static_cast<int>(gridp.data[static_cast<std::size_t>(i + maxx * j)]);
 						// On a layer the composite fades the whole floor, so tiles draw
 						// opaque (full coverage); glass stays faint only on the directly
-						// drawn camera floor (so the floor below shows through it).
-						const unsigned char talpha = layer_active ? 255
+						// drawn camera floor (so the floor below shows through it) — and
+						// on a ZOOMED camera floor's layer (falpha 255 only under zoom),
+						// where the faint glass pixels ride the composite instead.
+						const unsigned char talpha = layer_active
+						    ? ((tile == PIX_GLASS && falpha == 255) ? kGlassAlpha : 255)
 						    : ((tile == PIX_GLASS && falpha > kGlassAlpha) ? kGlassAlpha : falpha);
 						renderer->draw_tile(tile, i*GRID_SIZE, j*GRID_SIZE, this, talpha);
 						// Decor rides right on top of its base tile, through the
@@ -1239,6 +1341,14 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 			if (fp.entities)
 				draw_floor_entities(data, static_cast<int>(f), falpha,
 				                    layer_active);
+			// See the no-arg redraw(): under zoom the upper-floor shadow pass
+			// rides the camera floor's padded layer.
+			if (layer_active && frame_zoom < 1.0f && f == current_floor_ &&
+			    !ghosts_on && !editor_authoring_view_)
+			{
+				draw_upper_floor_shadows(this, vworld);
+				zoom_shadows_drawn = true;
+			}
 			if (layer_active)
 			{
 				// A floor d levels below the camera composites through the
@@ -1268,8 +1378,9 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 			}
 			topx = par_topx; topy = par_topy; // undo the parallax (+ pad) shift
 		}
-		// See the no-arg redraw(): the ghosts-off upper-floor shadow pass.
-		if (!ghosts_on && !editor_authoring_view_)
+		// See the no-arg redraw(): the ghosts-off upper-floor shadow pass
+		// (skipped when the zoomed camera-floor pass drew it into its layer).
+		if (!ghosts_on && !editor_authoring_view_ && !zoom_shadows_drawn)
 			draw_upper_floor_shadows(this, vworld);
 	}
 	// See the no-arg redraw(): open-sky weather overlay, before radar/text.
@@ -1385,13 +1496,10 @@ short viewscreen::input(const void* native_event)
 			active_screen()->report_mem();
 	}
 
-	// Redisplay scenario text (Shift+/ = "?") — needs raw SDL for KEYCODE_SLASH
-	if (query_key_event(KEYCODE_SLASH, native_event) && pi.is_held(InputAction::Shift) && !pi.is_held(InputAction::Cheat))
-	{
-		read_scenario(active_screen());
-		active_screen()->redrawme = 1;
-		clear_keyboard();
-	}
+	// The Shift+/ briefing chord is gone (design §7.2): raw '/' was player
+	// 2's SPECIAL key, so any held shifter turned a P2 cast into the mission
+	// text over everyone's game. The briefing lives on the PAUSED menu now;
+	// read_scenario still runs at level start.
 
 	// Before here, all keys should check for !KEY_CHEAT
 	// --- Cheat keys (sim mutations handled in runtime layer) ---
@@ -1884,6 +1992,38 @@ void viewscreen::resize(short x, short y, short length, short height)
 	active_screen()->redrawme = 1;
 }
 
+// §7.1 persistence: prefs[] stays the runtime carrier; cfg
+// (controls: playerN_hud_* / playerN_view_zoom) is the persistence layer.
+// Runs once from the constructor, right after options::load copied the
+// legacy keyprefs.dat prefs in.
+void viewscreen::apply_hud_settings_from_cfg()
+{
+	PlayerHudSettings hud;
+	if (!load_player_hud_settings_from_cfg(cfg, mynum, hud))
+	{
+		// One-shot seed: this player's cfg keys were never written. Persist
+		// the keyprefs-loaded prefs (apply_setting only — disk timing belongs
+		// to the screens' persist paths), after which keyprefs.dat is legacy.
+		hud.radar = prefs[PREF_RADAR] != PREF_RADAR_OFF ? 1 : 0;
+		hud.life_on = prefs[PREF_LIFE] != PREF_LIFE_OFF ? 1 : 0;
+		hud.foes = prefs[PREF_FOES] != PREF_FOES_OFF ? 1 : 0;
+		hud.score = prefs[PREF_SCORE] != PREF_SCORE_OFF ? 1 : 0;
+		hud.zoom_step = 0;
+		save_player_hud_settings_to_cfg(cfg, mynum, hud);
+		return;
+	}
+	prefs[PREF_RADAR] = hud.radar != 0 ? PREF_RADAR_ON : PREF_RADAR_OFF;
+	prefs[PREF_FOES] = hud.foes != 0 ? PREF_FOES_ON : PREF_FOES_OFF;
+	prefs[PREF_SCORE] = hud.score != 0 ? PREF_SCORE_ON : PREF_SCORE_OFF;
+	if (hud.life_on == 0)
+		prefs[PREF_LIFE] = PREF_LIFE_OFF;
+	else if (prefs[PREF_LIFE] == PREF_LIFE_OFF)
+		prefs[PREF_LIFE] = PREF_LIFE_BOTH;
+	// else: keep a legacy TEXT/BARS/SMALL value — it displays as ON and
+	// normalizes to BOTH on the first HP toggle (§7.1).
+	view_zoom_step_ = static_cast<Sint32>(hud.zoom_step);
+}
+
 void viewscreen::resize(char whatmode)
 {
 	// Define chrome once in the stable zoom-1.0 gameplay-UI space, then project
@@ -2008,13 +2148,28 @@ unsigned char compute_mp_color(float mp, float maxmp)
         return WATER_START;
 }
 
-void viewscreen::view_team()
+#ifdef TESTING
+namespace
+{
+// One-shot pass budget for the compiled-out wait loop: view_team consumes it
+// to drive the poll callback exactly like real wait passes would.
+int s_view_team_testing_poll_passes = 0;
+} // namespace
+
+void view_team_testing_set_poll_passes(int passes)
+{
+	s_view_team_testing_poll_passes = passes;
+}
+#endif
+
+void viewscreen::view_team(KeyWaitPollCallback poll)
 {
 	view_team(VIEW_TEAM_LEFT, VIEW_TEAM_TOP,
-	          VIEW_TEAM_RIGHT, VIEW_TEAM_BOTTOM);
+	          VIEW_TEAM_RIGHT, VIEW_TEAM_BOTTOM, poll);
 }
 
-void viewscreen::view_team(short left, short top, short right, short bottom)
+void viewscreen::view_team(short left, short top, short right, short bottom,
+                           KeyWaitPollCallback poll)
 {
 	ScopedUiCanvas canvas_target(*active_screen());
 	short teamnum = my_team;
@@ -2100,6 +2255,11 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	Sint32 cycletime = 30000;
 	while (!og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
 	{
+		// The poll runs once per wait pass; false ends the wait (session
+		// died / owner canceled). Esc is not down here, so the release
+		// drain below no-ops on this exit path.
+		if (poll != nullptr && !poll())
+			return;
 		YIELD_SLEEP(10);  // Yield to browser event loop
 		active_screen()->do_cycle(currentcycle++, cycletime);
 		get_input_events(POLL);
@@ -2108,6 +2268,18 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	{
 		YIELD_SLEEP(1);
 		get_input_events(POLL);
+	}
+#else
+	// TESTING: return immediately (the blocking wait is compiled out), but
+	// keep the poll contract testable — an opted-in one-shot pass budget
+	// drives the callback exactly like real wait passes, stopping early on
+	// false.
+	int poll_passes = s_view_team_testing_poll_passes;
+	s_view_team_testing_poll_passes = 0;
+	while (poll != nullptr && poll_passes-- > 0)
+	{
+		if (!poll())
+			break;
 	}
 #endif
 

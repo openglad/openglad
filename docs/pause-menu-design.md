@@ -281,7 +281,85 @@ change on playback is accepted as a known cosmetic limitation (a
 - **Screenshots**: `test_uxshots_probe.cpp` captures of the PAUSED menu and
   player screen; visual read-back before claiming success.
 
-## 7. Non-goals
+## 7. Menu consolidation (round 2, issue #169)
+
+The old per-player in-game options menu (`viewscreen::options_menu`, keys
+1-4) is retired. Where every row went:
+
+### 7.1 Unified player screen (Base Camp seat settings AND pause player
+screen share one geometry)
+
+```
+  [BACK]              LOCAL PLAYER n · Pm
+  [4/8-DIRECTION][REMAP     ][RESET     ]     y=38 band (unchanged)
+  [INPUT: WASD  ][ZOOM: GAME]                 y=62 band
+  +----------------------------+ [RADAR: ON ]  right stack y=84/106/128/150
+  | MOVEMENT      ACTIONS      | [HP:    ON ]
+  | (binding panel, 12..208)   | [FOES:  ON ]
+  |                            | [SCORE: ON ]
+  +----------------------------+
+  [TEAM n       ][REMOVE PLAYER]              y=169 (variant-gated)
+```
+
+- The binding panel narrows to x=12..208 (movement col x=20, actions x=104);
+  the HUD toggles stack on the right at x=214, w=90, 22px pitch.
+- RADAR/FOES/SCORE toggle `prefs[PREF_RADAR/FOES/SCORE]`. HP is ON/OFF only
+  (ON = PREF_LIFE_BOTH, OFF = PREF_LIFE_OFF; the TEXT/BARS/SMALL states are
+  retired — SMALL was a dead state rendering as BOTH). PREF_OVERLAY keeps
+  its render behavior but loses its (historically invisible) UI row.
+- ZOOM is a real per-view zoom-out riding the floor-layer composite seam
+  (`floor_layer_begin/end` scale path): values GAME (default — follow
+  `graphics/zoom`), then 0.9x..0.5x. HUD/radar projection must be threaded
+  through `ScopedGameplayUiViewLayout` + `project_world_point_to_gameplay_ui`.
+  When the layer path is unavailable the row is disabled, never wrong.
+- Persistence: prefs stay the runtime carrier; new cfg keys
+  `controls: playerN_hud_radar/_hud_life/_hud_foes/_hud_score/_view_zoom`
+  (defaults registered so RESTORE SETTINGS keeps them), written by the two
+  screens' persist calls; keyprefs.dat prefs seed the cfg once when the
+  keys are absent, after which the file is legacy.
+
+### 7.2 PAUSED menu gains VIEW TEAM and BRIEFING
+
+```
+        [ RESUME          ]  y=32
+        [ RESTART MISSION ]  y=50
+        [ QUIT MISSION    ]  y=68
+        [VIEW TEAM][BRIEFING] y=86 (two 66px faces)
+        - PLAYERS -           y≈107
+        [ P1: WASD        ]  y=112 (players at 18px pitch)
+        [ + ADD PLAYER    ]  y=182 (hidden at 4 seats)
+```
+
+- BRIEFING calls `read_scenario(scr)` (nesting is safe; the backdrop
+  restore heals its scribbles). The in-game Shift+`/` briefing chord is
+  DELETED — it was any shifter + raw `/`, i.e. P2's SPECIAL key.
+- VIEW TEAM hosts `viewscreen::view_team` for view 0 with a poll callback
+  so the pause keep-alive survives its wait loop; the world-canvas redraw
+  dance on return is preserved (re-homed regression test).
+
+### 7.3 Global migrations
+
+- SPEED → GAME SETTINGS cycler (display 1..11), cfg `gameplay/timer_wait`
+  (default 6) applied at level start; live change still stamps
+  `pending_timer_wait_request_` (host-authoritative, relay warning kept).
+- COLOR CYCLING → GRAPHICS FX at (115,127), cfg `effects/color_cycling`
+  default ON (identity is pinned against ON — this effect inverts the
+  off-byte-identical convention).
+- BRIGHTNESS → DISPLAY at fx_row_y(5), overscan-style -/+ pair, cfg
+  `graphics/brightness`; gamma moves out of `viewscreen::gamma` and is
+  re-applied after every `set_palette`, fixing the long-standing bug where
+  every keyframe palette sync silently reset it.
+
+### 7.4 Deletions
+
+`viewscreen::options_menu`, `set_key_prefs`, `view_key_bindings`,
+`get_keypress`, the KEY_PREFS dispatch, and the Shift+`/` chord all go.
+InputAction slot 14 stays RESERVED (wire format pins NUM_INPUT_KEYS == 16);
+its default bindings become KEYCODE_UNKNOWN and the cfg loader ignores
+slot 14, freeing keys 1-4 for player mappings. keyprefs.dat's key half was
+already vestigial; the whole file becomes a read-once migration source.
+
+## 8. Non-goals
 
 - No terminal (text/curses) pause menu.
 - No networked mid-game add/remove; no per-seat leave in networked play

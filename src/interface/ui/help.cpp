@@ -531,7 +531,8 @@ static const char* controls_help_lines[] = {
 	"========================",
 	og::input::kWebBackKeyMode ? "BACKSPACE: Quit / Back"
 	                           : "ESC: Quit / Back",
-	"Shift+/: Show scenario help",
+	og::input::kWebBackKeyMode ? "BACKSPACE in game: Pause menu"
+	                           : "ESC in game: Pause menu",
 	"",
 	og::input::kWebBackKeyMode ? "Press BACKSPACE to return to menu"
 	                           : "Press ESC to return to menu",
