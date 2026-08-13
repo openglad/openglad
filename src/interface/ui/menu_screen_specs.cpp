@@ -1715,24 +1715,64 @@ constexpr int kBaseCampRowPitch = 14;
 // Round-6 horizontal grid: the panel's inner face is x=8..311, with explicit
 // DEPLOY and TEAM columns before the trainable NAME body. Maximum-width solo
 // and network row strings end their last digit's ink at x=297/295 (EXP/LV
-// columns at 264/280); the per-row move-up face sits at 300..308 — a
-// two-pixel gutter after the digits and three clear panel pixels before the
-// x=311 inner-face edge.
+// columns at 264/280); the per-row move-up face sits at 303..311 — five clear
+// pixels after the digits, ending flush with the inner face.
+// The right rail is ONE column: the roster pager '>', every per-row '^', the
+// seat rail's '+', and GO/READY all end on kBaseCampPanelRightX.
+constexpr int kBaseCampGlyphAdvance = 6;  // small font pen advance
+// EXCLUSIVE right edge == the inner grey face's last column (311) + 1 == the
+// GO/READY right edge (244 + 68).
+constexpr int kBaseCampPanelRightX = 312;
+constexpr int kBaseCampDeployColumnX = 23;
+constexpr int kBaseCampDeployColumnWidth = 14;
+// button.cpp centers a one-glyph label at (xloc+xend)/2 - (1*6 - 1)/2. The
+// foreign-row X/- glyph is hand-drawn in the content pass, so it derives the
+// same column instead of guessing it.
+constexpr int kBaseCampDeployGlyphX =
+    (kBaseCampDeployColumnX * 2 + kBaseCampDeployColumnWidth) / 2 -
+    (kBaseCampGlyphAdvance - 1) / 2;
 constexpr int kBaseCampDeployHeaderX = 12;
 constexpr int kBaseCampTeamHeaderX = 54;
 constexpr int kBaseCampNameColumnX = 88;
 constexpr int kBaseCampSoloClassColumnX = 164;
 constexpr int kBaseCampSoloLevelColumnX = 236;
 constexpr int kBaseCampSoloExpColumnX = 264;
+// picker_common writes EXP as a six-character right-aligned field, so its
+// digits ink out at x=297; the three-character header takes that field's last
+// three cells instead of sitting over its left pad.
+constexpr int kBaseCampSoloExpFieldChars = 6;
+constexpr int kBaseCampSoloExpHeaderX =
+    kBaseCampSoloExpColumnX +
+    (kBaseCampSoloExpFieldChars - 3) * kBaseCampGlyphAdvance;
 constexpr int kBaseCampNetCompanyColumnX = 160;
 constexpr int kBaseCampNetLevelColumnX = 280;
+// Roster pager cluster beside header line B: '<' | "p/N" strip | '>', with
+// uniform gutters and the '>' closing the right rail.
+constexpr int kBaseCampPagerWidth = 14;
+constexpr int kBaseCampPagerGap = 2;
+// The strip reserves three glyphs plus strip_text's 2px pad on each side.
+constexpr int kBaseCampPageIndicatorWidth = 3 * kBaseCampGlyphAdvance + 4;
+constexpr int kBaseCampPageNextX = kBaseCampPanelRightX - kBaseCampPagerWidth;
+constexpr int kBaseCampPageIndicatorX =
+    kBaseCampPageNextX - kBaseCampPagerGap - kBaseCampPageIndicatorWidth;
+constexpr int kBaseCampPagePrevX =
+    kBaseCampPageIndicatorX - kBaseCampPagerGap - kBaseCampPagerWidth;
+constexpr int kBaseCampMoveUpWidth = 9;
+constexpr int kBaseCampMoveUpX = kBaseCampPanelRightX - kBaseCampMoveUpWidth;
+constexpr int kBaseCampAddSeatWidth = 14;
+constexpr int kBaseCampAddSeatX = kBaseCampPanelRightX - kBaseCampAddSeatWidth;
 constexpr int kBaseCampFamilySwatchGap = 1;
 constexpr int kBaseCampFamilySwatchRampWidth = 8;
 constexpr int kBaseCampFamilySwatchWidth = kBaseCampFamilySwatchRampWidth + 2;
 constexpr int kBaseCampFamilySwatchHeight = 8;
-constexpr std::array<int, kBaseCampSeatCardsPerPage> kBaseCampSeatCardX{
-    54, 112, 170, 228};
+// One seat-card table: the button specs and the chip overlay both index it.
 constexpr int kBaseCampSeatCardWidth = 57;
+constexpr int kBaseCampSeatCardPitch = 58;  // card face + 1px focus gutter
+constexpr int kBaseCampSeatCardX0 = 54;
+constexpr std::array<int, kBaseCampSeatCardsPerPage> kBaseCampSeatCardX{
+    kBaseCampSeatCardX0, kBaseCampSeatCardX0 + kBaseCampSeatCardPitch,
+    kBaseCampSeatCardX0 + 2 * kBaseCampSeatCardPitch,
+    kBaseCampSeatCardX0 + 3 * kBaseCampSeatCardPitch};
 constexpr int kBaseCampSeatRailY = 164;
 // §9.5.4 + graft (a): non-identity fields on benched rows dim to palette
 // shade 21 — GREY(23)'s glyph ramp overlaps WHITE(24) by all but one step,
@@ -1830,7 +1870,9 @@ RowState base_camp_add_seat_row_state(
 // highlight reads — the §2.5 foreign-hit-zone precedent.
 #define OG_BASE_CAMP_DEP(i)                                                  \
     {.id = "roster_dep_" #i, .label = "",                                    \
-     .x = 23, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 14,         \
+     .x = kBaseCampDeployColumnX,                                            \
+     .y = kBaseCampRowY0 + kBaseCampRowPitch * (i),                          \
+     .w = kBaseCampDeployColumnWidth,                                        \
      .h = 10, .action = ButtonAction::MenuSpecRow, .arg = (i),               \
      .nav = {.up = (i) > 0 ? (i) - 1 : -1,                                    \
              .down = (i) < 7 ? (i) + 1 : kCreateMenuBackIndex,                \
@@ -1857,7 +1899,9 @@ RowState base_camp_add_seat_row_state(
      .no_draw = true}
 #define OG_BASE_CAMP_MOVE_UP(i)                                              \
     {.id = "roster_up_" #i, .label = "^",                                    \
-     .x = 300, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 9,         \
+     .x = kBaseCampMoveUpX,                                                  \
+     .y = kBaseCampRowY0 + kBaseCampRowPitch * (i),                          \
+     .w = kBaseCampMoveUpWidth,                                              \
      .h = 10, .action = ButtonAction::MenuSpecRow,                           \
      .arg = kBaseCampMoveUpBase + (i),                                       \
      .nav = {.left = kBaseCampRowBodyBase + (i)},                            \
@@ -1877,12 +1921,12 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
     // relocated line B); real MenuSpecRow pager actions (keyboard-live),
     // hidden until the roster spans pages.
     {.id = "roster_page_prev", .label = "<",
-     .x = 263, .y = 15, .w = 14, .h = 10,
+     .x = kBaseCampPagePrevX, .y = 15, .w = kBaseCampPagerWidth, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampPagePrevIndex,
      .nav = {.down = kBaseCampRowBodyBase, .right = kBaseCampPageNextIndex},
      .hidden = true},
     {.id = "roster_page_next", .label = ">",
-     .x = 302, .y = 15, .w = 14, .h = 10,
+     .x = kBaseCampPageNextX, .y = 15, .w = kBaseCampPagerWidth, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampPageNextIndex,
      .nav = {.down = kBaseCampRowBodyBase, .left = kBaseCampPagePrevIndex},
      .hidden = true},
@@ -1952,22 +1996,26 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
              .right = kBaseCampSeatCardBase},
      .hidden = true},
     {.id = "seat_card_0", .label = "",
-     .x = 54, .y = kBaseCampSeatRailY, .w = kBaseCampSeatCardWidth, .h = 10,
+     .x = kBaseCampSeatCardX[0], .y = kBaseCampSeatRailY,
+     .w = kBaseCampSeatCardWidth, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatCardBase,
      .nav = {.left = kBaseCampSeatPagePrevIndex,
              .right = kBaseCampSeatCardBase + 1}},
     {.id = "seat_card_1", .label = "",
-     .x = 112, .y = kBaseCampSeatRailY, .w = kBaseCampSeatCardWidth, .h = 10,
+     .x = kBaseCampSeatCardX[1], .y = kBaseCampSeatRailY,
+     .w = kBaseCampSeatCardWidth, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatCardBase + 1,
      .nav = {.left = kBaseCampSeatCardBase,
              .right = kBaseCampSeatCardBase + 2}},
     {.id = "seat_card_2", .label = "",
-     .x = 170, .y = kBaseCampSeatRailY, .w = kBaseCampSeatCardWidth, .h = 10,
+     .x = kBaseCampSeatCardX[2], .y = kBaseCampSeatRailY,
+     .w = kBaseCampSeatCardWidth, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatCardBase + 2,
      .nav = {.left = kBaseCampSeatCardBase + 1,
              .right = kBaseCampSeatCardBase + 3}},
     {.id = "seat_card_3", .label = "",
-     .x = 228, .y = kBaseCampSeatRailY, .w = kBaseCampSeatCardWidth, .h = 10,
+     .x = kBaseCampSeatCardX[3], .y = kBaseCampSeatRailY,
+     .w = kBaseCampSeatCardWidth, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatCardBase + 3,
      .nav = {.left = kBaseCampSeatCardBase + 2,
              .right = kBaseCampSeatPageNextIndex}},
@@ -1978,7 +2026,8 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
              .left = kBaseCampSeatCardBase + 3},
      .hidden = true},
     {.id = "add_seat", .label = "+",
-     .x = 297, .y = kBaseCampSeatRailY, .w = 14, .h = 10,
+     .x = kBaseCampAddSeatX, .y = kBaseCampSeatRailY,
+     .w = kBaseCampAddSeatWidth, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampAddSeatIndex,
      .nav = {.down = kCreateMenuGoIndex,
              .left = kBaseCampSeatPageNextIndex},
@@ -2904,8 +2953,10 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         // vbutton), so a toggle shows this frame.
         dep.label = (member != nullptr && member->deployed) ? "X" : "";
         dep.no_draw = !own;
-        dep.x = own ? 23 : 12;
-        dep.sizex = own ? 14 : 300;
+        // The foreign hit zone spans the panel: DEPLOY column to right rail.
+        dep.x = own ? kBaseCampDeployColumnX : kBaseCampDeployHeaderX;
+        dep.sizex = own ? kBaseCampDeployColumnWidth
+                        : kBaseCampPanelRightX - kBaseCampDeployHeaderX;
         vbutton* live = og::runtime::current_session->allbuttons_[static_cast<std::size_t>(r)];
         if (live != nullptr) {
             live->label = dep.label;
@@ -3195,8 +3246,11 @@ void base_camp_draw_content(void* screen_state)
     // (round 1 had 10px) — with the pager cluster beside it at y=15.
     strip_text(8, 17, line_b, line_b_color);
 
+    // The "p/N" strip sits in the pager cluster's reserved middle slot;
+    // strip_text backs its text with a 2px pad, so the text starts there.
     if (st != nullptr && st->page.multi_page())
-        strip_text(283, 17, st->page.indicator(), WHITE);
+        strip_text(kBaseCampPageIndicatorX + 2, 17, st->page.indicator(),
+                   WHITE);
 
     // Column headers at y=33: solo keeps CLASS/EXP; networked swaps in the
     // 16-char COMPANY column (§2.5 U7 — CLASS is carried by the family
@@ -3218,7 +3272,7 @@ void base_camp_draw_content(void* screen_state)
         mytext.write_xy(kBaseCampNameColumnX, 33, "NAME", BLACK, 1);
         mytext.write_xy(kBaseCampSoloClassColumnX, 33, "CLASS", BLACK, 1);
         mytext.write_xy(kBaseCampSoloLevelColumnX, 33, "LV", BLACK, 1);
-        mytext.write_xy(kBaseCampSoloExpColumnX, 33, "EXP", BLACK, 1);
+        mytext.write_xy(kBaseCampSoloExpHeaderX, 33, "EXP", BLACK, 1);
     }
 
     // Seat chips overlay the right edge of each compact card after buttons
@@ -3315,10 +3369,11 @@ void base_camp_draw_content(void* screen_state)
         // Row glyphs sit at y+2 — centers the 6px font in the 10px band.
         if (networked) {
             // Foreign rows have no deploy BUTTON (no_draw hit zone): their
-            // deploy state draws as the §2.5 X/- glyph at x=27.
+            // deploy state draws as the §2.5 X/- glyph, on the same column
+            // the button centerer gives the owned rows' X.
             if (!display.owned)
-                mytext.write_xy(27, y + 2, deployed ? "X" : "-",
-                                status_color, 1);
+                mytext.write_xy(kBaseCampDeployGlyphX, y + 2,
+                                deployed ? "X" : "-", status_color, 1);
             const BaseCampNetRowText row = format_base_camp_net_row(
                 member->name, display.company, member->level);
             mytext.write_xy_flat(kBaseCampNameColumnX, y + 2,

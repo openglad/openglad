@@ -162,7 +162,8 @@ int picker_cloud_save_button_count();
 // The command roster at the §9.10.1 grid (round 2: the roster block gains
 // clear top/bottom margins): 8 roster rows/page (deploy toggle at x=23, team
 // color/cycler at x=61, row-body train zone at x=84..297, and move-up at
-// x=300, y=45+14r), the page cluster top-right,
+// x=303, y=45+14r — flush with the panel's right inner edge, like the roster
+// pager '>', the seat rail's '+' and GO), the page cluster top-right,
 // and the bottom command strip BACK | HIRE | SCENARIO | NETWORK | GO at
 // y=178. Spec ordinals group by kind so the MenuSpecRow arg (== ordinal, G3)
 // decodes as row/kind directly. GO is the only host-gated button. Cap-24

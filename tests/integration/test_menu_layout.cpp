@@ -470,7 +470,7 @@ void check_nav_closed_and_reachable(button* buttons, int count,
 // cluster top-right at y=15 beside the relocated line B, and the bottom
 // command strip BACK | HIRE | SCENARIO | NETWORK | GO at y=178. The TRAIN
 // column is DELETED: the TEAM chip (61,y,10,10) cycles team, the row body
-// (84,y,214,10) opens training, and ^ at x=300 moves a member up. Spec
+// (84,y,214,10) opens training, and ^ at x=303 moves a member up. Spec
 // ordinals group by kind (dep
 // 0-7, row body 8-15, team chip 16-23, pagers 24/25, scenario-line 26,
 // strip 27-31, ready twin 32) so MenuSpecRow args decode positionally. The
@@ -518,8 +518,8 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         {"roster_team_5", "", 61, 115, 10, 10, MenuNav{.up = 20, .down = 22, .left = 5, .right = 13}, false, true},
         {"roster_team_6", "", 61, 129, 10, 10, MenuNav{.up = 21, .down = 23, .left = 6, .right = 14}, false, true},
         {"roster_team_7", "", 61, 143, 10, 10, MenuNav{.up = 22, .down = 31, .left = 7, .right = 15}, false, true},
-        {"roster_page_prev", "<", 263, 15, 14, 10, MenuNav{.down = 8, .right = 25}, true},
-        {"roster_page_next", ">", 302, 15, 14, 10, MenuNav{.down = 8, .left = 24}, true},
+        {"roster_page_prev", "<", 258, 15, 14, 10, MenuNav{.down = 8, .right = 25}, true},
+        {"roster_page_next", ">", 298, 15, 14, 10, MenuNav{.down = 8, .left = 24}, true},
         {"scenario_line", "", 6, 14, 208, 12, MenuNav{.down = 29}, false, true},
         {"back", "BACK", 8, 178, 44, 18, MenuNav{.up = 7, .right = 28}, false},
         {"hire_troops", "HIRE", 58, 178, 50, 18, MenuNav{.up = 7, .left = 27, .right = 29}, false},
@@ -545,23 +545,23 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
          MenuNav{.left = 37, .right = 39}, false},
         {"seat_page_next", ">", 287, 164, 8, 10,
          MenuNav{.down = 31, .left = 38}, true},
-        {"add_seat", "+", 297, 164, 14, 10,
+        {"add_seat", "+", 298, 164, 14, 10,
          MenuNav{.down = 31, .left = 39}, false},
-        {"roster_up_0", "^", 300, 45, 9, 10,
+        {"roster_up_0", "^", 303, 45, 9, 10,
          MenuNav{.left = 8}, true},
-        {"roster_up_1", "^", 300, 59, 9, 10,
+        {"roster_up_1", "^", 303, 59, 9, 10,
          MenuNav{.left = 9}, true},
-        {"roster_up_2", "^", 300, 73, 9, 10,
+        {"roster_up_2", "^", 303, 73, 9, 10,
          MenuNav{.left = 10}, true},
-        {"roster_up_3", "^", 300, 87, 9, 10,
+        {"roster_up_3", "^", 303, 87, 9, 10,
          MenuNav{.left = 11}, true},
-        {"roster_up_4", "^", 300, 101, 9, 10,
+        {"roster_up_4", "^", 303, 101, 9, 10,
          MenuNav{.left = 12}, true},
-        {"roster_up_5", "^", 300, 115, 9, 10,
+        {"roster_up_5", "^", 303, 115, 9, 10,
          MenuNav{.left = 13}, true},
-        {"roster_up_6", "^", 300, 129, 9, 10,
+        {"roster_up_6", "^", 303, 129, 9, 10,
          MenuNav{.left = 14}, true},
-        {"roster_up_7", "^", 300, 143, 9, 10,
+        {"roster_up_7", "^", 303, 143, 9, 10,
          MenuNav{.left = 15}, true},
     };
 
@@ -671,6 +671,55 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
 
     save.current_campaign = old_campaign;
     (void)picker_createmenu_buttons();
+}
+
+// The menus skill's layout-discipline rule applied to Base Camp: the exact
+// table above happily pinned a crooked right rail for months (>, ^, + and GO
+// each ended on a different column), so the grid is asserted here as
+// RELATIONS — one right edge, one card pitch, one pager cluster.
+TEST(MenuLayout, createmenu_basecamp_grid_relations)
+{
+    button* buttons = picker_createmenu_buttons();
+    const int count = picker_createmenu_button_count();
+    ASSERT_EQ(kCreateMenuButtonCount, count);
+
+    // (a) The right rail is ONE column: every control that reaches it ends on
+    // GO's right edge, which is the panel's inner face edge (8..311).
+    const button& go = buttons[kCreateMenuGoIndex];
+    const int rail_right = go.x + go.sizex;
+    EXPECT_EQ(312, rail_right) << "GO closes the panel's inner grey face";
+    std::vector<int> rail{kBaseCampPageNextIndex, kBaseCampAddSeatIndex,
+                          kCreateMenuReadyIndex};
+    for (int r = 0; r < kBaseCampRosterRowsPerPage; ++r)
+        rail.push_back(kBaseCampMoveUpBase + r);
+    for (const int index : rail)
+    {
+        const button& b = buttons[index];
+        EXPECT_EQ(rail_right, b.x + b.sizex)
+            << b.id << " must co-terminate with GO on the right rail";
+    }
+
+    // (b) The seat cards are one uniform run: equal widths, equal pitch, one
+    // baseline.
+    for (int card = 0; card + 1 < kBaseCampSeatCardsPerPage; ++card)
+    {
+        const button& left = buttons[kBaseCampSeatCardBase + card];
+        const button& right = buttons[kBaseCampSeatCardBase + card + 1];
+        EXPECT_EQ(58, right.x - left.x) << "seat card pitch at card " << card;
+        EXPECT_EQ(left.sizex, right.sizex)
+            << "seat card width at card " << card;
+        EXPECT_EQ(left.y, right.y) << "seat card baseline at card " << card;
+    }
+
+    // (c) The roster pagers are twins straddling the "p/N" strip: the space
+    // between their faces is exactly the strip's reserved slot (3 glyphs plus
+    // the 2px backing pad on each side) plus one 2px gutter per side.
+    const button& prev = buttons[kBaseCampPagePrevIndex];
+    const button& next = buttons[kBaseCampPageNextIndex];
+    EXPECT_EQ(prev.sizex, next.sizex) << "roster pager faces are one size";
+    EXPECT_EQ(prev.y, next.y) << "roster pagers share the header-B baseline";
+    EXPECT_EQ((3 * 6 + 4) + 2 * 2, next.x - (prev.x + prev.sizex))
+        << "pager cluster: strip slot + a 2px gutter on each side";
 }
 
 // The seat rail has its own four-card pager, independent of the eight-row
