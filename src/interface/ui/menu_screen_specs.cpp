@@ -1826,6 +1826,13 @@ constexpr int kBaseCampFamilySwatchHeight = 8;
 // One seat-card table: the button specs and the chip overlay both index it.
 constexpr int kBaseCampSeatCardWidth = 57;
 constexpr int kBaseCampSeatCardPitch = 58;  // card face + 1px focus gutter
+// The 8x8 numbered team chip drawn on each card's right end, and the #202
+// pointer zone that cycles it in place: the chip plus 2px of grace on its
+// left, running to the card's right edge. Pointer clicks inside the zone
+// cycle the seat's team; the rest of the card (and every coordinate-free
+// activation) opens the seat editor.
+constexpr int kBaseCampSeatChipOffsetX = 48;
+constexpr int kBaseCampSeatChipZoneOffsetX = kBaseCampSeatChipOffsetX - 2;
 constexpr int kBaseCampSeatCardX0 = 54;
 constexpr std::array<int, kBaseCampSeatCardsPerPage> kBaseCampSeatCardX{
     kBaseCampSeatCardX0, kBaseCampSeatCardX0 + kBaseCampSeatCardPitch,
@@ -2664,6 +2671,39 @@ void persist_player_controls()
     cfg.save_settings();
 }
 
+// The ONE seat-team mutation path (#202): the seat editor's TEAM row and
+// the base-camp card's chip zone cycle through the same selectable-team
+// sequence, issue the same lobby request (which carries the sync /
+// ready-withdraw side effects), pop the same denial, and write the same
+// trace.
+Sint32 base_camp_cycle_seat_team(const og::sim::LobbyPlayer& player)
+{
+    const SaveData& save =
+        og::runtime::current_session->myscreen_->save_data;
+    const std::vector<short> teams =
+        base_camp_selectable_seat_teams(save);
+    if (teams.empty())
+        return MENU_OK;
+    const auto current =
+        std::find(teams.begin(), teams.end(), player.team);
+    const short next_team = current == teams.end()
+        ? teams.front()
+        : teams[(static_cast<std::size_t>(
+                      std::distance(teams.begin(), current)) +
+                  1) %
+                teams.size()];
+    if (!picker_lobby_request_seat_team_change(
+            player.player_index, player.seat_id, next_team))
+    {
+        popup_dialog("TEAM", "CHANGE DENIED");
+        return MENU_OK;
+    }
+    TRACE("basecamp", "seat_team player=%d team=%d",
+          static_cast<int>(player.player_index) + 1,
+          static_cast<int>(next_team) + 1);
+    return MENU_OK;
+}
+
 Sint32 seat_settings_on_spec_row(int row, void* screen_state)
 {
     auto* const state =
@@ -2675,32 +2715,8 @@ Sint32 seat_settings_on_spec_row(int row, void* screen_state)
     if (!resolve_seat_settings_player(*state, player))
         return MENU_REDRAW;
 
-    if (row == kSeatSettingsTeamIndex) {
-        const SaveData& save =
-            og::runtime::current_session->myscreen_->save_data;
-        const std::vector<short> teams =
-            base_camp_selectable_seat_teams(save);
-        if (teams.empty())
-            return MENU_OK;
-        const auto current =
-            std::find(teams.begin(), teams.end(), player.team);
-        const short next_team = current == teams.end()
-            ? teams.front()
-            : teams[(static_cast<std::size_t>(
-                          std::distance(teams.begin(), current)) +
-                      1) %
-                    teams.size()];
-        if (!picker_lobby_request_seat_team_change(
-                player.player_index, player.seat_id, next_team))
-        {
-            popup_dialog("TEAM", "CHANGE DENIED");
-            return MENU_OK;
-        }
-        TRACE("basecamp", "seat_team player=%d team=%d",
-              static_cast<int>(player.player_index) + 1,
-              static_cast<int>(next_team) + 1);
-        return MENU_OK;
-    }
+    if (row == kSeatSettingsTeamIndex)
+        return base_camp_cycle_seat_team(player);
 
     if (row == kSeatSettingsModeIndex) {
         (void)toggle_player_control_mode(state->local_slot);
@@ -3346,7 +3362,8 @@ void base_camp_draw_content(void* screen_state)
                 static_cast<int>(seat.team), 0,
                 static_cast<int>(SCORE_TEAM_COUNT) - 1);
             const int chip_x =
-                kBaseCampSeatCardX[static_cast<std::size_t>(card)] + 48;
+                kBaseCampSeatCardX[static_cast<std::size_t>(card)] +
+                kBaseCampSeatChipOffsetX;
             game->fastbox(chip_x, kBaseCampSeatRailY + 1, 8, 8, PURE_BLACK);
             game->fastbox(
                 chip_x + 1, kBaseCampSeatRailY + 2, 6, 6,
@@ -3621,6 +3638,27 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
         if (picker_lobby_local_seat_count() == 0) {
             popup_dialog("SPECTATOR", "PRESS + TO ADD A PLAYER");
             return MENU_OK;
+        }
+
+        // #202: a pointer click on the card's team-square region cycles the
+        // seat's team in place through the seat editor's exact mutation
+        // path. Keyboard FIRE / hotkey dispatches stamp menu_click_x = -1
+        // and fall through to the editor, as do clicks on the P#/name
+        // region. Non-editable seats never reach here (the ownership and
+        // spectator gates above popped already).
+        {
+            const int card_x =
+                kBaseCampSeatCardX[static_cast<std::size_t>(card)];
+            const int click_x = pks().menu_click_x;
+            if (click_x >= card_x + kBaseCampSeatChipZoneOffsetX &&
+                click_x < card_x + kBaseCampSeatCardWidth)
+            {
+                const Sint32 chip_ret = base_camp_cycle_seat_team(seat);
+                // Same-frame chip digit: the card overlay draws from
+                // st->seats, so re-collect before this frame's content pass.
+                base_camp_refresh_rows(*st);
+                return chip_ret;
+            }
         }
 
         const Sint32 ret = run_seat_settings_menu(seat, local_slot);
