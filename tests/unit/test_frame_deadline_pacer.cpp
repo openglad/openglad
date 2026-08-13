@@ -4,6 +4,7 @@
 #include <openglad/core/runtime_trace.h>
 #include <openglad/core/util.h>
 
+#include <chrono>
 #include <cstdint>
 #include <vector>
 
@@ -252,6 +253,97 @@ TEST(FrameDeadlinePacer, ResetReanchorsDeadline)
     EXPECT_FALSE(d.run_tick);
     EXPECT_EQ(d.sleep_ms, 14u);
     EXPECT_EQ(d.next_deadline_ms, 114u);
+}
+
+// The demo sim period: 6 timer_wait ticks of 13600 us.
+constexpr std::chrono::microseconds kSimPeriod{81600};
+constexpr int kMaxCatchup = 8;
+
+TEST(FixedStepAccumulator, SeededConstructionTicksOnFirstAdvance)
+{
+    og::core::FixedStepAccumulator acc{kSimPeriod, kMaxCatchup};
+
+    const auto first = acc.advance(std::chrono::microseconds{0});
+    EXPECT_EQ(first.ticks, 1);
+    EXPECT_EQ(first.dropped_ticks, 0);
+
+    // The seed is spent: no time has passed, so nothing more is due.
+    const auto second = acc.advance(std::chrono::microseconds{0});
+    EXPECT_EQ(second.ticks, 0);
+    EXPECT_EQ(second.dropped_ticks, 0);
+}
+
+TEST(FixedStepAccumulator, FullPeriodTicksOnceAndLeavesNoRemainder)
+{
+    og::core::FixedStepAccumulator acc{kSimPeriod, kMaxCatchup};
+    ASSERT_EQ(acc.advance(std::chrono::microseconds{0}).ticks, 1);
+
+    const auto due = acc.advance(kSimPeriod);
+    EXPECT_EQ(due.ticks, 1);
+    EXPECT_EQ(due.dropped_ticks, 0);
+
+    // One microsecond short of the next period must not tick; the final
+    // microsecond must — proving the previous call consumed exactly one period.
+    EXPECT_EQ(acc.advance(kSimPeriod - std::chrono::microseconds{1}).ticks, 0);
+    EXPECT_EQ(acc.advance(std::chrono::microseconds{1}).ticks, 1);
+}
+
+TEST(FixedStepAccumulator, FractionalElapsedCarriesAcrossCalls)
+{
+    og::core::FixedStepAccumulator acc{kSimPeriod, kMaxCatchup};
+    ASSERT_EQ(acc.advance(std::chrono::microseconds{0}).ticks, 1);
+
+    const auto half = kSimPeriod / 2;
+    const auto first = acc.advance(half);
+    EXPECT_EQ(first.ticks, 0);
+    EXPECT_EQ(first.dropped_ticks, 0);
+
+    const auto second = acc.advance(half);
+    EXPECT_EQ(second.ticks, 1);
+    EXPECT_EQ(second.dropped_ticks, 0);
+}
+
+TEST(FixedStepAccumulator, StallBeyondCatchupDropsAndClearsBacklog)
+{
+    og::core::FixedStepAccumulator acc{kSimPeriod, kMaxCatchup};
+
+    // Seeded period + 10 elapsed periods = 11 due, 3 beyond the catch-up bound.
+    const auto stalled = acc.advance(10 * kSimPeriod);
+    EXPECT_EQ(stalled.ticks, kMaxCatchup);
+    EXPECT_EQ(stalled.dropped_ticks, 3);
+
+    // The dropped backlog is gone: the next period starts from zero.
+    EXPECT_EQ(acc.advance(std::chrono::microseconds{1000}).ticks, 0);
+    EXPECT_EQ(acc.advance(kSimPeriod - std::chrono::microseconds{1000}).ticks, 1);
+}
+
+TEST(FixedStepAccumulator, ResetRestoresSeededState)
+{
+    og::core::FixedStepAccumulator acc{kSimPeriod, kMaxCatchup};
+    ASSERT_EQ(acc.advance(std::chrono::microseconds{0}).ticks, 1);
+    ASSERT_EQ(acc.advance(kSimPeriod / 2).ticks, 0);
+
+    acc.reset();
+
+    const auto first = acc.advance(std::chrono::microseconds{0});
+    EXPECT_EQ(first.ticks, 1);
+    EXPECT_EQ(first.dropped_ticks, 0);
+
+    // The half period banked before reset() was discarded, not carried over.
+    EXPECT_EQ(acc.advance(kSimPeriod / 2).ticks, 0);
+}
+
+TEST(FixedStepAccumulator, NonPositivePeriodClampsToOneMicrosecond)
+{
+    og::core::FixedStepAccumulator acc{std::chrono::microseconds{0}, kMaxCatchup};
+
+    // A zero period would divide by zero; clamped to 1 us, 100 us of elapsed
+    // time owes 100 ticks and so saturates the catch-up bound.
+    EXPECT_EQ(acc.advance(std::chrono::microseconds{0}).ticks, 1);
+
+    const auto stalled = acc.advance(std::chrono::microseconds{100});
+    EXPECT_EQ(stalled.ticks, kMaxCatchup);
+    EXPECT_EQ(stalled.dropped_ticks, 92);
 }
 
 } // namespace

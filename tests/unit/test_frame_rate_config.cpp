@@ -92,6 +92,30 @@ TEST_F(FrameRateConfigTest, RoundTrip)
     EXPECT_EQ(og::core::target_fps_from_cfg(cfg), og::core::kDefaultTargetFps);
 }
 
+TEST_F(FrameRateConfigTest, UncappedSentinelParses)
+{
+    cfg.apply_setting("graphics", "target_fps", "0");
+    EXPECT_EQ(og::core::target_fps_from_cfg(cfg), og::core::kUncappedTargetFps);
+
+    cfg.apply_setting("graphics", "target_fps", "-3");
+    EXPECT_EQ(og::core::target_fps_from_cfg(cfg), og::core::kUncappedTargetFps);
+
+    // Adjacent positive values still clamp up to the minimum cap.
+    cfg.apply_setting("graphics", "target_fps", "1");
+    EXPECT_EQ(og::core::target_fps_from_cfg(cfg), og::core::kMinTargetFps);
+}
+
+TEST_F(FrameRateConfigTest, ApplyPreservesUncappedSentinel)
+{
+    og::core::apply_target_fps_to_cfg(cfg, 0);
+    EXPECT_EQ(cfg.get_setting("graphics", "target_fps"), "0");
+    EXPECT_EQ(og::core::target_fps_from_cfg(cfg), og::core::kUncappedTargetFps);
+
+    og::core::apply_target_fps_to_cfg(cfg, -5);
+    EXPECT_EQ(cfg.get_setting("graphics", "target_fps"), "0");
+    EXPECT_EQ(og::core::target_fps_from_cfg(cfg), og::core::kUncappedTargetFps);
+}
+
 TEST(FrameRateConfigInterval, RoundsHalfUp)
 {
     EXPECT_EQ(og::core::target_frame_interval_ms(72), 14u);

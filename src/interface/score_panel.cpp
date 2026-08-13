@@ -39,6 +39,13 @@
 #include <string_view>
 #include <vector>
 
+// HUD-only randomness (the score count-up easing below), drawn once per
+// rendered frame: this is the session-scope RNG — a per-session SeededRandom in
+// demo sessions, the production RNG in the main game. It must never be the
+// authoritative world.rng_ gameplay stream, which gameplay draws reach through
+// walker_rng() (that prefers world->rng_ whenever gameplay is active). The two
+// streams staying distinct is what lets the panel redraw at any frame rate
+// without moving a single gameplay outcome.
 static inline Uint32 rng(Uint32 max_exclusive)
 {
     return ctx().rng->next(max_exclusive);

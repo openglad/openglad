@@ -1232,7 +1232,6 @@ void sdl_video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 y
 			rect.y = cury;
 			rect.w = 1;
 			rect.h = 1;
-			Log("test\n");
 			SDL_FillSurfaceRect(E_Screen->render,&rect,static_cast<Uint32>(color));
 		}
     	}

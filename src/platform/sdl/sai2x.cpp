@@ -801,11 +801,11 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
     // game away to black. Request the SDL2-default opaque context everywhere.
     SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
 
-    #ifdef TESTING
     renderer = SDL_CreateRenderer(window, nullptr);
-    #else
-    renderer = SDL_CreateRenderer(window, nullptr);
-    SDL_SetRenderVSync(renderer, 1);
+    if (renderer == nullptr)
+        LogError("SDL_CreateRenderer failed: {}\n", SDL_GetError());
+    #ifndef TESTING
+    SDL_SetRenderVSync(renderer, vsync_enabled_ ? 1 : 0);
     #endif
 
 	SDL_GetWindowSize(window, &w, &h);
@@ -838,6 +838,17 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
     // set_world_zoom() replaces this with the requested world-only filter.
     // The initial nearest engine keeps boot/UI presentation byte-identical.
     world_engine_ = engine;
+}
+
+void Screen::set_vsync(bool on)
+{
+	// Stored even under TESTING (which never touches SDL vsync at all):
+	// both renderer-creation sites replay this member.
+	vsync_enabled_ = on;
+	#ifndef TESTING
+	if (renderer != nullptr)
+		SDL_SetRenderVSync(renderer, on ? 1 : 0);
+	#endif
 }
 
 Screen::~Screen()
@@ -1416,7 +1427,7 @@ bool Screen::recreate_render_backend()
 		return false;
 	}
 	#ifndef TESTING
-	SDL_SetRenderVSync(renderer, 1);
+	SDL_SetRenderVSync(renderer, vsync_enabled_ ? 1 : 0);
 	#endif
 
 	// Constructor parity for the fixed 320x200 UI texture: opaque present,

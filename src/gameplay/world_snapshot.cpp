@@ -14,7 +14,9 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cassert>
+#include <cstddef>
 #include <cstring>
 #include <limits>
 #include <stdexcept>
@@ -272,12 +274,6 @@ void append_i32(std::vector<std::uint8_t>& buffer, std::int32_t value)
     append_u32(buffer, static_cast<std::uint32_t>(value));
 }
 
-void append_u64(std::vector<std::uint8_t>& buffer, std::uint64_t value)
-{
-    for (int i = 0; i < 8; ++i)
-        buffer.push_back(static_cast<std::uint8_t>((value >> (i * 8)) & 0xffu));
-}
-
 void append_f32(std::vector<std::uint8_t>& buffer, float value)
 {
     std::uint32_t bits = 0;
@@ -306,51 +302,223 @@ void append_string(std::vector<std::uint8_t>& buffer, const std::string& value)
                  value.size());
 }
 
-bool mask_has_bit(const std::uint64_t* mask, std::uint8_t bit_index) noexcept
+// Mask bits at or above og::dirty::FIELD_COUNT name no field. Keyframe
+// captures set every bit of both words, so the walk below drops them exactly
+// like the ascending 0..FIELD_COUNT loop it replaced.
+constexpr std::array<std::uint64_t, og::sim::kEntitySnapshotDirtyMaskWords>
+build_dirty_mask_valid_bits()
 {
-    return (mask[bit_index / 64] & (1ULL << (bit_index % 64))) != 0;
+    std::array<std::uint64_t, og::sim::kEntitySnapshotDirtyMaskWords> words{};
+    for (std::size_t word = 0; word < words.size(); ++word)
+    {
+        const std::size_t low_bit = word * 64;
+        if (low_bit >= og::dirty::FIELD_COUNT)
+            continue;
+
+        const std::size_t count = og::dirty::FIELD_COUNT - low_bit;
+        words[word] = (count >= 64) ? ~0ULL : ((1ULL << count) - 1ULL);
+    }
+    return words;
 }
 
+constexpr auto kDirtyMaskValidBits = build_dirty_mask_valid_bits();
+
+// Visits the set field bits in ascending index order -- the order every
+// serialized entity record is pinned to.
+template <typename Visitor>
+void for_each_dirty_field_bit(const std::uint64_t* mask, Visitor&& visit)
+{
+    for (std::size_t word = 0; word < og::sim::kEntitySnapshotDirtyMaskWords; ++word)
+    {
+        std::uint64_t bits = mask[word] & kDirtyMaskValidBits[word];
+        while (bits != 0)
+        {
+            const std::size_t bit_offset =
+                static_cast<std::size_t>(std::countr_zero(bits));
+            bits &= bits - 1;
+            visit(static_cast<std::uint8_t>(word * 64 + bit_offset));
+        }
+    }
+}
+
+constexpr std::array<const og::sim::EntitySnapshotFieldDesc*, og::dirty::FIELD_COUNT>
+build_field_desc_by_bit()
+{
+    std::array<const og::sim::EntitySnapshotFieldDesc*, og::dirty::FIELD_COUNT> table{};
+    for (const og::sim::EntitySnapshotFieldDesc& desc : og::sim::kEntitySnapshotFields)
+        table[desc.bit_index] = &desc;
+    return table;
+}
+
+constexpr auto kFieldDescByBit = build_field_desc_by_bit();
+
+// Manual bits (and out-of-range indices) stay null, the same miss the table
+// scan this replaced reported.
 const og::sim::EntitySnapshotFieldDesc* find_field_desc(std::uint8_t bit_index)
 {
-    const auto it = std::find_if(
-        std::begin(og::sim::kEntitySnapshotFields),
-        std::end(og::sim::kEntitySnapshotFields),
-        [bit_index](const og::sim::EntitySnapshotFieldDesc& desc) {
-            return desc.bit_index == bit_index;
-        });
-    return it == std::end(og::sim::kEntitySnapshotFields) ? nullptr : &*it;
+    return (bit_index < og::dirty::FIELD_COUNT) ? kFieldDescByBit[bit_index] : nullptr;
 }
 
-void append_raw_trivial_field(std::vector<std::uint8_t>& buffer,
-                              const void* src,
-                              std::size_t size)
+// One wire write: `size` bytes read out of the EntitySnapshot at `offset` and
+// emitted little-endian.
+struct EntityFieldWriteStep
+{
+    std::uint16_t offset = 0;
+    std::uint8_t size = 0;
+};
+
+constexpr std::size_t kEntityFieldStepCapacity =
+    og::sim::kEntitySnapshotTrackedFieldCount + NUM_SPECIALS;
+
+struct EntityFieldWirePlan
+{
+    std::array<EntityFieldWriteStep, kEntityFieldStepCapacity> steps{};
+    // Slice of `steps` a dirty bit contributes, and the bytes it emits.
+    std::array<std::uint16_t, og::dirty::FIELD_COUNT> step_start{};
+    std::array<std::uint8_t, og::dirty::FIELD_COUNT> step_count{};
+    std::array<std::uint8_t, og::dirty::FIELD_COUNT> wire_bytes{};
+    std::size_t all_fields_bytes = 0;
+};
+
+// Flattens the per-bit rules into offset/size writes: the entity-id bit rides
+// the record header and emits no field bytes, the two manual bits live outside
+// kEntitySnapshotFields, and the special-cost array expands to one write per
+// element so every step is a single scalar.
+constexpr EntityFieldWirePlan build_entity_field_wire_plan()
+{
+    EntityFieldWirePlan plan{};
+    std::uint16_t next_step = 0;
+    for (std::uint8_t bit = 0; bit < og::dirty::FIELD_COUNT; ++bit)
+    {
+        plan.step_start[bit] = next_step;
+        if (bit == og::dirty::BIT_ENTITY_ID)
+            continue;
+
+        if (bit == og::dirty::BIT_SPECIAL_COST)
+        {
+            for (std::size_t i = 0; i < NUM_SPECIALS; ++i)
+            {
+                plan.steps[next_step++] = {
+                    static_cast<std::uint16_t>(
+                        offsetof(og::sim::EntitySnapshot, special_cost) +
+                        i * sizeof(std::uint16_t)),
+                    static_cast<std::uint8_t>(sizeof(std::uint16_t))};
+            }
+            plan.step_count[bit] = static_cast<std::uint8_t>(NUM_SPECIALS);
+        }
+        else if (bit == og::dirty::BIT_REGEN_DELAY)
+        {
+            plan.steps[next_step++] = {
+                static_cast<std::uint16_t>(
+                    offsetof(og::sim::EntitySnapshot, regen_delay)),
+                static_cast<std::uint8_t>(sizeof(std::int32_t))};
+            plan.step_count[bit] = 1;
+        }
+        else if (bit == og::dirty::BIT_DO_BOUNCE)
+        {
+            plan.steps[next_step++] = {
+                static_cast<std::uint16_t>(
+                    offsetof(og::sim::EntitySnapshot, do_bounce)),
+                static_cast<std::uint8_t>(sizeof(std::int32_t))};
+            plan.step_count[bit] = 1;
+        }
+        else
+        {
+            const og::sim::EntitySnapshotFieldDesc* const desc = kFieldDescByBit[bit];
+            plan.steps[next_step++] = {desc->snap_offset, desc->size};
+            plan.step_count[bit] = 1;
+        }
+
+        for (std::uint16_t i = 0; i < plan.step_count[bit]; ++i)
+        {
+            plan.wire_bytes[bit] = static_cast<std::uint8_t>(
+                plan.wire_bytes[bit] +
+                plan.steps[plan.step_start[bit] + i].size);
+        }
+        plan.all_fields_bytes += plan.wire_bytes[bit];
+    }
+    return plan;
+}
+
+constexpr EntityFieldWirePlan kEntityFieldWirePlan = build_entity_field_wire_plan();
+
+constexpr bool entity_field_wire_plan_is_valid()
+{
+    std::size_t total_steps = 0;
+    for (std::uint8_t bit = 0; bit < og::dirty::FIELD_COUNT; ++bit)
+    {
+        total_steps += kEntityFieldWirePlan.step_count[bit];
+
+        std::size_t bytes = 0;
+        for (std::uint16_t i = 0; i < kEntityFieldWirePlan.step_count[bit]; ++i)
+        {
+            const EntityFieldWriteStep& step =
+                kEntityFieldWirePlan.steps[kEntityFieldWirePlan.step_start[bit] + i];
+            if (step.size != 1 && step.size != 2 && step.size != 4 && step.size != 8)
+                return false;
+            if (static_cast<std::size_t>(step.offset) + step.size >
+                sizeof(og::sim::EntitySnapshot))
+                return false;
+            bytes += step.size;
+        }
+
+        if (bytes != kEntityFieldWirePlan.wire_bytes[bit])
+            return false;
+    }
+
+    return total_steps <= kEntityFieldStepCapacity;
+}
+
+static_assert(entity_field_wire_plan_is_valid(),
+              "entity field wire plan drift -- every step must be an in-bounds "
+              "1/2/4/8-byte EntitySnapshot read");
+
+std::uint8_t* write_u32_le(std::uint8_t* out, std::uint32_t value)
+{
+    out[0] = static_cast<std::uint8_t>(value & 0xffu);
+    out[1] = static_cast<std::uint8_t>((value >> 8) & 0xffu);
+    out[2] = static_cast<std::uint8_t>((value >> 16) & 0xffu);
+    out[3] = static_cast<std::uint8_t>((value >> 24) & 0xffu);
+    return out + 4;
+}
+
+std::uint8_t* write_u64_le(std::uint8_t* out, std::uint64_t value)
+{
+    for (int i = 0; i < 8; ++i)
+        out[i] = static_cast<std::uint8_t>((value >> (i * 8)) & 0xffu);
+    return out + 8;
+}
+
+// Host byte order never reaches the wire: every scalar is composed
+// little-endian byte by byte, exactly as the append_* writers do.
+std::uint8_t* write_field_le(std::uint8_t* out,
+                             const std::uint8_t* src,
+                             std::uint8_t size)
 {
     switch (size)
     {
     case 1:
-        append_u8(buffer, *static_cast<const std::uint8_t*>(src));
-        return;
+        out[0] = *src;
+        return out + 1;
     case 2:
     {
         std::uint16_t value = 0;
         std::memcpy(&value, src, sizeof(value));
-        append_u16(buffer, value);
-        return;
+        out[0] = static_cast<std::uint8_t>(value & 0xffu);
+        out[1] = static_cast<std::uint8_t>((value >> 8) & 0xffu);
+        return out + 2;
     }
     case 4:
     {
         std::uint32_t value = 0;
         std::memcpy(&value, src, sizeof(value));
-        append_u32(buffer, value);
-        return;
+        return write_u32_le(out, value);
     }
     case 8:
     {
         std::uint64_t value = 0;
         std::memcpy(&value, src, sizeof(value));
-        append_u64(buffer, value);
-        return;
+        return write_u64_le(out, value);
     }
     default:
         throw std::runtime_error("snapshot serialization: unsupported field size");
@@ -393,39 +561,6 @@ void read_raw_trivial_field(ByteReader& reader,
     }
 }
 
-void serialize_entity_field(std::vector<std::uint8_t>& buffer,
-                            const og::sim::EntitySnapshot& snapshot,
-                            std::uint8_t bit_index)
-{
-    switch (bit_index)
-    {
-    case og::dirty::BIT_ENTITY_ID:
-        return;
-    case og::dirty::BIT_REGEN_DELAY:
-        append_i32(buffer, snapshot.regen_delay);
-        return;
-    case og::dirty::BIT_SPECIAL_COST:
-        for (int i = 0; i < NUM_SPECIALS; ++i)
-            append_u16(buffer, snapshot.special_cost[i]);
-        return;
-    case og::dirty::BIT_DO_BOUNCE:
-        append_i32(buffer, snapshot.do_bounce);
-        return;
-    default:
-        break;
-    }
-
-    const og::sim::EntitySnapshotFieldDesc* const field = find_field_desc(bit_index);
-    if (field == nullptr)
-    {
-        throw std::runtime_error("snapshot serialization: unknown entity field bit");
-    }
-
-    const std::uint8_t* const src =
-        reinterpret_cast<const std::uint8_t*>(&snapshot) + field->snap_offset;
-    append_raw_trivial_field(buffer, src, field->size);
-}
-
 void deserialize_entity_field(ByteReader& reader,
                               og::sim::EntitySnapshot& snapshot,
                               std::uint8_t bit_index)
@@ -459,28 +594,42 @@ void deserialize_entity_field(ByteReader& reader,
     read_raw_trivial_field(reader, dst, field->size, "entity.field");
 }
 
-void serialize_entity_fields(std::vector<std::uint8_t>& buffer,
-                             const og::sim::EntitySnapshot& snapshot,
-                             const std::uint64_t* dirty_mask)
+std::size_t entity_fields_wire_size(const std::uint64_t* dirty_mask)
 {
-    for (std::uint8_t bit = 0; bit < og::dirty::FIELD_COUNT; ++bit)
-    {
-        if (!mask_has_bit(dirty_mask, bit))
-            continue;
-        serialize_entity_field(buffer, snapshot, bit);
-    }
+    std::size_t total = 0;
+    for_each_dirty_field_bit(dirty_mask, [&total](std::uint8_t bit) {
+        total += kEntityFieldWirePlan.wire_bytes[bit];
+    });
+    return total;
+}
+
+// Writes exactly entity_fields_wire_size(dirty_mask) bytes at `out`.
+std::uint8_t* write_entity_fields(std::uint8_t* out,
+                                  const og::sim::EntitySnapshot& snapshot,
+                                  const std::uint64_t* dirty_mask)
+{
+    const std::uint8_t* const base =
+        reinterpret_cast<const std::uint8_t*>(&snapshot);
+    for_each_dirty_field_bit(dirty_mask, [&out, base](std::uint8_t bit) {
+        const std::uint16_t start = kEntityFieldWirePlan.step_start[bit];
+        const std::uint8_t count = kEntityFieldWirePlan.step_count[bit];
+        for (std::uint8_t i = 0; i < count; ++i)
+        {
+            const EntityFieldWriteStep& step =
+                kEntityFieldWirePlan.steps[start + i];
+            out = write_field_le(out, base + step.offset, step.size);
+        }
+    });
+    return out;
 }
 
 void deserialize_entity_fields(ByteReader& reader,
                                og::sim::EntitySnapshot& snapshot,
                                const std::uint64_t* dirty_mask)
 {
-    for (std::uint8_t bit = 0; bit < og::dirty::FIELD_COUNT; ++bit)
-    {
-        if (!mask_has_bit(dirty_mask, bit))
-            continue;
+    for_each_dirty_field_bit(dirty_mask, [&reader, &snapshot](std::uint8_t bit) {
         deserialize_entity_field(reader, snapshot, bit);
-    }
+    });
 }
 
 void copy_entity_field(og::sim::EntitySnapshot& dst,
@@ -516,12 +665,9 @@ void copy_entity_field(og::sim::EntitySnapshot& dst,
 void apply_entity_delta_fields(og::sim::EntitySnapshot& baseline,
                                const og::sim::EntitySnapshot& delta)
 {
-    for (std::uint8_t bit = 0; bit < og::dirty::FIELD_COUNT; ++bit)
-    {
-        if (!mask_has_bit(delta.dirty_mask, bit))
-            continue;
+    for_each_dirty_field_bit(delta.dirty_mask, [&baseline, &delta](std::uint8_t bit) {
         copy_entity_field(baseline, delta, bit);
-    }
+    });
 }
 
 void serialize_guy_snapshot(std::vector<std::uint8_t>& buffer,
@@ -791,8 +937,11 @@ void deserialize_match_knobs(ByteReader& reader,
         reader.read_i16("world.ctf_requested_strip_scenario_troops");
 }
 
+// `snapshot_hash` is passed in rather than read off the snapshot: the hash
+// payload serializes the same world block with the field zeroed.
 void serialize_world_state(std::vector<std::uint8_t>& buffer,
-                           const og::sim::WorldSnapshot& snapshot)
+                           const og::sim::WorldSnapshot& snapshot,
+                           std::uint32_t snapshot_hash)
 {
     append_u32(buffer, snapshot.tick_count);
     append_u32(buffer, snapshot.rng_state);
@@ -820,7 +969,7 @@ void serialize_world_state(std::vector<std::uint8_t>& buffer,
     append_bool(buffer, snapshot.paused);
     append_u8(buffer, snapshot.pause_player_index);
     append_u8(buffer, snapshot.weather);
-    append_u32(buffer, snapshot.snapshot_hash);
+    append_u32(buffer, snapshot_hash);
     // Snapshot v10 block order: respawn engine, scripted-mode state, match
     // knobs. The raw payload-offset pins in test_mode_snapshot.cpp key off
     // this order.
@@ -1031,12 +1180,26 @@ void deserialize_guy_snapshots(ByteReader& reader,
         snapshots.push_back(deserialize_guy_snapshot(reader));
 }
 
+// guy_id + entity_id + flags + both dirty words: the widest record header.
+constexpr std::size_t kEntityRecordHeaderMaxBytes =
+    2 * sizeof(std::uint32_t) + 1 + 2 * sizeof(std::uint64_t);
+constexpr std::size_t kEntityRecordScratchBytes =
+    kEntityRecordHeaderMaxBytes + kEntityFieldWirePlan.all_fields_bytes;
+constexpr std::size_t kKeyframeEntityRecordBytes =
+    2 * sizeof(std::uint32_t) + kEntityFieldWirePlan.all_fields_bytes;
+
+// Records are composed in a stack scratch buffer and appended with one copy:
+// the per-tick snapshot hash serializes every field of every entity, where
+// byte-at-a-time appends dominated. Only the bytes written are appended.
 void serialize_keyframe_entity(std::vector<std::uint8_t>& buffer,
                                const og::sim::EntitySnapshot& snapshot)
 {
-    append_i32(buffer, snapshot.guy_id);
-    append_u32(buffer, snapshot.entity_id);
-    serialize_entity_fields(buffer, snapshot, kAllEntityFieldsDirty.data());
+    std::array<std::uint8_t, kEntityRecordScratchBytes> scratch;
+    std::uint8_t* out = scratch.data();
+    out = write_u32_le(out, static_cast<std::uint32_t>(snapshot.guy_id));
+    out = write_u32_le(out, snapshot.entity_id);
+    out = write_entity_fields(out, snapshot, kAllEntityFieldsDirty.data());
+    buffer.insert(buffer.end(), scratch.data(), out);
 }
 
 og::sim::EntitySnapshot deserialize_keyframe_entity(ByteReader& reader)
@@ -1050,21 +1213,32 @@ og::sim::EntitySnapshot deserialize_keyframe_entity(ByteReader& reader)
     return snapshot;
 }
 
+std::size_t delta_entity_wire_size(const og::sim::EntitySnapshot& snapshot)
+{
+    std::size_t total = 2 * sizeof(std::uint32_t) + 1 + sizeof(std::uint64_t);
+    if (snapshot.dirty_mask[1] != 0)
+        total += sizeof(std::uint64_t);
+    return total + entity_fields_wire_size(snapshot.dirty_mask);
+}
+
 void serialize_delta_entity(std::vector<std::uint8_t>& buffer,
                             const og::sim::EntitySnapshot& snapshot)
 {
-    append_i32(buffer, snapshot.guy_id);
-    append_u32(buffer, snapshot.entity_id);
+    std::array<std::uint8_t, kEntityRecordScratchBytes> scratch;
+    std::uint8_t* out = scratch.data();
+    out = write_u32_le(out, static_cast<std::uint32_t>(snapshot.guy_id));
+    out = write_u32_le(out, snapshot.entity_id);
 
     std::uint8_t flags = 0;
     if (snapshot.dirty_mask[1] != 0)
         flags |= kDeltaEntityHasDirtyWord1Flag;
-    append_u8(buffer, flags);
-    append_u64(buffer, snapshot.dirty_mask[0]);
+    *out++ = flags;
+    out = write_u64_le(out, snapshot.dirty_mask[0]);
     if ((flags & kDeltaEntityHasDirtyWord1Flag) != 0)
-        append_u64(buffer, snapshot.dirty_mask[1]);
+        out = write_u64_le(out, snapshot.dirty_mask[1]);
 
-    serialize_entity_fields(buffer, snapshot, snapshot.dirty_mask);
+    out = write_entity_fields(out, snapshot, snapshot.dirty_mask);
+    buffer.insert(buffer.end(), scratch.data(), out);
 }
 
 og::sim::EntitySnapshot deserialize_delta_entity(ByteReader& reader)
@@ -1095,6 +1269,9 @@ void serialize_keyframe_entity_list(std::vector<std::uint8_t>& buffer,
         throw std::runtime_error("snapshot serialization: too many entities");
     }
 
+    // Keyframe records are fixed size, so this is the exact final length.
+    buffer.reserve(buffer.size() + sizeof(std::uint32_t) +
+                   entities.size() * kKeyframeEntityRecordBytes);
     append_u32(buffer, static_cast<std::uint32_t>(entities.size()));
     for (const auto& entity : entities)
         serialize_keyframe_entity(buffer, entity);
@@ -1119,6 +1296,11 @@ void serialize_delta_entity_list(std::vector<std::uint8_t>& buffer,
     {
         throw std::runtime_error("delta serialization: too many entities");
     }
+
+    std::size_t list_bytes = sizeof(std::uint32_t);
+    for (const auto& entity : entities)
+        list_bytes += delta_entity_wire_size(entity);
+    buffer.reserve(buffer.size() + list_bytes);
 
     append_u32(buffer, static_cast<std::uint32_t>(entities.size()));
     for (const auto& entity : entities)
@@ -1211,11 +1393,32 @@ std::vector<std::uint8_t> decompress_zlib_payload(const std::uint8_t* data,
     return output;
 }
 
+// Growth hints only -- the payload's exact length comes from the blocks
+// themselves. The scalar allowance covers the fixed world/respawn/mode/grid
+// header blocks; the guy allowance covers a fixed record plus a short name.
+constexpr std::size_t kSnapshotScalarBlockReserve = 1024;
+constexpr std::size_t kGuySnapshotReserveBytes = 96;
+constexpr std::size_t kGridDirtyTileWireBytes = 5;
+
+std::size_t snapshot_payload_reserve_hint(const og::sim::WorldSnapshot& snapshot,
+                                          std::size_t grid_bytes)
+{
+    return kSnapshotScalarBlockReserve + grid_bytes +
+           snapshot.grid_dirty_tiles.size() * kGridDirtyTileWireBytes +
+           snapshot.guy_snapshots.size() * kGuySnapshotReserveBytes +
+           (snapshot.oblist.size() + snapshot.fxlist.size() +
+            snapshot.weaplist.size()) *
+               kKeyframeEntityRecordBytes +
+           snapshot.removed_entity_ids.size() * sizeof(std::uint32_t);
+}
+
 std::vector<std::uint8_t> serialize_snapshot_payload(const og::sim::WorldSnapshot& snapshot)
 {
     std::vector<std::uint8_t> payload;
+    payload.reserve(snapshot_payload_reserve_hint(
+        snapshot, snapshot.full_grid_data.size()));
     append_u8(payload, og::sim::kSnapshotFormatVersion);
-    serialize_world_state(payload, snapshot);
+    serialize_world_state(payload, snapshot, snapshot.snapshot_hash);
     serialize_grid_state(payload, snapshot);
     serialize_guy_snapshots(payload, snapshot.guy_snapshots);
     serialize_keyframe_entity_list(payload, snapshot.oblist);
@@ -1233,24 +1436,60 @@ std::vector<std::uint8_t> serialize_snapshot_payload(const og::sim::WorldSnapsho
     return payload;
 }
 
+// The normalized grid is either fully materialized (dirty + full resend, no
+// dirty tiles) or absent entirely, so it always satisfies the checks
+// serialize_grid_state runs and the block is written straight out.
+void serialize_hash_grid_block(std::vector<std::uint8_t>& buffer,
+                               std::uint8_t width,
+                               std::uint8_t height,
+                               const std::uint8_t* data,
+                               std::size_t size)
+{
+    const bool materialized =
+        width != 0 && height != 0 && size == grid_cell_count(width, height);
+
+    append_u8(buffer, width);
+    append_u8(buffer, height);
+    append_bool(buffer, materialized);
+    append_bool(buffer, materialized);
+    append_u32(buffer, materialized ? static_cast<std::uint32_t>(size) : 0U);
+    if (materialized)
+        append_bytes(buffer, data, size);
+    append_u32(buffer, 0U);
+}
+
+// The hash payload is the keyframe payload with the volatile parts
+// normalized away: hash field zeroed, removed ids dropped, grid materialized
+// from the world when the snapshot carries only an incremental update.
+// Emitted directly rather than through a normalized COPY of the snapshot --
+// the copy duplicated every entity vector on the per-tick capture path.
 std::vector<std::uint8_t> serialize_snapshot_payload_for_hash(
     const og::sim::WorldSnapshot& snapshot,
     const GameWorld* world = nullptr)
 {
-    og::sim::WorldSnapshot normalized = snapshot;
-    normalized.snapshot_hash = 0;
-    normalized.removed_entity_ids.clear();
-    if (!has_materialized_grid(normalized) && world != nullptr && world->grid.valid())
+    std::uint8_t grid_width = snapshot.grid_width;
+    std::uint8_t grid_height = snapshot.grid_height;
+    const std::uint8_t* grid_data = snapshot.full_grid_data.data();
+    std::size_t grid_size = snapshot.full_grid_data.size();
+    if (!has_materialized_grid(snapshot) && world != nullptr && world->grid.valid())
     {
-        normalized.grid_width = world->grid.w;
-        normalized.grid_height = world->grid.h;
-        const std::size_t grid_size =
-            static_cast<std::size_t>(world->grid.w) * world->grid.h;
-        normalized.full_grid_data.assign(world->grid.data.get(),
-                                         world->grid.data.get() + grid_size);
+        grid_width = world->grid.w;
+        grid_height = world->grid.h;
+        grid_data = world->grid.data.get();
+        grid_size = static_cast<std::size_t>(world->grid.w) * world->grid.h;
     }
-    normalize_materialized_grid(normalized);
-    return serialize_snapshot_payload(normalized);
+
+    std::vector<std::uint8_t> payload;
+    payload.reserve(snapshot_payload_reserve_hint(snapshot, grid_size));
+    append_u8(payload, og::sim::kSnapshotFormatVersion);
+    serialize_world_state(payload, snapshot, 0U);
+    serialize_hash_grid_block(payload, grid_width, grid_height, grid_data, grid_size);
+    serialize_guy_snapshots(payload, snapshot.guy_snapshots);
+    serialize_keyframe_entity_list(payload, snapshot.oblist);
+    serialize_keyframe_entity_list(payload, snapshot.fxlist);
+    serialize_keyframe_entity_list(payload, snapshot.weaplist);
+    append_u32(payload, 0U);
+    return payload;
 }
 
 std::uint32_t compute_snapshot_hash_impl(const og::sim::WorldSnapshot& snapshot,
@@ -1305,8 +1544,12 @@ og::sim::WorldSnapshot deserialize_snapshot_payload(const std::vector<std::uint8
 std::vector<std::uint8_t> serialize_delta_payload(const og::sim::WorldSnapshot& delta)
 {
     std::vector<std::uint8_t> payload;
+    // Growth hint for the scalar blocks; the entity lists reserve exactly.
+    payload.reserve(kSnapshotScalarBlockReserve + delta.full_grid_data.size() +
+                    delta.grid_dirty_tiles.size() * kGridDirtyTileWireBytes +
+                    delta.guy_snapshots.size() * kGuySnapshotReserveBytes);
     append_u8(payload, og::sim::kSnapshotFormatVersion);
-    serialize_world_state(payload, delta);
+    serialize_world_state(payload, delta, delta.snapshot_hash);
     serialize_grid_state(payload, delta);
     serialize_guy_snapshots(payload, delta.guy_snapshots);
     serialize_delta_entity_list(payload, delta.oblist);
@@ -1376,6 +1619,10 @@ void apply_delta_entity_list(std::vector<og::sim::EntitySnapshot>& target,
                              const std::vector<og::sim::EntitySnapshot>& delta_entities,
                              std::vector<std::uint32_t>& removed_entity_ids)
 {
+    // Upper bound on the entities this pass can append to `target`, so the
+    // push_backs below never reallocate mid-loop.
+    target.reserve(target.size() + delta_entities.size());
+
     for (const auto& delta_entity : delta_entities)
     {
         if (entity_delta_is_removal(delta_entity))

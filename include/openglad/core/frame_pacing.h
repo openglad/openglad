@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 
 namespace og::core {
@@ -51,6 +52,31 @@ private:
     std::uint32_t interval_ms_ = 0;
     std::uint32_t next_deadline_ms_ = 0;
     bool initialized_ = false;
+};
+
+// Wall-clock fixed-step scheduler for caller-managed loops (openglad_demo).
+// Seeded one full period so the first advance() fires a tick immediately.
+// On a stall longer than max_catchup periods the backlog is dropped and
+// reported, mirroring FrameDeadlinePacer's slip-resync policy.
+class FixedStepAccumulator
+{
+public:
+    FixedStepAccumulator(std::chrono::microseconds period, int max_catchup);
+
+    struct Result
+    {
+        int ticks = 0;
+        int dropped_ticks = 0;
+    };
+
+    [[nodiscard]] Result advance(std::chrono::microseconds elapsed);
+    // Back to the seeded state: the next advance() ticks at once.
+    void reset();
+
+private:
+    std::chrono::microseconds period_;
+    int max_catchup_ = 0;
+    std::chrono::microseconds accumulated_;
 };
 
 } // namespace og::core

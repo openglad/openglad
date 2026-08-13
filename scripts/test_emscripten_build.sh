@@ -58,6 +58,25 @@ rm -f "$EM_CONFIG_FILE"
 EM_CONFIG="$EM_CONFIG_FILE" "$EMCC_BIN" --generate-config >/dev/null
 
 sed -i '/^CACHE = /d;/^PORTS = /d' "$EM_CONFIG_FILE"
+
+# --generate-config guesses system tool locations (LLVM_ROOT=/usr/bin). Under
+# an emsdk install the toolchain lives in $EMSDK/upstream and node ships inside
+# the SDK, so the isolated config must be pointed there explicitly or every
+# compile fails with "cannot find /usr/bin/llvm-ar".
+if [[ -n "${EMSDK:-}" ]] && [[ -d "$EMSDK/upstream/bin" ]]; then
+    sed -i '/^LLVM_ROOT = /d;/^BINARYEN_ROOT = /d' "$EM_CONFIG_FILE"
+    cat >>"$EM_CONFIG_FILE" <<EOF
+LLVM_ROOT = '$EMSDK/upstream/bin'
+BINARYEN_ROOT = '$EMSDK/upstream'
+EOF
+    # `|| true`: an emsdk without a bundled node (system-node layouts) must
+    # fall through, not abort the script via set -e/pipefail.
+    emsdk_node="$(ls -d "$EMSDK"/node/*/bin/node 2>/dev/null | head -1 || true)"
+    if [[ -n "$emsdk_node" ]]; then
+        sed -i '/^NODE_JS = /d' "$EM_CONFIG_FILE"
+        printf "NODE_JS = '%s'\n" "$emsdk_node" >>"$EM_CONFIG_FILE"
+    fi
+fi
 printf '\n' >>"$EM_CONFIG_FILE"
 cat >>"$EM_CONFIG_FILE" <<EOF
 CACHE = '$EM_CACHE_DIR' # directory

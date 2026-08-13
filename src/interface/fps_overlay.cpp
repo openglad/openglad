@@ -13,19 +13,6 @@
 #include <format>
 #include <string>
 
-namespace {
-
-struct FpsCounter {
-    static constexpr std::size_t kCap = 256;
-    static constexpr std::uint64_t kWindowMs = 500;
-    std::array<std::uint64_t, kCap> ts{};
-    std::size_t head = 0;
-    std::size_t size = 0;
-    std::uint64_t first_seen_ms = 0;
-    bool initialized = false;
-    int update(std::uint64_t now_ms);
-};
-
 int FpsCounter::update(std::uint64_t now_ms)
 {
     if (!initialized)
@@ -60,8 +47,6 @@ int FpsCounter::update(std::uint64_t now_ms)
     }
     return static_cast<int>(size * 1000 / kWindowMs);
 }
-
-} // namespace
 
 // new_score_panel draws the TEAM/FOES counter in the top-right corner of the
 // top viewport; counter_bottom_y is that box's bottom edge (it grows with the

@@ -164,6 +164,16 @@ std::uint32_t render_interval_ms_for_session()
         1u, og::core::target_frame_interval_ms(target_fps));
 }
 
+// Uncapped sentinel (target_fps <= 0): render on every loop pass and leave
+// render_pacer unconfigured (interval_ms() stays 0). Sessionless callers keep
+// the capped default.
+bool render_uncapped_for_session()
+{
+    return og::runtime::current_session != nullptr &&
+           og::runtime::current_session->target_fps_ <=
+               og::core::kUncappedTargetFps;
+}
+
 og::runtime::GameSession* require_local_transport_session()
 {
     og::runtime::GameSession* const gameplay_session =
@@ -394,21 +404,29 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
     {
         const TickSchedule schedule = compute_tick_schedule(s, deps);
         const std::uint32_t sim_interval = schedule.interval_ms;
-        const std::uint32_t render_interval = render_interval_ms_for_session();
         const std::uint32_t now = now_ms_fn();
         if (st.sim_pacer.interval_ms() != sim_interval)
             st.sim_pacer.configure(sim_interval, now);
-        if (deps.enable_render &&
-            st.render_pacer.interval_ms() != render_interval)
-            st.render_pacer.configure(render_interval, now);
+
+        const bool uncapped_render =
+            deps.enable_render && render_uncapped_for_session();
+        if (deps.enable_render && !uncapped_render)
+        {
+            const std::uint32_t render_interval =
+                render_interval_ms_for_session();
+            if (st.render_pacer.interval_ms() != render_interval)
+                st.render_pacer.configure(render_interval, now);
+        }
 
         const og::core::FrameDeadlineDecision sim_decision =
             st.sim_pacer.tick(now);
         const og::core::FrameDeadlineDecision render_decision =
-            deps.enable_render
-                ? st.render_pacer.tick(now)
-                : og::core::FrameDeadlineDecision{
-                      false, false, UINT32_MAX, 0u};
+            !deps.enable_render
+                ? og::core::FrameDeadlineDecision{
+                      false, false, UINT32_MAX, 0u}
+                : uncapped_render
+                      ? og::core::FrameDeadlineDecision{false, true, 0u, 0u}
+                      : st.render_pacer.tick(now);
 
         if (!sim_decision.run_tick && !render_decision.run_render)
         {

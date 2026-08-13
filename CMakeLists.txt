@@ -794,8 +794,8 @@ if(NOT EMSCRIPTEN)
     endif()
 
     # --- openglad_demo (multi-session demo) ---
-    # Runs 12 concurrent AI-controlled game sessions in a 4x3 grid,
-    # demonstrating the de-singletonized engine.
+    # Runs 24 concurrent AI-controlled game sessions in a 6x4 grid scaled to
+    # fill the display, demonstrating the de-singletonized engine.
     add_executable(openglad_demo ${SRC_DIR}/platform/sdl/demo.cpp)
     configure_openglad_library(openglad_demo)
     configure_openglad_sdl_target(openglad_demo)
