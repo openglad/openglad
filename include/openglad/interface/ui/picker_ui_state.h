@@ -115,6 +115,8 @@ struct PickerState {
     std::vector<button> company_backups_buttons;
     // #155 CLOUD SAVE subscreen — engine screen.
     std::vector<button> cloud_save_buttons;
+    // #168 full-screen HELP — engine screen.
+    std::vector<button> help_buttons;
 
     // MATCHUP subscreen: roster slot selected by the legacy local guy row.
     int teams_menu_guy_slot = 0;

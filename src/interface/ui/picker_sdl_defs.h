@@ -156,6 +156,9 @@ int picker_company_backups_button_count();
 // #155 CLOUD SAVE subscreen — engine screen.
 button* picker_cloud_save_buttons();
 int picker_cloud_save_button_count();
+// #168 full-screen HELP — engine screen.
+button* picker_help_buttons();
+int picker_help_button_count();
 
 // --- Base camp (team build) layout contract (design §2.5 as amended §9.5,
 // regridded §9.10) -----------------------------------------------------------
@@ -414,6 +417,46 @@ inline constexpr int kViewScenarioBackIndex = 0;
 inline constexpr int kViewScenarioPrevIndex = 1;
 inline constexpr int kViewScenarioNextIndex = 2;
 inline constexpr int kViewScenarioRowsPerPage = 23;
+
+// --- HELP (full-screen, #168) layout contract --------------------------------
+// The screen is three bands: the tab strip (three tab buttons on one
+// baseline), the content frame (paged help text), and the command band
+// (BACK bottom-left, PREV/NEXT bottom-right on the VIEW LEVEL footer
+// geometry, with the key-hint and version strings between them). Every rect
+// in the spec and every draw in help.cpp derives from these constants.
+inline constexpr int kHelpMenuControlsTabIndex = 0;
+inline constexpr int kHelpMenuClassesTabIndex = 1;
+inline constexpr int kHelpMenuEditorTabIndex = 2;
+inline constexpr int kHelpMenuBackIndex = 3;
+inline constexpr int kHelpMenuPrevIndex = 4;
+inline constexpr int kHelpMenuNextIndex = 5;
+// Tab strip: y=2..17 faces, 70px wide on a 75px pitch from x=5 (the frame's
+// left edge), leaving a 2px underline row (y=18..19) for the active tab.
+inline constexpr int kHelpTabY = 2;
+inline constexpr int kHelpTabWidth = 70;
+inline constexpr int kHelpTabHeight = 15;
+inline constexpr int kHelpTabPitch = 75;
+// Content frame and text grid: text rows at y = kHelpTextTop + i*7; the
+// frame's right edge closes the 50-char flow budget (help_char_budget).
+// The tab column derives from the frame's left edge so the strip and the
+// frame share that column.
+inline constexpr int kHelpFrameLeft = 5;
+constexpr int kHelpTabX(int tab) { return kHelpFrameLeft + tab * kHelpTabPitch; }
+inline constexpr int kHelpFrameTop = 20;
+inline constexpr int kHelpFrameRight = 314;
+inline constexpr int kHelpFrameBottom = 160;
+inline constexpr int kHelpTextX = 10;
+inline constexpr int kHelpTextTop = 28;
+inline constexpr int kHelpLinePitch = 7;
+inline constexpr int kHelpLinesPerPage = 18;
+// Command band (BACK/PREV/NEXT share the VIEW LEVEL footer geometry).
+inline constexpr int kHelpFooterY = 170;
+inline constexpr int kHelpBackX = 10;
+inline constexpr int kHelpBackWidth = 44;
+inline constexpr int kHelpPrevX = 220;
+inline constexpr int kHelpNextX = 270;
+inline constexpr int kHelpPagerWidth = 40;
+inline constexpr int kHelpFooterHeight = 20;
 
 // --- GRAPHICS FX subscreen layout contract ----------------------------------
 // Positional index of the depth-selector cycle row (id "depth_fx") in

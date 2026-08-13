@@ -1007,6 +1007,59 @@ TEST(UxShots, m_basecamp_many_seats_and_matchup) {
   ASSERT_EQ(3, state.captures);
 }
 
+// --- 13. full-screen help (#168): all three tabs plus a paged state -------
+
+int help_screen_injector(void *data) {
+  og::runtime::ensure_thread_session();
+  ShotState *state = static_cast<ShotState *>(data);
+  wait_for_interactable("help", 5000);
+  SDL_Delay(1500); // FadeWithInitialDraw settle on the main menu
+  interact("help");
+  if (wait_for_interactable("help_tab_classes", 5000)) {
+    SDL_Delay(500);
+    state->captures += capture_frame("help_controls");
+    if (wait_for_interactable("help_page_next", 2000)) {
+      SDL_Delay(300);
+      interact("help_page_next");
+      SDL_Delay(500);
+      state->captures += capture_frame("help_controls_p2");
+    }
+    SDL_Delay(300);
+    interact("help_tab_classes");
+    SDL_Delay(500);
+    state->captures += capture_frame("help_classes");
+    SDL_Delay(300);
+    interact("help_tab_editor");
+    SDL_Delay(500);
+    state->captures += capture_frame("help_editor");
+    SDL_Delay(300);
+    interact("help_back");
+  }
+  if (wait_for_interactable("begin_new_game", 10000)) {
+    SDL_Delay(750);
+    interact("quit");
+  }
+  state->finished = true;
+  return 0;
+}
+
+TEST(UxShots, n_help_screen) {
+  trace_clear();
+  reap_all_companies();
+  ShotState state;
+  SDL_Thread *thread =
+      SDL_CreateThread(help_screen_injector, "ux_help", &state);
+  ASSERT_TRUE(thread != nullptr);
+  g_picker_mainmenu_calls = 0;
+  g_picker_max_mainmenu_calls = 2;
+  picker_main(0, nullptr);
+  SDL_WaitThread(thread, nullptr);
+  cleanup_picker_state();
+  g_picker_max_mainmenu_calls = 0;
+  ASSERT_TRUE(state.finished);
+  ASSERT_EQ(4, state.captures);
+}
+
 TEST(UxShots, i_basecamp_paged) {
   trace_clear();
   CompanySlotCleanup cleanup{{"save0"}};

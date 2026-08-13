@@ -260,6 +260,7 @@ enum class MenuScreenId : std::uint8_t {
     Scenario,
     Teams,
     Networking,
+    Help,
     Count,
 };
 
@@ -280,6 +281,11 @@ const MenuScreenSpec& hire_menu_screen_spec();
 const MenuScreenSpec& train_menu_screen_spec();
 const MenuScreenSpec& progress_menu_screen_spec();
 const MenuScreenSpec& view_scenario_menu_screen_spec();
+
+// #168 full-screen HELP: three content tabs over a paged text frame. The
+// tab/pager state lives in help.cpp behind a file-static pointer (the VIEW
+// LEVEL idiom); show_general_help() is the blocking wrapper.
+const MenuScreenSpec& help_menu_screen_spec();
 
 // The MP and no-MP main-menu specs share the same geometry.
 // DISABLE_MULTIPLAYER selects the compiled variant (including the

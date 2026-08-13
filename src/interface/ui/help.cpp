@@ -36,6 +36,8 @@
 #include <openglad/resources/og_file.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/game_context.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
+#include "picker_sdl_defs.h"
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #define YIELD_SLEEP(ms) emscripten_sleep(ms)
@@ -610,8 +612,6 @@ enum class HelpTab {
 	NumTabs = 3
 };
 
-static const char* tab_names[] = { "Controls", "Classes", "Editor" };
-
 // Helper struct to hold tab content reference
 struct TabContent {
 	const char** static_lines;           // For controls (static array)
@@ -666,255 +666,229 @@ static const char* get_content_line(const TabContent& content, int index)
 	return "";
 }
 
-// Tab button dimensions
-inline constexpr Sint32 TAB_Y = 20;
-inline constexpr Sint32 TAB_HEIGHT = 12;
-inline constexpr Sint32 TAB_WIDTH = 58;
-inline constexpr Sint32 TAB_SPACING = 2;
-inline constexpr Sint32 TAB_START_X = HELPTEXT_LEFT + 10;
-inline constexpr Sint32 CONTENT_TOP = TAB_Y + TAB_HEIGHT + 4;  // Content starts below tabs
+// ---------------------------------------------------------------------------
+// Full-screen HELP (#168): engine-hosted. The spec (tab strip, BACK, and the
+// PREV/NEXT pagers on the shared layout constants in picker_sdl_defs.h)
+// lives in menu_screen_specs.cpp; the hooks below own the content — the
+// active tab's flowed lines and its PageModel — through a file-static
+// pointer (the VIEW LEVEL idiom: the rewire and state-override signatures
+// carry no screen_state). Null state = no open screen (the bare engine
+// sweeps) and presents the single-page shape: pagers hidden, BACK's
+// right-link closed.
+
+// Flow budget of the content frame: glyphs start at kHelpTextX and the
+// frame's right edge sits at kHelpFrameRight, so the box width feeding
+// help_char_budget is their distance (304px -> 50 chars; 10 + 50*6 = 310
+// keeps the widest line inside the frame bevel).
+inline constexpr int kHelpTextBoxWidth = kHelpFrameRight - kHelpTextX;
+
+// Footer ink between BACK and the pagers: the key-hint row, the version
+// row, and the right-aligned "p/N" page indicator.
+inline constexpr int kHelpFooterBarLeft = kHelpBackX + kHelpBackWidth + 2;
+inline constexpr int kHelpFooterBarRight = kHelpPrevX - 3;
+inline constexpr int kHelpFooterTextX = kHelpFooterBarLeft + 2;
+inline constexpr int kHelpFooterHintY = kHelpFooterY + 2;
+inline constexpr int kHelpFooterVersionY = kHelpFooterY + 11;
+
+namespace
+{
+struct HelpScreenState
+{
+	og::ui::PageModel pager;
+	std::vector<std::string> lines;  // active tab, flowed to the frame budget
+	HelpTab tab = HelpTab::Controls;
+};
+
+HelpScreenState* g_help_screen_state = nullptr;
+
+#ifdef TESTING
+std::atomic<int> s_help_active_tab{0};
+std::atomic<int> s_help_page{0};
+
+void help_publish_probes(const HelpScreenState& state)
+{
+	s_help_active_tab.store(static_cast<int>(state.tab),
+	                        std::memory_order_release);
+	s_help_page.store(state.pager.page, std::memory_order_release);
+}
+#endif
+
+std::vector<std::string> help_flow_tab_lines(HelpTab tab)
+{
+	const TabContent content = get_tab_content(tab);
+	std::list<std::string> source;
+	for (int i = 0; i < content.num_lines; i++)
+		source.push_back(get_content_line(content, i));
+	// HardBreaks keeps authored line breaks and the ASCII heading rules
+	// intact; only over-budget lines re-wrap (issue #152's fix, retargeted
+	// from the 39-char dialog to the full-width frame).
+	return og::core::wrap_lines(source, help_char_budget(kHelpTextBoxWidth));
+}
+
+// Reflow and reset the pager. Re-selecting the active tab keeps the page
+// (the legacy switch-only-when-different behavior); `force` seeds entry.
+void help_switch_tab(HelpScreenState& state, HelpTab tab, bool force = false)
+{
+	if (!force && state.tab == tab)
+		return;
+	state.tab = tab;
+	state.lines = help_flow_tab_lines(tab);
+	state.pager = og::ui::PageModel::make(static_cast<int>(state.lines.size()),
+	                                      kHelpLinesPerPage);
+#ifdef TESTING
+	help_publish_probes(state);
+#endif
+}
+} // namespace
+
+// PREV/NEXT visibility: hidden while the active tab fits one page (and for
+// the bare-sweep null state).
+og::ui::RowState help_engine_pager_row_state(
+    const og::ui::MenuLabelContext& /*context*/)
+{
+	const HelpScreenState* const state = g_help_screen_state;
+	return (state != nullptr && state->pager.multi_page())
+	    ? og::ui::RowState::Visible
+	    : og::ui::RowState::Hidden;
+}
+
+// Nav closure over the hidden pagers, re-asserted per frame over the static
+// base link (the VIEW LEVEL shape).
+void help_engine_rewire(button* buttons, int num_buttons,
+                        int& /*highlighted_button*/)
+{
+	if (num_buttons <= kHelpMenuBackIndex)
+		return;
+	const HelpScreenState* const state = g_help_screen_state;
+	const bool multi_page = state != nullptr && state->pager.multi_page();
+	buttons[kHelpMenuBackIndex].nav.right =
+	    multi_page ? kHelpMenuPrevIndex : -1;
+}
+
+// G3 generic row dispatch: the tab rows and pagers all carry
+// ButtonAction::MenuSpecRow (arg == spec ordinal), so mouse clicks, keyboard
+// FIRE, and the 1/2/3 + PageUp/PageDown hotkeys land here.
+Sint32 help_engine_on_spec_row(int row, void* /*screen_state*/)
+{
+	HelpScreenState* const state = g_help_screen_state;
+	if (state == nullptr)
+		return 0;
+	switch (row)
+	{
+	case kHelpMenuControlsTabIndex:
+		help_switch_tab(*state, HelpTab::Controls);
+		break;
+	case kHelpMenuClassesTabIndex:
+		help_switch_tab(*state, HelpTab::Classes);
+		break;
+	case kHelpMenuEditorTabIndex:
+		help_switch_tab(*state, HelpTab::Editor);
+		break;
+	case kHelpMenuPrevIndex:
+		(void)state->pager.step(-1);
+		break;
+	case kHelpMenuNextIndex:
+		(void)state->pager.step(1);
+		break;
+	default:
+		break;
+	}
+#ifdef TESTING
+	help_publish_probes(*state);
+#endif
+	return 0;
+}
+
+// Mouse wheel pages the active tab: the engine loop polls every ~10ms, so
+// one notch's accumulated delta maps to one page step.
+bool help_engine_frame_tick(void* /*screen_state*/, int /*frame*/)
+{
+	HelpScreenState* const state = g_help_screen_state;
+	if (state == nullptr)
+		return true;
+	const short scroll_delta = get_and_reset_scroll_amount();
+	if (scroll_delta < 0)
+		(void)state->pager.step(1);
+	else if (scroll_delta > 0)
+		(void)state->pager.step(-1);
+#ifdef TESTING
+	help_publish_probes(*state);
+#endif
+	return true;
+}
+
+// Content pass (after draw_buttons; every rect here stays outside the
+// button bands): active-tab underline, the framed page of text, and the
+// footer bar with the key hint, the version string — the ONLY build-version
+// surface on web — and the page indicator.
+void help_engine_draw_content(void* /*screen_state*/)
+{
+	const HelpScreenState* const state = g_help_screen_state;
+	if (state == nullptr)
+		return;
+	screen* const scr = og::runtime::current_session->myscreen_;
+	text& mytext = scr->text_normal;
+
+	// Active-tab underline in the 2px gap between the strip and the frame.
+	const int tab_x = kHelpTabX(static_cast<int>(state->tab));
+	scr->draw_text_bar(tab_x + 1, kHelpTabY + kHelpTabHeight + 1,
+	                   tab_x + kHelpTabWidth - 1, kHelpFrameTop - 1);
+
+	// Content frame and the current page of flowed text.
+	scr->draw_button(kHelpFrameLeft, kHelpFrameTop, kHelpFrameRight,
+	                 kHelpFrameBottom, 3, 1);
+	const int first_line = state->pager.first_index();
+	for (int line_index = first_line; line_index < state->pager.end_index();
+	     ++line_index)
+	{
+		mytext.write_xy(kHelpTextX,
+		                static_cast<short>(kHelpTextTop +
+		                    (line_index - first_line) * kHelpLinePitch),
+		                state->lines[static_cast<std::size_t>(line_index)].c_str(),
+		                static_cast<unsigned char>(DARK_BLUE), 1);
+	}
+
+	// Footer bar between BACK and the pagers.
+	scr->draw_text_bar(kHelpFooterBarLeft, kHelpFooterY, kHelpFooterBarRight,
+	                   kHelpFooterY + kHelpFooterHeight - 1);
+	mytext.write_xy(kHelpFooterTextX, kHelpFooterHintY,
+	                og::input::kWebBackKeyMode ? "1/2/3:Tab  BKSP:Exit"
+	                                           : "1/2/3:Tab  ESC:Exit",
+	                static_cast<unsigned char>(RED), 1);
+	const std::string version =
+	    std::format("GLADIATOR v{}", OPENGLAD_VERSION_STRING);
+	mytext.write_xy(kHelpFooterTextX, kHelpFooterVersionY, version.c_str(),
+	                static_cast<unsigned char>(RED), 1);
+	if (state->pager.multi_page())
+	{
+		const std::string indicator = state->pager.indicator();
+		mytext.write_xy(
+		    kHelpFooterBarRight - 1 - static_cast<int>(indicator.size()) * 6,
+		    kHelpFooterVersionY, indicator.c_str(),
+		    static_cast<unsigned char>(RED), 1);
+	}
+}
 
 Sint32 show_general_help()
 {
 	// Load help files from disk (only loads once)
 	load_help_files();
 
-	HelpTab current_tab = HelpTab::Controls;
-	TabContent current_content = get_tab_content(current_tab);
+	HelpScreenState state;
+	help_switch_tab(state, HelpTab::Controls, true);
 
-	// Flow each tab's lines to the 39-char frame budget (issue #152); the
-	// user-editable help files and the three over-budget Controls lines wrap
-	// instead of painting past the dialog bevel. HardBreaks preserves the
-	// tab's ASCII tables.
-	const auto flow_tab_lines = [](const TabContent& content) {
-		std::list<std::string> source;
-		for (int i = 0; i < content.num_lines; i++)
-			source.push_back(get_content_line(content, i));
-		return og::core::wrap_lines(source, help_char_budget(240));
-	};
-	std::vector<std::string> flowed_lines = flow_tab_lines(current_content);
+	og::runtime::current_session->myscreen_->clearbuffer();
+	// A wheel notch queued before entry must not page the first frame.
+	(void)get_and_reset_scroll_amount();
 
-	Sint32 screenlines = static_cast<Sint32>(flowed_lines.size()) * 8;
-	Sint32 j;
-	Sint32 linesdown;
-	Sint32 changed;
-	Sint32 templines;
-	KeyRepeat gh_page_down_key, gh_page_up_key;
+	g_help_screen_state = &state;
+	(void)og::ui::run_menu_screen(og::ui::help_menu_screen_spec(), &state);
+	g_help_screen_state = nullptr;
 
-	text& mytext = og::runtime::current_session->myscreen_->text_normal;
-	Sint32 bottomrow = (screenlines - ((DISPLAY_LINES-1)*8));
-	if (bottomrow < 0) bottomrow = 0;
+	og::runtime::current_session->myscreen_->clearbuffer();
 
-	// Lambda to update content when tab changes
-	auto switch_tab = [&](HelpTab new_tab) {
-		current_tab = new_tab;
-		current_content = get_tab_content(current_tab);
-		flowed_lines = flow_tab_lines(current_content);
-		screenlines = static_cast<Sint32>(flowed_lines.size()) * 8;
-		bottomrow = (screenlines - ((DISPLAY_LINES-1)*8));
-		if (bottomrow < 0) bottomrow = 0;
-		linesdown = 0;
-		changed = 1;
-	};
-
-	clear_keyboard();
-	linesdown = 0;
-	changed = 1;
-
-	// Track previous mouse state for click detection
-	bool prev_mouse_left = false;
-
-	// Key-state polling preserves held-key behavior. The key-event latch also
-	// catches a short Escape press (including the web Back-key remap) that begins
-	// and ends between two frames. Do not use input_continue here: ordinary
-	// mouse-down events set that shared modal latch too, including tab clicks.
-	while (!og::runtime::current_session->keystates_[KEYSTATE_ESCAPE] &&
-	       !(query_key_press_event() && query_key() == KEYCODE_ESCAPE))
-	{
-		YIELD_SLEEP(10);
-		get_input_events(POLL);
-
-		// Handle mouse clicks on tabs
-		MouseState& mymouse = query_mouse_no_poll();
-		bool mouse_clicked = mymouse.left && !prev_mouse_left;
-		prev_mouse_left = mymouse.left;
-
-			if (mouse_clicked)
-			{
-				const int mx = static_cast<int>(mymouse.x);
-				const int my = static_cast<int>(mymouse.y);
-
-			// Check if click is in tab area
-			if (my >= TAB_Y && my <= TAB_Y + TAB_HEIGHT)
-			{
-				for (int t = 0; t < static_cast<int>(HelpTab::NumTabs); t++)
-				{
-					int tab_x = TAB_START_X + t * (TAB_WIDTH + TAB_SPACING);
-					if (mx >= tab_x && mx <= tab_x + TAB_WIDTH)
-					{
-						if (static_cast<HelpTab>(t) != current_tab)
-						{
-							switch_tab(static_cast<HelpTab>(t));
-						}
-						break;
-					}
-				}
-			}
-		}
-
-		// Handle keyboard tab switching (1, 2, 3 keys)
-		static bool key1_was_pressed = false;
-		static bool key2_was_pressed = false;
-		static bool key3_was_pressed = false;
-
-		if (og::runtime::current_session->keystates_[KEYSTATE_1] && !key1_was_pressed && current_tab != HelpTab::Controls)
-		{
-			switch_tab(HelpTab::Controls);
-		}
-		key1_was_pressed = og::runtime::current_session->keystates_[KEYSTATE_1];
-
-		if (og::runtime::current_session->keystates_[KEYSTATE_2] && !key2_was_pressed && current_tab != HelpTab::Classes)
-		{
-			switch_tab(HelpTab::Classes);
-		}
-		key2_was_pressed = og::runtime::current_session->keystates_[KEYSTATE_2];
-
-		if (og::runtime::current_session->keystates_[KEYSTATE_3] && !key3_was_pressed && current_tab != HelpTab::Editor)
-		{
-			switch_tab(HelpTab::Editor);
-		}
-		key3_was_pressed = og::runtime::current_session->keystates_[KEYSTATE_3];
-
-		short scroll_delta = get_and_reset_scroll_amount();
-		if (scroll_delta < 0 && linesdown < bottomrow)
-		{
-			while(linesdown < bottomrow && scroll_delta != 0)
-			{
-				linesdown++;
-				scroll_delta++;
-			}
-			changed = 1;
-		}
-
-		bool gh_page_down_held =
-			og::runtime::current_session->keystates_[KEYSTATE_PAGEDOWN];
-		bool gh_page_up_held =
-			og::runtime::current_session->keystates_[KEYSTATE_PAGEUP];
-#ifdef TESTING
-		gh_page_down_held = gh_page_down_held ||
-			s_help_test_page_down.load(std::memory_order_acquire);
-		gh_page_up_held = gh_page_up_held ||
-			s_help_test_page_up.load(std::memory_order_acquire);
-#endif
-		// Edge-triggered with hold-repeat (issue #156): the old phase-modulo
-		// gate swallowed short PageUp/PageDown taps here too.
-		if (key_repeat_fired(gh_page_down_key, gh_page_down_held,
-		                     query_timer(), kKeyFirstDelayTicks,
-		                     kPageRepeatTicks) &&
-		    linesdown < bottomrow)
-		{
-			templines = linesdown + (DISPLAY_LINES * 7);
-			if (templines > bottomrow)
-				templines = bottomrow;
-			if (linesdown != templines)
-			{
-				linesdown = templines;
-				changed = 1;
-			}
-		}
-
-		if (scroll_delta > 0 && linesdown)
-		{
-			while(linesdown && scroll_delta != 0)
-			{
-				linesdown--;
-				scroll_delta--;
-			}
-			changed = 1;
-		}
-
-		if (key_repeat_fired(gh_page_up_key, gh_page_up_held, query_timer(),
-		                     kKeyFirstDelayTicks, kPageRepeatTicks) &&
-		    linesdown)
-		{
-			linesdown -= (DISPLAY_LINES * 7);
-			if (linesdown < 0)
-				linesdown = 0;
-			changed = 1;
-		}
-
-		if (changed)
-		{
-			templines = linesdown/8;
-
-			// Calculate content area dimensions
-			int content_text_top = CONTENT_TOP + 8;  // Where text starts (after title bar)
-			int content_bottom = content_text_top + (DISPLAY_LINES * 7) + 10;
-
-			// Draw the main dialog background (covers everything)
-			og::runtime::current_session->myscreen_->draw_button(HELPTEXT_LEFT-4, TAB_Y-4,
-			                      HELPTEXT_LEFT+240, content_bottom + 8, 3, 1);
-
-			// Draw tabs
-			for (int t = 0; t < static_cast<int>(HelpTab::NumTabs); t++)
-			{
-				int tab_x = TAB_START_X + t * (TAB_WIDTH + TAB_SPACING);
-
-				// Draw tab button
-				og::runtime::current_session->myscreen_->draw_button(tab_x, TAB_Y, tab_x + TAB_WIDTH, TAB_Y + TAB_HEIGHT, 1, 1);
-
-				// Highlight selected tab by drawing over bottom edge
-				if (static_cast<HelpTab>(t) == current_tab)
-				{
-					og::runtime::current_session->myscreen_->draw_text_bar(tab_x + 1, TAB_Y + TAB_HEIGHT - 1,
-					                        tab_x + TAB_WIDTH - 1, TAB_Y + TAB_HEIGHT);
-				}
-
-				// Draw tab label
-				int label_len = static_cast<int>(strlen(tab_names[t]));
-				int label_x = tab_x + (TAB_WIDTH - label_len * 6) / 2;
-				mytext.write_xy(label_x, TAB_Y + 3, tab_names[t],
-				                (static_cast<HelpTab>(t) == current_tab) ? static_cast<unsigned char>(DARK_BLUE) : static_cast<unsigned char>(BLACK), 1);
-			}
-
-			// Draw content area (below tabs)
-			og::runtime::current_session->myscreen_->draw_button(HELPTEXT_LEFT-4, CONTENT_TOP,
-			                      HELPTEXT_LEFT+240, content_bottom + 8, 3, 1);
-
-			// Draw content text
-			for (j=0; j < DISPLAY_LINES; j++)
-			{
-				int line_idx = j + templines;
-				if (line_idx >= 0 &&
-				    line_idx < static_cast<int>(flowed_lines.size()))
-				{
-					int text_y = content_text_top + (j * 7) - (linesdown % 8);
-					mytext.write_xy(HELPTEXT_LEFT+2, static_cast<short>(text_y),
-					                flowed_lines[static_cast<std::size_t>(line_idx)].c_str(),
-					                static_cast<unsigned char>(DARK_BLUE), 1);
-				}
-			}
-
-			// Draw title bar (top of content area)
-			og::runtime::current_session->myscreen_->draw_text_bar(HELPTEXT_LEFT, CONTENT_TOP,
-			                        HELPTEXT_LEFT+240-4, CONTENT_TOP + 6);
-			std::string title = std::format("GLADIATOR v{}", OPENGLAD_VERSION_STRING);
-			mytext.write_xy(HELPTEXT_LEFT+60, CONTENT_TOP + 1, title.c_str(), static_cast<unsigned char>(RED), 1);
-
-			// Draw footer bar (bottom of content area)
-			og::runtime::current_session->myscreen_->draw_text_bar(HELPTEXT_LEFT, content_bottom,
-			                        HELPTEXT_LEFT+240-4, content_bottom + 6);
-			mytext.write_xy(HELPTEXT_LEFT+30, content_bottom + 1,
-			                og::input::kWebBackKeyMode
-			                    ? "1/2/3:Tab  BKSP:Exit"
-			                    : "1/2/3:Tab  ESC:Exit",
-			                static_cast<unsigned char>(RED), 1);
-
-			og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
-			changed = 0;
-		}
-	}
-
+	// Drain a still-held Escape: the re-entered main menu's QUIT row carries
+	// KEYSTATE_ESCAPE and would consume the same press.
 	while (og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
 	{
 		YIELD_SLEEP(1);

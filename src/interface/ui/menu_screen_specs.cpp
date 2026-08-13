@@ -132,6 +132,14 @@ void picker_view_scenario_engine_rewire(button* buttons, int num_buttons,
 Sint32 picker_view_scenario_engine_consume_click(Sint32 retvalue,
                                                  void* screen_state);
 void picker_view_scenario_engine_draw_content(void* screen_state);
+// HELP engine hooks (#168; defined beside the tab content in help.cpp).
+og::ui::RowState help_engine_pager_row_state(
+    const og::ui::MenuLabelContext& context);
+void help_engine_rewire(button* buttons, int num_buttons,
+                        int& highlighted_button);
+Sint32 help_engine_on_spec_row(int row, void* screen_state);
+bool help_engine_frame_tick(void* screen_state, int frame);
+void help_engine_draw_content(void* screen_state);
 
 static inline PickerState& pks()
 {
@@ -1675,6 +1683,56 @@ constexpr MenuButtonSpec kViewScenarioRows[] = {
      .state_override = &picker_view_scenario_engine_pager_row_state,
      .hidden = true},
 };
+
+// ---------------------------------------------------------------------------
+// HELP (#168): the full-screen general help — three content tabs (CONTROLS |
+// CLASSES | EDITOR) on the top strip, the paged text frame below, BACK and
+// the PageModel PREV/NEXT pagers in the command band (the VIEW LEVEL footer
+// geometry). Every row dispatches through MenuSpecRow except BACK, so
+// keyboard FIRE, mouse clicks, and the 1/2/3 + PageUp/PageDown hotkeys all
+// route through help_engine_on_spec_row in help.cpp; the pager visibility
+// override and the rewire read the open screen's state through a file-static
+// pointer there (null = the single-page bare-sweep shape: pagers hidden,
+// BACK's right-link closed).
+
+constexpr MenuButtonSpec kHelpMenuRows[] = {
+    {.id = "help_tab_controls", .label = "CONTROLS", .hotkey = KEYSTATE_1,
+     .x = kHelpTabX(0), .y = kHelpTabY, .w = kHelpTabWidth, .h = kHelpTabHeight,
+     .action = ButtonAction::MenuSpecRow, .arg = kHelpMenuControlsTabIndex,
+     .nav = {.down = kHelpMenuBackIndex, .right = kHelpMenuClassesTabIndex}},
+    {.id = "help_tab_classes", .label = "CLASSES", .hotkey = KEYSTATE_2,
+     .x = kHelpTabX(1), .y = kHelpTabY, .w = kHelpTabWidth, .h = kHelpTabHeight,
+     .action = ButtonAction::MenuSpecRow, .arg = kHelpMenuClassesTabIndex,
+     .nav = {.down = kHelpMenuBackIndex, .left = kHelpMenuControlsTabIndex,
+             .right = kHelpMenuEditorTabIndex}},
+    {.id = "help_tab_editor", .label = "EDITOR", .hotkey = KEYSTATE_3,
+     .x = kHelpTabX(2), .y = kHelpTabY, .w = kHelpTabWidth, .h = kHelpTabHeight,
+     .action = ButtonAction::MenuSpecRow, .arg = kHelpMenuEditorTabIndex,
+     .nav = {.down = kHelpMenuBackIndex, .left = kHelpMenuClassesTabIndex}},
+    {.id = "help_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+     .x = kHelpBackX, .y = kHelpFooterY,
+     .w = kHelpBackWidth, .h = kHelpFooterHeight,
+     .action = ButtonAction::ReturnMenu, .arg = MENU_REDRAW,
+     .nav = {.up = kHelpMenuControlsTabIndex, .right = kHelpMenuPrevIndex}},
+    {.id = "help_page_prev", .label = "PREV", .hotkey = KEYSTATE_PAGEUP,
+     .x = kHelpPrevX, .y = kHelpFooterY,
+     .w = kHelpPagerWidth, .h = kHelpFooterHeight,
+     .action = ButtonAction::MenuSpecRow, .arg = kHelpMenuPrevIndex,
+     .nav = {.up = kHelpMenuEditorTabIndex, .left = kHelpMenuBackIndex,
+             .right = kHelpMenuNextIndex},
+     .state_override = &help_engine_pager_row_state,
+     .hidden = true},
+    {.id = "help_page_next", .label = "NEXT", .hotkey = KEYSTATE_PAGEDOWN,
+     .x = kHelpNextX, .y = kHelpFooterY,
+     .w = kHelpPagerWidth, .h = kHelpFooterHeight,
+     .action = ButtonAction::MenuSpecRow, .arg = kHelpMenuNextIndex,
+     .nav = {.up = kHelpMenuEditorTabIndex, .left = kHelpMenuPrevIndex},
+     .state_override = &help_engine_pager_row_state,
+     .hidden = true},
+};
+
+static_assert(std::size(kHelpMenuRows) == kHelpMenuNextIndex + 1,
+              "help table anchor: MenuSpecRow args are spec ordinals");
 
 // ---------------------------------------------------------------------------
 // TEAM BUILD -> BASE CAMP (§2.5, regridded per §9.5 then §9.10, row-click
@@ -4965,6 +5023,37 @@ const MenuScreenSpec& view_scenario_menu_screen_spec()
     return spec;
 }
 
+const MenuScreenSpec& help_menu_screen_spec()
+{
+    static const MenuScreenSpec spec{
+        .name = "help",
+        .rows = kHelpMenuRows,
+        .row_count = static_cast<int>(std::size(kHelpMenuRows)),
+        .buttons_accessor = &picker_help_buttons,
+        .count_accessor = &picker_help_button_count,
+        // Nav closure over the hidden pagers (BACK's right-link), reading
+        // the open screen's PageModel.
+        .nav = {.kind = NavProgramKind::Rewire, .rewire = &help_engine_rewire},
+        // The legacy help loop entered with no fade and ran no remote-start
+        // check (a joiner parked here launches when the main menu re-enters
+        // — the FX-subscreen precedent). Keep both: DELIBERATELY not
+        // FadeAroundEntry (issue #200 is reworking that path).
+        .enter = EnterTransition::None,
+        .default_highlight = kHelpMenuBackIndex,
+        // BACK carries MENU_REDRAW and ends the screen there.
+        .exit_on_redraw = true,
+        .polls_lobby = true,
+        .draw_background = &picker_backdrop_draw_background,
+        .draw_content = &help_engine_draw_content,
+        // Mouse wheel -> page steps.
+        .frame_tick = &help_engine_frame_tick,
+        // Tab switches and page flips (G3 generic row dispatch).
+        .on_spec_row = &help_engine_on_spec_row,
+        .exit_value = MENU_REDRAW,
+    };
+    return spec;
+}
+
 const MenuScreenSpec& name_entry_menu_screen_spec()
 {
     static const MenuScreenSpec spec{
@@ -5275,6 +5364,10 @@ const MenuScreenHost& menu_screen_host(MenuScreenId id)
             // record"; pinned by
             // MenuEngine.networking_stays_legacy_v2_decision).
             set(MenuScreenId::Networking, {.kind = Kind::Legacy});
+            // #168: HELP is engine-hosted (the legacy overlay dialog loop in
+            // help.cpp is gone; show_general_help is the blocking wrapper).
+            set(MenuScreenId::Help,
+                {.kind = Kind::Engine, .spec = &help_menu_screen_spec()});
             return table;
         }();
     return hosts[static_cast<std::size_t>(id)];
@@ -5484,6 +5577,18 @@ button* picker_cloud_save_buttons()
 int picker_cloud_save_button_count()
 {
     return static_cast<int>(pks().cloud_save_buttons.size());
+}
+
+button* picker_help_buttons()
+{
+    og::ui::materialize_menu_buttons(og::ui::help_menu_screen_spec(),
+                                     pks().help_buttons);
+    return pks().help_buttons.data();
+}
+
+int picker_help_button_count()
+{
+    return static_cast<int>(pks().help_buttons.size());
 }
 
 #ifdef TESTING
