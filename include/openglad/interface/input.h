@@ -245,6 +245,10 @@ inline constexpr int KEY_SWITCH              = 10;
 inline constexpr int KEY_SPECIAL_SWITCH      = 11;
 inline constexpr int KEY_YELL                = 12;
 inline constexpr int KEY_SHIFTER             = 13;
+// Reserved wire slot: this opened the retired per-player options menu
+// (docs/pause-menu-design.md §7.4). Nothing dispatches it and the factory
+// defaults leave it unbound, but the slot number is pinned by the input
+// wire format (NUM_INPUT_KEYS == 16) and must not be renumbered or reused.
 inline constexpr int KEY_PREFS               = 14;
 inline constexpr int KEY_CHEAT               = 15;
 // Look-up hold: while held, the renderer draws the upper-floor ghost overlay

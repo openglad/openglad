@@ -157,7 +157,16 @@ bool joystick_subsystem_initialized();
 void joystick_quit_subsystem();
 void joystick_init_subsystem();
 
+// The yield every blocking in-game loop owes the browser: natively a plain
+// delay, on the web an SDL_Delay that suspends through -sASYNCIFY. A loop
+// that spins without calling it never hands control back and hangs the tab.
 void sleep_ms(int ms);
+#ifdef TESTING
+// Monotonic count of sleep_ms() calls — lets a test prove a blocking modal
+// actually yields instead of busy-waiting (natively the sleep itself is
+// invisible, so "the call returned" proves nothing on its own).
+unsigned long yield_count();
+#endif
 void show_cursor(bool show);
 // Start a native text-input session and, on web touch devices, describe the
 // active prompt to the DOM keyboard affordance. `max_bytes` is the usable

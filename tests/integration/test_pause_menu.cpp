@@ -1771,6 +1771,105 @@ TEST(PauseMenuFlow, real_menu_resume_add_remove_player_and_quit_via_interact)
 }
 
 // ---------------------------------------------------------------------------
+// Regression, re-homed from the retired options_menu (design §7.4): the
+// in-game blocking modal must YIELD, not spin.
+//
+// The old GameLoop.game_frame_options_menu_via_key_prefs_completes covered the
+// Emscripten hang: game_frame_with_result -> a modal whose wait loop never
+// returns to the browser. Natively the yield is invisible (a plain SDL_Delay),
+// so "it completed" proved nothing on its own — the observable is that the
+// loop went through og::input_native::sleep_ms, the call that suspends under
+// -sASYNCIFY. The PAUSED menu is now the only in-game modal, so the contract
+// lives here: open it through the real game_frame_with_result call chain and
+// count the yields the blocking frame performs.
+
+namespace
+{
+
+int pause_yield_injector(void* /*data*/)
+{
+    og::runtime::ensure_thread_session();
+    if (!wait_for_interactable("pause_resume", 10'000))
+        return 1;
+    // Long enough that a yielding loop (10 ms per iteration) racks up a clear
+    // count, while a busy-wait would leave it at zero.
+    SDL_Delay(400);
+    interact("pause_resume");
+    return 0;
+}
+
+} // namespace
+
+TEST(PauseMenuFlow, blocking_menu_yields_to_the_browser_each_iteration)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+
+    game_screen->save_data.reset();
+    game_screen->save_data.current_campaign = "gladiator";
+    game_screen->save_data.current_levels["gladiator"] = 1;
+    game_screen->save_data.scen_num = 1;
+    game_screen->save_data.numplayers = 1;
+    ASSERT_TRUE(game_screen->save_data.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+
+    og::ui::pause_menu_testing_set_force_real(true);
+
+    SDL_Thread* const injector = SDL_CreateThread(
+        pause_yield_injector, "pause_yield_injector", nullptr);
+    ASSERT_TRUE(injector != nullptr);
+
+    const float old_speed = og::runtime::current_session->g_game_speed_factor_;
+    set_game_speed(0.0f);
+
+    const unsigned long yields_before = og::input_native::yield_count();
+
+    EventScriptLocal script;
+    SDL_Event e{};
+    e.type = SDL_EVENT_KEY_DOWN;
+    e.key.key = SDLK_ESCAPE;
+    e.key.repeat = false;
+    script.events.push_back(e);
+    g_pause_script = &script;
+
+    GameLoopFrameState st;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = true;
+    deps.enable_frame_timing = false;
+    deps.poll_event = pause_scripted_poll;
+    // Blocks in the real menu until the injector clicks RESUME.
+    const GameFrameResult result =
+        game_frame_with_result(*game_screen, st, deps);
+    g_pause_script = nullptr;
+
+    const unsigned long yields_after = og::input_native::yield_count();
+
+    EXPECT_EQ(GameFrameResult::Continue, result);
+    // The injector held the menu open for ~400 ms at a 10 ms yield cadence.
+    // A raw spin would report 0; the loose bound keeps the pin off wall-clock
+    // scheduling luck.
+    EXPECT_GT(yields_after - yields_before, 5UL)
+        << "the blocking pause loop must call og::input_native::sleep_ms once "
+           "per iteration — under Emscripten that is the only thing that hands "
+           "control back to the browser";
+
+    int injector_result = -1;
+    SDL_WaitThread(injector, &injector_result);
+    EXPECT_EQ(0, injector_result) << "injector timed out";
+
+    og::ui::pause_menu_testing_set_force_real(false);
+    set_game_speed(old_speed);
+    og::runtime::clear_local_transport_shadow(
+        *og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+    game_screen->world().end = 0;
+    game_screen->world().retry = false;
+}
+
+// ---------------------------------------------------------------------------
 // Regression, re-homed from the retired options_menu (design §7.2): VIEW
 // TEAM return must redraw the SPLIT world canvas — with zoom active the
 // world surface is wider than the fixed 320px UI canvas, and a modal that
@@ -1888,7 +1987,6 @@ TEST(PauseMenuFlow, view_team_return_redraws_the_split_world_canvas)
     E_Screen->set_active_canvas(saved_target);
     vs->prefs[PREF_VIEW] = saved_view;
     game->relayout_views();
-    og::runtime::current_session->theprefs_->save(vs);
     vs->control = saved_control;
     if (created_control != nullptr)
     {

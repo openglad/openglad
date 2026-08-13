@@ -777,10 +777,10 @@ TEST(OptionsMenu, level_start_applies_speed_and_color_cycling_from_cfg) {
 }
 
 // SPEED's live-apply half, driven directly (the injector flow above covers
-// the click plumbing). The row reproduces viewscreen::change_speed: the
-// world field, the host-authoritative pending request, and the relay warning
-// that fires ONCE per descent into the relay-expensive speeds and re-arms
-// when the speed comes back down.
+// the click plumbing). The row carries over what the retired
+// viewscreen::change_speed did: the world field, the host-authoritative
+// pending request, and the relay warning that fires ONCE per descent into
+// the relay-expensive speeds and re-arms when the speed comes back down.
 TEST(OptionsMenu, game_speed_applies_to_the_world_and_warns_once_on_relay) {
     constexpr Sint32 kMenuRedraw = 2;  // do_call's REDRAW
     og::runtime::SessionState* const session = og::runtime::current_session;
@@ -1065,7 +1065,7 @@ TEST(OptionsMenu, options_menu) {
     EXPECT_EQ(state.cfg_timer_wait_after_speed_click,
               state.world_timer_wait_after_speed_click)
         << "a SPEED click must reach GameWorld::timer_wait, not just cfg "
-           "(the row replaces viewscreen::change_speed)";
+           "(the row replaced viewscreen::change_speed)";
     // BRIGHTNESS: both halves of the pair move, and the applied gamma
     // follows the stored value on every click.
     ASSERT_TRUE(state.stepped_brightness_up)

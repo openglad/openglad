@@ -353,11 +353,21 @@ screen share one geometry)
 ### 7.4 Deletions
 
 `viewscreen::options_menu`, `set_key_prefs`, `view_key_bindings`,
-`get_keypress`, the KEY_PREFS dispatch, and the Shift+`/` chord all go.
+`get_keypress`, `change_speed`, `change_gamma`, the `viewscreen::gamma`
+member, the KEY_PREFS dispatch, and the Shift+`/` chord all go.
 InputAction slot 14 stays RESERVED (wire format pins NUM_INPUT_KEYS == 16);
-its default bindings become KEYCODE_UNKNOWN and the cfg loader ignores
-slot 14, freeing keys 1-4 for player mappings. keyprefs.dat's key half was
-already vestigial; the whole file becomes a read-once migration source.
+its default bindings become KEYCODE_UNKNOWN, the cfg loader ignores a
+persisted slot-14 value and the writer writes UNKNOWN back, freeing keys
+1-4 for player mappings on the next save. keyprefs.dat's key half was
+already vestigial, so `init_allkeys`, `GameSession::allkeys_`,
+`viewscreen::mykeys` and `options::save` go with it; the file is now
+read-only, seeding HUD prefs at view construction until
+`apply_hud_settings_from_cfg` has migrated a player into cfg.
+
+The Emscripten regression the retired KEY_PREFS test covered (a blocking
+in-game modal must yield through `og::input_native::sleep_ms`, the call
+that suspends under `-sASYNCIFY`) moves onto the PAUSED menu as
+`PauseMenuFlow.blocking_menu_yields_to_the_browser_each_iteration`.
 
 ## 8. Non-goals
 

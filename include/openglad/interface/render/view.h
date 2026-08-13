@@ -46,6 +46,8 @@ inline constexpr signed char PREF_VIEW = 2;
   inline constexpr signed char PREF_VIEW_1      = 2;
   inline constexpr signed char PREF_VIEW_2      = 3;
   inline constexpr signed char PREF_VIEW_3      = 4;
+// Dead slot: keyprefs.dat's 10-byte prefs block has fixed offsets, so the
+// index must stay even though nothing reads the value.
 inline constexpr signed char PREF_JOY = 3;
   inline constexpr signed char PREF_NO_JOY = 0;
   inline constexpr signed char PREF_USE_JOY = 1;
@@ -55,6 +57,8 @@ inline constexpr signed char PREF_RADAR = 4;
 inline constexpr signed char PREF_FOES = 5;
   inline constexpr signed char PREF_FOES_OFF    = 0;
   inline constexpr signed char PREF_FOES_ON     = 1;
+// Dead slot (same reason as PREF_JOY): brightness is cfg graphics/brightness
+// now, applied in the palette path rather than per view.
 inline constexpr signed char PREF_GAMMA = 6;
 inline constexpr signed char PREF_OVERLAY = 7;
   inline constexpr signed char PREF_OVERLAY_OFF = 0;
@@ -116,19 +120,20 @@ inline constexpr std::int64_t kPerViewZoomLayerPixelBudget = 4'096'000;
 } // namespace og
 
 // This is a child object of all viewscreens
-//  It is used to save and load all prefs
+//  It is used to load all prefs
 //  because each player has their own
 //  prefs.  WE ASSUME 4 PLAYERS ALWAYS
+// Read-only: keyprefs.dat is a legacy seed for the HUD preferences (cfg owns
+// them once apply_hud_settings_from_cfg has migrated a player), and nothing
+// writes the file any more.
 class options
 {
 	public:
 		options();
 		~options();
 		short load(viewscreen *viewp);
-		short save(viewscreen *viewp);
 	protected:
 		signed char prefs[4][10];
-		char keys[4][16];
 };
 
 class viewscreen
@@ -244,14 +249,7 @@ class viewscreen
 		void view_team(KeyWaitPollCallback poll = nullptr);
 		void view_team(short left, short top, short right, short bottom,
 		               KeyWaitPollCallback poll = nullptr);
-		void options_menu();   // display the options menu
-		Sint32 set_key_prefs(); // get player keyboard info
-		void view_key_bindings(); // display current key bindings
-		Sint32 change_speed(Sint32 whichway);
-		Sint32 change_gamma(Sint32 whichway);
 		walker* find_next_control();
-
-		Sint32 gamma; // for gamma correction
 
 		std::string textlist[MAX_MESSAGES];
 		short textcycles[MAX_MESSAGES];  // duration in sim ticks
@@ -263,7 +261,6 @@ class viewscreen
 		// this with mynum. -1 means spectator/no seat.
 		short global_player_index_ = -1;
 		short my_team;         // used for Player-v-Player mode
-			int* mykeys;     // holds the keyboard mapping
 			walker  *control;  // the user
 			Sint32 xpos,ypos;
 			Sint32 topx, topy;

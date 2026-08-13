@@ -55,8 +55,6 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_dirty_tracking_safety.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_sai2x_scaler.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_canvas_scale.cpp
-    ${CMAKE_SOURCE_DIR}/tests/integration/test_view_menu_driven.cpp
-    ${CMAKE_SOURCE_DIR}/tests/integration/test_view_options_menu_driven.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_walker_more.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_effect_helpers.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_effect_chain_and_door.cpp
@@ -140,7 +138,6 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_external_physfs_ops.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_external_zlib_more.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_view_input_paths.cpp
-    ${CMAKE_SOURCE_DIR}/tests/integration/test_view_get_keypress_and_edge_cases.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_view_input_prefs_and_redraw.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_picker_menu_nav.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_external_yaml_document.cpp
@@ -449,9 +446,6 @@ og_add_test_group(og_test_view FILES
     test_view_input_more_paths.cpp
     test_view_input_smoke.cpp
     test_view_input_prefs_and_redraw.cpp
-    test_view_get_keypress_and_edge_cases.cpp
-    test_view_menu_driven.cpp
-    test_view_options_menu_driven.cpp
     test_view_team.cpp
     test_player_hud_zoom.cpp
 )

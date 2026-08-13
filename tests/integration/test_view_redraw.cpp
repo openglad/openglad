@@ -1101,19 +1101,3 @@ TEST(ViewRedraw, hit_flash_persists_across_repeated_redraws_in_same_tick)
         "hit_flash",
         previous_hit_flash.empty() ? "off" : previous_hit_flash);
 }
-
-
-// ---------------------------------------------------------------------------
-// viewscreen::change_gamma
-// ---------------------------------------------------------------------------
-
-TEST(ViewRedraw, view_change_gamma)
-{
-    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
-
-    Sint32 g0 = vs->change_gamma(0);
-    Sint32 g1 = vs->change_gamma(1);
-    Sint32 g2 = vs->change_gamma(-1);
-    (void)g0; (void)g1; (void)g2;
-}

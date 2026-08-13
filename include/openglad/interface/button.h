@@ -354,7 +354,7 @@ enum class ButtonAction : Sint32
     ToggleInfiniteGold = 102,
     // The three settings the retired in-game options menu owned (issue #169,
     // docs/pause-menu-design.md §7.3). GAME SETTINGS cycles the sim speed
-    // (cfg gameplay/timer_wait, live-applied like viewscreen::change_speed);
+    // (cfg gameplay/timer_wait, applied to the live world on the click);
     // GRAPHICS FX toggles palette cycling (cfg effects/color_cycling);
     // DISPLAY steps brightness by arg's sign, the overscan -/+ idiom (cfg
     // graphics/brightness).

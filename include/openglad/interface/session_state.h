@@ -122,12 +122,6 @@ struct SessionState {
     int guy_id_counter_ = 0;
     std::array<short, 6> changedteam_ = {};
 
-    // Keybinding storage (Phase 5) — moved from view.cpp allkeys global.
-    // Legacy 16-slot block: keyprefs.dat's on-disk format is fixed at 16 ints
-    // per player, so this deliberately does NOT grow with kNumKeys.
-    static constexpr int kNumLegacyKeys = 16;
-    int allkeys_[4][kNumLegacyKeys] = {};
-
     // Timer anchor (Phase 6) — moved from util.cpp thread_local g_reset_time.
     std::chrono::steady_clock::time_point reset_time_ = std::chrono::steady_clock::now();
 

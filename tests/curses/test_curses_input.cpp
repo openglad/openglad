@@ -39,7 +39,9 @@ struct Bindings {
         k[KEY_SWITCH] = KEYCODE_BACKQUOTE;
         k[KEY_SPECIAL_SWITCH] = KEYCODE_TAB;
         k[KEY_YELL] = KEYCODE_s;      k[KEY_SHIFTER] = KEYCODE_LSHIFT;
-        k[KEY_PREFS] = KEYCODE_1;     k[KEY_CHEAT] = KEYCODE_F5;
+        // KEY_PREFS is a reserved wire slot with no action behind it; the
+        // shipped defaults leave it unbound, so the fixture does too.
+        k[KEY_PREFS] = KEYCODE_UNKNOWN; k[KEY_CHEAT] = KEYCODE_F5;
     }
 };
 

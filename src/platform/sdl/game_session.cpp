@@ -28,9 +28,6 @@
 #include <openglad/platform/picker_lobby_network_runtime.h>
 #include <SDL3/SDL.h>
 
-// Defined in view.cpp — loads allkeys from defaults + keyprefs.dat.
-void init_allkeys(int allkeys[][16]);
-
 namespace {
 PlatformBridge make_sdl_platform_bridge()
 {
@@ -128,7 +125,6 @@ GameSession::GameSession(const Config& session_cfg)
 
     if (cfg_.allocate_prefs) {
         prefs_owner_ = std::make_unique<options>();
-        init_allkeys(allkeys_);
     }
 
     if (cfg_.allocate_seeded_rng) {

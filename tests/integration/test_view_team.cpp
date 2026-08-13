@@ -1,5 +1,6 @@
-#include <array>
 #include <algorithm>
+#include <array>
+#include <chrono>
 #include <memory>
 #include <openglad/gameplay/pixie_data.h>
 #include <openglad/interface/button.h>
@@ -1371,6 +1372,16 @@ TEST(ViewTeam, base_camp_deploy_toggle_debounces_same_row_taps)
     EXPECT_FALSE(save.team_list[1]->deployed);
 
     // Immediate second tap of the SAME row: silently ignored (U6).
+    EXPECT_GE(state.last_deploy_toggle_ms, 0)
+        << "an accepted toggle must stamp the debounce clock";
+    // The debounce is real wall clock (steady_clock, 250 ms). Re-stamping to
+    // now keeps "the second tap lands inside the window" a property of the
+    // test rather than of the scheduler — a loaded machine can otherwise put
+    // more than 250 ms between these two calls and the mistap sails through.
+    state.last_deploy_toggle_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count();
     trace_clear();
     EXPECT_EQ(MENU_OK, spec.on_spec_row(1, &state));
     EXPECT_TRUE(trace_contains("basecamp", "deploy_debounced slot=1"))

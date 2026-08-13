@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstring>
 
@@ -575,8 +576,23 @@ void joystick_init_subsystem()
     SDL_InitSubSystem(SDL_INIT_JOYSTICK);
 }
 
+#ifdef TESTING
+namespace
+{
+std::atomic<unsigned long> g_yield_count{0};
+}
+
+unsigned long yield_count()
+{
+    return g_yield_count.load(std::memory_order_relaxed);
+}
+#endif
+
 void sleep_ms(int ms)
 {
+#ifdef TESTING
+    g_yield_count.fetch_add(1, std::memory_order_relaxed);
+#endif
     SDL_Delay(static_cast<Uint32>(ms));
 }
 

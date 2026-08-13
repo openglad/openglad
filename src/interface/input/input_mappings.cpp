@@ -244,6 +244,15 @@ std::vector<MappingDefinition> load_mapping_library(cfg_store& config)
                             : static_cast<int>(ControlDirectionMode::FourDirection));
         for (int k = 0; k < NUM_KEYS; ++k)
         {
+            // KEY_PREFS is a reserved wire slot with nothing behind it. Drop
+            // any persisted value the same way the controls loader does, so a
+            // stored mapping cannot resurrect the old 1/2/3/4 key thief.
+            if (k == KEY_PREFS)
+            {
+                mapping.mode4_keys[key_slot(k)] = KEYCODE_UNKNOWN;
+                mapping.mode8_keys[key_slot(k)] = KEYCODE_UNKNOWN;
+                continue;
+            }
             mapping.mode4_keys[key_slot(k)] =
                 parse_key_setting(config, slot, std::format("mode4_key{}", k));
             mapping.mode8_keys[key_slot(k)] =

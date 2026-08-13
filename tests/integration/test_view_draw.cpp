@@ -139,17 +139,3 @@ TEST(ViewDraw, view_compute_mp_color_ranges)
     ASSERT_TRUE(c > 0) << "25% MP should have a color";
 }
 
-
-// ---------------------------------------------------------------------------
-// viewscreen speed changes
-// ---------------------------------------------------------------------------
-
-TEST(ViewDraw, view_change_speed)
-{
-    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
-    vs->change_speed(2);
-    vs->change_speed(4);
-    vs->change_speed(1);
-}
-

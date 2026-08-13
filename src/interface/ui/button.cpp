@@ -574,11 +574,10 @@ void toggle_rendering_engine()
 // immediately, because cfg alone would only take effect at the next level
 // start.
 
-// SPEED (GAME SETTINGS). Replicates viewscreen::change_speed
-// (view.cpp:2525-2556): the sim wait is a GameWorld field, and the host
-// stamps a pending request the server applies for the host peer only
-// (game_server.cpp:1849-1857). The relay warning is kept verbatim, including
-// its one-shot latch.
+// SPEED (GAME SETTINGS). Carries over what the retired viewscreen::change_speed
+// did: the sim wait is a GameWorld field, and the host stamps a pending request
+// the server applies for the host peer only (GameServer's timer-wait request
+// handling). The relay warning is kept verbatim, including its one-shot latch.
 Sint32 change_game_speed()
 {
     const std::string next =
