@@ -648,8 +648,6 @@ inline bool isJoystickEvent(const EventT& event)
 
 void clear_events();
 
-void assignKeyFromWaitEvent(int player_num, int key_enum);
-
 const char* query_key_name(int keycode);
 
 void clear_keyboard();

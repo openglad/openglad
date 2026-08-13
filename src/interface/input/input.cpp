@@ -1160,12 +1160,6 @@ bool assignKeyFromWaitEventPolling(
     return true;
 }
 
-void assignKeyFromWaitEvent(int player_num, int key_enum)
-{
-    (void)assignKeyFromWaitEventPolling(player_num, key_enum, nullptr);
-}
-
-
 //
 // Set the keyboard array to all zeros, the
 // virgin state, nothing depressed
@@ -1825,7 +1819,3 @@ unsigned char convert_to_ascii(int scancode)
     }
 }
 
-const char* query_key_name(int keycode)
-{
-    return og::input_native::key_name(keycode);
-}

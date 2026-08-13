@@ -41,13 +41,13 @@ TEST(InputMore, input_clear_events_drains_queue)
 }
 
 
-TEST(InputMore, input_assignKeyFromWaitEvent_updates_player_keys)
+TEST(InputMore, input_assign_key_polling_escape_keeps_mapping)
 {
     int old = og::runtime::current_session->player_keys_[0][KEY_FIRE];
 
-    // In TESTING builds, wait_for_key_event() returns a fake Escape event
-    // so tests don't block on SDL_WaitEvent.
-    assignKeyFromWaitEvent(0, KEY_FIRE);
+    // In TESTING builds, wait_for_key_event_polling() returns a fake Escape
+    // event so tests don't block; Escape means "keep the current binding".
+    (void)assignKeyFromWaitEventPolling(0, KEY_FIRE, nullptr);
     ASSERT_EQ(old, (int)og::runtime::current_session->player_keys_[0][KEY_FIRE]) << "fake Escape event should not update mapping";
 }
 
