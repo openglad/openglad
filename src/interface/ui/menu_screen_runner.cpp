@@ -268,6 +268,9 @@ constexpr MenuBuildVariant kCompiledBuildVariant =
     MenuBuildVariant::Native;
 #endif
 
+// One-shot: set by the post-game teardown, consumed by the next screen.
+bool g_suppress_entry_fade_out = false;
+
 bool spec_row_survives_build(const MenuButtonSpec& row, MenuBuildVariant variant)
 {
     switch (row.build) {
@@ -282,6 +285,18 @@ bool spec_row_survives_build(const MenuButtonSpec& row, MenuBuildVariant variant
 }
 
 } // namespace
+
+void suppress_next_menu_entry_fade_out()
+{
+    g_suppress_entry_fade_out = true;
+}
+
+bool consume_suppressed_menu_entry_fade_out()
+{
+    const bool suppressed = g_suppress_entry_fade_out;
+    g_suppress_entry_fade_out = false;
+    return suppressed;
+}
 
 #ifdef TESTING
 void picker_testing_draw_menu_highlight(const MenuScreenSpec& spec,
@@ -336,6 +351,10 @@ void materialize_menu_buttons(const MenuScreenSpec& spec,
 
 Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
 {
+    // Consumed unconditionally: the flag is a hand-off from the screen that
+    // ran last, so whichever screen opens next must clear it even when it
+    // does not fade around its entry.
+    const bool skip_entry_fade_out = consume_suppressed_menu_entry_fade_out();
     // Sequence the D3 accessors: buttons() fills the vector count() reads.
     button* buttons = spec.buttons_accessor();
     const int num_buttons = spec.count_accessor();
@@ -381,7 +400,11 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         // deploy X is a button, and splitting them across the fade makes the
         // control pop in as the first full frame replaces the partial one.
         screen* scr = og::runtime::current_session->myscreen_;
-        scr->fadeblack(0);
+        // ...unless the post-game teardown already faded to black (#200): the
+        // fade-out would run over the stale menu image the UI canvas still
+        // holds and play the same transition a second time.
+        if (!skip_entry_fade_out)
+            scr->fadeblack(0);
         if (spec.backdrop)
             draw_backdrop();
         if (spec.draw_background != nullptr)

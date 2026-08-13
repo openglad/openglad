@@ -44,9 +44,10 @@ static int event_injector_thread(void* data)
     seq->started = true;
 
     // Wait for mainmenu to initialize and complete fadeblack.
-    // mainmenu() calls init_buttons() then fadeblack(1) which takes ~500ms
-    // and eats SDL events during the fade. We wait for the button to exist
-    // then add extra delay so the fade finishes and the event loop is ready.
+    // The main menu's run_menu_screen entry (EnterTransition::FadeWithInitialDraw)
+    // publishes its buttons, then fades out, composes, and fades in — the fade
+    // takes ~500ms and eats SDL events. We wait for the button to exist then add
+    // extra delay so the fade finishes and the event loop is ready.
     wait_for_interactable("continue_game", 5000);
     SDL_Delay(750);
 
@@ -54,8 +55,10 @@ static int event_injector_thread(void* data)
     fprintf(stderr, "  [test] Step 1: clicking continue_game\n");
     interact("continue_game");
 
-    // Wait for create_team_menu to init after fade + level load.
-    // create_team_menu calls fadeblack(0), level_data.load(), fadeblack(1).
+    // Wait for create_team_menu to init after fade + level load. Base Camp
+    // enters with EnterTransition::FadeAroundEntry (a fade-out unless the
+    // post-game teardown already suppressed it, the cold compose, a fade-in);
+    // the level reload happens in the runner loop's reload guard.
     // PROGRESS lives inside the SCENARIO subscreen now.
     SDL_Delay(500);
     wait_for_interactable("scenario", 10000);

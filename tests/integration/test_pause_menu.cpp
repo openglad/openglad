@@ -2456,6 +2456,244 @@ TEST(PauseMenuFlow, restart_mission_relaunches_level_through_picker_loop)
 }
 
 // ---------------------------------------------------------------------------
+// Regression (#200): quitting a scenario faded it out TWICE. The teardown in
+// go_menu fades whichever canvas was last presented (World, after the pause
+// menu's exit dance) and clears it, but the UI canvas still held the pause
+// menu image; Base Camp's EnterTransition::FadeAroundEntry then faded THAT
+// out as a second visible transition. On a WIN the results screen presents on
+// the UI canvas, so the second fade was an invisible no-op — hence "only when
+// I quit".
+//
+// Under TESTING every fadeblack lands in FadeBetween's test-mode branch, which
+// traces one line per fade. Counting them across the quit is the pin: the
+// transition from a running mission back into Base Camp is exactly one
+// fade-out (teardown) plus one fade-in (Base Camp entry).
+
+namespace
+{
+
+int count_fade_traces()
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    int fades = 0;
+    for (const TraceEntry& entry : g_trace_buffer)
+    {
+        if (entry.category == "video" &&
+            entry.message.find("FadeBetween") != std::string::npos)
+        {
+            ++fades;
+        }
+    }
+    return fades;
+}
+
+struct QuitFadeFlowState {
+    bool started = false;
+    bool finished = false;
+    bool game_started = false;
+    bool returned_to_base_camp = false;
+    int fades_after_quit = -1;
+    const char* failure_message = nullptr;
+};
+
+int fail_quit_fade_flow(QuitFadeFlowState* state, const char* message)
+{
+    fprintf(stderr, "  [test] ERROR: %s\n", message);
+    state->failure_message = message;
+    og::ui::pause_menu_testing_clear_queue();
+
+    if (g_test_in_game.load(std::memory_order_acquire))
+    {
+        og::ui::pause_menu_testing_queue_outcome(
+            og::ui::PauseMenuResult::Quit, /*release_pause=*/false);
+        inject_key_press(SDLK_ESCAPE);
+        int waited_ms = 0;
+        while (g_test_in_game.load(std::memory_order_acquire) &&
+               waited_ms < kRestartStageTimeoutMs)
+        {
+            SDL_Delay(kRestartPollMs);
+            waited_ms += kRestartPollMs;
+        }
+        og::ui::pause_menu_testing_clear_queue();
+    }
+    if (restart_wait_for_team_menu(5'000))
+    {
+        SDL_Delay(250);
+        const auto [back_x, back_y] = ui_canvas_to_window(30.0f, 187.0f);
+        inject_click(static_cast<int>(back_x), static_cast<int>(back_y));
+    }
+    state->finished = true;
+    return 0;
+}
+
+int quit_fade_count_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<QuitFadeFlowState*>(data);
+    state->started = true;
+
+    // -- Main menu -> Continue -> Base Camp --
+    if (!wait_for_interactable("continue_game", 15'000))
+        return fail_quit_fade_flow(state, "main menu never appeared");
+    SDL_Delay(750); // fadeblack eats events
+    interact("continue_game");
+    {
+        int elapsed = 0;
+        while (elapsed < kRestartStageTimeoutMs &&
+               !has_interactable("hire_troops"))
+        {
+            if (has_interactable("continue_game"))
+                interact("continue_game");
+            SDL_Delay(250);
+            elapsed += 250;
+        }
+    }
+    if (!restart_wait_for_team_menu(kRestartStageTimeoutMs))
+        return fail_quit_fade_flow(state, "team menu did not appear");
+    SDL_Delay(150);
+
+    // -- GO: enter the level through the real go_menu do/while --
+    const int epoch_before =
+        g_test_game_epoch.load(std::memory_order_acquire);
+    {
+        int elapsed = 0;
+        int since_click = 250;
+        while (elapsed < kRestartStageTimeoutMs &&
+               g_test_game_epoch.load(std::memory_order_acquire) ==
+                   epoch_before)
+        {
+            if (since_click >= 250 && has_interactable("go"))
+            {
+                interact("go");
+                since_click = 0;
+            }
+            SDL_Delay(50);
+            elapsed += 50;
+            since_click += 50;
+        }
+    }
+    if (g_test_game_epoch.load(std::memory_order_acquire) == epoch_before)
+        return fail_quit_fade_flow(state, "game never started (epoch unchanged)");
+    state->game_started = true;
+
+    {
+        int waited_ms = 0;
+        while (g_test_game_frame_ticks.load(std::memory_order_acquire) < 3 &&
+               g_test_in_game.load(std::memory_order_acquire) &&
+               waited_ms < kRestartStageTimeoutMs)
+        {
+            SDL_Delay(kRestartPollMs);
+            waited_ms += kRestartPollMs;
+        }
+        if (g_test_game_frame_ticks.load(std::memory_order_acquire) < 3)
+            return fail_quit_fade_flow(state, "game never advanced frames");
+    }
+
+    // The counting window opens here: glad_init's own two fades are long
+    // done, the mission is playing, and nothing fades again until the quit.
+    trace_clear();
+
+    // -- Esc -> QUIT -> confirm (the scripted outcome stands in for the
+    // separately tested menu clicks). --
+    og::ui::pause_menu_testing_clear_queue();
+    og::ui::pause_menu_testing_queue_outcome(
+        og::ui::PauseMenuResult::Quit, /*release_pause=*/false);
+    inject_key_press(SDLK_ESCAPE);
+    {
+        int waited_ms = 0;
+        while (g_test_in_game.load(std::memory_order_acquire) &&
+               waited_ms < kRestartStageTimeoutMs)
+        {
+            SDL_Delay(kRestartPollMs);
+            waited_ms += kRestartPollMs;
+        }
+        if (g_test_in_game.load(std::memory_order_acquire))
+            return fail_quit_fade_flow(state, "QUIT did not exit the mission");
+    }
+
+    state->returned_to_base_camp =
+        restart_wait_for_team_menu(kRestartStageTimeoutMs);
+    if (!state->returned_to_base_camp)
+        return fail_quit_fade_flow(state, "team menu did not return after quit");
+
+    // Both expected fades are in, then settle: a third (the bug) lands right
+    // between them, so the settled total is what separates 2 from 3.
+    {
+        int waited_ms = 0;
+        while (count_fade_traces() < 2 && waited_ms < kRestartStageTimeoutMs)
+        {
+            SDL_Delay(kRestartPollMs);
+            waited_ms += kRestartPollMs;
+        }
+    }
+    SDL_Delay(1'000);
+    state->fades_after_quit = count_fade_traces();
+
+    SDL_Delay(250);
+    const auto [back_x, back_y] = ui_canvas_to_window(30.0f, 187.0f);
+    inject_click(static_cast<int>(back_x), static_cast<int>(back_y));
+
+    state->finished = true;
+    return 0;
+}
+
+} // namespace
+
+TEST(PauseMenuFlow, quit_to_base_camp_fades_out_once)
+{
+    trace_clear();
+    og::ui::pause_menu_testing_clear_queue();
+    picker_testing_yes_or_no_queue_clear();
+
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    game_screen->save_data.reset();
+    game_screen->save_data.numplayers = 1;
+    game_screen->save_data.current_campaign = "gladiator";
+    game_screen->save_data.current_levels["gladiator"] = 1;
+    game_screen->save_data.scen_num = 1;
+    {
+        // Sturdy team so the level neither wins nor loses underneath the test
+        // (a win would present the results screen and change the fade count).
+        auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+        soldier->name = "Leader";
+        soldier->constitution = 200;
+        soldier->armor = 200;
+        game_screen->save_data.team_list[0] = std::move(soldier);
+        game_screen->save_data.team_size = 1;
+    }
+    ASSERT_TRUE(game_screen->save_data.save("save0"));
+
+    QuitFadeFlowState state;
+    SDL_Thread* const thread =
+        SDL_CreateThread(quit_fade_count_injector, "quit_fade_count", &state);
+    ASSERT_TRUE(thread != nullptr);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+
+    picker_main(0, nullptr);
+
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    g_picker_max_mainmenu_calls = 0;
+    og::ui::pause_menu_testing_clear_queue();
+    picker_testing_yes_or_no_queue_clear();
+
+    ASSERT_TRUE(state.finished)
+        << (state.failure_message != nullptr ? state.failure_message
+                                             : "injector did not finish");
+    ASSERT_TRUE(state.game_started) << "GO must start the level";
+    ASSERT_TRUE(state.returned_to_base_camp)
+        << "QUIT must land back in Base Camp";
+    ASSERT_EQ(2, state.fades_after_quit)
+        << "quitting a mission must play exactly one fade-out (go_menu's "
+           "teardown) and one fade-in (Base Camp's entry) — a third fade is "
+           "#200, the stale UI-canvas menu image faded out a second time";
+    ASSERT_EQ(nullptr, state.failure_message) << state.failure_message;
+}
+
+// ---------------------------------------------------------------------------
 // BUG repro (user report, PR #198): local 1-player game, pause menu ADD
 // PLAYER, resume, play, Esc again into the ADDED seat's player screen, cycle
 // INPUT — the app died with "InProcessTransport peer 1 is not connected"

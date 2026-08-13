@@ -3407,8 +3407,13 @@ void picker_reinit_after_game()
     screen* const current_screen = og::runtime::current_session->myscreen_;
     current_screen->set_active_canvas(current_screen->last_presented_canvas());
     current_screen->fadeblack(0);
+    // #200: this IS the fade back to the menu, and it only blackened whichever
+    // canvas was last presented. Clear the other one too, and tell the next
+    // menu entry not to fade the stale image out a second time.
+    og::ui::suppress_next_menu_entry_fade_out();
     current_screen->clearbuffer();
     current_screen->set_active_canvas(CanvasTarget::UI);
+    current_screen->clearbuffer();
 
     grab_mouse();
 
