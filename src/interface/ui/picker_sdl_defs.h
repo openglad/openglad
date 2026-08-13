@@ -236,11 +236,11 @@ inline constexpr int kSeatSettingsInputRow = kSeatSettingsInputRowMP;
 #else
 inline constexpr int kSeatSettingsInputRow = kSeatSettingsInputRowNoMP;
 #endif
-// §7.1 unified player screen: ZOOM (122,62,88,18) and the RADAR/HP/FOES/
-// SCORE stack (214, 84/106/128/150, 90,18) are APPENDED (index contract).
-// Dispatch args are the MP row positions; the no-MP table has no REMOVE
-// row, so each appended row materializes one slot earlier (the seat_input
-// precedent).
+// §7.1 unified player screen: ZOOM (kPlayerScreenColBX, kPlayerScreenBand2Y)
+// and the RADAR/HP/FOES/SCORE stack (kPlayerScreenColCX, kPlayerScreenHudTopY
+// + 22px pitch) are APPENDED (index contract). Dispatch args are the MP row
+// positions; the no-MP table has no REMOVE row, so each appended row
+// materializes one slot earlier (the seat_input precedent).
 inline constexpr int kSeatSettingsZoomIndex = 7;
 inline constexpr int kSeatSettingsHudRadarIndex = 8;
 inline constexpr int kSeatSettingsHudLifeIndex = 9;
@@ -275,6 +275,36 @@ inline constexpr int kSeatSettingsHudScoreRow = kSeatSettingsHudScoreRowNoMP;
 #endif
 inline constexpr int kSeatSettingsButtonCountMP = 12;
 inline constexpr int kSeatSettingsButtonCountNoMP = 11;
+
+// --- §7.1 unified player-screen grid ---------------------------------------
+// One geometry behind BOTH player screens (Base Camp seat settings and the
+// pause player screen — the unification is the point, pinned by the
+// exact-table tests). Three columns with 6px gutters and a shared right edge
+// at 304; two 18px-tall button bands above the binding panel; the
+// RADAR/HP/FOES/SCORE stack top-aligns with the panel at y=78 and
+// bottom-aligns with it exactly: an 18px-tall button at y=144 inks rows
+// 144..161, so the panel's bottom corner is y=161. Vertical rhythm:
+// BACK bottom (22) -7- band1 (30..47) -6- band2 (54..71) -6- panel/stack
+// (78..161) -7- command band (169..186).
+inline constexpr int kPlayerScreenColAX = 12;   // DIRECTION/INPUT/panel/TEAM
+inline constexpr int kPlayerScreenColAW = 98;
+inline constexpr int kPlayerScreenColBX = 116;  // REMAP/ZOOM; ends 208
+inline constexpr int kPlayerScreenColBW = 92;
+inline constexpr int kPlayerScreenColCX = 214;  // RESET + HUD stack
+inline constexpr int kPlayerScreenColCW = 90;   // ends 304
+inline constexpr int kPlayerScreenBandH = 18;
+inline constexpr int kPlayerScreenBand1Y = 30;  // MODE | REMAP | RESET
+inline constexpr int kPlayerScreenBand2Y = 54;  // INPUT | ZOOM
+inline constexpr int kPlayerScreenPanelTopY = 78;
+inline constexpr int kPlayerScreenPanelRightX = 208;  // == col B right edge
+inline constexpr int kPlayerScreenPanelBottomY = 161; // == HUD stack bottom
+inline constexpr int kPlayerScreenHudTopY = 78;
+inline constexpr int kPlayerScreenHudPitch = 22;
+inline constexpr int kPlayerScreenBottomBandY = 169;  // TEAM / REMOVE
+// Binding-panel interior: headers at panel+4, first line at panel+15,
+// 8px line pitch (columns kBindingPanel*Chars below).
+inline constexpr int kPlayerScreenPanelHeaderY = kPlayerScreenPanelTopY + 4;
+inline constexpr int kPlayerScreenPanelLineY = kPlayerScreenPanelTopY + 15;
 
 // --- §7.1 shared per-player HUD/zoom row helpers ---------------------------
 // One implementation (pause_menu.cpp) behind both player screens: the seat's

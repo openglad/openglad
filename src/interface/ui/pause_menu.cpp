@@ -565,9 +565,10 @@ Sint32 pause_menu_on_spec_row(int row, void* screen_state)
 
 // --------------------------------------------------------------------------
 // Player screen (design §2.2, geometry unified with Base Camp seat settings
-// per §7.1): BACK / the y=38 mode band / the y=62 INPUT+ZOOM band / the
-// narrowed binding panel with the RADAR/HP/FOES/SCORE stack on its right /
-// REMOVE PLAYER.
+// per §7.1 — the kPlayerScreen* grid in picker_sdl_defs.h): BACK / the y=30
+// mode band / the y=54 INPUT+ZOOM band / the binding panel with the
+// RADAR/HP/FOES/SCORE stack on its right (both spanning y=78..161) /
+// REMOVE PLAYER on the y=169 command band.
 
 RowState pause_player_remove_row_state(const MenuLabelContext& /*context*/)
 {
@@ -603,63 +604,75 @@ constexpr MenuButtonSpec kPausePlayerRows[] = {
      .nav = {.up = kPausePlayerRemoveIndex,
              .down = kPausePlayerModeIndex}},
     {.id = "pause_input", .label = "INPUT: WASD",
-     .x = 16, .y = 62, .w = 98, .h = 18,
+     .x = kPlayerScreenColAX, .y = kPlayerScreenBand2Y,
+     .w = kPlayerScreenColAW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerInputIndex,
      .nav = {.up = kPausePlayerModeIndex,
              .down = kPausePlayerRemoveIndex,
              .right = kPausePlayerZoomIndex}},
     {.id = "pause_direction", .label = "4-DIRECTION",
-     .x = 16, .y = 38, .w = 98, .h = 18,
+     .x = kPlayerScreenColAX, .y = kPlayerScreenBand1Y,
+     .w = kPlayerScreenColAW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerModeIndex,
      .nav = {.up = kPausePlayerBackIndex,
              .down = kPausePlayerInputIndex,
              .right = kPausePlayerRemapIndex}},
     {.id = "pause_remap", .label = "REMAP",
-     .x = 123, .y = 38, .w = 86, .h = 18,
+     .x = kPlayerScreenColBX, .y = kPlayerScreenBand1Y,
+     .w = kPlayerScreenColBW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerRemapIndex,
      .nav = {.up = kPausePlayerBackIndex,
              .down = kPausePlayerZoomIndex,
              .left = kPausePlayerModeIndex,
              .right = kPausePlayerResetIndex}},
     {.id = "pause_reset", .label = "RESET",
-     .x = 218, .y = 38, .w = 86, .h = 18,
+     .x = kPlayerScreenColCX, .y = kPlayerScreenBand1Y,
+     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerResetIndex,
      .nav = {.up = kPausePlayerBackIndex,
              .down = kPausePlayerHudRadarIndex,
              .left = kPausePlayerRemapIndex}},
     {.id = "pause_remove", .label = "REMOVE PLAYER",
-     .x = 166, .y = 169, .w = 138, .h = 18,
+     .x = 166, .y = kPlayerScreenBottomBandY, .w = 138, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerRemoveIndex,
      .nav = {.up = kPausePlayerHudScoreIndex,
              .down = kPausePlayerBackIndex},
      .state_override = &pause_player_remove_row_state},
     {.id = "pause_zoom", .label = "ZOOM: GAME",
-     .x = 122, .y = 62, .w = 88, .h = 18,
+     .x = kPlayerScreenColBX, .y = kPlayerScreenBand2Y,
+     .w = kPlayerScreenColBW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerZoomIndex,
      .nav = {.up = kPausePlayerRemapIndex,
              .down = kPausePlayerHudRadarIndex,
              .left = kPausePlayerInputIndex},
      .state_override = &pause_player_zoom_row_state},
     {.id = "pause_hud_radar", .label = "RADAR: ON",
-     .x = 214, .y = 84, .w = 90, .h = 18,
+     .x = kPlayerScreenColCX, .y = kPlayerScreenHudTopY,
+     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerHudRadarIndex,
      .nav = {.up = kPausePlayerResetIndex,
              .down = kPausePlayerHudLifeIndex,
              .left = kPausePlayerZoomIndex}},
     {.id = "pause_hud_life", .label = "HP: ON",
-     .x = 214, .y = 106, .w = 90, .h = 18,
+     .x = kPlayerScreenColCX,
+     .y = kPlayerScreenHudTopY + kPlayerScreenHudPitch,
+     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerHudLifeIndex,
      .nav = {.up = kPausePlayerHudRadarIndex,
              .down = kPausePlayerHudFoesIndex,
              .left = kPausePlayerInputIndex}},
     {.id = "pause_hud_foes", .label = "FOES: ON",
-     .x = 214, .y = 128, .w = 90, .h = 18,
+     .x = kPlayerScreenColCX,
+     .y = kPlayerScreenHudTopY + 2 * kPlayerScreenHudPitch,
+     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerHudFoesIndex,
      .nav = {.up = kPausePlayerHudLifeIndex,
              .down = kPausePlayerHudScoreIndex,
              .left = kPausePlayerInputIndex}},
     {.id = "pause_hud_score", .label = "SCORE: ON",
-     .x = 214, .y = 150, .w = 90, .h = 18,
+     .x = kPlayerScreenColCX,
+     .y = kPlayerScreenHudTopY + 3 * kPlayerScreenHudPitch,
+     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerHudScoreIndex,
      .nav = {.up = kPausePlayerHudFoesIndex,
              .down = kPausePlayerRemoveIndex,
@@ -738,12 +751,17 @@ void pause_player_draw_content(void* screen_state)
                     state->player_number)
             .c_str());
 
-    // §7.1 unified geometry: the binding panel narrows to x=12..208 (the
-    // HUD stack sits to its right at x=214) with the seat-settings 8px line
-    // pitch; movement column x=20, actions x=104, both budget-clamped.
-    scr->draw_button(12, 84, 208, 164, 2, 1);
-    mytext.write_xy(20, 88, DARK_BLUE, "%s", "MOVEMENT");
-    mytext.write_xy(104, 88, DARK_BLUE, "%s", "ACTIONS");
+    // §7.1 unified geometry: the binding panel spans columns A+B
+    // (x=12..208, top/bottom aligned with the HUD stack at y=78..161) with
+    // the seat-settings 8px line pitch; movement column x=20, actions
+    // x=104, both budget-clamped.
+    scr->draw_button(kPlayerScreenColAX, kPlayerScreenPanelTopY,
+                     kPlayerScreenPanelRightX, kPlayerScreenPanelBottomY,
+                     2, 1);
+    mytext.write_xy(20, kPlayerScreenPanelHeaderY, DARK_BLUE, "%s",
+                    "MOVEMENT");
+    mytext.write_xy(104, kPlayerScreenPanelHeaderY, DARK_BLUE, "%s",
+                    "ACTIONS");
 
     struct BindingLine {
         const char* label;
@@ -795,8 +813,9 @@ void pause_player_draw_content(void* screen_state)
             active ? binding_value(binding.key) : std::string("--");
         const std::string line = format_binding_panel_line(
             binding.label, value, kBindingPanelMovementChars);
-        mytext.write_xy(20, 99 + static_cast<int>(index) * 8,
-                        active ? DARK_BLUE : GREY, "%s", line.c_str());
+        mytext.write_xy(
+            20, kPlayerScreenPanelLineY + static_cast<int>(index) * 8,
+            active ? DARK_BLUE : GREY, "%s", line.c_str());
     }
     for (std::size_t index = 0; index < actions.size(); ++index)
     {
@@ -804,8 +823,9 @@ void pause_player_draw_content(void* screen_state)
         const std::string line = format_binding_panel_line(
             binding.label, binding_value(binding.key),
             kBindingPanelActionsChars);
-        mytext.write_xy(104, 99 + static_cast<int>(index) * 8,
-                        DARK_BLUE, "%s", line.c_str());
+        mytext.write_xy(
+            104, kPlayerScreenPanelLineY + static_cast<int>(index) * 8,
+            DARK_BLUE, "%s", line.c_str());
     }
 }
 

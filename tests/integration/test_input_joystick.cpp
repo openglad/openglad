@@ -1,3 +1,4 @@
+#include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/input_mappings.h>
@@ -7,11 +8,18 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <format>
 #include <string>
+#include <thread>
 #include <vector>
 extern void wait_for_key(int somekey);
 extern og::input_native::JoystickHandle joysticks[10];
+// From picker_input.cpp: the menu-nav key consumer whose release waits poll
+// isPlayerHoldingKey (the hostile-pad hang site).
+bool handle_menu_nav(button* buttons, int& highlighted_button,
+                     Sint32& retvalue, bool use_global_vbuttons);
 
 namespace
 {
@@ -1204,6 +1212,257 @@ TEST(InputJoystick, ensure_unique_seat_mapping_resolves_add_seat_collision)
     EXPECT_EQ("IJKL", og::input::current_mapping_name(2));
 
     reset_default_player_controls();
+}
+
+// ---------------------------------------------------------------------------
+// Hostile real devices (the Switch-2 GameCube pad report): an axis can REST
+// beyond JOY_DEAD_ZONE — stick drift, an analog trigger resting at an
+// extreme, an adapter reporting triggers among the first axes. Such an input
+// reads permanently held through JoyData::getState, which no event can ever
+// clear, so (a) the default-layout synthesis must never bind it as a
+// movement cardinal, (b) anything held at assignment time must be ignored
+// until a real release, and (c) the menu-nav release waits must be bounded.
+
+namespace
+{
+// Neutralizes a wedged virtual axis after `delay_ms` so an unbounded spin
+// (the pre-fix behavior) exits and the suite stays bounded. Cancellable so
+// the fixed path does not have to wait out the delay.
+struct AxisWatchdog
+{
+    SDL_Joystick* pad;
+    int axis;
+    int delay_ms;
+    std::atomic<bool> cancel{false};
+    std::thread thread;
+
+    AxisWatchdog(SDL_Joystick* pad_, int axis_, int delay_ms_)
+        : pad(pad_), axis(axis_), delay_ms(delay_ms_)
+    {
+        thread = std::thread([this]() {
+            for (int waited = 0; waited < delay_ms; waited += 50)
+            {
+                if (cancel.load())
+                    return;
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+            SDL_SetJoystickVirtualAxis(pad, axis, 0);
+        });
+    }
+
+    ~AxisWatchdog()
+    {
+        cancel.store(true);
+        thread.join();
+    }
+};
+} // namespace
+
+TEST(InputJoystick, synthesis_never_binds_axes_resting_beyond_dead_zone)
+{
+    JoystickSubsystemGuard subsystem_guard;
+    CompleteInputStateGuard input_guard;
+    BackgroundJoystickEventsGuard background_events_guard;
+
+    // Axis 0 is a trigger resting at the extreme; axes 1/2 are the stick.
+    VirtualJoystick trigger_first(3, 2, 0, "OpenGlad trigger-first pad");
+    ASSERT_NE(nullptr, trigger_first.get()) << SDL_GetError();
+    JoystickHandleGuard handle_guard;
+    const int d = device_index_of(trigger_first.instance_id());
+    ASSERT_GE(d, 0);
+    ASSERT_LT(d, 10);
+    joysticks[d] = trigger_first.get();
+    ASSERT_TRUE(SDL_SetJoystickVirtualAxis(trigger_first.get(), 0, -32768));
+    SDL_UpdateJoysticks();
+    ASSERT_EQ(-32768, SDL_GetJoystickAxis(trigger_first.get(), 0));
+
+    JoyData skewed(d);
+    EXPECT_EQ(JoyData::POS_AXIS, skewed.key_type[KEY_RIGHT]);
+    EXPECT_EQ(1, skewed.key_index[KEY_RIGHT])
+        << "a resting -32768 axis must never become a movement cardinal";
+    EXPECT_EQ(JoyData::NEG_AXIS, skewed.key_type[KEY_LEFT]);
+    EXPECT_EQ(1, skewed.key_index[KEY_LEFT]);
+    EXPECT_EQ(JoyData::NEG_AXIS, skewed.key_type[KEY_UP]);
+    EXPECT_EQ(2, skewed.key_index[KEY_UP]);
+    EXPECT_EQ(JoyData::POS_AXIS, skewed.key_type[KEY_DOWN]);
+    EXPECT_EQ(2, skewed.key_index[KEY_DOWN]);
+
+    // Every axis hostile, but a hat available: fall back to the hat.
+    VirtualJoystick all_hostile_hat(2, 4, 1, "OpenGlad hostile-axes hat pad");
+    ASSERT_NE(nullptr, all_hostile_hat.get()) << SDL_GetError();
+    const int d_hat = device_index_of(all_hostile_hat.instance_id());
+    ASSERT_GE(d_hat, 0);
+    ASSERT_LT(d_hat, 10);
+    joysticks[d_hat] = all_hostile_hat.get();
+    ASSERT_TRUE(SDL_SetJoystickVirtualAxis(all_hostile_hat.get(), 0, 32767));
+    ASSERT_TRUE(SDL_SetJoystickVirtualAxis(all_hostile_hat.get(), 1, -32768));
+    SDL_UpdateJoysticks();
+    JoyData hat_fallback(d_hat);
+    EXPECT_EQ(JoyData::HAT_UP, hat_fallback.key_type[KEY_UP]);
+    EXPECT_EQ(JoyData::HAT_RIGHT, hat_fallback.key_type[KEY_RIGHT]);
+    EXPECT_EQ(JoyData::HAT_DOWN, hat_fallback.key_type[KEY_DOWN]);
+    EXPECT_EQ(JoyData::HAT_LEFT, hat_fallback.key_type[KEY_LEFT]);
+
+    // Every axis hostile and no hat: movement stays unbound (the keyboard
+    // map keeps driving those actions), while buttons still bind.
+    VirtualJoystick all_hostile(2, 2, 0, "OpenGlad hostile-axes pad");
+    ASSERT_NE(nullptr, all_hostile.get()) << SDL_GetError();
+    const int d_bare = device_index_of(all_hostile.instance_id());
+    ASSERT_GE(d_bare, 0);
+    ASSERT_LT(d_bare, 10);
+    joysticks[d_bare] = all_hostile.get();
+    ASSERT_TRUE(SDL_SetJoystickVirtualAxis(all_hostile.get(), 0, -32768));
+    ASSERT_TRUE(SDL_SetJoystickVirtualAxis(all_hostile.get(), 1, -32768));
+    SDL_UpdateJoysticks();
+    JoyData bare(d_bare);
+    EXPECT_EQ(JoyData::NONE, bare.key_type[KEY_UP]);
+    EXPECT_EQ(JoyData::NONE, bare.key_type[KEY_DOWN]);
+    EXPECT_EQ(JoyData::NONE, bare.key_type[KEY_LEFT]);
+    EXPECT_EQ(JoyData::NONE, bare.key_type[KEY_RIGHT]);
+    EXPECT_EQ(JoyData::BUTTON, bare.key_type[KEY_FIRE]);
+}
+
+TEST(InputJoystick, inputs_held_at_assignment_are_ignored_until_released)
+{
+    JoystickSubsystemGuard subsystem_guard;
+    CompleteInputStateGuard input_guard;
+    BackgroundJoystickEventsGuard background_events_guard;
+    VirtualJoystick pad(2, 6, 0, "OpenGlad grip-hold pad");
+    ASSERT_NE(nullptr, pad.get()) << SDL_GetError();
+    JoystickHandleGuard handle_guard;
+    const int d = device_index_of(pad.instance_id());
+    ASSERT_GE(d, 0);
+    ASSERT_LT(d, 10);
+    joysticks[d] = pad.get();
+    for (int p = 0; p < 4; ++p)
+        clear_player_joystick(p);
+
+    // Button 0 (the FIRE binding) is already down when the seat is assigned:
+    // a baseline snapshot must suppress it, or every release wait in the
+    // menus would treat the stale hold as a fresh press.
+    ASSERT_TRUE(SDL_SetJoystickVirtualButton(pad.get(), 0, true));
+    SDL_UpdateJoysticks();
+    ASSERT_TRUE(assign_joystick_to_player(0, d));
+    EXPECT_FALSE(isPlayerHoldingKey(0, KEY_FIRE))
+        << "an input held AT ASSIGNMENT must not read as held";
+
+    // One real release un-suppresses the key for good.
+    ASSERT_TRUE(SDL_SetJoystickVirtualButton(pad.get(), 0, false));
+    SDL_UpdateJoysticks();
+    EXPECT_FALSE(isPlayerHoldingKey(0, KEY_FIRE));
+    ASSERT_TRUE(SDL_SetJoystickVirtualButton(pad.get(), 0, true));
+    SDL_UpdateJoysticks();
+    EXPECT_TRUE(isPlayerHoldingKey(0, KEY_FIRE))
+        << "a genuine press after the release must flow through again";
+}
+
+TEST(InputJoystick, menu_nav_not_wedged_by_pad_with_resting_out_of_range_axis)
+{
+    JoystickSubsystemGuard subsystem_guard;
+    CompleteInputStateGuard input_guard;
+    BackgroundJoystickEventsGuard background_events_guard;
+    VirtualJoystick pad(2, 6, 0, "OpenGlad resting-axis pad");
+    ASSERT_NE(nullptr, pad.get()) << SDL_GetError();
+    JoystickHandleGuard handle_guard;
+    const int d = device_index_of(pad.instance_id());
+    ASSERT_GE(d, 0);
+    ASSERT_LT(d, 10);
+    joysticks[d] = pad.get();
+    og::input_native::joystick_set_event_state(true);
+    for (int p = 0; p < 4; ++p)
+        clear_player_joystick(p);
+
+    // The reporter's device shape: the Y-movement axis rests at an extreme.
+    ASSERT_TRUE(SDL_SetJoystickVirtualAxis(pad.get(), 1, -32768));
+    SDL_UpdateJoysticks();
+    ASSERT_TRUE(assign_joystick_to_player(0, d));
+    EXPECT_FALSE(isPlayerHoldingKey(0, KEY_UP))
+        << "the resting-held axis must not drive a movement action";
+
+    button buttons[] = {
+        button("b0", "A", KEYSTATE_UNKNOWN, 10, 10, 30, 10, 0, 0,
+               MenuNav{.up = 1, .down = 1, .left = -1, .right = -1}, false),
+        button("b1", "B", KEYSTATE_UNKNOWN, 10, 30, 30, 10, 0, 0,
+               MenuNav{.up = 0, .down = 0, .left = -1, .right = -1}, false),
+    };
+    int highlighted = 1;
+    Sint32 retvalue = 0;
+
+    // Pre-fix this spun forever in the KEY_UP release wait; the watchdog
+    // neutralizes the axis so the failure stays bounded.
+    AxisWatchdog watchdog(pad.get(), 1, 2500);
+    const Uint64 start = SDL_GetTicks();
+    (void)handle_menu_nav(buttons, highlighted, retvalue, false);
+    const Uint64 elapsed = SDL_GetTicks() - start;
+    EXPECT_LT(elapsed, 1500u)
+        << "menu nav must not block on a joystick input that can never "
+           "release";
+}
+
+TEST(InputJoystick, menu_nav_release_wait_bounded_when_drift_starts_mid_session)
+{
+    JoystickSubsystemGuard subsystem_guard;
+    CompleteInputStateGuard input_guard;
+    BackgroundJoystickEventsGuard background_events_guard;
+    VirtualJoystick pad(2, 6, 0, "OpenGlad drift-onset pad");
+    ASSERT_NE(nullptr, pad.get()) << SDL_GetError();
+    JoystickHandleGuard handle_guard;
+    const int d = device_index_of(pad.instance_id());
+    ASSERT_GE(d, 0);
+    ASSERT_LT(d, 10);
+    joysticks[d] = pad.get();
+    og::input_native::joystick_set_event_state(true);
+    for (int p = 0; p < 4; ++p)
+        clear_player_joystick(p);
+
+    // Calm at assignment: the full default two-axis layout binds.
+    ASSERT_TRUE(assign_joystick_to_player(0, d));
+    ASSERT_EQ(JoyData::NEG_AXIS, player_joy[0].key_type[KEY_UP]);
+
+    // Drift onset AFTER assignment: the stick now rests past the dead zone.
+    // Synthesis-time sampling cannot help here; the release wait itself must
+    // be bounded.
+    ASSERT_TRUE(SDL_SetJoystickVirtualAxis(pad.get(), 1, -12000));
+    SDL_UpdateJoysticks();
+    ASSERT_TRUE(isPlayerHoldingKey(0, KEY_UP))
+        << "post-assignment drift legitimately reads as held";
+
+    button buttons[] = {
+        button("b0", "A", KEYSTATE_UNKNOWN, 10, 10, 30, 10, 0, 0,
+               MenuNav{.up = 1, .down = 1, .left = -1, .right = -1}, false),
+        button("b1", "B", KEYSTATE_UNKNOWN, 10, 30, 30, 10, 0, 0,
+               MenuNav{.up = 0, .down = 0, .left = -1, .right = -1}, false),
+    };
+    int highlighted = 1;
+    Sint32 retvalue = 0;
+
+    AxisWatchdog watchdog(pad.get(), 1, 4000);
+    const Uint64 start = SDL_GetTicks();
+    (void)handle_menu_nav(buttons, highlighted, retvalue, false);
+    const Uint64 first_elapsed = SDL_GetTicks() - start;
+    EXPECT_LT(first_elapsed, 2000u)
+        << "the release wait must give up within its budget";
+    EXPECT_EQ(0, highlighted)
+        << "the held press still delivers its one nav step";
+
+    // While the drift persists, the exhausted press is latched: no repeat
+    // steps, no repeat budget stalls.
+    if (SDL_GetJoystickAxis(pad.get(), 1) < -8000)
+    {
+        const Uint64 again = SDL_GetTicks();
+        (void)handle_menu_nav(buttons, highlighted, retvalue, false);
+        EXPECT_LT(SDL_GetTicks() - again, 500u)
+            << "a latched stuck key must not stall every call";
+        EXPECT_EQ(0, highlighted)
+            << "a latched stuck key must not keep navigating";
+    }
+
+    // A real release clears the latch (leave nothing latched for later
+    // tests either).
+    ASSERT_TRUE(SDL_SetJoystickVirtualAxis(pad.get(), 1, 0));
+    SDL_UpdateJoysticks();
+    (void)handle_menu_nav(buttons, highlighted, retvalue, false);
+    EXPECT_EQ(0, highlighted);
 }
 
 TEST(InputJoystick, ensure_unique_seat_mapping_leaves_joystick_seats_alone)

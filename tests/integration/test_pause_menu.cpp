@@ -13,6 +13,9 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <cstdio>
+#include <cstdlib>
+#include <filesystem>
 #include <memory>
 #include <queue>
 #include <string>
@@ -356,41 +359,42 @@ TEST(PauseMenuPins, pause_menu_exact_table)
 
 TEST(PauseMenuPins, pause_player_exact_table)
 {
-    // §7.1 unified geometry: identical to Base Camp seat settings (minus
-    // TEAM) — y=38 mode band, y=62 INPUT+ZOOM band, the HUD stack at x=214
-    // beside the narrowed binding panel, REMOVE at y=169.
+    // §7.1 unified geometry, aligned grid: three columns x=12/116/214 with
+    // 6px gutters (widths 98/92/90, shared right edge 304), bands y=30 and
+    // y=54, the binding panel + HUD stack sharing y=78..161, REMOVE on the
+    // y=169 command band. Identical to Base Camp seat settings (minus TEAM).
     static const ExpectedButton kExpected[] = {
         {"pause_player_back", "BACK", KEYSTATE_ESCAPE, 10, 8, 50, 15,
          button_action_id(ButtonAction::ReturnMenu), MENU_REDRAW,
          MenuNav{.up = 5, .down = 2}},
-        {"pause_input", "INPUT: WASD", KEYSTATE_UNKNOWN, 16, 62, 98, 18,
+        {"pause_input", "INPUT: WASD", KEYSTATE_UNKNOWN, 12, 54, 98, 18,
          button_action_id(ButtonAction::MenuSpecRow), 1,
          MenuNav{.up = 2, .down = 5, .right = 6}},
-        {"pause_direction", "4-DIRECTION", KEYSTATE_UNKNOWN, 16, 38, 98, 18,
+        {"pause_direction", "4-DIRECTION", KEYSTATE_UNKNOWN, 12, 30, 98, 18,
          button_action_id(ButtonAction::MenuSpecRow), 2,
          MenuNav{.up = 0, .down = 1, .right = 3}},
-        {"pause_remap", "REMAP", KEYSTATE_UNKNOWN, 123, 38, 86, 18,
+        {"pause_remap", "REMAP", KEYSTATE_UNKNOWN, 116, 30, 92, 18,
          button_action_id(ButtonAction::MenuSpecRow), 3,
          MenuNav{.up = 0, .down = 6, .left = 2, .right = 4}},
-        {"pause_reset", "RESET", KEYSTATE_UNKNOWN, 218, 38, 86, 18,
+        {"pause_reset", "RESET", KEYSTATE_UNKNOWN, 214, 30, 90, 18,
          button_action_id(ButtonAction::MenuSpecRow), 4,
          MenuNav{.up = 0, .down = 7, .left = 3}},
         {"pause_remove", "REMOVE PLAYER", KEYSTATE_UNKNOWN, 166, 169, 138, 18,
          button_action_id(ButtonAction::MenuSpecRow), 5,
          MenuNav{.up = 10, .down = 0}},
-        {"pause_zoom", "ZOOM: GAME", KEYSTATE_UNKNOWN, 122, 62, 88, 18,
+        {"pause_zoom", "ZOOM: GAME", KEYSTATE_UNKNOWN, 116, 54, 92, 18,
          button_action_id(ButtonAction::MenuSpecRow), 6,
          MenuNav{.up = 3, .down = 7, .left = 1}},
-        {"pause_hud_radar", "RADAR: ON", KEYSTATE_UNKNOWN, 214, 84, 90, 18,
+        {"pause_hud_radar", "RADAR: ON", KEYSTATE_UNKNOWN, 214, 78, 90, 18,
          button_action_id(ButtonAction::MenuSpecRow), 7,
          MenuNav{.up = 4, .down = 8, .left = 6}},
-        {"pause_hud_life", "HP: ON", KEYSTATE_UNKNOWN, 214, 106, 90, 18,
+        {"pause_hud_life", "HP: ON", KEYSTATE_UNKNOWN, 214, 100, 90, 18,
          button_action_id(ButtonAction::MenuSpecRow), 8,
          MenuNav{.up = 7, .down = 9, .left = 1}},
-        {"pause_hud_foes", "FOES: ON", KEYSTATE_UNKNOWN, 214, 128, 90, 18,
+        {"pause_hud_foes", "FOES: ON", KEYSTATE_UNKNOWN, 214, 122, 90, 18,
          button_action_id(ButtonAction::MenuSpecRow), 9,
          MenuNav{.up = 8, .down = 10, .left = 1}},
-        {"pause_hud_score", "SCORE: ON", KEYSTATE_UNKNOWN, 214, 150, 90, 18,
+        {"pause_hud_score", "SCORE: ON", KEYSTATE_UNKNOWN, 214, 144, 90, 18,
          button_action_id(ButtonAction::MenuSpecRow), 10,
          MenuNav{.up = 9, .down = 5, .left = 1}},
     };
@@ -741,20 +745,20 @@ TEST(PausePlayerDraw, binding_grid_shows_joystick_names_for_assigned_seat)
 
     // Keyboard seat first: the movement grid shows key names ("UP: W").
     // §7.1 unified geometry: movement column x=20, actions x=104, first
-    // binding line y=99.
+    // binding line y=93 (panel top y=78 + 15).
     spec.draw_background(&state);
     spec.draw_content(&state);
-    expect_glyph_at(scr, 'W', 20 + 4 * pitch, 99, DARK_BLUE);
+    expect_glyph_at(scr, 'W', 20 + 4 * pitch, 93, DARK_BLUE);
 
     // Assign the pad: the same cells now show joy_binding_display_name
     // output — "UP: A1-" and "FIRE: B0" for the default two-axis layout.
     ASSERT_TRUE(assign_joystick_to_player(0, d));
     spec.draw_background(&state);
     spec.draw_content(&state);
-    expect_glyph_at(scr, 'A', 20 + 4 * pitch, 99, DARK_BLUE);
-    expect_glyph_at(scr, '1', 20 + 5 * pitch, 99, DARK_BLUE);
-    expect_glyph_at(scr, 'B', 104 + 6 * pitch, 99, DARK_BLUE);
-    expect_glyph_at(scr, '0', 104 + 7 * pitch, 99, DARK_BLUE);
+    expect_glyph_at(scr, 'A', 20 + 4 * pitch, 93, DARK_BLUE);
+    expect_glyph_at(scr, '1', 20 + 5 * pitch, 93, DARK_BLUE);
+    expect_glyph_at(scr, 'B', 104 + 6 * pitch, 93, DARK_BLUE);
+    expect_glyph_at(scr, '0', 104 + 7 * pitch, 93, DARK_BLUE);
     // joy_binding_display_name is the oracle for those grid values.
     EXPECT_EQ("A1-", joy_binding_display_name(
                          player_joy[0].key_type[KEY_UP],
@@ -814,6 +818,113 @@ TEST(PauseMenuDraw, remote_pause_owner_subtitle_renders_only_when_present)
     expect_glyph_at(scr, 'A', base_x + 7 * pitch, 22, YELLOW);
 
     og::ui::install_pause_menu_state_for_screen(nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// PR proof media (MENUSHOTS_DIR gate): compose one settled player-screen
+// frame exactly as the runner draws it (background -> buttons -> content)
+// and dump it as a 320x200 PPM. Skipped without MENUSHOTS_DIR — the layout
+// truth lives in the exact-table pins; these frames are visual evidence.
+
+namespace
+{
+
+bool write_menushot(screen* scr, const char* name)
+{
+    const char* const dir = std::getenv("MENUSHOTS_DIR");
+    if (dir == nullptr || dir[0] == '\0')
+        return false;
+    std::error_code error;
+    std::filesystem::create_directories(dir, error);
+    if (error)
+        return false;
+    const std::string path = std::string(dir) + "/" + name + ".ppm";
+    FILE* const f = fopen(path.c_str(), "wb");
+    if (f == nullptr)
+        return false;
+    fprintf(f, "P6\n320 200\n255\n");
+    for (int y = 0; y < 200; ++y)
+    {
+        for (int x = 0; x < 320; ++x)
+        {
+            Uint8 rgb[3] = {0, 0, 0};
+            scr->get_pixel(x, y, &rgb[0], &rgb[1], &rgb[2]);
+            fwrite(rgb, 1, 3, f);
+        }
+    }
+    fclose(f);
+    fprintf(stderr, "  [menushot] wrote %s\n", path.c_str());
+    return true;
+}
+
+} // namespace
+
+TEST(PausePlayerDraw, menushots_player_screen_keyboard_and_joystick)
+{
+    if (std::getenv("MENUSHOTS_DIR") == nullptr)
+        GTEST_SKIP() << "set MENUSHOTS_DIR to write the PR proof frames";
+
+    screen* const scr = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, scr);
+    ControlStateGuard controls;
+    JoystickSubsystemGuard subsystem_guard;
+    VirtualJoystick pad(2, 6, 0, "OpenGlad menushot pad");
+    ASSERT_NE(nullptr, pad.get()) << SDL_GetError();
+    JoystickHandleGuard handle_guard;
+    const int d = device_index_of(pad.instance_id());
+    ASSERT_GE(d, 0);
+    ASSERT_LT(d, 10);
+    joysticks[d] = pad.get();
+    for (int p = 0; p < 4; ++p)
+        clear_player_joystick(p);
+
+    g_stub = StubHostState{};
+    g_stub.can_remove = false;  // solo shape: REMOVE hidden, panel is last
+    PauseMenuHost host = make_stub_host(false, true);
+    og::ui::PausePlayerScreenState state;
+    state.host = &host;
+    state.seat = 0;
+    state.player_number = 1;
+    og::ui::install_pause_player_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::pause_player_menu_screen_spec();
+
+    const auto compose_and_capture = [&](const char* name) {
+        button* const buttons = spec.buttons_accessor();
+        const int count = spec.count_accessor();
+        og::runtime::current_session->localbuttons_ =
+            init_buttons(buttons, count);
+        // The runner's gate pass + rewire, inline over the accessor array.
+        const std::vector<const og::ui::MenuButtonSpec*> rows =
+            og::ui::materialized_spec_rows(spec);
+        ASSERT_EQ(count, static_cast<int>(rows.size()));
+        og::ui::MenuLabelContext context{};
+        for (int i = 0; i < count; ++i)
+        {
+            const og::ui::MenuButtonSpec& row =
+                *rows[static_cast<std::size_t>(i)];
+            const og::ui::RowState row_state = row.state_override != nullptr
+                ? row.state_override(context)
+                : og::ui::RowState::Visible;
+            buttons[i].hidden = (row_state == og::ui::RowState::Hidden);
+        }
+        int highlighted = spec.default_highlight;
+        spec.nav.rewire(buttons, count, highlighted);
+        spec.draw_background(&state);
+        draw_buttons(buttons, count);
+        spec.draw_content(&state);
+        EXPECT_TRUE(write_menushot(scr, name)) << name;
+        clear_allbuttons();
+        og::runtime::current_session->localbuttons_ = nullptr;
+    };
+
+    compose_and_capture("pause_player_screen");
+
+    ASSERT_TRUE(assign_joystick_to_player(0, d));
+    compose_and_capture("pause_player_joystick");
+    clear_player_joystick(0);
+
+    og::ui::install_pause_player_state_for_screen(nullptr);
 }
 
 // ---------------------------------------------------------------------------
@@ -2434,4 +2545,154 @@ TEST(PauseMenuFlow, real_menu_add_player_cycle_input_then_play_survives)
     game_screen->world().delete_objects();
     game_screen->world().end = 0;
     game_screen->world().retry = false;
+}
+
+// ---------------------------------------------------------------------------
+// BUG repro (user report, Switch-2 GameCube pad): cycling INPUT past TFGH
+// onto the connected joystick HUNG the game one frame after the assignment —
+// the click frame completed (the binding grid drew the fresh pad bindings)
+// but the next frame's menu-nav release wait spun forever on an axis that
+// RESTS beyond the dead zone, which polling can never observe released. The
+// cycler face still read "INPUT: TFGH" because the player screen's label
+// rewire runs at frame top, before the wedged nav poll ever lets the frame
+// draw. This walks the reporter's exact flow through the REAL menus with a
+// virtual pad whose Y axis rests at -32768.
+
+namespace
+{
+
+// SDL drops joystick state updates while the window lacks focus
+// (SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS); the virtual axis writes below
+// must land regardless of which tests pumped events earlier.
+struct BackgroundJoystickEventsGuard
+{
+    BackgroundJoystickEventsGuard()
+    {
+        SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+    }
+    ~BackgroundJoystickEventsGuard()
+    {
+        SDL_ResetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS);
+    }
+};
+
+struct HostilePadFlow
+{
+    SDL_Joystick* pad = nullptr;
+    std::atomic<bool> menu_returned{false};
+};
+
+int pause_hostile_pad_injector(void* data)
+{
+    auto* const flow = static_cast<HostilePadFlow*>(data);
+    og::runtime::ensure_thread_session();
+
+    // The solo seat's player screen.
+    if (!wait_for_interactable("pause_player_0", 10'000))
+        return 1;
+    SDL_Delay(300);
+    interact("pause_player_0");
+    if (!wait_for_interactable("pause_input", 10'000))
+        return 2;
+    SDL_Delay(300);
+
+    // WASD -> ARROWS -> IJKL -> TFGH -> JOY1: the fourth cycle assigns the
+    // hostile pad to seat 0 (the reporter's "past TFGH" step).
+    for (int i = 0; i < 4; ++i)
+    {
+        interact("pause_input");
+        SDL_Delay(400);
+    }
+
+    // The reported hang struck on the frame after the assignment. A live
+    // menu still consumes BACK, re-materializes the PAUSED screen, and
+    // consumes RESUME.
+    interact("pause_player_back");
+    if (wait_for_interactable("pause_resume", 5'000))
+    {
+        SDL_Delay(300);
+        interact("pause_resume");
+        for (int waited = 0; waited < 5'000; waited += 50)
+        {
+            if (flow->menu_returned.load())
+                return 0;
+            SDL_Delay(50);
+        }
+    }
+
+    // Wedged (the pre-fix behavior). Neutralize the resting axis so the
+    // spin can exit and the suite stays bounded, then flush the queued
+    // clicks until the menu finally closes.
+    SDL_SetJoystickVirtualAxis(flow->pad, 1, 0);
+    for (int waited = 0; waited < 10'000; waited += 250)
+    {
+        if (flow->menu_returned.load())
+            return 7;
+        if (has_interactable("pause_resume"))
+            interact("pause_resume");
+        SDL_Delay(250);
+    }
+    return 8;
+}
+
+} // namespace
+
+TEST(PauseMenuFlow, input_cycler_onto_hostile_resting_pad_does_not_hang_menu)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, scr);
+    ControlStateGuard controls;
+    NumplayersGuard numplayers(1);
+    JoystickSubsystemGuard subsystem_guard;
+    BackgroundJoystickEventsGuard background_events_guard;
+    VirtualJoystick pad(2, 6, 0, "OpenGlad hostile resting pad");
+    ASSERT_NE(nullptr, pad.get()) << SDL_GetError();
+    JoystickHandleGuard handle_guard;
+    const int d = device_index_of(pad.instance_id());
+    ASSERT_GE(d, 0);
+    ASSERT_LT(d, 10);
+    joysticks[d] = pad.get();
+    og::input_native::joystick_set_event_state(true);
+    for (int p = 0; p < 4; ++p)
+        clear_player_joystick(p);
+
+    // The hostile shape: the axis the default layout would bind to UP/DOWN
+    // rests at an extreme (GameCube-style analog trigger / hard drift).
+    ASSERT_TRUE(SDL_SetJoystickVirtualAxis(pad.get(), 1, -32768));
+    SDL_UpdateJoysticks();
+    ASSERT_EQ(-32768, SDL_GetJoystickAxis(pad.get(), 1));
+
+    g_stub = StubHostState{};
+    PauseMenuHost host = make_stub_host(false, true);
+    og::ui::pause_menu_testing_set_force_real(true);
+
+    HostilePadFlow flow;
+    flow.pad = pad.get();
+    SDL_Thread* const injector = SDL_CreateThread(
+        pause_hostile_pad_injector, "hostile_pad_injector", &flow);
+    ASSERT_NE(nullptr, injector);
+
+    trace_clear();
+    const PauseMenuResult outcome = og::ui::run_pause_menu(host);
+    flow.menu_returned.store(true);
+
+    int injector_result = -1;
+    SDL_WaitThread(injector, &injector_result);
+    og::ui::pause_menu_testing_set_force_real(false);
+
+    EXPECT_EQ(0, injector_result)
+        << "the menu wedged after the JOY assignment (injector code "
+        << injector_result << ")";
+    EXPECT_EQ(PauseMenuResult::Resumed, outcome);
+    EXPECT_TRUE(trace_contains("joystick", "assigned player=0"))
+        << "the fourth INPUT cycle must land on the pad";
+    EXPECT_TRUE(playerHasJoystick(0));
+
+    // The flow's persist calls wrote the cycled state into the sandbox cfg;
+    // put the factory defaults back on disk so shuffled later tests load
+    // clean controls (ControlStateGuard restores only the in-memory state).
+    clear_player_joystick(0);
+    reset_default_player_controls();
+    save_player_control_settings_to_cfg(cfg);
+    cfg.save_settings();
 }

@@ -29,6 +29,8 @@
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/interface/native_input.h>
 
+#include <cstdint>
+
 namespace {
 constexpr Sint32 OK_VALUE = 4;
 constexpr Sint32 REDRAW_VALUE = 2;
@@ -129,6 +131,46 @@ void draw_highlight(const button& b)
 int g_test_menu_nav_key = -1;
 #endif
 
+namespace {
+// Menu-nav release waits are BOUNDED. The legacy shape spun until the
+// pressed input released, which is fine for keyboards (releases always
+// arrive) but hangs on joysticks: a stick drifting past JOY_DEAD_ZONE or a
+// trigger-style axis resting at an extreme reads held forever through the
+// polled JoyData::getState — no event can ever end the loop (the real-pad
+// INPUT-cycler hang). A press that outlives the budget still delivers its
+// one step (a deliberate long hold earns its action), then latches as
+// "stuck": it produces nothing further until one real release is observed.
+// The latch preserves the double-activation protection the spin existed for
+// — an input still held when the next screen's loop starts must not fire
+// again — across screens, because only an observed release clears it.
+constexpr std::uint32_t MENU_NAV_RELEASE_BUDGET_MS = 400;
+bool menu_nav_key_stuck[NUM_KEYS] = {};
+
+// True when `key_enum` produced a fresh press for this call.
+bool take_menu_nav_press(int key_enum)
+{
+    if(!isPlayerHoldingKey(0, key_enum))
+    {
+        menu_nav_key_stuck[key_enum] = false; // real release observed
+        return false;
+    }
+    if(menu_nav_key_stuck[key_enum])
+        return false; // the press that ran out the budget, still held
+    const std::uint32_t start = og::input_native::ticks_ms();
+    while(isPlayerHoldingKey(0, key_enum))
+    {
+        if(og::input_native::ticks_ms() - start >= MENU_NAV_RELEASE_BUDGET_MS)
+        {
+            menu_nav_key_stuck[key_enum] = true;
+            break;
+        }
+        og::input_native::sleep_ms(1);
+        get_input_events(POLL);
+    }
+    return true;
+}
+} // namespace
+
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons)
 {
     int next_button = -1;
@@ -146,58 +188,32 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
         pressed = true;
     }
 #endif
-    if(isPlayerHoldingKey(0, KEY_UP))
+    if(take_menu_nav_press(KEY_UP))
     {
-        while(isPlayerHoldingKey(0, KEY_UP))
-        {
-            og::input_native::sleep_ms(1);
-            get_input_events(POLL);
-        }
         next_button = buttons[highlighted_button].nav.up;
 
         pressed = true;
     }
-    if(isPlayerHoldingKey(0, KEY_DOWN))
+    if(take_menu_nav_press(KEY_DOWN))
     {
-        while(isPlayerHoldingKey(0, KEY_DOWN))
-        {
-            og::input_native::sleep_ms(1);
-            get_input_events(POLL);
-        }
         next_button = buttons[highlighted_button].nav.down;
 
         pressed = true;
     }
-    if(isPlayerHoldingKey(0, KEY_LEFT))
+    if(take_menu_nav_press(KEY_LEFT))
     {
-        while(isPlayerHoldingKey(0, KEY_LEFT))
-        {
-            og::input_native::sleep_ms(1);
-            get_input_events(POLL);
-        }
         next_button = buttons[highlighted_button].nav.left;
 
         pressed = true;
     }
-    if(isPlayerHoldingKey(0, KEY_RIGHT))
+    if(take_menu_nav_press(KEY_RIGHT))
     {
-        while(isPlayerHoldingKey(0, KEY_RIGHT))
-        {
-            og::input_native::sleep_ms(1);
-            get_input_events(POLL);
-        }
         next_button = buttons[highlighted_button].nav.right;
 
         pressed = true;
     }
-    if(isPlayerHoldingKey(0, KEY_FIRE))
+    if(take_menu_nav_press(KEY_FIRE))
     {
-        while(isPlayerHoldingKey(0, KEY_FIRE))
-        {
-            og::input_native::sleep_ms(1);
-            get_input_events(POLL);
-        }
-
         if(!pks().menu_nav_enabled)
             pressed = true;
         else

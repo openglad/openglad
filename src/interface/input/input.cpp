@@ -1210,18 +1210,36 @@ JoyData::JoyData(int joy_index)
         key_index[i] = 0;
     }
 
-    // Default movement
-    if(numAxes > 1) // Prefer two axes
+    // Default movement: prefer a two-axis stick, but never bind an axis
+    // whose RESTING value is already past the dead zone. Real hardware
+    // violates the axes-0/1-are-the-stick assumption — sticks drift,
+    // GameCube-style analog triggers rest at an extreme, adapters reorder
+    // axes — and a cardinal bound to such an axis reads permanently held:
+    // gameplay runs away and every release wait (menu nav) wedges forever.
+    int calm_axes[2] = {0, 0};
+    int calm_count = 0;
+    for (int axis = 0; axis < numAxes && calm_count < 2; ++axis)
+    {
+        const int resting = og::input_native::joystick_get_axis(js, axis);
+        if (resting > JOY_DEAD_ZONE || resting < -JOY_DEAD_ZONE)
+        {
+            TRACE("joystick", "synthesis_skip_axis device=%d axis=%d rest=%d",
+                  joy_index, axis, resting);
+            continue;
+        }
+        calm_axes[calm_count++] = axis;
+    }
+    if(calm_count >= 2) // Prefer two (calm) axes
     {
         key_type[KEY_RIGHT] = POS_AXIS;
-        key_index[KEY_RIGHT] = 0;
+        key_index[KEY_RIGHT] = calm_axes[0];
         key_type[KEY_LEFT] = NEG_AXIS;
-        key_index[KEY_LEFT] = 0;
+        key_index[KEY_LEFT] = calm_axes[0];
 
         key_type[KEY_UP] = NEG_AXIS;
-        key_index[KEY_UP] = 1;
+        key_index[KEY_UP] = calm_axes[1];
         key_type[KEY_DOWN] = POS_AXIS;
-        key_index[KEY_DOWN] = 1;
+        key_index[KEY_DOWN] = calm_axes[1];
     }
     else if(numHats > 0) // But a single hat is okay otherwise
     {
@@ -1267,6 +1285,20 @@ JoyData::JoyData(int joy_index)
     {
         key_type[KEY_SWITCH] = BUTTON;
         key_index[KEY_SWITCH] = 5;
+    }
+
+    // Baseline snapshot: any binding that reads ACTIVE right now (a resting
+    // pressed button/hat, the owner's grip during assignment) starts
+    // suppressed; isPlayerHoldingKey ignores it until one real release is
+    // observed. See held_at_assign_mask in input.h.
+    for (int k = 0; k < NUM_KEYS; ++k)
+    {
+        if (key_type[k] != NONE && getState(k))
+        {
+            held_at_assign_mask |= (1 << k);
+            TRACE("joystick", "synthesis_suppress device=%d key=%d",
+                  joy_index, k);
+        }
     }
 }
 
@@ -1360,6 +1392,9 @@ void JoyData::setKeyFromEvent(int key_enum, const void* native_event)
 
     if(gotJoy)
     {
+        // A rebound key is live again: the user just proved this input can
+        // move, so any held-at-assignment suppression is stale.
+        held_at_assign_mask &= ~(1 << key_enum);
         // Take over this joystick, voiding the robbed seat's explicit claim.
         for(int i = 0; i < 4; i++)
         {
@@ -1511,8 +1546,21 @@ bool isPlayerHoldingKey(int player_index, int key_enum)
     if (hw().touch_keystate[player_index][key_enum])
         return true;
     // FIXME: On Android/iOS, do not mistake an accelerometer for a gamepad.
-    if(player_joy[player_index].hasButtonSet(key_enum))
-        return player_joy[player_index].getState(key_enum);
+    JoyData& joy = player_joy[player_index];
+    if(joy.hasButtonSet(key_enum))
+    {
+        const bool held = joy.getState(key_enum);
+        if (joy.held_at_assign_mask & (1 << key_enum))
+        {
+            // Held since the layout was synthesized (drift, a resting
+            // trigger, a grip hold during assignment): suppressed until one
+            // real release proves the input can rest. See JoyData(int).
+            if (held)
+                return false;
+            joy.held_at_assign_mask &= ~(1 << key_enum);
+        }
+        return held;
+    }
     else
         return og::runtime::current_session->keystates_[og::input_native::scancode_from_key(og::runtime::current_session->player_keys_[player_index][key_enum])];
 }

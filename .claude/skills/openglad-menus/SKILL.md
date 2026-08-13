@@ -45,6 +45,39 @@ plumbing — that's a separate, bigger chain (versioned save/wire formats); see
 - Mission-briefing text budget is 33 chars/line; the MATCHUP detail line is 47
   (39 when paged); the scenario-viewer line budget is 48. Tests pin these.
 
+## Layout discipline (grids, not coordinates)
+
+The unified player screen shipped with RESET at x=218 next to a button stack
+at x=214, REMAP at x=123 above ZOOM at x=122, a band at x=16 over a panel at
+x=12, and a title-to-band gap of 15px where every other gap was 4-6px. Every
+pin test was green — the user saw it instantly. Never again:
+
+- **Declare the grid before writing a rect.** A screen is columns and bands:
+  name the column edges and the band pitch as constants
+  (`kScreenLeftCol = 12`, `kScreenRightCol = 214`, band pitch), and derive
+  every x/y from them. A literal coordinate that appears once is a future
+  1px drift; the REMAP/ZOOM 123-vs-122 bug was exactly two hand-typed
+  near-neighbors.
+- **Vertical rhythm is part of the design.** Gaps between bands must be
+  uniform or deliberately graduated — measure title→first-band against
+  band→band before accepting a layout. A first gap 2-3x the others reads as
+  "the top row is floating".
+- **Alignment is a testable RELATION, not an absolute.** Exact-table pins
+  happily pin a crooked layout — they prove self-consistency, not alignment.
+  Layout tests must also assert the relations: every button in a declared
+  column has the same `.x`; every right-column rect has the same right edge;
+  band pitches are equal. Then a future edit that breaks the grid fails a
+  test instead of a user's eye.
+- **Shared layouts share constants.** When two screens are meant to be
+  geometrically identical (pause player screen ≡ seat settings), one
+  constants block feeds both tables — duplicated literals drift the moment
+  one screen is edited alone. Pin the identity with a test that diffs the
+  two geometry tables field by field.
+- **Read the capture like a reviewer.** The visual-verification pass below
+  is not only "is my text there": trace the column edges in the screenshot
+  and say out loud which rects share them. Misalignment survives every
+  automated gate; the read-back is where it dies.
+
 ## Labels have TWO surfaces
 
 The static `button` row (rebuilt from the k_* table at menu entry) and the

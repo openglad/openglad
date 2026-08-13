@@ -2146,14 +2146,15 @@ TEST(MenuEngine, seat_settings_registry_and_global_controls_ownership)
         const int input_row =
             mp ? kSeatSettingsInputRowMP : kSeatSettingsInputRowNoMP;
         expect_geometry(spec->rows[kSeatSettingsModeIndex],
-                        16, 38, 98, 18);
+                        12, 30, 98, 18);
         expect_geometry(spec->rows[kSeatSettingsRemapIndex],
-                        123, 38, 86, 18);
+                        116, 30, 92, 18);
         expect_geometry(spec->rows[kSeatSettingsResetIndex],
-                        218, 38, 86, 18);
-        // The y=38 band is exactly full (16+98 | 123+86 | 218+86 = 304), so
-        // the cycler takes its own band above the live binding panel.
-        expect_geometry(spec->rows[input_row], 16, 62, 98, 18);
+                        214, 30, 90, 18);
+        // The aligned grid: columns x=12/116/214 (widths 98/92/90) with 6px
+        // gutters and a shared right edge at 304; the cycler takes its own
+        // y=54 band above the live binding panel.
+        expect_geometry(spec->rows[input_row], 12, 54, 98, 18);
         EXPECT_STREQ("RESET",
                      spec->rows[kSeatSettingsResetIndex].label);
         EXPECT_STREQ("INPUT: WASD", spec->rows[input_row].label);
@@ -2165,7 +2166,7 @@ TEST(MenuEngine, seat_settings_registry_and_global_controls_ownership)
                   spec->rows[kSeatSettingsRemapIndex].nav.right);
         EXPECT_EQ(kSeatSettingsRemapIndex,
                   spec->rows[kSeatSettingsResetIndex].nav.left);
-        // §7.1: the y=62 band is INPUT + ZOOM; the y=38 band drops into it
+        // §7.1: the y=54 band is INPUT + ZOOM; the y=30 band drops into it
         // (MODE onto INPUT, REMAP onto ZOOM) and RESET drops onto the HUD
         // stack; INPUT still drops into the bottom band.
         const int zoom_row =
@@ -2184,13 +2185,13 @@ TEST(MenuEngine, seat_settings_registry_and_global_controls_ownership)
         EXPECT_EQ(input_row, spec->rows[kSeatSettingsTeamIndex].nav.up);
         // ZOOM + HUD stack geometry and dispatch args (args are the MP
         // positions in BOTH variants — the seat_input precedent).
-        expect_geometry(spec->rows[zoom_row], 122, 62, 88, 18);
+        expect_geometry(spec->rows[zoom_row], 116, 54, 92, 18);
         EXPECT_STREQ("seat_zoom", spec->rows[zoom_row].id);
         EXPECT_EQ(kSeatSettingsZoomIndex, spec->rows[zoom_row].arg);
-        expect_geometry(spec->rows[radar_row], 214, 84, 90, 18);
-        expect_geometry(spec->rows[radar_row + 1], 214, 106, 90, 18);
-        expect_geometry(spec->rows[radar_row + 2], 214, 128, 90, 18);
-        expect_geometry(spec->rows[score_row], 214, 150, 90, 18);
+        expect_geometry(spec->rows[radar_row], 214, 78, 90, 18);
+        expect_geometry(spec->rows[radar_row + 1], 214, 100, 90, 18);
+        expect_geometry(spec->rows[radar_row + 2], 214, 122, 90, 18);
+        expect_geometry(spec->rows[score_row], 214, 144, 90, 18);
         EXPECT_STREQ("seat_hud_radar", spec->rows[radar_row].id);
         EXPECT_STREQ("seat_hud_life", spec->rows[radar_row + 1].id);
         EXPECT_STREQ("seat_hud_foes", spec->rows[radar_row + 2].id);
@@ -2210,7 +2211,7 @@ TEST(MenuEngine, seat_settings_registry_and_global_controls_ownership)
         }
     }
     expect_geometry(seat_mp.rows[kSeatSettingsTeamIndex],
-                    16, 169, 138, 18);
+                    12, 169, 138, 18);
     expect_geometry(seat_mp.rows[kSeatSettingsRemoveIndex],
                     166, 169, 138, 18);
     EXPECT_EQ(kSeatSettingsRemoveIndex,

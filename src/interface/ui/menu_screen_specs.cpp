@@ -2280,9 +2280,10 @@ RowState seat_settings_zoom_row_state(const MenuLabelContext& /*context*/)
                                      : RowState::Disabled;
 }
 
-// §7.1 unified player screen: ZOOM rides the y=62 band beside INPUT; the
-// RADAR/HP/FOES/SCORE stack sits right of the narrowed binding panel at
-// x=214, 22px pitch. Appended after seat_input (index contract).
+// §7.1 unified player screen (the kPlayerScreen* grid in picker_sdl_defs.h):
+// ZOOM rides the y=54 band beside INPUT; the RADAR/HP/FOES/SCORE stack sits
+// right of the binding panel at x=214 on a 22px pitch, sharing the panel's
+// y=78..161 span. Appended after seat_input (index contract).
 constexpr MenuButtonSpec kSeatSettingsRowsMP[] = {
     {.id = "seat_settings_back", .label = "BACK",
      .hotkey = KEYSTATE_ESCAPE,
@@ -2291,70 +2292,83 @@ constexpr MenuButtonSpec kSeatSettingsRowsMP[] = {
      .nav = {.up = kSeatSettingsTeamIndex,
              .down = kSeatSettingsModeIndex}},
     {.id = "seat_team", .label = "TEAM 1",
-     .x = 16, .y = 169, .w = 138, .h = 18,
+     .x = kPlayerScreenColAX, .y = kPlayerScreenBottomBandY,
+     .w = 138, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsTeamIndex,
      .nav = {.up = kSeatSettingsInputRowMP,
              .down = kSeatSettingsBackIndex,
              .right = kSeatSettingsRemoveIndex}},
     {.id = "seat_direction", .label = "4-DIRECTION",
-     .x = 16, .y = 38, .w = 98, .h = 18,
+     .x = kPlayerScreenColAX, .y = kPlayerScreenBand1Y,
+     .w = kPlayerScreenColAW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsModeIndex,
      .nav = {.up = kSeatSettingsBackIndex,
              .down = kSeatSettingsInputRowMP,
              .right = kSeatSettingsRemapIndex}},
     {.id = "seat_remap", .label = "REMAP",
-     .x = 123, .y = 38, .w = 86, .h = 18,
+     .x = kPlayerScreenColBX, .y = kPlayerScreenBand1Y,
+     .w = kPlayerScreenColBW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsRemapIndex,
      .nav = {.up = kSeatSettingsBackIndex,
              .down = kSeatSettingsZoomRowMP,
              .left = kSeatSettingsModeIndex,
              .right = kSeatSettingsResetIndex}},
     {.id = "seat_reset", .label = "RESET",
-     .x = 218, .y = 38, .w = 86, .h = 18,
+     .x = kPlayerScreenColCX, .y = kPlayerScreenBand1Y,
+     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsResetIndex,
      .nav = {.up = kSeatSettingsBackIndex,
              .down = kSeatSettingsHudRadarRowMP,
              .left = kSeatSettingsRemapIndex}},
     {.id = "seat_remove", .label = "REMOVE PLAYER",
-     .x = 166, .y = 169, .w = 138, .h = 18,
+     .x = 166, .y = kPlayerScreenBottomBandY, .w = 138, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsRemoveIndex,
      .nav = {.up = kSeatSettingsHudScoreRowMP,
              .down = kSeatSettingsBackIndex,
              .left = kSeatSettingsTeamIndex},
      .state_override = &seat_settings_remove_row_state},
     {.id = "seat_input", .label = "INPUT: WASD",
-     .x = 16, .y = 62, .w = 98, .h = 18,
+     .x = kPlayerScreenColAX, .y = kPlayerScreenBand2Y,
+     .w = kPlayerScreenColAW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsInputIndex,
      .nav = {.up = kSeatSettingsModeIndex,
              .down = kSeatSettingsTeamIndex,
              .right = kSeatSettingsZoomRowMP}},
     {.id = "seat_zoom", .label = "ZOOM: GAME",
-     .x = 122, .y = 62, .w = 88, .h = 18,
+     .x = kPlayerScreenColBX, .y = kPlayerScreenBand2Y,
+     .w = kPlayerScreenColBW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsZoomIndex,
      .nav = {.up = kSeatSettingsRemapIndex,
              .down = kSeatSettingsHudRadarRowMP,
              .left = kSeatSettingsInputRowMP},
      .state_override = &seat_settings_zoom_row_state},
     {.id = "seat_hud_radar", .label = "RADAR: ON",
-     .x = 214, .y = 84, .w = 90, .h = 18,
+     .x = kPlayerScreenColCX, .y = kPlayerScreenHudTopY,
+     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudRadarIndex,
      .nav = {.up = kSeatSettingsResetIndex,
              .down = kSeatSettingsHudLifeRowMP,
              .left = kSeatSettingsZoomRowMP}},
     {.id = "seat_hud_life", .label = "HP: ON",
-     .x = 214, .y = 106, .w = 90, .h = 18,
+     .x = kPlayerScreenColCX,
+     .y = kPlayerScreenHudTopY + kPlayerScreenHudPitch,
+     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudLifeIndex,
      .nav = {.up = kSeatSettingsHudRadarRowMP,
              .down = kSeatSettingsHudFoesRowMP,
              .left = kSeatSettingsInputRowMP}},
     {.id = "seat_hud_foes", .label = "FOES: ON",
-     .x = 214, .y = 128, .w = 90, .h = 18,
+     .x = kPlayerScreenColCX,
+     .y = kPlayerScreenHudTopY + 2 * kPlayerScreenHudPitch,
+     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudFoesIndex,
      .nav = {.up = kSeatSettingsHudLifeRowMP,
              .down = kSeatSettingsHudScoreRowMP,
              .left = kSeatSettingsInputRowMP}},
     {.id = "seat_hud_score", .label = "SCORE: ON",
-     .x = 214, .y = 150, .w = 90, .h = 18,
+     .x = kPlayerScreenColCX,
+     .y = kPlayerScreenHudTopY + 3 * kPlayerScreenHudPitch,
+     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudScoreIndex,
      .nav = {.up = kSeatSettingsHudFoesRowMP,
              .down = kSeatSettingsRemoveIndex,
@@ -2369,62 +2383,74 @@ constexpr MenuButtonSpec kSeatSettingsRowsNoMP[] = {
      .nav = {.up = kSeatSettingsTeamIndex,
              .down = kSeatSettingsModeIndex}},
     {.id = "seat_team", .label = "TEAM 1",
-     .x = 91, .y = 169, .w = 138, .h = 18,
+     .x = 91, .y = kPlayerScreenBottomBandY, .w = 138, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsTeamIndex,
      .nav = {.up = kSeatSettingsInputRowNoMP,
              .down = kSeatSettingsBackIndex}},
     {.id = "seat_direction", .label = "4-DIRECTION",
-     .x = 16, .y = 38, .w = 98, .h = 18,
+     .x = kPlayerScreenColAX, .y = kPlayerScreenBand1Y,
+     .w = kPlayerScreenColAW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsModeIndex,
      .nav = {.up = kSeatSettingsBackIndex,
              .down = kSeatSettingsInputRowNoMP,
              .right = kSeatSettingsRemapIndex}},
     {.id = "seat_remap", .label = "REMAP",
-     .x = 123, .y = 38, .w = 86, .h = 18,
+     .x = kPlayerScreenColBX, .y = kPlayerScreenBand1Y,
+     .w = kPlayerScreenColBW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsRemapIndex,
      .nav = {.up = kSeatSettingsBackIndex,
              .down = kSeatSettingsZoomRowNoMP,
              .left = kSeatSettingsModeIndex,
              .right = kSeatSettingsResetIndex}},
     {.id = "seat_reset", .label = "RESET",
-     .x = 218, .y = 38, .w = 86, .h = 18,
+     .x = kPlayerScreenColCX, .y = kPlayerScreenBand1Y,
+     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsResetIndex,
      .nav = {.up = kSeatSettingsBackIndex,
              .down = kSeatSettingsHudRadarRowNoMP,
              .left = kSeatSettingsRemapIndex}},
     {.id = "seat_input", .label = "INPUT: WASD",
-     .x = 16, .y = 62, .w = 98, .h = 18,
+     .x = kPlayerScreenColAX, .y = kPlayerScreenBand2Y,
+     .w = kPlayerScreenColAW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsInputIndex,
      .nav = {.up = kSeatSettingsModeIndex,
              .down = kSeatSettingsTeamIndex,
              .right = kSeatSettingsZoomRowNoMP}},
     {.id = "seat_zoom", .label = "ZOOM: GAME",
-     .x = 122, .y = 62, .w = 88, .h = 18,
+     .x = kPlayerScreenColBX, .y = kPlayerScreenBand2Y,
+     .w = kPlayerScreenColBW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsZoomIndex,
      .nav = {.up = kSeatSettingsRemapIndex,
              .down = kSeatSettingsHudRadarRowNoMP,
              .left = kSeatSettingsInputRowNoMP},
      .state_override = &seat_settings_zoom_row_state},
     {.id = "seat_hud_radar", .label = "RADAR: ON",
-     .x = 214, .y = 84, .w = 90, .h = 18,
+     .x = kPlayerScreenColCX, .y = kPlayerScreenHudTopY,
+     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudRadarIndex,
      .nav = {.up = kSeatSettingsResetIndex,
              .down = kSeatSettingsHudLifeRowNoMP,
              .left = kSeatSettingsZoomRowNoMP}},
     {.id = "seat_hud_life", .label = "HP: ON",
-     .x = 214, .y = 106, .w = 90, .h = 18,
+     .x = kPlayerScreenColCX,
+     .y = kPlayerScreenHudTopY + kPlayerScreenHudPitch,
+     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudLifeIndex,
      .nav = {.up = kSeatSettingsHudRadarRowNoMP,
              .down = kSeatSettingsHudFoesRowNoMP,
              .left = kSeatSettingsInputRowNoMP}},
     {.id = "seat_hud_foes", .label = "FOES: ON",
-     .x = 214, .y = 128, .w = 90, .h = 18,
+     .x = kPlayerScreenColCX,
+     .y = kPlayerScreenHudTopY + 2 * kPlayerScreenHudPitch,
+     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudFoesIndex,
      .nav = {.up = kSeatSettingsHudLifeRowNoMP,
              .down = kSeatSettingsHudScoreRowNoMP,
              .left = kSeatSettingsInputRowNoMP}},
     {.id = "seat_hud_score", .label = "SCORE: ON",
-     .x = 214, .y = 150, .w = 90, .h = 18,
+     .x = kPlayerScreenColCX,
+     .y = kPlayerScreenHudTopY + 3 * kPlayerScreenHudPitch,
+     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudScoreIndex,
      .nav = {.up = kSeatSettingsHudFoesRowNoMP,
              .down = kSeatSettingsTeamIndex,
@@ -2528,12 +2554,17 @@ void seat_settings_draw_content(void* screen_state)
                     static_cast<int>(player.player_index) + 1)
             .c_str());
 
-    // §7.1 unified geometry: the binding panel narrows to x=12..208 so the
-    // RADAR/HP/FOES/SCORE stack fits at x=214; movement column x=20, actions
-    // x=104, 8px line pitch, both columns budget-clamped.
-    game->draw_button(12, 84, 208, 164, 2, 1);
-    mytext.write_xy(20, 88, DARK_BLUE, "%s", "MOVEMENT");
-    mytext.write_xy(104, 88, DARK_BLUE, "%s", "ACTIONS");
+    // §7.1 unified geometry: the binding panel spans columns A+B
+    // (x=12..208, y=78..161, sharing the HUD stack's vertical span);
+    // movement column x=20, actions x=104, 8px line pitch, both columns
+    // budget-clamped.
+    game->draw_button(kPlayerScreenColAX, kPlayerScreenPanelTopY,
+                      kPlayerScreenPanelRightX, kPlayerScreenPanelBottomY,
+                      2, 1);
+    mytext.write_xy(20, kPlayerScreenPanelHeaderY, DARK_BLUE, "%s",
+                    "MOVEMENT");
+    mytext.write_xy(104, kPlayerScreenPanelHeaderY, DARK_BLUE, "%s",
+                    "ACTIONS");
 
     struct BindingLine {
         const char* label;
@@ -2584,16 +2615,18 @@ void seat_settings_draw_content(void* screen_state)
             : std::string("--");
         const std::string line = format_binding_panel_line(
             binding.label, value, kBindingPanelMovementChars);
-        mytext.write_xy(20, 99 + static_cast<int>(index) * 8,
-                        active ? DARK_BLUE : GREY, "%s", line.c_str());
+        mytext.write_xy(
+            20, kPlayerScreenPanelLineY + static_cast<int>(index) * 8,
+            active ? DARK_BLUE : GREY, "%s", line.c_str());
     }
     for (std::size_t index = 0; index < actions.size(); ++index) {
         const BindingLine& binding = actions[index];
         const std::string line = format_binding_panel_line(
             binding.label, binding_value(binding.key),
             kBindingPanelActionsChars);
-        mytext.write_xy(104, 99 + static_cast<int>(index) * 8,
-                        DARK_BLUE, "%s", line.c_str());
+        mytext.write_xy(
+            104, kPlayerScreenPanelLineY + static_cast<int>(index) * 8,
+            DARK_BLUE, "%s", line.c_str());
     }
 }
 

@@ -2643,11 +2643,12 @@ TEST(ViewTeam, seat_settings_draws_selected_identity_and_direction_mode)
     // A joystick-driven seat reads the DEVICE bindings, not the keyboard
     // names it still reserves. Bind the profile directly: the content pass
     // only reads JoyData, so no SDL device is needed.
-    // §7.1: the panel narrows to x=12..208 and the ACTIONS column moved to
-    // x=104, so the movement-line hash stops short of it.
+    // §7.1: the panel spans x=12..208 (top y=78, first binding line y=93)
+    // and the ACTIONS column sits at x=104, so the movement-line hash stops
+    // short of it.
     const auto movement_line_hash = [&] {
         std::uint64_t hash = 1469598103934665603ULL;
-        for (int y = 99; y < 99 + font.sizey; ++y) {
+        for (int y = 93; y < 93 + font.sizey; ++y) {
             for (int x = 12; x < 104; ++x) {
                 int pixel = 0;
                 output->get_pixel(x, y, &pixel);
@@ -2659,8 +2660,8 @@ TEST(ViewTeam, seat_settings_draws_selected_identity_and_direction_mode)
     };
     const auto expected_movement_hash = [&](const std::string& line) {
         output->clearbuffer();
-        output->draw_button(12, 84, 208, 164, 2, 1);
-        font.write_xy(20, 99, DARK_BLUE, "%s", line.c_str());
+        output->draw_button(12, 78, 208, 161, 2, 1);
+        font.write_xy(20, 93, DARK_BLUE, "%s", line.c_str());
         return movement_line_hash();
     };
 

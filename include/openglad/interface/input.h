@@ -334,7 +334,16 @@ class JoyData
     
     int key_type[NUM_KEYS]{};
     int key_index[NUM_KEYS]{};
-    
+
+    // Baseline snapshot: bit k set = key k's binding was ALREADY active when
+    // this layout was synthesized (stick drift past the dead zone, a
+    // trigger-style axis resting at an extreme, the owner's grip during
+    // assignment). isPlayerHoldingKey reports such a key as NOT held until
+    // one real release is observed — a permanently-resting input must never
+    // read as held, or every release wait (menu nav) wedges forever.
+    // NUM_KEYS(17) < 31 bits.
+    int held_at_assign_mask{};
+
     JoyData();
     JoyData(int index);
     
