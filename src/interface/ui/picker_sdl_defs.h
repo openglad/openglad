@@ -106,12 +106,6 @@ struct button;
 void picker_wire_networking_menu_nav(button* buttons, int count,
                                      int visible_rooms);
 
-// CONTROLS subscreen header text position. Must clear the BACK button's
-// animated keyboard highlight (which extends up to 3px beyond the bevel) and
-// stay above the first player row; pinned by test_menu_layout.
-inline constexpr int32_t PICKER_CONTROLS_HEADER_X = 10;
-inline constexpr int32_t PICKER_CONTROLS_HEADER_Y = 28;
-
 // Per-session mutable button descriptors (Phase 12).
 button* picker_mainmenu_buttons();
 int picker_mainmenu_button_count();
@@ -128,8 +122,6 @@ button* picker_main_options_buttons();
 button* picker_display_settings_buttons();
 int picker_display_settings_button_count();
 int picker_main_options_button_count();
-button* picker_control_options_buttons();
-int picker_control_options_button_count();
 button* picker_gameplay_fx_options_buttons();
 int picker_gameplay_fx_options_button_count();
 button* picker_ui_fx_options_buttons();

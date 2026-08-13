@@ -2049,6 +2049,45 @@ TEST(NetTransport, game_server_never_desync_disconnects_the_host_peer)
         << "the host peer must survive sustained hash mismatches";
 }
 
+TEST(NetTransport, game_server_never_desync_disconnects_marked_local_peers)
+{
+    // Same reasoning as the host-peer exemption above, extended to every
+    // same-process peer: a LOCAL splitscreen session runs one in-process
+    // client per seat, and cutting a background seat's peer as "desynced"
+    // makes the display's next send throw ("InProcessTransport peer N is not
+    // connected"). The local transport shadow marks all of its clients; a
+    // marked peer keeps being force-keyframed instead of being cut. Remote
+    // peers keep the strike-out (pinned by
+    // game_server_bounds_sustained_hash_mismatches_with_disconnect above).
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    server.connect_client(1u); // first client == host
+    server.connect_client(2u); // a background local seat's peer
+    server.mark_peer_local(2u);
+
+    server.send_initial_snapshot(2u, og::sim::SnapshotCaptureMode::Peek);
+    ASSERT_GE(transport.sent_messages().size(), 2u);
+    const og::sim::WorldSnapshot snapshot =
+        og::sim::deserialize_snapshot(transport.sent_messages().back().data);
+
+    for (std::uint32_t i = 0;
+         i < og::sim::kMaxConsecutiveSnapshotHashMismatches * 2u; ++i)
+    {
+        server.send_initial_snapshot(2u, og::sim::SnapshotCaptureMode::Peek);
+        transport.queue_received(
+            2u,
+            og::sim::serialize_snapshot_hash_check_message({
+                .tick = snapshot.tick_count,
+                .snapshot_hash = snapshot.snapshot_hash + 1u,
+            }));
+    }
+    server.step();
+    EXPECT_TRUE(transport.disconnected_peers().empty())
+        << "a marked local peer must survive sustained hash mismatches";
+}
+
 TEST(NetTransport, game_client_bounds_rejected_keyframes_into_fatal_desync)
 {
     // WI-3(b) client side: a keyframe whose full-grid payload does not match

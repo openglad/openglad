@@ -400,23 +400,6 @@ TEST(MenuLayout, cloud_save_screen_layout_states_and_nav)
     EXPECT_STREQ("cloud_save", spec.name);
 }
 
-TEST(MenuLayout, global_control_reset_is_centered_and_reachable)
-{
-    button* buttons = picker_control_options_buttons();
-    const int count = picker_control_options_button_count();
-    check_no_overlaps(buttons, count, "control_options");
-    check_bounds(buttons, count, "control_options");
-    check_nav_closed_and_reachable(buttons, count, 0, "control_options");
-
-    ASSERT_EQ(10, count);
-    const button& reset = buttons[9];
-    EXPECT_EQ("reset_all_controls", reset.id);
-    EXPECT_EQ("RESET ALL", reset.label);
-    EXPECT_EQ(160, reset.x + reset.sizex / 2);
-    EXPECT_EQ(button_action_id(ButtonAction::RestoreDefaultControls),
-              reset.myfun);
-}
-
 TEST(MenuLayout, createmenu_buttons_no_overlap)
 {
     button* buttons = picker_createmenu_buttons();
@@ -1905,38 +1888,6 @@ TEST(MenuLayout, matchup_nav_variants_keyboard_reachable)
 }
 
 
-TEST(MenuLayout, control_options_buttons_no_overlap)
-{
-    button* buttons = picker_control_options_buttons();
-    const int count = picker_control_options_button_count();
-    check_no_overlaps(buttons, count, "control_options");
-    check_bounds(buttons, count, "control_options");
-}
-
-// The header text ("Player control modes and key remapping") once started at
-// y=24, inside the BACK button's animated highlight box, which overwrote its
-// first characters. Pin that it clears the highlight (3px beyond the bevel)
-// and still sits above the first player row.
-TEST(MenuLayout, control_options_header_clears_back_button_and_player_rows)
-{
-    button* buttons = picker_control_options_buttons();
-    const int count = picker_control_options_button_count();
-    ASSERT_GE(count, 2);
-    const button& back = buttons[0];
-    ASSERT_EQ("controls_back", back.id);
-    const button& player1_mode = buttons[1];
-    ASSERT_EQ("player1_mode", player1_mode.id);
-
-    constexpr int kHighlightExtent = 3;  // draw_highlight animates 0..3px out
-    constexpr int kTextHeight = 8;       // small-font glyph rows + breathing room
-    EXPECT_GT(PICKER_CONTROLS_HEADER_Y, back.y + back.sizey + kHighlightExtent)
-        << "header must start below the BACK button's highlight box";
-    EXPECT_LE(PICKER_CONTROLS_HEADER_Y + kTextHeight, player1_mode.y)
-        << "header must finish above the P1 row";
-    EXPECT_GE(PICKER_CONTROLS_HEADER_X, 10) << "header stays inside the bevel";
-}
-
-
 TEST(MenuLayout, main_options_nav_indices_in_range)
 {
     button* buttons = picker_main_options_buttons();
@@ -1945,26 +1896,18 @@ TEST(MenuLayout, main_options_nav_indices_in_range)
 }
 
 
-TEST(MenuLayout, control_options_nav_indices_in_range)
-{
-    button* buttons = picker_control_options_buttons();
-    const int count = picker_control_options_button_count();
-    check_nav_in_range(buttons, count, "control_options");
-    check_nav_closed_and_reachable(buttons, count, 0, "control_options");
-    ASSERT_EQ(10, count);
-    EXPECT_EQ("reset_all_controls", buttons[9].id);
-}
-
 // The per-effect toggles live in the three FX subscreens; main options keeps
-// the sound/graphics settings plus the three stacked FX doors and the global
-// CONTROLS door. Pin the draw-hook index contract and nav graph.
+// the sound/graphics settings plus the three stacked FX doors. The global
+// CONTROLS door is gone (per-seat player screens own every row it had), and
+// SPEED took the row it vacated. Pin the draw-hook index contract, the two
+// column edges, and the nav graph.
 TEST(MenuLayout, main_options_index_contract_and_nav)
 {
     button* buttons = picker_main_options_buttons();
     const int count = picker_main_options_button_count();
-    ASSERT_EQ(10, count)
+    ASSERT_EQ(9, count)
         << "main options is BACK + Sound + DISPLAY + sprite sheet + "
-           "3 FX doors + CONTROLS + RESTORE SETTINGS + SPEED";
+           "3 FX doors + RESTORE SETTINGS + SPEED";
 
     static const char* kExpectedIds[] = {
         "options_back",       // 0
@@ -1975,8 +1918,7 @@ TEST(MenuLayout, main_options_index_contract_and_nav)
         "pick_sprite_sheet",  // 5: label synced by index each frame
         "ui_fx",              // 6: opens the UI FX subscreen
         "graphics_fx",        // 7: opens the GRAPHICS FX subscreen
-        "control_settings",   // 8: opens persistent player profiles
-        "game_speed",         // 9: cfg gameplay/timer_wait cycler
+        "game_speed",         // 8: cfg gameplay/timer_wait cycler
     };
     for (int i = 0; i < count; ++i)
     {
@@ -1989,28 +1931,28 @@ TEST(MenuLayout, main_options_index_contract_and_nav)
             << "' escapes its face";
     }
     EXPECT_EQ("RESTORE SETTINGS", buttons[4].label);
-    // The settings/door column stacks at one x at 23px pitch.
+    // Column relation, not coordinates: Sound heads the door column, and
+    // every door below it shares that one x at a 23px pitch.
     EXPECT_EQ("DISPLAY", buttons[2].label);
-    EXPECT_EQ(buttons[2].x, buttons[3].x);
-    EXPECT_EQ(buttons[3].x, buttons[6].x);
-    EXPECT_EQ(buttons[3].x, buttons[7].x);
-    EXPECT_EQ(buttons[3].x, buttons[8].x);
+    for (const int door : {1, 3, 6, 7})
+        EXPECT_EQ(buttons[2].x, buttons[door].x)
+            << buttons[door].id << " must sit on the door column edge";
+    EXPECT_EQ(buttons[1].y + 23, buttons[2].y);
     EXPECT_EQ(buttons[2].y + 23, buttons[3].y);
     EXPECT_EQ(buttons[3].y + 23, buttons[6].y);
     EXPECT_EQ(buttons[6].y + 23, buttons[7].y);
-    EXPECT_EQ(buttons[7].y + 23, buttons[8].y);
     EXPECT_EQ(button_action_id(ButtonAction::OpenDisplaySettings), buttons[2].myfun);
-    EXPECT_EQ(button_action_id(ButtonAction::OpenControlSettings), buttons[8].myfun);
 
     // SPEED closes the right column (RESTORE SETTINGS / Sprite Sheet / SPEED
-    // share x=210). It sits at y=171 because the left column's 90px door
-    // faces reach x=220 on every row between 56 and 148.
-    EXPECT_EQ(button_action_id(ButtonAction::CycleGameSpeed), buttons[9].myfun);
-    EXPECT_EQ(buttons[4].x, buttons[9].x);
-    EXPECT_EQ(buttons[5].x, buttons[9].x);
-    EXPECT_EQ(171, buttons[9].y);
-    EXPECT_GT(buttons[9].y, buttons[8].y + buttons[8].sizey)
-        << "SPEED must clear the last left-column door's row";
+    // share one x) in the row the retired CONTROLS door vacated: the door
+    // column's 90px faces reach x=220, so SPEED must clear their last row.
+    EXPECT_EQ(button_action_id(ButtonAction::CycleGameSpeed), buttons[8].myfun);
+    EXPECT_EQ(buttons[4].x, buttons[8].x);
+    EXPECT_EQ(buttons[5].x, buttons[8].x);
+    EXPECT_EQ(buttons[7].y + 23, buttons[8].y)
+        << "SPEED keeps the screen's 23px vertical rhythm";
+    EXPECT_GT(buttons[8].y, buttons[7].y + buttons[7].sizey)
+        << "SPEED must clear the last door's row";
     // Every SPEED the cycler can store fits the 90px face (15 chars).
     {
         std::string value = cfg.get_setting("gameplay", "timer_wait");
@@ -2018,7 +1960,7 @@ TEST(MenuLayout, main_options_index_contract_and_nav)
         {
             EXPECT_LE(
                 static_cast<int>(og::ui::format_game_speed_label(value).size()) * 6,
-                buttons[9].sizex)
+                buttons[8].sizex)
                 << og::ui::format_game_speed_label(value);
             value = og::ui::cycle_game_speed(value);
         }
@@ -2567,6 +2509,21 @@ TEST(MenuLayout, networking_text_does_not_overlap_buttons)
 }
 
 
+namespace
+{
+// The summary the player screens draw, as one string. Production draws the
+// two lines separately (the joined one-liner retired with the global
+// CONTROLS screen); these format pins read either line the same way.
+std::string joined_control_summary(int player_index)
+{
+    const std::array<std::string, 2> lines =
+        build_player_control_summary_lines(player_index, false);
+    if (lines[0].empty() && lines[1].empty())
+        return {};
+    return lines[0] + " " + lines[1];
+}
+} // namespace
+
 TEST(MenuLayout, controls_summary_switches_between_four_and_eight_direction_formats)
 {
     PlayerControlSnapshotGuard guard(0);
@@ -2583,7 +2540,7 @@ TEST(MenuLayout, controls_summary_switches_between_four_and_eight_direction_form
     set_player_key_binding(0, KEY_SWITCH, SDLK_GRAVE);
     set_player_key_binding(0, KEY_SHIFTER, SDLK_F8);
 
-    const std::string summary_four = build_player_control_summary(0);
+    const std::string summary_four = joined_control_summary(0);
     ASSERT_TRUE(summary_four.find("D:WASD") != std::string::npos) << "4-direction summary should include compact direction order";
     ASSERT_TRUE(summary_four.find("Y:Q") != std::string::npos) << "4-direction summary should include yell label";
     ASSERT_TRUE(summary_four.find("F:1") != std::string::npos) << "4-direction summary should include fire key";
@@ -2599,7 +2556,7 @@ TEST(MenuLayout, controls_summary_switches_between_four_and_eight_direction_form
     set_player_key_binding(0, KEY_DOWN_LEFT, SDLK_Z);
     set_player_key_binding(0, KEY_UP_LEFT, SDLK_Q);
 
-    const std::string summary_eight = build_player_control_summary(0);
+    const std::string summary_eight = joined_control_summary(0);
     ASSERT_TRUE(summary_eight.find("D:WEDCXZAQ") != std::string::npos) << "8-direction summary should include compact clockwise direction order";
     ASSERT_TRUE(summary_eight.find("Y:") != std::string::npos) << "8-direction summary should include yell label";
 }
@@ -2625,7 +2582,7 @@ TEST(MenuLayout, eight_direction_summary_clockwise_order)
     set_player_key_binding(0, KEY_SWITCH, SDLK_3);
     set_player_key_binding(0, KEY_SHIFTER, SDLK_F8);
 
-    const std::string summary = build_player_control_summary(0);
+    const std::string summary = joined_control_summary(0);
     ASSERT_TRUE(summary.find("D:WEDCXZAQ") != std::string::npos) << "8-direction summary should list keys clockwise from Up";
     ASSERT_TRUE(summary.find("Y:S") != std::string::npos) << "8-direction summary should include yell key";
     ASSERT_TRUE(summary.find("F:1") != std::string::npos) << "8-direction summary should include fire key";
@@ -2665,13 +2622,13 @@ TEST(MenuLayout, controls_summary_shows_look_up_binding)
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
     set_player_key_binding(0, KEY_LOOKUP, SDLK_V);
-    const std::string summary = build_player_control_summary(0);
+    const std::string summary = joined_control_summary(0);
     ASSERT_TRUE(summary.find("L:V") != std::string::npos)
         << "controls summary should show the look-up binding: " << summary;
 
     // Unbound (the P4 8-direction default) reads as "--", not an empty label.
     set_player_key_binding(0, KEY_LOOKUP, SDLK_UNKNOWN);
-    const std::string unbound = build_player_control_summary(0);
+    const std::string unbound = joined_control_summary(0);
     ASSERT_TRUE(unbound.find("L:--") != std::string::npos)
         << "unbound look-up should display as --: " << unbound;
 

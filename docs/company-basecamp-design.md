@@ -38,13 +38,13 @@ Company List.
 
 ![Main menu](media/company-basecamp/main-menu.png)
 
-The shared **CONTROLS** screen remains available under **GAME SETTINGS**. It
-edits all four local controller profiles and has a **RESET ALL** action. Seat
-count and next-level team choices no longer live on the main menu.
+The shared **CONTROLS** screen described here has since been deleted (see
+[the pause-menu design](pause-menu-design.md)): direction mode, remap, reset
+and input device are per-seat rows on the player screens — a Base Camp seat
+card, or the pause menu's player rows in a mission. Seat count and next-level
+team choices no longer live on the main menu.
 
-| Game Settings | Global Controls |
-|---|---|
-| ![Game Settings](media/company-basecamp/settings.png) | ![Global Controls](media/company-basecamp/global-controls.png) |
+![Game Settings](media/company-basecamp/settings.png)
 
 ### 2.2 Found Your Company
 

@@ -5,6 +5,7 @@
 
 #include <gtest/gtest.h>
 
+#include <openglad/core/scale_mode.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/resources/gparser.h>
@@ -93,44 +94,82 @@ TEST(PlayerHudSettings, save_normalizes_values_to_ints)
     EXPECT_EQ("5", local.get_setting("controls", "player1_view_zoom"));
 }
 
-TEST(PerViewZoomMath, step_scale_and_cycle_bounds)
+TEST(PerViewZoomMath, step_scale_num_and_cycle_bounds)
 {
     EXPECT_EQ(6, viewscreen::kViewZoomStepCount);
-    EXPECT_FLOAT_EQ(1.0f, viewscreen::per_view_zoom_scale_for_step(0));
-    EXPECT_FLOAT_EQ(0.9f, viewscreen::per_view_zoom_scale_for_step(1));
-    EXPECT_FLOAT_EQ(0.7f, viewscreen::per_view_zoom_scale_for_step(3));
-    EXPECT_FLOAT_EQ(0.5f, viewscreen::per_view_zoom_scale_for_step(5));
+    EXPECT_EQ(10, viewscreen::view_scale_num_for_step(0)); // GAME
+    EXPECT_EQ(9, viewscreen::view_scale_num_for_step(1));  // 0.9x
+    EXPECT_EQ(7, viewscreen::view_scale_num_for_step(3));  // 0.7x
+    EXPECT_EQ(5, viewscreen::view_scale_num_for_step(5));  // 0.5x
     // Out-of-range steps clamp instead of extrapolating.
-    EXPECT_FLOAT_EQ(1.0f, viewscreen::per_view_zoom_scale_for_step(-1));
-    EXPECT_FLOAT_EQ(0.5f, viewscreen::per_view_zoom_scale_for_step(9));
+    EXPECT_EQ(10, viewscreen::view_scale_num_for_step(-1));
+    EXPECT_EQ(5, viewscreen::view_scale_num_for_step(9));
+    // The scale-num range mirrors the core composition clamp.
+    EXPECT_EQ(og::kViewScaleNumMax, viewscreen::view_scale_num_for_step(0));
+    EXPECT_EQ(og::kViewScaleNumMin,
+              viewscreen::view_scale_num_for_step(
+                  viewscreen::kViewZoomStepCount - 1));
 }
 
-TEST(PerViewZoomMath, padded_window_budget)
+TEST(PerViewZoomMath, composed_pct_delegation_is_identical_to_steps)
 {
-    using og::view_zoom_window_fits_budget;
-    // Scale >= 1 never pads: always fits.
-    EXPECT_TRUE(view_zoom_window_fits_budget(0, 0, 320, 200, 320, 200, 1.0f));
-    // The classic canvas at 0.5x: 640x400 = 256k, far under 4.096M.
-    EXPECT_TRUE(view_zoom_window_fits_budget(0, 0, 320, 200, 320, 200, 0.5f));
-    // 0.5x doubles the window per axis (quadruples the pixels): the exact
-    // boundary is xview*yview == budget/4.
-    EXPECT_TRUE(
-        view_zoom_window_fits_budget(0, 0, 1280, 800, 1280, 800, 0.5f));
-    EXPECT_FALSE(
-        view_zoom_window_fits_budget(0, 0, 1282, 800, 1282, 800, 0.5f));
-    // A large low-global-zoom canvas at 0.5x blows the budget.
-    EXPECT_FALSE(
-        view_zoom_window_fits_budget(0, 0, 3200, 2000, 3200, 2000, 0.5f));
-    // The layer allocates max(canvas, extent) per axis: a small pane on a
-    // huge canvas is still bounded below by the canvas.
-    EXPECT_FALSE(
-        view_zoom_window_fits_budget(0, 0, 64, 40, 3200, 2000, 0.5f));
-    // Split-screen: the bottom-right quarter pane's extent includes its
-    // origin offset.
-    EXPECT_TRUE(
-        view_zoom_window_fits_budget(160, 100, 160, 100, 320, 200, 0.5f));
-    // Degenerate scales are refused (fail closed).
-    EXPECT_FALSE(view_zoom_window_fits_budget(0, 0, 320, 200, 320, 200, 0.0f));
+    // The steps math is the pct math at pct = steps*10 — the mechanism that
+    // makes zoom OFF for every view byte-identical by construction.
+    for (int w : {320, 640, 1000, 1366, 1920, 2560})
+        for (int h : {200, 400, 768, 1080, 1440})
+            for (int steps = 1; steps <= og::kZoomStepsMax; ++steps)
+            {
+                const og::WorldCanvasDims a =
+                    og::compute_zoom_canvas_dims(w, h, steps);
+                const og::WorldCanvasDims b =
+                    og::compute_zoom_canvas_dims_pct(w, h, steps * 10);
+                EXPECT_EQ(a.w, b.w) << w << "x" << h << " steps " << steps;
+                EXPECT_EQ(a.h, b.h) << w << "x" << h << " steps " << steps;
+                EXPECT_EQ(0, b.w % 4) << "scaler-safe width";
+            }
+}
+
+TEST(PerViewZoomMath, composed_pct_canvas_and_clamps)
+{
+    // compose_zoom_pct: global steps x per-view scale num, both clamped.
+    EXPECT_EQ(100, og::compose_zoom_pct(10, 10));
+    EXPECT_EQ(50, og::compose_zoom_pct(10, 5));  // global 1.0 x view 0.5
+    EXPECT_EQ(45, og::compose_zoom_pct(5, 9));   // global 0.5 x view 0.9
+    EXPECT_EQ(5, og::compose_zoom_pct(1, 5));    // the deepest composition
+    EXPECT_EQ(100, og::compose_zoom_pct(99, 99)) << "both factors clamp";
+    EXPECT_EQ(og::kViewScaleNumMax, og::clamp_view_scale_num(42));
+    EXPECT_EQ(og::kViewScaleNumMin, og::clamp_view_scale_num(-1));
+
+    // A composed pct grows the canvas exactly like the equivalent global
+    // zoom: global 1.0 + view 0.5 == global 0.5 alone (crispness parity by
+    // construction).
+    const og::WorldCanvasDims composed =
+        og::compute_zoom_canvas_dims_pct(640, 400, og::compose_zoom_pct(10, 5));
+    const og::WorldCanvasDims global_half =
+        og::compute_zoom_canvas_dims(640, 400, 5);
+    EXPECT_EQ(global_half.w, composed.w);
+    EXPECT_EQ(global_half.h, composed.h);
+}
+
+TEST(PerViewZoomMath, composed_pct_budget_gate)
+{
+    using og::zoom_canvas_fits_budget_pct;
+    // pct == 100 is the always-selectable baseline.
+    EXPECT_TRUE(zoom_canvas_fits_budget_pct(640, 400, 100));
+    // Global 1.0 x view 0.5 on a desktop window: 1280x800 well under 8.38M.
+    EXPECT_TRUE(zoom_canvas_fits_budget_pct(640, 400, 50));
+    // Deep global zoom composed with a deep view zoom overflows the split
+    // canvas budget: 0.1 x 0.8 on a 640x400 window = 4000x2500 = 10M > 8.38M.
+    EXPECT_FALSE(zoom_canvas_fits_budget_pct(640, 400, 8));
+    // ... while 0.1 x 0.9 (3552x2220 ~= 7.9M) still fits.
+    EXPECT_TRUE(zoom_canvas_fits_budget_pct(640, 400, 9));
+    // A renderer texture cap gates independently of the pixel budget: the
+    // composed 640x400 canvas needs both axes under the cap.
+    EXPECT_FALSE(zoom_canvas_fits_budget_pct(640, 400, 50, 512));
+    EXPECT_TRUE(zoom_canvas_fits_budget_pct(640, 400, 50, 1024));
+    // The steps wrapper is the pct gate at pct = steps*10.
+    EXPECT_EQ(og::zoom_canvas_fits_budget(640, 400, 5),
+              zoom_canvas_fits_budget_pct(640, 400, 50));
 }
 
 TEST(BindingPanelLine, formatter_clamps_to_the_column_budget)

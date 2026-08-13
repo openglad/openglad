@@ -95,7 +95,7 @@ constexpr int kModeEightIndex = 1;
 // free from every OTHER player, and P4's own 8-dir 'b' = DOWN is never
 // active while the 4-dir map is) — P4's 8-direction cluster consumes every
 // key around T/F/G/H (t y h n b v f r), so its 8-dir look-up starts unbound
-// and can be bound on the CONTROLS remap screen.
+// and can be bound with REMAP on the seat's player screen.
 constexpr int kDefaultFourDirKeys[4][NUM_KEYS] = {
     {
         KEYCODE_w, KEYCODE_UNKNOWN, KEYCODE_d, KEYCODE_UNKNOWN,  // movements
@@ -167,8 +167,9 @@ constexpr int kDefaultEightDirKeys[4][NUM_KEYS] = {
         // its classic '.' is P2's FIRE in BOTH of P2's mode maps, so with
         // three players on one keyboard P2 firing walked P3's character
         // down-right (and vice versa). The diagonal still works as the
-        // L+',' (right+down) chord, and a dedicated key can be bound on the
-        // CONTROLS remap screen — the same policy as P4's unbound look-up.
+        // L+',' (right+down) chord, and a dedicated key can be bound with
+        // REMAP on the player screen — the same policy as P4's unbound
+        // look-up.
         KEYCODE_i, KEYCODE_o, KEYCODE_l, KEYCODE_UNKNOWN,
         KEYCODE_COMMA, KEYCODE_m, KEYCODE_j, KEYCODE_u,
         KEYCODE_SPACE, KEYCODE_SEMICOLON,

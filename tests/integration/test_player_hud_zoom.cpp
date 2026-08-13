@@ -1,22 +1,24 @@
-// §7.1 per-view ZOOM render seam + per-player HUD/zoom persistence at the
-// viewscreen boundary (docs/pause-menu-design.md):
-//   - the interface budget constant mirrors the platform compositor budget,
-//   - a zoomed frame routes every floor pass through the floor layer (padded
-//     window allocated, trace emitted, no fallback),
-//   - a declined layer renders unzoomed that frame (never wrong output),
-//   - a budget overflow unzooms the WHOLE frame (resolve_frame_zoom),
-//   - HUD projection stays consistent mid-pass (settled camera, the pad
-//     recipe's widened window feeds project_world_point_to_gameplay_ui),
-//   - apply_hud_settings_from_cfg: cfg overlays prefs; absent keys run the
-//     one-shot keyprefs seed (prefs -> cfg) and never stomp prefs.
+// §7.1 per-view ZOOM on the single-resample presentation pipeline
+// (docs/pause-menu-design.md §7.1) + per-player HUD/zoom persistence at the
+// viewscreen boundary.
+//
+// The invariant under test: GAMEPLAY PIXELS ARE RESAMPLED EXACTLY ONCE, BY
+// THE PRESENTATION PATH. A per-view-zoomed frame must be as crisp as the
+// equivalent globally-zoomed frame — the original floor-layer implementation
+// bilinear-resampled every zoomed frame a second time (the reported smudge)
+// and these tests fail against it.
 
+#include <openglad/core/pixdefs.h>
+#include <openglad/core/scale_mode.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/render/view.h>
+#include <openglad/interface/render/view_layout.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
+#include <openglad/platform/sai2x.h>
 #include <openglad/platform/video_sdl.h>
 #include <openglad/resources/gparser.h>
 
@@ -24,9 +26,14 @@
 #include <SDL3/SDL.h>
 
 #include <array>
-#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
 #include <format>
 #include <string>
+#include <unordered_set>
+#include <vector>
 
 extern cfg_store cfg;
 
@@ -38,9 +45,14 @@ screen* scr()
     return og::runtime::current_session->myscreen_;
 }
 
+viewscreen* view_at(int i)
+{
+    return scr()->viewob[static_cast<std::size_t>(i)].get();
+}
+
 viewscreen* view0()
 {
-    return scr()->viewob[0].get();
+    return view_at(0);
 }
 
 void prepare_world()
@@ -51,34 +63,498 @@ void prepare_world()
     world.mysmoother.set_target(world.grid);
 }
 
+// A high-contrast checker + wall scene so resample blur is visible on edges
+// (and blank-canvas runs cannot pass any color assertion vacuously).
+void paint_checker_world()
+{
+    GameWorld& world = scr()->world();
+    for (int y = 0; y < world.grid.h; ++y)
+        for (int x = 0; x < world.grid.w; ++x)
+        {
+            unsigned char t = ((x / 2 + y / 2) % 2 == 0)
+                ? PIX_GRASS1 : PIX_PAVEMENT1;
+            if (x >= 10 && x <= 12 && y >= 4 && y <= 12)
+                t = PIX_WALL2;
+            world.grid.data[static_cast<std::size_t>(
+                y * world.grid.w + x)] = t;
+        }
+    world.mysmoother.set_target(world.grid);
+}
+
 bool do_redraw(viewscreen* vs)
 {
+    // Gameplay renders on the World target (the game loop selects it every
+    // frame); on a split canvas a UI-target redraw would paint the wrong
+    // surface entirely.
+    scr()->set_active_canvas(CanvasTarget::World);
     return vs->redraw(&scr()->level_runtime_data(), false);
 }
 
-// Pin the classic 320x200 world canvas (the RenderEffects fixture shape) and
-// restore the view scene afterward.
-class PerViewZoom : public testing::Test
+SDL_Surface* world_surface()
 {
-protected:
-    void SetUp() override
+    E_Screen->set_active_canvas(CanvasTarget::World);
+    return E_Screen->render;
+}
+
+// Distinct opaque colors in a rect of an XRGB8888 surface.
+std::unordered_set<Uint32> collect_colors(SDL_Surface* surf, int x, int y,
+                                          int w, int h)
+{
+    std::unordered_set<Uint32> colors;
+    SDL_LockSurface(surf);
+    for (int py = y; py < y + h && py < surf->h; ++py)
     {
-        scr()->set_world_canvas_pinned_classic(true);
-        scr()->relayout_views();
+        const Uint32* row = reinterpret_cast<const Uint32*>(
+            static_cast<const Uint8*>(surf->pixels) + py * surf->pitch);
+        for (int px = x; px < x + w && px < surf->w; ++px)
+            colors.insert(row[px] & 0x00FFFFFFu);
+    }
+    SDL_UnlockSurface(surf);
+    return colors;
+}
+
+// Restore cfg graphics/zoom + view zoom steps + view count when a test exits.
+struct ZoomPipelineGuard
+{
+    std::string saved_zoom;
+    short saved_numviews;
+
+    ZoomPipelineGuard()
+        : saved_zoom(cfg.get_setting("graphics", "zoom")),
+          saved_numviews(scr()->numviews)
+    {
     }
 
-    void TearDown() override
+    ~ZoomPipelineGuard()
     {
-        viewscreen* const vs = view0();
-        vs->control = nullptr;
-        vs->view_zoom_step_ = 0;
+        cfg.apply_setting("graphics", "zoom",
+                          saved_zoom.empty() ? "1.0" : saved_zoom);
+        scr()->numviews = saved_numviews;
+        scr()->initialize_views();
+        for (int i = 0; i < scr()->numviews; ++i)
+            if (viewscreen* const vs = view_at(i))
+                vs->view_zoom_step_ = 0;
+        scr()->reapply_world_scale();
+        scr()->relayout_views();
         scr()->world().delete_objects();
         scr()->world().set_floor_count(1);
         scr()->set_active_canvas(CanvasTarget::UI);
-        scr()->set_world_canvas_pinned_classic(false);
-        scr()->relayout_views();
     }
 };
+
+} // namespace
+
+// ---------------------------------------------------------------------------
+// The invariant: per-view zoom rides the SAME single-resample pipeline as the
+// global zoom. A single view at per-view 0.5x must produce the EXACT pixels
+// the global graphics/zoom 0.5 produces for the same world: identical canvas
+// dimensions, identical bytes. (The retired floor-layer implementation fails
+// here: it kept the small canvas and bilinear-squeezed the frame instead.)
+
+TEST(PerViewZoomCrisp, single_view_matches_global_zoom_exactly)
+{
+    ASSERT_TRUE(E_Screen);
+    ZoomPipelineGuard guard;
+
+    scr()->numviews = 1;
+    scr()->initialize_views();
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    vs->view_zoom_step_ = 0;
+
+    prepare_world();
+    paint_checker_world();
+    // drawcycle (the sprite animation clock) advances on every walker_draw,
+    // so each capture must happen at the same animation AGE: rebuild the
+    // walker and render the same number of frames per pipeline.
+    const auto render_fresh_scene = [&](viewscreen* view) {
+        scr()->world().delete_objects();
+        walker* const w =
+            scr()->world().add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, w);
+        w->setxy(160, 120);
+        view->control = w;
+        ASSERT_TRUE(do_redraw(view));
+        ASSERT_TRUE(do_redraw(view));
+    };
+
+    // Reference: the proven global-zoom pipeline at 0.5.
+    cfg.apply_setting("graphics", "zoom", "0.5");
+    scr()->reapply_world_scale();
+    scr()->relayout_views();
+    vs = view0();
+    render_fresh_scene(vs);
+    SDL_Surface* const ref = SDL_DuplicateSurface(world_surface());
+    ASSERT_NE(nullptr, ref);
+    const auto ref_colors =
+        collect_colors(ref, 0, 0, ref->w, ref->h);
+    ASSERT_GT(ref_colors.size(), 5u)
+        << "the reference render must contain real scenery (a blank canvas "
+           "would satisfy every comparison vacuously)";
+
+    // Same world, same view, per-view 0.5x with global zoom back at 1.0.
+    cfg.apply_setting("graphics", "zoom", "1.0");
+    scr()->reapply_world_scale();
+    scr()->relayout_views();
+    vs = view0();
+    vs->view_zoom_step_ = 5; // 0.5x
+    scr()->relayout_views();
+    render_fresh_scene(vs);
+    SDL_Surface* const got = world_surface();
+
+    EXPECT_EQ(ref->w, got->w)
+        << "per-view zoom must derive the SAME world canvas dims as the "
+           "equivalent global zoom (no smaller canvas + extra resample)";
+    EXPECT_EQ(ref->h, got->h);
+    if (ref->w == got->w && ref->h == got->h)
+    {
+        SDL_LockSurface(ref);
+        SDL_LockSurface(got);
+        bool identical = true;
+        for (int py = 0; py < ref->h && identical; ++py)
+        {
+            const Uint8* const a =
+                static_cast<const Uint8*>(ref->pixels) + py * ref->pitch;
+            const Uint8* const b =
+                static_cast<const Uint8*>(got->pixels) + py * got->pitch;
+            identical = std::memcmp(a, b, static_cast<std::size_t>(ref->w) * 4)
+                == 0;
+        }
+        SDL_UnlockSurface(got);
+        SDL_UnlockSurface(ref);
+        EXPECT_TRUE(identical)
+            << "per-view 0.5x and global 0.5 must render identical bytes";
+
+        const auto got_colors =
+            collect_colors(got, 0, 0, got->w, got->h);
+        EXPECT_EQ(ref_colors.size(), got_colors.size())
+            << "distinct-color parity: a resample stage would blend new "
+               "intermediate colors into the zoomed frame";
+    }
+    SDL_DestroySurface(ref);
+}
+
+// Split panes: a per-view zoom on ONE pane must not smudge that pane. The
+// world canvas pixels of the zoomed pane are rendered 1:1, so they can only
+// contain colors the unzoomed render also produces — a bilinear resample
+// stage invents intermediate blend colors and fails this subset check.
+TEST(PerViewZoomCrisp, split_pane_no_blend_colors)
+{
+    ASSERT_TRUE(E_Screen);
+    ZoomPipelineGuard guard;
+
+    scr()->numviews = 2;
+    scr()->initialize_views();
+    prepare_world();
+    paint_checker_world();
+    walker* const w0 = scr()->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* const w1 = scr()->world().add_ob(Order::Living, FAMILY_ELF);
+    ASSERT_NE(nullptr, w0);
+    ASSERT_NE(nullptr, w1);
+    w0->setxy(160, 120);
+    w1->setxy(300, 150);
+    view_at(0)->control = w0;
+    view_at(1)->control = w1;
+    view_at(0)->view_zoom_step_ = 0;
+    view_at(1)->view_zoom_step_ = 0;
+    scr()->relayout_views();
+    ASSERT_TRUE(do_redraw(view_at(0)));
+    ASSERT_TRUE(do_redraw(view_at(1)));
+    SDL_Surface* surf = world_surface();
+    auto ref_colors = collect_colors(surf, 0, 0, surf->w, surf->h);
+    ASSERT_GT(ref_colors.size(), 5u)
+        << "the unzoomed split render must contain real scenery";
+    ref_colors.insert(0x000000u); // cleared background is legitimate
+
+    view_at(1)->view_zoom_step_ = 2; // 0.8x on the right pane only
+    scr()->relayout_views();
+    ASSERT_TRUE(do_redraw(view_at(0)));
+    ASSERT_TRUE(do_redraw(view_at(1)));
+    surf = world_surface();
+    viewscreen* const zoomed = view_at(1);
+    const auto pane_colors = collect_colors(
+        surf, zoomed->xloc, zoomed->yloc, zoomed->xview, zoomed->yview);
+
+    int invented = 0;
+    for (const Uint32 c : pane_colors)
+        if (ref_colors.find(c) == ref_colors.end())
+            ++invented;
+    EXPECT_EQ(0, invented)
+        << "the zoomed pane introduced " << invented
+        << " colors absent from the crisp render: gameplay pixels were "
+           "resampled before presentation";
+}
+
+// ---------------------------------------------------------------------------
+// Geometry: windows, slots and the presentation partition.
+
+TEST(PerViewZoomGeometry, zoom_off_windows_fill_slots_and_partition_is_empty)
+{
+    ASSERT_TRUE(E_Screen);
+    ZoomPipelineGuard guard;
+
+    cfg.apply_setting("graphics", "zoom", "1.0");
+    scr()->reapply_world_scale();
+    const int base_w = scr()->world_canvas_w();
+    const int base_h = scr()->world_canvas_h();
+
+    scr()->numviews = 2;
+    scr()->initialize_views();
+    for (int i = 0; i < 2; ++i)
+        view_at(i)->view_zoom_step_ = 0;
+    scr()->relayout_views();
+
+    EXPECT_EQ(base_w, scr()->world_canvas_w())
+        << "all views at GAME must not change the canvas";
+    EXPECT_EQ(base_h, scr()->world_canvas_h());
+    EXPECT_TRUE(E_Screen->world_present_slices().empty())
+        << "all views at GAME must present through the single-blit path";
+    for (int i = 0; i < 2; ++i)
+    {
+        const viewscreen* const v = view_at(i);
+        EXPECT_EQ(v->slot_x_, v->xloc) << "view " << i;
+        EXPECT_EQ(v->slot_y_, v->yloc) << "view " << i;
+        EXPECT_EQ(v->slot_w_, v->xview) << "view " << i;
+        EXPECT_EQ(v->slot_h_, v->yview) << "view " << i;
+        // The slot IS the pre-per-view-zoom layout projection.
+        const og::view_layout::ViewLayout baseline =
+            og::view_layout::compute_view_layout(
+                2, i, v->prefs[PREF_VIEW],
+                scr()->gameplay_ui_canvas_w(), scr()->gameplay_ui_canvas_h());
+        const og::view_layout::ViewLayout expected =
+            og::view_layout::project_view_layout(
+                baseline, scr()->gameplay_ui_canvas_w(),
+                scr()->gameplay_ui_canvas_h(), base_w, base_h);
+        ASSERT_TRUE(expected.applies);
+        EXPECT_EQ(expected.x, v->xloc) << "view " << i;
+        EXPECT_EQ(expected.y, v->yloc) << "view " << i;
+        EXPECT_EQ(expected.w, v->xview) << "view " << i;
+        EXPECT_EQ(expected.h, v->yview) << "view " << i;
+    }
+}
+
+TEST(PerViewZoomGeometry, split_windows_scale_independently)
+{
+    ASSERT_TRUE(E_Screen);
+    ZoomPipelineGuard guard;
+
+    cfg.apply_setting("graphics", "zoom", "1.0");
+    scr()->reapply_world_scale();
+    const int base_w = scr()->world_canvas_w();
+    const int base_h = scr()->world_canvas_h();
+
+    scr()->numviews = 2;
+    scr()->initialize_views();
+    view_at(0)->view_zoom_step_ = 0; // GAME
+    view_at(1)->view_zoom_step_ = 5; // 0.5x
+    scr()->relayout_views();
+
+    // Canvas derives from the MINIMUM effective zoom: doubled (the width can
+    // round down to its multiple-of-4 grid after scaling).
+    EXPECT_LE(std::abs(scr()->world_canvas_w() - 2 * base_w), 4);
+    EXPECT_EQ(2 * base_h, scr()->world_canvas_h());
+
+    const viewscreen* const v0 = view_at(0);
+    const viewscreen* const v1 = view_at(1);
+    // The 0.5x view sits at the minimum: its window fills its slot.
+    EXPECT_EQ(v1->slot_x_, v1->xloc);
+    EXPECT_EQ(v1->slot_y_, v1->yloc);
+    EXPECT_EQ(v1->slot_w_, v1->xview);
+    EXPECT_EQ(v1->slot_h_, v1->yview);
+    // The GAME view renders HALF its slot (n_min/n = 5/10), anchored at the
+    // slot's top-left — the same world coverage it had before the canvas
+    // grew, presented back onto the full slot by its slice.
+    EXPECT_EQ(v0->slot_x_, v0->xloc);
+    EXPECT_EQ(v0->slot_y_, v0->yloc);
+    EXPECT_EQ(v0->slot_w_ / 2, v0->xview);
+    EXPECT_EQ(v0->slot_h_ / 2, v0->yview);
+
+    const auto& slices = E_Screen->world_present_slices();
+    ASSERT_EQ(1u, slices.size())
+        << "exactly the window != slot views get presentation slices";
+    EXPECT_EQ(v0->xloc, slices[0].src_x);
+    EXPECT_EQ(v0->yloc, slices[0].src_y);
+    EXPECT_EQ(v0->xview, slices[0].src_w);
+    EXPECT_EQ(v0->yview, slices[0].src_h);
+    EXPECT_EQ(v0->slot_x_, slices[0].dst_x);
+    EXPECT_EQ(v0->slot_y_, slices[0].dst_y);
+    EXPECT_EQ(v0->slot_w_, slices[0].dst_w);
+    EXPECT_EQ(v0->slot_h_, slices[0].dst_h);
+
+    // Back to all-GAME: canvas, windows and partition all restore.
+    view_at(1)->view_zoom_step_ = 0;
+    scr()->relayout_views();
+    EXPECT_EQ(base_w, scr()->world_canvas_w());
+    EXPECT_EQ(base_h, scr()->world_canvas_h());
+    EXPECT_TRUE(E_Screen->world_present_slices().empty());
+}
+
+// ---------------------------------------------------------------------------
+// HUD projection: the stable zoom-1.0 pane is derived from the WINDOW, so
+// chrome anchors survive any per-view zoom.
+
+TEST(PerViewZoomHud, projection_maps_window_onto_the_stable_ui_pane)
+{
+    ASSERT_TRUE(E_Screen);
+    ZoomPipelineGuard guard;
+
+    scr()->numviews = 1;
+    scr()->initialize_views();
+    viewscreen* vs = view0();
+    prepare_world();
+    walker* const w = scr()->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w);
+    w->setxy(160, 120);
+    vs->control = w;
+    vs->view_zoom_step_ = 5;
+    scr()->relayout_views();
+    vs = view0();
+    ASSERT_TRUE(do_redraw(vs)); // settle the camera BEFORE projecting
+
+    const og::view_layout::ViewLayout ui =
+        og::view_layout::compute_view_layout(
+            1, 0, vs->prefs[PREF_VIEW],
+            scr()->gameplay_ui_canvas_w(), scr()->gameplay_ui_canvas_h());
+    ASSERT_TRUE(ui.applies);
+
+    // Production projects while the GameplayUI overlay target is active
+    // (redraw's chrome pass): prepare the overlay frame and select it, or
+    // the projection's alias-fallback guard correctly returns identity.
+    scr()->begin_gameplay_frame();
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*scr());
+        ASSERT_EQ(scr()->canvas_w(), scr()->gameplay_ui_canvas_w())
+            << "the fixed overlay must be active for HUD projection";
+
+        const auto [cx, cy] = vs->project_world_point_to_gameplay_ui(
+            static_cast<float>(vs->xloc) +
+                static_cast<float>(vs->xview) / 2.0f,
+            static_cast<float>(vs->yloc) +
+                static_cast<float>(vs->yview) / 2.0f);
+        EXPECT_LE(std::abs(cx - (ui.x + ui.w / 2)), 1)
+            << "window centre must project to the ui pane centre";
+        EXPECT_LE(std::abs(cy - (ui.y + ui.h / 2)), 1);
+
+        const auto [ox, oy] = vs->project_world_point_to_gameplay_ui(
+            static_cast<float>(vs->xloc), static_cast<float>(vs->yloc));
+        EXPECT_LE(std::abs(ox - ui.x), 1)
+            << "window origin must project to the ui pane origin";
+        EXPECT_LE(std::abs(oy - ui.y), 1);
+    }
+    E_Screen->discard_gameplay_ui_frame(); // no stale overlay for later swaps
+}
+
+// ---------------------------------------------------------------------------
+// Presented composition: captures and modal backdrops apply the partition
+// (windows on slots, nearest), so what tests and screenshots read is what the
+// player sees. Setting PAUSE_SHOTS_DIR retains the frame as zoom_split.ppm.
+
+namespace
+{
+
+bool write_surface_ppm(SDL_Surface* surf, const std::string& path)
+{
+    FILE* const f = std::fopen(path.c_str(), "wb");
+    if (f == nullptr)
+        return false;
+    std::fprintf(f, "P6\n%d %d\n255\n", surf->w, surf->h);
+    SDL_LockSurface(surf);
+    std::vector<Uint8> row_rgb(static_cast<std::size_t>(surf->w) * 3);
+    const SDL_PixelFormatDetails* const det =
+        SDL_GetPixelFormatDetails(surf->format);
+    for (int py = 0; py < surf->h; ++py)
+    {
+        const Uint32* row = reinterpret_cast<const Uint32*>(
+            static_cast<const Uint8*>(surf->pixels) + py * surf->pitch);
+        for (int px = 0; px < surf->w; ++px)
+        {
+            Uint8 r = 0, g = 0, b = 0;
+            SDL_GetRGB(row[px], det, nullptr, &r, &g, &b);
+            row_rgb[static_cast<std::size_t>(px) * 3 + 0] = r;
+            row_rgb[static_cast<std::size_t>(px) * 3 + 1] = g;
+            row_rgb[static_cast<std::size_t>(px) * 3 + 2] = b;
+        }
+        std::fwrite(row_rgb.data(), 1, row_rgb.size(), f);
+    }
+    SDL_UnlockSurface(surf);
+    std::fclose(f);
+    return true;
+}
+
+} // namespace
+
+TEST(PerViewZoomCapture, composed_capture_presents_windows_on_slots)
+{
+    ASSERT_TRUE(E_Screen);
+    ZoomPipelineGuard guard;
+
+    cfg.apply_setting("graphics", "zoom", "1.0");
+    scr()->reapply_world_scale();
+
+    scr()->numviews = 2;
+    scr()->initialize_views();
+    prepare_world();
+    paint_checker_world();
+    walker* const w0 = scr()->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* const w1 = scr()->world().add_ob(Order::Living, FAMILY_ELF);
+    ASSERT_NE(nullptr, w0);
+    ASSERT_NE(nullptr, w1);
+    w0->setxy(160, 120);
+    w1->setxy(200, 140);
+    view_at(0)->control = w0;
+    view_at(1)->control = w1;
+    view_at(0)->view_zoom_step_ = 0; // left pane: GAME
+    view_at(1)->view_zoom_step_ = 3; // right pane: 0.7x
+    scr()->relayout_views();
+    ASSERT_TRUE(do_redraw(view_at(0)));
+    ASSERT_TRUE(do_redraw(view_at(1)));
+
+    SDL_Surface* const world_surf = world_surface();
+    SDL_Surface* const composed =
+        E_Screen->compose_gameplay_ui_for_capture(world_surf);
+    ASSERT_NE(nullptr, composed)
+        << "an active partition must compose even without a HUD overlay";
+    EXPECT_EQ(world_surf->w, composed->w);
+    EXPECT_EQ(world_surf->h, composed->h);
+
+    // The sliced pane (left, window != slot): the composed slot region can
+    // only contain colors from the 1:1 window — nearest invents nothing.
+    const viewscreen* const v0 = view_at(0);
+    auto window_colors = collect_colors(
+        world_surf, v0->xloc, v0->yloc, v0->xview, v0->yview);
+    ASSERT_GT(window_colors.size(), 5u)
+        << "the rendered window must contain real scenery (a blank canvas "
+           "would satisfy the subset check vacuously)";
+    window_colors.insert(0x000000u);
+    const auto slot_colors = collect_colors(
+        composed, v0->slot_x_, v0->slot_y_, v0->slot_w_, v0->slot_h_);
+    int invented = 0;
+    for (const Uint32 c : slot_colors)
+        if (window_colors.find(c) == window_colors.end())
+            ++invented;
+    EXPECT_EQ(0, invented)
+        << invented << " blend colors in the composed slot: the capture "
+                       "composition resampled twice";
+
+    const char* const shots_dir = std::getenv("PAUSE_SHOTS_DIR");
+    if (shots_dir != nullptr && shots_dir[0] != '\0')
+    {
+        std::error_code ec;
+        std::filesystem::create_directories(shots_dir, ec);
+        const std::string path = std::string(shots_dir) + "/zoom_split.ppm";
+        EXPECT_TRUE(write_surface_ppm(composed, path));
+        std::fprintf(stderr, "[zoomshot] wrote %s (%dx%d)\n", path.c_str(),
+                     composed->w, composed->h);
+    }
+    SDL_DestroySurface(composed);
+}
+
+// ---------------------------------------------------------------------------
+// §7.1 persistence at the viewscreen boundary (mechanism-independent: the
+// cfg/prefs carrier contract is unchanged by the render re-architecture).
+
+namespace
+{
 
 // Save/restore one player's §7.1 cfg keys + the live view prefs.
 struct HudCfgGuard
@@ -121,186 +597,6 @@ struct HudCfgGuard
 };
 
 } // namespace
-
-// ---------------------------------------------------------------------------
-// Budget pins.
-
-TEST(PerViewZoomBudget, interface_budget_mirrors_platform_compositor)
-{
-    // og_interface cannot see the platform header, so view.h mirrors the
-    // value; this pin keeps the two from drifting apart.
-    EXPECT_EQ(og::kPerViewZoomLayerPixelBudget,
-              sdl_video::kFloorLayerSourcePixelBudget);
-    // input_state.cpp's SDL-free zoom clamp bound (5) is the top step.
-    EXPECT_EQ(5, viewscreen::kViewZoomStepCount - 1);
-}
-
-// ---------------------------------------------------------------------------
-// Render seam.
-
-TEST_F(PerViewZoom, zoom_frame_routes_through_the_floor_layer)
-{
-    viewscreen* const vs = view0();
-    ASSERT_NE(nullptr, vs);
-    prepare_world();
-
-    walker* const w = scr()->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    ASSERT_NE(nullptr, w);
-    w->setxy(160, 120);
-    vs->control = w;
-
-    // Settle the camera with one unzoomed redraw first (the multifloor test
-    // trap), and pin that GAME emits no zoom trace.
-    vs->view_zoom_step_ = 0;
-    ASSERT_TRUE(do_redraw(vs));
-    trace_clear();
-    ASSERT_TRUE(do_redraw(vs));
-    EXPECT_FALSE(trace_contains("render", "view_zoom"))
-        << "ZOOM: GAME must execute zero zoom code";
-
-    const int fallbacks_before = scr()->floor_layer_fallback_count_for_testing();
-    vs->view_zoom_step_ = 5;  // 0.5x: the padded window doubles per axis
-    trace_clear();
-    ASSERT_TRUE(do_redraw(vs));
-    EXPECT_TRUE(trace_contains("render", "view_zoom step=5"));
-    EXPECT_FALSE(trace_contains("render", "view_zoom_budget_fallback"));
-    EXPECT_EQ(fallbacks_before,
-              scr()->floor_layer_fallback_count_for_testing())
-        << "the 0.5x window must fit the compositor budget on 320x200";
-    // The layer grew to hold the padded camera-floor window (never shrinks,
-    // so >= is the monotonic-safe assertion).
-    const std::int64_t expected_w = vs->xloc + 2 * vs->xview;
-    const std::int64_t expected_h = vs->yloc + 2 * vs->yview;
-    EXPECT_GE(scr()->floor_layer_source_pixels_for_testing(),
-              expected_w * expected_h);
-    EXPECT_FALSE(scr()->floor_layer_redirect_active_for_testing())
-        << "every floor_layer_begin must be balanced by floor_layer_end";
-}
-
-TEST_F(PerViewZoom, declined_layer_renders_unzoomed_that_frame)
-{
-    viewscreen* const vs = view0();
-    ASSERT_NE(nullptr, vs);
-    prepare_world();
-
-    walker* const w = scr()->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    ASSERT_NE(nullptr, w);
-    w->setxy(160, 120);
-    vs->control = w;
-    vs->view_zoom_step_ = 3;
-    ASSERT_TRUE(do_redraw(vs));  // settle
-
-    const int fallbacks_before = scr()->floor_layer_fallback_count_for_testing();
-    scr()->fail_next_floor_layer_allocation_for_testing();
-    trace_clear();
-    ASSERT_TRUE(do_redraw(vs)) << "the frame must render (unzoomed) anyway";
-    EXPECT_EQ(fallbacks_before + 1,
-              scr()->floor_layer_fallback_count_for_testing());
-    EXPECT_FALSE(scr()->floor_layer_redirect_active_for_testing());
-
-    // The next frame recovers the zoomed path.
-    ASSERT_TRUE(do_redraw(vs));
-    EXPECT_EQ(fallbacks_before + 1,
-              scr()->floor_layer_fallback_count_for_testing());
-}
-
-TEST_F(PerViewZoom, budget_overflow_unzooms_the_whole_frame)
-{
-    viewscreen* const vs = view0();
-    ASSERT_NE(nullptr, vs);
-    prepare_world();
-
-    vs->view_zoom_step_ = 5;
-    // Default pane: the zoom resolves.
-    trace_clear();
-    EXPECT_FLOAT_EQ(0.5f,
-                    vs->resolve_frame_zoom(scr()->world(), false, 0));
-
-    // A pane whose padded window blows the compositor budget: the whole
-    // frame unzooms (1.0), with the budget-fallback trace.
-    const Sint32 old_xview = vs->xview, old_yview = vs->yview;
-    vs->xview = 1600;
-    vs->yview = 1000;  // 0.5x: 3200x2000 = 6.4M > 4.096M
-    trace_clear();
-    EXPECT_FLOAT_EQ(1.0f,
-                    vs->resolve_frame_zoom(scr()->world(), false, 0));
-    EXPECT_TRUE(trace_contains("render", "view_zoom_budget_fallback"));
-    vs->xview = old_xview;
-    vs->yview = old_yview;
-}
-
-TEST_F(PerViewZoom, hud_projection_stays_consistent_mid_pass)
-{
-    viewscreen* const vs = view0();
-    ASSERT_NE(nullptr, vs);
-    prepare_world();
-
-    walker* const w = scr()->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    ASSERT_NE(nullptr, w);
-    w->setxy(160, 120);
-    vs->control = w;
-    vs->view_zoom_step_ = 0;
-    ASSERT_TRUE(do_redraw(vs));  // settle the camera BEFORE world_to_screen
-
-    // Classic (unzoomed) projections of the pane-centre world point and an
-    // off-centre point a quarter pane to the right.
-    const float centre_x = static_cast<float>(vs->xloc) +
-        static_cast<float>(vs->xview) / 2.0f;
-    const float centre_y = static_cast<float>(vs->yloc) +
-        static_cast<float>(vs->yview) / 2.0f;
-    const float dx = static_cast<float>(vs->xview) / 4.0f;
-    const auto [p0x, p0y] =
-        vs->project_world_point_to_gameplay_ui(centre_x, centre_y);
-    const auto [p2x, p2y] =
-        vs->project_world_point_to_gameplay_ui(centre_x + dx, centre_y);
-
-    // Emulate the camera-floor zoom pass exactly as redraw() does: widen the
-    // world window by the 0.5x pad. Mid-pass callers (damage numbers, mini
-    // HP bars) compute their inputs from the WIDENED topx/xview, and the
-    // existing projection formula must keep them consistent.
-    const float z = 0.5f;
-    const Sint32 pad_x = static_cast<Sint32>(
-        std::ceil(static_cast<float>(vs->xview) * (1.0f / z - 1.0f) * 0.5f));
-    const Sint32 pad_y = static_cast<Sint32>(
-        std::ceil(static_cast<float>(vs->yview) * (1.0f / z - 1.0f) * 0.5f));
-    const Sint32 old_topx = vs->topx, old_topy = vs->topy;
-    const Sint32 old_xview = vs->xview, old_yview = vs->yview;
-    const Sint32 old_endx = vs->endx, old_endy = vs->endy;
-    vs->topx -= pad_x;
-    vs->topy -= pad_y;
-    vs->xview += 2 * pad_x;
-    vs->yview += 2 * pad_y;
-    vs->endx += 2 * pad_x;
-    vs->endy += 2 * pad_y;
-
-    // Mid-pass, the same WORLD points enter as (world - widened_top + loc):
-    // the previous classic coordinates shifted right/down by the pad.
-    const auto [p1x, p1y] = vs->project_world_point_to_gameplay_ui(
-        centre_x + static_cast<float>(pad_x),
-        centre_y + static_cast<float>(pad_y));
-    const auto [p3x, p3y] = vs->project_world_point_to_gameplay_ui(
-        centre_x + static_cast<float>(pad_x) + dx,
-        centre_y + static_cast<float>(pad_y));
-
-    vs->topx = old_topx;
-    vs->topy = old_topy;
-    vs->xview = old_xview;
-    vs->yview = old_yview;
-    vs->endx = old_endx;
-    vs->endy = old_endy;
-
-    // Centre invariant: the pane-centre world point lands where it always
-    // landed. Off-centre points move toward the centre by the zoom factor.
-    EXPECT_LE(std::abs(p1x - p0x), 1) << "pane centre must not move";
-    EXPECT_LE(std::abs(p1y - p0y), 1);
-    const float expected_offset = z * static_cast<float>(p2x - p0x);
-    EXPECT_LE(std::abs(static_cast<float>(p3x - p1x) - expected_offset), 2.0f)
-        << "off-centre HUD anchors must scale with the zoom";
-    EXPECT_LE(std::abs(p3y - p1y), 1);
-}
-
-// ---------------------------------------------------------------------------
-// §7.1 persistence at the viewscreen boundary.
 
 TEST(PlayerHudCfg, viewscreen_applies_cfg_and_seeds_from_keyprefs_once)
 {

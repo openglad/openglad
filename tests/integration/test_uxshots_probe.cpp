@@ -320,7 +320,9 @@ TEST(UxShots, b_mainmenu_with_company) {
   ASSERT_EQ(1, state.captures);
 }
 
-// --- 2a. game settings and global controls ---------------------------------
+// --- 2a. game settings ------------------------------------------------------
+// The global CONTROLS capture retired with that screen: per-player controls
+// are shot from the seat-settings probe below.
 
 int game_settings_injector(void *data) {
   og::runtime::ensure_thread_session();
@@ -328,17 +330,9 @@ int game_settings_injector(void *data) {
   if (wait_for_interactable("options", 5000)) {
     SDL_Delay(1500);
     interact("options");
-    if (wait_for_interactable("control_settings", 5000)) {
+    if (wait_for_interactable("options_back", 5000)) {
       SDL_Delay(1500);
       state->captures += capture_frame("game_settings");
-      interact("control_settings");
-    }
-    if (wait_for_interactable("controls_back", 5000)) {
-      SDL_Delay(1500);
-      state->captures += capture_frame("global_controls");
-      interact("controls_back");
-    }
-    if (wait_for_interactable("options_back", 5000)) {
       SDL_Delay(300);
       interact("options_back");
     }
@@ -347,7 +341,7 @@ int game_settings_injector(void *data) {
   return 0;
 }
 
-TEST(UxShots, b1_game_settings_and_controls) {
+TEST(UxShots, b1_game_settings) {
   trace_clear();
   reap_all_companies();
   ShotState state;
@@ -361,7 +355,7 @@ TEST(UxShots, b1_game_settings_and_controls) {
   cleanup_picker_state();
   g_picker_max_mainmenu_calls = 0;
   ASSERT_TRUE(state.finished);
-  ASSERT_EQ(2, state.captures);
+  ASSERT_EQ(1, state.captures);
 }
 
 // --- 2b. per-seat settings --------------------------------------------------

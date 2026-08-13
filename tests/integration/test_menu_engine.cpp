@@ -346,57 +346,30 @@ TEST(MenuEngine, remote_start_team_build_scope_returns_exit)
               pks().selected_menu_item->command);
 }
 
-namespace
-{
-
-struct NestedControlsRemoteStartState
-{
-    FakeLobbyClient* lobby = nullptr;
-    std::atomic<bool> opened_controls{false};
-};
-
-int nested_controls_remote_start_injector(void* data)
-{
-    auto& state = *static_cast<NestedControlsRemoteStartState*>(data);
-    og::runtime::ensure_thread_session();
-    if (!wait_for_interactable("control_settings"))
-        return 0;
-    interact("control_settings");
-    if (!wait_for_interactable("player1_remap"))
-        return 0;
-    state.opened_controls = true;
-    state.lobby->start_on_next_poll = true;
-    return 0;
-}
-
-} // namespace
-
-TEST(MenuEngine, remote_start_propagates_through_nested_main_options_controls)
+// main_options() normalizes every ordinary exit to MENU_REDRAW (it is a
+// child of the main menu). A remote start must survive that normalization —
+// otherwise a joiner parked in GAME SETTINGS when the host presses GO drops
+// back to the main menu instead of launching. This used to be pinned through
+// the nested CONTROLS subscreen; with that screen deleted the wrapper itself
+// is the subject.
+TEST(MenuEngine, remote_start_propagates_out_of_main_options)
 {
     EngineTestGuard guard;
     FakeLobbyClient lobby;
     lobby.networked = true;
     og::ui::install_active_picker_lobby_client(&lobby);
-    g_start_game_requested = false;
     pks().selected_menu_item = nullptr;
     clear_events();
-
-    NestedControlsRemoteStartState state{.lobby = &lobby};
-    SDL_Thread* thread = SDL_CreateThread(
-        nested_controls_remote_start_injector, "nested_controls_start",
-        &state);
-    ASSERT_NE(nullptr, thread);
+    g_start_game_requested = true;
 
     const Sint32 result = main_options();
-    SDL_WaitThread(thread, nullptr);
 
-    EXPECT_TRUE(state.opened_controls)
-        << "the remote start must be injected only after CONTROLS is active";
     EXPECT_TRUE(result & MENU_EXIT)
-        << "the child remote exit must not become the parent's local redraw";
+        << "the remote exit must not become main_options()'s local redraw";
     ASSERT_NE(nullptr, pks().selected_menu_item);
     EXPECT_EQ(og::ui::PickerMenuCommand::ContinueGame,
               pks().selected_menu_item->command);
+    g_start_game_requested = false;
 }
 
 TEST(MenuEngine, blocking_control_remap_polls_and_aborts_for_remote_start)
@@ -1533,8 +1506,6 @@ TEST(MenuEngine, options_family_registry_hosts)
     EXPECT_EQ(Kind::Engine,
               og::ui::menu_screen_host(og::ui::MenuScreenId::DisplaySettings).kind);
     EXPECT_EQ(Kind::Engine,
-              og::ui::menu_screen_host(og::ui::MenuScreenId::ControlSettings).kind);
-    EXPECT_EQ(Kind::Engine,
               og::ui::menu_screen_host(og::ui::MenuScreenId::MainOptions).kind);
 }
 
@@ -1787,10 +1758,9 @@ TEST(MenuEngine, content_screen_registry_hosts_and_semantics)
 
 // ---------------------------------------------------------------------------
 // MAIN OPTIONS content-draw index pins + the sprite-sheet label restore.
-// The draw hook reads rows [1]/[2]/[3]/[6] by ordinal (sound face, section
+// The draw hook reads rows [1]/[2]/[3]/[5] by ordinal (sound face, section
 // rule + captions, sprite-sheet face) — pin those ids so a row insertion
-// cannot silently redraw the wrong faces. CONTROLS is appended without
-// disturbing those historical ordinals. The legacy loop also re-wrote
+// cannot silently redraw the wrong faces. The legacy loop also re-wrote
 // "Sprite Sheet" to BOTH surfaces every frame after reset_buttons (the
 // pick-spritesheet subscreen swaps allbuttons_ under this screen); that
 // restore is now the row's LabelBinding, so pin that it exists and yields
@@ -1809,16 +1779,13 @@ TEST(MenuEngine, main_options_content_index_pins_and_sprite_label_binding)
 
     button* buttons = spec.buttons_accessor();
     const int count = spec.count_accessor();
-    ASSERT_EQ(10, count);
+    ASSERT_EQ(9, count);
     EXPECT_EQ("toggle_sound", buttons[1].id);
     EXPECT_EQ("display_settings", buttons[2].id);
     EXPECT_EQ("gameplay_fx", buttons[3].id);
     EXPECT_EQ("pick_sprite_sheet", buttons[5].id);
-    EXPECT_EQ("control_settings", buttons[8].id);
-    EXPECT_EQ(button_action_id(ButtonAction::OpenControlSettings),
-              buttons[8].myfun);
-    // SPEED was appended AFTER the historical ordinals the draw hook reads.
-    EXPECT_EQ("game_speed", buttons[9].id);
+    // SPEED sits AFTER the historical ordinals the draw hook reads.
+    EXPECT_EQ("game_speed", buttons[8].id);
 
     const og::ui::LabelFormatter sprite_formatter =
         spec.rows[5].label_binding.formatter;
@@ -1831,7 +1798,7 @@ TEST(MenuEngine, main_options_content_index_pins_and_sprite_label_binding)
     // 11-step lap must come back to where it started (the display number is
     // the inverted (20 - wait) / 2 + 1 the retired options menu showed).
     const og::ui::LabelFormatter speed_formatter =
-        spec.rows[9].label_binding.formatter;
+        spec.rows[8].label_binding.formatter;
     ASSERT_NE(nullptr, speed_formatter)
         << "the SPEED face must re-derive from cfg, not from a click write";
     const std::string previous_speed = cfg.get_setting("gameplay", "timer_wait");
@@ -2091,7 +2058,7 @@ TEST(MenuEngine, main_menu_registry_and_spec_shape)
     EXPECT_EQ("cloud", buttons[count - 1].id);
 }
 
-TEST(MenuEngine, seat_settings_registry_and_global_controls_ownership)
+TEST(MenuEngine, seat_settings_registry_and_player_control_ownership)
 {
     const og::ui::MenuScreenHost& seat_host =
         og::ui::menu_screen_host(og::ui::MenuScreenId::SeatSettings);
@@ -2251,32 +2218,42 @@ TEST(MenuEngine, seat_settings_registry_and_global_controls_ownership)
         }
     }
 
-    const og::ui::MenuScreenHost& controls_host =
-        og::ui::menu_screen_host(og::ui::MenuScreenId::ControlSettings);
-    ASSERT_EQ(og::ui::MenuScreenHost::Kind::Engine, controls_host.kind);
-    ASSERT_NE(nullptr, controls_host.spec);
-    EXPECT_STREQ("control_options", controls_host.spec->name);
-    EXPECT_EQ(og::ui::RemoteStartScope::MainScope,
-              controls_host.spec->remote_start);
-    EXPECT_TRUE(controls_host.spec->polls_lobby);
-    ASSERT_EQ(10, controls_host.spec->row_count);
-    const og::ui::MenuButtonSpec& reset =
-        controls_host.spec->rows[controls_host.spec->row_count - 1];
-    EXPECT_STREQ("reset_all_controls", reset.id);
-    EXPECT_EQ(ButtonAction::RestoreDefaultControls, reset.action);
-
-    // Persistent profiles remain available without opening a company.
+    // The per-seat screen is now the ONLY owner of direction mode, remap,
+    // reset and input device: the global CONTROLS subscreen that duplicated
+    // those rows for all four players is deleted, door and all.
     const og::ui::MenuScreenHost& options_host =
         og::ui::menu_screen_host(og::ui::MenuScreenId::MainOptions);
     ASSERT_EQ(og::ui::MenuScreenHost::Kind::Engine, options_host.kind);
     ASSERT_NE(nullptr, options_host.spec);
     const og::ui::MenuScreenSpec& options = *options_host.spec;
-    // 9 doors/toggles + the SPEED cycler appended after them.
-    ASSERT_EQ(10, options.row_count);
+    // BACK + Sound + DISPLAY + 3 FX doors + RESTORE + Sprite Sheet + SPEED.
+    ASSERT_EQ(9, options.row_count);
     EXPECT_EQ(og::ui::RemoteStartScope::MainScope, options.remote_start);
-    const og::ui::MenuButtonSpec& door = options.rows[8];
-    EXPECT_STREQ("control_settings", door.id);
-    EXPECT_EQ(ButtonAction::OpenControlSettings, door.action);
+    for (int row = 0; row < options.row_count; ++row) {
+        EXPECT_STRNE("control_settings", options.rows[row].id)
+            << "GAME SETTINGS must not carry a global CONTROLS door";
+        EXPECT_NE(ButtonAction::RestoreDefaultControls, options.rows[row].action)
+            << options.rows[row].id;
+    }
+    // 48/49/50 are the retired OpenControlSettings / ToggleControlMode /
+    // EditPlayerKeymap dispatch ids (button.h marks them do-not-reuse). No
+    // registry screen may carry one: the enum names are gone, so this is the
+    // pin that keeps the VALUES from coming back under a new name.
+    for (int i = 0; i < static_cast<int>(og::ui::MenuScreenId::Count); ++i) {
+        const og::ui::MenuScreenHost& host =
+            og::ui::menu_screen_host(static_cast<og::ui::MenuScreenId>(i));
+        if (host.kind != og::ui::MenuScreenHost::Kind::Engine)
+            continue;
+        for (int row = 0; row < host.spec->row_count; ++row) {
+            const Sint32 action =
+                static_cast<Sint32>(host.spec->rows[row].action);
+            for (const Sint32 retired : {48, 49, 50}) {
+                EXPECT_NE(retired, action)
+                    << host.spec->name << " " << host.spec->rows[row].id
+                    << " uses retired ButtonAction " << retired;
+            }
+        }
+    }
 }
 
 // G9: the four materialized shapes, re-derived from the two specs. The
@@ -2563,42 +2540,6 @@ TEST(MenuEngine, main_menu_lookup_row_ids_exist)
                 << spec->name << " row '" << id
                 << "' is resolved by id and then used as a subscript";
         }
-    }
-}
-
-// The CONTROLS mode faces: the LabelBindings must track the live control
-// mode exactly as the legacy loop's per-frame writes did.
-TEST(MenuEngine, control_options_mode_label_bindings_follow_the_mode)
-{
-    const og::ui::MenuScreenHost& host =
-        og::ui::menu_screen_host(og::ui::MenuScreenId::ControlSettings);
-    ASSERT_EQ(og::ui::MenuScreenHost::Kind::Engine, host.kind);
-    const og::ui::MenuScreenSpec& spec = *host.spec;
-
-    button* buttons = spec.buttons_accessor();
-    const int count = spec.count_accessor();
-    ASSERT_EQ(10, count);
-    EXPECT_EQ("reset_all_controls", buttons[9].id);
-    EXPECT_EQ(button_action_id(ButtonAction::RestoreDefaultControls),
-              buttons[9].myfun);
-
-    og::ui::MenuLabelContext context;
-    for (int player = 0; player < 4; ++player) {
-        const int mode_index = 1 + player * 2;
-        EXPECT_EQ("player" + std::to_string(player + 1) + "_mode",
-                  buttons[mode_index].id);
-        const og::ui::LabelFormatter formatter =
-            spec.rows[mode_index].label_binding.formatter;
-        ASSERT_NE(nullptr, formatter) << buttons[mode_index].id;
-
-        const int saved_mode = get_player_control_mode(player);
-        set_player_control_mode(
-            player, static_cast<int>(ControlDirectionMode::FourDirection));
-        EXPECT_EQ("4-DIRECTION", formatter(context)) << buttons[mode_index].id;
-        set_player_control_mode(
-            player, static_cast<int>(ControlDirectionMode::EightDirection));
-        EXPECT_EQ("8-DIRECTION", formatter(context)) << buttons[mode_index].id;
-        set_player_control_mode(player, saved_mode);
     }
 }
 

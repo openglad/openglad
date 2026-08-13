@@ -93,6 +93,15 @@ Keeping the transport alive while the menu blocks (the two pause traps):
   machine's own display client). Remote peers keep the anti-grief limit.
   Without this, closing and reopening the menu within 5 s leaves the world
   running behind an open menu.
+- The third pause trap: suspension time must never count against input
+  starvation. While the menu blocks, no in-process peer sends input (and the
+  forced per-step keyframes suppress client heartbeats via the
+  outbound-activity window), so clearing the suspension used to expose
+  minutes-stale input stamps and mass-disconnect every peer on RESUME.
+  `clear_pause_state`/`clear_pending_exit_prompt` restamp input freshness,
+  and same-process peers (`GameServer::mark_peer_local`) are never timeout-
+  or desync-disconnected at all — those semantics exist for remote
+  transports.
 
 Curses/text clients: unchanged. Their Esc = withdraw prompt is the terminal
 analogue; no terminal PAUSED projection.
@@ -184,6 +193,13 @@ Building on the gap analysis (everything below `JoyData` works today):
   synthesis `JoyData(int)` already provides. The cycler skips devices
   assigned to other seats. `setKeyFromEvent`'s last-device-wins takeover is
   constrained to the seat's assigned device when one is set.
+- **Default button layout**: button 0 → SPECIAL, button 1 → FIRE (reversed
+  by user request), then SPECIAL SWITCH / YELL / SHIFTER / SWITCH on
+  buttons 2-5. Synthesis is defensive: only axes resting inside the dead
+  zone become movement cardinals, capability counts are clamped
+  non-negative, and a device that opens with nothing bindable is refused
+  outright (the enumerated-but-unopenable udev case surfaces a
+  "COULD NOT OPEN JOYn" popup instead of a silent no-op).
 - **Hotplug**: `SDL_EVENT_JOYSTICK_ADDED/REMOVED` enter the native_input seam
   (`EventType::JoyDeviceAdded/Removed`); on removal the affected seat falls
   back to its keyboard mapping with a display notification; on add the
@@ -307,11 +323,69 @@ screen share one geometry)
   (ON = PREF_LIFE_BOTH, OFF = PREF_LIFE_OFF; the TEXT/BARS/SMALL states are
   retired — SMALL was a dead state rendering as BOTH). PREF_OVERLAY keeps
   its render behavior but loses its (historically invisible) UI row.
-- ZOOM is a real per-view zoom-out riding the floor-layer composite seam
-  (`floor_layer_begin/end` scale path): values GAME (default — follow
-  `graphics/zoom`), then 0.9x..0.5x. HUD/radar projection must be threaded
-  through `ScopedGameplayUiViewLayout` + `project_world_point_to_gameplay_ui`.
-  When the layer path is unavailable the row is disabled, never wrong.
+- ZOOM is a real per-view zoom-out with values GAME (default — follow
+  `graphics/zoom`), then 0.9x..0.5x, riding the SAME single-resample pipeline
+  as the global zoom. The first shipped implementation re-rendered every frame
+  through the floor-layer compositor at `fscale * frame_zoom`; that stacked a
+  per-frame bilinear resample (`floor_layer_end`'s `SDL_SCALEMODE_LINEAR`
+  squeeze) under the presentation stretch — double filtering, visible smudge —
+  and is deleted, not tuned. The architecture that replaced it:
+
+  **Invariant (the deliverable): gameplay pixels are resampled exactly once,
+  by the presentation path.** Every view renders 1:1 at native density on the
+  world canvas; the only scaling any world pixel receives is the present-time
+  texture blit (nearest, exactly like global zoom).
+
+  - *Effective zoom* of view i = global zoom × per-view scale
+    (`n_i = 10 - view_zoom_step_`, so n ∈ 10..5 tenths). The world canvas is
+    derived from the MINIMUM effective zoom over the live views: composed
+    percent = `zoom_steps × n_min` through
+    `og::compute_zoom_canvas_dims_pct` (the steps function delegates to it at
+    pct = steps×10, floor-math-identical). `n_min == 10` takes the untouched
+    global-only path, so zoom OFF for every view is byte-identical by
+    construction.
+  - *Slots vs windows.* `viewscreen::resize(whatmode)` computes the SLOT
+    (the baseline gameplay-UI layout projected onto the canvas — exactly the
+    pre-existing rect) and the WINDOW = slot × `n_min / n_i`, anchored at the
+    slot's top-left. The view renders its window 1:1; a view at the minimum
+    zoom fills its slot exactly. All-off ⇒ window == slot everywhere.
+  - *Partitioned presentation.* When any window ≠ slot,
+    `screen::relayout_views` publishes {src=window, dst=slot} canvas-space
+    rects through `video::set_world_present_slices`. `Screen::swap` presents
+    the whole canvas exactly as before and then overlays one
+    `SDL_RenderTexture(tex, &src, &dst)` per slice — each gameplay pixel still
+    crosses exactly one GPU nearest resample. An empty slice list is the
+    untouched single-blit path. The capture/backdrop composition
+    (`compose_gameplay_ui_for_capture`, `prepare_ui_canvas_from_world`)
+    applies the same slices so screenshots and modal backdrops show what the
+    player sees. A single view at minimum zoom degenerates to window == slot
+    == whole canvas: literally the global-zoom frame, no slices at all.
+  - *Budgets.* The composed percent rides the existing clamp machinery
+    (`zoom_canvas_fits_budget_pct`, `constrain_world_canvas_dims`,
+    `kWorldCanvasPixelBudget`); the per-view cycler skips steps whose composed
+    canvas would not fit (`video::world_zoom_composition_fits`). The old
+    per-frame layer budget (`kPerViewZoomLayerPixelBudget`,
+    `resolve_frame_zoom`) is gone with the layer path.
+  - *Multifloor.* The floor-layer compositor still exists — solely for its
+    original job: faded/parallax floors and the glide. Only the base-zoom
+    resample died. Larger windows can push a faded floor past the layer
+    budget; that falls back to the direct-alpha draw exactly as deep global
+    zoom always has.
+  - *Mid-game changes* (pause-menu cycling, seat add/remove) call
+    `relayout_views`, which recomposes the canvas, windows and slices —
+    render/geometry only, the sim and transports are never touched.
+  - HUD/radar projection is unchanged: `ScopedGameplayUiViewLayout` +
+    `project_world_point_to_gameplay_ui` already map the (now larger) window
+    onto the stable zoom-1.0 pane. The editor's classic-canvas pin forces
+    per-view zoom inert (window == slot). When the platform has no partition
+    seam (`world_present_partition_supported` false) the row is disabled,
+    never wrong.
+  - *Known scope limit:* pointer→world-canvas mapping stays whole-canvas
+    uniform, so inside a SLICED pane (a split where another pane is deeper)
+    a hypothetical world-space pointer would be offset. Gameplay uses no
+    world-space pointer (menus are on the UI canvas; web touch play is
+    single-seat, where window == slot and no slice exists), so nothing
+    user-visible depends on it today.
 - Persistence: prefs stay the runtime carrier; new cfg keys
   `controls: playerN_hud_radar/_hud_life/_hud_foes/_hud_score/_view_zoom`
   (defaults registered so RESTORE SETTINGS keeps them), written by the two
@@ -369,12 +443,32 @@ in-game modal must yield through `og::input_native::sleep_ms`, the call
 that suspends under `-sASYNCIFY`) moves onto the PAUSED menu as
 `PauseMenuFlow.blocking_menu_yields_to_the_browser_each_iteration`.
 
+### 7.5 The global CONTROLS screen goes too
+
+Once every seat owns mode / REMAP / RESET / INPUT on its own player screen,
+the CONTROLS subscreen under GAME SETTINGS (four player sections of
+mode + remap, plus RESET ALL) is the same four rows drawn four times. It is
+deleted: its GAME SETTINGS door, its spec and registry row, and the
+`OpenControlSettings` / `ToggleControlMode` / `EditPlayerKeymap` button
+dispatch ids (the functions stay — the player screens call them directly).
+RESET ALL has no successor by intent; per-seat RESET is the replacement, one
+seat at a time. Nothing is lost on the persistence side either: CONTROLS
+wrote the controls cfg and the mapping library on exit, and both player
+screens already write both after every change.
+
+SPEED stays in the right column and moves up to `options_col_y(6)` — the
+band the CONTROLS door used to occupy, and the first one whose x=210 face no
+longer collides with a 90px door. Both columns then end on the same rhythm
+instead of leaving SPEED stranded two rows below everything else. The Sound
+row, 5px right of the doors under it since forever, joins their column edge
+in the same pass.
+
 ## 8. Non-goals
 
 - No terminal (text/curses) pause menu.
 - No networked mid-game add/remove; no per-seat leave in networked play
   (QUIT keeps the all-or-nothing withdraw semantics).
-- No changes to the global CONTROLS screen layout (its summary lines already
-  show the derived names implicitly).
+- No replacement for RESET ALL CONTROLS: the global CONTROLS screen is
+  deleted outright (§7.5) and per-seat RESET is the only reset.
 - No `SDL_Gamepad` layer (raw joystick API only, matching `JoyData`).
 - No replay-format bump.

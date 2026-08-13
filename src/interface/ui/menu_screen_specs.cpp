@@ -696,121 +696,19 @@ const MenuScreenSpec& display_settings_menu_screen_spec()
 }
 
 // ---------------------------------------------------------------------------
-// CONTROLS subscreen (§1.8 step 3): 4 player sections at 28px pitch, each
-// with mode + remap buttons; the "Px" captions and key-summary lines are
-// drawn text below each section's buttons. RESET ALL preserves the scoped
-// reset that used to sit one level above this screen. The mode faces
-// re-derive from the live control mode every frame on both surfaces
-// (LabelBindings — the legacy loop's per-frame writes).
-
-inline constexpr Sint32 ctrl_player_y(int player) { return 40 + player * 28; }
-
-template <int PlayerIndex>
-std::string player_mode_row_label(const MenuLabelContext& /*context*/)
-{
-    const bool eight_dir = get_player_control_mode(PlayerIndex) ==
-        static_cast<int>(ControlDirectionMode::EightDirection);
-    return eight_dir ? "8-DIRECTION" : "4-DIRECTION";
-}
-
-constexpr MenuButtonSpec kControlOptionsRows[] = {
-    {.id = "controls_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
-     .x = 10, .y = 8, .w = 50, .h = 15,
-     .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 9, .down = 1}},
-    {.id = "player1_mode", .label = "4-DIRECTION",
-     .x = 30, .y = ctrl_player_y(0), .w = 100, .h = 15,
-     .action = ButtonAction::ToggleControlMode, .arg = 0,
-     .nav = {.up = 0, .down = 3, .right = 2},
-     .label_binding = {.formatter = &player_mode_row_label<0>}},
-    {.id = "player1_remap", .label = "REMAP P1",
-     .x = 170, .y = ctrl_player_y(0), .w = 100, .h = 15,
-     .action = ButtonAction::EditPlayerKeymap, .arg = 0,
-     .nav = {.up = 0, .down = 4, .left = 1}},
-    {.id = "player2_mode", .label = "4-DIRECTION",
-     .x = 30, .y = ctrl_player_y(1), .w = 100, .h = 15,
-     .action = ButtonAction::ToggleControlMode, .arg = 1,
-     .nav = {.up = 1, .down = 5, .right = 4},
-     .label_binding = {.formatter = &player_mode_row_label<1>}},
-    {.id = "player2_remap", .label = "REMAP P2",
-     .x = 170, .y = ctrl_player_y(1), .w = 100, .h = 15,
-     .action = ButtonAction::EditPlayerKeymap, .arg = 1,
-     .nav = {.up = 2, .down = 6, .left = 3}},
-    {.id = "player3_mode", .label = "4-DIRECTION",
-     .x = 30, .y = ctrl_player_y(2), .w = 100, .h = 15,
-     .action = ButtonAction::ToggleControlMode, .arg = 2,
-     .nav = {.up = 3, .down = 7, .right = 6},
-     .label_binding = {.formatter = &player_mode_row_label<2>}},
-    {.id = "player3_remap", .label = "REMAP P3",
-     .x = 170, .y = ctrl_player_y(2), .w = 100, .h = 15,
-     .action = ButtonAction::EditPlayerKeymap, .arg = 2,
-     .nav = {.up = 4, .down = 8, .left = 5}},
-    {.id = "player4_mode", .label = "4-DIRECTION",
-     .x = 30, .y = ctrl_player_y(3), .w = 100, .h = 15,
-     .action = ButtonAction::ToggleControlMode, .arg = 3,
-     .nav = {.up = 5, .down = 9, .right = 8},
-     .label_binding = {.formatter = &player_mode_row_label<3>}},
-    {.id = "player4_remap", .label = "REMAP P4",
-     .x = 170, .y = ctrl_player_y(3), .w = 100, .h = 15,
-     .action = ButtonAction::EditPlayerKeymap, .arg = 3,
-     .nav = {.up = 6, .down = 9, .left = 7}},
-    {.id = "reset_all_controls", .label = "RESET ALL",
-     .x = 90, .y = 174, .w = 140, .h = 15,
-     .action = ButtonAction::RestoreDefaultControls, .arg = -1,
-     .nav = {.up = 7, .down = 0}},
-};
-
-void control_options_draw_content(void* /*screen_state*/)
-{
-    text& mytext = og::runtime::current_session->myscreen_->text_normal;
-
-    // The header sits below the BACK button's animated highlight box
-    // (which reaches 3px past the bevel) and above the P1 row at y=40;
-    // drawing it any higher lets the highlight overwrite the first chars.
-    mytext.write_xy(PICKER_CONTROLS_HEADER_X, PICKER_CONTROLS_HEADER_Y,
-                    DARK_BLUE, "Player control modes and key remapping");
-
-    for (int i = 0; i < 4; ++i)
-    {
-        const Sint32 btn_y = ctrl_player_y(i);
-        mytext.write_xy(10, btn_y + 3, DARK_BLUE, "P%d", i + 1);
-        const std::string summary = build_player_control_summary(i);
-        mytext.write_xy(30, btn_y + 17, DARK_BLUE, "%s", summary.c_str());
-    }
-
-    mytext.write_xy(10, 155, DARK_BLUE,
-                    "4-dir = cardinal only. 8-dir adds diagonals.");
-}
-
-const MenuScreenSpec& control_options_menu_screen_spec()
-{
-    static const MenuScreenSpec spec{
-        .name = "control_options",
-        .rows = kControlOptionsRows,
-        .row_count = static_cast<int>(std::size(kControlOptionsRows)),
-        .buttons_accessor = &picker_control_options_buttons,
-        .count_accessor = &picker_control_options_button_count,
-        .remote_start = RemoteStartScope::MainScope,
-        .polls_lobby = true,
-        .draw_background = &options_panel_draw_background,
-        .draw_content = &control_options_draw_content,
-        .exit_value = MENU_REDRAW,
-    };
-    return spec;
-}
-
-// ---------------------------------------------------------------------------
 // MAIN OPTIONS (§1.8 step 3, last slice): sound/graphics settings plus doors
-// into CONTROLS and the three FX subscreens (GAMEPLAY FX / UI FX /
-// GRAPHICS FX). Persistent controller profiles remain reachable before a
-// company is opened, while seat lifecycle and per-level player-team choices
-// live in Base Camp. Rows otherwise retain the deleted k_main_options_buttons
-// table: the settings/door column stacks at the classic 23px pitch
-// (BUTTON_HEIGHT 15 + 8 padding). The sound face and the sprite-sheet face
-// are content-pass state draws over the bevels (green per cfg), not label
-// bindings. Every subscreen door just opens its blocking screen; the exit
-// epilogue in main_options() below is the single point where the whole
-// family's cfg edits persist.
+// into DISPLAY and the three FX subscreens (GAMEPLAY FX / UI FX /
+// GRAPHICS FX). Everything per-player — direction mode, remap, reset, input
+// device — belongs to the seat's own screen (Base Camp seat settings and the
+// pause menu's player screen); the global CONTROLS subscreen that duplicated
+// those four rows for all four players is gone. Seat lifecycle and per-level
+// player-team choices live in Base Camp. Rows otherwise retain the deleted
+// k_main_options_buttons table: the settings/door column stacks at the
+// classic 23px pitch (BUTTON_HEIGHT 15 + 8 padding). The sound face and the
+// sprite-sheet face are content-pass state draws over the bevels (green per
+// cfg), not label bindings. Every subscreen door just opens its blocking
+// screen; the exit epilogue in main_options() below is the single point where
+// the whole family's cfg edits persist.
 
 inline constexpr Sint32 kOptionsButtonPadding = 8;
 inline constexpr Sint32 kOptionsButtonPitch = 15 + kOptionsButtonPadding;
@@ -835,58 +733,64 @@ std::string game_speed_row_label(const MenuLabelContext& /*context*/)
     return format_game_speed_label(cfg.get_setting("gameplay", "timer_wait"));
 }
 
+// Two columns at a 23px pitch: the settings/door column (Sound, then
+// DISPLAY and the three FX doors) and the right column (RESTORE SETTINGS,
+// Sprite Sheet, SPEED). BACK keeps its own corner at (10,10). Derive every
+// x from these two edges — the hand-typed near-neighbour is how the Sound
+// row spent years 5px off the doors under it.
+inline constexpr Sint32 kOptionsDoorColumnX = 130;
+inline constexpr Sint32 kOptionsRightColumnX = 210;
+
 constexpr MenuButtonSpec kMainOptionsRows[] = {
     {.id = "options_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 10, .y = 10, .w = 50, .h = 15,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 8, .down = 1, .right = 4}},
+     .nav = {.up = 7, .down = 1, .right = 4}},
+    // Sound heads the same column as the doors below it (it shipped 5px to
+    // their right — a hand-typed near-neighbor, not a design).
     {.id = "toggle_sound", .label = "Sound",
-     .x = 135, .y = options_col_y(1), .w = 50, .h = 15,
+     .x = kOptionsDoorColumnX, .y = options_col_y(1), .w = 50, .h = 15,
      .action = ButtonAction::ToggleSound, .arg = -1,
      .nav = {.up = 0, .down = 2, .right = 5}},
     // Door into the DISPLAY subscreen (mode / resolution / overscan /
     // scaling / filter live there).
     {.id = "display_settings", .label = "DISPLAY",
-     .x = 130, .y = options_col_y(2), .w = 90, .h = 15,
+     .x = kOptionsDoorColumnX, .y = options_col_y(2), .w = 90, .h = 15,
      .action = ButtonAction::OpenDisplaySettings, .arg = -1,
      .nav = {.up = 1, .down = 3, .right = 5}},
     {.id = "gameplay_fx", .label = "GAMEPLAY FX",
-     .x = 130, .y = options_col_y(3), .w = 90, .h = 15,
+     .x = kOptionsDoorColumnX, .y = options_col_y(3), .w = 90, .h = 15,
      .action = ButtonAction::OpenGameplayFxSettings, .arg = -1,
      .nav = {.up = 2, .down = 6}},
     {.id = "restore_defaults", .label = "RESTORE SETTINGS",
-     .x = 210, .y = 10, .w = 100, .h = 15,
+     .x = kOptionsRightColumnX, .y = 10, .w = 100, .h = 15,
      .action = ButtonAction::RestoreDefaultSettings, .arg = -1,
      .nav = {.up = 7, .down = 5, .left = 0}},
     {.id = "pick_sprite_sheet", .label = "Sprite Sheet",
-     .x = 210, .y = options_col_y(1), .w = 90, .h = 15,
+     .x = kOptionsRightColumnX, .y = options_col_y(1), .w = 90, .h = 15,
      .action = ButtonAction::PickSpriteSheet, .arg = 0,
-     .nav = {.up = 4, .down = 9, .left = 1},
+     .nav = {.up = 4, .down = 8, .left = 1},
      .label_binding = {.formatter = &sprite_sheet_row_label}},
     {.id = "ui_fx", .label = "UI FX",
-     .x = 130, .y = options_col_y(4), .w = 90, .h = 15,
+     .x = kOptionsDoorColumnX, .y = options_col_y(4), .w = 90, .h = 15,
      .action = ButtonAction::OpenUiFxSettings, .arg = -1,
      .nav = {.up = 3, .down = 7}},
     {.id = "graphics_fx", .label = "GRAPHICS FX",
-     .x = 130, .y = options_col_y(5), .w = 90, .h = 15,
+     .x = kOptionsDoorColumnX, .y = options_col_y(5), .w = 90, .h = 15,
      .action = ButtonAction::OpenGraphicsFxSettings, .arg = -1,
-     .nav = {.up = 6, .down = 8}},
-    {.id = "control_settings", .label = "CONTROLS",
-     .x = 130, .y = options_col_y(6), .w = 90, .h = 15,
-     .action = ButtonAction::OpenControlSettings, .arg = -1,
-     .nav = {.up = 7, .down = 0, .right = 9}},
+     .nav = {.up = 6, .down = 0, .right = 8}},
     // SPEED: the sim cadence the retired in-game options menu owned
     // (docs/pause-menu-design.md §7.3). It is game-wide and always was — a
     // GameWorld field, host-authoritative over the wire — so it belongs
-    // here and not on a per-player screen. It closes the right column: the
-    // rows at y=56..148 only LOOK free, because the 90px door faces at
-    // x=130 run to x=220 and would clip an x=210 face. y=171 is the first
-    // row clear of them (and of the "Controls:" caption, which reads down
-    // the left column).
+    // here and not on a per-player screen. It closes the right column at the
+    // first row whose x=210 face clears the door column: the 90px doors at
+    // x=130 run to x=220, so every row they occupy (y=56..140) is blocked.
+    // With the CONTROLS door gone the column ends at GRAPHICS FX, and
+    // options_col_y(6) is that first clear row.
     {.id = "game_speed", .label = "SPEED: 8",
-     .x = 210, .y = options_col_y(7), .w = 90, .h = 15,
+     .x = kOptionsRightColumnX, .y = options_col_y(6), .w = 90, .h = 15,
      .action = ButtonAction::CycleGameSpeed, .arg = -1,
-     .nav = {.up = 5, .down = 4, .left = 8},
+     .nav = {.up = 5, .down = 4, .left = 7},
      .label_binding = {.formatter = &game_speed_row_label}},
 };
 
@@ -900,7 +804,6 @@ void main_options_draw_content(void* /*screen_state*/)
     scr->hor_line(60, rows[2].y - kOptionsButtonPadding / 2, 200, PURE_WHITE);
     scr->text_normal.write_xy(20, rows[2].y + 3, DARK_BLUE, "Display:");
     scr->text_normal.write_xy(20, rows[3].y + 3, DARK_BLUE, "Effects:");
-    scr->text_normal.write_xy(20, rows[8].y + 3, DARK_BLUE, "Controls:");
     draw_sprite_sheet_button(rows[5]);
 }
 
@@ -912,9 +815,9 @@ const MenuScreenSpec& main_options_menu_screen_spec()
         .row_count = static_cast<int>(std::size(kMainOptionsRows)),
         .buttons_accessor = &picker_main_options_buttons,
         .count_accessor = &picker_main_options_button_count,
-        // Controls is a blocking child screen. Keep MainScope on its parent
-        // too so a child-propagated host GO cannot be normalized into the
-        // ordinary "back to main menu" redraw.
+        // A host GO reaching this peer while it sits in GAME SETTINGS must
+        // unwind to the launch, not to the ordinary "back to main menu"
+        // redraw — main_options() below normalizes every other exit.
         .remote_start = RemoteStartScope::MainScope,
         .polls_lobby = true,
         .draw_background = &options_panel_draw_background,
@@ -2711,12 +2614,19 @@ Sint32 seat_settings_on_spec_row(int row, void* screen_state)
     if (row == kSeatSettingsInputIndex) {
         // The cycler skips names held by another ACTIVE seat, so it needs the
         // same machine-local seat count the REMOVE guard uses.
+        std::string unavailable;
         const std::string name = og::ui::cycle_player_input(
             cfg, state->local_slot,
-            static_cast<int>(picker_lobby_local_seat_count()));
+            static_cast<int>(picker_lobby_local_seat_count()), &unavailable);
         persist_player_controls();
         TRACE("basecamp", "seat_input slot=%d name=%s",
               state->local_slot + 1, name.c_str());
+        if (!unavailable.empty()) {
+            // Enumerated but unopenable device (permissions): name it, or the
+            // skipped option reads as a broken button.
+            popup_dialog("INPUT",
+                         std::format("COULD NOT OPEN {}", unavailable).c_str());
+        }
         return MENU_OK;
     }
     if (row == kSeatSettingsResetIndex) {
@@ -5280,9 +5190,6 @@ const MenuScreenHost& menu_screen_host(MenuScreenId id)
             set(MenuScreenId::DisplaySettings,
                 {.kind = Kind::Engine,
                  .spec = &display_settings_menu_screen_spec()});
-            set(MenuScreenId::ControlSettings,
-                {.kind = Kind::Engine,
-                 .spec = &control_options_menu_screen_spec()});
             set(MenuScreenId::GameplayFx,
                 {.kind = Kind::Engine, .spec = &gameplay_fx_menu_screen_spec()});
             set(MenuScreenId::UiFx,
@@ -5688,40 +5595,10 @@ int picker_display_settings_button_count()
     return static_cast<int>(pks().display_settings_buttons.size());
 }
 
-button* picker_control_options_buttons()
-{
-    og::ui::materialize_menu_buttons(og::ui::control_options_menu_screen_spec(),
-                                     pks().control_options_buttons);
-    return pks().control_options_buttons.data();
-}
-
-int picker_control_options_button_count()
-{
-    return static_cast<int>(pks().control_options_buttons.size());
-}
-
-// The DISPLAY and CONTROLS subscreens, engine-hosted (the legacy loops are
-// gone).
+// The DISPLAY subscreen, engine-hosted (the legacy loop is gone).
 Sint32 display_settings_options()
 {
     return og::ui::run_menu_screen(og::ui::display_settings_menu_screen_spec());
-}
-
-Sint32 main_controls_options()
-{
-    const Sint32 result =
-        og::ui::run_menu_screen(og::ui::control_options_menu_screen_spec());
-    // CONTROLS can be entered from GAME SETTINGS without necessarily
-    // returning through main_options()'s family-wide persistence epilogue
-    // (tests and compatibility callers invoke this wrapper directly too).
-    // Customized keymaps also write through to the named-mapping library so
-    // a remap made here survives cycling INPUT away and back (design §3.2);
-    // factory-identical seats are skipped by the library call itself.
-    for (int player = 0; player < 4; ++player)
-        (void)og::input::save_player_mapping_to_library(cfg, player);
-    save_player_control_settings_to_cfg(cfg);
-    cfg.save_settings();
-    return result;
 }
 
 button* picker_main_options_buttons()

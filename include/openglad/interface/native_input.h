@@ -141,7 +141,17 @@ void reset_keyboard_state();
 
 using JoystickHandle = void*;
 int num_joysticks();
+// Opens the device at a 0-based enumeration index. Returns nullptr when the
+// index is out of range AND when the device node cannot be opened — the udev
+// case: the device enumerates through num_joysticks() but its /dev node denies
+// read permission. Every caller must treat a null handle as "this device is
+// not usable", never as "no device here".
 JoystickHandle joystick_open(int index);
+#ifdef TESTING
+// Test seam for that case: bit i set = joystick_open(i) returns nullptr while
+// the device keeps enumerating normally. 0 (the default) opens for real.
+void set_joystick_open_failure_mask(unsigned int mask);
+#endif
 int joystick_num_axes(JoystickHandle joystick);
 int joystick_num_buttons(JoystickHandle joystick);
 int joystick_num_hats(JoystickHandle joystick);

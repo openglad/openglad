@@ -48,7 +48,16 @@ bool apply_input_cycle_selection(cfg_store& cfg,
 
 // Advance the seat to the next cycler option (wrapping) and return its name.
 // No-op (returns the current name) when the seat is the only option.
-std::string cycle_player_input(cfg_store& cfg, int seat, int active_player_count);
+//
+// An option can refuse to apply: a joystick that enumerates but whose device
+// node will not open (the udev permission case) fails in
+// assign_joystick_to_player. Such an option is SKIPPED — parking the cycle on
+// it would make every option behind it unreachable forever — and its name is
+// reported through `out_unavailable` (cleared first, left empty when every
+// applied option worked) so the caller can tell the user which device it could
+// not open instead of leaving a silent no-op.
+std::string cycle_player_input(cfg_store& cfg, int seat, int active_player_count,
+                               std::string* out_unavailable = nullptr);
 
 // A freshly added seat inherits profile-pool slot `seat`'s live keymap, which
 // can duplicate a mapping another ACTIVE seat already answers to (cycle P1 to

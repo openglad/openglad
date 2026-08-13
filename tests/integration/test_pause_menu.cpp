@@ -1,7 +1,7 @@
 // PAUSED menu + in-game player screen (docs/pause-menu-design.md §2.1/§2.2).
 //
 // Layers, cheapest first:
-//   - exact-table pins for both MenuScreenSpecs (the control_options shape),
+//   - exact-table pins for both MenuScreenSpecs (test_menu_pins' shape),
 //   - nav BFS across the gating variants (solo / splitscreen / 4-seat /
 //     networked host / joiner) through the installed-state seam,
 //   - player-row label derivation (local and networked seat collection),
@@ -751,21 +751,28 @@ TEST(PausePlayerDraw, binding_grid_shows_joystick_names_for_assigned_seat)
     expect_glyph_at(scr, 'W', 20 + 4 * pitch, 93, DARK_BLUE);
 
     // Assign the pad: the same cells now show joy_binding_display_name
-    // output — "UP: A1-" and "FIRE: B0" for the default two-axis layout.
+    // output — "UP: A1-", and the reversed gamepad default puts FIRE on
+    // button 1 ("FIRE: B1", actions row 0) and SPECIAL on button 0
+    // ("SPECIAL: B0", actions row 1, one 8px line lower).
     ASSERT_TRUE(assign_joystick_to_player(0, d));
     spec.draw_background(&state);
     spec.draw_content(&state);
     expect_glyph_at(scr, 'A', 20 + 4 * pitch, 93, DARK_BLUE);
     expect_glyph_at(scr, '1', 20 + 5 * pitch, 93, DARK_BLUE);
     expect_glyph_at(scr, 'B', 104 + 6 * pitch, 93, DARK_BLUE);
-    expect_glyph_at(scr, '0', 104 + 7 * pitch, 93, DARK_BLUE);
+    expect_glyph_at(scr, '1', 104 + 7 * pitch, 93, DARK_BLUE);
+    expect_glyph_at(scr, 'B', 104 + 9 * pitch, 101, DARK_BLUE);
+    expect_glyph_at(scr, '0', 104 + 10 * pitch, 101, DARK_BLUE);
     // joy_binding_display_name is the oracle for those grid values.
     EXPECT_EQ("A1-", joy_binding_display_name(
                          player_joy[0].key_type[KEY_UP],
                          player_joy[0].key_index[KEY_UP]));
-    EXPECT_EQ("B0", joy_binding_display_name(
+    EXPECT_EQ("B1", joy_binding_display_name(
                         player_joy[0].key_type[KEY_FIRE],
                         player_joy[0].key_index[KEY_FIRE]));
+    EXPECT_EQ("B0", joy_binding_display_name(
+                        player_joy[0].key_type[KEY_SPECIAL],
+                        player_joy[0].key_index[KEY_SPECIAL]));
 
     og::ui::install_pause_player_state_for_screen(nullptr);
 }
@@ -1305,6 +1312,70 @@ TEST(PausePlayerHandlers, input_mode_remap_reset_rows)
     og::ui::install_pause_player_state_for_screen(nullptr);
 }
 
+// The udev report: SDL enumerates the pad but its device node will not open,
+// so assignment fails. The INPUT row must SAY so — a silent no-op reads as a
+// broken button — and must not park the cycle on the device it cannot use.
+TEST(PausePlayerHandlers, input_row_names_a_device_it_could_not_open)
+{
+    ControlStateGuard controls;
+    NumplayersGuard numplayers(1);
+    JoystickSubsystemGuard subsystem_guard;
+    VirtualJoystick pad(2, 6, 0, "OpenGlad pause udev pad");
+    ASSERT_NE(nullptr, pad.get()) << SDL_GetError();
+    // Every handle slot nulled while the device stays enumerated: exactly the
+    // state joystick_open failing on a permission-denied node leaves behind.
+    JoystickHandleGuard handle_guard;
+    ASSERT_GE(device_index_of(pad.instance_id()), 0);
+    for (int p = 0; p < 4; ++p)
+        clear_player_joystick(p);
+
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::pause_player_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.on_spec_row);
+    g_stub = StubHostState{};
+    PauseMenuHost host = make_stub_host(false, true);
+    og::ui::PausePlayerScreenState state;
+    state.host = &host;
+    state.seat = 0;
+    state.player_number = 1;
+    og::ui::install_pause_player_state_for_screen(&state);
+
+    // Park the seat on the option just before the first JOY entry, so the
+    // next press lands on the device that cannot be opened.
+    const std::vector<og::ui::InputCycleOption> options =
+        og::ui::input_cycle_options(cfg, 0, 1);
+    std::size_t first_joy = options.size();
+    for (std::size_t i = 0; i < options.size(); ++i)
+    {
+        if (options[i].is_joystick)
+        {
+            first_joy = i;
+            break;
+        }
+    }
+    ASSERT_LT(first_joy, options.size())
+        << "an enumerated device must still be offered by the cycler";
+    ASSERT_GT(first_joy, 0u);
+    ASSERT_TRUE(
+        og::ui::apply_input_cycle_selection(cfg, 0, options[first_joy - 1]));
+    const std::string parked = og::ui::current_input_selection(0).name;
+    const std::string joy_name = options[first_joy].name;
+
+    trace_clear();
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(og::ui::kPausePlayerInputIndex, &state));
+    EXPECT_TRUE(trace_contains("popup",
+                               ("COULD NOT OPEN " + joy_name).c_str()))
+        << "the row must name the device it could not open";
+    EXPECT_FALSE(playerHasJoystick(0))
+        << "a device that will not open must never bind the seat";
+    EXPECT_FALSE(og::ui::current_input_selection(0).is_joystick);
+    EXPECT_NE(parked, og::ui::current_input_selection(0).name)
+        << "the cycle must skip the broken device, not park on it";
+
+    og::ui::install_pause_player_state_for_screen(nullptr);
+}
+
 TEST(PausePlayerHandlers, remove_row_confirms_and_removes)
 {
     ControlStateGuard controls;
@@ -1529,7 +1600,7 @@ TEST(PausePlayerHandlers, zoom_row_cycles_labels_persists_and_clamps)
     HudStateGuard guard(0);
 
     ASSERT_TRUE(og::ui::per_view_zoom_available())
-        << "the SDL video backend has the floor-layer compositor";
+        << "the SDL video backend has the partitioned-presentation seam";
 
     const og::ui::MenuScreenSpec& spec =
         og::ui::pause_player_menu_screen_spec();
@@ -1563,28 +1634,26 @@ TEST(PausePlayerHandlers, zoom_row_cycles_labels_persists_and_clamps)
     EXPECT_EQ("ZOOM: GAME", og::ui::player_view_zoom_label(0));
     EXPECT_EQ("0", cfg.get_setting("controls", "player1_view_zoom"));
 
-    // Budget clamp: a 1600x1000 pane blows the compositor budget at 0.6x
-    // and below ((1600/0.6)*(1000/0.6) > 4.096M), so the cycle skips those
-    // steps and wraps from 0.7x straight back to GAME.
-    const Sint32 old_xloc = view->xloc, old_yloc = view->yloc;
-    const Sint32 old_xview = view->xview, old_yview = view->yview;
-    view->xloc = 0;
-    view->yloc = 0;
-    view->xview = 1600;
-    view->yview = 1000;
-    EXPECT_TRUE(view->view_zoom_step_fits_budget(3));
-    EXPECT_FALSE(view->view_zoom_step_fits_budget(4));
-    EXPECT_FALSE(view->view_zoom_step_fits_budget(5));
-    view->view_zoom_step_ = 3;
-    cfg.apply_setting("controls", "player1_view_zoom", "3");
+    // Budget clamp (§7.1 composition gate): the canvas derives from
+    // global x per-view zoom, so at a deep GLOBAL zoom the deep per-view
+    // steps overflow the split-canvas budget and the cycle skips them. At
+    // global 0.1 on a 640x400 window: x0.9 = 3552x2220 (~7.9M) still fits,
+    // x0.8 = 4000x2500 (10M) exceeds kWorldCanvasPixelBudget (8.38M).
+    ASSERT_TRUE(E_Screen);
+    E_Screen->set_world_zoom(1, og::WorldScaleMode::Integer, 640, 400);
+    scr->relayout_views();
+    EXPECT_TRUE(scr->world_zoom_composition_fits(9));  // 0.9x
+    EXPECT_FALSE(scr->world_zoom_composition_fits(8)); // 0.8x
+    EXPECT_FALSE(scr->world_zoom_composition_fits(5)); // 0.5x
+    view->view_zoom_step_ = 1; // 0.9x — the deepest fitting step
+    cfg.apply_setting("controls", "player1_view_zoom", "1");
     EXPECT_EQ(MENU_OK,
               spec.on_spec_row(og::ui::kPausePlayerZoomIndex, &state));
     EXPECT_EQ(0, static_cast<int>(view->view_zoom_step_))
         << "over-budget steps are skipped; the cycle wraps to GAME";
-    view->xloc = old_xloc;
-    view->yloc = old_yloc;
-    view->xview = old_xview;
-    view->yview = old_yview;
+    E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Integer,
+                             640, 400);
+    scr->relayout_views();
 
     og::ui::install_pause_player_state_for_screen(nullptr);
 }

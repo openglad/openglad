@@ -181,7 +181,6 @@ Sint32 teams_cycle_guy_team(Sint32 whichway);
 Sint32 teams_toggle_ready(Sint32 origin_button_index);
 Sint32 level_editor();
 Sint32 main_options();
-Sint32 main_controls_options();
 Sint32 gameplay_fx_options();
 Sint32 ui_fx_options();
 Sint32 graphics_fx_options();
@@ -197,13 +196,17 @@ Sint32 change_zoom(); // DISPLAY zoom selector (cfg graphics/zoom)
 Sint32 change_smoothing(); // DISPLAY smoothing selector (cfg graphics/smoothing)
 Sint32 change_display_mode(); // DISPLAY mode selector (cfg graphics/fullscreen)
 Sint32 display_settings_options(); // the DISPLAY subscreen blocking loop
+// The per-player control primitives. No ButtonAction dispatches to them any
+// more: the seat-settings and pause player screens are MenuSpecRow screens
+// and call them directly.
 Sint32 toggle_player_control_mode(Sint32 arg);
 Sint32 edit_player_keymap(Sint32 arg);
 // The same remap wizard with a caller-supplied per-poll callback (the pause
 // menu pumps the paused transport there; false cancels the prompt sequence).
 Sint32 edit_player_keymap_with_poll(Sint32 arg,
                                     KeyWaitPollCallback poll_callback);
-std::string build_player_control_summary(int player_index);
+// Two lines: directions, then actions. (The joined one-line form went with
+// the global CONTROLS screen — the only thing that drew it.)
 std::array<std::string, 2> build_player_control_summary_lines(int player_index, bool remap_mode);
 std::string player_control_key_display_name(int player_index, int key_enum);
 Sint32 overscan_adjust(Sint32 arg);
@@ -260,12 +263,19 @@ enum class ButtonAction : Sint32
     ToggleHealNumbers = 42,
     ToggleGore = 43,
     RestoreDefaultSettings = 44, // Game-settings cfg; preserves controls.
-    RestoreDefaultControls = 45, // Player modes + both keymaps only.
+    // Restores every player's mode + both keymaps at once. No button carries
+    // it since the global CONTROLS screen retired (per-seat RESET on the
+    // player screens covers it); it survives as the reset-all primitive.
+    RestoreDefaultControls = 45,
     ShowHelp = 46,
     CreateProgressMenu = 47,
-    OpenControlSettings = 48,
-    ToggleControlMode = 49,
-    EditPlayerKeymap = 50,
+    // 48/49/50 were OpenControlSettings / ToggleControlMode /
+    // EditPlayerKeymap: the global CONTROLS subscreen (4 players x
+    // mode/remap + RESET ALL) was deleted as a duplicate of the per-player
+    // screens, which own mode/remap/reset/input per seat and dispatch
+    // through MenuSpecRow. The toggle_player_control_mode and
+    // edit_player_keymap FUNCTIONS live on; only these dispatch ids are
+    // gone. Values retired, do not reuse.
     HostGame = 51,
     JoinGame = 52,
     Networking = 53,

@@ -209,6 +209,13 @@ public:
     void reapply_world_scale() override;
     int minimum_world_zoom_steps() const override;
     bool world_smoothing_supported() const override;
+    // §7.1 per-view zoom composition + partitioned presentation.
+    void set_world_view_scale(int min_scale_num) override;
+    bool world_zoom_composition_fits(int min_scale_num) const override;
+    bool world_present_partition_supported() const override;
+    bool world_canvas_pinned_classic() const override;
+    void set_world_present_slices(
+        std::span<const WorldPresentSlice> slices) override;
     void apply_display_settings_from_cfg() override;
     void reflect_display_settings_from_window(
         DisplayStateConfirmation confirmation = DisplayStateConfirmation::Synchronized,

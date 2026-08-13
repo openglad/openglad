@@ -73,8 +73,11 @@ bool apply_input_cycle_selection(cfg_store& cfg,
     return og::input::assign_mapping_to_player(seat, mapping);
 }
 
-std::string cycle_player_input(cfg_store& cfg, int seat, int active_player_count)
+std::string cycle_player_input(cfg_store& cfg, int seat, int active_player_count,
+                               std::string* out_unavailable)
 {
+    if (out_unavailable != nullptr)
+        out_unavailable->clear();
     const std::vector<InputCycleOption> options =
         input_cycle_options(cfg, seat, active_player_count);
     const InputCycleOption current = current_input_selection(seat);
@@ -97,11 +100,23 @@ std::string cycle_player_input(cfg_store& cfg, int seat, int active_player_count
     const std::size_t next_index =
         current_index >= options.size() ? 0u
                                         : (current_index + 1) % options.size();
-    if (options[next_index].name == current.name)
-        return current.name;
-    if (!apply_input_cycle_selection(cfg, seat, options[next_index]))
-        return current.name;
-    return options[next_index].name;
+    // Walk forward from the next option and take the first one that applies.
+    // An enumerated-but-unopenable device fails in
+    // assign_joystick_to_player; parking the cycle on it would make every
+    // option behind it permanently unreachable, so it is skipped and named.
+    for (std::size_t step = 0; step < options.size(); ++step)
+    {
+        const InputCycleOption& option =
+            options[(next_index + step) % options.size()];
+        if (option.name == current.name)
+            break; // wrapped back to the seat's own selection: no change
+        if (apply_input_cycle_selection(cfg, seat, option))
+            return option.name;
+        if (out_unavailable != nullptr && out_unavailable->empty() &&
+            option.is_joystick)
+            *out_unavailable = option.name;
+    }
+    return current.name;
 }
 
 bool ensure_unique_seat_mapping(cfg_store& cfg, int seat, int active_player_count)

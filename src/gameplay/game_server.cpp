@@ -971,6 +971,30 @@ void GameServer::connect_spectator(PeerId peer_id)
     clients_[peer_id].spectator_admitted = true;
 }
 
+void GameServer::mark_peer_local(PeerId peer_id)
+{
+    const auto it = std::lower_bound(
+        local_peer_ids_.begin(), local_peer_ids_.end(), peer_id);
+    if (it == local_peer_ids_.end() || *it != peer_id)
+        local_peer_ids_.insert(it, peer_id);
+}
+
+bool GameServer::is_local_peer(PeerId peer_id) const noexcept
+{
+    return std::binary_search(
+        local_peer_ids_.begin(), local_peer_ids_.end(), peer_id);
+}
+
+void GameServer::restamp_input_freshness()
+{
+    const std::uint64_t now = now_ms();
+    for (auto& [peer_id, client] : clients_)
+    {
+        (void)peer_id;
+        client.last_received_input_ms = now;
+    }
+}
+
 void GameServer::handle_transport_disconnect(
     PeerId peer_id,
     bool close_transport,
@@ -978,6 +1002,7 @@ void GameServer::handle_transport_disconnect(
 {
     erase_peer_id_sorted(connected_transport_peers_, peer_id);
     erase_peer_id_sorted(pending_transport_disconnects_, peer_id);
+    erase_peer_id_sorted(local_peer_ids_, peer_id);
     const bool was_host = host_peer_id_.has_value() && *host_peer_id_ == peer_id;
     if (was_host)
         host_peer_id_.reset();
@@ -1129,6 +1154,7 @@ void GameServer::disconnect_client(PeerId peer_id)
     const auto disconnect_one = [this](PeerId disconnected_peer_id) {
         erase_peer_id_sorted(connected_transport_peers_, disconnected_peer_id);
         erase_peer_id_sorted(pending_transport_disconnects_, disconnected_peer_id);
+        erase_peer_id_sorted(local_peer_ids_, disconnected_peer_id);
 
         std::vector<std::size_t> disconnected_player_indices;
         const auto it = clients_.find(disconnected_peer_id);
@@ -2014,17 +2040,18 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
                     {
                         const bool host_peer = host_peer_id_.has_value() &&
                             *host_peer_id_ == message.peer_id;
-                        if (host_peer)
+                        if (host_peer || is_local_peer(message.peer_id))
                         {
-                            // NEVER cut the host peer: it is this machine's
-                            // own display client, and closing its transport
-                            // makes the very next local send throw — the app
-                            // dies on an in-process bookkeeping blip. Keep
+                            // NEVER cut the host peer or any same-process
+                            // peer (a background local seat's in-process
+                            // client): closing such a transport makes the
+                            // very next local send throw — the app dies on
+                            // an in-process bookkeeping blip. Keep
                             // force-keyframing (rate-limited by the strike
                             // reset) and stay alive.
                             LogError(
                                 "snapshot_hash_mismatch_limit peer={} "
-                                "strikes={} — host peer kept alive\n",
+                                "strikes={} — host/local peer kept alive\n",
                                 message.peer_id,
                                 client.consecutive_hash_mismatches);
                             client.consecutive_hash_mismatches = 0;
@@ -2125,6 +2152,11 @@ void GameServer::update_timeouts()
     timed_out_peers.reserve(clients_.size());
     for (const auto& [peer_id, client] : clients_)
     {
+        // Same-process peers cannot input-starve; cutting one closes a
+        // transport whose next local send throws (see mark_peer_local).
+        if (is_local_peer(peer_id))
+            continue;
+
         if (client.last_received_input_ms == 0 || now < client.last_received_input_ms)
             continue;
 
@@ -2133,7 +2165,12 @@ void GameServer::update_timeouts()
     }
 
     for (const auto& [peer_id, grace_start_ms] : timed_out_peers)
+    {
+        TRACE("net", "server_timeout_disconnect peer=%u stale_ms=%u",
+              static_cast<unsigned>(peer_id),
+              static_cast<unsigned>(now - grace_start_ms));
         handle_transport_disconnect(peer_id, true, grace_start_ms);
+    }
 
     update_disconnected_players(now);
 }
@@ -2144,6 +2181,9 @@ void GameServer::clear_pending_exit_prompt()
     world_.withdraw_requested = false;
     world_.withdraw_level = -1;
     pending_exit_prompt_state_.reset();
+    // The suspension masked the starvation check while every client was
+    // legitimately quiet; the silence must not count now that it lifted.
+    restamp_input_freshness();
 }
 
 void GameServer::clear_pause_state()
@@ -2151,6 +2191,12 @@ void GameServer::clear_pause_state()
     world_.paused = false;
     world_.pause_player_index = kNoPausePlayerIndex;
     pending_pause_state_.reset();
+    // Same freshness restart as clear_pending_exit_prompt: without it, the
+    // very step that processes a RESUME after a long pause menu would
+    // starvation-cut every quiet peer (the mid-game ZOOM crash — the display
+    // client's next send then threw "InProcessTransport peer 1 is not
+    // connected").
+    restamp_input_freshness();
 }
 
 void GameServer::handle_exit_prompt_response(bool accepted)

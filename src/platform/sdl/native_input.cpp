@@ -495,8 +495,27 @@ int num_joysticks()
     return count;
 }
 
+#ifdef TESTING
+namespace
+{
+// Bit i = "device i enumerates but its node will not open" (the udev
+// permission case). See set_joystick_open_failure_mask.
+unsigned int g_joystick_open_failure_mask = 0;
+}
+
+void set_joystick_open_failure_mask(unsigned int mask)
+{
+    g_joystick_open_failure_mask = mask;
+}
+#endif
+
 JoystickHandle joystick_open(int index)
 {
+#ifdef TESTING
+    if (index >= 0 && index < 32 &&
+        (g_joystick_open_failure_mask & (1u << index)) != 0)
+        return nullptr;
+#endif
     int count = 0;
     SDL_JoystickID* ids = SDL_GetJoysticks(&count);
     SDL_Joystick* joystick =

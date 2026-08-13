@@ -2764,6 +2764,15 @@ bool local_transport_shadow_step_and_drain(
     if (runtime->authoritative_mode() &&
         !runtime->awaiting_level_transition)
     {
+        // Every client in this runtime is an in-process transport living in
+        // THIS process (the networked case only ever holds the loopback
+        // display client here — remote peers are not runtime clients). Such
+        // peers must never be liveness- or desync-disconnected: closing one
+        // makes the next local send throw ("InProcessTransport peer N is not
+        // connected"). Marked idempotently every step so mid-game ADD PLAYER
+        // seats are covered the moment they exist.
+        for (const LocalTransportClient& local_client : runtime->clients)
+            runtime->server->mark_peer_local(local_client.server_peer_id);
         og::runtime::emit_runtime_trace(
             og::runtime::make_runtime_trace_record(
                 "local_transport_shadow", "finish_tick_authoritative_step"));

@@ -72,6 +72,22 @@ enum class DisplayStateConfirmation
 inline constexpr int kUiCanvasW = 320;
 inline constexpr int kUiCanvasH = 200;
 
+// One per-view presentation slice (§7.1 per-view zoom): the view's 1:1
+// world-canvas WINDOW presented onto its proportional canvas SLOT. Both
+// rects are in world-canvas coordinates; the backend maps dst through the
+// same aspect-fitted viewport as the whole-canvas present.
+struct WorldPresentSlice
+{
+    int src_x = 0;
+    int src_y = 0;
+    int src_w = 0;
+    int src_h = 0;
+    int dst_x = 0;
+    int dst_y = 0;
+    int dst_w = 0;
+    int dst_h = 0;
+};
+
 // Abstract interface-layer rendering surface.
 // Platform backends implement this contract (SDL in Phase 10).
 class video
@@ -324,6 +340,37 @@ public:
     // Deepest selectable zoom step supported by the current logical window
     // and renderer. The default exposes the complete 0.1..1.0 range.
     virtual int minimum_world_zoom_steps() const { return 1; }
+
+    // --- Per-view zoom composition + partitioned presentation (§7.1) -------
+    // Per-view zoom rides the SAME single-resample pipeline as graphics/zoom:
+    // the world canvas derives from the minimum effective zoom (global steps
+    // composed with the deepest per-view scale), every view renders its
+    // window 1:1, and presentation performs the one and only resample.
+    //
+    // set_world_view_scale composes `min_scale_num` (tenths, 10 = no
+    // override .. 5 = 0.5x; see og::clamp_view_scale_num) into the canvas
+    // derivation. 10 is the untouched global-only path — zoom OFF for every
+    // view stays byte-identical by construction.
+    virtual void set_world_view_scale(int /*min_scale_num*/) {}
+    // Whether the composed canvas for `min_scale_num` at the CURRENT global
+    // zoom fits the budget/texture limits (the per-view cycler's clamp).
+    virtual bool world_zoom_composition_fits(int /*min_scale_num*/) const
+    {
+        return true;
+    }
+    // True when the backend can present per-view slices; the per-view ZOOM
+    // rows are disabled (never wrong) without it.
+    virtual bool world_present_partition_supported() const { return false; }
+    // Live query for the pin state (per-view zoom is forced inert while the
+    // level editor pins the classic canvas).
+    virtual bool world_canvas_pinned_classic() const { return false; }
+    // Present-time partition: when any view's 1:1 window differs from its
+    // proportional canvas slot, the backend overlays one nearest-scaled
+    // texture blit per slice (src = window, dst = slot, both in world-canvas
+    // coordinates) after the ordinary whole-canvas present. An empty span
+    // clears the partition (the byte-identical single-blit path).
+    virtual void set_world_present_slices(
+        std::span<const WorldPresentSlice> /*slices*/) {}
     // Whether the current world canvas can use the bounded 2x smart-scaler
     // scratch. False lets UI describe a retained SAI/Eagle preference as N/A.
     virtual bool world_smoothing_supported() const { return true; }

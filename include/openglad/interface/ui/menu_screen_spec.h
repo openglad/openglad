@@ -238,7 +238,9 @@ enum class MenuScreenId : std::uint8_t {
     TeamBuild,
     MainOptions,
     DisplaySettings,
-    ControlSettings,
+    // ControlSettings retired with the global CONTROLS subscreen: the
+    // per-player screens (Base Camp seat settings, pause player screen) own
+    // mode / remap / reset / input per seat.
     GameplayFx,
     UiFx,
     GraphicsFx,

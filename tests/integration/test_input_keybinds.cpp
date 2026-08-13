@@ -1375,8 +1375,10 @@ TEST(InputKeybinds, controls_reset_defaults_action_resets_controls_only)
 
     ASSERT_STREQ("CONTROL_RESET_TEST", cfg.get_setting("graphics", "render").c_str()) << "controls reset should not modify non-controls settings";
 
-    // The global CONTROLS / RESET ALL action persists immediately: dirty
-    // runtime again, reload cfg, and prove the defaults return from disk.
+    // The reset-all action persists immediately (no button carries it since
+    // the global CONTROLS screen retired, but it is still the reset-all
+    // primitive): dirty runtime again, reload cfg, and prove the defaults
+    // return from disk.
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
     set_player_key_binding(0, KEY_UP_RIGHT, SDLK_F12);
     cfg.load_settings();

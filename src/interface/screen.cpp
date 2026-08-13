@@ -44,6 +44,7 @@
 #include <openglad/core/util.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/render/view_layout.h>
+#include <openglad/core/scale_mode.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/interface/ui/results_screen.h>
 #include <openglad/gameplay/sim_event_log.h>
@@ -1125,20 +1126,68 @@ void screen::initialize_views()
         LogError("screen_init_views_failed numviews={}\n", numviews);
         numviews = 0; // no views created for an unsupported count; keep per-frame loops in-bounds
     }
+	// §7.1: each constructor-time resize ran against a provisional view set;
+	// with every view live, fold the deepest per-view zoom into the canvas
+	// and publish the presentation partition. All views at GAME recompute the
+	// identical geometry with no canvas change and an empty partition.
+	relayout_views();
+}
+
+int screen::min_view_zoom_scale_num() const
+{
+	int n_min = og::kViewScaleNumMax;
+	for (Sint32 i = 0; i < numviews && i < MAX_VIEWS; i++)
+	{
+		if (viewob[i])
+			n_min = std::min(
+			    n_min, static_cast<int>(viewob[i]->view_scale_num()));
+	}
+	return n_min;
 }
 
 // Re-derives every live viewscreen's geometry from the current world canvas
-// dimensions. Called after graphics/zoom changes the logical size or the
-// level editor pins/restores the classic canvas:
-// resize(whatmode) recomputes the pane layout via compute_view_layout and
-// restarts each started radar.
+// dimensions. Called after graphics/zoom changes the logical size, a
+// per-view zoom cycles, seats change, or the level editor pins/restores the
+// classic canvas. §7.1 composition order: (1) fold the deepest per-view zoom
+// into the canvas dims (no-op at n_min == 10 / pinned classic / unchanged
+// dims), (2) re-derive every window + slot, (3) publish the presentation
+// partition (empty when every window fills its slot — the byte-identical
+// single-blit path). Render/geometry only: the sim and transports are never
+// touched here.
 void screen::relayout_views()
 {
+	const int old_w = world_canvas_w();
+	const int old_h = world_canvas_h();
+	video_impl_->set_world_view_scale(min_view_zoom_scale_num());
+	if (world_canvas_w() != old_w || world_canvas_h() != old_h)
+	{
+		// A live canvas replacement leaves the new surface unpainted; clear
+		// once so seams and chrome insets composite over stable black until
+		// the next full redraw. Never reached while every view is at GAME.
+		ScopedCanvasTarget world_target(*video_impl_, CanvasTarget::World);
+		video_impl_->clearbuffer();
+	}
 	for (Sint32 i = 0; i < numviews && i < MAX_VIEWS; i++)
 	{
 		if (viewob[i])
 			viewob[i]->resize(viewob[i]->prefs[PREF_VIEW]);
 	}
+	std::vector<WorldPresentSlice> slices;
+	for (Sint32 i = 0; i < numviews && i < MAX_VIEWS; i++)
+	{
+		const viewscreen* const v = viewob[i].get();
+		if (v == nullptr)
+			continue;
+		if (v->xloc == v->slot_x_ && v->yloc == v->slot_y_ &&
+		    v->xview == v->slot_w_ && v->yview == v->slot_h_)
+			continue; // window fills the slot: the plain present covers it
+		slices.push_back(WorldPresentSlice{
+		    static_cast<int>(v->xloc), static_cast<int>(v->yloc),
+		    static_cast<int>(v->xview), static_cast<int>(v->yview),
+		    static_cast<int>(v->slot_x_), static_cast<int>(v->slot_y_),
+		    static_cast<int>(v->slot_w_), static_cast<int>(v->slot_h_)});
+	}
+	video_impl_->set_world_present_slices(slices);
 	redrawme = 1;
 }
 
@@ -1151,6 +1200,9 @@ void screen::cleanup(short howmany)
     {
         viewob[i].reset();
     }
+    // §7.1: destroyed views leave no windows to present; a later World
+    // present must not replay their canvas-space slices.
+    video_impl_->set_world_present_slices({});
 }
 
 void screen::ready_for_battle(short howmany)
@@ -1214,6 +1266,7 @@ void screen::reset(short howmany)
 	{
 		numviews = 0; // no views created for an unsupported count; keep per-frame loops in-bounds
 	}
+	relayout_views(); // §7.1: compose per-view zoom + partition (see initialize_views)
 
 	world_.end = 0;
 

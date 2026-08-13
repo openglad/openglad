@@ -4,6 +4,8 @@
 #include <openglad/interface/render/video.h> // CanvasTarget, kUiCanvasW/H
 #include <openglad/core/scale_mode.h> // zoom/smoothing canvas settings
 #include <memory>
+#include <span>
+#include <vector>
 
 enum class RenderEngine
 {
@@ -174,6 +176,30 @@ class Screen
 		void set_world_canvas_pinned_classic(bool pinned);
 		bool world_canvas_pinned_classic() const { return world_pinned_classic_; }
 
+		// --- §7.1 per-view zoom composition + partitioned presentation ----
+		// The deepest per-view zoom scale (tenths, 10 = none .. 5 = 0.5x)
+		// composed into the canvas derivation: canvas percent =
+		// zoom_steps * num. 10 is the untouched global-only path. The
+		// replacement is transactional like set_world_zoom: an allocation
+		// failure keeps the previous composition so windows and canvas
+		// never desynchronize.
+		void set_world_view_scale_num(int num);
+		int world_view_scale_num() const { return world_view_scale_num_; }
+		// Whether the composed canvas at the CURRENT global zoom fits the
+		// split-canvas budget and texture limits (the per-view cycler gate).
+		bool world_view_scale_fits(int num) const;
+		// Present-time partition: each slice presents a view's 1:1 canvas
+		// WINDOW onto its proportional canvas SLOT with one nearest GPU
+		// blit, after (over) the ordinary whole-canvas present. Empty =
+		// the byte-identical single-blit path. Canvas replacement clears
+		// the list (relayout re-publishes against the new dimensions).
+		void set_world_present_slices(
+			std::span<const WorldPresentSlice> slices);
+		const std::vector<WorldPresentSlice>& world_present_slices() const
+		{
+			return world_present_slices_;
+		}
+
 		// Screen owns SDL handles (window/renderer/surfaces/textures) freed in
 		// the destructor; a shallow copy or move would double-free. It is owned
 		// via std::unique_ptr<Screen>, so make non-copyable/non-movable explicit.
@@ -205,7 +231,19 @@ class Screen
 		// bounded CPU/pixel budget before allocating either resource.
 		bool ensure_render2_for_source(int source_w, int source_h);
 		int renderer_max_texture_dimension() const;
+		// Global-only canvas dims (the pre-per-view math, byte-identical).
+		og::WorldCanvasDims global_zoom_canvas_dims(int zoom_steps) const;
+		// Canvas dims with the per-view composition folded in; equals the
+		// global-only result while world_view_scale_num_ == 10.
 		og::WorldCanvasDims effective_zoom_canvas_dims(int zoom_steps) const;
+		// The cfg-requested smoothing for re-derivations (Legacy is the
+		// derived shared-canvas state, not a requestable setting).
+		og::WorldScaleMode requested_smoothing_mode() const
+		{
+			return world_scale_.mode == og::WorldScaleMode::Legacy
+				? og::WorldScaleMode::Integer
+				: world_scale_.mode;
+		}
 		void destroy_render2();
 		bool ensure_gameplay_ui_overlay();
 		void destroy_gameplay_ui_overlay();
@@ -220,6 +258,10 @@ class Screen
 		int zoom_window_w_ = kUiCanvasW;
 		int zoom_window_h_ = kUiCanvasH;
 		bool world_pinned_classic_ = false;
+		// §7.1: deepest per-view zoom scale composed into the canvas (10 =
+		// global-only) + the presentation partition (empty = single blit).
+		int world_view_scale_num_ = og::kViewScaleNumMax;
+		std::vector<WorldPresentSlice> world_present_slices_;
 		// A failed SDL allocation is not retried every frame for the same
 		// target dimensions. A canvas/config change clears the latch.
 		int render2_failed_w_ = 0;

@@ -25,8 +25,8 @@
 //     maps and overlaps P4's 8-dir DOWN-LEFT — the same grandfathered
 //     overlap input_state.cpp already documents for native, now an
 //     occasional tap instead of a hold.
-//     LOOK-UP, displaced off V, starts UNBOUND and can be assigned on the
-//     CONTROLS remap screen. That is the exact precedent of P4's 8-dir
+//     LOOK-UP, displaced off V, starts UNBOUND and can be assigned with
+//     REMAP on the player screen. That is the exact precedent of P4's 8-dir
 //     look-up (see the comment above kDefaultFourDirKeys): when an
 //     8-direction cluster consumes the keys around it, look-up is the slot
 //     that yields.

@@ -735,8 +735,6 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return yes_or_no(arg);
     case ButtonAction::MainOptions:
         return main_options();
-    case ButtonAction::OpenControlSettings:
-        return main_controls_options();
     case ButtonAction::OpenGameplayFxSettings:
         return gameplay_fx_options();
     case ButtonAction::OpenUiFxSettings:
@@ -755,10 +753,6 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return change_generator_rate();
     case ButtonAction::ToggleInfiniteGold:
         return change_infinite_gold();
-    case ButtonAction::ToggleControlMode:
-        return toggle_player_control_mode(arg);
-    case ButtonAction::EditPlayerKeymap:
-        return edit_player_keymap(arg);
     case ButtonAction::HostGame:
     case ButtonAction::JoinGame:
     case ButtonAction::Networking:
@@ -907,6 +901,8 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
             scr->cyclemode = cfg.is_on("effects", "color_cycling") ? 1 : 0;
         }
         return REDRAW;
+    // Reset-all: no button dispatches it since the global CONTROLS screen
+    // retired (the player screens reset one seat at a time).
     case ButtonAction::RestoreDefaultControls:
         reset_default_player_controls();
         save_player_control_settings_to_cfg(cfg);

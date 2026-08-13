@@ -6452,3 +6452,104 @@ TEST(GameLoop, midgame_add_player_gets_an_unchosen_mapping)
 
     midgame_one_hero_teardown(game_screen);
 }
+
+#include "../../src/interface/ui/picker_sdl_defs.h"
+
+#include <atomic>
+
+// The mid-game ZOOM crash, minimized (2 local seats, real shadow): the pause
+// menu blocks run_game_tick, so local_transport_shadow_send_input never runs
+// while it is open — and the paused server force-keyframes every pump, whose
+// hash-check replies count as client outbound activity and suppress the
+// heartbeats that were supposed to keep last_received_input_ms fresh. The
+// starvation check is masked only while the pause is pending: the very server
+// step that processes the RESUME (run_pause_menu sends the response, then
+// pumps once before returning to the game loop) saw every in-process peer
+// >DISCONNECT_TIMEOUT_MS stale and cut them all; the display's next send then
+// threw "InProcessTransport peer 1 is not connected" (peer 1 IS the display —
+// in-process peer ids start at 1).
+TEST(GameLoop, long_pause_menu_visit_then_resume_keeps_local_peers_connected)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    midgame_one_hero_boot(game_screen);
+    trace_clear();
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(
+        og::runtime::local_transport_active(*og::runtime::current_session));
+
+    // The reporter's session: two local seats.
+    std::uint32_t tick = 0;
+    midgame_pump(session, 21, tick);
+    ASSERT_TRUE(og::runtime::local_transport_shadow_add_local_player(session));
+    midgame_pump(session, 3, tick);
+    ASSERT_EQ(2u, og::runtime::local_transport_client_count(session));
+
+    // A controllable wall clock on the authoritative server, continuous with
+    // the real one (update_timeouts skips stamps that sit in the future).
+    og::sim::GameServer* const server =
+        og::runtime::local_transport_shadow_testing_server(session);
+    ASSERT_NE(nullptr, server);
+    std::atomic<std::uint64_t> fake_now{static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count())};
+    server->set_wall_clock_ms_source([&fake_now] { return fake_now.load(); });
+    midgame_pump(session, 2, tick); // stamps move onto the mock timeline
+
+    // Esc: the menu opens; frame_tick degrades to pump_paused while it blocks.
+    ASSERT_TRUE(og::runtime::local_transport_shadow_toggle_pause(session));
+    for (int i = 0; i < 5; ++i)
+        ASSERT_TRUE(og::runtime::local_transport_shadow_pump_paused(session));
+    ASSERT_TRUE(og::runtime::local_transport_shadow_is_paused(session));
+
+    // The user browses the player screen well past DISCONNECT_TIMEOUT_MS...
+    fake_now += og::sim::DISCONNECT_TIMEOUT_MS + 1500u;
+    for (int i = 0; i < 10; ++i)
+    {
+        ASSERT_TRUE(og::runtime::local_transport_shadow_pump_paused(session));
+        ASSERT_FALSE(trace_contains("net", "server_timeout_disconnect"))
+            << "a peer was cut while the menu was still open (pump " << i
+            << ")";
+    }
+
+    // ...and changes P2's zoom (the real handler: viewscreen + cfg only —
+    // nothing sim-visible, so the server hash ledger must stay clean).
+    (void)og::ui::cycle_player_view_zoom(1);
+    for (int i = 0; i < 3; ++i)
+        ASSERT_TRUE(og::runtime::local_transport_shadow_pump_paused(session));
+
+    // RESUME: run_pause_menu's exit dance is resume THEN one paused pump,
+    // before the game loop's next send_input can run.
+    ASSERT_TRUE(og::runtime::local_transport_shadow_toggle_pause(session));
+    ASSERT_TRUE(og::runtime::local_transport_shadow_pump_paused(session));
+    EXPECT_FALSE(trace_contains("net", "server_timeout_disconnect"))
+        << "the resume step starvation-cut in-process peers whose only "
+           "silence was the open menu";
+
+    // The next display-side sends must not throw and play must continue.
+    bool threw = false;
+    std::string what;
+    try
+    {
+        midgame_pump(session, 30, tick);
+    }
+    catch (const std::exception& e)
+    {
+        threw = true;
+        what = e.what();
+    }
+    EXPECT_FALSE(threw) << "post-resume send died: " << what;
+    EXPECT_FALSE(trace_contains("net", "server_timeout_disconnect"));
+    EXPECT_FALSE(trace_contains("net", "server_desync_disconnect"));
+    EXPECT_EQ(2u, og::runtime::local_transport_client_count(session));
+    EXPECT_EQ(0, static_cast<int>(game_screen->world().end));
+
+    // Restore P2's zoom to GAME: the cycle above persists player2_view_zoom
+    // into cfg, and under the sliced-canvas zoom pipeline a leaked override
+    // composes a larger world canvas for every later multi-seat test.
+    while (og::ui::cycle_player_view_zoom(1) != 0)
+        continue;
+
+    midgame_one_hero_teardown(game_screen);
+}

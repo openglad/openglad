@@ -342,7 +342,14 @@ void reopen_joystick_device_table()
     const int numjoy =
         std::min(og::input_native::num_joysticks(), MAX_NUM_JOYSTICKS);
     for (int i = 0; i < numjoy; i++)
+    {
         joysticks[i] = og::input_native::joystick_open(i);
+        // Enumerated but unopenable (a udev rule denying the device node is
+        // the field report). The slot stays null and every consumer treats it
+        // as "no usable device at this index".
+        if (joysticks[i] == nullptr)
+            TRACE("joystick", "open_failed device=%d", i);
+    }
 }
 
 bool joydata_has_any_binding(const JoyData& joy)
@@ -409,7 +416,23 @@ bool assign_joystick_to_player(int player, int device_index)
         return false;
     if (device_index < 0 || device_index >= MAX_NUM_JOYSTICKS ||
         joysticks[device_index] == nullptr)
+    {
+        TRACE("joystick", "assign_refused player=%d device=%d reason=unopened",
+              player, device_index);
         return false;
+    }
+    // Synthesize BEFORE touching any seat. A device can open and still expose
+    // nothing bindable (every capability reads 0 on a half-permissioned node;
+    // every axis resting past the dead zone on a hostile pad), and a failed
+    // assignment must not have already cost another seat its device.
+    JoyData layout(device_index);
+    if (!joydata_has_any_binding(layout))
+    {
+        TRACE("joystick",
+              "assign_refused player=%d device=%d reason=no_bindings",
+              player, device_index);
+        return false;
+    }
     // One device drives one seat: an explicit assignment steals it, voiding
     // the robbed seat's persisted claim.
     for (int q = 0; q < 4; ++q)
@@ -422,7 +445,7 @@ bool assign_joystick_to_player(int player, int device_index)
                   q, device_index);
         }
     }
-    player_joy[player] = JoyData(device_index); // default layout synthesis
+    player_joy[player] = layout; // default layout synthesis
     hw().player_joystick_guids[player] =
         og::input_native::joystick_device_guid(device_index);
     TRACE("joystick", "assigned player=%d device=%d", player, device_index);
@@ -454,9 +477,23 @@ void reattach_saved_joysticks()
             // A replug keeps the seat's session layout; a fresh attach (GUID
             // loaded from cfg into a blank JoyData) synthesizes the default.
             if (joydata_has_any_binding(player_joy[p]))
+            {
                 player_joy[p].index = d;
+            }
             else
-                player_joy[p] = JoyData(d);
+            {
+                JoyData layout(d);
+                if (!joydata_has_any_binding(layout))
+                {
+                    // Opened, but nothing bindable: leave the seat on its
+                    // keyboard mapping and keep scanning (an identical twin
+                    // unit further down the list may still be usable).
+                    TRACE("joystick",
+                          "reattach_refused player=%d device=%d", p, d);
+                    continue;
+                }
+                player_joy[p] = layout;
+            }
             TRACE("joystick", "guid_reattach player=%d device=%d", p, d);
             break;
         }
@@ -1192,6 +1229,11 @@ void wait_for_key(int somekey)
 JoyData::JoyData(int joy_index)
     : index(-1), numAxes(0), numButtons(0), numHats(0)
 {
+    // Both early returns leave a fully EMPTY layout, never garbage: key_type /
+    // key_index / held_at_assign_mask are zero-initialized by their default
+    // member initializers, and NONE == 0. An unopenable device (the udev case)
+    // therefore yields index -1 and no bindings, so the seat keeps its
+    // keyboard mapping instead of reading a device that cannot be read.
     if(joy_index < 0 || joy_index >= MAX_NUM_JOYSTICKS)
         return;
     const og::input_native::JoystickHandle js = joysticks[joy_index];
@@ -1199,9 +1241,12 @@ JoyData::JoyData(int joy_index)
         return;
 
     this->index = joy_index;
-    numAxes = og::input_native::joystick_num_axes(js);
-    numButtons = og::input_native::joystick_num_buttons(js);
-    numHats = og::input_native::joystick_num_hats(js);
+    // The SDL capability getters report -1 on failure (a handle whose device
+    // went away or lost permissions mid-session). Clamp: a negative count must
+    // never reach the synthesis loops or a stored numButtons.
+    numAxes = std::max(0, og::input_native::joystick_num_axes(js));
+    numButtons = std::max(0, og::input_native::joystick_num_buttons(js));
+    numHats = std::max(0, og::input_native::joystick_num_hats(js));
 
     // Clear all keys for this joystick
     for(int i = 0; i < NUM_KEYS; i++)
@@ -1255,16 +1300,19 @@ JoyData::JoyData(int joy_index)
     }
 
 
-    // Default actions
+    // Default actions. Button 0 is SPECIAL and button 1 is FIRE (the shipped
+    // gamepad default, reversed from the keyboard-era order at the player's
+    // request). Consequence on a one-button device: FIRE stays unbound and
+    // keeps coming from the seat's keyboard map.
     if(numButtons > 0)
     {
-        key_type[KEY_FIRE] = BUTTON;
-        key_index[KEY_FIRE] = 0;
+        key_type[KEY_SPECIAL] = BUTTON;
+        key_index[KEY_SPECIAL] = 0;
     }
     if(numButtons > 1)
     {
-        key_type[KEY_SPECIAL] = BUTTON;
-        key_index[KEY_SPECIAL] = 1;
+        key_type[KEY_FIRE] = BUTTON;
+        key_index[KEY_FIRE] = 1;
     }
     if(numButtons > 2)
     {

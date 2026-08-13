@@ -1076,6 +1076,9 @@ bool Screen::set_world_canvas_size(int w, int h)
 	SDL_Texture* previous_texture = world_tex_;
 	destroy_render2();
 	destroy_gameplay_ui_overlay();
+	// Canvas-space present slices are meaningless on the replacement canvas;
+	// relayout_views re-publishes them against the new dimensions.
+	world_present_slices_.clear();
 	world_surf_ = next_surface;
 	world_tex_ = next_texture;
 	world_w_ = w;
@@ -1114,7 +1117,7 @@ int Screen::minimum_world_zoom_steps() const
 		zoom_window_w_, zoom_window_h_, renderer_max_texture_dimension());
 }
 
-og::WorldCanvasDims Screen::effective_zoom_canvas_dims(int zoom_steps) const
+og::WorldCanvasDims Screen::global_zoom_canvas_dims(int zoom_steps) const
 {
 	og::WorldCanvasDims dims = og::compute_zoom_canvas_dims(
 		zoom_window_w_, zoom_window_h_, zoom_steps);
@@ -1125,6 +1128,59 @@ og::WorldCanvasDims Screen::effective_zoom_canvas_dims(int zoom_steps) const
 			dims, renderer_max_texture_dimension());
 	}
 	return dims;
+}
+
+og::WorldCanvasDims Screen::effective_zoom_canvas_dims(int zoom_steps) const
+{
+	// §7.1: world_view_scale_num_ == 10 is the untouched global-only math —
+	// zoom OFF for every view derives byte-identical dimensions.
+	if (world_view_scale_num_ >= og::kViewScaleNumMax)
+		return global_zoom_canvas_dims(zoom_steps);
+	const int pct = og::compose_zoom_pct(zoom_steps, world_view_scale_num_);
+	const og::WorldCanvasDims dims = og::compute_zoom_canvas_dims_pct(
+		zoom_window_w_, zoom_window_h_, pct);
+	// The cycler's fits gate normally keeps the composition inside the
+	// budget; a hostile cfg or a window growth must degrade uniformly to
+	// "less world, still crisp" — never to an unsafe allocation.
+	return og::constrain_world_canvas_dims(
+		dims, renderer_max_texture_dimension(), og::kWorldCanvasPixelBudget);
+}
+
+bool Screen::world_view_scale_fits(int num) const
+{
+	num = og::clamp_view_scale_num(num);
+	if (num == og::kViewScaleNumMax)
+		return true; // GAME is always selectable
+	return og::zoom_canvas_fits_budget_pct(
+		zoom_window_w_, zoom_window_h_,
+		og::compose_zoom_pct(zoom_steps_, num),
+		renderer_max_texture_dimension());
+}
+
+void Screen::set_world_view_scale_num(int num)
+{
+	num = og::clamp_view_scale_num(num);
+	if (num == world_view_scale_num_)
+		return;
+	const int previous = world_view_scale_num_;
+	world_view_scale_num_ = num;
+	// Re-derive the canvas through the one canvas-owning path so the
+	// Legacy/Integer mode split, the smart-scaler scratch and the gameplay-UI
+	// overlay all stay consistent with the composed dimensions.
+	set_world_zoom(zoom_steps_, requested_smoothing_mode(), 0, 0);
+	const og::WorldCanvasDims want = effective_zoom_canvas_dims(zoom_steps_);
+	if (!world_pinned_classic_ && (world_w_ != want.w || world_h_ != want.h))
+	{
+		// The canvas replacement failed inside set_world_zoom (it returns
+		// with the previous live canvas). Keep the previous composition so
+		// view windows and the canvas never desynchronize.
+		world_view_scale_num_ = previous;
+	}
+}
+
+void Screen::set_world_present_slices(std::span<const WorldPresentSlice> slices)
+{
+	world_present_slices_.assign(slices.begin(), slices.end());
 }
 
 bool Screen::world_smoothing_supported() const
@@ -1158,10 +1214,12 @@ void Screen::set_world_zoom(int zoom_steps, og::WorldScaleMode smoothing,
 		std::clamp(zoom_steps, 1, og::kZoomStepsMax), minimum_steps);
 	const og::WorldCanvasDims dims =
 		effective_zoom_canvas_dims(requested_zoom_steps);
+	// The gameplay-UI overlay stays pinned to the zoom-1.0 GLOBAL geometry:
+	// per-view composition must never grow the fixed HUD canvas.
 	const og::WorldCanvasDims gameplay_ui_dims =
 		og::compute_gameplay_ui_canvas_dims(
-			effective_zoom_canvas_dims(og::kZoomStepsMax).w,
-			effective_zoom_canvas_dims(og::kZoomStepsMax).h);
+			global_zoom_canvas_dims(og::kZoomStepsMax).w,
+			global_zoom_canvas_dims(og::kZoomStepsMax).h);
 	// Preserve the shared legacy pair when the aspect-expanded result is
 	// exactly classic-sized. Other aspects own a split canvas so the world can
 	// reveal extra space instead of stretching master's default geometry.
@@ -1481,16 +1539,42 @@ void Screen::fail_next_gameplay_ui_allocation_for_testing()
 
 SDL_Surface* Screen::compose_gameplay_ui_for_capture(SDL_Surface* scenery) const
 {
-	if (scenery == nullptr ||
-	    (!gameplay_ui_frame_active_ && !gameplay_ui_capture_valid_) ||
-	    gameplay_ui_surf_ == nullptr)
-	{
+	const bool overlay_available =
+		(gameplay_ui_frame_active_ || gameplay_ui_capture_valid_) &&
+		gameplay_ui_surf_ != nullptr;
+	// §7.1: the CPU mirror of swap()'s partitioned presentation — captures
+	// and modal backdrops must show each per-view window on its slot exactly
+	// as the player sees it (nearest, the single resample).
+	const bool apply_slices = !world_present_slices_.empty() &&
+		!world_pinned_classic_ && scenery != nullptr && scenery != ui_surf_ &&
+		world_w_ > 0 && scenery->w % world_w_ == 0;
+	if (scenery == nullptr || (!overlay_available && !apply_slices))
 		return nullptr;
-	}
 	SDL_Surface* composed = SDL_CreateSurface(
 		scenery->w, scenery->h, SDL_PIXELFORMAT_XRGB8888);
 	if (composed == nullptr ||
-	    !SDL_BlitSurface(scenery, nullptr, composed, nullptr) ||
+	    !SDL_BlitSurface(scenery, nullptr, composed, nullptr))
+	{
+		LogError("Failed to composite gameplay capture: {}\n", SDL_GetError());
+		SDL_DestroySurface(composed);
+		return nullptr;
+	}
+	if (apply_slices)
+	{
+		const int k = scenery->w / world_w_; // 1, or 2 on the smart scratch
+		for (const WorldPresentSlice& s : world_present_slices_)
+		{
+			if (s.src_w <= 0 || s.src_h <= 0 || s.dst_w <= 0 || s.dst_h <= 0)
+				continue;
+			const SDL_Rect src{s.src_x * k, s.src_y * k,
+			                   s.src_w * k, s.src_h * k};
+			SDL_Rect dst{s.dst_x * k, s.dst_y * k,
+			             s.dst_w * k, s.dst_h * k};
+			SDL_BlitSurfaceScaled(scenery, &src, composed, &dst,
+			                      SDL_SCALEMODE_NEAREST);
+		}
+	}
+	if (overlay_available &&
 	    !SDL_BlitSurfaceScaled(gameplay_ui_surf_, nullptr, composed, nullptr,
 	                           SDL_SCALEMODE_NEAREST))
 	{
@@ -1732,6 +1816,38 @@ void Screen::swap(int x, int y, int w, int h)
 	SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
 	SDL_RenderClear(renderer);
 	SDL_RenderTexture(renderer, dest_texture, nullptr, &dest);
+
+	// §7.1 partitioned presentation: overlay each per-view slice — the view's
+	// 1:1 canvas WINDOW stretched onto its proportional canvas SLOT — with
+	// one nearest GPU blit over the whole-canvas present above. This is the
+	// single resample those gameplay pixels receive, the same mechanism the
+	// global zoom rides; an empty list is the byte-identical single-blit
+	// path. Slice coordinates are world-canvas space; the SAI/Eagle scratch
+	// doubles them with its surface.
+	if (active_ == CanvasTarget::World && !world_present_slices_.empty() &&
+	    !world_pinned_classic_ && world_w_ > 0 && world_h_ > 0)
+	{
+		const float k = static_cast<float>(source_surface->w) /
+			static_cast<float>(world_w_); // 1, or 2 on the smart scratch
+		const float unit_x = dest.w / static_cast<float>(world_w_);
+		const float unit_y = dest.h / static_cast<float>(world_h_);
+		for (const WorldPresentSlice& s : world_present_slices_)
+		{
+			if (s.src_w <= 0 || s.src_h <= 0 || s.dst_w <= 0 || s.dst_h <= 0)
+				continue;
+			const SDL_FRect src{
+				static_cast<float>(s.src_x) * k,
+				static_cast<float>(s.src_y) * k,
+				static_cast<float>(s.src_w) * k,
+				static_cast<float>(s.src_h) * k};
+			const SDL_FRect slice_dest{
+				dest.x + static_cast<float>(s.dst_x) * unit_x,
+				dest.y + static_cast<float>(s.dst_y) * unit_y,
+				static_cast<float>(s.dst_w) * unit_x,
+				static_cast<float>(s.dst_h) * unit_y};
+			SDL_RenderTexture(renderer, dest_texture, &src, &slice_dest);
+		}
+	}
 
 	// Gameplay chrome is deliberately absent from source_surface/render2:
 	// SAI/Eagle process only map/tiles/sprites/effects. Composite the

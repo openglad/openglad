@@ -28,6 +28,7 @@
 
 #include "picker_sdl_defs.h"
 
+#include <algorithm>
 #include <array>
 #include <format>
 #include <string>
@@ -884,8 +885,16 @@ Sint32 pause_player_on_spec_row(int row, void* screen_state)
     {
         const int active_count =
             static_cast<int>(collect_pause_seats(networked).size());
-        (void)cycle_player_input(cfg, state->seat, active_count);
+        std::string unavailable;
+        (void)cycle_player_input(cfg, state->seat, active_count, &unavailable);
         persist_pause_player_controls();
+        if (!unavailable.empty())
+        {
+            // The device is listed but its node will not open (permissions);
+            // say so instead of letting the row look like it did nothing.
+            popup_dialog("INPUT",
+                         std::format("COULD NOT OPEN {}", unavailable).c_str());
+        }
         return MENU_OK;
     }
     if (row == kPausePlayerModeIndex)
@@ -1066,20 +1075,24 @@ bool view_zoom_step_allowed(int seat, int step)
 {
     if (step == 0)
         return true;  // GAME is always selectable
-    if (const viewscreen* const view = seat_view(seat))
-        return view->view_zoom_step_fits_budget(step);
-    // No live view (Base Camp seat): clamp against the full world canvas —
-    // the worst window any future single-view layout could ask for.
     screen* const scr = og::runtime::current_session != nullptr
         ? og::runtime::current_session->myscreen_
         : nullptr;
     if (scr == nullptr)
         return false;
-    const Sint32 canvas_w = scr->world_canvas_w();
-    const Sint32 canvas_h = scr->world_canvas_h();
-    return og::view_zoom_window_fits_budget(
-        0, 0, canvas_w, canvas_h, canvas_w, canvas_h,
-        viewscreen::per_view_zoom_scale_for_step(step));
+    // §7.1: the canvas derives from the minimum effective zoom over the
+    // seats, so the gate is whether the candidate COMPOSITION still fits
+    // the canvas budget (the same clamp machinery the global zoom rides).
+    int n_min = viewscreen::view_scale_num_for_step(step);
+    for (int i = 0; i < scr->numviews && i < MAX_VIEWS; ++i)
+    {
+        if (i == seat)
+            continue;
+        if (const viewscreen* const other = scr->viewob[
+                static_cast<std::size_t>(i)].get())
+            n_min = std::min(n_min, static_cast<int>(other->view_scale_num()));
+    }
+    return scr->world_zoom_composition_fits(n_min);
 }
 
 } // namespace
@@ -1167,6 +1180,7 @@ int cycle_player_view_zoom(int seat)
             break;  // budget clamp: over-budget steps are skipped
     }
     hud.zoom_step = step;
+    const bool live_view_changed = seat_view(seat) != nullptr;
     if (viewscreen* const view = seat_view(seat))
         view->view_zoom_step_ = static_cast<Sint32>(step);
     save_player_hud_settings_to_cfg(cfg, seat, hud);
@@ -1174,6 +1188,11 @@ int cycle_player_view_zoom(int seat)
             ? og::runtime::current_session->myscreen_
             : nullptr)
     {
+        // §7.1: fold the new composition into the canvas, re-derive every
+        // window + slot and publish the presentation partition. Render/
+        // geometry only — the sim and transports are untouched.
+        if (live_view_changed)
+            scr->relayout_views();
         scr->redrawme = 1;
     }
     TRACE("pause_menu", "view_zoom seat=%d step=%d", seat, step);
@@ -1182,23 +1201,13 @@ int cycle_player_view_zoom(int seat)
 
 bool per_view_zoom_available()
 {
-    // Probe the off-screen floor-layer compositor once. Balanced begin/end
-    // on a tiny window: begin clears an 8x8 layer region + redirects, end
-    // restores the redirect and composites transparent pixels (no-op).
-    static int cached = -1;
-    if (cached < 0)
-    {
-        screen* const scr = og::runtime::current_session != nullptr
-            ? og::runtime::current_session->myscreen_
-            : nullptr;
-        if (scr == nullptr)
-            return false;  // do not cache a null-screen probe
-        const bool ok = scr->floor_layer_begin(0, 0, 8, 8);
-        if (ok)
-            scr->floor_layer_end(0, 0, 8, 8, 1.0f, 0, 0, 0);
-        cached = ok ? 1 : 0;
-    }
-    return cached == 1;
+    // §7.1: per-view zoom needs the partitioned-presentation seam (canvas
+    // composition + per-view slices). Backends without it disable the row —
+    // never wrong output.
+    screen* const scr = og::runtime::current_session != nullptr
+        ? og::runtime::current_session->myscreen_
+        : nullptr;
+    return scr != nullptr && scr->world_present_partition_supported();
 }
 
 std::string format_binding_panel_line(const char* label,
