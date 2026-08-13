@@ -24,6 +24,9 @@ const {
 // (src/interface/ui/picker_dialogs.cpp): YES center and the popup OK center.
 const YES_BUTTON = { x: 95, y: 140 };
 const OK_BUTTON = { x: 160, y: 140 };
+// PAUSED menu QUIT MISSION row center (src/interface/ui/pause_menu.cpp:
+// column x=90 w=140, QUIT at y=68 h=15).
+const QUIT_MISSION_BUTTON = { x: 160, y: 75 };
 
 // Main-menu CONTINUE — center of the (80,75,68,20) CONTINUE half after the
 // CONTINUE | LOAD split — and the team-build NETWORKING button (both on the
@@ -857,7 +860,7 @@ test.describe('Touch gameplay controls', () => {
       .toBe(false);
   });
 
-  test('BACK button pauses, aborts, and returns to the picker', async ({ page }) => {
+  test('BACK button opens the pause menu, QUIT aborts, and returns to the picker', async ({ page }) => {
     test.setTimeout(180_000);
 
     await seedGameplayInitScript(page);
@@ -874,7 +877,9 @@ test.describe('Touch gameplay controls', () => {
 
     const back = await elementCenter(page, '#tc-back');
 
-    // First BACK: pause. The sim tick freezes while render frames continue.
+    // BACK opens the PAUSED menu; the world pauses underneath it. The sim
+    // tick freezes while the (asyncify-suspended) render samples stop
+    // advancing.
     await dispatchPointer(page, '#tc-back', 'pointerdown', back.x, back.y, 61);
     await page.waitForTimeout(150);
     await dispatchPointer(page, '#tc-back', 'pointerup', back.x, back.y, 61);
@@ -888,11 +893,12 @@ test.describe('Touch gameplay controls', () => {
     );
     expect(pausedTickB).toBe(pausedTickA);
 
-    // Second BACK: the Abort Mission prompt. Tap YES — the tap lands in the
-    // joystick zone, whose dead-zone quick-tap forwards a click to the canvas.
-    await dispatchPointer(page, '#tc-back', 'pointerdown', back.x, back.y, 62);
-    await page.waitForTimeout(150);
-    await dispatchPointer(page, '#tc-back', 'pointerup', back.x, back.y, 62);
+    // QUIT MISSION on the pause menu, then YES on the Abort Mission confirm.
+    // The menu column is x=90 w=140 (row centers x=160): RESUME y=32,
+    // RESTART y=50, QUIT y=68, h=15 — QUIT center is (160, 75) on the
+    // 320x200 UI grid (src/interface/ui/pause_menu.cpp). The YES tap lands
+    // in the joystick zone, whose dead-zone quick-tap forwards a click.
+    await tapCanvasGameCoord(page, QUIT_MISSION_BUTTON.x, QUIT_MISSION_BUTTON.y);
     await page.waitForTimeout(700);
     await tapCanvasGameCoord(page, YES_BUTTON.x, YES_BUTTON.y);
     await page.waitForTimeout(1_000);

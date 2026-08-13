@@ -2649,6 +2649,7 @@ Sint32 go_menu(Sint32 arg1)
     g_start_game_requested = false;
 
     // Native build: use blocking loop
+    bool retry_level = false;
     do
     {
         og::runtime::current_session->myscreen_->save_data.save(
@@ -2678,7 +2679,15 @@ Sint32 go_menu(Sint32 arg1)
         picker_testing_mark_game_end();
 #endif
 
-        Log("Returned from glad_main, retry={}\n", og::runtime::current_session->myscreen_->world().retry);
+        // Latch the retry exits (pause-menu RESTART's
+        // local_transport_shadow_restart_level stamp, the defeat results
+        // screen's RETRY) HERE, right after glad_main returns: the loop-tail
+        // reset(1) below runs level_runtime_data_.clear() -> GameWorld::clear(),
+        // which wipes world().retry before the while() would read it — reading
+        // the flag in the loop condition sent RESTART MISSION back to Base
+        // Camp exactly like QUIT.
+        retry_level = og::runtime::current_session->myscreen_->world().retry;
+        Log("Returned from glad_main, retry={}\n", retry_level);
 
         //*******************************
         // Fade out from ACTION loop
@@ -2715,7 +2724,7 @@ Sint32 go_menu(Sint32 arg1)
                 og::data::active_company_slot());
         }
     }
-    while(og::runtime::current_session->myscreen_->world().retry);
+    while(retry_level);
 
     picker_reinitialize_lobby_after_game();
 

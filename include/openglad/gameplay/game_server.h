@@ -161,6 +161,14 @@ public:
     // must not let an unknown zero-token connection become a spectator.
     void connect_spectator(PeerId peer_id);
     void disconnect_client(PeerId peer_id);
+    // Declare a peer to live in THIS process (an in-process client of the
+    // local transport shadow). Same-process peers are never liveness- or
+    // desync-disconnected: "timing out" a peer that shares our event loop is
+    // definitionally a bookkeeping bug, and closing its transport makes the
+    // very next local send throw ("InProcessTransport peer N is not
+    // connected" — the app dies). Remote peers keep the full timeout and
+    // strike-out semantics. Idempotent; cleared when the peer disconnects.
+    void mark_peer_local(PeerId peer_id);
     // Upserts the peer's seat keyed by local_slot (defaults keep historic
     // single-seat callers source-compatible: their one binding is slot 0).
     void bind_player(PeerId peer_id,
@@ -252,6 +260,16 @@ private:
     void process_non_input_messages(std::uint32_t expected_tick);
     void update_timeouts();
     void update_disconnected_players(std::uint64_t now_ms);
+    [[nodiscard]] bool is_local_peer(PeerId peer_id) const noexcept;
+    // Restart every connected client's input-starvation clock. Called when a
+    // UI suspension (pause / exit prompt) lifts: while one is pending the
+    // pausing machine legitimately sends no input (its menu blocks the game
+    // loop), and the per-step forced keyframes make every client answer hash
+    // checks — outbound activity that suppresses its heartbeats — so
+    // last_received_input_ms freezes for the whole suspension. None of that
+    // window may count against DISCONNECT_TIMEOUT_MS; a genuinely dead peer
+    // still times out one full window after the resume.
+    void restamp_input_freshness();
     [[nodiscard]] bool process_disconnected_players(std::uint32_t expected_tick);
     void clear_pending_exit_prompt();
     void clear_pause_state();
@@ -320,6 +338,8 @@ private:
     std::uint32_t next_sim_event_sequence_ = 1;
     std::uint32_t next_game_flow_event_sequence_ = 1;
     std::optional<PeerId> host_peer_id_ = std::nullopt;
+    // Sorted peer ids living in this process (see mark_peer_local).
+    std::vector<PeerId> local_peer_ids_;
     std::function<std::uint64_t()> wall_clock_ms_source_;
     bool return_to_lobby_mode_ = false;
 };

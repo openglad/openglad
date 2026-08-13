@@ -32,6 +32,16 @@ short set_palette(std::span<const unsigned char> newpalette); // set palette
 void adjust_palette(std::span<const unsigned char> whichpal, Sint32 amount); // gamma correction
 void cycle_palette(std::span<unsigned char> newpalette, short start, short end, short shift); //color cycling
 
+// BRIGHTNESS (cfg graphics/brightness). The applied gamma lives in session
+// state and set_palette() re-applies it every time, so a palette swap
+// (keyframe sync, level start, the cheat palette, the intro fades) can no
+// longer wipe it. The value is seeded from cfg on first use; the DISPLAY
+// -/+ pair calls set_display_brightness_steps, and RESTORE SETTINGS calls
+// reload_display_brightness_from_cfg after re-reading the defaults.
+Sint32 display_brightness_steps();
+void set_display_brightness_steps(Sint32 steps);
+void reload_display_brightness_from_cfg();
+
 void query_palette_reg(unsigned char index, int *red, int *green, int *blue);
 void set_palette_reg(unsigned char index,int red,int green,int blue);
 short save_palette(std::span<const unsigned char> whatpalette);

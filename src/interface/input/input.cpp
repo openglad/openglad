@@ -40,10 +40,6 @@
 #define YIELD_SLEEP(ms) og::input_native::sleep_ms(ms)
 #endif
 
-#ifdef OUYA
-#include <openglad/interface/OuyaController.h>
-#endif
-
 void quit(Sint32 arg1);
 
 // Input scalar globals (raw_key, player_keys, keystates, viewport_*, etc.)
@@ -335,6 +331,42 @@ bool as_event_data(const void* native_event, og::input_native::EventData& out)
     return og::input_native::decode_event(native_event, out);
 }
 
+// (Re)open every connected device into the process-global handle table.
+// Deliberately never closes the previous handles: SDL joystick handles are
+// refcounted and this table has no shutdown phase (see the joystick tests'
+// notes), matching the historical behavior.
+void reopen_joystick_device_table()
+{
+    for (int i = 0; i < MAX_NUM_JOYSTICKS; i++)
+        joysticks[i] = nullptr;
+    const int numjoy =
+        std::min(og::input_native::num_joysticks(), MAX_NUM_JOYSTICKS);
+    for (int i = 0; i < numjoy; i++)
+    {
+        joysticks[i] = og::input_native::joystick_open(i);
+        // Enumerated but unopenable (a udev rule denying the device node is
+        // the field report). The slot stays null and every consumer treats it
+        // as "no usable device at this index".
+        if (joysticks[i] == nullptr)
+            TRACE("joystick", "open_failed device=%d", i);
+    }
+}
+
+bool joydata_has_any_binding(const JoyData& joy)
+{
+    for (int k = 0; k < NUM_KEYS; ++k)
+        if (joy.key_type[k] != JoyData::NONE)
+            return true;
+    return false;
+}
+
+bool device_held_by_other_seat(int device_index, int player)
+{
+    for (int q = 0; q < 4; ++q)
+        if (q != player && player_joy[q].index == device_index)
+            return true;
+    return false;
+}
 } // namespace
 
 
@@ -344,30 +376,128 @@ bool as_event_data(const void* native_event, og::input_native::EventData& out)
 
 void init_input()
 {
+    // SDL_CreateWindow only auto-inits VIDEO; in SDL3 nothing else brings the
+    // joystick subsystem up, so without this no hardware ever enumerates.
+    if (!og::input_native::joystick_subsystem_initialized())
+        og::input_native::joystick_init_subsystem();
+
     reset_default_player_controls();
     // On web this installs the Backspace-as-Escape remap at the SDL event
     // source before the first event is queued; a no-op on native builds.
     og::input_native::install_back_key_remap();
     og::runtime::current_session->keystates_ = og::input_native::keyboard_state();
 
-    // Set up joysticks
-    for(int i = 0; i < MAX_NUM_JOYSTICKS; i++)
-    {
-        joysticks[i] = nullptr;
-    }
-
-    const int numjoy = std::min(og::input_native::num_joysticks(), MAX_NUM_JOYSTICKS);
-
-    for(int i = 0; i < numjoy; i++)
-    {
-        joysticks[i] = og::input_native::joystick_open(i);
-        if(joysticks[i] == nullptr)
-            continue;
-        if(i < 4) // player_joy has only 4 slots
-            player_joy[i] = JoyData(i);
-    }
-
+    // Open every connected device. No seat gets a joystick here — assignment
+    // is explicit (assign_joystick_to_player) or a persisted-GUID re-attach.
+    reopen_joystick_device_table();
     og::input_native::joystick_set_event_state(true);
+
+    // The SDL-free controls loader stores GUID strings; resolving them
+    // against connected hardware happens here on the SDL side.
+    set_joystick_guid_reattach_hook(&reattach_saved_joysticks);
+    reattach_saved_joysticks();
+}
+
+int joystick_device_count()
+{
+    return std::min(og::input_native::num_joysticks(), MAX_NUM_JOYSTICKS);
+}
+
+int player_joystick_device(int player)
+{
+    if (player < 0 || player >= 4)
+        return -1;
+    return (player_joy[player].index >= 0) ? player_joy[player].index : -1;
+}
+
+bool assign_joystick_to_player(int player, int device_index)
+{
+    if (player < 0 || player >= 4)
+        return false;
+    if (device_index < 0 || device_index >= MAX_NUM_JOYSTICKS ||
+        joysticks[device_index] == nullptr)
+    {
+        TRACE("joystick", "assign_refused player=%d device=%d reason=unopened",
+              player, device_index);
+        return false;
+    }
+    // Synthesize BEFORE touching any seat. A device can open and still expose
+    // nothing bindable (every capability reads 0 on a half-permissioned node;
+    // every axis resting past the dead zone on a hostile pad), and a failed
+    // assignment must not have already cost another seat its device.
+    JoyData layout(device_index);
+    if (!joydata_has_any_binding(layout))
+    {
+        TRACE("joystick",
+              "assign_refused player=%d device=%d reason=no_bindings",
+              player, device_index);
+        return false;
+    }
+    // One device drives one seat: an explicit assignment steals it, voiding
+    // the robbed seat's persisted claim.
+    for (int q = 0; q < 4; ++q)
+    {
+        if (q != player && player_joy[q].index == device_index)
+        {
+            player_joy[q].index = -1;
+            hw().player_joystick_guids[q].clear();
+            TRACE("joystick", "assign_steal from_player=%d device=%d",
+                  q, device_index);
+        }
+    }
+    player_joy[player] = layout; // default layout synthesis
+    hw().player_joystick_guids[player] =
+        og::input_native::joystick_device_guid(device_index);
+    TRACE("joystick", "assigned player=%d device=%d", player, device_index);
+    return true;
+}
+
+void clear_player_joystick(int player)
+{
+    if (player < 0 || player >= 4)
+        return;
+    player_joy[player] = JoyData(); // full unbind: device, layout, and claim
+    hw().player_joystick_guids[player].clear();
+}
+
+void reattach_saved_joysticks()
+{
+    const int device_count = joystick_device_count();
+    for (int p = 0; p < 4; ++p)
+    {
+        if (player_joy[p].index >= 0 || hw().player_joystick_guids[p].empty())
+            continue;
+        for (int d = 0; d < device_count; ++d)
+        {
+            if (joysticks[d] == nullptr ||
+                og::input_native::joystick_device_guid(d) !=
+                    hw().player_joystick_guids[p] ||
+                device_held_by_other_seat(d, p))
+                continue;
+            // A replug keeps the seat's session layout; a fresh attach (GUID
+            // loaded from cfg into a blank JoyData) synthesizes the default.
+            if (joydata_has_any_binding(player_joy[p]))
+            {
+                player_joy[p].index = d;
+            }
+            else
+            {
+                JoyData layout(d);
+                if (!joydata_has_any_binding(layout))
+                {
+                    // Opened, but nothing bindable: leave the seat on its
+                    // keyboard mapping and keep scanning (an identical twin
+                    // unit further down the list may still be usable).
+                    TRACE("joystick",
+                          "reattach_refused player=%d device=%d", p, d);
+                    continue;
+                }
+                player_joy[p] = layout;
+            }
+            TRACE("joystick", "guid_reattach player=%d device=%d", p, d);
+            break;
+        }
+    }
 }
 
 void get_input_events(bool type)
@@ -733,47 +863,97 @@ void handle_mouse_event(const void* native_event)
     }
 }
 
+// Per-tick gameplay reads joystick state by polling (JoyData::getState); the
+// event stream's one job here is feeding "press any key" waits.
+// Gameplay reads joysticks by polling (isPlayerHoldingKey -> JoyData::getState).
+// This should not be in an event or else it's jerky. Events only feed the
+// "any key pressed" edge that continue/menu screens wait on.
 void handle_joy_event(const void* native_event)
 {
     og::input_native::EventData event;
     if (!as_event_data(native_event, event))
         return;
-    Log("Joystick event!\n");
     switch(event.type)
     {
     case og::input_native::EventType::JoyAxisMotion:
-        if (event.joy_axis_value > 8000)
-        {
-            //key_list[joy_startval[event.jaxis.which] + event.jaxis.axis * 2] = 1;
-            //key_list[joy_startval[event.jaxis.which] + event.jaxis.axis * 2 + 1] = 0;
+        if (event.joy_axis_value > JOY_DEAD_ZONE ||
+            event.joy_axis_value < -JOY_DEAD_ZONE)
             og::runtime::current_session->key_press_event_ = 1;
-            //raw_key = joy_startval[event.jaxis.which] + event.jaxis.axis * 2;
-        }
-        else if (event.joy_axis_value < -8000)
-        {
-            //key_list[joy_startval[event.jaxis.which] + event.jaxis.axis * 2] = 0;
-            //key_list[joy_startval[event.jaxis.which] + event.jaxis.axis * 2 + 1] = 1;
-            og::runtime::current_session->key_press_event_ = 1;
-            //raw_key = joy_startval[event.jaxis.which] + event.jaxis.axis * 2 + 1;
-        }
-        else
-        {
-            //key_list[joy_startval[event.jaxis.which] + event.jaxis.axis * 2] = 0;
-            //key_list[joy_startval[event.jaxis.which] + event.jaxis.axis * 2 + 1] = 0;
-        }
         break;
     case og::input_native::EventType::JoyButtonDown:
-        //key_list[joy_startval[event.jbutton.which] + joy_numaxes[event.jbutton.which] * 2 + event.jbutton.button] = 1;
-        //raw_key = joy_startval[event.jbutton.which] + joy_numaxes[event.jbutton.which] * 2 + event.jbutton.button;
         og::runtime::current_session->key_press_event_ = 1;
         break;
-    case og::input_native::EventType::JoyButtonUp:
-        //key_list[joy_startval[event.jbutton.which] + joy_numaxes[event.jbutton.which] * 2 + event.jbutton.button] = 0;
+    case og::input_native::EventType::JoyHatMotion:
+        // A hat returning to center is a release, not a press.
+        if (event.joy_hat_value != 0)
+            og::runtime::current_session->key_press_event_ = 1;
         break;
     default:
         break;
     }
 }
+
+namespace
+{
+// Hotplug. Either direction reshuffles the 0-based device indices, so the
+// handle table is re-enumerated first and every seat re-anchored after.
+void handle_joy_device_event(const og::input_native::EventData& event)
+{
+    reopen_joystick_device_table();
+
+    if (event.type == og::input_native::EventType::JoyDeviceAdded)
+    {
+        TRACE("joystick", "device_added index=%d instance=%d",
+              event.joy_device_index, event.joy_device_instance);
+        // A device matching a seat's saved GUID re-attaches automatically
+        // (mandatory on web, where the Gamepad API exposes devices only
+        // after a button press).
+        reattach_saved_joysticks();
+        return;
+    }
+
+    const int device_count = joystick_device_count();
+    for (int p = 0; p < 4; ++p)
+    {
+        if (player_joy[p].index < 0)
+            continue;
+        const std::string& guid = hw().player_joystick_guids[p];
+        if (!guid.empty())
+        {
+            // Re-anchor an assigned seat onto its device's new index. The
+            // GUID survives the unplug so the seat re-attaches when the
+            // device returns (JoyDeviceAdded above).
+            int found = -1;
+            for (int d = 0; d < device_count; ++d)
+            {
+                if (joysticks[d] != nullptr &&
+                    og::input_native::joystick_device_guid(d) == guid &&
+                    !device_held_by_other_seat(d, p))
+                {
+                    found = d;
+                    break;
+                }
+            }
+            if (found >= 0)
+            {
+                player_joy[p].index = found;
+            }
+            else
+            {
+                player_joy[p].index = -1; // keyboard fallback; GUID kept
+                TRACE("joystick", "device_removed player=%d", p);
+            }
+        }
+        else if (player_joy[p].index >= device_count || joysticks[player_joy[p].index] == nullptr)
+        {
+            // Legacy (takeover-bound, no GUID) seat pointing past the
+            // shrunken table: identity is unknowable, fall back to keyboard.
+            disablePlayerJoystick(p);
+            TRACE("joystick", "device_removed player=%d", p);
+        }
+    }
+}
+} // namespace
 
 void handle_events(const void* native_event)
 {
@@ -818,39 +998,23 @@ void handle_events(const void* native_event)
     case og::input_native::EventType::JoyAxisMotion:
         handle_joy_event(native_event);
         break;
+    case og::input_native::EventType::JoyHatMotion:
+        handle_joy_event(native_event);
+        break;
     case og::input_native::EventType::JoyButtonDown:
         handle_joy_event(native_event);
         break;
     case og::input_native::EventType::JoyButtonUp:
         handle_joy_event(native_event);
         break;
+    case og::input_native::EventType::JoyDeviceAdded:
+    case og::input_native::EventType::JoyDeviceRemoved:
+        handle_joy_device_event(event);
+        break;
     case og::input_native::EventType::Quit:
         quit(0);
         break;
     default:
-#ifdef OUYA
-        if(event.raw_type == OuyaControllerManager::BUTTON_DOWN_EVENT)
-        {
-            if(static_cast<OuyaController::ButtonEnum>(event.user_data1) == OuyaController::ButtonEnum::O)
-                og::runtime::current_session->input_continue_ = true;
-            else if(static_cast<OuyaController::ButtonEnum>(event.user_data1) == OuyaController::ButtonEnum::DpadUp)
-                og::runtime::current_session->scroll_amount_ = 5;
-            else if(static_cast<OuyaController::ButtonEnum>(event.user_data1) == OuyaController::ButtonEnum::DpadDown)
-                og::runtime::current_session->scroll_amount_ = -5;
-            else if(static_cast<OuyaController::ButtonEnum>(event.user_data1) == OuyaController::ButtonEnum::Menu)
-                sendFakeKeyDownEvent(KEYCODE_ESCAPE);
-            og::runtime::current_session->key_press_event_ = 1;
-        }
-        else if(event.raw_type == OuyaControllerManager::AXIS_EVENT)
-        {
-            const OuyaController& c = OuyaControllerManager::getController(event.user_code);
-            
-            // This should not be in an event or else it's jerky.
-            float v = c.getAxisValue(OuyaController::AxisEnum::LsY) + c.getAxisValue(OuyaController::AxisEnum::RsY);
-            if(fabs(v) > OuyaController::DEADZONE)
-                og::runtime::current_session->scroll_amount_ = -5*v;
-        }
-    #endif
         break;
     }
 }
@@ -996,12 +1160,6 @@ bool assignKeyFromWaitEventPolling(
     return true;
 }
 
-void assignKeyFromWaitEvent(int player_num, int key_enum)
-{
-    (void)assignKeyFromWaitEventPolling(player_num, key_enum, nullptr);
-}
-
-
 //
 // Set the keyboard array to all zeros, the
 // virgin state, nothing depressed
@@ -1065,6 +1223,11 @@ void wait_for_key(int somekey)
 JoyData::JoyData(int joy_index)
     : index(-1), numAxes(0), numButtons(0), numHats(0)
 {
+    // Both early returns leave a fully EMPTY layout, never garbage: key_type /
+    // key_index / held_at_assign_mask are zero-initialized by their default
+    // member initializers, and NONE == 0. An unopenable device (the udev case)
+    // therefore yields index -1 and no bindings, so the seat keeps its
+    // keyboard mapping instead of reading a device that cannot be read.
     if(joy_index < 0 || joy_index >= MAX_NUM_JOYSTICKS)
         return;
     const og::input_native::JoystickHandle js = joysticks[joy_index];
@@ -1072,9 +1235,12 @@ JoyData::JoyData(int joy_index)
         return;
 
     this->index = joy_index;
-    numAxes = og::input_native::joystick_num_axes(js);
-    numButtons = og::input_native::joystick_num_buttons(js);
-    numHats = og::input_native::joystick_num_hats(js);
+    // The SDL capability getters report -1 on failure (a handle whose device
+    // went away or lost permissions mid-session). Clamp: a negative count must
+    // never reach the synthesis loops or a stored numButtons.
+    numAxes = std::max(0, og::input_native::joystick_num_axes(js));
+    numButtons = std::max(0, og::input_native::joystick_num_buttons(js));
+    numHats = std::max(0, og::input_native::joystick_num_hats(js));
 
     // Clear all keys for this joystick
     for(int i = 0; i < NUM_KEYS; i++)
@@ -1083,18 +1249,36 @@ JoyData::JoyData(int joy_index)
         key_index[i] = 0;
     }
 
-    // Default movement
-    if(numAxes > 1) // Prefer two axes
+    // Default movement: prefer a two-axis stick, but never bind an axis
+    // whose RESTING value is already past the dead zone. Real hardware
+    // violates the axes-0/1-are-the-stick assumption — sticks drift,
+    // GameCube-style analog triggers rest at an extreme, adapters reorder
+    // axes — and a cardinal bound to such an axis reads permanently held:
+    // gameplay runs away and every release wait (menu nav) wedges forever.
+    int calm_axes[2] = {0, 0};
+    int calm_count = 0;
+    for (int axis = 0; axis < numAxes && calm_count < 2; ++axis)
+    {
+        const int resting = og::input_native::joystick_get_axis(js, axis);
+        if (resting > JOY_DEAD_ZONE || resting < -JOY_DEAD_ZONE)
+        {
+            TRACE("joystick", "synthesis_skip_axis device=%d axis=%d rest=%d",
+                  joy_index, axis, resting);
+            continue;
+        }
+        calm_axes[calm_count++] = axis;
+    }
+    if(calm_count >= 2) // Prefer two (calm) axes
     {
         key_type[KEY_RIGHT] = POS_AXIS;
-        key_index[KEY_RIGHT] = 0;
+        key_index[KEY_RIGHT] = calm_axes[0];
         key_type[KEY_LEFT] = NEG_AXIS;
-        key_index[KEY_LEFT] = 0;
+        key_index[KEY_LEFT] = calm_axes[0];
 
         key_type[KEY_UP] = NEG_AXIS;
-        key_index[KEY_UP] = 1;
+        key_index[KEY_UP] = calm_axes[1];
         key_type[KEY_DOWN] = POS_AXIS;
-        key_index[KEY_DOWN] = 1;
+        key_index[KEY_DOWN] = calm_axes[1];
     }
     else if(numHats > 0) // But a single hat is okay otherwise
     {
@@ -1110,16 +1294,19 @@ JoyData::JoyData(int joy_index)
     }
 
 
-    // Default actions
+    // Default actions. Button 0 is SPECIAL and button 1 is FIRE (the shipped
+    // gamepad default, reversed from the keyboard-era order at the player's
+    // request). Consequence on a one-button device: FIRE stays unbound and
+    // keeps coming from the seat's keyboard map.
     if(numButtons > 0)
     {
-        key_type[KEY_FIRE] = BUTTON;
-        key_index[KEY_FIRE] = 0;
+        key_type[KEY_SPECIAL] = BUTTON;
+        key_index[KEY_SPECIAL] = 0;
     }
     if(numButtons > 1)
     {
-        key_type[KEY_SPECIAL] = BUTTON;
-        key_index[KEY_SPECIAL] = 1;
+        key_type[KEY_FIRE] = BUTTON;
+        key_index[KEY_FIRE] = 1;
     }
     if(numButtons > 2)
     {
@@ -1141,6 +1328,20 @@ JoyData::JoyData(int joy_index)
         key_type[KEY_SWITCH] = BUTTON;
         key_index[KEY_SWITCH] = 5;
     }
+
+    // Baseline snapshot: any binding that reads ACTIVE right now (a resting
+    // pressed button/hat, the owner's grip during assignment) starts
+    // suppressed; isPlayerHoldingKey ignores it until one real release is
+    // observed. See held_at_assign_mask in input.h.
+    for (int k = 0; k < NUM_KEYS; ++k)
+    {
+        if (key_type[k] != NONE && getState(k))
+        {
+            held_at_assign_mask |= (1 << k);
+            TRACE("joystick", "synthesis_suppress device=%d key=%d",
+                  joy_index, k);
+        }
+    }
 }
 
 
@@ -1158,6 +1359,34 @@ void JoyData::setKeyFromEvent(int key_enum, const void* native_event)
         key_type[key_enum] = NONE;
         key_index[key_enum] = 0;
         return;
+    }
+
+    // A seat with an explicit assignment (GUID set) only remaps from its own
+    // device: ignore events from other devices instead of following the
+    // legacy last-device-pressed takeover. Standalone JoyData objects and
+    // unassigned seats keep the legacy behavior.
+    {
+        int owner = -1;
+        for (int i = 0; i < 4; ++i)
+        {
+            if (this == &player_joy[i])
+            {
+                owner = i;
+                break;
+            }
+        }
+        if (owner >= 0 && !hw().player_joystick_guids[owner].empty())
+        {
+            int source_device = -1;
+            if (event.type == og::input_native::EventType::JoyAxisMotion)
+                source_device = event.joy_axis_which;
+            else if (event.type == og::input_native::EventType::JoyButtonDown)
+                source_device = event.joy_button_which;
+            else if (event.type == og::input_native::EventType::JoyHatMotion)
+                source_device = event.joy_hat_which;
+            if (source_device >= 0 && source_device != index)
+                return;
+        }
     }
 
     bool gotJoy = false;
@@ -1205,11 +1434,17 @@ void JoyData::setKeyFromEvent(int key_enum, const void* native_event)
 
     if(gotJoy)
     {
-        // Take over this joystick
+        // A rebound key is live again: the user just proved this input can
+        // move, so any held-at-assignment suppression is stale.
+        held_at_assign_mask &= ~(1 << key_enum);
+        // Take over this joystick, voiding the robbed seat's explicit claim.
         for(int i = 0; i < 4; i++)
         {
             if(this != &player_joy[i] && player_joy[i].index == index)
+            {
                 player_joy[i].index = -1;
+                hw().player_joystick_guids[i].clear();
+            }
         }
     }
 }
@@ -1343,115 +1578,8 @@ bool JoyData::hasButtonSet(int key_enum) const
     return (index >= 0 && key_type[key_enum] != NONE);
 }
 
-void resetJoystick(int player_num)
-{
-    // FIXME: SDL supports hotplugging, so I don't need to restart the joystick subsystem
-    // Reset joystick subsystem
-    if(og::input_native::joystick_subsystem_initialized())
-        og::input_native::joystick_quit_subsystem();
-    og::input_native::joystick_init_subsystem();
-
-    // Set up joysticks
-    for(int i = 0; i < MAX_NUM_JOYSTICKS; i++)
-    {
-        joysticks[i] = nullptr;
-    }
-
-    int numjoy = std::min(og::input_native::num_joysticks(), MAX_NUM_JOYSTICKS);
-    for(int i = 0; i < numjoy; i++)
-    {
-        joysticks[i] = og::input_native::joystick_open(i);
-        if(joysticks[i] == nullptr)
-            continue;
-        // The joystick indices might change here.
-        // FIXME: There's a chance that players will not have the joysticks they expect and
-        // so they might have buttons, etc. that are out of range for the new joystick.
-    }
-
-    og::input_native::joystick_set_event_state(true);
-
-    player_joy[player_num] = JoyData(player_num);
-}
-
-#ifdef OUYA
-bool ouyaJoystickInDirection(int player, int key_enum)
-{
-    const OuyaController& c = OuyaControllerManager::getController(player);
-    if(!c.isStickBeyondDeadzone(OuyaController::AxisEnum::LsX))
-        return false;
-    
-    switch(key_enum)
-    {
-    case KEY_UP:
-        return (c.getAxisValue(OuyaController::AxisEnum::LsY) < -OuyaController::DEADZONE && !c.isStickInNegativeCone(OuyaController::AxisEnum::LsX) && !c.isStickInPositiveCone(OuyaController::AxisEnum::LsX));
-    case KEY_UP_RIGHT:
-        return (c.getAxisValue(OuyaController::AxisEnum::LsY) < -OuyaController::DEADZONE && c.getAxisValue(OuyaController::AxisEnum::LsX) > OuyaController::DEADZONE);
-    case KEY_RIGHT:
-        return (c.getAxisValue(OuyaController::AxisEnum::LsX) > OuyaController::DEADZONE && !c.isStickInNegativeCone(OuyaController::AxisEnum::LsY) && !c.isStickInPositiveCone(OuyaController::AxisEnum::LsY));
-    case KEY_DOWN_RIGHT:
-        return (c.getAxisValue(OuyaController::AxisEnum::LsY) > OuyaController::DEADZONE && c.getAxisValue(OuyaController::AxisEnum::LsX) > OuyaController::DEADZONE);
-    case KEY_DOWN:
-        return (c.getAxisValue(OuyaController::AxisEnum::LsY) > OuyaController::DEADZONE && !c.isStickInNegativeCone(OuyaController::AxisEnum::LsX) && !c.isStickInPositiveCone(OuyaController::AxisEnum::LsX));
-    case KEY_DOWN_LEFT:
-        return (c.getAxisValue(OuyaController::AxisEnum::LsY) > OuyaController::DEADZONE && c.getAxisValue(OuyaController::AxisEnum::LsX) < -OuyaController::DEADZONE);
-    case KEY_LEFT:
-        return (c.getAxisValue(OuyaController::AxisEnum::LsX) < -OuyaController::DEADZONE && !c.isStickInNegativeCone(OuyaController::AxisEnum::LsY) && !c.isStickInPositiveCone(OuyaController::AxisEnum::LsY));
-    case KEY_UP_LEFT:
-        return (c.getAxisValue(OuyaController::AxisEnum::LsY) < -OuyaController::DEADZONE && c.getAxisValue(OuyaController::AxisEnum::LsX) < -OuyaController::DEADZONE);
-    }
-    return false;
-}
-#endif
-
 bool isPlayerHoldingKey(int player_index, int key_enum)
 {
-    #ifdef OUYA
-    const OuyaController& c = OuyaControllerManager::getController(player_index);
-    switch(key_enum)
-    {
-    case KEY_UP:
-        return (c.getButtonValue(OuyaController::ButtonEnum::DpadUp) && !(c.getButtonValue(OuyaController::ButtonEnum::DpadLeft) || c.getButtonValue(OuyaController::ButtonEnum::DpadRight)))
-               || ouyaJoystickInDirection(player_index, key_enum);
-    case KEY_UP_RIGHT:
-        return (c.getButtonValue(OuyaController::ButtonEnum::DpadUp) && c.getButtonValue(OuyaController::ButtonEnum::DpadRight))
-               || ouyaJoystickInDirection(player_index, key_enum);
-    case KEY_RIGHT:
-        return (c.getButtonValue(OuyaController::ButtonEnum::DpadRight) && !(c.getButtonValue(OuyaController::ButtonEnum::DpadUp) || c.getButtonValue(OuyaController::ButtonEnum::DpadDown)))
-               || ouyaJoystickInDirection(player_index, key_enum);
-    case KEY_DOWN_RIGHT:
-        return (c.getButtonValue(OuyaController::ButtonEnum::DpadDown) && c.getButtonValue(OuyaController::ButtonEnum::DpadRight))
-               || ouyaJoystickInDirection(player_index, key_enum);
-    case KEY_DOWN:
-        return (c.getButtonValue(OuyaController::ButtonEnum::DpadDown) && !(c.getButtonValue(OuyaController::ButtonEnum::DpadLeft) || c.getButtonValue(OuyaController::ButtonEnum::DpadRight)))
-               || ouyaJoystickInDirection(player_index, key_enum);
-    case KEY_DOWN_LEFT:
-        return (c.getButtonValue(OuyaController::ButtonEnum::DpadDown) && c.getButtonValue(OuyaController::ButtonEnum::DpadLeft))
-               || ouyaJoystickInDirection(player_index, key_enum);
-    case KEY_LEFT:
-        return (c.getButtonValue(OuyaController::ButtonEnum::DpadLeft) && !(c.getButtonValue(OuyaController::ButtonEnum::DpadUp) || c.getButtonValue(OuyaController::ButtonEnum::DpadDown)))
-               || ouyaJoystickInDirection(player_index, key_enum);
-    case KEY_UP_LEFT:
-        return (c.getButtonValue(OuyaController::ButtonEnum::DpadUp) && c.getButtonValue(OuyaController::ButtonEnum::DpadLeft))
-               || ouyaJoystickInDirection(player_index, key_enum);
-    case KEY_FIRE:
-        return c.getButtonValue(OuyaController::ButtonEnum::O);
-    case KEY_SPECIAL:
-        return c.getButtonValue(OuyaController::ButtonEnum::A);
-    case KEY_SWITCH:
-        return c.getButtonValue(OuyaController::ButtonEnum::L1);
-    case KEY_SPECIAL_SWITCH:
-        return c.getButtonValue(OuyaController::ButtonEnum::U);
-    case KEY_YELL:
-        return c.getButtonValue(OuyaController::ButtonEnum::Y);
-    case KEY_SHIFTER:
-        return c.getButtonValue(OuyaController::ButtonEnum::R1);
-    case KEY_PREFS:
-        return false;
-    case KEY_CHEAT:
-        return false;
-    }
-    #endif
-    
     if (player_index < 0 || player_index >= 4 || key_enum < 0 || key_enum >= NUM_KEYS)
         return false;
     // Touch held-state seam, written by the web DOM overlay or native SDL
@@ -1460,8 +1588,21 @@ bool isPlayerHoldingKey(int player_index, int key_enum)
     if (hw().touch_keystate[player_index][key_enum])
         return true;
     // FIXME: On Android/iOS, do not mistake an accelerometer for a gamepad.
-    if(player_joy[player_index].hasButtonSet(key_enum))
-        return player_joy[player_index].getState(key_enum);
+    JoyData& joy = player_joy[player_index];
+    if(joy.hasButtonSet(key_enum))
+    {
+        const bool held = joy.getState(key_enum);
+        if (joy.held_at_assign_mask & (1 << key_enum))
+        {
+            // Held since the layout was synthesized (drift, a resting
+            // trigger, a grip hold during assignment): suppressed until one
+            // real release proves the input can rest. See JoyData(int).
+            if (held)
+                return false;
+            joy.held_at_assign_mask &= ~(1 << key_enum);
+        }
+        return held;
+    }
     else
         return og::runtime::current_session->keystates_[og::input_native::scancode_from_key(og::runtime::current_session->player_keys_[player_index][key_enum])];
 }
@@ -1472,55 +1613,6 @@ bool didPlayerPressKey(int player_index, int key_enum, const void* native_event)
     if (!as_event_data(native_event, event))
         return false;
 
-    #ifdef OUYA
-    const OuyaController& c = OuyaControllerManager::getController(player_index);
-    if(event.user_code != player_index)
-        return false;
-    
-    if(event.raw_type == OuyaControllerManager::BUTTON_DOWN_EVENT)
-    {
-        OuyaController::ButtonEnum button = static_cast<OuyaController::ButtonEnum>(event.user_data1);
-        
-        switch(key_enum)
-        {
-        case KEY_UP:
-            return (button == OuyaController::ButtonEnum::DpadUp);
-        case KEY_RIGHT:
-            return (button == OuyaController::ButtonEnum::DpadRight);
-        case KEY_DOWN:
-            return (button == OuyaController::ButtonEnum::DpadDown);
-        case KEY_LEFT:
-            return (button == OuyaController::ButtonEnum::DpadLeft);
-        case KEY_FIRE:
-            return (button == OuyaController::ButtonEnum::O);
-        case KEY_SPECIAL:
-            return (button == OuyaController::ButtonEnum::A);
-        case KEY_SWITCH:
-            return (button == OuyaController::ButtonEnum::L1);
-        case KEY_SPECIAL_SWITCH:
-            return (button == OuyaController::ButtonEnum::U);
-        case KEY_YELL:
-            return (button == OuyaController::ButtonEnum::Y);
-        case KEY_SHIFTER:
-            return (button == OuyaController::ButtonEnum::R1);
-        default:
-            return false;
-        }
-    }
-    else if(event.raw_type == OuyaControllerManager::AXIS_EVENT)
-    {
-        switch(key_enum)
-        {
-        case KEY_UP:
-        case KEY_RIGHT:
-        case KEY_DOWN:
-        case KEY_LEFT:
-            return ouyaJoystickInDirection(player_index, key_enum);
-        default:
-            return false;
-        }
-    }
-    #endif
     if(player_joy[player_index].hasButtonSet(key_enum))
     {
         // This key is on the joystick, so check it.
@@ -1545,41 +1637,6 @@ bool didPlayerReleaseKey(int player_index, int key_enum, const void* native_even
     if (!as_event_data(native_event, event))
         return false;
 
-    #ifdef OUYA
-    const OuyaController& c = OuyaControllerManager::getController(player_index);
-    if(event.raw_type != OuyaControllerManager::BUTTON_UP_EVENT)
-        return false;
-    if(event.user_code != player_index)
-        return false;
-    
-    OuyaController::ButtonEnum button = static_cast<OuyaController::ButtonEnum>(event.user_data1);
-    
-    switch(key_enum)
-    {
-    case KEY_UP:
-        return (button == OuyaController::ButtonEnum::DpadUp);
-    case KEY_RIGHT:
-        return (button == OuyaController::ButtonEnum::DpadRight);
-    case KEY_DOWN:
-        return (button == OuyaController::ButtonEnum::DpadDown);
-    case KEY_LEFT:
-        return (button == OuyaController::ButtonEnum::DpadLeft);
-    case KEY_FIRE:
-        return (button == OuyaController::ButtonEnum::O);
-    case KEY_SPECIAL:
-        return (button == OuyaController::ButtonEnum::A);
-    case KEY_SWITCH:
-        return (button == OuyaController::ButtonEnum::L1);
-    case KEY_SPECIAL_SWITCH:
-        return (button == OuyaController::ButtonEnum::U);
-    case KEY_YELL:
-        return (button == OuyaController::ButtonEnum::Y);
-    case KEY_SHIFTER:
-        return (button == OuyaController::ButtonEnum::R1);
-    default:
-        return false;
-    }
-    #endif
     if(player_joy[player_index].hasButtonSet(key_enum))
     {
         // This key is on the joystick, so check it.
@@ -1762,7 +1819,3 @@ unsigned char convert_to_ascii(int scancode)
     }
 }
 
-const char* query_key_name(int keycode)
-{
-    return og::input_native::key_name(keycode);
-}

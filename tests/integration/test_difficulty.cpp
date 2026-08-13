@@ -47,17 +47,18 @@ static void cleanup_picker_state()
 // Flow: Main Menu -> DIFFICULTY door -> cycle every setting a full cycle
 // (difficulty x3, respawns x3, delay x3, permadeath x2, generators x3,
 // infinite gold x2 — all back to their defaults) -> BACK -> GAME SETTINGS
-// -> CONTROLS -> BACK
 // -> BACK -> return
 //
-// This used to tour PLAYER SETTINGS and all four player-count outlines here.
-// Seat lifecycle now lives in Base Camp, while the persistent all-player
-// controls door moved under GAME SETTINGS.
+// This used to tour PLAYER SETTINGS and all four player-count outlines here,
+// and later the global CONTROLS door. Seat lifecycle lives in Base Camp now,
+// and per-player controls live on the seat's own player screen — GAME
+// SETTINGS keeps only the game-wide rows.
 //
 // Verifies:
 //   1. The door opens the subscreen (its rows become interactable)
 //   2. Every settings row is clickable and a full cycle restores defaults
-//   3. BACK returns to a working main menu and CONTROLS returns cleanly
+//   3. BACK returns to a working main menu, and GAME SETTINGS opens and
+//      closes cleanly after it
 
 struct DifficultyState {
     bool started;
@@ -115,19 +116,14 @@ static int difficulty_injector(void* data)
         << "seat lifecycle belongs to the live Base Camp roster";
     fprintf(stderr, "  [test] clicking GAME SETTINGS\n");
     interact("options");
-    if (!wait_for_interactable("control_settings", 5000))
-        return 0;
-    SDL_Delay(300);
-    fprintf(stderr, "  [test] clicking CONTROLS\n");
-    interact("control_settings");
-    if (!wait_for_interactable("controls_back", 5000))
-        return 0;
-    SDL_Delay(300);
-    EXPECT_TRUE(has_interactable("reset_all_controls"));
-    interact("controls_back");
     if (!wait_for_interactable("options_back", 5000))
         return 0;
     SDL_Delay(300);
+    // Player controls are per-seat now: GAME SETTINGS must not carry the
+    // retired global CONTROLS door or its RESET ALL.
+    EXPECT_FALSE(has_interactable("control_settings"));
+    EXPECT_FALSE(has_interactable("reset_all_controls"));
+    EXPECT_TRUE(has_interactable("game_speed"));
     interact("options_back");
 
     state->finished = true;

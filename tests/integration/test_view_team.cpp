@@ -1,12 +1,16 @@
-#include <array>
 #include <algorithm>
+#include <array>
+#include <chrono>
 #include <memory>
 #include <openglad/gameplay/pixie_data.h>
 #include <openglad/interface/button.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/input_hardware_state.h>
+#include <openglad/interface/input_mappings.h>
+#include <openglad/interface/ui/input_cycler.h>
 #include <openglad/interface/render/pixien.h>
+#include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
@@ -64,6 +68,22 @@ struct InputHardwareSnapshotGuard
                 og::runtime::current_session->player_keys_[p][k] =
                     active[p][k];
             }
+        }
+    }
+};
+
+// Seat-card labels name each local profile's INPUT mapping (design §2.3), so
+// any test that pins one needs a known starting mapping. Claiming a factory
+// NAME also permutes the RESET identities, hence the whole-block restore.
+struct FactoryMappingGuard : InputHardwareSnapshotGuard
+{
+    FactoryMappingGuard()
+    {
+        for (int p = 0; p < 4; ++p)
+        {
+            clear_player_joystick(p);
+            og::input::assign_mapping_to_player(
+                p, og::input::factory_mapping(p));
         }
     }
 };
@@ -1352,6 +1372,16 @@ TEST(ViewTeam, base_camp_deploy_toggle_debounces_same_row_taps)
     EXPECT_FALSE(save.team_list[1]->deployed);
 
     // Immediate second tap of the SAME row: silently ignored (U6).
+    EXPECT_GE(state.last_deploy_toggle_ms, 0)
+        << "an accepted toggle must stamp the debounce clock";
+    // The debounce is real wall clock (steady_clock, 250 ms). Re-stamping to
+    // now keeps "the second tap lands inside the window" a property of the
+    // test rather than of the scheduler — a loaded machine can otherwise put
+    // more than 250 ms between these two calls and the mistap sails through.
+    state.last_deploy_toggle_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count();
     trace_clear();
     EXPECT_EQ(MENU_OK, spec.on_spec_row(1, &state));
     EXPECT_TRUE(trace_contains("basecamp", "deploy_debounced slot=1"))
@@ -2258,6 +2288,7 @@ TEST(ViewTeam, base_camp_mp_columns_gate_foreign_rows_and_cap_deploys)
 TEST(ViewTeam, base_camp_seat_rail_targets_owned_global_seat_and_clamps_page)
 {
     trace_clear();
+    FactoryMappingGuard mapping_guard;
 
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.reset();
@@ -2328,7 +2359,9 @@ TEST(ViewTeam, base_camp_seat_rail_targets_owned_global_seat_and_clamps_page)
     EXPECT_EQ(1, state.seat_page.page);
     buttons = picker_createmenu_buttons();
     base_spec.nav.rewire(buttons, count, highlighted);
-    EXPECT_EQ("P5 YOU ", buttons[kBaseCampSeatCardBase].label);
+    // The owned card names this machine's FIRST local profile (design §2.3):
+    // global P5, local slot 0, factory WASD.
+    EXPECT_EQ("P5 WASD ", buttons[kBaseCampSeatCardBase].label);
     for (int card = 1; card < kBaseCampSeatCardsPerPage; ++card)
         EXPECT_TRUE(buttons[kBaseCampSeatCardBase + card].hidden);
 
@@ -2492,6 +2525,7 @@ TEST(ViewTeam, base_camp_seat_rail_targets_owned_global_seat_and_clamps_page)
 
 TEST(ViewTeam, seat_settings_draws_selected_identity_and_direction_mode)
 {
+    FactoryMappingGuard mapping_guard;
     NetworkedRosterLobbyClient lobby;
     lobby.local_indices = {6};
     lobby.players.push_back(
@@ -2573,6 +2607,31 @@ TEST(ViewTeam, seat_settings_draws_selected_identity_and_direction_mode)
     EXPECT_EQ("TEAM 3", buttons[kSeatSettingsTeamIndex].label);
     EXPECT_EQ("4-DIRECTION", buttons[kSeatSettingsModeIndex].label);
 
+    EXPECT_EQ("INPUT: WASD", buttons[kSeatSettingsInputRow].label)
+        << "the cycler face names the seat's derived mapping";
+
+    // §7.1: the ZOOM + HUD labels ride the same rewire pass, live from the
+    // seat's viewscreen prefs (slot 0 -> viewob[0]).
+    {
+        viewscreen* const seat_view0 = output->viewob[0].get();
+        ASSERT_NE(nullptr, seat_view0);
+        const signed char old_radar = seat_view0->prefs[PREF_RADAR];
+        const signed char old_life = seat_view0->prefs[PREF_LIFE];
+        const Sint32 old_zoom = seat_view0->view_zoom_step_;
+        seat_view0->prefs[PREF_RADAR] = PREF_RADAR_OFF;
+        seat_view0->prefs[PREF_LIFE] = PREF_LIFE_TEXT;  // legacy => ON
+        seat_view0->view_zoom_step_ = 2;
+        spec.nav.rewire(buttons, count, highlighted);
+        EXPECT_EQ("RADAR: OFF", buttons[kSeatSettingsHudRadarRowMP].label);
+        EXPECT_EQ("HP: ON", buttons[kSeatSettingsHudLifeRowMP].label)
+            << "legacy TEXT displays as ON";
+        EXPECT_EQ("ZOOM: 0.8X", buttons[kSeatSettingsZoomRowMP].label);
+        seat_view0->prefs[PREF_RADAR] = old_radar;
+        seat_view0->prefs[PREF_LIFE] = old_life;
+        seat_view0->view_zoom_step_ = old_zoom;
+        spec.nav.rewire(buttons, count, highlighted);
+    }
+
     set_player_control_mode(
         0, static_cast<int>(ControlDirectionMode::EightDirection));
     spec.nav.rewire(buttons, count, highlighted);
@@ -2580,6 +2639,56 @@ TEST(ViewTeam, seat_settings_draws_selected_identity_and_direction_mode)
     EXPECT_EQ(static_cast<int>(SDLK_S),
               og::runtime::current_session->player_keys_[0][KEY_YELL])
         << "local player 1 uses S to yell in 8-direction mode";
+
+    // A joystick-driven seat reads the DEVICE bindings, not the keyboard
+    // names it still reserves. Bind the profile directly: the content pass
+    // only reads JoyData, so no SDL device is needed.
+    // §7.1: the panel spans x=12..208 (top y=78, first binding line y=93)
+    // and the ACTIONS column sits at x=104, so the movement-line hash stops
+    // short of it.
+    const auto movement_line_hash = [&] {
+        std::uint64_t hash = 1469598103934665603ULL;
+        for (int y = 93; y < 93 + font.sizey; ++y) {
+            for (int x = 12; x < 104; ++x) {
+                int pixel = 0;
+                output->get_pixel(x, y, &pixel);
+                hash ^= static_cast<std::uint8_t>(pixel);
+                hash *= 1099511628211ULL;
+            }
+        }
+        return hash;
+    };
+    const auto expected_movement_hash = [&](const std::string& line) {
+        output->clearbuffer();
+        output->draw_button(12, 78, 208, 161, 2, 1);
+        font.write_xy(20, 93, DARK_BLUE, "%s", line.c_str());
+        return movement_line_hash();
+    };
+
+    set_player_control_mode(
+        0, static_cast<int>(ControlDirectionMode::FourDirection));
+    const std::uint64_t keyboard_expected = expected_movement_hash(
+        std::format("UP: {}",
+                    player_control_key_display_name(0, KEY_UP)));
+    output->clearbuffer();
+    spec.draw_content(&state);
+    EXPECT_EQ(keyboard_expected, movement_line_hash())
+        << "a keyboard seat lists its key names";
+
+    player_joy[0].index = 0;
+    player_joy[0].key_type[KEY_UP] = JoyData::BUTTON;
+    player_joy[0].key_index[KEY_UP] = 3;
+    ASSERT_TRUE(playerHasJoystick(0));
+    const std::uint64_t joystick_expected = expected_movement_hash("UP: B3");
+    output->clearbuffer();
+    spec.draw_content(&state);
+    EXPECT_EQ(joystick_expected, movement_line_hash())
+        << "a joystick seat lists its device bindings";
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("INPUT: JOY1", buttons[kSeatSettingsInputRow].label);
+    clear_player_joystick(0);
+    EXPECT_EQ("WASD", og::ui::current_input_selection(0).name)
+        << "unbinding the device falls the seat back to its keyboard name";
 
     set_player_control_mode(
         0, static_cast<int>(ControlDirectionMode::FourDirection));
@@ -2820,6 +2929,7 @@ TEST(ViewTeam, seat_settings_remove_uses_exact_token_and_compacts_profiles)
 
 TEST(ViewTeam, base_camp_zero_seat_state_activates_only_through_plus)
 {
+    FactoryMappingGuard mapping_guard;
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.reset();
     save.numplayers = 0;
@@ -2914,7 +3024,7 @@ TEST(ViewTeam, base_camp_zero_seat_state_activates_only_through_plus)
         buttons = picker_createmenu_buttons();
         spec.nav.rewire(
             buttons, picker_createmenu_button_count(), highlighted);
-        EXPECT_EQ("P1 YOU ", buttons[kBaseCampSeatCardBase].label);
+        EXPECT_EQ("P1 WASD ", buttons[kBaseCampSeatCardBase].label);
         EXPECT_EQ(MENU_OK,
                   spec.on_spec_row(kBaseCampAddSeatIndex, &state));
         EXPECT_EQ(1, lobby.add_seat_calls);

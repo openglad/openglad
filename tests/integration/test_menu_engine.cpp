@@ -22,7 +22,10 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/input_mappings.h>
+#include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/ui/input_cycler.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -37,9 +40,11 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
+#include <format>
 #include <map>
 #include <memory>
 #include <set>
@@ -341,57 +346,30 @@ TEST(MenuEngine, remote_start_team_build_scope_returns_exit)
               pks().selected_menu_item->command);
 }
 
-namespace
-{
-
-struct NestedControlsRemoteStartState
-{
-    FakeLobbyClient* lobby = nullptr;
-    std::atomic<bool> opened_controls{false};
-};
-
-int nested_controls_remote_start_injector(void* data)
-{
-    auto& state = *static_cast<NestedControlsRemoteStartState*>(data);
-    og::runtime::ensure_thread_session();
-    if (!wait_for_interactable("control_settings"))
-        return 0;
-    interact("control_settings");
-    if (!wait_for_interactable("player1_remap"))
-        return 0;
-    state.opened_controls = true;
-    state.lobby->start_on_next_poll = true;
-    return 0;
-}
-
-} // namespace
-
-TEST(MenuEngine, remote_start_propagates_through_nested_main_options_controls)
+// main_options() normalizes every ordinary exit to MENU_REDRAW (it is a
+// child of the main menu). A remote start must survive that normalization —
+// otherwise a joiner parked in GAME SETTINGS when the host presses GO drops
+// back to the main menu instead of launching. This used to be pinned through
+// the nested CONTROLS subscreen; with that screen deleted the wrapper itself
+// is the subject.
+TEST(MenuEngine, remote_start_propagates_out_of_main_options)
 {
     EngineTestGuard guard;
     FakeLobbyClient lobby;
     lobby.networked = true;
     og::ui::install_active_picker_lobby_client(&lobby);
-    g_start_game_requested = false;
     pks().selected_menu_item = nullptr;
     clear_events();
-
-    NestedControlsRemoteStartState state{.lobby = &lobby};
-    SDL_Thread* thread = SDL_CreateThread(
-        nested_controls_remote_start_injector, "nested_controls_start",
-        &state);
-    ASSERT_NE(nullptr, thread);
+    g_start_game_requested = true;
 
     const Sint32 result = main_options();
-    SDL_WaitThread(thread, nullptr);
 
-    EXPECT_TRUE(state.opened_controls)
-        << "the remote start must be injected only after CONTROLS is active";
     EXPECT_TRUE(result & MENU_EXIT)
-        << "the child remote exit must not become the parent's local redraw";
+        << "the remote exit must not become main_options()'s local redraw";
     ASSERT_NE(nullptr, pks().selected_menu_item);
     EXPECT_EQ(og::ui::PickerMenuCommand::ContinueGame,
               pks().selected_menu_item->command);
+    g_start_game_requested = false;
 }
 
 TEST(MenuEngine, blocking_control_remap_polls_and_aborts_for_remote_start)
@@ -1528,8 +1506,6 @@ TEST(MenuEngine, options_family_registry_hosts)
     EXPECT_EQ(Kind::Engine,
               og::ui::menu_screen_host(og::ui::MenuScreenId::DisplaySettings).kind);
     EXPECT_EQ(Kind::Engine,
-              og::ui::menu_screen_host(og::ui::MenuScreenId::ControlSettings).kind);
-    EXPECT_EQ(Kind::Engine,
               og::ui::menu_screen_host(og::ui::MenuScreenId::MainOptions).kind);
 }
 
@@ -1782,10 +1758,9 @@ TEST(MenuEngine, content_screen_registry_hosts_and_semantics)
 
 // ---------------------------------------------------------------------------
 // MAIN OPTIONS content-draw index pins + the sprite-sheet label restore.
-// The draw hook reads rows [1]/[2]/[3]/[6] by ordinal (sound face, section
+// The draw hook reads rows [1]/[2]/[3]/[5] by ordinal (sound face, section
 // rule + captions, sprite-sheet face) — pin those ids so a row insertion
-// cannot silently redraw the wrong faces. CONTROLS is appended without
-// disturbing those historical ordinals. The legacy loop also re-wrote
+// cannot silently redraw the wrong faces. The legacy loop also re-wrote
 // "Sprite Sheet" to BOTH surfaces every frame after reset_buttons (the
 // pick-spritesheet subscreen swaps allbuttons_ under this screen); that
 // restore is now the row's LabelBinding, so pin that it exists and yields
@@ -1809,9 +1784,8 @@ TEST(MenuEngine, main_options_content_index_pins_and_sprite_label_binding)
     EXPECT_EQ("display_settings", buttons[2].id);
     EXPECT_EQ("gameplay_fx", buttons[3].id);
     EXPECT_EQ("pick_sprite_sheet", buttons[5].id);
-    EXPECT_EQ("control_settings", buttons[8].id);
-    EXPECT_EQ(button_action_id(ButtonAction::OpenControlSettings),
-              buttons[8].myfun);
+    // SPEED sits AFTER the historical ordinals the draw hook reads.
+    EXPECT_EQ("game_speed", buttons[8].id);
 
     const og::ui::LabelFormatter sprite_formatter =
         spec.rows[5].label_binding.formatter;
@@ -1819,6 +1793,26 @@ TEST(MenuEngine, main_options_content_index_pins_and_sprite_label_binding)
         << "the sprite-sheet dual-surface label restore must be a binding";
     og::ui::MenuLabelContext context;
     EXPECT_EQ("Sprite Sheet", sprite_formatter(context));
+
+    // SPEED re-derives from cfg gameplay/timer_wait every frame, and a full
+    // 11-step lap must come back to where it started (the display number is
+    // the inverted (20 - wait) / 2 + 1 the retired options menu showed).
+    const og::ui::LabelFormatter speed_formatter =
+        spec.rows[8].label_binding.formatter;
+    ASSERT_NE(nullptr, speed_formatter)
+        << "the SPEED face must re-derive from cfg, not from a click write";
+    const std::string previous_speed = cfg.get_setting("gameplay", "timer_wait");
+    cfg.apply_setting("gameplay", "timer_wait", "6");
+    EXPECT_EQ("SPEED: 8", speed_formatter(context))
+        << "the shipped default wait must read as SPEED 8";
+    std::string wait = "6";
+    for (int step = 0; step < 11; ++step) {
+        wait = og::ui::cycle_game_speed(wait);
+        cfg.apply_setting("gameplay", "timer_wait", wait);
+        EXPECT_EQ(og::ui::format_game_speed_label(wait), speed_formatter(context));
+    }
+    EXPECT_EQ("6", wait) << "eleven clicks must restore the selector";
+    cfg.apply_setting("gameplay", "timer_wait", previous_speed);
 }
 
 // ---------------------------------------------------------------------------
@@ -1838,7 +1832,7 @@ TEST(MenuEngine, display_settings_index_drift_pins_and_label_bindings)
 
     button* buttons = spec.buttons_accessor();
     const int count = spec.count_accessor();
-    ASSERT_EQ(7, count);
+    ASSERT_EQ(9, count);
     EXPECT_EQ("display_back", buttons[kDisplayMenuBackIndex].id);
     EXPECT_EQ("display_mode", buttons[kDisplayMenuModeIndex].id);
     EXPECT_EQ("display_resolution", buttons[kDisplayMenuResolutionIndex].id);
@@ -1846,6 +1840,13 @@ TEST(MenuEngine, display_settings_index_drift_pins_and_label_bindings)
     EXPECT_EQ("overscan_plus", buttons[kDisplayMenuOverscanPlusIndex].id);
     EXPECT_EQ("display_zoom", buttons[kDisplayMenuZoomIndex].id);
     EXPECT_EQ("display_smoothing", buttons[kDisplayMenuSmoothingIndex].id);
+    // The brightness pair appends after the constants' block; like the
+    // overscan pair it has no label binding (its live value is content-pass
+    // text, so the faces stay plain "- " / "+ ").
+    EXPECT_EQ("brightness_minus", buttons[7].id);
+    EXPECT_EQ("brightness_plus", buttons[8].id);
+    EXPECT_EQ(nullptr, spec.rows[7].label_binding.formatter);
+    EXPECT_EQ(nullptr, spec.rows[8].label_binding.formatter);
 
     og::ui::MenuLabelContext context;
     const og::ui::LabelFormatter mode_formatter =
@@ -2057,7 +2058,7 @@ TEST(MenuEngine, main_menu_registry_and_spec_shape)
     EXPECT_EQ("cloud", buttons[count - 1].id);
 }
 
-TEST(MenuEngine, seat_settings_registry_and_global_controls_ownership)
+TEST(MenuEngine, seat_settings_registry_and_player_control_ownership)
 {
     const og::ui::MenuScreenHost& seat_host =
         og::ui::menu_screen_host(og::ui::MenuScreenId::SeatSettings);
@@ -2074,11 +2075,29 @@ TEST(MenuEngine, seat_settings_registry_and_global_controls_ownership)
         og::ui::seat_settings_menu_screen_spec_mp();
     const og::ui::MenuScreenSpec& seat_nomp =
         og::ui::seat_settings_menu_screen_spec_nomp();
+    EXPECT_EQ(12, kSeatSettingsButtonCountMP);
+    EXPECT_EQ(11, kSeatSettingsButtonCountNoMP);
     EXPECT_EQ(kSeatSettingsButtonCountMP, seat_mp.row_count);
     EXPECT_EQ(kSeatSettingsButtonCountNoMP, seat_nomp.row_count);
     EXPECT_STREQ("seat_settings_back", seat_mp.rows[kSeatSettingsBackIndex].id);
     EXPECT_STREQ("seat_remove", seat_mp.rows[kSeatSettingsRemoveIndex].id);
     EXPECT_STREQ("seat_reset", seat_nomp.rows[kSeatSettingsResetIndex].id);
+    // The INPUT cycler is appended, so ordinals 0..5 and the highlight seed
+    // are unchanged. Its dispatch arg is 6 in both tables; the no-MP table
+    // has no REMOVE row so the same row materializes one slot earlier.
+    EXPECT_EQ(6, kSeatSettingsInputIndex);
+    EXPECT_EQ(6, kSeatSettingsInputRowMP);
+    EXPECT_EQ(5, kSeatSettingsInputRowNoMP);
+    EXPECT_STREQ("seat_input", seat_mp.rows[kSeatSettingsInputRowMP].id);
+    EXPECT_STREQ("seat_input", seat_nomp.rows[kSeatSettingsInputRowNoMP].id);
+    EXPECT_EQ(kSeatSettingsInputIndex,
+              seat_mp.rows[kSeatSettingsInputRowMP].arg);
+    EXPECT_EQ(kSeatSettingsInputIndex,
+              seat_nomp.rows[kSeatSettingsInputRowNoMP].arg);
+    EXPECT_EQ(ButtonAction::MenuSpecRow,
+              seat_mp.rows[kSeatSettingsInputRowMP].action);
+    EXPECT_EQ(ButtonAction::MenuSpecRow,
+              seat_nomp.rows[kSeatSettingsInputRowNoMP].action);
     EXPECT_EQ(kSeatSettingsModeIndex, seat_mp.default_highlight);
     EXPECT_EQ(kSeatSettingsModeIndex, seat_nomp.default_highlight);
 
@@ -2090,14 +2109,22 @@ TEST(MenuEngine, seat_settings_registry_and_global_controls_ownership)
         EXPECT_EQ(h, row.h) << row.id;
     };
     for (const og::ui::MenuScreenSpec* spec : {&seat_mp, &seat_nomp}) {
+        const bool mp = spec == &seat_mp;
+        const int input_row =
+            mp ? kSeatSettingsInputRowMP : kSeatSettingsInputRowNoMP;
         expect_geometry(spec->rows[kSeatSettingsModeIndex],
-                        16, 38, 98, 18);
+                        12, 30, 98, 18);
         expect_geometry(spec->rows[kSeatSettingsRemapIndex],
-                        123, 38, 86, 18);
+                        116, 30, 92, 18);
         expect_geometry(spec->rows[kSeatSettingsResetIndex],
-                        218, 38, 86, 18);
+                        214, 30, 90, 18);
+        // The aligned grid: columns x=12/116/214 (widths 98/92/90) with 6px
+        // gutters and a shared right edge at 304; the cycler takes its own
+        // y=54 band above the live binding panel.
+        expect_geometry(spec->rows[input_row], 12, 54, 98, 18);
         EXPECT_STREQ("RESET",
                      spec->rows[kSeatSettingsResetIndex].label);
+        EXPECT_STREQ("INPUT: WASD", spec->rows[input_row].label);
         EXPECT_EQ(kSeatSettingsModeIndex,
                   spec->rows[kSeatSettingsBackIndex].nav.down);
         EXPECT_EQ(kSeatSettingsRemapIndex,
@@ -2106,46 +2133,127 @@ TEST(MenuEngine, seat_settings_registry_and_global_controls_ownership)
                   spec->rows[kSeatSettingsRemapIndex].nav.right);
         EXPECT_EQ(kSeatSettingsRemapIndex,
                   spec->rows[kSeatSettingsResetIndex].nav.left);
+        // §7.1: the y=54 band is INPUT + ZOOM; the y=30 band drops into it
+        // (MODE onto INPUT, REMAP onto ZOOM) and RESET drops onto the HUD
+        // stack; INPUT still drops into the bottom band.
+        const int zoom_row =
+            mp ? kSeatSettingsZoomRowMP : kSeatSettingsZoomRowNoMP;
+        const int radar_row =
+            mp ? kSeatSettingsHudRadarRowMP : kSeatSettingsHudRadarRowNoMP;
+        const int score_row =
+            mp ? kSeatSettingsHudScoreRowMP : kSeatSettingsHudScoreRowNoMP;
+        EXPECT_EQ(input_row, spec->rows[kSeatSettingsModeIndex].nav.down);
+        EXPECT_EQ(zoom_row, spec->rows[kSeatSettingsRemapIndex].nav.down);
+        EXPECT_EQ(radar_row, spec->rows[kSeatSettingsResetIndex].nav.down);
+        EXPECT_EQ(kSeatSettingsModeIndex, spec->rows[input_row].nav.up);
+        EXPECT_EQ(kSeatSettingsTeamIndex, spec->rows[input_row].nav.down);
+        EXPECT_EQ(-1, spec->rows[input_row].nav.left);
+        EXPECT_EQ(zoom_row, spec->rows[input_row].nav.right);
+        EXPECT_EQ(input_row, spec->rows[kSeatSettingsTeamIndex].nav.up);
+        // ZOOM + HUD stack geometry and dispatch args (args are the MP
+        // positions in BOTH variants — the seat_input precedent).
+        expect_geometry(spec->rows[zoom_row], 116, 54, 92, 18);
+        EXPECT_STREQ("seat_zoom", spec->rows[zoom_row].id);
+        EXPECT_EQ(kSeatSettingsZoomIndex, spec->rows[zoom_row].arg);
+        expect_geometry(spec->rows[radar_row], 214, 78, 90, 18);
+        expect_geometry(spec->rows[radar_row + 1], 214, 100, 90, 18);
+        expect_geometry(spec->rows[radar_row + 2], 214, 122, 90, 18);
+        expect_geometry(spec->rows[score_row], 214, 144, 90, 18);
+        EXPECT_STREQ("seat_hud_radar", spec->rows[radar_row].id);
+        EXPECT_STREQ("seat_hud_life", spec->rows[radar_row + 1].id);
+        EXPECT_STREQ("seat_hud_foes", spec->rows[radar_row + 2].id);
+        EXPECT_STREQ("seat_hud_score", spec->rows[score_row].id);
+        EXPECT_EQ(kSeatSettingsHudRadarIndex, spec->rows[radar_row].arg);
+        EXPECT_EQ(kSeatSettingsHudScoreIndex, spec->rows[score_row].arg);
+        // Every link stays inside the variant's own row table.
+        for (int row = 0; row < spec->row_count; ++row) {
+            for (const int link : {spec->rows[row].nav.up,
+                                   spec->rows[row].nav.down,
+                                   spec->rows[row].nav.left,
+                                   spec->rows[row].nav.right}) {
+                EXPECT_LT(link, spec->row_count)
+                    << spec->rows[row].id << (mp ? " (mp)" : " (no-mp)");
+                EXPECT_GE(link, -1) << spec->rows[row].id;
+            }
+        }
     }
     expect_geometry(seat_mp.rows[kSeatSettingsTeamIndex],
-                    16, 169, 138, 18);
+                    12, 169, 138, 18);
     expect_geometry(seat_mp.rows[kSeatSettingsRemoveIndex],
                     166, 169, 138, 18);
     EXPECT_EQ(kSeatSettingsRemoveIndex,
               seat_mp.rows[kSeatSettingsTeamIndex].nav.right);
     EXPECT_EQ(kSeatSettingsTeamIndex,
               seat_mp.rows[kSeatSettingsRemoveIndex].nav.left);
+    EXPECT_EQ(kSeatSettingsHudScoreRowMP,
+              seat_mp.rows[kSeatSettingsRemoveIndex].nav.up);
     expect_geometry(seat_nomp.rows[kSeatSettingsTeamIndex],
                     91, 169, 138, 18);
-    EXPECT_EQ(kSeatSettingsRemapIndex,
-              seat_nomp.rows[kSeatSettingsTeamIndex].nav.up);
 
-    const og::ui::MenuScreenHost& controls_host =
-        og::ui::menu_screen_host(og::ui::MenuScreenId::ControlSettings);
-    ASSERT_EQ(og::ui::MenuScreenHost::Kind::Engine, controls_host.kind);
-    ASSERT_NE(nullptr, controls_host.spec);
-    EXPECT_STREQ("control_options", controls_host.spec->name);
-    EXPECT_EQ(og::ui::RemoteStartScope::MainScope,
-              controls_host.spec->remote_start);
-    EXPECT_TRUE(controls_host.spec->polls_lobby);
-    ASSERT_EQ(10, controls_host.spec->row_count);
-    const og::ui::MenuButtonSpec& reset =
-        controls_host.spec->rows[controls_host.spec->row_count - 1];
-    EXPECT_STREQ("reset_all_controls", reset.id);
-    EXPECT_EQ(ButtonAction::RestoreDefaultControls, reset.action);
+    // BFS over both variants: every row reachable from the highlight seed,
+    // and the cycler is not a dead end in either.
+    for (const og::ui::MenuScreenSpec* spec : {&seat_mp, &seat_nomp}) {
+        std::vector<bool> seen(
+            static_cast<std::size_t>(spec->row_count), false);
+        std::vector<int> queue{spec->default_highlight};
+        seen[static_cast<std::size_t>(spec->default_highlight)] = true;
+        while (!queue.empty()) {
+            const int row = queue.back();
+            queue.pop_back();
+            for (const int link : {spec->rows[row].nav.up,
+                                   spec->rows[row].nav.down,
+                                   spec->rows[row].nav.left,
+                                   spec->rows[row].nav.right}) {
+                if (link < 0 || link >= spec->row_count)
+                    continue;
+                if (seen[static_cast<std::size_t>(link)])
+                    continue;
+                seen[static_cast<std::size_t>(link)] = true;
+                queue.push_back(link);
+            }
+        }
+        for (int row = 0; row < spec->row_count; ++row) {
+            EXPECT_TRUE(seen[static_cast<std::size_t>(row)])
+                << "unreachable seat-settings row " << spec->rows[row].id;
+        }
+    }
 
-    // Persistent profiles remain available without opening a company.
+    // The per-seat screen is now the ONLY owner of direction mode, remap,
+    // reset and input device: the global CONTROLS subscreen that duplicated
+    // those rows for all four players is deleted, door and all.
     const og::ui::MenuScreenHost& options_host =
         og::ui::menu_screen_host(og::ui::MenuScreenId::MainOptions);
     ASSERT_EQ(og::ui::MenuScreenHost::Kind::Engine, options_host.kind);
     ASSERT_NE(nullptr, options_host.spec);
     const og::ui::MenuScreenSpec& options = *options_host.spec;
+    // BACK + Sound + DISPLAY + 3 FX doors + RESTORE + Sprite Sheet + SPEED.
     ASSERT_EQ(9, options.row_count);
     EXPECT_EQ(og::ui::RemoteStartScope::MainScope, options.remote_start);
-    const og::ui::MenuButtonSpec& door =
-        options.rows[options.row_count - 1];
-    EXPECT_STREQ("control_settings", door.id);
-    EXPECT_EQ(ButtonAction::OpenControlSettings, door.action);
+    for (int row = 0; row < options.row_count; ++row) {
+        EXPECT_STRNE("control_settings", options.rows[row].id)
+            << "GAME SETTINGS must not carry a global CONTROLS door";
+        EXPECT_NE(ButtonAction::RestoreDefaultControls, options.rows[row].action)
+            << options.rows[row].id;
+    }
+    // 48/49/50 are the retired OpenControlSettings / ToggleControlMode /
+    // EditPlayerKeymap dispatch ids (button.h marks them do-not-reuse). No
+    // registry screen may carry one: the enum names are gone, so this is the
+    // pin that keeps the VALUES from coming back under a new name.
+    for (int i = 0; i < static_cast<int>(og::ui::MenuScreenId::Count); ++i) {
+        const og::ui::MenuScreenHost& host =
+            og::ui::menu_screen_host(static_cast<og::ui::MenuScreenId>(i));
+        if (host.kind != og::ui::MenuScreenHost::Kind::Engine)
+            continue;
+        for (int row = 0; row < host.spec->row_count; ++row) {
+            const Sint32 action =
+                static_cast<Sint32>(host.spec->rows[row].action);
+            for (const Sint32 retired : {48, 49, 50}) {
+                EXPECT_NE(retired, action)
+                    << host.spec->name << " " << host.spec->rows[row].id
+                    << " uses retired ButtonAction " << retired;
+            }
+        }
+    }
 }
 
 // G9: the four materialized shapes, re-derived from the two specs. The
@@ -2432,42 +2540,6 @@ TEST(MenuEngine, main_menu_lookup_row_ids_exist)
                 << spec->name << " row '" << id
                 << "' is resolved by id and then used as a subscript";
         }
-    }
-}
-
-// The CONTROLS mode faces: the LabelBindings must track the live control
-// mode exactly as the legacy loop's per-frame writes did.
-TEST(MenuEngine, control_options_mode_label_bindings_follow_the_mode)
-{
-    const og::ui::MenuScreenHost& host =
-        og::ui::menu_screen_host(og::ui::MenuScreenId::ControlSettings);
-    ASSERT_EQ(og::ui::MenuScreenHost::Kind::Engine, host.kind);
-    const og::ui::MenuScreenSpec& spec = *host.spec;
-
-    button* buttons = spec.buttons_accessor();
-    const int count = spec.count_accessor();
-    ASSERT_EQ(10, count);
-    EXPECT_EQ("reset_all_controls", buttons[9].id);
-    EXPECT_EQ(button_action_id(ButtonAction::RestoreDefaultControls),
-              buttons[9].myfun);
-
-    og::ui::MenuLabelContext context;
-    for (int player = 0; player < 4; ++player) {
-        const int mode_index = 1 + player * 2;
-        EXPECT_EQ("player" + std::to_string(player + 1) + "_mode",
-                  buttons[mode_index].id);
-        const og::ui::LabelFormatter formatter =
-            spec.rows[mode_index].label_binding.formatter;
-        ASSERT_NE(nullptr, formatter) << buttons[mode_index].id;
-
-        const int saved_mode = get_player_control_mode(player);
-        set_player_control_mode(
-            player, static_cast<int>(ControlDirectionMode::FourDirection));
-        EXPECT_EQ("4-DIRECTION", formatter(context)) << buttons[mode_index].id;
-        set_player_control_mode(
-            player, static_cast<int>(ControlDirectionMode::EightDirection));
-        EXPECT_EQ("8-DIRECTION", formatter(context)) << buttons[mode_index].id;
-        set_player_control_mode(player, saved_mode);
     }
 }
 
@@ -2790,6 +2862,43 @@ TEST(MenuEngine, seat_settings_rejects_stale_spectator_and_persists_mode)
     EXPECT_EQ(std::to_string(expected_mode),
               cfg.get_setting("controls", "player1_mode"));
 
+    // INPUT: seat the profile on a known factory mapping so the cycle order
+    // is deterministic under --gtest_shuffle, then prove one click moves the
+    // live keymap, the derived name, and the button face together.
+    ASSERT_TRUE(og::input::assign_mapping_to_player(
+        0, og::input::factory_mapping(0)));
+    ASSERT_EQ("WASD", og::ui::current_input_selection(0).name);
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("INPUT: WASD", buttons[kSeatSettingsInputRow].label);
+
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kSeatSettingsInputIndex, &state));
+    EXPECT_EQ("ARROWS", og::ui::current_input_selection(0).name);
+    EXPECT_EQ(og::input::factory_default_key(
+                  1, 0, KEY_UP),
+              get_player_key_binding_for_mode(
+                  0, static_cast<int>(ControlDirectionMode::FourDirection),
+                  KEY_UP))
+        << "cycling loads the named mapping into BOTH mode keymaps";
+    EXPECT_EQ(og::input::factory_default_key(1, 1, KEY_UP),
+              get_player_key_binding_for_mode(
+                  0, static_cast<int>(ControlDirectionMode::EightDirection),
+                  KEY_UP));
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ(std::string("INPUT: ") + og::input::kArrowGlyphs,
+              buttons[kSeatSettingsInputRow].label)
+        << "the 98px face carries the arrow-glyph short name";
+    EXPECT_LE(buttons[kSeatSettingsInputRow].label.size(),
+              static_cast<std::size_t>(
+                  (buttons[kSeatSettingsInputRow].sizex - 8) / 6));
+    EXPECT_TRUE(trace_contains("basecamp", "seat_input slot=1 name=ARROWS"));
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kSeatSettingsInputIndex, &state));
+    EXPECT_EQ("IJKL", og::ui::current_input_selection(0).name)
+        << "the cycler advances through the factory names in order";
+    ASSERT_TRUE(og::input::assign_mapping_to_player(
+        0, og::input::factory_mapping(0)));
+
     const int old_up = og::runtime::current_session->player_keys_[0][KEY_UP];
     const int polls_before_remap = lobby.poll_count;
     lobby.start_on_next_poll = true;
@@ -2820,6 +2929,33 @@ TEST(MenuEngine, seat_settings_rejects_stale_spectator_and_persists_mode)
     }
     EXPECT_FALSE(state.removed);
     EXPECT_TRUE(trace_contains("popup", "REMOVE DENIED"));
+
+    // Design §3.2: REMAP writes the seat's live layout through to the mapping
+    // library under its re-derived name, and RESET drops that entry again so
+    // cycling away and back cannot resurrect an undone customization. (The
+    // wizard itself cancels immediately under TESTING; the write-through is
+    // what this drives.)
+    const auto library_entry = [](cfg_store& config, const char* name) {
+        const std::vector<og::input::MappingDefinition> library =
+            og::input::load_mapping_library(config);
+        return std::find_if(
+            library.begin(), library.end(),
+            [name](const og::input::MappingDefinition& entry) {
+                return entry.name == name;
+            }) != library.end();
+    };
+    EXPECT_FALSE(library_entry(cfg, "WASD"))
+        << "an untouched factory layout is implicit";
+    set_player_control_mode(
+        0, static_cast<int>(ControlDirectionMode::FourDirection));
+    set_player_key_binding(0, KEY_YELL, SDLK_P);
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kSeatSettingsRemapIndex, &state));
+    EXPECT_TRUE(library_entry(cfg, "WASD"))
+        << "a customized WASD is saved under the WASD name";
+
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kSeatSettingsResetIndex, &state));
+    EXPECT_FALSE(library_entry(cfg, "WASD"))
+        << "RESET drops the entry the customization wrote";
 }
 
 TEST(MenuEngine, base_camp_rail_and_add_seat_boundaries_are_behavioral)
@@ -2897,6 +3033,107 @@ TEST(MenuEngine, base_camp_rail_and_add_seat_boundaries_are_behavioral)
     EXPECT_EQ(1, lobby.add_seat_calls);
     EXPECT_TRUE(trace_contains("popup", "ADD DENIED"));
 #endif
+}
+
+// §7.1: the seat editor's ZOOM + HUD rows flip the seat's runtime prefs
+// (viewob[slot] when live), mirror to cfg, and keep both label surfaces
+// live through the rewire; seats without a live viewscreen carry cfg alone.
+TEST(MenuEngine, seat_settings_hud_and_zoom_rows_toggle_and_persist)
+{
+    EngineTestGuard engine_guard;
+    MenuCallbackStateGuard callback_guard;
+    FakeLobbyClient lobby;
+    lobby.networked = false;
+    lobby.local_seats = 1;
+    lobby.players = {make_menu_lobby_player(0, "LOCAL COMPANY")};
+    lobby.local_indices = {0};
+    og::ui::install_active_picker_lobby_client(&lobby);
+
+    screen& output = *og::runtime::current_session->myscreen_;
+    viewscreen* const view = output.viewob[0].get();
+    ASSERT_NE(nullptr, view);
+    // Save/restore the §7.1 cfg keys + live prefs this test touches.
+    struct Saved {
+        std::array<std::pair<std::string, std::string>, 12> cfg_keys;
+        signed char radar, life;
+        Sint32 zoom;
+    } saved;
+    int at = 0;
+    for (int player : {1, 3})
+        for (const char* suffix :
+             {"hud_radar", "hud_life", "hud_foes", "hud_score", "view_zoom",
+              "hud_migrated"})
+        {
+            const std::string key =
+                std::format("player{}_{}", player, suffix);
+            saved.cfg_keys[static_cast<std::size_t>(at++)] = {
+                key, cfg.get_setting("controls", key)};
+        }
+    saved.radar = view->prefs[PREF_RADAR];
+    saved.life = view->prefs[PREF_LIFE];
+    saved.zoom = view->view_zoom_step_;
+
+    og::ui::SeatSettingsScreenState state{
+        .seat_id = lobby.players.front().seat_id,
+        .player_index = lobby.players.front().player_index,
+        .local_slot = 0,
+    };
+    og::ui::install_seat_settings_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::seat_settings_menu_screen_spec_mp();
+    button* buttons = spec.buttons_accessor();
+    const int count = spec.count_accessor();
+    int highlighted = kSeatSettingsModeIndex;
+
+    // RADAR: prefs flip on viewob[0], cfg mirror, label flip on the rewire.
+    view->prefs[PREF_RADAR] = PREF_RADAR_ON;
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("RADAR: ON", buttons[kSeatSettingsHudRadarRowMP].label);
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kSeatSettingsHudRadarIndex, &state));
+    EXPECT_EQ(PREF_RADAR_OFF, view->prefs[PREF_RADAR]);
+    EXPECT_EQ("0", cfg.get_setting("controls", "player1_hud_radar"));
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("RADAR: OFF", buttons[kSeatSettingsHudRadarRowMP].label);
+
+    // HP normalization through the seat screen: legacy SMALL -> OFF -> BOTH.
+    view->prefs[PREF_LIFE] = PREF_LIFE_SMALL;
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("HP: ON", buttons[kSeatSettingsHudLifeRowMP].label);
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kSeatSettingsHudLifeIndex, &state));
+    EXPECT_EQ(PREF_LIFE_OFF, view->prefs[PREF_LIFE]);
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kSeatSettingsHudLifeIndex, &state));
+    EXPECT_EQ(PREF_LIFE_BOTH, view->prefs[PREF_LIFE]);
+
+    // ZOOM: the cycle advances and persists; the label rides the rewire.
+    ASSERT_TRUE(og::ui::per_view_zoom_available());
+    view->view_zoom_step_ = 0;
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kSeatSettingsZoomIndex, &state));
+    EXPECT_EQ(1, static_cast<int>(view->view_zoom_step_));
+    EXPECT_EQ("1", cfg.get_setting("controls", "player1_view_zoom"));
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("ZOOM: 0.9X", buttons[kSeatSettingsZoomRowMP].label);
+
+    // A seat WITHOUT a live viewscreen (Base Camp slot beyond numviews):
+    // cfg is the carrier, and the label reads it back.
+    og::ui::toggle_player_hud_row(2, og::ui::PlayerHudRow::Radar);
+    EXPECT_EQ("0", cfg.get_setting("controls", "player3_hud_radar"));
+    EXPECT_EQ("RADAR: OFF",
+              og::ui::player_hud_row_label(2, og::ui::PlayerHudRow::Radar));
+    og::ui::toggle_player_hud_row(2, og::ui::PlayerHudRow::Radar);
+    EXPECT_EQ("1", cfg.get_setting("controls", "player3_hud_radar"));
+
+    for (const auto& [key, value] : saved.cfg_keys)
+        cfg.apply_setting("controls", key, value);
+    // The handlers persisted mid-test values to disk; re-save the restored
+    // ones so later binaries never inherit toggled HUD keys.
+    cfg.save_settings();
+    view->prefs[PREF_RADAR] = saved.radar;
+    view->prefs[PREF_LIFE] = saved.life;
+    view->view_zoom_step_ = saved.zoom;
+    og::ui::install_seat_settings_state_for_screen(nullptr);
 }
 
 TEST(MenuEngine, networked_seat_editor_and_matchup_propagate_remote_start)

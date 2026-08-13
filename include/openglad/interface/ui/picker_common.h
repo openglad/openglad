@@ -874,6 +874,41 @@ std::string format_depth_fx_label(const std::string& value);
 // True for every value but "off" (the button's green/red backing state).
 bool depth_fx_is_active(const std::string& value);
 
+// --- GAME SETTINGS speed selector (cfg gameplay/timer_wait) ---
+// The sim's per-tick wait, shown as the classic inverted 1..11 SPEED number
+// ((20 - timer_wait) / 2 + 1). timer_wait 6 (the shipped default) reads as
+// SPEED 8. The stored value is what GameWorld::timer_wait carries and what
+// the host stamps into pending_timer_wait_request_.
+inline constexpr int kTimerWaitFastest = 0;
+inline constexpr int kTimerWaitSlowest = 20;
+inline constexpr int kGameSpeedMin = 1;
+inline constexpr int kGameSpeedMax = 11;
+
+// Parse cfg gameplay/timer_wait: clamped to 0..20, anything unparseable
+// (including the empty string an absent key reads as) falls back to the
+// shipped default, og::sim::DEFAULT_TIMER_WAIT.
+int parse_timer_wait(const std::string& value);
+int game_speed_from_timer_wait(int timer_wait);
+int timer_wait_from_game_speed(int speed);
+// One click = one SPEED step faster, wrapping 11 -> 1. Returns the new cfg
+// value (a timer_wait, not the display number).
+std::string cycle_game_speed(const std::string& current);
+// "SPEED: 8" — 9 chars at the widest ("SPEED: 11"), inside the 90px face.
+std::string format_game_speed_label(const std::string& value);
+
+// --- DISPLAY brightness (cfg graphics/brightness) ---
+// Signed gamma steps handed to adjust_palette(). Clamped: the palette
+// transform saturates to white/black past these, so further steps would be
+// dead travel on the -/+ pair.
+inline constexpr int kBrightnessStepMin = -5;
+inline constexpr int kBrightnessStepMax = 5;
+int parse_brightness_steps(const std::string& value);
+// Step the stored value by one in `direction`'s sign, clamped to the range.
+std::string adjust_brightness_steps(const std::string& current, int direction);
+// "Brightness: 0" / "Brightness: +2" / "Brightness: -3" — the live text
+// beside the -/+ pair.
+std::string format_brightness_label(int steps);
+
 // --- DISPLAY zoom and smoothing selectors ---
 // Zoom selector (cfg graphics/zoom, 1.0 classic-density toward 0.1) and the
 // world-canvas-only smoothing selector (cfg graphics/smoothing,

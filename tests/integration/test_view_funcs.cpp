@@ -1,20 +1,12 @@
-#include <openglad/gameplay/input_state.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <openglad/legacy/colors.h>
 #include <SDL3/SDL.h>
 #include <gtest/gtest.h>
 
-#include "test_input_helpers.h"
-
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 namespace {
-
-struct SpeedWarningDialogState {
-    bool started = false;
-    bool finished = false;
-};
 
 struct ClassicViewLayoutGuard
 {
@@ -37,17 +29,6 @@ struct ClassicViewLayoutGuard
         game->relayout_views();
     }
 };
-
-int speed_warning_dialog_injector(void* data)
-{
-    og::runtime::ensure_thread_session();
-    auto* state = static_cast<SpeedWarningDialogState*>(data);
-    state->started = true;
-    SDL_Delay(50);
-    inject_key_press(SDLK_SPACE, 10);
-    state->finished = true;
-    return 0;
-}
 
 } // namespace
 
@@ -205,109 +186,6 @@ TEST(ViewFuncs, viewscreen_shift_text)
     vs->shift_text(0);
     // After shifting from 0, "Second" should now be in slot 0
     ASSERT_EQ(15, (int)vs->textcycles[0]) << "shift should move second to first";
-}
-
-
-// ---------------------------------------------------------------------------
-// viewscreen change_speed tests
-// ---------------------------------------------------------------------------
-
-TEST(ViewFuncs, viewscreen_change_speed_report)
-{
-    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    ASSERT_TRUE(vs != nullptr) << "viewscreen 0 should exist";
-
-    Sint32 speed = vs->change_speed(0);
-    ASSERT_TRUE(speed >= 1 && speed <= 11) << "speed should be in valid range";
-}
-
-
-TEST(ViewFuncs, viewscreen_change_speed_increase)
-{
-    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    Sint32 speed1 = vs->change_speed(0);
-    Sint32 speed2 = vs->change_speed(1);
-    ASSERT_TRUE(speed2 >= speed1) << "increasing speed should give >= current speed";
-    // Reset by decreasing
-    vs->change_speed(-1);
-}
-
-TEST(ViewFuncs, viewscreen_change_speed_clamps_at_both_supported_limits)
-{
-    viewscreen* const vs =
-        og::runtime::current_session->myscreen_->viewob[0].get();
-    ASSERT_NE(nullptr, vs);
-
-    auto& session = *og::runtime::current_session;
-    const bool previous_relay_active = session.relay_transport_active_;
-    const bool previous_warning_shown = session.relay_speed_warning_shown_;
-    const std::int8_t previous_pending_timer_wait =
-        session.pending_timer_wait_request_;
-    const signed char previous_timer_wait = session.myscreen_->world().timer_wait;
-
-    session.relay_transport_active_ = false;
-    session.myscreen_->world().timer_wait = 1;
-    EXPECT_EQ(11, vs->change_speed(1));
-    EXPECT_EQ(0, session.myscreen_->world().timer_wait);
-    EXPECT_EQ(0, session.pending_timer_wait_request_);
-
-    session.myscreen_->world().timer_wait = 19;
-    EXPECT_EQ(1, vs->change_speed(-1));
-    EXPECT_EQ(20, session.myscreen_->world().timer_wait);
-    EXPECT_EQ(20, session.pending_timer_wait_request_);
-
-    session.relay_transport_active_ = previous_relay_active;
-    session.relay_speed_warning_shown_ = previous_warning_shown;
-    session.pending_timer_wait_request_ = previous_pending_timer_wait;
-    session.myscreen_->world().timer_wait = previous_timer_wait;
-}
-
-TEST(ViewFuncs, viewscreen_change_speed_shows_relay_warning_only_below_threshold)
-{
-    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    ASSERT_TRUE(vs != nullptr) << "viewscreen 0 should exist";
-
-    auto& session = *og::runtime::current_session;
-    const bool previous_relay_active = session.relay_transport_active_;
-    const bool previous_warning_shown = session.relay_speed_warning_shown_;
-    const std::int8_t previous_pending_timer_wait =
-        session.pending_timer_wait_request_;
-    const signed char previous_timer_wait = session.myscreen_->world().timer_wait;
-
-    session.relay_transport_active_ = true;
-    session.relay_speed_warning_shown_ = false;
-    session.pending_timer_wait_request_ = kNoTimerWaitRequest;
-    session.myscreen_->world().timer_wait = 4;
-
-    SpeedWarningDialogState state;
-    SDL_Thread* thread = SDL_CreateThread(
-        speed_warning_dialog_injector,
-        "speed_warning_dialog_injector",
-        &state);
-    ASSERT_TRUE(thread != nullptr) << "failed to create warning injector thread";
-
-    const Sint32 faster_speed = vs->change_speed(1);
-
-    int thread_result = 0;
-    SDL_WaitThread(thread, &thread_result);
-
-    EXPECT_TRUE(state.started);
-    EXPECT_TRUE(state.finished);
-    EXPECT_EQ(2, session.myscreen_->world().timer_wait);
-    EXPECT_EQ(2, session.pending_timer_wait_request_);
-    EXPECT_TRUE(session.relay_speed_warning_shown_);
-    EXPECT_EQ(10, faster_speed);
-
-    const Sint32 slower_speed = vs->change_speed(-1);
-    EXPECT_EQ(4, session.myscreen_->world().timer_wait);
-    EXPECT_EQ(4, session.pending_timer_wait_request_);
-    EXPECT_FALSE(session.relay_speed_warning_shown_);
-    EXPECT_EQ(9, slower_speed);
-
-    session.relay_transport_active_ = previous_relay_active;
-    session.relay_speed_warning_shown_ = previous_warning_shown;
-    session.pending_timer_wait_request_ = previous_pending_timer_wait;
-    session.myscreen_->world().timer_wait = previous_timer_wait;
 }
 
 

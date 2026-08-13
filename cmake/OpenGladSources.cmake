@@ -149,6 +149,7 @@ set(OG_INTERFACE_COMPONENT_SOURCES
     ${SRC_DIR}/interface/fps_overlay.cpp
     ${SRC_DIR}/interface/guy_create.cpp
     ${SRC_DIR}/interface/input/input.cpp
+    ${SRC_DIR}/interface/input/input_mappings.cpp
     ${SRC_DIR}/interface/input/input_state.cpp
     ${SRC_DIR}/interface/level_runtime_data.cpp
     ${SRC_DIR}/interface/platform_bridge.cpp
@@ -181,8 +182,10 @@ set(OG_INTERFACE_COMPONENT_SOURCES
     ${SRC_DIR}/interface/ui/level_picker.cpp
     ${SRC_DIR}/interface/ui/menu_binding.cpp
     ${SRC_DIR}/interface/ui/menu_model.cpp
+    ${SRC_DIR}/interface/ui/input_cycler.cpp
     ${SRC_DIR}/interface/ui/menu_screen_runner.cpp
     ${SRC_DIR}/interface/ui/menu_screen_specs.cpp
+    ${SRC_DIR}/interface/ui/pause_menu.cpp
     ${SRC_DIR}/interface/ui/picker.cpp
     ${SRC_DIR}/interface/ui/picker_accessible_levels.cpp
     ${SRC_DIR}/interface/ui/picker_common.cpp

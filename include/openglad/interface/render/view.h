@@ -26,6 +26,10 @@
 #include <string_view>
 #include <utility>
 
+// Blocking-wait poll hook (canonical definition in openglad/interface/input.h;
+// identical alias redeclaration keeps this header off input.h's include cost).
+using KeyWaitPollCallback = bool (*)();
+
 // Viewscreen-related defines
 inline constexpr signed char PREF_LIFE = 0;
   inline constexpr signed char PREF_LIFE_TEXT  = 0;
@@ -42,6 +46,8 @@ inline constexpr signed char PREF_VIEW = 2;
   inline constexpr signed char PREF_VIEW_1      = 2;
   inline constexpr signed char PREF_VIEW_2      = 3;
   inline constexpr signed char PREF_VIEW_3      = 4;
+// Dead slot: keyprefs.dat's 10-byte prefs block has fixed offsets, so the
+// index must stay even though nothing reads the value.
 inline constexpr signed char PREF_JOY = 3;
   inline constexpr signed char PREF_NO_JOY = 0;
   inline constexpr signed char PREF_USE_JOY = 1;
@@ -51,6 +57,8 @@ inline constexpr signed char PREF_RADAR = 4;
 inline constexpr signed char PREF_FOES = 5;
   inline constexpr signed char PREF_FOES_OFF    = 0;
   inline constexpr signed char PREF_FOES_ON     = 1;
+// Dead slot (same reason as PREF_JOY): brightness is cfg graphics/brightness
+// now, applied in the palette path rather than per view.
 inline constexpr signed char PREF_GAMMA = 6;
 inline constexpr signed char PREF_OVERLAY = 7;
   inline constexpr signed char PREF_OVERLAY_OFF = 0;
@@ -72,19 +80,20 @@ unsigned char compute_mp_color(float mp, float maxmp);
 void reset_viewscreen_input_debounce();
 
 // This is a child object of all viewscreens
-//  It is used to save and load all prefs
+//  It is used to load all prefs
 //  because each player has their own
 //  prefs.  WE ASSUME 4 PLAYERS ALWAYS
+// Read-only: keyprefs.dat is a legacy seed for the HUD preferences (cfg owns
+// them once apply_hud_settings_from_cfg has migrated a player), and nothing
+// writes the file any more.
 class options
 {
 	public:
 		options();
 		~options();
 		short load(viewscreen *viewp);
-		short save(viewscreen *viewp);
 	protected:
 		signed char prefs[4][10];
-		char keys[4][16];
 };
 
 class viewscreen
@@ -161,16 +170,54 @@ class viewscreen
 		// pane is a projection of this rectangle at reduced zoom.
 		[[nodiscard]] std::pair<Sint32, Sint32>
 		project_world_point_to_gameplay_ui(float x, float y) const;
-		void view_team();
-		void view_team(short left, short top, short right, short bottom);
-		void options_menu();   // display the options menu
-		Sint32 set_key_prefs(); // get player keyboard info
-		void view_key_bindings(); // display current key bindings
-		Sint32 change_speed(Sint32 whichway);
-		Sint32 change_gamma(Sint32 whichway);
-		walker* find_next_control();
 
-		Sint32 gamma; // for gamma correction
+		// ---- Per-view zoom-out (§7.1). Cycle position 0 = GAME (no override
+		// — follow graphics/zoom), 1..5 = 0.9x..0.5x. Runtime carrier beside
+		// prefs[]; persisted as cfg controls/playerN_view_zoom. The step
+		// changes GEOMETRY only (canvas composition + window size in
+		// resize(whatmode)); the render loop has no zoom code — gameplay
+		// pixels are resampled exactly once, by the presentation path.
+		Sint32 view_zoom_step_ = 0;
+		static constexpr Sint32 kViewZoomStepCount = 6;
+		// The step's scale numerator in tenths (10 = GAME .. 5 = 0.5x), the
+		// per-view factor composed into og::compose_zoom_pct.
+		[[nodiscard]] static constexpr Sint32 view_scale_num_for_step(
+			Sint32 step)
+		{
+			const Sint32 clamped = step < 0 ? 0
+				: (step >= kViewZoomStepCount ? kViewZoomStepCount - 1 : step);
+			return 10 - clamped;
+		}
+		[[nodiscard]] Sint32 view_scale_num() const
+		{
+			return view_scale_num_for_step(view_zoom_step_);
+		}
+		// ---- Canvas SLOT (§7.1): this view's proportional share of the
+		// world canvas (the baseline layout projected onto it — exactly the
+		// pre-per-view-zoom rect). The 1:1 render WINDOW (xloc/yloc/xview/
+		// yview) equals the slot scaled by n_min/n_view and anchored at the
+		// slot's top-left; window == slot whenever this view sits at the
+		// minimum effective zoom (in particular when every view is at GAME).
+		// relayout publishes {window -> slot} presentation slices whenever
+		// the two differ.
+		Sint32 slot_x_ = 0;
+		Sint32 slot_y_ = 0;
+		Sint32 slot_w_ = 0;
+		Sint32 slot_h_ = 0;
+		// §7.1 persistence: overlay the cfg-carried HUD/zoom values onto the
+		// keyprefs-loaded prefs (called once from the constructor). When this
+		// player's cfg keys were never written, seeds them from the legacy
+		// keyprefs.dat prefs instead (one-shot; apply_setting only).
+		void apply_hud_settings_from_cfg();
+		// Blocking team roster. The optional poll callback runs once per
+		// wait-loop pass (the pause menu pumps its transport + pause
+		// keep-alive through it); returning false ends the wait. Under
+		// TESTING the blocking wait is compiled out (returns immediately);
+		// view_team_testing_set_poll_passes drives the poll contract.
+		void view_team(KeyWaitPollCallback poll = nullptr);
+		void view_team(short left, short top, short right, short bottom,
+		               KeyWaitPollCallback poll = nullptr);
+		walker* find_next_control();
 
 		std::string textlist[MAX_MESSAGES];
 		short textcycles[MAX_MESSAGES];  // duration in sim ticks
@@ -182,7 +229,6 @@ class viewscreen
 		// this with mynum. -1 means spectator/no seat.
 		short global_player_index_ = -1;
 		short my_team;         // used for Player-v-Player mode
-			int* mykeys;     // holds the keyboard mapping
 			walker  *control;  // the user
 			Sint32 xpos,ypos;
 			Sint32 topx, topy;

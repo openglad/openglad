@@ -79,6 +79,14 @@ struct SessionState {
     std::array<unsigned char, 768> curpal_ = {};
     std::array<unsigned char, 768> temppal_ = {};
     unsigned char* videoptr_ = nullptr;
+    // BRIGHTNESS (cfg graphics/brightness, DISPLAY subscreen): the gamma
+    // steps set_palette() re-applies to curpal_ on EVERY palette set. This
+    // used to be viewscreen::gamma, a per-view member nothing re-applied —
+    // so every keyframe palette sync, level start and cheat-palette flip
+    // silently reset the player's brightness. Seeded from cfg on first use
+    // (display_brightness_steps in pal32.cpp).
+    int display_brightness_ = 0;
+    bool display_brightness_seeded_ = false;
 
     // Game speed + debug state (Batch 7) — moved from util.cpp/walker.cpp/obmap.cpp.
     float g_game_speed_factor_ = 1.0f;
@@ -113,12 +121,6 @@ struct SessionState {
     // Entity-layer state (Phase 4) — moved from guy.cpp and cheat_handler.cpp.
     int guy_id_counter_ = 0;
     std::array<short, 6> changedteam_ = {};
-
-    // Keybinding storage (Phase 5) — moved from view.cpp allkeys global.
-    // Legacy 16-slot block: keyprefs.dat's on-disk format is fixed at 16 ints
-    // per player, so this deliberately does NOT grow with kNumKeys.
-    static constexpr int kNumLegacyKeys = 16;
-    int allkeys_[4][kNumLegacyKeys] = {};
 
     // Timer anchor (Phase 6) — moved from util.cpp thread_local g_reset_time.
     std::chrono::steady_clock::time_point reset_time_ = std::chrono::steady_clock::now();

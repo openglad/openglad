@@ -1949,44 +1949,59 @@ TEST(NetTransport,
 TEST(NetTransport, game_server_bounds_sustained_hash_mismatches_with_disconnect)
 {
     // WI-3(b) server side: every hash mismatch forces a full keyframe; a
-    // client that NEVER heals (map-level divergence, or a crafted client)
-    // must be cut off after a bounded number of consecutive strikes instead
-    // of rubber-banding (and amplifying bandwidth) forever.
+    // REMOTE client that NEVER heals (map-level divergence, or a crafted
+    // client) must be cut off after a bounded number of consecutive strikes
+    // instead of rubber-banding (and amplifying bandwidth) forever.
+    //
+    // Every remembered snapshot is consumed by exactly ONE comparison (a
+    // mismatched front no longer wedges the queue — the paused seat-churn
+    // regression), so each strike here pairs a fresh snapshot with a wrong
+    // check. Peer 1 connects first and holds the host exemption; peer 7 is
+    // the remote under test.
     TestGameWorld fixture;
     MockTransport transport;
     og::sim::GameServer server(fixture.world(), fixture.events, transport);
 
+    server.connect_client(1u);
     server.connect_client(7u);
     server.send_initial_snapshot(7u, og::sim::SnapshotCaptureMode::Peek);
     ASSERT_GE(transport.sent_messages().size(), 2u);
-    const og::sim::WorldSnapshot snapshot =
-        og::sim::deserialize_snapshot(transport.sent_messages()[1].data);
 
-    const auto queue_mismatch = [&transport, &snapshot] {
+    // step() ticks this fixture's world, so every keyframe carries the tick
+    // it was captured at: each check answers the LATEST sent snapshot.
+    const auto last_snapshot = [&transport] {
+        return og::sim::deserialize_snapshot(
+            transport.sent_messages().back().data);
+    };
+    const auto queue_check = [&transport, &last_snapshot](bool matching) {
+        const og::sim::WorldSnapshot snapshot = last_snapshot();
         transport.queue_received(
             7u,
             og::sim::serialize_snapshot_hash_check_message({
                 .tick = snapshot.tick_count,
-                .snapshot_hash = snapshot.snapshot_hash + 1u,
+                .snapshot_hash = matching ? snapshot.snapshot_hash
+                                          : snapshot.snapshot_hash + 1u,
             }));
     };
+    const auto queue_strike = [&server, &queue_check] {
+        server.send_initial_snapshot(7u, og::sim::SnapshotCaptureMode::Peek);
+        queue_check(false);
+    };
 
-    // One short of the bound: still connected...
-    for (std::uint32_t i = 0;
+    // One short of the bound (the initial snapshot pairs with the first
+    // wrong check): still connected...
+    queue_check(false);
+    for (std::uint32_t i = 1;
          i + 1 < og::sim::kMaxConsecutiveSnapshotHashMismatches; ++i)
     {
-        queue_mismatch();
+        queue_strike();
     }
     server.step();
     EXPECT_TRUE(transport.disconnected_peers().empty());
 
     // ...and a single MATCHING check resets the strike counter.
-    transport.queue_received(
-        7u,
-        og::sim::serialize_snapshot_hash_check_message({
-            .tick = snapshot.tick_count,
-            .snapshot_hash = snapshot.snapshot_hash,
-        }));
+    server.send_initial_snapshot(7u, og::sim::SnapshotCaptureMode::Peek);
+    queue_check(true);
     server.step();
     EXPECT_TRUE(transport.disconnected_peers().empty());
 
@@ -1994,11 +2009,83 @@ TEST(NetTransport, game_server_bounds_sustained_hash_mismatches_with_disconnect)
     for (std::uint32_t i = 0;
          i < og::sim::kMaxConsecutiveSnapshotHashMismatches; ++i)
     {
-        queue_mismatch();
+        queue_strike();
     }
     server.step();
     ASSERT_FALSE(transport.disconnected_peers().empty());
     EXPECT_EQ(7u, transport.disconnected_peers().front());
+}
+
+TEST(NetTransport, game_server_never_desync_disconnects_the_host_peer)
+{
+    // The host peer is this machine's own display client: closing its
+    // in-process transport makes the very next local send throw
+    // ("InProcessTransport peer N is not connected" — the mid-game
+    // ADD/REMOVE PLAYER crash), so sustained strikes keep force-keyframing
+    // it instead of cutting it.
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    server.connect_client(7u); // first client == host
+    server.send_initial_snapshot(7u, og::sim::SnapshotCaptureMode::Peek);
+    ASSERT_GE(transport.sent_messages().size(), 2u);
+    const og::sim::WorldSnapshot snapshot =
+        og::sim::deserialize_snapshot(transport.sent_messages()[1].data);
+
+    for (std::uint32_t i = 0;
+         i < og::sim::kMaxConsecutiveSnapshotHashMismatches * 2u; ++i)
+    {
+        server.send_initial_snapshot(7u, og::sim::SnapshotCaptureMode::Peek);
+        transport.queue_received(
+            7u,
+            og::sim::serialize_snapshot_hash_check_message({
+                .tick = snapshot.tick_count,
+                .snapshot_hash = snapshot.snapshot_hash + 1u,
+            }));
+    }
+    server.step();
+    EXPECT_TRUE(transport.disconnected_peers().empty())
+        << "the host peer must survive sustained hash mismatches";
+}
+
+TEST(NetTransport, game_server_never_desync_disconnects_marked_local_peers)
+{
+    // Same reasoning as the host-peer exemption above, extended to every
+    // same-process peer: a LOCAL splitscreen session runs one in-process
+    // client per seat, and cutting a background seat's peer as "desynced"
+    // makes the display's next send throw ("InProcessTransport peer N is not
+    // connected"). The local transport shadow marks all of its clients; a
+    // marked peer keeps being force-keyframed instead of being cut. Remote
+    // peers keep the strike-out (pinned by
+    // game_server_bounds_sustained_hash_mismatches_with_disconnect above).
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    server.connect_client(1u); // first client == host
+    server.connect_client(2u); // a background local seat's peer
+    server.mark_peer_local(2u);
+
+    server.send_initial_snapshot(2u, og::sim::SnapshotCaptureMode::Peek);
+    ASSERT_GE(transport.sent_messages().size(), 2u);
+    const og::sim::WorldSnapshot snapshot =
+        og::sim::deserialize_snapshot(transport.sent_messages().back().data);
+
+    for (std::uint32_t i = 0;
+         i < og::sim::kMaxConsecutiveSnapshotHashMismatches * 2u; ++i)
+    {
+        server.send_initial_snapshot(2u, og::sim::SnapshotCaptureMode::Peek);
+        transport.queue_received(
+            2u,
+            og::sim::serialize_snapshot_hash_check_message({
+                .tick = snapshot.tick_count,
+                .snapshot_hash = snapshot.snapshot_hash + 1u,
+            }));
+    }
+    server.step();
+    EXPECT_TRUE(transport.disconnected_peers().empty())
+        << "a marked local peer must survive sustained hash mismatches";
 }
 
 TEST(NetTransport, game_client_bounds_rejected_keyframes_into_fatal_desync)

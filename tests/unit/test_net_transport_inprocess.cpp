@@ -1481,8 +1481,69 @@ TEST(NetTransportInProcess,
     fixture.expect_clients_match_server();
 }
 
+// The anti-grief rate limit applies to REMOTE peers (client 1 here — client
+// 0 is the first connected peer and therefore the host, which is exempt).
 TEST(NetTransportInProcess,
-     network_fixture_pause_request_rate_limit_rejects_spam_until_window_expires)
+     network_fixture_pause_request_rate_limit_rejects_remote_spam_until_window_expires)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 2,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+
+    std::uint64_t now_ms = 1000;
+    fixture.server().set_wall_clock_ms_source([&] { return now_ms; });
+
+    fixture.client(1).send_pause_request();
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+    fixture.poll_client_messages(1);
+    ASSERT_TRUE(fixture.server().paused());
+
+    fixture.client(1).send_pause_response();
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+    fixture.poll_client_messages(1);
+    ASSERT_FALSE(fixture.server().paused());
+
+    now_ms += static_cast<std::uint64_t>(og::sim::PAUSE_RATE_LIMIT_MS) - 1u;
+    const std::uint32_t pre_rate_limited_tick = fixture.server_world().tick_count_;
+    fixture.client(1).send_pause_request();
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+    fixture.poll_client_messages(1);
+
+    EXPECT_FALSE(fixture.server().paused());
+    EXPECT_GT(fixture.server_world().tick_count_, pre_rate_limited_tick);
+
+    now_ms += 2u;
+    fixture.client(1).send_pause_request();
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+    fixture.poll_client_messages(1);
+
+    EXPECT_TRUE(fixture.server().paused());
+}
+
+// The host peer (the local machine's own display client) is exempt from the
+// rate limit: closing and reopening the pause menu inside the 5s window must
+// still pause (docs/pause-menu-design.md §2.1).
+TEST(NetTransportInProcess,
+     network_fixture_host_pause_requests_exempt_from_rate_limit)
 {
     og::sim::test::NetworkTestFixture fixture({
         .player_count = 1,
@@ -1512,25 +1573,96 @@ TEST(NetTransportInProcess,
     fixture.poll_client_messages(0);
     ASSERT_FALSE(fixture.server().paused());
 
-    now_ms += static_cast<std::uint64_t>(og::sim::PAUSE_RATE_LIMIT_MS) - 1u;
-    const std::uint32_t pre_rate_limited_tick = fixture.server_world().tick_count_;
+    now_ms += 100u;  // deep inside PAUSE_RATE_LIMIT_MS
     fixture.client(0).send_pause_request();
     fixture.with_server_context([&] {
         fixture.server().step();
     });
     fixture.poll_client_messages(0);
 
-    EXPECT_FALSE(fixture.server().paused());
-    EXPECT_GT(fixture.server_world().tick_count_, pre_rate_limited_tick);
+    EXPECT_TRUE(fixture.server().paused())
+        << "the host peer's menu must always be able to re-pause";
+}
 
-    now_ms += 2u;
+// The pause menu's ~20s keep-alive: a repeat request from the pause OWNER
+// refreshes the auto-resume deadline, so the pause outlives PAUSE_TIMEOUT_MS
+// for as long as the menu is open; a non-owner repeat does not refresh.
+TEST(NetTransportInProcess,
+     network_fixture_owner_pause_keepalive_defeats_auto_unpause)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 2,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+
+    std::uint64_t now_ms = 1000;
+    fixture.server().set_wall_clock_ms_source([&] { return now_ms; });
+
     fixture.client(0).send_pause_request();
     fixture.with_server_context([&] {
         fixture.server().step();
     });
     fixture.poll_client_messages(0);
+    fixture.poll_client_messages(1);
+    ASSERT_TRUE(fixture.server().paused());
+    const std::uint32_t frozen_tick = fixture.server_world().tick_count_;
 
+    // A non-owner repeat is rejected and must NOT refresh the deadline.
+    now_ms = 20'000;
+    fixture.client(1).send_pause_request();
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+    fixture.poll_client_messages(1);
+    ASSERT_TRUE(fixture.server().paused());
+    ASSERT_TRUE(fixture.client(0).last_pause_broadcast().has_value());
+    EXPECT_EQ(0u, fixture.client(0).last_pause_broadcast()->player_index)
+        << "a rejected non-owner repeat must not re-attribute the pause";
+
+    // Owner keep-alives at a 20s cadence.
+    for (const std::uint64_t keepalive_at : {41'000ull, 61'000ull, 81'000ull})
+    {
+        now_ms = keepalive_at;
+        fixture.client(0).send_pause_request();
+        fixture.with_server_context([&] {
+            fixture.server().step();
+        });
+        fixture.poll_client_messages(0);
+        fixture.poll_client_messages(1);
+        ASSERT_TRUE(fixture.server().paused())
+            << "keep-alive at " << keepalive_at;
+    }
+
+    // Far past the original deadline (1s + 60s) and the non-owner repeat's
+    // would-be deadline (20s + 60s): the owner's refreshes kept it alive.
+    now_ms = 120'000;
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+    fixture.poll_client_messages(1);
     EXPECT_TRUE(fixture.server().paused());
+    EXPECT_EQ(frozen_tick, fixture.server_world().tick_count_)
+        << "the world must stay frozen across refreshed keep-alives";
+
+    // Stop the keep-alive (menu closed without resuming): auto-unpause fires
+    // one PAUSE_TIMEOUT_MS after the LAST refresh.
+    now_ms = 81'000 + og::sim::PAUSE_TIMEOUT_MS + 1;
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+    fixture.poll_client_messages(1);
+    EXPECT_FALSE(fixture.server().paused());
+    EXPECT_GT(fixture.server_world().tick_count_, frozen_tick);
+    fixture.expect_clients_match_server();
 }
 
 TEST(NetTransportInProcess,
@@ -2844,5 +2976,128 @@ TEST(NetTransportInProcess,
 
     EXPECT_EQ(server_after,
               read_grid_tile(fixture.client_world(0), tile_x, tile_y));
+    fixture.expect_clients_match_server();
+}
+
+// Regression (the mid-game ZOOM crash): a pause menu held open longer than
+// DISCONNECT_TIMEOUT_MS, then RESUME. While the pause is pending the server
+// force-keyframes every step (should_send_keyframe) and each client answers
+// with a hash check — outbound activity that suppresses its heartbeats — while
+// NO client sends input (the pause menu blocks run_game_tick, whose
+// local_transport_shadow_send_input is the only input source). update_timeouts
+// skips the starvation check only while suspended_for_ui, so the very step
+// that processed the PauseResponse lifted the suspension and then cut EVERY
+// quiet peer against a last_received_input_ms stamped before the menu opened.
+// The display client's next send then threw
+// "InProcessTransport peer 1 is not connected".
+TEST(NetTransportInProcess,
+     resume_after_long_pause_does_not_disconnect_quiet_peers)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 2,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+
+    // Move every peer's input-freshness stamp onto the mock timeline first
+    // (update_timeouts skips peers whose stamp is in the clock's future).
+    std::uint64_t now_ms = 1000;
+    fixture.server().set_wall_clock_ms_source([&] { return now_ms; });
+    fixture.step_ticks(1);
+
+    fixture.client(0).send_pause_request();
+    fixture.with_server_context([&] { fixture.server().step(); });
+    fixture.poll_client_messages(0);
+    fixture.poll_client_messages(1);
+    ASSERT_TRUE(fixture.server().paused());
+
+    // The pause-menu wire pattern, held past DISCONNECT_TIMEOUT_MS: the
+    // display pump keeps stepping the server and polling the client mirrors
+    // (forced keyframes -> hash-check replies), but nobody sends input.
+    const int pump_count =
+        static_cast<int>(og::sim::DISCONNECT_TIMEOUT_MS / 500u) + 4;
+    for (int pump = 0; pump < pump_count; ++pump)
+    {
+        now_ms += 500u;
+        fixture.with_server_context([&] { fixture.server().step(); });
+        fixture.poll_client_messages(0);
+        fixture.poll_client_messages(1);
+        ASSERT_EQ(2u, fixture.server_transport().connected_peers().size())
+            << "an OPEN pause menu must never cost a peer its connection "
+               "(pump " << pump << ")";
+    }
+    ASSERT_TRUE(fixture.server().paused());
+
+    // RESUME: the menu sends the pause response and pumps one server step
+    // before the game loop's next send_input can run (run_pause_menu's exit
+    // dance). No peer may be starvation-cut for menu-long input silence.
+    fixture.client(0).send_pause_response();
+    fixture.with_server_context([&] { fixture.server().step(); });
+    fixture.poll_client_messages(0);
+    fixture.poll_client_messages(1);
+
+    EXPECT_FALSE(fixture.server().paused());
+    ASSERT_EQ(2u, fixture.server_transport().connected_peers().size())
+        << "resume must not disconnect peers whose only silence was the pause";
+
+    // The post-resume sends and the next real tick must work end to end.
+    fixture.step_ticks(1);
+    fixture.expect_clients_match_server();
+
+    // Remote-timeout semantics stay intact: peers that stay silent for a
+    // fresh DISCONNECT_TIMEOUT_MS window AFTER the resume still time out.
+    now_ms += og::sim::DISCONNECT_TIMEOUT_MS + 1u;
+    fixture.with_server_context([&] { fixture.server().step(); });
+    EXPECT_TRUE(fixture.server_transport().connected_peers().empty())
+        << "post-resume starvation must still disconnect (remote protection)";
+}
+
+// The complementary guarantee to network_fixture_disconnects_client_after_
+// input_timeout: a peer marked local (an in-process client of this very
+// process — the local transport shadow marks every one of its clients) is
+// NEVER input-starvation disconnected, no matter how stale its stamp. A
+// "timeout" of a same-process peer is definitionally a bookkeeping bug and
+// closing its transport kills the app on the next local send.
+TEST(NetTransportInProcess, marked_local_peer_is_never_timeout_disconnected)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 2,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+
+    std::uint64_t now_ms = 1000;
+    fixture.server().set_wall_clock_ms_source([&] { return now_ms; });
+    fixture.step_ticks(1);
+
+    fixture.server().mark_peer_local(
+        fixture.client_transport(0).local_peer_id());
+    fixture.server().mark_peer_local(
+        fixture.client_transport(1).local_peer_id());
+
+    // Way past DISCONNECT_TIMEOUT_MS with zero client traffic of any kind.
+    now_ms += og::sim::DISCONNECT_TIMEOUT_MS * 5u;
+    fixture.with_server_context([&] { fixture.server().step(); });
+
+    EXPECT_EQ(2u, fixture.server_transport().connected_peers().size())
+        << "local peers must never be starvation-disconnected";
+
+    // Their controls stay player-owned too (no AI takeover of a live seat).
+    walker* const control = fixture.server_control(0);
+    ASSERT_NE(nullptr, control);
+    EXPECT_EQ(0, static_cast<int>(control->user()));
+
+    // And play continues normally afterwards.
+    fixture.step_ticks(1);
     fixture.expect_clients_match_server();
 }

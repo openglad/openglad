@@ -17,6 +17,7 @@ class cfg_store;
 struct InputState;
 
 namespace og::sim {
+class GameServer;
 class ITransport;
 class InProcessTransport;
 struct LobbyPlayerBinding;
@@ -105,13 +106,27 @@ private:
         GameSession& session,
         std::span<const std::pair<std::uint8_t, std::string>> companies);
     friend bool local_transport_shadow_toggle_pause(GameSession& session);
+    friend bool local_transport_shadow_can_add_player(GameSession& session);
+    friend bool local_transport_shadow_add_local_player(GameSession& session);
+    friend bool local_transport_shadow_can_remove_player(GameSession& session,
+                                                         int player_index);
+    friend bool local_transport_shadow_remove_local_player(GameSession& session,
+                                                           int player_index);
     friend bool local_transport_shadow_abort_level(GameSession& session);
     friend void local_transport_shadow_send_input(GameSession& session,
                                                   const InputState& input,
                                                   std::uint32_t tick);
     friend void local_transport_shadow_finish_tick(GameSession& session);
+    friend bool local_transport_shadow_pump_paused(GameSession& session);
+    friend void local_transport_shadow_request_pause_keepalive(
+        GameSession& session);
+    friend std::string local_transport_shadow_remote_pause_owner(
+        GameSession& session);
+    friend bool local_transport_shadow_restart_level(GameSession& session);
 #ifdef TESTING
     friend screen* local_transport_shadow_testing_server_screen(
+        GameSession& session);
+    friend og::sim::GameServer* local_transport_shadow_testing_server(
         GameSession& session);
     friend bool local_transport_shadow_testing_open_exit_prompt(
         GameSession& session,

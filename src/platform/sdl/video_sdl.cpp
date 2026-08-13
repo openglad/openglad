@@ -2890,6 +2890,34 @@ int sdl_video::minimum_world_zoom_steps() const
 	                : og::kZoomStepsMax;
 }
 
+void sdl_video::set_world_view_scale(int min_scale_num)
+{
+	if (E_Screen)
+		E_Screen->set_world_view_scale_num(min_scale_num);
+}
+
+bool sdl_video::world_zoom_composition_fits(int min_scale_num) const
+{
+	return E_Screen && E_Screen->world_view_scale_fits(min_scale_num);
+}
+
+bool sdl_video::world_present_partition_supported() const
+{
+	return E_Screen != nullptr;
+}
+
+bool sdl_video::world_canvas_pinned_classic() const
+{
+	return E_Screen && E_Screen->world_canvas_pinned_classic();
+}
+
+void sdl_video::set_world_present_slices(
+    std::span<const WorldPresentSlice> slices)
+{
+	if (E_Screen)
+		E_Screen->set_world_present_slices(slices);
+}
+
 bool sdl_video::world_smoothing_supported() const
 {
 	return E_Screen && E_Screen->world_smoothing_supported();
@@ -3562,16 +3590,15 @@ bool sdl_video::save_screenshot()
 	// nearest, matching Screen::swap's texture scale mode.
 	if (E_Screen->active_canvas() == CanvasTarget::World)
 	{
+		// compose_gameplay_ui_for_capture also applies the §7.1 per-view
+		// presentation slices, so a partitioned frame is captured as
+		// presented even when no HUD overlay is active this frame.
 		SDL_Surface* const overlay = E_Screen->gameplay_ui_overlay_surface();
-		if (overlay != nullptr)
-		{
-			composed_frame = E_Screen->compose_gameplay_ui_for_capture(surf);
-			if (composed_frame == nullptr)
-			{
-				return false;
-			}
+		composed_frame = E_Screen->compose_gameplay_ui_for_capture(surf);
+		if (composed_frame != nullptr)
 			surf = composed_frame;
-		}
+		else if (overlay != nullptr)
+			return false;
 	}
 	
 	static int i = 1;

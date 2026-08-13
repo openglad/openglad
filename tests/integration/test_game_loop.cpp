@@ -13,6 +13,7 @@
 #include <vector>
 
 #include <openglad/gameplay/game_client.h>
+#include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/replay.h>
@@ -26,7 +27,10 @@
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/core/runtime_trace.h>
 #include <openglad/interface/replay_runtime.h>
+#include <openglad/interface/input_mappings.h>
+#include <openglad/interface/ui/pause_menu.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/platform/game_loop.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
@@ -3612,98 +3616,11 @@ TEST(MasterSpeedRegression, uncapped_render_renders_every_call_at_master_cadence
     game_screen->world().delete_objects();
 }
 
-// ---------------------------------------------------------------------------
-// Regression test: options_menu via game_frame_with_result call chain.
-//
-// This exercises the exact path that hangs on Emscripten:
-//   game_frame_with_result -> s.input(KEY_PREFS event) -> options_menu()
-//
-// On Emscripten, options_menu() has a blocking while-loop that must call
-// emscripten_sleep() (via YIELD_SLEEP) to yield to the browser.  If the
-// ASYNCIFY compile flag is missing, YIELD_SLEEP is a no-op and the browser
-// hangs.  Natively, YIELD_SLEEP is always a no-op so options_menu() is a
-// tight busy-loop driven by keystates.  A background thread presses ESC to
-// let it exit.
-// ---------------------------------------------------------------------------
-
-TEST(GameLoop, game_frame_options_menu_via_key_prefs_completes)
-{
-    ASSERT_TRUE(load_minimal_game_loop_scenario("test_game_loop_optmenu_save"))
-        << "load_saved_game should succeed";
-
-    // Ensure a player-controlled walker exists so options_menu() doesn't
-    // early-return via its missing-control guard.
-    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    ASSERT_TRUE(vs != nullptr) << "viewob[0] should exist";
-    if (!vs)
-        return;
-
-    walker* saved_control = vs->control;
-    if (!vs->control)
-    {
-        walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-        ASSERT_TRUE(w != nullptr) << "control walker created";
-        if (!w)
-            return;
-        w->set_team_num(0);
-        w->set_user(0);
-        w->set_act_type(ACT_CONTROL);
-        vs->control = w;
-    }
-
-    // Override keystates so we can inject ESC from a background thread.
-    const bool* saved_keystates = og::runtime::current_session->keystates_;
-    std::array<bool, SDL_SCANCODE_COUNT> fake_keystates{};
-    fake_keystates.fill(false);
-    og::runtime::current_session->keystates_ = fake_keystates.data();
-
-    // Background thread: press ESC after a short delay to exit options_menu().
-    std::thread esc_thread([&fake_keystates]() {
-        SDL_Delay(50);
-        fake_keystates[SDL_SCANCODE_ESCAPE] = true;
-        SDL_Delay(30);
-        fake_keystates[SDL_SCANCODE_ESCAPE] = false;
-    });
-
-    // Build a scripted KEY_PREFS event (SDLK_1 for player 0).
-    EventScript script;
-    SDL_Event e{};
-    e.type = SDL_EVENT_KEY_DOWN;
-    e.key.key = static_cast<SDL_Keycode>(og::runtime::current_session->player_keys_[0][KEY_PREFS]);
-    e.key.scancode = SDL_GetScancodeFromKey(e.key.key, nullptr);
-    e.key.repeat = false;
-    script.events.push_back(e);
-
-    g_script = &script;
-
-    float old_speed = og::runtime::current_session->g_game_speed_factor_;
-    set_game_speed(0.0f);
-
-    GameLoopFrameState st;
-    GameLoopDeps deps;
-    deps.enable_render = false;
-    deps.enable_event_poll = true;
-    deps.poll_event = scripted_poll_adapter;
-
-    // This call chain goes through the std::function indirection in
-    // game_frame_with_result() and must not hang.
-    EXPECT_EQ(GameFrameResult::Continue,
-              game_frame_with_result(*og::runtime::current_session->myscreen_,
-                                     st,
-                                     deps));
-
-    esc_thread.join();
-
-    // Cleanup.
-    g_script = nullptr;
-    set_game_speed(old_speed);
-    og::runtime::current_session->keystates_ = saved_keystates;
-    vs->control = saved_control;
-    og::runtime::current_session->myscreen_->world().delete_objects();
-}
-
-
-TEST(GameLoop, game_frame_escape_toggles_network_pause_when_local_transport_is_active)
+// Esc now opens the PAUSED menu (docs/pause-menu-design.md §2.1): one Esc
+// pauses the world under the menu, a key-repeat Esc opens nothing, and a
+// RESUME outcome releases the pause. The scripted-outcome queue stands in for
+// the blocking menu loop (the real loop is driven by PauseMenuFlow tests).
+TEST(GameLoop, game_frame_escape_opens_pause_menu_and_resume_releases_pause)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(game_screen != nullptr);
@@ -3756,38 +3673,60 @@ TEST(GameLoop, game_frame_escape_toggles_network_pause_when_local_transport_is_a
         };
     };
 
+    // Esc #1: the menu opens and pauses; the scripted outcome keeps the
+    // pause pending (the "menu is open" state).
+    trace_clear();
+    og::ui::pause_menu_testing_clear_queue();
+    og::ui::pause_menu_testing_queue_outcome(
+        og::ui::PauseMenuResult::Resumed, /*release_pause=*/false);
     const EscapeFrameOutcome pause_frame = run_escape_frame();
     EXPECT_EQ(GameFrameResult::Continue, pause_frame.result);
     EXPECT_FALSE(pause_frame.done);
     EXPECT_EQ(1, pause_frame.redrawme);
+    EXPECT_TRUE(trace_contains("pause_menu", "open"));
+    EXPECT_EQ(0, og::ui::pause_menu_testing_queue_remaining());
     EXPECT_TRUE(game_screen->world().paused);
     EXPECT_EQ(0u, game_screen->world().pause_player_index);
     ASSERT_FALSE(primary_view->textlist[0].empty());
     EXPECT_EQ(0, primary_view->textlist[0].compare(0, 6, "PAUSED"));
-    EXPECT_EQ(std::string("ESC again: Quit?"), primary_view->textlist[1]);
+    // The old "ESC again: Quit?" hint is gone for the LOCAL pauser — the
+    // menu IS the hint (remote peers keep an "ESC: Menu" overlay line).
+    EXPECT_TRUE(primary_view->textlist[1].empty())
+        << "unexpected second overlay line: " << primary_view->textlist[1];
 
+    // A key-repeat Esc must not open (or close) anything: web Backspace
+    // autorepeats aggressively.
+    trace_clear();
     const EscapeFrameOutcome repeat_frame = run_escape_frame(true);
     EXPECT_EQ(GameFrameResult::Continue, repeat_frame.result);
     EXPECT_FALSE(repeat_frame.done);
     EXPECT_EQ(1, repeat_frame.redrawme);
+    EXPECT_FALSE(trace_contains("pause_menu", "open"));
     EXPECT_TRUE(game_screen->world().paused);
     EXPECT_EQ(0u, game_screen->world().pause_player_index);
 
-    picker_testing_yes_or_no_queue_clear();
-    picker_testing_yes_or_no_queue_push(false);
+    // Esc #2 with a RESUME outcome: the pause releases and the owner index
+    // resets.
+    og::ui::pause_menu_testing_queue_outcome(
+        og::ui::PauseMenuResult::Resumed, /*release_pause=*/true);
     const EscapeFrameOutcome resume_frame = run_escape_frame();
     EXPECT_EQ(GameFrameResult::Continue, resume_frame.result);
     EXPECT_FALSE(resume_frame.done);
     EXPECT_EQ(1, resume_frame.redrawme);
     EXPECT_FALSE(game_screen->world().paused);
     EXPECT_EQ(og::sim::kNoPausePlayerIndex, game_screen->world().pause_player_index);
+    EXPECT_EQ(0, og::ui::pause_menu_testing_queue_remaining());
 
-    picker_testing_yes_or_no_queue_clear();
+    og::ui::pause_menu_testing_clear_queue();
     og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
     game_screen->world().delete_objects();
 }
 
-TEST(GameLoop, game_frame_escape_abort_returns_aborted_mission_when_network_pause_confirmed)
+// A QUIT outcome from the menu keeps the old abort semantics verbatim:
+// authoritative end, st.done, AbortedMission — from ONE Esc press (no more
+// "second Esc" stage). A RESTART outcome additionally leaves world().retry
+// set so the picker's `do { glad_main } while (retry)` relaunches.
+TEST(GameLoop, game_frame_escape_pause_menu_quit_and_restart_outcomes)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(game_screen != nullptr);
@@ -3798,10 +3737,6 @@ TEST(GameLoop, game_frame_escape_abort_returns_aborted_mission_when_network_paus
     game_screen->save_data.scen_num = 1;
     game_screen->save_data.numplayers = 1;
     ASSERT_TRUE(game_screen->save_data.save("save0"));
-
-    glad_init();
-    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
-    ASSERT_TRUE(og::runtime::local_transport_active(*og::runtime::current_session));
 
     GameSpeedGuard speed_guard(0.0f);
     struct EscapeFrameOutcome {
@@ -3835,21 +3770,58 @@ TEST(GameLoop, game_frame_escape_abort_returns_aborted_mission_when_network_paus
         };
     };
 
-    const EscapeFrameOutcome pause_frame = run_escape_frame();
-    ASSERT_EQ(GameFrameResult::Continue, pause_frame.result);
-    ASSERT_FALSE(pause_frame.done);
-    ASSERT_EQ(1, pause_frame.redrawme);
-    ASSERT_TRUE(game_screen->world().paused);
+    // --- QUIT ---
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    ASSERT_TRUE(og::runtime::local_transport_active(*og::runtime::current_session));
 
-    picker_testing_yes_or_no_queue_clear();
-    picker_testing_yes_or_no_queue_push(true);
+    og::ui::pause_menu_testing_clear_queue();
+    og::ui::pause_menu_testing_queue_outcome(
+        og::ui::PauseMenuResult::Quit, /*release_pause=*/false);
     const EscapeFrameOutcome abort_frame = run_escape_frame();
     EXPECT_EQ(GameFrameResult::AbortedMission, abort_frame.result);
     EXPECT_TRUE(abort_frame.done);
     EXPECT_EQ(1, abort_frame.redrawme);
+    EXPECT_FALSE(game_screen->world().retry)
+        << "a plain quit must not arm the retry relaunch loop";
 
-    picker_testing_yes_or_no_queue_clear();
     og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+    game_screen->world().end = 0;
+    game_screen->world().retry = false;
+
+    // --- RESTART ---
+    glad_init();
+    ASSERT_TRUE(og::runtime::local_transport_active(*og::runtime::current_session));
+
+    og::ui::pause_menu_testing_queue_outcome(
+        og::ui::PauseMenuResult::Restart, /*release_pause=*/false);
+    const EscapeFrameOutcome restart_frame = run_escape_frame();
+    EXPECT_EQ(GameFrameResult::AbortedMission, restart_frame.result);
+    EXPECT_TRUE(restart_frame.done);
+    EXPECT_TRUE(game_screen->world().retry)
+        << "restart must arm the display world's retry for the picker loop";
+    EXPECT_TRUE(trace_contains("pause_menu", "restart_level"));
+
+    // The picker relaunch latches world().retry right AFTER glad_main's
+    // teardown (clear shadow + delete_objects) — prove the flag survives it,
+    // exactly where picker_team_build.cpp's retry latch reads it. (The latch
+    // must read it there and NOT in the while() condition: the loop-tail
+    // reset(1) runs GameWorld::clear, which wipes the flag. The full picker
+    // relaunch is covered by PauseMenuFlow.restart_mission_relaunches_level_
+    // through_picker_loop in test_pause_menu.cpp.)
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+    EXPECT_TRUE(game_screen->world().retry)
+        << "world().retry must survive glad_main teardown to reach the loop";
+
+    // ...and the next iteration's ready_for_battle clears it so the relaunch
+    // is not sticky.
+    game_screen->ready_for_battle(1);
+    EXPECT_FALSE(game_screen->world().retry);
+
+    og::ui::pause_menu_testing_clear_queue();
+    game_screen->world().end = 0;
     game_screen->world().delete_objects();
 }
 
@@ -5820,4 +5792,869 @@ TEST(GameLoop, zoom_half_mini_hp_bar_matches_projected_sprite_width)
     EXPECT_EQ(background_index,
               canvas_zoom_gameplay::pixel_index(s, bar_x + sprite_w + 1, bar_y))
         << "nothing may be drawn out at the unprojected sprite width";
+}
+
+// --- Mid-game local player add/remove (pause-menu design §5) ---------------
+//
+// These drive the real local shadow built by glad_init (the idiom of
+// local_split_screen_background_player_exit_prompt_does_not_hang above):
+// one in-process peer per seat, display client 0, authoritative server
+// session. The new seat functions live in local_transport_shadow.cpp.
+
+#include <openglad/core/test_trace.h>
+#include <openglad/core/constants.h>
+#include <openglad/gameplay/respawn/respawn_state.h>
+#include <openglad/interface/render/view_layout.h>
+
+namespace {
+
+// One display frame's worth of shadow traffic: input for every seat, then
+// the authoritative step + mirror drain.
+void midgame_pump(og::runtime::GameSession& session, int frames,
+                  std::uint32_t& tick)
+{
+    for (int i = 0; i < frames; ++i)
+    {
+        og::runtime::local_transport_shadow_send_input(
+            session, InputState{}, tick++);
+        og::runtime::local_transport_shadow_finish_tick(session);
+    }
+}
+
+walker* midgame_find_walker_by_user(screen* which_screen, int user)
+{
+    if (which_screen == nullptr)
+        return nullptr;
+    for (const auto& uptr : which_screen->world().oblist)
+    {
+        walker* const entity = uptr.get();
+        if (entity != nullptr && entity->user() == user)
+            return entity;
+    }
+    return nullptr;
+}
+
+walker* midgame_find_living_on_team(screen* which_screen, short team)
+{
+    if (which_screen == nullptr)
+        return nullptr;
+    for (const auto& uptr : which_screen->world().oblist)
+    {
+        walker* const entity = uptr.get();
+        if (entity != nullptr && !entity->dead() &&
+            entity->query_order() == Order::Living &&
+            static_cast<short>(entity->team_num()) == team)
+        {
+            return entity;
+        }
+    }
+    return nullptr;
+}
+
+// Feed held movement on ONE input slot until its walker moves (four
+// directions tried — the seat's spawn spot is probe-clear but a wall may
+// still block a given side).
+bool midgame_slot_moves_walker(og::runtime::GameSession& session,
+                               std::size_t slot, walker* w,
+                               std::uint32_t& tick)
+{
+    static constexpr int kDirections[4] = {
+        KEY_RIGHT, KEY_DOWN, KEY_LEFT, KEY_UP};
+    for (const int direction : kDirections)
+    {
+        const short before_x = w->xpos();
+        const short before_y = w->ypos();
+        for (int i = 0; i < 15; ++i)
+        {
+            InputState input{};
+            input.players[slot].held[direction] = true;
+            if (i == 0)
+                input.players[slot].pressed[direction] = true;
+            og::runtime::local_transport_shadow_send_input(
+                session, input, tick++);
+            og::runtime::local_transport_shadow_finish_tick(session);
+        }
+        midgame_pump(session, 1, tick); // release the key
+        if (w->xpos() != before_x || w->ypos() != before_y)
+            return true;
+    }
+    return false;
+}
+
+// Every live display view must sit exactly where viewscreen::resize projects
+// it for the current numviews (compute_view_layout at gameplay-UI dims,
+// projected onto the world canvas).
+void midgame_expect_view_layouts(screen* game_screen)
+{
+    for (int i = 0; i < game_screen->numviews; ++i)
+    {
+        viewscreen* const view = game_screen->viewob[i].get();
+        ASSERT_NE(nullptr, view) << "view " << i << " must be live";
+        const int ui_w = game_screen->gameplay_ui_canvas_w();
+        const int ui_h = game_screen->gameplay_ui_canvas_h();
+        const og::view_layout::ViewLayout baseline =
+            og::view_layout::compute_view_layout(
+                game_screen->numviews, i, view->prefs[PREF_VIEW], ui_w, ui_h);
+        const og::view_layout::ViewLayout expected =
+            og::view_layout::project_view_layout(
+                baseline, ui_w, ui_h,
+                game_screen->world_canvas_w(), game_screen->world_canvas_h());
+        EXPECT_EQ(expected.x, view->xloc) << "view " << i;
+        EXPECT_EQ(expected.y, view->yloc) << "view " << i;
+        EXPECT_EQ(expected.w, view->xview) << "view " << i;
+        EXPECT_EQ(expected.h, view->yview) << "view " << i;
+    }
+}
+
+} // namespace
+
+TEST(GameLoop, midgame_add_third_local_player)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    reset_default_player_controls();
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 2;
+    save.allied_mode = 0;
+    save.my_team = 0;
+
+    auto leader = std::make_unique<guy>(FAMILY_SOLDIER);
+    leader->name = "Leader";
+    leader->teamnum = 0;
+    auto scout = std::make_unique<guy>(FAMILY_ARCHER);
+    scout->name = "Scout";
+    scout->teamnum = 1;
+    save.team_list[0] = std::move(leader);
+    save.team_list[1] = std::move(scout);
+    save.team_size = 2;
+    ASSERT_TRUE(save.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(
+        og::runtime::local_transport_active(*og::runtime::current_session));
+    ASSERT_EQ(2u, og::runtime::local_transport_client_count(session));
+
+    std::uint32_t tick = 0;
+    midgame_pump(session, 8, tick);
+
+    ASSERT_TRUE(og::runtime::local_transport_shadow_can_add_player(session));
+
+    trace_clear();
+    ASSERT_TRUE(og::runtime::local_transport_shadow_add_local_player(session));
+    ASSERT_TRUE(trace_contains("seats", "add_player index=2"));
+
+    // Display: seat count, live third view, re-projected split layout.
+    EXPECT_EQ(3, static_cast<int>(game_screen->save_data.numplayers));
+    ASSERT_EQ(3, static_cast<int>(game_screen->numviews));
+    ASSERT_EQ(3u, og::runtime::local_transport_client_count(session));
+    viewscreen* const new_view = game_screen->viewob[2].get();
+    ASSERT_NE(nullptr, new_view);
+    EXPECT_EQ(2, static_cast<int>(new_view->mynum));
+    EXPECT_EQ(2, static_cast<int>(new_view->global_player_index_));
+    EXPECT_EQ(game_screen->viewob[0]->my_team, new_view->my_team)
+        << "the joiner plays view 0's team";
+    midgame_expect_view_layouts(game_screen);
+
+    // The new seat's key profile is whatever slot 2 of the pool holds — the
+    // rotation seeded IJKL there and the add must not reset it.
+    EXPECT_EQ(SDLK_I,
+              get_player_key_binding_for_mode(
+                  2, static_cast<int>(ControlDirectionMode::FourDirection),
+                  KEY_UP));
+
+    // Server: seat 2 bound to a live walker wearing user tag 2.
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server_screen);
+    walker* const seat2_walker = midgame_find_walker_by_user(server_screen, 2);
+    ASSERT_NE(nullptr, seat2_walker);
+    EXPECT_FALSE(seat2_walker->dead());
+    EXPECT_EQ(game_screen->viewob[0]->my_team,
+              static_cast<short>(seat2_walker->team_num()));
+    EXPECT_EQ(ACT_CONTROL, static_cast<int>(seat2_walker->act_type()));
+
+    // After a few frames the ControlChange + snapshot reach the display: the
+    // new view renders a control wearing the seat's tag.
+    midgame_pump(session, 8, tick);
+    ASSERT_NE(nullptr, new_view->control);
+    EXPECT_EQ(2, static_cast<int>(new_view->control->user()));
+
+    // Input routing: slot-2 keys move seat 2's walker (they were sampled all
+    // along — the add routed them).
+    EXPECT_TRUE(midgame_slot_moves_walker(session, 2u, seat2_walker, tick))
+        << "slot-2 input must drive the new seat's walker";
+
+    // Roster purity: whether the seat claimed an existing walker or spawned a
+    // stock one, the level-end roster rebuild must still hold exactly the two
+    // company heroes (a spawned joiner carries no myguy).
+    const bool spawned = trace_contains("seats", "source=spawned");
+    if (spawned)
+    {
+        EXPECT_EQ(nullptr, seat2_walker->myguy);
+    }
+    server_screen->save_data.update_guys(server_screen->world().oblist);
+    EXPECT_EQ(2, static_cast<int>(server_screen->save_data.team_size));
+    int roster_members = 0;
+    for (const auto& member : server_screen->save_data.team_list)
+    {
+        if (member != nullptr)
+            ++roster_members;
+    }
+    EXPECT_EQ(2, roster_members)
+        << "a mid-game joiner must not recruit itself into the company";
+
+    reset_default_player_controls();
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+}
+
+TEST(GameLoop, midgame_remove_middle_player_of_three)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    reset_default_player_controls();
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 3;
+    save.allied_mode = 0;
+    save.my_team = 0;
+
+    auto leader = std::make_unique<guy>(FAMILY_SOLDIER);
+    leader->name = "Leader";
+    leader->teamnum = 0;
+    auto scout = std::make_unique<guy>(FAMILY_ARCHER);
+    scout->name = "Scout";
+    scout->teamnum = 1;
+    auto third = std::make_unique<guy>(FAMILY_ARCHER);
+    third->name = "Third";
+    third->teamnum = 2;
+    save.team_list[0] = std::move(leader);
+    save.team_list[1] = std::move(scout);
+    save.team_list[2] = std::move(third);
+    save.team_size = 3;
+    ASSERT_TRUE(save.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(
+        og::runtime::local_transport_active(*og::runtime::current_session));
+    ASSERT_EQ(3u, og::runtime::local_transport_client_count(session));
+
+    std::uint32_t tick = 0;
+    midgame_pump(session, 8, tick);
+
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server_screen);
+    walker* const seat0_walker = midgame_find_walker_by_user(server_screen, 0);
+    walker* const seat1_walker = midgame_find_walker_by_user(server_screen, 1);
+    walker* const seat2_walker = midgame_find_walker_by_user(server_screen, 2);
+    ASSERT_NE(nullptr, seat0_walker);
+    ASSERT_NE(nullptr, seat1_walker);
+    ASSERT_NE(nullptr, seat2_walker);
+    const short seat2_team = game_screen->viewob[2]->my_team;
+
+    ASSERT_TRUE(
+        og::runtime::local_transport_shadow_can_remove_player(session, 1));
+
+    trace_clear();
+    ASSERT_TRUE(
+        og::runtime::local_transport_shadow_remove_local_player(session, 1));
+    ASSERT_TRUE(trace_contains("seats", "remove_player index=1"));
+
+    // Display: two seats, two live views, re-projected split; the surviving
+    // top seat's view renumbered down with its team.
+    EXPECT_EQ(2, static_cast<int>(game_screen->save_data.numplayers));
+    ASSERT_EQ(2, static_cast<int>(game_screen->numviews));
+    ASSERT_EQ(2u, og::runtime::local_transport_client_count(session));
+    ASSERT_NE(nullptr, game_screen->viewob[1].get());
+    EXPECT_EQ(nullptr, game_screen->viewob[2].get());
+    EXPECT_EQ(seat2_team, game_screen->viewob[1]->my_team)
+        << "old seat 2's team must follow it down to view 1";
+    midgame_expect_view_layouts(game_screen);
+
+    // Server: renumbered tags — seat 0 untouched, old seat 2 is player 1 now,
+    // the removed walker lives on as AI.
+    EXPECT_EQ(0, static_cast<int>(seat0_walker->user()));
+    EXPECT_EQ(1, static_cast<int>(seat2_walker->user()));
+    EXPECT_EQ(-1, static_cast<int>(seat1_walker->user()));
+    EXPECT_FALSE(seat1_walker->dead());
+    EXPECT_NE(ACT_CONTROL, static_cast<int>(seat1_walker->act_type()))
+        << "the removed seat's walker must fall back to its AI act type";
+
+    // Key profiles compacted: seat 1 now holds old seat 2's IJKL profile and
+    // the freed ARROWS profile rotated to the first inactive slot (2).
+    constexpr int kFour = static_cast<int>(ControlDirectionMode::FourDirection);
+    EXPECT_EQ(SDLK_I, get_player_key_binding_for_mode(1, kFour, KEY_UP));
+    EXPECT_EQ(SDLK_UP, get_player_key_binding_for_mode(2, kFour, KEY_UP));
+
+    // Input routing after the renumber: each surviving slot drives ITS walker.
+    midgame_pump(session, 4, tick);
+    EXPECT_TRUE(midgame_slot_moves_walker(session, 0u, seat0_walker, tick))
+        << "slot-0 input must still drive seat 0's walker";
+    EXPECT_TRUE(midgame_slot_moves_walker(session, 1u, seat2_walker, tick))
+        << "slot-1 input must drive the renumbered (old seat 2) walker";
+
+    reset_default_player_controls();
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+}
+
+TEST(GameLoop, midgame_seat_gating_networked_and_count_limits)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    reset_default_player_controls();
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.allied_mode = 1;
+    save.my_team = 0;
+
+    auto leader = std::make_unique<guy>(FAMILY_SOLDIER);
+    leader->name = "Leader";
+    leader->teamnum = 0;
+    save.team_list[0] = std::move(leader);
+    save.team_size = 1;
+    ASSERT_TRUE(save.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(
+        og::runtime::local_transport_active(*og::runtime::current_session));
+
+    std::uint32_t tick = 0;
+    midgame_pump(session, 8, tick);
+
+    // One seat: no removal, but room to add.
+    EXPECT_FALSE(
+        og::runtime::local_transport_shadow_can_remove_player(session, 0));
+    EXPECT_TRUE(og::runtime::local_transport_shadow_can_add_player(session));
+
+    // Networked sessions are out of scope (§5): both gates close.
+    session.networked_session_ = true;
+    EXPECT_FALSE(og::runtime::local_transport_shadow_can_add_player(session));
+    EXPECT_FALSE(
+        og::runtime::local_transport_shadow_can_remove_player(session, 0));
+    EXPECT_FALSE(og::runtime::local_transport_shadow_add_local_player(session));
+    session.networked_session_ = false;
+
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server_screen);
+    GameWorld& server_world = server_screen->world();
+
+    // Spawn-failure path: point view 0 at a team with no live walkers — the
+    // claim scan and the stock spawn (no teammate to anchor the ring probe
+    // on) both come up empty, so the add must fail cleanly with the seat
+    // count unchanged.
+    short empty_team = -1;
+    for (short t = 0; t < 4 && empty_team < 0; ++t)
+    {
+        if (midgame_find_living_on_team(server_screen, t) == nullptr)
+            empty_team = t;
+    }
+    ASSERT_NE(-1, static_cast<int>(empty_team))
+        << "gladiator scen 1 must leave at least one of the four seat teams "
+           "unpopulated";
+    const short lead_team = game_screen->viewob[0]->my_team;
+    game_screen->viewob[0]->my_team = empty_team;
+    trace_clear();
+    EXPECT_TRUE(og::runtime::local_transport_shadow_can_add_player(session));
+    EXPECT_FALSE(og::runtime::local_transport_shadow_add_local_player(session));
+    EXPECT_TRUE(trace_contains("seats", "add_player_failed"));
+    ASSERT_EQ(1u, og::runtime::local_transport_client_count(session));
+    game_screen->viewob[0]->my_team = lead_team;
+
+    // Every unclaimed walker on the lead team gets parked on the empty team:
+    // each add below must SPAWN its stock joiner (never claim) so the ring
+    // and anchor placement paths both run deterministically.
+    for (const auto& uptr : server_world.oblist)
+    {
+        walker* const entity = uptr.get();
+        if (entity != nullptr && !entity->dead() &&
+            entity->query_order() == Order::Living && entity->user() == -1 &&
+            static_cast<short>(entity->team_num()) == lead_team)
+        {
+            entity->set_team_num(static_cast<unsigned char>(empty_team));
+        }
+    }
+    walker* const seat0_walker = midgame_find_walker_by_user(server_screen, 0);
+    ASSERT_NE(nullptr, seat0_walker);
+
+    // 1 -> 2 seats: no anchors published on a classic level, so the joiner
+    // lands on the ring probe around the live teammate.
+    trace_clear();
+    ASSERT_TRUE(og::runtime::local_transport_shadow_add_local_player(session));
+    ASSERT_TRUE(trace_contains("seats", "source=spawned"));
+
+    // 2 -> 3 seats: publish a respawn anchor at a probed-clear spot; the
+    // joiner must land exactly on it (the anchor path precedes the ring).
+    short anchor_x = -1;
+    short anchor_y = -1;
+    static constexpr short kProbeRing[8][2] = {
+        {1, 0}, {-1, 0}, {0, 1}, {0, -1},
+        {1, 1}, {-1, 1}, {1, -1}, {-1, -1},
+    };
+    for (short radius = 3; radius >= 1 && anchor_x < 0; --radius)
+    {
+        for (const auto& dir : kProbeRing)
+        {
+            const short x = static_cast<short>(
+                seat0_walker->xpos() + dir[0] * radius * GRID_SIZE);
+            const short y = static_cast<short>(
+                seat0_walker->ypos() + dir[1] * radius * GRID_SIZE);
+            if (og::sim::respawn_spot_clear(server_world, seat0_walker, x, y,
+                                            /*floor=*/0))
+            {
+                anchor_x = x;
+                anchor_y = y;
+                break;
+            }
+        }
+    }
+    ASSERT_GE(anchor_x, 0) << "no probe-clear spot near the level 1 start";
+    server_world.respawn.anchor_count[lead_team] = 1;
+    server_world.respawn.anchor_x[lead_team][0] = anchor_x;
+    server_world.respawn.anchor_y[lead_team][0] = anchor_y;
+    trace_clear();
+    ASSERT_TRUE(og::runtime::local_transport_shadow_add_local_player(session));
+    ASSERT_TRUE(trace_contains("seats", "source=spawned"));
+    walker* const seat2_walker = midgame_find_walker_by_user(server_screen, 2);
+    ASSERT_NE(nullptr, seat2_walker);
+    EXPECT_EQ(anchor_x, seat2_walker->xpos());
+    EXPECT_EQ(anchor_y, seat2_walker->ypos());
+
+    // 3 -> 4 seats: the published anchor is occupied now, so this joiner
+    // falls back to the ring again. Then the cap closes the add gate.
+    trace_clear();
+    ASSERT_TRUE(og::runtime::local_transport_shadow_add_local_player(session));
+    ASSERT_TRUE(trace_contains("seats", "source=spawned"));
+    ASSERT_EQ(4u, og::runtime::local_transport_client_count(session));
+    EXPECT_EQ(4, static_cast<int>(game_screen->numviews));
+    EXPECT_FALSE(og::runtime::local_transport_shadow_can_add_player(session));
+    EXPECT_FALSE(og::runtime::local_transport_shadow_add_local_player(session));
+
+    // Removal index bounds at four seats.
+    EXPECT_FALSE(
+        og::runtime::local_transport_shadow_can_remove_player(session, -1));
+    EXPECT_FALSE(
+        og::runtime::local_transport_shadow_can_remove_player(session, 4));
+    EXPECT_TRUE(
+        og::runtime::local_transport_shadow_can_remove_player(session, 3));
+    EXPECT_FALSE(
+        og::runtime::local_transport_shadow_remove_local_player(session, 4));
+
+    // Removing seat 0 keeps peer 0 (the display client) alive: bindings shift
+    // down across the fixed peers and only the vacated TOP peer disconnects.
+    walker* const old_seat1_walker =
+        midgame_find_walker_by_user(server_screen, 1);
+    ASSERT_NE(nullptr, old_seat1_walker);
+    ASSERT_TRUE(
+        og::runtime::local_transport_shadow_remove_local_player(session, 0));
+    ASSERT_EQ(3u, og::runtime::local_transport_client_count(session));
+    EXPECT_EQ(3, static_cast<int>(game_screen->numviews));
+    EXPECT_EQ(old_seat1_walker, midgame_find_walker_by_user(server_screen, 0))
+        << "old seat 1's walker must renumber down to player 0";
+    EXPECT_EQ(-1, static_cast<int>(seat0_walker->user()))
+        << "the removed seat's walker must be released to AI";
+    midgame_pump(session, 6, tick);
+    EXPECT_EQ(0, static_cast<int>(game_screen->world().end))
+        << "the display session must survive removing seat 0";
+
+    reset_default_player_controls();
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+}
+
+// PR #198 user report: local game, pause menu ADD PLAYER, resume, play, then
+// re-pause into the added seat's player screen — the app died with
+// "InProcessTransport peer 1 is not connected" (throw at resolve_peer, caught
+// only at main). This drives the reported sequence at frame level as a broad
+// safety net: the display peer stays transport-connected through a paused
+// stock-spawn add, resumed play across several periodic snapshot-hash
+// checkpoints, and a re-pause dwell. The minimized failing shape of the
+// crash lives in midgame_seat_churn_while_paused_must_not_desync_display_peer
+// below.
+TEST(GameLoop, midgame_add_player_resume_play_repause_keeps_transport_alive)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    reset_default_player_controls();
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.allied_mode = 1;
+    save.my_team = 0;
+
+    auto leader = std::make_unique<guy>(FAMILY_SOLDIER);
+    leader->name = "Leader";
+    leader->teamnum = 0;
+    save.team_list[0] = std::move(leader);
+    save.team_size = 1;
+    ASSERT_TRUE(save.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(
+        og::runtime::local_transport_active(*og::runtime::current_session));
+    ASSERT_EQ(1u, og::runtime::local_transport_client_count(session));
+
+    std::uint32_t tick = 0;
+    // Land the pause exactly on a periodic hash-checkpoint tick
+    // (KEYFRAME_INTERVAL_TICKS) so the frozen-tick dwell also covers the
+    // checkpoint-adjacent bookkeeping shape.
+    midgame_pump(session, og::sim::KEYFRAME_INTERVAL_TICKS, tick);
+
+    // Esc: the pause menu opens its pause and pumps while blocking.
+    og::runtime::local_transport_shadow_request_pause_keepalive(session);
+    for (int i = 0;
+         i < 4 && !og::runtime::local_transport_shadow_is_paused(session); ++i)
+    {
+        ASSERT_TRUE(og::runtime::local_transport_shadow_pump_paused(session));
+    }
+    ASSERT_TRUE(og::runtime::local_transport_shadow_is_paused(session));
+
+    // The reporter's roster had one deployed hero and no claimable teammate,
+    // so the add SPAWNED a stock soldier (a brand-new server entity created
+    // between ticks — the shape that must survive the delta stream). Park
+    // every unclaimed lead-team walker on an unused team to force that path.
+    {
+        screen* const server_screen =
+            og::runtime::local_transport_shadow_testing_server_screen(session);
+        ASSERT_NE(nullptr, server_screen);
+        const short lead_team = game_screen->viewob[0]->my_team;
+        short empty_team = -1;
+        for (short t = 0; t < 4 && empty_team < 0; ++t)
+        {
+            if (t != lead_team &&
+                midgame_find_living_on_team(server_screen, t) == nullptr)
+            {
+                empty_team = t;
+            }
+        }
+        ASSERT_NE(-1, static_cast<int>(empty_team));
+        for (const auto& uptr : server_screen->world().oblist)
+        {
+            walker* const entity = uptr.get();
+            if (entity != nullptr && !entity->dead() &&
+                entity->query_order() == Order::Living &&
+                entity->user() == -1 &&
+                static_cast<short>(entity->team_num()) == lead_team)
+            {
+                entity->set_team_num(static_cast<unsigned char>(empty_team));
+            }
+        }
+    }
+
+    // ADD PLAYER from the open menu.
+    trace_clear();
+    ASSERT_TRUE(og::runtime::local_transport_shadow_add_local_player(session));
+    ASSERT_TRUE(trace_contains("seats", "add_player index=1"));
+    ASSERT_TRUE(trace_contains("seats", "source=spawned"))
+        << "this regression needs the stock-spawn shape (the reporter's)";
+    ASSERT_EQ(2u, og::runtime::local_transport_client_count(session));
+
+    // The menu stays open while the user reads it: more paused pumps than
+    // the 120-strike desync bound, so a wedged expectation queue (the
+    // pre-fix defect) cannot hide inside the dwell.
+    for (int i = 0; i < 140; ++i)
+        ASSERT_TRUE(og::runtime::local_transport_shadow_pump_paused(session));
+    EXPECT_FALSE(trace_contains("net", "server_desync_disconnect"))
+        << "the display peer must survive the open pause menu after ADD";
+
+    // RESUME, then real play on both seats. 420 ticks crosses seven
+    // KEYFRAME_INTERVAL_TICKS (=60) hash checkpoints — pre-fix the display
+    // mirror desyncs and the server cuts peer 1, after which the next
+    // send_input throws the reported transport error.
+    ASSERT_TRUE(og::runtime::local_transport_shadow_toggle_pause(session));
+    trace_clear();
+    midgame_pump(session, 420, tick);
+    EXPECT_FALSE(trace_contains("net", "server_desync_disconnect"))
+        << "the display peer must never be cut as desynced after ADD PLAYER";
+    EXPECT_EQ(0, static_cast<int>(game_screen->world().end))
+        << "the session must survive resumed play after ADD PLAYER";
+    ASSERT_EQ(2u, og::runtime::local_transport_client_count(session));
+
+    // Re-pause into the added seat's player screen: the pause pump keeps
+    // running while the user cycles INPUT there.
+    og::runtime::local_transport_shadow_request_pause_keepalive(session);
+    for (int i = 0; i < 10; ++i)
+        ASSERT_TRUE(og::runtime::local_transport_shadow_pump_paused(session));
+    ASSERT_TRUE(og::runtime::local_transport_shadow_is_paused(session));
+    og::runtime::local_transport_shadow_request_pause_keepalive(session);
+    for (int i = 0; i < 10; ++i)
+        ASSERT_TRUE(og::runtime::local_transport_shadow_pump_paused(session));
+
+    // Resume once more and keep playing: the transport must still be whole.
+    ASSERT_TRUE(og::runtime::local_transport_shadow_toggle_pause(session));
+    midgame_pump(session, 60, tick);
+    EXPECT_EQ(0, static_cast<int>(game_screen->world().end));
+
+    reset_default_player_controls();
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+}
+
+// Shared boot/teardown for the mid-game seat regressions below: a 1-hero
+// local save through glad_init (the PR #198 reporter's session shape).
+namespace {
+void midgame_one_hero_boot(screen* game_screen)
+{
+    reset_default_player_controls();
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.allied_mode = 1;
+    save.my_team = 0;
+    auto leader = std::make_unique<guy>(FAMILY_SOLDIER);
+    leader->name = "Leader";
+    leader->teamnum = 0;
+    save.team_list[0] = std::move(leader);
+    save.team_size = 1;
+    ASSERT_TRUE(save.save("save0"));
+    glad_init();
+}
+
+void midgame_one_hero_teardown(screen* game_screen)
+{
+    reset_default_player_controls();
+    og::runtime::clear_local_transport_shadow(
+        *og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+    game_screen->world().end = 0;
+}
+
+} // namespace
+
+// The reporter's crash, minimized (fuzz-derived): seat churn against a
+// PAUSED world. While the pause pins the tick, the server keeps answering
+// the display's keyframe requests at that same frozen tick; a transient
+// hash mismatch (the display drains a seat mutation's ControlChange stamp
+// ahead of its snapshot) leaves an expected-hash entry that a paused tick
+// can neither match nor prune, so every later check strikes the stale
+// front until kMaxConsecutiveSnapshotHashMismatches cuts the DISPLAY peer
+// (net "server_desync_disconnect") and the next send dies with the
+// reported "InProcessTransport peer 1 is not connected" throw.
+TEST(GameLoop, midgame_seat_churn_while_paused_must_not_desync_display_peer)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    midgame_one_hero_boot(game_screen);
+    trace_clear();
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(
+        og::runtime::local_transport_active(*og::runtime::current_session));
+
+    std::uint32_t tick = 0;
+    midgame_pump(session, 21, tick);
+
+    // ADD while running, a few frames, then pause (menu opens).
+    ASSERT_TRUE(og::runtime::local_transport_shadow_add_local_player(session));
+    midgame_pump(session, 3, tick);
+    og::runtime::local_transport_shadow_request_pause_keepalive(session);
+    midgame_pump(session, 2, tick);
+
+    // REMOVE seat 0 and ADD again with the world frozen under the menu, the
+    // pause pump running between clicks.
+    ASSERT_TRUE(
+        og::runtime::local_transport_shadow_remove_local_player(session, 0));
+    for (int i = 0; i < 20; ++i)
+        ASSERT_TRUE(og::runtime::local_transport_shadow_pump_paused(session));
+    ASSERT_TRUE(og::runtime::local_transport_shadow_add_local_player(session));
+
+    // The menu stays open: enough paused pumps for the pre-fix
+    // orphaned-expectation loop to reach the 120-strike disconnect.
+    for (int i = 0; i < 140; ++i)
+    {
+        ASSERT_TRUE(og::runtime::local_transport_shadow_pump_paused(session))
+            << "paused pump " << i;
+        ASSERT_FALSE(trace_contains("net", "server_desync_disconnect"))
+            << "the display peer was cut as desynced at paused pump " << i
+            << " (the reporter's crash: the next send then throws "
+               "'InProcessTransport peer 1 is not connected')";
+    }
+
+    // The frozen tick means the hash bookkeeping can only heal, never age
+    // out: a transient blip may log a mismatch or two, but the pre-fix
+    // wedged-queue loop racked up one PER PAUSED PUMP (>=120 here).
+    {
+        og::sim::GameServer* const server =
+            og::runtime::local_transport_shadow_testing_server(session);
+        ASSERT_NE(nullptr, server);
+        EXPECT_LT(server->snapshot_hash_mismatch_count(),
+                  static_cast<std::size_t>(
+                      og::sim::kMaxConsecutiveSnapshotHashMismatches))
+            << "paused seat churn must not grind hash mismatches";
+    }
+
+    // RESUME and keep playing: transport whole, both seats alive.
+    ASSERT_TRUE(og::runtime::local_transport_shadow_toggle_pause(session));
+    midgame_pump(session, 60, tick);
+    EXPECT_EQ(0, static_cast<int>(game_screen->world().end));
+    ASSERT_EQ(2u, og::runtime::local_transport_client_count(session));
+
+    midgame_one_hero_teardown(game_screen);
+}
+
+// PR #198 report (b): P1 cycled to ARROWS, mid-game ADD PLAYER — the new P2
+// came up as ARROWS too (profile-pool slot 1's live keymap IS factory arrows;
+// the cycler's factory-name claim moves only the RESET identity). The add
+// must land the new seat on the first factory mapping no other active seat
+// answers to — WASD here.
+TEST(GameLoop, midgame_add_player_gets_an_unchosen_mapping)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    midgame_one_hero_boot(game_screen);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(
+        og::runtime::local_transport_active(*og::runtime::current_session));
+
+    // The reporter's setup: P1 on ARROWS via the INPUT cycler (LOCAL store —
+    // the cfg clobber hazard).
+    cfg_store local_config;
+    ASSERT_TRUE(og::input::assign_mapping_to_player(
+        0, og::input::resolve_mapping(local_config, "ARROWS")));
+    ASSERT_EQ("ARROWS", og::input::current_mapping_name(0));
+    // The collision in waiting: slot 1's live keymap is ALSO factory arrows.
+    ASSERT_EQ("ARROWS", og::input::current_mapping_name(1));
+
+    std::uint32_t tick = 0;
+    midgame_pump(session, 8, tick);
+    ASSERT_TRUE(og::runtime::local_transport_shadow_add_local_player(session));
+
+    EXPECT_EQ("ARROWS", og::input::current_mapping_name(0))
+        << "P1 keeps the mapping it chose";
+    EXPECT_EQ("WASD", og::input::current_mapping_name(1))
+        << "the added seat must come up on the first factory mapping no "
+           "other active seat holds, never on P1's duplicate";
+
+    midgame_one_hero_teardown(game_screen);
+}
+
+#include "../../src/interface/ui/picker_sdl_defs.h"
+
+#include <atomic>
+
+// The mid-game ZOOM crash, minimized (2 local seats, real shadow): the pause
+// menu blocks run_game_tick, so local_transport_shadow_send_input never runs
+// while it is open — and the paused server force-keyframes every pump, whose
+// hash-check replies count as client outbound activity and suppress the
+// heartbeats that were supposed to keep last_received_input_ms fresh. The
+// starvation check is masked only while the pause is pending: the very server
+// step that processes the RESUME (run_pause_menu sends the response, then
+// pumps once before returning to the game loop) saw every in-process peer
+// >DISCONNECT_TIMEOUT_MS stale and cut them all; the display's next send then
+// threw "InProcessTransport peer 1 is not connected" (peer 1 IS the display —
+// in-process peer ids start at 1).
+TEST(GameLoop, long_pause_menu_visit_then_resume_keeps_local_peers_connected)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    midgame_one_hero_boot(game_screen);
+    trace_clear();
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(
+        og::runtime::local_transport_active(*og::runtime::current_session));
+
+    // The reporter's session: two local seats.
+    std::uint32_t tick = 0;
+    midgame_pump(session, 21, tick);
+    ASSERT_TRUE(og::runtime::local_transport_shadow_add_local_player(session));
+    midgame_pump(session, 3, tick);
+    ASSERT_EQ(2u, og::runtime::local_transport_client_count(session));
+
+    // A controllable wall clock on the authoritative server, continuous with
+    // the real one (update_timeouts skips stamps that sit in the future).
+    og::sim::GameServer* const server =
+        og::runtime::local_transport_shadow_testing_server(session);
+    ASSERT_NE(nullptr, server);
+    std::atomic<std::uint64_t> fake_now{static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count())};
+    server->set_wall_clock_ms_source([&fake_now] { return fake_now.load(); });
+    midgame_pump(session, 2, tick); // stamps move onto the mock timeline
+
+    // Esc: the menu opens; frame_tick degrades to pump_paused while it blocks.
+    ASSERT_TRUE(og::runtime::local_transport_shadow_toggle_pause(session));
+    for (int i = 0; i < 5; ++i)
+        ASSERT_TRUE(og::runtime::local_transport_shadow_pump_paused(session));
+    ASSERT_TRUE(og::runtime::local_transport_shadow_is_paused(session));
+
+    // The user browses the player screen well past DISCONNECT_TIMEOUT_MS...
+    fake_now += og::sim::DISCONNECT_TIMEOUT_MS + 1500u;
+    for (int i = 0; i < 10; ++i)
+    {
+        ASSERT_TRUE(og::runtime::local_transport_shadow_pump_paused(session));
+        ASSERT_FALSE(trace_contains("net", "server_timeout_disconnect"))
+            << "a peer was cut while the menu was still open (pump " << i
+            << ")";
+    }
+
+    // ...and changes P2's zoom (the real handler: viewscreen + cfg only —
+    // nothing sim-visible, so the server hash ledger must stay clean).
+    (void)og::ui::cycle_player_view_zoom(1);
+    for (int i = 0; i < 3; ++i)
+        ASSERT_TRUE(og::runtime::local_transport_shadow_pump_paused(session));
+
+    // RESUME: run_pause_menu's exit dance is resume THEN one paused pump,
+    // before the game loop's next send_input can run.
+    ASSERT_TRUE(og::runtime::local_transport_shadow_toggle_pause(session));
+    ASSERT_TRUE(og::runtime::local_transport_shadow_pump_paused(session));
+    EXPECT_FALSE(trace_contains("net", "server_timeout_disconnect"))
+        << "the resume step starvation-cut in-process peers whose only "
+           "silence was the open menu";
+
+    // The next display-side sends must not throw and play must continue.
+    bool threw = false;
+    std::string what;
+    try
+    {
+        midgame_pump(session, 30, tick);
+    }
+    catch (const std::exception& e)
+    {
+        threw = true;
+        what = e.what();
+    }
+    EXPECT_FALSE(threw) << "post-resume send died: " << what;
+    EXPECT_FALSE(trace_contains("net", "server_timeout_disconnect"));
+    EXPECT_FALSE(trace_contains("net", "server_desync_disconnect"));
+    EXPECT_EQ(2u, og::runtime::local_transport_client_count(session));
+    EXPECT_EQ(0, static_cast<int>(game_screen->world().end));
+
+    // Restore P2's zoom to GAME: the cycle above persists player2_view_zoom
+    // into cfg, and under the sliced-canvas zoom pipeline a leaked override
+    // composes a larger world canvas for every later multi-seat test.
+    while (og::ui::cycle_player_view_zoom(1) != 0)
+        continue;
+
+    midgame_one_hero_teardown(game_screen);
 }

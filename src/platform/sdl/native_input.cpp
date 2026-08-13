@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstring>
 
@@ -123,6 +124,8 @@ EventType map_event_type(Uint32 type)
     case SDL_EVENT_JOYSTICK_HAT_MOTION: return EventType::JoyHatMotion;
     case SDL_EVENT_JOYSTICK_BUTTON_DOWN: return EventType::JoyButtonDown;
     case SDL_EVENT_JOYSTICK_BUTTON_UP: return EventType::JoyButtonUp;
+    case SDL_EVENT_JOYSTICK_ADDED: return EventType::JoyDeviceAdded;
+    case SDL_EVENT_JOYSTICK_REMOVED: return EventType::JoyDeviceRemoved;
     case SDL_EVENT_QUIT: return EventType::Quit;
     default: return EventType::Unknown;
     }
@@ -243,6 +246,29 @@ bool decode_event(const void* native_event, EventData& out)
         out.joy_hat_hat = e.jhat.hat;
         out.joy_hat_value = e.jhat.value;
         break;
+    case SDL_EVENT_JOYSTICK_ADDED:
+    case SDL_EVENT_JOYSTICK_REMOVED:
+    {
+        // No pass-through here (unlike axis/button/hat): an unresolvable id
+        // means the device already left the list, and consumers re-enumerate
+        // rather than trusting a stale index.
+        out.joy_device_instance = static_cast<int>(e.jdevice.which);
+        out.joy_device_index = -1;
+        int count = 0;
+        if (SDL_JoystickID* ids = SDL_GetJoysticks(&count); ids != nullptr)
+        {
+            for (int i = 0; i < count; ++i)
+            {
+                if (ids[i] == e.jdevice.which)
+                {
+                    out.joy_device_index = i;
+                    break;
+                }
+            }
+            SDL_free(ids);
+        }
+        break;
+    }
     case SDL_EVENT_USER:
         out.user_code = e.user.code;
         // intptr_t is defined to round-trip a void* losslessly; this is the
@@ -469,8 +495,27 @@ int num_joysticks()
     return count;
 }
 
+#ifdef TESTING
+namespace
+{
+// Bit i = "device i enumerates but its node will not open" (the udev
+// permission case). See set_joystick_open_failure_mask.
+unsigned int g_joystick_open_failure_mask = 0;
+}
+
+void set_joystick_open_failure_mask(unsigned int mask)
+{
+    g_joystick_open_failure_mask = mask;
+}
+#endif
+
 JoystickHandle joystick_open(int index)
 {
+#ifdef TESTING
+    if (index >= 0 && index < 32 &&
+        (g_joystick_open_failure_mask & (1u << index)) != 0)
+        return nullptr;
+#endif
     int count = 0;
     SDL_JoystickID* ids = SDL_GetJoysticks(&count);
     SDL_Joystick* joystick =
@@ -510,6 +555,26 @@ int joystick_get_hat(JoystickHandle joystick, int hat)
     return SDL_GetJoystickHat(static_cast<SDL_Joystick*>(joystick), hat);
 }
 
+std::string joystick_device_guid(int device_index)
+{
+    int count = 0;
+    SDL_JoystickID* ids = SDL_GetJoysticks(&count);
+    if (ids == nullptr)
+        return {};
+    std::string guid_text;
+    if (device_index >= 0 && device_index < count)
+    {
+        const SDL_GUID guid = SDL_GetJoystickGUIDForID(ids[device_index]);
+        char buf[33];
+        SDL_GUIDToString(guid, buf, static_cast<int>(sizeof(buf)));
+        guid_text = buf;
+        // The all-zero GUID is SDL's failure value, not an identity.
+        if (guid_text.find_first_not_of('0') == std::string::npos) guid_text.clear();
+    }
+    SDL_free(ids);
+    return guid_text;
+}
+
 void joystick_set_event_state(bool enabled)
 {
     SDL_SetJoystickEventsEnabled(enabled);
@@ -530,8 +595,23 @@ void joystick_init_subsystem()
     SDL_InitSubSystem(SDL_INIT_JOYSTICK);
 }
 
+#ifdef TESTING
+namespace
+{
+std::atomic<unsigned long> g_yield_count{0};
+}
+
+unsigned long yield_count()
+{
+    return g_yield_count.load(std::memory_order_relaxed);
+}
+#endif
+
 void sleep_ms(int ms)
 {
+#ifdef TESTING
+    g_yield_count.fetch_add(1, std::memory_order_relaxed);
+#endif
     SDL_Delay(static_cast<Uint32>(ms));
 }
 

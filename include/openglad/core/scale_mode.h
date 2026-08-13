@@ -172,27 +172,64 @@ inline WorldCanvasDims compute_gameplay_ui_canvas_dims(int world_w, int world_h)
                      saturating_canvas_dimension(rounded_h / world_w))};
 }
 
-// Canvas for a window and zoom step count. Zoom 1.0 keeps master's default
-// classic-density world (320x200 at 16:10) instead of master's optional
-// graphics/scale=1 window-sized canvas. One axis expands only enough to
-// match the window aspect, so widescreen/tall displays reveal more world
-// without stretching sprites. Lower zoom values grow that baseline by 1/z.
-// Integer division rounds down and width rounds down to a multiple of four
-// (required by the software scalers and partial-present paths).
-inline WorldCanvasDims compute_zoom_canvas_dims(int window_w, int window_h,
-                                                int zoom_steps)
+// --- Per-view zoom composition (§7.1 pause-menu design) ---------------------
+// A view's zoom override is a scale numerator in tenths: 10 = GAME (follow
+// graphics/zoom alone), 9..5 = 0.9x..0.5x. The world canvas derives from the
+// MINIMUM effective zoom over the live views, expressed as a percent:
+//   effective pct = zoom_steps * view_scale_num   (10..100)
+// so global-only (num 10) reproduces the steps math exactly (pct = steps*10).
+inline constexpr int kViewScaleNumMax = 10; // 1.0x — the GAME default
+inline constexpr int kViewScaleNumMin = 5;  // 0.5x — the deepest override
+inline constexpr int kZoomPctMax = 100;
+
+inline constexpr int clamp_view_scale_num(int num)
+{
+    return std::clamp(num, kViewScaleNumMin, kViewScaleNumMax);
+}
+
+// Composed zoom percent for a global step count and a per-view minimum scale.
+inline constexpr int compose_zoom_pct(int zoom_steps, int view_scale_num)
+{
+    return std::clamp(zoom_steps, 1, kZoomStepsMax) *
+           clamp_view_scale_num(view_scale_num);
+}
+
+// Canvas for a window and a composed zoom percent (5..100). Zoom 100 keeps
+// master's default classic-density world (320x200 at 16:10) instead of
+// master's optional graphics/scale=1 window-sized canvas. One axis expands
+// only enough to match the window aspect, so widescreen/tall displays reveal
+// more world without stretching sprites. Lower percents grow that baseline by
+// 100/pct. Integer division rounds down and width rounds down to a multiple
+// of four (required by the software scalers and partial-present paths).
+inline WorldCanvasDims compute_zoom_canvas_dims_pct(int window_w, int window_h,
+                                                    int zoom_pct)
 {
     const WorldCanvasDims base = compute_gameplay_ui_canvas_dims(
         std::max(kMinWorldCanvasW, window_w),
         std::max(kMinWorldCanvasH, window_h));
     const std::int64_t base_w = base.w;
     const std::int64_t base_h = base.h;
-    const int steps = std::clamp(zoom_steps, 1, kZoomStepsMax);
-    const std::int64_t scaled_w = base_w * kZoomStepsMax / steps;
-    const std::int64_t scaled_h = base_h * kZoomStepsMax / steps;
+    // The deepest composable percent is global 0.1 x view 0.5 = 5. Budget
+    // protection is the caller's fits/constrain machinery, never a silent
+    // clamp here — a clamped canvas under unclamped view windows would
+    // desynchronize the two.
+    const int pct = std::clamp(zoom_pct, kViewScaleNumMin, kZoomPctMax);
+    const std::int64_t scaled_w = base_w * kZoomPctMax / pct;
+    const std::int64_t scaled_h = base_h * kZoomPctMax / pct;
     const int w = saturating_canvas_dimension(scaled_w) & ~3;
     const int h = saturating_canvas_dimension(scaled_h);
     return {w, h};
+}
+
+// Canvas for a window and zoom step count: the global-only view of the same
+// math (pct = steps*10; base*100/(steps*10) and base*10/steps share the same
+// rational, so the floor results are identical — pinned by unit tests).
+inline WorldCanvasDims compute_zoom_canvas_dims(int window_w, int window_h,
+                                                int zoom_steps)
+{
+    return compute_zoom_canvas_dims_pct(
+        window_w, window_h,
+        std::clamp(zoom_steps, 1, kZoomStepsMax) * kZoomStepsMax);
 }
 
 // Uniformly bound an otherwise-valid canvas while retaining its aspect. This
@@ -233,20 +270,23 @@ inline WorldCanvasDims constrain_world_canvas_dims(
     return {w, h};
 }
 
-inline bool zoom_canvas_fits_budget(int window_w, int window_h, int zoom_steps,
-                                    int max_texture_dimension = 0)
+// Composed-percent budget check (§7.1 per-view zoom): whether the canvas for
+// `zoom_pct` fits the split-canvas pixel budget and the renderer's texture
+// limit. pct == 100 is the always-selectable baseline (very large desktops
+// are uniformly constrained rather than refused).
+inline bool zoom_canvas_fits_budget_pct(int window_w, int window_h,
+                                        int zoom_pct,
+                                        int max_texture_dimension = 0)
 {
-    const int steps = std::clamp(zoom_steps, 1, kZoomStepsMax);
-    const WorldCanvasDims dims =
-        compute_zoom_canvas_dims(window_w, window_h, steps);
-    if (steps == kZoomStepsMax)
+    const int pct = std::clamp(zoom_pct, kViewScaleNumMin, kZoomPctMax);
+    if (pct == kZoomPctMax)
     {
-        // The baseline is always selectable: very large desktops are
-        // uniformly constrained rather than attempting an unsafe allocation.
         return max_texture_dimension <= 0 ||
                (max_texture_dimension >= kMinWorldCanvasW &&
                 max_texture_dimension >= kMinWorldCanvasH);
     }
+    const WorldCanvasDims dims =
+        compute_zoom_canvas_dims_pct(window_w, window_h, pct);
     if (max_texture_dimension > 0 &&
         (dims.w > max_texture_dimension || dims.h > max_texture_dimension))
     {
@@ -254,6 +294,15 @@ inline bool zoom_canvas_fits_budget(int window_w, int window_h, int zoom_steps,
     }
     return static_cast<std::int64_t>(dims.w) * dims.h <=
            kWorldCanvasPixelBudget;
+}
+
+inline bool zoom_canvas_fits_budget(int window_w, int window_h, int zoom_steps,
+                                    int max_texture_dimension = 0)
+{
+    return zoom_canvas_fits_budget_pct(
+        window_w, window_h,
+        std::clamp(zoom_steps, 1, kZoomStepsMax) * kZoomStepsMax,
+        max_texture_dimension);
 }
 
 // Deepest safe selector step for this window. Values below it are omitted so

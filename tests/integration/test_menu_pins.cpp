@@ -3,16 +3,17 @@
 // The tables are independent oracles: a spec transcription error fails here
 // instead of validating itself against another projection of the same spec.
 //
-// Pinned screens: main menu (including the native/web QUIT fork), global
-// controls, hire, train, and the progress screen (whose table is
-// function-local in create_progress_menu; it is pinned through the live
-// vbutton surface instead of an accessor).
+// Pinned screens: main menu (including the native/web QUIT fork), hire,
+// train, and the progress screen (whose table is function-local in
+// create_progress_menu; it is pinned through the live vbutton surface
+// instead of an accessor).
 //
 // Change a pin only with an intentional screen change, in the same commit.
 
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/screen.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/resources/save_data.h>
 #include "../../src/interface/ui/picker_sdl_defs.h"
 #include "test_interact.h"
@@ -138,63 +139,61 @@ TEST(MenuEnginePins, mainmenu_exact_table)
     ASSERT_EQ("quit", buttons[6].id);
 }
 
-TEST(MenuEnginePins, control_options_exact_table)
+// GAME SETTINGS: the two columns after the global CONTROLS door was deleted
+// (its four player sections duplicated the per-seat player screens). The
+// door column at x=130 runs DISPLAY -> GAMEPLAY FX -> UI FX -> GRAPHICS FX
+// at a 23px pitch under the Sound row; the x=210 column is RESTORE SETTINGS,
+// Sprite Sheet, and SPEED in the row the CONTROLS door vacated.
+TEST(MenuEnginePins, main_options_exact_table)
 {
     static const ExpectedButton kExpected[] = {
-        {"controls_back", "BACK", KEYSTATE_ESCAPE, 10, 8, 50, 15,
+        {"options_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15,
          button_action_id(ButtonAction::ReturnMenu), MENU_EXIT,
-         MenuNav{.up = 9, .down = 1}},
-        {"player1_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 30, 40, 100, 15,
-         button_action_id(ButtonAction::ToggleControlMode), 0,
-         MenuNav{.up = 0, .down = 3, .right = 2}},
-        {"player1_remap", "REMAP P1", KEYSTATE_UNKNOWN, 170, 40, 100, 15,
-         button_action_id(ButtonAction::EditPlayerKeymap), 0,
-         MenuNav{.up = 0, .down = 4, .left = 1}},
-        {"player2_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 30, 68, 100, 15,
-         button_action_id(ButtonAction::ToggleControlMode), 1,
-         MenuNav{.up = 1, .down = 5, .right = 4}},
-        {"player2_remap", "REMAP P2", KEYSTATE_UNKNOWN, 170, 68, 100, 15,
-         button_action_id(ButtonAction::EditPlayerKeymap), 1,
-         MenuNav{.up = 2, .down = 6, .left = 3}},
-        {"player3_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 30, 96, 100, 15,
-         button_action_id(ButtonAction::ToggleControlMode), 2,
-         MenuNav{.up = 3, .down = 7, .right = 6}},
-        {"player3_remap", "REMAP P3", KEYSTATE_UNKNOWN, 170, 96, 100, 15,
-         button_action_id(ButtonAction::EditPlayerKeymap), 2,
-         MenuNav{.up = 4, .down = 8, .left = 5}},
-        {"player4_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 30, 124, 100, 15,
-         button_action_id(ButtonAction::ToggleControlMode), 3,
-         MenuNav{.up = 5, .down = 9, .right = 8}},
-        {"player4_remap", "REMAP P4", KEYSTATE_UNKNOWN, 170, 124, 100, 15,
-         button_action_id(ButtonAction::EditPlayerKeymap), 3,
-         MenuNav{.up = 6, .down = 9, .left = 7}},
-        {"reset_all_controls", "RESET ALL", KEYSTATE_UNKNOWN, 90, 174, 140, 15,
-         button_action_id(ButtonAction::RestoreDefaultControls), -1,
-         MenuNav{.up = 7, .down = 0}},
+         MenuNav{.up = 7, .down = 1, .right = 4}},
+        {"toggle_sound", "Sound", KEYSTATE_UNKNOWN, 130, 33, 50, 15,
+         button_action_id(ButtonAction::ToggleSound), -1,
+         MenuNav{.up = 0, .down = 2, .right = 5}},
+        {"display_settings", "DISPLAY", KEYSTATE_UNKNOWN, 130, 56, 90, 15,
+         button_action_id(ButtonAction::OpenDisplaySettings), -1,
+         MenuNav{.up = 1, .down = 3, .right = 5}},
+        {"gameplay_fx", "GAMEPLAY FX", KEYSTATE_UNKNOWN, 130, 79, 90, 15,
+         button_action_id(ButtonAction::OpenGameplayFxSettings), -1,
+         MenuNav{.up = 2, .down = 6}},
+        {"restore_defaults", "RESTORE SETTINGS", KEYSTATE_UNKNOWN,
+         210, 10, 100, 15,
+         button_action_id(ButtonAction::RestoreDefaultSettings), -1,
+         MenuNav{.up = 7, .down = 5, .left = 0}},
+        {"pick_sprite_sheet", "Sprite Sheet", KEYSTATE_UNKNOWN,
+         210, 33, 90, 15, button_action_id(ButtonAction::PickSpriteSheet), 0,
+         MenuNav{.up = 4, .down = 8, .left = 1}},
+        {"ui_fx", "UI FX", KEYSTATE_UNKNOWN, 130, 102, 90, 15,
+         button_action_id(ButtonAction::OpenUiFxSettings), -1,
+         MenuNav{.up = 3, .down = 7}},
+        {"graphics_fx", "GRAPHICS FX", KEYSTATE_UNKNOWN, 130, 125, 90, 15,
+         button_action_id(ButtonAction::OpenGraphicsFxSettings), -1,
+         MenuNav{.up = 6, .down = 0, .right = 8}},
+        {"game_speed", "SPEED: 8", KEYSTATE_UNKNOWN, 210, 148, 90, 15,
+         button_action_id(ButtonAction::CycleGameSpeed), -1,
+         MenuNav{.up = 5, .down = 4, .left = 7}},
     };
 
-    std::array<int, 4> saved_modes{};
-    for (int player = 0; player < 4; ++player) {
-        saved_modes[static_cast<std::size_t>(player)] =
-            get_player_control_mode(player);
-        set_player_control_mode(
-            player, static_cast<int>(ControlDirectionMode::FourDirection));
-    }
+    // SPEED's face is a cfg-derived label binding; pin the table against the
+    // shipped default cadence.
+    const std::string saved_speed = cfg.get_setting("gameplay", "timer_wait");
+    cfg.apply_setting("gameplay", "timer_wait", "6");
 
-    button* buttons = picker_control_options_buttons();
-    const int count = picker_control_options_button_count();
+    button* buttons = picker_main_options_buttons();
+    const int count = picker_main_options_button_count();
     check_exact_table(buttons, count, kExpected,
-                      static_cast<int>(std::size(kExpected)),
-                      "control_options");
+                      static_cast<int>(std::size(kExpected)), "main_options");
 
-    for (int player = 0; player < 4; ++player)
-        set_player_control_mode(
-            player, saved_modes[static_cast<std::size_t>(player)]);
+    cfg.apply_setting("gameplay", "timer_wait", saved_speed);
 }
 
-// The VIEW TEAM screen and the SAVE/LOAD slot menus are RETIRED (design
-// §2.5/§3.8) — their exact-table pins retired with them; the base-camp
-// roster's table is pinned in test_menu_layout (createmenu_basecamp_*).
+// The VIEW TEAM screen, the SAVE/LOAD slot menus and the global CONTROLS
+// screen are RETIRED (design §2.5/§3.8, pause-menu design §7.5) — their
+// exact-table pins retired with them; the base-camp roster's table is pinned
+// in test_menu_layout (createmenu_basecamp_*).
 
 // ---------------------------------------------------------------------------
 // §2.2 new-company name entry: a Layer-F engine screen. All four rows dispatch

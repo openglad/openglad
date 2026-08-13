@@ -37,7 +37,6 @@
 #include <openglad/interface/base.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/resources/gparser.h>
-#include <openglad/interface/render/pal32.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/render/radar.h>
 #include <openglad/interface/render/view.h>
@@ -54,7 +53,6 @@
 #include <format>
 #include <openglad/interface/render/view_layout.h>
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <cstring>
 #include <memory>
@@ -78,77 +76,13 @@ inline constexpr int VIEW_TEAM_LEFT = 20;
 inline constexpr int VIEW_TEAM_BOTTOM = 198;
 inline constexpr int VIEW_TEAM_RIGHT = 280;
 
-// Zardus: these were originally static chars but are now ints
-// Now define the arrays with their default values
-
-static constexpr std::array<int, 16> key1 = {
-                 KEYCODE_w, KEYCODE_e, KEYCODE_d, KEYCODE_c,  // movements
-                 KEYCODE_x, KEYCODE_z, KEYCODE_a, KEYCODE_q,
-                 KEYCODE_LCTRL, KEYCODE_LALT,                    // fire & special
-                 KEYCODE_TAB,                               // switch guys
-                 KEYCODE_1,                                 // change special
-                 KEYCODE_s,                                 // Yell
-                 KEYCODE_LSHIFT,                        // Shifter
-                 KEYCODE_2,                                 // Options menu
-                 KEYCODE_F5,                                 // Cheat key
-};
-
-void timed_dialog(const char* message, float delay_seconds = 3.0f);
-
-static constexpr std::array<int, 16> key2 = {
-                 KEYCODE_KP_8, KEYCODE_KP_9, KEYCODE_KP_6, KEYCODE_KP_3,  // movements
-                 KEYCODE_KP_2, KEYCODE_KP_1, KEYCODE_KP_4, KEYCODE_KP_7,
-                 KEYCODE_KP_0, KEYCODE_KP_ENTER,                    // fire & special
-                 KEYCODE_KP_PLUS,                          // switch guys
-                 KEYCODE_KP_MINUS,                         // change special
-                 KEYCODE_KP_5,                                // Yell
-                 KEYCODE_KP_PERIOD,                                // Shifter
-                 KEYCODE_KP_MULTIPLY,                         // Options menu
-                 KEYCODE_F8,                                    // Cheat key
-             };
-
-static constexpr std::array<int, 16> key3 = {
-                 KEYCODE_i, KEYCODE_o, KEYCODE_l, KEYCODE_PERIOD,  // movements
-                 KEYCODE_COMMA, KEYCODE_m, KEYCODE_j, KEYCODE_u,
-                 KEYCODE_SPACE, KEYCODE_SEMICOLON,                    // fire & special
-                 KEYCODE_BACKSPACE,                               // switch guys
-                 KEYCODE_7,                                 // change special
-                 KEYCODE_k,                                 // Yell
-                 KEYCODE_RSHIFT,                        // Shifter
-                 KEYCODE_8,                                 // Options menu
-                 KEYCODE_F7,                                 // Cheat key
-             };
-
-static constexpr std::array<int, 16> key4 = {
-                 KEYCODE_t, KEYCODE_y, KEYCODE_h, KEYCODE_n,  // movements
-                 KEYCODE_b, KEYCODE_v, KEYCODE_f, KEYCODE_r,
-                 KEYCODE_5, KEYCODE_6,                    // fire & special
-                 KEYCODE_EQUALS,                               // switch guys
-                 KEYCODE_3,                                 // change special
-                 KEYCODE_g,                                 // Yell
-                 KEYCODE_MINUS,                        // Shifter
-                 KEYCODE_4,                                 // Options menu
-                 KEYCODE_F6,                                 // Cheat key
-             };
-
 static SimInputDebounce g_viewscreen_debounce[6] = {};
 
-// This is for saving/loading the key preferences
-Sint32 save_key_prefs();
-Sint32 load_key_prefs();
-// Zardus: no longer unsigned
-int get_keypress();
+// Legacy preferences file. Only the HUD-preference half is still read (see
+// options::options): the key half was never consulted to resolve a keypress —
+// live bindings live in GameSession::player_keys_, persisted to
+// cfg/openglad.yaml — and nothing writes the file any more.
 inline constexpr const char* KEY_FILE = "keyprefs.dat";
-
-// This only exists so we can use the array constructor
-//   for our prefs object (grumble grumble)
-// Zardus: these used to be static chars too
-static constexpr std::array<const int*, 4> normalkeys = {
-    key1.data(), key2.data(), key3.data(), key4.data()};
-// Zardus: keys is a sys var (apparently) so we'll use allkeys
-// allkeys now lives in GameSession::allkeys_ (Phase 5 migration).
-// File-local accessor for convenience.
-static inline auto& allkeys() { return og::runtime::current_session->allkeys_; }
 
 // theprefs is now a macro defined in view.h (dereferences current_session).
 // myscreen is now a macro defined in base.h (dereferences current_session).
@@ -426,14 +360,11 @@ viewscreen::viewscreen(short x, short y, short width,
 	endx = xloc+width;
 	endy = yloc+height;
 	control = nullptr;
-	gamma = 0;
 	prefsob = active_prefs();
 
-	// Key entries ..
 	mynum = whatnum;              // what viewscreen am I?
 	global_player_index_ = whatnum; // local games map views 1:1
 	my_team = 0;
-	mykeys = allkeys()[mynum]; // assign keyboard mappings
 
 	// Set preferences to default values
 	/*
@@ -445,8 +376,10 @@ viewscreen::viewscreen(short x, short y, short width,
 	  prefs[PREF_FOES]  = PREF_FOES_ON;
 	  prefs[PREF_GAMMA] = 0;
 	*/
-	//load_key_prefs(); // load key prefs, if present
 	prefsob->load(this);
+	// §7.1: cfg overlays the keyprefs-loaded HUD prefs + per-view zoom
+	// (one-shot legacy seed when this player's cfg keys were never written).
+	apply_hud_settings_from_cfg();
 
 	myradar = std::make_unique<radar>(this, active_screen(), mynum);
 	radarstart = 0; //the radar has not yet been started
@@ -725,6 +658,12 @@ viewscreen::FloorPassParams viewscreen::compute_floor_pass(
 	return p;
 }
 
+// Per-view zoom-out (§7.1) is pure GEOMETRY: resize(whatmode) sizes this
+// view's 1:1 render window from the composed zoom and relayout publishes the
+// presentation slices. The render loop below has no zoom code — the floor
+// layer exists solely for multifloor fade/parallax, and gameplay pixels are
+// resampled exactly once, by the presentation path.
+
 bool viewscreen::redraw()
 {
 	Sint32 i,j;
@@ -854,7 +793,7 @@ bool viewscreen::redraw()
 			// off-screen layer below, so they slide + recede as the player moves.
 			// topx/topy restored after this floor draws; fscale/fcx/fcy -> layer_end.
 			const Sint32 par_topx = topx, par_topy = topy;
-			float fscale = fp.fscale;
+			const float fscale = fp.fscale;
 			const Sint32 fcx = xloc + xview / 2;
 			const Sint32 fcy = yloc + yview / 2;
 			if (fp.shift)
@@ -866,7 +805,7 @@ bool viewscreen::redraw()
 			// off-screen layer, then composites back smoothly scaled about the
 			// viewport centre + faded (seam-free). The camera floor and opaque
 			// (ghosting-off) floors draw straight to the screen, byte-identical.
-			const bool use_layer = (vworld.floor_count() > 1 && falpha < 255);
+			const bool use_layer = vworld.floor_count() > 1 && falpha < 255;
 			// A below-camera floor (fscale<1) shrunk about the centre from a
 			// viewport-sized layer would leave a black ring around the
 			// composite: instead draw a 1/fscale-larger world window (pad on
@@ -932,7 +871,8 @@ bool viewscreen::redraw()
 						// On a layer the composite fades the whole floor, so tiles draw
 						// opaque (full coverage); glass stays faint only on the directly
 						// drawn camera floor (so the floor below shows through it).
-						const unsigned char talpha = layer_active ? 255
+						const unsigned char talpha = layer_active
+						    ? 255
 						    : ((tile == PIX_GLASS && falpha > kGlassAlpha) ? kGlassAlpha : falpha);
 						renderer->draw_tile(tile, i*GRID_SIZE, j*GRID_SIZE, this, talpha);
 						// Decor rides right on top of its base tile, through the
@@ -1140,7 +1080,7 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 			// off-screen layer below, so they slide + recede as the player moves.
 			// topx/topy restored after this floor draws; fscale/fcx/fcy -> layer_end.
 			const Sint32 par_topx = topx, par_topy = topy;
-			float fscale = fp.fscale;
+			const float fscale = fp.fscale;
 			const Sint32 fcx = xloc + xview / 2;
 			const Sint32 fcy = yloc + yview / 2;
 			if (fp.shift)
@@ -1152,7 +1092,7 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 			// off-screen layer, then composites back smoothly scaled about the
 			// viewport centre + faded (seam-free). The camera floor and opaque
 			// (ghosting-off) floors draw straight to the screen, byte-identical.
-			const bool use_layer = (vworld.floor_count() > 1 && falpha < 255);
+			const bool use_layer = vworld.floor_count() > 1 && falpha < 255;
 			// A below-camera floor (fscale<1) shrunk about the centre from a
 			// viewport-sized layer would leave a black ring around the
 			// composite: instead draw a 1/fscale-larger world window (pad on
@@ -1218,7 +1158,8 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 						// On a layer the composite fades the whole floor, so tiles draw
 						// opaque (full coverage); glass stays faint only on the directly
 						// drawn camera floor (so the floor below shows through it).
-						const unsigned char talpha = layer_active ? 255
+						const unsigned char talpha = layer_active
+						    ? 255
 						    : ((tile == PIX_GLASS && falpha > kGlassAlpha) ? kGlassAlpha : falpha);
 						renderer->draw_tile(tile, i*GRID_SIZE, j*GRID_SIZE, this, talpha);
 						// Decor rides right on top of its base tile, through the
@@ -1385,13 +1326,10 @@ short viewscreen::input(const void* native_event)
 			active_screen()->report_mem();
 	}
 
-	// Redisplay scenario text (Shift+/ = "?") — needs raw SDL for KEYCODE_SLASH
-	if (query_key_event(KEYCODE_SLASH, native_event) && pi.is_held(InputAction::Shift) && !pi.is_held(InputAction::Cheat))
-	{
-		read_scenario(active_screen());
-		active_screen()->redrawme = 1;
-		clear_keyboard();
-	}
+	// The Shift+/ briefing chord is gone (design §7.2): raw '/' was player
+	// 2's SPECIAL key, so any held shifter turned a P2 cast into the mission
+	// text over everyone's game. The briefing lives on the PAUSED menu now;
+	// read_scenario still runs at level start.
 
 	// Before here, all keys should check for !KEY_CHEAT
 	// --- Cheat keys (sim mutations handled in runtime layer) ---
@@ -1486,19 +1424,10 @@ void viewscreen::process_input(const InputState& input_state)
 		return; // No further input processing in spectator mode
 	}
 
-	// --- Prefs key (render-layer concern: opens a UI menu) ---
-	// A genuine network spectator has no local player seat. Do not let its
-	// otherwise-unconsumed key open a player-specific preferences menu.
-	const bool networked_spectator = networked_shadow &&
-	    og::runtime::current_session->own_player_indices_.empty();
-	if (!networked_spectator && !pi.is_held(InputAction::Cheat))
-	{
-		if (pi.was_pressed(InputAction::OpenPrefs))
-		{
-			options_menu();
-			return;
-		}
-	}
+	// InputAction::OpenPrefs (slot 14) dispatched the retired per-player
+	// options menu here. The slot stays reserved for the wire format
+	// (NUM_INPUT_KEYS == 16) but is unbound and does nothing; its settings
+	// live on the pause player screen and in GAME SETTINGS now.
 
 	// During gameplay the authoritative server owns input processing, so
 	// everything below (including the notification/sound block at the end of
@@ -1881,9 +1810,48 @@ void viewscreen::resize(short x, short y, short length, short height)
 	endx = xloc+length;
 	endy = yloc+height;
 
+	// Direct-geometry callers (editor/capture cameras) have no per-view zoom:
+	// slot == window, so relayout publishes no presentation slice for them.
+	slot_x_ = xloc;
+	slot_y_ = yloc;
+	slot_w_ = xview;
+	slot_h_ = yview;
+
 	if (!myradar->bmp.empty())
 		myradar->start();
 	active_screen()->redrawme = 1;
+}
+
+// §7.1 persistence: prefs[] stays the runtime carrier; cfg
+// (controls: playerN_hud_* / playerN_view_zoom) is the persistence layer.
+// Runs once from the constructor, right after options::load copied the
+// legacy keyprefs.dat prefs in.
+void viewscreen::apply_hud_settings_from_cfg()
+{
+	PlayerHudSettings hud;
+	if (!load_player_hud_settings_from_cfg(cfg, mynum, hud))
+	{
+		// One-shot seed: this player's cfg keys were never written. Persist
+		// the keyprefs-loaded prefs (apply_setting only — disk timing belongs
+		// to the screens' persist paths), after which keyprefs.dat is legacy.
+		hud.radar = prefs[PREF_RADAR] != PREF_RADAR_OFF ? 1 : 0;
+		hud.life_on = prefs[PREF_LIFE] != PREF_LIFE_OFF ? 1 : 0;
+		hud.foes = prefs[PREF_FOES] != PREF_FOES_OFF ? 1 : 0;
+		hud.score = prefs[PREF_SCORE] != PREF_SCORE_OFF ? 1 : 0;
+		hud.zoom_step = 0;
+		save_player_hud_settings_to_cfg(cfg, mynum, hud);
+		return;
+	}
+	prefs[PREF_RADAR] = hud.radar != 0 ? PREF_RADAR_ON : PREF_RADAR_OFF;
+	prefs[PREF_FOES] = hud.foes != 0 ? PREF_FOES_ON : PREF_FOES_OFF;
+	prefs[PREF_SCORE] = hud.score != 0 ? PREF_SCORE_ON : PREF_SCORE_OFF;
+	if (hud.life_on == 0)
+		prefs[PREF_LIFE] = PREF_LIFE_OFF;
+	else if (prefs[PREF_LIFE] == PREF_LIFE_OFF)
+		prefs[PREF_LIFE] = PREF_LIFE_BOTH;
+	// else: keep a legacy TEXT/BARS/SMALL value — it displays as ON and
+	// normalizes to BOTH on the first HP toggle (§7.1).
+	view_zoom_step_ = static_cast<Sint32>(hud.zoom_step);
 }
 
 void viewscreen::resize(char whatmode)
@@ -1901,8 +1869,37 @@ void viewscreen::resize(char whatmode)
 	    active_screen()->world_canvas_w(), active_screen()->world_canvas_h());
 	if (!r.applies)
 		return; // no table entry for this numviews/mynum: keep the old geometry
+
+	// §7.1 per-view zoom: r is this view's SLOT (its proportional canvas
+	// share — the canvas itself already embodies the minimum effective zoom).
+	// The 1:1 render WINDOW is the slot scaled by n_min/n_view, top-left
+	// anchored; at the minimum (in particular when every view is at GAME,
+	// n_min == n_view == 10) window == slot exactly — byte-identical
+	// geometry. The editor's classic pin forces the composition inert.
+	const screen* const scr = active_screen();
+	Sint32 n_view = view_scale_num();
+	Sint32 n_min = std::min<Sint32>(scr->min_view_zoom_scale_num(), n_view);
+	if (scr->world_canvas_pinned_classic() ||
+	    !scr->world_present_partition_supported())
+	{
+		// The editor's classic pin and backends without the partitioned
+		// presentation seam render windows == slots: a persisted per-view
+		// zoom must never shrink a window nothing will rescale.
+		n_view = 10;
+		n_min = 10;
+	}
+	const Sint32 win_w = static_cast<Sint32>(
+	    static_cast<std::int64_t>(r.w) * n_min / n_view);
+	const Sint32 win_h = static_cast<Sint32>(
+	    static_cast<std::int64_t>(r.h) * n_min / n_view);
 	resize(static_cast<short>(r.x), static_cast<short>(r.y),
-	       static_cast<short>(r.w), static_cast<short>(r.h));
+	       static_cast<short>(win_w), static_cast<short>(win_h));
+	// The raw resize records slot == window; restore the true slot for the
+	// relayout slice build.
+	slot_x_ = r.x;
+	slot_y_ = r.y;
+	slot_w_ = r.w;
+	slot_h_ = r.h;
 } // end of resize(whatmode)
 
 std::pair<Sint32, Sint32>
@@ -2010,13 +2007,28 @@ unsigned char compute_mp_color(float mp, float maxmp)
         return WATER_START;
 }
 
-void viewscreen::view_team()
+#ifdef TESTING
+namespace
+{
+// One-shot pass budget for the compiled-out wait loop: view_team consumes it
+// to drive the poll callback exactly like real wait passes would.
+int s_view_team_testing_poll_passes = 0;
+} // namespace
+
+void view_team_testing_set_poll_passes(int passes)
+{
+	s_view_team_testing_poll_passes = passes;
+}
+#endif
+
+void viewscreen::view_team(KeyWaitPollCallback poll)
 {
 	view_team(VIEW_TEAM_LEFT, VIEW_TEAM_TOP,
-	          VIEW_TEAM_RIGHT, VIEW_TEAM_BOTTOM);
+	          VIEW_TEAM_RIGHT, VIEW_TEAM_BOTTOM, poll);
 }
 
-void viewscreen::view_team(short left, short top, short right, short bottom)
+void viewscreen::view_team(short left, short top, short right, short bottom,
+                           KeyWaitPollCallback poll)
 {
 	ScopedUiCanvas canvas_target(*active_screen());
 	short teamnum = my_team;
@@ -2102,6 +2114,11 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	Sint32 cycletime = 30000;
 	while (!og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
 	{
+		// The poll runs once per wait pass; false ends the wait (session
+		// died / owner canceled). Esc is not down here, so the release
+		// drain below no-ops on this exit path.
+		if (poll != nullptr && !poll())
+			return;
 		YIELD_SLEEP(10);  // Yield to browser event loop
 		active_screen()->do_cycle(currentcycle++, cycletime);
 		get_input_events(POLL);
@@ -2111,523 +2128,26 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 		YIELD_SLEEP(1);
 		get_input_events(POLL);
 	}
+#else
+	// TESTING: return immediately (the blocking wait is compiled out), but
+	// keep the poll contract testable — an opted-in one-shot pass budget
+	// drives the callback exactly like real wait passes, stopping early on
+	// false.
+	int poll_passes = s_view_team_testing_poll_passes;
+	s_view_team_testing_poll_passes = 0;
+	while (poll != nullptr && poll_passes-- > 0)
+	{
+		if (!poll())
+			break;
+	}
 #endif
 
 	return;
 }
 
-void viewscreen::options_menu()
-{
-	text& optiontext = active_screen()->text_normal;
-	Sint32 gamespeed;
-	std::string message, tempstr;
-	Sint32 gamma_val = prefs[PREF_GAMMA];
-
-#define LEFT_OPS 49
-#define TOP_OPS 44
-#define TEXT_HEIGHT 5
-#define OPLINES(y) (TOP_OPS + y*(TEXT_HEIGHT+3))
-#define PANEL_COLOR 13
-
-	if (!control)
-	{
-	    LogError("view_options_menu_failed reason=missing_control view={}\n", mynum);
-		return;  // safety check; shouldn't happen
-	}
-
-	ScopedUiCanvas canvas_target(*active_screen());
-
-	clear_keyboard();
-
-	// Draw the menu button
-	active_screen()->draw_button(40, 40, 280, 160, 2, 1);
-	active_screen()->draw_text_bar(40+4, 40+4, 280-4, 40+12);
-	std::string title = std::format("Options Menu ({})", mynum+1);
-	optiontext.write_xy(160-6*6, OPLINES(0)+2, title.c_str(), static_cast<unsigned char>(RED), 1);
-
-	gamespeed = change_speed(0);
-	message = std::format("Change Game Speed (+/-): {:2d}  ", gamespeed);
-	optiontext.write_xy(LEFT_OPS, OPLINES(2), message.c_str(), static_cast<unsigned char>(BLACK), 1);
-	switch (prefs[PREF_VIEW])
-	{
-		case PREF_VIEW_FULL:
-			tempstr = "Full Screen";
-			break;
-		case PREF_VIEW_PANELS:
-			tempstr = "Large";
-			break;
-		case PREF_VIEW_1:
-			tempstr = "Medium";
-			break;
-		case PREF_VIEW_2:
-			tempstr = "Small";
-			break;
-		case PREF_VIEW_3:
-			tempstr = "Tiny";
-			break;
-		default:
-			tempstr = "Weird";
-			break;
-	}
-	message = std::format("Change View Size ([,]) : {} ", tempstr);
-	active_screen()->draw_box(LEFT_OPS, OPLINES(3), LEFT_OPS+static_cast<int>(message.size())*6, OPLINES(3)+6, PANEL_COLOR, 1, 1);
-	optiontext.write_xy(LEFT_OPS, OPLINES(3), message.c_str(), static_cast<unsigned char>(BLACK), 1);
-
-	gamma_val = change_gamma(0);
-	message = std::format("Change Brightness (<,>): {} ", gamma_val);
-	active_screen()->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
-	optiontext.write_xy(LEFT_OPS, OPLINES(4), message.c_str(), static_cast<unsigned char>(BLACK), 1);
-
-	if (prefs[PREF_RADAR])
-		message = "Radar Display (R)      : ON ";
-	else
-		message = "Radar Display (R)      : OFF ";
-	active_screen()->draw_box(45, OPLINES(5), 275, OPLINES(5)+6, PANEL_COLOR, 1, 1);
-	optiontext.write_xy(LEFT_OPS, OPLINES(5), message.c_str(), static_cast<unsigned char>(BLACK), 1);
-
-	switch (prefs[PREF_LIFE])
-	{
-		case PREF_LIFE_TEXT:
-			tempstr = "Text Only";
-			break;
-		case PREF_LIFE_BARS:
-			tempstr = "Bars Only";
-			break;
-		case PREF_LIFE_BOTH:
-			tempstr = "Bars and Text";
-			break;
-		case PREF_LIFE_OFF:
-			tempstr = "Off";
-			break;
-		default:
-		case PREF_LIFE_SMALL:
-			tempstr = "On";
-			break;
-	}
-	message = std::format("Hitpoint Display (H)   : {}", tempstr);
-	active_screen()->draw_box(45, OPLINES(6), 275, OPLINES(6)+6, PANEL_COLOR, 1, 1);
-	optiontext.write_xy(LEFT_OPS, OPLINES(6), message.c_str(), static_cast<unsigned char>(BLACK), 1);
-
-	if (prefs[PREF_FOES])
-		message = "Foes Display (F)       : ON ";
-	else
-		message = "Foes Display (F)       : OFF ";
-	active_screen()->draw_box(45, OPLINES(7), 275, OPLINES(7)+6, PANEL_COLOR, 1, 1);
-	optiontext.write_xy(LEFT_OPS, OPLINES(7), message.c_str(), static_cast<unsigned char>(BLACK), 1);
-
-	if (prefs[PREF_SCORE])
-		message = "Score Display (S)      : ON ";
-	else
-		message = "Score Display (S)      : OFF ";
-	active_screen()->draw_box(45, OPLINES(8), 275, OPLINES(8)+6, PANEL_COLOR, 1, 1);
-	optiontext.write_xy(LEFT_OPS, OPLINES(8), message.c_str(), static_cast<unsigned char>(BLACK), 1);
-
-	optiontext.write_xy(LEFT_OPS, OPLINES(9), "VIEW TEAM INFO (T)", static_cast<unsigned char>(BLACK), 1);
-
-	if (active_screen()->cyclemode)
-		message = "Color Cycling (C)      : ON ";
-	else
-		message = "Color Cycling (C)      : OFF ";
-	active_screen()->draw_box(45,OPLINES(10),275,OPLINES(10)+6,PANEL_COLOR,1,1);
-	optiontext.write_xy(LEFT_OPS,OPLINES(10),message.c_str(),static_cast<unsigned char>(BLACK),1);
-
-	//if (prefs[PREF_JOY] == PREF_NO_JOY)
-	if(!playerHasJoystick(mynum))
-		message = "Joystick Mode (J)      : OFF ";
-	else
-		message = "Joystick Mode (J)      : ON ";
-	active_screen()->draw_box(45,OPLINES(11),275,OPLINES(11)+6,PANEL_COLOR,1,1);
-	optiontext.write_xy(LEFT_OPS,OPLINES(11),message.c_str(),static_cast<unsigned char>(BLACK),1);
-
-	optiontext.write_xy(LEFT_OPS, OPLINES(12), "Configure controls from main menu", static_cast<unsigned char>(BLACK), 1);
-	optiontext.write_xy(LEFT_OPS, OPLINES(13), "  Options -> Player Controls", static_cast<unsigned char>(BLACK), 1);
-
-	// Draw the current screen
-	active_screen()->buffer_to_screen(0, 0, 320, 200);
-
-	// Wait for esc for now
-	while (!og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
-	{
-		YIELD_SLEEP(10);  // Yield to browser event loop
-		get_input_events(POLL);
-		if (og::runtime::current_session->keystates_[KEYSTATE_KP_PLUS]) // faster game speed
-		{
-			gamespeed = change_speed(1);
-			message = std::format("Change Game Speed (+/-): {:2d}  ", gamespeed);
-			active_screen()->draw_box(LEFT_OPS, OPLINES(2), LEFT_OPS+static_cast<int>(message.size())*6, OPLINES(2)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(2), message.c_str(), static_cast<unsigned char>(BLACK), 1);
-			active_screen()->buffer_to_screen(0, 0, 320, 200);
-			while (og::runtime::current_session->keystates_[KEYSTATE_KP_PLUS])
-			{
-				YIELD_SLEEP(1);
-				get_input_events(POLL);
-			}
-		}
-		if (og::runtime::current_session->keystates_[KEYSTATE_KP_MINUS]) // slower game speed
-		{
-			gamespeed = change_speed(-1);
-			message = std::format("Change Game Speed (+/-): {:2d}  ", gamespeed);
-			active_screen()->draw_box(LEFT_OPS, OPLINES(2), LEFT_OPS+static_cast<int>(message.size())*6, OPLINES(2)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(2), message.c_str(), static_cast<unsigned char>(BLACK), 1);
-			active_screen()->buffer_to_screen(0, 0, 320, 200);
-			while (og::runtime::current_session->keystates_[KEYSTATE_KP_MINUS])
-			{
-				YIELD_SLEEP(1);
-				get_input_events(POLL);
-			}
-		}
-		if (og::runtime::current_session->keystates_[KEYSTATE_LEFTBRACKET]) // smaller view size
-		{
-			prefs[PREF_VIEW] = prefs[PREF_VIEW]+1;
-			if (prefs[PREF_VIEW] > 4)
-				prefs[PREF_VIEW] = 4;
-			resize(prefs[PREF_VIEW]);
-
-			switch (prefs[PREF_VIEW])
-			{
-				case PREF_VIEW_FULL:
-					tempstr = "Full Screen";
-					break;
-				case PREF_VIEW_PANELS:
-					tempstr = "Large";
-					break;
-				case PREF_VIEW_1:
-					tempstr = "Medium";
-					break;
-				case PREF_VIEW_2:
-					tempstr = "Small";
-					break;
-				case PREF_VIEW_3:
-					tempstr = "Tiny";
-					break;
-				default:
-					tempstr = "Weird";
-					break;
-			}
-			message = std::format("Change View Size ([,]) : {}       ", tempstr);
-			active_screen()->draw_box(45, OPLINES(3), 275, OPLINES(3)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(3), message.c_str(), static_cast<unsigned char>(BLACK), 1);
-			active_screen()->buffer_to_screen(0, 0, 320, 200);
-			while (og::runtime::current_session->keystates_[KEYSTATE_LEFTBRACKET])
-			{
-				YIELD_SLEEP(1);
-				get_input_events(POLL);
-			}
-		}
-		if (og::runtime::current_session->keystates_[KEYSTATE_RIGHTBRACKET]) // larger view size
-		{
-			prefs[PREF_VIEW] = prefs[PREF_VIEW]-1;
-			if (prefs[PREF_VIEW] < 0)
-				prefs[PREF_VIEW] = 0;
-			resize(prefs[PREF_VIEW]);
-
-			switch (prefs[PREF_VIEW])
-			{
-				case PREF_VIEW_FULL:
-					tempstr = "Full Screen";
-					break;
-				case PREF_VIEW_PANELS:
-					tempstr = "Large";
-					break;
-				case PREF_VIEW_1:
-					tempstr = "Medium";
-					break;
-				case PREF_VIEW_2:
-					tempstr = "Small";
-					break;
-				case PREF_VIEW_3:
-					tempstr = "Tiny";
-					break;
-				default:
-					tempstr = "Weird";
-					break;
-			}
-			message = std::format("Change View Size ([,]) : {}  ", tempstr);
-			active_screen()->draw_box(45, OPLINES(3), 275, OPLINES(3)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(3), message.c_str(), static_cast<unsigned char>(BLACK), 1);
-			active_screen()->buffer_to_screen(0, 0, 320, 200);
-			while (og::runtime::current_session->keystates_[KEYSTATE_RIGHTBRACKET])
-			{
-				YIELD_SLEEP(1);
-				get_input_events(POLL);
-			}
-		}
-			if (og::runtime::current_session->keystates_[KEYSTATE_COMMA]) // darken screen
-			{
-				gamma_val = change_gamma(-2);
-				prefs[PREF_GAMMA] = static_cast<signed char>(gamma_val);
-				message = std::format("Change Brightness (<,>): {} ", gamma_val);
-			active_screen()->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(4), message.c_str(), static_cast<unsigned char>(BLACK), 1);
-			active_screen()->buffer_to_screen(0, 0, 320, 200);
-			while (og::runtime::current_session->keystates_[KEYSTATE_COMMA])
-			{
-				YIELD_SLEEP(1);
-				get_input_events(POLL);
-			}
-		}
-			if (og::runtime::current_session->keystates_[KEYSTATE_PERIOD]) // lighten screen
-			{
-				gamma_val = change_gamma(+2);
-				prefs[PREF_GAMMA] = static_cast<signed char>(gamma_val);
-				message = std::format("Change Brightness (<,>): {} ", gamma_val);
-			active_screen()->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(4), message.c_str(), static_cast<unsigned char>(BLACK), 1);
-			active_screen()->buffer_to_screen(0, 0, 320, 200);
-			while (og::runtime::current_session->keystates_[KEYSTATE_PERIOD])
-			{
-				YIELD_SLEEP(1);
-				get_input_events(POLL);
-			}
-		}
-			if (og::runtime::current_session->keystates_[KEYSTATE_r]) // toggle radar display
-			{
-				prefs[PREF_RADAR] = static_cast<signed char>((prefs[PREF_RADAR] + 1) % 2);
-			if (prefs[PREF_RADAR])
-				message = "Radar Display (R)      : ON ";
-			else
-				message = "Radar Display (R)      : OFF ";
-			active_screen()->draw_box(45, OPLINES(5), 275, OPLINES(5)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(5), message.c_str(), static_cast<unsigned char>(BLACK), 1);
-			active_screen()->buffer_to_screen(0, 0, 320, 200);
-			while (og::runtime::current_session->keystates_[KEYSTATE_r])
-			{
-				YIELD_SLEEP(1);
-				get_input_events(POLL);
-			}
-		}
-			if (og::runtime::current_session->keystates_[KEYSTATE_h]) // toggle HP display
-			{
-				prefs[PREF_LIFE] = static_cast<signed char>((prefs[PREF_LIFE] + 1) % 5);
-			switch (prefs[PREF_LIFE])
-			{
-				case PREF_LIFE_TEXT:
-					tempstr = "Text Only";
-					break;
-				case PREF_LIFE_BARS:
-					tempstr = "Bars Only";
-					break;
-				case PREF_LIFE_BOTH:
-					tempstr = "Bars and Text";
-					break;
-				case PREF_LIFE_OFF:
-					tempstr = "Off";
-					break;
-				default:
-				case PREF_LIFE_SMALL:
-					tempstr = "On";
-					break;
-			}
-			message = std::format("Hitpoint Display (H)   : {}", tempstr);
-			active_screen()->draw_box(45, OPLINES(6), 275, OPLINES(6)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(6), message.c_str(), static_cast<unsigned char>(BLACK), 1);
-			active_screen()->buffer_to_screen(0, 0, 320, 200);
-			while (og::runtime::current_session->keystates_[KEYSTATE_h])
-			{
-				YIELD_SLEEP(1);
-				get_input_events(POLL);
-			}
-		}
-			if (og::runtime::current_session->keystates_[KEYSTATE_f]) // toggle foes display
-			{
-				prefs[PREF_FOES] = static_cast<signed char>((prefs[PREF_FOES] + 1) % 2);
-			if (prefs[PREF_FOES])
-				message = "Foes Display (F)       : ON ";
-			else
-				message = "Foes Display (F)       : OFF ";
-			active_screen()->draw_box(45, OPLINES(7), 275, OPLINES(7)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(7), message.c_str(), static_cast<unsigned char>(BLACK), 1);
-			active_screen()->buffer_to_screen(0, 0, 320, 200);
-			while (og::runtime::current_session->keystates_[KEYSTATE_f])
-			{
-				YIELD_SLEEP(1);
-				get_input_events(POLL);
-			}
-		}
-			if (og::runtime::current_session->keystates_[KEYSTATE_s]) // toggle score display
-			{
-				prefs[PREF_SCORE] = static_cast<signed char>((prefs[PREF_SCORE] + 1) % 2);
-			if (prefs[PREF_SCORE])
-				message = "Score Display (S)      : ON ";
-			else
-				message = "Score Display (S)      : OFF ";
-			active_screen()->draw_box(45, OPLINES(8), 275, OPLINES(8)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(8), message.c_str(), static_cast<unsigned char>(BLACK), 1);
-			active_screen()->buffer_to_screen(0, 0, 320, 200);
-			while (og::runtime::current_session->keystates_[KEYSTATE_s])
-			{
-				YIELD_SLEEP(1);
-				get_input_events(POLL);
-			}
-		}
-
-		if (og::runtime::current_session->keystates_[KEYSTATE_t])      // View the teamlist
-		{
-			view_team();
-			while (og::runtime::current_session->keystates_[KEYSTATE_t])
-			{
-				YIELD_SLEEP(1);
-				get_input_events(POLL);
-			}
-			// options_menu() keeps the fixed UI canvas active for its whole
-			// scope. Rebuild the gameplay backdrop on the real World target,
-			// complete its smart-filter/HUD present, then seed the UI canvas
-			// before recursively reopening the menu. Drawing the world while
-			// the outer UI scope is active clips zoomed canvases to 320x200 and
-			// leaves the actual world surface stale.
-			{
-				ScopedCanvasTarget world_target(*active_screen(), CanvasTarget::World);
-				active_screen()->redraw();
-				active_screen()->swap();
-			}
-			active_screen()->prepare_ui_canvas_from_world();
-			options_menu();
-			return;
-		}
-
-		if (og::runtime::current_session->keystates_[KEYSTATE_c])
-		{
-			active_screen()->cyclemode= static_cast<short>((active_screen()->cyclemode+1) %2);
-			while (og::runtime::current_session->keystates_[KEYSTATE_c])
-			{
-				YIELD_SLEEP(1);
-				get_input_events(POLL);
-			}
-			if (active_screen()->cyclemode)
-				message = "Color Cycling (C)      : ON ";
-			else
-				message = "Color Cycling (C)      : OFF ";
-			active_screen()->draw_box(45,OPLINES(10),275,OPLINES(10)+6,PANEL_COLOR,1,1);
-			optiontext.write_xy(LEFT_OPS,OPLINES(10),message.c_str(),static_cast<unsigned char>(BLACK),1);
-			active_screen()->buffer_to_screen(0, 0, 320, 200);
-
-		}
-
-		if (og::runtime::current_session->keystates_[KEYSTATE_j]) // toggle joystick display
-		{
-		    if(playerHasJoystick(mynum))
-                disablePlayerJoystick(mynum);
-		    else
-                resetJoystick(mynum);
-		    
-		    // Update joystick display message
-            if(!playerHasJoystick(mynum))
-                message = "Joystick Mode (J)      : OFF ";
-            else
-                message = "Joystick Mode (J)      : ON ";
-            active_screen()->draw_box(45,OPLINES(11),275,OPLINES(11)+6,PANEL_COLOR,1,1);
-            optiontext.write_xy(LEFT_OPS,OPLINES(11),message.c_str(),static_cast<unsigned char>(BLACK),1);
-			active_screen()->buffer_to_screen(0, 0, 320, 200);
-            
-            YIELD_SLEEP(500);
-            clear_events();
-		}
-
-			if (og::runtime::current_session->keystates_[KEYSTATE_b]) // toggle button display
-			{
-				prefs[PREF_OVERLAY] = static_cast<signed char>((prefs[PREF_OVERLAY] + 1) % 2);
-			if (prefs[PREF_OVERLAY])
-				message = "Text-button Display (B): ON ";
-			else
-				message = "Text-button Display (B): OFF ";
-			active_screen()->draw_box(45, OPLINES(13), 275, OPLINES(13)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(13), message.c_str(), static_cast<unsigned char>(BLACK), 1);
-			active_screen()->buffer_to_screen(0, 0, 320, 200);
-			while (og::runtime::current_session->keystates_[KEYSTATE_b])
-			{
-				YIELD_SLEEP(1);
-				get_input_events(POLL);
-			}
-		}
-
-	}  // end of wait for ESC press
-
-	while (og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
-	{
-		YIELD_SLEEP(1);
-		get_input_events(POLL);
-	}
-	active_screen()->redrawme = 1;
-	prefsob->save(this);
-}
-
-
-Sint32 viewscreen::change_speed(Sint32 whichway)
-{
-	if (whichway > 0)
-	{
-		active_screen()->world().timer_wait -= 2;
-		if (active_screen()->world().timer_wait < 0)
-			active_screen()->world().timer_wait = 0;
-	}
-	else if (whichway < 0)
-	{
-		active_screen()->world().timer_wait += 2;
-		if (active_screen()->world().timer_wait > 20)
-			active_screen()->world().timer_wait = 20;
-	}
-    if (og::runtime::current_session != nullptr)
-    {
-        og::runtime::current_session->pending_timer_wait_request_ =
-            active_screen()->world().timer_wait;
-        if (og::runtime::current_session->relay_transport_active_ &&
-            active_screen()->world().timer_wait < 4 &&
-            !og::runtime::current_session->relay_speed_warning_shown_)
-        {
-            timed_dialog("High game speed increases relay usage.", 2.5f);
-            og::runtime::current_session->relay_speed_warning_shown_ = true;
-        }
-        else if (active_screen()->world().timer_wait >= 4)
-        {
-            og::runtime::current_session->relay_speed_warning_shown_ = false;
-        }
-    }
-	return static_cast<Sint32>((20-active_screen()->world().timer_wait)/2+1);
-}
-
-Sint32 viewscreen::change_gamma(Sint32 whichway)
-{
-	if (whichway > 1)  // lighter
-	{
-		load_palette("our.pal", active_screen()->newpalette);
-		adjust_palette(active_screen()->newpalette, ++gamma);
-	}
-	if (whichway < -1)  // darker
-	{
-		load_palette("our.pal", active_screen()->newpalette);
-		adjust_palette(active_screen()->newpalette, --gamma);
-	}
-	if (whichway == -1) // set to default
-	{
-		gamma = 0;
-		load_palette("our.pal", active_screen()->newpalette);
-	}
-	// So 0 just means report
-	return static_cast<Sint32>(gamma);
-}
-
 // **************************************************
 // Options object
 // **************************************************
-
-// Initialize allkeys from defaults, then override from keyprefs.dat if available.
-// Called from GameSession constructor with direct pointer to session's allkeys_.
-// File format: [allkeys[0](64B), prefs[0](10B), allkeys[1](64B), prefs[1](10B), ...]
-void init_allkeys(int allkeys[][16])
-{
-	for (int i = 0; i < 4; i++)
-		std::copy_n(normalkeys[static_cast<std::size_t>(i)], 16, allkeys[i]);
-
-	og::io::OgFilePtr infile = og::io::og_open_read(KEY_FILE);
-	if (!infile)
-		return;
-
-	for (int i = 0; i < 4; i++)
-	{
-		infile->read(allkeys[i], sizeof(int), 16);
-		infile->seek(10, SEEK_CUR);  // skip prefs block
-	}
-}
 
 options::options()
 {
@@ -2655,7 +2175,8 @@ options::options()
 	// Read the blobs of data ..
 	for (i=0; i < 4; i++)
 	{
-		// Skip allkeys data — now loaded separately by init_allkeys()
+		// Skip the per-player key block: it was never consulted to resolve a
+		// keypress, and the file is read-only now.
 		infile->seek(16 * sizeof(int), SEEK_CUR);
 		infile->read(prefs[i], 10, 1);
 	}
@@ -2665,325 +2186,17 @@ options::options()
 // It DOESN'T actually LOAD (tee hee), it only queries
 //  the prefs object... but the stupid view objects
 //  don't know that... don't tell them!
+// This is the whole remaining life of keyprefs.dat: the file seeds a view's
+// HUD prefs once at construction, and apply_hud_settings_from_cfg then
+// migrates them into cfg the first time a player's cfg keys are missing.
 short options::load(viewscreen *viewp)
 {
 	short prefnum = viewp->mynum;
-	if (prefnum < 0 || prefnum >= 4) return 0;  // prefs/allkeys are sized for 4 views
+	if (prefnum < 0 || prefnum >= 4) return 0;  // prefs are sized for 4 views
 	// Yes, we are ACTUALLY COPYING the data
 	std::copy_n(prefs[prefnum], 10, viewp->prefs);
-	std::copy_n(allkeys()[prefnum], 16, viewp->mykeys);
-	return 1;
-}
-
-
-// This time, we actually DO access the file since the
-//   bloke playing the game might decide to quit or
-//   turn off the computer at any time and then
-//   wonder later, "Where'd my prefs go! Bly'me!"
-short options::save(viewscreen *viewp)
-{
-	short prefnum = viewp->mynum;
-	Sint32 i;
-	og::io::OgFilePtr outfile;
-
-	// Yes, we are ACTUALLY COPYING the data
-	std::copy_n(viewp->prefs, 10, prefs[prefnum]);
-	std::copy_n(viewp->mykeys, 16, allkeys()[prefnum]);
-
-	outfile = og::io::og_open_write(KEY_FILE);
-
-	if (!outfile) // failed to write
-		return 0;
-
-	// Write the blobs of data ..
-	for (i=0; i < 4; i++)
-	{
-		outfile->write(allkeys()[i], 16 * sizeof(int), 1);
-		outfile->write(prefs[i], 10, 1);
-	}
-
 	return 1;
 }
 
 options::~options()
 {}
-
-/*
- 
-// save_key_prefs saves the state of all the player key preferences
-// to the binary file KEY_FILE (currently keyprefs.dat)
-// Returns success or failure
-Sint32 save_key_prefs()
-{
-  Sint32 i;
-  char *keypointer;
-  FILE *outfile;
- 
-  outfile = open_misc_file(KEY_FILE, "", "wb");
- 
-  if (!outfile) // failed to write
-    return 0;
- 
-  // Write the blobs of data ..
-  for (i=0; i < 4; i++)
-  {
-    keypointer = keys[i];
-    fwrite(keypointer, 16 * sizeof(int), 1, outfile);
-  }
- 
-  fclose(outfile);
- 
-  return 1; 
- 
-}
- 
-// load_key_prefs loads the state of all the player key preferences
-// from the binary file KEY_FILE (currently keyprefs.dat)
-// Returns success or failure
-Sint32 load_key_prefs()
-{
-  Sint32 i;
-  char *keypointer;
-  FILE *infile;
- 
-  infile = open_misc_file(KEY_FILE);
- 
-  if (!infile) // failed to read
-    return 0;
- 
-  // Read the blobs of data ..
-  for (i=0; i < 4; i++)
-  {
-    keypointer = keys[i];
-    fread(keypointer, 16 * sizeof(int), 1, infile);
-  }
- 
-  fclose(infile);
-  return 1; 
-}
- 
-*/
-
-
-
-// set_key_prefs queries the user for key preferences, and
-// places them into the proper key-press array.
-// It returns success or failure.
-Sint32 viewscreen::set_key_prefs()
-{
-	ScopedUiCanvas canvas_target(*active_screen());
-	text& keytext = active_screen()->text_normal;
-
-	clear_keyboard();
-
-	// Draw the menu button
-	active_screen()->draw_button(40, 40, 280, 160, 2, 1); // same as options menu
-	keytext.write_xy(160-6*6, OPLINES(0), "Keyboard Menu", static_cast<unsigned char>(RED), 1);
-	active_screen()->buffer_to_screen(0, 0, 320, 200);
-
-	keytext.write_xy(LEFT_OPS, OPLINES(2), "Press a key for 'UP':", static_cast<unsigned char>(RED), 1);
-	active_screen()->buffer_to_screen(0, 0, 320, 200);
-	assignKeyFromWaitEvent(mynum, KEY_UP);
-
-	keytext.write_xy(LEFT_OPS, OPLINES(3), "Press a key for 'UP-RIGHT':", static_cast<unsigned char>(RED), 1);
-	active_screen()->buffer_to_screen(0, 0, 320, 200);
-	assignKeyFromWaitEvent(mynum, KEY_UP_RIGHT);
-
-	keytext.write_xy(LEFT_OPS, OPLINES(4), "Press a key for 'RIGHT':", static_cast<unsigned char>(RED), 1);
-	active_screen()->buffer_to_screen(0, 0, 320, 200);
-	assignKeyFromWaitEvent(mynum, KEY_RIGHT);
-
-	keytext.write_xy(LEFT_OPS, OPLINES(5), "Press a key for 'DOWN-RIGHT':", static_cast<unsigned char>(RED), 1);
-	active_screen()->buffer_to_screen(0, 0, 320, 200);
-	assignKeyFromWaitEvent(mynum, KEY_DOWN_RIGHT);
-
-	keytext.write_xy(LEFT_OPS, OPLINES(6), "Press a key for 'DOWN':", static_cast<unsigned char>(RED), 1);
-	active_screen()->buffer_to_screen(0, 0, 320, 200);
-	assignKeyFromWaitEvent(mynum, KEY_DOWN);
-
-	keytext.write_xy(LEFT_OPS, OPLINES(7), "Press a key for 'DOWN-LEFT':", static_cast<unsigned char>(RED), 1);
-	active_screen()->buffer_to_screen(0, 0, 320, 200);
-	assignKeyFromWaitEvent(mynum, KEY_DOWN_LEFT);
-
-	keytext.write_xy(LEFT_OPS, OPLINES(8), "Press a key for 'LEFT':", static_cast<unsigned char>(RED), 1);
-	active_screen()->buffer_to_screen(0, 0, 320, 200);
-	assignKeyFromWaitEvent(mynum, KEY_LEFT);
-
-	keytext.write_xy(LEFT_OPS, OPLINES(9), "Press a key for 'UP-LEFT':", static_cast<unsigned char>(RED), 1);
-	active_screen()->buffer_to_screen(0, 0, 320, 200);
-	assignKeyFromWaitEvent(mynum, KEY_UP_LEFT);
-
-	// Draw the menu button; back to the top for us!
-	active_screen()->draw_button(40, 40, 280, 160, 2, 1); // same as options menu
-	keytext.write_xy(160-6*6, OPLINES(0), "Keyboard Menu", static_cast<unsigned char>(RED), 1);
-	active_screen()->buffer_to_screen(0, 0, 320, 200);
-
-	keytext.write_xy(LEFT_OPS, OPLINES(2), "Press your 'FIRE' key:", static_cast<unsigned char>(RED), 1);
-	active_screen()->buffer_to_screen(0, 0, 320, 200);
-	assignKeyFromWaitEvent(mynum, KEY_FIRE);
-
-	keytext.write_xy(LEFT_OPS, OPLINES(3), "Press your 'SPECIAL' key:", static_cast<unsigned char>(RED), 1);
-	active_screen()->buffer_to_screen(0, 0, 320, 200);
-	assignKeyFromWaitEvent(mynum, KEY_SPECIAL);
-
-	keytext.write_xy(LEFT_OPS, OPLINES(4), "Press your 'SPECIAL SWITCH' key:", static_cast<unsigned char>(RED), 1);
-	active_screen()->buffer_to_screen(0, 0, 320, 200);
-	assignKeyFromWaitEvent(mynum, KEY_SPECIAL_SWITCH);
-
-	keytext.write_xy(LEFT_OPS, OPLINES(5), "Press your 'YELL' key:", static_cast<unsigned char>(RED), 1);
-	active_screen()->buffer_to_screen(0, 0, 320, 200);
-	assignKeyFromWaitEvent(mynum, KEY_YELL);
-
-	keytext.write_xy(LEFT_OPS, OPLINES(6), "Press your 'SWITCHING' key:", static_cast<unsigned char>(RED), 1);
-	active_screen()->buffer_to_screen(0, 0, 320, 200);
-	assignKeyFromWaitEvent(mynum, KEY_SWITCH);
-
-	keytext.write_xy(LEFT_OPS, OPLINES(7), "Press your 'SHIFTER' key:", static_cast<unsigned char>(RED), 1);
-	active_screen()->buffer_to_screen(0, 0, 320, 200);
-	assignKeyFromWaitEvent(mynum, KEY_SHIFTER);
-
-	//  keytext.write_xy(LEFT_OPS, OPLINES(8), "Press your 'MENU (PREFS)' key:", static_cast<unsigned char>(RED), 1);
-	//  allkeys()[mynum][KEY_PREFS] = get_keypress();
-
-	if (CHEAT_MODE) // are cheats enabled?
-	{
-		keytext.write_xy(LEFT_OPS, OPLINES(9), "Press your 'CHEATS' key:", static_cast<unsigned char>(RED), 1);
-		active_screen()->buffer_to_screen(0, 0, 320, 200);
-        assignKeyFromWaitEvent(mynum, KEY_CHEAT);
-	}
-
-	active_screen()->redrawme = 1;
-
-	//  return save_key_prefs();
-	return 1;
-}
-
-// Helper function to convert SDL key names to displayable text
-// Only shortens long modifier names to fit in the display
-// NOTE: Uses a static buffer. The returned pointer is only valid until the next call
-// to this function. Callers must use the result immediately before calling again.
-static const char* get_key_display_name(int keycode)
-{
-	static std::string buffer;
-	std::string sname = query_key_name(keycode);
-
-	// Map arrow keys to bitmap font arrow glyphs (indices 1-4)
-	if (sname == "Up") { buffer = std::string(1, '\x01'); return buffer.c_str(); }
-	if (sname == "Down") { buffer = std::string(1, '\x02'); return buffer.c_str(); }
-	if (sname == "Left") { buffer = std::string(1, '\x03'); return buffer.c_str(); }
-	if (sname == "Right") { buffer = std::string(1, '\x04'); return buffer.c_str(); }
-
-	// Shorten long modifier key names to fit
-	if (sname == "Left Ctrl") return "LCtrl";
-	if (sname == "Right Ctrl") return "RCtrl";
-	if (sname == "Left Shift") return "LShift";
-	if (sname == "Right Shift") return "RShift";
-	if (sname == "Left Alt") return "LAlt";
-	if (sname == "Right Alt") return "RAlt";
-	if (sname == "Backspace") return "BkSpc";
-	if (sname == "CapsLock") return "Caps";
-
-	// Truncate if too long for display
-	if (sname.size() > 10) {
-		buffer = sname.substr(0, 9);
-		return buffer.c_str();
-	}
-
-	return query_key_name(keycode);
-}
-
-// view_key_bindings displays the current key bindings for this player
-void viewscreen::view_key_bindings()
-{
-	ScopedUiCanvas canvas_target(*active_screen());
-	text& keytext = active_screen()->text_normal;
-
-	clear_keyboard();
-
-	// Draw the menu box
-	active_screen()->draw_button(20, 20, 300, 180, 2, 1);
-	keytext.write_xy(95, 28, "Current Key Bindings", static_cast<unsigned char>(RED), 1);
-
-	// Movement keys label
-	keytext.write_xy(55, 42, "-- Movement --", static_cast<unsigned char>(COLOR_BLUE), 1);
-
-	// Visual 3x3 grid for directional keys
-	// Row 1: UP-LEFT, UP, UP-RIGHT
-	keytext.write_xy(40, 54, get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_UP_LEFT]), static_cast<unsigned char>(BLACK), 1);
-	keytext.write_xy(75, 54, get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_UP]), static_cast<unsigned char>(BLACK), 1);
-	keytext.write_xy(100, 54, get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_UP_RIGHT]), static_cast<unsigned char>(BLACK), 1);
-
-	// Row 2: LEFT, [center], RIGHT
-	keytext.write_xy(40, 66, get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_LEFT]), static_cast<unsigned char>(BLACK), 1);
-	keytext.write_xy(70, 66, "---", static_cast<unsigned char>(BLACK), 1);
-	keytext.write_xy(100, 66, get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_RIGHT]), static_cast<unsigned char>(BLACK), 1);
-
-	// Row 3: DOWN-LEFT, DOWN, DOWN-RIGHT
-	keytext.write_xy(40, 78, get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_DOWN_LEFT]), static_cast<unsigned char>(BLACK), 1);
-	keytext.write_xy(75, 78, get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_DOWN]), static_cast<unsigned char>(BLACK), 1);
-	keytext.write_xy(100, 78, get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_DOWN_RIGHT]), static_cast<unsigned char>(BLACK), 1);
-
-	// Action keys label
-	keytext.write_xy(180, 42, "-- Actions --", static_cast<unsigned char>(COLOR_BLUE), 1);
-
-	// Action keys in right column
-	std::string msg;
-	msg = std::format("Fire: {}", get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_FIRE]));
-	keytext.write_xy(165, 54, msg.c_str(), static_cast<unsigned char>(BLACK), 1);
-
-	msg = std::format("Special: {}", get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_SPECIAL]));
-	keytext.write_xy(165, 66, msg.c_str(), static_cast<unsigned char>(BLACK), 1);
-
-	msg = std::format("Yell: {}", get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_YELL]));
-	keytext.write_xy(165, 78, msg.c_str(), static_cast<unsigned char>(BLACK), 1);
-
-	msg = std::format("Shifter: {}", get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_SHIFTER]));
-	keytext.write_xy(165, 90, msg.c_str(), static_cast<unsigned char>(BLACK), 1);
-
-	msg = std::format("Look Up: {}", get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_LOOKUP]));
-	keytext.write_xy(165, 102, msg.c_str(), static_cast<unsigned char>(BLACK), 1);
-
-	// Switching keys
-	keytext.write_xy(55, 105, "-- Switching --", static_cast<unsigned char>(COLOR_BLUE), 1);
-
-	msg = std::format("Switch Char: {}", get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_SWITCH]));
-	keytext.write_xy(40, 117, msg.c_str(), static_cast<unsigned char>(BLACK), 1);
-
-	msg = std::format("Switch Special: {}", get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_SPECIAL_SWITCH]));
-	keytext.write_xy(40, 129, msg.c_str(), static_cast<unsigned char>(BLACK), 1);
-
-	// Menu key info
-	keytext.write_xy(165, 117, "Options: 1", static_cast<unsigned char>(BLACK), 1);
-	keytext.write_xy(165, 129, "Help: Shift+/", static_cast<unsigned char>(BLACK), 1);
-
-	keytext.write_xy(95, 160,
-	                 og::input::kWebBackKeyMode ? "Press BACKSPACE to return"
-	                                            : "Press ESC to return",
-	                 static_cast<unsigned char>(RED), 1);
-
-	active_screen()->buffer_to_screen(0, 0, 320, 200);
-
-	// Wait for ESC
-	while (!og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
-	{
-		YIELD_SLEEP(10);
-		get_input_events(POLL);
-	}
-	while (og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
-	{
-		YIELD_SLEEP(1);
-		get_input_events(POLL);
-	}
-
-	active_screen()->redrawme = 1;
-}
-
-// Waits for a key to be pressed and then released ..
-// returns this key.
-int get_keypress()
-{
-	clear_key_press_event(); // clear any previous key
-	while (!query_key_press_event())
-		get_input_events(WAIT);
-	return query_key();
-}

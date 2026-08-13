@@ -19,6 +19,7 @@
 #include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/core/util.h>
+#include <openglad/interface/render/pal32.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/render/text.h>
 #include <openglad/interface/screen.h>
@@ -29,9 +30,15 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/interface/ui/picker_ui_state.h>
+#include <algorithm>
 #include <array>
+#include <cstdint>
 #include <mutex>
 #include <utility>
+
+// The shared auto-dismissing dialog (picker_dialogs.cpp), used by the SPEED
+// row's relay warning.
+void timed_dialog(const char* message, float delay_seconds = 3.0f);
 
 // Per-session picker state accessor.
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
@@ -561,6 +568,78 @@ void toggle_rendering_engine()
 #define REDRAW 2 //we just exited a menu, so redraw your buttons
 #define OK 4 //this function was successful, continue normal operation
 
+// The retired in-game options menu's three global rows (issue #169,
+// docs/pause-menu-design.md §7.3). Each one persists to cfg — GAME SETTINGS
+// writes the whole family to disk when it exits — and lands on the live game
+// immediately, because cfg alone would only take effect at the next level
+// start.
+
+// SPEED (GAME SETTINGS). Carries over what the retired viewscreen::change_speed
+// did: the sim wait is a GameWorld field, and the host stamps a pending request
+// the server applies for the host peer only (GameServer's timer-wait request
+// handling). The relay warning is kept verbatim, including its one-shot latch.
+Sint32 change_game_speed()
+{
+    const std::string next =
+        og::ui::cycle_game_speed(cfg.get_setting("gameplay", "timer_wait"));
+    cfg.apply_setting("gameplay", "timer_wait", next);
+
+    const int timer_wait = og::ui::parse_timer_wait(next);
+    og::runtime::SessionState* const session = og::runtime::current_session;
+    if (session == nullptr || session->myscreen_ == nullptr) return REDRAW;
+
+    session->myscreen_->world().timer_wait =
+        static_cast<signed char>(std::clamp(timer_wait, 0, 20));
+    session->pending_timer_wait_request_ =
+        static_cast<std::int8_t>(session->myscreen_->world().timer_wait);
+    if (session->relay_transport_active_ && timer_wait < 4 &&
+        !session->relay_speed_warning_shown_)
+    {
+        timed_dialog("High game speed increases relay usage.", 2.5f);
+        session->relay_speed_warning_shown_ = true;
+    }
+    else if (timer_wait >= 4)
+    {
+        session->relay_speed_warning_shown_ = false;
+    }
+    return REDRAW;
+}
+
+// COLOR CYCLING (GRAPHICS FX). screen::cyclemode is the live flag the game
+// loop reads once per sim tick; level start re-seeds it from cfg.
+Sint32 toggle_color_cycling()
+{
+    toggle_effect("effects", "color_cycling");
+    if (og::runtime::current_session != nullptr &&
+        og::runtime::current_session->myscreen_ != nullptr)
+    {
+        og::runtime::current_session->myscreen_->cyclemode =
+            cfg.is_on("effects", "color_cycling") ? 1 : 0;
+    }
+    return REDRAW;
+}
+
+// BRIGHTNESS (DISPLAY). One gamma step per click in arg's direction. The
+// applied value lives in session state and set_palette() re-applies it, so
+// re-setting the base palette here is all it takes to repaint every color.
+Sint32 brightness_adjust(Sint32 arg)
+{
+    const std::string next = og::ui::adjust_brightness_steps(
+        cfg.get_setting("graphics", "brightness"), arg);
+    cfg.apply_setting("graphics", "brightness", next);
+    set_display_brightness_steps(og::ui::parse_brightness_steps(next));
+
+    screen* const scr = og::runtime::current_session != nullptr
+                            ? og::runtime::current_session->myscreen_
+                            : nullptr;
+    if (scr != nullptr)
+    {
+        load_palette("our.pal", scr->newpalette);
+        set_palette(scr->newpalette);
+    }
+    return REDRAW;
+}
+
 bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32& retvalue);
 
 	Sint32 vbutton::do_call(Sint32 whatfunc, Sint32 call_arg)
@@ -656,8 +735,6 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return yes_or_no(arg);
     case ButtonAction::MainOptions:
         return main_options();
-    case ButtonAction::OpenControlSettings:
-        return main_controls_options();
     case ButtonAction::OpenGameplayFxSettings:
         return gameplay_fx_options();
     case ButtonAction::OpenUiFxSettings:
@@ -676,10 +753,6 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return change_generator_rate();
     case ButtonAction::ToggleInfiniteGold:
         return change_infinite_gold();
-    case ButtonAction::ToggleControlMode:
-        return toggle_player_control_mode(arg);
-    case ButtonAction::EditPlayerKeymap:
-        return edit_player_keymap(arg);
     case ButtonAction::HostGame:
     case ButtonAction::JoinGame:
     case ButtonAction::Networking:
@@ -724,6 +797,12 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return REDRAW;
     case ButtonAction::OverscanAdjust:
         return overscan_adjust(arg);
+    case ButtonAction::BrightnessAdjust:
+        return brightness_adjust(arg);
+    case ButtonAction::CycleGameSpeed:
+        return change_game_speed();
+    case ButtonAction::ToggleColorCycling:
+        return toggle_color_cycling();
     case ButtonAction::ToggleMiniHpBar:
         toggle_effect("effects", "mini_hp_bar");
         return REDRAW;
@@ -812,8 +891,18 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
             scr->apply_display_settings_from_cfg();
             if (scr->world_canvas_w() != old_w || scr->world_canvas_h() != old_h)
                 scr->relayout_views();
+            // The migrated global rows: brightness re-reads its restored
+            // gamma and repaints the palette through it, and color cycling
+            // goes back to the classic on. Speed is level-start seeded, so
+            // the restored cfg reaches the world at the next mission.
+            reload_display_brightness_from_cfg();
+            load_palette("our.pal", scr->newpalette);
+            set_palette(scr->newpalette);
+            scr->cyclemode = cfg.is_on("effects", "color_cycling") ? 1 : 0;
         }
         return REDRAW;
+    // Reset-all: no button dispatches it since the global CONTROLS screen
+    // retired (the player screens reset one seat at a time).
     case ButtonAction::RestoreDefaultControls:
         reset_default_player_controls();
         save_player_control_settings_to_cfg(cfg);

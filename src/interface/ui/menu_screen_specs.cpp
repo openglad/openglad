@@ -23,12 +23,15 @@
 #include <openglad/interface/base.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/input_mappings.h>
+#include <openglad/interface/render/pal32.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/sound.h>
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/interface/ui/cloud_save_client.h>
+#include <openglad/interface/ui/input_cycler.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_ui_state.h>
@@ -438,7 +441,15 @@ constexpr MenuButtonSpec kGraphicsFxRows[] = {
     {.id = "toggle_floor_glide", .label = "Floor glide",
      .x = 15, .y = fx_row_y(4), .w = 90, .h = 15,
      .action = ButtonAction::ToggleFloorGlide, .arg = -1,
-     .nav = {.up = 10, .down = 0}},
+     .nav = {.up = 10, .down = 0, .left = 14, .right = 14}},
+    // COLOR CYCLING, from the retired in-game options menu. Unlike every
+    // other effects/* key this one's identity state is ON — the classic
+    // lava/water/flame palette rotation — so turning it OFF is the change,
+    // not the other way round.
+    {.id = "toggle_color_cycling", .label = "Color cycling",
+     .x = 115, .y = fx_row_y(4), .w = 90, .h = 15,
+     .action = ButtonAction::ToggleColorCycling, .arg = -1,
+     .nav = {.up = 11, .down = 0, .left = 13, .right = 13}},
 };
 
 constexpr FxToggleDraw kGraphicsFxToggleDraws[] = {
@@ -455,6 +466,7 @@ constexpr FxToggleDraw kGraphicsFxToggleDraws[] = {
     {11, "effects", "ripples"},
     {12, "effects", "screen_shake"},
     {13, "effects", "floor_glide"},
+    {14, "effects", "color_cycling"},
 };
 
 void graphics_fx_draw_content(void* /*screen_state*/)
@@ -576,7 +588,7 @@ constexpr MenuButtonSpec kDisplaySettingsRows[] = {
     {.id = "display_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 10, .y = 10, .w = 50, .h = 15,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 6, .down = 1}},
+     .nav = {.up = 7, .down = 1}},
     {.id = "display_mode", .label = "Mode: Windowed",
      .x = 115, .y = fx_row_y(0), .w = 102, .h = 15,
      .action = ButtonAction::CycleDisplayMode, .arg = -1,
@@ -603,8 +615,19 @@ constexpr MenuButtonSpec kDisplaySettingsRows[] = {
     {.id = "display_smoothing", .label = "Smooth: Off",
      .x = 115, .y = fx_row_y(4), .w = 102, .h = 15,
      .action = ButtonAction::CycleSmoothing, .arg = -1,
-     .nav = {.up = 5, .down = 0},
+     .nav = {.up = 5, .down = 7},
      .label_binding = {.formatter = &display_smoothing_row_label}},
+    // BRIGHTNESS: a signed gamma step, not an enumerable list, so it takes
+    // the overscan pair's shape (30px -/+ faces plus the live value text the
+    // content pass draws at x=200) rather than a cycler face.
+    {.id = "brightness_minus", .label = "- ",
+     .x = 115, .y = fx_row_y(5), .w = 30, .h = 15,
+     .action = ButtonAction::BrightnessAdjust, .arg = -1,
+     .nav = {.up = 6, .down = 0, .right = 8}},
+    {.id = "brightness_plus", .label = "+ ",
+     .x = 159, .y = fx_row_y(5), .w = 30, .h = 15,
+     .action = ButtonAction::BrightnessAdjust, .arg = 1,
+     .nav = {.up = 6, .down = 0, .left = 7}},
 };
 
 // No window to size or mode to pick: TV/mobile targets are always
@@ -647,6 +670,11 @@ void display_settings_draw_content(void* /*screen_state*/)
                     static_cast<int>(
                         og::runtime::current_session->overscan_percentage_ *
                             100.0f + 0.5f));
+    // Live brightness beside its own pair — the APPLIED gamma (what
+    // set_palette re-applies), not just the stored cfg string.
+    mytext.write_xy(200, fx_row_y(5) + 4, DARK_BLUE, "%s",
+                    format_brightness_label(
+                        static_cast<int>(display_brightness_steps())).c_str());
 }
 
 const MenuScreenSpec& display_settings_menu_screen_spec()
@@ -668,121 +696,19 @@ const MenuScreenSpec& display_settings_menu_screen_spec()
 }
 
 // ---------------------------------------------------------------------------
-// CONTROLS subscreen (§1.8 step 3): 4 player sections at 28px pitch, each
-// with mode + remap buttons; the "Px" captions and key-summary lines are
-// drawn text below each section's buttons. RESET ALL preserves the scoped
-// reset that used to sit one level above this screen. The mode faces
-// re-derive from the live control mode every frame on both surfaces
-// (LabelBindings — the legacy loop's per-frame writes).
-
-inline constexpr Sint32 ctrl_player_y(int player) { return 40 + player * 28; }
-
-template <int PlayerIndex>
-std::string player_mode_row_label(const MenuLabelContext& /*context*/)
-{
-    const bool eight_dir = get_player_control_mode(PlayerIndex) ==
-        static_cast<int>(ControlDirectionMode::EightDirection);
-    return eight_dir ? "8-DIRECTION" : "4-DIRECTION";
-}
-
-constexpr MenuButtonSpec kControlOptionsRows[] = {
-    {.id = "controls_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
-     .x = 10, .y = 8, .w = 50, .h = 15,
-     .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 9, .down = 1}},
-    {.id = "player1_mode", .label = "4-DIRECTION",
-     .x = 30, .y = ctrl_player_y(0), .w = 100, .h = 15,
-     .action = ButtonAction::ToggleControlMode, .arg = 0,
-     .nav = {.up = 0, .down = 3, .right = 2},
-     .label_binding = {.formatter = &player_mode_row_label<0>}},
-    {.id = "player1_remap", .label = "REMAP P1",
-     .x = 170, .y = ctrl_player_y(0), .w = 100, .h = 15,
-     .action = ButtonAction::EditPlayerKeymap, .arg = 0,
-     .nav = {.up = 0, .down = 4, .left = 1}},
-    {.id = "player2_mode", .label = "4-DIRECTION",
-     .x = 30, .y = ctrl_player_y(1), .w = 100, .h = 15,
-     .action = ButtonAction::ToggleControlMode, .arg = 1,
-     .nav = {.up = 1, .down = 5, .right = 4},
-     .label_binding = {.formatter = &player_mode_row_label<1>}},
-    {.id = "player2_remap", .label = "REMAP P2",
-     .x = 170, .y = ctrl_player_y(1), .w = 100, .h = 15,
-     .action = ButtonAction::EditPlayerKeymap, .arg = 1,
-     .nav = {.up = 2, .down = 6, .left = 3}},
-    {.id = "player3_mode", .label = "4-DIRECTION",
-     .x = 30, .y = ctrl_player_y(2), .w = 100, .h = 15,
-     .action = ButtonAction::ToggleControlMode, .arg = 2,
-     .nav = {.up = 3, .down = 7, .right = 6},
-     .label_binding = {.formatter = &player_mode_row_label<2>}},
-    {.id = "player3_remap", .label = "REMAP P3",
-     .x = 170, .y = ctrl_player_y(2), .w = 100, .h = 15,
-     .action = ButtonAction::EditPlayerKeymap, .arg = 2,
-     .nav = {.up = 4, .down = 8, .left = 5}},
-    {.id = "player4_mode", .label = "4-DIRECTION",
-     .x = 30, .y = ctrl_player_y(3), .w = 100, .h = 15,
-     .action = ButtonAction::ToggleControlMode, .arg = 3,
-     .nav = {.up = 5, .down = 9, .right = 8},
-     .label_binding = {.formatter = &player_mode_row_label<3>}},
-    {.id = "player4_remap", .label = "REMAP P4",
-     .x = 170, .y = ctrl_player_y(3), .w = 100, .h = 15,
-     .action = ButtonAction::EditPlayerKeymap, .arg = 3,
-     .nav = {.up = 6, .down = 9, .left = 7}},
-    {.id = "reset_all_controls", .label = "RESET ALL",
-     .x = 90, .y = 174, .w = 140, .h = 15,
-     .action = ButtonAction::RestoreDefaultControls, .arg = -1,
-     .nav = {.up = 7, .down = 0}},
-};
-
-void control_options_draw_content(void* /*screen_state*/)
-{
-    text& mytext = og::runtime::current_session->myscreen_->text_normal;
-
-    // The header sits below the BACK button's animated highlight box
-    // (which reaches 3px past the bevel) and above the P1 row at y=40;
-    // drawing it any higher lets the highlight overwrite the first chars.
-    mytext.write_xy(PICKER_CONTROLS_HEADER_X, PICKER_CONTROLS_HEADER_Y,
-                    DARK_BLUE, "Player control modes and key remapping");
-
-    for (int i = 0; i < 4; ++i)
-    {
-        const Sint32 btn_y = ctrl_player_y(i);
-        mytext.write_xy(10, btn_y + 3, DARK_BLUE, "P%d", i + 1);
-        const std::string summary = build_player_control_summary(i);
-        mytext.write_xy(30, btn_y + 17, DARK_BLUE, "%s", summary.c_str());
-    }
-
-    mytext.write_xy(10, 155, DARK_BLUE,
-                    "4-dir = cardinal only. 8-dir adds diagonals.");
-}
-
-const MenuScreenSpec& control_options_menu_screen_spec()
-{
-    static const MenuScreenSpec spec{
-        .name = "control_options",
-        .rows = kControlOptionsRows,
-        .row_count = static_cast<int>(std::size(kControlOptionsRows)),
-        .buttons_accessor = &picker_control_options_buttons,
-        .count_accessor = &picker_control_options_button_count,
-        .remote_start = RemoteStartScope::MainScope,
-        .polls_lobby = true,
-        .draw_background = &options_panel_draw_background,
-        .draw_content = &control_options_draw_content,
-        .exit_value = MENU_REDRAW,
-    };
-    return spec;
-}
-
-// ---------------------------------------------------------------------------
 // MAIN OPTIONS (§1.8 step 3, last slice): sound/graphics settings plus doors
-// into CONTROLS and the three FX subscreens (GAMEPLAY FX / UI FX /
-// GRAPHICS FX). Persistent controller profiles remain reachable before a
-// company is opened, while seat lifecycle and per-level player-team choices
-// live in Base Camp. Rows otherwise retain the deleted k_main_options_buttons
-// table: the settings/door column stacks at the classic 23px pitch
-// (BUTTON_HEIGHT 15 + 8 padding). The sound face and the sprite-sheet face
-// are content-pass state draws over the bevels (green per cfg), not label
-// bindings. Every subscreen door just opens its blocking screen; the exit
-// epilogue in main_options() below is the single point where the whole
-// family's cfg edits persist.
+// into DISPLAY and the three FX subscreens (GAMEPLAY FX / UI FX /
+// GRAPHICS FX). Everything per-player — direction mode, remap, reset, input
+// device — belongs to the seat's own screen (Base Camp seat settings and the
+// pause menu's player screen); the global CONTROLS subscreen that duplicated
+// those four rows for all four players is gone. Seat lifecycle and per-level
+// player-team choices live in Base Camp. Rows otherwise retain the deleted
+// k_main_options_buttons table: the settings/door column stacks at the
+// classic 23px pitch (BUTTON_HEIGHT 15 + 8 padding). The sound face and the
+// sprite-sheet face are content-pass state draws over the bevels (green per
+// cfg), not label bindings. Every subscreen door just opens its blocking
+// screen; the exit epilogue in main_options() below is the single point where
+// the whole family's cfg edits persist.
 
 inline constexpr Sint32 kOptionsButtonPadding = 8;
 inline constexpr Sint32 kOptionsButtonPitch = 15 + kOptionsButtonPadding;
@@ -801,46 +727,71 @@ std::string sprite_sheet_row_label(const MenuLabelContext& /*context*/)
     return "Sprite Sheet";
 }
 
+// SPEED re-derives from cfg every frame, like every other cfg-backed face.
+std::string game_speed_row_label(const MenuLabelContext& /*context*/)
+{
+    return format_game_speed_label(cfg.get_setting("gameplay", "timer_wait"));
+}
+
+// Two columns at a 23px pitch: the settings/door column (Sound, then
+// DISPLAY and the three FX doors) and the right column (RESTORE SETTINGS,
+// Sprite Sheet, SPEED). BACK keeps its own corner at (10,10). Derive every
+// x from these two edges — the hand-typed near-neighbour is how the Sound
+// row spent years 5px off the doors under it.
+inline constexpr Sint32 kOptionsDoorColumnX = 130;
+inline constexpr Sint32 kOptionsRightColumnX = 210;
+
 constexpr MenuButtonSpec kMainOptionsRows[] = {
     {.id = "options_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 10, .y = 10, .w = 50, .h = 15,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 8, .down = 1, .right = 4}},
+     .nav = {.up = 7, .down = 1, .right = 4}},
+    // Sound heads the same column as the doors below it (it shipped 5px to
+    // their right — a hand-typed near-neighbor, not a design).
     {.id = "toggle_sound", .label = "Sound",
-     .x = 135, .y = options_col_y(1), .w = 50, .h = 15,
+     .x = kOptionsDoorColumnX, .y = options_col_y(1), .w = 50, .h = 15,
      .action = ButtonAction::ToggleSound, .arg = -1,
      .nav = {.up = 0, .down = 2, .right = 5}},
     // Door into the DISPLAY subscreen (mode / resolution / overscan /
     // scaling / filter live there).
     {.id = "display_settings", .label = "DISPLAY",
-     .x = 130, .y = options_col_y(2), .w = 90, .h = 15,
+     .x = kOptionsDoorColumnX, .y = options_col_y(2), .w = 90, .h = 15,
      .action = ButtonAction::OpenDisplaySettings, .arg = -1,
      .nav = {.up = 1, .down = 3, .right = 5}},
     {.id = "gameplay_fx", .label = "GAMEPLAY FX",
-     .x = 130, .y = options_col_y(3), .w = 90, .h = 15,
+     .x = kOptionsDoorColumnX, .y = options_col_y(3), .w = 90, .h = 15,
      .action = ButtonAction::OpenGameplayFxSettings, .arg = -1,
      .nav = {.up = 2, .down = 6}},
     {.id = "restore_defaults", .label = "RESTORE SETTINGS",
-     .x = 210, .y = 10, .w = 100, .h = 15,
+     .x = kOptionsRightColumnX, .y = 10, .w = 100, .h = 15,
      .action = ButtonAction::RestoreDefaultSettings, .arg = -1,
      .nav = {.up = 7, .down = 5, .left = 0}},
     {.id = "pick_sprite_sheet", .label = "Sprite Sheet",
-     .x = 210, .y = options_col_y(1), .w = 90, .h = 15,
+     .x = kOptionsRightColumnX, .y = options_col_y(1), .w = 90, .h = 15,
      .action = ButtonAction::PickSpriteSheet, .arg = 0,
-     .nav = {.up = 4, .down = 2, .left = 1},
+     .nav = {.up = 4, .down = 8, .left = 1},
      .label_binding = {.formatter = &sprite_sheet_row_label}},
     {.id = "ui_fx", .label = "UI FX",
-     .x = 130, .y = options_col_y(4), .w = 90, .h = 15,
+     .x = kOptionsDoorColumnX, .y = options_col_y(4), .w = 90, .h = 15,
      .action = ButtonAction::OpenUiFxSettings, .arg = -1,
      .nav = {.up = 3, .down = 7}},
     {.id = "graphics_fx", .label = "GRAPHICS FX",
-     .x = 130, .y = options_col_y(5), .w = 90, .h = 15,
+     .x = kOptionsDoorColumnX, .y = options_col_y(5), .w = 90, .h = 15,
      .action = ButtonAction::OpenGraphicsFxSettings, .arg = -1,
-     .nav = {.up = 6, .down = 8}},
-    {.id = "control_settings", .label = "CONTROLS",
-     .x = 130, .y = options_col_y(6), .w = 90, .h = 15,
-     .action = ButtonAction::OpenControlSettings, .arg = -1,
-     .nav = {.up = 7, .down = 0}},
+     .nav = {.up = 6, .down = 0, .right = 8}},
+    // SPEED: the sim cadence the retired in-game options menu owned
+    // (docs/pause-menu-design.md §7.3). It is game-wide and always was — a
+    // GameWorld field, host-authoritative over the wire — so it belongs
+    // here and not on a per-player screen. It closes the right column at the
+    // first row whose x=210 face clears the door column: the 90px doors at
+    // x=130 run to x=220, so every row they occupy (y=56..140) is blocked.
+    // With the CONTROLS door gone the column ends at GRAPHICS FX, and
+    // options_col_y(6) is that first clear row.
+    {.id = "game_speed", .label = "SPEED: 8",
+     .x = kOptionsRightColumnX, .y = options_col_y(6), .w = 90, .h = 15,
+     .action = ButtonAction::CycleGameSpeed, .arg = -1,
+     .nav = {.up = 5, .down = 4, .left = 7},
+     .label_binding = {.formatter = &game_speed_row_label}},
 };
 
 void main_options_draw_content(void* /*screen_state*/)
@@ -853,7 +804,6 @@ void main_options_draw_content(void* /*screen_state*/)
     scr->hor_line(60, rows[2].y - kOptionsButtonPadding / 2, 200, PURE_WHITE);
     scr->text_normal.write_xy(20, rows[2].y + 3, DARK_BLUE, "Display:");
     scr->text_normal.write_xy(20, rows[3].y + 3, DARK_BLUE, "Effects:");
-    scr->text_normal.write_xy(20, rows[8].y + 3, DARK_BLUE, "Controls:");
     draw_sprite_sheet_button(rows[5]);
 }
 
@@ -865,9 +815,9 @@ const MenuScreenSpec& main_options_menu_screen_spec()
         .row_count = static_cast<int>(std::size(kMainOptionsRows)),
         .buttons_accessor = &picker_main_options_buttons,
         .count_accessor = &picker_main_options_button_count,
-        // Controls is a blocking child screen. Keep MainScope on its parent
-        // too so a child-propagated host GO cannot be normalized into the
-        // ordinary "back to main menu" redraw.
+        // A host GO reaching this peer while it sits in GAME SETTINGS must
+        // unwind to the launch, not to the ordinary "back to main menu"
+        // redraw — main_options() below normalizes every other exit.
         .remote_start = RemoteStartScope::MainScope,
         .polls_lobby = true,
         .draw_background = &options_panel_draw_background,
@@ -2062,28 +2012,52 @@ std::string base_camp_company_abbreviation(std::string_view company)
     return result.empty() ? "NET" : result;
 }
 
-bool base_camp_seat_is_local(const BaseCampScreenState& state,
-                             std::uint8_t player_index)
+// A card's controller profile is its POSITION in this machine's local seat
+// list, never the card index and never the global P# (menu_system.md §3.1 —
+// displayed P1 once drove profile 3). Seat settings resolves it the same way
+// off the same list, so the card and the editor always name one profile.
+int base_camp_seat_local_slot(const BaseCampScreenState& state,
+                              std::uint8_t player_index)
 {
-    return std::find(state.local_seat_indices.begin(),
-                     state.local_seat_indices.end(),
-                     player_index) != state.local_seat_indices.end();
+    const auto local = std::find(state.local_seat_indices.begin(),
+                                 state.local_seat_indices.end(),
+                                 player_index);
+    if (local == state.local_seat_indices.end())
+        return -1;
+    return static_cast<int>(
+        std::distance(state.local_seat_indices.begin(), local));
 }
 
 std::string base_camp_seat_label(const BaseCampScreenState& state,
                                  const og::sim::LobbyPlayer& seat)
 {
-    const bool local =
-        base_camp_seat_is_local(state, seat.player_index);
-    const std::string owner =
-        local && picker_lobby_local_seat_count() == 0
-        ? std::string("SPEC")
-        : (local ? std::string("YOU")
-                 : base_camp_company_abbreviation(seat.company));
+    const int local_slot =
+        base_camp_seat_local_slot(state, seat.player_index);
+    // Design §2.3: a local card names the seat's INPUT mapping, so the roster
+    // rail answers "which controller am I?" without opening the editor.
+    const bool named = local_slot >= 0 && local_slot < MAX_PLAYERS &&
+        picker_lobby_local_seat_count() > 0;
+    std::string owner =
+        named ? og::input::mapping_short_name(
+                    og::ui::current_input_selection(local_slot).name)
+              : (local_slot >= 0
+                     ? std::string("SPEC")
+                     : base_camp_company_abbreviation(seat.company));
     // The trailing visual pad shifts the visible centered ink one half-cell
     // left, keeping the 8px numbered team chip clear on the compact 57px face.
-    return std::format("P{} {} ", static_cast<int>(seat.player_index) + 1,
-                       owner);
+    // The pad is part of the 9-char face budget, and so is a two-digit P#:
+    // a global P16 seat keeps its mapping name one character shorter.
+    const std::string prefix =
+        std::format("P{} ", static_cast<int>(seat.player_index) + 1);
+    const std::size_t room =
+        prefix.size() + 1 < static_cast<std::size_t>(
+                                kBaseCampSeatCardLabelBudget)
+        ? static_cast<std::size_t>(kBaseCampSeatCardLabelBudget) -
+              prefix.size() - 1
+        : 0u;
+    if (owner.size() > room)
+        owner.resize(room);
+    return prefix + owner + " ";
 }
 
 std::vector<short> base_camp_selectable_seat_teams(const SaveData& save)
@@ -2201,6 +2175,18 @@ RowState seat_settings_remove_row_state(
     return RowState::Visible;
 }
 
+RowState seat_settings_zoom_row_state(const MenuLabelContext& /*context*/)
+{
+    // §7.1: a backend without the off-screen floor-layer compositor can
+    // never zoom — the row reads Disabled instead of silently doing nothing.
+    return per_view_zoom_available() ? RowState::Visible
+                                     : RowState::Disabled;
+}
+
+// §7.1 unified player screen (the kPlayerScreen* grid in picker_sdl_defs.h):
+// ZOOM rides the y=54 band beside INPUT; the RADAR/HP/FOES/SCORE stack sits
+// right of the binding panel at x=214 on a 22px pitch, sharing the panel's
+// y=78..161 span. Appended after seat_input (index contract).
 constexpr MenuButtonSpec kSeatSettingsRowsMP[] = {
     {.id = "seat_settings_back", .label = "BACK",
      .hotkey = KEYSTATE_ESCAPE,
@@ -2209,37 +2195,87 @@ constexpr MenuButtonSpec kSeatSettingsRowsMP[] = {
      .nav = {.up = kSeatSettingsTeamIndex,
              .down = kSeatSettingsModeIndex}},
     {.id = "seat_team", .label = "TEAM 1",
-     .x = 16, .y = 169, .w = 138, .h = 18,
+     .x = kPlayerScreenColAX, .y = kPlayerScreenBottomBandY,
+     .w = 138, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsTeamIndex,
-     .nav = {.up = kSeatSettingsModeIndex,
+     .nav = {.up = kSeatSettingsInputRowMP,
              .down = kSeatSettingsBackIndex,
              .right = kSeatSettingsRemoveIndex}},
     {.id = "seat_direction", .label = "4-DIRECTION",
-     .x = 16, .y = 38, .w = 98, .h = 18,
+     .x = kPlayerScreenColAX, .y = kPlayerScreenBand1Y,
+     .w = kPlayerScreenColAW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsModeIndex,
      .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsTeamIndex,
+             .down = kSeatSettingsInputRowMP,
              .right = kSeatSettingsRemapIndex}},
     {.id = "seat_remap", .label = "REMAP",
-     .x = 123, .y = 38, .w = 86, .h = 18,
+     .x = kPlayerScreenColBX, .y = kPlayerScreenBand1Y,
+     .w = kPlayerScreenColBW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsRemapIndex,
      .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsRemoveIndex,
+             .down = kSeatSettingsZoomRowMP,
              .left = kSeatSettingsModeIndex,
              .right = kSeatSettingsResetIndex}},
     {.id = "seat_reset", .label = "RESET",
-     .x = 218, .y = 38, .w = 86, .h = 18,
+     .x = kPlayerScreenColCX, .y = kPlayerScreenBand1Y,
+     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsResetIndex,
      .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsRemoveIndex,
+             .down = kSeatSettingsHudRadarRowMP,
              .left = kSeatSettingsRemapIndex}},
     {.id = "seat_remove", .label = "REMOVE PLAYER",
-     .x = 166, .y = 169, .w = 138, .h = 18,
+     .x = 166, .y = kPlayerScreenBottomBandY, .w = 138, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsRemoveIndex,
-     .nav = {.up = kSeatSettingsResetIndex,
+     .nav = {.up = kSeatSettingsHudScoreRowMP,
              .down = kSeatSettingsBackIndex,
              .left = kSeatSettingsTeamIndex},
      .state_override = &seat_settings_remove_row_state},
+    {.id = "seat_input", .label = "INPUT: WASD",
+     .x = kPlayerScreenColAX, .y = kPlayerScreenBand2Y,
+     .w = kPlayerScreenColAW, .h = kPlayerScreenBandH,
+     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsInputIndex,
+     .nav = {.up = kSeatSettingsModeIndex,
+             .down = kSeatSettingsTeamIndex,
+             .right = kSeatSettingsZoomRowMP}},
+    {.id = "seat_zoom", .label = "ZOOM: GAME",
+     .x = kPlayerScreenColBX, .y = kPlayerScreenBand2Y,
+     .w = kPlayerScreenColBW, .h = kPlayerScreenBandH,
+     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsZoomIndex,
+     .nav = {.up = kSeatSettingsRemapIndex,
+             .down = kSeatSettingsHudRadarRowMP,
+             .left = kSeatSettingsInputRowMP},
+     .state_override = &seat_settings_zoom_row_state},
+    {.id = "seat_hud_radar", .label = "RADAR: ON",
+     .x = kPlayerScreenColCX, .y = kPlayerScreenHudTopY,
+     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
+     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudRadarIndex,
+     .nav = {.up = kSeatSettingsResetIndex,
+             .down = kSeatSettingsHudLifeRowMP,
+             .left = kSeatSettingsZoomRowMP}},
+    {.id = "seat_hud_life", .label = "HP: ON",
+     .x = kPlayerScreenColCX,
+     .y = kPlayerScreenHudTopY + kPlayerScreenHudPitch,
+     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
+     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudLifeIndex,
+     .nav = {.up = kSeatSettingsHudRadarRowMP,
+             .down = kSeatSettingsHudFoesRowMP,
+             .left = kSeatSettingsInputRowMP}},
+    {.id = "seat_hud_foes", .label = "FOES: ON",
+     .x = kPlayerScreenColCX,
+     .y = kPlayerScreenHudTopY + 2 * kPlayerScreenHudPitch,
+     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
+     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudFoesIndex,
+     .nav = {.up = kSeatSettingsHudLifeRowMP,
+             .down = kSeatSettingsHudScoreRowMP,
+             .left = kSeatSettingsInputRowMP}},
+    {.id = "seat_hud_score", .label = "SCORE: ON",
+     .x = kPlayerScreenColCX,
+     .y = kPlayerScreenHudTopY + 3 * kPlayerScreenHudPitch,
+     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
+     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudScoreIndex,
+     .nav = {.up = kSeatSettingsHudFoesRowMP,
+             .down = kSeatSettingsRemoveIndex,
+             .left = kSeatSettingsInputRowMP}},
 };
 
 constexpr MenuButtonSpec kSeatSettingsRowsNoMP[] = {
@@ -2250,30 +2286,86 @@ constexpr MenuButtonSpec kSeatSettingsRowsNoMP[] = {
      .nav = {.up = kSeatSettingsTeamIndex,
              .down = kSeatSettingsModeIndex}},
     {.id = "seat_team", .label = "TEAM 1",
-     .x = 91, .y = 169, .w = 138, .h = 18,
+     .x = 91, .y = kPlayerScreenBottomBandY, .w = 138, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsTeamIndex,
-     .nav = {.up = kSeatSettingsRemapIndex,
+     .nav = {.up = kSeatSettingsInputRowNoMP,
              .down = kSeatSettingsBackIndex}},
     {.id = "seat_direction", .label = "4-DIRECTION",
-     .x = 16, .y = 38, .w = 98, .h = 18,
+     .x = kPlayerScreenColAX, .y = kPlayerScreenBand1Y,
+     .w = kPlayerScreenColAW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsModeIndex,
      .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsTeamIndex,
+             .down = kSeatSettingsInputRowNoMP,
              .right = kSeatSettingsRemapIndex}},
     {.id = "seat_remap", .label = "REMAP",
-     .x = 123, .y = 38, .w = 86, .h = 18,
+     .x = kPlayerScreenColBX, .y = kPlayerScreenBand1Y,
+     .w = kPlayerScreenColBW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsRemapIndex,
      .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsTeamIndex,
+             .down = kSeatSettingsZoomRowNoMP,
              .left = kSeatSettingsModeIndex,
              .right = kSeatSettingsResetIndex}},
     {.id = "seat_reset", .label = "RESET",
-     .x = 218, .y = 38, .w = 86, .h = 18,
+     .x = kPlayerScreenColCX, .y = kPlayerScreenBand1Y,
+     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsResetIndex,
      .nav = {.up = kSeatSettingsBackIndex,
-             .down = kSeatSettingsTeamIndex,
+             .down = kSeatSettingsHudRadarRowNoMP,
              .left = kSeatSettingsRemapIndex}},
+    {.id = "seat_input", .label = "INPUT: WASD",
+     .x = kPlayerScreenColAX, .y = kPlayerScreenBand2Y,
+     .w = kPlayerScreenColAW, .h = kPlayerScreenBandH,
+     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsInputIndex,
+     .nav = {.up = kSeatSettingsModeIndex,
+             .down = kSeatSettingsTeamIndex,
+             .right = kSeatSettingsZoomRowNoMP}},
+    {.id = "seat_zoom", .label = "ZOOM: GAME",
+     .x = kPlayerScreenColBX, .y = kPlayerScreenBand2Y,
+     .w = kPlayerScreenColBW, .h = kPlayerScreenBandH,
+     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsZoomIndex,
+     .nav = {.up = kSeatSettingsRemapIndex,
+             .down = kSeatSettingsHudRadarRowNoMP,
+             .left = kSeatSettingsInputRowNoMP},
+     .state_override = &seat_settings_zoom_row_state},
+    {.id = "seat_hud_radar", .label = "RADAR: ON",
+     .x = kPlayerScreenColCX, .y = kPlayerScreenHudTopY,
+     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
+     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudRadarIndex,
+     .nav = {.up = kSeatSettingsResetIndex,
+             .down = kSeatSettingsHudLifeRowNoMP,
+             .left = kSeatSettingsZoomRowNoMP}},
+    {.id = "seat_hud_life", .label = "HP: ON",
+     .x = kPlayerScreenColCX,
+     .y = kPlayerScreenHudTopY + kPlayerScreenHudPitch,
+     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
+     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudLifeIndex,
+     .nav = {.up = kSeatSettingsHudRadarRowNoMP,
+             .down = kSeatSettingsHudFoesRowNoMP,
+             .left = kSeatSettingsInputRowNoMP}},
+    {.id = "seat_hud_foes", .label = "FOES: ON",
+     .x = kPlayerScreenColCX,
+     .y = kPlayerScreenHudTopY + 2 * kPlayerScreenHudPitch,
+     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
+     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudFoesIndex,
+     .nav = {.up = kSeatSettingsHudLifeRowNoMP,
+             .down = kSeatSettingsHudScoreRowNoMP,
+             .left = kSeatSettingsInputRowNoMP}},
+    {.id = "seat_hud_score", .label = "SCORE: ON",
+     .x = kPlayerScreenColCX,
+     .y = kPlayerScreenHudTopY + 3 * kPlayerScreenHudPitch,
+     .w = kPlayerScreenColCW, .h = kPlayerScreenBandH,
+     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudScoreIndex,
+     .nav = {.up = kSeatSettingsHudFoesRowNoMP,
+             .down = kSeatSettingsTeamIndex,
+             .left = kSeatSettingsInputRowNoMP}},
 };
+
+static_assert(static_cast<int>(std::size(kSeatSettingsRowsMP))
+                  == kSeatSettingsButtonCountMP,
+              "seat settings MP ordinals are the layout contract");
+static_assert(static_cast<int>(std::size(kSeatSettingsRowsNoMP))
+                  == kSeatSettingsButtonCountNoMP,
+              "seat settings no-MP ordinals are the layout contract");
 
 void sync_seat_settings_label(button* buttons, int index,
                               const std::string& label)
@@ -2318,6 +2410,22 @@ void seat_settings_rewire(button* buttons, int count,
     sync_seat_settings_label(
         buttons, kSeatSettingsModeIndex,
         eight_dir ? "8-DIRECTION" : "4-DIRECTION");
+    sync_seat_settings_label(
+        buttons, kSeatSettingsInputRow,
+        og::ui::input_cycle_button_label(
+            g_seat_settings_state->local_slot));
+    // §7.1 live per-frame labels for the ZOOM + HUD rows.
+    const int slot = g_seat_settings_state->local_slot;
+    sync_seat_settings_label(buttons, kSeatSettingsZoomRow,
+                             player_view_zoom_label(slot));
+    sync_seat_settings_label(buttons, kSeatSettingsHudRadarRow,
+                             player_hud_row_label(slot, PlayerHudRow::Radar));
+    sync_seat_settings_label(buttons, kSeatSettingsHudLifeRow,
+                             player_hud_row_label(slot, PlayerHudRow::Life));
+    sync_seat_settings_label(buttons, kSeatSettingsHudFoesRow,
+                             player_hud_row_label(slot, PlayerHudRow::Foes));
+    sync_seat_settings_label(buttons, kSeatSettingsHudScoreRow,
+                             player_hud_row_label(slot, PlayerHudRow::Score));
 #ifndef DISABLE_MULTIPLAYER
     sync_seat_settings_label(
         buttons, kSeatSettingsRemoveIndex,
@@ -2349,24 +2457,34 @@ void seat_settings_draw_content(void* screen_state)
                     static_cast<int>(player.player_index) + 1)
             .c_str());
 
-    game->draw_button(12, 62, 308, 159, 2, 1);
-    mytext.write_xy(20, 66, DARK_BLUE, "%s", "MOVEMENT");
-    mytext.write_xy(164, 66, DARK_BLUE, "%s", "ACTIONS");
+    // §7.1 unified geometry: the binding panel spans columns A+B
+    // (x=12..208, y=78..161, sharing the HUD stack's vertical span);
+    // movement column x=20, actions x=104, 8px line pitch, both columns
+    // budget-clamped.
+    game->draw_button(kPlayerScreenColAX, kPlayerScreenPanelTopY,
+                      kPlayerScreenPanelRightX, kPlayerScreenPanelBottomY,
+                      2, 1);
+    mytext.write_xy(20, kPlayerScreenPanelHeaderY, DARK_BLUE, "%s",
+                    "MOVEMENT");
+    mytext.write_xy(104, kPlayerScreenPanelHeaderY, DARK_BLUE, "%s",
+                    "ACTIONS");
 
     struct BindingLine {
         const char* label;
         int key;
         bool diagonal;
     };
+    // Compact diagonal labels: the movement column has 14 chars before the
+    // ACTIONS column at x=104 ((104-20)/6).
     static constexpr std::array<BindingLine, 8> movement{{
         {"UP", KEY_UP, false},
-        {"UP-RIGHT", KEY_UP_RIGHT, true},
+        {"UP-R", KEY_UP_RIGHT, true},
         {"RIGHT", KEY_RIGHT, false},
-        {"DOWN-RIGHT", KEY_DOWN_RIGHT, true},
+        {"DN-R", KEY_DOWN_RIGHT, true},
         {"DOWN", KEY_DOWN, false},
-        {"DOWN-LEFT", KEY_DOWN_LEFT, true},
+        {"DN-L", KEY_DOWN_LEFT, true},
         {"LEFT", KEY_LEFT, false},
-        {"UP-LEFT", KEY_UP_LEFT, true},
+        {"UP-L", KEY_UP_LEFT, true},
     }};
     static constexpr std::array<BindingLine, 7> actions{{
         {"FIRE", KEY_FIRE, false},
@@ -2380,25 +2498,38 @@ void seat_settings_draw_content(void* screen_state)
     const bool eight_dir =
         get_player_control_mode(state->local_slot) ==
         static_cast<int>(ControlDirectionMode::EightDirection);
+    // A joystick-driven seat reads its own device bindings; showing the
+    // (still-stored, still-reserved) keyboard names there would be a lie.
+    const int slot = state->local_slot;
+    const bool joystick = slot >= 0 && slot < MAX_PLAYERS &&
+        playerHasJoystick(slot);
+    const auto binding_value = [slot, joystick](int key) {
+        return joystick
+            ? joy_binding_display_name(player_joy[slot].key_type[key],
+                                       player_joy[slot].key_index[key])
+            : player_control_key_display_name(slot, key);
+    };
 
     for (std::size_t index = 0; index < movement.size(); ++index) {
         const BindingLine& binding = movement[index];
         const bool active = !binding.diagonal || eight_dir;
         const std::string value = active
-            ? player_control_key_display_name(state->local_slot, binding.key)
+            ? binding_value(binding.key)
             : std::string("--");
-        const std::string line =
-            std::format("{}: {}", binding.label, value);
-        mytext.write_xy(20, 77 + static_cast<int>(index) * 10,
-                        active ? DARK_BLUE : GREY, "%s", line.c_str());
+        const std::string line = format_binding_panel_line(
+            binding.label, value, kBindingPanelMovementChars);
+        mytext.write_xy(
+            20, kPlayerScreenPanelLineY + static_cast<int>(index) * 8,
+            active ? DARK_BLUE : GREY, "%s", line.c_str());
     }
     for (std::size_t index = 0; index < actions.size(); ++index) {
         const BindingLine& binding = actions[index];
-        const std::string line = std::format(
-            "{}: {}", binding.label,
-            player_control_key_display_name(state->local_slot, binding.key));
-        mytext.write_xy(164, 77 + static_cast<int>(index) * 10,
-                        DARK_BLUE, "%s", line.c_str());
+        const std::string line = format_binding_panel_line(
+            binding.label, binding_value(binding.key),
+            kBindingPanelActionsChars);
+        mytext.write_xy(
+            104, kPlayerScreenPanelLineY + static_cast<int>(index) * 8,
+            DARK_BLUE, "%s", line.c_str());
     }
 }
 
@@ -2471,12 +2602,63 @@ Sint32 seat_settings_on_spec_row(int row, void* screen_state)
     }
     if (row == kSeatSettingsRemapIndex) {
         (void)edit_player_keymap(state->local_slot);
+        // Design §3.2: a remap writes through to the mapping library under
+        // the seat's re-derived name, so cycling away and back — or
+        // restarting — keeps the customization. A factory-identical result
+        // returns false and drops any stale entry; that is success.
+        (void)og::input::save_player_mapping_to_library(
+            cfg, state->local_slot);
         persist_player_controls();
         return MENU_OK;
     }
+    if (row == kSeatSettingsInputIndex) {
+        // The cycler skips names held by another ACTIVE seat, so it needs the
+        // same machine-local seat count the REMOVE guard uses.
+        std::string unavailable;
+        const std::string name = og::ui::cycle_player_input(
+            cfg, state->local_slot,
+            static_cast<int>(picker_lobby_local_seat_count()), &unavailable);
+        persist_player_controls();
+        TRACE("basecamp", "seat_input slot=%d name=%s",
+              state->local_slot + 1, name.c_str());
+        if (!unavailable.empty()) {
+            // Enumerated but unopenable device (permissions): name it, or the
+            // skipped option reads as a broken button.
+            popup_dialog("INPUT",
+                         std::format("COULD NOT OPEN {}", unavailable).c_str());
+        }
+        return MENU_OK;
+    }
     if (row == kSeatSettingsResetIndex) {
-        if (reset_default_player_controls_for_player(state->local_slot))
+        if (reset_default_player_controls_for_player(state->local_slot)) {
+            // RESET undoes a customization, so the library entry it wrote
+            // must go with it (same write-through call: factory-identical
+            // erases).
+            (void)og::input::save_player_mapping_to_library(
+                cfg, state->local_slot);
             persist_player_controls();
+        }
+        return MENU_OK;
+    }
+    if (row == kSeatSettingsZoomIndex) {
+        if (per_view_zoom_available()) {
+            (void)cycle_player_view_zoom(state->local_slot);
+            persist_player_controls();
+        }
+        return MENU_OK;
+    }
+    if (row == kSeatSettingsHudRadarIndex ||
+        row == kSeatSettingsHudLifeIndex ||
+        row == kSeatSettingsHudFoesIndex ||
+        row == kSeatSettingsHudScoreIndex) {
+        const PlayerHudRow hud_row = row == kSeatSettingsHudRadarIndex
+            ? PlayerHudRow::Radar
+            : row == kSeatSettingsHudLifeIndex
+                ? PlayerHudRow::Life
+                : row == kSeatSettingsHudFoesIndex ? PlayerHudRow::Foes
+                                                   : PlayerHudRow::Score;
+        toggle_player_hud_row(state->local_slot, hud_row);
+        persist_player_controls();
         return MENU_OK;
     }
 
@@ -3265,6 +3447,18 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
             return MENU_OK;
         }
         st->last_seat_add_ms = now_ms;
+        // The new seat reads profile-pool slot N, which can duplicate a
+        // mapping an existing seat already cycled onto (the mid-game ADD
+        // PLAYER shares this rule): land it on the first unchosen one.
+        {
+            const int seat_count =
+                static_cast<int>(picker_lobby_local_seat_count());
+            if (og::ui::ensure_unique_seat_mapping(cfg, seat_count - 1,
+                                                   seat_count))
+            {
+                persist_player_controls();
+            }
+        }
         base_camp_refresh_rows(*st);
         if (!st->local_seat_indices.empty()) {
             const std::uint8_t added_player =
@@ -3300,7 +3494,9 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
 
         const og::sim::LobbyPlayer& seat =
             st->seats[static_cast<std::size_t>(seat_index)];
-        if (!base_camp_seat_is_local(*st, seat.player_index)) {
+        const int local_slot =
+            base_camp_seat_local_slot(*st, seat.player_index);
+        if (local_slot < 0) {
             const std::string owner = std::format(
                 "P{}  {}",
                 static_cast<int>(seat.player_index) + 1,
@@ -3314,13 +3510,6 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
             return MENU_OK;
         }
 
-        const auto local = std::find(
-            st->local_seat_indices.begin(),
-            st->local_seat_indices.end(), seat.player_index);
-        if (local == st->local_seat_indices.end())
-            return MENU_OK;
-        const int local_slot = static_cast<int>(
-            std::distance(st->local_seat_indices.begin(), local));
         const Sint32 ret = run_seat_settings_menu(seat, local_slot);
         base_camp_refresh_rows(*st);
         if ((ret & MENU_EXIT) && team_build_start_selected())
@@ -5001,9 +5190,6 @@ const MenuScreenHost& menu_screen_host(MenuScreenId id)
             set(MenuScreenId::DisplaySettings,
                 {.kind = Kind::Engine,
                  .spec = &display_settings_menu_screen_spec()});
-            set(MenuScreenId::ControlSettings,
-                {.kind = Kind::Engine,
-                 .spec = &control_options_menu_screen_spec()});
             set(MenuScreenId::GameplayFx,
                 {.kind = Kind::Engine, .spec = &gameplay_fx_menu_screen_spec()});
             set(MenuScreenId::UiFx,
@@ -5409,35 +5595,10 @@ int picker_display_settings_button_count()
     return static_cast<int>(pks().display_settings_buttons.size());
 }
 
-button* picker_control_options_buttons()
-{
-    og::ui::materialize_menu_buttons(og::ui::control_options_menu_screen_spec(),
-                                     pks().control_options_buttons);
-    return pks().control_options_buttons.data();
-}
-
-int picker_control_options_button_count()
-{
-    return static_cast<int>(pks().control_options_buttons.size());
-}
-
-// The DISPLAY and CONTROLS subscreens, engine-hosted (the legacy loops are
-// gone).
+// The DISPLAY subscreen, engine-hosted (the legacy loop is gone).
 Sint32 display_settings_options()
 {
     return og::ui::run_menu_screen(og::ui::display_settings_menu_screen_spec());
-}
-
-Sint32 main_controls_options()
-{
-    const Sint32 result =
-        og::ui::run_menu_screen(og::ui::control_options_menu_screen_spec());
-    // CONTROLS can be entered from GAME SETTINGS without necessarily
-    // returning through main_options()'s family-wide persistence epilogue
-    // (tests and compatibility callers invoke this wrapper directly too).
-    save_player_control_settings_to_cfg(cfg);
-    cfg.save_settings();
-    return result;
 }
 
 button* picker_main_options_buttons()

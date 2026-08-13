@@ -12,11 +12,11 @@ legacy, or retired.
 
 | Screen family | Owner |
 |---|---|
-| Main, Difficulty, Game Settings, Display, Effects, Controls, Seat Settings | Runtime |
+| Main, Difficulty, Game Settings, Display, Effects, Seat Settings | Runtime |
 | Base Camp, Hire, Train, Progress, View Level, Scenario, Matchup | Runtime |
 | Company List, Backups, company name entry | Runtime |
 | Networking | Legacy `SdlPickerClient` loop |
-| View Team and manual Save/Load slots | Retired |
+| View Team, manual Save/Load slots, global Controls | Retired |
 
 Networking remains legacy because its room-list state machine needs pre-input
 polling and click-against-visible-snapshot semantics that the shared frame

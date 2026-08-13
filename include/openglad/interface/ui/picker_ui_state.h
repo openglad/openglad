@@ -95,7 +95,6 @@ struct PickerState {
     std::vector<button> createmenu_buttons;
     std::vector<button> main_options_buttons;
     std::vector<button> display_settings_buttons;
-    std::vector<button> control_options_buttons;
     std::vector<button> gameplay_fx_options_buttons;
     std::vector<button> ui_fx_options_buttons;
     std::vector<button> graphics_fx_options_buttons;

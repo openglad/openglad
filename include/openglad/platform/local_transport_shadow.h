@@ -21,6 +21,10 @@ class GameWorld;
 class viewscreen;
 class walker;
 
+namespace og::sim {
+class GameServer;
+}
+
 namespace og::runtime {
 
 class GameSession;
@@ -149,6 +153,60 @@ void local_transport_shadow_set_player_companies(
     GameSession& session,
     std::span<const std::pair<std::uint8_t, std::string>> companies);
 bool local_transport_shadow_toggle_pause(GameSession& session);
+// --- Pause-menu transport support (design §2.1) ------------------------------
+// One transport pump while a blocking pause menu owns the frame: runs the
+// authoritative server step (the pending pause already suspends world ticks)
+// and drains every client mirror, so networked peers keep their keepalives
+// and the inbound queue never overflows. Returns false when the session or
+// world ended underneath the menu (the menu must close).
+bool local_transport_shadow_pump_paused(GameSession& session);
+// Send one pause request from the display client. Used both to open the
+// menu's pause and as its ~20s keep-alive: the server refreshes a pending
+// pause's auto-resume deadline when the request comes from the pause owner.
+void local_transport_shadow_request_pause_keepalive(GameSession& session);
+// Display name of a REMOTE peer that owns the current pause ("PAUSED by X"),
+// or "" when there is no pause or this machine's own seat owns it. Local
+// (non-networked) sessions always return "".
+std::string local_transport_shadow_remote_pause_owner(GameSession& session);
+// Pause-menu RESTART (non-networked authoritative shadows only): the abort
+// recipe (run-end routing, ending=1 withdrawn, no roster persist) plus
+// world.retry=1 on the server world before the final broadcast AND on the
+// display world, so the native retry loop / web done-transition relaunch the
+// level from the pre-level save. Returns false (and changes nothing) for
+// networked or client-only sessions.
+bool local_transport_shadow_restart_level(GameSession& session);
+// --- Mid-game LOCAL seat add/remove (design §5; non-networked shadows only) --
+// True only when a plain local (non-networked, non-spectator) authoritative
+// shadow is live and the current seat count is below MAX_PLAYERS.
+bool local_transport_shadow_can_add_player(GameSession& session);
+// Add seat N (N = current count). Server side: claim an unclaimed walker of
+// view 0's team via the existing scan, else spawn a stock non-roster soldier
+// at a deterministically probed spot (team anchors, then a ring around a live
+// teammate — never a world.rng_ draw); new in-process peer, bind_player +
+// send_initial_snapshot + set_player_control (the ControlChange broadcast —
+// bind alone is silent). Display side: numplayers first, then numviews, then
+// the new view via compute_view_layout + relayout_views. The new seat reads
+// key-profile slot N exactly as the profile-pool rotation seeded it. Safe to
+// call while the server pause is pending; the seat count change follows
+// save_data.numplayers back to Base Camp (the lobby resizes from it on
+// resume_after_level). Returns false (and changes nothing) when no walker
+// could be claimed or placed.
+bool local_transport_shadow_add_local_player(GameSession& session);
+// True when a local shadow is live with >= 2 seats and player_index is a
+// valid seat. Any seat may be removed (including seat 0): seats above it are
+// renumbered down while peer 0's transport stays owned by the display client,
+// so the host peer is never disconnected.
+bool local_transport_shadow_can_remove_player(GameSession& session,
+                                              int player_index);
+// Remove one local seat. Server side: set_player_control(idx, nullptr) FIRST
+// (the disconnect path never clears player_controls_), release the walker to
+// AI (set_user(-1) + restore_act_type), shift the surviving seats' bindings
+// down in sorted player-index order across the fixed peers, then disconnect
+// the vacated LAST peer (never peer 0). Display side: numplayers, view
+// rebuild for the new count, relayout_views,
+// compact_player_controls_after_removal, view_follow reset for dropped slots.
+bool local_transport_shadow_remove_local_player(GameSession& session,
+                                                int player_index);
 // Abort the current mission. Host / local play ends it authoritatively and
 // returns true. A networked client instead asks the server to withdraw ALL
 // players and returns false, signalling the caller to keep the display loop
@@ -165,6 +223,12 @@ void local_transport_shadow_finish_tick(GameSession& session);
 // nullptr for a client-only or non-networked session. Lets tests reach into the
 // authoritative world (e.g. to clear foes and force a deterministic level win).
 screen* local_transport_shadow_testing_server_screen(GameSession& session);
+
+// Test-only: the authoritative GameServer itself (nullptr when this session
+// hosts none). Lets regression tests pin transport-level health, e.g. that a
+// mid-game seat add never drives the display mirror into the snapshot-hash
+// strike-out that disconnects the display peer.
+og::sim::GameServer* local_transport_shadow_testing_server(GameSession& session);
 
 // Test-only: attribute an exit/withdraw request to a given player and emit it on
 // the authoritative server, as if that player had touched an exit treasure.

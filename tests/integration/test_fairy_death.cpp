@@ -12,6 +12,7 @@
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
 #include <openglad/core/util.h>
+#include <openglad/interface/ui/pause_menu.h>
 #include <openglad/interface/ui/picker_common.h>
 
 #include <atomic>
@@ -179,9 +180,10 @@ static void unwind_picker_after_failure(FairyState* state)
     picker_testing_yes_or_no_queue_clear();
 
     if (g_test_in_game.load(std::memory_order_acquire)) {
-        picker_testing_yes_or_no_queue_push(true);
-        inject_key_press(SDLK_ESCAPE);
-        SDL_Delay(kUiSettleMs);
+        // One Esc opens the PAUSED menu; the queued Quit outcome aborts.
+        og::ui::pause_menu_testing_clear_queue();
+        og::ui::pause_menu_testing_queue_outcome(
+            og::ui::PauseMenuResult::Quit, /*release_pause=*/false);
         inject_key_press(SDLK_ESCAPE);
 
         int waited_ms = 0;
@@ -190,6 +192,7 @@ static void unwind_picker_after_failure(FairyState* state)
             SDL_Delay(kFairyPollMs);
             waited_ms += kFairyPollMs;
         }
+        og::ui::pause_menu_testing_clear_queue();
         picker_testing_yes_or_no_queue_clear();
     }
 
@@ -387,10 +390,11 @@ static int fairy_injector(void* data)
             if (g_test_in_game.load(std::memory_order_acquire)) {
                 fprintf(stderr,
                         "  [test] natural defeat stalled; aborting after observed fairy death\n");
-                inject_key_press(SDLK_ESCAPE);
-                SDL_Delay(kUiSettleMs);
-                picker_testing_yes_or_no_queue_clear();
-                picker_testing_yes_or_no_queue_push(true);
+                // One Esc now opens the PAUSED menu; a queued Quit outcome
+                // stands in for clicking QUIT MISSION + the confirm.
+                og::ui::pause_menu_testing_clear_queue();
+                og::ui::pause_menu_testing_queue_outcome(
+                    og::ui::PauseMenuResult::Quit, /*release_pause=*/false);
                 inject_key_press(SDLK_ESCAPE);
 
                 waited_ms = 0;

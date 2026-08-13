@@ -245,6 +245,33 @@ public:
     {
         return video_impl_->minimum_world_zoom_steps();
     }
+    // §7.1 per-view zoom composition + partitioned presentation: forwarded
+    // to the platform video (defaults are inert for headless backends).
+    void set_world_view_scale(int min_scale_num) override
+    {
+        video_impl_->set_world_view_scale(min_scale_num);
+    }
+    bool world_zoom_composition_fits(int min_scale_num) const override
+    {
+        return video_impl_->world_zoom_composition_fits(min_scale_num);
+    }
+    bool world_present_partition_supported() const override
+    {
+        return video_impl_->world_present_partition_supported();
+    }
+    bool world_canvas_pinned_classic() const override
+    {
+        return video_impl_->world_canvas_pinned_classic();
+    }
+    void set_world_present_slices(
+        std::span<const WorldPresentSlice> slices) override
+    {
+        video_impl_->set_world_present_slices(slices);
+    }
+    // Deepest per-view zoom scale over the live views (tenths; 10 when no
+    // view carries an override) — the value relayout_views composes into the
+    // canvas derivation.
+    int min_view_zoom_scale_num() const;
     bool world_smoothing_supported() const override
     {
         return video_impl_->world_smoothing_supported();

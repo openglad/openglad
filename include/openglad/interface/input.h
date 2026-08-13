@@ -245,6 +245,10 @@ inline constexpr int KEY_SWITCH              = 10;
 inline constexpr int KEY_SPECIAL_SWITCH      = 11;
 inline constexpr int KEY_YELL                = 12;
 inline constexpr int KEY_SHIFTER             = 13;
+// Reserved wire slot: this opened the retired per-player options menu
+// (docs/pause-menu-design.md §7.4). Nothing dispatches it and the factory
+// defaults leave it unbound, but the slot number is pinned by the input
+// wire format (NUM_INPUT_KEYS == 16) and must not be renumbered or reused.
 inline constexpr int KEY_PREFS               = 14;
 inline constexpr int KEY_CHEAT               = 15;
 // Look-up hold: while held, the renderer draws the upper-floor ghost overlay
@@ -281,6 +285,31 @@ void load_player_control_settings_from_cfg(
     cfg_store& config, bool web_mode = og::input::kWebControlDefaults);
 void save_player_control_settings_to_cfg(cfg_store& config);
 
+// --- §7.1 per-player HUD/zoom cfg persistence (SDL-free, input_state.cpp).
+// The live viewscreen's prefs[] stays the runtime carrier; these cfg keys
+// (controls: playerN_hud_radar/_hud_life/_hud_foes/_hud_score/_view_zoom)
+// are the persistence layer, written by the two player screens' persist
+// paths. hud_life is a plain ON/OFF int in cfg: the legacy TEXT/BARS/SMALL
+// prefs states all display as ON and normalize on the first toggle.
+struct PlayerHudSettings
+{
+    int radar = 1;     // 0/1
+    int life_on = 1;   // 0/1 (1 => PREF_LIFE_BOTH, 0 => PREF_LIFE_OFF)
+    int foes = 1;      // 0/1
+    int score = 1;     // 0/1
+    int zoom_step = 0; // 0 = GAME (follow graphics/zoom), 1..5 = 0.9x..0.5x
+};
+// Fills `out` (clamped/sanitized). Returns false when this player's keys
+// were never written — the playerN_hud_migrated version marker is absent
+// (web_default_keys_version precedent) — and the caller runs the one-shot
+// keyprefs.dat seed by saving its keyprefs-loaded prefs.
+bool load_player_hud_settings_from_cfg(cfg_store& config, int player_index,
+                                       PlayerHudSettings& out);
+// Writes the five keys and stamps the migration marker. apply_setting only:
+// the caller owns cfg.save_settings() timing.
+void save_player_hud_settings_to_cfg(cfg_store& config, int player_index,
+                                     const PlayerHudSettings& settings);
+
 
 class JoyData
 {
@@ -305,7 +334,16 @@ class JoyData
     
     int key_type[NUM_KEYS]{};
     int key_index[NUM_KEYS]{};
-    
+
+    // Baseline snapshot: bit k set = key k's binding was ALREADY active when
+    // this layout was synthesized (stick drift past the dead zone, a
+    // trigger-style axis resting at an extreme, the owner's grip during
+    // assignment). isPlayerHoldingKey reports such a key as NOT held until
+    // one real release is observed — a permanently-resting input must never
+    // read as held, or every release wait (menu nav) wedges forever.
+    // NUM_KEYS(17) < 31 bits.
+    int held_at_assign_mask{};
+
     JoyData();
     JoyData(int index);
     
@@ -331,6 +369,30 @@ class JoyData
     }
     bool hasButtonSet(int key_enum) const;
 };
+
+// --- Explicit per-seat joystick assignment (docs/pause-menu-design.md §4).
+// A seat only gets a joystick through these (or a persisted-GUID re-attach);
+// there is no positional device-i-to-player-i auto-bind at boot.
+// Assigning a device already held by another seat clears it from that seat.
+// Uses JoyData(device_index) default layout synthesis. SDL builds only.
+bool assign_joystick_to_player(int player, int device_index);
+// Full unbind: drops the device, the layout, and the persisted GUID claim.
+void clear_player_joystick(int player);
+// 0-based device index driving this seat, -1 if none.
+int player_joystick_device(int player);
+// Connected devices usable for assignment (clamped to the handle table).
+int joystick_device_count();
+// Re-attach any seat whose saved GUID matches a connected device (boot,
+// controls reload, hotplug add). SDL builds only (implemented in input.cpp).
+void reattach_saved_joysticks();
+// GUID persistence lives in SDL-free input_state.cpp, which cannot resolve a
+// GUID against hardware. input.cpp registers the re-attach hook here (from
+// init_input); headless builds leave it unset and carry GUIDs as opaque text.
+void set_joystick_guid_reattach_hook(void (*hook)());
+// Pure display formatter for a joystick binding: "B0", "A0+", "A1-",
+// "HU"/"HR"/"HD"/"HL"; "--" for NONE and the ignored diagonal hat kinds.
+// SDL-free (input_state.cpp) so headless UIs and unit tests can use it.
+std::string joy_binding_display_name(int key_type, int key_index);
 
 struct MouseState
 {
@@ -372,7 +434,6 @@ short& input_text_input_event_ref();
 inline bool playerHasJoystick(int player_num) { return (player_joy[player_num].index >= 0); }
 inline void disablePlayerJoystick(int player_num) { player_joy[player_num].index = -1; }
 
-void resetJoystick(int player_num);
 bool isPlayerHoldingKey(int player_index, int key_enum);
 bool didPlayerPressKey(int player_index, int key_enum, const void* native_event);
 template <typename EventT>
@@ -527,9 +588,7 @@ void draw_touch_controls(screen* vob);
 bool input_touch_has_alternate();
 #define CONTINUE_ACTION_STRING "TAP"
 #else
-#ifdef OUYA
-#define CONTINUE_ACTION_STRING "PRESS 'O'"
-#elif defined(__EMSCRIPTEN__)
+#ifdef __EMSCRIPTEN__
 // Web: Escape is reserved for browser fullscreen exit; taps and clicks
 // dismiss too (see the input_continue_ click hook).
 #define CONTINUE_ACTION_STRING "TAP OR BACKSPACE"
@@ -588,8 +647,6 @@ inline bool isJoystickEvent(const EventT& event)
 }
 
 void clear_events();
-
-void assignKeyFromWaitEvent(int player_num, int key_enum);
 
 const char* query_key_name(int keycode);
 

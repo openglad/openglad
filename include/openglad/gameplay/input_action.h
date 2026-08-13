@@ -32,6 +32,10 @@ enum class InputAction : int {
     Shift         = 13,
 
     // Meta
+    // OpenPrefs opened the retired per-player options menu. The slot stays
+    // RESERVED — input_state_net packs exactly Count held + Count pressed
+    // bits per player, so removing it shifts Cheat and breaks the protocol.
+    // It is never bound and never dispatched.
     OpenPrefs     = 14,
     Cheat         = 15,
 

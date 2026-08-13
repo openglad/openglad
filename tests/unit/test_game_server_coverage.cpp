@@ -572,6 +572,116 @@ TEST(GameServerCoverage, player_and_spectator_reject_mismatched_session_tokens)
     }
 }
 
+// The pause-menu server contract (docs/pause-menu-design.md §2.1): a repeat
+// request from the pause OWNER refreshes the auto-resume deadline (the menu's
+// ~20s keep-alive), a non-owner repeat stays rejected, the host peer is
+// exempt from the anti-grief rate limit, and remote peers keep it.
+TEST(GameServerCoverage, pause_keepalive_owner_refresh_and_host_exemption)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    std::uint64_t now_ms = 1'000;
+    server.set_wall_clock_ms_source([&] { return now_ms; });
+    // Sorted discovery order: 91 connects first and becomes the host peer.
+    transport.set_connected({91u, 92u});
+    server.poll_incoming_messages();
+
+    walker* host_control =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* remote_control =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, host_control);
+    ASSERT_NE(nullptr, remote_control);
+    host_control->set_user(0);
+    host_control->set_act_type(ACT_CONTROL);
+    remote_control->set_user(1);
+    remote_control->set_act_type(ACT_CONTROL);
+    server.bind_player(91u, 0u, fixture.world().my_team, host_control);
+    server.bind_player(92u, 1u, fixture.world().my_team, remote_control);
+
+    const auto request_pause = [&](og::sim::PeerId peer) {
+        transport.queue_raw(
+            peer, og::sim::serialize_pause_broadcast_message(
+                      {.player_index = 0u, .player_name = ""}));
+        server.step();
+    };
+    const auto respond_resume = [&](og::sim::PeerId peer) {
+        transport.queue_raw(
+            peer,
+            og::sim::serialize_pause_response_message({.resume = true}));
+        server.step();
+    };
+
+    // The rate-limit phases run FIRST at small clock deltas: any unpaused
+    // step more than DISCONNECT_TIMEOUT_MS past the last input would
+    // otherwise input-starve both idle peers into a transport disconnect
+    // (which also resets host_peer_id_). The keep-alive phase's large jumps
+    // all happen while paused (timeouts suspended) and come last.
+
+    // Host exemption: pause, resume, and immediately re-pause inside
+    // PAUSE_RATE_LIMIT_MS (closing and reopening the pause menu).
+    now_ms = 1'000;
+    request_pause(91u);
+    ASSERT_TRUE(server.paused());
+    EXPECT_EQ(0u, fixture.world().pause_player_index);
+    now_ms = 1'100;
+    respond_resume(91u);
+    ASSERT_FALSE(server.paused());
+    now_ms = 1'200;
+    request_pause(91u);
+    EXPECT_TRUE(server.paused())
+        << "the host peer is exempt from the pause rate limit";
+    now_ms = 1'300;
+    respond_resume(91u);
+    ASSERT_FALSE(server.paused());
+
+    // Remote peers keep the anti-grief limit: an immediate re-pause inside
+    // the window is rejected, and accepted once the window expires.
+    now_ms = 1'400;
+    request_pause(92u);
+    ASSERT_TRUE(server.paused());
+    EXPECT_EQ(1u, fixture.world().pause_player_index);
+    now_ms = 1'500;
+    respond_resume(92u);
+    ASSERT_FALSE(server.paused());
+    now_ms = 1'600;
+    request_pause(92u);
+    EXPECT_FALSE(server.paused())
+        << "remote peers keep the pause rate limit";
+    now_ms = 1'400 + og::sim::PAUSE_RATE_LIMIT_MS + 1;
+    request_pause(92u);
+    ASSERT_TRUE(server.paused());
+    EXPECT_EQ(1u, fixture.world().pause_player_index);
+
+    // A NON-owner repeat (host peer 91) is rejected while 92's pause is
+    // pending: owner unchanged, and — proven below — the auto-resume
+    // deadline is NOT refreshed by it.
+    const std::uint64_t owner_pause_at = now_ms;
+    now_ms = owner_pause_at + 5'000;
+    request_pause(91u);
+    ASSERT_TRUE(server.paused());
+    EXPECT_EQ(1u, fixture.world().pause_player_index);
+
+    // The owner's repeat is the keep-alive: it refreshes the deadline.
+    const std::uint64_t keepalive_at = owner_pause_at + 30'000;
+    now_ms = keepalive_at;
+    request_pause(92u);
+    ASSERT_TRUE(server.paused());
+
+    // Past the original deadline and the non-owner repeat's would-be
+    // deadline, inside the refreshed one.
+    now_ms = owner_pause_at + og::sim::PAUSE_TIMEOUT_MS + 10'000;
+    server.step();
+    EXPECT_TRUE(server.paused())
+        << "the owner keep-alive must defeat the 60s auto-unpause";
+
+    now_ms = keepalive_at + og::sim::PAUSE_TIMEOUT_MS + 100;
+    server.step();
+    EXPECT_FALSE(server.paused())
+        << "an unrefreshed pause still auto-resumes";
+}
+
 TEST(GameServerCoverage, disconnecting_pause_owner_clears_authoritative_pause)
 {
     TestGameWorld fixture;

@@ -1551,7 +1551,6 @@ void picker_cleanup_resources()
     pks().seat_settings_buttons.clear();
     pks().createmenu_buttons.clear();
     pks().main_options_buttons.clear();
-    pks().control_options_buttons.clear();
     pks().display_settings_buttons.clear();
     pks().gameplay_fx_options_buttons.clear();
     pks().ui_fx_options_buttons.clear();
@@ -1588,9 +1587,8 @@ void picker_quit()
 // function (which keeps the family-wide cfg-persist epilogue) live in
 // menu_screen_specs.cpp (docs/menu-engine.md).
 
-// DISPLAY and CONTROLS subscreens: engine-hosted — specs, accessor shims,
-// and the entry functions live in menu_screen_specs.cpp
-// (docs/menu-engine.md).
+// DISPLAY subscreen: engine-hosted — spec, accessor shims, and the entry
+// function live in menu_screen_specs.cpp (docs/menu-engine.md).
 
 // FX subscreens (GAMEPLAY FX / UI FX / GRAPHICS FX): engine-hosted — specs,
 // accessor shims, and the entry functions live in menu_screen_specs.cpp
@@ -2063,14 +2061,6 @@ std::array<std::string, 2> build_player_control_summary_lines(int player_index, 
     };
 }
 
-std::string build_player_control_summary(int player_index)
-{
-    const auto lines = build_player_control_summary_lines(player_index, false);
-    if (lines[0].empty() && lines[1].empty())
-        return {};
-    return std::format("{} {}", lines[0], lines[1]);
-}
-
 static void draw_remap_prompt(const std::string& prompt, int player_index)
 {
     text& mytext = og::runtime::current_session->myscreen_->text_normal;
@@ -2100,7 +2090,8 @@ static bool poll_lobby_during_control_remap()
         !picker_lobby_has_game_start_config();
 }
 
-static void remap_player_keys(int player_index)
+static void remap_player_keys(int player_index,
+                              KeyWaitPollCallback poll_callback)
 {
     if (player_index < 0 || player_index >= 4)
         return;
@@ -2147,7 +2138,7 @@ static void remap_player_keys(int player_index)
         const auto& prompt = prompts[idx];
         draw_remap_prompt(std::format("P{} {}", player_index + 1, prompt.label), player_index);
         if (!assignKeyFromWaitEventPolling(
-                player_index, prompt.key, &poll_lobby_during_control_remap))
+                player_index, prompt.key, poll_callback))
         {
             break;
         }
@@ -2170,12 +2161,21 @@ Sint32 toggle_player_control_mode(Sint32 arg)
 
 Sint32 edit_player_keymap(Sint32 arg)
 {
-    remap_player_keys(static_cast<int>(arg));
+    remap_player_keys(static_cast<int>(arg),
+                      &poll_lobby_during_control_remap);
     return MENU_REDRAW;
 }
 
-// main_controls_options(): engine-hosted (menu_screen_specs.cpp drives it
-// through run_menu_screen; the legacy loop is gone — docs/menu-engine.md).
+// In-game variant (the pause menu's player screen): the same remap wizard
+// with a caller-supplied per-poll callback — it pumps the paused transport
+// instead of the picker lobby, and cancels the prompt sequence by returning
+// false when the session dies underneath the menu.
+Sint32 edit_player_keymap_with_poll(Sint32 arg,
+                                    KeyWaitPollCallback poll_callback)
+{
+    remap_player_keys(static_cast<int>(arg), poll_callback);
+    return MENU_REDRAW;
+}
 
 // gameplay_fx_options() / ui_fx_options() / graphics_fx_options(): engine-
 // hosted (menu_screen_specs.cpp drives them through run_menu_screen; the

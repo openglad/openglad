@@ -16,6 +16,7 @@
 #include <openglad/interface/game_context.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/render/pal32.h>
+#include <openglad/interface/ui/pause_menu.h>
 #include <openglad/interface/ui/results_screen.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
@@ -23,14 +24,15 @@
 #include <openglad/interface/replay_runtime.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
+#include <openglad/resources/progression.h>
 
 #ifdef TESTING
 void picker_testing_mark_frame_advance();
 #endif
 
-// Declared elsewhere (glad.cpp).
-bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
-short score_panel(screen* scr);
+// Declared elsewhere (glad.cpp). The 1-arg overload comes from button.h
+// (via pause_menu.h); a local `short` re-declaration would conflict with its
+// Sint32 spelling.
 short score_panel(screen* scr, short do_it);
 
 
@@ -187,6 +189,107 @@ og::runtime::GameSession* require_local_transport_session()
         return nullptr;
     }
     return gameplay_session;
+}
+
+// --- PauseMenuHost plumbing (design §2.1) ----------------------------------
+// The pause menu lives in the interface component, which may not include
+// platform headers; these free functions inject the local transport shadow
+// through plain function pointers, reaching the session via the global the
+// Esc branch already validated.
+
+bool pause_menu_host_pump()
+{
+    og::runtime::GameSession* const session = og::runtime::current_game_session;
+    return session != nullptr &&
+        og::runtime::local_transport_shadow_pump_paused(*session);
+}
+
+void pause_menu_host_request_pause()
+{
+    if (og::runtime::GameSession* const session =
+            og::runtime::current_game_session)
+    {
+        og::runtime::local_transport_shadow_request_pause_keepalive(*session);
+    }
+}
+
+void pause_menu_host_resume()
+{
+    og::runtime::GameSession* const session = og::runtime::current_game_session;
+    if (session != nullptr &&
+        og::runtime::local_transport_shadow_is_paused(*session))
+    {
+        // toggle sends the pause RESPONSE when the baseline reads paused; the
+        // guard keeps an already-resumed baseline from re-pausing instead.
+        (void)og::runtime::local_transport_shadow_toggle_pause(*session);
+    }
+}
+
+bool pause_menu_host_is_paused()
+{
+    og::runtime::GameSession* const session = og::runtime::current_game_session;
+    return session != nullptr &&
+        og::runtime::local_transport_shadow_is_paused(*session);
+}
+
+std::string pause_menu_host_remote_pause_owner()
+{
+    og::runtime::GameSession* const session = og::runtime::current_game_session;
+    if (session == nullptr)
+        return {};
+    return og::runtime::local_transport_shadow_remote_pause_owner(*session);
+}
+
+bool pause_menu_host_can_add_player()
+{
+    og::runtime::GameSession* const session = og::runtime::current_game_session;
+    return session != nullptr &&
+        og::runtime::local_transport_shadow_can_add_player(*session);
+}
+
+bool pause_menu_host_add_player()
+{
+    og::runtime::GameSession* const session = og::runtime::current_game_session;
+    return session != nullptr &&
+        og::runtime::local_transport_shadow_add_local_player(*session);
+}
+
+bool pause_menu_host_can_remove_player(int seat)
+{
+    og::runtime::GameSession* const session = og::runtime::current_game_session;
+    return session != nullptr &&
+        og::runtime::local_transport_shadow_can_remove_player(*session, seat);
+}
+
+bool pause_menu_host_remove_player(int seat)
+{
+    og::runtime::GameSession* const session = og::runtime::current_game_session;
+    return session != nullptr &&
+        og::runtime::local_transport_shadow_remove_local_player(*session,
+                                                                seat);
+}
+
+og::ui::PauseMenuResult run_gameplay_pause_menu(
+    og::runtime::GameSession& session)
+{
+    og::ui::PauseMenuHost host;
+    host.pump_paused = &pause_menu_host_pump;
+    host.request_pause = &pause_menu_host_request_pause;
+    host.resume = &pause_menu_host_resume;
+    host.is_paused = &pause_menu_host_is_paused;
+    host.remote_pause_owner = &pause_menu_host_remote_pause_owner;
+    host.can_add_player = &pause_menu_host_can_add_player;
+    host.add_player = &pause_menu_host_add_player;
+    host.can_remove_player = &pause_menu_host_can_remove_player;
+    host.remove_player = &pause_menu_host_remove_player;
+    host.networked = session.networked_session_;
+    // RESTART is hidden for networked sessions (design §2.1) and for modes
+    // whose progression suppresses retry (the tower's results RETRY gate) —
+    // relaunching a generated floor from the pre-level save is not a shape
+    // those modes support.
+    host.restart_allowed = !session.networked_session_ &&
+        !og::mode::current_progression().suppress_retry();
+    return og::ui::run_pause_menu(host);
 }
 
 GameFrameResult run_game_tick(screen& s,
@@ -354,24 +457,20 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
                 else if (event.key.key == SDLK_F12)
                     og::runtime::current_session->debug_draw_obmap_ = !og::runtime::current_session->debug_draw_obmap_;
                 // Escape is an edge action: key-repeat events must not
-                // advance from pause into the abort prompt. On web this
+                // reopen the pause menu the moment it closes. On web this
                 // event arrives from a held Backspace (remapped to Escape at
                 // the SDL event source; see web_back_key.h), which
                 // autorepeats aggressively in browsers.
+                //
+                // No palette restore on resume: nothing in the pause path
+                // changes the palette, and the old vestigial set_palette
+                // silently reverted cheat mode's blue palette.
                 else if (event.key.key == SDLK_ESCAPE && !event.key.repeat)
                 {
-                    if (!og::runtime::local_transport_shadow_is_paused(
-                            *gameplay_session) &&
-                        og::runtime::local_transport_shadow_toggle_pause(
-                            *gameplay_session))
-                    {
-                        s.redrawme = 1;
-                        break;
-                    }
-
-                    bool result = yes_or_no_prompt("Abort Mission", "Quit this mission?", false);
+                    const og::ui::PauseMenuResult menu_result =
+                        run_gameplay_pause_menu(*gameplay_session);
                     s.redrawme = 1;
-                    if (result) // player wants to quit
+                    if (menu_result == og::ui::PauseMenuResult::Quit)
                     {
                         if (og::runtime::local_transport_shadow_abort_level(
                                 *gameplay_session))
@@ -389,15 +488,20 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
                         // server's terminal broadcast ends it (world.end != 0),
                         // so this client does not just leave with its character
                         // converted to AI.
-                        break;
                     }
-                    else
+                    else if (menu_result == og::ui::PauseMenuResult::Restart &&
+                             og::runtime::local_transport_shadow_restart_level(
+                                 *gameplay_session))
                     {
-                        (void)og::runtime::local_transport_shadow_toggle_pause(
-                            *gameplay_session);
-                        set_palette(s.ourpalette);  // restore normal palette
-                        adjust_palette(s.ourpalette, s.viewob[0]->gamma);
+                        // The abort recipe + world.retry: the native picker
+                        // do/while relaunches the level from the pre-level
+                        // save (web re-enters Playing on done, glad.cpp).
+                        st.done = true;
+                        og::runtime::finish_replay_recording();
+                        return GameFrameResult::AbortedMission;
                     }
+                    // Resumed / SessionEnded: fall through — the loop-top end
+                    // checks handle a finished world on the next frame.
                     break;
                 }
             }

@@ -208,6 +208,13 @@ bool cfg_store::load_settings()
     apply_setting("graphics", "render", "normal");
     apply_setting("graphics", "fullscreen", "on");
     apply_setting("graphics", "overscan_percentage", "0");
+    // Signed gamma steps re-applied after every set_palette (pal32.cpp).
+    apply_setting("graphics", "brightness", "0");
+
+    // The sim's per-tick wait, seeded into GameWorld::timer_wait at level
+    // start. 6 == og::sim::DEFAULT_TIMER_WAIT == the SPEED 8 the old in-game
+    // options menu showed.
+    apply_setting("gameplay", "timer_wait", "6");
 
     apply_setting("effects", "gore", "on");
     apply_setting("effects", "mini_hp_bar", "on");
@@ -230,7 +237,24 @@ bool cfg_store::load_settings()
     apply_setting("effects", "ripples", "on");
     apply_setting("effects", "screen_shake", "on");
     apply_setting("effects", "floor_glide", "on");
+    // Palette cycling (lava/water/flame bands) — ON is the classic
+    // behavior, so this key inverts the usual "off == byte-identical"
+    // effects convention.
+    apply_setting("effects", "color_cycling", "on");
 
+    // Per-player HUD/zoom (pause-menu design §7.1): defaults registered so
+    // RESTORE SETTINGS keeps the keys defined. The playerN_hud_migrated
+    // marker is deliberately NOT defaulted (web_default_keys_version
+    // precedent): its absence triggers the one-shot keyprefs.dat prefs seed.
+    for (int player = 1; player <= 4; ++player)
+    {
+        const std::string prefix = "player" + std::to_string(player);
+        apply_setting("controls", prefix + "_hud_radar", "1");
+        apply_setting("controls", prefix + "_hud_life", "1");
+        apply_setting("controls", prefix + "_hud_foes", "1");
+        apply_setting("controls", prefix + "_hud_score", "1");
+        apply_setting("controls", prefix + "_view_zoom", "0");
+    }
     Log("Loading settings\n");
     auto file = og::io::og_open_read("cfg/openglad.yaml", true);
     if(!file)

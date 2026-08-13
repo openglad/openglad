@@ -106,12 +106,6 @@ struct button;
 void picker_wire_networking_menu_nav(button* buttons, int count,
                                      int visible_rooms);
 
-// CONTROLS subscreen header text position. Must clear the BACK button's
-// animated keyboard highlight (which extends up to 3px beyond the bevel) and
-// stay above the first player row; pinned by test_menu_layout.
-inline constexpr int32_t PICKER_CONTROLS_HEADER_X = 10;
-inline constexpr int32_t PICKER_CONTROLS_HEADER_Y = 28;
-
 // Per-session mutable button descriptors (Phase 12).
 button* picker_mainmenu_buttons();
 int picker_mainmenu_button_count();
@@ -128,8 +122,6 @@ button* picker_main_options_buttons();
 button* picker_display_settings_buttons();
 int picker_display_settings_button_count();
 int picker_main_options_button_count();
-button* picker_control_options_buttons();
-int picker_control_options_button_count();
 button* picker_gameplay_fx_options_buttons();
 int picker_gameplay_fx_options_button_count();
 button* picker_ui_fx_options_buttons();
@@ -208,6 +200,9 @@ inline constexpr int kBaseCampAddSeatIndex = 40;
 // expose one; activating it swaps that member with its predecessor.
 inline constexpr int kBaseCampMoveUpBase = 41; // roster_up_0..7 = 41..48
 inline constexpr int kBaseCampSeatCardsPerPage = 4;
+// The compact 57px seat card is drawn without the beveled inset, so its
+// budget is the full face: 57 / 6 = 9 characters, trailing pad included.
+inline constexpr int kBaseCampSeatCardLabelBudget = 9;
 inline constexpr int kCreateMenuButtonCount = 49;
 
 // --- LOCAL SEAT SETTINGS subscreen -----------------------------------------
@@ -220,8 +215,122 @@ inline constexpr int kSeatSettingsModeIndex = 2;
 inline constexpr int kSeatSettingsRemapIndex = 3;
 inline constexpr int kSeatSettingsResetIndex = 4;
 inline constexpr int kSeatSettingsRemoveIndex = 5;
-inline constexpr int kSeatSettingsButtonCountMP = 6;
-inline constexpr int kSeatSettingsButtonCountNoMP = 5;
+// The INPUT cycler (design §2.2) is APPENDED so ordinals 0..5 and the
+// default_highlight stay put. Its MenuSpecRow arg is 6 in BOTH tables; the
+// multiplayer-disabled table has no REMOVE row, so the same row materializes
+// one slot earlier there. kSeatSettingsInputRow is the position the label
+// sync and the nav links use; kSeatSettingsInputIndex is the dispatch arg.
+inline constexpr int kSeatSettingsInputIndex = 6;
+inline constexpr int kSeatSettingsInputRowMP = 6;
+inline constexpr int kSeatSettingsInputRowNoMP = 5;
+#ifndef DISABLE_MULTIPLAYER
+inline constexpr int kSeatSettingsInputRow = kSeatSettingsInputRowMP;
+#else
+inline constexpr int kSeatSettingsInputRow = kSeatSettingsInputRowNoMP;
+#endif
+// §7.1 unified player screen: ZOOM (kPlayerScreenColBX, kPlayerScreenBand2Y)
+// and the RADAR/HP/FOES/SCORE stack (kPlayerScreenColCX, kPlayerScreenHudTopY
+// + 22px pitch) are APPENDED (index contract). Dispatch args are the MP row
+// positions; the no-MP table has no REMOVE row, so each appended row
+// materializes one slot earlier (the seat_input precedent).
+inline constexpr int kSeatSettingsZoomIndex = 7;
+inline constexpr int kSeatSettingsHudRadarIndex = 8;
+inline constexpr int kSeatSettingsHudLifeIndex = 9;
+inline constexpr int kSeatSettingsHudFoesIndex = 10;
+inline constexpr int kSeatSettingsHudScoreIndex = 11;
+// Both build variants of each table exist on every build (tests pin the
+// uncompiled shape), so nav links inside each table use its EXPLICIT row
+// positions; the unsuffixed aliases select the compiled variant for the
+// label sync and dispatch.
+inline constexpr int kSeatSettingsZoomRowMP = 7;
+inline constexpr int kSeatSettingsHudRadarRowMP = 8;
+inline constexpr int kSeatSettingsHudLifeRowMP = 9;
+inline constexpr int kSeatSettingsHudFoesRowMP = 10;
+inline constexpr int kSeatSettingsHudScoreRowMP = 11;
+inline constexpr int kSeatSettingsZoomRowNoMP = 6;
+inline constexpr int kSeatSettingsHudRadarRowNoMP = 7;
+inline constexpr int kSeatSettingsHudLifeRowNoMP = 8;
+inline constexpr int kSeatSettingsHudFoesRowNoMP = 9;
+inline constexpr int kSeatSettingsHudScoreRowNoMP = 10;
+#ifndef DISABLE_MULTIPLAYER
+inline constexpr int kSeatSettingsZoomRow = kSeatSettingsZoomRowMP;
+inline constexpr int kSeatSettingsHudRadarRow = kSeatSettingsHudRadarRowMP;
+inline constexpr int kSeatSettingsHudLifeRow = kSeatSettingsHudLifeRowMP;
+inline constexpr int kSeatSettingsHudFoesRow = kSeatSettingsHudFoesRowMP;
+inline constexpr int kSeatSettingsHudScoreRow = kSeatSettingsHudScoreRowMP;
+#else
+inline constexpr int kSeatSettingsZoomRow = kSeatSettingsZoomRowNoMP;
+inline constexpr int kSeatSettingsHudRadarRow = kSeatSettingsHudRadarRowNoMP;
+inline constexpr int kSeatSettingsHudLifeRow = kSeatSettingsHudLifeRowNoMP;
+inline constexpr int kSeatSettingsHudFoesRow = kSeatSettingsHudFoesRowNoMP;
+inline constexpr int kSeatSettingsHudScoreRow = kSeatSettingsHudScoreRowNoMP;
+#endif
+inline constexpr int kSeatSettingsButtonCountMP = 12;
+inline constexpr int kSeatSettingsButtonCountNoMP = 11;
+
+// --- §7.1 unified player-screen grid ---------------------------------------
+// One geometry behind BOTH player screens (Base Camp seat settings and the
+// pause player screen — the unification is the point, pinned by the
+// exact-table tests). Three columns with 6px gutters and a shared right edge
+// at 304; two 18px-tall button bands above the binding panel; the
+// RADAR/HP/FOES/SCORE stack top-aligns with the panel at y=78 and
+// bottom-aligns with it exactly: an 18px-tall button at y=144 inks rows
+// 144..161, so the panel's bottom corner is y=161. Vertical rhythm:
+// BACK bottom (22) -7- band1 (30..47) -6- band2 (54..71) -6- panel/stack
+// (78..161) -7- command band (169..186).
+inline constexpr int kPlayerScreenColAX = 12;   // DIRECTION/INPUT/panel/TEAM
+inline constexpr int kPlayerScreenColAW = 98;
+inline constexpr int kPlayerScreenColBX = 116;  // REMAP/ZOOM; ends 208
+inline constexpr int kPlayerScreenColBW = 92;
+inline constexpr int kPlayerScreenColCX = 214;  // RESET + HUD stack
+inline constexpr int kPlayerScreenColCW = 90;   // ends 304
+inline constexpr int kPlayerScreenBandH = 18;
+inline constexpr int kPlayerScreenBand1Y = 30;  // MODE | REMAP | RESET
+inline constexpr int kPlayerScreenBand2Y = 54;  // INPUT | ZOOM
+inline constexpr int kPlayerScreenPanelTopY = 78;
+inline constexpr int kPlayerScreenPanelRightX = 208;  // == col B right edge
+inline constexpr int kPlayerScreenPanelBottomY = 161; // == HUD stack bottom
+inline constexpr int kPlayerScreenHudTopY = 78;
+inline constexpr int kPlayerScreenHudPitch = 22;
+inline constexpr int kPlayerScreenBottomBandY = 169;  // TEAM / REMOVE
+// Binding-panel interior: headers at panel+4, first line at panel+15,
+// 8px line pitch (columns kBindingPanel*Chars below).
+inline constexpr int kPlayerScreenPanelHeaderY = kPlayerScreenPanelTopY + 4;
+inline constexpr int kPlayerScreenPanelLineY = kPlayerScreenPanelTopY + 15;
+
+// --- §7.1 shared per-player HUD/zoom row helpers ---------------------------
+// One implementation (pause_menu.cpp) behind both player screens: the seat's
+// live viewscreen prefs (viewob[seat]) are the runtime carrier when present
+// (in-game pause; Base Camp view 0), cfg is the carrier otherwise (Base Camp
+// seats without a live view) and always the persistence mirror. Callers own
+// the cfg.save_settings() timing via their existing persist paths.
+namespace og::ui {
+enum class PlayerHudRow : std::uint8_t { Radar, Life, Foes, Score };
+// "RADAR: ON" style live label, re-derived per frame.
+std::string player_hud_row_label(int seat, PlayerHudRow row);
+// Flip the pref on the seat's viewscreen (immediate: redrawme) + mirror to
+// cfg. HP is ON/OFF only: legacy TEXT/BARS/SMALL display as ON and the first
+// toggle normalizes to BOTH/OFF.
+void toggle_player_hud_row(int seat, PlayerHudRow row);
+// "ZOOM: GAME" / "ZOOM: 0.9X".
+std::string player_view_zoom_label(int seat);
+// Advance GAME -> 0.9 -> .. -> 0.5 -> GAME, skipping steps whose padded
+// compositor window cannot fit the layer budget on the current world canvas
+// (GAME is always allowed). Returns the new step.
+int cycle_player_view_zoom(int seat);
+// False when the render backend has no off-screen floor-layer compositor:
+// the ZOOM rows show Disabled (never wrong output). Probed once.
+bool per_view_zoom_available();
+// One shared binding-panel line: "{label}: {value}" clamped to the column
+// budget. Movement column x=20 must clear the ACTIONS column at x=104
+// (14 chars); the actions column x=104 must clear the panel edge at x=208
+// (17 chars). 6px/char, left-aligned, no clipping in the text writer.
+inline constexpr int kBindingPanelMovementChars = 14;
+inline constexpr int kBindingPanelActionsChars = 17;
+std::string format_binding_panel_line(const char* label,
+                                      const std::string& value,
+                                      int budget_chars);
+} // namespace og::ui
 
 // --- SCENARIO subscreen layout contract ------------------------------------
 // Positional indices into k_scenariomenu_buttons / picker_scenariomenu_buttons().

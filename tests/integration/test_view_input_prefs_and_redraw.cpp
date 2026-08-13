@@ -1,11 +1,13 @@
 #include <openglad/interface/input.h>
 #include <openglad/legacy/base.h>
+#include <openglad/gameplay/pixie_data.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <array>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -15,7 +17,7 @@ namespace
 struct KeyStateGuard
 {
     const bool* saved = nullptr;
-    std::array<bool, MAXKEYS> fake{};
+    std::array<bool, SDL_SCANCODE_COUNT> fake{};
     KeyStateGuard()
     {
         saved = og::runtime::current_session->keystates_;
@@ -28,6 +30,23 @@ struct KeyStateGuard
     }
 };
 
+struct KeyBindingGuard
+{
+    int player;
+    int key_enum;
+    int old_key;
+    KeyBindingGuard(int player_, int key_enum_, int new_key)
+        : player(player_), key_enum(key_enum_),
+          old_key(og::runtime::current_session->player_keys_[player_][key_enum_])
+    {
+        og::runtime::current_session->player_keys_[player][key_enum] = new_key;
+    }
+    ~KeyBindingGuard()
+    {
+        og::runtime::current_session->player_keys_[player][key_enum] = old_key;
+    }
+};
+
 static SDL_Event keydown(SDL_Keycode key)
 {
     SDL_Event e{};
@@ -37,29 +56,25 @@ static SDL_Event keydown(SDL_Keycode key)
     e.key.repeat = false;
     return e;
 }
-
-static int injector_press_and_release_escape(void* data)
-{
-    og::runtime::ensure_thread_session();
-    auto* ks = static_cast<KeyStateGuard*>(data);
-    SDL_Delay(40);
-    ks->fake[KEYSTATE_ESCAPE] = true;
-    SDL_Delay(30);
-    ks->fake[KEYSTATE_ESCAPE] = false;
-    SDL_Delay(10);
-    return 0;
-}
 } // namespace
 
-TEST(ViewInputPrefsAndRedraw, viewscreen_input_key_prefs_triggers_options_menu_branch)
+// Design §7.4: InputAction::OpenPrefs (slot 14) is a RESERVED wire slot with
+// nothing behind it — the per-player options menu it used to open is retired
+// and its rows live on the pause player screen / GAME SETTINGS now. The old
+// menu set screen::redrawme = 1 and persisted prefs on exit, so both are the
+// observables: a pressed OpenPrefs must leave the world and the view's prefs
+// exactly as they were. The slot is deliberately BOUND here (its shipped
+// default is KEYCODE_UNKNOWN) so this pins the missing dispatch, not just the
+// missing binding.
+TEST(ViewInputPrefsAndRedraw, viewscreen_input_open_prefs_dispatches_nothing)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     ASSERT_TRUE(vs != nullptr) << "viewscreen exists";
     if (!vs)
         return;
 
-    // Ensure a control exists so input() doesn't early-exit and options_menu()
-    // doesn't hit its missing-control guard.
+    // Ensure a control exists so input() doesn't early-exit before the slot
+    // would have been sampled.
     if (!vs->control)
     {
         walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
@@ -76,19 +91,74 @@ TEST(ViewInputPrefsAndRedraw, viewscreen_input_key_prefs_triggers_options_menu_b
     vs->my_team = 0;
 
     KeyStateGuard ks;
-    SDL_Thread* th = SDL_CreateThread(injector_press_and_release_escape, "esc_inject", &ks);
-    ASSERT_TRUE(th != nullptr) << "escape injector started";
+    KeyBindingGuard bind_prefs(0, KEY_PREFS, SDLK_1);
 
-    const SDL_Keycode prefs_key = static_cast<SDL_Keycode>(og::runtime::current_session->player_keys_[0][KEY_PREFS]);
-    (void)vs->input(keydown(prefs_key));
+    std::array<signed char, 10> saved_prefs{};
+    std::copy(std::begin(vs->prefs), std::end(vs->prefs), saved_prefs.begin());
+    const short saved_redrawme = og::runtime::current_session->myscreen_->redrawme;
+    og::runtime::current_session->myscreen_->redrawme = 0;
 
-    int code = 0;
-    if (th)
-        SDL_WaitThread(th, &code);
+    // No injector thread: nothing blocks any more. If a modal came back this
+    // call would hang the suite instead of returning.
+    (void)vs->input(keydown(SDLK_1));
+
+    EXPECT_EQ(0, og::runtime::current_session->myscreen_->redrawme)
+        << "a pressed OpenPrefs must not open anything that requests a redraw";
+    EXPECT_TRUE(std::equal(saved_prefs.begin(), saved_prefs.end(), std::begin(vs->prefs)))
+        << "a pressed OpenPrefs must not touch the view's preferences";
+
+    og::runtime::current_session->myscreen_->redrawme = saved_redrawme;
 }
 
 
-TEST(ViewInputPrefsAndRedraw, viewscreen_input_shift_slash_triggers_read_scenario_branch)
+// Moved here when test_view_get_keypress_and_edge_cases.cpp was retired with
+// viewscreen::get_keypress and the options menu.
+TEST(ViewInputPrefsAndRedraw, viewscreen_input_switch_control_not_in_oblist_logs_and_returns)
+{
+    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_TRUE(v != nullptr) << "view should exist";
+    if (!v)
+        return;
+
+    KeyStateGuard ks;
+
+    KeyBindingGuard bind_switch(0, KEY_SWITCH, SDLK_TAB);
+    KeyBindingGuard bind_shifter(0, KEY_SHIFTER, SDLK_LSHIFT);
+    KeyBindingGuard bind_cheat(0, KEY_CHEAT, SDLK_C);
+
+    // Create a control walker not present in level_data.oblist.
+    PixieData px(1, 1, 1, new unsigned char[1]{0});
+    walker orphan(px);
+    orphan.set_team_num(0);
+    orphan.set_real_team_num(255);
+    orphan.set_dead(0);
+    orphan.set_user(0);
+    orphan.set_act_type(ACT_CONTROL);
+
+    walker* saved_control = v->control;
+    v->mynum = 0;
+    v->my_team = 0;
+    v->control = &orphan;
+
+    // Forward switch error: control not in oblist.
+    (void)v->input(keydown(SDLK_TAB));
+
+    // Reverse switch error: hold shifter and try again (debounce reset by non-switch event).
+    (void)v->input(keydown(SDLK_F1));
+    ks.fake[SDL_SCANCODE_LSHIFT] = true;
+    (void)v->input(keydown(SDLK_TAB));
+    ks.fake[SDL_SCANCODE_LSHIFT] = false;
+
+    v->control = saved_control;
+}
+
+
+// Design §7.2: the Shift+/ briefing chord is DELETED (raw '/' was player
+// 2's SPECIAL key; the briefing lives on the PAUSED menu now). The old
+// handler called read_scenario and set redrawme=1 — under TESTING
+// read_scenario returns immediately, so redrawme is the observable: it must
+// stay untouched when the chord arrives.
+TEST(ViewInputPrefsAndRedraw, viewscreen_input_shift_slash_chord_is_gone)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     ASSERT_TRUE(vs != nullptr) << "viewscreen exists";
@@ -110,11 +180,16 @@ TEST(ViewInputPrefsAndRedraw, viewscreen_input_shift_slash_triggers_read_scenari
     vs->mynum = 0;
     vs->my_team = 0;
 
+    const short saved_redrawme = og::runtime::current_session->myscreen_->redrawme;
     KeyStateGuard ks;
     // Hold the shifter key (LSHIFT by default for player 0).
     ks.fake[SDL_GetScancodeFromKey(static_cast<SDL_Keycode>(og::runtime::current_session->player_keys_[0][KEY_SHIFTER]), nullptr)] = true;
+    og::runtime::current_session->myscreen_->redrawme = 0;
     (void)vs->input(keydown(SDLK_SLASH));
+    EXPECT_EQ(0, og::runtime::current_session->myscreen_->redrawme)
+        << "Shift+/ must no longer dispatch the scenario briefing";
     ks.fake[SDL_GetScancodeFromKey(static_cast<SDL_Keycode>(og::runtime::current_session->player_keys_[0][KEY_SHIFTER]), nullptr)] = false;
+    og::runtime::current_session->myscreen_->redrawme = saved_redrawme;
 }
 
 

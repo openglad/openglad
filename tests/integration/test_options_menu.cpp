@@ -4,6 +4,8 @@
 #include <openglad/interface/button.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/interface/input.h>
+#include <openglad/gameplay/net_constants.h>
+#include <openglad/interface/render/pal32.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/screen.h>
 #include <openglad/platform/sai2x.h>
@@ -27,6 +29,12 @@ extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
 Sint32 edit_player_keymap(Sint32 arg);
 Sint32 toggle_player_control_mode(Sint32 arg);
+// GAME SETTINGS SPEED handler (button.cpp), driven directly for its
+// live-apply and relay-warning halves.
+Sint32 change_game_speed();
+// Level-start settings apply (glad_gameplay.cpp), driven directly: glad_init
+// calls exactly this, right before it arms the replay recorder.
+void apply_level_start_global_settings(screen& game_screen);
 
 #include <openglad/interface/ui/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
@@ -62,16 +70,17 @@ static bool click_until_interactable(const std::string& click_id, const std::str
     return has_interactable(next_id);
 }
 
-// Test: Open GAME SETTINGS and its global CONTROLS door, exercise player
-// profiles, then toggle presentation settings and exit.
+// Test: Open GAME SETTINGS, toggle presentation settings across it and its
+// subscreens, and exit.
 //
-// Flow: Main Menu -> Game Settings -> Controls -> Back -> toggle settings
-// -> Back -> (main menu exits)
+// Flow: Main Menu -> Game Settings -> DISPLAY -> Back -> the three FX
+// subscreens -> RESTORE SETTINGS -> Back -> (main menu exits)
 //
 // Verifies:
 //   1. Options menu opens
 //   2. Can toggle visual effects
-//   3. Returns cleanly to main menu
+//   3. RESTORE SETTINGS leaves player controls alone
+//   4. Returns cleanly to main menu
 
 // The three FX subscreens: main-options opener id, unique BACK id, and every
 // toggle each screen hosts with its cfg (category, key) pair. A cycle entry
@@ -116,26 +125,26 @@ static const FxToggleSpec kGraphicsFxToggles[] = {
     {"toggle_ripples", "effects", "ripples"},
     {"toggle_screen_shake", "effects", "screen_shake"},
     {"toggle_floor_glide", "effects", "floor_glide"},
+    // Migrated from the retired in-game options menu. Its identity state is
+    // ON, so this flip turns the classic palette rotation OFF.
+    {"toggle_color_cycling", "effects", "color_cycling"},
 };
 
 inline constexpr int kFxScreenCount = 3;
-inline constexpr int kFxMaxToggles = 13;
+inline constexpr int kFxMaxToggles = 14;
 
 static const FxScreenSpec kFxScreens[kFxScreenCount] = {
     {"gameplay_fx", "gameplay_fx_back", kGameplayFxToggles, 2},
     {"ui_fx", "ui_fx_back", kUiFxToggles, 3},
-    {"graphics_fx", "graphics_fx_back", kGraphicsFxToggles, 13},
+    {"graphics_fx", "graphics_fx_back", kGraphicsFxToggles, 14},
 };
 
 struct OptionsState {
     bool started;
     bool finished;
     bool saw_options;
-    bool entered_controls;
-    bool exited_controls;
     bool changed_control_mode;
     bool settings_restore_preserved_controls;
-    bool reset_all_controls;
     int initial_control_mode;
     bool entered_fx[kFxScreenCount];
     bool exited_fx[kFxScreenCount];
@@ -153,6 +162,16 @@ struct OptionsState {
     int minimum_zoom_steps;
     bool exited_display;
     bool used_options_back;
+    // SPEED (GAME SETTINGS) and BRIGHTNESS (DISPLAY): the two migrated rows
+    // that must reach the live game, not just cfg.
+    bool cycled_game_speed;
+    int cfg_timer_wait_after_speed_click;
+    int world_timer_wait_after_speed_click;
+    bool stepped_brightness_up;
+    bool stepped_brightness_down;
+    int cfg_brightness_after_two_plus;
+    int applied_brightness_after_two_plus;
+    int cfg_brightness_after_return;
     // Labels the ZOOM / SMOOTH rows show while their cfg keys are the empty
     // string (as in any process that never ran load_settings()).
     std::string zoom_label_when_unset;
@@ -237,6 +256,38 @@ static bool cycle_effect_and_check_lap(const char* button_id, const char* catego
 
     const Uint64 deadline = SDL_GetTicks() + 5000;
     while (cfg.get_setting(category, cfg_key) != expected) {
+        if (SDL_GetTicks() >= deadline)
+            return false;
+        interact(button_id);
+        SDL_Delay(300);
+    }
+    return true;
+}
+
+// The SPEED cycler's eleven-step lap over cfg gameplay/timer_wait. The
+// first verified click also has to land on the live world (the row replaces
+// viewscreen::change_speed, which wrote GameWorld::timer_wait directly), so
+// the caller records both sides right after it.
+static bool cycle_game_speed_and_check_lap(const char* button_id,
+                                           OptionsState* state)
+{
+    std::string expected = cfg.get_setting("gameplay", "timer_wait");
+    for (int i = 0; i < 11; ++i)
+        expected = og::ui::cycle_game_speed(expected);
+
+    for (int i = 0; i < 11; ++i) {
+        if (!click_cycle_step(button_id, "gameplay", "timer_wait"))
+            return false;
+        if (i == 0) {
+            state->cfg_timer_wait_after_speed_click =
+                og::ui::parse_timer_wait(cfg.get_setting("gameplay", "timer_wait"));
+            state->world_timer_wait_after_speed_click = static_cast<int>(
+                og::runtime::current_session->myscreen_->world().timer_wait);
+        }
+    }
+
+    const Uint64 deadline = SDL_GetTicks() + 5000;
+    while (cfg.get_setting("gameplay", "timer_wait") != expected) {
         if (SDL_GetTicks() >= deadline)
             return false;
         interact(button_id);
@@ -419,41 +470,26 @@ static int options_injector(void* data)
         state->saw_options = true;
         SDL_Delay(150);
 
-        fprintf(stderr, "  [test] entering global controls\n");
-        bool in_controls =
-            click_until_interactable("control_settings", "player1_mode", 5000);
-        SDL_Delay(150);
-        if (in_controls || wait_for_interactable("player1_mode", 5000)) {
-            state->entered_controls = true;
-            interact("player1_mode");
-            SDL_Delay(300);
-            state->changed_control_mode =
-                get_player_control_mode(0) != state->initial_control_mode;
-
-            fprintf(stderr, "  [test] resetting all controls\n");
-            if (wait_for_interactable("reset_all_controls", 5000)) {
-                interact("reset_all_controls");
-                SDL_Delay(300);
-                state->reset_all_controls =
-                    get_player_control_mode(0) == state->initial_control_mode;
-            }
-
-            // Change the mode once more. RESTORE SETTINGS in GAME SETTINGS
-            // must preserve this second change.
-            interact("player1_mode");
-            SDL_Delay(300);
-
-            if (wait_for_interactable("controls_back", 5000)) {
-                SDL_Delay(200);
-                state->exited_controls = click_until_interactable(
-                    "controls_back", "control_settings", 5000);
-            }
-            wait_for_interactable("control_settings", 5000);
-        }
+        // Player controls belong to the per-seat player screens, which are
+        // not reachable from here — but RESTORE SETTINGS below shares this
+        // screen with them through the same cfg file, and must not touch
+        // them. Change P1's direction mode exactly as a player screen does
+        // (the row calls this function), then check it survives the restore.
+        fprintf(stderr, "  [test] changing the P1 direction mode\n");
+        toggle_player_control_mode(0);
+        state->changed_control_mode =
+            get_player_control_mode(0) != state->initial_control_mode;
 
         fprintf(stderr, "  [test] toggling sound\n");
         interact("toggle_sound");
         SDL_Delay(80);
+
+        // SPEED: a full eleven-step lap of cfg gameplay/timer_wait, with the
+        // first click checked against the live world field too.
+        fprintf(stderr, "  [test] cycling game speed through a full lap\n");
+        state->cycled_game_speed =
+            cycle_game_speed_and_check_lap("game_speed", state);
+        SDL_Delay(300);
 
         // Everything window/presentation related lives in the DISPLAY
         // subscreen: enter it, exercise every row, and leave via its BACK.
@@ -533,6 +569,26 @@ static int options_injector(void* data)
             SDL_Delay(80);
             interact("overscan_minus");
             SDL_Delay(80);
+
+            // BRIGHTNESS: two steps up and back. Each click must move cfg
+            // AND the applied gamma the palette path re-reads.
+            fprintf(stderr, "  [test] stepping brightness\n");
+            state->stepped_brightness_up =
+                click_cycle_step("brightness_plus", "graphics", "brightness") &&
+                click_cycle_step("brightness_plus", "graphics", "brightness");
+            SDL_Delay(300);
+            state->cfg_brightness_after_two_plus =
+                og::ui::parse_brightness_steps(
+                    cfg.get_setting("graphics", "brightness"));
+            state->applied_brightness_after_two_plus =
+                static_cast<int>(display_brightness_steps());
+            state->stepped_brightness_down =
+                click_cycle_step("brightness_minus", "graphics", "brightness") &&
+                click_cycle_step("brightness_minus", "graphics", "brightness");
+            SDL_Delay(300);
+            state->cfg_brightness_after_return =
+                og::ui::parse_brightness_steps(
+                    cfg.get_setting("graphics", "brightness"));
 
             // A full verified lap of the zoom cycle: every click steps cfg
             // graphics/zoom AND live-applies it to the world canvas (the
@@ -650,6 +706,107 @@ static int options_injector(void* data)
 // the mode enumeration run headlessly (fullscreen requests fail gracefully
 // under the offscreen/dummy drivers; the cfg -> window -> session bookkeeping
 // still executes).
+// Level start applies both migrated global settings to the world the mission
+// runs with (glad_gameplay.cpp calls this one line before it arms the replay
+// recorder, so the header records the seeded speed). Before the move,
+// timer_wait only ever changed live and never persisted, and cyclemode was
+// hardcoded on in the screen constructor.
+TEST(OptionsMenu, level_start_applies_speed_and_color_cycling_from_cfg) {
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    const std::string saved_speed = cfg.get_setting("gameplay", "timer_wait");
+    const std::string saved_cycling = cfg.get_setting("effects", "color_cycling");
+    const signed char saved_wait = game_screen->world().timer_wait;
+    const short saved_mode = game_screen->cyclemode;
+
+    cfg.apply_setting("gameplay", "timer_wait", "12");  // SPEED 5
+    cfg.apply_setting("effects", "color_cycling", "off");
+    apply_level_start_global_settings(*game_screen);
+    EXPECT_EQ(12, static_cast<int>(game_screen->world().timer_wait))
+        << "the mission must start at the stored speed";
+    EXPECT_EQ(0, game_screen->cyclemode)
+        << "color cycling off must reach the live flag at level start";
+
+    // The shipped defaults restore the classic pair.
+    cfg.apply_setting("gameplay", "timer_wait", "6");
+    cfg.apply_setting("effects", "color_cycling", "on");
+    apply_level_start_global_settings(*game_screen);
+    EXPECT_EQ(og::sim::DEFAULT_TIMER_WAIT, game_screen->world().timer_wait);
+    EXPECT_EQ(1, game_screen->cyclemode);
+
+    // A config that never mentioned the keys still starts a normal mission.
+    cfg.apply_setting("gameplay", "timer_wait", "");
+    cfg.apply_setting("effects", "color_cycling", "");
+    apply_level_start_global_settings(*game_screen);
+    EXPECT_EQ(og::sim::DEFAULT_TIMER_WAIT, game_screen->world().timer_wait)
+        << "an absent speed key must fall back to the shipped cadence";
+    EXPECT_EQ(1, game_screen->cyclemode)
+        << "an absent color-cycling key must still rotate: unlike every "
+           "other effects key, ON is this one's identity state";
+
+    cfg.apply_setting("gameplay", "timer_wait",
+                      saved_speed.empty() ? "6" : saved_speed);
+    cfg.apply_setting("effects", "color_cycling",
+                      saved_cycling.empty() ? "on" : saved_cycling);
+    game_screen->world().timer_wait = saved_wait;
+    game_screen->cyclemode = saved_mode;
+}
+
+// SPEED's live-apply half, driven directly (the injector flow above covers
+// the click plumbing). The row carries over what the retired
+// viewscreen::change_speed did: the world field, the host-authoritative
+// pending request, and the relay warning that fires ONCE per descent into
+// the relay-expensive speeds and re-arms when the speed comes back down.
+TEST(OptionsMenu, game_speed_applies_to_the_world_and_warns_once_on_relay) {
+    constexpr Sint32 kMenuRedraw = 2;  // do_call's REDRAW
+    og::runtime::SessionState* const session = og::runtime::current_session;
+    screen* const scr = session->myscreen_;
+    const std::string saved_cfg = cfg.get_setting("gameplay", "timer_wait");
+    const signed char saved_wait = scr->world().timer_wait;
+    const bool saved_relay = session->relay_transport_active_;
+    const bool saved_warned = session->relay_speed_warning_shown_;
+    const std::int8_t saved_request = session->pending_timer_wait_request_;
+
+    session->relay_transport_active_ = false;
+    session->relay_speed_warning_shown_ = false;
+    cfg.apply_setting("gameplay", "timer_wait", "6");  // SPEED 8
+
+    ASSERT_EQ(kMenuRedraw, change_game_speed());
+    EXPECT_EQ("4", cfg.get_setting("gameplay", "timer_wait"))
+        << "one click is one SPEED step faster";
+    EXPECT_EQ(4, static_cast<int>(scr->world().timer_wait))
+        << "the click must reach the live sim cadence";
+    EXPECT_EQ(4, static_cast<int>(session->pending_timer_wait_request_))
+        << "the host stamps the request the server applies for its own peer";
+    EXPECT_FALSE(session->relay_speed_warning_shown_)
+        << "no relay, no warning";
+
+    // On a relay, the first step below the relay-friendly wait warns and
+    // latches; further steps in the same descent stay quiet.
+    session->relay_transport_active_ = true;
+    ASSERT_EQ(kMenuRedraw, change_game_speed());  // wait 4 -> 2
+    EXPECT_EQ(2, static_cast<int>(scr->world().timer_wait));
+    EXPECT_TRUE(session->relay_speed_warning_shown_)
+        << "dropping below wait 4 on a relay must warn";
+    ASSERT_EQ(kMenuRedraw, change_game_speed());  // wait 2 -> 0
+    EXPECT_EQ(0, static_cast<int>(scr->world().timer_wait));
+    EXPECT_TRUE(session->relay_speed_warning_shown_)
+        << "the warning latch must not re-fire while still fast";
+
+    // Wrapping back to the slowest speed re-arms it.
+    ASSERT_EQ(kMenuRedraw, change_game_speed());  // wraps to wait 20
+    EXPECT_EQ(20, static_cast<int>(scr->world().timer_wait));
+    EXPECT_FALSE(session->relay_speed_warning_shown_)
+        << "a relay-friendly speed must re-arm the warning";
+
+    session->relay_transport_active_ = saved_relay;
+    session->relay_speed_warning_shown_ = saved_warned;
+    session->pending_timer_wait_request_ = saved_request;
+    scr->world().timer_wait = saved_wait;
+    cfg.apply_setting("gameplay", "timer_wait",
+                      saved_cfg.empty() ? "6" : saved_cfg);
+}
+
 TEST(OptionsMenu, apply_display_settings_covers_all_modes) {
     const std::string prev_mode = cfg.get_setting("graphics", "fullscreen");
     const std::string prev_w = cfg.get_setting("graphics", "width");
@@ -830,14 +987,10 @@ TEST(OptionsMenu, options_menu) {
     ASSERT_TRUE(state.started) << "injector thread should have started";
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
     ASSERT_TRUE(state.saw_options) << "should have entered the options menu";
-    ASSERT_TRUE(state.entered_controls) << "should have entered controls submenu";
-    ASSERT_TRUE(state.exited_controls) << "should have exited via controls_back";
     ASSERT_TRUE(state.changed_control_mode)
-        << "controls screen should change the P1 direction mode";
+        << "the player-screen mode toggle should change the P1 direction mode";
     ASSERT_TRUE(state.settings_restore_preserved_controls)
         << "GAME SETTINGS restore must not reset player controls";
-    ASSERT_TRUE(state.reset_all_controls)
-        << "global CONTROLS RESET ALL should restore the default mode";
     for (int s = 0; s < kFxScreenCount; ++s) {
         const FxScreenSpec& screen = kFxScreens[s];
         ASSERT_TRUE(state.entered_fx[s])
@@ -878,6 +1031,24 @@ TEST(OptionsMenu, options_menu) {
     ASSERT_TRUE(state.cycled_smoothing)
         << "display_smoothing must step cfg graphics/smoothing around off/sai/eagle";
     ASSERT_TRUE(state.exited_display) << "should have returned via display_back";
+    // SPEED: cfg is the persisted value AND the live world's sim cadence.
+    ASSERT_TRUE(state.cycled_game_speed)
+        << "game_speed must step cfg gameplay/timer_wait around its 11-step lap";
+    EXPECT_EQ(state.cfg_timer_wait_after_speed_click,
+              state.world_timer_wait_after_speed_click)
+        << "a SPEED click must reach GameWorld::timer_wait, not just cfg "
+           "(the row replaced viewscreen::change_speed)";
+    // BRIGHTNESS: both halves of the pair move, and the applied gamma
+    // follows the stored value on every click.
+    ASSERT_TRUE(state.stepped_brightness_up)
+        << "brightness_plus must step cfg graphics/brightness";
+    EXPECT_EQ(2, state.cfg_brightness_after_two_plus);
+    EXPECT_EQ(2, state.applied_brightness_after_two_plus)
+        << "the click must apply the gamma the palette path re-reads, not "
+           "only store it";
+    ASSERT_TRUE(state.stepped_brightness_down)
+        << "brightness_minus must step cfg graphics/brightness back";
+    EXPECT_EQ(0, state.cfg_brightness_after_return);
     // Each click live-applies the value: the zoom steps and both smart
     // scalers must all have reached the renderer
     // (apply_world_scale_from_cfg traces the parsed values).
@@ -958,8 +1129,8 @@ struct CaptureState {
     bool started;
     bool finished;
     bool saw_options;
-    bool entered_controls;
-    bool exited_controls;
+    bool entered_display;
+    bool exited_display;
     bool toured_fx;
     bool used_options_back;
     bool clicked_quit;
@@ -987,8 +1158,8 @@ void capture_quit_main_menu(CaptureState* state)
     }
 }
 
-// menu_tour: main menu highlight walk -> GAME SETTINGS -> CONTROLS (flip P1
-// mode twice) -> back -> back -> quit.
+// menu_tour: main menu highlight walk -> GAME SETTINGS -> DISPLAY (step
+// brightness up and back) -> back -> back -> quit.
 int menu_tour_injector(void* data)
 {
     og::runtime::ensure_thread_session();
@@ -1010,9 +1181,9 @@ int menu_tour_injector(void* data)
     SDL_Delay(480);
 
     bool in_options = click_until_interactable(
-        "options", "control_settings", 10000);
+        "options", "display_settings", 10000);
     SDL_Delay(900);
-    if (in_options || wait_for_interactable("control_settings", 10000)) {
+    if (in_options || wait_for_interactable("display_settings", 10000)) {
         state->saw_options = true;
 
         // Two nav steps inside GAME SETTINGS so the highlight is seen moving.
@@ -1021,19 +1192,19 @@ int menu_tour_injector(void* data)
         g_test_menu_nav_key = KEY_RIGHT;
         SDL_Delay(480);
 
-        bool in_controls = click_until_interactable(
-            "control_settings", "player1_mode", 5000);
+        bool in_display = click_until_interactable(
+            "display_settings", "brightness_plus", 5000);
         SDL_Delay(900);
-        if (in_controls || wait_for_interactable("player1_mode", 5000)) {
-            state->entered_controls = true;
+        if (in_display || wait_for_interactable("brightness_plus", 5000)) {
+            state->entered_display = true;
             g_test_menu_nav_key = KEY_DOWN;
             SDL_Delay(480);
-            capture_toggle("player1_mode"); // 4-DIRECTION -> 8-DIRECTION
-            capture_toggle("player1_mode"); // flip back: settings unchanged
-            state->exited_controls =
+            capture_toggle("brightness_plus"); // the palette visibly lifts
+            capture_toggle("brightness_minus"); // back: settings unchanged
+            state->exited_display =
                 click_until_interactable(
-                    "controls_back", "control_settings", 5000);
-            wait_for_interactable("control_settings", 10000);
+                    "display_back", "display_settings", 5000);
+            wait_for_interactable("display_settings", 10000);
             SDL_Delay(700);
         }
 
@@ -1268,8 +1439,8 @@ TEST(OptionsMenu, zz_capture_menu_tour)
     ASSERT_TRUE(state.started);
     ASSERT_TRUE(state.finished);
     ASSERT_TRUE(state.saw_options) << "should have entered Game Settings";
-    ASSERT_TRUE(state.entered_controls) << "should have entered controls";
-    ASSERT_TRUE(state.exited_controls) << "should have returned from controls";
+    ASSERT_TRUE(state.entered_display) << "should have entered DISPLAY";
+    ASSERT_TRUE(state.exited_display) << "should have returned from DISPLAY";
     ASSERT_TRUE(state.used_options_back) << "should have exited settings";
 }
 

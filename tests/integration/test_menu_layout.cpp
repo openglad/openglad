@@ -1,18 +1,24 @@
 #include <openglad/interface/button.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/interface/input.h>
+#include <openglad/interface/input_hardware_state.h>
+#include <openglad/interface/input_mappings.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_lobby_network_client.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/resources/save_data.h>
 #include "../../src/interface/ui/picker_sdl_defs.h"
+#include <openglad/interface/ui/pause_menu.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
 #include <algorithm>
 #include <array>
+#include <cstring>
 #include <format>
 #include <memory>
 #include <optional>
@@ -54,6 +60,44 @@ struct PlayerControlSnapshotGuard
         for (int k = 0; k < NUM_KEYS; ++k)
             set_player_key_binding(player, k, old_eight[k]);
         set_player_control_mode(player, old_mode);
+    }
+};
+
+// Seat-card labels are derived from each local profile's live movement keys
+// (design §2.3), so any test that pins one needs a known starting mapping —
+// and must hand the whole hardware block back, since claiming a factory NAME
+// also permutes the RESET identities.
+struct FactoryMappingGuard
+{
+    InputHardwareState hardware = input_hardware_state();
+    int active[4][NUM_KEYS]{};
+
+    FactoryMappingGuard()
+    {
+        for (int player = 0; player < 4; ++player)
+        {
+            for (int key = 0; key < NUM_KEYS; ++key)
+            {
+                active[player][key] =
+                    og::runtime::current_session->player_keys_[player][key];
+            }
+            clear_player_joystick(player);
+            og::input::assign_mapping_to_player(
+                player, og::input::factory_mapping(player));
+        }
+    }
+
+    ~FactoryMappingGuard()
+    {
+        input_hardware_state() = hardware;
+        for (int player = 0; player < 4; ++player)
+        {
+            for (int key = 0; key < NUM_KEYS; ++key)
+            {
+                og::runtime::current_session->player_keys_[player][key] =
+                    active[player][key];
+            }
+        }
     }
 };
 } // namespace
@@ -356,23 +400,6 @@ TEST(MenuLayout, cloud_save_screen_layout_states_and_nav)
     EXPECT_STREQ("cloud_save", spec.name);
 }
 
-TEST(MenuLayout, global_control_reset_is_centered_and_reachable)
-{
-    button* buttons = picker_control_options_buttons();
-    const int count = picker_control_options_button_count();
-    check_no_overlaps(buttons, count, "control_options");
-    check_bounds(buttons, count, "control_options");
-    check_nav_closed_and_reachable(buttons, count, 0, "control_options");
-
-    ASSERT_EQ(10, count);
-    const button& reset = buttons[9];
-    EXPECT_EQ("reset_all_controls", reset.id);
-    EXPECT_EQ("RESET ALL", reset.label);
-    EXPECT_EQ(160, reset.x + reset.sizex / 2);
-    EXPECT_EQ(button_action_id(ButtonAction::RestoreDefaultControls),
-              reset.myfun);
-}
-
 TEST(MenuLayout, createmenu_buttons_no_overlap)
 {
     button* buttons = picker_createmenu_buttons();
@@ -657,6 +684,9 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
 #else
     constexpr bool kAddSeatCompiledIn = true;
 #endif
+    FactoryMappingGuard mapping_guard;
+    EXPECT_EQ(9, kBaseCampSeatCardLabelBudget)
+        << "57px card face / 6px per character";
 
     struct LocalSeatRailLobby final : og::ui::IPickerLobbyClient
     {
@@ -814,14 +844,42 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
                     continue;
 
                 const int player_index = first + card;
+                // Local seat zero is this machine's first controller
+                // profile; the trailing seat is its second (the fixture
+                // hands the lobby exactly those two local indices).
                 const bool local =
                     player_index == 0 ||
                     (seat_count > 1 && player_index == seat_count - 1);
-                EXPECT_EQ(
-                    std::format("P{} {} ", player_index + 1,
-                                local ? "YOU" : "IRO"),
-                    card_button.label)
+                const char* const owner =
+                    !local ? "IRO"
+                           : (player_index == 0 ? "WASD"
+                                                : og::input::kArrowGlyphs);
+                // Design §2.3: a local card names its INPUT mapping. The
+                // 57px face is exactly nine characters INCLUDING the
+                // load-bearing trailing pad, so a two-digit global P#
+                // shortens the name rather than overflowing the bevel.
+                std::string expected =
+                    std::format("P{} {} ", player_index + 1, owner);
+                if (expected.size() >
+                    static_cast<std::size_t>(kBaseCampSeatCardLabelBudget))
+                {
+                    expected = std::format(
+                        "P{} {} ", player_index + 1,
+                        std::string(owner).substr(
+                            0, std::strlen(owner) -
+                                   (expected.size() -
+                                    static_cast<std::size_t>(
+                                        kBaseCampSeatCardLabelBudget))));
+                }
+                EXPECT_EQ(expected, card_button.label)
                     << variant << " card " << card;
+                EXPECT_LE(card_button.label.size(),
+                          static_cast<std::size_t>(
+                              kBaseCampSeatCardLabelBudget))
+                    << variant << " card " << card << " '"
+                    << card_button.label << "'";
+                EXPECT_EQ(' ', card_button.label.back())
+                    << "the team-chip clearance pad is load-bearing";
                 rail.push_back(kBaseCampSeatCardBase + card);
             }
             if (paged)
@@ -1004,6 +1062,135 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
     EXPECT_EQ(kAddSeatCompiledIn ? og::ui::RowState::Disabled
                                 : og::ui::RowState::Hidden,
               local_cap_state);
+}
+
+// Design §2.2: the seat editor's INPUT cycler needed a band of its own —
+// the y=30 band is exactly full (three columns x=12/116/214, widths
+// 98/92/90, 6px gutters, shared right edge 304), so the cycler rides the
+// y=54 band. Pin both build variants: geometry, no overlaps,
+// closed+reachable nav, and the face budget for the widest short mapping
+// name.
+TEST(MenuLayout, seat_settings_input_row_layout_and_nav)
+{
+    for (const og::ui::MenuScreenSpec* spec :
+         {&og::ui::seat_settings_menu_screen_spec_mp(),
+          &og::ui::seat_settings_menu_screen_spec_nomp()})
+    {
+        const bool mp = spec->row_count == kSeatSettingsButtonCountMP;
+        const char* const variant =
+            mp ? "seat_settings_mp" : "seat_settings_nomp";
+        const int input_row =
+            mp ? kSeatSettingsInputRowMP : kSeatSettingsInputRowNoMP;
+
+        std::vector<button> rows;
+        og::ui::materialize_menu_buttons(*spec, rows);
+        ASSERT_EQ(spec->row_count, static_cast<int>(rows.size())) << variant;
+
+        check_no_overlaps(rows.data(), spec->row_count, variant);
+        check_bounds(rows.data(), spec->row_count, variant);
+        check_nav_closed_and_reachable(rows.data(), spec->row_count,
+                                       spec->default_highlight, variant);
+
+        const button& input = rows[static_cast<std::size_t>(input_row)];
+        const button& mode =
+            rows[static_cast<std::size_t>(kSeatSettingsModeIndex)];
+        const button& team =
+            rows[static_cast<std::size_t>(kSeatSettingsTeamIndex)];
+        EXPECT_EQ("seat_input", input.id) << variant;
+        EXPECT_EQ(12, input.x) << variant;
+        EXPECT_EQ(54, input.y) << variant;
+        EXPECT_EQ(98, input.sizex) << variant;
+        EXPECT_EQ(18, input.sizey) << variant;
+        EXPECT_EQ(mode.x, input.x)
+            << variant << ": the cycler shares the MODE column";
+        EXPECT_LT(mode.y + mode.sizey, input.y)
+            << variant << ": the cycler clears the whole y=30 band";
+        EXPECT_LT(input.y + input.sizey, team.y)
+            << variant << ": the cycler clears the bottom command band";
+
+        // "INPUT: " + a five-character short name on a beveled 98px face.
+        const std::string widest = std::format(
+            "INPUT: {}",
+            std::string(static_cast<std::size_t>(
+                            og::input::kMappingShortNameMaxLength),
+                        'W'));
+        EXPECT_LE(static_cast<int>(widest.size()), (input.sizex - 8) / 6)
+            << variant << " '" << widest << "'";
+        EXPECT_LE(static_cast<int>(std::strlen(input.label.c_str())),
+                  (input.sizex - 8) / 6)
+            << variant << " '" << input.label << "'";
+
+        // §7.1 unified player screen: ZOOM shares the y=54 band in the
+        // middle column (x=116); the four HUD toggles stack right of the
+        // binding panel (x=12..208) at x=214 on a 22px pitch, top-aligned
+        // with the panel at y=78 and clearing the y=169 command band.
+        const int zoom_row =
+            mp ? kSeatSettingsZoomRowMP : kSeatSettingsZoomRowNoMP;
+        const int radar_row =
+            mp ? kSeatSettingsHudRadarRowMP : kSeatSettingsHudRadarRowNoMP;
+        const button& zoom = rows[static_cast<std::size_t>(zoom_row)];
+        EXPECT_EQ("seat_zoom", zoom.id) << variant;
+        EXPECT_EQ(116, zoom.x) << variant;
+        EXPECT_EQ(54, zoom.y) << variant;
+        EXPECT_EQ(92, zoom.sizex) << variant;
+        EXPECT_EQ(18, zoom.sizey) << variant;
+        EXPECT_GT(zoom.x, input.x + input.sizex)
+            << variant << ": ZOOM clears the INPUT face";
+        const char* const hud_ids[4] = {"seat_hud_radar", "seat_hud_life",
+                                        "seat_hud_foes", "seat_hud_score"};
+        const char* const hud_labels[4] = {"RADAR: OFF", "HP: OFF",
+                                           "FOES: OFF", "SCORE: OFF"};
+        for (int k = 0; k < 4; ++k)
+        {
+            const button& hud =
+                rows[static_cast<std::size_t>(radar_row + k)];
+            EXPECT_EQ(hud_ids[k], hud.id) << variant;
+            EXPECT_EQ(214, hud.x) << variant << " " << hud.id;
+            EXPECT_EQ(78 + 22 * k, hud.y) << variant << " " << hud.id;
+            EXPECT_EQ(90, hud.sizex) << variant << " " << hud.id;
+            EXPECT_EQ(18, hud.sizey) << variant << " " << hud.id;
+            EXPECT_GT(hud.x, 208)
+                << variant << ": the stack clears the binding panel";
+            // Both label states fit the 90px face budget.
+            EXPECT_LE(static_cast<int>(std::strlen(hud_labels[k])),
+                      (hud.sizex - 8) / 6)
+                << variant << " '" << hud_labels[k] << "'";
+            EXPECT_LE(static_cast<int>(std::strlen(hud.label.c_str())),
+                      (hud.sizex - 8) / 6)
+                << variant << " '" << hud.label << "'";
+        }
+        const button& score =
+            rows[static_cast<std::size_t>(radar_row + 3)];
+        EXPECT_LT(score.y + score.sizey, team.y)
+            << variant << ": the stack clears the bottom command band";
+        // Widest zoom label fits the 88px face.
+        EXPECT_LE(static_cast<int>(std::strlen("ZOOM: GAME")),
+                  (zoom.sizex - 8) / 6)
+            << variant;
+
+        // The two binding-panel columns stay inside their budgets with the
+        // widest possible binding value (get_key_display_name_short caps at
+        // 9 chars; joystick forms are at most 4): movement must clear the
+        // ACTIONS column at x=104, actions must clear the panel edge x=208.
+        const std::string widest_value(9, 'W');
+        for (const char* const label :
+             {"UP", "UP-R", "RIGHT", "DN-R", "DOWN", "DN-L", "LEFT", "UP-L"})
+        {
+            const std::string line = og::ui::format_binding_panel_line(
+                label, widest_value, og::ui::kBindingPanelMovementChars);
+            EXPECT_LE(20 + static_cast<int>(line.size()) * 6, 104)
+                << variant << " movement '" << line << "'";
+        }
+        for (const char* const label :
+             {"FIRE", "SPECIAL", "YELL", "SHIFTER", "LOOK UP", "CHAR SW",
+              "SPEC SW"})
+        {
+            const std::string line = og::ui::format_binding_panel_line(
+                label, widest_value, og::ui::kBindingPanelActionsChars);
+            EXPECT_LE(104 + static_cast<int>(line.size()) * 6, 208)
+                << variant << " actions '" << line << "'";
+        }
+    }
 }
 
 // §2.5 keyboard-nav BFS matrix (pattern b): the per-frame full-graph rewire
@@ -1701,38 +1888,6 @@ TEST(MenuLayout, matchup_nav_variants_keyboard_reachable)
 }
 
 
-TEST(MenuLayout, control_options_buttons_no_overlap)
-{
-    button* buttons = picker_control_options_buttons();
-    const int count = picker_control_options_button_count();
-    check_no_overlaps(buttons, count, "control_options");
-    check_bounds(buttons, count, "control_options");
-}
-
-// The header text ("Player control modes and key remapping") once started at
-// y=24, inside the BACK button's animated highlight box, which overwrote its
-// first characters. Pin that it clears the highlight (3px beyond the bevel)
-// and still sits above the first player row.
-TEST(MenuLayout, control_options_header_clears_back_button_and_player_rows)
-{
-    button* buttons = picker_control_options_buttons();
-    const int count = picker_control_options_button_count();
-    ASSERT_GE(count, 2);
-    const button& back = buttons[0];
-    ASSERT_EQ("controls_back", back.id);
-    const button& player1_mode = buttons[1];
-    ASSERT_EQ("player1_mode", player1_mode.id);
-
-    constexpr int kHighlightExtent = 3;  // draw_highlight animates 0..3px out
-    constexpr int kTextHeight = 8;       // small-font glyph rows + breathing room
-    EXPECT_GT(PICKER_CONTROLS_HEADER_Y, back.y + back.sizey + kHighlightExtent)
-        << "header must start below the BACK button's highlight box";
-    EXPECT_LE(PICKER_CONTROLS_HEADER_Y + kTextHeight, player1_mode.y)
-        << "header must finish above the P1 row";
-    EXPECT_GE(PICKER_CONTROLS_HEADER_X, 10) << "header stays inside the bevel";
-}
-
-
 TEST(MenuLayout, main_options_nav_indices_in_range)
 {
     button* buttons = picker_main_options_buttons();
@@ -1741,26 +1896,18 @@ TEST(MenuLayout, main_options_nav_indices_in_range)
 }
 
 
-TEST(MenuLayout, control_options_nav_indices_in_range)
-{
-    button* buttons = picker_control_options_buttons();
-    const int count = picker_control_options_button_count();
-    check_nav_in_range(buttons, count, "control_options");
-    check_nav_closed_and_reachable(buttons, count, 0, "control_options");
-    ASSERT_EQ(10, count);
-    EXPECT_EQ("reset_all_controls", buttons[9].id);
-}
-
 // The per-effect toggles live in the three FX subscreens; main options keeps
-// the sound/graphics settings plus the three stacked FX doors and the global
-// CONTROLS door. Pin the draw-hook index contract and nav graph.
+// the sound/graphics settings plus the three stacked FX doors. The global
+// CONTROLS door is gone (per-seat player screens own every row it had), and
+// SPEED took the row it vacated. Pin the draw-hook index contract, the two
+// column edges, and the nav graph.
 TEST(MenuLayout, main_options_index_contract_and_nav)
 {
     button* buttons = picker_main_options_buttons();
     const int count = picker_main_options_button_count();
     ASSERT_EQ(9, count)
         << "main options is BACK + Sound + DISPLAY + sprite sheet + "
-           "3 FX doors + CONTROLS + RESTORE SETTINGS";
+           "3 FX doors + RESTORE SETTINGS + SPEED";
 
     static const char* kExpectedIds[] = {
         "options_back",       // 0
@@ -1771,7 +1918,7 @@ TEST(MenuLayout, main_options_index_contract_and_nav)
         "pick_sprite_sheet",  // 5: label synced by index each frame
         "ui_fx",              // 6: opens the UI FX subscreen
         "graphics_fx",        // 7: opens the GRAPHICS FX subscreen
-        "control_settings",   // 8: opens persistent player profiles
+        "game_speed",         // 8: cfg gameplay/timer_wait cycler
     };
     for (int i = 0; i < count; ++i)
     {
@@ -1784,18 +1931,40 @@ TEST(MenuLayout, main_options_index_contract_and_nav)
             << "' escapes its face";
     }
     EXPECT_EQ("RESTORE SETTINGS", buttons[4].label);
-    // The settings/door column stacks at one x at 23px pitch.
+    // Column relation, not coordinates: Sound heads the door column, and
+    // every door below it shares that one x at a 23px pitch.
     EXPECT_EQ("DISPLAY", buttons[2].label);
-    EXPECT_EQ(buttons[2].x, buttons[3].x);
-    EXPECT_EQ(buttons[3].x, buttons[6].x);
-    EXPECT_EQ(buttons[3].x, buttons[7].x);
-    EXPECT_EQ(buttons[3].x, buttons[8].x);
+    for (const int door : {1, 3, 6, 7})
+        EXPECT_EQ(buttons[2].x, buttons[door].x)
+            << buttons[door].id << " must sit on the door column edge";
+    EXPECT_EQ(buttons[1].y + 23, buttons[2].y);
     EXPECT_EQ(buttons[2].y + 23, buttons[3].y);
     EXPECT_EQ(buttons[3].y + 23, buttons[6].y);
     EXPECT_EQ(buttons[6].y + 23, buttons[7].y);
-    EXPECT_EQ(buttons[7].y + 23, buttons[8].y);
     EXPECT_EQ(button_action_id(ButtonAction::OpenDisplaySettings), buttons[2].myfun);
-    EXPECT_EQ(button_action_id(ButtonAction::OpenControlSettings), buttons[8].myfun);
+
+    // SPEED closes the right column (RESTORE SETTINGS / Sprite Sheet / SPEED
+    // share one x) in the row the retired CONTROLS door vacated: the door
+    // column's 90px faces reach x=220, so SPEED must clear their last row.
+    EXPECT_EQ(button_action_id(ButtonAction::CycleGameSpeed), buttons[8].myfun);
+    EXPECT_EQ(buttons[4].x, buttons[8].x);
+    EXPECT_EQ(buttons[5].x, buttons[8].x);
+    EXPECT_EQ(buttons[7].y + 23, buttons[8].y)
+        << "SPEED keeps the screen's 23px vertical rhythm";
+    EXPECT_GT(buttons[8].y, buttons[7].y + buttons[7].sizey)
+        << "SPEED must clear the last door's row";
+    // Every SPEED the cycler can store fits the 90px face (15 chars).
+    {
+        std::string value = cfg.get_setting("gameplay", "timer_wait");
+        for (int step = 0; step < 11; ++step)
+        {
+            EXPECT_LE(
+                static_cast<int>(og::ui::format_game_speed_label(value).size()) * 6,
+                buttons[8].sizex)
+                << og::ui::format_game_speed_label(value);
+            value = og::ui::cycle_game_speed(value);
+        }
+    }
 
     check_nav_closed_and_reachable(buttons, count, 0, "main_options");
 }
@@ -1807,9 +1976,9 @@ TEST(MenuLayout, display_settings_index_contract_and_nav)
 {
     button* buttons = picker_display_settings_buttons();
     const int count = picker_display_settings_button_count();
-    ASSERT_EQ(7, count)
+    ASSERT_EQ(9, count)
         << "display settings is BACK + mode + resolution + overscan pair + "
-           "zoom + smoothing";
+           "zoom + smoothing + brightness pair";
 
     static const char* kExpectedIds[] = {
         "display_back",        // 0
@@ -1819,6 +1988,8 @@ TEST(MenuLayout, display_settings_index_contract_and_nav)
         "overscan_plus",       // 4
         "display_zoom",        // 5: label synced from graphics/zoom
         "display_smoothing",   // 6: label synced from graphics/smoothing
+        "brightness_minus",    // 7: cfg graphics/brightness, one gamma step
+        "brightness_plus",     // 8
     };
     for (int i = 0; i < count; ++i)
     {
@@ -1850,6 +2021,18 @@ TEST(MenuLayout, display_settings_index_contract_and_nav)
     EXPECT_EQ(buttons[2].y + 23, buttons[3].y);
     EXPECT_EQ(buttons[3].y + 23, buttons[5].y);
     EXPECT_EQ(buttons[5].y + 23, buttons[6].y);
+    // BRIGHTNESS takes the overscan pair's shape one row further down: same
+    // 30px faces at the same two x, one adjust action, opposite args.
+    EXPECT_EQ(buttons[6].y + 23, buttons[7].y);
+    EXPECT_EQ(buttons[7].y, buttons[8].y);
+    EXPECT_EQ(buttons[3].x, buttons[7].x);
+    EXPECT_EQ(buttons[4].x, buttons[8].x);
+    EXPECT_EQ(buttons[3].sizex, buttons[7].sizex);
+    EXPECT_EQ(buttons[4].sizex, buttons[8].sizex);
+    EXPECT_EQ(button_action_id(ButtonAction::BrightnessAdjust), buttons[7].myfun);
+    EXPECT_EQ(button_action_id(ButtonAction::BrightnessAdjust), buttons[8].myfun);
+    EXPECT_EQ(-1, buttons[7].arg1);
+    EXPECT_EQ(1, buttons[8].arg1);
 
     check_nav_closed_and_reachable(buttons, count, 0, "display_settings");
 }
@@ -1924,9 +2107,9 @@ TEST(MenuLayout, ui_fx_options_layout_and_nav)
     check_fx_options_screen(buttons, count, kExpected, 4, "ui_fx_options");
 }
 
-// GRAPHICS FX subscreen: unique BACK id + 13 effects/* visual toggles on the
+// GRAPHICS FX subscreen: unique BACK id + 14 effects/* visual toggles on the
 // three-column x=15/115/215 grid (4 full rows at 23px pitch from y=35, plus
-// the lone floor-glide toggle on a fifth row). Weather is the single display
+// floor glide and color cycling on a fifth row). Weather is the single display
 // opt-out for the per-level sim weather (the old Clouds/Rain pair merged).
 TEST(MenuLayout, graphics_fx_options_grid_geometry_and_nav)
 {
@@ -1945,10 +2128,11 @@ TEST(MenuLayout, graphics_fx_options_grid_geometry_and_nav)
         {"toggle_ripples", "Ripples", 115, 104},
         {"toggle_screen_shake", "Screen shake", 215, 104},
         {"toggle_floor_glide", "Floor glide", 15, 127},
+        {"toggle_color_cycling", "Color cycling", 115, 127},
     };
     button* buttons = picker_graphics_fx_options_buttons();
     const int count = picker_graphics_fx_options_button_count();
-    check_fx_options_screen(buttons, count, kExpected, 14, "graphics_fx_options");
+    check_fx_options_screen(buttons, count, kExpected, 15, "graphics_fx_options");
 
     // The depth row is a five-way CYCLE (id "depth_fx"), addressed by index
     // from change_depth_fx(); pin the index contract and that every label
@@ -2325,6 +2509,21 @@ TEST(MenuLayout, networking_text_does_not_overlap_buttons)
 }
 
 
+namespace
+{
+// The summary the player screens draw, as one string. Production draws the
+// two lines separately (the joined one-liner retired with the global
+// CONTROLS screen); these format pins read either line the same way.
+std::string joined_control_summary(int player_index)
+{
+    const std::array<std::string, 2> lines =
+        build_player_control_summary_lines(player_index, false);
+    if (lines[0].empty() && lines[1].empty())
+        return {};
+    return lines[0] + " " + lines[1];
+}
+} // namespace
+
 TEST(MenuLayout, controls_summary_switches_between_four_and_eight_direction_formats)
 {
     PlayerControlSnapshotGuard guard(0);
@@ -2341,7 +2540,7 @@ TEST(MenuLayout, controls_summary_switches_between_four_and_eight_direction_form
     set_player_key_binding(0, KEY_SWITCH, SDLK_GRAVE);
     set_player_key_binding(0, KEY_SHIFTER, SDLK_F8);
 
-    const std::string summary_four = build_player_control_summary(0);
+    const std::string summary_four = joined_control_summary(0);
     ASSERT_TRUE(summary_four.find("D:WASD") != std::string::npos) << "4-direction summary should include compact direction order";
     ASSERT_TRUE(summary_four.find("Y:Q") != std::string::npos) << "4-direction summary should include yell label";
     ASSERT_TRUE(summary_four.find("F:1") != std::string::npos) << "4-direction summary should include fire key";
@@ -2357,7 +2556,7 @@ TEST(MenuLayout, controls_summary_switches_between_four_and_eight_direction_form
     set_player_key_binding(0, KEY_DOWN_LEFT, SDLK_Z);
     set_player_key_binding(0, KEY_UP_LEFT, SDLK_Q);
 
-    const std::string summary_eight = build_player_control_summary(0);
+    const std::string summary_eight = joined_control_summary(0);
     ASSERT_TRUE(summary_eight.find("D:WEDCXZAQ") != std::string::npos) << "8-direction summary should include compact clockwise direction order";
     ASSERT_TRUE(summary_eight.find("Y:") != std::string::npos) << "8-direction summary should include yell label";
 }
@@ -2383,7 +2582,7 @@ TEST(MenuLayout, eight_direction_summary_clockwise_order)
     set_player_key_binding(0, KEY_SWITCH, SDLK_3);
     set_player_key_binding(0, KEY_SHIFTER, SDLK_F8);
 
-    const std::string summary = build_player_control_summary(0);
+    const std::string summary = joined_control_summary(0);
     ASSERT_TRUE(summary.find("D:WEDCXZAQ") != std::string::npos) << "8-direction summary should list keys clockwise from Up";
     ASSERT_TRUE(summary.find("Y:S") != std::string::npos) << "8-direction summary should include yell key";
     ASSERT_TRUE(summary.find("F:1") != std::string::npos) << "8-direction summary should include fire key";
@@ -2423,13 +2622,13 @@ TEST(MenuLayout, controls_summary_shows_look_up_binding)
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
     set_player_key_binding(0, KEY_LOOKUP, SDLK_V);
-    const std::string summary = build_player_control_summary(0);
+    const std::string summary = joined_control_summary(0);
     ASSERT_TRUE(summary.find("L:V") != std::string::npos)
         << "controls summary should show the look-up binding: " << summary;
 
     // Unbound (the P4 8-direction default) reads as "--", not an empty label.
     set_player_key_binding(0, KEY_LOOKUP, SDLK_UNKNOWN);
-    const std::string unbound = build_player_control_summary(0);
+    const std::string unbound = joined_control_summary(0);
     ASSERT_TRUE(unbound.find("L:--") != std::string::npos)
         << "unbound look-up should display as --: " << unbound;
 
@@ -2445,4 +2644,95 @@ TEST(MenuLayout, controls_summary_shows_look_up_binding)
     const auto lines = build_player_control_summary_lines(0, false);
     EXPECT_LE(lines[1].size(), 48u)
         << "action summary line must fit the controls row: " << lines[1];
+}
+
+// The menus skill's layout-discipline rules, as executable relations: exact
+// tables pin a crooked layout just as happily as a straight one (RESET at
+// x=218 shipped beside a stack at x=214 with every pin green), so the grid
+// itself is asserted here — shared column edges, uniform pitches, and the
+// §7.1 cross-screen geometry identity — instead of more absolutes.
+TEST(MenuLayout, player_screen_grid_relations_and_cross_screen_identity)
+{
+    std::vector<button> pause_rows;
+    og::ui::materialize_menu_buttons(og::ui::pause_player_menu_screen_spec(),
+                                     pause_rows);
+    std::vector<button> seat_rows;
+    og::ui::materialize_menu_buttons(og::ui::seat_settings_menu_screen_spec_mp(),
+                                     seat_rows);
+    ASSERT_EQ(og::ui::kPausePlayerButtonCount,
+              static_cast<int>(pause_rows.size()));
+    ASSERT_EQ(kSeatSettingsButtonCountMP, static_cast<int>(seat_rows.size()));
+
+    const auto& p = pause_rows;
+    const auto& s = seat_rows;
+
+    // Column A: DIRECTION, INPUT, and (seat) TEAM share one left edge.
+    for (const button* b :
+         {&p[og::ui::kPausePlayerModeIndex], &p[og::ui::kPausePlayerInputIndex],
+          &s[kSeatSettingsModeIndex], &s[kSeatSettingsInputRowMP],
+          &s[kSeatSettingsTeamIndex]})
+        EXPECT_EQ(kPlayerScreenColAX, b->x) << b->id;
+    // Column B: REMAP and ZOOM share a left edge and end at the panel edge.
+    for (const button* b :
+         {&p[og::ui::kPausePlayerRemapIndex], &p[og::ui::kPausePlayerZoomIndex],
+          &s[kSeatSettingsRemapIndex], &s[kSeatSettingsZoomRowMP]})
+    {
+        EXPECT_EQ(kPlayerScreenColBX, b->x) << b->id;
+        EXPECT_EQ(kPlayerScreenPanelRightX, b->x + b->sizex) << b->id;
+    }
+    // Column C: RESET and the four HUD rows share left AND right edges.
+    for (const button* b :
+         {&p[og::ui::kPausePlayerResetIndex],
+          &p[og::ui::kPausePlayerHudRadarIndex],
+          &p[og::ui::kPausePlayerHudLifeIndex],
+          &p[og::ui::kPausePlayerHudFoesIndex],
+          &p[og::ui::kPausePlayerHudScoreIndex],
+          &s[kSeatSettingsResetIndex], &s[kSeatSettingsHudRadarRowMP],
+          &s[kSeatSettingsHudScoreRowMP]})
+    {
+        EXPECT_EQ(kPlayerScreenColCX, b->x) << b->id;
+        EXPECT_EQ(kPlayerScreenColCX + kPlayerScreenColCW, b->x + b->sizex)
+            << b->id;
+    }
+    // Uniform HUD pitch, and the stack is co-terminous with the panel.
+    const button& radar = p[og::ui::kPausePlayerHudRadarIndex];
+    const button& life = p[og::ui::kPausePlayerHudLifeIndex];
+    const button& foes = p[og::ui::kPausePlayerHudFoesIndex];
+    const button& score = p[og::ui::kPausePlayerHudScoreIndex];
+    EXPECT_EQ(kPlayerScreenHudPitch, life.y - radar.y);
+    EXPECT_EQ(kPlayerScreenHudPitch, foes.y - life.y);
+    EXPECT_EQ(kPlayerScreenHudPitch, score.y - foes.y);
+    EXPECT_EQ(kPlayerScreenHudTopY, radar.y);
+    // Co-terminous with the panel: the panel constant is a draw_button
+    // INCLUSIVE corner row; button extent y+sizey is EXCLUSIVE, so the same
+    // bottom ink row differs by exactly one.
+    EXPECT_EQ(kPlayerScreenPanelBottomY + 1, score.y + score.sizey);
+    // Band rhythm: band1->band2 gap equals band2->panel gap.
+    EXPECT_EQ(kPlayerScreenBand2Y - (kPlayerScreenBand1Y + kPlayerScreenBandH),
+              kPlayerScreenPanelTopY -
+                  (kPlayerScreenBand2Y + kPlayerScreenBandH));
+
+    // §7.1 identity: every row shared by both screens has IDENTICAL geometry.
+    const std::pair<int, int> shared[] = {
+        {og::ui::kPausePlayerBackIndex, kSeatSettingsBackIndex},
+        {og::ui::kPausePlayerModeIndex, kSeatSettingsModeIndex},
+        {og::ui::kPausePlayerRemapIndex, kSeatSettingsRemapIndex},
+        {og::ui::kPausePlayerResetIndex, kSeatSettingsResetIndex},
+        {og::ui::kPausePlayerInputIndex, kSeatSettingsInputRowMP},
+        {og::ui::kPausePlayerZoomIndex, kSeatSettingsZoomRowMP},
+        {og::ui::kPausePlayerHudRadarIndex, kSeatSettingsHudRadarRowMP},
+        {og::ui::kPausePlayerHudLifeIndex, kSeatSettingsHudLifeRowMP},
+        {og::ui::kPausePlayerHudFoesIndex, kSeatSettingsHudFoesRowMP},
+        {og::ui::kPausePlayerHudScoreIndex, kSeatSettingsHudScoreRowMP},
+        {og::ui::kPausePlayerRemoveIndex, kSeatSettingsRemoveIndex},
+    };
+    for (const auto& [pi, si] : shared)
+    {
+        const auto pu = static_cast<std::size_t>(pi);
+        const auto su = static_cast<std::size_t>(si);
+        EXPECT_EQ(s[su].x, p[pu].x) << p[pu].id;
+        EXPECT_EQ(s[su].y, p[pu].y) << p[pu].id;
+        EXPECT_EQ(s[su].sizex, p[pu].sizex) << p[pu].id;
+        EXPECT_EQ(s[su].sizey, p[pu].sizey) << p[pu].id;
+    }
 }

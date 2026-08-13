@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <cstddef>
+#include <string>
 
 namespace og::input_native
 {
@@ -24,6 +25,8 @@ enum class EventType : std::uint8_t
     JoyHatMotion,
     JoyButtonDown,
     JoyButtonUp,
+    JoyDeviceAdded,
+    JoyDeviceRemoved,
     Quit
 };
 
@@ -75,6 +78,13 @@ struct EventData
     int joy_hat_which = 0;
     int joy_hat_hat = 0;
     int joy_hat_value = 0;
+
+    // Hotplug (JoyDeviceAdded/Removed): the 0-based device index when the
+    // instance id is still enumerable (Added fires after the device joins the
+    // list), or -1 when it is not (Removed fires after the device left). The
+    // raw SDL instance id rides alongside for logging/diagnostics.
+    int joy_device_index = -1;
+    int joy_device_instance = 0;
 
     WindowEventType window_event = WindowEventType::Unknown;
     int window_data1 = 0;
@@ -131,19 +141,42 @@ void reset_keyboard_state();
 
 using JoystickHandle = void*;
 int num_joysticks();
+// Opens the device at a 0-based enumeration index. Returns nullptr when the
+// index is out of range AND when the device node cannot be opened — the udev
+// case: the device enumerates through num_joysticks() but its /dev node denies
+// read permission. Every caller must treat a null handle as "this device is
+// not usable", never as "no device here".
 JoystickHandle joystick_open(int index);
+#ifdef TESTING
+// Test seam for that case: bit i set = joystick_open(i) returns nullptr while
+// the device keeps enumerating normally. 0 (the default) opens for real.
+void set_joystick_open_failure_mask(unsigned int mask);
+#endif
 int joystick_num_axes(JoystickHandle joystick);
 int joystick_num_buttons(JoystickHandle joystick);
 int joystick_num_hats(JoystickHandle joystick);
 int joystick_get_axis(JoystickHandle joystick, int axis);
 int joystick_get_button(JoystickHandle joystick, int button);
 int joystick_get_hat(JoystickHandle joystick, int hat);
+// Stable device-model identity for persistence (SDL joystick GUID as text).
+// "" when device_index is out of range. Note SDL GUIDs identify the device
+// model, not the unit: two identical pads share one GUID.
+std::string joystick_device_guid(int device_index);
 void joystick_set_event_state(bool enabled);
 bool joystick_subsystem_initialized();
 void joystick_quit_subsystem();
 void joystick_init_subsystem();
 
+// The yield every blocking in-game loop owes the browser: natively a plain
+// delay, on the web an SDL_Delay that suspends through -sASYNCIFY. A loop
+// that spins without calling it never hands control back and hangs the tab.
 void sleep_ms(int ms);
+#ifdef TESTING
+// Monotonic count of sleep_ms() calls — lets a test prove a blocking modal
+// actually yields instead of busy-waiting (natively the sleep itself is
+// invisible, so "the call returned" proves nothing on its own).
+unsigned long yield_count();
+#endif
 void show_cursor(bool show);
 // Start a native text-input session and, on web touch devices, describe the
 // active prompt to the DOM keyboard affordance. `max_bytes` is the usable

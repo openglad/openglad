@@ -27,6 +27,9 @@
 #include <openglad/interface/render/pal32.h>
 #include <openglad/resources/our_palette.h>
 #include <openglad/interface/session_state.h>
+#include <openglad/interface/ui/picker_common.h>
+#include <openglad/resources/gparser.h>
+#include <algorithm>
 #include <cstddef>
 #include <cstdio>
 #include <span>
@@ -122,11 +125,55 @@ short set_palette(std::span<const unsigned char> newpalette)
 {
 	std::size_t i;
 
+	// The user's BRIGHTNESS survives the swap. Every palette source in the
+	// game funnels through here (level start, the keyframe palette sync,
+	// the cheat palette, the intro fades), and each one used to hand the
+	// display an un-gamma'd palette.
+	const Sint32 gamma = display_brightness_steps();
+	if (gamma != 0)
+	{
+		adjust_palette(newpalette, gamma);
+		return 1;
+	}
+
 	// Copy over the palette info ..
 	for (i = 0; i < 768; i++)
 		og::runtime::current_session->curpal_[i] = newpalette[i];
 
 	return 1;
+}
+
+//
+// display_brightness_steps / set_display_brightness_steps
+// The applied gamma, seeded from cfg graphics/brightness the first time a
+// palette is set in this session (the boot seed: video_init_palettes runs
+// after cfg.load_settings()).
+//
+Sint32 display_brightness_steps()
+{
+	og::runtime::SessionState& session = *og::runtime::current_session;
+	if (!session.display_brightness_seeded_)
+	{
+		session.display_brightness_seeded_ = true;
+		session.display_brightness_ = og::ui::parse_brightness_steps(
+			cfg.get_setting("graphics", "brightness"));
+	}
+	return static_cast<Sint32>(session.display_brightness_);
+}
+
+void set_display_brightness_steps(Sint32 steps)
+{
+	og::runtime::SessionState& session = *og::runtime::current_session;
+	session.display_brightness_seeded_ = true;
+	session.display_brightness_ =
+		std::clamp(static_cast<int>(steps), og::ui::kBrightnessStepMin,
+		           og::ui::kBrightnessStepMax);
+}
+
+void reload_display_brightness_from_cfg()
+{
+	og::runtime::current_session->display_brightness_seeded_ = false;
+	(void)display_brightness_steps();
 }
 
 //
