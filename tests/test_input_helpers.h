@@ -7,6 +7,19 @@
 #include <mutex>
 #include <string>
 
+// Push a fake mouse motion event to (x, y) in window coordinates. Moving the
+// pointer off a button is the only way to clear its hover highlight, which a
+// click leaves behind under the cursor.
+inline void inject_mouse_motion(int x, int y)
+{
+    SDL_Event event;
+    memset(&event, 0, sizeof(event));
+    event.type = SDL_EVENT_MOUSE_MOTION;
+    event.motion.x = static_cast<float>(x);
+    event.motion.y = static_cast<float>(y);
+    SDL_PushEvent(&event);
+}
+
 // Push a fake mouse button down event at game coordinates (x, y).
 // Game coordinates are 320x200; with the default viewport these map
 // 1:1 to SDL window coordinates.

@@ -32,6 +32,7 @@
 #include <openglad/interface/web_back_key.h>
 #include <openglad/interface/web_control_defaults.h>
 #include <openglad/interface/base.h>
+#include <openglad/interface/button.h>
 #include <openglad/interface/ui/scroll_view_layout.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/interface/screen.h>
@@ -837,10 +838,10 @@ bool help_engine_frame_tick(void* /*screen_state*/, int /*frame*/)
 	return true;
 }
 
-// Content pass (after draw_buttons; every rect here stays outside the
-// button bands): active-tab underline, the framed page of text, and the
-// footer bar with the key hint, the version string — the ONLY build-version
-// surface on web — and the page indicator.
+// Content pass (after draw_buttons): the framed page of text with the active
+// tab merged into its top edge, and the footer bar with the key hint, the
+// version string — the ONLY build-version surface on web — and the page
+// indicator.
 void help_engine_draw_content(void* /*screen_state*/)
 {
 	const HelpScreenState* const state = g_help_screen_state;
@@ -849,14 +850,25 @@ void help_engine_draw_content(void* /*screen_state*/)
 	screen* const scr = og::runtime::current_session->myscreen_;
 	text& mytext = scr->text_normal;
 
-	// Active-tab underline in the 2px gap between the strip and the frame.
-	const int tab_x = kHelpTabX(static_cast<int>(state->tab));
-	scr->draw_text_bar(tab_x + 1, kHelpTabY + kHelpTabHeight + 1,
-	                   tab_x + kHelpTabWidth - 1, kHelpFrameTop - 1);
-
 	// Content frame and the current page of flowed text.
 	scr->draw_button(kHelpFrameLeft, kHelpFrameTop, kHelpFrameRight,
-	                 kHelpFrameBottom, 3, 1);
+	                 kHelpFrameBottom, kHelpFrameBorder, 1);
+
+	// Folder-tab merge: repaint the connector band in the button colors so the
+	// active tab and the frame read as one surface. The face fill erases the
+	// tab's bottom bevel and the frame's top bevel over the tab's interior,
+	// and the two edge columns carry the tab's own side bevels down to where
+	// the frame's face begins. Buttons are drawn before the content pass, so
+	// covering both edges here is legitimate. Inactive tabs keep the plain gap.
+	const int tab_x = kHelpTabX(static_cast<int>(state->tab));
+	const int connector_h = kHelpConnectorBottom - kHelpConnectorTop + 1;
+	scr->fastbox(tab_x + 1, kHelpConnectorTop, kHelpTabWidth - 2, connector_h,
+	             static_cast<unsigned char>(BUTTON_FACING));
+	scr->fastbox(tab_x, kHelpConnectorTop, 1, connector_h,
+	             static_cast<unsigned char>(BUTTON_LEFT));
+	scr->fastbox(tab_x + kHelpTabWidth - 1, kHelpConnectorTop, 1, connector_h,
+	             static_cast<unsigned char>(BUTTON_RIGHT));
+
 	const int first_line = state->pager.first_index();
 	for (int line_index = first_line; line_index < state->pager.end_index();
 	     ++line_index)

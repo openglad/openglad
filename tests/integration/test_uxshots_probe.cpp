@@ -11,6 +11,7 @@
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/button.h>
+#include <openglad/interface/input.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
@@ -27,12 +28,16 @@
 #include <string>
 #include <vector>
 
+#include "../../src/interface/ui/picker_sdl_defs.h"
+
 void picker_main(Sint32 argc, char **argv);
 Sint32 create_team_menu(Sint32 arg1);
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
 extern std::atomic_bool g_test_present_pause_requested;
 extern std::atomic_bool g_test_present_paused;
+// Engine keyboard-nav hook (picker_input.cpp, TESTING only).
+extern int g_test_menu_nav_key;
 
 #include <openglad/interface/ui/picker_ui_state.h>
 static inline PickerState &pks() {
@@ -101,15 +106,21 @@ private:
   bool acquired_ = false;
 };
 
+// A frozen 320x200 frame, RGB triplets in row-major order.
+using FramePixels = std::vector<Uint8>;
+// Optional per-shot pixel oracle: runs on the copied frame, after the
+// presenter has resumed. Returning false fails the capture.
+using FrameCheck = bool (*)(const FramePixels &);
+
 // Verify the current canvas and optionally dump it as a binary PPM. Runs on
 // the injector thread. The presenter handshake freezes exactly one completed
 // frame while its pixels are copied, so a blank-frame assertion cannot pass or
 // fail based on overlap with the menu loop's next clear/redraw pass.
-bool capture_frame(const char *name) {
+bool capture_frame(const char *name, FrameCheck check = nullptr) {
   screen *scr = og::runtime::current_session->myscreen_;
   const char *output_dir = std::getenv("UXSHOTS_DIR");
   std::string path;
-  std::vector<Uint8> rgb;
+  FramePixels rgb;
   if (output_dir != nullptr && output_dir[0] != '\0') {
     std::error_code error;
     std::filesystem::create_directories(output_dir, error);
@@ -119,8 +130,10 @@ bool capture_frame(const char *name) {
       return false;
     }
     path = std::string(output_dir) + "/" + name + ".ppm";
-    rgb.reserve(320 * 200 * 3);
   }
+  const bool keep_pixels = !path.empty() || check != nullptr;
+  if (keep_pixels)
+    rgb.reserve(320 * 200 * 3);
 
   std::size_t nonblack_pixels = 0;
   {
@@ -134,13 +147,18 @@ bool capture_frame(const char *name) {
         scr->get_pixel(x, y, &r, &g, &b);
         if (r != 0 || g != 0 || b != 0)
           ++nonblack_pixels;
-        if (!path.empty()) {
+        if (keep_pixels) {
           rgb.push_back(r);
           rgb.push_back(g);
           rgb.push_back(b);
         }
       }
     }
+  }
+
+  if (check != nullptr && !check(rgb)) {
+    fprintf(stderr, "  [uxshot] %s: pixel check FAILED\n", name);
+    return false;
   }
 
   if (!path.empty()) {
@@ -1009,6 +1027,166 @@ TEST(UxShots, m_basecamp_many_seats_and_matchup) {
 
 // --- 13. full-screen help (#168): all three tabs plus a paged state -------
 
+// Folder-tab merge oracle (#201 polish). The active tab and the content frame
+// must read as one surface: across the connector band the active tab's column
+// carries the frame's face color, and the frame's top bevel line is broken
+// there while it survives under every inactive tab.
+struct ProbeRgb {
+  Uint8 r = 0, g = 0, b = 0;
+  bool operator==(const ProbeRgb &) const = default;
+};
+
+ProbeRgb frame_pixel(const FramePixels &rgb, int x, int y) {
+  const std::size_t index =
+      (static_cast<std::size_t>(y) * 320 + static_cast<std::size_t>(x)) * 3;
+  if (index + 2 >= rgb.size())
+    return {};
+  return {rgb[index], rgb[index + 1], rgb[index + 2]};
+}
+
+// Mid-tab column: away from both edge bevels and from the outline's side runs.
+int help_tab_probe_x(int tab) { return kHelpTabX(tab) + kHelpTabWidth / 2; }
+
+// `outline_rows` is how many rows of the active tab's connector band the
+// keyboard-focus outline is allowed to steal (its bottom run draws after the
+// content pass): 0 with no focus, 1 when the active tab is focused.
+bool check_help_tab_merge(const FramePixels &rgb, int active_tab,
+                          int outline_rows) {
+  // Reference colors are read off the frame itself rather than the palette:
+  // the injector thread's session carries its own palette registers, and a
+  // same-frame comparison stays valid through a fade. The face sample sits
+  // deep inside the frame, the bevel sample on the frame's top line right of
+  // the tab strip; a fully black (unrendered) frame collapses them and fails.
+  const ProbeRgb face =
+      frame_pixel(rgb, kHelpFrameRight - 4, kHelpFrameBottom - 4);
+  const ProbeRgb bevel = frame_pixel(rgb, kHelpFrameRight - 20, kHelpFrameTop);
+  if (face == bevel) {
+    fprintf(stderr, "  [uxshot] help merge: face and bevel samples match\n");
+    return false;
+  }
+
+  for (int tab = 0; tab < 3; ++tab) {
+    const int probe_x = help_tab_probe_x(tab);
+    int face_rows = 0;
+    for (int y = kHelpConnectorTop; y <= kHelpConnectorBottom; ++y) {
+      if (frame_pixel(rgb, probe_x, y) == face)
+        ++face_rows;
+    }
+    const int band_rows = kHelpConnectorBottom - kHelpConnectorTop + 1;
+    const int want = (tab == active_tab) ? band_rows - outline_rows : 0;
+    if (face_rows != want) {
+      fprintf(stderr,
+              "  [uxshot] help merge: tab %d connector has %d face rows, "
+              "expected %d\n",
+              tab, face_rows, want);
+      return false;
+    }
+    // The frame's top bevel line: broken under the active tab, intact under
+    // the others.
+    const bool bevel_intact =
+        frame_pixel(rgb, probe_x, kHelpFrameTop) == bevel;
+    if (bevel_intact == (tab == active_tab)) {
+      fprintf(stderr, "  [uxshot] help merge: tab %d frame bevel intact=%d\n",
+              tab, static_cast<int>(bevel_intact));
+      return false;
+    }
+  }
+  return true;
+}
+
+bool check_help_controls_merged(const FramePixels &rgb) {
+  return check_help_tab_merge(rgb, kHelpMenuControlsTabIndex, 0);
+}
+
+bool check_help_classes_merged(const FramePixels &rgb) {
+  return check_help_tab_merge(rgb, kHelpMenuClassesTabIndex, 0);
+}
+
+// The same frame with no keyboard focus, kept as the reference the focus shot
+// diffs against.
+FramePixels g_help_editor_unfocused;
+
+bool check_help_editor_merged(const FramePixels &rgb) {
+  g_help_editor_unfocused = rgb;
+  return check_help_tab_merge(rgb, kHelpMenuEditorTabIndex, 0);
+}
+
+// With the EDITOR tab focused the merge must survive except for the one row
+// the outline's bottom run occupies, and the outline's left, right and top
+// runs must all still be visible around the tab. The outline color is taken
+// from the frame — whatever the focused frame paints where the unfocused one
+// did not — and all three surviving runs must carry it. The runs breathe with
+// the pulse (0..3px outside the face), so each is searched over its band.
+bool check_help_editor_focused(const FramePixels &rgb) {
+  if (!check_help_tab_merge(rgb, kHelpMenuEditorTabIndex, 1))
+    return false;
+  if (g_help_editor_unfocused.size() != rgb.size()) {
+    fprintf(stderr, "  [uxshot] help focus: no unfocused reference frame\n");
+    return false;
+  }
+  const int tab_x = kHelpTabX(kHelpMenuEditorTabIndex);
+  const int pulse = 3;
+  const int run_top = kHelpTabY + 4;
+  const int run_bottom = kHelpTabY + 11;
+
+  // The left run is the outline's first appearance; its color anchors the
+  // other two runs.
+  ProbeRgb outline;
+  bool found_left = false;
+  for (int y = run_top; y <= run_bottom && !found_left; ++y) {
+    for (int x = tab_x - pulse; x <= tab_x; ++x) {
+      const ProbeRgb here = frame_pixel(rgb, x, y);
+      if (here != frame_pixel(g_help_editor_unfocused, x, y)) {
+        outline = here;
+        found_left = true;
+        break;
+      }
+    }
+  }
+  if (!found_left) {
+    fprintf(stderr, "  [uxshot] help focus: outline left run missing\n");
+    return false;
+  }
+  auto run_found = [&](int x0, int x1, int y0, int y1) {
+    for (int y = y0; y <= y1; ++y)
+      for (int x = x0; x <= x1; ++x)
+        if (frame_pixel(rgb, x, y) == outline)
+          return true;
+    return false;
+  };
+  if (!run_found(tab_x + kHelpTabWidth, tab_x + kHelpTabWidth + pulse, run_top,
+                 run_bottom)) {
+    fprintf(stderr, "  [uxshot] help focus: outline right run missing\n");
+    return false;
+  }
+  // Above the tab: at the top of its swing the horizontal run can sit one row
+  // off-canvas, so the band spans the whole outline width — the side runs
+  // reach these rows too, and either way the outline still closes above the
+  // tab. Nothing in the connector can reach this far up.
+  if (!run_found(tab_x - pulse, tab_x + kHelpTabWidth + pulse, 0, kHelpTabY)) {
+    fprintf(stderr, "  [uxshot] help focus: outline top run missing\n");
+    return false;
+  }
+  return true;
+}
+
+// One keyboard-nav step, applied through the engine's testing hook (real key
+// events can't be driven from an injector thread).
+void help_nav_step(int key) {
+  g_test_menu_nav_key = key;
+  SDL_Delay(200);
+}
+
+// Park the pointer over the content frame. interact() leaves the cursor on the
+// button it clicked, and that hover highlight is the same yellow as the
+// keyboard-focus outline — the focus shot can only be told apart from its
+// reference once no button is hovered.
+void help_park_pointer() {
+  const auto [win_x, win_y] = ui_canvas_to_window(300.0f, 100.0f);
+  inject_mouse_motion(static_cast<int>(win_x), static_cast<int>(win_y));
+  SDL_Delay(200);
+}
+
 int help_screen_injector(void *data) {
   og::runtime::ensure_thread_session();
   ShotState *state = static_cast<ShotState *>(data);
@@ -1017,7 +1195,8 @@ int help_screen_injector(void *data) {
   interact("help");
   if (wait_for_interactable("help_tab_classes", 5000)) {
     SDL_Delay(500);
-    state->captures += capture_frame("help_controls");
+    state->captures +=
+        capture_frame("help_controls", &check_help_controls_merged);
     if (wait_for_interactable("help_page_next", 2000)) {
       SDL_Delay(300);
       interact("help_page_next");
@@ -1027,11 +1206,19 @@ int help_screen_injector(void *data) {
     SDL_Delay(300);
     interact("help_tab_classes");
     SDL_Delay(500);
-    state->captures += capture_frame("help_classes");
+    state->captures +=
+        capture_frame("help_classes", &check_help_classes_merged);
     SDL_Delay(300);
     interact("help_tab_editor");
     SDL_Delay(500);
-    state->captures += capture_frame("help_editor");
+    help_park_pointer();
+    state->captures += capture_frame("help_editor", &check_help_editor_merged);
+    // Walk the keyboard highlight from BACK onto the active (EDITOR) tab.
+    help_nav_step(KEY_UP);
+    help_nav_step(KEY_RIGHT);
+    help_nav_step(KEY_RIGHT);
+    state->captures +=
+        capture_frame("help_editor_focus", &check_help_editor_focused);
     SDL_Delay(300);
     interact("help_back");
   }
@@ -1057,7 +1244,7 @@ TEST(UxShots, n_help_screen) {
   cleanup_picker_state();
   g_picker_max_mainmenu_calls = 0;
   ASSERT_TRUE(state.finished);
-  ASSERT_EQ(4, state.captures);
+  ASSERT_EQ(5, state.captures);
 }
 
 TEST(UxShots, i_basecamp_paged) {

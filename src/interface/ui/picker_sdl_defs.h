@@ -430,8 +430,11 @@ inline constexpr int kHelpMenuEditorTabIndex = 2;
 inline constexpr int kHelpMenuBackIndex = 3;
 inline constexpr int kHelpMenuPrevIndex = 4;
 inline constexpr int kHelpMenuNextIndex = 5;
-// Tab strip: y=2..17 faces, 70px wide on a 75px pitch from x=5 (the frame's
-// left edge), leaving a 2px underline row (y=18..19) for the active tab.
+// Tab strip: 70px-wide faces on a 75px pitch from x=5 (the frame's left edge),
+// occupying rows kHelpTabY .. kHelpTabY + kHelpTabHeight - 1. The rows between
+// the strip and the frame are the connector band (kHelpConnector* below): the
+// ACTIVE tab is merged into the frame across it, inactive tabs leave it as
+// backdrop.
 inline constexpr int kHelpTabY = 2;
 inline constexpr int kHelpTabWidth = 70;
 inline constexpr int kHelpTabHeight = 15;
@@ -445,6 +448,16 @@ constexpr int kHelpTabX(int tab) { return kHelpFrameLeft + tab * kHelpTabPitch; 
 inline constexpr int kHelpFrameTop = 20;
 inline constexpr int kHelpFrameRight = 314;
 inline constexpr int kHelpFrameBottom = 160;
+// draw_button() paints this many nested bevel rings, so the frame's top bevel
+// owns rows kHelpFrameTop .. kHelpFrameTop + kHelpFrameBorder - 1 and its face
+// starts on the row below.
+inline constexpr int kHelpFrameBorder = 3;
+// Folder-tab merge: the active tab and the frame read as one surface. The
+// connector repaints from the tab's own bottom bevel row down through the
+// frame's last top-bevel row, so both of those edges disappear under the
+// active tab (help_engine_draw_content, after the frame is drawn).
+inline constexpr int kHelpConnectorTop = kHelpTabY + kHelpTabHeight - 1;
+inline constexpr int kHelpConnectorBottom = kHelpFrameTop + kHelpFrameBorder - 1;
 inline constexpr int kHelpTextX = 10;
 inline constexpr int kHelpTextTop = 28;
 inline constexpr int kHelpLinePitch = 7;
