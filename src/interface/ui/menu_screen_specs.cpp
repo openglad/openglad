@@ -1770,17 +1770,24 @@ BaseCampScreenState* g_base_camp_state = nullptr;
 // six below the final row. Player-seat assignments now own y=164..173.
 constexpr int kBaseCampRowY0 = 45;
 constexpr int kBaseCampRowPitch = 14;
-// Round-6 horizontal grid: the panel's inner face is x=8..311, with explicit
-// DEPLOY and TEAM columns before the trainable NAME body. Maximum-width solo
-// and network row strings end their last digit's ink at x=297/295 (EXP/LV
-// columns at 264/280); the per-row move-up face sits at 303..311 — five clear
-// pixels after the digits, ending flush with the inner face.
-// The right rail is ONE column: the roster pager '>', every per-row '^', the
-// seat rail's '+', and GO/READY all end on kBaseCampPanelRightX.
+// Round-6 horizontal grid: the roster panel is outside-to-outside with the
+// button columns (outer bevel x=8..311, inner grey face x=10..309), with
+// explicit DEPLOY and TEAM columns before the trainable NAME body.
+// Maximum-width solo and network row strings end their last digit's ink at
+// x=297/295 (EXP/LV columns at 264/280); the per-row move-up face sits at
+// 301..309 — three clear pixels after the digits, ending flush with the
+// panel's inner face.
+// The right rail is ONE column: the roster pager '>', the seat rail's '+',
+// and GO/READY all end on kBaseCampPanelRightX (the panel's OUTER edge);
+// the per-row '^' lives INSIDE the panel and ends on the inner face
+// (kBaseCampPanelInnerRightX).
 constexpr int kBaseCampGlyphAdvance = 6;  // small font pen advance
-// EXCLUSIVE right edge == the inner grey face's last column (311) + 1 == the
-// GO/READY right edge (244 + 68).
+// Panel OUTER right edge (EXCLUSIVE): the bevel's last column (311) + 1 ==
+// the GO/READY right edge (244 + 68) — outside-to-outside alignment.
 constexpr int kBaseCampPanelRightX = 312;
+// Panel inner-face right edge (EXCLUSIVE): the outer edge minus the 2px
+// bevel. In-panel controls (the per-row '^') end here.
+constexpr int kBaseCampPanelInnerRightX = kBaseCampPanelRightX - 2;
 constexpr int kBaseCampDeployColumnX = 23;
 constexpr int kBaseCampDeployColumnWidth = 14;
 // button.cpp centers a one-glyph label at (xloc+xend)/2 - (1*6 - 1)/2. The
@@ -1816,7 +1823,8 @@ constexpr int kBaseCampPageIndicatorX =
 constexpr int kBaseCampPagePrevX =
     kBaseCampPageIndicatorX - kBaseCampPagerGap - kBaseCampPagerWidth;
 constexpr int kBaseCampMoveUpWidth = 9;
-constexpr int kBaseCampMoveUpX = kBaseCampPanelRightX - kBaseCampMoveUpWidth;
+constexpr int kBaseCampMoveUpX =
+    kBaseCampPanelInnerRightX - kBaseCampMoveUpWidth;
 constexpr int kBaseCampAddSeatWidth = 14;
 constexpr int kBaseCampAddSeatX = kBaseCampPanelRightX - kBaseCampAddSeatWidth;
 constexpr int kBaseCampFamilySwatchGap = 1;
@@ -2000,7 +2008,7 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
     // same Scenario menu as the bottom command. Network status replaces
     // this line in multiplayer, so the per-frame rewire hides the zone.
     {.id = "scenario_line", .label = "",
-     .x = 6, .y = 14, .w = 208, .h = 12,
+     .x = 8, .y = 14, .w = 206, .h = 12,
      .action = ButtonAction::CreateScenarioMenu, .arg = -1,
      .nav = {.down = kCreateMenuScenarioIndex},
      .no_draw = true},
@@ -3250,9 +3258,11 @@ void base_camp_draw_background(void* /*screen_state*/)
 {
     picker_backdrop_draw_background(nullptr);
     screen* const game = og::runtime::current_session->myscreen_;
-    // Outer bevel (6,28)..(313,160); inner grey face (8,30)..(311,158).
-    // Content keeps a real inset on every edge instead of touching bevels.
-    game->draw_button(6, 28, 313, 160, 2, 1);
+    // Outer bevel (8,28)..(311,160); inner grey face (10,30)..(309,158) —
+    // outside-to-outside with the command strip (BACK/SEATS left edge 8,
+    // GO/'+'/'>' right edge 311). Content keeps a real inset on every edge
+    // instead of touching bevels.
+    game->draw_button(8, 28, 311, 160, 2, 1);
 }
 
 // The §2.5 content pass (after draw_buttons): header lines A/B, the page
@@ -3278,18 +3288,20 @@ void base_camp_draw_content(void* screen_state)
     // Line A (§9.10.3, G3): grey "COMPANY:" label + WHITE name (the 40-byte
     // save_name) on ONE shared backing strip — two strip_text calls would
     // leave a raw-backdrop seam between label and name — plus the gold
-    // block. Budget: 8 label chars + space + 26-char name clip = ink ending
-    // x<=217, 27px clear of the GOLD strip at x=244.
+    // block. Both strips share the panel's outside-to-outside lines: left
+    // edge 8, GOLD strip right edge 311 at its 11-char clip. Budget: 8 label
+    // chars + space + 26-char name clip = ink ending x<=219, 23px clear of
+    // the GOLD strip at x=242.
     std::string company = save.save_name;
     if (company.size() > 26)
         company.resize(26);
     {
         const int width = (9 + static_cast<int>(company.size())) * 6;
-        game->draw_rect_filled(6, 2, static_cast<Uint32>(width + 4), 8, PURE_BLACK, 150);
-        mytext.write_xy(8, 3, "COMPANY:", GREY, 1);
-        mytext.write_xy(62, 3, company.c_str(), WHITE, 1);
+        game->draw_rect_filled(8, 2, static_cast<Uint32>(width + 4), 8, PURE_BLACK, 150);
+        mytext.write_xy(10, 3, "COMPANY:", GREY, 1);
+        mytext.write_xy(64, 3, company.c_str(), WHITE, 1);
     }
-    strip_text(246, 3, format_base_camp_gold_label(save), YELLOW);
+    strip_text(244, 3, format_base_camp_gold_label(save), YELLOW);
 
     // Line B: solo scenario/deploy header, or the §9.12 (G5) networked
     // session status — role + room code + machine/player census ("HOSTING
@@ -3317,8 +3329,12 @@ void base_camp_draw_content(void* screen_state)
         line_b = format_base_camp_scen_line(save, game->world().title);
     }
     // §9.10.2 (G2): line B sits at y=17 — 14px below line A's y=3 baseline
-    // (round 1 had 10px) — with the pager cluster beside it at y=15.
-    strip_text(8, 17, line_b, line_b_color);
+    // (round 1 had 10px) — with the pager cluster beside it at y=15. Its
+    // backing strip starts on the panel's left line (strip_text backs the
+    // x=10 text with a 2px pad, so the strip rect starts at 8); the 34-char
+    // solo budget inks 10..213, strip rect 8..215 — 42px clear of the pager
+    // cluster at x=258.
+    strip_text(10, 17, line_b, line_b_color);
 
     // The "p/N" strip sits in the pager cluster's reserved middle slot;
     // strip_text backs its text with a 2px pad, so the text starts there.

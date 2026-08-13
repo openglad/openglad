@@ -466,11 +466,12 @@ void check_nav_closed_and_reachable(button* buttons, int count,
 
 // §2.5 base camp (the reimagined team build) at the §9.14 round-4 grid
 // with the §9.11 (G4) row-click-train shape: 8 deploy/team/row-body trios at
-// 14px pitch from y=45 (padded grey roster panel (6,28)..(313,160)), the page
-// cluster top-right at y=15 beside the relocated line B, and the bottom
+// 14px pitch from y=45 (padded grey roster panel (8,28)..(311,160) —
+// outside-to-outside with the command strip), the page cluster top-right at
+// y=15 beside the relocated line B, and the bottom
 // command strip BACK | HIRE | SCENARIO | NETWORK | GO at y=178. The TRAIN
 // column is DELETED: the TEAM chip (61,y,10,10) cycles team, the row body
-// (84,y,214,10) opens training, and ^ at x=303 moves a member up. Spec
+// (84,y,214,10) opens training, and ^ at x=301 moves a member up. Spec
 // ordinals group by kind (dep
 // 0-7, row body 8-15, team chip 16-23, pagers 24/25, scenario-line 26,
 // strip 27-31, ready twin 32) so MenuSpecRow args decode positionally. The
@@ -520,7 +521,7 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         {"roster_team_7", "", 61, 143, 10, 10, MenuNav{.up = 22, .down = 31, .left = 7, .right = 15}, false, true},
         {"roster_page_prev", "<", 258, 15, 14, 10, MenuNav{.down = 8, .right = 25}, true},
         {"roster_page_next", ">", 298, 15, 14, 10, MenuNav{.down = 8, .left = 24}, true},
-        {"scenario_line", "", 6, 14, 208, 12, MenuNav{.down = 29}, false, true},
+        {"scenario_line", "", 8, 14, 206, 12, MenuNav{.down = 29}, false, true},
         {"back", "BACK", 8, 178, 44, 18, MenuNav{.up = 7, .right = 28}, false},
         {"hire_troops", "HIRE", 58, 178, 50, 18, MenuNav{.up = 7, .left = 27, .right = 29}, false},
         {"scenario", "SCENARIO", 114, 178, 62, 18, MenuNav{.up = 26, .left = 28, .right = 30}, false},
@@ -547,21 +548,21 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
          MenuNav{.down = 31, .left = 38}, true},
         {"add_seat", "+", 298, 164, 14, 10,
          MenuNav{.down = 31, .left = 39}, false},
-        {"roster_up_0", "^", 303, 45, 9, 10,
+        {"roster_up_0", "^", 301, 45, 9, 10,
          MenuNav{.left = 8}, true},
-        {"roster_up_1", "^", 303, 59, 9, 10,
+        {"roster_up_1", "^", 301, 59, 9, 10,
          MenuNav{.left = 9}, true},
-        {"roster_up_2", "^", 303, 73, 9, 10,
+        {"roster_up_2", "^", 301, 73, 9, 10,
          MenuNav{.left = 10}, true},
-        {"roster_up_3", "^", 303, 87, 9, 10,
+        {"roster_up_3", "^", 301, 87, 9, 10,
          MenuNav{.left = 11}, true},
-        {"roster_up_4", "^", 303, 101, 9, 10,
+        {"roster_up_4", "^", 301, 101, 9, 10,
          MenuNav{.left = 12}, true},
-        {"roster_up_5", "^", 303, 115, 9, 10,
+        {"roster_up_5", "^", 301, 115, 9, 10,
          MenuNav{.left = 13}, true},
-        {"roster_up_6", "^", 303, 129, 9, 10,
+        {"roster_up_6", "^", 301, 129, 9, 10,
          MenuNav{.left = 14}, true},
-        {"roster_up_7", "^", 303, 143, 9, 10,
+        {"roster_up_7", "^", 301, 143, 9, 10,
          MenuNav{.left = 15}, true},
     };
 
@@ -683,20 +684,29 @@ TEST(MenuLayout, createmenu_basecamp_grid_relations)
     const int count = picker_createmenu_button_count();
     ASSERT_EQ(kCreateMenuButtonCount, count);
 
-    // (a) The right rail is ONE column: every control that reaches it ends on
-    // GO's right edge, which is the panel's inner face edge (8..311).
+    // (a) The right rail is ONE column: every control OUTSIDE the roster
+    // panel ends on GO's right edge, which is the panel's OUTER right edge
+    // (outer bevel 8..311, outside-to-outside with the command strip).
     const button& go = buttons[kCreateMenuGoIndex];
     const int rail_right = go.x + go.sizex;
-    EXPECT_EQ(312, rail_right) << "GO closes the panel's inner grey face";
-    std::vector<int> rail{kBaseCampPageNextIndex, kBaseCampAddSeatIndex,
-                          kCreateMenuReadyIndex};
-    for (int r = 0; r < kBaseCampRosterRowsPerPage; ++r)
-        rail.push_back(kBaseCampMoveUpBase + r);
+    EXPECT_EQ(312, rail_right) << "GO closes the panel's outer right edge";
+    const std::vector<int> rail{kBaseCampPageNextIndex, kBaseCampAddSeatIndex,
+                                kCreateMenuReadyIndex};
     for (const int index : rail)
     {
         const button& b = buttons[index];
         EXPECT_EQ(rail_right, b.x + b.sizex)
             << b.id << " must co-terminate with GO on the right rail";
+    }
+    // The per-row '^' lives INSIDE the panel: it co-terminates with the
+    // panel's inner grey face — GO's right edge minus the panel's 2px bevel
+    // inset.
+    for (int r = 0; r < kBaseCampRosterRowsPerPage; ++r)
+    {
+        const button& b = buttons[kBaseCampMoveUpBase + r];
+        EXPECT_EQ(rail_right - 2, b.x + b.sizex)
+            << b.id << " must hug the panel's inner face (outer edge minus "
+               "the 2px bevel)";
     }
 
     // (b) The seat cards are one uniform run: equal widths, equal pitch, one
