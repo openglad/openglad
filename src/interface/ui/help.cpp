@@ -437,9 +437,13 @@ short read_scenario(screen *s)
 		[&](int idx) { return s->get_level_description_line(idx); });
 }
 
-short read_campaign_intro(screen *s)
+// The intro-style scroller over one campaign's full description. Shared by
+// read_campaign_intro and the campaign browser's MORE control (which passes
+// the highlighted — not necessarily current — campaign id).
+static short scroll_campaign_description(screen *s,
+	const std::string& campaign_id)
 {
-	CampaignData data(s->save_data.current_campaign);
+	CampaignData data(campaign_id);
 	if (!data.load())
 		return 1;
 
@@ -448,6 +452,22 @@ short read_campaign_intro(screen *s)
 		static_cast<int>(data.description.size()), 240,
 		data.title.c_str(), HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8, 244, 119,
 		[&](int idx) { return data.getDescriptionLine(idx); });
+}
+
+short show_campaign_description(screen *scr, const std::string& campaign_id)
+{
+#ifdef TESTING
+	// Same guard as read_scenario: the viewer blocks on input, so test flows
+	// that click MORE must not hang unless a test opts into the real view.
+	if (!help_testing_force_scroll_text())
+		return 1;
+#endif
+	return scroll_campaign_description(scr, campaign_id);
+}
+
+short read_campaign_intro(screen *s)
+{
+	return scroll_campaign_description(s, s->save_data.current_campaign);
 }
 
 

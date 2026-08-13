@@ -19,6 +19,7 @@
 // From help.cpp
 short read_scenario(screen* scr);
 short read_campaign_intro(screen* scr);
+short show_campaign_description(screen* scr, const std::string& campaign_id);
 Sint32 show_general_help();
 std::unique_ptr<og::ui::IPickerClient> picker_testing_create_sdl_client();
 Sint32 help_testing_exercise_internal_paths();
@@ -394,6 +395,27 @@ TEST(HelpSmoke, help_read_campaign_intro_smoke_exits_on_input)
     ASSERT_NE(nullptr, thread.get()) << "failed to create injector thread";
 
     ASSERT_EQ(192, read_campaign_intro(og::runtime::current_session->myscreen_));
+    ASSERT_EQ(0, thread.join());
+}
+
+// The campaign browser's MORE control routes here with an explicit id; the
+// forced view must render the same scroller read_campaign_intro shows for
+// that campaign (same 192-scanline gladiator description), independent of
+// the save's current campaign.
+TEST(HelpSmoke, help_show_campaign_description_forced_view_scrolls)
+{
+    std::string& campaign = og::runtime::current_session->myscreen_->save_data.current_campaign;
+    CurrentCampaignGuard campaign_guard(campaign);
+    campaign = "tower";  // NOT the id under view
+    ForceScrollTextGuard force_scroll;
+    HelpTestingInputGuard input_guard;
+
+    SdlThreadJoinGuard thread(
+        SDL_CreateThread(intro_injector_thread, "desc_injector", nullptr));
+    ASSERT_NE(nullptr, thread.get()) << "failed to create injector thread";
+
+    ASSERT_EQ(192, show_campaign_description(
+                       og::runtime::current_session->myscreen_, "gladiator"));
     ASSERT_EQ(0, thread.join());
 }
 

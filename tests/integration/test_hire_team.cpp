@@ -42,7 +42,7 @@ static void cleanup_picker_state()
 // to name the character, which blocks on text input. Instead we test that
 // the hire menu loads, character cycling works, and we can exit cleanly.
 //
-// Flow: Main Menu -> Begin New Game -> (dismiss campaign intro) ->
+// Flow: Main Menu -> Begin New Game -> (accept company name) ->
 //       Team Build -> Hire Troops -> NEXT -> NEXT -> PREV -> Back -> Back
 
 struct HireState {
@@ -68,10 +68,9 @@ static int hire_injector(void* data)
     // §2.2: accept the generated company name at the name-entry screen.
     accept_generated_company_name();
 
-    // Dismiss campaign intro screen
-    SDL_Delay(1000);
-    fprintf(stderr, "  [test] dismissing campaign intro with Escape\n");
-    inject_key_press(SDLK_ESCAPE);
+    // No campaign intro here anymore (issue #186: it moved behind the
+    // campaign select, skipped under TESTING) — an Escape here would BACK
+    // out of the team-build screen instead.
 
     // New games now land on team build first, then enter hire explicitly.
     SDL_Delay(500);

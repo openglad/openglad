@@ -1066,20 +1066,39 @@ public:
 #ifdef TESTING
         // Keep legacy menu-injector tests stable: they script Begin New Game ->
         // Hire menu directly and do not interact with the campaign picker UI.
+        // (This also keeps the blocking intro below out of every test flow.)
         return og::runtime::current_session->myscreen_->save_data.current_campaign;
 #endif
-        CampaignResult result = pick_campaign(&og::runtime::current_session->myscreen_->save_data);
+        screen* game = og::runtime::current_session->myscreen_;
+        CampaignResult result = pick_campaign(&game->save_data);
         if (result.id.empty())
             return {};
 
-        og::runtime::current_session->myscreen_->save_data.current_campaign = result.id;
-        og::runtime::current_session->myscreen_->save_data.scen_num = static_cast<short>(
-            load_campaign(result.id, og::runtime::current_session->myscreen_->save_data.current_levels, result.first_level));
+        // A failed load (bad ENTER ID, corrupt package) must not write its
+        // negative return into scen_num: roll back to the previous campaign
+        // and stay on the main menu.
+        if (!og::ui::apply_campaign_selection(game->save_data, result.id,
+                                              result.first_level))
+        {
+            popup_dialog("SET CAMPAIGN", "Could not load campaign.");
+            return {};
+        }
         // #162: the campaign just mounted may ship its own entity art or pack
         // families. Between screens here — the next screen re-inits its
         // buttons before anything draws from the loader.
         sdl_entity_loader()->reload_graphics_if_stale();
         picker_lobby_sync_settings_from_save();
+
+        // The CHOSEN campaign's intro, now that the selection committed
+        // (issue #186 — it used to show the default campaign's intro before
+        // the picker ever ran).
+        release_mouse();
+        game->clearbuffer();
+        game->swap();
+        read_campaign_intro(game);
+        game->refresh();
+        grab_mouse();
+        game->clear();
         return result.id;
     }
 
@@ -2674,9 +2693,16 @@ Sint32 do_pick_campaign(Sint32 arg1)
    CampaignResult result = pick_campaign(&og::runtime::current_session->myscreen_->save_data);
    if(result.id.size() > 0)
    {
-        // Load new campaign
-        og::runtime::current_session->myscreen_->save_data.current_campaign = result.id;
-        og::runtime::current_session->myscreen_->save_data.scen_num = static_cast<short>(load_campaign(result.id, og::runtime::current_session->myscreen_->save_data.current_levels, result.first_level));
+        // Load new campaign. A failed load (bad ENTER ID, corrupt package)
+        // rolls the save and mount back instead of writing load_campaign's
+        // negative return into scen_num.
+        if (!og::ui::apply_campaign_selection(
+                og::runtime::current_session->myscreen_->save_data, result.id,
+                result.first_level))
+        {
+            popup_dialog("SET CAMPAIGN", "Could not load campaign.");
+            return MENU_REDRAW;
+        }
         // #162: same MENU_REDRAW position as do_pick_spritesheet — the frame
         // skeleton re-creates every button pixie (reset_buttons) and the
         // SCENARIO spec's guard frame_tick reloads the preview level before
