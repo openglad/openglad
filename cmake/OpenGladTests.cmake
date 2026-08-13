@@ -1127,6 +1127,13 @@ set_tests_properties(og_test_picker_network PROPERTIES
     RUN_SERIAL TRUE
     TIMEOUT 420
 )
+# og_test_view runs ~49s alone but is sleep-dominated (<1s CPU: injector
+# waits and menu-frame settles), so a contended parallel schedule
+# stretches its wall clock several-fold; it crossed the 180s default on
+# 2026-08-13 when the seat-chip suite landed in the same schedule.
+# Same reasoning as og_unit_data above: one generous budget in every
+# lane, and a genuine hang still trips well before the job cap.
+set_tests_properties(og_test_view PROPERTIES TIMEOUT 420)
 
 # og_test_menu_ui is the slowest integration binary: its injector flows
 # gate on fadeblack animations (~0.75-1s wall clock each), so it runs
