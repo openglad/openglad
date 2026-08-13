@@ -37,12 +37,24 @@
 #include <openglad/resources/save_data.h>
 
 #include "../../src/interface/ui/picker_sdl_defs.h"
+#include "test_input_helpers.h"
 #include "test_interact.h"
+
+#include <atomic>
 
 void glad_init(bool preserve_frame_timing = false);
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
 extern og::input_native::JoystickHandle joysticks[10];
+
+// Picker entry points for the full-flow RESTART regression (the fairy_death
+// idiom: picker_main blocks on the main thread, an injector drives the UI).
+void picker_main(Sint32 argc, char** argv);
+extern int g_picker_mainmenu_calls;
+extern int g_picker_max_mainmenu_calls;
+extern std::atomic<bool> g_test_in_game;
+extern std::atomic<int> g_test_game_epoch;
+extern std::atomic<int> g_test_game_frame_ticks;
 
 namespace
 {
@@ -1211,6 +1223,448 @@ TEST(PauseMenuFlow, real_menu_resume_add_remove_player_and_quit_via_interact)
     og::ui::pause_menu_testing_set_force_real(false);
     picker_testing_yes_or_no_queue_clear();
     set_game_speed(old_speed);
+    og::runtime::clear_local_transport_shadow(
+        *og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+    game_screen->world().end = 0;
+    game_screen->world().retry = false;
+}
+
+// ---------------------------------------------------------------------------
+// Regression (user report): pause menu -> RESTART MISSION -> confirm landed
+// back in Base Camp exactly like QUIT. The frame-level test above only proves
+// world().retry gets ARMED; this one reproduces the reporter's flow through
+// the REAL relaunch path — picker_main -> GO -> go_menu's
+// `do { glad_main } while (world().retry)` — and asserts the level actually
+// RELAUNCHES (g_test_game_epoch increments a second time and play continues)
+// instead of falling out to the team-build menu.
+
+namespace
+{
+
+struct RestartFlowState {
+    bool started = false;
+    bool finished = false;
+    bool game_started = false;
+    bool saw_relaunch = false;
+    bool relaunch_played = false;
+    const char* failure_message = nullptr;
+};
+
+constexpr int kRestartPollMs = 25;
+constexpr int kRestartStageTimeoutMs = 20'000;
+
+bool restart_wait_for_team_menu(int timeout_ms)
+{
+    int elapsed = 0;
+    int stable_polls = 0;
+    while (elapsed < timeout_ms)
+    {
+        bool has_hire_troops = false;
+        bool has_go = false;
+        for (const std::string& id : get_button_ids())
+        {
+            has_hire_troops = has_hire_troops || id == "hire_troops";
+            has_go = has_go || id == "go";
+        }
+        if (has_hire_troops && has_go)
+        {
+            if (++stable_polls >= 2)
+                return true;
+        }
+        else
+        {
+            stable_polls = 0;
+        }
+        SDL_Delay(50);
+        elapsed += 50;
+    }
+    return false;
+}
+
+int fail_restart_flow(RestartFlowState* state, const char* message)
+{
+    fprintf(stderr, "  [test] ERROR: %s\n", message);
+    state->failure_message = message;
+    og::ui::pause_menu_testing_clear_queue();
+    picker_testing_yes_or_no_queue_clear();
+
+    // Best-effort unwind so picker_main cannot deadlock: quit any running
+    // game, then back out of the team menu.
+    if (g_test_in_game.load(std::memory_order_acquire))
+    {
+        og::ui::pause_menu_testing_queue_outcome(
+            og::ui::PauseMenuResult::Quit, /*release_pause=*/false);
+        inject_key_press(SDLK_ESCAPE);
+        int waited_ms = 0;
+        while (g_test_in_game.load(std::memory_order_acquire) &&
+               waited_ms < kRestartStageTimeoutMs)
+        {
+            SDL_Delay(kRestartPollMs);
+            waited_ms += kRestartPollMs;
+        }
+        og::ui::pause_menu_testing_clear_queue();
+    }
+    if (restart_wait_for_team_menu(5'000))
+    {
+        SDL_Delay(250);
+        // §2.5 base camp: BACK sits on the command strip at (8,178,44,18).
+        const auto [back_x, back_y] = ui_canvas_to_window(30.0f, 187.0f);
+        inject_click(static_cast<int>(back_x), static_cast<int>(back_y));
+    }
+    state->finished = true;
+    return 0;
+}
+
+int restart_relaunch_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<RestartFlowState*>(data);
+    state->started = true;
+
+    // -- Main menu -> Continue -> Base Camp (team saved in save0) --
+    if (!wait_for_interactable("continue_game", 15'000))
+        return fail_restart_flow(state, "main menu never appeared");
+    SDL_Delay(750); // fadeblack eats events
+    interact("continue_game");
+    {
+        // The fade can eat the first click: re-click while the main menu is
+        // still up (the enter_team_menu_from_main_menu idiom).
+        int elapsed = 0;
+        while (elapsed < kRestartStageTimeoutMs &&
+               !has_interactable("hire_troops"))
+        {
+            if (has_interactable("continue_game"))
+                interact("continue_game");
+            SDL_Delay(250);
+            elapsed += 250;
+        }
+    }
+    if (!restart_wait_for_team_menu(kRestartStageTimeoutMs))
+        return fail_restart_flow(state, "team menu did not appear");
+    SDL_Delay(150);
+
+    // -- GO: enter the level through the real go_menu do/while --
+    const int epoch_before =
+        g_test_game_epoch.load(std::memory_order_acquire);
+    {
+        int elapsed = 0;
+        int since_click = 250;
+        while (elapsed < kRestartStageTimeoutMs &&
+               g_test_game_epoch.load(std::memory_order_acquire) ==
+                   epoch_before)
+        {
+            if (since_click >= 250 && has_interactable("go"))
+            {
+                interact("go");
+                since_click = 0;
+            }
+            SDL_Delay(50);
+            elapsed += 50;
+            since_click += 50;
+        }
+    }
+    if (g_test_game_epoch.load(std::memory_order_acquire) == epoch_before)
+        return fail_restart_flow(state, "game never started (epoch unchanged)");
+    state->game_started = true;
+
+    // Let the launched level actually play a few frames.
+    {
+        int waited_ms = 0;
+        while (g_test_game_frame_ticks.load(std::memory_order_acquire) < 3 &&
+               g_test_in_game.load(std::memory_order_acquire) &&
+               waited_ms < kRestartStageTimeoutMs)
+        {
+            SDL_Delay(kRestartPollMs);
+            waited_ms += kRestartPollMs;
+        }
+        if (g_test_game_frame_ticks.load(std::memory_order_acquire) < 3)
+            return fail_restart_flow(state, "game never advanced frames");
+    }
+
+    // -- The reporter's action: Esc -> RESTART MISSION -> confirm. The
+    // scripted outcome stands in for the (separately tested) menu clicks. --
+    og::ui::pause_menu_testing_clear_queue();
+    og::ui::pause_menu_testing_queue_outcome(
+        og::ui::PauseMenuResult::Restart, /*release_pause=*/false);
+    inject_key_press(SDLK_ESCAPE);
+
+    // -- EXPECTED: go_menu's while(world().retry) relaunches glad_main, so
+    // the epoch increments a SECOND time. --
+    {
+        int waited_ms = 0;
+        while (waited_ms < kRestartStageTimeoutMs)
+        {
+            if (g_test_game_epoch.load(std::memory_order_acquire) >=
+                epoch_before + 2)
+            {
+                state->saw_relaunch = true;
+                break;
+            }
+            SDL_Delay(kRestartPollMs);
+            waited_ms += kRestartPollMs;
+        }
+    }
+    if (!state->saw_relaunch)
+    {
+        return fail_restart_flow(
+            state,
+            "RESTART did not relaunch the level (no second game epoch; "
+            "landed back in Base Camp like QUIT)");
+    }
+
+    // -- Play continues in the relaunched level... --
+    {
+        int waited_ms = 0;
+        while (g_test_game_frame_ticks.load(std::memory_order_acquire) < 3 &&
+               g_test_in_game.load(std::memory_order_acquire) &&
+               waited_ms < kRestartStageTimeoutMs)
+        {
+            SDL_Delay(kRestartPollMs);
+            waited_ms += kRestartPollMs;
+        }
+        state->relaunch_played =
+            g_test_game_frame_ticks.load(std::memory_order_acquire) >= 3;
+    }
+    if (!state->relaunch_played)
+        return fail_restart_flow(state, "relaunched level never played");
+
+    // -- ...and a real QUIT still exits to Base Camp (no sticky retry). --
+    og::ui::pause_menu_testing_queue_outcome(
+        og::ui::PauseMenuResult::Quit, /*release_pause=*/false);
+    inject_key_press(SDLK_ESCAPE);
+    {
+        int waited_ms = 0;
+        while (g_test_in_game.load(std::memory_order_acquire) &&
+               waited_ms < kRestartStageTimeoutMs)
+        {
+            SDL_Delay(kRestartPollMs);
+            waited_ms += kRestartPollMs;
+        }
+        if (g_test_in_game.load(std::memory_order_acquire))
+            return fail_restart_flow(state, "QUIT after restart did not exit");
+    }
+
+    if (!restart_wait_for_team_menu(kRestartStageTimeoutMs))
+        return fail_restart_flow(state, "team menu did not return after quit");
+    SDL_Delay(250);
+    const auto [back_x, back_y] = ui_canvas_to_window(30.0f, 187.0f);
+    inject_click(static_cast<int>(back_x), static_cast<int>(back_y));
+
+    state->finished = true;
+    return 0;
+}
+
+} // namespace
+
+TEST(PauseMenuFlow, restart_mission_relaunches_level_through_picker_loop)
+{
+    trace_clear();
+    og::ui::pause_menu_testing_clear_queue();
+    picker_testing_yes_or_no_queue_clear();
+
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    game_screen->save_data.reset();
+    game_screen->save_data.numplayers = 1;
+    game_screen->save_data.current_campaign = "gladiator";
+    game_screen->save_data.current_levels["gladiator"] = 1;
+    game_screen->save_data.scen_num = 1;
+    {
+        // Sturdy team so the level neither wins nor loses underneath the test.
+        auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+        soldier->name = "Leader";
+        soldier->constitution = 200;
+        soldier->armor = 200;
+        game_screen->save_data.team_list[0] = std::move(soldier);
+        game_screen->save_data.team_size = 1;
+    }
+    ASSERT_TRUE(game_screen->save_data.save("save0"));
+
+    RestartFlowState state;
+    SDL_Thread* const thread = SDL_CreateThread(
+        restart_relaunch_injector, "restart_relaunch", &state);
+    ASSERT_TRUE(thread != nullptr);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+
+    picker_main(0, nullptr);
+
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    g_picker_max_mainmenu_calls = 0;
+    og::ui::pause_menu_testing_clear_queue();
+    picker_testing_yes_or_no_queue_clear();
+
+    ASSERT_TRUE(state.finished)
+        << (state.failure_message != nullptr ? state.failure_message
+                                             : "injector did not finish");
+    ASSERT_TRUE(state.game_started) << "GO must start the level";
+    EXPECT_TRUE(trace_contains("pause_menu", "restart_level"))
+        << "the restart request must reach local_transport_shadow_restart_level";
+    ASSERT_TRUE(state.saw_relaunch)
+        << "RESTART MISSION must relaunch the level through the picker "
+           "do/while (user report: it returned to Base Camp like QUIT)";
+    ASSERT_TRUE(state.relaunch_played)
+        << "the relaunched level must actually play frames";
+    ASSERT_EQ(nullptr, state.failure_message) << state.failure_message;
+}
+
+// ---------------------------------------------------------------------------
+// BUG repro (user report, PR #198): local 1-player game, pause menu ADD
+// PLAYER, resume, play, Esc again into the ADDED seat's player screen, cycle
+// INPUT — the app died with "InProcessTransport peer 1 is not connected"
+// (resolve_peer throw, caught only at main). This walks the reporter's exact
+// click sequence through the REAL menus and must survive with the transport
+// whole: two live in-process peers, a live world, and further play frames.
+
+namespace
+{
+
+int add_cycle_input_injector(void* /*data*/)
+{
+    og::runtime::ensure_thread_session();
+
+    // Menu 1: ADD PLAYER (P2 row appears in place), then RESUME.
+    if (!wait_for_interactable("pause_add_player", 10'000))
+        return 1;
+    SDL_Delay(300);
+    interact("pause_add_player");
+    if (!wait_for_interactable("pause_player_1", 10'000))
+        return 2;
+    SDL_Delay(300);
+    interact("pause_resume");
+
+    // Menu 2 (the main thread plays real frames, then sends Esc again):
+    // open the ADDED seat's player screen and cycle INPUT twice — the
+    // reporter's crash step — then BACK and RESUME.
+    if (!wait_for_interactable("pause_player_1", 15'000))
+        return 3;
+    SDL_Delay(300);
+    interact("pause_player_1");
+    if (!wait_for_interactable("pause_input", 10'000))
+        return 4;
+    SDL_Delay(300);
+    interact("pause_input");
+    SDL_Delay(200);
+    interact("pause_input");
+    SDL_Delay(200);
+    interact("pause_player_back");
+    if (!wait_for_interactable("pause_resume", 10'000))
+        return 5;
+    SDL_Delay(300);
+    interact("pause_resume");
+    return 0;
+}
+
+} // namespace
+
+TEST(PauseMenuFlow, real_menu_add_player_cycle_input_then_play_survives)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    reset_default_player_controls();
+
+    game_screen->save_data.reset();
+    game_screen->save_data.current_campaign = "gladiator";
+    game_screen->save_data.current_levels["gladiator"] = 1;
+    game_screen->save_data.scen_num = 1;
+    game_screen->save_data.numplayers = 1;
+    {
+        auto leader = std::make_unique<guy>(FAMILY_SOLDIER);
+        leader->name = "Leader";
+        leader->teamnum = 0;
+        game_screen->save_data.team_list[0] = std::move(leader);
+        game_screen->save_data.team_size = 1;
+    }
+    ASSERT_TRUE(game_screen->save_data.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    ASSERT_TRUE(
+        og::runtime::local_transport_active(*og::runtime::current_session));
+
+    og::ui::pause_menu_testing_set_force_real(true);
+    picker_testing_yes_or_no_queue_clear();
+
+    SDL_Thread* const injector = SDL_CreateThread(
+        add_cycle_input_injector, "add_cycle_injector", nullptr);
+    ASSERT_TRUE(injector != nullptr);
+
+    const float old_speed = og::runtime::current_session->g_game_speed_factor_;
+    set_game_speed(0.0f);
+
+    const auto run_escape_frame = [&]() {
+        EventScriptLocal script;
+        SDL_Event e{};
+        e.type = SDL_EVENT_KEY_DOWN;
+        e.key.key = SDLK_ESCAPE;
+        e.key.repeat = false;
+        script.events.push_back(e);
+        g_pause_script = &script;
+
+        GameLoopFrameState st;
+        GameLoopDeps deps;
+        deps.enable_render = false;
+        deps.enable_event_poll = true;
+        deps.enable_frame_timing = false;
+        deps.poll_event = pause_scripted_poll;
+        const GameFrameResult result =
+            game_frame_with_result(*game_screen, st, deps);
+        g_pause_script = nullptr;
+        return std::pair<GameFrameResult, bool>{result, st.done};
+    };
+
+    const auto run_play_frames = [&](int frames) {
+        GameLoopFrameState st;
+        GameLoopDeps deps;
+        deps.enable_render = false;
+        deps.enable_event_poll = true;
+        deps.enable_frame_timing = false;
+        for (int i = 0; i < frames; ++i)
+        {
+            const GameFrameResult result =
+                game_frame_with_result(*game_screen, st, deps);
+            ASSERT_EQ(GameFrameResult::Continue, result)
+                << "play frame " << i << " must continue";
+            if (st.done)
+                break;
+        }
+        ASSERT_FALSE(st.done) << "the session must survive play frames";
+    };
+
+    // Frame 1 blocks in the menu: ADD PLAYER + RESUME.
+    trace_clear();
+    const auto [add_result, add_done] = run_escape_frame();
+    EXPECT_EQ(GameFrameResult::Continue, add_result);
+    EXPECT_FALSE(add_done);
+    EXPECT_TRUE(trace_contains("pause_menu", "add_player"));
+    EXPECT_TRUE(trace_contains("seats", "add_player index=1"));
+    EXPECT_EQ(2, static_cast<int>(game_screen->save_data.numplayers));
+
+    // The user played with both seats before re-pausing.
+    run_play_frames(40);
+
+    // Frame 2 blocks again: P2's player screen, INPUT cycle x2, BACK, RESUME
+    // (the reporter's crash step).
+    const auto [cycle_result, cycle_done] = run_escape_frame();
+    EXPECT_EQ(GameFrameResult::Continue, cycle_result);
+    EXPECT_FALSE(cycle_done);
+
+    // The session and both in-process peers survived; further play works.
+    run_play_frames(40);
+    EXPECT_EQ(0, static_cast<int>(game_screen->world().end));
+
+    int injector_result = -1;
+    SDL_WaitThread(injector, &injector_result);
+    EXPECT_EQ(0, injector_result) << "injector leg " << injector_result
+                                  << " timed out";
+
+    og::ui::pause_menu_testing_set_force_real(false);
+    picker_testing_yes_or_no_queue_clear();
+    set_game_speed(old_speed);
+    reset_default_player_controls();
     og::runtime::clear_local_transport_shadow(
         *og::runtime::current_game_session);
     game_screen->world().delete_objects();

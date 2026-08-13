@@ -25,10 +25,12 @@
 #include <openglad/interface/render/view_layout.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
+#include <openglad/interface/ui/input_cycler.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/web_back_key.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/resources/company.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/resources/progression.h>
 
 #include <algorithm>
@@ -1593,6 +1595,18 @@ screen* local_transport_shadow_testing_server_screen(GameSession& session)
     return runtime->server_screen();
 }
 
+// Test-only: the authoritative GameServer itself (nullptr when this session
+// hosts none). Lets regression tests pin transport-level health — e.g. that
+// a mid-game seat add never sends the display mirror into the snapshot-hash
+// desync strike-out that disconnects the display peer.
+og::sim::GameServer* local_transport_shadow_testing_server(GameSession& session)
+{
+    const auto runtime = session.local_transport_runtime_;
+    if (runtime == nullptr || !runtime->authoritative_mode())
+        return nullptr;
+    return runtime->server.get();
+}
+
 #include "../../../tests/coverage_internal/local_transport_shadow_exit_prompt.inc"
 
 bool local_transport_shadow_testing_server_pending_exit_prompt(
@@ -1889,6 +1903,15 @@ bool local_transport_shadow_add_local_player(GameSession& session)
     // (viewscreen::resize reads it), then the view, then relayout.
     gameplay_screen.save_data.numplayers =
         static_cast<unsigned char>(new_index + 1);
+    // The new seat reads profile-pool slot N — which can duplicate a mapping
+    // an active seat already cycled onto (P1 on ARROWS, slot 1's live keymap
+    // IS factory arrows). Land it on the first unchosen mapping instead.
+    if (og::ui::ensure_unique_seat_mapping(cfg, static_cast<int>(new_index),
+                                           static_cast<int>(new_index + 1)))
+    {
+        save_player_control_settings_to_cfg(cfg);
+        cfg.save_settings();
+    }
     gameplay_screen.numviews = static_cast<short>(new_index + 1);
     build_display_view(gameplay_screen, static_cast<int>(new_index + 1),
                        static_cast<int>(new_index));

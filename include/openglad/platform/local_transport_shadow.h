@@ -21,6 +21,10 @@ class GameWorld;
 class viewscreen;
 class walker;
 
+namespace og::sim {
+class GameServer;
+}
+
 namespace og::runtime {
 
 class GameSession;
@@ -219,6 +223,12 @@ void local_transport_shadow_finish_tick(GameSession& session);
 // nullptr for a client-only or non-networked session. Lets tests reach into the
 // authoritative world (e.g. to clear foes and force a deterministic level win).
 screen* local_transport_shadow_testing_server_screen(GameSession& session);
+
+// Test-only: the authoritative GameServer itself (nullptr when this session
+// hosts none). Lets regression tests pin transport-level health, e.g. that a
+// mid-game seat add never drives the display mirror into the snapshot-hash
+// strike-out that disconnects the display peer.
+og::sim::GameServer* local_transport_shadow_testing_server(GameSession& session);
 
 // Test-only: attribute an exit/withdraw request to a given player and emit it on
 // the authoritative server, as if that player had touched an exit treasure.

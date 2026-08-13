@@ -13,6 +13,7 @@
 #include <vector>
 
 #include <openglad/gameplay/game_client.h>
+#include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/replay.h>
@@ -26,6 +27,7 @@
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/core/runtime_trace.h>
 #include <openglad/interface/replay_runtime.h>
+#include <openglad/interface/input_mappings.h>
 #include <openglad/interface/ui/pause_menu.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/core/test_trace.h>
@@ -3787,9 +3789,13 @@ TEST(GameLoop, game_frame_escape_pause_menu_quit_and_restart_outcomes)
         << "restart must arm the display world's retry for the picker loop";
     EXPECT_TRUE(trace_contains("pause_menu", "restart_level"));
 
-    // The picker relaunch reads world().retry AFTER glad_main's teardown
-    // (clear shadow + delete_objects) — prove the flag survives it, exactly
-    // as picker_team_build.cpp's do/while will read it...
+    // The picker relaunch latches world().retry right AFTER glad_main's
+    // teardown (clear shadow + delete_objects) — prove the flag survives it,
+    // exactly where picker_team_build.cpp's retry latch reads it. (The latch
+    // must read it there and NOT in the while() condition: the loop-tail
+    // reset(1) runs GameWorld::clear, which wipes the flag. The full picker
+    // relaunch is covered by PauseMenuFlow.restart_mission_relaunches_level_
+    // through_picker_loop in test_pause_menu.cpp.)
     og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
     game_screen->world().delete_objects();
     EXPECT_TRUE(game_screen->world().retry)
@@ -6262,4 +6268,278 @@ TEST(GameLoop, midgame_seat_gating_networked_and_count_limits)
     reset_default_player_controls();
     og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
     game_screen->world().delete_objects();
+}
+
+// PR #198 user report: local game, pause menu ADD PLAYER, resume, play, then
+// re-pause into the added seat's player screen — the app died with
+// "InProcessTransport peer 1 is not connected" (throw at resolve_peer, caught
+// only at main). This drives the reported sequence at frame level as a broad
+// safety net: the display peer stays transport-connected through a paused
+// stock-spawn add, resumed play across several periodic snapshot-hash
+// checkpoints, and a re-pause dwell. The minimized failing shape of the
+// crash lives in midgame_seat_churn_while_paused_must_not_desync_display_peer
+// below.
+TEST(GameLoop, midgame_add_player_resume_play_repause_keeps_transport_alive)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    reset_default_player_controls();
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.allied_mode = 1;
+    save.my_team = 0;
+
+    auto leader = std::make_unique<guy>(FAMILY_SOLDIER);
+    leader->name = "Leader";
+    leader->teamnum = 0;
+    save.team_list[0] = std::move(leader);
+    save.team_size = 1;
+    ASSERT_TRUE(save.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(
+        og::runtime::local_transport_active(*og::runtime::current_session));
+    ASSERT_EQ(1u, og::runtime::local_transport_client_count(session));
+
+    std::uint32_t tick = 0;
+    // Land the pause exactly on a periodic hash-checkpoint tick
+    // (KEYFRAME_INTERVAL_TICKS) so the frozen-tick dwell also covers the
+    // checkpoint-adjacent bookkeeping shape.
+    midgame_pump(session, og::sim::KEYFRAME_INTERVAL_TICKS, tick);
+
+    // Esc: the pause menu opens its pause and pumps while blocking.
+    og::runtime::local_transport_shadow_request_pause_keepalive(session);
+    for (int i = 0;
+         i < 4 && !og::runtime::local_transport_shadow_is_paused(session); ++i)
+    {
+        ASSERT_TRUE(og::runtime::local_transport_shadow_pump_paused(session));
+    }
+    ASSERT_TRUE(og::runtime::local_transport_shadow_is_paused(session));
+
+    // The reporter's roster had one deployed hero and no claimable teammate,
+    // so the add SPAWNED a stock soldier (a brand-new server entity created
+    // between ticks — the shape that must survive the delta stream). Park
+    // every unclaimed lead-team walker on an unused team to force that path.
+    {
+        screen* const server_screen =
+            og::runtime::local_transport_shadow_testing_server_screen(session);
+        ASSERT_NE(nullptr, server_screen);
+        const short lead_team = game_screen->viewob[0]->my_team;
+        short empty_team = -1;
+        for (short t = 0; t < 4 && empty_team < 0; ++t)
+        {
+            if (t != lead_team &&
+                midgame_find_living_on_team(server_screen, t) == nullptr)
+            {
+                empty_team = t;
+            }
+        }
+        ASSERT_NE(-1, static_cast<int>(empty_team));
+        for (const auto& uptr : server_screen->world().oblist)
+        {
+            walker* const entity = uptr.get();
+            if (entity != nullptr && !entity->dead() &&
+                entity->query_order() == Order::Living &&
+                entity->user() == -1 &&
+                static_cast<short>(entity->team_num()) == lead_team)
+            {
+                entity->set_team_num(static_cast<unsigned char>(empty_team));
+            }
+        }
+    }
+
+    // ADD PLAYER from the open menu.
+    trace_clear();
+    ASSERT_TRUE(og::runtime::local_transport_shadow_add_local_player(session));
+    ASSERT_TRUE(trace_contains("seats", "add_player index=1"));
+    ASSERT_TRUE(trace_contains("seats", "source=spawned"))
+        << "this regression needs the stock-spawn shape (the reporter's)";
+    ASSERT_EQ(2u, og::runtime::local_transport_client_count(session));
+
+    // The menu stays open while the user reads it: more paused pumps than
+    // the 120-strike desync bound, so a wedged expectation queue (the
+    // pre-fix defect) cannot hide inside the dwell.
+    for (int i = 0; i < 140; ++i)
+        ASSERT_TRUE(og::runtime::local_transport_shadow_pump_paused(session));
+    EXPECT_FALSE(trace_contains("net", "server_desync_disconnect"))
+        << "the display peer must survive the open pause menu after ADD";
+
+    // RESUME, then real play on both seats. 420 ticks crosses seven
+    // KEYFRAME_INTERVAL_TICKS (=60) hash checkpoints — pre-fix the display
+    // mirror desyncs and the server cuts peer 1, after which the next
+    // send_input throws the reported transport error.
+    ASSERT_TRUE(og::runtime::local_transport_shadow_toggle_pause(session));
+    trace_clear();
+    midgame_pump(session, 420, tick);
+    EXPECT_FALSE(trace_contains("net", "server_desync_disconnect"))
+        << "the display peer must never be cut as desynced after ADD PLAYER";
+    EXPECT_EQ(0, static_cast<int>(game_screen->world().end))
+        << "the session must survive resumed play after ADD PLAYER";
+    ASSERT_EQ(2u, og::runtime::local_transport_client_count(session));
+
+    // Re-pause into the added seat's player screen: the pause pump keeps
+    // running while the user cycles INPUT there.
+    og::runtime::local_transport_shadow_request_pause_keepalive(session);
+    for (int i = 0; i < 10; ++i)
+        ASSERT_TRUE(og::runtime::local_transport_shadow_pump_paused(session));
+    ASSERT_TRUE(og::runtime::local_transport_shadow_is_paused(session));
+    og::runtime::local_transport_shadow_request_pause_keepalive(session);
+    for (int i = 0; i < 10; ++i)
+        ASSERT_TRUE(og::runtime::local_transport_shadow_pump_paused(session));
+
+    // Resume once more and keep playing: the transport must still be whole.
+    ASSERT_TRUE(og::runtime::local_transport_shadow_toggle_pause(session));
+    midgame_pump(session, 60, tick);
+    EXPECT_EQ(0, static_cast<int>(game_screen->world().end));
+
+    reset_default_player_controls();
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+}
+
+// Shared boot/teardown for the mid-game seat regressions below: a 1-hero
+// local save through glad_init (the PR #198 reporter's session shape).
+namespace {
+void midgame_one_hero_boot(screen* game_screen)
+{
+    reset_default_player_controls();
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.allied_mode = 1;
+    save.my_team = 0;
+    auto leader = std::make_unique<guy>(FAMILY_SOLDIER);
+    leader->name = "Leader";
+    leader->teamnum = 0;
+    save.team_list[0] = std::move(leader);
+    save.team_size = 1;
+    ASSERT_TRUE(save.save("save0"));
+    glad_init();
+}
+
+void midgame_one_hero_teardown(screen* game_screen)
+{
+    reset_default_player_controls();
+    og::runtime::clear_local_transport_shadow(
+        *og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+    game_screen->world().end = 0;
+}
+
+} // namespace
+
+// The reporter's crash, minimized (fuzz-derived): seat churn against a
+// PAUSED world. While the pause pins the tick, the server keeps answering
+// the display's keyframe requests at that same frozen tick; a transient
+// hash mismatch (the display drains a seat mutation's ControlChange stamp
+// ahead of its snapshot) leaves an expected-hash entry that a paused tick
+// can neither match nor prune, so every later check strikes the stale
+// front until kMaxConsecutiveSnapshotHashMismatches cuts the DISPLAY peer
+// (net "server_desync_disconnect") and the next send dies with the
+// reported "InProcessTransport peer 1 is not connected" throw.
+TEST(GameLoop, midgame_seat_churn_while_paused_must_not_desync_display_peer)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    midgame_one_hero_boot(game_screen);
+    trace_clear();
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(
+        og::runtime::local_transport_active(*og::runtime::current_session));
+
+    std::uint32_t tick = 0;
+    midgame_pump(session, 21, tick);
+
+    // ADD while running, a few frames, then pause (menu opens).
+    ASSERT_TRUE(og::runtime::local_transport_shadow_add_local_player(session));
+    midgame_pump(session, 3, tick);
+    og::runtime::local_transport_shadow_request_pause_keepalive(session);
+    midgame_pump(session, 2, tick);
+
+    // REMOVE seat 0 and ADD again with the world frozen under the menu, the
+    // pause pump running between clicks.
+    ASSERT_TRUE(
+        og::runtime::local_transport_shadow_remove_local_player(session, 0));
+    for (int i = 0; i < 20; ++i)
+        ASSERT_TRUE(og::runtime::local_transport_shadow_pump_paused(session));
+    ASSERT_TRUE(og::runtime::local_transport_shadow_add_local_player(session));
+
+    // The menu stays open: enough paused pumps for the pre-fix
+    // orphaned-expectation loop to reach the 120-strike disconnect.
+    for (int i = 0; i < 140; ++i)
+    {
+        ASSERT_TRUE(og::runtime::local_transport_shadow_pump_paused(session))
+            << "paused pump " << i;
+        ASSERT_FALSE(trace_contains("net", "server_desync_disconnect"))
+            << "the display peer was cut as desynced at paused pump " << i
+            << " (the reporter's crash: the next send then throws "
+               "'InProcessTransport peer 1 is not connected')";
+    }
+
+    // The frozen tick means the hash bookkeeping can only heal, never age
+    // out: a transient blip may log a mismatch or two, but the pre-fix
+    // wedged-queue loop racked up one PER PAUSED PUMP (>=120 here).
+    {
+        og::sim::GameServer* const server =
+            og::runtime::local_transport_shadow_testing_server(session);
+        ASSERT_NE(nullptr, server);
+        EXPECT_LT(server->snapshot_hash_mismatch_count(),
+                  static_cast<std::size_t>(
+                      og::sim::kMaxConsecutiveSnapshotHashMismatches))
+            << "paused seat churn must not grind hash mismatches";
+    }
+
+    // RESUME and keep playing: transport whole, both seats alive.
+    ASSERT_TRUE(og::runtime::local_transport_shadow_toggle_pause(session));
+    midgame_pump(session, 60, tick);
+    EXPECT_EQ(0, static_cast<int>(game_screen->world().end));
+    ASSERT_EQ(2u, og::runtime::local_transport_client_count(session));
+
+    midgame_one_hero_teardown(game_screen);
+}
+
+// PR #198 report (b): P1 cycled to ARROWS, mid-game ADD PLAYER — the new P2
+// came up as ARROWS too (profile-pool slot 1's live keymap IS factory arrows;
+// the cycler's factory-name claim moves only the RESET identity). The add
+// must land the new seat on the first factory mapping no other active seat
+// answers to — WASD here.
+TEST(GameLoop, midgame_add_player_gets_an_unchosen_mapping)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    midgame_one_hero_boot(game_screen);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(
+        og::runtime::local_transport_active(*og::runtime::current_session));
+
+    // The reporter's setup: P1 on ARROWS via the INPUT cycler (LOCAL store —
+    // the cfg clobber hazard).
+    cfg_store local_config;
+    ASSERT_TRUE(og::input::assign_mapping_to_player(
+        0, og::input::resolve_mapping(local_config, "ARROWS")));
+    ASSERT_EQ("ARROWS", og::input::current_mapping_name(0));
+    // The collision in waiting: slot 1's live keymap is ALSO factory arrows.
+    ASSERT_EQ("ARROWS", og::input::current_mapping_name(1));
+
+    std::uint32_t tick = 0;
+    midgame_pump(session, 8, tick);
+    ASSERT_TRUE(og::runtime::local_transport_shadow_add_local_player(session));
+
+    EXPECT_EQ("ARROWS", og::input::current_mapping_name(0))
+        << "P1 keeps the mapping it chose";
+    EXPECT_EQ("WASD", og::input::current_mapping_name(1))
+        << "the added seat must come up on the first factory mapping no "
+           "other active seat holds, never on P1's duplicate";
+
+    midgame_one_hero_teardown(game_screen);
 }

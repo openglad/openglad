@@ -17,6 +17,7 @@ class cfg_store;
 struct InputState;
 
 namespace og::sim {
+class GameServer;
 class ITransport;
 class InProcessTransport;
 struct LobbyPlayerBinding;
@@ -124,6 +125,8 @@ private:
     friend bool local_transport_shadow_restart_level(GameSession& session);
 #ifdef TESTING
     friend screen* local_transport_shadow_testing_server_screen(
+        GameSession& session);
+    friend og::sim::GameServer* local_transport_shadow_testing_server(
         GameSession& session);
     friend bool local_transport_shadow_testing_open_exit_prompt(
         GameSession& session,

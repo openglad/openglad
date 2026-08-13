@@ -3347,6 +3347,18 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
             return MENU_OK;
         }
         st->last_seat_add_ms = now_ms;
+        // The new seat reads profile-pool slot N, which can duplicate a
+        // mapping an existing seat already cycled onto (the mid-game ADD
+        // PLAYER shares this rule): land it on the first unchosen one.
+        {
+            const int seat_count =
+                static_cast<int>(picker_lobby_local_seat_count());
+            if (og::ui::ensure_unique_seat_mapping(cfg, seat_count - 1,
+                                                   seat_count))
+            {
+                persist_player_controls();
+            }
+        }
         base_camp_refresh_rows(*st);
         if (!st->local_seat_indices.empty()) {
             const std::uint8_t added_player =

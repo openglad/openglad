@@ -1972,15 +1972,26 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
                 else
                 {
                     expected_hash = hash_it->second.front();
-                    if (expected_hash != message.snapshot_hash_check->snapshot_hash)
+                    // Consume the expectation either way: every remembered
+                    // snapshot gets exactly ONE comparison. Leaving a
+                    // mismatched entry at the front used to wedge the queue —
+                    // with the world PAUSED the tick never advances, so the
+                    // stale entry could neither match a later check nor age
+                    // out of the prune window, and every subsequent check
+                    // struck it until the 120-strike disconnect cut the peer
+                    // (mid-game seat add/remove under the pause menu died
+                    // exactly this way: the display's next send then threw
+                    // "InProcessTransport peer N is not connected").
+                    hash_it->second.pop_front();
+                    if (hash_it->second.empty())
+                        client.expected_snapshot_hashes.erase(hash_it);
+                    if (expected_hash !=
+                        message.snapshot_hash_check->snapshot_hash)
                     {
                         mismatch = true;
                     }
                     else
                     {
-                        hash_it->second.pop_front();
-                        if (hash_it->second.empty())
-                            client.expected_snapshot_hashes.erase(hash_it);
                         client.consecutive_hash_mismatches = 0;
                     }
                 }
@@ -2001,21 +2012,45 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
                     if (client.consecutive_hash_mismatches >=
                         kMaxConsecutiveSnapshotHashMismatches)
                     {
-                        // Bounded loud failure: no number of keyframes has
-                        // healed this client — cut the infinite force-
-                        // keyframe rubber-band instead of retrying forever.
-                        // (A true resync would need an InitialSetup
-                        // re-handshake; the reconnect path provides one.)
-                        LogError(
-                            "snapshot_hash_mismatch_limit peer={} strikes={} "
-                            "— disconnecting desynced client\n",
-                            message.peer_id,
-                            client.consecutive_hash_mismatches);
-                        TRACE("net", "server_desync_disconnect peer=%u",
-                              static_cast<unsigned>(message.peer_id));
-                        // Invalidates `client`; nothing may touch it after.
-                        handle_transport_disconnect(message.peer_id,
-                                                    /*close_transport=*/true);
+                        const bool host_peer = host_peer_id_.has_value() &&
+                            *host_peer_id_ == message.peer_id;
+                        if (host_peer)
+                        {
+                            // NEVER cut the host peer: it is this machine's
+                            // own display client, and closing its transport
+                            // makes the very next local send throw — the app
+                            // dies on an in-process bookkeeping blip. Keep
+                            // force-keyframing (rate-limited by the strike
+                            // reset) and stay alive.
+                            LogError(
+                                "snapshot_hash_mismatch_limit peer={} "
+                                "strikes={} — host peer kept alive\n",
+                                message.peer_id,
+                                client.consecutive_hash_mismatches);
+                            client.consecutive_hash_mismatches = 0;
+                        }
+                        else
+                        {
+                            // Bounded loud failure: no number of keyframes
+                            // has healed this client — cut the infinite
+                            // force-keyframe rubber-band instead of retrying
+                            // forever. (A true resync would need an
+                            // InitialSetup re-handshake; the reconnect path
+                            // provides one.)
+                            LogError(
+                                "snapshot_hash_mismatch_limit peer={} "
+                                "strikes={} — disconnecting desynced "
+                                "client\n",
+                                message.peer_id,
+                                client.consecutive_hash_mismatches);
+                            TRACE("net", "server_desync_disconnect peer=%u",
+                                  static_cast<unsigned>(message.peer_id));
+                            // Invalidates `client`; nothing may touch it
+                            // after.
+                            handle_transport_disconnect(
+                                message.peer_id,
+                                /*close_transport=*/true);
+                        }
                     }
                 }
             }

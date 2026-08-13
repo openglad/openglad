@@ -50,6 +50,16 @@ bool apply_input_cycle_selection(cfg_store& cfg,
 // No-op (returns the current name) when the seat is the only option.
 std::string cycle_player_input(cfg_store& cfg, int seat, int active_player_count);
 
+// A freshly added seat inherits profile-pool slot `seat`'s live keymap, which
+// can duplicate a mapping another ACTIVE seat already answers to (cycle P1 to
+// ARROWS, add P2: slot 1's live keymap IS factory arrows). When the seat's
+// current keyboard mapping collides with another active seat's, load the
+// first non-joystick cycler option that is not the colliding name (the option
+// list already excludes names other seats hold) into the seat. Returns
+// whether the seat changed; the caller persists. Joystick-driven seats are
+// unique by construction and never change.
+bool ensure_unique_seat_mapping(cfg_store& cfg, int seat, int active_player_count);
+
 // "INPUT: {short name}" — fits a 98px button face at 16 chars.
 std::string input_cycle_button_label(int seat);
 

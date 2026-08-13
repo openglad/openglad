@@ -104,6 +104,38 @@ std::string cycle_player_input(cfg_store& cfg, int seat, int active_player_count
     return options[next_index].name;
 }
 
+bool ensure_unique_seat_mapping(cfg_store& cfg, int seat, int active_player_count)
+{
+    const InputCycleOption current = current_input_selection(seat);
+    if (current.is_joystick)
+        return false; // devices are exclusively held; nothing to collide with
+
+    bool collides = false;
+    for (int other = 0; other < active_player_count; ++other)
+    {
+        if (other == seat)
+            continue;
+        if (current_input_selection(other).name == current.name)
+        {
+            collides = true;
+            break;
+        }
+    }
+    if (!collides)
+        return false;
+
+    for (const InputCycleOption& option :
+         input_cycle_options(cfg, seat, active_player_count))
+    {
+        // The seat's own (colliding) name is always offered as the cycle
+        // anchor; a joystick must never be grabbed uninvited.
+        if (option.is_joystick || option.name == current.name)
+            continue;
+        return apply_input_cycle_selection(cfg, seat, option);
+    }
+    return false;
+}
+
 std::string input_cycle_button_label(int seat)
 {
     return std::format("INPUT: {}",

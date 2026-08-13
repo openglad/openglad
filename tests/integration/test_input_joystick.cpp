@@ -1,5 +1,6 @@
 #include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
+#include <openglad/interface/input_mappings.h>
 #include <openglad/interface/ui/input_cycler.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/resources/gparser.h>
@@ -1165,4 +1166,74 @@ TEST(InputJoystick, input_cycler_single_option_is_a_no_op)
     // no-op that reports the current name.
     EXPECT_EQ("WASD", og::ui::cycle_player_input(config, 0, 4));
     EXPECT_EQ("WASD", og::ui::current_input_selection(0).name);
+}
+
+TEST(InputJoystick, ensure_unique_seat_mapping_resolves_add_seat_collision)
+{
+    CompleteInputStateGuard input_guard;
+    JoystickHandleGuard handle_guard;
+    reset_default_player_controls();
+    for (int p = 0; p < 4; ++p)
+        clear_player_joystick(p);
+
+    // LOCAL store only — never disk (the cfg clobber hazard).
+    cfg_store config;
+
+    // The PR #198 report: P1 cycled to ARROWS while slot 1's live keymap is
+    // ALSO factory arrows — a fresh second seat comes up as a duplicate.
+    ASSERT_TRUE(og::input::assign_mapping_to_player(
+        0, og::input::resolve_mapping(config, "ARROWS")));
+    ASSERT_EQ("ARROWS", og::input::current_mapping_name(0));
+    ASSERT_EQ("ARROWS", og::input::current_mapping_name(1));
+
+    // The add-seat rule: land the new seat on the first cycler option no
+    // other active seat answers to — WASD (P1 released it).
+    EXPECT_TRUE(og::ui::ensure_unique_seat_mapping(config, 1, 2));
+    EXPECT_EQ("WASD", og::input::current_mapping_name(1));
+    EXPECT_EQ("ARROWS", og::input::current_mapping_name(0))
+        << "the colliding seat keeps its chosen mapping";
+
+    // Already unique: a no-op that reports no change.
+    EXPECT_FALSE(og::ui::ensure_unique_seat_mapping(config, 1, 2));
+    EXPECT_EQ("WASD", og::input::current_mapping_name(1));
+
+    // Third seat: slot 2's live keymap is factory IJKL — no collision, no
+    // change.
+    ASSERT_EQ("IJKL", og::input::current_mapping_name(2));
+    EXPECT_FALSE(og::ui::ensure_unique_seat_mapping(config, 2, 3));
+    EXPECT_EQ("IJKL", og::input::current_mapping_name(2));
+
+    reset_default_player_controls();
+}
+
+TEST(InputJoystick, ensure_unique_seat_mapping_leaves_joystick_seats_alone)
+{
+    JoystickSubsystemGuard subsystem_guard;
+    CompleteInputStateGuard input_guard;
+    BackgroundJoystickEventsGuard background_events_guard;
+    VirtualJoystick pad(2, 6, 0, "OpenGlad unique-mapping pad");
+    ASSERT_NE(nullptr, pad.get()) << SDL_GetError();
+    JoystickHandleGuard handle_guard;
+    const int d = device_index_of(pad.instance_id());
+    ASSERT_GE(d, 0);
+    ASSERT_LT(d, 10);
+    joysticks[d] = pad.get();
+    reset_default_player_controls();
+    for (int p = 0; p < 4; ++p)
+        clear_player_joystick(p);
+
+    // LOCAL store only — never disk (the cfg clobber hazard).
+    cfg_store config;
+
+    // A joystick-driven seat is unique by construction: never touched, even
+    // when its keyboard keymap underneath would collide.
+    ASSERT_TRUE(og::input::assign_mapping_to_player(
+        0, og::input::resolve_mapping(config, "ARROWS")));
+    ASSERT_TRUE(assign_joystick_to_player(1, d));
+    EXPECT_FALSE(og::ui::ensure_unique_seat_mapping(config, 1, 2));
+    EXPECT_EQ(d, player_joystick_device(1));
+
+    clear_player_joystick(1);
+    joysticks[d] = nullptr;
+    reset_default_player_controls();
 }
