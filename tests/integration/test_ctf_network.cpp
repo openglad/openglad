@@ -20,6 +20,8 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <set>
+#include <string>
 
 #include "test_network_fixture.h"
 
@@ -1170,4 +1172,453 @@ TEST(CtfNetwork, owner_locked_control_assignment_survives_death_and_respawn)
     EXPECT_EQ(revived, fixture.server_control(0));
     EXPECT_EQ(player_id, fixture.client(0).controlled_entity_ids()[0]);
     fixture.expect_clients_match_server();
+}
+
+// ===========================================================================
+// Free For All end to end (docs/ffa-design.md §12 integration paragraph):
+// the SHIPPED modes campaign's scen850 (FFA: THE MELEE, fighters = 8) loaded
+// through the network fixture. Unlike the hand-armed CTF scenarios above,
+// the pack Lua genuinely runs on the authoritative server — lazy scripted
+// init reseats every deployed hero onto a unique band byte (16-31) — and
+// every mirror converges purely through the v10 snapshot blocks.
+// ===========================================================================
+
+namespace {
+
+// The mode-var slot map of lib/mode_ffa_impl.lua (table S; the og_unit_modes
+// FfaSlot twin).
+inline constexpr int kFfaVarFighterCount = 8;
+inline constexpr int kFfaVarScoreLimit = 9;
+inline constexpr int kFfaVarBandBitmap = 14;
+inline constexpr int kFfaVarFrags = 16;  // +color index
+inline constexpr int kFfaVarIds = 32;    // +color index
+inline constexpr int kFfaModeId = 7;     // mode_core.MODE.FFA
+inline constexpr int kFfaScen = 850;     // FFA: THE MELEE (fighters = 8)
+
+// Mounts the shipped modes campaign for one test. The fixture constructor
+// re-mounts the default campaign, so this guard must be created AFTER the
+// fixture and before load_level(); teardown exact-restores the mount the
+// guard found (the PhysFS-roundtrip landmine — never force a default).
+class ScopedModesCampaign
+{
+public:
+    ScopedModesCampaign()
+        : previous_(get_mounted_campaign())
+    {
+        mounted_ = mount_campaign_package_with_error("modes") ==
+            CampaignPackageIoError::None;
+    }
+    ~ScopedModesCampaign()
+    {
+        if (get_mounted_campaign() == "modes")
+            (void)unmount_campaign_package_with_error("modes");
+        if (!previous_.empty() && get_mounted_campaign() != previous_)
+            (void)mount_campaign_package_with_error(previous_);
+    }
+    ScopedModesCampaign(const ScopedModesCampaign&) = delete;
+    ScopedModesCampaign& operator=(const ScopedModesCampaign&) = delete;
+
+    bool ok() const { return mounted_; }
+
+private:
+    std::string previous_;
+    bool mounted_ = false;
+};
+
+// Stages one seat's deployed hero the way the level assembly does: an
+// owner-tagged myguy walker on the seat's lobby team (the FFA arenas author
+// no livings, so every fighter is either a staged hero or an init bot).
+// Position is throwaway — on_mode_init scatters fighters over the rotated
+// anchor pools.
+walker* stage_ffa_hero(NetworkTestFixture& fixture,
+                       std::size_t player_index,
+                       int guy_id,
+                       int family = FAMILY_SOLDIER)
+{
+    walker* hero = nullptr;
+    fixture.with_server_context([&] {
+        GameWorld& world = fixture.server_world();
+        hero = world.add_ob(Order::Living, family);
+        if (hero == nullptr)
+            return;
+        hero->setxy(static_cast<short>(120 + 32 * static_cast<int>(player_index)),
+                    static_cast<short>(120));
+        hero->set_team_num(static_cast<unsigned char>(world.my_team));
+        hero->set_owned_myguy(std::make_unique<guy>(family));
+        hero->myguy->id = guy_id;
+        hero->myguy->owner_player_index =
+            static_cast<std::uint8_t>(player_index);
+        hero->myguy->owner_save_slot = 0;
+    });
+    return hero;
+}
+
+// Signed-index reader over the mode vars (the Lua slot arithmetic stays
+// int; the array subscript wants size_t).
+std::int32_t ffa_var(const GameWorld& world, int slot)
+{
+    return world.mode.vars[static_cast<std::size_t>(slot)];
+}
+
+// The color index an entity id occupies in the FFA ledger, or -1.
+int ffa_slot_of(const GameWorld& world, std::uint32_t entity_id)
+{
+    for (int c = 0; c < kFfaTeamCount; ++c)
+    {
+        if (world.mode.vars[static_cast<std::size_t>(kFfaVarIds + c)] ==
+            static_cast<std::int32_t>(entity_id))
+        {
+            return c;
+        }
+    }
+    return -1;
+}
+
+// A registered fighter other than `not_this` (the frag tests' victim pick:
+// fresh after init every id slot is live).
+walker* ffa_other_fighter(GameWorld& world, const walker* not_this)
+{
+    for (int c = 0; c < kFfaTeamCount; ++c)
+    {
+        const std::int32_t id =
+            world.mode.vars[static_cast<std::size_t>(kFfaVarIds + c)];
+        if (id == 0)
+            continue;
+        walker* fighter = world.find_by_id(static_cast<std::uint32_t>(id));
+        if (fighter != nullptr && fighter != not_this && !fighter->dead())
+            return fighter;
+    }
+    return nullptr;
+}
+
+} // namespace
+
+TEST(FfaNetwork, host_join_scen850_assigns_distinct_band_bytes_on_all_mirrors)
+{
+    NetworkTestFixture fixture({
+        .player_count = 2,
+        .level_id = kFfaScen,
+        .validate_serialization = true,
+    });
+    ScopedModesCampaign modes;
+    ASSERT_TRUE(modes.ok()) << "the shipped modes campaign must mount";
+    fixture.load_level();
+
+    walker* hero0 = stage_ffa_hero(fixture, 0, 61);
+    walker* hero1 = stage_ffa_hero(fixture, 1, 62, FAMILY_ELF);
+    ASSERT_NE(nullptr, hero0);
+    ASSERT_NE(nullptr, hero1);
+    fixture.rebind_players();
+    ASSERT_EQ(hero0, fixture.server_control(0));
+    ASSERT_EQ(hero1, fixture.server_control(1));
+
+    fixture.initial_sync();
+    fixture.step_ticks(2); // tick 1 = lazy scripted init runs the pack Lua
+
+    GameWorld& server = fixture.server_world();
+    ASSERT_TRUE(server.mode.active) << "on_mode_init must succeed on scen850";
+    ASSERT_EQ(kFfaModeId, server.mode.vars[0]);
+    EXPECT_STREQ("FFA", server.mode.name.data());
+    ASSERT_EQ(8, server.mode.vars[kFfaVarFighterCount])
+        << "scen850's manifest row bot-fills to 8 fighters";
+
+    // Exact-set assertion: the registered fighters wear PRECISELY the band
+    // bytes the assignment bitmap says are taken — one each, all in 16-31.
+    std::set<int> expected_bytes;
+    std::set<int> worn_bytes;
+    const std::int32_t bitmap = server.mode.vars[kFfaVarBandBitmap];
+    for (int c = 0; c < kFfaTeamCount; ++c)
+    {
+        const std::int32_t id =
+            server.mode.vars[static_cast<std::size_t>(kFfaVarIds + c)];
+        if (((bitmap >> c) & 1) == 0)
+        {
+            EXPECT_EQ(0, id) << "free slot " << c << " must hold no fighter";
+            continue;
+        }
+        expected_bytes.insert(kFfaTeamBase + c);
+        ASSERT_NE(0, id) << "taken slot " << c << " must hold a fighter id";
+        walker* fighter = server.find_by_id(static_cast<std::uint32_t>(id));
+        ASSERT_NE(nullptr, fighter) << "slot " << c;
+        worn_bytes.insert(fighter->team_num());
+    }
+    EXPECT_EQ(8u, expected_bytes.size());
+    EXPECT_EQ(expected_bytes, worn_bytes)
+        << "every fighter wears exactly its slot's band byte";
+    EXPECT_GE(ffa_slot_of(server, hero0->entity_id()), 0)
+        << "the host seat's hero must be a registered fighter";
+    EXPECT_GE(ffa_slot_of(server, hero1->entity_id()), 0)
+        << "the joining seat's hero must be a registered fighter";
+
+    // Mirrors: whole-world byte equality plus the per-fighter team bytes.
+    fixture.expect_clients_match_server_ignoring_visual_transients();
+    for (int index = 0; index < 2; ++index)
+    {
+        GameWorld& client =
+            fixture.client_world(static_cast<std::size_t>(index));
+        EXPECT_TRUE(client.mode.active) << "client " << index;
+        EXPECT_EQ(server.mode.vars, client.mode.vars) << "client " << index;
+        for (int c = 0; c < kFfaTeamCount; ++c)
+        {
+            const std::int32_t id =
+                server.mode.vars[static_cast<std::size_t>(kFfaVarIds + c)];
+            if (id == 0)
+                continue;
+            const walker* fighter =
+                server.find_by_id(static_cast<std::uint32_t>(id));
+            const walker* mirror =
+                client.find_by_id(static_cast<std::uint32_t>(id));
+            ASSERT_NE(nullptr, mirror)
+                << "client " << index << " slot " << c;
+            EXPECT_EQ(fighter->team_num(), mirror->team_num())
+                << "client " << index << " slot " << c
+                << " must mirror the server's team byte";
+        }
+    }
+}
+
+TEST(FfaNetwork, seat_keeps_control_through_reseat_and_band_respawn_cycle)
+{
+    NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = kFfaScen,
+        .validate_serialization = true,
+    });
+    ScopedModesCampaign modes;
+    ASSERT_TRUE(modes.ok()) << "the shipped modes campaign must mount";
+    fixture.load_level();
+
+    walker* hero = stage_ffa_hero(fixture, 0, 31);
+    ASSERT_NE(nullptr, hero);
+    fixture.rebind_players();
+    ASSERT_EQ(hero, fixture.server_control(0));
+    // The lobby respawn knob (the same short the mode Lua reads through
+    // og.match_setting) keeps the cycle inside the observation window.
+    fixture.with_server_context([&] {
+        fixture.server_world().ctf_requested_respawn_ticks = 8;
+    });
+
+    fixture.initial_sync();
+    fixture.step_ticks(2);
+    ASSERT_TRUE(fixture.server_world().mode.active);
+
+    const std::uint32_t hero_id = hero->entity_id();
+    const int slot = ffa_slot_of(fixture.server_world(), hero_id);
+    ASSERT_GE(slot, 0);
+    const unsigned char band_byte =
+        static_cast<unsigned char>(kFfaTeamBase + slot);
+    ASSERT_EQ(band_byte, hero->team_num());
+
+    // The init reseat moved the hero OFF the seat's lobby team; the seat's
+    // assignment must have survived it on the server and the mirror.
+    ASSERT_EQ(hero, fixture.server_control(0));
+    ASSERT_EQ(hero_id, fixture.client(0).controlled_entity_ids()[0]);
+
+    // Death by a rival fighter's real blow: on_entity_death schedules the
+    // corpse SYNCHRONOUSLY (docs/ffa-design.md §3 item 1 — no gap tick), so
+    // respawn_retains_player_control keeps the assignment on the corpse
+    // through the countdown.
+    fixture.with_server_context([&] {
+        walker* killer = ffa_other_fighter(fixture.server_world(), hero);
+        ASSERT_NE(nullptr, killer);
+        ASSERT_NE(nullptr, hero->stats());
+        hero->stats()->set_hitpoints(1.0f);
+        killer->attack(hero);
+    });
+    ASSERT_TRUE(hero->dead()) << "the rigged blow must be lethal";
+    ASSERT_TRUE(og::sim::respawn_pending_player(
+        fixture.server_world().respawn, hero_id))
+        << "the death hook must schedule the corpse on the death tick";
+    fixture.step_ticks(2);
+    ASSERT_EQ(hero, fixture.server_control(0));
+    ASSERT_EQ(hero_id, fixture.client(0).controlled_entity_ids()[0]);
+
+    fixture.step_ticks(40);
+    walker* revived = fixture.server_world().find_by_id(hero_id);
+    ASSERT_NE(nullptr, revived);
+    ASSERT_FALSE(revived->dead()) << "the sim revive must have fired";
+    EXPECT_EQ(0, revived->user()) << "revive preserves the player's user tag";
+    EXPECT_EQ(revived, fixture.server_control(0));
+    EXPECT_EQ(hero_id, fixture.client(0).controlled_entity_ids()[0]);
+    EXPECT_EQ(band_byte, revived->team_num())
+        << "on_respawn re-asserts the slot's band byte";
+    fixture.expect_clients_match_server_ignoring_visual_transients();
+}
+
+TEST(FfaNetwork, band_frag_replicates_to_client_mode_vars)
+{
+    NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = kFfaScen,
+        .validate_serialization = true,
+    });
+    ScopedModesCampaign modes;
+    ASSERT_TRUE(modes.ok()) << "the shipped modes campaign must mount";
+    fixture.load_level();
+
+    walker* hero = stage_ffa_hero(fixture, 0, 32);
+    ASSERT_NE(nullptr, hero);
+    fixture.rebind_players();
+
+    fixture.initial_sync();
+    fixture.step_ticks(2);
+    GameWorld& server = fixture.server_world();
+    ASSERT_TRUE(server.mode.active);
+
+    const int hero_slot = ffa_slot_of(server, hero->entity_id());
+    ASSERT_GE(hero_slot, 0);
+    walker* victim = ffa_other_fighter(server, hero);
+    ASSERT_NE(nullptr, victim);
+    const int victim_slot = ffa_slot_of(server, victim->entity_id());
+    ASSERT_GE(victim_slot, 0);
+    ASSERT_EQ(0, ffa_var(server, kFfaVarFrags + hero_slot));
+
+    // A real attributed kill through walker::attack: the blow stamps the
+    // 48-tick attacker channel and walker::death runs on_entity_death.
+    fixture.with_server_context([&] {
+        ASSERT_NE(nullptr, victim->stats());
+        victim->stats()->set_hitpoints(1.0f);
+        hero->attack(victim);
+    });
+    ASSERT_TRUE(victim->dead()) << "the rigged blow must be lethal";
+    ASSERT_EQ(1, ffa_var(server, kFfaVarFrags + hero_slot))
+        << "the killer's ledger slot takes the frag";
+    ASSERT_EQ(0, ffa_var(server, kFfaVarFrags + victim_slot));
+
+    // ModeState vars ride the per-tick snapshot to every mirror.
+    fixture.step_ticks(1);
+    EXPECT_EQ(1, ffa_var(fixture.client_world(0), kFfaVarFrags + hero_slot))
+        << "the frag var must replicate to the client mirror";
+    EXPECT_EQ(server.mode.vars, fixture.client_world(0).mode.vars);
+    fixture.expect_clients_match_server_ignoring_visual_transients();
+}
+
+TEST(FfaNetwork, win_latch_and_band_winner_replicate)
+{
+    NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = kFfaScen,
+        .validate_serialization = true,
+    });
+    ScopedModesCampaign modes;
+    ASSERT_TRUE(modes.ok()) << "the shipped modes campaign must mount";
+    fixture.load_level();
+
+    walker* hero = stage_ffa_hero(fixture, 0, 33);
+    ASSERT_NE(nullptr, hero);
+    fixture.rebind_players();
+
+    fixture.initial_sync();
+    fixture.step_ticks(2);
+    GameWorld& server = fixture.server_world();
+    ASSERT_TRUE(server.mode.active);
+
+    const int hero_slot = ffa_slot_of(server, hero->entity_id());
+    ASSERT_GE(hero_slot, 0);
+    const unsigned char band_byte =
+        static_cast<unsigned char>(kFfaTeamBase + hero_slot);
+    const std::int32_t limit = server.mode.vars[kFfaVarScoreLimit];
+    ASSERT_EQ(15, limit) << "scen850's manifest score limit";
+
+    // Drive the ledger to the brink, then land a REAL final kill so the
+    // limit is crossed by the frag channel itself.
+    walker* victim = ffa_other_fighter(server, hero);
+    ASSERT_NE(nullptr, victim);
+    fixture.with_server_context([&] {
+        server.mode.vars[static_cast<std::size_t>(kFfaVarFrags +
+                                                  hero_slot)] = limit - 1;
+        ASSERT_NE(nullptr, victim->stats());
+        victim->stats()->set_hitpoints(1.0f);
+        hero->attack(victim);
+    });
+    ASSERT_EQ(limit, ffa_var(server, kFfaVarFrags + hero_slot));
+
+    // The next on_mode_tick's win check declares through the engine latch.
+    fixture.step_ticks(1);
+    ASSERT_TRUE(server.mode.win_latched);
+    ASSERT_TRUE(server.game_ended);
+    EXPECT_EQ(band_byte, server.mode.winner_team)
+        << "the win latch carries the winner's band byte";
+    EXPECT_TRUE(server.mode.winner_is_player)
+        << "the live seat hero on the winning byte is the player";
+    EXPECT_EQ(band_byte, server.mode.hud[0].team)
+        << "the WINNER line is tinted by the band byte";
+
+    // The decided-match shape replicates (the popup itself is display-side;
+    // the latch is what every client renders it from).
+    fixture.expect_clients_match_server_ignoring_visual_transients();
+    const GameWorld& client = fixture.client_world(0);
+    EXPECT_TRUE(client.mode.win_latched);
+    EXPECT_TRUE(client.game_ended);
+    EXPECT_EQ(band_byte, client.mode.winner_team);
+    EXPECT_TRUE(client.mode.winner_is_player);
+}
+
+TEST(FfaNetwork, mid_join_hero_adopts_free_band_byte_on_both_sides)
+{
+    NetworkTestFixture fixture({
+        .player_count = 2,
+        .level_id = kFfaScen,
+        .validate_serialization = true,
+    });
+    ScopedModesCampaign modes;
+    ASSERT_TRUE(modes.ok()) << "the shipped modes campaign must mount";
+    fixture.load_level();
+
+    // Only seat 0 deploys before init; seat 1's hero arrives mid-match.
+    walker* hero0 = stage_ffa_hero(fixture, 0, 34);
+    ASSERT_NE(nullptr, hero0);
+    fixture.rebind_players();
+    ASSERT_EQ(hero0, fixture.server_control(0));
+    ASSERT_EQ(nullptr, fixture.server_control(1));
+
+    fixture.initial_sync();
+    fixture.step_ticks(2);
+    GameWorld& server = fixture.server_world();
+    ASSERT_TRUE(server.mode.active);
+    ASSERT_EQ(8, server.mode.vars[kFfaVarFighterCount]);
+
+    // The mid-join: the late hero spawns owner-tagged and its seat binds it
+    // (the return-to-lobby joiner shape). scen850 fills 8 of 16 slots, so
+    // the adoption sweep lands the joiner on a FREE band byte.
+    walker* joiner = stage_ffa_hero(fixture, 1, 35, FAMILY_ELF);
+    ASSERT_NE(nullptr, joiner);
+    const std::uint32_t joiner_id = joiner->entity_id();
+    fixture.with_server_context([&] {
+        fixture.server().bind_player(
+            fixture.client_transport(1).local_peer_id(), 1u,
+            static_cast<short>(fixture.server_world().my_team), joiner);
+        // bind_player alone records the seat; the production mid-join flow
+        // (hello re-bind) also broadcasts the ControlChange every mirror
+        // applies — set_player_control is that broadcast chokepoint.
+        fixture.server().set_player_control(1, joiner);
+    });
+    ASSERT_EQ(joiner, fixture.server_control(1));
+
+    fixture.step_ticks(2); // the per-tick adoption sweep runs in on_mode_tick
+    const int slot = ffa_slot_of(server, joiner_id);
+    ASSERT_GE(slot, 0) << "the joiner must be adopted into the band";
+    const unsigned char band_byte =
+        static_cast<unsigned char>(kFfaTeamBase + slot);
+    EXPECT_EQ(band_byte, joiner->team_num());
+    EXPECT_EQ(0, ffa_var(server, kFfaVarFrags + slot))
+        << "an adopted slot starts with a clean ledger";
+    EXPECT_EQ(9, server.mode.vars[kFfaVarFighterCount])
+        << "the fighter count re-derives from the grown bitmap";
+    EXPECT_EQ(joiner, fixture.server_control(1))
+        << "the reseat must not cost the joining seat its control";
+
+    // Both mirrors see the adopted byte and the grown ledger.
+    fixture.expect_clients_match_server_ignoring_visual_transients();
+    for (int index = 0; index < 2; ++index)
+    {
+        GameWorld& client =
+            fixture.client_world(static_cast<std::size_t>(index));
+        const walker* mirror = client.find_by_id(joiner_id);
+        ASSERT_NE(nullptr, mirror) << "client " << index;
+        EXPECT_EQ(band_byte, mirror->team_num()) << "client " << index;
+        EXPECT_EQ(server.mode.vars, client.mode.vars) << "client " << index;
+    }
+    EXPECT_EQ(joiner_id, fixture.client(0).controlled_entity_ids()[1]);
+    EXPECT_EQ(joiner_id, fixture.client(1).controlled_entity_ids()[1]);
 }

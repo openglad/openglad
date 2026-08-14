@@ -1317,6 +1317,19 @@ set_tests_properties(openglad_text_sim PROPERTIES
     TIMEOUT ${OPENG_LAD_TEXT_SIM_CTEST_TIMEOUT}
 )
 
+# Free For All on the shipped modes campaign (scen850) through the same
+# headless protocol harness (docs/ffa-design.md §12 integration paragraph).
+add_test(NAME openglad_text_ffa
+    COMMAND ${CMAKE_COMMAND} -E env
+        OPENGLAD_TEXT_TIMEOUT=${OPENG_LAD_TEXT_SIM_EXEC_TIMEOUT}
+        ${CMAKE_SOURCE_DIR}/scripts/test_text_client_ffa.sh
+        $<TARGET_FILE:openglad_text>
+)
+set_tests_properties(openglad_text_ffa PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT ${OPENG_LAD_TEXT_SIM_CTEST_TIMEOUT}
+)
+
 if(TARGET openglad_server)
     add_test(NAME openglad_server_cli
         COMMAND ${CMAKE_COMMAND} -E env
