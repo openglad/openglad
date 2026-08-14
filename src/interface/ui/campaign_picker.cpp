@@ -18,6 +18,7 @@
 #include <openglad/interface/ui/campaign_picker.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
+#include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/campaign_yaml.h>
 #include <openglad/resources/game_mode.h>
 #include <openglad/resources/io_common.h>
@@ -43,6 +44,10 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 bool no_or_yes_prompt(const char* title, const char* message, bool default_value);
 
 bool prompt_for_string(const std::string& message, std::string& result);
+
+// help.cpp: the intro-style scroller over an arbitrary campaign's full
+// description (the browser's MORE control).
+short show_campaign_description(screen* scr, const std::string& campaign_id);
 
 inline constexpr int OG_OK = 4;
 void draw_highlight_interior(const button& b);
@@ -147,8 +152,8 @@ public:
 
     CampaignEntry(const std::string& campaign_id, int levels_completed);
     ~CampaignEntry();
-    
-    void draw(const UiRect& area, int team_power);
+
+    void draw(int team_power);
 };
 
 CampaignEntry::CampaignEntry(const std::string& campaign_id, int levels_completed)
@@ -202,20 +207,21 @@ CampaignEntry::~CampaignEntry()
     icondata.free();
 }
 
-void CampaignEntry::draw(const UiRect& area, int team_power)
+// Draw the highlighted entry's detail pane (right column of the browser).
+void CampaignEntry::draw(int team_power)
 {
-    int x = area.x;
-    int y = area.y;
-    int w = area.w;
-    int h = area.h;
-    
-    text& loadtext = og::runtime::current_session->myscreen_->text_normal;
+    const og::ui::CampaignPickerLayout layout = og::ui::campaign_picker_layout();
+    const int cx = layout.title_center_x;
 
-    // Print title. Fitted to the width that clears the RESET/DELETE face on
-    // the same pixel row (issue: long campaign names clipped into ENTER ID,
-    // which now lives a row lower).
-    const std::string shown_title = og::ui::fit_campaign_title(title);
-    loadtext.write_xy(x + w/2 - static_cast<Sint32>(shown_title.size())*3, y - 22, shown_title.c_str(), WHITE, 1);
+    text& loadtext = og::runtime::current_session->myscreen_->text_normal;
+    const auto write_centered = [&](int y, const std::string& line,
+                                    unsigned char color) {
+        loadtext.write_xy(cx - static_cast<Sint32>(line.size()) * 3, y,
+                          line.c_str(), color, 1);
+    };
+
+    // Title, fitted to the pane's budget so it can never reach a control.
+    write_centered(layout.title_y, og::ui::fit_campaign_title(title), WHITE);
 
     // Rating stars
     std::string rating_text = "";
@@ -223,95 +229,92 @@ void CampaignEntry::draw(const UiRect& area, int team_power)
     {
         rating_text += '*';
     }
-    loadtext.write_xy(x + w/2 - static_cast<Sint32>(rating_text.size())*3, y - 14, rating_text.c_str(), WHITE, 1);
-
     // Print version
     std::string buf = std::format("v{}", version);
     if(rating_text.size() > 0)
-        loadtext.write_xy(x + w/2 + static_cast<Sint32>(rating_text.size())*3 + 6, y - 14, buf.c_str(), WHITE, 1);
+    {
+        loadtext.write_xy(cx - static_cast<Sint32>(rating_text.size())*3,
+                          layout.title_y + 10, rating_text.c_str(), WHITE, 1);
+        loadtext.write_xy(cx + static_cast<Sint32>(rating_text.size())*3 + 6,
+                          layout.title_y + 10, buf.c_str(), WHITE, 1);
+    }
     else
-        loadtext.write_xy(x + w/2 - static_cast<Sint32>(buf.size())*3, y - 14, buf.c_str(), WHITE, 1);
+        write_centered(layout.title_y + 10, buf, WHITE);
 
     // Draw icon button
-    og::runtime::current_session->myscreen_->draw_button(x - 2, y - 2, x + w + 2, y + h + 2, 1, 1);
+    og::runtime::current_session->myscreen_->draw_button(
+        layout.icon.x - 2, layout.icon.y - 2, layout.icon.x + layout.icon.w + 2,
+        layout.icon.y + layout.icon.h + 2, 1, 1);
     // Draw icon
-	if (icon)
-	    icon->drawMix(x, y, og::runtime::current_session->myscreen_->viewob[0].get());
-	y += h + 4;
+    if (icon)
+        icon->drawMix(layout.icon.x, layout.icon.y,
+                      og::runtime::current_session->myscreen_->viewob[0].get());
+    int y = layout.icon.y + layout.icon.h + 4;
 
-	// Print suggested power
-	if(team_power >= 0)
+    // Print suggested power
+    // (the pane is 176px wide, so the power compare reads out as two rows)
+    if(team_power >= 0)
     {
-        buf = std::format("Your Power: {}", team_power);
-        std::string buf2;
+        write_centered(y, std::format("Your Power: {}", team_power),
+                       LIGHT_GREEN);
+        y += 8;
         if(suggested_power > 0)
-            buf2 = std::format(", Suggested Power: {}", suggested_power);
-
-        int len = static_cast<int>(buf.size());
-        int len2 = static_cast<int>(buf2.size());
-        loadtext.write_xy(x + w/2 - (len + len2)*3, y, buf.c_str(), LIGHT_GREEN, 1);
-        loadtext.write_xy(x + w/2 - (len + len2)*3 + len*6, y, buf2.c_str(), (team_power >= suggested_power? LIGHT_GREEN : RED), 1);
+        {
+            write_centered(y, std::format("Suggested Power: {}", suggested_power),
+                           team_power >= suggested_power ? LIGHT_GREEN : RED);
+            y += 8;
+        }
     }
-    else
+    else if(suggested_power > 0)
     {
-        if(suggested_power > 0)
-            buf = std::format("Suggested Power: {}", suggested_power);
-        else
-            buf.clear();
-
-        int len = static_cast<int>(buf.size());
-        loadtext.write_xy(x + w/2 - (len)*3, y, buf.c_str(), LIGHT_GREEN, 1);
+        write_centered(y, std::format("Suggested Power: {}", suggested_power),
+                       LIGHT_GREEN);
+        y += 8;
     }
-    y += 8;
 
     // Print completion progress
     if(num_levels_completed < 0)
         buf = std::format("{} level{}", num_levels, (num_levels == 1? "" : "s"));
     else
         buf = std::format("{} out of {} completed", num_levels_completed, num_levels);
-    loadtext.write_xy(x + w/2 - static_cast<int>(buf.size())*3, y, buf.c_str(), WHITE, 1);
+    write_centered(y, buf, WHITE);
     y += 8;
 
     // Print authors
     if(authors.size() > 0)
     {
-        buf = std::format("By {}", authors);
-        loadtext.write_xy(x + w/2 - static_cast<int>(buf.size())*3, y, buf.c_str(), WHITE, 1);
+        write_centered(y, og::ui::fit_text_to_chars(
+                              std::format("By {}", authors),
+                              layout.title_max_chars),
+                       WHITE);
     }
-    
+
     // Draw description box
-    UiRect descbox = {160 - 225/2, area.y + area.h + 35, 225, 60};
+    // Text is flowed to the box's character budget (issue #152): Paragraphs
+    // mode reflows the authored hand-wrap. Overflow is handled by the
+    // browser's MORE control (a real button over the full-text scroller),
+    // not a dead "(more...)" string.
+    const og::ui::PickerRect& descbox = layout.desc_box;
     og::runtime::current_session->myscreen_->draw_box(descbox.x, descbox.y, descbox.x + descbox.w, descbox.y + descbox.h, GREY, 1, 1);
-    
-    // Print description, flowed to the box's character budget (issue #152):
-    // text starts at descbox.x+5 and glyphs advance 6px. Campaign blurbs are
-    // prose, so Paragraphs mode reflows the authored hand-wrap. When the
-    // text is taller than the box, the last visible row becomes a
-    // "(more...)" pointer at the full-text campaign intro scroller.
     const std::vector<std::string> desc_lines = og::core::wrap_text(
-        description, (descbox.w - 10) / 6, og::core::WrapMode::Paragraphs);
-    int j = 10;
-    for(size_t li = 0; li < desc_lines.size(); li++)
+        description, layout.desc_max_chars, og::core::WrapMode::Paragraphs);
+    for(int row = 0; row < layout.desc_rows &&
+        row < static_cast<int>(desc_lines.size()); row++)
     {
-        if(j + 10 > descbox.h)
-            break;
-        const bool last_visible_row = (j + 20 > descbox.h);
-        if(last_visible_row && li + 1 < desc_lines.size())
-        {
-            loadtext.write_xy(descbox.x + 5, descbox.y + j, "(more...)", BLACK, 1);
-            break;
-        }
-        loadtext.write_xy(descbox.x + 5, descbox.y + j, desc_lines[li].c_str(), BLACK, 1);
-        j += 10;
+        loadtext.write_xy(descbox.x + 5, descbox.y + 3 + 10 * row,
+                          desc_lines[static_cast<std::size_t>(row)].c_str(),
+                          BLACK, 1);
     }
-    y = descbox.y + descbox.h + 2;
-    
-    // Print contributors
+
+    // Print contributors, on the MORE row left of the button.
     if(contributors.size() > 0)
     {
-        buf = std::format("Thanks to {}", contributors);
-        loadtext.write_xy(x + w/2 - static_cast<int>(buf.size())*3, y, buf.c_str(), WHITE, 1);
-        y += 10;
+        const int contrib_budget =
+            (layout.more_button.x - descbox.x - 6) / 6;
+        buf = og::ui::fit_text_to_chars(
+            std::format("Thanks to {}", contributors), contrib_budget);
+        loadtext.write_xy(descbox.x, layout.more_button.y + 2, buf.c_str(),
+                          WHITE, 1);
     }
 }
 
@@ -328,33 +331,51 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
     std::string old_campaign_id = get_mounted_campaign();
     CampaignEntry* result = nullptr;
     CampaignResult ret_value;
-    
+
     text& loadtext = og::runtime::current_session->myscreen_->text_normal;
-    
+
     (void)unmount_campaign_package_with_error(old_campaign_id);
 
     // Here are the browser variables
+    // The shelf (ids in select order) and its LAZY entry cache: list rows
+    // need only the cached display title, so opening the browser mounts
+    // nothing. The CampaignEntry (mount + yaml parse + icon decode) is built
+    // on first highlight and cached.
+    std::vector<std::string> ids;
     std::vector<std::unique_ptr<CampaignEntry>> entries;
-    
-    unsigned int current_campaign_index = 0;
-    
-    // Load campaigns (default campaign first; remainder stays alphabetical).
-    std::list<std::string> campaign_ids = list_campaigns();
-    og::ui::order_campaigns_for_select(campaign_ids);
-    og::ui::filter_campaigns_for_networked_lobby(campaign_ids,
-                                                 networked_campaign_select());
-    int i = 0;
-    for(auto& cid : campaign_ids)
+    const auto rescan = [&]() {
+        std::list<std::string> campaign_ids = list_campaigns();
+        og::ui::order_campaigns_for_select(campaign_ids);
+        og::ui::filter_campaigns_for_networked_lobby(
+            campaign_ids, networked_campaign_select());
+        ids.assign(campaign_ids.begin(), campaign_ids.end());
+        entries.clear();
+        entries.resize(ids.size());
+    };
+    rescan();
+
+    const auto ensure_entry = [&](int index) -> CampaignEntry* {
+        if (index < 0 || index >= static_cast<int>(ids.size()))
+            return nullptr;
+        auto& slot = entries[static_cast<std::size_t>(index)];
+        if (!slot)
+        {
+            int num_completed = -1;
+            if (save_data != nullptr)
+                num_completed = save_data->get_num_levels_completed(
+                    ids[static_cast<std::size_t>(index)]);
+            slot = std::make_unique<CampaignEntry>(
+                ids[static_cast<std::size_t>(index)], num_completed);
+        }
+        return slot.get();
+    };
+
+    // The list cursor starts on the campaign that was mounted.
+    int cursor = 0;
+    for (int index = 0; index < static_cast<int>(ids.size()); ++index)
     {
-        int num_completed = -1;
-        if(save_data != nullptr)
-            num_completed = save_data->get_num_levels_completed(cid);
-        entries.push_back(std::make_unique<CampaignEntry>(cid, num_completed));
-
-        if(cid == old_campaign_id)
-            current_campaign_index = static_cast<unsigned int>(i);
-
-        i++;
+        if (ids[static_cast<std::size_t>(index)] == old_campaign_id)
+            cursor = index;
     }
 
     // Figure out how good the player's army is
@@ -370,10 +391,9 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
             }
         }
     }
-    
-    // Campaign icon positioning + buttons (single source: picker_common).
+
+    // Control geometry + nav (single source: picker_common).
     const og::ui::CampaignPickerLayout layout = og::ui::campaign_picker_layout();
-    const UiRect area = layout.icon;
 
     const UiRect prev = layout.prev;
     const UiRect next = layout.next;
@@ -383,12 +403,15 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
     // ENTER ID stacks UNDER DELETE/RESET so the title row is clear.
     const UiRect id_button = layout.id_button;
     const UiRect reset_button = layout.reset_button;
+    const UiRect more_button = layout.more_button;
 
-    
+    int offset = og::ui::campaign_list_offset_for_cursor(
+        cursor, 0, static_cast<int>(ids.size()), layout.list_rows);
+
     // Controller input
     int retvalue = 0;
 	int highlighted_button = 3;
-	
+
 	const int prev_index = og::ui::kCampaignPickerPrevIndex;
 	const int next_index = og::ui::kCampaignPickerNextIndex;
 	const int choose_index = og::ui::kCampaignPickerChooseIndex;
@@ -396,44 +419,95 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
 	const int delete_index = og::ui::kCampaignPickerDeleteIndex;
 	const int id_index = og::ui::kCampaignPickerIdIndex;
 	const int reset_index = og::ui::kCampaignPickerResetIndex;
+	const int row_base_index = og::ui::kCampaignPickerRowBaseIndex;
+	const int more_index = og::ui::kCampaignPickerMoreIndex;
 
-	// Whole-graph rewire from the current visibility, applied at setup and
-	// again whenever a click changes what is showing (picker_common owns the
-	// graph so the BFS pin can walk every variant headlessly).
-	const auto apply_nav = [&](button* rows) {
+	const UiRect row0 = og::ui::campaign_picker_row_rect(0);
+	const UiRect row1 = og::ui::campaign_picker_row_rect(1);
+	const UiRect row2 = og::ui::campaign_picker_row_rect(2);
+	const UiRect row3 = og::ui::campaign_picker_row_rect(3);
+	const UiRect row4 = og::ui::campaign_picker_row_rect(4);
+	const UiRect row5 = og::ui::campaign_picker_row_rect(5);
+
+	button buttons[og::ui::kCampaignPickerButtonCount] = {
+        button("prev", "PREV", KEYSTATE_UNKNOWN, prev.x, prev.y, prev.w, prev.h, 0, -1 , MenuNav{}),
+        button("next", "NEXT", KEYSTATE_UNKNOWN, next.x, next.y, next.w, next.h, 0, -1 , MenuNav{}),
+        button("ok", "OK", KEYSTATE_UNKNOWN, choose.x, choose.y, choose.w, choose.h, 0, -1 , MenuNav{}),
+        button("cancel", "CANCEL", KEYSTATE_ESCAPE, cancel.x, cancel.y, cancel.w, cancel.h, 0, -1 , MenuNav{}),
+        button("delete", "DELETE", KEYSTATE_UNKNOWN, delete_button.x, delete_button.y, delete_button.w, delete_button.h, 0, -1 , MenuNav{}),
+        button("enter_id", "ENTER ID", KEYSTATE_UNKNOWN, id_button.x, id_button.y, id_button.w, id_button.h, 0, -1 , MenuNav{}),
+        button("reset", "RESET", KEYSTATE_UNKNOWN, reset_button.x, reset_button.y, reset_button.w, reset_button.h, 0, -1 , MenuNav{}),
+        button("entry_1", "1", KEYSTATE_UNKNOWN, row0.x, row0.y, row0.w, row0.h, 0, -1 , MenuNav{}),
+        button("entry_2", "2", KEYSTATE_UNKNOWN, row1.x, row1.y, row1.w, row1.h, 0, -1 , MenuNav{}),
+        button("entry_3", "3", KEYSTATE_UNKNOWN, row2.x, row2.y, row2.w, row2.h, 0, -1 , MenuNav{}),
+        button("entry_4", "4", KEYSTATE_UNKNOWN, row3.x, row3.y, row3.w, row3.h, 0, -1 , MenuNav{}),
+        button("entry_5", "5", KEYSTATE_UNKNOWN, row4.x, row4.y, row4.w, row4.h, 0, -1 , MenuNav{}),
+        button("entry_6", "6", KEYSTATE_UNKNOWN, row5.x, row5.y, row5.w, row5.h, 0, -1 , MenuNav{}),
+        button("more", "MORE", KEYSTATE_UNKNOWN, more_button.x, more_button.y, more_button.w, more_button.h, 0, -1 , MenuNav{}),
+	};
+
+	// Rows visible on this page (recomputed by sync_visibility below).
+	int visible_rows = 0;
+
+	// Whole-graph rewire + hidden flags from the current list window
+	// (picker_common owns the graph so the BFS pin can walk every variant
+	// headlessly). Also loads the highlighted entry — the ONLY entry a frame
+	// ever mounts.
+	const auto sync_visibility = [&]() {
+		const int total = static_cast<int>(ids.size());
+		offset = og::ui::campaign_list_clamp_offset(offset, total,
+		                                            layout.list_rows);
+		cursor = og::ui::campaign_list_clamp_cursor(cursor, offset, total,
+		                                            layout.list_rows);
+		visible_rows = std::max(0, std::min(layout.list_rows, total - offset));
+
+		CampaignEntry* current = ensure_entry(cursor);
+
+		// Update hidden buttons
+		buttons[prev_index].hidden = (offset == 0);
+		buttons[next_index].hidden = (offset + layout.list_rows >= total);
+		buttons[choose_index].hidden = (total == 0);
+		buttons[delete_index].hidden = !enable_delete;
+		buttons[reset_index].hidden = enable_delete;
+		for (int row = 0; row < og::ui::kCampaignPickerRowCount; ++row)
+			buttons[row_base_index + row].hidden = (row >= visible_rows);
+		buttons[more_index].hidden =
+			current == nullptr ||
+			!og::ui::campaign_description_overflows(current->description);
+
 		const og::ui::CampaignPickerVisibility visibility{
-			.prev_hidden = rows[prev_index].hidden,
-			.next_hidden = rows[next_index].hidden,
-			.choose_hidden = rows[choose_index].hidden,
-			.delete_hidden = rows[delete_index].hidden,
+			.prev_hidden = buttons[prev_index].hidden,
+			.next_hidden = buttons[next_index].hidden,
+			.choose_hidden = buttons[choose_index].hidden,
+			.delete_hidden = buttons[delete_index].hidden,
+			.visible_rows = visible_rows,
+			.more_hidden = buttons[more_index].hidden,
 		};
 		const auto nav = og::ui::campaign_picker_nav(visibility);
 		for (int btn = 0; btn < og::ui::kCampaignPickerButtonCount; ++btn)
 		{
-			rows[btn].nav = MenuNav{.up = nav[static_cast<std::size_t>(btn)].up, .down = nav[static_cast<std::size_t>(btn)].down,
-			                        .left = nav[static_cast<std::size_t>(btn)].left, .right = nav[static_cast<std::size_t>(btn)].right};
+			buttons[btn].nav = MenuNav{.up = nav[static_cast<std::size_t>(btn)].up, .down = nav[static_cast<std::size_t>(btn)].down,
+			                           .left = nav[static_cast<std::size_t>(btn)].left, .right = nav[static_cast<std::size_t>(btn)].right};
+		}
+
+		if (buttons[highlighted_button].hidden)
+		{
+			if (highlighted_button >= row_base_index &&
+			    highlighted_button < row_base_index + og::ui::kCampaignPickerRowCount &&
+			    visible_rows > 0)
+				highlighted_button = row_base_index + visible_rows - 1;
+			else if (highlighted_button == prev_index && !buttons[next_index].hidden)
+				highlighted_button = next_index;
+			else if (highlighted_button == next_index && !buttons[prev_index].hidden)
+				highlighted_button = prev_index;
+			else
+				highlighted_button = cancel_index;
 		}
 	};
-	
-	button buttons[] = {
-        button("prev", "PREV", KEYSTATE_UNKNOWN, prev.x, prev.y, prev.w, prev.h, 0, -1 , MenuNav{.up=id_index, .down=cancel_index, .right=next_index}),
-        button("next", "NEXT", KEYSTATE_UNKNOWN, next.x, next.y, next.w, next.h, 0, -1 , MenuNav{.up=id_index, .down=choose_index, .left=prev_index}),
-        button("ok", "OK", KEYSTATE_UNKNOWN, choose.x, choose.y, choose.w, choose.h, 0, -1 , MenuNav{.up=next_index, .left=cancel_index}),
-        button("cancel", "CANCEL", KEYSTATE_ESCAPE, cancel.x, cancel.y, cancel.w, cancel.h, 0, -1 , MenuNav{.up=prev_index, .right=choose_index}),
-        button("delete", "DELETE", KEYSTATE_UNKNOWN, delete_button.x, delete_button.y, delete_button.w, delete_button.h, 0, -1 , MenuNav{.down=id_index}),
-        button("enter_id", "ENTER ID", KEYSTATE_UNKNOWN, id_button.x, id_button.y, id_button.w, id_button.h, 0, -1 , MenuNav{.up=delete_index, .down=next_index}),
-        button("reset", "RESET", KEYSTATE_UNKNOWN, reset_button.x, reset_button.y, reset_button.w, reset_button.h, 0, -1 , MenuNav{.down=id_index}),
-	};
-	
-	buttons[prev_index].hidden = (current_campaign_index == 0);
-	buttons[next_index].hidden = (current_campaign_index + 1 >= entries.size());
-	buttons[choose_index].hidden = !(current_campaign_index < entries.size() && entries[current_campaign_index] != nullptr);
-	buttons[delete_index].hidden = !enable_delete;
-	buttons[reset_index].hidden = enable_delete;
-	
-	apply_nav(buttons);
+	sync_visibility();
 
     bool done = false;
+    int last_highlighted = highlighted_button;
 #ifdef TESTING
     campaign_picker_testing_mark_entered();
 #endif
@@ -451,8 +525,18 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
 
         // Get keys and stuff
         get_input_events(POLL);
-		
+
         handle_menu_nav(buttons, highlighted_button, retvalue, false);
+
+        // Moving the keyboard highlight onto a list row moves the list
+        // cursor with it, so the detail pane follows the arrow keys.
+        if (highlighted_button != last_highlighted)
+        {
+            const int row = highlighted_button - row_base_index;
+            if (row >= 0 && row < visible_rows)
+                cursor = offset + row;
+            last_highlighted = highlighted_button;
+        }
 
         // Quit if 'q' is pressed
         if(og::runtime::current_session->keystates_[KEYSTATE_q])
@@ -462,7 +546,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
 		MouseState& mymouse = query_mouse();
         int mx = static_cast<int>(mymouse.x);
         int my = static_cast<int>(mymouse.y);
-        
+
         bool do_click = mymouse.left;
 		bool do_prev = !buttons[prev_index].hidden && ((do_click && prev.x <= mx && mx <= prev.x + prev.w
                && prev.y <= my && my <= prev.y + prev.h) || (retvalue == OG_OK && highlighted_button == prev_index));
@@ -478,9 +562,27 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
                && reset_button.y <= my && my <= reset_button.y + reset_button.h) || (retvalue == OG_OK && highlighted_button == reset_index));
         bool do_id = (do_click && id_button.x <= mx && mx <= id_button.x + id_button.w
                && id_button.y <= my && my <= id_button.y + id_button.h) || (retvalue == OG_OK && highlighted_button == id_index);
+        bool do_more = !buttons[more_index].hidden && ((do_click && more_button.x <= mx && mx <= more_button.x + more_button.w
+               && more_button.y <= my && my <= more_button.y + more_button.h) || (retvalue == OG_OK && highlighted_button == more_index));
+        // A click on a visible list row, or Enter while one is highlighted.
+        int selected_row = -1;
+        for (int row = 0; row < visible_rows; ++row)
+        {
+            const UiRect rect = og::ui::campaign_picker_row_rect(row);
+            if ((do_click && rect.x <= mx && mx <= rect.x + rect.w
+                 && rect.y <= my && my <= rect.y + rect.h) ||
+                (retvalue == OG_OK && highlighted_button == row_base_index + row))
+            {
+                selected_row = row;
+                break;
+            }
+        }
+        const bool do_select = selected_row >= 0 && !do_prev && !do_next &&
+            !do_choose && !do_cancel && !do_delete && !do_reset && !do_id &&
+            !do_more;
 #ifdef TESTING
         if (do_prev || do_next || do_choose || do_cancel || do_delete ||
-            do_reset || do_id)
+            do_reset || do_id || do_more || do_select)
         {
             campaign_picker_testing_mark_action();
         }
@@ -491,28 +593,28 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
 			    wait_for_mouse_release();
 			}
 
-        // Prev
+        // Prev page
         if(do_prev)
         {
-            if(current_campaign_index > 0)
-            {
-                current_campaign_index--;
-            }
+            offset = og::ui::campaign_list_page_step(
+                offset, static_cast<int>(ids.size()), layout.list_rows, -1);
+            cursor = og::ui::campaign_list_clamp_cursor(
+                cursor, offset, static_cast<int>(ids.size()), layout.list_rows);
         }
-        // Next
+        // Next page
         else if(do_next)
         {
-            if(current_campaign_index + 1 < entries.size())
-            {
-                current_campaign_index++;
-            }
+            offset = og::ui::campaign_list_page_step(
+                offset, static_cast<int>(ids.size()), layout.list_rows, 1);
+            cursor = og::ui::campaign_list_clamp_cursor(
+                cursor, offset, static_cast<int>(ids.size()), layout.list_rows);
         }
         // Choose
         else if(do_choose)
         {
-            if(current_campaign_index < entries.size() && entries[current_campaign_index] != nullptr)
+            result = ensure_entry(cursor);
+            if(result != nullptr)
             {
-                result = entries[current_campaign_index].get();
                 done = true;
                 break;
             }
@@ -527,31 +629,21 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
         // Delete
         else if(do_delete)
        {
-           if(yes_or_no_prompt("Delete campaign", "Delete this campaign permanently?", false)
+           // Bounds check: DELETE stays clickable even when the shelf
+           // scanned empty, so never index an empty list.
+           if(cursor >= 0 && cursor < static_cast<int>(ids.size())
+              && yes_or_no_prompt("Delete campaign", "Delete this campaign permanently?", false)
               && no_or_yes_prompt("Delete campaign", "Are you really sure?", false))
            {
-               delete_campaign(entries[current_campaign_index]->id);
-               
+               delete_campaign(ids[static_cast<std::size_t>(cursor)]);
+
                restore_default_campaigns();
                (void)remount_campaign_package_with_error();  // Just in case we deleted the current campaign
-               
-               // Reload the picker
-	               entries.clear();
-               
-               campaign_ids = list_campaigns();
-               og::ui::order_campaigns_for_select(campaign_ids);
-               og::ui::filter_campaigns_for_networked_lobby(
-                   campaign_ids, networked_campaign_select());
 
-                for(auto& cid : campaign_ids)
-                {
-                    int num_completed = -1;
-                    if(save_data != nullptr)
-                        num_completed = save_data->get_num_levels_completed(cid);
-	                    entries.push_back(std::make_unique<CampaignEntry>(cid, num_completed));
-	                }
-                
-                current_campaign_index = 0;
+               // Reload the picker
+               rescan();
+               cursor = 0;
+               offset = 0;
            }
        }
         // Enter ID
@@ -569,53 +661,78 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
        // Reset progress
        else if(do_reset)
        {
-           if(yes_or_no_prompt("Reset campaign", "Reset your progress\nin this campaign?", false)
+           if(cursor >= 0 && cursor < static_cast<int>(ids.size())
+              && yes_or_no_prompt("Reset campaign", "Reset your progress\nin this campaign?", false)
               && no_or_yes_prompt("Reset campaign", "Are you really sure?", false))
            {
-               og::runtime::current_session->myscreen_->save_data.reset_campaign(entries[current_campaign_index]->id);
+               og::runtime::current_session->myscreen_->save_data.reset_campaign(ids[static_cast<std::size_t>(cursor)]);
+               // Drop the cached entry so its completion line reloads.
+               entries[static_cast<std::size_t>(cursor)].reset();
            }
        }
-       
+       // Full description in the intro-style scroller
+       else if(do_more)
+       {
+           CampaignEntry* current = ensure_entry(cursor);
+           if(current != nullptr)
+               (void)show_campaign_description(
+                   og::runtime::current_session->myscreen_, current->id);
+       }
+       // Select a list row
+       else if(do_select)
+       {
+           cursor = offset + selected_row;
+           highlighted_button = row_base_index + selected_row;
+           last_highlighted = highlighted_button;
+       }
+
         retvalue = 0;
 
-        // Update hidden buttons
-        if(do_prev || do_next || do_choose || do_cancel || do_delete || do_id)
-        {
-            buttons[prev_index].hidden = (current_campaign_index == 0);
-            buttons[next_index].hidden = (current_campaign_index + 1 >= entries.size());
-            buttons[choose_index].hidden = !(current_campaign_index < entries.size() && entries[current_campaign_index] != nullptr);
-            buttons[delete_index].hidden = !enable_delete;
-            buttons[reset_index].hidden = enable_delete;
-
-            apply_nav(buttons);
-            
-            if(buttons[highlighted_button].hidden)
-            {
-                if(highlighted_button == prev_index && !buttons[next_index].hidden)
-                    highlighted_button = next_index;
-                else if(highlighted_button == next_index && !buttons[prev_index].hidden)
-                    highlighted_button = prev_index;
-                else
-                    highlighted_button = cancel_index;
-            }
-        }
+        sync_visibility();
 
         // Draw
         og::runtime::current_session->myscreen_->clearbuffer();
 
-        if(current_campaign_index > 0)
+        // List pane: header, one row per campaign on this page, pagers with
+        // the position readout between them.
+        loadtext.write_xy(layout.list.x, layout.header_y, "CAMPAIGNS", WHITE, 1);
+        for (int row = 0; row < visible_rows; ++row)
+        {
+            const UiRect rect = og::ui::campaign_picker_row_rect(row);
+            const int index = offset + row;
+            const std::string& row_id = ids[static_cast<std::size_t>(index)];
+            og::runtime::current_session->myscreen_->draw_button(rect.x, rect.y, rect.x + rect.w, rect.y + rect.h, 1, 1);
+            // Marker column: '*' flags the campaign that was active when the
+            // browser opened.
+            if (row_id == old_campaign_id)
+                loadtext.write_xy(rect.x + 3, rect.y + 2, "*", RED, 1);
+            const std::string label = og::ui::fit_campaign_row_label(
+                og::data::campaign_display_title(row_id));
+            loadtext.write_xy(rect.x + 10, rect.y + 2, label.c_str(),
+                              index == cursor ? DARK_GREEN : DARK_BLUE, 1);
+            if (index == cursor)
+                og::runtime::current_session->myscreen_->draw_box(rect.x - 2, rect.y - 2, rect.x + rect.w + 2, rect.y + rect.h + 2, DARK_BLUE, 0, 1);
+        }
+
+        if(!buttons[prev_index].hidden)
         {
             og::runtime::current_session->myscreen_->draw_button(prev.x, prev.y, prev.x + prev.w, prev.y + prev.h, 1, 1);
             loadtext.write_xy(prev.x + 2, prev.y + 2, "Prev", DARK_BLUE, 1);
         }
-        
-        if(current_campaign_index + 1 < entries.size())
+
+        if(!buttons[next_index].hidden)
         {
             og::runtime::current_session->myscreen_->draw_button(next.x, next.y, next.x + next.w, next.y + next.h, 1, 1);
             loadtext.write_xy(next.x + 2, next.y + 2, "Next", DARK_BLUE, 1);
         }
-        
-        if(current_campaign_index < entries.size() && entries[current_campaign_index] != nullptr)
+
+        const std::string position_label = og::ui::format_campaign_position_label(
+            cursor, static_cast<int>(ids.size()));
+        loadtext.write_xy(layout.list.x + layout.list.w / 2
+                              - static_cast<int>(position_label.size()) * 3,
+                          prev.y + 2, position_label.c_str(), WHITE, 1);
+
+        if(!buttons[choose_index].hidden)
         {
             og::runtime::current_session->myscreen_->draw_button(choose.x, choose.y, choose.x + choose.w, choose.y + choose.h, 1, 1);
             loadtext.write_xy(choose.x + 9, choose.y + 2, "OK", DARK_GREEN, 1);
@@ -632,13 +749,20 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
             og::runtime::current_session->myscreen_->draw_button(reset_button.x, reset_button.y, reset_button.x + reset_button.w, reset_button.y + reset_button.h, 1, 1);
             loadtext.write_xy(reset_button.x + 2, reset_button.y + 2, "Reset", RED, 1);
         }
-        
+
         og::runtime::current_session->myscreen_->draw_button(id_button.x, id_button.y, id_button.x + id_button.w, id_button.y + id_button.h, 1, 1);
         loadtext.write_xy(id_button.x + 2, id_button.y + 2, "Enter ID", DARK_BLUE, 1);
-        
+
+        if(!buttons[more_index].hidden)
+        {
+            og::runtime::current_session->myscreen_->draw_button(more_button.x, more_button.y, more_button.x + more_button.w, more_button.y + more_button.h, 1, 1);
+            loadtext.write_xy(more_button.x + 8, more_button.y + 2, "More", DARK_BLUE, 1);
+        }
+
         // Draw entry
-        if(current_campaign_index < entries.size() && entries[current_campaign_index] != nullptr)
-            entries[current_campaign_index]->draw(area, army_power);
+        // (the detail pane for the highlighted row, loaded by sync_visibility)
+        if(cursor >= 0 && cursor < static_cast<int>(entries.size()) && entries[static_cast<std::size_t>(cursor)] != nullptr)
+            entries[static_cast<std::size_t>(cursor)]->draw(army_power);
 
         draw_highlight(buttons[highlighted_button]);
         og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
@@ -646,7 +770,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
     }
 
     wait_for_key_release(KEYSTATE_q, "quit");
-    
+
     // Restore old campaign
     (void)mount_campaign_package_with_error(old_campaign_id);
     
@@ -670,11 +794,12 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
                CampaignLoadError::None)
         {
             const short kept_cursor = save_data->scen_num;
-            std::map<std::string, int>::const_iterator cursor =
+            std::map<std::string, int>::const_iterator level_cursor =
                 save_data->current_levels.find(ret_value.id);
             save_data->scen_num = static_cast<short>(
-                cursor != save_data->current_levels.end() ? cursor->second
-                                                          : ret_value.first_level);
+                level_cursor != save_data->current_levels.end()
+                    ? level_cursor->second
+                    : ret_value.first_level);
             og::mode::current_progression().ensure_level_available(*save_data);
             save_data->scen_num = kept_cursor;
         }

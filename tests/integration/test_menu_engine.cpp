@@ -262,6 +262,10 @@ static bool remote_start_none_is_legacy_faithful(const std::string& name)
     static const std::set<std::string> kLegacyNoRemoteStart = {
         "gameplay_fx", "ui_fx", "graphics_fx",
         "display_settings",
+        // #168: the legacy blocking help dialog ran no remote-start check
+        // either — a joiner parked in HELP launches when the main menu
+        // re-enters, exactly as before the migration.
+        "help",
     };
     return kLegacyNoRemoteStart.count(name) > 0;
 }
@@ -1753,6 +1757,105 @@ TEST(MenuEngine, content_screen_registry_hosts_and_semantics)
         EXPECT_EQ(og::ui::RowState::Hidden,
                   view_scenario->rows[kViewScenarioPrevIndex].state_override(
                       context));
+    }
+}
+
+// #168 HELP: full-screen engine screen. Pin the registry hosting, the spec
+// obligations (BACK carries MENU_REDRAW under exit_on_redraw, no entry fade,
+// wheel frame_tick + MenuSpecRow dispatch), the hotkey set (1/2/3 tabs,
+// PageUp/PageDown pagers, Escape on BACK), the grid relations (tab strip on
+// one baseline at a uniform pitch from the frame's left column; the command
+// band on one baseline), the footer geometry identity with VIEW LEVEL, and
+// the null-state single-page shape the bare sweeps drive.
+TEST(MenuEngine, help_screen_spec_shape_pins)
+{
+    const og::ui::MenuScreenHost& host =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::Help);
+    ASSERT_EQ(og::ui::MenuScreenHost::Kind::Engine, host.kind);
+    const og::ui::MenuScreenSpec& spec = *host.spec;
+    EXPECT_STREQ("help", spec.name);
+    EXPECT_TRUE(spec.exit_on_redraw);
+    EXPECT_EQ(MENU_REDRAW, spec.exit_value);
+    EXPECT_TRUE(spec.polls_lobby);
+    // DELIBERATE: today's help has no entry fade (and #200 is reworking the
+    // FadeAroundEntry path).
+    EXPECT_EQ(og::ui::EnterTransition::None, spec.enter);
+    EXPECT_EQ(kHelpMenuBackIndex, spec.default_highlight);
+    EXPECT_NE(nullptr, spec.frame_tick) << "wheel -> page steps";
+    EXPECT_NE(nullptr, spec.on_spec_row) << "tab/pager dispatch";
+    ASSERT_EQ(kHelpMenuNextIndex + 1, spec.row_count);
+    EXPECT_NE(nullptr, spec.rows[kHelpMenuPrevIndex].state_override);
+    EXPECT_NE(nullptr, spec.rows[kHelpMenuNextIndex].state_override);
+
+    // Hotkeys: digit tabs, pager page keys, Escape on BACK.
+    EXPECT_EQ(KEYSTATE_1, spec.rows[kHelpMenuControlsTabIndex].hotkey);
+    EXPECT_EQ(KEYSTATE_2, spec.rows[kHelpMenuClassesTabIndex].hotkey);
+    EXPECT_EQ(KEYSTATE_3, spec.rows[kHelpMenuEditorTabIndex].hotkey);
+    EXPECT_EQ(KEYSTATE_ESCAPE, spec.rows[kHelpMenuBackIndex].hotkey);
+    EXPECT_EQ(KEYSTATE_PAGEUP, spec.rows[kHelpMenuPrevIndex].hotkey);
+    EXPECT_EQ(KEYSTATE_PAGEDOWN, spec.rows[kHelpMenuNextIndex].hotkey);
+
+    // G3: every MenuSpecRow arg is its own spec ordinal.
+    for (const int row : {kHelpMenuControlsTabIndex, kHelpMenuClassesTabIndex,
+                          kHelpMenuEditorTabIndex, kHelpMenuPrevIndex,
+                          kHelpMenuNextIndex}) {
+        EXPECT_EQ(ButtonAction::MenuSpecRow, spec.rows[row].action)
+            << spec.rows[row].id;
+        EXPECT_EQ(row, spec.rows[row].arg) << spec.rows[row].id;
+    }
+    EXPECT_EQ(ButtonAction::ReturnMenu, spec.rows[kHelpMenuBackIndex].action);
+    EXPECT_EQ(MENU_REDRAW, spec.rows[kHelpMenuBackIndex].arg);
+
+    // Grid relations, not absolutes: the tab strip shares one baseline, one
+    // face size, and a uniform pitch starting on the frame's left column;
+    // the command band shares one baseline and height.
+    for (const int tab : {kHelpMenuControlsTabIndex, kHelpMenuClassesTabIndex,
+                          kHelpMenuEditorTabIndex}) {
+        EXPECT_EQ(kHelpTabY, spec.rows[tab].y) << spec.rows[tab].id;
+        EXPECT_EQ(kHelpTabWidth, spec.rows[tab].w) << spec.rows[tab].id;
+        EXPECT_EQ(kHelpTabHeight, spec.rows[tab].h) << spec.rows[tab].id;
+        EXPECT_EQ(kHelpTabX(tab), spec.rows[tab].x) << spec.rows[tab].id;
+    }
+    EXPECT_EQ(kHelpFrameLeft, spec.rows[kHelpMenuControlsTabIndex].x)
+        << "tab strip starts on the frame's left column";
+    EXPECT_EQ(spec.rows[kHelpMenuClassesTabIndex].x -
+                  spec.rows[kHelpMenuControlsTabIndex].x,
+              spec.rows[kHelpMenuEditorTabIndex].x -
+                  spec.rows[kHelpMenuClassesTabIndex].x)
+        << "tab pitch must be uniform";
+    for (const int row : {kHelpMenuBackIndex, kHelpMenuPrevIndex,
+                          kHelpMenuNextIndex}) {
+        EXPECT_EQ(kHelpFooterY, spec.rows[row].y) << spec.rows[row].id;
+        EXPECT_EQ(kHelpFooterHeight, spec.rows[row].h) << spec.rows[row].id;
+    }
+
+    // Shared-layout identity: the BACK/PREV/NEXT band is the VIEW LEVEL
+    // footer, field by field.
+    const og::ui::MenuScreenSpec& view =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::ViewScenario).spec;
+    const std::pair<int, int> band[] = {
+        {kHelpMenuBackIndex, kViewScenarioBackIndex},
+        {kHelpMenuPrevIndex, kViewScenarioPrevIndex},
+        {kHelpMenuNextIndex, kViewScenarioNextIndex}};
+    for (const auto& [help_row, view_row] : band) {
+        EXPECT_EQ(view.rows[view_row].x, spec.rows[help_row].x)
+            << spec.rows[help_row].id;
+        EXPECT_EQ(view.rows[view_row].y, spec.rows[help_row].y)
+            << spec.rows[help_row].id;
+        EXPECT_EQ(view.rows[view_row].w, spec.rows[help_row].w)
+            << spec.rows[help_row].id;
+        EXPECT_EQ(view.rows[view_row].h, spec.rows[help_row].h)
+            << spec.rows[help_row].id;
+    }
+
+    // Null state (no open screen): pagers hidden — the single-page shape
+    // the bare G5/gate-lattice sweeps drive.
+    {
+        og::ui::MenuLabelContext context;
+        EXPECT_EQ(og::ui::RowState::Hidden,
+                  spec.rows[kHelpMenuPrevIndex].state_override(context));
+        EXPECT_EQ(og::ui::RowState::Hidden,
+                  spec.rows[kHelpMenuNextIndex].state_override(context));
     }
 }
 

@@ -30,18 +30,18 @@ bool help_testing_query_scroll_chrome()
 	return s_help_scroll_chrome.load(std::memory_order_acquire);
 }
 
-// #152: the Controls tab shipped three 41-42 char lines against the 39-char
-// frame. Flow the static table exactly as show_general_help does and report
-// the widest flowed line — or -1 if nothing wrapped (the overflow lines were
-// not flowed at all).
+// #168: the full-screen help flows the Controls table to the frame's
+// full-width budget (help_char_budget(kHelpTextBoxWidth) = 50 chars). Every
+// authored line already fits that budget, so the flow must not wrap anything
+// (-1 if it did); report the widest flowed line for the budget pin.
 Sint32 help_testing_controls_flowed_max_width()
 {
 	std::list<std::string> source;
 	for (int i = 0; i < NUM_CONTROLS_LINES; i++)
 		source.push_back(controls_help_lines[i]);
 	const std::vector<std::string> flowed =
-		og::core::wrap_lines(source, help_char_budget(240));
-	if (flowed.size() <= static_cast<std::size_t>(NUM_CONTROLS_LINES))
+		og::core::wrap_lines(source, help_char_budget(kHelpTextBoxWidth));
+	if (flowed.size() != static_cast<std::size_t>(NUM_CONTROLS_LINES))
 		return -1;
 	std::size_t max_len = 0;
 	for (const std::string& line : flowed)
@@ -50,6 +50,95 @@ Sint32 help_testing_controls_flowed_max_width()
 			max_len = line.size();
 	}
 	return static_cast<Sint32>(max_len);
+}
+
+// #168: injector probes for the full-screen help screen — the active tab and
+// the active tab's current page, published by the engine hooks.
+Sint32 help_testing_query_active_tab()
+{
+	return s_help_active_tab.load(std::memory_order_acquire);
+}
+
+Sint32 help_testing_query_help_page()
+{
+	return s_help_page.load(std::memory_order_acquire);
+}
+
+// #168: engine-hook exerciser (exact-check-count pattern): drives the help
+// spec hooks through the installed-state seam without a blocking loop.
+// Returns 0, or the negated index of the first failed check.
+Sint32 help_testing_exercise_menu_hooks()
+{
+	int check_index = 0;
+	int failed_check = 0;
+	const auto check = [&check_index, &failed_check](bool condition) {
+		++check_index;
+		if (!condition && failed_check == 0)
+			failed_check = check_index;
+	};
+
+	load_help_files();
+	og::ui::MenuLabelContext context;
+	std::vector<button> rows;
+	og::ui::materialize_menu_buttons(og::ui::help_menu_screen_spec(), rows);
+	check(static_cast<int>(rows.size()) == kHelpMenuNextIndex + 1);
+	int highlighted = kHelpMenuBackIndex;
+
+	// Null state (bare engine-sweep shape): pagers hidden, BACK's right-link
+	// closed, dispatch and the wheel tick no-op.
+	g_help_screen_state = nullptr;
+	check(help_engine_pager_row_state(context) == og::ui::RowState::Hidden);
+	help_engine_rewire(rows.data(), static_cast<int>(rows.size()),
+	                   highlighted);
+	check(rows[kHelpMenuBackIndex].nav.right == -1);
+	check(help_engine_on_spec_row(kHelpMenuClassesTabIndex, nullptr) == 0);
+	check(help_engine_frame_tick(nullptr, 0));
+
+	// Installed state: Controls flows multi-page at the 50-char budget.
+	HelpScreenState state;
+	help_switch_tab(state, HelpTab::Controls, true);
+	g_help_screen_state = &state;
+	check(state.pager.multi_page());
+	check(help_engine_pager_row_state(context) == og::ui::RowState::Visible);
+	help_engine_rewire(rows.data(), static_cast<int>(rows.size()),
+	                   highlighted);
+	check(rows[kHelpMenuBackIndex].nav.right == kHelpMenuPrevIndex);
+
+	// NEXT/PREV dispatch steps the pager (clamped at the first page).
+	check(help_engine_on_spec_row(kHelpMenuNextIndex, nullptr) == 0);
+	check(state.pager.page == 1);
+	check(help_engine_on_spec_row(kHelpMenuPrevIndex, nullptr) == 0);
+	check(state.pager.page == 0);
+	check(help_engine_on_spec_row(kHelpMenuPrevIndex, nullptr) == 0);
+	check(state.pager.page == 0);
+
+	// Re-selecting the active tab keeps the page; switching tabs reflows
+	// and resets the pager; an unknown row no-ops.
+	check(help_engine_on_spec_row(kHelpMenuNextIndex, nullptr) == 0);
+	check(help_engine_on_spec_row(kHelpMenuControlsTabIndex, nullptr) == 0);
+	check(state.tab == HelpTab::Controls && state.pager.page == 1);
+	check(help_engine_on_spec_row(kHelpMenuClassesTabIndex, nullptr) == 0);
+	check(state.tab == HelpTab::Classes && state.pager.page == 0);
+	check(help_testing_query_active_tab() ==
+	      static_cast<int>(HelpTab::Classes));
+	check(help_engine_on_spec_row(kHelpMenuEditorTabIndex, nullptr) == 0);
+	check(state.tab == HelpTab::Editor && state.pager.page == 0);
+	check(help_engine_on_spec_row(999, nullptr) == 0);
+	check(state.tab == HelpTab::Editor && state.pager.page == 0);
+
+	// Wheel: a negative accumulated delta pages down, positive pages back.
+	input_scroll_amount_ref() = -3;
+	check(help_engine_frame_tick(nullptr, 1));
+	check(state.pager.page == 1);
+	check(help_testing_query_help_page() == 1);
+	input_scroll_amount_ref() = 2;
+	check(help_engine_frame_tick(nullptr, 2));
+	check(state.pager.page == 0);
+	check(help_engine_frame_tick(nullptr, 3));
+	check(state.pager.page == 0);
+
+	g_help_screen_state = nullptr;
+	return failed_check == 0 ? 0 : -failed_check;
 }
 
 Sint32 help_testing_exercise_internal_paths()

@@ -228,6 +228,14 @@ std::vector<const MenuButtonSpec*> materialized_spec_rows_for(
 // spec.exit_value (or propagates a remote-start MENU_EXIT).
 Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state = nullptr);
 
+// Post-game teardown hand-off (#200): the code that ends a mission already
+// fades the presented canvas to black, so the next screen's
+// EnterTransition::FadeAroundEntry must skip its own fade-out instead of
+// fading the stale menu image out a second time. One-shot; the fade-in still
+// runs. consume_* is the runner's own read-and-clear.
+void suppress_next_menu_entry_fade_out();
+bool consume_suppressed_menu_entry_fade_out();
+
 // Registry of picker-screen ownership. Runtime screens carry their spec;
 // legacy screens carry their blocking entry point. NETWORKING is owned by
 // the SdlPickerClient state machine and therefore has a null entry point
@@ -252,6 +260,7 @@ enum class MenuScreenId : std::uint8_t {
     Scenario,
     Teams,
     Networking,
+    Help,
     Count,
 };
 
@@ -272,6 +281,11 @@ const MenuScreenSpec& hire_menu_screen_spec();
 const MenuScreenSpec& train_menu_screen_spec();
 const MenuScreenSpec& progress_menu_screen_spec();
 const MenuScreenSpec& view_scenario_menu_screen_spec();
+
+// #168 full-screen HELP: three content tabs over a paged text frame. The
+// tab/pager state lives in help.cpp behind a file-static pointer (the VIEW
+// LEVEL idiom); show_general_help() is the blocking wrapper.
+const MenuScreenSpec& help_menu_screen_spec();
 
 // The MP and no-MP main-menu specs share the same geometry.
 // DISABLE_MULTIPLAYER selects the compiled variant (including the

@@ -7,6 +7,7 @@
 #include <openglad/interface/input.h>
 #include <openglad/legacy/base.h>
 #include <openglad/interface/screen.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/resources/io.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
@@ -81,6 +82,19 @@ std::string unique_test_campaign_id(std::string_view stem)
 // pick_campaign returns, so the injector holds 'q' across every input-loop
 // poll instead of guessing a wall-clock window.
 std::atomic<bool> g_picker_q_release{false};
+
+// Injector coordinates come from the pure layouts (the :539 precedent), so
+// a geometry change moves the clicks with it instead of silently missing.
+int rect_center_x(const og::ui::PickerRect& rect) { return rect.x + rect.w / 2; }
+int rect_center_y(const og::ui::PickerRect& rect) { return rect.y + rect.h / 2; }
+
+// A point inside level-preview row `row`'s radar even for the narrowest map.
+void level_row_click_point(int row, int& x, int& y)
+{
+    const og::ui::LevelPickerLayout layout = og::ui::level_picker_layout();
+    x = layout.row_x + 14;
+    y = og::ui::level_picker_row_y(row) + layout.radar_dy + 10;
+}
 } // namespace
 
 // Defined below; declared here so the injector can handshake on them.
@@ -471,27 +485,45 @@ static int picker_choose_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     (void)data;
+    const og::ui::PickerRect ok_rect = og::ui::campaign_picker_layout().choose;
     const bool ready = wait_for_campaign_picker_ready();
-    return ready && click_campaign_picker_action(195, 190) ? 0 : 1; // OK
+    return ready && click_campaign_picker_action(rect_center_x(ok_rect),
+                                                 rect_center_y(ok_rect))
+        ? 0
+        : 1; // OK
 }
 
-static int picker_cancel_injector(void* data)
+static int picker_more_then_cancel_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     (void)data;
-    const bool ready = wait_for_campaign_picker_ready();
-    return ready && click_campaign_picker_action(121, 190) ? 0 : 1; // CANCEL
+    const og::ui::CampaignPickerLayout layout = og::ui::campaign_picker_layout();
+    bool ok = wait_for_campaign_picker_ready();
+    // MORE is deterministically visible while gladiator is highlighted: its
+    // shipped description overflows the detail box. Under TESTING the
+    // full-description scroller returns immediately (help.cpp force guard),
+    // so the click exercises the control without blocking.
+    if (ok)
+        ok = click_campaign_picker_action(rect_center_x(layout.more_button),
+                                          rect_center_y(layout.more_button));
+    if (ok)
+        ok = click_campaign_picker_action(rect_center_x(layout.cancel),
+                                          rect_center_y(layout.cancel));
+    return ok ? 0 : 1;
 }
 
 static int campaign_delete_then_cancel_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     (void)data;
+    const og::ui::CampaignPickerLayout layout = og::ui::campaign_picker_layout();
     bool ok = wait_for_campaign_picker_ready();
     if (ok)
-        ok = click_campaign_picker_action(280, 15); // DELETE
+        ok = click_campaign_picker_action(rect_center_x(layout.delete_button),
+                                          rect_center_y(layout.delete_button));
     if (ok)
-        ok = click_campaign_picker_action(121, 190); // CANCEL
+        ok = click_campaign_picker_action(rect_center_x(layout.cancel),
+                                          rect_center_y(layout.cancel));
     return ok ? 0 : 1;
 }
 
@@ -499,17 +531,21 @@ static int campaign_reset_then_cancel_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     (void)data;
+    const og::ui::CampaignPickerLayout layout = og::ui::campaign_picker_layout();
     bool ok = wait_for_campaign_picker_ready();
     if (ok)
-        ok = click_campaign_picker_action(280, 15); // RESET
+        ok = click_campaign_picker_action(rect_center_x(layout.reset_button),
+                                          rect_center_y(layout.reset_button));
     if (ok)
-        ok = click_campaign_picker_action(121, 190); // CANCEL
+        ok = click_campaign_picker_action(rect_center_x(layout.cancel),
+                                          rect_center_y(layout.cancel));
     return ok ? 0 : 1;
 }
 
 struct CampaignNavigationInjectorContext
 {
-    std::size_t steps = 0;
+    std::size_t page_steps = 0;  // PREV/NEXT page clicks to reach the far page
+    int row = 0;                 // visible row to click once there
     bool next = true;
 };
 
@@ -518,15 +554,25 @@ static int campaign_next_prev_choose_injector(void* data)
     og::runtime::ensure_thread_session();
     const auto* const context =
         static_cast<const CampaignNavigationInjectorContext*>(data);
+    const og::ui::CampaignPickerLayout layout = og::ui::campaign_picker_layout();
     bool ok = context != nullptr && wait_for_campaign_picker_ready();
-    for (std::size_t i = 0; ok && i < context->steps; ++i)
+    for (std::size_t i = 0; ok && i < context->page_steps; ++i)
     {
-        ok = context->next
-            ? click_campaign_picker_action(210, 40) // NEXT
-            : click_campaign_picker_action(105, 40); // PREV
+        const og::ui::PickerRect pager =
+            context->next ? layout.next : layout.prev;
+        ok = click_campaign_picker_action(rect_center_x(pager),
+                                          rect_center_y(pager));
     }
     if (ok)
-        ok = click_campaign_picker_action(195, 190); // OK
+    {
+        const og::ui::PickerRect row_rect =
+            og::ui::campaign_picker_row_rect(context->row);
+        ok = click_campaign_picker_action(rect_center_x(row_rect),
+                                          rect_center_y(row_rect));
+    }
+    if (ok)
+        ok = click_campaign_picker_action(rect_center_x(layout.choose),
+                                          rect_center_y(layout.choose)); // OK
     return ok ? 0 : 1;
 }
 
@@ -555,16 +601,20 @@ static int campaign_confirmed_delete_injector(void* opaque)
     og::runtime::ensure_thread_session();
     auto* const context =
         static_cast<CampaignDeleteInjectorContext*>(opaque);
+    const og::ui::CampaignPickerLayout layout = og::ui::campaign_picker_layout();
 
     // One destructive click only. The cancel press cannot be consumed until
     // deletion and row reload finish, so its event handshake also proves the
     // destructive action committed before this thread inspects the package.
     bool clicked_delete = wait_for_campaign_picker_ready();
     if (clicked_delete)
-        clicked_delete = click_campaign_picker_action(280, 15); // DELETE
+        clicked_delete =
+            click_campaign_picker_action(rect_center_x(layout.delete_button),
+                                         rect_center_y(layout.delete_button));
     bool canceled = false;
     if (clicked_delete)
-        canceled = click_campaign_picker_action(121, 190); // CANCEL
+        canceled = click_campaign_picker_action(rect_center_x(layout.cancel),
+                                                rect_center_y(layout.cancel));
     const bool removed = !std::filesystem::exists(context->package);
     return clicked_delete && removed && canceled ? 0 : 1;
 }
@@ -573,12 +623,15 @@ static int campaign_confirmed_reset_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     (void)data;
+    const og::ui::CampaignPickerLayout layout = og::ui::campaign_picker_layout();
     bool reset = wait_for_campaign_picker_ready();
     if (reset)
-        reset = click_campaign_picker_action(280, 15); // RESET
+        reset = click_campaign_picker_action(rect_center_x(layout.reset_button),
+                                             rect_center_y(layout.reset_button));
     bool canceled = false;
     if (reset)
-        canceled = click_campaign_picker_action(121, 190); // CANCEL
+        canceled = click_campaign_picker_action(rect_center_x(layout.cancel),
+                                                rect_center_y(layout.cancel));
     return reset && canceled ? 0 : 1;
 }
 
@@ -586,11 +639,16 @@ static int level_picker_choose_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     (void)data;
+    const og::ui::LevelPickerLayout layout = og::ui::level_picker_layout();
+    int row_x = 0;
+    int row_y = 0;
+    level_row_click_point(0, row_x, row_y);
     SDL_Delay(500);
     for (int i = 0; i < 8; ++i) {
-        inject_click(24, 23, 100);   // Select entry 1
+        inject_click(row_x, row_y, 100);   // Select entry 1
         SDL_Delay(150);
-        inject_click(280, 175, 100); // OK
+        inject_click(rect_center_x(layout.choose),
+                     rect_center_y(layout.choose), 100); // OK
         SDL_Delay(150);
     }
     return 0;
@@ -600,14 +658,20 @@ static int level_picker_delete_then_cancel_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     (void)data;
+    const og::ui::LevelPickerLayout layout = og::ui::level_picker_layout();
+    int row_x = 0;
+    int row_y = 0;
+    level_row_click_point(0, row_x, row_y);
     SDL_Delay(500);
     for (int i = 0; i < 4; ++i) {
-        inject_click(24, 23, 100);  // Select entry 1
+        inject_click(row_x, row_y, 100);  // Select entry 1
         SDL_Delay(150);
-        inject_click(280, 15, 100); // DELETE
+        inject_click(rect_center_x(layout.delete_button),
+                     rect_center_y(layout.delete_button), 100); // DELETE
         SDL_Delay(150);
     }
-    repeated_click(239, 175, 8); // CANCEL
+    repeated_click(rect_center_x(layout.cancel),
+                   rect_center_y(layout.cancel), 8); // CANCEL
     return 0;
 }
 
@@ -615,15 +679,21 @@ static int level_picker_scroll_then_choose_first_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     (void)data;
+    const og::ui::LevelPickerLayout layout = og::ui::level_picker_layout();
+    int row_x = 0;
+    int row_y = 0;
+    level_row_click_point(0, row_x, row_y);
     bool ok = wait_for_level_picker_ready();
     if (ok)
         ok = click_level_picker_action(
-            180, 155); // NEXT: shift previews up and re-index them
+            rect_center_x(layout.next),
+            rect_center_y(layout.next)); // NEXT: shift previews up
     if (ok)
         ok = click_level_picker_action(
-            24, 23); // Select the entry shifted into the first row
+            row_x, row_y); // Select the entry shifted into the first row
     if (ok)
-        ok = click_level_picker_action(280, 175); // OK
+        ok = click_level_picker_action(rect_center_x(layout.choose),
+                                       rect_center_y(layout.choose)); // OK
     return ok ? 0 : 1;
 }
 
@@ -631,16 +701,23 @@ static int level_picker_scroll_back_then_choose_first_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     (void)data;
+    const og::ui::LevelPickerLayout layout = og::ui::level_picker_layout();
+    int row_x = 0;
+    int row_y = 0;
+    level_row_click_point(0, row_x, row_y);
     bool ok = wait_for_level_picker_ready();
     if (ok)
-        ok = click_level_picker_action(180, 155); // NEXT
+        ok = click_level_picker_action(rect_center_x(layout.next),
+                                       rect_center_y(layout.next)); // NEXT
     if (ok)
-        ok = click_level_picker_action(180, 25); // PREV
+        ok = click_level_picker_action(rect_center_x(layout.prev),
+                                       rect_center_y(layout.prev)); // PREV
     if (ok)
         ok = click_level_picker_action(
-            24, 23); // First entry after scrolling back
+            row_x, row_y); // First entry after scrolling back
     if (ok)
-        ok = click_level_picker_action(280, 175); // OK
+        ok = click_level_picker_action(rect_center_x(layout.choose),
+                                       rect_center_y(layout.choose)); // OK
     return ok ? 0 : 1;
 }
 
@@ -648,9 +725,11 @@ static int level_picker_enter_id_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     (void)data;
+    const og::ui::PickerRect id_button = og::ui::level_picker_layout().id_button;
     bool ok = wait_for_level_picker_ready();
     if (ok)
-        ok = click_level_picker_action(225, 15); // ENTER ID
+        ok = click_level_picker_action(rect_center_x(id_button),
+                                       rect_center_y(id_button)); // ENTER ID
     return ok ? 0 : 1;
 }
 
@@ -658,13 +737,19 @@ static int level_picker_delete_once_then_cancel_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     (void)data;
+    const og::ui::LevelPickerLayout layout = og::ui::level_picker_layout();
+    int row_x = 0;
+    int row_y = 0;
+    level_row_click_point(0, row_x, row_y);
     bool ok = wait_for_level_picker_ready();
     if (ok)
-        ok = click_level_picker_action(24, 23); // Select first entry
+        ok = click_level_picker_action(row_x, row_y); // Select first entry
     if (ok)
-        ok = click_level_picker_action(280, 15); // DELETE
+        ok = click_level_picker_action(rect_center_x(layout.delete_button),
+                                       rect_center_y(layout.delete_button));
     if (ok)
-        ok = click_level_picker_action(239, 175); // CANCEL
+        ok = click_level_picker_action(rect_center_x(layout.cancel),
+                                       rect_center_y(layout.cancel)); // CANCEL
     return ok ? 0 : 1;
 }
 
@@ -766,8 +851,12 @@ TEST(CampaignAndLevelPicker, campaign_picker_mouse_choose_and_cancel_paths)
     ASSERT_TRUE(mount_campaign_package_with_error(old_campaign) == CampaignPackageIoError::None) << "failed to restore mounted campaign after choose path";
 
     input_guard.reset();
-    ScopedSdlThread cancel_thread(
-        SDL_CreateThread(picker_cancel_injector, "picker_cancel", nullptr));
+    // Highlight gladiator deterministically so MORE is visible (see the
+    // injector), then open the full description and cancel out.
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    ScopedSdlThread cancel_thread(SDL_CreateThread(
+        picker_more_then_cancel_injector, "picker_more_cancel", nullptr));
     ASSERT_TRUE(cancel_thread.valid()) << "failed to create cancel injector";
     CampaignResult canceled = pick_campaign(&og::runtime::current_session->myscreen_->save_data, false);
     const int cancel_rc = cancel_thread.join();
@@ -830,8 +919,20 @@ TEST(CampaignAndLevelPicker, campaign_picker_next_and_prev_reach_ordered_boundar
     CampaignMountGuard mount_guard;
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error(first));
+
+    // Page math mirrors campaign_list_page_step: from the first page,
+    // page_hops NEXT clicks land on the last page (offset = total - rows);
+    // from the last page the same count of PREV clicks lands on offset 0.
+    // A hidden pager can't acknowledge a click, so the counts must be exact.
+    const int total = static_cast<int>(ordered.size());
+    const int rows = og::ui::campaign_picker_layout().list_rows;
+    ASSERT_GT(total, rows)
+        << "the shipped shelf must span 2+ pages for this boundary walk";
+    const int last_offset = total - rows;
+    const std::size_t page_hops =
+        static_cast<std::size_t>((last_offset + rows - 1) / rows);
     CampaignNavigationInjectorContext next_context{
-        ordered.size() - 1u, true};
+        page_hops, rows - 1, true};
 
     ViewportGuard viewport_guard;
     og::runtime::current_session->window_w_ = 320;
@@ -855,13 +956,13 @@ TEST(CampaignAndLevelPicker, campaign_picker_next_and_prev_reach_ordered_boundar
 
     ASSERT_EQ(0, next_thread_result);
     ASSERT_EQ(last, next_result.id)
-        << "each acknowledged NEXT must reach the last ordered row";
+        << "paging NEXT then choosing the last row must reach the last ordered id";
 
     input_guard.reset();
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error(last));
     CampaignNavigationInjectorContext prev_context{
-        ordered.size() - 1u, false};
+        page_hops, 0, false};
     ScopedSdlThread prev_thread(SDL_CreateThread(
         campaign_next_prev_choose_injector,
         "campaign_prev_choose", &prev_context));
@@ -872,7 +973,7 @@ TEST(CampaignAndLevelPicker, campaign_picker_next_and_prev_reach_ordered_boundar
 
     EXPECT_EQ(0, prev_thread_result);
     EXPECT_EQ(first, prev_result.id)
-        << "each acknowledged PREV must return to the first ordered row";
+        << "paging PREV then choosing row 0 must return to the first ordered id";
 }
 
 TEST(CampaignAndLevelPicker, campaign_picker_enter_id_returns_exact_prompt_text)
@@ -1360,25 +1461,16 @@ TEST(CampaignAndLevelPicker, sync_campaign_mount_follows_save_and_restores_on_fa
 
 namespace
 {
-SDL_AtomicInt s_new_game_setup_done;
-
-int new_game_intro_dismisser(void* data)
+int new_game_name_accepter(void* data)
 {
     og::runtime::ensure_thread_session();
     (void)data;
-    // §2.2: picker_prepare_new_game_setup() now opens the name-entry screen
-    // first. Accept the generated company name BEFORE tapping Escape — on the
-    // name screen Escape is the BACK (cancel) hotkey, so an early Escape would
-    // abort the new game instead of dismissing the intro.
+    // §2.2: picker_prepare_new_game_setup() opens the name-entry screen
+    // first; accept the generated company name. The campaign intro no
+    // longer runs here — it moved behind the campaign select (issue #186:
+    // the intro belongs to the campaign the player picks), so after the
+    // accept the flow under test runs to completion without input.
     accept_generated_company_name(10000);
-    // Then picker_prepare_new_game_setup() blocks inside read_campaign_intro()
-    // until input_continue (Escape keydown). scroll_text_view() clears the
-    // keyboard on entry, so a single early press can be eaten — keep tapping
-    // until the flow under test reports completion.
-    for (int i = 0; i < 100 && !SDL_GetAtomicInt(&s_new_game_setup_done); ++i) {
-        SDL_Delay(200);
-        inject_key_press(SDLK_ESCAPE);
-    }
     return 0;
 }
 } // namespace
@@ -1399,12 +1491,10 @@ TEST(CampaignAndLevelPicker, new_game_resets_campaign_and_mount_to_default)
         save.team_list[static_cast<std::size_t>(i)].reset();
     save.team_size = 0;
 
-    SDL_SetAtomicInt(&s_new_game_setup_done, 0);
     SDL_Thread* thread =
-        SDL_CreateThread(new_game_intro_dismisser, "intro_dismiss", nullptr);
-    ASSERT_TRUE(thread != nullptr) << "failed to create intro dismisser thread";
+        SDL_CreateThread(new_game_name_accepter, "name_accept", nullptr);
+    ASSERT_TRUE(thread != nullptr) << "failed to create name accepter thread";
     const bool ok = picker_prepare_new_game_setup();
-    SDL_SetAtomicInt(&s_new_game_setup_done, 1);
     SDL_WaitThread(thread, nullptr);
 
     ASSERT_TRUE(ok) << "new game setup should not abort";
@@ -1416,4 +1506,165 @@ TEST(CampaignAndLevelPicker, new_game_resets_campaign_and_mount_to_default)
 
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error(old_mounted));
+}
+
+// --- Issue #186: committing a selection must survive a failed load ---------
+
+// button.cpp handler under test (SET CAMPAIGN mid-game path).
+Sint32 do_pick_campaign(Sint32 arg1);
+// handle_menu_nav's TESTING hook (the options-menu capture precedent).
+extern int g_test_menu_nav_key;
+
+TEST(CampaignAndLevelPicker, apply_campaign_selection_commits_or_rolls_back)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const std::string old_mounted = get_mounted_campaign();
+    const std::string old_campaign = save.current_campaign;
+    const short old_scen = save.scen_num;
+
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+
+    // Success: the save follows the selection and the cursor comes from
+    // load_campaign (first_level when the campaign has no tracked cursor).
+    save.current_levels.erase("modes");
+    ASSERT_TRUE(og::ui::apply_campaign_selection(save, "modes", 300));
+    EXPECT_EQ(std::string("modes"), save.current_campaign);
+    EXPECT_EQ(300, save.scen_num);
+    EXPECT_EQ(std::string("modes"), get_mounted_campaign());
+
+    // Failure: the save keeps the previous selection AND the previous
+    // package is remounted — no negative scen_num can reach the save.
+    ASSERT_FALSE(og::ui::apply_campaign_selection(
+        save, "this_campaign_should_not_exist", 1));
+    EXPECT_EQ(std::string("modes"), save.current_campaign)
+        << "a failed load must not adopt the bad campaign id";
+    EXPECT_EQ(300, save.scen_num)
+        << "a failed load must not clobber the level cursor";
+    EXPECT_EQ(std::string("modes"), get_mounted_campaign())
+        << "a failed load must remount the previous package";
+
+    save.current_campaign = old_campaign;
+    save.scen_num = old_scen;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(old_mounted));
+}
+
+TEST(CampaignAndLevelPicker, set_campaign_bad_enter_id_pops_and_keeps_save)
+{
+    trace_clear();
+    CampaignPickerInputGuard input_guard;
+    CampaignMountGuard mount_guard;
+    ViewportGuard viewport_guard;
+    og::runtime::current_session->window_w_ = 320;
+    og::runtime::current_session->window_h_ = 200;
+    og::runtime::current_session->viewport_offset_x_ = 0;
+    og::runtime::current_session->viewport_offset_y_ = 0;
+    og::runtime::current_session->viewport_w_ = 320;
+    og::runtime::current_session->viewport_h_ = 200;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const std::string old_campaign = save.current_campaign;
+    const short old_scen = save.scen_num;
+    // Deterministic starting point: save and mount agree on gladiator.
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+
+    PromptQueueGuard prompt_queue;
+    prompt_queue.push("this_campaign_should_not_exist");
+    char& end = og::runtime::current_session->myscreen_->world().end;
+    WorldEndGuard end_guard(end);
+    end = 0;
+
+    ScopedSdlThread thread(SDL_CreateThread(
+        campaign_enter_id_injector, "campaign_bad_enter_id", nullptr));
+    ASSERT_TRUE(thread.valid());
+    const Sint32 redraw = do_pick_campaign(0);
+    const int thread_result = thread.join();
+
+    EXPECT_EQ(0, thread_result);
+    EXPECT_EQ(2, static_cast<int>(redraw)) << "handler must return MENU_REDRAW";
+    EXPECT_TRUE(trace_contains("popup", "Could not load campaign"))
+        << "the failed load must surface a popup";
+    EXPECT_EQ(std::string("gladiator"), save.current_campaign)
+        << "the save must keep its previous campaign";
+    EXPECT_EQ(1, save.scen_num)
+        << "no negative load_campaign return may reach scen_num";
+    EXPECT_EQ(std::string("gladiator"), get_mounted_campaign())
+        << "the previous package must be remounted";
+
+    save.current_campaign = old_campaign;
+    save.scen_num = old_scen;
+}
+
+// Arrow keys drive the list: walking the highlight up from CANCEL lands on
+// the last visible row, and the detail cursor follows it, so OK chooses
+// that row's campaign.
+TEST(CampaignAndLevelPicker, campaign_picker_keyboard_row_highlight_moves_cursor)
+{
+    cleanup_leftover_test_campaigns();
+    std::list<std::string> ordered = list_campaigns();
+    og::ui::order_campaigns_for_select(ordered);
+    const int rows = og::ui::campaign_picker_layout().list_rows;
+    ASSERT_GT(static_cast<int>(ordered.size()), rows)
+        << "the shipped shelf must overflow one page so NEXT is the up-exit";
+    // Page 1 shows rows [0, rows); the expected pick is its last row.
+    const std::string expected =
+        *std::next(ordered.begin(), static_cast<std::ptrdiff_t>(rows - 1));
+
+    CampaignPickerInputGuard input_guard;
+    CampaignMountGuard mount_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(ordered.front()));
+
+    ViewportGuard viewport_guard;
+    og::runtime::current_session->window_w_ = 320;
+    og::runtime::current_session->window_h_ = 200;
+    og::runtime::current_session->viewport_offset_x_ = 0;
+    og::runtime::current_session->viewport_offset_y_ = 0;
+    og::runtime::current_session->viewport_w_ = 320;
+    og::runtime::current_session->viewport_h_ = 200;
+
+    char& end = og::runtime::current_session->myscreen_->world().end;
+    WorldEndGuard end_guard(end);
+    end = 0;
+
+    struct KeyboardWalkInjector
+    {
+        static int run(void*)
+        {
+            og::runtime::ensure_thread_session();
+            if (!wait_for_campaign_picker_ready())
+                return 1;
+            // CANCEL.up -> NEXT (page 1 of 2+), NEXT.up -> last visible row.
+            // The nav hook is consumed once per ~10ms loop pass; the delays
+            // give each press its own pass (options-menu capture precedent).
+            SDL_Delay(300);
+            g_test_menu_nav_key = KEY_UP;
+            SDL_Delay(500);
+            g_test_menu_nav_key = KEY_UP;
+            SDL_Delay(500);
+            const og::ui::PickerRect ok_rect =
+                og::ui::campaign_picker_layout().choose;
+            return click_campaign_picker_action(rect_center_x(ok_rect),
+                                                rect_center_y(ok_rect))
+                ? 0
+                : 2;
+        }
+    };
+
+    ScopedSdlThread thread(SDL_CreateThread(
+        KeyboardWalkInjector::run, "campaign_keyboard_walk", nullptr));
+    ASSERT_TRUE(thread.valid());
+    const CampaignResult result = pick_campaign(
+        &og::runtime::current_session->myscreen_->save_data, false);
+    const int thread_result = thread.join();
+
+    EXPECT_EQ(0, thread_result);
+    EXPECT_EQ(expected, result.id)
+        << "the arrowed-to row must be the one OK chooses";
 }

@@ -16,6 +16,7 @@
  */
 
 #include <openglad/interface/ui/level_picker.h>
+#include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/interface/render/radar.h>
@@ -271,7 +272,7 @@ bool sort_scen(const std::string& first, const std::string& second)
 class BrowserEntry
 {
     public:
-    
+
     LevelRuntimeData level_data;
     UiRect mapAreas;
     radar myradar;
@@ -280,13 +281,15 @@ class BrowserEntry
     float average_enemy_level;
     int num_enemies;
     float difficulty;
+    bool is_cleared;               // PROGRESS-report derivation (issue #186)
+    bool is_current;
     std::list<int> exits;
     std::array<std::string, 80> scentext;           // Array to hold scenario information
     int scentextlines = 0;                 // How many lines of text in scenario info
-    
+
     BrowserEntry(screen* screenp, int index, int scen_num);
     ~BrowserEntry();
-    
+
     void updateIndex(int index);
     void draw(screen* screenp);
 };
@@ -296,31 +299,33 @@ BrowserEntry::BrowserEntry(screen* screenp, int index, int scen_num)
 {
 	(void)screenp;
 	    level_data.load();
-    
-    myradar.start(&level_data);
-    
 
+    myradar.start(&level_data);
+
+	    const og::ui::LevelPickerLayout layout = og::ui::level_picker_layout();
 	    const int w = myradar.xview;
 	    const int h = myradar.yview;
-    
+
     mapAreas.w = w;
     mapAreas.h = h;
-    mapAreas.x = 10;
-    mapAreas.y = 5 + (53 + 12)*index;
-    
-	    myradar.xloc = static_cast<short>(mapAreas.x + mapAreas.w/2 - w/2);
-	    myradar.yloc = static_cast<short>(mapAreas.y + 10);
-    
-    
+    mapAreas.x = layout.row_x;
+    mapAreas.y = og::ui::level_picker_row_y(index);
+
+	    myradar.xloc = static_cast<short>(mapAreas.x);
+	    myradar.yloc = static_cast<short>(mapAreas.y + layout.radar_dy);
+
+
     getLevelStats(level_data, &max_enemy_level, &average_enemy_level, &num_enemies, &difficulty, exits);
-    
+
+    // Status markers, derived exactly as the PROGRESS report derives them.
+    const SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    is_cleared = save.is_level_completed(scen_num);
+    is_current = (scen_num == save.scen_num);
+
     // Store this level's info
-    level_name = level_data.world().title;
-    if(level_name.size() > 20)
-    {
-        level_name = level_name.substr(0, 20) + "...";
-    }
-    
+    level_name = og::ui::fit_text_to_chars(level_data.world().title,
+                                           layout.title_max_chars + 3);
+
 	    scentextlines = static_cast<int>(std::min<size_t>(level_data.description.size(), 80u));
     int i = 0;
     for(auto& line : level_data.description)
@@ -337,16 +342,16 @@ BrowserEntry::~BrowserEntry() = default;
 
 void BrowserEntry::updateIndex(int index)
 {
-	    const int w = myradar.xview;
-	    mapAreas.y = 5 + (53 + 12)*index;
-	    
-	    myradar.xloc = static_cast<short>(mapAreas.x + mapAreas.w/2 - w/2);
-	    myradar.yloc = static_cast<short>(mapAreas.y + 10);
+	    mapAreas.y = og::ui::level_picker_row_y(index);
+
+	    myradar.xloc = static_cast<short>(mapAreas.x);
+	    myradar.yloc = static_cast<short>(mapAreas.y + og::ui::level_picker_layout().radar_dy);
 }
 
 void BrowserEntry::draw(screen* screenp)
 {
 	(void)screenp;
+	    const og::ui::LevelPickerLayout layout = og::ui::level_picker_layout();
 	    int x = myradar.xloc;
 	    int y = myradar.yloc;
     int w = myradar.xview;
@@ -354,20 +359,29 @@ void BrowserEntry::draw(screen* screenp)
     og::runtime::current_session->myscreen_->draw_button(x - 2, y - 2, x + w + 2, y + h + 2, 1, 1);
     // Draw radar
     myradar.draw(&level_data);
-    
+
     text& loadtext = og::runtime::current_session->myscreen_->text_normal;
     loadtext.write_xy(mapAreas.x, mapAreas.y, level_name.c_str(), DARK_BLUE, 1);
-    
+
+    // CLEARED/CURRENT column on the title line (PROGRESS's colors).
+    const char* status = og::ui::level_row_status_label(is_cleared, is_current);
+    if(status[0] != '\0')
+        loadtext.write_xy(layout.status_x, mapAreas.y, status,
+                          is_cleared ? DARK_GREEN : YELLOW, 1);
+
+    // Stats share one column (layout.stats_x) regardless of this row's
+    // radar width, so the three rows read as a grid.
+    const int stats_x = layout.stats_x;
     std::string buf = std::format("ID: {}", level_data.world().id);
-    loadtext.write_xy(x + w + 5, y, buf.c_str(), WHITE, 1);
+    loadtext.write_xy(stats_x, y, buf.c_str(), WHITE, 1);
     buf = std::format("Enemies: {}", num_enemies);
-    loadtext.write_xy(x + w + 5, y + 8, buf.c_str(), WHITE, 1);
+    loadtext.write_xy(stats_x, y + 8, buf.c_str(), WHITE, 1);
     buf = std::format("Max level: {}", max_enemy_level);
-    loadtext.write_xy(x + w + 5, y + 16, buf.c_str(), WHITE, 1);
+    loadtext.write_xy(stats_x, y + 16, buf.c_str(), WHITE, 1);
     buf = std::format("Avg level: {:.1f}", average_enemy_level);
-    loadtext.write_xy(x + w + 5, y + 24, buf.c_str(), WHITE, 1);
+    loadtext.write_xy(stats_x, y + 24, buf.c_str(), WHITE, 1);
     buf = std::format("Difficulty: {:.0f}", difficulty);
-    loadtext.write_xy(x + w + 5, y + 32, buf.c_str(), RED, 1);
+    loadtext.write_xy(stats_x, y + 32, buf.c_str(), RED, 1);
 
     if(exits.size() > 0)
     {
@@ -379,9 +393,8 @@ void BrowserEntry::draw(screen* screenp)
             exits_str += std::to_string(exit_level);
             first = false;
         }
-        if(exits_str.size() > 20)
-            exits_str = exits_str.substr(0, 17) + "...";
-        loadtext.write_xy(x + w + 5, y + 40, exits_str.c_str(), WHITE, 1);
+        exits_str = og::ui::fit_text_to_chars(exits_str, layout.stats_max_chars);
+        loadtext.write_xy(stats_x, y + 40, exits_str.c_str(), WHITE, 1);
     }
 }
 
@@ -442,22 +455,22 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
 		}
 	}
     
-    // Buttons
-    int screenW = 320;
-    int screenH = 200;
-    UiRect prev = {screenW - 150, 20, 30, 10};
-    UiRect next = {screenW - 150, screenH - 50, 30, 10};
-    UiRect descbox = {prev.x - 40, prev.y + 15, 185, next.y - 10 - (prev.y + prev.h)};
-    
-    UiRect choose = {screenW - 50, screenH - 30, 30, 10};
-    UiRect cancel = {screenW - 100, screenH - 30, 38, 10};
-    UiRect delete_button = {screenW - 50, 10, 38, 10};
-    UiRect id_button = {delete_button.x - 52 - 10, 10, 52, 10};
-    
+    // Buttons (geometry single-sourced in picker_common so the pure layout
+    // pins keep the previews on screen and the desc box off the stats).
+    const og::ui::LevelPickerLayout layout = og::ui::level_picker_layout();
+    const UiRect prev = {layout.prev.x, layout.prev.y, layout.prev.w, layout.prev.h};
+    const UiRect next = {layout.next.x, layout.next.y, layout.next.w, layout.next.h};
+    const UiRect descbox = {layout.desc_box.x, layout.desc_box.y, layout.desc_box.w, layout.desc_box.h};
+
+    const UiRect choose = {layout.choose.x, layout.choose.y, layout.choose.w, layout.choose.h};
+    const UiRect cancel = {layout.cancel.x, layout.cancel.y, layout.cancel.w, layout.cancel.h};
+    const UiRect delete_button = {layout.delete_button.x, layout.delete_button.y, layout.delete_button.w, layout.delete_button.h};
+    const UiRect id_button = {layout.id_button.x, layout.id_button.y, layout.id_button.w, layout.id_button.h};
+
     // Controller input
     int retvalue = 0;
 	int highlighted_button = 3;
-	
+
 	int prev_index = 0;
 	int next_index = 1;
 	int choose_index = 2;
@@ -467,7 +480,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
 	int entry1_index = 6;
 	int entry2_index = 7;
 	int entry3_index = 8;
-	
+
 	button buttons[] = {
         button("prev", "PREV", KEYSTATE_UNKNOWN, prev.x, prev.y, prev.w, prev.h, 0, -1 , MenuNav{.down=next_index, .left=entry1_index, .right=id_index}),
         button("next", "NEXT", KEYSTATE_UNKNOWN, next.x, next.y, next.w, next.h, 0, -1 , MenuNav{.up=prev_index, .left=entry3_index, .right=cancel_index}),
@@ -475,9 +488,9 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         button("cancel", "CANCEL", KEYSTATE_ESCAPE, cancel.x, cancel.y, cancel.w, cancel.h, 0, -1 , MenuNav{.up=id_index, .left=next_index, .right=choose_index}),
         button("delete", "DELETE", KEYSTATE_UNKNOWN, delete_button.x, delete_button.y, delete_button.w, delete_button.h, 0, -1 , MenuNav{.down=choose_index, .left=id_index}, true),
         button("enter_id", "ENTER ID", KEYSTATE_UNKNOWN, id_button.x, id_button.y, id_button.w, id_button.h, 0, -1 , MenuNav{.down=cancel_index, .left=prev_index, .right=delete_index}),
-        button("entry_1", "1", KEYSTATE_UNKNOWN, 10, 15, 40, (53 - 12), 0, -1 , MenuNav{.down=entry2_index, .right=prev_index}),
-        button("entry_2", "2", KEYSTATE_UNKNOWN, 10, 15 + (53 + 12), 40, (53 - 12), 0, -1 , MenuNav{.up=entry1_index, .down=entry3_index, .right=next_index}),
-        button("entry_3", "3", KEYSTATE_UNKNOWN, 10, 15 + (53 + 12)*2, 40, (53 - 12), 0, -1 , MenuNav{.up=entry2_index, .right=next_index}),
+        button("entry_1", "1", KEYSTATE_UNKNOWN, layout.row_x, og::ui::level_picker_row_y(0) + layout.radar_dy, 40, layout.radar_max_h, 0, -1 , MenuNav{.down=entry2_index, .right=prev_index}),
+        button("entry_2", "2", KEYSTATE_UNKNOWN, layout.row_x, og::ui::level_picker_row_y(1) + layout.radar_dy, 40, layout.radar_max_h, 0, -1 , MenuNav{.up=entry1_index, .down=entry3_index, .right=next_index}),
+        button("entry_3", "3", KEYSTATE_UNKNOWN, layout.row_x, og::ui::level_picker_row_y(2) + layout.radar_dy, 40, layout.radar_max_h, 0, -1 , MenuNav{.up=entry2_index, .right=next_index}),
 
 	};
     
@@ -705,10 +718,10 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         
         // Draw
         og::runtime::current_session->myscreen_->clearbuffer();
-        
+
         std::string buf = std::format("Army power: {}", army_power);
-        loadtext.write_xy(prev.x + 50, prev.y + 2, buf.c_str(), RED, 1);
-        
+        loadtext.write_xy(layout.army_x, layout.army_y, buf.c_str(), RED, 1);
+
         og::runtime::current_session->myscreen_->draw_button(prev.x, prev.y, prev.x + prev.w, prev.y + prev.h, 1, 1);
         loadtext.write_xy(prev.x + 2, prev.y + 2, "Prev", DARK_BLUE, 1);
         og::runtime::current_session->myscreen_->draw_button(next.x, next.y, next.x + next.w, next.y + next.h, 1, 1);
@@ -717,7 +730,6 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         {
             og::runtime::current_session->myscreen_->draw_button(choose.x, choose.y, choose.x + choose.w, choose.y + choose.h, 1, 1);
             loadtext.write_xy(choose.x + 9, choose.y + 2, "OK", DARK_GREEN, 1);
-            loadtext.write_xy(next.x, choose.y + 20, entries[static_cast<std::size_t>(selected_entry)]->level_name.c_str(), DARK_GREEN, 1);
         }
         og::runtime::current_session->myscreen_->draw_button(cancel.x, cancel.y, cancel.x + cancel.w, cancel.y + cancel.h, 1, 1);
         loadtext.write_xy(cancel.x + 2, cancel.y + 2, "Cancel", RED, 1);
@@ -726,10 +738,35 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
             og::runtime::current_session->myscreen_->draw_button(delete_button.x, delete_button.y, delete_button.x + delete_button.w, delete_button.y + delete_button.h, 1, 1);
             loadtext.write_xy(delete_button.x + 2, delete_button.y + 2, "Delete", RED, 1);
         }
-        
+
         og::runtime::current_session->myscreen_->draw_button(id_button.x, id_button.y, id_button.x + id_button.w, id_button.y + id_button.h, 1, 1);
         loadtext.write_xy(id_button.x + 2, id_button.y + 2, "Enter ID", DARK_BLUE, 1);
-        
+
+        // Description first, then the preview rows: the box's rect no longer
+        // reaches the stats column, and painting it before the entries keeps
+        // it from overprinting them even if one drifts.
+        if(selected_entry != -1 && selected_entry < level_list_length && entries[static_cast<std::size_t>(selected_entry)] != nullptr)
+        {
+            // Flowed to the box's character budget (issue #152): scenario
+            // briefings are authored for the 33-char SCENARIO INFORMATION
+            // dialog and overflow this box without wrapping.
+            og::runtime::current_session->myscreen_->draw_box(descbox.x, descbox.y, descbox.x + descbox.w, descbox.y + descbox.h, GREY, 1, 1);
+            std::list<std::string> raw_desc;
+            for(int i = 0; i < entries[static_cast<std::size_t>(selected_entry)]->scentextlines; i++)
+                raw_desc.push_back(entries[static_cast<std::size_t>(selected_entry)]->scentext[static_cast<std::size_t>(i)]);
+            const std::vector<std::string> desc_lines =
+                og::core::wrap_lines(raw_desc, layout.desc_max_chars);
+            for(std::size_t i = 0; i < desc_lines.size(); i++)
+            {
+                // Clip against the box the text is drawn into (the old test
+                // compared against prev.y + 20, 5px below the box top).
+                const int line_y = 10*static_cast<int>(i) + 1;
+                if(line_y + 6 > descbox.h)
+                    break;
+                loadtext.write_xy(descbox.x + 2, descbox.y + line_y, desc_lines[i].c_str(), BLACK, 1);
+            }
+        }
+
         if(selected_entry != -1)
         {
             int i = selected_entry;
@@ -747,30 +784,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
             if(i < level_list_length && entries[static_cast<std::size_t>(i)] != nullptr)
                 entries[static_cast<std::size_t>(i)]->draw(og::runtime::current_session->myscreen_);
         }
-        
-        // Description, flowed to the box's character budget (issue #152):
-        // scenario briefings are authored for the 33-char SCENARIO
-        // INFORMATION dialog and overflow this 30-char box without wrapping.
-        if(selected_entry != -1 && selected_entry < level_list_length && entries[static_cast<std::size_t>(selected_entry)] != nullptr)
-        {
-            og::runtime::current_session->myscreen_->draw_box(descbox.x, descbox.y, descbox.x + descbox.w, descbox.y + descbox.h, GREY, 1, 1);
-            std::list<std::string> raw_desc;
-            for(int i = 0; i < entries[static_cast<std::size_t>(selected_entry)]->scentextlines; i++)
-                raw_desc.push_back(entries[static_cast<std::size_t>(selected_entry)]->scentext[static_cast<std::size_t>(i)]);
-            const std::vector<std::string> desc_lines =
-                og::core::wrap_lines(raw_desc, descbox.w / 6);
-            for(std::size_t i = 0; i < desc_lines.size(); i++)
-            {
-                // Clip against the box the text is drawn into (the old test
-                // compared against prev.y + 20, 5px below the box top).
-                const int line_y = 10*static_cast<int>(i) + 1;
-                if(line_y + 6 > descbox.h)
-                    break;
-                loadtext.write_xy(descbox.x, descbox.y + line_y, desc_lines[i].c_str(), BLACK, 1);
-            }
-        }
-        
-        
+
         draw_highlight(buttons[highlighted_button]);
 		og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
 		og::input_native::sleep_ms(10);

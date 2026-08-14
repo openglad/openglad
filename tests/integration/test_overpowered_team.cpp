@@ -89,7 +89,7 @@ static bool wait_for_team_menu(int timeout_ms = kTeamMenuTimeoutMs)
 // levels (programmatically), run level 1 at max speed, and confirm that we win.
 //
 // Flow:
-//   Main Menu -> Begin New Game -> (dismiss campaign intro) ->
+//   Main Menu -> Begin New Game -> (accept company name) ->
 //   Hire Menu -> cycle through all types, clicking HIRE ME for each ->
 //   Back -> (cheat stats on hired team) -> GO -> game runs -> win ->
 //   Back -> exits to main menu
@@ -120,10 +120,9 @@ static int op_injector(void* data)
     // §2.2: accept the generated company name at the name-entry screen.
     accept_generated_company_name();
 
-    // Dismiss campaign intro screen (blocks until Escape)
-    SDL_Delay(kMenuTransitionMs);
-    fprintf(stderr, "  [test] dismissing campaign intro\n");
-    inject_key_press(SDLK_ESCAPE);
+    // No campaign intro here anymore (issue #186: it moved behind the
+    // campaign select, skipped under TESTING) — an Escape here would BACK
+    // out of the team-build screen instead.
 
     // New games now land on team build first, then enter hire explicitly.
     SDL_Delay(kUiSettleMs);

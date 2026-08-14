@@ -332,6 +332,10 @@ Sint32 vbutton::leftclick(Sint32 whichbutton)
             vdisplay();
             if (myfunc)
             {
+                // Coordinate-free activation: never leave a stale pointer
+                // for sub-rect affordances (#202).
+                pks().menu_click_x = -1;
+                pks().menu_click_y = -1;
                 retvalue = do_call(myfunc, arg);
             }
             while (og::runtime::current_session->keystates_[hotkey])
@@ -351,6 +355,13 @@ Sint32 vbutton::leftclick(Sint32 whichbutton)
             vdisplay();
             if (myfunc)
             {
+                // Pointer activation: stamp the UI-canvas position that hit
+                // this rect so a spec row can route on the sub-rect (#202
+                // seat-card team chip). _no_poll: mouse_on() just sampled
+                // this state; polling again could move it mid-dispatch.
+                MouseState& mymouse = query_mouse_no_poll();
+                pks().menu_click_x = static_cast<int>(mymouse.x);
+                pks().menu_click_y = static_cast<int>(mymouse.y);
                 retvalue = do_call(myfunc, arg);
             }
             return retvalue;

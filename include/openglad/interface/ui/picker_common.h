@@ -79,30 +79,77 @@ bool picker_rects_overlap(const PickerRect& a, const PickerRect& b);
 
 struct CampaignPickerLayout
 {
-    PickerRect prev;
-    PickerRect next;
+    PickerRect prev;          // list page up
+    PickerRect next;          // list page down
     PickerRect choose;   // OK
     PickerRect cancel;
     PickerRect delete_button;
     PickerRect reset_button;  // occupies the DELETE cell; the two never co-exist
     PickerRect id_button;     // ENTER ID, stacked under DELETE/RESET
-    PickerRect icon;          // campaign icon (title is drawn above it)
+    PickerRect icon;          // campaign icon (inside the detail pane)
     int title_y = 0;          // top pixel row of the centered title
     int title_center_x = 0;
     int title_max_chars = 0;  // widest title that clears every control
+
+    // Left list pane (issue #186): one row per campaign, scrolled in pages
+    // of list_rows by PREV/NEXT.
+    PickerRect list;             // the block of list rows
+    int list_rows = 0;           // visible rows per page
+    int list_row_h = 0;
+    int list_row_pitch = 0;
+    int list_label_max_chars = 0;  // row title budget after the marker column
+    int header_y = 0;              // "CAMPAIGNS" pane header row
+
+    // Right detail pane for the highlighted entry.
+    PickerRect detail;
+    PickerRect desc_box;
+    PickerRect more_button;   // opens the full description; shown on overflow
+    int desc_rows = 0;        // description rows the box can show
+    int desc_max_chars = 0;   // character budget of one description row
 };
 
 // The single source of the browser's control geometry. Pure, so the overlap
 // contract is unit-testable without SDL.
 CampaignPickerLayout campaign_picker_layout();
 
+// Pixel rect of one visible list row (0-based, < list_rows).
+PickerRect campaign_picker_row_rect(int row);
+
 // Pixel rect a centered title of `chars` glyphs occupies (6px advance, 8px
 // glyph height), given the layout above.
 PickerRect campaign_title_rect(int chars);
 
-// Title as drawn: unchanged when it fits `title_max_chars`, otherwise cut to
-// the budget with a trailing "..." so it can never reach a control.
+// Text cut to a glyph budget: unchanged when it fits, otherwise clipped with
+// a trailing "..." (budgets of <= 3 just clip).
+std::string fit_text_to_chars(std::string_view text, int budget);
+
+// Title as drawn in the detail pane: fit_text_to_chars at title_max_chars.
 std::string fit_campaign_title(std::string_view title);
+
+// A campaign's list-row label: the cached display title fitted to the row
+// budget (falls back to the raw id inside campaign_display_title).
+std::string fit_campaign_row_label(std::string_view title);
+
+// --- List paging (pure; the SDL loop stores offset + cursor) ---
+
+// First visible row, clamped so a full page shows whenever one exists.
+int campaign_list_clamp_offset(int offset, int total, int rows);
+
+// Minimal scroll of `offset` that brings `cursor` on screen.
+int campaign_list_offset_for_cursor(int cursor, int offset, int total, int rows);
+
+// Offset after one PREV (direction < 0) or NEXT (direction > 0) page step.
+int campaign_list_page_step(int offset, int total, int rows, int direction);
+
+// Cursor pulled into the visible window [offset, offset + rows).
+int campaign_list_clamp_cursor(int cursor, int offset, int total, int rows);
+
+// "3 of 8" position readout ("0 of 0" for an empty shelf).
+std::string format_campaign_position_label(int cursor, int total);
+
+// True when the wrapped description does not fit desc_rows rows of the
+// detail pane's box — exactly when the MORE control shows.
+bool campaign_description_overflows(const std::string& description);
 
 // Positional indices into the browser's button table. Growth is append-only
 // for the same reason every other picker screen's is.
@@ -113,17 +160,24 @@ inline constexpr int kCampaignPickerCancelIndex = 3;
 inline constexpr int kCampaignPickerDeleteIndex = 4;
 inline constexpr int kCampaignPickerIdIndex = 5;
 inline constexpr int kCampaignPickerResetIndex = 6;
-inline constexpr int kCampaignPickerButtonCount = 7;
+inline constexpr int kCampaignPickerRowBaseIndex = 7;
+inline constexpr int kCampaignPickerRowCount = 6;
+inline constexpr int kCampaignPickerMoreIndex = 13;
+inline constexpr int kCampaignPickerButtonCount = 14;
 
 // Which of the browser's conditional buttons are hidden this frame. CANCEL
 // and ENTER ID are always visible; DELETE and RESET share a cell, so RESET
-// shows exactly when DELETE hides.
+// shows exactly when DELETE hides. visible_rows counts the list rows that
+// have a campaign behind them this page; MORE shows only when the
+// highlighted entry's description overflows the detail box.
 struct CampaignPickerVisibility
 {
-    bool prev_hidden = false;    // on the first campaign
-    bool next_hidden = false;    // on the last campaign
+    bool prev_hidden = false;    // on the first page
+    bool next_hidden = false;    // on the last page
     bool choose_hidden = false;  // no selectable entry
     bool delete_hidden = false;  // browser opened without delete enabled
+    int visible_rows = kCampaignPickerRowCount;
+    bool more_hidden = true;
 };
 
 struct CampaignPickerNavLinks
@@ -141,6 +195,55 @@ struct CampaignPickerNavLinks
 // reachable from the default highlight (CANCEL).
 std::array<CampaignPickerNavLinks, kCampaignPickerButtonCount>
 campaign_picker_nav(const CampaignPickerVisibility& visibility);
+
+// Commit a campaign chosen in a browser to the save: load (mount) it and, on
+// success, write current_campaign and the resolved level cursor. On a failed
+// load the save is left untouched and the previous campaign is remounted, so
+// a bad ENTER ID can never write a negative scen_num into the save (issue
+// #186). Callers surface the failure (popup) themselves.
+bool apply_campaign_selection(SaveData& save, const std::string& campaign_id,
+                              int first_level);
+
+// --- Level browser (SET LEVEL) geometry ---
+//
+// Three radar-preview rows on the left, the selected level's description on
+// the right. The legacy inline literals put row 2's preview frame against
+// the screen bottom and drew the description box OVER rows 0-1's stats
+// column; every rect below is derived from this one grid instead.
+struct LevelPickerLayout
+{
+    PickerRect prev;
+    PickerRect next;
+    PickerRect choose;        // OK
+    PickerRect cancel;
+    PickerRect delete_button;
+    PickerRect id_button;     // ENTER ID
+    PickerRect desc_box;
+
+    int row_x = 0;            // shared left edge of the preview rows
+    int row0_y = 0;           // title row of preview row 0
+    int row_pitch = 0;
+    int row_count = 0;
+    int radar_dy = 0;         // radar top offset below a row's title line
+    int radar_max_w = 0;      // radar viewport clamps (RADAR_X/RADAR_Y)
+    int radar_max_h = 0;
+    int stats_x = 0;          // shared left edge of every stats column
+    int stats_max_chars = 0;  // budget of one stats line before desc_box
+    int status_x = 0;         // CLEARED/CURRENT column on the title line
+    int title_max_chars = 0;  // row title budget before the status column
+    int army_x = 0;           // "Army power" readout
+    int army_y = 0;
+    int desc_max_chars = 0;
+};
+
+LevelPickerLayout level_picker_layout();
+
+// Title row y of preview row `row`.
+int level_picker_row_y(int row);
+
+// The status column text, derived exactly as the PROGRESS report derives its
+// Status field: CLEARED wins over CURRENT; otherwise empty.
+const char* level_row_status_label(bool cleared, bool current);
 
 // --- Family display helpers ---
 

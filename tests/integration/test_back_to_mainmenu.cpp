@@ -51,8 +51,9 @@ static int back_test_injector(void* data)
     // === Iteration 1: Click CONTINUE then BACK ===
 
     // Wait for mainmenu to initialize and complete fadeblack.
-    // mainmenu() calls init_buttons() then fadeblack(1) which takes ~500ms
-    // and eats SDL events during the fade.
+    // The main menu's run_menu_screen entry (EnterTransition::FadeWithInitialDraw)
+    // publishes its buttons, then fades out, composes, and fades in — the fade
+    // takes ~500ms and eats SDL events.
     wait_for_interactable("continue_game", 5000);
     SDL_Delay(750);
     state->times_saw_mainmenu++;
@@ -60,7 +61,8 @@ static int back_test_injector(void* data)
     fprintf(stderr, "  [test] Iteration 1: clicking continue_game\n");
     interact("continue_game");
 
-    // Wait for create_team_menu to init (fadeblack + level load)
+    // Wait for create_team_menu to init (Base Camp's FadeAroundEntry fades,
+    // then the runner loop's reload guard loads the level)
     SDL_Delay(500);
     wait_for_interactable("go", 10000);
     SDL_Delay(750);

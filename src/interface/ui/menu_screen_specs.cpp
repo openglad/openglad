@@ -132,6 +132,14 @@ void picker_view_scenario_engine_rewire(button* buttons, int num_buttons,
 Sint32 picker_view_scenario_engine_consume_click(Sint32 retvalue,
                                                  void* screen_state);
 void picker_view_scenario_engine_draw_content(void* screen_state);
+// HELP engine hooks (#168; defined beside the tab content in help.cpp).
+og::ui::RowState help_engine_pager_row_state(
+    const og::ui::MenuLabelContext& context);
+void help_engine_rewire(button* buttons, int num_buttons,
+                        int& highlighted_button);
+Sint32 help_engine_on_spec_row(int row, void* screen_state);
+bool help_engine_frame_tick(void* screen_state, int frame);
+void help_engine_draw_content(void* screen_state);
 
 static inline PickerState& pks()
 {
@@ -1677,6 +1685,56 @@ constexpr MenuButtonSpec kViewScenarioRows[] = {
 };
 
 // ---------------------------------------------------------------------------
+// HELP (#168): the full-screen general help — three content tabs (CONTROLS |
+// CLASSES | EDITOR) on the top strip, the paged text frame below, BACK and
+// the PageModel PREV/NEXT pagers in the command band (the VIEW LEVEL footer
+// geometry). Every row dispatches through MenuSpecRow except BACK, so
+// keyboard FIRE, mouse clicks, and the 1/2/3 + PageUp/PageDown hotkeys all
+// route through help_engine_on_spec_row in help.cpp; the pager visibility
+// override and the rewire read the open screen's state through a file-static
+// pointer there (null = the single-page bare-sweep shape: pagers hidden,
+// BACK's right-link closed).
+
+constexpr MenuButtonSpec kHelpMenuRows[] = {
+    {.id = "help_tab_controls", .label = "CONTROLS", .hotkey = KEYSTATE_1,
+     .x = kHelpTabX(0), .y = kHelpTabY, .w = kHelpTabWidth, .h = kHelpTabHeight,
+     .action = ButtonAction::MenuSpecRow, .arg = kHelpMenuControlsTabIndex,
+     .nav = {.down = kHelpMenuBackIndex, .right = kHelpMenuClassesTabIndex}},
+    {.id = "help_tab_classes", .label = "CLASSES", .hotkey = KEYSTATE_2,
+     .x = kHelpTabX(1), .y = kHelpTabY, .w = kHelpTabWidth, .h = kHelpTabHeight,
+     .action = ButtonAction::MenuSpecRow, .arg = kHelpMenuClassesTabIndex,
+     .nav = {.down = kHelpMenuBackIndex, .left = kHelpMenuControlsTabIndex,
+             .right = kHelpMenuEditorTabIndex}},
+    {.id = "help_tab_editor", .label = "EDITOR", .hotkey = KEYSTATE_3,
+     .x = kHelpTabX(2), .y = kHelpTabY, .w = kHelpTabWidth, .h = kHelpTabHeight,
+     .action = ButtonAction::MenuSpecRow, .arg = kHelpMenuEditorTabIndex,
+     .nav = {.down = kHelpMenuBackIndex, .left = kHelpMenuClassesTabIndex}},
+    {.id = "help_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+     .x = kHelpBackX, .y = kHelpFooterY,
+     .w = kHelpBackWidth, .h = kHelpFooterHeight,
+     .action = ButtonAction::ReturnMenu, .arg = MENU_REDRAW,
+     .nav = {.up = kHelpMenuControlsTabIndex, .right = kHelpMenuPrevIndex}},
+    {.id = "help_page_prev", .label = "PREV", .hotkey = KEYSTATE_PAGEUP,
+     .x = kHelpPrevX, .y = kHelpFooterY,
+     .w = kHelpPagerWidth, .h = kHelpFooterHeight,
+     .action = ButtonAction::MenuSpecRow, .arg = kHelpMenuPrevIndex,
+     .nav = {.up = kHelpMenuEditorTabIndex, .left = kHelpMenuBackIndex,
+             .right = kHelpMenuNextIndex},
+     .state_override = &help_engine_pager_row_state,
+     .hidden = true},
+    {.id = "help_page_next", .label = "NEXT", .hotkey = KEYSTATE_PAGEDOWN,
+     .x = kHelpNextX, .y = kHelpFooterY,
+     .w = kHelpPagerWidth, .h = kHelpFooterHeight,
+     .action = ButtonAction::MenuSpecRow, .arg = kHelpMenuNextIndex,
+     .nav = {.up = kHelpMenuEditorTabIndex, .left = kHelpMenuPrevIndex},
+     .state_override = &help_engine_pager_row_state,
+     .hidden = true},
+};
+
+static_assert(std::size(kHelpMenuRows) == kHelpMenuNextIndex + 1,
+              "help table anchor: MenuSpecRow args are spec ordinals");
+
+// ---------------------------------------------------------------------------
 // TEAM BUILD -> BASE CAMP (§2.5, regridded per §9.5 then §9.10, row-click
 // train per §9.11): the command roster. The roster IS the default view (the
 // VIEW TEAM screen retired into it): 8 rows/page at the round-6 14px pitch
@@ -1712,27 +1770,82 @@ BaseCampScreenState* g_base_camp_state = nullptr;
 // six below the final row. Player-seat assignments now own y=164..173.
 constexpr int kBaseCampRowY0 = 45;
 constexpr int kBaseCampRowPitch = 14;
-// Round-6 horizontal grid: the panel's inner face is x=8..311, with explicit
-// DEPLOY and TEAM columns before the trainable NAME body. Maximum-width solo
-// and network row strings end their last digit's ink at x=297/295 (EXP/LV
-// columns at 264/280); the per-row move-up face sits at 300..308 — a
-// two-pixel gutter after the digits and three clear panel pixels before the
-// x=311 inner-face edge.
+// Round-6 horizontal grid: the roster panel is outside-to-outside with the
+// button columns (outer bevel x=8..311, inner grey face x=10..309), with
+// explicit DEPLOY and TEAM columns before the trainable NAME body.
+// Maximum-width solo and network row strings end their last digit's ink at
+// x=297/295 (EXP/LV columns at 264/280); the per-row move-up face sits at
+// 301..309 — three clear pixels after the digits, ending flush with the
+// panel's inner face.
+// The right rail is ONE column: the roster pager '>', the seat rail's '+',
+// and GO/READY all end on kBaseCampPanelRightX (the panel's OUTER edge);
+// the per-row '^' lives INSIDE the panel and ends on the inner face
+// (kBaseCampPanelInnerRightX).
+constexpr int kBaseCampGlyphAdvance = 6;  // small font pen advance
+// Panel OUTER right edge (EXCLUSIVE): the bevel's last column (311) + 1 ==
+// the GO/READY right edge (244 + 68) — outside-to-outside alignment.
+constexpr int kBaseCampPanelRightX = 312;
+// Panel inner-face right edge (EXCLUSIVE): the outer edge minus the 2px
+// bevel. In-panel controls (the per-row '^') end here.
+constexpr int kBaseCampPanelInnerRightX = kBaseCampPanelRightX - 2;
+constexpr int kBaseCampDeployColumnX = 23;
+constexpr int kBaseCampDeployColumnWidth = 14;
+// button.cpp centers a one-glyph label at (xloc+xend)/2 - (1*6 - 1)/2. The
+// foreign-row X/- glyph is hand-drawn in the content pass, so it derives the
+// same column instead of guessing it.
+constexpr int kBaseCampDeployGlyphX =
+    (kBaseCampDeployColumnX * 2 + kBaseCampDeployColumnWidth) / 2 -
+    (kBaseCampGlyphAdvance - 1) / 2;
 constexpr int kBaseCampDeployHeaderX = 12;
 constexpr int kBaseCampTeamHeaderX = 54;
 constexpr int kBaseCampNameColumnX = 88;
 constexpr int kBaseCampSoloClassColumnX = 164;
 constexpr int kBaseCampSoloLevelColumnX = 236;
 constexpr int kBaseCampSoloExpColumnX = 264;
+// picker_common writes EXP as a six-character right-aligned field, so its
+// digits ink out at x=297; the three-character header takes that field's last
+// three cells instead of sitting over its left pad.
+constexpr int kBaseCampSoloExpFieldChars = 6;
+constexpr int kBaseCampSoloExpHeaderX =
+    kBaseCampSoloExpColumnX +
+    (kBaseCampSoloExpFieldChars - 3) * kBaseCampGlyphAdvance;
 constexpr int kBaseCampNetCompanyColumnX = 160;
 constexpr int kBaseCampNetLevelColumnX = 280;
+// Roster pager cluster beside header line B: '<' | "p/N" strip | '>', with
+// uniform gutters and the '>' closing the right rail.
+constexpr int kBaseCampPagerWidth = 14;
+constexpr int kBaseCampPagerGap = 2;
+// The strip reserves three glyphs plus strip_text's 2px pad on each side.
+constexpr int kBaseCampPageIndicatorWidth = 3 * kBaseCampGlyphAdvance + 4;
+constexpr int kBaseCampPageNextX = kBaseCampPanelRightX - kBaseCampPagerWidth;
+constexpr int kBaseCampPageIndicatorX =
+    kBaseCampPageNextX - kBaseCampPagerGap - kBaseCampPageIndicatorWidth;
+constexpr int kBaseCampPagePrevX =
+    kBaseCampPageIndicatorX - kBaseCampPagerGap - kBaseCampPagerWidth;
+constexpr int kBaseCampMoveUpWidth = 9;
+constexpr int kBaseCampMoveUpX =
+    kBaseCampPanelInnerRightX - kBaseCampMoveUpWidth;
+constexpr int kBaseCampAddSeatWidth = 14;
+constexpr int kBaseCampAddSeatX = kBaseCampPanelRightX - kBaseCampAddSeatWidth;
 constexpr int kBaseCampFamilySwatchGap = 1;
 constexpr int kBaseCampFamilySwatchRampWidth = 8;
 constexpr int kBaseCampFamilySwatchWidth = kBaseCampFamilySwatchRampWidth + 2;
 constexpr int kBaseCampFamilySwatchHeight = 8;
-constexpr std::array<int, kBaseCampSeatCardsPerPage> kBaseCampSeatCardX{
-    54, 112, 170, 228};
+// One seat-card table: the button specs and the chip overlay both index it.
 constexpr int kBaseCampSeatCardWidth = 57;
+constexpr int kBaseCampSeatCardPitch = 58;  // card face + 1px focus gutter
+// The 8x8 numbered team chip drawn on each card's right end, and the #202
+// pointer zone that cycles it in place: the chip plus 2px of grace on its
+// left, running to the card's right edge. Pointer clicks inside the zone
+// cycle the seat's team; the rest of the card (and every coordinate-free
+// activation) opens the seat editor.
+constexpr int kBaseCampSeatChipOffsetX = 48;
+constexpr int kBaseCampSeatChipZoneOffsetX = kBaseCampSeatChipOffsetX - 2;
+constexpr int kBaseCampSeatCardX0 = 54;
+constexpr std::array<int, kBaseCampSeatCardsPerPage> kBaseCampSeatCardX{
+    kBaseCampSeatCardX0, kBaseCampSeatCardX0 + kBaseCampSeatCardPitch,
+    kBaseCampSeatCardX0 + 2 * kBaseCampSeatCardPitch,
+    kBaseCampSeatCardX0 + 3 * kBaseCampSeatCardPitch};
 constexpr int kBaseCampSeatRailY = 164;
 // §9.5.4 + graft (a): non-identity fields on benched rows dim to palette
 // shade 21 — GREY(23)'s glyph ramp overlaps WHITE(24) by all but one step,
@@ -1830,7 +1943,9 @@ RowState base_camp_add_seat_row_state(
 // highlight reads — the §2.5 foreign-hit-zone precedent.
 #define OG_BASE_CAMP_DEP(i)                                                  \
     {.id = "roster_dep_" #i, .label = "",                                    \
-     .x = 23, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 14,         \
+     .x = kBaseCampDeployColumnX,                                            \
+     .y = kBaseCampRowY0 + kBaseCampRowPitch * (i),                          \
+     .w = kBaseCampDeployColumnWidth,                                        \
      .h = 10, .action = ButtonAction::MenuSpecRow, .arg = (i),               \
      .nav = {.up = (i) > 0 ? (i) - 1 : -1,                                    \
              .down = (i) < 7 ? (i) + 1 : kCreateMenuBackIndex,                \
@@ -1857,7 +1972,9 @@ RowState base_camp_add_seat_row_state(
      .no_draw = true}
 #define OG_BASE_CAMP_MOVE_UP(i)                                              \
     {.id = "roster_up_" #i, .label = "^",                                    \
-     .x = 300, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 9,         \
+     .x = kBaseCampMoveUpX,                                                  \
+     .y = kBaseCampRowY0 + kBaseCampRowPitch * (i),                          \
+     .w = kBaseCampMoveUpWidth,                                              \
      .h = 10, .action = ButtonAction::MenuSpecRow,                           \
      .arg = kBaseCampMoveUpBase + (i),                                       \
      .nav = {.left = kBaseCampRowBodyBase + (i)},                            \
@@ -1877,12 +1994,12 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
     // relocated line B); real MenuSpecRow pager actions (keyboard-live),
     // hidden until the roster spans pages.
     {.id = "roster_page_prev", .label = "<",
-     .x = 263, .y = 15, .w = 14, .h = 10,
+     .x = kBaseCampPagePrevX, .y = 15, .w = kBaseCampPagerWidth, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampPagePrevIndex,
      .nav = {.down = kBaseCampRowBodyBase, .right = kBaseCampPageNextIndex},
      .hidden = true},
     {.id = "roster_page_next", .label = ">",
-     .x = 302, .y = 15, .w = 14, .h = 10,
+     .x = kBaseCampPageNextX, .y = 15, .w = kBaseCampPagerWidth, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampPageNextIndex,
      .nav = {.down = kBaseCampRowBodyBase, .left = kBaseCampPagePrevIndex},
      .hidden = true},
@@ -1891,7 +2008,7 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
     // same Scenario menu as the bottom command. Network status replaces
     // this line in multiplayer, so the per-frame rewire hides the zone.
     {.id = "scenario_line", .label = "",
-     .x = 6, .y = 14, .w = 208, .h = 12,
+     .x = 8, .y = 14, .w = 206, .h = 12,
      .action = ButtonAction::CreateScenarioMenu, .arg = -1,
      .nav = {.down = kCreateMenuScenarioIndex},
      .no_draw = true},
@@ -1952,22 +2069,26 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
              .right = kBaseCampSeatCardBase},
      .hidden = true},
     {.id = "seat_card_0", .label = "",
-     .x = 54, .y = kBaseCampSeatRailY, .w = kBaseCampSeatCardWidth, .h = 10,
+     .x = kBaseCampSeatCardX[0], .y = kBaseCampSeatRailY,
+     .w = kBaseCampSeatCardWidth, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatCardBase,
      .nav = {.left = kBaseCampSeatPagePrevIndex,
              .right = kBaseCampSeatCardBase + 1}},
     {.id = "seat_card_1", .label = "",
-     .x = 112, .y = kBaseCampSeatRailY, .w = kBaseCampSeatCardWidth, .h = 10,
+     .x = kBaseCampSeatCardX[1], .y = kBaseCampSeatRailY,
+     .w = kBaseCampSeatCardWidth, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatCardBase + 1,
      .nav = {.left = kBaseCampSeatCardBase,
              .right = kBaseCampSeatCardBase + 2}},
     {.id = "seat_card_2", .label = "",
-     .x = 170, .y = kBaseCampSeatRailY, .w = kBaseCampSeatCardWidth, .h = 10,
+     .x = kBaseCampSeatCardX[2], .y = kBaseCampSeatRailY,
+     .w = kBaseCampSeatCardWidth, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatCardBase + 2,
      .nav = {.left = kBaseCampSeatCardBase + 1,
              .right = kBaseCampSeatCardBase + 3}},
     {.id = "seat_card_3", .label = "",
-     .x = 228, .y = kBaseCampSeatRailY, .w = kBaseCampSeatCardWidth, .h = 10,
+     .x = kBaseCampSeatCardX[3], .y = kBaseCampSeatRailY,
+     .w = kBaseCampSeatCardWidth, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatCardBase + 3,
      .nav = {.left = kBaseCampSeatCardBase + 2,
              .right = kBaseCampSeatPageNextIndex}},
@@ -1978,7 +2099,8 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
              .left = kBaseCampSeatCardBase + 3},
      .hidden = true},
     {.id = "add_seat", .label = "+",
-     .x = 297, .y = kBaseCampSeatRailY, .w = 14, .h = 10,
+     .x = kBaseCampAddSeatX, .y = kBaseCampSeatRailY,
+     .w = kBaseCampAddSeatWidth, .h = 10,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampAddSeatIndex,
      .nav = {.down = kCreateMenuGoIndex,
              .left = kBaseCampSeatPageNextIndex},
@@ -2557,6 +2679,39 @@ void persist_player_controls()
     cfg.save_settings();
 }
 
+// The ONE seat-team mutation path (#202): the seat editor's TEAM row and
+// the base-camp card's chip zone cycle through the same selectable-team
+// sequence, issue the same lobby request (which carries the sync /
+// ready-withdraw side effects), pop the same denial, and write the same
+// trace.
+Sint32 base_camp_cycle_seat_team(const og::sim::LobbyPlayer& player)
+{
+    const SaveData& save =
+        og::runtime::current_session->myscreen_->save_data;
+    const std::vector<short> teams =
+        base_camp_selectable_seat_teams(save);
+    if (teams.empty())
+        return MENU_OK;
+    const auto current =
+        std::find(teams.begin(), teams.end(), player.team);
+    const short next_team = current == teams.end()
+        ? teams.front()
+        : teams[(static_cast<std::size_t>(
+                      std::distance(teams.begin(), current)) +
+                  1) %
+                teams.size()];
+    if (!picker_lobby_request_seat_team_change(
+            player.player_index, player.seat_id, next_team))
+    {
+        popup_dialog("TEAM", "CHANGE DENIED");
+        return MENU_OK;
+    }
+    TRACE("basecamp", "seat_team player=%d team=%d",
+          static_cast<int>(player.player_index) + 1,
+          static_cast<int>(next_team) + 1);
+    return MENU_OK;
+}
+
 Sint32 seat_settings_on_spec_row(int row, void* screen_state)
 {
     auto* const state =
@@ -2568,32 +2723,8 @@ Sint32 seat_settings_on_spec_row(int row, void* screen_state)
     if (!resolve_seat_settings_player(*state, player))
         return MENU_REDRAW;
 
-    if (row == kSeatSettingsTeamIndex) {
-        const SaveData& save =
-            og::runtime::current_session->myscreen_->save_data;
-        const std::vector<short> teams =
-            base_camp_selectable_seat_teams(save);
-        if (teams.empty())
-            return MENU_OK;
-        const auto current =
-            std::find(teams.begin(), teams.end(), player.team);
-        const short next_team = current == teams.end()
-            ? teams.front()
-            : teams[(static_cast<std::size_t>(
-                          std::distance(teams.begin(), current)) +
-                      1) %
-                    teams.size()];
-        if (!picker_lobby_request_seat_team_change(
-                player.player_index, player.seat_id, next_team))
-        {
-            popup_dialog("TEAM", "CHANGE DENIED");
-            return MENU_OK;
-        }
-        TRACE("basecamp", "seat_team player=%d team=%d",
-              static_cast<int>(player.player_index) + 1,
-              static_cast<int>(next_team) + 1);
-        return MENU_OK;
-    }
+    if (row == kSeatSettingsTeamIndex)
+        return base_camp_cycle_seat_team(player);
 
     if (row == kSeatSettingsModeIndex) {
         (void)toggle_player_control_mode(state->local_slot);
@@ -2904,8 +3035,10 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         // vbutton), so a toggle shows this frame.
         dep.label = (member != nullptr && member->deployed) ? "X" : "";
         dep.no_draw = !own;
-        dep.x = own ? 23 : 12;
-        dep.sizex = own ? 14 : 300;
+        // The foreign hit zone spans the panel: DEPLOY column to right rail.
+        dep.x = own ? kBaseCampDeployColumnX : kBaseCampDeployHeaderX;
+        dep.sizex = own ? kBaseCampDeployColumnWidth
+                        : kBaseCampPanelRightX - kBaseCampDeployHeaderX;
         vbutton* live = og::runtime::current_session->allbuttons_[static_cast<std::size_t>(r)];
         if (live != nullptr) {
             live->label = dep.label;
@@ -3125,9 +3258,11 @@ void base_camp_draw_background(void* /*screen_state*/)
 {
     picker_backdrop_draw_background(nullptr);
     screen* const game = og::runtime::current_session->myscreen_;
-    // Outer bevel (6,28)..(313,160); inner grey face (8,30)..(311,158).
-    // Content keeps a real inset on every edge instead of touching bevels.
-    game->draw_button(6, 28, 313, 160, 2, 1);
+    // Outer bevel (8,28)..(311,160); inner grey face (10,30)..(309,158) —
+    // outside-to-outside with the command strip (BACK/SEATS left edge 8,
+    // GO/'+'/'>' right edge 311). Content keeps a real inset on every edge
+    // instead of touching bevels.
+    game->draw_button(8, 28, 311, 160, 2, 1);
 }
 
 // The §2.5 content pass (after draw_buttons): header lines A/B, the page
@@ -3153,18 +3288,20 @@ void base_camp_draw_content(void* screen_state)
     // Line A (§9.10.3, G3): grey "COMPANY:" label + WHITE name (the 40-byte
     // save_name) on ONE shared backing strip — two strip_text calls would
     // leave a raw-backdrop seam between label and name — plus the gold
-    // block. Budget: 8 label chars + space + 26-char name clip = ink ending
-    // x<=217, 27px clear of the GOLD strip at x=244.
+    // block. Both strips share the panel's outside-to-outside lines: left
+    // edge 8, GOLD strip right edge 311 at its 11-char clip. Budget: 8 label
+    // chars + space + 26-char name clip = ink ending x<=219, 23px clear of
+    // the GOLD strip at x=242.
     std::string company = save.save_name;
     if (company.size() > 26)
         company.resize(26);
     {
         const int width = (9 + static_cast<int>(company.size())) * 6;
-        game->draw_rect_filled(6, 2, static_cast<Uint32>(width + 4), 8, PURE_BLACK, 150);
-        mytext.write_xy(8, 3, "COMPANY:", GREY, 1);
-        mytext.write_xy(62, 3, company.c_str(), WHITE, 1);
+        game->draw_rect_filled(8, 2, static_cast<Uint32>(width + 4), 8, PURE_BLACK, 150);
+        mytext.write_xy(10, 3, "COMPANY:", GREY, 1);
+        mytext.write_xy(64, 3, company.c_str(), WHITE, 1);
     }
-    strip_text(246, 3, format_base_camp_gold_label(save), YELLOW);
+    strip_text(244, 3, format_base_camp_gold_label(save), YELLOW);
 
     // Line B: solo scenario/deploy header, or the §9.12 (G5) networked
     // session status — role + room code + machine/player census ("HOSTING
@@ -3192,11 +3329,18 @@ void base_camp_draw_content(void* screen_state)
         line_b = format_base_camp_scen_line(save, game->world().title);
     }
     // §9.10.2 (G2): line B sits at y=17 — 14px below line A's y=3 baseline
-    // (round 1 had 10px) — with the pager cluster beside it at y=15.
-    strip_text(8, 17, line_b, line_b_color);
+    // (round 1 had 10px) — with the pager cluster beside it at y=15. Its
+    // backing strip starts on the panel's left line (strip_text backs the
+    // x=10 text with a 2px pad, so the strip rect starts at 8); the 34-char
+    // solo budget inks 10..213, strip rect 8..215 — 42px clear of the pager
+    // cluster at x=258.
+    strip_text(10, 17, line_b, line_b_color);
 
+    // The "p/N" strip sits in the pager cluster's reserved middle slot;
+    // strip_text backs its text with a 2px pad, so the text starts there.
     if (st != nullptr && st->page.multi_page())
-        strip_text(283, 17, st->page.indicator(), WHITE);
+        strip_text(kBaseCampPageIndicatorX + 2, 17, st->page.indicator(),
+                   WHITE);
 
     // Column headers at y=33: solo keeps CLASS/EXP; networked swaps in the
     // 16-char COMPANY column (§2.5 U7 — CLASS is carried by the family
@@ -3218,7 +3362,7 @@ void base_camp_draw_content(void* screen_state)
         mytext.write_xy(kBaseCampNameColumnX, 33, "NAME", BLACK, 1);
         mytext.write_xy(kBaseCampSoloClassColumnX, 33, "CLASS", BLACK, 1);
         mytext.write_xy(kBaseCampSoloLevelColumnX, 33, "LV", BLACK, 1);
-        mytext.write_xy(kBaseCampSoloExpColumnX, 33, "EXP", BLACK, 1);
+        mytext.write_xy(kBaseCampSoloExpHeaderX, 33, "EXP", BLACK, 1);
     }
 
     // Seat chips overlay the right edge of each compact card after buttons
@@ -3234,7 +3378,8 @@ void base_camp_draw_content(void* screen_state)
                 static_cast<int>(seat.team), 0,
                 static_cast<int>(SCORE_TEAM_COUNT) - 1);
             const int chip_x =
-                kBaseCampSeatCardX[static_cast<std::size_t>(card)] + 48;
+                kBaseCampSeatCardX[static_cast<std::size_t>(card)] +
+                kBaseCampSeatChipOffsetX;
             game->fastbox(chip_x, kBaseCampSeatRailY + 1, 8, 8, PURE_BLACK);
             game->fastbox(
                 chip_x + 1, kBaseCampSeatRailY + 2, 6, 6,
@@ -3315,10 +3460,11 @@ void base_camp_draw_content(void* screen_state)
         // Row glyphs sit at y+2 — centers the 6px font in the 10px band.
         if (networked) {
             // Foreign rows have no deploy BUTTON (no_draw hit zone): their
-            // deploy state draws as the §2.5 X/- glyph at x=27.
+            // deploy state draws as the §2.5 X/- glyph, on the same column
+            // the button centerer gives the owned rows' X.
             if (!display.owned)
-                mytext.write_xy(27, y + 2, deployed ? "X" : "-",
-                                status_color, 1);
+                mytext.write_xy(kBaseCampDeployGlyphX, y + 2,
+                                deployed ? "X" : "-", status_color, 1);
             const BaseCampNetRowText row = format_base_camp_net_row(
                 member->name, display.company, member->level);
             mytext.write_xy_flat(kBaseCampNameColumnX, y + 2,
@@ -3508,6 +3654,27 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
         if (picker_lobby_local_seat_count() == 0) {
             popup_dialog("SPECTATOR", "PRESS + TO ADD A PLAYER");
             return MENU_OK;
+        }
+
+        // #202: a pointer click on the card's team-square region cycles the
+        // seat's team in place through the seat editor's exact mutation
+        // path. Keyboard FIRE / hotkey dispatches stamp menu_click_x = -1
+        // and fall through to the editor, as do clicks on the P#/name
+        // region. Non-editable seats never reach here (the ownership and
+        // spectator gates above popped already).
+        {
+            const int card_x =
+                kBaseCampSeatCardX[static_cast<std::size_t>(card)];
+            const int click_x = pks().menu_click_x;
+            if (click_x >= card_x + kBaseCampSeatChipZoneOffsetX &&
+                click_x < card_x + kBaseCampSeatCardWidth)
+            {
+                const Sint32 chip_ret = base_camp_cycle_seat_team(seat);
+                // Same-frame chip digit: the card overlay draws from
+                // st->seats, so re-collect before this frame's content pass.
+                base_camp_refresh_rows(*st);
+                return chip_ret;
+            }
         }
 
         const Sint32 ret = run_seat_settings_menu(seat, local_slot);
@@ -4910,6 +5077,37 @@ const MenuScreenSpec& view_scenario_menu_screen_spec()
     return spec;
 }
 
+const MenuScreenSpec& help_menu_screen_spec()
+{
+    static const MenuScreenSpec spec{
+        .name = "help",
+        .rows = kHelpMenuRows,
+        .row_count = static_cast<int>(std::size(kHelpMenuRows)),
+        .buttons_accessor = &picker_help_buttons,
+        .count_accessor = &picker_help_button_count,
+        // Nav closure over the hidden pagers (BACK's right-link), reading
+        // the open screen's PageModel.
+        .nav = {.kind = NavProgramKind::Rewire, .rewire = &help_engine_rewire},
+        // The legacy help loop entered with no fade and ran no remote-start
+        // check (a joiner parked here launches when the main menu re-enters
+        // — the FX-subscreen precedent). Keep both: DELIBERATELY not
+        // FadeAroundEntry (issue #200 is reworking that path).
+        .enter = EnterTransition::None,
+        .default_highlight = kHelpMenuBackIndex,
+        // BACK carries MENU_REDRAW and ends the screen there.
+        .exit_on_redraw = true,
+        .polls_lobby = true,
+        .draw_background = &picker_backdrop_draw_background,
+        .draw_content = &help_engine_draw_content,
+        // Mouse wheel -> page steps.
+        .frame_tick = &help_engine_frame_tick,
+        // Tab switches and page flips (G3 generic row dispatch).
+        .on_spec_row = &help_engine_on_spec_row,
+        .exit_value = MENU_REDRAW,
+    };
+    return spec;
+}
+
 const MenuScreenSpec& name_entry_menu_screen_spec()
 {
     static const MenuScreenSpec spec{
@@ -5220,6 +5418,10 @@ const MenuScreenHost& menu_screen_host(MenuScreenId id)
             // record"; pinned by
             // MenuEngine.networking_stays_legacy_v2_decision).
             set(MenuScreenId::Networking, {.kind = Kind::Legacy});
+            // #168: HELP is engine-hosted (the legacy overlay dialog loop in
+            // help.cpp is gone; show_general_help is the blocking wrapper).
+            set(MenuScreenId::Help,
+                {.kind = Kind::Engine, .spec = &help_menu_screen_spec()});
             return table;
         }();
     return hosts[static_cast<std::size_t>(id)];
@@ -5429,6 +5631,18 @@ button* picker_cloud_save_buttons()
 int picker_cloud_save_button_count()
 {
     return static_cast<int>(pks().cloud_save_buttons.size());
+}
+
+button* picker_help_buttons()
+{
+    og::ui::materialize_menu_buttons(og::ui::help_menu_screen_spec(),
+                                     pks().help_buttons);
+    return pks().help_buttons.data();
+}
+
+int picker_help_button_count()
+{
+    return static_cast<int>(pks().help_buttons.size());
 }
 
 #ifdef TESTING

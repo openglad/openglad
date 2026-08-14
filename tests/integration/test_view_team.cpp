@@ -116,6 +116,10 @@ void picker_testing_draw_menu_highlight(const MenuScreenSpec& spec,
 #include <openglad/interface/ui/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 
+// From picker_input.cpp (repo pattern: consumers declare locally).
+bool handle_menu_nav(button* buttons, int& highlighted_button,
+                     Sint32& retvalue, bool use_global_vbuttons = true);
+
 namespace {
 
 class AutoStartPickerLobbyClient final : public og::ui::IPickerLobbyClient
@@ -2521,6 +2525,217 @@ TEST(ViewTeam, base_camp_seat_rail_targets_owned_global_seat_and_clamps_page)
     og::ui::install_seat_settings_state_for_screen(nullptr);
     og::ui::install_base_camp_state_for_screen(nullptr);
     save.reset();
+}
+
+namespace
+{
+// #202 pointer-dispatch contract: menu_click_x/y carry the UI-canvas click
+// that activated a button (stamped by the mouse dispatch site), and -1/-1 on
+// every coordinate-free activation. Restore both plus the row stash so a
+// direct on_spec_row drive never leaks into shuffled neighbors.
+struct MenuClickStashGuard
+{
+    ~MenuClickStashGuard()
+    {
+        pks().menu_click_x = -1;
+        pks().menu_click_y = -1;
+        pks().menu_spec_clicked_row = -1;
+    }
+};
+} // namespace
+
+// ---------------------------------------------------------------------------
+// #202: a pointer click on a seat card's team-square region (the 8x8 chip at
+// card_x+48, with 2px grace on its left, out to the card's right edge) cycles
+// the seat's team IN PLACE through the seat editor's exact mutation path —
+// same selectable-team sequence and wrap, same denial popup, same
+// ready-withdraw side effect, same trace — without opening the seat editor.
+// ---------------------------------------------------------------------------
+TEST(ViewTeam, base_camp_seat_chip_pointer_click_cycles_team_in_place)
+{
+    trace_clear();
+    FactoryMappingGuard mapping_guard;
+    MenuClickStashGuard click_guard;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "gladiator";
+    save.save_name = "MY COMPANY";
+
+    NetworkedRosterLobbyClient lobby;
+    lobby.local_indices = {0};
+    lobby.players.push_back(
+        make_foreign_lobby_player(0, "net-me", "MY COMPANY", 0, 0));
+    lobby.players.front().team = 0;
+    ActivePickerLobbyClientGuard client_guard(&lobby);
+
+    og::ui::BaseCampScreenState state;
+    og::ui::base_camp_refresh_rows(state);
+    ASSERT_EQ(1u, state.seats.size());
+    og::ui::install_base_camp_state_for_screen(&state);
+
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, spec.on_spec_row);
+    button* buttons = picker_createmenu_buttons();
+    const button& card = buttons[kBaseCampSeatCardBase];
+    ASSERT_EQ(57, card.sizex) << "card face width is the chip zone's anchor";
+
+    // Chip-body click (the drawn 8x8 chip starts at card_x+48).
+    pks().menu_click_x = card.x + 52;
+    pks().menu_click_y = card.y + 5;
+    lobby.ready_state = true;
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampSeatCardBase, &state));
+    ASSERT_EQ(1u, lobby.seat_team_calls.size());
+    const std::pair<std::uint8_t, short> first_request{0, 1};
+    EXPECT_EQ(first_request, lobby.seat_team_calls.back())
+        << "classic team 1 advances to team 2";
+    EXPECT_TRUE(trace_contains("basecamp", "seat_team player=1 team=2"));
+    EXPECT_FALSE(lobby.ready_state)
+        << "the chip ride carries the editor's ready-withdraw side effect";
+    ASSERT_EQ(1u, state.seats.size());
+    EXPECT_EQ(1, state.seats[0].team)
+        << "the handler re-collects seats so this frame's chip digit is new";
+
+    // Zone left boundary: card_x+46 (2px grace before the drawn chip).
+    pks().menu_click_x = card.x + 46;
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampSeatCardBase, &state));
+    ASSERT_EQ(2u, lobby.seat_team_calls.size());
+    EXPECT_EQ(2, lobby.seat_team_calls.back().second);
+    EXPECT_TRUE(trace_contains("basecamp", "seat_team player=1 team=3"));
+
+    // Zone right boundary: the card face's last pixel.
+    pks().menu_click_x = card.x + card.sizex - 1;
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampSeatCardBase, &state));
+    ASSERT_EQ(3u, lobby.seat_team_calls.size());
+    EXPECT_EQ(3, lobby.seat_team_calls.back().second);
+    EXPECT_TRUE(trace_contains("basecamp", "seat_team player=1 team=4"));
+
+    // The wrap: classic team 4 advances back to team 1 — the seat editor's
+    // exact sequence (its own test pins the same wrap).
+    pks().menu_click_x = card.x + 52;
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampSeatCardBase, &state));
+    ASSERT_EQ(4u, lobby.seat_team_calls.size());
+    EXPECT_EQ(0, lobby.seat_team_calls.back().second);
+    EXPECT_TRUE(trace_contains("basecamp", "seat_team player=1 team=1"));
+
+    // A denied request pops the editor's exact denial and mutates nothing.
+    lobby.seat_team_accept = false;
+    lobby.ready_state = true;
+    trace_clear();
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampSeatCardBase, &state));
+    ASSERT_EQ(5u, lobby.seat_team_calls.size());
+    EXPECT_TRUE(trace_contains("popup", "CHANGE DENIED"));
+    EXPECT_FALSE(trace_contains("basecamp", "seat_team"));
+    EXPECT_TRUE(lobby.ready_state)
+        << "a denied assignment must not clear ready";
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    save.reset();
+}
+
+// ---------------------------------------------------------------------------
+// #202 gating: the chip zone obeys the card's ownership gates. A foreign
+// (networked, non-editable) seat's chip click names the owning company and
+// mutates nothing; a spectator machine's chip click points at + instead.
+// ---------------------------------------------------------------------------
+TEST(ViewTeam, base_camp_seat_chip_click_foreign_seat_stays_inert)
+{
+    trace_clear();
+    FactoryMappingGuard mapping_guard;
+    MenuClickStashGuard click_guard;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "gladiator";
+    save.save_name = "MY COMPANY";
+
+    NetworkedRosterLobbyClient lobby;
+    lobby.local_indices = {1};
+    lobby.players.push_back(
+        make_foreign_lobby_player(0, "net-remote", "Iron Host", 0, 0));
+    lobby.players.push_back(
+        make_foreign_lobby_player(1, "net-me", "MY COMPANY", 0, 0));
+    ActivePickerLobbyClientGuard client_guard(&lobby);
+
+    og::ui::BaseCampScreenState state;
+    og::ui::base_camp_refresh_rows(state);
+    ASSERT_EQ(2u, state.seats.size());
+    og::ui::install_base_camp_state_for_screen(&state);
+
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    button* buttons = picker_createmenu_buttons();
+    const button& card = buttons[kBaseCampSeatCardBase];
+
+    // Card 0 is Iron Host's seat: its chip is read-only for this machine.
+    pks().menu_click_x = card.x + 52;
+    pks().menu_click_y = card.y + 5;
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampSeatCardBase, &state));
+    EXPECT_TRUE(trace_contains("popup", "Iron Host"));
+    EXPECT_TRUE(lobby.seat_team_calls.empty())
+        << "a foreign chip click must never issue a team change";
+
+    // Spectator machine (an owned wire seat lingering at zero active local
+    // seats): the chip is inert there too.
+    lobby.active_local_count = 0;
+    og::ui::base_camp_refresh_rows(state);
+    trace_clear();
+    const button& own_card = buttons[kBaseCampSeatCardBase + 1];
+    pks().menu_click_x = own_card.x + 52;
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampSeatCardBase + 1, &state));
+    EXPECT_TRUE(trace_contains("popup", "PRESS + TO ADD A PLAYER"))
+        << "a spectator chip click pops, never mutates";
+    EXPECT_TRUE(lobby.seat_team_calls.empty());
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    save.reset();
+}
+
+// ---------------------------------------------------------------------------
+// #202 keyboard rule: FIRE on a highlighted seat card is a coordinate-free
+// dispatch — handle_menu_nav must clear any stale pointer stamp left by an
+// earlier chip click, so consuming the row opens the seat editor instead of
+// silently re-cycling the team.
+// ---------------------------------------------------------------------------
+TEST(ViewTeam, base_camp_seat_card_keyboard_fire_clears_stale_pointer)
+{
+    FactoryMappingGuard mapping_guard;
+    MenuClickStashGuard click_guard;
+
+    button* buttons = picker_createmenu_buttons();
+    const int count = picker_createmenu_button_count();
+    vbutton* local = init_buttons(buttons, count);
+    ASSERT_NE(nullptr, local);
+
+    const bool old_nav_enabled = pks().menu_nav_enabled;
+    pks().menu_nav_enabled = true;
+    // A chip click's stamp, gone stale: FIRE must not reuse it.
+    pks().menu_click_x = buttons[kBaseCampSeatCardBase].x + 52;
+    pks().menu_click_y = buttons[kBaseCampSeatCardBase].y + 5;
+    pks().menu_spec_clicked_row = -1;
+
+    InputHardwareState& hw = input_hardware_state();
+    hw.touch_keystate[0][KEY_FIRE] = true;
+    int highlighted = kBaseCampSeatCardBase;
+    Sint32 retvalue = 0;
+    handle_menu_nav(buttons, highlighted, retvalue, true);
+    hw.touch_keystate[0][KEY_FIRE] = false;
+
+    EXPECT_EQ(kBaseCampSeatCardBase, pks().menu_spec_clicked_row)
+        << "FIRE on the card must dispatch the card row";
+    EXPECT_EQ(-1, pks().menu_click_x)
+        << "a keyboard dispatch must clear the stale pointer x";
+    EXPECT_EQ(-1, pks().menu_click_y)
+        << "a keyboard dispatch must clear the stale pointer y";
+
+    // Observe the release so the FIRE latch never leaks into later tests.
+    handle_menu_nav(buttons, highlighted, retvalue, true);
+    pks().menu_nav_enabled = old_nav_enabled;
+    clear_allbuttons();
+    og::runtime::current_session->localbuttons_ = nullptr;
 }
 
 TEST(ViewTeam, seat_settings_draws_selected_identity_and_direction_mode)

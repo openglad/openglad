@@ -112,8 +112,7 @@ int campaign_picker_testing_exercise_entry_draw_paths()
     entry.num_levels = 1;
     entry.num_levels_completed = -1;
 
-    const UiRect area{144, 35, 32, 32};
-    entry.draw(area, 8);
+    entry.draw(8);
 
     entry.rating = 0.0f;
     entry.suggested_power = 0;
@@ -122,11 +121,11 @@ int campaign_picker_testing_exercise_entry_draw_paths()
     entry.authors.clear();
     entry.contributors.clear();
     entry.description = "one\ntwo\nthree\nfour\nfive\nsix\nseven";
-    entry.draw(area, -1);
+    entry.draw(-1);
 
     entry.suggested_power = 4;
-    entry.draw(area, -1);
-    entry.draw(area, 8);
+    entry.draw(-1);
+    entry.draw(8);
 
     const auto* const rendered = static_cast<const unsigned char*>(
         surface_restore.surface->pixels);

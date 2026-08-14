@@ -225,6 +225,10 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
                 og::runtime::current_session->allbuttons_[static_cast<std::size_t>(highlighted_button)]->vdisplay();
                 if(og::runtime::current_session->allbuttons_[static_cast<std::size_t>(highlighted_button)]->myfunc)
                 {
+                    // Coordinate-free activation: never leave a stale pointer
+                    // for sub-rect affordances (#202).
+                    pks().menu_click_x = -1;
+                    pks().menu_click_y = -1;
                     retvalue = og::runtime::current_session->allbuttons_[static_cast<std::size_t>(highlighted_button)]->do_call(og::runtime::current_session->allbuttons_[static_cast<std::size_t>(highlighted_button)]->myfunc, og::runtime::current_session->allbuttons_[static_cast<std::size_t>(highlighted_button)]->arg);
                 }
             }

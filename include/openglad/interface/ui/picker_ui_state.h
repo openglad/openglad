@@ -115,6 +115,8 @@ struct PickerState {
     std::vector<button> company_backups_buttons;
     // #155 CLOUD SAVE subscreen — engine screen.
     std::vector<button> cloud_save_buttons;
+    // #168 full-screen HELP — engine screen.
+    std::vector<button> help_buttons;
 
     // MATCHUP subscreen: roster slot selected by the legacy local guy row.
     int teams_menu_guy_slot = 0;
@@ -137,4 +139,14 @@ struct PickerState {
     // dispatch (-1 = none). Set in vbutton::do_call; run_menu_screen MUST
     // consume it every frame (TESTING-enforced retvalue-zero discipline).
     int menu_spec_clicked_row = -1;
+
+    // UI-canvas pointer position at the last button activation, stamped by
+    // EVERY do_call dispatch site: the mouse branch of vbutton::leftclick
+    // writes the live pointer, while the hotkey branch and the keyboard-FIRE
+    // dispatch in handle_menu_nav write -1/-1. A spec-row handler can
+    // therefore route on WHERE its rect was clicked without ever misreading
+    // a stale pointer on a coordinate-free activation (#202: the seat-card
+    // team chip).
+    int menu_click_x = -1;
+    int menu_click_y = -1;
 };

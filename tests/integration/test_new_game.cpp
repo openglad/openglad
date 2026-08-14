@@ -68,7 +68,7 @@ static bool wait_for_team_menu(int timeout_ms = kTeamMenuTimeoutMs)
 // This verifies:
 //   1. The begin_new_game button works
 //   2. Save data gets reset on new game
-//   3. The team-build menu appears immediately after the intro
+//   3. The team-build menu appears immediately after founding
 //   4. Networking is available from that menu
 //   5. Navigation back to main menu works
 
@@ -93,19 +93,16 @@ static int new_game_injector(void* data)
     interact("begin_new_game");
 
     // §2.2: BEGIN NEW GAME now opens the name-entry screen first. Accept the
-    // generated company name to found the company and proceed to the intro.
+    // generated company name to found the company.
     wait_for_interactable("company_name_accept", 5000);
     SDL_Delay(750);  // FadeAroundEntry settle
     fprintf(stderr, "  [test] accepting generated company name\n");
     interact("company_name_accept");
 
-    // picker_prepare_new_game_setup then calls read_campaign_intro() which
-    // blocks until input_continue is set (SDLK_ESCAPE keydown triggers this).
-    SDL_Delay(1000);
-    fprintf(stderr, "  [test] dismissing campaign intro with Escape\n");
-    inject_key_press(SDLK_ESCAPE);
-
-    // Now we should be on the team-build menu immediately.
+    // The campaign intro no longer runs inside picker_prepare_new_game_setup
+    // (issue #186: it moved behind the campaign select, whose TESTING
+    // short-circuit skips it here), so the flow proceeds to the team-build
+    // menu without further input.
     SDL_Delay(500);
     if (wait_for_team_menu()) {
         state->saw_team_menu = true;
@@ -134,7 +131,7 @@ TEST(NewGame, begin_new_game) {
     // restart?" prompt is RETIRED — founding a company never destroys the
     // loaded game. Seed save0 with a team member (the exact team_size > 0
     // condition that used to raise the prompt) so this flow proves BEGIN NEW
-    // GAME now goes straight to the intro. Were the prompt still present, the
+    // GAME now founds without asking. Were the prompt still present, the
     // injector — which never answers it — would hang until timeout.
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
         og::runtime::current_session->myscreen_->save_data.team_list[static_cast<std::size_t>(i)].reset(nullptr);
@@ -297,11 +294,10 @@ static int name_entry_edit_injector(void* data)
         interact("company_name_accept");
     }
 
-    // Dismiss the campaign intro so the flow reaches team build.
-    SDL_Delay(1000);
-    inject_key_press(SDLK_ESCAPE);
-
-    // Unwind back to the main menu so picker_main can hit its Quit gate.
+    // No campaign intro here anymore (issue #186: it moved behind the
+    // campaign select, skipped under TESTING) — the flow reaches team build
+    // on its own. Unwind back to the main menu so picker_main can hit its
+    // Quit gate.
     SDL_Delay(500);
     if (wait_for_team_menu()) {
         state->saw_team_menu = true;
@@ -382,10 +378,8 @@ static int continue_player_count_injector(void* data)
     if (!accept_generated_company_name())
         return 0;
 
-    // picker_prepare_new_game_setup blocks on the campaign intro.
-    SDL_Delay(1000);
-    inject_key_press(SDLK_ESCAPE);
-
+    // picker_prepare_new_game_setup no longer blocks on the campaign intro
+    // (issue #186); the flow lands on Base Camp directly.
     if (!wait_for_team_menu())
         return 0;
     state->saw_initial_base_camp = true;

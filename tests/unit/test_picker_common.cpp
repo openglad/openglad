@@ -4521,9 +4521,12 @@ TEST(CampaignPickerLayout, enter_id_sits_below_the_delete_reset_cell)
 TEST(CampaignPickerLayout, no_control_overlaps_another_control)
 {
     const og::ui::CampaignPickerLayout layout = og::ui::campaign_picker_layout();
-    const std::array<og::ui::PickerRect, 6> distinct = {
+    std::vector<og::ui::PickerRect> distinct = {
         layout.prev, layout.next, layout.choose,
-        layout.cancel, layout.delete_button, layout.id_button};
+        layout.cancel, layout.delete_button, layout.id_button,
+        layout.more_button, layout.desc_box, layout.icon};
+    for (int row = 0; row < layout.list_rows; ++row)
+        distinct.push_back(og::ui::campaign_picker_row_rect(row));
     for (std::size_t i = 0; i < distinct.size(); ++i)
     {
         for (std::size_t j = i + 1; j < distinct.size(); ++j)
@@ -4534,12 +4537,146 @@ TEST(CampaignPickerLayout, no_control_overlaps_another_control)
     }
 }
 
+TEST(CampaignPickerLayout, list_pane_is_a_grid_beside_the_detail_pane)
+{
+    const og::ui::CampaignPickerLayout layout = og::ui::campaign_picker_layout();
+
+    ASSERT_GT(layout.list_rows, 1);
+    const og::ui::PickerRect row0 = og::ui::campaign_picker_row_rect(0);
+    for (int row = 0; row < layout.list_rows; ++row)
+    {
+        const og::ui::PickerRect rect = og::ui::campaign_picker_row_rect(row);
+        // Alignment as a RELATION: every row shares row 0's edges and pitch.
+        EXPECT_EQ(row0.x, rect.x) << "row " << row << " breaks the left edge";
+        EXPECT_EQ(row0.w, rect.w) << "row " << row << " breaks the width";
+        EXPECT_EQ(row0.y + layout.list_row_pitch * row, rect.y)
+            << "row " << row << " breaks the pitch";
+        // ...and stays inside the declared list block and left of the
+        // detail pane.
+        EXPECT_GE(rect.x, layout.list.x);
+        EXPECT_LE(rect.y + rect.h, layout.list.y + layout.list.h);
+        EXPECT_LE(rect.x + rect.w, layout.detail.x)
+            << "list rows must not reach the detail pane";
+        EXPECT_FALSE(og::ui::picker_rects_overlap(rect, layout.detail));
+    }
+
+    // The pagers sit below the list, sharing its outer edges, with room for
+    // the position readout between them.
+    EXPECT_GE(layout.prev.y, layout.list.y + layout.list.h);
+    EXPECT_EQ(layout.prev.y, layout.next.y) << "pagers share a band";
+    EXPECT_EQ(layout.list.x, layout.prev.x);
+    EXPECT_EQ(layout.list.x + layout.list.w, layout.next.x + layout.next.w);
+    EXPECT_GE(layout.next.x - (layout.prev.x + layout.prev.w), 8 * 6)
+        << "the 'NN of NN' readout needs 8 glyphs between the pagers";
+
+    // The detail pane's stack: icon and description box inside the pane,
+    // MORE below the box flush with the pane's right edge.
+    EXPECT_FALSE(og::ui::picker_rects_overlap(layout.desc_box, layout.icon));
+    EXPECT_GE(layout.icon.y, layout.detail.y);
+    EXPECT_GE(layout.desc_box.x, layout.detail.x);
+    EXPECT_LE(layout.desc_box.x + layout.desc_box.w,
+              layout.detail.x + layout.detail.w);
+    EXPECT_GE(layout.more_button.y, layout.desc_box.y + layout.desc_box.h);
+    EXPECT_EQ(layout.detail.x + layout.detail.w,
+              layout.more_button.x + layout.more_button.w);
+
+    // Row labels: a 6px marker column then an 18-char label budget.
+    EXPECT_EQ(18, layout.list_label_max_chars);
+    EXPECT_EQ(4, layout.desc_rows);
+    EXPECT_EQ(26, layout.desc_max_chars);
+
+    // Everything stays on the 320x200 canvas.
+    for (const og::ui::PickerRect& rect :
+         {layout.list, layout.detail, layout.prev, layout.next,
+          layout.more_button, layout.desc_box})
+    {
+        EXPECT_GE(rect.x, 0);
+        EXPECT_GE(rect.y, 0);
+        EXPECT_LE(rect.x + rect.w, 320);
+        EXPECT_LE(rect.y + rect.h, 200);
+    }
+}
+
+TEST(CampaignPickerLayout, list_paging_helpers_window_the_shelf)
+{
+    using og::ui::campaign_list_clamp_cursor;
+    using og::ui::campaign_list_clamp_offset;
+    using og::ui::campaign_list_offset_for_cursor;
+    using og::ui::campaign_list_page_step;
+
+    // Clamp: a shelf that fits one page never scrolls.
+    EXPECT_EQ(0, campaign_list_clamp_offset(3, 4, 6));
+    EXPECT_EQ(0, campaign_list_clamp_offset(-2, 10, 6));
+    EXPECT_EQ(4, campaign_list_clamp_offset(9, 10, 6));
+    EXPECT_EQ(2, campaign_list_clamp_offset(2, 10, 6));
+    EXPECT_EQ(0, campaign_list_clamp_offset(5, 0, 6));
+
+    // Bringing a cursor on screen scrolls minimally, in both directions.
+    EXPECT_EQ(0, campaign_list_offset_for_cursor(0, 0, 8, 6));
+    EXPECT_EQ(2, campaign_list_offset_for_cursor(7, 0, 8, 6));
+    EXPECT_EQ(2, campaign_list_offset_for_cursor(3, 4, 8, 6))
+        << "the stale offset first clamps to the last page, where 3 is visible";
+    EXPECT_EQ(1, campaign_list_offset_for_cursor(5, 1, 8, 6));
+
+    // Page steps move by a full page and clamp at the shelf's ends.
+    EXPECT_EQ(2, campaign_list_page_step(0, 8, 6, 1));
+    EXPECT_EQ(0, campaign_list_page_step(2, 8, 6, -1));
+    EXPECT_EQ(6, campaign_list_page_step(0, 13, 6, 1));
+    EXPECT_EQ(7, campaign_list_page_step(6, 13, 6, 1));
+    EXPECT_EQ(0, campaign_list_page_step(3, 13, 6, -1));
+
+    // After a page step the cursor is pulled into the window.
+    EXPECT_EQ(2, campaign_list_clamp_cursor(0, 2, 8, 6));
+    EXPECT_EQ(5, campaign_list_clamp_cursor(7, 0, 8, 6));
+    EXPECT_EQ(4, campaign_list_clamp_cursor(4, 2, 8, 6));
+    EXPECT_EQ(0, campaign_list_clamp_cursor(3, 0, 0, 6));
+
+    // Position readout.
+    EXPECT_EQ("3 of 8", og::ui::format_campaign_position_label(2, 8));
+    EXPECT_EQ("1 of 1", og::ui::format_campaign_position_label(0, 1));
+    EXPECT_EQ("8 of 8", og::ui::format_campaign_position_label(9, 8))
+        << "an out-of-range cursor must clamp, not overflow the label";
+    EXPECT_EQ("0 of 0", og::ui::format_campaign_position_label(0, 0));
+}
+
+TEST(CampaignPickerLayout, row_labels_and_description_overflow)
+{
+    const og::ui::CampaignPickerLayout layout = og::ui::campaign_picker_layout();
+
+    // fit_text_to_chars is the shared trimmer.
+    EXPECT_EQ("abc", og::ui::fit_text_to_chars("abc", 5));
+    EXPECT_EQ("abcde", og::ui::fit_text_to_chars("abcde", 5));
+    EXPECT_EQ("ab...", og::ui::fit_text_to_chars("abcdef", 5));
+    EXPECT_EQ("abc", og::ui::fit_text_to_chars("abcdef", 3))
+        << "budgets of <= 3 clip without an ellipsis";
+    EXPECT_EQ("", og::ui::fit_text_to_chars("abc", 0));
+
+    // Row labels use the list budget.
+    EXPECT_EQ("Gladiator", og::ui::fit_campaign_row_label("Gladiator"));
+    const std::string long_title(40, 'W');
+    const std::string fitted = og::ui::fit_campaign_row_label(long_title);
+    EXPECT_EQ(static_cast<std::size_t>(layout.list_label_max_chars),
+              fitted.size());
+    EXPECT_EQ("...", fitted.substr(fitted.size() - 3));
+
+    // MORE shows exactly when the wrapped description leaves the box.
+    EXPECT_FALSE(og::ui::campaign_description_overflows("Short and sweet."));
+    std::string long_desc;
+    for (int line = 0; line < 12; ++line)
+        long_desc += "A reasonably long line of prose for the box.\n";
+    EXPECT_TRUE(og::ui::campaign_description_overflows(long_desc));
+    EXPECT_FALSE(og::ui::campaign_description_overflows(""));
+}
+
 TEST(CampaignPickerLayout, title_row_clears_every_control_at_any_length)
 {
     const og::ui::CampaignPickerLayout layout = og::ui::campaign_picker_layout();
-    const std::array<og::ui::PickerRect, 7> controls = {
+    std::vector<og::ui::PickerRect> controls = {
         layout.prev, layout.next, layout.choose, layout.cancel,
-        layout.delete_button, layout.reset_button, layout.id_button};
+        layout.delete_button, layout.reset_button, layout.id_button,
+        layout.more_button, layout.icon, layout.desc_box};
+    for (int row = 0; row < layout.list_rows; ++row)
+        controls.push_back(og::ui::campaign_picker_row_rect(row));
 
     for (int chars = 0; chars <= layout.title_max_chars; ++chars)
     {
@@ -4547,6 +4684,9 @@ TEST(CampaignPickerLayout, title_row_clears_every_control_at_any_length)
         EXPECT_GE(title.x, 0) << "title of " << chars << " runs off screen";
         EXPECT_LE(title.x + title.w, 320)
             << "title of " << chars << " runs off screen";
+        // ...and stays inside the detail pane, above the icon.
+        EXPECT_GE(title.x, layout.detail.x);
+        EXPECT_LE(title.x + title.w, layout.detail.x + layout.detail.w);
         for (const og::ui::PickerRect& control : controls)
         {
             EXPECT_FALSE(og::ui::picker_rects_overlap(title, control))
@@ -4557,13 +4697,19 @@ TEST(CampaignPickerLayout, title_row_clears_every_control_at_any_length)
 
 TEST(CampaignPickerLayout, old_geometry_really_did_clip_the_shipped_titles)
 {
-    // Regression witness: the pre-fix ENTER ID rect, kept as a literal so the
-    // pin still describes the bug after the layout moved.
+    // Regression witness, all literals: the pre-list-redesign browser drew
+    // the title centered on x=160 at y=13 and put ENTER ID at {208,10}. A
+    // title of L glyphs spanned 160 +/- 3L on that row, so 17+ characters
+    // reached the button. The redesigned title lives in the detail pane
+    // (y=36), a row no control shares.
     const og::ui::PickerRect old_id_button{208, 10, 52, 10};
+    const auto old_title_rect = [](int chars) {
+        return og::ui::PickerRect{160 - chars * 3, 13, chars * 6, 8};
+    };
     for (const int shipped : {22, 20, 18, 17})
     {
         EXPECT_TRUE(og::ui::picker_rects_overlap(
-            og::ui::campaign_title_rect(shipped), old_id_button))
+            old_title_rect(shipped), old_id_button))
             << shipped << "-char title used to clip ENTER ID";
         EXPECT_FALSE(og::ui::picker_rects_overlap(
             og::ui::campaign_title_rect(shipped),
@@ -4572,13 +4718,13 @@ TEST(CampaignPickerLayout, old_geometry_really_did_clip_the_shipped_titles)
     }
     // 16 chars was the longest that already fit.
     EXPECT_FALSE(og::ui::picker_rects_overlap(
-        og::ui::campaign_title_rect(16), old_id_button));
+        old_title_rect(16), old_id_button));
 }
 
 TEST(CampaignPickerLayout, fit_campaign_title_budget)
 {
     const int budget = og::ui::campaign_picker_layout().title_max_chars;
-    EXPECT_EQ(36, budget);
+    EXPECT_EQ(29, budget);
 
     // Every shipped title is under budget and passes through untouched.
     for (const char* shipped : {"Gladiator", "The Long Season",
@@ -4618,23 +4764,43 @@ TEST(CampaignPickerLayout, rect_overlap_helper_edges)
     EXPECT_FALSE(og::ui::picker_rects_overlap(a, og::ui::PickerRect{0, 0, 10, 10}));
 }
 
-// Keyboard reachability for the browser's nav graph across every visibility
-// variant. handle_menu_nav IGNORES a link into a hidden button (it does not
-// follow it and does not strand focus), so the property worth pinning is
-// that every VISIBLE button is still reachable from the default highlight
-// after ENTER ID moved out of the top row.
+// Keyboard reachability for the browser's nav graph across every COHERENT
+// visibility variant the SDL loop can produce (an empty shelf hides the
+// pagers, OK, and MORE; MORE needs a highlighted entry, so it needs rows).
+// handle_menu_nav IGNORES a link into a hidden button (it does not follow it
+// and does not strand focus), so the property worth pinning is that every
+// VISIBLE button is still reachable from the default highlight.
 TEST(CampaignPickerLayout, nav_variants_keyboard_reachable)
 {
     using og::ui::CampaignPickerVisibility;
     using og::ui::kCampaignPickerButtonCount;
+    using og::ui::kCampaignPickerRowBaseIndex;
+    using og::ui::kCampaignPickerRowCount;
 
+    int variants_checked = 0;
+    for (int visible_rows = 0; visible_rows <= kCampaignPickerRowCount;
+         ++visible_rows)
     for (const bool prev_hidden : {false, true})
     for (const bool next_hidden : {false, true})
     for (const bool choose_hidden : {false, true})
     for (const bool delete_hidden : {false, true})
+    for (const bool more_hidden : {false, true})
     {
+        // Coherence: OK shows exactly when the shelf has entries; no rows
+        // means an empty shelf (nothing to page or expand); a partially
+        // filled page is always the LAST page.
+        if ((visible_rows == 0) != choose_hidden)
+            continue;
+        if (visible_rows == 0 && !(prev_hidden && next_hidden && more_hidden))
+            continue;
+        if (visible_rows > 0 && visible_rows < kCampaignPickerRowCount &&
+            !next_hidden)
+            continue;
+        ++variants_checked;
+
         const CampaignPickerVisibility visibility{prev_hidden, next_hidden,
-                                                  choose_hidden, delete_hidden};
+                                                  choose_hidden, delete_hidden,
+                                                  visible_rows, more_hidden};
         // RESET occupies the DELETE cell, so exactly one of the pair shows.
         std::array<bool, kCampaignPickerButtonCount> hidden{};
         hidden[og::ui::kCampaignPickerPrevIndex] = prev_hidden;
@@ -4644,13 +4810,19 @@ TEST(CampaignPickerLayout, nav_variants_keyboard_reachable)
         hidden[og::ui::kCampaignPickerDeleteIndex] = delete_hidden;
         hidden[og::ui::kCampaignPickerIdIndex] = false;
         hidden[og::ui::kCampaignPickerResetIndex] = !delete_hidden;
+        for (int row = 0; row < kCampaignPickerRowCount; ++row)
+            hidden[static_cast<std::size_t>(kCampaignPickerRowBaseIndex + row)] =
+                row >= visible_rows;
+        hidden[og::ui::kCampaignPickerMoreIndex] = more_hidden;
 
         const auto nav = og::ui::campaign_picker_nav(visibility);
-        const std::string variant = std::string("prev=") +
+        const std::string variant = std::string("rows=") +
+            std::to_string(visible_rows) + " prev=" +
             (prev_hidden ? "hidden" : "shown") + " next=" +
             (next_hidden ? "hidden" : "shown") + " ok=" +
             (choose_hidden ? "hidden" : "shown") + " delete=" +
-            (delete_hidden ? "hidden" : "shown");
+            (delete_hidden ? "hidden" : "shown") + " more=" +
+            (more_hidden ? "hidden" : "shown");
 
         for (const auto& links : nav)
         {
@@ -4700,5 +4872,114 @@ TEST(CampaignPickerLayout, nav_variants_keyboard_reachable)
         EXPECT_EQ(og::ui::kCampaignPickerIdIndex,
                   nav[og::ui::kCampaignPickerResetIndex].down)
             << variant << ": RESET drops onto the button below it";
+        // The visible list rows chain up/down, exiting only at their ends.
+        for (int row = 1; row < visible_rows; ++row)
+        {
+            const int index = kCampaignPickerRowBaseIndex + row;
+            EXPECT_EQ(index - 1, nav[static_cast<std::size_t>(index)].up)
+                << variant << ": row " << row << " must step up its neighbor";
+            EXPECT_EQ(index,
+                      nav[static_cast<std::size_t>(index - 1)].down)
+                << variant << ": row " << (row - 1)
+                << " must step down its neighbor";
+        }
     }
+    ASSERT_EQ(58, variants_checked)
+        << "the coherent-variant enumeration changed shape";
+}
+
+// --- Level browser (SET LEVEL) layout pins (issue #186) ---
+//
+// The reported defects: the legacy pitch pushed row 2's preview frame to the
+// screen bottom, and the description box {130,35,185,110} was painted AFTER
+// the entries, overprinting the stats column (x=75..165) of rows 0-1. The
+// pins below hold the two repaired properties for every row: previews fully
+// on the 200px screen, and the description box strictly right of the widest
+// stats line.
+
+TEST(LevelPickerLayout, preview_rows_fit_the_screen_at_uniform_pitch)
+{
+    const og::ui::LevelPickerLayout layout = og::ui::level_picker_layout();
+
+    ASSERT_EQ(3, layout.row_count);
+    for (int row = 0; row < layout.row_count; ++row)
+    {
+        const int row_y = og::ui::level_picker_row_y(row);
+        EXPECT_EQ(layout.row0_y + layout.row_pitch * row, row_y)
+            << "row " << row << " breaks the pitch";
+        // Title line, then the radar with its 2px frame, fully on screen
+        // even for the largest radar viewport.
+        const int radar_bottom = row_y + layout.radar_dy + layout.radar_max_h;
+        EXPECT_LE(radar_bottom + 2, 200)
+            << "row " << row << "'s preview frame runs off the screen";
+        EXPECT_GE(row_y, 0);
+        // The next row's title clears this row's radar frame.
+        if (row + 1 < layout.row_count)
+        {
+            EXPECT_GE(og::ui::level_picker_row_y(row + 1), radar_bottom + 2);
+        }
+    }
+
+    // The old geometry really did clip: at the legacy pitch the third
+    // preview frame ended below the old OK/CANCEL row's top.
+    const int old_row2_frame_bottom = 5 + 65 * 2 + 10 + 44 + 2;
+    EXPECT_GT(old_row2_frame_bottom, 190)
+        << "regression witness lost its meaning";
+}
+
+TEST(LevelPickerLayout, description_box_clears_the_stats_column)
+{
+    const og::ui::LevelPickerLayout layout = og::ui::level_picker_layout();
+
+    // The widest stats line the browser can draw spans stats_max_chars from
+    // stats_x; the box must start strictly right of it, on every row band.
+    const int stats_right = layout.stats_x + layout.stats_max_chars * 6;
+    EXPECT_LE(stats_right, layout.desc_box.x)
+        << "the description box reaches the stats column";
+    EXPECT_GE(layout.stats_max_chars, 16)
+        << "\"Difficulty: NNNN\" (16 chars) must fit the stats budget";
+
+    // The stats columns of all rows share one left edge, right of the
+    // widest radar frame.
+    EXPECT_GE(layout.stats_x, layout.row_x + layout.radar_max_w + 2);
+
+    // The status column sits right of the longest fitted title and left of
+    // the description box.
+    EXPECT_GE(layout.status_x, layout.row_x + (layout.title_max_chars + 3) * 6);
+    EXPECT_LE(layout.status_x + 7 * 6, layout.desc_box.x)
+        << "\"CLEARED\" must end before the description box";
+
+    // Controls and box never overlap each other.
+    const std::vector<og::ui::PickerRect> distinct = {
+        layout.prev, layout.next, layout.choose, layout.cancel,
+        layout.delete_button, layout.id_button, layout.desc_box};
+    for (std::size_t i = 0; i < distinct.size(); ++i)
+    {
+        for (std::size_t j = i + 1; j < distinct.size(); ++j)
+        {
+            EXPECT_FALSE(og::ui::picker_rects_overlap(distinct[i], distinct[j]))
+                << "controls " << i << " and " << j << " overlap";
+        }
+        EXPECT_GE(distinct[i].x, 0);
+        EXPECT_GE(distinct[i].y, 0);
+        EXPECT_LE(distinct[i].x + distinct[i].w, 320);
+        EXPECT_LE(distinct[i].y + distinct[i].h, 200);
+    }
+
+    // The right column shares one left edge (prev, next, desc box), and the
+    // army-power readout fits between prev and the screen edge.
+    EXPECT_EQ(layout.prev.x, layout.next.x);
+    EXPECT_EQ(layout.prev.x, layout.desc_box.x);
+    EXPECT_GE(layout.army_x, layout.prev.x + layout.prev.w);
+    EXPECT_LE(layout.army_x + 16 * 6, 320)
+        << "\"Army power: NNNN\" (16 chars) must stay on screen";
+}
+
+TEST(LevelPickerLayout, status_labels_match_the_progress_report)
+{
+    // Same precedence as the PROGRESS report: CLEARED wins over CURRENT.
+    EXPECT_STREQ("CLEARED", og::ui::level_row_status_label(true, false));
+    EXPECT_STREQ("CLEARED", og::ui::level_row_status_label(true, true));
+    EXPECT_STREQ("CURRENT", og::ui::level_row_status_label(false, true));
+    EXPECT_STREQ("", og::ui::level_row_status_label(false, false));
 }

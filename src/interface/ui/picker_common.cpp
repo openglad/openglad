@@ -10,6 +10,7 @@
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/core/campaign_ids.h>
+#include <openglad/core/text_wrap.h>
 #include <openglad/core/util.h>
 #include <openglad/core/scale_mode.h>
 #include <optional>
@@ -74,12 +75,31 @@ CampaignPickerLayout campaign_picker_layout()
 {
     constexpr int kScreenW = 320;
     constexpr int kScreenH = 200;
+    // The screen's two-column grid: the list pane on the left, the detail
+    // pane on the right; every rect derives from these edges.
+    constexpr int kListX = 8;
+    constexpr int kListW = 120;
+    constexpr int kDetailX = 136;
+    constexpr int kDetailW = 176;
 
     CampaignPickerLayout layout;
-    layout.icon = PickerRect{kScreenW / 2 - 16, 15 + 20, 32, 32};
 
-    layout.prev = PickerRect{layout.icon.x - 30 - 20, layout.icon.y, 30, 10};
-    layout.next = PickerRect{layout.icon.x + layout.icon.w + 20, layout.icon.y, 30, 10};
+    layout.header_y = 4;
+    layout.list_rows = 6;
+    layout.list_row_h = 10;
+    layout.list_row_pitch = 12;
+    layout.list = PickerRect{kListX, 14, kListW,
+                             layout.list_row_pitch * (layout.list_rows - 1) +
+                                 layout.list_row_h};
+    // A marker column (6px) leads each row; the label uses the rest.
+    layout.list_label_max_chars = (kListW - 2 * kGlyphAdvance) / kGlyphAdvance;
+
+    // Page controls sit directly under the list with the "N of M" readout
+    // centered between them.
+    const int pager_y = layout.list.y + layout.list.h + 6;
+    layout.prev = PickerRect{kListX, pager_y, 30, 10};
+    layout.next = PickerRect{kListX + kListW - 30, pager_y, 30, 10};
+
     layout.choose = PickerRect{kScreenW / 2 + 20, kScreenH - 15, 30, 10};
     layout.cancel = PickerRect{kScreenW / 2 - 38 - 20, kScreenH - 15, 38, 10};
 
@@ -87,29 +107,48 @@ CampaignPickerLayout campaign_picker_layout()
     layout.delete_button = PickerRect{kScreenW - 50, 10, 38, 10};
     layout.reset_button = layout.delete_button;
 
-    // ENTER ID sits directly under DELETE/RESET, right edges flush, so the
-    // whole title row left of x = kScreenW - 50 is free.
+    // ENTER ID sits directly under DELETE/RESET, right edges flush.
     layout.id_button = PickerRect{
         layout.delete_button.x + layout.delete_button.w - 52,
         layout.delete_button.y + layout.delete_button.h + 2,
         52,
         10};
 
-    layout.title_center_x = layout.icon.x + layout.icon.w / 2;
-    layout.title_y = layout.icon.y - 22;
+    // Detail pane: title, version row, icon, power/completion/authors lines,
+    // then the description box with the MORE control under its right edge.
+    layout.detail = PickerRect{kDetailX, 36, kDetailW, 140};
+    layout.title_center_x = kDetailX + kDetailW / 2;
+    layout.title_y = layout.detail.y;
+    layout.icon = PickerRect{layout.title_center_x - 16, 56, 32, 32};
+    layout.desc_box = PickerRect{kDetailX + 4, 126, kDetailW - 8, 44};
+    layout.desc_rows = 4;
+    layout.desc_max_chars = (layout.desc_box.w - 10) / kGlyphAdvance;
+    layout.more_button = PickerRect{
+        kDetailX + kDetailW - 40, layout.desc_box.y + layout.desc_box.h + 2,
+        40, 10};
 
-    // The title is centered, so a title of L glyphs spans
-    // center +/- 3L. DELETE/RESET is the only control left on the title row;
-    // its left edge caps the half-width, and the screen edge caps the other
-    // side. Both bounds are computed rather than written down so the budget
-    // follows the rects if the row ever moves again.
-    const int right_room = layout.delete_button.x - layout.title_center_x;
-    const int left_room = layout.title_center_x;
+    // The title is centered in the detail pane, so a title of L glyphs spans
+    // center +/- 3L; the pane edges cap the half-width. Computed rather than
+    // written down so the budget follows the pane if it ever moves again.
+    const int right_room =
+        layout.detail.x + layout.detail.w - layout.title_center_x;
+    const int left_room = layout.title_center_x - layout.detail.x;
     const int half_room = right_room < left_room ? right_room : left_room;
     layout.title_max_chars = (2 * half_room) / kGlyphAdvance;
     if (layout.title_max_chars < 0)
         layout.title_max_chars = 0;
     return layout;
+}
+
+PickerRect campaign_picker_row_rect(int row)
+{
+    const CampaignPickerLayout layout = campaign_picker_layout();
+    if (row < 0)
+        row = 0;
+    if (row >= layout.list_rows)
+        row = layout.list_rows - 1;
+    return PickerRect{layout.list.x, layout.list.y + layout.list_row_pitch * row,
+                      layout.list.w, layout.list_row_h};
 }
 
 PickerRect campaign_title_rect(int chars)
@@ -122,16 +161,81 @@ PickerRect campaign_title_rect(int chars)
                       layout.title_y, width, kGlyphHeight};
 }
 
-std::string fit_campaign_title(std::string_view title)
+std::string fit_text_to_chars(std::string_view text, int budget)
 {
-    const int budget = campaign_picker_layout().title_max_chars;
     if (budget <= 0)
         return std::string();
-    if (title.size() <= static_cast<std::size_t>(budget))
-        return std::string(title);
+    if (text.size() <= static_cast<std::size_t>(budget))
+        return std::string(text);
     if (budget <= 3)
-        return std::string(title.substr(0, static_cast<std::size_t>(budget)));
-    return std::string(title.substr(0, static_cast<std::size_t>(budget) - 3)) + "...";
+        return std::string(text.substr(0, static_cast<std::size_t>(budget)));
+    return std::string(text.substr(0, static_cast<std::size_t>(budget) - 3)) + "...";
+}
+
+std::string fit_campaign_title(std::string_view title)
+{
+    return fit_text_to_chars(title, campaign_picker_layout().title_max_chars);
+}
+
+std::string fit_campaign_row_label(std::string_view title)
+{
+    return fit_text_to_chars(title,
+                             campaign_picker_layout().list_label_max_chars);
+}
+
+int campaign_list_clamp_offset(int offset, int total, int rows)
+{
+    if (rows <= 0 || total <= rows)
+        return 0;
+    if (offset < 0)
+        return 0;
+    if (offset > total - rows)
+        return total - rows;
+    return offset;
+}
+
+int campaign_list_offset_for_cursor(int cursor, int offset, int total, int rows)
+{
+    offset = campaign_list_clamp_offset(offset, total, rows);
+    if (rows <= 0 || total <= 0)
+        return 0;
+    if (cursor < offset)
+        offset = cursor;
+    else if (cursor >= offset + rows)
+        offset = cursor - rows + 1;
+    return campaign_list_clamp_offset(offset, total, rows);
+}
+
+int campaign_list_page_step(int offset, int total, int rows, int direction)
+{
+    const int step = direction < 0 ? -rows : rows;
+    return campaign_list_clamp_offset(offset + step, total, rows);
+}
+
+int campaign_list_clamp_cursor(int cursor, int offset, int total, int rows)
+{
+    if (total <= 0)
+        return 0;
+    offset = campaign_list_clamp_offset(offset, total, rows);
+    const int visible = std::min(rows, total - offset);
+    const int last = offset + (visible > 0 ? visible : 1) - 1;
+    return std::clamp(cursor, offset, last);
+}
+
+std::string format_campaign_position_label(int cursor, int total)
+{
+    if (total <= 0)
+        return "0 of 0";
+    return std::format("{} of {}", std::clamp(cursor, 0, total - 1) + 1, total);
+}
+
+bool campaign_description_overflows(const std::string& description)
+{
+    const CampaignPickerLayout layout = campaign_picker_layout();
+    return static_cast<int>(
+               og::core::wrap_text(description, layout.desc_max_chars,
+                                   og::core::WrapMode::Paragraphs)
+                   .size()) > layout.desc_rows;
 }
 
 std::array<CampaignPickerNavLinks, kCampaignPickerButtonCount>
@@ -139,35 +243,147 @@ campaign_picker_nav(const CampaignPickerVisibility& visibility)
 {
     std::array<CampaignPickerNavLinks, kCampaignPickerButtonCount> nav{};
 
-    nav[kCampaignPickerPrevIndex] = {.up = kCampaignPickerIdIndex,
-                                     .down = kCampaignPickerCancelIndex,
-                                     .right = kCampaignPickerNextIndex};
+    const int rows =
+        std::clamp(visibility.visible_rows, 0, kCampaignPickerRowCount);
+    const int top_right = visibility.delete_hidden ? kCampaignPickerResetIndex
+                                                   : kCampaignPickerDeleteIndex;
+    const int first_row = rows > 0 ? kCampaignPickerRowBaseIndex : -1;
+    const int last_row = rows > 0 ? kCampaignPickerRowBaseIndex + rows - 1 : -1;
+    // Leaving the list downward lands on the pagers when a pager shows,
+    // otherwise straight on CANCEL (always visible).
+    const int below_list = !visibility.prev_hidden ? kCampaignPickerPrevIndex
+        : (!visibility.next_hidden ? kCampaignPickerNextIndex
+                                   : kCampaignPickerCancelIndex);
+    // The bottom of the left stack, as seen from CANCEL going up.
+    const int left_stack_bottom = !visibility.prev_hidden
+        ? kCampaignPickerPrevIndex
+        : (!visibility.next_hidden
+               ? kCampaignPickerNextIndex
+               : (last_row >= 0 ? last_row : kCampaignPickerIdIndex));
+
+    nav[kCampaignPickerPrevIndex] = {
+        .up = last_row >= 0 ? last_row : kCampaignPickerIdIndex,
+        .down = kCampaignPickerCancelIndex,
+        .right = visibility.next_hidden ? -1 : kCampaignPickerNextIndex};
     nav[kCampaignPickerNextIndex] = {
+        .up = last_row >= 0 ? last_row : kCampaignPickerIdIndex,
+        .down = kCampaignPickerCancelIndex,
+        .left = visibility.prev_hidden ? -1 : kCampaignPickerPrevIndex};
+    nav[kCampaignPickerChooseIndex] = {
+        .up = visibility.more_hidden ? kCampaignPickerIdIndex
+                                     : kCampaignPickerMoreIndex,
+        .left = kCampaignPickerCancelIndex};
+    nav[kCampaignPickerCancelIndex] = {
+        .up = left_stack_bottom,
+        .right = visibility.choose_hidden ? -1 : kCampaignPickerChooseIndex};
+
+    // DELETE / RESET share the top-right cell and drop onto ENTER ID, which
+    // sits directly below them; leftward they enter the top of the list.
+    nav[kCampaignPickerDeleteIndex] = {.down = kCampaignPickerIdIndex,
+                                       .left = first_row};
+    nav[kCampaignPickerResetIndex] = {.down = kCampaignPickerIdIndex,
+                                      .left = first_row};
+    nav[kCampaignPickerIdIndex] = {
+        .up = top_right,
+        .down = !visibility.more_hidden ? kCampaignPickerMoreIndex
+            : (visibility.choose_hidden ? kCampaignPickerCancelIndex
+                                        : kCampaignPickerChooseIndex),
+        .left = first_row};
+    nav[kCampaignPickerMoreIndex] = {
         .up = kCampaignPickerIdIndex,
         .down = visibility.choose_hidden ? kCampaignPickerCancelIndex
                                          : kCampaignPickerChooseIndex,
-        .left = kCampaignPickerPrevIndex};
-    nav[kCampaignPickerChooseIndex] = {.up = kCampaignPickerNextIndex,
-                                       .left = kCampaignPickerCancelIndex};
-    nav[kCampaignPickerCancelIndex] = {
-        .up = visibility.prev_hidden
-            ? (visibility.next_hidden ? kCampaignPickerIdIndex
-                                      : kCampaignPickerNextIndex)
-            : kCampaignPickerPrevIndex,
-        .right = kCampaignPickerChooseIndex};
+        .left = last_row};
 
-    // DELETE / RESET share the top-right cell and drop onto ENTER ID, which
-    // sits directly below them.
-    nav[kCampaignPickerDeleteIndex] = {.down = kCampaignPickerIdIndex};
-    nav[kCampaignPickerResetIndex] = {.down = kCampaignPickerIdIndex};
-    nav[kCampaignPickerIdIndex] = {
-        .up = visibility.delete_hidden ? kCampaignPickerResetIndex
-                                       : kCampaignPickerDeleteIndex,
-        .down = visibility.next_hidden
-            ? (visibility.prev_hidden ? kCampaignPickerCancelIndex
-                                      : kCampaignPickerPrevIndex)
-            : kCampaignPickerNextIndex};
+    // List rows: up/down walk the visible rows; the top row exits to
+    // DELETE/RESET and the bottom visible row to the pager band; rightward
+    // every row reaches the detail-side stack via ENTER ID. Rows past
+    // visible_rows are hidden, so their links are never followed.
+    for (int i = 0; i < kCampaignPickerRowCount; ++i)
+    {
+        const int index = kCampaignPickerRowBaseIndex + i;
+        nav[static_cast<std::size_t>(index)] = {
+            .up = i == 0 ? top_right : index - 1,
+            .down = (i >= rows - 1) ? below_list : index + 1,
+            .right = kCampaignPickerIdIndex};
+    }
     return nav;
+}
+
+bool apply_campaign_selection(SaveData& save, const std::string& campaign_id,
+                              int first_level)
+{
+    const std::string previous_campaign = save.current_campaign;
+    const int level = load_campaign(campaign_id, save.current_levels, first_level);
+    if (level < 0)
+    {
+        // Mirrors do_set_scen_level's rollback: keep the save untouched and
+        // put the previous campaign's package back so level data stays
+        // loadable.
+        (void)load_campaign(previous_campaign, save.current_levels,
+                            static_cast<int>(save.scen_num));
+        return false;
+    }
+    save.current_campaign = campaign_id;
+    save.scen_num = static_cast<short>(level);
+    return true;
+}
+
+// --- Level browser geometry ---
+
+LevelPickerLayout level_picker_layout()
+{
+    constexpr int kScreenW = 320;
+    constexpr int kScreenH = 200;
+    // Left column: the three preview rows. Right column: everything else,
+    // sharing kRightX as its left edge.
+    constexpr int kRowX = 10;
+    constexpr int kRightX = 174;
+
+    LevelPickerLayout layout;
+    layout.row_x = kRowX;
+    layout.row0_y = 4;
+    layout.row_count = 3;
+    layout.radar_dy = 9;
+    layout.radar_max_w = 60;  // RADAR_X/RADAR_Y viewport clamps (radar.cpp)
+    layout.radar_max_h = 44;
+    // Title line (8) + radar (44) + frame and breathing room; three rows at
+    // this pitch end at row0_y + 2*pitch + radar_dy + radar_max_h + 2 = 183,
+    // fully on the 200px screen.
+    layout.row_pitch = 62;
+
+    layout.stats_x = kRowX + layout.radar_max_w + 6;
+    layout.stats_max_chars = (kRightX - layout.stats_x - 2) / kGlyphAdvance;
+    layout.title_max_chars = 16;
+    layout.status_x = kRowX + (layout.title_max_chars + 3 + 1) * kGlyphAdvance;
+
+    layout.delete_button = PickerRect{kScreenW - 50, 10, 38, 10};
+    layout.id_button = PickerRect{layout.delete_button.x - 52 - 10, 10, 52, 10};
+    layout.prev = PickerRect{kRightX, 22, 30, 10};
+    layout.army_x = layout.prev.x + layout.prev.w + 6;
+    layout.army_y = layout.prev.y + 2;
+    layout.desc_box = PickerRect{kRightX, 36, kScreenW - 8 - kRightX, 112};
+    layout.desc_max_chars = (layout.desc_box.w - 4) / kGlyphAdvance;
+    layout.next = PickerRect{
+        kRightX, layout.desc_box.y + layout.desc_box.h + 4, 30, 10};
+    layout.choose = PickerRect{kScreenW - 50, kScreenH - 30, 30, 10};
+    layout.cancel = PickerRect{kScreenW - 100, kScreenH - 30, 38, 10};
+    return layout;
+}
+
+int level_picker_row_y(int row)
+{
+    const LevelPickerLayout layout = level_picker_layout();
+    return layout.row0_y + layout.row_pitch * row;
+}
+
+const char* level_row_status_label(bool cleared, bool current)
+{
+    if (cleared)
+        return "CLEARED";
+    if (current)
+        return "CURRENT";
+    return "";
 }
 
 // --- Family display helpers ---

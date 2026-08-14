@@ -2696,10 +2696,16 @@ Sint32 go_menu(Sint32 arg1)
         og::runtime::current_session->myscreen_->set_active_canvas(
             og::runtime::current_session->myscreen_->last_presented_canvas());
         og::runtime::current_session->myscreen_->fadeblack(0);
+        // #200: this IS the fade back to the menu. Base Camp's entry must not
+        // play a second one over the stale pause-menu image.
+        og::ui::suppress_next_menu_entry_fade_out();
 
         // Zardus: PORT: doesn't seem to be neccessary
         og::runtime::current_session->myscreen_->clearbuffer();
         og::runtime::current_session->myscreen_->set_active_canvas(CanvasTarget::UI);
+        // The fade above only blackened whichever canvas was last presented;
+        // clear the other one too so no path re-enters a menu over stale ink.
+        og::runtime::current_session->myscreen_->clearbuffer();
 
         // Zardus: PORT: they had this in just so that the pallettes got reset to
         // normal. It actually faded in a black screen, since fading in the menu

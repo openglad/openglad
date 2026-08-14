@@ -194,6 +194,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_company_list.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_cloud_ui.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_uxshots_probe.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_seat_chip.cpp
 )
 
 function(og_add_test_group NAME)
@@ -527,6 +528,7 @@ og_add_test_group(og_test_menu_engine FILES
 og_add_test_group(og_test_basecamp FILES
     test_company_list.cpp
     test_uxshots_probe.cpp
+    test_seat_chip.cpp
 )
 
 og_add_test_group(og_test_input FILES
@@ -1125,6 +1127,13 @@ set_tests_properties(og_test_picker_network PROPERTIES
     RUN_SERIAL TRUE
     TIMEOUT 420
 )
+# og_test_view runs ~49s alone but is sleep-dominated (<1s CPU: injector
+# waits and menu-frame settles), so a contended parallel schedule
+# stretches its wall clock several-fold; it crossed the 180s default on
+# 2026-08-13 when the seat-chip suite landed in the same schedule.
+# Same reasoning as og_unit_data above: one generous budget in every
+# lane, and a genuine hang still trips well before the job cap.
+set_tests_properties(og_test_view PROPERTIES TIMEOUT 420)
 
 # og_test_menu_ui is the slowest integration binary: its injector flows
 # gate on fadeblack animations (~0.75-1s wall clock each), so it runs

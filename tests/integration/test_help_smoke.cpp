@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
+#include "test_interact.h"
 
 #include <atomic>
 #include <list>
@@ -18,9 +19,11 @@
 // From help.cpp
 short read_scenario(screen* scr);
 short read_campaign_intro(screen* scr);
+short show_campaign_description(screen* scr, const std::string& campaign_id);
 Sint32 show_general_help();
 std::unique_ptr<og::ui::IPickerClient> picker_testing_create_sdl_client();
 Sint32 help_testing_exercise_internal_paths();
+Sint32 help_testing_exercise_menu_hooks();
 void help_testing_set_force_scroll_text(bool enabled);
 void help_testing_set_page_state(bool page_up, bool page_down);
 Sint32 help_testing_controls_flowed_max_width();
@@ -28,6 +31,8 @@ void help_testing_set_line_key_state(bool line_up, bool line_down);
 void help_testing_set_jump_key_state(bool home_down, bool end_down);
 Sint32 help_testing_query_linesdown();
 bool help_testing_query_scroll_chrome();
+Sint32 help_testing_query_active_tab();
+Sint32 help_testing_query_help_page();
 
 struct ViewportGuard
 {
@@ -124,51 +129,125 @@ struct CurrentCampaignGuard
 
 struct HelpInjectorState
 {
-    std::atomic<bool> escape_queued{false};
+    // Probe values observed by the injector (-1 = the wait timed out and
+    // the tab/page never reached the expected value).
+    std::atomic<int> page_after_wheel_down{-1};
+    std::atomic<int> page_after_wheel_up{-1};
+    std::atomic<int> page_after_next{-1};
+    std::atomic<int> page_after_prev{-1};
+    std::atomic<int> tab_after_classes{-1};
+    std::atomic<int> tab_after_editor{-1};
+    std::atomic<int> tab_after_controls{-1};
+    std::atomic<bool> back_clicked{false};
 };
 
+// Poll the help screen's probes until they reach `expected` (the engine loop
+// iterates every ~10ms); report the final observed value either way.
+static int settle_help_page(int expected, int timeout_ms)
+{
+    for (int waited = 0; waited <= timeout_ms; waited += 10)
+    {
+        if (help_testing_query_help_page() == expected)
+            return expected;
+        SDL_Delay(10);
+    }
+    return help_testing_query_help_page();
+}
+
+static int settle_help_tab(int expected, int timeout_ms)
+{
+    for (int waited = 0; waited <= timeout_ms; waited += 10)
+    {
+        if (help_testing_query_active_tab() == expected)
+            return expected;
+        SDL_Delay(10);
+    }
+    return help_testing_query_active_tab();
+}
+
+// #168: the full-screen help is an engine screen — drive it by interactable
+// id (tabs, pagers, BACK), never by raw coordinates.
 static int help_injector_thread(void* data)
 {
     og::runtime::ensure_thread_session();
     auto* state = static_cast<HelpInjectorState*>(data);
-    SDL_Delay(100);
 
-    // Exercise both wheel directions while the long Controls tab is active.
-    SDL_Event wheel{};
-    wheel.type = SDL_EVENT_MOUSE_WHEEL;
-    wheel.wheel.y = -3;
-    wheel.wheel.integer_y = -3;
-    SDL_PushEvent(&wheel);
+    if (wait_for_interactable("help_tab_classes", 5000))
+    {
+        SDL_Delay(300);
 
-    SDL_Delay(50);
+        // Wheel pages the multi-page Controls tab down, then back up.
+        SDL_Event wheel{};
+        wheel.type = SDL_EVENT_MOUSE_WHEEL;
+        wheel.wheel.y = -3;
+        wheel.wheel.integer_y = -3;
+        SDL_PushEvent(&wheel);
+        state->page_after_wheel_down.store(settle_help_page(1, 2000),
+                                           std::memory_order_release);
 
-    wheel.wheel.y = 1;
-    wheel.wheel.integer_y = 1;
-    SDL_PushEvent(&wheel);
-    SDL_Delay(50);
+        wheel.wheel.y = 1;
+        wheel.wheel.integer_y = 1;
+        SDL_PushEvent(&wheel);
+        state->page_after_wheel_up.store(settle_help_page(0, 2000),
+                                         std::memory_order_release);
 
-    // Hold page keys long enough to cross the viewer's intentional 10-tick
-    // repeat debounce.  The atomic seam models held input without writing to
-    // SDL's thread-owned keyboard-state array.
-    help_testing_set_page_state(false, true);
-    SDL_Delay(220);
-    help_testing_set_page_state(false, false);
-    help_testing_set_page_state(true, false);
-    SDL_Delay(220);
-    help_testing_set_page_state(false, false);
+        // The PREV/NEXT pagers (visible: Controls flows to several pages).
+        if (wait_for_interactable("help_page_next", 2000))
+        {
+            SDL_Delay(300);
+            interact("help_page_next");
+            state->page_after_next.store(settle_help_page(1, 2000),
+                                         std::memory_order_release);
+            SDL_Delay(300);
+            interact("help_page_prev");
+            state->page_after_prev.store(settle_help_page(0, 2000),
+                                         std::memory_order_release);
+        }
 
-    // Click all three tabs, including the return to Controls.
-    inject_click(120, 22, 10);
-    inject_click(182, 22, 10);
-    inject_click(60, 22, 10);
+        // All three tabs, including the return to Controls.
+        SDL_Delay(300);
+        interact("help_tab_classes");
+        state->tab_after_classes.store(settle_help_tab(1, 2000),
+                                       std::memory_order_release);
+        SDL_Delay(300);
+        interact("help_tab_editor");
+        state->tab_after_editor.store(settle_help_tab(2, 2000),
+                                      std::memory_order_release);
+        SDL_Delay(300);
+        interact("help_tab_controls");
+        state->tab_after_controls.store(settle_help_tab(0, 2000),
+                                        std::memory_order_release);
+        SDL_Delay(300);
+    }
 
-    SDL_Delay(50);
-
-    // Dismiss through the production key-event path. show_general_help also
-    // retains held-key polling, while the key-event latch catches a short press.
-    state->escape_queued.store(true, std::memory_order_release);
-    inject_key_press(SDLK_ESCAPE, 10);
+    // Dismiss via BACK (its Escape hotkey is keystate-polled, which an
+    // injected SDL event cannot reach).
+    state->back_clicked.store(true, std::memory_order_release);
+    interact("help_back");
     return 0;
+}
+
+// Shared assertions for every flow that runs the injector against the open
+// help screen: tab switches, wheel paging, and pager clicks all happened at
+// their expected values, and the screen stayed open until BACK.
+static void expect_help_injector_flow(const HelpInjectorState& state)
+{
+    EXPECT_EQ(1, state.page_after_wheel_down.load(std::memory_order_acquire))
+        << "wheel down must page the Controls tab to page 1";
+    EXPECT_EQ(0, state.page_after_wheel_up.load(std::memory_order_acquire))
+        << "wheel up must page back to page 0";
+    EXPECT_EQ(1, state.page_after_next.load(std::memory_order_acquire))
+        << "NEXT must flip to page 1";
+    EXPECT_EQ(0, state.page_after_prev.load(std::memory_order_acquire))
+        << "PREV must flip back to page 0";
+    EXPECT_EQ(1, state.tab_after_classes.load(std::memory_order_acquire))
+        << "the CLASSES tab must activate";
+    EXPECT_EQ(2, state.tab_after_editor.load(std::memory_order_acquire))
+        << "the EDITOR tab must activate";
+    EXPECT_EQ(0, state.tab_after_controls.load(std::memory_order_acquire))
+        << "the CONTROLS tab must re-activate";
+    EXPECT_TRUE(state.back_clicked.load(std::memory_order_acquire))
+        << "help must stay open until BACK dismisses it";
 }
 
 TEST(HelpSmoke, help_show_general_help_scrolls_tabs_and_exits_cleanly)
@@ -189,8 +268,7 @@ TEST(HelpSmoke, help_show_general_help_scrolls_tabs_and_exits_cleanly)
     ASSERT_NE(nullptr, thread.get()) << "failed to create injector thread";
 
     ASSERT_EQ(1, show_general_help());
-    EXPECT_TRUE(injector_state.escape_queued.load(std::memory_order_acquire))
-        << "tab clicks must not dismiss help before the Escape event";
+    expect_help_injector_flow(injector_state);
     ASSERT_EQ(0, thread.join());
 }
 
@@ -213,8 +291,7 @@ TEST(HelpSmoke, concrete_sdl_picker_client_delegates_to_general_help)
         help_injector_thread, "sdl_client_help_injector", &injector_state));
     ASSERT_NE(nullptr, thread.get());
     client->show_help();
-    EXPECT_TRUE(injector_state.escape_queued.load(std::memory_order_acquire))
-        << "picker help must remain open until the Escape event";
+    expect_help_injector_flow(injector_state);
     EXPECT_EQ(0, thread.join());
 }
 
@@ -236,8 +313,7 @@ TEST(HelpSmoke, help_button_action_opens_viewer_and_requests_redraw)
     vbutton dispatcher;
     EXPECT_EQ(2, dispatcher.do_call(
                      button_action_id(ButtonAction::ShowHelp), 0));
-    EXPECT_TRUE(injector_state.escape_queued.load(std::memory_order_acquire))
-        << "button-dispatched help must remain open until the Escape event";
+    expect_help_injector_flow(injector_state);
     EXPECT_EQ(0, thread.join());
 }
 
@@ -322,6 +398,27 @@ TEST(HelpSmoke, help_read_campaign_intro_smoke_exits_on_input)
     ASSERT_EQ(0, thread.join());
 }
 
+// The campaign browser's MORE control routes here with an explicit id; the
+// forced view must render the same scroller read_campaign_intro shows for
+// that campaign (same 192-scanline gladiator description), independent of
+// the save's current campaign.
+TEST(HelpSmoke, help_show_campaign_description_forced_view_scrolls)
+{
+    std::string& campaign = og::runtime::current_session->myscreen_->save_data.current_campaign;
+    CurrentCampaignGuard campaign_guard(campaign);
+    campaign = "tower";  // NOT the id under view
+    ForceScrollTextGuard force_scroll;
+    HelpTestingInputGuard input_guard;
+
+    SdlThreadJoinGuard thread(
+        SDL_CreateThread(intro_injector_thread, "desc_injector", nullptr));
+    ASSERT_NE(nullptr, thread.get()) << "failed to create injector thread";
+
+    ASSERT_EQ(192, show_campaign_description(
+                       og::runtime::current_session->myscreen_, "gladiator"));
+    ASSERT_EQ(0, thread.join());
+}
+
 TEST(HelpSmoke, help_read_scenario_scroll_view_exits_on_input)
 {
     ForceScrollTextGuard force_scroll;
@@ -345,15 +442,24 @@ TEST(HelpSmoke, help_internal_paths_cover_loading_tabs_and_scroll)
     EXPECT_EQ(0, help_testing_exercise_internal_paths());
 }
 
-// #152: the Controls tab shipped three 41-42 char lines against the 39-char
-// frame. After render-time flowing, every line fits and the over-budget
-// lines actually wrapped (the flowed line count grew).
+// #168: the engine-hook exerciser — the null-state (bare-sweep) shape, tab
+// dispatch, pager clamping, and wheel paging, checked step by step.
+TEST(HelpSmoke, help_menu_hooks_cover_dispatch_paging_and_null_state)
+{
+    EXPECT_EQ(0, help_testing_exercise_menu_hooks());
+}
+
+// #168: the full-screen frame flows text to the 50-char budget
+// (help_char_budget(kHelpTextBoxWidth)). Every authored Controls line fits —
+// the helper returns -1 if any wrapped — and the widest line exceeds the old
+// 39-char dialog budget, proving the full-width flow is the one measured.
 TEST(HelpSmoke, controls_help_lines_flow_within_frame_budget)
 {
     const Sint32 max_width = help_testing_controls_flowed_max_width();
-    ASSERT_GT(max_width, 0)
-        << "the over-budget Controls lines did not wrap at all";
-    EXPECT_LE(max_width, 39);
+    ASSERT_GT(max_width, 39)
+        << "a Controls line wrapped against the full-width budget (or the "
+           "wide action-key lines were removed)";
+    EXPECT_LE(max_width, 50);
 }
 
 static int overlong_scenario_injector_thread(void* data)
