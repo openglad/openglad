@@ -6,7 +6,8 @@ WHAT THIS IS
 The pack-Lua API surface is registered in exactly three C++ files:
 
   src/gameplay/script/bindings_entity.cpp   kWalkerMethods / kGuyMethods /
-                                            kOgWorldFuncs (luaL_Reg tables)
+                                            kOgWorldFuncs / kOgCampaignFuncs
+                                            (luaL_Reg tables)
                                             + kConstants (og.C.*)
                                             + kWalkerProperties (the
                                             property layer: plain fields,
@@ -17,6 +18,7 @@ The pack-Lua API surface is registered in exactly three C++ files:
                                             (lua_pushcfunction/lua_setfield
                                             pairs in install_vm_scaffolding)
                                             + the hook-name tables
+                                            (incl. kCampaignHookNames)
   src/gameplay/script/family_decl.cpp       og.family / og.anims / og.pack
 
 Those tables are the single source of truth. This script PARSES them — it
@@ -617,6 +619,34 @@ def parse_level_hook_names(src: str) -> List[str]:
     return re.findall(r'\{\s*"(\w+)"\s*,\s*LevelHook::\w+\s*\}', body)
 
 
+# og.register_campaign_hooks hook signatures. The page/action shapes are
+# enforced C++-side (parse_campaign_page in world_scripts.cpp), which the
+# body-walking inference cannot see, so they are declared here in ONE place;
+# the name list still comes from the source, and a table entry with no
+# signature stops the run rather than shipping an untyped hook.
+CAMPAIGN_HOOK_SIGS: Dict[str, str] = {
+    "picker_menu": "fun(page_id: string): og.CampaignPage",
+    "picker_action": "fun(entry_id: string): og.CampaignActionResult?",
+}
+
+
+def parse_campaign_hook_names(src: str) -> List[str]:
+    m = re.search(
+        r"constexpr const char\* kCampaignHookNames\[\] = \{", src)
+    if m is None:
+        raise SystemExit("gen_api_stubs: kCampaignHookNames not found")
+    body = balanced_body(src, m.end() - 1)
+    names = re.findall(r'"(\w+)"', body)
+    if not names:
+        raise SystemExit("gen_api_stubs: kCampaignHookNames parsed empty")
+    for name in names:
+        if name not in CAMPAIGN_HOOK_SIGS:
+            raise SystemExit(
+                f"gen_api_stubs: campaign hook '{name}' has no entry in "
+                "CAMPAIGN_HOOK_SIGS (add its signature)")
+    return names
+
+
 CPP_PARAM_TYPES = {
     "walker": "og.Walker",
     "living": "og.Walker",
@@ -1081,6 +1111,7 @@ def generate(repo_root: Path) -> str:
     guy_methods = parse_luareg_table(bindings_src, "kGuyMethods")
     og_world = parse_luareg_table(bindings_src, "kOgWorldFuncs")
     og_combat = parse_luareg_table(bindings_src, "kOgCombatFuncs")
+    og_campaign = parse_luareg_table(bindings_src, "kOgCampaignFuncs")
     og_host = parse_luareg_table(host_src, "kOgFuncs")
     constants = parse_constants(bindings_src)
     scaffolding = scaffolding_body(world_src)
@@ -1092,6 +1123,7 @@ def generate(repo_root: Path) -> str:
     hook_sigs = parse_family_hook_signatures(world_src)
     level_names = parse_level_hook_names(world_src)
     level_sigs = parse_level_dispatch_signatures(world_src)
+    campaign_hook_names = parse_campaign_hook_names(world_src)
 
     out: List[str] = [HEADER, ""]
 
@@ -1209,6 +1241,51 @@ def generate(repo_root: Path) -> str:
                           optional=True))
     out.append("")
 
+    out.append("-- One row of a scripted picker page. Shape enforced")
+    out.append("-- C++-side (world_scripts.cpp parse_campaign_page):")
+    out.append("-- id and kind are required; a missing label is filled")
+    out.append("-- from the scenario title for level rows.")
+    out.append("---@class og.CampaignPageEntry")
+    out.append('---@field id string')
+    out.append('---@field kind "level"|"page"|"action"')
+    out.append("---@field label? string")
+    out.append("---@field note? string")
+    out.append("---@field level? integer")
+    out.append("---@field cost? integer")
+    out.append("")
+    out.append("-- The page table picker_menu returns: <= 24 entries,")
+    out.append("-- <= 6 lines (clipped C++-side); title is required.")
+    out.append("---@class og.CampaignPage")
+    out.append("---@field title string")
+    out.append("---@field lines? string[]")
+    out.append("---@field entries? og.CampaignPageEntry[]")
+    out.append("")
+    out.append("-- picker_action's optional return: `message` is the toast.")
+    out.append("---@class og.CampaignActionResult")
+    out.append("---@field message? string")
+    out.append("")
+    out.append("-- One og.campaign_team() roster row: plain values, not")
+    out.append("-- handles; `family` is the display-name string, `team` is")
+    out.append("-- clamped to [0,3] by the provider.")
+    out.append("---@class og.CampaignRosterEntry")
+    out.append("---@field name string")
+    out.append("---@field family string")
+    for stat in ("level", "exp", "strength", "dexterity", "constitution",
+                 "intelligence", "armor", "team"):
+        out.append(f"---@field {stat} integer")
+    out.append("")
+    out.append("-- Hook table for og.register_campaign_hooks. `vars` names")
+    out.append("-- the campaign state keys (max 64, each 1-32 chars of")
+    out.append("-- [a-z0-9_]) that level scripts may read via")
+    out.append("-- og.campaign_var; the hooks run under the campaign fence")
+    out.append("-- (only og.campaign_* and the pure helpers are legal).")
+    out.append("---@class og.CampaignHooks")
+    out.append("---@field vars? string[]")
+    for name in sorted(campaign_hook_names):
+        out.append(field_line(name, CAMPAIGN_HOOK_SIGS[name], "", False,
+                              optional=True))
+    out.append("")
+
     out.append("-- Engine constants (og.C.*), names from the kConstants")
     out.append("-- table in bindings_entity.cpp; every value is an integer.")
     out.append("---@class og.Constants")
@@ -1220,6 +1297,7 @@ def generate(repo_root: Path) -> str:
     overrides = {
         "register_hooks": hook_union,
         "register_level_hooks": "og.LevelHooks",
+        "register_campaign_hooks": "og.CampaignHooks",
         "set_entity_hooks": "og.EntityHooks",
     }
     out.append("-- Draw-free bindings over the og::combat constexpr helpers")
@@ -1251,10 +1329,12 @@ def generate(repo_root: Path) -> str:
     out.append("---@field combat og.Combat")
     for value in sorted(world_values, key=lambda v: v.name):
         out.append(f"---@field {value.name} {value.cls}")
-    og_entries = list(og_world) + list(og_host) + list(world_entry)
+    og_entries = (list(og_world) + list(og_campaign) + list(og_host)
+                  + list(world_entry))
     out.extend(og_function_fields(
         og_entries, functions, overrides,
-        return_overrides={"tuning": "table<string, any>"}))
+        return_overrides={"tuning": "table<string, any>",
+                          "campaign_team": "og.CampaignRosterEntry[]"}))
     # No blank line: the @class block must attach to the statement below.
     out.append("og = {}")
     return "\n".join(out) + "\n"

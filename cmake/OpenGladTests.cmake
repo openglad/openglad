@@ -802,6 +802,7 @@ og_add_unit_group(og_unit_script FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_script_bindings_props.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_script_hooks.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_level_scripts.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_hooks.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_lua_bind.cpp
 )
 # The P8-A tests forge REAL stripped Lua bytecode through the C API

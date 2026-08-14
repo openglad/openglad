@@ -23,6 +23,7 @@ set(OG_SCRIPT_SOURCES
     ${SRC_DIR}/gameplay/script/pack_scripts.cpp
     ${SRC_DIR}/gameplay/script/world_scripts.cpp
     ${SRC_DIR}/gameplay/script/bindings_entity.cpp
+    ${SRC_DIR}/gameplay/script/campaign_hooks.cpp
     ${SRC_DIR}/gameplay/script/family_decl.cpp
 )
 

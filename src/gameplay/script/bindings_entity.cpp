@@ -44,6 +44,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <list>
 #include <string>
 
@@ -1794,6 +1795,207 @@ int og_scenario_title(lua_State* L)
     return 1;
 }
 
+// og.campaign_var(name) → the campaign decision value copied into this
+// world at level load (0 when absent — the var==0 rule is what keeps a
+// dedicated server, whose SaveData carries no campaign state, on stock
+// behavior). Read-only from the sim; menu-side writes go through
+// og.campaign_state_set. World-fenced like every sim binding.
+int og_campaign_var(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    const char* name = luaL_checkstring(L, 1);
+    for (const auto& [key, value] : world->campaign_vars) {
+        if (key == name) {
+            lua_pushinteger(L, static_cast<lua_Integer>(value));
+            return 1;
+        }
+    }
+    lua_pushinteger(L, 0);
+    return 1;
+}
+
+// ---------------------------------------------------------------------------
+// og.campaign_* — menu-time campaign bindings (campaign-dispatch only)
+// ---------------------------------------------------------------------------
+//
+// The campaign-hook twin of world_arg: every og.campaign_* entry is legal
+// ONLY while a campaign hook is on the stack (the picker has no world to
+// fence against, so the dispatch flag is the gate), and resolves through
+// the process-global providers the owning surface installed
+// (campaign_hooks.h). No provider = a Lua error, not a silent default.
+
+VmState* campaign_dispatch_arg(lua_State* L, const char* name)
+{
+    VmState* st = get_vm_state(L);
+    if (st == nullptr || !st->campaign_dispatch)
+        luaL_error(L, "og.%s: campaign bindings are campaign-hook only",
+                   name);
+    return st;
+}
+
+int og_campaign_state_get(lua_State* L)
+{
+    campaign_dispatch_arg(L, "campaign_state_get");
+    const char* key = luaL_checkstring(L, 1);
+    const auto& p = campaign_providers();
+    if (!p.state_get)
+        return luaL_error(
+            L, "og.campaign_state_get: no campaign provider installed");
+    lua_pushinteger(L, static_cast<lua_Integer>(p.state_get(key)));
+    return 1;
+}
+
+// og.campaign_state_set(key, v) — the binding is the bounds-enforcement
+// point: a bad key raises BEFORE the provider runs, and the provider's own
+// check-then-write false answer raises before any mutation, so a script
+// bug can never brick the save file.
+int og_campaign_state_set(lua_State* L)
+{
+    campaign_dispatch_arg(L, "campaign_state_set");
+    std::size_t len = 0;
+    const char* key = luaL_checklstring(L, 1, &len);
+    const lua_Integer value = luaL_checkinteger(L, 2);
+    if (!hooks::valid_campaign_var_name({key, len}))
+        return luaL_error(
+            L, "og.campaign_state_set: bad key '%s' (1-%d chars of "
+               "[a-z0-9_])",
+            key, hooks::kCampaignVarNameMax);
+    if (value < std::numeric_limits<std::int32_t>::min() ||
+        value > std::numeric_limits<std::int32_t>::max())
+        return luaL_error(L,
+                          "og.campaign_state_set: value out of int32 range");
+    const auto& p = campaign_providers();
+    if (!p.state_set)
+        return luaL_error(
+            L, "og.campaign_state_set: no campaign provider installed");
+    if (!p.state_set(key, static_cast<std::int32_t>(value)))
+        return luaL_error(
+            L, "og.campaign_state_set: the campaign store rejected '%s' "
+               "(entry bounds)",
+            key);
+    return 0;
+}
+
+int og_campaign_gold(lua_State* L)
+{
+    campaign_dispatch_arg(L, "campaign_gold");
+    const auto& p = campaign_providers();
+    if (!p.gold_get)
+        return luaL_error(L,
+                          "og.campaign_gold: no campaign provider installed");
+    lua_pushinteger(L, static_cast<lua_Integer>(p.gold_get()));
+    return 1;
+}
+
+// og.campaign_spend_gold(amount) → true/false — the affordability-checked
+// debit for variable-priced flows inside actions (fixed `cost` debits are
+// owned by C++ before the action dispatches).
+int og_campaign_spend_gold(lua_State* L)
+{
+    campaign_dispatch_arg(L, "campaign_spend_gold");
+    const lua_Integer amount = luaL_checkinteger(L, 1);
+    if (amount < 0)
+        return luaL_error(L, "og.campaign_spend_gold: negative amount");
+    const auto& p = campaign_providers();
+    if (!p.gold_spend)
+        return luaL_error(
+            L, "og.campaign_spend_gold: no campaign provider installed");
+    lua_pushboolean(L, p.gold_spend(amount) ? 1 : 0);
+    return 1;
+}
+
+int og_campaign_grant_gold(lua_State* L)
+{
+    campaign_dispatch_arg(L, "campaign_grant_gold");
+    const lua_Integer amount = luaL_checkinteger(L, 1);
+    if (amount < 0)
+        return luaL_error(L, "og.campaign_grant_gold: negative amount");
+    const auto& p = campaign_providers();
+    if (!p.gold_grant)
+        return luaL_error(
+            L, "og.campaign_grant_gold: no campaign provider installed");
+    p.gold_grant(amount);
+    return 0;
+}
+
+// og.campaign_team() → array of plain tables (values, not handles — the
+// roster outlives any dispatch, so handle semantics would be a trap).
+int og_campaign_team(lua_State* L)
+{
+    campaign_dispatch_arg(L, "campaign_team");
+    const auto& p = campaign_providers();
+    if (!p.team_snapshot)
+        return luaL_error(L,
+                          "og.campaign_team: no campaign provider installed");
+    const std::vector<hooks::CampaignRosterEntry> team = p.team_snapshot();
+    lua_createtable(L, static_cast<int>(team.size()), 0);
+    for (std::size_t i = 0; i < team.size(); i++) {
+        const hooks::CampaignRosterEntry& entry = team[i];
+        lua_createtable(L, 0, 10);
+        lua_pushlstring(L, entry.name.data(), entry.name.size());
+        lua_setfield(L, -2, "name");
+        lua_pushlstring(L, entry.family.data(), entry.family.size());
+        lua_setfield(L, -2, "family");
+        lua_pushinteger(L, entry.level);
+        lua_setfield(L, -2, "level");
+        lua_pushinteger(L, entry.exp);
+        lua_setfield(L, -2, "exp");
+        lua_pushinteger(L, entry.strength);
+        lua_setfield(L, -2, "strength");
+        lua_pushinteger(L, entry.dexterity);
+        lua_setfield(L, -2, "dexterity");
+        lua_pushinteger(L, entry.constitution);
+        lua_setfield(L, -2, "constitution");
+        lua_pushinteger(L, entry.intelligence);
+        lua_setfield(L, -2, "intelligence");
+        lua_pushinteger(L, entry.armor);
+        lua_setfield(L, -2, "armor");
+        lua_pushinteger(L, entry.team);
+        lua_setfield(L, -2, "team");
+        lua_rawseti(L, -2, static_cast<lua_Integer>(i) + 1);
+    }
+    return 1;
+}
+
+// og.campaign_level_completed(id) — the menu-time twin of the sim's
+// og.level_completed.
+int og_campaign_level_completed(lua_State* L)
+{
+    campaign_dispatch_arg(L, "campaign_level_completed");
+    const auto id = static_cast<int>(luaL_checkinteger(L, 1));
+    const auto& p = campaign_providers();
+    if (!p.level_completed)
+        return luaL_error(
+            L, "og.campaign_level_completed: no campaign provider installed");
+    lua_pushboolean(L, p.level_completed(id) ? 1 : 0);
+    return 1;
+}
+
+int og_campaign_current_level(lua_State* L)
+{
+    campaign_dispatch_arg(L, "campaign_current_level");
+    const auto& p = campaign_providers();
+    if (!p.current_level)
+        return luaL_error(
+            L, "og.campaign_current_level: no campaign provider installed");
+    lua_pushinteger(L, static_cast<lua_Integer>(p.current_level()));
+    return 1;
+}
+
+// og.campaign_scenario_title(id) → title string, "" when absent.
+int og_campaign_scenario_title(lua_State* L)
+{
+    campaign_dispatch_arg(L, "campaign_scenario_title");
+    const auto id = static_cast<int>(luaL_checkinteger(L, 1));
+    const auto& p = campaign_providers();
+    if (!p.scenario_title)
+        return luaL_error(
+            L, "og.campaign_scenario_title: no campaign provider installed");
+    const std::string title = p.scenario_title(id);
+    lua_pushlstring(L, title.data(), title.size());
+    return 1;
+}
+
 // ---------------------------------------------------------------------------
 // Deterministic arithmetic / branch helpers
 // ---------------------------------------------------------------------------
@@ -2843,6 +3045,7 @@ const luaL_Reg kOgWorldFuncs[] = {
     {"emit_exit_confirmation", og_emit_exit_confirmation},
     {"emit_withdraw_to_level", og_emit_withdraw_to_level},
     {"scenario_title", og_scenario_title},
+    {"campaign_var", og_campaign_var},
     // Scripted-mode (TYPE_SCRIPTED) surface.
     {"end_level", og_end_level},
     {"declare_winner", og_declare_winner},
@@ -2888,6 +3091,24 @@ const luaL_Reg kOgCombatFuncs[] = {
     {"druid_faerie_lifetime", og_combat_druid_faerie_lifetime},
     {"skeleton_lifetime", og_combat_skeleton_lifetime},
     {"ghost_raise_lifetime", og_combat_ghost_raise_lifetime},
+    {nullptr, nullptr},
+};
+
+// og.campaign_* — the menu-time campaign surface. Every entry self-fences
+// on VmState::campaign_dispatch (campaign_dispatch_arg), so the table is
+// installed WITHOUT the load fence: the load fence would close it during
+// the one context it exists for. Parsed by scripts/modding/gen_api_stubs.py
+// by literal name.
+const luaL_Reg kOgCampaignFuncs[] = {
+    {"campaign_state_get", og_campaign_state_get},
+    {"campaign_state_set", og_campaign_state_set},
+    {"campaign_gold", og_campaign_gold},
+    {"campaign_spend_gold", og_campaign_spend_gold},
+    {"campaign_grant_gold", og_campaign_grant_gold},
+    {"campaign_team", og_campaign_team},
+    {"campaign_level_completed", og_campaign_level_completed},
+    {"campaign_current_level", og_campaign_current_level},
+    {"campaign_scenario_title", og_campaign_scenario_title},
     {nullptr, nullptr},
 };
 
@@ -3081,6 +3302,16 @@ int load_fenced_call(lua_State* L)
 {
     const auto* st =
         static_cast<VmState*>(lua_touserdata(L, lua_upvalueindex(2)));
+    // The campaign-dispatch fence shares this closure: a campaign hook runs
+    // in the world VM (in the SDL client, WITH a live world and the
+    // replicated sim RNG), so the world API erroring there is what keeps a
+    // menu script from silently perturbing the sim
+    // (docs/campaign-scripting-design.md).
+    if (st != nullptr && st->campaign_dispatch) {
+        return luaL_error(
+            L, "og.%s: the world API is not available during campaign hooks",
+            lua_tostring(L, lua_upvalueindex(3)));
+    }
     if (st != nullptr && st->loading) {
         return luaL_error(
             L,
@@ -3157,6 +3388,8 @@ void install_entity_bindings_into_og(lua_State* L, VmState* st)
             continue;
         fence_world_entry(L, st, r->name);
     }
+    // Campaign bindings self-fence (campaign-hook only) — no load fence.
+    luaL_setfuncs(L, kOgCampaignFuncs, 0);
     lua_newtable(L);
     luaL_setfuncs(L, kOgCombatFuncs, 0);
     lua_setfield(L, -2, "combat");

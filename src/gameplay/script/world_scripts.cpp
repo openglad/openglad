@@ -32,6 +32,7 @@
 #include "script_internal.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
@@ -716,6 +717,14 @@ namespace {
 
 int og_register_hooks(lua_State* L)
 {
+    // Deliberately outside the load fence, but NOT outside the campaign
+    // fence: a menu script must not rewrite sim hook tables. Checked before
+    // any argument check so the fence-walk test sees this error, not an
+    // argument error.
+    if (const VmState* fence_st = get_vm_state(L);
+        fence_st != nullptr && fence_st->campaign_dispatch)
+        return luaL_error(L, "og.register_hooks: hook registration is not "
+                             "available during campaign hooks");
     const char* order_str = luaL_checkstring(L, 1);
     const char* family_str = luaL_checkstring(L, 2);
     luaL_checktype(L, 3, LUA_TTABLE);
@@ -1043,6 +1052,12 @@ constexpr LevelHookName kLevelHookNames[] = {
 // on_entity_spawn= }). level_id -1 registers for every level.
 int og_register_level_hooks(lua_State* L)
 {
+    // Same campaign fence as og.register_hooks (menu scripts must not
+    // rewrite sim hook tables), before any argument check.
+    if (const VmState* fence_st = get_vm_state(L);
+        fence_st != nullptr && fence_st->campaign_dispatch)
+        return luaL_error(L, "og.register_level_hooks: hook registration is "
+                             "not available during campaign hooks");
     const int level_id = static_cast<int>(luaL_checkinteger(L, 1));
     luaL_checktype(L, 2, LUA_TTABLE);
     VmState* st = get_vm_state(L);
@@ -1100,6 +1115,156 @@ int og_set_entity_hooks(lua_State* L)
     lua_rawseti(L, -2, static_cast<lua_Integer>(h->entity_id));
     lua_pop(L, 1);
     st->has_entity_hooks = true;
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Campaign hooks (og.register_campaign_hooks)
+// ---------------------------------------------------------------------------
+
+// The hook-function keys og.register_campaign_hooks accepts ('vars' is the
+// one non-hook key). Parsed by scripts/modding/gen_api_stubs.py — keep the
+// spelling and location.
+constexpr const char* kCampaignHookNames[] = {"picker_menu", "picker_action"};
+
+// Slots of the campaign_hooks_ref registry table.
+constexpr lua_Integer kCampaignMenuSlot = 1;
+constexpr lua_Integer kCampaignActionSlot = 2;
+
+// "chunkname:line" of the caller, for the duplicate-registration record.
+std::string campaign_caller_source(lua_State* L)
+{
+    luaL_where(L, 1);
+    std::string where = lua_tostring(L, -1);
+    lua_pop(L, 1);
+    while (!where.empty() && (where.back() == ' ' || where.back() == ':'))
+        where.pop_back();
+    if (where.empty()) where = "og.register_campaign_hooks";  // no debug info
+    return where;
+}
+
+// og.register_campaign_hooks({ vars = {...}, picker_menu = fn,
+// picker_action = fn }) — load-time only, one campaign picker per VM
+// (docs/campaign-scripting-design.md).
+int og_register_campaign_hooks(lua_State* L)
+{
+    VmState* st = get_vm_state(L);
+    // Campaign fence first (before any argument check): a campaign hook
+    // must not re-register hooks.
+    if (st != nullptr && st->campaign_dispatch)
+        return luaL_error(L, "og.register_campaign_hooks: hook registration "
+                             "is not available during campaign hooks");
+    luaL_checktype(L, 1, LUA_TTABLE);
+
+    // Every validation below is a property of the call alone, so it runs
+    // BEFORE the declaration pass bows out — the pass that can still reject
+    // the pack is the one that should catch the typo (the og.register_hooks
+    // discipline).
+    {
+        std::vector<const char*> names(std::begin(kCampaignHookNames),
+                                       std::end(kCampaignHookNames));
+        names.push_back("vars");
+        lua_pushnil(L);
+        while (lua_next(L, 1) != 0) {
+            lua_pop(L, 1);  // value; the key stays for the next iteration
+            if (lua_type(L, -1) != LUA_TSTRING)
+                return luaL_error(
+                    L, "og.register_campaign_hooks: keys are 'vars', "
+                       "'picker_menu' and 'picker_action' (got a %s key)",
+                    luaL_typename(L, -1));
+            const std::string key = lua_tostring(L, -1);
+            bool known = false;
+            for (const char* n : names)
+                known = known || key == n;
+            if (!known) {
+                const std::string hint = did_you_mean(key, names);
+                return luaL_error(
+                    L, "og.register_campaign_hooks: unknown key '%s'%s",
+                    key.c_str(), hint.c_str());
+            }
+        }
+    }
+    lua_getfield(L, 1, "picker_menu");    // abs index 2
+    const bool has_menu = !lua_isnil(L, 2);
+    if (has_menu && !lua_isfunction(L, 2))
+        return luaL_error(
+            L, "og.register_campaign_hooks: 'picker_menu' must be a function");
+    lua_getfield(L, 1, "picker_action");  // abs index 3
+    const bool has_action = !lua_isnil(L, 3);
+    if (has_action && !lua_isfunction(L, 3))
+        return luaL_error(L, "og.register_campaign_hooks: 'picker_action' "
+                             "must be a function");
+    if (!has_menu && !has_action)
+        return luaL_error(L, "og.register_campaign_hooks: register at least "
+                             "one of 'picker_menu' / 'picker_action'");
+
+    std::vector<std::string> vars;
+    lua_getfield(L, 1, "vars");
+    if (!lua_isnil(L, -1)) {
+        if (!lua_istable(L, -1))
+            return luaL_error(L, "og.register_campaign_hooks: 'vars' must "
+                                 "be an array of names");
+        const lua_Integer count =
+            static_cast<lua_Integer>(lua_rawlen(L, -1));
+        if (count > hooks::kCampaignVarsMax)
+            return luaL_error(
+                L, "og.register_campaign_hooks: 'vars' names %d variables "
+                   "(max %d)",
+                static_cast<int>(count), hooks::kCampaignVarsMax);
+        for (lua_Integer i = 1; i <= count; i++) {
+            lua_rawgeti(L, -1, i);
+            if (lua_type(L, -1) != LUA_TSTRING)
+                return luaL_error(
+                    L, "og.register_campaign_hooks: vars[%d] must be a "
+                       "string",
+                    static_cast<int>(i));
+            std::size_t len = 0;
+            const char* name = lua_tolstring(L, -1, &len);
+            if (!hooks::valid_campaign_var_name({name, len}))
+                return luaL_error(
+                    L, "og.register_campaign_hooks: vars[%d] '%s' must be "
+                       "1-%d chars of [a-z0-9_]",
+                    static_cast<int>(i), name, hooks::kCampaignVarNameMax);
+            vars.emplace_back(name, len);
+            lua_pop(L, 1);
+        }
+    }
+    lua_pop(L, 1);  // vars
+
+    // Declaration pass: silent no-op, the og.register_hooks precedent — a
+    // family chunk calling this neither rejects the pack nor registers.
+    if (st != nullptr && st->mode == VmMode::Declare)
+        return 0;
+    if (st == nullptr || st->owner == nullptr)
+        return luaL_error(L, "og.register_campaign_hooks: no world scripts");
+
+    if (st->campaign_registered) {
+        // One campaign, one book, or none: never raise (that would kill
+        // this chunk's unrelated level hooks and make the winner an
+        // accident of pack-id sort order). The query side answers "no
+        // scripted picker" and reports the conflict once.
+        if (st->campaign_conflict_source.empty())
+            st->campaign_conflict_source = campaign_caller_source(L);
+        return 0;
+    }
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, st->campaign_hooks_ref);
+    if (has_menu) {
+        lua_pushvalue(L, 2);
+        if (coverage::enabled())
+            coverage_declare_hook(L, "campaign/picker_menu");
+        lua_rawseti(L, -2, kCampaignMenuSlot);
+    }
+    if (has_action) {
+        lua_pushvalue(L, 3);
+        if (coverage::enabled())
+            coverage_declare_hook(L, "campaign/picker_action");
+        lua_rawseti(L, -2, kCampaignActionSlot);
+    }
+    lua_pop(L, 1);
+    st->campaign_vars = std::move(vars);
+    st->campaign_registered = true;
+    st->campaign_source = campaign_caller_source(L);
     return 0;
 }
 
@@ -1244,6 +1409,8 @@ void install_vm_scaffolding(ScriptHost::Impl& impl, VmState& st)
     lua_newtable(L);
     st.entity_hooks_ref = luaL_ref(L, LUA_REGISTRYINDEX);
     lua_newtable(L);
+    st.campaign_hooks_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+    lua_newtable(L);
     st.lib_exports_ref = luaL_ref(L, LUA_REGISTRYINDEX);
     lua_newtable(L);
     st.lib_status_ref = luaL_ref(L, LUA_REGISTRYINDEX);
@@ -1262,6 +1429,8 @@ void install_vm_scaffolding(ScriptHost::Impl& impl, VmState& st)
     lua_setfield(L, -2, "register_hooks");
     lua_pushcfunction(L, og_register_level_hooks);
     lua_setfield(L, -2, "register_level_hooks");
+    lua_pushcfunction(L, og_register_campaign_hooks);
+    lua_setfield(L, -2, "register_campaign_hooks");
     lua_pushcfunction(L, og_set_entity_hooks);
     lua_setfield(L, -2, "set_entity_hooks");
     lua_pushcfunction(L, og_rand);
@@ -1295,9 +1464,10 @@ void install_vm_scaffolding(ScriptHost::Impl& impl, VmState& st)
     lua_setfield(L, -2, "api");
     // The world entry points registered by hand above, behind the same
     // load-time fence the table-driven ones got. og.use and the three
-    // register_* seams are load-time BY DESIGN and stay open; og.family_id
-    // answers a deferred token in the declaration pass, so it handles its
-    // own case.
+    // register_* seams are load-time BY DESIGN and stay open (each
+    // registrar carries its own campaign-dispatch error instead);
+    // og.family_id answers a deferred token in the declaration pass, so it
+    // handles its own case.
     for (const char* name : {"rand", "is_alive", "entity_id",
                              "set_entity_hooks"})
         fence_world_entry(L, &st, name);
@@ -2321,6 +2491,346 @@ short level_damage_gate(walker* target, walker* attacker, short amount)
     }
     pop_dispatch_gen(L, gen);
     return result;
+}
+
+// ---------------------------------------------------------------------------
+// Campaign-hook dispatch (docs/campaign-scripting-design.md)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// RAII arm of the campaign-dispatch fence around a protected call. Never
+// arms at nested entry depth: a campaign hook dispatched from inside
+// another Lua entry would share that frame's budget and un-fence on the
+// inner scope's exit, so nesting is a caller bug — assert, refuse to arm,
+// and the dispatcher answers "no scripted picker".
+class CampaignDispatchScope {
+public:
+    CampaignDispatchScope(VmState& st, ScriptHost::Impl& impl) : st_(st)
+    {
+        assert(impl.entry_depth == 0 && !st.campaign_dispatch);
+        if (impl.entry_depth == 0 && !st.campaign_dispatch) {
+            st_.campaign_dispatch = true;
+            armed_ = true;
+        }
+    }
+    ~CampaignDispatchScope()
+    {
+        if (armed_)
+            st_.campaign_dispatch = false;
+    }
+    CampaignDispatchScope(const CampaignDispatchScope&) = delete;
+    CampaignDispatchScope& operator=(const CampaignDispatchScope&) = delete;
+    bool armed() const { return armed_; }
+
+private:
+    VmState& st_;
+    bool armed_ = false;
+};
+
+// Gate shared by every campaign query/dispatch: no packs → nothing; a
+// conflicted registration answers "no scripted picker" and records the
+// conflict as a script error ONCE (the once-latch lives in the VmState, so
+// a VM rebuild that replays the same conflict reports again — correctly,
+// since the replay re-created it).
+VmState* campaign_vm_state()
+{
+    if (pack_scripts().empty())
+        return nullptr;
+    WorldScripts& ws = active_world_scripts();
+    ScriptHost::Impl& impl = ws.host().impl();
+    VmState* st = get_vm_state(impl.L);
+    if (st == nullptr || !st->campaign_registered)
+        return nullptr;
+    if (!st->campaign_conflict_source.empty()) {
+        if (!st->campaign_conflict_reported) {
+            st->campaign_conflict_reported = true;
+            const std::string message =
+                "duplicate og.register_campaign_hooks (first: " +
+                st->campaign_source + ", second: " +
+                st->campaign_conflict_source +
+                ") — one campaign, one book: no scripted picker will be "
+                "served";
+            LogError("class pack: {}\n", message);
+            impl.record_error("og.register_campaign_hooks", message.c_str());
+        }
+        return nullptr;
+    }
+    return st;
+}
+
+// Pushes the registered hook fn for `slot`, or returns false, stack clean.
+bool push_campaign_hook_fn(lua_State* L, VmState* st, lua_Integer slot)
+{
+    lua_rawgeti(L, LUA_REGISTRYINDEX, st->campaign_hooks_ref);
+    lua_rawgeti(L, -1, slot);
+    if (lua_isfunction(L, -1)) {
+        lua_remove(L, -2);
+        return true;
+    }
+    lua_pop(L, 2);
+    return false;
+}
+
+bool malformed_page(ScriptHost::Impl& impl, const std::string& what)
+{
+    const std::string message =
+        "campaign picker_menu returned a malformed page: " + what;
+    LogError("class pack: {}\n", message);
+    impl.record_error("campaign:picker_menu", message.c_str());
+    return false;
+}
+
+// Raw string field read: false = present but not a string (nil answers
+// true with `out` untouched). Raw accessors throughout the parse — the
+// page came back from an untrusted chunk, and a metamethod firing inside
+// an unprotected lua_getfield would raise with no handler.
+bool read_string_field(lua_State* L, int idx, const char* key,
+                       std::string& out, bool& present)
+{
+    lua_pushstring(L, key);
+    lua_rawget(L, idx > 0 ? idx : idx - 1);
+    present = !lua_isnil(L, -1);
+    if (!present) {
+        lua_pop(L, 1);
+        return true;
+    }
+    if (lua_type(L, -1) != LUA_TSTRING) {
+        lua_pop(L, 1);
+        return false;
+    }
+    std::size_t len = 0;
+    const char* s = lua_tolstring(L, -1, &len);
+    out.assign(s, len);
+    lua_pop(L, 1);
+    return true;
+}
+
+// Raw integer field read (integer subtype required); nil answers true and
+// leaves `out` at its default.
+bool read_int_field(lua_State* L, int idx, const char* key, int& out)
+{
+    lua_pushstring(L, key);
+    lua_rawget(L, idx > 0 ? idx : idx - 1);
+    if (lua_isnil(L, -1)) {
+        lua_pop(L, 1);
+        return true;
+    }
+    if (!lua_isinteger(L, -1)) {
+        lua_pop(L, 1);
+        return false;
+    }
+    out = static_cast<int>(lua_tointeger(L, -1));
+    lua_pop(L, 1);
+    return true;
+}
+
+bool parse_entry_kind(const std::string& s, CampaignPageEntry::Kind& out)
+{
+    if (s == "level") {
+        out = CampaignPageEntry::Kind::Level;
+        return true;
+    }
+    if (s == "page") {
+        out = CampaignPageEntry::Kind::Page;
+        return true;
+    }
+    if (s == "action") {
+        out = CampaignPageEntry::Kind::Action;
+        return true;
+    }
+    return false;
+}
+
+// Parses the page table at the top of the stack into `out` (stack left
+// unchanged). C++ owns the bounds: entries clip at kCampaignPageMaxEntries,
+// lines at kCampaignPageMaxLines; a missing/mistyped required field is
+// malformed → false, recorded with the field's name.
+bool parse_campaign_page(lua_State* L, ScriptHost::Impl& impl,
+                         CampaignPage& out)
+{
+    if (!lua_istable(L, -1))
+        return malformed_page(impl, std::string("returned a ") +
+                                        luaL_typename(L, -1) +
+                                        ", not a page table");
+    bool present = false;
+    if (!read_string_field(L, -1, "title", out.title, present) || !present)
+        return malformed_page(impl, "'title' is missing or not a string");
+
+    lua_pushstring(L, "lines");
+    lua_rawget(L, -2);
+    if (!lua_isnil(L, -1)) {
+        if (!lua_istable(L, -1)) {
+            lua_pop(L, 1);
+            return malformed_page(impl, "'lines' is not an array");
+        }
+        const lua_Integer count = std::min<lua_Integer>(
+            static_cast<lua_Integer>(lua_rawlen(L, -1)),
+            kCampaignPageMaxLines);
+        for (lua_Integer i = 1; i <= count; i++) {
+            lua_rawgeti(L, -1, i);
+            if (lua_type(L, -1) != LUA_TSTRING) {
+                lua_pop(L, 2);
+                return malformed_page(
+                    impl, "lines[" + std::to_string(i) + "] is not a string");
+            }
+            std::size_t len = 0;
+            const char* s = lua_tolstring(L, -1, &len);
+            out.lines.emplace_back(s, len);
+            lua_pop(L, 1);
+        }
+    }
+    lua_pop(L, 1);
+
+    lua_pushstring(L, "entries");
+    lua_rawget(L, -2);
+    if (!lua_isnil(L, -1)) {
+        if (!lua_istable(L, -1)) {
+            lua_pop(L, 1);
+            return malformed_page(impl, "'entries' is not an array");
+        }
+        const lua_Integer count = std::min<lua_Integer>(
+            static_cast<lua_Integer>(lua_rawlen(L, -1)),
+            kCampaignPageMaxEntries);
+        for (lua_Integer i = 1; i <= count; i++) {
+            const std::string at = "entries[" + std::to_string(i) + "]";
+            lua_rawgeti(L, -1, i);
+            if (!lua_istable(L, -1)) {
+                lua_pop(L, 2);
+                return malformed_page(impl, at + " is not a table");
+            }
+            CampaignPageEntry entry;
+            if (!read_string_field(L, -1, "id", entry.id, present) ||
+                !present || entry.id.empty()) {
+                lua_pop(L, 2);
+                return malformed_page(
+                    impl, at + ".id is missing or not a string");
+            }
+            std::string kind;
+            if (!read_string_field(L, -1, "kind", kind, present) || !present ||
+                !parse_entry_kind(kind, entry.kind)) {
+                lua_pop(L, 2);
+                return malformed_page(
+                    impl, at + ".kind must be \"level\", \"page\" or "
+                              "\"action\"");
+            }
+            if (!read_string_field(L, -1, "label", entry.label, present)) {
+                lua_pop(L, 2);
+                return malformed_page(impl, at + ".label is not a string");
+            }
+            if (!read_string_field(L, -1, "note", entry.note, present)) {
+                lua_pop(L, 2);
+                return malformed_page(impl, at + ".note is not a string");
+            }
+            if (!read_int_field(L, -1, "level", entry.level)) {
+                lua_pop(L, 2);
+                return malformed_page(impl, at + ".level is not an integer");
+            }
+            if (!read_int_field(L, -1, "cost", entry.cost)) {
+                lua_pop(L, 2);
+                return malformed_page(impl, at + ".cost is not an integer");
+            }
+            out.entries.push_back(std::move(entry));
+            lua_pop(L, 1);
+        }
+    }
+    lua_pop(L, 1);
+    return true;
+}
+
+}  // namespace
+
+bool campaign_picker_registered()
+{
+    return campaign_vm_state() != nullptr;
+}
+
+std::vector<std::string> campaign_registered_vars()
+{
+    VmState* st = campaign_vm_state();
+    if (st == nullptr)
+        return {};
+    return st->campaign_vars;
+}
+
+bool campaign_picker_page(const std::string& page_id, CampaignPage& out)
+{
+    VmState* st = campaign_vm_state();
+    if (st == nullptr)
+        return false;
+    ScriptHost::Impl& impl = st->owner->host().impl();
+    lua_State* L = impl.L;
+    if (!push_campaign_hook_fn(L, st, kCampaignMenuSlot))
+        return false;
+    CampaignDispatchScope scope(*st, impl);
+    if (!scope.armed()) {
+        lua_pop(L, 1);
+        return false;
+    }
+    const std::uint64_t gen = push_dispatch_gen(L);
+    lua_pushlstring(L, page_id.data(), page_id.size());
+    bool ok = impl.protected_call("campaign:picker_menu", 1, 1);
+    if (ok) {
+        out = CampaignPage{};
+        ok = parse_campaign_page(L, impl, out);
+        lua_pop(L, 1);
+    }
+    pop_dispatch_gen(L, gen);
+    return ok;
+}
+
+bool campaign_picker_action(const std::string& entry_id,
+                            CampaignActionResult& out)
+{
+    VmState* st = campaign_vm_state();
+    if (st == nullptr)
+        return false;
+    ScriptHost::Impl& impl = st->owner->host().impl();
+    lua_State* L = impl.L;
+    if (!push_campaign_hook_fn(L, st, kCampaignActionSlot))
+        return false;
+    CampaignDispatchScope scope(*st, impl);
+    if (!scope.armed()) {
+        lua_pop(L, 1);
+        return false;
+    }
+    out = CampaignActionResult{};
+    const std::uint64_t gen = push_dispatch_gen(L);
+    lua_pushlstring(L, entry_id.data(), entry_id.size());
+    // A hook ERROR answers ok=false but still counts as dispatched: a spend
+    // already applied sticks, so the caller must refresh the page either
+    // way rather than fall back to the stock UI.
+    if (impl.protected_call("campaign:picker_action", 1, 1)) {
+        out.ok = true;
+        // nil (or any non-table) = no toast; a table's optional `message`
+        // string is the toast. Raw access: untrusted result value.
+        if (lua_istable(L, -1)) {
+            bool present = false;
+            read_string_field(L, -1, "message", out.message, present);
+        }
+        lua_pop(L, 1);
+    }
+    pop_dispatch_gen(L, gen);
+    return true;
+}
+
+std::vector<std::string> og_function_names()
+{
+    WorldScripts& ws = active_world_scripts();
+    ScriptHost::Impl& impl = ws.host().impl();
+    lua_State* L = impl.L;
+    impl.push_sandbox_root();
+    lua_getfield(L, -1, "og");
+    std::vector<std::string> names;
+    lua_pushnil(L);
+    while (lua_next(L, -2) != 0) {
+        if (lua_isfunction(L, -1) && lua_type(L, -2) == LUA_TSTRING)
+            names.emplace_back(lua_tostring(L, -2));
+        lua_pop(L, 1);
+    }
+    lua_pop(L, 2);
+    std::sort(names.begin(), names.end());
+    return names;
 }
 
 }  // namespace hooks

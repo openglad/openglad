@@ -12,6 +12,7 @@
 #include "script_host_impl.h"
 
 #include <openglad/core/order.h>
+#include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/gameplay/script/family_hooks.h>
 
 #include <cstdint>
@@ -119,6 +120,21 @@ struct VmState {
     // store's generation moves (pack remount reinstalls tuning).
     int tuning_cache_ref = -1;    // table: order*4096+family → frozen view
     std::uint64_t tuning_cache_gen = 0;
+    // og.register_campaign_hooks storage — per VM, load-time, one campaign
+    // picker per VM. A SECOND registration never raises (that would kill
+    // the chunk's unrelated level hooks); it records the conflict here and
+    // the query side answers "no scripted picker", reporting once.
+    int campaign_hooks_ref = -1;  // table: 1 = picker_menu, 2 = picker_action
+    std::vector<std::string> campaign_vars;  // sim-visible names, in order
+    bool campaign_registered = false;
+    std::string campaign_source;            // registering chunk (diagnostics)
+    std::string campaign_conflict_source;   // second registrant; ""=no conflict
+    bool campaign_conflict_reported = false;  // once-latch for the record
+    // TRUE while a campaign hook dispatch is on the stack. The world API,
+    // og.rand and the three registrars error while it is set; only the
+    // og.campaign_* bindings and the pure helpers stay legal
+    // (docs/campaign-scripting-design.md, "The campaign-dispatch fence").
+    bool campaign_dispatch = false;
 };
 
 // Level-script hook kinds (bit positions in level_hook_kinds and the kind
@@ -238,6 +254,10 @@ std::string declared_special_ids(const FamilyDescriptor* fd);
 // (operator warning + host error record + trace).
 void report_duplicate_hook(lua_State* L, VmState* st, const char* order_str,
                            const char* family_str, const char* hook_name);
+
+// The process-global campaign providers (campaign_hooks.cpp). Read by the
+// og.campaign_* bindings only, under the campaign-dispatch fence.
+const hooks::CampaignProviders& campaign_providers();
 
 // Names the registered function on top of the stack for the coverage
 // report. No-op with the recorder off; never disturbs the stack.
