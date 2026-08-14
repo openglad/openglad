@@ -26,6 +26,7 @@
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/families/treasure_family_descriptor.h>
+#include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/render/radar.h>
 #include <openglad/interface/render/view.h>
@@ -499,9 +500,12 @@ short radar::draw(LevelRuntimeData* data)
 				if (bx < xloc || bx > (xloc + xview) ||
 				    by < yloc || by > (yloc + yview))
 					continue;
+				// Score teams and FFA band bytes both name a ramp; anything
+				// else (255) falls back to the target's own team color.
 				const unsigned char beacon_color =
-					(beacon.team < SCORE_TEAM_COUNT)
-						? static_cast<unsigned char>(beacon.team * 16 + 40)
+					og::sim::is_scoring_identity(static_cast<int>(beacon.team))
+						? og::sim::team_ramp_base(
+							  static_cast<int>(beacon.team))
 						: target->query_team_color();
 				og::runtime::current_session->myscreen_->pointb(
 					bx, by, beacon_color, alpha);

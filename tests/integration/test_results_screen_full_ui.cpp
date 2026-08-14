@@ -674,8 +674,67 @@ TEST(ResultsScreenFullUi, scripted_mode_win_scopes_mvp_and_draws_overview)
         << "a losing-team human must not be picked as MVP";
     EXPECT_TRUE(trace_contains("results", "mode_winner_banner team=1"))
         << "the overview page draws the generic winner banner";
+    EXPECT_TRUE(trace_contains("results", "mode_winner_banner team=1 color=56"))
+        << "a score team keeps its classic team*16+40 banner ramp";
     EXPECT_TRUE(trace_contains("results", "mode_scoreboard FRAGS 2:9"))
         << "the overview page draws the mode's own scoreboard line";
+
+    screen_ref.world().mode = og::sim::ModeState{};
+    screen_ref.world().type = saved_type;
+    screen_ref.world().end = saved_end;
+}
+
+// The FFA twin: a fighter band winner (byte 16+c) banners in its ramp from
+// the shared table. The old team*16+40 cast wrapped past the palette for
+// every byte from 14 up, so byte 29 would have painted color 24
+// (docs/ffa-design.md §4).
+TEST(ResultsScreenFullUi, band_winner_banner_takes_its_fighter_ramp)
+{
+    auto& screen_ref = *og::runtime::current_session->myscreen_;
+    const char saved_end = screen_ref.world().end;
+    const char saved_type = screen_ref.world().type;
+    screen_ref.world().end = 0;
+
+    screen_ref.save_data.current_campaign = "gladiator";
+    screen_ref.save_data.scen_num = 1;
+    screen_ref.save_data.current_levels.clear();
+
+    screen_ref.world().type |= GameWorld::TYPE_SCRIPTED;
+    screen_ref.world().mode = og::sim::ModeState{};
+    screen_ref.world().mode.active = true;
+    // Byte 29 = fighter color index 13 = TEAL, ramp base 168.
+    screen_ref.world().mode.winner_team =
+        static_cast<std::int8_t>(kFfaTeamBase + 13);
+    screen_ref.world().mode.winner_is_player = false;
+    screen_ref.world().mode.hud[0].team =
+        static_cast<std::uint8_t>(kFfaTeamBase + 13);
+    std::strncpy(screen_ref.world().mode.hud[0].text.data(), "1ST TEAL 9",
+                 screen_ref.world().mode.hud[0].text.size() - 1);
+
+    std::map<int, guy*> before;
+    std::map<int, walker*> after;
+
+    trace_clear();
+    results_screen_testing_set_force_full(true);
+
+    ResultsThreadState st{};
+    SDL_Thread* thread = SDL_CreateThread(
+        results_ui_ok_injector, "results_band_banner_injector", &st);
+    ASSERT_TRUE(thread != nullptr) << "failed to create OK injector thread";
+
+    const bool retry = results_screen(0, 1, before, after);
+
+    int rc = 0;
+    SDL_WaitThread(thread, &rc);
+
+    results_screen_testing_set_force_full(false);
+
+    ASSERT_TRUE(st.started && st.finished) << "OK injector should run";
+    ASSERT_TRUE(!retry);
+    EXPECT_TRUE(trace_contains("results", "mode_winner_banner team=29 color=168"))
+        << "the band winner banners in the TEAL ramp, not a wrapped cast";
+    EXPECT_TRUE(trace_contains("results", "mode_scoreboard 1ST TEAL 9"))
+        << "the band leader line still draws its scoreboard text";
 
     screen_ref.world().mode = og::sim::ModeState{};
     screen_ref.world().type = saved_type;

@@ -236,11 +236,12 @@ static void draw_respawn_countdown(screen* s, walker* control,
 
 // Ramp color for a mode HUD element: team ramp when a score team is set,
 // else the classic HUD text yellow (the un-overlaid draw_respawn_countdown
-// default).
+// default). An FFA band byte (16-31) is a scoring identity too and takes its
+// fighter ramp from the shared table (docs/ffa-design.md §4).
 static unsigned char mode_hud_color(std::uint8_t team)
 {
-    if (team < SCORE_TEAM_COUNT)
-        return static_cast<unsigned char>(team * 16 + 40);
+    if (og::sim::is_scoring_identity(static_cast<int>(team)))
+        return og::sim::team_ramp_base(static_cast<int>(team));
     return static_cast<unsigned char>(YELLOW);
 }
 
@@ -497,9 +498,11 @@ static void draw_mode_beacons(screen* s, viewscreen* view, Sint32 lm,
             static_cast<int>(target->floor()) != view_floor)
             continue;
 
+        // The radar blip's rule, verbatim: a score team or an FFA band byte
+        // names its own ramp, anything else (255) borrows the target's.
         const unsigned char color =
-            (beacon.team < SCORE_TEAM_COUNT)
-                ? static_cast<unsigned char>(beacon.team * 16 + 40)
+            og::sim::is_scoring_identity(static_cast<int>(beacon.team))
+                ? og::sim::team_ramp_base(static_cast<int>(beacon.team))
                 : target->query_team_color();
 
         // Project the entity center into this viewport's screen space.

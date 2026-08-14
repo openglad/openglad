@@ -447,6 +447,60 @@ TEST(ModeUi, score_panel_composes_one_row_from_the_hud_slots)
     v->control = old_control;
 }
 
+// An FFA slot carries a fighter band byte (16+c), not a lobby team, and the
+// row tints it from the same ramp table the fighter's sprite uses — never
+// the 255 fallback yellow, never a wrapped 29*16+40.
+TEST(ModeUi, score_panel_tints_a_band_slot_with_its_fighter_ramp)
+{
+    ClassicModeHudCanvasGuard classic_canvas;
+    ModeScreenWorld mode;
+    screen* s = mode.s;
+
+    auto control = make_control(0);
+    ASSERT_NE(nullptr, control);
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v);
+    walker* old_control = v->control;
+    v->control = control.get();
+    silence_hud_prefs(v);
+
+    // Byte 29 = fighter color index 13 = TEAL, ramp base 168.
+    mode.set_hud(0, "1ST 7", static_cast<std::uint8_t>(kFfaTeamBase + 13));
+    mode.set_hud(1, "", 255);
+    mode.set_hud(2, "", 255);
+    mode.set_hud(3, "", 255);
+
+    const int tm = v->yloc;
+    const ModeRowWindow win = mode_row_window(v);
+    ASSERT_GT(win.budget, 10) << "a single 320-wide view has room for the row";
+
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    const auto frame = capture_rendered_frame(*s);
+
+    EXPECT_TRUE(trace_contains("mode_hud", "seg team=29"))
+        << "the band byte reaches the draw as itself";
+    EXPECT_TRUE(trace_contains("mode_hud", "text=1ST 7"))
+        << "nothing is stripped from a band line";
+    EXPECT_TRUE(box_pixels_all_colored(frame, win.left, tm + 3,
+                                       win.left + 30, tm + 12, 168, 7))
+        << "the band slot draws in the TEAL fighter ramp";
+
+    // The bytes between the score teams and the band are not identities:
+    // they keep the default HUD yellow.
+    mode.set_hud(0, "1ST 7", 5);
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    EXPECT_TRUE(box_pixels_all_colored(
+        capture_rendered_frame(*s), win.left, tm + 3, win.left + 30, tm + 12,
+        static_cast<unsigned char>(YELLOW), 7))
+        << "a wildlife byte keeps the fallback HUD color";
+
+    v->control = old_control;
+}
+
 TEST(ModeUi, score_panel_mode_block_gates_on_type_and_active)
 {
     ClassicModeHudCanvasGuard classic_canvas;
@@ -765,6 +819,20 @@ TEST(ModeUi, beacon_pulse_marker_pulses_inside_the_view)
         << "the phase-5 bar must be wider than the phase-0 bar";
     EXPECT_NE(narrow, wide);
 
+    // A band beacon (byte 16+c) paints its own fighter ramp, not the
+    // target's walker color: TEAL 168 over a team-2 (72) target.
+    s->world().tick_count_ = 0;
+    s->world().mode.beacons[0].team =
+        static_cast<std::uint8_t>(kFfaTeamBase + 13);
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    EXPECT_TRUE(trace_contains("mode_hud", "beacon_pulse slot=0 w=8"));
+    EXPECT_TRUE(box_pixels_all_colored(capture_rendered_frame(*s), cx - 4,
+                                       bar_y - 1, cx + 4, bar_y + 3, 168))
+        << "a band beacon pulses in the TEAL ramp";
+    s->world().mode.beacons[0].team = 2;
+
     // An empty slot and a dead target draw nothing.
     target->set_dead(1);
     trace_clear();
@@ -1076,6 +1144,25 @@ TEST(ModeUi, radar_draws_beacon_blips_in_beacon_team_color)
     EXPECT_TRUE(trace_contains("radar", "color=88"))
         << "the blip carries the beacon team ramp (3*16+40)";
 
+    // An FFA band byte reads its fighter ramp out of the shared table
+    // instead of the classic formula (byte 29 = color index 13 = TEAL 168).
+    world.mode.beacons[0].team =
+        static_cast<std::uint8_t>(kFfaTeamBase + 13);
+    trace_clear();
+    ASSERT_EQ(1, static_cast<int>(r.draw(&d)));
+    EXPECT_TRUE(trace_contains("radar", "color=168"))
+        << "a band beacon takes the TEAL ramp, never 29*16+40";
+
+    // 255 (no team) still falls back to the target's own color.
+    target->set_team_num(1);
+    world.mode.beacons[0].team = 255;
+    trace_clear();
+    ASSERT_EQ(1, static_cast<int>(r.draw(&d)));
+    EXPECT_TRUE(trace_contains("radar", "color=56"))
+        << "an unteamed beacon keeps the target's walker color";
+    target->set_team_num(3);
+    world.mode.beacons[0].team = 3;
+
     // A dead target draws nothing; neither does an inactive mode.
     target->set_dead(1);
     trace_clear();
@@ -1107,6 +1194,20 @@ TEST(ModeUi, format_mode_scoreboard_segments_reads_hud_slot_zero)
     ASSERT_EQ(1u, segments.size());
     EXPECT_EQ("GOALS 1:3", segments[0].text);
     EXPECT_EQ(2, segments[0].team);
+
+    // An FFA band byte is a scoring identity: it carries through so the
+    // results line draws in the leader's fighter ramp.
+    mode.hud[0].team = static_cast<std::uint8_t>(kFfaTeamBase + 13);
+    segments = format_mode_scoreboard_segments(mode);
+    ASSERT_EQ(1u, segments.size());
+    EXPECT_EQ(kFfaTeamBase + 13, segments[0].team)
+        << "a band byte keeps its identity through the results scoreboard";
+
+    // The wildlife bytes are not scoring identities and read neutral.
+    mode.hud[0].team = 5;
+    segments = format_mode_scoreboard_segments(mode);
+    ASSERT_EQ(1u, segments.size());
+    EXPECT_EQ(-1, segments[0].team) << "team 5 is wildlife, not a fighter";
 
     mode.hud[0].team = 255;
     segments = format_mode_scoreboard_segments(mode);
@@ -1164,6 +1265,47 @@ TEST(ModeUi, scripted_ending_popup_reports_outcome_from_local_controls)
     EXPECT_FALSE(trace_contains("popup", "TEAM WINS"));
     EXPECT_TRUE(trace_contains("popup", "Victory!"))
         << "without a winner the classic popup chain runs";
+
+    v->control = old_control;
+}
+
+// An FFA winner is one fighter, not a squad, so its popup drops the word
+// "TEAM" ("FFA: TEAL WINS!"). A classic score team keeps the old wording in
+// the same code path (docs/ffa-design.md D20).
+TEST(ModeUi, scripted_ending_popup_drops_team_for_a_band_winner)
+{
+    ModeScreenWorld mode;
+    screen* s = mode.s;
+    GameWorld& world = s->world();
+    std::strncpy(world.mode.name.data(), "FFA",
+                 world.mode.name.size() - 1);
+    s->save_data.scen_num = 1;
+
+    // Byte 29 = fighter color index 13 = TEAL.
+    const unsigned char band =
+        static_cast<unsigned char>(kFfaTeamBase + 13);
+    world.mode.winner_team = static_cast<std::int8_t>(band);
+
+    auto control = make_control(band); // the local hero IS the winner
+    ASSERT_NE(nullptr, control);
+    viewscreen* v = s->viewob[0].get();
+    walker* old_control = v->control;
+    v->control = control.get();
+
+    trace_clear();
+    (void)results_screen(0, 1);
+    EXPECT_TRUE(trace_contains("popup", "VICTORY!"));
+    EXPECT_TRUE(trace_contains("popup", "FFA: TEAL WINS!"));
+    EXPECT_FALSE(trace_contains("popup", "TEAM WINS"))
+        << "a band winner is a fighter, never a team";
+
+    // The classic teams are untouched by the branch.
+    world.mode.winner_team = 2;
+    control->set_team_num(2);
+    trace_clear();
+    (void)results_screen(0, 1);
+    EXPECT_TRUE(trace_contains("popup", "FFA: BLUE TEAM WINS!"))
+        << "score teams keep the wording they always had";
 
     v->control = old_control;
 }
