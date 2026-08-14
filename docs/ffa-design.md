@@ -1,10 +1,12 @@
 # Master Specification — FREE FOR ALL (mode 7, campaigns/modes)
 
-Line anchors in this document were re-verified at branch `feature/ffa-mode`,
-HEAD `97bbf10b`. Every implementer must re-verify an anchor with
-`sed -n '<line>p'` before editing — the referenced files move.
+Line anchors in this document were captured pre-implementation, at branch
+`feature/ffa-mode` HEAD `97bbf10b`; the mode has been built since and the
+files they point into have moved. Re-verify any anchor with
+`sed -n '<line>p'` against HEAD before trusting it.
 
-Status: **approved design, pre-implementation, judge-synthesized**. This
+Status: **implemented** (judge-synthesized design, built on
+`feature/ffa-mode`). This
 document is the single authority for the FFA mode; it supersedes the two
 designer drafts it was synthesized from (the "minimal blast radius" draft won;
 grafts from the rival draft and two judge-found corrections are recorded in

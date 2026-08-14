@@ -1,7 +1,7 @@
 # Multiplayer Game Modes
 
-OpenGlad ships six competitive game modes in one built-in campaign:
-**`modes`** ("Multiplayer Game Modes"), 33 scenarios. Pick it
+OpenGlad ships seven competitive game modes in one built-in campaign:
+**`modes`** ("Multiplayer Game Modes"), 39 scenarios. Pick it
 from SET CAMPAIGN in the team-build screen's SCENARIO submenu and hit GO.
 Every scenario title is prefixed with its mode:
 
@@ -12,14 +12,15 @@ Every scenario title is prefixed with its mode:
 | Onslaught | 800-803 | Destroy generators to FLIP them to your team; a team with none left is eliminated. |
 | Soccer | 820-823 | Smack the ball into the enemy goal; first to the goal limit wins. |
 | Basketball | 824-828 | Carry or shoot the ball through an enemy hoop; first to the point limit wins. |
-| Mutant | 840-843 | FFA until first blood; only the Mutant can be hurt, kill it to take its place. |
+| Mutant | 840-843 | Up to sixteen lone competitors; first blood crowns the Mutant, and only the Mutant can be hurt — kill it to take its place. |
+| Free For All | 850-855 | Every fighter for itself, each in a color of its own; first to the frag limit wins. |
 
 Every mode's rules, scoring, win logic, and AI directors live in the
 campaign's embedded Lua pack (`modes.core`, hand-authored at
 `campaigns/modes/packs/modes.core/`) — the
 engine provides only the generic scripted
 frame (`SCEN_TYPE_SCRIPTED` levels, `ModeState` replication, the respawn
-engine, and the og.* mode bindings). All six modes work in local
+engine, and the og.* mode bindings). All seven modes work in local
 split-screen, networked play (mid-join included), the text and curses
 clients, the dedicated server, and the web build.
 
@@ -247,6 +248,87 @@ FOUR HOOPS fielded with fewer than four teams simply leaves the unused hoops
 dead — they neither score nor need defending, and a dead goal is bare carpet
 with no rim standing on it, so the live baskets are obvious at a glance.
 
+## Free For All rules
+
+- **Every character you field is its own fighter.** FFA does not read the
+  lobby: at the gate every deployed character — yours, your ally's, and the
+  second one you seated on your own team — is put on a color of its own,
+  and from there everyone is hostile to everyone. The hero you drive fights
+  the rest of your own company, and MATCHUP's Match Teams has nothing to
+  say about it.
+- **Sixteen fighters, controlled heroes first.** Every seat's controlled
+  hero takes a slot before any benchwarmer does, so a full lobby never
+  loses a player to the cap; anyone past sixteen is turned away at the gate
+  with a toast counting them. Bots fill the field out to the arena's
+  fighter count — eight on THE MELEE, sixteen on the last three — cycling
+  through soldier, archer, elf, mage and thief.
+- **Sixteen colors, drawn fresh every match**: RED, GREEN, BLUE, YELLOW,
+  MAGENTA, CYAN, TAN, ROSE, LAVENDER, SALMON, ORANGE, PINK, VIOLET, and
+  three mixed for this mode — TEAL, GOLD and SLATE. Who wears which is
+  shuffled at the gate, so last match's color tells you nothing about this
+  one; within a match the color is the fighter, on the sprite, the radar
+  dot, the beacon and the HUD row alike.
+- **A kill is a point.** Killing another fighter scores 1. Killing yourself
+  — in practice, dying on your own color while charmed — costs 1, and a
+  count can go below zero. Wildlife, your own summons, and deaths the map
+  hands out score nothing; a kill your generator or your summon lands
+  counts as yours.
+- **First to 15 kills wins** — the limit every arena authors; MATCHUP's
+  Score Limit forces 1-10 as it does everywhere else. If the ten minutes
+  run out first the most kills wins, and a tie goes to the earlier color in
+  the list above.
+- **You come back in seven and a half seconds, anywhere.** A start marker
+  is a position pool here rather than a base: the map's four clusters are
+  walked in rotation, so you return wherever the rotation lands, never at
+  "your" corner. Nobody is eliminated and no wipe ends a match.
+- **Join mid-match and you are in the fight at once**: you take the first
+  free color, or the lowest-scoring bot's if all sixteen are spoken for —
+  that bot leaves and its count restarts at zero for you. Arrive at a full
+  field with no bots left to make room and you fight on your seat's color
+  instead, hostile to everyone all the same.
+- **The winner is a name, not a color.** The scoreboard line becomes
+  `WINNER: <name>` in the winner's color — the character's own name,
+  falling back to the color name for a bot or an unnamed fighter — and the
+  results screen banner names the winning color.
+- **The HUD carries the standing**: a **1ST** and a **2ND** row, each with
+  a fighter's name and count in that fighter's color, and a **GOAL** row
+  with the limit. Once the leader comes within three of the limit it grows
+  a beacon on every radar — and every bot on the field turns and hunts it.
+  The classic score box beside those rows is not the standing; it reads
+  `SC: 0` all match.
+- **No switching characters.** The others in your company are competitors
+  in their own right, fighting under their own AI, so the switch-character
+  input finds nothing to switch to: you play the one hero you are bound to,
+  start to finish.
+- **The arena is cleared at the gate.** Whatever garrison, squad or
+  generator the map ships is retired before the first tick; wildlife stays
+  as arena furniture unless TROOPS clears it too. Food and speed potions
+  come back at their pads every 15 seconds — sixteen fighters eat a map
+  bare.
+- **TROOPS: FAIR plays as OWN here.** FFA retires the map's own fighters on
+  every setting, and FAIR's matching never reaches its bots: they come in
+  at the level DIFFICULTY implies rather than sized to your company.
+- **The terminal clients only have eight colors**, so two fighters can
+  share one in the curses and text views; the HUD names are what tell them
+  apart.
+- **Cloaking drops you off every radar but your own.** A radar keeps an
+  invisible fighter's blip only for viewers wearing its color, and in a
+  free-for-all nobody else wears yours.
+
+## The FFA arenas
+
+| # | Arena | Fighters | Size | Twist |
+|---|-------|----------|------|-------|
+| 850 | FFA: THE MELEE | 8 | 34×34 | an open colosseum under a ring of columns — the whole fight in one sightline |
+| 851 | FFA: CROSSFIRE | 10 | 40×40 | a cobble island in a drowning moat, four plank bridges in |
+| 852 | FFA: SHARDS | 12 | 44×44 | a broken hall of rooms, boulders strewn; no sightline longer than one room |
+| 853 | FFA: THE ROSE | 16 | 45×45 | eight wall spokes off a cobble heart, one center pad, every petal a lane back to it |
+| 854 | FFA: SCRAMBLE | 16 | 48×48 | a lattice of stub walls and twin mid-field pads — cover everywhere, safety nowhere |
+| 855 | FFA: NIGHTFALL | 16 | 50×50 | a torch-lit corridor loop with offset mouths, chamber at the heart |
+
+The fighter counts are the bot-fill targets, not caps: field more characters
+than the number above and they all play, up to sixteen.
+
 ## The other modes, briefly
 
 - **Team Deathmatch** (300-305, the six adapted arenas): kills of fighters
@@ -261,10 +343,15 @@ with no rim standing on it, so the live baskets are obvious at a glance.
 - **Soccer** (820-823): hit the ball to send it flying; a fast ball hurts
   and bounces off whoever it hits. Fully inside the enemy goal strip = a
   goal for the last-touching team. Dead heroes respawn.
-- **Mutant** (840-843): free-for-all until the first kill crowns the
-  Mutant — buffed, marked on every HUD, health always decaying, healed
-  only by kills. Non-mutants cannot hurt each other; kill the Mutant to
-  become it. Teleports are range-clamped so nobody blinks across the map.
+- **Mutant** (840-843): a true free-for-all until the first kill crowns
+  the Mutant. Every deployed character enters as its own competitor in a
+  color of its own — up to sixteen of them, whatever teams the lobby put
+  their seats on, two players sharing a team included — with bots filling
+  the field out to four on the shipped arenas. The crown then works as it
+  always did: the Mutant is buffed, marked on every HUD, its health always
+  decaying and healed only by kills. Non-mutants cannot hurt each other;
+  kill the Mutant to become it. Teleports are range-clamped so nobody
+  blinks across the map.
 
 ## Making your own mode map
 
@@ -284,7 +371,15 @@ generates the shipped campaign and is the reference for authoring:
    the rim — and the manifest records each hoop center, the three-point
    radius, and the jump-ball spot. The ball, its shadow and the rims are
    spawned by the mode, not authored.
-5. Remove exits (mode maps should not have portals).
+5. FFA maps still author four marker clusters, but **interleaved** around
+   the arena instead of parked in four corners: the mode reads them as
+   position pools rather than bases and walks them in rotation, so
+   consecutive spawns land far apart. Keep the list a whole number of
+   rounds (spot *i* belongs to team *i* mod 4) or one pool ends up with
+   more stops than the others. The manifest row's `fighters` count is the
+   bot-fill target, and there is nothing else to author — no bases, no
+   objective props.
+6. Remove exits (mode maps should not have portals).
 
 The mode's Lua validates maps at match start; a scripted map whose mode
 fails to activate (or that registers no hooks) falls back to classic
