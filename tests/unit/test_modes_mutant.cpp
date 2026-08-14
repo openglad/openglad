@@ -1,13 +1,23 @@
 // The Mutant campaign-pack Lua behavior suite
-// (campaigns/modes/packs/modes.core: lib/mode_mutant_impl.lua + lib/mode_match.lua +
-// scripts/mode_mutant.lua), over the shared modes-pack fixture. Rule spec:
-// modes.md §7 as amended by DECISIONS D4 — FFA teams 0-3 stay, the
-// damage gate replaces team juggling, herd/Bottom-Feeder machinery is cut.
+// (campaigns/modes/packs/modes.core: lib/mode_mutant_impl.lua +
+// lib/mode_fighters.lua + scripts/mode_mutant.lua), over the shared
+// modes-pack fixture. Rule spec: docs/ffa-design.md §8 (D13) amending
+// modes.md §7 — competitors are individual deployed characters on the
+// fighter band (team bytes 16-31), cap 16, bot fill to the manifest row's
+// fighters count; two humans on one lobby team become separate mutually
+// hostile competitors (issue #187).
+//
+// Mode-private slot map mirror (lib/mode_mutant_impl.lua table S):
+//   8  FIGHTER_COUNT      9  SCORE_LIMIT       10 TIME_LIMIT
+//   11 RESPAWN_TICKS      12 ANCHOR_CURSOR     13 MUTANT_ENTITY
+//   14 MUTANT_TEAM        15 MUTANT_BASE_DAMAGE
+//   16..31 SCORE (+c)     32..47 IDS (+c)      48 BAND_BITMAP
+//   49 ITEM_CURSOR        50 ITEM_LAST
 //
 // Levels: 9201/9202 bind through the test manifest rows; 840 binds through
 // the SHIPPED scripts/mode_mutant.lua registration (mode_match.rows_for
-// over the committed manifest), which also arms the manifest-gated
-// teleport clamp.
+// over the committed manifest, fighters = 4), which also arms the
+// manifest-gated teleport clamp and the on_entity_spawn adoption arm.
 
 #include <gtest/gtest.h>
 
@@ -27,7 +37,9 @@
 
 #include <cstdlib>
 #include <format>
+#include <set>
 #include <string>
+#include <vector>
 
 using namespace og::modes_test;
 
@@ -41,15 +53,17 @@ namespace {
 enum MutantSlot : int {
     kMutSlotModeId = 0,
     kMutSlotPhase = 1,
-    kMutSlotTeamMask = 8,
+    kMutSlotFighterCount = 8,
     kMutSlotScoreLimit = 9,
     kMutSlotTimeLimit = 10,
     kMutSlotRespawnTicks = 11,
     kMutSlotAnchorCursor = 12,
     kMutSlotMutantEntity = 13,
-    kMutSlotMutantTeam1 = 14,
+    kMutSlotMutantTeam = 14,        // the mutant's ASSIGNED band byte; 0 = none
     kMutSlotMutantBaseDamage = 15,  // x256
-    kMutSlotScore = 16,             // +team
+    kMutSlotScore = 16,             // +color index
+    kMutSlotIds = 32,               // +color index
+    kMutSlotBandBitmap = 48,
 };
 
 inline constexpr int kModeIdMutant = 5;  // mode_core.MODE.MUTANT
@@ -57,6 +71,8 @@ inline constexpr int kPhaseFfa = 1;
 inline constexpr int kPhaseMutant = 2;
 inline constexpr int kMutantCadence = 15;
 inline constexpr int kMutantBit = 16384;
+inline constexpr int kBandBase = kFfaTeamBase;    // 16
+inline constexpr int kBandCount = kFfaTeamCount;  // 16
 
 int count_notifications(const og::sim::SimEventLog& log,
                         const std::string& needle)
@@ -77,20 +93,6 @@ bool has_notification(const og::sim::SimEventLog& log,
                       const std::string& needle)
 {
     return count_notifications(log, needle) > 0;
-}
-
-bool has_score_change(const og::sim::SimEventLog& log, std::uint32_t team,
-                      std::uint32_t points)
-{
-    for (const auto& ev : log.events())
-    {
-        if (ev.kind == og::sim::EventKind::ScoreChange && ev.a == team &&
-            ev.b == points)
-        {
-            return true;
-        }
-    }
-    return false;
 }
 
 bool has_script_error(GameWorld& world, const std::string& needle)
@@ -126,6 +128,43 @@ int alive_on_team(GameWorld& world, int team)
     return count;
 }
 
+int alive_band_livings(GameWorld& world)
+{
+    int count = 0;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w != nullptr && !w->dead() &&
+            w->query_order() == Order::Living && w->team_num() >= kBandBase &&
+            w->team_num() < kBandBase + kBandCount)
+        {
+            count++;
+        }
+    }
+    return count;
+}
+
+int bitmap_popcount(std::int32_t bitmap)
+{
+    int count = 0;
+    for (int c = 0; c < kBandCount; ++c)
+    {
+        if ((bitmap >> c) & 1)
+            count++;
+    }
+    return count;
+}
+
+bool queue_holds(GameWorld& world, const walker* w)
+{
+    for (const auto& entry : world.respawn.respawn_queue)
+    {
+        if (entry.walker_entity_id == w->entity_id())
+            return true;
+    }
+    return false;
+}
+
 // Full behavior digest: mode vars, RNG, positions, command queues.
 std::string digest_world(GameWorld& world)
 {
@@ -159,15 +198,16 @@ std::string digest_world(GameWorld& world)
     return digest;
 }
 
-// A 4-competitor FFA rig (one living per team, anchors everywhere),
-// initialized on the first tick.
+// A 4-competitor rig on the fighter band (four anchor pools, four deployed
+// heroes on seat teams 0-3 reseated onto band bytes at init), initialized
+// on the first tick.
 struct MutantRig
 {
     ModesCtfWorld fx;
-    walker* a = nullptr;  // team 0
-    walker* b = nullptr;  // team 1
-    walker* c = nullptr;  // team 2
-    walker* d = nullptr;  // team 3
+    walker* a = nullptr;  // deployed on seat team 0
+    walker* b = nullptr;  // deployed on seat team 1
+    walker* c = nullptr;  // deployed on seat team 2
+    walker* d = nullptr;  // deployed on seat team 3
 
     explicit MutantRig(int level_id = kMutantLevelA, int act = ACT_CONTROL)
         : fx(level_id)
@@ -176,10 +216,10 @@ struct MutantRig
         fx.spawn_anchor(1, 544, 96);
         fx.spawn_anchor(2, 96, 800);
         fx.spawn_anchor(3, 544, 800);
-        a = fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200, act);
-        b = fx.spawn_living(FAMILY_ORC, 1, 216, 200, act);
-        c = fx.spawn_living(FAMILY_SOLDIER, 2, 200, 232, act);
-        d = fx.spawn_living(FAMILY_ORC, 3, 216, 232, act);
+        a = fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1, act);
+        b = fx.spawn_hero(FAMILY_ORC, 1, 216, 200, 2, act);
+        c = fx.spawn_hero(FAMILY_SOLDIER, 2, 200, 232, 3, act);
+        d = fx.spawn_hero(FAMILY_ORC, 3, 216, 232, 4, act);
         EXPECT_NE(nullptr, a);
         EXPECT_NE(nullptr, b);
         EXPECT_NE(nullptr, c);
@@ -196,9 +236,53 @@ struct MutantRig
     {
         return fx.world().mode.vars[kMutSlotMutantEntity];
     }
-    int score(int team) const
+    std::int32_t mutant_team() const
     {
-        return fx.world().mode.vars[static_cast<std::size_t>(kMutSlotScore + team)];
+        return fx.world().mode.vars[kMutSlotMutantTeam];
+    }
+    std::int32_t bitmap() const { return fx.var(kMutSlotBandBitmap); }
+    int score(int slot) const
+    {
+        return fx.world()
+            .mode.vars[static_cast<std::size_t>(kMutSlotScore + slot)];
+    }
+    void set_score(int slot, int value)
+    {
+        fx.world().mode.vars[static_cast<std::size_t>(kMutSlotScore + slot)] =
+            value;
+    }
+    std::int32_t slot_id(int slot) const
+    {
+        return fx.world()
+            .mode.vars[static_cast<std::size_t>(kMutSlotIds + slot)];
+    }
+
+    // The color index a walker's entity id occupies, or -1.
+    int slot_of(const walker* w) const
+    {
+        for (int slot = 0; slot < kBandCount; ++slot)
+        {
+            if (slot_id(slot) == static_cast<std::int32_t>(w->entity_id()))
+                return slot;
+        }
+        return -1;
+    }
+
+    // The lowest occupied color index at or after `from`, or -1.
+    int occupied_slot(int from = 0) const
+    {
+        for (int slot = from; slot < kBandCount; ++slot)
+        {
+            if (slot_id(slot) != 0)
+                return slot;
+        }
+        return -1;
+    }
+
+    walker* fighter_at(int slot)
+    {
+        return fx.world().find_by_id(
+            static_cast<std::uint32_t>(slot_id(slot)));
     }
 
     void slay(walker* attacker, walker* victim)
@@ -223,7 +307,7 @@ struct MutantRig
 using ModesMutant = ModesPackTest;
 
 // ===========================================================================
-// Activation / init
+// Activation / init (the band competitor model)
 // ===========================================================================
 
 TEST_F(ModesMutant, lazy_init_activates_ffa_with_defaults)
@@ -234,28 +318,38 @@ TEST_F(ModesMutant, lazy_init_activates_ffa_with_defaults)
 
     EXPECT_TRUE(rig.fx.world().mode.active);
     EXPECT_TRUE(rig.active());
-    EXPECT_EQ(15, rig.fx.var(kMutSlotTeamMask));
     EXPECT_EQ(kPhaseFfa, rig.phase());
+    EXPECT_EQ(4, rig.fx.var(kMutSlotFighterCount))
+        << "four deployed characters, no bot fill needed";
+    EXPECT_EQ(4, bitmap_popcount(rig.bitmap()));
     EXPECT_EQ(10, rig.fx.var(kMutSlotScoreLimit));
     EXPECT_EQ(7200, rig.fx.var(kMutSlotTimeLimit));
     EXPECT_EQ(60, rig.fx.var(kMutSlotRespawnTicks))
         << "the Mutant default delay is 60, not the engine's 120";
     EXPECT_EQ(0, rig.mutant_id());
+    EXPECT_EQ(0, rig.mutant_team());
     EXPECT_STREQ("MUTANT", rig.fx.world().mode.name.data());
     EXPECT_TRUE(has_notification(rig.fx.events, "MUTANT! FIRST TO 10"));
+
+    // Every deployed character is a registered band competitor on its own
+    // byte (exact set: four distinct bytes, id slots agree with the bitmap).
+    std::set<int> bytes;
+    for (walker* w : {rig.a, rig.b, rig.c, rig.d})
+    {
+        const int slot = rig.slot_of(w);
+        ASSERT_NE(-1, slot) << "every deployed character takes a slot";
+        EXPECT_EQ(kBandBase + slot, w->team_num())
+            << "slot " << slot << " wears its own byte";
+        bytes.insert(w->team_num());
+    }
+    EXPECT_EQ(4u, bytes.size()) << "four DISTINCT band bytes";
+    for (int c = 0; c < kBandCount; ++c)
+    {
+        const bool bit = ((rig.bitmap() >> c) & 1) != 0;
+        EXPECT_EQ(bit, rig.slot_id(c) != 0)
+            << "bitmap bit and id slot agree at " << c;
+    }
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
-}
-
-TEST_F(ModesMutant, init_demotes_below_two_competitors)
-{
-    ModesCtfWorld fx(kMutantLevelA);
-    fx.spawn_anchor(0, 96, 96);
-    fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
-    fx.tick(1);
-
-    EXPECT_TRUE(fx.world().mode.init_attempted);
-    EXPECT_FALSE(fx.world().mode.active);
-    EXPECT_TRUE(has_script_error(fx.world(), "fewer than two competitors"));
 }
 
 TEST_F(ModesMutant, shipped_manifest_registration_binds_level_840)
@@ -267,9 +361,93 @@ TEST_F(ModesMutant, shipped_manifest_registration_binds_level_840)
         << "scripts/mode_mutant.lua must bind manifest id 840";
     EXPECT_EQ(10, rig.fx.var(kMutSlotScoreLimit)) << "manifest score_limit";
     EXPECT_EQ(7200, rig.fx.var(kMutSlotTimeLimit)) << "manifest time_limit";
+    EXPECT_EQ(4, rig.fx.var(kMutSlotFighterCount))
+        << "manifest rows 840-843 carry fighters = 4 (pre-conversion feel)";
 }
 
-TEST_F(ModesMutant, empty_competitor_teams_field_one_bot_each)
+// The #187 acceptance test: two humans seated on one lobby team become
+// separate band competitors and the sim's team-equality hostility rule
+// makes them fight each other — first blood between them crowns.
+TEST_F(ModesMutant, issue_187_two_humans_on_one_lobby_team_fight_each_other)
+{
+    ModesCtfWorld fx(kMutantLevelA);
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(1, 544, 96);
+    fx.spawn_anchor(2, 96, 800);
+    fx.spawn_anchor(3, 544, 800);
+    walker* h1 = fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
+    walker* h2 = fx.spawn_hero(FAMILY_SOLDIER, 0, 216, 200, 2);
+    ASSERT_NE(nullptr, h1);
+    ASSERT_NE(nullptr, h2);
+    h1->set_user(0);
+    h2->set_user(1);
+    fx.tick(1);
+    ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
+
+    ASSERT_GE(h1->team_num(), kBandBase) << "human 1 reseats onto the band";
+    ASSERT_GE(h2->team_num(), kBandBase) << "human 2 reseats onto the band";
+    EXPECT_NE(h1->team_num(), h2->team_num())
+        << "one lobby team, two mutually hostile competitors (#187)";
+
+    // The hit LANDS (is_friendly is team-byte equality, so the reseat is
+    // the whole mechanism) and first blood between the two seatmates
+    // crowns the killer.
+    ASSERT_NE(nullptr, h2->stats());
+    h2->stats()->set_hitpoints(100.0f);
+    h1->attack(h2);
+    EXPECT_LT(h2->stats()->hitpoints(), 100.0f)
+        << "seatmates must be able to damage each other";
+    h2->stats()->set_hitpoints(1.0f);
+    h1->attack(h2);
+    ASSERT_TRUE(h2->dead());
+    EXPECT_EQ(kPhaseMutant, fx.var(kMutSlotPhase))
+        << "first blood between seatmates crowns";
+    EXPECT_EQ(static_cast<std::int32_t>(h1->entity_id()),
+              fx.var(kMutSlotMutantEntity));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesMutant, sixteen_deployed_competitors_fill_the_band)
+{
+    ModesCtfWorld fx(kMutantLevelA);
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(1, 544, 96);
+    fx.spawn_anchor(2, 96, 800);
+    fx.spawn_anchor(3, 544, 800);
+    std::vector<walker*> heroes;
+    for (int i = 0; i < 16; ++i)
+    {
+        walker* h = fx.spawn_hero(FAMILY_SOLDIER, i % 4, 120 + 24 * i, 200,
+                                  100 + i);
+        ASSERT_NE(nullptr, h);
+        heroes.push_back(h);
+    }
+    fx.tick(1);
+    ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
+
+    EXPECT_EQ(16, fx.var(kMutSlotFighterCount)) << "the cap-16 band fills";
+    EXPECT_EQ(16, bitmap_popcount(fx.var(kMutSlotBandBitmap)));
+    EXPECT_EQ(16, alive_band_livings(fx.world()));
+    std::set<int> bytes;
+    for (walker* h : heroes)
+    {
+        ASSERT_GE(h->team_num(), kBandBase);
+        ASSERT_LT(h->team_num(), kBandBase + kBandCount);
+        bytes.insert(h->team_num());
+    }
+    EXPECT_EQ(16u, bytes.size()) << "sixteen DISTINCT band bytes";
+
+    // The phase machine spans the whole band: first blood anywhere crowns.
+    ASSERT_NE(nullptr, heroes[1]->stats());
+    heroes[1]->stats()->set_hitpoints(1.0f);
+    heroes[0]->attack(heroes[1]);
+    ASSERT_TRUE(heroes[1]->dead());
+    EXPECT_EQ(kPhaseMutant, fx.var(kMutSlotPhase));
+    EXPECT_EQ(heroes[0]->team_num(), fx.var(kMutSlotMutantTeam));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesMutant, bot_fill_reaches_the_default_fighter_count)
 {
     ModesCtfWorld fx(kMutantLevelA);
     fx.spawn_anchor(0, 96, 96);
@@ -279,138 +457,135 @@ TEST_F(ModesMutant, empty_competitor_teams_field_one_bot_each)
     fx.tick(1);
 
     ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
-    EXPECT_EQ(1, alive_on_team(fx.world(), 0)) << "FFA seats, not squads";
-    EXPECT_EQ(1, alive_on_team(fx.world(), 1));
-    EXPECT_EQ(1, alive_on_team(fx.world(), 2));
-    EXPECT_EQ(1, alive_on_team(fx.world(), 3));
-}
-
-TEST_F(ModesMutant, scenario_troops_strip_runs_before_the_seat_census)
-{
-    // The shared strip (lib/mode_strip) precedes the one-bot-per-empty-seat
-    // census, so a seat the strip empties is filled rather than left vacant.
-    ModesCtfWorld fx(kMutantLevelA);
-    fx.world().ctf_requested_strip_scenario_troops = 2;
-    fx.spawn_anchor(0, 96, 96);
-    fx.spawn_anchor(1, 544, 96);
-    walker* hero = fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
-    walker* troop = fx.spawn_living(FAMILY_ORC, 1, 520, 200);
-    fx.tick(1);
-
-    ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
-    EXPECT_FALSE(hero->dead()) << "roster walkers are never stripped";
-    EXPECT_TRUE(troop->dead()) << "STRIP_ALL takes the authored troop";
-    EXPECT_EQ(1, alive_on_team(fx.world(), 0));
-    EXPECT_EQ(1, alive_on_team(fx.world(), 1)) << "the emptied seat is refilled";
-}
-
-TEST_F(ModesMutant, troops_own_activates_only_the_roster_teams)
-{
-    // The user's scen-841 report, pinned: TROOPS:OWN with rosters deployed
-    // on teams 0 and 3 still fielded a GREEN archer and a BLUE elf — the
-    // one-bot-per-empty-team census backfilled the two authored teams the
-    // strip had just emptied. Under OWN the deployed rosters ARE the match:
-    // exactly the roster teams activate and nobody manufactures new sides.
-    ModesCtfWorld fx(841);
-    fx.world().ctf_requested_strip_scenario_troops = 2;
-    fx.spawn_anchor(0, 96, 96);
-    fx.spawn_anchor(1, 544, 96);
-    fx.spawn_anchor(2, 96, 800);
-    fx.spawn_anchor(3, 544, 800);
-    walker* soldier = fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
-    walker* barbarian = fx.spawn_hero(FAMILY_BARBARIAN, 3, 216, 232, 2);
-    fx.tick(1);
-
-    ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId))
-        << "shipped scripts/mode_mutant.lua binds manifest id 841";
-    EXPECT_EQ(1 + 8, fx.var(kMutSlotTeamMask))
-        << "exactly the two roster teams activate";
-    EXPECT_FALSE(soldier->dead());
-    EXPECT_FALSE(barbarian->dead());
-    EXPECT_EQ(1, alive_on_team(fx.world(), 0));
-    EXPECT_EQ(0, alive_on_team(fx.world(), 1)) << "no GREEN archer backfill";
-    EXPECT_EQ(0, alive_on_team(fx.world(), 2)) << "no BLUE elf backfill";
-    EXPECT_EQ(1, alive_on_team(fx.world(), 3));
+    EXPECT_EQ(4, fx.var(kMutSlotFighterCount))
+        << "no deployed characters: bots fill to the default 4";
+    EXPECT_EQ(4, alive_band_livings(fx.world()));
+    int bots = 0;
     for (const auto& uptr : fx.world().oblist)
     {
         const walker* w = uptr.get();
         if (w == nullptr || w->dead() || w->query_order() != Order::Living)
             continue;
-        EXPECT_TRUE(w == soldier || w == barbarian)
-            << "an uninvited living joined the OWN match: family "
-            << static_cast<int>(w->family()) << " team "
-            << static_cast<int>(w->team_num());
+        if (w->myguy != nullptr)
+            continue;
+        bots++;
+        EXPECT_EQ(255, w->real_team_num()) << "bots carry the 255 sentinel";
+        EXPECT_GE(w->team_num(), kBandBase);
     }
+    EXPECT_EQ(4, bots);
+}
 
-    // The two-roster match still runs and terminates (timeout ladder).
-    fx.world().mode.vars[kMutSlotScore + 3] = 4;
-    fx.world().set_level_tick_count(7200 - 2);
-    fx.tick(2);
-    EXPECT_TRUE(fx.world().game_ended);
-    EXPECT_EQ(3, fx.world().mode.winner_team);
+TEST_F(ModesMutant, authored_troops_always_strip_and_wildlife_stays)
+{
+    // The band conversion strips the whole authored score-range cast
+    // regardless of the lobby strip request (deployed rosters ARE the
+    // match); wildlife bytes 4-7 stay as arena identity.
+    MutantRig rig;
+    walker* troop = rig.fx.spawn_living(FAMILY_ORC, 1, 520, 200);
+    walker* gen = rig.fx.spawn_generator(FAMILY_TENT, 2, 432, 432);
+    walker* wildlife = rig.fx.spawn_living(FAMILY_ORC, 5, 400, 700);
+    ASSERT_NE(nullptr, troop);
+    ASSERT_NE(nullptr, gen);
+    ASSERT_NE(nullptr, wildlife);
+    // A death BEFORE the lazy init: the hook is inert while MODE_ID is 0.
+    walker* early = rig.fx.spawn_living(FAMILY_ORC, 1, 500, 300);
+    ASSERT_NE(nullptr, early);
+    early->set_dead(1);
+    early->death();
+    rig.fx.tick(1);
+    ASSERT_TRUE(rig.active());
+
+    EXPECT_TRUE(troop->dead()) << "authored score-range livings retire";
+    EXPECT_TRUE(gen->dead()) << "score-range generators retire";
+    EXPECT_FALSE(wildlife->dead()) << "wildlife (bytes 4-7) is arena identity";
+    EXPECT_FALSE(rig.a->dead()) << "roster walkers are never stripped";
+    EXPECT_EQ(1, alive_on_team(rig.fx.world(), 5));
+    EXPECT_EQ(4, rig.fx.var(kMutSlotFighterCount))
+        << "the stripped troop is not a competitor";
+
+    // A generator death mid-match is a non-Living event for the ledger.
+    walker* wild_gen = rig.fx.spawn_generator(FAMILY_TENT, 5, 500, 500);
+    ASSERT_NE(nullptr, wild_gen);
+    wild_gen->set_dead(1);
+    wild_gen->death();
+    for (int c = 0; c < kBandCount; ++c)
+        EXPECT_EQ(0, rig.score(c)) << "slot " << c;
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
-TEST_F(ModesMutant, troops_own_solo_roster_gets_one_bot_opponent)
+TEST_F(ModesMutant, matched_request_is_a_noop_for_band_bot_fill)
 {
-    // One deployed roster team under OWN: the roster team plus the FIRST
-    // authored non-roster team in index order, which the census behind the
-    // strip backfills with the mode's one-bot seat — a solo player needs an
-    // opponent, and exactly one is manufactured.
+    // TROOPS: FAIR's power model packs a 4-team plan (PLAN_BASE) that band
+    // bytes overflow, so the conversion's bot singles use the legacy
+    // session-difficulty level formula and never touch the MATCHED seam.
     ModesCtfWorld fx(kMutantLevelA);
-    fx.world().ctf_requested_strip_scenario_troops = 2;
-    fx.spawn_anchor(0, 96, 96);
-    fx.spawn_anchor(1, 544, 96);
-    fx.spawn_anchor(2, 96, 800);
-    walker* hero = fx.spawn_hero(FAMILY_SOLDIER, 2, 200, 200, 1);
-    fx.tick(1);
-
-    ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
-    EXPECT_EQ(1 + 4, fx.var(kMutSlotTeamMask))
-        << "the roster team plus the first authored non-roster team";
-    EXPECT_FALSE(hero->dead());
-    EXPECT_EQ(1, alive_on_team(fx.world(), 0)) << "exactly one bot opponent";
-    EXPECT_EQ(0, alive_on_team(fx.world(), 1));
-    EXPECT_EQ(1, alive_on_team(fx.world(), 2));
-    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
-}
-
-TEST_F(ModesMutant, troops_own_solo_roster_without_other_teams_demotes)
-{
-    // A solo roster under OWN on a map authoring nobody else: there is no
-    // team to draft as the opponent, so the lone-team mask reaches the
-    // fewer-than-two check and the level demotes to classic rules.
-    ModesCtfWorld fx(kMutantLevelA);
-    fx.world().ctf_requested_strip_scenario_troops = 2;
-    fx.spawn_anchor(0, 96, 96);
-    walker* hero = fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
-    fx.tick(1);
-
-    EXPECT_TRUE(fx.world().mode.init_attempted);
-    EXPECT_FALSE(fx.world().mode.active);
-    EXPECT_TRUE(has_script_error(fx.world(), "fewer than two competitors"));
-    EXPECT_FALSE(hero->dead());
-}
-
-TEST_F(ModesMutant, troops_own_with_no_rosters_keeps_the_bot_match)
-{
-    // Zero deployed rosters under OWN (a bot spectacle): the requested
-    // activation and the per-empty-team backfill stand exactly as before.
-    ModesCtfWorld fx(kMutantLevelA);
-    fx.world().ctf_requested_strip_scenario_troops = 2;
+    fx.arm_matched();
     fx.spawn_anchor(0, 96, 96);
     fx.spawn_anchor(1, 544, 96);
     fx.spawn_anchor(2, 96, 800);
     fx.spawn_anchor(3, 544, 800);
+    walker* hero = fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
+    ASSERT_NE(nullptr, hero);
     fx.tick(1);
-
     ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
-    EXPECT_EQ(15, fx.var(kMutSlotTeamMask));
-    EXPECT_EQ(1, alive_on_team(fx.world(), 0)) << "FFA seats, not squads";
-    EXPECT_EQ(1, alive_on_team(fx.world(), 1));
-    EXPECT_EQ(1, alive_on_team(fx.world(), 2));
-    EXPECT_EQ(1, alive_on_team(fx.world(), 3));
+
+    EXPECT_EQ(4, fx.var(kMutSlotFighterCount)) << "hero + 3 fill bots";
+    EXPECT_FALSE(hero->dead());
+    EXPECT_GE(hero->team_num(), kBandBase);
+    EXPECT_EQ(0, fx.var(kSlotMatchedTarget))
+        << "the band fill never censuses a matched target";
+    EXPECT_EQ(0, fx.var(kSlotMatchedPlan)) << "no seat ever solves";
+    EXPECT_EQ(0, fx.var(kSlotMatchedAnnounced));
+    EXPECT_EQ(0, count_notifications(fx.events, "TEAMS MATCHED"));
+    for (const auto& uptr : fx.world().oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        if (w->myguy != nullptr || w->stats() == nullptr)
+            continue;
+        EXPECT_EQ(2, w->stats()->level())
+            << "legacy formula: max(1, difficulty/100 + 1) at the default "
+               "100 percent";
+    }
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesMutant, slot_map_migration_pins)
+{
+    // The var namespace after the band conversion: SCORE moved from
+    // 16+team (4 slots) to 16+color_index (16 slots), IDS at 32..47,
+    // the bitmap at 48, MUTANT_TEAM (14) stores the band byte itself.
+    MutantRig rig;
+    rig.fx.tick(1);
+    ASSERT_TRUE(rig.active());
+
+    EXPECT_EQ(4, rig.fx.world().mode.vars[8]) << "FIGHTER_COUNT at slot 8";
+    EXPECT_EQ(4, bitmap_popcount(rig.fx.world().mode.vars[48]))
+        << "BAND_BITMAP at slot 48";
+    int occupied = 0;
+    for (int c = 0; c < kBandCount; ++c)
+    {
+        const std::int32_t id =
+            rig.fx.world().mode.vars[static_cast<std::size_t>(32 + c)];
+        if (id == 0)
+            continue;
+        occupied++;
+        walker* w = rig.fx.world().find_by_id(static_cast<std::uint32_t>(id));
+        ASSERT_NE(nullptr, w) << "IDS slot " << c << " resolves";
+        EXPECT_EQ(kBandBase + c, w->team_num());
+    }
+    EXPECT_EQ(4, occupied) << "IDS range 32..47 holds the competitors";
+
+    // A mutant kill writes 16 + color index, and MUTANT_TEAM carries the
+    // crowned competitor's band byte (int32 fits the full byte).
+    rig.crown_a();
+    const int a_slot = rig.slot_of(rig.a);
+    EXPECT_EQ(kBandBase + a_slot, rig.fx.world().mode.vars[14])
+        << "MUTANT_TEAM at slot 14 stores the band byte";
+    rig.slay(rig.a, rig.c);
+    EXPECT_EQ(1, rig.fx.world().mode.vars[static_cast<std::size_t>(16 + a_slot)])
+        << "SCORE range 16..31 is keyed by color index";
 }
 
 // ===========================================================================
@@ -426,7 +601,9 @@ TEST_F(ModesMutant, first_blood_crowns_the_killer_with_full_buffs)
     const float base_damage = rig.a->damage();
 
     rig.crown_a();
-    EXPECT_EQ(0 + 1, rig.fx.var(kMutSlotMutantTeam1));
+    const int a_slot = rig.slot_of(rig.a);
+    EXPECT_EQ(kBandBase + a_slot, rig.mutant_team())
+        << "MUTANT_TEAM stores the assigned band byte";
     EXPECT_EQ(static_cast<std::int32_t>(base_damage * 256.0f),
               rig.fx.var(kMutSlotMutantBaseDamage))
         << "pre-buff damage banks x256 for exact restore";
@@ -439,20 +616,46 @@ TEST_F(ModesMutant, first_blood_crowns_the_killer_with_full_buffs)
     EXPECT_EQ(static_cast<std::int32_t>(rig.a->entity_id()),
               rig.fx.world().mode.beacons[0].entity_id)
         << "beacon slot 0 marks the mutant";
-    EXPECT_EQ(0, rig.fx.world().mode.beacons[0].team);
-    EXPECT_TRUE(has_notification(rig.fx.events, "RED IS THE MUTANT!"));
-    EXPECT_EQ(0, rig.score(0)) << "first blood itself scores nothing";
+    const std::string crowned =
+        std::string(og::sim::team_color_name(kBandBase + a_slot)) +
+        " IS THE MUTANT!";
+    EXPECT_TRUE(has_notification(rig.fx.events, crowned))
+        << "expected \"" << crowned << "\" (band color name)";
+    EXPECT_EQ(0, rig.score(a_slot)) << "first blood itself scores nothing";
 }
 
-TEST_F(ModesMutant, ffa_environment_and_summon_deaths_crown_nobody)
+TEST_F(ModesMutant, crown_beacon_carries_a_band_byte)
+{
+    MutantRig rig;
+    rig.fx.tick(1);
+    ASSERT_TRUE(rig.active());
+    rig.crown_a();
+    const int a_slot = rig.slot_of(rig.a);
+
+    EXPECT_EQ(static_cast<std::int32_t>(rig.a->entity_id()),
+              rig.fx.world().mode.beacons[0].entity_id);
+    EXPECT_EQ(kBandBase + a_slot,
+              static_cast<int>(rig.fx.world().mode.beacons[0].team))
+        << "the crown beacon rides the widened og.set_beacon with the "
+           "band byte";
+
+    // The per-tick re-assert tints from MUTANT_TEAM, never the worn byte:
+    // berserk-charm residue parks the mutant on a low byte the widened
+    // guard would refuse, and the beacon must not flicker off the band.
+    rig.a->set_team_num(3);
+    rig.fx.tick(1);
+    EXPECT_EQ(kBandBase + a_slot,
+              static_cast<int>(rig.fx.world().mode.beacons[0].team))
+        << "upkeep keeps the ASSIGNED byte while the walker wears residue";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesMutant, ffa_environment_summon_and_unregistered_deaths_crown_nobody)
 {
     // Suicide is the environment shape by construction: the engine's
     // root-team gate means self-damage never lands, so a self-inflicted
     // death always arrives with a nil killer.
     MutantRig rig;
-    walker* pet = rig.fx.spawn_living(FAMILY_SKELETON, 2, 232, 232);
-    ASSERT_NE(nullptr, pet);
-    pet->set_owner(rig.c);
     rig.fx.tick(1);
     ASSERT_TRUE(rig.active());
 
@@ -462,8 +665,47 @@ TEST_F(ModesMutant, ffa_environment_and_summon_deaths_crown_nobody)
     EXPECT_EQ(kPhaseFfa, rig.phase());
 
     // A summon victim decides nothing even with a live killer.
+    walker* pet = rig.fx.spawn_living(FAMILY_SKELETON, rig.c->team_num(),
+                                      232, 232);
+    ASSERT_NE(nullptr, pet);
+    pet->set_owner(rig.c);
     rig.slay(rig.a, pet);
     EXPECT_EQ(kPhaseFfa, rig.phase()) << "owned victims never crown";
+
+    // A wildlife killer (a stamp outside the band) decides nothing.
+    walker* wolf = rig.fx.spawn_living(FAMILY_ORC, 5, rig.c->xpos() + 32,
+                                       rig.c->ypos());
+    ASSERT_NE(nullptr, wolf);
+    rig.slay(wolf, rig.c);
+    EXPECT_EQ(kPhaseFfa, rig.phase()) << "out-of-band stamps crown nobody";
+
+    // An UNREGISTERED killer wearing a registered byte (the charmed-
+    // wildlife shape) cannot take the crown — only competitors mutate.
+    walker* stray = rig.fx.spawn_living(FAMILY_ORC, 0, rig.d->xpos() + 32,
+                                        rig.d->ypos());
+    ASSERT_NE(nullptr, stray);
+    stray->set_team_num(rig.a->team_num());
+    rig.slay(stray, rig.d);
+    EXPECT_EQ(kPhaseFfa, rig.phase())
+        << "a killer with no IDS slot crowns nobody";
+
+    // A mutual kill: the killer fell with its victim, so nobody can wear
+    // the crown.
+    ASSERT_NE(nullptr, rig.a->stats());
+    rig.a->stats()->set_hitpoints(100.0f);
+    walker* joiner = rig.fx.spawn_hero(FAMILY_SOLDIER, 0, 300, 300, 77);
+    ASSERT_NE(nullptr, joiner);
+    rig.fx.tick(1);
+    ASSERT_NE(-1, rig.slot_of(joiner));
+    rig.a->stats()->set_hitpoints(100.0f);
+    joiner->attack(rig.a);  // stamps the joiner's band byte
+    ASSERT_LT(rig.a->stats()->hitpoints(), 100.0f);
+    joiner->set_dead(1);  // the killer falls with its victim
+    rig.a->set_dead(1);
+    rig.a->death();
+    EXPECT_EQ(kPhaseFfa, rig.phase())
+        << "a dead killer cannot wear the crown";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
 TEST_F(ModesMutant, killing_the_mutant_transfers_crown_scores_and_heals)
@@ -473,6 +715,7 @@ TEST_F(ModesMutant, killing_the_mutant_transfers_crown_scores_and_heals)
     ASSERT_TRUE(rig.active());
     rig.crown_a();
     ASSERT_NE(nullptr, rig.c->stats());
+    const int c_slot = rig.slot_of(rig.c);
     const float c_base_damage = rig.c->damage();
     rig.c->stats()->set_hitpoints(10.0f);
     const float a_base =
@@ -483,10 +726,8 @@ TEST_F(ModesMutant, killing_the_mutant_transfers_crown_scores_and_heals)
     EXPECT_EQ(kPhaseMutant, rig.phase());
     EXPECT_EQ(static_cast<std::int32_t>(rig.c->entity_id()), rig.mutant_id())
         << "mutancy transfers to the killer";
-    EXPECT_EQ(2 + 1, rig.fx.var(kMutSlotMutantTeam1));
-    EXPECT_EQ(1, rig.score(2)) << "killing the Mutant scores 1";
-    EXPECT_TRUE(has_score_change(rig.fx.events, 2, 1))
-        << "og.award_score(team, 1) rides beside the engine damage credit";
+    EXPECT_EQ(kBandBase + c_slot, rig.mutant_team());
+    EXPECT_EQ(1, rig.score(c_slot)) << "killing the Mutant scores 1";
     EXPECT_EQ(a_base, rig.a->damage())
         << "the old mutant's corpse gets its base damage back";
     EXPECT_FALSE(rig.a->stats()->query_bit_flags(kMutantBit));
@@ -496,7 +737,8 @@ TEST_F(ModesMutant, killing_the_mutant_transfers_crown_scores_and_heals)
         << "the heir heals kill_heal (15) clamped";
     EXPECT_EQ(static_cast<std::int32_t>(rig.c->entity_id()),
               rig.fx.world().mode.beacons[0].entity_id);
-    EXPECT_EQ(2, rig.fx.world().mode.beacons[0].team);
+    EXPECT_EQ(kBandBase + c_slot,
+              static_cast<int>(rig.fx.world().mode.beacons[0].team));
 }
 
 TEST_F(ModesMutant, mutant_environment_death_reverts_the_pool)
@@ -510,6 +752,7 @@ TEST_F(ModesMutant, mutant_environment_death_reverts_the_pool)
     rig.a->death();
     EXPECT_EQ(kPhaseFfa, rig.phase()) << "environment death reverts to FFA";
     EXPECT_EQ(0, rig.mutant_id());
+    EXPECT_EQ(0, rig.mutant_team());
     EXPECT_EQ(0, rig.fx.world().mode.beacons[0].entity_id)
         << "the beacon clears on revert";
     EXPECT_FALSE(rig.a->stats()->query_bit_flags(kMutantBit));
@@ -541,20 +784,51 @@ TEST_F(ModesMutant, mutant_kills_score_and_heal_the_mutant)
     rig.fx.tick(1);
     ASSERT_TRUE(rig.active());
     rig.crown_a();
+    const int a_slot = rig.slot_of(rig.a);
     rig.a->stats()->set_hitpoints(20.0f);
 
     rig.slay(rig.a, rig.c);
-    EXPECT_EQ(1, rig.score(0)) << "kills AS the Mutant score 1";
-    EXPECT_TRUE(has_score_change(rig.fx.events, 0, 1));
+    EXPECT_EQ(1, rig.score(a_slot)) << "kills AS the Mutant score 1";
     EXPECT_EQ(35.0f, rig.a->stats()->hitpoints())
         << "each kill heals kill_heal (15)";
 
     // A summon victim scores nothing.
-    walker* pet = rig.fx.spawn_living(FAMILY_SKELETON, 3, 232, 232);
+    walker* pet = rig.fx.spawn_living(FAMILY_SKELETON, rig.d->team_num(),
+                                      232, 232);
     ASSERT_NE(nullptr, pet);
     pet->set_owner(rig.d);
     rig.slay(rig.a, pet);
-    EXPECT_EQ(1, rig.score(0)) << "summon deaths never score";
+    EXPECT_EQ(1, rig.score(a_slot)) << "summon deaths never score";
+}
+
+TEST_F(ModesMutant, mutant_phase_deaths_without_the_mutant_score_nothing)
+{
+    MutantRig rig;
+    rig.fx.tick(1);
+    ASSERT_TRUE(rig.active());
+    // A cross-phase stamp: c chips d during FFA, the crown lands, d dies
+    // seconds later — the ACCEPTED 48-tick attribution resolves killer c,
+    // and under mutant-phase rules a non-mutant killer scores nothing.
+    ASSERT_NE(nullptr, rig.d->stats());
+    rig.d->stats()->set_hitpoints(100.0f);
+    rig.c->attack(rig.d);
+    ASSERT_LT(rig.d->stats()->hitpoints(), 100.0f);
+    rig.crown_a();
+    const int c_slot = rig.slot_of(rig.c);
+
+    rig.d->set_dead(1);
+    rig.d->death();
+    EXPECT_EQ(0, rig.score(c_slot))
+        << "only the Mutant's kills score in the mutant phase";
+    EXPECT_EQ(kPhaseMutant, rig.phase()) << "no transfer, no revert";
+
+    // An environment death of a competitor scores nobody either.
+    rig.c->set_dead(1);
+    rig.c->death();
+    for (int c = 0; c < kBandCount; ++c)
+        EXPECT_EQ(0, rig.score(c)) << "slot " << c;
+    EXPECT_EQ(kPhaseMutant, rig.phase());
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
 // ===========================================================================
@@ -596,7 +870,8 @@ TEST_F(ModesMutant, damage_matrix_blocks_only_nonmutant_on_nonmutant)
 
     // Arm 4 (owner-chain inheritance): the Mutant's summon hurts a
     // competitor; a competitor's summon cannot hurt another competitor.
-    walker* mutant_pet = rig.fx.spawn_living(FAMILY_SKELETON, 0, 260, 200);
+    walker* mutant_pet = rig.fx.spawn_living(FAMILY_SKELETON,
+                                             rig.a->team_num(), 260, 200);
     ASSERT_NE(nullptr, mutant_pet);
     mutant_pet->set_owner(rig.a);
     rig.c->stats()->set_hitpoints(100.0f);
@@ -604,13 +879,24 @@ TEST_F(ModesMutant, damage_matrix_blocks_only_nonmutant_on_nonmutant)
     EXPECT_LT(rig.c->stats()->hitpoints(), 100.0f)
         << "the Mutant's summon inherits its matrix";
 
-    walker* c_pet = rig.fx.spawn_living(FAMILY_SKELETON, 2, 260, 232);
+    walker* c_pet = rig.fx.spawn_living(FAMILY_SKELETON, rig.c->team_num(),
+                                        260, 232);
     ASSERT_NE(nullptr, c_pet);
     c_pet->set_owner(rig.c);
     rig.d->stats()->set_hitpoints(100.0f);
     c_pet->attack(rig.d);
     EXPECT_EQ(100.0f, rig.d->stats()->hitpoints())
         << "a competitor's summon is void against competitors";
+
+    // Arm 5: non-living targets stay damageable — a generator is not a
+    // living-vs-living pair, so the gate keeps out of the way.
+    walker* wild_gen = rig.fx.spawn_generator(FAMILY_TENT, 5, 500, 500);
+    ASSERT_NE(nullptr, wild_gen);
+    ASSERT_NE(nullptr, wild_gen->stats());
+    const float gen_hp = wild_gen->stats()->hitpoints();
+    rig.c->attack(wild_gen);
+    EXPECT_LT(wild_gen->stats()->hitpoints(), gen_hp)
+        << "structures stay damageable in the mutant phase";
 }
 
 // The turn-undead instant kill used to skip walker::attack's hit path
@@ -626,11 +912,14 @@ TEST_F(ModesMutant, turn_undead_on_a_competitor_is_cancelled_by_the_matrix)
     rig.crown_a();
     ASSERT_EQ(kPhaseMutant, rig.phase());
 
-    // Two NON-mutant competitors: the crown sits on team 0.
+    // A cleric bystander and an undead COMPETITOR (deployed hero, adopted
+    // onto a free band byte by the mid-join sweep); the crown stays on a.
     walker* cleric = rig.fx.spawn_living(FAMILY_CLERIC, 2, 200, 264);
-    walker* undead = rig.fx.spawn_living(FAMILY_SKELETON, 3, 216, 264);
+    walker* undead = rig.fx.spawn_hero(FAMILY_SKELETON, 3, 216, 264, 9);
     ASSERT_NE(nullptr, cleric);
     ASSERT_NE(nullptr, undead);
+    rig.fx.tick(1);
+    ASSERT_NE(-1, rig.slot_of(undead)) << "the undead joiner is adopted";
     ASSERT_NE(nullptr, undead->stats());
     undead->stats()->set_level(1);
     const float hp_before = undead->stats()->hitpoints();
@@ -643,13 +932,12 @@ TEST_F(ModesMutant, turn_undead_on_a_competitor_is_cancelled_by_the_matrix)
     EXPECT_EQ(0, undead->death_called());
     EXPECT_EQ(hp_before, undead->stats()->hitpoints());
     EXPECT_EQ(kPhaseMutant, rig.phase()) << "no transfer, no revert";
-    EXPECT_EQ(0, rig.score(2)) << "a cancelled kill scores nothing";
 
     // The Mutant itself is still a legal turn-undead target: crown the
     // undead competitor and the same cleric may kill it.
     rig.fx.world().mode.vars[kMutSlotMutantEntity] =
         static_cast<std::int32_t>(undead->entity_id());
-    rig.fx.world().mode.vars[kMutSlotMutantTeam1] = 3 + 1;
+    rig.fx.world().mode.vars[kMutSlotMutantTeam] = undead->team_num();
     ASSERT_GT(static_cast<int>(cleric->turn_undead(200, 1)), 0)
         << "an undead Mutant is a legal target for turn undead";
     EXPECT_TRUE(undead->dead());
@@ -737,6 +1025,7 @@ TEST_F(ModesMutant, decay_death_after_a_recent_chip_transfers_to_the_chipper)
     ASSERT_TRUE(rig.active());
     rig.crown_a();
     rig.a->stats()->set_heal_per_round(0.0f);
+    const int c_slot = rig.slot_of(rig.c);
 
     // C chips the Mutant (a landed, gate-approved hit stamps the D3
     // channel), then decay finishes it within the 48-tick window.
@@ -750,7 +1039,7 @@ TEST_F(ModesMutant, decay_death_after_a_recent_chip_transfers_to_the_chipper)
     EXPECT_EQ(kPhaseMutant, rig.phase())
         << "D3 recency: the chipper inherits the crown from a decay death";
     EXPECT_EQ(static_cast<std::int32_t>(rig.c->entity_id()), rig.mutant_id());
-    EXPECT_EQ(1, rig.score(2));
+    EXPECT_EQ(1, rig.score(c_slot));
 }
 
 // ===========================================================================
@@ -779,10 +1068,13 @@ void blink_mage(ModesCtfWorld& fx, walker* mage, int* dx, int* dy)
 TEST_F(ModesMutant, mutant_level_blink_is_clamped_to_160px_and_ignores_markers)
 {
     MutantRig rig(840);
-    walker* mage = rig.fx.spawn_living(FAMILY_MAGE, 0, 400, 400);
-    ASSERT_NE(nullptr, mage);
     rig.fx.tick(1);
     ASSERT_TRUE(rig.active());
+    // Spawned after init so the strip does not retire the bystander (the
+    // spawn also exercises the shipped on_entity_spawn adoption arm — no
+    // guy, no adoption).
+    walker* mage = rig.fx.spawn_living(FAMILY_MAGE, 0, 400, 400);
+    ASSERT_NE(nullptr, mage);
 
     // A full-map recall marker: the clamp must ignore it (a cross-map
     // recall is exactly the escape the clamp forbids).
@@ -809,10 +1101,10 @@ TEST_F(ModesMutant, off_manifest_level_blink_keeps_core_marker_recall)
     // is manifest-gated, so the core walker::teleport marker recall must
     // still work here (and on the campaign's other modes).
     MutantRig rig;
-    walker* mage = rig.fx.spawn_living(FAMILY_MAGE, 0, 400, 400);
-    ASSERT_NE(nullptr, mage);
     rig.fx.tick(1);
     ASSERT_TRUE(rig.active());
+    walker* mage = rig.fx.spawn_living(FAMILY_MAGE, 0, 400, 400);
+    ASSERT_NE(nullptr, mage);
 
     walker* marker = rig.fx.world().add_ob(Order::FX, FAMILY_MARKER);
     ASSERT_NE(nullptr, marker);
@@ -831,10 +1123,11 @@ TEST_F(ModesMutant, off_manifest_level_blink_keeps_core_marker_recall)
 TEST_F(ModesMutant, skeleton_tunnel_clamps_to_160_only_past_its_own_range)
 {
     MutantRig rig(840);
+    rig.fx.tick(1);
+    ASSERT_TRUE(rig.active());
     walker* skel = rig.fx.spawn_living(FAMILY_SKELETON, 0, 400, 400);
     ASSERT_NE(nullptr, skel);
     rig.fx.tick(10);  // ANI_SKEL_GROW completes
-    ASSERT_TRUE(rig.active());
     ASSERT_NE(nullptr, skel->stats());
     skel->stats()->set_level(20);  // family range 360 -> clamped 160
 
@@ -864,35 +1157,45 @@ TEST_F(ModesMutant, skeleton_tunnel_clamps_to_160_only_past_its_own_range)
 // AI director (both phases)
 // ===========================================================================
 
-TEST_F(ModesMutant, ffa_director_repairs_idle_bots_onto_nearest_competitor)
+TEST_F(ModesMutant, ffa_director_repairs_backstop_wildlife_onto_a_competitor)
 {
-    ModesCtfWorld fx(kMutantLevelA);
-    fx.spawn_anchor(0, 96, 96);
-    fx.spawn_anchor(1, 544, 96);
-    walker* bot = fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200, ACT_RANDOM);
-    walker* near_foe = fx.spawn_living(FAMILY_ORC, 1, 300, 200, ACT_RANDOM);
-    walker* far_foe = fx.spawn_living(FAMILY_ORC, 1, 700, 800, ACT_RANDOM);
-    ASSERT_NE(nullptr, bot);
-    ASSERT_NE(nullptr, near_foe);
-    ASSERT_NE(nullptr, far_foe);
-    fx.tick(1);
-    ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
+    // The engine's pre-act backstop (find_far_foe) refills empty foes
+    // before the post-act director runs, and it happily hands out
+    // wildlife — those broken foes are what the repair arm exists for.
+    MutantRig rig(kMutantLevelA, ACT_RANDOM);
+    walker* wildlife = rig.fx.spawn_living(FAMILY_ORC, 5, 400, 700);
+    ASSERT_NE(nullptr, wildlife);
+    rig.fx.tick(1);
+    ASSERT_TRUE(rig.active());
+    for (walker* w : {rig.a, rig.b, rig.c, rig.d})
+        w->set_act_type(ACT_SIT);
+    wildlife->set_act_type(ACT_SIT);
+    rig.a->setxy(200, 200);
+    wildlife->setxy(230, 200);  // nearest overall — the backstop's pick
+    rig.b->setxy(280, 200);     // nearest COMPETITOR — the repair's pick
+    rig.c->setxy(700, 800);
+    rig.d->setxy(720, 800);
 
-    bot->set_foe(nullptr);
-    align_before_cadence(fx.world());
-    fx.tick(1);
-    EXPECT_EQ(near_foe->entity_id(), bot->foe_id())
-        << "FFA repair: nearest competitor by Manhattan";
+    rig.a->set_foe(nullptr);
+    align_before_cadence(rig.fx.world());
+    rig.fx.tick(1);
+    EXPECT_EQ(rig.b->entity_id(), rig.a->foe_id())
+        << "the wildlife foe the backstop handed out is repaired onto the "
+           "nearest COMPETITOR (backstop alone would keep the closer orc)";
 }
 
 TEST_F(ModesMutant, hunters_converge_on_the_mutant_and_players_stay_free)
 {
     MutantRig rig(kMutantLevelA, ACT_RANDOM);
-    walker* player = rig.fx.spawn_living(FAMILY_SOLDIER, 2, 260, 260,
-                                         ACT_CONTROL);
-    ASSERT_NE(nullptr, player);
     rig.fx.tick(1);
     ASSERT_TRUE(rig.active());
+    // A mid-join player seat: adopted by the per-tick sweep, never steered
+    // (the director skips ACT_CONTROL).
+    walker* player = rig.fx.spawn_hero(FAMILY_SOLDIER, 2, 260, 260, 5,
+                                       ACT_CONTROL);
+    ASSERT_NE(nullptr, player);
+    rig.fx.tick(1);
+    ASSERT_NE(-1, rig.slot_of(player)) << "the joiner is adopted";
     rig.crown_a();
 
     rig.c->set_foe(nullptr);
@@ -941,94 +1244,239 @@ TEST_F(ModesMutant, mutant_bot_culls_the_weakest_competitor_in_radius)
 }
 
 // ===========================================================================
-// Respawns
+// Respawns (rotated pools, band-byte retention, D12 re-assert)
 // ===========================================================================
 
-TEST_F(ModesMutant, dead_competitor_revives_at_anchor_with_cursor)
+TEST_F(ModesMutant, dead_competitor_revives_on_a_rotated_pool)
 {
-    ModesCtfWorld fx(kMutantLevelA);
-    fx.spawn_anchor(0, 256, 256);
-    fx.spawn_anchor(1, 544, 800);
-    walker* hero = fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 7);
-    fx.spawn_living(FAMILY_SOLDIER, 1, 400, 700);
-    fx.world().ctf_requested_respawn_ticks = 10;
-    fx.tick(1);
-    ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
-    ASSERT_EQ(10, fx.var(kMutSlotRespawnTicks));
+    MutantRig rig;
+    rig.fx.world().ctf_requested_respawn_ticks = 10;
+    rig.fx.tick(1);
+    ASSERT_TRUE(rig.active());
+    ASSERT_EQ(10, rig.fx.var(kMutSlotRespawnTicks));
+    const int byte = rig.b->team_num();
 
-    hero->set_dead(1);
-    fx.tick(1);
-    EXPECT_EQ(1u, fx.world().respawn.respawn_queue.size())
-        << "everyone schedules (Lua eligibility)";
-    fx.tick(10);
-    EXPECT_FALSE(hero->dead());
-    EXPECT_EQ(256, hero->xpos()) << "anchor-cursor placement";
-    EXPECT_EQ(256, hero->ypos());
+    rig.slay(rig.a, rig.b);
+    // Synchronous scheduling in on_entity_death: already queued on the
+    // death tick, so respawn_retains_player_control's scripted arm holds.
+    EXPECT_TRUE(queue_holds(rig.fx.world(), rig.b))
+        << "the corpse is queued before the next tick";
+    rig.b->setxy(320, 480);  // park the corpse away from every pool
+    rig.fx.tick(12);
+
+    EXPECT_FALSE(rig.b->dead());
+    EXPECT_EQ(byte, rig.b->team_num()) << "the competitor revives on its byte";
+    EXPECT_EQ(255, rig.b->real_team_num());
+    // The revive repositions onto one of the four anchor POOLS (exact
+    // anchor when clear, else the deterministic ring fallback within 3
+    // tiles = 48 px).
+    const int anchors[4][2] = {{96, 96}, {544, 96}, {96, 800}, {544, 800}};
+    bool on_a_pool = false;
+    for (const auto& anchor : anchors)
+    {
+        if (std::abs(rig.b->xpos() - anchor[0]) <= 48 &&
+            std::abs(rig.b->ypos() - anchor[1]) <= 48)
+        {
+            on_a_pool = true;
+        }
+    }
+    EXPECT_TRUE(on_a_pool) << "revive landed at (" << rig.b->xpos() << ","
+                           << rig.b->ypos() << "), not on a pool";
+}
+
+TEST_F(ModesMutant, charmed_death_revive_reasserts_the_slot_byte)
+{
+    // D12: revive_player_walker clears real_team_num to 255 but restores
+    // team only for bytes < 4, so a competitor that dies while charmed
+    // would revive wearing the charmer's byte forever — on_respawn
+    // re-asserts the slot's assigned byte.
+    MutantRig rig;
+    rig.fx.world().ctf_requested_respawn_ticks = 10;
+    rig.fx.tick(1);
+    ASSERT_TRUE(rig.active());
+    const int b_slot = rig.slot_of(rig.b);
+
+    // b dies while charmed onto c's byte.
+    rig.b->set_real_team_num(static_cast<unsigned char>(kBandBase + b_slot));
+    rig.b->set_team_num(rig.c->team_num());
+    rig.slay(rig.a, rig.b);
+    rig.fx.tick(12);
+
+    EXPECT_FALSE(rig.b->dead());
+    EXPECT_EQ(kBandBase + b_slot, rig.b->team_num())
+        << "on_respawn re-asserts the assigned byte";
+    EXPECT_EQ(255, rig.b->real_team_num());
+}
+
+TEST_F(ModesMutant, silent_corpse_backstop_schedules_and_revives)
+{
+    MutantRig rig;
+    rig.fx.world().ctf_requested_respawn_ticks = 10;
+    rig.fx.tick(1);
+    ASSERT_TRUE(rig.active());
+
+    rig.b->set_dead(1);  // bypasses walker::death and the death hook
+    rig.fx.tick(1);
+    EXPECT_TRUE(queue_holds(rig.fx.world(), rig.b))
+        << "the per-tick backstop schedules silent corpses";
+    rig.fx.tick(11);
+    EXPECT_FALSE(rig.b->dead());
+}
+
+// ===========================================================================
+// Mid-join adoption
+// ===========================================================================
+
+TEST_F(ModesMutant, midjoin_hero_adopts_a_free_band_byte)
+{
+    MutantRig rig;
+    rig.fx.tick(1);
+    ASSERT_TRUE(rig.active());
+    ASSERT_EQ(4, bitmap_popcount(rig.bitmap()));
+
+    walker* joiner = rig.fx.spawn_hero(FAMILY_SOLDIER, 1, 300, 300, 500);
+    ASSERT_NE(nullptr, joiner);
+    rig.fx.tick(1);
+
+    const int slot = rig.slot_of(joiner);
+    ASSERT_NE(-1, slot) << "the joiner is registered";
+    EXPECT_EQ(kBandBase + slot, joiner->team_num());
+    EXPECT_EQ(0, rig.score(slot));
+    EXPECT_EQ(5, bitmap_popcount(rig.bitmap()));
+    EXPECT_EQ(5, rig.fx.var(kMutSlotFighterCount));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
 // ===========================================================================
 // Win / timeout / HUD
 // ===========================================================================
 
-TEST_F(ModesMutant, score_limit_win_and_timeout_lowest_byte_tiebreak)
+TEST_F(ModesMutant, score_limit_win_and_timeout_lowest_index_tiebreak)
 {
-    // Score limit first.
+    // Score limit first: the winner byte is the competitor's band byte
+    // through the widened og.declare_winner, and a live myguy on that
+    // byte is a player win (next_level advances).
     {
         MutantRig rig;
         rig.fx.tick(1);
         ASSERT_TRUE(rig.active());
-        rig.fx.world().mode.vars[kMutSlotScore + 2] = 10;
+        const int c_slot = rig.slot_of(rig.c);
+        rig.set_score(c_slot, 10);
         rig.fx.tick(1);
         EXPECT_TRUE(rig.fx.world().game_ended);
-        EXPECT_EQ(2, rig.fx.world().mode.winner_team);
-        EXPECT_EQ(kMutantLevelA, rig.fx.world().next_level)
-            << "bot competitors: rematch shape";
-        EXPECT_TRUE(has_notification(rig.fx.events, "BLUE TEAM WINS!"));
+        EXPECT_EQ(kBandBase + c_slot, rig.fx.world().mode.winner_team)
+            << "og.declare_winner carries the band byte";
+        EXPECT_TRUE(rig.fx.world().mode.winner_is_player);
+        EXPECT_EQ(kMutantLevelA + 1, rig.fx.world().next_level)
+            << "player win advances";
+        const std::string wins =
+            std::string(og::sim::team_color_name(kBandBase + c_slot)) +
+            " TEAM WINS!";
+        EXPECT_TRUE(has_notification(rig.fx.events, wins))
+            << "expected \"" << wins << "\"";
     }
-    // Timeout leader; an all-square tie resolves to the lowest team byte.
+    // Timeout leader; an all-square tie resolves to the lowest color
+    // index. (The old model's m_score middle rung is gone: band
+    // competitors never touch the 4-wide m_score.)
     {
         MutantRig rig;
         rig.fx.tick(1);
         ASSERT_TRUE(rig.active());
-        rig.fx.world().mode.vars[kMutSlotScore + 1] = 4;
-        rig.fx.world().mode.vars[kMutSlotScore + 3] = 4;
+        const int c1 = rig.occupied_slot();
+        const int c2 = rig.occupied_slot(c1 + 1);
+        ASSERT_NE(-1, c1);
+        ASSERT_NE(-1, c2);
+        rig.set_score(c1, 4);
+        rig.set_score(c2, 4);
         rig.fx.world().set_level_tick_count(7200 - 2);
         rig.fx.tick(2);
         EXPECT_TRUE(rig.fx.world().game_ended);
-        EXPECT_EQ(1, rig.fx.world().mode.winner_team)
-            << "leading score wins; the tie resolves to the lowest byte";
-    }
-    // m_score is the middle rung between the mode metric and the team byte
-    // (modes.md §8.2, the same ladder Soccer/Onslaught/CTF spell inline).
-    {
-        MutantRig rig;
-        rig.fx.tick(1);
-        ASSERT_TRUE(rig.active());
-        rig.fx.world().mode.vars[kMutSlotScore + 1] = 4;
-        rig.fx.world().mode.vars[kMutSlotScore + 3] = 4;
-        rig.fx.world().m_score[3] = 700;
-        rig.fx.world().set_level_tick_count(7200 - 2);
-        rig.fx.tick(2);
-        EXPECT_TRUE(rig.fx.world().game_ended);
-        EXPECT_EQ(3, rig.fx.world().mode.winner_team)
-            << "equal mutant score breaks on m_score before the team byte";
+        EXPECT_EQ(kBandBase + c1, rig.fx.world().mode.winner_team)
+            << "leading score wins; the tie resolves to the lowest index";
     }
 }
 
-TEST_F(ModesMutant, hud_lines_star_the_mutant)
+TEST_F(ModesMutant, bot_only_win_is_rematch_shape)
+{
+    ModesCtfWorld fx(kMutantLevelA);
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(1, 544, 96);
+    fx.spawn_anchor(2, 96, 800);
+    fx.spawn_anchor(3, 544, 800);
+    fx.tick(1);
+    ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
+    int winner_slot = -1;
+    for (int c = 0; c < kBandCount; ++c)
+    {
+        if (fx.world().mode.vars[static_cast<std::size_t>(kMutSlotIds + c)] !=
+            0)
+        {
+            winner_slot = c;
+            break;
+        }
+    }
+    ASSERT_NE(-1, winner_slot);
+
+    fx.world().mode.vars[static_cast<std::size_t>(kMutSlotScore +
+                                                  winner_slot)] = 10;
+    fx.tick(1);
+    EXPECT_TRUE(fx.world().game_ended);
+    EXPECT_EQ(kBandBase + winner_slot, fx.world().mode.winner_team);
+    EXPECT_FALSE(fx.world().mode.winner_is_player);
+    EXPECT_EQ(kMutantLevelA, fx.world().next_level)
+        << "bot winners: rematch shape";
+}
+
+TEST_F(ModesMutant, hud_carries_leader_and_runnerup_and_stars_the_mutant)
 {
     MutantRig rig;
     rig.fx.tick(1);
     ASSERT_TRUE(rig.active());
-    EXPECT_STREQ("RED 0/10", rig.fx.world().mode.hud[0].text.data());
-    EXPECT_EQ(0, rig.fx.world().mode.hud[0].team);
-    EXPECT_STREQ("BLUE 0/10", rig.fx.world().mode.hud[2].text.data());
+    const int c1 = rig.occupied_slot();
+    const int c2 = rig.occupied_slot(c1 + 1);
+    ASSERT_NE(-1, c1);
+    ASSERT_NE(-1, c2);
 
+    // All-square standings: leader = lowest occupied index, runner-up next.
+    const std::string first =
+        std::string(og::sim::team_color_name(kBandBase + c1)) + " 0/10";
+    const std::string second =
+        std::string(og::sim::team_color_name(kBandBase + c2)) + " 0/10";
+    EXPECT_STREQ(first.c_str(), rig.fx.world().mode.hud[0].text.data());
+    EXPECT_EQ(kBandBase + c1,
+              static_cast<int>(rig.fx.world().mode.hud[0].team))
+        << "the leader row is tinted with the band byte";
+    EXPECT_STREQ(second.c_str(), rig.fx.world().mode.hud[1].text.data());
+    EXPECT_EQ(kBandBase + c2,
+              static_cast<int>(rig.fx.world().mode.hud[1].team));
+
+    // The crown wearer's row is starred once it leads.
     rig.crown_a();
+    const int a_slot = rig.slot_of(rig.a);
+    rig.set_score(a_slot, 1);
     rig.fx.tick(1);
-    EXPECT_STREQ("RED 0/10 *", rig.fx.world().mode.hud[0].text.data())
+    const std::string starred =
+        std::string(og::sim::team_color_name(kBandBase + a_slot)) +
+        " 1/10 *";
+    EXPECT_STREQ(starred.c_str(), rig.fx.world().mode.hud[0].text.data())
         << "the crown wearer's line is starred";
-    EXPECT_STREQ("GREEN 0/10", rig.fx.world().mode.hud[1].text.data());
+    EXPECT_EQ(kBandBase + a_slot,
+              static_cast<int>(rig.fx.world().mode.hud[0].team));
+
+    // A later color index overtaking the runner-up (but not the leader)
+    // displaces second place in the standings.
+    const int s3 = rig.occupied_slot(c2 + 1);
+    ASSERT_NE(-1, s3);
+    rig.set_score(c1, 5);
+    rig.set_score(c2, 0);
+    rig.set_score(s3, 2);
+    rig.set_score(a_slot, a_slot == c1 ? 5 : (a_slot == s3 ? 2 : 0));
+    rig.fx.tick(1);
+    EXPECT_EQ(kBandBase + c1,
+              static_cast<int>(rig.fx.world().mode.hud[0].team));
+    EXPECT_EQ(kBandBase + s3,
+              static_cast<int>(rig.fx.world().mode.hud[1].team))
+        << "the later index displaces the runner-up";
 }
 
 // ===========================================================================
@@ -1074,19 +1522,34 @@ TEST_F(ModesMutant, mutant_bot_match_is_deterministic_across_runs)
 
 TEST_F(ModesMutant, full_mutant_tick_fits_a_tenth_of_the_instruction_budget)
 {
-    og::script::g_test_world_instruction_budget = 500000;
+    BudgetOverride budget(500000);
+    // The busy world: a full 16-competitor band brawling under the
+    // reduced budget (the director iterates every color slot).
+    ModesCtfWorld fx(kMutantLevelA);
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(1, 544, 96);
+    fx.spawn_anchor(2, 96, 800);
+    fx.spawn_anchor(3, 544, 800);
+    std::vector<walker*> heroes;
+    for (int i = 0; i < 16; ++i)
     {
-        MutantRig rig(kMutantLevelA, ACT_RANDOM);
-        rig.fx.world().ctf_requested_respawn_ticks = 30;
-        rig.fx.tick(1);
-        ASSERT_TRUE(rig.active());
-        rig.crown_a();
-        rig.fx.tick(45);  // 3 director cadences + upkeep + win/HUD phases
-        EXPECT_FALSE(has_script_error(rig.fx.world(), "instruction budget"))
-            << "a 10x-reduced budget must never trip";
-        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+        walker* h = fx.spawn_hero(FAMILY_SOLDIER, i % 4, 120 + 24 * i, 200,
+                                  100 + i, ACT_RANDOM);
+        ASSERT_NE(nullptr, h);
+        heroes.push_back(h);
     }
-    og::script::g_test_world_instruction_budget = 0;
+    fx.world().ctf_requested_respawn_ticks = 30;
+    fx.tick(1);
+    ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
+    ASSERT_EQ(16, fx.var(kMutSlotFighterCount));
+    ASSERT_NE(nullptr, heroes[1]->stats());
+    heroes[1]->stats()->set_hitpoints(1.0f);
+    heroes[0]->attack(heroes[1]);
+    ASSERT_EQ(kPhaseMutant, fx.var(kMutSlotPhase));
+    fx.tick(45);  // 3 director cadences + upkeep + win/HUD phases
+    EXPECT_FALSE(has_script_error(fx.world(), "instruction budget"))
+        << "a 10x-reduced budget must never trip";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
 // ===========================================================================
@@ -1116,300 +1579,4 @@ TEST_F(ModesMutant, match_replicates_to_a_client_mirror_without_hash_strikes)
                   mirror.world().mode.vars[static_cast<std::size_t>(slot)])
             << "mode var slot " << slot;
     }
-}
-
-// ===========================================================================
-// TROOPS: FAIR power model — the n = 1 seat shape (matched-teams WP-E)
-// ===========================================================================
-
-// The D26 bundle in mutant shape: FAIR inherits OWN's roster activation,
-// so a solo roster pairs with exactly ONE opponent seat — the old
-// every-empty-seat pile-on is retired (D33(b) re-ruling of the original
-// multi-seat solo test). The paired seat is a one-bot squad solved against
-// the hero's own f on its own family base (§5.3 mutant carve-out).
-TEST_F(ModesMutant, matched_solo_roster_pairs_with_one_seat)
-{
-    ModesCtfWorld fx(kMutantLevelA);
-    fx.arm_matched();
-    fx.spawn_anchor(0, 96, 96);
-    fx.spawn_anchor(1, 544, 96);
-    fx.spawn_anchor(2, 96, 800);
-    fx.spawn_anchor(3, 544, 800);
-    fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 200, 200, 1, 3);
-    fx.tick(1);
-    ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
-
-    // Derived: the L3 soldier hero's f (trunc discipline) is the target.
-    EXPECT_EQ(5182, fx.var(kSlotMatchedTarget))
-        << "solo roster -> T is the hero's own f (derived pin, §4.2)";
-    EXPECT_EQ(3, fx.var(kMutSlotTeamMask))
-        << "solo roster: the hero's seat plus the FIRST authored non-roster "
-           "seat — never every empty seat (D26)";
-    const std::int32_t plan = fx.var(kSlotMatchedPlan);
-    EXPECT_EQ(0, matched_plan_code(plan, 0)) << "the human seat never solves";
-    const int code = matched_plan_code(plan, 1);
-    EXPECT_EQ(0, code % 10) << "n = 1 admits no upgrades";
-    EXPECT_EQ(30, code)
-        << "the archer seat solves L3 against T = 5182 (derived, §4.2)";
-    EXPECT_EQ(1, alive_on_team(fx.world(), 1));
-    EXPECT_EQ(0, alive_on_team(fx.world(), 2)) << "outside the pair: no bot";
-    EXPECT_EQ(0, alive_on_team(fx.world(), 3)) << "outside the pair: no bot";
-    for (const auto& uptr : fx.world().oblist)
-    {
-        const walker* w = uptr.get();
-        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
-            continue;
-        if (w->myguy != nullptr || w->stats() == nullptr)
-            continue;
-        EXPECT_EQ(1, static_cast<int>(w->team_num()));
-        EXPECT_EQ(3, w->stats()->level())
-            << "the fielded bot carries the solve";
-    }
-    EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"));
-}
-
-// Every empty mutant seat is a one-bot squad, so each seat solves its own
-// (L, 0) against the shared target with its own family base (§5.3 mutant
-// carve-out: no k-interpolation, family disparity still priced).
-// D33(b) re-ruling: a solo roster now pairs with ONE seat (above), so the
-// only remaining multi-seat matched shape is the D24 arm — a pre-latched
-// MATCHED_TARGET with every authored seat empty (no roster anywhere).
-// Init trusts the stored target and measure-solves each seat
-// independently; the authored domain skips seat 0 so the original
-// archer/elf/thief derived pins carry over verbatim.
-TEST_F(ModesMutant, matched_seats_solve_independently_per_family)
-{
-    ModesCtfWorld fx(kMutantLevelA);
-    fx.arm_matched();
-    fx.spawn_anchor(1, 544, 96);
-    fx.spawn_anchor(2, 96, 800);
-    fx.spawn_anchor(3, 544, 800);
-    fx.world().mode.vars[kSlotMatchedTarget] = 5182;
-    fx.tick(1);
-    ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
-
-    EXPECT_EQ(5182, fx.var(kSlotMatchedTarget))
-        << "a stored target is never re-censused (D24 latch)";
-    const std::int32_t plan = fx.var(kSlotMatchedPlan);
-    EXPECT_EQ(0, matched_plan_code(plan, 0)) << "seat 0 is not authored";
-    for (int team = 1; team <= 3; ++team)
-    {
-        const int code = matched_plan_code(plan, team);
-        EXPECT_EQ(0, code % 10) << "n = 1 admits no upgrades (seat " << team
-                                << ")";
-        EXPECT_EQ(1, alive_on_team(fx.world(), team));
-    }
-    // Derived seat solves against T = 5182 over the seat families
-    // (archer / elf / thief loader bases): every seat answers L3 here.
-    EXPECT_EQ(30, matched_plan_code(plan, 1));
-    EXPECT_EQ(30, matched_plan_code(plan, 2));
-    EXPECT_EQ(30, matched_plan_code(plan, 3));
-    for (const auto& uptr : fx.world().oblist)
-    {
-        const walker* w = uptr.get();
-        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
-            continue;
-        if (w->stats() == nullptr)
-            continue;
-        EXPECT_EQ(matched_plan_code(plan, w->team_num()) / 10,
-                  w->stats()->level())
-            << "seat " << static_cast<int>(w->team_num());
-    }
-}
-
-namespace {
-
-// C++ twin of mode_match.walker_power under the same §4.1 trunc-on-read
-// discipline (static_cast truncates the positive float stats exactly like
-// og.trunc). For a single L1 seat bot with an integer tuple row, measured
-// f IS the model's B(1) exactly, so the borderline tests can pin their
-// clamp premises instead of asserting them in comments.
-long long measured_walker_f(const walker* w)
-{
-    const statistics* s = w->stats();
-    if (s == nullptr)
-        return 0;
-    const long long hp = static_cast<long long>(s->max_hitpoints());
-    const long long mp = static_cast<long long>(s->max_magicpoints());
-    const long long armor = static_cast<long long>(s->armor());
-    const long long dmg = static_cast<long long>(w->damage());
-    const long long sp = static_cast<long long>(w->stepsize());
-    long long ff = static_cast<long long>(w->fire_frequency());
-    if (ff < 1)
-        ff = 1;
-    const long long level = s->level();
-    const long long ed = dmg * (level + 3) / 4;
-    const long long rate = 120 / ff;
-    const long long off = ed * rate + 5 * sp;
-    const long long ehp = hp + 4 * armor + mp / 2;
-    return ehp * (off + 60) / 60;
-}
-
-// The single guy-less Living a mutant seat fielded.
-const walker* seat_bot(GameWorld& world, int team)
-{
-    for (const auto& uptr : world.oblist)
-    {
-        const walker* w = uptr.get();
-        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
-            continue;
-        if (w->myguy != nullptr)
-            continue;
-        if (w->team_num() == static_cast<unsigned char>(team))
-            return w;
-    }
-    return nullptr;
-}
-
-}  // namespace
-
-// The documented first-solve announce limitation (spec §7 / WP-E report):
-// the one-shot announcement takes its LIMIT flag from the FIRST solved
-// seat. D33(b) re-ruling: a solo roster now pairs with a single seat, so
-// the multi-seat shape left is the D24 all-bot arm — a pre-latched target
-// with authored seats 1..3 empty (seat 0 unauthored, so the archer seat
-// still solves first and the original derived pins carry over). The
-// latched target 921 sits between the archer seat's B(1) (834 — inside
-// range, no clamp) and the elf/thief seats' B(1) (958/969 — clamped low),
-// so the match announces the plain variant even though two later seats
-// clamped. The B(1) premises are PINNED below on the fielded L1 bots
-// (integer tuple rows make measured f the model's B(1) exactly), so an
-// elf/thief rebalance that drops their B(1) under the target cannot
-// silently turn this into a nothing-clamped world. If the announce pin
-// moves because it learned to aggregate clamps across seats, update the
-// spec note instead of the test.
-TEST_F(ModesMutant, matched_borderline_seat_announce_follows_first_solve)
-{
-    ModesCtfWorld fx(kMutantLevelA);
-    fx.arm_matched();
-    fx.spawn_anchor(1, 544, 96);
-    fx.spawn_anchor(2, 96, 800);
-    fx.spawn_anchor(3, 544, 800);
-    fx.world().mode.vars[kSlotMatchedTarget] = 921;
-    fx.tick(1);
-    ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
-
-    EXPECT_EQ(921, fx.var(kSlotMatchedTarget))
-        << "a stored target is never re-censused (D24 latch)";
-    const std::int32_t plan = fx.var(kSlotMatchedPlan);
-    EXPECT_EQ(10, matched_plan_code(plan, 1)) << "archer seat: L1, in range";
-    EXPECT_EQ(10, matched_plan_code(plan, 2)) << "elf seat: clamped to L1";
-    EXPECT_EQ(10, matched_plan_code(plan, 3)) << "thief seat: clamped to L1";
-
-    // The clamp premises, pinned on the fielded L1 bots (measured f ==
-    // model B(1), integer tuple rows): the FIRST solved seat sat in range
-    // while both later seats clamped low. If a loader/tuple rebalance
-    // moves any of these across the 921 target, the derived pins red out
-    // — recompute them (spec §4.2) and re-check which seats clamp.
-    const walker* archer_bot = seat_bot(fx.world(), 1);
-    const walker* elf_bot = seat_bot(fx.world(), 2);
-    const walker* thief_bot = seat_bot(fx.world(), 3);
-    ASSERT_NE(nullptr, archer_bot);
-    ASSERT_NE(nullptr, elf_bot);
-    ASSERT_NE(nullptr, thief_bot);
-    EXPECT_EQ(834, measured_walker_f(archer_bot)) << "archer seat B(1)";
-    EXPECT_LT(measured_walker_f(archer_bot), 921)
-        << "premise: the first solved seat did NOT clamp";
-    EXPECT_EQ(958, measured_walker_f(elf_bot)) << "elf seat B(1)";
-    EXPECT_GT(measured_walker_f(elf_bot), 921)
-        << "premise: the elf seat clamped low";
-    EXPECT_EQ(969, measured_walker_f(thief_bot)) << "thief seat B(1)";
-    EXPECT_GT(measured_walker_f(thief_bot), 921)
-        << "premise: the thief seat clamped low";
-
-    EXPECT_EQ(1, fx.var(kSlotMatchedAnnounced))
-        << "the first seat did not clamp, so the plain variant announced";
-    EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"));
-    EXPECT_EQ(0, count_notifications(fx.events, "TEAMS MATCHED (LIMIT)"));
-}
-
-// The reverse direction of the first-solve rule: when the FIRST solved
-// seat itself clamps, the one-shot announcement carries the LIMIT flag.
-// A pre-latched target (D24: init trusts a stored MATCHED_TARGET) below
-// every seat's B(1) — 500 < 834/958/969, pinned above — makes seat 1's
-// solve clamp low, and the announce latched by that first solve is the
-// LIMIT variant. Together with the test above this pins "announced
-// follows the FIRST solve" from both sides. Same D33(b) all-bot re-shape
-// as its sibling: authored seats 1..3, no roster.
-TEST_F(ModesMutant, matched_first_seat_clamp_announces_the_limit)
-{
-    ModesCtfWorld fx(kMutantLevelA);
-    fx.arm_matched();
-    fx.spawn_anchor(1, 544, 96);
-    fx.spawn_anchor(2, 96, 800);
-    fx.spawn_anchor(3, 544, 800);
-    fx.world().mode.vars[kSlotMatchedTarget] = 500;
-    fx.tick(1);
-    ASSERT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
-
-    EXPECT_EQ(500, fx.var(kSlotMatchedTarget))
-        << "a stored target is never re-censused (D24 latch)";
-    const std::int32_t plan = fx.var(kSlotMatchedPlan);
-    EXPECT_EQ(10, matched_plan_code(plan, 1)) << "archer seat: clamped to L1";
-    EXPECT_EQ(10, matched_plan_code(plan, 2)) << "elf seat: clamped to L1";
-    EXPECT_EQ(10, matched_plan_code(plan, 3)) << "thief seat: clamped to L1";
-    EXPECT_EQ(2, fx.var(kSlotMatchedAnnounced))
-        << "the FIRST solved seat clamped, so LIMIT announced";
-    EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED (LIMIT)"));
-}
-
-// E3: humans on every authored seat leave MATCHED nothing to do — no seat
-// is empty, so no bot spawns anywhere and the match plays identically to
-// its unmatched twin (the :306 oblist-sweep idiom, extended with a twin
-// world). D33(a): the twin is TROOPS: OWN, not ALL — FAIR bundles OWN's
-// roster activation, and with an all-guy fixture the assertions survive
-// verbatim. The recorded target is the proof the census RAN and found
-// nothing to fill, rather than never running.
-TEST_F(ModesMutant, matched_with_humans_on_every_seat_is_an_auto_noop)
-{
-    auto author = [](ModesCtfWorld& fx) {
-        fx.spawn_anchor(0, 96, 96);
-        fx.spawn_anchor(1, 544, 96);
-        fx.spawn_anchor(2, 96, 800);
-        fx.spawn_anchor(3, 544, 800);
-        fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 200, 200, 1, 2);
-        fx.spawn_leveled_hero(FAMILY_ARCHER, 1, 232, 200, 2, 2);
-        fx.spawn_leveled_hero(FAMILY_ELF, 2, 264, 200, 3, 2);
-        fx.spawn_leveled_hero(FAMILY_THIEF, 3, 296, 200, 4, 2);
-    };
-
-    ModesCtfWorld matched(kMutantLevelA);
-    arm_matched(matched.world());
-    author(matched);
-    matched.tick(1);
-    ASSERT_EQ(kModeIdMutant, matched.var(kMutSlotModeId));
-
-    ModesCtfWorld own(kMutantLevelA);
-    own.world().ctf_requested_strip_scenario_troops = 2;  // the OWN twin
-    author(own);
-    own.tick(1);
-    ASSERT_EQ(kModeIdMutant, own.var(kMutSlotModeId));
-
-    EXPECT_EQ(own.var(kMutSlotTeamMask), matched.var(kMutSlotTeamMask))
-        << "FAIR-mask == OWN-mask (D26/D33)";
-    for (int team = 0; team < 4; ++team)
-    {
-        EXPECT_EQ(1, alive_on_team(matched.world(), team))
-            << "team " << team << " keeps exactly its human";
-        EXPECT_EQ(alive_on_team(own.world(), team),
-                  alive_on_team(matched.world(), team))
-            << "team " << team;
-    }
-    for (const auto& uptr : matched.world().oblist)
-    {
-        const walker* w = uptr.get();
-        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
-            continue;
-        EXPECT_TRUE(w->myguy != nullptr)
-            << "an uninvited living joined the full-human matched match: "
-               "family " << static_cast<int>(w->family()) << " team "
-            << static_cast<int>(w->team_num());
-    }
-    EXPECT_GT(matched.var(kSlotMatchedTarget), 0)
-        << "the census ran (matched request + humans) and found no seat "
-           "to fill";
-    EXPECT_EQ(0, matched.var(kSlotMatchedPlan)) << "no seat ever solved";
-    EXPECT_EQ(0, matched.var(kSlotMatchedAnnounced));
-    EXPECT_EQ(0, count_notifications(matched.events, "TEAMS MATCHED"));
-    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
