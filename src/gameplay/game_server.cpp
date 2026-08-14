@@ -1243,7 +1243,10 @@ void GameServer::bind_player(PeerId peer_id,
         // generic first-unclaimed scan would hand the first binder a
         // teammate's character. Classic and allied worlds keep the original
         // pool claim (allied deliberately treats the combined roster as a
-        // shared pool in oblist order).
+        // shared pool in oblist order). The claim deliberately ignores the
+        // seat team: FFA reseats fighters onto band team bytes
+        // (docs/ffa-design.md §3), and the owner tag is a strictly stronger
+        // identity than team_num.
         if ((world_.type & GameWorld::TYPE_SCRIPTED) != 0)
         {
             for (const auto& uptr : world_.oblist)
@@ -1254,7 +1257,7 @@ void GameServer::bind_player(PeerId peer_id,
                 {
                     continue;
                 }
-                if (w->user() != -1 || w->team_num() != team_num)
+                if (w->user() != -1)
                     continue;
                 if (w->myguy == nullptr ||
                     w->myguy->owner_player_index !=

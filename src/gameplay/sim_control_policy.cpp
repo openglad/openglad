@@ -188,6 +188,33 @@ bool seat_is_follow_only(const GameWorld& world, short player_index) noexcept
 walker* sim_find_next_control_owned(GameWorld& level, short my_team,
                                     short player_index)
 {
+    // Scripted modes may reseat a player's fighter off its seat team (the
+    // FFA band bytes, docs/ffa-design.md §3), so the owner tag is a strictly
+    // stronger identity than my_team: scan it first. This also keeps a
+    // team-0 prop from stealing a scripted seat whose own fighter is still
+    // claimable. Classic worlds never set TYPE_SCRIPTED, so their scans (and
+    // the legacy team-0 prop quirk parity depends on) stay byte-identical.
+    // player_index < 0 would cast to guy::kNoOwner and adopt untagged heroes.
+    if ((level.type & GameWorld::TYPE_SCRIPTED) != 0 && player_index >= 0)
+    {
+        for (auto& uptr : level.oblist)
+        {
+            walker* w = uptr.get();
+            if (w && !w->dead() && !w->dormant() &&
+                w->query_order() == Order::Living &&
+                w->user() == -1 &&
+                w->myguy &&
+                w->myguy->owner_player_index ==
+                    static_cast<std::uint8_t>(player_index) &&
+                control_claim_allowed(level, w, player_index))
+            {
+                TRACE("sim_control", "found owner-tagged character '%s'",
+                      w->stats()->name.c_str());
+                return w;
+            }
+        }
+    }
+
     // Policy off: the decision IS the legacy scan (byte-identical by
     // construction — same function, same TRACE stream).
     if (!owner_locked(level))

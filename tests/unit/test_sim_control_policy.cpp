@@ -225,14 +225,16 @@ TEST(SimControlPolicy, policy_off_matches_legacy_across_the_four_shapes)
     fx.add({.team = 0, .user = -1, .hero = false});
     expect_decisions_match_legacy(fx, "allied");
 
-    // Versus (scripted): the scans are mode-agnostic; the versus own-hero
-    // preference lives in bind_player (§4.4 site 3), not here.
+    // Versus (scripted) with no owner tag matching any scanning seat: the
+    // scripted owner arm (docs/ffa-design.md §3 D11) passes through and the
+    // scans reduce to legacy. Owner-matched scripted decisions get their own
+    // battery below.
     fx.clear_walkers();
     fx.world().allied_mode = 0;
     fx.world().type = static_cast<char>(fx.world().type | GameWorld::TYPE_SCRIPTED);
-    fx.add({.team = 0, .user = -1, .hero = true, .owner = 0});
-    fx.add({.team = 1, .user = -1, .hero = true, .owner = 2});
-    fx.add({.team = 1, .user = 2, .hero = true, .owner = 2, .dead = true});
+    fx.add({.team = 0, .user = -1, .hero = true, .owner = 5});
+    fx.add({.team = 1, .user = -1, .hero = true, .owner = guy::kNoOwner});
+    fx.add({.team = 1, .user = 2, .hero = true, .owner = 6, .dead = true});
     expect_decisions_match_legacy(fx, "ctf");
 
     // Respawn queue: dead heroes stay in the oblist awaiting revival; both
@@ -286,6 +288,106 @@ TEST(SimControlPolicy, owner_locked_permissive_map_matches_legacy_over_random_wo
             }
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Scripted owner arm (docs/ffa-design.md §3 item 3 / D11): in TYPE_SCRIPTED
+// worlds the reacquire scan claims the seat's own owner-tagged fighter
+// regardless of its team byte (FFA reseats fighters onto band bytes 16-31).
+// Classic worlds keep the team-filtered scans — including the legacy team-0
+// prop quirk — byte-identical.
+
+TEST(SimControlPolicy, scripted_owner_arm_reacquires_off_team_band_fighter)
+{
+    ControlPolicyFixture fx;
+    fx.world().type =
+        static_cast<char>(fx.world().type | GameWorld::TYPE_SCRIPTED);
+    // FFA reseat shape: seat 0's fighter wears band byte 17, seat 2's wears
+    // 18; my_team stays the seat's lobby team (0) in every scan below.
+    walker* const mine =
+        fx.add({.team = 17, .user = -1, .hero = true, .owner = 0});
+    walker* const foreign =
+        fx.add({.team = 18, .user = -1, .hero = true, .owner = 2});
+
+    EXPECT_EQ(mine, sim_find_next_control_owned(fx.world(), 0, 0));
+    EXPECT_EQ(foreign, sim_find_next_control_owned(fx.world(), 0, 2));
+    // A seat with no fighter of its own finds nothing (no team-0 candidates).
+    EXPECT_EQ(nullptr, sim_find_next_control_owned(fx.world(), 0, 1));
+
+    walker* reacquired = nullptr;
+    EXPECT_EQ(SimReacquire::Claimed,
+              sim_reacquire_control(fx.world(), 0, 0, reacquired));
+    EXPECT_EQ(mine, reacquired);
+}
+
+TEST(SimControlPolicy, scripted_owner_arm_skips_dead_claimed_dormant_and_untagged)
+{
+    ControlPolicyFixture fx;
+    fx.world().type =
+        static_cast<char>(fx.world().type | GameWorld::TYPE_SCRIPTED);
+    fx.add({.team = 17, .user = -1, .hero = true, .owner = 0, .dead = true});
+    fx.add({.team = 18, .user = 1, .hero = true, .owner = 0});
+    fx.add({.team = 19, .user = -1, .hero = true, .owner = 0, .dormant = true});
+    fx.add({.team = 20, .user = -1, .hero = false});
+    fx.add({.team = 21, .user = -1, .hero = true, .owner = guy::kNoOwner});
+
+    EXPECT_EQ(nullptr, sim_find_next_control_owned(fx.world(), 0, 0));
+    // player_index -1 casts to guy::kNoOwner (0xff): the arm must never hand
+    // an invalid seat the untagged hero.
+    EXPECT_EQ(nullptr, sim_find_next_control_owned(fx.world(), 0, -1));
+}
+
+TEST(SimControlPolicy, scripted_world_prop_not_claimed_when_owner_fighter_exists)
+{
+    ControlPolicyFixture fx;
+    fx.world().type =
+        static_cast<char>(fx.world().type | GameWorld::TYPE_SCRIPTED);
+    // The prop sits FIRST in oblist order, so the legacy second pass would
+    // hand it to any my_team == 0 seat.
+    walker* const prop = fx.add({.team = 0, .user = -1, .hero = false});
+    walker* const fighter =
+        fx.add({.team = 17, .user = -1, .hero = true, .owner = 0});
+
+    ASSERT_EQ(prop, sim_find_next_control(fx.world(), 0))
+        << "the legacy scan WOULD claim the team-0 prop";
+    EXPECT_EQ(fighter, sim_find_next_control_owned(fx.world(), 0, 0));
+
+    // A seat with no owner match falls through to the legacy scans: the prop
+    // stays claimable, keeping hook-error-latched matches playable.
+    EXPECT_EQ(prop, sim_find_next_control_owned(fx.world(), 0, 1));
+}
+
+TEST(SimControlPolicy, classic_world_keeps_team_filter_and_team0_prop_quirk)
+{
+    ControlPolicyFixture fx;
+    ASSERT_EQ(0, fx.world().type & GameWorld::TYPE_SCRIPTED)
+        << "fixture worlds must default to non-scripted";
+    walker* const prop = fx.add({.team = 0, .user = -1, .hero = false});
+    fx.add({.team = 17, .user = -1, .hero = true, .owner = 0});
+
+    // The quirk: my_team 0 claims ANY team-0 living, props included — and the
+    // seat's own off-team hero is never a candidate in a classic world.
+    EXPECT_EQ(prop, sim_find_next_control_owned(fx.world(), 0, 0));
+    EXPECT_EQ(nullptr, sim_find_next_control_owned(fx.world(), 1, 0));
+    EXPECT_EQ(prop, sim_find_next_control(fx.world(), 0));
+}
+
+TEST(SimControlPolicy, scripted_owner_arm_honors_owner_locked_denials)
+{
+    ControlPolicyFixture fx;
+    fx.world().type =
+        static_cast<char>(fx.world().type | GameWorld::TYPE_SCRIPTED);
+    walker* const fighter =
+        fx.add({.team = 19, .user = -1, .hero = true, .owner = 2});
+    fx.add({.team = 20, .user = -1, .hero = true, .owner = 5});
+    set_control_policy(fx.world(), kControlPolicyOwnerLocked,
+                       canonical_machine_map());
+
+    // The bound seat claims its own band fighter under owner-locked too.
+    EXPECT_EQ(fighter, sim_find_next_control_owned(fx.world(), 0, 2));
+    // Player 5 has no machine entry this level: control_claim_allowed denies
+    // even its own owner tag, exactly like the team scans.
+    EXPECT_EQ(nullptr, sim_find_next_control_owned(fx.world(), 0, 5));
 }
 
 // ---------------------------------------------------------------------------

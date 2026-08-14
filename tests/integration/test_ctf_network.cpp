@@ -588,6 +588,100 @@ TEST(CtfNetwork, bind_player_prefers_owner_matched_heroes_on_shared_team)
     EXPECT_EQ(1, fixture.server_control(1)->user());
 }
 
+TEST(CtfNetwork, bind_player_claims_own_off_team_scripted_hero)
+{
+    // FFA reseat shape (docs/ffa-design.md §3 item 2): the binder's hero has
+    // been reseated onto a band team byte (17) while an unclaimed team-0
+    // walker sits earlier in oblist order. The scripted claim must follow the
+    // owner tag off-team (mid-join/rebind case) instead of handing the seat
+    // the generic team-0 pick.
+    NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+    });
+    fixture.load_level();
+
+    walker* generic = nullptr; // stays on the seat team, untagged
+    walker* own = nullptr;     // owner-tagged, band byte 17
+    fixture.with_server_context([&] {
+        fixture.server_world().type |= GameWorld::TYPE_SCRIPTED;
+        for (const auto& uptr : fixture.server_world().oblist)
+        {
+            walker* w = uptr.get();
+            if (w == nullptr || w->dead() ||
+                w->query_order() != Order::Living || w->team_num() != 0)
+            {
+                continue;
+            }
+            generic = w;
+            break;
+        }
+        ASSERT_NE(nullptr, generic);
+        own = fixture.server_world().add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, own);
+        own->setxy(static_cast<short>(generic->xpos() + 32),
+                   static_cast<short>(generic->ypos()));
+        own->set_team_num(17);
+        own->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+        own->myguy->id = 71;
+        own->myguy->owner_player_index = 0;
+        own->myguy->owner_save_slot = 0;
+    });
+
+    fixture.rebind_players();
+
+    EXPECT_EQ(own, fixture.server_control(0))
+        << "the binder must claim its owner-tagged band-byte hero";
+    EXPECT_EQ(0, fixture.server_control(0)->user());
+    EXPECT_EQ(17, own->team_num());
+    EXPECT_EQ(-1, generic->user()) << "the team-0 walker stays unclaimed";
+}
+
+TEST(CtfNetwork, bind_player_classic_world_ignores_off_team_owner_tag)
+{
+    // Regression guard for the TYPE_SCRIPTED gate: the same off-team
+    // owner-tagged shape in a CLASSIC world must keep the original pool
+    // claim — the seat binds the team walker, never the band-byte hero.
+    NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+    });
+    fixture.load_level();
+
+    walker* generic = nullptr;
+    walker* own = nullptr;
+    fixture.with_server_context([&] {
+        ASSERT_FALSE(fixture.server_world().type & GameWorld::TYPE_SCRIPTED);
+        for (const auto& uptr : fixture.server_world().oblist)
+        {
+            walker* w = uptr.get();
+            if (w == nullptr || w->dead() ||
+                w->query_order() != Order::Living || w->team_num() != 0)
+            {
+                continue;
+            }
+            generic = w;
+            break;
+        }
+        ASSERT_NE(nullptr, generic);
+        own = fixture.server_world().add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, own);
+        own->setxy(static_cast<short>(generic->xpos() + 32),
+                   static_cast<short>(generic->ypos()));
+        own->set_team_num(17);
+        own->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+        own->myguy->id = 72;
+        own->myguy->owner_player_index = 0;
+        own->myguy->owner_save_slot = 0;
+    });
+
+    fixture.rebind_players();
+
+    EXPECT_EQ(generic, fixture.server_control(0))
+        << "classic worlds keep the first-unclaimed team scan";
+    EXPECT_EQ(-1, own->user()) << "the off-team hero stays unclaimed";
+}
+
 TEST(CtfNetwork, multi_seat_peer_binds_each_seat_to_its_owner_tagged_hero)
 {
     // ONE physical peer carrying TWO local seats (local_slot 0/1) in a CTF
