@@ -223,12 +223,13 @@ void CampaignEntry::draw(int team_power)
     // Title, fitted to the pane's budget so it can never reach a control.
     write_centered(layout.title_y, og::ui::fit_campaign_title(title), WHITE);
 
-    // Rating stars + version share the next row.
+    // Rating stars
     std::string rating_text = "";
     for(int i = 0; i < int(rating); i++)
     {
         rating_text += '*';
     }
+    // Print version
     std::string buf = std::format("v{}", version);
     if(rating_text.size() > 0)
     {
@@ -240,16 +241,18 @@ void CampaignEntry::draw(int team_power)
     else
         write_centered(layout.title_y + 10, buf, WHITE);
 
-    // Icon in its frame.
+    // Draw icon button
     og::runtime::current_session->myscreen_->draw_button(
         layout.icon.x - 2, layout.icon.y - 2, layout.icon.x + layout.icon.w + 2,
         layout.icon.y + layout.icon.h + 2, 1, 1);
+    // Draw icon
     if (icon)
         icon->drawMix(layout.icon.x, layout.icon.y,
                       og::runtime::current_session->myscreen_->viewob[0].get());
     int y = layout.icon.y + layout.icon.h + 4;
 
-    // Power compare: the pane is 176px wide, so the readout is two rows.
+    // Print suggested power
+    // (the pane is 176px wide, so the power compare reads out as two rows)
     if(team_power >= 0)
     {
         write_centered(y, std::format("Your Power: {}", team_power),
@@ -269,7 +272,7 @@ void CampaignEntry::draw(int team_power)
         y += 8;
     }
 
-    // Completion progress
+    // Print completion progress
     if(num_levels_completed < 0)
         buf = std::format("{} level{}", num_levels, (num_levels == 1? "" : "s"));
     else
@@ -277,7 +280,7 @@ void CampaignEntry::draw(int team_power)
     write_centered(y, buf, WHITE);
     y += 8;
 
-    // Authors
+    // Print authors
     if(authors.size() > 0)
     {
         write_centered(y, og::ui::fit_text_to_chars(
@@ -286,10 +289,11 @@ void CampaignEntry::draw(int team_power)
                        WHITE);
     }
 
-    // Description box, flowed to its character budget (issue #152).
-    // Paragraphs mode reflows the authored hand-wrap. Overflow is handled by
-    // the browser's MORE control (a real button over the full-text
-    // scroller), not a dead "(more...)" string.
+    // Draw description box
+    // Text is flowed to the box's character budget (issue #152): Paragraphs
+    // mode reflows the authored hand-wrap. Overflow is handled by the
+    // browser's MORE control (a real button over the full-text scroller),
+    // not a dead "(more...)" string.
     const og::ui::PickerRect& descbox = layout.desc_box;
     og::runtime::current_session->myscreen_->draw_box(descbox.x, descbox.y, descbox.x + descbox.w, descbox.y + descbox.h, GREY, 1, 1);
     const std::vector<std::string> desc_lines = og::core::wrap_text(
@@ -302,7 +306,7 @@ void CampaignEntry::draw(int team_power)
                           BLACK, 1);
     }
 
-    // Contributors, on the MORE row left of the button.
+    // Print contributors, on the MORE row left of the button.
     if(contributors.size() > 0)
     {
         const int contrib_budget =
@@ -332,6 +336,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
 
     (void)unmount_campaign_package_with_error(old_campaign_id);
 
+    // Here are the browser variables
     // The shelf (ids in select order) and its LAZY entry cache: list rows
     // need only the cached display title, so opening the browser mounts
     // nothing. The CampaignEntry (mount + yaml parse + icon decode) is built
@@ -458,6 +463,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
 
 		CampaignEntry* current = ensure_entry(cursor);
 
+		// Update hidden buttons
 		buttons[prev_index].hidden = (offset == 0);
 		buttons[next_index].hidden = (offset + layout.list_rows >= total);
 		buttons[choose_index].hidden = (total == 0);
@@ -753,7 +759,8 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
             loadtext.write_xy(more_button.x + 8, more_button.y + 2, "More", DARK_BLUE, 1);
         }
 
-        // Detail pane for the highlighted entry (loaded by sync_visibility).
+        // Draw entry
+        // (the detail pane for the highlighted row, loaded by sync_visibility)
         if(cursor >= 0 && cursor < static_cast<int>(entries.size()) && entries[static_cast<std::size_t>(cursor)] != nullptr)
             entries[static_cast<std::size_t>(cursor)]->draw(army_power);
 
