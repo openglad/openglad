@@ -145,9 +145,9 @@ local function declare_team_win(team)
 end
 
 -- Kill the fresh stain/life-gem drops under a corpse that will never
--- respawn (og.respawn_schedule scrubs for scheduled corpses already;
--- TDM/Onslaught call this for permanent bodies to keep cleric resurrects
--- and score farming away from them).
+-- respawn. Scheduled player corpses keep their stain until revive; mode death
+-- hooks call this for permanent bodies to keep cleric resurrects and score
+-- farming away from them.
 local function scrub_corpse(corpse)
   og.scrub_corpse_stain(corpse:xpos(), corpse:ypos(), corpse:floor())
 end

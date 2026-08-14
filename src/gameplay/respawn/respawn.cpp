@@ -153,11 +153,18 @@ void revive_player_walker(GameWorld& world, walker* w, int team)
     return false;
 }
 
+[[nodiscard]] bool same_guy_identity(const guy* lhs, const guy* rhs)
+{
+    return lhs != nullptr && rhs != nullptr && lhs->id == rhs->id &&
+        lhs->owner_player_index == rhs->owner_player_index &&
+        lhs->owner_save_slot == rhs->owner_save_slot;
+}
+
 // True when a live walker is already bound to the corpse's character
 // (a cleric resurrect beat the respawner): the corpse must stay retired.
 // Guy ids are only unique per owning player (each client numbers its roster
-// from its own counter), so identity is the (id, owner) pair — owner tags
-// are kNoOwner for everyone in local play, where bare ids suffice.
+// from its own counter), so identity is the (id, owner-player, save-slot)
+// triple. Owner tags are kNoOwner for local play, where bare ids suffice.
 [[nodiscard]] bool live_duplicate_exists(const GameWorld& world,
                                          const walker* corpse)
 {
@@ -167,11 +174,7 @@ void revive_player_walker(GameWorld& world, walker* w, int team)
     {
         walker* other = uptr.get();
         if (other != nullptr && other != corpse && !other->dead() &&
-            other->myguy != nullptr &&
-            other->myguy->id == corpse->myguy->id &&
-            other->myguy->owner_player_index ==
-                corpse->myguy->owner_player_index &&
-            other->myguy->owner_save_slot == corpse->myguy->owner_save_slot)
+            same_guy_identity(other->myguy, corpse->myguy))
         {
             return true;
         }
@@ -179,20 +182,69 @@ void revive_player_walker(GameWorld& world, walker* w, int team)
     return false;
 }
 
-// Kills the corpse's fresh bloodstain so a cleric cannot resurrect a copy of
-// a walker that the CTF respawner is about to bring back. The fresh
-// LIFE_GEM heart goes with it: respawn cycles would otherwise farm score
-// into the time-limit tiebreaker.
+enum class CorpseDropScrub
+{
+    LifeGemOnly,
+    All,
+};
+
+[[nodiscard]] bool stain_matches_corpse_identity(const walker* stain,
+                                                  const walker* corpse)
+{
+    if (corpse->myguy == nullptr)
+        return stain->myguy == nullptr;
+    return same_guy_identity(stain->myguy, corpse->myguy);
+}
+
+[[nodiscard]] bool stain_belongs_to_pending_player(const GameWorld& world,
+                                                    const walker* stain)
+{
+    if (stain->myguy == nullptr)
+        return false;
+    for (const RespawnEntry& entry : world.respawn.respawn_queue)
+    {
+        if (entry.kind != 0)
+            continue;
+        const walker* corpse = world.find_by_id(entry.walker_entity_id);
+        if (corpse != nullptr &&
+            same_guy_identity(stain->myguy, corpse->myguy) &&
+            stain->team_num() == corpse->team_num() &&
+            stain->floor() == corpse->floor() &&
+            stain->xpos() == corpse->xpos() &&
+            stain->ypos() == corpse->ypos())
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+// LIFE_GEM hearts are retired as soon as any corpse is scheduled: repeated
+// respawns must not farm the time-limit tiebreaker. AI stains go with them,
+// while player stains remain during the countdown for cleric raises and the
+// visible corpse. The player fire paths scrub both drops before reviving (or
+// cancelling for a live duplicate), so no stale stain survives the queue.
 void scrub_corpse_drops_in(const GameWorld::EntityList& list,
-                           const walker* corpse)
+                           const walker* corpse, CorpseDropScrub scrub)
 {
     for (const auto& uptr : list)
     {
         walker* fx = uptr.get();
         if (fx == nullptr || fx->dead() ||
             fx->query_order() != Order::Treasure ||
-            (fx->family() != FAMILY_STAIN && fx->family() != FAMILY_LIFE_GEM) ||
-            fx->team_num() != corpse->team_num())
+            (fx->family() != FAMILY_LIFE_GEM &&
+             (scrub != CorpseDropScrub::All ||
+              fx->family() != FAMILY_STAIN)) ||
+            fx->team_num() != corpse->team_num() ||
+            fx->floor() != corpse->floor())
+        {
+            continue;
+        }
+        // Player stains carry a copied guy: pair them by the same identity
+        // triple that guards duplicate revives. An AI corpse may only sweep
+        // an AI stain, so a nearby player's queued corpse is never collateral.
+        if (fx->family() == FAMILY_STAIN &&
+            !stain_matches_corpse_identity(fx, corpse))
         {
             continue;
         }
@@ -208,10 +260,11 @@ void scrub_corpse_drops_in(const GameWorld::EntityList& list,
     }
 }
 
-void scrub_corpse_stain(GameWorld& world, const walker* corpse)
+void scrub_corpse_drops(GameWorld& world, const walker* corpse,
+                        CorpseDropScrub scrub)
 {
-    scrub_corpse_drops_in(world.fxlist, corpse);
-    scrub_corpse_drops_in(world.oblist, corpse);
+    scrub_corpse_drops_in(world.fxlist, corpse, scrub);
+    scrub_corpse_drops_in(world.oblist, corpse, scrub);
 }
 
 void schedule_respawn(GameWorld& world, walker* corpse)
@@ -275,7 +328,10 @@ void schedule_respawn(GameWorld& world, walker* corpse)
     }
     respawn.respawn_queue.push_back(entry);
 
-    scrub_corpse_stain(world, corpse);
+    scrub_corpse_drops(
+        world, corpse,
+        entry.kind == 0 ? CorpseDropScrub::LifeGemOnly
+                        : CorpseDropScrub::All);
 }
 
 } // namespace
@@ -412,6 +468,7 @@ walker* classic_fire_player_respawn(GameWorld& world,
     walker* w = world.find_by_id(entry.walker_entity_id);
     if (w == nullptr || !w->dead() || w->query_order() != Order::Living)
         return nullptr;
+    scrub_corpse_drops(world, w, CorpseDropScrub::All);
     if (live_duplicate_exists(world, w))
         return nullptr;
     revive_player_walker(world, w, entry.team);
@@ -664,16 +721,18 @@ void respawn_flush_revive_all(GameWorld& world)
     for (const auto& uptr : world.oblist)
     {
         walker* w = uptr.get();
-        if (w != nullptr && w->dead() && w->query_order() == Order::Living &&
-            w->myguy != nullptr && !live_duplicate_exists(world, w))
-        {
-            const unsigned char raw_team = (w->real_team_num() != 255)
-                ? w->real_team_num()
-                : w->team_num();
-            const int team = is_score_team(raw_team) ? raw_team : 0;
-            revive_player_walker(world, w, team);
-            ensure_obmap_registration(world, w);
-        }
+        if (w == nullptr || !w->dead() ||
+            w->query_order() != Order::Living || w->myguy == nullptr)
+            continue;
+        scrub_corpse_drops(world, w, CorpseDropScrub::All);
+        if (live_duplicate_exists(world, w))
+            continue;
+        const unsigned char raw_team = (w->real_team_num() != 255)
+            ? w->real_team_num()
+            : w->team_num();
+        const int team = is_score_team(raw_team) ? raw_team : 0;
+        revive_player_walker(world, w, team);
+        ensure_obmap_registration(world, w);
     }
 }
 
@@ -753,8 +812,18 @@ void respawn_scrub_stains_at(GameWorld& world, short x, short y, int floor)
                 continue;
             const int dx = std::abs((fx->xpos() + fx->sizex() / 2) - (x + 8));
             const int dy = std::abs((fx->ypos() + fx->sizey() / 2) - (y + 8));
-            if (dx + dy <= 8)
-                fx->set_dead(1);
+            if (dx + dy > 8)
+                continue;
+            // A mode may scrub a permanent corpse beside a queued hero. The
+            // positional API has no corpse identity, so preserve any player
+            // stain whose copied guy and exact corpse location resolve to a
+            // pending player entry.
+            if (fx->family() == FAMILY_STAIN &&
+                stain_belongs_to_pending_player(world, fx))
+            {
+                continue;
+            }
+            fx->set_dead(1);
         }
     };
     scrub_list(world.fxlist);
