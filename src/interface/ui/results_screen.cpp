@@ -129,7 +129,13 @@ bool show_scripted_mode_ending_popup(int nextlevel)
     std::string body;
     if (world.mode.name[0] != '\0')
         body = std::format("{}: ", world.mode.name.data());
-    body += std::format("{} TEAM WINS!", og::sim::team_color_name(winner));
+    // An FFA band winner is one fighter, not a team, so it drops the word
+    // "TEAM" ("FFA: TEAL WINS!", docs/ffa-design.md D20). Classic score
+    // teams keep the wording they always had.
+    if (winner >= kFfaTeamBase)
+        body += std::format("{} WINS!", og::sim::team_color_name(winner));
+    else
+        body += std::format("{} TEAM WINS!", og::sim::team_color_name(winner));
     if (nextlevel == s->save_data.scen_num)
         body += "\nGet ready for a rematch!";
     else
@@ -450,8 +456,12 @@ std::vector<ScoreboardSegment> format_mode_scoreboard_segments(
     const og::sim::ModeHudLine& line = mode.hud[0];
     if (line.text[0] == '\0')
         return segments;
-    const int team =
-        (line.team < SCORE_TEAM_COUNT) ? static_cast<int>(line.team) : -1;
+    // Band bytes ride through as themselves so an FFA leader line keeps its
+    // fighter ramp here, exactly as the live HUD row draws it; anything else
+    // (255, the wildlife bytes) reads neutral.
+    const int team = og::sim::is_scoring_identity(static_cast<int>(line.team))
+                         ? static_cast<int>(line.team)
+                         : -1;
     segments.push_back({line.text.data(), team});
     return segments;
 }
@@ -790,15 +800,19 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                 if (ctf_world.mode.winner_team >= 0)
                 {
                     BEGIN_IF_IN_SCROLL_AREA;
+                    // team_ramp_base, never a raw team*16+40: it maps the FFA
+                    // band bytes onto their fighter ramps and keeps teams
+                    // 14+ from wrapping past the palette (ffa-design.md §4).
+                    const unsigned char banner_color = og::sim::team_ramp_base(
+                        static_cast<int>(ctf_world.mode.winner_team));
                     mytext.write_xy_center_shadow(
-                        area.x + area.w/2, y,
-                        static_cast<unsigned char>(
-                            ctf_world.mode.winner_team * 16 + 40),
+                        area.x + area.w/2, y, banner_color,
                         "%s",
                         format_winner_banner(
                             ctf_world.mode.winner_team).c_str());
-                    TRACE("results", "mode_winner_banner team=%d",
-                          static_cast<int>(ctf_world.mode.winner_team));
+                    TRACE("results", "mode_winner_banner team=%d color=%d",
+                          static_cast<int>(ctf_world.mode.winner_team),
+                          static_cast<int>(banner_color));
                     END_IF_IN_SCROLL_AREA;
                     y += 8;
                 }
@@ -815,7 +829,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                     {
                         const unsigned char color = (segment.team < 0)
                             ? PURE_WHITE
-                            : static_cast<unsigned char>(segment.team * 16 + 40);
+                            : og::sim::team_ramp_base(segment.team);
                         mytext.write_xy_shadow(seg_x, y, color, "%s",
                                                segment.text.c_str());
                         seg_x += static_cast<Sint32>(segment.text.size()) * 6;

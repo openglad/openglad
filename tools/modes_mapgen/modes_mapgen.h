@@ -1,9 +1,10 @@
 /* Multiplayer Game Modes campaign generator — shared declarations.
  *
- * Builds builtin/modes.glad: the 33-scenario six-mode
- * campaign (Team Deathmatch 300-305, CTF 500-509, Onslaught 800-803,
- * Soccer 820-823, Basketball 824-828, Mutant 840-843) that absorbs the
- * arenas and CTF packages. SDL-free; reuses the headless platform glue.
+ * Builds builtin/modes.glad: the 39-scenario seven-mode campaign (Team
+ * Deathmatch 300-305, CTF 500-509, Onslaught 800-803, Soccer 820-823,
+ * Basketball 824-828, Mutant 840-843, Free For All 850-855) that absorbs
+ * the arenas and CTF packages. SDL-free; reuses the headless platform
+ * glue.
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
@@ -52,7 +53,8 @@ enum class ModeKind
     Onslaught,
     Soccer,
     Basketball,
-    Mutant
+    Mutant,
+    Ffa
 };
 
 const char* mode_name(ModeKind mode); // "tdm", "ctf", ...
@@ -111,6 +113,9 @@ struct ExpectedLevel
     std::vector<SpawnCap> spawn_caps;    // manifest spawn_caps rows
     int time_limit = 0;                  // manifest tuning, sim ticks
     int score_limit = 0;                 // manifest tuning, 0 = mode rule
+    int fighters = 0;                    // FFA/Mutant: competitors the mode
+                                         // fills the arena to (humans first,
+                                         // bots after); 0 = field omitted
     bool a_star_waived = false;          // 303/305 documented obmap overrun
     std::vector<GoalRect> goal_rects;    // soccer: index = defending team
     TilePos kickoff;                     // soccer: ball spawn tile
@@ -179,6 +184,7 @@ void build_onslaught();
 void build_soccer();
 void build_basketball();
 void build_mutant();
+void build_ffa();
 
 std::vector<ExpectedLevel> tdm_expectations();
 std::vector<ExpectedLevel> ctf_expectations();
@@ -186,6 +192,7 @@ std::vector<ExpectedLevel> onslaught_expectations();
 std::vector<ExpectedLevel> soccer_expectations();
 std::vector<ExpectedLevel> basketball_expectations();
 std::vector<ExpectedLevel> mutant_expectations();
+std::vector<ExpectedLevel> ffa_expectations();
 
 std::vector<ExpectedLevel> all_expectations();
 

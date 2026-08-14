@@ -2,8 +2,11 @@
 --
 -- Pure data for the mode scripts (og.use("mode_levels")). Fields per level id:
 --   mode        "tdm" | "ctf" | "onslaught" | "soccer" | "basketball" |
---               "mutant"
+--               "mutant" | "ffa"
 --   teams       active score-team count (team bytes 0..teams-1)
+--   fighters    ffa/mutant: competitors the mode fills the arena to
+--               (deployed characters first, bots after); absent = the
+--               mode's own default
 --   time_limit  sim ticks (12/s) the match may run before the mode's
 --               time-out rule decides
 --   score_limit posted winning score; 0 = the mode's own rule decides
@@ -857,6 +860,7 @@ M.levels = {
   [840] = {
     mode = "mutant",
     teams = 4,
+    fighters = 4,
     time_limit = 7200,
     score_limit = 10,
     item_pads = {
@@ -874,6 +878,7 @@ M.levels = {
   [841] = {
     mode = "mutant",
     teams = 4,
+    fighters = 4,
     time_limit = 7200,
     score_limit = 10,
     item_pads = {
@@ -895,6 +900,7 @@ M.levels = {
   [842] = {
     mode = "mutant",
     teams = 4,
+    fighters = 4,
     time_limit = 7200,
     score_limit = 10,
     item_pads = {
@@ -916,6 +922,7 @@ M.levels = {
   [843] = {
     mode = "mutant",
     teams = 4,
+    fighters = 4,
     time_limit = 7200,
     score_limit = 10,
     item_pads = {
@@ -929,6 +936,162 @@ M.levels = {
       { x = 520, y = 520, family = "drumstick" },
       { x = 328, y = 360, family = "speed_potion" },
       { x = 392, y = 360, family = "speed_potion" },
+    },
+    item_interval = 180,
+  },
+  [850] = {
+    mode = "ffa",
+    teams = 4,
+    fighters = 8,
+    time_limit = 7200,
+    score_limit = 15,
+    spawn_caps = {
+      [0] = 0,
+      [1] = 0,
+      [2] = 0,
+      [3] = 0,
+    },
+    item_pads = {
+      { x = 264, y = 264, family = "speed_potion" },
+      { x = 280, y = 280, family = "speed_potion" },
+      { x = 264, y = 200, family = "drumstick" },
+      { x = 264, y = 344, family = "drumstick" },
+      { x = 200, y = 264, family = "drumstick" },
+      { x = 344, y = 264, family = "drumstick" },
+      { x = 152, y = 152, family = "drumstick" },
+      { x = 392, y = 152, family = "drumstick" },
+      { x = 152, y = 392, family = "drumstick" },
+      { x = 392, y = 392, family = "drumstick" },
+    },
+    item_interval = 180,
+  },
+  [851] = {
+    mode = "ffa",
+    teams = 4,
+    fighters = 10,
+    time_limit = 7200,
+    score_limit = 15,
+    spawn_caps = {
+      [0] = 0,
+      [1] = 0,
+      [2] = 0,
+      [3] = 0,
+    },
+    item_pads = {
+      { x = 312, y = 312, family = "speed_potion" },
+      { x = 328, y = 328, family = "speed_potion" },
+      { x = 280, y = 280, family = "drumstick" },
+      { x = 360, y = 360, family = "drumstick" },
+      { x = 280, y = 360, family = "drumstick" },
+      { x = 360, y = 280, family = "drumstick" },
+      { x = 312, y = 136, family = "drumstick" },
+      { x = 312, y = 504, family = "drumstick" },
+      { x = 136, y = 312, family = "drumstick" },
+      { x = 504, y = 312, family = "drumstick" },
+    },
+    item_interval = 180,
+  },
+  [852] = {
+    mode = "ffa",
+    teams = 4,
+    fighters = 12,
+    time_limit = 7200,
+    score_limit = 15,
+    spawn_caps = {
+      [0] = 0,
+      [1] = 0,
+      [2] = 0,
+      [3] = 0,
+    },
+    item_pads = {
+      { x = 344, y = 344, family = "speed_potion" },
+      { x = 360, y = 360, family = "speed_potion" },
+      { x = 296, y = 296, family = "drumstick" },
+      { x = 408, y = 408, family = "drumstick" },
+      { x = 296, y = 408, family = "drumstick" },
+      { x = 408, y = 296, family = "drumstick" },
+      { x = 120, y = 120, family = "drumstick" },
+      { x = 584, y = 120, family = "drumstick" },
+      { x = 120, y = 584, family = "drumstick" },
+      { x = 584, y = 584, family = "drumstick" },
+    },
+    item_interval = 180,
+  },
+  [853] = {
+    mode = "ffa",
+    teams = 4,
+    fighters = 16,
+    time_limit = 7200,
+    score_limit = 15,
+    spawn_caps = {
+      [0] = 0,
+      [1] = 0,
+      [2] = 0,
+      [3] = 0,
+    },
+    item_pads = {
+      { x = 344, y = 344, family = "speed_potion" },
+      { x = 360, y = 360, family = "speed_potion" },
+      { x = 456, y = 136, family = "drumstick" },
+      { x = 584, y = 264, family = "drumstick" },
+      { x = 584, y = 456, family = "drumstick" },
+      { x = 456, y = 584, family = "drumstick" },
+      { x = 264, y = 584, family = "drumstick" },
+      { x = 136, y = 456, family = "drumstick" },
+      { x = 136, y = 264, family = "drumstick" },
+      { x = 264, y = 136, family = "drumstick" },
+    },
+    item_interval = 180,
+  },
+  [854] = {
+    mode = "ffa",
+    teams = 4,
+    fighters = 16,
+    time_limit = 7200,
+    score_limit = 15,
+    spawn_caps = {
+      [0] = 0,
+      [1] = 0,
+      [2] = 0,
+      [3] = 0,
+    },
+    item_pads = {
+      { x = 264, y = 392, family = "speed_potion" },
+      { x = 504, y = 392, family = "speed_potion" },
+      { x = 248, y = 376, family = "drumstick" },
+      { x = 280, y = 408, family = "drumstick" },
+      { x = 488, y = 376, family = "drumstick" },
+      { x = 520, y = 408, family = "drumstick" },
+      { x = 376, y = 104, family = "drumstick" },
+      { x = 376, y = 664, family = "drumstick" },
+      { x = 104, y = 376, family = "drumstick" },
+      { x = 664, y = 376, family = "drumstick" },
+    },
+    item_interval = 180,
+  },
+  [855] = {
+    mode = "ffa",
+    teams = 4,
+    fighters = 16,
+    time_limit = 7200,
+    score_limit = 15,
+    spawn_caps = {
+      [0] = 0,
+      [1] = 0,
+      [2] = 0,
+      [3] = 0,
+    },
+    item_pads = {
+      { x = 392, y = 392, family = "speed_potion" },
+      { x = 408, y = 408, family = "speed_potion" },
+      { x = 296, y = 296, family = "drumstick" },
+      { x = 504, y = 504, family = "drumstick" },
+      { x = 296, y = 504, family = "drumstick" },
+      { x = 504, y = 296, family = "drumstick" },
+      { x = 392, y = 184, family = "drumstick" },
+      { x = 392, y = 616, family = "drumstick" },
+      { x = 184, y = 392, family = "drumstick" },
+      { x = 616, y = 392, family = "drumstick" },
     },
     item_interval = 180,
   },

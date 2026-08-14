@@ -21,6 +21,8 @@ struct ScoreboardSegment
 // Scripted-mode (TYPE_SCRIPTED) scoreboard line for the results overview:
 // the mode's own HUD slot-0 text verbatim, in its team ramp color (team 255
 // reads as neutral -1). Empty slot -> empty vector (nothing drawn).
+// FFA band bytes (16-31) carry through as themselves and take their fighter
+// ramp, like every other team-colored surface (docs/ffa-design.md §4).
 std::vector<ScoreboardSegment> format_mode_scoreboard_segments(
     const og::sim::ModeState& mode);
 

@@ -74,5 +74,6 @@ return {
   KEEP = KEEP,
   OWN = OWN,
   is_troop = is_troop,
+  retire = retire,
   strip_authored_troops = strip_authored_troops,
 }

@@ -12,6 +12,7 @@ core.register_mode(match.rows_for(levels), "mutant", {
   on_mode_tick = mutant.on_mode_tick,
   on_damage = mutant.on_damage,
   on_entity_death = mutant.on_entity_death,
+  on_entity_spawn = mutant.on_entity_spawn,
   on_respawn = mutant.on_respawn,
 })
 

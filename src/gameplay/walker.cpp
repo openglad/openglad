@@ -19,7 +19,6 @@
 /* ChangeLog
 	buffers: 7/31/02: *deleted some redundant headers
 */
-
 #include <cstdint>
 #include <openglad/core/combat_math.h>
 #include <openglad/gameplay/dirty_field_bits.h>
@@ -32,6 +31,7 @@
 #include <openglad/gameplay/families/generator_family_descriptor.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/render_component_base.h>
@@ -2256,7 +2256,7 @@ unsigned char walker::query_team_color() const
 {
 	// Debugging ..
 	//if (foe && !foe->dead())
-	return static_cast<unsigned char>(team_num()*16+40);
+	return og::sim::team_ramp_base(team_num());
 	//else
 	//  return static_cast<unsigned char>(7*16 + 40);
 }

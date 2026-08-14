@@ -47,6 +47,7 @@ const char* mode_name(ModeKind mode)
         case ModeKind::Soccer: return "soccer";
         case ModeKind::Basketball: return "basketball";
         case ModeKind::Mutant: return "mutant";
+        case ModeKind::Ffa: return "ffa";
     }
     return "?";
 }
@@ -190,7 +191,8 @@ std::vector<ExpectedLevel> all_expectations()
     std::vector<ExpectedLevel> all;
     for (auto rows : {tdm_expectations(), ctf_expectations(),
                       onslaught_expectations(), soccer_expectations(),
-                      basketball_expectations(), mutant_expectations()})
+                      basketball_expectations(), mutant_expectations(),
+                      ffa_expectations()})
         for (ExpectedLevel& row : rows)
             all.push_back(std::move(row));
     return all;

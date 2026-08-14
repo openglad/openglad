@@ -275,6 +275,104 @@ TEST(ModeBindings, team_color_name_matches_engine_table)
     EXPECT_TRUE(fx.logged("err\t0"));
 }
 
+// ---------------------------------------------------------------------------
+// FFA fighter band 16-31 through the widened guards (docs/ffa-design.md §5)
+// ---------------------------------------------------------------------------
+
+TEST(ModeBindings, declare_winner_accepts_band_rejects_gap_and_beyond)
+{
+    ModeBindingsWorld fx;
+    fx.run_on_load(
+        "    local ok4 = pcall(og.declare_winner, 4)\n"
+        "    local ok15 = pcall(og.declare_winner, 15)\n"
+        "    local ok32 = pcall(og.declare_winner, 32)\n"
+        "    local ok255 = pcall(og.declare_winner, 255)\n"
+        "    og.log('errs', ok4 and 1 or 0, ok15 and 1 or 0,\n"
+        "           ok32 and 1 or 0, ok255 and 1 or 0)\n"
+        "    og.declare_winner(31)\n"
+        "    og.log('winner', og.mode_winner())\n");
+    EXPECT_TRUE(fx.logged("errs\t0\t0\t0\t0"));
+    EXPECT_TRUE(fx.logged("winner\t31"));
+    EXPECT_TRUE(fx.world().mode.win_latched);
+    EXPECT_EQ(31, fx.world().mode.winner_team);
+    // No myguy walker on band byte 31: the bot-win rematch shape holds.
+    EXPECT_FALSE(fx.world().mode.winner_is_player);
+    EXPECT_EQ(fx.world().id, fx.world().mode.win_next_level);
+}
+
+TEST(ModeBindings, hud_line_accepts_band_tint_keeps_nil_default)
+{
+    ModeBindingsWorld fx;
+    fx.run_on_load(
+        "    og.set_hud_line(0, 'LEADER', 16)\n"
+        "    og.set_hud_line(1, 'PLAIN')\n"
+        "    local ok4 = pcall(og.set_hud_line, 2, 'x', 4)\n"
+        "    local ok15 = pcall(og.set_hud_line, 2, 'x', 15)\n"
+        "    local ok32 = pcall(og.set_hud_line, 2, 'x', 32)\n"
+        "    og.log('errs', ok4 and 1 or 0, ok15 and 1 or 0,\n"
+        "           ok32 and 1 or 0)\n");
+    EXPECT_TRUE(fx.logged("errs\t0\t0\t0"));
+    EXPECT_STREQ("LEADER", fx.world().mode.hud[0].text.data());
+    EXPECT_EQ(16, fx.world().mode.hud[0].team);
+    // The nil-team default stays 255.
+    EXPECT_EQ(255, fx.world().mode.hud[1].team);
+    // The error arms left slot 2 untouched.
+    EXPECT_STREQ("", fx.world().mode.hud[2].text.data());
+    EXPECT_EQ(255, fx.world().mode.hud[2].team);
+}
+
+TEST(ModeBindings, beacon_accepts_band_team_rejects_gap_and_beyond)
+{
+    ModeBindingsWorld fx;
+    walker* leader = fx.spawn_living(FAMILY_SOLDIER, 1, 160, 160);
+    ASSERT_NE(nullptr, leader);
+    const std::uint32_t id = leader->entity_id();
+    fx.run_on_load(
+        "    local obs = og.oblist()\n"
+        "    og.set_beacon(0, obs[1], 31)\n"
+        "    local ok15 = pcall(og.set_beacon, 1, obs[1], 15)\n"
+        "    local ok40 = pcall(og.set_beacon, 1, obs[1], 40)\n"
+        "    og.log('errs', ok15 and 1 or 0, ok40 and 1 or 0)\n");
+    EXPECT_TRUE(fx.logged("errs\t0\t0"));
+    EXPECT_EQ(static_cast<std::int32_t>(id),
+              fx.world().mode.beacons[0].entity_id);
+    EXPECT_EQ(31, fx.world().mode.beacons[0].team);
+    // The error arms left slot 1 empty.
+    EXPECT_EQ(0, fx.world().mode.beacons[1].entity_id);
+    EXPECT_EQ(255, fx.world().mode.beacons[1].team);
+}
+
+TEST(ModeBindings, team_color_name_band_names_and_edges)
+{
+    ModeBindingsWorld fx;
+    fx.run_on_load(
+        "    og.log('band', og.team_color_name(16), og.team_color_name(17),\n"
+        "           og.team_color_name(18), og.team_color_name(19),\n"
+        "           og.team_color_name(20), og.team_color_name(21),\n"
+        "           og.team_color_name(22), og.team_color_name(23),\n"
+        "           og.team_color_name(24), og.team_color_name(25),\n"
+        "           og.team_color_name(26), og.team_color_name(27),\n"
+        "           og.team_color_name(28), og.team_color_name(29),\n"
+        "           og.team_color_name(30), og.team_color_name(31))\n"
+        "    local ok4 = pcall(og.team_color_name, 4)\n"
+        "    local ok15 = pcall(og.team_color_name, 15)\n"
+        "    local ok32 = pcall(og.team_color_name, 32)\n"
+        "    og.log('errs', ok4 and 1 or 0, ok15 and 1 or 0,\n"
+        "           ok32 and 1 or 0)\n");
+    EXPECT_TRUE(fx.logged(
+        "band\tRED\tGREEN\tBLUE\tYELLOW\tMAGENTA\tCYAN\tTAN\tROSE\t"
+        "LAVENDER\tSALMON\tORANGE\tPINK\tVIOLET\tTEAL\tGOLD\tSLATE"));
+    EXPECT_TRUE(fx.logged("errs\t0\t0\t0"));
+}
+
+TEST(ModeBindings, ffa_band_constants_exported_on_C)
+{
+    ModeBindingsWorld fx;
+    fx.run_on_load(
+        "    og.log('ffa_c', og.C.FFA_TEAM_BASE, og.C.FFA_TEAM_COUNT)\n");
+    EXPECT_TRUE(fx.logged("ffa_c\t16\t16"));
+}
+
 TEST(ModeBindings, match_setting_reads_all_five_knobs)
 {
     ModeBindingsWorld fx;

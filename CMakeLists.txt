@@ -971,6 +971,7 @@ if(NOT EMSCRIPTEN)
         ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/levels_soccer.cpp
         ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/levels_basketball.cpp
         ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/levels_mutant.cpp
+        ${CMAKE_SOURCE_DIR}/tools/modes_mapgen/levels_ffa.cpp
         ${SRC_DIR}/platform/text/platform_headless.cpp
         ${SRC_DIR}/platform/text/walker_headless.cpp
         ${SRC_DIR}/interface/input/input_mappings.cpp

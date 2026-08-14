@@ -879,6 +879,7 @@ og_add_unit_group(og_unit_modes FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_ctf.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_tdm.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_mutant.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_ffa.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_strip.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_items.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_basketball.cpp
@@ -1312,6 +1313,19 @@ add_test(NAME openglad_text_sim
         $<TARGET_FILE:openglad_text>
 )
 set_tests_properties(openglad_text_sim PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT ${OPENG_LAD_TEXT_SIM_CTEST_TIMEOUT}
+)
+
+# Free For All on the shipped modes campaign (scen850) through the same
+# headless protocol harness (docs/ffa-design.md §12 integration paragraph).
+add_test(NAME openglad_text_ffa
+    COMMAND ${CMAKE_COMMAND} -E env
+        OPENGLAD_TEXT_TIMEOUT=${OPENG_LAD_TEXT_SIM_EXEC_TIMEOUT}
+        ${CMAKE_SOURCE_DIR}/scripts/test_text_client_ffa.sh
+        $<TARGET_FILE:openglad_text>
+)
+set_tests_properties(openglad_text_ffa PROPERTIES
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     TIMEOUT ${OPENG_LAD_TEXT_SIM_CTEST_TIMEOUT}
 )

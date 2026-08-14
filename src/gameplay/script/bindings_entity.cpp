@@ -2176,15 +2176,17 @@ int og_end_level(lua_State* L)
 // og.declare_winner(team) — convenience win latch: records winner_team,
 // computes winner_is_player (live myguy on the winning team, after the
 // first-arming revive flush), and latches ending 0 with next_level id+1 on
-// a player win, id (rematch) otherwise. Emits no notification/sound — the
-// mode's Lua owns its own announcements.
+// a player win, id (rematch) otherwise. Accepts a score team 0-3 or an FFA
+// band byte 16-31. Emits no notification/sound — the mode's Lua owns its
+// own announcements.
 int og_declare_winner(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const lua_Integer team = luaL_checkinteger(L, 1);
-    if (team < 0 || team >= SCORE_TEAM_COUNT)
-        return luaL_error(L, "team %d out of range [0, %d]",
-                          static_cast<int>(team), SCORE_TEAM_COUNT - 1);
+    if (team < 0 || !og::sim::is_scoring_identity(static_cast<int>(team)))
+        return luaL_error(L, "team %d not in [0, %d] or band [%d, %d]",
+                          static_cast<int>(team), SCORE_TEAM_COUNT - 1,
+                          kFfaTeamBase, kFfaTeamBase + kFfaTeamCount - 1);
     og::sim::mode_declare_winner(*world, static_cast<int>(team));
     return 0;
 }
@@ -2241,8 +2243,9 @@ int og_set_mode_name(lua_State* L)
 }
 
 // og.set_hud_line(slot, text [, team]) — write a generic mode HUD line:
-// slot 0-3, text clamped to 25 bytes, team tints the line (nil = default
-// HUD color). Replicated; each client renders it its own way.
+// slot 0-3, text clamped to 25 bytes, team (0-3 or band 16-31) tints the
+// line (nil = default HUD color). Replicated; each client renders it its
+// own way.
 int og_set_hud_line(lua_State* L)
 {
     GameWorld* world = world_arg(L);
@@ -2255,9 +2258,10 @@ int og_set_hud_line(lua_State* L)
     std::uint8_t team = 255;
     if (!lua_isnoneornil(L, 3)) {
         const lua_Integer t = luaL_checkinteger(L, 3);
-        if (t < 0 || t >= SCORE_TEAM_COUNT)
-            return luaL_error(L, "team %d out of range [0, %d]",
-                              static_cast<int>(t), SCORE_TEAM_COUNT - 1);
+        if (t < 0 || !og::sim::is_scoring_identity(static_cast<int>(t)))
+            return luaL_error(L, "team %d not in [0, %d] or band [%d, %d]",
+                              static_cast<int>(t), SCORE_TEAM_COUNT - 1,
+                              kFfaTeamBase, kFfaTeamBase + kFfaTeamCount - 1);
         team = static_cast<std::uint8_t>(t);
     }
     og::sim::ModeHudLine& line =
@@ -2302,9 +2306,10 @@ int og_set_beacon(lua_State* L)
     std::uint8_t team = 255;
     if (!lua_isnoneornil(L, 3)) {
         const lua_Integer t = luaL_checkinteger(L, 3);
-        if (t < 0 || t >= SCORE_TEAM_COUNT)
-            return luaL_error(L, "team %d out of range [0, %d]",
-                              static_cast<int>(t), SCORE_TEAM_COUNT - 1);
+        if (t < 0 || !og::sim::is_scoring_identity(static_cast<int>(t)))
+            return luaL_error(L, "team %d not in [0, %d] or band [%d, %d]",
+                              static_cast<int>(t), SCORE_TEAM_COUNT - 1,
+                              kFfaTeamBase, kFfaTeamBase + kFfaTeamCount - 1);
         team = static_cast<std::uint8_t>(t);
     }
     beacon.entity_id = static_cast<std::int32_t>(w->entity_id());
@@ -2381,14 +2386,16 @@ int og_world_tick(lua_State* L)
     return 1;
 }
 
-// og.team_color_name(t) — "RED"/"GREEN"/"BLUE"/"YELLOW", matching the
-// rendered palette ramps; errors outside [0, 3].
+// og.team_color_name(t) — "RED"/"GREEN"/"BLUE"/"YELLOW" for score teams,
+// the 16 band names for FFA bytes 16-31, matching the rendered palette
+// ramps; errors outside those two ranges.
 int og_team_color_name(lua_State* L)
 {
     const lua_Integer team = luaL_checkinteger(L, 1);
-    if (team < 0 || team >= SCORE_TEAM_COUNT)
-        return luaL_error(L, "team %d out of range [0, %d]",
-                          static_cast<int>(team), SCORE_TEAM_COUNT - 1);
+    if (team < 0 || !og::sim::is_scoring_identity(static_cast<int>(team)))
+        return luaL_error(L, "team %d not in [0, %d] or band [%d, %d]",
+                          static_cast<int>(team), SCORE_TEAM_COUNT - 1,
+                          kFfaTeamBase, kFfaTeamBase + kFfaTeamCount - 1);
     lua_pushstring(L, og::sim::team_color_name(static_cast<int>(team)));
     return 1;
 }
@@ -3026,6 +3033,8 @@ const NamedConst kConstants[] = {
     {"NUM_SPECIALS", NUM_SPECIALS},
     {"MAXOBS", MAXOBS},
     {"SCORE_TEAM_COUNT", SCORE_TEAM_COUNT},
+    {"FFA_TEAM_BASE", kFfaTeamBase},
+    {"FFA_TEAM_COUNT", kFfaTeamCount},
 };
 
 // ---------------------------------------------------------------------------

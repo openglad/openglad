@@ -1,13 +1,13 @@
 /* Multiplayer Game Modes campaign generator.
  *
  * Produces campaigns/modes/ (the source tree the build
- * composes into builtin/modes.glad): the 33-scenario six-mode
+ * composes into builtin/modes.glad): the 39-scenario seven-mode
  * campaign (TDM 300-305 absorbing the arenas grids, CTF 500-509 keeping
  * the shipped CTF maps, Onslaught 800-803, Soccer 820-823, Basketball
- * 824-828, Mutant 840-843), every level typed SCEN_TYPE_SCRIPTED — the
- * mode rules live in the campaign's embedded Lua pack. This tool
- * assembles the package (yaml + icon + pack tree + 33 built levels),
- * regenerates the committed
+ * 824-828, Mutant 840-843, Free For All 850-855), every level typed
+ * SCEN_TYPE_SCRIPTED — the mode rules live in the campaign's embedded
+ * Lua pack. This tool assembles the package (yaml + icon + pack tree +
+ * 39 built levels), regenerates the committed
  * level manifest (pack/lib/mode_levels.lua) from the same tables that
  * build the maps, zips, remounts, and hard-fails on any self-check
  * violation before exporting the campaign tree.
@@ -118,11 +118,12 @@ void write_campaign_yaml(const std::string& path)
         << "contributors:    Forgotten Sages (arena grids)\n"
         << "\n"
         << "description:     |\n"
-        << "    One arena, six games, one book.\n"
-        << "    The Gamesmaster calls team\n"
-        << "    deathmatch, capture the flag,\n"
-        << "    onslaught, mutant, soccer, and\n"
-        << "    basketball across thirty-three\n"
+        << "    One arena, seven games, one\n"
+        << "    book. The Gamesmaster calls\n"
+        << "    team deathmatch, capture the\n"
+        << "    flag, onslaught, mutant,\n"
+        << "    soccer, basketball, and free\n"
+        << "    for all across thirty-nine\n"
         << "    fields old and new. The bots\n"
         << "    know the rules. Respawns honor\n"
         << "    your difficulty. First to the\n"
@@ -1058,8 +1059,8 @@ int main(int argc, char* argv[])
 
     // The committed manifest must match the build tables (D8).
     const std::vector<ExpectedLevel> rows = all_expectations();
-    if (rows.size() != 33)
-        fail(std::format("expected 33 levels, tables carry {}", rows.size()));
+    if (rows.size() != 39)
+        fail(std::format("expected 39 levels, tables carry {}", rows.size()));
     (void)check_and_refresh_manifest(rows);
 
     // Assemble the campaign under <user>/temp/ (the repack layout).
@@ -1096,6 +1097,7 @@ int main(int argc, char* argv[])
     build_soccer();
     build_basketball();
     build_mutant();
+    build_ffa();
 
     (void)unmount_campaign_package_with_error(kCampaignId);
     std::remove(glad_path.c_str());
@@ -1125,6 +1127,7 @@ int main(int argc, char* argv[])
             self_check_mode_dispatch(ModeKind::Soccer, 820);
             self_check_mode_dispatch(ModeKind::Basketball, 824);
             self_check_mode_dispatch(ModeKind::Mutant, 840);
+            self_check_mode_dispatch(ModeKind::Ffa, 850);
             (void)unmount_campaign_package_with_error(kCampaignId);
         }
     }

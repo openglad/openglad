@@ -312,6 +312,11 @@ constexpr std::uint64_t kMaxPixiePixels =
     static_cast<std::uint64_t>(kMaxPixieDimension) *
     static_cast<std::uint64_t>(kMaxPixieDimension) *
     static_cast<std::uint64_t>(kMaxPixieDimension);
+// Palette entries 168-191 hold the three synthesized FFA team ramps
+// (docs/ffa-design.md D6); shipped art predates them and still carries the
+// old flat-grey bytes there, so PLTE verification skips the band.
+constexpr unsigned kSynthRampFirst = 168u;
+constexpr unsigned kSynthRampLast = 191u;
 
 static std::string sidecar_path_for(const char* filename)
 {
@@ -868,6 +873,7 @@ PixieData read_pixie_file(const char* filename)
     }
     const unsigned char* pal = state.info_png.color.palette;
     for (unsigned i = 0; i < 256; ++i) {
+        if (i >= kSynthRampFirst && i <= kSynthRampLast) continue;
         for (unsigned c = 0; c < 3; ++c) {
             const unsigned expected6 = our_pal_lookup(static_cast<int>(i * 3 + c));
             const unsigned expected8 = (expected6 * 255u) / 63u;

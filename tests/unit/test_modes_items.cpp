@@ -41,8 +41,8 @@ namespace {
 // The mode-var item slots of the three consuming impls (tables S).
 inline constexpr int kTdmItemCursor = 17;
 inline constexpr int kTdmItemLast = 18;
-inline constexpr int kMutItemCursor = 20;
-inline constexpr int kMutItemLast = 21;
+inline constexpr int kMutItemCursor = 49;  // band slot map, ffa-design §8
+inline constexpr int kMutItemLast = 50;
 [[maybe_unused]] inline constexpr int kCtfItemCursor = 62;
 inline constexpr int kCtfItemLast = 63;
 
@@ -362,7 +362,7 @@ TEST_F(ModesItems, spawned_items_replicate_to_a_client_mirror)
 TEST_F(ModesItems, mutant_840_items_cycle_deterministically)
 {
     // Two identical Mutant matches on the shipped 840 row (interval 180,
-    // slots 20/21) with an eat mid-run: byte-identical digests, and items
+    // slots 49/50) with an eat mid-run: byte-identical digests, and items
     // actually cycling (spawn - eat - respawn).
     auto run_once = []() {
         ModesCtfWorld fx(840);

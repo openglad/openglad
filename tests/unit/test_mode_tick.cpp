@@ -20,6 +20,7 @@
 
 #include "../test_game_world_fixture.h"
 
+#include <array>
 #include <memory>
 #include <string>
 #include <vector>
@@ -705,4 +706,91 @@ TEST(ModeTick, respawn_fires_in_place_and_dispatches_hook)
     }
     EXPECT_EQ(1, live_soldiers);
     EXPECT_TRUE(fx.world().respawn.respawn_queue.empty());
+}
+
+// ---------------------------------------------------------------------------
+// FFA fighter band: team_ramp_base / is_scoring_identity / team_color_name
+// (docs/ffa-design.md §4-5)
+// ---------------------------------------------------------------------------
+
+TEST(ModeTick, team_ramp_base_pins_the_band_table)
+{
+    // The exact 16-entry band mapping from docs/ffa-design.md §4.
+    constexpr std::array<unsigned char, 16> kExpected = {
+        40,  56,  72,  88,  104, 120, 136, 152,
+        200, 32,  128, 144, 192, 168, 176, 184};
+    for (int c = 0; c < kFfaTeamCount; ++c)
+    {
+        EXPECT_EQ(kExpected[static_cast<std::size_t>(c)],
+                  og::sim::team_ramp_base(kFfaTeamBase + c))
+            << "band color index " << c;
+    }
+}
+
+TEST(ModeTick, team_ramp_base_keeps_the_classic_formula_off_band)
+{
+    // Classic bytes: team*16+40 (uchar wrap), unchanged by the band table.
+    EXPECT_EQ(40, og::sim::team_ramp_base(0));
+    EXPECT_EQ(56, og::sim::team_ramp_base(1));
+    EXPECT_EQ(72, og::sim::team_ramp_base(2));
+    EXPECT_EQ(88, og::sim::team_ramp_base(3));
+    EXPECT_EQ(120, og::sim::team_ramp_base(5));
+    EXPECT_EQ(248, og::sim::team_ramp_base(13));
+    // First byte past the band wraps like any classic byte: 32*16+40 = 552,
+    // uchar 40.
+    EXPECT_EQ(40, og::sim::team_ramp_base(32));
+}
+
+TEST(ModeTick, is_scoring_identity_truth_table)
+{
+    EXPECT_TRUE(og::sim::is_scoring_identity(0));
+    EXPECT_TRUE(og::sim::is_scoring_identity(3));
+    EXPECT_FALSE(og::sim::is_scoring_identity(4));
+    EXPECT_FALSE(og::sim::is_scoring_identity(15));
+    EXPECT_TRUE(og::sim::is_scoring_identity(16));
+    EXPECT_TRUE(og::sim::is_scoring_identity(31));
+    EXPECT_FALSE(og::sim::is_scoring_identity(32));
+    EXPECT_FALSE(og::sim::is_scoring_identity(255));
+}
+
+TEST(ModeTick, team_color_name_pins_the_sixteen_band_names)
+{
+    constexpr std::array<const char*, 16> kNames = {
+        "RED",    "GREEN", "BLUE",     "YELLOW", "MAGENTA", "CYAN",
+        "TAN",    "ROSE",  "LAVENDER", "SALMON", "ORANGE",  "PINK",
+        "VIOLET", "TEAL",  "GOLD",     "SLATE"};
+    for (int c = 0; c < kFfaTeamCount; ++c)
+    {
+        EXPECT_STREQ(kNames[static_cast<std::size_t>(c)],
+                     og::sim::team_color_name(kFfaTeamBase + c))
+            << "band color index " << c;
+    }
+    // Classic names and the YELLOW default are unchanged.
+    EXPECT_STREQ("RED", og::sim::team_color_name(0));
+    EXPECT_STREQ("GREEN", og::sim::team_color_name(1));
+    EXPECT_STREQ("BLUE", og::sim::team_color_name(2));
+    EXPECT_STREQ("YELLOW", og::sim::team_color_name(3));
+    EXPECT_STREQ("YELLOW", og::sim::team_color_name(7));
+    EXPECT_STREQ("YELLOW", og::sim::team_color_name(32));
+}
+
+TEST(ModeTick, ffa_ramp_bases_avoid_reserved_and_cycled_palette)
+{
+    // No ramp base may be one of the reserved bytes, and no 8-shade window
+    // [base, base+7] may intersect the color-cycled range [208, 231]
+    // (docs/ffa-design.md §4).
+    std::array<bool, 256> seen{};
+    for (unsigned char base : og::sim::kFfaRampBases)
+    {
+        EXPECT_NE(0, base);
+        EXPECT_NE(7, base);
+        EXPECT_NE(208, base);
+        EXPECT_NE(224, base);
+        EXPECT_TRUE(base + 7 < 208 || base > 231)
+            << "ramp window [" << static_cast<int>(base) << ", "
+            << static_cast<int>(base) + 7 << "] hits the cycled 208-231";
+        EXPECT_FALSE(seen[base]) << "duplicate ramp base "
+                                 << static_cast<int>(base);
+        seen[base] = true;
+    }
 }
