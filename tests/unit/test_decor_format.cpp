@@ -23,6 +23,9 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_file_io.h>
 #include <openglad/resources/og_file.h>
+#include <openglad/resources/our_palette.h>
+
+#include "lodepng.h"
 
 #include <gtest/gtest.h>
 
@@ -562,4 +565,148 @@ TEST_F(SpriteFootprintTest, invalid_footprints_reject_the_sprite)
     ASSERT_TRUE(ok.valid());
     EXPECT_EQ(255, static_cast<int>(ok.w));
     EXPECT_EQ(1, static_cast<int>(ok.h));
+}
+
+// ---------------------------------------------------------------------------
+// FFA synthesized team ramps (docs/ffa-design.md section 4, D5/D6). Palette
+// entries 168-191 — the old 24-slot flat-grey hole — now carry three 8-shade
+// ramps (TEAL/GOLD/SLATE) baked into our_pal_lookup, while shipped sprite
+// PNGs still embed the pre-ramp grey PLTE bytes there. The loader exempts
+// exactly that band from PLTE verification so both vintages load.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+inline constexpr int kSynthRampFirst = 168;
+inline constexpr int kSynthRampLast = 191;
+
+// The exact 6-bit triples from docs/ffa-design.md section 4 (brightest at
+// +0, descending like RED at 40): TEAL 168-175, GOLD 176-183, SLATE 184-191.
+inline constexpr unsigned char kFfaSynthRamps[24][3] = {
+    {0, 57, 50},  {0, 50, 44},  {0, 43, 38},  {0, 36, 32},
+    {0, 29, 26},  {0, 22, 20},  {0, 15, 14},  {0, 9, 8},
+    {57, 45, 10}, {51, 40, 8},  {45, 35, 6},  {39, 30, 4},
+    {33, 25, 3},  {27, 20, 2},  {21, 15, 1},  {15, 10, 0},
+    {44, 48, 57}, {39, 43, 51}, {34, 38, 45}, {29, 33, 39},
+    {24, 28, 33}, {19, 23, 27}, {14, 18, 21}, {9, 13, 15},
+};
+
+// The loader's 6-bit -> 8-bit PLTE scaling (og_file.cpp).
+unsigned char pal8(unsigned v6)
+{
+    return static_cast<unsigned char>((v6 * 255u) / 63u);
+}
+
+// Encode a tiny indexed PNG with an arbitrary caller-supplied 256-entry
+// palette (write_pixie_png always embeds our_pal_lookup, so hand-rolled
+// PLTE vintages need lodepng directly) and drop it in the temp pix tree.
+// `pal(i, c)` supplies the 8-bit PLTE byte for entry i channel c.
+template <typename PalFn>
+void write_plte_fixture(const std::string& name, PalFn pal)
+{
+    create_dir(get_user_path() + "temp");
+    create_dir(get_user_path() + "temp/pix");
+
+    lodepng::State state;
+    state.info_raw.colortype = LCT_PALETTE;
+    state.info_raw.bitdepth = 8;
+    state.info_png.color.colortype = LCT_PALETTE;
+    state.info_png.color.bitdepth = 8;
+    state.encoder.auto_convert = 0;
+    for (unsigned i = 0; i < 256; ++i)
+    {
+        const auto a8 = static_cast<unsigned char>((i == 0) ? 0u : 255u);
+        ASSERT_EQ(0u, lodepng_palette_add(&state.info_raw, pal(i, 0),
+                                          pal(i, 1), pal(i, 2), a8));
+        ASSERT_EQ(0u, lodepng_palette_add(&state.info_png.color, pal(i, 0),
+                                          pal(i, 1), pal(i, 2), a8));
+    }
+
+    std::vector<unsigned char> pixels(16 * 16);
+    for (std::size_t i = 0; i < pixels.size(); ++i)
+        pixels[i] = static_cast<unsigned char>(1 + (i % 246));
+
+    std::vector<unsigned char> encoded;
+    ASSERT_EQ(0u, lodepng::encode(encoded, pixels, 16, 16, state)) << name;
+    ASSERT_TRUE(og::resources::write_file(("temp/pix/" + name + ".png").c_str(),
+                                          encoded.data(), encoded.size()))
+        << name;
+}
+
+unsigned char engine_pal8(unsigned i, unsigned c)
+{
+    return pal8(our_pal_lookup(static_cast<int>(i * 3 + c)));
+}
+
+using FfaPaletteTest = DecorFormatTest;
+
+} // namespace
+
+// Pin the baked ramp values: our_pal_lookup entries 168*3 .. 191*3+2 must
+// carry exactly the spec table, channel by channel.
+TEST(FfaPalette, our_pal_lookup_carries_the_exact_synth_ramps)
+{
+    for (int e = 0; e < 24; ++e)
+        for (int c = 0; c < 3; ++c)
+            ASSERT_EQ(static_cast<int>(kFfaSynthRamps[e][c]),
+                      static_cast<int>(our_pal_lookup(
+                          (kSynthRampFirst + e) * 3 + c)))
+                << "palette entry " << (kSynthRampFirst + e) << " channel "
+                << c << " drifted from docs/ffa-design.md section 4";
+}
+
+// Old-vintage sprite: PLTE matches our_pal_lookup everywhere EXCEPT 168-191,
+// which still holds the pre-ramp flat grey (6-bit 17,17,17 -> 8-bit 68). The
+// shipped 616 PNGs keep those bytes, so this must load (the D6 exemption).
+TEST_F(FfaPaletteTest, loader_accepts_old_flat_grey_plte_in_the_synth_band)
+{
+    ASSERT_NO_FATAL_FAILURE(write_plte_fixture(
+        "ffa_plte_old_grey", [](unsigned i, unsigned c) -> unsigned char {
+            if (i >= kSynthRampFirst && i <= kSynthRampLast)
+                return pal8(17);
+            return engine_pal8(i, c);
+        }));
+
+    ScopedTempMount mount;
+    ASSERT_TRUE(mount.ok());
+    PixieData p = read_pixie_file("ffa_plte_old_grey.png");
+    ASSERT_TRUE(p.valid())
+        << "pre-ramp grey PLTE bytes in 168-191 must stay loadable";
+    ASSERT_EQ(16, static_cast<int>(p.w));
+    ASSERT_EQ(16, static_cast<int>(p.h));
+    ASSERT_EQ(1, static_cast<int>(p.frames));
+}
+
+// New-vintage sprite: PLTE equals our_pal_lookup exactly, ramps included.
+TEST_F(FfaPaletteTest, loader_accepts_new_ramp_plte)
+{
+    ASSERT_NO_FATAL_FAILURE(
+        write_plte_fixture("ffa_plte_new_ramps", engine_pal8));
+
+    ScopedTempMount mount;
+    ASSERT_TRUE(mount.ok());
+    PixieData p = read_pixie_file("ffa_plte_new_ramps.png");
+    ASSERT_TRUE(p.valid());
+    ASSERT_EQ(16, static_cast<int>(p.w));
+    ASSERT_EQ(16, static_cast<int>(p.h));
+    ASSERT_EQ(1, static_cast<int>(p.frames));
+}
+
+// The exemption is exactly 168-191: a mismatch at a non-exempt entry (RED
+// ramp base 40) must still reject the sprite.
+TEST_F(FfaPaletteTest, loader_still_rejects_mismatch_outside_the_synth_band)
+{
+    ASSERT_NO_FATAL_FAILURE(write_plte_fixture(
+        "ffa_plte_bad_entry40", [](unsigned i, unsigned c) -> unsigned char {
+            const unsigned char v = engine_pal8(i, c);
+            if (i == 40 && c == 0)
+                return static_cast<unsigned char>(v - 5);
+            return v;
+        }));
+
+    ScopedTempMount mount;
+    ASSERT_TRUE(mount.ok());
+    PixieData p = read_pixie_file("ffa_plte_bad_entry40.png");
+    EXPECT_FALSE(p.valid())
+        << "PLTE verification outside 168-191 must stay strict";
 }

@@ -170,30 +170,30 @@ Columns: 16
   0  24   8	color_165
   0  12   4	color_166
   0   8   0	color_167
- 68  68  68	color_168
- 68  68  68	color_169
- 68  68  68	color_170
- 68  68  68	color_171
- 68  68  68	color_172
- 68  68  68	color_173
- 68  68  68	color_174
- 68  68  68	color_175
- 68  68  68	color_176
- 68  68  68	color_177
- 68  68  68	color_178
- 68  68  68	color_179
- 68  68  68	color_180
- 68  68  68	color_181
- 68  68  68	color_182
- 68  68  68	color_183
- 68  68  68	color_184
- 68  68  68	color_185
- 68  68  68	color_186
- 68  68  68	color_187
- 68  68  68	color_188
- 68  68  68	color_189
- 68  68  68	color_190
- 68  68  68	color_191
+  0 230 202	color_168
+  0 202 178	color_169
+  0 174 153	color_170
+  0 145 129	color_171
+  0 117 105	color_172
+  0  89  80	color_173
+  0  60  56	color_174
+  0  36  32	color_175
+230 182  40	color_176
+206 161  32	color_177
+182 141  24	color_178
+157 121  16	color_179
+133 101  12	color_180
+109  80   8	color_181
+ 85  60   4	color_182
+ 60  40   0	color_183
+178 194 230	color_184
+157 174 206	color_185
+137 153 182	color_186
+117 133 157	color_187
+ 97 113 133	color_188
+ 76  93 109	color_189
+ 56  72  85	color_190
+ 36  52  60	color_191
 165 101 230	color_192
 145  80 210	color_193
 125  60 190	color_194
