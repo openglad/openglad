@@ -1012,6 +1012,7 @@ TEST_F(ModesLevels, shipped_registration_scripts_wire_the_expected_hooks)
     constexpr std::uint32_t kDamage = 1u << 6;
     constexpr std::uint32_t kRespawn = 1u << 7;
     constexpr std::uint32_t kEntityDeath = 1u << 2;
+    constexpr std::uint32_t kEntitySpawn = 1u << 3;
 
     // Loading any level of the campaign builds the world VM and replays the
     // pack scripts, which is what performs the registrations.
@@ -1030,7 +1031,9 @@ TEST_F(ModesLevels, shipped_registration_scripts_wire_the_expected_hooks)
     // on_damage and scrubs/scores through on_entity_death; Mutant needs
     // both (the one-way matrix and the crown transfer); Basketball adds
     // on_damage (the carrier fumble) but no death hook — the carrier's
-    // death is caught by the mode tick's liveness sweep.
+    // death is caught by the mode tick's liveness sweep. The two fighter-band
+    // modes (FFA, and Mutant since its docs/ffa-design.md §8 conversion) also
+    // watch on_entity_spawn for mid-join band adoption.
     const ModeHooks rows[] = {
         {300, "tdm", kModeInit | kModeTick | kEntityDeath | kRespawn},
         {305, "tdm", kModeInit | kModeTick | kEntityDeath | kRespawn},
@@ -1045,9 +1048,15 @@ TEST_F(ModesLevels, shipped_registration_scripts_wire_the_expected_hooks)
         {824, "basketball", kModeInit | kModeTick | kRespawn | kDamage},
         {828, "basketball", kModeInit | kModeTick | kRespawn | kDamage},
         {840, "mutant",
-         kModeInit | kModeTick | kDamage | kEntityDeath | kRespawn},
+         kModeInit | kModeTick | kDamage | kEntityDeath | kEntitySpawn |
+             kRespawn},
         {843, "mutant",
-         kModeInit | kModeTick | kDamage | kEntityDeath | kRespawn},
+         kModeInit | kModeTick | kDamage | kEntityDeath | kEntitySpawn |
+             kRespawn},
+        {850, "ffa",
+         kModeInit | kModeTick | kEntityDeath | kEntitySpawn | kRespawn},
+        {855, "ffa",
+         kModeInit | kModeTick | kEntityDeath | kEntitySpawn | kRespawn},
     };
 
     for (const ModeHooks& row : rows)
