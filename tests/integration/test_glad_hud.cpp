@@ -346,6 +346,115 @@ TEST_F(GladHud, glad_score_panel_and_new_score_panel_modes)
     v->control = control_pointer_is_live(og::runtime::current_session->myscreen_->level_runtime_data(), old_control) ? old_control : nullptr;
 }
 
+TEST_F(GladHud, quarter_screen_special_is_always_visible)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+
+    struct ViewSetRestore
+    {
+        screen* scr;
+        short numviews;
+        std::array<std::unique_ptr<viewscreen>, MAX_VIEWS> views;
+
+        explicit ViewSetRestore(screen* screen_ptr)
+            : scr(screen_ptr), numviews(screen_ptr->numviews)
+        {
+            for (int i = 0; i < MAX_VIEWS; ++i)
+                views[static_cast<std::size_t>(i)] = std::move(scr->viewob[i]);
+        }
+
+        ~ViewSetRestore()
+        {
+            for (int i = 0; i < MAX_VIEWS; ++i)
+                scr->viewob[i].reset();
+            for (int i = 0; i < MAX_VIEWS; ++i)
+                scr->viewob[i] = std::move(views[static_cast<std::size_t>(i)]);
+            scr->numviews = numviews;
+            scr->relayout_views();
+        }
+    } restore_views{s};
+
+    s->numviews = 4;
+    s->initialize_views();
+
+    std::array<std::unique_ptr<walker>, 4> controls;
+    constexpr std::array<unsigned char, 4> kTeams = {0, 16, 17, 1};
+    constexpr std::array<char, 4> kScorePrefs = {
+        PREF_SCORE_OFF, PREF_SCORE_ON, PREF_SCORE_OFF, PREF_SCORE_ON};
+    constexpr std::array<char, 4> kOverlayPrefs = {
+        PREF_OVERLAY_ON, PREF_OVERLAY_ON, PREF_OVERLAY_OFF, PREF_OVERLAY_OFF};
+    for (int i = 0; i < 4; ++i)
+    {
+        const std::size_t seat = static_cast<std::size_t>(i);
+        controls[seat] = make_player(kTeams[seat]);
+        ASSERT_NE(nullptr, controls[seat]);
+        walker* const control = controls[seat].get();
+        control->set_user(static_cast<signed char>(i));
+        control->set_current_special(1); // Soldier CHARGE
+        control->stats()->set_magicpoints(1000.0f);
+
+        viewscreen* const view = s->viewob[i].get();
+        ASSERT_NE(nullptr, view);
+        view->control = control;
+        view->prefs[PREF_OVERLAY] = kOverlayPrefs[seat];
+        view->prefs[PREF_LIFE] = PREF_LIFE_OFF;
+        view->prefs[PREF_SCORE] = kScorePrefs[seat];
+        view->prefs[PREF_FOES] = PREF_FOES_OFF;
+    }
+
+    s->clearbuffer();
+    ASSERT_EQ(1, new_score_panel(s, 1));
+    const auto actual = capture_rendered_frame(*s);
+
+    s->clearbuffer();
+    for (int i = 0; i < 4; ++i)
+    {
+        const viewscreen* const view = s->viewob[i].get();
+        if (kOverlayPrefs[static_cast<std::size_t>(i)] == PREF_OVERLAY_ON)
+        {
+            const int box_top =
+                view->endy - (kScorePrefs[static_cast<std::size_t>(i)] == PREF_SCORE_ON
+                                  ? 26
+                                  : 10);
+            s->draw_button(view->xloc + 1, box_top,
+                           view->xloc + 98, view->endy - 2, 1, 1);
+        }
+        const unsigned char text_color =
+            kOverlayPrefs[static_cast<std::size_t>(i)] == PREF_OVERLAY_ON
+                ? static_cast<unsigned char>(DARK_BLUE)
+                : static_cast<unsigned char>(YELLOW);
+        s->text_normal.write_xy(view->xloc + 2, view->endy - 8,
+                                "SPC: CHARGE",
+                                text_color,
+                                static_cast<short>(1));
+    }
+    const auto expected = capture_rendered_frame(*s);
+
+    for (int i = 0; i < 4; ++i)
+    {
+        const viewscreen* const view = s->viewob[i].get();
+        std::vector<unsigned char> actual_row;
+        std::vector<unsigned char> expected_row;
+        for (int y = view->endy - 28; y < view->endy; ++y)
+        {
+            for (int x = view->xloc; x < view->xloc + 100; ++x)
+            {
+                const std::size_t offset = static_cast<std::size_t>(y * 320 + x);
+                actual_row.push_back(actual[offset]);
+                expected_row.push_back(expected[offset]);
+            }
+        }
+        EXPECT_EQ(expected_row, actual_row)
+            << "seat " << i << " must show its exact current-special row"
+            << " (team=" << static_cast<int>(kTeams[static_cast<std::size_t>(i)])
+            << ", score_pref="
+            << static_cast<int>(kScorePrefs[static_cast<std::size_t>(i)])
+            << ", overlay_pref="
+            << static_cast<int>(kOverlayPrefs[static_cast<std::size_t>(i)])
+            << ")";
+    }
+}
+
 // Regression: a network client renders a single local viewport (players == 0),
 // but its controlled walker carries the server-global player slot in user()
 // (set by GameServer::bind_player and shipped to the client in the snapshot).
@@ -1254,7 +1363,7 @@ TEST_F(GladHud, score_panel_greys_special_line_when_specials_disabled)
     v->control = controlp;
     v->prefs[PREF_OVERLAY] = PREF_OVERLAY_OFF; // no button box pixels
     v->prefs[PREF_LIFE] = PREF_LIFE_OFF;
-    v->prefs[PREF_SCORE] = PREF_SCORE_ON;      // the SPC line lives here
+    v->prefs[PREF_SCORE] = PREF_SCORE_ON;      // keep the legacy SC/XP rows on
     v->prefs[PREF_FOES] = PREF_FOES_OFF;
 
     // The SPC line draws at (lm+2, bm-24) = (2, 176) for the full pane.

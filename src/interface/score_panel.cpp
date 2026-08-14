@@ -746,96 +746,122 @@ short new_score_panel(screen* s, short /*do_it*/)
                       scared_ticks, scared_seconds);
             }
 
-            if (s->viewob[players]->prefs[PREF_SCORE] == PREF_SCORE_ON)
-            {
-                // Score, bottom left corner
-                int special_offset = -24;
+            // Score, bottom left corner
+            int special_offset = -24;
+            Sint32 score_bottom = bm;
 #ifdef USE_TOUCH_INPUT
-                // Upper left instead
-                int bm = tm + 54;
-                special_offset = 0;
+            // Upper left instead
+            score_bottom = tm + 54;
+            special_offset = 0;
 #endif
 
-                // Draw box, if needed
-                if (draw_button)
-                    s->draw_button(lm+1, bm-26, lm+98, bm-2, 1, 1);
+            int special_y = score_bottom + special_offset;
+            const bool compact_score_panel =
+                s->numviews > 2 && !(s->numviews == 3 && players == 0);
+            // Don't show score and XP (clutter) when in a small viewport
+            if (compact_score_panel)
+                special_y = score_bottom - 8;
 
+            const bool show_score =
+                s->viewob[players]->prefs[PREF_SCORE] == PREF_SCORE_ON;
+
+            // Draw box, if needed
+            if (draw_button)
+            {
+                if (show_score)
+                {
+                    s->draw_button(lm+1, score_bottom-26, lm+98,
+                                   score_bottom-2, 1, 1);
+                }
+                else
+                {
+                    Sint32 special_box_bottom = special_y + 6;
+#ifdef USE_TOUCH_INPUT
+                    if (s->alternate_name[fam][spc] != "NONE")
+                    {
+                        special_box_bottom = std::max(
+                            special_box_bottom,
+                            score_bottom + special_offset + 14);
+                    }
+#endif
+                    s->draw_button(lm+1, special_y-2, lm+98,
+                                   special_box_bottom, 1, 1);
+                }
+            }
+
+            if (show_score)
+            {
                 const bool can_show_team_score = is_valid_score_team(control->team_num());
-                if (!can_show_team_score)
+                if (can_show_team_score)
+                {
+                    // Get our score ..
+                    const unsigned char team_num = control->team_num();
+                    myscore = s->world_.m_score[team_num];
+                    if (scorecountup[team_num] > myscore)
+                        scorecountup[team_num] = myscore;
+                    if (scorecountup[team_num] < myscore)
+                    {
+                        scorecountup[team_num]++;
+                        scorecountup[team_num] += static_cast<Uint32>(rng((myscore - scorecountup[team_num]))/12);
+                    }
+                    if (scorecountup[team_num] > myscore)
+                        scorecountup[team_num] = myscore;
+
+                    // above should count up the score towards the current amount
+                    if (!compact_score_panel)
+                    {
+                        message = std::format("SC: {}", scorecountup[team_num]);
+                        mytext.write_xy(lm+2, score_bottom-8, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
+
+                        // Level or exp, 2nd bottom left
+                        if (control->myguy)
+                            message = std::format("XP: {}", control->myguy->exp);
+                        else
+                            message = std::format("LEVEL: {}", control->stats()->level());
+                        mytext.write_xy(lm+2, score_bottom-16, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
+                    }
+                }
+                else if (!compact_score_panel)
                 {
                     message = "SC: 0";
-                    mytext.write_xy(lm+2, bm-8, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
-                    continue;
+                    mytext.write_xy(lm+2, score_bottom-8, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
                 }
+            }
 
-                // Get our score ..
-                const unsigned char team_num = control->team_num();
-                myscore = s->world_.m_score[team_num];
-                if (scorecountup[team_num] > myscore)
-                    scorecountup[team_num] = myscore;
-                if (scorecountup[team_num] < myscore)
-                {
-                    scorecountup[team_num]++;
-                    scorecountup[team_num] += static_cast<Uint32>(rng((myscore - scorecountup[team_num]))/12);
-                }
-                if (scorecountup[team_num] > myscore)
-                    scorecountup[team_num] = myscore;
+            // Currently-select special
+            if (control->shifter_down() &&
+                s->alternate_name[fam][spc] != "NONE")
+                message = std::format("SPC: {}", s->alternate_name[fam][spc]);
+            else
+                message = std::format("SPC: {}", s->special_name[fam][spc]);
 
-                // above should count up the score towards the current amount
-                int special_y = bm + special_offset;
-                // Don't show score and XP (clutter) when in a small viewport
-                if (s->numviews > 2 && !(s->numviews == 3 && players == 0))
-                {
-                    special_y = bm - 8;
-                }
-                else
-                {
-                    message = std::format("SC: {}", scorecountup[team_num]);
-                    mytext.write_xy(lm+2, bm-8, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
-
-                    // Level or exp, 2nd bottom left
-                    if (control->myguy)
-                        message = std::format("XP: {}", control->myguy->exp);
-                    else
-                        message = std::format("LEVEL: {}", control->stats()->level());
-                    mytext.write_xy(lm+2, bm-16, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
-                }
-
-                // Currently-select special
-                if (control->shifter_down() &&
-                    s->alternate_name[fam][spc] != "NONE")
-                    message = std::format("SPC: {}", s->alternate_name[fam][spc]);
-                else
-                    message = std::format("SPC: {}", s->special_name[fam][spc]);
-
-                // Disabled-special signifier: a walker whose specials are
-                // switched off (the level's NPC flag) can NEVER fire the
-                // listed special, no matter its MP — grey the line out so it
-                // reads as unavailable rather than merely unaffordable (RED).
-                if (control->specials_disabled())
-                {
-                    mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(GREY), static_cast<short>(1));
-                    TRACE("hud", "spc_disabled fam=%d spc=%d", fam, spc);
-                }
-                else if (control->stats()->magicpoints() >= control->stats()->special_cost(spc))
-                    mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
-                else
-                    mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));
+            // Disabled-special signifier: a walker whose specials are
+            // switched off (the level's NPC flag) can NEVER fire the
+            // listed special, no matter its MP — grey the line out so it
+            // reads as unavailable rather than merely unaffordable (RED).
+            if (control->specials_disabled())
+            {
+                mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(GREY), static_cast<short>(1));
+                TRACE("hud", "spc_disabled fam=%d spc=%d", fam, spc);
+            }
+            else if (control->stats()->magicpoints() >= control->stats()->special_cost(spc))
+                mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
+            else
+                mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));
 
 #ifdef USE_TOUCH_INPUT
-                // Alternate special name (if not "NONE")
-                if (s->alternate_name[fam][spc] != "NONE")
-                {
-                    message = std::format("ALT: {}", s->alternate_name[fam][spc]);
-                    if (control->specials_disabled())
-                        mytext.write_xy(lm+2, bm + special_offset + 8, message.c_str(), static_cast<unsigned char>(GREY), static_cast<short>(1));
-                    else if (control->stats()->magicpoints() >= control->stats()->special_cost(spc))
-                        mytext.write_xy(lm+2, bm + special_offset + 8, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
-                    else
-                        mytext.write_xy(lm+2, bm + special_offset + 8, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));
-                }
-#endif
+            // Alternate special name (if not "NONE")
+            if (s->alternate_name[fam][spc] != "NONE")
+            {
+                message = std::format("ALT: {}", s->alternate_name[fam][spc]);
+                if (control->specials_disabled())
+                    mytext.write_xy(lm+2, score_bottom + special_offset + 8, message.c_str(), static_cast<unsigned char>(GREY), static_cast<short>(1));
+                else if (control->stats()->magicpoints() >= control->stats()->special_cost(spc))
+                    mytext.write_xy(lm+2, score_bottom + special_offset + 8, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
+                else
+                    mytext.write_xy(lm+2, score_bottom + special_offset + 8, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));
             }
+#endif
 
             // Number of allies, upper right
             if (s->viewob[players]->prefs[PREF_FOES] == PREF_FOES_ON)
