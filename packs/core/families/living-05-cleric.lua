@@ -183,6 +183,7 @@ local function raise_skeleton(self)
   return true
 end
 
+-- Raise ghosts ..
 local function raise_ghost(self)
   if self:shifter_down() ~= 0 then
     -- turn undead (identical block to special 2)
@@ -212,6 +213,7 @@ local function raise_ghost(self)
   return true
 end
 
+-- Resurrect our guys ..
 local function resurrect(self)
   local t = og.tuning(self)
   local blood = nearby_corpse(self, t.resurrect_range)
@@ -220,12 +222,14 @@ local function resurrect(self)
   end
   local alive
   if self:is_friendly(blood) then
+    -- normal resurrection
     -- Friendly resurrect: restore the corpse's pre-bloodstain family
     -- at half health.
     alive = og.add_ob("living", blood:s_old_family())
     if not alive then
       return false
     end
+    -- restore our old values ..
     blood:transfer_stats(alive)
     -- max_hp is a C++ float: fdiv is a genuine float half
     alive.hp = og.fdiv(alive.max_hp, 2.0)
