@@ -1,17 +1,18 @@
 // Shipped "Multiplayer Game Modes" campaign validation
 // (builtin/modes.glad, authored by tools/modes_mapgen).
 //
-// The 33-scenario six-mode campaign (TDM 300-305 absorbing the arenas
+// The 39-scenario seven-mode campaign (TDM 300-305 absorbing the arenas
 // grids, CTF 500-509 keeping the shipped CTF maps, Onslaught 800-803,
-// Soccer 820-823, Basketball 824-828, Mutant 840-843) is loaded through
-// the production campaign-mount path and pinned against the authoring
-// invariants the generator promises: every level SCEN_TYPE_SCRIPTED with
-// no exit treasures, Gamesmaster briefings inside the 33-char budget with
-// the exact sign-off, per-mode entity inventories (markers, flags,
-// waypoints, per-team generators, treasures, doors), the migrated
-// decor-cell pins (arenas + CTF values carried over from
-// test_migrated_campaigns), the kept CTF door/key/capture-limit content,
-// the §2.3 obmap ledger with its documented 303/305 A* waivers, closed
+// Soccer 820-823, Basketball 824-828, Mutant 840-843, Free For All
+// 850-855) is loaded through the production campaign-mount path and
+// pinned against the authoring invariants the generator promises: every
+// level SCEN_TYPE_SCRIPTED with no exit treasures, Gamesmaster briefings
+// inside the 33-char budget with the exact sign-off, per-mode entity
+// inventories (markers, flags, waypoints, per-team generators,
+// treasures, doors), the migrated decor-cell pins (arenas + CTF values
+// carried over from test_migrated_campaigns), the kept CTF
+// door/key/capture-limit content, the §2.3 obmap ledger with its
+// documented 303/305 A* waivers, closed
 // soccer perimeters whose painted goal strips match the generated
 // manifest, closed basketball perimeters whose 3x3 dunk carpets and jump
 // tile match the generated manifest, footing + A*-reachability, and the
@@ -56,6 +57,7 @@ inline constexpr int kModesWaypointFamily = 14;
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -198,13 +200,14 @@ bool tile_passable(GameWorld& world, walker* probe, int tx, int ty)
 }
 
 // ---------------------------------------------------------------------------
-// The 33-row pin table (mirrors tools/modes_mapgen's ExpectedLevel rows —
+// The 39-row pin table (mirrors tools/modes_mapgen's ExpectedLevel rows —
 // tool and test move in lockstep).
 // ---------------------------------------------------------------------------
 struct ShippedModeLevel
 {
     int id;
-    const char* mode; // manifest tag: tdm/ctf/onslaught/soccer/basketball/mutant
+    const char* mode; // manifest tag: tdm/ctf/onslaught/soccer/basketball/
+                      // mutant/ffa
     const char* title;
     int par;
     int grid_w;
@@ -226,6 +229,10 @@ struct ShippedModeLevel
     // the row's item_interval (0 = the mode ships no item respawns).
     std::array<int, 4> item_pads;
     int item_interval;
+    // Roster modes only (ffa, mutant): the manifest's `fighters` count.
+    // 0 pins the field ABSENT, which is what keeps every other mode's
+    // manifest row byte-stable across the field's arrival.
+    int fighters = 0;
 };
 
 const std::vector<ShippedModeLevel>& shipped_levels()
@@ -320,16 +327,34 @@ const std::vector<ShippedModeLevel>& shipped_levels()
          {0, 0, 0, 0}, 0},
         {840, "mutant", "Mutant: THE PIT", 6, 30, 30, 4, 12, 0, 0,
          {0, 0, 0, 0, 0, 0, 0, 0}, 0, 8, 0, 0, 0, false, 4,
-         {6, 0, 0, 2}, 180},
+         {6, 0, 0, 2}, 180, 4},
         {841, "mutant", "Mutant: CATACOMBS", 8, 50, 50, 4, 12, 0, 0,
          {0, 0, 0, 0, 0, 0, 0, 0}, 0, 12, 0, 0, 0, false, 66,
-         {10, 0, 0, 2}, 180},
+         {10, 0, 0, 2}, 180, 4},
         {842, "mutant", "Mutant: MOONCOURT", 8, 40, 40, 4, 12, 0, 0,
          {0, 0, 0, 0, 0, 0, 0, 0}, 0, 12, 0, 0, 0, false, 48,
-         {8, 0, 0, 4}, 180},
+         {8, 0, 0, 4}, 180, 4},
         {843, "mutant", "Mutant: BROKEN CROWN", 10, 45, 45, 4, 12, 0, 0,
          {0, 0, 0, 0, 0, 0, 0, 0}, 0, 10, 0, 0, 0, false, 20,
-         {8, 0, 0, 2}, 180},
+         {8, 0, 0, 2}, 180, 4},
+        {850, "ffa", "FFA: THE MELEE", 6, 34, 34, 4, 8, 0, 0,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 10, 0, 0, 0, false, 16,
+         {8, 0, 0, 2}, 180, 8},
+        {851, "ffa", "FFA: CROSSFIRE", 8, 40, 40, 4, 8, 0, 0,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 10, 0, 0, 0, false, 16,
+         {8, 0, 0, 2}, 180, 10},
+        {852, "ffa", "FFA: SHARDS", 8, 44, 44, 4, 8, 0, 0,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 10, 0, 0, 0, false, 36,
+         {8, 0, 0, 2}, 180, 12},
+        {853, "ffa", "FFA: THE ROSE", 10, 45, 45, 4, 8, 0, 0,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 10, 0, 0, 0, false, 4,
+         {8, 0, 0, 2}, 180, 16},
+        {854, "ffa", "FFA: SCRAMBLE", 10, 48, 48, 4, 8, 0, 0,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 10, 0, 0, 0, false, 16,
+         {8, 0, 0, 2}, 180, 16},
+        {855, "ffa", "FFA: NIGHTFALL", 12, 50, 50, 4, 8, 0, 0,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 10, 0, 0, 0, false, 36,
+         {8, 0, 0, 2}, 180, 16},
     };
     return levels;
 }
@@ -483,7 +508,7 @@ using ModesLevels = ModesCampaignTest;
 TEST_F(ModesLevels, roster_structure_round_trips)
 {
     const std::vector<int> listed = list_levels_v();
-    EXPECT_EQ(33u, listed.size()) << "the package must ship 33 scenarios";
+    EXPECT_EQ(39u, listed.size()) << "the package must ship 39 scenarios";
     for (const ShippedModeLevel& pin : shipped_levels())
     {
         LoadedModesLevel loaded(pin.id);
@@ -1194,6 +1219,147 @@ TEST_F(ModesLevels, item_pads_mirror_the_world_and_the_off_modes_stay_off)
     }
 }
 
+// The roster modes (ffa, mutant) post how many competitors the mode fills
+// their arena to. Every other mode's row must carry no `fighters` key at
+// all — the absence is what kept their manifest bytes unchanged when the
+// field arrived, so it is pinned in both directions.
+TEST_F(ModesLevels, manifest_fighters_covers_the_roster_modes_only)
+{
+    const std::vector<std::uint8_t> member = og::resources::read_file(
+        "packs/modes.core/lib/mode_levels.lua");
+    ASSERT_FALSE(member.empty()) << "manifest member missing from the .glad";
+    const std::string member_text(member.begin(), member.end());
+    const std::string expr_prefix =
+        "(function() local M = (function() " +
+        member_text.substr(member_text.find("local M = {}")) +
+        " end)() return ";
+    og::script::ScriptHost host;
+
+    for (const ShippedModeLevel& pin : shipped_levels())
+    {
+        const auto fighters = host.eval_integer(
+            expr_prefix +
+            std::format("M.levels[{}].fighters or 0 end)()", pin.id));
+        ASSERT_TRUE(fighters.has_value()) << "scen" << pin.id;
+        EXPECT_EQ(pin.fighters, *fighters)
+            << "scen" << pin.id << " (" << pin.mode << ") fighters";
+
+        const auto absent = host.eval_boolean(
+            expr_prefix +
+            std::format("M.levels[{}].fighters == nil end)()", pin.id));
+        ASSERT_TRUE(absent.has_value()) << "scen" << pin.id;
+        EXPECT_EQ(pin.fighters == 0, *absent)
+            << "scen" << pin.id << " (" << pin.mode
+            << "): a non-roster row must omit `fighters` entirely";
+    }
+}
+
+// The FFA arenas' own manifest tuning: a frag race to 15 inside a ten
+// minute clock, and a hard zero spawn cap on all four pools (the mode
+// retires authored generators, so nothing may ever add a body to a
+// sixteen-way brawl).
+TEST_F(ModesLevels, ffa_arena_rows_post_the_deathmatch_tuning)
+{
+    const std::vector<std::uint8_t> member = og::resources::read_file(
+        "packs/modes.core/lib/mode_levels.lua");
+    ASSERT_FALSE(member.empty()) << "manifest member missing from the .glad";
+    const std::string member_text(member.begin(), member.end());
+    const std::string expr_prefix =
+        "(function() local M = (function() " +
+        member_text.substr(member_text.find("local M = {}")) +
+        " end)() return ";
+    og::script::ScriptHost host;
+
+    int ffa_rows = 0;
+    for (const ShippedModeLevel& pin : shipped_levels())
+    {
+        if (std::string(pin.mode) != "ffa")
+            continue;
+        ++ffa_rows;
+        const auto mode = host.eval_string(
+            expr_prefix + std::format("M.levels[{}].mode end)()", pin.id));
+        ASSERT_TRUE(mode.has_value()) << "scen" << pin.id;
+        EXPECT_EQ("ffa", *mode) << "scen" << pin.id;
+
+        const auto score = host.eval_integer(
+            expr_prefix +
+            std::format("M.levels[{}].score_limit end)()", pin.id));
+        ASSERT_TRUE(score.has_value()) << "scen" << pin.id;
+        EXPECT_EQ(15, *score) << "scen" << pin.id << " score_limit";
+
+        const auto clock = host.eval_integer(
+            expr_prefix +
+            std::format("M.levels[{}].time_limit end)()", pin.id));
+        ASSERT_TRUE(clock.has_value()) << "scen" << pin.id;
+        EXPECT_EQ(7200, *clock) << "scen" << pin.id << " time_limit";
+
+        for (int team = 0; team < 4; ++team)
+        {
+            const auto cap = host.eval_integer(
+                expr_prefix + std::format("M.levels[{}].spawn_caps[{}] end)()",
+                                          pin.id, team));
+            ASSERT_TRUE(cap.has_value())
+                << "scen" << pin.id << ": no spawn cap for pool " << team;
+            EXPECT_EQ(0, *cap) << "scen" << pin.id << " pool " << team;
+        }
+    }
+    EXPECT_EQ(6, ffa_rows) << "the campaign ships six FFA arenas";
+}
+
+// FFA authoring contract (docs/ffa-design.md sections 6-7): the four start
+// clusters are INTERLEAVED around the arena, not parked in four corners.
+// The mode walks them as position pools rather than team homes, so every
+// quadrant must offer a spot from every pool — otherwise the placement
+// rotation drops fighters in clumps. Mutant's corner clusters (one lobby
+// team per corner) are the contrast case that proves the probe bites.
+TEST_F(ModesLevels, ffa_start_clusters_interleave_over_the_arena)
+{
+    auto quadrant_team_masks = [](GameWorld& world) {
+        std::array<int, 4> masks{};
+        for (const auto& uptr : world.oblist)
+        {
+            walker* ob = uptr.get();
+            if (ob == nullptr || ob->query_order() != Order::Special ||
+                ob->family() != FAMILY_RESERVED_TEAM)
+                continue;
+            const int tx = ob->xpos() / GRID_SIZE;
+            const int ty = ob->ypos() / GRID_SIZE;
+            const int quadrant = (tx < world.grid.w / 2 ? 0 : 1) +
+                                 (ty < world.grid.h / 2 ? 0 : 2);
+            masks[static_cast<std::size_t>(quadrant)] |=
+                1 << std::min<int>(ob->team_num(), 3);
+        }
+        return masks;
+    };
+    static constexpr const char* kQuadrant[4] = {"NW", "NE", "SW", "SE"};
+
+    int ffa_arenas = 0;
+    for (const ShippedModeLevel& pin : shipped_levels())
+    {
+        if (std::string(pin.mode) != "ffa")
+            continue;
+        ++ffa_arenas;
+        LoadedModesLevel loaded(pin.id);
+        ASSERT_TRUE(loaded.loaded) << "scen" << pin.id;
+        const std::array<int, 4> masks = quadrant_team_masks(loaded.world());
+        for (int q = 0; q < 4; ++q)
+            EXPECT_EQ(0xF, masks[static_cast<std::size_t>(q)])
+                << "scen" << pin.id << " quadrant " << kQuadrant[q]
+                << ": every pool must reach every quadrant";
+    }
+    EXPECT_EQ(6, ffa_arenas);
+
+    LoadedModesLevel pit(840);
+    ASSERT_TRUE(pit.loaded);
+    const std::array<int, 4> mutant_masks = quadrant_team_masks(pit.world());
+    for (int q = 0; q < 4; ++q)
+        EXPECT_EQ(1, std::popcount(static_cast<unsigned>(
+                         mutant_masks[static_cast<std::size_t>(q)])))
+            << "scen840 quadrant " << kQuadrant[q]
+            << ": the Mutant maps park exactly one lobby team per corner, "
+               "which is the layout the FFA probe above must reject";
+}
+
 TEST_F(ModesLevels, pack_sprites_load_with_pinned_shapes)
 {
     const struct { const char* path; int w; int h; int frames; } sprites[] = {
@@ -1239,7 +1405,7 @@ TEST_F(ModesLevels, scripted_levels_tick_clean_without_mode_lua)
     // scripts landed yet the scripted fork must be a clean no-op — no
     // script errors, no spurious level end. (The per-mode dispatch smokes
     // arrive with the Lua-mode waves.)
-    for (const int id : {300, 500, 800, 820, 824, 840})
+    for (const int id : {300, 500, 800, 820, 824, 840, 850})
     {
         LoadedModesLevel loaded(id, 7u);
         ASSERT_TRUE(loaded.loaded) << "scen" << id;

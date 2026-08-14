@@ -57,9 +57,14 @@ std::string manifest_lua_text(const std::vector<ExpectedLevel>& rows)
            " Fields per level id:\n"
         << "--   mode        \"tdm\" | \"ctf\" | \"onslaught\" | \"soccer\""
            " | \"basketball\" |\n"
-        << "--               \"mutant\"\n"
+        << "--               \"mutant\" | \"ffa\"\n"
         << "--   teams       active score-team count (team bytes 0.."
            "teams-1)\n"
+        << "--   fighters    ffa/mutant: competitors the mode fills the"
+           " arena to\n"
+        << "--               (deployed characters first, bots after);"
+           " absent = the\n"
+        << "--               mode's own default\n"
         << "--   time_limit  sim ticks (12/s) the match may run before the"
            " mode's\n"
         << "--               time-out rule decides\n"
@@ -110,6 +115,10 @@ std::string manifest_lua_text(const std::vector<ExpectedLevel>& rows)
         out << std::format("  [{}] = {{\n", row.id);
         out << std::format("    mode = \"{}\",\n", mode_name(row.mode));
         out << std::format("    teams = {},\n", row.team_count);
+        // Only the roster modes set it, so every other mode's row stays
+        // byte-stable across this field's arrival.
+        if (row.fighters > 0)
+            out << std::format("    fighters = {},\n", row.fighters);
         out << std::format("    time_limit = {},\n", row.time_limit);
         out << std::format("    score_limit = {},\n", row.score_limit);
         if (!row.spawn_caps.empty())

@@ -329,6 +329,10 @@ ExpectedLevel mutant_row(int id, const char* title, int par, int w, int h,
     row.item_interval = 180;
     row.time_limit = 7200;
     row.score_limit = 10;
+    // The hunt's current feel: four competitors on these grounds. The
+    // roster machinery reads up to 16, so the number is a per-map dial
+    // rather than the old hard cap.
+    row.fighters = 4;
     row.decor_cells = decor_cells;
     row.briefing = std::move(briefing);
     return row;
