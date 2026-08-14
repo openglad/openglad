@@ -9,7 +9,6 @@
 local C = og.C
 local core = og.use("mode_core")
 local ai = og.use("mode_ai")
-local caps = og.use("mode_caps")
 local match = og.use("mode_match")
 local levels = og.use("mode_levels")
 local strip = og.use("mode_strip")
@@ -360,28 +359,10 @@ end
 -- Per-tick phases (post-act)
 -- ---------------------------------------------------------------------------
 
--- Durable origin marking, the other half of match.owns_its_life. Generator
--- spawns are marked at birth by the shared customize_spawn; everything else
--- that is owned (summons, raised undead) is marked here, on every tick it is
--- still owned, so the mark is already in place when its owner dies and
--- clear_stale_cross_refs nulls the link. Idempotent bit write, zero RNG.
-local function mark_owned_lives(obs)
-  for k = 1, #obs do
-    local w = obs[k]
-    if w:dead() == 0 then
-      if w:order() == C.ORDER_LIVING then
-        if w:owner() ~= nil then
-          caps.mark_spawn(w)
-        end
-      end
-    end
-  end
-end
-
 local function on_mode_tick(level, tick)
   local obs = og.oblist()
   local mask = active_mask()
-  mark_owned_lives(obs)
+  match.mark_owned_lives(obs)
   match.schedule_dead(obs, mask, og.mode_get(S.RESPAWN_TICKS))
   if og.mod(og.world_tick(), T.ai_cadence) == 0 then
     local livings = {}

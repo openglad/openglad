@@ -20,6 +20,7 @@ local MODE = {
   SOCCER = 4,
   MUTANT = 5,
   BASKETBALL = 6,
+  FFA = 7,
 }
 
 -- Packed pixel positions: one int32 mode var carries (x, y), each within

@@ -663,6 +663,24 @@ local function owns_its_life(w)
   return not caps.is_marked_spawn(w)
 end
 
+-- Durable origin marking, the other half of match.owns_its_life. Generator
+-- spawns are marked at birth by the shared customize_spawn; everything else
+-- that is owned (summons, raised undead) is marked here, on every tick it is
+-- still owned, so the mark is already in place when its owner dies and
+-- clear_stale_cross_refs nulls the link. Idempotent bit write, zero RNG.
+local function mark_owned_lives(obs)
+  for k = 1, #obs do
+    local w = obs[k]
+    if w:dead() == 0 then
+      if w:order() == C.ORDER_LIVING then
+        if w:owner() ~= nil then
+          caps.mark_spawn(w)
+        end
+      end
+    end
+  end
+end
+
 -- The pre-sweep corpse scan: schedules every dead score-team Living that
 -- owns its life and is not already queued. Runs every tick so schedule
 -- refusals and silent set_dead corpses retry, exactly like the CTF port's
@@ -844,6 +862,7 @@ return {
   place_at_anchor = place_at_anchor,
   spawn_bots = spawn_bots,
   owns_its_life = owns_its_life,
+  mark_owned_lives = mark_owned_lives,
   schedule_dead = schedule_dead,
   revive_wiped_teams = revive_wiped_teams,
   foe_scores = foe_scores,
