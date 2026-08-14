@@ -20,6 +20,13 @@ inline constexpr int ACT_SIT = 6;
 // Team types
 inline constexpr int MAX_TEAM = 7;
 inline constexpr unsigned char SCORE_TEAM_COUNT = 4;
+// FFA fighter band (docs/ffa-design.md §2): scripted free-for-all modes
+// reseat each deployed fighter onto its own team byte in
+// [kFfaTeamBase, kFfaTeamBase + kFfaTeamCount); byte 16+c wears fighter
+// color index c. Above the loader clamp (<= MAX_TEAM), clear of the
+// wildlife/retire bytes 4-7 and the lobby seats 0-3.
+inline constexpr int kFfaTeamBase = 16;
+inline constexpr int kFfaTeamCount = 16;
 
 // Animation Types : Livings
 inline constexpr int ANI_WALK = 0;

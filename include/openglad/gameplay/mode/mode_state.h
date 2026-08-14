@@ -8,9 +8,9 @@
  * that og.end_level / og.declare_winner write and mode_run_tick re-asserts
  * every tick (GameWorld::tick zeroes game_ended/ending/next_level at entry).
  *
- * Not yet wire-replicated: the snapshot/protocol/replay bump that carries
- * this block to mirrors lands with the CTF engine retirement (one
- * coordinated bump). Until then ModeState is authoritative-side state only.
+ * Wire-replicated: the snapshot v10 scripted-mode block carries ModeState
+ * to mirrors wholesale (world_snapshot.cpp, serialize_mode_state), so
+ * mirrors render HUD/beacons/win state straight from the applied snapshot.
  *
  * Leaf-header discipline (ctf_state.h precedent): includes only
  * <array>/<cstdint>, forward-declares GameWorld.
@@ -37,7 +37,7 @@ inline constexpr std::uint32_t kKillAttributionTicks = 48;
 
 struct ModeHudLine
 {
-    std::uint8_t team = 255;              // 0-3 team ramp color; 255 = default text color
+    std::uint8_t team = 255;              // 0-3 or band 16-31 ramp; 255 = default
     std::array<char, kModeHudTextBytes> text{};   // NUL-terminated, clamped on write
 };
 
@@ -94,9 +94,29 @@ std::uint8_t authored_team_mask(const GameWorld& world);
 // mask and the og.effective_team_mask binding.
 std::uint8_t effective_team_mask(std::uint8_t authored, int requested) noexcept;
 
-// Canonical color name for a score team ("RED"/"GREEN"/"BLUE"/"YELLOW"),
-// matching the rendered palette ramps (team*16+40). ctf_team_color_name
+// Canonical color name for a score team ("RED"/"GREEN"/"BLUE"/"YELLOW")
+// or an FFA band byte 16-31 (the 16 kFfaRampBases names), matching the
+// rendered palette ramps. Default stays YELLOW. ctf_team_color_name
 // forwards here.
 const char* team_color_name(int team);
+
+// FFA fighter-band ramp table (docs/ffa-design.md §4): color index c (team
+// byte kFfaTeamBase+c) -> 8-shade palette ramp base. Thirteen existing good
+// ramps plus TEAL/GOLD/SLATE (168/176/184) synthesized into the flat-grey
+// palette hole; no window touches the color-cycled 208-231 range.
+inline constexpr std::array<unsigned char, 16> kFfaRampBases = {
+    40,  56,  72,  88,  104, 120, 136, 152,
+    200, 32,  128, 144, 192, 168, 176, 184};
+
+// True for the team identities the scripted scoring/win/HUD surface accepts:
+// classic score teams (t < SCORE_TEAM_COUNT) or the FFA fighter band
+// [kFfaTeamBase, kFfaTeamBase + kFfaTeamCount) (docs/ffa-design.md §5).
+// Callers reject negative t first (every og.* binding guard does).
+bool is_scoring_identity(int t);
+
+// Palette ramp base for a team byte: band bytes map through kFfaRampBases;
+// everything else keeps the classic team*16+40 formula (uchar wrap).
+// walker::query_team_color delegates here (docs/ffa-design.md §4).
+unsigned char team_ramp_base(int team);
 
 } // namespace og::sim

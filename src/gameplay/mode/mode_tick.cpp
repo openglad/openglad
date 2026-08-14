@@ -20,8 +20,23 @@
 
 namespace og::sim {
 
+namespace {
+
+// Band color names, index-parallel to kFfaRampBases (docs/ffa-design.md §4).
+constexpr std::array<const char*, 16> kFfaBandNames = {
+    "RED",      "GREEN",  "BLUE",   "YELLOW", "MAGENTA", "CYAN",
+    "TAN",      "ROSE",   "LAVENDER", "SALMON", "ORANGE", "PINK",
+    "VIOLET",   "TEAL",   "GOLD",   "SLATE"};
+
+static_assert(kFfaRampBases.size() == static_cast<std::size_t>(kFfaTeamCount));
+static_assert(kFfaBandNames.size() == kFfaRampBases.size());
+
+}  // namespace
+
 const char* team_color_name(int team)
 {
+    if (kFfaTeamBase <= team && team < kFfaTeamBase + kFfaTeamCount)
+        return kFfaBandNames[static_cast<std::size_t>(team - kFfaTeamBase)];
     switch (team)
     {
         case 0: return "RED";
@@ -29,6 +44,19 @@ const char* team_color_name(int team)
         case 2: return "BLUE";
         default: return "YELLOW";
     }
+}
+
+bool is_scoring_identity(int t)
+{
+    return t < SCORE_TEAM_COUNT ||
+           (kFfaTeamBase <= t && t < kFfaTeamBase + kFfaTeamCount);
+}
+
+unsigned char team_ramp_base(int team)
+{
+    if (kFfaTeamBase <= team && team < kFfaTeamBase + kFfaTeamCount)
+        return kFfaRampBases[static_cast<std::size_t>(team - kFfaTeamBase)];
+    return static_cast<unsigned char>(team * 16 + 40);
 }
 
 bool mode_scripted_active(const GameWorld& world)

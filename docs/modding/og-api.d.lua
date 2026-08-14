@@ -404,6 +404,8 @@
 ---@field FACE_UP_LEFT integer
 ---@field FACE_UP_RIGHT integer
 ---@field FAMILY_RESERVED_TEAM integer
+---@field FFA_TEAM_BASE integer
+---@field FFA_TEAM_COUNT integer
 ---@field GRID_SIZE integer
 ---@field MACE_LIFE_CAP integer
 ---@field MAXOBS integer
@@ -576,7 +578,7 @@
 ---@field set_beacon fun(slot: integer, entity: og.Walker?, t: integer?) # og.set_beacon(slot, entity_or_nil [, team]) — mark an entity for the off-screen/radar beacon channel (the Mutant marker, a flag carrier).
 ---@field set_enemy_freeze fun(enemy_freeze: integer)
 ---@field set_entity_hooks fun(entity: og.Walker, hooks: og.EntityHooks) # og.set_entity_hooks(handle, { on_death = fn }) — per-entity overrides, registered from a level script (typically in on_load after finding the entity).
----@field set_hud_line fun(slot: integer, s: string, t: integer?) # og.set_hud_line(slot, text [, team]) — write a generic mode HUD line: slot 0-3, text clamped to 25 bytes, team tints the line (nil = default HUD color).
+---@field set_hud_line fun(slot: integer, s: string, t: integer?) # og.set_hud_line(slot, text [, team]) — write a generic mode HUD line: slot 0-3, text clamped to 25 bytes, team (0-3 or band 16-31) tints the line (nil = defa...
 ---@field set_mode_name fun(s: string) # og.set_mode_name(s) — the HUD/results mode label, clamped to 11 bytes.
 ---@field set_palette fun(current_palette_id: integer)
 ---@field set_withdraw_request fun(withdraw_level: integer) # og.set_withdraw_request(level) — set both fields in the exit pad's withdraw latch together.
@@ -585,7 +587,7 @@
 ---@field spawn_spot_clear fun(entity: og.Walker, x: integer, y: integer, floor: integer?): boolean # og.spawn_spot_clear(ent, x, y [, floor]) — the eat-free placement probe (NEVER og.query_passable: its obmap route dispatches eat_me, so a probe could eat a d...
 ---@field summon fun(summoner: og.Walker, order: og.OrderName, fam: integer): og.Walker?
 ---@field summon_configured fun(summoner: og.Walker, order: og.OrderName, fam: integer, arg4: table): og.Walker? # og.summon_configured(self, order, family, {ani_type=, lifetime=, hp_add=, max_hp_from_hp=, damage_add=}) → handle | nil — summon plus setters in fixed, parit...
----@field team_color_name fun(team: integer): string # og.team_color_name(t) — "RED"/"GREEN"/"BLUE"/"YELLOW", matching the rendered palette ramps; errors outside [0, 3].
+---@field team_color_name fun(team: integer): string # og.team_color_name(t) — "RED"/"GREEN"/"BLUE"/"YELLOW" for score teams, the 16 band names for FFA bytes 16-31, matching the rendered palette ramps; errors out...
 ---@field team_score fun(team: integer): integer # og.team_score(t) — read GameWorld::m_score[t] (og.award_score's counter); errors outside [0, 3].
 ---@field trunc fun(x: number): integer
 ---@field tuning fun(entity: og.Walker): table<string, any> # og.tuning(self) → the `tuning` map self's family declared, as a frozen read-only table — key access only; writes raise; no iteration is provided (and none is...
