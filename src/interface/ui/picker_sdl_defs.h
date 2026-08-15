@@ -159,6 +159,9 @@ int picker_cloud_save_button_count();
 // #168 full-screen HELP — engine screen.
 button* picker_help_buttons();
 int picker_help_button_count();
+// #206 MISSIONS (scripted campaign picker) — engine screen.
+button* picker_campaign_missions_buttons();
+int picker_campaign_missions_button_count();
 
 // --- Base camp (team build) layout contract (design §2.5 as amended §9.5,
 // regridded §9.10) -----------------------------------------------------------
@@ -349,7 +352,26 @@ inline constexpr int kScenarioMenuProgressIndex = 5;
 // Appended (index contract: growth is append-only). Host-gated like
 // SET CAMPAIGN / SET LEVEL.
 inline constexpr int kScenarioMenuTroopsIndex = 6;
-inline constexpr int kScenarioMenuButtonCount = 7;
+// Appended (#206): the scripted-campaign MISSIONS door. NOT host-gated —
+// pages/actions are for everyone; only level-row activation inside the
+// subscreen is host-gated. Hidden per frame when the mounted campaign
+// registers no picker (og::script::hooks::campaign_picker_registered).
+inline constexpr int kScenarioMenuMissionsIndex = 7;
+inline constexpr int kScenarioMenuButtonCount = 8;
+
+// --- MISSIONS (scripted campaign picker, #206) layout contract -------------
+// Company List dynamic-rows chassis: 8 pageable full-width row faces over
+// the page cap of 24 entries (PageModel window), BACK, and the PREV/NEXT
+// pagers (hidden unless the page spans). Footer band at y=169 so this
+// screen's "back" shares no other screen's geometry (injector
+// disambiguation rule).
+inline constexpr int kCampaignMissionsRowsPerPage = 8;
+inline constexpr int kCampaignMissionsBackIndex = 8;
+inline constexpr int kCampaignMissionsPrevIndex = 9;
+inline constexpr int kCampaignMissionsNextIndex = 10;
+inline constexpr int kCampaignMissionsButtonCount = 11;
+// Row face is 260px at 6px/char, centered with no clipping.
+inline constexpr std::size_t kCampaignMissionsRowLabelChars = 42;
 
 // --- MATCHUP subscreen layout contract ------------------------------------
 // Positional indices into k_teamsmenu_buttons / picker_teamsmenu_buttons().
@@ -396,9 +418,11 @@ void picker_wire_teams_menu_nav(button* buttons, int count,
 // never links to a hidden button). The base camp rewires its full roster
 // graph per frame (pattern b — the rewire lives on the spec and reads the
 // installed BaseCampScreenState); the SCENARIO subscreen gates
-// SET CAMPAIGN / SET LEVEL.
+// SET CAMPAIGN / SET LEVEL — and MISSIONS on its own axis (registered
+// scripted picker), so the wire takes both visibility flags.
 void picker_wire_scenario_menu_nav(button* buttons, int count,
-                                   bool host_controls_visible);
+                                   bool host_controls_visible,
+                                   bool missions_visible);
 
 // The retired MATCHUP roster cursor, normalized onto an occupied
 // slot (-1 when the roster is empty).

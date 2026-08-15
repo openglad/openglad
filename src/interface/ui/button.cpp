@@ -728,6 +728,8 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return view_scenario_page_flip(call_arg);
     case ButtonAction::CreateScenarioMenu:
         return create_scenario_menu(call_arg);
+    case ButtonAction::CreateCampaignMissionsMenu:
+        return run_campaign_missions_screen(call_arg);
     case ButtonAction::TeamsPageFlip:
         return teams_page_flip(call_arg);
     case ButtonAction::JoinTeam:

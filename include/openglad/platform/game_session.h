@@ -155,6 +155,11 @@ private:
     std::unique_ptr<options> prefs_owner_;
     std::unique_ptr<::screen> screen_owner_;
     std::shared_ptr<LocalTransportRuntime> local_transport_runtime_;
+
+    // #206: this session installed the process-global og.campaign_*
+    // providers over its screen's SaveData (primary session only); the
+    // destructor clears them before that SaveData dies.
+    bool campaign_providers_installed_ = false;
 };
 
 // RAII guard: while alive, the associated session's globals are installed.

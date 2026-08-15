@@ -30,6 +30,7 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/sound.h>
 #include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/ui/cloud_save_client.h>
 #include <openglad/interface/ui/input_cycler.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -1220,7 +1221,7 @@ constexpr MenuButtonSpec kScenarioMenuRows[] = {
     {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 30, .y = 170, .w = 60, .h = 20,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 3}},
+     .nav = {.up = 7}},
     {.id = "set_campaign", .label = "SET CAMPAIGN",
      .x = 30, .y = 40, .w = 80, .h = 15,
      .action = ButtonAction::DoPickCampaign, .arg = -1,
@@ -1232,7 +1233,7 @@ constexpr MenuButtonSpec kScenarioMenuRows[] = {
     {.id = "view_scenario", .label = "VIEW LEVEL",
      .x = 30, .y = 100, .w = 80, .h = 15,
      .action = ButtonAction::ViewScenario, .arg = -1,
-     .nav = {.up = 2, .down = 0, .right = 4}},
+     .nav = {.up = 2, .down = 7, .right = 4}},
     {.id = "matchup", .label = "MATCHUP",
      .x = 120, .y = 100, .w = 80, .h = 15,
      .action = ButtonAction::CreateTeamsMenu, .arg = -1,
@@ -1251,7 +1252,16 @@ constexpr MenuButtonSpec kScenarioMenuRows[] = {
     {.id = "troops", .label = "TROOPS: ALL",
      .x = 120, .y = 140, .w = 80, .h = 15,
      .action = ButtonAction::CycleCtfScenarioTroops, .arg = -1,
-     .nav = {.up = 4, .down = 0}},
+     .nav = {.up = 4, .down = 0, .left = 7}},
+    // #206 MISSIONS: the scripted mission book of a campaign registering
+    // og.register_campaign_hooks. Appended (index contract); the free x=30
+    // grid cell under VIEW LEVEL, clear of the x=114 title strips. NOT
+    // host-gated — the per-frame sync hides it only when no picker is
+    // registered; level-row activation inside is host-gated instead.
+    {.id = "missions", .label = "MISSIONS",
+     .x = 30, .y = 140, .w = 80, .h = 15,
+     .action = ButtonAction::CreateCampaignMissionsMenu, .arg = -1,
+     .nav = {.up = 3, .down = 0, .right = 6}},
 };
 
 // The campaign-name / level-title strips sit beside the buttons that change
@@ -1311,6 +1321,291 @@ const MenuScreenSpec& scenario_menu_screen_spec()
     };
     return spec;
 }
+
+// ---------------------------------------------------------------------------
+// #206 MISSIONS subscreen: the scripted campaign mission book, rendered from
+// the SDL-free CampaignPickerSession over the Company List dynamic-rows
+// chassis (fixed 8-row macro table, PageModel window over the page cap of
+// 24, per-frame full rewire, MenuSpecRow dispatch, installed state pointer,
+// blocking wrapper). The session owns fetching (once per navigation or
+// action — never per frame); this screen only windows and displays the
+// cached page. Level rows are host-gated at ACTIVATION (the session stays
+// policy-free); pages and actions are open to every machine.
+
+// The company-list seam pattern: the per-frame rewire reads this file-static
+// pointer; run_menu_screen's screen_state points at the SAME object. Null
+// state renders the empty shape: rows and pagers hidden, BACK alone.
+CampaignMissionsScreenState* g_campaign_missions_state = nullptr;
+
+// Row faces x=30..290 on a 12px pitch (y=66..162) under the title/lines
+// band; footer band at y=169 (BACK 10, pagers 220/270 — the company-list
+// footer split) so no other screen's "back" or pager shares this geometry
+// (the injector wait_for_interactable_at disambiguation rule). Static nav
+// is the full-page multi-page shape; the rewire recomputes every link.
+#define OG_CAMPAIGN_MISSIONS_ROW(i)                                          \
+    {.id = "mission_row_" #i, .label = "",                                   \
+     .x = 30, .y = 66 + 12 * (i), .w = 260, .h = 10,                          \
+     .action = ButtonAction::MenuSpecRow, .arg = (i),                        \
+     .nav = {.up = (i) > 0 ? (i) - 1 : -1,                                    \
+             .down = (i) < 7 ? (i) + 1 : kCampaignMissionsBackIndex}}
+
+constexpr MenuButtonSpec kCampaignMissionsRows[] = {
+    OG_CAMPAIGN_MISSIONS_ROW(0), OG_CAMPAIGN_MISSIONS_ROW(1),
+    OG_CAMPAIGN_MISSIONS_ROW(2), OG_CAMPAIGN_MISSIONS_ROW(3),
+    OG_CAMPAIGN_MISSIONS_ROW(4), OG_CAMPAIGN_MISSIONS_ROW(5),
+    OG_CAMPAIGN_MISSIONS_ROW(6), OG_CAMPAIGN_MISSIONS_ROW(7),
+    // BACK pops one session page; at the root it closes the subscreen
+    // (SCENARIO resumes). Escape hotkey (the shared cancel grammar).
+    {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+     .x = 10, .y = 169, .w = 44, .h = 20,
+     .action = ButtonAction::MenuSpecRow, .arg = kCampaignMissionsBackIndex,
+     .nav = {.up = 7, .right = kCampaignMissionsPrevIndex}},
+    // Real MenuSpecRow pager actions (keyboard-live); statically hidden —
+    // the rewire shows them only when the page's rows span the window.
+    {.id = "mission_page_prev", .label = "PREV",
+     .x = 220, .y = 169, .w = 40, .h = 20,
+     .action = ButtonAction::MenuSpecRow, .arg = kCampaignMissionsPrevIndex,
+     .nav = {.up = 7, .left = kCampaignMissionsBackIndex,
+             .right = kCampaignMissionsNextIndex},
+     .hidden = true},
+    {.id = "mission_page_next", .label = "NEXT",
+     .x = 270, .y = 169, .w = 40, .h = 20,
+     .action = ButtonAction::MenuSpecRow, .arg = kCampaignMissionsNextIndex,
+     .nav = {.up = 7, .left = kCampaignMissionsPrevIndex},
+     .hidden = true},
+};
+
+#undef OG_CAMPAIGN_MISSIONS_ROW
+
+// Reset the page window over the session's current page. `preserve_page`
+// keeps the window position across an in-place refetch (action refresh);
+// navigation resets to the first window.
+void campaign_missions_reset_page(CampaignMissionsScreenState& state,
+                                  bool preserve_page)
+{
+    const int rows = state.session != nullptr
+        ? static_cast<int>(state.session->page().rows.size())
+        : 0;
+    const int page_before = state.page.page;
+    state.page = PageModel::make(rows, kCampaignMissionsRowsPerPage);
+    if (preserve_page)
+        state.page.page = std::min(page_before, state.page.page_count() - 1);
+}
+
+// Per-frame visibility + nav over the live session page (pattern b, the
+// Company List chassis): page-window the rows, chain them vertically into
+// BACK, close BACK/pager side links over pager visibility — and write the
+// composed row text to BOTH label surfaces (descriptor + live vbutton).
+void campaign_missions_rewire(button* buttons, int count, int& /*highlighted*/)
+{
+    if (count < kCampaignMissionsButtonCount)
+        return;
+    const CampaignMissionsScreenState* st = g_campaign_missions_state;
+    const og::ui::CampaignPickerSession* session =
+        st != nullptr ? st->session : nullptr;
+    const int first = st != nullptr ? st->page.first_index() : 0;
+    const int end = st != nullptr ? st->page.end_index() : 0;
+    const int visible = session != nullptr ? std::max(0, end - first) : 0;
+    const bool pagers =
+        session != nullptr && st != nullptr && st->page.multi_page();
+    // Level rows are host-gated at activation; mark them for non-hosts so
+    // the refusal is never a surprise (there is no per-face dim ink, so the
+    // marker rides the composed label).
+    const bool level_rows_actionable = picker_lobby_host_controls_visible();
+    constexpr std::size_t kHostMarkerChars = 7;  // " (HOST)"
+
+    for (int r = 0; r < kCampaignMissionsRowsPerPage; ++r) {
+        const bool on = r < visible;
+        buttons[r].hidden = !on;
+        if (on) {
+            buttons[r].nav = {
+                .up = r > 0 ? r - 1 : -1,
+                .down = r + 1 < visible ? r + 1 : kCampaignMissionsBackIndex,
+                .left = -1,
+                .right = -1};
+            const og::ui::CampaignPickerSession::Row& row =
+                session->page().rows[static_cast<std::size_t>(first + r)];
+            if (row.is_level() && !level_rows_actionable) {
+                buttons[r].label =
+                    campaign_picker_row_text(
+                        row, kCampaignMissionsRowLabelChars - kHostMarkerChars)
+                    + " (HOST)";
+            } else {
+                buttons[r].label = campaign_picker_row_text(
+                    row, kCampaignMissionsRowLabelChars);
+            }
+            vbutton* live = og::runtime::current_session
+                                ->allbuttons_[static_cast<std::size_t>(r)];
+            if (live != nullptr)
+                live->label = buttons[r].label;
+        }
+    }
+    buttons[kCampaignMissionsPrevIndex].hidden = !pagers;
+    buttons[kCampaignMissionsNextIndex].hidden = !pagers;
+    buttons[kCampaignMissionsBackIndex].nav = {
+        .up = visible > 0 ? visible - 1 : -1,
+        .down = -1,
+        .left = -1,
+        .right = pagers ? kCampaignMissionsPrevIndex : -1};
+    buttons[kCampaignMissionsPrevIndex].nav = {
+        .up = visible > 0 ? visible - 1 : -1,
+        .down = -1,
+        .left = kCampaignMissionsBackIndex,
+        .right = kCampaignMissionsNextIndex};
+    buttons[kCampaignMissionsNextIndex].nav = {
+        .up = visible > 0 ? visible - 1 : -1,
+        .down = -1,
+        .left = kCampaignMissionsPrevIndex,
+        .right = -1};
+    for (int i = 0; i < count; ++i)
+        sync_button_hidden_state(buttons, i);
+}
+
+// Content pass: the page title and up to six narrative lines (the black-
+// strip readability idiom over the backdrop), then the "p/N" indicator.
+// The row text itself lives on the button faces (written by the rewire).
+void campaign_missions_draw_content(void* screen_state)
+{
+    const CampaignMissionsScreenState* st =
+        static_cast<const CampaignMissionsScreenState*>(screen_state);
+    screen* game = og::runtime::current_session->myscreen_;
+
+    const auto strip_text = [game](int x, int y, const std::string& text) {
+        if (text.empty())
+            return;
+        const int width = static_cast<int>(text.size()) * 6;
+        game->draw_rect_filled(x - 2, y - 1, static_cast<Uint32>(width + 4),
+                               8, PURE_BLACK, 150);
+        game->text_normal.write_xy(x, y, WHITE, "%s", text.c_str());
+    };
+
+    const og::ui::CampaignPickerSession* session =
+        st != nullptr ? st->session : nullptr;
+    if (session == nullptr) {
+        strip_text(10, 8, "MISSIONS");
+        return;
+    }
+
+    const og::ui::CampaignPickerSession::DecoratedPage& page = session->page();
+    strip_text(10, 8, page.title);
+    // Up to six lines on a 8px pitch (y=20..60), 50-char budget (6px/char
+    // from x=10 clears the 320px edge).
+    int y = 20;
+    for (const std::string& line : page.lines) {
+        std::string clipped = line;
+        if (clipped.size() > 50)
+            clipped.resize(50);
+        strip_text(10, y, clipped);
+        y += 8;
+    }
+
+    if (st->page.multi_page())
+        strip_text(140, 176, st->page.indicator());
+}
+
+// G3 row dispatch: session choose per visual row, BACK (session pop /
+// structural close at the root), and the pagers. The SDL level-set tail —
+// host gate, load-with-rollback, scen_num write, lobby republish — lives
+// HERE, not in the session (the session never writes scen_num).
+Sint32 campaign_missions_on_spec_row(int row, void* screen_state)
+{
+    CampaignMissionsScreenState* st =
+        static_cast<CampaignMissionsScreenState*>(screen_state);
+    if (st == nullptr || st->session == nullptr)
+        return row == kCampaignMissionsBackIndex ? MENU_EXIT : 0;
+    og::ui::CampaignPickerSession& session = *st->session;
+
+    if (row == kCampaignMissionsBackIndex) {
+        if (!session.back()) {
+            TRACE("missions", "closed");
+            return MENU_EXIT;  // at the root: SCENARIO resumes
+        }
+        campaign_missions_reset_page(*st, false);
+        TRACE("missions", "back_to %s", session.page().title.c_str());
+        return MENU_REDRAW;
+    }
+    if (row == kCampaignMissionsPrevIndex || row == kCampaignMissionsNextIndex) {
+        if (st->page.step(row == kCampaignMissionsPrevIndex ? -1 : 1))
+            TRACE("missions", "page %s", st->page.indicator().c_str());
+        return MENU_OK;
+    }
+
+    const int idx = st->page.first_index() + row;
+    if (idx < 0 ||
+        idx >= static_cast<int>(session.page().rows.size()))
+        return 0;  // stale click on a row hidden this frame
+
+    using Outcome = og::ui::CampaignPickerSession::OutcomeKind;
+    const og::ui::CampaignPickerSession::Outcome outcome =
+        session.choose(static_cast<std::size_t>(idx));
+    switch (outcome.kind) {
+    case Outcome::OpenedPage:
+        campaign_missions_reset_page(*st, false);
+        TRACE("missions", "opened %s", session.page().title.c_str());
+        return MENU_REDRAW;
+    case Outcome::SetLevel: {
+        // Host gate (the SET LEVEL predicate): pages/actions are for
+        // everyone, level rows publish scenario_id and are host-only.
+        if (!picker_lobby_host_controls_visible()) {
+            TRACE("missions", "level_denied_nonhost %d", outcome.level);
+            popup_dialog("HOST CONTROLS THIS SETTING",
+                         "Only the host may\nset the level");
+            return MENU_REDRAW;
+        }
+        screen* game = og::runtime::current_session->myscreen_;
+        const int old_id = game->world().id;
+        if (outcome.level == old_id) {
+            TRACE("missions", "level_unchanged %d", outcome.level);
+            return MENU_REDRAW;
+        }
+        // The do_set_scen_level tail without pick_level: load the chosen
+        // level with rollback, then commit the cursor and republish.
+        game->world().id = static_cast<short>(outcome.level);
+        if (outcome.level < 0 || outcome.level > 32767 ||
+            !game->load_level()) {
+            game->clearbuffer();
+            popup_dialog("Load Failed", "Invalid level file.");
+            game->world().id = static_cast<short>(old_id);
+            if (!game->load_level()) {
+                game->clearbuffer();
+                popup_dialog("Big problem",
+                             "Also failed to reload current level...");
+            }
+            return MENU_REDRAW;
+        }
+        game->save_data.scen_num = static_cast<short>(outcome.level);
+        picker_lobby_sync_settings_from_save();
+        st->level_was_set = true;
+        // CURRENT markers re-derive from the new cursor (fetch-per-action,
+        // never per frame).
+        session.refresh();
+        campaign_missions_reset_page(*st, true);
+        TRACE("missions", "level_set %d", outcome.level);
+        return MENU_REDRAW;
+    }
+    case Outcome::Acted: {
+        // The session already debited and refetched; re-window and surface
+        // the toast (popup_dialog is trace-only under TESTING).
+        campaign_missions_reset_page(*st, true);
+        const std::string toast = session.take_message();
+        TRACE("missions", "acted %s", session.page().title.c_str());
+        if (!toast.empty())
+            popup_dialog("MISSIONS", toast.c_str());
+        return MENU_REDRAW;
+    }
+    case Outcome::Refused:
+        TRACE("missions", "refused %s", outcome.reason.c_str());
+        popup_dialog("MISSIONS", outcome.reason.c_str());
+        return MENU_REDRAW;
+    case Outcome::None:
+        break;
+    }
+    return 0;
+}
+
+// campaign_missions_menu_screen_spec() and the install seam have external
+// linkage (declared in menu_screen_spec.h) and are therefore defined in the
+// externally-linked og::ui region below, beside the Company List's.
 
 // ---------------------------------------------------------------------------
 // MATCHUP subscreen (§1.8 step 5) descends from the former TEAMS rows
@@ -5251,6 +5546,38 @@ void install_company_list_state_for_screen(CompanyListScreenState* state)
     g_company_list_state = state;
 }
 
+const MenuScreenSpec& campaign_missions_menu_screen_spec()
+{
+    static const MenuScreenSpec spec{
+        .name = "campaign_missions",
+        .rows = kCampaignMissionsRows,
+        .row_count = static_cast<int>(std::size(kCampaignMissionsRows)),
+        .buttons_accessor = &picker_campaign_missions_buttons,
+        .count_accessor = &picker_campaign_missions_button_count,
+        // Pattern-b full-graph rewire, recomputed every frame from the
+        // installed session state (page window, pager visibility, labels).
+        .nav = {.kind = NavProgramKind::Rewire,
+                .rewire = &campaign_missions_rewire},
+        // A joiner parked here still follows the host's GO (the SCENARIO
+        // family obligation).
+        .remote_start = RemoteStartScope::TeamBuildScope,
+        .remote_start_exit = RemoteStartExit::ReturnMenuExit,
+        .default_highlight = kCampaignMissionsBackIndex,
+        .polls_lobby = true,
+        .draw_background = &picker_backdrop_draw_background,
+        .draw_content = &campaign_missions_draw_content,
+        .on_spec_row = &campaign_missions_on_spec_row,
+        .exit_value = MENU_EXIT,
+    };
+    return spec;
+}
+
+void install_campaign_missions_state_for_screen(
+    CampaignMissionsScreenState* state)
+{
+    g_campaign_missions_state = state;
+}
+
 // §2.3: run the Company List (blocking) over a fresh header-only scan.
 bool run_company_list_screen()
 {
@@ -5723,6 +6050,52 @@ Sint32 create_teams_menu(Sint32 arg1)
 // create_view_menu and the create_save_menu/create_load_menu slot wrappers
 // are RETIRED with their screens (§2.5/§3.8): the base camp roster replaced
 // the team view, and saving is automatic.
+
+// #206 MISSIONS wrapper: build the SDL-free session over the live save. A
+// failed open — no registration, an erroring hook, a malformed root page —
+// answers the shared guard string and leaves the stock SCENARIO controls in
+// place (the button is also hidden per frame when nothing is registered,
+// so this popup covers the race and the keyboard path).
+Sint32 run_campaign_missions_screen(Sint32 arg1)
+{
+    (void)arg1;
+    screen* game = og::runtime::current_session->myscreen_;
+    og::ui::CampaignPickerSession session(game->save_data);
+    if (!session.open())
+    {
+        popup_dialog("MISSIONS", "This campaign keeps no mission book.");
+        return MENU_REDRAW;
+    }
+    game->clearbuffer();
+    og::ui::CampaignMissionsScreenState state;
+    state.session = &session;
+    state.page = og::ui::PageModel::make(
+        static_cast<int>(session.page().rows.size()),
+        kCampaignMissionsRowsPerPage);
+    og::ui::install_campaign_missions_state_for_screen(&state);
+    const Sint32 retvalue = og::ui::run_menu_screen(
+        og::ui::campaign_missions_menu_screen_spec(), &state);
+    og::ui::install_campaign_missions_state_for_screen(nullptr);
+    game->clearbuffer();
+    // Distinguish a joiner remote start (propagate MENU_EXIT so the host GO
+    // launches through SCENARIO) from this screen's own structural close.
+    if ((retvalue & MENU_EXIT) && team_build_start_selected())
+        return retvalue;
+    return MENU_REDRAW;
+}
+
+button* picker_campaign_missions_buttons()
+{
+    og::ui::materialize_menu_buttons(
+        og::ui::campaign_missions_menu_screen_spec(),
+        pks().campaign_missions_buttons);
+    return pks().campaign_missions_buttons.data();
+}
+
+int picker_campaign_missions_button_count()
+{
+    return static_cast<int>(pks().campaign_missions_buttons.size());
+}
 
 button* picker_difficulty_menu_buttons()
 {

@@ -171,6 +171,7 @@ Sint32 create_teams_menu(Sint32 arg1); // MATCHUP overview/settings subscreen
 Sint32 create_view_scenario_menu(Sint32 arg1); // Read-only level roster viewer
 Sint32 view_scenario_page_flip(Sint32 step);   // PREV/NEXT inside the viewer
 Sint32 create_scenario_menu(Sint32 arg1); // Campaign/level/matchup/progress subscreen
+Sint32 run_campaign_missions_screen(Sint32 arg1); // Scripted-campaign MISSIONS subscreen (#206)
 Sint32 teams_page_flip(Sint32 team);      // MATCHUP per-team member pager
 Sint32 teams_join_team(Sint32 team);
 Sint32 teams_cycle_guy(Sint32 whichway);
@@ -371,6 +372,10 @@ enum class ButtonAction : Sint32
     CycleGameSpeed = 103,
     ToggleColorCycling = 104,
     BrightnessAdjust = 105,
+    // Campaign scripting (issue #206): the SCENARIO subscreen's MISSIONS
+    // door — opens the scripted mission book of a campaign that registers
+    // og.register_campaign_hooks (hidden per frame when none does).
+    CreateCampaignMissionsMenu = 106,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

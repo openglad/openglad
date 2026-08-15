@@ -427,6 +427,15 @@ void toggle_infinite_gold(SaveData& save);
 // decimal balance otherwise.
 std::string format_wallet_amount(const SaveData& save, int team);
 
+// Scripted campaign picker wallet (issue #206): affordability and debit for
+// priced picker actions, over the ACTING team — the lowest team present on
+// the roster, my_team fallback (the same rule og::data::make_campaign_providers
+// applies to og.campaign_gold). can_afford is infinite-gold aware; the debit
+// is skipped entirely under infinite gold (the hire/train free-purchase
+// discipline) and clamps rather than underflows.
+[[nodiscard]] bool campaign_picker_can_afford(const SaveData& save, int cost);
+void campaign_picker_debit(SaveData& save, int cost);
+
 // --- Team choice helpers (local seats) ---
 
 // True when any roster slot is on the given team.

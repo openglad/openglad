@@ -174,6 +174,7 @@ set(OG_INTERFACE_COMPONENT_SOURCES
     ${SRC_DIR}/interface/session_state.cpp
     ${SRC_DIR}/interface/ui/button.cpp
     ${SRC_DIR}/interface/ui/campaign_picker.cpp
+    ${SRC_DIR}/interface/ui/campaign_picker_session.cpp
     ${SRC_DIR}/interface/ui/cloud_save_client.cpp
     ${SRC_DIR}/interface/ui/help.cpp
     ${SRC_DIR}/interface/ui/intro.cpp

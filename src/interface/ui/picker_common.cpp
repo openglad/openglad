@@ -881,6 +881,52 @@ std::string format_wallet_amount(const SaveData& save, int team)
                            save.m_totalcash[static_cast<std::size_t>(wallet_team)]));
 }
 
+// --- Scripted campaign picker wallet (issue #206) ---
+
+// The acting team mirrors og::data::make_campaign_providers (the Base Camp
+// gold-label rule): the lowest team present on the roster, my_team fallback,
+// clamped to [0,3]. In a networked lobby the autosave merge persists only
+// owned teams' wallets, so this rule keeps every scripted debit durable.
+static int campaign_acting_team(const SaveData& save)
+{
+    int team = MAX_PLAYERS;
+    for (const auto& member : save.team_list)
+    {
+        if (member != nullptr && member->teamnum >= 0 &&
+            member->teamnum < MAX_PLAYERS)
+        {
+            team = std::min(team, static_cast<int>(member->teamnum));
+        }
+    }
+    if (team == MAX_PLAYERS)
+    {
+        team = (save.my_team >= 0 && save.my_team < MAX_PLAYERS)
+            ? save.my_team
+            : 0;
+    }
+    return team;
+}
+
+bool campaign_picker_can_afford(const SaveData& save, int cost)
+{
+    if (cost <= 0)
+        return true;
+    return can_afford(save, campaign_acting_team(save),
+                      static_cast<std::uint32_t>(cost));
+}
+
+void campaign_picker_debit(SaveData& save, int cost)
+{
+    // Infinite gold makes the purchase FREE (the hire/train free_purchase
+    // rule): the wallet is never written, so no autosave can bake a cheat
+    // balance into the .gtl file.
+    if (cost <= 0 || gold_is_infinite(save))
+        return;
+    std::uint32_t& wallet =
+        save.m_totalcash[static_cast<std::size_t>(campaign_acting_team(save))];
+    wallet -= std::min(wallet, static_cast<std::uint32_t>(cost));
+}
+
 // --- GRAPHICS FX depth selector (cfg effects/depth_fx) ---
 
 // Out-of-set values (including the empty string an absent key reads as)

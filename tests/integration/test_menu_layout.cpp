@@ -1,7 +1,9 @@
 #include <openglad/interface/button.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/input_hardware_state.h>
 #include <openglad/interface/input_mappings.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
@@ -398,6 +400,140 @@ TEST(MenuLayout, cloud_save_screen_layout_states_and_nav)
               static_cast<int>(spec.remote_start));
     ASSERT_NE(nullptr, spec.on_spec_row);
     EXPECT_STREQ("cloud_save", spec.name);
+}
+
+// #206 MISSIONS subscreen: static table pins, the empty (null-state) shape,
+// and the pattern-b rewire's visibility variants — a partial page and a
+// full 24-entry page whose PageModel window shows the pagers.
+TEST(MenuLayout, campaign_missions_screen_layout_states_and_nav)
+{
+    button* buttons = picker_campaign_missions_buttons();
+    const int count = picker_campaign_missions_button_count();
+    ASSERT_EQ(kCampaignMissionsButtonCount, count);
+    check_no_overlaps(buttons, count, "campaign_missions");
+    check_bounds(buttons, count, "campaign_missions");
+
+    const Sint32 spec_row = button_action_id(ButtonAction::MenuSpecRow);
+    for (int r = 0; r < kCampaignMissionsRowsPerPage; ++r)
+    {
+        EXPECT_EQ(std::format("mission_row_{}", r), buttons[r].id);
+        EXPECT_EQ(30, buttons[r].x) << r;
+        EXPECT_EQ(66 + 12 * r, buttons[r].y) << r;
+        EXPECT_EQ(260, buttons[r].sizex) << r;
+        EXPECT_EQ(10, buttons[r].sizey) << r;
+        EXPECT_EQ(spec_row, buttons[r].myfun) << r;
+        EXPECT_EQ(r, buttons[r].arg1) << "MenuSpecRow arg == ordinal";
+    }
+    EXPECT_EQ("back", buttons[kCampaignMissionsBackIndex].id);
+    EXPECT_EQ(10, buttons[kCampaignMissionsBackIndex].x);
+    EXPECT_EQ(169, buttons[kCampaignMissionsBackIndex].y);
+    EXPECT_EQ(KEYSTATE_ESCAPE, buttons[kCampaignMissionsBackIndex].hotkey);
+    EXPECT_EQ("mission_page_prev", buttons[kCampaignMissionsPrevIndex].id);
+    EXPECT_EQ("mission_page_next", buttons[kCampaignMissionsNextIndex].id);
+    EXPECT_TRUE(buttons[kCampaignMissionsPrevIndex].hidden)
+        << "pagers start hidden; the rewire shows them on a multi-page";
+    EXPECT_TRUE(buttons[kCampaignMissionsNextIndex].hidden);
+
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::campaign_missions_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.nav.rewire);
+    ASSERT_NE(nullptr, spec.on_spec_row);
+    EXPECT_TRUE(spec.polls_lobby);
+    EXPECT_EQ(static_cast<int>(og::ui::RemoteStartScope::TeamBuildScope),
+              static_cast<int>(spec.remote_start));
+    EXPECT_STREQ("campaign_missions", spec.name);
+
+    // Null state: the empty shape — every row and pager hidden, BACK alone.
+    og::ui::install_campaign_missions_state_for_screen(nullptr);
+    int highlighted = kCampaignMissionsBackIndex;
+    spec.nav.rewire(buttons, count, highlighted);
+    for (int r = 0; r < kCampaignMissionsRowsPerPage; ++r)
+        EXPECT_TRUE(buttons[r].hidden) << "null state hides row " << r;
+    EXPECT_TRUE(buttons[kCampaignMissionsPrevIndex].hidden);
+    EXPECT_TRUE(buttons[kCampaignMissionsNextIndex].hidden);
+    check_nav_closed_and_reachable(buttons, count, kCampaignMissionsBackIndex,
+                                   "campaign_missions_empty");
+
+    // Scripted-session variants: a 2-row page (no pagers) and a 24-entry
+    // page (the cap) whose 8-row window shows the pagers on every page.
+    const std::vector<og::script::PackScript> saved_scripts =
+        og::script::pack_scripts();
+    og::script::register_pack_script(
+        {"test.missionslayout", "missionslayout/scripts/c.lua",
+         R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id)
+    if page_id == "big" then
+      local entries = {}
+      for i = 1, 24 do
+        entries[i] = { id = "e" .. i, label = "ENTRY " .. i, kind = "page" }
+      end
+      return { title = "BIG", entries = entries }
+    end
+    return { title = "SMALL",
+             entries = {
+               { id = "a", label = "ALPHA", kind = "page" },
+               { id = "big", label = "BIG", kind = "page" },
+             } }
+  end,
+}))LUA"});
+
+    {
+        SaveData save;
+        og::ui::CampaignPickerSession session(save);
+        ASSERT_TRUE(session.open());
+        og::ui::CampaignMissionsScreenState state;
+        state.session = &session;
+        state.page = og::ui::PageModel::make(
+            static_cast<int>(session.page().rows.size()),
+            kCampaignMissionsRowsPerPage);
+        og::ui::install_campaign_missions_state_for_screen(&state);
+
+        // Partial page: two visible rows, labels composed, no pagers.
+        spec.nav.rewire(buttons, count, highlighted);
+        EXPECT_FALSE(buttons[0].hidden);
+        EXPECT_FALSE(buttons[1].hidden);
+        EXPECT_TRUE(buttons[2].hidden);
+        EXPECT_EQ("ALPHA", buttons[0].label);
+        EXPECT_EQ("BIG", buttons[1].label);
+        EXPECT_TRUE(buttons[kCampaignMissionsPrevIndex].hidden);
+        EXPECT_TRUE(buttons[kCampaignMissionsNextIndex].hidden);
+        check_nav_closed_and_reachable(buttons, count,
+                                       kCampaignMissionsBackIndex,
+                                       "campaign_missions_partial");
+
+        // The 24-entry cap page: full window + pagers on both pages.
+        ASSERT_EQ(og::ui::CampaignPickerSession::OutcomeKind::OpenedPage,
+                  session.choose(1).kind);
+        state.page = og::ui::PageModel::make(
+            static_cast<int>(session.page().rows.size()),
+            kCampaignMissionsRowsPerPage);
+        ASSERT_EQ(24, state.page.item_count);
+        spec.nav.rewire(buttons, count, highlighted);
+        for (int r = 0; r < kCampaignMissionsRowsPerPage; ++r)
+            EXPECT_FALSE(buttons[r].hidden) << "full window row " << r;
+        EXPECT_FALSE(buttons[kCampaignMissionsPrevIndex].hidden);
+        EXPECT_FALSE(buttons[kCampaignMissionsNextIndex].hidden);
+        EXPECT_EQ("ENTRY 1", buttons[0].label);
+        check_nav_closed_and_reachable(buttons, count,
+                                       kCampaignMissionsBackIndex,
+                                       "campaign_missions_paged");
+
+        ASSERT_TRUE(state.page.step(2));
+        EXPECT_EQ(2, state.page.page) << "24 entries page to exactly 3 windows";
+        spec.nav.rewire(buttons, count, highlighted);
+        EXPECT_EQ("ENTRY 17", buttons[0].label);
+        EXPECT_EQ("ENTRY 24", buttons[7].label)
+            << "the cap page's last window is exactly full";
+        check_nav_closed_and_reachable(buttons, count,
+                                       kCampaignMissionsBackIndex,
+                                       "campaign_missions_lastpage");
+
+        og::ui::install_campaign_missions_state_for_screen(nullptr);
+    }
+
+    og::script::clear_pack_scripts();
+    for (const og::script::PackScript& script : saved_scripts)
+        og::script::register_pack_script(script);
 }
 
 TEST(MenuLayout, createmenu_buttons_no_overlap)
@@ -1637,13 +1773,16 @@ TEST(MenuLayout, scenariomenu_static_layout)
         MenuNav nav;
     };
     static const ExpectedButton kExpected[] = {
-        {"back", "BACK", 30, 170, 60, 20, MenuNav{.up = 3}},
+        {"back", "BACK", 30, 170, 60, 20, MenuNav{.up = 7}},
         {"set_campaign", "SET CAMPAIGN", 30, 40, 80, 15, MenuNav{.down = 2}},
         {"set_level", "SET LEVEL", 30, 70, 80, 15, MenuNav{.up = 1, .down = 3}},
-        {"view_scenario", "VIEW LEVEL", 30, 100, 80, 15, MenuNav{.up = 2, .down = 0, .right = 4}},
+        {"view_scenario", "VIEW LEVEL", 30, 100, 80, 15, MenuNav{.up = 2, .down = 7, .right = 4}},
         {"matchup", "MATCHUP", 120, 100, 80, 15, MenuNav{.up = 2, .down = 6, .left = 3, .right = 5}},
         {"progress", "PROGRESS", 210, 100, 80, 15, MenuNav{.up = 2, .down = 0, .left = 4}},
-        {"troops", "TROOPS: ALL", 120, 140, 80, 15, MenuNav{.up = 4, .down = 0}},
+        {"troops", "TROOPS: ALL", 120, 140, 80, 15, MenuNav{.up = 4, .down = 0, .left = 7}},
+        // #206: the scripted-campaign MISSIONS door — the x=30 grid cell
+        // under VIEW LEVEL, clear of the x=114 title strips.
+        {"missions", "MISSIONS", 30, 140, 80, 15, MenuNav{.up = 3, .down = 0, .right = 6}},
     };
 
     for (int i = 0; i < count; ++i)
@@ -1671,6 +1810,7 @@ TEST(MenuLayout, scenariomenu_static_layout)
     EXPECT_EQ(kScenarioMenuTeamsIndex, 4);
     EXPECT_EQ(kScenarioMenuProgressIndex, 5);
     EXPECT_EQ(kScenarioMenuTroopsIndex, 6);
+    EXPECT_EQ(kScenarioMenuMissionsIndex, 7);
 
     // The campaign-name / level-title strips draw from x=116 (32-char clip,
     // 6px/char): they must clear the x=30 button column's right edge.
@@ -1701,22 +1841,31 @@ TEST(MenuLayout, scenariomenu_static_layout)
                                    "scenariomenu_static");
 }
 
-// Host-gating variants for the SCENARIO subscreen: SET CAMPAIGN / SET LEVEL /
-// TROOPS hide for joiners and the row's up-links (plus MATCHUP's down-link)
-// rewire around them.
+// Gating variants for the SCENARIO subscreen: SET CAMPAIGN / SET LEVEL /
+// TROOPS hide for joiners, MISSIONS hides on its own axis (no registered
+// scripted picker, #206), and the nav graph rewires around every hidden
+// combination.
 TEST(MenuLayout, scenariomenu_nav_variants_keyboard_reachable)
 {
     for (const bool host_visible : {true, false})
     {
-        button* buttons = picker_scenariomenu_buttons();
-        const int count = picker_scenariomenu_button_count();
-        buttons[kScenarioMenuSetCampaignIndex].hidden = !host_visible;
-        buttons[kScenarioMenuSetLevelIndex].hidden = !host_visible;
-        buttons[kScenarioMenuTroopsIndex].hidden = !host_visible;
-        picker_wire_scenario_menu_nav(buttons, count, host_visible);
-        check_nav_closed_and_reachable(
-            buttons, count, kScenarioMenuBackIndex,
-            host_visible ? "scenariomenu_host" : "scenariomenu_joiner");
+        for (const bool missions_visible : {true, false})
+        {
+            button* buttons = picker_scenariomenu_buttons();
+            const int count = picker_scenariomenu_button_count();
+            buttons[kScenarioMenuSetCampaignIndex].hidden = !host_visible;
+            buttons[kScenarioMenuSetLevelIndex].hidden = !host_visible;
+            buttons[kScenarioMenuTroopsIndex].hidden = !host_visible;
+            buttons[kScenarioMenuMissionsIndex].hidden = !missions_visible;
+            picker_wire_scenario_menu_nav(buttons, count, host_visible,
+                                          missions_visible);
+            check_nav_closed_and_reachable(
+                buttons, count, kScenarioMenuBackIndex,
+                std::format("scenariomenu_{}_{}",
+                            host_visible ? "host" : "joiner",
+                            missions_visible ? "missions" : "nomissions")
+                    .c_str());
+        }
     }
 }
 

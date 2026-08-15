@@ -478,4 +478,31 @@ void install_cloud_save_state_for_screen(CloudSaveScreenState* state);
 // main menu's spec-row dispatcher.
 Sint32 run_cloud_save_screen();
 
+// #206 MISSIONS (scripted campaign picker) screen state: a borrowed
+// CampaignPickerSession (the SDL-free page-fetch/select/act machine — it
+// caches the current page; this screen only windows and displays it) plus
+// the PageModel window over the page's rows. Public so tests can drive the
+// per-frame rewire's visibility variants; production state is owned by
+// run_campaign_missions_screen. The null/session-less state renders the
+// empty shape (rows and pagers hidden, BACK alone).
+class CampaignPickerSession; // campaign_picker_session.h
+
+struct CampaignMissionsScreenState {
+    CampaignPickerSession* session = nullptr;
+    PageModel page{};
+    // A level row's SDL level-set tail committed scen_num (observable for
+    // tests; the tail itself lives in the on_spec_row dispatch).
+    bool level_was_set = false;
+};
+
+// #206 MISSIONS subscreen: page title + up to six narrative lines over 8
+// pageable row faces (Company List dynamic-rows chassis), BACK (pops
+// session pages; closes at the root) and PageModel PREV/NEXT pagers.
+const MenuScreenSpec& campaign_missions_menu_screen_spec();
+
+// Installs the state the per-frame rewire reads (the company-list seam
+// pattern; the null state renders the empty shape).
+void install_campaign_missions_state_for_screen(
+    CampaignMissionsScreenState* state);
+
 } // namespace og::ui
