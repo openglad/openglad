@@ -982,6 +982,8 @@ void serialize_world_state(std::vector<std::uint8_t>& buffer,
     append_u8(buffer, snapshot.control_policy);
     for (const std::uint8_t machine : snapshot.player_machine)
         append_u8(buffer, machine);
+    append_u8(buffer,
+              og::sim::dynamics_ruleset_value(snapshot.dynamics_ruleset));
 }
 
 void deserialize_world_state(ByteReader& reader, og::sim::WorldSnapshot& snapshot)
@@ -1021,6 +1023,8 @@ void deserialize_world_state(ByteReader& reader, og::sim::WorldSnapshot& snapsho
     snapshot.control_policy = reader.read_u8("world.control_policy");
     for (std::uint8_t& machine : snapshot.player_machine)
         machine = reader.read_u8("world.player_machine");
+    snapshot.dynamics_ruleset = og::sim::dynamics_ruleset_from_value(
+        reader.read_u8("world.dynamics_ruleset"));
 }
 
 void serialize_grid_state(std::vector<std::uint8_t>& buffer,
@@ -2671,6 +2675,7 @@ og::sim::WorldSnapshot capture_snapshot_impl(GameWorld& world,
     snapshot.generator_rate = world.generator_rate;
     snapshot.control_policy = world.control_policy;
     snapshot.player_machine = world.player_machine;
+    snapshot.dynamics_ruleset = world.dynamics_ruleset;
 
     std::unordered_set<int> seen_guy_ids;
     capture_entity_list(world.oblist, snapshot.oblist, snapshot.guy_snapshots,
@@ -3128,6 +3133,9 @@ bool apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
     world.generator_rate = snapshot.generator_rate;
     world.control_policy = snapshot.control_policy;
     world.player_machine = snapshot.player_machine;
+    world.dynamics_ruleset = is_valid_dynamics_ruleset(snapshot.dynamics_ruleset)
+        ? snapshot.dynamics_ruleset
+        : DynamicsRuleset::Classic;
 
     GuyStorage guy_storage;
     GuyLookup guy_lookup;
@@ -3232,6 +3240,8 @@ void apply_delta(WorldSnapshot& baseline, const WorldSnapshot& delta)
     baseline.generator_rate = delta.generator_rate;
     baseline.control_policy = delta.control_policy;
     baseline.player_machine = delta.player_machine;
+    baseline.dynamics_ruleset = dynamics_ruleset_from_value(
+        dynamics_ruleset_value(delta.dynamics_ruleset));
 
     apply_delta_grid(baseline, delta);
     baseline.guy_snapshots = delta.guy_snapshots;

@@ -913,7 +913,7 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
     // (1=set_campaign, 2=set_level, 3=view_scenario, 4=matchup, 5=progress,
     // 6=troops, 7=back). Main 3=difficulty opens the DIFFICULTY submenu
     // (1=difficulty, 2=respawns, 3=respawn delay, 4=permadeath,
-    // 5=generators, 6=infinite gold, 7=back).
+    // 5=generators, 6=infinite gold, 7=dynamics, 8=back).
     const std::string input =
         "bad\r\n"   // main: invalid choice; terminal CR is trimmed
         "3\n"       // main: difficulty -> DIFFICULTY submenu
@@ -924,7 +924,9 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "5\n"       // difficulty: cycle generators
         "6\n"       // difficulty: toggle infinite gold
         "6\n"       // difficulty: toggle infinite gold back off
-        "7\n"       // difficulty: back -> main
+        "7\n"       // difficulty: toggle dynamics
+        "7\n"       // difficulty: toggle dynamics back
+        "8\n"       // difficulty: back -> main
         "4\n"       // main: level edit (unavailable)
         "5\n"       // main: options
         "newslot\n"

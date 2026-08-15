@@ -1,6 +1,7 @@
 #pragma once
 
 #include <openglad/core/constants.h>
+#include <openglad/gameplay/dynamics_ruleset.h>
 #include <openglad/gameplay/mode/mode_state.h>
 
 #include <cstddef>
@@ -233,6 +234,10 @@ struct LobbySettings {
     // instead of comparing campaign ids. sanitize_settings keeps it in
     // {0, 1}.
     std::int16_t shared_teams = 0;
+    // Host-authoritative gameplay feel (protocol v13). Fresh-session
+    // frontends may request Modern, while the DTO default remains Classic so
+    // omitted/test-authored settings preserve legacy behavior.
+    DynamicsRuleset dynamics_ruleset = DynamicsRuleset::Classic;
 
     bool operator==(const LobbySettings&) const = default;
 };

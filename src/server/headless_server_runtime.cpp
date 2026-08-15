@@ -93,6 +93,7 @@ void sync_world_from_save_data(GameWorld& world, const SaveData& save)
         og::mode::current_progression().clamp_respawn_mode(save.respawn_mode);
     world.generator_rate = save.generator_rate;
     world.keep_fallen_heroes = save.keep_fallen_heroes;
+    world.dynamics_ruleset = save.dynamics_ruleset;
     world.current_scenario = save.scen_num;
     for (int index = 0; index < MAX_PLAYERS; ++index)
         world.m_score[index] = save.m_score[index];
@@ -305,12 +306,17 @@ void copy_headless_server_save_data(SaveData& destination,
     destination.ctf_capture_limit = source.ctf_capture_limit;
     destination.ctf_respawn_ticks = source.ctf_respawn_ticks;
     destination.ctf_strip_scenario_troops = source.ctf_strip_scenario_troops;
+    destination.respawn_mode = source.respawn_mode;
+    destination.generator_rate = source.generator_rate;
+    destination.keep_fallen_heroes = source.keep_fallen_heroes;
     // Cross-control (protocol v8): session-only match setting; must survive
     // the server/checkpoint copies like the other lobby-negotiated settings
     // (the documented dropped-field bug class, design §4.1).
     destination.cross_control = source.cross_control;
     // Infinite gold (protocol v11): same session-only dropped-field rule.
     destination.infinite_gold = source.infinite_gold;
+    // Gameplay feel (protocol v13): session-only and host-authoritative.
+    destination.dynamics_ruleset = source.dynamics_ruleset;
     // Tower run state (GTL v13) must ride the server/checkpoint copies:
     // advance_cursor regenerates floors from tower_run_seed and merges
     // tower_best_floor, and on_run_ended re-writes both to save0 — a copy
@@ -355,6 +361,7 @@ void apply_headless_lobby_game_start_config(
     save.keep_fallen_heroes = static_cast<short>(config_save.keep_fallen_heroes);
     save.cross_control = static_cast<short>(config_save.cross_control);
     save.infinite_gold = static_cast<short>(config_save.infinite_gold);
+    save.dynamics_ruleset = config_save.dynamics_ruleset;
     save.my_team = 0;
 
     for (auto& member : save.team_list)
@@ -382,6 +389,7 @@ void sync_headless_server_save_data_from_world(SaveData& save,
 {
     save.my_team = world.my_team;
     save.allied_mode = world.allied_mode;
+    save.dynamics_ruleset = world.dynamics_ruleset;
     save.scen_num = static_cast<short>(world.current_scenario);
     save.current_levels[save.current_campaign] = save.scen_num;
     for (int index = 0; index < MAX_PLAYERS; ++index)

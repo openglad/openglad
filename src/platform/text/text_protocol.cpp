@@ -484,6 +484,11 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     text_ctx.rng = &world.rng_;
     set_gameplay_rng_override(&text_ctx.rng);
     SaveData save;
+    // The protocol runner is also the gameplay backend for both terminal
+    // pickers. Seed each fresh run from the same machine preference their
+    // Difficulty menus edit; GameWorld itself deliberately defaults Classic
+    // for parity and hand-built simulations.
+    save.dynamics_ruleset = cfg.dynamics_ruleset_preference();
     save.current_campaign = args.campaign;
     save.scen_num = static_cast<short>(args.level);
     save.numplayers = 1;
@@ -537,6 +542,8 @@ int run_text_protocol_session(const TextProtocolArgs& args)
         set_gameplay_rng_override(nullptr);
         return 1;
     }
+
+    world.dynamics_ruleset = save.dynamics_ruleset;
 
     // Derive placed-walker stats from their authored levels, exactly like
     // the production loaders (game.cpp load_saved_game and

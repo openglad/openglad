@@ -204,6 +204,12 @@ GameSession::GameSession(const Config& session_cfg)
             cfg_.numviews,
             cfg_.create_display);
         myscreen_ = screen_owner_.get();
+        // The carrier is session-only: load() never overwrites it, while a
+        // true new-game reset re-seeds it from this same local preference.
+        myscreen_->save_data.dynamics_ruleset =
+            cfg.dynamics_ruleset_preference();
+        myscreen_->world().dynamics_ruleset =
+            myscreen_->save_data.dynamics_ruleset;
         myscreen_->set_render_interpolation_speed_factor(
             g_game_speed_factor_);
         game_.save = &myscreen_->save_data;

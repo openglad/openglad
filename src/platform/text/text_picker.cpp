@@ -14,6 +14,7 @@
 #include <openglad/resources/company.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/platform_bridge.h>
@@ -85,6 +86,7 @@ public:
     explicit TextPickerClient(TextPickerConfig& config, TextPickerError* error)
         : config_(config), error_(error)
     {
+        save_data_.dynamics_ruleset = cfg.dynamics_ruleset_preference();
         ensure_team_initialized();
         // Terminal slot authority ([SAVE-R2]): company-level writes must
         // target this client's chosen slot (default "text_quicksave"), never
@@ -179,7 +181,7 @@ public:
         // §2.2: found the company FIRST (generated name, reroll, editable).
         std::string company_name = prompt_new_company_name();
 
-        reset_for_new_game(save_data_);
+        reset_for_new_game(save_data_, cfg.dynamics_ruleset_preference());
         ensure_team_populated(save_data_);
         // The display name lives in the 40-byte save_name; the filename stays
         // this terminal client's own slot (config_.save_name, [SAVE-R2]).
@@ -884,6 +886,18 @@ private:
             // here this one deliberately skips the settings autosave tail.
             toggle_infinite_gold(save_data_);
             std::printf("%s\n", format_infinite_gold_label(save_data_).c_str());
+            break;
+        case PickerMenuCommand::ToggleDynamicsRuleset:
+            // SESSION-ONLY in the company file, but persistent as this
+            // machine's preference for the next newly created match.
+            toggle_dynamics_ruleset(save_data_);
+            cfg.set_dynamics_ruleset_preference(save_data_.dynamics_ruleset);
+            cfg.save_settings();
+            if (og::runtime::current_session->game_.world != nullptr)
+                og::runtime::current_session->game_.world->dynamics_ruleset =
+                    save_data_.dynamics_ruleset;
+            std::printf("%s\n",
+                        format_dynamics_ruleset_label(save_data_).c_str());
             break;
         default:
             break;

@@ -1358,13 +1358,14 @@ int menu_difficulty_injector(void* data)
         state->saw_options = true;
 
         struct RowPlan { const char* id; int clicks; };
-        static const RowPlan kRows[6] = {
+        static const RowPlan kRows[7] = {
             {"difficulty", 3},     // Battle -> Slaughter -> Skirmish -> Battle
             {"respawn_mode", 4},   // Off -> Heroes -> Everyone -> Team 1 -> Off
             {"respawn_delay", 3},  // Normal -> Fast -> Slow -> Normal
             {"permadeath", 2},     // On -> Off -> On
             {"generator_rate", 3}, // Normal -> Calm -> Frenzy -> Normal
             {"infinite_gold", 2},  // Off -> On -> Off
+            {"dynamics", 2},       // Modern -> Classic -> Modern
         };
         bool all_rows = true;
         for (const RowPlan& row : kRows) {
@@ -1407,6 +1408,7 @@ TEST(OptionsMenu, zz_capture_menu_difficulty)
     const short keep_before = save.keep_fallen_heroes;
     const short rate_before = save.generator_rate;
     const short gold_before = save.infinite_gold;
+    const auto dynamics_before = save.dynamics_ruleset;
 
     menu_capture::CaptureState state = {};
     menu_capture::run_capture_flow("menu_difficulty",
@@ -1426,6 +1428,7 @@ TEST(OptionsMenu, zz_capture_menu_difficulty)
     EXPECT_EQ(keep_before, after.keep_fallen_heroes);
     EXPECT_EQ(rate_before, after.generator_rate);
     EXPECT_EQ(gold_before, after.infinite_gold);
+    EXPECT_EQ(dynamics_before, after.dynamics_ruleset);
 }
 
 TEST(OptionsMenu, zz_capture_menu_tour)

@@ -2211,7 +2211,7 @@ TEST(MenuLayout, graphics_fx_options_grid_geometry_and_nav)
 }
 
 // DIFFICULTY subscreen (the main-menu DIFFICULTY door): unique BACK id + the
-// six match-rule rows in one centered 140px column on the FX row pitch.
+// seven match-rule rows in one centered 140px column on the FX row pitch.
 // Static labels are the default-state formatter outputs; the screen re-derives
 // every row from session/save each frame, so also pin that every label the
 // formatters can produce fits the 140px face (23 chars at 6px/char).
@@ -2225,6 +2225,7 @@ TEST(MenuLayout, difficulty_menu_layout_and_nav)
         {"permadeath", "Permadeath: On", 90, 104},
         {"generator_rate", "Generators: Normal", 90, 127},
         {"infinite_gold", "Infinite Gold: Off", 90, 150},
+        {"dynamics", "Modern Pace", 90, 173},
     };
     button* buttons = picker_difficulty_menu_buttons();
     const int count = picker_difficulty_menu_button_count();
@@ -2240,6 +2241,9 @@ TEST(MenuLayout, difficulty_menu_layout_and_nav)
     EXPECT_EQ("permadeath", buttons[kDifficultyMenuPermadeathIndex].id);
     EXPECT_EQ("generator_rate", buttons[kDifficultyMenuGeneratorRateIndex].id);
     EXPECT_EQ("infinite_gold", buttons[kDifficultyMenuInfiniteGoldIndex].id);
+    EXPECT_EQ("dynamics", buttons[kDifficultyMenuDynamicsIndex].id);
+    EXPECT_EQ(button_action_id(ButtonAction::ToggleDynamicsRuleset),
+              buttons[kDifficultyMenuDynamicsIndex].myfun);
 
     // Every dynamic label across the full value cycles stays within the
     // 140px face budget.
@@ -2266,11 +2270,15 @@ TEST(MenuLayout, difficulty_menu_layout_and_nav)
         EXPECT_LE(static_cast<int>(og::ui::format_infinite_gold_label(save).size()) * 6,
                   face_width)
             << og::ui::format_infinite_gold_label(save);
+        EXPECT_LE(static_cast<int>(og::ui::format_dynamics_ruleset_label(save).size()) * 6,
+                  face_width)
+            << og::ui::format_dynamics_ruleset_label(save);
         og::ui::cycle_respawn_mode(save);
         og::ui::cycle_respawn_delay(save);
         og::ui::toggle_permadeath(save);
         og::ui::cycle_generator_rate(save);
         og::ui::toggle_infinite_gold(save);
+        og::ui::toggle_dynamics_ruleset(save);
     }
 
     // Non-host (networked joiner) variant: every settings row is

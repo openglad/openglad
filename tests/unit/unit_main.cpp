@@ -163,6 +163,12 @@ int main(int argc, char** argv)
 {
     ::testing::InitGoogleTest(&argc, argv);
 
+    // Some unit tests construct a real screen, whose sound object opens an
+    // SDL audio device.  Keep that path deterministic on headless runners:
+    // the legacy sound setup exits successfully when no device is available,
+    // which would otherwise make CTest mistake a truncated suite for a pass.
+    setenv("SDL_AUDIODRIVER", "dummy", 1);
+
     const auto test_config_dir = std::filesystem::temp_directory_path() /
         ("openglad_test_" + std::to_string(getpid()));
     std::filesystem::create_directories(test_config_dir);

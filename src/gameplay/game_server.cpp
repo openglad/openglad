@@ -1374,6 +1374,7 @@ InitialSetupMessage GameServer::build_initial_setup(PeerId peer_id) const
     message.current_scenario = world_.current_scenario;
     message.respawn_mode = world_.respawn_mode;
     message.generator_rate = world_.generator_rate;
+    message.dynamics_ruleset = world_.dynamics_ruleset;
     message.guys = collect_initial_setup_guys(world_);
     message.completed_levels.assign(world_.completed_levels.begin(),
                                     world_.completed_levels.end());

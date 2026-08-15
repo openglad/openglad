@@ -672,10 +672,12 @@ std::unique_ptr<guy> create_recruit(int family, int team_num, const SaveData& sa
     return recruit;
 }
 
-void reset_for_new_game(SaveData& save)
+void reset_for_new_game(SaveData& save,
+                        og::sim::DynamicsRuleset dynamics_ruleset)
 {
     save.reset();
     save.totalcash = kNewGameStartingGold;
+    save.dynamics_ruleset = dynamics_ruleset;
 }
 
 void ensure_team_populated(SaveData& save, const std::vector<int>& families, int team_num)
@@ -856,6 +858,14 @@ void cycle_generator_rate(SaveData& save)
 void toggle_infinite_gold(SaveData& save)
 {
     save.infinite_gold = static_cast<short>(save.infinite_gold != 0 ? 0 : 1);
+}
+
+void toggle_dynamics_ruleset(SaveData& save)
+{
+    save.dynamics_ruleset =
+        save.dynamics_ruleset == og::sim::DynamicsRuleset::Modern
+            ? og::sim::DynamicsRuleset::Classic
+            : og::sim::DynamicsRuleset::Modern;
 }
 
 bool gold_is_infinite(const SaveData& save) noexcept
@@ -2062,6 +2072,13 @@ std::string format_generator_rate_label(const SaveData& save)
 std::string format_infinite_gold_label(const SaveData& save)
 {
     return gold_is_infinite(save) ? "Infinite Gold: On" : "Infinite Gold: Off";
+}
+
+std::string format_dynamics_ruleset_label(const SaveData& save)
+{
+    return save.dynamics_ruleset == og::sim::DynamicsRuleset::Modern
+        ? "Modern Pace"
+        : "Classic Pace";
 }
 
 // --- Company screens: label formatters (design §2.2/§2.3) ---

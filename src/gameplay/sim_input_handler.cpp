@@ -13,6 +13,8 @@
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/input_state.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/statistics.h>
@@ -21,6 +23,162 @@
 #include <openglad/core/test_trace.h>
 
 #include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstdint>
+#include <vector>
+
+namespace {
+
+struct BreakawayTarget
+{
+    walker* target = nullptr;
+    short dx = 0;
+    short dy = 0;
+};
+
+[[nodiscard]] bool z_ranges_overlap(const walker& lhs, const walker& rhs)
+{
+    // A zero height is the legacy full-height sentinel used by ob_pass_check.
+    if (lhs.sizez() <= 0 || rhs.sizez() <= 0)
+        return true;
+    const float lhs_top = lhs.worldz() + static_cast<float>(lhs.sizez());
+    const float rhs_top = rhs.worldz() + static_cast<float>(rhs.sizez());
+    return lhs_top > rhs.worldz() && rhs_top > lhs.worldz();
+}
+
+[[nodiscard]] std::int32_t axis_gap(std::int32_t a_start,
+                                    std::int32_t a_size,
+                                    std::int32_t b_start,
+                                    std::int32_t b_size)
+{
+    const std::int32_t a_end = a_start + a_size;
+    const std::int32_t b_end = b_start + b_size;
+    return std::max({b_start - a_end, a_start - b_end, 0});
+}
+
+[[nodiscard]] int contact_padding(const walker& control)
+{
+    const float step = control.stepsize();
+    if (!std::isfinite(step))
+        return 1;
+    const float bounded = std::clamp(step, 1.0f,
+                                     static_cast<float>(GRID_SIZE));
+    return static_cast<int>(std::ceil(bounded));
+}
+
+[[nodiscard]] bool is_breakaway_contact(const walker& control,
+                                        const walker& target,
+                                        int padding)
+{
+    if (&target == &control || target.dead() || target.dormant() ||
+        target.query_order() != Order::Living ||
+        target.stats() == nullptr ||
+        target.floor() != control.floor() || control.is_friendly(&target) ||
+        !z_ranges_overlap(control, target))
+    {
+        return false;
+    }
+
+    const FamilyDescriptor* const family =
+        get_family_descriptor(target.family());
+    if ((family != nullptr && family->is_stationary) ||
+        target.stats()->query_bit_flags(BIT_NO_COLLIDE))
+    {
+        return false;
+    }
+
+    return axis_gap(control.xpos(), control.sizex(),
+                    target.xpos(), target.sizex()) <= padding &&
+           axis_gap(control.ypos(), control.sizey(),
+                    target.ypos(), target.sizey()) <= padding;
+}
+
+[[nodiscard]] short unit_delta(std::int32_t delta)
+{
+    return static_cast<short>((delta > 0) - (delta < 0));
+}
+
+[[nodiscard]] std::pair<short, short> breakaway_direction(
+    const walker& control, const walker& target, std::size_t stable_ordinal)
+{
+    const std::int32_t dx =
+        (static_cast<std::int32_t>(target.xpos()) * 2 + target.sizex()) -
+        (static_cast<std::int32_t>(control.xpos()) * 2 + control.sizex());
+    const std::int32_t dy =
+        (static_cast<std::int32_t>(target.ypos()) * 2 + target.sizey()) -
+        (static_cast<std::int32_t>(control.ypos()) * 2 + control.sizey());
+    if (dx != 0 || dy != 0)
+        return {unit_delta(dx), unit_delta(dy)};
+
+    // Interpenetrating equal-centre bodies have no geometric "outward".
+    // Entity id is stable across snapshots/replays; list order is the stable
+    // construction fallback for headless fixtures and pre-id entities.
+    static constexpr std::array<std::pair<short, short>, NUM_FACINGS>
+        kFallbackDirections = {{{0, -1}, {1, -1}, {1, 0}, {1, 1},
+                                {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}}};
+    const std::size_t key = target.entity_id() != 0
+        ? static_cast<std::size_t>(target.entity_id() - 1)
+        : stable_ordinal;
+    return kFallbackDirections[key % kFallbackDirections.size()];
+}
+
+[[nodiscard]] bool breakaway_actionable(const walker& control,
+                                        short player_num)
+{
+    return control.user() == player_num && control.act_type() == ACT_CONTROL &&
+           control.ani_type() == ANI_WALK && control.busy() <= 0.0f &&
+           control.stats() != nullptr &&
+           control.stats()->frozen_delay() == 0 &&
+           control.stats()->commands.empty();
+}
+
+bool apply_modern_breakaway(GameWorld& level, walker& control,
+                            short player_num)
+{
+    if (level.dynamics_ruleset != og::sim::DynamicsRuleset::Modern ||
+        !breakaway_actionable(control, player_num))
+    {
+        return false;
+    }
+
+    const int padding = contact_padding(control);
+    std::vector<BreakawayTarget> contacts;
+    contacts.reserve(4);
+    std::size_t stable_ordinal = 0;
+    for (const auto& owned : level.oblist)
+    {
+        walker* const target = owned.get();
+        if (target != nullptr &&
+            is_breakaway_contact(control, *target, padding))
+        {
+            const auto [dx, dy] =
+                breakaway_direction(control, *target, stable_ordinal);
+            contacts.push_back({target, dx, dy});
+        }
+        ++stable_ordinal;
+    }
+
+    if (contacts.size() < 2)
+        return false;
+
+    for (const BreakawayTarget& contact : contacts)
+    {
+        contact.target->face_delta(contact.dx, contact.dy);
+        // Make the outward snap visible even if the ensuing forced walk is
+        // blocked. Preserve attack poses and their animation cycles.
+        if (contact.target->ani_type() == ANI_WALK)
+            contact.target->set_frame_from_current_walk_animation();
+        contact.target->stats()->force_command(
+            COMMAND_WALK, og::sim::kBreakawayWalkTicks,
+            contact.dx, contact.dy);
+    }
+    control.set_busy(std::max(control.busy(),
+                              og::sim::kBreakawayRecoveryTicks));
+    return true;
+}
+
+} // namespace
 
 walker* sim_find_next_control(GameWorld& level, short my_team)
 {
@@ -239,18 +397,23 @@ SimInputResult sim_process_player_input(
         && !pi.is_held(InputAction::Shift)
         && !pi.is_held(InputAction::Cheat))
     {
-        for (auto& uptr : level.oblist)
+        const bool did_breakaway =
+            apply_modern_breakaway(level, *control, player_num);
+        if (!did_breakaway)
         {
-            walker* w = uptr.get();
-            if (w && (w->query_order() == Order::Living) &&
-                (w->act_type() != ACT_CONTROL) &&
-                (w->team_num() == control->team_num()) &&
-                (!w->leader()))
+            for (auto& uptr : level.oblist)
             {
-                w->set_leader(control);
-                // Remove any current foe ..
-                w->set_foe(nullptr);
-                w->stats()->force_command(COMMAND_FOLLOW, 100, 0, 0);
+                walker* w = uptr.get();
+                if (w && (w->query_order() == Order::Living) &&
+                    (w->act_type() != ACT_CONTROL) &&
+                    (w->team_num() == control->team_num()) &&
+                    (!w->leader()))
+                {
+                    w->set_leader(control);
+                    // Remove any current foe ..
+                    w->set_foe(nullptr);
+                    w->stats()->force_command(COMMAND_FOLLOW, 100, 0, 0);
+                }
             }
         }
         control->set_yo_delay(30);
@@ -337,6 +500,31 @@ SimInputResult sim_process_player_input(
     // Make sure we're not performing some queued action ..
     if (control->stats()->commands.empty())
     {
+        const int walkx = pi.move_x();
+        const int walky = pi.move_y();
+        if (level.dynamics_ruleset == og::sim::DynamicsRuleset::Modern &&
+            (walkx != 0 || walky != 0))
+        {
+            // Resolve intent before actions: movement, weapon heading and
+            // specials all observe the same direction on this tick.
+            control->face_delta(static_cast<short>(walkx),
+                                static_cast<short>(walky));
+            // Stationary/zero-step actors still need a nonzero aim vector:
+            // init_fire() and directional specials read lastx/lasty before
+            // walkstep() reaches the stationary-family branch.
+            if (control->stepsize() == 0.0f)
+            {
+                control->set_lastx(static_cast<float>(walkx));
+                control->set_lasty(static_cast<float>(walky));
+            }
+            // A blocked walk normally leaves its frame untouched. Refresh
+            // only the walk pose so a successful snap is visible even when
+            // the requested translation is obstructed; never disturb an
+            // attack animation or its cycle.
+            if (control->ani_type() == ANI_WALK)
+                control->set_frame_from_current_walk_animation();
+        }
+
         #ifndef USE_TOUCH_INPUT
         control->set_shifter_down(pi.is_held(InputAction::Shift) ? 1 : 0);
         #else
@@ -357,9 +545,6 @@ SimInputResult sim_process_player_input(
         // Holding Special key for rapid use (MP cost naturally rate-limits)
         if (pi.is_held(InputAction::Special))
             control->special();
-
-        int walkx = pi.move_x();
-        int walky = pi.move_y();
 
         if (walkx != 0 || walky != 0)
         {

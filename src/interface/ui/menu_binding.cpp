@@ -70,6 +70,8 @@ std::string menu_item_label(const PickerMenuItem& item,
         return format_generator_rate_label(save);
     case PickerMenuCommand::ToggleInfiniteGold:
         return format_infinite_gold_label(save);
+    case PickerMenuCommand::ToggleDynamicsRuleset:
+        return format_dynamics_ruleset_label(save);
     default:
         return std::string(item.label);
     }

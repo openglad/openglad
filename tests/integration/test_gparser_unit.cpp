@@ -120,6 +120,31 @@ TEST(GparserUnit, gparser_apply_get_and_is_on_paths)
     ASSERT_TRUE(!local_cfg.is_on("graphics", "fullscreen"));
 }
 
+TEST(GparserUnit, dynamics_preference_defaults_normalizes_and_cycles_storage)
+{
+    cfg_store local_cfg;
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+              local_cfg.dynamics_ruleset_preference())
+        << "a missing preference uses the fresh-session default";
+
+    local_cfg.set_dynamics_ruleset_preference(
+        og::sim::DynamicsRuleset::Classic);
+    EXPECT_EQ("classic", local_cfg.get_setting("gameplay", "dynamics"));
+    EXPECT_EQ(og::sim::DynamicsRuleset::Classic,
+              local_cfg.dynamics_ruleset_preference());
+
+    local_cfg.set_dynamics_ruleset_preference(
+        og::sim::DynamicsRuleset::Modern);
+    EXPECT_EQ("modern", local_cfg.get_setting("gameplay", "dynamics"));
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+              local_cfg.dynamics_ruleset_preference());
+
+    local_cfg.apply_setting("gameplay", "dynamics", "unknown");
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+              local_cfg.dynamics_ruleset_preference())
+        << "unknown text normalizes to Modern";
+}
+
 TEST(GparserUnit, gparser_commandline_switches_and_unknown_arg)
 {
     cfg_store local_cfg;
@@ -224,9 +249,34 @@ TEST(GparserUnit, gparser_load_settings_reports_missing_config_and_keeps_default
     ASSERT_EQ("on", local_cfg.get_setting("sound", "sound"));
     ASSERT_EQ("normal", local_cfg.get_setting("graphics", "render"));
     ASSERT_EQ("on", local_cfg.get_setting("effects", "gore"));
+    ASSERT_EQ("modern", local_cfg.get_setting("gameplay", "dynamics"));
+    ASSERT_EQ(og::sim::DynamicsRuleset::Modern,
+              local_cfg.dynamics_ruleset_preference());
 
     fs::remove_all(isolated_cwd, ec);
     fs::create_directories(unit_config_file().parent_path(), ec);
+}
+
+TEST(GparserUnit, classic_dynamics_preference_survives_save_and_reload)
+{
+    og::test::ScopedPhysicalFileState config_state(unit_config_file());
+    ASSERT_TRUE(config_state.ready()) << config_state.error().message();
+    heal_unit_filesystem();
+    write_unit_config(
+        "gameplay:\n"
+        "  dynamics: classic\n");
+
+    cfg_store first;
+    ASSERT_TRUE(first.load_settings());
+    ASSERT_EQ(og::sim::DynamicsRuleset::Classic,
+              first.dynamics_ruleset_preference());
+    ASSERT_TRUE(first.save_settings());
+
+    cfg_store second;
+    ASSERT_TRUE(second.load_settings());
+    EXPECT_EQ("classic", second.get_setting("gameplay", "dynamics"));
+    EXPECT_EQ(og::sim::DynamicsRuleset::Classic,
+              second.dynamics_ruleset_preference());
 }
 
 TEST(GparserUnit, gparser_load_settings_parses_mapping_sequence_and_alias)

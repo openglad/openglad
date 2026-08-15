@@ -501,7 +501,8 @@ inline constexpr int kDifficultyMenuRespawnDelayIndex = 3;
 inline constexpr int kDifficultyMenuPermadeathIndex = 4;
 inline constexpr int kDifficultyMenuGeneratorRateIndex = 5;
 inline constexpr int kDifficultyMenuInfiniteGoldIndex = 6;
-inline constexpr int kDifficultyMenuButtonCount = 7;
+inline constexpr int kDifficultyMenuDynamicsIndex = 7;
+inline constexpr int kDifficultyMenuButtonCount = 8;
 
 // Per-frame host gating for the DIFFICULTY subscreen: every settings row is
 // LobbySettings-backed (difficulty included), so a non-host joiner sees only

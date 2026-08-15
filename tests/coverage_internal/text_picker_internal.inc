@@ -147,6 +147,8 @@ public:
     ScopedTextPickerInternalState()
         : active_company_before_(og::data::active_company_slot())
         , mounted_campaign_before_(get_mounted_campaign())
+        , cfg_data_before_(cfg.data)
+        , cfg_overrides_before_(cfg.overrides)
         , session_(og::runtime::current_session)
         , difficulty_before_(session_ != nullptr
               ? session_->current_difficulty_
@@ -154,6 +156,7 @@ public:
         , world_(session_ != nullptr ? session_->game_.world : nullptr)
         , world_difficulty_before_(world_ != nullptr ? world_->difficulty : 0)
     {
+        capture_file("cfg/openglad.yaml");
         capture_file("save/missing-text-picker-save.gtl");
         capture_file("save/missing-text-picker-save.tmp.gtl");
         capture_file("save/helper-slot.gtl");
@@ -236,6 +239,8 @@ public:
             session_->current_difficulty_ = difficulty_before_;
         if (world_ != nullptr)
             world_->difficulty = world_difficulty_before_;
+        cfg.data = cfg_data_before_;
+        cfg.overrides = cfg_overrides_before_;
         restore_ok_ =
             og::data::set_active_company_slot(active_company_before_) &&
             restore_ok_;
@@ -422,6 +427,8 @@ private:
 
     std::string active_company_before_;
     std::string mounted_campaign_before_;
+    decltype(cfg.data) cfg_data_before_;
+    decltype(cfg.overrides) cfg_overrides_before_;
     og::runtime::SessionState* session_ = nullptr;
     int difficulty_before_ = 0;
     GameWorld* world_ = nullptr;
@@ -435,6 +442,8 @@ private:
 
 int text_picker_testing_exercise_internal_paths()
 {
+    const auto cfg_data_before = cfg.data;
+    const auto cfg_overrides_before = cfg.overrides;
     ScopedTextPickerInternalState state_restore;
     if (!state_restore.ready())
         return -1;
@@ -523,7 +532,7 @@ int text_picker_testing_exercise_internal_paths()
             check(false);
             return;
         }
-        const short previous = current();
+        const auto previous = current();
         client.handle_menu_item(PickerMenuId::Difficulty, *item);
         const bool changed = current() != previous;
         for (int step = 1; step < period; ++step)
@@ -540,12 +549,14 @@ int text_picker_testing_exercise_internal_paths()
         [&] { return save.generator_rate; });
     check_difficulty_rule(PickerMenuCommand::ToggleInfiniteGold, 2,
         [&] { return save.infinite_gold; });
+    check_difficulty_rule(PickerMenuCommand::ToggleDynamicsRuleset, 2,
+        [&] { return save.dynamics_ruleset; });
     // The main-menu DIFFICULTY door runs the nested submenu loop: toggle
     // permadeath twice, then back — a round trip that leaves save untouched.
     if (const PickerMenuItem* door =
             find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::OpenDifficultyMenu)) {
         const short previous_permadeath = save.keep_fallen_heroes;
-        ScopedCinRedirect input("4\n4\n7\n");
+        ScopedCinRedirect input("4\n4\n8\n");
         client.handle_menu_item(PickerMenuId::Main, *door);
         check(save.keep_fallen_heroes == previous_permadeath);
     } else {
@@ -909,6 +920,8 @@ int text_picker_testing_exercise_internal_paths()
     }
 
     check(state_restore.restore());
+    check(cfg.data == cfg_data_before &&
+          cfg.overrides == cfg_overrides_before);
 
     return failed ? -failed_check : 0;
 }

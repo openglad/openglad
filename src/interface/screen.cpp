@@ -1304,6 +1304,7 @@ void screen::sync_world_from_save_data()
         og::mode::current_progression().clamp_respawn_mode(save_data.respawn_mode);
     world_.generator_rate = save_data.generator_rate;
     world_.keep_fallen_heroes = save_data.keep_fallen_heroes;
+    world_.dynamics_ruleset = save_data.dynamics_ruleset;
     world_.current_scenario = save_data.scen_num;
     for (int i = 0; i < 4; ++i)
         world_.m_score[i] = save_data.m_score[i];
@@ -1322,6 +1323,7 @@ void screen::sync_save_data_from_world()
 {
     save_data.my_team = world_.my_team;
     save_data.allied_mode = world_.allied_mode;
+    save_data.dynamics_ruleset = world_.dynamics_ruleset;
     save_data.scen_num = world_.current_scenario;
     for (int i = 0; i < 4; ++i)
         save_data.m_score[i] = world_.m_score[i];

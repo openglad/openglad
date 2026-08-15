@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <limits>
 #include <list>
 #include <span>
 #include <type_traits>
@@ -589,6 +590,7 @@ void expect_world_snapshot_eq(const og::sim::WorldSnapshot& expected,
     EXPECT_EQ(expected.generator_rate, actual.generator_rate);
     EXPECT_EQ(expected.control_policy, actual.control_policy);
     EXPECT_EQ(expected.player_machine, actual.player_machine);
+    EXPECT_EQ(expected.dynamics_ruleset, actual.dynamics_ruleset);
     EXPECT_EQ(expected.grid_width, actual.grid_width);
     EXPECT_EQ(expected.grid_height, actual.grid_height);
     EXPECT_EQ(expected.grid_dirty, actual.grid_dirty);
@@ -2410,11 +2412,11 @@ TEST(WorldSnapshot, deserialize_snapshot_and_delta_reject_oversized_payloads_and
         decode_delta_payload_for_test(delta_bytes);
 
     // Offset of grid.full_grid_size in a default delta payload: format byte +
-    // 514 bytes of world state (72 pre-block scalars, the v10 respawn block
+    // 515 bytes of world state (72 pre-block scalars, the v10 respawn block
     // at its empty size 9, the fixed 404-byte mode block, the 8 match-knob
     // bytes, and the trailing respawn_mode/generator_rate/control_policy/
-    // player_machine 21) + 4 grid bytes.
-    constexpr std::size_t kEntityCountOffset = 519;
+    // player_machine/dynamics 22) + 4 grid bytes.
+    constexpr std::size_t kEntityCountOffset = 520;
     ASSERT_GE(raw_payload.size(), kEntityCountOffset + sizeof(std::uint32_t));
     raw_payload[kEntityCountOffset + 0] = 0xffu;
     raw_payload[kEntityCountOffset + 1] = 0xffu;
@@ -3205,6 +3207,7 @@ TEST(WorldSnapshot, control_policy_and_player_machine_map_round_trip_to_mirror)
     fill_world_grid(source, PIX_GRASS1);
 
     source.control_policy = 1;
+    source.dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
     // Machine 0 deployed (bit7 set over id 0), machine 3 not deployed, the
     // rest unbound (0xff sentinel). The default map is all-0xff.
     source.player_machine[0] = 0x80; // deployed machine, id 0
@@ -3214,6 +3217,8 @@ TEST(WorldSnapshot, control_policy_and_player_machine_map_round_trip_to_mirror)
     const og::sim::WorldSnapshot keyframe =
         og::sim::capture_keyframe_snapshot(source);
     EXPECT_EQ(1, keyframe.control_policy);
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+              keyframe.dynamics_ruleset);
     EXPECT_EQ(0x80, keyframe.player_machine[0]);
     EXPECT_EQ(0x83, keyframe.player_machine[1]);
     EXPECT_EQ(0x03, keyframe.player_machine[2]);
@@ -3222,24 +3227,89 @@ TEST(WorldSnapshot, control_policy_and_player_machine_map_round_trip_to_mirror)
     const std::vector<std::uint8_t> bytes = og::sim::serialize_snapshot(keyframe);
     const og::sim::WorldSnapshot decoded = og::sim::deserialize_snapshot(bytes);
     EXPECT_EQ(1, decoded.control_policy);
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+              decoded.dynamics_ruleset);
     EXPECT_EQ(source.player_machine, decoded.player_machine);
 
     TestGameWorld mirror_fx;
     GameWorld& mirror = mirror_fx.world();
     configure_snapshot_test_services(mirror);
     ASSERT_EQ(0, mirror.control_policy);
+    ASSERT_EQ(og::sim::DynamicsRuleset::Classic,
+              mirror.dynamics_ruleset);
     ASSERT_EQ(0xff, mirror.player_machine[0]);
     og::sim::apply_snapshot(mirror, decoded);
     EXPECT_EQ(1, mirror.control_policy)
         << "control_policy must reach the mirror world through apply";
     EXPECT_EQ(source.player_machine, mirror.player_machine)
         << "player_machine map must reach the mirror world through apply";
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+              mirror.dynamics_ruleset)
+        << "the host-authoritative dynamics ruleset must reach the mirror";
 
     // Delta merge carries both fields onto a stale baseline.
     og::sim::WorldSnapshot baseline;
     og::sim::apply_delta(baseline, decoded);
     EXPECT_EQ(1, baseline.control_policy);
     EXPECT_EQ(source.player_machine, baseline.player_machine);
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+              baseline.dynamics_ruleset);
+
+    og::sim::WorldSnapshot classic = decoded;
+    classic.dynamics_ruleset = og::sim::DynamicsRuleset::Classic;
+    EXPECT_NE(og::sim::compute_snapshot_hash(classic),
+              og::sim::compute_snapshot_hash(decoded))
+        << "ruleset changes must participate in deterministic hash checks";
+
+    og::sim::WorldSnapshot invalid_delta;
+    invalid_delta.dynamics_ruleset =
+        static_cast<og::sim::DynamicsRuleset>(0xff);
+    baseline.dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
+    og::sim::apply_delta(baseline, invalid_delta);
+    EXPECT_EQ(og::sim::DynamicsRuleset::Classic,
+              baseline.dynamics_ruleset)
+        << "direct delta DTOs must not install unknown enum values";
+}
+
+TEST(WorldSnapshot, serialized_delta_normalizes_invalid_dynamics_ruleset)
+{
+    og::sim::WorldSnapshot delta;
+    delta.dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
+    const std::vector<std::uint8_t> encoded =
+        og::sim::serialize_delta(delta);
+    std::vector<std::uint8_t> raw_payload =
+        decode_delta_payload_for_test(encoded);
+
+    // Snapshot v11's default delta payload is the format byte, 515-byte
+    // world-state block, 12-byte empty grid block, and four empty u32 list
+    // counts. Dynamics is the final world-state byte at raw offset 515.
+    constexpr std::size_t kDynamicsRulesetOffset = 515u;
+    ASSERT_EQ(544u, raw_payload.size());
+    ASSERT_EQ(og::sim::kSnapshotFormatVersion, raw_payload[0]);
+    ASSERT_EQ(
+        og::sim::dynamics_ruleset_value(og::sim::DynamicsRuleset::Modern),
+        raw_payload[kDynamicsRulesetOffset]);
+    raw_payload[kDynamicsRulesetOffset] = 0xffu;
+
+    const std::size_t framed_payload_size =
+        og::sim::kDeltaPayloadHeaderSize + raw_payload.size();
+    ASSERT_LE(framed_payload_size,
+              static_cast<std::size_t>(
+                  std::numeric_limits<std::uint16_t>::max()));
+    std::vector<std::uint8_t> malformed;
+    og::sim::append_transport_header(
+        malformed,
+        og::sim::kDeltaSnapshotMessageType,
+        static_cast<std::uint16_t>(framed_payload_size));
+    malformed.push_back(og::sim::kDeltaPayloadUncompressedFlag);
+    malformed.insert(malformed.end(),
+                     raw_payload.begin(),
+                     raw_payload.end());
+
+    const og::sim::WorldSnapshot decoded =
+        og::sim::deserialize_delta(malformed);
+    EXPECT_EQ(og::sim::DynamicsRuleset::Classic,
+              decoded.dynamics_ruleset);
 }
 
 // Level-entry spawn points ride the entity snapshot: recorded values must

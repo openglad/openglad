@@ -290,6 +290,10 @@ void replace_loaded_world_state(LevelRuntimeData* level, GameWorld& loaded_world
         loaded_world.ctf_requested_strip_scenario_troops;
     dst.respawn_mode = loaded_world.respawn_mode;
     dst.generator_rate = loaded_world.generator_rate;
+    // The level-file scratch world is never authoritative for session rules
+    // that the file format does not carry. Keep dynamics, roster persistence,
+    // ownership policy, and the machine map already installed on dst;
+    // game-start setup and snapshots are their authoritative writers.
     dst.respawn = std::move(loaded_world.respawn);
     dst.mode = loaded_world.mode;
     dst.current_scenario = loaded_world.current_scenario;
@@ -633,6 +637,7 @@ void LevelRuntimeData::attach_world(GameWorld* world)
                   std::begin(next_world->m_score));
         next_world->my_team = old_world->my_team;
         next_world->allied_mode = old_world->allied_mode;
+        next_world->dynamics_ruleset = old_world->dynamics_ruleset;
         next_world->ctf_requested_team_count = old_world->ctf_requested_team_count;
         next_world->ctf_requested_capture_limit = old_world->ctf_requested_capture_limit;
         next_world->ctf_requested_respawn_ticks = old_world->ctf_requested_respawn_ticks;
@@ -640,6 +645,11 @@ void LevelRuntimeData::attach_world(GameWorld* world)
             old_world->ctf_requested_strip_scenario_troops;
         next_world->respawn_mode = old_world->respawn_mode;
         next_world->generator_rate = old_world->generator_rate;
+        next_world->keep_fallen_heroes = old_world->keep_fallen_heroes;
+        // Unlike the level-file replacement above, attach_world transfers the
+        // live world itself (including its installed ownership policy).
+        next_world->control_policy = old_world->control_policy;
+        next_world->player_machine = old_world->player_machine;
         next_world->respawn = std::move(old_world->respawn);
         next_world->mode = old_world->mode;
         next_world->current_scenario = old_world->current_scenario;

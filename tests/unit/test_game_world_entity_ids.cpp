@@ -523,10 +523,12 @@ TEST_F(GameWorldEntityIdsFixture, clear_resets_removed_entity_id_log_for_new_wor
 
     ASSERT_EQ(1, world.remove_ob(living));
     ASSERT_FALSE(world.removed_entity_ids().empty());
+    world.dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
 
     world.clear();
 
     EXPECT_TRUE(world.removed_entity_ids().empty());
+    EXPECT_EQ(og::sim::DynamicsRuleset::Classic, world.dynamics_ruleset);
 }
 
 TEST_F(GameWorldEntityIdsFixture, empty_list_removals_and_self_move_are_noops)

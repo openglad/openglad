@@ -76,15 +76,18 @@ constexpr std::array<PickerMenuItem, 7> kScenarioItems = {{
 
 // The DIFFICULTY submenu: session difficulty plus the match rules that ride
 // SaveData (respawns, respawn delay, permadeath, generator rate, infinite
-// gold). Defaults keep classic behavior; the terminal clients present it as a
-// nested list. Append new rows before "back" — Back stays last.
-constexpr std::array<PickerMenuItem, 7> kDifficultyMenuItems = {{
+// gold, dynamics). All existing rules default to classic behavior; Dynamics
+// defaults Modern for new sessions while retaining an explicit Classic
+// choice. Terminal clients present this as a nested list. Append new rows
+// before "back" — Back stays last.
+constexpr std::array<PickerMenuItem, 8> kDifficultyMenuItems = {{
     {"difficulty", "Difficulty", PickerMenuCommand::SetDifficulty},
     {"respawn_mode", "Respawns", PickerMenuCommand::CycleRespawnMode},
     {"respawn_delay", "Respawn Delay", PickerMenuCommand::CycleRespawnDelay},
     {"permadeath", "Permadeath", PickerMenuCommand::TogglePermadeath},
     {"generator_rate", "Generators", PickerMenuCommand::CycleGeneratorRate},
     {"infinite_gold", "Infinite Gold", PickerMenuCommand::ToggleInfiniteGold},
+    {"dynamics", "Dynamics", PickerMenuCommand::ToggleDynamicsRuleset},
     {"back", "Back", PickerMenuCommand::Back},
 }};
 

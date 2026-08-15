@@ -1567,6 +1567,7 @@ void GameWorld::clear()
         m_score[i] = 0;
     my_team = 0;
     allied_mode = 0;
+    dynamics_ruleset = og::sim::DynamicsRuleset::Classic;
     current_scenario = 0;
     current_palette_id = 0;
     pending_exit_prompt = false;

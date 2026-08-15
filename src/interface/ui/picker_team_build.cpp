@@ -372,7 +372,7 @@ void sync_difficulty_menu_visibility(button* buttons,
         sync_button_hidden_state(buttons, index);
     }
     buttons[kDifficultyMenuBackIndex].nav.up =
-        host_controls_visible ? kDifficultyMenuInfiniteGoldIndex : -1;
+        host_controls_visible ? kDifficultyMenuDynamicsIndex : -1;
     buttons[kDifficultyMenuBackIndex].nav.down =
         host_controls_visible ? kDifficultyMenuDifficultyIndex : -1;
 

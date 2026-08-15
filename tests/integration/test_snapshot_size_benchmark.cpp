@@ -241,6 +241,7 @@ RecordedBenchmarkReplay record_benchmark_replay(screen& game_screen)
         .level_id = world.id,
         .player_count = static_cast<std::uint8_t>(game_screen.save_data.numplayers),
         .timer_wait = world.timer_wait,
+        .dynamics_ruleset = world.dynamics_ruleset,
         .my_team = game_screen.save_data.my_team,
         .allied_mode = game_screen.save_data.allied_mode,
         .difficulty = world.difficulty,
@@ -428,6 +429,7 @@ TEST(SnapshotSizeBenchmark,
     og::sim::ReplayIoError io_error = og::sim::ReplayIoError::None;
     ASSERT_TRUE(player.load_file(recorded.path, &io_error));
     ASSERT_EQ(og::sim::ReplayIoError::None, io_error);
+    EXPECT_EQ(world.dynamics_ruleset, player.header().dynamics_ruleset);
     ASSERT_EQ(static_cast<std::size_t>(kWarmupTicks + kCatchupDeltaTicks),
               player.frame_count());
 

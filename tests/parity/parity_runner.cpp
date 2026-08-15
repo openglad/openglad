@@ -464,6 +464,9 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
     out.loaded = level.load();
 
     GameWorld& world = level.world();
+    // Reference captures are always Gladiator/Classic behavior. Keep that
+    // contract explicit so frontend defaults can never change parity runs.
+    world.dynamics_ruleset = og::sim::DynamicsRuleset::Classic;
     world.my_team = spec.player_team;
 
     if (spec.fresh_arena)

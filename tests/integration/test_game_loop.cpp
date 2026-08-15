@@ -1294,11 +1294,19 @@ TEST(GameLoop,
     screen* const game_screen = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(game_screen != nullptr);
 
+    const short previous_cross_control = game_screen->save_data.cross_control;
+    const short previous_infinite_gold = game_screen->save_data.infinite_gold;
+    const auto previous_dynamics = game_screen->save_data.dynamics_ruleset;
+
     game_screen->save_data.reset();
     game_screen->save_data.current_campaign = "gladiator";
     game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
     game_screen->save_data.scen_num = 1;
     game_screen->save_data.numplayers = 1;
+    game_screen->save_data.cross_control = 1;
+    game_screen->save_data.infinite_gold = 1;
+    game_screen->save_data.dynamics_ruleset =
+        og::sim::DynamicsRuleset::Classic;
     ASSERT_TRUE(game_screen->save_data.save("save0"));
 
     glad_init();
@@ -1328,6 +1336,15 @@ TEST(GameLoop,
     }
 
     EXPECT_TRUE(og::runtime::local_transport_active(gameplay_session));
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(
+            gameplay_session);
+    ASSERT_NE(nullptr, server_screen);
+    EXPECT_EQ(1, server_screen->save_data.cross_control);
+    EXPECT_EQ(1, server_screen->save_data.infinite_gold);
+    EXPECT_EQ(og::sim::DynamicsRuleset::Classic,
+              server_screen->save_data.dynamics_ruleset)
+        << "all session-only settings must survive the GTL reload";
     EXPECT_EQ(1, game_screen->world().current_palette_id);
     EXPECT_TRUE(std::equal(std::begin(game_screen->bluepalette),
                            std::end(game_screen->bluepalette),
@@ -1338,6 +1355,9 @@ TEST(GameLoop,
 
     og::runtime::clear_local_transport_shadow(gameplay_session);
     game_screen->world().delete_objects();
+    game_screen->save_data.cross_control = previous_cross_control;
+    game_screen->save_data.infinite_gold = previous_infinite_gold;
+    game_screen->save_data.dynamics_ruleset = previous_dynamics;
 }
 
 TEST(GameLoop, local_transport_shadow_guard_paths_without_runtime)

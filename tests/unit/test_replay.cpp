@@ -165,12 +165,14 @@ TEST(Replay, file_roundtrip_preserves_header_and_frames)
         .level_id = 42,
         .player_count = 2,
         .timer_wait = 7,
+        .dynamics_ruleset = og::sim::DynamicsRuleset::Modern,
         .my_team = 3,
         .allied_mode = 1,
         .difficulty = 125,
         .campaign_id = "gladiator",
     };
-    const og::sim::WorldSnapshot initial_snapshot = make_initial_snapshot();
+    og::sim::WorldSnapshot initial_snapshot = make_initial_snapshot();
+    initial_snapshot.dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
 
     og::sim::ReplayRecorder recorder(header);
     recorder.set_initial_snapshot(initial_snapshot);
@@ -195,6 +197,7 @@ TEST(Replay, file_roundtrip_preserves_header_and_frames)
     EXPECT_EQ(header.level_id, player.header().level_id);
     EXPECT_EQ(header.player_count, player.header().player_count);
     EXPECT_EQ(header.timer_wait, player.header().timer_wait);
+    EXPECT_EQ(header.dynamics_ruleset, player.header().dynamics_ruleset);
     EXPECT_EQ(header.my_team, player.header().my_team);
     EXPECT_EQ(header.allied_mode, player.header().allied_mode);
     EXPECT_EQ(header.difficulty, player.header().difficulty);
@@ -326,6 +329,18 @@ TEST(Replay, deserialize_rejects_each_malformed_replay_section)
         0u);
     expect_rejection(short_header, og::sim::ReplayIoError::InvalidHeader);
 
+    auto invalid_dynamics = bytes;
+    invalid_dynamics[7] = 0xffu;
+    expect_rejection(invalid_dynamics,
+                     og::sim::ReplayIoError::InvalidHeader);
+
+    auto mismatched_dynamics = bytes;
+    ASSERT_EQ(0u, mismatched_dynamics[7]);
+    mismatched_dynamics[7] =
+        og::sim::dynamics_ruleset_value(og::sim::DynamicsRuleset::Modern);
+    expect_rejection(mismatched_dynamics,
+                     og::sim::ReplayIoError::MalformedData);
+
     auto too_many_players = bytes;
     too_many_players[5] = static_cast<std::uint8_t>(MAX_PLAYERS + 1);
     expect_rejection(too_many_players, og::sim::ReplayIoError::MalformedData);
@@ -396,6 +411,28 @@ TEST(Replay, recorder_write_file_requires_self_contained_bootstrap_data)
 
     EXPECT_FALSE(missing_snapshot.write_file(path, &io_error));
     EXPECT_EQ(og::sim::ReplayIoError::MalformedData, io_error);
+
+    og::sim::ReplayRecorder invalid_dynamics({
+        .version = og::sim::kReplayFormatVersion,
+        .player_count = 1,
+        .dynamics_ruleset =
+            static_cast<og::sim::DynamicsRuleset>(0xffu),
+        .campaign_id = "gladiator",
+    });
+    invalid_dynamics.set_initial_snapshot(make_initial_snapshot());
+    EXPECT_FALSE(invalid_dynamics.write_file(path, &io_error));
+    EXPECT_EQ(og::sim::ReplayIoError::InvalidHeader, io_error);
+
+    og::sim::ReplayRecorder mismatched_dynamics({
+        .version = og::sim::kReplayFormatVersion,
+        .player_count = 1,
+        .dynamics_ruleset = og::sim::DynamicsRuleset::Modern,
+        .campaign_id = "gladiator",
+    });
+    mismatched_dynamics.set_initial_snapshot(make_initial_snapshot());
+    EXPECT_FALSE(mismatched_dynamics.write_file(path, &io_error));
+    EXPECT_EQ(og::sim::ReplayIoError::MalformedData, io_error);
+    EXPECT_FALSE(std::filesystem::exists(path));
 }
 
 TEST(Replay, find_first_snapshot_difference_reports_nested_field)
@@ -473,6 +510,13 @@ TEST(Replay, snapshot_difference_formats_all_field_value_kinds)
         expected.current_palette_id = 2u;
         actual.current_palette_id = 9u;
         expect_diff(expected, actual, "current_palette_id", "2", "9");
+    }
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        actual.dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
+        expect_diff(expected, actual, "dynamics_ruleset", "0", "1");
     }
 
     {

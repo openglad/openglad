@@ -22,6 +22,7 @@
 #include <openglad/core/decordefs.h>
 #include <openglad/core/tower_constants.h>
 #include <openglad/core/weather.h>
+#include <openglad/gameplay/dynamics_ruleset.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/pixie_data.h>
@@ -427,6 +428,11 @@ public:
     std::uint32_t m_score[4] = {};
     short my_team = 0;
     short allied_mode = 0;
+    // Host-authoritative movement/combat feel. The engine-level default stays
+    // Classic so parity harnesses and hand-built worlds retain legacy timing;
+    // frontends seed fresh sessions from their Modern-by-default preference.
+    og::sim::DynamicsRuleset dynamics_ruleset =
+        og::sim::DynamicsRuleset::Classic;
     short ctf_requested_team_count = 0;
     short ctf_requested_capture_limit = 0;
     short ctf_requested_respawn_ticks = 0;

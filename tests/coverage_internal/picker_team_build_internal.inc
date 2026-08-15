@@ -458,7 +458,7 @@ int picker_team_build_testing_exercise_internal_paths()
     // BACK's vertical cycle is rewired and the highlight is pulled onto BACK.
     for (int i = 0; i < 11; ++i)
         buttons[i].hidden = false;
-    buttons[kDifficultyMenuBackIndex].nav.up = kDifficultyMenuInfiniteGoldIndex;
+    buttons[kDifficultyMenuBackIndex].nav.up = kDifficultyMenuDynamicsIndex;
     buttons[kDifficultyMenuBackIndex].nav.down = kDifficultyMenuDifficultyIndex;
     int diff_highlight = kDifficultyMenuGeneratorRateIndex;
     client.host_visible = false;
@@ -470,6 +470,7 @@ int picker_team_build_testing_exercise_internal_paths()
         buttons[kDifficultyMenuPermadeathIndex].hidden &&
         buttons[kDifficultyMenuGeneratorRateIndex].hidden &&
         buttons[kDifficultyMenuInfiniteGoldIndex].hidden &&
+        buttons[kDifficultyMenuDynamicsIndex].hidden &&
         buttons[kDifficultyMenuBackIndex].nav.up == -1 &&
         buttons[kDifficultyMenuBackIndex].nav.down == -1 &&
         diff_highlight == kDifficultyMenuBackIndex);
@@ -479,8 +480,9 @@ int picker_team_build_testing_exercise_internal_paths()
     check(!buttons[kDifficultyMenuDifficultyIndex].hidden &&
         !buttons[kDifficultyMenuGeneratorRateIndex].hidden &&
         !buttons[kDifficultyMenuInfiniteGoldIndex].hidden &&
+        !buttons[kDifficultyMenuDynamicsIndex].hidden &&
         buttons[kDifficultyMenuBackIndex].nav.up ==
-            kDifficultyMenuInfiniteGoldIndex &&
+            kDifficultyMenuDynamicsIndex &&
         buttons[kDifficultyMenuBackIndex].nav.down ==
             kDifficultyMenuDifficultyIndex);
 

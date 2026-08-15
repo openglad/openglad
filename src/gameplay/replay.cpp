@@ -483,6 +483,7 @@ bool compare_world_snapshot(const WorldSnapshot& expected,
     OG_REPLAY_COMPARE(ctf_requested_strip_scenario_troops);
     OG_REPLAY_COMPARE(respawn_mode);
     OG_REPLAY_COMPARE(generator_rate);
+    OG_REPLAY_COMPARE(dynamics_ruleset);
     OG_REPLAY_COMPARE(grid_width);
     OG_REPLAY_COMPARE(grid_height);
     OG_REPLAY_COMPARE(grid_dirty);
@@ -711,7 +712,7 @@ std::vector<std::uint8_t> serialize_replay(const ReplayHeader& header,
     bytes.push_back(header.version);
     bytes.push_back(header.player_count);
     bytes.push_back(static_cast<std::uint8_t>(header.timer_wait));
-    bytes.push_back(0);
+    bytes.push_back(dynamics_ruleset_value(header.dynamics_ruleset));
     write_u32_le(bytes, header.initial_rng_state);
     write_u32_le(bytes, static_cast<std::uint32_t>(header.level_id));
     write_i16_le(bytes, header.my_team);
@@ -759,6 +760,13 @@ std::optional<ReplayData> deserialize_replay(std::span<const std::uint8_t> bytes
 
     replay.header.player_count = bytes[5];
     replay.header.timer_wait = static_cast<std::int8_t>(bytes[6]);
+    replay.header.dynamics_ruleset =
+        static_cast<DynamicsRuleset>(bytes[7]);
+    if (!is_valid_dynamics_ruleset(replay.header.dynamics_ruleset))
+    {
+        set_error(out_error, ReplayIoError::InvalidHeader);
+        return std::nullopt;
+    }
     replay.header.initial_rng_state = read_u32_le(bytes, 8);
     replay.header.level_id = static_cast<std::int32_t>(read_u32_le(bytes, 12));
     replay.header.my_team = read_i16_le(bytes, 16);
@@ -806,6 +814,13 @@ std::optional<ReplayData> deserialize_replay(std::span<const std::uint8_t> bytes
             deserialize_snapshot(initial_snapshot_bytes);
     }
     catch (const std::runtime_error&)
+    {
+        set_error(out_error, ReplayIoError::MalformedData);
+        return std::nullopt;
+    }
+
+    if (replay.header.dynamics_ruleset !=
+        replay.initial_snapshot.dynamics_ruleset)
     {
         set_error(out_error, ReplayIoError::MalformedData);
         return std::nullopt;
@@ -909,7 +924,19 @@ std::vector<std::uint8_t> ReplayRecorder::serialize() const
 bool ReplayRecorder::write_file(const std::filesystem::path& path,
                                 ReplayIoError* out_error) const
 {
+    if (!is_valid_dynamics_ruleset(header_.dynamics_ruleset))
+    {
+        set_error(out_error, ReplayIoError::InvalidHeader);
+        return false;
+    }
+
     if (header_.campaign_id.empty() || !has_initial_snapshot_)
+    {
+        set_error(out_error, ReplayIoError::MalformedData);
+        return false;
+    }
+
+    if (header_.dynamics_ruleset != initial_snapshot_.dynamics_ruleset)
     {
         set_error(out_error, ReplayIoError::MalformedData);
         return false;

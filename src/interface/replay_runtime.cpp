@@ -158,6 +158,7 @@ bool og::runtime::initialize_replay_screen(screen& game_screen,
     game_screen.save_data.numplayers = header.player_count;
     game_screen.save_data.my_team = header.my_team;
     game_screen.save_data.allied_mode = header.allied_mode;
+    game_screen.save_data.dynamics_ruleset = header.dynamics_ruleset;
 
     game_screen.numviews = desired_views;
     game_screen.cleanup(desired_views);
@@ -180,6 +181,8 @@ bool og::runtime::initialize_replay_screen(screen& game_screen,
     og::sim::apply_snapshot(game_screen.world(), initial_snapshot);
     game_screen.save_data.my_team = game_screen.world().my_team;
     game_screen.save_data.allied_mode = game_screen.world().allied_mode;
+    game_screen.save_data.dynamics_ruleset =
+        game_screen.world().dynamics_ruleset;
     assign_replay_views(game_screen, initial_snapshot);
     game_screen.world().timer_wait = header.timer_wait;
     player.reset();
@@ -207,6 +210,7 @@ void og::runtime::begin_replay_recording(screen& game_screen)
         .level_id = game_screen.world().id,
         .player_count = static_cast<std::uint8_t>(game_screen.save_data.numplayers),
         .timer_wait = game_screen.world().timer_wait,
+        .dynamics_ruleset = game_screen.world().dynamics_ruleset,
         .my_team = game_screen.save_data.my_team,
         .allied_mode = game_screen.save_data.allied_mode,
         .difficulty = game_screen.world().difficulty,

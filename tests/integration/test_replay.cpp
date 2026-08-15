@@ -292,6 +292,8 @@ void run_replay_roundtrip(int player_count)
         og::runtime::current_session->current_difficulty_;
     og::runtime::current_session->current_difficulty_ = 2;
     configure_replay_team(game_screen.save_data, player_count);
+    game_screen.save_data.dynamics_ruleset =
+        og::sim::DynamicsRuleset::Modern;
 
     const std::string save_name =
         std::format("test_phase11_replay_{}", player_count);
@@ -331,6 +333,7 @@ void run_replay_roundtrip(int player_count)
         .level_id = live_world.id,
         .player_count = static_cast<std::uint8_t>(player_count),
         .timer_wait = live_world.timer_wait,
+        .dynamics_ruleset = live_world.dynamics_ruleset,
         .my_team = game_screen.save_data.my_team,
         .allied_mode = game_screen.save_data.allied_mode,
         .difficulty = live_world.difficulty,
@@ -383,6 +386,10 @@ void run_replay_roundtrip(int player_count)
     EXPECT_EQ(recorder.header().level_id, player.header().level_id);
     EXPECT_EQ(recorder.header().player_count, player.header().player_count);
     EXPECT_EQ(recorder.header().timer_wait, player.header().timer_wait);
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+              player.header().dynamics_ruleset);
+    EXPECT_EQ(recorder.header().dynamics_ruleset,
+              player.header().dynamics_ruleset);
     EXPECT_EQ(recorder.header().my_team, player.header().my_team);
     EXPECT_EQ(recorder.header().allied_mode, player.header().allied_mode);
     EXPECT_EQ(recorder.header().difficulty, player.header().difficulty);
@@ -401,9 +408,13 @@ void run_replay_roundtrip(int player_count)
     game_screen.save_data.numplayers = 0;
     game_screen.save_data.my_team = static_cast<short>(player.header().my_team + 1);
     game_screen.save_data.allied_mode = static_cast<short>(1 - player.header().allied_mode);
+    game_screen.save_data.dynamics_ruleset =
+        og::sim::DynamicsRuleset::Classic;
     ASSERT_EQ(0, game_screen.save_data.team_size);
     game_screen.world().rng_.state_ = 0u;
     game_screen.world().difficulty = 1;
+    game_screen.world().dynamics_ruleset =
+        og::sim::DynamicsRuleset::Classic;
     og::runtime::current_session->current_difficulty_ = 0;
     ASSERT_TRUE(og::runtime::initialize_replay_screen(game_screen, player))
         << "replay runtime should seed RNG and load the replay world";
@@ -416,6 +427,10 @@ void run_replay_roundtrip(int player_count)
     ASSERT_EQ(player.header().timer_wait, replay_screen_world.timer_wait);
     ASSERT_EQ(player.header().my_team, game_screen.save_data.my_team);
     ASSERT_EQ(player.header().allied_mode, game_screen.save_data.allied_mode);
+    ASSERT_EQ(og::sim::DynamicsRuleset::Modern,
+              game_screen.save_data.dynamics_ruleset);
+    ASSERT_EQ(og::sim::DynamicsRuleset::Modern,
+              replay_screen_world.dynamics_ruleset);
     ASSERT_EQ(player.header().difficulty, replay_screen_world.difficulty);
     ASSERT_EQ(0, game_screen.save_data.team_size);
     EXPECT_EQ(expected_control_ids,
@@ -506,15 +521,15 @@ TEST(Replay, phase11_roundtrip_matches_final_state_for_four_players)
     run_replay_roundtrip(4);
 }
 
-TEST(Replay, format_version_14_rejects_v13)
+TEST(Replay, format_version_15_rejects_v14)
 {
-    static_assert(og::sim::kReplayFormatVersion == 14);
+    static_assert(og::sim::kReplayFormatVersion == 15);
     std::array<std::uint8_t, og::sim::kReplayHeaderSize> old_header{};
     old_header[0] = static_cast<std::uint8_t>('O');
     old_header[1] = static_cast<std::uint8_t>('G');
     old_header[2] = static_cast<std::uint8_t>('R');
     old_header[3] = static_cast<std::uint8_t>('P');
-    old_header[4] = 13;
+    old_header[4] = 14;
 
     og::sim::ReplayIoError error = og::sim::ReplayIoError::None;
     EXPECT_FALSE(og::sim::deserialize_replay(old_header, &error).has_value());
@@ -564,6 +579,7 @@ TEST(Replay, initialize_replay_screen_rejects_unsafe_campaign_ids)
                 .level_id = live_world.id,
                 .player_count = 1,
                 .timer_wait = live_world.timer_wait,
+                .dynamics_ruleset = live_world.dynamics_ruleset,
                 .my_team = game_screen.save_data.my_team,
                 .allied_mode = game_screen.save_data.allied_mode,
                 .difficulty = live_world.difficulty,

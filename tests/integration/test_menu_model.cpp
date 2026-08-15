@@ -415,8 +415,8 @@ TEST(MenuModel, difficulty_menu_definition_and_lookup)
     ASSERT_EQ(static_cast<int>(PickerMenuId::Difficulty), static_cast<int>(def.id))
         << "difficulty definition should report difficulty id";
     ASSERT_TRUE(def.title == "Difficulty");
-    ASSERT_EQ(7u, def.items.size())
-        << "difficulty menu: cycle + the five match rules + back";
+    ASSERT_EQ(8u, def.items.size())
+        << "difficulty menu: cycle + the six match rules + back";
 
     const struct
     {
@@ -429,6 +429,7 @@ TEST(MenuModel, difficulty_menu_definition_and_lookup)
         {"permadeath", PickerMenuCommand::TogglePermadeath},
         {"generator_rate", PickerMenuCommand::CycleGeneratorRate},
         {"infinite_gold", PickerMenuCommand::ToggleInfiniteGold},
+        {"dynamics", PickerMenuCommand::ToggleDynamicsRuleset},
         {"back", PickerMenuCommand::Back},
     };
     for (const auto& want : kExpected)
@@ -447,7 +448,7 @@ TEST(MenuModel, difficulty_menu_definition_and_lookup)
     // The match-rule entries live only in the submenu.
     for (const char* submenu_id :
          {"respawn_mode", "respawn_delay", "permadeath", "generator_rate",
-          "infinite_gold"})
+          "infinite_gold", "dynamics"})
     {
         ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, submenu_id) == nullptr)
             << submenu_id << " should not appear in the main menu";
@@ -558,11 +559,11 @@ TEST(MenuModel, company_screens_cancel_to_back_and_leak_nowhere)
     // door is appended last. Main exposes both stable Help and Quit actions.
     // TeamBuild is unchanged (its ctf_troops row stays resolvable but
     // dormant); Scenario grew the appended troops row; Difficulty grew the
-    // appended infinite-gold row.
+    // appended infinite-gold and dynamics rows.
     ASSERT_EQ(9u, picker_menu_definition(PickerMenuId::Main).items.size());
     ASSERT_EQ(12u, picker_menu_definition(PickerMenuId::TeamBuild).items.size());
     ASSERT_EQ(7u, picker_menu_definition(PickerMenuId::Scenario).items.size());
-    ASSERT_EQ(7u, picker_menu_definition(PickerMenuId::Difficulty).items.size());
+    ASSERT_EQ(8u, picker_menu_definition(PickerMenuId::Difficulty).items.size());
 
     // load_company resolves by id and by command and keeps its 1-based
     // position 8 (the text-drive index contract); the appended cloud door is
