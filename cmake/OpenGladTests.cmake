@@ -854,6 +854,7 @@ og_add_unit_group(og_unit_data FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_longseason_levels.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_levels.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_imaginations_levels.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_imaginations_dream_log.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_builtin_archives.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_decor_format.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_level_file_io_coverage.cpp

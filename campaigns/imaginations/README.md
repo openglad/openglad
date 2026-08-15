@@ -63,6 +63,23 @@ Two more engine rules from the epic rework:
   wall-sliding; two-wide mouths on a double-walled castle starved the
   funnel and unattended runs stalled short of the 6000-tick budget.
 
+## The dream log (the campaign's mission book)
+
+`packs/imaginations.dreams/scripts/dream_log.lua` registers the campaign's
+scripted picker (issue #207, docs/campaign-scripting-design.md): one page,
+THE DREAM LOG, one `kind = "level"` row per scen — so a dream already had
+can be picked again from the menu, which is what the kids asked for. The
+rows are found rather than listed: `og.campaign_scenario_title(id)` answers
+"" for an id the campaign does not ship, so a new scen shows up in the book
+the day its level lands. Labels are left to the engine (it fills them from
+the scen header), and the note re-derives from the save on every fetch —
+`dreamed` for a cleared dream, `tonight?` for the campaign cursor, `not
+yet` otherwise. The book spends no gold and keeps no campaign state.
+
+`tests/unit/test_imaginations_dream_log.cpp` drives it over the shipped
+archive and pins the ledger above: when a new scen lands, that test goes
+red until its id joins both the table and the test's own list.
+
 ## Difficulty curve (campaign_meta)
 
 Fresh teams are the audience: every level must be clearable by a new
