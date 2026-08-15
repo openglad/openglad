@@ -5,6 +5,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -102,6 +103,24 @@ void sync_world_from_save_data(GameWorld& world, const SaveData& save)
         world.completed_levels = completed_it->second;
     else
         world.completed_levels.clear();
+
+    // Campaign scripting (issue #206): replace, never merge — copy the
+    // current campaign's decision book filtered to the registered var
+    // names, so stale values cannot leak across levels or campaigns.
+    // Applied in BOTH sync_world_from_save_data twins (see screen.cpp).
+    world.campaign_vars.clear();
+    const auto state_it = save.campaign_state.find(save.current_campaign);
+    if (state_it != save.campaign_state.end())
+    {
+        const std::vector<std::string> registered =
+            og::script::hooks::campaign_registered_vars();
+        for (const auto& entry : state_it->second)
+        {
+            if (std::find(registered.begin(), registered.end(),
+                          entry.first) != registered.end())
+                world.campaign_vars.push_back(entry);
+        }
+    }
 
     world.withdraw_requested = false;
     world.withdraw_level = -1;
@@ -323,6 +342,11 @@ void copy_headless_server_save_data(SaveData& destination,
     // the company's recency to 0 (the documented dropped-field bug class,
     // design §3.4). The per-guy deploy flag rides the guy copies below.
     destination.last_played_unix_s = source.last_played_unix_s;
+    // Campaign scripting decision book (GTL v15): the session save is
+    // GTL-round-tripped through the netsession slot and the server copy
+    // must carry it, or og.campaign_var reads 0 on the authoritative sim
+    // (the documented dropped-field bug class).
+    destination.campaign_state = source.campaign_state;
 
     for (std::size_t index = 0; index < destination.team_list.size(); ++index)
     {

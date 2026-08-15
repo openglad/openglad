@@ -970,6 +970,12 @@ SaveDataIoError company_autosave_merge_networked_lobby(
         }
     }
 
+    // (c) Campaign scripting decision book (GTL v15): per-machine state,
+    // like the roster. The lobby sync never touches campaign_state (it is
+    // not in LobbySaveDataEquivalent), so the session save still carries
+    // this machine's own decisions — overlay them onto the disk company.
+    merged.campaign_state = session_save.campaign_state;
+
     merged.last_played_unix_s = company_clock_now_s();
     return atomic_company_save(merged, slot);
 }

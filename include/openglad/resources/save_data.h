@@ -17,6 +17,11 @@
 
 #pragma once
 
+// Shared campaign-state bounds + key charset (kCampaignVarNameMax,
+// valid_campaign_var_name): the write choke campaign_state_set and the
+// GTL v15 load rejection enforce the same rules as og.campaign_state_set.
+#include <openglad/gameplay/script/campaign_hooks.h>
+
 #include <cstdint>
 #include <array>
 #include <span>
@@ -25,6 +30,8 @@
 #include <set>
 #include <list>
 #include <memory>
+#include <utility>
+#include <vector>
 
 class guy;
 class walker;
@@ -110,6 +117,20 @@ public:
     // and stamped ONLY by company_autosave — save() just serializes it, so
     // SaveData::save() itself stays deterministic (§3.2).
     std::int64_t last_played_unix_s = 0;
+    // Campaign scripting persistent state (GTL v15; issue #206,
+    // docs/campaign-scripting-design.md "Persistent campaign state").
+    // Per-campaign named int32 decisions, keyed by campaign id. Each
+    // campaign's entry list is kept SORTED BY KEY inside the vector —
+    // insertion order would not survive a save/load/save cycle, sorted
+    // storage makes re-serialization byte-identical. All writes funnel
+    // through campaign_state_set (the bounds choke below).
+    std::map<std::string, std::vector<std::pair<std::string, std::int32_t>>>
+        campaign_state;
+
+    // Campaign scripted-state bounds, matching the existing
+    // campaign-list bound (128) on both axes.
+    static constexpr int kCampaignStateMaxCampaigns = 128;
+    static constexpr int kCampaignStateMaxEntries = 128;
 
     SaveData();
     ~SaveData();
@@ -141,6 +162,20 @@ public:
     int get_num_levels_completed(const std::string& campaign) const;
     void add_level_completed(const std::string& campaign, int level_index);
     void reset_campaign(const std::string& campaign);
+
+    // Scripted campaign state (GTL v15). get answers 0 when the campaign
+    // or key is absent. set is the WRITE choke (og.campaign_state_set
+    // raises when it answers false): it returns false WITHOUT mutating
+    // when the key fails og::script::hooks::valid_campaign_var_name, when
+    // the campaign already holds kCampaignStateMaxEntries entries and the
+    // key is new, or when kCampaignStateMaxCampaigns campaigns hold state
+    // and this campaign is new. Setting an existing key to 0 KEEPS the
+    // entry — the simplest deterministic rule: an entry's presence never
+    // depends on its value history.
+    std::int32_t campaign_state_get(const std::string& campaign,
+                                    const std::string& key) const;
+    bool campaign_state_set(const std::string& campaign,
+                            const std::string& key, std::int32_t value);
 
 private:
     SaveDataIoError last_io_error_ = SaveDataIoError::None;

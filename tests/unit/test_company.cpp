@@ -536,7 +536,7 @@ TEST(CompanyScan, scan_does_not_mount_and_roundtrips_real_saves)
     EXPECT_EQ("Roundtrip Company", info->display_name);
     EXPECT_EQ(4, info->scen_num);
     EXPECT_EQ(999u, info->totalcash);
-    EXPECT_EQ(14, info->version);
+    EXPECT_EQ(15, info->version);
     EXPECT_EQ(424242, info->last_played_unix_s);
     EXPECT_EQ(mounted_before, get_mounted_campaign())
         << "the header scan must never mount the save's campaign (§3.5)";
@@ -1159,7 +1159,7 @@ TEST(CompanyBackups, header_scan_reads_backup_identity_without_mounting)
     EXPECT_EQ("Snapshot Co", backups[0].header.display_name);
     EXPECT_EQ(4242u, backups[0].header.totalcash);
     EXPECT_EQ(777, backups[0].header.last_played_unix_s);
-    EXPECT_EQ(14, backups[0].header.version);
+    EXPECT_EQ(15, backups[0].header.version);
     EXPECT_EQ(mounted_before, get_mounted_campaign())
         << "the Backups view scan must never mount (§3.7)";
 }

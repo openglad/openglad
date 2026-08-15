@@ -47,6 +47,7 @@
 #include <openglad/core/scale_mode.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/interface/ui/results_screen.h>
+#include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/world_snapshot.h>
 #include <openglad/interface/render/pal32.h>
@@ -1313,6 +1314,26 @@ void screen::sync_world_from_save_data()
         world_.completed_levels = e->second;
     else
         world_.completed_levels.clear();
+
+    // Campaign scripting (issue #206): replace, never merge — copy the
+    // current campaign's decision book filtered to the registered var
+    // names, so stale values cannot leak across levels or campaigns.
+    // Applied in BOTH sync_world_from_save_data twins (see
+    // headless_server_runtime.cpp).
+    world_.campaign_vars.clear();
+    const auto state_it =
+        save_data.campaign_state.find(save_data.current_campaign);
+    if (state_it != save_data.campaign_state.end())
+    {
+        const std::vector<std::string> registered =
+            og::script::hooks::campaign_registered_vars();
+        for (const auto& entry : state_it->second)
+        {
+            if (std::find(registered.begin(), registered.end(),
+                          entry.first) != registered.end())
+                world_.campaign_vars.push_back(entry);
+        }
+    }
 
     world_.withdraw_requested = false;
     world_.withdraw_level = -1;

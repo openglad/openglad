@@ -217,6 +217,11 @@ bool persist_networked_win(const std::string& slot, const SaveData& session,
     merged.current_campaign = session.current_campaign;
     merged.scen_num = session.scen_num;
 
+    // Campaign scripting decision book (GTL v15): per-machine, like the
+    // cursor above — the machine that made the decisions persists its own
+    // book, so the session state overlays whatever the disk copy held.
+    merged.campaign_state = session.campaign_state;
+
     // §3.8: persist through the LevelWin choke point (stamp last_played, atomic
     // write, exactly one backup snapshot per machine per win). `merged` is the
     // private on-disk company already overlaid with this machine's own

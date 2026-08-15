@@ -115,6 +115,7 @@ set(OG_RESOURCES_DATA_SOURCES
     ${SRC_DIR}/resources/our_palette.cpp
     ${SRC_DIR}/resources/pixie_data.cpp
     ${SRC_DIR}/resources/save_data.cpp
+    ${SRC_DIR}/resources/campaign_state_providers.cpp
     ${SRC_DIR}/resources/company.cpp
     ${SRC_DIR}/resources/packs.cpp
     ${SRC_DIR}/resources/pack_transfer_io.cpp

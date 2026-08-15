@@ -78,7 +78,7 @@ void SaveData::reset()
     current_levels.clear();
     completed_levels.insert(std::make_pair(kDefaultCampaign, std::set<int>()));
     current_levels.insert(std::make_pair(kDefaultCampaign, 1));
-
+    campaign_state.clear();
 
 	score = totalcash = totalscore = 0;
     for (size_t i = 0; i < std::size(m_score); i++)
@@ -211,6 +211,14 @@ bool SaveData::load(const std::string& filename)
 	// 2-bytes Tower best floor climbed         // Version 13+
 	// 2-bytes Tower run seed, low 16 bits      // Version 13+
 	// 2-bytes Tower run seed, high 16 bits     // Version 13+
+	// 2-bytes Number of campaigns with scripted state  // Version 15+
+	// List of n campaign-state blocks          // Version 15+
+	//   40-bytes Campaign ID string
+	//   2-bytes Number of key/value entries (sorted by key)
+	//   List of n entries
+	//     1-byte key length (1..32)
+	//     N-bytes key ([a-z0-9_], no NUL, no padding)
+	//     4-bytes (Sint32) value
 
     Log("Loading save: {}\n", filename);
 	std::string temp_filename = std::format("{}.gtl", filename); // gladiator team list
@@ -234,6 +242,7 @@ bool SaveData::load(const std::string& filename)
 
     completed_levels.clear();
     current_levels.clear();
+    campaign_state.clear();
 
 	for(int i = 0; i < team_size; i++)
     {
@@ -631,6 +640,90 @@ bool SaveData::load(const std::string& filename)
         tower_run_seed = 0;   // no run in progress
     }
 
+    // Versions 15+ append the per-campaign scripted state block (campaign
+    // scripting, issue #206). Bounds are hard rejections in the existing
+    // style: a hostile count, campaign id or key fails the whole load.
+    // campaign_state was cleared at the top, so older versions stay empty.
+    if (temp_version >= 15)
+    {
+        std::int16_t num_state_campaigns = 0;
+        READ_OR_FAIL(&num_state_campaigns, 2, 1);
+        if (num_state_campaigns < 0 ||
+            num_state_campaigns > kCampaignStateMaxCampaigns)
+        {
+            LogError("save_load_campaign_state_campaigns_invalid file={} count={} max={}\n",
+                filename, num_state_campaigns, kCampaignStateMaxCampaigns);
+            last_io_error_ = SaveDataIoError::ReadFailed;
+            return false;
+        }
+        std::array<char, 41> state_campaign;
+        for (int i = 0; i < num_state_campaigns; i++)
+        {
+            READ_OR_FAIL(state_campaign.data(), 1, 40);
+            state_campaign[40] = '\0';
+            if (!is_safe_campaign_id(state_campaign.data()))
+            {
+                LogError("Rejected unsafe campaign id in save campaign state: {}\n",
+                    state_campaign.data());
+                last_io_error_ = SaveDataIoError::ReadFailed;
+                return false;
+            }
+            std::int16_t num_state_entries = 0;
+            READ_OR_FAIL(&num_state_entries, 2, 1);
+            if (num_state_entries < 0 ||
+                num_state_entries > kCampaignStateMaxEntries)
+            {
+                LogError("save_load_campaign_state_entries_invalid file={} campaign={} count={} max={}\n",
+                    filename, state_campaign.data(), num_state_entries,
+                    kCampaignStateMaxEntries);
+                last_io_error_ = SaveDataIoError::ReadFailed;
+                return false;
+            }
+            auto& state_entries = campaign_state[state_campaign.data()];
+            state_entries.clear();
+            state_entries.reserve(static_cast<std::size_t>(num_state_entries));
+            for (int j = 0; j < num_state_entries; j++)
+            {
+                std::uint8_t key_len = 0;
+                READ_OR_FAIL(&key_len, 1, 1);
+                std::array<char, og::script::hooks::kCampaignVarNameMax>
+                    key_buf;
+                if (key_len == 0 ||
+                    key_len > static_cast<std::uint8_t>(
+                                  og::script::hooks::kCampaignVarNameMax))
+                {
+                    LogError("save_load_campaign_state_key_len_invalid file={} campaign={} len={}\n",
+                        filename, state_campaign.data(), key_len);
+                    last_io_error_ = SaveDataIoError::ReadFailed;
+                    return false;
+                }
+                READ_OR_FAIL(key_buf.data(), 1, key_len);
+                const std::string state_key(key_buf.data(), key_len);
+                if (!og::script::hooks::valid_campaign_var_name(state_key))
+                {
+                    LogError("save_load_campaign_state_key_invalid file={} campaign={}\n",
+                        filename, state_campaign.data());
+                    last_io_error_ = SaveDataIoError::ReadFailed;
+                    return false;
+                }
+                std::int32_t state_value = 0;
+                READ_OR_FAIL(&state_value, 4, 1);
+                // Sorted insert keeps the entry-list invariant; a
+                // duplicated key folds (last one wins), so a re-save is
+                // always deterministic.
+                const auto pos = std::lower_bound(
+                    state_entries.begin(), state_entries.end(), state_key,
+                    [](const std::pair<std::string, std::int32_t>& entry,
+                       const std::string& key) { return entry.first < key; });
+                if (pos != state_entries.end() && pos->first == state_key)
+                    pos->second = state_value;
+                else
+                    state_entries.insert(pos,
+                                         std::make_pair(state_key, state_value));
+            }
+        }
+    }
+
 	Log("Loading campaign: {}\n", current_campaign);
     int current_level = load_campaign(current_campaign, current_levels);
     if(current_level < 0)
@@ -838,7 +931,7 @@ bool SaveData::save(const std::string& filename)
 	std::fill_n(temp_campaign.data(), temp_campaign.size(), '\0');
 
 	std::array<char, 10> temptext = {'G', 'T', 'L'};
-	std::uint8_t temp_version = 14;
+	std::uint8_t temp_version = 15;
 
 	std::uint32_t newcash = totalcash;
 	std::uint32_t newscore = totalscore;
@@ -926,6 +1019,14 @@ bool SaveData::save(const std::string& filename)
 	// 2-bytes Tower best floor climbed         // Version 13+
 	// 2-bytes Tower run seed, low 16 bits      // Version 13+
 	// 2-bytes Tower run seed, high 16 bits     // Version 13+
+	// 2-bytes Number of campaigns with scripted state  // Version 15+
+	// List of n campaign-state blocks          // Version 15+
+	//   40-bytes Campaign ID string
+	//   2-bytes Number of key/value entries (sorted by key)
+	//   List of n entries
+	//     1-byte key length (1..32)
+	//     N-bytes key ([a-z0-9_], no NUL, no padding)
+	//     4-bytes (Sint32) value
 
 	//strcpy(temp_filename, scen_directory);
 	Log("Saving save: {}\n", filename);
@@ -1160,6 +1261,66 @@ bool SaveData::save(const std::string& filename)
 	WRITE_OR_FAIL(&temp_tower_seed_lo, 2, 1);
 	WRITE_OR_FAIL(&temp_tower_seed_hi, 2, 1);
 
+	// Versions 15+ append the per-campaign scripted state block. Entry
+	// lists are kept sorted by key (campaign_state_set inserts in order),
+	// so re-serialization is byte-identical. The bounds below can only be
+	// exceeded by direct field manipulation (campaign_state_set is the
+	// choke); refuse to write rather than emit a file the reader rejects.
+	const std::size_t raw_state_campaigns = campaign_state.size();
+	if (raw_state_campaigns >
+	    static_cast<std::size_t>(kCampaignStateMaxCampaigns))
+	{
+	    LogError("save_write_campaign_state_too_many_campaigns {}\n",
+	             raw_state_campaigns);
+	    last_io_error_ = SaveDataIoError::WriteFailed;
+	    return false;
+	}
+	std::int16_t num_state_campaigns =
+	    static_cast<std::int16_t>(raw_state_campaigns);
+	WRITE_OR_FAIL(&num_state_campaigns, 2, 1);
+	for (const auto& state_block : campaign_state)
+	{
+	    if (!is_safe_campaign_id(state_block.first))
+	    {
+	        LogError("Rejected unsafe campaign-state campaign id for save: {}\n",
+	                 state_block.first);
+	        last_io_error_ = SaveDataIoError::WriteFailed;
+	        return false;
+	    }
+	    if (state_block.second.size() >
+	        static_cast<std::size_t>(kCampaignStateMaxEntries))
+	    {
+	        LogError("save_write_campaign_state_too_many_entries campaign={} count={}\n",
+	                 state_block.first, state_block.second.size());
+	        last_io_error_ = SaveDataIoError::WriteFailed;
+	        return false;
+	    }
+	    std::array<char, 41> state_campaign;
+	    std::fill_n(state_campaign.data(), state_campaign.size(), '\0');
+	    snprintf(state_campaign.data(), state_campaign.size(), "%s",
+	             state_block.first.c_str());
+	    WRITE_OR_FAIL(state_campaign.data(), 1, 40);
+	    std::int16_t num_state_entries =
+	        static_cast<std::int16_t>(state_block.second.size());
+	    WRITE_OR_FAIL(&num_state_entries, 2, 1);
+	    for (const auto& state_entry : state_block.second)
+	    {
+	        if (!og::script::hooks::valid_campaign_var_name(state_entry.first))
+	        {
+	            LogError("Rejected invalid campaign-state key for save: {}\n",
+	                     state_entry.first);
+	            last_io_error_ = SaveDataIoError::WriteFailed;
+	            return false;
+	        }
+	        const std::uint8_t key_len =
+	            static_cast<std::uint8_t>(state_entry.first.size());
+	        WRITE_OR_FAIL(&key_len, 1, 1);
+	        WRITE_OR_FAIL(state_entry.first.data(), 1, key_len);
+	        std::int32_t state_value = state_entry.second;
+	        WRITE_OR_FAIL(&state_value, 4, 1);
+	    }
+	}
+
     // unique_ptr auto-closes outfile
 
     // Sync to persistent storage (IDBFS on web)
@@ -1224,4 +1385,66 @@ void SaveData::reset_campaign(const std::string& campaign)
 
     if(e != completed_levels.end())
         e->second.clear();
+
+    // Campaign scripting (issue #206): a campaign RESET also forgets that
+    // campaign's scripted decision book.
+    campaign_state.erase(campaign);
+}
+
+std::int32_t SaveData::campaign_state_get(const std::string& campaign,
+                                          const std::string& key) const
+{
+    const auto campaign_it = campaign_state.find(campaign);
+    if (campaign_it == campaign_state.end())
+        return 0;
+
+    const auto& entries = campaign_it->second;
+    const auto entry_it = std::lower_bound(
+        entries.begin(), entries.end(), key,
+        [](const std::pair<std::string, std::int32_t>& entry,
+           const std::string& wanted) { return entry.first < wanted; });
+    if (entry_it == entries.end() || entry_it->first != key)
+        return 0;
+    return entry_it->second;
+}
+
+bool SaveData::campaign_state_set(const std::string& campaign,
+                                  const std::string& key, std::int32_t value)
+{
+    // The WRITE choke (docs/campaign-scripting-design.md "Persistent
+    // campaign state"): every rejection happens BEFORE any mutation, so a
+    // script bug can never brick the save file.
+    if (!og::script::hooks::valid_campaign_var_name(key))
+        return false;
+
+    auto campaign_it = campaign_state.find(campaign);
+    if (campaign_it == campaign_state.end())
+    {
+        if (campaign_state.size() >=
+            static_cast<std::size_t>(kCampaignStateMaxCampaigns))
+            return false;
+        campaign_it =
+            campaign_state
+                .emplace(campaign,
+                         std::vector<std::pair<std::string, std::int32_t>>())
+                .first;
+    }
+
+    auto& entries = campaign_it->second;
+    const auto entry_it = std::lower_bound(
+        entries.begin(), entries.end(), key,
+        [](const std::pair<std::string, std::int32_t>& entry,
+           const std::string& wanted) { return entry.first < wanted; });
+    if (entry_it != entries.end() && entry_it->first == key)
+    {
+        // Setting an existing key — 0 included — keeps the entry (the
+        // documented deterministic rule; see save_data.h).
+        entry_it->second = value;
+        return true;
+    }
+    if (entries.size() >= static_cast<std::size_t>(kCampaignStateMaxEntries))
+        return false;
+
+    entries.insert(entry_it, std::make_pair(key, value));
+    return true;
 }
