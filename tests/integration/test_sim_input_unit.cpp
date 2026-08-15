@@ -1332,22 +1332,47 @@ TEST(SimInputUnit, modern_yell_requires_actionable_control)
     }
 }
 
-TEST(SimInputUnit, modern_yell_coincident_fallback_is_stable)
+TEST(SimInputUnit, modern_yell_coincident_zero_id_uses_stable_ordinal_fallback)
 {
     SimInputFixture fx;
     fx.level.world().dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
     walker* control = add_control(fx);
     walker* const first = add_living(fx, 1, 80, 80);
     walker* const second = add_living(fx, 1, 80, 80);
+    first->set_snapshot_entity_id(0);
+    second->set_snapshot_entity_id(0);
     SimInputDebounce debounce{};
 
     process_yell(fx, control, debounce);
 
-    // Control is oblist ordinal 0, so pre-id contacts use ordinals 1 and 2.
+    ASSERT_EQ(0u, first->entity_id());
+    ASSERT_EQ(0u, second->entity_id());
+    // Control is oblist ordinal 0, so zero-id contacts use ordinals 1 and 2.
     assert_forced_walk(first, og::sim::kBreakawayWalkTicks, 1, -1);
     assert_forced_walk(second, og::sim::kBreakawayWalkTicks, 1, 0);
     ASSERT_EQ(FACE_UP_RIGHT, first->curdir());
     ASSERT_EQ(FACE_RIGHT, second->curdir());
+}
+
+TEST(SimInputUnit, modern_yell_coincident_nonordinal_ids_map_stably)
+{
+    SimInputFixture fx;
+    fx.level.world().dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
+    walker* control = add_control(fx);
+    walker* const first = add_living(fx, 1, 80, 80);
+    walker* const second = add_living(fx, 1, 80, 80);
+    first->set_snapshot_entity_id(8);
+    second->set_snapshot_entity_id(5);
+    SimInputDebounce debounce{};
+
+    process_yell(fx, control, debounce);
+
+    ASSERT_EQ(8u, first->entity_id());
+    ASSERT_EQ(5u, second->entity_id());
+    assert_forced_walk(first, og::sim::kBreakawayWalkTicks, -1, -1);
+    assert_forced_walk(second, og::sim::kBreakawayWalkTicks, 0, 1);
+    ASSERT_EQ(FACE_UP_LEFT, first->curdir());
+    ASSERT_EQ(FACE_DOWN, second->curdir());
 }
 
 } // namespace detail_modern_dynamics
