@@ -47,6 +47,9 @@
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/weap.h>
 #include <openglad/gameplay/families/weapon_family_descriptor.h>
+#include <openglad/resources/game_mode.h>
+#include <openglad/resources/progression.h>
+#include <openglad/resources/save_data.h>
 
 #include <gtest/gtest.h>
 
@@ -600,6 +603,103 @@ TEST(PackLuaCleric, resurrecting_a_friendly_corpse_restores_its_family)
               raised->stats()->max_hitpoints() / 2.0f + 0.01f)
         << "resurrection returns a man at half health";
     EXPECT_NE(0, stain->dead());
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// Permadeath removes a deployed character only when they finish the level
+// dead. RESURRECT transfers the character record from the real bloodstain to
+// a new living body, so the ordinary local win fold must put that same person
+// back in the company roster. This deliberately uses no respawn or network
+// ownership state.
+TEST(PackLuaCleric,
+     a_resurrected_character_returns_to_the_roster_with_permadeath_on)
+{
+    og::test::mount_core_pack();
+    const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
+    og::test::ScopedHookFailureGuard guard;
+
+    TestGameWorld tw;
+    GameWorld& world = tw.world();
+    SaveData& save = tw.save;
+    save.reset();
+    save.keep_fallen_heroes = 0;
+    world.keep_fallen_heroes = 0;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+
+    guy original(FAMILY_SOLDIER);
+    original.id = 73;
+    original.name = "RETURNING HERO";
+    original.exp = 100u;
+    original.deployed = true;
+    save.team_list[0] = std::make_unique<guy>(original);
+    save.team_size = 1;
+
+    walker* cleric = make_cleric(world, 10);
+    ASSERT_NE(nullptr, cleric);
+    walker* fallen = spawn(
+        world, Order::Living, FAMILY_SOLDIER, 11, 10, 1);
+    ASSERT_NE(nullptr, fallen);
+    fallen->set_owned_myguy(std::make_unique<guy>(original));
+    fallen->set_real_team_num(255);
+    constexpr std::uint32_t kSessionExp = 777u;
+    fallen->myguy->exp = kSessionExp;
+
+    fallen->set_dead(1);
+    ASSERT_TRUE(fallen->death());
+    walker* stain = find_family(world, Order::Treasure, FAMILY_STAIN);
+    ASSERT_NE(nullptr, stain) << "a roster character must leave a bloodstain";
+    ASSERT_NE(nullptr, stain->myguy)
+        << "the real death path must put the character record on the stain";
+    EXPECT_EQ(original.id, stain->myguy->id);
+    EXPECT_EQ(original.name, stain->myguy->name);
+    EXPECT_EQ(kSessionExp, stain->myguy->exp);
+
+    cleric->set_current_special(4);
+    ASSERT_TRUE(og::test::do_special(desc, cleric));
+
+    walker* resurrected = find_family(world, Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, resurrected);
+    ASSERT_NE(fallen, resurrected);
+    ASSERT_NE(nullptr, resurrected->myguy);
+    EXPECT_EQ(0, resurrected->dead());
+    EXPECT_EQ(original.id, resurrected->myguy->id);
+    EXPECT_EQ(original.name, resurrected->myguy->name);
+    EXPECT_EQ(kSessionExp, resurrected->myguy->exp);
+    EXPECT_NE(0, fallen->dead());
+
+    int dead_copies = 0;
+    int live_copies = 0;
+    for (const auto& ob : world.oblist)
+    {
+        if (ob == nullptr || ob->myguy == nullptr ||
+            ob->myguy->id != original.id)
+        {
+            continue;
+        }
+        if (ob->dead())
+            ++dead_copies;
+        else
+            ++live_copies;
+    }
+    EXPECT_EQ(1, dead_copies);
+    EXPECT_EQ(1, live_copies);
+
+    og::progression::WinFoldContext fold;
+    fold.finished_level = save.scen_num;
+    fold.outcome.next_level = -1;
+    og::progression::apply_win_fold(
+        save, world, fold, og::mode::classic_progression());
+
+    ASSERT_EQ(1, static_cast<int>(save.team_size))
+        << "permadeath must drop the dead body and retain its live resurrection";
+    ASSERT_NE(nullptr, save.team_list[0]);
+    EXPECT_EQ(original.id, save.team_list[0]->id);
+    EXPECT_EQ(original.name, save.team_list[0]->name);
+    EXPECT_EQ(original.family, save.team_list[0]->family);
+    EXPECT_EQ(kSessionExp, save.team_list[0]->exp)
+        << "the live resurrection, not the stale pre-level entry, was folded";
+    EXPECT_TRUE(save.team_list[0]->deployed);
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
