@@ -315,3 +315,59 @@ field. Everything a campaign does with them is data.
 - Regression: og_test_parity untouched goldens; calibration/smoke tables
   unchanged with all vars at 0; mutation-pin check + og_test_parity
   rebuild.
+
+## Adjacent issues designed through the same architecture
+
+These ship in the same change, each taking the scripting-first shape (a
+static flag only where the declarative metadata already exists).
+
+### #212 — scripted match setup
+
+Menu-time twins of the sim's read-only `og.match_setting`:
+
+- `og.campaign_match_get(name)` / `og.campaign_match_set(name, value)`
+  over the same name vocabulary, mapped to the persisted knobs the
+  MATCHUP screen edits: `team_count`, `score_limit`, `respawn_ticks`,
+  `strip_troops`, `respawn_mode`, `generator_rate`.
+- `og.campaign_is_host()` — so a script can shape host-only pages.
+- **Policy lives in the provider, not the script**: `match_set` clamps
+  like the lobby sanitizer and returns false for non-hosts (local play is
+  always host). A write-through marks the session "match settings
+  changed"; the calling surface then runs the standard
+  sync-settings-from-save tail so joiners follow. Campaign content: the
+  Gamesmaster's Book gains a MATCH SETUP page of one-action presets.
+  This *advances* #212 (a per-slot roster editor is future work).
+
+### #209 — radar_ping
+
+A declarative family presentation key, `radar_ping = true`, through the
+full declaration pipeline (schema validation with did-you-mean, harvest,
+`FamilyDescriptor`, api-reference §4). Renderers make a pinged entity
+loud: the SDL radar draws an oversized pulsing blip (cosmetic frame
+counter — render-only, parity-inert), the curses radar promotes the
+glyph to bold/standout. The modes pack declares it on the soccer and
+basketball balls; any pack can use it.
+
+### #210 — basketball HUD
+
+Pure mode Lua: `mode_basketball_impl` publishes one HUD score row per
+active team (the TDM pattern), pinned by a bindings test.
+
+### #207 — replay
+
+Completed levels become selectable everywhere: the PROGRESS screen's
+cleared rows regain their per-row button, labeled REPLAY (terminals
+already accept any id at the set-level prompt; scripted pickers list
+cleared rows with their CLEARED marker by design). The Imaginations
+campaign additionally ships a dream-log picker page in its existing pack
+— every dream replayable, in the campaign's voice. Win-fold semantics
+for replayed levels are unchanged (completion marking is idempotent).
+
+### #213 — no XP from versus arenas
+
+Campaign metadata drives it: when the mounted campaign's `matchup:` is
+`versus`, roster persistence keeps exp/level as the company file holds
+them — at both paths (the local win fold's roster update and the
+networked owned-guys merge, which re-levels from exp). No new yaml key
+until a campaign needs the override; `matchup` is already the
+declarative statement that a campaign is an arena, not an adventure.
