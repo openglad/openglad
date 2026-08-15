@@ -24,6 +24,7 @@
 #include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/campaign_state_providers.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_file_io.h>
 #include <openglad/resources/save_data.h>
@@ -485,4 +486,203 @@ TEST_F(CampaignPickerSessionTest, row_text_composes_markers_costs_and_clips)
 
     // Clip at the budget: an over-long compose never escapes the face.
     EXPECT_EQ("FIELD KIT ", og::ui::campaign_picker_row_text(action, 10));
+}
+
+// ---------------------------------------------------------------------------
+// The shared terminal driver (the text/curses MISSIONS loop)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// A scripted TerminalCampaignPickerIo: canned prompt answers (EOF after the
+// script runs dry), recorded prompts and notices.
+struct ScriptedTerminalIo {
+    struct Prompt {
+        std::string title;
+        std::vector<std::string> lines;
+        std::string label;
+    };
+
+    std::vector<std::string> answers;
+    std::size_t cursor = 0;
+    std::vector<Prompt> prompts;
+    std::vector<std::string> notices;
+    bool host = true;
+    int applied_level = -1;
+    SaveData* save = nullptr;
+
+    og::ui::TerminalCampaignPickerIo io()
+    {
+        og::ui::TerminalCampaignPickerIo io;
+        io.prompt = [this](const std::string& title,
+                           const std::vector<std::string>& lines,
+                           const std::string& label)
+            -> std::optional<std::string> {
+            prompts.push_back({title, lines, label});
+            if (cursor >= answers.size())
+                return std::nullopt;  // scripted input exhausted = EOF
+            return answers[cursor++];
+        };
+        io.notice = [this](const std::string& line) {
+            notices.push_back(line);
+        };
+        io.is_host = [this] { return host; };
+        io.apply_level = [this](int level) {
+            applied_level = level;
+            // Both clients' set-level tail writes the save cursor.
+            save->scen_num = static_cast<short>(level);
+        };
+        return io;
+    }
+
+    // The composed page lines of prompt `index` joined for substring checks.
+    std::string page_text(std::size_t index) const
+    {
+        std::string joined;
+        for (const std::string& line : prompts[index].lines) {
+            joined += line;
+            joined += '\n';
+        }
+        return joined;
+    }
+};
+
+}  // namespace
+
+// The full loop over the REAL provider glue: invalid rows, the action arm
+// (debit + toast + §3.8 autosave), an unaffordable refusal, a lines-only
+// subpage (and its rowless prompt label), blank-line back, the level arm
+// (apply tail + CURRENT re-derive), and 0-at-root close.
+TEST_F(CampaignPickerSessionTest, terminal_driver_runs_the_whole_book)
+{
+    save_.m_totalcash[0] = 100;
+    save_.save_name = "DRIVER BAND";
+    register_script(R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id)
+    if page_id == "lore" then
+      return { title = "LORE", lines = { "Only words here." } }
+    end
+    local label = "FIELD KIT"
+    if og.campaign_state_get("kit") == 1 then
+      label = "KIT OWNED"
+    end
+    return { title = "ROOT",
+             entries = {
+               { id = "300", label = "THE CIRCLE", kind = "level", level = 300 },
+               { id = "buy", label = label, kind = "action", cost = 60 },
+               { id = "lore", label = "LORE", kind = "page" },
+             } }
+  end,
+  picker_action = function(entry_id)
+    og.campaign_state_set("kit", 1)
+    return { message = "Kit stowed for the road." }
+  end,
+}))LUA");
+
+    // The Acted arm autosaves the active company slot; isolate it on a
+    // scratch slot and reap the file afterwards.
+    ASSERT_TRUE(og::data::set_active_company_slot("pickerdrv"));
+
+    ScriptedTerminalIo scripted;
+    scripted.save = &save_;
+    scripted.answers = {
+        "nonsense",  // not a number -> invalid
+        "9",         // out of range (3 rows) -> invalid
+        "2",         // FIELD KIT -> Acted: debit 60, toast, autosave
+        "2",         // now unaffordable (40 < 60) -> Refused
+        "3",         // LORE -> OpenedPage (lines only, no rows)
+        "1",         // no rows on LORE -> invalid
+        "",          // blank -> back to ROOT
+        "1",         // THE CIRCLE -> SetLevel: tail + CURRENT re-derive
+        "0",         // 0 at the root closes the book
+    };
+    og::ui::run_terminal_campaign_picker(save_, scripted.io());
+
+    const std::vector<std::string> expected_notices = {
+        "Invalid mission row.",
+        "Invalid mission row.",
+        "Kit stowed for the road.",
+        "Not enough gold.",
+        "Invalid mission row.",
+        "Level set to THE CIRCLE.",
+    };
+    EXPECT_EQ(expected_notices, scripted.notices);
+
+    EXPECT_EQ(300, scripted.applied_level);
+    EXPECT_EQ(300, save_.scen_num);
+    EXPECT_EQ(40u, save_.m_totalcash[0]) << "the 60g action debit must land";
+    EXPECT_EQ(1, save_.campaign_state_get("testcamp", "kit"));
+    EXPECT_TRUE(user_file_exists("save/pickerdrv.gtl"))
+        << "the Acted arm must run the §3.8 company-autosave tail";
+
+    // Prompt 0: the root page in the shared composed shape.
+    ASSERT_GE(scripted.prompts.size(), 9u);
+    EXPECT_EQ("ROOT", scripted.prompts[0].title);
+    EXPECT_EQ("Mission # [1-3] (0 = back): ", scripted.prompts[0].label);
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(0).find("   1. THE CIRCLE\n"));
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(0).find("   2. FIELD KIT  60g\n"));
+    // After the action, the refetched page re-derived the scripted label.
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(3).find("   2. KIT OWNED  60g\n"));
+    // The lines-only subpage prompts with the rowless label (prompt 5 —
+    // prompts 0-4 are the ROOT page's invalid/action/refusal/page steps).
+    EXPECT_EQ("LORE", scripted.prompts[5].title);
+    EXPECT_EQ("Mission # (0 = back): ", scripted.prompts[5].label);
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(5).find("Only words here.\n"));
+    // The final prompt shows the applied cursor's CURRENT marker.
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(8).find("   1. THE CIRCLE  [CURRENT]\n"));
+
+    (void)remove_user_file("save/pickerdrv.gtl");
+    (void)og::data::set_active_company_slot("save0");
+}
+
+// The SET LEVEL host gate: a non-host choosing a level row is refused with
+// the terminal host guard line (pinned verbatim here, exactly once) and
+// nothing is applied; pages/actions stay open to every machine by design.
+TEST_F(CampaignPickerSessionTest, terminal_driver_host_gate_refuses_level_rows)
+{
+    save_.scen_num = 7;
+    register_script(R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id)
+    return { title = "BOOK",
+             entries = { { id = "300", label = "THE CIRCLE", kind = "level", level = 300 } } }
+  end,
+}))LUA");
+
+    ScriptedTerminalIo scripted;
+    scripted.save = &save_;
+    scripted.host = false;
+    scripted.answers = {"1"};  // then EOF -> back at the root -> close
+    og::ui::run_terminal_campaign_picker(save_, scripted.io());
+
+    const std::vector<std::string> expected_notices = {
+        "Only the host may set the level.",
+    };
+    EXPECT_EQ(expected_notices, scripted.notices);
+    EXPECT_EQ(-1, scripted.applied_level)
+        << "the gate must refuse before the client tail runs";
+    EXPECT_EQ(7, save_.scen_num);
+    EXPECT_EQ(2u, scripted.prompts.size())
+        << "the refusal re-presents the page; the EOF prompt closes it";
+}
+
+// No registration: the driver prints the shared guard line (the literal is
+// pinned by the text drive; this arm holds the exported constant) and never
+// prompts.
+TEST_F(CampaignPickerSessionTest, terminal_driver_guards_when_no_book)
+{
+    register_script(R"LUA(og.log("no campaign registration"))LUA");
+
+    ScriptedTerminalIo scripted;
+    scripted.save = &save_;
+    og::ui::run_terminal_campaign_picker(save_, scripted.io());
+
+    ASSERT_EQ(1u, scripted.notices.size());
+    EXPECT_EQ(og::ui::kCampaignPickerNoBookMessage, scripted.notices[0]);
+    EXPECT_TRUE(scripted.prompts.empty())
+        << "the guard path must never open the book prompt";
 }

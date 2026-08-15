@@ -10,13 +10,16 @@
 #include <openglad/core/util.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/resources/campaign_metadata.h>
+#include <openglad/resources/campaign_state_providers.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/ui/cloud_save_client.h>
 #include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/menu_model.h>
@@ -31,6 +34,7 @@
 #include <cstdio>
 #include <format>
 #include <iostream>
+#include <optional>
 #ifdef TESTING
 #include <cstdint>
 #include <filesystem>
@@ -92,6 +96,19 @@ public:
         // the previous active slot in place (the save itself would fail the
         // same validation).
         assert_company_slot_authority();
+        // Campaign scripting (#206): point the process-global og.campaign_*
+        // providers at THIS client's SaveData — the same object the picker
+        // mutates — so campaign hooks always read/write the live save (the
+        // design doc's install-site list: the text picker's init, beside
+        // the [SAVE-R2] slot repoint).
+        og::script::hooks::install_campaign_providers(
+            og::data::make_campaign_providers(save_data_));
+    }
+
+    ~TextPickerClient() override
+    {
+        // #206: the providers borrow save_data_ — clear before it dies.
+        og::script::hooks::clear_campaign_providers();
     }
 
     const PickerMenuItem* present_menu(PickerMenuId menu_id) override
@@ -841,6 +858,11 @@ private:
         case PickerMenuCommand::Teams:
             teams_screen();
             break;
+        case PickerMenuCommand::CampaignMissions:
+            // #206: the scripted mission book (guard + flow live in the
+            // shared terminal driver).
+            campaign_missions_flow();
+            break;
         default:
             break;
         }
@@ -1248,6 +1270,42 @@ private:
                 }
             }
         }
+    }
+
+    // #206 MISSIONS, text projection: the shared terminal driver over this
+    // client's save — the printf banner and the read_line prompt are the
+    // only client-specific parts (the page lines themselves are composed by
+    // the driver, byte-identical with curses).
+    void campaign_missions_flow()
+    {
+        TerminalCampaignPickerIo io;
+        io.prompt = [this](const std::string& title,
+                           const std::vector<std::string>& lines,
+                           const std::string& label)
+            -> std::optional<std::string> {
+            std::printf("\n--- %s ---\n", title.c_str());
+            for (const std::string& line : lines)
+                std::printf("%s\n", line.c_str());
+            std::printf("%s", label.c_str());
+            std::fflush(stdout);
+            std::string line;
+            if (!read_line(line))
+                return std::nullopt;
+            return line;
+        };
+        io.notice = [](const std::string& line) {
+            std::printf("%s\n", line.c_str());
+        };
+        // The SET LEVEL host predicate: the text picker holds no networked
+        // lobby (configure_networking is a stub), so the shared context
+        // always answers host here.
+        io.is_host = [this] { return label_context().is_host; };
+        io.apply_level = [this](int level) {
+            // The text "Set level" tail: session config + save cursor.
+            config_.level = level;
+            save_data_.scen_num = static_cast<short>(level);
+        };
+        run_terminal_campaign_picker(save_data_, io);
     }
 
     void set_level()

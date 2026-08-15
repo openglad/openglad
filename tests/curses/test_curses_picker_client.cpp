@@ -26,9 +26,12 @@
 #include <openglad/platform/curses/headless_terminal.h>
 
 #include <openglad/core/constants.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_state.h>
+#include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/ui/cloud_save_client.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -2353,6 +2356,120 @@ TEST(CursesPickerClient, run_picker_through_scenario_submenu_then_quit)
     og::ui::run_picker(f.client);
     EXPECT_TRUE(f.t().input_exhausted())
         << "the scenario submenu round trip should consume the whole script";
+}
+
+// --- #206 Missions (the scripted campaign mission book) ----------------------
+
+namespace {
+
+// Registers a throwaway scripted picker for one test and restores the
+// pack-script registry (and the gameplay context campaign dispatch
+// resolves) afterwards — the test_campaign_picker_session fixture approach.
+// The chunk name deliberately does NOT start with `packs/`: that prefix
+// declares the bytes to the pack-Lua coverage inventory, and this throwaway
+// chunk exists nowhere in the repository.
+class ScopedSyntheticCampaignPicker
+{
+public:
+    explicit ScopedSyntheticCampaignPicker(const std::string& source)
+        : previous_game_(current_game)
+        , scripts_(og::script::pack_scripts())
+    {
+        current_game = nullptr;  // dispatch resolves the shared UI VM
+        og::script::register_pack_script(
+            {"test.cursesmissions", "cursesmissions/scripts/c.lua", source});
+    }
+
+    ~ScopedSyntheticCampaignPicker()
+    {
+        og::script::clear_pack_scripts();
+        for (const og::script::PackScript& script : scripts_)
+            og::script::register_pack_script(script);
+        current_game = previous_game_;
+    }
+
+private:
+    GameplayContext* previous_game_;
+    std::vector<og::script::PackScript> scripts_;
+};
+
+} // namespace
+
+// run_picker reaches the scripted mission book by ordinals: Team Build ->
+// Scenario (row 9) -> Missions (0-based selectable index 6, ordinal 7, with
+// Back at 8 — inside the digit-jump budget). Choosing a level row runs the
+// curses set-level tail; 0 at the root closes the book back to the
+// Scenario submenu.
+TEST(CursesPickerClient, run_picker_missions_sets_level_from_the_book)
+{
+    PickerFixture f;
+    ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id)
+    return {
+      title = "THE BOOK",
+      lines = { "The Gamesmaster opens the book." },
+      entries = {
+        { id = "300", label = "THE CIRCLE", kind = "level", level = 300 },
+        { id = "9", label = "THE PIT", kind = "level", level = 9 },
+      },
+    }
+  end,
+}))LUA");
+
+    const int cont_idx = main_menu_item_index(PickerMenuCommand::ContinueGame);
+    ASSERT_GE(cont_idx, 0);
+    pick(f.t(), cont_idx); // Main: Continue -> Team Build
+    // Team Build: the Scenario door. Digit jump counts selectable entries
+    // only, so the item index maps 1:1 past the context header rows.
+    int scenario_idx = -1;
+    {
+        const auto& def =
+            og::ui::picker_menu_definition(PickerMenuId::TeamBuild);
+        for (int i = 0; i < static_cast<int>(def.items.size()); ++i)
+            if (def.items[static_cast<size_t>(i)].command ==
+                PickerMenuCommand::Scenario)
+                scenario_idx = i;
+    }
+    ASSERT_GE(scenario_idx, 0);
+    pick(f.t(), scenario_idx); // Team Build -> Scenario submenu
+    pick(f.t(), 6);            // Scenario: Missions -> the mission book
+    // Book prompt: row 2 = THE PIT (level 9) -> the set-level tail.
+    f.t().push_char(U'2');
+    f.t().push_special(KeyCode::Enter);
+    dismiss(f.t()); // the "Level set to THE PIT." notice screen
+    // Book prompt again: Esc cancels the prompt = back, closing the root.
+    f.t().push_special(KeyCode::Escape);
+    // Unwind: Scenario Esc (Back), Team Build q (Back), Main Esc (Quit).
+    f.t().push_special(KeyCode::Escape);
+    f.t().push_char(U'q');
+    f.t().push_special(KeyCode::Escape);
+
+    og::ui::run_picker(f.client);
+
+    EXPECT_EQ(9, (int)f.save().scen_num)
+        << "a level row must run the curses set-level tail";
+    EXPECT_EQ(9, f.config.level)
+        << "the tail also updates the session config level";
+    EXPECT_TRUE(f.t().input_exhausted())
+        << "the mission-book round trip should consume the whole script";
+}
+
+// With no registered picker, the Missions row shows the shared guard line.
+// (The literal bytes are pinned once, by the text drive; the exported
+// constant proves the same line reaches the curses surface.)
+TEST(CursesPickerClient, missions_without_a_book_shows_the_guard_line)
+{
+    PickerFixture f;
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::Scenario, PickerMenuCommand::CampaignMissions);
+    ASSERT_NE(item, nullptr);
+
+    dismiss(f.t()); // the guard notice renders as a show_text screen
+    f.client.handle_menu_item(PickerMenuId::Scenario, *item);
+    EXPECT_NE(f.t().dump().find(
+                  std::string(og::ui::kCampaignPickerNoBookMessage)),
+              std::string::npos)
+        << "an unregistered picker must show the guard line";
 }
 
 // --- Campaign ordering -------------------------------------------------------

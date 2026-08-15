@@ -2,6 +2,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/walker.h>
@@ -911,7 +912,8 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
     // 4=deploy, 5=ready; 7=back, 8=networking, 9=Scenario); the
     // scenario-shaped commands nest under the Scenario submenu
     // (1=set_campaign, 2=set_level, 3=view_scenario, 4=matchup, 5=progress,
-    // 6=troops, 7=back). Main 3=difficulty opens the DIFFICULTY submenu
+    // 6=troops, 7=missions, 8=back). Main 3=difficulty opens the DIFFICULTY
+    // submenu
     // (1=difficulty, 2=respawns, 3=respawn delay, 4=permadeath,
     // 5=generators, 6=infinite gold, 7=back).
     const std::string input =
@@ -967,7 +969,7 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "\n"
         "6\n"       // scenario: cycle scenario troops (ALL -> OWN)
         "6\n"       // scenario: cycle scenario troops (OWN -> ALL)
-        "7\n"       // scenario: back -> team build
+        "8\n"       // scenario: back -> team build
         "8\n"       // team build: networking (unavailable)
         "7\n"       // team build: back -> main
         "7\n";      // main: quit
@@ -1489,7 +1491,7 @@ TEST(PlatformHeadless, text_picker_campaign_select_mounts_selection)
         "9\n"       // team build: Scenario submenu
         "1\n"       // scenario: set campaign
         "1\n"       //   entry 1 is always the default campaign
-        "7\n"       // scenario: back -> team build
+        "8\n"       // scenario: back -> team build
         "7\n"       // team build: back -> main
         "7\n";      // main: quit
 
@@ -1530,7 +1532,7 @@ TEST(PlatformHeadless, text_picker_shows_display_titles_when_campaign_mounted)
         "\n"
         "6\n"       // scenario: cycle scenario troops (ALL -> OWN)
         "6\n"       // scenario: cycle scenario troops (OWN -> ALL)
-        "7\n"       // scenario: back -> team build
+        "8\n"       // scenario: back -> team build
         "7\n"       // team build: back -> main
         "7\n";      // main: quit
 
@@ -1579,7 +1581,7 @@ TEST(PlatformHeadless, text_picker_level_display_falls_back_when_mount_differs)
         "2\n"       // main: continue -> team build
         "9\n"       // team build: Scenario submenu (labels print)
         "5\n"       // scenario: progress
-        "7\n"       // scenario: back -> team build
+        "8\n"       // scenario: back -> team build
         "7\n"       // team build: back -> main
         "7\n";      // main: quit
 
@@ -1680,7 +1682,7 @@ TEST(PlatformHeadless, text_picker_matchup_screen_play_and_move_commands)
         "move 1 1\n"    //   valid: back to team 1
         "gibberish\n"   //   unrecognized command
         "\n"            //   blank exits matchup
-        "7\n"           // scenario: back -> team build
+        "8\n"           // scenario: back -> team build
         "7\n"           // base camp: back -> main
         "7\n";          // main: quit
 
@@ -1728,4 +1730,152 @@ TEST(PlatformHeadless, text_picker_matchup_screen_play_and_move_commands)
     // company-listing tests stay order-independent.
     (void)remove_user_file("save/" + config.save_name + ".gtl");
     og::data::set_active_company_slot("save0");
+}
+
+// --- #206 MISSIONS: the scripted campaign picker, text projection ----------
+
+namespace {
+
+// Registers a throwaway scripted picker for one test and restores the
+// pack-script registry (and the gameplay context campaign dispatch resolves)
+// afterwards — the test_campaign_picker_session fixture approach. The chunk
+// name deliberately does NOT start with `packs/`: that prefix declares the
+// bytes to the pack-Lua coverage inventory, and this throwaway chunk exists
+// nowhere in the repository (the test_classpack_lua_decl discipline).
+class ScopedSyntheticCampaignPicker
+{
+public:
+    explicit ScopedSyntheticCampaignPicker(const std::string& source)
+        : previous_game_(current_game)
+        , scripts_(og::script::pack_scripts())
+    {
+        current_game = nullptr;  // dispatch resolves the shared UI VM
+        og::script::register_pack_script(
+            {"test.textmissions", "textmissions/scripts/c.lua", source});
+    }
+
+    ~ScopedSyntheticCampaignPicker()
+    {
+        og::script::clear_pack_scripts();
+        for (const og::script::PackScript& script : scripts_)
+            og::script::register_pack_script(script);
+        current_game = previous_game_;
+    }
+
+private:
+    GameplayContext* previous_game_;
+    std::vector<og::script::PackScript> scripts_;
+};
+
+} // namespace
+
+// The Scenario submenu's Missions row (ordinal 7) opens the scripted book:
+// the page renders through the shared row composer (byte-identical with
+// curses), og.campaign_gold proves the providers point at THIS picker's
+// live save, an action debits/toasts/autosaves, and a level row runs the
+// text set-level tail. 0 at the root closes the book.
+TEST(PlatformHeadless, text_picker_missions_drive_runs_the_scripted_book)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id)
+    return {
+      title = "THE BOOK",
+      lines = { "Purse " .. og.campaign_gold() .. "g." },
+      entries = {
+        { id = "300", label = "THE CIRCLE", kind = "level", level = 300, note = "4 teams" },
+        { id = "9", label = "THE PIT", kind = "level", level = 9 },
+        { id = "kit", label = "FIELD KIT", kind = "action", cost = 100 },
+      },
+    }
+  end,
+  picker_action = function(entry_id)
+    og.campaign_state_set("kit", 1)
+    return { message = "Kit stowed for the road." }
+  end,
+}))LUA");
+
+    const std::string input =
+        "2\n"       // main: continue -> team build
+        "9\n"       // team build: Scenario submenu
+        "7\n"       // scenario: missions -> the scripted book
+        "99\n"      //   book: out-of-range row -> invalid notice
+        "3\n"       //   book: FIELD KIT action -> debit + toast + autosave
+        "2\n";      //   book: THE PIT (level 9) -> the text set-level tail
+    // Input then runs dry INSIDE the book: EOF is back (closing the root
+    // page), and the menus above unwind on their own EOF cancels to Quit.
+    // (The explicit 0-close lives in the shared-driver tests; the
+    // post-missions 8=Back ordinal is driven by the guard test below.)
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    const std::string out = stdout_capture.restore();
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_EQ(9, config.level)
+        << "a level row must run the text set-level tail";
+
+    EXPECT_NE(std::string::npos, out.find("--- THE BOOK ---"));
+    EXPECT_NE(std::string::npos, out.find("Purse 5000g."))
+        << "og.campaign_gold must read the picker client's live save";
+    // The rows compose through the shared campaign_picker_row_text helper.
+    EXPECT_NE(std::string::npos, out.find("   1. THE CIRCLE - 4 teams\n"));
+    EXPECT_NE(std::string::npos, out.find("   3. FIELD KIT  100g\n"));
+    EXPECT_NE(std::string::npos, out.find("Mission # [1-3] (0 = back): "));
+    EXPECT_NE(std::string::npos, out.find("Invalid mission row."));
+    // The action debited the acting wallet (visible in the refetched page)
+    // and its toast printed.
+    EXPECT_NE(std::string::npos, out.find("Purse 4900g."))
+        << "the 100g action debit must land before the page refetch";
+    EXPECT_NE(std::string::npos, out.find("Kit stowed for the road."));
+    // The set-level tail re-derives the CURRENT marker on the refresh.
+    EXPECT_NE(std::string::npos, out.find("Level set to THE PIT."));
+    EXPECT_NE(std::string::npos, out.find("   2. THE PIT  [CURRENT]\n"));
+
+    // Hygiene: the Acted arm autosaved the text client's slot; reap it so
+    // company-listing tests stay order-independent.
+    (void)remove_user_file("save/" + config.save_name + ".gtl");
+    og::data::set_active_company_slot("save0");
+}
+
+// With no og.register_campaign_hooks anywhere, the Missions row refuses
+// with the shared guard line — pinned verbatim here, exactly once.
+TEST(PlatformHeadless, text_picker_missions_without_a_book_prints_the_guard)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+
+    const std::string input =
+        "2\n"       // main: continue -> team build
+        "9\n"       // team build: Scenario submenu
+        "7\n"       // scenario: missions -> guard line, straight back
+        "8\n"       // scenario: back -> team build
+        "7\n"       // team build: back -> main
+        "7\n";      // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    const std::string out = stdout_capture.restore();
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_NE(std::string::npos,
+              out.find("This campaign keeps no mission book.\n"))
+        << "an unregistered picker must print the guard line";
+    EXPECT_EQ(std::string::npos, out.find("Mission # "))
+        << "the guard path must never open the book prompt";
 }

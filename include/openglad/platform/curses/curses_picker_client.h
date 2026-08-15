@@ -43,6 +43,9 @@ public:
     CursesPickerClient(ITerminal& term, IClock& clock,
                        og::ui::TextPickerConfig& config,
                        const CursesPickerOptions& options);
+    // #206: clears the og.campaign_* providers the constructor installed
+    // over save_data_ (they borrow it and must not outlive it).
+    ~CursesPickerClient() override;
 
     // --- og::ui::IPickerClient ---
     const og::ui::PickerMenuItem* present_menu(og::ui::PickerMenuId menu_id) override;

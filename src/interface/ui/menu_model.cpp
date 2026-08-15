@@ -60,7 +60,7 @@ constexpr std::array<PickerMenuItem, 12> kTeamBuildItems = {{
 // The SCENARIO submenu: everything that chooses or inspects the scenario.
 // SET CAMPAIGN / SET LEVEL stay host-gated on the SDL surface; the terminal
 // clients present the submenu as a nested flat list.
-constexpr std::array<PickerMenuItem, 7> kScenarioItems = {{
+constexpr std::array<PickerMenuItem, 8> kScenarioItems = {{
     {"set_campaign", "Set Campaign", PickerMenuCommand::SetCampaign},
     {"set_level", "Set Level", PickerMenuCommand::SetLevel},
     {"view_scenario", "View Scenario", PickerMenuCommand::ViewScenario},
@@ -71,6 +71,11 @@ constexpr std::array<PickerMenuItem, 7> kScenarioItems = {{
     // test_platform_headless.cpp) select by ordinal, so growth stays
     // append-only and Back keeps its "last item" reading.
     {"troops", "Scenario Troops", PickerMenuCommand::ToggleCtfScenarioTroops},
+    // #206: the scripted mission book. Not gated at the model layer —
+    // terminals list every row; selecting it with no registered picker
+    // prints the guard line (the SDL surface hides its MISSIONS button
+    // instead, from its own spec table).
+    {"missions", "Missions", PickerMenuCommand::CampaignMissions},
     {"back", "Back", PickerMenuCommand::Back},
 }};
 

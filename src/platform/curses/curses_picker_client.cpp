@@ -27,8 +27,10 @@
 #include <openglad/core/text_wrap.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/ui/cloud_save_client.h>
 #include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/menu_model.h>
@@ -39,6 +41,7 @@
 #include <openglad/platform/curses/curses_network.h>
 #include <openglad/platform/curses/curses_renderer.h>
 #include <openglad/resources/campaign_metadata.h>
+#include <openglad/resources/campaign_state_providers.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
@@ -50,6 +53,7 @@
 #include <format>
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -182,9 +186,13 @@ public:
 
     // Prompt for a single line of text. On Enter, sets `accepted` and returns the
     // buffer; on Esc (or exhausted input), returns `initial` with `accepted`
-    // false. Backspace erases the last character.
+    // false. Backspace erases the last character. `context` lines (optional)
+    // render between the title and the input row — the scripted mission
+    // book's page surface (#206, the Company List "rows above the prompt"
+    // shape).
     std::string prompt(std::string_view title, std::string_view label,
-                       std::string_view initial, bool& accepted)
+                       std::string_view initial, bool& accepted,
+                       const std::vector<std::string>& context = {})
     {
         std::string buffer(initial);
         accepted = false;
@@ -194,6 +202,15 @@ public:
             int row = 0;
             term_.put_str(row++, 0, title, kTitleColor, Color::Default, true);
             ++row;
+            const int input_limit = term_.rows() - 2;
+            for (const std::string& line : context) {
+                if (row >= input_limit)
+                    break;
+                term_.put_str(row++, 0, line, kNormalColor, Color::Default,
+                              false);
+            }
+            if (!context.empty() && row < input_limit)
+                ++row;
             term_.put_str(row, 0, std::string(label) + buffer,
                           kNormalColor, Color::Default, false);
             term_.put_str(term_.rows() - 1, 0,
@@ -768,6 +785,44 @@ og::ui::cloud::CloudHooks curses_cloud_hooks(Menu& menu, bool& notified)
     return hooks;
 }
 
+// #206 MISSIONS, curses projection: the shared terminal driver over this
+// client's save. The page renders as prompt context lines (the Company List
+// "dynamic rows + prompt" shape — never Menu::choose, whose digit jump
+// stops at row 9) and notices ride show_text; the page lines themselves are
+// composed by the driver, byte-identical with the text client.
+void campaign_missions_flow(Menu& menu, SaveData& save,
+                            TextPickerConfig& config,
+                            const CursesPickerOptions& options)
+{
+    og::ui::TerminalCampaignPickerIo io;
+    io.prompt = [&menu](const std::string& title,
+                        const std::vector<std::string>& lines,
+                        const std::string& label)
+        -> std::optional<std::string> {
+        bool accepted = false;
+        const std::string entered = menu.prompt(title, label, "", accepted,
+                                                lines);
+        if (!accepted)
+            return std::nullopt;
+        return entered;
+    };
+    io.notice = [&menu](const std::string& line) {
+        menu.show_text("Missions", {line});
+    };
+    // The SET LEVEL host predicate: this picker screen is only reachable
+    // locally (the curses network lobby is a separate flow), so the shared
+    // context always answers host here.
+    io.is_host = [&config, &options, &save] {
+        return label_context(config, options, save).is_host;
+    };
+    io.apply_level = [&config, &save](int level) {
+        // The curses "Set level" tail: session config + save cursor.
+        config.level = level;
+        save.scen_num = static_cast<short>(level);
+    };
+    og::ui::run_terminal_campaign_picker(save, io);
+}
+
 } // namespace
 
 // --- construction --------------------------------------------------------
@@ -785,6 +840,19 @@ CursesPickerClient::CursesPickerClient(ITerminal& term, IClock& clock,
     // this client's chosen slot, never save0. An unsafe name is rejected by
     // the setter and leaves the previous active slot in place.
     assert_company_slot_authority();
+    // Campaign scripting (#206): point the process-global og.campaign_*
+    // providers at THIS client's SaveData — the same object the picker
+    // mutates — so campaign hooks always read/write the live save (the
+    // design doc's install-site list: the curses picker's session, beside
+    // the [SAVE-R2] slot repoint).
+    og::script::hooks::install_campaign_providers(
+        og::data::make_campaign_providers(save_data_));
+}
+
+CursesPickerClient::~CursesPickerClient()
+{
+    // #206: the providers borrow save_data_ — clear before it dies.
+    og::script::hooks::clear_campaign_providers();
 }
 
 void CursesPickerClient::assert_company_slot_authority() const
@@ -1048,6 +1116,11 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
     case PickerMenuCommand::Teams:
         teams_screen(menu, save_data_);
         config_.team_families = og::ui::collect_team_families(save_data_);
+        break;
+    case PickerMenuCommand::CampaignMissions:
+        // #206: the scripted mission book (guard + flow live in the shared
+        // terminal driver).
+        campaign_missions_flow(menu, save_data_, config_, options_);
         break;
     default:
         break;

@@ -12,6 +12,7 @@
 
 #include <openglad/interface/ui/campaign_picker_session.h>
 
+#include <openglad/core/util.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/level_file_io.h>
 #include <openglad/resources/save_data.h>
@@ -188,6 +189,115 @@ std::string campaign_picker_row_text(const CampaignPickerSession::Row& row,
     if (text.size() > budget)
         text.resize(budget);
     return text;
+}
+
+// --- Terminal MISSIONS flow (openglad_text + openglad_curses) --------------
+
+namespace {
+
+std::string terminal_campaign_prompt_label(std::size_t rows)
+{
+    if (rows == 0)
+        return "Mission # (0 = back): ";
+    return std::format("Mission # [1-{}] (0 = back): ", rows);
+}
+
+// The page as terminal lines: the narrative lines, a separating blank, then
+// the numbered rows in the Company List "  NN. " shape, composed with the
+// shared row-text helper so text and curses stay byte-identical.
+std::vector<std::string> terminal_campaign_page_lines(
+    const CampaignPickerSession::DecoratedPage& page)
+{
+    std::vector<std::string> lines = page.lines;
+    if (!lines.empty() && !page.rows.empty())
+        lines.emplace_back();
+    for (std::size_t i = 0; i < page.rows.size(); ++i)
+    {
+        lines.push_back(std::format(
+            "  {:2}. {}", i + 1,
+            campaign_picker_row_text(page.rows[i],
+                                     kCampaignPickerTerminalRowBudget)));
+    }
+    return lines;
+}
+
+} // namespace
+
+void run_terminal_campaign_picker(SaveData& save,
+                                  const TerminalCampaignPickerIo& io)
+{
+    CampaignPickerSession session(save);
+    if (!session.open())
+    {
+        // Not registered, an erroring hook, or a malformed root page: the
+        // terminal contract prints the guard line and returns to the stock
+        // SCENARIO menu.
+        io.notice(std::string(kCampaignPickerNoBookMessage));
+        return;
+    }
+
+    for (;;)
+    {
+        const CampaignPickerSession::DecoratedPage& page = session.page();
+        const std::optional<std::string> answer = io.prompt(
+            page.title, terminal_campaign_page_lines(page),
+            terminal_campaign_prompt_label(page.rows.size()));
+        if (!answer || answer->empty() || *answer == "0")
+        {
+            // Back (blank/0/EOF): pop one page; at the root, close the book.
+            if (!session.back())
+                return;
+            continue;
+        }
+
+        const std::optional<int> choice = parse_int_strict(*answer);
+        if (!choice || *choice < 1 ||
+            static_cast<std::size_t>(*choice) > page.rows.size())
+        {
+            io.notice("Invalid mission row.");
+            continue;
+        }
+        const std::size_t index = static_cast<std::size_t>(*choice - 1);
+        // Copy what the outcome report needs: choose() may replace the page.
+        const std::string chosen_label = page.rows[index].label;
+
+        using Outcome = CampaignPickerSession::OutcomeKind;
+        const CampaignPickerSession::Outcome outcome = session.choose(index);
+        switch (outcome.kind)
+        {
+            case Outcome::OpenedPage:  // the loop reprints the pushed page
+            case Outcome::None:        // unreachable behind the range check
+                break;
+            case Outcome::SetLevel:
+                // Host gate first (the SET LEVEL predicate) — the session
+                // stays policy-free.
+                if (!io.is_host())
+                {
+                    io.notice(std::string(kCampaignPickerHostGuardMessage));
+                    break;
+                }
+                io.apply_level(outcome.level);
+                // CURRENT markers re-derive from the new cursor
+                // (fetch-per-action, never per frame).
+                session.refresh();
+                io.notice(std::format("Level set to {}.", chosen_label));
+                break;
+            case Outcome::Acted:
+            {
+                // The session already debited and refetched; persist the
+                // mutation (§3.8 — the campaign decision book and the
+                // wallet ride the company file in the terminal clients).
+                (void)company_autosave_after_mutation(save, false);
+                const std::string toast = session.take_message();
+                if (!toast.empty())
+                    io.notice(toast);
+                break;
+            }
+            case Outcome::Refused:
+                io.notice(outcome.reason);
+                break;
+        }
+    }
 }
 
 } // namespace og::ui

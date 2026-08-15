@@ -83,6 +83,11 @@ enum class PickerMenuCommand : std::int32_t
     CloudSetPassphrase, // set/replace the passphrase (stores the derived key)
     CloudUpload,        // upload the active company to the relay vault
     CloudDownload,      // download + install the vault's company
+    // #206 campaign scripting: the SCENARIO submenu's MISSIONS row — the
+    // scripted mission book of a campaign registering
+    // og.register_campaign_hooks (terminals always list it; selecting it
+    // with no registered picker prints the guard line).
+    CampaignMissions,
 };
 
 struct PickerMenuItem
