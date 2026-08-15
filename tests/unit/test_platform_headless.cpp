@@ -891,6 +891,33 @@ TEST(PlatformHeadless, text_protocol_emits_mode_block_for_scripted_levels)
     fs::remove(grid_png, ec);
 }
 
+TEST(PlatformHeadless, text_protocol_campaign_state_seed_validates_keys)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    {
+        StdinRedirect input("quit\n");
+        CoutRedirect output;
+        og::ui::TextProtocolArgs args;
+        args.level = 1;
+        args.team_families = {FAMILY_SOLDIER};
+        args.campaign_state = {{"delve_counted", 1}, {"watch_paid", 900}};
+        EXPECT_EQ(0, og::ui::run_text_protocol_session(args))
+            << "safe-charset keys must seed and start the session";
+    }
+    {
+        StdinRedirect input("quit\n");
+        CoutRedirect output;
+        og::ui::TextProtocolArgs args;
+        args.level = 1;
+        args.team_families = {FAMILY_SOLDIER};
+        args.campaign_state = {{"BadKey", 1}};
+        EXPECT_EQ(1, og::ui::run_text_protocol_session(args))
+            << "a key outside [a-z0-9_] must reject the session";
+    }
+}
+
 TEST(PlatformHeadless, text_protocol_event_text_is_valid_json_escaped)
 {
     const std::string encoded = og::ui::text_protocol_testing_format_event_text(

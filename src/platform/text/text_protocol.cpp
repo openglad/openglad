@@ -7,6 +7,7 @@
 
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/core/irandom.h>
@@ -487,6 +488,15 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     save.current_campaign = args.campaign;
     save.scen_num = static_cast<short>(args.level);
     save.numplayers = 1;
+    for (const auto& [key, value] : args.campaign_state) {
+        if (!save.campaign_state_set(args.campaign, key, value)) {
+            std::fprintf(stderr, "Rejected --campaign-state key %s\n",
+                key.c_str());
+            text_ctx.rng = prev_rng;
+            set_gameplay_rng_override(nullptr);
+            return 1;
+        }
+    }
 
     // io_init mounts the default campaign; --campaign was only recorded in
     // the save, so non-default campaigns silently loaded the wrong package.
@@ -536,6 +546,16 @@ int run_text_protocol_session(const TextProtocolArgs& args)
         text_ctx.rng = prev_rng;
         set_gameplay_rng_override(nullptr);
         return 1;
+    }
+
+    // Mirror the production sync twins: campaign decision vars reach the
+    // world only for names the mounted campaign's pack registered
+    // (replace, never merge).
+    world.campaign_vars.clear();
+    for (const auto& name : og::script::hooks::campaign_registered_vars()) {
+        std::int32_t value = save.campaign_state_get(args.campaign, name);
+        if (value != 0)
+            world.campaign_vars.emplace_back(name, value);
     }
 
     // Derive placed-walker stats from their authored levels, exactly like

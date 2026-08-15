@@ -86,6 +86,7 @@ struct TextClientArgs {
     std::vector<int> team_families; // family IDs
     std::uint32_t seed = 42;
     int team_level = 0; // 0 = loader-default stats (legacy)
+    std::vector<std::pair<std::string, std::int32_t>> campaign_state;
     bool protocol_mode = false;
     bool probe_unsupported_warnings = false;
 };
@@ -109,6 +110,21 @@ static bool parse_args(int argc, char* argv[], TextClientArgs& args)
             args.seed = static_cast<std::uint32_t>(std::atol(argv[++i]));
         } else if (arg == "--team-level" && i + 1 < argc) {
             args.team_level = std::atoi(argv[++i]);
+        } else if (arg == "--campaign-state" && i + 1 < argc) {
+            std::string state_str = argv[++i];
+            std::istringstream ss(state_str);
+            std::string tok;
+            while (std::getline(ss, tok, ',')) {
+                size_t eq = tok.find('=');
+                if (eq == std::string::npos || eq == 0) {
+                    std::fprintf(stderr,
+                        "--campaign-state expects key=value[,key=value...]\n");
+                    return false;
+                }
+                args.campaign_state.emplace_back(tok.substr(0, eq),
+                    static_cast<std::int32_t>(
+                        std::atol(tok.c_str() + eq + 1)));
+            }
         } else if (arg == "--protocol") {
             args.protocol_mode = true;
         } else if (arg == "--probe-unsupported-warnings") {
@@ -121,6 +137,7 @@ static bool parse_args(int argc, char* argv[], TextClientArgs& args)
                 "  --team <f1,f2,...>  Team family IDs, comma-separated (default: 0 = soldier)\n"
                 "  --seed <num>        RNG seed (default: 42)\n"
                 "  --team-level <n>    Upgrade each spawned team guy to level n (default: 0 = family defaults)\n"
+                "  --campaign-state <k=v,...>  Pre-seed campaign decision state (og.campaign_var)\n"
                 "  --protocol          Run JSON protocol mode directly (no picker)\n"
                 "  --probe-unsupported-warnings  Emit one-time headless unsupported warnings and exit\n"
                 "\nCommands (stdin):\n"
@@ -171,6 +188,7 @@ int main(int argc, char* argv[])
     picker_config.team_families = args.team_families;
     picker_config.seed = args.seed;
     picker_config.team_level = args.team_level;
+    picker_config.campaign_state = args.campaign_state;
 
     int rc = 0;
     if (args.protocol_mode) {

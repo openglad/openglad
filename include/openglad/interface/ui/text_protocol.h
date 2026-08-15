@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace og::ui {
@@ -20,6 +21,10 @@ struct TextProtocolArgs {
     // derived walker stats recomputed (playtest crews). 0 keeps the legacy
     // loader-default stats untouched.
     int team_level = 0;
+    // Pre-seeded campaign decision state (--campaign-state key=value,...):
+    // written into the session save before load so level hooks see the
+    // values through og.campaign_var (playtest/demo harnesses).
+    std::vector<std::pair<std::string, std::int32_t>> campaign_state;
 };
 
 // Run a single headless protocol session (until game ends or user quits).
