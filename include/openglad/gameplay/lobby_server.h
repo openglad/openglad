@@ -29,6 +29,7 @@ struct LobbySaveDataEquivalent {
     std::int16_t cross_control = 0;
     // Host-only infinite-gold setting (protocol v11; see LobbySettings).
     std::int16_t infinite_gold = 0;
+    DynamicsRuleset dynamics_ruleset = DynamicsRuleset::Classic;
     std::vector<LobbyCharacterSlot> team_list;
 
     bool operator==(const LobbySaveDataEquivalent&) const = default;

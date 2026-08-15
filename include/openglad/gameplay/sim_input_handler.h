@@ -19,6 +19,11 @@ class GameWorld;
 
 namespace og::sim {
 class SimEventLog;
+
+// Modern Yell breakaway tuning. Keep these named: they are deliberately
+// small, playtest-facing values rather than family balance data.
+inline constexpr int kBreakawayWalkTicks = 4;
+inline constexpr float kBreakawayRecoveryTicks = 4.0f;
 }
 
 // Result of processing one player's input through the sim layer.

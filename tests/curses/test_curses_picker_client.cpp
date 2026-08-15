@@ -62,6 +62,35 @@ using og::ui::TextPickerConfig;
 
 namespace {
 
+class ScopedDynamicsPreference
+{
+public:
+    explicit ScopedDynamicsPreference(og::sim::DynamicsRuleset ruleset)
+    {
+        const auto category = cfg.data.find("gameplay");
+        if (category != cfg.data.end())
+        {
+            const auto setting = category->second.find("dynamics");
+            if (setting != category->second.end())
+                previous_ = setting->second;
+        }
+        cfg.set_dynamics_ruleset_preference(ruleset);
+    }
+
+    ~ScopedDynamicsPreference()
+    {
+        if (previous_)
+            cfg.apply_setting("gameplay", "dynamics", *previous_);
+        else if (auto category = cfg.data.find("gameplay");
+                 category != cfg.data.end())
+            category->second.erase("dynamics");
+        (void)cfg.save_settings();
+    }
+
+private:
+    std::optional<std::string> previous_;
+};
+
 // Bundles the terminal/clock/config + client so each test reads compactly.
 // A generous 40x100 grid leaves room for every menu the picker draws.
 struct PickerFixture {
@@ -2509,6 +2538,47 @@ TEST(CursesPickerClient, infinite_gold_toggles)
     EXPECT_NE(f.t().dump().find("Infinite Gold: Off"), std::string::npos);
 }
 
+TEST(CursesPickerClient, dynamics_ruleset_toggles_and_persists_preference)
+{
+    ScopedDynamicsPreference preference(og::sim::DynamicsRuleset::Modern);
+    PickerFixture f;
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::Difficulty, PickerMenuCommand::ToggleDynamicsRuleset);
+    ASSERT_NE(item, nullptr);
+    ASSERT_EQ(og::sim::DynamicsRuleset::Modern,
+              f.save().dynamics_ruleset);
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Difficulty, *item);
+    EXPECT_EQ(og::sim::DynamicsRuleset::Classic,
+              f.save().dynamics_ruleset);
+    EXPECT_EQ(og::sim::DynamicsRuleset::Classic,
+              cfg.dynamics_ruleset_preference());
+    EXPECT_NE(f.t().dump().find("Classic Pace"), std::string::npos);
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Difficulty, *item);
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+              f.save().dynamics_ruleset);
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+              cfg.dynamics_ruleset_preference());
+    EXPECT_NE(f.t().dump().find("Modern Pace"), std::string::npos);
+}
+
+TEST(CursesPickerClient, true_new_game_reseeds_local_dynamics_preference)
+{
+    ScopedDynamicsPreference preference(og::sim::DynamicsRuleset::Modern);
+    PickerFixture f;
+    // Model the authoritative host value a joiner just adopted. It must not
+    // become this machine's preference for the next genuinely new company.
+    f.save().dynamics_ruleset = og::sim::DynamicsRuleset::Classic;
+
+    f.t().push_special(KeyCode::Enter);
+    ASSERT_TRUE(f.client.prepare_new_game());
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+              f.save().dynamics_ruleset);
+}
+
 // The submenu rows render the live settings from options_/SaveData, and Esc
 // cancels to Back (like every non-Main menu).
 TEST(CursesPickerClient, difficulty_submenu_labels_format_from_save)
@@ -2519,6 +2589,7 @@ TEST(CursesPickerClient, difficulty_submenu_labels_format_from_save)
     f.save().keep_fallen_heroes = 1;
     f.save().generator_rate = 200;
     f.save().infinite_gold = 1;
+    f.save().dynamics_ruleset = og::sim::DynamicsRuleset::Classic;
 
     f.t().push_special(KeyCode::Escape);
     const auto* item = f.client.present_menu(PickerMenuId::Difficulty);
@@ -2533,6 +2604,7 @@ TEST(CursesPickerClient, difficulty_submenu_labels_format_from_save)
     EXPECT_NE(dump.find("Permadeath: Off"), std::string::npos) << dump;
     EXPECT_NE(dump.find("Generators: Frenzy"), std::string::npos) << dump;
     EXPECT_NE(dump.find("Infinite Gold: On"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("Classic Pace"), std::string::npos) << dump;
 }
 
 // run_picker reaches the nested Difficulty submenu from the Main menu door and

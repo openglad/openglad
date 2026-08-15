@@ -2,6 +2,7 @@
 
 #include <openglad/resources/gparser.h> // cfg
 #include <openglad/legacy/base.h> // myscreen
+#include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h> // theprefs
 
 #include <algorithm>
@@ -12,6 +13,29 @@
 #include <vector>
 
 #include <gtest/gtest.h>
+
+namespace {
+
+class ScopedCfgMaps
+{
+public:
+    ScopedCfgMaps()
+        : data_(cfg.data), overrides_(cfg.overrides)
+    {
+    }
+
+    ~ScopedCfgMaps()
+    {
+        cfg.data = std::move(data_);
+        cfg.overrides = std::move(overrides_);
+    }
+
+private:
+    decltype(cfg.data) data_;
+    decltype(cfg.overrides) overrides_;
+};
+
+} // namespace
 
 TEST(SessionRaii, game_session_headless_restores_legacy_globals)
 {
@@ -142,6 +166,27 @@ TEST(SessionRaii, game_session_cfg_accessible)
     // Verify the global cfg_store is always accessible (no session indirection needed).
     // cfg is a global object declared in gparser.h.
     (void)cfg; // Just verify it's accessible
+}
+
+TEST(SessionRaii, game_session_seeds_save_and_world_from_dynamics_preference)
+{
+    ScopedCfgMaps restore_cfg;
+    cfg.overrides["gameplay"].erase("dynamics");
+
+    og::runtime::GameSession::Config session_cfg;
+    session_cfg.create_display = false;
+    session_cfg.install_legacy_globals = false;
+
+    for (const og::sim::DynamicsRuleset expected : {
+             og::sim::DynamicsRuleset::Classic,
+             og::sim::DynamicsRuleset::Modern})
+    {
+        cfg.set_dynamics_ruleset_preference(expected);
+        og::runtime::GameSession session(session_cfg);
+        ASSERT_NE(nullptr, session.myscreen_);
+        EXPECT_EQ(expected, session.myscreen_->save_data.dynamics_ruleset);
+        EXPECT_EQ(expected, session.myscreen_->world().dynamics_ruleset);
+    }
 }
 
 TEST(SessionRaii, session_accessors_and_base_transport_state_report_owned_values)

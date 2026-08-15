@@ -1627,6 +1627,7 @@ TEST(PickerCommon, reset_for_new_game_sets_gold)
     SaveData save;
     save.totalcash = 0;
     save.m_totalcash[0] = 0;
+    save.dynamics_ruleset = og::sim::DynamicsRuleset::Classic;
 
     og::ui::reset_for_new_game(save);
 
@@ -1634,6 +1635,10 @@ TEST(PickerCommon, reset_for_new_game_sets_gold)
     ASSERT_TRUE(save.m_totalcash[0] == 5000);
     // totalcash is now also set by reset_for_new_game
     ASSERT_TRUE(save.totalcash == og::ui::kNewGameStartingGold);
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern, save.dynamics_ruleset);
+
+    og::ui::reset_for_new_game(save, og::sim::DynamicsRuleset::Classic);
+    EXPECT_EQ(og::sim::DynamicsRuleset::Classic, save.dynamics_ruleset);
 }
 
 // --- CTF scenario-troops toggle & label ---
@@ -2689,6 +2694,35 @@ TEST(PickerCommon, format_infinite_gold_label)
     EXPECT_LE(og::ui::format_infinite_gold_label(save).size(), 23u);
 }
 
+TEST(PickerCommon, toggle_dynamics_ruleset_round_trips_and_normalizes)
+{
+    SaveData save;
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern, save.dynamics_ruleset)
+        << "fresh frontend carriers default to Modern";
+
+    og::ui::toggle_dynamics_ruleset(save);
+    EXPECT_EQ(og::sim::DynamicsRuleset::Classic, save.dynamics_ruleset);
+    og::ui::toggle_dynamics_ruleset(save);
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern, save.dynamics_ruleset);
+
+    save.dynamics_ruleset = static_cast<og::sim::DynamicsRuleset>(9);
+    og::ui::toggle_dynamics_ruleset(save);
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern, save.dynamics_ruleset)
+        << "an invalid carrier value normalizes to the fresh-session default";
+}
+
+TEST(PickerCommon, format_dynamics_ruleset_label_is_exact_and_compact)
+{
+    SaveData save;
+    save.dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
+    EXPECT_EQ("Modern Pace", og::ui::format_dynamics_ruleset_label(save));
+    EXPECT_EQ(11u, og::ui::format_dynamics_ruleset_label(save).size());
+
+    save.dynamics_ruleset = og::sim::DynamicsRuleset::Classic;
+    EXPECT_EQ("Classic Pace", og::ui::format_dynamics_ruleset_label(save));
+    EXPECT_EQ(12u, og::ui::format_dynamics_ruleset_label(save).size());
+}
+
 TEST(PickerCommon, can_afford_and_format_wallet_amount)
 {
     SaveData save;
@@ -2850,6 +2884,13 @@ TEST(PickerCommon, difficulty_submenu_labels_fit_140px_rows)
     {
         save.infinite_gold = gold;
         labels.push_back(og::ui::format_infinite_gold_label(save));
+    }
+    for (og::sim::DynamicsRuleset ruleset :
+         {og::sim::DynamicsRuleset::Classic,
+          og::sim::DynamicsRuleset::Modern})
+    {
+        save.dynamics_ruleset = ruleset;
+        labels.push_back(og::ui::format_dynamics_ruleset_label(save));
     }
     for (int difficulty : {0, 1, 2})
         labels.push_back(og::ui::format_difficulty_label(difficulty));

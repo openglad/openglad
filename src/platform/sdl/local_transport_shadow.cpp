@@ -721,6 +721,7 @@ void apply_initial_setup_to_client_save(
     gameplay_screen.save_data.my_team = static_cast<short>(message.my_team);
     gameplay_screen.save_data.allied_mode =
         static_cast<short>(message.allied_mode);
+    gameplay_screen.save_data.dynamics_ruleset = message.dynamics_ruleset;
 
     std::set<int>& completed =
         gameplay_screen.save_data
@@ -2143,12 +2144,16 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
         {
             return;
         }
-        // cross_control is SESSION-only (never serialized), so the slot
-        // round-trip through disk just dropped it — carry the lobby-config
-        // value from the display save (the same dropped-field trap
+        // These settings are SESSION-only (never serialized), so the slot
+        // round-trip through disk just dropped them — carry the live launch
+        // values from the display save (the same dropped-field trap
         // copy_headless_server_save_data guards against on the headless path).
         server_screen->save_data.cross_control =
             gameplay_screen.save_data.cross_control;
+        server_screen->save_data.infinite_gold =
+            gameplay_screen.save_data.infinite_gold;
+        server_screen->save_data.dynamics_ruleset =
+            gameplay_screen.save_data.dynamics_ruleset;
         prepare_server_session_for_gameplay(*runtime->server_session);
         og::sim::apply_snapshot(
             server_screen->world(),
@@ -2420,10 +2425,14 @@ void reset_network_host_transport_shadow(
         {
             return;
         }
-        // Session-only cross_control dropped by the disk round-trip — carry
-        // it (see reset_local_transport_shadow above).
+        // Session-only rules dropped by the disk round-trip — carry every one
+        // (see reset_local_transport_shadow above).
         server_screen->save_data.cross_control =
             gameplay_screen.save_data.cross_control;
+        server_screen->save_data.infinite_gold =
+            gameplay_screen.save_data.infinite_gold;
+        server_screen->save_data.dynamics_ruleset =
+            gameplay_screen.save_data.dynamics_ruleset;
 
         prepare_server_session_for_gameplay(*runtime->server_session);
         og::sim::apply_snapshot(

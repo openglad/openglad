@@ -5,6 +5,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/core/irandom.h>
 #include <openglad/legacy/base.h>
 #include <memory>
@@ -25,6 +26,9 @@
 #include <openglad/interface/level_render.h>
 #include <openglad/core/constants.h>
 #include "test_gameplay_context_scope.h"
+#include "test_save_state_guard.h"
+
+void replace_loaded_world_state(LevelRuntimeData* level, GameWorld& loaded_world);
 
 // --- From test_level_data_coverage_push.cpp ---
 namespace detail_level_data_coverage_push {
@@ -986,6 +990,73 @@ TEST(LevelDataUnit, level_data_r15_ctor_hooks_add_paths_and_clear)
 
 // --- From test_level_data_r16.cpp ---
 namespace detail_level_data_r16 {
+TEST(LevelDataUnit,
+     level_data_r16_loaded_world_preserves_session_rules_and_carries_level_state)
+{
+    LevelRuntimeData level(9509, true);
+    GameWorld& destination = level.world();
+    destination.dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
+    destination.keep_fallen_heroes = 1;
+    destination.control_policy = og::sim::kControlPolicyOwnerLocked;
+    destination.player_machine.fill(og::sim::kPlayerMachineNone);
+    destination.player_machine[3] =
+        og::sim::encode_player_machine(2, true);
+
+    GameWorld loaded;
+    loaded.allied_mode = 1;
+    loaded.ctf_requested_team_count = 4;
+    loaded.ctf_requested_capture_limit = 7;
+    loaded.ctf_requested_respawn_ticks = 900;
+    loaded.ctf_requested_strip_scenario_troops = 3;
+    loaded.respawn_mode = 2;
+    loaded.generator_rate = 50;
+
+    replace_loaded_world_state(&level, loaded);
+
+    EXPECT_EQ(1, destination.allied_mode);
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+              destination.dynamics_ruleset)
+        << "a level-file scratch world cannot replace the session ruleset";
+    EXPECT_EQ(4, destination.ctf_requested_team_count);
+    EXPECT_EQ(7, destination.ctf_requested_capture_limit);
+    EXPECT_EQ(900, destination.ctf_requested_respawn_ticks);
+    EXPECT_EQ(3, destination.ctf_requested_strip_scenario_troops);
+    EXPECT_EQ(2, destination.respawn_mode);
+    EXPECT_EQ(50, destination.generator_rate);
+    EXPECT_EQ(1, destination.keep_fallen_heroes)
+        << "a level-file scratch world cannot replace roster persistence";
+    EXPECT_EQ(og::sim::kControlPolicyOwnerLocked,
+              destination.control_policy)
+        << "a level file cannot replace the installed session policy";
+    EXPECT_EQ(og::sim::encode_player_machine(2, true),
+              destination.player_machine[3]);
+}
+
+TEST(LevelDataUnit,
+     level_data_r16_file_load_preserves_unserialized_session_rules)
+{
+    og::test::ScopedCampaignMountState restore_mount;
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+
+    LevelRuntimeData level(1, true);
+    SaveData save;
+    std::int32_t freeze = 0;
+    og::sim::SimEventLog events;
+    FixedRandom rng{0};
+    ScopedGameplayContext gameplay(level, save, events, cfg);
+    level.set_sim_context(&save, &freeze, &events, &rng, &cfg);
+    level.world().dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
+    level.world().keep_fallen_heroes = 1;
+
+    ASSERT_TRUE(level.load());
+
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+              level.world().dynamics_ruleset);
+    EXPECT_EQ(1, level.world().keep_fallen_heroes);
+}
+
 TEST(LevelDataUnit, level_data_r16_external_world_teardown_detaches_level)
 {
     LevelRuntimeData level(9510, true);
@@ -995,12 +1066,25 @@ TEST(LevelDataUnit, level_data_r16_external_world_teardown_detaches_level)
     FixedRandom rng{0};
     level.create_new_grid();
     level.set_sim_context(&save, &freeze, &events, &rng, &cfg);
+    level.world().dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
+    level.world().keep_fallen_heroes = 1;
+    level.world().control_policy = og::sim::kControlPolicyOwnerLocked;
+    level.world().player_machine.fill(og::sim::kPlayerMachineNone);
+    level.world().player_machine[5] =
+        og::sim::encode_player_machine(1, true);
 
     {
         GameWorld external_world;
         level.attach_world(&external_world);
         ASSERT_TRUE(&level.world() == &external_world);
         ASSERT_TRUE(static_cast<bool>(external_world.entity_factory));
+        EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+                  external_world.dynamics_ruleset);
+        EXPECT_EQ(1, external_world.keep_fallen_heroes);
+        EXPECT_EQ(og::sim::kControlPolicyOwnerLocked,
+                  external_world.control_policy);
+        EXPECT_EQ(og::sim::encode_player_machine(1, true),
+                  external_world.player_machine[5]);
 
         walker* spawned = level.add_ob(Order::Living, FAMILY_SOLDIER);
         ASSERT_TRUE(spawned != nullptr);
@@ -1011,6 +1095,13 @@ TEST(LevelDataUnit, level_data_r16_external_world_teardown_detaches_level)
     ASSERT_TRUE(static_cast<bool>(level.world().entity_factory));
     ASSERT_TRUE(level.numobs == 1);
     ASSERT_TRUE(level.world().oblist.size() == 1);
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+              level.world().dynamics_ruleset);
+    EXPECT_EQ(1, level.world().keep_fallen_heroes);
+    EXPECT_EQ(og::sim::kControlPolicyOwnerLocked,
+              level.world().control_policy);
+    EXPECT_EQ(og::sim::encode_player_machine(1, true),
+              level.world().player_machine[5]);
 
     walker* spawned2 = level.add_ob(Order::Living, FAMILY_ARCHER);
     ASSERT_TRUE(spawned2 != nullptr);

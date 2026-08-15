@@ -30,6 +30,7 @@
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/company.h>
+#include <openglad/resources/gparser.h>
 
 #include "picker_sdl_defs.h"
 
@@ -63,7 +64,8 @@ bool picker_prepare_new_game_setup()
     // Reset the save data so we have a fresh, new team: a new game always
     // starts on the default campaign, so the mounted package must not be
     // whatever campaign the previous session or match left selected.
-	og::ui::reset_for_new_game(game->save_data);
+	og::ui::reset_for_new_game(game->save_data,
+                                   cfg.dynamics_ruleset_preference());
 
     // §2.2: the display name lives in the 40-byte save_name; the filename is a
     // derived, collision-probed slug (SaveData::reset does not touch

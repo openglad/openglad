@@ -124,7 +124,11 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 // sanitized to {0,1}), appended after infinite_gold — the lobby's
 // shared-teams rule now rides the wire instead of comparing campaign ids.
 // Replay format moves to v14.
-inline constexpr std::uint8_t kNetworkProtocolVersion = 12;
+// v13: modern gameplay dynamics (issue #205). LobbySettings and InitialSetup
+// append a DynamicsRuleset byte; WorldSnapshot appends the same
+// host-authoritative byte and moves to snapshot format v11. Replay format
+// moves to v15 and records the ruleset in both its header and initial snapshot.
+inline constexpr std::uint8_t kNetworkProtocolVersion = 13;
 
 // Global networked player-index cap (seats across ALL peers). Distinct from
 // MAX_PLAYERS, which stays 4 and caps the seats of ONE machine (input slots,
@@ -248,6 +252,7 @@ struct InitialSetupMessage {
     std::int16_t current_scenario = 0;
     std::int16_t respawn_mode = 0;
     std::int16_t generator_rate = 0;
+    DynamicsRuleset dynamics_ruleset = DynamicsRuleset::Classic;
     std::vector<InitialSetupGuyData> guys;
     std::vector<std::int32_t> completed_levels;
     // Keyed by GLOBAL player index (u8-count-prefixed on the wire).

@@ -41,6 +41,7 @@
 #include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/gloader.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/save_data.h>
@@ -777,6 +778,7 @@ CursesPickerClient::CursesPickerClient(ITerminal& term, IClock& clock,
                                        const CursesPickerOptions& options)
     : term_(term), clock_(clock), config_(config), options_(options)
 {
+    save_data_.dynamics_ruleset = cfg.dynamics_ruleset_preference();
     // Match TextPickerClient: guarantee a starting team exists immediately.
     if (config_.team_families.empty())
         config_.team_families.push_back(FAMILY_SOLDIER);
@@ -967,6 +969,15 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
             menu.show_text("Infinite Gold",
                 {og::ui::format_infinite_gold_label(save_data_)});
             break;
+        case PickerMenuCommand::ToggleDynamicsRuleset:
+            // SESSION-ONLY in GTL; cfg remembers this machine's preference.
+            // Joiners never reach this host-gated action in a live lobby.
+            og::ui::toggle_dynamics_ruleset(save_data_);
+            cfg.set_dynamics_ruleset_preference(save_data_.dynamics_ruleset);
+            cfg.save_settings();
+            menu.show_text("Dynamics",
+                {og::ui::format_dynamics_ruleset_label(save_data_)});
+            break;
         default:
             break;
         }
@@ -1087,7 +1098,8 @@ bool CursesPickerClient::prepare_new_game()
         break;
     }
 
-    og::ui::reset_for_new_game(save_data_);
+    og::ui::reset_for_new_game(save_data_,
+                               cfg.dynamics_ruleset_preference());
     og::ui::ensure_team_populated(save_data_);
     // The display name lives in the 40-byte save_name; the filename stays this
     // client's own slot (config_.save_name, [SAVE-R2]).

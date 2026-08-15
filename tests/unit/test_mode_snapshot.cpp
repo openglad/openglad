@@ -1,4 +1,5 @@
-// Mode snapshot replication (snapshot v10): capture/apply round trips, wire
+// Mode snapshot replication (snapshot v11; mode block introduced in v10):
+// capture/apply round trips, wire
 // serialization in keyframe and delta form, hostile-input count caps and
 // text-termination hardening, and the snapshot-restore equivalence proof
 // that the replicated RespawnState + ModeState blocks are the complete

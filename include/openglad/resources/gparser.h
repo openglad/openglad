@@ -16,6 +16,8 @@
  */
 #pragma once
 
+#include <openglad/gameplay/dynamics_ruleset.h>
+
 #include <string>
 #include <map>
 
@@ -41,6 +43,12 @@ public:
     // persisted config.
     void apply_override(const std::string& category, const std::string& setting, const std::string& value);
     std::string get_setting(const std::string& category, const std::string& setting);
+
+    // Local preference that seeds a newly created match. The live match uses
+    // the host-authoritative LobbySettings/GameWorld value instead. Unknown
+    // and absent values normalize to the fresh-session default, Modern.
+    [[nodiscard]] og::sim::DynamicsRuleset dynamics_ruleset_preference();
+    void set_dynamics_ruleset_preference(og::sim::DynamicsRuleset ruleset);
 	bool is_on(const std::string& category, const std::string& setting);
 
 	// Persisted settings. save_settings() serializes exactly this map.
@@ -51,4 +59,3 @@ public:
 
 // Global cfg_store instance, owned at file scope in data/gparser.cpp.
 extern cfg_store cfg;
-

@@ -480,6 +480,7 @@ TEST(MenuSpec, difficulty_menu_model_labels_pin_the_default_screen)
         "Permadeath: On",
         "Generators: Normal",
         "Infinite Gold: Off",
+        "Modern Pace",
         "Back",
     };
     EXPECT_EQ(expected, labels);

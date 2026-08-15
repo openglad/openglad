@@ -227,6 +227,8 @@ og::sim::LobbyState make_lobby_state_for_test()
     state.settings.infinite_gold = 1;
     // v12: versus-campaign shared-teams flag (the thirteenth i16).
     state.settings.shared_teams = 1;
+    // v13: host-authoritative gameplay dynamics byte.
+    state.settings.dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
     state.host_player_id = 1u;
     state.last_start_denial =
         og::sim::start_denial_reason_value(
@@ -256,7 +258,7 @@ TEST(NetTransport, header_helpers_roundtrip_envelope)
     std::vector<std::uint8_t> bytes;
     og::sim::append_transport_header(bytes, og::sim::kHelloMessageType, 0x2211u);
 
-    const std::vector<std::uint8_t> expected = {0x0c, 0x01, 0x11, 0x22};
+    const std::vector<std::uint8_t> expected = {0x0d, 0x01, 0x11, 0x22};
     EXPECT_EQ(expected, bytes);
 
     og::sim::TransportEnvelope envelope;
@@ -315,6 +317,7 @@ TEST(NetTransport, initial_setup_full_roundtrip_and_decode_received_message)
     expected.my_team = 1;
     expected.allied_mode = 0;
     expected.respawn_mode = 3;
+    expected.dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
     expected.current_scenario = 6;
     expected.guys.push_back(make_initial_setup_guy_for_test());
     expected.completed_levels = {1, 2, 3};
@@ -334,6 +337,30 @@ TEST(NetTransport, initial_setup_full_roundtrip_and_decode_received_message)
     EXPECT_EQ(og::sim::TypedReceivedMessageKind::InitialSetup, typed.kind);
     ASSERT_NE(nullptr, typed.initial_setup);
     EXPECT_EQ(expected, *typed.initial_setup);
+}
+
+TEST(NetTransport, dynamics_ruleset_wire_values_are_bounded)
+{
+    EXPECT_EQ(og::sim::DynamicsRuleset::Classic,
+              og::sim::dynamics_ruleset_from_value(0));
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+              og::sim::dynamics_ruleset_from_value(1));
+    EXPECT_EQ(og::sim::DynamicsRuleset::Classic,
+              og::sim::dynamics_ruleset_from_value(2));
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+              og::sim::dynamics_ruleset_from_value(
+                  0xff, og::sim::DynamicsRuleset::Modern));
+
+    auto bytes = og::sim::serialize_initial_setup_message(
+        og::sim::InitialSetupMessage{});
+    // Empty InitialSetup's appended dynamics byte directly precedes the guy
+    // count at offset 38 (including the four-byte transport header).
+    ASSERT_EQ(111u, bytes.size());
+    bytes[37] = 0xffu;
+    const auto decoded = og::sim::deserialize_initial_setup_message(bytes);
+    ASSERT_TRUE(decoded.has_value());
+    EXPECT_EQ(og::sim::DynamicsRuleset::Classic,
+              decoded->dynamics_ruleset);
 }
 
 TEST(NetTransport, lobby_message_variants_roundtrip_and_decode)
@@ -443,6 +470,48 @@ TEST(NetTransport, lobby_state_roundtrip_and_decode_received_message)
     EXPECT_EQ(expected, *typed.lobby_state);
 }
 
+TEST(NetTransport,
+     dynamics_ruleset_validation_distinguishes_requests_from_authority)
+{
+    og::sim::LobbySettings invalid_settings;
+    invalid_settings.dynamics_ruleset =
+        static_cast<og::sim::DynamicsRuleset>(0xffu);
+    const og::sim::LobbyMessage request{
+        .payload = og::sim::LobbySettingsChangeMessage{
+            .player_index = 1u,
+            .settings = std::move(invalid_settings),
+        },
+    };
+    const auto request_bytes = og::sim::serialize_lobby_message(request);
+    const auto decoded_request =
+        og::sim::deserialize_lobby_message(request_bytes);
+    ASSERT_TRUE(decoded_request.has_value());
+    const auto& settings_change =
+        std::get<og::sim::LobbySettingsChangeMessage>(
+            decoded_request->payload);
+    EXPECT_EQ(0xffu,
+              og::sim::dynamics_ruleset_value(
+                  settings_change.settings.dynamics_ruleset))
+        << "LobbyServer must receive the raw request value to apply its "
+           "current-setting fallback";
+
+    auto authoritative_bytes =
+        og::sim::serialize_lobby_state_message(og::sim::LobbyState{});
+    // Empty LobbyState wire layout (protocol v13): the dynamics byte is the
+    // last byte of the 32-byte settings payload, after the 4-byte envelope.
+    ASSERT_EQ(52u, authoritative_bytes.size());
+    ASSERT_EQ(0u, authoritative_bytes[35]);
+    authoritative_bytes[35] = 0xffu;
+    EXPECT_FALSE(
+        og::sim::deserialize_lobby_state_message(authoritative_bytes)
+            .has_value());
+    EXPECT_EQ(
+        og::sim::TypedReceivedMessageKind::Malformed,
+        og::sim::decode_received_message(
+            {.peer_id = 9u, .data = authoritative_bytes})
+            .kind);
+}
+
 TEST(NetTransport, lobby_remove_seat_rejects_truncated_stable_token)
 {
     og::sim::LobbyMessage message;
@@ -482,6 +551,9 @@ TEST(NetTransport, v8_deploy_company_cross_control_and_denial_fields_round_trip)
         << "protocol v11 appends infinite_gold after cross_control";
     EXPECT_EQ(1, decoded_state->settings.shared_teams)
         << "protocol v12 appends shared_teams after infinite_gold";
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+              decoded_state->settings.dynamics_ruleset)
+        << "protocol v13 appends gameplay dynamics after shared_teams";
     EXPECT_EQ(og::sim::start_denial_reason_value(
                   og::sim::StartDenialReason::MachinesNotReady),
               decoded_state->last_start_denial);
@@ -980,8 +1052,8 @@ TEST(NetTransport, serialize_hello_emits_expected_wire_format)
 
     constexpr std::array<std::uint8_t, og::sim::kSerializedHelloMessageSize>
         expected = {
-            0x0c, 0x01, 0x17, 0x00,
-            0x0c, 0x0c, 0x03,
+            0x0d, 0x01, 0x17, 0x00,
+            0x0d, 0x0d, 0x03,
             0x00, 0x01, 0x02, 0x03,
             0x04, 0x05, 0x06, 0x07,
             0x08, 0x09, 0x0a, 0x0b,
@@ -1035,13 +1107,13 @@ TEST(NetTransport, deserialize_initial_setup_rejects_oversized_counts)
         og::sim::InitialSetupMessage{});
 
     auto oversized_guy_count = std::vector<std::uint8_t>(bytes.begin(), bytes.end());
-    write_u32_le(oversized_guy_count, 37, 0xffffffffu);
+    write_u32_le(oversized_guy_count, 38, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_initial_setup_message(oversized_guy_count)
             .has_value());
 
     auto oversized_level_count = std::vector<std::uint8_t>(bytes.begin(), bytes.end());
-    write_u32_le(oversized_level_count, 41, 0xffffffffu);
+    write_u32_le(oversized_level_count, 42, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_initial_setup_message(oversized_level_count)
             .has_value());
@@ -2225,6 +2297,7 @@ TEST(NetTransport, game_server_broadcast_current_state_uses_raw_fallback)
     fixture.world().tick_count_ = 3u;
     fixture.world().my_team = 2;
     fixture.world().current_palette_id = 1;
+    fixture.world().dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
 
     server.broadcast_current_state(og::sim::SnapshotCaptureMode::Peek,
                                    og::sim::EventDeliveryMode::Skip);
@@ -2249,6 +2322,8 @@ TEST(NetTransport, game_server_broadcast_current_state_uses_raw_fallback)
     ASSERT_TRUE(initial_setup.has_value());
     EXPECT_EQ(2, initial_setup->my_team);
     EXPECT_EQ(fixture.world().id, initial_setup->level_id);
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+              initial_setup->dynamics_ruleset);
 
     ASSERT_TRUE(og::sim::decode_transport_envelope(
         transport.sent_messages()[1].data,
@@ -2737,11 +2812,11 @@ TEST(NetTransport, lobby_state_and_messages_roundtrip)
 TEST(NetTransport,
      deserialize_lobby_messages_rejects_unknown_kinds_and_oversized_counts)
 {
-    // Wire layout of an empty LobbyState (protocol v12): 4-byte transport
+    // Wire layout of an empty LobbyState (protocol v13): 4-byte transport
     // header, then the settings block (4-byte empty campaign string + 13 i16
-    // fields and the authored-team-mask u8 = 31 bytes), then the 1-byte host
+    // fields, authored-team-mask u8, and dynamics u8 = 32 bytes), then the 1-byte host
     // player id, 1-byte last_start_denial echo, and u32 request correlation —
-    // so player-count sits at offset 41. A trailing u8 local-seat-id count
+    // so player-count sits at offset 42. A trailing u8 local-seat-id count
     // follows the players, then a u32 recipient-specific Join acknowledgement
     // and a bool recipient-host flag.
     const auto empty_state_bytes =
@@ -2749,7 +2824,7 @@ TEST(NetTransport,
     auto oversized_player_count =
         std::vector<std::uint8_t>(empty_state_bytes.begin(),
                                   empty_state_bytes.end());
-    write_u32_le(oversized_player_count, 41, 0xffffffffu);
+    write_u32_le(oversized_player_count, 42, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_lobby_state_message(oversized_player_count)
             .has_value());
@@ -2802,9 +2877,9 @@ TEST(NetTransport,
                                   player_state_bytes.end());
     // First player record (v9): index u8 + seat-id u32 + machine-id u32 +
     // empty-name u32 + empty-company u32 + team i16 + ready/host bools =
-    // 21 bytes after the player-count u32 at 41 (v12 settings block), putting
-    // its slot-count u32 at 66.
-    write_u32_le(oversized_slot_count, 66, 0xffffffffu);
+    // 21 bytes after the player-count u32 at 42 (v13 settings block), putting
+    // its slot-count u32 at 67.
+    write_u32_le(oversized_slot_count, 67, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_lobby_state_message(oversized_slot_count)
             .has_value());
@@ -2827,6 +2902,7 @@ TEST(NetTransport, game_client_dispatches_callbacks_for_runtime_state)
     ASSERT_NE(nullptr, second);
     first->setxy(32, 32);
     second->setxy(48, 48);
+    fixture.world().dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
 
     og::sim::InitialSetupMessage initial_setup;
     initial_setup.level_id = fixture.world().id;
@@ -2839,6 +2915,7 @@ TEST(NetTransport, game_client_dispatches_callbacks_for_runtime_state)
     initial_setup.pixmaxy = fixture.world().pixmaxy;
     initial_setup.my_team = fixture.world().my_team;
     initial_setup.allied_mode = fixture.world().allied_mode;
+    initial_setup.dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
     initial_setup.current_scenario = fixture.world().current_scenario;
     initial_setup.controlled_entity_ids = {
         first->entity_id(), 0u, 0u, 0u};
@@ -2898,6 +2975,7 @@ TEST(NetTransport, game_client_dispatches_callbacks_for_runtime_state)
 
     og::sim::GameClient client(transport, 7u, &fixture.world());
     std::vector<bool> initial_setup_transition_flags;
+    std::vector<og::sim::DynamicsRuleset> initial_setup_applied_rulesets;
     std::vector<std::uint32_t> mapped_entity_ids;
     std::vector<std::uint32_t> resolved_entity_ids;
     std::vector<std::uint8_t> synced_palette_ids;
@@ -2909,6 +2987,8 @@ TEST(NetTransport, game_client_dispatches_callbacks_for_runtime_state)
     client.set_initial_setup_callback(
         [&](const og::sim::InitialSetupMessage&, bool is_level_transition) {
             initial_setup_transition_flags.push_back(is_level_transition);
+            initial_setup_applied_rulesets.push_back(
+                fixture.world().dynamics_ruleset);
         });
     client.set_control_mapping_callback(
         [&](const og::sim::ControlledEntityIds& controlled_entity_ids,
@@ -2946,7 +3026,13 @@ TEST(NetTransport, game_client_dispatches_callbacks_for_runtime_state)
 
     ASSERT_TRUE(client.baseline().has_value());
     EXPECT_EQ(1u, client.baseline()->tick_count);
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+              fixture.world().dynamics_ruleset);
     ASSERT_EQ((std::vector<bool>{false}), initial_setup_transition_flags);
+    ASSERT_EQ((std::vector<og::sim::DynamicsRuleset>{
+                  og::sim::DynamicsRuleset::Modern}),
+              initial_setup_applied_rulesets)
+        << "InitialSetup must install dynamics before its callback and snapshot";
     ASSERT_GE(mapped_entity_ids.size(), 2u);
     EXPECT_EQ(second->entity_id(), mapped_entity_ids.back());
     EXPECT_EQ(second->entity_id(), resolved_entity_ids.back());

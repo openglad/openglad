@@ -207,13 +207,20 @@ std::string infinite_gold_row_label(const MenuLabelContext& context)
         : std::string("Infinite Gold: Off");
 }
 
+std::string dynamics_ruleset_row_label(const MenuLabelContext& context)
+{
+    return context.save != nullptr
+        ? format_dynamics_ruleset_label(*context.save)
+        : std::string("Modern Pace");
+}
+
 constexpr GateBinding kHostOnlyGate{.gate = MenuGate::HostOnly};
 
 constexpr MenuButtonSpec kDifficultyRows[] = {
     {.id = "difficulty_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 10, .y = 10, .w = 50, .h = 15,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 5, .down = 1}},
+     .nav = {.up = 7, .down = 1}},
     {.id = "difficulty", .label = "Difficulty: Battle",
      .x = 90, .y = 35, .w = 140, .h = 15,
      .action = ButtonAction::SetDifficulty, .arg = -1,
@@ -247,8 +254,14 @@ constexpr MenuButtonSpec kDifficultyRows[] = {
     {.id = "infinite_gold", .label = "Infinite Gold: Off",
      .x = 90, .y = 150, .w = 140, .h = 15,
      .action = ButtonAction::ToggleInfiniteGold, .arg = -1,
-     .nav = {.up = 5, .down = 0},
+     .nav = {.up = 5, .down = 7},
      .label_binding = {.formatter = &infinite_gold_row_label},
+     .gate = kHostOnlyGate},
+    {.id = "dynamics", .label = "Modern Pace",
+     .x = 90, .y = 173, .w = 140, .h = 15,
+     .action = ButtonAction::ToggleDynamicsRuleset, .arg = -1,
+     .nav = {.up = 6, .down = 0},
+     .label_binding = {.formatter = &dynamics_ruleset_row_label},
      .gate = kHostOnlyGate},
 };
 

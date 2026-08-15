@@ -128,14 +128,15 @@ int curses_network_testing_exercise_internal_helpers()
     check(join_message.kind() == og::sim::LobbyMessageKind::Join &&
         settings_message.kind() == og::sim::LobbyMessageKind::SettingsChange);
 
-    // The settings message carries the difficulty-submenu match rules from
-    // the save: respawn mode/delay, permadeath, and the generator rate.
+    // The settings message carries every difficulty-submenu match rule from
+    // the save, including the session-only rules.
     save.ctf_respawn_ticks = 60;
     save.respawn_mode = 2;
     save.generator_rate = 50;
     save.keep_fallen_heroes = 1;
     save.cross_control = 1;
     save.infinite_gold = 1;
+    save.dynamics_ruleset = og::sim::DynamicsRuleset::Classic;
     const og::sim::LobbyMessage rules_message = make_settings_message(save, 5);
     const auto* rules = std::get_if<og::sim::LobbySettingsChangeMessage>(
         &rules_message.payload);
@@ -146,13 +147,16 @@ int curses_network_testing_exercise_internal_helpers()
         rules->settings.generator_rate == 50 &&
         rules->settings.keep_fallen_heroes == 1 &&
         rules->settings.cross_control == 1 &&
-        rules->settings.infinite_gold == 1);
+        rules->settings.infinite_gold == 1 &&
+        rules->settings.dynamics_ruleset ==
+            og::sim::DynamicsRuleset::Classic);
     save.ctf_respawn_ticks = 0;
     save.respawn_mode = 0;
     save.generator_rate = 0;
     save.keep_fallen_heroes = 0;
     save.cross_control = 0;
     save.infinite_gold = 0;
+    save.dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
 
     og::sim::LobbyState state;
     state.settings.campaign_id = "";
@@ -180,6 +184,8 @@ int curses_network_testing_exercise_internal_helpers()
     colliding_slots_state.settings.campaign_id =
         "gladiator";
     colliding_slots_state.settings.scenario_id = 1;
+    colliding_slots_state.settings.dynamics_ruleset =
+        og::sim::DynamicsRuleset::Classic;
     og::sim::LobbyPlayer colliding_player = player;
     colliding_player.player_index = 3;
     colliding_player.character_slots.clear();
@@ -197,7 +203,9 @@ int curses_network_testing_exercise_internal_helpers()
         colliding_equivalent.team_list[0].character.name == "first" &&
         colliding_equivalent.team_list[1].character.name == "second" &&
         colliding_equivalent.team_list[0].owner_player_index == 3 &&
-        colliding_equivalent.team_list[0].owner_save_slot == 7);
+        colliding_equivalent.team_list[0].owner_save_slot == 7 &&
+        colliding_equivalent.dynamics_ruleset ==
+            og::sim::DynamicsRuleset::Classic);
 
     // The wire roster is bounded by SaveData's real 24-slot capacity. Verify
     // that an oversized, otherwise valid roster is rejected rather than

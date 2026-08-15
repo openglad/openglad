@@ -147,6 +147,8 @@ struct PickerSaveStateGuard
     short keep_fallen_heroes = 0;
     short cross_control = 0;
     short infinite_gold = 0;
+    og::sim::DynamicsRuleset dynamics_ruleset =
+        og::sim::DynamicsRuleset::Modern;
     std::unique_ptr<guy> team_list[MAX_TEAM_SIZE];
 
     explicit PickerSaveStateGuard(SaveData& save_in)
@@ -163,6 +165,7 @@ struct PickerSaveStateGuard
         , keep_fallen_heroes(save.keep_fallen_heroes)
         , cross_control(save.cross_control)
         , infinite_gold(save.infinite_gold)
+        , dynamics_ruleset(save.dynamics_ruleset)
     {
         for (int i = 0; i < MAX_TEAM_SIZE; ++i)
             team_list[i] = std::move(save.team_list[static_cast<std::size_t>(i)]);
@@ -182,6 +185,7 @@ struct PickerSaveStateGuard
         save.keep_fallen_heroes = keep_fallen_heroes;
         save.cross_control = cross_control;
         save.infinite_gold = infinite_gold;
+        save.dynamics_ruleset = dynamics_ruleset;
         for (int i = 0; i < MAX_TEAM_SIZE; ++i)
             save.team_list[static_cast<std::size_t>(i)] = std::move(team_list[i]);
     }
@@ -1760,6 +1764,7 @@ TEST(PickerNetworkClient,
     PickerSaveStateGuard host_save_guard(host_save);
     PickerRuntimeGuard runtime_guard;
     prepare_single_member_network_save(host_save, 0, "Host");
+    host_save.dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
     g_start_game_requested = false;
 
     og::ui::PickerHostGameOptions host_options;
@@ -3003,9 +3008,24 @@ TEST(PickerNetworkClient,
     initial_setup.current_scenario = 1;
     initial_setup.my_team = 1;
     initial_setup.allied_mode = 0;
+    initial_setup.dynamics_ruleset = og::sim::DynamicsRuleset::Classic;
+    gameplay_screen->save_data.dynamics_ruleset =
+        og::sim::DynamicsRuleset::Modern;
+    gameplay_screen->world().dynamics_ruleset =
+        og::sim::DynamicsRuleset::Modern;
     server_transport->send_initial_setup(
         join_peer_id,
         std::make_shared<og::sim::InitialSetupMessage>(initial_setup));
+
+    ASSERT_TRUE(wait_until([&] {
+        og::runtime::local_transport_shadow_finish_tick(*active_game_session());
+        return gameplay_screen->save_data.dynamics_ruleset ==
+                   og::sim::DynamicsRuleset::Classic &&
+            gameplay_screen->world().dynamics_ruleset ==
+                   og::sim::DynamicsRuleset::Classic;
+    })) << "InitialSetup alone must replace the joiner's stale local dynamics "
+           "preference before any snapshot can mask the copy gap";
+
     og::sim::WorldSnapshot initial_snapshot =
         og::sim::capture_keyframe_snapshot(gameplay_screen->world());
     // The display world is reused across picker tests. Make this synthetic
@@ -3062,6 +3082,7 @@ TEST(PickerNetworkClient,
     next_setup.current_scenario = 2;
     next_setup.my_team = 1;
     next_setup.allied_mode = 0;
+    next_setup.dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
     server_transport->send_initial_setup(
         join_peer_id,
         std::make_shared<og::sim::InitialSetupMessage>(next_setup));
@@ -3069,7 +3090,11 @@ TEST(PickerNetworkClient,
     ASSERT_TRUE(wait_until([&] {
         og::runtime::local_transport_shadow_finish_tick(*active_game_session());
         return gameplay_screen->world().current_scenario == 2 &&
-            gameplay_screen->world().end == 0;
+            gameplay_screen->world().end == 0 &&
+            gameplay_screen->save_data.dynamics_ruleset ==
+                og::sim::DynamicsRuleset::Modern &&
+            gameplay_screen->world().dynamics_ruleset ==
+                og::sim::DynamicsRuleset::Modern;
     })) << "a later InitialSetup should revive the same client runtime";
     EXPECT_EQ(1, gameplay_screen->viewob[0]->my_team);
 
@@ -5049,6 +5074,8 @@ TEST(PickerNetworkClient, benched_slot_stays_out_of_level_and_cross_control_prop
         ~CrossControlRestore() { save.cross_control = prev; }
     } cross_control_restore{host_save, host_save.cross_control};
     host_save.cross_control = 1;
+    host_save.infinite_gold = 1;
+    host_save.dynamics_ruleset = og::sim::DynamicsRuleset::Classic;
     g_start_game_requested = false;
     set_game_speed(0.0f);
 
@@ -5120,8 +5147,8 @@ TEST(PickerNetworkClient, benched_slot_stays_out_of_level_and_cross_control_prop
     cleanup.join_client = join_client.get();
     ASSERT_NE(nullptr, cleanup.host_session);
 
-    // Converge, and require the joiner to have LEARNED cross_control=1 from
-    // the host's settings echo (§4.4 propagation; sanitize keeps {0,1}).
+    // Converge, and require the joiner to have learned every session-only
+    // rule from the host's settings echo.
     ASSERT_TRUE(wait_until([&] {
         host_client->poll_and_apply();
         bool join_converged = false;
@@ -5131,12 +5158,15 @@ TEST(PickerNetworkClient, benched_slot_stays_out_of_level_and_cross_control_prop
             join_converged = status_lines_contain_exact(
                                  join_client->status_lines(),
                                  "Lobby: 2 players") &&
-                join_session.myscreen_->save_data.cross_control == 1;
+                join_session.myscreen_->save_data.cross_control == 1 &&
+                join_session.myscreen_->save_data.infinite_gold == 1 &&
+                join_session.myscreen_->save_data.dynamics_ruleset ==
+                    og::sim::DynamicsRuleset::Classic;
         }
         return status_lines_contain_exact(host_client->status_lines(),
                                           "Lobby: 2 players") &&
             join_converged;
-    })) << "the joiner must converge AND adopt the host's cross_control=1";
+    })) << "the joiner must converge and adopt all host session rules";
 
     ASSERT_TRUE(host_save.save("save0"));
     ASSERT_TRUE(ready_up_joiners(*host_client,
@@ -5159,6 +5189,9 @@ TEST(PickerNetworkClient, benched_slot_stays_out_of_level_and_cross_control_prop
     ASSERT_EQ(3u, host_start_config->save_data.team_list.size())
         << "the benched slot must be filtered out of the game-start roster";
     EXPECT_EQ(1, host_start_config->save_data.cross_control);
+    EXPECT_EQ(1, host_start_config->save_data.infinite_gold);
+    EXPECT_EQ(og::sim::DynamicsRuleset::Classic,
+              host_start_config->save_data.dynamics_ruleset);
     {
         auto host_scope = cleanup.host_session->activate();
         ActivePickerLobbyClientGuard active_client(host_client.get());
@@ -5173,6 +5206,9 @@ TEST(PickerNetworkClient, benched_slot_stays_out_of_level_and_cross_control_prop
         ASSERT_EQ(3u, join_start_config->save_data.team_list.size())
             << "the joiner mirror must filter the benched slot identically";
         EXPECT_EQ(1, join_start_config->save_data.cross_control);
+        EXPECT_EQ(1, join_start_config->save_data.infinite_gold);
+        EXPECT_EQ(og::sim::DynamicsRuleset::Classic,
+                  join_start_config->save_data.dynamics_ruleset);
         ActivePickerLobbyClientGuard active_client(join_client.get());
         ready_screen_for_game_start(
             *join_session.myscreen_, &*join_start_config);
@@ -5223,6 +5259,11 @@ TEST(PickerNetworkClient, benched_slot_stays_out_of_level_and_cross_control_prop
             << "the benched character must never enter the level";
         EXPECT_EQ(1, static_cast<int>(server_screen->save_data.cross_control))
             << "cross_control must survive the headless save-data copy chain";
+        EXPECT_EQ(1, static_cast<int>(server_screen->save_data.infinite_gold))
+            << "infinite_gold must survive the GTL reload into the host shadow";
+        EXPECT_EQ(og::sim::DynamicsRuleset::Classic,
+                  server_screen->save_data.dynamics_ruleset)
+            << "dynamics must survive the GTL reload into the host shadow";
         ASSERT_NE(nullptr, alpha);
         ASSERT_NE(nullptr, joiner);
         EXPECT_FALSE(alpha->is_friendly(joiner));
@@ -8588,9 +8629,9 @@ TEST(WebSocketServerFdLifecycle,
 
 // ---------------------------------------------------------------------------
 // Difficulty-submenu settings must replicate through the lobby wire: the
-// host cycles Respawns/Generators (plus delay and permadeath) exactly as the
-// subscreen callbacks do (pure cycler + sync_settings_from_save) and the
-// joiner's save must reflect every value; a second cycle round must land too.
+// host cycles every SaveData-backed rule exactly as the subscreen callbacks do
+// (pure cycler + sync_settings_from_save) and the joiner's save must reflect
+// every value; a second cycle round must land too.
 // ---------------------------------------------------------------------------
 #include <openglad/interface/ui/picker_common.h>
 
@@ -8665,7 +8706,8 @@ TEST(PickerNetworkClient, host_and_join_difficulty_settings_sync_to_joiner_save)
             join_lobby_ready;
     })) << "host and join should converge on a two-player lobby";
 
-    // The joiner starts on the defaults (all zero = classic behavior).
+    // The joiner starts on the defaults: the preserved rules are zero while
+    // a genuinely fresh lobby explicitly seeds Modern dynamics.
     {
         auto join_scope = join_session.activate();
         const SaveData& join_save = join_session.myscreen_->save_data;
@@ -8674,18 +8716,21 @@ TEST(PickerNetworkClient, host_and_join_difficulty_settings_sync_to_joiner_save)
         EXPECT_EQ(0, static_cast<int>(join_save.keep_fallen_heroes));
         EXPECT_EQ(0, static_cast<int>(join_save.ctf_respawn_ticks));
         EXPECT_EQ(0, static_cast<int>(join_save.infinite_gold));
+        EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+                  join_save.dynamics_ruleset);
     }
 
     // Host cycles: Respawns Off->Heroes, Generators Normal->Calm->Frenzy,
-    // Delay Normal->Fast, Permadeath On->Off, Infinite Gold Off->On — then
-    // one settings sync, the exact shape of the difficulty-subscreen button
-    // callbacks.
+    // Delay Normal->Fast, Permadeath On->Off, Infinite Gold Off->On, and
+    // Dynamics Modern->Classic — then one settings sync, the exact shape of
+    // the difficulty-subscreen button callbacks.
     og::ui::cycle_respawn_mode(host_save);   // 0 -> 1 (Heroes)
     og::ui::cycle_generator_rate(host_save); // 0 -> 50 (Calm)
     og::ui::cycle_generator_rate(host_save); // 50 -> 200 (Frenzy)
     og::ui::cycle_respawn_delay(host_save);  // 0 -> 60 ticks (Fast)
     og::ui::toggle_permadeath(host_save);    // keep_fallen_heroes = 1
     og::ui::toggle_infinite_gold(host_save); // infinite_gold = 1
+    og::ui::toggle_dynamics_ruleset(host_save); // Modern -> Classic
     host_client->sync_settings_from_save();
 
     ASSERT_TRUE(wait_until([&] {
@@ -8699,7 +8744,9 @@ TEST(PickerNetworkClient, host_and_join_difficulty_settings_sync_to_joiner_save)
                 join_save.generator_rate == 200 &&
                 join_save.ctf_respawn_ticks == 60 &&
                 join_save.keep_fallen_heroes == 1 &&
-                join_save.infinite_gold == 1;
+                join_save.infinite_gold == 1 &&
+                join_save.dynamics_ruleset ==
+                    og::sim::DynamicsRuleset::Classic;
         }
         return join_synced;
     })) << "the joiner's save must reflect the host's difficulty settings";
@@ -8726,6 +8773,7 @@ TEST(PickerNetworkClient, host_and_join_difficulty_settings_sync_to_joiner_save)
     // one-shot initial-state copy.
     og::ui::cycle_respawn_mode(host_save);   // 1 -> 2 (Everyone)
     og::ui::cycle_generator_rate(host_save); // 200 -> 0 (Normal)
+    og::ui::toggle_dynamics_ruleset(host_save); // Classic -> Modern
     host_client->sync_settings_from_save();
 
     ASSERT_TRUE(wait_until([&] {
@@ -8738,7 +8786,9 @@ TEST(PickerNetworkClient, host_and_join_difficulty_settings_sync_to_joiner_save)
             join_synced = join_save.respawn_mode == 2 &&
                 join_save.generator_rate == 0 &&
                 join_save.ctf_respawn_ticks == 60 &&
-                join_save.keep_fallen_heroes == 1;
+                join_save.keep_fallen_heroes == 1 &&
+                join_save.dynamics_ruleset ==
+                    og::sim::DynamicsRuleset::Modern;
         }
         return join_synced;
     })) << "a second settings cycle must replicate to the joiner too";
@@ -8750,6 +8800,8 @@ TEST(PickerNetworkClient, host_and_join_difficulty_settings_sync_to_joiner_save)
     EXPECT_EQ(60, static_cast<int>(host_save.ctf_respawn_ticks));
     EXPECT_EQ(1, static_cast<int>(host_save.keep_fallen_heroes));
     EXPECT_EQ(1, static_cast<int>(host_save.infinite_gold));
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+              host_save.dynamics_ruleset);
 
     {
         auto join_scope = join_session.activate();

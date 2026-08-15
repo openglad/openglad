@@ -3044,6 +3044,32 @@ Sint32 change_infinite_gold()
    return MENU_OK;
 }
 
+// Gameplay feel is session-only like infinite gold, but also a local
+// preference: a host's selection seeds its next genuinely new match. A
+// joiner's host-gated Difficulty screen cannot overwrite its own preference.
+Sint32 change_dynamics_ruleset()
+{
+   SaveData& save = og::runtime::current_session->myscreen_->save_data;
+   og::ui::toggle_dynamics_ruleset(save);
+
+   refresh_difficulty_menu_button_label(
+       kDifficultyMenuDynamicsIndex,
+       og::ui::format_dynamics_ruleset_label(save));
+
+   cfg.set_dynamics_ruleset_preference(save.dynamics_ruleset);
+   cfg.save_settings();
+
+   if (og::runtime::current_session->game_.world != nullptr)
+       og::runtime::current_session->game_.world->dynamics_ruleset =
+           save.dynamics_ruleset;
+   og::runtime::current_session->myscreen_->world().dynamics_ruleset =
+       save.dynamics_ruleset;
+
+   picker_lobby_sync_settings_from_save();
+
+   return MENU_OK;
+}
+
 // GRAPHICS FX depth selector: step cfg effects/depth_fx one value. Pure
 // cfg, no save/lobby state — main_options() persists cfg on exit like every
 // FX toggle. The row's label re-derives from cfg on both surfaces every

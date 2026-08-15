@@ -1493,6 +1493,9 @@ TEST(LobbyServer, sanitize_difficulty_submenu_settings)
     EXPECT_EQ(0, server.state().settings.keep_fallen_heroes);
     EXPECT_EQ(0, server.state().settings.cross_control);
     EXPECT_EQ(0, server.state().settings.infinite_gold);
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+              server.state().settings.dynamics_ruleset)
+        << "fresh lobbies default to modern dynamics";
 
     // In-range values pass through and reach the game-start equivalent.
     og::sim::LobbySettings valid = make_ctf_lobby_settings();
@@ -1513,6 +1516,28 @@ TEST(LobbyServer, sanitize_difficulty_submenu_settings)
     EXPECT_EQ(1, server.build_save_data_equivalent().cross_control);
     EXPECT_EQ(1, server.state().settings.infinite_gold);
     EXPECT_EQ(1, server.build_save_data_equivalent().infinite_gold);
+
+    // Both dynamics rulesets are valid. A crafted enum value falls back to
+    // the last accepted host value and the game-start equivalent carries it.
+    og::sim::LobbySettings classic_dynamics = server.state().settings;
+    classic_dynamics.dynamics_ruleset = og::sim::DynamicsRuleset::Classic;
+    transport.queue_lobby_message(
+        11u, make_settings_change_message(classic_dynamics));
+    server.poll_incoming_messages();
+    EXPECT_EQ(og::sim::DynamicsRuleset::Classic,
+              server.state().settings.dynamics_ruleset);
+    EXPECT_EQ(og::sim::DynamicsRuleset::Classic,
+              server.build_save_data_equivalent().dynamics_ruleset);
+
+    og::sim::LobbySettings junk_dynamics = server.state().settings;
+    junk_dynamics.dynamics_ruleset =
+        static_cast<og::sim::DynamicsRuleset>(9);
+    transport.queue_lobby_message(
+        11u, make_settings_change_message(junk_dynamics));
+    server.poll_incoming_messages();
+    EXPECT_EQ(og::sim::DynamicsRuleset::Classic,
+              server.state().settings.dynamics_ruleset)
+        << "unknown wire values fall back to the accepted host ruleset";
 
     // respawn_mode outside {0,1,2,3} falls back to the current value.
     og::sim::LobbySettings junk_mode = make_ctf_lobby_settings();

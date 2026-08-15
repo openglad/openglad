@@ -34,6 +34,7 @@ og::sim::LobbySettings make_default_lobby_settings()
     settings.scenario_id = kDefaultScenarioId;
     settings.difficulty = kDefaultDifficulty;
     settings.allied_mode = kDefaultAlliedMode;
+    settings.dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
     return settings;
 }
 
@@ -113,6 +114,8 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
         sanitized.infinite_gold = fallback.infinite_gold;
     if (sanitized.shared_teams != 0 && sanitized.shared_teams != 1)
         sanitized.shared_teams = fallback.shared_teams;
+    if (!og::sim::is_valid_dynamics_ruleset(sanitized.dynamics_ruleset))
+        sanitized.dynamics_ruleset = fallback.dynamics_ruleset;
     return sanitized;
 }
 
@@ -1342,6 +1345,7 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
     equivalent.keep_fallen_heroes = state_.settings.keep_fallen_heroes;
     equivalent.cross_control = state_.settings.cross_control;
     equivalent.infinite_gold = state_.settings.infinite_gold;
+    equivalent.dynamics_ruleset = state_.settings.dynamics_ruleset;
     equivalent.current_campaign = state_.settings.campaign_id.empty()
         ? std::string(kDefaultCampaignId)
         : state_.settings.campaign_id;

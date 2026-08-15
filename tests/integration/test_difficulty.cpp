@@ -8,8 +8,10 @@
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 #include "test_interact.h"
+#include "test_save_state_guard.h"
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/gparser.h>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -23,7 +25,31 @@ extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
 
 #include <openglad/interface/ui/picker_ui_state.h>
+#include "../../src/interface/ui/picker_sdl_defs.h"
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
+
+namespace {
+
+class ScopedCfgMaps
+{
+public:
+    ScopedCfgMaps()
+        : data_(cfg.data), overrides_(cfg.overrides)
+    {
+    }
+
+    ~ScopedCfgMaps()
+    {
+        cfg.data = std::move(data_);
+        cfg.overrides = std::move(overrides_);
+    }
+
+private:
+    decltype(cfg.data) data_;
+    decltype(cfg.overrides) overrides_;
+};
+
+} // namespace
 
 
 static void cleanup_picker_state()
@@ -42,11 +68,11 @@ static void cleanup_picker_state()
 
 // Test: The main-menu DIFFICULTY button is a DOOR into the blocking
 // DIFFICULTY subscreen (unique BACK id "difficulty_back"), which holds the
-// difficulty cycler plus the five match-rule settings.
+// difficulty cycler plus the six match-rule settings.
 //
 // Flow: Main Menu -> DIFFICULTY door -> cycle every setting a full cycle
 // (difficulty x3, respawns x3, delay x3, permadeath x2, generators x3,
-// infinite gold x2 — all back to their defaults) -> BACK -> GAME SETTINGS
+// infinite gold x2, dynamics x2 — all back to their defaults) -> BACK -> GAME SETTINGS
 // -> BACK -> return
 //
 // This used to tour PLAYER SETTINGS and all four player-count outlines here,
@@ -64,6 +90,7 @@ struct DifficultyState {
     bool started;
     bool finished;
     bool entered_submenu;
+    bool saw_classic_dynamics;
     bool cycled_settings;
 };
 
@@ -76,6 +103,27 @@ static void interact_times(const std::string& id, int times)
         interact(id);
         SDL_Delay(300);
     }
+}
+
+static bool wait_for_interactable_label(const std::string& id,
+                                        const std::string& expected,
+                                        int timeout_ms = 5000)
+{
+    constexpr int poll_interval_ms = 50;
+    for (int elapsed = 0; elapsed < timeout_ms;
+         elapsed += poll_interval_ms)
+    {
+        for (const Interactable& item : get_interactables())
+        {
+            if (item.id == id && !item.hidden && item.label == expected)
+                return true;
+        }
+        SDL_Delay(poll_interval_ms);
+    }
+    fprintf(stderr,
+            "  [test] TIMEOUT waiting for '%s' label '%s' (%d ms)\n",
+            id.c_str(), expected.c_str(), timeout_ms);
+    return false;
 }
 
 static int difficulty_injector(void* data)
@@ -104,6 +152,37 @@ static int difficulty_injector(void* data)
     interact_times("permadeath", 2);     // On -> Off -> On
     interact_times("generator_rate", 3); // Normal -> Calm -> Frenzy -> Normal
     interact_times("infinite_gold", 2);  // Off -> On -> Off
+    fprintf(stderr, "  [test] toggling dynamics to Classic\n");
+    interact("dynamics");
+    const bool live_classic_label =
+        wait_for_interactable_label("dynamics", "Classic Pace");
+    std::string descriptor_label;
+    {
+        AllButtonsLock lock;
+        descriptor_label =
+            pks().difficulty_menu_buttons[kDifficultyMenuDynamicsIndex].label;
+    }
+    const SaveData& classic_save =
+        og::runtime::current_session->myscreen_->save_data;
+    state->saw_classic_dynamics =
+        live_classic_label &&
+        classic_save.dynamics_ruleset == og::sim::DynamicsRuleset::Classic &&
+        cfg.dynamics_ruleset_preference() ==
+            og::sim::DynamicsRuleset::Classic &&
+        og::runtime::current_session->myscreen_->world().dynamics_ruleset ==
+            og::sim::DynamicsRuleset::Classic &&
+        descriptor_label == "Classic Pace";
+    EXPECT_TRUE(state->saw_classic_dynamics)
+        << "the first click must update the live row, descriptor, preference, "
+           "SaveData, and GameWorld to Classic";
+
+    // The label changes on button-down; wait through the matching release so
+    // the next press is a distinct edge instead of being dropped as held.
+    SDL_Delay(300);
+    fprintf(stderr, "  [test] toggling dynamics back to Modern\n");
+    interact("dynamics");
+    EXPECT_TRUE(wait_for_interactable_label("dynamics", "Modern Pace"));
+    SDL_Delay(300);
     state->cycled_settings = true;
 
     // Leave the subscreen.
@@ -132,6 +211,10 @@ static int difficulty_injector(void* data)
 
 TEST(Difficulty, submenu_door_flow) {
     trace_clear();
+    og::test::ScopedPhysicalFileState config_file(
+        std::filesystem::path(get_user_path()) / "cfg" / "openglad.yaml");
+    ASSERT_TRUE(config_file.ready()) << config_file.error().message();
+    ScopedCfgMaps restore_cfg;
 
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.scen_num = 1;
@@ -142,10 +225,12 @@ TEST(Difficulty, submenu_door_flow) {
     save.keep_fallen_heroes = 0;
     save.generator_rate = 0;
     save.infinite_gold = 0;
+    save.dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
+    cfg.set_dynamics_ruleset_preference(og::sim::DynamicsRuleset::Modern);
     save.save("save0");
     og::runtime::current_session->current_difficulty_ = 1;
 
-    DifficultyState state = { false, false, false, false };
+    DifficultyState state = { false, false, false, false, false };
     SDL_Thread* thread = SDL_CreateThread(difficulty_injector, "difficulty_test", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
@@ -162,6 +247,8 @@ TEST(Difficulty, submenu_door_flow) {
 
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
     ASSERT_TRUE(state.entered_submenu) << "DIFFICULTY door should open the subscreen";
+    ASSERT_TRUE(state.saw_classic_dynamics)
+        << "the first dynamics click should select Classic exactly";
     ASSERT_TRUE(state.cycled_settings) << "should have cycled every setting";
 
     // Full cycles restore every setting to its default.
@@ -173,6 +260,60 @@ TEST(Difficulty, submenu_door_flow) {
     EXPECT_EQ(0, after.keep_fallen_heroes) << "permadeath should be back at On";
     EXPECT_EQ(0, after.generator_rate) << "generators should be back at Normal";
     EXPECT_EQ(0, after.infinite_gold) << "infinite gold should be back at Off";
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern, after.dynamics_ruleset)
+        << "dynamics should be back at Modern";
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+              cfg.dynamics_ruleset_preference());
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+              og::runtime::current_session->myscreen_->world()
+                  .dynamics_ruleset);
+}
+
+TEST(Difficulty, dynamics_ruleset_never_reaches_the_save_file)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const auto dynamics_before = save.dynamics_ruleset;
+
+    const std::filesystem::path save_dir =
+        std::filesystem::path(get_user_path()) / "save";
+    const std::filesystem::path classic_path =
+        save_dir / "test_dynamics_classic.gtl";
+    const std::filesystem::path modern_path =
+        save_dir / "test_dynamics_modern.gtl";
+
+    save.dynamics_ruleset = og::sim::DynamicsRuleset::Classic;
+    ASSERT_TRUE(save.save("test_dynamics_classic"));
+    save.dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
+    ASSERT_TRUE(save.save("test_dynamics_modern"));
+
+    const auto read_all = [](const std::filesystem::path& path) {
+        std::ifstream in(path, std::ios::binary);
+        return std::vector<char>((std::istreambuf_iterator<char>(in)),
+                                 std::istreambuf_iterator<char>());
+    };
+    const std::vector<char> classic_bytes = read_all(classic_path);
+    const std::vector<char> modern_bytes = read_all(modern_path);
+    ASSERT_FALSE(classic_bytes.empty());
+    EXPECT_EQ(classic_bytes.size(), modern_bytes.size());
+    EXPECT_EQ(classic_bytes, modern_bytes)
+        << "session dynamics must not change any company byte";
+
+    SaveData reopened;
+    ASSERT_TRUE(reopened.load("test_dynamics_classic"));
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+              reopened.dynamics_ruleset)
+        << "a file cannot override the fresh frontend default";
+
+    save.dynamics_ruleset = og::sim::DynamicsRuleset::Classic;
+    ASSERT_TRUE(save.load("test_dynamics_modern"));
+    EXPECT_EQ(og::sim::DynamicsRuleset::Classic,
+              save.dynamics_ruleset)
+        << "in-place load preserves the live session carrier";
+
+    save.dynamics_ruleset = dynamics_before;
+    std::error_code ec;
+    std::filesystem::remove(classic_path, ec);
+    std::filesystem::remove(modern_path, ec);
 }
 
 // Infinite gold is a SESSION-ONLY setting: the wallet is never inflated and

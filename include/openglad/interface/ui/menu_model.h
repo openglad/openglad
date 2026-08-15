@@ -83,6 +83,8 @@ enum class PickerMenuCommand : std::int32_t
     CloudSetPassphrase, // set/replace the passphrase (stores the derived key)
     CloudUpload,        // upload the active company to the relay vault
     CloudDownload,      // download + install the vault's company
+    // #205 DIFFICULTY row: Classic/Modern host-authoritative gameplay feel.
+    ToggleDynamicsRuleset,
 };
 
 struct PickerMenuItem

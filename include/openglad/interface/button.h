@@ -190,6 +190,7 @@ Sint32 change_respawn_delay();
 Sint32 change_permadeath();
 Sint32 change_generator_rate();
 Sint32 change_infinite_gold(); // DIFFICULTY infinite-gold toggle (session-only)
+Sint32 change_dynamics_ruleset(); // DIFFICULTY Classic/Modern host rule
 Sint32 change_depth_fx(); // GRAPHICS FX depth selector (cfg effects/depth_fx)
 Sint32 change_resolution(); // DISPLAY resolution selector (cfg graphics/width+height)
 Sint32 change_zoom(); // DISPLAY zoom selector (cfg graphics/zoom)
@@ -319,9 +320,9 @@ enum class ButtonAction : Sint32
     ToggleScreenShake = 84,
     OpenGameplayFxSettings = 85,
     OpenUiFxSettings = 86,
-    // DIFFICULTY subscreen: the main-menu DIFFICULTY door plus the four
-    // match-rule cyclers that live inside it (the difficulty cycler itself
-    // reuses SetDifficulty = 24).
+    // DIFFICULTY subscreen: the main-menu DIFFICULTY door and its first
+    // match-rule actions (the difficulty cycler itself reuses
+    // SetDifficulty = 24; later rows remain append-only below).
     OpenDifficultyMenu = 87,
     CycleRespawnMode = 88,
     CycleRespawnDelay = 89,
@@ -371,6 +372,8 @@ enum class ButtonAction : Sint32
     CycleGameSpeed = 103,
     ToggleColorCycling = 104,
     BrightnessAdjust = 105,
+    // #205 DIFFICULTY row: host-authoritative Classic/Modern gameplay feel.
+    ToggleDynamicsRuleset = 106,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

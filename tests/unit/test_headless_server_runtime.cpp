@@ -751,16 +751,20 @@ TEST_F(HeadlessServerRuntimeTest,
            "posture: byte-identical to Auto)";
 }
 
-// §3.4 dropped-field bug class: the server/checkpoint copies must carry the
-// GTL v14 company fields — the last-played timestamp explicitly, the per-guy
-// deploy flag via the guy deep copies. (The tower fields were the previous
-// instance of this bug class; the copy is an explicit field list, so every
-// new SaveData member needs a line there AND a pin here.)
-TEST(HeadlessServerSaveCopy, copy_carries_v14_company_fields)
+// Dropped-field bug class: the explicit server/checkpoint copy must carry
+// every session rule as well as the GTL v14 company fields. The last-played
+// timestamp is copied directly and each deploy flag rides its deep-copied guy;
+// every new SaveData member needs both a copy line and an exact pin here.
+TEST(HeadlessServerSaveCopy, copy_carries_company_and_session_fields)
 {
     SaveData source;
     source.last_played_unix_s = 0x0A0B0C0D0E0F1011LL;
     source.cross_control = 1; // session-only v8 setting must ride the copy
+    source.infinite_gold = 1;
+    source.respawn_mode = 3;
+    source.generator_rate = 200;
+    source.keep_fallen_heroes = 1;
+    source.dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
     source.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
     source.team_list[0]->name = "BROUGHT";
     source.team_list[0]->deployed = true;
@@ -772,6 +776,11 @@ TEST(HeadlessServerSaveCopy, copy_carries_v14_company_fields)
     SaveData destination;
     destination.last_played_unix_s = 42; // must be overwritten, not merged
     destination.cross_control = 0;
+    destination.infinite_gold = 0;
+    destination.respawn_mode = 0;
+    destination.generator_rate = 0;
+    destination.keep_fallen_heroes = 0;
+    destination.dynamics_ruleset = og::sim::DynamicsRuleset::Classic;
 
     og::server::copy_headless_server_save_data(destination, source);
 
@@ -779,6 +788,12 @@ TEST(HeadlessServerSaveCopy, copy_carries_v14_company_fields)
         << "timestamp must survive the server/checkpoint copy";
     EXPECT_EQ(1, (int)destination.cross_control)
         << "cross_control must survive the server/checkpoint copy";
+    EXPECT_EQ(1, (int)destination.infinite_gold);
+    EXPECT_EQ(3, (int)destination.respawn_mode);
+    EXPECT_EQ(200, (int)destination.generator_rate);
+    EXPECT_EQ(1, (int)destination.keep_fallen_heroes);
+    EXPECT_EQ(og::sim::DynamicsRuleset::Modern,
+              destination.dynamics_ruleset);
     ASSERT_TRUE(destination.team_list[0] != nullptr);
     ASSERT_TRUE(destination.team_list[1] != nullptr);
     EXPECT_NE(destination.team_list[0].get(), source.team_list[0].get())

@@ -215,6 +215,10 @@ bool cfg_store::load_settings()
     // start. 6 == og::sim::DEFAULT_TIMER_WAIT == the SPEED 8 the old in-game
     // options menu showed.
     apply_setting("gameplay", "timer_wait", "6");
+    // New matches use responsive turning and the contact-breakaway Yell.
+    // GameWorld itself stays Classic by default so direct/parity construction
+    // cannot silently opt into branch behavior.
+    apply_setting("gameplay", "dynamics", "modern");
 
     apply_setting("effects", "gore", "on");
     apply_setting("effects", "mini_hp_bar", "on");
@@ -487,4 +491,20 @@ void cfg_store::commandline(int &argc, char **&argv)
 bool cfg_store::is_on(const std::string& category, const std::string& setting)
 {
     return get_setting(category, setting) == "on";
+}
+
+og::sim::DynamicsRuleset cfg_store::dynamics_ruleset_preference()
+{
+    return get_setting("gameplay", "dynamics") == "classic"
+        ? og::sim::DynamicsRuleset::Classic
+        : og::sim::DynamicsRuleset::Modern;
+}
+
+void cfg_store::set_dynamics_ruleset_preference(
+    og::sim::DynamicsRuleset ruleset)
+{
+    apply_setting("gameplay", "dynamics",
+                  ruleset == og::sim::DynamicsRuleset::Classic
+                      ? "classic"
+                      : "modern");
 }

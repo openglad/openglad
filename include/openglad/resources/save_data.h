@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <openglad/gameplay/dynamics_ruleset.h>
+
 #include <cstdint>
 #include <array>
 #include <span>
@@ -97,6 +99,14 @@ public:
     // file (like cross_control), which also keeps every company autosave
     // from baking a cheat balance into the player's file.
     short infinite_gold = 0;
+    // Gameplay feel (protocol v13): host-authoritative during a lobby, but
+    // seeded from this machine's gameplay/dynamics preference for every new
+    // session. SESSION-ONLY — never serialized to the company GTL. The
+    // resource-layer carrier defaults Modern because new frontends do; the
+    // authoritative GameWorld default remains Classic for parity-safe direct
+    // construction and old/test-authored setup records.
+    og::sim::DynamicsRuleset dynamics_ruleset =
+        og::sim::DynamicsRuleset::Modern;
     // Tower Climb persistence (GTL v13; docs/tower-triple-design.md D2/D6).
     // Floors climbed is DERIVED (scen_num - kTowerGateLevel), never stored as
     // a run counter; only the lifetime best and the current run's generation

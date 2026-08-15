@@ -319,7 +319,10 @@ int add_recruit_to_team(SaveData& save, std::unique_ptr<guy> recruit, int team_n
 std::unique_ptr<guy> create_recruit(int family, int team_num, const SaveData& save);
 
 // Reset save data for a new game: clear team, reset gold.
-void reset_for_new_game(SaveData& save);
+void reset_for_new_game(
+    SaveData& save,
+    og::sim::DynamicsRuleset dynamics_ruleset =
+        og::sim::DynamicsRuleset::Modern);
 
 // Ensure team has at least one member.  Creates recruits from the
 // families list, falling back to FAMILY_SOLDIER if the list is empty.
@@ -413,6 +416,11 @@ void cycle_generator_rate(SaveData& save);
 // Toggle infinite gold: infinite_gold 0 (classic economy) <-> 1 (free
 // purchases). SESSION-ONLY, so no company autosave follows a toggle.
 void toggle_infinite_gold(SaveData& save);
+
+// Toggle the host-authoritative gameplay feel. SESSION-ONLY: this carrier is
+// broadcast through LobbySettings and copied into GameWorld, never written to
+// a company GTL. Frontends separately persist the local preference in cfg.
+void toggle_dynamics_ruleset(SaveData& save);
 
 // True when hire/train purchases are free for this session.
 [[nodiscard]] bool gold_is_infinite(const SaveData& save) noexcept;
@@ -857,6 +865,10 @@ std::string format_generator_rate_label(const SaveData& save);
 
 // "Infinite Gold: Off" / "Infinite Gold: On".
 std::string format_infinite_gold_label(const SaveData& save);
+
+// Compact Difficulty-row label, deliberately kept to 12 characters:
+// "Modern Pace" / "Classic Pace".
+std::string format_dynamics_ruleset_label(const SaveData& save);
 
 // --- Company screens: label formatters (design §2.2/§2.3) ---
 // (The §2.2 "file: <slug>.gtl" preview formatter was DELETED — §9.3/F2:

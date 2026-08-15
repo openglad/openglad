@@ -9,6 +9,7 @@
 #include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/core/irandom.h>
+#include <openglad/core/pixdefs.h>
 #include <openglad/legacy/base.h>
 #include <memory>
 #include <string>
@@ -681,3 +682,672 @@ TEST(SimInputUnit, sim_control_owner_locked_switch_char_falls_back_to_own)
     ASSERT_TRUE(result.control_hp_changed);
 }
 } // namespace detail_sim_control_enforcement
+
+namespace detail_modern_dynamics {
+namespace {
+
+class CountingRandom final : public IRandom
+{
+public:
+    std::uint32_t next(std::uint32_t max_exclusive) override
+    {
+        ++calls;
+        (void)max_exclusive;
+        return 0;
+    }
+
+    std::uint32_t calls = 0;
+};
+
+struct SimInputFixture {
+    LevelRuntimeData level{1, true};
+    SaveData save;
+    std::int32_t enemy_freeze = 0;
+    og::sim::SimEventLog events;
+    CountingRandom rng;
+    ScopedGameplayContext gameplay;
+
+    SimInputFixture()
+        : gameplay(level, save, events, cfg)
+    {
+        level.create_new_grid();
+        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+    }
+};
+
+walker* add_living(SimInputFixture& fx, unsigned char team,
+                   short x, short y, signed char user = -1,
+                   short floor = 0)
+{
+    auto owned = std::make_unique<living>();
+    static PixieData test_sprite(
+        NUM_FACINGS, 16, 16,
+        new unsigned char[NUM_FACINGS * 16 * 16]{});
+    owned->set_data(test_sprite);
+    owned->set_order_family(Order::Living, FAMILY_SOLDIER);
+    bind_test_entity_sim_context(fx.level, owned.get());
+    owned->set_sizex(16);
+    owned->set_sizey(16);
+    owned->set_stepsize(1.0f);
+    owned->set_normal_stepsize(1.0f);
+    owned->set_floor(floor);
+    owned->setxy(x, y);
+    owned->set_team_num(team);
+    owned->set_real_team_num(255);
+    owned->set_dead(0);
+    owned->set_user(user);
+    owned->set_act_type(user == -1 ? ACT_RANDOM : ACT_CONTROL);
+    owned->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    walker* const result = owned.get();
+    fx.level.world().oblist.push_back(std::move(owned));
+    return result;
+}
+
+walker* add_nonliving(SimInputFixture& fx, Order order, unsigned char team,
+                      short x, short y)
+{
+    auto owned = std::make_unique<walker>();
+    owned->set_order_family(order, FAMILY_KNIFE);
+    bind_test_entity_sim_context(fx.level, owned.get());
+    owned->set_sizex(16);
+    owned->set_sizey(16);
+    owned->set_stepsize(1.0f);
+    owned->set_normal_stepsize(1.0f);
+    owned->setxy(x, y);
+    owned->set_team_num(team);
+    owned->set_real_team_num(255);
+    owned->set_dead(0);
+    walker* const result = owned.get();
+    fx.level.world().oblist.push_back(std::move(owned));
+    return result;
+}
+
+walker* add_control(SimInputFixture& fx)
+{
+    return add_living(fx, 0, 80, 80, 0);
+}
+
+SimInputResult process(SimInputFixture& fx, walker*& control,
+                       SimInputDebounce& debounce, const InputState& input)
+{
+    static std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
+    return sim_process_player_input(input.players[0], control,
+                                    fx.level.world(), 0, 0, debounce,
+                                    special_names, &fx.events);
+}
+
+void process_right(SimInputFixture& fx, walker*& control,
+                   SimInputDebounce& debounce,
+                   bool press_fire = false,
+                   bool press_special = false)
+{
+    InputState input;
+    input.clear();
+    input.players[0].held[static_cast<int>(InputAction::MoveRight)] = true;
+    input.players[0].pressed[static_cast<int>(InputAction::Fire)] = press_fire;
+    input.players[0].pressed[static_cast<int>(InputAction::Special)] = press_special;
+    process(fx, control, debounce, input);
+}
+
+SimInputResult process_yell(SimInputFixture& fx, walker*& control,
+                            SimInputDebounce& debounce)
+{
+    InputState input;
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
+    return process(fx, control, debounce, input);
+}
+
+void reset_facing_left(walker* control)
+{
+    control->setxy(80, 80);
+    control->set_curdir(FACE_LEFT);
+    control->set_enddir(FACE_LEFT);
+    control->set_lastx(-1.0f);
+    control->set_lasty(0.0f);
+}
+
+void assign_direction_ani(walker* w)
+{
+    constexpr int kAniRows = NUM_FACINGS * (ANI_SLIME_SPLIT + 1);
+    static std::array<std::array<signed char, 4>, kAniRows> seqs{};
+    static std::array<signed char*, kAniRows> rows{};
+    static bool initialized = false;
+    if (!initialized)
+    {
+        for (int i = 0; i < kAniRows; ++i)
+        {
+            const signed char frame =
+                static_cast<signed char>(i % NUM_FACINGS);
+            seqs[static_cast<std::size_t>(i)] = {frame, frame, frame, -1};
+            rows[static_cast<std::size_t>(i)] =
+                seqs[static_cast<std::size_t>(i)].data();
+        }
+        initialized = true;
+    }
+    w->ani = rows.data();
+}
+
+void assert_forced_walk(const walker* target, int count,
+                        int dx, int dy, std::size_t queue_size = 1)
+{
+    ASSERT_EQ(queue_size, target->stats()->commands.size());
+    const command& pushed = target->stats()->commands.front();
+    ASSERT_EQ(COMMAND_WALK, pushed.commandtype);
+    ASSERT_EQ(count, pushed.commandcount);
+    ASSERT_EQ(dx, pushed.com1);
+    ASSERT_EQ(dy, pushed.com2);
+    ASSERT_TRUE(pushed.forced);
+}
+
+} // namespace
+
+TEST(SimInputUnit, modern_dynamics_moves_on_the_direction_change_tick)
+{
+    SimInputFixture fx;
+    walker* control = add_control(fx);
+    SimInputDebounce debounce{};
+
+    reset_facing_left(control);
+    fx.level.world().dynamics_ruleset = og::sim::DynamicsRuleset::Classic;
+    process_right(fx, control, debounce);
+    ASSERT_EQ(80, control->xpos());
+    ASSERT_EQ(80, control->ypos());
+    ASSERT_EQ(FACE_LEFT, control->curdir());
+    ASSERT_EQ(FACE_RIGHT, control->enddir());
+    ASSERT_EQ(1.0f, control->lastx());
+    ASSERT_EQ(0.0f, control->lasty());
+
+    reset_facing_left(control);
+    fx.level.world().dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
+    process_right(fx, control, debounce);
+    ASSERT_EQ(81, control->xpos());
+    ASSERT_EQ(80, control->ypos());
+    ASSERT_EQ(FACE_RIGHT, control->curdir());
+    ASSERT_EQ(FACE_RIGHT, control->enddir());
+    ASSERT_EQ(1.0f, control->lastx());
+    ASSERT_EQ(0.0f, control->lasty());
+}
+
+TEST(SimInputUnit, dynamics_turn_cadence_is_exact_for_45_90_and_180_degrees)
+{
+    struct TurnCase
+    {
+        short start_dir;
+        std::array<short, 4> classic_after_act;
+        int turn_ticks;
+    };
+    constexpr std::array<TurnCase, 3> cases = {{
+        {FACE_UP_RIGHT, {FACE_RIGHT, 0, 0, 0}, 1},
+        {FACE_UP, {FACE_UP_RIGHT, FACE_RIGHT, 0, 0}, 2},
+        {FACE_LEFT,
+         {FACE_UP_LEFT, FACE_UP, FACE_UP_RIGHT, FACE_RIGHT}, 4},
+    }};
+
+    for (const TurnCase& turn_case : cases)
+    {
+        SCOPED_TRACE(turn_case.turn_ticks);
+        {
+            SimInputFixture fx;
+            fx.level.world().dynamics_ruleset =
+                og::sim::DynamicsRuleset::Classic;
+            walker* control = add_control(fx);
+            control->set_curdir(static_cast<signed char>(turn_case.start_dir));
+            control->set_enddir(static_cast<char>(turn_case.start_dir));
+            SimInputDebounce debounce{};
+
+            for (int tick = 0; tick < turn_case.turn_ticks; ++tick)
+            {
+                process_right(fx, control, debounce);
+                ASSERT_EQ(80, control->xpos());
+                ASSERT_EQ(FACE_RIGHT, control->enddir());
+                ASSERT_EQ(1, control->act());
+                ASSERT_EQ(turn_case.classic_after_act[static_cast<std::size_t>(tick)],
+                          control->curdir());
+                ASSERT_EQ(80, control->xpos());
+            }
+            process_right(fx, control, debounce);
+            ASSERT_EQ(81, control->xpos());
+            ASSERT_EQ(FACE_RIGHT, control->curdir());
+            ASSERT_EQ(FACE_RIGHT, control->enddir());
+        }
+
+        {
+            SimInputFixture fx;
+            fx.level.world().dynamics_ruleset =
+                og::sim::DynamicsRuleset::Modern;
+            walker* control = add_control(fx);
+            control->set_curdir(static_cast<signed char>(turn_case.start_dir));
+            control->set_enddir(static_cast<char>(turn_case.start_dir));
+            SimInputDebounce debounce{};
+
+            process_right(fx, control, debounce);
+            ASSERT_EQ(81, control->xpos());
+            ASSERT_EQ(FACE_RIGHT, control->curdir());
+            ASSERT_EQ(FACE_RIGHT, control->enddir());
+        }
+    }
+}
+
+TEST(SimInputUnit, modern_dynamics_resolves_facing_before_fire_and_special)
+{
+    SimInputFixture fx;
+    walker* control = add_control(fx);
+    assign_direction_ani(control);
+    control->set_fire_frequency(5.0f);
+    SimInputDebounce debounce{};
+
+    reset_facing_left(control);
+    control->set_ani_type(ANI_WALK);
+    control->set_cycle(0);
+    control->set_busy(0.0f);
+    fx.level.world().dynamics_ruleset = og::sim::DynamicsRuleset::Classic;
+    process_right(fx, control, debounce, /*press_fire=*/true);
+    ASSERT_EQ(80, control->xpos());
+    ASSERT_EQ(FACE_LEFT, control->curdir());
+    ASSERT_EQ(FACE_RIGHT, control->enddir());
+    ASSERT_EQ(ANI_ATTACK, control->ani_type());
+    ASSERT_EQ(1, control->cycle());
+    ASSERT_EQ(FACE_LEFT, control->frame());
+    ASSERT_EQ(5.0f, control->busy());
+
+    reset_facing_left(control);
+    control->set_ani_type(ANI_WALK);
+    control->set_cycle(0);
+    control->set_busy(0.0f);
+    fx.level.world().dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
+    process_right(fx, control, debounce, /*press_fire=*/true);
+    ASSERT_EQ(81, control->xpos());
+    ASSERT_EQ(FACE_RIGHT, control->curdir());
+    ASSERT_EQ(FACE_RIGHT, control->enddir());
+    ASSERT_EQ(ANI_ATTACK, control->ani_type());
+    ASSERT_EQ(2, control->cycle());
+    ASSERT_EQ(FACE_RIGHT, control->frame());
+    ASSERT_EQ(5.0f, control->busy());
+
+    // Soldier special 1 (charge) records lastx/lasty in COMMAND_RUSH. Pin
+    // that Modern resolves the new direction before dispatching the special.
+    control->stats()->clear_command();
+    reset_facing_left(control);
+    control->set_ani_type(ANI_WALK);
+    control->set_cycle(0);
+    control->set_busy(0.0f);
+    control->set_current_special(1);
+    fx.level.world().dynamics_ruleset = og::sim::DynamicsRuleset::Classic;
+    process_right(fx, control, debounce, false, /*press_special=*/true);
+    ASSERT_EQ(1u, control->stats()->commands.size());
+    ASSERT_EQ(COMMAND_RUSH, control->stats()->commands.front().commandtype);
+    ASSERT_EQ(3, control->stats()->commands.front().commandcount);
+    ASSERT_EQ(-1, control->stats()->commands.front().com1);
+    ASSERT_EQ(0, control->stats()->commands.front().com2);
+
+    control->stats()->clear_command();
+    reset_facing_left(control);
+    control->set_ani_type(ANI_WALK);
+    control->set_cycle(0);
+    control->set_busy(0.0f);
+    control->set_current_special(1);
+    fx.level.world().dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
+    process_right(fx, control, debounce, false, /*press_special=*/true);
+    ASSERT_EQ(1u, control->stats()->commands.size());
+    ASSERT_EQ(COMMAND_RUSH, control->stats()->commands.front().commandtype);
+    ASSERT_EQ(3, control->stats()->commands.front().commandcount);
+    ASSERT_EQ(1, control->stats()->commands.front().com1);
+    ASSERT_EQ(0, control->stats()->commands.front().com2);
+}
+
+TEST(SimInputUnit, modern_dynamics_refreshes_blocked_walk_facing_frame)
+{
+    SimInputFixture fx;
+    walker* control = add_control(fx);
+    fx.level.world().grid.data[static_cast<std::size_t>(
+        5 * fx.level.world().grid.w + 6)] = PIX_WALL2;
+    assign_direction_ani(control);
+    reset_facing_left(control);
+    control->set_ani_type(ANI_WALK);
+    control->set_cycle(1);
+    control->set_frame(FACE_LEFT);
+    fx.level.world().dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
+    SimInputDebounce debounce{};
+
+    process_right(fx, control, debounce);
+
+    ASSERT_EQ(80, control->xpos());
+    ASSERT_EQ(80, control->ypos());
+    ASSERT_EQ(FACE_RIGHT, control->curdir());
+    ASSERT_EQ(FACE_RIGHT, control->enddir());
+    ASSERT_EQ(FACE_RIGHT, control->frame());
+    ASSERT_EQ(1, control->cycle());
+    ASSERT_EQ(ANI_WALK, control->ani_type());
+}
+
+TEST(SimInputUnit, modern_dynamics_respects_frozen_and_command_gates)
+{
+    SimInputFixture fx;
+    fx.level.world().dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
+    walker* control = add_control(fx);
+    SimInputDebounce debounce{};
+
+    reset_facing_left(control);
+    control->stats()->set_frozen_delay(2);
+    process_right(fx, control, debounce);
+    ASSERT_EQ(80, control->xpos());
+    ASSERT_EQ(FACE_LEFT, control->curdir());
+    ASSERT_EQ(FACE_LEFT, control->enddir());
+    ASSERT_EQ(1, control->stats()->frozen_delay());
+
+    control->stats()->set_frozen_delay(0);
+    control->stats()->add_command(COMMAND_SEARCH, 5, 0, 0);
+    reset_facing_left(control);
+    process_right(fx, control, debounce);
+    ASSERT_EQ(80, control->xpos());
+    ASSERT_EQ(FACE_LEFT, control->curdir());
+    ASSERT_EQ(FACE_LEFT, control->enddir());
+    ASSERT_EQ(1u, control->stats()->commands.size());
+    ASSERT_EQ(COMMAND_SEARCH,
+              control->stats()->commands.front().commandtype);
+    ASSERT_EQ(5, control->stats()->commands.front().commandcount);
+}
+
+TEST(SimInputUnit, modern_dynamics_zero_step_actor_aims_before_firing)
+{
+    SimInputFixture fx;
+    fx.level.world().dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
+    walker* control = add_control(fx);
+    control->set_order_family(Order::Living, FAMILY_TOWER1);
+    control->set_stepsize(0.0f);
+    control->set_normal_stepsize(0.0f);
+    control->set_curdir(FACE_LEFT);
+    control->set_enddir(FACE_LEFT);
+    control->set_lastx(0.0f);
+    control->set_lasty(0.0f);
+    control->set_fire_frequency(5.0f);
+    control->set_ani_type(ANI_WALK);
+    control->set_cycle(0);
+    assign_direction_ani(control);
+    SimInputDebounce debounce{};
+
+    process_right(fx, control, debounce, /*press_fire=*/true);
+
+    ASSERT_EQ(80, control->xpos());
+    ASSERT_EQ(80, control->ypos());
+    ASSERT_EQ(FACE_RIGHT, control->curdir());
+    ASSERT_EQ(FACE_RIGHT, control->enddir());
+    ASSERT_EQ(1.0f, control->lastx());
+    ASSERT_EQ(0.0f, control->lasty());
+    ASSERT_EQ(ANI_ATTACK, control->ani_type());
+    ASSERT_EQ(1, control->cycle());
+    ASSERT_EQ(FACE_RIGHT, control->frame());
+    ASSERT_EQ(5.0f, control->busy());
+}
+
+TEST(SimInputUnit, modern_yell_breakaway_pushes_two_contacts_and_replaces_rally)
+{
+    SimInputFixture fx;
+    fx.level.world().dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
+    walker* control = add_control(fx);
+    walker* const left = add_living(fx, 1, 63, 80);
+    walker* const right = add_living(fx, 1, 97, 80);
+    walker* const ally = add_living(fx, 0, 160, 80);
+    left->set_curdir(FACE_UP);
+    left->set_enddir(FACE_UP);
+    right->set_curdir(FACE_UP);
+    right->set_enddir(FACE_UP);
+    SimInputDebounce debounce{};
+    const std::uint32_t rng_calls_before = fx.rng.calls;
+
+    const SimInputResult result = process_yell(fx, control, debounce);
+
+    ASSERT_EQ(rng_calls_before, fx.rng.calls);
+    ASSERT_EQ(SOUND_YO, result.play_sound);
+    ASSERT_EQ("Yo!", result.notify_text);
+    ASSERT_EQ(control, result.notify_source);
+    ASSERT_EQ(30, control->yo_delay());
+    ASSERT_EQ(og::sim::kBreakawayRecoveryTicks, control->busy());
+    ASSERT_EQ(63, left->xpos());
+    ASSERT_EQ(97, right->xpos());
+    ASSERT_EQ(FACE_LEFT, left->curdir());
+    ASSERT_EQ(FACE_LEFT, left->enddir());
+    ASSERT_EQ(-1.0f, left->lastx());
+    ASSERT_EQ(0.0f, left->lasty());
+    ASSERT_EQ(FACE_RIGHT, right->curdir());
+    ASSERT_EQ(FACE_RIGHT, right->enddir());
+    ASSERT_EQ(1.0f, right->lastx());
+    ASSERT_EQ(0.0f, right->lasty());
+    assert_forced_walk(left, og::sim::kBreakawayWalkTicks, -1, 0);
+    assert_forced_walk(right, og::sim::kBreakawayWalkTicks, 1, 0);
+    ASSERT_EQ(nullptr, ally->leader());
+    ASSERT_TRUE(ally->stats()->commands.empty());
+    ASSERT_EQ(2u, fx.events.size());
+    ASSERT_EQ(og::sim::EventKind::PlaySound, fx.events.events()[0].kind);
+    ASSERT_EQ(static_cast<std::uint32_t>(SOUND_YO),
+              fx.events.events()[0].a);
+    ASSERT_EQ(og::sim::EventKind::Notification,
+              fx.events.events()[1].kind);
+    ASSERT_EQ("Yo!", fx.events.events()[1].text);
+
+    // A repeated press inside the shared Yell cooldown cannot stack walks.
+    fx.events.clear();
+    const SimInputResult repeat = process_yell(fx, control, debounce);
+    ASSERT_EQ(-1, repeat.play_sound);
+    ASSERT_TRUE(repeat.notify_text.empty());
+    ASSERT_EQ(29, control->yo_delay());
+    ASSERT_EQ(0u, fx.events.size());
+    assert_forced_walk(left, og::sim::kBreakawayWalkTicks, -1, 0);
+    assert_forced_walk(right, og::sim::kBreakawayWalkTicks, 1, 0);
+
+    for (int tick = 0; tick < og::sim::kBreakawayWalkTicks; ++tick)
+    {
+        ASSERT_EQ(1, left->act());
+        ASSERT_EQ(1, right->act());
+    }
+    ASSERT_EQ(59, left->xpos());
+    ASSERT_EQ(101, right->xpos());
+    ASSERT_TRUE(left->stats()->commands.empty());
+    ASSERT_TRUE(right->stats()->commands.empty());
+}
+
+TEST(SimInputUnit, modern_yell_needs_two_contacts_and_classic_keeps_rally)
+{
+    {
+        SimInputFixture fx;
+        fx.level.world().dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
+        walker* control = add_control(fx);
+        walker* const only_foe = add_living(fx, 1, 63, 80);
+        walker* const ally = add_living(fx, 0, 160, 80);
+        only_foe->set_curdir(FACE_UP);
+        only_foe->set_enddir(FACE_UP);
+        SimInputDebounce debounce{};
+
+        process_yell(fx, control, debounce);
+
+        ASSERT_EQ(FACE_UP, only_foe->curdir());
+        ASSERT_EQ(FACE_UP, only_foe->enddir());
+        ASSERT_TRUE(only_foe->stats()->commands.empty());
+        ASSERT_EQ(control, ally->leader());
+        ASSERT_EQ(1u, ally->stats()->commands.size());
+        ASSERT_EQ(COMMAND_FOLLOW,
+                  ally->stats()->commands.front().commandtype);
+        ASSERT_EQ(100, ally->stats()->commands.front().commandcount);
+        ASSERT_EQ(0.0f, control->busy());
+    }
+
+    {
+        SimInputFixture fx;
+        fx.level.world().dynamics_ruleset = og::sim::DynamicsRuleset::Classic;
+        walker* control = add_control(fx);
+        walker* const left = add_living(fx, 1, 63, 80);
+        walker* const right = add_living(fx, 1, 97, 80);
+        walker* const ally = add_living(fx, 0, 160, 80);
+        left->set_curdir(FACE_UP);
+        left->set_enddir(FACE_UP);
+        right->set_curdir(FACE_DOWN);
+        right->set_enddir(FACE_DOWN);
+        SimInputDebounce debounce{};
+
+        process_yell(fx, control, debounce);
+
+        ASSERT_EQ(FACE_UP, left->curdir());
+        ASSERT_EQ(FACE_UP, left->enddir());
+        ASSERT_EQ(FACE_DOWN, right->curdir());
+        ASSERT_EQ(FACE_DOWN, right->enddir());
+        ASSERT_TRUE(left->stats()->commands.empty());
+        ASSERT_TRUE(right->stats()->commands.empty());
+        ASSERT_EQ(control, ally->leader());
+        ASSERT_EQ(COMMAND_FOLLOW,
+                  ally->stats()->commands.front().commandtype);
+        ASSERT_EQ(30, control->yo_delay());
+        ASSERT_EQ(0.0f, control->busy());
+    }
+}
+
+TEST(SimInputUnit, modern_yell_forced_walk_expires_against_an_obstacle)
+{
+    SimInputFixture fx;
+    fx.level.world().dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
+    walker* control = add_control(fx);
+    walker* const left = add_living(fx, 1, 63, 80);
+    walker* const right = add_living(fx, 1, 97, 80);
+    walker* const blocker =
+        add_nonliving(fx, Order::Generator, 1, 48, 80);
+    ASSERT_NE(nullptr, blocker);
+    assign_direction_ani(left);
+    left->set_ani_type(ANI_WALK);
+    left->set_cycle(1);
+    left->set_frame(FACE_UP);
+    SimInputDebounce debounce{};
+
+    process_yell(fx, control, debounce);
+    ASSERT_EQ(FACE_LEFT, left->frame());
+    ASSERT_EQ(1, left->cycle());
+    ASSERT_EQ(ANI_WALK, left->ani_type());
+    for (int tick = 0; tick < og::sim::kBreakawayWalkTicks; ++tick)
+    {
+        ASSERT_EQ(1, left->act());
+        ASSERT_EQ(1, right->act());
+    }
+
+    ASSERT_EQ(63, left->xpos());
+    ASSERT_EQ(FACE_LEFT, left->curdir());
+    ASSERT_EQ(ANI_WALK, left->ani_type());
+    ASSERT_EQ(101, right->xpos());
+    ASSERT_EQ(FACE_RIGHT, right->curdir());
+    ASSERT_TRUE(left->stats()->commands.empty());
+    ASSERT_TRUE(right->stats()->commands.empty());
+}
+
+TEST(SimInputUnit, modern_yell_filters_non_contacts_and_preserves_queue_tail)
+{
+    SimInputFixture fx;
+    fx.level.world().dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
+    walker* control = add_control(fx);
+    walker* const left = add_living(fx, 1, 63, 80);
+    walker* const right = add_living(fx, 1, 97, 80);
+    walker* const friendly = add_living(fx, 0, 80, 63);
+    walker* const other_floor = add_living(fx, 1, 80, 97, -1, 1);
+    walker* const dead = add_living(fx, 1, 80, 63);
+    walker* const dormant = add_living(fx, 1, 80, 97);
+    walker* const weapon = add_nonliving(fx, Order::Weapon, 1, 63, 80);
+    walker* const gap_two = add_living(fx, 1, 98, 80);
+    walker* const above = add_living(fx, 1, 80, 63);
+    walker* const stationary = add_living(fx, 1, 63, 80);
+    walker* const no_collide = add_living(fx, 1, 97, 80);
+    dead->set_dead(1);
+    dormant->set_dormant(true);
+    above->set_sizez(8);
+    above->set_worldz(16.0f);
+    stationary->set_order_family(Order::Living, FAMILY_TOWER1);
+    no_collide->stats()->set_bit_flags(BIT_NO_COLLIDE, 1);
+    control->set_sizez(8);
+    control->set_worldz(0.0f);
+    left->stats()->add_command(COMMAND_SEARCH, 7, 0, 0);
+    SimInputDebounce debounce{};
+
+    process_yell(fx, control, debounce);
+
+    assert_forced_walk(left, og::sim::kBreakawayWalkTicks, -1, 0, 2);
+    ASSERT_EQ(COMMAND_SEARCH, left->stats()->commands.back().commandtype);
+    ASSERT_EQ(7, left->stats()->commands.back().commandcount);
+    assert_forced_walk(right, og::sim::kBreakawayWalkTicks, 1, 0);
+    ASSERT_TRUE(friendly->stats()->commands.empty());
+    ASSERT_TRUE(other_floor->stats()->commands.empty());
+    ASSERT_TRUE(dead->stats()->commands.empty());
+    ASSERT_TRUE(dormant->stats()->commands.empty());
+    ASSERT_TRUE(weapon->stats()->commands.empty());
+    ASSERT_TRUE(gap_two->stats()->commands.empty());
+    ASSERT_TRUE(above->stats()->commands.empty());
+    ASSERT_TRUE(stationary->stats()->commands.empty());
+    ASSERT_TRUE(no_collide->stats()->commands.empty());
+}
+
+TEST(SimInputUnit, modern_yell_requires_actionable_control)
+{
+    for (int blocked_case = 0; blocked_case < 4; ++blocked_case)
+    {
+        SCOPED_TRACE(blocked_case);
+        SimInputFixture fx;
+        fx.level.world().dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
+        walker* control = add_control(fx);
+        walker* const left = add_living(fx, 1, 63, 80);
+        walker* const right = add_living(fx, 1, 97, 80);
+        switch (blocked_case)
+        {
+            case 0:
+                control->stats()->set_frozen_delay(2);
+                break;
+            case 1:
+                control->set_ani_type(ANI_ATTACK);
+                break;
+            case 2:
+                control->stats()->add_command(COMMAND_SEARCH, 5, 0, 0);
+                break;
+            case 3:
+                control->set_busy(2.0f);
+                break;
+            default:
+                FAIL() << "unexpected actionable-gate case";
+        }
+        SimInputDebounce debounce{};
+
+        process_yell(fx, control, debounce);
+
+        ASSERT_TRUE(left->stats()->commands.empty());
+        ASSERT_TRUE(right->stats()->commands.empty());
+        ASSERT_EQ(30, control->yo_delay());
+        if (blocked_case == 0)
+        {
+            ASSERT_EQ(1, control->stats()->frozen_delay());
+        }
+        if (blocked_case == 2)
+        {
+            ASSERT_EQ(1u, control->stats()->commands.size());
+            ASSERT_EQ(COMMAND_SEARCH,
+                      control->stats()->commands.front().commandtype);
+            ASSERT_EQ(5, control->stats()->commands.front().commandcount);
+        }
+        if (blocked_case == 3)
+        {
+            ASSERT_EQ(2.0f, control->busy());
+        }
+    }
+}
+
+TEST(SimInputUnit, modern_yell_coincident_fallback_is_stable)
+{
+    SimInputFixture fx;
+    fx.level.world().dynamics_ruleset = og::sim::DynamicsRuleset::Modern;
+    walker* control = add_control(fx);
+    walker* const first = add_living(fx, 1, 80, 80);
+    walker* const second = add_living(fx, 1, 80, 80);
+    SimInputDebounce debounce{};
+
+    process_yell(fx, control, debounce);
+
+    // Control is oblist ordinal 0, so pre-id contacts use ordinals 1 and 2.
+    assert_forced_walk(first, og::sim::kBreakawayWalkTicks, 1, -1);
+    assert_forced_walk(second, og::sim::kBreakawayWalkTicks, 1, 0);
+    ASSERT_EQ(FACE_UP_RIGHT, first->curdir());
+    ASSERT_EQ(FACE_RIGHT, second->curdir());
+}
+
+} // namespace detail_modern_dynamics

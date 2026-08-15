@@ -357,6 +357,8 @@ void append_lobby_settings(std::vector<std::uint8_t>& payload,
     append_i16(payload, settings.cross_control);
     append_i16(payload, settings.infinite_gold);
     append_i16(payload, settings.shared_teams);
+    append_u8(payload,
+              og::sim::dynamics_ruleset_value(settings.dynamics_ruleset));
 }
 
 og::sim::LobbySettings read_lobby_settings(PayloadReader& reader)
@@ -377,6 +379,8 @@ og::sim::LobbySettings read_lobby_settings(PayloadReader& reader)
     settings.cross_control = reader.read_i16();
     settings.infinite_gold = reader.read_i16();
     settings.shared_teams = reader.read_i16();
+    settings.dynamics_ruleset =
+        static_cast<og::sim::DynamicsRuleset>(reader.read_u8());
     return settings;
 }
 
@@ -496,6 +500,7 @@ std::vector<std::uint8_t> serialize_initial_setup_message(
     append_i16(payload, message.current_scenario);
     append_i16(payload, message.respawn_mode);
     append_i16(payload, message.generator_rate);
+    append_u8(payload, dynamics_ruleset_value(message.dynamics_ruleset));
     append_u32(payload, static_cast<std::uint32_t>(message.guys.size()));
     for (const auto& guy : message.guys)
         append_initial_setup_guy(payload, guy);
@@ -529,6 +534,8 @@ std::optional<InitialSetupMessage> deserialize_initial_setup_message(
             message.current_scenario = reader.read_i16();
             message.respawn_mode = reader.read_i16();
             message.generator_rate = reader.read_i16();
+            message.dynamics_ruleset = dynamics_ruleset_from_value(
+                reader.read_u8());
             const std::uint32_t guy_count = reader.read_u32();
             if (!reader.ok() ||
                 guy_count >
@@ -752,6 +759,18 @@ std::optional<LobbyState> deserialize_lobby_state_message(
         bytes, kLobbyStateMessageType,
         [](PayloadReader& reader, LobbyState& state) {
             state.settings = read_lobby_settings(reader);
+            // A LobbyState is authoritative server output, so accepting an
+            // unknown ruleset here would install an invalid simulation mode
+            // on clients. Client-authored SettingsChange messages deliberately
+            // retain their raw value so LobbyServer can apply its current-value
+            // fallback while sanitizing the request.
+            if (!reader.ok() ||
+                !is_valid_dynamics_ruleset(
+                    state.settings.dynamics_ruleset))
+            {
+                reader.fail();
+                return;
+            }
             state.host_player_id = reader.read_u8();
             state.last_start_denial = reader.read_u8();
             state.last_start_request_id = reader.read_u32();

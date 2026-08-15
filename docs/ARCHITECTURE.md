@@ -265,6 +265,16 @@ and viewscreen layout. See
 [Resolution, zoom, and smoothing](resolution-and-scaling.md) for the sizing,
 resource limits, and legacy-config behavior.
 
+`GameWorld::dynamics_ruleset` is a deterministic, host-authoritative session
+axis. **Classic** preserves Gladiator's stop-to-turn cadence exactly. **Modern**
+snaps a player's facing to current movement intent before movement, firing, or
+special dispatch, and turns an unshifted Yell into a breakaway when at least two
+eligible hostile bodies are in contact: those foes face outward immediately,
+then receive four forced walk ticks. The Difficulty menu persists a local
+`gameplay/dynamics` preference for newly created matches; company GTL files do
+not store it. Lobby settings, initial setup, snapshots, and replays carry the
+live session value.
+
 ### Session and Context
 
 **`GameSession`** is the RAII root that owns all runtime state. Multiple sessions can coexist in a single process (see [Concurrent Sessions](#concurrent-sessions)).
@@ -554,11 +564,13 @@ contribute up to 4 local seats, with up to 16 seats lobby-wide. The same
 machinery also runs single-player and local split-screen — see [Local Transport
 Shadow](#local-transport-shadow).
 
-The current network compatibility line is lobby/gameplay protocol **v12**, world
-snapshot format **v10**, and replay format **v14**. Protocol v12 replaces the
-flattened CTF snapshot block with the generic RespawnState + ModeState blocks
-(every scripted mode replicates through them) and appends
-`LobbySettings.shared_teams`; v9 added stable, server-issued lobby seat
+The current network compatibility line is lobby/gameplay protocol **v13**, world
+snapshot format **v11**, and replay format **v15**. Protocol v13 appends the
+host-authoritative `DynamicsRuleset` to lobby settings, initial setup,
+snapshots, and replay state. Protocol v12 replaced the flattened CTF snapshot
+block with the generic RespawnState + ModeState blocks (every scripted mode
+replicates through them) and appended `LobbySettings.shared_teams`; v9 added
+stable, server-issued lobby seat
 identity and authoritative per-recipient ownership on top of the
 Company/Base Camp multiplayer state introduced by v8. Team changes
 and exact-seat removal use that identity rather than the mutable dense `P#`.
@@ -726,9 +738,10 @@ modes schedule through `og.respawn_schedule` (eligibility is Lua's) and repositi
 `on_respawn`; corpses persist in `oblist` so control bindings and per-player save merging
 survive, and team wipes never end an undecided scripted match.
 
-`RespawnState` and `ModeState` replicate as their own `WorldSnapshot` blocks (snapshot v10,
-protocol v12, replay v14), so mirrors, late joiners, replays, and the curses/text HUDs need no
-extra wire messages — a mid-join keyframe restore carries a running match. Match settings
+`RespawnState` and `ModeState` replicate as their own `WorldSnapshot` blocks (introduced in
+snapshot v10; the current envelope is snapshot v11, protocol v13, replay v15), so mirrors,
+late joiners, replays, and the curses/text HUDs need no extra wire messages — a mid-join
+keyframe restore carries a running match. Match settings
 (`ctf_team_count`/`ctf_capture_limit`/`ctf_respawn_ticks`/`ctf_strip_scenario_troops` — the
 storage names keep their historical prefix; Lua reads them as `og.match_setting`) follow the
 versioned SaveData (GTL v10) → LobbySettings → game start → `GameWorld::ctf_requested_*` path.

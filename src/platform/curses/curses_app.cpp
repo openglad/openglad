@@ -186,6 +186,7 @@ int run_curses_app(const AppOptions& options, int argc, char* argv[])
         // starting team. (The in-menu Networking submenu offers the same with a
         // hand-built team.)
         SaveData save;
+        save.dynamics_ruleset = cfg.dynamics_ruleset_preference();
         save.current_campaign = options.campaign;
         save.scen_num = static_cast<short>(options.level);
         save.numplayers = 1;
