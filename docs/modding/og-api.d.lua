@@ -570,11 +570,11 @@
 ---@field respawn_anchor_count fun(team: integer): integer # og.respawn_anchor_count(team) — authored start-marker anchors recorded for a team (filled at CTF init / the first scripted tick).
 ---@field respawn_pending fun(entity: og.Walker): boolean # og.respawn_pending(ent) — true while an engine respawn entry (player revive or AI replacement) is queued for this entity id.
 ---@field respawn_pending_count fun(team: integer): integer # og.respawn_pending_count(team) — queued entries for a team (error outside [0, 3]).
----@field respawn_schedule fun(entity: og.Walker, ticks: integer?): boolean # og.respawn_schedule(ent [, ticks]) — queue a dead Living for the engine respawn (dedupe by queued id and live duplicate; queue cap 64 with bot eviction; stai...
+---@field respawn_schedule fun(entity: og.Walker, ticks: integer?): boolean # og.respawn_schedule(ent [, ticks]) — queue a dead Living; player stains survive until fire, while life gems and AI stains scrub at schedule.
 ---@field scare_duration fun(arg1: integer): integer
 ---@field scare_radius fun(arg1: integer): integer
 ---@field scenario_title fun(name: string): string # og.scenario_title(name) → title string ("none" when unreadable).
----@field scrub_corpse_stain fun(x: integer, y: integer, floor: integer?) # og.scrub_corpse_stain(x, y [, floor]) — kill the fresh STAIN/LIFE_GEM drops at a corpse position (its top-left) so a non-respawning body cannot be cleric-res...
+---@field scrub_corpse_stain fun(x: integer, y: integer, floor: integer?) # og.scrub_corpse_stain(x, y [, floor]) — preserve pending-player STAIN drops; otherwise kill fresh STAIN/LIFE_GEM drops at a corpse position (its top-left) so...
 ---@field set_beacon fun(slot: integer, entity: og.Walker?, t: integer?) # og.set_beacon(slot, entity_or_nil [, team]) — mark an entity for the off-screen/radar beacon channel (the Mutant marker, a flag carrier).
 ---@field set_enemy_freeze fun(enemy_freeze: integer)
 ---@field set_entity_hooks fun(entity: og.Walker, hooks: og.EntityHooks) # og.set_entity_hooks(handle, { on_death = fn }) — per-entity overrides, registered from a level script (typically in on_load after finding the entity).

@@ -155,9 +155,10 @@ void respawn_run_timers(GameWorld& world);
 void respawn_flush_revive_all(GameWorld& world);
 
 // og.respawn_schedule backend: dedupe (already queued / live duplicate),
-// then the shared schedule path (queue cap 64 + bot eviction + stain/
-// life-gem scrub). ticks_override > 0 replaces the resolved delay for this
-// entry. Returns true when a new entry was queued.
+// then the shared schedule path (queue cap 64 + bot eviction). Life gems and
+// AI stains scrub at schedule; player stains remain until fire.
+// ticks_override > 0 replaces the resolved delay for this entry. Returns true
+// when a new entry was queued.
 bool respawn_schedule_corpse(GameWorld& world, walker* corpse,
                              int ticks_override);
 
@@ -171,12 +172,13 @@ int respawn_pending_count(const GameWorld& world, int team);
 bool respawn_spot_clear(GameWorld& world, walker* w, short x, short y,
                         int floor);
 
-// Positional stain scrub (og.scrub_corpse_stain backend): kill fresh STAIN /
-// LIFE_GEM drops whose sprite center lies within 8px Manhattan of the center
-// of a 16px box at (x, y) — the corpse-relative rule of the schedule-path
-// scrub, keyed by position (and optionally floor >= 0) instead of a corpse
-// walker, so Lua can scrub after the corpse is gone. No team filter: the
-// caller's hook context decides which corpses get scrubbed.
+// Positional stain scrub (og.scrub_corpse_stain backend): preserve a STAIN
+// tied to a pending player respawn; otherwise kill fresh STAIN / LIFE_GEM
+// drops whose sprite center lies within 8px Manhattan of the center of a 16px
+// box at (x, y). This is the schedule-path rule keyed by position (and
+// optionally floor >= 0) instead of a corpse walker, so Lua can scrub after
+// the corpse is gone. No team filter: the caller's hook context decides which
+// corpses get scrubbed.
 void respawn_scrub_stains_at(GameWorld& world, short x, short y, int floor);
 
 } // namespace og::sim

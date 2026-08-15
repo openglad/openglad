@@ -2455,11 +2455,11 @@ int og_effective_team_mask(lua_State* L)
     return 1;
 }
 
-// og.respawn_schedule(ent [, ticks]) — queue a dead Living for the engine
-// respawn (dedupe by queued id and live duplicate; queue cap 64 with bot
-// eviction; stain/life-gem scrub). ticks overrides the resolved match
-// delay for this entry (error when not positive). Returns true when a new
-// entry was queued.
+// og.respawn_schedule(ent [, ticks]) — queue a dead Living; player stains
+// survive until fire, while life gems and AI stains scrub at schedule. Dedupe
+// is by queued id and live duplicate; queue cap 64 evicts a bot. ticks
+// overrides the resolved match delay (error when not positive). Returns true
+// when a new entry was queued.
 int og_respawn_schedule(lua_State* L)
 {
     GameWorld* world = world_arg(L);
@@ -2559,10 +2559,10 @@ int og_spawn_spot_clear(lua_State* L)
     return 1;
 }
 
-// og.scrub_corpse_stain(x, y [, floor]) — kill the fresh STAIN/LIFE_GEM
-// drops at a corpse position (its top-left) so a non-respawning body
-// cannot be cleric-resurrected into a duplicate or farm gem score. floor
-// omitted scrubs every floor.
+// og.scrub_corpse_stain(x, y [, floor]) — preserve pending-player STAIN
+// drops; otherwise kill fresh STAIN/LIFE_GEM drops at a corpse position (its
+// top-left) so a permanent body cannot be resurrected or farm gem score.
+// floor omitted scrubs every floor.
 int og_scrub_corpse_stain(lua_State* L)
 {
     GameWorld* world = world_arg(L);

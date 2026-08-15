@@ -27,6 +27,17 @@ if [[ -z "$EMCC_BIN" ]]; then
     exit 77
 fi
 
+# Packaged Emscripten installations may patch their tool locations without
+# teaching --generate-config about those paths. Query the em-config paired
+# with the selected compiler before EM_CONFIG is redirected below.
+EM_CONFIG_BIN="$(dirname "$EMCC_BIN")/em-config"
+EM_LLVM_ROOT=""
+EM_BINARYEN_ROOT=""
+if [[ -x "$EM_CONFIG_BIN" ]]; then
+    EM_LLVM_ROOT="$(env -u EM_CONFIG "$EM_CONFIG_BIN" LLVM_ROOT 2>/dev/null || true)"
+    EM_BINARYEN_ROOT="$(env -u EM_CONFIG "$EM_CONFIG_BIN" BINARYEN_ROOT 2>/dev/null || true)"
+fi
+
 TOOLCHAIN_FILE=""
 if [[ -n "${EMSDK:-}" ]] && [[ -f "$EMSDK/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake" ]]; then
     TOOLCHAIN_FILE="$EMSDK/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake"
@@ -59,10 +70,9 @@ EM_CONFIG="$EM_CONFIG_FILE" "$EMCC_BIN" --generate-config >/dev/null
 
 sed -i '/^CACHE = /d;/^PORTS = /d' "$EM_CONFIG_FILE"
 
-# --generate-config guesses system tool locations (LLVM_ROOT=/usr/bin). Under
-# an emsdk install the toolchain lives in $EMSDK/upstream and node ships inside
-# the SDK, so the isolated config must be pointed there explicitly or every
-# compile fails with "cannot find /usr/bin/llvm-ar".
+# --generate-config can guess system tool locations (LLVM_ROOT=/usr/bin).
+# Point the isolated config at the selected toolchain or every compile fails
+# with errors such as "cannot find /usr/bin/llvm-ar".
 if [[ -n "${EMSDK:-}" ]] && [[ -d "$EMSDK/upstream/bin" ]]; then
     sed -i '/^LLVM_ROOT = /d;/^BINARYEN_ROOT = /d' "$EM_CONFIG_FILE"
     cat >>"$EM_CONFIG_FILE" <<EOF
@@ -76,6 +86,12 @@ EOF
         sed -i '/^NODE_JS = /d' "$EM_CONFIG_FILE"
         printf "NODE_JS = '%s'\n" "$emsdk_node" >>"$EM_CONFIG_FILE"
     fi
+elif [[ -d "$EM_LLVM_ROOT" ]] && [[ -d "$EM_BINARYEN_ROOT" ]]; then
+    sed -i '/^LLVM_ROOT = /d;/^BINARYEN_ROOT = /d' "$EM_CONFIG_FILE"
+    cat >>"$EM_CONFIG_FILE" <<EOF
+LLVM_ROOT = '$EM_LLVM_ROOT'
+BINARYEN_ROOT = '$EM_BINARYEN_ROOT'
+EOF
 fi
 printf '\n' >>"$EM_CONFIG_FILE"
 cat >>"$EM_CONFIG_FILE" <<EOF

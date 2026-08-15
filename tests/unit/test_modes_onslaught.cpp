@@ -1167,9 +1167,8 @@ TEST_F(ModesOnslaught, bot_corpses_are_scrubbed_heroes_are_not)
     EXPECT_FALSE(stain_alive_at(fx.world(), bx, by))
         << "the bot's fresh stain is scrubbed";
 
-    // The hero corpse is NOT hook-scrubbed: it enters the respawn queue
-    // instead (og.respawn_schedule scrubs scheduled corpses engine-side,
-    // so the distinguishing observable is the booked revive).
+    // The hero corpse is NOT hook-scrubbed: it enters the respawn queue and
+    // keeps its stain through the countdown for cleric raises.
     const int hx = hero->xpos();
     const int hy = hero->ypos();
     fx.red->setxy(static_cast<short>(hx - 20), static_cast<short>(hy));
@@ -1183,6 +1182,8 @@ TEST_F(ModesOnslaught, bot_corpses_are_scrubbed_heroes_are_not)
             hero_booked = true;
     }
     EXPECT_TRUE(hero_booked) << "hero corpses respawn instead of scrubbing";
+    EXPECT_TRUE(stain_alive_at(fx.world(), hx, hy))
+        << "a queued hero leaves a raisable corpse during the countdown";
 }
 
 // ===========================================================================

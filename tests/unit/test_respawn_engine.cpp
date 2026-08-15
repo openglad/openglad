@@ -1,8 +1,8 @@
 // Respawn engine tests (retargeted off the retired CTF engine): player
-// revive-in-place, AI respawns, stain/gem scrubbing, win-latch revive-all,
-// queue capping, spawn probes, and the team-wipe / input gates — all through
-// the scripted-mode frame (Lua owns eligibility via og.respawn_schedule;
-// respawn_schedule_corpse is that binding's backend).
+// revive-in-place, AI respawns, player-stain lifetime, stain/gem scrubbing,
+// win-latch revive-all, queue capping, spawn probes, and the team-wipe / input
+// gates — all through the scripted-mode frame (Lua owns eligibility via
+// og.respawn_schedule; respawn_schedule_corpse is that binding's backend).
 
 #include <gtest/gtest.h>
 
@@ -182,6 +182,45 @@ int live_stains_for_team(GameWorld& world, int team)
     return count;
 }
 
+int live_stains_for_character(GameWorld& world, int team, int floor,
+                              const guy* identity,
+                              const walker* position = nullptr)
+{
+    const auto matches = [team, floor, identity,
+                          position](const walker* stain) {
+        if (stain == nullptr || stain->dead() ||
+            stain->query_order() != Order::Treasure ||
+            stain->family() != FAMILY_STAIN ||
+            stain->team_num() != static_cast<unsigned char>(team) ||
+            stain->floor() != floor ||
+            (position != nullptr &&
+             (stain->xpos() != position->xpos() ||
+              stain->ypos() != position->ypos())))
+        {
+            return false;
+        }
+        if (identity == nullptr)
+            return stain->myguy == nullptr;
+        return stain->myguy != nullptr && stain->myguy->id == identity->id &&
+            stain->myguy->owner_player_index ==
+                identity->owner_player_index &&
+            stain->myguy->owner_save_slot == identity->owner_save_slot;
+    };
+
+    int count = 0;
+    for (const auto& uptr : world.fxlist)
+    {
+        if (matches(uptr.get()))
+            count++;
+    }
+    for (const auto& uptr : world.oblist)
+    {
+        if (matches(uptr.get()))
+            count++;
+    }
+    return count;
+}
+
 } // namespace
 
 TEST(RespawnEngine, player_corpse_revives_in_place_with_control_preserved)
@@ -273,7 +312,7 @@ TEST(RespawnEngine, ai_respawn_spawns_fresh_walker_of_same_family_level_team)
     ASSERT_TRUE(arena.world().respawn.respawn_queue.empty());
 }
 
-TEST(RespawnEngine, scheduling_scrubs_the_fresh_corpse_stain)
+TEST(RespawnEngine, ai_scheduling_scrubs_the_fresh_corpse_stain)
 {
     RespawnArena arena;
     walker* bot = arena.fx.spawn_living(FAMILY_SOLDIER, 1, 480, 700);
@@ -285,6 +324,213 @@ TEST(RespawnEngine, scheduling_scrubs_the_fresh_corpse_stain)
     ASSERT_TRUE(arena.schedule(bot));
     ASSERT_EQ(0, live_stains_for_team(arena.world(), 1))
         << "scheduling a respawn must kill the corpse stain";
+}
+
+TEST(RespawnEngine, player_corpse_stain_survives_until_the_respawn_fires)
+{
+    RespawnArena arena;
+    walker* runner = arena.runner;
+    runner->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    runner->myguy->id = 41;
+    runner->set_user(0);
+
+    arena.kill(runner);
+    ASSERT_EQ(1, live_stains_for_team(arena.world(), 0))
+        << "a player death must create its corpse before scheduling";
+
+    ASSERT_TRUE(arena.schedule(runner));
+    EXPECT_EQ(1, live_stains_for_team(arena.world(), 0))
+        << "a queued multiplayer player must leave its corpse behind";
+
+    arena.fx.tick(5);
+    EXPECT_TRUE(runner->dead());
+    EXPECT_EQ(1, live_stains_for_team(arena.world(), 0))
+        << "the corpse must remain for the whole respawn countdown";
+
+    arena.fx.tick();
+    EXPECT_FALSE(runner->dead());
+    EXPECT_EQ(0, live_stains_for_team(arena.world(), 0))
+        << "reviving the player retires the now-stale corpse";
+}
+
+TEST(RespawnEngine, nearby_player_respawns_scrub_only_their_own_stain)
+{
+    RespawnArena arena;
+    walker* first = arena.runner;
+    first->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    first->myguy->id = 71;
+    first->myguy->owner_player_index = 0;
+    first->myguy->owner_save_slot = 0;
+
+    walker* second = arena.fx.spawn_living(FAMILY_SOLDIER, 0, 324, 320);
+    second->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    second->myguy->id = 72;
+    second->myguy->owner_player_index = 0;
+    second->myguy->owner_save_slot = 0;
+
+    arena.kill(first);
+    ASSERT_TRUE(arena.schedule(first, 2));
+    arena.kill(second);
+    ASSERT_TRUE(arena.schedule(second, 5));
+    ASSERT_EQ(1, live_stains_for_character(
+                     arena.world(), 0, 0, first->myguy));
+    ASSERT_EQ(1, live_stains_for_character(
+                     arena.world(), 0, 0, second->myguy));
+
+    arena.fx.tick(2);
+
+    EXPECT_FALSE(first->dead());
+    EXPECT_EQ(0, live_stains_for_character(
+                     arena.world(), 0, 0, first->myguy));
+    EXPECT_TRUE(second->dead());
+    EXPECT_TRUE(og::sim::respawn_pending_for(arena.world(), second));
+    EXPECT_EQ(1, live_stains_for_character(
+                     arena.world(), 0, 0, second->myguy))
+        << "the first fire must not consume a nearby teammate's corpse";
+
+    arena.fx.tick(3);
+    EXPECT_FALSE(second->dead());
+    EXPECT_EQ(0, live_stains_for_character(
+                     arena.world(), 0, 0, second->myguy));
+}
+
+TEST(RespawnEngine, respawn_fire_scrubs_only_the_corpses_floor)
+{
+    RespawnArena arena;
+    walker* ground = arena.runner;
+    ground->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    ground->myguy->id = 73;
+    ground->myguy->owner_player_index = 0;
+    ground->myguy->owner_save_slot = 0;
+
+    arena.kill(ground);
+    ASSERT_TRUE(arena.schedule(ground, 2));
+
+    walker* upper = arena.fx.spawn_living(FAMILY_SOLDIER, 0, 320, 320);
+    upper->change_floor(1);
+    upper->set_owned_myguy(std::make_unique<guy>(*ground->myguy));
+    arena.kill(upper);
+    ASSERT_TRUE(arena.schedule(upper, 5));
+    ASSERT_EQ(1, live_stains_for_character(
+                     arena.world(), 0, 0, ground->myguy));
+    ASSERT_EQ(1, live_stains_for_character(
+                     arena.world(), 0, 1, upper->myguy));
+
+    arena.fx.tick(2);
+
+    EXPECT_FALSE(ground->dead());
+    EXPECT_TRUE(upper->dead());
+    EXPECT_EQ(0, live_stains_for_character(
+                     arena.world(), 0, 0, ground->myguy));
+    EXPECT_EQ(1, live_stains_for_character(
+                     arena.world(), 0, 1, upper->myguy))
+        << "same-position identity on another floor is not this corpse";
+
+    arena.fx.tick(3);
+    EXPECT_TRUE(upper->dead()) << "the live duplicate cancels its revive";
+    EXPECT_EQ(0, live_stains_for_character(
+                     arena.world(), 0, 1, upper->myguy));
+}
+
+TEST(RespawnEngine, ai_scheduling_does_not_scrub_a_nearby_player_stain)
+{
+    RespawnArena arena;
+    walker* player = arena.runner;
+    player->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    player->myguy->id = 74;
+
+    walker* bot = arena.fx.spawn_living(FAMILY_SOLDIER, 0, 324, 320);
+    arena.kill(player);
+    ASSERT_TRUE(arena.schedule(player, 5));
+    arena.kill(bot);
+    ASSERT_EQ(1, live_stains_for_character(arena.world(), 0, 0, nullptr));
+
+    ASSERT_TRUE(arena.schedule(bot, 2));
+
+    EXPECT_EQ(0, live_stains_for_character(arena.world(), 0, 0, nullptr))
+        << "AI scheduling still retires its own stain";
+    EXPECT_EQ(1, live_stains_for_character(
+                     arena.world(), 0, 0, player->myguy))
+        << "an AI corpse must not sweep a nearby player's stain";
+}
+
+TEST(RespawnEngine, positional_scrub_preserves_only_pending_player_stains)
+{
+    RespawnArena arena;
+    walker* pending = arena.runner;
+    pending->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    pending->myguy->id = 75;
+
+    walker* permanent = arena.fx.spawn_living(FAMILY_SOLDIER, 0, 324, 320);
+    permanent->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    permanent->myguy->id = 76;
+
+    arena.kill(pending);
+    ASSERT_TRUE(arena.schedule(pending, 5));
+    arena.kill(permanent);
+    ASSERT_EQ(1, live_stains_for_character(
+                     arena.world(), 0, 0, pending->myguy));
+    ASSERT_EQ(1, live_stains_for_character(
+                     arena.world(), 0, 0, permanent->myguy));
+
+    og::sim::respawn_scrub_stains_at(
+        arena.world(), permanent->xpos(), permanent->ypos(), permanent->floor());
+
+    EXPECT_EQ(1, live_stains_for_character(
+                     arena.world(), 0, 0, pending->myguy))
+        << "a nearby mode scrub must preserve the queued player's corpse";
+    EXPECT_EQ(0, live_stains_for_character(
+                     arena.world(), 0, 0, permanent->myguy))
+        << "the unscheduled permanent corpse is still scrubbed";
+}
+
+TEST(RespawnEngine, positional_scrub_matches_pending_stain_location)
+{
+    RespawnArena arena;
+    walker* pending = arena.runner;
+    pending->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    pending->myguy->id = 77;
+    pending->myguy->owner_player_index = 0;
+    pending->myguy->owner_save_slot = 0;
+    arena.kill(pending);
+    ASSERT_TRUE(arena.schedule(pending, 5));
+
+    walker* upper = arena.fx.spawn_living(FAMILY_SOLDIER, 0, 320, 320);
+    upper->change_floor(1);
+    upper->set_owned_myguy(std::make_unique<guy>(*pending->myguy));
+    arena.kill(upper);
+
+    walker* far = arena.fx.spawn_living(FAMILY_SOLDIER, 0, 480, 320);
+    far->set_owned_myguy(std::make_unique<guy>(*pending->myguy));
+    arena.kill(far);
+
+    ASSERT_EQ(1, live_stains_for_character(
+                     arena.world(), 0, 0, pending->myguy, pending));
+    ASSERT_EQ(1, live_stains_for_character(
+                     arena.world(), 0, 1, upper->myguy, upper));
+    ASSERT_EQ(1, live_stains_for_character(
+                     arena.world(), 0, 0, far->myguy, far));
+
+    og::sim::respawn_scrub_stains_at(
+        arena.world(), upper->xpos(), upper->ypos(), upper->floor());
+
+    EXPECT_EQ(0, live_stains_for_character(
+                     arena.world(), 0, 1, upper->myguy, upper))
+        << "same identity and position on another floor is permanent";
+    EXPECT_EQ(1, live_stains_for_character(
+                     arena.world(), 0, 0, pending->myguy, pending));
+    EXPECT_EQ(1, live_stains_for_character(
+                     arena.world(), 0, 0, far->myguy, far));
+
+    og::sim::respawn_scrub_stains_at(
+        arena.world(), far->xpos(), far->ypos(), far->floor());
+
+    EXPECT_EQ(0, live_stains_for_character(
+                     arena.world(), 0, 0, far->myguy, far))
+        << "same identity on the same floor but another position is permanent";
+    EXPECT_EQ(1, live_stains_for_character(
+                     arena.world(), 0, 0, pending->myguy, pending))
+        << "the exact queued corpse stain remains protected";
 }
 
 TEST(RespawnEngine, live_duplicate_character_cancels_the_revive)
@@ -355,6 +601,8 @@ TEST(RespawnEngine, fire_time_live_duplicate_cancels_the_revive)
     runner->myguy->id = 8;
     arena.kill(runner);
     ASSERT_TRUE(arena.schedule(runner)) << "no duplicate yet: schedule holds";
+    ASSERT_EQ(1, live_stains_for_team(arena.world(), 0))
+        << "the queued player's stain survives until fire";
 
     // The character comes back through another door while the timer runs
     // (save merge, cleric resurrect): the FIRE must re-check, not trust the
@@ -366,6 +614,8 @@ TEST(RespawnEngine, fire_time_live_duplicate_cancels_the_revive)
     arena.fx.tick(7);
     EXPECT_TRUE(runner->dead()) << "fire-time duplicate cancels the revive";
     EXPECT_FALSE(duplicate->dead());
+    EXPECT_EQ(0, live_stains_for_team(arena.world(), 0))
+        << "a cancelled fire must still retire the queued corpse stain";
     EXPECT_TRUE(arena.world().respawn.respawn_queue.empty());
 }
 
@@ -402,6 +652,7 @@ TEST(RespawnEngine, win_latch_flush_revives_all_player_corpses)
     ASSERT_TRUE(arena.schedule(runner));
     ASSERT_EQ(1u, arena.world().respawn.respawn_queue.size());
     ASSERT_TRUE(runner->dead());
+    ASSERT_EQ(1, live_stains_for_team(arena.world(), 0));
 
     // og.declare_winner: first arming flushes the respawn engine (D2)
     // before winner math, and the engine re-asserts the win every tick.
@@ -412,7 +663,50 @@ TEST(RespawnEngine, win_latch_flush_revives_all_player_corpses)
     ASSERT_EQ(1, arena.world().mode.winner_team);
     ASSERT_FALSE(runner->dead())
         << "match end must revive pending player corpses before the merge";
+    ASSERT_EQ(0, live_stains_for_team(arena.world(), 0))
+        << "flush fire retires the queued player's stain";
     ASSERT_TRUE(arena.world().respawn.respawn_queue.empty());
+}
+
+TEST(RespawnEngine, win_latch_flush_revives_an_unqueued_player_and_scrubs_stain)
+{
+    RespawnArena arena;
+    walker* runner = arena.runner;
+    runner->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    runner->myguy->id = 42;
+
+    arena.kill(runner);
+    ASSERT_TRUE(arena.world().respawn.respawn_queue.empty());
+    ASSERT_EQ(1, live_stains_for_team(arena.world(), 0));
+
+    og::sim::respawn_flush_revive_all(arena.world());
+
+    EXPECT_FALSE(runner->dead())
+        << "the win flush catches a death not yet booked by the mode hook";
+    EXPECT_EQ(0, live_stains_for_team(arena.world(), 0))
+        << "the direct flush path retires the player's stain";
+    EXPECT_TRUE(arena.world().respawn.respawn_queue.empty());
+}
+
+TEST(RespawnEngine, win_latch_flush_scrubs_an_unqueued_duplicate_corpse)
+{
+    RespawnArena arena;
+    walker* runner = arena.runner;
+    runner->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    runner->myguy->id = 43;
+
+    arena.kill(runner);
+    ASSERT_EQ(1, live_stains_for_team(arena.world(), 0));
+    walker* duplicate = arena.fx.spawn_living(FAMILY_SOLDIER, 0, 256, 320);
+    duplicate->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    duplicate->myguy->id = 43;
+
+    og::sim::respawn_flush_revive_all(arena.world());
+
+    EXPECT_TRUE(runner->dead()) << "the live duplicate cancels direct revive";
+    EXPECT_FALSE(duplicate->dead());
+    EXPECT_EQ(0, live_stains_for_team(arena.world(), 0))
+        << "duplicate cancellation must not leave a stale corpse stain";
 }
 
 TEST(RespawnEngine, queue_cap_evicts_oldest_ai_entry_for_a_player)
@@ -554,7 +848,7 @@ TEST(RespawnEngine, same_guy_id_under_a_different_owner_does_not_block_revive)
 }
 
 // Player corpses drop a LIFE_GEM centered on the body; respawn scheduling
-// must scrub it (and the stain) or respawn cycles farm tiebreaker score.
+// must scrub the gem immediately or respawn cycles farm tiebreaker score.
 TEST(RespawnEngine, scheduling_scrubs_the_corpse_life_gem)
 {
     RespawnArena arena;
