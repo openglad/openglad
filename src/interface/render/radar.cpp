@@ -24,8 +24,12 @@
 #include <openglad/core/decordefs.h>
 #include <openglad/core/family_presentation.h>
 #include <openglad/core/test_trace.h>
+#include <openglad/gameplay/families/effect_family_descriptor.h>
+#include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registries.h>
+#include <openglad/gameplay/families/generator_family_descriptor.h>
 #include <openglad/gameplay/families/treasure_family_descriptor.h>
+#include <openglad/gameplay/families/weapon_family_descriptor.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/render/radar.h>
@@ -40,6 +44,73 @@ static inline Uint32 rng(Uint32 max_exclusive) {
 
 namespace
 {
+// #209 radar_ping: pinged families draw an oversized blip pulsing on this
+// RENDER-side counter — bumped once per radar draw, never fed by the game
+// rng, so the sim stream is untouched (parity-inert by construction).
+unsigned g_radar_ping_phase = 0;
+
+// The declared radar blip for any (order, family), or nullptr when the
+// family has no descriptor. Only the `ping` flag is read here — colours
+// keep coming from the draw site's own per-order rules.
+const og::RadarBlip* radar_blip_for(Order order, int family)
+{
+    switch (order)
+    {
+    case Order::Living:
+        if (const auto* d = get_family_descriptor(family))
+            return &d->radar;
+        return nullptr;
+    case Order::Weapon:
+        if (const auto* d = get_weapon_family_descriptor(family))
+            return &d->radar;
+        return nullptr;
+    case Order::Treasure:
+        if (const auto* d = get_treasure_family_descriptor(family))
+            return &d->radar;
+        return nullptr;
+    case Order::Generator:
+        if (const auto* d = get_generator_family_descriptor(family))
+            return &d->radar;
+        return nullptr;
+    case Order::FX:
+        if (const auto* d = get_effect_family_descriptor(family))
+            return &d->radar;
+        return nullptr;
+    default:
+        return nullptr;
+    }
+}
+
+// Oversized pulsing blip: a plus that swells to a 3x3 block on alternate
+// pulse phases, brightness walking the palette band the way the jitter
+// flicker does — but from the render counter, not rng. Every pixel is
+// clamped to the radar box so the pulse never paints outside it.
+void plot_ping_blip(short cx, short cy, unsigned char base_color,
+                    unsigned char alpha, short xloc, short yloc,
+                    short xview, short yview)
+{
+    const unsigned phase = g_radar_ping_phase;
+    const unsigned char color =
+        static_cast<unsigned char>(base_color + ((phase >> 2) & 3u));
+    const bool swollen = ((phase >> 3) & 1u) != 0;
+    for (short dy = -1; dy <= 1; ++dy)
+    {
+        for (short dx = -1; dx <= 1; ++dx)
+        {
+            const bool corner = dx != 0 && dy != 0;
+            if (corner && !swollen)
+                continue;
+            const short px = static_cast<short>(cx + dx);
+            const short py = static_cast<short>(cy + dy);
+            if (px < xloc || px > xloc + xview || py < yloc ||
+                py > yloc + yview)
+                continue;
+            og::runtime::current_session->myscreen_->pointb(px, py, color,
+                                                            alpha);
+        }
+    }
+}
+
 template <typename WalkerList>
 bool contains_walker_ptr(const WalkerList& list, const walker* candidate)
 {
@@ -213,6 +284,9 @@ short radar::draw(LevelRuntimeData* data)
 	short can_see = 0, do_show = 0;
 	Sint32 listtype = 0;
 
+	// #209: advance the ping pulse (render-side; see plot_ping_blip).
+	++g_radar_ping_phase;
+
 	radarx = 0;
 	radary = 0;
 	sync_position_to_view();
@@ -371,6 +445,28 @@ short radar::draw(LevelRuntimeData* data)
 							og::runtime::current_session->myscreen_->pointb(tempx+1,tempy+1,tempcolor, alpha);
 						}
 					}
+					else if (const og::RadarBlip* fam_blip =
+					             radar_blip_for(oborder, ob->family());
+					         fam_blip != nullptr && fam_blip->ping)
+					{
+						// #209: pinged families draw LOUD — an oversized
+						// pulsing blip in the colour the plain path would
+						// have used for this order.
+						unsigned char ping_base;
+						if (oborder == Order::Living)
+							ping_base = tempcolor;
+						else if (oborder == Order::Generator)
+							ping_base = static_cast<unsigned char>(tempcolor+1);
+						else if (oborder == Order::Treasure)
+							ping_base = COLOR_FIRE;
+						else
+							ping_base = COLOR_WHITE;
+						plot_ping_blip(static_cast<short>(tempx),
+						               static_cast<short>(tempy), ping_base,
+						               alpha, xloc, yloc, xview, yview);
+						TRACE("radar", "ping_blip fam=%d",
+						      static_cast<int>(ob->family()));
+					}
 					else if (oborder == Order::Living)
 						og::runtime::current_session->myscreen_->pointb(tempx,tempy,tempcolor, alpha);
 					else if (oborder == Order::Generator)
@@ -461,7 +557,25 @@ short radar::draw(LevelRuntimeData* data)
 						Log("bad radar, bad\n");
 						return 1;
 					}
-					og::runtime::current_session->myscreen_->pointb(tempx,tempy,static_cast<unsigned char>(do_show), alpha);
+					if (const og::RadarBlip* fam_blip =
+					        radar_blip_for(oborder, obfamily);
+					    fam_blip != nullptr && fam_blip->ping)
+					{
+						// #209: oversized pulsing blip in the descriptor
+						// colour do_show already resolved (any jitter roll
+						// above already happened — the rng call count is
+						// unchanged by the ping).
+						plot_ping_blip(static_cast<short>(tempx),
+						               static_cast<short>(tempy),
+						               static_cast<unsigned char>(do_show),
+						               alpha, xloc, yloc, xview, yview);
+						TRACE("radar", "ping_blip fam=%d",
+						      static_cast<int>(obfamily));
+					}
+					else
+					{
+						og::runtime::current_session->myscreen_->pointb(tempx,tempy,static_cast<unsigned char>(do_show), alpha);
+					}
 				}//draw the blob onto the radar
 			} // end of valid do_show
 		}  // end of if here->ob

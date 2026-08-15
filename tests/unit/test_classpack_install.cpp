@@ -316,6 +316,44 @@ TEST(ClasspackInstall, overrides_data_preserves_callbacks)
     ASSERT_TRUE(set_family_descriptor(FAMILY_SOLDIER, before));
 }
 
+// #209: `radar_ping = true` rides the presentation fold onto the
+// descriptor's RadarBlip; an absent key keeps the current (false) value.
+TEST(ClasspackInstall, radar_ping_installs_onto_the_descriptor)
+{
+    init_all_registries();
+    const FamilyDescriptor before = *get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_FALSE(before.radar.ping) << "core families ship no ping";
+
+    og::data::ClasspackData data;
+    data.pack = "test";
+    og::data::ClasspackLivingEntry e;
+    e.id = "test:soldier_ping";
+    e.wire_id = "0"; // pins the soldier slot
+    e.presentation.radar_ping = true;
+    data.living.push_back(std::move(e));
+
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 1);
+    const FamilyDescriptor* after = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(after, nullptr);
+    EXPECT_TRUE(after->radar.ping);
+    EXPECT_EQ(after->radar.color, before.radar.color)
+        << "ping never disturbs the blip colour";
+
+    // A second declaration that omits the key keeps the current value.
+    og::data::ClasspackData keep;
+    keep.pack = "test";
+    og::data::ClasspackLivingEntry e2;
+    e2.id = "test:soldier_ping2";
+    e2.wire_id = "0";
+    keep.living.push_back(std::move(e2));
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(keep)), 1);
+    EXPECT_TRUE(get_family_descriptor(FAMILY_SOLDIER)->radar.ping)
+        << "omitting radar_ping keeps whatever the slot holds";
+
+    // Restore the pristine descriptor for the rest of the process.
+    ASSERT_TRUE(set_family_descriptor(FAMILY_SOLDIER, before));
+}
+
 TEST(ClasspackInstall, wire_id_pins_and_references_resolve)
 {
     init_all_registries();

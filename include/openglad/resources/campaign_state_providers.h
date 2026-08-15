@@ -19,10 +19,22 @@
 
 #include <openglad/gameplay/script/campaign_hooks.h>
 
+#include <functional>
+
 class SaveData;
 
 namespace og::data {
 
-og::script::hooks::CampaignProviders make_campaign_providers(SaveData& save);
+// `is_host` gates match_set and answers og.campaign_is_host (#212). An
+// empty function means "always host" — local play has no lobby to defer
+// to; the SDL install site passes the live lobby host predicate.
+og::script::hooks::CampaignProviders make_campaign_providers(
+    SaveData& save, std::function<bool()> is_host = {});
+
+// #212 session tail: a successful match_set (a write-through to the
+// MATCHUP knobs) arms this flag; the missions surface checks-and-clears
+// it after each Acted outcome and runs the standard
+// sync-settings-from-save tail so joiners follow.
+bool consume_match_settings_dirty();
 
 } // namespace og::data

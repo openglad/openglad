@@ -335,6 +335,7 @@ void run_replay_roundtrip(int player_count)
         .allied_mode = game_screen.save_data.allied_mode,
         .difficulty = live_world.difficulty,
         .campaign_id = game_screen.save_data.current_campaign,
+        .campaign_vars = {},
     });
     recorder.record_initial_world(live_world);
     recorder.record_world_keyframe(0u, live_world);
@@ -506,15 +507,15 @@ TEST(Replay, phase11_roundtrip_matches_final_state_for_four_players)
     run_replay_roundtrip(4);
 }
 
-TEST(Replay, format_version_14_rejects_v13)
+TEST(Replay, format_version_15_rejects_v14)
 {
-    static_assert(og::sim::kReplayFormatVersion == 14);
+    static_assert(og::sim::kReplayFormatVersion == 15);
     std::array<std::uint8_t, og::sim::kReplayHeaderSize> old_header{};
     old_header[0] = static_cast<std::uint8_t>('O');
     old_header[1] = static_cast<std::uint8_t>('G');
     old_header[2] = static_cast<std::uint8_t>('R');
     old_header[3] = static_cast<std::uint8_t>('P');
-    old_header[4] = 13;
+    old_header[4] = 14;
 
     og::sim::ReplayIoError error = og::sim::ReplayIoError::None;
     EXPECT_FALSE(og::sim::deserialize_replay(old_header, &error).has_value());
@@ -568,6 +569,7 @@ TEST(Replay, initialize_replay_screen_rejects_unsafe_campaign_ids)
                 .allied_mode = game_screen.save_data.allied_mode,
                 .difficulty = live_world.difficulty,
                 .campaign_id = std::string(unsafe_id),
+                .campaign_vars = {},
             },
             initial_snapshot,
             {});
@@ -591,4 +593,57 @@ TEST(Replay, initialize_replay_screen_rejects_unsafe_campaign_ids)
             << "unsafe campaign id should not mutate level selection: "
             << unsafe_id;
     }
+}
+
+// v15 campaign vars: begin_replay_recording stamps the world's campaign
+// vars into the header, and initialize_replay_screen applies the recorded
+// values to the world before the first tick — so a replay of a
+// decision-taken run replays the recorded branch on any machine.
+TEST(Replay, campaign_vars_stamp_at_record_and_apply_at_playback)
+{
+    ASSERT_TRUE(prepare_default_level_load())
+        << "default campaign should be restored before replay test";
+
+    screen& game_screen = *og::runtime::current_session->myscreen_;
+    configure_replay_team(game_screen.save_data, 1);
+
+    const std::string save_name = "test_replay_campaign_vars";
+    ASSERT_TRUE(game_screen.save_data.save(save_name));
+    game_screen.world().rng_.state_ = kReplayLoadSeedBase;
+    ASSERT_TRUE(load_saved_game(save_name.c_str(), &game_screen) != 0);
+    reset_loaded_world_for_replay(game_screen.world());
+
+    const std::vector<std::pair<std::string, std::int32_t>> vars = {
+        {"delve_counted", 3},
+        {"watch_paid", -2},
+    };
+    game_screen.world().campaign_vars = vars;
+
+    og::runtime::begin_replay_recording(game_screen);
+    ASSERT_TRUE(og::runtime::current_session->replay_recorder_.has_value());
+    EXPECT_EQ(vars,
+              og::runtime::current_session->replay_recorder_->header()
+                  .campaign_vars)
+        << "record start stamps the world's campaign vars into the header";
+
+    const std::vector<std::uint8_t> bytes =
+        og::runtime::current_session->replay_recorder_->serialize();
+    og::runtime::current_session->replay_recorder_.reset();
+
+    og::sim::ReplayPlayer player;
+    og::sim::ReplayIoError io_error = og::sim::ReplayIoError::None;
+    ASSERT_TRUE(player.load_bytes(bytes, &io_error));
+    ASSERT_EQ(og::sim::ReplayIoError::None, io_error);
+    EXPECT_EQ(vars, player.header().campaign_vars)
+        << "the vars survive the byte round-trip";
+
+    game_screen.world().campaign_vars.clear();
+    ASSERT_TRUE(og::runtime::initialize_replay_screen(game_screen, player))
+        << "replay runtime should load the recorded world";
+    EXPECT_EQ(vars, game_screen.world().campaign_vars)
+        << "playback start applies the recorded vars to the world";
+
+    game_screen.world().campaign_vars.clear();
+    game_screen.world().delete_objects();
+    og::runtime::current_session->replay_playback_active_ = false;
 }

@@ -320,6 +320,7 @@ TEST_F(CampaignHooksTest, fence_walk_everything_outside_the_allowlist_errors)
         "campaign_spend_gold", "campaign_grant_gold", "campaign_team",
         "campaign_level_completed", "campaign_current_level",
         "campaign_scenario_title",
+        "campaign_match_get", "campaign_match_set", "campaign_is_host",
         "div", "mod", "fadd", "fsub", "fmul", "fdiv", "i8", "i16", "i32",
         "u8", "trunc", "log",
         "max", "min", "clamp", "sign",
@@ -376,6 +377,9 @@ TEST_F(CampaignHooksTest, campaign_bindings_error_outside_campaign_dispatch)
   "campaign_level_completed",
   "campaign_current_level",
   "campaign_scenario_title",
+  "campaign_match_get",
+  "campaign_match_set",
+  "campaign_is_host",
 }
 for i = 1, #names do
   local ok, err = pcall(og[names[i]])
@@ -414,6 +418,9 @@ TEST_F(CampaignHooksTest, campaign_bindings_error_with_no_provider)
       { "campaign_level_completed", 1 },
       { "campaign_current_level" },
       { "campaign_scenario_title", 1 },
+      { "campaign_match_get", "team_count" },
+      { "campaign_match_set", "team_count", 2 },
+      { "campaign_is_host" },
     }
     for i = 1, #calls do
       local c = calls[i]
@@ -555,6 +562,82 @@ TEST_F(CampaignHooksTest, state_set_bounds_rejection_raises_before_mutation)
     EXPECT_TRUE(store.empty());
     ASSERT_EQ(1u, keys_offered.size());
     EXPECT_EQ("big", keys_offered[0]);
+}
+
+// #212 og.campaign_match_get / og.campaign_match_set / og.campaign_is_host:
+// the boolean answer rides through, get's unknown-name error matches the
+// sim twin's, and the provider sees exactly the names the script sent.
+TEST_F(CampaignHooksTest, match_bindings_round_trip)
+{
+    std::map<std::string, std::int32_t> knobs = {{"team_count", 0},
+                                                 {"score_limit", 5}};
+    bool host = true;
+    hooks::CampaignProviders providers;
+    providers.match_get = [&](const std::string& name) -> std::int32_t {
+        const auto it = knobs.find(name);
+        return it == knobs.end() ? 0 : it->second;
+    };
+    providers.match_set = [&](const std::string& name, std::int32_t value) {
+        if (!host)
+            return false;
+        const auto it = knobs.find(name);
+        if (it == knobs.end())
+            return false;
+        it->second = value;
+        return true;
+    };
+    providers.is_host = [&] { return host; };
+    hooks::install_campaign_providers(std::move(providers));
+
+    register_script(R"LUA(og.register_campaign_hooks({
+  picker_action = function(entry_id)
+    og.log("host " .. tostring(og.campaign_is_host()))
+    og.log("get0 " .. og.campaign_match_get("score_limit"))
+    og.log("set " .. tostring(og.campaign_match_set("score_limit", 20)))
+    og.log("get1 " .. og.campaign_match_get("score_limit"))
+    og.log("unk " .. tostring(og.campaign_match_set("no_such_knob", 1)))
+    local ok, err = pcall(og.campaign_match_get, "no_such_knob")
+    og.log("getunk " .. tostring(ok))
+    og.log("msg " .. err)
+    return nil
+  end,
+}))LUA");
+
+    hooks::CampaignActionResult result;
+    ASSERT_TRUE(hooks::campaign_picker_action("x", result));
+    EXPECT_TRUE(result.ok);
+    const std::vector<std::string>& log = vm_log();
+    ASSERT_EQ(7u, log.size());
+    EXPECT_EQ("host true", log[0]);
+    EXPECT_EQ("get0 5", log[1]);
+    EXPECT_EQ("set true", log[2]);
+    EXPECT_EQ("get1 20", log[3]);
+    EXPECT_EQ("unk false", log[4])
+        << "match_set answers false for unknown names, it does not raise";
+    EXPECT_EQ("getunk false", log[5])
+        << "match_get errors on unknown names, like og.match_setting";
+    EXPECT_NE(std::string::npos, log[6].find("unknown setting")) << log[6];
+    EXPECT_EQ(20, knobs.at("score_limit"));
+
+    // Non-host: the same write answers false and nothing moves. A fresh
+    // registration (a second one would be a duplicate-conflict) drives the
+    // same action with the predicate flipped.
+    host = false;
+    clear_pack_scripts();
+    register_script(R"LUA(og.register_campaign_hooks({
+  picker_action = function(entry_id)
+    og.log("host2 " .. tostring(og.campaign_is_host()))
+    og.log("set2 " .. tostring(og.campaign_match_set("score_limit", 44)))
+    return nil
+  end,
+}))LUA",
+                    "campaigntest/scripts/d.lua");
+    ASSERT_TRUE(hooks::campaign_picker_action("x", result));
+    const std::vector<std::string>& log2 = vm_log();
+    ASSERT_GE(log2.size(), 2u);
+    EXPECT_EQ("host2 false", log2[log2.size() - 2]);
+    EXPECT_EQ("set2 false", log2.back());
+    EXPECT_EQ(20, knobs.at("score_limit")) << "a joiner's write never lands";
 }
 
 // ---------------------------------------------------------------------------

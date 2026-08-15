@@ -8,6 +8,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 class GameWorld;
@@ -17,8 +18,18 @@ namespace og::sim {
 // v14 records protocol-v12 snapshots/input frames (snapshot v10: the CTF
 // world block is replaced by the RespawnState + ModeState blocks). v13
 // readers must reject the new protocol byte and vice versa.
-inline constexpr std::uint8_t kReplayFormatVersion = 14;
+// v15 adds the campaign-vars section (docs/campaign-scripting-design.md,
+// "Decision-reactive levels"): the registered campaign vars stamped at
+// record start, applied to the world at playback start before the first
+// tick — so a replay of a decision-taken run verifies on any machine. The
+// section sits between the campaign-id and snapshot payloads; an empty
+// list writes a zero count (the fixed 32-byte header is unchanged).
+inline constexpr std::uint8_t kReplayFormatVersion = 15;
 inline constexpr std::size_t kReplayHeaderSize = 32;
+
+// First replay format carrying the campaign-vars section (the reader's
+// version gate).
+inline constexpr std::uint8_t kReplayVarsMinVersion = 15;
 
 enum class ReplayIoError : std::uint8_t {
     None = 0,
@@ -39,6 +50,11 @@ struct ReplayHeader {
     std::int16_t allied_mode = 0;
     std::int16_t difficulty = 100;
     std::string campaign_id;
+    // v15: the world's campaign_vars at record start (the registered
+    // names' values, GameWorld::campaign_vars). Bounds ride the campaign
+    // registrar's (campaign_hooks.h): <= 64 entries, safe-id names — a
+    // hostile file violating them is MalformedData.
+    std::vector<std::pair<std::string, std::int32_t>> campaign_vars;
 };
 
 struct ReplayData {

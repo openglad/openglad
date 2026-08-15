@@ -15,6 +15,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/save_data.h>
 
@@ -191,7 +192,13 @@ bool persist_networked_win(const std::string& slot, const SaveData& session,
         // Deliberately persisted below with the rest of the merged save (like
         // the campaign cursor), so the company reflects the last session's rules.
         merged.keep_fallen_heroes = session.keep_fallen_heroes;
-        merged.merge_owned_guys_from(world.oblist, own_player_indices);
+        // #213: versus arenas persist no XP — the merged roster keeps the
+        // DISK exp/level (the local fold's update_guys arm applies the same
+        // rule; see progression.cpp).
+        const bool versus_no_xp =
+            og::data::campaign_matchup(session.current_campaign) == "versus";
+        merged.merge_owned_guys_from(world.oblist, own_player_indices,
+                                     versus_no_xp);
 
         // §4.6 Edit 2: bank the disk baseline PLUS only this machine's
         // deploy-ratio share of the fold delta (never the whole session pot).

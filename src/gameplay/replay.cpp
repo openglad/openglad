@@ -4,6 +4,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/order.h>
 #include <openglad/core/util.h>
+#include <openglad/gameplay/script/campaign_hooks.h> // v15 var-name bounds
 
 #include <algorithm>
 #include <array>
@@ -721,6 +722,19 @@ std::vector<std::uint8_t> serialize_replay(const ReplayHeader& header,
     write_u32_le(bytes, static_cast<std::uint32_t>(campaign_bytes.size()));
     write_u32_le(bytes, static_cast<std::uint32_t>(initial_snapshot_bytes.size()));
     write_bytes(bytes, campaign_bytes);
+    // v15 campaign-vars section: count, then (name_len, name, value) per
+    // entry — the registered vars' values at record start. An empty list
+    // is a bare zero count, so a decision-free record keeps its shape.
+    write_u32_le(bytes, static_cast<std::uint32_t>(header.campaign_vars.size()));
+    for (const auto& [name, value] : header.campaign_vars)
+    {
+        write_u32_le(bytes, static_cast<std::uint32_t>(name.size()));
+        write_bytes(bytes,
+                    std::span<const std::uint8_t>(
+                        reinterpret_cast<const std::uint8_t*>(name.data()),
+                        name.size()));
+        write_u32_le(bytes, static_cast<std::uint32_t>(value));
+    }
     write_bytes(bytes, initial_snapshot_bytes);
 
     for (const InputStateMessage& frame : frames)
@@ -776,8 +790,64 @@ std::optional<ReplayData> deserialize_replay(std::span<const std::uint8_t> bytes
     std::size_t payload_offset = kReplayHeaderSize;
     std::span<const std::uint8_t> campaign_bytes;
     std::span<const std::uint8_t> initial_snapshot_bytes;
-    if (!read_section(bytes, payload_offset, campaign_length, campaign_bytes) ||
-        !read_section(bytes,
+    if (!read_section(bytes, payload_offset, campaign_length, campaign_bytes))
+    {
+        set_error(out_error, ReplayIoError::MalformedData);
+        return std::nullopt;
+    }
+
+    // v15 campaign-vars section (version-gated; the equality check above
+    // means every accepted replay carries it today, but the gate documents
+    // the byte shape). Bounds are the campaign registrar's: at most
+    // kCampaignVarsMax safe-id names — a hostile file violating them is
+    // malformed, never a partially-applied var list.
+    if (replay.header.version >= kReplayVarsMinVersion)
+    {
+        if (payload_offset + 4 > bytes.size())
+        {
+            set_error(out_error, ReplayIoError::MalformedData);
+            return std::nullopt;
+        }
+        const std::uint32_t var_count = read_u32_le(bytes, payload_offset);
+        payload_offset += 4;
+        if (var_count >
+            static_cast<std::uint32_t>(og::script::hooks::kCampaignVarsMax))
+        {
+            set_error(out_error, ReplayIoError::MalformedData);
+            return std::nullopt;
+        }
+        replay.header.campaign_vars.reserve(var_count);
+        for (std::uint32_t i = 0; i < var_count; ++i)
+        {
+            if (payload_offset + 4 > bytes.size())
+            {
+                set_error(out_error, ReplayIoError::MalformedData);
+                return std::nullopt;
+            }
+            const std::uint32_t name_length = read_u32_le(bytes, payload_offset);
+            payload_offset += 4;
+            std::span<const std::uint8_t> name_bytes;
+            if (!read_section(bytes, payload_offset, name_length, name_bytes) ||
+                payload_offset + 4 > bytes.size())
+            {
+                set_error(out_error, ReplayIoError::MalformedData);
+                return std::nullopt;
+            }
+            std::string name(reinterpret_cast<const char*>(name_bytes.data()),
+                             name_bytes.size());
+            const auto value =
+                static_cast<std::int32_t>(read_u32_le(bytes, payload_offset));
+            payload_offset += 4;
+            if (!og::script::hooks::valid_campaign_var_name(name))
+            {
+                set_error(out_error, ReplayIoError::MalformedData);
+                return std::nullopt;
+            }
+            replay.header.campaign_vars.emplace_back(std::move(name), value);
+        }
+    }
+
+    if (!read_section(bytes,
                       payload_offset,
                       initial_snapshot_length,
                       initial_snapshot_bytes))

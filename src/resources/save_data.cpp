@@ -749,8 +749,25 @@ bool SaveData::load(const std::string& filename)
 
 std::int32_t calculate_level(std::uint32_t temp_exp);
 
-void SaveData::update_guys(const std::list<std::unique_ptr<walker>>& oblist)
+void SaveData::update_guys(const std::list<std::unique_ptr<walker>>& oblist,
+                           bool preserve_exp_level)
 {
+    // #213 (versus arenas persist no XP): remember the pre-fold exp/level
+    // per guy id BEFORE the roster is torn down, so the rebuild below can
+    // restore them. The copy constructor preserves guy::id, so a walker's
+    // myguy (a copy of the roster entry) still carries its roster identity.
+    std::map<int, std::pair<std::uint32_t, short>> prior_exp_level;
+    if (preserve_exp_level)
+    {
+        for (int i = 0; i < team_size; i++)
+        {
+            const guy* prior = team_list[static_cast<std::size_t>(i)].get();
+            if (prior != nullptr)
+                prior_exp_level.emplace(prior->id,
+                                        std::make_pair(prior->exp, prior->level));
+        }
+    }
+
     // Pass 0 (docs/company-basecamp-design.md §3.3): held-back characters
     // (deployed == false) never entered the level's oblist, so rebuilding the
     // roster purely from the oblist would silently delete them. Move them
@@ -793,10 +810,24 @@ void SaveData::update_guys(const std::list<std::unique_ptr<walker>>& oblist)
             }
 		    // Take this one
 			team_list[team_size] = std::make_unique<guy>(*ob->myguy);
-			// Update his level from the experience
-			std::uint32_t exp = team_list[team_size]->exp;
-			team_list[team_size]->upgrade_to_level(static_cast<short>(calculate_level(team_list[team_size]->exp)));
-			team_list[team_size]->exp = exp;
+			// #213: in a versus arena a known roster member keeps its prior
+			// exp AND level — the upgrade below (and its stat gains) is
+			// skipped entirely, so the company file reads back byte-identical.
+			const auto prior = preserve_exp_level
+			    ? prior_exp_level.find(team_list[team_size]->id)
+			    : prior_exp_level.end();
+			if (prior != prior_exp_level.end())
+			{
+				team_list[team_size]->exp = prior->second.first;
+				team_list[team_size]->level = prior->second.second;
+			}
+			else
+			{
+				// Update his level from the experience
+				std::uint32_t exp = team_list[team_size]->exp;
+				team_list[team_size]->upgrade_to_level(static_cast<short>(calculate_level(team_list[team_size]->exp)));
+				team_list[team_size]->exp = exp;
+			}
 			team_size++;
 		}
 	}
@@ -813,18 +844,21 @@ void SaveData::update_guys(const std::list<std::unique_ptr<walker>>& oblist)
 
 void SaveData::merge_owned_guys_from(
     const std::list<std::unique_ptr<walker>>& oblist,
-    std::uint8_t owner_player_index)
+    std::uint8_t owner_player_index,
+    bool preserve_exp_level)
 {
     if (owner_player_index == guy::kNoOwner)
         return;
 
     const std::array<std::uint8_t, 1> owners = {owner_player_index};
-    merge_owned_guys_from(oblist, std::span<const std::uint8_t>(owners));
+    merge_owned_guys_from(oblist, std::span<const std::uint8_t>(owners),
+                          preserve_exp_level);
 }
 
 void SaveData::merge_owned_guys_from(
     const std::list<std::unique_ptr<walker>>& oblist,
-    std::span<const std::uint8_t> owner_player_indices)
+    std::span<const std::uint8_t> owner_player_indices,
+    bool preserve_exp_level)
 {
     // A machine with N local seats owns N players' characters; merge them all
     // in one pass so the load/rebuild/save cycle happens exactly once.
@@ -881,10 +915,22 @@ void SaveData::merge_owned_guys_from(
         if (survived[static_cast<std::size_t>(slot)] != nullptr)
         {
             entry = std::make_unique<guy>(*survived[static_cast<std::size_t>(slot)]);
-            const std::uint32_t exp = entry->exp;
-            entry->upgrade_to_level(
-                static_cast<short>(calculate_level(entry->exp)));
-            entry->exp = exp;
+            const guy* disk = team_list[static_cast<std::size_t>(slot)].get();
+            if (preserve_exp_level && disk != nullptr)
+            {
+                // #213 (versus arenas): the merged roster keeps the DISK
+                // exp/level — the session's growth is not persisted and the
+                // re-level (with its stat gains) never runs.
+                entry->exp = disk->exp;
+                entry->level = disk->level;
+            }
+            else
+            {
+                const std::uint32_t exp = entry->exp;
+                entry->upgrade_to_level(
+                    static_cast<short>(calculate_level(entry->exp)));
+                entry->exp = exp;
+            }
         }
         else if (died[static_cast<std::size_t>(slot)] && keep_fallen_heroes == 0)
         {

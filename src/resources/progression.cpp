@@ -12,6 +12,7 @@
 #include <openglad/resources/progression.h>
 
 #include <openglad/gameplay/game_world.h>
+#include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/save_data.h>
 
 #include <cstddef>
@@ -103,9 +104,15 @@ void apply_win_fold(SaveData& save, const GameWorld& world,
     }
 
     // 6. Rebuild the roster from the finished level (dead heroes dropped
-    //    unless keep_fallen_heroes).
+    //    unless keep_fallen_heroes). #213: a `matchup: versus` campaign is
+    //    an arena, not an adventure — roster exp/level stay as the company
+    //    file holds them (cash/score above still fold). The metadata read
+    //    is memoized, and an unmounted/unknown campaign answers "" (never
+    //    "versus"), so classic play takes the plain path untouched.
     // Grab our team out of the level
-    save.update_guys(world.oblist);
+    const bool versus_no_xp =
+        og::data::campaign_matchup(save.current_campaign) == "versus";
+    save.update_guys(world.oblist, versus_no_xp);
 }
 
 std::uint32_t calculate_win_time_bonus(const GameWorld& world,

@@ -468,7 +468,8 @@ bool harvest_presentation(Harvest& h, int tbl, const std::string& where,
         !opt_string(h, tbl, where, "glyph_color", p.glyph_color) ||
         !opt_bool(h, tbl, where, "glyph_bold", p.glyph_bold) ||
         !opt_bool(h, tbl, where, "glyph_transparent", p.glyph_transparent) ||
-        !opt_int(h, tbl, where, "radar_jitter", p.radar_jitter))
+        !opt_int(h, tbl, where, "radar_jitter", p.radar_jitter) ||
+        !opt_bool(h, tbl, where, "radar_ping", p.radar_ping))
         return false;
     if (!has_field(h.L, tbl, "radar_color"))
         return true;
@@ -928,7 +929,7 @@ void append_common_keys(std::vector<const char*>& keys)
     for (const char* k :
          {"id", "wire_id", "name", "sprite", "animation", "tuning", "glyph",
           "glyph_ascii", "glyph_color", "glyph_bold", "glyph_transparent",
-          "radar_color", "radar_jitter"})
+          "radar_color", "radar_jitter", "radar_ping"})
         keys.push_back(k);
 }
 

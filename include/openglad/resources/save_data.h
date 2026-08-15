@@ -137,7 +137,14 @@ public:
     
     void reset();
     
-    void update_guys(const std::list<std::unique_ptr<walker>>& oblist);  // Copy team from the guys in an oblist (dead heroes dropped unless keep_fallen_heroes)
+    // Copy team from the guys in an oblist (dead heroes dropped unless
+    // keep_fallen_heroes). preserve_exp_level (#213, versus arenas): a
+    // rebuilt entry keeps the PRIOR roster entry's exp and level (matched
+    // by guy::id; the re-level-from-exp step is skipped, so level-up stat
+    // gains never apply either) — cash/score folding is untouched. Guys
+    // with no prior entry (mid-level recruits) re-level normally.
+    void update_guys(const std::list<std::unique_ptr<walker>>& oblist,
+                     bool preserve_exp_level = false);
     // Networked "as if played alone" save: overlay only the characters owned by
     // owner_player_index (matched via guy::owner_player_index) back into their
     // own save slots (guy::owner_save_slot), updating progress while leaving
@@ -145,13 +152,17 @@ public:
     // not-brought characters — untouched. Keeps the roster dense; campaign and
     // score fields are intentionally left as-is (only character growth persists).
     void merge_owned_guys_from(const std::list<std::unique_ptr<walker>>& oblist,
-                               std::uint8_t owner_player_index);
+                               std::uint8_t owner_player_index,
+                               bool preserve_exp_level = false);
     // Multi-seat variant: overlay the characters owned by ANY of the given
     // player indices in ONE load/merge/save cycle (a machine with N local
     // seats owns N players' characters). Entries equal to guy::kNoOwner are
-    // ignored; an effectively empty list is a no-op.
+    // ignored; an effectively empty list is a no-op. preserve_exp_level
+    // (#213): a surviving overlay keeps the DISK slot's exp/level instead
+    // of re-leveling from the session exp.
     void merge_owned_guys_from(const std::list<std::unique_ptr<walker>>& oblist,
-                               std::span<const std::uint8_t> owner_player_indices);
+                               std::span<const std::uint8_t> owner_player_indices,
+                               bool preserve_exp_level = false);
     bool load(const std::string& filename);
     bool save(const std::string& filename);
     [[nodiscard]] SaveDataIoError load_with_error(const std::string& filename);

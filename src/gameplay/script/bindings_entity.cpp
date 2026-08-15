@@ -1996,6 +1996,73 @@ int og_campaign_scenario_title(lua_State* L)
     return 1;
 }
 
+// The og.campaign_match_* vocabulary check (#212). Get keeps the sim
+// twin's unknown-name error; set answers false instead (the provider
+// contract), so this helper serves only the erroring spelling.
+bool known_match_setting(const char* name)
+{
+    for (const char* known : hooks::kCampaignMatchSettingNames) {
+        if (std::strcmp(known, name) == 0)
+            return true;
+    }
+    return false;
+}
+
+// og.campaign_match_get(name) → int32 — the menu-time twin of the sim's
+// read-only og.match_setting, over the persisted MATCHUP knobs
+// ("team_count", "score_limit", "respawn_ticks", "strip_troops",
+// "respawn_mode", "generator_rate"). Unknown names error, like the twin.
+int og_campaign_match_get(lua_State* L)
+{
+    campaign_dispatch_arg(L, "campaign_match_get");
+    const char* name = luaL_checkstring(L, 1);
+    if (!known_match_setting(name))
+        return luaL_error(L, "og.campaign_match_get: unknown setting '%s'",
+                          name);
+    const auto& p = campaign_providers();
+    if (!p.match_get)
+        return luaL_error(
+            L, "og.campaign_match_get: no campaign provider installed");
+    lua_pushinteger(L, static_cast<lua_Integer>(p.match_get(name)));
+    return 1;
+}
+
+// og.campaign_match_set(name, value) → true/false — write-through to the
+// MATCHUP knobs. Policy lives in the provider: it clamps like the lobby
+// sanitizer and answers false for unknown names or when this machine is
+// not the host (local play is always host).
+int og_campaign_match_set(lua_State* L)
+{
+    campaign_dispatch_arg(L, "campaign_match_set");
+    const char* name = luaL_checkstring(L, 1);
+    const lua_Integer value = luaL_checkinteger(L, 2);
+    if (value < std::numeric_limits<std::int32_t>::min() ||
+        value > std::numeric_limits<std::int32_t>::max())
+        return luaL_error(L,
+                          "og.campaign_match_set: value out of int32 range");
+    const auto& p = campaign_providers();
+    if (!p.match_set)
+        return luaL_error(
+            L, "og.campaign_match_set: no campaign provider installed");
+    lua_pushboolean(L, p.match_set(name, static_cast<std::int32_t>(value))
+                           ? 1
+                           : 0);
+    return 1;
+}
+
+// og.campaign_is_host() → true/false — so a script can shape host-only
+// pages (level rows and match presets) without tripping the refusal.
+int og_campaign_is_host(lua_State* L)
+{
+    campaign_dispatch_arg(L, "campaign_is_host");
+    const auto& p = campaign_providers();
+    if (!p.is_host)
+        return luaL_error(
+            L, "og.campaign_is_host: no campaign provider installed");
+    lua_pushboolean(L, p.is_host() ? 1 : 0);
+    return 1;
+}
+
 // ---------------------------------------------------------------------------
 // Deterministic arithmetic / branch helpers
 // ---------------------------------------------------------------------------
@@ -3109,6 +3176,9 @@ const luaL_Reg kOgCampaignFuncs[] = {
     {"campaign_level_completed", og_campaign_level_completed},
     {"campaign_current_level", og_campaign_current_level},
     {"campaign_scenario_title", og_campaign_scenario_title},
+    {"campaign_match_get", og_campaign_match_get},
+    {"campaign_match_set", og_campaign_match_set},
+    {"campaign_is_host", og_campaign_is_host},
     {nullptr, nullptr},
 };
 

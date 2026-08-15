@@ -68,6 +68,18 @@ struct CampaignRosterEntry {
         intelligence = 0, armor = 0, team = 0;
 };
 
+// The og.campaign_match_get / og.campaign_match_set name vocabulary
+// (#212): the persisted knobs the MATCHUP screen edits, one spelling
+// shared by the sim's read-only og.match_setting twin (minus its
+// "difficulty", plus generator_rate, which the sim never reads by name).
+// og.campaign_match_get errors on any name outside this list — the sim
+// twin's unknown-name rule — while match_set answers false (policy lives
+// in the provider).
+inline constexpr const char* kCampaignMatchSettingNames[] = {
+    "team_count",   "score_limit",  "respawn_ticks",
+    "strip_troops", "respawn_mode", "generator_rate",
+};
+
 // The menu-time provider seam. og_gameplay cannot see SaveData or the
 // picker (dependency direction), so every og.campaign_* binding resolves
 // through these process-global callbacks, installed by the surface that
@@ -75,7 +87,10 @@ struct CampaignRosterEntry {
 // session, unit-test fixtures — and deliberately none on openglad_server).
 // Providers must never dispatch Lua (no re-entry). state_set is
 // check-then-write: it returns false on bounds rejection WITHOUT mutating,
-// and the binding raises on false.
+// and the binding raises on false. match_set clamps like the lobby
+// sanitizer and returns false for unknown names or when the surface is
+// not the host (#212); is_host answers the surface's host predicate
+// (local play is always host).
 struct CampaignProviders {
     std::function<std::int32_t(const std::string&)> state_get;
     std::function<bool(const std::string&, std::int32_t)> state_set;
@@ -86,6 +101,9 @@ struct CampaignProviders {
     std::function<bool(int)> level_completed;
     std::function<int()> current_level;
     std::function<std::string(int)> scenario_title;
+    std::function<std::int32_t(const std::string&)> match_get;
+    std::function<bool(const std::string&, std::int32_t)> match_set;
+    std::function<bool()> is_host;
 };
 
 void install_campaign_providers(CampaignProviders providers);

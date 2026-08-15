@@ -1321,6 +1321,34 @@ struct ProgressEngineState
 constexpr UiRect kProgressPrevBtn = {30, 170, 40, 20};
 constexpr UiRect kProgressNextBtn = {80, 170, 40, 20};
 
+// #207: the per-row action hit-test, shared by the frame_tick dispatch and
+// the coverage harness. Uncleared rows keep the legacy GO rect; cleared
+// rows get the wider REPLAY rect (both right-aligned with BACK at x=310).
+// Answers the level id the click selects, or -1 for no row action.
+constexpr int kProgressRowY = 36;
+constexpr int kProgressRowHeight = 13;
+constexpr int kProgressGoHitX = 295, kProgressGoHitW = 20;
+constexpr int kProgressReplayHitX = 268, kProgressReplayHitW = 42;
+
+int progress_row_action_hit(const ProgressEngineState& state, int mx, int my)
+{
+    int row_y = kProgressRowY;
+    for (int i = state.scroll_offset;
+         i < static_cast<int>(state.levels.size()) &&
+         i < state.scroll_offset + state.visible_rows;
+         i++) {
+        const LevelProgress& lp = state.levels[static_cast<std::size_t>(i)];
+        const int hit_x = lp.is_cleared ? kProgressReplayHitX : kProgressGoHitX;
+        const int hit_w = lp.is_cleared ? kProgressReplayHitW : kProgressGoHitW;
+        if (mx >= hit_x && mx <= hit_x + hit_w &&
+            my >= row_y && my <= row_y + kProgressRowHeight) {
+            return lp.id;
+        }
+        row_y += kProgressRowHeight;
+    }
+    return -1;
+}
+
 void picker_progress_menu_engine_draw_background(void* /*screen_state*/)
 {
     og::runtime::current_session->myscreen_->clearbuffer();
@@ -1370,26 +1398,19 @@ bool picker_progress_menu_engine_frame_tick(void* screen_state, int /*frame*/)
         state->scroll_offset++;
     }
 
-    // Check for GO button clicks on level rows
+    // Check for GO/REPLAY button clicks on level rows (#207: cleared rows
+    // are selectable again — the REPLAY write is IDENTICAL to GO's, and the
+    // win-fold's completion marking is idempotent, so replaying costs
+    // nothing but the time bonus already spent).
     if (clicked) {
-        int row_y = 36;
-        int row_height = 13;
-        int go_btn_x = 295;
-        int go_btn_w = 20;
-        for (int i = state->scroll_offset; i < static_cast<int>(state->levels.size()) && i < state->scroll_offset + state->visible_rows; i++) {
-            LevelProgress& lp = state->levels[static_cast<std::size_t>(i)];
-            if (!lp.is_cleared) {
-                // Check if click is on this row's GO button
-                if (mx >= go_btn_x && mx <= go_btn_x + go_btn_w &&
-                    my >= row_y && my <= row_y + row_height) {
-                    // Set current level and exit
-                    og::runtime::current_session->myscreen_->save_data.scen_num = static_cast<short>(lp.id);
-                    picker_lobby_sync_settings_from_save();
-                    og::runtime::current_session->myscreen_->clearbuffer();
-                    return false;
-                }
-            }
-            row_y += row_height;
+        const int hit_id = progress_row_action_hit(*state, mx, my);
+        if (hit_id >= 0) {
+            // Set current level and exit
+            og::runtime::current_session->myscreen_->save_data.scen_num = static_cast<short>(hit_id);
+            picker_lobby_sync_settings_from_save();
+            og::runtime::current_session->myscreen_->clearbuffer();
+            TRACE("picker", "progress_row_go level=%d", hit_id);
+            return false;
         }
     }
 
@@ -1449,6 +1470,12 @@ void picker_progress_menu_engine_draw_content(void* screen_state)
         // Enemy count
         if (lp.is_cleared) {
             mytext.write_xy(258, y + 2, "0", DARK_GREEN, 1);
+
+            // #207: cleared rows are selectable again — REPLAY carries the
+            // identical scen_num write as GO (right edge aligned with BACK
+            // at x=310, wider to fit the label).
+            og::runtime::current_session->myscreen_->draw_button(268, y + 1, 310, y + 10, 1, 1);
+            mytext.write_xy(272, y + 2, "REPLAY", DARK_BLUE, 1);
         } else {
             buf = std::format("{}", lp.num_enemies);
             mytext.write_xy(258, y + 2, buf.c_str(), WHITE, 1);

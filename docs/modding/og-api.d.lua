@@ -547,7 +547,10 @@
 ---@field campaign_current_level fun(): integer
 ---@field campaign_gold fun(): integer
 ---@field campaign_grant_gold fun(amount: integer)
+---@field campaign_is_host fun(): boolean # og.campaign_is_host() → true/false — so a script can shape host-only pages (level rows and match presets) without tripping the refusal.
 ---@field campaign_level_completed fun(id: integer): boolean # og.campaign_level_completed(id) — the menu-time twin of the sim's og.level_completed.
+---@field campaign_match_get fun(name: string): integer # og.campaign_match_get(name) → int32 — the menu-time twin of the sim's read-only og.match_setting, over the persisted MATCHUP knobs ("team_count", "score_limi...
+---@field campaign_match_set fun(name: string, value: integer): boolean # og.campaign_match_set(name, value) → true/false — write-through to the MATCHUP knobs.
 ---@field campaign_scenario_title fun(id: integer): string # og.campaign_scenario_title(id) → title string, "" when absent.
 ---@field campaign_spend_gold fun(amount: integer): boolean # og.campaign_spend_gold(amount) → true/false — the affordability-checked debit for variable-priced flows inside actions (fixed `cost` debits are owned by C++...
 ---@field campaign_state_get fun(key: string): integer

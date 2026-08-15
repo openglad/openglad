@@ -11,13 +11,17 @@
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_state.h>
+#include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/resources/level_file_io.h>
 #include <openglad/resources/save_data.h>
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace og::data {
@@ -60,12 +64,99 @@ const char* family_display_name(int family)
     return descriptor != nullptr ? descriptor->name : "BEAST";
 }
 
+// #212: armed by a successful match_set, consumed by the missions surface
+// after each Acted outcome (the sync-settings-from-save tail).
+bool g_match_settings_dirty = false;
+
+// The MATCHUP knob a match-setting name maps to, or nullptr for a name
+// outside the vocabulary (kCampaignMatchSettingNames).
+short* match_setting_slot(SaveData& save, const std::string& name)
+{
+    if (name == "team_count")
+        return &save.ctf_team_count;
+    if (name == "score_limit")
+        return &save.ctf_capture_limit;
+    if (name == "respawn_ticks")
+        return &save.ctf_respawn_ticks;
+    if (name == "strip_troops")
+        return &save.ctf_strip_scenario_troops;
+    if (name == "respawn_mode")
+        return &save.respawn_mode;
+    if (name == "generator_rate")
+        return &save.generator_rate;
+    return nullptr;
+}
+
+// The lobby sanitizer's rules (lobby_server.cpp sanitize_settings),
+// applied per knob: the numeric knobs clamp (with their 0 = default/Auto
+// sentinels preserved), the enum knobs REFUSE an out-of-range value —
+// where the sanitizer reverts to its fallback, a provider write answers
+// false without mutating.
+bool clamp_match_setting(const std::string& name, std::int32_t value,
+                         short& out)
+{
+    if (name == "team_count")
+    {
+        out = value > 0
+            ? static_cast<short>(std::clamp<std::int32_t>(value, 2, 4))
+            : static_cast<short>(0); // Auto: every team the map authors
+        return true;
+    }
+    if (name == "score_limit")
+    {
+        out = static_cast<short>(std::clamp<std::int32_t>(value, 0, 50));
+        return true;
+    }
+    if (name == "respawn_ticks")
+    {
+        out = value != 0
+            ? static_cast<short>(std::clamp<std::int32_t>(value, 12, 1200))
+            : static_cast<short>(0);
+        return true;
+    }
+    if (name == "strip_troops")
+    {
+        if (value < 0 || value > og::sim::kTroopsMatched)
+            return false;
+        out = static_cast<short>(value);
+        return true;
+    }
+    if (name == "respawn_mode")
+    {
+        if (value < og::sim::kRespawnModeOff ||
+            value > og::sim::kRespawnModeTeamOneHeroes)
+        {
+            return false;
+        }
+        out = static_cast<short>(value);
+        return true;
+    }
+    if (name == "generator_rate")
+    {
+        out = value != 0
+            ? static_cast<short>(std::clamp<std::int32_t>(value, 25, 400))
+            : static_cast<short>(0); // 0 = default (100)
+        return true;
+    }
+    return false; // unknown name
+}
+
 } // namespace
 
-og::script::hooks::CampaignProviders make_campaign_providers(SaveData& save)
+bool consume_match_settings_dirty()
+{
+    const bool was_dirty = g_match_settings_dirty;
+    g_match_settings_dirty = false;
+    return was_dirty;
+}
+
+og::script::hooks::CampaignProviders make_campaign_providers(
+    SaveData& save, std::function<bool()> is_host)
 {
     og::script::hooks::CampaignProviders providers;
     SaveData* const save_ptr = &save;
+    if (!is_host)
+        is_host = [] { return true; }; // local play is always host
 
     providers.state_get = [save_ptr](const std::string& key) -> std::int32_t {
         return save_ptr->campaign_state_get(save_ptr->current_campaign, key);
@@ -144,6 +235,28 @@ og::script::hooks::CampaignProviders make_campaign_providers(SaveData& save)
             return std::string();
         return title;
     };
+
+    // #212: menu-time MATCHUP knobs. Reads are open to every machine;
+    // writes are host-only (the SET LEVEL predicate) and clamp like the
+    // lobby sanitizer, so a scripted preset can never publish a value the
+    // server would bounce.
+    providers.match_get = [save_ptr](const std::string& name) -> std::int32_t {
+        const short* slot = match_setting_slot(*save_ptr, name);
+        return slot != nullptr ? static_cast<std::int32_t>(*slot) : 0;
+    };
+    providers.match_set = [save_ptr, is_host](const std::string& name,
+                                              std::int32_t value) -> bool {
+        if (!is_host())
+            return false;
+        short* slot = match_setting_slot(*save_ptr, name);
+        short clamped = 0;
+        if (slot == nullptr || !clamp_match_setting(name, value, clamped))
+            return false;
+        *slot = clamped;
+        g_match_settings_dirty = true;
+        return true;
+    };
+    providers.is_host = std::move(is_host);
 
     return providers;
 }

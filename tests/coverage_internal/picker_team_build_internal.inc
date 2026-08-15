@@ -367,6 +367,14 @@ int picker_team_build_testing_exercise_internal_paths()
     picker_progress_menu_engine_draw_content(nullptr);
     picker_progress_menu_engine_draw_background(nullptr);
     picker_progress_menu_engine_draw_content(&progress_state);
+    // #207 row-action hit-test: uncleared rows keep the legacy GO rect;
+    // cleared rows answer through the wider REPLAY rect (row 0 = id 1
+    // uncleared/current at y 36..49, row 1 = id 2 cleared at y 49..62).
+    check(progress_row_action_hit(progress_state, 300, 40) == 1);
+    check(progress_row_action_hit(progress_state, 300, 55) == 2);
+    check(progress_row_action_hit(progress_state, 270, 55) == 2);
+    check(progress_row_action_hit(progress_state, 270, 40) == -1);
+    check(progress_row_action_hit(progress_state, 5, 40) == -1);
 
     button hire_buttons[] = {
         button("prev", "PREV", KEYSTATE_UNKNOWN, 0, 0, 10, 10, 0, 0,

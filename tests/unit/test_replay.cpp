@@ -1,5 +1,6 @@
 #include <openglad/gameplay/input_action.h>
 #include <openglad/gameplay/replay.h>
+#include <openglad/gameplay/script/campaign_hooks.h> // v15 var bounds
 
 #include <gtest/gtest.h>
 
@@ -169,6 +170,7 @@ TEST(Replay, file_roundtrip_preserves_header_and_frames)
         .allied_mode = 1,
         .difficulty = 125,
         .campaign_id = "gladiator",
+        .campaign_vars = {},
     };
     const og::sim::WorldSnapshot initial_snapshot = make_initial_snapshot();
 
@@ -211,6 +213,72 @@ TEST(Replay, file_roundtrip_preserves_header_and_frames)
     std::filesystem::remove(path, ec);
 }
 
+// v15 campaign-vars section: the header list round-trips, an empty list is
+// a bare zero count (the version-gated read still parses), and hostile
+// var names/counts are MalformedData, never a partially-applied list.
+TEST(Replay, campaign_vars_round_trip_and_bounds)
+{
+    og::sim::ReplayHeader header = {
+        .version = og::sim::kReplayFormatVersion,
+        .initial_rng_state = 1u,
+        .level_id = 2,
+        .player_count = 1,
+        .timer_wait = 6,
+        .my_team = 1,
+        .allied_mode = 0,
+        .difficulty = 100,
+        .campaign_id = "gladiator",
+        .campaign_vars = {{"delve_counted", 3}, {"watch_paid", -2}},
+    };
+    const og::sim::WorldSnapshot initial_snapshot = make_initial_snapshot();
+    const std::array<og::sim::InputStateMessage, 1> frames = {{
+        {7u, make_sparse_input()},
+    }};
+
+    og::sim::ReplayIoError io_error = og::sim::ReplayIoError::None;
+    {
+        const std::vector<std::uint8_t> bytes =
+            og::sim::serialize_replay(header, initial_snapshot, frames);
+        const auto replay = og::sim::deserialize_replay(bytes, &io_error);
+        ASSERT_TRUE(replay.has_value());
+        EXPECT_EQ(header.campaign_vars, replay->header.campaign_vars)
+            << "names, order and (negative) values all round-trip";
+        ASSERT_EQ(1u, replay->frames.size())
+            << "the frame payload still parses after the vars section";
+    }
+
+    // An empty list keeps the shape: a bare zero count.
+    header.campaign_vars.clear();
+    {
+        const std::vector<std::uint8_t> bytes =
+            og::sim::serialize_replay(header, initial_snapshot, frames);
+        const auto replay = og::sim::deserialize_replay(bytes, &io_error);
+        ASSERT_TRUE(replay.has_value());
+        EXPECT_TRUE(replay->header.campaign_vars.empty());
+        ASSERT_EQ(1u, replay->frames.size());
+    }
+
+    // A hostile name (outside the safe-id charset) is malformed.
+    header.campaign_vars = {{"BAD NAME", 1}};
+    {
+        const std::vector<std::uint8_t> bytes =
+            og::sim::serialize_replay(header, initial_snapshot, frames);
+        EXPECT_FALSE(og::sim::deserialize_replay(bytes, &io_error).has_value());
+        EXPECT_EQ(og::sim::ReplayIoError::MalformedData, io_error);
+    }
+
+    // A count over the registrar's bound (64) is malformed.
+    header.campaign_vars.clear();
+    for (int i = 0; i < og::script::hooks::kCampaignVarsMax + 1; ++i)
+        header.campaign_vars.emplace_back("var_" + std::to_string(i), i);
+    {
+        const std::vector<std::uint8_t> bytes =
+            og::sim::serialize_replay(header, initial_snapshot, frames);
+        EXPECT_FALSE(og::sim::deserialize_replay(bytes, &io_error).has_value());
+        EXPECT_EQ(og::sim::ReplayIoError::MalformedData, io_error);
+    }
+}
+
 // Replays recorded before the reverse-DNS purge carry
 // "org.openglad.<name>" campaign ids in their headers. Deserializing folds
 // the id onto the plain spelling so the runtime mounts the renamed archive;
@@ -227,6 +295,7 @@ TEST(Replay, deserialize_normalizes_legacy_reverse_dns_campaign_id)
         .allied_mode = 1,
         .difficulty = 100,
         .campaign_id = "org.openglad.gladiator",
+        .campaign_vars = {},
     };
     const og::sim::WorldSnapshot initial_snapshot = make_initial_snapshot();
     const std::array<og::sim::InputStateMessage, 1> frames = {{
@@ -257,6 +326,7 @@ TEST(Replay, deserialize_rejects_bad_magic_version_and_truncated_payload)
         .allied_mode = 0,
         .difficulty = 100,
         .campaign_id = "gladiator",
+        .campaign_vars = {},
     };
     const og::sim::WorldSnapshot initial_snapshot = make_initial_snapshot();
     const std::array<og::sim::InputStateMessage, 1> frames = {{
@@ -305,6 +375,7 @@ TEST(Replay, deserialize_rejects_each_malformed_replay_section)
         .allied_mode = 0,
         .difficulty = 100,
         .campaign_id = "gladiator",
+        .campaign_vars = {},
     };
     const std::array<og::sim::InputStateMessage, 1> frames = {{
         {7u, make_sparse_input()},
@@ -375,6 +446,7 @@ TEST(Replay, recorder_write_file_requires_self_contained_bootstrap_data)
         .allied_mode = 0,
         .difficulty = 100,
         .campaign_id = "",
+        .campaign_vars = {},
     });
     missing_campaign.set_initial_snapshot(make_initial_snapshot());
 
@@ -392,6 +464,7 @@ TEST(Replay, recorder_write_file_requires_self_contained_bootstrap_data)
         .allied_mode = 0,
         .difficulty = 100,
         .campaign_id = "gladiator",
+        .campaign_vars = {},
     });
 
     EXPECT_FALSE(missing_snapshot.write_file(path, &io_error));
@@ -755,6 +828,7 @@ TEST(Replay, file_errors_report_the_failed_operation)
         .version = og::sim::kReplayFormatVersion,
         .player_count = 1,
         .campaign_id = "gladiator",
+        .campaign_vars = {},
     };
     og::sim::ReplayRecorder recorder(header);
     recorder.set_initial_snapshot(make_initial_snapshot());
@@ -812,6 +886,7 @@ TEST(Replay, recorder_clear_and_world_snapshot_recorders_reset_state)
         .allied_mode = 0,
         .difficulty = 100,
         .campaign_id = "gladiator",
+        .campaign_vars = {},
     });
 
     recorder.record_initial_world(world);

@@ -291,6 +291,7 @@ constexpr const char* kMissionsScript = R"LUA(og.register_campaign_hooks({
   end,
   picker_action = function(entry_id)
     og.campaign_state_set("kit", 1)
+    og.campaign_match_set("score_limit", 15)
     return { message = "Kit stowed for the road." }
   end,
 }))LUA";
@@ -435,6 +436,12 @@ TEST(CampaignMissionsUi, missions_flow_buys_pages_and_sets_level)
     // og.campaign_state_set wrote through the installed providers into the
     // live save's per-campaign book.
     EXPECT_EQ(1, save.campaign_state_get("gladiator", "kit"));
+    // #212: the action's og.campaign_match_set wrote the MATCHUP knob and
+    // the Acted tail consumed the dirty flag into the settings sync.
+    EXPECT_EQ(15, save.ctf_capture_limit)
+        << "og.campaign_match_set writes through to the persisted knob";
+    EXPECT_TRUE(trace_contains("missions", "match_settings_synced"))
+        << "a match-setting write runs the sync-settings-from-save tail";
 
     // The bogus level refused with the standard rollback popup...
     EXPECT_TRUE(trace_contains("popup", "Invalid level file."))

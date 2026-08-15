@@ -37,6 +37,7 @@
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/resources/campaign_metadata.h>
+#include <openglad/resources/campaign_state_providers.h> // #212 dirty flag
 #include <openglad/resources/company.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
@@ -1584,6 +1585,13 @@ Sint32 campaign_missions_on_spec_row(int row, void* screen_state)
         return MENU_REDRAW;
     }
     case Outcome::Acted: {
+        // #212: an action that wrote a MATCHUP knob through
+        // og.campaign_match_set armed the providers' dirty flag; run the
+        // standard sync-settings-from-save tail so joiners follow.
+        if (og::data::consume_match_settings_dirty()) {
+            picker_lobby_sync_settings_from_save();
+            TRACE("missions", "match_settings_synced");
+        }
         // The session already debited and refetched; re-window and surface
         // the toast (popup_dialog is trace-only under TESTING).
         campaign_missions_reset_page(*st, true);

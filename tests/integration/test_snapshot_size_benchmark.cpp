@@ -245,6 +245,7 @@ RecordedBenchmarkReplay record_benchmark_replay(screen& game_screen)
         .allied_mode = game_screen.save_data.allied_mode,
         .difficulty = world.difficulty,
         .campaign_id = game_screen.save_data.current_campaign,
+        .campaign_vars = {},
     });
     recorder.record_initial_world(world);
 

@@ -1097,6 +1097,81 @@ TEST(ModeUi, radar_landmark_families_blip_without_treasure_sight)
     pop_test_context();
 }
 
+// #209 radar_ping: a ping-flagged family takes the oversized-pulsing-blip
+// draw path (proven by its trace); without the flag the plain single-pixel
+// path draws and the ping trace stays silent.
+TEST(ModeUi, radar_ping_families_take_the_loud_blip_path)
+{
+    FixedRandom fixed_rng(1);
+    GameContext c;
+    c.rng = &fixed_rng;
+    push_test_context(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+
+    walker* control = d.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    control->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
+    control->set_team_num(0);
+
+    // A ping-flagged treasure family (the soccer/basketball-ball class):
+    // copy a live descriptor, flag it, restore afterwards. landmark keeps
+    // it visible without treasure sight; jitter 0 keeps the rng silent.
+    const TreasureFamilyDescriptor* live =
+        get_treasure_family_descriptor(FAMILY_LIFE_GEM);
+    ASSERT_NE(nullptr, live);
+    const TreasureFamilyDescriptor original = *live;
+    TreasureFamilyDescriptor flagged = original;
+    flagged.radar.color = 100;
+    flagged.radar.jitter = 0;
+    flagged.radar.landmark = true;
+    flagged.radar.ping = true;
+    ASSERT_TRUE(set_treasure_family_descriptor(FAMILY_LIFE_GEM, flagged));
+
+    {
+        auto fx = std::make_unique<walker>();
+        fx->set_order_family(Order::Treasure, FAMILY_LIFE_GEM);
+        fx->set_dead(0);
+        fx->setxy(GRID_SIZE * 3, GRID_SIZE * 2);
+        d.world().fxlist.push_back(std::move(fx));
+    }
+
+    viewscreen* vs = test_screen()->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    walker* saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
+    vs->control = control;
+    vs->radarstart = 0;
+
+    radar r(vs, test_screen(), 0);
+    r.force_lower_position = true;
+    r.start(&d);
+
+    trace_clear();
+    ASSERT_EQ(1, static_cast<int>(r.draw(&d)));
+    const std::string expected_trace =
+        "ping_blip fam=" + std::to_string(static_cast<int>(FAMILY_LIFE_GEM));
+    EXPECT_TRUE(trace_contains("radar", expected_trace.c_str()))
+        << "a ping-flagged family must take the oversized blip path";
+
+    // Same family without ping: landmark still blips, but on the plain
+    // single-pixel path.
+    flagged.radar.ping = false;
+    ASSERT_TRUE(set_treasure_family_descriptor(FAMILY_LIFE_GEM, flagged));
+    trace_clear();
+    ASSERT_EQ(1, static_cast<int>(r.draw(&d)));
+    EXPECT_FALSE(trace_contains("radar", "ping_blip"))
+        << "without the flag the plain blip path draws";
+    EXPECT_TRUE(trace_contains("radar", "landmark_blip"))
+        << "the landmark rule is untouched by the ping flag";
+
+    ASSERT_TRUE(set_treasure_family_descriptor(FAMILY_LIFE_GEM, original));
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
+    pop_test_context();
+}
+
 TEST(ModeUi, radar_draws_beacon_blips_in_beacon_team_color)
 {
     FixedRandom fixed_rng(1);
