@@ -870,6 +870,16 @@ target_compile_definitions(og_unit_data PRIVATE
     OG_CAMPAIGNS_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns"
 )
 
+# The Company Fire pack (campaigns/westlands/packs/westlands.fire): the
+# scripted-camp page gates, quartermaster actions and ledger over the
+# shipped westlands.glad, plus the decision-consequence sims (var==0
+# byte-identity against a pack-less baseline, taken-path spawns, footing).
+# Its own group beside og_unit_data so the 300-tick identity runs keep
+# their own time budget.
+og_add_unit_group(og_unit_westlands_fire FILES
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_westlands_fire.cpp
+)
+
 og_add_unit_group(og_unit_respawn FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_respawn_engine.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_classic_respawn.cpp
