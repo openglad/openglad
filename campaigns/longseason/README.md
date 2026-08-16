@@ -11,6 +11,15 @@ any diff.
 This file is repo documentation: `scripts/make_glad.py` excludes README.md
 from the composed `.glad` archive.
 
+HAND-AUTHORED EXCEPTION: `packs/longseason.ledger/` (Kettle's Book — the
+scripted mission picker and its decision consequences) is preserved by
+regeneration, ships inside the archive, and mirrors the generated layouts
+in `lib/ledger_data.lua` (exit graph + fixed spawn tiles). A regeneration
+that moves layouts must update that mirror — the pins in
+`tests/unit/test_longseason_ledger.cpp` and the generator's own
+`self_check_book_script` go red until it is done. See
+`packs/longseason.ledger/README.md`.
+
 The rest of this file is the campaign's design record — the metadata and
 story bible, the original story skeleton, and the per-level design docs
 the generator is authored against. `tools/longseason_mapgen` and
