@@ -656,9 +656,9 @@ TEST(CampaignZoneUi, scripted_zone_flow_locks_assigns_acts_and_sets_level)
         << "the rollback reload must succeed";
     // A successful level set says so, so the PREVIOUS action's toast can
     // never be read as this one's answer.
-    EXPECT_TRUE(trace_contains("zone", "toast Road set:"))
+    EXPECT_TRUE(trace_contains("zone", "toast Level set to"))
         << "setting the level must confirm itself";
-    EXPECT_TRUE(trace_contains("zone", "toast Already on that road."))
+    EXPECT_TRUE(trace_contains("zone", "toast Already on that level."))
         << "re-picking the current level answers rather than going quiet";
 
     // #212: BOTH action dispatch sites ran the match-settings sync tail

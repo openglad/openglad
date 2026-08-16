@@ -90,7 +90,7 @@ ZONE_SHOTS=(
     zone_default_gladiator
     zone_default_modes
     zone_camp_westlands
-    zone_default_longseason
+    zone_camp_longseason
     zone_default_imaginations
     uxr_after_bench
     uxr_lock_toast
