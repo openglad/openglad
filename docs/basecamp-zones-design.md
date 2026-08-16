@@ -9,18 +9,19 @@ page into the screen the player lives on. Red-teamed against the full
 recon of the 49-row screen, the lobby coupling, and the terminal twins;
 every mechanism below is either shipped machinery or a named extension.
 
-## History strategy: excise, don't layer
+## History strategy: excise via squash
 
-The v1 missions architecture is UNMERGED (PR #227 is open). Master must
-never contain it: the branch history is rewritten so the missions door,
-its terminal ordinal churn, its screen, and its tests never exist — the
-hooks core, GTL v15, the session, the packs' hook/action layers and their
-unit tests carry forward; the SDL/terminal missions surfaces are excised
-and replaced by the zone in the same commits that would have introduced
-them. No new `ButtonAction` id is born: page-kind zone rows reach the
-submenu through the Base Camp's own row dispatch, naming the page they
-open, so 106 stays free. The PR is force-pushed with the rewritten series
-(same branch, same number).
+The v1 missions architecture is UNMERGED (PR #227 is open) and this repo
+squash-merges every PR (verified: recent merge commits are all
+single-parent). Master therefore receives exactly one commit for this
+branch, and the excision goal — master never contains the missions door,
+its terminal ordinal churn, or a born-dead screen — is met by two
+requirements this design enforces instead of a history rewrite: the
+FINAL DIFF carries no missions residue (the zone waves retired every
+surface, constant, test and capture path), and the PR presents the zone
+architecture only. The branch history is retained as an honest audit
+trail of the build. `ButtonAction` 106 was removed outright when it
+became unreachable; the freed value is documented as free.
 
 ## The split
 
