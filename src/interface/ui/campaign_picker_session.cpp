@@ -242,8 +242,9 @@ std::string campaign_picker_row_text(const CampaignPickerSession::Row& row,
         text += row.note;
     }
     // A retired purchase stops quoting its price (the "KIT OWNED 60g" sin).
+    std::string tail;
     if (row.cost > 0 && !row.done)
-        text += std::format("  {}g", row.cost);
+        tail = std::format("  {}g", row.cost);
     // Every row kind carries its own tail marker, so a player reading down a
     // list can tell the door from the purchase from the row that starts a
     // battle without clicking one to find out.
@@ -251,22 +252,30 @@ std::string campaign_picker_row_text(const CampaignPickerSession::Row& row,
     {
         case CampaignPickerSession::Kind::Level:
             if (!row.available)
-                text += "  [CLOSED]";
+                tail += "  [CLOSED]";
             else if (row.current)
-                text += "  [CURRENT]";
+                tail += "  [CURRENT]";
             else if (row.cleared)
-                text += "  [CLEARED]";
+                tail += "  [CLEARED]";
             break;
         case CampaignPickerSession::Kind::Page:
-            text += "  >";  // the repo's door grammar ("TEAM >")
+            tail += "  >";  // the repo's door grammar ("TEAM >")
             break;
         case CampaignPickerSession::Kind::Action:
             if (row.done)
-                text += "  [DONE]";
+                tail += "  [DONE]";
             else if (spell_unaffordable && !row.affordable)
-                text += std::string("  ") + std::string(kCampaignNeedGoldMark);
+                tail += std::string("  ") + std::string(kCampaignNeedGoldMark);
             break;
     }
+    // The tail is GRAMMAR, not detail. A row that overruns its face loses
+    // its own words first and keeps the marker: a clip that eats the " >"
+    // turns a door into a dead label, and one that eats "[CURRENT]" hides
+    // the fact the row exists to state. The words say what this row is; the
+    // tail says what clicking it does.
+    if (text.size() + tail.size() > budget && tail.size() < budget)
+        text = clip_with_ellipsis(std::move(text), budget - tail.size());
+    text += tail;
     return clip_with_ellipsis(std::move(text), budget);
 }
 

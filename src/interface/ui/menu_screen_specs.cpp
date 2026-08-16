@@ -4412,6 +4412,22 @@ void base_camp_draw_content(void* screen_state)
                 }
             }
         }
+        // The docket pager's count, in the gutter directly under its own
+        // arrows: two bare arrows say a row can move, never that rows are
+        // HIDDEN, and a player who cannot see "1/2" has no reason to press
+        // one. Same "p/N" strip the roster pager wears. A one-unit band has
+        // no second line of gutter to spend, so it keeps the arrows alone
+        // rather than inking over the widget below it.
+        for (const og::ui::CampaignZoneSession::ActionsLayout& actions :
+             zone->actions())
+        {
+            if (!actions.page.multi_page() || actions.units < 2)
+                continue;
+            const int band_y =
+                kBaseCampRowY0 + kBaseCampRowPitch * actions.start_unit;
+            mytext.write_xy(kBaseCampZonePagerPrevX + 2, band_y + 12,
+                            actions.page.indicator().c_str(), BLACK, 1);
+        }
     }
 
     // Column headers: solo keeps CLASS/EXP; networked swaps in the

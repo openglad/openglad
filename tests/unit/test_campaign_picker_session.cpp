@@ -532,8 +532,24 @@ TEST_F(CampaignPickerSessionTest, row_text_composes_markers_costs_and_clips)
     EXPECT_EQ("FIELD KIT  60g", og::ui::campaign_picker_row_text(action, 42));
 
     // Clip at the budget: an over-long compose never escapes the face, and
-    // it says it was cut instead of stopping mid-word.
-    EXPECT_EQ("FIELD KI..", og::ui::campaign_picker_row_text(action, 10));
+    // it says it was cut instead of stopping mid-word. The TAIL is grammar
+    // and survives the cut — a clipped purchase still quotes its price.
+    EXPECT_EQ("FIE..  60g", og::ui::campaign_picker_row_text(action, 10));
+
+    // The same rule on the markers that say what a row IS: an over-long
+    // door keeps its door marker and an over-long level row keeps its
+    // stamp, because a clip that eats those turns a door into a dead label
+    // and hides the state the row exists to state.
+    CampaignPickerSession::Row wide;
+    wide.label = "FIELD: DUNGEON OF STARS";
+    wide.note = "4 sides, 20 min";
+    wide.kind = CampaignPickerSession::Kind::Page;
+    EXPECT_EQ("FIELD: DUNGEON OF STARS - 4 sides,..  >",
+              og::ui::campaign_picker_row_text(wide, 39));
+    wide.kind = CampaignPickerSession::Kind::Level;
+    wide.current = true;
+    EXPECT_EQ("FIELD: DUNGEON OF..  [CURRENT]",
+              og::ui::campaign_picker_row_text(wide, 30));
 
     // A retired purchase stops quoting its price and says so.
     action.done = true;

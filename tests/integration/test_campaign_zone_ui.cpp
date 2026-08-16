@@ -1293,16 +1293,129 @@ TEST(CampaignZoneUi, book_without_a_zone_opens_through_the_camp_door)
 
 namespace {
 
+// A docket that does not fit its band: five rows weighed two units. The
+// shipped camps are composed NOT to reach this state, but a camp that does
+// has to say so — two bare arrows tell a player a row can move, never that
+// rows are hidden, so the pager's gutter carries the "p/N" count.
+constexpr const char* kPagedDocketScript =
+    R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return {
+      widgets = {
+        { kind = "actions", weight = 2,
+          entries = {
+            { id = "one", label = "ROW ONE", kind = "action" },
+            { id = "two", label = "ROW TWO", kind = "action" },
+            { id = "three", label = "ROW THREE", kind = "action" },
+            { id = "four", label = "ROW FOUR", kind = "action" },
+            { id = "five", label = "ROW FIVE", kind = "action" },
+          } },
+        { kind = "roster" },
+      },
+    }
+  end,
+  picker_action = function(entry_id)
+    return { message = "Noted." }
+  end,
+}))LUA";
+
+struct PagedDocketState {
+    bool finished = false;
+    bool first_window = false;
+    bool window_is_two_rows = false;
+    bool pager_shown = false;
+    bool second_window = false;
+    bool wrapped_home = false;
+};
+
+int paged_docket_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    PagedDocketState* state = static_cast<PagedDocketState*>(data);
+
+    wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);
+    interact("continue_game");
+
+    state->first_window =
+        wait_for_interactable_label("zone_action_0", "ROW ONE", 10000);
+    state->window_is_two_rows = has_interactable("zone_action_1") &&
+        !has_interactable("zone_action_2");
+    state->pager_shown = wait_for_interactable("zone_pager_next_0", 5000);
+    SDL_Delay(400);
+    capture_zone_frame("uxr_docket_pager_page1");
+
+    interact("zone_pager_next_0");
+    state->second_window =
+        wait_for_interactable_label("zone_action_0", "ROW THREE", 10000);
+    SDL_Delay(400);
+    capture_zone_frame("uxr_docket_pager_page2");
+
+    interact("zone_pager_prev_0");
+    state->wrapped_home =
+        wait_for_interactable_label("zone_action_0", "ROW ONE", 10000);
+
+    wait_for_interactable("go", 10000);
+    SDL_Delay(300);
+    interact("back");
+    state->finished = true;
+    return 0;
+}
+
+} // namespace
+
+TEST(CampaignZoneUi, an_overflowing_docket_pages_in_place_and_counts_itself)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    SyntheticCampaignScriptGuard::install(kPagedDocketScript);
+    write_save0_with_two_soldiers("gladiator", 1);
+
+    PagedDocketState state;
+    SDL_Thread* thread =
+        SDL_CreateThread(paged_docket_injector, "paged_docket", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    verify_zone_shots("docket_pager", 2);
+
+    EXPECT_TRUE(state.finished) << "injector should complete the flow";
+    EXPECT_TRUE(state.first_window) << "the band renders its first window";
+    EXPECT_TRUE(state.window_is_two_rows)
+        << "a two-unit band shows two rows and parks the rest";
+    EXPECT_TRUE(state.pager_shown)
+        << "an overflowing band grows its pager pair";
+    EXPECT_TRUE(state.second_window)
+        << "the pager pages the docket IN PLACE, never onto a new screen";
+    EXPECT_TRUE(state.wrapped_home) << "and back again";
+}
+
+namespace {
+
 // The zz tour: walk the composition every shipped campaign renders on its
 // Base Camp — the bare default for a campaign with no hooks at all, the
-// book door for the four that script a book — asserting each one really
-// renders and capturing it for the UXSHOTS read-back.
+// book door for one that scripts only a book, its own camp for one that
+// composes base_camp — asserting each one really renders and capturing it
+// for the UXSHOTS read-back.
 struct DefaultTourState
 {
     const char* campaign;
     const char* shot;
     short scen_num;
-    bool expect_book_door = false;
+    // Zone action rows this campaign's Base Camp shows in its FIRST window:
+    // 0 with no hooks at all (the appended rows stay parked), 1 for the
+    // transitional book door, and the composed band's own row count for a
+    // campaign that scripts base_camp (an overflowing docket pages in
+    // place, so this is the window, not the docket).
+    int zone_rows = 0;
     bool finished = false;
     bool continue_seen = false;
     bool camp_seen = false;
@@ -1328,14 +1441,20 @@ int default_tour_injector(void* data)
     state->hire_labeled =
         wait_for_interactable_label("hire_troops", "HIRE", 5000);
     state->roster_row_seen = wait_for_interactable("roster_row_0", 5000);
-    // No shipped pack registers base_camp yet: a campaign with no hooks at
-    // all shows the bare default (the zone action rows stay parked), and one
-    // that scripts a book shows its single book-door row.
-    state->zone_rows_as_expected =
-        state->expect_book_door
-            ? wait_for_interactable("zone_action_0", 5000) &&
-                  !has_interactable("zone_action_1")
-            : !has_interactable("zone_action_0");
+    // Exactly the rows this campaign composes, and not one more: a bare
+    // default parks every zone row, a book door shows one, and a scripted
+    // camp fills its band's window.
+    state->zone_rows_as_expected = true;
+    for (int r = 0; r < state->zone_rows; r++)
+    {
+        const std::string id = "zone_action_" + std::to_string(r);
+        if (!wait_for_interactable(id.c_str(), 5000))
+            state->zone_rows_as_expected = false;
+    }
+    const std::string past_end =
+        "zone_action_" + std::to_string(state->zone_rows);
+    if (has_interactable(past_end.c_str()))
+        state->zone_rows_as_expected = false;
     SDL_Delay(500);
     capture_zone_frame(state->shot);
 
@@ -1353,15 +1472,19 @@ TEST(CampaignZoneUi, zz_capture_default_zone_across_campaigns)
     trace_clear();
     SavedPickerSave save_guard;
 
-    // Every shipped book gets its Base Camp walked in real SDL: the
-    // default composition is what all of them render mid-branch, and a
+    // Every shipped campaign gets its Base Camp walked in real SDL — the
+    // bare default, the transitional book door, or a composed camp — and a
     // campaign whose mount left the screen empty must be caught here.
     DefaultTourState tours[] = {
-        {"gladiator", "zone_default_gladiator", 1, false},
-        {"modes", "zone_default_modes", 300, true},
-        {"westlands", "zone_default_westlands", 1, true},
-        {"longseason", "zone_default_longseason", 1, true},
-        {"imaginations", "zone_default_imaginations", 1, true},
+        {"gladiator", "zone_default_gladiator", 1, 0},
+        // The Gamesmaster's table composes GAME / FIELD / the card /
+        // SHUFFLE / MATCH SETUP — all FIVE on the panel's first face. The
+        // camp spends no text line precisely so that its last row is not
+        // parked behind a pager arrow on the screen a player lives on.
+        {"modes", "zone_default_modes", 300, 5},
+        {"westlands", "zone_default_westlands", 1, 1},
+        {"longseason", "zone_default_longseason", 1, 1},
+        {"imaginations", "zone_default_imaginations", 1, 1},
     };
     for (DefaultTourState& tour : tours)
     {
@@ -1390,11 +1513,10 @@ TEST(CampaignZoneUi, zz_capture_default_zone_across_campaigns)
         EXPECT_TRUE(tour.roster_row_seen)
             << tour.campaign << ": the roster band must render its rows";
         EXPECT_TRUE(tour.zone_rows_as_expected)
-            << tour.campaign
-            << (tour.expect_book_door
-                    ? ": a scripted book must keep its camp door"
-                    : ": no hooks, no composition — the zone action rows "
-                      "must stay parked");
+            << tour.campaign << ": expected exactly " << tour.zone_rows
+            << " zone action row(s) — a composed camp fills its band, a "
+               "book keeps its door, and a campaign with no hooks parks "
+               "every appended row";
         EXPECT_TRUE(tour.go_seen)
             << tour.campaign << ": the command strip must render";
         EXPECT_TRUE(tour.finished) << tour.campaign;
