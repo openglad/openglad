@@ -623,6 +623,60 @@ TEST(ModeUi, score_panel_small_panes_keep_only_the_local_team_segment)
     s->initialize_views();
 }
 
+// #210: the basketball complaint — a split-screen pane too narrow for the
+// joined "7/21 - 3/21" row used to fall straight to the local team's score,
+// hiding the opponent's. The compact tier keeps every team visible as bare
+// scores ("7-3") before local-only ever fires.
+TEST(ModeUi, score_panel_narrow_pane_keeps_the_opposing_score_compact)
+{
+    ClassicModeHudCanvasGuard classic_canvas;
+    ModeScreenWorld mode;
+    screen* s = mode.s;
+
+    auto control = make_control(0);
+    ASSERT_NE(nullptr, control);
+
+    s->numviews = 2;
+    s->initialize_views();
+    viewscreen* left = s->viewob[0].get();
+    viewscreen* right = s->viewob[1].get();
+    ASSERT_NE(nullptr, right);
+    left->control = nullptr;
+    right->control = control.get();
+    silence_hud_prefs(left);
+    silence_hud_prefs(right);
+
+    // Basketball-shaped rows: the joined form "117/121 - 113/121"
+    // (17 chars) must overflow the pane while the compact "117-113"
+    // (7 chars) fits.
+    mode.set_hud(0, "RED 117/121", 0);
+    mode.set_hud(1, "BLUE 113/121", 2);
+    mode.set_hud(2, "", 255);
+    mode.set_hud(3, "", 255);
+
+    const int tm = right->yloc;
+    const ModeRowWindow win = mode_row_window(right);
+    ASSERT_GE(win.budget, 7) << "the pane must hold the compact row";
+    ASSERT_LT(win.budget, 17) << "the pane must overflow the joined row";
+
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+
+    EXPECT_TRUE(trace_contains(
+        "mode_hud",
+        std::format("row y={} x={} budget={} text=117-113", tm + 4, win.left,
+                    win.budget).c_str()))
+        << "both teams' bare scores must draw in the narrow pane";
+    EXPECT_TRUE(trace_contains("mode_hud", "seg team=2"))
+        << "the opposing team's segment must be present";
+    expect_mode_row_confined_to_its_pane(s);
+
+    s->viewob[1].reset();
+    s->numviews = 1;
+    s->initialize_views();
+}
+
 // og.set_hud_line accepts 25 characters; a 2-view right pane has room for
 // fewer. Nothing downstream clips to the pane (write_xy passes the
 // whole-canvas port), so the row has to clamp itself — it starts at a bound
