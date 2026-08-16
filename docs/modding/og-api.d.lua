@@ -382,7 +382,7 @@
 ---@class og.CampaignHooks
 ---@field vars? string[]
 ---@field picker_action? fun(entry_id: string): og.CampaignActionResult?
----@field picker_menu? fun(page_id: string): og.CampaignPage
+---@field picker_menu? fun(page_id: string): og.CampaignPage?
 
 -- Engine constants (og.C.*), names from the kConstants
 -- table in bindings_entity.cpp; every value is an integer.

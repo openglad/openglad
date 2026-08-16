@@ -625,7 +625,7 @@ def parse_level_hook_names(src: str) -> List[str]:
 # the name list still comes from the source, and a table entry with no
 # signature stops the run rather than shipping an untyped hook.
 CAMPAIGN_HOOK_SIGS: Dict[str, str] = {
-    "picker_menu": "fun(page_id: string): og.CampaignPage",
+    "picker_menu": "fun(page_id: string): og.CampaignPage?",
     "picker_action": "fun(entry_id: string): og.CampaignActionResult?",
 }
 
