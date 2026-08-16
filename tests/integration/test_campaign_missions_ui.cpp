@@ -436,6 +436,19 @@ TEST(CampaignMissionsUi, missions_flow_buys_pages_and_sets_level)
     // og.campaign_state_set wrote through the installed providers into the
     // live save's per-campaign book.
     EXPECT_EQ(1, save.campaign_state_get("gladiator", "kit"));
+    // The Acted persistence tail wrote the company file — the debit and the
+    // decision survive an immediate quit (review finding: SDL was the one
+    // surface that skipped the autosave).
+    EXPECT_TRUE(trace_contains("missions", "acted_autosave"))
+        << "an Acted outcome must run the company autosave tail";
+    {
+        SaveData reloaded;
+        ASSERT_TRUE(reloaded.load("save0"));
+        EXPECT_EQ(4940u, reloaded.m_totalcash[0])
+            << "the debited wallet must be on disk";
+        EXPECT_EQ(1, reloaded.campaign_state_get("gladiator", "kit"))
+            << "the decision must be on disk";
+    }
     // #212: the action's og.campaign_match_set wrote the MATCHUP knob and
     // the Acted tail consumed the dirty flag into the settings sync.
     EXPECT_EQ(15, save.ctf_capture_limit)

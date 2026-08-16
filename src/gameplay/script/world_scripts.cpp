@@ -1155,6 +1155,9 @@ int og_register_campaign_hooks(lua_State* L)
         return luaL_error(L, "og.register_campaign_hooks: hook registration "
                              "is not available during campaign hooks");
     luaL_checktype(L, 1, LUA_TTABLE);
+    // The reads below use absolute stack indices 2/3 — drop any extra
+    // arguments so a stray second argument cannot shadow them.
+    lua_settop(L, 1);
 
     // Every validation below is a property of the call alone, so it runs
     // BEFORE the declaration pass bows out — the pass that can still reject
@@ -1227,6 +1230,20 @@ int og_register_campaign_hooks(lua_State* L)
                     static_cast<int>(i), name, hooks::kCampaignVarNameMax);
             vars.emplace_back(name, len);
             lua_pop(L, 1);
+        }
+        // A hash-keyed table (vars = {watch_paid = 1}) has rawlen 0 and
+        // would silently register nothing — reject any non-array key.
+        lua_pushnil(L);
+        while (lua_next(L, -2) != 0) {
+            lua_pop(L, 1);  // value
+            lua_Integer index = 0;
+            if (lua_type(L, -1) == LUA_TNUMBER && lua_isinteger(L, -1))
+                index = lua_tointeger(L, -1);
+            if (index < 1 || index > count) {
+                return luaL_error(
+                    L, "og.register_campaign_hooks: 'vars' must be an "
+                       "ARRAY of names (found a non-array key)");
+            }
         }
     }
     lua_pop(L, 1);  // vars

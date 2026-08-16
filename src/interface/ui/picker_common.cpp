@@ -927,6 +927,19 @@ void campaign_picker_debit(SaveData& save, int cost)
     wallet -= std::min(wallet, static_cast<std::uint32_t>(cost));
 }
 
+void campaign_picker_refund(SaveData& save, int cost)
+{
+    // The exact inverse of campaign_picker_debit, for the one case a debit
+    // must not stick: an action row served by no registered picker_action.
+    // Under infinite gold the debit wrote nothing, so neither does this.
+    if (cost <= 0 || gold_is_infinite(save))
+        return;
+    std::uint32_t& wallet =
+        save.m_totalcash[static_cast<std::size_t>(campaign_acting_team(save))];
+    const std::uint32_t amount = static_cast<std::uint32_t>(cost);
+    wallet = wallet > UINT32_MAX - amount ? UINT32_MAX : wallet + amount;
+}
+
 // --- GRAPHICS FX depth selector (cfg effects/depth_fx) ---
 
 // Out-of-set values (including the empty string an absent key reads as)

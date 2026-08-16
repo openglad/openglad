@@ -435,6 +435,9 @@ std::string format_wallet_amount(const SaveData& save, int team);
 // discipline) and clamps rather than underflows.
 [[nodiscard]] bool campaign_picker_can_afford(const SaveData& save, int cost);
 void campaign_picker_debit(SaveData& save, int cost);
+// Inverse of the debit, for an action row no registered picker_action can
+// honor (saturating; no-op under infinite gold, matching the debit).
+void campaign_picker_refund(SaveData& save, int cost);
 
 // --- Team choice helpers (local seats) ---
 

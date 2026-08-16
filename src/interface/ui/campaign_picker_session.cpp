@@ -121,10 +121,16 @@ CampaignPickerSession::choose(std::size_t entry_index)
                 return {OutcomeKind::Refused, 0, "Not enough gold."};
             // C++ owns the cost: debit FIRST (skipped under infinite gold),
             // then dispatch. A spend already applied sticks even if the
-            // action errors (docs/campaign-scripting-design.md).
+            // action ERRORS — but a book with no picker_action hook at all
+            // must not charge for rows it can never honor.
             campaign_picker_debit(save_, row.cost);
             hooks::CampaignActionResult result;
-            (void)hooks::campaign_picker_action(row.id, result);
+            if (!hooks::campaign_picker_action(row.id, result))
+            {
+                campaign_picker_refund(save_, row.cost);
+                return {OutcomeKind::Refused, 0,
+                        "This book takes no orders."};
+            }
             message_ = std::move(result.message);
             // Re-request the page so labels/state re-derive.
             DecoratedPage refreshed;

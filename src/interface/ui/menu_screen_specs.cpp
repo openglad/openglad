@@ -1592,6 +1592,14 @@ Sint32 campaign_missions_on_spec_row(int row, void* screen_state)
             picker_lobby_sync_settings_from_save();
             TRACE("missions", "match_settings_synced");
         }
+        // Persistence tail (design contract, [SAVE-F1]): the action's debit
+        // and og.campaign_state_set writes must reach the company file like
+        // every other picker mutation — quitting from the menu writes
+        // nothing on its own. Mirrors the shared terminal driver.
+        (void)company_autosave_after_mutation(
+            og::runtime::current_session->myscreen_->save_data,
+            picker_lobby_is_networked());
+        TRACE("missions", "acted_autosave");
         // The session already debited and refetched; re-window and surface
         // the toast (popup_dialog is trace-only under TESTING).
         campaign_missions_reset_page(*st, true);

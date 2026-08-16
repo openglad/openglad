@@ -1459,8 +1459,11 @@ bool SaveData::campaign_state_set(const std::string& campaign,
 {
     // The WRITE choke (docs/campaign-scripting-design.md "Persistent
     // campaign state"): every rejection happens BEFORE any mutation, so a
-    // script bug can never brick the save file.
-    if (!og::script::hooks::valid_campaign_var_name(key))
+    // script bug can never brick the save file. Campaign ids longer than
+    // the serialized 40-byte field would silently truncate on disk and
+    // detach the state from its campaign on reload — refuse them here.
+    if (!og::script::hooks::valid_campaign_var_name(key) ||
+        campaign.size() > 40)
         return false;
 
     auto campaign_it = campaign_state.find(campaign);
