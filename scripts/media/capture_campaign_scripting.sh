@@ -95,11 +95,16 @@ for book in modes fire kettle dreams; do
         cp "$shot" "$(printf '%s/%03d.ppm' "$seq_dir" "$i")"
         i=$((i + 1))
     done
-    if [ "$i" -ge 1 ]; then
+    if [ "$i" -ge 2 ]; then
         ffmpeg -loglevel error -y -framerate 5/6 -i "$seq_dir/%03d.ppm" \
             -vf "scale=640:400:flags=neighbor" -loop 0 \
             "$OUT_DIR/book-$book.gif"
         printf 'wrote %s (%d pages)\n' "$OUT_DIR/book-$book.gif" "$i"
+    elif [ "$i" -eq 1 ]; then
+        # A one-page book is a still, not a slideshow.
+        ffmpeg -loglevel error -y -i "$seq_dir/000.ppm" \
+            -vf "scale=640:400:flags=neighbor" "$OUT_DIR/book-$book.png"
+        printf 'wrote %s (1 page still)\n' "$OUT_DIR/book-$book.png"
     fi
 done
 
