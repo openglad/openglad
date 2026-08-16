@@ -115,8 +115,10 @@ protected:
 
 // The sim-side fixture is the plain mounted-campaign one; each test builds
 // its LoadedWestlandsLevel and injects world.campaign_vars directly (the
-// authoritative sync sites are exercised elsewhere; the hook contract is
-// the vars list on the world).
+// authoritative sync twins are pinned by HeadlessServerRuntimeTest.
+// authoritative_sync_replaces_campaign_vars_with_registered_names_only and
+// ScreenExtended.sync_world_from_save_data_replaces_campaign_vars; the hook
+// contract is the vars list on the world).
 class WestlandsFireSim : public MountedCampaignTest
 {
 protected:

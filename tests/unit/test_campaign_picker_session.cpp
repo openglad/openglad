@@ -413,6 +413,52 @@ TEST_F(CampaignPickerSessionTest, infinite_gold_skips_the_debit_entirely)
     EXPECT_TRUE(log_contains("gold_at_dispatch 10"));
 }
 
+namespace {
+
+// A book with picker_menu ONLY: its costed action row can never be honored
+// (no picker_action is registered), so choose() must refund and refuse.
+constexpr const char* kMenuOnlyShop = R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id)
+    return { title = "MENU ONLY",
+             entries = { { id = "buy", label = "FIELD KIT", kind = "action", cost = 60 } } }
+  end,
+}))LUA";
+
+}  // namespace
+
+TEST_F(CampaignPickerSessionTest, costed_action_with_no_hook_refunds_and_refuses)
+{
+    save_.m_totalcash[0] = 100;
+    register_script(kMenuOnlyShop);
+    CampaignPickerSession session(save_);
+    ASSERT_TRUE(session.open());
+    ASSERT_TRUE(session.page().rows[0].affordable);
+
+    const CampaignPickerSession::Outcome outcome = session.choose(0);
+    EXPECT_EQ(CampaignPickerSession::OutcomeKind::Refused, outcome.kind);
+    EXPECT_EQ("This book takes no orders.", outcome.reason);
+    EXPECT_EQ(100u, save_.m_totalcash[0])
+        << "the debit must be refunded when no picker_action serves the row";
+    EXPECT_EQ("MENU ONLY", session.page().title) << "the page must not change";
+    EXPECT_EQ("", session.take_message());
+}
+
+TEST_F(CampaignPickerSessionTest, no_hook_refusal_under_infinite_gold_is_a_noop)
+{
+    save_.m_totalcash[0] = 10;
+    save_.infinite_gold = 1;
+    register_script(kMenuOnlyShop);
+    CampaignPickerSession session(save_);
+    ASSERT_TRUE(session.open());
+
+    const CampaignPickerSession::Outcome outcome = session.choose(0);
+    EXPECT_EQ(CampaignPickerSession::OutcomeKind::Refused, outcome.kind);
+    EXPECT_EQ("This book takes no orders.", outcome.reason);
+    EXPECT_EQ(10u, save_.m_totalcash[0])
+        << "under infinite gold neither the debit nor the refund may write "
+           "the wallet";
+}
+
 TEST_F(CampaignPickerSessionTest, action_debit_lands_on_the_acting_team)
 {
     // The lowest roster team is the acting wallet (the providers' rule) —

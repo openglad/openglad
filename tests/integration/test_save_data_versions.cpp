@@ -2134,6 +2134,21 @@ TEST(SaveDataVersions, save_data_campaign_state_set_refuses_without_mutating)
     ASSERT_TRUE(data.campaign_state.empty())
         << "a refused set must not create the campaign's entry list";
 
+    // A campaign id longer than the serialized 40-byte field would silently
+    // truncate on disk and detach the state from its campaign on reload —
+    // the write choke refuses it with no mutation. The 40-char boundary id
+    // is accepted (on a scratch SaveData so the cap arithmetic below stays
+    // exact).
+    ASSERT_FALSE(data.campaign_state_set(std::string(41, 'c'), "seed", 1));
+    ASSERT_TRUE(data.campaign_state.empty())
+        << "a refused campaign id must not create an entry list";
+    {
+        SaveData boundary;
+        const std::string campaign40(40, 'c');
+        ASSERT_TRUE(boundary.campaign_state_set(campaign40, "seed", 1));
+        ASSERT_EQ(1, boundary.campaign_state_get(campaign40, "seed"));
+    }
+
     // 33-char key refused, 32-char key accepted.
     const std::string key32(32, 'k');
     const std::string key33(33, 'k');

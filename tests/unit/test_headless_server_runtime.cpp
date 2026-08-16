@@ -7,6 +7,7 @@
 #include <openglad/gameplay/lobby_server.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
+#include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/world_snapshot.h>
 #include <openglad/interface/level_runtime_data.h>
@@ -105,6 +106,37 @@ std::vector<short> start_marker_teams_at(const GameWorld& world,
     }
     return teams;
 }
+
+// Registers a throwaway scripted campaign picker for one test and restores
+// the pack-script registry (and the gameplay context campaign dispatch
+// resolves) afterwards — the test_campaign_picker_session fixture approach.
+// The chunk name deliberately does NOT start with `packs/`: that prefix
+// declares the bytes to the pack-Lua coverage inventory, and this throwaway
+// chunk exists nowhere in the repository.
+class ScopedSyntheticCampaignPicker
+{
+public:
+    explicit ScopedSyntheticCampaignPicker(const std::string& source)
+        : previous_game_(current_game)
+        , scripts_(og::script::pack_scripts())
+    {
+        current_game = nullptr;  // dispatch resolves the shared UI VM
+        og::script::register_pack_script(
+            {"test.serversync", "serversync/scripts/c.lua", source});
+    }
+
+    ~ScopedSyntheticCampaignPicker()
+    {
+        og::script::clear_pack_scripts();
+        for (const og::script::PackScript& script : scripts_)
+            og::script::register_pack_script(script);
+        current_game = previous_game_;
+    }
+
+private:
+    GameplayContext* previous_game_;
+    std::vector<og::script::PackScript> scripts_;
+};
 
 class HeadlessServerRuntimeTest : public ::testing::Test
 {
@@ -751,6 +783,68 @@ TEST_F(HeadlessServerRuntimeTest,
            "posture: byte-identical to Auto)";
 }
 
+// Campaign scripting (issue #206) authoritative sync, server twin: the
+// og::server sync inside load_headless_level_from_save must REPLACE
+// world.campaign_vars with the current campaign's decision book filtered
+// to og.register_campaign_hooks' vars list — never merge, never carry an
+// unregistered or stale name (docs/campaign-scripting-design.md,
+// "campaign_vars replace-not-merge sync"). The screen twin is pinned by
+// ScreenExtended.sync_world_from_save_data_replaces_campaign_vars.
+TEST_F(HeadlessServerRuntimeTest,
+       authoritative_sync_replaces_campaign_vars_with_registered_names_only)
+{
+    ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
+  vars = { "watch_paid", "delve_counted" },
+  picker_menu = function(page_id)
+    return { title = "BOOK" }
+  end,
+}))LUA");
+
+    og::sim::LobbySaveDataEquivalent lobby_save;
+    lobby_save.current_campaign = "gladiator";
+    lobby_save.scen_num = 1;
+    lobby_save.numplayers = 1;
+    lobby_save.team_list = {
+        make_slot(0u, 100, "Lead", FAMILY_SOLDIER, 0),
+    };
+    og::server::apply_headless_lobby_game_start_config(active_save_, lobby_save);
+
+    // The decision book: two registered names, one unregistered name, and
+    // one entry filed under a DIFFERENT campaign.
+    ASSERT_TRUE(active_save_.campaign_state_set("gladiator", "watch_paid", 3));
+    ASSERT_TRUE(
+        active_save_.campaign_state_set("gladiator", "delve_counted", -2));
+    ASSERT_TRUE(
+        active_save_.campaign_state_set("gladiator", "not_registered", 9));
+    ASSERT_TRUE(active_save_.campaign_state_set("othercamp", "watch_paid", 7));
+
+    create_level_runtime_data(active_save_.scen_num);
+    // Pre-pollute the world: a stale foreign var AND a stale value for a
+    // registered name — both must be wiped by the clear-then-copy.
+    level_data_->world().campaign_vars.emplace_back("stale_var", 5);
+    level_data_->world().campaign_vars.emplace_back("watch_paid", 99);
+
+    ASSERT_TRUE(with_context([&] {
+        return og::server::load_headless_level_from_save(
+            *level_data_,
+            active_save_,
+            /*difficulty_setting=*/1,
+            events_,
+            /*authoritative=*/true);
+    }));
+
+    // Exactly the registered current-campaign entries, in the book's sorted
+    // order: the stale entries are gone (clear), the unregistered and
+    // foreign-campaign names never crossed (filter), and the registered
+    // value is the save's, not the polluted one (replace, not merge).
+    const auto& vars = level_data_->world().campaign_vars;
+    ASSERT_EQ(2u, vars.size());
+    EXPECT_EQ("delve_counted", vars[0].first);
+    EXPECT_EQ(-2, vars[0].second);
+    EXPECT_EQ("watch_paid", vars[1].first);
+    EXPECT_EQ(3, vars[1].second);
+}
+
 // §3.4 dropped-field bug class: the server/checkpoint copies must carry the
 // GTL v14 company fields — the last-played timestamp explicitly, the per-guy
 // deploy flag via the guy deep copies. (The tower fields were the previous
@@ -768,10 +862,15 @@ TEST(HeadlessServerSaveCopy, copy_carries_v14_company_fields)
     source.team_list[1]->name = "HELDBACK";
     source.team_list[1]->deployed = false;
     source.team_size = 2;
+    // Campaign scripting decision book (GTL v15): same dropped-field rule —
+    // a copy that lost it would read og.campaign_var as 0 on the
+    // authoritative sim (curses/dedicated/checkpoint arms).
+    ASSERT_TRUE(source.campaign_state_set("gladiator", "watch_paid", 1));
 
     SaveData destination;
     destination.last_played_unix_s = 42; // must be overwritten, not merged
     destination.cross_control = 0;
+    ASSERT_TRUE(destination.campaign_state_set("oldcamp", "stale_key", 9));
 
     og::server::copy_headless_server_save_data(destination, source);
 
@@ -788,6 +887,11 @@ TEST(HeadlessServerSaveCopy, copy_carries_v14_company_fields)
         << "the deploy flag rides the guy copy";
     EXPECT_TRUE(destination.team_list[1]->name == "HELDBACK");
     EXPECT_EQ(2, (int)destination.team_size);
+    EXPECT_EQ(source.campaign_state, destination.campaign_state)
+        << "the decision book must ride the copy, replaced not merged";
+    EXPECT_EQ(1, destination.campaign_state_get("gladiator", "watch_paid"));
+    EXPECT_EQ(0u, destination.campaign_state.count("oldcamp"))
+        << "the copy replaces the destination book, it never merges";
 }
 
 } // namespace

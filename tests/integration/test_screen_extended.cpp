@@ -1,4 +1,6 @@
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/interface/guy_create.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/gameplay/walker.h>
@@ -192,6 +194,100 @@ TEST(ScreenExtended, screen_endgame_clears_mission_score_after_payout)
     ASSERT_EQ(1250, static_cast<int>(og::runtime::current_session->myscreen_->save_data.m_totalscore[0])) << "subsequent wins must not re-credit previous mission score";
 
     og::runtime::current_session->myscreen_->world().end = saved_end;
+}
+
+
+// ---------------------------------------------------------------------------
+// Campaign scripting (issue #206) authoritative sync, screen twin
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Registers a throwaway scripted campaign picker for one test and restores
+// the pack-script registry (and the gameplay context campaign dispatch
+// resolves) afterwards — the test_campaign_picker_session fixture approach.
+// The chunk name deliberately does NOT start with `packs/`: that prefix
+// declares the bytes to the pack-Lua coverage inventory, and this throwaway
+// chunk exists nowhere in the repository.
+class ScopedSyntheticCampaignPicker
+{
+public:
+    explicit ScopedSyntheticCampaignPicker(const std::string& source)
+        : previous_game_(current_game)
+        , scripts_(og::script::pack_scripts())
+    {
+        current_game = nullptr;  // dispatch resolves the shared UI VM
+        og::script::register_pack_script(
+            {"test.screensync", "screensync/scripts/c.lua", source});
+    }
+
+    ~ScopedSyntheticCampaignPicker()
+    {
+        og::script::clear_pack_scripts();
+        for (const og::script::PackScript& script : scripts_)
+            og::script::register_pack_script(script);
+        current_game = previous_game_;
+    }
+
+private:
+    GameplayContext* previous_game_;
+    std::vector<og::script::PackScript> scripts_;
+};
+
+} // namespace
+
+// screen::sync_world_from_save_data must REPLACE world.campaign_vars with
+// the current campaign's decision book filtered to
+// og.register_campaign_hooks' vars list — never merge, never carry an
+// unregistered or stale name (docs/campaign-scripting-design.md,
+// "campaign_vars replace-not-merge sync"). The server twin is pinned by
+// HeadlessServerRuntimeTest.
+// authoritative_sync_replaces_campaign_vars_with_registered_names_only.
+TEST(ScreenExtended, sync_world_from_save_data_replaces_campaign_vars)
+{
+    auto* scr = og::runtime::current_session->myscreen_;
+    ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
+  vars = { "watch_paid", "delve_counted" },
+  picker_menu = function(page_id)
+    return { title = "BOOK" }
+  end,
+}))LUA");
+
+    scr->save_data.reset();
+    scr->save_data.current_campaign = "gladiator";
+    scr->save_data.scen_num = 1;
+    // The decision book: two registered names, one unregistered name, and
+    // one entry filed under a DIFFERENT campaign.
+    ASSERT_TRUE(scr->save_data.campaign_state_set("gladiator", "watch_paid", 3));
+    ASSERT_TRUE(
+        scr->save_data.campaign_state_set("gladiator", "delve_counted", -2));
+    ASSERT_TRUE(
+        scr->save_data.campaign_state_set("gladiator", "not_registered", 9));
+    ASSERT_TRUE(scr->save_data.campaign_state_set("othercamp", "watch_paid", 7));
+
+    // Pre-pollute the world: a stale foreign var AND a stale value for a
+    // registered name — both must be wiped by the clear-then-copy.
+    scr->world().campaign_vars.clear();
+    scr->world().campaign_vars.emplace_back("stale_var", 5);
+    scr->world().campaign_vars.emplace_back("watch_paid", 99);
+
+    scr->sync_world_from_save_data();
+
+    // Exactly the registered current-campaign entries, in the book's sorted
+    // order: the stale entries are gone (clear), the unregistered and
+    // foreign-campaign names never crossed (filter), and the registered
+    // value is the save's, not the polluted one (replace, not merge).
+    const auto& vars = scr->world().campaign_vars;
+    ASSERT_EQ(2u, vars.size());
+    EXPECT_EQ("delve_counted", vars[0].first);
+    EXPECT_EQ(-2, vars[0].second);
+    EXPECT_EQ("watch_paid", vars[1].first);
+    EXPECT_EQ(3, vars[1].second);
+
+    // Leave no campaign state behind for shuffled siblings.
+    scr->world().campaign_vars.clear();
+    scr->save_data.reset();
+    scr->save_data.current_campaign = "gladiator";
 }
 
 

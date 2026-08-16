@@ -187,6 +187,24 @@ TEST_F(CampaignHooksTest, duplicate_registration_conflicts_and_reports_once)
     EXPECT_EQ(1u, records);
 }
 
+TEST_F(CampaignHooksTest, extra_registrar_argument_is_dropped)
+{
+    // The registrar reads absolute stack indices 2/3; a stray second
+    // argument must be dropped, not read as the picker_menu value.
+    register_script(R"LUA(og.register_campaign_hooks({
+  vars = { "delve_counted" },
+  picker_menu = function(page_id)
+    return { title = "BOOK" }
+  end,
+}, "stray extra argument"))LUA");
+    EXPECT_TRUE(hooks::campaign_picker_registered())
+        << "a stray second argument must not shadow the hook reads";
+    const std::vector<std::string> vars = hooks::campaign_registered_vars();
+    ASSERT_EQ(1u, vars.size());
+    EXPECT_EQ("delve_counted", vars[0]);
+    EXPECT_TRUE(vm_errors().empty()) << vm_errors().front().message;
+}
+
 TEST_F(CampaignHooksTest, unknown_key_is_a_load_error_with_did_you_mean)
 {
     register_script(R"LUA(og.register_campaign_hooks({
@@ -277,6 +295,29 @@ og.register_campaign_hooks({
 }))LUA");
     EXPECT_FALSE(hooks::campaign_picker_registered());
     EXPECT_TRUE(errors_contain("max 64"));
+
+    // A hash-keyed table has rawlen 0 and would silently register NOTHING —
+    // rejected with the array rule named.
+    clear_pack_scripts();
+    register_script(R"LUA(og.register_campaign_hooks({
+  vars = { watch_paid = 1 },
+  picker_menu = function(page_id)
+    return { title = "X" }
+  end,
+}))LUA");
+    EXPECT_FALSE(hooks::campaign_picker_registered());
+    EXPECT_TRUE(errors_contain("'vars' must be an ARRAY of names"));
+
+    // A mixed array+hash table is rejected the same way.
+    clear_pack_scripts();
+    register_script(R"LUA(og.register_campaign_hooks({
+  vars = { "a", extra = 1 },
+  picker_menu = function(page_id)
+    return { title = "X" }
+  end,
+}))LUA");
+    EXPECT_FALSE(hooks::campaign_picker_registered());
+    EXPECT_TRUE(errors_contain("found a non-array key"));
 }
 
 // ---------------------------------------------------------------------------
