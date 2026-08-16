@@ -30,6 +30,8 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/event.h>
+#include <openglad/gameplay/families/effect_family_descriptor.h>
+#include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/mode/mode_state.h>
@@ -1164,6 +1166,85 @@ TEST_F(ModesBasketball, dunk_scores_2)
                   fx.carrier()) << "possession continues";
         EXPECT_FALSE(has_notification(fx.events, "DUNK!"));
     }
+}
+
+// ===========================================================================
+// #209 — the balls ping the radar: both shipped ball declarations carry
+// radar_ping = true and the flag rides the install onto the effect
+// descriptors' RadarBlip, while the furniture (shadow, hoop) stays quiet.
+// ===========================================================================
+
+TEST_F(ModesBasketball, ball_families_install_the_radar_ping)
+{
+    BballCourt fx;  // mounts + installs the CURRENT repo pack bytes
+
+    const int bball =
+        og::families::resolve_family_string_id(Order::FX, "modes:bball");
+    const int ball =
+        og::families::resolve_family_string_id(Order::FX, "modes:ball");
+    const int bshadow =
+        og::families::resolve_family_string_id(Order::FX, "modes:bshadow");
+    ASSERT_GE(bball, 0);
+    ASSERT_GE(ball, 0);
+    ASSERT_GE(bshadow, 0);
+
+    const EffectFamilyDescriptor* bball_d =
+        get_effect_family_descriptor(bball);
+    const EffectFamilyDescriptor* ball_d = get_effect_family_descriptor(ball);
+    const EffectFamilyDescriptor* shadow_d =
+        get_effect_family_descriptor(bshadow);
+    const EffectFamilyDescriptor* hoop_d =
+        get_effect_family_descriptor(hoop_family_byte());
+    ASSERT_NE(nullptr, bball_d);
+    ASSERT_NE(nullptr, ball_d);
+    ASSERT_NE(nullptr, shadow_d);
+    ASSERT_NE(nullptr, hoop_d);
+
+    EXPECT_TRUE(bball_d->radar.ping)
+        << "modes:bball declares radar_ping (#209)";
+    EXPECT_TRUE(ball_d->radar.ping)
+        << "modes:ball declares radar_ping (#209)";
+    EXPECT_FALSE(shadow_d->radar.ping)
+        << "the shadow is furniture, not the objective";
+    EXPECT_FALSE(hoop_d->radar.ping)
+        << "the hoop is furniture, not the objective";
+}
+
+// ===========================================================================
+// #210 — the scoreboard names both sides: one HUD row per ACTIVE team,
+// re-derived every tick, so a rescore updates the scorer's row while the
+// OPPOSING team's row stays posted (the TDM per-team hud_score_line shape).
+// ===========================================================================
+
+TEST_F(ModesBasketball, hud_rescore_keeps_the_opposing_team_row)
+{
+    BballCourt fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.basketball_active());
+
+    // Before any score: one row per active team, slots 2/3 empty on a
+    // two-team court.
+    EXPECT_STREQ("RED 0/6", fx.world().mode.hud[0].text.data());
+    EXPECT_STREQ("GREEN 0/6", fx.world().mode.hud[1].text.data());
+    EXPECT_EQ(0, fx.world().mode.hud[0].team);
+    EXPECT_EQ(1, fx.world().mode.hud[1].team);
+    EXPECT_EQ('\0', fx.world().mode.hud[2].text[0]);
+    EXPECT_EQ('\0', fx.world().mode.hud[3].text[0]);
+
+    // RED dunks (the dunk_scores_2 recipe). The rescore lands on RED's row
+    // the same tick — and GREEN's row must still be posted beside it.
+    fx.give_ball(fx.red, 450, 480);
+    fx.red->setxy(552, 472);  // center (560, 480): Chebyshev 16 <= 24
+    fx.tick(1);
+    ASSERT_EQ(2, fx.team_var(kBbPoints, 0)) << "the dunk scored";
+
+    EXPECT_STREQ("RED 2/6", fx.world().mode.hud[0].text.data());
+    EXPECT_STREQ("GREEN 0/6", fx.world().mode.hud[1].text.data())
+        << "the opposing team's score stays visible after a rescore (#210)";
+    EXPECT_EQ(0, fx.world().mode.hud[0].team);
+    EXPECT_EQ(1, fx.world().mode.hud[1].team);
+    EXPECT_EQ('\0', fx.world().mode.hud[2].text[0]);
+    EXPECT_EQ('\0', fx.world().mode.hud[3].text[0]);
 }
 
 // ===========================================================================

@@ -27,6 +27,7 @@ og.family("effect", {
   radar_color = 31, -- COLOR_WHITE
   radar_jitter = 0,
   radar_landmark = true,
+  radar_ping = true, -- #209: the ball is the objective — draw it LOUD
 
   on_act = on_act,
 })
