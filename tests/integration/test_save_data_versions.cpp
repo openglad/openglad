@@ -57,6 +57,7 @@ struct GuyRecord
     int32_t total_shots = 9;
     short teamnum = 1;
     unsigned char deployed = 1; // v14+: 0 = held back (guy offset +50)
+    unsigned char campaign_tag = 0; // v16+: assignment channel (guy offset +51)
 };
 
 static void write_guy(SDL_IOStream* out, const GuyRecord& g, char version = 13)
@@ -84,7 +85,13 @@ static void write_guy(SDL_IOStream* out, const GuyRecord& g, char version = 13)
     rw_write_val(out, g.total_shots);
     rw_write_val(out, g.teamnum);
 
-    if (version >= 14) {
+    if (version >= 16) {
+        // v16+ reinterprets the second reserved byte as the campaign tag.
+        rw_write_val(out, g.deployed);
+        rw_write_val(out, g.campaign_tag);
+        char filler6[6] = {0};
+        rw_write(out, filler6, sizeof(filler6));
+    } else if (version >= 14) {
         // v14+ reinterprets the first reserved byte as the deploy flag.
         rw_write_val(out, g.deployed);
         char filler7[7] = {0};
@@ -246,6 +253,13 @@ static void write_save_file(const std::string& filename_no_ext,
             static_cast<short>(static_cast<uint16_t>(tower_run_seed >> 16));
         rw_write_val(out, seed_lo);
         rw_write_val(out, seed_hi);
+    }
+
+    // Version 15+ appends the campaign scripted-state block (empty here;
+    // the state-carrying fixtures round-trip through SaveData itself).
+    if (version >= 15) {
+        short num_state_campaigns = 0;
+        rw_write_val(out, num_state_campaigns);
     }
 
     SDL_CloseIO(out);
@@ -561,7 +575,7 @@ TEST(SaveDataVersions, save_data_v11_roundtrip_preserves_strip_flag_and_version_
               static_cast<int>(src.save_with_error("typed_save_strip_roundtrip")))
         << "v11 writer should succeed";
 
-    // The writer must stamp version 15 in the GTL header.
+    // The writer must stamp version 16 in the GTL header.
     SDL_IOStream* in = open_read_file("save/", "typed_save_strip_roundtrip.gtl");
     ASSERT_TRUE(in != nullptr) << "saved file should be readable";
     char header[3] = {};
@@ -570,7 +584,7 @@ TEST(SaveDataVersions, save_data_v11_roundtrip_preserves_strip_flag_and_version_
     SDL_ReadIO(in, &version_byte, 1);
     SDL_CloseIO(in);
     ASSERT_EQ(0, std::memcmp(header, "GTL", 3)) << "GTL header expected";
-    ASSERT_EQ(15, (int)version_byte) << "writer should stamp version 15";
+    ASSERT_EQ(16, (int)version_byte) << "writer should stamp version 16";
 
     SaveData loaded;
     ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
@@ -757,7 +771,7 @@ TEST(SaveDataVersions, save_data_v13_roundtrip_preserves_tower_fields)
               static_cast<int>(src.save_with_error("typed_save_tower_roundtrip")))
         << "v13 writer should succeed";
 
-    // The writer must stamp version 15 in the GTL header.
+    // The writer must stamp version 16 in the GTL header.
     SDL_IOStream* in = open_read_file("save/", "typed_save_tower_roundtrip.gtl");
     ASSERT_TRUE(in != nullptr) << "saved file should be readable";
     char header[3] = {};
@@ -766,7 +780,7 @@ TEST(SaveDataVersions, save_data_v13_roundtrip_preserves_tower_fields)
     SDL_ReadIO(in, &version_byte, 1);
     SDL_CloseIO(in);
     ASSERT_EQ(0, std::memcmp(header, "GTL", 3)) << "GTL header expected";
-    ASSERT_EQ(15, (int)version_byte) << "writer should stamp version 15";
+    ASSERT_EQ(16, (int)version_byte) << "writer should stamp version 16";
 
     SaveData loaded;
     ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
@@ -1327,7 +1341,7 @@ TEST(SaveDataVersions,
     const std::vector<uint8_t> canonical =
         read_save_bytes("typed_save_v14_boundary_seed.gtl");
     ASSERT_GT(canonical.size(), kFirstLevelCountOffset + sizeof(std::int16_t));
-    ASSERT_EQ(15, static_cast<int>(canonical[3]));
+    ASSERT_EQ(16, static_cast<int>(canonical[3]));
 
     const auto expect_read_failure =
         [&](const char* slot, std::vector<uint8_t> bytes) {
@@ -1453,7 +1467,7 @@ TEST(SaveDataVersions,
             in.read(reinterpret_cast<char*>(header.data()),
                     static_cast<std::streamsize>(header.size()));
             ASSERT_TRUE(in.good());
-            EXPECT_EQ((std::array<unsigned char, 4>{'G', 'T', 'L', 15}),
+            EXPECT_EQ((std::array<unsigned char, 4>{'G', 'T', 'L', 16}),
                       header);
         };
 
@@ -1522,7 +1536,7 @@ TEST(SaveDataVersions, save_data_v14_writer_retires_company_player_count)
         const std::vector<uint8_t> bytes =
             read_save_bytes((slot + ".gtl").c_str());
         ASSERT_GT(bytes.size(), 132u) << "complete GTL header expected";
-        EXPECT_EQ(15, static_cast<int>(bytes[3]))
+        EXPECT_EQ(16, static_cast<int>(bytes[3]))
             << "retiring the field does not change the GTL layout version";
         EXPECT_EQ(1, static_cast<int>(bytes[132]))
             << "old readers still need the canonical one-player marker";
@@ -1599,15 +1613,16 @@ TEST(SaveDataVersions, save_data_v14_roundtrip_preserves_timestamp_and_deploy_fl
         << "v14 writer should succeed";
 
     // RAW offset spot-checks (§3.1 fixed offsets):
-    //   3        version byte = 15
+    //   3        version byte = 16
     //   133..140 last_played_unix_s (host-endian i64)
     //   141..163 reserved, zero-filled
-    //   164      first guy record; guy+50 deployed flag, guy+51..57 zero
+    //   164      first guy record; guy+50 deployed flag, guy+51 campaign
+    //            tag (v16), guy+52..57 zero
     const std::vector<uint8_t> bytes = read_save_bytes("typed_save_v14_roundtrip.gtl");
     constexpr size_t kHeaderSize = 164;
     constexpr size_t kGuySize = 58;
     ASSERT_GE(bytes.size(), kHeaderSize + 2 * kGuySize) << "file too small";
-    ASSERT_EQ(15, (int)bytes[3]) << "version byte at offset 3";
+    ASSERT_EQ(16, (int)bytes[3]) << "version byte at offset 3";
 
     std::int64_t raw_ts = 0;
     std::memcpy(&raw_ts, bytes.data() + 133, 8);
@@ -1621,6 +1636,8 @@ TEST(SaveDataVersions, save_data_v14_roundtrip_preserves_timestamp_and_deploy_fl
     const size_t guy1 = kHeaderSize + kGuySize;
     ASSERT_EQ(1, (int)bytes[guy0 + 50]) << "deployed flag at guy+50";
     ASSERT_EQ(0, (int)bytes[guy1 + 50]) << "held-back flag at guy+50";
+    // Unassigned characters write tag 0 at guy+51 (GTL v16), so the whole
+    // former reserved range still reads zero here.
     for (size_t i = 51; i < kGuySize; ++i) {
         ASSERT_EQ(0, (int)bytes[guy0 + i]) << "guy0 reserved byte " << i;
         ASSERT_EQ(0, (int)bytes[guy1 + i]) << "guy1 reserved byte " << i;
@@ -1734,7 +1751,7 @@ TEST(SaveDataVersions, save_data_v13_shaped_reader_tolerance_proxy)
 
     std::vector<uint8_t> bytes = read_save_bytes("typed_save_v14_as_v13.gtl");
     ASSERT_GT(bytes.size(), (size_t)164) << "readable v14 file expected";
-    ASSERT_EQ(15, (int)bytes[3]);
+    ASSERT_EQ(16, (int)bytes[3]);
     bytes[3] = 13; // re-label: v13-shaped reader sees reserved filler
 
     SDL_IOStream* out = open_write_file("save/", "typed_save_v14_as_v13.gtl");
@@ -1863,7 +1880,7 @@ TEST(SaveDataVersions, save_data_v13_gtl_filler_first_autosave_upgrades_in_place
     const std::vector<uint8_t> upgraded =
         read_save_bytes("ver13_upgrade_company.gtl");
     ASSERT_GE(upgraded.size(), kHeaderSize + kGuySize);
-    ASSERT_EQ(15, (int)upgraded[3]) << "in-place upgrade rewrites version 15";
+    ASSERT_EQ(16, (int)upgraded[3]) << "in-place upgrade rewrites version 16";
     std::int64_t raw_ts = 0;
     std::memcpy(&raw_ts, upgraded.data() + 133, 8);
     ASSERT_EQ(1700000123LL, raw_ts) << "upgrade stamps the pinned clock";
@@ -1880,7 +1897,7 @@ TEST(SaveDataVersions, save_data_v13_gtl_filler_first_autosave_upgrades_in_place
         og::data::read_company_header("ver13_upgrade_company");
     ASSERT_TRUE(header.has_value() && header->valid)
         << "upgraded file must header-scan clean";
-    ASSERT_EQ(15, (int)header->version);
+    ASSERT_EQ(16, (int)header->version);
     ASSERT_EQ(1700000123LL, header->last_played_unix_s);
     ASSERT_TRUE(og::data::list_company_backups("ver13_upgrade_company").empty())
         << "a mutation autosave must not snapshot a backup";
@@ -1993,7 +2010,7 @@ TEST(SaveDataVersions, save_data_v15_roundtrip_preserves_campaign_state)
     const std::vector<uint8_t> second =
         read_save_bytes("typed_save_v15_resave.gtl");
     ASSERT_FALSE(first.empty());
-    ASSERT_EQ(15, (int)first[3]) << "version byte at offset 3";
+    ASSERT_EQ(16, (int)first[3]) << "version byte at offset 3";
     ASSERT_EQ(first, second)
         << "sorted-by-key storage must make a re-save byte-identical";
 }
@@ -2053,7 +2070,7 @@ TEST(SaveDataVersions, save_data_v15_rejects_invalid_campaign_state_boundaries)
         read_save_bytes("typed_save_v15_boundary_seed.gtl");
     constexpr std::size_t kStateBlockSize = 2 + 40 + 2 + (1 + 5 + 4) + (1 + 4 + 4);
     ASSERT_GT(canonical.size(), kStateBlockSize);
-    ASSERT_EQ(15, static_cast<int>(canonical[3]));
+    ASSERT_EQ(16, static_cast<int>(canonical[3]));
     const std::size_t state_start = canonical.size() - kStateBlockSize;
 
     // Verify the computed offset really is the block start (campaign count
@@ -2209,4 +2226,145 @@ TEST(SaveDataVersions, save_data_reset_and_reset_campaign_clear_campaign_state)
     data.reset();
     ASSERT_TRUE(data.campaign_state.empty())
         << "reset() clears campaign_state beside completed_levels";
+}
+
+
+// --- GTL v16: per-hero campaign tag (docs/basecamp-zones-design.md,
+// "Per-hero identity") ---
+
+TEST(SaveDataVersions, save_data_v16_roundtrip_preserves_campaign_tags)
+{
+    SaveData src;
+    src.current_campaign = "gladiator";
+    src.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    src.team_list[0]->name = "SWORN";
+    src.team_list[0]->campaign_tag = 1;
+    src.team_list[1] = std::make_unique<guy>(FAMILY_ELF);
+    src.team_list[1]->name = "BURDENED";
+    src.team_list[1]->campaign_tag = 255;
+    src.team_list[1]->deployed = false;
+    src.team_list[2] = std::make_unique<guy>(FAMILY_MAGE);
+    src.team_list[2]->name = "UNSWORN";
+    src.team_size = 3;
+
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(src.save_with_error("typed_save_v16_tags")))
+        << "v16 writer should succeed";
+
+    // RAW offsets: version byte 16; guy+50 deployed, guy+51 campaign tag,
+    // guy+52..57 zero-filled reserved.
+    const std::vector<uint8_t> bytes = read_save_bytes("typed_save_v16_tags.gtl");
+    constexpr size_t kHeaderSize = 164;
+    constexpr size_t kGuySize = 58;
+    ASSERT_GE(bytes.size(), kHeaderSize + 3 * kGuySize) << "file too small";
+    ASSERT_EQ(16, (int)bytes[3]) << "version byte at offset 3";
+    const size_t guy0 = kHeaderSize;
+    const size_t guy1 = kHeaderSize + kGuySize;
+    const size_t guy2 = kHeaderSize + 2 * kGuySize;
+    ASSERT_EQ(1, (int)bytes[guy0 + 50]) << "deployed flag at guy+50";
+    ASSERT_EQ(1, (int)bytes[guy0 + 51]) << "campaign tag at guy+51";
+    ASSERT_EQ(0, (int)bytes[guy1 + 50]) << "held-back flag rides beside tag";
+    ASSERT_EQ(255, (int)bytes[guy1 + 51]) << "the full byte range persists";
+    ASSERT_EQ(0, (int)bytes[guy2 + 51]) << "unassigned writes tag 0";
+    for (size_t i = 52; i < kGuySize; ++i) {
+        ASSERT_EQ(0, (int)bytes[guy0 + i]) << "guy0 reserved byte " << i;
+        ASSERT_EQ(0, (int)bytes[guy1 + i]) << "guy1 reserved byte " << i;
+    }
+
+    SaveData loaded;
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(loaded.load_with_error("typed_save_v16_tags")))
+        << "v16 reader should succeed";
+    ASSERT_EQ(3, (int)loaded.team_size);
+    ASSERT_EQ(1, (int)loaded.team_list[0]->campaign_tag);
+    ASSERT_EQ(255, (int)loaded.team_list[1]->campaign_tag);
+    ASSERT_FALSE(loaded.team_list[1]->deployed)
+        << "the deploy flag still roundtrips beside the tag";
+    ASSERT_EQ(0, (int)loaded.team_list[2]->campaign_tag);
+}
+
+TEST(SaveDataVersions, save_data_load_v15_payload_defaults_campaign_tags)
+{
+    // A v15 fixture file (deployed flag + 7 filler bytes per guy, empty
+    // campaign-state tail): the reader must honor the deploy flag and
+    // default every tag to 0 — the GuyRecord campaign_tag member is
+    // IGNORED for version < 16.
+    GuyRecord guys[2];
+    guys[0].name = "SENT";
+    guys[0].deployed = 1;
+    guys[0].campaign_tag = 9; // must not be written by a v15-shaped fixture
+    guys[1].name = "HELD";
+    guys[1].deployed = 0;
+    write_save_file("ver15_no_tags",
+                    /*version=*/15,
+                    /*campaign_id=*/"gladiator",
+                    /*scen_num=*/1,
+                    /*cash=*/100,
+                    /*score=*/200,
+                    /*allied_mode=*/1,
+                    /*numplayers=*/1,
+                    /*guys=*/guys,
+                    /*listsize=*/2,
+                    /*use_v8plus_campaigns=*/true,
+                    /*v5plus_levelstatus=*/true,
+                    /*levelstatus_500=*/nullptr,
+                    /*levelstatus_200=*/nullptr,
+                    /*ctf_team_count=*/2,
+                    /*ctf_capture_limit=*/0,
+                    /*ctf_respawn_ticks=*/0,
+                    /*ctf_strip_scenario_troops=*/0,
+                    /*respawn_mode=*/0,
+                    /*generator_rate=*/0,
+                    /*keep_fallen_heroes=*/0,
+                    /*tower_best_floor=*/0,
+                    /*tower_run_seed=*/0,
+                    /*last_played_unix_s=*/42LL);
+
+    SaveData tmp;
+    ASSERT_TRUE(tmp.load("ver15_no_tags")) << "v15 load should succeed";
+    ASSERT_EQ(2, (int)tmp.team_size);
+    ASSERT_EQ(0, (int)tmp.team_list[0]->campaign_tag)
+        << "a v15 file loads with zero tags";
+    ASSERT_EQ(0, (int)tmp.team_list[1]->campaign_tag);
+    ASSERT_TRUE(tmp.team_list[0]->deployed);
+    ASSERT_FALSE(tmp.team_list[1]->deployed)
+        << "the v14 deploy flag still reads under a v15 label";
+}
+
+TEST(SaveDataVersions, save_data_v15_shaped_reader_never_sniffs_the_tag_byte)
+{
+    // Write a REAL v16 file with a non-zero tag at guy+51, then re-label
+    // it v15: the tag byte must read as filler (tag = 0), never sniffed
+    // from content. The v15 tail (campaign-state block) parses unchanged.
+    SaveData src;
+    src.current_campaign = "gladiator";
+    ASSERT_TRUE(src.campaign_state_set("gladiator", "watch_paid", 3));
+    src.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    src.team_list[0]->name = "TAGGED";
+    src.team_list[0]->campaign_tag = 7;
+    src.team_size = 1;
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(src.save_with_error("typed_save_v16_as_v15")));
+
+    std::vector<uint8_t> bytes = read_save_bytes("typed_save_v16_as_v15.gtl");
+    constexpr size_t kHeaderSize = 164;
+    ASSERT_GT(bytes.size(), kHeaderSize + 58u);
+    ASSERT_EQ(16, (int)bytes[3]);
+    ASSERT_EQ(7, (int)bytes[kHeaderSize + 51]) << "tag really on disk";
+    bytes[3] = 15; // re-label: v15-shaped reader sees reserved filler
+
+    SDL_IOStream* out = open_write_file("save/", "typed_save_v16_as_v15.gtl");
+    ASSERT_TRUE(out != nullptr);
+    rw_write(out, bytes.data(), bytes.size());
+    SDL_CloseIO(out);
+
+    SaveData loaded;
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(loaded.load_with_error("typed_save_v16_as_v15")))
+        << "a v15-labeled v16 file must load cleanly";
+    ASSERT_EQ(1, (int)loaded.team_size);
+    ASSERT_EQ(0, (int)loaded.team_list[0]->campaign_tag)
+        << "the tag byte is hard-gated on version >= 16, never sniffed";
+    ASSERT_EQ(3, loaded.campaign_state_get("gladiator", "watch_paid"))
+        << "the v15 state tail still parses after the re-label";
 }

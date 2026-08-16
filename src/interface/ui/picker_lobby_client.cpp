@@ -11,7 +11,9 @@
 #include <openglad/resources/io_common.h>
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
+#include <cstdint>
 #include <format>
 #include <memory>
 #include <optional>
@@ -109,6 +111,9 @@ std::unique_ptr<guy> make_guy_from_lobby_character(
     // the local lobby echoes the machine's own roster, it is not the
     // match-assembly filter).
     result->deployed = true;
+    // GTL v16 campaign_tag has no wire field at all, so it cannot even be
+    // recovered from the slot; apply_state_to_save re-stamps it from the
+    // pre-reset roster instead.
     return result;
 }
 
@@ -835,6 +840,24 @@ private:
         sync_seat_teams_from_state();
 
         SaveData& save = og::runtime::current_session->myscreen_->save_data;
+
+        // GTL v16: campaign_tag is machine-private, menu-authored state with
+        // no LobbyCharacterData channel, so the rebuild below cannot recover
+        // it from the echo the way it recovers `deployed` from the slot. Take
+        // the tags off the outgoing roster by PRIVATE save slot — the same
+        // index the rebuild keys on — before take_preserved_save_slots moves
+        // any member out, and re-stamp them after. Without this, one ordinary
+        // menu frame (picker_lobby_poll) zeroes every assignment, and the
+        // Base Camp mutation tail autosaves the zeros to disk.
+        std::array<std::uint8_t, MAX_TEAM_SIZE> preserved_tags{};
+        for (std::size_t slot_index = 0; slot_index < save.team_list.size();
+             ++slot_index)
+        {
+            preserved_tags[slot_index] = save.team_list[slot_index]
+                ? save.team_list[slot_index]->campaign_tag
+                : static_cast<std::uint8_t>(0);
+        }
+
         const std::vector<short> active_teams =
             collect_active_player_teams(*state_);
         std::vector<PreservedSaveSlot> preserved_slots =
@@ -947,6 +970,11 @@ private:
             // save, so re-deploying here would wipe a benched selection.
             save.team_list[slot_index]->deployed =
                 ordered_slot.slot->deployed;
+            // GTL v16: same reason, different channel — the tag has no wire
+            // representative at all, so it comes back off the pre-reset
+            // roster at this slot.
+            save.team_list[slot_index]->campaign_tag =
+                preserved_tags[slot_index];
             save.team_size++;
         }
 

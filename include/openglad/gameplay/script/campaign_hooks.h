@@ -36,6 +36,21 @@ inline constexpr int kCampaignVarsMax = 64;      // names per registration
 inline constexpr int kCampaignPageMaxEntries = 24;
 inline constexpr int kCampaignPageMaxLines = 6;
 
+// Base Camp zone bounds (docs/basecamp-zones-design.md, "The widget
+// contract" / "Bounds arithmetic"). Unlike the page parser's clip rule,
+// every zone bound is a hard rejection: an over-budget composition is
+// malformed and the caller falls to the default (scriptless) zone. The
+// action-row cap is TOTAL across the zone — it is what closes the 50→72
+// appended-ordinal arithmetic (16 rows + 4 pagers + 3 spare).
+inline constexpr int kCampaignZoneMaxWidgets = 6;
+inline constexpr int kCampaignZoneMaxReadoutWidgets = 1;
+inline constexpr int kCampaignZoneMaxActionsWidgets = 2;
+inline constexpr int kCampaignZoneMaxTextWidgets = 2;
+inline constexpr int kCampaignZoneMaxTextLines = 6;      // per text widget
+inline constexpr int kCampaignZoneMaxActionEntries = 16; // TOTAL, whole zone
+inline constexpr int kCampaignZoneMaxReadoutItems = 3;
+inline constexpr int kCampaignZoneMaxRosterLocks = 24;   // one per roster slot
+
 // 1..kCampaignVarNameMax chars of [a-z0-9_] — the safe-id charset every
 // campaign var/state key must satisfy.
 bool valid_campaign_var_name(std::string_view name);
@@ -61,11 +76,83 @@ struct CampaignActionResult {
     std::string message;  // optional toast
 };
 
+// One deploy refusal on the zone's roster widget. Heroes are addressed by
+// the persisted campaign_tag byte, never by guy id (ids regenerate every
+// mission — the red-team rule): tag 1..255 locks own heroes whose
+// campaign_tag equals tag; unset = true locks heroes still unassigned
+// (campaign_tag == 0). Exactly one of the two forms per lock (parser
+// enforced). The reason is delivered as a message-line toast, never a
+// modal (a modal strands a networked joiner mid-GO).
+struct CampaignRosterLock {
+    int tag = -1;        // 1..255, or -1 when this is an `unset` lock
+    bool unset = false;  // true: locks unassigned heroes
+    std::string reason;  // toast on the refused deploy ("" = silent refusal)
+};
+
+// The roster widget's assignment chip (assign = { key, labels, frozen }).
+// Cycling writes the clicked row's campaign_tag through the assign_set
+// provider: unset(0) → 1 → 2 → 1, never back to unset; labels[0]/[1] name
+// tags 1/2. A non-empty `frozen` keeps chips visible but refuses cycling
+// with that reason.
+struct CampaignAssignSpec {
+    std::string key;                  // channel name, [a-z0-9_] like vars
+    std::vector<std::string> labels;  // exactly two, both non-empty
+    std::string frozen;               // "" = cycling allowed
+    bool active = false;              // true when the widget declared assign
+};
+
+// One widget of the Lua-composed Base Camp gameplay zone
+// (docs/basecamp-zones-design.md "The widget contract"). Pure data; only
+// the fields of the declared kind are read by the parser, the rest keep
+// their defaults. `weight` is integer row units on the zone's fixed 14px
+// grid (0 = the layout's default share) — never pixels.
+struct CampaignZoneWidget {
+    enum class Kind { Roster, Text, Actions, Readout };
+    Kind kind = Kind::Roster;
+    int weight = 0;
+
+    // Roster: capability flags (default on — absence is full capability),
+    // deploy locks, and the optional assignment chip.
+    bool can_deploy = true;
+    bool can_train = true;
+    bool can_reorder = true;
+    bool can_team = true;
+    bool can_hire = true;
+    std::vector<CampaignRosterLock> locks;   // <= kCampaignZoneMaxRosterLocks
+    CampaignAssignSpec assign;
+
+    // Text: readability-strip lines.
+    std::vector<std::string> lines;          // <= kCampaignZoneMaxTextLines
+
+    // Actions: rows in the existing page-entry vocabulary, windowed by the
+    // widget's own pager pair UI-side.
+    std::vector<CampaignPageEntry> entries;  // <= 16 TOTAL across the zone
+
+    // Readout: one zone row of label/value cells.
+    struct ReadoutItem {
+        std::string label, value;
+    };
+    std::vector<ReadoutItem> items;          // <= kCampaignZoneMaxReadoutItems
+};
+
+// The base_camp hook's whole answer. Per-kind caps (parser enforced,
+// violation = malformed = default zone): exactly one roster, at most one
+// readout, <= 2 actions, <= 2 text, <= kCampaignZoneMaxWidgets total.
+struct CampaignZone {
+    std::vector<CampaignZoneWidget> widgets;
+};
+
 // Roster row of og.campaign_team — values, not handles.
 struct CampaignRosterEntry {
     std::string name, family;
     int level = 0, exp = 0, strength = 0, dexterity = 0, constitution = 0,
         intelligence = 0, armor = 0, team = 0;
+    // Per-hero identity (GTL v16, docs/basecamp-zones-design.md "Per-hero
+    // identity"): the persisted campaign_tag byte (0 = unassigned) and the
+    // owning SaveData::team_list slot — the address the assign_set
+    // provider takes at dispatch time. Never a guy id (ids regenerate).
+    int tag = 0;
+    int save_slot = -1;
 };
 
 // The og.campaign_match_get / og.campaign_match_set name vocabulary
@@ -104,6 +191,12 @@ struct CampaignProviders {
     std::function<std::int32_t(const std::string&)> match_get;
     std::function<bool(const std::string&, std::int32_t)> match_set;
     std::function<bool()> is_host;
+    // Base Camp assign write (GTL v16): sets team_list[save_slot]'s
+    // campaign_tag. Check-then-write like state_set — answers false with
+    // NO mutation for an invalid or unoccupied slot or a tag outside
+    // 0..255. Not a Lua binding: the assign chip's dispatch tail calls it
+    // directly (assign flows through providers, never through og.*).
+    std::function<bool(int, int)> assign_set;  // (save_slot, tag)
 };
 
 void install_campaign_providers(CampaignProviders providers);
@@ -127,6 +220,19 @@ bool campaign_picker_page(const std::string& page_id, CampaignPage& out);
 // returned table's optional `message` string.
 bool campaign_picker_action(const std::string& entry_id,
                             CampaignActionResult& out);
+
+// True when the active registration carries a base_camp hook (the SDL
+// surface's zone-vs-default gate). Same conflict/scriptless rules as
+// campaign_picker_registered.
+bool campaign_zone_registered();
+
+// Dispatches base_camp() and parses the returned zone under the same
+// fence/bracketing discipline as campaign_picker_page. False — the caller
+// renders the DEFAULT zone — when no base_camp hook is registered, the
+// hook errors, or the composition is malformed/over-budget (recorded as a
+// script error naming the field; every bound is a hard rejection, never a
+// clip).
+bool campaign_zone(CampaignZone& out);
 
 // The `vars` names of the active registration, in declared order — the
 // list the level-load sync copies from the save into

@@ -224,7 +224,62 @@ TEST_F(CampaignHooksTest, neither_hook_function_is_a_load_error)
 }))LUA");
     EXPECT_FALSE(hooks::campaign_picker_registered());
     EXPECT_TRUE(errors_contain(
-        "register at least one of 'picker_menu' / 'picker_action'"));
+        "register at least one of 'picker_menu' / 'picker_action' / "
+        "'base_camp'"));
+}
+
+TEST_F(CampaignHooksTest, base_camp_alone_is_a_legal_registration)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = { { kind = "roster" } } }
+  end,
+}))LUA");
+    EXPECT_TRUE(hooks::campaign_picker_registered());
+    EXPECT_TRUE(hooks::campaign_zone_registered());
+    // The picker surfaces stay unserved.
+    hooks::CampaignPage page;
+    EXPECT_FALSE(hooks::campaign_picker_page("", page));
+    hooks::CampaignActionResult result;
+    EXPECT_FALSE(hooks::campaign_picker_action("x", result));
+    hooks::CampaignZone zone;
+    ASSERT_TRUE(hooks::campaign_zone(zone));
+    ASSERT_EQ(1u, zone.widgets.size());
+    EXPECT_TRUE(vm_errors().empty()) << vm_errors().front().message;
+}
+
+TEST_F(CampaignHooksTest, non_function_base_camp_is_a_load_error)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  base_camp = "not a function",
+}))LUA");
+    EXPECT_FALSE(hooks::campaign_picker_registered());
+    EXPECT_TRUE(errors_contain("'base_camp' must be a function"));
+}
+
+TEST_F(CampaignHooksTest, base_camp_key_typo_gets_did_you_mean)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  base_cam = function()
+    return { widgets = {} }
+  end,
+}))LUA");
+    EXPECT_FALSE(hooks::campaign_picker_registered());
+    EXPECT_TRUE(errors_contain("unknown key 'base_cam'"));
+    EXPECT_TRUE(errors_contain("did you mean 'base_camp'"));
+}
+
+TEST_F(CampaignHooksTest, zone_unregistered_without_base_camp_hook)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id)
+    return { title = "BOOK" }
+  end,
+}))LUA");
+    EXPECT_TRUE(hooks::campaign_picker_registered());
+    EXPECT_FALSE(hooks::campaign_zone_registered());
+    hooks::CampaignZone zone;
+    EXPECT_FALSE(hooks::campaign_zone(zone));
 }
 
 TEST_F(CampaignHooksTest, non_function_hook_is_a_load_error)
@@ -506,8 +561,14 @@ TEST_F(CampaignHooksTest, provider_bindings_happy_path)
     providers.gold_grant = [&](std::int64_t amount) { gold += amount; };
     providers.team_snapshot = [] {
         std::vector<hooks::CampaignRosterEntry> team;
-        team.push_back({"MILO", "SOLDIER", 3, 220, 12, 8, 10, 6, 8, 0});
-        team.push_back({"WYRD", "MAGE", 2, 90, 4, 7, 5, 14, 2, 1});
+        // The trailing pair is the GTL v16 per-hero identity: campaign_tag
+        // then the save slot the assign write is addressed by. Both rows
+        // carry values that are distinct per field AND per row, so a
+        // transposition of the two lua_setfield pushes changes the log.
+        team.push_back({"MILO", "SOLDIER", 3, 220, 12, 8, 10, 6, 8, 0, 7, 2});
+        // tag 0 = unassigned, and a gapped slot: the roster is dense, the
+        // slots it reports are not.
+        team.push_back({"WYRD", "MAGE", 2, 90, 4, 7, 5, 14, 2, 1, 0, 5});
         return team;
     };
     providers.level_completed = [](int id) { return id == 5; };
@@ -532,6 +593,8 @@ TEST_F(CampaignHooksTest, provider_bindings_happy_path)
     og.log("first " .. team[1].name .. " " .. team[1].family)
     og.log("stats " .. team[1].strength .. " " .. team[1].intelligence)
     og.log("second " .. team[2].name .. " " .. team[2].team)
+    og.log("ident " .. team[1].tag .. " " .. team[1].save_slot ..
+           " " .. team[2].tag .. " " .. team[2].save_slot)
     og.log("done5 " .. tostring(og.campaign_level_completed(5)))
     og.log("done6 " .. tostring(og.campaign_level_completed(6)))
     og.log("cur " .. og.campaign_current_level())
@@ -547,7 +610,8 @@ TEST_F(CampaignHooksTest, provider_bindings_happy_path)
         "get0 0",   "get1 3",         "gold 100",  "spend true",
         "broke false", "gold2 50",    "teamn 2",
         "first MILO SOLDIER",         "stats 12 6",
-        "second WYRD 1",              "done5 true", "done6 false",
+        "second WYRD 1",              "ident 7 2 0 5",
+        "done5 true", "done6 false",
         "cur 7",    "title THE CIRCLE", "blank ",
     };
     ASSERT_EQ(expected.size(), vm_log().size());
@@ -874,6 +938,441 @@ TEST_F(CampaignHooksTest, action_without_registration_answers_false)
     hooks::CampaignActionResult result;
     EXPECT_FALSE(hooks::campaign_picker_action("x", result));
     EXPECT_TRUE(hooks::campaign_picker_registered());
+}
+
+// ---------------------------------------------------------------------------
+// Base Camp zone parse (docs/basecamp-zones-design.md "The widget contract")
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// One base_camp registration serving every parse shape. The hook takes no
+// argument, so the shape is selected through an installed state_get
+// provider (which also proves og.campaign_* bindings work inside a
+// base_camp dispatch).
+constexpr const char* kZoneShapes = R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    local shape = og.campaign_state_get("shape")
+    if shape == 0 then
+      return {
+        widgets = {
+          { kind = "readout", weight = 1,
+            items = {
+              { label = "WAGES", value = "1400g" },
+              { label = "DEBT", value = "900g" },
+              { label = "COINS", value = "3" },
+            } },
+          { kind = "text",
+            lines = { "The season turns.", "Collectors at the Toll." } },
+          { kind = "roster", weight = 5, can_hire = false, can_team = false,
+            locks = {
+              { tag = 2, reason = "WITH THE BEARER" },
+              { unset = true, reason = "WAITS AT THE FALLS" },
+            },
+            assign = { key = "falls_road", labels = { "WAR", "BURDEN" },
+                       frozen = "The Falls parted the company." } },
+          { kind = "actions",
+            entries = {
+              { id = "ride", kind = "level", level = 12, label = "RIDE ON" },
+              { id = "stores", kind = "page", label = "STORES" },
+              { id = "coin", kind = "action", cost = 150, label = "PASS" },
+            } },
+        },
+      }
+    end
+    if shape == 1 then
+      return { widgets = { { kind = "roster" } } }
+    end
+    if shape == 2 then
+      return {}
+    end
+    if shape == 3 then
+      return nil
+    end
+    if shape == 4 then
+      return { widgets = { {}, {}, {}, {}, {}, {}, {} } }
+    end
+    if shape == 5 then
+      return { widgets = { { kind = "roster" }, { kind = "roster" } } }
+    end
+    if shape == 6 then
+      return { widgets = { { kind = "text" } } }
+    end
+    if shape == 7 then
+      return { widgets = { { kind = "roster" }, { kind = "readout" },
+                           { kind = "readout" } } }
+    end
+    if shape == 8 then
+      return { widgets = { { kind = "roster" }, { kind = "actions" },
+                           { kind = "actions" }, { kind = "actions" } } }
+    end
+    if shape == 9 then
+      return { widgets = { { kind = "roster" }, { kind = "text" },
+                           { kind = "text" }, { kind = "text" } } }
+    end
+    if shape == 10 then
+      local first = {}
+      for i = 1, 9 do
+        table.insert(first, { id = "a" .. i, kind = "action" })
+      end
+      local second = {}
+      for i = 1, 8 do
+        table.insert(second, { id = "b" .. i, kind = "action" })
+      end
+      return { widgets = { { kind = "roster" },
+                           { kind = "actions", entries = first },
+                           { kind = "actions", entries = second } } }
+    end
+    if shape == 11 then
+      local lines = {}
+      for i = 1, 7 do
+        table.insert(lines, "line " .. i)
+      end
+      return { widgets = { { kind = "roster" },
+                           { kind = "text", lines = lines } } }
+    end
+    if shape == 12 then
+      local items = {}
+      for i = 1, 4 do
+        table.insert(items, { label = "L" .. i, value = "V" .. i })
+      end
+      return { widgets = { { kind = "roster" },
+                           { kind = "readout", items = items } } }
+    end
+    if shape == 13 then
+      return { widgets = { { kind = "roster",
+                             locks = { { tag = 1, unset = true } } } } }
+    end
+    if shape == 14 then
+      return { widgets = { { kind = "roster",
+                             locks = { { reason = "nobody" } } } } }
+    end
+    if shape == 15 then
+      return { widgets = { { kind = "roster",
+                             locks = { { tag = 0 } } } } }
+    end
+    if shape == 16 then
+      return { widgets = { { kind = "roster",
+                             locks = { { tag = 256 } } } } }
+    end
+    if shape == 17 then
+      return { widgets = { { kind = "roster",
+                             assign = { key = "road",
+                                        labels = { "WAR" } } } } }
+    end
+    if shape == 18 then
+      return { widgets = { { kind = "roster",
+                             assign = { key = "BadKey",
+                                        labels = { "A", "B" } } } } }
+    end
+    if shape == 19 then
+      return { widgets = { { kind = "banner" } } }
+    end
+    if shape == 20 then
+      return { widgets = { { kind = "roster", weight = -1 } } }
+    end
+    if shape == 21 then
+      error("zone boom")
+    end
+    if shape == 22 then
+      return { widgets = { { kind = "roster", can_deploy = 1 } } }
+    end
+    if shape == 23 then
+      return { widgets = { { kind = "roster" },
+                           { kind = "actions",
+                             entries = { { kind = "action" } } } } }
+    end
+    if shape == 24 then
+      local locks = {}
+      for i = 1, 25 do
+        table.insert(locks, { tag = 1 })
+      end
+      return { widgets = { { kind = "roster", locks = locks } } }
+    end
+    if shape == 25 then
+      return { widgets = { { kind = "roster", weight = "heavy" } } }
+    end
+    if shape == 26 then
+      return { widgets = { { kind = "readout",
+                             items = { { label = "L" } } },
+                           { kind = "roster" } } }
+    end
+    -- Element/field TYPE guards. Each malformed widget is widgets[1] and is
+    -- followed by a valid roster, so the per-kind caps would pass: only the
+    -- widget-loop rejection can be what refuses these.
+    if shape == 27 then
+      return { widgets = { 5, { kind = "roster" } } }
+    end
+    if shape == 28 then
+      return { widgets = { { kind = "roster", locks = "nope" } } }
+    end
+    if shape == 29 then
+      return { widgets = { { kind = "roster", locks = { 5 } } } }
+    end
+    if shape == 30 then
+      return { widgets = { { kind = "roster",
+                             locks = { { tag = "two" } } } } }
+    end
+    if shape == 31 then
+      return { widgets = { { kind = "roster",
+                             locks = { { tag = 1, unset = 1 } } } } }
+    end
+    if shape == 32 then
+      return { widgets = { { kind = "roster",
+                             locks = { { tag = 1, reason = 7 } } } } }
+    end
+    if shape == 33 then
+      return { widgets = { { kind = "roster", assign = "x" } } }
+    end
+    if shape == 34 then
+      return { widgets = { { kind = "roster",
+                             assign = { key = "road",
+                                        labels = { "", "B" } } } } }
+    end
+    if shape == 35 then
+      return { widgets = { { kind = "roster",
+                             assign = { key = "road",
+                                        labels = { "A", "B" },
+                                        frozen = 3 } } } }
+    end
+    if shape == 36 then
+      return { widgets = { { kind = "text", lines = "one" },
+                           { kind = "roster" } } }
+    end
+    if shape == 37 then
+      return { widgets = { { kind = "text", lines = { 5 } },
+                           { kind = "roster" } } }
+    end
+    if shape == 38 then
+      return { widgets = { { kind = "actions", entries = "go" },
+                           { kind = "roster" } } }
+    end
+    if shape == 39 then
+      return { widgets = { { kind = "actions", entries = { 5 } },
+                           { kind = "roster" } } }
+    end
+    if shape == 40 then
+      return { widgets = { { kind = "readout", items = "x" },
+                           { kind = "roster" } } }
+    end
+    if shape == 41 then
+      return { widgets = { { kind = "readout", items = { 5 } },
+                           { kind = "roster" } } }
+    end
+    if shape == 42 then
+      return { widgets = { { kind = "readout",
+                             items = { { value = "V" } } },
+                           { kind = "roster" } } }
+    end
+    return { widgets = { { kind = "roster" } } }
+  end,
+  picker_menu = function(page_id)
+    return { title = "STILL SERVING" }
+  end,
+}))LUA";
+
+}  // namespace
+
+TEST_F(CampaignHooksTest, zone_parse_happy_path)
+{
+    int shape = 0;
+    hooks::CampaignProviders providers;
+    providers.state_get = [&shape](const std::string&) -> std::int32_t {
+        return shape;
+    };
+    hooks::install_campaign_providers(std::move(providers));
+    register_script(kZoneShapes);
+    EXPECT_TRUE(hooks::campaign_zone_registered());
+
+    hooks::CampaignZone zone;
+    ASSERT_TRUE(hooks::campaign_zone(zone));
+    ASSERT_EQ(4u, zone.widgets.size());
+
+    const hooks::CampaignZoneWidget& readout = zone.widgets[0];
+    EXPECT_EQ(hooks::CampaignZoneWidget::Kind::Readout, readout.kind);
+    EXPECT_EQ(1, readout.weight);
+    ASSERT_EQ(3u, readout.items.size());
+    EXPECT_EQ("WAGES", readout.items[0].label);
+    EXPECT_EQ("1400g", readout.items[0].value);
+    EXPECT_EQ("COINS", readout.items[2].label);
+    EXPECT_EQ("3", readout.items[2].value);
+
+    const hooks::CampaignZoneWidget& text = zone.widgets[1];
+    EXPECT_EQ(hooks::CampaignZoneWidget::Kind::Text, text.kind);
+    EXPECT_EQ(0, text.weight) << "weight defaults to 0 (layout default)";
+    ASSERT_EQ(2u, text.lines.size());
+    EXPECT_EQ("The season turns.", text.lines[0]);
+
+    const hooks::CampaignZoneWidget& roster = zone.widgets[2];
+    EXPECT_EQ(hooks::CampaignZoneWidget::Kind::Roster, roster.kind);
+    EXPECT_EQ(5, roster.weight);
+    EXPECT_TRUE(roster.can_deploy);
+    EXPECT_TRUE(roster.can_train);
+    EXPECT_TRUE(roster.can_reorder);
+    EXPECT_FALSE(roster.can_team);
+    EXPECT_FALSE(roster.can_hire);
+    ASSERT_EQ(2u, roster.locks.size());
+    EXPECT_EQ(2, roster.locks[0].tag);
+    EXPECT_FALSE(roster.locks[0].unset);
+    EXPECT_EQ("WITH THE BEARER", roster.locks[0].reason);
+    EXPECT_EQ(-1, roster.locks[1].tag);
+    EXPECT_TRUE(roster.locks[1].unset);
+    EXPECT_EQ("WAITS AT THE FALLS", roster.locks[1].reason);
+    EXPECT_TRUE(roster.assign.active);
+    EXPECT_EQ("falls_road", roster.assign.key);
+    ASSERT_EQ(2u, roster.assign.labels.size());
+    EXPECT_EQ("WAR", roster.assign.labels[0]);
+    EXPECT_EQ("BURDEN", roster.assign.labels[1]);
+    EXPECT_EQ("The Falls parted the company.", roster.assign.frozen);
+
+    const hooks::CampaignZoneWidget& actions = zone.widgets[3];
+    EXPECT_EQ(hooks::CampaignZoneWidget::Kind::Actions, actions.kind);
+    ASSERT_EQ(3u, actions.entries.size());
+    EXPECT_EQ("ride", actions.entries[0].id);
+    EXPECT_EQ(hooks::CampaignPageEntry::Kind::Level,
+              actions.entries[0].kind);
+    EXPECT_EQ(12, actions.entries[0].level);
+    EXPECT_EQ("RIDE ON", actions.entries[0].label);
+    EXPECT_EQ(hooks::CampaignPageEntry::Kind::Page,
+              actions.entries[1].kind);
+    EXPECT_EQ(hooks::CampaignPageEntry::Kind::Action,
+              actions.entries[2].kind);
+    EXPECT_EQ(150, actions.entries[2].cost);
+    EXPECT_TRUE(vm_errors().empty()) << vm_errors().front().message;
+
+    // Shape 1: a bare roster widget keeps every default.
+    shape = 1;
+    hooks::CampaignZone minimal;
+    ASSERT_TRUE(hooks::campaign_zone(minimal));
+    ASSERT_EQ(1u, minimal.widgets.size());
+    const hooks::CampaignZoneWidget& bare = minimal.widgets[0];
+    EXPECT_EQ(hooks::CampaignZoneWidget::Kind::Roster, bare.kind);
+    EXPECT_EQ(0, bare.weight);
+    EXPECT_TRUE(bare.can_deploy);
+    EXPECT_TRUE(bare.can_train);
+    EXPECT_TRUE(bare.can_reorder);
+    EXPECT_TRUE(bare.can_team);
+    EXPECT_TRUE(bare.can_hire);
+    EXPECT_TRUE(bare.locks.empty());
+    EXPECT_FALSE(bare.assign.active);
+    EXPECT_TRUE(bare.lines.empty());
+    EXPECT_TRUE(bare.entries.empty());
+    EXPECT_TRUE(bare.items.empty());
+}
+
+TEST_F(CampaignHooksTest, zone_bounds_and_malformed_shapes_fall_to_default)
+{
+    int shape = 0;
+    hooks::CampaignProviders providers;
+    providers.state_get = [&shape](const std::string&) -> std::int32_t {
+        return shape;
+    };
+    hooks::install_campaign_providers(std::move(providers));
+    register_script(kZoneShapes);
+
+    const struct {
+        int shape;
+        const char* named;
+    } cases[] = {
+        {2, "'widgets' is missing or not an array"},
+        {3, "returned a nil, not a zone table"},
+        {4, "lists 7 widgets (max 6)"},
+        {5, "declares 2 roster widgets (exactly one required)"},
+        {6, "declares 0 roster widgets (exactly one required)"},
+        {7, "declares 2 readout widgets (max 1)"},
+        {8, "declares 3 actions widgets (max 2)"},
+        {9, "declares 3 text widgets (max 2)"},
+        {10, "the zone lists more than 16 action rows in total"},
+        {11, "widgets[2] lists 7 lines (max 6)"},
+        {12, "widgets[2] lists 4 readout items (max 3)"},
+        {13, "locks[1] needs exactly one of tag / unset = true"},
+        {14, "locks[1] needs exactly one of tag / unset = true"},
+        {15, "locks[1].tag must be 1..255"},
+        {16, "locks[1].tag must be 1..255"},
+        {17, ".assign.labels must list exactly 2 labels"},
+        {18, ".assign.key must be 1-32 chars of [a-z0-9_]"},
+        {19, ".kind must be \"roster\", \"text\", \"actions\" or "
+             "\"readout\""},
+        {20, "widgets[1].weight is negative"},
+        {22, "widgets[1].can_deploy is not a boolean"},
+        {23, "widgets[2].entries[1].id is missing or not a string"},
+        {24, ".locks lists 25 locks (max 24)"},
+        {25, "widgets[1].weight is not an integer"},
+        {26, "widgets[1].items[1].value is missing or not a string"},
+        // Element/field TYPE guards. Nine of these are the only thing
+        // between a malformed book and a lua_rawget/lua_rawlen on a
+        // non-table: api_check is compiled out, so a dropped guard is a
+        // garbage Table* dereference, not a Lua error.
+        {27, "widgets[1] is not a table"},
+        {28, "widgets[1].locks is not an array"},
+        {29, "widgets[1].locks[1] is not a table"},
+        {30, "widgets[1].locks[1].tag is not an integer"},
+        {31, "widgets[1].locks[1].unset is not a boolean"},
+        {32, "widgets[1].locks[1].reason is not a string"},
+        {33, "widgets[1].assign is not a table"},
+        {34, "widgets[1].assign.labels[1] must be a non-empty string"},
+        {35, "widgets[1].assign.frozen is not a string"},
+        {36, "widgets[1].lines is not an array"},
+        {37, "widgets[1].lines[1] is not a string"},
+        {38, "widgets[1].entries is not an array"},
+        {39, "widgets[1].entries[1] is not a table"},
+        {40, "widgets[1].items is not an array"},
+        {41, "widgets[1].items[1] is not a table"},
+        {42, "widgets[1].items[1].label is missing or not a string"},
+    };
+    hooks::CampaignZone zone;
+    for (const auto& c : cases) {
+        shape = c.shape;
+        EXPECT_FALSE(hooks::campaign_zone(zone)) << "shape " << c.shape;
+        EXPECT_TRUE(errors_contain(c.named))
+            << "shape " << c.shape << " should record: " << c.named;
+    }
+    // An erroring hook is also "no scripted zone" for that dispatch.
+    shape = 21;
+    EXPECT_FALSE(hooks::campaign_zone(zone));
+    EXPECT_TRUE(errors_contain("zone boom"));
+    // The registration itself is still healthy: the zone serves again and
+    // the picker page surface never flinched.
+    shape = 1;
+    EXPECT_TRUE(hooks::campaign_zone(zone));
+    hooks::CampaignPage page;
+    ASSERT_TRUE(hooks::campaign_picker_page("", page));
+    EXPECT_EQ("STILL SERVING", page.title);
+}
+
+TEST_F(CampaignHooksTest, zone_dispatch_is_fenced_and_brackets_cleanly)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    local ok, err = pcall(og.rand, 3)
+    if ok then
+      og.log("NOFENCE rand")
+    elseif string.find(err, "campaign hooks", 1, true) == nil then
+      og.log("WRONGMSG rand: " .. err)
+    end
+    local ok2 = pcall(og.register_campaign_hooks, {})
+    if ok2 then
+      og.log("NOFENCE register")
+    end
+    return { widgets = { { kind = "roster" } } }
+  end,
+  picker_menu = function(page_id)
+    return { title = "AFTER" }
+  end,
+}))LUA");
+    hooks::CampaignZone zone;
+    ASSERT_TRUE(hooks::campaign_zone(zone));
+    for (const std::string& line : vm_log()) {
+        EXPECT_EQ(std::string::npos, line.find("NOFENCE")) << line;
+        EXPECT_EQ(std::string::npos, line.find("WRONGMSG")) << line;
+    }
+    // The fence disarmed on exit: a follow-up picker dispatch (its own
+    // bracket) and a second zone dispatch both serve.
+    hooks::CampaignPage page;
+    ASSERT_TRUE(hooks::campaign_picker_page("", page));
+    EXPECT_EQ("AFTER", page.title);
+    ASSERT_TRUE(hooks::campaign_zone(zone));
+    ASSERT_EQ(1u, zone.widgets.size());
 }
 
 // ---------------------------------------------------------------------------

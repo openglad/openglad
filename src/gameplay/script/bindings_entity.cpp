@@ -1931,7 +1931,7 @@ int og_campaign_team(lua_State* L)
     lua_createtable(L, static_cast<int>(team.size()), 0);
     for (std::size_t i = 0; i < team.size(); i++) {
         const hooks::CampaignRosterEntry& entry = team[i];
-        lua_createtable(L, 0, 10);
+        lua_createtable(L, 0, 12);
         lua_pushlstring(L, entry.name.data(), entry.name.size());
         lua_setfield(L, -2, "name");
         lua_pushlstring(L, entry.family.data(), entry.family.size());
@@ -1952,6 +1952,13 @@ int og_campaign_team(lua_State* L)
         lua_setfield(L, -2, "armor");
         lua_pushinteger(L, entry.team);
         lua_setfield(L, -2, "team");
+        // Per-hero identity (GTL v16): the persisted campaign_tag byte and
+        // the owning save slot — the address a base_camp composition's
+        // locks/assign use (never a guy id; ids regenerate every mission).
+        lua_pushinteger(L, entry.tag);
+        lua_setfield(L, -2, "tag");
+        lua_pushinteger(L, entry.save_slot);
+        lua_setfield(L, -2, "save_slot");
         lua_rawseti(L, -2, static_cast<lua_Integer>(i) + 1);
     }
     return 1;

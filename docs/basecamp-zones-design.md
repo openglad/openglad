@@ -79,12 +79,20 @@ per frame.
 
 **Per-hero identity (GTL v16, shipped in this change)**: the guy record
 gains a `campaign_tag` byte in the reserved bytes — the per-hero
-assignment channel, copied wherever the record is copied (update_guys
-both passes, rename, the owner-preserving networked merge), zeroed at
-hire, exposed to Lua as a roster-entry field and written through an
-assign provider addressed by the clicked row's save slot at dispatch
-time. Campaign_state never keys on per-guy ids (they regenerate; the tag
-travels with the record instead).
+assignment channel, zeroed at hire, exposed to Lua as a roster-entry
+field and written through an assign provider addressed by the clicked
+row's save slot at dispatch time. Campaign_state never keys on per-guy
+ids (they regenerate; the tag travels with the record instead).
+
+The tag is machine-private save state and never travels a session:
+neither `LobbyCharacterData` nor `GuySnapshot` carries it, so a mission
+roster, a local lobby echo and a joiner's mirror world all rebuild their
+guys with tag 0. The rule is that whichever record actually stores the
+tag wins — `update_guys` carries it through the solo win path on the
+copy constructor, `merge_owned_guys_from` re-stamps each survivor from
+the disk slot, and the Base Camp lobby round-trip re-stamps from the
+pre-reset roster slot. Assignment is menu-authored, so nothing inside a
+level ever needs to write it back.
 
 **Bounds arithmetic (closed)**: appended ordinal band 49..71 = 16 action
 rows + 4 actions pagers + 3 spare; `MAX_BUTTONS` and

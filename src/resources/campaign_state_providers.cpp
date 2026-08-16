@@ -198,8 +198,9 @@ og::script::hooks::CampaignProviders make_campaign_providers(
     providers.team_snapshot =
         [save_ptr]() -> std::vector<og::script::hooks::CampaignRosterEntry> {
         std::vector<og::script::hooks::CampaignRosterEntry> roster;
-        for (const auto& member : save_ptr->team_list)
+        for (std::size_t slot = 0; slot < save_ptr->team_list.size(); slot++)
         {
+            const guy* member = save_ptr->team_list[slot].get();
             if (member == nullptr)
                 continue;
             og::script::hooks::CampaignRosterEntry entry;
@@ -214,9 +215,30 @@ og::script::hooks::CampaignProviders make_campaign_providers(
             entry.armor = member->armor;
             entry.team =
                 std::clamp(static_cast<int>(member->teamnum), 0, 3);
+            // Per-hero identity (GTL v16): the campaign_tag byte plus the
+            // team_list slot the assign_set write is addressed by. The
+            // slot, not a guy id — ids regenerate every mission.
+            entry.tag = member->campaign_tag;
+            entry.save_slot = static_cast<int>(slot);
             roster.push_back(std::move(entry));
         }
         return roster;
+    };
+
+    // Base Camp assign write (GTL v16): check-then-write on the clicked
+    // row's slot. Refusals (invalid/unoccupied slot, tag outside the
+    // persisted byte's range) answer false with no mutation.
+    providers.assign_set = [save_ptr](int save_slot, int tag) -> bool {
+        if (save_slot < 0 || save_slot >= MAX_TEAM_SIZE)
+            return false;
+        if (tag < 0 || tag > 255)
+            return false;
+        guy* member =
+            save_ptr->team_list[static_cast<std::size_t>(save_slot)].get();
+        if (member == nullptr)
+            return false;
+        member->campaign_tag = static_cast<std::uint8_t>(tag);
+        return true;
     };
 
     providers.level_completed = [save_ptr](int level_id) -> bool {

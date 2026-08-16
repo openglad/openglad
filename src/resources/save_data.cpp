@@ -147,6 +147,7 @@ bool SaveData::load(const std::string& filename)
 	std::int16_t temp_registered = 0;        // v.7+
 	std::int64_t temp_last_played = 0;       // v.14+
 	std::uint8_t temp_deployed = 1;          // v.14+
+	std::uint8_t temp_campaign_tag = 0;      // v.16+
 
 	// Format of a team list file is:
 	// 3-byte header: 'GTL'
@@ -192,7 +193,10 @@ bool SaveData::load(const std::string& filename)
 	// 2-bytes team number
 	// 2*4 = 8 bytes RESERVED, reinterpreted by version 14+ as:
 	//   1-byte deployed flag (0 = held back), guy offset +50  // Version 14+
-	//   7-bytes RESERVED (zero-filled by v14+ writers)
+	//   1-byte campaign tag (0 = unassigned), guy offset +51  // Version 16+
+	//   6-bytes RESERVED (zero-filled by v16+ writers)
+	// (v14/v15 files carry filler at guy offset +51 — the tag is hard-gated
+	// on temp_version >= 16 and never sniffed from content)
 	// List of 200 or 500 (max levels) 1-byte scenario-level status  // Versions 1-7
 	// 2-bytes Number of campaigns in list      // Version 8+
 	// List of n campaigns                      // Version 8+
@@ -411,9 +415,17 @@ bool SaveData::load(const std::string& filename)
 
 		// "And the filler," as the 2002 reader put it. Version 14+
 		// reinterprets the first byte as the
-		// mission-deploy flag (guy offset +50); older files hold filler.
+		// mission-deploy flag (guy offset +50); version 16+ the second as
+		// the campaign tag (guy offset +51); older files hold filler.
 		temp_deployed = 1;
-		if (temp_version >= 14)
+		temp_campaign_tag = 0;
+		if (temp_version >= 16)
+		{
+			READ_OR_FAIL(&temp_deployed, 1, 1);
+			READ_OR_FAIL(&temp_campaign_tag, 1, 1);
+			READ_OR_FAIL(filler.data(), 6, 1);
+		}
+		else if (temp_version >= 14)
 		{
 			READ_OR_FAIL(&temp_deployed, 1, 1);
 			READ_OR_FAIL(filler.data(), 7, 1);
@@ -471,6 +483,11 @@ bool SaveData::load(const std::string& filename)
 			    // deployed (every legacy character was always brought)
 			    temp_guy_ptr->deployed =
 			        (temp_version >= 14) ? (temp_deployed != 0) : true;
+			    // v16+ carries the campaign tag; older versions default to
+			    // unassigned (no legacy character ever swore a road)
+			    temp_guy_ptr->campaign_tag =
+			        (temp_version >= 16) ? temp_campaign_tag
+			                             : static_cast<std::uint8_t>(0);
             }
 		}
 
@@ -916,6 +933,16 @@ void SaveData::merge_owned_guys_from(
         {
             entry = std::make_unique<guy>(*survived[static_cast<std::size_t>(slot)]);
             const guy* disk = team_list[static_cast<std::size_t>(slot)].get();
+            // campaign_tag (GTL v16) is machine-private save state that never
+            // rides a session: this machine's mission roster is rebuilt from
+            // LobbyCharacterData and a joiner's mirror roster from GuySnapshot,
+            // and neither carries the byte, so every survivor arrives here with
+            // tag 0. The DISK slot therefore wins — otherwise every won level
+            // would silently un-assign the whole deployed company while benched
+            // heroes (the kept-slot branch below) kept their assignments.
+            // Assignment is menu-authored anyway; nothing in a level writes it.
+            if (disk != nullptr)
+                entry->campaign_tag = disk->campaign_tag;
             if (preserve_exp_level && disk != nullptr)
             {
                 // #213 (versus arenas): the merged roster keeps the DISK
@@ -977,7 +1004,7 @@ bool SaveData::save(const std::string& filename)
 	std::fill_n(temp_campaign.data(), temp_campaign.size(), '\0');
 
 	std::array<char, 10> temptext = {'G', 'T', 'L'};
-	std::uint8_t temp_version = 15;
+	std::uint8_t temp_version = 16;
 
 	std::uint32_t newcash = totalcash;
 	std::uint32_t newscore = totalscore;
@@ -1046,7 +1073,8 @@ bool SaveData::save(const std::string& filename)
 	// 2-bytes team number, v.5+
 	// 2*4 = 8 bytes RESERVED, reinterpreted by version 14+ as:
 	//   1-byte deployed flag (0 = held back), guy offset +50  // Version 14+
-	//   7-bytes RESERVED (zero-filled)
+	//   1-byte campaign tag (0 = unassigned), guy offset +51  // Version 16+
+	//   6-bytes RESERVED (zero-filled)
 	// List of 500 (max scenarios) 1-byte scenario-level status  // Versions 1-7
 	// 2-bytes Number of campaigns in list      // Version 8+
 	// List of n campaigns                      // Version 8+
@@ -1207,12 +1235,15 @@ bool SaveData::save(const std::string& filename)
         WRITE_OR_FAIL(&temp_ts, 4, 1);
         WRITE_OR_FAIL(&temp_teamnum, 2, 1);
         // And the filler: v14+ stores the mission-deploy flag in the first
-        // byte of the former 8-byte guy filler (offset +50), then zero-fills
-        // the other 7.
+        // byte of the former 8-byte guy filler (offset +50), v16+ the
+        // campaign tag in the second (offset +51), then zero-fills the
+        // other 6.
         std::uint8_t temp_deployed = temp_guy->deployed ? 1 : 0;
         WRITE_OR_FAIL(&temp_deployed, 1, 1);
-        std::array<char, 7> reserved_guy{};
-        WRITE_OR_FAIL(reserved_guy.data(), 7, 1);
+        std::uint8_t temp_campaign_tag = temp_guy->campaign_tag;
+        WRITE_OR_FAIL(&temp_campaign_tag, 1, 1);
+        std::array<char, 6> reserved_guy{};
+        WRITE_OR_FAIL(reserved_guy.data(), 6, 1);
 	}
 
 	// Write the completed levels

@@ -251,3 +251,101 @@ TEST(SaveDataUnit, guy_copy_constructor_propagates_deployed)
         << "guy::guy(const guy&) = default must carry the deploy flag "
            "through update_guys/merge_owned_guys_from";
 }
+
+// --- GTL v16 campaign_tag carriage (docs/basecamp-zones-design.md,
+// "Per-hero identity": copied wherever the record is copied) ---
+
+TEST(SaveDataUnit, guy_copy_constructor_propagates_campaign_tag)
+{
+    guy source(FAMILY_SOLDIER);
+    source.campaign_tag = 7;
+    guy copy(source);
+    ASSERT_EQ(7, static_cast<int>(copy.campaign_tag))
+        << "guy::guy(const guy&) = default must carry campaign_tag "
+           "through update_guys/merge_owned_guys_from and the "
+           "headless-server save clone";
+}
+
+TEST(SaveDataUnit, update_guys_carries_campaign_tag_through_both_passes)
+{
+    SaveData save;
+    save.team_list[0] = make_roster_guy("HELD", 777, /*deployed=*/false);
+    save.team_list[0]->campaign_tag = 2;
+    save.team_list[1] = make_roster_guy("SENT", 100, /*deployed=*/true);
+    save.team_list[1]->campaign_tag = 1;
+    save.team_size = 2;
+
+    // The deployed character survived; its walker's myguy is a copy of the
+    // roster entry, so it carries the tag into pass 1's rebuild copy.
+    std::list<std::unique_ptr<walker>> oblist;
+    {
+        guy sent(FAMILY_SOLDIER);
+        sent.name = "SENT";
+        sent.exp = 500;
+        sent.campaign_tag = 1;
+        oblist.push_back(make_survivor_walker(sent));
+    }
+
+    save.update_guys(oblist);
+
+    ASSERT_EQ(2, static_cast<int>(save.team_size));
+    ASSERT_EQ(std::string("SENT"), save.team_list[0]->name);
+    ASSERT_EQ(1, static_cast<int>(save.team_list[0]->campaign_tag))
+        << "pass 1 (survivor copy) carries the tag";
+    ASSERT_EQ(std::string("HELD"), save.team_list[1]->name);
+    ASSERT_EQ(2, static_cast<int>(save.team_list[1]->campaign_tag))
+        << "pass 2 (held-back move-append) carries the tag";
+}
+
+TEST(SaveDataUnit, merge_owned_guys_restores_the_disk_tag_for_every_slot)
+{
+    // Overlay rule: the DISK slot's tag always wins. A session roster is
+    // rebuilt from LobbyCharacterData (mission entry) or GuySnapshot (a
+    // joiner's mirror), neither of which carries the byte, so a survivor
+    // reaches this merge with tag 0. Trusting it would un-assign the whole
+    // deployed company on every won level while benched heroes kept theirs.
+    SaveData save;
+    save.team_list[0] = make_roster_guy("KEPT", 30, /*deployed=*/true);
+    save.team_list[0]->campaign_tag = 5;
+    save.team_list[1] = make_roster_guy("BROUGHT", 100, /*deployed=*/true);
+    save.team_list[1]->campaign_tag = 1;
+    save.team_list[2] = make_roster_guy("STAMPED", 100, /*deployed=*/true);
+    save.team_list[2]->campaign_tag = 4;
+    save.team_size = 3;
+
+    std::list<std::unique_ptr<walker>> level;
+    {
+        // The realistic wire shape: the session guy lost the tag entirely.
+        guy brought(FAMILY_SOLDIER);
+        brought.name = "BROUGHT";
+        brought.exp = 400;
+        brought.campaign_tag = 0;
+        brought.owner_player_index = 1;
+        brought.owner_save_slot = 1;
+        level.push_back(make_survivor_walker(brought));
+    }
+    {
+        // A nonzero session tag loses to the disk record just the same —
+        // nothing inside a level is allowed to author an assignment.
+        guy stamped(FAMILY_SOLDIER);
+        stamped.name = "STAMPED";
+        stamped.exp = 400;
+        stamped.campaign_tag = 2;
+        stamped.owner_player_index = 1;
+        stamped.owner_save_slot = 2;
+        level.push_back(make_survivor_walker(stamped));
+    }
+
+    save.merge_owned_guys_from(level, std::uint8_t{1});
+
+    ASSERT_EQ(3, static_cast<int>(save.team_size));
+    ASSERT_EQ(std::string("KEPT"), save.team_list[0]->name);
+    ASSERT_EQ(5, static_cast<int>(save.team_list[0]->campaign_tag))
+        << "a kept (not brought) slot preserves the disk tag";
+    ASSERT_EQ(std::string("BROUGHT"), save.team_list[1]->name);
+    ASSERT_EQ(1, static_cast<int>(save.team_list[1]->campaign_tag))
+        << "a survivor that came back tagless keeps its disk assignment";
+    ASSERT_EQ(std::string("STAMPED"), save.team_list[2]->name);
+    ASSERT_EQ(4, static_cast<int>(save.team_list[2]->campaign_tag))
+        << "the disk tag wins even over a nonzero session tag";
+}

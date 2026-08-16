@@ -359,9 +359,58 @@
 ---@class og.CampaignActionResult
 ---@field message? string
 
+-- One deploy refusal on the base_camp roster widget.
+-- Heroes are addressed by the persisted campaign_tag byte
+-- (tag 1..255) or unset = true (tag still 0) — exactly one
+-- of the two, never a guy id (ids regenerate every
+-- mission). `reason` is toasted on the refused deploy.
+---@class og.CampaignRosterLock
+---@field tag? integer
+---@field unset? boolean
+---@field reason? string
+
+-- The roster widget's assignment chip: cycling writes the
+-- clicked row's campaign_tag unset(0) -> 1 -> 2 -> 1;
+-- labels[1]/[2] name tags 1/2. A non-empty `frozen` keeps
+-- chips visible but refuses cycling with that reason.
+---@class og.CampaignAssignSpec
+---@field key string
+---@field labels string[]
+---@field frozen? string
+
+-- One widget of the Base Camp gameplay zone. `kind` picks
+-- which fields are read (the rest are ignored); `weight`
+-- is integer row units (>= 0). Bounds are HARD rejections
+-- (never clips): <= 6 text lines per widget, <= 16 action
+-- entries across the whole zone, <= 3 readout items,
+-- <= 24 locks. Roster capability flags default true.
+---@class og.CampaignZoneWidget
+---@field kind "roster"|"text"|"actions"|"readout"
+---@field weight? integer
+---@field can_deploy? boolean
+---@field can_train? boolean
+---@field can_reorder? boolean
+---@field can_team? boolean
+---@field can_hire? boolean
+---@field locks? og.CampaignRosterLock[]
+---@field assign? og.CampaignAssignSpec
+---@field lines? string[]
+---@field entries? og.CampaignPageEntry[]
+---@field items? {label: string, value: string}[]
+
+-- The base_camp hook's answer: per-kind caps (exactly one
+-- roster, <= 1 readout, <= 2 actions, <= 2 text, <= 6
+-- total); a malformed or over-budget zone falls to the
+-- C++ default zone.
+---@class og.CampaignZone
+---@field widgets og.CampaignZoneWidget[]
+
 -- One og.campaign_team() roster row: plain values, not
 -- handles; `family` is the display-name string, `team` is
--- clamped to [0,3] by the provider.
+-- clamped to [0,3] by the provider. `tag` is the persisted
+-- campaign_tag byte (GTL v16, 0 = unassigned) and
+-- `save_slot` the owning save slot — the address the
+-- engine's assign write takes; neither is a guy id.
 ---@class og.CampaignRosterEntry
 ---@field name string
 ---@field family string
@@ -373,6 +422,8 @@
 ---@field intelligence integer
 ---@field armor integer
 ---@field team integer
+---@field tag integer
+---@field save_slot integer
 
 -- Hook table for og.register_campaign_hooks. `vars` names
 -- the campaign state keys (max 64, each 1-32 chars of
@@ -381,6 +432,7 @@
 -- (only og.campaign_* and the pure helpers are legal).
 ---@class og.CampaignHooks
 ---@field vars? string[]
+---@field base_camp? fun(): og.CampaignZone?
 ---@field picker_action? fun(entry_id: string): og.CampaignActionResult?
 ---@field picker_menu? fun(page_id: string): og.CampaignPage?
 
@@ -624,7 +676,7 @@
 ---@field query_passable fun(x: number, y: number, entity: og.Walker, arg4: integer?): boolean
 ---@field rand fun(n: integer): integer # og.rand(n) → deterministic sim RNG (world-owned).
 ---@field rand0 fun(n: integer): integer # og.rand0(n) — the world RNG's `next(n)` with IRandom's real n <= 0 contract instead of og.rand's error: next(0) answers 0 WITHOUT advancing the generator (Si...
----@field register_campaign_hooks fun(hooks: og.CampaignHooks) # og.register_campaign_hooks({ vars = {...}, picker_menu = fn, picker_action = fn }) — load-time only, one campaign picker per VM (docs/campaign-scripting-desi...
+---@field register_campaign_hooks fun(hooks: og.CampaignHooks) # og.register_campaign_hooks({ vars = {...}, picker_menu = fn, picker_action = fn, base_camp = fn }) — load-time only, one campaign book per VM (docs/campaign-...
 ---@field register_hooks fun(order_str: og.OrderName, family_str: string, hooks: og.FxHooks|og.GeneratorHooks|og.LivingHooks|og.TreasureHooks|og.WeaponHooks)
 ---@field register_level_hooks fun(level_id: integer, hooks: og.LevelHooks) # og.register_level_hooks(level_id, { on_load=, on_tick=, on_entity_death=, on_entity_spawn= }).
 ---@field remaining_foes fun(entity: og.Walker): integer

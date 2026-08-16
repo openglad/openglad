@@ -135,6 +135,7 @@ TEST(CampaignStateProviders, team_snapshot_carries_plain_values)
     member->constitution = 12;
     member->intelligence = 11;
     member->armor = 10;
+    member->campaign_tag = 2;
     save.team_list[0] = std::move(member);
     save.team_list[2] = make_member(FAMILY_SOLDIER, 9, "OFFTEAM");
     save.team_size = 2;
@@ -155,6 +156,51 @@ TEST(CampaignStateProviders, team_snapshot_carries_plain_values)
     ASSERT_EQ(10, roster[0].armor);
     ASSERT_EQ(1, roster[0].team);
     ASSERT_EQ(3, roster[1].team) << "team is clamped into [0,3]";
+
+    // Per-hero identity (GTL v16): the campaign_tag byte plus the REAL
+    // team_list slot — a roster with a hole keeps disk slot numbers, not
+    // dense indices, or an assign write would land on the wrong hero.
+    ASSERT_EQ(2, roster[0].tag);
+    ASSERT_EQ(0, roster[0].save_slot);
+    ASSERT_EQ(0, roster[1].tag) << "an unassigned hero reads tag 0";
+    ASSERT_EQ(2, roster[1].save_slot)
+        << "save_slot is the team_list index, skipping the null slot";
+}
+
+// ---------------------------------------------------------------------------
+// assign_set (GTL v16): bounds-checked write of a hero's campaign_tag,
+// addressed by save slot.
+
+TEST(CampaignStateProviders, assign_set_writes_tag_with_bounds_checks)
+{
+    SaveData save;
+    save.team_list[0] = make_member(FAMILY_SOLDIER, 0, "SWORN");
+    save.team_list[2] = make_member(FAMILY_SOLDIER, 0, "GAPPED");
+    save.team_size = 2;
+
+    const CampaignProviders providers = make_campaign_providers(save);
+    ASSERT_TRUE(providers.assign_set) << "assign_set must be filled";
+
+    ASSERT_TRUE(providers.assign_set(0, 1)) << "occupied slot takes the tag";
+    ASSERT_EQ(1, static_cast<int>(save.team_list[0]->campaign_tag));
+    ASSERT_TRUE(providers.assign_set(0, 255)) << "255 is the last legal tag";
+    ASSERT_EQ(255, static_cast<int>(save.team_list[0]->campaign_tag));
+    ASSERT_TRUE(providers.assign_set(0, 0)) << "0 un-assigns";
+    ASSERT_EQ(0, static_cast<int>(save.team_list[0]->campaign_tag));
+    ASSERT_TRUE(providers.assign_set(2, 2))
+        << "a slot past a roster hole is addressed by its real index";
+    ASSERT_EQ(2, static_cast<int>(save.team_list[2]->campaign_tag));
+
+    // Refusals: invalid slot, unoccupied slot, tag outside the byte.
+    ASSERT_FALSE(providers.assign_set(-1, 1)) << "negative slot refused";
+    ASSERT_FALSE(providers.assign_set(MAX_TEAM_SIZE, 1))
+        << "slot past the roster refused";
+    ASSERT_FALSE(providers.assign_set(1, 1)) << "empty slot refused";
+    ASSERT_FALSE(providers.assign_set(0, -1)) << "negative tag refused";
+    ASSERT_FALSE(providers.assign_set(0, 256)) << "tag past the byte refused";
+    ASSERT_EQ(0, static_cast<int>(save.team_list[0]->campaign_tag))
+        << "refusals never mutate";
+    ASSERT_EQ(2, static_cast<int>(save.team_list[2]->campaign_tag));
 }
 
 // ---------------------------------------------------------------------------

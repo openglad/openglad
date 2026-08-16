@@ -124,7 +124,8 @@ struct VmState {
     // picker per VM. A SECOND registration never raises (that would kill
     // the chunk's unrelated level hooks); it records the conflict here and
     // the query side answers "no scripted picker", reporting once.
-    int campaign_hooks_ref = -1;  // table: 1 = picker_menu, 2 = picker_action
+    int campaign_hooks_ref = -1;  // table: 1 = picker_menu,
+                                  // 2 = picker_action, 3 = base_camp
     std::vector<std::string> campaign_vars;  // sim-visible names, in order
     bool campaign_registered = false;
     std::string campaign_source;            // registering chunk (diagnostics)

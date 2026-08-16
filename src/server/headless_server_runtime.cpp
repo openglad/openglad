@@ -68,6 +68,9 @@ std::unique_ptr<guy> make_guy_from_lobby_character(
     // v8: the deploy flag rides the lobby SLOT, not the guy payload; roster
     // assembly only materializes deployed slots, so mark the guy explicitly.
     result->deployed = true;
+    // GTL v16 campaign_tag stays 0: the dedicated server holds no private
+    // company, so it has no record to read a tag off and never persists one.
+    // Each owning machine re-stamps its own tags on its own merge (guy.h).
     return result;
 }
 

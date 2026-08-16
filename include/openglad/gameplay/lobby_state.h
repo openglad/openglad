@@ -47,6 +47,13 @@ constexpr std::uint8_t start_denial_reason_value(StartDenialReason reason) noexc
     return static_cast<std::uint8_t>(reason);
 }
 
+// The lobby wire's copy of a roster character. It is deliberately a SUBSET of
+// `guy`: fields absent here (the `deployed` flag, the GTL v16 `campaign_tag`)
+// do not travel, so every consumer that rebuilds a roster from this struct
+// must re-stamp them from somewhere else — `deployed` from LobbyCharacterSlot
+// below, `campaign_tag` from the private save record the rebuild overwrites
+// (see guy.h). Adding a guy field without deciding which of the two it is has
+// silently dropped data before.
 struct LobbyCharacterData {
     std::int32_t guy_id = 0;
     std::string name;

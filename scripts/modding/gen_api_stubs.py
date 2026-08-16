@@ -627,6 +627,7 @@ def parse_level_hook_names(src: str) -> List[str]:
 CAMPAIGN_HOOK_SIGS: Dict[str, str] = {
     "picker_menu": "fun(page_id: string): og.CampaignPage?",
     "picker_action": "fun(entry_id: string): og.CampaignActionResult?",
+    "base_camp": "fun(): og.CampaignZone?",
 }
 
 
@@ -1264,14 +1265,61 @@ def generate(repo_root: Path) -> str:
     out.append("---@class og.CampaignActionResult")
     out.append("---@field message? string")
     out.append("")
+    out.append("-- One deploy refusal on the base_camp roster widget.")
+    out.append("-- Heroes are addressed by the persisted campaign_tag byte")
+    out.append("-- (tag 1..255) or unset = true (tag still 0) — exactly one")
+    out.append("-- of the two, never a guy id (ids regenerate every")
+    out.append("-- mission). `reason` is toasted on the refused deploy.")
+    out.append("---@class og.CampaignRosterLock")
+    out.append("---@field tag? integer")
+    out.append("---@field unset? boolean")
+    out.append("---@field reason? string")
+    out.append("")
+    out.append("-- The roster widget's assignment chip: cycling writes the")
+    out.append("-- clicked row's campaign_tag unset(0) -> 1 -> 2 -> 1;")
+    out.append("-- labels[1]/[2] name tags 1/2. A non-empty `frozen` keeps")
+    out.append("-- chips visible but refuses cycling with that reason.")
+    out.append("---@class og.CampaignAssignSpec")
+    out.append("---@field key string")
+    out.append("---@field labels string[]")
+    out.append("---@field frozen? string")
+    out.append("")
+    out.append("-- One widget of the Base Camp gameplay zone. `kind` picks")
+    out.append("-- which fields are read (the rest are ignored); `weight`")
+    out.append("-- is integer row units (>= 0). Bounds are HARD rejections")
+    out.append("-- (never clips): <= 6 text lines per widget, <= 16 action")
+    out.append("-- entries across the whole zone, <= 3 readout items,")
+    out.append("-- <= 24 locks. Roster capability flags default true.")
+    out.append("---@class og.CampaignZoneWidget")
+    out.append('---@field kind "roster"|"text"|"actions"|"readout"')
+    out.append("---@field weight? integer")
+    for cap in ("can_deploy", "can_train", "can_reorder", "can_team",
+                "can_hire"):
+        out.append(f"---@field {cap}? boolean")
+    out.append("---@field locks? og.CampaignRosterLock[]")
+    out.append("---@field assign? og.CampaignAssignSpec")
+    out.append("---@field lines? string[]")
+    out.append("---@field entries? og.CampaignPageEntry[]")
+    out.append("---@field items? {label: string, value: string}[]")
+    out.append("")
+    out.append("-- The base_camp hook's answer: per-kind caps (exactly one")
+    out.append("-- roster, <= 1 readout, <= 2 actions, <= 2 text, <= 6")
+    out.append("-- total); a malformed or over-budget zone falls to the")
+    out.append("-- C++ default zone.")
+    out.append("---@class og.CampaignZone")
+    out.append("---@field widgets og.CampaignZoneWidget[]")
+    out.append("")
     out.append("-- One og.campaign_team() roster row: plain values, not")
     out.append("-- handles; `family` is the display-name string, `team` is")
-    out.append("-- clamped to [0,3] by the provider.")
+    out.append("-- clamped to [0,3] by the provider. `tag` is the persisted")
+    out.append("-- campaign_tag byte (GTL v16, 0 = unassigned) and")
+    out.append("-- `save_slot` the owning save slot — the address the")
+    out.append("-- engine's assign write takes; neither is a guy id.")
     out.append("---@class og.CampaignRosterEntry")
     out.append("---@field name string")
     out.append("---@field family string")
     for stat in ("level", "exp", "strength", "dexterity", "constitution",
-                 "intelligence", "armor", "team"):
+                 "intelligence", "armor", "team", "tag", "save_slot"):
         out.append(f"---@field {stat} integer")
     out.append("")
     out.append("-- Hook table for og.register_campaign_hooks. `vars` names")
