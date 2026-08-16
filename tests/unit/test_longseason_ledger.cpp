@@ -7,11 +7,15 @@
  */
 
 // Kettle's Book (campaigns/longseason/packs/longseason.ledger): the
-// scripted-picker pack for The Long Season. Pins: registration + page
-// budgets, the ledger_data graph/tile mirror against the SHIPPED package
-// (the regeneration tripwire), var==0 byte-identity on every consequence
-// level, taken-path spawn censuses, the Collector approach-lane smoke, and
-// the full menu decision matrix over CampaignPickerSession.
+// campaign-script pack for The Long Season, whose ledger IS the Base Camp.
+// Pins: registration, the camp's composition budgets in every book state
+// AND the band each widget actually draws (a row past its band pages, and
+// a paged decision is a decision the player never sees), the ledger_data
+// graph/tile/protected-bit mirror against the SHIPPED package (the
+// regeneration tripwire), var==0 byte-identity on every consequence level,
+// taken-path spawn censuses, the Collector approach-lane smoke, and the
+// full decision matrix — the zone compositions over CampaignZoneSession,
+// Kettle's Stores over CampaignPickerSession.
 
 #include <gtest/gtest.h>
 
@@ -45,11 +49,13 @@
 #include <cstdint>
 #include <cstdlib>
 #include <map>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
 
 using og::ui::CampaignPickerSession;
+using og::ui::CampaignZoneSession;
 namespace hooks = og::script::hooks;
 
 namespace {
@@ -384,6 +390,50 @@ protected:
             save_.add_level_completed("longseason", lvl);
     }
 
+    // Writes the KEPT bit of every coin-bearing level in [first, last], so a
+    // book with completed work can still be square (no ritual waiting).
+    void bank_coins(int first, int last)
+    {
+        std::int32_t kept = save_.campaign_state_get("longseason",
+                                                     "coin_kept");
+        for (int lvl = std::max(first, 2); lvl <= std::min(last, 18); ++lvl)
+            kept += 1 << lvl;
+        ASSERT_TRUE(save_.campaign_state_set("longseason", "coin_kept",
+                                             kept));
+    }
+
+    // The camp composition over the REAL provider glue, fetched fresh (the
+    // surface refetches on entry and after every own mutation).
+    CampaignZoneSession& camp()
+    {
+        zone_ = std::make_unique<CampaignZoneSession>(save_);
+        zone_->fetch();
+        return *zone_;
+    }
+
+    // The docket is always the LAST actions widget: when the warm-coin
+    // ritual shows at all, it leads the composition.
+    static const CampaignZoneSession::ActionsLayout& docket(
+        const CampaignZoneSession& zone)
+    {
+        return zone.actions().back();
+    }
+
+    static int find_camp_row(const CampaignZoneSession::ActionsLayout& widget,
+                             const std::string& id)
+    {
+        for (std::size_t i = 0; i < widget.rows.size(); ++i)
+            if (widget.rows[i].id == id)
+                return static_cast<int>(i);
+        return -1;
+    }
+
+    static bool has_camp_row(const CampaignZoneSession::ActionsLayout& widget,
+                             const std::string& id)
+    {
+        return find_camp_row(widget, id) >= 0;
+    }
+
     static int find_row(const CampaignPickerSession& session,
                         const std::string& id)
     {
@@ -421,17 +471,20 @@ protected:
 
 private:
     GameplayContext* previous_game_ = nullptr;
+    std::unique_ptr<CampaignZoneSession> zone_;
 };
 
 }  // namespace
 
 // ===========================================================================
-// Registration + page budgets
+// Registration + composition budgets
 // ===========================================================================
 
-TEST_F(LedgerBookTest, pack_registers_the_book_with_the_four_vars)
+TEST_F(LedgerBookTest, pack_registers_the_camp_the_room_and_the_four_vars)
 {
     ASSERT_TRUE(hooks::campaign_picker_registered());
+    ASSERT_TRUE(hooks::campaign_zone_registered())
+        << "the ledger IS the camp: the pack must compose a base_camp";
     const std::vector<std::string> vars = hooks::campaign_registered_vars();
     ASSERT_EQ(4u, vars.size());
     EXPECT_EQ("coin_kept", vars[0]);
@@ -443,71 +496,190 @@ TEST_F(LedgerBookTest, pack_registers_the_book_with_the_four_vars)
         ADD_FAILURE() << e.where << ": " << e.message;
 }
 
-TEST_F(LedgerBookTest, every_page_in_every_book_state_fits_the_budgets)
+namespace {
+
+// The five faces the camp morphs through, each with the book state that
+// produces it. `coin_waiting` leaves the completed levels' coins
+// unresolved (the ritual interrupts); every other state banks them, so the
+// camp shows its ordinary composition.
+struct BookState
 {
-    // Four book states spanning the branchy lines: fresh spring, a
-    // mid-season book with debt + backlog + crate, the settlement table,
-    // and the settled new-season book.
-    struct BookState { const char* name; int cursor; int completed_to;
-                       bool debt; bool settled; };
-    const BookState states[] = {
-        {"fresh", 1, 0, false, false},
-        {"mid-season", 10, 9, true, false},
-        {"settlement", 19, 18, true, false},
-        {"new-season", 19, 19, false, true},
-    };
-    const char* pages[] = {"", "work", "coin", "stores", "debts"};
-    for (const BookState& s : states)
+    const char* name;
+    int cursor;
+    int completed_to;
+    bool debt;
+    bool settled;
+    bool coin_waiting;
+    // What the composition must lay out to: widget count, the roster rows
+    // left over after the stanza and the action rows have taken theirs, and
+    // the action widget's own band — which IS the number of rows it shows.
+    int widgets;
+    int roster_rows;
+    int action_units;
+    // The one row this state is allowed to push past its band, beyond the
+    // optional contracts every state may page.
+    const char* may_page;
+};
+
+const BookState kBookStates[] = {
+    // One stanza line: text 1 + docket 3, so the job, the money row and the
+    // shop door are all on the screen at once.
+    {"ordinary week", 6, 5, false, false, false, 4, 3, 3, nullptr},
+    // The ritual IS the camp while a coin waits: stanza 2, two rows, no
+    // docket at all until the coin is written.
+    {"coin waiting", 6, 5, false, false, true, 4, 3, 2, nullptr},
+    // Owing before the Toll: the DEBT cell and the SETTLE row say it all,
+    // so the stanza stays one line and the docket keeps its three.
+    {"debt outstanding", 14, 13, true, false, false, 4, 3, 3, nullptr},
+    // Settlement Day is the one state that spends the docket's third unit
+    // on prose: the year's arithmetic runs before an irreversible one-time
+    // payout, and the shop door — not a decision — pays for it.
+    {"settlement day", 19, 18, true, false, false, 4, 3, 2, "stores"},
+    // "New season. Same book." plus the season line: two lines, and a
+    // closed book has no money row to fit under them.
+    {"new season", 19, 19, false, true, false, 4, 3, 2, nullptr},
+};
+
+void apply_book_state(SaveData& book, const BookState& s)
+{
+    book.current_campaign = "longseason";
+    book.my_team = 0;
+    book.scen_num = static_cast<short>(s.cursor);
+    book.m_totalcash[0] = 5000;
+    for (int lvl = 1; lvl <= s.completed_to; ++lvl)
+        book.add_level_completed("longseason", lvl);
+    if (!s.coin_waiting)
+    {
+        std::int32_t kept = 0;
+        for (int lvl = 2; lvl <= std::min(s.completed_to, 18); ++lvl)
+            kept += 1 << lvl;
+        (void)book.campaign_state_set("longseason", "coin_kept", kept);
+    }
+    if (s.debt)
+        (void)book.campaign_state_set("longseason", "advance_debt", 900);
+    if (s.settled)
+        (void)book.campaign_state_set("longseason", "settled", 1);
+    (void)book.campaign_state_set("longseason", "kettle_asked", 2);
+    (void)book.campaign_state_set("longseason", "provisions",
+                                  3 + 8 * s.cursor);
+}
+
+}  // namespace
+
+// The composition budgets, swept over every camp face: the widget caps and
+// the 16-char readout cells the panel draws, the 24/20 row budgets, the
+// 38-char line budget — and the LAYOUT, which must leave the roster at
+// least three rows in every state (the ritual's own adjudicated floor) AND
+// keep every decision row inside its widget's band. A band shorter than its
+// row list pages, and a paged decision is a decision the player never sees:
+// the money row and the shop door must be inside the window everywhere, and
+// the only rows allowed to fall off the end are optional contracts.
+TEST_F(LedgerBookTest, every_camp_state_fits_the_zone_budgets)
+{
+    for (const BookState& s : kBookStates)
     {
         SaveData book;
-        book.current_campaign = "longseason";
-        book.my_team = 0;
-        book.scen_num = static_cast<short>(s.cursor);
-        book.m_totalcash[0] = 5000;
-        for (int lvl = 1; lvl <= s.completed_to; ++lvl)
-            book.add_level_completed("longseason", lvl);
-        if (s.completed_to >= 3)
-        {
-            ASSERT_TRUE(book.campaign_state_set("longseason", "coin_kept",
-                                                4));  // bit 2 kept
-            ASSERT_TRUE(book.campaign_state_set("longseason", "coin_spent",
-                                                8));  // bit 3 passed on
-        }
-        if (s.debt)
-        {
-            ASSERT_TRUE(book.campaign_state_set("longseason", "advance_debt",
-                                                900));
-        }
-        if (s.settled)
-        {
-            ASSERT_TRUE(book.campaign_state_set("longseason", "settled", 1));
-        }
-        ASSERT_TRUE(book.campaign_state_set("longseason", "kettle_asked", 2));
-        ASSERT_TRUE(book.campaign_state_set("longseason", "provisions",
-                                            1 + 8 * s.cursor));
+        apply_book_state(book, s);
         hooks::clear_campaign_providers();
         hooks::install_campaign_providers(
             og::data::make_campaign_providers(book));
 
-        for (const char* page_id : pages)
+        hooks::CampaignZone raw;
+        ASSERT_TRUE(hooks::campaign_zone(raw)) << s.name;
+        EXPECT_EQ(static_cast<std::size_t>(s.widgets), raw.widgets.size())
+            << s.name << ": the camp stays inside its adjudicated ceiling "
+                         "of five widgets";
+        int rosters = 0;
+        int readouts = 0;
+        int action_widgets = 0;
+        int texts = 0;
+        int action_rows = 0;
+        for (const hooks::CampaignZoneWidget& widget : raw.widgets)
         {
-            hooks::CampaignPage page;
-            ASSERT_TRUE(hooks::campaign_picker_page(page_id, page))
-                << s.name << " page '" << page_id << "'";
-            EXPECT_FALSE(page.title.empty()) << s.name << " " << page_id;
-            EXPECT_LE(page.lines.size(), 6u) << s.name << " " << page_id;
-            for (const std::string& line : page.lines)
-                EXPECT_LE(line.size(), 38u)
-                    << s.name << " " << page_id << ": '" << line << "'";
-            EXPECT_LE(page.entries.size(), 24u) << s.name << " " << page_id;
-            for (const hooks::CampaignPageEntry& entry : page.entries)
+            switch (widget.kind)
+            {
+                case hooks::CampaignZoneWidget::Kind::Roster: rosters++; break;
+                case hooks::CampaignZoneWidget::Kind::Readout:
+                    readouts++;
+                    break;
+                case hooks::CampaignZoneWidget::Kind::Actions:
+                    action_widgets++;
+                    action_rows += static_cast<int>(widget.entries.size());
+                    break;
+                case hooks::CampaignZoneWidget::Kind::Text: texts++; break;
+            }
+            EXPECT_LE(widget.lines.size(), 6u) << s.name;
+            for (const std::string& line : widget.lines)
+                EXPECT_LE(line.size(), 38u) << s.name << ": '" << line << "'";
+            for (const hooks::CampaignPageEntry& entry : widget.entries)
             {
                 EXPECT_LE(entry.label.size(), 24u)
-                    << s.name << " " << page_id << ": '" << entry.label << "'";
+                    << s.name << ": '" << entry.label << "'";
                 EXPECT_LE(entry.note.size(), 20u)
-                    << s.name << " " << page_id << ": '" << entry.note << "'";
+                    << s.name << ": '" << entry.note << "'";
+            }
+            for (const hooks::CampaignZoneWidget::ReadoutItem& item :
+                 widget.items)
+            {
+                // The panel's cell budget: label + space + value.
+                EXPECT_LE(item.label.size() + 1 + item.value.size(), 16u)
+                    << s.name << ": '" << item.label << " " << item.value
+                    << "'";
             }
         }
+        EXPECT_EQ(1, rosters) << s.name;
+        EXPECT_EQ(1, readouts) << s.name;
+        EXPECT_LE(action_widgets, 2) << s.name;
+        EXPECT_EQ(1, texts) << s.name << ": one stanza, never two";
+        EXPECT_LE(action_rows, 16) << s.name;
+
+        // The layout the surface actually renders.
+        CampaignZoneSession zone(book);
+        zone.fetch();
+        ASSERT_TRUE(zone.scripted()) << s.name << ": the camp must lay out";
+        EXPECT_EQ(s.roster_rows, zone.roster().rows_per_page)
+            << s.name << ": the roster never drops under three rows";
+        ASSERT_NE(nullptr, zone.readout()) << s.name;
+        EXPECT_TRUE(zone.readout()->in_header_band)
+            << s.name << ": the readout heads the panel";
+
+        // The window the surface actually draws. A band shorter than its
+        // row list pages, so every row that carries a decision has to be
+        // inside it: what falls off may only ever be an optional contract
+        // (extra work) or the one row this state declares it can spare.
+        ASSERT_EQ(1u, zone.actions().size()) << s.name;
+        const CampaignZoneSession::ActionsLayout& band = zone.actions()[0];
+        EXPECT_EQ(s.action_units, band.units) << s.name;
+        EXPECT_EQ(0, band.page.first_index())
+            << s.name << ": the camp opens on its first page";
+        for (int i = band.page.end_index();
+             i < static_cast<int>(band.rows.size()); ++i)
+        {
+            const CampaignZoneSession::Row& off =
+                band.rows[static_cast<std::size_t>(i)];
+            const bool spared =
+                s.may_page != nullptr && off.id == s.may_page;
+            EXPECT_TRUE(spared || off.note == "optional, pays extra")
+                << s.name << ": '" << off.label
+                << "' paged off the camp — only contracts may";
+        }
+
+        // The one surviving room keeps the page budgets.
+        hooks::CampaignPage page;
+        ASSERT_TRUE(hooks::campaign_picker_page("stores", page)) << s.name;
+        EXPECT_FALSE(page.title.empty()) << s.name;
+        EXPECT_LE(page.lines.size(), 6u) << s.name;
+        for (const std::string& line : page.lines)
+            EXPECT_LE(line.size(), 38u) << s.name << ": '" << line << "'";
+        EXPECT_LE(page.entries.size(), 24u) << s.name;
+        for (const hooks::CampaignPageEntry& entry : page.entries)
+        {
+            EXPECT_LE(entry.label.size(), 24u)
+                << s.name << ": '" << entry.label << "'";
+            EXPECT_LE(entry.note.size(), 20u)
+                << s.name << ": '" << entry.note << "'";
+        }
+
         // The providers borrow the loop-local save; drop them before it
         // goes out of scope.
         hooks::clear_campaign_providers();
@@ -568,6 +740,13 @@ end
 og.log(carried)
 og.log("DOORCOIN " .. D.DOOR_COIN.floor .. " " .. D.DOOR_COIN.tile[1] ..
        " " .. D.DOOR_COIN.tile[2])
+local prot = "PROTECTED"
+for lvl = 1, D.LEVEL_COUNT do
+  if D.PROTECTED_NOTE[lvl] ~= nil then
+    prot = prot .. " " .. lvl
+  end
+end
+og.log(prot)
 og.log("WORDCLAMP " .. D.count_word(-1) .. " " .. D.count_word(99)))LUA";
 
 std::vector<int> parse_ints(const std::string& text)
@@ -595,6 +774,8 @@ TEST_F(LedgerBookTest, ledger_data_mirror_matches_the_shipped_package)
     std::vector<int> collectors;
     std::vector<int> carried;
     std::vector<int> door_coin;
+    std::vector<int> protectees;
+    bool protectees_seen = false;
     for (const std::string& line :
          og::script::active_world_scripts().host().log())
     {
@@ -626,7 +807,13 @@ TEST_F(LedgerBookTest, ledger_data_mirror_matches_the_shipped_package)
         {
             door_coin = parse_ints(line.substr(9));
         }
+        else if (line.rfind("PROTECTED", 0) == 0)
+        {
+            protectees = parse_ints(line.substr(9));
+            protectees_seen = true;
+        }
     }
+    ASSERT_TRUE(protectees_seen);
     ASSERT_EQ(19u, exits_by_level.size());
     ASSERT_EQ(19u, supply_by_level.size());
     ASSERT_EQ(9u, fair.size());        // floor + 2 helper + 2 food tiles
@@ -644,6 +831,19 @@ TEST_F(LedgerBookTest, ledger_data_mirror_matches_the_shipped_package)
         EXPECT_EQ(exit_destinations(world),
                   exits_by_level[std::to_string(id)])
             << "level " << id << " exit-graph mirror drifted";
+
+        // The docket's lose-condition note is a mirror too: it exists on
+        // exactly the levels whose SHIPPED package flags a protected NPC
+        // (the SAVE_ALL watch). A mapgen change that moved a protectee
+        // would otherwise leave the camp stating the wrong lose condition
+        // — or none at all — with no test to catch it.
+        const bool flagged = world.has_save_all_protected();
+        const bool noted =
+            std::find(protectees.begin(), protectees.end(), id) !=
+            protectees.end();
+        EXPECT_EQ(flagged, noted)
+            << "level " << id << ": PROTECTED_NOTE drifted from the "
+                                 "package's protected bit";
 
         // Every supply spot: floor + 10 standable, entity-free tiles.
         const std::vector<int>& supply = supply_by_level[std::to_string(id)];
@@ -682,11 +882,13 @@ TEST_F(LedgerBookTest, ledger_data_mirror_matches_the_shipped_package)
             check_tiles(door_coin, "door coin");
     }
 
-    // The count-word clamps answer their floor and ceiling words.
+    // The count-word clamps answer their floor and ceiling words. The
+    // ceiling is NINETEEN: the settlement stanza counts jobs (all nineteen
+    // levels), not the seventeen coin-bearing ones.
     bool word_clamp_seen = false;
     for (const std::string& line :
          og::script::active_world_scripts().host().log())
-        if (line == "WORDCLAMP none seventeen")
+        if (line == "WORDCLAMP none nineteen")
             word_clamp_seen = true;
     EXPECT_TRUE(word_clamp_seen) << "count_word clamps drifted";
 
@@ -1105,344 +1307,635 @@ TEST_F(LedgerCampaignTest, collectors_walk_the_lane_and_engage)
 }
 
 // ===========================================================================
-// The menu decision matrix (CampaignPickerSession over the real pack).
+// The camp: the ledger open on the table (CampaignZoneSession over the real
+// pack). Every state's readout, stanza and docket, and the acts that move
+// between them.
 // ===========================================================================
 
-TEST_F(LedgerBookTest, fresh_root_reads_like_the_ledger)
+TEST_F(LedgerBookTest, ordinary_week_reads_like_the_open_ledger)
 {
-    CampaignPickerSession session(save_);
-    ASSERT_TRUE(session.open());
-    const CampaignPickerSession::DecoratedPage& page = session.page();
-    EXPECT_EQ("KETTLE'S BOOK", page.title);
-    ASSERT_EQ(4u, page.lines.size());
-    EXPECT_EQ("Wages banked: 5000g. Debt: none.", page.lines[0]);
-    EXPECT_EQ("Coins kept: none. None waiting.", page.lines[1]);
-    EXPECT_EQ("Bell open. Tolls open. Vault open.", page.lines[2]);
-    EXPECT_EQ("Spring. The mud pays first.", page.lines[3]);
-    // No coin waits, no settlement: WORK leads, the coin page sits after
-    // the debts, no DRAW YOUR PAY.
-    ASSERT_EQ(5u, page.rows.size());
-    EXPECT_EQ("work", page.rows[0].id);
-    EXPECT_EQ("stores", page.rows[1].id);
-    EXPECT_EQ("debts", page.rows[2].id);
-    EXPECT_EQ("coin", page.rows[3].id);
-    EXPECT_EQ("ask", page.rows[4].id);
-    EXPECT_EQ("", page.rows[4].note) << "unasked kettle carries no note";
+    complete_levels(1, 2);
+    bank_coins(1, 2);
+    save_.scen_num = 4;
+    CampaignZoneSession& zone = camp();
+    ASSERT_TRUE(zone.scripted());
+
+    // Three header cells, hoisted into the panel's heading band: what the
+    // book alone counts. The purse is NOT among them — the panel's GOLD
+    // cell and the terminals' COMPANY strip are engine-owned and on the
+    // same screen, and two words for one purse only ask whether they are
+    // two pots.
+    ASSERT_NE(nullptr, zone.readout());
+    EXPECT_TRUE(zone.readout()->in_header_band);
+    ASSERT_EQ(3u, zone.readout()->items.size());
+    EXPECT_EQ("JOBS", zone.readout()->items[0].label);
+    EXPECT_EQ("2 done", zone.readout()->items[0].value);
+    EXPECT_EQ("DEBT", zone.readout()->items[1].label);
+    EXPECT_EQ("none", zone.readout()->items[1].value);
+    EXPECT_EQ("COINS", zone.readout()->items[2].label);
+    EXPECT_EQ("1 kept", zone.readout()->items[2].value);
+    for (const hooks::CampaignZoneWidget::ReadoutItem& item :
+         zone.readout()->items)
+    {
+        EXPECT_EQ(std::string::npos, item.value.find("5000"))
+            << "the camp must not restate the engine's own GOLD cell";
+    }
+
+    // One stanza line: the season under the cursor.
+    ASSERT_EQ(1u, zone.texts().size());
+    ASSERT_EQ(1u, zone.texts()[0].lines.size());
+    EXPECT_EQ("Spring. The mud pays first.", zone.texts()[0].lines[0]);
+    EXPECT_EQ(1, zone.texts()[0].units);
+
+    // The docket, in the order the band shows it: the job in front of you
+    // (with its stake ON the row), the book's money row, the shop door —
+    // and only then the open contract, the one row allowed to page.
+    ASSERT_EQ(1u, zone.actions().size());
+    const std::vector<CampaignZoneSession::Row>& rows = docket(zone).rows;
+    ASSERT_EQ(4u, rows.size());
+    EXPECT_EQ("4", rows[0].id);
+    EXPECT_EQ("The Assessor", rows[0].label) << "the engine fills level labels";
+    EXPECT_EQ("he must not fall", rows[0].note) << "the escort's lose "
+                                                   "condition, before GO";
+    EXPECT_TRUE(rows[0].current);
+    EXPECT_TRUE(rows[0].is_level());
+    EXPECT_EQ("take_advance", rows[1].id);
+    EXPECT_EQ("700 now, 900 at Toll", rows[1].note)
+        << "grant, debt and deadline, before signing";
+    EXPECT_EQ("stores", rows[2].id);
+    EXPECT_EQ("KETTLE'S STORES", rows[2].label);
+    EXPECT_EQ("crates for this job", rows[2].note);
+    EXPECT_EQ(CampaignPickerSession::Kind::Page, rows[2].kind);
+    EXPECT_EQ("3", rows[3].id);
+    EXPECT_EQ("optional, pays extra", rows[3].note);
+
+    // The window the panel draws: the campaign's headline decision and the
+    // shop door are ON the screen, and the contract is what pages.
+    EXPECT_EQ(3, docket(zone).units);
+    EXPECT_EQ(0, docket(zone).page.first_index());
+    EXPECT_EQ(3, docket(zone).page.end_index());
+    EXPECT_TRUE(docket(zone).page.multi_page()) << "and the pager says so";
+
+    // The company keeps every capability: Long Season adds no locks, no
+    // oath column, no retired affordance.
+    EXPECT_TRUE(zone.roster().can_deploy);
+    EXPECT_TRUE(zone.roster().can_train);
+    EXPECT_TRUE(zone.roster().can_reorder);
+    EXPECT_TRUE(zone.roster().can_team);
+    EXPECT_TRUE(zone.roster().can_hire);
+    EXPECT_TRUE(zone.roster().locks.empty());
+    EXPECT_FALSE(zone.roster().assign.active);
+    EXPECT_EQ(3, zone.roster().rows_per_page);
 }
 
-TEST_F(LedgerBookTest, waiting_coin_surfaces_first_with_season_and_contracts)
+// The advance's upside belongs ON the advance, not in a stanza line that
+// only shows up once the purse is already empty: a player deciding whether
+// to sign reads the row, and the row has to state what signing pays.
+TEST_F(LedgerBookTest, the_advance_row_states_both_sides_of_the_trade)
 {
-    complete_levels(1, 9);
-    save_.scen_num = 10;
-    ASSERT_TRUE(save_.campaign_state_set("longseason", "advance_debt", 900));
-    CampaignPickerSession session(save_);
-    ASSERT_TRUE(session.open());
-    const CampaignPickerSession::DecoratedPage& page = session.page();
-    // Coins 2..9 completed and unresolved: eight waiting, coin row first.
-    EXPECT_EQ("Coins kept: none. Eight waiting.", page.lines[1]);
-    EXPECT_EQ("Bell taken. Tolls taken. Vault open.", page.lines[2]);
-    EXPECT_EQ("Autumn. The seams run warm.", page.lines[3]);
-    EXPECT_EQ("Wages banked: 5000g. Debt: 900g.", page.lines[0]);
-    ASSERT_GE(page.rows.size(), 1u);
-    EXPECT_EQ("coin", page.rows[0].id);
-    EXPECT_EQ("Eight waiting", page.rows[0].note);
-    const int debts = find_row(session, "debts");
-    ASSERT_GE(debts, 0);
-    EXPECT_EQ("owed: nine hundred", page.rows[static_cast<std::size_t>(debts)]
-                                        .note);
+    save_.scen_num = 5;
+    for (const std::uint32_t purse : {500u, 5000u})
+    {
+        save_.m_totalcash[0] = purse;
+        CampaignZoneSession& zone = camp();
+        ASSERT_TRUE(zone.scripted());
+        const int advance = find_camp_row(docket(zone), "take_advance");
+        ASSERT_GE(advance, 0) << purse;
+        EXPECT_EQ("700 now, 900 at Toll",
+                  docket(zone).rows[static_cast<std::size_t>(advance)].note)
+            << "the trade does not change with the purse: " << purse;
+        EXPECT_LT(advance, docket(zone).page.end_index())
+            << "and it is on the screen, not behind the pager";
+
+        // One stanza line, because the row carries the numbers now.
+        ASSERT_EQ(1u, zone.texts().size());
+        ASSERT_EQ(1u, zone.texts()[0].lines.size());
+        EXPECT_EQ("Summer. The coin is common now.", zone.texts()[0].lines[0]);
+        EXPECT_EQ(1, zone.texts()[0].units);
+        EXPECT_EQ(3, zone.roster().rows_per_page);
+    }
 }
 
-TEST_F(LedgerBookTest, coin_ritual_resolves_oldest_first_one_per_visit)
+// What the job row says you are walking into, swept across the kinds of
+// work the campaign carries. The type note is the docket's whole answer to
+// "what is this job" before GO, and on the two escort levels the package
+// flags it is replaced by the lose condition — a lose condition the docket
+// does not state is one the player meets by losing.
+TEST_F(LedgerBookTest, the_job_row_states_the_work_and_the_lose_condition)
+{
+    struct JobNote { int cursor; const char* note; };
+    const JobNote notes[] = {
+        {1, "kill work"},            // Mud Pay
+        {2, "hold work"},            // Two Banners
+        {4, "he must not fall"},     // The Assessor
+        {13, "walk out"},            // the road to the Toll
+        {14, "hold work"},           // The Long Toll, no debt owed
+        {15, "the Reeve must live"}, // Wolf Winter
+        {16, "walk out"},
+    };
+    for (const JobNote& n : notes)
+    {
+        save_.scen_num = static_cast<short>(n.cursor);
+        CampaignZoneSession& zone = camp();
+        ASSERT_TRUE(zone.scripted()) << n.cursor;
+        ASSERT_FALSE(docket(zone).rows.empty()) << n.cursor;
+        EXPECT_EQ(n.note, docket(zone).rows[0].note)
+            << "level " << n.cursor << " states the wrong kind of work";
+        EXPECT_TRUE(docket(zone).rows[0].current) << n.cursor;
+    }
+}
+
+TEST_F(LedgerBookTest, a_cursor_past_the_season_table_falls_back)
+{
+    save_.scen_num = 99;
+    CampaignZoneSession& zone = camp();
+    ASSERT_TRUE(zone.scripted());
+    ASSERT_EQ(1u, zone.texts().size());
+    EXPECT_EQ("Settlement Day. Square the book.", zone.texts()[0].lines[0]);
+    // The road the campaign does not carry reads CLOSED rather than
+    // pretending to be work.
+    EXPECT_FALSE(docket(zone).rows[0].available);
+}
+
+// ---------------------------------------------------------------------------
+// The warm-coin ritual: the one composition that interrupts.
+// ---------------------------------------------------------------------------
+
+TEST_F(LedgerBookTest, a_waiting_coin_takes_the_camp_until_it_is_written)
 {
     complete_levels(1, 5);
     save_.scen_num = 6;
-    CampaignPickerSession session(save_);
-    ASSERT_TRUE(session.open());
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::OpenedPage,
-              choose_row(session, "coin").kind);
-    // The oldest unresolved coin is level 2's ferry pay.
-    EXPECT_EQ("One coin in the ferry pay came warm.", session.page().lines[0]);
-    EXPECT_EQ("Coins waiting: four.", session.page().lines.back());
+    CampaignZoneSession& zone = camp();
+    ASSERT_TRUE(zone.scripted());
 
-    // KEEP writes bit 2 and the page moves to level 3's coin.
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              choose_row(session, "coin_keep").kind);
-    EXPECT_EQ("Written. One coin, kept, warm.", session.take_message());
+    // The stanza: the coin's own line, why passing pays over the odds, and
+    // WHERE keeping is redeemed. "1 ally per 4 kept" is a promise with no
+    // place until the mint is named, and the mint is thirteen jobs away.
+    ASSERT_EQ(1u, zone.texts().size());
+    ASSERT_EQ(3u, zone.texts()[0].lines.size());
+    EXPECT_EQ("One coin in the ferry pay came warm.",
+              zone.texts()[0].lines[0]) << "the OLDEST unresolved coin";
+    EXPECT_EQ("It spends high. Nobody asks why.", zone.texts()[0].lines[1]);
+    EXPECT_EQ("Kept coins stand up at the mint.", zone.texts()[0].lines[2]);
+    EXPECT_EQ(2, zone.texts()[0].units);
+
+    // ONE actions widget: the ritual is the camp. It is the composition
+    // that interrupts, and it interrupts properly — the book shows no work
+    // at all until the coin is written, so both sides of the trade are on
+    // the screen with the mint named over them.
+    ASSERT_EQ(1u, zone.actions().size());
+    const std::vector<CampaignZoneSession::Row>& ritual =
+        zone.actions()[0].rows;
+    ASSERT_EQ(2u, ritual.size());
+    EXPECT_EQ("coin_keep", ritual[0].id);
+    EXPECT_EQ("KEEP THIS COIN", ritual[0].label);
+    EXPECT_EQ("1 ally per 4 kept", ritual[0].note)
+        << "the mechanical payoff, disclosed on the row";
+    EXPECT_EQ("coin_pass", ritual[1].id);
+    EXPECT_EQ("PASS IT ON", ritual[1].label);
+    EXPECT_EQ("150g now, none later", ritual[1].note);
+    EXPECT_EQ(2, zone.actions()[0].units) << "both sides of the trade fit";
+    EXPECT_FALSE(zone.actions()[0].page.multi_page());
+    EXPECT_FALSE(has_camp_row(zone.actions()[0], "6"));
+    EXPECT_FALSE(has_camp_row(zone.actions()[0], "stores"));
+    EXPECT_EQ(3, zone.roster().rows_per_page)
+        << "the ritual's cost is the roster's floor, never below it";
+    EXPECT_EQ("none", zone.readout()->items[2].value) << "nothing kept yet";
+
+    // And writing the backlog out hands the docket straight back (levels
+    // 2..5 each paid a coin; four clicks square the book).
+    for (int i = 0; i < 4; ++i)
+    {
+        EXPECT_EQ(CampaignZoneSession::OutcomeKind::Acted,
+                  zone.act(0, 0).kind) << "coin " << i;
+    }
+    ASSERT_EQ(1u, zone.actions().size());
+    EXPECT_TRUE(has_camp_row(docket(zone), "6"));
+    EXPECT_TRUE(has_camp_row(docket(zone), "stores"));
+    EXPECT_EQ("4 kept", zone.readout()->items[2].value);
+}
+
+TEST_F(LedgerBookTest, the_ritual_resolves_oldest_first_one_per_fetch)
+{
+    complete_levels(1, 5);
+    save_.scen_num = 6;
+    CampaignZoneSession& zone = camp();
+    ASSERT_TRUE(zone.scripted());
+
+    // KEEP writes the level-2 bit and the ritual refetches to level 3's.
+    const CampaignZoneSession::Outcome kept = zone.act(0, 0);
+    EXPECT_EQ(CampaignZoneSession::OutcomeKind::Acted, kept.kind);
+    EXPECT_EQ("Written. One coin, kept, warm.", zone.take_message());
     EXPECT_EQ(4, state("coin_kept"));
     EXPECT_EQ(0, state("coin_spent"));
     EXPECT_EQ("The bell silver was cold. One was not.",
-              session.page().lines[0]);
-    EXPECT_EQ("Coins waiting: three.", session.page().lines.back());
+              zone.texts()[0].lines[0]);
+    EXPECT_EQ("1 kept", zone.readout()->items[2].value)
+        << "the tally is a header cell now";
 
-    // PASS writes bit 3 into the spent mask and pays one-fifty.
+    // PASS writes the spent mask and pays one-fifty.
     const std::uint32_t before = save_.m_totalcash[0];
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              choose_row(session, "coin_pass").kind);
-    EXPECT_EQ("Written. It spent high, as they do.", session.take_message());
-    EXPECT_EQ(4, state("coin_kept"));
+    const CampaignZoneSession::Outcome passed = zone.act(0, 1);
+    EXPECT_EQ(CampaignZoneSession::OutcomeKind::Acted, passed.kind);
+    EXPECT_EQ("Written. It spent high, as they do.", zone.take_message());
     EXPECT_EQ(8, state("coin_spent"));
     EXPECT_EQ(before + 150u, save_.m_totalcash[0]);
     EXPECT_EQ("He paid on the spot, in the warm coin.",
-              session.page().lines[0]);
+              zone.texts()[0].lines[0]);
 }
 
-TEST_F(LedgerBookTest, square_coin_book_lists_the_recap_and_no_actions)
+TEST_F(LedgerBookTest, a_square_book_shows_no_ritual_at_all)
 {
-    complete_levels(1, 3);
-    ASSERT_TRUE(save_.campaign_state_set("longseason", "coin_kept", 4));
-    ASSERT_TRUE(save_.campaign_state_set("longseason", "coin_spent", 8));
-    CampaignPickerSession session(save_);
-    ASSERT_TRUE(session.open());
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::OpenedPage,
-              choose_row(session, "coin").kind);
-    const CampaignPickerSession::DecoratedPage& page = session.page();
-    ASSERT_EQ(2u, page.lines.size());
-    EXPECT_EQ("No coin waits in the book.", page.lines[0]);
-    EXPECT_EQ("Kept: one. Passed on: one.", page.lines[1]);
-    EXPECT_TRUE(page.rows.empty()) << "no coin, no ritual actions";
+    complete_levels(1, 5);
+    bank_coins(1, 5);
+    save_.scen_num = 6;
+    CampaignZoneSession& zone = camp();
+    ASSERT_TRUE(zone.scripted());
+    ASSERT_EQ(1u, zone.actions().size()) << "no coin, no coin UI";
+    EXPECT_TRUE(has_camp_row(docket(zone), "stores"));
+    EXPECT_EQ("Summer. The coin is common now.", zone.texts()[0].lines[0]);
+    EXPECT_EQ("4 kept", zone.readout()->items[2].value)
+        << "the readout carries the tally when the ritual is quiet";
 }
 
-TEST_F(LedgerBookTest, coin_page_teases_the_carried_at_the_mint)
+TEST_F(LedgerBookTest, the_ritual_teases_the_mint_when_the_payoff_is_close)
 {
     complete_levels(1, 17);
     save_.scen_num = 18;
-    // Four kept (bits 2..5), the rest unresolved so the ritual still shows.
+    // Four kept (bits 2..5); the rest unresolved, so a coin still waits.
     ASSERT_TRUE(save_.campaign_state_set("longseason", "coin_kept", 60));
-    CampaignPickerSession session(save_);
-    ASSERT_TRUE(session.open());
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::OpenedPage,
-              choose_row(session, "coin").kind);
-    const CampaignPickerSession::DecoratedPage& page = session.page();
-    ASSERT_EQ(5u, page.lines.size());
-    EXPECT_EQ("You carried bones all year. At the", page.lines[2]);
-    EXPECT_EQ("mint, carried bones stand up.", page.lines[3]);
+    CampaignZoneSession& zone = camp();
+    ASSERT_TRUE(zone.scripted());
+    ASSERT_EQ(3u, zone.texts()[0].lines.size());
+    EXPECT_EQ("At the mint, carried bones stand up.",
+              zone.texts()[0].lines[2]) << "the where-line says what is "
+                                           "about to happen instead";
+    EXPECT_EQ("4 kept", zone.readout()->items[2].value);
 }
 
-TEST_F(LedgerBookTest, work_docket_lists_the_accessible_set_with_notes)
+TEST_F(LedgerBookTest, the_mint_keeps_the_coins_line_until_the_payoff_banks)
 {
-    complete_levels(1, 2);
-    save_.scen_num = 4;
-    CampaignPickerSession session(save_);
-    ASSERT_TRUE(session.open());
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::OpenedPage,
-              choose_row(session, "work").kind);
-    const CampaignPickerSession::DecoratedPage& page = session.page();
-    EXPECT_EQ("THE SEASON'S WORK", page.title);
-    ASSERT_EQ(1u, page.lines.size());
-    EXPECT_EQ("Optional work pays. It also costs.", page.lines[0]);
-    // Accessible: 1 (first), 2 (completed), 3 + 4 (exits of 2), cursor 4.
-    ASSERT_EQ(4u, page.rows.size());
-    EXPECT_EQ("1", page.rows[0].id);
-    EXPECT_EQ("decline, go back", page.rows[0].note);
-    EXPECT_TRUE(page.rows[0].cleared);
-    EXPECT_EQ("2", page.rows[1].id);
-    EXPECT_EQ("decline, go back", page.rows[1].note);
-    EXPECT_EQ("3", page.rows[2].id);
-    EXPECT_EQ("optional work", page.rows[2].note);
-    EXPECT_EQ("4", page.rows[3].id);
-    EXPECT_EQ("the assessor rides", page.rows[3].note);
-    EXPECT_TRUE(page.rows[3].current);
-    // Level rows carry the shipped titles (C++ fills missing labels).
-    EXPECT_EQ("Mud Pay", page.rows[0].label);
-    // Choosing a row is the SET LEVEL outcome; the session writes nothing.
-    const CampaignPickerSession::Outcome outcome = session.choose(2);
-    EXPECT_EQ(CampaignPickerSession::OutcomeKind::SetLevel, outcome.kind);
-    EXPECT_EQ(3, outcome.level);
-    EXPECT_EQ(4, save_.scen_num);
+    complete_levels(1, 17);
+    save_.scen_num = 18;
+    // Three kept (bits 2..4): one short of the first Carried, so the teaser
+    // holds off and the fifth coin's own line stands.
+    ASSERT_TRUE(save_.campaign_state_set("longseason", "coin_kept", 28));
+    CampaignZoneSession& zone = camp();
+    ASSERT_TRUE(zone.scripted());
+    ASSERT_EQ(3u, zone.texts()[0].lines.size());
+    EXPECT_EQ("Both purses paid. Both came up warm.",
+              zone.texts()[0].lines[0]);
+    EXPECT_EQ("Kept coins stand up at the mint.", zone.texts()[0].lines[2]);
 }
 
-TEST_F(LedgerBookTest, work_docket_type_notes_and_the_years_turn)
+TEST_F(LedgerBookTest, the_keep_note_swaps_once_the_ally_cap_is_banked)
 {
-    complete_levels(1, 18);
-    save_.scen_num = 19;
-    CampaignPickerSession session(save_);
-    ASSERT_TRUE(session.open());
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::OpenedPage,
-              choose_row(session, "work").kind);
-    const CampaignPickerSession::DecoratedPage& page = session.page();
-    EXPECT_EQ("The season's work, as the book has it.", page.lines[0]);
-    // All nineteen rows are open (everything completed + settlement).
-    ASSERT_EQ(19u, page.rows.size());
-    EXPECT_EQ("the year turns", page.rows[0].note) << "19->1, in the fiction";
-    EXPECT_EQ("decline, go back", page.rows[1].note);
-    // The cursor row keeps its own kind of work.
-    EXPECT_EQ("kill work", page.rows[18].note);
-    EXPECT_TRUE(page.rows[18].current);
+    complete_levels(1, 17);
+    save_.scen_num = 18;
+    // Eleven kept (bits 2..12): one short of the cap, the rate still pays.
+    std::int32_t kept = 0;
+    for (int lvl = 2; lvl <= 12; ++lvl)
+        kept += 1 << lvl;
+    ASSERT_TRUE(save_.campaign_state_set("longseason", "coin_kept", kept));
+    EXPECT_EQ("1 ally per 4 kept", camp().actions()[0].rows[0].note);
+
+    // Twelve kept banks the third and last ally; a thirteenth coin buys
+    // nothing but the door coin, and the row stops quoting a dead rate.
+    ASSERT_TRUE(save_.campaign_state_set("longseason", "coin_kept",
+                                         kept + (1 << 13)));
+    CampaignZoneSession& zone = camp();
+    EXPECT_EQ("a coin for the door", zone.actions()[0].rows[0].note);
+    EXPECT_EQ("12 kept", zone.readout()->items[2].value);
 }
 
-TEST_F(LedgerBookTest, work_docket_forward_notes_by_type)
-{
-    save_.scen_num = 1;
-    complete_levels(1, 1);
-    save_.scen_num = 2;
-    CampaignPickerSession session(save_);
-    ASSERT_TRUE(session.open());
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::OpenedPage,
-              choose_row(session, "work").kind);
-    // Accessible: 1 (completed), 2 (cursor + exit of 1).
-    const CampaignPickerSession::DecoratedPage& page = session.page();
-    ASSERT_EQ(2u, page.rows.size());
-    EXPECT_EQ("hold work", page.rows[1].note) << "the ferry is a defense";
-}
+// ---------------------------------------------------------------------------
+// The advance, the collectors, and the settle window.
+// ---------------------------------------------------------------------------
 
-TEST_F(LedgerBookTest, stores_encode_the_addressed_crate)
-{
-    save_.scen_num = 7;
-    CampaignPickerSession session(save_);
-    ASSERT_TRUE(session.open());
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::OpenedPage,
-              choose_row(session, "stores").kind);
-    ASSERT_EQ(4u, session.page().lines.size())
-        << "no crate on the wagon yet";
-    EXPECT_EQ("All of it weighed. None of it free.", session.page().lines[0]);
-
-    // MEAL: engine debits the 150g cost, the action addresses the crate.
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              choose_row(session, "buy_meal").kind);
-    EXPECT_EQ("Four meals, crated and addressed.", session.take_message());
-    EXPECT_EQ(1 + 8 * 7, state("provisions"));
-    EXPECT_EQ(5000u - 150u, save_.m_totalcash[0]);
-    ASSERT_EQ(5u, session.page().lines.size());
-    EXPECT_EQ("One crate rides the wagon already.", session.page().lines[4]);
-
-    // GOOD then STRONG overwrite the address — one crate, one wagon.
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              choose_row(session, "buy_good").kind);
-    EXPECT_EQ("Eight meals, packed and addressed.", session.take_message());
-    EXPECT_EQ(2 + 8 * 7, state("provisions"));
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              choose_row(session, "buy_strong").kind);
-    EXPECT_EQ("Two of everything. Weighed twice.", session.take_message());
-    EXPECT_EQ(3 + 8 * 7, state("provisions"));
-    EXPECT_EQ(5000u - 150u - 400u - 600u, save_.m_totalcash[0]);
-}
-
-TEST_F(LedgerBookTest, crew_round_shows_until_the_fair_or_the_purchase)
+TEST_F(LedgerBookTest, the_advance_writes_the_debt_and_the_camp_says_so)
 {
     save_.scen_num = 5;
-    CampaignPickerSession session(save_);
-    ASSERT_TRUE(session.open());
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::OpenedPage,
-              choose_row(session, "stores").kind);
-    ASSERT_TRUE(has_row(session, "buy_round"));
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              choose_row(session, "buy_round").kind);
-    EXPECT_EQ("The crew drinks to the fair.", session.take_message());
-    EXPECT_EQ(1, state("fair_round"));
-    EXPECT_EQ(5000u - 200u, save_.m_totalcash[0]);
-    EXPECT_FALSE(has_row(session, "buy_round"))
-        << "one round; the entry re-derives away";
-
-    // Completed fair hides it too (a squared book, level 9 in the ledger).
-    ASSERT_TRUE(save_.campaign_state_set("longseason", "fair_round", 0));
-    save_.add_level_completed("longseason", 9);
-    save_.scen_num = 10;
-    CampaignPickerSession after_fair(save_);
-    ASSERT_TRUE(after_fair.open());
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::OpenedPage,
-              choose_row(after_fair, "stores").kind);
-    EXPECT_FALSE(has_row(after_fair, "buy_round"))
-        << "the fair is over; goodwill cannot be paid backward";
-}
-
-TEST_F(LedgerBookTest, advance_and_settle_are_mutually_exclusive)
-{
-    CampaignPickerSession session(save_);
-    ASSERT_TRUE(session.open());
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::OpenedPage,
-              choose_row(session, "debts").kind);
-    ASSERT_TRUE(has_row(session, "take_advance"));
-    EXPECT_FALSE(has_row(session, "settle_book"));
-    ASSERT_EQ(3u, session.page().lines.size());
-
-    // TAKE: 700 in the purse, 900 in the book.
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              choose_row(session, "take_advance").kind);
-    EXPECT_EQ("Seven hundred, counted warm.", session.take_message());
+    CampaignZoneSession& zone = camp();
+    ASSERT_TRUE(zone.scripted());
+    const int advance = find_camp_row(docket(zone), "take_advance");
+    ASSERT_GE(advance, 0);
+    const CampaignZoneSession::Outcome outcome = zone.act(0, advance);
+    EXPECT_EQ(CampaignZoneSession::OutcomeKind::Acted, outcome.kind);
+    EXPECT_EQ("Seven hundred, counted warm.", zone.take_message());
     EXPECT_EQ(5700u, save_.m_totalcash[0]);
     EXPECT_EQ(900, state("advance_debt"));
-    EXPECT_FALSE(has_row(session, "take_advance"))
-        << "one advance outstanding at a time";
-    ASSERT_TRUE(has_row(session, "settle_book"));
-    ASSERT_EQ(4u, session.page().lines.size());
-    EXPECT_EQ("Owed: nine hundred. The season knows.", session.page().lines[3]);
 
-    // SETTLE: the engine debits the 900g cost, the action clears the book.
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              choose_row(session, "settle_book").kind);
-    EXPECT_EQ("The page is squared.", session.take_message());
+    // The refetched camp: the debt cell, and the settle row in the money
+    // row's own slot — second, directly under the job, on the screen.
+    EXPECT_EQ("900g", zone.readout()->items[1].value);
+    ASSERT_EQ(1u, zone.texts()[0].lines.size())
+        << "the DEBT cell and the SETTLE row state the debt; the stanza "
+           "keeps its one line and the docket keeps its three";
+    EXPECT_FALSE(has_camp_row(docket(zone), "take_advance"))
+        << "one advance outstanding at a time";
+    const int settle = find_camp_row(docket(zone), "settle_book");
+    ASSERT_EQ(1, settle);
+    const std::size_t settle_row = static_cast<std::size_t>(settle);
+    EXPECT_EQ("SETTLE THE BOOK", docket(zone).rows[settle_row].label);
+    EXPECT_EQ("no Toll collectors", docket(zone).rows[settle_row].note);
+    EXPECT_EQ(900, docket(zone).rows[settle_row].cost);
+    EXPECT_LT(settle, docket(zone).page.end_index())
+        << "the decision must be inside the band the panel draws";
+
+    // And the row survives the panel's own 42-character face. The clip
+    // cuts on a word boundary, so a note long enough to push the price
+    // past the end takes the WHOLE price with it — leaving a purchase row
+    // that quotes no price at all, the one thing it may never do.
+    constexpr std::size_t kZoneRowChars = 42;  // (264px face - 8) / 6px
+    const std::string drawn = og::ui::campaign_picker_row_text(
+        docket(zone).rows[settle_row], kZoneRowChars);
+    EXPECT_EQ(std::string::npos, drawn.find(".."))
+        << "the settle row clipped: '" << drawn << "'";
+    EXPECT_NE(std::string::npos, drawn.find("900g"))
+        << "the settle row must quote its price: '" << drawn << "'";
+
+    // SETTLE: the engine debits the cost, the action clears the book.
+    const CampaignZoneSession::Outcome squared = zone.act(0, settle);
+    EXPECT_EQ(CampaignZoneSession::OutcomeKind::Acted, squared.kind);
+    EXPECT_EQ("The page is squared.", zone.take_message());
     EXPECT_EQ(5700u - 900u, save_.m_totalcash[0]);
     EXPECT_EQ(0, state("advance_debt"));
-    ASSERT_TRUE(has_row(session, "take_advance"));
-    EXPECT_FALSE(has_row(session, "settle_book"));
+    EXPECT_TRUE(has_camp_row(docket(zone), "take_advance"));
 }
 
-TEST_F(LedgerBookTest, winter_debt_warns_of_the_collectors)
+// The money-row window, stated as a matrix: the book's money row — BOTH
+// halves of it — is open exactly until the collectors ride. Before the Toll
+// an advance can be taken and squared. Past it, settling 900g to dodge a
+// 900g dock is a wash, AND an advance would quote a deadline that has
+// already gone by to write a debt with no exit (the settlement pays out
+// once and latches). So the row shuts whole, and the stanza picks up the
+// only consequence left to state.
+TEST_F(LedgerBookTest, the_money_row_is_open_exactly_until_the_collectors_ride)
+{
+    struct Window { const char* name; int cursor; bool toll_done; bool debt;
+                    bool expect_settle; bool expect_advance;
+                    const char* line; };
+    const Window windows[] = {
+        {"no debt, before the Toll", 13, false, false, false, true, nullptr},
+        {"owing, before the Toll", 13, false, true, true, false, nullptr},
+        {"owing, on Toll week", 14, false, true, true, false, nullptr},
+        {"owing, past the Toll", 15, true, true, false, false,
+         "Unpaid debt docks the settlement."},
+        // The row that used to survive here wrote a 900g debt against a
+        // deadline that had already passed, and nothing on the camp could
+        // ever square it again.
+        {"square, past the Toll", 15, true, false, false, false, nullptr},
+    };
+    for (const Window& w : windows)
+    {
+        SaveData book;
+        book.current_campaign = "longseason";
+        book.my_team = 0;
+        book.scen_num = static_cast<short>(w.cursor);
+        book.m_totalcash[0] = 5000;
+        for (int lvl = 1; lvl < w.cursor; ++lvl)
+        {
+            if (lvl == 14 && !w.toll_done)
+                continue;
+            book.add_level_completed("longseason", lvl);
+        }
+        std::int32_t kept = 0;
+        for (int lvl = 2; lvl <= 18; ++lvl)
+            kept += 1 << lvl;
+        ASSERT_TRUE(book.campaign_state_set("longseason", "coin_kept", kept))
+            << w.name;
+        if (w.debt)
+        {
+            ASSERT_TRUE(book.campaign_state_set("longseason", "advance_debt",
+                                                900)) << w.name;
+        }
+        hooks::clear_campaign_providers();
+        hooks::install_campaign_providers(
+            og::data::make_campaign_providers(book));
+
+        CampaignZoneSession zone(book);
+        zone.fetch();
+        ASSERT_TRUE(zone.scripted()) << w.name;
+        ASSERT_EQ(1u, zone.actions().size()) << w.name;
+        EXPECT_EQ(w.expect_settle, has_camp_row(zone.actions()[0],
+                                                "settle_book")) << w.name;
+        EXPECT_EQ(w.expect_advance, has_camp_row(zone.actions()[0],
+                                                 "take_advance")) << w.name;
+        // Whichever half shows, it shows in the money row's slot — second,
+        // under the job, inside the band the panel draws.
+        if (w.expect_settle || w.expect_advance)
+        {
+            const int money = w.expect_settle
+                ? find_camp_row(zone.actions()[0], "settle_book")
+                : find_camp_row(zone.actions()[0], "take_advance");
+            EXPECT_EQ(1, money) << w.name;
+            EXPECT_LT(money, zone.actions()[0].page.end_index()) << w.name;
+        }
+        if (w.line != nullptr)
+        {
+            ASSERT_EQ(2u, zone.texts()[0].lines.size()) << w.name;
+            EXPECT_EQ(w.line, zone.texts()[0].lines[1]) << w.name;
+        }
+        else
+        {
+            EXPECT_EQ(1u, zone.texts()[0].lines.size()) << w.name;
+        }
+        hooks::clear_campaign_providers();
+        hooks::install_campaign_providers(
+            og::data::make_campaign_providers(save_));
+    }
+}
+
+TEST_F(LedgerBookTest, toll_week_warns_on_the_level_row_itself)
+{
+    complete_levels(1, 13);
+    bank_coins(1, 13);
+    save_.scen_num = 14;
+    ASSERT_TRUE(save_.campaign_state_set("longseason", "advance_debt", 900));
+    CampaignZoneSession& zone = camp();
+    ASSERT_TRUE(zone.scripted());
+    ASSERT_FALSE(docket(zone).rows.empty());
+    EXPECT_EQ("14", docket(zone).rows[0].id);
+    EXPECT_EQ("The Long Toll", docket(zone).rows[0].label);
+    EXPECT_EQ("the collectors ride", docket(zone).rows[0].note);
+    EXPECT_EQ("Winter. The toll road is quiet.", zone.texts()[0].lines[0]);
+}
+
+TEST_F(LedgerBookTest, an_unaffordable_settle_refuses_without_dispatch)
 {
     ASSERT_TRUE(save_.campaign_state_set("longseason", "advance_debt", 900));
-    save_.scen_num = 14;
-    CampaignPickerSession session(save_);
-    ASSERT_TRUE(session.open());
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::OpenedPage,
-              choose_row(session, "debts").kind);
-    ASSERT_EQ(5u, session.page().lines.size());
-    EXPECT_EQ("Collectors walk the toll road.", session.page().lines[4]);
+    save_.m_totalcash[0] = 899;
+    CampaignZoneSession& zone = camp();
+    const int settle = find_camp_row(docket(zone), "settle_book");
+    ASSERT_GE(settle, 0);
+    EXPECT_FALSE(docket(zone).rows[static_cast<std::size_t>(settle)]
+                     .affordable);
+    const CampaignZoneSession::Outcome outcome = zone.act(0, settle);
+    EXPECT_EQ(CampaignZoneSession::OutcomeKind::Refused, outcome.kind);
+    EXPECT_EQ(899u, save_.m_totalcash[0]) << "a refusal must not debit";
+    EXPECT_EQ(900, state("advance_debt")) << "a refusal must not settle";
 }
 
-TEST_F(LedgerBookTest, draw_your_pay_settles_once_and_docks_the_debt)
+// ---------------------------------------------------------------------------
+// Settlement Day and the year's turn.
+// ---------------------------------------------------------------------------
+
+TEST_F(LedgerBookTest, settlement_day_shows_the_arithmetic_then_pays_it)
 {
-    complete_levels(1, 10);
+    complete_levels(1, 18);
+    bank_coins(1, 18);
     save_.scen_num = 19;
     ASSERT_TRUE(save_.campaign_state_set("longseason", "advance_debt", 900));
-    CampaignPickerSession session(save_);
-    ASSERT_TRUE(session.open());
-    EXPECT_EQ("Settlement Day. Square the book.",
-              session.page().lines.back());
-    ASSERT_TRUE(has_row(session, "draw_pay"));
+    CampaignZoneSession& zone = camp();
+    ASSERT_TRUE(zone.scripted());
 
-    // Ten levels at 100g less the 900 owed: one hundred, once.
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              choose_row(session, "draw_pay").kind);
-    EXPECT_EQ("The book closes. The book keeps.", session.take_message());
-    EXPECT_EQ(5100u, save_.m_totalcash[0]);
+    // The day names itself, then the arithmetic, before the button that
+    // does it. This is the one camp face that spends the docket's third
+    // unit on prose: an irreversible one-time payout gets its numbers.
+    ASSERT_EQ(3u, zone.texts()[0].lines.size());
+    EXPECT_EQ("Settlement Day. Square the book.", zone.texts()[0].lines[0]);
+    EXPECT_EQ("Eighteen jobs done, 100g the job.", zone.texts()[0].lines[1]);
+    EXPECT_EQ("Debt comes off the draw: 900g.", zone.texts()[0].lines[2]);
+    EXPECT_EQ(2, zone.texts()[0].units);
+    EXPECT_EQ("18 done", zone.readout()->items[0].value);
+
+    // The headline row carries the computed net, not a slogan — and it is
+    // on the screen with the level row; the shop door is what pages here.
+    const std::vector<CampaignZoneSession::Row>& rows = docket(zone).rows;
+    ASSERT_EQ(3u, rows.size());
+    EXPECT_EQ("draw_pay", rows[0].id);
+    EXPECT_EQ("DRAW YOUR PAY", rows[0].label);
+    EXPECT_EQ("pays 900g, once", rows[0].note) << "1800 earned less 900 owed";
+    EXPECT_EQ("19", rows[1].id);
+    EXPECT_EQ("Settlement Day", rows[1].label);
+    EXPECT_EQ("stores", rows[2].id);
+    EXPECT_EQ(2, docket(zone).page.end_index());
+    EXPECT_FALSE(has_camp_row(docket(zone), "settle_book"))
+        << "settling 900 to dodge a 900 dock is a wash: never offered";
+    EXPECT_FALSE(has_camp_row(docket(zone), "take_advance"))
+        << "nor an advance: past the Toll its deadline is already gone";
+
+    // Drawing it: paid once, the debt cleared, the book latched shut.
+    const CampaignZoneSession::Outcome outcome = zone.act(0, 0);
+    EXPECT_EQ(CampaignZoneSession::OutcomeKind::Acted, outcome.kind);
+    EXPECT_EQ("The book closes. The book keeps.", zone.take_message());
+    EXPECT_EQ(5900u, save_.m_totalcash[0]);
     EXPECT_EQ(0, state("advance_debt"));
     EXPECT_EQ(1, state("settled"));
-    EXPECT_FALSE(has_row(session, "draw_pay")) << "the latch holds";
-    EXPECT_EQ("New season. Same book.", session.page().lines[0]);
+
+    // The 19-to-1 loop: same book, next spring.
+    ASSERT_EQ(2u, zone.texts()[0].lines.size());
+    EXPECT_EQ("New season. Same book.", zone.texts()[0].lines[0]);
+    EXPECT_EQ("Spring. The mud pays first.", zone.texts()[0].lines[1]);
+    EXPECT_FALSE(has_camp_row(docket(zone), "draw_pay")) << "the latch holds";
+    EXPECT_EQ("1", docket(zone).rows[0].id);
+    EXPECT_EQ("Mud Pay", docket(zone).rows[0].label);
+    EXPECT_EQ("the year turns", docket(zone).rows[0].note);
+    EXPECT_EQ("none", zone.readout()->items[1].value) << "the draw squared it";
 
     // Not farmable: a direct dispatch cannot re-open the payout.
     hooks::CampaignActionResult result;
     ASSERT_TRUE(hooks::campaign_picker_action("draw_pay", result));
     EXPECT_TRUE(result.ok);
     EXPECT_EQ("The book is closed.", result.message);
-    EXPECT_EQ(5100u, save_.m_totalcash[0]) << "no second payout";
-    EXPECT_EQ(1, state("settled"));
+    EXPECT_EQ(5900u, save_.m_totalcash[0]) << "no second payout";
 }
 
-TEST_F(LedgerBookTest, draw_your_pay_never_pays_negative)
+// The closed book offers no advance, because there is nothing left that
+// could clear the debt one would write: the Toll is behind us, so SETTLE
+// never shows, and the settlement has already paid out and latched.
+TEST_F(LedgerBookTest, a_closed_book_offers_no_advance_it_could_never_square)
+{
+    complete_levels(1, 19);
+    bank_coins(1, 18);
+    save_.scen_num = 19;
+    ASSERT_TRUE(save_.campaign_state_set("longseason", "settled", 1));
+    CampaignZoneSession& zone = camp();
+    ASSERT_TRUE(zone.scripted());
+    ASSERT_EQ(2u, zone.texts()[0].lines.size());
+    EXPECT_EQ("New season. Same book.", zone.texts()[0].lines[0]);
+    EXPECT_FALSE(has_camp_row(docket(zone), "take_advance"));
+    EXPECT_FALSE(has_camp_row(docket(zone), "settle_book"));
+    const std::vector<CampaignZoneSession::Row>& rows = docket(zone).rows;
+    ASSERT_EQ(2u, rows.size());
+    EXPECT_EQ("1", rows[0].id);
+    EXPECT_EQ("stores", rows[1].id);
+    EXPECT_FALSE(docket(zone).page.multi_page()) << "and no pager at all";
+
+    // Nor by dispatch: the pack refuses to write the unclearable debt.
+    hooks::CampaignActionResult result;
+    ASSERT_TRUE(hooks::campaign_picker_action("take_advance", result));
+    EXPECT_EQ("The book takes no more advances.", result.message);
+    EXPECT_EQ(5000u, save_.m_totalcash[0]);
+    EXPECT_EQ(0, state("advance_debt"));
+}
+
+// One advance at a time: a page that went stale must not be able to grant a
+// second 700g against the same 900g debt.
+TEST_F(LedgerBookTest, a_second_advance_over_an_outstanding_one_is_refused)
+{
+    save_.scen_num = 5;
+    ASSERT_TRUE(save_.campaign_state_set("longseason", "advance_debt", 900));
+    hooks::CampaignActionResult result;
+    ASSERT_TRUE(hooks::campaign_picker_action("take_advance", result));
+    EXPECT_EQ("One advance at a time.", result.message);
+    EXPECT_EQ(5000u, save_.m_totalcash[0]);
+    EXPECT_EQ(900, state("advance_debt"));
+}
+
+TEST_F(LedgerBookTest, the_draw_never_pays_negative_and_says_so_first)
 {
     complete_levels(1, 5);
+    bank_coins(1, 5);
     save_.scen_num = 19;
     ASSERT_TRUE(save_.campaign_state_set("longseason", "advance_debt", 900));
-    CampaignPickerSession session(save_);
-    ASSERT_TRUE(session.open());
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              choose_row(session, "draw_pay").kind);
-    // 500 earned against 900 owed: the payout floors at zero, the debt
-    // still clears, the latch still sets.
+    CampaignZoneSession& zone = camp();
+    ASSERT_TRUE(zone.scripted());
+    EXPECT_EQ("Five jobs done, 100g the job.", zone.texts()[0].lines[1]);
+    EXPECT_EQ("pays 0g, once", docket(zone).rows[0].note)
+        << "500 earned against 900 owed: the note states the floor";
+    const CampaignZoneSession::Outcome outcome = zone.act(0, 0);
+    EXPECT_EQ(CampaignZoneSession::OutcomeKind::Acted, outcome.kind);
     EXPECT_EQ(5000u, save_.m_totalcash[0]);
     EXPECT_EQ(0, state("advance_debt"));
     EXPECT_EQ(1, state("settled"));
 }
 
+TEST_F(LedgerBookTest, a_single_job_settles_in_the_singular)
+{
+    complete_levels(1, 1);
+    save_.scen_num = 19;
+    CampaignZoneSession& zone = camp();
+    ASSERT_TRUE(zone.scripted());
+    ASSERT_EQ(2u, zone.texts()[0].lines.size())
+        << "no debt, no kept coin: the day and one line of arithmetic";
+    EXPECT_EQ("Settlement Day. Square the book.", zone.texts()[0].lines[0]);
+    EXPECT_EQ("One job done, 100g the job.", zone.texts()[0].lines[1]);
+    EXPECT_EQ("pays 100g, once", docket(zone).rows[0].note);
+}
+
+// Zero is a count too. The stanza's number is spelled, and the spelled
+// zero is "none" — so the plain branch has to catch it before the book
+// opens on "None jobs done, 100g the job."
+TEST_F(LedgerBookTest, an_empty_year_settles_in_plain_english)
+{
+    save_.scen_num = 19;
+    CampaignZoneSession& zone = camp();
+    ASSERT_TRUE(zone.scripted());
+    ASSERT_EQ(2u, zone.texts()[0].lines.size());
+    EXPECT_EQ("Settlement Day. Square the book.", zone.texts()[0].lines[0]);
+    EXPECT_EQ("No jobs done, 100g the job.", zone.texts()[0].lines[1]);
+    EXPECT_EQ("0 done", zone.readout()->items[0].value);
+    EXPECT_EQ("pays 0g, once", docket(zone).rows[0].note);
+}
+
 TEST_F(LedgerBookTest, draw_your_pay_refuses_off_settlement_day)
 {
-    // The entry only exists on cursor 19; a direct dispatch elsewhere is
+    // The row only exists on cursor 19; a direct dispatch elsewhere is
     // answered with the closed book.
     save_.scen_num = 7;
-    CampaignPickerSession session(save_);
-    ASSERT_TRUE(session.open());
-    EXPECT_FALSE(has_row(session, "draw_pay"));
+    CampaignZoneSession& zone = camp();
+    EXPECT_FALSE(has_camp_row(docket(zone), "draw_pay"));
     hooks::CampaignActionResult result;
     ASSERT_TRUE(hooks::campaign_picker_action("draw_pay", result));
     EXPECT_EQ("The book is closed.", result.message);
@@ -1467,10 +1960,199 @@ TEST_F(LedgerBookTest, coin_actions_refuse_when_no_coin_waits)
     EXPECT_TRUE(result.message.empty());
 }
 
+// ---------------------------------------------------------------------------
+// Kettle's Stores: the one surviving room.
+// ---------------------------------------------------------------------------
+
+TEST_F(LedgerBookTest, the_camp_opens_the_stores_by_name)
+{
+    complete_levels(1, 13);
+    bank_coins(1, 13);
+    save_.scen_num = 14;
+    CampaignZoneSession& zone = camp();
+    const int door = find_camp_row(docket(zone), "stores");
+    ASSERT_GE(door, 0);
+    // A page row belongs to the surface's submenu, never to act().
+    EXPECT_EQ(CampaignZoneSession::OutcomeKind::None,
+              zone.act(0, door).kind);
+
+    CampaignPickerSession session(save_);
+    ASSERT_TRUE(session.open_at("stores"));
+    const CampaignPickerSession::DecoratedPage& page = session.page();
+    EXPECT_EQ("KETTLE'S STORES", page.title);
+    ASSERT_EQ(3u, page.lines.size()) << "no crate on the wagon yet";
+    EXPECT_EQ("Crates land at the current job's camp.", page.lines[0]);
+    EXPECT_EQ("This job: The Long Toll.", page.lines[1])
+        << "the destination is named before the price";
+    EXPECT_EQ("The kettle is not for sale.", page.lines[2]);
+
+    ASSERT_EQ(4u, page.rows.size()) << "the fair is past: no round on offer";
+    EXPECT_EQ("buy_meal", page.rows[0].id);
+    EXPECT_EQ("MEAL FOR THE ROAD", page.rows[0].label);
+    EXPECT_EQ("4 meals at the job", page.rows[0].note);
+    EXPECT_EQ(150, page.rows[0].cost);
+    EXPECT_EQ("buy_good", page.rows[1].id);
+    EXPECT_EQ("8 meals at the job", page.rows[1].note);
+    EXPECT_EQ("buy_strong", page.rows[2].id);
+    EXPECT_EQ("8 meals + 2 silver", page.rows[2].note);
+    EXPECT_EQ(600, page.rows[2].cost);
+    EXPECT_EQ("ask", page.rows[3].id) << "the gag is the shop's last row";
+    EXPECT_EQ(0, page.rows[3].cost) << "and it is free";
+}
+
+TEST_F(LedgerBookTest, stores_address_the_crate_and_state_the_wagon)
+{
+    save_.scen_num = 7;
+    CampaignPickerSession session(save_);
+    ASSERT_TRUE(session.open_at("stores"));
+
+    // MEAL: engine debits the 150g cost, the action addresses the crate.
+    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
+              choose_row(session, "buy_meal").kind);
+    EXPECT_EQ("Four meals, crated and addressed.", session.take_message());
+    EXPECT_EQ(1 + 8 * 7, state("provisions"));
+    EXPECT_EQ(5000u - 150u, save_.m_totalcash[0]);
+    // Six lines: the whole page budget, with the fair still ahead.
+    ASSERT_EQ(6u, session.page().lines.size());
+    EXPECT_EQ("On the wagon: 4 meals.", session.page().lines[2]);
+    EXPECT_EQ("Buying again re-addresses the wagon.", session.page().lines[3]);
+
+    // GOOD then STRONG overwrite the address — one crate, one wagon.
+    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
+              choose_row(session, "buy_good").kind);
+    EXPECT_EQ("Eight meals, packed and addressed.", session.take_message());
+    EXPECT_EQ(2 + 8 * 7, state("provisions"));
+    EXPECT_EQ("On the wagon: 8 meals.", session.page().lines[2]);
+    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
+              choose_row(session, "buy_strong").kind);
+    EXPECT_EQ("Two of everything. Weighed twice.", session.take_message());
+    EXPECT_EQ(3 + 8 * 7, state("provisions"));
+    EXPECT_EQ(5000u - 150u - 400u - 600u, save_.m_totalcash[0]);
+    EXPECT_EQ("On the wagon: 8 meals, 2 silver.", session.page().lines[2]);
+}
+
+// A crate bought for one job and then left behind must not read as this
+// job's supply: the page names where the wagon is actually going.
+TEST_F(LedgerBookTest, a_crate_addressed_elsewhere_names_where_it_goes)
+{
+    save_.scen_num = 7;
+    ASSERT_TRUE(save_.campaign_state_set("longseason", "provisions",
+                                         2 + 8 * 5));
+    CampaignPickerSession session(save_);
+    ASSERT_TRUE(session.open_at("stores"));
+    ASSERT_EQ(6u, session.page().lines.size());
+    EXPECT_EQ("This job: Grey Tolls.", session.page().lines[1]);
+    EXPECT_EQ("On the wagon: 8 meals.", session.page().lines[2]);
+    EXPECT_EQ("Addressed to Two Banners.", session.page().lines[3]);
+
+    // A crate addressed to a road the book does not carry still says so.
+    ASSERT_TRUE(save_.campaign_state_set("longseason", "provisions",
+                                         1 + 8 * 99));
+    session.refresh();
+    EXPECT_EQ("Addressed to another job.", session.page().lines[3]);
+}
+
+// On a settled Settlement Day the camp points at next spring, so the shop
+// must too: the crate is addressed to the job the page NAMES, never to the
+// closed book's own cursor.
+TEST_F(LedgerBookTest, a_settled_book_addresses_the_crate_to_next_spring)
+{
+    complete_levels(1, 19);
+    bank_coins(1, 19);
+    save_.scen_num = 19;
+    ASSERT_TRUE(save_.campaign_state_set("longseason", "settled", 1));
+    CampaignPickerSession session(save_);
+    ASSERT_TRUE(session.open_at("stores"));
+    EXPECT_EQ("This job: Mud Pay.", session.page().lines[1]);
+    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
+              choose_row(session, "buy_meal").kind);
+    EXPECT_EQ(1 + 8 * 1, state("provisions"));
+    EXPECT_EQ("On the wagon: 4 meals.", session.page().lines[2]);
+    EXPECT_EQ("Buying again re-addresses the wagon.", session.page().lines[3]);
+}
+
+TEST_F(LedgerBookTest, a_corrupt_crate_kind_claims_no_wagon)
+{
+    save_.scen_num = 7;
+    // provisions with a kind outside 1..3 delivers nothing (level_hooks
+    // refuses it), so the page must not claim a wagon either.
+    ASSERT_TRUE(save_.campaign_state_set("longseason", "provisions",
+                                         4 + 8 * 7));
+    CampaignPickerSession session(save_);
+    ASSERT_TRUE(session.open_at("stores"));
+    ASSERT_EQ(4u, session.page().lines.size());
+    for (const std::string& line : session.page().lines)
+        EXPECT_NE(0u, line.rfind("On the wagon", 0)) << line;
+    EXPECT_EQ("The kettle is not for sale.", session.page().lines[3]);
+}
+
+TEST_F(LedgerBookTest, stores_name_no_destination_off_the_road_map)
+{
+    save_.scen_num = 99;
+    CampaignPickerSession session(save_);
+    ASSERT_TRUE(session.open_at("stores"));
+    ASSERT_EQ(3u, session.page().lines.size());
+    EXPECT_EQ("Crates land at the current job's camp.",
+              session.page().lines[0]);
+    for (const std::string& line : session.page().lines)
+        EXPECT_NE(0u, line.rfind("This job:", 0))
+            << "a road the book does not carry has no name to print";
+    EXPECT_EQ("The kettle is not for sale.", session.page().lines[2]);
+}
+
+// Every job title the campaign ships must compose inside the page budget:
+// the book clips a long name, never the panel edge.
+TEST_F(LedgerBookTest, every_composed_destination_line_fits_the_page)
+{
+    for (int lvl = 1; lvl <= 19; ++lvl)
+    {
+        save_.scen_num = static_cast<short>(lvl);
+        CampaignPickerSession session(save_);
+        ASSERT_TRUE(session.open_at("stores")) << "level " << lvl;
+        ASSERT_GE(session.page().lines.size(), 2u) << "level " << lvl;
+        const std::string& line = session.page().lines[1];
+        EXPECT_EQ(0u, line.rfind("This job: ", 0)) << "level " << lvl;
+        EXPECT_LE(line.size(), 34u) << "level " << lvl << ": '" << line << "'";
+    }
+}
+
+TEST_F(LedgerBookTest, the_crew_round_shows_until_the_fair_or_the_purchase)
+{
+    save_.scen_num = 5;
+    CampaignPickerSession session(save_);
+    ASSERT_TRUE(session.open_at("stores"));
+    ASSERT_TRUE(has_row(session, "buy_round"));
+    ASSERT_EQ(4u, session.page().lines.size());
+    EXPECT_EQ("A round buys hands on the fair door.", session.page().lines[2]);
+    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
+              choose_row(session, "buy_round").kind);
+    EXPECT_EQ("The crew drinks to the fair.", session.take_message());
+    EXPECT_EQ(1, state("fair_round"));
+    EXPECT_EQ(5000u - 200u, save_.m_totalcash[0]);
+    EXPECT_FALSE(has_row(session, "buy_round"))
+        << "one round; the entry re-derives away";
+    EXPECT_EQ(3u, session.page().lines.size()) << "and so does its line";
+
+    // Completed fair hides it too (a squared book, level 9 in the ledger).
+    ASSERT_TRUE(save_.campaign_state_set("longseason", "fair_round", 0));
+    save_.add_level_completed("longseason", 9);
+    save_.scen_num = 10;
+    CampaignPickerSession after_fair(save_);
+    ASSERT_TRUE(after_fair.open_at("stores"));
+    EXPECT_FALSE(has_row(after_fair, "buy_round"))
+        << "the fair is over; goodwill cannot be paid backward";
+}
+
 TEST_F(LedgerBookTest, kettle_gag_escalates_and_caps_at_three)
 {
     CampaignPickerSession session(save_);
-    ASSERT_TRUE(session.open());
+    ASSERT_TRUE(session.open_at("stores"));
+    {
+        const int ask = find_row(session, "ask");
+        ASSERT_GE(ask, 0);
+        EXPECT_EQ("", session.page().rows[static_cast<std::size_t>(ask)].note)
+            << "unasked kettle carries no note";
+    }
     ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
               choose_row(session, "ask").kind);
     EXPECT_EQ("Kettle did not look up.", session.take_message());
@@ -1510,18 +2192,21 @@ TEST_F(LedgerBookTest, kettle_gag_escalates_and_caps_at_three)
     EXPECT_EQ(3, state("kettle_asked"));
 }
 
-TEST_F(LedgerBookTest, unknown_page_id_answers_no_page)
+// The four v1 pages that dissolved into the camp are GONE, not hidden: the
+// book answers nil for every one of them, so a stale door cannot open a
+// page nobody maintains.
+TEST_F(LedgerBookTest, the_retired_pages_answer_no_page)
 {
     ASSERT_TRUE(hooks::campaign_picker_registered());
-    hooks::CampaignPage page;
-    EXPECT_FALSE(hooks::campaign_picker_page("no_such_page", page))
-        << "picker_menu must answer nil for a page the book never wrote";
-
-    // A cursor past the season table falls back to the settlement line.
-    save_.scen_num = 99;
-    ASSERT_TRUE(hooks::campaign_picker_page("", page));
-    ASSERT_FALSE(page.lines.empty());
-    EXPECT_EQ("Settlement Day. Square the book.", page.lines.back());
+    for (const char* page_id : {"", "root", "work", "coin", "debts",
+                                "no_such_page"})
+    {
+        hooks::CampaignPage page;
+        EXPECT_FALSE(hooks::campaign_picker_page(page_id, page))
+            << "page '" << page_id << "' must not exist";
+    }
+    hooks::CampaignPage stores;
+    EXPECT_TRUE(hooks::campaign_picker_page("stores", stores));
 }
 
 // A failed spawn (no entity factory wired) is tolerated by every
@@ -1541,23 +2226,4 @@ TEST_F(LedgerCampaignTest, consequences_tolerate_a_failed_spawn)
     EXPECT_EQ(fx_before, world.fxlist.size()) << "nothing can spawn";
     for (const og::script::ScriptError& e : world.scripts().host().errors())
         ADD_FAILURE() << e.where << ": " << e.message;
-}
-
-TEST_F(LedgerBookTest, unaffordable_settle_refuses_without_dispatch)
-{
-    ASSERT_TRUE(save_.campaign_state_set("longseason", "advance_debt", 900));
-    save_.m_totalcash[0] = 899;
-    CampaignPickerSession session(save_);
-    ASSERT_TRUE(session.open());
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::OpenedPage,
-              choose_row(session, "debts").kind);
-    const int settle = find_row(session, "settle_book");
-    ASSERT_GE(settle, 0);
-    EXPECT_FALSE(session.page().rows[static_cast<std::size_t>(settle)]
-                     .affordable);
-    const CampaignPickerSession::Outcome outcome =
-        session.choose(static_cast<std::size_t>(settle));
-    EXPECT_EQ(CampaignPickerSession::OutcomeKind::Refused, outcome.kind);
-    EXPECT_EQ(899u, save_.m_totalcash[0]) << "a refusal must not debit";
-    EXPECT_EQ(900, state("advance_debt")) << "a refusal must not settle";
 }

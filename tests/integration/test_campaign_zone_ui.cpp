@@ -1485,7 +1485,9 @@ TEST(CampaignZoneUi, zz_capture_default_zone_across_campaigns)
         // The Company Fire composes its camp: at the vale that is the one
         // road ahead plus the QUARTERMASTER and THE LEDGER doors.
         {"westlands", "zone_camp_westlands", 1, 3},
-        {"longseason", "zone_default_longseason", 1, 1},
+        // The open ledger composes its camp: the week's job, the STORES
+        // door, and TAKE AN ADVANCE on a fresh spring save.
+        {"longseason", "zone_camp_longseason", 1, 3},
         {"imaginations", "zone_default_imaginations", 1, 1},
     };
     for (DefaultTourState& tour : tours)

@@ -65,6 +65,14 @@ M.TYPE_NOTE = {
   "walk out", "kill work", "walk out", "kill work",
 }
 
+-- The stake a protected-escort job puts on the row BEFORE the player goes:
+-- exactly the two levels the package gives an npc_flags bit-2 walker (the
+-- Assessor on 4, the Reeve on 15). A lose condition the docket does not
+-- state is a lose condition the player meets by losing.
+M.PROTECTED_NOTE = {}
+M.PROTECTED_NOTE[4] = "he must not fall"
+M.PROTECTED_NOTE[15] = "the Reeve must live"
+
 -- The three optional contracts.
 local OPTIONAL = { 3, 7, 12 }
 
@@ -102,11 +110,13 @@ M.COIN_LINE = {
   "One coin, nailed over the door.",
 }
 
--- Counts spelled small, as the bible writes them.
+-- Counts spelled small, as the bible writes them. The table runs to
+-- nineteen because the settlement counts JOBS (all nineteen levels), not
+-- just the seventeen coin-bearing ones.
 local COUNT_WORD = {
   "none", "one", "two", "three", "four", "five", "six", "seven", "eight",
   "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen",
-  "sixteen", "seventeen",
+  "sixteen", "seventeen", "eighteen", "nineteen",
 }
 
 function M.count_word(n)
@@ -130,23 +140,6 @@ function M.popcount_coins(mask)
   for lvl = M.FIRST_COIN_LEVEL, M.LAST_COIN_LEVEL do
     if M.has_bit(mask, lvl) then
       count = count + 1
-    end
-  end
-  return count
-end
-
--- Unresolved coins: completed coin levels with neither mask bit written.
-function M.backlog_count(kept, spent, completed_mask)
-  local count = 0
-  for lvl = M.FIRST_COIN_LEVEL, M.LAST_COIN_LEVEL do
-    if M.has_bit(completed_mask, lvl) then
-      local resolved = M.has_bit(kept, lvl)
-      if M.has_bit(spent, lvl) then
-        resolved = true
-      end
-      if not resolved then
-        count = count + 1
-      end
     end
   end
   return count

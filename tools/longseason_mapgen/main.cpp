@@ -1482,11 +1482,13 @@ void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
 // Kettle's Book (packs/longseason.ledger) must actually register and
 // dispatch, not merely ride along in the zip. With the produced campaign
 // mounted: the pack script registry carries the ledger pack, the scripted
-// picker registered with its four sim-visible vars, every page of every
-// book state fits the content budgets (<= 6 lines of <= 38 chars, <= 24
-// entries, labels <= 24, notes <= 20), and one var-injected tick of The
-// Long Toll spawns the two Collectors. This catches Lua syntax slips,
-// hook-name typos, budget overruns and dispatch wiring at generation time.
+// picker AND the Base Camp zone registered with the four sim-visible vars,
+// every camp composition and the one surviving room fit the content
+// budgets (<= 6 lines of <= 38 chars, <= 24 entries, labels <= 24, notes
+// <= 20, and the zone's own per-kind widget caps), and one var-injected
+// tick of The Long Toll spawns the two Collectors. This catches Lua syntax
+// slips, hook-name typos, budget overruns and dispatch wiring at
+// generation time.
 void self_check_book_script()
 {
     constexpr const char* kLedgerPackId = "longseason.ledger";
@@ -1505,12 +1507,17 @@ void self_check_book_script()
         fail("self-check: Kettle's Book registered no campaign picker");
         return;
     }
+    if (!og::script::hooks::campaign_zone_registered())
+    {
+        fail("self-check: Kettle's Book composed no Base Camp");
+        return;
+    }
     const std::vector<std::string> expected_vars = {
         "coin_kept", "advance_debt", "provisions", "fair_round"};
     if (og::script::hooks::campaign_registered_vars() != expected_vars)
         fail("self-check: the book's registered vars drifted");
 
-    // Page budgets across the book states the root morphs through.
+    // Composition budgets across the camp faces the book morphs through.
     struct BookState
     {
         const char* name;
@@ -1518,12 +1525,23 @@ void self_check_book_script()
         int completed_to;
         bool debt;
         bool settled;
+        bool coin_waiting;
     };
     const BookState states[] = {
-        {"fresh", 1, 0, false, false},
-        {"mid-season", 10, 9, true, false},
-        {"settlement", 19, 18, true, false},
-        {"new-season", 19, 19, false, true},
+        {"ordinary week", 6, 5, false, false, false},
+        {"coin waiting", 6, 5, false, false, true},
+        {"debt outstanding", 14, 13, true, false, false},
+        {"settlement", 19, 18, true, false, false},
+        {"new-season", 19, 19, false, true, false},
+    };
+    const auto check_entry = [](const og::script::hooks::CampaignPageEntry& e,
+                                const char* where) {
+        if (e.label.size() > 24)
+            fail(std::format("self-check: label over 24 chars in {}: '{}'",
+                             where, e.label));
+        if (e.note.size() > 20)
+            fail(std::format("self-check: note over 20 chars in {}: '{}'",
+                             where, e.note));
     };
     for (const BookState& s : states)
     {
@@ -1534,10 +1552,12 @@ void self_check_book_script()
         book.m_totalcash[0] = 5000;
         for (int lvl = 1; lvl <= s.completed_to; ++lvl)
             book.add_level_completed("longseason", lvl);
-        if (s.completed_to >= 3)
+        if (!s.coin_waiting)
         {
-            (void)book.campaign_state_set("longseason", "coin_kept", 4);
-            (void)book.campaign_state_set("longseason", "coin_spent", 8);
+            std::int32_t kept = 0;
+            for (int lvl = 2; lvl <= std::min(s.completed_to, 18); ++lvl)
+                kept += 1 << lvl;
+            (void)book.campaign_state_set("longseason", "coin_kept", kept);
         }
         if (s.debt)
             (void)book.campaign_state_set("longseason", "advance_debt", 900);
@@ -1545,10 +1565,43 @@ void self_check_book_script()
             (void)book.campaign_state_set("longseason", "settled", 1);
         (void)book.campaign_state_set("longseason", "kettle_asked", 2);
         (void)book.campaign_state_set("longseason", "provisions",
-                                      1 + 8 * s.cursor);
+                                      3 + 8 * s.cursor);
         og::script::hooks::install_campaign_providers(
             og::data::make_campaign_providers(book));
-        for (const char* page_id : {"", "work", "coin", "stores", "debts"})
+
+        // The camp itself: it must compose, stay inside the widget caps,
+        // and keep every row and line inside the content budgets.
+        og::script::hooks::CampaignZone zone;
+        if (!og::script::hooks::campaign_zone(zone))
+        {
+            fail(std::format("self-check: camp state '{}' did not compose",
+                             s.name));
+        }
+        else
+        {
+            if (zone.widgets.size() > 5)
+                fail(std::format("self-check: camp state '{}' composes {} "
+                                 "widgets (5 is the ceiling)", s.name,
+                                 zone.widgets.size()));
+            int rows = 0;
+            for (const og::script::hooks::CampaignZoneWidget& widget :
+                 zone.widgets)
+            {
+                rows += static_cast<int>(widget.entries.size());
+                for (const std::string& line : widget.lines)
+                    if (line.size() > 38)
+                        fail(std::format("self-check: camp line over 38 "
+                                         "chars: '{}'", line));
+                for (const og::script::hooks::CampaignPageEntry& entry :
+                     widget.entries)
+                    check_entry(entry, s.name);
+            }
+            if (rows > 16)
+                fail(std::format("self-check: camp state '{}' composes {} "
+                                 "action rows (16 is the cap)", s.name, rows));
+        }
+
+        for (const char* page_id : {"stores"})
         {
             og::script::hooks::CampaignPage page;
             if (!og::script::hooks::campaign_picker_page(page_id, page))

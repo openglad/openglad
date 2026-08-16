@@ -313,19 +313,25 @@ behind a hover or a spent face:
   memory. Unsworn bypass preserves v1 semantics with an honest nag; a
   wiped front collapses ("The east fire is ashes. All ride."); reunion
   at the Mountain when both roads are done. Back rows never render.
-- **Long Season — the open ledger.** Readout: WAGES / DEBT / COINS.
-  Text: season line + the live consequence line ("Owed 900g. Collectors
-  at the Toll."). Actions: the docket (current job + open optional
-  contracts, stakes on the row: "he must not fall", "optional, pays
-  extra"), KETTLE'S STORES page (destination + contents stated before
-  purchase; the kettle gag demoted to the shop's free last row), TAKE AN
-  ADVANCE ("owe 900 by the Toll") / SETTLE THE BOOK visible only while
-  settling still buys something (through the Toll, never after), the
-  warm-coin ritual as a conditional composition with the trade in
-  numbers (KEEP "1 ally per 4 kept" — note swaps once the 3-ally cap is
-  banked; PASS "150g now, none later"), DRAW YOUR PAY on Settlement Day
-  with the computed net ("pays 1400g, once") and the dock arithmetic in
-  the text.
+- **Long Season — the open ledger.** Readout: JOBS / DEBT / COINS — the
+  purse is NOT a fourth cell, because the header GOLD cell is C++-owned
+  and already on the screen. Text: the season line, one row unit, so the
+  docket can hold three rows. Actions, in the order the band shows them:
+  the current job with its stake ON the row ("he must not fall"), the
+  book's money row, KETTLE'S STORES (destination + contents stated
+  before purchase; the kettle gag demoted to the shop's free last row),
+  then open optional contracts ("optional, pays extra") — contracts are
+  the only rows allowed to page. The money row is TAKE AN ADVANCE ("700
+  now, 900 at Toll") or SETTLE THE BOOK, and BOTH halves close once the
+  Toll has been fought: settling is then a wash, and an advance would
+  write a debt against a dead deadline that the latched settlement could
+  never square. The warm-coin ritual is a conditional composition that
+  takes the whole camp while a coin waits — the trade in numbers (KEEP
+  "1 ally per 4 kept", note swaps once the 3-ally cap is banked; PASS
+  "150g now, none later") under the line that names where a kept coin is
+  redeemed. Settlement Day is the one face that spends the docket's
+  third unit on prose: the day's line, the year's arithmetic, and DRAW
+  YOUR PAY with the computed net ("pays 1400g, once").
 - **Imaginations — the dream log at camp.** Text line + dream rows.
 
 ## Retirement ledger (the excise checklist)
