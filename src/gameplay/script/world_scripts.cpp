@@ -3166,6 +3166,12 @@ bool parse_zone_widget(lua_State* L, const std::string& at,
         bad = at + ".weight is negative";
         return false;
     }
+    if (widget.weight > kCampaignZoneMaxWeight) {
+        bad = at + ".weight is " + std::to_string(widget.weight) +
+              " row units (max " + std::to_string(kCampaignZoneMaxWeight) +
+              ")";
+        return false;
+    }
     switch (widget.kind) {
     case CampaignZoneWidget::Kind::Roster:
         return parse_zone_roster(L, at, widget, bad);

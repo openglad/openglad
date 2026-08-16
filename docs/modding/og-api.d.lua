@@ -385,10 +385,13 @@
 
 -- One widget of the Base Camp gameplay zone. `kind` picks
 -- which fields are read (the rest are ignored); `weight`
--- is integer row units (>= 0). Bounds are HARD rejections
+-- is integer row units, 0..8 (0 = the kind's default
+-- share; 8 is the whole band). Bounds are HARD rejections
 -- (never clips): <= 6 text lines per widget, <= 16 action
 -- entries across the whole zone, <= 3 readout items,
 -- <= 24 locks. Roster capability flags default true.
+-- A text widget weighed SMALLER than its lines need is
+-- legal and clips its ink to its own band.
 ---@class og.CampaignZoneWidget
 ---@field kind "roster"|"text"|"actions"|"readout"
 ---@field weight? integer

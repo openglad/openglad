@@ -50,6 +50,13 @@ inline constexpr int kCampaignZoneMaxTextLines = 6;      // per text widget
 inline constexpr int kCampaignZoneMaxActionEntries = 16; // TOTAL, whole zone
 inline constexpr int kCampaignZoneMaxReadoutItems = 3;
 inline constexpr int kCampaignZoneMaxRosterLocks = 24;   // one per roster slot
+// A widget's `weight` is integer ROW UNITS on the 14px grid, and the zone
+// band is exactly 8 units tall. A weight past the whole band cannot lay out
+// beside ANY sibling, so it is a named parse rejection rather than a silent
+// layout-time fall to the default zone — the same "every bound is a hard
+// rejection" rule, applied where the author can be told which widget it was.
+// CampaignZoneSession::kZoneRowUnits static_asserts against this.
+inline constexpr int kCampaignZoneMaxWeight = 8;
 
 // 1..kCampaignVarNameMax chars of [a-z0-9_] — the safe-id charset every
 // campaign var/state key must satisfy.

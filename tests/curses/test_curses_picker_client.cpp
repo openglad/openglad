@@ -66,16 +66,19 @@ using og::ui::TextPickerConfig;
 namespace {
 
 // Bundles the terminal/clock/config + client so each test reads compactly.
-// A generous 40x100 grid leaves room for every menu the picker draws.
+// A generous 40x100 grid leaves room for every menu the picker draws; the
+// dimensions are a parameter so a test can put a screen on the stock 24x80
+// terminal a real player has (the camp composes more lines than that holds).
 struct PickerFixture {
-    HeadlessTerminal term{40, 100};
+    HeadlessTerminal term;
     FakeClock clock;
     TextPickerConfig config;
     CursesPickerOptions options;
     CursesPickerClient client;
 
-    explicit PickerFixture(CursesPickerOptions initial_options = {})
-        : options(std::move(initial_options)),
+    explicit PickerFixture(CursesPickerOptions initial_options = {},
+                           int rows = 40, int cols = 100)
+        : term(rows, cols), options(std::move(initial_options)),
           client(term, clock, config, options)
     {
     }
@@ -104,6 +107,18 @@ void pick(HeadlessTerminal& term, int n)
     ASSERT_GE(n, 0);
     ASSERT_LE(n, 8) << "digit-jump only addresses the first 9 selectable items";
     term.push_char(static_cast<char32_t>(U'1' + static_cast<char32_t>(n)));
+    term.push_special(KeyCode::Enter);
+}
+
+// Select the item at 0-based selectable index `n` by walking the cursor down
+// from the top of the list and confirming. Unlike pick(), this reaches rows
+// past the digit-jump ceiling — the #206 Camp door pushed Team Build's
+// Scenario/CTF rows out of digit range.
+void step_to(HeadlessTerminal& term, int n)
+{
+    ASSERT_GE(n, 0);
+    for (int i = 0; i < n; ++i)
+        term.push_special(KeyCode::Down);
     term.push_special(KeyCode::Enter);
 }
 
@@ -2332,7 +2347,9 @@ TEST(CursesPickerClient, run_picker_through_scenario_submenu_then_quit)
     // Main pass 1: "Continue Game" -> Team Build.
     f.t().push_char(static_cast<char32_t>(U'1' + static_cast<char32_t>(cont_idx)));
     f.t().push_special(KeyCode::Enter);
-    // Team Build: the "Scenario" item opens the submenu.
+    // Team Build: the "Scenario" item opens the submenu. The #206 Camp door
+    // pushed Scenario past the digit-jump ceiling (only the first 9
+    // selectable rows carry digits), so this route walks the cursor.
     int scenario_idx = -1;
     {
         const auto& def = og::ui::picker_menu_definition(PickerMenuId::TeamBuild);
@@ -2342,11 +2359,7 @@ TEST(CursesPickerClient, run_picker_through_scenario_submenu_then_quit)
                 scenario_idx = i;
     }
     ASSERT_GE(scenario_idx, 0);
-    // The Team Build list shows non-selectable context headers, but digit
-    // jump counts selectable entries only, so the item index maps 1:1.
-    ASSERT_LE(scenario_idx, 8) << "digit-jump addresses the first 9 items";
-    f.t().push_char(static_cast<char32_t>(U'1' + static_cast<char32_t>(scenario_idx)));
-    f.t().push_special(KeyCode::Enter);
+    step_to(f.t(), scenario_idx);
     // Scenario submenu: leave with Esc (-> Back), then Team Build Esc,
     // then Main menu Esc (-> Quit).
     f.t().push_special(KeyCode::Escape);
@@ -2358,11 +2371,11 @@ TEST(CursesPickerClient, run_picker_through_scenario_submenu_then_quit)
         << "the scenario submenu round trip should consume the whole script";
 }
 
-// --- #206 Missions (the scripted campaign mission book) ----------------------
+// --- #206 Camp (the scripted Base Camp gameplay zone) -----------------------
 
 namespace {
 
-// Registers a throwaway scripted picker for one test and restores the
+// Registers a throwaway scripted campaign for one test and restores the
 // pack-script registry (and the gameplay context campaign dispatch
 // resolves) afterwards — the test_campaign_picker_session fixture approach.
 // The chunk name deliberately does NOT start with `packs/`: that prefix
@@ -2377,7 +2390,7 @@ public:
     {
         current_game = nullptr;  // dispatch resolves the shared UI VM
         og::script::register_pack_script(
-            {"test.cursesmissions", "cursesmissions/scripts/c.lua", source});
+            {"test.cursescamp", "cursescamp/scripts/c.lua", source});
     }
 
     ~ScopedSyntheticCampaignPicker()
@@ -2395,22 +2408,23 @@ private:
 
 } // namespace
 
-// run_picker reaches the scripted mission book by ordinals: Team Build ->
-// Scenario (row 9) -> Missions (0-based selectable index 6, ordinal 7, with
-// Back at 8 — inside the digit-jump budget). Choosing a level row runs the
-// curses set-level tail; 0 at the root closes the book back to the
-// Scenario submenu.
-TEST(CursesPickerClient, run_picker_missions_sets_level_from_the_book)
+// run_picker reaches the scripted camp by ordinal: Team Build -> Camp
+// (0-based selectable index 6, ordinal 7). That position is load-bearing —
+// the camp is the door into everything a campaign composes, so it has to
+// stay inside the digit-jump budget. Choosing a level row runs the curses
+// set-level tail; Esc at the camp prompt closes it back to Team Build.
+TEST(CursesPickerClient, run_picker_camp_sets_level_from_the_zone)
 {
     PickerFixture f;
     ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
-  picker_menu = function(page_id)
+  base_camp = function()
     return {
-      title = "THE BOOK",
-      lines = { "The Gamesmaster opens the book." },
-      entries = {
-        { id = "300", label = "THE CIRCLE", kind = "level", level = 300 },
-        { id = "9", label = "THE PIT", kind = "level", level = 9 },
+      widgets = {
+        { kind = "actions", entries = {
+            { id = "300", label = "THE CIRCLE", kind = "level", level = 300 },
+            { id = "9", label = "THE PIT", kind = "level", level = 9 },
+          } },
+        { kind = "roster" },
       },
     }
   end,
@@ -2419,57 +2433,235 @@ TEST(CursesPickerClient, run_picker_missions_sets_level_from_the_book)
     const int cont_idx = main_menu_item_index(PickerMenuCommand::ContinueGame);
     ASSERT_GE(cont_idx, 0);
     pick(f.t(), cont_idx); // Main: Continue -> Team Build
-    // Team Build: the Scenario door. Digit jump counts selectable entries
-    // only, so the item index maps 1:1 past the context header rows.
-    int scenario_idx = -1;
+    // Team Build: the Camp door. Digit jump counts selectable entries only,
+    // so the item index maps 1:1 past the context header rows.
+    int camp_idx = -1;
     {
         const auto& def =
             og::ui::picker_menu_definition(PickerMenuId::TeamBuild);
         for (int i = 0; i < static_cast<int>(def.items.size()); ++i)
             if (def.items[static_cast<size_t>(i)].command ==
-                PickerMenuCommand::Scenario)
-                scenario_idx = i;
+                PickerMenuCommand::CampaignCamp)
+                camp_idx = i;
     }
-    ASSERT_GE(scenario_idx, 0);
-    pick(f.t(), scenario_idx); // Team Build -> Scenario submenu
-    pick(f.t(), 6);            // Scenario: Missions -> the mission book
-    // Book prompt: row 2 = THE PIT (level 9) -> the set-level tail.
+    ASSERT_GE(camp_idx, 0);
+    ASSERT_LE(camp_idx, 8)
+        << "the Camp door must stay inside the digit-jump budget";
+    pick(f.t(), camp_idx); // Team Build -> the scripted camp
+    // Camp prompt: row 2 = THE PIT (level 9) -> the set-level tail.
     f.t().push_char(U'2');
     f.t().push_special(KeyCode::Enter);
     dismiss(f.t()); // the "Level set to THE PIT." notice screen
-    // Book prompt again: Esc cancels the prompt = back, closing the root.
+    // Camp prompt again: Esc cancels the prompt = back, closing the camp.
     f.t().push_special(KeyCode::Escape);
-    // Unwind: Scenario Esc (Back), Team Build q (Back), Main Esc (Quit).
-    f.t().push_special(KeyCode::Escape);
+    // Unwind: Team Build q (Back), Main Esc (Quit).
     f.t().push_char(U'q');
     f.t().push_special(KeyCode::Escape);
 
     og::ui::run_picker(f.client);
 
     EXPECT_EQ(9, (int)f.save().scen_num)
-        << "a level row must run the curses set-level tail";
+        << "a camp level row must run the curses set-level tail";
     EXPECT_EQ(9, f.config.level)
         << "the tail also updates the session config level";
     EXPECT_TRUE(f.t().input_exhausted())
-        << "the mission-book round trip should consume the whole script";
+        << "the camp round trip should consume the whole script";
 }
 
-// With no registered picker, the Missions row shows the shared guard line.
+// A camp composes as many lines as the campaign wants — a full company alone
+// is 25 roster lines — and every line carries a live ordinal the prompt still
+// accepts. On the stock 24x80 terminal the block outruns the screen, so it
+// scrolls: the marker says how much is off-screen and the arrows reach the
+// tail, where the oath door sits. Truncating it would hide controls the
+// player is expected to type.
+TEST(CursesPickerClient, camp_prompt_scrolls_a_composition_past_the_screen)
+{
+    PickerFixture f({}, 24, 80);  // the stock terminal, not the test's 40x100
+    ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    local docket = {}
+    for i = 1, 14 do
+      docket[i] = { id = "job" .. i, label = "JOB " .. i, kind = "action" }
+    end
+    return {
+      widgets = {
+        { kind = "text", weight = 2, lines = {
+            "The company waits at the fire.",
+            "The road east is open.",
+            "The bearer keeps the coin.",
+          } },
+        { kind = "actions", weight = 2, entries = docket },
+        { kind = "roster",
+          assign = { key = "muster", labels = { "WAR", "BURDEN" } } },
+      },
+    }
+  end,
+}))LUA");
+
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::CampaignCamp);
+    ASSERT_NE(item, nullptr);
+    // Page to the bottom, step back up, page home, then back to the bottom:
+    // the offset clamps at both ends and the last frame shows the tail. Esc
+    // then closes the prompt and the camp.
+    f.t().push_special(KeyCode::PageDown);
+    f.t().push_special(KeyCode::Up);
+    f.t().push_special(KeyCode::PageUp);
+    f.t().push_special(KeyCode::PageDown);
+    f.t().push_special(KeyCode::Escape);
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("SWEAR MUSTER"), std::string::npos)
+        << "the oath door is the LAST composed line — a prompt that cannot "
+           "scroll hides it while still accepting its ordinal:\n"
+        << dump;
+    EXPECT_NE(dump.find("Up/Down scroll"), std::string::npos)
+        << "an overflowing block must say so on screen:\n" << dump;
+    // The prompt line survives the scroll: 14 docket rows + the oath door.
+    EXPECT_NE(dump.find("Camp # [1-15]"), std::string::npos) << dump;
+}
+
+// A benched, unsworn, LOCKED hero on the stock 24x80 terminal: one readable
+// row of columns — the padlock letter, the oath cell and the reason — with
+// the oath heading directly over its cell. The reason used to arrive behind
+// a " - " separator that collided with the unsworn cell's own "-", printing
+// "- - " mid-row; and the heading used to sit at column 18 in the summary
+// strip while the values it named sat at 49.
+TEST(CursesPickerClient, camp_roster_row_reads_as_columns_at_24x80)
+{
+    PickerFixture f({}, 24, 80);  // the stock terminal, not the test's 40x100
+    ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = { { kind = "roster",
+      locks = { { unset = true, reason = "Swear at the Falls first." } },
+      assign = { key = "muster", labels = { "WAR", "BURDEN" } } } } }
+  end,
+}))LUA");
+
+    for (std::unique_ptr<guy>& member : f.save().team_list) {
+        if (member != nullptr) {
+            member->name = "Tom";
+            member->deployed = false;  // benched: the padlock shows
+            member->campaign_tag = 0;  // unsworn: the oath cell is "-"
+        }
+    }
+
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::CampaignCamp);
+    ASSERT_NE(item, nullptr);
+    f.t().push_special(KeyCode::Escape);
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    const std::string dump = f.t().dump();
+    EXPECT_EQ(std::string::npos, dump.find("- - "))
+        << "the unsworn oath cell must not stutter into the reason:\n"
+        << dump;
+    EXPECT_NE(std::string::npos, dump.find("[L] Tom"))
+        << "the padlock is a letter on a prompt:\n" << dump;
+    EXPECT_NE(std::string::npos, dump.find("-  Swear at the Falls first."))
+        << "the reason is a trailing column, space-separated:\n" << dump;
+    // The heading sits over the cell it names, in the SAME rendered frame.
+    {
+        std::vector<std::string> rows;
+        for (std::size_t start = 0, end = dump.find('\n');
+             start < dump.size();
+             start = end + 1, end = dump.find('\n', start)) {
+            if (end == std::string::npos)
+                end = dump.size();
+            rows.push_back(dump.substr(start, end - start));
+        }
+        std::size_t heading_col = std::string::npos;
+        std::size_t cell_col = std::string::npos;
+        for (const std::string& row : rows) {
+            if (heading_col == std::string::npos &&
+                row.find("COMPANY") != std::string::npos)
+                heading_col = row.find("MUSTER");
+            const std::size_t hero = row.find("[L] Tom");
+            if (hero != std::string::npos && cell_col == std::string::npos)
+                cell_col = row.find('-', row.find("XP=", hero));
+        }
+        ASSERT_NE(std::string::npos, heading_col) << dump;
+        ASSERT_NE(std::string::npos, cell_col) << dump;
+        EXPECT_EQ(heading_col, cell_col)
+            << "MUSTER must head the oath column, not trail the summary:\n"
+            << dump;
+    }
+    // The purse is on the camp screen, not only back on Team Build.
+    EXPECT_NE(std::string::npos, dump.find("GOLD "))
+        << "a camp with no gold on it cannot price anything:\n" << dump;
+}
+
+// With no registered campaign, the Camp row shows the shared guard line.
 // (The literal bytes are pinned once, by the text drive; the exported
 // constant proves the same line reaches the curses surface.)
-TEST(CursesPickerClient, missions_without_a_book_shows_the_guard_line)
+TEST(CursesPickerClient, camp_without_a_zone_shows_the_guard_line)
 {
     PickerFixture f;
     const auto* item = og::ui::find_picker_menu_item(
-        PickerMenuId::Scenario, PickerMenuCommand::CampaignMissions);
+        PickerMenuId::TeamBuild, PickerMenuCommand::CampaignCamp);
     ASSERT_NE(item, nullptr);
 
     dismiss(f.t()); // the guard notice renders as a show_text screen
-    f.client.handle_menu_item(PickerMenuId::Scenario, *item);
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
     EXPECT_NE(f.t().dump().find(
-                  std::string(og::ui::kCampaignPickerNoBookMessage)),
+                  std::string(og::ui::kCampaignCampNoZoneMessage)),
               std::string::npos)
-        << "an unregistered picker must show the guard line";
+        << "a campaign that composed no camp must show the guard line";
+}
+
+// The camp's rules bind this client's OWN Team Build commands, not just its
+// Camp screen: a deploy lock, a cleared can_train and a cleared can_hire each
+// refuse in the campaign's words. (The SDL panel hides the retired control
+// instead; a prompt cannot hide, so it answers.)
+TEST(CursesPickerClient, roster_commands_obey_the_camps_rules)
+{
+    PickerFixture f;
+    ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = { { kind = "roster",
+      can_train = false,
+      can_hire = false,
+      locks = { { unset = true, reason = "Swear first." } } } } }
+  end,
+}))LUA");
+
+    // Bench the starting soldier: benching is never refused, so the locked
+    // path is the deploy back.
+    for (std::unique_ptr<guy>& member : f.save().team_list)
+        if (member != nullptr)
+            member->deployed = false;
+
+    const auto* deploy = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::ToggleDeploy);
+    ASSERT_NE(deploy, nullptr);
+    f.t().push_special(KeyCode::Enter);  // accept the prompt's default row 1
+    dismiss(f.t());  // the refusal renders as a show_text screen
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *deploy);
+    EXPECT_NE(f.t().dump().find("Swear first."), std::string::npos)
+        << "the lock's own reason answers the deploy prompt";
+    EXPECT_EQ(0, og::ui::count_deployed_members(f.save()))
+        << "a refused toggle must not deploy";
+
+    const auto* train = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::TrainTeam);
+    ASSERT_NE(train, nullptr);
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *train);
+    EXPECT_NE(f.t().dump().find(
+                  std::string(og::ui::kCampaignRosterTrainClosedMessage)),
+              std::string::npos)
+        << "a camp that retired training says so";
+
+    const auto* hire = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::HireTroops);
+    ASSERT_NE(hire, nullptr);
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *hire);
+    EXPECT_NE(f.t().dump().find(
+                  std::string(og::ui::kCampaignRosterHireClosedMessage)),
+              std::string::npos)
+        << "can_hire is the flag that hides HIRE on the panel";
 }
 
 // --- Campaign ordering -------------------------------------------------------

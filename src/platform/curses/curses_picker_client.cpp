@@ -187,27 +187,57 @@ public:
     // Prompt for a single line of text. On Enter, sets `accepted` and returns the
     // buffer; on Esc (or exhausted input), returns `initial` with `accepted`
     // false. Backspace erases the last character. `context` lines (optional)
-    // render between the title and the input row — the scripted mission
-    // book's page surface (#206, the Company List "rows above the prompt"
-    // shape).
+    // render between the title and the input row — the scripted camp/book
+    // page surface (#206, the Company List "rows above the prompt" shape).
+    //
+    // The context block SCROLLS (Up/Down, PageUp/PageDown) and wraps like
+    // show_text: a camp composes as many lines as the campaign wants — a
+    // 24-row roster alone outruns a stock 24x80 terminal — and every one of
+    // those lines carries a live ordinal the prompt still accepts. Cutting
+    // the tail off silently would hide controls the player is expected to
+    // type. The arrow keys are free here: the prompt appends only printable
+    // characters, so scrolling never touches the typed buffer.
     std::string prompt(std::string_view title, std::string_view label,
                        std::string_view initial, bool& accepted,
                        const std::vector<std::string>& context = {})
     {
         std::string buffer(initial);
         accepted = false;
+        int scroll = 0;
         term_.set_cursor_visible(true);
+        std::vector<std::string> wrapped;
+        for (const std::string& line : context) {
+            if (line.empty()) {
+                wrapped.emplace_back();
+                continue;
+            }
+            for (std::string& piece : og::core::wrap_text(line, term_.cols()))
+                wrapped.push_back(std::move(piece));
+        }
         for (;;) {
             term_.clear();
             int row = 0;
             term_.put_str(row++, 0, title, kTitleColor, Color::Default, true);
             ++row;
             const int input_limit = term_.rows() - 2;
-            for (const std::string& line : context) {
-                if (row >= input_limit)
-                    break;
-                term_.put_str(row++, 0, line, kNormalColor, Color::Default,
-                              false);
+            const int total = static_cast<int>(wrapped.size());
+            const int capacity = std::max(0, input_limit - row);
+            // An overflowing block spends its last visible row on the marker:
+            // a truncation the player cannot see is the whole bug.
+            const bool overflow = total > capacity;
+            const int shown = overflow ? std::max(0, capacity - 1)
+                                       : std::min(total, capacity);
+            scroll = std::clamp(scroll, 0, std::max(0, total - shown));
+            for (int i = scroll; i < scroll + shown; ++i) {
+                term_.put_str(row++, 0,
+                              wrapped[static_cast<std::size_t>(i)],
+                              kNormalColor, Color::Default, false);
+            }
+            if (overflow && shown > 0) {
+                term_.put_str(row++, 0,
+                              std::format("-- {}-{} of {} | Up/Down scroll --",
+                                          scroll + 1, scroll + shown, total),
+                              kHintColor, Color::Default, false);
             }
             if (!context.empty() && row < input_limit)
                 ++row;
@@ -225,6 +255,24 @@ public:
             if (key.is_none() || key.code == KeyCode::Escape || key.is_char(U'\x1b')) {
                 term_.set_cursor_visible(false);
                 return std::string(initial);
+            }
+            // Scrolling is arrows-only ('j'/'k' are letters a player may be
+            // typing, unlike in choose()).
+            if (key.code == KeyCode::Up) {
+                --scroll;
+                continue;
+            }
+            if (key.code == KeyCode::Down) {
+                ++scroll;
+                continue;
+            }
+            if (key.code == KeyCode::PageUp) {
+                scroll -= std::max(1, shown);
+                continue;
+            }
+            if (key.code == KeyCode::PageDown) {
+                scroll += std::max(1, shown);
+                continue;
             }
             if (key.is_enter()) {
                 term_.set_cursor_visible(false);
@@ -448,6 +496,15 @@ void view_team_roster(Menu& menu, SaveData& save)
         const int slot = slots[static_cast<std::size_t>(choice)];
 
         if (key == U'd' || key == U'D') {
+            // The camp's deploy rules bind this key too (the Camp screen
+            // shows the padlock and its reason; deploying the locked hero
+            // from the roster anyway would be a different campaign).
+            if (const std::optional<std::string> refused =
+                    og::ui::terminal_roster_refusal(
+                        save, og::ui::TerminalRosterCommand::Deploy, slot)) {
+                menu.show_text("Deploy", {*refused});
+                continue;
+            }
             const bool deployed = og::ui::toggle_deploy_slot(save, slot);
             (void)deployed;
             autosave_company_after_mutation(save);
@@ -467,6 +524,14 @@ void view_team_roster(Menu& menu, SaveData& save)
 // Returns the updated team_families so the caller can re-sync config.
 void hire_troops(Menu& menu, SaveData& save, TextPickerConfig& config)
 {
+    // The camp's can_hire capability — the flag that hides HIRE on the SDL
+    // panel — answers this row too.
+    if (const std::optional<std::string> refused =
+            og::ui::terminal_roster_refusal(
+                save, og::ui::TerminalRosterCommand::Hire, -1)) {
+        menu.show_text("Hire Troops", {*refused});
+        return;
+    }
     og::ui::HireSession session(save, 0);
     if (session.team_full()) {
         menu.show_text("Hire Troops",
@@ -556,6 +621,12 @@ void deploy_prompt(Menu& menu, SaveData& save)
         return;
     }
     const int slot = slots[static_cast<std::size_t>(*value - 1)];
+    if (const std::optional<std::string> refused =
+            og::ui::terminal_roster_refusal(
+                save, og::ui::TerminalRosterCommand::Deploy, slot)) {
+        menu.show_text("Deploy", {*refused});
+        return;
+    }
     const bool deployed = og::ui::toggle_deploy_slot(save, slot);
     menu.show_text("Deploy", {std::format("{} {}.",
         save.team_list[static_cast<std::size_t>(slot)]->name,
@@ -565,6 +636,14 @@ void deploy_prompt(Menu& menu, SaveData& save)
 
 void train_team(Menu& menu, SaveData& save, int seed_slot)
 {
+    // A camp that retired training refuses in words: the SDL panel simply
+    // has no train affordance to click, but a prompt cannot hide.
+    if (const std::optional<std::string> refused =
+            og::ui::terminal_roster_refusal(
+                save, og::ui::TerminalRosterCommand::Train, -1)) {
+        menu.show_text("Train Team", {*refused});
+        return;
+    }
     og::ui::TrainSession session(save);
     if (session.empty()) {
         menu.show_text("Train Team", {"No team members available to train."});
@@ -785,14 +864,15 @@ og::ui::cloud::CloudHooks curses_cloud_hooks(Menu& menu, bool& notified)
     return hooks;
 }
 
-// #206 MISSIONS, curses projection: the shared terminal driver over this
-// client's save. The page renders as prompt context lines (the Company List
+// #206 CAMP, curses projection: the shared terminal driver over this
+// client's save. The camp renders as prompt context lines (the Company List
 // "dynamic rows + prompt" shape — never Menu::choose, whose digit jump
-// stops at row 9) and notices ride show_text; the page lines themselves are
-// composed by the driver, byte-identical with the text client.
-void campaign_missions_flow(Menu& menu, SaveData& save,
-                            TextPickerConfig& config,
-                            const CursesPickerOptions& options)
+// stops at row 9) and notices ride show_text; every camp line, docket
+// ordinal and roster row is composed by the driver, byte-identical with the
+// text client.
+void campaign_camp_flow(Menu& menu, SaveData& save,
+                        TextPickerConfig& config,
+                        const CursesPickerOptions& options)
 {
     og::ui::TerminalCampaignPickerIo io;
     io.prompt = [&menu](const std::string& title,
@@ -807,7 +887,7 @@ void campaign_missions_flow(Menu& menu, SaveData& save,
         return entered;
     };
     io.notice = [&menu](const std::string& line) {
-        menu.show_text("Missions", {line});
+        menu.show_text("Camp", {line});
     };
     // The SET LEVEL host predicate: this picker screen is only reachable
     // locally (the curses network lobby is a separate flow), so the shared
@@ -820,7 +900,7 @@ void campaign_missions_flow(Menu& menu, SaveData& save,
         config.level = level;
         save.scen_num = static_cast<short>(level);
     };
-    og::ui::run_terminal_campaign_picker(save, io);
+    og::ui::run_terminal_campaign_camp(save, io);
 }
 
 } // namespace
@@ -1117,10 +1197,10 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
         teams_screen(menu, save_data_);
         config_.team_families = og::ui::collect_team_families(save_data_);
         break;
-    case PickerMenuCommand::CampaignMissions:
-        // #206: the scripted mission book (guard + flow live in the shared
+    case PickerMenuCommand::CampaignCamp:
+        // #206: the Base Camp gameplay zone (guard + flow live in the shared
         // terminal driver).
-        campaign_missions_flow(menu, save_data_, config_, options_);
+        campaign_camp_flow(menu, save_data_, config_, options_);
         break;
     default:
         break;

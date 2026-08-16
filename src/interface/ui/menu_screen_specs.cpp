@@ -2197,6 +2197,11 @@ BaseCampScreenState* g_base_camp_state = nullptr;
 // six below the final row. Player-seat assignments now own y=164..173.
 constexpr int kBaseCampRowY0 = 45;
 constexpr int kBaseCampRowPitch = 14;
+// The zone session lays widgets out in these same units, and its text clip
+// divides by this pitch — a drift here would silently move every band.
+static_assert(kBaseCampRowPitch ==
+                  og::ui::CampaignZoneSession::kZoneRowPitch,
+              "the zone session's row unit is the Base Camp row pitch");
 // Round-6 horizontal grid: the roster panel is outside-to-outside with the
 // button columns (outer bevel x=8..311, inner grey face x=10..309), with
 // explicit DEPLOY and TEAM columns before the trainable NAME body.
@@ -2236,7 +2241,9 @@ constexpr int kBaseCampTeamHeaderX = 54;
 // deploy heading shortens to "DEP" while the oath column stands, so the two
 // headings keep a real gutter instead of colliding into "DEPLOYROAD".
 constexpr int kBaseCampOathColumnX = 44;
-constexpr std::size_t kBaseCampOathColumnChars = 6;
+// One number for the oath's width: the terminal camp cuts its cell to the
+// same six characters, so a hero's oath is the same word on every surface.
+constexpr std::size_t kBaseCampOathColumnChars = og::ui::kCampaignOathCellChars;
 constexpr int kBaseCampOathColumnWidth =
     static_cast<int>(kBaseCampOathColumnChars) * kBaseCampGlyphAdvance;
 constexpr int kBaseCampNameColumnX = 88;
@@ -4351,8 +4358,16 @@ void base_camp_draw_content(void* screen_state)
         {
             const int band_y =
                 kBaseCampRowY0 + kBaseCampRowPitch * zone_text.start_unit;
-            for (std::size_t line = 0; line < zone_text.lines.size();
-                 ++line)
+            // A widget may weigh itself SMALLER than its lines need (legal:
+            // the parser only refuses over-weight). Its ink clips to its own
+            // band — the rows below belong to the next widget, and text
+            // bleeding over a roster row reads as a corrupt screen, not as a
+            // long stanza.
+            const std::size_t max_lines = static_cast<std::size_t>(
+                og::ui::CampaignZoneSession::text_lines_in_band(
+                    zone_text.units));
+            for (std::size_t line = 0;
+                 line < zone_text.lines.size() && line < max_lines; ++line)
             {
                 // ink 12..305 inside the face; a line that must lose
                 // characters loses whole words, never mid-word.
@@ -4917,7 +4932,10 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
             const Sint32 ret =
                 og::ui::run_campaign_zone_submenu(entry.id, &opened);
             if (!opened)
-                base_camp_show_toast(*st, "That page cannot be read.");
+            {
+                base_camp_show_toast(
+                    *st, std::string(og::ui::kCampaignPageUnreadableMessage));
+            }
             if ((ret & MENU_EXIT) && team_build_start_selected())
                 return MENU_EXIT;
             TRACE("zone", "page_row %s", entry.id.c_str());
@@ -5089,24 +5107,37 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
                 save.team_list[static_cast<std::size_t>(slot)].get();
             const int next_tag = og::ui::CampaignZoneSession::next_assign_tag(
                 member->campaign_tag);
+            bool stood_down = false;
             if (member->deployed) {
                 (void)toggle_deploy_slot(save, slot);
                 TRACE("zone", "assign_undeploys slot=%d", slot);
                 picker_base_camp_after_roster_mutation();
+                stood_down = true;
             }
             if (!og::script::hooks::campaign_assign_set(slot, next_tag)) {
                 TRACE("zone", "assign_refused slot=%d tag=%d", slot,
                       next_tag);
+                // The tag never landed, but the un-deploy did: the toast is
+                // the only thing on this screen that speaks.
+                if (stood_down) {
+                    base_camp_show_toast(
+                        *st,
+                        std::string(og::ui::kCampaignOathStoodDownMessage));
+                }
                 return MENU_OK;
             }
             TRACE("zone", "assign slot=%d tag=%d", slot, next_tag);
             // The full-word toast: the cycle must never be a silent glyph
-            // flip.
+            // flip — and neither may the un-deploy it rides on.
             const std::size_t label_index =
                 static_cast<std::size_t>(next_tag - 1);
             if (label_index < assign.labels.size()) {
                 base_camp_show_toast(
-                    *st, "Sworn to " + assign.labels[label_index] + ".");
+                    *st, og::ui::campaign_oath_toast(
+                             assign.labels[label_index], stood_down));
+            } else if (stood_down) {
+                base_camp_show_toast(
+                    *st, std::string(og::ui::kCampaignOathStoodDownMessage));
             }
             // Undeployed cycles ride the autosave tail only (no ready
             // clear); the tag byte must reach the company file.

@@ -31,6 +31,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -552,10 +553,74 @@ TEST_F(CampaignPickerSessionTest, row_text_composes_markers_costs_and_clips)
     closed.available = false;
     EXPECT_EQ("SCEN 9999  [CLOSED]",
               og::ui::campaign_picker_row_text(closed, 42));
+
+    // The unaffordable mark is the terminals' spelling of the SDL dimmed
+    // face: the SDL faces stay unmarked (they dim), the prompts say it.
+    CampaignPickerSession::Row poor;
+    poor.label = "TOO RICH";
+    poor.kind = CampaignPickerSession::Kind::Action;
+    poor.cost = 999999;
+    poor.affordable = false;
+    EXPECT_EQ("TOO RICH  999999g",
+              og::ui::campaign_picker_row_text(poor, 42));
+    EXPECT_EQ("TOO RICH  999999g  [NEED GOLD]",
+              og::ui::campaign_picker_row_text(poor, 42, true));
+}
+
+// One camp roster row: the padlock letter, the oath cell and the reason, as
+// three space-separated COLUMNS. The reason used to arrive behind a " - "
+// separator that collided with the unsworn oath cell's own "-" and printed
+// "- - " mid-row — a stutter that reads as a typo on both terminals.
+TEST_F(CampaignPickerSessionTest, camp_roster_row_never_stutters_the_dash)
+{
+    guy member(FAMILY_SOLDIER);
+    member.name = "Tom";
+    member.level = 1;
+    member.exp = 0;
+    member.deployed = false;
+    member.campaign_tag = 0;
+
+    og::script::hooks::CampaignAssignSpec assign;
+    assign.active = true;
+    assign.key = "muster";
+    assign.labels = {"WAR", "BURDEN"};
+
+    og::script::hooks::CampaignRosterLock lock;
+    lock.unset = true;
+    lock.reason = "Swear at the Falls first.";
+
+    const std::string row = og::ui::format_campaign_camp_roster_row(
+        member, assign, &lock, og::ui::kCampaignPickerTerminalRowBudget);
+    EXPECT_EQ(std::string::npos, row.find("- - "))
+        << "the oath placeholder and the reason separator collided: " << row;
+    EXPECT_EQ("[L] Tom          SOLDIER   L= 1 XP=     0   -  "
+              "Swear at the Falls first.",
+              row);
+    EXPECT_GE(og::ui::kCampaignPickerTerminalRowBudget, row.size())
+        << "the whole row still fits a stock 80-column terminal";
+
+    // A sworn hero keeps the same columns with the word in the oath cell.
+    member.campaign_tag = 1;
+    const std::string sworn = og::ui::format_campaign_camp_roster_row(
+        member, assign, nullptr, og::ui::kCampaignPickerTerminalRowBudget);
+    EXPECT_EQ("[ ] Tom          SOLDIER   L= 1 XP=     0   WAR", sworn);
+
+    // The level field is two characters up to 99 and three beyond, so the
+    // stat block is padded to its widest shape: the oath cell has to start
+    // at the SAME offset for a level-1 recruit and a level-100 veteran, or
+    // the heading the header strip pads out to heads nothing.
+    member.level = 100;
+    const std::string veteran = og::ui::format_campaign_camp_roster_row(
+        member, assign, nullptr, og::ui::kCampaignPickerTerminalRowBudget);
+    EXPECT_EQ(sworn.find("WAR"), veteran.find("WAR"))
+        << "the oath column moved when the hero passed level 99:\n"
+        << sworn << "\n"
+        << veteran;
+    EXPECT_EQ("[ ] Tom          SOLDIER   L=100 XP=     0  WAR", veteran);
 }
 
 // ---------------------------------------------------------------------------
-// The shared terminal driver (the text/curses MISSIONS loop)
+// The shared terminal driver (the camp + book prompt loop)
 // ---------------------------------------------------------------------------
 
 namespace {
@@ -615,13 +680,23 @@ struct ScriptedTerminalIo {
 
 }  // namespace
 
-// The full loop over the REAL provider glue: invalid rows, the action arm
-// (debit + toast + §3.8 autosave), an unaffordable refusal, a lines-only
-// subpage (and its rowless prompt label), blank-line back, the level arm
-// (apply tail + CURRENT re-derive), and 0-at-root close.
+// The full loop over the REAL provider glue, rooted at the book's own root
+// page (""), the page id the camp's book door names: invalid rows, the action
+// arm (debit + toast + §3.8 autosave), an unaffordable row (marked BEFORE the
+// click, then refused), a lines-only subpage (and its rowless prompt label),
+// blank-line back, a LABELLED road the campaign does not carry (marked CLOSED
+// and refused in the campaign's voice), the level arm (apply tail + CURRENT
+// re-derive), and 0-at-root close. The gold strip rides every page: a shop
+// quotes prices, so the purse has to be on the same screen.
 TEST_F(CampaignPickerSessionTest, terminal_driver_runs_the_whole_book)
 {
+    const std::string previous_mount = get_mounted_campaign();
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+
     save_.m_totalcash[0] = 100;
+    save_.scen_num = 7;  // never the road under test: CURRENT is earned here
     save_.save_name = "DRIVER BAND";
     register_script(R"LUA(og.register_campaign_hooks({
   picker_menu = function(page_id)
@@ -635,6 +710,7 @@ TEST_F(CampaignPickerSessionTest, terminal_driver_runs_the_whole_book)
     return { title = "ROOT",
              entries = {
                { id = "300", label = "THE CIRCLE", kind = "level", level = 300 },
+               { id = "1", label = "THE ARENA", kind = "level", level = 1 },
                { id = "buy", label = label, kind = "action", cost = 60 },
                { id = "lore", label = "LORE", kind = "page" },
              } }
@@ -653,57 +729,81 @@ TEST_F(CampaignPickerSessionTest, terminal_driver_runs_the_whole_book)
     scripted.save = &save_;
     scripted.answers = {
         "nonsense",  // not a number -> invalid
-        "9",         // out of range (3 rows) -> invalid
-        "2",         // FIELD KIT -> Acted: debit 60, toast, autosave
-        "2",         // now unaffordable (40 < 60) -> Refused
-        "3",         // LORE -> OpenedPage (lines only, no rows)
+        "9",         // out of range (4 rows) -> invalid
+        "3",         // FIELD KIT -> Acted: debit 60, toast, autosave
+        "3",         // now unaffordable (40 < 60) -> Refused
+        "4",         // LORE -> OpenedPage (lines only, no rows)
         "1",         // no rows on LORE -> invalid
         "",          // blank -> back to ROOT
-        "1",         // THE CIRCLE -> SetLevel: tail + CURRENT re-derive
+        "1",         // THE CIRCLE -> a road not in the campaign: refused
+        "2",         // THE ARENA -> SetLevel: tail + CURRENT re-derive
         "0",         // 0 at the root closes the book
     };
-    og::ui::run_terminal_campaign_picker(save_, scripted.io());
+    og::ui::run_terminal_campaign_page(save_, scripted.io(), "");
 
     const std::vector<std::string> expected_notices = {
-        "Invalid mission row.",
-        "Invalid mission row.",
+        "Invalid camp row.",
+        "Invalid camp row.",
         "Kit stowed for the road.",
         "Not enough gold.",
-        "Invalid mission row.",
-        "Level set to THE CIRCLE.",
+        "Invalid camp row.",
+        std::string(og::ui::kCampaignLevelClosedMessage),
+        "Level set to THE ARENA.",
     };
     EXPECT_EQ(expected_notices, scripted.notices);
 
-    EXPECT_EQ(300, scripted.applied_level);
-    EXPECT_EQ(300, save_.scen_num);
+    EXPECT_EQ(1, scripted.applied_level);
+    EXPECT_EQ(1, save_.scen_num);
     EXPECT_EQ(40u, save_.m_totalcash[0]) << "the 60g action debit must land";
     EXPECT_EQ(1, save_.campaign_state_get("testcamp", "kit"));
     EXPECT_TRUE(user_file_exists("save/pickerdrv.gtl"))
         << "the Acted arm must run the §3.8 company-autosave tail";
 
     // Prompt 0: the root page in the shared composed shape.
-    ASSERT_GE(scripted.prompts.size(), 9u);
+    ASSERT_GE(scripted.prompts.size(), 10u);
     EXPECT_EQ("ROOT", scripted.prompts[0].title);
-    EXPECT_EQ("Mission # [1-3] (0 = back): ", scripted.prompts[0].label);
+    EXPECT_EQ("Camp # [1-4] (0 = back): ", scripted.prompts[0].label)
+        << "a book page is a room inside the camp: no surface says 'mission'";
+    // The blocking regression: a row the BOOK labelled still has to declare
+    // that the campaign does not carry the road. Availability is a fact
+    // about the road, not about whether the engine had to name the row.
     EXPECT_NE(std::string::npos,
-              scripted.page_text(0).find("   1. THE CIRCLE\n"));
+              scripted.page_text(0).find("   1. THE CIRCLE  [CLOSED]\n"));
     EXPECT_NE(std::string::npos,
-              scripted.page_text(0).find("   2. FIELD KIT  60g\n"));
-    // After the action, the refetched page re-derived the scripted label.
+              scripted.page_text(0).find("   2. THE ARENA\n"));
     EXPECT_NE(std::string::npos,
-              scripted.page_text(3).find("   2. KIT OWNED  60g\n"));
+              scripted.page_text(0).find("   3. FIELD KIT  60g\n"));
+    // The purse is on the page that quotes the price, and it tracks the
+    // debit.
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(0).find("COMPANY  DEP 0/0  GOLD 100\n"));
+    // After the action, the refetched page re-derived the scripted label —
+    // and the row the player can no longer buy says so BEFORE the click.
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(3).find("   3. KIT OWNED  60g  [NEED GOLD]\n"));
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(3).find("COMPANY  DEP 0/0  GOLD 40\n"));
     // The lines-only subpage prompts with the rowless label (prompt 5 —
     // prompts 0-4 are the ROOT page's invalid/action/refusal/page steps).
     EXPECT_EQ("LORE", scripted.prompts[5].title);
-    EXPECT_EQ("Mission # (0 = back): ", scripted.prompts[5].label);
+    EXPECT_EQ("Camp # (0 = back): ", scripted.prompts[5].label);
     EXPECT_NE(std::string::npos,
               scripted.page_text(5).find("Only words here.\n"));
-    // The final prompt shows the applied cursor's CURRENT marker.
+    // The final prompt shows the applied cursor's CURRENT marker — and the
+    // CLOSED road never wears it.
     EXPECT_NE(std::string::npos,
-              scripted.page_text(8).find("   1. THE CIRCLE  [CURRENT]\n"));
+              scripted.page_text(9).find("   2. THE ARENA  [CURRENT]\n"));
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(9).find("   1. THE CIRCLE  [CLOSED]\n"));
 
     (void)remove_user_file("save/pickerdrv.gtl");
     (void)og::data::set_active_company_slot("save0");
+    if (previous_mount != "gladiator")
+    {
+        (void)unmount_campaign_package_with_error("gladiator");
+        if (!previous_mount.empty())
+            (void)mount_campaign_package_with_error(previous_mount);
+    }
 }
 
 // The SET LEVEL host gate: a non-host choosing a level row is refused with
@@ -723,7 +823,7 @@ TEST_F(CampaignPickerSessionTest, terminal_driver_host_gate_refuses_level_rows)
     scripted.save = &save_;
     scripted.host = false;
     scripted.answers = {"1"};  // then EOF -> back at the root -> close
-    og::ui::run_terminal_campaign_picker(save_, scripted.io());
+    og::ui::run_terminal_campaign_page(save_, scripted.io(), "");
 
     const std::vector<std::string> expected_notices = {
         "Only the host may set the level.",
@@ -736,19 +836,390 @@ TEST_F(CampaignPickerSessionTest, terminal_driver_host_gate_refuses_level_rows)
         << "the refusal re-presents the page; the EOF prompt closes it";
 }
 
-// No registration: the driver prints the shared guard line (the literal is
-// pinned by the text drive; this arm holds the exported constant) and never
-// prompts.
+// No registration behind a book door (a stale door, or a page the book will
+// not hand back): the driver refuses in the page's own words and never
+// prompts. There is no separate "no book" line any more — a campaign with no
+// book never grows a door to click.
 TEST_F(CampaignPickerSessionTest, terminal_driver_guards_when_no_book)
 {
     register_script(R"LUA(og.log("no campaign registration"))LUA");
 
     ScriptedTerminalIo scripted;
     scripted.save = &save_;
-    og::ui::run_terminal_campaign_picker(save_, scripted.io());
+    og::ui::run_terminal_campaign_page(save_, scripted.io(), "");
 
     ASSERT_EQ(1u, scripted.notices.size());
-    EXPECT_EQ(og::ui::kCampaignPickerNoBookMessage, scripted.notices[0]);
+    EXPECT_EQ(og::ui::kCampaignPageUnreadableMessage, scripted.notices[0]);
     EXPECT_TRUE(scripted.prompts.empty())
         << "the guard path must never open the book prompt";
+}
+
+// A level row the campaign does not carry is refused INSIDE the book, exactly
+// as the camp's docket refuses it: the terminal set-level tail only moves the
+// cursor, so a row that already reads [CLOSED] must never answer "Level set
+// to" and leave a scen_num the campaign cannot load.
+TEST_F(CampaignPickerSessionTest, terminal_driver_refuses_closed_level_rows)
+{
+    save_.scen_num = 7;
+    register_script(R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id)
+    return { title = "BOOK",
+             entries = { { id = "gone", kind = "level", level = 4242 } } }
+  end,
+}))LUA");
+
+    ScriptedTerminalIo scripted;
+    scripted.save = &save_;
+    scripted.answers = {"1", "0"};
+    og::ui::run_terminal_campaign_page(save_, scripted.io(), "");
+
+    const std::vector<std::string> expected_notices = {
+        std::string(og::ui::kCampaignLevelClosedMessage),
+    };
+    EXPECT_EQ(expected_notices, scripted.notices);
+    EXPECT_EQ(-1, scripted.applied_level)
+        << "a closed road must be refused before the client tail runs";
+    EXPECT_EQ(7, save_.scen_num);
+    ASSERT_FALSE(scripted.prompts.empty());
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(0).find("   1. SCEN 4242  [CLOSED]\n"))
+        << "the row says so before the click; the answer must agree";
+}
+
+// ---------------------------------------------------------------------------
+// The shared terminal CAMP driver (docs/basecamp-zones-design.md "Terminals")
+// ---------------------------------------------------------------------------
+//
+// The whole composed screen is pinned by the text drive
+// (tests/unit/test_platform_headless.cpp). These arms hold the paths a
+// terminal client cannot reach on its own: both terminals always answer
+// host, and their own campaigns always parse.
+
+// A campaign with neither a camp nor a book has no terminal camp: the default
+// composition is a full-capability roster, and the terminals already carry
+// that on their own Team Build rows.
+TEST_F(CampaignPickerSessionTest, terminal_camp_guards_when_no_zone)
+{
+    register_script(R"LUA(og.log("no campaign registration"))LUA");
+
+    ScriptedTerminalIo scripted;
+    scripted.save = &save_;
+    og::ui::run_terminal_campaign_camp(save_, scripted.io());
+
+    ASSERT_EQ(1u, scripted.notices.size());
+    EXPECT_EQ(og::ui::kCampaignCampNoZoneMessage, scripted.notices[0]);
+    EXPECT_TRUE(scripted.prompts.empty())
+        << "the guard path must never open the camp prompt";
+}
+
+// A campaign that registered a BOOK but composed no camp still has to be able
+// to open its book: every client enters a book through a camp page row, so
+// the camp door shows the transitional book-door composition — the default
+// roster plus one page row named by the book's own root title.
+TEST_F(CampaignPickerSessionTest, terminal_camp_opens_the_book_without_a_zone)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id)
+    return { title = "KETTLE'S BOOK",
+             lines = { "The ledger lies open." },
+             entries = { { id = "300", label = "THE CIRCLE", kind = "level", level = 300 } } }
+  end,
+}))LUA");
+
+    ScriptedTerminalIo scripted;
+    scripted.save = &save_;
+    scripted.answers = {
+        "1",  // camp: the book door -> the book rooted at ""
+        "0",  //   book: back at the door's root -> the camp
+        "0",  // close the camp
+    };
+    og::ui::run_terminal_campaign_camp(save_, scripted.io());
+
+    EXPECT_TRUE(scripted.notices.empty()) << "the door must not refuse";
+    ASSERT_GE(scripted.prompts.size(), 2u);
+    EXPECT_EQ("Camp", scripted.prompts[0].title);
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(0).find("   1. KETTLE'S BOOK  >\n"))
+        << "the door wears the book's own title and the door marker";
+    EXPECT_EQ("KETTLE'S BOOK", scripted.prompts[1].title)
+        << "the door opens the book at its root page";
+    // Nothing is mounted in this fixture, so the labelled road reads CLOSED
+    // on the page exactly as it does in the camp docket.
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(1).find("   1. THE CIRCLE  [CLOSED]\n"));
+    // The composition is still the full-capability roster underneath, and
+    // both the camp and the book page carry the same header strip.
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(0).find("COMPANY  DEP 0/0  GOLD 5000\n"));
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(1).find("COMPANY  DEP 0/0  GOLD 5000\n"));
+}
+
+// The camp's roster rules bind the terminals' OWN Team Build commands: the
+// shared refusal composer is what both clients ask before a deploy toggle, a
+// train or a hire. Benching a deployed hero stays legal — the lock is a
+// deploy courtesy, not a cage.
+TEST_F(CampaignPickerSessionTest, terminal_roster_refusal_answers_the_camp)
+{
+    save_.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save_.team_list[0]->name = "ALPHA";
+    save_.team_list[0]->deployed = false;  // a bench, so the ask is a deploy
+    save_.team_size = 1;
+    register_script(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = { { kind = "roster",
+      can_train = false,
+      can_hire = false,
+      locks = { { unset = true, reason = "Swear first." } } } } }
+  end,
+}))LUA");
+
+    using og::ui::TerminalRosterCommand;
+    // An unsworn hero carries the unset lock's own reason.
+    const std::optional<std::string> deploy = og::ui::terminal_roster_refusal(
+        save_, TerminalRosterCommand::Deploy, 0);
+    ASSERT_TRUE(deploy.has_value());
+    EXPECT_EQ("Swear first.", *deploy);
+    // Benching is never refused.
+    save_.team_list[0]->deployed = true;
+    EXPECT_FALSE(og::ui::terminal_roster_refusal(
+                     save_, TerminalRosterCommand::Deploy, 0)
+                     .has_value());
+    save_.team_list[0]->deployed = false;
+    // An empty or out-of-range slot is the caller's own bounds problem, not
+    // the camp's.
+    EXPECT_FALSE(og::ui::terminal_roster_refusal(
+                     save_, TerminalRosterCommand::Deploy, 1)
+                     .has_value());
+    EXPECT_FALSE(og::ui::terminal_roster_refusal(
+                     save_, TerminalRosterCommand::Deploy, -1)
+                     .has_value());
+    // A hero the lock no longer matches deploys: the unset lock stops
+    // applying the moment the oath lands.
+    save_.team_list[0]->campaign_tag = 1;
+    EXPECT_FALSE(og::ui::terminal_roster_refusal(
+                     save_, TerminalRosterCommand::Deploy, 0)
+                     .has_value());
+    save_.team_list[0]->campaign_tag = 0;
+
+    const std::optional<std::string> train = og::ui::terminal_roster_refusal(
+        save_, TerminalRosterCommand::Train, -1);
+    ASSERT_TRUE(train.has_value());
+    EXPECT_EQ(og::ui::kCampaignRosterTrainClosedMessage, *train);
+    const std::optional<std::string> hire = og::ui::terminal_roster_refusal(
+        save_, TerminalRosterCommand::Hire, -1);
+    ASSERT_TRUE(hire.has_value());
+    EXPECT_EQ(og::ui::kCampaignRosterHireClosedMessage, *hire);
+}
+
+// A camp that cleared can_deploy refuses every deploy, lock or no lock.
+TEST_F(CampaignPickerSessionTest, terminal_roster_refusal_reads_can_deploy)
+{
+    save_.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save_.team_list[0]->deployed = false;
+    save_.team_size = 1;
+    register_script(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = { { kind = "roster", can_deploy = false } } }
+  end,
+}))LUA");
+
+    const std::optional<std::string> closed = og::ui::terminal_roster_refusal(
+        save_, og::ui::TerminalRosterCommand::Deploy, 0);
+    ASSERT_TRUE(closed.has_value());
+    EXPECT_EQ(og::ui::kCampaignRosterDeployClosedMessage, *closed);
+}
+
+// A lock with no reason still has to say something: a silent refusal is a
+// padlock the SDL roster can draw, and a prompt cannot.
+TEST_F(CampaignPickerSessionTest, terminal_roster_refusal_speaks_when_mute)
+{
+    save_.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save_.team_list[0]->deployed = false;
+    save_.team_size = 1;
+    register_script(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = { { kind = "roster",
+      locks = { { unset = true } } } } }
+  end,
+}))LUA");
+
+    const std::optional<std::string> mute = og::ui::terminal_roster_refusal(
+        save_, og::ui::TerminalRosterCommand::Deploy, 0);
+    ASSERT_TRUE(mute.has_value());
+    EXPECT_EQ(og::ui::kCampaignRosterDeployLockedMessage, *mute);
+}
+
+// No camp, no rules: an unscripted campaign keeps the terminals' own roster
+// commands exactly as they were.
+TEST_F(CampaignPickerSessionTest, terminal_roster_refusal_is_silent_unscripted)
+{
+    save_.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save_.team_size = 1;
+    register_script(R"LUA(og.log("no campaign registration"))LUA");
+
+    using og::ui::TerminalRosterCommand;
+    EXPECT_FALSE(og::ui::terminal_roster_refusal(
+                     save_, TerminalRosterCommand::Deploy, 0)
+                     .has_value());
+    EXPECT_FALSE(og::ui::terminal_roster_refusal(
+                     save_, TerminalRosterCommand::Train, -1)
+                     .has_value());
+    EXPECT_FALSE(og::ui::terminal_roster_refusal(
+                     save_, TerminalRosterCommand::Hire, -1)
+                     .has_value());
+}
+
+// The camp's level rows ride the same SET LEVEL host gate as the book's, and
+// a page row whose page will not parse refuses in the page's own words —
+// the campaign HAS a book, this door just would not open.
+TEST_F(CampaignPickerSessionTest, terminal_camp_gates_levels_and_shut_pages)
+{
+    save_.scen_num = 7;
+    register_script(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = {
+      { kind = "actions", entries = {
+          { id = "300", label = "THE CIRCLE", kind = "level", level = 300 },
+          { id = "vault", label = "THE VAULT", kind = "page" },
+        } },
+      { kind = "roster" },
+    } }
+  end,
+  picker_menu = function(page_id)
+    return { entries = {} }  -- no title: malformed, the page never opens
+  end,
+}))LUA");
+
+    ScriptedTerminalIo scripted;
+    scripted.save = &save_;
+    scripted.host = false;
+    scripted.answers = {
+        "1",  // THE CIRCLE -> refused by the host gate
+        "2",  // THE VAULT  -> the door will not open
+        "0",  // close the camp
+    };
+    og::ui::run_terminal_campaign_camp(save_, scripted.io());
+
+    const std::vector<std::string> expected_notices = {
+        std::string(og::ui::kCampaignPickerHostGuardMessage),
+        std::string(og::ui::kCampaignPageUnreadableMessage),
+    };
+    EXPECT_EQ(expected_notices, scripted.notices);
+    EXPECT_EQ(-1, scripted.applied_level)
+        << "the gate must refuse before the client tail runs";
+    EXPECT_EQ(7, save_.scen_num);
+
+    ASSERT_FALSE(scripted.prompts.empty());
+    EXPECT_EQ("Camp", scripted.prompts[0].title);
+    EXPECT_EQ("Camp # [1-2] (0 = back): ", scripted.prompts[0].label);
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(0).find("   2. THE VAULT  >\n"))
+        << "page rows wear the door marker before the click";
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(0).find("COMPANY  DEP 0/0  GOLD 5000\n"))
+        << "the purse rides the camp header strip, not just Team Build";
+    EXPECT_NE(std::string::npos, scripted.page_text(0).find("      (empty)\n"));
+}
+
+// The oath: cycling a DEPLOYED hero un-deploys first (the SDL rule), the tag
+// lands through the assign provider with the full-word toast, and a freeze
+// that arrives on the refetch closes the swear prompt with its reason —
+// after which the camp's own oath row refuses with the same words instead of
+// reopening a prompt that can only say no.
+TEST_F(CampaignPickerSessionTest, terminal_camp_oath_undeploys_then_freezes)
+{
+    save_.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save_.team_list[0]->name = "ALPHA";
+    save_.team_list[0]->teamnum = 0;
+    save_.team_list[0]->deployed = true;
+    save_.team_size = 1;
+    register_script(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    local frozen = ""
+    local team = og.campaign_team()
+    if team[1] and team[1].tag > 0 then
+      frozen = "The Falls parted the company."
+    end
+    return { widgets = { { kind = "roster",
+      assign = { key = "muster", labels = { "WAR", "BURDEN" },
+                 frozen = frozen } } } }
+  end,
+}))LUA");
+
+    // The oath tail autosaves the active company slot; isolate and reap it.
+    ASSERT_TRUE(og::data::set_active_company_slot("campdrv"));
+
+    ScriptedTerminalIo scripted;
+    scripted.save = &save_;
+    scripted.answers = {
+        "1",  // camp: the SWEAR door -> the swear prompt
+        "1",  // swear: cycle row 1 (unset -> WAR); the refetch freezes it
+        "1",  // camp: the SWEAR door again -> refused with the reason
+        "0",  // close the camp
+    };
+    og::ui::run_terminal_campaign_camp(save_, scripted.io());
+
+    const std::vector<std::string> expected_notices = {
+        // The oath's destructive side effect belongs in the one thing that
+        // speaks: swearing stood ALPHA down, and a player who then presses
+        // GO would otherwise launch with an empty muster and no warning.
+        "Sworn to WAR. Stood down from the muster.",
+        "The Falls parted the company.",
+        "The Falls parted the company.",
+    };
+    EXPECT_EQ(expected_notices, scripted.notices);
+    EXPECT_EQ(1, static_cast<int>(save_.team_list[0]->campaign_tag));
+    EXPECT_FALSE(save_.team_list[0]->deployed)
+        << "a sworn hero leaves the muster board before the oath lands";
+    EXPECT_TRUE(user_file_exists("save/campdrv.gtl"))
+        << "the oath must run the §3.8 company-autosave tail";
+
+    ASSERT_EQ(4u, scripted.prompts.size());
+    EXPECT_EQ("Swear", scripted.prompts[1].title);
+    EXPECT_EQ("Swear # [1-1] (0 = done): ", scripted.prompts[1].label);
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(0).find("   1. SWEAR MUSTER  >\n"))
+        << "an open oath column wears the door marker";
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(2).find(
+                  "   1. SWEAR MUSTER - The Falls parted the company.\n"))
+        << "a frozen oath states its reason on the row instead of the marker";
+    // The oath cell spells the word out on the roster row itself.
+    EXPECT_NE(std::string::npos, scripted.page_text(2).find("  WAR\n"));
+    // The oath heading is a COLUMN HEADING: it sits directly over the cell
+    // it names, not as a third fact in the summary strip. Both lines are
+    // read out of the same prompt so the pin cannot drift apart.
+    {
+        const std::vector<std::string>& lines = scripted.prompts[1].lines;
+        ASSERT_GE(lines.size(), 2u);
+        const std::size_t heading = lines[0].find("MUSTER");
+        const std::size_t cell = lines[1].find('-', lines[1].find("XP="));
+        ASSERT_NE(std::string::npos, heading);
+        ASSERT_NE(std::string::npos, cell);
+        EXPECT_EQ(heading, cell)
+            << "MUSTER must head the oath column:\n"
+            << lines[0] << "\n"
+            << lines[1];
+    }
+    // The swear screen names BOTH oaths before the player commits to one:
+    // the cycle is the only way to reach the second word, so a prompt that
+    // never prints it is not offering a choice.
+    {
+        const std::string swear = scripted.page_text(1);
+        EXPECT_NE(std::string::npos,
+                  swear.find("A row number swears that hero: "
+                             "- -> WAR -> BURDEN -> WAR\n"))
+            << "every legend line must fit the terminal budget uncut:\n"
+            << swear;
+        EXPECT_NE(std::string::npos,
+                  swear.find("[X] deployed   [ ] benched   [L] locked   "
+                             "- unsworn"))
+            << swear;
+        EXPECT_NE(std::string::npos, swear.find("stands them down"))
+            << "the un-deploy is stated before the commit, too:\n" << swear;
+    }
+
+    (void)remove_user_file("save/campdrv.gtl");
+    (void)og::data::set_active_company_slot("save0");
 }

@@ -102,9 +102,9 @@ TEST(MenuModel, team_build_lookup)
     ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "ctf_teams") == nullptr)
         << "the CTF items live in the team build menu only";
 
-    ASSERT_EQ(12u, def.items.size())
-        << "team build is the core team items + networking + scenario + the "
-           "CTF settings trio";
+    ASSERT_EQ(13u, def.items.size())
+        << "team build is the core team items + the zone's Camp door + "
+           "networking + scenario + the CTF settings trio";
 
     const PickerMenuItem* ctf_troops =
         find_picker_menu_item(PickerMenuId::TeamBuild, "ctf_troops");
@@ -150,6 +150,23 @@ TEST(MenuModel, team_build_lookup)
     ASSERT_TRUE(&def.items[4] == ready)
         << "ready holds save_team's old 1-based position 5";
 
+    // docs/basecamp-zones-design.md "Terminals": the zone's Camp door sits
+    // between GO! and Back — 1-based position 7, the last ordinal inside the
+    // curses digit-jump budget that leaves the gameplay rows where they were.
+    const PickerMenuItem* camp =
+        find_picker_menu_item(PickerMenuId::TeamBuild, "camp");
+    ASSERT_TRUE(camp != nullptr) << "camp id should resolve in team build";
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::CampaignCamp),
+              static_cast<int>(camp->command))
+        << "camp should map to the CampaignCamp command";
+    ASSERT_TRUE(&def.items[6] == camp)
+        << "camp takes 1-based position 7, before Back";
+    ASSERT_TRUE(&def.items[7] == back)
+        << "Back shifted one ordinal down for the Camp door";
+    ASSERT_TRUE(&def.items[8] == networking)
+        << "networking follows Back at 1-based position 9 — the last row a "
+           "curses digit can address";
+
     // The scenario-shaped commands moved OUT of the team-build menu, and
     // the §2.5 substitution retired the view/slot ids entirely.
     for (const char* moved_id :
@@ -176,9 +193,9 @@ TEST(MenuModel, scenario_menu_lookup)
 
     ASSERT_EQ(static_cast<int>(PickerMenuId::Scenario), static_cast<int>(def.id))
         << "scenario definition should report scenario id";
-    ASSERT_EQ(8u, def.items.size())
-        << "scenario menu: campaign/level/viewer/matchup/progress/troops/"
-           "missions + back";
+    ASSERT_EQ(7u, def.items.size())
+        << "scenario menu: campaign/level/viewer/matchup/progress/troops "
+           "+ back (the missions door retired into the Base Camp zone)";
 
     const struct
     {
@@ -191,9 +208,6 @@ TEST(MenuModel, scenario_menu_lookup)
         {"matchup", PickerMenuCommand::Teams},
         {"progress", PickerMenuCommand::ShowProgress},
         {"troops", PickerMenuCommand::ToggleCtfScenarioTroops},
-        // #206: the scripted mission book, appended before Back (the
-        // append-only ordinal discipline).
-        {"missions", PickerMenuCommand::CampaignMissions},
         {"back", PickerMenuCommand::Back},
     };
     for (const auto& want : kExpected)
@@ -204,6 +218,13 @@ TEST(MenuModel, scenario_menu_lookup)
         ASSERT_EQ(static_cast<int>(want.command), static_cast<int>(item->command))
             << want.id;
     }
+
+    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Scenario, "missions") ==
+                nullptr)
+        << "the missions door retired: the book is a room inside the camp";
+    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::TeamBuild, "missions") ==
+                nullptr)
+        << "the missions door was excised, not moved to the base camp";
 
     ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Scenario, "go") == nullptr)
         << "GO stays on the team-build screen";
@@ -559,12 +580,12 @@ TEST(MenuModel, company_screens_cancel_to_back_and_leak_nowhere)
 
     // §2.1: load_company remains after the classic items; the #155 cloud
     // door is appended last. Main exposes both stable Help and Quit actions.
-    // TeamBuild is unchanged (its ctf_troops row stays resolvable but
-    // dormant); Scenario grew the appended troops and #206 missions rows;
-    // Difficulty grew the appended infinite-gold row.
+    // TeamBuild grew the #206 Camp door (its ctf_troops row stays resolvable
+    // but dormant); Scenario grew the appended troops row and gave the
+    // missions door back; Difficulty grew the appended infinite-gold row.
     ASSERT_EQ(9u, picker_menu_definition(PickerMenuId::Main).items.size());
-    ASSERT_EQ(12u, picker_menu_definition(PickerMenuId::TeamBuild).items.size());
-    ASSERT_EQ(8u, picker_menu_definition(PickerMenuId::Scenario).items.size());
+    ASSERT_EQ(13u, picker_menu_definition(PickerMenuId::TeamBuild).items.size());
+    ASSERT_EQ(7u, picker_menu_definition(PickerMenuId::Scenario).items.size());
     ASSERT_EQ(7u, picker_menu_definition(PickerMenuId::Difficulty).items.size());
 
     // load_company resolves by id and by command and keeps its 1-based

@@ -17,8 +17,10 @@ its terminal ordinal churn, its screen, and its tests never exist — the
 hooks core, GTL v15, the session, the packs' hook/action layers and their
 unit tests carry forward; the SDL/terminal missions surfaces are excised
 and replaced by the zone in the same commits that would have introduced
-them. `ButtonAction` 106 is born as the zone submenu door. The PR is
-force-pushed with the rewritten series (same branch, same number).
+them. No new `ButtonAction` id is born: page-kind zone rows reach the
+submenu through the Base Camp's own row dispatch, naming the page they
+open, so 106 stays free. The PR is force-pushed with the rewritten series
+(same branch, same number).
 
 ## The split
 
@@ -72,7 +74,10 @@ per frame.
   coloured chip carrying an initial — that widget means "team number"
   everywhere else on the screen, and the oath has to outlive its toast.
   Cycle unset→A→B→A (never back to unset), each cycle toasts the full
-  word ("Sworn to WAR."); `frozen` keeps the column readable but refuses
+  word ("Sworn to WAR.") plus the un-deploy when there was one ("Sworn
+  to WAR. Stood down from the muster.") — one toast is the only thing
+  that speaks on either surface, so it carries the whole consequence of
+  the click; `frozen` keeps the column readable but refuses
   cycling with the reason. Oath cells render only when `own &&
   (assign_mode || !networked)`; cycling a DEPLOYED hero first un-deploys
   through the full roster tail (lobby push, ready clears — correct);
@@ -83,7 +88,10 @@ per frame.
   panel (the one-screen rule): the black-strip idiom exists to lift text
   off the title-screen backdrop, and stacking charcoal bars and grey
   plates on an opaque grey panel reads as three materials pasted
-  together rather than one screen.
+  together rather than one screen. Lines ink on an 8px pitch inside the
+  widget's 14px units, and a widget weighed SMALLER than its lines need
+  CLIPS — an under-weight is a legal composition (only over-weight is
+  refused), and the rows below belong to the next widget.
 - `actions` — rows in the EXISTING page-entry vocabulary
   (level/page/action, id/label/note/cost) plus `done`, which retires a
   costed action the book has already honored (no price quoted, spent
@@ -129,7 +137,12 @@ tying them. Appended rows are statically parked at zero-size rects with
 empty labels (gate-lattice safe) and re-banded per frame by the rewire.
 The team_build highlight special case is bounded to ordinals 33..48 so
 zone rows take the normal focus ring. Existing ordinals 0–48 keep their
-meaning; malformed or over-budget compositions fall to the default zone.
+meaning; malformed or over-budget compositions fall to the default zone —
+or, when the campaign keeps a book, to the book-door composition below,
+which is the default plus the one row that reaches the book.
+A `weight` past the 8-unit band is refused by the PARSER with a named
+error instead — a widget bigger than the whole zone cannot lay out beside
+any sibling, and the author deserves to be told which widget it was.
 
 ## Zone submenus
 
@@ -169,14 +182,76 @@ List et al. remains; not claimed here).
 
 ## Terminals
 
-One appended TeamBuild item ("Camp") opens the zone through the
-mission-book prompt driver grown to render text/readout blocks, the
-numbered docket, lock reasons, and an assign interaction (numbered own
-roster; digit cycles the chip with the same toasts). Named honestly: for
-v1 this is a door, not the terminal camp face — the bounded-churn
+One TeamBuild item ("Camp") opens the zone through the mission-book
+prompt driver grown to render the readout as one line, text blocks
+clipped to their bands, the numbered docket, lock reasons, and an assign
+interaction (the oath row opens a numbered own roster; a row number
+cycles the tag with the same full-word toasts). Named honestly: for v1
+this is a door, not the terminal camp face — the bounded-churn
 compromise; the path forward is the zone becoming the terminal TeamBuild
-face. The TeamBuild item append re-pins the three positional drivers
-(headless drives, interactive script, curses missions pair) once.
+face. The item re-pins the three positional drivers (headless drives,
+interactive script, curses route tests) once.
+
+Eight v1 rules the terminals settle, since a prompt cannot hide a control
+behind a hover or a spent face:
+
+- **Camp is inserted before Back, not appended.** The curses digit jump
+  addresses only the first nine selectable rows, and the camp is the door
+  into everything a campaign composes. It takes ordinal 7; back,
+  networking, scenario and the CTF trio each move down one, and SCENARIO
+  falls out of digit range into the arrow-only band the CTF trio already
+  sits in.
+- **No composition, no door — but never a stranded book.** The default
+  zone is a full-capability roster, which both terminals already carry on
+  their own TeamBuild rows, so a camp door onto a second copy of it would
+  say nothing: opening it on a campaign with neither a `base_camp` hook
+  nor a book prints the guard line. Every client enters a book through a
+  camp page row, so a campaign that registered a book before the camps
+  existed gets the transitional BOOK-DOOR composition instead of the bare
+  default: the same roster plus one page row onto the book's root, named
+  by the book's own root title. It retires itself the moment that
+  campaign composes a `base_camp`. `run_terminal_campaign_page` is
+  therefore the only book entry point on a terminal (the v1 root driver
+  and its no-book guard line are gone with the MISSIONS row).
+- **Locks read inline; the padlock is a letter.** The roster row's deploy
+  cell shows `L` for a locked hero and states the reason on the row. A
+  reason delivered only as a refusal toast is invisible on a screen whose
+  roster rows are not clickable.
+- **The terminals' own roster commands obey the camp.** Deploy (the
+  roster row's `d`/`deploy N` and the Deploy item), Train and Hire ask
+  `terminal_roster_refusal` before acting, so a deploy lock or a cleared
+  `can_deploy`/`can_train`/`can_hire` refuses in the campaign's words
+  instead of only removing a control the terminal never drew. The SDL
+  panel can hide a retired affordance; a prompt cannot, and a camp that
+  shows a padlock while the same client deploys the hero anyway is two
+  campaigns.
+- **A prompt's context block scrolls.** The camp emits its whole
+  composition — a 24-hero roster outruns a stock 24x80 terminal on its
+  own — and every emitted line carries a live ordinal, so the curses
+  prompt wraps and pages its context (Up/Down, PageUp/PageDown, a
+  `-- n-m of N --` marker) rather than cutting the tail off where the
+  screen ends.
+- **One camp noun, one header strip, at every depth.** The prompt asks
+  for a `Camp #` on the camp screen and on every page a page row opens —
+  a room inside the camp does not rename the building, and "mission" is
+  retired from every player-visible surface with the door it belonged
+  to. The same C++-owned strip (`COMPANY  DEP n/n  GOLD g`) leads the
+  camp AND every book page: this is the terminal spelling of "you must
+  be able to see your purse while a shop quotes prices", and it may
+  never depend on a campaign composing gold into its own readout.
+- **The dimmed face is a word.** The panel dims a spent, closed or
+  unaffordable row; a prompt cannot, so it spells the state in the row's
+  own tail vocabulary — `[CLOSED]`, `[DONE]`, `[NEED GOLD]`. The SDL
+  faces keep the ink and stay unmarked; the two surfaces state the same
+  fact in their own material.
+- **The oath column has a heading and a legend.** The channel key is
+  padded out to sit directly over the oath cell, so the `-`/word cells
+  read as a column instead of trailing the summary facts, and the
+  reason of a lock is one more space-separated column (never a dash —
+  it collided with the unsworn `-`). Because the oath is a CYCLE rather
+  than a menu, the swear prompt names both words, the deploy-cell
+  glyphs, and the un-deploy before the player commits; the toast then
+  names the un-deploy again when it happens.
 
 ## The four camps (adjudicated)
 

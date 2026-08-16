@@ -40,6 +40,7 @@
 #include <filesystem>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <utility>
@@ -191,28 +192,61 @@ private:
     std::vector<og::script::PackScript> saved_;
 };
 
-// Optional visual-verification capture (the uxshots PresentedFramePause
-// handshake, minimal form): dump the settled 320x200 frame as a PPM when
-// UXSHOTS_DIR is set; a no-op otherwise. Runs on the injector thread.
+// One capture's outcome. Recorded on the INJECTOR thread and asserted on
+// the main thread by verify_zone_shots: a gtest failure raised from an
+// injector that then dies mid-flow takes its own message with it, and the
+// capture flows already report their observations this way.
+struct ZoneShotResult {
+    std::string name;
+    std::string path;       // "" = no UXSHOTS_DIR, nothing to write
+    bool captured = false;  // the presenter handshake froze a real frame
+    bool written = false;   // the PPM exists on disk afterwards
+    std::size_t nonblack = 0;
+};
+
+std::mutex g_zone_shot_mutex;
+std::vector<ZoneShotResult> g_zone_shots;
+
+// The nonblank bar the uxshots probe uses (test_uxshots_probe.cpp): a
+// settled 320x200 menu frame inks far more than this, a black or
+// half-cleared one far less.
+constexpr std::size_t kZoneShotMinNonblackPixels = 1000;
+
+// Visual-verification capture (the uxshots PresentedFramePause handshake,
+// minimal form): freeze the settled 320x200 frame, count its ink, and dump
+// it as a PPM when UXSHOTS_DIR is set. The frame is read back either way —
+// "the capture produced a blank screen" is a real failure whether or not
+// anyone asked for the file. Runs on the injector thread.
 void capture_zone_frame(const char* name)
 {
+    ZoneShotResult result;
+    result.name = name;
     const char* output_dir = std::getenv("UXSHOTS_DIR");
-    if (output_dir == nullptr || output_dir[0] == '\0')
-        return;
-    std::error_code error;
-    std::filesystem::create_directories(output_dir, error);
-    if (error)
-        return;
+    const bool want_file = output_dir != nullptr && output_dir[0] != '\0';
+    if (want_file) {
+        std::error_code error;
+        std::filesystem::create_directories(output_dir, error);
+        if (!error)
+            result.path = std::string(output_dir) + "/" + name + ".ppm";
+    }
+
+    auto record = [&result] {
+        const std::lock_guard<std::mutex> lock(g_zone_shot_mutex);
+        g_zone_shots.push_back(std::move(result));
+    };
 
     bool expected = false;
     if (!g_test_present_pause_requested.compare_exchange_strong(
-            expected, true, std::memory_order_acq_rel))
+            expected, true, std::memory_order_acq_rel)) {
+        record();
         return;
+    }
     const Uint64 deadline = SDL_GetTicks() + 30000;
     while (!g_test_present_paused.load(std::memory_order_acquire)) {
         if (SDL_GetTicks() >= deadline) {
             g_test_present_pause_requested.store(false,
                                                  std::memory_order_release);
+            record();
             return;
         }
         SDL_Delay(1);
@@ -225,21 +259,58 @@ void capture_zone_frame(const char* name)
         for (int x = 0; x < 320; ++x) {
             Uint8 r = 0, g = 0, b = 0;
             scr->get_pixel(x, y, &r, &g, &b);
+            if (r != 0 || g != 0 || b != 0)
+                ++result.nonblack;
             rgb.push_back(r);
             rgb.push_back(g);
             rgb.push_back(b);
         }
     }
     g_test_present_pause_requested.store(false, std::memory_order_release);
+    result.captured = true;
 
-    const std::string path = std::string(output_dir) + "/" + name + ".ppm";
-    FILE* f = fopen(path.c_str(), "wb");
-    if (f == nullptr)
-        return;
-    fprintf(f, "P6\n320 200\n255\n");
-    fwrite(rgb.data(), sizeof(Uint8), rgb.size(), f);
-    fclose(f);
-    fprintf(stderr, "  [uxshot] wrote %s\n", path.c_str());
+    if (!result.path.empty()) {
+        FILE* f = fopen(result.path.c_str(), "wb");
+        if (f != nullptr) {
+            fprintf(f, "P6\n320 200\n255\n");
+            fwrite(rgb.data(), sizeof(Uint8), rgb.size(), f);
+            fclose(f);
+            std::error_code exists_error;
+            result.written =
+                std::filesystem::exists(result.path, exists_error) &&
+                !exists_error;
+            fprintf(stderr, "  [uxshot] wrote %s\n", result.path.c_str());
+        }
+    }
+    record();
+}
+
+// Main-thread verification of every shot the finished flow recorded, and
+// the reason the capture seam has teeth: a re-capture run that quietly
+// stopped producing stills (or started producing black ones) now fails the
+// test instead of leaving the media script nothing to convert. Clears the
+// ledger, so each flow only ever answers for its own captures.
+void verify_zone_shots(const char* flow, std::size_t expected_shots)
+{
+    std::vector<ZoneShotResult> shots;
+    {
+        const std::lock_guard<std::mutex> lock(g_zone_shot_mutex);
+        shots.swap(g_zone_shots);
+    }
+    EXPECT_EQ(expected_shots, shots.size())
+        << flow << ": the flow did not reach every capture point";
+    for (const ZoneShotResult& shot : shots) {
+        EXPECT_TRUE(shot.captured)
+            << flow << ": " << shot.name << " never froze a presented frame";
+        EXPECT_GE(shot.nonblack, kZoneShotMinNonblackPixels)
+            << flow << ": " << shot.name << " is blank (" << shot.nonblack
+            << " nonblack pixels)";
+        if (shot.path.empty())
+            continue;
+        EXPECT_TRUE(shot.written)
+            << flow << ": " << shot.name << " produced no file at "
+            << shot.path;
+    }
 }
 
 void write_save0_with_two_soldiers(const std::string& campaign, short scen_num)
@@ -546,6 +617,9 @@ TEST(CampaignZoneUi, scripted_zone_flow_locks_assigns_acts_and_sets_level)
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
+    // The 13 unconditional capture points of the flow above.
+    verify_zone_shots("scripted_zone_flow", 13);
+
     SaveData& save = test_screen()->save_data;
     EXPECT_TRUE(state.finished) << "injector should complete the flow";
     EXPECT_TRUE(state.zone_rows_seen)
@@ -737,6 +811,8 @@ TEST(CampaignZoneUi, default_zone_keeps_the_classic_roster_flows)
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
+    verify_zone_shots("default_zone_flow", 1);
+
     EXPECT_TRUE(state.finished);
     EXPECT_TRUE(state.hire_seen)
         << "the default zone renders HIRE (id hire_troops)";
@@ -880,12 +956,52 @@ TEST(CampaignZoneUi, frame_tick_refetches_on_reload_guard_and_settings)
     trace_clear();
 
     // Trigger 4: an applied lobby-settings change (the poll rewrites the
-    // synced knobs under the open screen).
-    save.generator_rate = 200;
-    ASSERT_TRUE(spec.frame_tick(&state, 4));
-    EXPECT_TRUE(trace_contains("zone", "refetch"))
-        << "an applied settings change must refetch the composition";
-    save.generator_rate = 0;
+    // synced knobs under the open screen). The fingerprint hashes eleven
+    // knobs and a composition can read any of them, so one knob proving the
+    // trigger would leave ten that could silently drop out of the hash. Ride
+    // a spread of them — a counted knob, a mode knob, a boolean toggle and
+    // an allied-mode change — each on its own frame.
+    struct SettingsKnob {
+        const char* name;
+        short SaveData::*field;
+        // Two distinct settings; the flip picks whichever the save is not
+        // already on, so the knob's shipped default cannot make the change
+        // a no-op.
+        short first;
+        short second;
+    };
+    constexpr SettingsKnob kKnobs[] = {
+        {"generator_rate", &SaveData::generator_rate, 200, 0},
+        {"ctf_team_count", &SaveData::ctf_team_count, 3, 0},
+        {"keep_fallen_heroes", &SaveData::keep_fallen_heroes, 1, 0},
+        {"allied_mode", &SaveData::allied_mode, 1, 0},
+    };
+    static_assert(std::size(kKnobs) >= 3,
+                  "at least three hashed knobs must be proven live");
+    int frame = 4;
+    for (const SettingsKnob& knob : kKnobs) {
+        const short restore = save.*(knob.field);
+        const short target =
+            restore == knob.first ? knob.second : knob.first;
+        ASSERT_NE(restore, target) << knob.name << " does not change";
+        trace_clear();
+        save.*(knob.field) = target;
+        ASSERT_TRUE(spec.frame_tick(&state, frame++));
+        EXPECT_TRUE(trace_contains("zone", "refetch"))
+            << "an applied " << knob.name
+            << " change must refetch the composition";
+        // ... and settle: restoring is itself a change, so the next knob
+        // starts from a fingerprint that has already re-seeded.
+        trace_clear();
+        save.*(knob.field) = restore;
+        ASSERT_TRUE(spec.frame_tick(&state, frame++));
+        EXPECT_TRUE(trace_contains("zone", "refetch"))
+            << knob.name << " must fire in both directions";
+        trace_clear();
+        ASSERT_TRUE(spec.frame_tick(&state, frame++));
+        EXPECT_FALSE(trace_contains("zone", "refetch"))
+            << "a quiet frame after " << knob.name << " must stay quiet";
+    }
 
     og::ui::install_base_camp_state_for_screen(nullptr);
 }
@@ -1078,21 +1194,121 @@ TEST(CampaignZoneUi, team_cycle_refetches_the_composition)
 
 namespace {
 
-// The zz tour: walk the DEFAULT composition over every shipped campaign
-// (mid-branch truth: no shipped pack registers base_camp yet, so the
-// default zone everywhere is CORRECT), asserting each book's Base Camp
-// really renders and capturing it for the UXSHOTS read-back.
+// A campaign with a BOOK but no base_camp hook: the transitional book-door
+// composition puts one page row onto the book's root over the default
+// roster, so a campaign scripted before the camps existed still reaches its
+// book from the Base Camp — the only way into a book on any client.
+constexpr const char* kBookOnlyScript = R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id)
+    return {
+      title = "KETTLE'S BOOK",
+      lines = { "The ledger lies open." },
+      entries = {
+        { id = "bread", label = "BREAD", kind = "action", cost = 10 },
+      },
+    }
+  end,
+  picker_action = function(entry_id)
+    return { message = "Bread eaten." }
+  end,
+}))LUA";
+
+struct BookDoorState
+{
+    bool finished = false;
+    bool door_seen = false;
+    bool submenu_opened = false;
+    bool submenu_row_seen = false;
+    bool returned_from_submenu = false;
+};
+
+int book_door_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    BookDoorState* state = static_cast<BookDoorState*>(data);
+
+    wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);
+    interact("continue_game");
+
+    // The door wears the book's OWN root title, so the campaign names its
+    // book rather than the engine naming it.
+    state->door_seen = wait_for_interactable_label(
+        "zone_action_0", "KETTLE'S BOOK  >", 10000);
+    SDL_Delay(400);
+
+    interact("zone_action_0");
+    state->submenu_opened = wait_for_interactable_at("back", 10, 169, 10000);
+    state->submenu_row_seen =
+        wait_for_interactable_label("zone_row_0", "BREAD  10g", 10000);
+    SDL_Delay(300);
+    interact("back");
+    state->returned_from_submenu = wait_for_interactable_label(
+        "zone_action_0", "KETTLE'S BOOK  >", 10000);
+    SDL_Delay(300);
+
+    wait_for_interactable("go", 10000);
+    SDL_Delay(300);
+    interact("back");
+    state->finished = true;
+    return 0;
+}
+
+} // namespace
+
+TEST(CampaignZoneUi, book_without_a_zone_opens_through_the_camp_door)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    SyntheticCampaignScriptGuard::install(kBookOnlyScript);
+    write_save0_with_two_soldiers("gladiator", 1);
+
+    BookDoorState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        book_door_injector, "book_door", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_TRUE(state.finished) << "injector should complete the flow";
+    EXPECT_TRUE(state.door_seen)
+        << "a campaign with a book but no camp must still show its door";
+    EXPECT_TRUE(state.submenu_opened)
+        << "the door opens the zone submenu on the book's ROOT page";
+    EXPECT_TRUE(state.submenu_row_seen);
+    EXPECT_TRUE(state.returned_from_submenu)
+        << "BACK at the book's root resumes the Base Camp";
+    // The roster underneath keeps every capability (the door composition is
+    // the default roster plus one row).
+    EXPECT_TRUE(trace_contains("zone", "page_row "))
+        << "the door dispatches as a page-kind zone row";
+}
+
+namespace {
+
+// The zz tour: walk the composition every shipped campaign renders on its
+// Base Camp — the bare default for a campaign with no hooks at all, the
+// book door for the four that script a book — asserting each one really
+// renders and capturing it for the UXSHOTS read-back.
 struct DefaultTourState
 {
     const char* campaign;
     const char* shot;
     short scen_num;
+    bool expect_book_door = false;
     bool finished = false;
     bool continue_seen = false;
     bool camp_seen = false;
     bool hire_labeled = false;
     bool roster_row_seen = false;
-    bool zone_rows_parked = false;
+    bool zone_rows_as_expected = false;
     bool go_seen = false;
 };
 
@@ -1112,9 +1328,14 @@ int default_tour_injector(void* data)
     state->hire_labeled =
         wait_for_interactable_label("hire_troops", "HIRE", 5000);
     state->roster_row_seen = wait_for_interactable("roster_row_0", 5000);
-    // No shipped pack registers base_camp yet, so every campaign must show
-    // the DEFAULT composition: the zone action rows stay parked.
-    state->zone_rows_parked = !has_interactable("zone_action_0");
+    // No shipped pack registers base_camp yet: a campaign with no hooks at
+    // all shows the bare default (the zone action rows stay parked), and one
+    // that scripts a book shows its single book-door row.
+    state->zone_rows_as_expected =
+        state->expect_book_door
+            ? wait_for_interactable("zone_action_0", 5000) &&
+                  !has_interactable("zone_action_1")
+            : !has_interactable("zone_action_0");
     SDL_Delay(500);
     capture_zone_frame(state->shot);
 
@@ -1136,11 +1357,11 @@ TEST(CampaignZoneUi, zz_capture_default_zone_across_campaigns)
     // default composition is what all of them render mid-branch, and a
     // campaign whose mount left the screen empty must be caught here.
     DefaultTourState tours[] = {
-        {"gladiator", "zone_default_gladiator", 1},
-        {"modes", "zone_default_modes", 300},
-        {"westlands", "zone_default_westlands", 1},
-        {"longseason", "zone_default_longseason", 1},
-        {"imaginations", "zone_default_imaginations", 1},
+        {"gladiator", "zone_default_gladiator", 1, false},
+        {"modes", "zone_default_modes", 300, true},
+        {"westlands", "zone_default_westlands", 1, true},
+        {"longseason", "zone_default_longseason", 1, true},
+        {"imaginations", "zone_default_imaginations", 1, true},
     };
     for (DefaultTourState& tour : tours)
     {
@@ -1159,6 +1380,8 @@ TEST(CampaignZoneUi, zz_capture_default_zone_across_campaigns)
         cleanup_picker_state();
         g_picker_max_mainmenu_calls = 0;
 
+        verify_zone_shots(tour.campaign, 1);
+
         EXPECT_TRUE(tour.continue_seen) << tour.campaign << ": main menu";
         EXPECT_TRUE(tour.camp_seen)
             << tour.campaign << ": Base Camp must render";
@@ -1166,10 +1389,12 @@ TEST(CampaignZoneUi, zz_capture_default_zone_across_campaigns)
             << tour.campaign << ": HIRE must carry its label";
         EXPECT_TRUE(tour.roster_row_seen)
             << tour.campaign << ": the roster band must render its rows";
-        EXPECT_TRUE(tour.zone_rows_parked)
+        EXPECT_TRUE(tour.zone_rows_as_expected)
             << tour.campaign
-            << ": no shipped pack registers base_camp, so the zone action "
-               "rows must stay parked";
+            << (tour.expect_book_door
+                    ? ": a scripted book must keep its camp door"
+                    : ": no hooks, no composition — the zone action rows "
+                      "must stay parked");
         EXPECT_TRUE(tour.go_seen)
             << tour.campaign << ": the command strip must render";
         EXPECT_TRUE(tour.finished) << tour.campaign;
@@ -1214,7 +1439,7 @@ void uxr_write_save0_with_many(const std::string& campaign, short scen_num)
     ASSERT_TRUE(save.save("save0"));
 }
 
-int uxr_big_roster_injector(void*)
+int uxr_big_roster_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     wait_for_interactable("continue_game", 5000);
@@ -1223,11 +1448,13 @@ int uxr_big_roster_injector(void*)
     wait_for_interactable_label("zone_action_0", "STORES", 10000);
     SDL_Delay(600);
     capture_zone_frame("uxr_big_roster_p1");
-    if (has_interactable("roster_page_next")) {
-        interact("roster_page_next");
-        SDL_Delay(500);
-        capture_zone_frame("uxr_big_roster_p2");
-    }
+    // 14 heroes over the scripted zone's 3-row roster band: the pager is not
+    // optional here, and a fixture that stopped paging would silently drop
+    // the second still.
+    *static_cast<bool*>(data) = has_interactable("roster_page_next");
+    interact("roster_page_next");
+    SDL_Delay(500);
+    capture_zone_frame("uxr_big_roster_p2");
     wait_for_interactable("go", 10000);
     SDL_Delay(300);
     interact("back");
@@ -1246,8 +1473,9 @@ TEST(CampaignZoneUi, zzz_uxr_capture_scripted_zone_with_full_roster)
     SyntheticCampaignScriptGuard::install(kZoneScript);
     uxr_write_save0_with_many("gladiator", 1);
 
+    bool roster_pages = false;
     SDL_Thread* thread =
-        SDL_CreateThread(uxr_big_roster_injector, "uxr_big", nullptr);
+        SDL_CreateThread(uxr_big_roster_injector, "uxr_big", &roster_pages);
     ASSERT_NE(nullptr, thread);
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -1255,4 +1483,8 @@ TEST(CampaignZoneUi, zzz_uxr_capture_scripted_zone_with_full_roster)
     SDL_WaitThread(thread, nullptr);
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_TRUE(roster_pages)
+        << "14 heroes over a 3-row band must show the roster pager";
+    verify_zone_shots("uxr_full_roster", 2);
 }

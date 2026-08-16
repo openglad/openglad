@@ -423,6 +423,22 @@ TEST(MenuSpec, terminal_model_preserves_the_full_item_list)
             EXPECT_TRUE(model.context_lines.empty());
         }
     }
+
+    // The #206 Camp door rides the same contract as every other row: listed,
+    // selectable, ungated and carrying its fixed label. Terminals list every
+    // row and answer at the click — a campaign that composed no camp prints
+    // the guard line rather than hiding the door (only the SDL surface
+    // renders the default zone in place).
+    const PickerMenuItem* camp =
+        item_of(PickerMenuId::TeamBuild, PickerMenuCommand::CampaignCamp);
+    ASSERT_NE(nullptr, camp);
+    EXPECT_EQ("camp", camp->id);
+    EXPECT_EQ("Camp", og::ui::menu_item_label(*camp, context_for(save)));
+    EXPECT_EQ("", og::ui::terminal_gate_message(*camp, context_for(save)));
+    MenuLabelContext networked = context_for(save);
+    networked.is_networked = true;
+    EXPECT_EQ("", og::ui::terminal_gate_message(*camp, networked))
+        << "the camp is the local machine's own book, never lobby-gated";
 }
 
 TEST(MenuSpec, team_build_context_lines_pin_the_header_strings)

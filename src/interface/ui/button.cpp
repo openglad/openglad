@@ -31,7 +31,6 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/interface/session_state.h>
-#include <openglad/interface/ui/menu_screen_spec.h>
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -735,11 +734,6 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return view_scenario_page_flip(call_arg);
     case ButtonAction::CreateScenarioMenu:
         return create_scenario_menu(call_arg);
-    case ButtonAction::CreateCampaignZoneSubmenu:
-        // The book's root page; the Base Camp zone dispatch bypasses this
-        // and passes the clicked page row's own id.
-        (void)call_arg;
-        return og::ui::run_campaign_zone_submenu(std::string());
     case ButtonAction::TeamsPageFlip:
         return teams_page_flip(call_arg);
     case ButtonAction::JoinTeam:

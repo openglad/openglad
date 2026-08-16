@@ -34,6 +34,7 @@
 #include <vector>
 
 class SaveData;
+class guy;
 
 namespace og::ui {
 
@@ -45,6 +46,27 @@ inline constexpr std::string_view kCampaignLevelClosedMessage =
     "That road is not open yet.";
 inline constexpr std::string_view kCampaignActionDoneMessage =
     "You have that already.";
+// A page-kind row whose page the book will not hand back. Every surface says
+// it in the same words: the SDL zone submenu door, the terminal camp's page
+// rows, and CampaignPickerSession::choose one level down.
+inline constexpr std::string_view kCampaignPageUnreadableMessage =
+    "That page cannot be read.";
+// The oath cell's width in characters, shared by the SDL roster column and
+// the terminal camp roster so one hero's oath reads the same on every
+// surface (a word cut at six characters on one screen and at nine on
+// another is two different words).
+inline constexpr std::size_t kCampaignOathCellChars = 6;
+// The terminal spelling of the dimmed face an unaffordable action row wears
+// on the SDL panel. A prompt cannot dim a row, so it says the word: "Not
+// enough gold." arriving only AFTER the click is a price tag the player was
+// never shown.
+inline constexpr std::string_view kCampaignNeedGoldMark = "[NEED GOLD]";
+// The destructive side effect of swearing a DEPLOYED hero. The cycle un-
+// deploys through the full roster tail by design, and the toast is the only
+// thing that speaks on either surface — a player who swears an oath and then
+// presses GO must never discover an empty muster in the level.
+inline constexpr std::string_view kCampaignOathStoodDownMessage =
+    "Stood down from the muster.";
 
 class CampaignPickerSession {
 public:
@@ -157,8 +179,18 @@ private:
 // One row as a text line: label, note, cost ("60g") and the CLEARED/CURRENT
 // level markers, clipped to `budget` chars. Shared by the surfaces so the
 // SDL faces and the terminal listings agree on decoration.
+// `spell_unaffordable` adds the [NEED GOLD] mark: the terminals pass true
+// (a prompt has no dimmed face to draw), the SDL faces pass false and dim
+// the row instead — the same fact, in each surface's own material.
 std::string campaign_picker_row_text(const CampaignPickerSession::Row& row,
-                                     std::size_t budget);
+                                     std::size_t budget,
+                                     bool spell_unaffordable = false);
+
+// The oath toast both surfaces speak: the sworn word, plus the un-deploy
+// when the cycle stood a deployed hero down. Composed once so the SDL panel
+// and the terminals can never tell the player different stories about the
+// same click.
+std::string campaign_oath_toast(const std::string& label, bool stood_down);
 
 // --- Base Camp gameplay-zone session (docs/basecamp-zones-design.md) -------
 //
@@ -183,9 +215,28 @@ public:
     // classic roster's exact grid — a default composition is byte-identical
     // to the pre-zone screen).
     static constexpr int kZoneRowUnits = 8;
+    // The parser's weight ceiling IS this band: a widget asking for more
+    // units than the whole zone holds is refused at parse time with a named
+    // error, so the two numbers must never drift apart.
+    static_assert(kZoneRowUnits == og::script::hooks::kCampaignZoneMaxWeight,
+                  "the zone band and the parser's weight bound must agree");
+    // One row unit in pixels, and the 8px pitch text lines ink on inside a
+    // unit (the SDL draw static_asserts its own grid against these).
+    static constexpr int kZoneRowPitch = 14;
+    static constexpr int kTextLinePitch = 8;
     // Roster minimum (red-team rule): a composition that leaves the roster
     // fewer than 2 rows is over-budget and falls to the default zone.
     static constexpr int kRosterMinRows = 2;
+
+    // The most text lines that ink inside `units` row units without crossing
+    // the band's bottom edge. A widget's explicit weight may be SMALLER than
+    // its line count — that is a legal composition the parser cannot refuse
+    // (unlike an over-weight, which it does) — so the draw clips to its own
+    // band rather than painting into the next widget's rows.
+    [[nodiscard]] static constexpr int text_lines_in_band(int units)
+    {
+        return units <= 0 ? 0 : (units * kZoneRowPitch) / kTextLinePitch;
+    }
 
     // The roster widget's capabilities + band, derived at fetch. When the
     // roster is not the FIRST widget its band spends one unit on the column
@@ -248,6 +299,14 @@ public:
 
     // False = the built-in default composition is showing.
     [[nodiscard]] bool scripted() const { return scripted_; }
+    // True when this composition shows something beyond the bare default
+    // roster: a scripted camp, or the transitional BOOK DOOR a campaign
+    // that registered a picker book but no base_camp hook gets (one page
+    // row onto the book's root, named by the book's own title). The
+    // terminals' camp door opens on this, not on scripted() — a camp that
+    // is only a second copy of the roster says nothing, but a campaign's
+    // book has to stay reachable.
+    [[nodiscard]] bool composed() const { return composed_; }
     [[nodiscard]] const RosterLayout& roster() const { return roster_; }
     [[nodiscard]] const std::vector<TextLayout>& texts() const
     {
@@ -313,6 +372,7 @@ public:
 private:
     SaveData& save_;
     bool scripted_ = false;
+    bool composed_ = false;
     RosterLayout roster_;
     std::vector<TextLayout> texts_;
     std::vector<ActionsLayout> actions_;
@@ -322,28 +382,68 @@ private:
     bool fingerprint_seeded_ = false;
 };
 
-// --- Terminal MISSIONS flow (openglad_text + openglad_curses) --------------
+// --- Terminal campaign surfaces (openglad_text + openglad_curses) ----------
 //
-// The scripted pages render through the Company List "dynamic rows + prompt"
-// precedent: the client prints numbered rows and prompts for a 1-based row
-// number — never Menu::choose, whose digit jump stops at row 9 while a page
-// may carry 24 rows. Everything except the two I/O primitives lives in
-// run_terminal_campaign_picker, so the listings stay byte-identical across
-// the text and curses clients.
+// Two flows share one contract: the CAMP (the Base Camp gameplay zone's
+// terminal face, opened by the TeamBuild "Camp" row) and the BOOK (a
+// CampaignPage tree, reached from a camp page row). Both render through the
+// Company List "dynamic rows + prompt" precedent: the client prints numbered
+// rows and prompts for a 1-based row number — never Menu::choose, whose digit
+// jump stops at row 9 while a camp may carry 16 action rows. Everything
+// except the two I/O primitives lives in the drivers below, so the listings
+// stay byte-identical across the text and curses clients.
 
-// The terminal guard lines. The no-book line matches the SDL popup body;
-// the host line is the terminal projection of the SET LEVEL host gate
-// ("Only the host may\nset the level" on the SDL popup).
-inline constexpr std::string_view kCampaignPickerNoBookMessage =
-    "This campaign keeps no mission book.";
+// The terminal guard lines. The no-camp line is the camp door's own refusal
+// (the DEFAULT composition is a full-capability roster, and both terminals
+// already carry that on their own TeamBuild rows — a camp door onto a second
+// copy of the roster would say nothing, so the door speaks only for a
+// campaign that composed a camp or keeps a book). The host line is the
+// terminal projection of the SET LEVEL host gate ("Only the host may\nset the
+// level" on the SDL popup).
+inline constexpr std::string_view kCampaignCampNoZoneMessage =
+    "This campaign keeps no camp.";
 inline constexpr std::string_view kCampaignPickerHostGuardMessage =
     "Only the host may set the level.";
+
+// The camp's roster refusals for the terminals' own Team Build commands. The
+// SDL panel hides a control its composition retired (an absent button refuses
+// nothing); a prompt cannot hide anything, so the terminals refuse in words.
+// A lock that carries no reason still has to say something — silence on a
+// prompt reads as a broken command.
+inline constexpr std::string_view kCampaignRosterDeployClosedMessage =
+    "This camp does not muster.";
+inline constexpr std::string_view kCampaignRosterDeployLockedMessage =
+    "That hero is not free to deploy.";
+inline constexpr std::string_view kCampaignRosterTrainClosedMessage =
+    "This camp does not train.";
+inline constexpr std::string_view kCampaignRosterHireClosedMessage =
+    "This camp does not hire.";
 
 // Row-text budget for the terminal listings: 80 columns minus the
 // "  NN. " prefix, with slack for the curses list gutter.
 inline constexpr std::size_t kCampaignPickerTerminalRowBudget = 72;
 
-// The per-client I/O primitives of the terminal MISSIONS loop.
+// One camp roster row, composed once for BOTH terminals (the recon's
+// text-vs-curses roster divergence is a legacy of two hand-written screens;
+// the camp has exactly one spelling). The stat columns come from the SDL row
+// composer, so the camp reads the same on every surface:
+//
+//   [L] BRAM         SOLDIER   L= 3 XP=  1200  WAR  Waits at the Falls.
+//
+// The lock reason is a trailing COLUMN, separated by space like every other
+// cell: a dash separator collided with the unsworn oath cell's own "-" and
+// produced a "- - " stutter mid-row.
+//
+// `lock` (null = deploy allowed) puts the SDL padlock's meaning into the
+// deploy cell as 'L' and spells its reason inline: a terminal cannot draw a
+// glyph in a cell nobody clicks, and a lock the player can only learn from a
+// refusal is a lock they never see. The oath cell renders only for an active
+// assign spec.
+std::string format_campaign_camp_roster_row(
+    const guy& member, const og::script::hooks::CampaignAssignSpec& assign,
+    const og::script::hooks::CampaignRosterLock* lock, std::size_t budget);
+
+// The per-client I/O primitives of the terminal camp and book loops.
 struct TerminalCampaignPickerIo {
     // Render the current page (title banner + the composed lines) and
     // prompt with `label` for one input line; nullopt = cancel/EOF
@@ -364,12 +464,42 @@ struct TerminalCampaignPickerIo {
     std::function<void(int)> apply_level;
 };
 
-// Drive the whole MISSIONS flow over `save`: the no-book guard, page
-// render/prompt loop, paging, the host gate, the client level-set tail
-// (+ CURRENT re-derive), the Acted autosave tail (§3.8 — the decision book
-// and the wallet ride the company file in the terminal clients), refusals
-// and toasts. Returns when the book closes (back at the root, or EOF).
-void run_terminal_campaign_picker(SaveData& save,
-                                  const TerminalCampaignPickerIo& io);
+// Drive the whole BOOK flow over `save` rooted at `page_id` — a camp page
+// row's door, and the only way into a book on a terminal ("" is the book's
+// root page, the door the transitional book-door composition opens). Back at
+// that page closes the door and returns to the camp (the zone submenu is a
+// room inside the camp, not a screen of its own). Carries the page
+// render/prompt loop, the host gate, the CLOSED-road refusal, the client
+// level-set tail (+ CURRENT re-derive), the Acted autosave tail (§3.8 — the
+// decision book and the wallet ride the company file in the terminal
+// clients), refusals and toasts. A page the book will not hand back answers
+// with kCampaignPageUnreadableMessage.
+void run_terminal_campaign_page(SaveData& save,
+                                const TerminalCampaignPickerIo& io,
+                                const std::string& page_id);
+
+// The camp's answer to one of the terminals' own roster commands, or nullopt
+// when the campaign allows it. Both terminal clients ask before every deploy
+// toggle, train and hire: the SDL panel enforces the roster widget's
+// capability flags and deploy locks at its dispatch, and a camp that
+// advertises a padlock on one client while the other happily deploys the
+// same hero is two different campaigns. `slot` is the SaveData::team_list
+// slot for Deploy (ignored by Train/Hire). Benching a deployed hero is
+// always allowed — the lock is a deploy courtesy, not a cage.
+enum class TerminalRosterCommand : std::uint8_t { Deploy, Train, Hire };
+std::optional<std::string> terminal_roster_refusal(
+    SaveData& save, TerminalRosterCommand command, int slot);
+
+// Drive the CAMP over `save`: fetch the base_camp composition, render it as
+// the readout line, the text blocks, the numbered docket and the roster
+// block in the zone's own layout order, then dispatch one row per prompt.
+// Level rows ride the host gate + the client's set-level tail; page rows open
+// the book at that page; action rows debit-then-dispatch through the zone
+// session and autosave; the oath row opens the swear prompt (cycle, full-word
+// toast, un-deploy first). Returns when the camp closes (0/blank/EOF), or
+// immediately with kCampaignCampNoZoneMessage when the campaign composed
+// neither a camp nor a book (CampaignZoneSession::composed()).
+void run_terminal_campaign_camp(SaveData& save,
+                                const TerminalCampaignPickerIo& io);
 
 } // namespace og::ui

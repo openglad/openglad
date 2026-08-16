@@ -859,10 +859,10 @@ private:
         case PickerMenuCommand::Teams:
             teams_screen();
             break;
-        case PickerMenuCommand::CampaignMissions:
-            // #206: the scripted mission book (guard + flow live in the
+        case PickerMenuCommand::CampaignCamp:
+            // #206: the Base Camp gameplay zone (guard + flow live in the
             // shared terminal driver).
-            campaign_missions_flow();
+            campaign_camp_flow();
             break;
         default:
             break;
@@ -1113,6 +1113,14 @@ private:
             return;
         }
         const int slot = slots[static_cast<std::size_t>(value - 1)];
+        // The camp's deploy rules bind this row too: the Camp screen shows
+        // the padlock and its reason, and a client that then deploys the
+        // locked hero anyway is a different campaign from the SDL one.
+        if (const std::optional<std::string> refused = terminal_roster_refusal(
+                save_data_, TerminalRosterCommand::Deploy, slot)) {
+            std::printf("%s\n", refused->c_str());
+            return;
+        }
         const bool deployed = toggle_deploy_slot(save_data_, slot);
         std::printf("%s %s.\n", save_data_.team_list[static_cast<std::size_t>(slot)]->name.c_str(),
             deployed ? "deployed" : "benched");
@@ -1152,6 +1160,13 @@ private:
 
     void train_team(int seed_slot = -1)
     {
+        // A camp that retired training refuses in words: the SDL panel just
+        // has no train affordance to click, but a prompt cannot hide.
+        if (const std::optional<std::string> refused = terminal_roster_refusal(
+                save_data_, TerminalRosterCommand::Train, -1)) {
+            std::printf("%s\n", refused->c_str());
+            return;
+        }
         TrainSession session(save_data_);
         if (session.empty()) {
             std::printf("No team members available to train.\n");
@@ -1222,6 +1237,13 @@ private:
 
     void hire_troops()
     {
+        // The camp's can_hire capability — the flag that hides HIRE on the
+        // SDL panel — answers this row too.
+        if (const std::optional<std::string> refused = terminal_roster_refusal(
+                save_data_, TerminalRosterCommand::Hire, -1)) {
+            std::printf("%s\n", refused->c_str());
+            return;
+        }
         HireSession session(save_data_, 0);
         if (session.team_full()) {
             std::printf("Team is already at max size (%d).\n", MAX_TEAM_SIZE);
@@ -1273,11 +1295,11 @@ private:
         }
     }
 
-    // #206 MISSIONS, text projection: the shared terminal driver over this
+    // #206 CAMP, text projection: the shared terminal driver over this
     // client's save — the printf banner and the read_line prompt are the
-    // only client-specific parts (the page lines themselves are composed by
-    // the driver, byte-identical with curses).
-    void campaign_missions_flow()
+    // only client-specific parts (every camp line, docket ordinal and roster
+    // row is composed by the driver, byte-identical with curses).
+    void campaign_camp_flow()
     {
         TerminalCampaignPickerIo io;
         io.prompt = [this](const std::string& title,
@@ -1306,7 +1328,7 @@ private:
             config_.level = level;
             save_data_.scen_num = static_cast<short>(level);
         };
-        run_terminal_campaign_picker(save_data_, io);
+        run_terminal_campaign_camp(save_data_, io);
     }
 
     void set_level()

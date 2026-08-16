@@ -17,22 +17,22 @@ trap 'rm -rf "$TMPHOME"; rm -f "$TMPOUT" "$TMPIN"' EXIT
 #   Main: 1=Begin New Game; blank accepts the generated company name (§2.2
 #     name entry); blank keeps the campaign. Back, then 2=Continue returns to
 #     Base Camp. The retired 1–4 player-count rows are no longer present.
-#   Base camp / Team Build (12 items, §2.5 substitution): 3=Hire Troops
-#     (n/h/b — the hire AUTOSAVES the company, §3.8), 1=Roster
-#     (deploy 2 toggles + blank exits), 4=Deploy (prompt re-deploys row 2),
-#     9=Scenario, 6=GO!, 7=Back.
-#   Scenario submenu (8 items): 4=Matchup (set preferred-team metadata, blank
-#     exits), 3=View Scenario (blank dismisses), 6=Scenario Troops,
-#     7=Missions (#206 — gladiator keeps no mission book, so the guard line
-#     prints and the submenu re-presents without consuming further input),
-#     8=Back.
+#   Base camp / Team Build (13 items, §2.5 substitution + the #206 Camp door
+#     inserted before Back): 3=Hire Troops (n/h/b — the hire AUTOSAVES the
+#     company, §3.8), 1=Roster (deploy 2 toggles + blank exits), 4=Deploy
+#     (prompt re-deploys row 2), 7=Camp (gladiator composes no camp, so the
+#     guard line prints and Team Build re-presents without consuming further
+#     input), 10=Scenario, 6=GO!, 8=Back.
+#   Scenario submenu (7 items — the missions door retired into the camp):
+#     4=Matchup (set preferred-team metadata, blank exits), 3=View Scenario
+#     (blank dismisses), 6=Scenario Troops, 7=Back.
 #   Protocol session after GO!: state, quit.
 #   Main: 7=Quit.
 cat > "$TMPIN" << 'INP'
 1
 
 
-7
+8
 2
 3
 n
@@ -43,18 +43,18 @@ deploy 2
 
 4
 2
-9
+7
+10
 4
 play 1
 
 3
 
 7
-8
 6
 state
 quit
-7
+8
 7
 INP
 
@@ -130,6 +130,18 @@ if not any('DEP ' in l for l in lines):
 # Scenario submenu: the nested menu between Team Build and its screens.
 if not any('=== Scenario ===' in l for l in lines):
     print('FAIL: expected the Scenario submenu banner', file=sys.stderr)
+    sys.exit(1)
+
+# #206 Camp: the gladiator campaign composes no camp, so the door answers
+# with the guard line instead of opening a second copy of the roster. (The
+# literal is pinned in C++ by tests/unit/test_platform_headless.cpp; a shell
+# drive cannot reference the exported constant, so this is the one place it
+# is spelled twice — deliberately, as the end-to-end proof.)
+if not any('This campaign keeps no camp.' in l for l in lines):
+    print('FAIL: expected the Camp door guard line', file=sys.stderr)
+    sys.exit(1)
+if any('Camp # ' in l for l in lines):
+    print('FAIL: the guard path must never open the camp prompt', file=sys.stderr)
     sys.exit(1)
 
 # Matchup screen: roster rows grouped by team plus the play/move sub-prompt.

@@ -372,8 +372,9 @@ inline constexpr int kScenarioMenuTroopsIndex = 6;
 inline constexpr int kScenarioMenuButtonCount = 7;
 
 // --- Campaign zone submenu (docs/basecamp-zones-design.md) -----------------
-// The scripted page chassis opened by page-kind zone action rows (and by
-// ButtonAction::CreateCampaignZoneSubmenu at the book root). It is a ROOM
+// The scripted page chassis opened by page-kind zone action rows, which
+// dispatch through the Base Camp's on_spec_row and name their own page (no
+// ButtonAction id: nothing opens this at the book ROOT). It is a ROOM
 // INSIDE the Base Camp, not a different game's menu: the same header lines
 // (COMPANY + GOLD — you can see your purse while you shop), the same panel
 // at (8,28)-(311,160), the same message-line toasts. Only the footer band at

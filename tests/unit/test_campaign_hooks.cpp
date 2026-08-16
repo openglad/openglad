@@ -1164,6 +1164,19 @@ constexpr const char* kZoneShapes = R"LUA(og.register_campaign_hooks({
                              items = { { value = "V" } } },
                            { kind = "roster" } } }
     end
+    -- Both sides of the weight ceiling: the whole band (8 units) parses,
+    -- one unit past it is a named rejection.
+    if shape == 43 then
+      return { widgets = { { kind = "roster", weight = 8 } } }
+    end
+    if shape == 44 then
+      return { widgets = { { kind = "roster", weight = 9 } } }
+    end
+    if shape == 45 then
+      return { widgets = { { kind = "roster" },
+                           { kind = "text", weight = 9,
+                             lines = { "over the band" } } } }
+    end
     return { widgets = { { kind = "roster" } } }
   end,
   picker_menu = function(page_id)
@@ -1319,6 +1332,11 @@ TEST_F(CampaignHooksTest, zone_bounds_and_malformed_shapes_fall_to_default)
         {40, "widgets[1].items is not an array"},
         {41, "widgets[1].items[1] is not a table"},
         {42, "widgets[1].items[1].label is missing or not a string"},
+        // The weight ceiling, upper side (the accepted side is asserted
+        // below): a widget cannot ask for more row units than the whole
+        // 8-unit band, whatever its kind.
+        {44, "widgets[1].weight is 9 row units (max 8)"},
+        {45, "widgets[2].weight is 9 row units (max 8)"},
     };
     hooks::CampaignZone zone;
     for (const auto& c : cases) {
@@ -1327,6 +1345,14 @@ TEST_F(CampaignHooksTest, zone_bounds_and_malformed_shapes_fall_to_default)
         EXPECT_TRUE(errors_contain(c.named))
             << "shape " << c.shape << " should record: " << c.named;
     }
+    // The bound's ACCEPTED side: exactly the band parses, so the rejection
+    // above is a ceiling and not an off-by-one that also refuses the only
+    // composition a full-height widget can ever have.
+    shape = 43;
+    ASSERT_TRUE(hooks::campaign_zone(zone))
+        << "weight == the whole band must parse";
+    ASSERT_EQ(1u, zone.widgets.size());
+    EXPECT_EQ(hooks::kCampaignZoneMaxWeight, zone.widgets[0].weight);
     // An erroring hook is also "no scripted zone" for that dispatch.
     shape = 21;
     EXPECT_FALSE(hooks::campaign_zone(zone));

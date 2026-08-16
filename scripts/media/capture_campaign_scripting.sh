@@ -79,7 +79,34 @@ demo_capture basketball-ping-hud   modes      824 "" 480
 
 # Base Camp zone stills: the CampaignZoneUi flows dump one PPM per state
 # when UXSHOTS_DIR is set — the scripted composition, the zone submenu,
-# and the default zone across campaigns.
+# and the default zone across campaigns. Every name below is a capture
+# point in tests/integration/test_campaign_zone_ui.cpp; the test asserts
+# each frame is non-blank and each file landed, and the loop at the bottom
+# refuses to finish with any of them missing.
+ZONE_SHOTS=(
+    zone_scripted_camp
+    zone_submenu_stores
+    zone_default_camp
+    zone_default_gladiator
+    zone_default_modes
+    zone_default_westlands
+    zone_default_longseason
+    zone_default_imaginations
+    uxr_after_bench
+    uxr_lock_toast
+    uxr_assign_war
+    uxr_assign_burden
+    uxr_level_fail_toast
+    uxr_kit_toast
+    uxr_kit_done_toast
+    uxr_level_current
+    uxr_submenu_after_buy
+    uxr_submenu_level_fail
+    uxr_back_at_root
+    uxr_big_roster_p1
+    uxr_big_roster_p2
+)
+
 UXDIR="$WORK_DIR/uxshots"
 env SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy UXSHOTS_DIR="$UXDIR" \
     "$BUILD/og_test_matchup" \
@@ -102,3 +129,24 @@ for f in "$OUT_DIR"/*.gif; do
     printf '%s: %s frames\n' "$(basename "$f")" "$frames"
     [ "${frames:-0}" -ge 2 ] || { printf 'FAIL: %s has no motion\n' "$f" >&2; exit 1; }
 done
+
+# Sanity: every expected still is actually there and decodes at the right
+# size. A capture flow that stopped reaching one of its frames used to leave
+# this script silently one PNG short — the missing artifact was only ever
+# noticed at PR-writing time.
+missing=0
+for name in "${ZONE_SHOTS[@]}"; do
+    png="$OUT_DIR/$name.png"
+    if [ ! -s "$png" ]; then
+        printf 'FAIL: expected still %s was never produced\n' "$png" >&2
+        missing=1
+        continue
+    fi
+    dims="$(ffprobe -loglevel error -select_streams v:0 \
+        -show_entries stream=width,height -of csv=p=0:s=x "$png")"
+    printf '%s: %s\n' "$(basename "$png")" "$dims"
+    [ "$dims" = "640x400" ] || {
+        printf 'FAIL: %s decoded as %s, expected 640x400\n' "$png" "$dims" >&2
+        missing=1; }
+done
+[ "$missing" -eq 0 ] || exit 1

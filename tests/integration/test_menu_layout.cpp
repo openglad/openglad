@@ -402,7 +402,7 @@ TEST(MenuLayout, cloud_save_screen_layout_states_and_nav)
     EXPECT_STREQ("cloud_save", spec.name);
 }
 
-// #206 MISSIONS subscreen: static table pins, the empty (null-state) shape,
+// #206 zone submenu: static table pins, the empty (null-state) shape,
 // and the pattern-b rewire's visibility variants — a partial page and a
 // full 24-entry page whose PageModel window shows the pagers.
 TEST(MenuLayout, zone_submenu_screen_layout_states_and_nav)
@@ -463,7 +463,7 @@ TEST(MenuLayout, zone_submenu_screen_layout_states_and_nav)
     const std::vector<og::script::PackScript> saved_scripts =
         og::script::pack_scripts();
     og::script::register_pack_script(
-        {"test.missionslayout", "missionslayout/scripts/c.lua",
+        {"test.zonelayout", "zonelayout/scripts/c.lua",
          R"LUA(og.register_campaign_hooks({
   picker_menu = function(page_id)
     if page_id == "big" then
@@ -1140,6 +1140,198 @@ TEST(MenuLayout, createmenu_basecamp_scripted_zone_bands_and_nav)
             std::move(saved_team[static_cast<std::size_t>(i)]);
     save.team_size = old_team_size;
     (void)picker_createmenu_buttons();
+}
+
+// A text widget's band is a HARD boundary. Its explicit weight may be
+// SMALLER than ceil(lines*8/14) — the parser refuses over-weight, never
+// under-weight, so an under-weighted stanza is a legal composition — and the
+// draw must then CLIP rather than ink over the rows the next widget owns.
+// This pins the arithmetic the draw runs against the real 14px grid, plus
+// the teeth: the same fixture unclipped would have painted into the roster.
+TEST(MenuLayout, basecamp_zone_text_ink_clips_to_its_own_band)
+{
+    namespace hooks = og::script::hooks;
+    using og::ui::CampaignZoneSession;
+    // The Base Camp row grid the zone lays out on (menu_screen_specs.cpp
+    // kBaseCampRowY0; its pitch is static_asserted against kZoneRowPitch).
+    constexpr int kRowY0 = 45;
+
+    // A DEFAULT share never clips: whatever the line count, the units the
+    // layout hands an unweighted widget hold every one of its lines. The
+    // clip therefore only ever fires on a deliberate under-weight.
+    for (int lines = 1; lines <= hooks::kCampaignZoneMaxTextLines; ++lines)
+    {
+        const int units =
+            (lines * CampaignZoneSession::kTextLinePitch +
+             CampaignZoneSession::kZoneRowPitch - 1) /
+            CampaignZoneSession::kZoneRowPitch;
+        EXPECT_GE(CampaignZoneSession::text_lines_in_band(units), lines)
+            << lines << " lines must all fit their default share";
+    }
+
+    SaveData save;
+    save.current_campaign = "gladiator";
+    save.my_team = 0;
+
+    // One unit for six lines: the widget asks for 14px and wants 48.
+    hooks::CampaignZone raw;
+    {
+        hooks::CampaignZoneWidget text;
+        text.kind = hooks::CampaignZoneWidget::Kind::Text;
+        text.weight = 1;
+        for (int i = 0; i < hooks::kCampaignZoneMaxTextLines; ++i)
+            text.lines.push_back(std::format("stanza line {}", i));
+        raw.widgets.push_back(std::move(text));
+        raw.widgets.emplace_back();  // roster: takes the remaining band
+    }
+    og::ui::CampaignZoneSession zone(save);
+    ASSERT_TRUE(zone.adopt(raw));
+    ASSERT_EQ(1u, zone.texts().size());
+    const og::ui::CampaignZoneSession::TextLayout& band = zone.texts()[0];
+    EXPECT_EQ(0, band.start_unit);
+    EXPECT_EQ(1, band.units) << "the explicit weight is honored as-is";
+
+    const int drawn = CampaignZoneSession::text_lines_in_band(band.units);
+    ASSERT_GT(drawn, 0) << "a one-unit band still shows its first line";
+    ASSERT_LT(drawn, static_cast<int>(band.lines.size()))
+        << "the fixture must actually engage the clip";
+
+    const int band_y = kRowY0 + CampaignZoneSession::kZoneRowPitch *
+                                    band.start_unit;
+    const int band_bottom =
+        kRowY0 + CampaignZoneSession::kZoneRowPitch *
+                     (band.start_unit + band.units);
+    const int ink_bottom =
+        band_y + drawn * CampaignZoneSession::kTextLinePitch;
+    EXPECT_LE(ink_bottom, band_bottom)
+        << "the clipped ink escapes its own band";
+
+    // The band below belongs to the roster (its header unit, then its rows):
+    // the clipped ink must stop at or before it, and the UNCLIPPED draw
+    // would not have.
+    const int roster_y =
+        kRowY0 + CampaignZoneSession::kZoneRowPitch * zone.roster().start_unit;
+    EXPECT_LE(ink_bottom, roster_y) << "text ink overpaints the roster band";
+    const int unclipped_bottom =
+        band_y + static_cast<int>(band.lines.size()) *
+                     CampaignZoneSession::kTextLinePitch;
+    EXPECT_GT(unclipped_bottom, roster_y)
+        << "the fixture no longer proves the clip does anything";
+}
+
+namespace
+{
+// Every pixel index of a rect, straight off the composed canvas.
+std::vector<int> snapshot_canvas_rect(int x0, int y0, int x1, int y1)
+{
+    screen* const game = og::runtime::current_session->myscreen_;
+    std::vector<int> pixels;
+    pixels.reserve(static_cast<std::size_t>((x1 - x0) * (y1 - y0)));
+    for (int y = y0; y < y1; ++y)
+    {
+        for (int x = x0; x < x1; ++x)
+        {
+            int index = 0;
+            game->get_pixel(x, y, &index);
+            pixels.push_back(index);
+        }
+    }
+    return pixels;
+}
+} // namespace
+
+// The clip, proved on PIXELS through the production content pass. A text
+// widget parked on the band's LAST unit with six lines would ink 48px into a
+// 14px band — straight through the panel's bottom bevel and over the seat
+// rail. Three renders of the same screen settle it: the widget's first line
+// paints, the five that do not fit change nothing, and the rows below the
+// band are byte-identical to a composition with no text at all.
+TEST(MenuLayout, basecamp_zone_text_ink_never_escapes_below_its_band)
+{
+    namespace hooks = og::script::hooks;
+    screen* const game = og::runtime::current_session->myscreen_;
+    SaveData& save = game->save_data;
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> saved_team;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        saved_team[static_cast<std::size_t>(i)] =
+            std::move(save.team_list[static_cast<std::size_t>(i)]);
+    const unsigned char old_team_size = save.team_size;
+    for (int i = 0; i < 3; ++i)
+    {
+        save.team_list[static_cast<std::size_t>(i)] =
+            std::make_unique<guy>(FAMILY_SOLDIER);
+        save.team_list[static_cast<std::size_t>(i)]->name =
+            std::format("INK{}", i);
+    }
+    save.team_size = 3;
+
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, spec.draw_content);
+
+    // Roster FIRST (7 rows, classic header at y=33), text last on the band's
+    // final unit: y=143..156, with the panel's inner face ending at 158.
+    const auto compose = [](int line_count) {
+        hooks::CampaignZone raw;
+        hooks::CampaignZoneWidget roster;
+        roster.kind = hooks::CampaignZoneWidget::Kind::Roster;
+        roster.weight = 7;
+        raw.widgets.push_back(std::move(roster));
+        hooks::CampaignZoneWidget text;
+        text.kind = hooks::CampaignZoneWidget::Kind::Text;
+        text.weight = 1;
+        for (int i = 0; i < line_count; ++i)
+            text.lines.push_back(std::format("ESCAPING STANZA LINE {}", i));
+        raw.widgets.push_back(std::move(text));
+        return raw;
+    };
+
+    const auto render = [&](int line_count) {
+        og::ui::CampaignZoneSession zone(save);
+        EXPECT_TRUE(zone.adopt(compose(line_count)));
+        EXPECT_EQ(7, zone.roster().rows_per_page);
+        og::ui::BaseCampScreenState state;
+        state.zone = &zone;
+        og::ui::base_camp_refresh_rows(state);
+        og::ui::install_base_camp_state_for_screen(&state);
+        // The zone's narrative ink is PURE_BLACK, which IS palette index 0 —
+        // the value clearbuffer leaves behind. Lay a non-zero face over the
+        // whole canvas first so text ink reads as a difference anywhere it
+        // lands, inside the band or past it.
+        game->clearbuffer();
+        game->draw_button(0, 0, 319, 199, 2, 1);
+        spec.draw_content(&state);
+        og::ui::install_base_camp_state_for_screen(nullptr);
+    };
+
+    // y=143..157 is the text widget's own band; y=158..199 is everything
+    // the panel does not own (bottom bevel, seat rail, command strip).
+    constexpr int kBandY0 = 143;
+    constexpr int kBandY1 = 157;
+    render(0);
+    const std::vector<int> band_empty =
+        snapshot_canvas_rect(10, kBandY0, 310, kBandY1);
+    const std::vector<int> below_empty = snapshot_canvas_rect(0, 158, 320, 200);
+    render(1);
+    const std::vector<int> band_one =
+        snapshot_canvas_rect(10, kBandY0, 310, kBandY1);
+    render(hooks::kCampaignZoneMaxTextLines);
+    const std::vector<int> band_six =
+        snapshot_canvas_rect(10, kBandY0, 310, kBandY1);
+    const std::vector<int> below_six = snapshot_canvas_rect(0, 158, 320, 200);
+
+    EXPECT_NE(band_empty, band_one)
+        << "the widget's first line must actually ink its band";
+    EXPECT_EQ(band_one, band_six)
+        << "a one-unit band draws exactly one line, whatever it was handed";
+    EXPECT_EQ(below_empty, below_six)
+        << "text ink escaped the zone band and painted the rail below it";
+
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[static_cast<std::size_t>(i)] =
+            std::move(saved_team[static_cast<std::size_t>(i)]);
+    save.team_size = old_team_size;
+    game->clearbuffer();
 }
 
 // The roster capability lattice: a composition may clear any subset of

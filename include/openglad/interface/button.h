@@ -376,12 +376,12 @@ enum class ButtonAction : Sint32
     CycleGameSpeed = 103,
     ToggleColorCycling = 104,
     BrightnessAdjust = 105,
-    // Campaign scripting (issue #206 / docs/basecamp-zones-design.md): the
-    // Base Camp zone submenu door — a page-kind zone action row opens the
-    // scripted page chassis (title + BACK top strip, Lua rows below). The
-    // do_call case opens the book's root page; the zone dispatch passes the
-    // clicked row's page id directly.
-    CreateCampaignZoneSubmenu = 106,
+    // 106 is FREE. The Base Camp zone submenu (issue #206 /
+    // docs/basecamp-zones-design.md) needs no action id: page-kind zone
+    // action rows arrive through the Base Camp's on_spec_row dispatch, which
+    // calls og::ui::run_campaign_zone_submenu with the clicked row's own
+    // page id. A do_call case that only ever opened the book's ROOT page had
+    // no caller and no shipped surface to give it one.
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

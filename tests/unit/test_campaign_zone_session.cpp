@@ -32,6 +32,7 @@
 #include <vector>
 
 using namespace og::script;
+using og::ui::CampaignPickerSession;
 using og::ui::CampaignZoneSession;
 
 namespace {
@@ -85,6 +86,7 @@ protected:
 void expect_default_composition(const CampaignZoneSession& zone)
 {
     EXPECT_FALSE(zone.scripted());
+    EXPECT_FALSE(zone.composed()) << "the bare default has nothing to open";
     const CampaignZoneSession::RosterLayout& roster = zone.roster();
     EXPECT_TRUE(roster.can_deploy);
     EXPECT_TRUE(roster.can_train);
@@ -117,11 +119,46 @@ TEST_F(CampaignZoneSessionTest, no_registration_fetches_the_default)
     expect_default_composition(zone);
 }
 
-TEST_F(CampaignZoneSessionTest, registration_without_base_camp_is_default)
+// A registration with a BOOK but no base_camp hook gets the transitional
+// book-door composition instead of the bare default: every client enters a
+// book through a camp page row, so the default roster alone would strand the
+// book. The door is one page row onto "" (the book's root), named by the
+// book's own root title, and the roster keeps every capability.
+TEST_F(CampaignZoneSessionTest, registration_without_base_camp_opens_the_book)
 {
     register_script(R"LUA(og.register_campaign_hooks({
   picker_menu = function(page_id)
-    return { title = "BOOK" }
+    return { title = "KETTLE'S BOOK" }
+  end,
+}))LUA");
+    CampaignZoneSession zone(save_);
+    zone.fetch();
+
+    EXPECT_FALSE(zone.scripted()) << "the campaign composed no camp";
+    EXPECT_TRUE(zone.composed()) << "but it does have a door to show";
+    ASSERT_EQ(1u, zone.actions().size());
+    ASSERT_EQ(1u, zone.actions()[0].rows.size());
+    const CampaignZoneSession::Row& door = zone.actions()[0].rows[0];
+    EXPECT_EQ(CampaignPickerSession::Kind::Page, door.kind);
+    EXPECT_EQ("", door.id) << "the book's root page id";
+    EXPECT_EQ("KETTLE'S BOOK", door.label);
+    // The roster below it keeps full capability and the remaining band.
+    const CampaignZoneSession::RosterLayout& roster = zone.roster();
+    EXPECT_TRUE(roster.can_deploy);
+    EXPECT_TRUE(roster.can_hire);
+    EXPECT_FALSE(roster.header_at_top) << "a roster that does not lead pays "
+                                          "one unit for its header";
+    EXPECT_TRUE(zone.texts().empty());
+    EXPECT_EQ(nullptr, zone.readout());
+}
+
+// A campaign with neither hook keeps the bare default — no door, nothing to
+// open.
+TEST_F(CampaignZoneSessionTest, registration_without_either_hook_is_default)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  picker_action = function(entry_id)
+    return { message = "no book here" }
   end,
 }))LUA");
     CampaignZoneSession zone(save_);
