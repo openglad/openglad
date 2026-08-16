@@ -686,6 +686,13 @@ end
 -- and a company that walked both hears both.
 local function ledger_roads(lines, st)
   if st.split_live then
+    -- The ledger records, never foretells: until a road is actually
+    -- marched the book holds no front positions (the swearing window
+    -- would otherwise read as prophecy).
+    if not st.started then
+      push_capped(lines, "Nothing is written past the Falls.", LEDGER_LINES)
+      return
+    end
     push_capped(lines, war_line(st), LEDGER_LINES)
     push_capped(lines, burden_line(st), LEDGER_LINES)
     return

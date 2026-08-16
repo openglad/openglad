@@ -1552,6 +1552,30 @@ TEST_F(WestlandsFireCamp, the_ledger_narrates_the_deeds_and_both_roads)
     EXPECT_EQ("Packs at tier three. Heavy, and glad.", ledger.lines[2]);
 }
 
+TEST_F(WestlandsFireCamp, the_ledger_never_foretells_at_the_swearing_window)
+{
+    // The Falls reached, nobody marched: the book holds no front positions
+    // — the frozen-state stanzas must not read as prophecy (finale review).
+    complete({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    muster_company(0, 0, 4);
+    const hooks::CampaignPage ledger = fetch("ledger");
+    for (const std::string& line : ledger.lines)
+    {
+        EXPECT_EQ(std::string::npos, line.find("Vale"))
+            << "front positions before any march: " << line;
+        EXPECT_EQ(std::string::npos, line.find("rides out"))
+            << "front positions before any march: " << line;
+    }
+    bool unwritten = false;
+    for (const std::string& line : ledger.lines)
+    {
+        if (line == "Nothing is written past the Falls.")
+            unwritten = true;
+    }
+    EXPECT_TRUE(unwritten)
+        << "the swearing window says the roads are unwritten";
+}
+
 TEST_F(WestlandsFireCamp, the_ledger_keeps_both_fronts_while_they_march)
 {
     complete({12, 13, 19});
