@@ -5189,8 +5189,9 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
         if (st->zone != nullptr && !st->zone->roster().can_deploy)
             return MENU_OK;
         // Zone deploy locks refuse the toggle-ON with the reason as a
-        // message-line toast (benching a deployed hero stays allowed; the
-        // lock is a deploy courtesy, not an integrity mechanism).
+        // message-line toast (benching a deployed hero stays allowed). A
+        // hero already standing when the lock appeared was stood down by
+        // the fetch that composed it, so this arm and the sortie agree.
         if (st->zone != nullptr &&
             !save.team_list[static_cast<std::size_t>(slot)]->deployed)
         {

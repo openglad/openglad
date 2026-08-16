@@ -15,6 +15,7 @@
 #include <openglad/core/util.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/resources/level_file_io.h>
 #include <openglad/resources/save_data.h>
 
@@ -499,7 +500,35 @@ bool CampaignZoneSession::adopt(const hooks::CampaignZone& zone)
     return true;
 }
 
-void CampaignZoneSession::fetch()
+// The lock made mechanical. Own, editable slots only: the tags come from
+// THIS machine's book, so another player's hero is never stood down by it.
+void CampaignZoneSession::enforce_deploy_locks()
+{
+    if (roster_.locks.empty())
+        return;
+    for (std::size_t slot = 0; slot < save_.team_list.size(); ++slot)
+    {
+        guy* const member = save_.team_list[slot].get();
+        if (member == nullptr)
+            continue;
+        if (!member->deployed)
+            continue;
+        if (!picker_lobby_save_slot_editable(static_cast<int>(slot)))
+            continue;
+        if (deploy_lock_for_tag(member->campaign_tag) == nullptr)
+            continue;
+        member->deployed = false;
+    }
+}
+
+void CampaignZoneSession::fetch(Enforce enforce)
+{
+    fetch_composition();
+    if (enforce == Enforce::Locks)
+        enforce_deploy_locks();
+}
+
+void CampaignZoneSession::fetch_composition()
 {
     hooks::CampaignZone raw;
     if (hooks::campaign_zone(raw) && adopt(raw))
@@ -855,7 +884,10 @@ std::optional<std::string> terminal_roster_refusal(
     if (!hooks::campaign_zone_registered())
         return std::nullopt;
     CampaignZoneSession zone(save);
-    zone.fetch();
+    // A question, not a screen: this fetch must not stand anyone down. The
+    // camp the player is looking at already enforced its locks, and moving
+    // the sortie here would invert the very toggle being asked about.
+    zone.fetch(CampaignZoneSession::Enforce::None);
     const CampaignZoneSession::RosterLayout& roster = zone.roster();
     switch (command)
     {
@@ -1026,8 +1058,9 @@ std::vector<std::string> terminal_camp_roster_lines(
     {
         const guy& member =
             *save.team_list[static_cast<std::size_t>(slots[i])];
-        // Deploy locks refuse the toggle ON only — benching a deployed hero
-        // stays allowed — so a deployed row never wears the padlock.
+        // Deploy locks refuse the toggle ON; benching a deployed hero stays
+        // allowed. A locked hero is never deployed here anyway (adopt stood
+        // him down), so the padlock and the sortie always agree.
         const hooks::CampaignRosterLock* lock =
             member.deployed ? nullptr
                             : zone.deploy_lock_for_tag(member.campaign_tag);

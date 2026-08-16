@@ -973,8 +973,9 @@ TEST_F(CampaignPickerSessionTest, terminal_camp_opens_the_book_without_a_zone)
 
 // The camp's roster rules bind the terminals' OWN Team Build commands: the
 // shared refusal composer is what both clients ask before a deploy toggle, a
-// train or a hire. Benching a deployed hero stays legal — the lock is a
-// deploy courtesy, not a cage.
+// train or a hire. Benching a deployed hero stays legal — and this composer's
+// own fetch never stands anyone down (Enforce::None), so asking the question
+// cannot invert the toggle it is being asked about.
 TEST_F(CampaignPickerSessionTest, terminal_roster_refusal_answers_the_camp)
 {
     save_.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);

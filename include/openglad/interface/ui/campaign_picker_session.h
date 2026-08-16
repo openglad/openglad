@@ -285,9 +285,18 @@ public:
 
     explicit CampaignZoneSession(SaveData& save);
 
+    // What a fetch does about the composition's deploy locks. `Locks` (the
+    // default) stands own heroes the composition refuses DOWN — that is
+    // what makes a lock mechanical instead of a suggestion, and every
+    // surface that shows the camp wants it. `None` composes without
+    // touching the sortie: the roster-refusal composer is a question about
+    // a command the player has already typed, and a question must not move
+    // the state that command is about to toggle.
+    enum class Enforce { Locks, None };
+
     // Fetch the composition: the registered base_camp hook when it parses
     // and lays out, the built-in default otherwise. Never fails.
-    void fetch();
+    void fetch(Enforce enforce = Enforce::Locks);
     // Fetch preserving each actions widget's page window (the
     // after-own-mutation trigger; windows clamp like every PageModel).
     void refetch();
@@ -370,6 +379,17 @@ public:
     bool settings_fingerprint_changed();
 
 private:
+    // Stand down every own hero the freshly-fetched composition refuses.
+    // Locks are declared per composition, but a company is deployed BEFORE
+    // the composition that refuses it exists (the natural order: deploy,
+    // fight, and only then does the camp learn which column is away), so a
+    // lock consulted only on the deploy toggle would let the wrong hero
+    // march while the camp narrated the opposite.
+    void enforce_deploy_locks();
+    // The composition half of a fetch (hook, book door, or default), with
+    // no side effect on the roster.
+    void fetch_composition();
+
     SaveData& save_;
     bool scripted_ = false;
     bool composed_ = false;

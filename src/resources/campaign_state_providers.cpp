@@ -220,6 +220,7 @@ og::script::hooks::CampaignProviders make_campaign_providers(
             // slot, not a guy id — ids regenerate every mission.
             entry.tag = member->campaign_tag;
             entry.save_slot = static_cast<int>(slot);
+            entry.deployed = member->deployed;
             roster.push_back(std::move(entry));
         }
         return roster;

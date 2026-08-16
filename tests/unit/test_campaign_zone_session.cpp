@@ -24,6 +24,7 @@
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/script/script_host.h>
 #include <openglad/interface/ui/campaign_picker_session.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/resources/campaign_state_providers.h>
 #include <openglad/resources/save_data.h>
 
@@ -591,6 +592,93 @@ TEST_F(CampaignZoneSessionTest, deploy_lock_matches_tag_or_unset)
     ASSERT_NE(nullptr, zone.deploy_lock_for_tag(2));
     EXPECT_EQ("The east road is closed.",
               zone.deploy_lock_for_tag(2)->reason);
+}
+
+// A lock is mechanical: the fetch that declares it stands the refused own
+// heroes down. Otherwise a company deployed BEFORE the composition existed
+// (the normal order — deploy, fight, and only then does the camp learn who
+// is away) marches on while the padlock and the prose say it does not.
+TEST_F(CampaignZoneSessionTest, a_fetch_stands_the_locked_heroes_down)
+{
+    save_.team_list[1] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save_.team_list[1]->name = "Beta";
+    save_.team_list[1]->campaign_tag = 1;
+    save_.team_size = 2;
+    save_.team_list[0]->deployed = true;  // unsworn: the unset lock refuses
+    save_.team_list[1]->deployed = true;  // tag 1: free to march
+    register_script(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return {
+      widgets = {
+        { kind = "roster",
+          locks = { { unset = true, reason = "Swear first." } } },
+      },
+    }
+  end,
+}))LUA");
+    CampaignZoneSession zone(save_);
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted());
+    EXPECT_FALSE(save_.team_list[0]->deployed)
+        << "the unsworn hero the camp refuses must not march";
+    EXPECT_TRUE(save_.team_list[1]->deployed)
+        << "a hero no lock matches keeps his place";
+
+    // Enforce::None composes the same camp without touching the sortie —
+    // the refusal composer's mode, so asking about a toggle never moves it.
+    save_.team_list[0]->deployed = true;
+    CampaignZoneSession quiet(save_);
+    quiet.fetch(CampaignZoneSession::Enforce::None);
+    ASSERT_NE(nullptr, quiet.deploy_lock_for_tag(0));
+    EXPECT_TRUE(save_.team_list[0]->deployed);
+}
+
+// Another machine's hero is never stood down: the tags and the locks come
+// from THIS company's book, so enforcement stops at the own, editable slots.
+TEST_F(CampaignZoneSessionTest, a_foreign_slot_keeps_its_place)
+{
+    save_.team_list[0]->deployed = true;  // unsworn, and the lock refuses it
+    register_script(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return {
+      widgets = {
+        { kind = "roster",
+          locks = { { unset = true, reason = "Swear first." } } },
+      },
+    }
+  end,
+}))LUA");
+    const og::ui::PickerSaveSlotEditableCallback saved =
+        og::ui::g_picker_save_slot_editable_callback;
+    og::ui::g_picker_save_slot_editable_callback = [](int) { return false; };
+    {
+        CampaignZoneSession zone(save_);
+        zone.fetch();
+        ASSERT_NE(nullptr, zone.deploy_lock_for_tag(0));
+        EXPECT_TRUE(save_.team_list[0]->deployed)
+            << "a slot this machine may not edit is not this camp's to bench";
+    }
+    og::ui::g_picker_save_slot_editable_callback = saved;
+    CampaignZoneSession zone(save_);
+    zone.fetch();
+    EXPECT_FALSE(save_.team_list[0]->deployed);
+}
+
+// A composition with no lock never touches the roster: the default zone, the
+// unscripted campaign and every open-camp state leave the sortie alone.
+TEST_F(CampaignZoneSessionTest, an_unlocked_fetch_leaves_the_sortie_alone)
+{
+    save_.team_list[0]->deployed = true;
+    register_script(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = { { kind = "roster" } } }
+  end,
+}))LUA");
+    CampaignZoneSession zone(save_);
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted());
+    EXPECT_TRUE(zone.roster().locks.empty());
+    EXPECT_TRUE(save_.team_list[0]->deployed);
 }
 
 TEST_F(CampaignZoneSessionTest, assign_spec_parses_active_with_frozen)

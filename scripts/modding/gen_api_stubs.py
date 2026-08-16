@@ -1323,12 +1323,15 @@ def generate(repo_root: Path) -> str:
     out.append("-- campaign_tag byte (GTL v16, 0 = unassigned) and")
     out.append("-- `save_slot` the owning save slot — the address the")
     out.append("-- engine's assign write takes; neither is a guy id.")
+    out.append("-- `deployed` is tonight's sortie: a camp that counts a")
+    out.append("-- march party must count who is standing, not who swore.")
     out.append("---@class og.CampaignRosterEntry")
     out.append("---@field name string")
     out.append("---@field family string")
     for stat in ("level", "exp", "strength", "dexterity", "constitution",
                  "intelligence", "armor", "team", "tag", "save_slot"):
         out.append(f"---@field {stat} integer")
+    out.append("---@field deployed boolean")
     out.append("")
     out.append("-- Hook table for og.register_campaign_hooks. `vars` names")
     out.append("-- the campaign state keys (max 64, each 1-32 chars of")

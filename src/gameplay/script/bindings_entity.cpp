@@ -1931,7 +1931,7 @@ int og_campaign_team(lua_State* L)
     lua_createtable(L, static_cast<int>(team.size()), 0);
     for (std::size_t i = 0; i < team.size(); i++) {
         const hooks::CampaignRosterEntry& entry = team[i];
-        lua_createtable(L, 0, 12);
+        lua_createtable(L, 0, 13);
         lua_pushlstring(L, entry.name.data(), entry.name.size());
         lua_setfield(L, -2, "name");
         lua_pushlstring(L, entry.family.data(), entry.family.size());
@@ -1959,6 +1959,10 @@ int og_campaign_team(lua_State* L)
         lua_setfield(L, -2, "tag");
         lua_pushinteger(L, entry.save_slot);
         lua_setfield(L, -2, "save_slot");
+        // Tonight's sortie, not the oath census: a march row that counts
+        // swords has to know which of them are actually standing.
+        lua_pushboolean(L, entry.deployed ? 1 : 0);
+        lua_setfield(L, -2, "deployed");
         lua_rawseti(L, -2, static_cast<lua_Integer>(i) + 1);
     }
     return 1;

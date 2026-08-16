@@ -1,154 +1,158 @@
--- westlands.fire lib: road — the pack-local mirror of the shipped 47-exit graph, in the fiction's words (cookbook: docs/lua-classpacks-design.md §3).
+-- westlands.fire lib: road — the pack-local mirror of the shipped forward exits, in the fiction's words (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 --
--- Pure data for THE ROAD page (og.use("road")). One row per shipped level:
---   here  the place name spoken at the fire (<= 24 glyphs)
---   fwd   forward exits: { level, label, note? } — notes only at the four
---         authored forks, as the briefings named them (label <= 24,
---         note <= 20)
---   back  backtrack exits: { level, label }
--- The table mirrors tools/westlands_mapgen's authored exit graph edge for
--- edge and never invents one; test_westlands_fire.cpp asserts the mirror
--- against the shipped .fss exits for every level.
+-- Pure data for the camp docket (og.use("road")). One row per shipped level:
+--   escort  true on the levels the Bearer walks (the shipped SAVE_ALL set)
+--   fwd     forward exits: { level, label, note } — every row states its
+--           stake in plain words (label <= 24, note <= 20)
+-- Only FORWARD edges live here: the camp offers the road ahead and nothing
+-- else, so a backtrack exit is never a row. test_westlands_fire.cpp holds the
+-- table to the shipped .fss level by level in both directions — every offered
+-- road is a real exit, and every shipped exit the camp does not offer is the
+-- way back to a camp that offers this one — and mirrors `escort` against the
+-- level's SAVE_ALL bit.
 local M = {}
 
 M.ROAD = {
   [1] = {
-    here = "THE QUIET VALE",
-    fwd = { { level = 2, label = "THE FOREST ROAD" } },
-    back = {},
+    escort = false,
+    fwd = { { level = 2, label = "THE FOREST ROAD", note = "the road out" } },
   },
   [2] = {
-    here = "THE FOREST ROAD",
-    fwd = { { level = 3, label = "THE LAST FORD" } },
-    back = { { level = 1, label = "BACK TO THE VALE" } },
+    escort = true,
+    fwd = {
+      { level = 3, label = "THE LAST FORD", note = "hold the crossing" },
+    },
   },
   [3] = {
-    here = "THE LAST FORD",
-    fwd = { { level = 4, label = "THE HIDDEN REFUGE" } },
-    back = { { level = 2, label = "BACK TO THE FOREST ROAD" } },
+    escort = true,
+    fwd = {
+      { level = 4, label = "THE HIDDEN REFUGE", note = "cover, and a plan" },
+    },
   },
   [4] = {
-    here = "THE HIDDEN REFUGE",
+    escort = true,
     fwd = {
       { level = 5, label = "THE HIGH PASS", note = "south, over snow" },
-      { level = 7, label = "THE FROZEN WALL", note = "the north plea" },
+      { level = 7, label = "THE FROZEN WALL", note = "a plea, a pay chest" },
     },
-    back = { { level = 3, label = "BACK TO THE FORD" } },
   },
   [5] = {
-    here = "THE HIGH PASS",
-    fwd = { { level = 6, label = "UNDER THE MOUNTAIN" } },
-    back = { { level = 4, label = "BACK TO THE REFUGE" } },
+    escort = true,
+    fwd = {
+      { level = 6, label = "UNDER THE MOUNTAIN", note = "the mountain gate" },
+    },
   },
   [6] = {
-    here = "UNDER THE MOUNTAIN",
+    escort = true,
     fwd = {
-      { level = 8, label = "THE BRIDGE" },
-      { level = 9, label = "THE LOST DELVE", note = "gold uncounted" },
+      { level = 8, label = "THE BRIDGE", note = "the straight road" },
+      { level = 9, label = "THE LOST DELVE", note = "gold, and a price" },
     },
-    back = {},
   },
   [7] = {
-    here = "THE FROZEN WALL",
-    fwd = { { level = 5, label = "THE HIGH PASS" } },
-    back = {},
+    escort = false,
+    fwd = { { level = 5, label = "THE HIGH PASS", note = "south, over snow" } },
   },
   [8] = {
-    here = "THE BRIDGE OF SHADOW",
-    fwd = { { level = 10, label = "THE GOLDEN WOOD" } },
-    back = {},
+    escort = true,
+    fwd = {
+      { level = 10, label = "THE GOLDEN WOOD", note = "quiet, and watched" },
+    },
   },
   [9] = {
-    here = "THE LOST DELVE",
-    fwd = { { level = 8, label = "THE BRIDGE" } },
-    back = { { level = 6, label = "BACK TO THE HOARD" } },
+    escort = true,
+    fwd = { { level = 8, label = "THE BRIDGE", note = "back to the road" } },
   },
   [10] = {
-    here = "THE GOLDEN WOOD",
-    fwd = { { level = 11, label = "THE GREAT RIVER" } },
-    back = { { level = 8, label = "BACK TO THE BRIDGE" } },
+    escort = true,
+    fwd = {
+      { level = 11, label = "THE GREAT RIVER", note = "the crossing east" },
+    },
   },
   [11] = {
-    here = "THE GREAT RIVER",
-    fwd = { { level = 12, label = "THE FALLS" } },
-    back = { { level = 10, label = "BACK TO THE WOOD" } },
+    escort = true,
+    fwd = { { level = 12, label = "THE FALLS", note = "where roads part" } },
   },
   [12] = {
-    here = "THE FALLS",
+    escort = true,
     fwd = {
-      { level = 13, label = "THE WAR ROAD", note = "the horns of war" },
+      { level = 13, label = "THE WAR ROAD", note = "the feint, west" },
       { level = 19, label = "THE BURDEN'S ROAD", note = "the marsh road" },
     },
-    back = {},
   },
   [13] = {
-    here = "THE PLAINS",
-    fwd = { { level = 14, label = "THE WIZARD'S VALE" } },
-    back = { { level = 12, label = "BACK TO THE FALLS" } },
+    escort = false,
+    fwd = {
+      { level = 14, label = "THE WIZARD'S VALE", note = "war road, north" },
+    },
   },
   [14] = {
-    here = "THE WIZARD'S VALE",
-    fwd = { { level = 15, label = "THE DEEPING WALL" } },
-    back = { { level = 13, label = "BACK TO THE PLAINS" } },
+    escort = false,
+    fwd = {
+      { level = 15, label = "THE DEEPING WALL", note = "hold the wall" },
+    },
   },
   [15] = {
-    here = "THE DEEPING WALL",
-    fwd = { { level = 16, label = "THE WHITE CITY" } },
-    back = { { level = 14, label = "BACK TO THE VALE" } },
+    escort = false,
+    fwd = {
+      { level = 16, label = "THE WHITE CITY", note = "the city musters" },
+    },
   },
   [16] = {
-    here = "THE WHITE CITY",
-    fwd = { { level = 17, label = "THE BLACK GATE" } },
-    back = { { level = 15, label = "BACK TO THE WALL" } },
+    escort = false,
+    fwd = { { level = 17, label = "THE BLACK GATE", note = "the last gate" } },
   },
   [17] = {
-    here = "THE BLACK GATE",
-    fwd = { { level = 24, label = "THE MOUNTAIN OF FIRE" } },
-    back = { { level = 16, label = "BACK TO THE CITY" } },
+    escort = false,
+    fwd = {
+      { level = 24, label = "THE MOUNTAIN OF FIRE", note = "the summit" },
+    },
   },
   [19] = {
-    here = "THE DEAD MARSHES",
-    fwd = { { level = 20, label = "THE CROSSROADS" } },
-    back = { { level = 12, label = "BACK TO THE FALLS" } },
+    escort = true,
+    fwd = {
+      { level = 20, label = "THE CROSSROADS", note = "burden road, east" },
+    },
   },
   [20] = {
-    here = "THE CROSSROADS",
-    fwd = { { level = 21, label = "THE PASS OF THE SPIDER" } },
-    back = { { level = 19, label = "BACK TO THE MARSHES" } },
+    escort = true,
+    fwd = {
+      { level = 21, label = "THE PASS OF THE SPIDER", note = "the high path" },
+    },
   },
   [21] = {
-    here = "THE PASS OF THE SPIDER",
-    fwd = { { level = 22, label = "THE TOWER OF THE MOON" } },
-    back = { { level = 20, label = "BACK TO THE CROSSROADS" } },
+    escort = true,
+    fwd = {
+      { level = 22, label = "THE TOWER OF THE MOON", note = "the tower road" },
+    },
   },
   [22] = {
-    here = "THE TOWER OF THE MOON",
-    fwd = { { level = 23, label = "THE ASH PLAINS" } },
-    back = { { level = 21, label = "BACK TO THE PASS" } },
+    escort = true,
+    fwd = {
+      { level = 23, label = "THE ASH PLAINS", note = "ash, and no cover" },
+    },
   },
   [23] = {
-    here = "THE ASH PLAINS",
-    fwd = { { level = 24, label = "THE MOUNTAIN OF FIRE" } },
-    back = { { level = 22, label = "BACK TO THE TOWER" } },
+    escort = true,
+    fwd = {
+      { level = 24, label = "THE MOUNTAIN OF FIRE", note = "the summit" },
+    },
   },
   [24] = {
-    here = "THE MOUNTAIN OF FIRE",
+    escort = true,
     fwd = {
       { level = 25, label = "THE SCOURING", note = "home, and war" },
       { level = 26, label = "THE GREY SHIPS", note = "the grey sea" },
     },
-    back = {},
   },
   [25] = {
-    here = "THE SCOURING",
-    fwd = { { level = 26, label = "THE GREY SHIPS" } },
-    back = { { level = 24, label = "BACK TO THE SUMMIT" } },
+    escort = false,
+    fwd = { { level = 26, label = "THE GREY SHIPS", note = "the grey sea" } },
   },
   [26] = {
-    here = "THE GREY SHIPS",
-    fwd = { { level = 1, label = "THE VALE AGAIN" } },
-    back = {},
+    escort = false,
+    fwd = { { level = 1, label = "THE VALE AGAIN", note = "the road begins" } },
   },
 }
 

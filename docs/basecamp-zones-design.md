@@ -180,8 +180,15 @@ List et al. remains; not claimed here).
   networked); locks derive from (own tag, front_of(synced scen_num))
   where front_of is a pure function of the static road graph — never a
   stored "current front"; absent/conflicted book ⇒ locks fail OPEN
-  (locks are an own-machine courtesy, not an integrity mechanism).
-  Networked Westlands co-op plays the unsworn-bypass shape.
+  (no lock, no refusal — the own machine's book is the only authority).
+  Where a lock DOES compose it is mechanical: the fetch that declares it
+  stands the refused own heroes down, so the padlock, the muster and the
+  sortie can never disagree. Other machines' slots are never touched.
+  A networked company that never swore plays the unsworn-bypass shape by
+  derivation; one that swore in solo keeps its own tags in the lobby (the
+  roster snapshot is the local save's), so a guest's fire may narrate a
+  different front state than the host's — the documented cost of a
+  per-machine book.
 - Zone refusals prefer the message line/toast over modal popups (modals
   do not poll the lobby; a stranded joiner misses GO). One click, one
   answer: every dispatch drops the standing toast before it speaks, so

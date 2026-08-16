@@ -1482,7 +1482,9 @@ TEST(CampaignZoneUi, zz_capture_default_zone_across_campaigns)
         // camp spends no text line precisely so that its last row is not
         // parked behind a pager arrow on the screen a player lives on.
         {"modes", "zone_default_modes", 300, 5},
-        {"westlands", "zone_default_westlands", 1, 1},
+        // The Company Fire composes its camp: at the vale that is the one
+        // road ahead plus the QUARTERMASTER and THE LEDGER doors.
+        {"westlands", "zone_camp_westlands", 1, 3},
         {"longseason", "zone_default_longseason", 1, 1},
         {"imaginations", "zone_default_imaginations", 1, 1},
     };

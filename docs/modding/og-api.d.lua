@@ -419,6 +419,8 @@
 -- campaign_tag byte (GTL v16, 0 = unassigned) and
 -- `save_slot` the owning save slot — the address the
 -- engine's assign write takes; neither is a guy id.
+-- `deployed` is tonight's sortie: a camp that counts a
+-- march party must count who is standing, not who swore.
 ---@class og.CampaignRosterEntry
 ---@field name string
 ---@field family string
@@ -432,6 +434,7 @@
 ---@field team integer
 ---@field tag integer
 ---@field save_slot integer
+---@field deployed boolean
 
 -- Hook table for og.register_campaign_hooks. `vars` names
 -- the campaign state keys (max 64, each 1-32 chars of

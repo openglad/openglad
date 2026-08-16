@@ -1439,17 +1439,35 @@ void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
 // The embedded pack must actually register and dispatch, not merely ride
 // along in the zip (the concept.showcase self-check discipline). With the
 // produced package mounted: the pack script registry must carry the fire
-// pack; every picker page must come back well-formed and inside the
-// mission-book content budgets; THE ROAD must mirror the authored exit
-// graph edge for edge; and one ticked load of scen15 with watch_paid
-// injected must land the +3 allied census the decision promises — all with
-// zero recorded script errors. This catches Lua syntax slips, hook-name
-// typos, budget overflows, graph drift and dispatch wiring at generation
-// time, against the package players actually get.
+// pack; the Base Camp composition must come back well-formed and inside the
+// camp's content budgets at every state the road can reach; the camp's docket
+// must mirror the authored exit graph in BOTH directions; both zone submenus
+// must answer; and one ticked load of scen15 with watch_paid injected must
+// land the +3 allied census the decision promises — all with zero recorded
+// script errors. This catches Lua syntax slips, hook-name typos, budget
+// overflows, graph drift and dispatch wiring at generation time, against the
+// package players actually get.
 constexpr const char* kFirePackId = "westlands.fire";
 constexpr std::size_t kMissionLabelBudget = 24;
 constexpr std::size_t kMissionNoteBudget = 20;
 constexpr std::size_t kMissionLineBudget = 38;
+constexpr std::size_t kCampTextLines = 3;
+
+void check_fire_row_budgets(const og::script::hooks::CampaignPageEntry& entry,
+                            const std::string& where)
+{
+    if (entry.label.empty())
+        fail(std::format("self-check fire [{}]: row '{}' has no label", where,
+                         entry.id));
+    if (entry.label.size() > kMissionLabelBudget)
+        fail(std::format("self-check fire [{}]: label '{}' overflows "
+                         "the {}-char budget", where, entry.label,
+                         kMissionLabelBudget));
+    if (entry.note.size() > kMissionNoteBudget)
+        fail(std::format("self-check fire [{}]: note '{}' overflows the "
+                         "{}-char budget", where, entry.note,
+                         kMissionNoteBudget));
+}
 
 void check_fire_page_budgets(const og::script::hooks::CampaignPage& page,
                              const std::string& where)
@@ -1466,16 +1484,70 @@ void check_fire_page_budgets(const og::script::hooks::CampaignPage& page,
                              "{}-char budget", where, line,
                              kMissionLineBudget));
     for (const hooks::CampaignPageEntry& entry : page.entries)
+        check_fire_row_budgets(entry, where);
+}
+
+// The camp's own budgets: one roster, three text lines of 38 glyphs, and a
+// docket inside the zone's total row cap with every row legible.
+void check_fire_zone_budgets(const og::script::hooks::CampaignZone& zone,
+                             const std::string& where)
+{
+    namespace hooks = og::script::hooks;
+    int rosters = 0;
+    std::size_t rows = 0;
+    for (const hooks::CampaignZoneWidget& widget : zone.widgets)
     {
-        if (entry.label.size() > kMissionLabelBudget)
-            fail(std::format("self-check fire [{}]: label '{}' overflows "
-                             "the {}-char budget", where, entry.label,
-                             kMissionLabelBudget));
-        if (entry.note.size() > kMissionNoteBudget)
-            fail(std::format("self-check fire [{}]: note '{}' overflows the "
-                             "{}-char budget", where, entry.note,
-                             kMissionNoteBudget));
+        switch (widget.kind)
+        {
+            case hooks::CampaignZoneWidget::Kind::Roster:
+                ++rosters;
+                break;
+            case hooks::CampaignZoneWidget::Kind::Text:
+                if (widget.lines.empty())
+                    fail(std::format("self-check fire [{}]: the fire says "
+                                     "nothing", where));
+                if (widget.lines.size() > kCampTextLines)
+                    fail(std::format("self-check fire [{}]: {} camp lines "
+                                     "exceed the {}-line band", where,
+                                     widget.lines.size(), kCampTextLines));
+                for (const std::string& line : widget.lines)
+                    if (line.size() > kMissionLineBudget)
+                        fail(std::format("self-check fire [{}]: line '{}' "
+                                         "overflows the {}-char budget", where,
+                                         line, kMissionLineBudget));
+                break;
+            case hooks::CampaignZoneWidget::Kind::Actions:
+                rows += widget.entries.size();
+                for (const hooks::CampaignPageEntry& entry : widget.entries)
+                    check_fire_row_budgets(entry, where);
+                break;
+            case hooks::CampaignZoneWidget::Kind::Readout:
+                if (widget.items.empty())
+                    fail(std::format("self-check fire [{}]: an empty readout",
+                                     where));
+                break;
+        }
     }
+    if (rosters != 1)
+        fail(std::format("self-check fire [{}]: {} roster widgets, expected "
+                         "exactly one", where, rosters));
+    if (rows > static_cast<std::size_t>(hooks::kCampaignZoneMaxActionEntries))
+        fail(std::format("self-check fire [{}]: {} docket rows exceed the "
+                         "{}-row zone cap", where, rows,
+                         hooks::kCampaignZoneMaxActionEntries));
+}
+
+// One sworn hero for the split states the self-check drives.
+og::script::hooks::CampaignRosterEntry fire_check_hero(int slot, int tag)
+{
+    og::script::hooks::CampaignRosterEntry hero;
+    hero.name = std::format("Sword{}", slot);
+    hero.family = "SOLDIER";
+    hero.level = 1;
+    hero.tag = tag;
+    hero.save_slot = slot;
+    hero.deployed = true;  // a company at the fire is a company on its feet
+    return hero;
 }
 
 void self_check_fire_script(const std::vector<ExpectedLevel>& expectations)
@@ -1492,13 +1564,14 @@ void self_check_fire_script(const std::vector<ExpectedLevel>& expectations)
         return;
     }
 
-    // Page fetches run in the shared UI VM (no world), exactly like the
-    // three picker surfaces: park the mapgen context for the duration.
+    // Camp fetches run in the shared UI VM (no world), exactly like the three
+    // picker surfaces: park the mapgen context for the duration.
     GameplayContext* prev = current_game;
     current_game = nullptr;
 
     std::map<std::string, std::int32_t> state;
     std::set<int> completed;
+    std::vector<hooks::CampaignRosterEntry> company;
     int cursor = 1;
     hooks::CampaignProviders providers;
     providers.state_get = [&state](const std::string& key) -> std::int32_t {
@@ -1509,22 +1582,45 @@ void self_check_fire_script(const std::vector<ExpectedLevel>& expectations)
         return completed.count(id) != 0;
     };
     providers.current_level = [&cursor] { return cursor; };
+    providers.gold_get = [] { return static_cast<std::int64_t>(1000); };
+    providers.team_snapshot = [&company] { return company; };
     hooks::install_campaign_providers(std::move(providers));
 
+    const auto camp = [](const char* where) {
+        hooks::CampaignZone zone;
+        if (!hooks::campaign_zone(zone))
+            fail(std::format("self-check fire [{}]: the camp did not compose",
+                             where));
+        else
+            check_fire_zone_budgets(zone, where);
+        return zone;
+    };
+    const auto docket = [](const hooks::CampaignZone& zone) {
+        std::vector<hooks::CampaignPageEntry> rows;
+        for (const hooks::CampaignZoneWidget& widget : zone.widgets)
+        {
+            if (widget.kind != hooks::CampaignZoneWidget::Kind::Actions)
+                continue;
+            for (const hooks::CampaignPageEntry& entry : widget.entries)
+                rows.push_back(entry);
+        }
+        return rows;
+    };
     const auto fetch = [](const std::string& page_id, const char* where) {
         hooks::CampaignPage page;
         if (!hooks::campaign_picker_page(page_id, page))
             fail(std::format("self-check fire [{}]: page '{}' did not "
                              "answer", where, page_id));
         else
-            check_fire_page_budgets(page, page_id.empty() ? "root" : page_id);
+            check_fire_page_budgets(page, page_id);
         return page;
     };
 
-    // Fresh company: the root triple, the one-row shelf, the blank ledger.
-    const hooks::CampaignPage root = fetch("", "fresh");
-    if (root.title != "THE COMPANY FIRE" || root.entries.size() != 3)
-        fail("self-check fire: fresh root page is not the three-entry fire");
+    // Fresh company at the vale: one road ahead, then the two doors.
+    const std::vector<hooks::CampaignPageEntry> fresh = docket(camp("fresh"));
+    if (fresh.size() != 3)
+        fail(std::format("self-check fire: the fresh docket has {} rows, "
+                         "expected the road and the two doors", fresh.size()));
     const hooks::CampaignPage shelf = fetch("stores", "fresh");
     if (shelf.entries.size() != 1)
         fail(std::format("self-check fire: fresh shelf has {} offers, "
@@ -1532,38 +1628,113 @@ void self_check_fire_script(const std::vector<ExpectedLevel>& expectations)
                          shelf.entries.size()));
     fetch("ledger", "fresh");
 
-    // THE ROAD must mirror the authored exit graph at every level.
+    // The docket must mirror the authored exits at every level, in BOTH
+    // directions: the camp may not offer a road the map does not carry, and
+    // every shipped exit it does not offer must be the way back to a camp
+    // that offers this one (back rows never render).
+    std::map<int, std::set<int>> offered;
     for (const ExpectedLevel& ex : expectations)
     {
         cursor = ex.id;
-        const hooks::CampaignPage road = fetch("road", "road");
         std::set<int> rows;
-        for (const hooks::CampaignPageEntry& entry : road.entries)
+        for (const hooks::CampaignPageEntry& entry : docket(camp("road")))
         {
             if (entry.kind != hooks::CampaignPageEntry::Kind::Level)
-                fail(std::format("self-check fire: road row '{}' at scen{} "
-                                 "is not a level row", entry.id, ex.id));
+                continue;
             rows.insert(entry.level);
         }
         const std::set<int> exits(ex.exit_destinations.begin(),
                                   ex.exit_destinations.end());
-        if (rows != exits)
-            fail(std::format("self-check fire: scen{} road rows do not "
-                             "mirror the authored exits ({} rows, {} exits)",
-                             ex.id, rows.size(), exits.size()));
+        for (const int level : rows)
+            if (exits.count(level) == 0)
+                fail(std::format("self-check fire: scen{} offers a road to "
+                                 "scen{}, which it has no exit to", ex.id,
+                                 level));
+        offered[ex.id] = std::move(rows);
+    }
+    for (const ExpectedLevel& ex : expectations)
+    {
+        for (const int exit : ex.exit_destinations)
+        {
+            if (offered[ex.id].count(exit) != 0)
+                continue;
+            const auto back = offered.find(exit);
+            if (back == offered.end() || back->second.count(ex.id) == 0)
+                fail(std::format("self-check fire: scen{}'s exit to scen{} is "
+                                 "neither offered nor the way back to a camp "
+                                 "that offers scen{}", ex.id, exit, ex.id));
+        }
     }
     cursor = 1;
 
-    // The generous late book: every offer on the shelf at once, the
-    // full-circle title, and the six-line everything-ledger — in budget.
+    // The split, sworn and marching: the camp must freeze the oath column and
+    // lock the other road's swords out of tonight's level.
+    company = {fire_check_hero(0, 1), fire_check_hero(1, 1),
+               fire_check_hero(2, 2), fire_check_hero(3, 2),
+               fire_check_hero(4, 0)};
+    completed = {12, 13};
+    cursor = 14;
+    const hooks::CampaignZone split = camp("split");
+    for (const hooks::CampaignZoneWidget& widget : split.widgets)
+    {
+        if (widget.kind != hooks::CampaignZoneWidget::Kind::Roster)
+            continue;
+        if (!widget.assign.active || widget.assign.frozen.empty())
+            fail("self-check fire: the marching split did not freeze the "
+                 "oath column");
+        if (widget.locks.size() != 2)
+            fail(std::format("self-check fire: the war road carries {} deploy "
+                             "locks, expected the Bearer's column and the "
+                             "unsworn", widget.locks.size()));
+    }
+    if (docket(split).size() != 4)
+        fail(std::format("self-check fire: the split docket has {} rows, "
+                         "expected two fronts and two doors",
+                         docket(split).size()));
+    for (const hooks::CampaignZoneWidget& widget : split.widgets)
+    {
+        if (widget.kind != hooks::CampaignZoneWidget::Kind::Roster)
+            continue;
+        if (widget.can_hire)
+            fail("self-check fire: the frozen split must close the hiring "
+                 "board — a blade bought here could swear no road");
+    }
+    const hooks::CampaignPage split_shelf = fetch("stores", "split");
+    if (std::find(split_shelf.lines.begin(), split_shelf.lines.end(),
+                  std::string("No new blades until the roads meet.")) ==
+        split_shelf.lines.end())
+    {
+        fail("self-check fire: the shelf must say why the board is shut");
+    }
+
+    // Standing on the mountain with the Bearer still out east: 17's only
+    // forward exit puts every war-road-first company here, so the refusal
+    // has to be on screen BEFORE the climb, not only after it.
+    completed = {12, 13, 14, 15, 16, 17};
+    cursor = 24;
+    const hooks::CampaignZone early = camp("early summit");
+    bool warned = false;
+    for (const hooks::CampaignZoneWidget& widget : early.widgets)
+    {
+        if (widget.kind != hooks::CampaignZoneWidget::Kind::Text)
+            continue;
+        for (const std::string& line : widget.lines)
+            if (line == "The Bearer is not yet come.")
+                warned = true;
+    }
+    if (!warned)
+        fail("self-check fire: the camp must refuse to celebrate while the "
+             "cursor rests on an unfought summit");
+
+    // The generous late book: the standing shelf, and the six-line ledger.
     completed = {3, 6, 7, 9, 12, 13, 19, 24, 26};
-    const hooks::CampaignPage late_root = fetch("", "late");
-    if (late_root.title != "THE FIRE REMEMBERS")
-        fail("self-check fire: the full-circle root did not shift its title");
+    cursor = 20;
+    camp("late");
     const hooks::CampaignPage late_shelf = fetch("stores", "late");
-    if (late_shelf.entries.size() != 5)
+    if (late_shelf.entries.size() != 2)
         fail(std::format("self-check fire: the late shelf has {} offers, "
-                         "expected all five", late_shelf.entries.size()));
+                         "expected the packs and the Watch's pay",
+                         late_shelf.entries.size()));
     state = {{"watch_paid", 1},
              {"delve_counted", 1},
              {"provisions", 2},

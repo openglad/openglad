@@ -166,6 +166,11 @@ struct CampaignRosterEntry {
     // provider takes at dispatch time. Never a guy id (ids regenerate).
     int tag = 0;
     int save_slot = -1;
+    // Whether this hero is standing in tonight's sortie. A camp that counts
+    // its own march rows has to count the party that will actually walk out
+    // — the roster's own oath census answers "who swore", never "who goes",
+    // and the two diverge the moment anything stands a hero down.
+    bool deployed = false;
 };
 
 // The og.campaign_match_get / og.campaign_match_set name vocabulary
