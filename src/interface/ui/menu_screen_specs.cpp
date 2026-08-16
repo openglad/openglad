@@ -1222,7 +1222,7 @@ constexpr MenuButtonSpec kScenarioMenuRows[] = {
     {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 30, .y = 170, .w = 60, .h = 20,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 7}},
+     .nav = {.up = 3}},
     {.id = "set_campaign", .label = "SET CAMPAIGN",
      .x = 30, .y = 40, .w = 80, .h = 15,
      .action = ButtonAction::DoPickCampaign, .arg = -1,
@@ -1234,7 +1234,7 @@ constexpr MenuButtonSpec kScenarioMenuRows[] = {
     {.id = "view_scenario", .label = "VIEW LEVEL",
      .x = 30, .y = 100, .w = 80, .h = 15,
      .action = ButtonAction::ViewScenario, .arg = -1,
-     .nav = {.up = 2, .down = 7, .right = 4}},
+     .nav = {.up = 2, .down = 0, .right = 4}},
     {.id = "matchup", .label = "MATCHUP",
      .x = 120, .y = 100, .w = 80, .h = 15,
      .action = ButtonAction::CreateTeamsMenu, .arg = -1,
@@ -1253,16 +1253,7 @@ constexpr MenuButtonSpec kScenarioMenuRows[] = {
     {.id = "troops", .label = "TROOPS: ALL",
      .x = 120, .y = 140, .w = 80, .h = 15,
      .action = ButtonAction::CycleCtfScenarioTroops, .arg = -1,
-     .nav = {.up = 4, .down = 0, .left = 7}},
-    // #206 MISSIONS: the scripted mission book of a campaign registering
-    // og.register_campaign_hooks. Appended (index contract); the free x=30
-    // grid cell under VIEW LEVEL, clear of the x=114 title strips. NOT
-    // host-gated — the per-frame sync hides it only when no picker is
-    // registered; level-row activation inside is host-gated instead.
-    {.id = "missions", .label = "MISSIONS",
-     .x = 30, .y = 140, .w = 80, .h = 15,
-     .action = ButtonAction::CreateCampaignMissionsMenu, .arg = -1,
-     .nav = {.up = 3, .down = 0, .right = 6}},
+     .nav = {.up = 4, .down = 0}},
 };
 
 // The campaign-name / level-title strips sit beside the buttons that change
@@ -1324,71 +1315,124 @@ const MenuScreenSpec& scenario_menu_screen_spec()
 }
 
 // ---------------------------------------------------------------------------
-// #206 MISSIONS subscreen: the scripted campaign mission book, rendered from
-// the SDL-free CampaignPickerSession over the Company List dynamic-rows
+// Campaign zone submenu (docs/basecamp-zones-design.md "Zone submenus"):
+// the scripted page chassis a page-kind zone action row opens, rendered
+// from the SDL-free CampaignPickerSession over the Company List dynamic-rows
 // chassis (fixed 8-row macro table, PageModel window over the page cap of
 // 24, per-frame full rewire, MenuSpecRow dispatch, installed state pointer,
-// blocking wrapper). The session owns fetching (once per navigation or
-// action — never per frame); this screen only windows and displays the
-// cached page. Level rows are host-gated at ACTIVATION (the session stays
-// policy-free); pages and actions are open to every machine.
+// blocking wrapper). The C++-owned top strip — title + Escape-hotkeyed BACK
+// — is checked before any Lua row; the session owns fetching (once per
+// navigation or action — never per frame); this screen only windows and
+// displays the cached page. Level rows are host-gated at ACTIVATION (the
+// session stays policy-free); pages and actions are open to every machine.
 
 // The company-list seam pattern: the per-frame rewire reads this file-static
 // pointer; run_menu_screen's screen_state points at the SAME object. Null
 // state renders the empty shape: rows and pagers hidden, BACK alone.
-CampaignMissionsScreenState* g_campaign_missions_state = nullptr;
+ZoneSubmenuScreenState* g_zone_submenu_state = nullptr;
 
-// Row faces x=30..290 on a 12px pitch (y=66..162) under the title/lines
-// band; footer band at y=169 (BACK 10, pagers 220/270 — the company-list
-// footer split) so no other screen's "back" or pager shares this geometry
-// (the injector wait_for_interactable_at disambiguation rule). Static nav
-// is the full-page multi-page shape; the rewire recomputes every link.
-#define OG_CAMPAIGN_MISSIONS_ROW(i)                                          \
-    {.id = "mission_row_" #i, .label = "",                                   \
-     .x = 30, .y = 66 + 12 * (i), .w = 260, .h = 10,                          \
+// Row faces run the panel's inner width on a 12px pitch under the page's
+// narrative lines (the rewire computes the band from the live line count);
+// footer band at y=169 (BACK 10, pagers 220/270 — the company-list footer
+// split) so no other screen's "back" or pager shares this geometry (the
+// injector wait_for_interactable_at disambiguation rule). Static nav is the
+// full-page multi-page shape; the rewire recomputes every link.
+#define OG_ZONE_SUBMENU_ROW(i)                                               \
+    {.id = "zone_row_" #i, .label = "",                                      \
+     .x = kZoneSubmenuRowX,                                                  \
+     .y = kZoneSubmenuRowY0 + kZoneSubmenuRowPitch * (i),                    \
+     .w = kZoneSubmenuRowWidth, .h = 10,                                      \
      .action = ButtonAction::MenuSpecRow, .arg = (i),                        \
      .nav = {.up = (i) > 0 ? (i) - 1 : -1,                                    \
-             .down = (i) < 7 ? (i) + 1 : kCampaignMissionsBackIndex}}
+             .down = (i) < 7 ? (i) + 1 : kZoneSubmenuBackIndex}}
 
-constexpr MenuButtonSpec kCampaignMissionsRows[] = {
-    OG_CAMPAIGN_MISSIONS_ROW(0), OG_CAMPAIGN_MISSIONS_ROW(1),
-    OG_CAMPAIGN_MISSIONS_ROW(2), OG_CAMPAIGN_MISSIONS_ROW(3),
-    OG_CAMPAIGN_MISSIONS_ROW(4), OG_CAMPAIGN_MISSIONS_ROW(5),
-    OG_CAMPAIGN_MISSIONS_ROW(6), OG_CAMPAIGN_MISSIONS_ROW(7),
-    // BACK pops one session page; at the root it closes the subscreen
-    // (SCENARIO resumes). Escape hotkey (the shared cancel grammar).
+constexpr MenuButtonSpec kZoneSubmenuRows[] = {
+    OG_ZONE_SUBMENU_ROW(0), OG_ZONE_SUBMENU_ROW(1),
+    OG_ZONE_SUBMENU_ROW(2), OG_ZONE_SUBMENU_ROW(3),
+    OG_ZONE_SUBMENU_ROW(4), OG_ZONE_SUBMENU_ROW(5),
+    OG_ZONE_SUBMENU_ROW(6), OG_ZONE_SUBMENU_ROW(7),
+    // BACK pops one session page; at the submenu's ROOT it closes the
+    // subscreen (Base Camp resumes). Escape hotkey (the shared cancel
+    // grammar).
     {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 10, .y = 169, .w = 44, .h = 20,
-     .action = ButtonAction::MenuSpecRow, .arg = kCampaignMissionsBackIndex,
-     .nav = {.up = 7, .right = kCampaignMissionsPrevIndex}},
+     .action = ButtonAction::MenuSpecRow, .arg = kZoneSubmenuBackIndex,
+     .nav = {.up = 7, .right = kZoneSubmenuPrevIndex}},
     // Real MenuSpecRow pager actions (keyboard-live); statically hidden —
     // the rewire shows them only when the page's rows span the window.
-    {.id = "mission_page_prev", .label = "PREV",
+    {.id = "zone_page_prev", .label = "PREV",
      .x = 220, .y = 169, .w = 40, .h = 20,
-     .action = ButtonAction::MenuSpecRow, .arg = kCampaignMissionsPrevIndex,
-     .nav = {.up = 7, .left = kCampaignMissionsBackIndex,
-             .right = kCampaignMissionsNextIndex},
+     .action = ButtonAction::MenuSpecRow, .arg = kZoneSubmenuPrevIndex,
+     .nav = {.up = 7, .left = kZoneSubmenuBackIndex,
+             .right = kZoneSubmenuNextIndex},
      .hidden = true},
-    {.id = "mission_page_next", .label = "NEXT",
+    {.id = "zone_page_next", .label = "NEXT",
      .x = 270, .y = 169, .w = 40, .h = 20,
-     .action = ButtonAction::MenuSpecRow, .arg = kCampaignMissionsNextIndex,
-     .nav = {.up = 7, .left = kCampaignMissionsPrevIndex},
+     .action = ButtonAction::MenuSpecRow, .arg = kZoneSubmenuNextIndex,
+     .nav = {.up = 7, .left = kZoneSubmenuPrevIndex},
      .hidden = true},
 };
 
-#undef OG_CAMPAIGN_MISSIONS_ROW
+#undef OG_ZONE_SUBMENU_ROW
+
+// The rows' band inside the panel: the narrative lines take the top of the
+// panel's face and the rows take what is left, so a wordy page shows fewer
+// rows per window instead of spilling out of the frame.
+struct ZoneSubmenuRowBand {
+    int top = 0;
+    int per_page = kZoneSubmenuRowsPerPage;
+};
+
+ZoneSubmenuRowBand zone_submenu_row_band(std::size_t line_count)
+{
+    ZoneSubmenuRowBand band;
+    band.top = line_count == 0
+        ? kZoneSubmenuRowY0
+        : kZoneSubmenuLineY0 + static_cast<int>(line_count) * 8 + 4;
+    band.per_page = std::clamp(
+        (kZoneSubmenuPanelBottomY - band.top) / kZoneSubmenuRowPitch, 1,
+        kZoneSubmenuRowsPerPage);
+    return band;
+}
+
+ZoneSubmenuRowBand zone_submenu_row_band(const ZoneSubmenuScreenState* state)
+{
+    const og::ui::CampaignPickerSession* session =
+        state != nullptr ? state->session : nullptr;
+    return zone_submenu_row_band(
+        session != nullptr ? session->page().lines.size() : 0);
+}
+
+// The submenu's message line: the SAME 2.5s header-strip toast the Base
+// Camp uses. Purchases, refusals and level sets confirm identically at
+// every depth of the book.
+void zone_submenu_show_toast(ZoneSubmenuScreenState& state, std::string text)
+{
+    if (text.size() >
+        static_cast<std::size_t>(og::ui::kBaseCampLineBCharsHireHidden)) {
+        text.resize(
+            static_cast<std::size_t>(og::ui::kBaseCampLineBCharsHireHidden));
+    }
+    TRACE("zone", "toast %s", text.c_str());
+    state.toast = std::move(text);
+    state.toast_until_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count() +
+        2500;
+}
 
 // Reset the page window over the session's current page. `preserve_page`
 // keeps the window position across an in-place refetch (action refresh);
 // navigation resets to the first window.
-void campaign_missions_reset_page(CampaignMissionsScreenState& state,
-                                  bool preserve_page)
+void zone_submenu_reset_page(ZoneSubmenuScreenState& state,
+                             bool preserve_page)
 {
     const int rows = state.session != nullptr
         ? static_cast<int>(state.session->page().rows.size())
         : 0;
     const int page_before = state.page.page;
-    state.page = PageModel::make(rows, kCampaignMissionsRowsPerPage);
+    state.page = PageModel::make(rows, zone_submenu_row_band(&state).per_page);
     if (preserve_page)
         state.page.page = std::min(page_before, state.page.page_count() - 1);
 }
@@ -1397,11 +1441,11 @@ void campaign_missions_reset_page(CampaignMissionsScreenState& state,
 // Company List chassis): page-window the rows, chain them vertically into
 // BACK, close BACK/pager side links over pager visibility — and write the
 // composed row text to BOTH label surfaces (descriptor + live vbutton).
-void campaign_missions_rewire(button* buttons, int count, int& /*highlighted*/)
+void zone_submenu_rewire(button* buttons, int count, int& /*highlighted*/)
 {
-    if (count < kCampaignMissionsButtonCount)
+    if (count < kZoneSubmenuButtonCount)
         return;
-    const CampaignMissionsScreenState* st = g_campaign_missions_state;
+    const ZoneSubmenuScreenState* st = g_zone_submenu_state;
     const og::ui::CampaignPickerSession* session =
         st != nullptr ? st->session : nullptr;
     const int first = st != nullptr ? st->page.first_index() : 0;
@@ -1415,119 +1459,185 @@ void campaign_missions_rewire(button* buttons, int count, int& /*highlighted*/)
     const bool level_rows_actionable = picker_lobby_host_controls_visible();
     constexpr std::size_t kHostMarkerChars = 7;  // " (HOST)"
 
-    for (int r = 0; r < kCampaignMissionsRowsPerPage; ++r) {
+    const ZoneSubmenuRowBand band = zone_submenu_row_band(st);
+    for (int r = 0; r < kZoneSubmenuRowsPerPage; ++r) {
         const bool on = r < visible;
         buttons[r].hidden = !on;
         if (on) {
             buttons[r].nav = {
                 .up = r > 0 ? r - 1 : -1,
-                .down = r + 1 < visible ? r + 1 : kCampaignMissionsBackIndex,
+                .down = r + 1 < visible ? r + 1 : kZoneSubmenuBackIndex,
                 .left = -1,
                 .right = -1};
+            buttons[r].x = kZoneSubmenuRowX;
+            buttons[r].y = band.top + kZoneSubmenuRowPitch * r;
+            buttons[r].sizex = kZoneSubmenuRowWidth;
             const og::ui::CampaignPickerSession::Row& row =
                 session->page().rows[static_cast<std::size_t>(first + r)];
             if (row.is_level() && !level_rows_actionable) {
                 buttons[r].label =
                     campaign_picker_row_text(
-                        row, kCampaignMissionsRowLabelChars - kHostMarkerChars)
+                        row, kZoneSubmenuRowLabelChars - kHostMarkerChars)
                     + " (HOST)";
             } else {
                 buttons[r].label = campaign_picker_row_text(
-                    row, kCampaignMissionsRowLabelChars);
+                    row, kZoneSubmenuRowLabelChars);
             }
             vbutton* live = og::runtime::current_session
                                 ->allbuttons_[static_cast<std::size_t>(r)];
-            if (live != nullptr)
+            if (live != nullptr) {
                 live->label = buttons[r].label;
+                live->xloc = buttons[r].x;
+                live->yloc = buttons[r].y;
+                live->width = buttons[r].sizex;
+                live->xend = buttons[r].x + buttons[r].sizex;
+                live->yend = buttons[r].y + buttons[r].sizey;
+                // The same three-way row grammar the Base Camp zone uses:
+                // green launches, grey is spent or closed, plain acts.
+                if (row.is_inert() ||
+                    (row.kind ==
+                         og::ui::CampaignPickerSession::Kind::Action &&
+                     !row.affordable))
+                {
+                    live->color = GREY;
+                } else if (row.is_level() && level_rows_actionable) {
+                    live->color = og::ui::kReadyGoFaceGo;
+                }
+            }
         }
     }
-    buttons[kCampaignMissionsPrevIndex].hidden = !pagers;
-    buttons[kCampaignMissionsNextIndex].hidden = !pagers;
-    buttons[kCampaignMissionsBackIndex].nav = {
+    buttons[kZoneSubmenuPrevIndex].hidden = !pagers;
+    buttons[kZoneSubmenuNextIndex].hidden = !pagers;
+    buttons[kZoneSubmenuBackIndex].nav = {
         .up = visible > 0 ? visible - 1 : -1,
         .down = -1,
         .left = -1,
-        .right = pagers ? kCampaignMissionsPrevIndex : -1};
-    buttons[kCampaignMissionsPrevIndex].nav = {
+        .right = pagers ? kZoneSubmenuPrevIndex : -1};
+    buttons[kZoneSubmenuPrevIndex].nav = {
         .up = visible > 0 ? visible - 1 : -1,
         .down = -1,
-        .left = kCampaignMissionsBackIndex,
-        .right = kCampaignMissionsNextIndex};
-    buttons[kCampaignMissionsNextIndex].nav = {
+        .left = kZoneSubmenuBackIndex,
+        .right = kZoneSubmenuNextIndex};
+    buttons[kZoneSubmenuNextIndex].nav = {
         .up = visible > 0 ? visible - 1 : -1,
         .down = -1,
-        .left = kCampaignMissionsPrevIndex,
+        .left = kZoneSubmenuPrevIndex,
         .right = -1};
     for (int i = 0; i < count; ++i)
         sync_button_hidden_state(buttons, i);
 }
 
-// Content pass: the page title and up to six narrative lines (the black-
-// strip readability idiom over the backdrop), then the "p/N" indicator.
-// The row text itself lives on the button faces (written by the rewire).
-void campaign_missions_draw_content(void* screen_state)
+// Background: the Base Camp's own frame. A submenu is a ROOM INSIDE the
+// camp — the panel and the header strips are the walls the player walked
+// in through, and abandoning them (three grey bars floating on the title
+// art) reads as a different game's menu.
+void zone_submenu_draw_background(void* /*screen_state*/)
 {
-    const CampaignMissionsScreenState* st =
-        static_cast<const CampaignMissionsScreenState*>(screen_state);
-    screen* game = og::runtime::current_session->myscreen_;
+    picker_backdrop_draw_background(nullptr);
+    og::runtime::current_session->myscreen_->draw_button(8, 28, 311, 160, 2,
+                                                         1);
+}
 
-    const auto strip_text = [game](int x, int y, const std::string& text) {
-        if (text.empty())
+// Content pass: the shared header (COMPANY + GOLD — the purse stays on
+// screen while you shop) with the page title / toast on the status line,
+// then the page's narrative lines and the "p/N" indicator inside the panel.
+// The row text itself lives on the button faces (written by the rewire).
+void zone_submenu_draw_content(void* screen_state)
+{
+    const ZoneSubmenuScreenState* st =
+        static_cast<const ZoneSubmenuScreenState*>(screen_state);
+    screen* game = og::runtime::current_session->myscreen_;
+    text& mytext = game->text_normal;
+    const SaveData& save = game->save_data;
+
+    const auto strip_text = [game](int x, int y, const std::string& value,
+                                   unsigned char color) {
+        if (value.empty())
             return;
-        const int width = static_cast<int>(text.size()) * 6;
+        const int width = static_cast<int>(value.size()) * 6;
         game->draw_rect_filled(x - 2, y - 1, static_cast<Uint32>(width + 4),
                                8, PURE_BLACK, 150);
-        game->text_normal.write_xy(x, y, WHITE, "%s", text.c_str());
+        game->text_normal.write_xy(x, y, color, "%s", value.c_str());
     };
+
+    // Header line A, byte-for-byte the Base Camp's: COMPANY + the gold
+    // block. Prices with no purse on screen are unreadable.
+    std::string company = save.save_name;
+    if (company.size() > 26)
+        company.resize(26);
+    {
+        const int width = (9 + static_cast<int>(company.size())) * 6;
+        game->draw_rect_filled(8, 2, static_cast<Uint32>(width + 4), 8,
+                               PURE_BLACK, 150);
+        mytext.write_xy(10, 3, "COMPANY:", GREY, 1);
+        mytext.write_xy(64, 3, company.c_str(), WHITE, 1);
+    }
+    strip_text(244, 3, format_base_camp_gold_label(save), YELLOW);
 
     const og::ui::CampaignPickerSession* session =
         st != nullptr ? st->session : nullptr;
-    if (session == nullptr) {
-        strip_text(10, 8, "MISSIONS");
-        return;
+    // Line B: the toast while it stands, else where the player is.
+    const std::int64_t now_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count();
+    if (st != nullptr && !st->toast.empty() && now_ms < st->toast_until_ms) {
+        strip_text(10, 17, st->toast, YELLOW);
+    } else {
+        std::string title = session != nullptr ? session->page().title : "CAMP";
+        strip_text(
+            10, 17,
+            og::ui::clip_with_ellipsis(
+                "CAMP: " + title,
+                static_cast<std::size_t>(
+                    og::ui::kBaseCampLineBCharsHireHidden)),
+            WHITE);
     }
+    if (session == nullptr)
+        return;
 
-    const og::ui::CampaignPickerSession::DecoratedPage& page = session->page();
-    strip_text(10, 8, page.title);
-    // Up to six lines on a 8px pitch (y=20..60), 50-char budget (6px/char
-    // from x=10 clears the 320px edge).
-    int y = 20;
-    for (const std::string& line : page.lines) {
-        std::string clipped = line;
-        if (clipped.size() > 50)
-            clipped.resize(50);
-        strip_text(10, y, clipped);
+    // The page's own lines, inked on the panel face like the zone's text
+    // widget (no strips inside the panel — the one-screen rule).
+    int y = kZoneSubmenuLineY0;
+    for (const std::string& line : session->page().lines) {
+        mytext.write_xy_flat(
+            12, y, og::ui::clip_with_ellipsis(line, 49).c_str(), PURE_BLACK,
+            1);
         y += 8;
     }
 
     if (st->page.multi_page())
-        strip_text(140, 176, st->page.indicator());
+        strip_text(140, 176, st->page.indicator(), WHITE);
 }
 
-// G3 row dispatch: session choose per visual row, BACK (session pop /
-// structural close at the root), and the pagers. The SDL level-set tail —
-// host gate, load-with-rollback, scen_num write, lobby republish — lives
-// HERE, not in the session (the session never writes scen_num).
-Sint32 campaign_missions_on_spec_row(int row, void* screen_state)
+// G3 row dispatch: BACK first (the C++ top strip is checked before any Lua
+// row), then the pagers, then session choose per visual row. The SDL
+// level-set tail — host gate, load-with-rollback, scen_num write, lobby
+// republish — lives HERE, not in the session (the session never writes
+// scen_num).
+Sint32 zone_submenu_on_spec_row(int row, void* screen_state)
 {
-    CampaignMissionsScreenState* st =
-        static_cast<CampaignMissionsScreenState*>(screen_state);
+    ZoneSubmenuScreenState* st =
+        static_cast<ZoneSubmenuScreenState*>(screen_state);
     if (st == nullptr || st->session == nullptr)
-        return row == kCampaignMissionsBackIndex ? MENU_EXIT : 0;
+        return row == kZoneSubmenuBackIndex ? MENU_EXIT : 0;
     og::ui::CampaignPickerSession& session = *st->session;
+    // One click, one answer (the Base Camp rule).
+    st->toast.clear();
+    st->toast_until_ms = 0;
 
-    if (row == kCampaignMissionsBackIndex) {
+    if (row == kZoneSubmenuBackIndex) {
         if (!session.back()) {
-            TRACE("missions", "closed");
-            return MENU_EXIT;  // at the root: SCENARIO resumes
+            TRACE("zone", "submenu_closed");
+            return MENU_EXIT;  // at the submenu's root: Base Camp resumes
         }
-        campaign_missions_reset_page(*st, false);
-        TRACE("missions", "back_to %s", session.page().title.c_str());
+        zone_submenu_reset_page(*st, false);
+        TRACE("zone", "submenu_back_to %s", session.page().title.c_str());
         return MENU_REDRAW;
     }
-    if (row == kCampaignMissionsPrevIndex || row == kCampaignMissionsNextIndex) {
-        if (st->page.step(row == kCampaignMissionsPrevIndex ? -1 : 1))
-            TRACE("missions", "page %s", st->page.indicator().c_str());
+    if (row == kZoneSubmenuPrevIndex || row == kZoneSubmenuNextIndex) {
+        if (st->page.step(row == kZoneSubmenuPrevIndex ? -1 : 1))
+            TRACE("zone", "submenu_page %s", st->page.indicator().c_str());
         return MENU_OK;
     }
 
@@ -1541,22 +1651,23 @@ Sint32 campaign_missions_on_spec_row(int row, void* screen_state)
         session.choose(static_cast<std::size_t>(idx));
     switch (outcome.kind) {
     case Outcome::OpenedPage:
-        campaign_missions_reset_page(*st, false);
-        TRACE("missions", "opened %s", session.page().title.c_str());
+        zone_submenu_reset_page(*st, false);
+        TRACE("zone", "submenu_opened %s", session.page().title.c_str());
         return MENU_REDRAW;
     case Outcome::SetLevel: {
         // Host gate (the SET LEVEL predicate): pages/actions are for
         // everyone, level rows publish scenario_id and are host-only.
         if (!picker_lobby_host_controls_visible()) {
-            TRACE("missions", "level_denied_nonhost %d", outcome.level);
-            popup_dialog("HOST CONTROLS THIS SETTING",
-                         "Only the host may\nset the level");
+            TRACE("zone", "level_denied_nonhost %d", outcome.level);
+            zone_submenu_show_toast(
+                *st, std::string(og::ui::kCampaignPickerHostGuardMessage));
             return MENU_REDRAW;
         }
         screen* game = og::runtime::current_session->myscreen_;
         const int old_id = game->world().id;
         if (outcome.level == old_id) {
-            TRACE("missions", "level_unchanged %d", outcome.level);
+            TRACE("zone", "level_unchanged %d", outcome.level);
+            zone_submenu_show_toast(*st, "Already on that road.");
             return MENU_REDRAW;
         }
         // The do_set_scen_level tail without pick_level: load the chosen
@@ -1565,7 +1676,8 @@ Sint32 campaign_missions_on_spec_row(int row, void* screen_state)
         if (outcome.level < 0 || outcome.level > 32767 ||
             !game->load_level()) {
             game->clearbuffer();
-            popup_dialog("Load Failed", "Invalid level file.");
+            zone_submenu_show_toast(
+                *st, std::string(og::ui::kCampaignLevelClosedMessage));
             game->world().id = static_cast<short>(old_id);
             if (!game->load_level()) {
                 game->clearbuffer();
@@ -1576,12 +1688,13 @@ Sint32 campaign_missions_on_spec_row(int row, void* screen_state)
         }
         game->save_data.scen_num = static_cast<short>(outcome.level);
         picker_lobby_sync_settings_from_save();
-        st->level_was_set = true;
         // CURRENT markers re-derive from the new cursor (fetch-per-action,
         // never per frame).
         session.refresh();
-        campaign_missions_reset_page(*st, true);
-        TRACE("missions", "level_set %d", outcome.level);
+        zone_submenu_reset_page(*st, true);
+        TRACE("zone", "level_set %d", outcome.level);
+        zone_submenu_show_toast(
+            *st, "Road set: " + std::string(game->world().title));
         return MENU_REDRAW;
     }
     case Outcome::Acted: {
@@ -1590,7 +1703,7 @@ Sint32 campaign_missions_on_spec_row(int row, void* screen_state)
         // standard sync-settings-from-save tail so joiners follow.
         if (og::data::consume_match_settings_dirty()) {
             picker_lobby_sync_settings_from_save();
-            TRACE("missions", "match_settings_synced");
+            TRACE("zone", "match_settings_synced submenu");
         }
         // Persistence tail (design contract, [SAVE-F1]): the action's debit
         // and og.campaign_state_set writes must reach the company file like
@@ -1599,19 +1712,22 @@ Sint32 campaign_missions_on_spec_row(int row, void* screen_state)
         (void)company_autosave_after_mutation(
             og::runtime::current_session->myscreen_->save_data,
             picker_lobby_is_networked());
-        TRACE("missions", "acted_autosave");
+        TRACE("zone", "acted_autosave");
         // The session already debited and refetched; re-window and surface
         // the toast (popup_dialog is trace-only under TESTING).
-        campaign_missions_reset_page(*st, true);
+        zone_submenu_reset_page(*st, true);
         const std::string toast = session.take_message();
-        TRACE("missions", "acted %s", session.page().title.c_str());
+        TRACE("zone", "acted %s", session.page().title.c_str());
+        // The SAME confirmation the root gives: a non-modal message-line
+        // toast. A purchase does not become a blocking dialog because it
+        // happened one page deeper.
         if (!toast.empty())
-            popup_dialog("MISSIONS", toast.c_str());
+            zone_submenu_show_toast(*st, toast);
         return MENU_REDRAW;
     }
     case Outcome::Refused:
-        TRACE("missions", "refused %s", outcome.reason.c_str());
-        popup_dialog("MISSIONS", outcome.reason.c_str());
+        TRACE("zone", "refused %s", outcome.reason.c_str());
+        zone_submenu_show_toast(*st, outcome.reason);
         return MENU_REDRAW;
     case Outcome::None:
         break;
@@ -1619,7 +1735,7 @@ Sint32 campaign_missions_on_spec_row(int row, void* screen_state)
     return 0;
 }
 
-// campaign_missions_menu_screen_spec() and the install seam have external
+// zone_submenu_menu_screen_spec() and the install seam have external
 // linkage (declared in menu_screen_spec.h) and are therefore defined in the
 // externally-linked og::ui region below, beside the Company List's.
 
@@ -2109,6 +2225,20 @@ constexpr int kBaseCampDeployGlyphX =
     (kBaseCampGlyphAdvance - 1) / 2;
 constexpr int kBaseCampDeployHeaderX = 12;
 constexpr int kBaseCampTeamHeaderX = 54;
+// The OATH column (a roster widget carrying an active assign spec): the
+// 10px team chip becomes a six-character WORD cell under a heading named by
+// the script's own channel key. A single letter on a team-coloured chip IS
+// the team-number widget — a returning player reads "W on red" as team 1 —
+// and the oath has to stay legible long after its toast expires. x=50..85 is
+// the whole gap between the DEPLOY heading's last ink column (47) and the
+// NAME column (88); six characters is exactly the shipped vocabulary
+// ("WAR" / "BURDEN", docs/basecamp-zones-design.md "The four camps"). The
+// deploy heading shortens to "DEP" while the oath column stands, so the two
+// headings keep a real gutter instead of colliding into "DEPLOYROAD".
+constexpr int kBaseCampOathColumnX = 44;
+constexpr std::size_t kBaseCampOathColumnChars = 6;
+constexpr int kBaseCampOathColumnWidth =
+    static_cast<int>(kBaseCampOathColumnChars) * kBaseCampGlyphAdvance;
 constexpr int kBaseCampNameColumnX = 88;
 constexpr int kBaseCampSoloClassColumnX = 164;
 constexpr int kBaseCampSoloLevelColumnX = 236;
@@ -2136,6 +2266,37 @@ constexpr int kBaseCampPagePrevX =
 constexpr int kBaseCampMoveUpWidth = 9;
 constexpr int kBaseCampMoveUpX =
     kBaseCampPanelInnerRightX - kBaseCampMoveUpWidth;
+// The roster band header's HIRE command (docs/basecamp-zones-design.md "The
+// split"): id hire_troops keeps ordinal kCreateMenuHireIndex but leaves the
+// command strip for the roster header band at y=14 — right-aligned with a
+// 4px gutter before the pager cluster, clear of the scenario_line hit zone
+// (ends x=214). The 50px strip hole at (58,178) is deliberate chrome; the
+// zone's roster widget hides this button when its can_hire capability is
+// off.
+constexpr int kBaseCampHireWidth = 34;
+constexpr int kBaseCampHireX =
+    kBaseCampPagePrevX - 4 - kBaseCampHireWidth;
+constexpr int kBaseCampHireY = 14;
+constexpr int kBaseCampHireHeight = 12;
+// HIRE's y=14..25 face overlaps header line B's y=16..23 strip, so HIRE's
+// left edge IS the line-B wall while a composition shows it (the pager
+// cluster is the wall while it does not). picker_common composes the
+// networked status to the budget these walls derive; the asserts keep that
+// budget from rotting the next time either moves.
+static_assert(kBaseCampHireX == og::ui::kBaseCampLineBHireWallX,
+              "line-B budget must follow HIRE's left edge");
+static_assert(kBaseCampPagePrevX == og::ui::kBaseCampLineBPagerWallX,
+              "line-B budget must follow the roster pager cluster");
+// Zone actions band geometry (docs/basecamp-zones-design.md "Bounds
+// arithmetic"): full-width row faces inside the panel's inner face with the
+// widget's pager pair closing the right rail on the band's first row.
+constexpr int kBaseCampZoneActionRowX = 12;
+constexpr int kBaseCampZoneActionRowWidth = 264;  // face ends x=276
+constexpr int kBaseCampZonePagerWidth = 14;
+constexpr int kBaseCampZonePagerNextX =
+    kBaseCampPanelInnerRightX - kBaseCampZonePagerWidth;          // 296..310
+constexpr int kBaseCampZonePagerPrevX =
+    kBaseCampZonePagerNextX - 2 - kBaseCampZonePagerWidth;        // 280..294
 constexpr int kBaseCampAddSeatWidth = 14;
 constexpr int kBaseCampAddSeatX = kBaseCampPanelRightX - kBaseCampAddSeatWidth;
 constexpr int kBaseCampFamilySwatchGap = 1;
@@ -2163,6 +2324,35 @@ constexpr int kBaseCampSeatRailY = 164;
 // so 23-vs-24 dimming was nearly invisible. §9.23 uses it for benched
 // NAME/CLASS too, while deployed identity text uses true black.
 constexpr unsigned char kBenchedTextShade = 21;
+
+// True when the composition's roster refuses to deploy THIS hero right now
+// (an own, benched hero whose campaign_tag matches a lock). Shared by the
+// content pass's padlock and the rewire's spent-face write so the drawn
+// state and the button face can never disagree.
+bool base_camp_row_deploy_locked(const og::ui::CampaignZoneSession* zone,
+                                 const guy& member)
+{
+    if (zone == nullptr || member.deployed || !zone->roster().can_deploy)
+        return false;
+    return zone->deploy_lock_for_tag(member.campaign_tag) != nullptr;
+}
+
+// The padlock drawn over a locked row's deploy cell: shackle, body,
+// keyhole, in the row-ink black on the button's own face. Small, but it is
+// the ONLY persistent answer to "why won't this box take my click" — the
+// refusal toast lives 2.5 seconds and the roster does not.
+void draw_base_camp_deploy_padlock(screen& game, int row_y)
+{
+    constexpr int kBodyWidth = 7;
+    constexpr int kBodyX = kBaseCampDeployColumnX +
+        (kBaseCampDeployColumnWidth - kBodyWidth) / 2;
+    game.fastbox(kBodyX + 1, row_y + 1, 5, 1, PURE_BLACK);   // shackle top
+    game.fastbox(kBodyX + 1, row_y + 2, 1, 2, PURE_BLACK);   // left post
+    game.fastbox(kBodyX + 5, row_y + 2, 1, 2, PURE_BLACK);   // right post
+    game.fastbox(kBodyX, row_y + 4, kBodyWidth, 5, PURE_BLACK);  // body
+    game.fastbox(kBodyX + 3, row_y + 5, 1, 2,
+                 static_cast<unsigned char>(BUTTON_FACING));  // keyhole
+}
 
 void draw_base_camp_family_swatch(screen& game, int x, int row_y,
                                   short family)
@@ -2258,7 +2448,7 @@ RowState base_camp_add_seat_row_state(
      .y = kBaseCampRowY0 + kBaseCampRowPitch * (i),                          \
      .w = kBaseCampDeployColumnWidth,                                        \
      .h = 10, .action = ButtonAction::MenuSpecRow, .arg = (i),               \
-     .nav = {.up = (i) > 0 ? (i) - 1 : -1,                                    \
+     .nav = {.up = (i) > 0 ? (i) - 1 : kCreateMenuHireIndex,                  \
              .down = (i) < 7 ? (i) + 1 : kCreateMenuBackIndex,                \
              .right = kBaseCampTeamChipBase + (i)}}
 #define OG_BASE_CAMP_ROW(i)                                                  \
@@ -2266,7 +2456,8 @@ RowState base_camp_add_seat_row_state(
      .x = 84, .y = kBaseCampRowY0 + kBaseCampRowPitch * (i), .w = 214,        \
      .h = 10, .action = ButtonAction::MenuSpecRow,                           \
      .arg = kBaseCampRowBodyBase + (i),                                      \
-     .nav = {.up = (i) > 0 ? kBaseCampRowBodyBase + (i) - 1 : -1,             \
+     .nav = {.up = (i) > 0 ? kBaseCampRowBodyBase + (i) - 1                   \
+                           : kCreateMenuHireIndex,                            \
              .down = (i) < 7 ? kBaseCampRowBodyBase + (i) + 1                 \
                              : kCreateMenuGoIndex,                            \
              .left = kBaseCampTeamChipBase + (i)},                            \
@@ -2289,6 +2480,13 @@ RowState base_camp_add_seat_row_state(
      .h = 10, .action = ButtonAction::MenuSpecRow,                           \
      .arg = kBaseCampMoveUpBase + (i),                                       \
      .nav = {.left = kBaseCampRowBodyBase + (i)},                            \
+     .hidden = true}
+// A statically-parked zone-band row: zero-size rect, empty label, hidden;
+// the rewire assigns real geometry when a composition uses it.
+#define OG_BASE_CAMP_ZONE_ROW(prefix, i, base)                               \
+    {.id = #prefix "_" #i, .label = "",                                      \
+     .x = 0, .y = 0, .w = 0, .h = 0,                                         \
+     .action = ButtonAction::MenuSpecRow, .arg = (base) + (i),               \
      .hidden = true}
 
 constexpr MenuButtonSpec kBaseCampRows[] = {
@@ -2321,23 +2519,29 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
     {.id = "scenario_line", .label = "",
      .x = 8, .y = 14, .w = 206, .h = 12,
      .action = ButtonAction::CreateScenarioMenu, .arg = -1,
-     .nav = {.down = kCreateMenuScenarioIndex},
+     .nav = {.down = kCreateMenuScenarioIndex,
+             .right = kCreateMenuHireIndex},
      .no_draw = true},
     // Bottom command strip (y=178, 18px tall). BACK keeps the Escape hotkey
-    // (the shared cancel grammar).
+    // (the shared cancel grammar). HIRE left the strip for the roster band
+    // header (its 50px hole is deliberate chrome); BACK's right-link goes
+    // straight to SCENARIO.
     {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 8, .y = 178, .w = 44, .h = 18,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 7, .right = kCreateMenuHireIndex}},
+     .nav = {.up = 7, .right = kCreateMenuScenarioIndex}},
+    // The roster band header's HIRE (docs/basecamp-zones-design.md): same
+    // id and ordinal, relocated beside the roster pager cluster. Hidden per
+    // frame when the zone's roster widget clears can_hire.
     {.id = "hire_troops", .label = "HIRE",
-     .x = 58, .y = 178, .w = 50, .h = 18,
+     .x = kBaseCampHireX, .y = kBaseCampHireY,
+     .w = kBaseCampHireWidth, .h = kBaseCampHireHeight,
      .action = ButtonAction::CreateHireMenu, .arg = -1,
-     .nav = {.up = 7, .left = kCreateMenuBackIndex,
-             .right = kCreateMenuScenarioIndex}},
+     .nav = {.down = 0, .left = kBaseCampScenarioLineIndex}},
     {.id = "scenario", .label = "SCENARIO",
      .x = 114, .y = 178, .w = 62, .h = 18,
      .action = ButtonAction::CreateScenarioMenu, .arg = -1,
-     .nav = {.up = kBaseCampScenarioLineIndex, .left = kCreateMenuHireIndex,
+     .nav = {.up = kBaseCampScenarioLineIndex, .left = kCreateMenuBackIndex,
              .right = kCreateMenuNetworkingIndex}},
     {.id = "networking", .label = "NETWORK",
      .x = 182, .y = 178, .w = 56, .h = 18,
@@ -2420,12 +2624,57 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
     OG_BASE_CAMP_MOVE_UP(2), OG_BASE_CAMP_MOVE_UP(3),
     OG_BASE_CAMP_MOVE_UP(4), OG_BASE_CAMP_MOVE_UP(5),
     OG_BASE_CAMP_MOVE_UP(6), OG_BASE_CAMP_MOVE_UP(7),
+    // The appended gameplay-zone band, ordinals 49..71 (docs/
+    // basecamp-zones-design.md "Bounds arithmetic"): statically PARKED at
+    // zero-size rects with empty labels — the gate-lattice sweep's overlap
+    // predicate can never fire on a zero-width rect and the label/bounds
+    // checks pass vacuously — and re-banded per frame by the rewire when a
+    // scripted composition uses them. MenuSpecRow args == ordinals (G3).
+    OG_BASE_CAMP_ZONE_ROW(zone_action, 0, kBaseCampZoneActionBase),
+    OG_BASE_CAMP_ZONE_ROW(zone_action, 1, kBaseCampZoneActionBase),
+    OG_BASE_CAMP_ZONE_ROW(zone_action, 2, kBaseCampZoneActionBase),
+    OG_BASE_CAMP_ZONE_ROW(zone_action, 3, kBaseCampZoneActionBase),
+    OG_BASE_CAMP_ZONE_ROW(zone_action, 4, kBaseCampZoneActionBase),
+    OG_BASE_CAMP_ZONE_ROW(zone_action, 5, kBaseCampZoneActionBase),
+    OG_BASE_CAMP_ZONE_ROW(zone_action, 6, kBaseCampZoneActionBase),
+    OG_BASE_CAMP_ZONE_ROW(zone_action, 7, kBaseCampZoneActionBase),
+    OG_BASE_CAMP_ZONE_ROW(zone_action, 8, kBaseCampZoneActionBase),
+    OG_BASE_CAMP_ZONE_ROW(zone_action, 9, kBaseCampZoneActionBase),
+    OG_BASE_CAMP_ZONE_ROW(zone_action, 10, kBaseCampZoneActionBase),
+    OG_BASE_CAMP_ZONE_ROW(zone_action, 11, kBaseCampZoneActionBase),
+    OG_BASE_CAMP_ZONE_ROW(zone_action, 12, kBaseCampZoneActionBase),
+    OG_BASE_CAMP_ZONE_ROW(zone_action, 13, kBaseCampZoneActionBase),
+    OG_BASE_CAMP_ZONE_ROW(zone_action, 14, kBaseCampZoneActionBase),
+    OG_BASE_CAMP_ZONE_ROW(zone_action, 15, kBaseCampZoneActionBase),
+    // One prev/next pager pair per actions widget (widget w -> ordinals
+    // base + 2w / base + 2w + 1).
+    {.id = "zone_pager_prev_0", .label = "",
+     .x = 0, .y = 0, .w = 0, .h = 0,
+     .action = ButtonAction::MenuSpecRow, .arg = kBaseCampZonePagerBase,
+     .hidden = true},
+    {.id = "zone_pager_next_0", .label = "",
+     .x = 0, .y = 0, .w = 0, .h = 0,
+     .action = ButtonAction::MenuSpecRow, .arg = kBaseCampZonePagerBase + 1,
+     .hidden = true},
+    {.id = "zone_pager_prev_1", .label = "",
+     .x = 0, .y = 0, .w = 0, .h = 0,
+     .action = ButtonAction::MenuSpecRow, .arg = kBaseCampZonePagerBase + 2,
+     .hidden = true},
+    {.id = "zone_pager_next_1", .label = "",
+     .x = 0, .y = 0, .w = 0, .h = 0,
+     .action = ButtonAction::MenuSpecRow, .arg = kBaseCampZonePagerBase + 3,
+     .hidden = true},
+    // Three spare parked ordinals close the 50 -> 72 arithmetic.
+    OG_BASE_CAMP_ZONE_ROW(zone_spare, 0, kBaseCampZoneSpareBase),
+    OG_BASE_CAMP_ZONE_ROW(zone_spare, 1, kBaseCampZoneSpareBase),
+    OG_BASE_CAMP_ZONE_ROW(zone_spare, 2, kBaseCampZoneSpareBase),
 };
 
 #undef OG_BASE_CAMP_DEP
 #undef OG_BASE_CAMP_ROW
 #undef OG_BASE_CAMP_TEAM
 #undef OG_BASE_CAMP_MOVE_UP
+#undef OG_BASE_CAMP_ZONE_ROW
 
 static_assert(static_cast<int>(std::size(kBaseCampRows))
                   == kCreateMenuButtonCount,
@@ -3200,10 +3449,60 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     if (buttons == nullptr || count < kCreateMenuButtonCount)
         return;
     const BaseCampScreenState* st = g_base_camp_state;
+    // The gameplay-zone composition (null = the classic default shape: the
+    // roster filling the whole band, full capability — what a bare state
+    // install and the engine sweeps see).
+    const og::ui::CampaignZoneSession* zone =
+        st != nullptr ? st->zone : nullptr;
+    const og::ui::CampaignZoneSession::RosterLayout* roster_layout =
+        zone != nullptr ? &zone->roster() : nullptr;
+    const int roster_rows = roster_layout != nullptr
+        ? roster_layout->rows_per_page
+        : kBaseCampRosterRowsPerPage;
+    const int roster_row_y0 = kBaseCampRowY0 +
+        kBaseCampRowPitch *
+            (roster_layout != nullptr ? roster_layout->row_start_unit : 0);
+    const bool can_deploy =
+        roster_layout == nullptr || roster_layout->can_deploy;
+    const bool can_train =
+        roster_layout == nullptr || roster_layout->can_train;
+    const bool can_reorder =
+        roster_layout == nullptr || roster_layout->can_reorder;
+    const bool can_team = roster_layout == nullptr || roster_layout->can_team;
+    const bool can_hire = roster_layout == nullptr || roster_layout->can_hire;
+    const bool assign_mode =
+        roster_layout != nullptr && roster_layout->assign.active;
     const int first = st != nullptr ? st->page.first_index() : 0;
     const int end = st != nullptr ? st->page.end_index() : 0;
-    const int visible = std::max(0, end - first);
+    const int visible = std::min(std::max(0, end - first), roster_rows);
     const bool pagers = st != nullptr && st->page.multi_page();
+    // Write a mutated descriptor rect through to the live vbutton (the
+    // foreign-deploy widening precedent, extended to the zone's per-frame
+    // re-banding).
+    const auto sync_live_rect = [&buttons](int ordinal) {
+        vbutton* live = og::runtime::current_session
+                            ->allbuttons_[static_cast<std::size_t>(ordinal)];
+        if (live == nullptr)
+            return;
+        const button& b = buttons[ordinal];
+        live->xloc = b.x;
+        live->yloc = b.y;
+        live->width = b.sizex;
+        live->height = b.sizey;
+        live->xend = b.x + b.sizex;
+        live->yend = b.y + b.sizey;
+        live->no_draw = b.no_draw;
+        live->label = b.label;
+    };
+    // Per-row face stamp (the READY/GO face precedent): the gate pass has
+    // already reset every face to BUTTON_FACING this frame, so a rewire
+    // write is the frame's last word and never leaks into the next one.
+    const auto set_live_face = [](int ordinal, unsigned char face) {
+        vbutton* live = og::runtime::current_session
+                            ->allbuttons_[static_cast<std::size_t>(ordinal)];
+        if (live != nullptr)
+            live->color = face;
+    };
     const int seat_first = st != nullptr ? st->seat_page.first_index() : 0;
     const int seat_end = st != nullptr ? st->seat_page.end_index() : 0;
     const int seat_visible = std::max(0, seat_end - seat_first);
@@ -3290,145 +3589,467 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
                             return candidate.owned;
                         });
     }
-    const auto next_owned = [&](int from) {
-        for (int r = from; r < visible; ++r)
-            if (owned_row[static_cast<std::size_t>(r)])
-                return r;
-        return -1;
-    };
-    const auto prev_owned = [&](int from) {
-        for (int r = from; r >= 0; --r)
-            if (owned_row[static_cast<std::size_t>(r)])
-                return r;
-        return -1;
-    };
-    const int first_owned = next_owned(0);
-    const int last_owned = prev_owned(visible - 1);
-    const auto next_movable = [&](int from) {
-        for (int r = from; r < visible; ++r)
-            if (movable_row[static_cast<std::size_t>(r)])
-                return r;
-        return -1;
-    };
-    const auto prev_movable = [&](int from) {
-        for (int r = from; r >= 0; --r)
-            if (movable_row[static_cast<std::size_t>(r)])
-                return r;
-        return -1;
-    };
-
+    // Per-row control presence under the zone's capability gates
+    // (docs/basecamp-zones-design.md: capabilities gate the EXISTING
+    // sub-rows). A foreign row's widened OWNED-BY hit zone survives every
+    // gate — it is the row's only click target.
+    std::array<bool, kBaseCampRosterRowsPerPage> dep_on{};
+    std::array<bool, kBaseCampRosterRowsPerPage> chip_on{};
+    std::array<bool, kBaseCampRosterRowsPerPage> body_on{};
+    std::array<bool, kBaseCampRosterRowsPerPage> move_on{};
+    std::array<bool, kBaseCampRosterRowsPerPage> locked_dep_row{};
     for (int r = 0; r < kBaseCampRosterRowsPerPage; ++r) {
         const bool on = r < visible;
         const bool own = on && owned_row[static_cast<std::size_t>(r)];
-        const bool team_cycler = own && !networked;
-        const bool move_up =
-            on && movable_row[static_cast<std::size_t>(r)];
+        // The chip cell forks on the assign spec (red-team rule): an
+        // active assign shows chips on own rows even networked; otherwise
+        // the classic solo-only team cycler (gated by can_team).
+        const bool team_cycler = own &&
+            (assign_mode || (can_team && !networked));
+        const bool move_up = on && movable_row[static_cast<std::size_t>(r)] &&
+            can_reorder;
         button& dep = buttons[r];
         button& body = buttons[kBaseCampRowBodyBase + r];
         button& chip = buttons[kBaseCampTeamChipBase + r];
         button& move = buttons[kBaseCampMoveUpBase + r];
-        dep.hidden = !on;
-        body.hidden = !own;
+        const bool own_dep = own && can_deploy;
+        dep.hidden = !on || (own && !can_deploy);
+        body.hidden = !own || !can_train;
         chip.hidden = !team_cycler;
         move.hidden = !move_up;
+        dep_on[static_cast<std::size_t>(r)] = !dep.hidden;
+        chip_on[static_cast<std::size_t>(r)] = !chip.hidden;
+        body_on[static_cast<std::size_t>(r)] = !body.hidden;
+        move_on[static_cast<std::size_t>(r)] = !move.hidden;
+
+        // The zone's row band: every roster control re-bands to the
+        // composition's roster rows (the default composition lands on the
+        // classic y=45+14r grid byte-identically).
+        const int row_y = roster_row_y0 + kBaseCampRowPitch * r;
+        dep.y = row_y;
+        body.y = row_y;
+        chip.y = row_y;
+        move.y = row_y;
+
+        if (on) {
+            const BaseCampDisplaySlot& display =
+                st->slots[static_cast<std::size_t>(first + r)];
+            const guy* member = (own && display.save_slot >= 0 &&
+                                 display.save_slot < MAX_TEAM_SIZE)
+                ? save.team_list[static_cast<std::size_t>(display.save_slot)]
+                      .get()
+                : nullptr;
+            // §2.5 deploy glyph: "X" deployed / "" benched on OWN rows;
+            // foreign (and deploy-incapable) rows draw their X/- glyph in
+            // the content pass. Both surfaces, so a toggle shows this frame.
+            dep.label =
+                (own_dep && member != nullptr && member->deployed) ? "X" : "";
+            dep.no_draw = !own;
+            // The foreign hit zone spans the panel: DEPLOY column to right
+            // rail.
+            dep.x = own ? kBaseCampDeployColumnX : kBaseCampDeployHeaderX;
+            dep.sizex = own ? kBaseCampDeployColumnWidth
+                            : kBaseCampPanelRightX - kBaseCampDeployHeaderX;
+            // The oath cell is a WORD, so its hit zone is the word's column,
+            // not the retired 10px chip square.
+            chip.x = assign_mode ? kBaseCampOathColumnX : 61;
+            chip.sizex = assign_mode ? kBaseCampOathColumnWidth : 10;
+            // A campaign-locked deploy box draws on the spent face: the
+            // click still lands (and still names the reason) but the box
+            // stops advertising itself as a live toggle.
+            locked_dep_row[static_cast<std::size_t>(r)] =
+                own_dep && member != nullptr &&
+                base_camp_row_deploy_locked(zone, *member);
+        }
+        sync_live_rect(r);
+        sync_live_rect(kBaseCampRowBodyBase + r);
+        sync_live_rect(kBaseCampTeamChipBase + r);
+        sync_live_rect(kBaseCampMoveUpBase + r);
+        if (locked_dep_row[static_cast<std::size_t>(r)])
+            set_live_face(r, GREY);
+    }
+
+    // Column-chain helpers over the presence arrays.
+    const auto next_in = [&](const std::array<bool,
+                                              kBaseCampRosterRowsPerPage>& col,
+                             int from) {
+        for (int r = from; r < kBaseCampRosterRowsPerPage; ++r)
+            if (col[static_cast<std::size_t>(r)])
+                return r;
+        return -1;
+    };
+    const auto prev_in = [&](const std::array<bool,
+                                              kBaseCampRosterRowsPerPage>& col,
+                             int from) {
+        for (int r = from; r >= 0; --r)
+            if (col[static_cast<std::size_t>(r)])
+                return r;
+        return -1;
+    };
+
+    // --- The zone bands (scripted compositions only): re-band the parked
+    // action rows/pagers into their widgets' whole-row-unit bands, write
+    // composed labels to BOTH surfaces, and remember each band's vertical
+    // anchors for the spine wiring below.
+    struct ZoneBandAnchors {
+        int top = -1;     // ordinal entered from above
+        int bottom = -1;  // ordinal entered from below
+        int start_unit = 0;
+    };
+    std::vector<ZoneBandAnchors> zone_bands;
+    const bool level_rows_actionable = picker_lobby_host_controls_visible();
+    constexpr std::size_t kZoneRowLabelChars =
+        static_cast<std::size_t>((kBaseCampZoneActionRowWidth - 8) / 6);
+    constexpr std::size_t kZoneHostMarkerChars = 7;  // " (HOST)"
+    const int actions_widgets = zone != nullptr
+        ? static_cast<int>(zone->actions().size())
+        : 0;
+    for (int w = 0; w < 2; ++w) {
+        const og::ui::CampaignZoneSession::ActionsLayout* actions =
+            w < actions_widgets ? &zone->actions()[static_cast<std::size_t>(w)]
+                                : nullptr;
+        const int band_first =
+            actions != nullptr ? actions->page.first_index() : 0;
+        const int band_visible = actions != nullptr
+            ? std::max(0, actions->page.end_index() - band_first)
+            : 0;
+        const bool band_pagers =
+            actions != nullptr && actions->page.multi_page();
+        const int band_y = actions != nullptr
+            ? kBaseCampRowY0 + kBaseCampRowPitch * actions->start_unit
+            : 0;
+        for (int r = 0; r < kBaseCampZoneActionsPerWidget; ++r) {
+            const int ordinal =
+                kBaseCampZoneActionBase + kBaseCampZoneActionsPerWidget * w +
+                r;
+            button& face = buttons[ordinal];
+            const bool on = r < band_visible;
+            face.hidden = !on;
+            face.nav = {};
+            if (on) {
+                face.x = kBaseCampZoneActionRowX;
+                face.y = band_y + kBaseCampRowPitch * r;
+                face.sizex = kBaseCampZoneActionRowWidth;
+                face.sizey = 10;
+                const og::ui::CampaignZoneSession::Row& row =
+                    actions->rows[static_cast<std::size_t>(band_first + r)];
+                if (row.is_level() && !level_rows_actionable) {
+                    face.label = campaign_picker_row_text(
+                                     row,
+                                     kZoneRowLabelChars - kZoneHostMarkerChars)
+                        + " (HOST)";
+                } else {
+                    face.label =
+                        campaign_picker_row_text(row, kZoneRowLabelChars);
+                }
+            } else {
+                face.label.clear();
+            }
+            sync_live_rect(ordinal);
+            if (on) {
+                // The row's FACE says what the click costs you. A level row
+                // starts a battle, so it wears the GO button's green — the
+                // one material on this screen that already means "this
+                // launches". Spent purchases and closed roads wear the
+                // dimmed face. Everything else is a plain row.
+                const og::ui::CampaignZoneSession::Row& row =
+                    actions->rows[static_cast<std::size_t>(band_first + r)];
+                if (row.is_inert() ||
+                    (row.kind == og::ui::CampaignPickerSession::Kind::Action &&
+                     !row.affordable))
+                {
+                    set_live_face(ordinal, GREY);
+                } else if (row.is_level() && level_rows_actionable) {
+                    set_live_face(ordinal, og::ui::kReadyGoFaceGo);
+                }
+            }
+        }
+        const int prev_ordinal = kBaseCampZonePagerBase + 2 * w;
+        const int next_ordinal = prev_ordinal + 1;
+        buttons[prev_ordinal].hidden = !band_pagers;
+        buttons[next_ordinal].hidden = !band_pagers;
+        buttons[prev_ordinal].nav = {};
+        buttons[next_ordinal].nav = {};
+        if (band_pagers) {
+            buttons[prev_ordinal].x = kBaseCampZonePagerPrevX;
+            buttons[prev_ordinal].y = band_y;
+            buttons[prev_ordinal].sizex = kBaseCampZonePagerWidth;
+            buttons[prev_ordinal].sizey = 10;
+            buttons[prev_ordinal].label = "<";
+            buttons[next_ordinal].x = kBaseCampZonePagerNextX;
+            buttons[next_ordinal].y = band_y;
+            buttons[next_ordinal].sizex = kBaseCampZonePagerWidth;
+            buttons[next_ordinal].sizey = 10;
+            buttons[next_ordinal].label = ">";
+        }
+        sync_live_rect(prev_ordinal);
+        sync_live_rect(next_ordinal);
+        if (band_visible > 0) {
+            const int band_base =
+                kBaseCampZoneActionBase + kBaseCampZoneActionsPerWidget * w;
+            // Internal chain + the pager pair off the first row.
+            for (int r = 0; r < band_visible; ++r) {
+                buttons[band_base + r].nav = {
+                    .up = r > 0 ? band_base + r - 1 : -1,
+                    .down = r + 1 < band_visible ? band_base + r + 1 : -1,
+                    .left = -1,
+                    .right = r == 0 && band_pagers ? prev_ordinal : -1};
+            }
+            if (band_pagers) {
+                buttons[prev_ordinal].nav = {
+                    .up = -1, .down = -1,
+                    .left = band_base, .right = next_ordinal};
+                buttons[next_ordinal].nav = {
+                    .up = -1, .down = -1,
+                    .left = prev_ordinal, .right = -1};
+            }
+            zone_bands.push_back({band_base, band_base + band_visible - 1,
+                                  actions->start_unit});
+        }
+    }
+    // Spares stay parked.
+    for (int spare = 0; spare < kBaseCampZoneSpareCount; ++spare) {
+        buttons[kBaseCampZoneSpareBase + spare].hidden = true;
+        buttons[kBaseCampZoneSpareBase + spare].nav = {};
+    }
+
+    // --- The vertical spine: HIRE -> each zone band above the roster ->
+    // the roster columns -> each zone band below -> the seat rail. Bands
+    // sort by their start unit; the roster's slot in the spine is its
+    // row_start_unit.
+    const int roster_spine_unit =
+        roster_layout != nullptr ? roster_layout->row_start_unit : 0;
+    std::vector<ZoneBandAnchors> bands_above;
+    std::vector<ZoneBandAnchors> bands_below;
+    for (const ZoneBandAnchors& band : zone_bands) {
+        (band.start_unit < roster_spine_unit ? bands_above : bands_below)
+            .push_back(band);
+    }
+    std::sort(bands_above.begin(), bands_above.end(),
+              [](const ZoneBandAnchors& a, const ZoneBandAnchors& b) {
+                  return a.start_unit < b.start_unit;
+              });
+    std::sort(bands_below.begin(), bands_below.end(),
+              [](const ZoneBandAnchors& a, const ZoneBandAnchors& b) {
+                  return a.start_unit < b.start_unit;
+              });
+
+    // HIRE: the roster band header's command (can_hire; always ordinal
+    // kCreateMenuHireIndex / id hire_troops — injector tests address it by
+    // id).
+    buttons[kCreateMenuHireIndex].hidden = !can_hire;
+    sync_live_rect(kCreateMenuHireIndex);
+
+    // The roster columns' outer anchors.
+    const int first_dep = next_in(dep_on, 0);
+    const int last_dep = prev_in(dep_on, kBaseCampRosterRowsPerPage - 1);
+    const int first_body = next_in(body_on, 0);
+    const int last_body = prev_in(body_on, kBaseCampRosterRowsPerPage - 1);
+    const int first_chip = next_in(chip_on, 0);
+    const int last_chip = prev_in(chip_on, kBaseCampRosterRowsPerPage - 1);
+    const int first_move = next_in(move_on, 0);
+    const int last_move = prev_in(move_on, kBaseCampRosterRowsPerPage - 1);
+    // The roster band's own top/bottom anchors (dep column preferred, the
+    // train body next, then the chip column, then move-up — an all-foreign
+    // page keeps its widened dep zones; a caps combination that leaves only
+    // one column must still anchor the spine).
+    const int roster_top = first_dep >= 0
+        ? first_dep
+        : (first_body >= 0
+               ? kBaseCampRowBodyBase + first_body
+               : (first_chip >= 0
+                      ? kBaseCampTeamChipBase + first_chip
+                      : (first_move >= 0 ? kBaseCampMoveUpBase + first_move
+                                         : -1)));
+    const int roster_bottom = last_dep >= 0
+        ? last_dep
+        : (last_body >= 0
+               ? kBaseCampRowBodyBase + last_body
+               : (last_chip >= 0
+                      ? kBaseCampTeamChipBase + last_chip
+                      : (last_move >= 0 ? kBaseCampMoveUpBase + last_move
+                                        : -1)));
+    // True when move-up is the only surviving roster column: its top row
+    // then carries the roster's up-exit so the band stays reachable.
+    const bool move_only_column =
+        first_dep < 0 && first_body < 0 && first_chip < 0;
+
+    // Entering the whole gameplay band from above (HIRE's down-link) and
+    // the anchor the roster's top row links up to.
+    const int band_above_roster_bottom =
+        bands_above.empty() ? -1 : bands_above.back().bottom;
+    const int band_below_roster_top =
+        bands_below.empty() ? -1 : bands_below.front().top;
+    int spine_first = -1;
+    if (!bands_above.empty())
+        spine_first = bands_above.front().top;
+    else if (roster_top >= 0)
+        spine_first = roster_top;
+    else if (!bands_below.empty())
+        spine_first = bands_below.front().top;
+
+    // Chain the zone bands into the spine.
+    for (std::size_t i = 0; i < bands_above.size(); ++i) {
+        const int up_exit = i > 0
+            ? bands_above[i - 1].bottom
+            : (can_hire ? kCreateMenuHireIndex : -1);
+        int down_exit = -1;
+        if (i + 1 < bands_above.size())
+            down_exit = bands_above[i + 1].top;
+        else if (roster_top >= 0)
+            down_exit = roster_top;
+        else if (band_below_roster_top >= 0)
+            down_exit = band_below_roster_top;
+        else
+            down_exit = kBaseCampSeatsLabelIndex;
+        buttons[bands_above[i].top].nav.up = up_exit;
+        buttons[bands_above[i].bottom].nav.down = down_exit;
+    }
+    for (std::size_t i = 0; i < bands_below.size(); ++i) {
+        int up_exit = -1;
+        if (i > 0)
+            up_exit = bands_below[i - 1].bottom;
+        else if (roster_bottom >= 0)
+            up_exit = roster_bottom;
+        else if (band_above_roster_bottom >= 0)
+            up_exit = band_above_roster_bottom;
+        else if (can_hire)
+            up_exit = kCreateMenuHireIndex;
+        const int down_exit = i + 1 < bands_below.size()
+            ? bands_below[i + 1].top
+            : kBaseCampSeatsLabelIndex;
+        buttons[bands_below[i].top].nav.up = up_exit;
+        buttons[bands_below[i].bottom].nav.down = down_exit;
+    }
+
+    // The roster's vertical exits: the columns' top rows link up into the
+    // band above (or HIRE); the bottom rows keep their classic rail
+    // anchors unless a zone band sits below.
+    const int roster_up_exit = band_above_roster_bottom >= 0
+        ? band_above_roster_bottom
+        : (can_hire ? kCreateMenuHireIndex : -1);
+    const int dep_down_exit = band_below_roster_top >= 0
+        ? band_below_roster_top
+        : kBaseCampSeatsLabelIndex;
+    const int body_down_exit = band_below_roster_top >= 0
+        ? band_below_roster_top
+        : seat_card_anchor;
+
+    // Roster nav (the classic chains, walked over the presence arrays so a
+    // capability-hidden column never strands a link).
+    for (int r = 0; r < kBaseCampRosterRowsPerPage; ++r) {
+        const bool on = r < visible;
         if (!on)
             continue;
-
-        const BaseCampDisplaySlot& display =
-            st->slots[static_cast<std::size_t>(first + r)];
-        const guy* member = (own && display.save_slot >= 0 &&
-                             display.save_slot < MAX_TEAM_SIZE)
-            ? save.team_list[static_cast<std::size_t>(display.save_slot)].get()
-            : nullptr;
-        // §2.5 deploy glyph: "X" deployed / "" benched on OWN rows; foreign
-        // rows draw their X/- glyph in the content pass (the button is a
-        // no_draw hit zone). Both surfaces (the descriptor row AND the live
-        // vbutton), so a toggle shows this frame.
-        dep.label = (member != nullptr && member->deployed) ? "X" : "";
-        dep.no_draw = !own;
-        // The foreign hit zone spans the panel: DEPLOY column to right rail.
-        dep.x = own ? kBaseCampDeployColumnX : kBaseCampDeployHeaderX;
-        dep.sizex = own ? kBaseCampDeployColumnWidth
-                        : kBaseCampPanelRightX - kBaseCampDeployHeaderX;
-        vbutton* live = og::runtime::current_session->allbuttons_[static_cast<std::size_t>(r)];
-        if (live != nullptr) {
-            live->label = dep.label;
-            live->no_draw = dep.no_draw;
-            live->xloc = dep.x;
-            live->width = dep.sizex;
-            live->xend = live->xloc + live->width;
+        const bool own = owned_row[static_cast<std::size_t>(r)];
+        button& dep = buttons[r];
+        button& body = buttons[kBaseCampRowBodyBase + r];
+        button& chip = buttons[kBaseCampTeamChipBase + r];
+        button& move = buttons[kBaseCampMoveUpBase + r];
+        const bool has_chip = chip_on[static_cast<std::size_t>(r)];
+        const bool has_body = body_on[static_cast<std::size_t>(r)];
+        const bool has_move = move_on[static_cast<std::size_t>(r)];
+        if (dep_on[static_cast<std::size_t>(r)]) {
+            const int up_dep = prev_in(dep_on, r - 1);
+            const int down_dep = next_in(dep_on, r + 1);
+            // Own rows step through deploy -> team chip -> name/train; a
+            // foreign hit zone spans the whole row, so its right-link
+            // carries the row-body column's pager duty — without it an
+            // all-foreign page (spectator machine, [NET-R9]) strands the
+            // pagers.
+            dep.nav = {
+                .up = up_dep >= 0 ? up_dep : roster_up_exit,
+                .down = down_dep >= 0 ? down_dep : dep_down_exit,
+                .left = -1,
+                .right = own
+                    ? (has_chip ? kBaseCampTeamChipBase + r
+                                : (has_body ? kBaseCampRowBodyBase + r
+                                            : (has_move
+                                                   ? kBaseCampMoveUpBase + r
+                                                   : -1)))
+                    : (pagers ? kBaseCampPagePrevIndex : -1)};
         }
-
-        // Own solo rows step through deploy -> team color -> name/train.
-        // Networked rows skip the team cycler because lobby teams are
-        // assigned. A foreign
-        // hit zone spans the whole row, so its right-link carries the
-        // row-body column's pager duty — without it an all-foreign page
-        // (spectator machine, [NET-R9]) strands the pagers.
-        dep.nav = {.up = r > 0 ? r - 1 : -1,
-                   .down = r + 1 < visible
-                       ? r + 1
-                       : kBaseCampSeatsLabelIndex,
-                   .left = -1,
-                   .right = own ? (team_cycler ? kBaseCampTeamChipBase + r
-                                               : kBaseCampRowBodyBase + r)
-                                : (pagers ? kBaseCampPagePrevIndex : -1)};
-        if (own) {
-            const int up_owned = prev_owned(r - 1);
-            const int down_owned = next_owned(r + 1);
+        if (has_body) {
+            const int up_body = prev_in(body_on, r - 1);
+            const int down_body = next_in(body_on, r + 1);
             body.nav = {
-                .up = up_owned >= 0 ? kBaseCampRowBodyBase + up_owned : -1,
-                .down = down_owned >= 0
-                    ? kBaseCampRowBodyBase + down_owned
-                    : seat_card_anchor,
-                .left = team_cycler ? kBaseCampTeamChipBase + r : r,
-                .right = move_up
+                .up = up_body >= 0 ? kBaseCampRowBodyBase + up_body
+                                   : roster_up_exit,
+                .down = down_body >= 0 ? kBaseCampRowBodyBase + down_body
+                                       : body_down_exit,
+                .left = has_chip
+                    ? kBaseCampTeamChipBase + r
+                    : (dep_on[static_cast<std::size_t>(r)] ? r : -1),
+                .right = has_move
                     ? kBaseCampMoveUpBase + r
                     : (pagers ? kBaseCampPagePrevIndex : -1)};
-            if (move_up) {
-                const int up_movable = prev_movable(r - 1);
-                const int down_movable = next_movable(r + 1);
-                move.nav = {
-                    .up = up_movable >= 0
-                        ? kBaseCampMoveUpBase + up_movable
-                        : -1,
-                    .down = down_movable >= 0
-                        ? kBaseCampMoveUpBase + down_movable
-                        : seat_card_anchor,
-                    .left = kBaseCampRowBodyBase + r,
-                    .right = pagers ? kBaseCampPagePrevIndex : -1};
-            }
-            if (team_cycler) {
-                chip.nav = {
-                    .up = r > 0 ? kBaseCampTeamChipBase + r - 1 : -1,
-                    .down = r + 1 < visible
-                        ? kBaseCampTeamChipBase + r + 1
-                        : seat_card_anchor,
-                    .left = r,
-                    .right = kBaseCampRowBodyBase + r};
-            }
+        }
+        if (has_move) {
+            const int up_move = prev_in(move_on, r - 1);
+            const int down_move = next_in(move_on, r + 1);
+            move.nav = {
+                .up = up_move >= 0
+                    ? kBaseCampMoveUpBase + up_move
+                    : (move_only_column ? roster_up_exit : -1),
+                .down = down_move >= 0 ? kBaseCampMoveUpBase + down_move
+                                       : body_down_exit,
+                // Walk back along whichever column actually survived the
+                // capability gates — the row body normally, the chip when
+                // can_train cleared it, the dep zone when both are gone.
+                .left = has_body
+                    ? kBaseCampRowBodyBase + r
+                    : (has_chip
+                           ? kBaseCampTeamChipBase + r
+                           : (dep_on[static_cast<std::size_t>(r)] ? r : -1)),
+                .right = pagers ? kBaseCampPagePrevIndex : -1};
+        }
+        if (has_chip) {
+            const int up_chip = prev_in(chip_on, r - 1);
+            const int down_chip = next_in(chip_on, r + 1);
+            chip.nav = {
+                .up = up_chip >= 0 ? kBaseCampTeamChipBase + up_chip
+                                   : roster_up_exit,
+                .down = down_chip >= 0 ? kBaseCampTeamChipBase + down_chip
+                                       : body_down_exit,
+                .left = dep_on[static_cast<std::size_t>(r)] ? r : -1,
+                // A composition that clears can_train hides the row body
+                // between the chip and the move-up control; without this
+                // fallback the whole move-up column keeps its rect and
+                // loses every incoming link (mouse-only, keyboard-dead).
+                .right = has_body
+                    ? kBaseCampRowBodyBase + r
+                    : (has_move ? kBaseCampMoveUpBase + r
+                                : (pagers ? kBaseCampPagePrevIndex : -1))};
         }
     }
 
     buttons[kBaseCampPagePrevIndex].hidden = !pagers;
     buttons[kBaseCampPageNextIndex].hidden = !pagers;
-    // Pager down-links land on the row-body column's first OWNED row and
-    // fall back to the dep column on all-foreign pages.
-    const int pager_down = first_owned >= 0
-        ? kBaseCampRowBodyBase + first_owned
-        : (visible > 0
-               ? 0
-               : kBaseCampSeatsLabelIndex);
+    // Pager down-links land on the row-body column's first row (train
+    // affordance) and fall back to the roster's own top anchor, the zone
+    // spine, then the rail.
+    const int pager_down = first_body >= 0
+        ? kBaseCampRowBodyBase + first_body
+        : (roster_top >= 0
+               ? roster_top
+               : (spine_first >= 0 ? spine_first : kBaseCampSeatsLabelIndex));
     buttons[kBaseCampPagePrevIndex].nav = {
         .up = -1,
         .down = pager_down,
-        .left = -1,
+        .left = can_hire ? kCreateMenuHireIndex : -1,
         .right = kBaseCampPageNextIndex};
     buttons[kBaseCampPageNextIndex].nav = {
         .up = -1,
         .down = pager_down,
         .left = kBaseCampPagePrevIndex,
         .right = -1};
+
+    // HIRE bridges the header band into the gameplay spine.
+    buttons[kCreateMenuHireIndex].nav = {
+        .up = -1,
+        .down = spine_first >= 0 ? spine_first : kBaseCampSeatsLabelIndex,
+        .left = networked ? -1 : kBaseCampScenarioLineIndex,
+        .right = pagers ? kBaseCampPagePrevIndex : -1};
 
     // Solo line B is the current scenario and doubles as a generous click
     // target for its menu. Multiplayer replaces line B with connection
@@ -3438,7 +4059,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         .up = -1,
         .down = kCreateMenuScenarioIndex,
         .left = -1,
-        .right = -1};
+        .right = can_hire ? kCreateMenuHireIndex : -1};
 
     // §2.6: exactly one of the same-rect GO/READY pair shows — GO for the
     // host (the legacy host-gate, verbatim rule), READY for a networked
@@ -3447,20 +4068,32 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     buttons[kCreateMenuGoIndex].hidden = !host_visible;
     buttons[kCreateMenuReadyIndex].hidden = !ready_visible;
 
-    const int dep_last = visible > 0 ? visible - 1 : -1;
-    // The strip's right-side up-links prefer the row-body column and fall
-    // back to the dep column when this page has no owned row (all-foreign
-    // page / spectator machine, [NET-R9]).
-    const int body_last =
-        last_owned >= 0 ? kBaseCampRowBodyBase + last_owned : dep_last;
-    const int rail_up_left = dep_last;
-    const int rail_up_right = body_last;
+    // The rail's up-links climb into the LAST band of the gameplay spine:
+    // a zone band below the roster when one exists, else the roster's
+    // columns (body preferred on the right, dep on the left — the classic
+    // shape), else HIRE.
+    const int spine_last = !bands_below.empty()
+        ? bands_below.back().bottom
+        : (roster_bottom >= 0
+               ? roster_bottom
+               : (band_above_roster_bottom >= 0
+                      ? band_above_roster_bottom
+                      : (can_hire ? kCreateMenuHireIndex : -1)));
+    const int rail_up_left = !bands_below.empty()
+        ? bands_below.back().bottom
+        : (last_dep >= 0 ? last_dep : spine_last);
+    const int rail_up_right = !bands_below.empty()
+        ? bands_below.back().bottom
+        : (last_body >= 0 ? kBaseCampRowBodyBase + last_body
+                          : (last_dep >= 0 ? last_dep : spine_last));
     buttons[kBaseCampSeatsLabelIndex].nav.up = rail_up_left;
     buttons[kBaseCampSeatsLabelIndex].nav.down = kCreateMenuBackIndex;
     buttons[kBaseCampSeatPagePrevIndex].nav.up = rail_up_left;
     buttons[kBaseCampSeatPagePrevIndex].nav.down = kCreateMenuBackIndex;
+    // HIRE left the strip, so the first two cards both drop onto SCENARIO
+    // (the nearest strip door under their faces).
     constexpr std::array<int, kBaseCampSeatCardsPerPage> card_down{
-        kCreateMenuHireIndex,
+        kCreateMenuScenarioIndex,
         kCreateMenuScenarioIndex,
         kCreateMenuNetworkingIndex,
         kCreateMenuGoIndex};
@@ -3492,16 +4125,12 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     };
     buttons[kCreateMenuBackIndex].nav = {
         .up = kBaseCampSeatsLabelIndex, .down = -1, .left = -1,
-        .right = kCreateMenuHireIndex};
-    buttons[kCreateMenuHireIndex].nav = {
-        .up = visible_card_or_label(0), .down = -1,
-        .left = kCreateMenuBackIndex,
         .right = kCreateMenuScenarioIndex};
     buttons[kCreateMenuScenarioIndex].nav = {
         .up = networked
             ? visible_card_or_label(1)
             : kBaseCampScenarioLineIndex,
-        .down = -1, .left = kCreateMenuHireIndex,
+        .down = -1, .left = kCreateMenuBackIndex,
         .right = kCreateMenuNetworkingIndex};
     buttons[kCreateMenuNetworkingIndex].nav = {
         .up = visible_card_or_label(2), .down = -1,
@@ -3548,12 +4177,13 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     }
 
     // Empty roster: seed the highlight on HIRE (§2.5) instead of the first
-    // visible button.
+    // visible button (SEATS when the composition cleared can_hire).
     if (visible == 0 && highlighted_button >= 0
         && highlighted_button < count
         && buttons[highlighted_button].hidden)
     {
-        highlighted_button = kCreateMenuHireIndex;
+        highlighted_button =
+            can_hire ? kCreateMenuHireIndex : kBaseCampSeatsLabelIndex;
     }
 
     for (int i = 0; i < count; ++i)
@@ -3564,8 +4194,10 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
 // Pre-buttons pass (§2.0 draw-order rule): backdrop, then one classic
 // two-bevel grey panel behind the complete roster, matching the retired
 // View Team menu. Lines A/B keep their own translucent black strips in the
-// content pass.
-void base_camp_draw_background(void* /*screen_state*/)
+// content pass — but the zone's text/readout READABILITY STRIPS paint HERE:
+// they sit adjacent to button rows, and a strip painted in draw_content
+// would dim the neighboring faces (the MATCHUP pager lesson).
+void base_camp_draw_background(void* screen_state)
 {
     picker_backdrop_draw_background(nullptr);
     screen* const game = og::runtime::current_session->myscreen_;
@@ -3574,6 +4206,14 @@ void base_camp_draw_background(void* /*screen_state*/)
     // GO/'+'/'>' right edge 311). Content keeps a real inset on every edge
     // instead of touching bevels.
     game->draw_button(8, 28, 311, 160, 2, 1);
+
+    // NO readability strips inside the panel (the one-screen rule): the
+    // black strip idiom exists to lift text off the title-screen BACKDROP,
+    // and the panel's own opaque face already does that. Charcoal bars and
+    // grey text plates stacked on a grey panel read as three materials
+    // pasted together, so zone text and readout ink straight onto the face
+    // in the roster's own ink colours (content pass).
+    (void)screen_state;
 }
 
 // The §2.5 content pass (after draw_buttons): header lines A/B, the page
@@ -3586,6 +4226,12 @@ void base_camp_draw_content(void* screen_state)
     screen* const game = og::runtime::current_session->myscreen_;
     const SaveData& save = game->save_data;
     text& mytext = game->text_normal;
+    const og::ui::CampaignZoneSession* zone =
+        st != nullptr ? st->zone : nullptr;
+    const og::ui::CampaignZoneSession::RosterLayout* roster_layout =
+        zone != nullptr ? &zone->roster() : nullptr;
+    const bool hire_visible =
+        roster_layout == nullptr || roster_layout->can_hire;
 
     const auto strip_text = [game](int x, int y, const std::string& value,
                                    unsigned char color) {
@@ -3622,20 +4268,44 @@ void base_camp_draw_content(void* screen_state)
     // This is the base-camp home of the lobby clients' status lines — the
     // pre-reshape team-build screen drew them at the same spot. The READY
     // r/m + DEP d/t counts this line carried through round 1 are SUPERSEDED
-    // here (§9.12 records the 42-char band tradeoff): the §2.6 GO/READY
-    // button state machine + the per-row deploy toggles carry those states.
+    // here (§9.12 records the narrow-band tradeoff — the band lost eight
+    // characters when HIRE moved into the roster header): the §2.6
+    // GO/READY button state machine + the per-row deploy toggles carry
+    // those states.
     const bool networked = picker_lobby_is_networked();
+    // The band's wall (and so its character budget) depends on whether the
+    // composition shows HIRE beside it.
+    const std::size_t line_b_budget = static_cast<std::size_t>(
+        hire_visible ? og::ui::kBaseCampLineBCharsHireVisible
+                     : og::ui::kBaseCampLineBCharsHireHidden);
     std::string line_b;
     unsigned char line_b_color = WHITE;
+    // The message-line toast (zone refusals/toasts — never a modal, a
+    // modal strands a networked joiner mid-GO) borrows the line-B slot
+    // until its stamp expires; a degraded-link alert still outranks it.
+    const std::int64_t now_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count();
+    const bool toast_active = st != nullptr && !st->toast.empty() &&
+        now_ms < st->toast_until_ms;
     if (networked) {
         const BaseCampLineB header = compose_base_camp_line_b(
             picker_lobby_connection_alert(),
             picker_lobby_host_controls_visible(),
             picker_lobby_session_room_code(),
-            picker_lobby_players());
+            picker_lobby_players(),
+            static_cast<int>(line_b_budget));
         line_b = header.text;
         if (header.alert)
             line_b_color = static_cast<unsigned char>(ORANGE_START);
+        else if (toast_active) {
+            line_b = st->toast;
+            line_b_color = YELLOW;
+        }
+    } else if (toast_active) {
+        line_b = st->toast;
+        line_b_color = YELLOW;
     } else {
         line_b = format_base_camp_scen_line(save, game->world().title);
     }
@@ -3643,8 +4313,12 @@ void base_camp_draw_content(void* screen_state)
     // (round 1 had 10px) — with the pager cluster beside it at y=15. Its
     // backing strip starts on the panel's left line (strip_text backs the
     // x=10 text with a 2px pad, so the strip rect starts at 8); the 34-char
-    // solo budget inks 10..213, strip rect 8..215 — 42px clear of the pager
-    // cluster at x=258.
+    // budget beside HIRE inks 10..213, strip rect 8..215 — clear of the
+    // HIRE command at x=220. INVARIANT: every line-B source composes to its
+    // budget at the source, not here — the networked status shapes to
+    // line_b_budget above, the solo header and the toast are pre-clipped to
+    // the conservative kBaseCampLineBCharsHireVisible. A clip at the draw
+    // site would only cut mid-word after the fact.
     strip_text(10, 17, line_b, line_b_color);
 
     // The "p/N" strip sits in the pager cluster's reserved middle slot;
@@ -3653,7 +4327,79 @@ void base_camp_draw_content(void* screen_state)
         strip_text(kBaseCampPageIndicatorX + 2, 17, st->page.indicator(),
                    WHITE);
 
-    // Column headers at y=33: solo keeps CLASS/EXP; networked swaps in the
+    // The zone composition: the roster band (default: the whole panel,
+    // header at the classic y=33) plus any text/readout widget ink. The
+    // readability strips behind text/readout painted in draw_background
+    // (draw-order rule).
+    const int roster_row_y0 = kBaseCampRowY0 +
+        kBaseCampRowPitch *
+            (roster_layout != nullptr ? roster_layout->row_start_unit : 0);
+    // Column-header baseline: the classic y=33 when the roster leads the
+    // band, else the header unit directly above the roster rows.
+    const int header_y =
+        roster_layout == nullptr || roster_layout->header_at_top
+        ? 33
+        : kBaseCampRowY0 + kBaseCampRowPitch * roster_layout->start_unit + 2;
+
+    // The zone's ink shares the roster's material palette so the panel reads
+    // as ONE screen (the one-screen rule): headings/labels in the
+    // column-header ink, data and narrative in the row-identity ink, no
+    // backing strips over the panel's own face.
+    if (zone != nullptr) {
+        for (const og::ui::CampaignZoneSession::TextLayout& zone_text :
+             zone->texts())
+        {
+            const int band_y =
+                kBaseCampRowY0 + kBaseCampRowPitch * zone_text.start_unit;
+            for (std::size_t line = 0; line < zone_text.lines.size();
+                 ++line)
+            {
+                // ink 12..305 inside the face; a line that must lose
+                // characters loses whole words, never mid-word.
+                const std::string clipped = og::ui::clip_with_ellipsis(
+                    zone_text.lines[line], 49);
+                mytext.write_xy_flat(12,
+                                     band_y + static_cast<int>(line) * 8,
+                                     clipped.c_str(), PURE_BLACK, 1);
+            }
+        }
+        if (const og::ui::CampaignZoneSession::ReadoutLayout* readout =
+                zone->readout())
+        {
+            // Hoisted: the panel's header band (the classic column-header
+            // slot the re-banded roster gave up), so the summary heads the
+            // panel instead of floating on a charcoal bar of its own.
+            const int band_y = readout->in_header_band
+                ? 33
+                : kBaseCampRowY0 + kBaseCampRowPitch * readout->start_unit + 1;
+            // Up to 3 label/value cells on 100px pitch (16-char budget).
+            for (std::size_t cell = 0;
+                 cell < readout->items.size() && cell < 3; ++cell)
+            {
+                const auto& item = readout->items[cell];
+                constexpr std::size_t kCellBudget = 16;
+                std::string label = item.label;
+                if (label.size() > kCellBudget)
+                    label.resize(kCellBudget);
+                const std::size_t used =
+                    label.empty() ? 0 : label.size() + 1;
+                std::string value = item.value;
+                if (used >= kCellBudget)
+                    value.clear();
+                else if (value.size() > kCellBudget - used)
+                    value.resize(kCellBudget - used);
+                const int x = 12 + static_cast<int>(cell) * 100;
+                mytext.write_xy(x, band_y, label.c_str(), BLACK, 1);
+                if (!value.empty()) {
+                    mytext.write_xy_flat(x + static_cast<int>(used) * 6,
+                                         band_y, value.c_str(), PURE_BLACK,
+                                         1);
+                }
+            }
+        }
+    }
+
+    // Column headers: solo keeps CLASS/EXP; networked swaps in the
     // 16-char COMPANY column (§2.5 U7 — CLASS is carried by the family
     // chip). §9.5.3: NO HP column on any client — it was DERIVED max HP
     // (damage never persists to base camp), redundant with CLASS+LVL, and
@@ -3661,19 +4407,41 @@ void base_camp_draw_content(void* screen_state)
     // §9.11 (G4): NO TRAIN header — the TRAIN column is deleted; clicking
     // the row body opens the train screen on that character. Round 6 gives
     // DEPLOY and TEAM explicit columns and pads the complete grid.
+    // The second column's heading names what the column actually holds: the
+    // gameplay TEAM chip normally, the campaign's own oath channel while a
+    // roster widget carries an assign spec ("ROAD", from the script's key).
+    const bool oath_column =
+        roster_layout != nullptr && roster_layout->assign.active;
+    const auto write_left_column_headers = [&] {
+        // "DEPLOY" spans x=12..47 and would touch a six-character oath
+        // column; while the oath stands, the deploy heading takes the
+        // abbreviation line B already uses ("DEP 2/2").
+        mytext.write_xy(kBaseCampDeployHeaderX, header_y,
+                        oath_column ? "DEP" : "DEPLOY", BLACK, 1);
+        if (oath_column) {
+            mytext.write_xy(
+                kBaseCampOathColumnX, header_y,
+                og::ui::CampaignZoneSession::assign_header_text(
+                    roster_layout->assign, kBaseCampOathColumnChars)
+                    .c_str(),
+                BLACK, 1);
+        } else {
+            mytext.write_xy(kBaseCampTeamHeaderX, header_y, "TEAM", BLACK, 1);
+        }
+    };
     if (networked) {
-        mytext.write_xy(kBaseCampDeployHeaderX, 33, "DEPLOY", BLACK, 1);
-        mytext.write_xy(kBaseCampTeamHeaderX, 33, "TEAM", BLACK, 1);
-        mytext.write_xy(kBaseCampNameColumnX, 33, "NAME", BLACK, 1);
-        mytext.write_xy(kBaseCampNetCompanyColumnX, 33, "COMPANY", BLACK, 1);
-        mytext.write_xy(kBaseCampNetLevelColumnX, 33, "LV", BLACK, 1);
+        write_left_column_headers();
+        mytext.write_xy(kBaseCampNameColumnX, header_y, "NAME", BLACK, 1);
+        mytext.write_xy(kBaseCampNetCompanyColumnX, header_y, "COMPANY",
+                        BLACK, 1);
+        mytext.write_xy(kBaseCampNetLevelColumnX, header_y, "LV", BLACK, 1);
     } else {
-        mytext.write_xy(kBaseCampDeployHeaderX, 33, "DEPLOY", BLACK, 1);
-        mytext.write_xy(kBaseCampTeamHeaderX, 33, "TEAM", BLACK, 1);
-        mytext.write_xy(kBaseCampNameColumnX, 33, "NAME", BLACK, 1);
-        mytext.write_xy(kBaseCampSoloClassColumnX, 33, "CLASS", BLACK, 1);
-        mytext.write_xy(kBaseCampSoloLevelColumnX, 33, "LV", BLACK, 1);
-        mytext.write_xy(kBaseCampSoloExpHeaderX, 33, "EXP", BLACK, 1);
+        write_left_column_headers();
+        mytext.write_xy(kBaseCampNameColumnX, header_y, "NAME", BLACK, 1);
+        mytext.write_xy(kBaseCampSoloClassColumnX, header_y, "CLASS", BLACK,
+                        1);
+        mytext.write_xy(kBaseCampSoloLevelColumnX, header_y, "LV", BLACK, 1);
+        mytext.write_xy(kBaseCampSoloExpHeaderX, header_y, "EXP", BLACK, 1);
     }
 
     // Seat chips overlay the right edge of each compact card after buttons
@@ -3705,18 +4473,25 @@ void base_camp_draw_content(void* screen_state)
 
     const int first = st != nullptr ? st->page.first_index() : 0;
     const int end = st != nullptr ? st->page.end_index() : 0;
-    if (end - first <= 0) {
-        // Center the empty-state line in the padded grey roster face.
-        mytext.write_xy_center(160, 92,
+    const int roster_rows = roster_layout != nullptr
+        ? roster_layout->rows_per_page
+        : kBaseCampRosterRowsPerPage;
+    const int row_count = std::min(std::max(0, end - first), roster_rows);
+    if (row_count <= 0) {
+        // Center the empty-state line in the roster band (the classic
+        // y=92 for the default 8-row band).
+        mytext.write_xy_center(160, roster_row_y0 + roster_rows * 7 - 9,
                                static_cast<unsigned char>(ORANGE_START), "%s",
                                "NO SOLDIERS - HIRE YOUR FIRST");
         return;
     }
 
-    for (int r = 0; r < end - first; ++r) {
+    const bool assign_mode =
+        roster_layout != nullptr && roster_layout->assign.active;
+    for (int r = 0; r < row_count; ++r) {
         const BaseCampDisplaySlot& display =
             st->slots[static_cast<std::size_t>(first + r)];
-        const int y = kBaseCampRowY0 + kBaseCampRowPitch * r;
+        const int y = roster_row_y0 + kBaseCampRowPitch * r;
 
         // Row source: own rows read the LIVE private save member; foreign
         // rows render their replicated wire copy.
@@ -3736,38 +4511,74 @@ void base_camp_draw_content(void* screen_state)
             member = foreign_guy.get();
         }
 
-        // The chip now communicates and changes the character's team. Match
-        // the in-game team ramp (team*16+40), clamping defensive save input
-        // to the four persisted score teams, and label the four saved values
-        // as the player-facing teams 1..4. Solo players can click it to cycle;
-        // network lobby assignment keeps the same indicator read-only.
-        const int team = std::clamp(static_cast<int>(member->teamnum), 0,
-                                    static_cast<int>(SCORE_TEAM_COUNT) - 1);
-        const unsigned char team_color =
-            static_cast<unsigned char>(team * 16 + 40);
-        game->fastbox(61, y, 10, 10, BLACK);
-        game->fastbox(62, y + 1, 8, 8, team_color);
-        const char team_number[] = {
-            static_cast<char>('1' + team), '\0'};
-        // Digits 2-4 have four opaque columns and center exactly at x=64.
-        // The old font's "1" has only three; an even-width face has no exact
-        // integer center for it, so bias that lone glyph one pixel right
-        // instead of leaving it visibly left-heavy.
-        const int team_number_x = team == 0 ? 65 : 64;
-        mytext.write_xy_flat(team_number_x, y + 3, team_number,
-                             PURE_BLACK, 1);
-
         // NAME and CLASS are high-contrast flat ink: true black when
-        // deployed, grey when benched. Family identity moves into a compact
-        // swatch immediately after CLASS (or NAME in the network layout),
-        // using the first eight shades of View Team's original family ramp.
-        // TEAM remains the separate gameplay-team ramp above.
+        // deployed, grey when benched.
         const unsigned char status_color =
             deployed ? static_cast<unsigned char>(BLACK) : kBenchedTextShade;
         const unsigned char identity_color =
             deployed ? static_cast<unsigned char>(PURE_BLACK)
                      : kBenchedTextShade;
 
+        if (assign_mode && display.owned) {
+            // The oath CELL (docs/basecamp-zones-design.md): the hero's
+            // campaign_tag spelled out — "-" while unsworn, else the
+            // script's own word. No coloured chip: that widget means "team
+            // number" everywhere else on this screen. Frozen specs keep the
+            // cell readable; cycling refuses in dispatch.
+            const std::string oath =
+                og::ui::CampaignZoneSession::assign_cell_text(
+                    roster_layout->assign, member->campaign_tag,
+                    kBaseCampOathColumnChars);
+            mytext.write_xy_flat(kBaseCampOathColumnX, y + 2, oath.c_str(),
+                                 member->campaign_tag >= 1
+                                     ? identity_color
+                                     : kBenchedTextShade,
+                                 1);
+        } else {
+            // The chip communicates and changes the character's team. Match
+            // the in-game team ramp (team*16+40), clamping defensive save
+            // input to the four persisted score teams, and label the four
+            // saved values as the player-facing teams 1..4. Solo players can
+            // click it to cycle; network lobby assignment keeps the same
+            // indicator read-only.
+            const int team = std::clamp(static_cast<int>(member->teamnum), 0,
+                                        static_cast<int>(SCORE_TEAM_COUNT) - 1);
+            const unsigned char team_color =
+                static_cast<unsigned char>(team * 16 + 40);
+            game->fastbox(61, y, 10, 10, BLACK);
+            game->fastbox(62, y + 1, 8, 8, team_color);
+            const char team_number[] = {
+                static_cast<char>('1' + team), '\0'};
+            // Digits 2-4 have four opaque columns and center exactly at
+            // x=64. The old font's "1" has only three; an even-width face
+            // has no exact integer center for it, so bias that lone glyph
+            // one pixel right instead of leaving it visibly left-heavy.
+            const int team_number_x = team == 0 ? 65 : 64;
+            mytext.write_xy_flat(team_number_x, y + 3, team_number,
+                                 PURE_BLACK, 1);
+        }
+
+        // Family identity is a compact swatch immediately after CLASS (or
+        // NAME in the network layout), using the first eight shades of View
+        // Team's original family ramp. TEAM remains the separate gameplay-
+        // team ramp above.
+
+        // A roster widget with can_deploy off hides the own-row deploy
+        // BUTTONS; the state still reads as the same X/- glyph the foreign
+        // rows use (drawn ink, no affordance).
+        if (display.owned && roster_layout != nullptr &&
+            !roster_layout->can_deploy)
+        {
+            mytext.write_xy(kBaseCampDeployGlyphX, y + 2,
+                            deployed ? "X" : "-", status_color, 1);
+        }
+
+        // A campaign-locked hero LOOKS locked (the padlock in the deploy
+        // cell) instead of looking like any other benched hero and silently
+        // refusing the click. Before this the only explanation was a 2.5s
+        // toast; miss it and the box just did nothing, forever.
+        if (display.owned && base_camp_row_deploy_locked(zone, *member))
+            draw_base_camp_deploy_padlock(*game, y);
         // Row glyphs sit at y+2 — centers the 6px font in the 10px band.
         if (networked) {
             // Foreign rows have no deploy BUTTON (no_draw hit zone): their
@@ -3809,6 +4620,52 @@ void base_camp_draw_content(void* screen_state)
 
 }
 
+// The message-line toast (docs/basecamp-zones-design.md "Networked
+// rules"): zone refusals and action toasts ride the line-B slot instead of
+// a modal — popup event loops do not poll the lobby, so a modal strands a
+// joiner mid-GO. TRACE so tests assert deterministically.
+void base_camp_show_toast(BaseCampScreenState& state, std::string text)
+{
+    // The narrow (HIRE-visible) line-B budget: a toast can appear under any
+    // composition, so it takes the conservative wall.
+    if (text.size() >
+        static_cast<std::size_t>(og::ui::kBaseCampLineBCharsHireVisible)) {
+        text.resize(
+            static_cast<std::size_t>(og::ui::kBaseCampLineBCharsHireVisible));
+    }
+    TRACE("zone", "toast %s", text.c_str());
+    state.toast = std::move(text);
+    state.toast_until_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count() +
+        2500;
+}
+
+// Stale feedback is worse than no feedback: a toast still standing from the
+// PREVIOUS click reads as this click's answer ("KIT STOWED." sitting over
+// the row you just set). Every dispatch drops the old message first and
+// then says its own piece, or says nothing over a clean line.
+void base_camp_clear_toast(BaseCampScreenState& state)
+{
+    state.toast.clear();
+    state.toast_until_ms = 0;
+}
+
+// The zone fetch triggers 2-4 (docs/basecamp-zones-design.md "The widget
+// contract"; trigger 1 — screen entry — is create_team_menu's fetch):
+// refetch after an own mutation (the callers below), when the frame-tick
+// level-reload guard fires (any source: a SET LEVEL pick, a host sync
+// landing on a joiner, a nested reset), and when an applied lobby-settings
+// change rewrites the save under the open screen. Never per frame.
+void base_camp_refetch_zone(BaseCampScreenState& state)
+{
+    if (state.zone == nullptr)
+        return;
+    state.zone->refetch();
+    TRACE("zone", "refetch");
+}
+
 // The team-build family's frame obligations: the level-reload guard (a SET
 // LEVEL pick or a host sync must reload the picker world) plus the §3.3
 // positional refresh of the roster rows.
@@ -3825,6 +4682,18 @@ bool base_camp_frame_tick(void* screen_state, int /*frame*/)
         state->last_level_id = myscreen->save_data.scen_num;
         reload_picker_level_and_sync_settings(*myscreen,
                                               state->last_level_id);
+        // Fetch trigger 3: remote change landed (the reload guard fires
+        // for ANY scen_num source — a joiner's zone must never show a
+        // stale pairing).
+        base_camp_refetch_zone(*state);
+    }
+    // Fetch trigger 4: an applied lobby-settings change (the poll rewrites
+    // the save's synced knobs under the open screen; the fingerprint is a
+    // pure compare — no Lua per frame).
+    if (state->zone != nullptr &&
+        state->zone->settings_fingerprint_changed())
+    {
+        base_camp_refetch_zone(*state);
     }
     base_camp_refresh_rows(*state);
     return true;
@@ -3836,8 +4705,10 @@ void base_camp_on_reset(void* screen_state)
         return;
     auto* const state = static_cast<BaseCampScreenState*>(screen_state);
     state->was_reset = true;
-    // A nested screen (hire/train) may have changed the roster: re-collect
-    // before the next rewire runs (§3.3).
+    // A nested screen (hire/train/zone submenu) may have changed the
+    // roster or the campaign book: re-collect before the next rewire runs
+    // (§3.3) and refetch the composition (fetch trigger 2 — own mutation).
+    base_camp_refetch_zone(*state);
     base_camp_refresh_rows(*state);
 }
 
@@ -3848,6 +4719,9 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
     auto* const st = static_cast<BaseCampScreenState*>(screen_state);
     if (st == nullptr)
         return 0;
+    // One click, one answer: the previous action's message never survives
+    // into this one's frame.
+    base_camp_clear_toast(*st);
 
     if (row == kBaseCampPagePrevIndex || row == kBaseCampPageNextIndex) {
         if (st->page.step(row == kBaseCampPagePrevIndex ? -1 : 1))
@@ -3995,6 +4869,144 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
         return MENU_REDRAW;
     }
 
+    // --- Zone actions band (docs/basecamp-zones-design.md): widget w's
+    // window row r rides ordinal base + 8w + r; each widget's pager pair
+    // rides base + 2w / base + 2w + 1.
+    if (row >= kBaseCampZonePagerBase &&
+        row < kBaseCampZonePagerBase + kBaseCampZonePagerCount)
+    {
+        og::ui::CampaignZoneSession::ActionsLayout* actions =
+            st->zone != nullptr
+            ? st->zone->actions_widget((row - kBaseCampZonePagerBase) / 2)
+            : nullptr;
+        if (actions == nullptr)
+            return MENU_OK;  // stale click on a parked pager
+        if (actions->page.step(
+                (row - kBaseCampZonePagerBase) % 2 == 0 ? -1 : 1))
+        {
+            TRACE("zone", "actions_page %s",
+                  actions->page.indicator().c_str());
+        }
+        return MENU_OK;
+    }
+    if (row >= kBaseCampZoneActionBase &&
+        row < kBaseCampZoneActionBase + kBaseCampZoneActionRows)
+    {
+        og::ui::CampaignZoneSession* zone = st->zone;
+        const int widget =
+            (row - kBaseCampZoneActionBase) / kBaseCampZoneActionsPerWidget;
+        const int window_row =
+            (row - kBaseCampZoneActionBase) % kBaseCampZoneActionsPerWidget;
+        og::ui::CampaignZoneSession::ActionsLayout* actions =
+            zone != nullptr ? zone->actions_widget(widget) : nullptr;
+        if (actions == nullptr)
+            return 0;  // stale click on a parked row
+        const int idx = actions->page.first_index() + window_row;
+        if (idx < 0 || idx >= static_cast<int>(actions->rows.size()))
+            return 0;  // stale click on a row hidden this frame
+        // Copy: an Acted refetch replaces the rows under the one we read.
+        const og::ui::CampaignZoneSession::Row entry =
+            actions->rows[static_cast<std::size_t>(idx)];
+        using EntryKind = og::ui::CampaignPickerSession::Kind;
+        switch (entry.kind) {
+        case EntryKind::Page: {
+            // The zone submenu door: block on the chassis rooted at the
+            // row's own page, then refetch (own navigation counts as a
+            // mutation trigger — the book may have acted on entry).
+            bool opened = true;
+            const Sint32 ret =
+                og::ui::run_campaign_zone_submenu(entry.id, &opened);
+            if (!opened)
+                base_camp_show_toast(*st, "That page cannot be read.");
+            if ((ret & MENU_EXIT) && team_build_start_selected())
+                return MENU_EXIT;
+            TRACE("zone", "page_row %s", entry.id.c_str());
+            return MENU_REDRAW;
+        }
+        case EntryKind::Level: {
+            // Host-gated level row with the load-with-rollback set tail
+            // (the submenu's SetLevel tail, toast-refused — never a modal).
+            if (!picker_lobby_host_controls_visible()) {
+                TRACE("zone", "level_denied_nonhost %d", entry.level);
+                base_camp_show_toast(*st, "Only the host may set the level.");
+                return MENU_OK;
+            }
+            screen* const game = og::runtime::current_session->myscreen_;
+            const int old_id = game->world().id;
+            if (entry.level == old_id) {
+                TRACE("zone", "level_unchanged %d", entry.level);
+                base_camp_show_toast(*st, "Already on that road.");
+                return MENU_OK;
+            }
+            game->world().id = static_cast<short>(entry.level);
+            if (entry.level < 0 || entry.level > 32767 ||
+                !game->load_level()) {
+                game->clearbuffer();
+                // The campaign's own voice, never the loader's: a road that
+                // will not load is a road the campaign has not opened.
+                base_camp_show_toast(
+                    *st, std::string(og::ui::kCampaignLevelClosedMessage));
+                game->world().id = static_cast<short>(old_id);
+                if (!game->load_level()) {
+                    game->clearbuffer();
+                    popup_dialog("Big problem",
+                                 "Also failed to reload current level...");
+                }
+                return MENU_REDRAW;
+            }
+            game->save_data.scen_num = static_cast<short>(entry.level);
+            picker_lobby_sync_settings_from_save();
+            // The frame-tick reload guard sees the committed cursor and
+            // refetches (trigger 3); refetch now too so THIS frame's
+            // labels re-derive (trigger 2 — own mutation).
+            st->last_level_id = game->save_data.scen_num;
+            base_camp_refetch_zone(*st);
+            base_camp_refresh_rows(*st);
+            TRACE("zone", "level_set %d", entry.level);
+            // A successful choice SAYS so. Silence here is what let the
+            // previous action's toast be read as this one's answer.
+            base_camp_show_toast(
+                *st, "Road set: " + std::string(game->world().title));
+            return MENU_REDRAW;
+        }
+        case EntryKind::Action: {
+            // Debit-then-dispatch through the shared session machinery
+            // (the session refetches on Acted). Zone actions do NOT clear
+            // ready — they ride the autosave tail only.
+            const og::ui::CampaignZoneSession::Outcome outcome =
+                zone->act(widget, idx);
+            using Outcome = og::ui::CampaignPickerSession::OutcomeKind;
+            if (outcome.kind == Outcome::Refused) {
+                TRACE("zone", "refused %s", outcome.reason.c_str());
+                base_camp_show_toast(*st, outcome.reason);
+                return MENU_OK;
+            }
+            if (outcome.kind != Outcome::Acted)
+                return 0;
+            // #212: a MATCHUP knob written through og.campaign_match_set
+            // armed the providers' dirty flag; run the settings sync so
+            // joiners follow.
+            if (og::data::consume_match_settings_dirty()) {
+                picker_lobby_sync_settings_from_save();
+                TRACE("zone", "match_settings_synced zone");
+            }
+            // Persistence tail ([SAVE-F1]): the debit and any
+            // og.campaign_state_set writes reach the company file.
+            (void)company_autosave_after_mutation(
+                og::runtime::current_session->myscreen_->save_data,
+                picker_lobby_is_networked());
+            TRACE("zone", "acted_autosave");
+            const std::string toast = zone->take_message();
+            TRACE("zone", "acted %s", entry.id.c_str());
+            if (!toast.empty())
+                base_camp_show_toast(*st, toast);
+            base_camp_refresh_rows(*st);
+            return MENU_OK;
+        }
+        }
+        return 0;
+    }
+
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     const bool is_deploy = row >= 0 && row < kBaseCampRosterRowsPerPage;
     const bool is_row_body =
@@ -4036,6 +5048,9 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
         return 0;
 
     if (is_move_up) {
+        // Stale dispatch while the composition cleared can_reorder: inert.
+        if (st->zone != nullptr && !st->zone->roster().can_reorder)
+            return MENU_OK;
         if (!picker_lobby_save_slot_editable(slot)) {
             popup_dialog("ORDER", "LOCKED");
             return MENU_OK;
@@ -4044,15 +5059,69 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
         if (moved_to >= 0) {
             TRACE("basecamp", "move_up slot=%d to=%d", slot, moved_to);
             picker_base_camp_after_roster_mutation();
+            base_camp_refetch_zone(*st);
             base_camp_refresh_rows(*st);
         }
         return MENU_OK;
     }
 
     if (is_team_chip) {
+        // The assign fork (docs/basecamp-zones-design.md): with an active
+        // assign spec, the chip cell is the hero's campaign_tag cycler —
+        // own rows only, solo AND networked. Frozen refuses with the
+        // reason; a DEPLOYED hero first un-deploys through the FULL roster
+        // tail (lobby push, ready clears — correct), then the tag applies
+        // through the assign provider and the autosave tail.
+        const og::ui::CampaignZoneSession* zone = st->zone;
+        if (zone != nullptr && zone->roster().assign.active) {
+            const og::script::hooks::CampaignAssignSpec& assign =
+                zone->roster().assign;
+            if (!assign.frozen.empty()) {
+                TRACE("zone", "assign_frozen slot=%d", slot);
+                base_camp_show_toast(*st, assign.frozen);
+                return MENU_OK;
+            }
+            if (!picker_lobby_save_slot_editable(slot)) {
+                base_camp_show_toast(*st, "LOCKED");
+                return MENU_OK;
+            }
+            guy* const member =
+                save.team_list[static_cast<std::size_t>(slot)].get();
+            const int next_tag = og::ui::CampaignZoneSession::next_assign_tag(
+                member->campaign_tag);
+            if (member->deployed) {
+                (void)toggle_deploy_slot(save, slot);
+                TRACE("zone", "assign_undeploys slot=%d", slot);
+                picker_base_camp_after_roster_mutation();
+            }
+            if (!og::script::hooks::campaign_assign_set(slot, next_tag)) {
+                TRACE("zone", "assign_refused slot=%d tag=%d", slot,
+                      next_tag);
+                return MENU_OK;
+            }
+            TRACE("zone", "assign slot=%d tag=%d", slot, next_tag);
+            // The full-word toast: the cycle must never be a silent glyph
+            // flip.
+            const std::size_t label_index =
+                static_cast<std::size_t>(next_tag - 1);
+            if (label_index < assign.labels.size()) {
+                base_camp_show_toast(
+                    *st, "Sworn to " + assign.labels[label_index] + ".");
+            }
+            // Undeployed cycles ride the autosave tail only (no ready
+            // clear); the tag byte must reach the company file.
+            (void)company_autosave_after_mutation(
+                save, picker_lobby_is_networked());
+            base_camp_refetch_zone(*st);
+            base_camp_refresh_rows(*st);
+            return MENU_OK;
+        }
         // Multiplayer assigns teams through lobby seats, so this solo-only
-        // control is hidden there and stale dispatches remain inert.
+        // control is hidden there and stale dispatches remain inert — as
+        // are dispatches while the composition cleared can_team.
         if (picker_lobby_is_networked())
+            return MENU_OK;
+        if (zone != nullptr && !zone->roster().can_team)
             return MENU_OK;
         if (!picker_lobby_save_slot_editable(slot)) {
             popup_dialog("TEAM", "LOCKED");
@@ -4063,11 +5132,32 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
             TRACE("basecamp", "team slot=%d team=%d", slot,
                   static_cast<int>(team));
             picker_base_camp_after_roster_mutation();
+            base_camp_refetch_zone(*st);
         }
         return MENU_OK;
     }
 
     if (is_deploy) {
+        // Stale dispatch while the composition cleared can_deploy: inert.
+        if (st->zone != nullptr && !st->zone->roster().can_deploy)
+            return MENU_OK;
+        // Zone deploy locks refuse the toggle-ON with the reason as a
+        // message-line toast (benching a deployed hero stays allowed; the
+        // lock is a deploy courtesy, not an integrity mechanism).
+        if (st->zone != nullptr &&
+            !save.team_list[static_cast<std::size_t>(slot)]->deployed)
+        {
+            const og::script::hooks::CampaignRosterLock* lock =
+                st->zone->deploy_lock_for_tag(
+                    save.team_list[static_cast<std::size_t>(slot)]
+                        ->campaign_tag);
+            if (lock != nullptr) {
+                TRACE("zone", "deploy_locked slot=%d", slot);
+                if (!lock->reason.empty())
+                    base_camp_show_toast(*st, lock->reason);
+                return MENU_OK;
+            }
+        }
         // §2.0 U6 roster-row tap debounce: a second toggle of the SAME row
         // (same display index resolving to the same save slot — a page flip
         // in between retargets the rect and is never debounced) within
@@ -4109,8 +5199,13 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
         st->last_deploy_toggle_slot = slot;
         st->last_deploy_toggle_ms = now_ms;
         picker_base_camp_after_roster_mutation();
+        base_camp_refetch_zone(*st);
         return MENU_OK;
     }
+
+    // Stale dispatch while the composition cleared can_train: inert.
+    if (st->zone != nullptr && !st->zone->roster().can_train)
+        return MENU_OK;
 
     // §2.5 flow 4 via the §9.11 row-body affordance: a click (or Enter on
     // the row highlight) anywhere on the row's name/class/level area opens
@@ -5515,8 +6610,13 @@ void base_camp_refresh_rows(BaseCampScreenState& state)
                   : std::vector<std::uint8_t>{},
         networked);
     const int page_before = state.page.page;
+    // The window derives from the zone's roster band (the default
+    // composition — and a bare state — keeps the classic 8 rows).
+    const int rows_per_page = state.zone != nullptr
+        ? state.zone->roster_rows_per_page()
+        : kBaseCampRosterRowsPerPage;
     state.page = PageModel::make(static_cast<int>(state.slots.size()),
-                                 kBaseCampRosterRowsPerPage);
+                                 rows_per_page);
     state.page.page =
         std::clamp(page_before, 0, state.page.page_count() - 1);
 
@@ -5562,36 +6662,36 @@ void install_company_list_state_for_screen(CompanyListScreenState* state)
     g_company_list_state = state;
 }
 
-const MenuScreenSpec& campaign_missions_menu_screen_spec()
+const MenuScreenSpec& zone_submenu_menu_screen_spec()
 {
     static const MenuScreenSpec spec{
-        .name = "campaign_missions",
-        .rows = kCampaignMissionsRows,
-        .row_count = static_cast<int>(std::size(kCampaignMissionsRows)),
-        .buttons_accessor = &picker_campaign_missions_buttons,
-        .count_accessor = &picker_campaign_missions_button_count,
+        .name = "campaign_zone_submenu",
+        .rows = kZoneSubmenuRows,
+        .row_count = static_cast<int>(std::size(kZoneSubmenuRows)),
+        .buttons_accessor = &picker_zone_submenu_buttons,
+        .count_accessor = &picker_zone_submenu_button_count,
         // Pattern-b full-graph rewire, recomputed every frame from the
         // installed session state (page window, pager visibility, labels).
         .nav = {.kind = NavProgramKind::Rewire,
-                .rewire = &campaign_missions_rewire},
-        // A joiner parked here still follows the host's GO (the SCENARIO
-        // family obligation).
+                .rewire = &zone_submenu_rewire},
+        // A joiner parked here still follows the host's GO (the team-build
+        // family obligation; registered in MenuScreenId so the G5 sweep
+        // proves it).
         .remote_start = RemoteStartScope::TeamBuildScope,
         .remote_start_exit = RemoteStartExit::ReturnMenuExit,
-        .default_highlight = kCampaignMissionsBackIndex,
+        .default_highlight = kZoneSubmenuBackIndex,
         .polls_lobby = true,
-        .draw_background = &picker_backdrop_draw_background,
-        .draw_content = &campaign_missions_draw_content,
-        .on_spec_row = &campaign_missions_on_spec_row,
+        .draw_background = &zone_submenu_draw_background,
+        .draw_content = &zone_submenu_draw_content,
+        .on_spec_row = &zone_submenu_on_spec_row,
         .exit_value = MENU_EXIT,
     };
     return spec;
 }
 
-void install_campaign_missions_state_for_screen(
-    CampaignMissionsScreenState* state)
+void install_zone_submenu_state_for_screen(ZoneSubmenuScreenState* state)
 {
-    g_campaign_missions_state = state;
+    g_zone_submenu_state = state;
 }
 
 // §2.3: run the Company List (blocking) over a fresh header-only scan.
@@ -5765,6 +6865,12 @@ const MenuScreenHost& menu_screen_host(MenuScreenId id)
             // help.cpp is gone; show_general_help is the blocking wrapper).
             set(MenuScreenId::Help,
                 {.kind = Kind::Engine, .spec = &help_menu_screen_spec()});
+            // The Base Camp zone submenu (the scripted page chassis):
+            // registered so the G5 remote-start sweep proves a joiner
+            // parked in a book page still follows the host's GO.
+            set(MenuScreenId::CampaignZoneSubmenu,
+                {.kind = Kind::Engine,
+                 .spec = &zone_submenu_menu_screen_spec()});
             return table;
         }();
     return hosts[static_cast<std::size_t>(id)];
@@ -5850,6 +6956,14 @@ Sint32 create_team_menu(Sint32 arg1)
 {
     (void)arg1;
     og::ui::BaseCampScreenState state;
+    // The gameplay-zone session (docs/basecamp-zones-design.md): owned
+    // beside the screen state; fetch trigger 1 (screen entry) runs before
+    // the first frame. No base_camp hook => the default composition through
+    // the same widget path.
+    og::ui::CampaignZoneSession zone(
+        og::runtime::current_session->myscreen_->save_data);
+    zone.fetch();
+    state.zone = &zone;
     og::ui::base_camp_refresh_rows(state);
     og::ui::install_base_camp_state_for_screen(&state);
     const Sint32 retvalue =
@@ -6067,50 +7181,57 @@ Sint32 create_teams_menu(Sint32 arg1)
 // are RETIRED with their screens (§2.5/§3.8): the base camp roster replaced
 // the team view, and saving is automatic.
 
-// #206 MISSIONS wrapper: build the SDL-free session over the live save. A
-// failed open — no registration, an erroring hook, a malformed root page —
-// answers the shared guard string and leaves the stock SCENARIO controls in
-// place (the button is also hidden per frame when nothing is registered,
-// so this popup covers the race and the keyboard path).
-Sint32 run_campaign_missions_screen(Sint32 arg1)
+namespace og::ui {
+
+// The zone submenu wrapper: build the SDL-free session over the live save,
+// rooted at the clicked page row's own page. A failed open — no
+// registration, an erroring hook, a malformed page — reports through
+// `opened`; the zone dispatch toasts the refusal (never a modal: a modal
+// strands a networked joiner mid-GO).
+Sint32 run_campaign_zone_submenu(const std::string& page_id, bool* opened)
 {
-    (void)arg1;
     screen* game = og::runtime::current_session->myscreen_;
     og::ui::CampaignPickerSession session(game->save_data);
-    if (!session.open())
+    if (!session.open_at(page_id))
     {
-        popup_dialog("MISSIONS", "This campaign keeps no mission book.");
+        if (opened != nullptr)
+            *opened = false;
+        TRACE("zone", "submenu_unreadable %s", page_id.c_str());
         return MENU_REDRAW;
     }
+    if (opened != nullptr)
+        *opened = true;
     game->clearbuffer();
-    og::ui::CampaignMissionsScreenState state;
+    og::ui::ZoneSubmenuScreenState state;
     state.session = &session;
     state.page = og::ui::PageModel::make(
         static_cast<int>(session.page().rows.size()),
-        kCampaignMissionsRowsPerPage);
-    og::ui::install_campaign_missions_state_for_screen(&state);
+        kZoneSubmenuRowsPerPage);
+    og::ui::install_zone_submenu_state_for_screen(&state);
     const Sint32 retvalue = og::ui::run_menu_screen(
-        og::ui::campaign_missions_menu_screen_spec(), &state);
-    og::ui::install_campaign_missions_state_for_screen(nullptr);
+        og::ui::zone_submenu_menu_screen_spec(), &state);
+    og::ui::install_zone_submenu_state_for_screen(nullptr);
     game->clearbuffer();
     // Distinguish a joiner remote start (propagate MENU_EXIT so the host GO
-    // launches through SCENARIO) from this screen's own structural close.
+    // launches through the Base Camp) from this screen's structural close.
     if ((retvalue & MENU_EXIT) && team_build_start_selected())
         return retvalue;
     return MENU_REDRAW;
 }
 
-button* picker_campaign_missions_buttons()
+} // namespace og::ui
+
+button* picker_zone_submenu_buttons()
 {
     og::ui::materialize_menu_buttons(
-        og::ui::campaign_missions_menu_screen_spec(),
-        pks().campaign_missions_buttons);
-    return pks().campaign_missions_buttons.data();
+        og::ui::zone_submenu_menu_screen_spec(),
+        pks().zone_submenu_buttons);
+    return pks().zone_submenu_buttons.data();
 }
 
-int picker_campaign_missions_button_count()
+int picker_zone_submenu_button_count()
 {
-    return static_cast<int>(pks().campaign_missions_buttons.size());
+    return static_cast<int>(pks().zone_submenu_buttons.size());
 }
 
 button* picker_difficulty_menu_buttons()

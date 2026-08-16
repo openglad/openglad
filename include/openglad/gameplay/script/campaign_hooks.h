@@ -61,6 +61,12 @@ struct CampaignPageEntry {
     enum class Kind { Level, Page, Action } kind = Kind::Level;
     int level = 0;
     int cost = 0;
+    // `done = true` retires a costed action the book has already honored (a
+    // bought kit, a signed contract): the row stops advertising its price,
+    // draws on the spent face and no longer dispatches. Without it a
+    // purchased item still reads as for sale at full price — the book knows
+    // it is spent, and only the book can.
+    bool done = false;
 };
 
 // One page of the scripted picker: pure data, fetched per navigation or
@@ -201,6 +207,13 @@ struct CampaignProviders {
 
 void install_campaign_providers(CampaignProviders providers);
 void clear_campaign_providers();
+
+// The assign chip's dispatch tail (docs/basecamp-zones-design.md "The widget
+// contract"): forwards to the installed providers' assign_set. False — with
+// NO mutation — when no providers are installed or the provider refuses
+// (invalid/unoccupied slot, tag outside 0..255). Not a Lua binding: assign
+// flows through providers, never through og.*.
+bool campaign_assign_set(int save_slot, int tag);
 
 // True when the active VM carries exactly one og.register_campaign_hooks
 // registration. A duplicate registration answers false (and records the

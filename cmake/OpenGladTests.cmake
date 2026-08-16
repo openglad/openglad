@@ -187,7 +187,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_scenarios.cpp
     ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_coverage_gate.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_ctf_ui.cpp
-    ${CMAKE_SOURCE_DIR}/tests/integration/test_campaign_missions_ui.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_campaign_zone_ui.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_mode_ui.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_tower_run.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_menu_pins.cpp
@@ -623,7 +623,7 @@ og_add_test_group(og_test_parity FILES
 og_add_test_group(og_test_matchup FILES
     test_ctf_ui.cpp
     test_mode_ui.cpp
-    test_campaign_missions_ui.cpp
+    test_campaign_zone_ui.cpp
 )
 target_include_directories(og_test_parity PRIVATE
     ${CMAKE_SOURCE_DIR}/tests/parity
@@ -977,6 +977,7 @@ add_executable(og_unit_headless_platform
     ${CMAKE_SOURCE_DIR}/tests/unit/test_platform_headless.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_text_campaign_sprites.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_picker_session.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_zone_session.cpp
     ${SRC_DIR}/core/test_trace.cpp
     ${HEADLESS_TEST_SOURCES}
 )

@@ -261,6 +261,9 @@ enum class MenuScreenId : std::uint8_t {
     Teams,
     Networking,
     Help,
+    // The Base Camp zone submenu (the scripted page chassis) — registered
+    // so the G5 remote-start sweep proves its preemption.
+    CampaignZoneSubmenu,
     Count,
 };
 
@@ -320,10 +323,23 @@ void set_main_menu_company_view_for_tests(bool present, std::string display_name
 // the per-frame rewire's visibility variants ({empty, partial, full,
 // multi-page} × {host} × {ownership mix} × {networked}); production state
 // is owned by create_team_menu.
+class CampaignZoneSession;  // campaign_picker_session.h
+
 struct BaseCampScreenState {
     // Cursor used by the team-build family's level-reload frame hook.
     short last_level_id = -1;
     bool was_reset = false;
+    // The gameplay-zone composition (docs/basecamp-zones-design.md): owned
+    // by create_team_menu beside this state; null renders the default
+    // composition through the same widget path (tests that install a bare
+    // state get the classic 8-row roster shape). Refetched on the four
+    // cadence triggers, never per frame.
+    CampaignZoneSession* zone = nullptr;
+    // The message-line toast (zone refusals/toasts prefer it over modal
+    // popups — a modal strands a networked joiner mid-GO). Drawn over the
+    // line-B slot until the stamp expires.
+    std::string toast;
+    std::int64_t toast_until_ms = 0;
     // Display row i (page-relative windowing via `page`) shows
     // slots[page.first_index() + i]: the private save row it names when
     // owned, the replicated wire copy when foreign.
@@ -478,31 +494,45 @@ void install_cloud_save_state_for_screen(CloudSaveScreenState* state);
 // main menu's spec-row dispatcher.
 Sint32 run_cloud_save_screen();
 
-// #206 MISSIONS (scripted campaign picker) screen state: a borrowed
-// CampaignPickerSession (the SDL-free page-fetch/select/act machine — it
-// caches the current page; this screen only windows and displays it) plus
-// the PageModel window over the page's rows. Public so tests can drive the
-// per-frame rewire's visibility variants; production state is owned by
-// run_campaign_missions_screen. The null/session-less state renders the
-// empty shape (rows and pagers hidden, BACK alone).
+// Campaign zone submenu screen state (docs/basecamp-zones-design.md "Zone
+// submenus"): a borrowed CampaignPickerSession (the SDL-free
+// page-fetch/select/act machine — it caches the current page; this screen
+// only windows and displays it) plus the PageModel window over the page's
+// rows. Public so tests can drive the per-frame rewire's visibility
+// variants; production state is owned by run_campaign_zone_submenu. The
+// null/session-less state renders the empty shape (rows and pagers hidden,
+// BACK alone).
 class CampaignPickerSession; // campaign_picker_session.h
+class CampaignZoneSession;   // campaign_picker_session.h
 
-struct CampaignMissionsScreenState {
+struct ZoneSubmenuScreenState {
     CampaignPickerSession* session = nullptr;
     PageModel page{};
-    // A level row's SDL level-set tail committed scen_num (observable for
-    // tests; the tail itself lives in the on_spec_row dispatch).
-    bool level_was_set = false;
+    // The message line, same contract as the Base Camp's (the screen this
+    // one is a room inside): confirmations and refusals ride the header
+    // strip for 2.5s instead of stopping the player with a modal. The
+    // modal-vs-toast fork used to be decided by menu DEPTH alone — one
+    // purchase confirmed with a toast at the root and with an OK button one
+    // page in.
+    std::string toast;
+    std::int64_t toast_until_ms = 0;
 };
 
-// #206 MISSIONS subscreen: page title + up to six narrative lines over 8
-// pageable row faces (Company List dynamic-rows chassis), BACK (pops
-// session pages; closes at the root) and PageModel PREV/NEXT pagers.
-const MenuScreenSpec& campaign_missions_menu_screen_spec();
+// The zone submenu: a C++-owned top strip (title + Escape-hotkeyed BACK,
+// checked before any Lua row) over 8 pageable Lua row faces (Company List
+// dynamic-rows chassis) and PageModel PREV/NEXT pagers. BACK pops session
+// pages; at the submenu's ROOT page it closes back to the Base Camp.
+const MenuScreenSpec& zone_submenu_menu_screen_spec();
 
 // Installs the state the per-frame rewire reads (the company-list seam
 // pattern; the null state renders the empty shape).
-void install_campaign_missions_state_for_screen(
-    CampaignMissionsScreenState* state);
+void install_zone_submenu_state_for_screen(ZoneSubmenuScreenState* state);
+
+// Blocking wrapper: open the scripted book at `page_id` ("" = the root) and
+// run the submenu. Returns MENU_REDRAW (or propagates a remote-start
+// MENU_EXIT). `opened` (optional) reports whether the page fetched — the
+// zone dispatch toasts the refusal instead of popping a modal.
+Sint32 run_campaign_zone_submenu(const std::string& page_id,
+                                 bool* opened = nullptr);
 
 } // namespace og::ui

@@ -14,6 +14,7 @@ legacy, or retired.
 |---|---|
 | Main, Difficulty, Game Settings, Display, Effects, Seat Settings | Runtime |
 | Base Camp, Hire, Train, Progress, View Level, Scenario, Matchup | Runtime |
+| Campaign zone submenu (the Base Camp book pages) | Runtime |
 | Company List, Backups, company name entry | Runtime |
 | Networking | Legacy `SdlPickerClient` loop |
 | View Team, manual Save/Load slots, global Controls | Retired |

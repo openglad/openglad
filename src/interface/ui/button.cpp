@@ -30,6 +30,8 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/interface/ui/picker_ui_state.h>
+#include <openglad/interface/session_state.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -39,6 +41,11 @@
 // The shared auto-dismissing dialog (picker_dialogs.cpp), used by the SPEED
 // row's relay warning.
 void timed_dialog(const char* message, float delay_seconds = 3.0f);
+
+// The two per-screen button-cap literals must never drift apart: the runner
+// checks MAX_BUTTONS while the session arrays size kMaxButtons.
+static_assert(og::runtime::SessionState::kMaxButtons == MAX_BUTTONS,
+              "GameSession::kMaxButtons must equal MAX_BUTTONS");
 
 // Per-session picker state accessor.
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
@@ -728,8 +735,11 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return view_scenario_page_flip(call_arg);
     case ButtonAction::CreateScenarioMenu:
         return create_scenario_menu(call_arg);
-    case ButtonAction::CreateCampaignMissionsMenu:
-        return run_campaign_missions_screen(call_arg);
+    case ButtonAction::CreateCampaignZoneSubmenu:
+        // The book's root page; the Base Camp zone dispatch bypasses this
+        // and passes the clicked page row's own id.
+        (void)call_arg;
+        return og::ui::run_campaign_zone_submenu(std::string());
     case ButtonAction::TeamsPageFlip:
         return teams_page_flip(call_arg);
     case ButtonAction::JoinTeam:

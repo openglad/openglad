@@ -2737,6 +2737,10 @@ bool read_page_entry(lua_State* L, const std::string& at,
         bad = at + ".cost is not an integer";
         return false;
     }
+    if (!read_bool_field(L, -1, "done", entry.done)) {
+        bad = at + ".done is not a boolean";
+        return false;
+    }
     return true;
 }
 

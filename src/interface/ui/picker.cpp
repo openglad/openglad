@@ -1588,7 +1588,7 @@ void picker_cleanup_resources()
     pks().company_backups_buttons.clear();
     pks().cloud_save_buttons.clear();
     pks().help_buttons.clear();
-    pks().campaign_missions_buttons.clear();
+    pks().zone_submenu_buttons.clear();
 }
 
 void picker_quit()

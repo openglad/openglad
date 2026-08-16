@@ -55,7 +55,7 @@ constexpr const char* kNoteTonight = "tonight?";
 constexpr const char* kNoteNotYet = "not yet";
 
 // Display budgets the surfaces enforce. The row-face figure is the SDL
-// mission row's own budget (kCampaignMissionsRowLabelChars, the picker's
+// zone submenu row's own budget (kZoneSubmenuRowLabelChars, the picker's
 // private picker_sdl_defs.h — a literal here on purpose: this test is the
 // pin that says the composed dream row still fits the face uncut).
 constexpr std::size_t kLabelBudget = 24;

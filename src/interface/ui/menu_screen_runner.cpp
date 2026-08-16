@@ -86,8 +86,11 @@ void draw_menu_highlight(const MenuScreenSpec& spec,
     // The compact Base Camp seat rail has only one- and two-pixel horizontal
     // gutters. Its focus ring must stay inside the selected control so it
     // cannot paint over the neighboring arrow, card, or numbered team chip.
+    // Bounded to the rail/move-up band (33..48): the appended gameplay-zone
+    // rows past it take the normal exterior focus ring.
     if (std::string_view(spec.name) == "team_build" &&
-        highlighted_button >= kBaseCampSeatsLabelIndex)
+        highlighted_button >= kBaseCampSeatsLabelIndex &&
+        highlighted_button <= kBaseCampInteriorRingLastIndex)
     {
         if (highlighted_button >= kBaseCampSeatCardBase &&
             highlighted_button <

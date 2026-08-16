@@ -339,7 +339,11 @@
 -- One row of a scripted picker page. Shape enforced
 -- C++-side (world_scripts.cpp parse_campaign_page):
 -- id and kind are required; a missing label is filled
--- from the scenario title for level rows.
+-- from the scenario title for level rows (and a level the
+-- campaign does not carry then renders CLOSED).
+-- `done = true` retires a costed action the book has
+-- already honored: the row stops quoting its price, draws
+-- spent, and refuses instead of charging twice.
 ---@class og.CampaignPageEntry
 ---@field id string
 ---@field kind "level"|"page"|"action"
@@ -347,6 +351,7 @@
 ---@field note? string
 ---@field level? integer
 ---@field cost? integer
+---@field done? boolean
 
 -- The page table picker_menu returns: <= 24 entries,
 -- <= 6 lines (clipped C++-side); title is required.

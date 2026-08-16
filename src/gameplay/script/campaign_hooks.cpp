@@ -55,6 +55,13 @@ void clear_campaign_providers()
     g_campaign_providers = {};
 }
 
+bool campaign_assign_set(int save_slot, int tag)
+{
+    if (!g_campaign_providers.assign_set)
+        return false;
+    return g_campaign_providers.assign_set(save_slot, tag);
+}
+
 }  // namespace hooks
 
 }  // namespace og::script

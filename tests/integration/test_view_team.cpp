@@ -12,6 +12,8 @@
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
+#include <openglad/gameplay/script/campaign_hooks.h>
+#include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -1828,6 +1830,138 @@ TEST(ViewTeam, base_camp_seat_card_focus_preserves_neighbors_and_team_chip)
     EXPECT_TRUE(focus_was_visible)
         << "test must observe a visible focus pulse inside the seat label";
 
+}
+
+// The interior focus ring is bounded to the compact seat rail / move-up band
+// (kBaseCampSeatsLabelIndex..kBaseCampInteriorRingLastIndex). The appended
+// gameplay-zone rows past it are 264px full-width faces where a 3px-inset
+// ring would read as a stray box inside the row, so they take the normal
+// exterior pulse. Pin BOTH directions: nothing may paint in the row's
+// interior band, and the exterior band must actually light up.
+TEST(ViewTeam, base_camp_zone_action_row_focus_takes_the_exterior_ring)
+{
+    struct ScreenStateGuard {
+        ~ScreenStateGuard()
+        {
+            og::ui::install_base_camp_state_for_screen(nullptr);
+            clear_allbuttons();
+            pks().menu_nav_enabled = false;
+            og::runtime::current_session->myscreen_->save_data.reset();
+        }
+    } guard;
+
+    screen* const output = og::runtime::current_session->myscreen_;
+    SaveData& save = output->save_data;
+    save.reset();
+    save.save_name = "IRON KETTLE BAND";
+    save.current_campaign = "gladiator";
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Alpha";
+    save.team_size = 1;
+
+    // A composition whose first band is an actions widget: its rows un-park
+    // at x=12, sizex=264 (kBaseCampZoneActionRowWidth).
+    og::script::hooks::CampaignZone raw;
+    {
+        og::script::hooks::CampaignZoneWidget actions;
+        actions.kind = og::script::hooks::CampaignZoneWidget::Kind::Actions;
+        actions.weight = 2;
+        for (int i = 0; i < 2; ++i)
+        {
+            og::script::hooks::CampaignPageEntry entry;
+            entry.id = std::format("act{}", i);
+            entry.label = std::format("ACT {}", i);
+            entry.kind = og::script::hooks::CampaignPageEntry::Kind::Action;
+            actions.entries.push_back(std::move(entry));
+        }
+        raw.widgets.push_back(actions);
+        og::script::hooks::CampaignZoneWidget roster;
+        roster.kind = og::script::hooks::CampaignZoneWidget::Kind::Roster;
+        raw.widgets.push_back(roster);
+    }
+    og::ui::CampaignZoneSession zone(save);
+    ASSERT_TRUE(zone.adopt(raw));
+
+    og::ui::BaseCampScreenState state;
+    state.zone = &zone;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, spec.nav.rewire);
+    ASSERT_NE(nullptr, spec.draw_background);
+    ASSERT_NE(nullptr, spec.draw_content);
+
+    button* const buttons = picker_createmenu_buttons();
+    const int count = picker_createmenu_button_count();
+    init_buttons(buttons, count);
+    int highlighted = kBaseCampZoneActionBase;
+    spec.nav.rewire(buttons, count, highlighted);
+    ASSERT_FALSE(buttons[kBaseCampZoneActionBase].hidden)
+        << "the actions widget must un-park its first row";
+    ASSERT_GT(kBaseCampZoneActionBase, kBaseCampInteriorRingLastIndex)
+        << "zone rows must sit past the interior-ring band";
+
+    const button& face = buttons[kBaseCampZoneActionBase];
+    ASSERT_EQ(12, face.x);
+    ASSERT_EQ(264, face.sizex);
+
+    // Sample bands three pixels wide on each side of the face's left edge,
+    // clear of the ring's corners so only the vertical run is observed.
+    const int band_top = face.y + 4;
+    const int band_bottom = face.y + face.sizey - 4;
+    ASSERT_GT(band_bottom, band_top);
+    const auto capture_band = [&](int left, int right) {
+        std::vector<Uint32> pixels;
+        for (int y = band_top; y <= band_bottom; ++y) {
+            for (int x = left; x <= right; ++x) {
+                Uint8 red = 0;
+                Uint8 green = 0;
+                Uint8 blue = 0;
+                output->get_pixel(x, y, &red, &green, &blue);
+                pixels.push_back((static_cast<Uint32>(red) << 16) |
+                                 (static_cast<Uint32>(green) << 8) |
+                                 static_cast<Uint32>(blue));
+            }
+        }
+        return pixels;
+    };
+    const auto render_without_focus = [&]() {
+        output->fastbox(0, 0, 320, 200, PURE_BLACK);
+        spec.draw_background(&state);
+        draw_buttons(buttons, count);
+        spec.draw_content(&state);
+    };
+
+    render_without_focus();
+    const std::vector<Uint32> inside_baseline =
+        capture_band(face.x + 1, face.x + 3);
+    const std::vector<Uint32> outside_baseline =
+        capture_band(face.x - 3, face.x - 1);
+
+    // The inset is a sine of the wall clock, so sample a full pulse.
+    bool exterior_ring_seen = false;
+    for (int sample = 0; sample < 100; ++sample) {
+        render_without_focus();
+        pks().menu_nav_enabled = true;
+        og::ui::picker_testing_draw_menu_highlight(spec, buttons,
+                                                   highlighted);
+        const std::vector<Uint32> inside =
+            capture_band(face.x + 1, face.x + 3);
+        const std::vector<Uint32> outside =
+            capture_band(face.x - 3, face.x - 1);
+        for (std::size_t i = 0; i < inside.size(); ++i) {
+            ASSERT_EQ(inside_baseline[i], inside[i])
+                << "an interior ring painted inside the zone row face "
+                   "(sample " << sample << ", offset " << i << ")";
+        }
+        exterior_ring_seen = exterior_ring_seen ||
+            outside != outside_baseline;
+        SDL_Delay(10);
+    }
+    EXPECT_TRUE(exterior_ring_seen)
+        << "the zone row must draw the exterior focus pulse";
 }
 
 // Identity text stays readable while the old View Team palette survives as

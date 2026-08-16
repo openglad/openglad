@@ -159,9 +159,9 @@ int picker_cloud_save_button_count();
 // #168 full-screen HELP — engine screen.
 button* picker_help_buttons();
 int picker_help_button_count();
-// #206 MISSIONS (scripted campaign picker) — engine screen.
-button* picker_campaign_missions_buttons();
-int picker_campaign_missions_button_count();
+// Campaign zone submenu (the scripted page chassis) — engine screen.
+button* picker_zone_submenu_buttons();
+int picker_zone_submenu_button_count();
 
 // --- Base camp (team build) layout contract (design §2.5 as amended §9.5,
 // regridded §9.10) -----------------------------------------------------------
@@ -210,7 +210,24 @@ inline constexpr int kBaseCampSeatCardsPerPage = 4;
 // The compact 57px seat card is drawn without the beveled inset, so its
 // budget is the full face: 57 / 6 = 9 characters, trailing pad included.
 inline constexpr int kBaseCampSeatCardLabelBudget = 9;
-inline constexpr int kCreateMenuButtonCount = 49;
+// The last ordinal of the compact seat-rail/move-up band: draw_menu_highlight
+// keeps its interior focus ring INSIDE [kBaseCampSeatsLabelIndex, this] —
+// appended zone rows past it take the normal exterior ring.
+inline constexpr int kBaseCampInteriorRingLastIndex = 48;
+// --- The appended gameplay-zone band (docs/basecamp-zones-design.md
+// "Bounds arithmetic"): ordinals 49..71, statically PARKED at zero-size
+// rects with empty labels (gate-lattice safe) and re-banded per frame by the
+// rewire when a composition uses them. 16 action rows split 8 per actions
+// widget (zone widget w, window row r -> ordinal base + 8w + r), one
+// prev/next pager pair per actions widget, 3 spares.
+inline constexpr int kBaseCampZoneActionBase = 49;    // zone_action_0..15
+inline constexpr int kBaseCampZoneActionsPerWidget = 8;
+inline constexpr int kBaseCampZoneActionRows = 16;
+inline constexpr int kBaseCampZonePagerBase = 65;     // prev/next per widget
+inline constexpr int kBaseCampZonePagerCount = 4;
+inline constexpr int kBaseCampZoneSpareBase = 69;     // zone_spare_0..2
+inline constexpr int kBaseCampZoneSpareCount = 3;
+inline constexpr int kCreateMenuButtonCount = 72;
 
 // --- LOCAL SEAT SETTINGS subscreen -----------------------------------------
 // A clicked owned Base Camp seat resolves its stable LobbySeatId to a dense
@@ -352,26 +369,35 @@ inline constexpr int kScenarioMenuProgressIndex = 5;
 // Appended (index contract: growth is append-only). Host-gated like
 // SET CAMPAIGN / SET LEVEL.
 inline constexpr int kScenarioMenuTroopsIndex = 6;
-// Appended (#206): the scripted-campaign MISSIONS door. NOT host-gated —
-// pages/actions are for everyone; only level-row activation inside the
-// subscreen is host-gated. Hidden per frame when the mounted campaign
-// registers no picker (og::script::hooks::campaign_picker_registered).
-inline constexpr int kScenarioMenuMissionsIndex = 7;
-inline constexpr int kScenarioMenuButtonCount = 8;
+inline constexpr int kScenarioMenuButtonCount = 7;
 
-// --- MISSIONS (scripted campaign picker, #206) layout contract -------------
-// Company List dynamic-rows chassis: 8 pageable full-width row faces over
-// the page cap of 24 entries (PageModel window), BACK, and the PREV/NEXT
-// pagers (hidden unless the page spans). Footer band at y=169 so this
+// --- Campaign zone submenu (docs/basecamp-zones-design.md) -----------------
+// The scripted page chassis opened by page-kind zone action rows (and by
+// ButtonAction::CreateCampaignZoneSubmenu at the book root). It is a ROOM
+// INSIDE the Base Camp, not a different game's menu: the same header lines
+// (COMPANY + GOLD — you can see your purse while you shop), the same panel
+// at (8,28)-(311,160), the same message-line toasts. Only the footer band at
+// y=169 is its own (title + Escape-hotkeyed BACK + PREV/NEXT), so this
 // screen's "back" shares no other screen's geometry (injector
 // disambiguation rule).
-inline constexpr int kCampaignMissionsRowsPerPage = 8;
-inline constexpr int kCampaignMissionsBackIndex = 8;
-inline constexpr int kCampaignMissionsPrevIndex = 9;
-inline constexpr int kCampaignMissionsNextIndex = 10;
-inline constexpr int kCampaignMissionsButtonCount = 11;
-// Row face is 260px at 6px/char, centered with no clipping.
-inline constexpr std::size_t kCampaignMissionsRowLabelChars = 42;
+inline constexpr int kZoneSubmenuRowsPerPage = 8;
+inline constexpr int kZoneSubmenuBackIndex = 8;
+inline constexpr int kZoneSubmenuPrevIndex = 9;
+inline constexpr int kZoneSubmenuNextIndex = 10;
+inline constexpr int kZoneSubmenuButtonCount = 11;
+// Row faces run the panel's inner width (12..307) on a 12px pitch; the
+// narrative lines above them take the panel's header band, so a page with
+// many lines shows fewer rows per window rather than overrunning the panel.
+inline constexpr int kZoneSubmenuRowX = 12;
+inline constexpr int kZoneSubmenuRowWidth = 296;
+inline constexpr int kZoneSubmenuRowPitch = 12;
+inline constexpr int kZoneSubmenuLineY0 = 33;
+// A page with no narrative lines starts its rows on the Base Camp zone's
+// own grid anchor, so stepping into a submenu does not shift the eye.
+inline constexpr int kZoneSubmenuRowY0 = 45;
+inline constexpr int kZoneSubmenuPanelBottomY = 158;
+inline constexpr std::size_t kZoneSubmenuRowLabelChars =
+    (kZoneSubmenuRowWidth - 8) / 6;  // 48
 
 // --- MATCHUP subscreen layout contract ------------------------------------
 // Positional indices into k_teamsmenu_buttons / picker_teamsmenu_buttons().
@@ -418,11 +444,9 @@ void picker_wire_teams_menu_nav(button* buttons, int count,
 // never links to a hidden button). The base camp rewires its full roster
 // graph per frame (pattern b — the rewire lives on the spec and reads the
 // installed BaseCampScreenState); the SCENARIO subscreen gates
-// SET CAMPAIGN / SET LEVEL — and MISSIONS on its own axis (registered
-// scripted picker), so the wire takes both visibility flags.
+// SET CAMPAIGN / SET LEVEL / TROOPS on the host axis.
 void picker_wire_scenario_menu_nav(button* buttons, int count,
-                                   bool host_controls_visible,
-                                   bool missions_visible);
+                                   bool host_controls_visible);
 
 // The retired MATCHUP roster cursor, normalized onto an occupied
 // slot (-1 when the roster is empty).

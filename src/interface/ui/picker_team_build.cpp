@@ -301,12 +301,10 @@ void ensure_highlighted_button_visible(const button* buttons,
 // the rewire lives on the spec in menu_screen_specs.cpp.
 
 // Rewire the always-visible VIEW LEVEL | MATCHUP | PROGRESS row's up-links
-// around the host-gated SET CAMPAIGN / SET LEVEL column, and the x=30
-// column's vertical chain around the picker-gated MISSIONS row (#206).
+// around the host-gated SET CAMPAIGN / SET LEVEL column.
 void picker_wire_scenario_menu_nav(button* buttons,
                                    int count,
-                                   bool host_controls_visible,
-                                   bool missions_visible)
+                                   bool host_controls_visible)
 {
     if (buttons == nullptr || count < kScenarioMenuButtonCount)
         return;
@@ -321,21 +319,10 @@ void picker_wire_scenario_menu_nav(button* buttons,
     buttons[kScenarioMenuTeamsIndex].nav.down =
         host_controls_visible ? kScenarioMenuTroopsIndex
                               : kScenarioMenuBackIndex;
-    // MISSIONS sits in the x=30 column between VIEW LEVEL and BACK; the
-    // chain routes around it when no scripted picker is registered, and its
-    // right-link only targets TROOPS while that host-gated row is visible.
     buttons[kScenarioMenuViewScenarioIndex].nav.down =
-        missions_visible ? kScenarioMenuMissionsIndex : kScenarioMenuBackIndex;
+        kScenarioMenuBackIndex;
     buttons[kScenarioMenuBackIndex].nav.up =
-        missions_visible ? kScenarioMenuMissionsIndex
-                         : kScenarioMenuViewScenarioIndex;
-    buttons[kScenarioMenuMissionsIndex].nav = {
-        .up = kScenarioMenuViewScenarioIndex,
-        .down = kScenarioMenuBackIndex,
-        .left = -1,
-        .right = host_controls_visible ? kScenarioMenuTroopsIndex : -1};
-    buttons[kScenarioMenuTroopsIndex].nav.left =
-        missions_visible ? kScenarioMenuMissionsIndex : -1;
+        kScenarioMenuViewScenarioIndex;
 }
 
 void sync_scenario_menu_host_control_visibility(button* buttons,
@@ -365,15 +352,8 @@ void sync_scenario_menu_host_control_visibility(button* buttons,
         og::runtime::current_session->allbuttons_[kScenarioMenuTroopsIndex]
             ->label = buttons[kScenarioMenuTroopsIndex].label;
     }
-    // #206: MISSIONS shows only when the mounted campaign registers a
-    // scripted picker. Its own axis, NOT the host gate — pages/actions are
-    // for everyone; the level rows inside are host-gated at activation.
-    const bool missions_visible =
-        og::script::hooks::campaign_picker_registered();
-    buttons[kScenarioMenuMissionsIndex].hidden = !missions_visible;
-    sync_button_hidden_state(buttons, kScenarioMenuMissionsIndex);
-    picker_wire_scenario_menu_nav(buttons, num_buttons, host_controls_visible,
-                                  missions_visible);
+    picker_wire_scenario_menu_nav(buttons, num_buttons,
+                                  host_controls_visible);
 
     ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
 }

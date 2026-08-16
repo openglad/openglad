@@ -530,8 +530,28 @@ TEST_F(CampaignPickerSessionTest, row_text_composes_markers_costs_and_clips)
     action.cost = 60;
     EXPECT_EQ("FIELD KIT  60g", og::ui::campaign_picker_row_text(action, 42));
 
-    // Clip at the budget: an over-long compose never escapes the face.
-    EXPECT_EQ("FIELD KIT ", og::ui::campaign_picker_row_text(action, 10));
+    // Clip at the budget: an over-long compose never escapes the face, and
+    // it says it was cut instead of stopping mid-word.
+    EXPECT_EQ("FIELD KI..", og::ui::campaign_picker_row_text(action, 10));
+
+    // A retired purchase stops quoting its price and says so.
+    action.done = true;
+    EXPECT_EQ("FIELD KIT  [DONE]",
+              og::ui::campaign_picker_row_text(action, 42));
+
+    // Page rows wear the door marker; a level row the engine could not find
+    // wears CLOSED.
+    CampaignPickerSession::Row page;
+    page.label = "STORES";
+    page.kind = CampaignPickerSession::Kind::Page;
+    EXPECT_EQ("STORES  >", og::ui::campaign_picker_row_text(page, 42));
+
+    CampaignPickerSession::Row closed;
+    closed.label = "SCEN 9999";
+    closed.kind = CampaignPickerSession::Kind::Level;
+    closed.available = false;
+    EXPECT_EQ("SCEN 9999  [CLOSED]",
+              og::ui::campaign_picker_row_text(closed, 42));
 }
 
 // ---------------------------------------------------------------------------

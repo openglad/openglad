@@ -117,8 +117,8 @@ struct PickerState {
     std::vector<button> cloud_save_buttons;
     // #168 full-screen HELP — engine screen.
     std::vector<button> help_buttons;
-    // #206 MISSIONS (scripted campaign picker) — engine screen.
-    std::vector<button> campaign_missions_buttons;
+    // Campaign zone submenu (the scripted page chassis) — engine screen.
+    std::vector<button> zone_submenu_buttons;
 
     // MATCHUP subscreen: roster slot selected by the legacy local guy row.
     int teams_menu_guy_slot = 0;

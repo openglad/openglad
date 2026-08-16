@@ -33,6 +33,13 @@ force-pushed with the rewritten series (same branch, same number).
   at y=45. No `base_camp` hook ⇒ the C++ default: full-capability
   roster, header GOLD, and HIRE as the roster band's header-right button
   (id `hire_troops` preserved; the one deliberate visual change).
+  HIRE's face overlaps line B's strip, so it is also line B's right wall:
+  the band is 34 characters while a composition shows HIRE and 41 while
+  one hides it (`kBaseCampLineBChars*` in `picker_common.h`, derived from
+  the wall x and static_asserted against the button geometry). The
+  networked session status composes to the live budget — a narrow band
+  takes compact spellings ("2M / 3P", the joiner's "HOST: " label
+  dropped) rather than a mid-word cut.
 
 ## The widget contract
 
@@ -54,28 +61,49 @@ per frame.
   `can_reorder`, `can_team`, `can_hire` (default on; renders the HIRE
   button in the roster band header). `locks = { {slot-independent guy
   reference, reason} }` refuse deploy with the reason (delivered as a
-  message-line toast, not a modal, to avoid lobby stranding). `assign =
-  { key, labels = {A, B}, frozen = nil|"reason" }` turns the solo
-  team-chip cell into an assignment chip: glyph `-`/first letters, cycle
-  unset→A→B→A (never back to unset), each cycle toasts the full word
-  ("Sworn to the WAR road."); `frozen` keeps chips visible but refuses
-  cycling with the reason. Assign chips render only when `own &&
+  message-line toast, not a modal, to avoid lobby stranding) AND draw a
+  padlock in the locked row's deploy cell on the spent face — a lock the
+  player can only learn from a 2.5s toast is a box that silently refuses
+  clicks forever. `assign = { key, labels = {A, B}, frozen = nil|"reason"
+  }` turns the solo team-chip cell into the OATH COLUMN: a
+  six-character word cell at x=44 under a heading named by `key`
+  (uppercased), showing `-` while unsworn and the label in words once
+  sworn, with the deploy heading shortened to "DEP" beside it. NOT a
+  coloured chip carrying an initial — that widget means "team number"
+  everywhere else on the screen, and the oath has to outlive its toast.
+  Cycle unset→A→B→A (never back to unset), each cycle toasts the full
+  word ("Sworn to WAR."); `frozen` keeps the column readable but refuses
+  cycling with the reason. Oath cells render only when `own &&
   (assign_mode || !networked)`; cycling a DEPLOYED hero first un-deploys
   through the full roster tail (lobby push, ready clears — correct);
   undeployed cycles ride the autosave tail only. Roster DATA is always
   the C++ lobby-merged truth — Lua shapes affordances, never rows.
-- `text` — up to 6 lines per widget on readability strips painted in
-  draw_background (draw-order rule).
+- `text` — up to 6 lines per widget, inked straight onto the panel face
+  in the roster's own identity ink. NO readability strips inside the
+  panel (the one-screen rule): the black-strip idiom exists to lift text
+  off the title-screen backdrop, and stacking charcoal bars and grey
+  plates on an opaque grey panel reads as three materials pasted
+  together rather than one screen.
 - `actions` — rows in the EXISTING page-entry vocabulary
-  (level/page/action, id/label/note/cost). Each actions widget is
+  (level/page/action, id/label/note/cost) plus `done`, which retires a
+  costed action the book has already honored (no price quoted, spent
+  face, refuses instead of charging twice). Each actions widget is
   windowed by PageModel with its own two pager ordinals; overflow pages
   in place. Level rows: host-gated load-with-rollback set tail. Page
   rows: the zone submenu. Action rows: debit-then-dispatch + autosave
   tail (+ settings sync when the match dirty flag armed). Actions do NOT
-  clear ready.
+  clear ready. **Each kind is legible before the click**: page rows wear
+  the repo's door marker (" >"), level rows wear the GO green because
+  they start a battle, spent/closed/unaffordable rows wear the dimmed
+  face, and a level row whose scenario the campaign does not carry reads
+  `[CLOSED]`.
 - `readout` — ONE zone row of up to 3 label/value cells (fetch-composed
-  strings; staleness bound = the fetch cadence). The header GOLD cell
-  stays C++-owned always.
+  strings; staleness bound = the fetch cadence), labels in the
+  column-header ink and values in the row-data ink. When the roster does
+  not lead the composition it moves its column headings into the grid and
+  abandons the classic header slot at y=33; the readout HOISTS into that
+  band as the panel's heading, which fills the band and hands its row
+  unit back to the roster. The header GOLD cell stays C++-owned always.
 
 **Per-hero identity (GTL v16, shipped in this change)**: the guy record
 gains a `campaign_tag` byte in the reserved bytes — the per-hero
@@ -106,11 +134,18 @@ meaning; malformed or over-budget compositions fall to the default zone.
 ## Zone submenus
 
 The zone submenu (generalized from the v1 missions chassis, which never
-ships): C++-owned top strip — title + BACK at fixed rects,
-Escape-hotkeyed, checked before any Lua row — Lua page rows below, same
-`CampaignPage` vocabulary, depth ≤ 4, PageModel windowing, remote-start
-folding, registered in `MenuScreenId` so the G5 sweep covers it (the
-registry gap for Company List et al. remains; not claimed here).
+ships) is a ROOM INSIDE the camp, not a screen of its own: the same
+panel at (8,28)-(311,160), the same header strips (COMPANY + GOLD — you
+must be able to see your purse while a shop quotes prices), and the same
+message-line toasts. Confirmations and refusals never fork on menu
+DEPTH: a purchase that toasts at the root does not become a blocking
+modal one page in. C++ owns the strip — the page title on the status
+line and BACK at its fixed rect, Escape-hotkeyed, checked before any Lua
+row — Lua page rows below, same `CampaignPage` vocabulary, depth ≤ 4,
+PageModel windowing (a wordy page shows fewer rows per window rather
+than overrunning the panel), remote-start folding, registered in
+`MenuScreenId` so the G5 sweep covers it (the registry gap for Company
+List et al. remains; not claimed here).
 
 ## Networked rules
 
@@ -124,7 +159,13 @@ registry gap for Company List et al. remains; not claimed here).
   (locks are an own-machine courtesy, not an integrity mechanism).
   Networked Westlands co-op plays the unsworn-bypass shape.
 - Zone refusals prefer the message line/toast over modal popups (modals
-  do not poll the lobby; a stranded joiner misses GO).
+  do not poll the lobby; a stranded joiner misses GO). One click, one
+  answer: every dispatch drops the standing toast before it speaks, so
+  the previous action's message can never be read as this one's, and a
+  successful level set says so rather than leaving the last toast up.
+- The campaign's voice slot carries the campaign's words. Engine
+  diagnostics never surface there: a level that will not load is "That
+  road is not open yet.", not "Invalid level file."
 
 ## Terminals
 

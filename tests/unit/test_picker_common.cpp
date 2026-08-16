@@ -3840,14 +3840,51 @@ TEST(BaseCampRoster, header_lines_budget_and_content)
     const std::string line =
         og::ui::format_base_camp_scen_line(save, "THE FORTRESS");
     EXPECT_EQ("SCEN 7: THE FORTRESS  DEP 1/2", line);
-    EXPECT_LE(line.size(), 34u);
+    // The solo header shares line B with the roster header band's HIRE
+    // command, so it takes the conservative (HIRE-visible) budget — the
+    // draw site clips nothing, every source composes to its band.
+    EXPECT_LE(line.size(),
+              static_cast<std::size_t>(
+                  og::ui::kBaseCampLineBCharsHireVisible));
 
     // An over-long title clips so the DEP block always fits the budget.
     const std::string clipped = og::ui::format_base_camp_scen_line(
         save, "AN ABSURDLY LONG SCENARIO TITLE THAT CANNOT FIT");
-    EXPECT_LE(clipped.size(), 34u);
+    EXPECT_LE(clipped.size(),
+              static_cast<std::size_t>(
+                  og::ui::kBaseCampLineBCharsHireVisible));
     EXPECT_NE(std::string::npos, clipped.find("  DEP 1/2"))
         << "the DEP block survives the clip: " << clipped;
+    // A cut title SAYS it was cut. Before the marker, "THE RASPBERRY ISLE"
+    // rendered "SCEN 7: THE RASPBERRY IS" — a corrupted-looking title, not
+    // a shortened one, on the only line of story the screen carries.
+    EXPECT_EQ("SCEN 7: THE RASPBERRY..  DEP 1/2",
+              og::ui::format_base_camp_scen_line(save,
+                                                 "THE RASPBERRY ISLE"));
+    // A word that nearly fits is not thrown away for the marker's sake:
+    // below two thirds of the room the cut goes mid-word and the marker
+    // carries the honesty.
+    EXPECT_EQ("SCEN 7: SOUTH OF TALWOO..  DEP 1/2",
+              og::ui::format_base_camp_scen_line(
+                  save, "SOUTH OF TALWOOD FOREST"));
+}
+
+TEST(BaseCampRoster, clip_with_ellipsis_marks_every_cut)
+{
+    // Fits: untouched, no marker.
+    EXPECT_EQ("THE CIRCLE", og::ui::clip_with_ellipsis("THE CIRCLE", 10));
+    // Whole-word cut while two thirds of the room survives.
+    EXPECT_EQ("THE RASPBERRY..",
+              og::ui::clip_with_ellipsis("THE RASPBERRY ISLE", 17));
+    // Mid-word cut below that threshold (the whole-word cut would drop a
+    // word that nearly fit).
+    EXPECT_EQ("SOUTH OF TALWO..",
+              og::ui::clip_with_ellipsis("SOUTH OF TALWOOD FOREST", 16));
+    // No word boundary at all: still marked.
+    EXPECT_EQ("ABCD..", og::ui::clip_with_ellipsis("ABCDEFGHIJ", 6));
+    // Budgets with no room for the marker clip hard rather than lie.
+    EXPECT_EQ("AB", og::ui::clip_with_ellipsis("ABCDEF", 2));
+    EXPECT_EQ("", og::ui::clip_with_ellipsis("ABCDEF", 0));
 }
 
 TEST(BaseCampRoster, train_session_seek_slot_seats_directly)
@@ -4145,33 +4182,75 @@ TEST(BaseCampMpDisplay, session_status_shapes_hold_the_line_b_budget)
             2, "net-j#1", "JOIN RIVER BAND", false, false, 1, 0, 2),
     };
 
-    // §9.12 host shape: role + room + census. "MACH / PLYR" is the
-    // recorded budget latitude (spelled-out overruns 42 at double digits).
-    const std::string host = og::ui::format_base_camp_session_status(
-        true, "GLAD-7Q2F", players);
-    EXPECT_EQ("HOSTING GLAD-7Q2F - 2 MACH / 3 PLYR", host);
+    // The band is 34 characters wide beside HIRE and 41 without it, both
+    // DERIVED from the wall each control stands on: ink starts at x=10 and
+    // the readability strip pads 2px, so N characters must satisfy
+    // 10 + 6N + 2 <= wall.
+    constexpr int kWide = og::ui::kBaseCampLineBCharsHireHidden;
+    constexpr int kNarrow = og::ui::kBaseCampLineBCharsHireVisible;
+    EXPECT_EQ(34, kNarrow);
+    EXPECT_EQ(41, kWide);
+    const auto ink_right_edge = [](std::size_t chars) {
+        return og::ui::kBaseCampLineBTextX +
+            og::ui::kBaseCampLineBGlyphAdvance * static_cast<int>(chars) +
+            og::ui::kBaseCampLineBStripPad;
+    };
+    EXPECT_LE(ink_right_edge(kNarrow), og::ui::kBaseCampLineBHireWallX);
+    EXPECT_GT(ink_right_edge(kNarrow + 1), og::ui::kBaseCampLineBHireWallX)
+        << "the narrow budget must be the WIDEST that clears HIRE";
+    EXPECT_LE(ink_right_edge(kWide), og::ui::kBaseCampLineBPagerWallX);
+    EXPECT_GT(ink_right_edge(kWide + 1), og::ui::kBaseCampLineBPagerWallX)
+        << "the wide budget must be the WIDEST that clears the pagers";
+
+    // §9.12 host shape on the wide band: role + room + census. "MACH /
+    // PLYR" is the recorded budget latitude (spelled-out overruns at
+    // double digits).
+    EXPECT_EQ("HOSTING GLAD-7Q2F - 2 MACH / 3 PLYR",
+              og::ui::format_base_camp_session_status(true, "GLAD-7Q2F",
+                                                      players, kWide));
     // Relay-less (LAN) host: the census alone.
     EXPECT_EQ("HOSTING 2 MACH / 3 PLYR",
-              og::ui::format_base_camp_session_status(true, "", players));
+              og::ui::format_base_camp_session_status(true, "", players,
+                                                      kWide));
 
     // §9.12 joiner shape: room + the host machine's company.
     EXPECT_EQ("IN GLAD-7Q2F - HOST: IRON KETTLE BAND",
               og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
-                                                      players));
+                                                      players, kWide));
     // Direct (LAN) joiner: no room code.
     EXPECT_EQ("JOINED - HOST: IRON KETTLE BAND",
-              og::ui::format_base_camp_session_status(false, "", players));
+              og::ui::format_base_camp_session_status(false, "", players,
+                                                      kWide));
     // Host not yet known (pre-election on a dedicated server).
     EXPECT_EQ("IN GLAD-7Q2F",
               og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
-                                                      {}));
+                                                      {}, kWide));
     EXPECT_EQ("JOINED",
-              og::ui::format_base_camp_session_status(false, "", {}));
+              og::ui::format_base_camp_session_status(false, "", {}, kWide));
 
-    // Budget pins: the absolute worst shapes fit the 42-char line-B band
-    // (x=8 text, pager wall at x=263 => 42 chars) — host at the 16-seat
-    // global cap, joiner at the full 16-char company clip; a pathological
-    // room code display-clips at 12 and the whole line at 42.
+    // The NARROW band (the shape every shipped campaign renders today —
+    // the default composition shows HIRE): the everyday host line is 35,
+    // one character over, so the census takes its compact spelling rather
+    // than losing "PLYR" to a byte cut. The joiner drops the "HOST: "
+    // label instead of the company that names the lobby.
+    EXPECT_EQ("HOSTING GLAD-7Q2F - 2M / 3P",
+              og::ui::format_base_camp_session_status(true, "GLAD-7Q2F",
+                                                      players, kNarrow));
+    EXPECT_EQ("HOSTING 2 MACH / 3 PLYR",
+              og::ui::format_base_camp_session_status(true, "", players,
+                                                      kNarrow))
+        << "a shape that already fits keeps the spelled-out census";
+    EXPECT_EQ("IN GLAD-7Q2F - IRON KETTLE BAND",
+              og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
+                                                      players, kNarrow));
+    EXPECT_EQ("JOINED - HOST: IRON KETTLE BAND",
+              og::ui::format_base_camp_session_status(false, "", players,
+                                                      kNarrow))
+        << "the LAN joiner shape fits as-is and keeps its label";
+
+    // Budget pins: the absolute worst shapes fit BOTH bands — host at the
+    // 16-seat global cap, joiner at the full 16-char company clip; a
+    // pathological room code display-clips at 12.
     std::vector<og::sim::LobbyPlayer> sixteen;
     for (int i = 0; i < 16; ++i) {
         sixteen.push_back(make_lobby_seat(
@@ -4179,17 +4258,88 @@ TEST(BaseCampMpDisplay, session_status_shapes_hold_the_line_b_budget)
             std::format("net-{:02}", i).c_str(), "C", i == 0, false, 1, 0,
             static_cast<og::sim::LobbyMachineId>(i + 1)));
     }
-    const std::string worst_host = og::ui::format_base_camp_session_status(
-        true, "GLAD-XXXX", sixteen);
-    EXPECT_EQ("HOSTING GLAD-XXXX - 16 MACH / 16 PLYR", worst_host);
-    EXPECT_LE(worst_host.size(), 42u);
-    const std::string worst_join = og::ui::format_base_camp_session_status(
-        false, "GLAD-XXXX", players);
-    EXPECT_LE(worst_join.size(), 42u);
-    EXPECT_LE(og::ui::format_base_camp_session_status(
-                  true, "GLAD-TOO-LONG-CODE", sixteen)
-                  .size(),
-              42u);
+    const std::vector<og::sim::LobbyPlayer> long_company = {
+        make_lobby_seat(0, "net-h", "A COMPANY NAME PAST SIXTEEN", true,
+                        false, 1, 0, 1)};
+    for (const int budget : {kNarrow, kWide}) {
+        EXPECT_LE(og::ui::format_base_camp_session_status(
+                      true, "GLAD-XXXX", sixteen, budget).size(),
+                  static_cast<std::size_t>(budget))
+            << "16-seat host at budget " << budget;
+        EXPECT_LE(og::ui::format_base_camp_session_status(
+                      false, "GLAD-XXXX", players, budget).size(),
+                  static_cast<std::size_t>(budget))
+            << "joiner at budget " << budget;
+        EXPECT_LE(og::ui::format_base_camp_session_status(
+                      true, "GLAD-TOO-LONG-CODE", sixteen, budget).size(),
+                  static_cast<std::size_t>(budget))
+            << "pathological room code at budget " << budget;
+        EXPECT_LE(og::ui::format_base_camp_session_status(
+                      false, "GLAD-TOO-LONG-CODE", long_company, budget)
+                      .size(),
+                  static_cast<std::size_t>(budget))
+            << "pathological room code + company at budget " << budget;
+    }
+    EXPECT_EQ("HOSTING GLAD-XXXX - 16 MACH / 16 PLYR",
+              og::ui::format_base_camp_session_status(true, "GLAD-XXXX",
+                                                      sixteen, kWide));
+    EXPECT_EQ("HOSTING GLAD-XXXX - 16M / 16P",
+              og::ui::format_base_camp_session_status(true, "GLAD-XXXX",
+                                                      sixteen, kNarrow));
+    // Room 12 + company 16 is the joiner's exact-fit worst case at 34.
+    EXPECT_EQ("IN GLAD-TOO-LON - A COMPANY NAME P",
+              og::ui::format_base_camp_session_status(
+                  false, "GLAD-TOO-LONG-CODE", long_company, kNarrow));
+}
+
+// The composer's budget is a parameter, not a constant: narrower callers
+// (and any future band) shed the room code and whole words rather than
+// emitting a byte-cut line.
+TEST(BaseCampMpDisplay, session_status_degrades_by_shape_not_by_byte_cut)
+{
+    std::vector<og::sim::LobbyPlayer> sixteen;
+    for (int i = 0; i < 16; ++i) {
+        sixteen.push_back(make_lobby_seat(
+            static_cast<std::uint8_t>(i),
+            std::format("net-{:02}", i).c_str(), "C", i == 0, false, 1, 0,
+            static_cast<og::sim::LobbyMachineId>(i + 1)));
+    }
+    // Too narrow even for the compact census beside a room code: the room
+    // half goes (the NETWORKING screen keeps the authoritative code).
+    EXPECT_EQ("HOSTING 16M / 16P",
+              og::ui::format_base_camp_session_status(true, "GLAD-7Q2F",
+                                                      sixteen, 20));
+
+    const std::vector<og::sim::LobbyPlayer> kettle = {
+        make_lobby_seat(0, "net-h", "IRON KETTLE BAND", true, false, 1, 0,
+                        1)};
+    // The company sheds a whole word when one survives past half the
+    // remaining budget...
+    EXPECT_EQ("IN GLAD-7Q2F - IRON KETTLE",
+              og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
+                                                      kettle, 26));
+    EXPECT_EQ("IN GLAD-7Q2F - IRON",
+              og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
+                                                      kettle, 20));
+    // ...and takes the bytes when the whole-word remainder would say less
+    // than they do.
+    const std::vector<og::sim::LobbyPlayer> lopsided = {
+        make_lobby_seat(0, "net-h", "A VERYLONGNAMEHERE", true, false, 1, 0,
+                        1)};
+    EXPECT_EQ("IN GLAD-7Q2F - A VERYLONGN",
+              og::ui::format_base_camp_session_status(false, "GLAD-7Q2F",
+                                                      lopsided, 26));
+    // The hard floor: every shape still honors the budget.
+    for (int budget = 1; budget <= 45; ++budget) {
+        EXPECT_LE(og::ui::format_base_camp_session_status(
+                      true, "GLAD-7Q2F", sixteen, budget).size(),
+                  static_cast<std::size_t>(budget))
+            << "host at budget " << budget;
+        EXPECT_LE(og::ui::format_base_camp_session_status(
+                      false, "GLAD-7Q2F", kettle, budget).size(),
+                  static_cast<std::size_t>(budget))
+            << "joiner at budget " << budget;
+    }
 }
 
 TEST(BaseCampMpDisplay, line_b_gives_the_alert_slot_and_color_precedence)
@@ -4200,7 +4350,8 @@ TEST(BaseCampMpDisplay, line_b_gives_the_alert_slot_and_color_precedence)
 
     // Healthy: the session status, plain color.
     const og::ui::BaseCampLineB healthy = og::ui::compose_base_camp_line_b(
-        std::nullopt, true, "GLAD-7Q2F", players);
+        std::nullopt, true, "GLAD-7Q2F", players,
+        og::ui::kBaseCampLineBCharsHireHidden);
     EXPECT_FALSE(healthy.alert);
     EXPECT_EQ("HOSTING GLAD-7Q2F - 1 MACH / 1 PLYR", healthy.text);
 
@@ -4208,9 +4359,22 @@ TEST(BaseCampMpDisplay, line_b_gives_the_alert_slot_and_color_precedence)
     // the ORANGE mapping rides the alert flag).
     const og::ui::BaseCampLineB degraded = og::ui::compose_base_camp_line_b(
         std::optional<std::string>("Status: connection lost"), true,
-        "GLAD-7Q2F", players);
+        "GLAD-7Q2F", players, og::ui::kBaseCampLineBCharsHireHidden);
     EXPECT_TRUE(degraded.alert);
     EXPECT_EQ("Status: connection lost", degraded.text);
+
+    // Alert prose is transport-authored (a pack-install failure carries the
+    // installer's reason), so it takes the band budget like every other
+    // line-B source — never ink under HIRE.
+    const og::ui::BaseCampLineB verbose = og::ui::compose_base_camp_line_b(
+        std::optional<std::string>(
+            "Packs: install failed for a very long pack name"),
+        false, "GLAD-7Q2F", players,
+        og::ui::kBaseCampLineBCharsHireVisible);
+    EXPECT_TRUE(verbose.alert);
+    EXPECT_EQ(static_cast<std::size_t>(
+                  og::ui::kBaseCampLineBCharsHireVisible),
+              verbose.text.size());
 }
 
 TEST(BaseCampMpDisplay, net_row_formats_hold_their_budgets)

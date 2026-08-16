@@ -4512,7 +4512,8 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
             host_client->connection_alert(),
             host_client->host_controls_visible(),
             host_client->session_room_code(),
-            host_client->lobby_players());
+            host_client->lobby_players(),
+            og::ui::kBaseCampLineBCharsHireVisible);
         EXPECT_FALSE(header.alert) << "healthy link: status, not the alert";
         EXPECT_EQ("HOSTING 2 MACH / 2 PLYR", header.text)
             << "the host's line B carries role + census";
@@ -4544,7 +4545,8 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
             join_client->connection_alert(),
             join_client->host_controls_visible(),
             join_client->session_room_code(),
-            join_client->lobby_players());
+            join_client->lobby_players(),
+            og::ui::kBaseCampLineBCharsHireVisible);
         EXPECT_FALSE(header.alert) << "healthy link: status, not the alert";
         EXPECT_EQ("JOINED - HOST: IRON KETTLE BAND", header.text)
             << "the joiner's line B names the host machine's company "
@@ -7425,10 +7427,13 @@ TEST(PickerNetworkClient,
             host_client->connection_alert(),
             host_client->host_controls_visible(),
             host_client->session_room_code(),
-            host_client->lobby_players());
+            host_client->lobby_players(),
+            og::ui::kBaseCampLineBCharsHireVisible);
         EXPECT_FALSE(header.alert);
-        EXPECT_EQ("HOSTING GLAD-XKCD - 1 MACH / 1 PLYR", header.text)
-            << "a healthy hosted room shows role + room + census";
+        EXPECT_EQ("HOSTING GLAD-XKCD - 1M / 1P", header.text)
+            << "a healthy hosted room shows role + room + census (the "
+               "compact census: the spelled-out shape is 35, one over the "
+               "band beside HIRE)";
     }
 
     relay_server->stop();
@@ -7453,7 +7458,8 @@ TEST(PickerNetworkClient,
             host_client->connection_alert(),
             host_client->host_controls_visible(),
             host_client->session_room_code(),
-            host_client->lobby_players());
+            host_client->lobby_players(),
+            og::ui::kBaseCampLineBCharsHireVisible);
         EXPECT_TRUE(header.alert);
         EXPECT_EQ("Relay: connection lost", header.text);
     }
