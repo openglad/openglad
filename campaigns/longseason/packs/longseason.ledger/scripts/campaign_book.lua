@@ -146,7 +146,7 @@ local function root_page()
   if debt ~= 0 then
     debt_note = "owed: nine hundred"
   end
-  table.insert(entries, { id = "debts", label = "ADVANCES & DEBTS",
+  table.insert(entries, { id = "debts", label = "ADVANCES AND DEBTS",
                           kind = "page", note = debt_note })
   if waiting == 0 then
     table.insert(entries, { id = "coin", label = "THE WARM COIN",
@@ -279,7 +279,7 @@ local function debts_page()
                             kind = "action", cost = ADVANCE_OWED,
                             note = "clears the debt" })
   end
-  return { title = "ADVANCES & DEBTS", lines = lines, entries = entries }
+  return { title = "ADVANCES AND DEBTS", lines = lines, entries = entries }
 end
 
 local function picker_menu(page_id)

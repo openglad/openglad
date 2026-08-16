@@ -451,6 +451,152 @@ TEST(CampaignMissionsUi, missions_flow_buys_pages_and_sets_level)
     EXPECT_TRUE(trace_contains("missions", "acted"));
 }
 
+namespace {
+
+// One shipped campaign's book tour: seed an interesting save, open
+// MISSIONS, capture the root, then each listed root row's page. Row
+// indexes are window-local (8 rows per page); -1 means "press next
+// first". Captures are UXSHOTS_DIR-gated; without it the tour still
+// walks every page, which keeps the shipped books' SDL rendering under
+// integration coverage.
+struct BookTourSpec
+{
+    const char* campaign;
+    short scen_num;
+    std::vector<int> completed;
+    const char* root_shot;
+    // {row index or -1 for the pager, shot name or nullptr for no capture}
+    std::vector<std::pair<int, const char*>> pages;
+    bool door_seen = false;
+    bool opened = false;
+    bool finished = false;
+};
+
+int book_tour_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    BookTourSpec* spec = static_cast<BookTourSpec*>(data);
+
+    wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);
+    interact("continue_game");
+
+    SDL_Delay(500);
+    wait_for_interactable("scenario", 10000);
+    SDL_Delay(750);
+    interact("scenario");
+
+    spec->door_seen = wait_for_interactable("missions", 10000);
+    SDL_Delay(300);
+    interact("missions");
+
+    spec->opened = wait_for_interactable_at("back", 10, 169, 10000);
+    wait_for_interactable("mission_row_0", 10000);
+    SDL_Delay(500);
+    capture_missions_frame(spec->root_shot);
+
+    for (const auto& [row, shot] : spec->pages)
+    {
+        if (row < 0)
+        {
+            interact("next");
+            SDL_Delay(500);
+            if (shot != nullptr)
+                capture_missions_frame(shot);
+            continue;
+        }
+        interact("mission_row_" + std::to_string(row));
+        wait_for_interactable("mission_row_0", 10000);
+        SDL_Delay(500);
+        if (shot != nullptr)
+            capture_missions_frame(shot);
+        interact("back");
+        wait_for_interactable("mission_row_0", 10000);
+        SDL_Delay(300);
+    }
+
+    // Close: MISSIONS root -> SCENARIO -> team build -> main menu.
+    interact("back");
+    wait_for_interactable_at("back", 30, 170, 10000);
+    SDL_Delay(300);
+    interact("back");
+    wait_for_interactable("go", 10000);
+    SDL_Delay(300);
+    interact("back");
+
+    spec->finished = true;
+    return 0;
+}
+
+void run_book_tour(BookTourSpec& spec)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(spec.campaign));
+    write_save0_with_two_soldiers(spec.campaign, spec.scen_num);
+    SaveData& save = test_screen()->save_data;
+    for (int level : spec.completed)
+        save.add_level_completed(spec.campaign, level);
+    ASSERT_TRUE(save.save("save0"));
+
+    SDL_Thread* thread =
+        SDL_CreateThread(book_tour_injector, "book_tour", &spec);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_TRUE(spec.door_seen)
+        << spec.campaign << ": the shipped pack must register a book";
+    EXPECT_TRUE(spec.opened) << spec.campaign << ": MISSIONS must open";
+    EXPECT_TRUE(spec.finished) << spec.campaign << ": tour must complete";
+}
+
+} // namespace
+
+// The four shipped books, walked page by page in the real SDL picker.
+// zz_ so the heavier picker sessions run after the focused flows.
+TEST(CampaignMissionsUi, zz_capture_book_tour_of_the_shipped_campaigns)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+
+    BookTourSpec modes{"modes", 300,
+                       {300, 301, 500},
+                       "book_modes_root",
+                       {{1, "book_modes_ctf"},
+                        {7, "book_modes_card"},
+                        {-1, nullptr},
+                        {0, "book_modes_setup"}}};
+    run_book_tour(modes);
+
+    BookTourSpec westlands{"westlands", 10,
+                           {1, 2, 3, 4, 5, 6, 7, 8, 9},
+                           "book_fire_root",
+                           {{0, "book_fire_road"},
+                            {1, "book_fire_quartermaster"},
+                            {2, "book_fire_ledger"}}};
+    run_book_tour(westlands);
+
+    BookTourSpec longseason{"longseason", 5,
+                             {1, 2, 3, 4},
+                             "book_kettle_root",
+                             {{0, "book_kettle_coin"},
+                              {1, "book_kettle_work"},
+                              {2, "book_kettle_stores"},
+                              {3, "book_kettle_debts"}}};
+    run_book_tour(longseason);
+
+    BookTourSpec dreams{"imaginations", 1, {}, "book_dreams_root", {}};
+    run_book_tour(dreams);
+
+    // Leave the default campaign mounted for whatever runs next.
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
 TEST(CampaignMissionsUi, scenario_button_hidden_without_registration)
 {
     // No synthetic registration in scope: the production packs register no
