@@ -76,19 +76,32 @@ demo_capture collectors-long-toll  longseason 14  advance_debt=900
 demo_capture carried-at-the-mint   longseason 18  coin_kept=87380
 demo_capture basketball-ping-hud   modes      824 "" 480
 
-# Scripted-picker page walks: the missions UI test dumps one BMP per page
-# it visits when UXSHOTS_DIR is set. Slideshow at 0.8 fps reads like a
-# guided tour.
+# Scripted-picker page tours: the zz_capture_book_tour test walks every
+# shipped book in the real SDL picker and dumps one PPM per page when
+# UXSHOTS_DIR is set. One slideshow GIF per book, 1.2s per page.
 UXDIR="$WORK_DIR/uxshots"
 env SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy UXSHOTS_DIR="$UXDIR" \
-    "$BUILD/og_test_matchup" --gtest_filter='CampaignMissionsUi.*' \
+    "$BUILD/og_test_matchup" \
+    --gtest_filter='*zz_capture_book_tour*' \
     > "$WORK_DIR/uxshots.log" 2>&1 || {
-        printf 'missions UI capture run failed; see %s\n' "$WORK_DIR/uxshots.log" >&2
+        printf 'book tour capture run failed; see %s\n' "$WORK_DIR/uxshots.log" >&2
         exit 1; }
-if compgen -G "$UXDIR/*.bmp" > /dev/null; then
-    frames_to_gif "$UXDIR" "$OUT_DIR/missions-pages.gif" 1
-    printf 'wrote %s\n' "$OUT_DIR/missions-pages.gif"
-fi
+for book in modes fire kettle dreams; do
+    seq_dir="$WORK_DIR/book-$book"
+    mkdir -p "$seq_dir"
+    i=0
+    for shot in "$UXDIR"/book_${book}_*.ppm; do
+        [ -e "$shot" ] || continue
+        cp "$shot" "$(printf '%s/%03d.ppm' "$seq_dir" "$i")"
+        i=$((i + 1))
+    done
+    if [ "$i" -ge 1 ]; then
+        ffmpeg -loglevel error -y -framerate 5/6 -i "$seq_dir/%03d.ppm" \
+            -vf "scale=640:400:flags=neighbor" -loop 0 \
+            "$OUT_DIR/book-$book.gif"
+        printf 'wrote %s (%d pages)\n' "$OUT_DIR/book-$book.gif" "$i"
+    fi
+done
 
 # Sanity: every artifact decodes and carries frames.
 for f in "$OUT_DIR"/*.gif; do
