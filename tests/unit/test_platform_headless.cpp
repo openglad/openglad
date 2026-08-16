@@ -1874,6 +1874,9 @@ TEST(PlatformHeadless, text_picker_camp_drive_runs_the_scripted_zone)
         "1\n"          //     swear: cycle row 1 again (WAR -> BURDEN)
         "0\n"          //     swear: done -> the camp
         "2\n"          //   camp: THE PIT (level 9) -> the text set-level tail
+        "2\n"          //   camp: THE PIT again -> the cursor is already
+                       //   there, so the click is refused in the same words
+                       //   the SDL camp uses (never a second confirmation)
         "0\n"          //   camp: back -> team build
         "8\n"          // team build: back -> main
         "7\n";         // main: quit
@@ -1971,9 +1974,15 @@ TEST(PlatformHeadless, text_picker_camp_drive_runs_the_scripted_zone)
     EXPECT_NE(std::string::npos, out.find("   1. [ ] "))
         << "the sworn hero's row lost the padlock (the unset lock stopped "
            "matching) and the swear prompt numbers the roster";
-    // The set-level tail re-derives the CURRENT marker on the refetch.
+    // The set-level tail re-derives the CURRENT marker on the refetch, and
+    // the row that now reads [CURRENT] answers the next click with the
+    // refusal instead of confirming a move that never happens.
     EXPECT_NE(std::string::npos, out.find("Level set to THE PIT."));
     EXPECT_NE(std::string::npos, out.find("   2. THE PIT  [CURRENT]\n"));
+    EXPECT_NE(std::string::npos,
+              out.find(std::string(og::ui::kCampaignLevelUnchangedMessage)))
+        << "a click on the row the cursor is parked on must be refused, in "
+           "the words the SDL camp uses for the same click";
 
     // Hygiene: the Acted arm autosaved the text client's slot; reap it so
     // company-listing tests stay order-independent.

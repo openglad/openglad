@@ -808,6 +808,8 @@ void run_terminal_campaign_page_loop(CampaignPickerSession& session,
         const std::string chosen_label = page.rows[index].label;
         const bool chosen_closed =
             page.rows[index].is_level() && !page.rows[index].available;
+        const bool chosen_current =
+            page.rows[index].is_level() && page.rows[index].current;
 
         using Outcome = CampaignPickerSession::OutcomeKind;
         const CampaignPickerSession::Outcome outcome = session.choose(index);
@@ -835,11 +837,21 @@ void run_terminal_campaign_page_loop(CampaignPickerSession& session,
                     io.notice(std::string(kCampaignLevelClosedMessage));
                     break;
                 }
+                if (chosen_current)
+                {
+                    // The row the cursor is already parked on. The SDL
+                    // surfaces refuse this click rather than reload the
+                    // level under the player; a terminal that answered
+                    // "Level set to ..." instead would be telling one
+                    // player two stories about one click.
+                    io.notice(std::string(kCampaignLevelUnchangedMessage));
+                    break;
+                }
                 io.apply_level(outcome.level);
                 // CURRENT markers re-derive from the new cursor
                 // (fetch-per-action, never per frame).
                 session.refresh();
-                io.notice(std::format("Level set to {}.", chosen_label));
+                io.notice(campaign_level_set_message(chosen_label));
                 break;
             case Outcome::Acted:
             {
@@ -1389,9 +1401,17 @@ void run_terminal_campaign_camp(SaveData& save,
                     io.notice(std::string(kCampaignLevelClosedMessage));
                     break;
                 }
+                if (row.current)
+                {
+                    // Same click, same answer as the SDL camp: the cursor
+                    // is already here, so nothing is set and the row says
+                    // so instead of confirming a move that never happened.
+                    io.notice(std::string(kCampaignLevelUnchangedMessage));
+                    break;
+                }
                 io.apply_level(row.level);
                 zone.refetch();  // CURRENT markers re-derive
-                io.notice(std::format("Level set to {}.", row.label));
+                io.notice(campaign_level_set_message(row.label));
                 break;
             case CampaignPickerSession::Kind::Action:
             {

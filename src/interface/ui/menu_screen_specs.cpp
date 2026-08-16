@@ -1667,7 +1667,8 @@ Sint32 zone_submenu_on_spec_row(int row, void* screen_state)
         const int old_id = game->world().id;
         if (outcome.level == old_id) {
             TRACE("zone", "level_unchanged %d", outcome.level);
-            zone_submenu_show_toast(*st, "Already on that road.");
+            zone_submenu_show_toast(
+                *st, std::string(og::ui::kCampaignLevelUnchangedMessage));
             return MENU_REDRAW;
         }
         // The do_set_scen_level tail without pick_level: load the chosen
@@ -1694,7 +1695,7 @@ Sint32 zone_submenu_on_spec_row(int row, void* screen_state)
         zone_submenu_reset_page(*st, true);
         TRACE("zone", "level_set %d", outcome.level);
         zone_submenu_show_toast(
-            *st, "Road set: " + std::string(game->world().title));
+            *st, og::ui::campaign_level_set_message(game->world().title));
         return MENU_REDRAW;
     }
     case Outcome::Acted: {
@@ -4969,7 +4970,8 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
             const int old_id = game->world().id;
             if (entry.level == old_id) {
                 TRACE("zone", "level_unchanged %d", entry.level);
-                base_camp_show_toast(*st, "Already on that road.");
+                base_camp_show_toast(
+                    *st, std::string(og::ui::kCampaignLevelUnchangedMessage));
                 return MENU_OK;
             }
             game->world().id = static_cast<short>(entry.level);
@@ -5000,7 +5002,7 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
             // A successful choice SAYS so. Silence here is what let the
             // previous action's toast be read as this one's answer.
             base_camp_show_toast(
-                *st, "Road set: " + std::string(game->world().title));
+                *st, og::ui::campaign_level_set_message(game->world().title));
             return MENU_REDRAW;
         }
         case EntryKind::Action: {

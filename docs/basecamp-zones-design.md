@@ -197,6 +197,11 @@ List et al. remains; not claimed here).
 - The campaign's voice slot carries the campaign's words. Engine
   diagnostics never surface there: a level that will not load is "That
   road is not open yet.", not "Invalid level file."
+- The answers the ENGINE owns to a level-row click — the refusal on the
+  row the cursor already sits on, and the confirmation — come from one
+  place (`kCampaignLevelUnchangedMessage`,
+  `campaign_level_set_message`) so the panel, the zone submenu and the
+  terminals cannot answer one click with two different stories.
 
 ## Terminals
 

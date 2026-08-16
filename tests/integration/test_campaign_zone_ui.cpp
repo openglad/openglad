@@ -1416,12 +1416,16 @@ struct DefaultTourState
     // campaign that scripts base_camp (an overflowing docket pages in
     // place, so this is the window, not the docket).
     int zone_rows = 0;
+    // When set, the top zone row must carry exactly this composed label —
+    // the count cannot be satisfied by the wrong composition.
+    const char* expect_first_row_label = nullptr;
     bool finished = false;
     bool continue_seen = false;
     bool camp_seen = false;
     bool hire_labeled = false;
     bool roster_row_seen = false;
     bool zone_rows_as_expected = false;
+    bool first_row_labeled = false;
     bool go_seen = false;
 };
 
@@ -1455,6 +1459,12 @@ int default_tour_injector(void* data)
         "zone_action_" + std::to_string(state->zone_rows);
     if (has_interactable(past_end.c_str()))
         state->zone_rows_as_expected = false;
+    // ...and what the top row SAYS, so the count cannot be satisfied by
+    // the wrong composition (see expect_first_row_label).
+    state->first_row_labeled =
+        state->expect_first_row_label == nullptr ||
+        wait_for_interactable_label("zone_action_0",
+                                    state->expect_first_row_label, 5000);
     SDL_Delay(500);
     capture_zone_frame(state->shot);
 
@@ -1488,7 +1498,10 @@ TEST(CampaignZoneUi, zz_capture_default_zone_across_campaigns)
         // The open ledger composes its camp: the week's job, the STORES
         // door, and TAKE AN ADVANCE on a fresh spring save.
         {"longseason", "zone_camp_longseason", 1, 3},
-        {"imaginations", "zone_default_imaginations", 1, 1},
+        // The dream log composes its camp: one dream on a fresh save, and
+        // its label pins the composition (not just the count).
+        {"imaginations", "zone_default_imaginations", 1, 1,
+         "The Raspberry Isle - tonight?  [CURRENT]"},
     };
     for (DefaultTourState& tour : tours)
     {
@@ -1521,6 +1534,12 @@ TEST(CampaignZoneUi, zz_capture_default_zone_across_campaigns)
             << " zone action row(s) — a composed camp fills its band, a "
                "book keeps its door, and a campaign with no hooks parks "
                "every appended row";
+        EXPECT_TRUE(tour.first_row_labeled)
+            << tour.campaign << ": the top zone row must read '"
+            << (tour.expect_first_row_label != nullptr
+                    ? tour.expect_first_row_label
+                    : "")
+            << "'";
         EXPECT_TRUE(tour.go_seen)
             << tour.campaign << ": the command strip must render";
         EXPECT_TRUE(tour.finished) << tour.campaign;

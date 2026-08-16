@@ -753,6 +753,8 @@ TEST_F(CampaignPickerSessionTest, terminal_driver_runs_the_whole_book)
         "",          // blank -> back to ROOT
         "1",         // THE CIRCLE -> a road not in the campaign: refused
         "2",         // THE ARENA -> SetLevel: tail + CURRENT re-derive
+        "2",         // THE ARENA again -> the cursor is already there: the
+                     // same refusal the SDL surfaces give the same click
         "0",         // 0 at the root closes the book
     };
     og::ui::run_terminal_campaign_page(save_, scripted.io(), "");
@@ -765,6 +767,7 @@ TEST_F(CampaignPickerSessionTest, terminal_driver_runs_the_whole_book)
         "Invalid camp row.",
         std::string(og::ui::kCampaignLevelClosedMessage),
         "Level set to THE ARENA.",
+        std::string(og::ui::kCampaignLevelUnchangedMessage),
     };
     EXPECT_EQ(expected_notices, scripted.notices);
 

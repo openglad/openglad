@@ -51,6 +51,22 @@ inline constexpr std::string_view kCampaignActionDoneMessage =
 // rows, and CampaignPickerSession::choose one level down.
 inline constexpr std::string_view kCampaignPageUnreadableMessage =
     "That page cannot be read.";
+// The two answers a level row that CAN be clicked gives back, from one
+// place for the same reason as the refusals above: a level row on the Base
+// Camp is the same click on the SDL panel and at a terminal prompt, and one
+// click may not have two answers. They also stay out of any one campaign's
+// vocabulary — the first camp to put level rows on the Base Camp is a
+// dream log, and a dream is not a "road". (The closed-row refusal above
+// keeps its wording: docs/basecamp-zones-design.md pins that string
+// verbatim, and a docket that lists only levels the campaign ships can
+// never raise it.)
+inline constexpr std::string_view kCampaignLevelUnchangedMessage =
+    "Already on that level.";
+[[nodiscard]] inline std::string campaign_level_set_message(
+    std::string_view title)
+{
+    return std::string("Level set to ") + std::string(title) + ".";
+}
 // The oath cell's width in characters, shared by the SDL roster column and
 // the terminal camp roster so one hero's oath reads the same on every
 // surface (a word cut at six characters on one screen and at nine on
