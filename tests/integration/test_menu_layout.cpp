@@ -1142,6 +1142,150 @@ TEST(MenuLayout, createmenu_basecamp_scripted_zone_bands_and_nav)
     (void)picker_createmenu_buttons();
 }
 
+// The spine with BOTH actions widgets on one side of the roster, and with
+// no roster rows at all (an empty company is a real camp — you hire your
+// first hero here): the bands sort by start unit and chain top-to-bottom,
+// and every roster-less shape still lands its exits on HIRE, the other
+// band, or the seat rail.
+TEST(MenuLayout, createmenu_basecamp_zone_two_bands_and_empty_company_spine)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> saved_team;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        saved_team[static_cast<std::size_t>(i)] =
+            std::move(save.team_list[static_cast<std::size_t>(i)]);
+    const unsigned char old_team_size = save.team_size;
+    const auto set_team = [&save](int size) {
+        for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        {
+            if (i < size)
+            {
+                save.team_list[static_cast<std::size_t>(i)] =
+                    std::make_unique<guy>(FAMILY_SOLDIER);
+                save.team_list[static_cast<std::size_t>(i)]->name =
+                    std::format("S{}", i);
+            }
+            else
+            {
+                save.team_list[static_cast<std::size_t>(i)].reset();
+            }
+        }
+        save.team_size = static_cast<unsigned char>(size);
+    };
+
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, spec.nav.rewire);
+
+    // Three widget orders: both actions widgets above the roster, both
+    // below, and one on each side. Each actions widget is one unit / one
+    // entry, so its band is a single row (top == bottom).
+    const auto one_row_actions = [](const char* id, const char* label) {
+        og::script::hooks::CampaignZoneWidget actions;
+        actions.kind = og::script::hooks::CampaignZoneWidget::Kind::Actions;
+        actions.weight = 1;
+        og::script::hooks::CampaignPageEntry entry;
+        entry.id = id;
+        entry.label = label;
+        entry.kind = og::script::hooks::CampaignPageEntry::Kind::Action;
+        actions.entries.push_back(std::move(entry));
+        return actions;
+    };
+    const auto roster_widget = [] {
+        og::script::hooks::CampaignZoneWidget roster;
+        roster.kind = og::script::hooks::CampaignZoneWidget::Kind::Roster;
+        return roster;
+    };
+    og::script::hooks::CampaignZone both_above;
+    both_above.widgets.push_back(one_row_actions("first", "FIRST"));
+    both_above.widgets.push_back(one_row_actions("second", "SECOND"));
+    both_above.widgets.push_back(roster_widget());
+    og::script::hooks::CampaignZone both_below;
+    both_below.widgets.push_back(roster_widget());
+    both_below.widgets.push_back(one_row_actions("first", "FIRST"));
+    both_below.widgets.push_back(one_row_actions("second", "SECOND"));
+    og::script::hooks::CampaignZone sandwich;
+    sandwich.widgets.push_back(one_row_actions("first", "FIRST"));
+    sandwich.widgets.push_back(roster_widget());
+    sandwich.widgets.push_back(one_row_actions("second", "SECOND"));
+
+    og::ui::CampaignZoneSession zone(save);
+    og::ui::BaseCampScreenState state;
+    state.zone = &zone;
+    og::ui::install_base_camp_state_for_screen(&state);
+    button* buttons = picker_createmenu_buttons();
+    const int count = picker_createmenu_button_count();
+    const auto rewire = [&](const og::script::hooks::CampaignZone& raw,
+                            const char* variant) {
+        ASSERT_TRUE(zone.adopt(raw)) << variant;
+        ASSERT_EQ(2u, zone.actions().size()) << variant;
+        og::ui::base_camp_refresh_rows(state);
+        buttons = picker_createmenu_buttons();
+        int highlighted = kCreateMenuBackIndex;
+        spec.nav.rewire(buttons, count, highlighted);
+        check_nav_closed_and_reachable(buttons, count, kCreateMenuBackIndex,
+                                       variant);
+    };
+    const int band0 = kBaseCampZoneActionBase;
+    const int band1 = kBaseCampZoneActionBase + kBaseCampZoneActionsPerWidget;
+
+    // Both bands above a manned roster: HIRE -> first -> second -> roster.
+    set_team(4);
+    rewire(both_above, "zone_two_bands_above");
+    EXPECT_EQ(band0, buttons[kCreateMenuHireIndex].nav.down);
+    EXPECT_EQ(kCreateMenuHireIndex, buttons[band0].nav.up);
+    EXPECT_EQ(band1, buttons[band0].nav.down)
+        << "stacked bands chain in start-unit order";
+    EXPECT_EQ(band0, buttons[band1].nav.up);
+    EXPECT_EQ(0, buttons[band1].nav.down)
+        << "the lower band drops onto the roster's dep column";
+
+    // Both bands below: roster -> first -> second -> seat rail.
+    rewire(both_below, "zone_two_bands_below");
+    EXPECT_EQ(band0, buttons[3].nav.down)
+        << "the roster's last row drops into the upper band";
+    EXPECT_EQ(3, buttons[band0].nav.up);
+    EXPECT_EQ(band1, buttons[band0].nav.down);
+    EXPECT_EQ(band0, buttons[band1].nav.up);
+    EXPECT_EQ(kBaseCampSeatsLabelIndex, buttons[band1].nav.down)
+        << "the bottom band lands on the seat rail";
+
+    // An empty company between two bands: the bands bridge straight across
+    // the rowless roster.
+    set_team(0);
+    rewire(sandwich, "zone_empty_company_sandwich");
+    EXPECT_EQ(band0, buttons[kCreateMenuHireIndex].nav.down);
+    EXPECT_EQ(band1, buttons[band0].nav.down)
+        << "the band above bridges over an empty roster";
+    EXPECT_EQ(band0, buttons[band1].nav.up)
+        << "the band below climbs back over the empty roster";
+    EXPECT_EQ(kBaseCampSeatsLabelIndex, buttons[band1].nav.down);
+
+    // Empty company, both bands below: the spine opens on the first band
+    // and its top row climbs to HIRE.
+    rewire(both_below, "zone_empty_company_below");
+    EXPECT_EQ(band0, buttons[kCreateMenuHireIndex].nav.down);
+    EXPECT_EQ(kCreateMenuHireIndex, buttons[band0].nav.up)
+        << "with no roster rows the first band's up-exit is HIRE";
+    EXPECT_EQ(band1, buttons[band0].nav.down);
+    EXPECT_EQ(kBaseCampSeatsLabelIndex, buttons[band1].nav.down);
+
+    // Empty company, both bands above: the last band bottoms out on the
+    // seat rail.
+    rewire(both_above, "zone_empty_company_above");
+    EXPECT_EQ(band0, buttons[kCreateMenuHireIndex].nav.down);
+    EXPECT_EQ(band1, buttons[band0].nav.down);
+    EXPECT_EQ(kBaseCampSeatsLabelIndex, buttons[band1].nav.down)
+        << "no roster rows and nothing below: the band exits to the rail";
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[static_cast<std::size_t>(i)] =
+            std::move(saved_team[static_cast<std::size_t>(i)]);
+    save.team_size = old_team_size;
+    (void)picker_createmenu_buttons();
+}
+
 // A text widget's band is a HARD boundary. Its explicit weight may be
 // SMALLER than ceil(lines*8/14) — the parser refuses over-weight, never
 // under-weight, so an under-weighted stanza is a legal composition — and the

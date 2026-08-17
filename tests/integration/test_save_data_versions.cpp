@@ -2208,6 +2208,51 @@ TEST(SaveDataVersions, save_data_campaign_state_set_refuses_without_mutating)
         << "existing campaigns stay writable at the cap";
 }
 
+// The writer re-checks every campaign-state bound the choke enforces:
+// direct field manipulation (the only way past campaign_state_set) must
+// refuse to WRITE rather than emit a file the reader rejects.
+TEST(SaveDataVersions, save_data_writer_refuses_direct_campaign_state_abuse)
+{
+    const auto expect_write_refused = [](SaveData& data, const char* slot) {
+        namespace fs = std::filesystem;
+        const fs::path path =
+            fs::path(get_user_path()) / "save" / (std::string(slot) + ".gtl");
+        og::test::ScopedPhysicalFileState file_state(path);
+        ASSERT_TRUE(file_state.ready()) << file_state.error().message();
+        EXPECT_EQ(SaveDataIoError::WriteFailed, data.save_with_error(slot))
+            << slot;
+        EXPECT_EQ(SaveDataIoError::WriteFailed, data.last_io_error()) << slot;
+    };
+
+    {
+        SaveData data;
+        data.current_campaign = "gladiator";
+        for (int i = 0; i < SaveData::kCampaignStateMaxCampaigns + 1; ++i)
+            data.campaign_state["camp" + std::to_string(i)] = {{"seed", 1}};
+        expect_write_refused(data, "typed_state_too_many_campaigns");
+    }
+    {
+        SaveData data;
+        data.current_campaign = "gladiator";
+        data.campaign_state["../escape"] = {{"seed", 1}};
+        expect_write_refused(data, "typed_state_unsafe_campaign_id");
+    }
+    {
+        SaveData data;
+        data.current_campaign = "gladiator";
+        auto& entries = data.campaign_state["gladiator"];
+        for (int i = 0; i < SaveData::kCampaignStateMaxEntries + 1; ++i)
+            entries.emplace_back("k" + std::to_string(1000 + i), i);
+        expect_write_refused(data, "typed_state_too_many_entries");
+    }
+    {
+        SaveData data;
+        data.current_campaign = "gladiator";
+        data.campaign_state["gladiator"] = {{"Bad Key", 1}};
+        expect_write_refused(data, "typed_state_invalid_key");
+    }
+}
+
 TEST(SaveDataVersions, save_data_reset_and_reset_campaign_clear_campaign_state)
 {
     SaveData data;
