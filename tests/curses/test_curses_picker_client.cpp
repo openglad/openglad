@@ -22,6 +22,7 @@
  */
 #include <gtest/gtest.h>
 
+#include <openglad/platform/curses/curses_game_runtime.h>
 #include <openglad/platform/curses/curses_picker_client.h>
 #include <openglad/platform/curses/headless_terminal.h>
 
@@ -2171,6 +2172,103 @@ TEST(CursesPickerClient, run_game_quit_of_armed_replay_restores_cursor)
         << "a quit excursion restores the origin cursor on re-entry";
     EXPECT_EQ(3, f.config.level) << "the session config follows the restore";
     EXPECT_EQ(0, static_cast<int>(f.save().replay_level));
+}
+
+// #207 design point 5 on the NETWORKED path (V5 Option A). A networked round
+// folds into the session's OWN save copy and never copies back into the
+// picker's, so a hosted REPLAY that ends any way but a win comes back with the
+// arm still live. Left alone it would seed the next hosted round (V5 seeds the
+// authoritative save from this very SaveData) into a second replay, and the
+// next base-camp autosave would bank the replayed level as the campaign
+// cursor.
+TEST(CursesPickerClient, network_round_loss_of_armed_replay_restores_cursor)
+{
+    ScopedCursesPickerMountRestore mount_restore;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    PickerFixture f;
+    f.save().current_campaign = "gladiator";
+    f.save().scen_num = 3;
+    f.save().add_level_completed("gladiator", 1);
+    f.save().arm_replay(1);
+    f.config.campaign = "gladiator";
+    f.config.level = 1;
+    ASSERT_TRUE(f.save().replay_armed_for(1));
+
+    GameRunResult lost;
+    lost.ended = true;
+    lost.ending = 1;
+    dismiss(f.t()); // the "Mission complete" screen eats one key
+
+    f.client.finish_network_round(lost);
+
+    EXPECT_EQ(0, static_cast<int>(f.save().replay_level))
+        << "a hosted loss must not leave the arm live for the next round";
+    EXPECT_EQ(3, static_cast<int>(f.save().scen_num))
+        << "the cursor comes home when the picker takes the save back";
+    EXPECT_EQ(3, f.config.level) << "the session config follows the restore";
+
+    SaveData reloaded;
+    ASSERT_EQ(SaveDataIoError::None,
+              reloaded.load_with_error(og::data::active_company_slot()))
+        << "the heal persists like any other picker mutation (§3.8)";
+    EXPECT_EQ(3, static_cast<int>(reloaded.scen_num))
+        << "the company file must never keep the replayed level as its cursor";
+}
+
+// The win half of the same tail. persist_networked_win already wrote the
+// merged company file (restored cursor, banked share, completion mark) while
+// this picker's save is a PRE-round copy — so the heal is memory-only there:
+// autosaving the stale copy would erase the win it just earned.
+TEST(CursesPickerClient, network_round_win_heals_memory_without_clobbering_disk)
+{
+    ScopedCursesPickerMountRestore mount_restore;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    PickerFixture f;
+    f.save().current_campaign = "gladiator";
+    f.save().scen_num = 3;
+    f.save().add_level_completed("gladiator", 1);
+    f.save().m_totalcash[0] = 100;
+    f.save().arm_replay(1);
+    f.config.campaign = "gladiator";
+    f.config.level = 1;
+
+    // What the networked win already banked on disk: the restored cursor, a
+    // second cleared level and the fold's gold.
+    {
+        SaveData persisted;
+        persisted.reset();
+        persisted.current_campaign = "gladiator";
+        persisted.scen_num = 3;
+        persisted.add_level_completed("gladiator", 1);
+        persisted.add_level_completed("gladiator", 2);
+        persisted.m_totalcash[0] = 900;
+        ASSERT_EQ(SaveDataIoError::None,
+                  persisted.save_with_error(og::data::active_company_slot()));
+    }
+
+    GameRunResult won;
+    won.ended = true;
+    won.ending = 0;
+    won.next_level = 4;
+    dismiss(f.t());
+
+    f.client.finish_network_round(won);
+
+    EXPECT_EQ(0, static_cast<int>(f.save().replay_level))
+        << "the consumed arm clears on the win path too";
+    EXPECT_EQ(3, static_cast<int>(f.save().scen_num))
+        << "memory agrees with the cursor the fold already persisted";
+
+    SaveData reloaded;
+    ASSERT_EQ(SaveDataIoError::None,
+              reloaded.load_with_error(og::data::active_company_slot()));
+    EXPECT_EQ(900u, reloaded.m_totalcash[0])
+        << "the pre-round picker copy must never be autosaved over the win";
+    EXPECT_TRUE(reloaded.is_level_completed(2))
+        << "the win's completion mark must survive the picker tail";
+    EXPECT_EQ(3, static_cast<int>(reloaded.scen_num));
 }
 
 TEST(CursesPickerClient, run_game_reports_real_session_load_failure)

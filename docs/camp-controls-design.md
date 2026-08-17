@@ -277,6 +277,17 @@ the new level's purge nor restore an origin into a foreign campaign
   A mid-level crash can leave the replayed level on disk: gate-safe (the
   frontier includes completed levels), self-heals on the next cursor
   move.
+- **The networked tail** runs the same restore, and has to: a networked
+  round folds into the SESSION's own save copy (the host's authoritative
+  save, the joiner's mirror) and persists straight to disk — it never
+  copies back into the picker's save the way a solo session does. So a
+  hosted REPLAY that ends any way but a win returns with the arm still
+  live, which would seed the NEXT hosted round into a second replay
+  (hosts seed from that very save) and let the next base-camp autosave
+  bank the replayed level as the campaign cursor. After a WIN the heal
+  is memory-only: the fold already restored the cursor and the networked
+  persist already wrote the merged company file, so autosaving the
+  pre-round picker copy over it would erase the win.
 - **Withdraw stays impossible** during a replay by construction:
   `can_withdraw` requires the CURRENT level uncompleted, and a replayed
   level is completed — pinned by test.
@@ -299,8 +310,27 @@ the new level's purge nor restore an origin into a foreign campaign
   when ready." The dream log sets it on every dream row.
 - **Dedicated server**: a host level-set onto a level the SERVER's save
   marks completed arms automatically (same campaign only) — a networked
-  table re-fights the restored level; the empty walk-through is a
-  solo/hosted nicety. Documented asymmetry; no wire change.
+  table re-fights the restored level. The dedicated server has no player
+  UI, so a completed landing is the only signal it gets; the empty
+  walk-through stays a solo nicety there. No wire change.
+- **Networked hosts play under their own history** (the SDL-host parity
+  rule): a curses networked host seeds its authoritative session save
+  from the host machine's active company save at session create —
+  completed set, campaign decision book, cursor, team, and the transient
+  replay arm (carried explicitly through
+  `copy_headless_server_save_data`, the dropped-field pattern). A hosting
+  player therefore means the same thing from every client: an UNARMED
+  landing on a level the host cleared purges for the whole table (VISIT
+  means VISIT from a curses host), a REPLAY arm reaches the
+  authoritative load (restored census, fold origin-restore, and the
+  networked persist writes the restored cursor to every machine's
+  company file), campaign vars reach the hosted world (a fresh session
+  used to play every var as 0), and completion stays campaign-keyed — a
+  level id cleared in another campaign never purges this one. The
+  seeded session never adopts a completed landing
+  (`LobbyStartReplayArm::SeededIntent`): the player's save already says
+  what was meant, and the dedicated auto-arm would silently convert
+  every hosted VISIT into a replay.
 - **Networked joiners** ("every machine"): a joiner cannot click REPLAY —
   its cursor writes are synced — so the arm is adopted at the settings
   apply instead: when the synced cursor MOVES onto a level completed in
@@ -312,9 +342,9 @@ the new level's purge nor restore an origin into a foreign campaign
   arm (no origin to restore to). There is no joiner-side VISIT: the
   joiner cannot see whether the host pressed VISIT or REPLAY, so any
   completed landing protects this machine's own campaign position — the
-  dedicated-server asymmetry, per machine. The curses joiner seeds its
-  session save from its own company file so the same lobby-config arm
-  applies.
+  dedicated-server adoption rule, per machine. The curses joiner seeds
+  its session save from its own company file so the same lobby-config
+  arm applies.
 
 ### "Always redoable" (#207's second ask)
 

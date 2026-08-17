@@ -2463,15 +2463,31 @@ constexpr int kBaseCampZonePagerNextX =
     kBaseCampPanelInnerRightX - kBaseCampZonePagerWidth;          // 296..310
 constexpr int kBaseCampZonePagerPrevX =
     kBaseCampZonePagerNextX - 2 - kBaseCampZonePagerWidth;        // 280..294
-constexpr int kBaseCampAddSeatWidth = 14;
-constexpr int kBaseCampAddSeatX = kBaseCampPanelRightX - kBaseCampAddSeatWidth;
 constexpr int kBaseCampFamilySwatchGap = 1;
 constexpr int kBaseCampFamilySwatchRampWidth = 8;
 constexpr int kBaseCampFamilySwatchWidth = kBaseCampFamilySwatchRampWidth + 2;
 constexpr int kBaseCampFamilySwatchHeight = 8;
+// The player-seat rail (#236), one row of controls across the panel's full
+// width: [+] | < | card 0..3 | >. The SEATS label that used to open the rail
+// is gone — it was a duplicate of the SCENARIO submenu's MATCHUP door — and
+// the '+' took its place at the left edge so the cards can breathe.
+// Arithmetic across x=8..311 (304px): the '+' (14) plus two pager faces (10
+// each) plus four cards (57 each) is 262px of face, leaving 42px for the six
+// gutters between them — 7px between every neighbour, where the cards used
+// to sit 1px apart with the '+' pinned to the far right.
+constexpr int kBaseCampSeatRailX0 = 8;
+static_assert(kBaseCampSeatRailX0 == kBaseCampStripBackX,
+              "the rail's + opens on BACK's left edge");
+constexpr int kBaseCampSeatRailGap = 7;
+constexpr int kBaseCampAddSeatWidth = 14;
+constexpr int kBaseCampAddSeatX = kBaseCampSeatRailX0;
+constexpr int kBaseCampSeatPagerWidth = 10;
+constexpr int kBaseCampSeatPagePrevX =
+    kBaseCampAddSeatX + kBaseCampAddSeatWidth + kBaseCampSeatRailGap;
 // One seat-card table: the button specs and the chip overlay both index it.
 constexpr int kBaseCampSeatCardWidth = 57;
-constexpr int kBaseCampSeatCardPitch = 58;  // card face + 1px focus gutter
+constexpr int kBaseCampSeatCardPitch =
+    kBaseCampSeatCardWidth + kBaseCampSeatRailGap;
 // The 8x8 numbered team chip drawn on each card's right end, and the #202
 // pointer zone that cycles it in place: the chip plus 2px of grace on its
 // left, running to the card's right edge. Pointer clicks inside the zone
@@ -2479,12 +2495,20 @@ constexpr int kBaseCampSeatCardPitch = 58;  // card face + 1px focus gutter
 // activation) opens the seat editor.
 constexpr int kBaseCampSeatChipOffsetX = 48;
 constexpr int kBaseCampSeatChipZoneOffsetX = kBaseCampSeatChipOffsetX - 2;
-constexpr int kBaseCampSeatCardX0 = 54;
+constexpr int kBaseCampSeatCardX0 =
+    kBaseCampSeatPagePrevX + kBaseCampSeatPagerWidth + kBaseCampSeatRailGap;
 constexpr std::array<int, kBaseCampSeatCardsPerPage> kBaseCampSeatCardX{
     kBaseCampSeatCardX0, kBaseCampSeatCardX0 + kBaseCampSeatCardPitch,
     kBaseCampSeatCardX0 + 2 * kBaseCampSeatCardPitch,
     kBaseCampSeatCardX0 + 3 * kBaseCampSeatCardPitch};
+constexpr int kBaseCampSeatPageNextX =
+    kBaseCampSeatCardX[kBaseCampSeatCardsPerPage - 1] +
+    kBaseCampSeatCardWidth + kBaseCampSeatRailGap;
+static_assert(kBaseCampSeatPageNextX + kBaseCampSeatPagerWidth ==
+                  kBaseCampPanelRightX,
+              "the seat rail closes on the panel's right rail");
 constexpr int kBaseCampSeatRailY = 164;
+constexpr int kBaseCampSeatRailHeight = 10;
 // §9.5.4 + graft (a): non-identity fields on benched rows dim to palette
 // shade 21 — GREY(23)'s glyph ramp overlaps WHITE(24) by all but one step,
 // so 23-vs-24 dimming was nearly invisible. §9.23 uses it for benched
@@ -2744,56 +2768,63 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
      .label_binding = {.formatter = &base_camp_ready_label},
      .color = &base_camp_ready_face_color,
      .hidden = true},
-    // Per-level player-seat assignments. The four-card window is independent
-    // of the character-roster pager above; the rewire fills authoritative P#
-    // labels, ownership, visibility, and navigation every frame.
-    {.id = "seats", .label = "SEATS",
-     .x = 8, .y = kBaseCampSeatRailY, .w = 34, .h = 10,
-     .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatsLabelIndex,
-     .nav = {.down = kCreateMenuBackIndex, .right = kBaseCampSeatPagePrevIndex}},
+    // Per-level player-seat assignments, left to right: [+] | < | four
+    // cards | >. The four-card window is independent of the character-roster
+    // pager above; the rewire fills authoritative P# labels, ownership,
+    // visibility, and navigation every frame.
+    {.id = "add_seat", .label = "+",
+     .x = kBaseCampAddSeatX, .y = kBaseCampSeatRailY,
+     .w = kBaseCampAddSeatWidth, .h = kBaseCampSeatRailHeight,
+     .action = ButtonAction::MenuSpecRow, .arg = kBaseCampAddSeatIndex,
+     .nav = {.down = kCreateMenuBackIndex,
+             .right = kBaseCampSeatPagePrevIndex},
+     .state_override = &base_camp_add_seat_row_state},
     {.id = "seat_page_prev", .label = "<",
-     .x = 44, .y = kBaseCampSeatRailY, .w = 8, .h = 10,
+     .x = kBaseCampSeatPagePrevX, .y = kBaseCampSeatRailY,
+     .w = kBaseCampSeatPagerWidth, .h = kBaseCampSeatRailHeight,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatPagePrevIndex,
-     .nav = {.left = kBaseCampSeatsLabelIndex,
+     .nav = {.down = kCreateMenuBackIndex,
+             .left = kBaseCampAddSeatIndex,
              .right = kBaseCampSeatCardBase},
      .hidden = true},
     {.id = "seat_card_0", .label = "",
      .x = kBaseCampSeatCardX[0], .y = kBaseCampSeatRailY,
-     .w = kBaseCampSeatCardWidth, .h = 10,
+     .w = kBaseCampSeatCardWidth, .h = kBaseCampSeatRailHeight,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatCardBase,
      .nav = {.left = kBaseCampSeatPagePrevIndex,
              .right = kBaseCampSeatCardBase + 1}},
     {.id = "seat_card_1", .label = "",
      .x = kBaseCampSeatCardX[1], .y = kBaseCampSeatRailY,
-     .w = kBaseCampSeatCardWidth, .h = 10,
+     .w = kBaseCampSeatCardWidth, .h = kBaseCampSeatRailHeight,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatCardBase + 1,
      .nav = {.left = kBaseCampSeatCardBase,
              .right = kBaseCampSeatCardBase + 2}},
     {.id = "seat_card_2", .label = "",
      .x = kBaseCampSeatCardX[2], .y = kBaseCampSeatRailY,
-     .w = kBaseCampSeatCardWidth, .h = 10,
+     .w = kBaseCampSeatCardWidth, .h = kBaseCampSeatRailHeight,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatCardBase + 2,
      .nav = {.left = kBaseCampSeatCardBase + 1,
              .right = kBaseCampSeatCardBase + 3}},
     {.id = "seat_card_3", .label = "",
      .x = kBaseCampSeatCardX[3], .y = kBaseCampSeatRailY,
-     .w = kBaseCampSeatCardWidth, .h = 10,
+     .w = kBaseCampSeatCardWidth, .h = kBaseCampSeatRailHeight,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatCardBase + 3,
      .nav = {.left = kBaseCampSeatCardBase + 2,
              .right = kBaseCampSeatPageNextIndex}},
     {.id = "seat_page_next", .label = ">",
-     .x = 287, .y = kBaseCampSeatRailY, .w = 8, .h = 10,
+     .x = kBaseCampSeatPageNextX, .y = kBaseCampSeatRailY,
+     .w = kBaseCampSeatPagerWidth, .h = kBaseCampSeatRailHeight,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatPageNextIndex,
      .nav = {.down = kCreateMenuGoIndex,
              .left = kBaseCampSeatCardBase + 3},
      .hidden = true},
-    {.id = "add_seat", .label = "+",
-     .x = kBaseCampAddSeatX, .y = kBaseCampSeatRailY,
-     .w = kBaseCampAddSeatWidth, .h = 10,
-     .action = ButtonAction::MenuSpecRow, .arg = kBaseCampAddSeatIndex,
-     .nav = {.down = kCreateMenuGoIndex,
-             .left = kBaseCampSeatPageNextIndex},
-     .state_override = &base_camp_add_seat_row_state},
+    // The ordinal the '+' vacated when it moved to the rail's left end
+    // (#236). Parked exactly like a zone spare — zero-size rect, empty
+    // label, hidden, no nav — so the 73-button table never shifted.
+    {.id = "seat_rail_spare", .label = "",
+     .x = 0, .y = 0, .w = 0, .h = 0,
+     .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatRailSpareIndex,
+     .hidden = true},
     OG_BASE_CAMP_MOVE_UP(0), OG_BASE_CAMP_MOVE_UP(1),
     OG_BASE_CAMP_MOVE_UP(2), OG_BASE_CAMP_MOVE_UP(3),
     OG_BASE_CAMP_MOVE_UP(4), OG_BASE_CAMP_MOVE_UP(5),
@@ -3711,10 +3742,10 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     buttons[kBaseCampAddSeatIndex].hidden = true;
 #endif
     const bool add_visible = !buttons[kBaseCampAddSeatIndex].hidden;
-    const int seat_card_anchor = seat_visible > 0
-        ? kBaseCampSeatCardBase
-        : (add_visible ? kBaseCampAddSeatIndex
-                       : kBaseCampSeatsLabelIndex);
+    // #236: the rail's retired right-end ordinal stays parked with the zone
+    // spares — hidden, zero-size, no nav — so nothing can route into it.
+    buttons[kBaseCampSeatRailSpareIndex].hidden = true;
+    buttons[kBaseCampSeatRailSpareIndex].nav = {};
 
     // Player-seat rail: P# is the current dense authoritative lobby position
     // and may change when seats leave; YOU is derived from exact current local
@@ -3738,15 +3769,25 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         }
     }
     std::vector<int> rail;
-    rail.push_back(kBaseCampSeatsLabelIndex);
+    if (add_visible)
+        rail.push_back(kBaseCampAddSeatIndex);
     if (seat_pagers)
         rail.push_back(kBaseCampSeatPagePrevIndex);
     for (int card = 0; card < seat_visible; ++card)
         rail.push_back(kBaseCampSeatCardBase + card);
     if (seat_pagers)
         rail.push_back(kBaseCampSeatPageNextIndex);
-    if (add_visible)
-        rail.push_back(kBaseCampAddSeatIndex);
+    // Every vertical link into the rail lands on its leftmost visible
+    // control, and the strip's right end climbs to its rightmost. That is
+    // the '+' and the '>' in a normal build; a no-multiplayer build hides
+    // the '+', so the ends walk inward to the first live control. With no
+    // rail at all, links from above skip it to BACK.
+    const int rail_first = rail.empty() ? -1 : rail.front();
+    const int rail_last = rail.empty() ? -1 : rail.back();
+    const int rail_entry =
+        rail_first >= 0 ? rail_first : kCreateMenuBackIndex;
+    const int seat_card_anchor =
+        seat_visible > 0 ? kBaseCampSeatCardBase : rail_entry;
     for (std::size_t index = 0; index < rail.size(); ++index) {
         button& control = buttons[rail[index]];
         control.nav.left = index > 0 ? rail[index - 1] : -1;
@@ -4086,7 +4127,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         else if (band_below_roster_top >= 0)
             down_exit = band_below_roster_top;
         else
-            down_exit = kBaseCampSeatsLabelIndex;
+            down_exit = rail_entry;
         buttons[bands_above[i].top].nav.up = up_exit;
         buttons[bands_above[i].bottom].nav.down = down_exit;
     }
@@ -4102,7 +4143,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
             up_exit = kCreateMenuHireIndex;
         const int down_exit = i + 1 < bands_below.size()
             ? bands_below[i + 1].top
-            : kBaseCampSeatsLabelIndex;
+            : rail_entry;
         buttons[bands_below[i].top].nav.up = up_exit;
         buttons[bands_below[i].bottom].nav.down = down_exit;
     }
@@ -4115,7 +4156,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         : (can_hire ? kCreateMenuHireIndex : -1);
     const int dep_down_exit = band_below_roster_top >= 0
         ? band_below_roster_top
-        : kBaseCampSeatsLabelIndex;
+        : rail_entry;
     const int body_down_exit = band_below_roster_top >= 0
         ? band_below_roster_top
         : seat_card_anchor;
@@ -4217,7 +4258,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         ? kBaseCampRowBodyBase + first_body
         : (roster_top >= 0
                ? roster_top
-               : (spine_first >= 0 ? spine_first : kBaseCampSeatsLabelIndex));
+               : (spine_first >= 0 ? spine_first : rail_entry));
     buttons[kBaseCampPagePrevIndex].nav = {
         .up = -1,
         .down = pager_down,
@@ -4232,7 +4273,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     // HIRE bridges the header band into the gameplay spine.
     buttons[kCreateMenuHireIndex].nav = {
         .up = -1,
-        .down = spine_first >= 0 ? spine_first : kBaseCampSeatsLabelIndex,
+        .down = spine_first >= 0 ? spine_first : rail_entry,
         .left = networked ? -1 : kBaseCampScenarioLineIndex,
         .right = pagers ? kBaseCampPagePrevIndex : -1};
 
@@ -4271,8 +4312,9 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         ? bands_below.back().bottom
         : (last_body >= 0 ? kBaseCampRowBodyBase + last_body
                           : (last_dep >= 0 ? last_dep : spine_last));
-    buttons[kBaseCampSeatsLabelIndex].nav.up = rail_up_left;
-    buttons[kBaseCampSeatsLabelIndex].nav.down = kCreateMenuBackIndex;
+    // The rail's left end — the '+' and the '<' — sits over BACK.
+    buttons[kBaseCampAddSeatIndex].nav.up = rail_up_left;
+    buttons[kBaseCampAddSeatIndex].nav.down = kCreateMenuBackIndex;
     buttons[kBaseCampSeatPagePrevIndex].nav.up = rail_up_left;
     buttons[kBaseCampSeatPagePrevIndex].nav.down = kCreateMenuBackIndex;
     // Each card drops onto the strip door under its face. The re-gridded
@@ -4301,45 +4343,37 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     buttons[kBaseCampSeatPageNextIndex].nav.up = rail_up_right;
     buttons[kBaseCampSeatPageNextIndex].nav.down =
         strip_end >= 0 ? strip_end : kCreateMenuNetworkingIndex;
-    buttons[kBaseCampAddSeatIndex].nav.up = rail_up_right;
-    buttons[kBaseCampAddSeatIndex].nav.down =
-        strip_end >= 0 ? strip_end : kCreateMenuNetworkingIndex;
-    const auto visible_card_or_label = [seat_visible](int card) {
+    const auto visible_card_or_rail = [seat_visible, rail_entry](int card) {
         return card >= 0 && card < seat_visible
             ? kBaseCampSeatCardBase + card
-            : kBaseCampSeatsLabelIndex;
+            : rail_entry;
     };
     buttons[kCreateMenuBackIndex].nav = {
-        .up = kBaseCampSeatsLabelIndex, .down = -1, .left = -1,
+        .up = rail_first, .down = -1, .left = -1,
         .right = kCreateMenuDifficultyIndex};
     buttons[kCreateMenuDifficultyIndex].nav = {
-        .up = visible_card_or_label(0), .down = -1,
+        .up = visible_card_or_rail(0), .down = -1,
         .left = kCreateMenuBackIndex,
         .right = kCreateMenuScenarioIndex};
     buttons[kCreateMenuScenarioIndex].nav = {
         .up = networked
-            ? visible_card_or_label(1)
+            ? visible_card_or_rail(1)
             : kBaseCampScenarioLineIndex,
         .down = -1, .left = kCreateMenuDifficultyIndex,
         .right = kCreateMenuNetworkingIndex};
     buttons[kCreateMenuNetworkingIndex].nav = {
-        .up = visible_card_or_label(2), .down = -1,
+        .up = visible_card_or_rail(2), .down = -1,
         .left = kCreateMenuScenarioIndex,
         .right = strip_end};
+    // The strip's right end climbs to the rail's right end — the '>' while
+    // the seat list pages, else the last visible card. (#236 moved the '+'
+    // off this column to the rail's left edge.)
     buttons[kCreateMenuGoIndex].nav = {
-        .up = add_visible
-            ? kBaseCampAddSeatIndex
-            : (seat_pagers
-                   ? kBaseCampSeatPageNextIndex
-                   : visible_card_or_label(3)),
+        .up = rail_last,
         .down = -1,
         .left = kCreateMenuNetworkingIndex, .right = -1};
     buttons[kCreateMenuReadyIndex].nav = {
-        .up = add_visible
-            ? kBaseCampAddSeatIndex
-            : (seat_pagers
-                   ? kBaseCampSeatPageNextIndex
-                   : visible_card_or_label(3)),
+        .up = rail_last,
         .down = -1,
         .left = kCreateMenuNetworkingIndex, .right = -1};
 
@@ -4367,13 +4401,14 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     }
 
     // Empty roster: seed the highlight on HIRE (§2.5) instead of the first
-    // visible button (SEATS when the composition cleared can_hire).
+    // visible button (the rail's left end when a composition cleared
+    // can_hire).
     if (visible == 0 && highlighted_button >= 0
         && highlighted_button < count
         && buttons[highlighted_button].hidden)
     {
         highlighted_button =
-            can_hire ? kCreateMenuHireIndex : kBaseCampSeatsLabelIndex;
+            can_hire ? kCreateMenuHireIndex : rail_entry;
     }
 
     for (int i = 0; i < count; ++i)
@@ -4392,8 +4427,8 @@ void base_camp_draw_background(void* screen_state)
     picker_backdrop_draw_background(nullptr);
     screen* const game = og::runtime::current_session->myscreen_;
     // Outer bevel (8,28)..(311,160); inner grey face (10,30)..(309,158) —
-    // outside-to-outside with the command strip (BACK/SEATS left edge 8,
-    // GO/'+'/'>' right edge 311). Content keeps a real inset on every edge
+    // outside-to-outside with the command strip (BACK/'+' left edge 8,
+    // GO/'>' right edge 311). Content keeps a real inset on every edge
     // instead of touching bevels.
     game->draw_button(8, 28, 311, 160, 2, 1);
 
@@ -5009,13 +5044,6 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
         if (st->page.step(row == kBaseCampPagePrevIndex ? -1 : 1))
             TRACE("basecamp", "page %s", st->page.indicator().c_str());
         return MENU_OK;
-    }
-
-    if (row == kBaseCampSeatsLabelIndex) {
-        const Sint32 ret = create_teams_menu(0);
-        if ((ret & MENU_EXIT) && team_build_start_selected())
-            return MENU_EXIT;
-        return MENU_REDRAW;
     }
 
     if (row == kBaseCampSeatPagePrevIndex ||

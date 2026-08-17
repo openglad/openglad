@@ -1132,6 +1132,113 @@ TEST_F(ReplayPurgeTest, lobby_game_start_onto_completed_level_arms_replay)
         << "an uncompleted-level start clears/never sets the arm";
 }
 
+// V5 Option A, point 3 (the trap), both directions. The adopt rule above
+// exists for sessions that cannot read the hosting player's intent — the
+// dedicated server and networked joiners. A PLAYER-seeded session (the
+// curses host, seeded from its own company save) carries explicit intent
+// instead: armed = REPLAY, unarmed + completed = VISIT. SeededIntent must
+// never auto-arm, or every hosted VISIT silently becomes a replay.
+TEST_F(HeadlessServerRuntimeTest, seeded_intent_never_auto_arms_a_visit)
+{
+    // The host's VISIT posture: level 1 cleared, cursor parked on it by a
+    // plain write, no arm.
+    active_save_.current_campaign = "gladiator";
+    active_save_.add_level_completed("gladiator", 1);
+    active_save_.scen_num = 1;
+
+    og::sim::LobbySaveDataEquivalent lobby_save;
+    lobby_save.current_campaign = "gladiator";
+    lobby_save.scen_num = 1;
+    lobby_save.numplayers = 1;
+    lobby_save.team_list = {
+        make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER, 0),
+    };
+    og::server::apply_headless_lobby_game_start_config(
+        active_save_, lobby_save,
+        og::server::LobbyStartReplayArm::SeededIntent);
+
+    EXPECT_EQ(0, static_cast<int>(active_save_.replay_level))
+        << "a player-seeded session must not adopt the completed landing";
+
+    // The explicit adopt twin on the same shape: the dedicated direction
+    // still arms (the default parameter is this policy — the production
+    // server_main call keeps it without naming it).
+    SaveData dedicated;
+    dedicated.current_campaign = "gladiator";
+    dedicated.add_level_completed("gladiator", 1);
+    dedicated.scen_num = 3;
+    og::server::apply_headless_lobby_game_start_config(
+        dedicated, lobby_save,
+        og::server::LobbyStartReplayArm::AdoptCompletedLanding);
+    EXPECT_TRUE(dedicated.replay_armed_for(1))
+        << "the dedicated server keeps auto-arming";
+    EXPECT_EQ(3, static_cast<int>(dedicated.replay_origin));
+}
+
+// SeededIntent keeps the player's own arm when it covers the negotiated
+// level — the REPLAY press reaches the authoritative load with its origin.
+TEST_F(HeadlessServerRuntimeTest, seeded_intent_carries_the_players_arm)
+{
+    active_save_.current_campaign = "gladiator";
+    active_save_.add_level_completed("gladiator", 1);
+    active_save_.scen_num = 3;
+    active_save_.arm_replay(1);
+
+    og::sim::LobbySaveDataEquivalent lobby_save;
+    lobby_save.current_campaign = "gladiator";
+    lobby_save.scen_num = 1;
+    lobby_save.numplayers = 1;
+    lobby_save.team_list = {
+        make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER, 0),
+    };
+    og::server::apply_headless_lobby_game_start_config(
+        active_save_, lobby_save,
+        og::server::LobbyStartReplayArm::SeededIntent);
+
+    EXPECT_TRUE(active_save_.replay_armed_for(1));
+    EXPECT_EQ(3, static_cast<int>(active_save_.replay_origin))
+        << "the origin survives into the session";
+}
+
+// A stale seeded arm dies at the config apply: an arm for another level or
+// another campaign never rides into the negotiated round.
+TEST_F(HeadlessServerRuntimeTest, seeded_intent_clears_a_stale_arm)
+{
+    // Armed for level 2, but the lobby negotiated level 1 (also cleared):
+    // the arm is stale AND the landing must still not auto-arm.
+    active_save_.current_campaign = "gladiator";
+    active_save_.add_level_completed("gladiator", 1);
+    active_save_.add_level_completed("gladiator", 2);
+    active_save_.scen_num = 5;
+    active_save_.arm_replay(2);
+
+    og::sim::LobbySaveDataEquivalent lobby_save;
+    lobby_save.current_campaign = "gladiator";
+    lobby_save.scen_num = 1;
+    lobby_save.numplayers = 1;
+    lobby_save.team_list = {
+        make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER, 0),
+    };
+    og::server::apply_headless_lobby_game_start_config(
+        active_save_, lobby_save,
+        og::server::LobbyStartReplayArm::SeededIntent);
+    EXPECT_EQ(0, static_cast<int>(active_save_.replay_level))
+        << "a stale arm dies; the completed landing stays a VISIT";
+
+    // Campaign switch: an arm covering the level NUMBER of another
+    // campaign has no origin here — cleared too.
+    SaveData switched;
+    switched.current_campaign = "imaginations";
+    switched.add_level_completed("imaginations", 1);
+    switched.scen_num = 1;
+    switched.arm_replay(1);
+    og::server::apply_headless_lobby_game_start_config(
+        switched, lobby_save,
+        og::server::LobbyStartReplayArm::SeededIntent);
+    EXPECT_EQ(0, static_cast<int>(switched.replay_level))
+        << "no origin may cross campaigns";
+}
+
 // The arm rides the server/checkpoint copies (the dropped-field pattern):
 // curses builds its authoritative session save through this copy, so a
 // dropped pair would purge the armed replay on the curses client.

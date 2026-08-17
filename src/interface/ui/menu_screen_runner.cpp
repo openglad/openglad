@@ -83,13 +83,14 @@ void draw_menu_highlight(const MenuScreenSpec& spec,
                          const button* buttons,
                          int highlighted_button)
 {
-    // The compact Base Camp seat rail has only one- and two-pixel horizontal
-    // gutters. Its focus ring must stay inside the selected control so it
-    // cannot paint over the neighboring arrow, card, or numbered team chip.
-    // Bounded to the rail/move-up band (33..48): the appended gameplay-zone
-    // rows past it take the normal exterior focus ring.
+    // The compact Base Camp seat rail packs a numbered team chip into each
+    // card's last nine pixels, and the move-up column hugs the roster
+    // panel's inner face. Their focus ring must stay inside the selected
+    // control so it cannot paint over the chip or the panel bevel. Bounded
+    // to the rail/move-up band (33..48): the appended gameplay-zone rows
+    // past it take the normal exterior focus ring.
     if (std::string_view(spec.name) == "team_build" &&
-        highlighted_button >= kBaseCampSeatsLabelIndex &&
+        highlighted_button >= kBaseCampInteriorRingFirstIndex &&
         highlighted_button <= kBaseCampInteriorRingLastIndex)
     {
         if (highlighted_button >= kBaseCampSeatCardBase &&

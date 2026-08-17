@@ -1747,18 +1747,21 @@ TEST(ViewTeam, base_camp_seat_card_focus_preserves_neighbors_and_team_chip)
 
     constexpr int kCanvasWidth = 320;
     constexpr int kCanvasHeight = 200;
-    constexpr int kRailLeft = 42;
+    // The whole rail, from the '+' at the panel's left edge to the '>' on
+    // its right rail. The selected card's rect comes off the live button so
+    // a re-spaced rail (#236) cannot silently aim this probe at a gutter.
+    constexpr int kRailLeft = 8;
     constexpr int kRailTop = 162;
     constexpr int kRailRight = 313;
     constexpr int kRailBottom = 176;
     constexpr int kRailWidth = kRailRight - kRailLeft + 1;
     constexpr int kRailHeight = kRailBottom - kRailTop + 1;
-    constexpr int kSelectedCardX = 112;
-    constexpr int kSelectedCardY = 164;
-    constexpr int kLabelFocusRight = kSelectedCardX + 47;
-    constexpr int kFocusBottom = kSelectedCardY + 10;
-    constexpr int kChipX = kSelectedCardX + 48;
-    constexpr int kChipY = kSelectedCardY + 1;
+    const int kSelectedCardX = buttons[kBaseCampSeatCardBase + 1].x;
+    const int kSelectedCardY = buttons[kBaseCampSeatCardBase + 1].y;
+    const int kLabelFocusRight = kSelectedCardX + 47;
+    const int kFocusBottom = kSelectedCardY + 10;
+    const int kChipX = kSelectedCardX + 48;
+    const int kChipY = kSelectedCardY + 1;
     constexpr int kChipSize = 8;
 
     const auto capture = [&]() {
@@ -1833,8 +1836,9 @@ TEST(ViewTeam, base_camp_seat_card_focus_preserves_neighbors_and_team_chip)
 }
 
 // The interior focus ring is bounded to the compact seat rail / move-up band
-// (kBaseCampSeatsLabelIndex..kBaseCampInteriorRingLastIndex). The appended
-// gameplay-zone rows past it are 264px full-width faces where a 3px-inset
+// (kBaseCampInteriorRingFirstIndex..kBaseCampInteriorRingLastIndex). The
+// appended gameplay-zone rows past it are 264px full-width faces where a
+// 3px-inset
 // ring would read as a stray box inside the row, so they take the normal
 // exterior pulse. Pin BOTH directions: nothing may paint in the row's
 // interior band, and the exterior band must actually light up.

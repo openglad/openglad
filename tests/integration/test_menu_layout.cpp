@@ -630,8 +630,10 @@ void check_nav_closed_and_reachable(button* buttons, int count,
 // 0-7, row body 8-15, team chip 16-23, pagers 24/25, scenario-line 26,
 // strip 27-31, ready twin 32) so MenuSpecRow args decode positionally. The
 // seat-assignment rail is appended at 33-40, followed by move-up controls
-// 41-48, preserving every old ordinal. The layout is identical for classic
-// and CTF campaigns.
+// 41-48, preserving every old ordinal. #236 repurposed the rail's ordinals
+// in place rather than shifting the table: 33 (the retired SEATS door) is
+// the '+' at the rail's left edge and 40 (the '+' it replaced) is a parked
+// spare. The layout is identical for classic and CTF campaigns.
 TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
@@ -689,22 +691,24 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         // for networked joiners).
         {"ready", "READY", 262, 178, 50, 18, MenuNav{.up = 15, .left = 30},
          true},
-        {"seats", "SEATS", 8, 164, 34, 10,
+        // #236: the '+' opens the rail at the left edge (the SEATS door it
+        // replaced duplicated SCENARIO's MATCHUP button), and the retired
+        // right-end ordinal parks like a zone spare.
+        {"add_seat", "+", 8, 164, 14, 10,
          MenuNav{.down = 27, .right = 34}, false},
-        {"seat_page_prev", "<", 44, 164, 8, 10,
-         MenuNav{.left = 33, .right = 35}, true},
-        {"seat_card_0", "", 54, 164, 57, 10,
+        {"seat_page_prev", "<", 29, 164, 10, 10,
+         MenuNav{.down = 27, .left = 33, .right = 35}, true},
+        {"seat_card_0", "", 46, 164, 57, 10,
          MenuNav{.left = 34, .right = 36}, false},
-        {"seat_card_1", "", 112, 164, 57, 10,
+        {"seat_card_1", "", 110, 164, 57, 10,
          MenuNav{.left = 35, .right = 37}, false},
-        {"seat_card_2", "", 170, 164, 57, 10,
+        {"seat_card_2", "", 174, 164, 57, 10,
          MenuNav{.left = 36, .right = 38}, false},
-        {"seat_card_3", "", 228, 164, 57, 10,
+        {"seat_card_3", "", 238, 164, 57, 10,
          MenuNav{.left = 37, .right = 39}, false},
-        {"seat_page_next", ">", 287, 164, 8, 10,
+        {"seat_page_next", ">", 302, 164, 10, 10,
          MenuNav{.down = 31, .left = 38}, true},
-        {"add_seat", "+", 298, 164, 14, 10,
-         MenuNav{.down = 31, .left = 39}, false},
+        {"seat_rail_spare", "", 0, 0, 0, 0, MenuNav{}, true},
         {"roster_up_0", "^", 301, 45, 9, 10,
          MenuNav{.left = 8}, true},
         {"roster_up_1", "^", 301, 59, 9, 10,
@@ -758,7 +762,7 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
             // The compact rail uses the full face; established beveled
             // controls retain their eight-pixel inset budget.
             const int label_budget =
-                i < kBaseCampSeatsLabelIndex
+                i < kBaseCampAddSeatIndex
                 ? (got.sizex - 8) / 6
                 : got.sizex / 6;
             EXPECT_LE(static_cast<int>(got.label.size()), label_budget)
@@ -870,11 +874,12 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         EXPECT_EQ(kCreateMenuNetworkingIndex, 30);
         EXPECT_EQ(kCreateMenuGoIndex, 31);
         EXPECT_EQ(kCreateMenuReadyIndex, 32);
-        EXPECT_EQ(kBaseCampSeatsLabelIndex, 33);
+        EXPECT_EQ(kBaseCampAddSeatIndex, 33);
         EXPECT_EQ(kBaseCampSeatPagePrevIndex, 34);
         EXPECT_EQ(kBaseCampSeatCardBase, 35);
         EXPECT_EQ(kBaseCampSeatPageNextIndex, 39);
-        EXPECT_EQ(kBaseCampAddSeatIndex, 40);
+        EXPECT_EQ(kBaseCampSeatRailSpareIndex, 40);
+        EXPECT_EQ(kBaseCampInteriorRingFirstIndex, 33);
         EXPECT_EQ(kBaseCampMoveUpBase, 41);
         EXPECT_EQ(kBaseCampInteriorRingLastIndex, 48);
         EXPECT_EQ(kBaseCampZoneActionBase, 49);
@@ -899,8 +904,9 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         EXPECT_EQ(buttons[kCreateMenuGoIndex].sizey,
                   buttons[kCreateMenuReadyIndex].sizey);
         EXPECT_EQ(buttons[kCreateMenuBackIndex].x,
-                  buttons[kBaseCampSeatsLabelIndex].x)
-            << "SEATS and BACK share the base-camp left alignment line";
+                  buttons[kBaseCampAddSeatIndex].x)
+            << "the rail's + and BACK share the base-camp left alignment "
+               "line";
         // Each row's three actions have deliberate non-overlapping gutters:
         // deploy, TEAM color, then name/train.
         for (int r = 0; r < kBaseCampRosterRowsPerPage; ++r)
@@ -918,16 +924,30 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
                 << "training zone needs a gutter before move-up on row " << r;
         }
 
-        // The compact rail uses an interior keyboard-focus ring; its one- and
-        // two-pixel horizontal gutters therefore remain clear between every
-        // adjacent control, including the new far-right +.
-        for (int left = kBaseCampSeatsLabelIndex;
-             left < kBaseCampAddSeatIndex; ++left)
+        // #236: one gutter across the whole rail, from the '+' at the left
+        // edge to the '>' closing the right rail. The cards used to sit 1px
+        // apart; the freed SEATS width bought every neighbour the same
+        // seven pixels.
+        for (int left = kBaseCampAddSeatIndex;
+             left < kBaseCampSeatPageNextIndex; ++left)
         {
-            EXPECT_LT(buttons[left].x + buttons[left].sizex,
-                      buttons[left + 1].x)
-                << "seat rail needs a visible focus-safe gutter";
+            EXPECT_EQ(7, buttons[left + 1].x -
+                             (buttons[left].x + buttons[left].sizex))
+                << "seat rail gutter after " << buttons[left].id;
+            EXPECT_EQ(buttons[kBaseCampAddSeatIndex].y, buttons[left + 1].y)
+                << "seat rail baseline at " << buttons[left + 1].id;
+            EXPECT_EQ(buttons[kBaseCampAddSeatIndex].sizey,
+                      buttons[left + 1].sizey)
+                << "seat rail height at " << buttons[left + 1].id;
         }
+        EXPECT_EQ(312, buttons[kBaseCampSeatPageNextIndex].x +
+                           buttons[kBaseCampSeatPageNextIndex].sizex)
+            << "the seat rail closes on the panel's right rail";
+        // The retired ordinal keeps its slot in the 73-button table and
+        // nothing else: a parked spare cannot be clicked or navigated to.
+        EXPECT_TRUE(buttons[kBaseCampSeatRailSpareIndex].hidden);
+        EXPECT_EQ(0, buttons[kBaseCampSeatRailSpareIndex].sizex);
+        EXPECT_EQ(0, buttons[kBaseCampSeatRailSpareIndex].sizey);
 
         check_no_overlaps(buttons, count, "createmenu_basecamp");
         check_bounds(buttons, count, "createmenu_basecamp");
@@ -954,7 +974,8 @@ TEST(MenuLayout, createmenu_basecamp_grid_relations)
     const button& go = buttons[kCreateMenuGoIndex];
     const int rail_right = go.x + go.sizex;
     EXPECT_EQ(312, rail_right) << "GO closes the panel's outer right edge";
-    const std::vector<int> rail{kBaseCampPageNextIndex, kBaseCampAddSeatIndex,
+    const std::vector<int> rail{kBaseCampPageNextIndex,
+                                kBaseCampSeatPageNextIndex,
                                 kCreateMenuReadyIndex};
     for (const int index : rail)
     {
@@ -974,12 +995,15 @@ TEST(MenuLayout, createmenu_basecamp_grid_relations)
     }
 
     // (b) The seat cards are one uniform run: equal widths, equal pitch, one
-    // baseline.
+    // baseline. #236 widened the pitch from 58 (a 1px hairline between
+    // faces) to 64 — the 57px card plus the rail's 7px gutter.
     for (int card = 0; card + 1 < kBaseCampSeatCardsPerPage; ++card)
     {
         const button& left = buttons[kBaseCampSeatCardBase + card];
         const button& right = buttons[kBaseCampSeatCardBase + card + 1];
-        EXPECT_EQ(58, right.x - left.x) << "seat card pitch at card " << card;
+        EXPECT_EQ(64, right.x - left.x) << "seat card pitch at card " << card;
+        EXPECT_EQ(left.sizex + 7, right.x - left.x)
+            << "the card pitch is the card face plus the rail gutter";
         EXPECT_EQ(left.sizex, right.sizex)
             << "seat card width at card " << card;
         EXPECT_EQ(left.y, right.y) << "seat card baseline at card " << card;
@@ -1168,7 +1192,7 @@ TEST(MenuLayout, createmenu_basecamp_scripted_zone_bands_and_nav)
     EXPECT_EQ(0, buttons[kBaseCampZoneActionBase + 1].nav.down)
         << "the band's last row drops onto the roster's dep column";
     EXPECT_EQ(kBaseCampZoneActionBase + 1, buttons[0].nav.up);
-    EXPECT_EQ(kBaseCampSeatsLabelIndex, buttons[3].nav.down)
+    EXPECT_EQ(kBaseCampAddSeatIndex, buttons[3].nav.down)
         << "the roster's last row bottoms out on the seat rail";
 
     // Pager stepping through the production dispatch windows the band.
@@ -1311,7 +1335,7 @@ TEST(MenuLayout, createmenu_basecamp_zone_two_bands_and_empty_company_spine)
     EXPECT_EQ(3, buttons[band0].nav.up);
     EXPECT_EQ(band1, buttons[band0].nav.down);
     EXPECT_EQ(band0, buttons[band1].nav.up);
-    EXPECT_EQ(kBaseCampSeatsLabelIndex, buttons[band1].nav.down)
+    EXPECT_EQ(kBaseCampAddSeatIndex, buttons[band1].nav.down)
         << "the bottom band lands on the seat rail";
 
     // An empty company between two bands: the bands bridge straight across
@@ -1323,7 +1347,7 @@ TEST(MenuLayout, createmenu_basecamp_zone_two_bands_and_empty_company_spine)
         << "the band above bridges over an empty roster";
     EXPECT_EQ(band0, buttons[band1].nav.up)
         << "the band below climbs back over the empty roster";
-    EXPECT_EQ(kBaseCampSeatsLabelIndex, buttons[band1].nav.down);
+    EXPECT_EQ(kBaseCampAddSeatIndex, buttons[band1].nav.down);
 
     // Empty company, both bands below: the spine opens on the first band
     // and its top row climbs to HIRE.
@@ -1332,14 +1356,14 @@ TEST(MenuLayout, createmenu_basecamp_zone_two_bands_and_empty_company_spine)
     EXPECT_EQ(kCreateMenuHireIndex, buttons[band0].nav.up)
         << "with no roster rows the first band's up-exit is HIRE";
     EXPECT_EQ(band1, buttons[band0].nav.down);
-    EXPECT_EQ(kBaseCampSeatsLabelIndex, buttons[band1].nav.down);
+    EXPECT_EQ(kBaseCampAddSeatIndex, buttons[band1].nav.down);
 
     // Empty company, both bands above: the last band bottoms out on the
     // seat rail.
     rewire(both_above, "zone_empty_company_above");
     EXPECT_EQ(band0, buttons[kCreateMenuHireIndex].nav.down);
     EXPECT_EQ(band1, buttons[band0].nav.down);
-    EXPECT_EQ(kBaseCampSeatsLabelIndex, buttons[band1].nav.down)
+    EXPECT_EQ(kBaseCampAddSeatIndex, buttons[band1].nav.down)
         << "no roster rows and nothing below: the band exits to the rail";
 
     og::ui::install_base_camp_state_for_screen(nullptr);
@@ -1764,7 +1788,7 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
             state.seat_page.page = page;
             button* buttons = picker_createmenu_buttons();
             const int count = picker_createmenu_button_count();
-            int highlighted = kBaseCampSeatsLabelIndex;
+            int highlighted = kBaseCampAddSeatIndex;
             spec.nav.rewire(buttons, count, highlighted);
 
             const std::string variant = std::format(
@@ -1779,6 +1803,13 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
                 << variant;
             EXPECT_EQ(!kAddSeatCompiledIn,
                       buttons[kBaseCampAddSeatIndex].hidden)
+                << variant;
+            // The rewire re-parks the retired ordinal every frame.
+            EXPECT_TRUE(buttons[kBaseCampSeatRailSpareIndex].hidden)
+                << variant;
+            EXPECT_EQ(-1, buttons[kBaseCampSeatRailSpareIndex].nav.left)
+                << variant;
+            EXPECT_EQ(-1, buttons[kBaseCampSeatRailSpareIndex].nav.right)
                 << variant;
             ASSERT_NE(nullptr,
                       spec.rows[kBaseCampAddSeatIndex].state_override);
@@ -1804,7 +1835,10 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
             const int visible =
                 std::min(kBaseCampSeatCardsPerPage,
                          seat_count - first);
-            std::vector<int> rail{kBaseCampSeatsLabelIndex};
+            // #236 rail order: [+] | < | cards | >.
+            std::vector<int> rail;
+            if (kAddSeatCompiledIn)
+                rail.push_back(kBaseCampAddSeatIndex);
             if (paged)
                 rail.push_back(kBaseCampSeatPagePrevIndex);
             for (int card = 0; card < kBaseCampSeatCardsPerPage; ++card)
@@ -1857,8 +1891,11 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
             }
             if (paged)
                 rail.push_back(kBaseCampSeatPageNextIndex);
-            if (kAddSeatCompiledIn)
-                rail.push_back(kBaseCampAddSeatIndex);
+            ASSERT_FALSE(rail.empty()) << variant;
+            // Links from above enter at the rail's left end; the strip's
+            // right end climbs to its right end.
+            const int rail_first = rail.front();
+            const int rail_last = rail.back();
 
             for (std::size_t i = 0; i < rail.size(); ++i)
             {
@@ -1870,29 +1907,26 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
                     << variant << " " << control.id;
             }
 
-            const auto visible_card_or_label = [visible](int card) {
+            const auto visible_card_or_rail = [visible, rail_first](int card) {
                 return card < visible
                     ? kBaseCampSeatCardBase + card
-                    : kBaseCampSeatsLabelIndex;
+                    : rail_first;
             };
             // HIRE lives in the roster header band now: its up-link is
             // closed and the empty-roster rail climbs back up to it.
             EXPECT_EQ(-1, buttons[kCreateMenuHireIndex].nav.up) << variant;
-            EXPECT_EQ(kBaseCampSeatsLabelIndex,
+            EXPECT_EQ(rail_first,
                       buttons[kCreateMenuHireIndex].nav.down)
                 << variant << " (empty roster: HIRE drops to the rail)";
-            EXPECT_EQ(visible_card_or_label(1),
+            EXPECT_EQ(rail_first, buttons[kCreateMenuBackIndex].nav.up)
+                << variant << " (BACK climbs to the rail's left end)";
+            EXPECT_EQ(visible_card_or_rail(1),
                       buttons[kCreateMenuScenarioIndex].nav.up)
                 << variant;
-            EXPECT_EQ(visible_card_or_label(2),
+            EXPECT_EQ(visible_card_or_rail(2),
                       buttons[kCreateMenuNetworkingIndex].nav.up)
                 << variant;
-            EXPECT_EQ(kAddSeatCompiledIn
-                          ? kBaseCampAddSeatIndex
-                          : (paged
-                                 ? kBaseCampSeatPageNextIndex
-                                 : visible_card_or_label(3)),
-                      buttons[kCreateMenuGoIndex].nav.up)
+            EXPECT_EQ(rail_last, buttons[kCreateMenuGoIndex].nav.up)
                 << variant;
 
             check_no_overlaps(buttons, count, variant.c_str());
@@ -1901,13 +1935,13 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
                 buttons, count, kCreateMenuBackIndex, variant.c_str());
 
             // The same rail page must close over READY for a joiner with an
-            // active seat: GO hides, the fourth card, next arrow, and + point
-            // down to READY, and READY points back up to the far-right +.
-            // A zero-seat spectator has no READY target; + remains the route
-            // back down to NETWORK until it activates a seat.
+            // active seat: GO hides, the fourth card and the next arrow point
+            // down to READY, and READY points back up to the rail's right
+            // end. The '+' sits over BACK at the rail's left end now (#236),
+            // so it drops there in every shape.
             lobby.host = false;
             buttons = picker_createmenu_buttons();
-            highlighted = kBaseCampSeatsLabelIndex;
+            highlighted = kBaseCampAddSeatIndex;
             spec.nav.rewire(buttons, count, highlighted);
             EXPECT_TRUE(buttons[kCreateMenuGoIndex].hidden) << variant;
             EXPECT_EQ(seat_count == 0,
@@ -1931,19 +1965,13 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
             }
             if (kAddSeatCompiledIn)
             {
-                EXPECT_EQ(seat_count > 0
-                              ? kCreateMenuReadyIndex
-                              : kCreateMenuNetworkingIndex,
+                EXPECT_EQ(kCreateMenuBackIndex,
                           buttons[kBaseCampAddSeatIndex].nav.down)
                     << variant;
             }
             if (seat_count > 0)
             {
-                EXPECT_EQ(kAddSeatCompiledIn
-                              ? kBaseCampAddSeatIndex
-                              : (paged
-                                     ? kBaseCampSeatPageNextIndex
-                                     : visible_card_or_label(3)),
+                EXPECT_EQ(rail_last,
                           buttons[kCreateMenuReadyIndex].nav.up)
                     << variant;
             }
@@ -1988,7 +2016,7 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
             lobby.host = host;
             button* buttons = picker_createmenu_buttons();
             const int count = picker_createmenu_button_count();
-            int highlighted = kBaseCampSeatsLabelIndex;
+            int highlighted = kBaseCampAddSeatIndex;
             spec.nav.rewire(buttons, count, highlighted);
             const std::string variant = std::format(
                 "zero-seat {} remote-cards={}",
@@ -2021,8 +2049,7 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
             }
             if (kAddSeatCompiledIn)
             {
-                EXPECT_EQ(host ? kCreateMenuGoIndex
-                               : kCreateMenuNetworkingIndex,
+                EXPECT_EQ(kCreateMenuBackIndex,
                           buttons[kBaseCampAddSeatIndex].nav.down)
                     << variant;
             }
@@ -2248,14 +2275,15 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_keyboard_reachable)
                                 kCreateMenuGoIndex
                             ? kCreateMenuNetworkingIndex
                             : buttons[kBaseCampPageNextIndex].nav.down;
-                    // The far-right + inherited GO as its native host down
-                    // target. This matrix's synthetic joiner hides GO by
-                    // hand, so close that final rail link as well.
-                    buttons[kBaseCampAddSeatIndex].nav.down =
-                        buttons[kBaseCampAddSeatIndex].nav.down ==
-                                kCreateMenuGoIndex
-                            ? kCreateMenuNetworkingIndex
-                            : buttons[kBaseCampAddSeatIndex].nav.down;
+                    // Rail controls over the strip's right end inherit GO as
+                    // their native host down target. This matrix's synthetic
+                    // joiner hides GO by hand, so close those links too.
+                    for (int i = kBaseCampAddSeatIndex;
+                         i <= kBaseCampSeatPageNextIndex; ++i)
+                    {
+                        if (buttons[i].nav.down == kCreateMenuGoIndex)
+                            buttons[i].nav.down = kCreateMenuNetworkingIndex;
+                    }
                 }
                 const std::string variant = std::format(
                     "basecamp roster={} page={} {}", roster_size, page,

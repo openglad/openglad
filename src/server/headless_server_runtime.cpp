@@ -366,17 +366,24 @@ void copy_headless_server_save_data(SaveData& destination,
 
 void apply_headless_lobby_game_start_config(
     SaveData& save,
-    const og::sim::LobbySaveDataEquivalent& config_save)
+    const og::sim::LobbySaveDataEquivalent& config_save,
+    LobbyStartReplayArm arm_policy)
 {
-    // #207 design point 7 (the dedicated server): a host level-set onto a
-    // level the SERVER's save marks completed loads RESTORED — the
-    // networked table re-fights; the empty walk-through is a solo/hosted
-    // nicety. Capture the pre-config position, arm below once the cursor
-    // lands on a completed level of the SAME campaign (a campaign switch
-    // has no origin to restore to), and clear any stale arm otherwise —
-    // every round starts its own excursion or none.
+    // #207 design point 7 (the dedicated server) / V5 point 3 (the trap).
+    // AdoptCompletedLanding: a start onto a level the save marks completed
+    // loads RESTORED — the networked table re-fights. Capture the
+    // pre-config position, arm below once the cursor lands on a completed
+    // level of the SAME campaign (a campaign switch has no origin to
+    // restore to), and clear any stale arm otherwise — every round starts
+    // its own excursion or none.
+    // SeededIntent: the save is a PLAYER's seeded company copy and its arm
+    // state IS the intent — keep an arm that covers the negotiated level,
+    // clear anything stale, and never auto-arm (unarmed + completed means
+    // VISIT; the adopt rule would silently convert it into a replay).
     const std::string previous_campaign = save.current_campaign;
     const short previous_scen_num = save.scen_num;
+    const short seeded_replay_level = save.replay_level;
+    const short seeded_replay_origin = save.replay_origin;
     save.clear_replay_arm();
 
     save.current_campaign = config_save.current_campaign.empty()
@@ -384,11 +391,21 @@ void apply_headless_lobby_game_start_config(
         : config_save.current_campaign;
     save.scen_num = config_save.scen_num > 0 ? config_save.scen_num : 1;
     save.current_levels[save.current_campaign] = save.scen_num;
-    if (previous_campaign == save.current_campaign &&
-        save.is_level_completed(save.scen_num))
+    if (arm_policy == LobbyStartReplayArm::AdoptCompletedLanding)
     {
-        save.replay_level = save.scen_num;
-        save.replay_origin = previous_scen_num;
+        if (previous_campaign == save.current_campaign &&
+            save.is_level_completed(save.scen_num))
+        {
+            save.replay_level = save.scen_num;
+            save.replay_origin = previous_scen_num;
+        }
+    }
+    else if (seeded_replay_level != 0 &&
+             seeded_replay_level == save.scen_num &&
+             previous_campaign == save.current_campaign)
+    {
+        save.replay_level = seeded_replay_level;
+        save.replay_origin = seeded_replay_origin;
     }
     save.numplayers = config_save.numplayers;
     save.allied_mode = static_cast<short>(config_save.allied_mode);

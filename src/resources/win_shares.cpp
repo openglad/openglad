@@ -220,10 +220,12 @@ bool persist_networked_win(const std::string& slot, const SaveData& session,
 
     // Advance this machine's OWN campaign cursor whether it owns characters or
     // is spectating, so a zero-seat host/client still rejoins at the next
-    // destination. #207: when THIS machine's session save is armed — the
-    // host by its REPLAY click, the dedicated server and curses sessions by
-    // the lobby-config arm, the SDL joiner by synced-apply adoption — the
-    // fold has already RESTORED session.scen_num to that machine's own
+    // destination. #207: when THIS machine's session save is armed — a
+    // hosting player by its REPLAY click (the SDL and curses hosts both
+    // seed the authoritative session from their own company save, arm
+    // included), the dedicated server and the curses joiner by the
+    // lobby-config adoption arm, the SDL joiner by synced-apply adoption —
+    // the fold has already RESTORED session.scen_num to that machine's own
     // pre-excursion position (progression.cpp step 5b runs before any
     // persist), so the write below carries the restored cursor. A machine
     // arms only for a level completed in its OWN save (same campaign): one

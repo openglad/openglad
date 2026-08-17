@@ -169,7 +169,7 @@ int picker_zone_submenu_button_count();
 // clear top/bottom margins): 8 roster rows/page (deploy toggle at x=23, team
 // color/cycler at x=61, row-body train zone at x=84..297, and move-up at
 // x=303, y=45+14r — flush with the panel's right inner edge, like the roster
-// pager '>', the seat rail's '+' and GO), the page cluster top-right,
+// pager '>', the seat rail's '>' and GO), the page cluster top-right,
 // and the bottom command strip BACK | DIFFICULTY | SCENARIO | NETWORK |
 // GO at y=178 (HIRE moved up to the roster band header; the slot it left
 // became the DIFFICULTY door when that setting came off the main menu, and
@@ -200,11 +200,16 @@ inline constexpr int kCreateMenuGoIndex = 31;
 inline constexpr int kCreateMenuReadyIndex = 32;
 // Per-level player-seat assignment rail. Appended after the original
 // ordinals so every established Base Camp action index stays stable.
-inline constexpr int kBaseCampSeatsLabelIndex = 33;
+// #236: the rail reads [+] | < | four cards | >. The ordinal that used to
+// carry the SEATS label — a second, worse-placed door to the MATCHUP screen
+// the SCENARIO submenu already owns — carries the '+' now, at the rail's
+// left edge; the right-end ordinal the '+' vacated parks as a hidden spare
+// so no established index moved.
+inline constexpr int kBaseCampAddSeatIndex = 33;
 inline constexpr int kBaseCampSeatPagePrevIndex = 34;
 inline constexpr int kBaseCampSeatCardBase = 35; // seat_card_0..3 = 35..38
 inline constexpr int kBaseCampSeatPageNextIndex = 39;
-inline constexpr int kBaseCampAddSeatIndex = 40;
+inline constexpr int kBaseCampSeatRailSpareIndex = 40;
 // Per-row move-up controls are appended so every established Base Camp
 // ordinal remains stable. Only owned rows after the first owned roster member
 // expose one; activating it swaps that member with its predecessor.
@@ -213,9 +218,11 @@ inline constexpr int kBaseCampSeatCardsPerPage = 4;
 // The compact 57px seat card is drawn without the beveled inset, so its
 // budget is the full face: 57 / 6 = 9 characters, trailing pad included.
 inline constexpr int kBaseCampSeatCardLabelBudget = 9;
-// The last ordinal of the compact seat-rail/move-up band: draw_menu_highlight
-// keeps its interior focus ring INSIDE [kBaseCampSeatsLabelIndex, this] —
-// appended zone rows past it take the normal exterior ring.
+// The compact seat-rail/move-up band's ordinal bounds: draw_menu_highlight
+// keeps its interior focus ring INSIDE this range so a card's ring can never
+// paint over its numbered team chip — appended zone rows past it take the
+// normal exterior ring.
+inline constexpr int kBaseCampInteriorRingFirstIndex = kBaseCampAddSeatIndex;
 inline constexpr int kBaseCampInteriorRingLastIndex = 48;
 // --- The appended gameplay-zone band (docs/basecamp-zones-design.md
 // "Bounds arithmetic"): ordinals 49..71, statically PARKED at zero-size

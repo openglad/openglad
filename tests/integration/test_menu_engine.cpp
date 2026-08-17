@@ -3317,6 +3317,9 @@ TEST(MenuEngine, base_camp_rail_and_add_seat_boundaries_are_behavioral)
     EXPECT_EQ(kBaseCampSeatPageNextIndex,
               buttons[kCreateMenuGoIndex].nav.up);
 
+    // #236: the ordinal the '+' vacated answers nothing at all.
+    EXPECT_EQ(0, spec.on_spec_row(kBaseCampSeatRailSpareIndex, &state));
+
     const int untouched_highlight = 123;
     int defensive_highlight = untouched_highlight;
     spec.nav.rewire(nullptr, count, defensive_highlight);

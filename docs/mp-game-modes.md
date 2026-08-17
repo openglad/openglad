@@ -90,8 +90,9 @@ the control from it returns to **ALL**.
 VIEW LEVEL previews the result: entries the setting will remove are flagged
 in the scenario report.
 
-Assign player teams with the **SEATS** rail in Base Camp. Use **+** to add a
-local seat, then open an owned **P#** card and choose **TEAM** in its editor.
+Assign player teams with the seat rail in Base Camp. Use **+** at its left end
+to add a local seat, then open an owned **P#** card and choose **TEAM** in its
+editor.
 The rail shows four cards at a time and **<**/**>** page through larger network
 lobbies. Put several seats on one team for co-op, or spread them across teams
 for a versus or mixed-team match. Remote cards are read-only.

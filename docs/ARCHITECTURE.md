@@ -608,8 +608,8 @@ play the server and the single client are both in-process (`InProcessTransport`)
 ### Lobby → gameplay → lobby flow
 
 Base Camp coordinates a networked start. Its seat rail is a four-card view of
-the authoritative lobby roster, with paging for larger lobbies and **+** for
-adding a local seat. An owned card opens its machine-local control profile and
+the authoritative lobby roster, with paging for larger lobbies and a **+** at
+the rail's left end for adding a local seat. An owned card opens its machine-local control profile and
 next-level team assignment; a foreign card is read-only. The interface keeps
 stable seat tokens behind the dense display ordinals, so removing a middle
 seat cannot retarget a command to one of its siblings.

@@ -474,11 +474,15 @@ int teams_local_flow_injector(void* data)
     SDL_Delay(750);
     interact("continue_game");
 
-    // Base Camp's seat-rail label opens MATCHUP directly.
+    // MATCHUP has one door, on the SCENARIO submenu: #236 retired the Base
+    // Camp SEATS button that duplicated it.
     SDL_Delay(500);
-    wait_for_interactable("seats", 10000);
+    wait_for_interactable("scenario", 10000);
     SDL_Delay(750);
-    interact("seats");
+    interact("scenario");
+    wait_for_interactable("matchup", 10000);
+    SDL_Delay(300);
+    interact("matchup");
 
     // Classic MATCHUP is overview-only: no JOIN, hero cycler, duplicate
     // READY, or CTF settings.
@@ -494,11 +498,8 @@ int teams_local_flow_injector(void* data)
         !has_interactable("guy_team") &&
         !has_interactable("ready");
 
-    // MATCHUP back returns directly to Base Camp.
+    // MATCHUP back returns to the SCENARIO submenu.
     interact("back");
-    SDL_Delay(300);
-    wait_for_interactable("scenario", 10000);
-    interact("scenario");
     SDL_Delay(300);
     wait_for_interactable("view_scenario", 10000);
     SDL_Delay(300);

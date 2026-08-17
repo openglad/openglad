@@ -85,10 +85,10 @@ level, and experience fields.
 - Tap the deploy box to deploy or bench a character.
 - Tap the team box to cycle the character's combat team.
 - Tap the name or row body to train that character.
-- Use **+** at the far right of the **SEATS** rail to add a local seat. A
-  machine may contribute four active seats and a network lobby may contain
-  sixteen. Four cards are shown at a time; **<** and **>** page the rail when
-  it grows past the visible window.
+- Use **+** at the left end of the seat rail to add a local seat. A machine
+  may contribute four active seats and a network lobby may contain sixteen.
+  Four cards are shown at a time; **<** and **>** page the rail when it grows
+  past the visible window.
 - Open an owned seat card to edit that player. The top row contains
   **4-DIRECTION**/**8-DIRECTION**, **REMAP**, and **RESET**. The bottom row
   contains **TEAM** and **REMOVE PLAYER**. In a network lobby the last action
@@ -99,7 +99,8 @@ level, and experience fields.
   company that controls them.
 - Multiple seats may deliberately choose the same team for co-op or team
   matchups. Seats on different teams oppose one another.
-- Tap **SEATS** to open the full **MATCHUP** overview.
+- The full **MATCHUP** overview lives on the Scenario menu, beside the level
+  it describes.
 - Tap the scenario summary to open the Scenario menu.
 - Network guests may inspect foreign rows but cannot mutate them.
 
@@ -338,9 +339,16 @@ A degraded-link alert takes the same line and its warning color.
 ### 9.14 Eight-row page
 
 Eight roster rows fit above the independent player-seat rail while leaving the
-column header clear. The rail presents a four-card window between **<** and
-**>**, with **+** fixed at the far right. The scenario summary and **SEATS**
-label are direct click targets.
+column header clear. The rail reads left to right: **+**, then a four-card
+window between **<** and **>**. Every neighbour on the row is seven pixels
+apart, the **+** starts on BACK's left edge, and the **>** closes on the
+panel's right rail. The scenario summary is a direct click target.
+
+The rail once opened with a **SEATS** label that led to the MATCHUP overview.
+That was a second, worse-placed door to a screen the Scenario menu already
+owns, and it cost the cards their breathing room — the four faces sat a
+single pixel apart. Issue #236 spent the label's width on the gutters and
+gave its ordinal to the **+**.
 
 ### 9.19 Company List geometry
 

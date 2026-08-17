@@ -1858,7 +1858,33 @@ bool CursesPickerClient::join_game()
 // negotiated networked level and report the result.
 void CursesPickerClient::run_network_lobby(std::unique_ptr<CursesLobby> lobby)
 {
-    const GameRunResult result = run_curses_lobby(*lobby, term_, clock_);
+    finish_network_round(run_curses_lobby(*lobby, term_, clock_));
+}
+
+// #207 design point 5 on the networked path. A networked round folds into the
+// SESSION's own save copy (the host's authoritative server_save_, the joiner's
+// mirror client_save_) and persists straight to disk; unlike the solo session
+// it never copies back into this picker's save_data_. So an armed REPLAY
+// excursion is STILL armed here when the round returns, and without this heal
+// the next hosted round would seed that stale arm and re-fight the same level
+// (V5 Option A seeds the authoritative save from this very SaveData) while any
+// later base-camp autosave would bank the replayed level as the campaign
+// cursor.
+//
+// After a win the heal is memory-only: the fold already restored the cursor
+// and persist_networked_win wrote the merged company file, so autosaving this
+// PRE-round copy over it would drop the win's gold, roster and completion
+// mark. On every other end nothing was written, so the healed cursor persists
+// like any other picker mutation (§3.8), matching run_game's solo tail.
+void CursesPickerClient::finish_network_round(const GameRunResult& result)
+{
+    const bool won = result.ended && result.ending == 0 && !result.mode_rematch;
+    if (og::ui::replay_reentry_restore(save_data_)) {
+        config_.level = save_data_.scen_num;
+        if (!won)
+            autosave_company_after_mutation(save_data_);
+    }
+
     if (result.ended) {
         Menu menu(term_, clock_);
         // CTF-aware verdict (see run_game): the local player's team vs the

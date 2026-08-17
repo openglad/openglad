@@ -679,6 +679,11 @@ void persist_curses_networked_win(SaveData& session_save, const GameWorld& world
 class HostCursesSession final : public CursesGameSession
 {
 public:
+    // `host_company_save` (V5 Option A, host history): the host machine's
+    // ACTIVE company save — the picker's live SaveData — seeds the
+    // authoritative session save before the lobby config applies, so a
+    // hosting player means the same thing from every client. May be null
+    // (tests): the session then plays a fresh history.
     static std::unique_ptr<HostCursesSession> create(
         const og::sim::LobbySaveDataEquivalent& lobby_save,
         const std::vector<og::sim::LobbyPlayerBinding>& bindings,
@@ -686,6 +691,7 @@ public:
         std::shared_ptr<og::sim::ITransport> server_transport,
         std::shared_ptr<og::sim::InProcessTransport> host_client_transport,
         std::uint8_t host_player_index,
+        const SaveData* host_company_save,
         std::string* error);
 
     ~HostCursesSession() override { current_game = saved_game_; }
@@ -764,6 +770,11 @@ public:
     GameWorld& server_world_ref() { return server_world(); }
 
 #ifdef TESTING
+    // V5 Option A (host history): the authoritative session save, so tests can
+    // pin what the seed carried — the completed set, the campaign decision
+    // book, and the transient replay arm (VISIT vs REPLAY intent).
+    const SaveData& testing_server_save() const { return server_save_; }
+
     // Turn the loaded classic level into a CTF map on the authoritative server
     // world: armed ModeState + respawn anchors for teams 0/1. Runs
     // under the server context so the obmap writes land in the server's grid;
@@ -918,6 +929,7 @@ std::unique_ptr<HostCursesSession> HostCursesSession::create(
     std::shared_ptr<og::sim::ITransport> server_transport,
     std::shared_ptr<og::sim::InProcessTransport> host_client_transport,
     std::uint8_t host_player_index,
+    const SaveData* host_company_save,
     std::string* error)
 {
     auto set_error = [&](const char* msg) -> std::unique_ptr<HostCursesSession> {
@@ -934,8 +946,21 @@ std::unique_ptr<HostCursesSession> HostCursesSession::create(
     s->server_transport_ = std::move(server_transport);
     s->host_client_transport_ = std::move(host_client_transport);
 
-    // Build the authoritative save from the negotiated lobby roster/settings.
-    og::server::apply_headless_lobby_game_start_config(s->server_save_, lobby_save);
+    // V5 Option A (SDL host parity): the authoritative session plays under
+    // the HOST machine's own history. Seed from the host's active company
+    // save through the server copy — it carries completed_levels, the
+    // campaign_state decision book, scen_num/current_levels, the team, and
+    // (explicitly, since it is never serialized) the transient replay-arm
+    // pair — then apply the negotiated lobby roster/settings on top. The
+    // SeededIntent policy keeps the player's explicit arm (REPLAY) and
+    // never auto-arms an unarmed completed landing (VISIT means VISIT from
+    // a curses host); the dedicated server keeps its adopt-on-landing rule.
+    if (host_company_save != nullptr)
+        og::server::copy_headless_server_save_data(s->server_save_,
+                                                   *host_company_save);
+    og::server::apply_headless_lobby_game_start_config(
+        s->server_save_, lobby_save,
+        og::server::LobbyStartReplayArm::SeededIntent);
     og::server::copy_headless_server_save_data(s->client_save_, s->server_save_);
 
     const short level = s->server_save_.scen_num > 0 ? s->server_save_.scen_num : 1;
@@ -1201,13 +1226,19 @@ std::unique_ptr<JoinCursesSession> JoinCursesSession::create(
     // machine with no company file keeps the fresh save (nothing completed,
     // so nothing arms). The mirror world below is populated by the host's
     // keyframe either way, so the seeded completed set cannot change what
-    // this joiner SEES — only what it persists.
+    // this joiner SEES — only what it persists. The joiner deliberately
+    // KEEPS the adopt-on-completed-landing policy (unlike the V5 host's
+    // SeededIntent): it cannot see whether the host pressed VISIT or
+    // REPLAY, so any completed landing protects this machine's own
+    // campaign position.
     {
         const std::string slot_file = og::data::active_company_slot() + ".gtl";
         if (auto own_company = og::io::og_open_read("save/", slot_file.c_str()))
             (void)s->client_save_.load(og::data::active_company_slot());
     }
-    og::server::apply_headless_lobby_game_start_config(s->client_save_, lobby_save);
+    og::server::apply_headless_lobby_game_start_config(
+        s->client_save_, lobby_save,
+        og::server::LobbyStartReplayArm::AdoptCompletedLanding);
     const short level = s->client_save_.scen_num > 0 ? s->client_save_.scen_num : 1;
 
     // Mirror world: load the level so the renderer has a grid/smoother. Entities
@@ -2029,9 +2060,13 @@ private:
                     state_.has_value() ? find_local_player(*state_) : nullptr) {
                 host_index = local->player_index;
             }
+            // V5 Option A: the lobby's save_ IS the host machine's active
+            // company save (the picker hands its live SaveData to
+            // make_host_lobby), so the authoritative session seeds from it —
+            // history, decision book, and any REPLAY arm included.
             session_ = HostCursesSession::create(lobby_save, bindings, difficulty_,
                                                  combined_transport_, host_client_transport_,
-                                                 host_index, &err);
+                                                 host_index, &save_, &err);
         } else {
             if (!state_.has_value() || transport_ == nullptr) {
                 session_built_failed_ = true;
@@ -2226,6 +2261,21 @@ int curses_network_testing_clear_server_team(CursesGameSession& session,
     if (host == nullptr)
         return -1;
     return host->clear_server_team_for_testing(team);
+}
+
+// V5 Option A observers: the authoritative server world and its session save
+// (host sessions only; null for a join session).
+GameWorld* curses_network_testing_server_world(CursesGameSession& session)
+{
+    auto* const host = dynamic_cast<HostCursesSession*>(&session);
+    return host != nullptr ? &host->server_world_ref() : nullptr;
+}
+
+const SaveData* curses_network_testing_host_server_save(
+    CursesGameSession& session)
+{
+    auto* const host = dynamic_cast<HostCursesSession*>(&session);
+    return host != nullptr ? &host->testing_server_save() : nullptr;
 }
 #endif
 
