@@ -8,7 +8,10 @@
 #include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_file_io.h>
+#include <openglad/resources/level_selection.h>
+#include <openglad/resources/save_data.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -246,6 +249,68 @@ TEST_F(CampaignMetadataTest, cache_survives_repeat_calls_and_clear)
     og::data::clear_campaign_metadata_cache();
     ASSERT_EQ(title_first, og::data::campaign_display_title(kModesId));
     ASSERT_EQ(scen_first, og::data::scenario_display_name(1));
+}
+
+// --- the earned-roads frontier (og::data::level_selection) -----------------
+
+TEST_F(CampaignMetadataTest, campaign_first_level_reads_the_yaml)
+{
+    EXPECT_EQ(1, og::data::campaign_first_level(kGladiatorId));
+    EXPECT_EQ(300, og::data::campaign_first_level(kModesId));
+    EXPECT_EQ(700, og::data::campaign_first_level("tower"));
+    EXPECT_EQ(1, og::data::campaign_first_level("no_such_campaign"))
+        << "an unknown campaign answers the classic entry level";
+    EXPECT_EQ(1, og::data::campaign_first_level(""));
+}
+
+TEST_F(CampaignMetadataTest, gating_exempts_versus_and_tower)
+{
+    SaveData save;
+    save.reset();
+    save.current_campaign = kGladiatorId;
+    EXPECT_TRUE(og::data::level_selection_gating_active(save));
+    save.current_campaign = kModesId;
+    EXPECT_FALSE(og::data::level_selection_gating_active(save))
+        << "matchup: versus exempts the arena campaign";
+    save.current_campaign = "tower";
+    EXPECT_FALSE(og::data::level_selection_gating_active(save))
+        << "mode: tower keeps its own progression";
+    save.current_campaign = "no_such_campaign";
+    EXPECT_TRUE(og::data::level_selection_gating_active(save));
+}
+
+TEST_F(CampaignMetadataTest, accessible_levels_and_the_gate)
+{
+    SaveData save;
+    save.reset();
+    save.current_campaign = kGladiatorId;
+    save.scen_num = 3;
+
+    // Fresh company: entry level + the cursor, nothing else.
+    std::vector<int> frontier = og::data::accessible_levels(save);
+    EXPECT_TRUE(std::binary_search(frontier.begin(), frontier.end(), 1));
+    EXPECT_TRUE(std::binary_search(frontier.begin(), frontier.end(), 3));
+    EXPECT_TRUE(og::data::level_selection_allowed(save, 1));
+    EXPECT_TRUE(og::data::level_selection_allowed(save, 3));
+    EXPECT_FALSE(og::data::level_selection_allowed(save, 15))
+        << "an unearned forward level is out of the frontier";
+
+    // Clearing a level opens it and its exits (the scan memoizes; ask
+    // twice and the answers agree).
+    save.add_level_completed(kGladiatorId, 1);
+    frontier = og::data::accessible_levels(save);
+    EXPECT_GT(frontier.size(), 2u)
+        << "cleared level 1 should contribute at least one exit";
+    EXPECT_EQ(frontier, og::data::accessible_levels(save));
+
+    // A completed id no scenario backs stays accessible (replay contract)
+    // and its failed scan is harmless.
+    save.add_level_completed(kGladiatorId, 9999);
+    EXPECT_TRUE(og::data::level_selection_allowed(save, 9999));
+
+    // The versus campaign never gates, earned or not.
+    save.current_campaign = kModesId;
+    EXPECT_TRUE(og::data::level_selection_allowed(save, 815));
 }
 
 } // namespace

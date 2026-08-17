@@ -10,6 +10,11 @@ const SaveData& TextPickerClient::testing_save_data() const
     return save_data_;
 }
 
+SaveData& TextPickerClient::testing_save_data_mutable()
+{
+    return save_data_;
+}
+
 class ScopedCinRedirect
 {
 public:
@@ -638,6 +643,14 @@ int text_picker_testing_exercise_internal_paths()
         return config.level == previous_level &&
                save.scen_num == previous_level;
     });
+    // The earned-roads gate: an unearned forward id refuses and moves
+    // nothing; clearing the level opens it to the same prompt.
+    handle_team_item(PickerMenuCommand::SetLevel, "5\n", [&] {
+        return config.level == previous_level &&
+               save.scen_num == previous_level;
+    });
+    client.testing_save_data_mutable().add_level_completed(
+        save.current_campaign, 5);
     handle_team_item(PickerMenuCommand::SetLevel, "5\n", [&] {
         return config.level == 5 && save.scen_num == 5;
     });
@@ -737,9 +750,16 @@ int text_picker_testing_exercise_internal_paths()
     handle_team_item(PickerMenuCommand::ViewScenario, "\n", [&] {
         return config.level == scenario_level;
     });
+    // The prompt's existence check now refuses an id no campaign ships,
+    // even a "completed" one; the ViewScenario failure branch is reached by
+    // parking the cursor directly (the load-failure fallback's own shape).
+    client.testing_save_data_mutable().add_level_completed(
+        save.current_campaign, 32000);
     handle_team_item(PickerMenuCommand::SetLevel, "32000\n", [&] {
-        return config.level == 32000 && save.scen_num == 32000;
+        return config.level == 1 && save.scen_num == 1;
     });
+    config.level = 32000;
+    client.testing_save_data_mutable().scen_num = 32000;
     {
         ScopedTextPickerStdoutCapture output;
         check(output.ready());

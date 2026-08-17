@@ -1582,6 +1582,19 @@ void self_check_fire_script(const std::vector<ExpectedLevel>& expectations)
         return completed.count(id) != 0;
     };
     providers.current_level = [&cursor] { return cursor; };
+    // The docket's first row borrows the level's shipped title, so the
+    // self-check reads it out of the produced package exactly like the
+    // picker surfaces do (the binding's contract is "" on a failed read).
+    providers.scenario_title = [](int id) -> std::string {
+        std::string title;
+        if (og::data::load_scenario_title_with_error(
+                ("scen" + std::to_string(id)).c_str(), title) !=
+            og::data::LevelFileIoError::None)
+        {
+            return std::string();
+        }
+        return title;
+    };
     providers.gold_get = [] { return static_cast<std::int64_t>(1000); };
     providers.team_snapshot = [&company] { return company; };
     hooks::install_campaign_providers(std::move(providers));
@@ -1616,11 +1629,13 @@ void self_check_fire_script(const std::vector<ExpectedLevel>& expectations)
         return page;
     };
 
-    // Fresh company at the vale: one road ahead, then the two doors.
+    // Fresh company at the vale: the fight underfoot, one road ahead, then
+    // the two doors.
     const std::vector<hooks::CampaignPageEntry> fresh = docket(camp("fresh"));
-    if (fresh.size() != 3)
+    if (fresh.size() != 4)
         fail(std::format("self-check fire: the fresh docket has {} rows, "
-                         "expected the road and the two doors", fresh.size()));
+                         "expected the vale, the road and the two doors",
+                         fresh.size()));
     const hooks::CampaignPage shelf = fetch("stores", "fresh");
     if (shelf.entries.size() != 1)
         fail(std::format("self-check fire: fresh shelf has {} offers, "
@@ -1631,18 +1646,34 @@ void self_check_fire_script(const std::vector<ExpectedLevel>& expectations)
     // The docket must mirror the authored exits at every level, in BOTH
     // directions: the camp may not offer a road the map does not carry, and
     // every shipped exit it does not offer must be the way back to a camp
-    // that offers this one (back rows never render).
+    // that offers this one (back rows never render). The docket's own first
+    // row is the level underfoot, which is nobody's exit — it is checked as
+    // itself and then left out of the mirror.
     std::map<int, std::set<int>> offered;
     for (const ExpectedLevel& ex : expectations)
     {
         cursor = ex.id;
         std::set<int> rows;
+        bool underfoot = false;
+        bool leading = true;
         for (const hooks::CampaignPageEntry& entry : docket(camp("road")))
         {
             if (entry.kind != hooks::CampaignPageEntry::Kind::Level)
                 continue;
+            if (leading)
+            {
+                leading = false;
+                if (entry.level == ex.id)
+                {
+                    underfoot = true;
+                    continue;
+                }
+            }
             rows.insert(entry.level);
         }
+        if (!underfoot)
+            fail(std::format("self-check fire: scen{}'s docket does not lead "
+                             "with the fight at your feet", ex.id));
         const std::set<int> exits(ex.exit_destinations.begin(),
                                   ex.exit_destinations.end());
         for (const int level : rows)

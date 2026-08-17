@@ -17,6 +17,7 @@
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/resources/level_file_io.h>
+#include <openglad/resources/level_selection.h>
 #include <openglad/resources/save_data.h>
 
 #include <algorithm>
@@ -60,17 +61,24 @@ void decorate_campaign_entries(const SaveData& save,
             // [CLOSED] marker, a "Level set to ..." confirmation, and the
             // loader's own error at GO — and every shipped book labels its
             // level rows.
+            // The earned-roads gate rides the same flag: a shipped road the
+            // company has not earned is as closed as a missing one, so every
+            // surface inherits the [CLOSED] face and the refusal from here.
             std::string title;
-            row.available =
+            const bool file_ok =
                 og::data::load_scenario_title_with_error(
                     ("scen" + std::to_string(row.level)).c_str(), title) ==
                 og::data::LevelFileIoError::None;
+            row.available =
+                file_ok && og::data::level_selection_allowed(save, row.level);
             if (row.label.empty())
             {
                 // The save-side label fill: the scenario title, with the
                 // provider's ""-on-failure contract (load_scenario_title's
-                // "none" sentinel would read as a real title).
-                if (!row.available || title.empty())
+                // "none" sentinel would read as a real title). A gate-closed
+                // road keeps its real title — the road exists, it is just
+                // not open yet.
+                if (!file_ok || title.empty())
                     title = std::format("SCEN {}", row.level);
                 row.label = std::move(title);
             }

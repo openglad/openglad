@@ -1291,6 +1291,50 @@ TEST(SaveDataVersions, save_data_round9_reset_campaign_missing_entry_is_noop)
 }
 
 
+// The earned-roads gate keys the frontier off the cursor, so a RESET must
+// rewind it: a company parked past its wiped completions would find every
+// road closed. The current campaign rewinds to its declared first_level;
+// any other campaign just forgets its stored cursor (the next switch falls
+// back to first_level through load_campaign).
+TEST(SaveDataVersions, save_data_reset_campaign_rewinds_the_cursor)
+{
+    restore_default_campaigns();
+    const std::string previous_mount = get_mounted_campaign();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    SaveData data;
+    data.reset();
+    data.current_campaign = "modes";
+    data.scen_num = 815;
+    data.current_levels["modes"] = 815;
+    data.current_levels["gladiator"] = 12;
+    data.add_level_completed("modes", 815);
+    data.add_level_completed("gladiator", 12);
+
+    // Resetting the CURRENT campaign rewinds to its campaign.yaml
+    // first_level (modes declares 300).
+    data.reset_campaign("modes");
+    ASSERT_EQ(0, data.get_num_levels_completed("modes"));
+    ASSERT_EQ(300, (int)data.scen_num)
+        << "resetting the current campaign must rewind the live cursor";
+    ASSERT_EQ(300, data.current_levels.at("modes"));
+
+    // Resetting another campaign leaves the live cursor alone and erases
+    // only that campaign's stored cursor.
+    data.reset_campaign("gladiator");
+    ASSERT_EQ(300, (int)data.scen_num)
+        << "resetting another campaign must not move the live cursor";
+    ASSERT_EQ(0u, data.current_levels.count("gladiator"))
+        << "the stored cursor is forgotten so the next switch re-enters at "
+           "first_level";
+
+    (void)unmount_campaign_package_with_error("modes");
+    if (!previous_mount.empty() && previous_mount != "modes")
+        (void)mount_campaign_package_with_error(previous_mount);
+}
+
+
 // --- GTL v14: reserved-block embedding (docs/company-basecamp-design.md §3.1) ---
 
 // Reads an entire "save/<name>" file into a byte vector for raw offset checks.

@@ -2,9 +2,10 @@
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 --
 -- The fire is the camp, not a book behind a door: base_camp composes the
--- Gameplay zone every fetch, and the only rows under the roster are the real
--- forward choices. Backtracking lives in the world's own exits, so a back row
--- is never composed. Every state is a pure function of the campaign providers
+-- Gameplay zone every fetch, and the only rows under the roster are the fight
+-- at the company's feet and the real forward choices out of it. Backtracking
+-- lives in the world's own exits, so a back row is never composed. Every
+-- state is a pure function of the campaign providers
 -- (save cursor, completed set, campaign state, wallet, roster oath tags); the
 -- zone session owns all navigation and every cost debit. The four decision
 -- keys the sim can read are registered as vars below; delve_sunk is
@@ -28,6 +29,11 @@ local DELVE_GRANT = 800
 -- letting the tail fall off the bottom of a screen nobody sized for it.
 local CAMP_TEXT_LINES = 3
 local LEDGER_LINES = 6
+
+-- Row labels are 24 glyphs. road.lua and stanzas.lua are authored to it; the
+-- current level's row borrows the SHIPPED scenario title, the one label this
+-- pack does not write itself, so that one is clipped here.
+local ROW_LABEL_MAX = 24
 
 local function push_capped(lines, line, cap)
   if line == nil then
@@ -439,11 +445,32 @@ local function front_rows(st, rows)
   end
 end
 
+-- The level the company is standing on, named the way the campaign names it.
+-- The scenario title is what every other surface calls the level (the engine's
+-- own "Level set to <title>." toast included), so the fire says the same word;
+-- a level whose file the package cannot read has no title to borrow.
+local HERE_NOTE = "the fight at hand"
+local HERE_UNTITLED = "THE ROAD AT YOUR FEET"
+
+local function here_label(level)
+  local title = og.campaign_scenario_title(level)
+  if title == "" then
+    return HERE_UNTITLED
+  end
+  return string.upper(string.sub(title, 1, ROW_LABEL_MAX))
+end
+
+-- The docket leads with the fight at the company's feet and then the roads
+-- out of it: a road is chosen once the level under you is won. The forward
+-- rows stay exactly as the graph authored them — the engine closes the ones
+-- this company has not earned, and a second refusal written here could only
+-- disagree with it.
 local function graph_rows(st, rows)
   local here = road.ROAD[st.cursor]
   if here == nil then
     return
   end
+  rows[#rows + 1] = level_row(st.cursor, here_label(st.cursor), HERE_NOTE)
   for i = 1, #here.fwd do
     local exit = here.fwd[i]
     rows[#rows + 1] = level_row(exit.level, exit.label, exit.note)

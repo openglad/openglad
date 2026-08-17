@@ -17,6 +17,8 @@
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
+#include <openglad/resources/level_file_io.h>
+#include <openglad/resources/level_selection.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/interface/ui/campaign_picker_session.h>
@@ -334,6 +336,7 @@ public:
 
 #ifdef TESTING
     const SaveData& testing_save_data() const;
+    SaveData& testing_save_data_mutable();
 #endif
 
     bool load_game() override
@@ -1344,6 +1347,19 @@ private:
         const auto level = parse_int_strict(line);
         if (!level || *level < 1) {
             std::printf("Invalid level.\n");
+            return;
+        }
+
+        // Existence + the earned-roads gate: a free-typed id gets the same
+        // answer the camp's docket gives the same road, and the refusal
+        // returns before the cursor (or any autosave tail) moves.
+        std::string title;
+        if (og::data::load_scenario_title_with_error(
+                ("scen" + std::to_string(*level)).c_str(), title) !=
+                og::data::LevelFileIoError::None ||
+            !og::data::level_selection_allowed(save_data_, *level)) {
+            std::printf("%s\n",
+                std::string(og::ui::kCampaignLevelClosedMessage).c_str());
             return;
         }
 

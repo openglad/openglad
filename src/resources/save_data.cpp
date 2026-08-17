@@ -24,6 +24,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/resources/campaign_io.h>
+#include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/filesystem_sync.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/og_file.h>
@@ -1466,6 +1467,23 @@ void SaveData::reset_campaign(const std::string& campaign)
     // Campaign scripting (issue #206): a campaign RESET also forgets that
     // campaign's scripted decision book.
     campaign_state.erase(campaign);
+
+    // The earned-roads gate keys off the cursor, so a reset must rewind it
+    // too — a company parked past its wiped frontier would find every road
+    // closed. The current campaign rewinds to its declared entry level;
+    // any other forgets its stored cursor (the next switch falls back to
+    // first_level through load_campaign).
+    if (campaign == current_campaign)
+    {
+        const short first_level =
+            static_cast<short>(og::data::campaign_first_level(campaign));
+        scen_num = first_level;
+        current_levels[campaign] = first_level;
+    }
+    else
+    {
+        current_levels.erase(campaign);
+    }
 }
 
 std::int32_t SaveData::campaign_state_get(const std::string& campaign,

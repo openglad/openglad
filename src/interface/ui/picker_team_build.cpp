@@ -45,9 +45,11 @@
 #include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/game_mode.h>
 #include <openglad/resources/level_data_hooks.h>
+#include <openglad/resources/level_selection.h>
 #include <openglad/core/test_trace.h>
 #include <algorithm>
 #include <array>
@@ -1310,6 +1312,37 @@ constexpr int kProgressRowHeight = 13;
 constexpr int kProgressGoHitX = 295, kProgressGoHitW = 20;
 constexpr int kProgressReplayHitX = 268, kProgressReplayHitW = 42;
 
+// The click-time answer behind both GO and REPLAY, shared with the tests:
+// the SET LEVEL host gate (this screen had none — a networked joiner could
+// write scen_num here) and the earned-roads predicate, each refusing with
+// the popup (trace-only under TESTING) before any cursor write. True = the
+// write landed and the report exits.
+bool progress_row_click_applies(int hit_id)
+{
+    if (!picker_lobby_host_controls_visible())
+    {
+        TRACE("picker", "progress_row_denied_nonhost %d", hit_id);
+        popup_dialog(
+            "PROGRESS",
+            std::string(og::ui::kCampaignPickerHostGuardMessage).c_str());
+        return false;
+    }
+    if (!og::data::level_selection_allowed(
+            og::runtime::current_session->myscreen_->save_data, hit_id))
+    {
+        TRACE("picker", "progress_row_denied_gate %d", hit_id);
+        popup_dialog(
+            "PROGRESS",
+            std::string(og::ui::kCampaignLevelClosedMessage).c_str());
+        return false;
+    }
+    // Set current level and exit
+    og::runtime::current_session->myscreen_->save_data.scen_num =
+        static_cast<short>(hit_id);
+    picker_lobby_sync_settings_from_save();
+    return true;
+}
+
 int progress_row_action_hit(const ProgressEngineState& state, int mx, int my)
 {
     int row_y = kProgressRowY;
@@ -1385,9 +1418,8 @@ bool picker_progress_menu_engine_frame_tick(void* screen_state, int /*frame*/)
     if (clicked) {
         const int hit_id = progress_row_action_hit(*state, mx, my);
         if (hit_id >= 0) {
-            // Set current level and exit
-            og::runtime::current_session->myscreen_->save_data.scen_num = static_cast<short>(hit_id);
-            picker_lobby_sync_settings_from_save();
+            if (!progress_row_click_applies(hit_id))
+                return true;  // refused: stay on the report
             og::runtime::current_session->myscreen_->clearbuffer();
             TRACE("picker", "progress_row_go level=%d", hit_id);
             return false;

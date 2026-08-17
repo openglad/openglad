@@ -38,6 +38,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <initializer_list>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -313,7 +314,8 @@ void verify_zone_shots(const char* flow, std::size_t expected_shots)
     }
 }
 
-void write_save0_with_two_soldiers(const std::string& campaign, short scen_num)
+void write_save0_with_two_soldiers(const std::string& campaign, short scen_num,
+                                   std::initializer_list<int> completed = {})
 {
     SaveData& save = test_screen()->save_data;
     for (auto& slot : save.team_list)
@@ -338,6 +340,9 @@ void write_save0_with_two_soldiers(const std::string& campaign, short scen_num)
     save.current_levels[campaign] = scen_num;
     save.m_totalcash[0] = 5000;
     save.campaign_state.clear();
+    save.completed_levels.clear();
+    for (int level : completed)
+        save.add_level_completed(campaign, level);
     ASSERT_TRUE(save.save("save0"));
 }
 
@@ -603,7 +608,11 @@ TEST(CampaignZoneUi, scripted_zone_flow_locks_assigns_acts_and_sets_level)
               mount_campaign_package_with_error("gladiator"));
     SyntheticCampaignScriptGuard script_guard;
     SyntheticCampaignScriptGuard::install(kZoneScript);
-    write_save0_with_two_soldiers("gladiator", 1);
+    // The earned-roads gate: the kit road (level 2) is a replay of a
+    // cleared level, and the ghost road (9999) is "cleared" too so its
+    // click passes the gate and still exercises the load-with-rollback
+    // failure arm (CLOSED masks CLEARED, so its face is unchanged).
+    write_save0_with_two_soldiers("gladiator", 1, {2, 9999});
 
     ZoneFlowState state;
     SDL_Thread* thread = SDL_CreateThread(

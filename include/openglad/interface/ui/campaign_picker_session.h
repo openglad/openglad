@@ -41,7 +41,9 @@ namespace og::ui {
 // Player-facing refusals for the two inert row states. Engine diagnostics
 // ("Invalid level file.") never reach the campaign's own voice slot: a road
 // that does not load is a road the campaign has not opened, and that is what
-// the player is told — on every surface, from one place.
+// the player is told — on every surface, from one place. The earned-roads
+// gate (og::data::level_selection_allowed) speaks the same line: a shipped
+// road the company has not earned is exactly as closed as a missing one.
 inline constexpr std::string_view kCampaignLevelClosedMessage =
     "That road is not open yet.";
 inline constexpr std::string_view kCampaignActionDoneMessage =
@@ -56,12 +58,12 @@ inline constexpr std::string_view kCampaignPageUnreadableMessage =
 // Camp is the same click on the SDL panel and at a terminal prompt, and one
 // click may not have two answers. They also stay out of any one campaign's
 // vocabulary — the first camp to put level rows on the Base Camp is a
-// dream log, and a dream is not a "road". (The closed-row refusal above
-// keeps its wording: docs/basecamp-zones-design.md pins that string
-// verbatim, and a docket that lists only levels the campaign ships can
-// never raise it.)
+// dream log, and a dream is not a "road". The unchanged answer is a
+// signpost, not a dead end: on a one-level campaign the only replay row IS
+// the current row, and GO has always replayed the current level — the
+// toast says so instead of leaving the player hunting for a selector.
 inline constexpr std::string_view kCampaignLevelUnchangedMessage =
-    "Already on that level.";
+    "Already on that level. GO when ready.";
 [[nodiscard]] inline std::string campaign_level_set_message(
     std::string_view title)
 {

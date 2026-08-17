@@ -1142,6 +1142,154 @@ TEST_F(CampaignPickerSessionTest, terminal_camp_gates_levels_and_shut_pages)
     EXPECT_NE(std::string::npos, scripted.page_text(0).find("      (empty)\n"));
 }
 
+// The earned-roads gate (the Westlands click-through): a fresh company's
+// docket may LIST the road ahead, but clicking it must refuse until the
+// fight at the player's feet is won. Before the gate this exact drive
+// answered "Level set to ..." seventeen times in a row and parked a level-1
+// soldier on the campaign finale.
+TEST_F(CampaignPickerSessionTest, terminal_camp_refuses_an_unearned_forward_road)
+{
+    const std::string previous_mount = get_mounted_campaign();
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("westlands"));
+    // The mount auto-registered the shipped fire pack; this test drives a
+    // synthetic docket, so retire the campaign's own book first.
+    og::script::unregister_pack_scripts("westlands.fire");
+    og::script::unregister_pack_lib_modules("westlands.fire");
+    save_.current_campaign = "westlands";
+    save_.scen_num = 1;
+    save_.completed_levels.clear();
+    register_script(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = {
+      { kind = "actions", entries = {
+          { id = "2", label = "THE FOREST ROAD", kind = "level", level = 2 },
+          { id = "3", label = "THE LAST FORD", kind = "level", level = 3 },
+        } },
+      { kind = "roster" },
+    } }
+  end,
+}))LUA");
+
+    ScriptedTerminalIo scripted;
+    scripted.save = &save_;
+    scripted.answers = {
+        "2",  // THE LAST FORD: shipped, uncleared, past the frontier
+        "0",  // close the camp
+    };
+    og::ui::run_terminal_campaign_camp(save_, scripted.io());
+
+    const std::vector<std::string> expected_notices = {
+        std::string(og::ui::kCampaignLevelClosedMessage),
+    };
+    EXPECT_EQ(expected_notices, scripted.notices)
+        << "an unearned forward road must refuse in the campaign's voice";
+    EXPECT_EQ(-1, scripted.applied_level)
+        << "the gate must refuse before the client tail runs";
+    EXPECT_EQ(1, save_.scen_num)
+        << "the click-through must not advance the cursor";
+    ASSERT_FALSE(scripted.prompts.empty());
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(0).find("   2. THE LAST FORD  [CLOSED]\n"))
+        << "the row says so before the click; the answer must agree";
+
+    (void)unmount_campaign_package_with_error("westlands");
+    if (!previous_mount.empty() && previous_mount != "westlands")
+        (void)mount_campaign_package_with_error(previous_mount);
+}
+
+// A cleared level replays: the gate closes unearned roads, never earned
+// ones. #207's rule (every cleared field stays replayable) survives.
+TEST_F(CampaignPickerSessionTest, terminal_camp_replays_a_cleared_level)
+{
+    const std::string previous_mount = get_mounted_campaign();
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("westlands"));
+    og::script::unregister_pack_scripts("westlands.fire");
+    og::script::unregister_pack_lib_modules("westlands.fire");
+    save_.current_campaign = "westlands";
+    save_.scen_num = 1;
+    save_.completed_levels.clear();
+    save_.add_level_completed("westlands", 5);
+    register_script(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = {
+      { kind = "actions", entries = {
+          { id = "5", label = "UNDER THE MOUNTAIN", kind = "level", level = 5 },
+        } },
+      { kind = "roster" },
+    } }
+  end,
+}))LUA");
+
+    ScriptedTerminalIo scripted;
+    scripted.save = &save_;
+    scripted.answers = {"1", "0"};
+    og::ui::run_terminal_campaign_camp(save_, scripted.io());
+
+    const std::vector<std::string> expected_notices = {
+        "Level set to UNDER THE MOUNTAIN.",
+    };
+    EXPECT_EQ(expected_notices, scripted.notices);
+    EXPECT_EQ(5, scripted.applied_level) << "a cleared road must stay open";
+    EXPECT_EQ(5, save_.scen_num);
+    ASSERT_FALSE(scripted.prompts.empty());
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(0).find(
+                  "   1. UNDER THE MOUNTAIN  [CLEARED]\n"));
+
+    (void)unmount_campaign_package_with_error("westlands");
+    if (!previous_mount.empty() && previous_mount != "westlands")
+        (void)mount_campaign_package_with_error(previous_mount);
+}
+
+// A versus campaign is exempt: an arena picker's whole point is free field
+// selection, and `matchup: versus` in campaign.yaml is how the engine knows
+// one. A fresh company with nothing cleared picks any shipped arena.
+TEST_F(CampaignPickerSessionTest, terminal_camp_versus_campaign_selects_freely)
+{
+    const std::string previous_mount = get_mounted_campaign();
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    // Scripts only: the pack's lib modules stay registered so its family
+    // chunks keep binding (unlike the fire pack, modes.core families use
+    // og.use over the same libs its book does).
+    og::script::unregister_pack_scripts("modes.core");
+    save_.current_campaign = "modes";
+    save_.scen_num = 777;  // parked nowhere near the row under test
+    save_.completed_levels.clear();
+    register_script(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = {
+      { kind = "actions", entries = {
+          { id = "300", label = "THE CIRCLE", kind = "level", level = 300 },
+        } },
+      { kind = "roster" },
+    } }
+  end,
+}))LUA");
+
+    ScriptedTerminalIo scripted;
+    scripted.save = &save_;
+    scripted.answers = {"1", "0"};
+    og::ui::run_terminal_campaign_camp(save_, scripted.io());
+
+    const std::vector<std::string> expected_notices = {
+        "Level set to THE CIRCLE.",
+    };
+    EXPECT_EQ(expected_notices, scripted.notices)
+        << "an arena campaign must stay freely selectable";
+    EXPECT_EQ(300, scripted.applied_level);
+    EXPECT_EQ(300, save_.scen_num);
+
+    (void)unmount_campaign_package_with_error("modes");
+    if (!previous_mount.empty() && previous_mount != "modes")
+        (void)mount_campaign_package_with_error(previous_mount);
+}
+
 // The oath: cycling a DEPLOYED hero un-deploys first (the SDL rule), the tag
 // lands through the assign provider with the full-word toast, and a freeze
 // that arrives on the refetch closes the swear prompt with its reason —

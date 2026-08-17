@@ -990,7 +990,7 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "5\n"       // scenario: progress
         "2\n"       // scenario: set level (invalid value)
         "0\n"
-        "2\n"       // scenario: set level -> 2
+        "2\n"       // scenario: set level -> 2 (unearned: the gate refuses)
         "2\n"
         "1\n"       // scenario: set campaign (invalid selection)
         "999\n"
@@ -1016,8 +1016,46 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
 
     EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
     EXPECT_EQ("textslot", config.save_name);
-    EXPECT_EQ(2, config.level);
+    EXPECT_EQ(1, config.level)
+        << "the earned-roads gate must refuse the unearned forward jump";
     ASSERT_GE(config.team_families.size(), 2u);
+}
+
+// The raw Set Level prompt under the earned-roads gate: a fresh gladiator
+// company's free-typed forward jump refuses in the campaign's voice and the
+// cursor stays put. (The versus exemption on the same predicate is driven
+// through the curses prompt and the terminal camp tests.)
+TEST(PlatformHeadless, text_picker_set_level_prompt_rides_the_gate)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    {
+        const std::string input =
+            "2\n"    // main: continue -> team build
+            "10\n"   // team build: Scenario submenu
+            "2\n"    // scenario: set level -> 15 (unearned: refused)
+            "15\n"
+            "7\n"    // scenario: back -> team build
+            "8\n"    // team build: back -> main
+            "7\n";   // main: quit
+        StdinRedirect stdin_redirect(input);
+        CoutRedirect cout_redirect;
+        StdoutCapture stdout_capture;
+
+        og::ui::TextPickerConfig config;
+        config.team_families = {FAMILY_SOLDIER};
+        og::ui::TextPickerError error;
+        og::ui::run_text_picker(config, &error);
+
+        const std::string out = stdout_capture.restore();
+        EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+        EXPECT_EQ(1, config.level)
+            << "the free-typed forward jump must not move the cursor";
+        EXPECT_NE(std::string::npos,
+                  out.find(std::string(og::ui::kCampaignLevelClosedMessage)))
+            << "the prompt refuses in the campaign's voice";
+    }
 }
 
 TEST(PlatformHeadless, text_picker_drives_the_cloud_submenu)
@@ -1812,6 +1850,24 @@ TEST(PlatformHeadless, text_picker_camp_drive_runs_the_scripted_zone)
     restore_default_campaigns(); // order-independent: install the packages
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
+    // The earned-roads gate closes unearned docket rows, so the company this
+    // drive opens has already cleared THE PIT (level 9) — the level row
+    // under test is a REPLAY, the state the camp's set-level tail serves.
+    HeadlessSaveDirSandbox sandbox;
+    {
+        SaveData sd;
+        sd.reset();
+        sd.save_name = "CAMP BAND";
+        sd.current_campaign = "gladiator";
+        sd.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+        sd.team_list[0]->name = "Arthur";
+        sd.team_list[0]->teamnum = 0;
+        sd.team_list[0]->deployed = true;
+        sd.team_size = 1;
+        sd.scen_num = 1;
+        sd.add_level_completed("gladiator", 9);
+        ASSERT_EQ(SaveDataIoError::None, sd.save_with_error("campgate"));
+    }
     ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
   base_camp = function()
     return {
@@ -1853,7 +1909,9 @@ TEST(PlatformHeadless, text_picker_camp_drive_runs_the_scripted_zone)
 }))LUA");
 
     const std::string input =
-        "2\n"          // main: continue -> team build
+        "8\n"          // main: load company -> the company list
+        "1\n"          //   list: open company...
+        "1\n"          //     #1 = campgate (the cleared-9 band) -> team build
         "1\n"          // base camp: roster
         "deploy 1\n"   //   bench the soldier: benching is never refused
         "deploy 1\n"   //   deploying him back is: the camp's lock binds the

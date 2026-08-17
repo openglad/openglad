@@ -98,7 +98,8 @@ per frame.
   costed action the book has already honored (no price quoted, spent
   face, refuses instead of charging twice). Each actions widget is
   windowed by PageModel with its own two pager ordinals; overflow pages
-  in place. Level rows: host-gated load-with-rollback set tail. Page
+  in place. Level rows: host-gated, earned-roads-gated (see the voice
+  rule below) load-with-rollback set tail. Page
   rows: the zone submenu. Action rows: debit-then-dispatch + autosave
   tail (+ settings sync when the match dirty flag armed). Actions do NOT
   clear ready. **Each kind is legible before the click**: page rows wear
@@ -196,7 +197,12 @@ List et al. remains; not claimed here).
   successful level set says so rather than leaving the last toast up.
 - The campaign's voice slot carries the campaign's words. Engine
   diagnostics never surface there: a level that will not load is "That
-  road is not open yet.", not "Invalid level file."
+  road is not open yet.", not "Invalid level file." The same line now
+  also answers the earned-roads gate (docs/camp-controls-design.md):
+  a shipped road outside `og::data::accessible_levels` — first_level ∪
+  cursor ∪ cleared ∪ exits-of-cleared, with `matchup: versus` and
+  `mode: tower` campaigns exempt — is exactly as closed as a missing
+  one, on every surface, before any load or autosave tail.
 - The answers the ENGINE owns to a level-row click — the refusal on the
   row the cursor already sits on, and the confirmation — come from one
   place (`kCampaignLevelUnchangedMessage`,

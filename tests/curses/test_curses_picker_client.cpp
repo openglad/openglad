@@ -905,10 +905,15 @@ TEST(CursesPickerClient, train_rejects_changes_when_gold_is_insufficient)
 
 // --- set level -----------------------------------------------------------
 
-// Set Level updates both the config and the save's scenario number.
+// Set Level updates both the config and the save's scenario number — for a
+// road the company has earned (the earned-roads gate closes the rest).
 TEST(CursesPickerClient, set_level_updates_config_and_save)
 {
+    ScopedCursesPickerMountRestore mount_restore;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
     PickerFixture f;
+    f.save().add_level_completed("gladiator", 4);
     const auto* item =
         og::ui::find_picker_menu_item(PickerMenuId::Scenario, PickerMenuCommand::SetLevel);
     ASSERT_NE(item, nullptr);
@@ -921,6 +926,48 @@ TEST(CursesPickerClient, set_level_updates_config_and_save)
 
     EXPECT_EQ(f.config.level, 4);
     EXPECT_EQ(static_cast<int>(f.save().scen_num), 4);
+}
+
+// The same prompt refuses an unearned forward id in the campaign's voice —
+// and stays free on a versus campaign, whose arena picking is the point.
+TEST(CursesPickerClient, set_level_rides_the_earned_roads_gate)
+{
+    ScopedCursesPickerMountRestore mount_restore;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    PickerFixture f;
+    const auto* item =
+        og::ui::find_picker_menu_item(PickerMenuId::Scenario, PickerMenuCommand::SetLevel);
+    ASSERT_NE(item, nullptr);
+
+    f.t().push_special(KeyCode::Backspace); // erase the prefilled "1"
+    f.t().push_char(U'1');
+    f.t().push_char(U'5');
+    f.t().push_special(KeyCode::Enter);
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Scenario, *item);
+
+    EXPECT_EQ(f.config.level, 1)
+        << "an unearned forward id must not move the cursor";
+    EXPECT_EQ(static_cast<int>(f.save().scen_num), 1);
+    EXPECT_NE(f.t().dump().find("That road is not open yet."),
+              std::string::npos);
+
+    // Versus exemption: the modes campaign sets any shipped arena freely.
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    f.save().current_campaign = "modes";
+    f.config.campaign = "modes";
+    f.t().push_special(KeyCode::Backspace); // erase the prefilled "1"
+    f.t().push_char(U'3');
+    f.t().push_char(U'0');
+    f.t().push_char(U'1');
+    f.t().push_special(KeyCode::Enter);
+    f.client.handle_menu_item(PickerMenuId::Scenario, *item);
+
+    EXPECT_EQ(f.config.level, 301)
+        << "a versus campaign's prompt stays freely selectable";
+    EXPECT_EQ(static_cast<int>(f.save().scen_num), 301);
 }
 
 TEST(CursesPickerClient, set_level_rejects_invalid_value)
@@ -2416,6 +2463,9 @@ private:
 TEST(CursesPickerClient, run_picker_camp_sets_level_from_the_zone)
 {
     PickerFixture f;
+    // The earned-roads gate closes unearned rows; THE PIT is a replay of a
+    // cleared level, the state the camp's set-level tail serves.
+    f.save().add_level_completed("gladiator", 9);
     ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
   base_camp = function()
     return {

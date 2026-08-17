@@ -41,6 +41,7 @@
 #include <openglad/resources/company.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/level_selection.h>
 
 #include "picker_sdl_defs.h"
 
@@ -1664,6 +1665,15 @@ Sint32 zone_submenu_on_spec_row(int row, void* screen_state)
             return MENU_REDRAW;
         }
         screen* game = og::runtime::current_session->myscreen_;
+        // The earned-roads gate, before any load: the decoration already
+        // stamps the row [CLOSED], and ENTER-through must answer the same.
+        if (!og::data::level_selection_allowed(game->save_data,
+                                               outcome.level)) {
+            TRACE("zone", "level_denied_gate %d", outcome.level);
+            zone_submenu_show_toast(
+                *st, std::string(og::ui::kCampaignLevelClosedMessage));
+            return MENU_REDRAW;
+        }
         const int old_id = game->world().id;
         if (outcome.level == old_id) {
             TRACE("zone", "level_unchanged %d", outcome.level);
@@ -4967,6 +4977,15 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
                 return MENU_OK;
             }
             screen* const game = og::runtime::current_session->myscreen_;
+            // The earned-roads gate, before any load (the docket already
+            // stamps the row [CLOSED] from the same predicate).
+            if (!og::data::level_selection_allowed(game->save_data,
+                                                   entry.level)) {
+                TRACE("zone", "level_denied_gate %d", entry.level);
+                base_camp_show_toast(
+                    *st, std::string(og::ui::kCampaignLevelClosedMessage));
+                return MENU_OK;
+            }
             const int old_id = game->world().id;
             if (entry.level == old_id) {
                 TRACE("zone", "level_unchanged %d", entry.level);

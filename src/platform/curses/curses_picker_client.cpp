@@ -46,6 +46,8 @@
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
+#include <openglad/resources/level_file_io.h>
+#include <openglad/resources/level_selection.h>
 #include <openglad/resources/save_data.h>
 
 #include <algorithm>
@@ -1161,8 +1163,18 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
             std::to_string(config_.level), accepted);
         if (accepted && !entered.empty()) {
             const auto level = parse_int_strict(entered);
+            std::string title;
             if (!level || *level < 1)
                 menu.show_text("Set Level", {"Invalid level."});
+            // Existence + the earned-roads gate: the free-typed id gets the
+            // same answer the camp's docket gives the same road, before the
+            // cursor (or any autosave tail) moves.
+            else if (og::data::load_scenario_title_with_error(
+                         ("scen" + std::to_string(*level)).c_str(), title) !=
+                         og::data::LevelFileIoError::None ||
+                     !og::data::level_selection_allowed(save_data_, *level))
+                menu.show_text("Set Level",
+                    {std::string(og::ui::kCampaignLevelClosedMessage)});
             else {
                 config_.level = *level;
                 save_data_.scen_num = static_cast<short>(*level);

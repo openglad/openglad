@@ -34,6 +34,12 @@ std::string campaign_mode(const std::string& campaign_id);
 // multi-team matchup). Same lookup/memoization as campaign_mode.
 std::string campaign_matchup(const std::string& campaign_id);
 
+// Entry level of a campaign: `first_level:` from its campaign.yaml (1 when
+// absent — the classic entry level). Same lookup/memoization as
+// campaign_mode. Seeds the earned-roads frontier and the reset-campaign
+// rewind.
+int campaign_first_level(const std::string& campaign_id);
+
 // Game-mode identity of the MOUNTED campaign. Consumed by
 // og::mode::current_progression().
 std::string mounted_campaign_mode();

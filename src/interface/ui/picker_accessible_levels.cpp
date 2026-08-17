@@ -17,74 +17,20 @@
 
 #include <openglad/interface/ui/level_picker.h>
 #include <openglad/interface/base.h>
-#include <algorithm>
-#include <list>
-#include <set>
 #include <vector>
 
 #include <openglad/interface/screen.h>
-#include <openglad/resources/campaign_yaml.h>
+#include <openglad/resources/level_selection.h>
 
 // Get list of accessible levels (cleared levels + their exits)
 std::vector<int> get_accessible_levels()
 {
+    // The computation lives in og::data::accessible_levels (the earned-roads
+    // gate consults it from the SDL-free clients too); this wrapper only
+    // resolves the session's save.
     screen* game = og::runtime::current_session->myscreen_;
     if (!game) {
         return {1};
     }
-
-    std::set<int> accessible;
-    std::set<int> to_process;
-
-    // Start with the campaign's entry level (always accessible; the mounted
-    // campaign.yaml names it — level 1 for classics, 300 for the modes
-    // campaign, whose PROGRESS list used to show a phantom "1" row) and the
-    // current level.
-    int first_level = 1;
-    og::data::CampaignYaml metadata;
-    if (og::data::read_campaign_yaml("campaign.yaml", metadata) ==
-            og::data::CampaignYamlReadResult::Ok &&
-        metadata.saw_first_level)
-    {
-        first_level = metadata.first_level;
-    }
-    accessible.insert(first_level);
-    to_process.insert(first_level);
-
-    // Add current level
-    accessible.insert(game->save_data.scen_num);
-
-    // Add all cleared levels
-    const std::string& campaign = game->save_data.current_campaign;
-    auto it = game->save_data.completed_levels.find(campaign);
-    if (it != game->save_data.completed_levels.end()) {
-        for (int level : it->second) {
-            accessible.insert(level);
-            to_process.insert(level);
-        }
-    }
-
-    // For each cleared level, add its exits
-    while (!to_process.empty()) {
-        int level_id = *to_process.begin();
-        to_process.erase(to_process.begin());
-
-        if (game->save_data.is_level_completed(level_id)) {
-            LevelRuntimeData ld(level_id);
-            if (ld.load()) {
-                std::list<int> exits;
-                getLevelStats(ld, nullptr, nullptr, nullptr, nullptr, exits);
-                for (int exit_id : exits) {
-                    if (accessible.find(exit_id) == accessible.end()) {
-                        accessible.insert(exit_id);
-                    }
-                }
-            }
-        }
-    }
-
-    // Convert to sorted vector
-    std::vector<int> result(accessible.begin(), accessible.end());
-    std::sort(result.begin(), result.end());
-    return result;
+    return og::data::accessible_levels(game->save_data);
 }
