@@ -85,19 +85,19 @@ static const ExpectedButton kExpectedMainMenu[] = {
      button_action_id(ButtonAction::BeginMenu), 1, MenuNav{.down = 1}, false},
     {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 79, 68, 20,
      button_action_id(ButtonAction::CreateTeamMenu), -1,
-     MenuNav{.up = 0, .down = 2, .right = 7}},
+     MenuNav{.up = 0, .down = 2, .right = 6}},
     {"level_edit", "Level Editor", KEYSTATE_UNKNOWN, 80, 103, 140, 15,
      button_action_id(ButtonAction::DoLevelEdit), -1,
-     MenuNav{.up = 1, .down = 4}},
-    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 154, 140, 15,
-     button_action_id(ButtonAction::OpenDifficultyMenu), -1,
-     MenuNav{.up = 4, .down = 5}},
-    {"options", "GAME", KEYSTATE_UNKNOWN, 80, 135, 68, 15,
+     MenuNav{.up = 1, .down = 3}},
+    // DIFFICULTY left for the Base Camp command strip
+    // (docs/camp-controls-design.md), and the narrow GAME | CLOUD pair it
+    // sat under became two full-width rows named in full.
+    {"options", "GAME SETTINGS", KEYSTATE_UNKNOWN, 80, 135, 140, 15,
      button_action_id(ButtonAction::MainOptions), -1,
-     MenuNav{.up = 2, .down = 3, .right = 9}},
+     MenuNav{.up = 2, .down = 8}},
     {"help", "HELP", KEYSTATE_UNKNOWN, 80, 178, 68, 15,
      button_action_id(ButtonAction::ShowHelp), -1,
-     MenuNav{.up = 3, .down = 0, .right = 6}},
+     MenuNav{.up = 8, .down = 0, .right = 5}},
     {"quit", "QUIT ",
 #ifdef __EMSCRIPTEN__
      KEYSTATE_UNKNOWN,
@@ -105,18 +105,17 @@ static const ExpectedButton kExpectedMainMenu[] = {
      KEYSTATE_ESCAPE,
 #endif
      152, 178, 68, 15, button_action_id(ButtonAction::QuitMenu), 0,
-     MenuNav{.up = 3, .down = 0, .left = 5}},
+     MenuNav{.up = 8, .down = 0, .left = 4}},
     {"load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 79, 68, 20,
      button_action_id(ButtonAction::CreateLoadMenu), 0,
      MenuNav{.up = 0, .down = 2, .left = 1}},
     {"no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 79, 140, 20,
-     button_action_id(ButtonAction::MenuSpecRow), 8, MenuNav{}, true},
-    // #155: the always-visible CLOUD door, paired with the GAME door on
-    // the first settings row directly under the grey SETTINGS heading
-    // (which owns y=119..134); MenuSpecRow arg == its materialized ordinal.
-    {"cloud", "CLOUD", KEYSTATE_UNKNOWN, 152, 135, 68, 15,
-     button_action_id(ButtonAction::MenuSpecRow), 9,
-     MenuNav{.up = 2, .down = 3, .left = 4}},
+     button_action_id(ButtonAction::MenuSpecRow), 7, MenuNav{}, true},
+    // #155: the always-visible CLOUD door, the second full-width settings
+    // row; MenuSpecRow arg == its materialized ordinal.
+    {"cloud", "CLOUD SAVES", KEYSTATE_UNKNOWN, 80, 154, 140, 15,
+     button_action_id(ButtonAction::MenuSpecRow), 8,
+     MenuNav{.up = 3, .down = 4}},
 };
 
 TEST(MenuEnginePins, mainmenu_exact_table)
@@ -127,16 +126,20 @@ TEST(MenuEnginePins, mainmenu_exact_table)
                       static_cast<int>(std::size(kExpectedMainMenu)),
                       "mainmenu");
     // §2.1/§9.2 index contract: load_company, no_company_note, then the
-    // #155 CLOUD door form the appended tail. The settings group reads
-    // the GAME | CLOUD pair over full-width DIFFICULTY.
+    // #155 CLOUD door form the appended tail. The settings group reads as
+    // two stacked full-width doors, GAME SETTINGS over CLOUD SAVES.
     ASSERT_EQ("cloud", buttons[count - 1].id);
     ASSERT_EQ("no_company_note", buttons[count - 2].id);
     ASSERT_EQ("load_company", buttons[count - 3].id);
     ASSERT_EQ("level_edit", buttons[2].id);
-    ASSERT_EQ("difficulty", buttons[3].id);
-    ASSERT_EQ("options", buttons[4].id);
-    ASSERT_EQ("help", buttons[5].id);
-    ASSERT_EQ("quit", buttons[6].id);
+    ASSERT_EQ("options", buttons[3].id);
+    ASSERT_EQ("help", buttons[4].id);
+    ASSERT_EQ("quit", buttons[5].id);
+    // The door DIFFICULTY used to be is gone from this screen entirely; it
+    // is a Base Camp strip button now.
+    for (int i = 0; i < count; ++i)
+        ASSERT_NE("difficulty", buttons[i].id)
+            << "DIFFICULTY belongs to the Base Camp strip";
 }
 
 // GAME SETTINGS: the two columns after the global CONTROLS door was deleted

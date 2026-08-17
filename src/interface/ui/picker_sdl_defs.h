@@ -170,8 +170,11 @@ int picker_zone_submenu_button_count();
 // color/cycler at x=61, row-body train zone at x=84..297, and move-up at
 // x=303, y=45+14r — flush with the panel's right inner edge, like the roster
 // pager '>', the seat rail's '+' and GO), the page cluster top-right,
-// and the bottom command strip BACK | HIRE | SCENARIO | NETWORK | GO at
-// y=178. Spec ordinals group by kind so the MenuSpecRow arg (== ordinal, G3)
+// and the bottom command strip BACK | DIFFICULTY | SCENARIO | NETWORK |
+// GO at y=178 (HIRE moved up to the roster band header; the slot it left
+// became the DIFFICULTY door when that setting came off the main menu, and
+// the strip re-gridded so the full word inks). Spec ordinals group by kind
+// so the MenuSpecRow arg (== ordinal, G3)
 // decodes as row/kind directly. GO is the only host-gated button. Cap-24
 // roster = 3 pages; the 40-slot defensive shape pages to 5.
 inline constexpr int kBaseCampRosterRowsPerPage = 8; // roster_dep_r = 0..7
@@ -192,7 +195,7 @@ inline constexpr int kCreateMenuHireIndex = 28;
 inline constexpr int kCreateMenuScenarioIndex = 29;
 inline constexpr int kCreateMenuNetworkingIndex = 30;
 inline constexpr int kCreateMenuGoIndex = 31;
-// §2.6: the READY twin shares GO's exact rect (244,178,68,18); exactly one
+// §2.6: the READY twin shares GO's exact rect (262,178,50,18); exactly one
 // of the pair is visible per frame (host => GO, networked joiner => READY).
 inline constexpr int kCreateMenuReadyIndex = 32;
 // Per-level player-seat assignment rail. Appended after the original
@@ -227,7 +230,13 @@ inline constexpr int kBaseCampZonePagerBase = 65;     // prev/next per widget
 inline constexpr int kBaseCampZonePagerCount = 4;
 inline constexpr int kBaseCampZoneSpareBase = 69;     // zone_spare_0..2
 inline constexpr int kBaseCampZoneSpareCount = 3;
-inline constexpr int kCreateMenuButtonCount = 72;
+// The DIFFICULTY strip door (docs/camp-controls-design.md). Appended past the
+// zone band rather than carved out of a spare: every established ordinal
+// stays where it is, and the three spares stay a reserve. Its rect lives on
+// the y=178 strip with the other doors — the ordinal ordering is the table's
+// growth history, not the reading order.
+inline constexpr int kCreateMenuDifficultyIndex = 72;
+inline constexpr int kCreateMenuButtonCount = 73;
 
 // --- LOCAL SEAT SETTINGS subscreen -----------------------------------------
 // A clicked owned Base Camp seat resolves its stable LobbySeatId to a dense

@@ -1629,13 +1629,13 @@ void self_check_fire_script(const std::vector<ExpectedLevel>& expectations)
         return page;
     };
 
-    // Fresh company at the vale: the fight underfoot, one road ahead, then
-    // the two doors.
+    // Fresh company at the vale: the fight underfoot and the two doors. The
+    // road out is named the night the vale is won — a normal night is three
+    // rows, which is the whole band the panel shows at once.
     const std::vector<hooks::CampaignPageEntry> fresh = docket(camp("fresh"));
-    if (fresh.size() != 4)
+    if (fresh.size() != 3)
         fail(std::format("self-check fire: the fresh docket has {} rows, "
-                         "expected the vale, the road and the two doors",
-                         fresh.size()));
+                         "expected the vale and the two doors", fresh.size()));
     const hooks::CampaignPage shelf = fetch("stores", "fresh");
     if (shelf.entries.size() != 1)
         fail(std::format("self-check fire: fresh shelf has {} offers, "
@@ -1646,15 +1646,32 @@ void self_check_fire_script(const std::vector<ExpectedLevel>& expectations)
     // The docket must mirror the authored exits at every level, in BOTH
     // directions: the camp may not offer a road the map does not carry, and
     // every shipped exit it does not offer must be the way back to a camp
-    // that offers this one (back rows never render). The docket's own first
-    // row is the level underfoot, which is nobody's exit — it is checked as
-    // itself and then left out of the mirror.
+    // that offers this one (back rows never render). The roads out compose
+    // only once the fight underfoot is WON, so each level is walked twice:
+    // the unwon night (the fight and nothing else) and the won one (the
+    // roads it opens). The docket's own first row is the level underfoot,
+    // which is nobody's exit — it is checked as itself and then left out of
+    // the mirror.
     std::map<int, std::set<int>> offered;
     for (const ExpectedLevel& ex : expectations)
     {
         cursor = ex.id;
+        completed.clear();
+        for (const hooks::CampaignPageEntry& entry : docket(camp("unwon")))
+        {
+            if (entry.kind != hooks::CampaignPageEntry::Kind::Level)
+                continue;
+            if (entry.level != ex.id)
+                fail(std::format("self-check fire: scen{} names the road to "
+                                 "scen{} before the fight underfoot is won",
+                                 ex.id, entry.level));
+        }
+        completed = {ex.id};
         std::set<int> rows;
-        bool underfoot = false;
+        // At the Falls the third act's own rows replace the graph the moment
+        // they are won — the two fronts ARE tonight's fight, so that one
+        // docket carries no underfoot row to strip.
+        bool underfoot = ex.id == 12;
         bool leading = true;
         for (const hooks::CampaignPageEntry& entry : docket(camp("road")))
         {
@@ -1697,6 +1714,7 @@ void self_check_fire_script(const std::vector<ExpectedLevel>& expectations)
         }
     }
     cursor = 1;
+    completed.clear();
 
     // The split, sworn and marching: the camp must freeze the oath column and
     // lock the other road's swords out of tonight's level.

@@ -122,10 +122,13 @@ class vbutton
 
 // Max buttons per screen. Raised 50 -> 72 for the Base Camp gameplay zone
 // (docs/basecamp-zones-design.md "Bounds arithmetic"): 49 classic ordinals +
-// 16 zone action rows + 4 zone pagers + 3 spares. Mirrored by
-// GameSession::kMaxButtons (session_state.h) — a static_assert in button.cpp
-// ties the two literals.
-inline constexpr int MAX_BUTTONS = 72;
+// 16 zone action rows + 4 zone pagers + 3 spares. Raised again 72 -> 73 when
+// DIFFICULTY moved off the main menu into the Base Camp command strip
+// (docs/camp-controls-design.md): the three parked spares are a documented
+// reserve for scripted compositions, so the strip door was appended instead
+// of carved out of them. Mirrored by GameSession::kMaxButtons
+// (session_state.h) — a static_assert in button.cpp ties the two literals.
+inline constexpr int MAX_BUTTONS = 73;
 // allbuttons lives in GameSession — access via current_session->allbuttons_.
 void clear_allbuttons();
 

@@ -17,17 +17,21 @@ trap 'rm -rf "$TMPHOME"; rm -f "$TMPOUT" "$TMPIN"' EXIT
 #   Main: 1=Begin New Game; blank accepts the generated company name (§2.2
 #     name entry); blank keeps the campaign. Back, then 2=Continue returns to
 #     Base Camp. The retired 1–4 player-count rows are no longer present.
-#   Base camp / Team Build (13 items, §2.5 substitution + the #206 Camp door
-#     inserted before Back): 3=Hire Troops (n/h/b — the hire AUTOSAVES the
-#     company, §3.8), 1=Roster (deploy 2 toggles + blank exits), 4=Deploy
-#     (prompt re-deploys row 2), 7=Camp (gladiator composes no camp, so the
-#     guard line prints and Team Build re-presents without consuming further
-#     input), 10=Scenario, 6=GO!, 8=Back.
+#   Base camp / Team Build (11 items, §2.5 substitution + the #206 Camp door
+#     inserted before Back; the flat CTF trio left for the camp's MATCH SETUP
+#     page and 11=Difficulty was appended in its place —
+#     docs/camp-controls-design.md): 3=Hire Troops (n/h/b — the hire
+#     AUTOSAVES the company, §3.8), 1=Roster (deploy 2 toggles + blank
+#     exits), 4=Deploy (prompt re-deploys row 2), 7=Camp (gladiator composes
+#     no camp, so the guard line prints and Team Build re-presents without
+#     consuming further input), 10=Scenario, 11=Difficulty, 6=GO!, 8=Back.
 #   Scenario submenu (7 items — the missions door retired into the camp):
 #     4=Matchup (set preferred-team metadata, blank exits), 3=View Scenario
 #     (blank dismisses), 6=Scenario Troops, 7=Back.
+#   Difficulty submenu (7 items): 7=Back straight out.
 #   Protocol session after GO!: state, quit.
-#   Main: 7=Quit.
+#   Main: 6=Quit (the difficulty door left this menu, so every row below it
+#     moved up one).
 cat > "$TMPIN" << 'INP'
 1
 
@@ -51,11 +55,13 @@ play 1
 3
 
 7
+11
+7
 6
 state
 quit
 8
-7
+6
 INP
 
 HOME="$TMPHOME" timeout "$TEXT_TIMEOUT" "$TEXT_BIN" < "$TMPIN" > "$TMPOUT" 2>/dev/null

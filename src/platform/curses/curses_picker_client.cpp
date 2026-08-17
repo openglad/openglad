@@ -980,11 +980,6 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
     Menu menu(term_, clock_);
     if (menu_id == PickerMenuId::Main) {
         switch (item.command) {
-        case PickerMenuCommand::OpenDifficultyMenu:
-            // The DIFFICULTY submenu: the shared nested presentation loop
-            // (show_submenu in picker_state) until Back.
-            show_submenu(PickerMenuId::Difficulty);
-            break;
         case PickerMenuCommand::SetPlayerMode:
             if (item.arg > 1) {
                 og::ui::set_player_count(save_data_, 1);
@@ -1123,8 +1118,8 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
         return;
     }
 
-    // Team Build menu. Gated items (the CTF match settings outside the CTF
-    // campaign) show their shared guard message instead of acting.
+    // Team Build menu. Gated items (READY outside a networked lobby) show
+    // their shared guard message instead of acting.
     const std::string_view guard = og::ui::terminal_gate_message(
         item, label_context(config_, options_, save_data_));
     if (!guard.empty()) {
@@ -1185,17 +1180,15 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
     case PickerMenuCommand::SetCampaign:
         (void)show_campaign_select();
         break;
-    case PickerMenuCommand::CycleCtfTeamCount:
-        og::ui::cycle_ctf_team_count(save_data_);
-        menu.show_text("CTF Teams", {og::ui::format_ctf_teams_label(save_data_)});
-        autosave_company_after_mutation(save_data_); // §3.8 settings tail
+    case PickerMenuCommand::OpenDifficultyMenu:
+        // The DIFFICULTY submenu: the shared nested presentation loop
+        // (show_submenu in picker_state) until Back. It answers here now —
+        // the door moved off the main menu to Team Build.
+        show_submenu(PickerMenuId::Difficulty);
         break;
-    case PickerMenuCommand::CycleCtfCaptureLimit:
-        og::ui::cycle_ctf_capture_limit(save_data_);
-        menu.show_text("Capture Limit",
-            {og::ui::format_ctf_caps_label(save_data_)});
-        autosave_company_after_mutation(save_data_); // §3.8 settings tail
-        break;
+    // Match teams and target score left the flat team-build list for the
+    // modes camp's MATCH SETUP page; the SCENARIO submenu still routes its
+    // troops row through here.
     case PickerMenuCommand::ToggleCtfScenarioTroops:
         og::ui::toggle_ctf_scenario_troops(save_data_);
         menu.show_text("Scenario Troops",

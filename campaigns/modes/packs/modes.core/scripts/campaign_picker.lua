@@ -98,8 +98,8 @@ local function stripped_title(id)
   return string.sub(title, cut + 2)
 end
 
--- The facts each mode's rows post, straight from the manifest row: sides
--- and the posted score, minutes for CTF's flag rule, lives for
+-- The facts each mode's rows carry, straight from the manifest row: sides
+-- and the arena's own score, minutes for CTF's flag rule, lives for
 -- Onslaught's elimination, heads and shifters for the roster games. Every
 -- note is budgeted against the camp's 42-char panel row carrying its
 -- longest arena name and the door marker, which is why CTF's clock is
@@ -235,9 +235,9 @@ local function games_title(signed)
   return "THE BOOK OF " .. name
 end
 
--- The posted rules (#212), spelled honestly — 0 keeps its MATCHUP meaning
--- (Auto teams, the map's own score, all troops), and an off-menu number
--- reads as itself.
+-- The rules the table plays (#212), spelled honestly — 0 keeps its MATCHUP
+-- meaning on every knob (Auto teams, the map's own score, all troops), and
+-- an off-menu number reads as itself.
 local TROOPS_WORDS = {
   [0] = "all",
   [2] = "own",
@@ -252,8 +252,8 @@ local function teams_word()
   return tostring(teams)
 end
 
--- The posted score in the two spellings the table needs: the sentence's
--- "map score" and the row note's bare "map".
+-- The score in the two spellings the table needs: the sentence's "map
+-- score" and the row note's bare "map".
 local function score_words()
   local limit = og.campaign_match_get("score_limit")
   if limit == 0 then
@@ -272,17 +272,17 @@ local function troops_word()
   return word
 end
 
--- What is posted right now, as the camp's one sentence. Worst case is
--- "Posted: Auto sides, map score, fair." at 36 of the 38-char line budget.
-local function posted_line()
+-- What the table plays right now, as its one sentence. Worst case is
+-- "Auto sides, map score, fair." at 28 of the 38-char line budget.
+local function rules_line()
   local long_score = score_words()
-  local head = "Posted: " .. teams_word() .. " sides, "
+  local head = teams_word() .. " sides, "
   return head .. long_score .. ", " .. troops_word() .. "."
 end
 
 -- The same rules at note length for the MATCH SETUP row — worst case
 -- "Auto, to 50, fair" at 17 of the 20-char note budget.
-local function posted_digest()
+local function rules_digest()
   local _, short_score = score_words()
   local head = teams_word() .. ", " .. short_score
   return head .. ", " .. troops_word()
@@ -363,65 +363,139 @@ local function mode_page(mode)
   }
 end
 
--- The #212 presets: the id the action dispatches, the row that offers it,
--- the note that states its exact writes, and the writes themselves.
-local PRESETS = {
+-- The face a knob wears: the value it holds RIGHT NOW, in the row's upper
+-- case. Every knob's 0 is the MATCHUP sentinel, and each spells it in its
+-- own word.
+local function teams_face(value)
+  if value == 0 then
+    return "AUTO"
+  end
+  return tostring(value)
+end
+
+local function score_face(value)
+  if value == 0 then
+    return "MAP"
+  end
+  return tostring(value)
+end
+
+local function troops_face(value)
+  local word = TROOPS_WORDS[value]
+  if word == nil then
+    return tostring(value)
+  end
+  return string.upper(word)
+end
+
+-- What the click just did, in the plainest words the table has. The three
+-- zeroes say the same thing because they mean the same thing: whatever the
+-- map itself authored.
+local function teams_said(value)
+  if value == 0 then
+    return "Teams: the map's own."
+  end
+  return "Teams: " .. value .. "."
+end
+
+local function score_said(value)
+  if value == 0 then
+    return "Score: the map's own."
+  end
+  return "Score to " .. value .. "."
+end
+
+-- The troops cycle IS this table's key set, so a click can never land off
+-- it — the sentence needs no fallback the way the row's face does.
+local TROOPS_SAID = {
+  [0] = "Troops: the map's own.",
+  [2] = "Troops: your own.",
+  [3] = "Troops: fair bots.",
+}
+
+local function troops_said(value)
+  return TROOPS_SAID[value]
+end
+
+-- The three knobs MATCH SETUP turns, each written straight through
+-- og.campaign_match_set: the key it writes, the cycle it steps (the MATCHUP
+-- screen's own orders — cycle_ctf_team_count, cycle_ctf_capture_limit and
+-- the TROOPS toggle), the face it wears and the sentence it speaks. The
+-- note is the cycle itself: a row that shows only what it holds hides where
+-- the next click lands.
+local KNOBS = {
   {
-    id = "two_sides",
-    label = "TWO SIDES, FAIR BOTS",
-    note = "sides 2, troops fair",
-    writes = {
-      { "team_count", 2 },
-      { "strip_troops", 3 },
-    },
+    id = "teams",
+    key = "team_count",
+    title = "TEAMS",
+    note = "auto, 2, 3, 4",
+    cycle = { 0, 2, 3, 4 },
+    face = teams_face,
+    said = teams_said,
   },
   {
-    id = "four_sides",
-    label = "FOUR SIDES, FAIR BOTS",
-    note = "sides 4, troops fair",
-    writes = {
-      { "team_count", 4 },
-      { "strip_troops", 3 },
-    },
+    id = "score",
+    key = "score_limit",
+    title = "TARGET SCORE",
+    note = "map, 1, 3, 5, 10",
+    cycle = { 0, 1, 3, 5, 10 },
+    face = score_face,
+    said = score_said,
   },
   {
-    id = "classic_rules",
-    label = "CLASSIC RULES",
-    note = "auto, map score, all",
-    writes = {
-      { "team_count", 0 },
-      { "strip_troops", 0 },
-      { "score_limit", 0 },
-    },
-  },
-  {
-    id = "short_match",
-    label = "SHORT MATCH",
-    note = "score to 5",
-    writes = {
-      { "score_limit", 5 },
-    },
+    id = "troops",
+    key = "strip_troops",
+    title = "TROOPS",
+    note = "all, own, fair",
+    cycle = { 0, 2, 3 },
+    face = troops_face,
+    said = troops_said,
   },
 }
 
--- MATCH SETUP: what is posted now, what each preset would post, and — on a
--- machine that cannot post — who does. The preset rows are CUT for a
--- non-host: the lines carry the whole value of the page, and a row whose
+-- One step along a knob's cycle, wrapping at the end. A value that is not
+-- on the cycle at all — a match settled from the MATCHUP screen or a lobby,
+-- or an older save — rejoins at the head rather than pretending to know
+-- where it was.
+local function next_value(knob, current)
+  local cycle = knob.cycle
+  for i = 1, #cycle do
+    if cycle[i] == current then
+      return cycle[og.mod(i, #cycle) + 1]
+    end
+  end
+  return cycle[1]
+end
+
+local function knob_by_id(entry_id)
+  for i = 1, #KNOBS do
+    if KNOBS[i].id == entry_id then
+      return KNOBS[i]
+    end
+  end
+  return nil
+end
+
+-- MATCH SETUP: the three knobs as three rows, each labelled with what it
+-- holds and answering a click by stepping one on. The rows are CUT for a
+-- non-host: the line carries the whole value of the page, and a row whose
 -- only possible answer is a refusal is a row nobody should be offered.
 local function setup_page()
-  local lines = { posted_line() }
+  local lines = { rules_line() }
   local entries = {}
   if og.campaign_is_host() then
-    for i = 1, #PRESETS do
+    for i = 1, #KNOBS do
+      local knob = KNOBS[i]
+      local value = og.campaign_match_get(knob.key)
       entries[#entries + 1] = {
-        id = PRESETS[i].id,
+        id = knob.id,
         kind = "action",
-        label = PRESETS[i].label,
-        note = PRESETS[i].note,
+        label = knob.title .. ": " .. knob.face(value),
+        note = knob.note,
       }
     end
   else
-    lines[#lines + 1] = "The host posts the rules."
+    lines[#lines + 1] = "The host calls the rules."
   end
   return {
     title = "MATCH SETUP",
@@ -447,16 +521,16 @@ end
 
 -- THE GAMESMASTER'S TABLE — the Base Camp composition: the stamp tally
 -- overhead, the current pairing as two one-deep doors, the RANDOM
--- SCENARIO roll beside them, and the posted rules on the row that changes
+-- SCENARIO roll beside them, and the match rules on the row that changes
 -- them.
 --
 -- The camp's grid is 8 units and the roster's floor takes three of them
 -- (its column heading plus two hero rows), so text lines and docket rows
 -- share the other FIVE (docs/basecamp-zones-design.md, "Bounds
--- arithmetic"). The host spends four on rows and speaks no line: the
--- posted rules ARE the MATCH SETUP row's note, and the signature lives on
--- the index page whose cover it takes. A row past the free band does not
--- page politely here — it hides one behind an arrow — so nothing in this
+-- arithmetic"). The host spends four on rows and speaks no line: the rules
+-- ARE the MATCH SETUP row's note, and the signature lives on the index
+-- page whose cover it takes. A row past the free band does not page
+-- politely here — it hides one behind an arrow — so nothing in this
 -- function is allowed to grow the docket past it.
 --
 -- A joiner keeps the pairing, the rules and its own book, spends one row
@@ -507,7 +581,7 @@ local function base_camp()
     id = "setup",
     kind = "page",
     label = "MATCH SETUP",
-    note = posted_digest(),
+    note = rules_digest(),
   }
   -- The band the docket may spend, stated rather than assumed: an actions
   -- widget that does not weigh itself takes THREE units however many rows
@@ -575,26 +649,18 @@ local function sign_book()
   return { message = "Your name goes in the book." }
 end
 
-local function preset_by_id(entry_id)
-  for i = 1, #PRESETS do
-    if PRESETS[i].id == entry_id then
-      return PRESETS[i]
-    end
-  end
-  return nil
-end
-
--- The preset writes go through og.campaign_match_set only in the host's
--- hand. The rows are cut on every other machine, so this refusal is the
--- backstop behind them, not the thing a player is meant to meet.
-local function post_rules(writes)
+-- Turning a knob: read what it holds, write the next value on the cycle,
+-- and say the new state outright. The write goes through
+-- og.campaign_match_set, which is the host's alone — the rows are cut on
+-- every other machine, so this refusal is the backstop behind them, not the
+-- thing a player is meant to meet.
+local function turn_knob(knob)
   if not og.campaign_is_host() then
-    return { message = "The host posts the rules." }
+    return { message = "The host calls the rules." }
   end
-  for i = 1, #writes do
-    og.campaign_match_set(writes[i][1], writes[i][2])
-  end
-  return { message = "The Gamesmaster posts it." }
+  local value = next_value(knob, og.campaign_match_get(knob.key))
+  og.campaign_match_set(knob.key, value)
+  return { message = knob.said(value) }
 end
 
 local function picker_action(entry_id)
@@ -604,9 +670,9 @@ local function picker_action(entry_id)
   if entry_id == "sign" then
     return sign_book()
   end
-  local preset = preset_by_id(entry_id)
-  if preset ~= nil then
-    return post_rules(preset.writes)
+  local knob = knob_by_id(entry_id)
+  if knob ~= nil then
+    return turn_knob(knob)
   end
   return nil
 end

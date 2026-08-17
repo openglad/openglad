@@ -1689,8 +1689,9 @@ TEST(CampaignZoneUi, zz_capture_default_zone_across_campaigns)
         // spends no text line precisely so that its last row is not parked
         // behind a pager arrow on the screen a player lives on.
         {"modes", "zone_default_modes", 300, 4},
-        // The Company Fire composes its camp: at the vale that is the one
-        // road ahead plus the QUARTERMASTER and THE LEDGER doors.
+        // The Company Fire composes its camp: at the vale that is the fight
+        // at your feet plus the QUARTERMASTER and THE LEDGER doors (the
+        // road out is named only on the night it opens).
         {"westlands", "zone_camp_westlands", 1, 3},
         // The open ledger composes its camp: the week's job, the STORES
         // door, and TAKE AN ADVANCE on a fresh spring save.

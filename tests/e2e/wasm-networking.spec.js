@@ -24,12 +24,13 @@ const NETWORKING_MENU_BUTTONS = {
   join: { x: 242, y: 175 },
 };
 const ACTIVE_ROOM_FIRST = { x: 160, y: 77 };
-// §2.5/§2.10: the base-camp GO/READY slot is (244,178,68,18), center
-// (278,187). On the host machine the rect reads GO (face color keyed to the
-// §2.6 state table); on a joiner the same rect is the READY/UNREADY toggle
-// twin, so the one coordinate drives both halves of the ready flow.
-const GO_READY_BUTTON = { x: 278, y: 187 };
-const GO_READY_SLOT_REGION = { x: 244, y: 178, w: 68, h: 18 };
+// §2.5/§2.10: the base-camp GO/READY slot is (262,178,50,18) after the strip
+// re-gridded for DIFFICULTY (docs/camp-controls-design.md), center (287,187).
+// On the host machine the rect reads GO (face color keyed to the §2.6 state
+// table); on a joiner the same rect is the READY/UNREADY toggle twin, so the
+// one coordinate drives both halves of the ready flow.
+const GO_READY_BUTTON = { x: 287, y: 187 };
+const GO_READY_SLOT_REGION = { x: 262, y: 178, w: 50, h: 18 };
 // popup_dialog's single OK button: x 135..185, y 130..150. Its event loop
 // exits on that click (or on a Return/Space/Backspace-as-back key press;
 // physical Escape is swallowed on web).

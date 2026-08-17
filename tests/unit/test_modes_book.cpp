@@ -21,8 +21,9 @@
 // header readout and the GAME row, and the RANDOM SCENARIO roll (D3, which
 // replaced TONIGHT'S CARD) is a camp action whose result carries the level.
 // The seven field pages, the games index (which keeps the signature, since
-// the cover is what it changes) and MATCH SETUP are the rooms, reached by
-// page rows.
+// the cover is what it changes) and MATCH SETUP — three knobs the host
+// turns one click at a time (D4, which retired the presets) — are the
+// rooms, reached by page rows.
 
 #include <gtest/gtest.h>
 
@@ -108,6 +109,14 @@ constexpr int kCampRosterRows = 3;
 // DECK_SIZE, which the roll inherits as og.campaign_random(#rows)).
 constexpr int kArenaCount = 39;
 
+// MATCH SETUP's three knobs (D4 — the presets retired): one row each, in
+// the order the page composes them, each labelled with the value it holds.
+constexpr std::size_t kTeamsRow = 0;
+constexpr std::size_t kScoreRow = 1;
+constexpr std::size_t kTroopsRow = 2;
+constexpr const char* kKnobIds[] = {"teams", "score", "troops"};
+constexpr std::size_t kKnobCount = sizeof(kKnobIds) / sizeof(kKnobIds[0]);
+
 // Display budgets (the imaginations pins).
 constexpr std::size_t kLabelBudget = 24;
 constexpr std::size_t kNoteBudget = 20;
@@ -171,7 +180,7 @@ const BookMode& book_mode(const std::string& tag)
     return kBookModes[0];
 }
 
-// The manifest facts each row's note posts, parsed from the generated
+// The manifest facts each row's note carries, parsed from the generated
 // lib/mode_levels.lua the script itself binds via og.use("mode_levels").
 struct ManifestRow {
     std::string mode;
@@ -542,7 +551,7 @@ TEST_F(ModesBookTest, base_camp_composes_the_table)
     }
 
     // No text line on the host: the five docket rows take the whole band
-    // the roster floor leaves, and the posted rules live on the row that
+    // the roster floor leaves, and the match rules live on the row that
     // changes them.
     EXPECT_TRUE(zone.texts().empty())
         << "a host line would cost the fifth docket row";
@@ -581,7 +590,7 @@ TEST_F(ModesBookTest, base_camp_composes_the_table)
     EXPECT_EQ(CampaignPickerSession::Kind::Page, setup.kind);
     EXPECT_EQ("setup", setup.id);
     EXPECT_EQ("MATCH SETUP", setup.label);
-    EXPECT_EQ("Auto, map, all", setup.note) << "the posted digest, at note "
+    EXPECT_EQ("Auto, map, all", setup.note) << "the rules digest, at note "
                                                "length";
 
     // The roster keeps every capability and no oath column: this campaign
@@ -825,8 +834,9 @@ TEST_F(ModesBookTest, joiner_camp_cuts_the_roll_and_the_sign)
     EXPECT_EQ("setup", setup.id);
     EXPECT_EQ("MATCH SETUP", setup.label);
     EXPECT_EQ("Auto, map, all", setup.note)
-        << "the posted rules are SYNCED: a joiner reads the same digest it "
-           "cannot write, and the page behind the row says who posts";
+        << "the match rules are SYNCED: a joiner reads the same digest it "
+           "cannot write, and the page behind the row says whose call it "
+           "is";
     for (const CampaignZoneSession::Row& row : rows)
     {
         EXPECT_NE("random_scenario", row.id)
@@ -931,7 +941,7 @@ TEST_F(ModesBookTest, games_index_lists_the_seven_games_with_stamp_tallies)
 
 // The obligation the camp migration must not drop: a page FETCH renders the
 // same bytes twice and writes nothing. The pages read state (the tallies,
-// the signature, the posted rules); only actions may write it.
+// the signature, the match rules); only actions may write it.
 TEST_F(ModesBookTest, picker_menu_is_pure_and_render_stable)
 {
     std::vector<std::string> pages = {"games", "setup"};
@@ -1290,101 +1300,194 @@ TEST_F(ModesBookTest, joiner_index_offers_no_signature)
 // MATCH SETUP (#212)
 // ---------------------------------------------------------------------------
 
-TEST_F(ModesBookTest, match_setup_spells_the_posted_rules_honestly)
+// The page is three knobs, and every row wears the value it holds at
+// FETCH: the label is the state, so a player never has to guess what the
+// match is set to before touching it.
+TEST_F(ModesBookTest, match_setup_labels_every_knob_with_what_it_holds)
 {
     CampaignPickerSession session(save_);
     ASSERT_TRUE(session.open_at("setup"));
     const CampaignPickerSession::DecoratedPage& page = session.page();
     EXPECT_EQ("MATCH SETUP", page.title);
     ASSERT_EQ(1u, page.lines.size());
-    EXPECT_EQ("Posted: Auto sides, map score, all.", page.lines[0])
-        << "0 spells its MATCHUP meaning";
-    ASSERT_EQ(4u, page.rows.size());
-    const char* labels[] = {"TWO SIDES, FAIR BOTS", "FOUR SIDES, FAIR BOTS",
-                            "CLASSIC RULES", "SHORT MATCH"};
-    const char* ids[] = {"two_sides", "four_sides", "classic_rules",
-                         "short_match"};
-    const char* notes[] = {"sides 2, troops fair", "sides 4, troops fair",
-                           "auto, map score, all", "score to 5"};
-    for (std::size_t i = 0; i < 4; i++)
+    EXPECT_EQ("Auto sides, map score, all.", page.lines[0])
+        << "0 spells its MATCHUP meaning, and nothing is 'posted'";
+    ASSERT_EQ(kKnobCount, page.rows.size());
+    const char* labels[] = {"TEAMS: AUTO", "TARGET SCORE: MAP", "TROOPS: ALL"};
+    const char* notes[] = {"auto, 2, 3, 4", "map, 1, 3, 5, 10",
+                           "all, own, fair"};
+    for (std::size_t i = 0; i < kKnobCount; i++)
     {
         EXPECT_EQ(CampaignPickerSession::Kind::Action, page.rows[i].kind);
-        EXPECT_EQ(ids[i], page.rows[i].id);
+        EXPECT_EQ(kKnobIds[i], page.rows[i].id);
         EXPECT_EQ(labels[i], page.rows[i].label);
         EXPECT_EQ(notes[i], page.rows[i].note)
-            << "every preset states its exact writes";
-        EXPECT_EQ(0, page.rows[i].cost) << "presets are free";
+            << "the note is the cycle, so the next click is never a "
+               "surprise";
+        EXPECT_EQ(0, page.rows[i].cost) << "turning a knob is free";
         EXPECT_TRUE(page.rows[i].affordable);
     }
 
-    // An off-menu troops value spells itself rather than lying.
+    // An off-menu value (a match settled from the MATCHUP screen or a
+    // lobby) spells itself on the row and in the line rather than lying.
     save_.ctf_strip_scenario_troops = 1;
+    save_.ctf_capture_limit = 7;
     session.refresh();
-    EXPECT_EQ("Posted: Auto sides, map score, 1.", session.page().lines[0]);
+    EXPECT_EQ("Auto sides, to 7, 1.", session.page().lines[0]);
+    EXPECT_EQ("TARGET SCORE: 7", session.page().rows[kScoreRow].label);
+    EXPECT_EQ("TROOPS: 1", session.page().rows[kTroopsRow].label);
+
+    // And the fetch that reads them writes nothing: the page is a mirror
+    // until a row is clicked.
+    (void)og::data::consume_match_settings_dirty();
+    session.refresh();
+    EXPECT_EQ(0, save_.ctf_team_count);
+    EXPECT_EQ(7, save_.ctf_capture_limit);
+    EXPECT_EQ(1, save_.ctf_strip_scenario_troops);
+    EXPECT_FALSE(og::data::consume_match_settings_dirty())
+        << "a fetch never writes a knob";
 }
 
-TEST_F(ModesBookTest, host_presets_write_the_knobs_and_arm_the_dirty_flag)
+// The whole of every cycle, one click at a time and round the wrap: the
+// value the save holds, the label the refetched row wears, and the plain
+// sentence the click answers with.
+TEST_F(ModesBookTest, every_knob_cycles_through_its_values_and_wraps)
+{
+    struct Step {
+        int value;
+        const char* label;
+        const char* said;
+    };
+    const std::vector<Step> teams = {
+        {2, "TEAMS: 2", "Teams: 2."},
+        {3, "TEAMS: 3", "Teams: 3."},
+        {4, "TEAMS: 4", "Teams: 4."},
+        {0, "TEAMS: AUTO", "Teams: the map's own."},
+    };
+    const std::vector<Step> score = {
+        {1, "TARGET SCORE: 1", "Score to 1."},
+        {3, "TARGET SCORE: 3", "Score to 3."},
+        {5, "TARGET SCORE: 5", "Score to 5."},
+        {10, "TARGET SCORE: 10", "Score to 10."},
+        {0, "TARGET SCORE: MAP", "Score: the map's own."},
+    };
+    const std::vector<Step> troops = {
+        {2, "TROOPS: OWN", "Troops: your own."},
+        {3, "TROOPS: FAIR", "Troops: fair bots."},
+        {0, "TROOPS: ALL", "Troops: the map's own."},
+    };
+    const struct {
+        std::size_t row;
+        const char* setting;
+        const std::vector<Step>* steps;
+    } knobs[] = {
+        {kTeamsRow, "team_count", &teams},
+        {kScoreRow, "score_limit", &score},
+        {kTroopsRow, "strip_troops", &troops},
+    };
+
+    for (const auto& knob : knobs)
+    {
+        CampaignPickerSession session(save_);
+        ASSERT_TRUE(session.open_at("setup"));
+        for (const Step& step : *knob.steps)
+        {
+            ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
+                      session.choose(knob.row).kind)
+                << knob.setting << " -> " << step.value;
+            EXPECT_EQ(step.said, session.take_message()) << knob.setting;
+            // The write landed on the knob the row names, read back
+            // through the same seam the script reads.
+            const hooks::CampaignProviders readback =
+                og::data::make_campaign_providers(save_);
+            EXPECT_EQ(step.value, readback.match_get(knob.setting));
+            EXPECT_EQ(step.label,
+                      session.page().rows[knob.row].label)
+                << "the refetched row wears the new value";
+        }
+        // A whole lap leaves the knob exactly where it started, and the
+        // other two never moved.
+        EXPECT_EQ(0, save_.ctf_team_count);
+        EXPECT_EQ(0, save_.ctf_capture_limit);
+        EXPECT_EQ(0, save_.ctf_strip_scenario_troops);
+    }
+}
+
+// A value that is not on the cycle at all — every knob can be set from the
+// MATCHUP screen, a lobby or an older save — rejoins at the head instead of
+// pretending to know where it was.
+TEST_F(ModesBookTest, an_off_menu_value_rejoins_the_cycle_at_its_head)
+{
+    save_.ctf_team_count = 1;   // below the 2..4 the cycle offers
+    save_.ctf_capture_limit = 7;
+    save_.ctf_strip_scenario_troops = 1;  // the retired middle state
+
+    CampaignPickerSession session(save_);
+    ASSERT_TRUE(session.open_at("setup"));
+    EXPECT_EQ("TEAMS: 1", session.page().rows[kTeamsRow].label);
+
+    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
+              session.choose(kTeamsRow).kind);
+    EXPECT_EQ("Teams: the map's own.", session.take_message());
+    EXPECT_EQ(0, save_.ctf_team_count);
+
+    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
+              session.choose(kScoreRow).kind);
+    EXPECT_EQ("Score: the map's own.", session.take_message());
+    EXPECT_EQ(0, save_.ctf_capture_limit);
+
+    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
+              session.choose(kTroopsRow).kind);
+    EXPECT_EQ("Troops: the map's own.", session.take_message());
+    EXPECT_EQ(0, save_.ctf_strip_scenario_troops);
+}
+
+TEST_F(ModesBookTest, turning_a_knob_arms_the_dirty_flag_and_the_camp_follows)
 {
     (void)og::data::consume_match_settings_dirty();
     CampaignPickerSession session(save_);
     ASSERT_TRUE(session.open_at("setup"));
 
-    // TWO SIDES, FAIR BOTS.
     ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              session.choose(0).kind);
-    EXPECT_EQ("The Gamesmaster posts it.", session.take_message());
+              session.choose(kTeamsRow).kind);
     EXPECT_EQ(2, save_.ctf_team_count);
-    EXPECT_EQ(3, save_.ctf_strip_scenario_troops);
-    // The write is visible through the same seam the script reads.
-    const hooks::CampaignProviders readback =
-        og::data::make_campaign_providers(save_);
-    EXPECT_EQ(2, readback.match_get("team_count"));
-    EXPECT_EQ(3, readback.match_get("strip_troops"));
     EXPECT_TRUE(og::data::consume_match_settings_dirty())
-        << "a successful preset arms the session tail";
+        << "a successful write arms the session tail";
     EXPECT_FALSE(og::data::consume_match_settings_dirty())
         << "the flag is consumed";
-    EXPECT_EQ("Posted: 2 sides, map score, fair.", session.page().lines[0])
-        << "the refetched page re-derives the posted rules";
+    EXPECT_EQ("2 sides, map score, all.", session.page().lines[0])
+        << "the refetched page re-derives the rules";
 
-    // SHORT MATCH stacks onto the posted teams.
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              session.choose(3).kind);
+    // Three more clicks put the score on 5, two put the troops on fair:
+    // the knobs are independent, and the line carries all three.
+    for (int i = 0; i < 3; i++)
+    {
+        ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
+                  session.choose(kScoreRow).kind);
+    }
+    for (int i = 0; i < 2; i++)
+    {
+        ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
+                  session.choose(kTroopsRow).kind);
+    }
     EXPECT_EQ(5, save_.ctf_capture_limit);
-    EXPECT_EQ("Posted: 2 sides, to 5, fair.", session.page().lines[0]);
+    EXPECT_EQ(3, save_.ctf_strip_scenario_troops);
+    EXPECT_EQ("2 sides, to 5, fair.", session.page().lines[0]);
     EXPECT_TRUE(og::data::consume_match_settings_dirty());
 
     // The camp's own row carries the same rules at note length — the whole
-    // posted state, on the row that changes it, with no line of its own.
-    {
-        CampaignZoneSession zone(save_);
-        zone.fetch();
-        ASSERT_TRUE(zone.scripted());
-        EXPECT_EQ("2, to 5, fair", camp_rows(zone)[kCampSetupRow].note);
-        EXPECT_TRUE(zone.texts().empty());
-    }
-
-    // FOUR SIDES, FAIR BOTS.
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              session.choose(1).kind);
-    EXPECT_EQ(4, save_.ctf_team_count);
-    EXPECT_EQ(3, save_.ctf_strip_scenario_troops);
-
-    // CLASSIC RULES clears all three knobs.
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              session.choose(2).kind);
-    EXPECT_EQ(0, save_.ctf_team_count);
-    EXPECT_EQ(0, save_.ctf_strip_scenario_troops);
-    EXPECT_EQ(0, save_.ctf_capture_limit);
-    EXPECT_EQ("Posted: Auto sides, map score, all.",
-              session.page().lines[0]);
-    EXPECT_TRUE(og::data::consume_match_settings_dirty());
+    // state, on the row that changes it, with no line of its own.
+    CampaignZoneSession zone(save_);
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted());
+    EXPECT_EQ("2, to 5, fair", camp_rows(zone)[kCampSetupRow].note);
+    EXPECT_TRUE(zone.texts().empty());
 }
 
-// A joiner's MATCH SETUP is a READING: the preset rows are cut at fetch and
-// the page states who posts instead. The host-hand refusal stays behind
-// them as the backstop — page-agnostic action dispatch means a stale click
-// still cannot write.
+// A joiner's MATCH SETUP is a READING: the knob rows are cut at fetch and
+// the page states whose call it is instead. The host-hand refusal stays
+// behind them as the backstop — page-agnostic action dispatch means a stale
+// click still cannot write.
 TEST_F(ModesBookTest, joiner_setup_page_reads_and_refuses_without_writing)
 {
     install_providers([] { return false; });
@@ -1393,15 +1496,19 @@ TEST_F(ModesBookTest, joiner_setup_page_reads_and_refuses_without_writing)
     const CampaignPickerSession::DecoratedPage page = open_page("setup");
     EXPECT_TRUE(page.rows.empty()) << "no row that could only refuse";
     ASSERT_EQ(2u, page.lines.size());
-    EXPECT_EQ("Posted: Auto sides, map score, all.", page.lines[0]);
-    EXPECT_EQ("The host posts the rules.", page.lines[1])
+    EXPECT_EQ("Auto sides, map score, all.", page.lines[0]);
+    EXPECT_EQ("The host calls the rules.", page.lines[1])
         << "who decides, stated before any click";
 
-    hooks::CampaignActionResult result;
-    ASSERT_TRUE(hooks::campaign_picker_action("two_sides", result));
-    EXPECT_TRUE(result.ok);
-    EXPECT_EQ("The host posts the rules.", result.message);
+    for (const char* id : kKnobIds)
+    {
+        hooks::CampaignActionResult result;
+        ASSERT_TRUE(hooks::campaign_picker_action(id, result)) << id;
+        EXPECT_TRUE(result.ok);
+        EXPECT_EQ("The host calls the rules.", result.message) << id;
+    }
     EXPECT_EQ(0, save_.ctf_team_count) << "no knob moved";
+    EXPECT_EQ(0, save_.ctf_capture_limit);
     EXPECT_EQ(0, save_.ctf_strip_scenario_troops);
     EXPECT_FALSE(og::data::consume_match_settings_dirty())
         << "a refusal never arms the session tail";
@@ -1444,8 +1551,8 @@ TEST_F(ModesBookTest, every_page_and_the_camp_fit_their_budgets)
     // HERE, where the note that must give way is one line above, rather
     // than quietly ellipsing on the panel.
     //
-    // Both ends of the posted-rules digest are swept with it: the defaults
-    // spell the longest SENTENCE ("map score"), a posted score the longest
+    // Both ends of the rules digest are swept with it: the defaults spell
+    // the longest SENTENCE ("map score"), a set score the longest
     // NOTE ("to 50").
     const DerivedBook book = derive_book();
     save_.ctf_strip_scenario_troops = 3;

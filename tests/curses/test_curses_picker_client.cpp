@@ -196,6 +196,19 @@ int main_menu_item_index(PickerMenuCommand command, int arg = 0)
     return -1;
 }
 
+// The same lookup for a Team Build item. Team Build prints context header
+// rows above the list, but the digit jump and the arrow walk both count
+// selectable entries only, so this is the index both helpers take.
+int team_build_item_index(PickerMenuCommand command, int arg = 0)
+{
+    const auto& def = og::ui::picker_menu_definition(PickerMenuId::TeamBuild);
+    for (int i = 0; i < static_cast<int>(def.items.size()); ++i)
+        if (def.items[static_cast<size_t>(i)].command == command &&
+            def.items[static_cast<size_t>(i)].arg == arg)
+            return i;
+    return -1;
+}
+
 std::optional<int> dynamically_free_tcp_port()
 {
     const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
@@ -272,14 +285,17 @@ TEST(CursesPickerClient, present_menu_cancel_maps_to_quit_or_back)
 TEST(CursesPickerClient, present_menu_digit_and_arrow_navigation)
 {
     PickerFixture f;
-    // Jump to the 7th selectable item (the Difficulty door) and select it.
-    const int diff_idx = main_menu_item_index(PickerMenuCommand::OpenDifficultyMenu);
-    ASSERT_GE(diff_idx, 0);
-    f.t().push_char(static_cast<char32_t>(U'1' + static_cast<char32_t>(diff_idx)));
+    // Jump to the LAST selectable item (the Cloud door) and select it: with
+    // the difficulty door gone to Team Build, Main is 8 rows and every one
+    // of them is digit-addressable.
+    const int cloud_idx = main_menu_item_index(PickerMenuCommand::OpenCloudMenu);
+    ASSERT_GE(cloud_idx, 0);
+    ASSERT_LE(cloud_idx, 8) << "digit-jump addresses the first 9 items";
+    f.t().push_char(static_cast<char32_t>(U'1' + static_cast<char32_t>(cloud_idx)));
     f.t().push_special(KeyCode::Enter);
     const auto* item = f.client.present_menu(PickerMenuId::Main);
     ASSERT_NE(item, nullptr);
-    EXPECT_EQ(item->command, PickerMenuCommand::OpenDifficultyMenu);
+    EXPECT_EQ(item->command, PickerMenuCommand::OpenCloudMenu);
 
     // From the top item, Down once then Enter selects the 2nd item.
     f.t().push_special(KeyCode::Down);
@@ -518,71 +534,74 @@ TEST(CursesPickerClient, level_edit_notice_renders)
     EXPECT_NE(f.t().dump().find("openscen"), std::string::npos);
 }
 
-// CTF settings cycle only inside the CTF campaign; elsewhere they notify.
-TEST(CursesPickerClient, ctf_settings_cycle_on_ctf_campaign_only)
-{
-    PickerFixture f;
-    const auto* teams_item = og::ui::find_picker_menu_item(
-        PickerMenuId::TeamBuild, PickerMenuCommand::CycleCtfTeamCount);
-    const auto* caps_item = og::ui::find_picker_menu_item(
-        PickerMenuId::TeamBuild, PickerMenuCommand::CycleCtfCaptureLimit);
-    ASSERT_NE(teams_item, nullptr);
-    ASSERT_NE(caps_item, nullptr);
-
-    // Classic campaign: settings stay put and the notice renders.
-    f.save().current_campaign = "gladiator";
-    dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::TeamBuild, *teams_item);
-    EXPECT_EQ(0, (int)f.save().ctf_team_count);
-    EXPECT_NE(f.t().dump().find("versus maps only"), std::string::npos);
-
-    // Versus campaign: both settings cycle (Auto -> 2).
-    f.save().current_campaign = "modes";
-    dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::TeamBuild, *teams_item);
-    EXPECT_EQ(2, (int)f.save().ctf_team_count);
-
-    dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::TeamBuild, *caps_item);
-    EXPECT_EQ(1, (int)f.save().ctf_capture_limit);
-}
-
-// The team-build labels surface the live CTF settings.
-TEST(CursesPickerClient, ctf_menu_labels_format_from_save)
-{
-    PickerFixture f;
-    f.save().ctf_team_count = 4;
-    f.save().ctf_capture_limit = 0;
-    const auto* teams_item = og::ui::find_picker_menu_item(
-        PickerMenuId::TeamBuild, PickerMenuCommand::CycleCtfTeamCount);
-    const auto* caps_item = og::ui::find_picker_menu_item(
-        PickerMenuId::TeamBuild, PickerMenuCommand::CycleCtfCaptureLimit);
-    ASSERT_NE(teams_item, nullptr);
-    ASSERT_NE(caps_item, nullptr);
-
-    // Drive present_menu so the dynamic labels render in the list.
-    f.t().push_special(KeyCode::Escape);
-    (void)f.client.present_menu(PickerMenuId::TeamBuild);
-    const std::string dump = f.t().dump();
-    EXPECT_NE(dump.find("Teams: 4"), std::string::npos) << dump;
-    EXPECT_NE(dump.find("Limit: Map"), std::string::npos) << dump;
-}
+// The flat match-rule rows (match teams, target score) left Team Build for
+// the camp's MATCH SETUP page (docs/camp-controls-design.md): one place, in
+// plain words, on every client. Nothing in the curses surface carries them
+// any more — see team_build_lists_the_difficulty_door_last below for the
+// list, and MenuSpec.terminal_gate_messages_guard_the_ctf_trio_verbatim for
+// the shared versus guard that still names them. The curses guard-rendering
+// branch itself stays covered by the READY row's networked-only guard.
 
 // Matched troops (design D28): the sentinel value 3 renders the shared
-// formatter's "TROOPS: FAIR" label in the terminal list too.
+// formatter's "TROOPS: FAIR" label in the terminal list too. The troops row
+// is the one match rule that stayed a menu item — it lives in SCENARIO,
+// because stripping authored troops is meaningful on classic campaigns.
 TEST(CursesPickerClient, ctf_menu_labels_render_matched_sentinel)
 {
     PickerFixture f;
     f.save().ctf_strip_scenario_troops = og::sim::kTroopsMatched;
     const auto* troops_item = og::ui::find_picker_menu_item(
-        PickerMenuId::TeamBuild, PickerMenuCommand::ToggleCtfScenarioTroops);
+        PickerMenuId::Scenario, PickerMenuCommand::ToggleCtfScenarioTroops);
     ASSERT_NE(troops_item, nullptr);
 
     // Drive present_menu so the dynamic label renders in the list.
     f.t().push_special(KeyCode::Escape);
-    (void)f.client.present_menu(PickerMenuId::TeamBuild);
+    (void)f.client.present_menu(PickerMenuId::Scenario);
     const std::string dump = f.t().dump();
     EXPECT_NE(dump.find("TROOPS: FAIR"), std::string::npos) << dump;
+}
+
+// The Team Build list renders the appended DIFFICULTY door with its fixed
+// label, past the digit ceiling and reachable by the arrow walk.
+TEST(CursesPickerClient, team_build_lists_the_difficulty_door_last)
+{
+    PickerFixture f;
+    const int door_idx =
+        team_build_item_index(PickerMenuCommand::OpenDifficultyMenu);
+    ASSERT_EQ(static_cast<int>(og::ui::picker_menu_definition(
+                                  PickerMenuId::TeamBuild).items.size()) - 1,
+              door_idx)
+        << "the door is appended last, so nothing above it moved";
+
+    f.t().push_special(KeyCode::Escape);
+    (void)f.client.present_menu(PickerMenuId::TeamBuild);
+    const std::string dump = f.t().dump();
+    // "Difficulty" must be the LAST row the list draws: the curses screen is
+    // where an appended row silently falls off the bottom, so the rendered
+    // tail is the thing worth pinning, not just membership.
+    std::vector<std::string> rows;
+    for (std::size_t start = 0; start < dump.size();) {
+        std::size_t end = dump.find('\n', start);
+        if (end == std::string::npos)
+            end = dump.size();
+        std::string row = dump.substr(start, end - start);
+        while (!row.empty() && row.back() == ' ')
+            row.pop_back();
+        if (!row.empty())
+            rows.push_back(row);
+        start = end + 1;
+    }
+    // The trailing key-hint line is chrome, not a row.
+    ASSERT_FALSE(rows.empty()) << dump;
+    ASSERT_NE(std::string::npos, rows.back().find("Esc/q back"))
+        << "expected the key-hint footer as the last line:\n" << dump;
+    rows.pop_back();
+    ASSERT_FALSE(rows.empty()) << dump;
+    EXPECT_EQ("  Difficulty", rows.back())
+        << "the appended door must be the last rendered row:\n" << dump;
+    EXPECT_EQ(dump.find("Match Teams"), std::string::npos)
+        << "the flat match-rule rows are gone from Team Build:\n" << dump;
+    EXPECT_EQ(dump.find("Score Limit"), std::string::npos) << dump;
 }
 
 // --- view roster ---------------------------------------------------------
@@ -2038,25 +2057,31 @@ TEST(CursesPickerClient, run_game_reports_real_session_load_failure)
     EXPECT_EQ(mounted_before, get_mounted_campaign());
 }
 
-// A richer run_picker: cycle difficulty through the Main menu's Difficulty
-// door, then quit. Asserts the side effect persisted and the loop unwound.
-TEST(CursesPickerClient, run_picker_main_action_then_quit)
+// A richer run_picker: cycle difficulty through Team Build's Difficulty door
+// (it left the Main menu — docs/camp-controls-design.md), then quit. Asserts
+// the side effect persisted and the loop unwound.
+TEST(CursesPickerClient, run_picker_team_build_action_then_quit)
 {
     PickerFixture f;
     const int before = f.client.difficulty();
 
-    const int diff_idx = main_menu_item_index(PickerMenuCommand::OpenDifficultyMenu);
+    const int cont_idx = main_menu_item_index(PickerMenuCommand::ContinueGame);
+    ASSERT_GE(cont_idx, 0);
+    // Main pass 1: "Continue Game" -> Team Build.
+    pick(f.t(), cont_idx);
+    // Team Build: the appended Difficulty door sits past the digit ceiling,
+    // so this route walks the cursor to it.
+    const int diff_idx =
+        team_build_item_index(PickerMenuCommand::OpenDifficultyMenu);
     ASSERT_GE(diff_idx, 0);
-    // First Main menu pass: open the Difficulty submenu (digit+Enter).
-    f.t().push_char(static_cast<char32_t>(U'1' + static_cast<char32_t>(diff_idx)));
-    f.t().push_special(KeyCode::Enter);
+    step_to(f.t(), diff_idx);
     // Submenu: the Difficulty row starts highlighted; select it, dismiss its
     // notice, then Esc backs out of the submenu (-> Back).
     f.t().push_special(KeyCode::Enter);
     dismiss(f.t());
     f.t().push_special(KeyCode::Escape);
-    // Second Main menu pass (show_main_menu loops on non-terminal commands):
-    // Esc to Quit and end the program.
+    // Team Build q (-> Back), then Main menu Esc (-> Quit).
+    f.t().push_char(U'q');
     f.t().push_special(KeyCode::Escape);
 
     og::ui::run_picker(f.client);
@@ -2894,24 +2919,34 @@ TEST(CursesPickerClient, difficulty_submenu_labels_format_from_save)
     EXPECT_NE(dump.find("Infinite Gold: On"), std::string::npos) << dump;
 }
 
-// run_picker reaches the nested Difficulty submenu from the Main menu door and
-// unwinds cleanly: Difficulty -> cycle Respawns -> Back -> Quit (the curses
-// analogue of run_picker_through_scenario_submenu_then_quit above).
+// run_picker reaches the nested Difficulty submenu from the Team Build door
+// and unwinds cleanly: Difficulty -> cycle Respawns -> Back -> Quit (the
+// curses analogue of run_picker_through_scenario_submenu_then_quit above).
 TEST(CursesPickerClient, run_picker_through_difficulty_submenu_then_quit)
 {
     PickerFixture f;
 
-    const int door_idx = main_menu_item_index(PickerMenuCommand::OpenDifficultyMenu);
+    const int cont_idx = main_menu_item_index(PickerMenuCommand::ContinueGame);
+    ASSERT_GE(cont_idx, 0);
+    pick(f.t(), cont_idx); // Main pass 1: Continue -> Team Build
+    const int door_idx =
+        team_build_item_index(PickerMenuCommand::OpenDifficultyMenu);
     ASSERT_GE(door_idx, 0);
-    ASSERT_LE(door_idx, 8) << "digit-jump addresses the first 9 items";
-    // Main pass 1: the Difficulty door opens the submenu.
-    f.t().push_char(static_cast<char32_t>(U'1' + static_cast<char32_t>(door_idx)));
-    f.t().push_special(KeyCode::Enter);
+    ASSERT_GT(door_idx, 8)
+        << "the appended door is past the digit ceiling by design — the "
+           "arrow walk below is the only way in, so it must be tested";
+    ASSERT_EQ(nullptr, og::ui::find_picker_menu_item(
+                           PickerMenuId::Main,
+                           PickerMenuCommand::OpenDifficultyMenu))
+        << "no difficulty door survives on the Main menu";
+    step_to(f.t(), door_idx);
     // Difficulty submenu: cycle Respawns (2nd selectable row), dismiss the
-    // notice, then leave with Esc (-> Back), then Main menu Esc (-> Quit).
+    // notice, then leave with Esc (-> Back), Team Build q (-> Back), then
+    // Main menu Esc (-> Quit).
     pick(f.t(), 1);
     dismiss(f.t());
     f.t().push_special(KeyCode::Escape);
+    f.t().push_char(U'q');
     f.t().push_special(KeyCode::Escape);
 
     og::ui::run_picker(f.client);

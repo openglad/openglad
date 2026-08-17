@@ -950,40 +950,38 @@ constexpr MenuButtonSpec kMainMenuRowsMP[] = {
     {.id = "continue_game", .label = "CONTINUE",
      .x = 80, .y = 79, .w = 68, .h = 20,
      .action = ButtonAction::CreateTeamMenu, .arg = -1,
-     .nav = {.up = 0, .down = 2, .right = 7},
+     .nav = {.up = 0, .down = 2, .right = 6},
      .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
     {.id = "level_edit", .label = "Level Editor",
      .x = 80, .y = 103, .w = 140, .h = 15,
      .action = ButtonAction::DoLevelEdit, .arg = -1,
-     .nav = {.up = 1, .down = 4}},
-    // Seat lifecycle moved beside the live lobby in Base Camp. The remaining
-    // session category keeps the full-width row, followed by the broader
-    // game/presentation settings door.
-    {.id = "difficulty", .label = "DIFFICULTY",
-     .x = 80, .y = 154, .w = 140, .h = 15,
-     .action = ButtonAction::OpenDifficultyMenu, .arg = -1,
-     .nav = {.up = 4, .down = 5}},
-    // "GAME" reads as a settings category under the SETTINGS heading; the
-    // terminal clients keep the fuller "Game Settings" (no heading there).
-    {.id = "options", .label = "GAME",
-     .x = 80, .y = 135, .w = 68, .h = 15,
+     .nav = {.up = 1, .down = 3}},
+    // Seat lifecycle moved beside the live lobby in Base Camp, and
+    // DIFFICULTY followed it down to the camp's command strip
+    // (docs/camp-controls-design.md) — difficulty is a thing you set about
+    // THIS company's next fight, not a thing you set about the program. What
+    // is left is two full-width doors named in full: the settings screen and
+    // the cloud slot. The grey SETTINGS heading that grouped the old narrow
+    // pair went with them; two spelled-out rows need no caption.
+    {.id = "options", .label = "GAME SETTINGS",
+     .x = 80, .y = 135, .w = 140, .h = 15,
      .action = ButtonAction::MainOptions, .arg = -1,
-     .nav = {.up = 2, .down = 3, .right = 9}},
+     .nav = {.up = 2, .down = 8}},
     {.id = "help", .label = "HELP",
      .x = 80, .y = 178, .w = 68, .h = 15,
      .action = ButtonAction::ShowHelp, .arg = -1,
-     .nav = {.up = 3, .down = 0, .right = 6}},
+     .nav = {.up = 8, .down = 0, .right = 5}},
     // The web/native fork (§1.6): exactly one QUIT row survives at
-    // materialized index 6. Native activation quits; web is visibly disabled.
+    // materialized index 5. Native activation quits; web is visibly disabled.
     {.id = "quit", .label = "QUIT ", .hotkey = KEYSTATE_ESCAPE,
      .x = 152, .y = 178, .w = 68, .h = 15,
      .action = ButtonAction::QuitMenu, .arg = 0,
-     .nav = {.up = 3, .down = 0, .left = 5},
+     .nav = {.up = 8, .down = 0, .left = 4},
      .build = MenuBuildGate::NativeOnly},
     {.id = "quit", .label = "QUIT ",
      .x = 152, .y = 178, .w = 68, .h = 15,
      .action = ButtonAction::QuitMenu, .arg = 0,
-     .nav = {.up = 3, .down = 0, .left = 5},
+     .nav = {.up = 8, .down = 0, .left = 4},
      .state_override = &main_menu_web_quit_state,
      .build = MenuBuildGate::WebOnly},
     // Appended tail: LOAD then the mutually exclusive no-company note.
@@ -994,19 +992,18 @@ constexpr MenuButtonSpec kMainMenuRowsMP[] = {
      .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
     {.id = "no_company_note", .label = "NO COMPANY YET",
      .x = 80, .y = 79, .w = 140, .h = 20,
-     .action = ButtonAction::MenuSpecRow, .arg = 8,
+     .action = ButtonAction::MenuSpecRow, .arg = 7,
      .state_override = &main_menu_no_company_note_state,
      .hidden = true},
     // #155 CLOUD: always visible (reachable with zero companies — the fresh
-    // browser restore flow is the point). Pairs with the GAME door on the
-    // first settings row (directly under the heading) (the y=119..134 band belongs to the grey SETTINGS
-    // heading drawn by main_menu_draw_content at y=125 — no button may sit
-    // there). Appended after the note, so its materialized ordinal is 9 on
-    // every variant (exactly one QUIT row survives materialization).
-    {.id = "cloud", .label = "CLOUD",
-     .x = 152, .y = 135, .w = 68, .h = 15,
-     .action = ButtonAction::MenuSpecRow, .arg = 9,
-     .nav = {.up = 2, .down = 3, .left = 4}},
+    // browser restore flow is the point). The second settings row, directly
+    // under GAME SETTINGS and the same full width. Appended after the note,
+    // so its materialized ordinal is 8 on every variant (exactly one QUIT
+    // row survives materialization).
+    {.id = "cloud", .label = "CLOUD SAVES",
+     .x = 80, .y = 154, .w = 140, .h = 15,
+     .action = ButtonAction::MenuSpecRow, .arg = 8,
+     .nav = {.up = 3, .down = 4}},
 };
 
 constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
@@ -1018,35 +1015,31 @@ constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
     {.id = "continue_game", .label = "CONTINUE",
      .x = 80, .y = 79, .w = 68, .h = 20,
      .action = ButtonAction::CreateTeamMenu, .arg = -1,
-     .nav = {.up = 0, .down = 2, .right = 7},
+     .nav = {.up = 0, .down = 2, .right = 6},
      .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
     {.id = "level_edit", .label = "Level Editor",
      .x = 80, .y = 103, .w = 140, .h = 15,
      .action = ButtonAction::DoLevelEdit, .arg = -1,
-     .nav = {.up = 1, .down = 4}},
-    {.id = "difficulty", .label = "DIFFICULTY",
-     .x = 80, .y = 154, .w = 140, .h = 15,
-     .action = ButtonAction::OpenDifficultyMenu, .arg = -1,
-     .nav = {.up = 4, .down = 5}},
-    // "GAME" reads as a settings category under the SETTINGS heading; the
-    // terminal clients keep the fuller "Game Settings" (no heading there).
-    {.id = "options", .label = "GAME",
-     .x = 80, .y = 135, .w = 68, .h = 15,
+     .nav = {.up = 1, .down = 3}},
+    // Two full-width doors named in full; DIFFICULTY went to the Base Camp
+    // command strip and the grey SETTINGS caption went with it.
+    {.id = "options", .label = "GAME SETTINGS",
+     .x = 80, .y = 135, .w = 140, .h = 15,
      .action = ButtonAction::MainOptions, .arg = -1,
-     .nav = {.up = 2, .down = 3, .right = 9}},
+     .nav = {.up = 2, .down = 8}},
     {.id = "help", .label = "HELP",
      .x = 80, .y = 178, .w = 68, .h = 15,
      .action = ButtonAction::ShowHelp, .arg = -1,
-     .nav = {.up = 3, .down = 0, .right = 6}},
+     .nav = {.up = 8, .down = 0, .right = 5}},
     {.id = "quit", .label = "QUIT ", .hotkey = KEYSTATE_ESCAPE,
      .x = 152, .y = 178, .w = 68, .h = 15,
      .action = ButtonAction::QuitMenu, .arg = 0,
-     .nav = {.up = 3, .down = 0, .left = 5},
+     .nav = {.up = 8, .down = 0, .left = 4},
      .build = MenuBuildGate::NativeOnly},
     {.id = "quit", .label = "QUIT ",
      .x = 152, .y = 178, .w = 68, .h = 15,
      .action = ButtonAction::QuitMenu, .arg = 0,
-     .nav = {.up = 3, .down = 0, .left = 5},
+     .nav = {.up = 8, .down = 0, .left = 4},
      .state_override = &main_menu_web_quit_state,
      .build = MenuBuildGate::WebOnly},
     {.id = "load_company", .label = "LOAD",
@@ -1056,27 +1049,26 @@ constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
      .gate = {.gate = MenuGate::Custom, .custom = &main_menu_company_present}},
     {.id = "no_company_note", .label = "NO COMPANY YET",
      .x = 80, .y = 79, .w = 140, .h = 20,
-     .action = ButtonAction::MenuSpecRow, .arg = 8,
+     .action = ButtonAction::MenuSpecRow, .arg = 7,
      .state_override = &main_menu_no_company_note_state,
      .hidden = true},
     // #155 CLOUD: always visible (reachable with zero companies — the fresh
-    // browser restore flow is the point). Pairs with the GAME door on the
-    // first settings row (directly under the heading) (the y=119..134 band belongs to the grey SETTINGS
-    // heading drawn by main_menu_draw_content at y=125 — no button may sit
-    // there). Appended after the note, so its materialized ordinal is 9 on
-    // every variant (exactly one QUIT row survives materialization).
-    {.id = "cloud", .label = "CLOUD",
-     .x = 152, .y = 135, .w = 68, .h = 15,
-     .action = ButtonAction::MenuSpecRow, .arg = 9,
-     .nav = {.up = 2, .down = 3, .left = 4}},
+    // browser restore flow is the point). The second settings row, directly
+    // under GAME SETTINGS and the same full width. Appended after the note,
+    // so its materialized ordinal is 8 on every variant (exactly one QUIT
+    // row survives materialization).
+    {.id = "cloud", .label = "CLOUD SAVES",
+     .x = 80, .y = 154, .w = 140, .h = 15,
+     .action = ButtonAction::MenuSpecRow, .arg = 8,
+     .nav = {.up = 3, .down = 4}},
 };
 
 // The CLOUD row's materialized ordinal (table length - 2: exactly one QUIT
 // row survives materialization, and CLOUD is appended after the note).
-constexpr int kMainMenuCloudSpecArg = 9;
+constexpr int kMainMenuCloudSpecArg = 8;
 
 // #155: the main menu's first spec-row consumer. The no_company_note row
-// (arg 8) is never Visible, so only CLOUD can arrive here.
+// (arg 7) is never Visible, so only CLOUD can arrive here.
 Sint32 main_menu_on_spec_row(int row, void* /*screen_state*/)
 {
     if (row == kMainMenuCloudSpecArg)
@@ -1129,9 +1121,9 @@ void main_menu_draw_content(void* /*screen_state*/)
         count++;
     }
 
-    // Center the category heading on the 140px menu column (x=80..220), not
-    // on the 320px canvas; the classic column art shifts this stack left.
-    game->text_normal.write_xy_center(150, 125, GREY, "%s", "SETTINGS");
+    // The grey SETTINGS caption used to sit at (150,125) over a narrow
+    // GAME | CLOUD pair. GAME SETTINGS and CLOUD SAVES say it themselves
+    // now, so the caption — and the y=119..134 band it reserved — is gone.
 
     // On native builds, show the version number on the main menu. On
     // Emscripten/web builds the version is displayed elsewhere (the help UI).
@@ -2236,7 +2228,7 @@ static_assert(std::size(kHelpMenuRows) == kHelpMenuNextIndex + 1,
 // §9.11 row-body train zone (84,45+14r,214,10; the TRAIN column is deleted,
 // clicking the row trains), right-edge move-up button — the page cluster
 // top-right (< p/N >), and the bottom command
-// strip BACK | HIRE | SCENARIO | NETWORK | GO at y=178. SAVE/LOAD
+// strip BACK | DIFFICULTY | SCENARIO | NETWORK | GO at y=178. SAVE/LOAD
 // left the base camp (§3.8: saving is automatic on every mutation).
 // Roster and pager rows dispatch through ButtonAction::MenuSpecRow (G3,
 // arg == spec ordinal); the strip keeps the legacy ButtonActions so do_call
@@ -2281,7 +2273,7 @@ static_assert(kBaseCampRowPitch ==
 // (kBaseCampPanelInnerRightX).
 constexpr int kBaseCampGlyphAdvance = 6;  // small font pen advance
 // Panel OUTER right edge (EXCLUSIVE): the bevel's last column (311) + 1 ==
-// the GO/READY right edge (244 + 68) — outside-to-outside alignment.
+// the GO/READY right edge (262 + 50) — outside-to-outside alignment.
 constexpr int kBaseCampPanelRightX = 312;
 // Panel inner-face right edge (EXCLUSIVE): the outer edge minus the 2px
 // bevel. In-panel controls (the per-row '^') end here.
@@ -2343,9 +2335,9 @@ constexpr int kBaseCampMoveUpX =
 // split"): id hire_troops keeps ordinal kCreateMenuHireIndex but leaves the
 // command strip for the roster header band at y=14 — right-aligned with a
 // 4px gutter before the pager cluster, clear of the scenario_line hit zone
-// (ends x=214). The 50px strip hole at (58,178) is deliberate chrome; the
-// zone's roster widget hides this button when its can_hire capability is
-// off.
+// (ends x=214). The slot it left on the strip is the DIFFICULTY door now
+// (docs/camp-controls-design.md); the zone's roster widget hides this button
+// when its can_hire capability is off.
 constexpr int kBaseCampHireWidth = 34;
 constexpr int kBaseCampHireX =
     kBaseCampPagePrevX - 4 - kBaseCampHireWidth;
@@ -2360,6 +2352,38 @@ static_assert(kBaseCampHireX == og::ui::kBaseCampLineBHireWallX,
               "line-B budget must follow HIRE's left edge");
 static_assert(kBaseCampPagePrevX == og::ui::kBaseCampLineBPagerWallX,
               "line-B budget must follow the roster pager cluster");
+// The bottom command strip, re-gridded when DIFFICULTY joined it
+// (docs/camp-controls-design.md): five doors left-to-right on one 6px gutter,
+// closing flush on the panel's right rail. Every face carries its label in
+// full at the beveled budget ((w - 8) / 6 glyphs): BACK 6>=4,
+// DIFFICULTY 10=10, SCENARIO 9>=8, NETWORK 8>=7, GO 7>=2 / READY 7>=5. The
+// width DIFFICULTY needed came out of GO alone — the old 68px GO face was
+// the strip's only slack.
+constexpr int kBaseCampStripY = 178;
+constexpr int kBaseCampStripHeight = 18;
+constexpr int kBaseCampStripGap = 6;
+constexpr int kBaseCampStripBackX = 8;
+constexpr int kBaseCampStripBackWidth = 44;
+constexpr int kBaseCampStripDifficultyX =
+    kBaseCampStripBackX + kBaseCampStripBackWidth + kBaseCampStripGap;
+constexpr int kBaseCampStripDifficultyWidth = 68;
+constexpr int kBaseCampStripScenarioX =
+    kBaseCampStripDifficultyX + kBaseCampStripDifficultyWidth +
+    kBaseCampStripGap;
+constexpr int kBaseCampStripScenarioWidth = 62;
+constexpr int kBaseCampStripNetworkX =
+    kBaseCampStripScenarioX + kBaseCampStripScenarioWidth + kBaseCampStripGap;
+constexpr int kBaseCampStripNetworkWidth = 56;
+constexpr int kBaseCampStripGoX =
+    kBaseCampStripNetworkX + kBaseCampStripNetworkWidth + kBaseCampStripGap;
+// GO/READY closes the strip on the same rail as the roster pager '>' and the
+// seat rail's '+'.
+constexpr int kBaseCampStripGoWidth =
+    kBaseCampPanelRightX - kBaseCampStripGoX;
+static_assert(kBaseCampStripGoX + kBaseCampStripGoWidth ==
+                  kBaseCampPanelRightX,
+              "the command strip closes on the panel's right rail");
+
 // Zone actions band geometry (docs/basecamp-zones-design.md "Bounds
 // arithmetic"): full-width row faces inside the panel's inner face with the
 // widget's pager pair closing the right rail on the band's first row.
@@ -2597,12 +2621,15 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
      .no_draw = true},
     // Bottom command strip (y=178, 18px tall). BACK keeps the Escape hotkey
     // (the shared cancel grammar). HIRE left the strip for the roster band
-    // header (its 50px hole is deliberate chrome); BACK's right-link goes
-    // straight to SCENARIO.
+    // header; the slot it left is the DIFFICULTY door, which is appended at
+    // the table's end (kCreateMenuDifficultyIndex) so no established ordinal
+    // moved — the strip's READING order is BACK | DIFFICULTY | SCENARIO |
+    // NETWORK | GO, its ordinal order is not.
     {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
-     .x = 8, .y = 178, .w = 44, .h = 18,
+     .x = kBaseCampStripBackX, .y = kBaseCampStripY,
+     .w = kBaseCampStripBackWidth, .h = kBaseCampStripHeight,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 7, .right = kCreateMenuScenarioIndex}},
+     .nav = {.up = 7, .right = kCreateMenuDifficultyIndex}},
     // The roster band header's HIRE (docs/basecamp-zones-design.md): same
     // id and ordinal, relocated beside the roster pager cluster. Hidden per
     // frame when the zone's roster widget clears can_hire.
@@ -2612,12 +2639,15 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
      .action = ButtonAction::CreateHireMenu, .arg = -1,
      .nav = {.down = 0, .left = kBaseCampScenarioLineIndex}},
     {.id = "scenario", .label = "SCENARIO",
-     .x = 114, .y = 178, .w = 62, .h = 18,
+     .x = kBaseCampStripScenarioX, .y = kBaseCampStripY,
+     .w = kBaseCampStripScenarioWidth, .h = kBaseCampStripHeight,
      .action = ButtonAction::CreateScenarioMenu, .arg = -1,
-     .nav = {.up = kBaseCampScenarioLineIndex, .left = kCreateMenuBackIndex,
+     .nav = {.up = kBaseCampScenarioLineIndex,
+             .left = kCreateMenuDifficultyIndex,
              .right = kCreateMenuNetworkingIndex}},
     {.id = "networking", .label = "NETWORK",
-     .x = 182, .y = 178, .w = 56, .h = 18,
+     .x = kBaseCampStripNetworkX, .y = kBaseCampStripY,
+     .w = kBaseCampStripNetworkWidth, .h = kBaseCampStripHeight,
      .action = ButtonAction::Networking, .arg = -1,
      .nav = {.up = kBaseCampRowBodyBase + 7, .left = kCreateMenuScenarioIndex,
              .right = kCreateMenuGoIndex}},
@@ -2626,7 +2656,8 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
     // TeamBuild-scope StartGame interception — pinned byte-identical);
     // networked hosts get the state-3/4 face via the color binding.
     {.id = "go", .label = "GO",
-     .x = 244, .y = 178, .w = 68, .h = 18,
+     .x = kBaseCampStripGoX, .y = kBaseCampStripY,
+     .w = kBaseCampStripGoWidth, .h = kBaseCampStripHeight,
      .action = ButtonAction::GoMenu, .arg = -1,
      .nav = {.up = kBaseCampRowBodyBase + 7,
              .left = kCreateMenuNetworkingIndex},
@@ -2636,7 +2667,8 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
     // resolution 1 — interact("go") and the StartGame interception survive
     // untouched); label/face re-derive per frame from the lobby state.
     {.id = "ready", .label = "READY",
-     .x = 244, .y = 178, .w = 68, .h = 18,
+     .x = kBaseCampStripGoX, .y = kBaseCampStripY,
+     .w = kBaseCampStripGoWidth, .h = kBaseCampStripHeight,
      .action = ButtonAction::ToggleLobbyReady, .arg = kCreateMenuReadyIndex,
      .nav = {.up = kBaseCampRowBodyBase + 7,
              .left = kCreateMenuNetworkingIndex},
@@ -2741,6 +2773,17 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
     OG_BASE_CAMP_ZONE_ROW(zone_spare, 0, kBaseCampZoneSpareBase),
     OG_BASE_CAMP_ZONE_ROW(zone_spare, 1, kBaseCampZoneSpareBase),
     OG_BASE_CAMP_ZONE_ROW(zone_spare, 2, kBaseCampZoneSpareBase),
+    // The DIFFICULTY door, appended at 72 (docs/camp-controls-design.md).
+    // Difficulty, respawns, permadeath and the rest describe the fight this
+    // company is about to take, so they belong beside SCENARIO and GO rather
+    // than on the program's front door. Same real ButtonAction as its strip
+    // peers — the submenu returns MENU_REDRAW and the camp keeps running.
+    {.id = "difficulty", .label = "DIFFICULTY",
+     .x = kBaseCampStripDifficultyX, .y = kBaseCampStripY,
+     .w = kBaseCampStripDifficultyWidth, .h = kBaseCampStripHeight,
+     .action = ButtonAction::OpenDifficultyMenu, .arg = -1,
+     .nav = {.up = 7, .left = kCreateMenuBackIndex,
+             .right = kCreateMenuScenarioIndex}},
 };
 
 #undef OG_BASE_CAMP_DEP
@@ -4163,10 +4206,11 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     buttons[kBaseCampSeatsLabelIndex].nav.down = kCreateMenuBackIndex;
     buttons[kBaseCampSeatPagePrevIndex].nav.up = rail_up_left;
     buttons[kBaseCampSeatPagePrevIndex].nav.down = kCreateMenuBackIndex;
-    // HIRE left the strip, so the first two cards both drop onto SCENARIO
-    // (the nearest strip door under their faces).
+    // Each card drops onto the strip door under its face. The re-gridded
+    // strip put DIFFICULTY under card one, so the doubled SCENARIO link the
+    // empty slot forced is gone.
     constexpr std::array<int, kBaseCampSeatCardsPerPage> card_down{
-        kCreateMenuScenarioIndex,
+        kCreateMenuDifficultyIndex,
         kCreateMenuScenarioIndex,
         kCreateMenuNetworkingIndex,
         kCreateMenuGoIndex};
@@ -4198,12 +4242,16 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     };
     buttons[kCreateMenuBackIndex].nav = {
         .up = kBaseCampSeatsLabelIndex, .down = -1, .left = -1,
+        .right = kCreateMenuDifficultyIndex};
+    buttons[kCreateMenuDifficultyIndex].nav = {
+        .up = visible_card_or_label(0), .down = -1,
+        .left = kCreateMenuBackIndex,
         .right = kCreateMenuScenarioIndex};
     buttons[kCreateMenuScenarioIndex].nav = {
         .up = networked
             ? visible_card_or_label(1)
             : kBaseCampScenarioLineIndex,
-        .down = -1, .left = kCreateMenuBackIndex,
+        .down = -1, .left = kCreateMenuDifficultyIndex,
         .right = kCreateMenuNetworkingIndex};
     buttons[kCreateMenuNetworkingIndex].nav = {
         .up = visible_card_or_label(2), .down = -1,
@@ -6476,9 +6524,12 @@ const MenuScreenSpec& difficulty_menu_screen_spec()
         .nav = {.kind = NavProgramKind::Rewire,
                 .rewire = &sync_difficulty_menu_visibility},
         // A host GO must launch a joiner parked in this subscreen: propagate
-        // the remote MENU_EXIT (with CONTINUE selected) so mainmenu() unwinds
-        // too, instead of a local BACK's MENU_REDRAW.
-        .remote_start = RemoteStartScope::MainScope,
+        // the remote MENU_EXIT with the unwind target selected, instead of a
+        // local BACK's MENU_REDRAW. TeamBuild scope (START GAME as that
+        // target), like every other Base Camp child — Hire, Train, Progress,
+        // Scenario, Matchup, Seat Settings — because Base Camp is the screen
+        // this door opens from now.
+        .remote_start = RemoteStartScope::TeamBuildScope,
         .remote_start_exit = RemoteStartExit::ReturnMenuExit,
         .polls_lobby = true,
         // The match-rule callbacks keep their own

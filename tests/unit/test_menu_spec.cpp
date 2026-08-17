@@ -104,32 +104,31 @@ TEST(MenuSpec, legacy_allied_mode_helper_has_no_menu_item)
 TEST(MenuSpec, ctf_setting_labels_full_cycles)
 {
     SaveData save;
-    const PickerMenuItem* teams =
-        item_of(PickerMenuId::TeamBuild, PickerMenuCommand::CycleCtfTeamCount);
-    const PickerMenuItem* caps = item_of(
-        PickerMenuId::TeamBuild, PickerMenuCommand::CycleCtfCaptureLimit);
+    // Teams and target score are the camp's MATCH SETUP page now
+    // (docs/camp-controls-design.md), so no terminal menu lists them; their
+    // label formatters stay the shared word authority for the SDL MATCHUP
+    // buttons and are exercised directly. The SCENARIO troops row still
+    // carries the third one through the menu binding.
     const PickerMenuItem* troops = item_of(
-        PickerMenuId::TeamBuild, PickerMenuCommand::ToggleCtfScenarioTroops);
-    ASSERT_NE(nullptr, teams);
-    ASSERT_NE(nullptr, caps);
+        PickerMenuId::Scenario, PickerMenuCommand::ToggleCtfScenarioTroops);
     ASSERT_NE(nullptr, troops);
 
     save.ctf_team_count = 0;
-    EXPECT_EQ("Teams: Auto", og::ui::menu_item_label(*teams, context_for(save)));
+    EXPECT_EQ("Teams: Auto", og::ui::format_ctf_teams_label(save));
     const char* team_labels[] = {"Teams: 2", "Teams: 3", "Teams: 4",
                                  "Teams: Auto"};
     for (const char* label : team_labels) {
         og::ui::cycle_ctf_team_count(save);
-        EXPECT_EQ(label, og::ui::menu_item_label(*teams, context_for(save)));
+        EXPECT_EQ(label, og::ui::format_ctf_teams_label(save));
     }
 
     save.ctf_capture_limit = 0;
-    EXPECT_EQ("Limit: Map", og::ui::menu_item_label(*caps, context_for(save)));
+    EXPECT_EQ("Limit: Map", og::ui::format_ctf_caps_label(save));
     const char* cap_labels[] = {"Limit: 1", "Limit: 3", "Limit: 5",
                                 "Limit: 10", "Limit: Map"};
     for (const char* label : cap_labels) {
         og::ui::cycle_ctf_capture_limit(save);
-        EXPECT_EQ(label, og::ui::menu_item_label(*caps, context_for(save)));
+        EXPECT_EQ(label, og::ui::format_ctf_caps_label(save));
     }
 
     // Three states, same cycle on every campaign (matched-teams D28).
@@ -240,27 +239,25 @@ TEST(MenuSpec, fixed_labels_pass_through_and_null_save_falls_back)
         item_of(PickerMenuId::TeamBuild, PickerMenuCommand::ViewTeam);
     const PickerMenuItem* go =
         item_of(PickerMenuId::TeamBuild, PickerMenuCommand::StartGame);
-    const PickerMenuItem* ctf_teams =
-        item_of(PickerMenuId::TeamBuild,
-                PickerMenuCommand::CycleCtfTeamCount);
     ASSERT_NE(nullptr, view_team);
     ASSERT_NE(nullptr, go);
-    ASSERT_NE(nullptr, ctf_teams);
-
     EXPECT_EQ("Roster", og::ui::menu_item_label(*view_team, context_for(save)));
     EXPECT_EQ("GO!", og::ui::menu_item_label(*go, context_for(save)));
 
     // A save-backed binding without a save falls back to the fixed label.
+    const PickerMenuItem* respawns =
+        item_of(PickerMenuId::Difficulty, PickerMenuCommand::CycleRespawnMode);
+    ASSERT_NE(nullptr, respawns);
     MenuLabelContext no_save;
-    EXPECT_EQ("Match Teams", og::ui::menu_item_label(*ctf_teams, no_save));
+    EXPECT_EQ("Respawns", og::ui::menu_item_label(*respawns, no_save));
 
     // Spectator context does not alter any current label (documents Layer-E
     // behavior; Layer F adds spectator-aware bindings).
     MenuLabelContext spectator = context_for(save);
     spectator.spectator = true;
     EXPECT_EQ("Roster", og::ui::menu_item_label(*view_team, spectator));
-    EXPECT_EQ("Teams: Auto",
-              og::ui::menu_item_label(*ctf_teams, spectator));
+    EXPECT_EQ("Respawns: Off",
+              og::ui::menu_item_label(*respawns, spectator));
 }
 
 // --- cancel semantics -----------------------------------------------------
@@ -321,24 +318,6 @@ TEST(MenuSpec, gate_state_matrix)
               og::ui::gate_state(GateBinding{MenuGate::LocalOnly, nullptr, {}},
                                  networked_client));
 
-    // Versus campaign gate: follows the save's matchup: yaml key (the
-    // shipped modes package must be discoverable for the private-mount
-    // lookup); a context without a save is gated closed.
-    restore_default_campaigns();
-    og::data::clear_campaign_metadata_cache();
-    save.current_campaign = "gladiator";
-    EXPECT_EQ(RowState::Hidden,
-              og::ui::gate_state(GateBinding{MenuGate::VersusCampaignOnly, nullptr, {}},
-                                 local));
-    save.current_campaign = "modes";
-    EXPECT_EQ(RowState::Visible,
-              og::ui::gate_state(GateBinding{MenuGate::VersusCampaignOnly, nullptr, {}},
-                                 local));
-    MenuLabelContext no_save;
-    EXPECT_EQ(RowState::Hidden,
-              og::ui::gate_state(GateBinding{MenuGate::VersusCampaignOnly, nullptr, {}},
-                                 no_save));
-
     // Custom gate: follows the predicate; a null predicate reads Visible.
     const GateBinding custom_true{MenuGate::Custom,
         [](const MenuLabelContext&) { return true; }, {}};
@@ -350,26 +329,15 @@ TEST(MenuSpec, gate_state_matrix)
               og::ui::gate_state(GateBinding{MenuGate::Custom, nullptr, {}}, local));
 }
 
-TEST(MenuSpec, terminal_gate_messages_guard_the_ctf_trio_verbatim)
+TEST(MenuSpec, terminal_gate_messages_leave_scenario_troops_free)
 {
     SaveData save;
     save.current_campaign = "gladiator";
 
-    const PickerMenuCommand ctf_commands[] = {
-        PickerMenuCommand::CycleCtfTeamCount,
-        PickerMenuCommand::CycleCtfCaptureLimit,
-    };
-    for (const PickerMenuCommand command : ctf_commands) {
-        const PickerMenuItem* item = item_of(PickerMenuId::TeamBuild, command);
-        ASSERT_NE(nullptr, item);
-        EXPECT_EQ("Matchup settings apply to versus maps only.",
-                  og::ui::terminal_gate_message(*item, context_for(save)));
-    }
-
-    // Scenario troops is deliberately NOT in that set any more: "strip
-    // everything authored" is meaningful on a classic campaign, which is
-    // exactly why the control moved to the SCENARIO screen. It must stay
-    // reachable on the classic campaign selected above.
+    // The match-rule knobs left the terminal menus for the camp's MATCH
+    // SETUP page, and their versus guard left with them. Scenario troops
+    // stays on the SCENARIO screen ungated: "strip everything authored" is
+    // meaningful on a classic campaign.
     const PickerMenuItem* classic_troops =
         item_of(PickerMenuId::Scenario,
                 PickerMenuCommand::ToggleCtfScenarioTroops);
@@ -378,22 +346,10 @@ TEST(MenuSpec, terminal_gate_messages_guard_the_ctf_trio_verbatim)
               og::ui::terminal_gate_message(*classic_troops,
                                             context_for(save)));
 
-    // On the versus campaign the gate passes: no guard message.
-    restore_default_campaigns();
-    og::data::clear_campaign_metadata_cache();
-    save.current_campaign = "modes";
-    for (const PickerMenuCommand command : ctf_commands) {
-        const PickerMenuItem* item = item_of(PickerMenuId::TeamBuild, command);
-        ASSERT_NE(nullptr, item);
-        EXPECT_EQ("", og::ui::terminal_gate_message(*item, context_for(save)));
-    }
-
-    // Ungated items never produce a message on either campaign.
+    // Ungated items never produce a message.
     const PickerMenuItem* view_team =
         item_of(PickerMenuId::TeamBuild, PickerMenuCommand::ViewTeam);
     ASSERT_NE(nullptr, view_team);
-    EXPECT_EQ("", og::ui::terminal_gate_message(*view_team, context_for(save)));
-    save.current_campaign = "gladiator";
     EXPECT_EQ("", og::ui::terminal_gate_message(*view_team, context_for(save)));
 }
 

@@ -9,12 +9,15 @@ The fire IS the Base Camp. `base_camp` composes the gameplay zone every
 fetch (docs/basecamp-zones-design.md): the purse heads the panel, the camp
 stanza speaks, the company stands, and under it the docket carries the fight
 at the company's feet (the level the cursor rests on, named by its own
-scenario title), the real forward choices out of it, the night's own offer,
-and the two doors (QUARTERMASTER for the standing trade, THE LEDGER for what
-the road has cost). A road the company has not earned is closed by the
-ENGINE's own decoration, never by a refusal written here. Back rows never
-render: backtracking lives in the world's exits, where the player already
-walks it.
+scenario title), the night's own offer, and the two doors (QUARTERMASTER for
+the standing trade, THE LEDGER for what the road has cost). The forward
+choices out of that fight are named on the night they open — the night it is
+won — so an ordinary night is three rows, which is the whole band the panel
+shows at once; a road advertised early would push THE LEDGER behind a pager
+arrow for the whole campaign. That is composition, not gating: a road the
+company has not earned is closed by the ENGINE's own decoration, never by a
+refusal written here. Back rows never render: backtracking lives in the
+world's exits, where the player already walks it.
 
 `lib/road.lua` mirrors the shipped FORWARD exits level by level (with each
 edge's stake as its note, and the Bearer's SAVE_ALL levels flagged

@@ -936,31 +936,26 @@ TEST(PlatformHeadless, text_protocol_event_text_is_valid_json_escaped)
 
 TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
 {
-    // Team Build is 13 items (§2.5 in-place substitution: 1=roster,
+    // Team Build is 11 items (§2.5 in-place substitution: 1=roster,
     // 4=deploy, 5=ready, 6=GO!; #206 inserted 7=camp before Back, shifting
-    // 8=back, 9=networking, 10=Scenario); the scenario-shaped commands nest
+    // 8=back, 9=networking, 10=Scenario; the flat CTF trio left for the
+    // camp's MATCH SETUP page and 11=difficulty was appended in its place —
+    // docs/camp-controls-design.md); the scenario-shaped commands nest
     // under the Scenario submenu (1=set_campaign, 2=set_level,
     // 3=view_scenario, 4=matchup, 5=progress, 6=troops, 7=back — the
-    // missions door retired into the camp). Main 3=difficulty opens the
-    // DIFFICULTY submenu
+    // missions door retired into the camp). Team Build 11=difficulty opens
+    // the DIFFICULTY submenu
     // (1=difficulty, 2=respawns, 3=respawn delay, 4=permadeath,
-    // 5=generators, 6=infinite gold, 7=back).
+    // 5=generators, 6=infinite gold, 7=back). Main is 8 items now:
+    // 1=begin, 2=continue, 3=level edit, 4=options, 5=help, 6=quit,
+    // 7=load company, 8=cloud.
     const std::string input =
         "bad\r\n"   // main: invalid choice; terminal CR is trimmed
-        "3\n"       // main: difficulty -> DIFFICULTY submenu
-        "1\n"       // difficulty: cycle difficulty
-        "2\n"       // difficulty: cycle respawns
-        "3\n"       // difficulty: cycle respawn delay
-        "4\n"       // difficulty: toggle permadeath
-        "5\n"       // difficulty: cycle generators
-        "6\n"       // difficulty: toggle infinite gold
-        "6\n"       // difficulty: toggle infinite gold back off
-        "7\n"       // difficulty: back -> main
-        "4\n"       // main: level edit (unavailable)
-        "5\n"       // main: options
+        "3\n"       // main: level edit (unavailable)
+        "4\n"       // main: options
         "newslot\n"
         "not-a-seed\n"
-        "5\n"       // main: options again
+        "4\n"       // main: options again
         "textslot\n"
         "123\n"
         "2\n"       // main: continue -> team build (base camp)
@@ -999,9 +994,18 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "6\n"       // scenario: cycle scenario troops (ALL -> OWN)
         "6\n"       // scenario: cycle scenario troops (OWN -> ALL)
         "7\n"       // scenario: back -> team build
+        "11\n"      // team build: difficulty -> DIFFICULTY submenu
+        "1\n"       // difficulty: cycle difficulty
+        "2\n"       // difficulty: cycle respawns
+        "3\n"       // difficulty: cycle respawn delay
+        "4\n"       // difficulty: toggle permadeath
+        "5\n"       // difficulty: cycle generators
+        "6\n"       // difficulty: toggle infinite gold
+        "6\n"       // difficulty: toggle infinite gold back off
+        "7\n"       // difficulty: back -> team build
         "9\n"       // team build: networking (unavailable)
         "8\n"       // team build: back -> main
-        "7\n";      // main: quit
+        "6\n";      // main: quit
 
     restore_default_campaigns(); // order-independent: install the packages
 
@@ -1038,7 +1042,7 @@ TEST(PlatformHeadless, text_picker_set_level_prompt_rides_the_gate)
             "15\n"
             "7\n"    // scenario: back -> team build
             "8\n"    // team build: back -> main
-            "7\n";   // main: quit
+            "6\n";   // main: quit
         StdinRedirect stdin_redirect(input);
         CoutRedirect cout_redirect;
         StdoutCapture stdout_capture;
@@ -1060,13 +1064,13 @@ TEST(PlatformHeadless, text_picker_set_level_prompt_rides_the_gate)
 
 TEST(PlatformHeadless, text_picker_drives_the_cloud_submenu)
 {
-    // #155: Main 9=cloud (appended after load_company, so positions 1-8 are
-    // untouched); the submenu is 1=passphrase, 2=upload, 3=download, 4=back.
+    // #155: Main 8=cloud (last, after load_company); the submenu is
+    // 1=passphrase, 2=upload, 3=download, 4=back.
     // The headless bridge installs no cloud HTTP callbacks, so upload and
     // download degrade with the D8 unavailable line.
     cfg.data.erase("cloud");
     const std::string input =
-        "9\n"                      // main: cloud -> CLOUD submenu
+        "8\n"                      // main: cloud -> CLOUD submenu
         "1\n"                      // cloud: passphrase
         "\n"                       //   blank cancels (unchanged)
         "1\n"                      // cloud: passphrase
@@ -1076,7 +1080,7 @@ TEST(PlatformHeadless, text_picker_drives_the_cloud_submenu)
         "2\n"                      // cloud: upload -> unavailable
         "3\n"                      // cloud: download -> unavailable
         "4\n"                      // cloud: back -> main
-        "7\n";                     // main: quit
+        "6\n";                     // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1129,7 +1133,7 @@ TEST(PlatformHeadless, text_picker_reports_protocol_start_failure)
         "2\n"  // main: continue -> team build
         "6\n"  // team build: GO! attempts the invalid level
         "8\n"  // failed session returns to team build: back
-        "7\n"); // main: quit
+        "6\n"); // main: quit
     CoutRedirect output;
     StdoutSilencer stdout_silencer;
 
@@ -1160,7 +1164,7 @@ TEST(PlatformHeadless, text_picker_new_game_resets_campaign_and_mount)
         "\n"        //   name entry: blank accepts the generated company name
         "\n"        //   campaign select: blank keeps current (= default reset)
         "8\n"       // team build: back -> main
-        "7\n";      // main: quit
+        "6\n";      // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1259,13 +1263,13 @@ TEST(PlatformHeadless, text_picker_company_list_open_delete_and_guards)
 
     // Rows (most-recent-first): 1 = wp3hlb, 2 = wp3hla, 3 = wp3hlc (corrupt).
     const std::string input =
-        "8\n"       // main: load company -> the company list
+        "7\n"       // main: load company -> the company list
         "1\n"       //   list: open company...
         "3\n"       //     #3 = corrupt -> damaged message, never switches
         "1\n"       //   list: open company...
         "1\n"       //     #1 = wp3hlb -> loads, slot follows -> team build
         "8\n"       // team build: back -> main
-        "8\n"       // main: load company again (active is now wp3hlb)
+        "7\n"       // main: load company again (active is now wp3hlb)
         "3\n"       //   list: delete company...
         "1\n"       //     #1 = wp3hlb = ACTIVE -> refused (switch first)
         "3\n"       //   list: delete company...
@@ -1277,7 +1281,7 @@ TEST(PlatformHeadless, text_picker_company_list_open_delete_and_guards)
         "2\n"       //   list: backups...
         "1\n"       //     #1 = wp3hlb: no snapshots yet -> backs out (§2.4)
         "4\n"       //   list: back -> main
-        "7\n";      // main: quit
+        "6\n";      // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1363,13 +1367,13 @@ TEST(PlatformHeadless, text_picker_cloud_download_confirms_installs_and_opens)
     set_platform_bridge(faked);
 
     const std::string input =
-        "9\n"                      // main: cloud -> CLOUD submenu
+        "8\n"                      // main: cloud -> CLOUD submenu
         "1\n"                      // cloud: passphrase
         "correct horse battery\n"
         "3\n"                      // cloud: download
         "y\n"                      //   NO-first overwrite confirm -> yes
         "4\n"                      // cloud: back -> main
-        "7\n";                     // main: quit
+        "6\n";                     // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1434,7 +1438,7 @@ TEST(PlatformHeadless, text_picker_backups_delete_and_restore_round_trip)
     // Snapshot rows (seq desc): 1 = seq 9 (corrupt), 2 = seq 2 (MID),
     // 3 = seq 1 (OLD).
     const std::string input =
-        "8\n"       // main: load company -> the company list
+        "7\n"       // main: load company -> the company list
         "2\n"       //   list: backups...
         "1\n"       //     #1 = wp3hlr (the only company)
         "1\n"       //     backups: restore...
@@ -1452,7 +1456,7 @@ TEST(PlatformHeadless, text_picker_backups_delete_and_restore_round_trip)
         "2\n"       //       #2 = seq 1 (OLD)...
         "y\n"       //       explicit yes -> rewound -> team build
         "8\n"       // team build: back -> main
-        "7\n";      // main: quit
+        "6\n";      // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1560,7 +1564,7 @@ TEST(PlatformHeadless, text_picker_campaign_select_mounts_selection)
         "1\n"       //   entry 1 is always the default campaign
         "7\n"       // scenario: back -> team build
         "8\n"       // team build: back -> main
-        "7\n";      // main: quit
+        "6\n";      // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1601,7 +1605,7 @@ TEST(PlatformHeadless, text_picker_shows_display_titles_when_campaign_mounted)
         "6\n"       // scenario: cycle scenario troops (OWN -> ALL)
         "7\n"       // scenario: back -> team build
         "8\n"       // team build: back -> main
-        "7\n";      // main: quit
+        "6\n";      // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1650,7 +1654,7 @@ TEST(PlatformHeadless, text_picker_level_display_falls_back_when_mount_differs)
         "5\n"       // scenario: progress
         "7\n"       // scenario: back -> team build
         "8\n"       // team build: back -> main
-        "7\n";      // main: quit
+        "6\n";      // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1693,7 +1697,7 @@ TEST(PlatformHeadless, text_picker_roster_train_row_opens_seeded_member)
         "b\n"        //   train: back to the roster
         "\n"         //   roster: blank exits
         "8\n"        // base camp: back -> main
-        "7\n";       // main: quit
+        "6\n";       // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1751,7 +1755,7 @@ TEST(PlatformHeadless, text_picker_matchup_screen_play_and_move_commands)
         "\n"            //   blank exits matchup
         "7\n"           // scenario: back -> team build
         "8\n"           // base camp: back -> main
-        "7\n";          // main: quit
+        "6\n";          // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1909,7 +1913,7 @@ TEST(PlatformHeadless, text_picker_camp_drive_runs_the_scripted_zone)
 }))LUA");
 
     const std::string input =
-        "8\n"          // main: load company -> the company list
+        "7\n"          // main: load company -> the company list
         "1\n"          //   list: open company...
         "1\n"          //     #1 = campgate (the cleared-9 band) -> team build
         "1\n"          // base camp: roster
@@ -1937,7 +1941,7 @@ TEST(PlatformHeadless, text_picker_camp_drive_runs_the_scripted_zone)
                        //   the SDL camp uses (never a second confirmation)
         "0\n"          //   camp: back -> team build
         "8\n"          // team build: back -> main
-        "7\n";         // main: quit
+        "6\n";         // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -2063,7 +2067,7 @@ TEST(PlatformHeadless, text_picker_camp_without_a_zone_prints_the_guard)
         "2\n"       // main: continue -> team build
         "7\n"       // team build: camp -> guard line, straight back
         "8\n"       // team build: back -> main
-        "7\n";      // main: quit
+        "6\n";      // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;

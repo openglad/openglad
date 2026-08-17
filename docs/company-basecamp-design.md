@@ -29,8 +29,13 @@ The main menu presents:
 1. **Begin**
 2. **Continue** and **Load**
 3. **Level Editor**
-4. **Difficulty** and **Game Settings**
-5. **Help** and **Quit**
+4. **Game Settings**
+5. **Cloud Saves**
+6. **Help** and **Quit**
+
+Difficulty is not here. It, respawns, permadeath and the rest describe the
+fight a company is about to take, so their door lives on the Base Camp
+command strip beside SCENARIO and GO (docs/camp-controls-design.md).
 
 The web build keeps **Quit** visible but disabled. **Continue** opens the most
 recent valid company; if no valid company exists, the player is sent to the

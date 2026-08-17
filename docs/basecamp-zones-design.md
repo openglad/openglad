@@ -26,11 +26,15 @@ became unreachable; the freed value is documented as free.
 ## The split
 
 - **Game Management zone (C++ only, never scriptable)**: the seat rail
-  (y=164..173), the command strip (y=178..195) with BACK / SCENARIO /
-  NETWORK / GO-or-READY at their EXACT current rects (GO and NETWORK are
-  wasm-E2E coordinate contracts; the 50px hole where HIRE sat is
-  deliberate chrome), and the header's management lines (COMPANY line A,
-  SCEN/status line B, the scenario_line door).
+  (y=164..173), the command strip (y=178..195) with BACK / DIFFICULTY /
+  SCENARIO / NETWORK / GO-or-READY at their EXACT current rects, and the
+  header's management lines (COMPANY line A, SCEN/status line B, the
+  scenario_line door). The 50px gap where HIRE sat was called deliberate
+  chrome here; it turned out to be the right place for the DIFFICULTY door
+  when difficulty came off the main menu, and the whole strip re-gridded on
+  a 6px gutter to ink the full word (docs/camp-controls-design.md). GO and
+  NETWORK are wasm-E2E coordinate contracts — the specs moved with the code
+  in the same commit.
 - **Gameplay zone (Lua-composable, the y=28..160 band plus the header
   GOLD cell)**: composed from widgets on a fixed 14px row grid anchored
   at y=45. No `base_camp` hook ⇒ the C++ default: full-capability

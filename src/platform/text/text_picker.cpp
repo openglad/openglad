@@ -669,11 +669,6 @@ private:
     void handle_main_menu_item(const PickerMenuItem& item)
     {
         switch (item.command) {
-        case PickerMenuCommand::OpenDifficultyMenu:
-            // The DIFFICULTY submenu: the shared nested presentation loop
-            // (show_submenu in picker_state) until Back.
-            show_submenu(PickerMenuId::Difficulty);
-            break;
         case PickerMenuCommand::SetPlayerMode:
             if (item.arg > 1) {
                 set_player_count(save_data_, 1);
@@ -841,16 +836,15 @@ private:
         case PickerMenuCommand::SetCampaign:
             (void)show_campaign_select();
             break;
-        case PickerMenuCommand::CycleCtfTeamCount:
-            cycle_ctf_team_count(save_data_);
-            std::printf("%s\n", format_ctf_teams_label(save_data_).c_str());
-            autosave_company_after_mutation(); // §3.8 settings tail
+        case PickerMenuCommand::OpenDifficultyMenu:
+            // The DIFFICULTY submenu: the shared nested presentation loop
+            // (show_submenu in picker_state) until Back. It answers here now
+            // — the door moved off the main menu to Team Build.
+            show_submenu(PickerMenuId::Difficulty);
             break;
-        case PickerMenuCommand::CycleCtfCaptureLimit:
-            cycle_ctf_capture_limit(save_data_);
-            std::printf("%s\n", format_ctf_caps_label(save_data_).c_str());
-            autosave_company_after_mutation(); // §3.8 settings tail
-            break;
+        // Match teams and target score left the flat team-build list for the
+        // modes camp's MATCH SETUP page; the SCENARIO submenu still routes
+        // its troops row through here.
         case PickerMenuCommand::ToggleCtfScenarioTroops:
             toggle_ctf_scenario_troops(save_data_);
             std::printf("%s\n", format_ctf_troops_label(save_data_).c_str());

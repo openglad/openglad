@@ -494,6 +494,12 @@ TEST(MenuEngine, difficulty_dual_label_surface_under_save_rewrite)
     EXPECT_TRUE(state.entered) << "DIFFICULTY screen never came up";
     EXPECT_TRUE(state.saw_live_label)
         << "live vbutton label must re-derive from the rewritten save";
+
+    // The screen is a Base Camp child now: a joiner parked here must follow
+    // a host GO, like every sibling (Teams/Hire/Train).
+    const og::ui::MenuScreenSpec& spec = og::ui::difficulty_menu_screen_spec();
+    EXPECT_EQ(og::ui::RemoteStartScope::TeamBuildScope, spec.remote_start);
+    EXPECT_EQ(og::ui::RemoteStartExit::ReturnMenuExit, spec.remote_start_exit);
     EXPECT_TRUE(state.finished);
 
     // Descriptor surface (race-free read: the screen has exited).
@@ -2274,43 +2280,43 @@ constexpr ExpectedSpecRow kMainMenuMPCommon[] = {
     {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 55, 140, 20,
      ButtonAction::BeginMenu, 1, MenuNav{.down = 1}},
     {"continue_game", "CONTINUE", KEYSTATE_UNKNOWN, 80, 79, 68, 20,
-     ButtonAction::CreateTeamMenu, -1, MenuNav{.up = 0, .down = 2, .right = 7}},
+     ButtonAction::CreateTeamMenu, -1, MenuNav{.up = 0, .down = 2, .right = 6}},
     {"level_edit", "Level Editor", KEYSTATE_UNKNOWN, 80, 103, 140, 15,
-     ButtonAction::DoLevelEdit, -1, MenuNav{.up = 1, .down = 4}},
-    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 154, 140, 15,
-     ButtonAction::OpenDifficultyMenu, -1, MenuNav{.up = 4, .down = 5}},
-    {"options", "GAME", KEYSTATE_UNKNOWN, 80, 135, 68, 15,
-     ButtonAction::MainOptions, -1, MenuNav{.up = 2, .down = 3, .right = 9}},
+     ButtonAction::DoLevelEdit, -1, MenuNav{.up = 1, .down = 3}},
+    // DIFFICULTY left for the Base Camp command strip
+    // (docs/camp-controls-design.md); the settings group is two full-width
+    // doors named in full, with no grey caption over them.
+    {"options", "GAME SETTINGS", KEYSTATE_UNKNOWN, 80, 135, 140, 15,
+     ButtonAction::MainOptions, -1, MenuNav{.up = 2, .down = 8}},
     {"help", "HELP", KEYSTATE_UNKNOWN, 80, 178, 68, 15,
-     ButtonAction::ShowHelp, -1, MenuNav{.up = 3, .down = 0, .right = 6}},
+     ButtonAction::ShowHelp, -1, MenuNav{.up = 8, .down = 0, .right = 5}},
 };
 
 // The trailing space in "QUIT " is part of the shipped label.
 constexpr ExpectedSpecRow kMainMenuMPQuitNative = {
     "quit", "QUIT ", KEYSTATE_ESCAPE, 152, 178, 68, 15,
-    ButtonAction::QuitMenu, 0, MenuNav{.up = 3, .down = 0, .left = 5}};
+    ButtonAction::QuitMenu, 0, MenuNav{.up = 8, .down = 0, .left = 4}};
 constexpr ExpectedSpecRow kMainMenuMPQuitWeb = {
     "quit", "QUIT ", KEYSTATE_UNKNOWN, 152, 178, 68, 15,
-    ButtonAction::QuitMenu, 0, MenuNav{.up = 3, .down = 0, .left = 5}};
+    ButtonAction::QuitMenu, 0, MenuNav{.up = 8, .down = 0, .left = 4}};
 constexpr ExpectedSpecRow kMainMenuMPLoad = {
     "load_company", "LOAD", KEYSTATE_UNKNOWN, 152, 79, 68, 20,
     ButtonAction::CreateLoadMenu, 0, MenuNav{.up = 0, .down = 2, .left = 1}};
 constexpr ExpectedSpecRow kMainMenuMPNote = {
     "no_company_note", "NO COMPANY YET", KEYSTATE_UNKNOWN, 80, 79, 140, 20,
-    ButtonAction::MenuSpecRow, 8, MenuNav{}, true};
+    ButtonAction::MenuSpecRow, 7, MenuNav{}, true};
 // #155: the always-visible CLOUD door (MenuSpecRow arg == materialized
-// ordinal 9 on every variant — exactly one QUIT row survives), paired
-// with the GAME door on the first settings row (y=119..134 holds the
-// SETTINGS heading).
+// ordinal 8 on every variant — exactly one QUIT row survives), the second
+// full-width settings row under GAME SETTINGS.
 constexpr ExpectedSpecRow kMainMenuMPCloud = {
-    "cloud", "CLOUD", KEYSTATE_UNKNOWN, 152, 135, 68, 15,
-    ButtonAction::MenuSpecRow, 9, MenuNav{.up = 2, .down = 3, .left = 4}};
+    "cloud", "CLOUD SAVES", KEYSTATE_UNKNOWN, 80, 154, 140, 15,
+    ButtonAction::MenuSpecRow, 8, MenuNav{.up = 3, .down = 4}};
 
 // Main geometry no longer changes with multiplayer support: every build
 // manages seats in Base Camp and reaches persistent profiles via CONTROLS.
 constexpr ExpectedSpecRow kMainMenuNoMPCommon[] = {
     kMainMenuMPCommon[0], kMainMenuMPCommon[1], kMainMenuMPCommon[2],
-    kMainMenuMPCommon[3], kMainMenuMPCommon[4], kMainMenuMPCommon[5],
+    kMainMenuMPCommon[3], kMainMenuMPCommon[4],
 };
 
 constexpr ExpectedSpecRow kMainMenuNoMPQuitNative = kMainMenuMPQuitNative;
@@ -2370,7 +2376,7 @@ TEST(MenuEngine, main_menu_registry_and_spec_shape)
     const int options_index = picker_mainmenu_options_index();
     ASSERT_GE(options_index, 0) << "materialized main menu is empty";
     ASSERT_LT(options_index, count) << "options index past the button vector";
-    EXPECT_EQ(4, options_index);
+    EXPECT_EQ(3, options_index);
     EXPECT_EQ("options", buttons[options_index].id);
     EXPECT_EQ("load_company", buttons[count - 3].id);
     EXPECT_EQ("no_company_note", buttons[count - 2].id);

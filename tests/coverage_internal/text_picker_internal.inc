@@ -545,13 +545,16 @@ int text_picker_testing_exercise_internal_paths()
         [&] { return save.generator_rate; });
     check_difficulty_rule(PickerMenuCommand::ToggleInfiniteGold, 2,
         [&] { return save.infinite_gold; });
-    // The main-menu DIFFICULTY door runs the nested submenu loop: toggle
+    // The team-build DIFFICULTY door runs the nested submenu loop: toggle
     // permadeath twice, then back — a round trip that leaves save untouched.
+    // (The door left the main menu for Base Camp —
+    // docs/camp-controls-design.md.)
     if (const PickerMenuItem* door =
-            find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::OpenDifficultyMenu)) {
+            find_picker_menu_item(PickerMenuId::TeamBuild,
+                                  PickerMenuCommand::OpenDifficultyMenu)) {
         const short previous_permadeath = save.keep_fallen_heroes;
         ScopedCinRedirect input("4\n4\n7\n");
-        client.handle_menu_item(PickerMenuId::Main, *door);
+        client.handle_menu_item(PickerMenuId::TeamBuild, *door);
         check(save.keep_fallen_heroes == previous_permadeath);
     } else {
         check(false);
@@ -871,19 +874,13 @@ int text_picker_testing_exercise_internal_paths()
               config.team_families.front() == FAMILY_SOLDIER);
     }
 
-    // Exercise the CTF-only settings through the same terminal gate and
-    // dispatch path users reach from the final three Base Camp rows.
+    // The scenario-troops toggle is still a terminal row (SCENARIO); teams
+    // and target score moved to the camp's MATCH SETUP page
+    // (docs/camp-controls-design.md), so they are no longer dispatched here.
     config.campaign = "modes";
     check(client.save_game() &&
           save.current_campaign == "modes");
     const short previous_ctf_teams = save.ctf_team_count;
-    handle_team_item(PickerMenuCommand::CycleCtfTeamCount, "", [&] {
-        return save.ctf_team_count != previous_ctf_teams;
-    });
-    const short previous_ctf_limit = save.ctf_capture_limit;
-    handle_team_item(PickerMenuCommand::CycleCtfCaptureLimit, "", [&] {
-        return save.ctf_capture_limit != previous_ctf_limit;
-    });
     const short previous_ctf_troops = save.ctf_strip_scenario_troops;
     handle_team_item(PickerMenuCommand::ToggleCtfScenarioTroops, "", [&] {
         return save.ctf_strip_scenario_troops != previous_ctf_troops;
@@ -903,12 +900,13 @@ int text_picker_testing_exercise_internal_paths()
             text.find("TROOPS: FAIR") != std::string::npos);
     }
     // The Matchup dump prints the teams label in its plain numeric/Auto
-    // form — the retired Teams: Match rendering is gone.
+    // form — the retired Teams: Match rendering is gone. The dump only
+    // reads the setting; nothing on this path writes it any more.
     {
         ScopedTextPickerStdoutCapture output;
         check(output.ready());
         handle_team_item(PickerMenuCommand::Teams, "\n", [&] {
-            return save.ctf_team_count != previous_ctf_teams;
+            return save.ctf_team_count == previous_ctf_teams;
         });
         const std::string text = output.finish();
         check(output.finish_ok() &&

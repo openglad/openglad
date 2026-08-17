@@ -72,6 +72,7 @@ constexpr std::size_t kCampTextLines = 3;
 // The shipped act-3 roads and the summit that joins them.
 constexpr int kWarRoad[] = {13, 14, 15, 16, 17};
 constexpr int kBurdenRoad[] = {19, 20, 21, 22, 23};
+constexpr int kFalls = 12;
 constexpr int kSummit = 24;
 
 // ---------------------------------------------------------------------------
@@ -310,26 +311,23 @@ TEST_F(WestlandsFireCamp, camp_opens_the_fire)
     ASSERT_EQ(1u, camp_text(zone).size());
     EXPECT_EQ("Cold camp. No fire past the ford.", camp_text(zone)[0]);
 
-    // The fight at your feet, one road ahead, then the two doors. No back
-    // row, ever.
+    // The fight at your feet and the two doors — a normal night is three
+    // rows, which is the whole band the panel shows at once. No back row,
+    // ever, and no road named before it opens.
     const std::vector<CampaignZoneSession::Row>& rows = docket(zone);
-    ASSERT_EQ(4u, rows.size());
+    ASSERT_EQ(3u, rows.size());
     EXPECT_EQ("THE QUIET VALE", rows[0].label);
     EXPECT_EQ("the fight at hand", rows[0].note);
     EXPECT_TRUE(rows[0].is_level());
     EXPECT_EQ(1, rows[0].level);
     EXPECT_TRUE(rows[0].current) << "the row under the company reads CURRENT";
-    EXPECT_EQ("THE FOREST ROAD", rows[1].label);
-    EXPECT_EQ("the road out", rows[1].note);
-    EXPECT_TRUE(rows[1].is_level());
-    EXPECT_EQ(2, rows[1].level);
-    EXPECT_EQ("QUARTERMASTER", rows[2].label);
-    EXPECT_EQ(CampaignPickerSession::Kind::Page, rows[2].kind);
-    EXPECT_EQ("stores", rows[2].id);
-    EXPECT_EQ("packs and wages", rows[2].note);
-    EXPECT_EQ("THE LEDGER", rows[3].label);
-    EXPECT_EQ("ledger", rows[3].id);
-    EXPECT_EQ("what the road cost", rows[3].note);
+    EXPECT_EQ("QUARTERMASTER", rows[1].label);
+    EXPECT_EQ(CampaignPickerSession::Kind::Page, rows[1].kind);
+    EXPECT_EQ("stores", rows[1].id);
+    EXPECT_EQ("packs and wages", rows[1].note);
+    EXPECT_EQ("THE LEDGER", rows[2].label);
+    EXPECT_EQ("ledger", rows[2].id);
+    EXPECT_EQ("what the road cost", rows[2].note);
 
     // Full company capabilities, no oath column, no locks — and the roster
     // still keeps rows under the stanza and the docket.
@@ -342,6 +340,16 @@ TEST_F(WestlandsFireCamp, camp_opens_the_fire)
     EXPECT_FALSE(roster.assign.active);
     EXPECT_TRUE(roster.locks.empty());
     EXPECT_EQ(3, roster.rows_per_page);
+
+    // The road out is named the night the vale is won, and not before.
+    complete({1});
+    CampaignZoneSession won(save_);
+    open_camp(won);
+    ASSERT_EQ(4u, docket(won).size());
+    EXPECT_EQ("THE FOREST ROAD", docket(won)[1].label);
+    EXPECT_EQ("the road out", docket(won)[1].note);
+    EXPECT_TRUE(docket(won)[1].is_level());
+    EXPECT_EQ(2, docket(won)[1].level);
 }
 
 TEST_F(WestlandsFireCamp, camp_stanza_follows_the_cursor)
@@ -450,20 +458,44 @@ TEST_F(WestlandsFireCamp, docket_mirrors_the_shipped_exit_graph)
     {
         if (id == 18)
             continue;  // the campaign's deliberate act gap
+        clear_completions();
         set_cursor(id);
+        {
+            // The unwon night: the fight underfoot heads the docket and NO
+            // road is named yet.
+            CampaignZoneSession zone(save_);
+            open_camp(zone);
+            const std::vector<int> levels = docket_levels(zone);
+            ASSERT_EQ(std::vector<int>({id}), levels)
+                << "scen" << id << ": only the fight at your feet, until it "
+                                  "is won";
+            // `escort` is authored beside the graph; the Bearer line is how a
+            // player sees it, so that is what the mirror asserts.
+            escort[id] = text_has(zone, "The Bearer walks with you.");
+            for (const CampaignZoneSession::Row& row : docket(zone))
+            {
+                EXPECT_LE(row.label.size(), kLabelBudget) << row.label;
+                EXPECT_LE(row.note.size(), kNoteBudget) << row.note;
+            }
+        }
+        // The night after the win: the roads out compose, and the mirror
+        // below is about exactly those.
+        complete({id});
         CampaignZoneSession zone(save_);
         open_camp(zone);
-        // The docket leads with the level underfoot; the mirror below is
-        // about the roads OUT of it, so that row comes off first.
         std::vector<int> levels = docket_levels(zone);
         ASSERT_FALSE(levels.empty()) << "scen" << id;
-        ASSERT_EQ(id, levels.front())
-            << "scen" << id << ": the fight at your feet heads the docket";
-        levels.erase(levels.begin());
+        if (id != kFalls)
+        {
+            ASSERT_EQ(id, levels.front())
+                << "scen" << id << ": the fight at your feet heads the docket";
+            levels.erase(levels.begin());
+        }
+        // At the Falls the third act's own rows replace the graph the moment
+        // they are won: the two fronts ARE tonight's fight, so there is no
+        // underfoot row to strip (pinned by the_falls_fork_opens_when_the_
+        // falls_are_won).
         forward[id] = std::move(levels);
-        // `escort` is authored beside the graph; the Bearer line is how a
-        // player sees it, so that is what the mirror asserts.
-        escort[id] = text_has(zone, "The Bearer walks with you.");
         for (const CampaignZoneSession::Row& row : docket(zone))
         {
             EXPECT_LE(row.label.size(), kLabelBudget) << row.label;
@@ -483,6 +515,7 @@ TEST_F(WestlandsFireCamp, docket_mirrors_the_shipped_exit_graph)
         EXPECT_EQ(save_all, escort[id])
             << "scen" << id << ": the Bearer line must mirror SAVE_ALL";
     }
+    clear_completions();
 
     for (const auto& [id, rows] : forward)
     {
@@ -521,8 +554,9 @@ TEST_F(WestlandsFireCamp, docket_mirrors_the_shipped_exit_graph)
 
 TEST_F(WestlandsFireCamp, forks_state_their_stake_on_the_row)
 {
-    // The fork rows follow the level underfoot, so the stakes read from
-    // row 1 down.
+    // The fork rows follow the level underfoot on the night that fight is
+    // won, so the stakes read from row 1 down.
+    complete({4});
     set_cursor(4);
     {
         CampaignZoneSession zone(save_);
@@ -538,6 +572,7 @@ TEST_F(WestlandsFireCamp, forks_state_their_stake_on_the_row)
         EXPECT_EQ("a plea, a pay chest", rows[2].note);
         EXPECT_EQ(7, rows[2].level);
     }
+    complete({6});
     set_cursor(6);
     {
         CampaignZoneSession zone(save_);
@@ -550,6 +585,7 @@ TEST_F(WestlandsFireCamp, forks_state_their_stake_on_the_row)
         EXPECT_EQ("THE LOST DELVE", rows[2].label);
         EXPECT_EQ("gold, and a price", rows[2].note);
     }
+    complete({24});
     set_cursor(24);
     {
         CampaignZoneSession zone(save_);
@@ -590,13 +626,13 @@ TEST_F(WestlandsFireCamp, cleared_roads_stay_offered_and_decorated)
 TEST_F(WestlandsFireCamp, the_fight_at_your_feet_heads_a_fresh_docket)
 {
     // A company that has won nothing is standing in the vale, and the vale
-    // is what the docket offers first — the road out of it is composed
-    // exactly as the graph authored it, and closing it until the vale is
-    // won is the ENGINE's decoration, not a refusal written here.
+    // is the ONLY road the docket offers: the way out is named the night
+    // the vale is won. Three rows is what the panel shows at once, so a
+    // road nobody may walk yet would cost THE LEDGER its place.
     CampaignZoneSession zone(save_);
     open_camp(zone);
     const std::vector<CampaignZoneSession::Row>& rows = docket(zone);
-    ASSERT_EQ(4u, rows.size());
+    ASSERT_EQ(3u, rows.size());
     EXPECT_EQ("go1", rows[0].id);
     EXPECT_TRUE(rows[0].is_level());
     EXPECT_EQ(1, rows[0].level);
@@ -605,50 +641,71 @@ TEST_F(WestlandsFireCamp, the_fight_at_your_feet_heads_a_fresh_docket)
     EXPECT_TRUE(rows[0].current);
     EXPECT_FALSE(rows[0].cleared);
     EXPECT_TRUE(rows[0].available);
-    EXPECT_EQ(2, rows[1].level) << "one road ahead, and only one";
-    EXPECT_FALSE(rows[1].current);
-    EXPECT_EQ(std::vector<int>({1, 2}), docket_levels(zone))
+    EXPECT_EQ(std::vector<int>({1}), docket_levels(zone))
+        << "the fight at your feet, and no road behind it yet";
+    EXPECT_EQ("stores", rows[1].id) << "the doors keep the rest of the band";
+    EXPECT_EQ("ledger", rows[2].id);
+
+    // Won: the one road out is named, still exactly as the graph authored
+    // it — closing a road this company has not earned stays the ENGINE's
+    // decoration, never a refusal written in the pack.
+    complete({1});
+    CampaignZoneSession won(save_);
+    open_camp(won);
+    ASSERT_EQ(4u, docket(won).size());
+    EXPECT_EQ(std::vector<int>({1, 2}), docket_levels(won))
         << "the level underfoot is offered once, at the top";
+    EXPECT_EQ(2, docket(won)[1].level) << "one road ahead, and only one";
+    EXPECT_FALSE(docket(won)[1].current);
+    EXPECT_TRUE(docket(won)[0].cleared);
 }
 
 TEST_F(WestlandsFireCamp, the_docket_names_the_level_underfoot_mid_road)
 {
-    // Mid-road, at a fork: the mountain gate under the company, the bridge
-    // and the delve out of it, each keeping its authored stake.
+    // Mid-road, standing at the mountain gate with the gate still unfought:
+    // the fight underfoot, and the two doors. The fork it opens is not
+    // advertised the night before it can be taken.
     complete({1, 2, 3, 4, 5});
     set_cursor(6);
     {
         CampaignZoneSession zone(save_);
         open_camp(zone);
         const std::vector<CampaignZoneSession::Row>& rows = docket(zone);
-        ASSERT_EQ(5u, rows.size());
+        ASSERT_EQ(3u, rows.size());
         EXPECT_EQ("UNDER THE MOUNTAIN", rows[0].label);
         EXPECT_EQ(6, rows[0].level);
         EXPECT_EQ("the fight at hand", rows[0].note);
         EXPECT_TRUE(rows[0].current);
         EXPECT_FALSE(rows[0].cleared) << "the gate is not fought yet";
+        EXPECT_EQ(std::vector<int>({6}), docket_levels(zone));
+        EXPECT_EQ("stores", rows[1].id);
+        EXPECT_EQ("ledger", rows[2].id);
+    }
+    // The same night after the fight: the row stays, now decorated as the
+    // level the company has both won and is standing on — and the fork it
+    // earned is named under it, each road keeping its authored stake.
+    complete({6});
+    {
+        CampaignZoneSession zone(save_);
+        open_camp(zone);
+        const std::vector<CampaignZoneSession::Row>& rows = docket(zone);
+        ASSERT_EQ(5u, rows.size());
+        EXPECT_EQ("UNDER THE MOUNTAIN", rows[0].label);
+        EXPECT_TRUE(rows[0].current);
+        EXPECT_TRUE(rows[0].cleared);
         EXPECT_EQ(std::vector<int>({6, 8, 9}), docket_levels(zone));
         EXPECT_EQ("THE BRIDGE", rows[1].label);
         EXPECT_EQ("the straight road", rows[1].note);
         EXPECT_EQ("THE LOST DELVE", rows[2].label);
         EXPECT_EQ("gold, and a price", rows[2].note);
     }
-    // The same night after the fight: the row stays, now decorated as the
-    // level the company has both won and is standing on.
-    complete({6});
-    {
-        CampaignZoneSession zone(save_);
-        open_camp(zone);
-        EXPECT_EQ("UNDER THE MOUNTAIN", docket(zone)[0].label);
-        EXPECT_TRUE(docket(zone)[0].current);
-        EXPECT_TRUE(docket(zone)[0].cleared);
-    }
 }
 
 TEST_F(WestlandsFireCamp, the_falls_fork_opens_when_the_falls_are_won)
 {
-    // Standing AT the Falls with the Falls unfought: the fight underfoot,
-    // and the two roads it will open.
+    // Standing AT the Falls with the Falls unfought: the fight underfoot and
+    // the two doors. The roads part AFTER the waterfall is taken, and the
+    // docket says exactly that much.
     complete({1, 2, 3, 4, 5, 6, 8, 10, 11});
     set_cursor(12);
     muster_company(0, 0, 3);
@@ -656,15 +713,14 @@ TEST_F(WestlandsFireCamp, the_falls_fork_opens_when_the_falls_are_won)
         CampaignZoneSession zone(save_);
         open_camp(zone);
         const std::vector<CampaignZoneSession::Row>& rows = docket(zone);
-        ASSERT_EQ(5u, rows.size());
+        ASSERT_EQ(3u, rows.size());
         EXPECT_EQ("THE FALLS", rows[0].label);
         EXPECT_EQ("the fight at hand", rows[0].note);
         EXPECT_EQ(12, rows[0].level);
         EXPECT_TRUE(rows[0].current);
-        EXPECT_EQ("THE WAR ROAD", rows[1].label);
-        EXPECT_EQ("the feint, west", rows[1].note);
-        EXPECT_EQ("THE BURDEN'S ROAD", rows[2].label);
-        EXPECT_EQ("the marsh road", rows[2].note);
+        EXPECT_EQ(std::vector<int>({12}), docket_levels(zone));
+        EXPECT_EQ("stores", rows[1].id);
+        EXPECT_EQ("ledger", rows[2].id);
         EXPECT_FALSE(zone.roster().assign.active)
             << "the oath waits for the fight at the Falls";
     }
@@ -709,11 +765,19 @@ TEST_F(WestlandsFireCamp, a_level_the_package_cannot_name_still_labels_its_row)
     CampaignZoneSession zone(save_);
     open_camp(zone);
     const std::vector<CampaignZoneSession::Row>& rows = docket(zone);
-    ASSERT_EQ(4u, rows.size());
+    ASSERT_EQ(3u, rows.size());
     EXPECT_EQ("THE ROAD AT YOUR FEET", rows[0].label);
     EXPECT_EQ("the fight at hand", rows[0].note);
     EXPECT_EQ(1, rows[0].level);
-    EXPECT_EQ("THE FOREST ROAD", rows[1].label)
+
+    // The road the vale opens is authored in road.lua, so it keeps its own
+    // words however the package answers.
+    complete({1});
+    CampaignZoneSession won(save_);
+    open_camp(won);
+    ASSERT_EQ(4u, docket(won).size());
+    EXPECT_EQ("THE ROAD AT YOUR FEET", docket(won)[0].label);
+    EXPECT_EQ("THE FOREST ROAD", docket(won)[1].label)
         << "the authored rows never borrow a title";
 }
 

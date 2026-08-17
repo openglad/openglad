@@ -13,12 +13,15 @@
 namespace og::ui {
 namespace {
 
-constexpr std::array<PickerMenuItem, 9> kMainMenuItems = {{
+// The DIFFICULTY door left this menu for Team Build
+// (docs/camp-controls-design.md): difficulty, respawns and permadeath are
+// settings about the company's next fight, so they now sit where the company
+// is. Every row below it moved up one 1-based position — re-pinned in the
+// same commit across the positional drivers (the headless drives, the
+// interactive script, the curses route tests).
+constexpr std::array<PickerMenuItem, 8> kMainMenuItems = {{
     {"begin_new_game", "Begin New Game", PickerMenuCommand::BeginNewGame},
     {"continue_game", "Continue Game", PickerMenuCommand::ContinueGame},
-    // The DIFFICULTY entry is a door into the DIFFICULTY submenu
-    // (kDifficultyMenuItems below); the in-place cycle moved in there.
-    {"difficulty", "Difficulty", PickerMenuCommand::OpenDifficultyMenu},
     {"level_edit", "Level Editor", PickerMenuCommand::LevelEdit},
     {"options", "Game Settings", PickerMenuCommand::Options},
     // HELP and QUIT are separate, stable footer actions on the graphical
@@ -29,9 +32,8 @@ constexpr std::array<PickerMenuItem, 9> kMainMenuItems = {{
     // §2.1: the LOAD half of the CONTINUE|LOAD split remains at the end of
     // the terminal model; the SDL surface positions it beside CONTINUE.
     {"load_company", "Load Company", PickerMenuCommand::LoadGame},
-    // #155: the CLOUD door — appended so the 1-based text-drive positions
-    // of every older row stay stable.
-    {"cloud", "Cloud", PickerMenuCommand::OpenCloudMenu},
+    // #155: the CLOUD door — last, matching the SDL surface's CLOUD SAVES.
+    {"cloud", "Cloud Saves", PickerMenuCommand::OpenCloudMenu},
 }};
 
 // §2.5 base camp: the TeamBuild model stayed 12 items by IN-PLACE
@@ -46,7 +48,13 @@ constexpr std::array<PickerMenuItem, 9> kMainMenuItems = {{
 // one ordinal each — re-pinned in the same commit across the three
 // positional drivers (the headless drives, the interactive script, the
 // curses route tests).
-constexpr std::array<PickerMenuItem, 13> kTeamBuildItems = {{
+// The flat CTF trio then LEFT (docs/camp-controls-design.md): teams, target
+// score and troops are the modes camp's MATCH SETUP page now, one place that
+// speaks them in plain words on every client. DIFFICULTY arrived in their
+// place, appended so nothing above it moved. It is past the digit-jump
+// budget, like Scenario before it — the arrow keys reach it, and unlike a
+// match rule it is not something a player retunes every round.
+constexpr std::array<PickerMenuItem, 11> kTeamBuildItems = {{
     {"roster", "Roster", PickerMenuCommand::ViewTeam},
     {"train_team", "Train Team", PickerMenuCommand::TrainTeam},
     {"hire_troops", "Hire Troops", PickerMenuCommand::HireTroops},
@@ -63,11 +71,8 @@ constexpr std::array<PickerMenuItem, 13> kTeamBuildItems = {{
     // The scenario-shaped commands (campaign/level/viewer/matchup/progress)
     // live in the SCENARIO submenu now (kScenarioItems below).
     {"scenario", "Scenario", PickerMenuCommand::Scenario},
-    // The SDL picker groups the CTF match settings into MATCHUP;
-    // terminal clients keep them as flat team-build items.
-    {"ctf_teams", "Match Teams", PickerMenuCommand::CycleCtfTeamCount},
-    {"ctf_caps", "Score Limit", PickerMenuCommand::CycleCtfCaptureLimit},
-    {"ctf_troops", "Scenario Troops", PickerMenuCommand::ToggleCtfScenarioTroops},
+    // The door into the DIFFICULTY submenu (kDifficultyMenuItems below).
+    {"difficulty", "Difficulty", PickerMenuCommand::OpenDifficultyMenu},
 }};
 
 // The SCENARIO submenu: everything that chooses or inspects the scenario.

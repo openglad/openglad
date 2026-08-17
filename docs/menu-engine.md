@@ -12,7 +12,8 @@ legacy, or retired.
 
 | Screen family | Owner |
 |---|---|
-| Main, Difficulty, Game Settings, Display, Effects, Seat Settings | Runtime |
+| Main, Game Settings, Display, Effects, Seat Settings | Runtime |
+| Difficulty (opened from the Base Camp strip) | Runtime |
 | Base Camp, Hire, Train, Progress, View Level, Scenario, Matchup | Runtime |
 | Campaign zone submenu (the Base Camp book pages) | Runtime |
 | Company List, Backups, company name entry | Runtime |

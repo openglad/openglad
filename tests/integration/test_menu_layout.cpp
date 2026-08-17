@@ -241,7 +241,7 @@ TEST(MenuLayout, mainmenu_buttons_no_overlap)
     check_no_overlaps(buttons, count, "mainmenu");
     check_bounds(buttons, count, "mainmenu");
     check_nav_in_range(buttons, count, "mainmenu");
-    ASSERT_GE(count, 9);
+    ASSERT_GE(count, 8);
 
     // The primary action group retains its classic 4px vertical gutter.
     constexpr int kWithinGroupGutter = 4;
@@ -253,56 +253,58 @@ TEST(MenuLayout, mainmenu_buttons_no_overlap)
     EXPECT_EQ(kWithinGroupGutter,
               buttons[2].y - (buttons[1].y + buttons[1].sizey));
 
-    // SETTINGS: the GAME | CLOUD 68px pair leads the group directly under
-    // the grey SETTINGS heading (which owns the y=119..134 band), with
-    // full-width DIFFICULTY on the row below — narrow-pair-over-full-width,
-    // mirrored by the HELP | QUIT footer.
-    EXPECT_EQ("difficulty", buttons[3].id);
-    EXPECT_EQ("options", buttons[4].id);
-    EXPECT_EQ(buttons[2].x, buttons[4].x);
-    EXPECT_EQ(68, buttons[4].sizex);
-    EXPECT_EQ("GAME", buttons[4].label);
-    EXPECT_EQ(buttons[4].x, buttons[3].x);
+    // SETTINGS: two full-width doors named in full, GAME SETTINGS over
+    // CLOUD SAVES. DIFFICULTY left this screen for the Base Camp command
+    // strip (docs/camp-controls-design.md) and the grey SETTINGS caption
+    // that captioned the old narrow pair went with it — so the y=119..134
+    // band is ordinary canvas again, and the settings group is a plain
+    // stack sharing the primary group's column.
+    EXPECT_EQ("options", buttons[3].id);
+    EXPECT_EQ(buttons[2].x, buttons[3].x);
     EXPECT_EQ(140, buttons[3].sizex);
-    EXPECT_EQ(kWithinGroupGutter,
-              buttons[3].y - (buttons[4].y + buttons[4].sizey));
+    EXPECT_EQ("GAME SETTINGS", buttons[3].label);
 
     // Tightening within groups does not collapse the category breaks.
-    EXPECT_EQ(17, buttons[4].y - (buttons[2].y + buttons[2].sizey));
+    EXPECT_EQ(17, buttons[3].y - (buttons[2].y + buttons[2].sizey));
 
     // HELP and QUIT are a stable, aligned footer pair.
-    EXPECT_EQ("help", buttons[5].id);
-    EXPECT_EQ("quit", buttons[6].id);
-    EXPECT_EQ(buttons[5].y, buttons[6].y);
-    EXPECT_EQ(buttons[5].sizex, buttons[6].sizex);
-    EXPECT_EQ(4, buttons[6].x - (buttons[5].x + buttons[5].sizex));
-    // Footer break measured from DIFFICULTY, the settings group's last row.
-    EXPECT_EQ(9, buttons[5].y - (buttons[3].y + buttons[3].sizey));
+    EXPECT_EQ("help", buttons[4].id);
+    EXPECT_EQ("quit", buttons[5].id);
+    EXPECT_EQ(buttons[4].y, buttons[5].y);
+    EXPECT_EQ(buttons[4].sizex, buttons[5].sizex);
+    EXPECT_EQ(4, buttons[5].x - (buttons[4].x + buttons[4].sizex));
 
-    // #155: the CLOUD door shares the GAME row as an aligned 68px pair
-    // (always visible — reachable with zero companies), first row of the
-    // settings group. Both build variants share the geometry (the tables
-    // differ only in the QUIT fork). No button may sit in the y=119..134
-    // band — main_menu_draw_content paints the grey SETTINGS heading
-    // there, over any button face.
-    ASSERT_EQ(10, count);
-    EXPECT_EQ("cloud", buttons[9].id);
-    EXPECT_EQ(152, buttons[9].x);
-    EXPECT_EQ(buttons[4].y, buttons[9].y);
-    EXPECT_EQ(buttons[4].sizex, buttons[9].sizex);
-    EXPECT_EQ(15, buttons[9].sizey);
-    EXPECT_EQ(4, buttons[9].x - (buttons[4].x + buttons[4].sizex));
-    EXPECT_EQ(2, buttons[9].nav.up);
-    EXPECT_EQ(3, buttons[9].nav.down) << "cloud links down to DIFFICULTY";
-    EXPECT_EQ(4, buttons[9].nav.left) << "cloud links left to GAME";
-    EXPECT_EQ(9, buttons[4].nav.right) << "GAME links right to CLOUD";
-    EXPECT_EQ(3, buttons[6].nav.up) << "QUIT links up to DIFFICULTY";
-    EXPECT_EQ(4, buttons[2].nav.down) << "level_edit links down to GAME";
-    EXPECT_EQ(4, buttons[3].nav.up) << "difficulty links up to GAME";
-    // 5-char label within the 68px face's 11-char budget.
-    EXPECT_EQ("CLOUD", buttons[9].label);
-    EXPECT_LE(buttons[9].label.size() * 6,
-              static_cast<std::size_t>(buttons[9].sizex));
+    // #155: the CLOUD door (always visible — reachable with zero companies)
+    // is the settings group's second row, the same full width and column as
+    // GAME SETTINGS at the group's 4px gutter. Both build variants share the
+    // geometry (the tables differ only in the QUIT fork).
+    ASSERT_EQ(9, count);
+    EXPECT_EQ("cloud", buttons[8].id);
+    EXPECT_EQ(buttons[3].x, buttons[8].x);
+    EXPECT_EQ(buttons[3].sizex, buttons[8].sizex);
+    EXPECT_EQ(15, buttons[8].sizey);
+    EXPECT_EQ(kWithinGroupGutter,
+              buttons[8].y - (buttons[3].y + buttons[3].sizey));
+    // Footer break measured from CLOUD SAVES, the settings group's last row.
+    EXPECT_EQ(9, buttons[4].y - (buttons[8].y + buttons[8].sizey));
+    EXPECT_EQ(3, buttons[8].nav.up) << "cloud links up to GAME SETTINGS";
+    EXPECT_EQ(4, buttons[8].nav.down) << "cloud links down to HELP";
+    EXPECT_EQ(8, buttons[3].nav.down) << "GAME SETTINGS links down to CLOUD";
+    EXPECT_EQ(8, buttons[5].nav.up) << "QUIT links up to CLOUD SAVES";
+    EXPECT_EQ(8, buttons[4].nav.up) << "HELP links up to CLOUD SAVES";
+    // The wasm E6 contract: two down-steps from the default highlight
+    // (continue_game, ordinal 1) must still land on the GAME door.
+    EXPECT_EQ(3, buttons[2].nav.down) << "level_edit links down to GAME";
+    EXPECT_EQ(2, buttons[1].nav.down) << "continue links down to level_edit";
+    // 11 and 13 characters within the 140px faces' 23-char budget.
+    EXPECT_EQ("CLOUD SAVES", buttons[8].label);
+    EXPECT_LE(buttons[8].label.size() * 6,
+              static_cast<std::size_t>(buttons[8].sizex));
+    EXPECT_LE(buttons[3].label.size() * 6,
+              static_cast<std::size_t>(buttons[3].sizex));
+    // No DIFFICULTY door survives on this screen.
+    for (int i = 0; i < count; ++i)
+        EXPECT_NE("difficulty", buttons[i].id);
 }
 
 // #155 CLOUD SAVE screen: geometry table, label budgets, the static nav
@@ -611,7 +613,10 @@ void check_nav_closed_and_reachable(button* buttons, int count,
 // 14px pitch from y=45 (padded grey roster panel (8,28)..(311,160) —
 // outside-to-outside with the command strip), the page cluster top-right at
 // y=15 beside the relocated line B, and the bottom
-// command strip BACK | HIRE | SCENARIO | NETWORK | GO at y=178. The TRAIN
+// command strip BACK | DIFFICULTY | SCENARIO | NETWORK | GO at y=178 (HIRE
+// moved to the roster band header; DIFFICULTY took the slot it left and the
+// strip re-gridded so the full word inks — its ordinal is 72, appended past
+// the zone band so no established ordinal moved). The TRAIN
 // column is DELETED: the TEAM chip (61,y,10,10) cycles team, the row body
 // (84,y,214,10) opens training, and ^ at x=301 moves a member up. Spec
 // ordinals group by kind (dep
@@ -664,18 +669,18 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         {"roster_page_prev", "<", 258, 15, 14, 10, MenuNav{.down = 8, .right = 25}, true},
         {"roster_page_next", ">", 298, 15, 14, 10, MenuNav{.down = 8, .left = 24}, true},
         {"scenario_line", "", 8, 14, 206, 12, MenuNav{.down = 29, .right = 28}, false, true},
-        {"back", "BACK", 8, 178, 44, 18, MenuNav{.up = 7, .right = 29}, false},
+        {"back", "BACK", 8, 178, 44, 18, MenuNav{.up = 7, .right = 72}, false},
         // The roster band header's HIRE (docs/basecamp-zones-design.md):
-        // same id/ordinal, relocated beside the pager cluster; the strip
-        // keeps its deliberate 50px hole at (58,178).
+        // same id/ordinal, relocated beside the pager cluster; the slot it
+        // left on the strip is the DIFFICULTY door at ordinal 72.
         {"hire_troops", "HIRE", 220, 14, 34, 12, MenuNav{.down = 0, .left = 26}, false},
-        {"scenario", "SCENARIO", 114, 178, 62, 18, MenuNav{.up = 26, .left = 27, .right = 30}, false},
-        {"networking", "NETWORK", 182, 178, 56, 18, MenuNav{.up = 15, .left = 29, .right = 31}, false},
-        {"go", "GO", 244, 178, 68, 18, MenuNav{.up = 15, .left = 30}, false},
+        {"scenario", "SCENARIO", 132, 178, 62, 18, MenuNav{.up = 26, .left = 72, .right = 30}, false},
+        {"networking", "NETWORK", 200, 178, 56, 18, MenuNav{.up = 15, .left = 29, .right = 31}, false},
+        {"go", "GO", 262, 178, 50, 18, MenuNav{.up = 15, .left = 30}, false},
         // §2.6: the READY twin shares GO's exact rect; statically hidden
         // (the rewire shows exactly one of the pair — GO for hosts, READY
         // for networked joiners).
-        {"ready", "READY", 244, 178, 68, 18, MenuNav{.up = 15, .left = 30},
+        {"ready", "READY", 262, 178, 50, 18, MenuNav{.up = 15, .left = 30},
          true},
         {"seats", "SEATS", 8, 164, 34, 10,
          MenuNav{.down = 27, .right = 34}, false},
@@ -721,8 +726,8 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
             << "base camp: 24 roster controls + 2 pagers + the SCEN line "
                "hit zone + HIRE + 4 strip buttons + the hidden READY twin + "
                "8 seat-rail controls + 8 move-up controls + the 23-row "
-               "parked zone band";
-        ASSERT_EQ(72, count);
+               "parked zone band + the appended DIFFICULTY strip door";
+        ASSERT_EQ(73, count);
         ASSERT_EQ(static_cast<int>(std::size(kExpected)),
                   kBaseCampZoneActionBase)
             << "the exact table covers the classic ordinals 0..48";
@@ -759,7 +764,8 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         // static nav — until a scripted composition re-bands them.
         const Sint32 spec_row_action =
             button_action_id(ButtonAction::MenuSpecRow);
-        for (int i = kBaseCampZoneActionBase; i < count; ++i)
+        for (int i = kBaseCampZoneActionBase;
+             i < kCreateMenuDifficultyIndex; ++i)
         {
             const button& got = buttons[i];
             std::string want_id;
@@ -795,6 +801,56 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
             EXPECT_EQ(-1, got.nav.right) << got.id;
         }
 
+        // The appended DIFFICULTY strip door at ordinal 72: a real
+        // ButtonAction like its strip peers, always visible, drawn, on the
+        // strip's y and height, and inking its full word at the beveled
+        // budget ((sizex - 8) / 6 == 10 glyphs for exactly "DIFFICULTY").
+        {
+            const button& diff = buttons[kCreateMenuDifficultyIndex];
+            EXPECT_EQ("difficulty", diff.id);
+            EXPECT_EQ("DIFFICULTY", diff.label);
+            EXPECT_FALSE(diff.hidden);
+            EXPECT_FALSE(diff.no_draw);
+            EXPECT_EQ(58, diff.x);
+            EXPECT_EQ(178, diff.y);
+            EXPECT_EQ(68, diff.sizex);
+            EXPECT_EQ(18, diff.sizey);
+            EXPECT_EQ(button_action_id(ButtonAction::OpenDifficultyMenu),
+                      diff.myfun);
+            EXPECT_EQ(-1, diff.arg1);
+            EXPECT_EQ(7, diff.nav.up);
+            EXPECT_EQ(-1, diff.nav.down);
+            EXPECT_EQ(kCreateMenuBackIndex, diff.nav.left);
+            EXPECT_EQ(kCreateMenuScenarioIndex, diff.nav.right);
+            EXPECT_EQ(10, static_cast<int>(diff.label.size()));
+            EXPECT_LE(static_cast<int>(diff.label.size()),
+                      (diff.sizex - 8) / 6)
+                << "the full word must ink inside the bevel";
+        }
+
+        // The re-gridded strip: five doors, one 6px gutter, closing flush on
+        // the panel's right rail. Read as relations so a future width edit
+        // cannot quietly reopen a hole.
+        {
+            const int strip[] = {kCreateMenuBackIndex,
+                                 kCreateMenuDifficultyIndex,
+                                 kCreateMenuScenarioIndex,
+                                 kCreateMenuNetworkingIndex,
+                                 kCreateMenuGoIndex};
+            for (const int i : strip) {
+                EXPECT_EQ(178, buttons[i].y) << buttons[i].id;
+                EXPECT_EQ(18, buttons[i].sizey) << buttons[i].id;
+            }
+            for (std::size_t s = 1; s < std::size(strip); ++s) {
+                const button& left = buttons[strip[s - 1]];
+                const button& right = buttons[strip[s]];
+                EXPECT_EQ(6, right.x - (left.x + left.sizex))
+                    << "strip gutter before " << right.id;
+            }
+            EXPECT_EQ(312, buttons[kCreateMenuGoIndex].x +
+                               buttons[kCreateMenuGoIndex].sizex);
+        }
+
         // G13 drift pins: spec ordinals == picker_sdl_defs.h constants.
         EXPECT_EQ(kBaseCampRowBodyBase, 8);
         EXPECT_EQ(kBaseCampTeamChipBase, 16);
@@ -821,8 +877,9 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         EXPECT_EQ(kBaseCampZonePagerCount, 4);
         EXPECT_EQ(kBaseCampZoneSpareBase, 69);
         EXPECT_EQ(kBaseCampZoneSpareCount, 3);
-        EXPECT_EQ(kCreateMenuButtonCount, 72);
-        EXPECT_EQ(MAX_BUTTONS, 72);
+        EXPECT_EQ(kCreateMenuDifficultyIndex, 72);
+        EXPECT_EQ(kCreateMenuButtonCount, 73);
+        EXPECT_EQ(MAX_BUTTONS, 73);
         // §2.6 same-geometry pair: the two rects are IDENTICAL by design
         // (the mutually-exclusive-gate allowance the gate-lattice sweep
         // validates structurally).
@@ -1934,9 +1991,13 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
                 << variant;
             EXPECT_TRUE(buttons[kCreateMenuReadyIndex].hidden)
                 << variant;
+            // Each card drops onto the strip door under its face; the
+            // re-gridded strip put DIFFICULTY under card zero. Card three
+            // still falls back one door to NETWORK when its GO/READY slot
+            // has no visible half.
             constexpr std::array<int, kBaseCampSeatCardsPerPage>
                 kCardStripTargets{
-                    kCreateMenuScenarioIndex,
+                    kCreateMenuDifficultyIndex,
                     kCreateMenuScenarioIndex,
                     kCreateMenuNetworkingIndex,
                     kCreateMenuNetworkingIndex,

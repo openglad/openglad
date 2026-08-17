@@ -679,7 +679,7 @@ BaseCampLineB compose_base_camp_line_b(
 
 // --- §2.6 GO / READY slot (the base-camp dual-role button) ---
 
-// The six presentation states of the shared (244,178,68,18) slot: the host
+// The six presentation states of the shared (262,178,50,18) slot: the host
 // keeps GO (grey solo, colored networked), clients get the READY toggle in
 // the SAME rect (exactly one of the two same-rect buttons is visible).
 enum class ReadyGoState : std::uint8_t {

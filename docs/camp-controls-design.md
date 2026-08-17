@@ -131,9 +131,58 @@ to this rework.
 
 ## 5. DIFFICULTY into Base Camp; main menu split
 
-The Base Camp bottom strip gains a DIFFICULTY button (in the slot HIRE
-vacated) opening the existing difficulty submenu; the main menu drops its
-difficulty row, and its options/cloud rows take the freed width. The
-terminals mirror the move: the Team Build menu gains Difficulty, the main
-menus lose it. The difficulty submenu itself is unchanged and returns to
-whatever screen pushed it.
+Difficulty, respawns, permadeath, spawn delay, generator rate and infinite
+gold describe the fight a company is about to take. They were on the
+program's front door. They belong where the company is, so the door moved to
+the Base Camp command strip and the main menu kept only what is genuinely
+about the program.
+
+**The strip re-grids.** The word is DIFFICULTY, in full — no abbreviation
+survived reading. That needs a 68px face, which the 50px slot HIRE vacated
+could not give, so the strip took the width out of GO (the only face with
+slack) and re-laid on one 6px gutter, still closing flush on the panel's
+right rail at x=312:
+
+| door | rect | label budget `(w-8)/6` | label |
+|---|---|---|---|
+| BACK | 8,178,44,18 | 6 | 4 |
+| DIFFICULTY | 58,178,68,18 | 10 | 10 |
+| SCENARIO | 132,178,62,18 | 9 | 8 |
+| NETWORK | 200,178,56,18 | 8 | 7 |
+| GO / READY | 262,178,50,18 | 7 | 2 / 5 |
+
+GO and NETWORK were wasm-E2E coordinate contracts; the specs moved with the
+code in the same commit (`wasm_helpers.js`, `wasm-networking.spec.js`,
+`wasm-touch.spec.js`). The new row is appended at ordinal 72 —
+`kCreateMenuDifficultyIndex` — rather than carved out of the three parked
+zone spares, so no established Base Camp ordinal moved; the ceiling
+(`kCreateMenuButtonCount`, `MAX_BUTTONS`, `SessionState::kMaxButtons`) goes
+72 → 73. The per-frame rewire runs BACK ↔ DIFFICULTY ↔ SCENARIO and drops
+seat card one onto DIFFICULTY (it is the door under that card's face; the
+empty slot used to force a doubled SCENARIO link). The difficulty screen's
+`remote_start` scope becomes `TeamBuildScope` like every other Base Camp
+child, so a host GO launches a joiner parked inside it.
+
+**The main menu.** The difficulty row is gone and the narrow `GAME | CLOUD`
+pair it sat under becomes two full-width rows that say what they are:
+`GAME SETTINGS` (80,135,140,15) over `CLOUD SAVES` (80,154,140,15). The grey
+`SETTINGS` caption at (150,125) is deleted with them — two spelled-out rows
+need no caption, and the y=119..134 band it reserved is ordinary canvas
+again. The `begin → continue → level_edit → options` chain is preserved
+deliberately: the wasm DISPLAY tests reach the settings door in exactly two
+downward steps, and (10,10) and (10,190) stay inert for the two E2E probes
+that tap them as blank.
+
+**Terminals.** Main loses its Difficulty item (8 rows; every row below it
+moved up one 1-based position) and its Cloud row is relabeled `Cloud Saves`
+to match the SDL face. Team Build gains `Difficulty` at position 11, past
+the curses digit-jump budget — the arrow walk reaches it, and unlike a match
+rule it is not something a player retunes every round. The flat CTF trio
+(`ctf_teams`, `ctf_caps`, `ctf_troops`) left Team Build in the same change:
+teams and target score are the Modes camp's MATCH SETUP page now (§4), one
+source of truth in plain words, and scenario troops keeps its SCENARIO row.
+The SDL MATCHUP screen keeps its own copies for legacy versus packs.
+
+The difficulty submenu itself is unchanged and returns to whatever screen
+pushed it; from the strip that is a nested `MENU_REDRAW` the Base Camp loop
+consumes, which an injector flow now pins end to end.
