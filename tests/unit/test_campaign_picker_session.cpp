@@ -905,6 +905,81 @@ TEST_F(CampaignPickerSessionTest, terminal_driver_refuses_closed_level_rows)
         << "the row says so before the click; the answer must agree";
 }
 
+// D3: an action that ANSWERS with a level (`{ level = id }`) routes through
+// the driver's own gated tail — never a bare cursor write. Success speaks
+// the engine's confirmation, naming the road by its scenario title, and
+// DROPS the action's message (one click, one answer); the closed-road and
+// already-here refusals answer first, with the action's message spoken
+// only behind a refusal.
+TEST_F(CampaignPickerSessionTest, terminal_driver_routes_acted_levels)
+{
+    const std::string previous_mount = get_mounted_campaign();
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+
+    save_.scen_num = 7;
+    save_.save_name = "ROULETTE BAND";
+    register_script(R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id)
+    return { title = "WHEEL",
+             entries = {
+               { id = "closed", label = "FAR WHEEL", kind = "action" },
+               { id = "here", label = "HOME WHEEL", kind = "action" },
+               { id = "ok", label = "TRUE WHEEL", kind = "action" },
+             } }
+  end,
+  picker_action = function(entry_id)
+    if entry_id == "closed" then
+      return { level = 4242, message = "The far wheel rattles." }
+    end
+    if entry_id == "here" then
+      return { level = 7 }
+    end
+    return { level = 1, message = "The wheel spins." }
+  end,
+}))LUA");
+
+    // The Acted arm autosaves the active company slot; isolate and reap.
+    ASSERT_TRUE(og::data::set_active_company_slot("roulette"));
+
+    ScriptedTerminalIo scripted;
+    scripted.save = &save_;
+    scripted.answers = {
+        "1",  // FAR WHEEL -> level 4242: no such road -> closed + message
+        "2",  // HOME WHEEL -> level 7: the cursor is already there
+        "3",  // TRUE WHEEL -> level 1: applies; the engine toast speaks
+        "0",  // close the book
+    };
+    og::ui::run_terminal_campaign_page(save_, scripted.io(), "");
+
+    std::string scen1_title;
+    ASSERT_EQ(og::data::LevelFileIoError::None,
+              og::data::load_scenario_title_with_error("scen1", scen1_title));
+    const std::vector<std::string> expected_notices = {
+        std::string(og::ui::kCampaignLevelClosedMessage),
+        "The far wheel rattles.",
+        std::string(og::ui::kCampaignLevelUnchangedMessage),
+        "Level set to " + scen1_title + ".",
+    };
+    EXPECT_EQ(expected_notices, scripted.notices)
+        << "refusals speak first and may pass the action's message on; a "
+           "landed set is the engine's answer alone";
+    EXPECT_EQ(1, scripted.applied_level);
+    EXPECT_EQ(1, save_.scen_num);
+    EXPECT_TRUE(user_file_exists("save/roulette.gtl"))
+        << "the routed action still runs the §3.8 autosave tail first";
+
+    (void)remove_user_file("save/roulette.gtl");
+    (void)og::data::set_active_company_slot("save0");
+    if (previous_mount != "gladiator")
+    {
+        (void)unmount_campaign_package_with_error("gladiator");
+        if (!previous_mount.empty())
+            (void)mount_campaign_package_with_error(previous_mount);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // The shared terminal CAMP driver (docs/basecamp-zones-design.md "Terminals")
 // ---------------------------------------------------------------------------

@@ -116,7 +116,11 @@ CampaignPickerSession::Outcome perform_campaign_entry_action(
         return {OutcomeKind::Refused, 0, "This book takes no orders."};
     }
     message_out = std::move(result.message);
-    return {OutcomeKind::Acted, 0, {}};
+    // D3: the action may answer with a scenario (`level` on the returned
+    // table, -1 = none). The outcome carries it so each surface can route
+    // it through its OWN gated level-set tail — the session itself never
+    // writes scen_num, exactly like the SetLevel outcome.
+    return {OutcomeKind::Acted, result.level, {}};
 }
 
 } // namespace
@@ -783,6 +787,59 @@ std::vector<std::string> terminal_campaign_page_lines(
     return lines;
 }
 
+// D3: an Acted outcome that carries a level (the action answered
+// `{ level = id }`) runs the SAME gated tail as a level-row click — host
+// gate first, then the closed-road check (missing file or the earned-roads
+// gate), then the already-here answer — so a scripted roll can never move
+// the cursor anywhere a click on a level row could not. On success the
+// ENGINE speaks ("Level set to <arena>." — the confirmation names something
+// playable) and the action's own message is dropped; a refused set speaks
+// the refusal first and then the Lua message, which keeps its slot only to
+// explain a roll that changed nothing.
+void terminal_route_acted_level(SaveData& save,
+                                const TerminalCampaignPickerIo& io, int level,
+                                const std::string& toast,
+                                const std::function<void()>& refetch)
+{
+    bool applied = false;
+    if (!io.is_host())
+    {
+        io.notice(std::string(kCampaignPickerHostGuardMessage));
+    }
+    else
+    {
+        // The terminal tail only moves the cursor (no load-with-rollback
+        // here), so the closed-road refusal mirrors the level-row
+        // decoration exactly: a real scenario file AND the earned-roads
+        // gate.
+        std::string title;
+        const bool file_ok =
+            og::data::load_scenario_title_with_error(
+                ("scen" + std::to_string(level)).c_str(), title) ==
+            og::data::LevelFileIoError::None;
+        if (!file_ok || !og::data::level_selection_allowed(save, level))
+        {
+            io.notice(std::string(kCampaignLevelClosedMessage));
+        }
+        else if (static_cast<int>(save.scen_num) == level)
+        {
+            io.notice(std::string(kCampaignLevelUnchangedMessage));
+        }
+        else
+        {
+            io.apply_level(level);
+            refetch();  // CURRENT markers re-derive (fetch-per-action)
+            // The save-side label fill (decorate_campaign_entries): an
+            // empty title still names the road it set.
+            io.notice(campaign_level_set_message(
+                title.empty() ? std::format("SCEN {}", level) : title));
+            applied = true;
+        }
+    }
+    if (!applied && !toast.empty())
+        io.notice(toast);
+}
+
 // The page render/prompt loop over an already-open session. Shared by the
 // root-book entry and the camp's page-row door so both spell every line,
 // every guard and every tail exactly once.
@@ -869,6 +926,15 @@ void run_terminal_campaign_page_loop(CampaignPickerSession& session,
                 (void)company_autosave_after_mutation(
                     save, kTerminalNetworkedLobbyActive);
                 const std::string toast = session.take_message();
+                if (outcome.level >= 0)
+                {
+                    // D3: the action answered with a level — the gated
+                    // level-set tail owns every answer from here.
+                    terminal_route_acted_level(save, io, outcome.level,
+                                               toast,
+                                               [&session] { session.refresh(); });
+                    break;
+                }
                 if (!toast.empty())
                     io.notice(toast);
                 break;
@@ -1437,6 +1503,15 @@ void run_terminal_campaign_camp(SaveData& save,
                 (void)company_autosave_after_mutation(
                     save, kTerminalNetworkedLobbyActive);
                 const std::string toast = zone.take_message();
+                if (outcome.level >= 0)
+                {
+                    // D3: the action answered with a level — the gated
+                    // level-set tail owns every answer from here.
+                    terminal_route_acted_level(save, io, outcome.level,
+                                               toast,
+                                               [&zone] { zone.refetch(); });
+                    break;
+                }
                 if (!toast.empty())
                     io.notice(toast);
                 break;

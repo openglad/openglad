@@ -8,6 +8,7 @@
 
 #include <openglad/resources/campaign_state_providers.h>
 
+#include <openglad/core/irandom.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/guy.h>
@@ -17,6 +18,7 @@
 #include <openglad/resources/save_data.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -280,6 +282,23 @@ og::script::hooks::CampaignProviders make_campaign_providers(
         return true;
     };
     providers.is_host = std::move(is_host);
+
+    // og.campaign_random's default: a process-lifetime menu-side generator,
+    // seeded from the wall clock the first time any camp action rolls.
+    // Menu-side ONLY — the sim's RNG stream is fenced during campaign
+    // dispatch (og.rand errors), and this generator never touches it, so a
+    // camp roll can never perturb replay/parity determinism. The n < 1
+    // floor is defensive: the binding rejects n < 1 before the provider
+    // runs.
+    providers.random_pick = [](int n) -> int {
+        static SeededRandom menu_rng(static_cast<std::uint32_t>(
+            std::chrono::system_clock::now().time_since_epoch().count()));
+        if (n < 1)
+            return 1;
+        return static_cast<int>(
+                   menu_rng.next(static_cast<std::uint32_t>(n))) +
+            1;
+    };
 
     return providers;
 }

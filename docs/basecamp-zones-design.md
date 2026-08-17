@@ -285,31 +285,37 @@ behind a hover or a spent face:
 ## The four camps (adjudicated)
 
 - **Modes — the Gamesmaster's table.** The camp's whole grid is 8 units
-  and the roster floor takes three, so the host spends the other FIVE on
-  rows and no line at all — five rows that all render, rather than three
-  and a pager. Readout: BOOK 12/39, and nothing else (the C++ header cell
-  already inks the purse a few pixels above, and it spells an infinite
-  purse "INF" where a scripted cell can only push the raw number).
-  Actions: GAME (page → seven-game index with per-game stamp tallies —
-  stamp vocabulary everywhere), FIELD (one hop into the current game's
-  arena page; arena rows carry manifest facts + CLEARED/CURRENT), the
-  draw (level row LABELLED with the arena, noted "the card": the engine
-  confirms a set level by naming the row, so this row's confirmation has
-  to name something playable) + SHUFFLE, MATCH SETUP (page; the row's own
-  note IS the posted digest, preset rows state their exact writes). The
-  draw never deals the field the table is already set to — a card that
-  re-offers the current pairing is a green button that changes nothing,
-  and the deck's first card is otherwise the campaign's first level on
-  every new company's first sight of the camp. SIGN THE BOOK lives on the
-  index page whose cover it takes, asked for by the GAME row's note at
-  39/39; the camp keeps no signature row and no cover line. Joiners:
-  own-book readout, the same read-only posted digest, "The host calls the
-  game.", browsable pages with (HOST) level rows; card/shuffle/sign AND
-  the preset action rows are cut at fetch. Call lines live on field pages
-  only, and a fully stamped page says "Every field here is stamped." —
-  never "shut", since #207 keeps every cleared field replayable. Every
-  camp row is budgeted against the 42-char panel face carrying the
-  campaign's longest arena name, which is why CTF's clock reads "20m".
+  and the roster floor takes three, so text lines and docket rows share
+  the other five; the host spends four of them on rows and speaks no
+  line — a docket that states its own weight so all four render, rather
+  than three and an unlabelled pager. Readout: BOOK 12/39, and nothing
+  else (the C++ header cell already inks the purse a few pixels above,
+  and it spells an infinite purse "INF" where a scripted cell can only
+  push the raw number). Rows: GAME (page → seven-game index with
+  per-game stamp tallies — stamp vocabulary everywhere), FIELD (one hop
+  into the current game's arena page; arena rows carry manifest facts +
+  CLEARED/CURRENT), RANDOM SCENARIO (an ACTION, not a level row — the
+  arena is only known after the roll, so the row wears the ceremony's
+  own name and the result rides the Acted outcome's `level` through the
+  SAME gated set tail as a level row's click; the engine's "Level set to
+  <arena>." is the confirmation, so what confirms is always something
+  playable), MATCH SETUP (page; the row's own note IS the posted digest,
+  preset rows state their exact writes). The roll happens at dispatch,
+  never at fetch — a random pick computed at fetch time would be a deck
+  by another name, and `base_camp` stays pure — and it never lands on
+  the field the table is already set to: a roll that re-offers the
+  current pairing steps one row on in the ordered manifest, wrapping,
+  because a green button that changes nothing is not a roll. SIGN THE
+  BOOK lives on the index page whose cover it takes, asked for by the
+  GAME row's note at 39/39; the camp keeps no signature row and no cover
+  line. Joiners: own-book readout, the same read-only posted digest,
+  "The host calls the game.", browsable pages with (HOST) level rows;
+  the roll, the signature AND the preset action rows are cut at fetch.
+  Call lines live on field pages only, and a fully stamped page says
+  "Every field here is stamped." — never "shut", since #207 keeps every
+  cleared field replayable. Every camp row is budgeted against the
+  42-char panel face carrying the campaign's longest arena name, which
+  is why CTF's clock reads "20m".
 - **Westlands — the company fire.** Text: camp stanza + Bearer line.
   Roster: full capabilities; at the Falls, `assign` (WAR/BURDEN) with
   the taught-glyph toasts; after the swearing freezes (any road level

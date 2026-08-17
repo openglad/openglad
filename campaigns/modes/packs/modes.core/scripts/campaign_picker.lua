@@ -1,4 +1,4 @@
--- THE GAMESMASTER'S TABLE — the Multiplayer Modes campaign's Base Camp: the stamp tally overhead, the current pairing as two doors, tonight's card and the shuffle, MATCH SETUP; the seven-game index, the field pages and the signature behind them (cookbook: docs/lua-classpacks-design.md §3).
+-- THE GAMESMASTER'S TABLE — the Multiplayer Modes campaign's Base Camp: the stamp tally overhead, the current pairing as two doors, the RANDOM SCENARIO roll, MATCH SETUP; the seven-game index, the field pages and the signature behind them (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 --
 -- Issues #206 (the book itself) and #212 (the MATCH SETUP presets),
@@ -7,11 +7,12 @@
 -- (docs/campaign-scripting-design.md, "The picker contract"): page id in,
 -- page description out, nothing cached between fetches — and the same rule
 -- binds base_camp, which is fetched on the zone's own cadence and never per
--- frame. The three navigation keys the book remembers — card_seq, deck_cut,
--- book_signed — live in og.campaign_state_get/set only; no campaign vars
--- are registered, no level ever reads them, and no fetch writes them (the
--- deck cut latches only inside the SHUFFLE action, so renders before the
--- first shuffle use the constant default cut of 1).
+-- frame. The ONE navigation key the book remembers — book_signed — lives
+-- in og.campaign_state_get/set only; no campaign vars are registered, no
+-- level ever reads it, and no fetch writes it. (Two retired deck keys,
+-- card_seq and deck_cut, may persist as dead rows in saves that shuffled
+-- TONIGHT'S CARD before the RANDOM SCENARIO roll replaced it — nothing
+-- reads them, harmless by design.)
 
 local levels = og.use("mode_levels")
 
@@ -60,11 +61,6 @@ local MODES = {
 -- future arena outside 300..899 can never silently vanish from the book.
 local FIRST_SCAN_ID = 0
 local LAST_SCAN_ID = 1023
-
--- The deck: 39 cards, stride 7 — coprime, so every card is dealt before
--- any repeat.
-local DECK_SIZE = 39
-local DECK_STRIDE = 7
 
 -- The camp's grid, from docs/basecamp-zones-design.md ("Bounds
 -- arithmetic"): 8 whole-row units, of which the roster keeps its column
@@ -215,52 +211,6 @@ local function current_pair()
   return { mode = MODES[1], id = first.id, row = first.row }
 end
 
--- The deck cut, defaulting to the constant 1 until the first shuffle
--- latches the company's own cut (0 = never cut; the latched range is
--- 1..39, so the sentinel is unambiguous).
-local function deck_cut()
-  local cut = og.campaign_state_get("deck_cut")
-  if cut == 0 then
-    return 1
-  end
-  return cut
-end
-
--- Tonight's draw: the ordered-manifest row the cut and the deal count
--- select. Stride 7 over 39 cards walks the whole deck before any repeat.
--- A card that deals the field the table is ALREADY set to is not a draw —
--- it is a green button that changes nothing — so the deal steps one card
--- on. The stride is coprime with the deck, so one step is always a
--- different card, and the campaign's own first level would otherwise be
--- dealt to every new company on its first sight of the camp.
-local function drawn_row(avoid_id)
-  local rows = manifest_rows()
-  local seq = og.campaign_state_get("card_seq")
-  local cut = deck_cut() - 1
-  local idx = og.mod(cut + seq * DECK_STRIDE, DECK_SIZE)
-  if rows[idx + 1].id == avoid_id then
-    idx = og.mod(cut + (seq + 1) * DECK_STRIDE, DECK_SIZE)
-  end
-  return rows[idx + 1]
-end
-
--- The company's cut of the deck, computed at the FIRST shuffle only: the
--- sum of every hero's level, exp and name bytes, folded og.mod once at
--- the end into 1..39. An empty roster salts 0 and cuts 1.
-local function roster_cut()
-  local team = og.campaign_team()
-  local salt = 0
-  for i = 1, #team do
-    local member = team[i]
-    salt = salt + member.level + member.exp
-    local name = member.name
-    for j = 1, #name do
-      salt = salt + string.byte(name, j)
-    end
-  end
-  return og.mod(salt, DECK_SIZE) + 1
-end
-
 -- The lead hero's name, uppercased — the signature the book takes. An
 -- empty roster leaves nobody to sign as. Saved names are a 12-byte field,
 -- so "THE BOOK OF <name>" never outgrows the page title's 24 characters.
@@ -343,7 +293,7 @@ end
 -- the one row that writes anything is the signature, and it is the host's.
 -- SIGN THE BOOK lives HERE rather than at the camp because this is the
 -- page the signature changes — the cover takes the name — and because the
--- camp's five rows are the whole grid it can spend beside a roster.
+-- camp's docket rows are the whole grid it can spend beside a roster.
 local function games_page()
   local rows = manifest_rows()
   local stamped = stamped_count(rows)
@@ -383,7 +333,7 @@ end
 
 -- One game's field page: its arenas as selectable rows, the flavor line,
 -- and the book's call. The call lives HERE and nowhere else — the table
--- upstairs has one advisor, and it is the card.
+-- upstairs offers no advice, only the roll.
 local function mode_page(mode)
   local band = band_rows(mode.id)
   local entries = {}
@@ -496,24 +446,23 @@ local function picker_menu(page_id)
 end
 
 -- THE GAMESMASTER'S TABLE — the Base Camp composition: the stamp tally
--- overhead, the current pairing as two one-deep doors, tonight's card and
--- the shuffle beside them, and the posted rules on the row that changes
+-- overhead, the current pairing as two one-deep doors, the RANDOM
+-- SCENARIO roll beside them, and the posted rules on the row that changes
 -- them.
 --
 -- The camp's grid is 8 units and the roster's floor takes three of them
 -- (its column heading plus two hero rows), so text lines and docket rows
 -- share the other FIVE (docs/basecamp-zones-design.md, "Bounds
--- arithmetic"). The host therefore spends all five on rows and speaks no
--- line: the posted rules ARE the MATCH SETUP row's note, and the signature
--- lives on the index page whose cover it takes. A sixth row does not page
--- politely here — it hides a row behind an arrow — so nothing in this
--- function is allowed to grow one.
+-- arithmetic"). The host spends four on rows and speaks no line: the
+-- posted rules ARE the MATCH SETUP row's note, and the signature lives on
+-- the index page whose cover it takes. A row past the free band does not
+-- page politely here — it hides one behind an arrow — so nothing in this
+-- function is allowed to grow the docket past it.
 --
--- A joiner keeps the pairing, the rules and its own book, spends one of
--- the five on the line that says whose call the game is, and loses the
--- rows it could never play: the card cannot be dealt by a machine that
--- does not set the level, so it is cut at fetch rather than left to
--- refuse.
+-- A joiner keeps the pairing, the rules and its own book, spends one row
+-- unit on the line that says whose call the game is, and loses the row it
+-- could never play: the roll cannot be played by a machine that does not
+-- set the level, so it is cut at fetch rather than left to refuse.
 local function base_camp()
   local rows = manifest_rows()
   local stamped = stamped_count(rows)
@@ -542,24 +491,16 @@ local function base_camp()
     note = mode_note(pair.mode.id, pair.row),
   }
   if host then
-    -- The draw wears the ARENA as its label, not the ceremony: the engine
-    -- confirms a level set by naming the row it set ("Level set to
-    -- CENTWHEIT MANOR."), and a row labelled TONIGHT'S CARD would be the
-    -- one level row on the screen whose confirmation names nothing you
-    -- could play.
-    local draw = drawn_row(pair.id)
+    -- An ACTION, not a level row: the arena is only known after the roll,
+    -- so the ceremony may wear its own name here — the engine's
+    -- confirmation still names something playable ("Level set to
+    -- CENTWHEIT MANOR."), because a level set through the roll runs the
+    -- same gated tail and the same toast as a level row's click.
     entries[#entries + 1] = {
-      id = "card_play",
-      kind = "level",
-      level = draw.id,
-      label = stripped_title(draw.id),
-      note = "the card",
-    }
-    entries[#entries + 1] = {
-      id = "shuffle",
+      id = "random_scenario",
       kind = "action",
-      label = "SHUFFLE THE DECK",
-      note = "deal a new card",
+      label = "RANDOM SCENARIO",
+      note = "any field",
     }
   end
   entries[#entries + 1] = {
@@ -570,7 +511,7 @@ local function base_camp()
   }
   -- The band the docket may spend, stated rather than assumed: an actions
   -- widget that does not weigh itself takes THREE units however many rows
-  -- it carries, which is how a five-row docket ends up as three rows and
+  -- it carries, which is how a four-row docket ends up as three rows and
   -- two unlabelled arrows. Weighing it past the band is worse than paging
   -- — an over-budget composition falls back to the default zone and the
   -- camp disappears — so the ask is clamped to what is actually free.
@@ -610,15 +551,21 @@ local function base_camp()
   return { widgets = widgets }
 end
 
--- SHUFFLE THE DECK: advance the deal (stored mod 39, so the int never
--- grows), and let the FIRST shuffle latch the company's cut.
-local function shuffle_deck()
-  local seq = og.campaign_state_get("card_seq")
-  og.campaign_state_set("card_seq", og.mod(seq + 1, DECK_SIZE))
-  if og.campaign_state_get("deck_cut") == 0 then
-    og.campaign_state_set("deck_cut", roster_cut())
+-- RANDOM SCENARIO: one roll over the whole ordered manifest, answered as
+-- `level` so the ENGINE runs its own gated set tail (host gate, load
+-- rollback) and speaks its own confirmation ("Level set to <arena>.").
+-- A roll that lands on the field the table is already set to steps one
+-- row on, wrapping — a button that changes nothing is not a roll. The
+-- roll happens HERE, at dispatch, never in a fetch: a random pick
+-- computed at fetch time would be the deck, re-labelled, and base_camp
+-- stays pure.
+local function random_scenario()
+  local rows = manifest_rows()
+  local i = og.campaign_random(#rows)
+  if rows[i].id == current_pair().id and #rows > 1 then
+    i = og.mod(i, #rows) + 1
   end
-  return { message = "The Gamesmaster deals again." }
+  return { level = rows[i].id }
 end
 
 -- SIGN THE BOOK: the completion flourish — the index retitles for good and
@@ -651,8 +598,8 @@ local function post_rules(writes)
 end
 
 local function picker_action(entry_id)
-  if entry_id == "shuffle" then
-    return shuffle_deck()
+  if entry_id == "random_scenario" then
+    return random_scenario()
   end
   if entry_id == "sign" then
     return sign_book()

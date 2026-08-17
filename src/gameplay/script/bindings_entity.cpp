@@ -2074,6 +2074,28 @@ int og_campaign_is_host(lua_State* L)
     return 1;
 }
 
+// og.campaign_random(n) → integer in 1..n — the menu-time roll. Campaign
+// dispatch only, resolved through the surface's random_pick provider (a
+// process-lifetime menu-side generator by default — NEVER the sim stream,
+// which og.rand keeps fenced during campaign hooks). Errors on n < 1, so a
+// script cannot ask an empty question.
+int og_campaign_random(lua_State* L)
+{
+    campaign_dispatch_arg(L, "campaign_random");
+    const lua_Integer n = luaL_checkinteger(L, 1);
+    if (n < 1)
+        return luaL_error(L, "og.campaign_random: n must be >= 1");
+    if (n > std::numeric_limits<std::int32_t>::max())
+        return luaL_error(L, "og.campaign_random: n out of int32 range");
+    const auto& p = campaign_providers();
+    if (!p.random_pick)
+        return luaL_error(
+            L, "og.campaign_random: no campaign provider installed");
+    lua_pushinteger(L,
+                    static_cast<lua_Integer>(p.random_pick(static_cast<int>(n))));
+    return 1;
+}
+
 // ---------------------------------------------------------------------------
 // Deterministic arithmetic / branch helpers
 // ---------------------------------------------------------------------------
@@ -3190,6 +3212,7 @@ const luaL_Reg kOgCampaignFuncs[] = {
     {"campaign_match_get", og_campaign_match_get},
     {"campaign_match_set", og_campaign_match_set},
     {"campaign_is_host", og_campaign_is_host},
+    {"campaign_random", og_campaign_random},
     {nullptr, nullptr},
 };
 

@@ -18,10 +18,11 @@
 // sides together.
 //
 // The camp replaced the book's root and card pages: the tallies live in the
-// header readout and the GAME row, and the draw is a camp level row. The
-// seven field pages, the games index (which keeps the signature, since the
-// cover is what it changes) and MATCH SETUP are the rooms, reached by page
-// rows.
+// header readout and the GAME row, and the RANDOM SCENARIO roll (D3, which
+// replaced TONIGHT'S CARD) is a camp action whose result carries the level.
+// The seven field pages, the games index (which keeps the signature, since
+// the cover is what it changes) and MATCH SETUP are the rooms, reached by
+// page rows.
 
 #include <gtest/gtest.h>
 
@@ -86,26 +87,26 @@ constexpr BookMode kBookModes[] = {
 };
 constexpr std::size_t kModeCount = sizeof(kBookModes) / sizeof(kBookModes[0]);
 
-// Camp docket geometry: GAME, FIELD, then (host only) the card and the
-// shuffle, then MATCH SETUP. Five rows on the host in EVERY state and
-// three on a joiner — the camp's whole grid is 8 units and the roster
-// floor takes three, so a sixth row would not append, it would hide one
+// Camp docket geometry: GAME, FIELD, then (host only) the RANDOM SCENARIO
+// roll, then MATCH SETUP. Four rows on the host in EVERY state and three
+// on a joiner — the camp's whole grid is 8 units and the roster floor
+// takes three, so an over-band row would not append, it would hide one
 // behind the pager (the signature therefore lives on the games index).
 constexpr std::size_t kCampGameRow = 0;
 constexpr std::size_t kCampFieldRow = 1;
-constexpr std::size_t kCampCardRow = 2;
-constexpr std::size_t kCampShuffleRow = 3;
-constexpr std::size_t kCampSetupRow = 4;
-constexpr std::size_t kCampHostRows = 5;
+constexpr std::size_t kCampRandomRow = 2;
+constexpr std::size_t kCampSetupRow = 3;
+constexpr std::size_t kCampHostRows = 4;
 constexpr std::size_t kCampJoinerRows = 3;
 constexpr std::size_t kCampJoinerSetupRow = 2;
-// The roster's share of the camp band, and the docket's: the host spends
-// no text line, so all five docket rows render at once.
-constexpr int kCampRosterRows = 2;
+// The roster's share of the camp band: four docket rows + the roster
+// heading leave three hero rows of the 8-unit band (the readout hoists
+// into the panel heading for free).
+constexpr int kCampRosterRows = 3;
 
-// Deck constants from the accepted design: 39 cards, stride 7 (coprime).
-constexpr int kDeckSize = 39;
-constexpr int kDeckStride = 7;
+// The campaign's arena census (the generator's own hard count — the old
+// DECK_SIZE, which the roll inherits as og.campaign_random(#rows)).
+constexpr int kArenaCount = 39;
 
 // Display budgets (the imaginations pins).
 constexpr std::size_t kLabelBudget = 24;
@@ -293,36 +294,18 @@ std::string expected_stamp_note(const std::vector<int>& band,
     return std::format("{}/{} stamped", stamped, band.size());
 }
 
-// The draw twin: the ordered-walk card the cut and the deal count select,
-// stepped one card on when it lands on the field the table is ALREADY set
-// to (a card that deals the current pairing is a button that changes
-// nothing). Stride 7 is coprime with 39, so one step is always a different
-// card.
-int expected_draw(const DerivedBook& book, int cut, int seq, int pair_id)
+// The roll twin: the 1-based ordered-manifest index the deterministic test
+// provider answers, stepped one row on (wrapping) when it lands on the
+// field the table is ALREADY set to — a roll that deals the current
+// pairing is a button that changes nothing.
+int expected_roll(const DerivedBook& book, int pick, int pair_id)
 {
-    const auto card = [&book, cut](int deal) {
-        const int index = ((cut - 1) + deal * kDeckStride) % kDeckSize;
-        return book.ordered[static_cast<std::size_t>(index)];
-    };
-    const int drawn = card(seq);
-    return drawn == pair_id ? card(seq + 1) : drawn;
-}
-
-// The roster-salt twin: sum of every hero's level, exp and name bytes,
-// folded once at the end into 1..39.
-int expected_cut(const SaveData& save)
-{
-    long long salt = 0;
-    for (const auto& member : save.team_list)
-    {
-        if (member == nullptr)
-            continue;
-        salt += member->level;
-        salt += static_cast<int>(member->exp);
-        for (const char c : member->name)
-            salt += static_cast<unsigned char>(c);
-    }
-    return static_cast<int>(salt % kDeckSize) + 1;
+    const int count = static_cast<int>(book.ordered.size());
+    int index = pick - 1;
+    if (book.ordered[static_cast<std::size_t>(index)] == pair_id &&
+        count > 1)
+        index = (index + 1) % count;
+    return book.ordered[static_cast<std::size_t>(index)];
 }
 
 std::unique_ptr<guy> make_member(short teamnum, const std::string& name,
@@ -378,6 +361,20 @@ protected:
     {
         hooks::install_campaign_providers(
             og::data::make_campaign_providers(save_, std::move(is_host)));
+    }
+
+    // The real provider glue with a deterministic roll: og.campaign_random
+    // answers `pick` (tests choose picks inside 1..n; an out-of-range pick
+    // clamps to n so a stale test fails loudly on the value, not UB).
+    void install_providers_with_pick(int pick,
+                                     std::function<bool()> is_host = {})
+    {
+        hooks::CampaignProviders providers =
+            og::data::make_campaign_providers(save_, std::move(is_host));
+        providers.random_pick = [pick](int n) {
+            return pick <= n ? pick : n;
+        };
+        hooks::install_campaign_providers(std::move(providers));
     }
 
     std::int32_t state(const std::string& key) const
@@ -495,7 +492,8 @@ TEST_F(ModesBookTest, unknown_and_retired_pages_are_guarded)
     EXPECT_FALSE(hooks::campaign_picker_page("", page))
         << "the root page retired into the camp";
     EXPECT_FALSE(hooks::campaign_picker_page("card", page))
-        << "the card page retired into the camp's card row";
+        << "the v1 card page stays retired (the deck itself retired with "
+           "D3's RANDOM SCENARIO roll)";
     hooks::CampaignActionResult result;
     EXPECT_TRUE(hooks::campaign_picker_action("neverwhere", result))
         << "the book serves actions, so the hook dispatches";
@@ -510,7 +508,7 @@ TEST_F(ModesBookTest, unknown_and_retired_pages_are_guarded)
 TEST_F(ModesBookTest, base_camp_composes_the_table)
 {
     const DerivedBook book = derive_book();
-    ASSERT_EQ(static_cast<std::size_t>(kDeckSize), book.ordered.size())
+    ASSERT_EQ(static_cast<std::size_t>(kArenaCount), book.ordered.size())
         << "the campaign ships 39 arenas";
     ASSERT_EQ(kModeCount, book.bands.size());
     const std::map<int, ManifestRow> manifest = parse_manifest();
@@ -549,11 +547,11 @@ TEST_F(ModesBookTest, base_camp_composes_the_table)
     EXPECT_TRUE(zone.texts().empty())
         << "a host line would cost the fifth docket row";
 
-    // The docket: the pairing, the draw, the shuffle and the rules.
+    // The docket: the pairing, the roll and the rules.
     ASSERT_EQ(1u, zone.actions().size());
     const std::vector<CampaignZoneSession::Row>& rows = camp_rows(zone);
     ASSERT_EQ(kCampHostRows, rows.size())
-        << "the docket is five rows in every host state";
+        << "the docket is four rows in every host state";
 
     const CampaignZoneSession::Row& game = rows[kCampGameRow];
     EXPECT_EQ(CampaignPickerSession::Kind::Page, game.kind);
@@ -567,27 +565,17 @@ TEST_F(ModesBookTest, base_camp_composes_the_table)
     EXPECT_EQ("FIELD: " + book.stripped.at(cursor), field.label);
     EXPECT_EQ(expected_note(tag, manifest.at(cursor)), field.note);
 
-    const CampaignZoneSession::Row& card = rows[kCampCardRow];
-    EXPECT_EQ(CampaignPickerSession::Kind::Level, card.kind);
-    EXPECT_EQ("card_play", card.id);
-    // Pre-latch draw: cut 1, seq 0 -> the first ordered arena, which is
-    // exactly the field a fresh company is already standing on — so the
-    // deal steps on rather than opening every new game with the same arena
-    // printed twice and a green row that sets the level it already is.
-    ASSERT_EQ(cursor, book.ordered[0]) << "the fixture is the fresh state";
-    const int drawn = expected_draw(book, 1, 0, cursor);
-    EXPECT_NE(cursor, drawn) << "the card is never the field on the table";
-    EXPECT_EQ(drawn, card.level);
-    // The ARENA is the label: the engine confirms a level set by naming
-    // the row, so this row's confirmation has to name something playable.
-    EXPECT_EQ(book.stripped.at(drawn), card.label);
-    EXPECT_EQ("the card", card.note);
-
-    const CampaignZoneSession::Row& shuffle = rows[kCampShuffleRow];
-    EXPECT_EQ(CampaignPickerSession::Kind::Action, shuffle.kind);
-    EXPECT_EQ("shuffle", shuffle.id);
-    EXPECT_EQ("SHUFFLE THE DECK", shuffle.label);
-    EXPECT_EQ("deal a new card", shuffle.note);
+    // The roll is an ACTION wearing its own name — the arena is only known
+    // after the click, and the "level row wears the arena" rule is honored
+    // by the engine's confirmation toast ("Level set to <arena>.", pinned
+    // by the terminal camp test below), not by this label.
+    const CampaignZoneSession::Row& roll = rows[kCampRandomRow];
+    EXPECT_EQ(CampaignPickerSession::Kind::Action, roll.kind);
+    EXPECT_EQ("random_scenario", roll.id);
+    EXPECT_EQ("RANDOM SCENARIO", roll.label);
+    EXPECT_EQ("any field", roll.note);
+    EXPECT_EQ(0, roll.cost) << "the roll is free";
+    EXPECT_TRUE(roll.affordable);
 
     const CampaignZoneSession::Row& setup = rows[kCampSetupRow];
     EXPECT_EQ(CampaignPickerSession::Kind::Page, setup.kind);
@@ -607,7 +595,7 @@ TEST_F(ModesBookTest, base_camp_composes_the_table)
     EXPECT_TRUE(roster.locks.empty());
     EXPECT_FALSE(roster.assign.active);
     EXPECT_EQ(kCampRosterRows, roster.rows_per_page)
-        << "5 docket units + 1 roster heading leaves 2 roster rows of the "
+        << "4 docket units + 1 roster heading leaves 3 roster rows of the "
            "8-unit band (the readout hoists into the panel heading for "
            "free)";
 }
@@ -636,9 +624,9 @@ TEST_F(ModesBookTest, every_camp_row_renders_without_a_pager)
         check(zone, "the fresh host camp");
     }
 
-    // The states that used to grow a sixth row: a full book (the signature
-    // moved to the index it retitles) and a signed one (no cover line at
-    // the table).
+    // The states that used to grow an extra row: a full book (the
+    // signature moved to the index it retitles) and a signed one (no cover
+    // line at the table).
     complete_all(book);
     {
         CampaignZoneSession zone(save_);
@@ -670,49 +658,86 @@ TEST_F(ModesBookTest, every_camp_row_renders_without_a_pager)
 }
 
 // The whole camp, driven on a real client: the terminal camp loop renders
-// the composition and dispatches one row. The draw is the row this test is
-// here for — a one-click level set whose confirmation has to name the
-// arena it just set, not the ceremony the row belongs to.
-TEST_F(ModesBookTest, terminal_camp_deals_the_card_and_names_what_it_set)
+// the composition and dispatches one row. The roll is the row this test is
+// here for — a one-click level set whose CONFIRMATION has to name the
+// arena it just set (the action row itself wears the ceremony's name, so
+// the engine toast is where the "level row wears the arena" rule now
+// lives), routed Acted-level through the driver's own gated tail.
+TEST_F(ModesBookTest, terminal_camp_rolls_the_scenario_and_names_what_it_set)
 {
     const DerivedBook book = derive_book();
-    const int drawn = expected_draw(book, 1, 0, save_.scen_num);
+    // A deterministic mid-manifest pick, off the current field: no skip
+    // arm.
+    const int pick = 7;
+    const int rolled = expected_roll(book, pick, save_.scen_num);
+    ASSERT_NE(save_.scen_num, rolled);
+    install_providers_with_pick(pick);
 
     ScriptedCampIo io;
     io.save = &save_;
-    io.answers = {std::to_string(kCampCardRow + 1), "0"};
+    io.answers = {std::to_string(kCampRandomRow + 1), "0"};
     og::ui::run_terminal_campaign_camp(save_, io.io());
 
-    EXPECT_EQ(drawn, io.applied_level) << "the docket row set the level";
-    EXPECT_EQ(drawn, save_.scen_num);
+    EXPECT_EQ(rolled, io.applied_level) << "the docket row set the level";
+    EXPECT_EQ(rolled, save_.scen_num);
     ASSERT_EQ(1u, io.notices.size());
-    EXPECT_EQ(std::format("Level set to {}.", book.stripped.at(drawn)),
-              io.notices[0])
+    // The ENGINE names what it set, in its own voice: the scenario's full
+    // title (the SDL tail toasts world().title, and the routed set speaks
+    // identically here). The stripped-arena spelling was the card ROW's
+    // label affair; the rule that survives the deck is that the
+    // confirmation names something playable, never the ceremony.
+    std::string raw_title;
+    ASSERT_EQ(og::data::LevelFileIoError::None,
+              og::data::load_scenario_title_with_error(
+                  ("scen" + std::to_string(rolled)).c_str(), raw_title));
+    EXPECT_EQ(std::format("Level set to {}.", raw_title), io.notices[0])
         << "the confirmation names the arena, never the row's ceremony";
 
-    // The docket the prompt actually listed: five rows, numbered, in the
+    // The docket the prompt actually listed: four rows, numbered, in the
     // camp's own order — the pager is a panel constraint, and a terminal
     // that hid rows behind one would be inventing a limit.
     ASSERT_GE(io.pages.size(), 2u);
-    EXPECT_NE(std::string::npos, io.pages[0].find("Camp # [1-5] (0 = back): "))
+    EXPECT_NE(std::string::npos, io.pages[0].find("Camp # [1-4] (0 = back): "))
         << io.pages[0];
     EXPECT_NE(std::string::npos, io.pages[0].find("BOOK 0/39"));
     EXPECT_NE(std::string::npos,
-              io.pages[0].find("   3. " + book.stripped.at(drawn) +
-                               " - the card\n"))
+              io.pages[0].find("   3. RANDOM SCENARIO - any field\n"))
         << io.pages[0];
     EXPECT_NE(std::string::npos,
-              io.pages[0].find("   5. MATCH SETUP - Auto, map, all  >\n"))
-        << "the fifth row is on the first face of every client";
+              io.pages[0].find("   4. MATCH SETUP - Auto, map, all  >\n"))
+        << "the fourth row is on the first face of every client";
 
     // And the click was not a no-op: the refetched camp is set to the
-    // arena it named, and deals a different card.
+    // arena it named, and the roll row still stands for the next night.
     EXPECT_NE(std::string::npos,
-              io.pages[1].find("   2. FIELD: " + book.stripped.at(drawn)))
+              io.pages[1].find("   2. FIELD: " + book.stripped.at(rolled)))
         << io.pages[1];
-    EXPECT_EQ(std::string::npos,
-              io.pages[1].find("   3. " + book.stripped.at(drawn) + " -"))
-        << "the deck deals on rather than re-offering the current field";
+    EXPECT_NE(std::string::npos,
+              io.pages[1].find("   3. RANDOM SCENARIO - any field\n"))
+        << io.pages[1];
+}
+
+// The driver-level host gate on the Acted-carried level: the terminal
+// providers have no host predicate (og.campaign_is_host is true on a
+// terminal), so the row COMPOSES — and the driver's own is_host, the SET
+// LEVEL predicate, still refuses the set. One refusal, no cursor motion,
+// and no second answer behind it (the roll carries no message).
+TEST_F(ModesBookTest, terminal_roll_refuses_for_a_non_host_driver)
+{
+    install_providers_with_pick(7);
+
+    ScriptedCampIo io;
+    io.save = &save_;
+    io.answers = {std::to_string(kCampRandomRow + 1), "0"};
+    og::ui::TerminalCampaignPickerIo tio = io.io();
+    tio.is_host = [] { return false; };
+    og::ui::run_terminal_campaign_camp(save_, tio);
+
+    EXPECT_EQ(-1, io.applied_level) << "the refused set never applies";
+    EXPECT_EQ(300, save_.scen_num);
+    ASSERT_EQ(1u, io.notices.size());
+    EXPECT_EQ(std::string(og::ui::kCampaignPickerHostGuardMessage),
+              io.notices[0]);
 }
 
 TEST_F(ModesBookTest, base_camp_tallies_recount_from_the_save)
@@ -783,7 +808,7 @@ TEST_F(ModesBookTest, dangling_cursor_falls_back_to_the_first_open_game)
 
 // A joiner gets the pairing, the rules and its own book — and loses the
 // rows it could never play. The cut is at FETCH, not at the click.
-TEST_F(ModesBookTest, joiner_camp_cuts_the_card_the_shuffle_and_the_sign)
+TEST_F(ModesBookTest, joiner_camp_cuts_the_roll_and_the_sign)
 {
     const DerivedBook book = derive_book();
     complete_all(book);  // even at 39/39 a joiner is offered no signature
@@ -804,8 +829,8 @@ TEST_F(ModesBookTest, joiner_camp_cuts_the_card_the_shuffle_and_the_sign)
            "cannot write, and the page behind the row says who posts";
     for (const CampaignZoneSession::Row& row : rows)
     {
-        EXPECT_NE("card_play", row.id) << "a joiner cannot play the draw";
-        EXPECT_NE("shuffle", row.id);
+        EXPECT_NE("random_scenario", row.id)
+            << "a joiner cannot play the roll — cut at fetch";
         EXPECT_NE("sign", row.id);
     }
     EXPECT_EQ(expected_stamp_note(book.bands.at(book.tag_of.at(save_.scen_num)),
@@ -813,8 +838,8 @@ TEST_F(ModesBookTest, joiner_camp_cuts_the_card_the_shuffle_and_the_sign)
               rows[kCampGameRow].note)
         << "a joiner is never sent to a signature it will not be offered";
 
-    // One line, spending the unit the host spends on its fifth row: who
-    // calls the game.
+    // One line, spending the row unit the host leaves free: who calls the
+    // game.
     ASSERT_EQ(1u, zone.texts().size());
     ASSERT_EQ(1u, zone.texts()[0].lines.size());
     EXPECT_EQ("The host calls the game.", zone.texts()[0].lines[0]);
@@ -827,6 +852,19 @@ TEST_F(ModesBookTest, joiner_camp_cuts_the_card_the_shuffle_and_the_sign)
 
 TEST_F(ModesBookTest, base_camp_is_pure_and_render_stable)
 {
+    // A counting roll provider: a random pick computed at fetch time would
+    // be the deck re-labelled, so the fetch-purity pin counts the rolls
+    // beside the state writes.
+    int rolls = 0;
+    {
+        hooks::CampaignProviders providers =
+            og::data::make_campaign_providers(save_);
+        providers.random_pick = [&rolls](int n) {
+            rolls++;
+            return n;
+        };
+        hooks::install_campaign_providers(std::move(providers));
+    }
     CampaignZoneSession first(save_);
     first.fetch();
     CampaignZoneSession second(save_);
@@ -856,9 +894,9 @@ TEST_F(ModesBookTest, base_camp_is_pure_and_render_stable)
         EXPECT_EQ(camp_rows(first)[i].label, camp_rows(second)[i].label);
         EXPECT_EQ(camp_rows(first)[i].note, camp_rows(second)[i].note);
     }
-    EXPECT_EQ(0, state("card_seq")) << "a fetch never writes";
-    EXPECT_EQ(0, state("deck_cut"));
-    EXPECT_EQ(0, state("book_signed"));
+    EXPECT_EQ(0, state("book_signed")) << "a fetch never writes";
+    EXPECT_EQ(0, rolls) << "a fetch never rolls — the roll lives in the "
+                           "action, where the click is";
 }
 
 // ---------------------------------------------------------------------------
@@ -914,9 +952,7 @@ TEST_F(ModesBookTest, picker_menu_is_pure_and_render_stable)
             EXPECT_EQ(first.rows[i].note, second.rows[i].note) << id;
         }
     }
-    EXPECT_EQ(0, state("card_seq")) << "a page fetch never writes";
-    EXPECT_EQ(0, state("deck_cut"));
-    EXPECT_EQ(0, state("book_signed"));
+    EXPECT_EQ(0, state("book_signed")) << "a page fetch never writes";
 }
 
 // ---------------------------------------------------------------------------
@@ -927,7 +963,7 @@ TEST_F(ModesBookTest, field_pages_match_the_manifest_bands)
 {
     const DerivedBook book = derive_book();
     const std::map<int, ManifestRow> manifest = parse_manifest();
-    ASSERT_EQ(static_cast<std::size_t>(kDeckSize), manifest.size())
+    ASSERT_EQ(static_cast<std::size_t>(kArenaCount), manifest.size())
         << "the generated manifest carries one row per arena";
     // The two runtime sources agree: every titled arena has a manifest
     // row of the same mode (the band-coupling tripwire).
@@ -1063,106 +1099,91 @@ TEST_F(ModesBookTest, label_fallbacks_for_empty_and_prefixless_titles)
 }
 
 // ---------------------------------------------------------------------------
-// TONIGHT'S CARD: the deck, now a camp row
+// RANDOM SCENARIO: the roll (D3 — TONIGHT'S CARD retired)
 // ---------------------------------------------------------------------------
 
-TEST_F(ModesBookTest, deck_deals_every_card_before_any_repeat)
+// Every provider answer maps to the manifest row it names — and never to
+// the field the table is already set to (the click that changes nothing
+// steps one row on). The outcome CARRIES the level; the session itself
+// never writes the cursor — the routing belongs to each client's gated
+// tail, which is pinned by the terminal tests above and the SDL zone test
+// in test_campaign_zone_ui.cpp.
+TEST_F(ModesBookTest, roll_answers_every_arena_and_never_the_current_field)
 {
     const DerivedBook book = derive_book();
-    ASSERT_EQ(static_cast<std::size_t>(kDeckSize), book.ordered.size());
-
+    ASSERT_EQ(static_cast<std::size_t>(kArenaCount), book.ordered.size());
     const int pair = save_.scen_num;
     ASSERT_EQ(book.ordered[0], pair) << "the fixture cursor is the first "
-                                        "arena, which is also card 0";
+                                        "arena, so pick 1 exercises the "
+                                        "step-on arm";
 
-    std::set<int> dealt;
-    for (int seq = 0; seq < kDeckSize; seq++)
+    std::set<int> rolled;
+    for (int pick = 1; pick <= kArenaCount; pick++)
     {
-        ASSERT_TRUE(save_.campaign_state_set("modes", "card_seq", seq));
+        install_providers_with_pick(pick);
         CampaignZoneSession zone(save_);
         zone.fetch();
         ASSERT_TRUE(zone.scripted());
-        const CampaignZoneSession::Row& draw = camp_rows(zone)[kCampCardRow];
-        EXPECT_EQ(CampaignPickerSession::Kind::Level, draw.kind);
-        // Pre-latch cut 1: idx = (0 + seq*7) mod 39 over the ordered walk,
-        // stepped on when it deals the field already on the table.
-        const int expected = expected_draw(book, 1, seq, pair);
-        EXPECT_EQ(expected, draw.level) << "seq " << seq;
-        EXPECT_NE(pair, draw.level) << "seq " << seq << ": the card never "
-                                       "deals the field the table is set to";
-        EXPECT_EQ(book.stripped.at(expected), draw.label)
-            << "the row names the exact draw before the click";
-        EXPECT_EQ("the card", draw.note);
-        dealt.insert(draw.level);
+        const CampaignZoneSession::Outcome outcome =
+            zone.act(0, static_cast<int>(kCampRandomRow));
+        ASSERT_EQ(CampaignZoneSession::OutcomeKind::Acted, outcome.kind)
+            << "pick " << pick;
+        const int expected = expected_roll(book, pick, pair);
+        EXPECT_EQ(expected, outcome.level) << "pick " << pick;
+        EXPECT_NE(pair, outcome.level)
+            << "pick " << pick << ": the roll never answers the field the "
+                                  "table is set to";
+        EXPECT_EQ(pair, save_.scen_num)
+            << "the session never writes the cursor — the caller's gated "
+               "tail does";
+        EXPECT_EQ("", zone.take_message())
+            << "the roll speaks through the engine's set toast, not a "
+               "message of its own";
+        rolled.insert(outcome.level);
     }
-    EXPECT_EQ(static_cast<std::size_t>(kDeckSize) - 1, dealt.size())
-        << "stride 7 over 39 deals every arena before any repeat — every "
-           "one but the field the table is standing on";
-    EXPECT_FALSE(dealt.contains(pair));
-
-    // And it is WITHHELD, not lost: move the table off that field and the
-    // deck's own card 0 deals normally.
-    ASSERT_TRUE(save_.campaign_state_set("modes", "card_seq", 0));
-    save_.scen_num = static_cast<short>(book.ordered[1]);
-    {
-        CampaignZoneSession zone(save_);
-        zone.fetch();
-        ASSERT_TRUE(zone.scripted());
-        EXPECT_EQ(pair, camp_rows(zone)[kCampCardRow].level);
-    }
-    EXPECT_EQ(0, state("deck_cut"))
-        << "camp fetches never latch the cut — base_camp stays pure";
+    EXPECT_EQ(static_cast<std::size_t>(kArenaCount) - 1, rolled.size())
+        << "the 39 picks reach every arena but the current field";
+    EXPECT_FALSE(rolled.contains(pair));
 }
 
-TEST_F(ModesBookTest, shuffle_advances_and_latches_the_cut_exactly_once)
+// The step-on wraps: a roll that lands on the LAST manifest row while the
+// table is set to it answers the FIRST row, not one past the end.
+TEST_F(ModesBookTest, roll_on_the_last_field_wraps_to_the_first)
 {
     const DerivedBook book = derive_book();
-    save_.team_list[0] = make_member(0, "Valkyrie", 4, 1234);
-    save_.team_list[1] = make_member(1, "Bo Vine", 2, 77);
-    save_.team_size = 2;
-    const int cut = expected_cut(save_);
-    ASSERT_GE(cut, 1);
-    ASSERT_LE(cut, kDeckSize);
+    save_.scen_num = static_cast<short>(book.ordered.back());
+    install_providers_with_pick(kArenaCount);
 
     CampaignZoneSession zone(save_);
     zone.fetch();
     ASSERT_TRUE(zone.scripted());
-
-    // First shuffle: the deal advances and the roster salt latches.
-    const CampaignZoneSession::Outcome first =
-        zone.act(0, static_cast<int>(kCampShuffleRow));
-    ASSERT_EQ(CampaignZoneSession::OutcomeKind::Acted, first.kind);
-    EXPECT_EQ("The Gamesmaster deals again.", zone.take_message());
-    EXPECT_EQ(1, state("card_seq"));
-    EXPECT_EQ(cut, state("deck_cut")) << "the FIRST shuffle latches";
-    const int dealt = expected_draw(book, cut, 1, save_.scen_num);
-    EXPECT_EQ(dealt, camp_rows(zone)[kCampCardRow].level)
-        << "the refetched card follows the latched formula";
-    EXPECT_EQ(book.stripped.at(dealt), camp_rows(zone)[kCampCardRow].label);
-
-    // Second shuffle: the deal advances, the cut holds.
-    ASSERT_EQ(CampaignZoneSession::OutcomeKind::Acted,
-              zone.act(0, static_cast<int>(kCampShuffleRow)).kind);
-    EXPECT_EQ(2, state("card_seq"));
-    EXPECT_EQ(cut, state("deck_cut")) << "latched exactly once";
-
-    // The deal wraps mod 39.
-    ASSERT_TRUE(save_.campaign_state_set("modes", "card_seq", kDeckSize - 1));
-    ASSERT_EQ(CampaignZoneSession::OutcomeKind::Acted,
-              zone.act(0, static_cast<int>(kCampShuffleRow)).kind);
-    EXPECT_EQ(0, state("card_seq")) << "seq wraps mod 39";
-    EXPECT_EQ(cut, state("deck_cut"));
+    const CampaignZoneSession::Outcome outcome =
+        zone.act(0, static_cast<int>(kCampRandomRow));
+    ASSERT_EQ(CampaignZoneSession::OutcomeKind::Acted, outcome.kind);
+    EXPECT_EQ(book.ordered.front(), outcome.level) << "the wrap arm";
 }
 
-TEST_F(ModesBookTest, empty_roster_shuffle_cuts_one)
+// The SHIPPED provider (make_campaign_providers' default): wall-clock
+// seeded, so the tests pin its RANGE contract — 1..n for every n, and the
+// defensive floor under a malformed ask — never a sequence.
+TEST_F(ModesBookTest, default_random_pick_answers_inside_the_range)
 {
-    CampaignZoneSession zone(save_);
-    zone.fetch();
-    ASSERT_TRUE(zone.scripted());
-    ASSERT_EQ(CampaignZoneSession::OutcomeKind::Acted,
-              zone.act(0, static_cast<int>(kCampShuffleRow)).kind);
-    EXPECT_EQ(1, state("deck_cut")) << "salt 0 cuts 1 — the same deck as "
-                                       "the pre-latch default";
+    const hooks::CampaignProviders providers =
+        og::data::make_campaign_providers(save_);
+    ASSERT_TRUE(static_cast<bool>(providers.random_pick))
+        << "the default providers ship a roll";
+    for (const int n : {1, 2, 3, kArenaCount})
+    {
+        for (int reps = 0; reps < 20; reps++)
+        {
+            const int roll = providers.random_pick(n);
+            ASSERT_GE(roll, 1) << "n " << n;
+            ASSERT_LE(roll, n) << "n " << n;
+        }
+    }
+    EXPECT_EQ(1, providers.random_pick(0))
+        << "the defensive floor (the binding rejects n < 1 first)";
+    EXPECT_EQ(1, providers.random_pick(-4));
 }
 
 // ---------------------------------------------------------------------------
@@ -1170,8 +1191,8 @@ TEST_F(ModesBookTest, empty_roster_shuffle_cuts_one)
 // ---------------------------------------------------------------------------
 
 // The signature lives on the index page whose COVER it takes, one door
-// from the camp: a sixth camp row would have hidden a fifth behind the
-// pager, and this is the page that visibly changes when the name lands.
+// from the camp: this is the page that visibly changes when the name
+// lands, and the camp's docket stays the same four rows in every state.
 TEST_F(ModesBookTest, sign_the_book_materializes_latches_and_retitles)
 {
     const DerivedBook book = derive_book();
@@ -1189,7 +1210,8 @@ TEST_F(ModesBookTest, sign_the_book_materializes_latches_and_retitles)
         ASSERT_EQ(kCampHostRows, camp_rows(zone).size());
         EXPECT_EQ("sign the book", camp_rows(zone)[kCampGameRow].note);
         for (const CampaignZoneSession::Row& row : camp_rows(zone))
-            EXPECT_NE("sign", row.id) << "the table has no sixth row to give";
+            EXPECT_NE("sign", row.id) << "the table gives the signature no "
+                                         "row of its own";
     }
 
     CampaignPickerSession session(save_);
@@ -1416,12 +1438,11 @@ TEST_F(ModesBookTest, every_page_and_the_camp_fit_their_budgets)
     }
 
     // The camp itself, over EVERY arena the campaign ships as the pairing —
-    // no exemptions. The two rows carrying a generated arena title (FIELD
-    // and the card) are exactly the rows whose overflow eats the grammar:
-    // the door marker off the FIELD row, the [CURRENT]/[CLEARED] stamp off
-    // the draw. A regenerated title that no longer fits has to fail HERE,
-    // where the note that must give way is one line above, rather than
-    // quietly ellipsing on the panel.
+    // no exemptions. The FIELD row carries a generated arena title, and it
+    // is exactly the row whose overflow eats the grammar (the door marker
+    // off its tail). A regenerated title that no longer fits has to fail
+    // HERE, where the note that must give way is one line above, rather
+    // than quietly ellipsing on the panel.
     //
     // Both ends of the posted-rules digest are swept with it: the defaults
     // spell the longest SENTENCE ("map score"), a posted score the longest
@@ -1435,9 +1456,8 @@ TEST_F(ModesBookTest, every_page_and_the_camp_fit_their_budgets)
         for (const int id : book.ordered)
         {
             save_.scen_num = static_cast<short>(id);
-            // Both stamp faces of the draw: an unplayed deck and a fully
-            // stamped one (whose card row wears "[CLEARED]", the widest
-            // tail any camp row can grow).
+            // Both stamp faces: an unplayed book and a fully stamped one
+            // (the GAME row's tally and the sign-the-book note both move).
             for (const bool stamped : {false, true})
             {
                 if (stamped)

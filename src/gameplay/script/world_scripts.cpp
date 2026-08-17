@@ -3340,6 +3340,18 @@ bool campaign_picker_action(const std::string& entry_id,
         if (lua_istable(L, -1)) {
             bool present = false;
             read_string_field(L, -1, "message", out.message, present);
+            // Optional `level` (D3): the scenario the action answers with.
+            // Read at 64-bit width so an oversized value cannot wrap into
+            // the loader's id range; anything outside 0..32767 — or a
+            // non-integer — stays the "no level carried" default (-1).
+            lua_pushstring(L, "level");
+            lua_rawget(L, -2);
+            if (lua_isinteger(L, -1)) {
+                const lua_Integer level = lua_tointeger(L, -1);
+                if (level >= 0 && level <= 32767)
+                    out.level = static_cast<int>(level);
+            }
+            lua_pop(L, 1);
         }
         lua_pop(L, 1);
     }

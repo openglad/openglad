@@ -144,7 +144,11 @@ public:
 
     struct Outcome {
         OutcomeKind kind = OutcomeKind::None;
-        int level = 0;       // SetLevel: the chosen scenario id
+        // SetLevel: the chosen scenario id. Acted: the level the action's
+        // result carried (D3), -1 = none — the caller routes a >= 0 value
+        // through its OWN gated level-set tail, exactly as if the player
+        // had clicked a level row.
+        int level = 0;
         std::string reason;  // Refused
     };
 

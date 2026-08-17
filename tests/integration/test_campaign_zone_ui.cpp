@@ -360,6 +360,11 @@ void write_save0_with_two_soldiers(const std::string& campaign, short scen_num,
 // Both action hooks also write a #212 MATCHUP knob so the Acted tail's
 // consume_match_settings_dirty() -> sync branch runs at BOTH dispatch sites
 // (the zone's own rows and the zone submenu's).
+//
+// The stores page also carries the two DICE actions (rows 3 and 4, past
+// everything the interactive flow clicks): submenu actions whose results
+// carry a `level`, for the direct-drive D3 routing test below
+// (submenu_action_result_level_routes_the_gated_set_tail).
 constexpr const char* kZoneScript = R"LUA(og.register_campaign_hooks({
   vars = { "kit" },
   base_camp = function()
@@ -400,6 +405,8 @@ constexpr const char* kZoneScript = R"LUA(og.register_campaign_hooks({
           { id = "bread", label = "BREAD", kind = "action", cost = 10 },
           { id = "cellar", label = "CELLAR", kind = "page" },
           { id = "ghost", kind = "level", level = 9999 },
+          { id = "dice", label = "DICE", kind = "action" },
+          { id = "dice_far", label = "FAR DICE", kind = "action" },
         },
       }
     end
@@ -422,6 +429,12 @@ constexpr const char* kZoneScript = R"LUA(og.register_campaign_hooks({
     if entry_id == "bread" then
       og.campaign_match_set("team_count", 3)
       return { message = "Bread eaten." }
+    end
+    if entry_id == "dice" then
+      return { level = 2, message = "The dice land." }
+    end
+    if entry_id == "dice_far" then
+      return { level = 15, message = "Dice gone cold." }
     end
     return { message = "Sipped." }
   end,
@@ -919,6 +932,181 @@ TEST(CampaignZoneUi, zone_level_row_is_host_gated_with_a_toast)
 
     og::ui::install_base_camp_state_for_screen(nullptr);
     og::ui::install_active_picker_lobby_client(saved_client);
+}
+
+namespace {
+
+// D3 Acted-level routing: a zone action whose result carries `level`. The
+// spin uses og.campaign_random(1) — deterministically 1 on ANY provider,
+// so the click exercises the SHIPPED wall-clock provider end to end — and
+// the far wheel names a road the company has not earned, so its set
+// refuses at the earned-roads gate.
+constexpr const char* kRouletteScript = R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return {
+      widgets = {
+        {
+          kind = "actions",
+          entries = {
+            { id = "spin", label = "SPIN THE WHEEL", kind = "action" },
+            { id = "spin_far", label = "FAR WHEEL", kind = "action" },
+          },
+        },
+        { kind = "roster" },
+      },
+    }
+  end,
+  picker_action = function(entry_id)
+    if entry_id == "spin" then
+      return { level = 1 + og.campaign_random(1),
+               message = "The wheel spins." }
+    end
+    return { level = 15, message = "No luck tonight." }
+  end,
+}))LUA";
+
+} // namespace
+
+// An Acted outcome carrying a level runs the SAME gated set tail as a
+// level row click: on success the engine's "Level set to <title>." is the
+// click's one answer (the action's own message is dropped); a set the
+// earned-roads gate refuses speaks the refusal and only then the action's
+// message.
+TEST(CampaignZoneUi, zone_action_result_level_routes_the_gated_set_tail)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    SyntheticCampaignScriptGuard::install(kRouletteScript);
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    save.completed_levels.clear();
+    // Level 2 is earned (a cleared road's replay); level 15 is not.
+    save.add_level_completed("gladiator", 2);
+    screen* const game = test_screen();
+    game->world().id = 1;
+    ASSERT_TRUE(game->load_level());
+
+    og::ui::CampaignZoneSession zone(save);
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted());
+    ASSERT_EQ(1u, zone.actions().size());
+    ASSERT_EQ(2u, zone.actions()[0].rows.size());
+
+    og::ui::BaseCampScreenState state;
+    state.zone = &zone;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, spec.on_spec_row);
+
+    // SPIN: og.campaign_random(1) + 1 = level 2 — earned, loads, commits.
+    EXPECT_EQ(MENU_REDRAW,
+              spec.on_spec_row(kBaseCampZoneActionBase + 0, &state));
+    EXPECT_EQ(2, save.scen_num)
+        << "the Acted-carried level commits through the set tail";
+    EXPECT_TRUE(trace_contains("zone", "level_set 2"));
+    EXPECT_TRUE(trace_contains("zone", "toast Level set to"))
+        << "the engine toast speaks on a successful routed set";
+    EXPECT_FALSE(trace_contains("zone", "toast The wheel spins."))
+        << "the Lua message is dropped when the set lands — one click, "
+           "one answer";
+    EXPECT_TRUE(trace_contains("zone", "acted_autosave"))
+        << "the routed action still runs the Acted persistence tail";
+
+    // FAR WHEEL: level 15 is a road the company has not earned — the
+    // routed set meets the same gate a level row would, and the action's
+    // message keeps its slot only here, after the refusal.
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kBaseCampZoneActionBase + 1, &state));
+    EXPECT_EQ(2, save.scen_num) << "a refused routed set never moves the "
+                                   "cursor";
+    EXPECT_TRUE(trace_contains("zone", "level_denied_gate 15"));
+    EXPECT_TRUE(trace_contains("zone", "toast That road is not open yet."));
+    EXPECT_TRUE(trace_contains("zone", "toast No luck tonight."))
+        << "the Lua message shows when the set refused";
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+}
+
+// D3 Acted-level routing at the SUBMENU dispatch site — the SDL client's
+// fifth and last routed arm. A page-hosted action whose result carries
+// `level` goes through zone_submenu_level_set_tail, the SAME gated tail a
+// submenu level row's click takes: on a landed set the engine's "Level set
+// to <arena>." is the click's one answer and the action's own message is
+// dropped; a set the earned-roads gate refuses speaks the refusal and only
+// then the message. Drives zone_submenu_on_spec_row directly (the
+// host-gate test's pattern) on kZoneScript's stores page, whose DICE rows
+// exist for exactly this test.
+TEST(CampaignZoneUi, submenu_action_result_level_routes_the_gated_set_tail)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    SyntheticCampaignScriptGuard::install(kZoneScript);
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    save.completed_levels.clear();
+    // Level 2 is earned (a cleared road's replay); level 15 is not.
+    save.add_level_completed("gladiator", 2);
+    screen* const game = test_screen();
+    game->world().id = 1;
+    ASSERT_TRUE(game->load_level());
+
+    og::ui::CampaignPickerSession session(save);
+    ASSERT_TRUE(session.open_at("stores"));
+    ASSERT_EQ(5u, session.page().rows.size());
+    ASSERT_EQ("dice", session.page().rows[3].id);
+    ASSERT_EQ("dice_far", session.page().rows[4].id);
+
+    og::ui::ZoneSubmenuScreenState st;
+    st.session = &session;
+    st.page = og::ui::PageModel::make(
+        static_cast<int>(session.page().rows.size()),
+        kZoneSubmenuRowsPerPage);
+    og::ui::install_zone_submenu_state_for_screen(&st);
+
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::zone_submenu_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.on_spec_row);
+
+    // DICE: the carried level 2 is earned — the routed set commits, and
+    // the engine's confirmation is the click's one answer.
+    EXPECT_EQ(MENU_REDRAW, spec.on_spec_row(3, &st));
+    EXPECT_EQ(2, save.scen_num)
+        << "the Acted-carried level commits through the submenu set tail";
+    EXPECT_TRUE(trace_contains("zone", "level_set 2"));
+    EXPECT_TRUE(trace_contains("zone", "toast Level set to"))
+        << "the engine toast speaks on a successful routed set";
+    EXPECT_FALSE(trace_contains("zone", "toast The dice land."))
+        << "the Lua message is dropped when the set lands — one click, "
+           "one answer";
+    EXPECT_TRUE(trace_contains("zone", "acted_autosave"))
+        << "the routed submenu action still runs the Acted persistence "
+           "tail";
+
+    // FAR DICE: level 15 is a road the company has not earned — the
+    // routed set meets the same gate a submenu level row would, and the
+    // action's message keeps its slot only here, after the refusal.
+    EXPECT_EQ(MENU_REDRAW, spec.on_spec_row(4, &st));
+    EXPECT_EQ(2, save.scen_num)
+        << "a refused routed set never moves the cursor";
+    EXPECT_TRUE(trace_contains("zone", "level_denied_gate 15"));
+    EXPECT_TRUE(trace_contains("zone", "toast That road is not open yet."));
+    EXPECT_TRUE(trace_contains("zone", "toast Dice gone cold."))
+        << "the Lua message shows when the set refused";
+
+    og::ui::install_zone_submenu_state_for_screen(nullptr);
 }
 
 // Fetch triggers 3 and 4 through the REAL frame hook: the level-reload
@@ -1496,11 +1684,11 @@ TEST(CampaignZoneUi, zz_capture_default_zone_across_campaigns)
     // campaign whose mount left the screen empty must be caught here.
     DefaultTourState tours[] = {
         {"gladiator", "zone_default_gladiator", 1, 0},
-        // The Gamesmaster's table composes GAME / FIELD / the card /
-        // SHUFFLE / MATCH SETUP — all FIVE on the panel's first face. The
-        // camp spends no text line precisely so that its last row is not
-        // parked behind a pager arrow on the screen a player lives on.
-        {"modes", "zone_default_modes", 300, 5},
+        // The Gamesmaster's table composes GAME / FIELD / RANDOM SCENARIO
+        // / MATCH SETUP — all FOUR on the panel's first face. The camp
+        // spends no text line precisely so that its last row is not parked
+        // behind a pager arrow on the screen a player lives on.
+        {"modes", "zone_default_modes", 300, 4},
         // The Company Fire composes its camp: at the vale that is the one
         // road ahead plus the QUARTERMASTER and THE LEDGER doors.
         {"westlands", "zone_camp_westlands", 1, 3},

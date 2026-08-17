@@ -417,6 +417,7 @@ TEST_F(CampaignHooksTest, fence_walk_everything_outside_the_allowlist_errors)
         "campaign_level_completed", "campaign_current_level",
         "campaign_scenario_title",
         "campaign_match_get", "campaign_match_set", "campaign_is_host",
+        "campaign_random",
         "div", "mod", "fadd", "fsub", "fmul", "fdiv", "i8", "i16", "i32",
         "u8", "trunc", "log",
         "max", "min", "clamp", "sign",
@@ -476,6 +477,7 @@ TEST_F(CampaignHooksTest, campaign_bindings_error_outside_campaign_dispatch)
   "campaign_match_get",
   "campaign_match_set",
   "campaign_is_host",
+  "campaign_random",
 }
 for i = 1, #names do
   local ok, err = pcall(og[names[i]])
@@ -517,6 +519,7 @@ TEST_F(CampaignHooksTest, campaign_bindings_error_with_no_provider)
       { "campaign_match_get", "team_count" },
       { "campaign_match_set", "team_count", 2 },
       { "campaign_is_host" },
+      { "campaign_random", 1 },
     }
     for i = 1, #calls do
       local c = calls[i]
@@ -745,6 +748,56 @@ TEST_F(CampaignHooksTest, match_bindings_round_trip)
     EXPECT_EQ(20, knobs.at("score_limit")) << "a joiner's write never lands";
 }
 
+// D3 og.campaign_random: the provider's answer rides through untouched (a
+// deterministic test provider proves the value is the provider's, not a
+// hidden roll), the binding hands the provider exactly the n the script
+// sent, and the two argument rejections — n < 1 and n past int32 — raise
+// BEFORE the provider runs.
+TEST_F(CampaignHooksTest, campaign_random_provider_answer_and_bounds)
+{
+    std::vector<int> asked;
+    hooks::CampaignProviders providers;
+    providers.random_pick = [&](int n) {
+        asked.push_back(n);
+        return n;  // deterministic: always the top of the range
+    };
+    hooks::install_campaign_providers(std::move(providers));
+
+    register_script(R"LUA(og.register_campaign_hooks({
+  picker_action = function(entry_id)
+    og.log("one " .. og.campaign_random(1))
+    og.log("many " .. og.campaign_random(39))
+    local ok, err = pcall(og.campaign_random, 0)
+    og.log("zero " .. tostring(ok))
+    og.log("msg " .. err)
+    local ok2, err2 = pcall(og.campaign_random, -5)
+    og.log("neg " .. tostring(ok2))
+    local ok3, err3 = pcall(og.campaign_random, 3000000000)
+    og.log("wide " .. tostring(ok3))
+    og.log("msg3 " .. err3)
+    return nil
+  end,
+}))LUA");
+
+    hooks::CampaignActionResult result;
+    ASSERT_TRUE(hooks::campaign_picker_action("x", result));
+    EXPECT_TRUE(result.ok);
+    const std::vector<std::string>& log = vm_log();
+    ASSERT_EQ(7u, log.size());
+    EXPECT_EQ("one 1", log[0]);
+    EXPECT_EQ("many 39", log[1]);
+    EXPECT_EQ("zero false", log[2]) << "n < 1 raises";
+    EXPECT_NE(std::string::npos, log[3].find("n must be >= 1")) << log[3];
+    EXPECT_EQ("neg false", log[4]);
+    EXPECT_EQ("wide false", log[5]) << "n past int32 raises";
+    EXPECT_NE(std::string::npos, log[6].find("int32")) << log[6];
+    // The provider saw ONLY the two legal asks — the rejections raised
+    // before it ran.
+    ASSERT_EQ(2u, asked.size());
+    EXPECT_EQ(1, asked[0]);
+    EXPECT_EQ(39, asked[1]);
+}
+
 // ---------------------------------------------------------------------------
 // Page parse
 // ---------------------------------------------------------------------------
@@ -926,6 +979,60 @@ TEST_F(CampaignHooksTest, action_dispatch_and_message)
     // No picker_menu registered: pages answer false, actions still serve.
     hooks::CampaignPage page;
     EXPECT_FALSE(hooks::campaign_picker_page("", page));
+}
+
+// D3: the optional `level` an action answers with. In-range values ride
+// through beside the message; everything else — absent, negative, past the
+// loader's id ceiling, wrapped past 64 bits, or not an integer at all —
+// stays the "no level carried" default (-1), never an error.
+TEST_F(CampaignHooksTest, action_result_level_parse_and_bounds)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  picker_action = function(entry_id)
+    if entry_id == "plain" then
+      return { level = 305, message = "Rolled." }
+    end
+    if entry_id == "zero" then
+      return { level = 0 }
+    end
+    if entry_id == "ceiling" then
+      return { level = 32767 }
+    end
+    if entry_id == "negative" then
+      return { level = -3 }
+    end
+    if entry_id == "past_ceiling" then
+      return { level = 32768 }
+    end
+    if entry_id == "wrapped" then
+      return { level = 4294967301 }
+    end
+    if entry_id == "not_integer" then
+      return { level = "three" }
+    end
+    return { message = "No level here." }
+  end,
+}))LUA");
+
+    hooks::CampaignActionResult result;
+    ASSERT_TRUE(hooks::campaign_picker_action("plain", result));
+    EXPECT_EQ(305, result.level);
+    EXPECT_EQ("Rolled.", result.message) << "level and message coexist";
+
+    ASSERT_TRUE(hooks::campaign_picker_action("zero", result));
+    EXPECT_EQ(0, result.level) << "0 is a legal scenario id";
+    ASSERT_TRUE(hooks::campaign_picker_action("ceiling", result));
+    EXPECT_EQ(32767, result.level);
+
+    const char* rejected[] = {"negative", "past_ceiling", "wrapped",
+                              "not_integer", "no_level"};
+    for (const char* id : rejected)
+    {
+        ASSERT_TRUE(hooks::campaign_picker_action(id, result)) << id;
+        EXPECT_TRUE(result.ok) << id;
+        EXPECT_EQ(-1, result.level) << id << ": out-of-range or absent "
+                                            "levels read as none carried";
+    }
 }
 
 TEST_F(CampaignHooksTest, action_without_registration_answers_false)

@@ -1611,6 +1611,101 @@ void zone_submenu_draw_content(void* screen_state)
         strip_text(140, 176, st->page.indicator(), WHITE);
 }
 
+// The ONE gated scripted level set behind every SDL campaign-book level
+// tail — the zone's level rows, the submenu's, and the D3 Acted-level
+// routing (an action that answered `{ level = id }`). Host gate, the
+// earned-roads gate, the already-here answer, then the do_set_scen_level
+// tail without pick_level: load the chosen level with rollback, commit the
+// cursor, republish the lobby settings. The caller owns its surface's
+// toasts, traces, refetch and return code.
+enum class ScriptedLevelSet {
+    DeniedHost,  // "Only the host may set the level."
+    DeniedGate,  // earned roads: "That road is not open yet."
+    Unchanged,   // "Already on that level. GO when ready."
+    LoadFailed,  // rolled back; the campaign's closed-road voice
+    Set,         // scen_num committed; "Level set to <title>."
+};
+
+ScriptedLevelSet apply_scripted_level_set(int level)
+{
+    // Host gate (the SET LEVEL predicate): pages/actions are for everyone,
+    // level sets are host-only.
+    if (!picker_lobby_host_controls_visible())
+        return ScriptedLevelSet::DeniedHost;
+    screen* const game = og::runtime::current_session->myscreen_;
+    // The earned-roads gate, before any load: the decoration already
+    // stamps closed rows [CLOSED], and every other entry into a level set
+    // must answer the same.
+    if (!og::data::level_selection_allowed(game->save_data, level))
+        return ScriptedLevelSet::DeniedGate;
+    const int old_id = game->world().id;
+    if (level == old_id)
+        return ScriptedLevelSet::Unchanged;
+    // The do_set_scen_level tail without pick_level: load the chosen level
+    // with rollback, then commit the cursor and republish.
+    game->world().id = static_cast<short>(level);
+    if (level < 0 || level > 32767 || !game->load_level()) {
+        game->clearbuffer();
+        game->world().id = static_cast<short>(old_id);
+        if (!game->load_level()) {
+            game->clearbuffer();
+            popup_dialog("Big problem",
+                         "Also failed to reload current level...");
+        }
+        return ScriptedLevelSet::LoadFailed;
+    }
+    game->save_data.scen_num = static_cast<short>(level);
+    picker_lobby_sync_settings_from_save();
+    return ScriptedLevelSet::Set;
+}
+
+// The submenu's level-set tail over the shared gated set. `lua_toast` is
+// the D3 Acted-carried message: on a successful set the engine's own
+// confirmation is the click's one answer and the message is dropped; a
+// refused set speaks the refusal and then the message, which keeps the
+// slot only to explain a roll that changed nothing ("" for a plain level
+// row click).
+Sint32 zone_submenu_level_set_tail(ZoneSubmenuScreenState& st,
+                                   og::ui::CampaignPickerSession& session,
+                                   int level, const std::string& lua_toast)
+{
+    switch (apply_scripted_level_set(level)) {
+    case ScriptedLevelSet::DeniedHost:
+        TRACE("zone", "level_denied_nonhost %d", level);
+        zone_submenu_show_toast(
+            st, std::string(og::ui::kCampaignPickerHostGuardMessage));
+        break;
+    case ScriptedLevelSet::DeniedGate:
+        TRACE("zone", "level_denied_gate %d", level);
+        zone_submenu_show_toast(
+            st, std::string(og::ui::kCampaignLevelClosedMessage));
+        break;
+    case ScriptedLevelSet::Unchanged:
+        TRACE("zone", "level_unchanged %d", level);
+        zone_submenu_show_toast(
+            st, std::string(og::ui::kCampaignLevelUnchangedMessage));
+        break;
+    case ScriptedLevelSet::LoadFailed:
+        // The campaign's own voice, never the loader's.
+        zone_submenu_show_toast(
+            st, std::string(og::ui::kCampaignLevelClosedMessage));
+        break;
+    case ScriptedLevelSet::Set:
+        // CURRENT markers re-derive from the new cursor (fetch-per-action,
+        // never per frame).
+        session.refresh();
+        zone_submenu_reset_page(st, true);
+        TRACE("zone", "level_set %d", level);
+        zone_submenu_show_toast(
+            st, og::ui::campaign_level_set_message(
+                    og::runtime::current_session->myscreen_->world().title));
+        return MENU_REDRAW;
+    }
+    if (!lua_toast.empty())
+        zone_submenu_show_toast(st, lua_toast);
+    return MENU_REDRAW;
+}
+
 // G3 row dispatch: BACK first (the C++ top strip is checked before any Lua
 // row), then the pagers, then session choose per visual row. The SDL
 // level-set tail — host gate, load-with-rollback, scen_num write, lobby
@@ -1655,59 +1750,11 @@ Sint32 zone_submenu_on_spec_row(int row, void* screen_state)
         zone_submenu_reset_page(*st, false);
         TRACE("zone", "submenu_opened %s", session.page().title.c_str());
         return MENU_REDRAW;
-    case Outcome::SetLevel: {
-        // Host gate (the SET LEVEL predicate): pages/actions are for
-        // everyone, level rows publish scenario_id and are host-only.
-        if (!picker_lobby_host_controls_visible()) {
-            TRACE("zone", "level_denied_nonhost %d", outcome.level);
-            zone_submenu_show_toast(
-                *st, std::string(og::ui::kCampaignPickerHostGuardMessage));
-            return MENU_REDRAW;
-        }
-        screen* game = og::runtime::current_session->myscreen_;
-        // The earned-roads gate, before any load: the decoration already
-        // stamps the row [CLOSED], and ENTER-through must answer the same.
-        if (!og::data::level_selection_allowed(game->save_data,
-                                               outcome.level)) {
-            TRACE("zone", "level_denied_gate %d", outcome.level);
-            zone_submenu_show_toast(
-                *st, std::string(og::ui::kCampaignLevelClosedMessage));
-            return MENU_REDRAW;
-        }
-        const int old_id = game->world().id;
-        if (outcome.level == old_id) {
-            TRACE("zone", "level_unchanged %d", outcome.level);
-            zone_submenu_show_toast(
-                *st, std::string(og::ui::kCampaignLevelUnchangedMessage));
-            return MENU_REDRAW;
-        }
-        // The do_set_scen_level tail without pick_level: load the chosen
-        // level with rollback, then commit the cursor and republish.
-        game->world().id = static_cast<short>(outcome.level);
-        if (outcome.level < 0 || outcome.level > 32767 ||
-            !game->load_level()) {
-            game->clearbuffer();
-            zone_submenu_show_toast(
-                *st, std::string(og::ui::kCampaignLevelClosedMessage));
-            game->world().id = static_cast<short>(old_id);
-            if (!game->load_level()) {
-                game->clearbuffer();
-                popup_dialog("Big problem",
-                             "Also failed to reload current level...");
-            }
-            return MENU_REDRAW;
-        }
-        game->save_data.scen_num = static_cast<short>(outcome.level);
-        picker_lobby_sync_settings_from_save();
-        // CURRENT markers re-derive from the new cursor (fetch-per-action,
-        // never per frame).
-        session.refresh();
-        zone_submenu_reset_page(*st, true);
-        TRACE("zone", "level_set %d", outcome.level);
-        zone_submenu_show_toast(
-            *st, og::ui::campaign_level_set_message(game->world().title));
-        return MENU_REDRAW;
-    }
+    case Outcome::SetLevel:
+        // The shared gated tail (host gate, earned-roads gate,
+        // load-with-rollback, cursor commit, republish, toast).
+        return zone_submenu_level_set_tail(*st, session, outcome.level,
+                                           std::string());
     case Outcome::Acted: {
         // #212: an action that wrote a MATCHUP knob through
         // og.campaign_match_set armed the providers' dirty flag; run the
@@ -1729,6 +1776,14 @@ Sint32 zone_submenu_on_spec_row(int row, void* screen_state)
         zone_submenu_reset_page(*st, true);
         const std::string toast = session.take_message();
         TRACE("zone", "acted %s", session.page().title.c_str());
+        // D3: an action that answered with a level routes through the SAME
+        // gated tail as a level row — never a bare cursor write — so the
+        // host gate, the earned-roads gate and the load-rollback all hold,
+        // and on success the engine's "Level set to <arena>." is the
+        // click's one answer.
+        if (outcome.level >= 0)
+            return zone_submenu_level_set_tail(*st, session, outcome.level,
+                                               toast);
         // The SAME confirmation the root gives: a non-modal message-line
         // toast. A purchase does not become a blocking dialog because it
         // happened one page deeper.
@@ -4708,6 +4763,60 @@ void base_camp_refetch_zone(BaseCampScreenState& state)
     TRACE("zone", "refetch");
 }
 
+// The zone's level-set tail over the shared gated set (the submenu twin,
+// with this surface's toast/refetch/return-code conventions: refusals keep
+// the panel as-is with MENU_OK, a set or a rollback redraws). `lua_toast`
+// is the D3 Acted-carried message — dropped on a successful set (the
+// engine's confirmation is the one answer), spoken after a refusal ("" for
+// a plain level row click).
+Sint32 base_camp_level_set_tail(BaseCampScreenState& st, int level,
+                                const std::string& lua_toast)
+{
+    Sint32 ret = MENU_OK;
+    switch (apply_scripted_level_set(level)) {
+    case ScriptedLevelSet::DeniedHost:
+        TRACE("zone", "level_denied_nonhost %d", level);
+        base_camp_show_toast(
+            st, std::string(og::ui::kCampaignPickerHostGuardMessage));
+        break;
+    case ScriptedLevelSet::DeniedGate:
+        TRACE("zone", "level_denied_gate %d", level);
+        base_camp_show_toast(
+            st, std::string(og::ui::kCampaignLevelClosedMessage));
+        break;
+    case ScriptedLevelSet::Unchanged:
+        TRACE("zone", "level_unchanged %d", level);
+        base_camp_show_toast(
+            st, std::string(og::ui::kCampaignLevelUnchangedMessage));
+        break;
+    case ScriptedLevelSet::LoadFailed:
+        // The campaign's own voice, never the loader's: a road that will
+        // not load is a road the campaign has not opened.
+        base_camp_show_toast(
+            st, std::string(og::ui::kCampaignLevelClosedMessage));
+        ret = MENU_REDRAW;
+        break;
+    case ScriptedLevelSet::Set: {
+        screen* const game = og::runtime::current_session->myscreen_;
+        // The frame-tick reload guard sees the committed cursor and
+        // refetches (trigger 3); refetch now too so THIS frame's labels
+        // re-derive (trigger 2 — own mutation).
+        st.last_level_id = game->save_data.scen_num;
+        base_camp_refetch_zone(st);
+        base_camp_refresh_rows(st);
+        TRACE("zone", "level_set %d", level);
+        // A successful choice SAYS so. Silence here is what let the
+        // previous action's toast be read as this one's answer.
+        base_camp_show_toast(
+            st, og::ui::campaign_level_set_message(game->world().title));
+        return MENU_REDRAW;
+    }
+    }
+    if (!lua_toast.empty())
+        base_camp_show_toast(st, lua_toast);
+    return ret;
+}
+
 // The team-build family's frame obligations: the level-reload guard (a SET
 // LEVEL pick or a host sync must reload the picker world) plus the §3.3
 // positional refresh of the roster rows.
@@ -4968,62 +5077,10 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
             TRACE("zone", "page_row %s", entry.id.c_str());
             return MENU_REDRAW;
         }
-        case EntryKind::Level: {
+        case EntryKind::Level:
             // Host-gated level row with the load-with-rollback set tail
-            // (the submenu's SetLevel tail, toast-refused — never a modal).
-            if (!picker_lobby_host_controls_visible()) {
-                TRACE("zone", "level_denied_nonhost %d", entry.level);
-                base_camp_show_toast(*st, "Only the host may set the level.");
-                return MENU_OK;
-            }
-            screen* const game = og::runtime::current_session->myscreen_;
-            // The earned-roads gate, before any load (the docket already
-            // stamps the row [CLOSED] from the same predicate).
-            if (!og::data::level_selection_allowed(game->save_data,
-                                                   entry.level)) {
-                TRACE("zone", "level_denied_gate %d", entry.level);
-                base_camp_show_toast(
-                    *st, std::string(og::ui::kCampaignLevelClosedMessage));
-                return MENU_OK;
-            }
-            const int old_id = game->world().id;
-            if (entry.level == old_id) {
-                TRACE("zone", "level_unchanged %d", entry.level);
-                base_camp_show_toast(
-                    *st, std::string(og::ui::kCampaignLevelUnchangedMessage));
-                return MENU_OK;
-            }
-            game->world().id = static_cast<short>(entry.level);
-            if (entry.level < 0 || entry.level > 32767 ||
-                !game->load_level()) {
-                game->clearbuffer();
-                // The campaign's own voice, never the loader's: a road that
-                // will not load is a road the campaign has not opened.
-                base_camp_show_toast(
-                    *st, std::string(og::ui::kCampaignLevelClosedMessage));
-                game->world().id = static_cast<short>(old_id);
-                if (!game->load_level()) {
-                    game->clearbuffer();
-                    popup_dialog("Big problem",
-                                 "Also failed to reload current level...");
-                }
-                return MENU_REDRAW;
-            }
-            game->save_data.scen_num = static_cast<short>(entry.level);
-            picker_lobby_sync_settings_from_save();
-            // The frame-tick reload guard sees the committed cursor and
-            // refetches (trigger 3); refetch now too so THIS frame's
-            // labels re-derive (trigger 2 — own mutation).
-            st->last_level_id = game->save_data.scen_num;
-            base_camp_refetch_zone(*st);
-            base_camp_refresh_rows(*st);
-            TRACE("zone", "level_set %d", entry.level);
-            // A successful choice SAYS so. Silence here is what let the
-            // previous action's toast be read as this one's answer.
-            base_camp_show_toast(
-                *st, og::ui::campaign_level_set_message(game->world().title));
-            return MENU_REDRAW;
-        }
+            // (the shared gated tail, toast-refused — never a modal).
+            return base_camp_level_set_tail(*st, entry.level, std::string());
         case EntryKind::Action: {
             // Debit-then-dispatch through the shared session machinery
             // (the session refetches on Acted). Zone actions do NOT clear
@@ -5053,6 +5110,15 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
             TRACE("zone", "acted_autosave");
             const std::string toast = zone->take_message();
             TRACE("zone", "acted %s", entry.id.c_str());
+            // D3: an action that answered with a level routes through the
+            // SAME gated tail as a level row — never a bare cursor write —
+            // so the host gate, the earned-roads gate and the load-rollback
+            // all hold, and on success the engine's "Level set to <arena>."
+            // is the click's one answer.
+            if (outcome.level >= 0) {
+                base_camp_refresh_rows(*st);
+                return base_camp_level_set_tail(*st, outcome.level, toast);
+            }
             if (!toast.empty())
                 base_camp_show_toast(*st, toast);
             base_camp_refresh_rows(*st);

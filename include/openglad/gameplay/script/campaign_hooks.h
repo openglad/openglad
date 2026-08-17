@@ -87,6 +87,12 @@ struct CampaignPage {
 struct CampaignActionResult {
     bool ok = false;
     std::string message;  // optional toast
+    // Optional scenario the action answers with (`level` on the returned
+    // table): the caller routes it through its OWN gated level-set tail —
+    // host gate, earned-roads gate, load-rollback — never a bare cursor
+    // write. -1 = no level carried; the parser rejects anything outside
+    // the loader's id range (0..32767) back to -1.
+    int level = -1;
 };
 
 // One deploy refusal on the zone's roster widget. Heroes are addressed by
@@ -209,6 +215,13 @@ struct CampaignProviders {
     std::function<std::int32_t(const std::string&)> match_get;
     std::function<bool(const std::string&, std::int32_t)> match_set;
     std::function<bool()> is_host;
+    // og.campaign_random(n) → 1..n. Menu-time randomness ONLY: the default
+    // (og::data::make_campaign_providers) is a process-lifetime generator
+    // seeded from the wall clock at first use, and the sim RNG stays
+    // fenced (og.rand still errors under campaign dispatch). The binding
+    // rejects n < 1 before the provider runs; tests install a
+    // deterministic provider.
+    std::function<int(int)> random_pick;
     // Base Camp assign write (GTL v16): sets team_list[save_slot]'s
     // campaign_tag. Check-then-write like state_set — answers false with
     // NO mutation for an invalid or unoccupied slot or a tag outside
