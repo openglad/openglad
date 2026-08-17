@@ -2755,6 +2755,10 @@ Sint32 do_set_scen_level(Sint32 arg1)
        }
        else  // We're good
        {
+           // SET LEVEL is a plain cursor write: it abandons any replay
+           // excursion in flight (the stale arm must never skip a purge or
+           // restore a cursor the player just re-pointed).
+           og::runtime::current_session->myscreen_->save_data.clear_replay_arm();
            og::runtime::current_session->myscreen_->save_data.scen_num = static_cast<short>(templevel);
            picker_lobby_sync_settings_from_save();
            Log("Set level to {}\n", templevel);

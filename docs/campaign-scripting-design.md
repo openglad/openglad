@@ -355,13 +355,21 @@ active team (the TDM pattern), pinned by a bindings test.
 
 ### #207 — replay
 
-Completed levels become selectable everywhere: the PROGRESS screen's
-cleared rows regain their per-row button, labeled REPLAY (terminals
-already accept any id at the set-level prompt; scripted pickers list
-cleared rows with their CLEARED marker by design). The Imaginations
-campaign additionally ships a dream-log picker page in its existing pack
-— every dream replayable, in the campaign's voice. Win-fold semantics
-for replayed levels are unchanged (completion marking is idempotent).
+Replay is a **bounded excursion with restored content** now — the full
+design lives in docs/camp-controls-design.md §6. In this doc's terms:
+level rows gain an optional `replay = true` field (parsed beside `done`;
+non-boolean is a malformed page). A marked row that is CLEARED arms the
+replay on every client's level-set tail — the completed-level purge skips
+(the level loads with its authored census) and the win fold restores the
+campaign cursor to where the player left it; on an uncleared row the mark
+is inert. A cleared replay row is exempt from the "Already on that
+level" refusal and answers "Replaying <title>. GO when ready." The
+PROGRESS screen's cleared rows carry VISIT (the classic plain set: the
+purged walk-through, kept for traversal and re-branching) plus REPLAY
+(the arm); terminals gain a gated "Replay Level" prompt. The Imaginations
+dream log marks every dream row — every dream replayable, whole, in the
+campaign's voice. Completion marking stays idempotent; only the first
+completion pays a time bonus.
 
 ### #213 — no XP from versus arenas
 

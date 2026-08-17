@@ -756,6 +756,55 @@ int curses_network_testing_exercise_internal_helpers()
         check(stable_before_abort && !join->ended());
     }
 
+    // #207 design point 4 ("every machine"): the joiner seeds its session
+    // save from THIS machine's own company file before the lobby-config
+    // apply, so a negotiated landing on a level this machine has cleared
+    // (same campaign) arms an excursion whose origin is this machine's own
+    // cursor — the fold then restores it before the per-player persist.
+    {
+        const std::string seed_slot = make_network_player_name() + "-jseed";
+        const std::string seed_file = "save/" + seed_slot + ".gtl";
+        const std::string seed_temp = "save/" + seed_slot + ".tmp.gtl";
+        const bool seed_probe_available =
+            !user_file_exists(seed_file) && !user_file_exists(seed_temp);
+        check(seed_probe_available);
+        if (seed_probe_available) {
+            {
+                og::data::ScopedActiveCompany seed_company(seed_slot);
+                check(seed_company.applied());
+                if (seed_company.applied()) {
+                    SaveData own;
+                    own.reset();
+                    own.save_name = "JOIN SEED";
+                    own.current_campaign = "gladiator";
+                    own.scen_num = 3;
+                    own.add_level_completed("gladiator", 1);
+                    check(own.save(seed_slot));
+
+                    auto seed_server =
+                        og::sim::InProcessTransport::create_server();
+                    seed_server->accept_connections();
+                    auto seed_client = seed_server->create_client_transport();
+                    err.clear();
+                    std::unique_ptr<JoinCursesSession> seeded =
+                        JoinCursesSession::create(
+                            equivalent, 1, seed_client,
+                            seed_client->local_peer_id(), 0, &err);
+                    check(seeded != nullptr);
+                    if (seeded != nullptr) {
+                        const SaveData& session_save =
+                            seeded->testing_client_save();
+                        check(session_save.replay_level == 1 &&
+                            session_save.replay_origin == 3 &&
+                            session_save.scen_num == 1);
+                    }
+                }
+            }
+            (void)remove_user_file(seed_file);
+            (void)remove_user_file(seed_temp);
+        }
+    }
+
     // The authored-team helper reads only from the save's mounted campaign.
     // Pin both the failed-load and successful-load paths, then restore the
     // process mount exactly so shuffled neighbors see their original package.

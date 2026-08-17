@@ -936,6 +936,178 @@ TEST(CampaignZoneUi, zone_level_row_is_host_gated_with_a_toast)
 
 namespace {
 
+// #207: one replay-marked level row on the camp docket AND on the book's
+// root page, so both SDL level-set tails can be driven on the same script.
+constexpr const char* kReplayZoneScript = R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id)
+    return {
+      title = "ROADS",
+      entries = {
+        { id = "2", label = "THE ROAD BACK", kind = "level", level = 2, replay = true },
+      },
+    }
+  end,
+  base_camp = function()
+    return { widgets = {
+      { kind = "actions", entries = {
+          { id = "2", label = "THE ROAD BACK", kind = "level", level = 2, replay = true },
+        } },
+      { kind = "roster" },
+    } }
+  end,
+}))LUA";
+
+// The same docket row WITHOUT the replay mark: the camp's plain level-set
+// face, for the arm-abandonment pin below.
+constexpr const char* kPlainZoneScript = R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = {
+      { kind = "actions", entries = {
+          { id = "2", label = "THE ROAD BACK", kind = "level", level = 2 },
+        } },
+      { kind = "roster" },
+    } }
+  end,
+}))LUA";
+
+} // namespace
+
+// #207: a cleared `replay = true` row ARMS through both SDL level-set
+// tails — the camp docket's and the zone submenu's — with the replay
+// voice as the click's answer; a re-click of the (now CURRENT) armed row
+// is exempt from the Unchanged refusal and keeps the FIRST origin.
+TEST(CampaignZoneUi, replay_rows_arm_through_both_sdl_tails)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    SyntheticCampaignScriptGuard::install(kReplayZoneScript);
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    save.completed_levels.clear();
+    save.add_level_completed("gladiator", 2);
+    screen* const game = test_screen();
+    game->world().id = 1;
+    ASSERT_TRUE(game->load_level());
+
+    // --- The camp docket tail -------------------------------------------
+    og::ui::CampaignZoneSession zone(save);
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted());
+    ASSERT_EQ(1u, zone.actions().size());
+    ASSERT_EQ(1u, zone.actions()[0].rows.size());
+    og::ui::BaseCampScreenState state;
+    state.zone = &zone;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& camp_spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, camp_spec.on_spec_row);
+
+    EXPECT_EQ(MENU_REDRAW,
+              camp_spec.on_spec_row(kBaseCampZoneActionBase + 0, &state));
+    EXPECT_EQ(2, save.scen_num) << "arming moves the cursor like a set";
+    EXPECT_EQ(2, static_cast<int>(save.replay_level));
+    EXPECT_EQ(1, static_cast<int>(save.replay_origin))
+        << "origin = the cursor the player left";
+    EXPECT_TRUE(trace_contains("zone", "level_replay_armed 2"));
+    EXPECT_TRUE(trace_contains("zone", "toast Replaying"))
+        << "the armed click answers in the replay voice";
+
+    // Re-click the now-CURRENT armed row: exempt from the Unchanged
+    // refusal, and the re-arm keeps the FIRST origin.
+    EXPECT_EQ(MENU_REDRAW,
+              camp_spec.on_spec_row(kBaseCampZoneActionBase + 0, &state));
+    EXPECT_EQ(1, static_cast<int>(save.replay_origin))
+        << "a re-arm keeps the origin, never the excursion cursor";
+    EXPECT_FALSE(trace_contains("zone", "level_unchanged 2"))
+        << "a replay row never answers 'Already on that level'";
+    og::ui::install_base_camp_state_for_screen(nullptr);
+
+    // --- The zone submenu tail ------------------------------------------
+    save.clear_replay_arm();
+    save.scen_num = 1;
+    og::ui::CampaignPickerSession session(save);
+    ASSERT_TRUE(session.open_at(""));
+    ASSERT_EQ(1u, session.page().rows.size());
+    og::ui::ZoneSubmenuScreenState st;
+    st.session = &session;
+    st.page = og::ui::PageModel::make(
+        static_cast<int>(session.page().rows.size()),
+        kZoneSubmenuRowsPerPage);
+    og::ui::install_zone_submenu_state_for_screen(&st);
+    const og::ui::MenuScreenSpec& sub_spec =
+        og::ui::zone_submenu_menu_screen_spec();
+    ASSERT_NE(nullptr, sub_spec.on_spec_row);
+
+    // The world is still parked on level 2 from the camp arm above, so
+    // this click also covers the arm-without-reload branch.
+    EXPECT_EQ(MENU_REDRAW, sub_spec.on_spec_row(0, &st));
+    EXPECT_EQ(2, save.scen_num);
+    EXPECT_EQ(2, static_cast<int>(save.replay_level))
+        << "the submenu tail arms a cleared replay row too";
+    EXPECT_EQ(1, static_cast<int>(save.replay_origin));
+
+    og::ui::install_zone_submenu_state_for_screen(nullptr);
+    save.clear_replay_arm();
+}
+
+// #207 arm lifecycle: the camp's PLAIN level row (no `replay = true`) is a
+// plain cursor write, and a plain write abandons any excursion in flight —
+// even one armed for the very level the row names. Without the clear, the
+// stale arm would skip the purge this plain set promises and a later win
+// would restore an abandoned origin.
+TEST(CampaignZoneUi, plain_camp_level_set_abandons_the_replay_arm)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    SyntheticCampaignScriptGuard::install(kPlainZoneScript);
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    save.completed_levels.clear();
+    save.add_level_completed("gladiator", 2);
+    screen* const game = test_screen();
+    game->world().id = 1;
+    ASSERT_TRUE(game->load_level());
+
+    // An excursion in flight (armed for the same level the plain row sets).
+    save.arm_replay(2);
+    save.scen_num = 1;  // reopened camp, cursor re-pointed by the test
+    ASSERT_EQ(2, static_cast<int>(save.replay_level));
+
+    og::ui::CampaignZoneSession zone(save);
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted());
+    og::ui::BaseCampScreenState state;
+    state.zone = &zone;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& camp_spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, camp_spec.on_spec_row);
+
+    EXPECT_EQ(MENU_REDRAW,
+              camp_spec.on_spec_row(kBaseCampZoneActionBase + 0, &state));
+    EXPECT_EQ(2, save.scen_num) << "the plain set still writes the cursor";
+    EXPECT_EQ(0, static_cast<int>(save.replay_level))
+        << "the plain set must abandon the excursion";
+    EXPECT_TRUE(trace_contains("zone", "level_set 2"))
+        << "the click took the PLAIN branch, not the arm";
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+}
+
+namespace {
+
 // D3 Acted-level routing: a zone action whose result carries `level`. The
 // spin uses og.campaign_random(1) — deterministically 1 on ANY provider,
 // so the click exercises the SHIPPED wall-clock provider end to end — and

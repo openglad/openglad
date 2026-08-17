@@ -324,6 +324,10 @@ bool apply_campaign_selection(SaveData& save, const std::string& campaign_id,
                             static_cast<int>(save.scen_num));
         return false;
     }
+    // A campaign switch abandons any replay excursion in flight: the arm's
+    // origin is a cursor in the PREVIOUS campaign, and restoring it after a
+    // foreign replay would plant an unearned cursor there (#207).
+    save.clear_replay_arm();
     save.current_campaign = campaign_id;
     save.scen_num = static_cast<short>(level);
     return true;

@@ -199,10 +199,12 @@ themselves.
 
 **The main menu.** The difficulty row is gone and the narrow `GAME | CLOUD`
 pair it sat under becomes two full-width rows that say what they are:
-`GAME SETTINGS` (80,135,140,15) over `CLOUD SAVES` (80,154,140,15). The grey
-`SETTINGS` caption at (150,125) is deleted with them — two spelled-out rows
-need no caption, and the y=119..134 band it reserved is ordinary canvas
-again. The `begin → continue → level_edit → options` chain is preserved
+`GAME SETTINGS` (80,131,140,15) over `CLOUD SAVES` (80,150,140,15), the pair
+centered between its neighbour groups (the 13px break above GAME SETTINGS
+equals the footer break below CLOUD SAVES — pinned in test_menu_layout).
+The grey `SETTINGS` caption at (150,125) is deleted with them — two
+spelled-out rows need no caption, so the band it reserved is ordinary
+canvas again. The `begin → continue → level_edit → options` chain is preserved
 deliberately: the wasm DISPLAY tests reach the settings door in exactly two
 downward steps, and (10,10) and (10,190) stay inert for the two E2E probes
 that tap them as blank.
@@ -220,3 +222,114 @@ The SDL MATCHUP screen keeps its own copies for legacy versus packs.
 The difficulty submenu itself is unchanged and returns to whatever screen
 pushed it; from the strip that is a nested `MENU_REDRAW` the Base Camp loop
 consumes, which an injector flow now pins end to end.
+
+## 6. Replay: the bounded excursion (#207)
+
+### The problem
+
+Loading a level the save marks completed PURGES it: everything except
+team-0 livings, exits and teleporters dies at load (`game.cpp`'s 2002
+"Have we already done this scenario?" rule and its headless twin
+`apply_completed_level_cleanup`). The PROGRESS screen shipped a REPLAY
+button whose write was a plain cursor set, so "replay" delivered an empty
+map — the Imaginations campaign's one island replayed as a bare exit pad
+under a camp line promising "Every dream can be dreamed again." Worse,
+the cursor write itself was the hazard: replaying was the only action
+that could move a campaign *backwards*, it hit the disk before the level
+started, survived a loss, and in networked play rewrote every machine's
+campaign cursor to the replayed level's exit.
+
+### The rule
+
+A replay is a **bounded excursion with restored content**. The arm is a
+transient pair on `SaveData` — `{replay_level, replay_origin}`, origin =
+the cursor at arm time — never serialized (no GTL change), cleared by
+`reset()`/`load()`, and re-carried explicitly across the launch sites'
+disk round-trips (the dropped-field pattern: `game.cpp`,
+`local_transport_shadow`, `copy_headless_server_save_data`). Arming also
+moves `scen_num` onto the level, so go_menu, the lobby publish and joiner
+mounts behave exactly as a plain set. Every PLAIN cursor write (PROGRESS
+VISIT/GO, SET LEVEL, the camp's plain level rows, the terminal Set Level
+tails) and every campaign switch clears the arm before writing — a
+re-pointed cursor abandons the excursion, so a stale arm can neither skip
+the new level's purge nor restore an origin into a foreign campaign
+(which could plant an unearned cursor there).
+
+- **Launch**: both purge sites skip for exactly the armed level. VISIT —
+  the plain cursor write — keeps the classic purged walk-through, on
+  purpose: it is the cleared-road traversal and re-branching tool (most
+  campaigns are exit graphs, and walking a cleared level to a different
+  exit is real navigation).
+- **Win**: the fold (progression.cpp step 5b) restores
+  `scen_num`/`current_levels` to `replay_origin` instead of following
+  the walked exit, then clears the arm. Completion marking stays
+  idempotent; score/cash/XP pay as on any play; the time bonus was
+  already first-completion-only. The networked persist then writes the
+  RESTORED cursor to the company file — a replay no longer rewrites the
+  table's campaign position.
+- **Any other end** (loss, quit): the picker re-entry restore
+  (`og::ui::replay_reentry_restore`, called by every client after
+  gameplay) rewinds the cursor in memory and on the next disk write,
+  then clears the arm. On the web build the native go_menu tail never
+  runs, so the restore fires at the Playing → Picker edge of the browser
+  state machine instead — and persists immediately for solo/local play,
+  because the picker re-entry reloads the company from disk right after.
+  A mid-level crash can leave the replayed level on disk: gate-safe (the
+  frontier includes completed levels), self-heals on the next cursor
+  move.
+- **Withdraw stays impossible** during a replay by construction:
+  `can_withdraw` requires the CURRENT level uncompleted, and a replayed
+  level is completed — pinned by test.
+
+### The surfaces
+
+- **SDL PROGRESS**: cleared rows carry VISIT (plain write) + REPLAY
+  (arm); uncleared rows keep GO. The Foes column shows the authored
+  count on every row now — the old hardcoded 0 was only accidentally
+  true while the purge emptied every replay.
+- **Terminal SCENARIO menus** (text + curses): a "Replay Level" prompt —
+  the level must exist, pass the earned-roads gate AND be cleared.
+- **Lua level rows**: an optional `replay = true` field
+  (`CampaignPageEntry.replay`). The ENGINE owns the cleared check: a
+  marked row arms only when the level is actually cleared, else it is a
+  normal set, on every client's level-set tail. A cleared replay row is
+  exempt from the "Already on that level" refusal (arming is a real
+  state change even when the cursor does not move — the Imaginations
+  loop-home row IS the current row) and answers "Replaying <title>. GO
+  when ready." The dream log sets it on every dream row.
+- **Dedicated server**: a host level-set onto a level the SERVER's save
+  marks completed arms automatically (same campaign only) — a networked
+  table re-fights the restored level; the empty walk-through is a
+  solo/hosted nicety. Documented asymmetry; no wire change.
+- **Networked joiners** ("every machine"): a joiner cannot click REPLAY —
+  its cursor writes are synced — so the arm is adopted at the settings
+  apply instead: when the synced cursor MOVES onto a level completed in
+  the joiner's OWN save (same campaign), the joiner arms with origin =
+  its own pre-sync cursor, and its win fold restores that origin before
+  the per-player persist. Host re-picks before launch keep the FIRST
+  origin; a landing on a level the joiner never cleared is a plain set
+  (the joiner earns the walked exit), and a campaign switch clears the
+  arm (no origin to restore to). There is no joiner-side VISIT: the
+  joiner cannot see whether the host pressed VISIT or REPLAY, so any
+  completed landing protects this machine's own campaign position — the
+  dedicated-server asymmetry, per machine. The curses joiner seeds its
+  session save from its own company file so the same lobby-config arm
+  applies.
+
+### "Always redoable" (#207's second ask)
+
+Always-redoable is the CAMPAIGN kind, not a level bit: both purge sites
+skip when `og::data::campaign_matchup(current campaign) == "versus"` — the
+same memoized metadata key that already exempts versus campaigns from the
+earned-roads gate and roster XP (#213), so arena rematches always replay
+the full map with no arm and arena grinding never over-levels a company.
+The old exemption keyed on the level's `SCEN_TYPE_SCRIPTED` bit conflated
+"level carries scripts" with progression policy (westlands levels run
+consequence scripts yet carry no bit); the bit itself is untouched in the
+`.fss` format and still means "level carries scripts" where genuinely
+consulted. Behavior-preserving for every shipped campaign: the only
+bit-carrying levels are the versus campaign's (modes') 39. A legacy
+user-dir arena pack that relied on the bit needs one line of
+`campaign.yaml` — `matchup: versus`. Everything else is one REPLAY press
+away (per-row `replay = true` is the author's switch; tower never marks
+completion, so it never purges).

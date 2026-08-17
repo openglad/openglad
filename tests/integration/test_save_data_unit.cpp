@@ -1,4 +1,5 @@
 #include <openglad/resources/save_data.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/legacy/base.h>
@@ -348,4 +349,94 @@ TEST(SaveDataUnit, merge_owned_guys_restores_the_disk_tag_for_every_slot)
     ASSERT_EQ(std::string("STAMPED"), save.team_list[2]->name);
     ASSERT_EQ(4, static_cast<int>(save.team_list[2]->campaign_tag))
         << "the disk tag wins even over a nonzero session tag";
+}
+
+// ---------------------------------------------------------------------------
+// #207 replay excursion arm: transient, never serialized.
+
+TEST(SaveDataUnit, replay_arm_remembers_origin_and_moves_the_cursor)
+{
+    SaveData save;
+    save.reset();
+    save.scen_num = 9;
+
+    save.arm_replay(3);
+    ASSERT_EQ(3, static_cast<int>(save.scen_num))
+        << "arming moves the cursor onto the level";
+    ASSERT_EQ(3, static_cast<int>(save.replay_level));
+    ASSERT_EQ(9, static_cast<int>(save.replay_origin));
+    ASSERT_TRUE(save.replay_armed_for(3));
+    ASSERT_FALSE(save.replay_armed_for(9));
+
+    // A re-arm before the excursion resolves keeps the FIRST origin —
+    // scen_num already points into the excursion.
+    save.arm_replay(5);
+    ASSERT_EQ(5, static_cast<int>(save.replay_level));
+    ASSERT_EQ(9, static_cast<int>(save.replay_origin))
+        << "the origin is the campaign position, not the prior arm";
+
+    save.clear_replay_arm();
+    ASSERT_EQ(0, static_cast<int>(save.replay_level));
+    ASSERT_EQ(0, static_cast<int>(save.replay_origin));
+    ASSERT_FALSE(save.replay_armed_for(5));
+    ASSERT_FALSE(save.replay_armed_for(0)) << "unarmed answers no level";
+}
+
+TEST(SaveDataUnit, replay_arm_is_cleared_by_reset_and_load)
+{
+    // reset() clears the pair (a reset company has no excursion in flight).
+    SaveData save;
+    save.reset();
+    save.scen_num = 4;
+    save.arm_replay(2);
+    save.reset();
+    ASSERT_EQ(0, static_cast<int>(save.replay_level));
+    ASSERT_EQ(0, static_cast<int>(save.replay_origin));
+
+    // load() clears it too, and the arm is never serialized: a save taken
+    // while armed round-trips to an UNARMED file (no GTL change) — the
+    // launch sites that need the arm across a disk round-trip re-carry it
+    // explicitly. (SaveData::load mounts the file's campaign, so this leg
+    // needs the default packages installed. restore_default_campaigns
+    // rewrites the .glad files — NEVER call it over a live mount, it
+    // desyncs PhysFS from the mount bookkeeping and every later title
+    // lookup in the binary answers the raw id. Unmount first, restore the
+    // caller's mount after.)
+    const std::string mounted_before = get_mounted_campaign();
+    if (!mounted_before.empty())
+    {
+        ASSERT_EQ(CampaignPackageIoError::None,
+                  unmount_campaign_package_with_error(mounted_before));
+    }
+    restore_default_campaigns();
+    save.reset();
+    save.scen_num = 6;
+    save.arm_replay(6);
+    ASSERT_TRUE(save.save("replayarm_scratch"));
+    SaveData loaded;
+    loaded.arm_replay(1);  // a live arm on the destination must not survive
+    ASSERT_TRUE(loaded.load("replayarm_scratch"));
+    ASSERT_EQ(6, static_cast<int>(loaded.scen_num))
+        << "the armed cursor position itself IS serialized";
+    ASSERT_EQ(0, static_cast<int>(loaded.replay_level))
+        << "the arm is transient: load() answers the file, never a session";
+    ASSERT_EQ(0, static_cast<int>(loaded.replay_origin));
+    (void)remove_user_file("save/replayarm_scratch.gtl");
+    // Leave the mount state EXACTLY as found — including the nothing-mounted
+    // case (a leaked mount desyncs against suites that re-init PhysFS, e.g.
+    // CompanyScan, and every later title lookup answers the raw id).
+    if (get_mounted_campaign() != mounted_before)
+    {
+        if (!get_mounted_campaign().empty())
+        {
+            ASSERT_EQ(CampaignPackageIoError::None,
+                      unmount_campaign_package_with_error(
+                          get_mounted_campaign()));
+        }
+        if (!mounted_before.empty())
+        {
+            ASSERT_EQ(CampaignPackageIoError::None,
+                      mount_campaign_package_with_error(mounted_before));
+        }
+    }
 }

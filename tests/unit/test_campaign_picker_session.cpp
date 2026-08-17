@@ -656,6 +656,7 @@ struct ScriptedTerminalIo {
     std::vector<std::string> notices;
     bool host = true;
     int applied_level = -1;
+    bool applied_replay_arm = false;
     SaveData* save = nullptr;
 
     og::ui::TerminalCampaignPickerIo io()
@@ -674,10 +675,15 @@ struct ScriptedTerminalIo {
             notices.push_back(line);
         };
         io.is_host = [this] { return host; };
-        io.apply_level = [this](int level) {
+        io.apply_level = [this](int level, bool replay_arm) {
             applied_level = level;
-            // Both clients' set-level tail writes the save cursor.
-            save->scen_num = static_cast<short>(level);
+            applied_replay_arm = replay_arm;
+            // Both clients' set-level tail writes the save cursor; the
+            // replay arm (#207) re-checks cleared at the write choke.
+            if (replay_arm && save->is_level_completed(level))
+                save->arm_replay(static_cast<short>(level));
+            else
+                save->scen_num = static_cast<short>(level);
         };
         return io;
     }
@@ -1318,6 +1324,181 @@ TEST_F(CampaignPickerSessionTest, terminal_camp_replays_a_cleared_level)
     (void)unmount_campaign_package_with_error("westlands");
     if (!previous_mount.empty() && previous_mount != "westlands")
         (void)mount_campaign_package_with_error(previous_mount);
+}
+
+// #207: a level row marked `replay = true` ARMS the excursion when the
+// level is cleared — the tail calls arm_replay (origin = the cursor the
+// player left, cursor moves onto the level) and the notice says "Replaying"
+// instead of "Level set to". Three shapes on one fixture: the plain arm,
+// the loop-home arm (the row IS the current level — the "Already on that
+// level" refusal must NOT fire), and the inert mark on an uncleared row.
+TEST_F(CampaignPickerSessionTest, terminal_camp_replay_rows_arm_when_cleared)
+{
+    const std::string previous_mount = get_mounted_campaign();
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("westlands"));
+    og::script::unregister_pack_scripts("westlands.fire");
+    og::script::unregister_pack_lib_modules("westlands.fire");
+    save_.current_campaign = "westlands";
+    save_.completed_levels.clear();
+    register_script(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = {
+      { kind = "actions", entries = {
+          { id = "5", label = "UNDER THE MOUNTAIN", kind = "level", level = 5, replay = true },
+        } },
+      { kind = "roster" },
+    } }
+  end,
+}))LUA");
+
+    // Shape 1: cleared, cursor elsewhere — the arm remembers the origin.
+    save_.scen_num = 1;
+    save_.add_level_completed("westlands", 5);
+    {
+        ScriptedTerminalIo scripted;
+        scripted.save = &save_;
+        scripted.answers = {"1", "0"};
+        og::ui::run_terminal_campaign_camp(save_, scripted.io());
+        const std::vector<std::string> expected_notices = {
+            "Replaying UNDER THE MOUNTAIN. GO when ready.",
+        };
+        EXPECT_EQ(expected_notices, scripted.notices);
+        EXPECT_EQ(5, scripted.applied_level);
+        EXPECT_TRUE(scripted.applied_replay_arm);
+        EXPECT_EQ(5, save_.scen_num) << "arming moves the cursor";
+        EXPECT_EQ(5, (int)save_.replay_level);
+        EXPECT_EQ(1, (int)save_.replay_origin);
+    }
+
+    // Shape 2: the loop-home dream — the replay row IS the current level.
+    // The unchanged refusal is exempt for a replay row: arming is a real
+    // state change even when the cursor does not move.
+    save_.clear_replay_arm();
+    save_.scen_num = 5;
+    {
+        ScriptedTerminalIo scripted;
+        scripted.save = &save_;
+        scripted.answers = {"1", "0"};
+        og::ui::run_terminal_campaign_camp(save_, scripted.io());
+        const std::vector<std::string> expected_notices = {
+            "Replaying UNDER THE MOUNTAIN. GO when ready.",
+        };
+        EXPECT_EQ(expected_notices, scripted.notices)
+            << "a replay row never answers 'Already on that level'";
+        EXPECT_TRUE(scripted.applied_replay_arm);
+        EXPECT_EQ(5, (int)save_.replay_level);
+        EXPECT_EQ(5, (int)save_.replay_origin) << "loop-home origin";
+    }
+
+    // Shape 3: the mark is inert on an uncleared row — a plain set.
+    save_.clear_replay_arm();
+    save_.completed_levels.clear();
+    save_.scen_num = 1;
+    save_.add_level_completed("westlands", 1);  // keep road 5 in the frontier
+    save_.add_level_completed("westlands", 4);
+    {
+        ScriptedTerminalIo scripted;
+        scripted.save = &save_;
+        scripted.answers = {"1", "0"};
+        og::ui::run_terminal_campaign_camp(save_, scripted.io());
+        const std::vector<std::string> expected_notices = {
+            "Level set to UNDER THE MOUNTAIN.",
+        };
+        EXPECT_EQ(expected_notices, scripted.notices)
+            << "an uncleared replay row is a normal set";
+        EXPECT_FALSE(scripted.applied_replay_arm);
+        EXPECT_EQ(5, save_.scen_num);
+        EXPECT_EQ(0, (int)save_.replay_level) << "no arm without cleared";
+    }
+
+    (void)unmount_campaign_package_with_error("westlands");
+    if (!previous_mount.empty() && previous_mount != "westlands")
+        (void)mount_campaign_package_with_error(previous_mount);
+}
+
+// #207: the same routing through the BOOK page loop (the other terminal
+// tail), and the Row decoration carries the mark: replay_arms() = mark AND
+// cleared.
+TEST_F(CampaignPickerSessionTest, terminal_book_replay_row_arms_when_cleared)
+{
+    const std::string previous_mount = get_mounted_campaign();
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("westlands"));
+    og::script::unregister_pack_scripts("westlands.fire");
+    og::script::unregister_pack_lib_modules("westlands.fire");
+    save_.current_campaign = "westlands";
+    save_.completed_levels.clear();
+    save_.scen_num = 1;
+    save_.add_level_completed("westlands", 5);
+    register_script(R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id)
+    return {
+      title = "ROADS",
+      entries = {
+        { id = "5", label = "UNDER THE MOUNTAIN", kind = "level", level = 5, replay = true },
+        { id = "2", label = "THE LAST FORD", kind = "level", level = 2, replay = true },
+      },
+    }
+  end,
+}))LUA");
+
+    // Decoration first: the mark rides the rows; only the cleared one arms.
+    og::ui::CampaignPickerSession session(save_);
+    ASSERT_TRUE(session.open());
+    ASSERT_EQ(2u, session.page().rows.size());
+    EXPECT_TRUE(session.page().rows[0].replay);
+    EXPECT_TRUE(session.page().rows[0].replay_arms());
+    EXPECT_TRUE(session.page().rows[1].replay);
+    EXPECT_FALSE(session.page().rows[1].replay_arms())
+        << "an uncleared row's mark is inert";
+
+    ScriptedTerminalIo scripted;
+    scripted.save = &save_;
+    scripted.answers = {"1", "0"};
+    og::ui::run_terminal_campaign_page(save_, scripted.io(), "");
+    const std::vector<std::string> expected_notices = {
+        "Replaying UNDER THE MOUNTAIN. GO when ready.",
+    };
+    EXPECT_EQ(expected_notices, scripted.notices);
+    EXPECT_TRUE(scripted.applied_replay_arm);
+    EXPECT_EQ(5, (int)save_.replay_level);
+    EXPECT_EQ(1, (int)save_.replay_origin);
+    save_.clear_replay_arm();
+
+    (void)unmount_campaign_package_with_error("westlands");
+    if (!previous_mount.empty() && previous_mount != "westlands")
+        (void)mount_campaign_package_with_error(previous_mount);
+}
+
+// #207 design point 5: the shared picker re-entry restore. A live arm whose
+// level still holds the cursor restores the origin (loss/quit); a stale arm
+// only clears; unarmed is a no-op.
+TEST_F(CampaignPickerSessionTest, replay_reentry_restore_shapes)
+{
+    save_.current_campaign = "westlands";
+    save_.scen_num = 9;
+    save_.arm_replay(3);
+    ASSERT_EQ(3, save_.scen_num);
+    EXPECT_TRUE(og::ui::replay_reentry_restore(save_))
+        << "a lost/quit excursion restores on re-entry";
+    EXPECT_EQ(9, save_.scen_num);
+    EXPECT_EQ(9, save_.current_levels["westlands"]);
+    EXPECT_EQ(0, (int)save_.replay_level);
+
+    // Stale arm: the player re-pointed the cursor before launching.
+    save_.scen_num = 9;
+    save_.arm_replay(3);
+    save_.scen_num = 6;
+    EXPECT_FALSE(og::ui::replay_reentry_restore(save_));
+    EXPECT_EQ(6, save_.scen_num) << "no restore to an abandoned origin";
+    EXPECT_EQ(0, (int)save_.replay_level) << "but the stale arm clears";
+
+    // Unarmed: nothing to do.
+    EXPECT_FALSE(og::ui::replay_reentry_restore(save_));
+    EXPECT_EQ(6, save_.scen_num);
 }
 
 // A versus campaign is exempt: an arena picker's whole point is free field

@@ -6,7 +6,11 @@
 -- The kids asked to go back into dreams they had already had. So the camp
 -- IS the log: the docket lists every dream, oldest first, each one
 -- selectable, and choosing a row carries the engine's SET LEVEL
--- consequence. That is the whole replay affordance, and it now sits on the
+-- consequence — with `replay = true` on every row, so a dream already had
+-- comes back WHOLE (the engine arms its replay excursion: the authored
+-- census loads instead of the cleared-level purge, and winning it again
+-- returns the campaign cursor to where the player left it). A dream not
+-- yet had ignores the mark and is a plain set. The affordance sits on the
 -- screen the player lives on instead of behind a door.
 --
 -- The camp is the ONLY face a kid reaches today. This pack composes no page
@@ -76,7 +80,10 @@ end
 -- is deliberately absent: C++ fills it from the scenario title, so a row
 -- always reads as the level's own name and can never drift away from it.
 -- One builder feeds both surfaces — the camp docket and the book page are
--- the same list, seen from two rooms.
+-- the same list, seen from two rooms. Every row carries `replay = true`
+-- (#207): a cleared dream is dreamed again whole — the engine restores the
+-- authored island and brings the cursor home after — and on an uncleared
+-- row the mark is inert, so tonight's dream stays a plain set.
 local function dream_rows(most)
   local rows = {}
   for id = 1, most do
@@ -87,6 +94,7 @@ local function dream_rows(most)
         kind = "level",
         level = id,
         note = dream_note(id),
+        replay = true,
       }
     end
   end

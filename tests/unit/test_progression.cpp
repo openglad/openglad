@@ -430,6 +430,96 @@ TEST(WinFold, current_levels_records_the_advanced_cursor)
 }
 
 // ---------------------------------------------------------------------------
+// #207 replay excursion: step 5b's origin restore.
+
+// A win on the ARMED level restores the cursor to the position the player
+// left instead of following the walked exit — the excursion is bounded.
+// Completion marking, money and the (suppressed) repeat bonus all behave
+// exactly as on any already-completed win.
+TEST(WinFold, replay_win_restores_the_origin_cursor)
+{
+    TestGameWorld fx;
+    SaveData save;
+    init_save(save, 9);
+    save.add_level_completed(kCampaign, 3);
+    save.arm_replay(3);
+    ASSERT_EQ(3, save.scen_num) << "arming moved the cursor onto the level";
+    save.m_score[0] = 50;
+
+    WinFoldContext ctx = make_ctx(/*next_level=*/2);  // the walked exit
+    ctx.finished_level = save.scen_num;
+    apply_win_fold(save, fx.world(), ctx);
+
+    EXPECT_EQ(9, save.scen_num)
+        << "the fold restores the origin, not the exit destination";
+    EXPECT_EQ(9, save.current_levels[kCampaign]);
+    EXPECT_EQ(0, (int)save.replay_level) << "the arm resolves with the win";
+    EXPECT_EQ(50u, save.m_totalscore[0]) << "the replay still pays score";
+    EXPECT_TRUE(save.is_level_completed(3));
+}
+
+// The imaginations loop-home shape: origin == armed level (the campaign's
+// one exit points back at itself). The restore is a no-op cursor-wise; the
+// arm still clears and the fold stays idempotent.
+TEST(WinFold, replay_win_with_loop_home_origin_is_stable)
+{
+    TestGameWorld fx;
+    SaveData save;
+    init_save(save, 1);
+    save.add_level_completed(kCampaign, 1);
+    save.arm_replay(1);
+
+    WinFoldContext ctx = make_ctx(/*next_level=*/1);
+    ctx.finished_level = save.scen_num;
+    apply_win_fold(save, fx.world(), ctx);
+
+    EXPECT_EQ(1, save.scen_num);
+    EXPECT_EQ(0, (int)save.replay_level);
+}
+
+// A STALE arm (the player re-pointed the cursor before launching — VISIT
+// after an abandoned excursion) never restores, and it dies with the fold
+// so no later end can rewind to an abandoned origin.
+TEST(WinFold, stale_arm_never_restores_and_clears_on_the_fold)
+{
+    TestGameWorld fx;
+    SaveData save;
+    init_save(save, 9);
+    save.arm_replay(3);
+    save.scen_num = 5;  // a later plain write abandoned the excursion
+
+    WinFoldContext ctx = make_ctx(/*next_level=*/6);
+    ctx.finished_level = save.scen_num;
+    apply_win_fold(save, fx.world(), ctx);
+
+    EXPECT_EQ(6, save.scen_num) << "a normal advance, no restore";
+    EXPECT_EQ(0, (int)save.replay_level) << "the stale arm is dead";
+}
+
+// The re-entrant second pass (on_finished false) must not touch a live arm:
+// the display fold runs after the shadow fold on the SAME machine's session
+// in some shapes, and only the pass that finalizes the level may resolve
+// the excursion.
+TEST(WinFold, second_pass_leaves_the_arm_for_the_finishing_pass)
+{
+    TestGameWorld fx;
+    SaveData save;
+    init_save(save, 9);
+    save.add_level_completed(kCampaign, 3);
+    save.arm_replay(3);
+    save.scen_num = 7;  // simulate: cursor already advanced past finished
+
+    WinFoldContext ctx = make_ctx(/*next_level=*/2);
+    ctx.finished_level = 3;  // on_finished false (scen_num != finished)
+    apply_win_fold(save, fx.world(), ctx);
+
+    EXPECT_EQ(7, save.scen_num) << "a non-finishing pass moves nothing";
+    EXPECT_EQ(3, (int)save.replay_level)
+        << "the arm survives for the finishing pass";
+    save.clear_replay_arm();
+}
+
+// ---------------------------------------------------------------------------
 // Roster rebuild through the fold.
 
 TEST(WinFold, fold_rebuilds_roster_from_surviving_heroes)

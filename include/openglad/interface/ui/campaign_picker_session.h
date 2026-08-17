@@ -53,21 +53,30 @@ inline constexpr std::string_view kCampaignActionDoneMessage =
 // rows, and CampaignPickerSession::choose one level down.
 inline constexpr std::string_view kCampaignPageUnreadableMessage =
     "That page cannot be read.";
-// The two answers a level row that CAN be clicked gives back, from one
+// The answers a level row that CAN be clicked gives back, from one
 // place for the same reason as the refusals above: a level row on the Base
 // Camp is the same click on the SDL panel and at a terminal prompt, and one
 // click may not have two answers. They also stay out of any one campaign's
 // vocabulary — the first camp to put level rows on the Base Camp is a
 // dream log, and a dream is not a "road". The unchanged answer is a
-// signpost, not a dead end: on a one-level campaign the only replay row IS
-// the current row, and GO has always replayed the current level — the
-// toast says so instead of leaving the player hunting for a selector.
+// signpost, not a dead end — and a replay row never gets it (#207):
+// arming the excursion is a real state change even when the cursor is
+// already parked on the level, so a cleared `replay = true` row answers
+// with campaign_replay_set_message instead.
 inline constexpr std::string_view kCampaignLevelUnchangedMessage =
     "Already on that level. GO when ready.";
 [[nodiscard]] inline std::string campaign_level_set_message(
     std::string_view title)
 {
     return std::string("Level set to ") + std::string(title) + ".";
+}
+// The replay-armed click's answer (#207): a replay is not a plain set —
+// the level will load restored and the campaign cursor comes home after —
+// so the click says so, in the same engine voice on every surface.
+[[nodiscard]] inline std::string campaign_replay_set_message(
+    std::string_view title)
+{
+    return std::string("Replaying ") + std::string(title) + ". GO when ready.";
 }
 // The oath cell's width in characters, shared by the SDL roster column and
 // the terminal camp roster so one hero's oath reads the same on every
@@ -118,6 +127,18 @@ public:
         // renders CLOSED instead of looking like every other road and
         // failing at the click.
         bool available = true;
+        // Level rows only (#207): the script marked this row `replay =
+        // true`. When the row is also CLEARED, clicking it ARMS the replay
+        // excursion — the level loads with its authored census restored
+        // and a win returns the cursor to where the player left it —
+        // instead of the plain cursor write; on an uncleared row the mark
+        // is inert and the click is a normal set. replay_arms() is the one
+        // spelling of that rule for every tail.
+        bool replay = false;
+        [[nodiscard]] bool replay_arms() const
+        {
+            return is_level() && replay && cleared;
+        }
         [[nodiscard]] bool is_level() const { return kind == Kind::Level; }
         // Rows a click cannot move: spent purchases and closed roads. They
         // stay visible and focusable (the listing contract) but draw on the
@@ -503,7 +524,11 @@ struct TerminalCampaignPickerIo {
     std::function<bool()> is_host;
     // The client's own set-level tail — the same code its "Set level"
     // prompt runs (session-config level + save.scen_num write).
-    std::function<void(int)> apply_level;
+    // `replay_arm` (#207): true when the clicked row arms the replay
+    // excursion (Row::replay_arms) — the tail calls save.arm_replay(level)
+    // instead of the plain cursor write; arm_replay moves scen_num itself
+    // so everything downstream of the tail behaves identically.
+    std::function<void(int, bool replay_arm)> apply_level;
 };
 
 // Drive the whole BOOK flow over `save` rooted at `page_id` — a camp page
@@ -543,5 +568,17 @@ std::optional<std::string> terminal_roster_refusal(
 // neither a camp nor a book (CampaignZoneSession::composed()).
 void run_terminal_campaign_camp(SaveData& save,
                                 const TerminalCampaignPickerIo& io);
+
+// #207 design point 5: any end of an armed replay that is not a win (loss,
+// quit-to-menu) leaves the cursor parked on the replayed level — a win
+// never gets here because the fold already restored the origin and cleared
+// the arm. Every picker calls this on re-entry after gameplay: it restores
+// scen_num/current_levels to replay_origin in memory (the next disk write
+// persists it) and clears the arm; a stale arm (the player re-pointed the
+// cursor before launching) just clears. A mid-level crash loses the arm
+// with the process; the stranded on-disk cursor is gate-safe (the
+// earned-roads frontier includes completed levels) and self-heals on the
+// player's next cursor move. True = a restore happened.
+bool replay_reentry_restore(SaveData& save);
 
 } // namespace og::ui

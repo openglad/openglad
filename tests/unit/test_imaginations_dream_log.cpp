@@ -198,6 +198,9 @@ TEST_F(ImaginationsDreamLogTest, root_page_lists_every_dream_in_id_order)
         EXPECT_EQ(std::to_string(kDreamIds[i]), row.id)
             << "row " << i << " entry id";
         EXPECT_EQ(0, row.cost) << "the dream log costs nothing";
+        EXPECT_TRUE(row.replay)
+            << "row " << i << " carries #207's replay mark — a dream "
+               "already had comes back whole";
     }
     // The script ships no labels: C++ filled this one from the scen header.
     EXPECT_EQ(kFirstDreamTitle, page.rows[0].label);
@@ -412,6 +415,29 @@ TEST_F(ImaginationsDreamLogTest, choosing_a_dreamed_row_replays_that_scen)
     EXPECT_EQ(kDreamIds[0], outcome.level);
     EXPECT_EQ(99, save_.scen_num) << "the session never writes scen_num";
     EXPECT_EQ(1, session.depth()) << "the log has no subpages to open";
+    // #207: the cleared dream row ARMS on every client's tail — the level
+    // loads with its authored island restored, not the purged one.
+    EXPECT_TRUE(session.page().rows[0].replay_arms())
+        << "a dreamed row arms the replay excursion";
+}
+
+// The kids' fix end-to-end at the camp docket (the face a kid uses): a
+// cleared dream row's click arms the replay through the terminal tail even
+// when the loop-home exit already parked the cursor ON that dream.
+TEST_F(ImaginationsDreamLogTest, dreamed_row_arms_even_when_current)
+{
+    save_.scen_num = static_cast<short>(kDreamIds[0]);
+    save_.add_level_completed("imaginations", kDreamIds[0]);
+
+    CampaignPickerSession session(save_);
+    ASSERT_TRUE(session.open());
+    ASSERT_FALSE(session.page().rows.empty());
+    ASSERT_TRUE(session.page().rows[0].cleared);
+    ASSERT_TRUE(session.page().rows[0].current)
+        << "the loop-home exit parks the cursor on the only dream";
+    EXPECT_TRUE(session.page().rows[0].replay_arms())
+        << "current + cleared + marked still arms (the unchanged refusal "
+           "is exempt for replay rows)";
 }
 
 // ---------------------------------------------------------------------------

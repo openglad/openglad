@@ -132,6 +132,17 @@ public:
     static constexpr int kCampaignStateMaxCampaigns = 128;
     static constexpr int kCampaignStateMaxEntries = 128;
 
+    // Replay excursion arm (#207; docs/camp-controls-design.md "Replay").
+    // TRANSIENT session state, never serialized (no GTL change): reset()
+    // and load() clear the pair, and the launch sites that round-trip a
+    // session save through disk re-carry it explicitly (game.cpp,
+    // local_transport_shadow, copy_headless_server_save_data — the
+    // documented dropped-field pattern). replay_level == 0 means unarmed;
+    // replay_origin is the campaign cursor as it stood when the arm was
+    // set, the position a finished excursion restores.
+    short replay_level = 0;
+    short replay_origin = 0;
+
     SaveData();
     ~SaveData();
     
@@ -169,6 +180,23 @@ public:
     [[nodiscard]] SaveDataIoError save_with_error(const std::string& filename);
     [[nodiscard]] SaveDataIoError last_io_error() const { return last_io_error_; }
     
+    // Arm a replay of `level` (#207): remembers the current cursor as
+    // replay_origin (a re-arm before the first excursion resolves keeps the
+    // FIRST origin — scen_num already points into the excursion) and moves
+    // scen_num onto the level so go_menu, the lobby publish and joiner
+    // mounts work unchanged. The win fold restores the origin and clears
+    // the arm; any other end restores at picker re-entry.
+    void arm_replay(short level);
+    void clear_replay_arm();
+    // True when the arm covers `level`. The arm only means anything for
+    // the level it names, and every plain cursor-set choke (PROGRESS
+    // VISIT/GO, SET LEVEL, the camp's plain level rows, the terminal Set
+    // Level tails) and every campaign switch calls clear_replay_arm() —
+    // abandoning the excursion — before writing the cursor, so a stale arm
+    // never skips a purge and an origin never leaks across campaigns. The
+    // level check here is the backstop for writes outside those chokes.
+    [[nodiscard]] bool replay_armed_for(int level) const;
+
     bool is_level_completed(int level_index) const;
     int get_num_levels_completed(const std::string& campaign) const;
     void add_level_completed(const std::string& campaign, int level_index);

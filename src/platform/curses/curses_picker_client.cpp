@@ -897,10 +897,19 @@ void campaign_camp_flow(Menu& menu, SaveData& save,
     io.is_host = [&config, &options, &save] {
         return label_context(config, options, save).is_host;
     };
-    io.apply_level = [&config, &save](int level) {
-        // The curses "Set level" tail: session config + save cursor.
+    io.apply_level = [&config, &save](int level, bool replay_arm) {
+        // The curses "Set level" tail: session config + save cursor. The
+        // replay arm (#207) re-checks cleared at the write choke — the row
+        // decoration is fetch-time state. A plain write abandons any
+        // excursion in flight (a stale arm must never skip a purge).
         config.level = level;
-        save.scen_num = static_cast<short>(level);
+        if (replay_arm && save.is_level_completed(level))
+            save.arm_replay(static_cast<short>(level));
+        else
+        {
+            save.clear_replay_arm();
+            save.scen_num = static_cast<short>(level);
+        }
     };
     og::ui::run_terminal_campaign_camp(save, io);
 }
@@ -1172,7 +1181,42 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
                     {std::string(og::ui::kCampaignLevelClosedMessage)});
             else {
                 config_.level = *level;
+                // A plain Set Level abandons any replay excursion in flight.
+                save_data_.clear_replay_arm();
                 save_data_.scen_num = static_cast<short>(*level);
+            }
+        }
+        break;
+    }
+    case PickerMenuCommand::ReplayLevel: {
+        // #207: the terminal replay prompt — Set Level's gates plus one
+        // more: the level must already be CLEARED (a replay re-fights a
+        // beaten level; the frontier is GO's job). Arming moves the cursor
+        // itself, so everything downstream behaves like a set.
+        bool accepted = false;
+        const std::string entered = menu.prompt("Replay Level",
+            "Level (must be cleared): ", std::string(), accepted);
+        if (accepted && !entered.empty()) {
+            const auto level = parse_int_strict(entered);
+            std::string title;
+            if (!level || *level < 1)
+                menu.show_text("Replay Level", {"Invalid level."});
+            else if (og::data::load_scenario_title_with_error(
+                         ("scen" + std::to_string(*level)).c_str(), title) !=
+                         og::data::LevelFileIoError::None ||
+                     !og::data::level_selection_allowed(save_data_, *level))
+                menu.show_text("Replay Level",
+                    {std::string(og::ui::kCampaignLevelClosedMessage)});
+            else if (!save_data_.is_level_completed(*level))
+                menu.show_text("Replay Level",
+                    {"That level is not cleared yet."});
+            else {
+                config_.level = *level;
+                save_data_.arm_replay(static_cast<short>(*level));
+                menu.show_text("Replay Level",
+                    {og::ui::campaign_replay_set_message(
+                        title.empty() ? std::format("SCEN {}", *level)
+                                      : title)});
             }
         }
         break;
@@ -1307,6 +1351,12 @@ std::string CursesPickerClient::show_campaign_select()
         return config_.campaign; // cancel keeps current
 
     config_.campaign = ids[static_cast<size_t>(choice)];
+    // A campaign SWITCH abandons any replay excursion in flight — the arm's
+    // origin is a cursor in the previous campaign and must never be
+    // restored into this one (#207). Re-selecting the current campaign
+    // changes nothing and keeps the arm.
+    if (save_data_.current_campaign != config_.campaign)
+        save_data_.clear_replay_arm();
     save_data_.current_campaign = config_.campaign;
     // The launch path self-heals the mount, but the in-picker scenario
     // viewer reads the mounted package directly — follow the selection now.
@@ -1396,6 +1446,15 @@ void CursesPickerClient::run_game()
         assert_company_slot_authority(); // [SAVE-R2]
         (void)og::data::company_autosave(
             save_data_, og::data::CompanyAutosaveKind::LevelWin);
+    }
+
+    // #207 design point 5: a lost/quit replay restores the campaign cursor
+    // on picker re-entry (a win already restored it inside the fold and the
+    // commit copy-back carried the cleared arm). Persist the healed cursor
+    // like any other picker mutation (§3.8).
+    if (og::ui::replay_reentry_restore(save_data_)) {
+        config_.level = save_data_.scen_num;
+        autosave_company_after_mutation(save_data_);
     }
 
     if (result.ended) {

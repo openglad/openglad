@@ -1617,20 +1617,54 @@ struct LobbyStateApplyResult
     int deploy_benched = 0;
 };
 
+// `adopt_replay_arm` (#207 design point 4, "every machine"): a JOINER's
+// cursor writes here are synced, not authored — it cannot click REPLAY, so
+// this apply is where its excursion arms. When the synced pair lands the
+// cursor on a level completed in THIS machine's own save (same campaign),
+// arm with origin = this machine's pre-sync cursor: the joiner's fold then
+// restores its own campaign position instead of persisting the walked exit
+// (a networked table re-fight never rewrites this machine's cursor — the
+// same asymmetry as the dedicated server's lobby-config arm). A landing on
+// an uncompleted level, or a campaign switch (no origin to restore to),
+// clears the arm; an application that does not move the pair keeps the arm
+// exactly as it stands. The HOST passes false: its arm is authored by its
+// own REPLAY/VISIT clicks and a stale echo must never overrule them.
 LobbyStateApplyResult apply_lobby_state_to_save(
     const og::sim::LobbyState& state,
     SaveData& save,
     bool spectator_mode,
     short local_team,
-    std::size_t local_player_count = 1)
+    std::size_t local_player_count = 1,
+    bool adopt_replay_arm = false)
 {
     LobbyStateApplyResult result;
+    const std::string previous_campaign = save.current_campaign;
+    const short previous_scen_num = save.scen_num;
     save.current_campaign = state.settings.campaign_id.empty()
         ? std::string(kDefaultCampaignId)
         : state.settings.campaign_id;
     save.scen_num = state.settings.scenario_id > 0
         ? state.settings.scenario_id
         : 1;
+    if (adopt_replay_arm)
+    {
+        if (save.current_campaign != previous_campaign)
+            save.clear_replay_arm();
+        else if (save.scen_num != previous_scen_num)
+        {
+            if (save.is_level_completed(save.scen_num))
+            {
+                // Keep the FIRST origin across host re-picks: a second
+                // completed landing before the excursion resolves must
+                // still restore the position this machine started from.
+                if (save.replay_level == 0)
+                    save.replay_origin = previous_scen_num;
+                save.replay_level = save.scen_num;
+            }
+            else
+                save.clear_replay_arm();
+        }
+    }
     save.allied_mode = state.settings.allied_mode;
     save.ctf_team_count = state.settings.ctf_team_count;
     save.ctf_capture_limit = state.settings.ctf_capture_limit;
@@ -4504,7 +4538,8 @@ private:
                 *save,
                 spectator_mode_,
                 local_team_,
-                static_cast<std::size_t>(std::max(local_player_count_, 0)));
+                static_cast<std::size_t>(std::max(local_player_count_, 0)),
+                /*adopt_replay_arm=*/true);
         // A pending-merged/masked state mirrors or withholds this machine's
         // unconfirmed seats, so adoption can only fire off a REAL server echo.
         og::ui::detail::persist_deploy_reconciliation(*save, applied);

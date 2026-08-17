@@ -74,6 +74,13 @@ struct CampaignPageEntry {
     // purchased item still reads as for sale at full price — the book knows
     // it is spent, and only the book can.
     bool done = false;
+    // `replay = true` (#207, level rows): once the level is CLEARED,
+    // clicking the row arms the replay excursion — the engine loads the
+    // authored census (the completed-level purge skips) and a win restores
+    // the campaign cursor to where the player left it. On an uncleared row
+    // the mark is inert (a normal set); the engine owns the cleared check,
+    // never the script.
+    bool replay = false;
 };
 
 // One page of the scripted picker: pure data, fetched per navigation or

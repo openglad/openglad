@@ -19,6 +19,8 @@
 #      roster sees. The zone stills carry the command strip too, but the
 #      probe is where the main menu is reachable, and the strip's own
 #      still should not depend on a campaign happening to script a camp.
+#   4. Ownership overlays drawn over two of those stills, showing which
+#      rectangles a campaign's Lua composes and which belong to the engine.
 #
 # Usage: scripts/media/capture_campaign_scripting.sh [output-dir]
 
@@ -35,7 +37,7 @@ for bin in "$DEMO_BIN" "$BUILD/og_test_matchup" "$BUILD/og_test_basecamp"; do
         exit 1
     fi
 done
-for tool in ffmpeg ffprobe; do
+for tool in ffmpeg ffprobe magick; do
     command -v "$tool" > /dev/null || {
         printf '%s not found; enter the dev shell first: nix develop\n' "$tool" >&2
         exit 1; }
@@ -159,6 +161,19 @@ for name in "${MENU_SHOTS[@]}"; do
     printf 'wrote %s\n' "$OUT_DIR/$name.png"
 done
 
+# The ownership overlays: the Base Camp is one screen with two authors, and
+# a bare screenshot cannot show the seam. The generator paints a blue fill
+# over every rectangle a campaign's Lua composes and an orange outline
+# around the engine chrome, then writes a numbered legend under the picture.
+# It reads the camp and submenu stills produced immediately above, so it has
+# to run after both loops.
+OVERLAY_SHOTS=(
+    lua_ownership_basecamp
+    lua_ownership_submenu
+)
+
+python3 "$REPO_ROOT/scripts/media/make_lua_ownership_overlays.py" "$OUT_DIR"
+
 # Sanity: every artifact decodes and carries frames.
 for f in "$OUT_DIR"/*.gif; do
     frames="$(ffprobe -loglevel error -count_frames \
@@ -185,5 +200,25 @@ for name in "${ZONE_SHOTS[@]}" "${MENU_SHOTS[@]}"; do
     [ "$dims" = "640x400" ] || {
         printf 'FAIL: %s decoded as %s, expected 640x400\n' "$png" "$dims" >&2
         missing=1; }
+done
+
+# The overlays are the still plus a legend strip, so only the width is
+# fixed: 640px is what makes GitHub render them 1:1 instead of resampling
+# the game's pixels.
+for name in "${OVERLAY_SHOTS[@]}"; do
+    png="$OUT_DIR/$name.png"
+    if [ ! -s "$png" ]; then
+        printf 'FAIL: expected overlay %s was never produced\n' "$png" >&2
+        missing=1
+        continue
+    fi
+    dims="$(ffprobe -loglevel error -select_streams v:0 \
+        -show_entries stream=width,height -of csv=p=0:s=x "$png")"
+    printf '%s: %s\n' "$(basename "$png")" "$dims"
+    case "$dims" in
+        640x*) ;;
+        *) printf 'FAIL: %s decoded as %s, expected 640 wide\n' "$png" "$dims" >&2
+           missing=1;;
+    esac
 done
 [ "$missing" -eq 0 ] || exit 1

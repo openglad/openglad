@@ -972,8 +972,14 @@ constexpr MenuButtonSpec kMainMenuRowsMP[] = {
     // is left is two full-width doors named in full: the settings screen and
     // the cloud slot. The grey SETTINGS heading that grouped the old narrow
     // pair went with them; two spelled-out rows need no caption.
+    //
+    // The pair floats in the 60px of canvas between LEVEL EDITOR's bottom
+    // (y=118) and the HELP/QUIT footer (y=178). Its own height is 34
+    // (15 + the group's 4px gutter + 15), so the 26px of slack splits evenly:
+    // 13 above GAME SETTINGS and 13 below CLOUD SAVES. Move either row and
+    // the settings group visibly drifts toward one neighbour.
     {.id = "options", .label = "GAME SETTINGS",
-     .x = 80, .y = 135, .w = 140, .h = 15,
+     .x = 80, .y = 131, .w = 140, .h = 15,
      .action = ButtonAction::MainOptions, .arg = -1,
      .nav = {.up = 2, .down = 8}},
     {.id = "help", .label = "HELP",
@@ -1010,7 +1016,7 @@ constexpr MenuButtonSpec kMainMenuRowsMP[] = {
     // so its materialized ordinal is 8 on every variant (exactly one QUIT
     // row survives materialization).
     {.id = "cloud", .label = "CLOUD SAVES",
-     .x = 80, .y = 154, .w = 140, .h = 15,
+     .x = 80, .y = 150, .w = 140, .h = 15,
      .action = ButtonAction::MenuSpecRow, .arg = 8,
      .nav = {.up = 3, .down = 4}},
 };
@@ -1031,9 +1037,11 @@ constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
      .action = ButtonAction::DoLevelEdit, .arg = -1,
      .nav = {.up = 1, .down = 3}},
     // Two full-width doors named in full; DIFFICULTY went to the Base Camp
-    // command strip and the grey SETTINGS caption went with it.
+    // command strip and the grey SETTINGS caption went with it. The pair is
+    // centered in the 60px between LEVEL EDITOR (bottom y=118) and the footer
+    // (y=178): 13px of canvas above and below the 34px group.
     {.id = "options", .label = "GAME SETTINGS",
-     .x = 80, .y = 135, .w = 140, .h = 15,
+     .x = 80, .y = 131, .w = 140, .h = 15,
      .action = ButtonAction::MainOptions, .arg = -1,
      .nav = {.up = 2, .down = 8}},
     {.id = "help", .label = "HELP",
@@ -1067,7 +1075,7 @@ constexpr MenuButtonSpec kMainMenuRowsNoMP[] = {
     // so its materialized ordinal is 8 on every variant (exactly one QUIT
     // row survives materialization).
     {.id = "cloud", .label = "CLOUD SAVES",
-     .x = 80, .y = 154, .w = 140, .h = 15,
+     .x = 80, .y = 150, .w = 140, .h = 15,
      .action = ButtonAction::MenuSpecRow, .arg = 8,
      .nav = {.up = 3, .down = 4}},
 };
@@ -1625,9 +1633,10 @@ enum class ScriptedLevelSet {
     Unchanged,   // "Already on that level. GO when ready."
     LoadFailed,  // rolled back; the campaign's closed-road voice
     Set,         // scen_num committed; "Level set to <title>."
+    SetReplay,   // replay armed (#207); "Replaying <title>. GO when ready."
 };
 
-ScriptedLevelSet apply_scripted_level_set(int level)
+ScriptedLevelSet apply_scripted_level_set(int level, bool replay_arm = false)
 {
     // Host gate (the SET LEVEL predicate): pages/actions are for everyone,
     // level sets are host-only.
@@ -1639,22 +1648,39 @@ ScriptedLevelSet apply_scripted_level_set(int level)
     // must answer the same.
     if (!og::data::level_selection_allowed(game->save_data, level))
         return ScriptedLevelSet::DeniedGate;
+    // #207 arm-only-when-cleared, re-checked at the write choke (the row
+    // decoration is fetch-time state): an uncleared "replay" row is a
+    // plain set.
+    replay_arm = replay_arm && game->save_data.is_level_completed(level);
     const int old_id = game->world().id;
-    if (level == old_id)
+    if (level == old_id && !replay_arm)
         return ScriptedLevelSet::Unchanged;
     // The do_set_scen_level tail without pick_level: load the chosen level
-    // with rollback, then commit the cursor and republish.
-    game->world().id = static_cast<short>(level);
-    if (level < 0 || level > 32767 || !game->load_level()) {
-        game->clearbuffer();
-        game->world().id = static_cast<short>(old_id);
-        if (!game->load_level()) {
+    // with rollback, then commit the cursor and republish. An armed replay
+    // of the level already on screen has nothing to reload.
+    if (level != old_id) {
+        game->world().id = static_cast<short>(level);
+        if (level < 0 || level > 32767 || !game->load_level()) {
             game->clearbuffer();
-            popup_dialog("Big problem",
-                         "Also failed to reload current level...");
+            game->world().id = static_cast<short>(old_id);
+            if (!game->load_level()) {
+                game->clearbuffer();
+                popup_dialog("Big problem",
+                             "Also failed to reload current level...");
+            }
+            return ScriptedLevelSet::LoadFailed;
         }
-        return ScriptedLevelSet::LoadFailed;
     }
+    if (replay_arm) {
+        // The arm moves scen_num itself, so the republish and every
+        // downstream reader see the same cursor a plain set would write.
+        game->save_data.arm_replay(static_cast<short>(level));
+        picker_lobby_sync_settings_from_save();
+        return ScriptedLevelSet::SetReplay;
+    }
+    // A plain level set abandons any excursion in flight — only the
+    // replay_arm branch above keeps/starts one.
+    game->save_data.clear_replay_arm();
     game->save_data.scen_num = static_cast<short>(level);
     picker_lobby_sync_settings_from_save();
     return ScriptedLevelSet::Set;
@@ -1687,10 +1713,11 @@ std::string refusal_with_lua_message(std::string refusal,
 // the line has room for both ("" for a plain level row click).
 Sint32 zone_submenu_level_set_tail(ZoneSubmenuScreenState& st,
                                    og::ui::CampaignPickerSession& session,
-                                   int level, const std::string& lua_toast)
+                                   int level, const std::string& lua_toast,
+                                   bool replay_arm = false)
 {
     std::string refusal;
-    switch (apply_scripted_level_set(level)) {
+    switch (apply_scripted_level_set(level, replay_arm)) {
     case ScriptedLevelSet::DeniedHost:
         TRACE("zone", "level_denied_nonhost %d", level);
         refusal = og::ui::kCampaignPickerHostGuardMessage;
@@ -1715,6 +1742,15 @@ Sint32 zone_submenu_level_set_tail(ZoneSubmenuScreenState& st,
         TRACE("zone", "level_set %d", level);
         zone_submenu_show_toast(
             st, og::ui::campaign_level_set_message(
+                    og::runtime::current_session->myscreen_->world().title));
+        return MENU_REDRAW;
+    case ScriptedLevelSet::SetReplay:
+        // #207: the armed click's own answer — a replay is not a plain set.
+        session.refresh();
+        zone_submenu_reset_page(st, true);
+        TRACE("zone", "level_replay_armed %d", level);
+        zone_submenu_show_toast(
+            st, og::ui::campaign_replay_set_message(
                     og::runtime::current_session->myscreen_->world().title));
         return MENU_REDRAW;
     }
@@ -1762,6 +1798,10 @@ Sint32 zone_submenu_on_spec_row(int row, void* screen_state)
         idx >= static_cast<int>(session.page().rows.size()))
         return 0;  // stale click on a row hidden this frame
 
+    // Copy before choose() — an Acted dispatch replaces the page under
+    // the row we read (#207: the replay mark rides the clicked row).
+    const bool chosen_replay_arms =
+        session.page().rows[static_cast<std::size_t>(idx)].replay_arms();
     using Outcome = og::ui::CampaignPickerSession::OutcomeKind;
     const og::ui::CampaignPickerSession::Outcome outcome =
         session.choose(static_cast<std::size_t>(idx));
@@ -1774,7 +1814,8 @@ Sint32 zone_submenu_on_spec_row(int row, void* screen_state)
         // The shared gated tail (host gate, earned-roads gate,
         // load-with-rollback, cursor commit, republish, toast).
         return zone_submenu_level_set_tail(*st, session, outcome.level,
-                                           std::string());
+                                           std::string(),
+                                           chosen_replay_arms);
     case Outcome::Acted: {
         // #212: an action that wrote a MATCHUP knob through
         // og.campaign_match_set armed the providers' dirty flag; run the
@@ -4846,11 +4887,12 @@ void base_camp_refetch_zone(BaseCampScreenState& state)
 // engine's confirmation is the one answer), spoken after a refusal when the
 // one-line slot fits both ("" for a plain level row click).
 Sint32 base_camp_level_set_tail(BaseCampScreenState& st, int level,
-                                const std::string& lua_toast)
+                                const std::string& lua_toast,
+                                bool replay_arm = false)
 {
     Sint32 ret = MENU_OK;
     std::string refusal;
-    switch (apply_scripted_level_set(level)) {
+    switch (apply_scripted_level_set(level, replay_arm)) {
     case ScriptedLevelSet::DeniedHost:
         TRACE("zone", "level_denied_nonhost %d", level);
         refusal = og::ui::kCampaignPickerHostGuardMessage;
@@ -4882,6 +4924,19 @@ Sint32 base_camp_level_set_tail(BaseCampScreenState& st, int level,
         // previous action's toast be read as this one's answer.
         base_camp_show_toast(
             st, og::ui::campaign_level_set_message(game->world().title));
+        return MENU_REDRAW;
+    }
+    case ScriptedLevelSet::SetReplay: {
+        // #207: the armed click's own answer — a replay is not a plain
+        // set, and it can land on the CURRENT level (the dream log's
+        // loop-home row), so the reload guard may see no cursor change.
+        screen* const game = og::runtime::current_session->myscreen_;
+        st.last_level_id = game->save_data.scen_num;
+        base_camp_refetch_zone(st);
+        base_camp_refresh_rows(st);
+        TRACE("zone", "level_replay_armed %d", level);
+        base_camp_show_toast(
+            st, og::ui::campaign_replay_set_message(game->world().title));
         return MENU_REDRAW;
     }
     }
@@ -5156,7 +5211,9 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
         case EntryKind::Level:
             // Host-gated level row with the load-with-rollback set tail
             // (the shared gated tail, toast-refused — never a modal).
-            return base_camp_level_set_tail(*st, entry.level, std::string());
+            // #207: the dream log's docket rows carry the replay mark.
+            return base_camp_level_set_tail(*st, entry.level, std::string(),
+                                            entry.replay_arms());
         case EntryKind::Action: {
             // Debit-then-dispatch through the shared session machinery
             // (the session refetches on Acted). A zone action never clears

@@ -12,9 +12,10 @@
 
 // From picker.cpp
 std::vector<int> get_accessible_levels();
-// From picker_team_build.cpp: the PROGRESS GO/REPLAY click-time answer, and
-// whether the report offers that click at all.
-bool progress_row_click_applies(int hit_id);
+// From picker_team_build.cpp: the PROGRESS GO/VISIT/REPLAY click-time
+// answer (replay_arm swaps the plain write for the #207 arm), and whether
+// the report offers that click at all.
+bool progress_row_click_applies(int hit_id, bool replay_arm);
 bool progress_rows_actionable();
 
 static bool contains(const std::vector<int>& v, int x)
@@ -85,15 +86,73 @@ TEST(PickerAccessibleLevels, progress_row_click_applies_gate)
     save.scen_num = 3;
 
     trace_clear();
-    EXPECT_FALSE(progress_row_click_applies(15))
+    EXPECT_FALSE(progress_row_click_applies(15, false))
         << "an unearned forward id must refuse";
     EXPECT_EQ(3, (int)save.scen_num);
     EXPECT_TRUE(trace_contains("picker", "progress_row_denied_gate 15"));
     EXPECT_TRUE(trace_contains("popup", "That road is not open yet."));
 
-    EXPECT_TRUE(progress_row_click_applies(1))
+    EXPECT_TRUE(progress_row_click_applies(1, false))
         << "the campaign's entry level is always in the frontier";
     EXPECT_EQ(1, (int)save.scen_num);
+    EXPECT_EQ(0, (int)save.replay_level) << "VISIT never arms";
+}
+
+// The REPLAY half of the same click (#207): identical gates, and the write
+// is the arm — scen_num moves onto the level AND the origin is remembered
+// for the fold/picker-re-entry restore.
+TEST(PickerAccessibleLevels, progress_row_replay_click_arms)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.add_level_completed("gladiator", 1);
+    save.add_level_completed("gladiator", 2);
+    save.scen_num = 3;
+
+    trace_clear();
+    EXPECT_FALSE(progress_row_click_applies(15, true))
+        << "REPLAY rides the same earned-roads gate";
+    EXPECT_EQ(3, (int)save.scen_num);
+    EXPECT_EQ(0, (int)save.replay_level) << "a refused click never arms";
+
+    EXPECT_TRUE(progress_row_click_applies(1, true));
+    EXPECT_TRUE(trace_contains("picker", "progress_row_replay_armed 1"));
+    EXPECT_EQ(1, (int)save.scen_num)
+        << "arming moves the cursor like a plain set";
+    EXPECT_EQ(1, (int)save.replay_level);
+    EXPECT_EQ(3, (int)save.replay_origin)
+        << "origin = the cursor the player left";
+    save.clear_replay_arm();
+}
+
+// The same-level VISIT hijack, pinned: REPLAY arms an excursion, the player
+// re-opens the report and clicks VISIT on the SAME row. The plain write must
+// abandon the excursion — a surviving arm would skip the purge VISIT
+// promises AND make a win restore the origin instead of following the
+// walked exit, blocking exactly the re-branching VISIT exists for.
+TEST(PickerAccessibleLevels, visit_after_replay_arm_abandons_the_excursion)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.add_level_completed("gladiator", 1);
+    save.add_level_completed("gladiator", 2);
+    save.scen_num = 3;
+
+    ASSERT_TRUE(progress_row_click_applies(1, true));  // REPLAY arms {1, 3}
+    ASSERT_TRUE(save.replay_armed_for(1));
+
+    ASSERT_TRUE(progress_row_click_applies(1, false)); // VISIT the same row
+    EXPECT_EQ(1, (int)save.scen_num);
+    EXPECT_EQ(0, (int)save.replay_level)
+        << "the plain write must clear the arm";
+    EXPECT_FALSE(save.replay_armed_for(1))
+        << "no purge skip and no origin restore can hijack this VISIT";
 }
 
 namespace {
@@ -145,7 +204,7 @@ TEST(PickerAccessibleLevels, progress_row_click_refuses_joiners)
     og::ui::install_active_picker_lobby_client(&lobby);
 
     trace_clear();
-    EXPECT_FALSE(progress_row_click_applies(1))
+    EXPECT_FALSE(progress_row_click_applies(1, false))
         << "a joiner's click must not write scen_num";
     EXPECT_EQ(3, (int)save.scen_num);
     EXPECT_TRUE(trace_contains("picker", "progress_row_denied_nonhost 1"));

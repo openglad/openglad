@@ -13,6 +13,7 @@
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/game_context.h>
+#include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
@@ -892,6 +893,259 @@ TEST(HeadlessServerSaveCopy, copy_carries_v14_company_fields)
     EXPECT_EQ(1, destination.campaign_state_get("gladiator", "watch_paid"));
     EXPECT_EQ(0u, destination.campaign_state.count("oldcamp"))
         << "the copy replaces the destination book, it never merges";
+}
+
+// ---------------------------------------------------------------------------
+// #207 replay excursion: the completed-level purge and its replay-arm skip.
+// Loading a level the save marks completed kills everything except team-0
+// livings, exits and teleporters (game.cpp's 2002 "Have we already done this
+// scenario?" rule; the headless twin is apply_completed_level_cleanup). The
+// replay arm restores the authored census for exactly the armed level.
+// ---------------------------------------------------------------------------
+
+struct LiveCensus
+{
+    int hostile_livings = 0;  // Order::Living, team != 0
+    int team0_livings = 0;    // Order::Living, team 0 or carrying a guy
+    int generators = 0;
+    int exits = 0;
+    int teleporters = 0;
+    int other_treasure = 0;
+    int weapons = 0;  // doors, boulders
+    int others = 0;
+
+    bool operator==(const LiveCensus&) const = default;
+
+    int total() const
+    {
+        return hostile_livings + team0_livings + generators + exits +
+            teleporters + other_treasure + weapons + others;
+    }
+};
+
+template <typename EntityList>
+void count_live_entities(const EntityList& entities, LiveCensus& census)
+{
+    for (const auto& entry : entities)
+    {
+        const walker* const entity = entry.get();
+        if (entity == nullptr || entity->dead())
+            continue;
+        const Order order = entity->query_order();
+        const int family = entity->family();
+        if (order == Order::Living)
+        {
+            if (entity->team_num() == 0 || entity->myguy != nullptr)
+                ++census.team0_livings;
+            else
+                ++census.hostile_livings;
+        }
+        else if (order == Order::Generator)
+            ++census.generators;
+        else if (order == Order::Treasure && family == FAMILY_EXIT)
+            ++census.exits;
+        else if (order == Order::Treasure && family == FAMILY_TELEPORTER)
+            ++census.teleporters;
+        else if (order == Order::Treasure)
+            ++census.other_treasure;
+        else if (order == Order::Weapon)
+            ++census.weapons;
+        else
+            ++census.others;
+    }
+}
+
+LiveCensus live_census(const GameWorld& world)
+{
+    LiveCensus census;
+    count_live_entities(world.oblist, census);
+    count_live_entities(world.weaplist, census);
+    count_live_entities(world.fxlist, census);
+    return census;
+}
+
+class ReplayPurgeTest : public HeadlessServerRuntimeTest
+{
+protected:
+    // Mount `campaign` and load `level` through the REAL headless purge
+    // path (load_headless_level_from_save), with `save` as the session
+    // save. The caller shapes completed_levels / the replay arm first.
+    LiveCensus load_and_census(const std::string& campaign, short level)
+    {
+        EXPECT_EQ(CampaignPackageIoError::None,
+                  mount_campaign_package_with_error(campaign));
+        active_save_.current_campaign = campaign;
+        active_save_.scen_num = level;
+        active_save_.current_levels[campaign] = level;
+        create_level_runtime_data(level);
+        const bool loaded = with_context([&] {
+            return og::server::load_headless_level_from_save(
+                *level_data_, active_save_, /*difficulty_setting=*/1, events_,
+                /*authoritative=*/true);
+        });
+        EXPECT_TRUE(loaded);
+        return live_census(level_data_->world());
+    }
+};
+
+// The flagship (#207, the empty island): the Imaginations campaign ships one
+// level whose only exit loops home, so every replay is a load of a completed
+// level — and today that load deletes all 19 hostiles, 3 generators and 18
+// treasures, leaving one exit pad on an empty island. First pin today's
+// truth (the collapse), then the fix: the replay arm restores the authored
+// census.
+TEST_F(ReplayPurgeTest, imaginations_replay_restores_the_authored_island)
+{
+    // Authored baseline: a fresh company's first landing.
+    const LiveCensus authored = load_and_census("imaginations", 1);
+    EXPECT_EQ(19, authored.hostile_livings)
+        << "3 elves, 1 mage, 10 skeletons, 3 orcs, 2 towers — all team 1";
+    EXPECT_EQ(3, authored.generators) << "tent, mage tower, treehouse";
+    EXPECT_EQ(18, authored.other_treasure)
+        << "gold, silver, drumsticks, 4 potions";
+    EXPECT_EQ(1, authored.exits) << "the loop-home exit pad";
+    EXPECT_EQ(0, authored.team0_livings) << "no authored allies";
+
+    // Today's truth: the same load with level 1 completed collapses the
+    // island to the exit pad (the 2002 completed-level purge).
+    active_save_.reset();
+    active_save_.add_level_completed("imaginations", 1);
+    const LiveCensus purged = load_and_census("imaginations", 1);
+    EXPECT_EQ(0, purged.hostile_livings) << "the purge empties the island";
+    EXPECT_EQ(0, purged.generators);
+    EXPECT_EQ(0, purged.other_treasure);
+    EXPECT_EQ(1, purged.exits) << "exits survive the purge";
+    EXPECT_EQ(1, purged.total()) << "one exit pad, nothing else";
+
+    // The fix: the replay arm skips the purge and the island comes back.
+    active_save_.reset();
+    active_save_.add_level_completed("imaginations", 1);
+    active_save_.current_campaign = "imaginations";
+    active_save_.scen_num = 1;
+    active_save_.arm_replay(1);
+    const LiveCensus replayed = load_and_census("imaginations", 1);
+    EXPECT_EQ(authored, replayed)
+        << "an armed replay loads the authored census, not the empty island";
+}
+
+// The classic finally pinned: an UNARMED load of a completed level (the
+// VISIT walk-through) keeps the purge — team-0 livings and exits survive,
+// everything else dies. Gladiator scen 1: 12 elves + treehouse + 23 stains
+// die; the 2 authored team-0 livings and both exits stay.
+TEST_F(ReplayPurgeTest, gladiator_visit_keeps_the_classic_purge)
+{
+    const LiveCensus authored = load_and_census("gladiator", 1);
+    EXPECT_EQ(12, authored.hostile_livings);
+    EXPECT_EQ(1, authored.generators);
+    EXPECT_EQ(2, authored.exits);
+    EXPECT_EQ(2, authored.team0_livings) << "the authored soldier + archer";
+    EXPECT_EQ(23, authored.other_treasure) << "the scenery stains";
+
+    active_save_.reset();
+    active_save_.add_level_completed("gladiator", 1);
+    const LiveCensus visited = load_and_census("gladiator", 1);
+    EXPECT_EQ(0, visited.hostile_livings);
+    EXPECT_EQ(0, visited.generators);
+    EXPECT_EQ(0, visited.other_treasure);
+    EXPECT_EQ(0, visited.weapons);
+    EXPECT_EQ(2, visited.exits) << "exits survive";
+    EXPECT_EQ(2, visited.team0_livings) << "authored team-0 allies survive";
+}
+
+// A stale arm never skips a purge: arming level 3 and then loading a
+// completed level 1 (a VISIT after an abandoned excursion) still purges.
+TEST_F(ReplayPurgeTest, stale_arm_for_another_level_still_purges)
+{
+    active_save_.add_level_completed("gladiator", 1);
+    active_save_.current_campaign = "gladiator";
+    active_save_.scen_num = 5;
+    active_save_.arm_replay(3);
+    active_save_.scen_num = 1;  // a later plain write abandons the excursion
+    const LiveCensus visited = load_and_census("gladiator", 1);
+    EXPECT_EQ(0, visited.hostile_livings) << "the stale arm must not skip";
+    EXPECT_EQ(2, visited.exits);
+}
+
+// The always-redoable policy is CAMPAIGN metadata, not the level's
+// TYPE_SCRIPTED bit: both purge sites skip when campaign_matchup(current)
+// == "versus" — the same memoized key that already exempts versus from the
+// earned-roads gate and XP accrual (#213). A versus-campaign completed
+// load restores WITHOUT any arm (mode objectives and bot squads survive a
+// rematch); the paired adventure pins above show a completed load purges
+// unless armed. Behavior-preserving: the only shipped bit-carrying levels
+// are the versus campaign's (modes') 39, so the bit — still set on this
+// level, still meaning "carries scripts" — no longer drives the answer.
+TEST_F(ReplayPurgeTest, versus_campaign_completed_load_restores_without_arm)
+{
+    const LiveCensus authored = load_and_census("modes", 500);
+    ASSERT_EQ("versus", og::data::campaign_matchup("modes"))
+        << "the policy key: modes is the versus campaign";
+    ASSERT_TRUE(level_data_->world().type & GameWorld::TYPE_SCRIPTED)
+        << "the bit stays in the .fss; it just no longer keys the purge";
+    ASSERT_GT(authored.total(), 0);
+
+    active_save_.reset();
+    active_save_.add_level_completed("modes", 500);
+    const LiveCensus rematch = load_and_census("modes", 500);
+    ASSERT_EQ(0, static_cast<int>(active_save_.replay_level))
+        << "no arm anywhere near this load";
+    EXPECT_EQ(authored, rematch)
+        << "a versus rematch keeps the whole map without any arm";
+}
+
+// Design point 7 (the dedicated server): a host level-set onto a level the
+// SERVER's save marks completed arms the replay — the networked table
+// re-fights a restored level, and the origin remembers the table's real
+// campaign position for the win fold to restore.
+TEST_F(ReplayPurgeTest, lobby_game_start_onto_completed_level_arms_replay)
+{
+    // The server's persistent save: levels 1 and 2 beaten, cursor at 3.
+    active_save_.current_campaign = "gladiator";
+    active_save_.add_level_completed("gladiator", 1);
+    active_save_.add_level_completed("gladiator", 2);
+    active_save_.scen_num = 3;
+
+    og::sim::LobbySaveDataEquivalent lobby_save;
+    lobby_save.current_campaign = "gladiator";
+    lobby_save.scen_num = 1;  // the host re-picks a beaten level
+    lobby_save.numplayers = 1;
+    lobby_save.team_list = {
+        make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER, 0),
+    };
+    initialize_from_lobby(lobby_save);
+
+    EXPECT_TRUE(active_save_.replay_armed_for(1))
+        << "a completed-level set on the server save arms the replay";
+    EXPECT_EQ(3, active_save_.replay_origin)
+        << "origin = the table's campaign position before the set";
+    const LiveCensus census = live_census(level_data_->world());
+    EXPECT_EQ(12, census.hostile_livings)
+        << "the networked table re-fights the restored level";
+
+    // The forward flow stays untouched: a start onto an UNCOMPLETED level
+    // never arms.
+    og::sim::LobbySaveDataEquivalent forward_save = lobby_save;
+    forward_save.scen_num = 3;
+    og::server::apply_headless_lobby_game_start_config(active_save_,
+                                                       forward_save);
+    EXPECT_EQ(0, active_save_.replay_level)
+        << "an uncompleted-level start clears/never sets the arm";
+}
+
+// The arm rides the server/checkpoint copies (the dropped-field pattern):
+// curses builds its authoritative session save through this copy, so a
+// dropped pair would purge the armed replay on the curses client.
+TEST_F(HeadlessServerRuntimeTest, server_save_copy_carries_the_replay_arm)
+{
+    SaveData source;
+    source.current_campaign = "gladiator";
+    source.scen_num = 4;
+    source.arm_replay(2);
+
+    SaveData destination;
+    og::server::copy_headless_server_save_data(destination, source);
+    EXPECT_EQ(2, destination.replay_level);
+    EXPECT_EQ(4, destination.replay_origin);
 }
 
 } // namespace

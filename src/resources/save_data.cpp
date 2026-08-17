@@ -97,6 +97,8 @@ void SaveData::reset()
 
 	scen_num = 1;
 	my_team = 0;
+	// #207: a reset company has no excursion in flight.
+	clear_replay_arm();
     //numplayers = 1;
 	//allied_mode = 1;
 }
@@ -104,6 +106,11 @@ void SaveData::reset()
 bool SaveData::load(const std::string& filename)
 {
     last_io_error_ = SaveDataIoError::None;
+    // #207: the arm is transient session state — a load from disk answers
+    // the file's campaign position, never a live excursion. Launch sites
+    // that round-trip a session save through disk re-carry the pair
+    // explicitly (the dropped-field pattern).
+    clear_replay_arm();
 	TRACE("load", "SaveData::load file=%s", filename.c_str());
     if (!is_safe_virtual_basename(filename))
     {
@@ -1422,6 +1429,28 @@ SaveDataIoError SaveData::save_with_error(const std::string& filename)
     return last_io_error_;
 }
 
+
+void SaveData::arm_replay(short level)
+{
+    // A second arm before the excursion resolves keeps the FIRST origin:
+    // scen_num already points into the excursion, not at the campaign
+    // position the player left.
+    if (replay_level == 0)
+        replay_origin = scen_num;
+    replay_level = level;
+    scen_num = level;
+}
+
+void SaveData::clear_replay_arm()
+{
+    replay_level = 0;
+    replay_origin = 0;
+}
+
+bool SaveData::replay_armed_for(int level) const
+{
+    return replay_level != 0 && level == replay_level;
+}
 
 bool SaveData::is_level_completed(int level_index) const
 {

@@ -2741,6 +2741,12 @@ bool read_page_entry(lua_State* L, const std::string& at,
         bad = at + ".done is not a boolean";
         return false;
     }
+    // #207: the replay mark (level rows; arm-only-when-cleared is the
+    // engine's check, not the script's).
+    if (!read_bool_field(L, -1, "replay", entry.replay)) {
+        bad = at + ".replay is not a boolean";
+        return false;
+    }
     return true;
 }
 

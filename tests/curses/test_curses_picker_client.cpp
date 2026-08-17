@@ -1006,6 +1006,97 @@ TEST(CursesPickerClient, set_level_rejects_invalid_value)
     EXPECT_NE(f.t().dump().find("Invalid level"), std::string::npos);
 }
 
+// --- replay level (#207) -------------------------------------------------
+
+// The SCENARIO submenu's Replay Level prompt: Set Level's gates plus the
+// cleared check, and the write is the ARM — cursor onto the level, origin
+// remembered for the fold/re-entry restore.
+TEST(CursesPickerClient, replay_level_arms_only_cleared_levels)
+{
+    ScopedCursesPickerMountRestore mount_restore;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    PickerFixture f;
+    f.save().current_campaign = "gladiator";
+    f.save().scen_num = 3;
+    f.config.level = 3;
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::Scenario, PickerMenuCommand::ReplayLevel);
+    ASSERT_NE(item, nullptr);
+
+    // An uncleared (but in-frontier) id refuses with the cleared check.
+    f.t().push_char(U'1');
+    f.t().push_special(KeyCode::Enter);
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Scenario, *item);
+    EXPECT_EQ(3, static_cast<int>(f.save().scen_num))
+        << "an uncleared level must not arm or move the cursor";
+    EXPECT_EQ(0, static_cast<int>(f.save().replay_level));
+    EXPECT_NE(f.t().dump().find("That level is not cleared yet."),
+              std::string::npos);
+
+    // An unearned forward id refuses at the earned-roads gate first.
+    f.t().push_char(U'1');
+    f.t().push_char(U'5');
+    f.t().push_special(KeyCode::Enter);
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Scenario, *item);
+    EXPECT_EQ(0, static_cast<int>(f.save().replay_level));
+    EXPECT_NE(f.t().dump().find("That road is not open yet."),
+              std::string::npos);
+
+    // A cleared level arms: cursor moves, origin remembered, the click
+    // answers in the replay voice.
+    f.save().add_level_completed("gladiator", 1);
+    f.t().push_char(U'1');
+    f.t().push_special(KeyCode::Enter);
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Scenario, *item);
+    EXPECT_EQ(1, f.config.level);
+    EXPECT_EQ(1, static_cast<int>(f.save().scen_num));
+    EXPECT_EQ(1, static_cast<int>(f.save().replay_level));
+    EXPECT_EQ(3, static_cast<int>(f.save().replay_origin));
+    EXPECT_NE(f.t().dump().find("Replaying"), std::string::npos);
+    f.save().clear_replay_arm();
+}
+
+// #207 arm lifecycle: a plain Set Level after Replay Level abandons the
+// excursion — even for the very level the arm names. A surviving arm would
+// skip the purge the plain set promises and a later win would restore an
+// abandoned origin.
+TEST(CursesPickerClient, plain_set_level_abandons_the_replay_arm)
+{
+    ScopedCursesPickerMountRestore mount_restore;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    PickerFixture f;
+    f.save().current_campaign = "gladiator";
+    f.save().add_level_completed("gladiator", 1);
+    f.save().scen_num = 3;
+    f.config.level = 3;
+
+    const auto* replay_item = og::ui::find_picker_menu_item(
+        PickerMenuId::Scenario, PickerMenuCommand::ReplayLevel);
+    ASSERT_NE(replay_item, nullptr);
+    f.t().push_char(U'1');
+    f.t().push_special(KeyCode::Enter);
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Scenario, *replay_item);
+    ASSERT_TRUE(f.save().replay_armed_for(1));
+
+    const auto* set_item = og::ui::find_picker_menu_item(
+        PickerMenuId::Scenario, PickerMenuCommand::SetLevel);
+    ASSERT_NE(set_item, nullptr);
+    f.t().push_special(KeyCode::Backspace); // erase the prefilled "1"
+    f.t().push_char(U'1');
+    f.t().push_special(KeyCode::Enter);
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Scenario, *set_item);
+    EXPECT_EQ(1, static_cast<int>(f.save().scen_num));
+    EXPECT_EQ(0, static_cast<int>(f.save().replay_level))
+        << "the plain Set Level must abandon the excursion";
+}
+
 // --- campaign select -----------------------------------------------------
 
 // Selecting a campaign updates config + save; cancelling keeps the current one.
@@ -1025,6 +1116,34 @@ TEST(CursesPickerClient, campaign_select_updates_and_cancel_keeps_current)
     EXPECT_FALSE(chosen.empty());
     EXPECT_EQ(f.config.campaign, chosen);
     EXPECT_EQ(f.save().current_campaign, chosen);
+}
+
+// #207 arm lifecycle: a campaign SWITCH abandons the replay excursion (the
+// arm's origin is a cursor in the previous campaign — restoring it into the
+// new one could plant an unearned cursor there). Re-selecting the CURRENT
+// campaign changes nothing and keeps the arm.
+TEST(CursesPickerClient, campaign_switch_clears_the_replay_arm)
+{
+    ScopedCursesPickerMountRestore mount_restore;
+    PickerFixture f;
+    const std::string original = f.save().current_campaign;
+    f.save().add_level_completed(original, 1);
+    f.save().scen_num = 3;
+    f.save().arm_replay(1);
+
+    // Confirm the highlighted (current) campaign: no switch, arm kept.
+    f.t().push_special(KeyCode::Enter);
+    EXPECT_EQ(f.client.show_campaign_select(), original);
+    EXPECT_TRUE(f.save().replay_armed_for(1))
+        << "re-selecting the current campaign must keep the excursion";
+
+    // A real switch clears it.
+    f.t().push_special(KeyCode::Down);
+    f.t().push_special(KeyCode::Enter);
+    const std::string switched = f.client.show_campaign_select();
+    ASSERT_NE(switched, original) << "the list must offer a second campaign";
+    EXPECT_EQ(0, static_cast<int>(f.save().replay_level))
+        << "the campaign switch must abandon the excursion";
 }
 
 // --- save / load round-trip ----------------------------------------------
@@ -2027,6 +2146,33 @@ TEST(CursesPickerClient, run_game_starts_real_session_and_withdraws)
     EXPECT_GT(f.t().present_count(), 0);
 }
 
+// #207 design point 5 on the curses client: quitting an armed replay
+// restores the campaign cursor at picker re-entry (the run_game tail) and
+// clears the arm — the excursion never strands the cursor on the replayed
+// level.
+TEST(CursesPickerClient, run_game_quit_of_armed_replay_restores_cursor)
+{
+    ScopedCursesPickerMountRestore mount_restore;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    PickerFixture f;
+    f.save().current_campaign = "gladiator";
+    f.save().scen_num = 3;
+    f.save().add_level_completed("gladiator", 1);
+    f.save().arm_replay(1);
+    f.config.campaign = "gladiator";
+    f.config.level = 1;
+    f.config.team_families.clear();
+    f.t().push_special(KeyCode::Escape);  // quit the level immediately
+
+    f.client.run_game();
+
+    EXPECT_EQ(3, static_cast<int>(f.save().scen_num))
+        << "a quit excursion restores the origin cursor on re-entry";
+    EXPECT_EQ(3, f.config.level) << "the session config follows the restore";
+    EXPECT_EQ(0, static_cast<int>(f.save().replay_level));
+}
+
 TEST(CursesPickerClient, run_game_reports_real_session_load_failure)
 {
     HeadlessTerminal term{40, 100};
@@ -2595,6 +2741,51 @@ TEST(CursesPickerClient, camp_prompt_scrolls_a_composition_past_the_screen)
         << "an overflowing block must say so on screen:\n" << dump;
     // The prompt line survives the scroll: 14 docket rows + the oath door.
     EXPECT_NE(dump.find("Camp # [1-15]"), std::string::npos) << dump;
+}
+
+// #207: a camp docket row marked `replay = true` on a CLEARED level arms
+// the excursion through the curses tail — arm_replay (origin remembered,
+// cursor onto the level) instead of the plain write, answered in the
+// replay voice.
+TEST(CursesPickerClient, camp_replay_row_arms_through_the_curses_tail)
+{
+    ScopedCursesPickerMountRestore mount_restore;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    PickerFixture f;
+    f.save().current_campaign = "gladiator";
+    f.save().scen_num = 3;
+    f.config.level = 3;
+    f.save().add_level_completed("gladiator", 1);
+    ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = {
+      { kind = "actions", entries = {
+          { id = "1", label = "THE FIRST ROAD", kind = "level", level = 1, replay = true },
+        } },
+      { kind = "roster" },
+    } }
+  end,
+}))LUA");
+
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::CampaignCamp);
+    ASSERT_NE(item, nullptr);
+    f.t().push_char(U'1');
+    f.t().push_special(KeyCode::Enter);
+    dismiss(f.t());                       // the "Replaying ..." notice
+    f.t().push_special(KeyCode::Escape);  // close the camp
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    EXPECT_EQ(1, f.config.level);
+    EXPECT_EQ(1, static_cast<int>(f.save().scen_num));
+    EXPECT_EQ(1, static_cast<int>(f.save().replay_level))
+        << "the curses camp tail arms a cleared replay row";
+    EXPECT_EQ(3, static_cast<int>(f.save().replay_origin));
+    // (The "Replaying <label>. GO when ready." notice itself is pinned in
+    // the shared-driver tests — dump() is the FINAL frame only, and the
+    // camp re-prompt overpaints the notice after its dismissal.)
+    f.save().clear_replay_arm();
 }
 
 // A benched, unsworn, LOCKED hero on the stock 24x80 terminal: one readable

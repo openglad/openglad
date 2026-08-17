@@ -863,6 +863,14 @@ private:
         std::vector<PreservedSaveSlot> preserved_slots =
             take_preserved_save_slots(save, active_teams);
 
+        // #207: no replay-arm adoption here, deliberately. This LOCAL lobby
+        // only ever applies state this machine authored (every seat is
+        // local and only the host writes settings), and the sync that feeds
+        // state_ runs synchronously inside the same click that wrote the
+        // save — so the cursor pair below never changes under this apply,
+        // and the arm is owned entirely by the click chokes (arm_replay /
+        // clear_replay_arm). The networked JOINER, whose cursor writes ARE
+        // synced, adopts in apply_lobby_state_to_save instead.
         const std::string previous_campaign = save.current_campaign;
         const short previous_scen_num = save.scen_num;
         save.current_campaign = state_->settings.campaign_id.empty()

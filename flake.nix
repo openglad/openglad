@@ -236,6 +236,13 @@
             # frames into the shipped GIFs and PNGs.
             xvfb-run
             ffmpeg
+            # scripts/media/make_lua_ownership_overlays.py draws the Lua/engine
+            # ownership rectangles over the captured stills; it shells out to
+            # `magick` for the compositing and needs a real TrueType file for
+            # the badge digits and the legend (no DejaVu ships system-wide
+            # here, and the script takes a font path, not a fontconfig name).
+            imagemagick
+            dejavu_fonts
             # Browser for the Playwright wasm e2e suite. Playwright refuses to
             # install its own build on some hosts ("does not support chromium
             # on ubuntu26.04-x64"), so playwright.config.js honours

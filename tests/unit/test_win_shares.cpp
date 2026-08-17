@@ -13,6 +13,7 @@
 #include <openglad/resources/campaign_io.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/progression.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/win_shares.h>
 
@@ -32,6 +33,7 @@ namespace {
 
 using og::progression::NetWinFoldCapture;
 using og::progression::NetWinShareTable;
+using og::progression::WinFoldContext;
 using og::progression::WinShareContributor;
 using og::progression::apply_networked_win_shares;
 using og::progression::compute_networked_win_shares;
@@ -350,6 +352,73 @@ TEST(WinShares, persist_networked_win_overlays_session_campaign_state)
          og::data::list_company_backups("netwinbook"))
         (void)remove_user_file("save/backups/" + info.filename);
     (void)remove_user_file("save/netwinbook.gtl");
+}
+
+// #207: the networked cursor restore. The session fold (progression.cpp
+// step 5b) has already restored an armed replay's cursor before any
+// persist runs, so persist_networked_win writes the RESTORED cursor into
+// this machine's company file — a networked replay no longer rewrites the
+// table's campaign position.
+TEST(WinShares, persist_networked_win_carries_the_restored_replay_cursor)
+{
+    ScopedMountRestore mount_guard;
+    restore_default_campaigns();
+    og::data::ScopedActiveCompany active("netwinreplay");
+    ASSERT_TRUE(active.applied());
+
+    // Disk baseline: the machine's campaign position is level 9.
+    {
+        SaveData disk;
+        disk.save_name = "NET REPLAY CO";
+        disk.current_campaign = "gladiator";
+        disk.scen_num = 9;
+        disk.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+        disk.team_list[0]->name = "NETGUY";
+        disk.team_size = 1;
+        ASSERT_TRUE(disk.save("netwinreplay"));
+    }
+
+    // The session replays completed level 3 (armed at origin 9), wins, and
+    // the fold restores the cursor before the persist reads it.
+    TestGameWorld fx;
+    SaveData session;
+    session.current_campaign = "gladiator";
+    session.scen_num = 9;
+    session.add_level_completed("gladiator", 3);
+    session.arm_replay(3);
+    WinFoldContext fold_ctx;
+    fold_ctx.outcome.ending = 0;
+    fold_ctx.outcome.next_level = 2;  // the walked exit — a backtrack
+    fold_ctx.finished_level = session.scen_num;
+    og::progression::apply_win_fold(session, fx.world(), fold_ctx);
+    ASSERT_EQ(9, session.scen_num) << "the fold restored the origin";
+
+    GameWorld& world = fx.world();
+    walker* hero = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, hero);
+    hero->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    hero->myguy->owner_player_index = 0;
+    hero->myguy->owner_save_slot = 0;
+    hero->myguy->name = "NETGUY";
+
+    NetWinFoldCapture capture;
+    add_contributors(capture, /*owner=*/0, /*team=*/0, /*count=*/1);
+    const std::array<std::uint8_t, 1> own = {0};
+    ASSERT_TRUE(og::progression::persist_networked_win(
+        "netwinreplay", session, world, std::span<const std::uint8_t>(own),
+        std::optional<std::size_t>(0), capture, /*completed_level=*/3));
+
+    SaveData reloaded;
+    ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("netwinreplay"));
+    EXPECT_EQ(9, reloaded.scen_num)
+        << "the machine's campaign position survives the replay win";
+    EXPECT_TRUE(reloaded.is_level_completed(3))
+        << "completion credit still lands (idempotent mark)";
+
+    for (const og::data::CompanyBackupInfo& info :
+         og::data::list_company_backups("netwinreplay"))
+        (void)remove_user_file("save/backups/" + info.filename);
+    (void)remove_user_file("save/netwinreplay.gtl");
 }
 
 } // namespace

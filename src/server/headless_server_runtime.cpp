@@ -11,6 +11,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/campaign_io.h>
+#include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/progression.h>
@@ -268,11 +269,6 @@ void clear_completed_level_entities(EntityList& entities)
 
 void apply_completed_level_cleanup(GameWorld& world)
 {
-    // Scripted rematches replay the full map: mode objectives and bot
-    // squads must survive a "level already completed" reload.
-    if (world.type & GameWorld::TYPE_SCRIPTED)
-        return;
-
     clear_completed_level_entities(world.oblist);
     clear_completed_level_entities(world.weaplist);
     clear_completed_level_entities(world.fxlist);
@@ -350,6 +346,13 @@ void copy_headless_server_save_data(SaveData& destination,
     // must carry it, or og.campaign_var reads 0 on the authoritative sim
     // (the documented dropped-field bug class).
     destination.campaign_state = source.campaign_state;
+    // Replay arm (#207): transient session state, never serialized — the
+    // same dropped-field rule. The curses client builds its authoritative
+    // session save through this copy; a dropped pair would purge an armed
+    // replay back to the empty walk-through and skip the fold's
+    // origin-restore.
+    destination.replay_level = source.replay_level;
+    destination.replay_origin = source.replay_origin;
 
     for (std::size_t index = 0; index < destination.team_list.size(); ++index)
     {
@@ -365,11 +368,28 @@ void apply_headless_lobby_game_start_config(
     SaveData& save,
     const og::sim::LobbySaveDataEquivalent& config_save)
 {
+    // #207 design point 7 (the dedicated server): a host level-set onto a
+    // level the SERVER's save marks completed loads RESTORED — the
+    // networked table re-fights; the empty walk-through is a solo/hosted
+    // nicety. Capture the pre-config position, arm below once the cursor
+    // lands on a completed level of the SAME campaign (a campaign switch
+    // has no origin to restore to), and clear any stale arm otherwise —
+    // every round starts its own excursion or none.
+    const std::string previous_campaign = save.current_campaign;
+    const short previous_scen_num = save.scen_num;
+    save.clear_replay_arm();
+
     save.current_campaign = config_save.current_campaign.empty()
         ? std::string("gladiator")
         : config_save.current_campaign;
     save.scen_num = config_save.scen_num > 0 ? config_save.scen_num : 1;
     save.current_levels[save.current_campaign] = save.scen_num;
+    if (previous_campaign == save.current_campaign &&
+        save.is_level_completed(save.scen_num))
+    {
+        save.replay_level = save.scen_num;
+        save.replay_origin = previous_scen_num;
+    }
     save.numplayers = config_save.numplayers;
     save.allied_mode = static_cast<short>(config_save.allied_mode);
     save.ctf_team_count = static_cast<short>(config_save.ctf_team_count);
@@ -486,8 +506,18 @@ bool load_headless_level_from_save(LevelRuntimeData& level_data,
     }
 
     spawn_team_from_save(world, save);
-    if (save.is_level_completed(save.scen_num))
+    // The completed-level purge, keyed on CAMPAIGN policy rather than the
+    // level's TYPE_SCRIPTED bit: a `matchup: versus` campaign is an arena
+    // whose rematches always replay the full map (mode objectives and bot
+    // squads stay). #207 replay excursion: an armed replay of exactly this
+    // level loads the authored census too — the purge is the VISIT (plain
+    // cursor write) face.
+    if (save.is_level_completed(save.scen_num) &&
+        og::data::campaign_matchup(save.current_campaign) != "versus" &&
+        !save.replay_armed_for(save.scen_num))
+    {
         apply_completed_level_cleanup(world);
+    }
 
     prepare_world_for_gameplay(level_data, events);
     // The dedicated server (and any headless host) rolls this level's

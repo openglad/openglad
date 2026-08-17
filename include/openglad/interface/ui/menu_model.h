@@ -88,6 +88,12 @@ enum class PickerMenuCommand : std::int32_t
     // (The v1 CampaignMissions command retired with the SCENARIO missions
     // door — the book is reached from a camp page row now.)
     CampaignCamp,
+    // #207 replay excursion: the SCENARIO submenu's "Replay Level" prompt
+    // (terminal clients). Asks for a level id; the level must be CLEARED
+    // and pass the earned-roads gate, then the arm loads it restored and a
+    // win returns the cursor home. The SDL surface offers the same arm as
+    // the PROGRESS screen's per-row REPLAY button instead.
+    ReplayLevel,
 };
 
 struct PickerMenuItem

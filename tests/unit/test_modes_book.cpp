@@ -450,7 +450,7 @@ struct ScriptedCampIo {
             notices.push_back(line);
         };
         out.is_host = [] { return true; };
-        out.apply_level = [this](int level) {
+        out.apply_level = [this](int level, bool /*replay_arm*/) {
             applied_level = level;
             if (save != nullptr)
                 save->scen_num = static_cast<short>(level);

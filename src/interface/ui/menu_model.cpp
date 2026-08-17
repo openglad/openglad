@@ -78,7 +78,7 @@ constexpr std::array<PickerMenuItem, 11> kTeamBuildItems = {{
 // The SCENARIO submenu: everything that chooses or inspects the scenario.
 // SET CAMPAIGN / SET LEVEL stay host-gated on the SDL surface; the terminal
 // clients present the submenu as a nested flat list.
-constexpr std::array<PickerMenuItem, 7> kScenarioItems = {{
+constexpr std::array<PickerMenuItem, 8> kScenarioItems = {{
     {"set_campaign", "Set Campaign", PickerMenuCommand::SetCampaign},
     {"set_level", "Set Level", PickerMenuCommand::SetLevel},
     {"view_scenario", "View Scenario", PickerMenuCommand::ViewScenario},
@@ -89,11 +89,16 @@ constexpr std::array<PickerMenuItem, 7> kScenarioItems = {{
     // test_platform_headless.cpp) select by ordinal, so growth stays
     // append-only and Back keeps its "last item" reading.
     {"troops", "Scenario Troops", PickerMenuCommand::ToggleCtfScenarioTroops},
+    // #207: the terminal replay prompt — a CLEARED level re-fought with its
+    // authored census, the cursor coming home on the win. Appended before
+    // Back like troops above (the 1-based position consumers again); the
+    // SDL surface carries the arm on PROGRESS's per-row REPLAY instead.
+    {"replay_level", "Replay Level", PickerMenuCommand::ReplayLevel},
     // The v1 MISSIONS row is gone, not moved: the scripted book is a room
     // inside the Base Camp now, reached from a camp page row, so a fourth
     // level-selection door in SCENARIO would restructure nothing
     // (docs/basecamp-zones-design.md "Retirement ledger"). Back returns to
-    // its "last item" reading at 7.
+    // its "last item" reading, at 8 now.
     {"back", "Back", PickerMenuCommand::Back},
 }};
 

@@ -256,16 +256,21 @@ TEST(MenuLayout, mainmenu_buttons_no_overlap)
     // SETTINGS: two full-width doors named in full, GAME SETTINGS over
     // CLOUD SAVES. DIFFICULTY left this screen for the Base Camp command
     // strip (docs/camp-controls-design.md) and the grey SETTINGS caption
-    // that captioned the old narrow pair went with it — so the y=119..134
-    // band is ordinary canvas again, and the settings group is a plain
+    // that captioned the old narrow pair went with it — so the band it
+    // reserved is ordinary canvas again, and the settings group is a plain
     // stack sharing the primary group's column.
     EXPECT_EQ("options", buttons[3].id);
     EXPECT_EQ(buttons[2].x, buttons[3].x);
     EXPECT_EQ(140, buttons[3].sizex);
     EXPECT_EQ("GAME SETTINGS", buttons[3].label);
 
-    // Tightening within groups does not collapse the category breaks.
-    EXPECT_EQ(17, buttons[3].y - (buttons[2].y + buttons[2].sizey));
+    // Tightening within groups does not collapse the category breaks. The
+    // settings pair is centered in the canvas the caption left behind: the
+    // break above it equals the footer break below it (checked at the CLOUD
+    // row), so the group reads as floating between the two neighbours rather
+    // than clinging to either.
+    constexpr int kCategoryBreak = 13;
+    EXPECT_EQ(kCategoryBreak, buttons[3].y - (buttons[2].y + buttons[2].sizey));
 
     // HELP and QUIT are a stable, aligned footer pair.
     EXPECT_EQ("help", buttons[4].id);
@@ -285,8 +290,10 @@ TEST(MenuLayout, mainmenu_buttons_no_overlap)
     EXPECT_EQ(15, buttons[8].sizey);
     EXPECT_EQ(kWithinGroupGutter,
               buttons[8].y - (buttons[3].y + buttons[3].sizey));
-    // Footer break measured from CLOUD SAVES, the settings group's last row.
-    EXPECT_EQ(9, buttons[4].y - (buttons[8].y + buttons[8].sizey));
+    // Footer break measured from CLOUD SAVES, the settings group's last row,
+    // and equal to the break above GAME SETTINGS — that equality is what
+    // centers the pair.
+    EXPECT_EQ(kCategoryBreak, buttons[4].y - (buttons[8].y + buttons[8].sizey));
     EXPECT_EQ(3, buttons[8].nav.up) << "cloud links up to GAME SETTINGS";
     EXPECT_EQ(4, buttons[8].nav.down) << "cloud links down to HELP";
     EXPECT_EQ(8, buttons[3].nav.down) << "GAME SETTINGS links down to CLOUD";

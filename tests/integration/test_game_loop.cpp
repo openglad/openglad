@@ -897,6 +897,66 @@ TEST(GameLoop, glad_init_uses_save_data_numplayers_for_local_transport_clients)
     game_screen->world().delete_objects();
 }
 
+// #207: the shadow install must seed the DISPLAY save's replay arm into the
+// authoritative server screen BEFORE that screen's own load_saved_game —
+// the arm is transient session state the disk round-trip drops, and the
+// server world's completed-level purge reads it. Without the seed the
+// display shows a restored level while the authority simulates an empty
+// one.
+TEST(GameLoop, local_transport_shadow_seeds_replay_arm_into_server_screen)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.current_levels["gladiator"] = 1;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.add_level_completed("gladiator", 1);
+    ASSERT_TRUE(save.save("save0"));
+
+    save.arm_replay(1);
+    ASSERT_NE(0, load_saved_game("save0", game_screen));
+    ASSERT_TRUE(save.replay_armed_for(1))
+        << "the display load must carry the arm (its own pinned behavior)";
+
+    og::runtime::GameSession& gameplay_session =
+        *og::runtime::current_game_session;
+    og::runtime::reset_local_transport_shadow(gameplay_session, *game_screen);
+    ASSERT_TRUE(og::runtime::local_transport_active(gameplay_session));
+
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(
+            gameplay_session);
+    ASSERT_NE(nullptr, server_screen);
+    EXPECT_EQ(1, static_cast<int>(server_screen->save_data.replay_level))
+        << "the install must seed the arm before the authoritative load";
+    EXPECT_EQ(1, static_cast<int>(server_screen->save_data.replay_origin));
+
+    // And the seed did its job: the authoritative world loaded RESTORED.
+    int server_hostiles = 0;
+    for (auto& uptr : server_screen->world().oblist)
+    {
+        walker* const w = uptr.get();
+        if (w == nullptr || w->dead())
+            continue;
+        if (w->query_order() == Order::Living && w->team_num() != 0 &&
+            w->myguy == nullptr)
+            ++server_hostiles;
+    }
+    EXPECT_EQ(12, server_hostiles)
+        << "the authoritative purge must skip for the armed level";
+
+    og::runtime::clear_local_transport_shadow(gameplay_session);
+    game_screen->world().delete_objects();
+    save.reset();
+}
+
 TEST(GameLoop, glad_init_applies_lobby_start_config_before_level_load)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;

@@ -58,6 +58,7 @@
 #include <openglad/resources/gparser.h> // cfg
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
+#include <openglad/resources/og_file.h>
 #include <openglad/resources/pack_transfer_io.h>
 #include <openglad/resources/progression.h>
 #include <openglad/resources/save_data.h>
@@ -1142,6 +1143,13 @@ public:
 
     og::sim::GameClient& client() { return *client_; }
 
+#ifdef TESTING
+    // #207: lets the internal-helpers exercise assert the joiner's
+    // own-company seeding + lobby-config arm without widening the
+    // production surface.
+    const SaveData& testing_client_save() const { return client_save_; }
+#endif
+
 private:
     JoinCursesSession() = default;
 
@@ -1183,6 +1191,22 @@ std::unique_ptr<JoinCursesSession> JoinCursesSession::create(
     s->transport_ = std::move(transport);
     s->local_player_index_ = local_player_index;
 
+    // #207 design point 4 ("every machine"): seed the joiner's session save
+    // from its OWN company file first, so the lobby-config arm inside
+    // apply_headless_lobby_game_start_config can see THIS machine's cursor
+    // and completed set — a negotiated landing on a level this machine has
+    // cleared (same campaign) arms an excursion whose origin is this
+    // machine's own campaign position, and the win fold then restores it
+    // before persist_curses_networked_win writes the cursor to save0. A
+    // machine with no company file keeps the fresh save (nothing completed,
+    // so nothing arms). The mirror world below is populated by the host's
+    // keyframe either way, so the seeded completed set cannot change what
+    // this joiner SEES — only what it persists.
+    {
+        const std::string slot_file = og::data::active_company_slot() + ".gtl";
+        if (auto own_company = og::io::og_open_read("save/", slot_file.c_str()))
+            (void)s->client_save_.load(og::data::active_company_slot());
+    }
     og::server::apply_headless_lobby_game_start_config(s->client_save_, lobby_save);
     const short level = s->client_save_.scen_num > 0 ? s->client_save_.scen_num : 1;
 

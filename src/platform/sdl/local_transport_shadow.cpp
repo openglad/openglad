@@ -2136,6 +2136,15 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
         // before load_saved_game uses that runtime projection to build views.
         server_screen->save_data.numplayers =
             gameplay_screen.save_data.numplayers;
+        // Replay arm (#207): SESSION-only like cross_control below, but it
+        // must be seeded BEFORE the load — load_saved_game carries a
+        // pre-set arm across its own disk round-trip and its completed-
+        // level purge reads it, so the authoritative world loads the
+        // restored census (and the shadow fold later restores the origin).
+        server_screen->save_data.replay_level =
+            gameplay_screen.save_data.replay_level;
+        server_screen->save_data.replay_origin =
+            gameplay_screen.save_data.replay_origin;
         if (load_saved_game(runtime->networked || runtime->isolated_company
                                ? "netsession"
                                : og::data::active_company_slot().c_str(),
@@ -2413,6 +2422,13 @@ void reset_network_host_transport_shadow(
         // before load_saved_game uses that runtime projection to build views.
         server_screen->save_data.numplayers =
             gameplay_screen.save_data.numplayers;
+        // Replay arm (#207): seed BEFORE the load — see
+        // reset_local_transport_shadow above (the authoritative purge and
+        // the shadow fold's origin-restore both read it).
+        server_screen->save_data.replay_level =
+            gameplay_screen.save_data.replay_level;
+        server_screen->save_data.replay_origin =
+            gameplay_screen.save_data.replay_origin;
         if (load_saved_game(runtime->networked
                                ? "netsession"
                                : og::data::active_company_slot().c_str(),

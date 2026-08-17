@@ -490,6 +490,48 @@ TEST(SimWorldHeadless, exit_with_foes_alive_says_foes_remain)
     EXPECT_EQ(2, exit_prompts());
 }
 
+// #207: withdraw stays impossible during a replay, by construction —
+// can_withdraw needs the CURRENT scenario uncompleted, and a replayed level
+// is completed (that is what made it replayable). Foes alive + completed
+// destination + completed current: the "Foes remain" toast fires, never the
+// withdraw prompt.
+TEST(SimWorldHeadless, replay_of_a_completed_level_cannot_withdraw)
+{
+    TestGameWorld t;
+    GameWorld& world = t.world();
+    world.current_scenario = 1;              // the replayed level
+    world.completed_levels.insert(1);        // ... which the save has cleared
+    world.completed_levels.insert(2);        // the exit's destination too
+    world.level_done = 0;                    // foes alive (a restored replay)
+
+    walker* exit_pad = world.add_fx_ob(Order::Treasure, FAMILY_EXIT);
+    ASSERT_NE(nullptr, exit_pad);
+    exit_pad->setxy(120, 120);
+    ASSERT_NE(nullptr, exit_pad->stats());
+    exit_pad->stats()->set_level(2);
+
+    walker* hero = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, hero);
+    hero->setxy(120, 120);
+    hero->set_act_type(ACT_CONTROL);
+
+    ASSERT_TRUE(exit_pad->eat_me(hero));
+    int prompts = 0;
+    int foes_toasts = 0;
+    for (const auto& ev : t.events.events())
+    {
+        if (ev.kind == og::sim::EventKind::RequestExitConfirmation)
+            prompts++;
+        if (ev.kind == og::sim::EventKind::Notification &&
+            ev.text.find("Foes remain") != std::string::npos)
+            foes_toasts++;
+    }
+    EXPECT_EQ(0, prompts)
+        << "no withdraw prompt mid-replay: the current level is completed";
+    EXPECT_EQ(1, foes_toasts) << "the exit answers with the foes toast";
+    EXPECT_FALSE(world.withdraw_requested);
+}
+
 // --- #160 exit-pad re-trigger latch -----------------------------------------
 //
 // Exit pads are eaten from ob_pass_check on EVERY movement probe, so before

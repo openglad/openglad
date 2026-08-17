@@ -198,9 +198,10 @@ TEST(MenuModel, scenario_menu_lookup)
 
     ASSERT_EQ(static_cast<int>(PickerMenuId::Scenario), static_cast<int>(def.id))
         << "scenario definition should report scenario id";
-    ASSERT_EQ(7u, def.items.size())
-        << "scenario menu: campaign/level/viewer/matchup/progress/troops "
-           "+ back (the missions door retired into the Base Camp zone)";
+    ASSERT_EQ(8u, def.items.size())
+        << "scenario menu: campaign/level/viewer/matchup/progress/troops/"
+           "replay (#207) + back (the missions door retired into the Base "
+           "Camp zone)";
 
     const struct
     {
@@ -213,6 +214,7 @@ TEST(MenuModel, scenario_menu_lookup)
         {"matchup", PickerMenuCommand::Teams},
         {"progress", PickerMenuCommand::ShowProgress},
         {"troops", PickerMenuCommand::ToggleCtfScenarioTroops},
+        {"replay_level", PickerMenuCommand::ReplayLevel},
         {"back", PickerMenuCommand::Back},
     };
     for (const auto& want : kExpected)
@@ -596,11 +598,12 @@ TEST(MenuModel, company_screens_cancel_to_back_and_leak_nowhere)
     // door is appended last. Main exposes both stable Help and Quit actions,
     // and lost its difficulty door to Team Build. TeamBuild grew the #206
     // Camp door and that difficulty door, and lost the flat CTF trio to the
-    // camp's MATCH SETUP page; Scenario grew the appended troops row and gave
-    // the missions door back; Difficulty grew the appended infinite-gold row.
+    // camp's MATCH SETUP page; Scenario grew the appended troops row, the
+    // #207 replay-level row, and gave the missions door back; Difficulty
+    // grew the appended infinite-gold row.
     ASSERT_EQ(8u, picker_menu_definition(PickerMenuId::Main).items.size());
     ASSERT_EQ(11u, picker_menu_definition(PickerMenuId::TeamBuild).items.size());
-    ASSERT_EQ(7u, picker_menu_definition(PickerMenuId::Scenario).items.size());
+    ASSERT_EQ(8u, picker_menu_definition(PickerMenuId::Scenario).items.size());
     ASSERT_EQ(7u, picker_menu_definition(PickerMenuId::Difficulty).items.size());
 
     // load_company resolves by id and by command and keeps its place in the

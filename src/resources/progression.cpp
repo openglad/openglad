@@ -103,6 +103,23 @@ void apply_win_fold(SaveData& save, const GameWorld& world,
         save.current_levels[save.current_campaign] = next;
     }
 
+    // 5b. Replay excursion (#207): a win on the ARMED level restores the
+    //     cursor to the position the player left instead of following the
+    //     walked exit — a replay is bounded, it never rewinds (or
+    //     re-branches) the campaign; VISIT keeps the classic advance. The
+    //     arm resolves with the level either way: a stale arm (the player
+    //     re-pointed the cursor before launching) dies here too, so no
+    //     later end can restore to an abandoned excursion's origin.
+    if (on_finished)
+    {
+        if (save.replay_armed_for(finished))
+        {
+            save.scen_num = save.replay_origin;
+            save.current_levels[save.current_campaign] = save.replay_origin;
+        }
+        save.clear_replay_arm();
+    }
+
     // 6. Rebuild the roster from the finished level (dead heroes dropped
     //    unless keep_fallen_heroes). #213: a `matchup: versus` campaign is
     //    an arena, not an adventure — roster exp/level stay as the company

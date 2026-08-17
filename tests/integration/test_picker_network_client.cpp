@@ -2471,6 +2471,96 @@ TEST(PickerNetworkClient, host_status_builder_reports_direct_and_relay_errors)
     EXPECT_TRUE(status_lines_contain_exact(lines, "Lobby: 2 players"));
 }
 
+// #207 design point 4 ("every machine"), the JOINER call site: a synced
+// lobby state that lands the cursor on a level completed in the JOINER's
+// own save arms the replay excursion with origin = the joiner's pre-sync
+// cursor, so this machine's win fold restores its own campaign position
+// instead of persisting the walked exit (recon §3's aftermath bug on
+// joiner machines). The adoption logic itself is pinned branch-by-branch
+// in the internal-helpers exercise; this drives the real
+// JoinPickerLobbyClient apply.
+TEST(PickerNetworkClient, join_settings_apply_arms_replay_for_own_completed_level)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 1, "Joiner");
+    save.scen_num = 3;
+    save.current_levels[save.current_campaign] = 3;
+    save.completed_levels.clear();
+    save.add_level_completed("gladiator", 1);
+    g_start_game_requested = false;
+
+    const int port = ix::getFreePort();
+    auto server_transport =
+        std::make_shared<og::sim::WebSocketServerTransport>(port);
+    server_transport->accept_connections();
+
+    og::ui::PickerJoinGameOptions options;
+    options.mode = og::ui::PickerJoinMode::Direct;
+    options.direct_endpoint = std::format("127.0.0.1:{}", port);
+    auto join_client = og::ui::create_join_picker_lobby_client(options);
+    join_client->initialize_from_save();
+
+    og::sim::PeerId join_peer_id = 0;
+    og::sim::LobbyMessage join_message;
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        for (auto& [peer_id, message] : poll_lobby_messages(*server_transport))
+        {
+            if (message.kind() != og::sim::LobbyMessageKind::Join)
+                continue;
+            join_peer_id = peer_id;
+            join_message = std::move(message);
+            return true;
+        }
+        return false;
+    })) << "join client should connect and send its join message";
+
+    og::sim::LobbyPlayer join_player =
+        std::get<og::sim::LobbyJoinMessage>(join_message.payload).player;
+    join_player.player_index = 1u;
+    join_player.seat_id = 102u;
+    join_player.machine_id = 2u;
+    join_player.team = 1;
+    join_player.ready = false;
+    join_player.is_host = false;
+
+    // The host parks the table on level 1 — completed in the JOINER's save.
+    og::sim::LobbyState state;
+    state.settings.campaign_id = "gladiator";
+    state.settings.scenario_id = 1;
+    state.players.push_back(og::sim::LobbyPlayer{
+        .player_index = 0u,
+        .seat_id = 101u,
+        .machine_id = 1u,
+        .name = "Remote Host",
+        .company = "Remote Host Company",
+        .team = 0,
+        .character_slots = {make_lobby_slot(0u, "Remote Host", 0)},
+        .ready = false,
+        .is_host = true,
+    });
+    state.players.push_back(join_player);
+    state.local_seat_ids = {join_player.seat_id};
+    state.last_join_request_id = std::get<og::sim::LobbyJoinMessage>(
+        join_message.payload).request_id;
+    server_transport->send_lobby_state(
+        join_peer_id, std::make_shared<og::sim::LobbyState>(state));
+
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        return save.scen_num == 1;
+    })) << "the synced settings should reach the joiner's session save";
+
+    EXPECT_EQ(1, static_cast<int>(save.replay_level))
+        << "a completed landing must arm the joiner's excursion";
+    EXPECT_EQ(3, static_cast<int>(save.replay_origin))
+        << "origin = the joiner's own pre-sync cursor";
+
+    join_client->shutdown();
+}
+
 TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_roster)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;

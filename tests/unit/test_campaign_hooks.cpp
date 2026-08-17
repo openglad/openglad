@@ -813,7 +813,7 @@ constexpr const char* kParsePages = R"LUA(og.register_campaign_hooks({
         lines = { "The Gamesmaster opens the book.", "Choose." },
         entries = {
           { id = "tdm", label = "TEAM DEATHMATCH", kind = "page", note = "6 arenas" },
-          { id = "300", label = "THE CIRCLE", kind = "level", level = 300, note = "4 teams" },
+          { id = "300", label = "THE CIRCLE", kind = "level", level = 300, note = "4 teams", replay = true },
           { id = "buy_kit", label = "FIELD KIT  60g", kind = "action", cost = 60 },
           { id = "bare", kind = "level" },
         },
@@ -854,6 +854,9 @@ constexpr const char* kParsePages = R"LUA(og.register_campaign_hooks({
     if page_id == "badlevel" then
       return { title = "X", entries = { { id = "a", kind = "level", level = "high" } } }
     end
+    if page_id == "badreplay" then
+      return { title = "X", entries = { { id = "a", kind = "level", level = 1, replay = 1 } } }
+    end
     if page_id == "boom" then
       error("boom")
     end
@@ -878,6 +881,7 @@ TEST_F(CampaignHooksTest, page_parse_happy_path)
     EXPECT_EQ("6 arenas", page.entries[0].note);
     EXPECT_EQ(hooks::CampaignPageEntry::Kind::Level, page.entries[1].kind);
     EXPECT_EQ(300, page.entries[1].level);
+    EXPECT_TRUE(page.entries[1].replay) << "#207: the replay mark parses";
     EXPECT_EQ(hooks::CampaignPageEntry::Kind::Action, page.entries[2].kind);
     EXPECT_EQ(60, page.entries[2].cost);
     // Optional fields default cleanly.
@@ -885,6 +889,7 @@ TEST_F(CampaignHooksTest, page_parse_happy_path)
     EXPECT_EQ("", page.entries[3].note);
     EXPECT_EQ(0, page.entries[3].level);
     EXPECT_EQ(0, page.entries[3].cost);
+    EXPECT_FALSE(page.entries[3].replay) << "absent replay defaults false";
     // A page with no lines/entries is legal.
     hooks::CampaignPage empty;
     ASSERT_TRUE(hooks::campaign_picker_page("other", empty));
@@ -922,6 +927,7 @@ TEST_F(CampaignHooksTest, malformed_pages_answer_no_scripted_picker)
         {"entrynotable", "entries[1] is not a table"},
         {"badline", "lines[1] is not a string"},
         {"badlevel", ".level is not an integer"},
+        {"badreplay", ".replay is not a boolean"},
     };
     for (const auto& c : cases) {
         EXPECT_FALSE(hooks::campaign_picker_page(c.page_id, page))

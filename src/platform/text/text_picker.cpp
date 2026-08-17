@@ -269,6 +269,12 @@ public:
         }
 
         config_.campaign = entries[static_cast<size_t>(*choice - 1)];
+        // A campaign SWITCH abandons any replay excursion in flight — the
+        // arm's origin is a cursor in the previous campaign and must never
+        // be restored into this one (#207). Re-selecting the current
+        // campaign changes nothing and keeps the arm.
+        if (save_data_.current_campaign != config_.campaign)
+            save_data_.clear_replay_arm();
         save_data_.current_campaign = config_.campaign;
         // GO loads levels straight from the mounted package; selecting a
         // campaign without mounting it would silently play the old one.
@@ -330,6 +336,12 @@ public:
             set_error(TextPickerErrorCode::Unsupported,
                 std::string("protocol session failed with code ") + std::to_string(result));
         }
+
+        // #207 design point 5: the protocol session folds nothing back into
+        // this picker's save, so an armed excursion resolves here on every
+        // end — restore the origin cursor and clear the arm.
+        if (og::ui::replay_reentry_restore(save_data_))
+            config_.level = save_data_.scen_num;
     }
 
     PickerScreen screen_after_game() const override
@@ -836,6 +848,10 @@ private:
         case PickerMenuCommand::SetLevel:
             set_level();
             break;
+        case PickerMenuCommand::ReplayLevel:
+            // #207: the SCENARIO submenu's replay prompt (cleared + gate).
+            replay_level();
+            break;
         case PickerMenuCommand::SetCampaign:
             (void)show_campaign_select();
             break;
@@ -1323,10 +1339,19 @@ private:
         // lobby (configure_networking is a stub), so the shared context
         // always answers host here.
         io.is_host = [this] { return label_context().is_host; };
-        io.apply_level = [this](int level) {
-            // The text "Set level" tail: session config + save cursor.
+        io.apply_level = [this](int level, bool replay_arm) {
+            // The text "Set level" tail: session config + save cursor. The
+            // replay arm (#207) re-checks cleared at the write choke — the
+            // row decoration is fetch-time state. A plain write abandons any
+            // excursion in flight (a stale arm must never skip a purge).
             config_.level = level;
-            save_data_.scen_num = static_cast<short>(level);
+            if (replay_arm && save_data_.is_level_completed(level))
+                save_data_.arm_replay(static_cast<short>(level));
+            else
+            {
+                save_data_.clear_replay_arm();
+                save_data_.scen_num = static_cast<short>(level);
+            }
         };
         run_terminal_campaign_camp(save_data_, io);
     }
@@ -1361,7 +1386,50 @@ private:
         }
 
         config_.level = *level;
+        // A plain Set Level abandons any replay excursion in flight.
+        save_data_.clear_replay_arm();
         save_data_.scen_num = static_cast<short>(*level);
+    }
+
+    // #207: the terminal replay prompt — set_level's shape with one more
+    // gate: the level must already be CLEARED (a replay re-fights a beaten
+    // level; the frontier is GO's job). Arming moves the cursor itself, so
+    // everything downstream behaves like a set.
+    void replay_level()
+    {
+        std::printf("Replay level (must be cleared): ");
+        std::fflush(stdout);
+
+        std::string line;
+        if (!read_line(line) || line.empty())
+            return;
+
+        const auto level = parse_int_strict(line);
+        if (!level || *level < 1) {
+            std::printf("Invalid level.\n");
+            return;
+        }
+
+        std::string title;
+        if (og::data::load_scenario_title_with_error(
+                ("scen" + std::to_string(*level)).c_str(), title) !=
+                og::data::LevelFileIoError::None ||
+            !og::data::level_selection_allowed(save_data_, *level)) {
+            std::printf("%s\n",
+                std::string(og::ui::kCampaignLevelClosedMessage).c_str());
+            return;
+        }
+        if (!save_data_.is_level_completed(*level)) {
+            std::printf("That level is not cleared yet.\n");
+            return;
+        }
+
+        config_.level = *level;
+        save_data_.arm_replay(static_cast<short>(*level));
+        std::printf("%s\n",
+            og::ui::campaign_replay_set_message(
+                title.empty() ? std::format("SCEN {}", *level) : title)
+                .c_str());
     }
 
     void clear_error()

@@ -12,6 +12,7 @@
 
 #include <openglad/interface/ui/campaign_picker_session.h>
 
+#include <openglad/core/test_trace.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -84,6 +85,9 @@ void decorate_campaign_entries(const SaveData& save,
             }
             row.cleared = save.is_level_completed(row.level);
             row.current = static_cast<int>(save.scen_num) == row.level;
+            // #207: the script's replay mark rides level rows only; the
+            // tails act on it through Row::replay_arms (mark AND cleared).
+            row.replay = entry.replay;
         }
         if (row.kind == Kind::Action)
             row.affordable = campaign_picker_can_afford(save, row.cost);
@@ -830,7 +834,9 @@ void terminal_route_acted_level(SaveData& save,
         }
         else
         {
-            io.apply_level(level);
+            // D3 levels carry no replay mark — an Acted-answered level is
+            // always a plain set (#207: only level ROWS can arm).
+            io.apply_level(level, false);
             refetch();  // CURRENT markers re-derive (fetch-per-action)
             // The save-side label fill (decorate_campaign_entries): an
             // empty title still names the road it set.
@@ -878,6 +884,7 @@ void run_terminal_campaign_page_loop(CampaignPickerSession& session,
             page.rows[index].is_level() && !page.rows[index].available;
         const bool chosen_current =
             page.rows[index].is_level() && page.rows[index].current;
+        const bool chosen_replay = page.rows[index].replay_arms();
 
         using Outcome = CampaignPickerSession::OutcomeKind;
         const CampaignPickerSession::Outcome outcome = session.choose(index);
@@ -905,21 +912,26 @@ void run_terminal_campaign_page_loop(CampaignPickerSession& session,
                     io.notice(std::string(kCampaignLevelClosedMessage));
                     break;
                 }
-                if (chosen_current)
+                if (chosen_current && !chosen_replay)
                 {
                     // The row the cursor is already parked on. The SDL
                     // surfaces refuse this click rather than reload the
                     // level under the player; a terminal that answered
                     // "Level set to ..." instead would be telling one
-                    // player two stories about one click.
+                    // player two stories about one click. A replay row is
+                    // exempt (#207): arming is a real state change even on
+                    // the current level — the one-level dream log's only
+                    // replay row IS the current row.
                     io.notice(std::string(kCampaignLevelUnchangedMessage));
                     break;
                 }
-                io.apply_level(outcome.level);
+                io.apply_level(outcome.level, chosen_replay);
                 // CURRENT markers re-derive from the new cursor
                 // (fetch-per-action, never per frame).
                 session.refresh();
-                io.notice(campaign_level_set_message(chosen_label));
+                io.notice(chosen_replay
+                              ? campaign_replay_set_message(chosen_label)
+                              : campaign_level_set_message(chosen_label));
                 break;
             case Outcome::Acted:
             {
@@ -950,6 +962,26 @@ void run_terminal_campaign_page_loop(CampaignPickerSession& session,
 }
 
 } // namespace
+
+// Contract in the header (#207 design point 5): loss/quit restore at
+// picker re-entry; a win already restored in the fold; a stale arm just
+// clears.
+bool replay_reentry_restore(SaveData& save)
+{
+    if (save.replay_level == 0)
+        return false;
+    const bool restore = save.replay_armed_for(save.scen_num);
+    if (restore)
+    {
+        TRACE("picker", "replay_reentry_restore %d -> %d",
+              static_cast<int>(save.scen_num),
+              static_cast<int>(save.replay_origin));
+        save.scen_num = save.replay_origin;
+        save.current_levels[save.current_campaign] = save.replay_origin;
+    }
+    save.clear_replay_arm();
+    return restore;
+}
 
 void run_terminal_campaign_page(SaveData& save,
                                 const TerminalCampaignPickerIo& io,
@@ -1478,17 +1510,21 @@ void run_terminal_campaign_camp(SaveData& save,
                     io.notice(std::string(kCampaignLevelClosedMessage));
                     break;
                 }
-                if (row.current)
+                if (row.current && !row.replay_arms())
                 {
                     // Same click, same answer as the SDL camp: the cursor
                     // is already here, so nothing is set and the row says
                     // so instead of confirming a move that never happened.
+                    // A replay row is exempt (#207): arming is a real
+                    // state change even on the current level.
                     io.notice(std::string(kCampaignLevelUnchangedMessage));
                     break;
                 }
-                io.apply_level(row.level);
+                io.apply_level(row.level, row.replay_arms());
                 zone.refetch();  // CURRENT markers re-derive
-                io.notice(campaign_level_set_message(row.label));
+                io.notice(row.replay_arms()
+                              ? campaign_replay_set_message(row.label)
+                              : campaign_level_set_message(row.label));
                 break;
             case CampaignPickerSession::Kind::Action:
             {

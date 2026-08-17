@@ -942,8 +942,9 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
     // camp's MATCH SETUP page and 11=difficulty was appended in its place —
     // docs/camp-controls-design.md); the scenario-shaped commands nest
     // under the Scenario submenu (1=set_campaign, 2=set_level,
-    // 3=view_scenario, 4=matchup, 5=progress, 6=troops, 7=back — the
-    // missions door retired into the camp). Team Build 11=difficulty opens
+    // 3=view_scenario, 4=matchup, 5=progress, 6=troops, 7=replay level
+    // (#207), 8=back — the missions door retired into the camp). Team
+    // Build 11=difficulty opens
     // the DIFFICULTY submenu
     // (1=difficulty, 2=respawns, 3=respawn delay, 4=permadeath,
     // 5=generators, 6=infinite gold, 7=back). Main is 8 items now:
@@ -993,7 +994,7 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "\n"
         "6\n"       // scenario: cycle scenario troops (ALL -> OWN)
         "6\n"       // scenario: cycle scenario troops (OWN -> ALL)
-        "7\n"       // scenario: back -> team build
+        "8\n"       // scenario: back -> team build (#207: Replay Level joined at 7)
         "11\n"      // team build: difficulty -> DIFFICULTY submenu
         "1\n"       // difficulty: cycle difficulty
         "2\n"       // difficulty: cycle respawns
@@ -1040,7 +1041,7 @@ TEST(PlatformHeadless, text_picker_set_level_prompt_rides_the_gate)
             "10\n"   // team build: Scenario submenu
             "2\n"    // scenario: set level -> 15 (unearned: refused)
             "15\n"
-            "7\n"    // scenario: back -> team build
+            "8\n"    // scenario: back -> team build (#207: Replay Level joined at 7)
             "8\n"    // team build: back -> main
             "6\n";   // main: quit
         StdinRedirect stdin_redirect(input);
@@ -1562,7 +1563,7 @@ TEST(PlatformHeadless, text_picker_campaign_select_mounts_selection)
         "10\n"      // team build: Scenario submenu
         "1\n"       // scenario: set campaign
         "1\n"       //   entry 1 is always the default campaign
-        "7\n"       // scenario: back -> team build
+        "8\n"       // scenario: back -> team build (#207: Replay Level joined at 7)
         "8\n"       // team build: back -> main
         "6\n";      // main: quit
 
@@ -1603,7 +1604,7 @@ TEST(PlatformHeadless, text_picker_shows_display_titles_when_campaign_mounted)
         "\n"
         "6\n"       // scenario: cycle scenario troops (ALL -> OWN)
         "6\n"       // scenario: cycle scenario troops (OWN -> ALL)
-        "7\n"       // scenario: back -> team build
+        "8\n"       // scenario: back -> team build (#207: Replay Level joined at 7)
         "8\n"       // team build: back -> main
         "6\n";      // main: quit
 
@@ -1652,7 +1653,7 @@ TEST(PlatformHeadless, text_picker_level_display_falls_back_when_mount_differs)
         "2\n"       // main: continue -> team build
         "10\n"      // team build: Scenario submenu (labels print)
         "5\n"       // scenario: progress
-        "7\n"       // scenario: back -> team build
+        "8\n"       // scenario: back -> team build (#207: Replay Level joined at 7)
         "8\n"       // team build: back -> main
         "6\n";      // main: quit
 
@@ -1723,6 +1724,137 @@ TEST(PlatformHeadless, text_picker_roster_train_row_opens_seeded_member)
     og::data::set_active_company_slot("save0");
 }
 
+// #207: the SCENARIO submenu's Replay Level prompt on the text client —
+// the invalid-id, earned-roads and cleared refusals, then the cleared arm:
+// the cursor moves onto the level, the answer speaks in the replay voice,
+// and PROGRESS confirms the moved cursor.
+TEST(PlatformHeadless, text_picker_replay_level_prompt_gates_and_arms)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    HeadlessSaveDirSandbox sandbox;
+    {
+        SaveData seed;
+        seed.reset();
+        seed.save_name = "REPLAY BAND";
+        seed.current_campaign = "gladiator";
+        seed.scen_num = 3;
+        seed.add_level_completed("gladiator", 1);
+        seed.add_level_completed("gladiator", 2);
+        seed.last_played_unix_s = 9000;
+        ASSERT_EQ(SaveDataIoError::None, seed.save_with_error("replaytc"));
+    }
+
+    const std::string input =
+        "7\n"       // main: load company -> the company list
+        "1\n"       //   list: open company...
+        "1\n"       //     row 1 = REPLAY BAND -> team build
+        "10\n"      // team build: Scenario submenu
+        "7\n"       // scenario: replay level (invalid value)
+        "abc\n"
+        "7\n"       // scenario: replay level (unearned forward id)
+        "15\n"
+        "7\n"       // scenario: replay level (in frontier but uncleared)
+        "3\n"
+        "7\n"       // scenario: replay level -> 1 (cleared: ARMS)
+        "1\n"
+        "5\n"       // scenario: progress (prints the moved cursor)
+        "8\n"       // scenario: back -> team build
+        "8\n"       // team build: back -> main
+        "6\n";      // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    const std::string out = stdout_capture.restore();
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_NE(std::string::npos, out.find("Replay level (must be cleared): "));
+    EXPECT_NE(std::string::npos, out.find("Invalid level.\n"));
+    EXPECT_NE(std::string::npos, out.find("That road is not open yet.\n"));
+    EXPECT_NE(std::string::npos, out.find("That level is not cleared yet.\n"));
+    EXPECT_NE(std::string::npos,
+              out.find("Replaying SOUTH OF TALWOOD (BEGINNING). "
+                       "GO when ready.\n"))
+        << "the cleared arm answers in the replay voice";
+    EXPECT_NE(std::string::npos,
+              out.find("Current campaign progress: campaign=Gladiator "
+                       "level=1. SOUTH OF TALWOOD (BEGINNING).\n"))
+        << "arming moved the cursor onto the level";
+    EXPECT_EQ(1, config.level);
+
+    (void)remove_user_file("save/replaytc.gtl");
+    og::data::set_active_company_slot("save0");
+}
+
+// #207 arm lifecycle on the text client: a campaign SWITCH after Replay
+// Level abandons the excursion (the shared rule is pinned behaviorally on
+// the curses twin and at apply_campaign_selection; the text tail has its
+// own clear because its select writes the save directly). This drives the
+// text chain end-to-end — arm, then switch to a NON-default campaign — so
+// the switch-side clear executes on this client, with the switch itself
+// asserted through the selection and mount state.
+TEST(PlatformHeadless, text_picker_campaign_switch_after_replay_arm)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    HeadlessSaveDirSandbox sandbox;
+    {
+        SaveData seed;
+        seed.reset();
+        seed.save_name = "SWITCH BAND";
+        seed.current_campaign = "gladiator";
+        seed.scen_num = 3;
+        seed.add_level_completed("gladiator", 1);
+        seed.add_level_completed("gladiator", 2);
+        seed.last_played_unix_s = 9000;
+        ASSERT_EQ(SaveDataIoError::None, seed.save_with_error("switchtc"));
+    }
+
+    const std::string input =
+        "7\n"       // main: load company -> the company list
+        "1\n"       //   list: open company...
+        "1\n"       //     row 1 = SWITCH BAND -> team build
+        "10\n"      // team build: Scenario submenu
+        "7\n"       // scenario: replay level -> 1 (cleared: ARMS)
+        "1\n"
+        "1\n"       // scenario: set campaign
+        "2\n"       //   entry 2 = the first NON-default campaign (SWITCH)
+        "8\n"       // scenario: back -> team build
+        "8\n"       // team build: back -> main
+        "6\n";      // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    const std::string out = stdout_capture.restore();
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_NE(std::string::npos, out.find("Replaying"))
+        << "the excursion armed before the switch";
+    EXPECT_NE("gladiator", config.campaign)
+        << "entry 2 must be a real switch off the default campaign";
+    EXPECT_EQ(config.campaign, get_mounted_campaign())
+        << "the switch re-points the mount";
+
+    (void)remove_user_file("save/switchtc.gtl");
+    og::data::set_active_company_slot("save0");
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
 // §2.5 MATCHUP sub-prompt: the historical 'play N' spelling changes
 // preferred-team metadata only, while 'move SLOT N' moves a roster slot
 // across teams (the §3.8 move autosave rides the valid move). The former TEAMS
@@ -1753,7 +1885,7 @@ TEST(PlatformHeadless, text_picker_matchup_screen_play_and_move_commands)
         "move 1 1\n"    //   valid: back to team 1
         "gibberish\n"   //   unrecognized command
         "\n"            //   blank exits matchup
-        "7\n"           // scenario: back -> team build
+        "8\n"           // scenario: back -> team build (#207: Replay Level joined at 7)
         "8\n"           // base camp: back -> main
         "6\n";          // main: quit
 

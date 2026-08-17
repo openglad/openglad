@@ -92,7 +92,7 @@ static const ExpectedButton kExpectedMainMenu[] = {
     // DIFFICULTY left for the Base Camp command strip
     // (docs/camp-controls-design.md), and the narrow GAME | CLOUD pair it
     // sat under became two full-width rows named in full.
-    {"options", "GAME SETTINGS", KEYSTATE_UNKNOWN, 80, 135, 140, 15,
+    {"options", "GAME SETTINGS", KEYSTATE_UNKNOWN, 80, 131, 140, 15,
      button_action_id(ButtonAction::MainOptions), -1,
      MenuNav{.up = 2, .down = 8}},
     {"help", "HELP", KEYSTATE_UNKNOWN, 80, 178, 68, 15,
@@ -113,7 +113,7 @@ static const ExpectedButton kExpectedMainMenu[] = {
      button_action_id(ButtonAction::MenuSpecRow), 7, MenuNav{}, true},
     // #155: the always-visible CLOUD door, the second full-width settings
     // row; MenuSpecRow arg == its materialized ordinal.
-    {"cloud", "CLOUD SAVES", KEYSTATE_UNKNOWN, 80, 154, 140, 15,
+    {"cloud", "CLOUD SAVES", KEYSTATE_UNKNOWN, 80, 150, 140, 15,
      button_action_id(ButtonAction::MenuSpecRow), 8,
      MenuNav{.up = 3, .down = 4}},
 };

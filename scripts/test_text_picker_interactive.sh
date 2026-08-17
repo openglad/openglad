@@ -25,9 +25,10 @@ trap 'rm -rf "$TMPHOME"; rm -f "$TMPOUT" "$TMPIN"' EXIT
 #     exits), 4=Deploy (prompt re-deploys row 2), 7=Camp (gladiator composes
 #     no camp, so the guard line prints and Team Build re-presents without
 #     consuming further input), 10=Scenario, 11=Difficulty, 6=GO!, 8=Back.
-#   Scenario submenu (7 items — the missions door retired into the camp):
-#     4=Matchup (set preferred-team metadata, blank exits), 3=View Scenario
-#     (blank dismisses), 6=Scenario Troops, 7=Back.
+#   Scenario submenu (8 items — the missions door retired into the camp;
+#     7=Replay Level was appended before Back, #207): 4=Matchup (set
+#     preferred-team metadata, blank exits), 3=View Scenario (blank
+#     dismisses), 6=Scenario Troops, 8=Back.
 #   Difficulty submenu (7 items): 7=Back straight out.
 #   Protocol session after GO!: state, quit.
 #   Main: 6=Quit (the difficulty door left this menu, so every row below it
@@ -54,7 +55,7 @@ play 1
 
 3
 
-7
+8
 11
 7
 6
