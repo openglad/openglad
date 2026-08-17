@@ -23,9 +23,13 @@ world's exits, where the player already walks it.
 edge's stake as its note, and the Bearer's SAVE_ALL levels flagged
 `escort`); `lib/fronts.lua` holds the split-party derivations;
 `lib/stanzas.lua` holds every line the fire speaks. The camp's text band is
-three lines and its rows are 24/20 glyphs — `test_westlands_fire.cpp` sweeps
-both budgets over every state, and `westlands_mapgen`'s self-check repeats
-the graph mirror and the budgets against the produced package.
+three lines and its rows are 24/20 glyphs, and what those two budgets COMPOSE
+has to reach the panel's 42-glyph row face beside the marker the engine
+writes there — so the row under the company's feet carries no note at all
+(`[CURRENT]` is its note, and a second one cost the borrowed title its last
+syllables). `test_westlands_fire.cpp` sweeps the budgets and the composed
+face over every state, and `westlands_mapgen`'s self-check repeats the graph
+mirror, the budgets and the face against the produced package.
 
 ## Split the party
 
@@ -34,7 +38,8 @@ After the Falls (level 12) the roster's team chip becomes the OATH column
 hero's persisted `campaign_tag`. The two roads then advance independently —
 war = the first uncleared of 13..17, burden = the first uncleared of 19..23
 — and the docket carries one march row per live front, each stating its own
-muster and the blades that wait ("party 4, 2 wait"). A column nobody swore
+muster and the blades that wait ("party 4, 2 wait") — except the front the
+company is standing on, which wears the engine's `[CURRENT]` instead. A column nobody swore
 reads "all ride" rather than "unsworn": an empty muster lifts the freeze, so
 that road is open to everyone.
 

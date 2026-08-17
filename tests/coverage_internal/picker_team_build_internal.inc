@@ -370,11 +370,25 @@ int picker_team_build_testing_exercise_internal_paths()
     // #207 row-action hit-test: uncleared rows keep the legacy GO rect;
     // cleared rows answer through the wider REPLAY rect (row 0 = id 1
     // uncleared/current at y 36..49, row 1 = id 2 cleared at y 49..62).
+    // The rects belong to the host: the teams-menu arm above left this
+    // client a joiner, and a joiner's report draws no buttons at all.
+    client.host_visible = true;
+    check(progress_rows_actionable());
     check(progress_row_action_hit(progress_state, 300, 40) == 1);
     check(progress_row_action_hit(progress_state, 300, 55) == 2);
     check(progress_row_action_hit(progress_state, 270, 55) == 2);
     check(progress_row_action_hit(progress_state, 270, 40) == -1);
     check(progress_row_action_hit(progress_state, 5, 40) == -1);
+    // A joiner's report draws "(HOST)" where the buttons were, so the same
+    // two coordinates answer nothing at all: no click, no refusal popup, no
+    // event loop parked in front of a joiner waiting on the host's GO.
+    client.host_visible = false;
+    check(!progress_rows_actionable());
+    check(progress_row_action_hit(progress_state, 300, 40) == -1);
+    check(progress_row_action_hit(progress_state, 270, 55) == -1);
+    picker_progress_menu_engine_draw_content(&progress_state);
+    check(picker_progress_menu_engine_frame_tick(&progress_state, 0));
+    // ... and the arm leaves the client as it found it.
 
     button hire_buttons[] = {
         button("prev", "PREV", KEYSTATE_UNKNOWN, 0, 0, 10, 10, 0, 0,

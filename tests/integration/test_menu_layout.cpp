@@ -3230,14 +3230,22 @@ TEST(MenuLayout, difficulty_menu_layout_and_nav)
     for (int i = kDifficultyMenuDifficultyIndex; i < count; ++i)
         EXPECT_TRUE(buttons[i].hidden) << buttons[i].id;
     EXPECT_FALSE(buttons[kDifficultyMenuBackIndex].hidden);
+    // With every row hidden the panel would be a heading over nothing —
+    // and this door is one click off the Base Camp strip, where a joiner
+    // spends the whole lobby. The caption takes the rows' place.
+    EXPECT_EQ("The host sets these for everyone.", difficulty_panel_caption())
+        << "a joiner's empty panel must say whose call it is";
     EXPECT_EQ(kDifficultyMenuBackIndex, highlighted)
         << "the highlight must be pulled off the hidden rows";
     check_nav_closed_and_reachable(buttons, count, kDifficultyMenuBackIndex,
                                    "difficulty_menu_joiner");
 
-    // Host / local variant restores the full column.
+    // Host / local variant restores the full column — and drops the
+    // caption: six rows that answer to this player need no explanation.
     lobby.host = true;
     sync_difficulty_menu_visibility(buttons, count, highlighted);
+    EXPECT_EQ("", difficulty_panel_caption())
+        << "the host's panel is its own explanation";
     og::ui::install_active_picker_lobby_client(saved_client);
     for (int i = 0; i < count; ++i)
         EXPECT_FALSE(buttons[i].hidden) << buttons[i].id;

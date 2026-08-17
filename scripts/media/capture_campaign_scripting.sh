@@ -4,7 +4,7 @@
 # artifacts get committed to the openglad/openglad-screenshots repo, never
 # to this one.
 #
-# Two kinds of capture:
+# Three kinds of capture:
 #   1. openglad_demo gameplay runs with OPENGLAD_DEMO_CAMPAIGN_STATE
 #      seeding the decision store, so og.campaign_var consequences are on
 #      camera: the Watch at the Deeping Wall, the Gold-Wraiths on the
@@ -14,6 +14,11 @@
 #   2. Base Camp zone stills dumped by the zone UI integration test's
 #      UXSHOTS_DIR seam (the scripted composition, the zone submenu, and
 #      the default zone across campaigns).
+#   3. Menu stills from the uxshots probe's own flows (og_test_basecamp) —
+#      the two main-menu variants and the Base Camp a company with a real
+#      roster sees. The zone stills carry the command strip too, but the
+#      probe is where the main menu is reachable, and the strip's own
+#      still should not depend on a campaign happening to script a camp.
 #
 # Usage: scripts/media/capture_campaign_scripting.sh [output-dir]
 
@@ -24,7 +29,7 @@ BUILD="${OPENGLAD_BUILD:-$REPO_ROOT/build/ci-test}"
 DEMO_BIN="${OPENGLAD_DEMO:-$BUILD/openglad_demo}"
 OUT_DIR="${1:-$REPO_ROOT/build/media/campaign-scripting}"
 
-for bin in "$DEMO_BIN" "$BUILD/og_test_matchup"; do
+for bin in "$DEMO_BIN" "$BUILD/og_test_matchup" "$BUILD/og_test_basecamp"; do
     if [ ! -x "$bin" ]; then
         printf '%s not found; build the ci-test preset first\n' "$bin" >&2
         exit 1
@@ -86,12 +91,17 @@ demo_capture basketball-ping-hud   modes      824 "" 480
 ZONE_SHOTS=(
     zone_scripted_camp
     zone_submenu_stores
+    zone_submenu_match_setup
     zone_default_camp
     zone_default_gladiator
     zone_default_modes
     zone_camp_westlands
+    zone_camp_westlands_fork
     zone_camp_longseason
     zone_default_imaginations
+    uxr_match_setup_cycled
+    uxr_docket_pager_page1
+    uxr_docket_pager_page2
     uxr_after_bench
     uxr_lock_toast
     uxr_assign_war
@@ -122,6 +132,33 @@ for shot in "$UXDIR"/*.ppm; do
     printf 'wrote %s\n' "$OUT_DIR/$name.png"
 done
 
+# The menu stills the zone tour cannot reach: the main menu itself (the
+# GAME SETTINGS / CLOUD SAVES pair that replaced the SETTINGS heading and
+# its Difficulty row) and the Base Camp command strip under a real roster
+# (the DIFFICULTY door, and the GO the re-grid narrowed to pay for it).
+# Same PPM seam, a different test binary — the flows live with the rest of
+# the uxshots probe in og_test_basecamp.
+MENU_SHOTS=(
+    mainmenu_no_company
+    mainmenu_with_company
+    basecamp_solo
+)
+
+MENUDIR="$WORK_DIR/menushots"
+env SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy UXSHOTS_DIR="$MENUDIR" \
+    "$BUILD/og_test_basecamp" \
+    --gtest_filter='UxShots.a_mainmenu_no_company:UxShots.b_mainmenu_with_company:UxShots.g_basecamp_solo' \
+    > "$WORK_DIR/menushots.log" 2>&1 || {
+        printf 'menu capture run failed; see %s\n' "$WORK_DIR/menushots.log" >&2
+        exit 1; }
+for name in "${MENU_SHOTS[@]}"; do
+    shot="$MENUDIR/$name.ppm"
+    [ -s "$shot" ] || continue
+    ffmpeg -loglevel error -y -i "$shot" \
+        -vf "scale=640:400:flags=neighbor" "$OUT_DIR/$name.png"
+    printf 'wrote %s\n' "$OUT_DIR/$name.png"
+done
+
 # Sanity: every artifact decodes and carries frames.
 for f in "$OUT_DIR"/*.gif; do
     frames="$(ffprobe -loglevel error -count_frames \
@@ -135,7 +172,7 @@ done
 # this script silently one PNG short — the missing artifact was only ever
 # noticed at PR-writing time.
 missing=0
-for name in "${ZONE_SHOTS[@]}"; do
+for name in "${ZONE_SHOTS[@]}" "${MENU_SHOTS[@]}"; do
     png="$OUT_DIR/$name.png"
     if [ ! -s "$png" ]; then
         printf 'FAIL: expected still %s was never produced\n' "$png" >&2

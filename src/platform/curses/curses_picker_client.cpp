@@ -1320,8 +1320,10 @@ void CursesPickerClient::show_options()
 {
     Menu menu(term_, clock_);
 
+    // Titled after the door that opened it (GAME SETTINGS on the main
+    // menu), not after the command's internal name.
     bool accepted = false;
-    const std::string slot = menu.prompt("Options", "Save slot: ",
+    const std::string slot = menu.prompt("Game Settings", "Save slot: ",
         config_.save_name, accepted);
     if (accepted && !slot.empty())
     {
@@ -1330,12 +1332,13 @@ void CursesPickerClient::show_options()
     }
 
     accepted = false;
-    const std::string seed = menu.prompt("Options", "Seed: ",
+    const std::string seed = menu.prompt("Game Settings", "Seed: ",
         std::to_string(static_cast<unsigned>(config_.seed)), accepted);
     if (accepted && !seed.empty()) {
         const auto value = parse_int_strict(seed);
         if (!value || *value < 0)
-            menu.show_text("Options", {"Invalid seed; keeping current."});
+            menu.show_text("Game Settings",
+                           {"Invalid seed; keeping current."});
         else
             config_.seed = static_cast<std::uint32_t>(*value);
     }

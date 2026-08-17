@@ -567,6 +567,14 @@ inline constexpr int kDifficultyMenuButtonCount = 7;
 void sync_difficulty_menu_visibility(button* buttons, int num_buttons,
                                      int& highlighted_button);
 
+// The line the DIFFICULTY panel prints under its heading. Empty for a host
+// or a solo player — their rows say everything. A joiner's rows are all
+// hidden by the gate above, so without this the door they can reach from
+// the Base Camp strip opens on a heading over an empty panel; the caption
+// says whose call it is, the way the modes book says "The host calls the
+// rules." Drawn by difficulty_draw_content.
+std::string difficulty_panel_caption();
+
 // A remote (host) GO landing while this peer is parked on the main menu or
 // one of its subscreens: select the Main CONTINUE item and exit, so the
 // shared picker state machine re-enters team build, whose loop-top

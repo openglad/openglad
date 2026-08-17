@@ -56,6 +56,12 @@ loader& scan_loader()
     return instance;
 }
 
+// The scan world gets the FACTORY and nothing else. The other two walker
+// callbacks a played world installs — entity_configurator (reached only
+// through walker::transform_to) and entity_derived_stats (guy attach) —
+// need a running sim, a team spawn or a snapshot apply, and a scan does
+// none of those: it loads a level, reads the exit treasures and drops the
+// world. Installing them anyway would ship two callbacks nothing can call.
 void wire_scan_world(GameWorld& world)
 {
     scan_loader().reload_graphics_if_stale();
@@ -63,18 +69,6 @@ void wire_scan_world(GameWorld& world)
     world.entity_factory = [game_loader](Order order, std::int32_t family) {
         return game_loader->create_walker_owned(order, family);
     };
-    world.entity_configurator =
-        [game_loader](walker& entity, Order order,
-                      std::int32_t family) -> const PixieData* {
-        game_loader->set_walker(&entity, order, family);
-        return game_loader->graphics_for(entity.query_order(),
-                                         entity.family());
-    };
-    world.entity_derived_stats =
-        [game_loader](walker* entity, Order order, std::int32_t family) {
-            if (entity != nullptr)
-                game_loader->set_derived_stats(entity, order, family);
-        };
 }
 
 std::map<std::pair<std::string, int>, std::vector<int>>& exit_cache()

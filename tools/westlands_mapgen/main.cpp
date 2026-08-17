@@ -1487,10 +1487,53 @@ void check_fire_page_budgets(const og::script::hooks::CampaignPage& page,
         check_fire_row_budgets(entry, where);
 }
 
+// The Base Camp draws a docket row into 264 pixels at six pixels a glyph:
+// 42 glyphs for the row's own words AND the marker the ENGINE writes beside
+// them — "  [CURRENT]" under the company's feet, "  >" on a door, the price
+// on an offer. A row that overruns loses its last syllable mid-word on the
+// panel while the terminals, which have room, print it whole, so the camp's
+// words are budgeted here against the marker they will have to sit next to.
+constexpr std::size_t kCampRowFaceBudget = 42;
+
+std::string fire_row_face_tail(const og::script::hooks::CampaignPageEntry& e,
+                               int cursor)
+{
+    namespace hooks = og::script::hooks;
+    switch (e.kind)
+    {
+        case hooks::CampaignPageEntry::Kind::Level:
+            // [CLEARED] is the same width as [CURRENT], and a road the camp
+            // offers is one the map carries, so [CLOSED] is never the wider
+            // case here.
+            return e.level == cursor ? "  [CURRENT]" : "";
+        case hooks::CampaignPageEntry::Kind::Page:
+            return "  >";
+        case hooks::CampaignPageEntry::Kind::Action:
+            if (e.done)
+                return "  [DONE]";
+            return e.cost > 0 ? std::format("  {}g", e.cost) : "";
+    }
+    return "";
+}
+
+void check_fire_row_face(const og::script::hooks::CampaignPageEntry& entry,
+                         int cursor, const std::string& where)
+{
+    std::string face = entry.label;
+    if (!entry.note.empty())
+        face += " - " + entry.note;
+    face += fire_row_face_tail(entry, cursor);
+    if (face.size() > kCampRowFaceBudget)
+        fail(std::format("self-check fire [{}]: row '{}' composes {} glyphs "
+                         "onto the {}-glyph camp face — the panel would cut "
+                         "it mid-word", where, face, face.size(),
+                         kCampRowFaceBudget));
+}
+
 // The camp's own budgets: one roster, three text lines of 38 glyphs, and a
 // docket inside the zone's total row cap with every row legible.
 void check_fire_zone_budgets(const og::script::hooks::CampaignZone& zone,
-                             const std::string& where)
+                             int cursor, const std::string& where)
 {
     namespace hooks = og::script::hooks;
     int rosters = 0;
@@ -1519,7 +1562,10 @@ void check_fire_zone_budgets(const og::script::hooks::CampaignZone& zone,
             case hooks::CampaignZoneWidget::Kind::Actions:
                 rows += widget.entries.size();
                 for (const hooks::CampaignPageEntry& entry : widget.entries)
+                {
                     check_fire_row_budgets(entry, where);
+                    check_fire_row_face(entry, cursor, where);
+                }
                 break;
             case hooks::CampaignZoneWidget::Kind::Readout:
                 if (widget.items.empty())
@@ -1599,13 +1645,13 @@ void self_check_fire_script(const std::vector<ExpectedLevel>& expectations)
     providers.team_snapshot = [&company] { return company; };
     hooks::install_campaign_providers(std::move(providers));
 
-    const auto camp = [](const char* where) {
+    const auto camp = [&cursor](const char* where) {
         hooks::CampaignZone zone;
         if (!hooks::campaign_zone(zone))
             fail(std::format("self-check fire [{}]: the camp did not compose",
                              where));
         else
-            check_fire_zone_budgets(zone, where);
+            check_fire_zone_budgets(zone, cursor, where);
         return zone;
     };
     const auto docket = [](const hooks::CampaignZone& zone) {

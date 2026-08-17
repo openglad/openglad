@@ -574,7 +574,7 @@ local function base_camp()
       id = "random_scenario",
       kind = "action",
       label = "RANDOM SCENARIO",
-      note = "any field",
+      note = "any game, any field",
     }
   end
   entries[#entries + 1] = {

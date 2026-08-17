@@ -12,8 +12,10 @@
 
 // From picker.cpp
 std::vector<int> get_accessible_levels();
-// From picker_team_build.cpp: the PROGRESS GO/REPLAY click-time answer.
+// From picker_team_build.cpp: the PROGRESS GO/REPLAY click-time answer, and
+// whether the report offers that click at all.
 bool progress_row_click_applies(int hit_id);
+bool progress_rows_actionable();
 
 static bool contains(const std::vector<int>& v, int x)
 {
@@ -152,3 +154,25 @@ TEST(PickerAccessibleLevels, progress_row_click_refuses_joiners)
     og::ui::install_active_picker_lobby_client(saved_client);
 }
 
+// ... and the row never invites that click in the first place. The refusal
+// above is a popup, and popup_dialog owns its event loop with no lobby poll
+// in it: every row of this report used to offer a joiner a click whose only
+// possible answer was that popup, and a joiner sitting behind its OK button
+// applies no lobby messages and cannot follow the host's GO. So the
+// affordance itself is host-only — the joiner reads the report, which is
+// what the joiner opened it for.
+TEST(PickerAccessibleLevels, progress_rows_offer_no_click_to_a_joiner)
+{
+    EXPECT_TRUE(progress_rows_actionable())
+        << "a solo or hosting player keeps GO/REPLAY";
+
+    JoinerProgressLobbyClient lobby;
+    og::ui::IPickerLobbyClient* const saved_client =
+        og::ui::active_picker_lobby_client();
+    og::ui::install_active_picker_lobby_client(&lobby);
+    EXPECT_FALSE(progress_rows_actionable())
+        << "a joiner's rows wear (HOST), not a button";
+    og::ui::install_active_picker_lobby_client(saved_client);
+
+    EXPECT_TRUE(progress_rows_actionable()) << "and the seam restores";
+}

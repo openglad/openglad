@@ -582,7 +582,9 @@ TEST_F(ModesBookTest, base_camp_composes_the_table)
     EXPECT_EQ(CampaignPickerSession::Kind::Action, roll.kind);
     EXPECT_EQ("random_scenario", roll.id);
     EXPECT_EQ("RANDOM SCENARIO", roll.label);
-    EXPECT_EQ("any field", roll.note);
+    EXPECT_EQ("any game, any field", roll.note)
+        << "the roll crosses games, so the note must not read as the "
+           "current game's fields only";
     EXPECT_EQ(0, roll.cost) << "the roll is free";
     EXPECT_TRUE(roll.affordable);
 
@@ -710,7 +712,7 @@ TEST_F(ModesBookTest, terminal_camp_rolls_the_scenario_and_names_what_it_set)
         << io.pages[0];
     EXPECT_NE(std::string::npos, io.pages[0].find("BOOK 0/39"));
     EXPECT_NE(std::string::npos,
-              io.pages[0].find("   3. RANDOM SCENARIO - any field\n"))
+              io.pages[0].find("   3. RANDOM SCENARIO - any game, any field\n"))
         << io.pages[0];
     EXPECT_NE(std::string::npos,
               io.pages[0].find("   4. MATCH SETUP - Auto, map, all  >\n"))
@@ -722,7 +724,7 @@ TEST_F(ModesBookTest, terminal_camp_rolls_the_scenario_and_names_what_it_set)
               io.pages[1].find("   2. FIELD: " + book.stripped.at(rolled)))
         << io.pages[1];
     EXPECT_NE(std::string::npos,
-              io.pages[1].find("   3. RANDOM SCENARIO - any field\n"))
+              io.pages[1].find("   3. RANDOM SCENARIO - any game, any field\n"))
         << io.pages[1];
 }
 

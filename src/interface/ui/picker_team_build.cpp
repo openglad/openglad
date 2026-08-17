@@ -387,6 +387,18 @@ void sync_difficulty_menu_visibility(button* buttons,
     ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
 }
 
+// ... and the word that goes where those rows were. Hiding all six leaves a
+// joiner looking at a heading over an empty panel with no clue why, and the
+// door is one click off the Base Camp strip now — the screen a networked
+// joiner lives on. Every sibling surface says whose call it is (the modes
+// book prints "The host calls the rules."), so this one does too.
+std::string difficulty_panel_caption()
+{
+    if (picker_lobby_host_controls_visible())
+        return std::string();
+    return std::string("The host sets these for everyone.");
+}
+
 // Per-session picker message buffer: access via current_session->message_.
 
 #define STAT_NUM_OFFSET 42
@@ -1312,11 +1324,25 @@ constexpr int kProgressRowHeight = 13;
 constexpr int kProgressGoHitX = 295, kProgressGoHitW = 20;
 constexpr int kProgressReplayHitX = 268, kProgressReplayHitW = 42;
 
+// Whether this report's rows carry a GO/REPLAY affordance at all. They are
+// the SET LEVEL write in another shape, so a joiner does not get one: the
+// report stays open to read (that is the screen's whole job), but no row
+// invites a click whose only possible answer is a refusal. The refusal is a
+// popup, and popup_dialog runs its own event loop with no lobby poll in it
+// — a joiner behind that OK button stops applying lobby messages and cannot
+// follow the host's GO until they dismiss it. The rows say "(HOST)" where
+// the button was, the same word the Base Camp level rows wear.
+bool progress_rows_actionable()
+{
+    return picker_lobby_host_controls_visible();
+}
+
 // The click-time answer behind both GO and REPLAY, shared with the tests:
 // the SET LEVEL host gate (this screen had none — a networked joiner could
-// write scen_num here) and the earned-roads predicate, each refusing with
-// the popup (trace-only under TESTING) before any cursor write. True = the
-// write landed and the report exits.
+// write scen_num here; the rows no longer offer a joiner the click, and this
+// stays as the write's own guard) and the earned-roads predicate, each
+// refusing with the popup (trace-only under TESTING) before any cursor
+// write. True = the write landed and the report exits.
 bool progress_row_click_applies(int hit_id)
 {
     if (!picker_lobby_host_controls_visible())
@@ -1345,6 +1371,8 @@ bool progress_row_click_applies(int hit_id)
 
 int progress_row_action_hit(const ProgressEngineState& state, int mx, int my)
 {
+    if (!progress_rows_actionable())
+        return -1;  // no affordance drawn, no hit to answer
     int row_y = kProgressRowY;
     for (int i = state.scroll_offset;
          i < static_cast<int>(state.levels.size()) &&
@@ -1452,6 +1480,7 @@ void picker_progress_menu_engine_draw_content(void* screen_state)
     mytext.write_xy(250, 24, "Foes", DARK_BLUE, 1);
 
     // Level rows
+    const bool rows_actionable = progress_rows_actionable();
     int y = 36;
     int row_height = 13;
     for (int i = state->scroll_offset; i < static_cast<int>(state->levels.size()) && i < state->scroll_offset + state->visible_rows; i++) {
@@ -1482,16 +1511,23 @@ void picker_progress_menu_engine_draw_content(void* screen_state)
         // Enemy count
         if (lp.is_cleared) {
             mytext.write_xy(258, y + 2, "0", DARK_GREEN, 1);
+        } else {
+            buf = std::format("{}", lp.num_enemies);
+            mytext.write_xy(258, y + 2, buf.c_str(), WHITE, 1);
+        }
 
+        // The row's action. A joiner reads the report but does not set the
+        // level, so the button is replaced by the word that says whose call
+        // it is — no button, no click, no refusal popup.
+        if (!rows_actionable) {
+            mytext.write_xy(274, y + 2, "(HOST)", GREY, 1);
+        } else if (lp.is_cleared) {
             // #207: cleared rows are selectable again — REPLAY carries the
             // identical scen_num write as GO (right edge aligned with BACK
             // at x=310, wider to fit the label).
             og::runtime::current_session->myscreen_->draw_button(268, y + 1, 310, y + 10, 1, 1);
             mytext.write_xy(272, y + 2, "REPLAY", DARK_BLUE, 1);
         } else {
-            buf = std::format("{}", lp.num_enemies);
-            mytext.write_xy(258, y + 2, buf.c_str(), WHITE, 1);
-
             // GO button for non-cleared levels (right edge aligns with BACK button at x=310)
             og::runtime::current_session->myscreen_->draw_button(292, y + 1, 310, y + 10, 1, 1);
             mytext.write_xy(296, y + 2, "GO", DARK_BLUE, 1);

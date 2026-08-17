@@ -270,6 +270,15 @@ void difficulty_draw_content(void* /*screen_state*/)
 {
     og::runtime::current_session->myscreen_->text_normal.write_xy(
         80, 13, DARK_BLUE, "%s", "DIFFICULTY");
+    // A joiner's rows are all hidden (sync_difficulty_menu_visibility), so
+    // the panel says who does own them instead of standing empty. Centered
+    // where the rows would have been, at 6px a glyph.
+    const std::string caption = difficulty_panel_caption();
+    if (!caption.empty()) {
+        const int x = 160 - static_cast<int>(caption.size()) * 3;
+        og::runtime::current_session->myscreen_->text_normal.write_xy(
+            x, 90, DARK_BLUE, "%s", caption.c_str());
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1651,36 +1660,52 @@ ScriptedLevelSet apply_scripted_level_set(int level)
     return ScriptedLevelSet::Set;
 }
 
+// One refused set, ONE line. The toast is a single slot with a single
+// timer, so a refusal followed by the action's own message was not two
+// notices — the second overwrote the first in the same frame and the player
+// read the pack's flavour with no idea the engine had refused anything. The
+// refusal leads (it is the answer to the click) and the message rides after
+// it, the order the terminals print their two lines in. When both do not
+// fit the slot the refusal keeps it whole: half a sentence of each reads as
+// a bug, and the half worth keeping is the one that says what happened.
+std::string refusal_with_lua_message(std::string refusal,
+                                     const std::string& lua_toast,
+                                     std::size_t budget)
+{
+    if (lua_toast.empty())
+        return refusal;
+    std::string both = refusal + ' ' + lua_toast;
+    if (both.size() > budget)
+        return refusal;
+    return both;
+}
+
 // The submenu's level-set tail over the shared gated set. `lua_toast` is
 // the D3 Acted-carried message: on a successful set the engine's own
 // confirmation is the click's one answer and the message is dropped; a
-// refused set speaks the refusal and then the message, which keeps the
-// slot only to explain a roll that changed nothing ("" for a plain level
-// row click).
+// refused set leads with the refusal and takes the message after it when
+// the line has room for both ("" for a plain level row click).
 Sint32 zone_submenu_level_set_tail(ZoneSubmenuScreenState& st,
                                    og::ui::CampaignPickerSession& session,
                                    int level, const std::string& lua_toast)
 {
+    std::string refusal;
     switch (apply_scripted_level_set(level)) {
     case ScriptedLevelSet::DeniedHost:
         TRACE("zone", "level_denied_nonhost %d", level);
-        zone_submenu_show_toast(
-            st, std::string(og::ui::kCampaignPickerHostGuardMessage));
+        refusal = og::ui::kCampaignPickerHostGuardMessage;
         break;
     case ScriptedLevelSet::DeniedGate:
         TRACE("zone", "level_denied_gate %d", level);
-        zone_submenu_show_toast(
-            st, std::string(og::ui::kCampaignLevelClosedMessage));
+        refusal = og::ui::kCampaignLevelClosedMessage;
         break;
     case ScriptedLevelSet::Unchanged:
         TRACE("zone", "level_unchanged %d", level);
-        zone_submenu_show_toast(
-            st, std::string(og::ui::kCampaignLevelUnchangedMessage));
+        refusal = og::ui::kCampaignLevelUnchangedMessage;
         break;
     case ScriptedLevelSet::LoadFailed:
         // The campaign's own voice, never the loader's.
-        zone_submenu_show_toast(
-            st, std::string(og::ui::kCampaignLevelClosedMessage));
+        refusal = og::ui::kCampaignLevelClosedMessage;
         break;
     case ScriptedLevelSet::Set:
         // CURRENT markers re-derive from the new cursor (fetch-per-action,
@@ -1693,8 +1718,11 @@ Sint32 zone_submenu_level_set_tail(ZoneSubmenuScreenState& st,
                     og::runtime::current_session->myscreen_->world().title));
         return MENU_REDRAW;
     }
-    if (!lua_toast.empty())
-        zone_submenu_show_toast(st, lua_toast);
+    zone_submenu_show_toast(
+        st,
+        refusal_with_lua_message(
+            std::move(refusal), lua_toast,
+            static_cast<std::size_t>(og::ui::kBaseCampLineBCharsHireHidden)));
     return MENU_REDRAW;
 }
 
@@ -4815,33 +4843,30 @@ void base_camp_refetch_zone(BaseCampScreenState& state)
 // with this surface's toast/refetch/return-code conventions: refusals keep
 // the panel as-is with MENU_OK, a set or a rollback redraws). `lua_toast`
 // is the D3 Acted-carried message — dropped on a successful set (the
-// engine's confirmation is the one answer), spoken after a refusal ("" for
-// a plain level row click).
+// engine's confirmation is the one answer), spoken after a refusal when the
+// one-line slot fits both ("" for a plain level row click).
 Sint32 base_camp_level_set_tail(BaseCampScreenState& st, int level,
                                 const std::string& lua_toast)
 {
     Sint32 ret = MENU_OK;
+    std::string refusal;
     switch (apply_scripted_level_set(level)) {
     case ScriptedLevelSet::DeniedHost:
         TRACE("zone", "level_denied_nonhost %d", level);
-        base_camp_show_toast(
-            st, std::string(og::ui::kCampaignPickerHostGuardMessage));
+        refusal = og::ui::kCampaignPickerHostGuardMessage;
         break;
     case ScriptedLevelSet::DeniedGate:
         TRACE("zone", "level_denied_gate %d", level);
-        base_camp_show_toast(
-            st, std::string(og::ui::kCampaignLevelClosedMessage));
+        refusal = og::ui::kCampaignLevelClosedMessage;
         break;
     case ScriptedLevelSet::Unchanged:
         TRACE("zone", "level_unchanged %d", level);
-        base_camp_show_toast(
-            st, std::string(og::ui::kCampaignLevelUnchangedMessage));
+        refusal = og::ui::kCampaignLevelUnchangedMessage;
         break;
     case ScriptedLevelSet::LoadFailed:
         // The campaign's own voice, never the loader's: a road that will
         // not load is a road the campaign has not opened.
-        base_camp_show_toast(
-            st, std::string(og::ui::kCampaignLevelClosedMessage));
+        refusal = og::ui::kCampaignLevelClosedMessage;
         ret = MENU_REDRAW;
         break;
     case ScriptedLevelSet::Set: {
@@ -4860,8 +4885,11 @@ Sint32 base_camp_level_set_tail(BaseCampScreenState& st, int level,
         return MENU_REDRAW;
     }
     }
-    if (!lua_toast.empty())
-        base_camp_show_toast(st, lua_toast);
+    base_camp_show_toast(
+        st,
+        refusal_with_lua_message(
+            std::move(refusal), lua_toast,
+            static_cast<std::size_t>(og::ui::kBaseCampLineBCharsHireVisible)));
     return ret;
 }
 
@@ -5131,8 +5159,14 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
             return base_camp_level_set_tail(*st, entry.level, std::string());
         case EntryKind::Action: {
             // Debit-then-dispatch through the shared session machinery
-            // (the session refetches on Acted). Zone actions do NOT clear
-            // ready — they ride the autosave tail only.
+            // (the session refetches on Acted). A zone action never clears
+            // ready by itself — a state write, a purchase or a knob rides
+            // the autosave tail only. An action that ANSWERS WITH A LEVEL
+            // is a different thing: it routes through
+            // base_camp_level_set_tail below, the same path a level row
+            // takes, so it republishes the lobby settings and the §4.3
+            // rule un-readies every joiner exactly as a level row's click
+            // does.
             const og::ui::CampaignZoneSession::Outcome outcome =
                 zone->act(widget, idx);
             using Outcome = og::ui::CampaignPickerSession::OutcomeKind;

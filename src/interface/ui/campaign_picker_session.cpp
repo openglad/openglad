@@ -795,7 +795,10 @@ std::vector<std::string> terminal_campaign_page_lines(
 // ENGINE speaks ("Level set to <arena>." — the confirmation names something
 // playable) and the action's own message is dropped; a refused set speaks
 // the refusal first and then the Lua message, which keeps its slot only to
-// explain a roll that changed nothing.
+// explain a roll that changed nothing. A terminal prints the two as two
+// notices because it has the room; the SDL toast is one slot, so its tails
+// compose them into a single line and drop a message that will not fit
+// (menu_screen_specs.cpp refusal_with_lua_message).
 void terminal_route_acted_level(SaveData& save,
                                 const TerminalCampaignPickerIo& io, int level,
                                 const std::string& toast,

@@ -282,7 +282,10 @@ public:
     void show_options() override
     {
         std::string line;
-        std::printf("\n--- Options ---\n");
+        // The page wears the name of the door that opened it: the main
+        // menu row is GAME SETTINGS on every client, and a heading that
+        // still said "Options" read as a different screen.
+        std::printf("\n--- Game Settings ---\n");
 
         std::printf("Current save slot: %s. New slot (blank keeps current): ", config_.save_name.c_str());
         std::fflush(stdout);

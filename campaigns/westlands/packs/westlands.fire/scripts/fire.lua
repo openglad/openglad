@@ -30,9 +30,11 @@ local DELVE_GRANT = 800
 local CAMP_TEXT_LINES = 3
 local LEDGER_LINES = 6
 
--- Row labels are 24 glyphs. road.lua and stanzas.lua are authored to it; the
--- current level's row borrows the SHIPPED scenario title, the one label this
--- pack does not write itself, so that one is clipped here.
+-- Row labels are 24 glyphs, which is the panel's 42-glyph row face minus the
+-- " (HOST)" a joiner's copy of a level row wears and minus the engine's own
+-- "  [CURRENT]". road.lua and stanzas.lua are authored to it; the current
+-- level's row borrows the SHIPPED scenario title, the one label this pack
+-- does not write itself, so that one is clipped here.
 local ROW_LABEL_MAX = 24
 
 local function push_capped(lines, line, cap)
@@ -407,7 +409,18 @@ end
 -- The docket: the roads, the night's offers, the two doors
 -- ---------------------------------------------------------------------------
 
-local function level_row(level, label, note)
+-- The level the company is STANDING ON carries no note, wherever the docket
+-- names it. The engine marks that row [CURRENT] on every client, and the
+-- marker plus its gap is eleven glyphs out of the panel's forty-two: a note
+-- beside it left the row's own name nothing to sit in, and the panel cut the
+-- words mid-syllable ("THE QUIET VALE - THE FIGHT AT..", "EAST: THE
+-- CROSSROADS - ESCORT.."). The marker says what the note said, so the row
+-- says it once and keeps its name whole. Not gating and not decoration: the
+-- pack is budgeting its own words against a marker it knows is coming.
+local function level_row(st, level, label, note)
+  if level == st.cursor then
+    note = nil
+  end
   return {
     id = "go" .. level,
     kind = "level",
@@ -436,12 +449,12 @@ local function front_rows(st, rows)
   if st.war_front ~= nil then
     local note = muster_note("party", st.count.war, st.count.unsworn)
     local label = stanzas.FRONT.WAR_LABEL[st.war_front]
-    rows[#rows + 1] = level_row(st.war_front, label, note)
+    rows[#rows + 1] = level_row(st, st.war_front, label, note)
   end
   if st.burden_front ~= nil then
     local note = muster_note("escort", st.count.burden, st.count.unsworn)
     local label = stanzas.FRONT.BURDEN_LABEL[st.burden_front]
-    rows[#rows + 1] = level_row(st.burden_front, label, note)
+    rows[#rows + 1] = level_row(st, st.burden_front, label, note)
   end
 end
 
@@ -449,7 +462,9 @@ end
 -- The scenario title is what every other surface calls the level (the engine's
 -- own "Level set to <title>." toast included), so the fire says the same word;
 -- a level whose file the package cannot read has no title to borrow.
-local HERE_NOTE = "the fight at hand"
+-- The row itself carries no note (see level_row): the borrowed title is the
+-- longest label the docket ever shows, and the [CURRENT] marker is the only
+-- thing that needs the room beside it.
 local HERE_UNTITLED = "THE ROAD AT YOUR FEET"
 
 local function here_label(level)
@@ -474,13 +489,13 @@ local function graph_rows(st, rows)
   if here == nil then
     return
   end
-  rows[#rows + 1] = level_row(st.cursor, here_label(st.cursor), HERE_NOTE)
+  rows[#rows + 1] = level_row(st, st.cursor, here_label(st.cursor))
   if not og.campaign_level_completed(st.cursor) then
     return
   end
   for i = 1, #here.fwd do
     local exit = here.fwd[i]
-    rows[#rows + 1] = level_row(exit.level, exit.label, exit.note)
+    rows[#rows + 1] = level_row(st, exit.level, exit.label, exit.note)
   end
 end
 
@@ -492,7 +507,7 @@ local function road_rows(st, rows)
   if st.reunion then
     local label = "THE MOUNTAIN OF FIRE"
     rows[#rows + 1] =
-      level_row(fronts.SUMMIT, label, "all swords together")
+      level_row(st, fronts.SUMMIT, label, "all swords together")
     return
   end
   graph_rows(st, rows)
@@ -521,7 +536,10 @@ local function offer_rows(rows)
       kind = "action",
       label = "BREAD FOR SNEAK",
       cost = BREAD_PRICE,
-      note = "kindness, remembered",
+      -- A priced row's face carries the price too ("  60g"), so this note is
+      -- one glyph shorter than the note budget: with the comma it was the
+      -- panel's own cut ("KINDNESS,..  60G").
+      note = "kindness remembered",
     }
   end
 end

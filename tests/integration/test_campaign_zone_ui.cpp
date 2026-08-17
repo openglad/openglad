@@ -315,7 +315,7 @@ void verify_zone_shots(const char* flow, std::size_t expected_shots)
 }
 
 void write_save0_with_two_soldiers(const std::string& campaign, short scen_num,
-                                   std::initializer_list<int> completed = {})
+                                   const std::vector<int>& completed = {})
 {
     SaveData& save = test_screen()->save_data;
     for (auto& slot : save.team_list)
@@ -950,6 +950,7 @@ constexpr const char* kRouletteScript = R"LUA(og.register_campaign_hooks({
           entries = {
             { id = "spin", label = "SPIN THE WHEEL", kind = "action" },
             { id = "spin_far", label = "FAR WHEEL", kind = "action" },
+            { id = "spin_curt", label = "CURT WHEEL", kind = "action" },
           },
         },
         { kind = "roster" },
@@ -960,6 +961,9 @@ constexpr const char* kRouletteScript = R"LUA(og.register_campaign_hooks({
     if entry_id == "spin" then
       return { level = 1 + og.campaign_random(1),
                message = "The wheel spins." }
+    end
+    if entry_id == "spin_curt" then
+      return { level = 15, message = "Sorry." }
     end
     return { level = 15, message = "No luck tonight." }
   end,
@@ -995,7 +999,7 @@ TEST(CampaignZoneUi, zone_action_result_level_routes_the_gated_set_tail)
     zone.fetch();
     ASSERT_TRUE(zone.scripted());
     ASSERT_EQ(1u, zone.actions().size());
-    ASSERT_EQ(2u, zone.actions()[0].rows.size());
+    ASSERT_EQ(3u, zone.actions()[0].rows.size());
 
     og::ui::BaseCampScreenState state;
     state.zone = &zone;
@@ -1028,9 +1032,24 @@ TEST(CampaignZoneUi, zone_action_result_level_routes_the_gated_set_tail)
     EXPECT_EQ(2, save.scen_num) << "a refused routed set never moves the "
                                    "cursor";
     EXPECT_TRUE(trace_contains("zone", "level_denied_gate 15"));
-    EXPECT_TRUE(trace_contains("zone", "toast That road is not open yet."));
-    EXPECT_TRUE(trace_contains("zone", "toast No luck tonight."))
-        << "the Lua message shows when the set refused";
+    // The toast is ONE slot with ONE timer. A second show_toast in the same
+    // frame does not add a notice, it REPLACES one — the refusal used to be
+    // written and then overwritten by the action's message, so the player
+    // read "No luck tonight." and never learned the engine had refused. The
+    // refusal leads the line, and a message that will not fit beside it is
+    // dropped rather than cut in half.
+    EXPECT_EQ("That road is not open yet.", state.toast)
+        << "the refusal owns the line it shares with nothing else";
+    EXPECT_FALSE(trace_contains("zone", "toast No luck tonight."))
+        << "the pack's line must never speak in the refusal's place";
+
+    // ... and a message short enough to share the slot rides after it, the
+    // order the terminals print their two lines in.
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kBaseCampZoneActionBase + 2, &state));
+    EXPECT_EQ(2, save.scen_num);
+    EXPECT_EQ("That road is not open yet. Sorry.", state.toast)
+        << "refusal first, then the roll's own word";
 
     og::ui::install_base_camp_state_for_screen(nullptr);
 }
@@ -1102,9 +1121,17 @@ TEST(CampaignZoneUi, submenu_action_result_level_routes_the_gated_set_tail)
     EXPECT_EQ(2, save.scen_num)
         << "a refused routed set never moves the cursor";
     EXPECT_TRUE(trace_contains("zone", "level_denied_gate 15"));
-    EXPECT_TRUE(trace_contains("zone", "toast That road is not open yet."));
-    EXPECT_TRUE(trace_contains("zone", "toast Dice gone cold."))
-        << "the Lua message shows when the set refused";
+    // One slot, one line (the Base Camp twin's rule, at this surface's
+    // wider 41-glyph budget): "That road is not open yet. Dice gone cold."
+    // is 42, so the refusal keeps the line and the roll's own words are
+    // dropped whole. What may never happen is the shape this replaced —
+    // the message overwriting the refusal in the same frame, leaving a
+    // player who was refused reading only the pack's flavour.
+    EXPECT_EQ("That road is not open yet.", st.toast)
+        << "the refusal owns the line";
+    EXPECT_FALSE(trace_contains("zone", "toast Dice gone cold."))
+        << "a message that will not fit beside the refusal is dropped "
+           "whole, never cut and never in its place";
 
     og::ui::install_zone_submenu_state_for_screen(nullptr);
 }
@@ -1616,6 +1643,10 @@ struct DefaultTourState
     // When set, the top zone row must carry exactly this composed label —
     // the count cannot be satisfied by the wrong composition.
     const char* expect_first_row_label = nullptr;
+    // Levels this company has already won. A camp whose docket names the
+    // road ahead only once the fight at its feet is won needs a save that
+    // has won one.
+    std::vector<int> completed;
     bool finished = false;
     bool continue_seen = false;
     bool camp_seen = false;
@@ -1683,30 +1714,37 @@ TEST(CampaignZoneUi, zz_capture_default_zone_across_campaigns)
     // bare default, the transitional book door, or a composed camp — and a
     // campaign whose mount left the screen empty must be caught here.
     DefaultTourState tours[] = {
-        {"gladiator", "zone_default_gladiator", 1, 0},
+        {"gladiator", "zone_default_gladiator", 1, 0, nullptr, {}},
         // The Gamesmaster's table composes GAME / FIELD / RANDOM SCENARIO
         // / MATCH SETUP — all FOUR on the panel's first face. The camp
         // spends no text line precisely so that its last row is not parked
         // behind a pager arrow on the screen a player lives on.
-        {"modes", "zone_default_modes", 300, 4},
+        {"modes", "zone_default_modes", 300, 4, nullptr, {}},
         // The Company Fire composes its camp: at the vale that is the fight
         // at your feet plus the QUARTERMASTER and THE LEDGER doors (the
         // road out is named only on the night it opens).
-        {"westlands", "zone_camp_westlands", 1, 3},
+        {"westlands", "zone_camp_westlands", 1, 3, nullptr, {}},
+        // ...and the night the fight at its feet is won: the fork above the
+        // Refuge names BOTH roads out, so the docket outgrows the band and
+        // the C++ pager takes over the third slot. This is the only night
+        // the camp ever shows an arrow, which is the point of capturing it.
+        {"westlands", "zone_camp_westlands_fork", 4, 3, nullptr,
+         {1, 2, 3, 4}},
         // The open ledger composes its camp: the week's job, the STORES
         // door, and TAKE AN ADVANCE on a fresh spring save.
-        {"longseason", "zone_camp_longseason", 1, 3},
+        {"longseason", "zone_camp_longseason", 1, 3, nullptr, {}},
         // The dream log composes its camp: one dream on a fresh save, and
         // its label pins the composition (not just the count).
         {"imaginations", "zone_default_imaginations", 1, 1,
-         "The Raspberry Isle - tonight?  [CURRENT]"},
+         "The Raspberry Isle - tonight?  [CURRENT]", {}},
     };
     for (DefaultTourState& tour : tours)
     {
         ASSERT_EQ(CampaignPackageIoError::None,
                   mount_campaign_package_with_error(tour.campaign))
             << tour.campaign;
-        write_save0_with_two_soldiers(tour.campaign, tour.scen_num);
+        write_save0_with_two_soldiers(tour.campaign, tour.scen_num,
+                                      tour.completed);
 
         SDL_Thread* thread = SDL_CreateThread(
             default_tour_injector, "default_tour", &tour);
@@ -1830,4 +1868,122 @@ TEST(CampaignZoneUi, zzz_uxr_capture_scripted_zone_with_full_roster)
     EXPECT_TRUE(roster_pages)
         << "14 heroes over a 3-row band must show the roster pager";
     verify_zone_shots("uxr_full_roster", 2);
+}
+
+namespace {
+
+// A knob row's face is "<label> - <note>" once the panel joins the two, so
+// these waits key on the part the knob owns rather than the whole line.
+bool wait_for_interactable_label_containing(const std::string& id,
+                                            const std::string& want,
+                                            int timeout_ms)
+{
+    int elapsed = 0;
+    while (elapsed < timeout_ms) {
+        for (const Interactable& item : get_interactables()) {
+            if (item.id == id && !item.hidden &&
+                item.label.find(want) != std::string::npos)
+                return true;
+        }
+        SDL_Delay(50);
+        elapsed += 50;
+    }
+    fprintf(stderr, "  [interact] TIMEOUT waiting for '%s' label ~'%s'\n",
+            id.c_str(), want.c_str());
+    return false;
+}
+
+// MATCH SETUP, the modes camp's page of knobs: three rows that each read
+// out what the match holds and step it on when clicked. The page replaced a
+// row of named presets, so the still that documents it has to show the
+// VALUES on the faces — and the second capture has to show one of them
+// actually moved, since a page of labels that never change would look
+// exactly the same from a screenshot.
+struct MatchSetupShotState
+{
+    bool camp_seen = false;
+    bool setup_row_seen = false;
+    bool page_opened = false;
+    bool teams_row_read_auto = false;
+    bool teams_row_stepped_to_two = false;
+    bool finished = false;
+};
+
+int match_setup_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    MatchSetupShotState* state = static_cast<MatchSetupShotState*>(data);
+
+    state->camp_seen = wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);
+    interact("continue_game");
+
+    // Row 3 of the Gamesmaster's four: GAME, FIELD, RANDOM SCENARIO, and
+    // the door this shot is about.
+    state->setup_row_seen = wait_for_interactable_label_containing(
+        "zone_action_3", "MATCH SETUP", 10000);
+    SDL_Delay(400);
+    interact("zone_action_3");
+
+    // The zone submenu's own BACK owns the unique (10,169) rect.
+    state->page_opened = wait_for_interactable_at("back", 10, 169, 10000);
+    state->teams_row_read_auto = wait_for_interactable_label_containing(
+        "zone_row_0", "TEAMS: AUTO ", 10000);
+    SDL_Delay(500);
+    capture_zone_frame("zone_submenu_match_setup");
+
+    // One click walks the cycle one stop (auto -> 2) and speaks it.
+    interact("zone_row_0");
+    state->teams_row_stepped_to_two = wait_for_interactable_label_containing(
+        "zone_row_0", "TEAMS: 2 ", 10000);
+    SDL_Delay(400);
+    capture_zone_frame("uxr_match_setup_cycled");
+    SDL_Delay(400);
+
+    interact("back");
+    wait_for_interactable("go", 10000);
+    SDL_Delay(300);
+    interact("back");
+    state->finished = true;
+    return 0;
+}
+
+} // namespace
+
+TEST(CampaignZoneUi, zzz_uxr_capture_modes_match_setup_page)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    write_save0_with_two_soldiers("modes", 300);
+
+    MatchSetupShotState state;
+    SDL_Thread* thread =
+        SDL_CreateThread(match_setup_injector, "uxr_setup", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    verify_zone_shots("match_setup", 2);
+
+    EXPECT_TRUE(state.camp_seen) << "main menu";
+    EXPECT_TRUE(state.setup_row_seen)
+        << "the Gamesmaster's fourth row is the MATCH SETUP door";
+    EXPECT_TRUE(state.page_opened)
+        << "the MATCH SETUP row must open the zone submenu";
+    EXPECT_TRUE(state.teams_row_read_auto)
+        << "a fresh match holds the map's own team count, and the row says "
+           "so on its face";
+    EXPECT_TRUE(state.teams_row_stepped_to_two)
+        << "clicking a knob row steps its cycle and re-labels the row";
+    EXPECT_TRUE(state.finished);
+
+    // Leave the default campaign mounted for whatever runs next.
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
 }

@@ -303,8 +303,10 @@ behind a hover or a spent face:
   own name and the result rides the Acted outcome's `level` through the
   SAME gated set tail as a level row's click; the engine's "Level set to
   <arena>." is the confirmation, so what confirms is always something
-  playable), MATCH SETUP (page; the row's own note IS the posted digest,
-  preset rows state their exact writes). The roll happens at dispatch,
+  playable), MATCH SETUP (page; the row's own note IS the rules
+  digest, and the page's three rows are the knobs themselves — TEAMS,
+  TARGET SCORE and TROOPS, each labelled with what it holds and noted
+  with the cycle a click steps it along). The roll happens at dispatch,
   never at fetch — a random pick computed at fetch time would be a deck
   by another name, and `base_camp` stays pure — and it never lands on
   the field the table is already set to: a roll that re-offers the
@@ -312,9 +314,10 @@ behind a hover or a spent face:
   because a green button that changes nothing is not a roll. SIGN THE
   BOOK lives on the index page whose cover it takes, asked for by the
   GAME row's note at 39/39; the camp keeps no signature row and no cover
-  line. Joiners: own-book readout, the same read-only posted digest,
-  "The host calls the game.", browsable pages with (HOST) level rows;
-  the roll, the signature AND the preset action rows are cut at fetch.
+  line. Joiners: own-book readout, the same read-only rules digest,
+  "The host calls the game." / "The host calls the rules.", browsable
+  pages with (HOST) level rows; the roll, the signature AND the three
+  knob rows are cut at fetch.
   Call lines live on field pages only, and a fully stamped page says
   "Every field here is stamped." — never "shut", since #207 keeps every
   cleared field replayable. Every camp row is budgeted against the
@@ -326,7 +329,7 @@ behind a hover or a spent face:
   completed with both musters ≥ 1), `frozen = "The Falls parted the
   company."` and locks by front ("ON THE WAR ROAD" / "WITH THE BEARER" /
   "WAITS AT THE FALLS"). Actions: only the real forward choices with
-  plain-category notes to the delve standard ("a plea, and a pay chest";
+  plain-category notes to the delve standard ("a plea, a pay chest";
   "gold, and a price"); during the split, one row per live front with
   muster counts that also count waiters ("party 4, 2 wait"); hot
   one-shot offers (delve pair, bread) surface at the fire ONLY;

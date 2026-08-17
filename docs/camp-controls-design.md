@@ -57,8 +57,15 @@ the `{scen_num}` seed — grandfathered, self-consistent.
   1. `do_set_scen_level` — the single choke for the SCENARIO browser
      click AND the free-typed ENTER ID.
   2. The PROGRESS GO/REPLAY click — which also gains the previously
-     missing host gate (a networked joiner could write `scen_num` there;
-     it now refuses with the host-guard line).
+     missing host gate (a networked joiner could write `scen_num` there).
+     A joiner is not offered the click at all: the rows draw "(HOST)" in
+     the engine's disabled grey where the button was, and the hit test
+     answers nothing, so the report stays readable without ever raising
+     the refusal. That matters because the refusal here is a POPUP, and
+     popup_dialog owns its event loop with no lobby poll in it — a
+     joiner parked behind the OK button applies no lobby messages and
+     cannot follow a host GO until they dismiss it. The click-time host
+     gate stays as the write's own guard.
   3. Both SDL Lua level-set tails (Base Camp zone rows and the zone
      submenu), after the host gate, before the load.
   4. The shared terminal decoration: `row.available` is now
@@ -90,11 +97,18 @@ the `{scen_num}` seed — grandfathered, self-consistent.
 
 With the engine gate in place, `fire.lua` stops pretending:
 
-- `graph_rows` adds the CURRENT level as the docket's first row ("the
-  fight at your feet"; the engine marks it `[CURRENT]`) and keeps the
-  forward rows — now honestly `[CLOSED]` until the current level is
-  completed, opening exactly at forks. The fiction: you choose a road
-  once you have won the fight at your feet.
+- `graph_rows` adds the CURRENT level as the docket's first row (the
+  fight at your feet, named by its own scenario title; the engine marks
+  it `[CURRENT]`) and keeps the forward rows — now honestly `[CLOSED]`
+  until the current level is completed, opening exactly at forks. The
+  fiction: you choose a road once you have won the fight at your feet.
+- The row underfoot carries NO note, wherever the docket names it (the
+  graph row and the split's own march rows both). The marker plus its gap
+  is eleven of the panel's forty-two glyphs, so a note beside it cut the
+  row's name mid-word — "THE QUIET VALE - THE FIGHT AT.." on the first
+  night. `[CURRENT]` says what the note said. Sweeps: the composed face
+  over every cursor in `test_westlands_fire.cpp`, and the same arithmetic
+  in the generator's self-check.
 - No gating logic is duplicated in Lua: the C++ decoration owns it.
 - The ledger and quartermaster are untouched; the split act already keys
   off completion.
@@ -111,7 +125,18 @@ tests; never the sim RNG). `CampaignActionResult` gains an optional
 `level` so a picker action can route into each client's existing SetLevel
 tail — host gate, load-rollback and confirmation included. The versus
 campaign is exempt from the earned-roads gate, so any drawn arena is
-settable.
+settable. The row's note is `any game, any field`: the draw is over the
+whole manifest, so it can land on a different game than the one the table
+is set to, and a note that said only "any field" would read as a reroll
+inside tonight's game.
+
+A refused routed set answers on the surface's own terms. The terminals
+print two notices in sequence (the refusal, then the action's message).
+The SDL toast is ONE slot with one timer, so the two are composed into a
+single line — refusal first — and a message that will not fit beside it
+is dropped whole rather than cut: the refusal is the answer to the
+click, and the pack's line must never speak in its place. Budgets: 34
+glyphs on the Base Camp line-B slot, 41 in a zone submenu.
 
 ## 4. MATCH SETUP: direct knobs
 
@@ -162,6 +187,15 @@ seat card one onto DIFFICULTY (it is the door under that card's face; the
 empty slot used to force a doubled SCENARIO link). The difficulty screen's
 `remote_start` scope becomes `TeamBuildScope` like every other Base Camp
 child, so a host GO launches a joiner parked inside it.
+
+**The joiner's face.** Every row on this screen is LobbySettings-backed, so
+`sync_difficulty_menu_visibility` hides all six for a non-host — which, now
+that the door sits one click off the screen a networked joiner lives on,
+means a joiner opens a heading over an empty panel. `difficulty_panel_caption()`
+prints "The host sets these for everyone." where the rows would have been,
+the way the modes book says "The host calls the rules."; a host or solo
+player gets no caption, because six rows that answer to them explain
+themselves.
 
 **The main menu.** The difficulty row is gone and the narrow `GAME | CLOUD`
 pair it sat under becomes two full-width rows that say what they are:
