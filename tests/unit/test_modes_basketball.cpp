@@ -4405,6 +4405,188 @@ TEST_F(ModesBasketball, wipe_watchdog_refields_a_matched_team_at_strength)
 }
 
 // ===========================================================================
+// Issue #235 — the seeded bot-squad permutation (mode_anchors.lua)
+// ===========================================================================
+
+namespace {
+
+// The shared mode_anchors squad-seed header slot (#235): the latched
+// squad-order code + 1, drawn once per match by the first bot-squad spawn.
+inline constexpr int kSlotSquadSeed = 6;
+
+// C++ twin of mode_match.walker_power under the §4.1 trunc-on-read
+// discipline (the test_modes_tdm.cpp measurement idiom), to measure a
+// spawned squad against the stored target.
+long long trio_walker_f(const walker* w)
+{
+    const statistics* s = w->stats();
+    if (s == nullptr)
+        return 0;
+    const long long hp = static_cast<long long>(s->max_hitpoints());
+    const long long mp = static_cast<long long>(s->max_magicpoints());
+    const long long armor = static_cast<long long>(s->armor());
+    const long long dmg = static_cast<long long>(w->damage());
+    const long long sp = static_cast<long long>(w->stepsize());
+    long long ff = static_cast<long long>(w->fire_frequency());
+    if (ff < 1)
+        ff = 1;
+    const long long level = s->level();
+    const long long ed = dmg * (level + 3) / 4;
+    const long long rate = 120 / ff;
+    const long long off = ed * rate + 5 * sp;
+    const long long ehp = hp + 4 * armor + mp / 2;
+    return ehp * (off + 60) / 60;
+}
+
+long long trio_team_f_sum(GameWorld& world, int team)
+{
+    long long sum = 0;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        if (w->team_num() != static_cast<unsigned char>(team))
+            continue;
+        sum += trio_walker_f(w);
+    }
+    return sum;
+}
+
+// One seeded init on the reference court: THREE leveled humans on team 0
+// (the reporter's roster shape), anchors only on team 1, TROOPS: FAIR —
+// the matched census latches SIZE = 3, so team 1's generated squad is the
+// 3-prefix of the (seeded) squad order.
+struct SeededTrio
+{
+    std::vector<int> families;  // team-1 bots in oblist (spawn) order
+    std::int32_t seed_var = 0;
+    std::int32_t target = 0;
+    std::int32_t announced = 0;
+    long long squad_f = 0;
+};
+
+SeededTrio run_seeded_trio(std::uint32_t rng_state)
+{
+    ModesCtfWorld fx(kBballLevelA);
+    fx.spawn_anchor(0, 128, 448);
+    fx.spawn_anchor(0, 128, 512);
+    fx.spawn_anchor(1, 512, 448);
+    fx.spawn_anchor(1, 512, 512);
+    fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 128, 96, 1, 4);
+    fx.spawn_leveled_hero(FAMILY_ARCHER, 0, 160, 96, 2, 4);
+    fx.spawn_leveled_hero(FAMILY_ELF, 0, 192, 96, 3, 4);
+    arm_matched(fx.world());
+    fx.world().rng_.state_ = rng_state;  // pin the match seed
+    fx.tick(1);
+    EXPECT_TRUE(fx.world().mode.active);
+
+    SeededTrio out;
+    for (const auto& uptr : fx.world().oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        if (w->team_num() != 1)
+            continue;
+        out.families.push_back(static_cast<int>(w->family()));
+    }
+    out.seed_var = fx.var(kSlotSquadSeed);
+    out.target = fx.var(kSlotMatchedTarget);
+    out.announced = fx.var(kSlotMatchedAnnounced);
+    out.squad_f = trio_team_f_sum(fx.world(), 1);
+    return out;
+}
+
+// The two match seeds the #235 pins run under (arbitrary but fixed; they
+// decode to different squad orders — proven by the exact pins below).
+inline constexpr std::uint32_t kTrioSeedA = 1001u;
+inline constexpr std::uint32_t kTrioSeedB = 4242u;
+
+}  // namespace
+
+// Issue #235, the reporter's scenario: with three humans the matched
+// squad seam truncates the bot table to its first min(SIZE, 5) members,
+// so every match against bots opened with the same soldier/archer/elf
+// trio. The squad order is now a per-match PERMUTATION drawn once from
+// the sim RNG and latched in the shared header var, so the trio varies
+// with the match seed and repeats exactly under the same seed.
+TEST_F(ModesBasketball, bot_trio_varies_with_the_match_seed_and_repeats_with_it)
+{
+    const SeededTrio a1 = run_seeded_trio(kTrioSeedA);
+    const SeededTrio b = run_seeded_trio(kTrioSeedB);
+    const SeededTrio a2 = run_seeded_trio(kTrioSeedA);
+
+    ASSERT_EQ(3u, a1.families.size()) << "SIZE = 3 truncation (D34/D39)";
+    ASSERT_EQ(3u, b.families.size());
+    EXPECT_EQ(a1.families, a2.families)
+        << "the same match seed must reproduce the same trio";
+    EXPECT_EQ(a1.seed_var, a2.seed_var)
+        << "the latched squad-order code is a pure function of the seed";
+    EXPECT_NE(a1.families, b.families)
+        << "different match seeds must vary the opposing trio (issue #235)";
+
+    // Exact pins, adjudicated once against the sim post-fix (deterministic
+    // forever): seed A decodes order code 72, seed B code 114.
+    const std::vector<int> pinned_a = {FAMILY_ARCHER, FAMILY_ELF,
+                                       FAMILY_SOLDIER};
+    const std::vector<int> pinned_b = {FAMILY_MAGE, FAMILY_ELF, FAMILY_THIEF};
+    EXPECT_EQ(pinned_a, a1.families);
+    EXPECT_EQ(pinned_b, b.families);
+    EXPECT_EQ(72, a1.seed_var);
+    EXPECT_EQ(114, b.seed_var);
+
+    // The latched code is order + 1, in [1, 120]; 0 means never drawn.
+    EXPECT_GE(a1.seed_var, 1);
+    EXPECT_LE(a1.seed_var, 120);
+    EXPECT_GE(b.seed_var, 1);
+    EXPECT_LE(b.seed_var, 120);
+
+    // Each trio is 3 DISTINCT members of the five-family squad set (a
+    // permutation prefix, never a sample-with-replacement).
+    for (const SeededTrio* run : {&a1, &b})
+    {
+        std::vector<int> fams = run->families;
+        std::sort(fams.begin(), fams.end());
+        EXPECT_EQ(fams.end(), std::unique(fams.begin(), fams.end()))
+            << "trio families must be distinct";
+        for (int fam : fams)
+        {
+            EXPECT_TRUE(fam == FAMILY_SOLDIER || fam == FAMILY_ARCHER ||
+                        fam == FAMILY_ELF || fam == FAMILY_MAGE ||
+                        fam == FAMILY_THIEF)
+                << "family byte " << fam << " is not a squad member";
+        }
+    }
+}
+
+// The FAIR guarantee survives the permutation: whatever 3-of-5 subset the
+// seed picks, spawn_matched_bots re-measures the ACTUAL squad and solves
+// its levels against the SAME stored target, so the seeded trio's measured
+// f-sum stays inside the matched accuracy band for every seed.
+TEST_F(ModesBasketball, seeded_trio_power_stays_within_the_matched_band)
+{
+    const SeededTrio a = run_seeded_trio(kTrioSeedA);
+    const SeededTrio b = run_seeded_trio(kTrioSeedB);
+
+    ASSERT_NE(0, a.announced) << "TEAMS MATCHED announced at init";
+    ASSERT_NE(0, b.announced);
+    ASSERT_GT(a.target, 0);
+    EXPECT_EQ(a.target, b.target)
+        << "the target is the human roster's own f-sum — seed-independent";
+
+    for (const SeededTrio* run : {&a, &b})
+    {
+        const long long target = run->target;
+        const long long miss = run->squad_f > target ? run->squad_f - target
+                                                     : target - run->squad_f;
+        EXPECT_LE(miss * 100, target * 10)
+            << "squad f " << run->squad_f << " vs target " << target
+            << " misses the matched band";
+    }
+}
+
+// ===========================================================================
 // §11.2 #48 — D33 body denial: the point-blank face-stuff
 // ===========================================================================
 

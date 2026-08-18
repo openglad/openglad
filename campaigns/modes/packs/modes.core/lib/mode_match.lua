@@ -55,8 +55,9 @@ end
 -- Mode-var slots. The design's per-team MATCHED_LEVEL/MATCHED_UP footprint
 -- (D20) does not fit repo reality: CTF and Onslaught use every mode-private
 -- slot 8..63 and Basketball leaves only 63, so the solved plan is PACKED
--- into the shared header band (slots 0-7, mode-neutral by convention, 2-7
--- free everywhere) instead. TARGET is the capped mean human-team f (0 =
+-- into the shared header band (slots 0-7, mode-neutral by convention:
+-- MATCHED owns 2-5, mode_anchors' squad seed owns 6 (#235), 7 is free)
+-- instead. TARGET is the capped mean human-team f (0 =
 -- census not run, or no human power — both mean "legacy"); PLAN carries one
 -- base-100 code per team, code = L * 10 + k (0 = unsolved, L in 1..9,
 -- k in 0..4, max packed value 94 * 1010101 = 94,949,494 < 2^31); ANNOUNCED

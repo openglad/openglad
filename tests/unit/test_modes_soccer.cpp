@@ -220,6 +220,27 @@ int alive_on_team(GameWorld& world, int team)
     return count;
 }
 
+// The shared mode_anchors squad-seed header slot (#235): the latched
+// squad-order code + 1, drawn once per match by the first bot-squad spawn.
+inline constexpr int kSlotSquadSeed = 6;
+
+// A team's live Living family bytes in oblist (spawn) order.
+std::vector<int> team_families_in_order(GameWorld& world, int team)
+{
+    std::vector<int> families;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w != nullptr && !w->dead() &&
+            w->query_order() == Order::Living &&
+            w->team_num() == static_cast<unsigned char>(team))
+        {
+            families.push_back(static_cast<int>(w->family()));
+        }
+    }
+    return families;
+}
+
 // Retires a team's dead guy-less bodies, simulating the engine sweep for
 // corpses whose entries were genuinely lost (a full all-player queue). With
 // corpse persistence (#221) a body whose entry is merely hand-cleared is
@@ -440,7 +461,9 @@ TEST_F(ModesSoccer, empty_active_teams_get_bot_squads)
     fx.spawn_anchor(0, 96, 448);
     fx.spawn_anchor(1, 528, 448);
     // Team 1's only anchor is blocked by a parked generator: its bots
-    // fall back to the RNG teleport (the one init-time draw, D1).
+    // fall back to the RNG teleport. Init-time draws: the #235 squad-order
+    // seed (one og.rand inside the first squad spawn, before placement),
+    // then the blocked-anchor teleports (D1).
     fx.spawn_generator(FAMILY_TENT, 1, 528, 448);
     fx.tick(1);
 
@@ -1519,6 +1542,54 @@ TEST_F(ModesSoccer, goal_kickoff_reprovisions_a_wiped_bot_team)
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
+// Issue #235 latch agreement: the squad order is drawn ONCE per match and
+// latched in the shared header var, so a wiped bot side comes back as the
+// SAME squad — the mid-match revive backstop decodes the latched code with
+// zero RNG draws instead of re-rolling a new order. (Green before the
+// seeded permutation too — the fixed table trivially agreed with itself —
+// but post-#235 this pins the init/mid-match latch agreement.)
+TEST_F(ModesSoccer, wiped_bot_team_revives_with_the_same_match_squad)
+{
+    SoccerPitch fx(kSoccerLevelA);
+    fx.spawn_anchor(0, 96, 448);
+    fx.spawn_anchor(1, 528, 448);
+    walker* red = fx.spawn_living(FAMILY_SOLDIER, 0, 96, 96);
+    fx.world().respawn_mode = 0;
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    ASSERT_FALSE(red->dead());
+    const std::vector<int> at_init = team_families_in_order(fx.world(), 1);
+    ASSERT_EQ(5u, at_init.size()) << "the empty side fields a five-bot squad";
+    const std::int32_t seed_at_init = fx.var(kSlotSquadSeed);
+
+    fx.thaw_kickoff();
+    for (const auto& uptr : fx.world().oblist)
+    {
+        walker* w = uptr.get();
+        if (w != nullptr && !w->dead() &&
+            w->query_order() == Order::Living && w->team_num() == 1)
+            w->set_dead(1);
+    }
+    fx.tick(2);
+    ASSERT_EQ(0, alive_on_team(fx.world(), 1));
+    // The B1 reprovision arm guards the no-revives-in-flight edge (the
+    // goal_kickoff_reprovisions_a_wiped_bot_team shape): drain the queue
+    // and the drained corpses, then score to trigger the kickoff.
+    fx.world().respawn.respawn_queue.clear();
+    retire_dead_guyless(fx.world(), 1);
+    fx.world().mode.vars[kSocLastTouch1] = 1;  // team 0 touched last
+    fx.set_ball(600, 464, 4 * 256, 0);         // into team 1's strip
+    fx.tick(1);
+    ASSERT_EQ(5, alive_on_team(fx.world(), 1))
+        << "the kickoff backstop refields the wiped side (B1)";
+
+    EXPECT_EQ(at_init, team_families_in_order(fx.world(), 1))
+        << "a wiped side must come back as the SAME match squad (#235)";
+    EXPECT_EQ(seed_at_init, fx.var(kSlotSquadSeed))
+        << "the latched squad-order code survives the wipe";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
 TEST_F(ModesSoccer, kickoff_revive_schedules_corpses_and_skips_summons)
 {
     SoccerWorld fx;
@@ -2502,6 +2573,8 @@ TEST_F(ModesSoccer, kickoff_backstop_matches_a_wiped_human_team_to_target)
     ASSERT_EQ(0, fx.var(kSlotMatchedPlan));
     ASSERT_EQ(0, count_notifications(fx.events, "TEAMS MATCHED"));
     ASSERT_EQ(1, alive_on_team(fx.world(), 1));
+    ASSERT_EQ(0, fx.var(kSlotSquadSeed))
+        << "no bot squad spawned at init, so no squad-order draw yet (#235)";
 
     fx.thaw_kickoff();
     park_away(red_hero);
@@ -2526,16 +2599,26 @@ TEST_F(ModesSoccer, kickoff_backstop_matches_a_wiped_human_team_to_target)
     EXPECT_EQ(1, alive_on_team(fx.world(), 1))
         << "the formerly-human team is refielded (today's behavior, D24) "
            "at the min headcount — the survivor stays un-outnumbered";
-    // T = 2306 is INTERIOR to the single soldier's [B(1), B(9)] =
-    // [1643, ...] now that the squad is the 1-prefix (D37): the D24
-    // measure-and-solve arm answers L1/k0 — visibly NOT the legacy L2
-    // squad the pre-matched backstop fielded.
-    EXPECT_EQ(10, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
+    // This first squad spawn of the match draws the #235 squad-order seed
+    // (latched mid-match here — no fill happened at init), and the 1-prefix
+    // (D37) is the seeded order's first member: with this world's
+    // deterministic stream that is the MAGE, whose far weaker base solves
+    // the stored T = 2306 to L3/k0 — visibly NOT the legacy L2 squad the
+    // pre-matched backstop fielded. (Re-adjudicated for #235: the
+    // pre-permutation prefix was always the soldier, which solved L1/k0.)
+    EXPECT_GE(fx.var(kSlotSquadSeed), 1);
+    EXPECT_LE(fx.var(kSlotSquadSeed), 120);
+    const std::vector<int> squad_families =
+        team_families_in_order(fx.world(), 1);
+    ASSERT_EQ(1u, squad_families.size());
+    EXPECT_EQ(FAMILY_MAGE, squad_families.front())
+        << "the refield takes the seeded order's first member";
+    EXPECT_EQ(30, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
         << "the backstop solved NOW against the stored target and "
            "persisted the plan";
     const std::vector<int> levels = team_levels_sorted(fx.world(), 1);
     ASSERT_EQ(1u, levels.size());
-    EXPECT_EQ(1, levels.front());
+    EXPECT_EQ(3, levels.front());
     EXPECT_EQ(0, count_notifications(fx.events, "TEAMS MATCHED"))
         << "the mid-match D24 solve never announces (§7)";
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
