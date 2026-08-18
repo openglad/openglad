@@ -530,6 +530,57 @@ int seat_teams_at_markers(GameWorld& world, int teams)
 // The first live drumstick no living is standing on — eating a camped one
 // would leave its pad denied at the next firing (pad_blocked), which is a
 // different rule than the one under test.
+// A manifest item_pads row (center coordinates), duplicated from
+// campaigns/modes/packs/modes.core/lib/mode_levels.lua so the real-campaign
+// cases below can pin the EXACT rotation-cursor value a firing must leave
+// behind: (eaten pad's 0-based row index + 1) mod count. The campaign
+// regeneration drift check keeps the committed manifest stable, so a silent
+// mismatch here means the shipped rows moved and the pin must move with
+// them.
+struct PadSpot
+{
+    short x;
+    short y;
+};
+
+bool tile_camped(GameWorld& world, short x, short y)
+{
+    for (const auto& obptr : world.oblist)
+    {
+        const walker* ob = obptr.get();
+        if (ob != nullptr && !ob->dead() &&
+            ob->query_order() == Order::Living &&
+            ob->xpos() / GRID_SIZE == x / GRID_SIZE &&
+            ob->ypos() / GRID_SIZE == y / GRID_SIZE)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+// The first uncamped drumstick sitting on a NON-LAST manifest pad, with its
+// 0-based row index. Skipping the last row keeps the expected post-firing
+// cursor value (index + 1) nonzero, so a cursor write misdirected to an
+// untouched slot — which reads 0 — can never satisfy the pin.
+walker* uncamped_drumstick_on_pad(GameWorld& world, const PadSpot* pads,
+                                  int pad_count, int* index_out)
+{
+    for (int k = 0; k + 1 < pad_count; ++k)
+    {
+        walker* item =
+            live_item_at(world, FAMILY_DRUMSTICK, pads[k].x - 8,
+                         pads[k].y - 8);
+        if (item == nullptr)
+            continue;
+        if (tile_camped(world, item->xpos(), item->ypos()))
+            continue;
+        *index_out = k;
+        return item;
+    }
+    return nullptr;
+}
+
 walker* first_uncamped_drumstick(GameWorld& world)
 {
     for (const auto& uptr : world.fxlist)
@@ -662,8 +713,17 @@ TEST(ModesItemsRealCampaign, soccer_scen820_eaten_drumstick_respawns_on_its_pad)
         ASSERT_EQ(12, census(fx.world()).drum)
             << "THE PITCH authors 12 drumstick pads";
 
-        walker* victim = first_uncamped_drumstick(fx.world());
-        ASSERT_NE(nullptr, victim);
+        // THE PITCH's item_pads rows, in manifest order.
+        static constexpr PadSpot kPitchPads[] = {
+            {168, 40},  {280, 40},  {424, 40},  {536, 40},
+            {168, 408}, {280, 408}, {424, 408}, {536, 408},
+            {344, 104}, {344, 168}, {360, 280}, {360, 344},
+        };
+        int victim_idx = -1;
+        walker* victim = uncamped_drumstick_on_pad(fx.world(), kPitchPads,
+                                                   12, &victim_idx);
+        ASSERT_NE(nullptr, victim)
+            << "an uncamped non-last manifest pad must hold its drumstick";
         const int pad_tx = victim->xpos() / GRID_SIZE;
         const int pad_ty = victim->ypos() / GRID_SIZE;
         victim->set_dead(1);
@@ -683,8 +743,13 @@ TEST(ModesItemsRealCampaign, soccer_scen820_eaten_drumstick_respawns_on_its_pad)
             << pad_ty << ")";
         EXPECT_EQ(210, fx.world().mode.vars[kSoccerItemLast])
             << "the firing restarts the interval clock";
-        EXPECT_LT(fx.world().mode.vars[kSoccerItemCursor], 12)
-            << "the rotation cursor (slot 46) stays inside the pad list";
+        // The eaten pad is the lone eligible row (every other pad's tile is
+        // still occupied), so the walk from cursor 0 lands exactly on it
+        // and leaves the cursor one past its row — never 0, because the
+        // victim chooser skips the last row.
+        EXPECT_EQ(victim_idx + 1, fx.world().mode.vars[kSoccerItemCursor])
+            << "the firing advances the rotation cursor (slot 46) one past "
+               "the refilled pad's manifest row";
         expect_no_script_errors(fx.world());
         EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
     }
@@ -725,8 +790,16 @@ TEST(ModesItemsRealCampaign,
         ASSERT_EQ(10, census(fx.world()).drum)
             << "CENTER COURT authors 10 drumstick pads";
 
-        walker* victim = first_uncamped_drumstick(fx.world());
-        ASSERT_NE(nullptr, victim);
+        // CENTER COURT's item_pads rows, in manifest order.
+        static constexpr PadSpot kCourtPads[] = {
+            {200, 40},  {360, 40},  {520, 40},  {200, 360}, {360, 360},
+            {520, 360}, {360, 120}, {360, 280}, {184, 200}, {536, 200},
+        };
+        int victim_idx = -1;
+        walker* victim = uncamped_drumstick_on_pad(fx.world(), kCourtPads,
+                                                   10, &victim_idx);
+        ASSERT_NE(nullptr, victim)
+            << "an uncamped non-last manifest pad must hold its drumstick";
         const int pad_tx = victim->xpos() / GRID_SIZE;
         const int pad_ty = victim->ypos() / GRID_SIZE;
         victim->set_dead(1);
@@ -746,8 +819,14 @@ TEST(ModesItemsRealCampaign,
             << pad_ty << ")";
         EXPECT_EQ(270, fx.world().mode.vars[kBballItemLast])
             << "the firing restarts the interval clock on the private slot";
-        EXPECT_LT(fx.world().mode.vars[kBballItemCursor], 10)
-            << "the header-band cursor (slot 7) stays inside the pad list";
+        // The eaten pad is the lone eligible row (every other pad's tile is
+        // still occupied), so the walk from cursor 0 lands exactly on it
+        // and leaves the cursor one past its row — never 0, because the
+        // victim chooser skips the last row. A cursor write misdirected off
+        // slot 7 leaves 0 here and fails this pin.
+        EXPECT_EQ(victim_idx + 1, fx.world().mode.vars[kBballItemCursor])
+            << "the firing advances the header-band cursor (slot 7) one "
+               "past the refilled pad's manifest row";
         expect_no_script_errors(fx.world());
         EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
     }
