@@ -345,6 +345,52 @@ TEST(EffectAct, cloud_expired)
 }
 
 
+// Issue #233: a poison cloud wedged into the arena corner FREEZES. Clouds
+// fly over interior tiles, so only the map boundary blocks them; heading
+// UP_LEFT in the NW corner fails the first walk, the baby step and BOTH
+// halves of walkstep's NPC deflection on the off-map bounds check, then
+// set_curdir restores the old facing (walker_movement.cpp:310) and the
+// queued walk command re-executes the same no-op for its whole count. The
+// Lua drift step must detect the genuinely frozen tick (position AND
+// facing unchanged after s_do_command) and re-roll a fresh heading. A wall
+// SLIDE along one edge (position changes) and a pure turn tick (curdir
+// changes) must NOT re-roll — those paths are pinned to master by the
+// parity weapon-track goldens.
+TEST(EffectAct, cloud_wedged_against_wall_keeps_moving)
+{
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.create_new_grid();  // a real 40x60 grid (this binary loads no map)
+
+    walker* fx = world.add_fx_ob(Order::FX, FAMILY_CLOUD);
+    ASSERT_NE(nullptr, fx);
+    fx->set_owner(fx);
+    fx->set_team_num(0);
+    fx->set_lifetime(50);
+    fx->stats()->set_hitpoints(50);
+
+    fx->setxy(0, 0);
+    fx->set_curdir(FACE_UP_LEFT);
+    fx->stats()->add_command(COMMAND_WALK, 19, -1, -1);
+
+    // Pin the sim RNG so the post-fix escape roll is deterministic.
+    world.rng_.state_ = 12345u;
+
+    const short held_x = fx->xpos();
+    const short held_y = fx->ypos();
+    int moved_after = -1;
+    for (int i = 0; i < 12 && moved_after < 0; ++i)
+    {
+        fx->act();
+        if (fx->xpos() != held_x || fx->ypos() != held_y)
+            moved_after = i + 1;
+    }
+    EXPECT_GE(moved_after, 0)
+        << "a corner-wedged cloud must escape within 12 acts instead of "
+           "freezing for the whole 19-tick walk command (issue #233)";
+    world.remove_ob(fx);
+}
+
+
 TEST(EffectAct, ghost_scare)
 {
     auto owner = make_living_guy(FAMILY_GHOST, 0);
