@@ -638,59 +638,96 @@ local function update_hud(gen_count)
   end
 end
 
--- Lazy init, first scripted tick. Raising reports the failed-init shape:
--- the engine latches inactive and classic rules own the level from the
--- next tick (the CTF discipline).
-local function on_mode_init(level, row)
+-- The pure PLAN phase (on_mode_plan): authored domain (a score team is in
+-- the match when it fields a live generator or a living), activation and
+-- fills — generators-only fills here (D17: no bots ever; keep_generators
+-- keeps the foundries through the strip, so a count-backfilled
+-- gen-authored team self-populates). Runs under the plan-dispatch fence
+-- (no world access) at launch AND at picker preview time; on_mode_init
+-- EXECUTES this plan.
+local function on_mode_plan(level, inputs, row)
   if row == nil then
     error("onslaught: no manifest row for level " .. level)
   end
-  -- Authored teams: a score team is in the match when it fields a live
-  -- generator or a living at init.
-  local obs = og.oblist()
   local authored_mask = 0
+  for team = 0, C.SCORE_TEAM_COUNT - 1 do
+    local trow = inputs.teams[team + 1]
+    local present = trow.roster > 0
+    if not present then
+      present = trow.npcs > 0
+    end
+    if not present then
+      present = trow.generators > 0
+    end
+    if present then
+      authored_mask = core.mask_add(authored_mask, team)
+    end
+  end
+  -- TROOPS:OWN/FAIR (rosters or all-bot alike): the lobby request wins
+  -- the COUNT — roster teams plus authored backfill (issue #218), with
+  -- TEAMS: Auto resolving to the authored count (2026-08-18 directive).
+  -- Only TROOPS:ALL falls through to the lobby request (manifest default
+  -- at Auto) over the authored generator/living teams; matched POWER is
+  -- out of scope for Onslaught entirely (D17).
+  local mask, starts, matched, matched_size =
+      match.plan_activation(inputs, authored_mask, row.teams or 0)
+  local teams = match.plan_fills(inputs, mask, {
+    keep_generators = true,
+    no_bots = true,
+    matched = matched,
+    matched_size = matched_size,
+  })
+  local reason = nil
+  if not starts then
+    reason = "onslaught: fewer than two teams"
+  end
+  return {
+    mode = "ONSLAUGHT",
+    starts = starts,
+    reason = reason,
+    authored_mask = authored_mask,
+    active_mask = mask,
+    matched = matched,
+    matched_size = matched_size,
+    score_limit = 0,
+    seeded_squads = false,
+    teams = teams,
+  }
+end
+
+-- Lazy init, first scripted tick — EXECUTES the chained plan (activation
+-- is the plan's; the world writes, waypoint banking, strips and grace
+-- clocks are this apply's). Raising reports the failed-init shape: the
+-- engine latches inactive and classic rules own the level from the next
+-- tick (the CTF discipline).
+local function on_mode_init(level, plan, row)
+  if plan == nil then
+    error("onslaught: no match plan for level " .. level)
+  end
+  if not plan.starts then
+    error(plan.reason)
+  end
+  -- Per-team live generator counts (the grace-clock inputs banked below).
+  local obs = og.oblist()
   local gen_count = { 0, 0, 0, 0 }
   for k = 1, #obs do
     local w = obs[k]
     if w:dead() == 0 then
-      local order = w:order()
-      if order == C.ORDER_LIVING then
+      if w:order() == C.ORDER_GENERATOR then
         local team = w:team_num()
         if team < C.SCORE_TEAM_COUNT then
-          authored_mask = core.mask_add(authored_mask, team)
-        end
-      elseif order == C.ORDER_GENERATOR then
-        local team = w:team_num()
-        if team < C.SCORE_TEAM_COUNT then
-          authored_mask = core.mask_add(authored_mask, team)
           gen_count[team + 1] = gen_count[team + 1] + 1
         end
       end
     end
   end
-  -- TROOPS:OWN/FAIR (rosters or all-bot alike): the lobby request wins
-  -- the COUNT — roster teams plus authored backfill (issue #218), with
-  -- TEAMS: Auto resolving to the authored count (2026-08-18 directive); a
-  -- count-backfilled team here fields no bots (D17) but keeps its
-  -- generators under OWN's keep_generators arm, so gen-authored teams
-  -- self-populate. Only TROOPS:ALL falls through to the lobby request
-  -- (manifest default at Auto) over the authored generator/living teams.
-  local mask = match.own_roster_activation(authored_mask, obs)
-  if mask == nil then
-    -- TROOPS:ALL. Normalized request: Auto (raw <= 0) takes the manifest
-    -- default — matched POWER is out of scope for Onslaught entirely (D17).
-    local requested = core.team_count_request()
-    if requested <= 0 then
-      requested = row.teams or 0
-    end
-    mask = core.activate_teams(authored_mask, requested)
-  end
-  local active_count = core.mask_count(mask)
-  if active_count < 2 then
-    error("onslaught: fewer than two teams")
-  end
+  -- FAIR banking (the plan decided matched-ness and the headcount; the
+  -- power TARGET is measured here, D24) — Onslaught fields no squads
+  -- (D17), so only the shared census latch is at stake.
+  match.bank_match_target(plan, obs)
+  local mask = plan.active_mask
   og.mode_set(S.TEAM_MASK, mask)
-  og.mode_set(S.TEAM_COUNT, active_count)
+  og.mode_set(S.TEAM_COUNT, core.mask_count(mask))
 
   -- Waypoints from the authored markers (fxlist order, up to 4).
   local point_family = og.family_id("treasure", "modes:waypoint")
@@ -828,8 +865,11 @@ end
 -- authored data, read-only — not the mutable upvalue state R6 bans).
 local function make_hooks(row)
   return {
-    on_mode_init = function(level)
-      on_mode_init(level, row)
+    on_mode_plan = function(level, inputs)
+      return on_mode_plan(level, inputs, row)
+    end,
+    on_mode_init = function(level, plan)
+      on_mode_init(level, plan, row)
     end,
     on_mode_tick = on_mode_tick,
     on_respawn = on_respawn,

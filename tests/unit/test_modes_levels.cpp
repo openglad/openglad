@@ -1008,6 +1008,7 @@ TEST_F(ModesLevels, shipped_registration_scripts_wire_the_expected_hooks)
     constexpr std::uint32_t kModeTick = 1u << 5;
     constexpr std::uint32_t kDamage = 1u << 6;
     constexpr std::uint32_t kRespawn = 1u << 7;
+    constexpr std::uint32_t kModePlan = 1u << 8;
     constexpr std::uint32_t kEntityDeath = 1u << 2;
     constexpr std::uint32_t kEntitySpawn = 1u << 3;
 
@@ -1031,19 +1032,28 @@ TEST_F(ModesLevels, shipped_registration_scripts_wire_the_expected_hooks)
     // death is caught by the mode tick's liveness sweep. The two fighter-band
     // modes (FFA, and Mutant since its docs/ffa-design.md §8 conversion) also
     // watch on_entity_spawn for mid-join band adoption.
+    // The five mask modes register the plan phase (on_mode_plan); the two
+    // fighter-band modes (FFA, Mutant) deliberately do not — they have no
+    // team mask to plan and their on_mode_init ignores the chained nil.
     const ModeHooks rows[] = {
-        {300, "tdm", kModeInit | kModeTick | kEntityDeath | kRespawn},
-        {305, "tdm", kModeInit | kModeTick | kEntityDeath | kRespawn},
-        {500, "ctf", kModeInit | kModeTick | kRespawn},
-        {509, "ctf", kModeInit | kModeTick | kRespawn},
+        {300, "tdm",
+         kModeInit | kModeTick | kEntityDeath | kRespawn | kModePlan},
+        {305, "tdm",
+         kModeInit | kModeTick | kEntityDeath | kRespawn | kModePlan},
+        {500, "ctf", kModeInit | kModeTick | kRespawn | kModePlan},
+        {509, "ctf", kModeInit | kModeTick | kRespawn | kModePlan},
         {800, "onslaught",
-         kModeInit | kModeTick | kDamage | kRespawn | kEntityDeath},
+         kModeInit | kModeTick | kDamage | kRespawn | kEntityDeath |
+             kModePlan},
         {803, "onslaught",
-         kModeInit | kModeTick | kDamage | kRespawn | kEntityDeath},
-        {820, "soccer", kModeInit | kModeTick | kRespawn},
-        {823, "soccer", kModeInit | kModeTick | kRespawn},
-        {824, "basketball", kModeInit | kModeTick | kRespawn | kDamage},
-        {828, "basketball", kModeInit | kModeTick | kRespawn | kDamage},
+         kModeInit | kModeTick | kDamage | kRespawn | kEntityDeath |
+             kModePlan},
+        {820, "soccer", kModeInit | kModeTick | kRespawn | kModePlan},
+        {823, "soccer", kModeInit | kModeTick | kRespawn | kModePlan},
+        {824, "basketball",
+         kModeInit | kModeTick | kRespawn | kDamage | kModePlan},
+        {828, "basketball",
+         kModeInit | kModeTick | kRespawn | kDamage | kModePlan},
         {840, "mutant",
          kModeInit | kModeTick | kDamage | kEntityDeath | kEntitySpawn |
              kRespawn},

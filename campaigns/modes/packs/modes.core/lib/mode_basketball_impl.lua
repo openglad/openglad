@@ -2251,39 +2251,68 @@ local function spawn_hoops()
   end
 end
 
--- Lazy init, first scripted tick. Raising reports the failed-init shape:
--- the engine latches inactive and classic rules own the level from the
--- next tick (the CTF discipline).
-local function on_mode_init(level, row)
+-- The pure PLAN phase (on_mode_plan): authored domain (anchor-marker
+-- teams — the versus authoring contract, read from the engine anchor
+-- census), activation, per-team fills and the resolved score limit.
+-- Runs under the plan-dispatch fence (no world access) at launch AND at
+-- picker preview time; on_mode_init below EXECUTES the returned plan.
+local function on_mode_plan(level, inputs, row)
   if row == nil then
     error("basketball: no manifest row for level " .. level)
   end
-  -- Active teams: anchor-marker teams (the versus authoring contract)
-  -- clamped by the lobby request. Under TROOPS:OWN/FAIR (rosters or
-  -- all-bot alike) the lobby request wins the COUNT — roster teams plus
-  -- authored backfill (issue #218), TEAMS: Auto = the authored count
-  -- (2026-08-18 directive); only under TROOPS:ALL is the manifest team
-  -- count the default request.
   local authored_mask = 0
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
-    if og.respawn_anchor_count(team) > 0 then
+    if inputs.teams[team + 1].anchors > 0 then
       authored_mask = core.mask_add(authored_mask, team)
     end
   end
-  local mask = match.own_roster_activation(authored_mask, og.oblist())
-  if mask == nil then
-    -- TROOPS:ALL. Normalized request: Auto (raw <= 0) takes the manifest
-    -- default.
-    local requested = core.team_count_request()
-    if requested <= 0 then
-      requested = row.teams or 0
-    end
-    mask = core.activate_teams(authored_mask, requested)
+  -- Under TROOPS:OWN/FAIR (rosters or all-bot alike) the lobby request
+  -- wins the COUNT — roster teams plus authored backfill (issue #218),
+  -- TEAMS: Auto = the authored count (2026-08-18 directive); only under
+  -- TROOPS:ALL is the manifest team count the default request.
+  local mask, starts, matched, matched_size =
+      match.plan_activation(inputs, authored_mask, row.teams or 0)
+  local limit = match.resolve_limit(row, "score_limit", inputs.score_limit,
+                                    T.score_limit)
+  local teams, seeded = match.plan_fills(inputs, mask, {
+    matched = matched,
+    matched_size = matched_size,
+  })
+  local reason = nil
+  if not starts then
+    reason = "basketball: fewer than two anchor teams"
   end
+  return {
+    mode = "BASKETBALL",
+    starts = starts,
+    reason = reason,
+    authored_mask = authored_mask,
+    active_mask = mask,
+    matched = matched,
+    matched_size = matched_size,
+    score_limit = og.clamp(limit, 1, 255),
+    seeded_squads = seeded,
+    teams = teams,
+  }
+end
+
+-- Lazy init, first scripted tick — EXECUTES the chained plan (activation,
+-- fills and the score limit are the plan's; the world writes, strips and
+-- spawns are this apply's). Raising reports the failed-init shape: the
+-- engine latches inactive and classic rules own the level from the next
+-- tick (the CTF discipline).
+local function on_mode_init(level, plan, row)
+  if row == nil then
+    error("basketball: no manifest row for level " .. level)
+  end
+  if plan == nil then
+    error("basketball: no match plan for level " .. level)
+  end
+  if not plan.starts then
+    error(plan.reason)
+  end
+  local mask = plan.active_mask
   local active_count = core.mask_count(mask)
-  if active_count < 2 then
-    error("basketball: fewer than two anchor teams")
-  end
   if row.hoops == nil then
     error("basketball: manifest row has no hoops")
   end
@@ -2310,8 +2339,9 @@ local function on_mode_init(level, row)
   og.mode_set(S.JUMP_POS, core.pos_pack(row.jump_ball.x, row.jump_ball.y))
   og.mode_set(S.TEAM_MASK, mask)
   og.mode_set(S.TEAM_COUNT, active_count)
-  local limit = match.resolve_limit(row, "score_limit", og.match_setting("score_limit"), T.score_limit)
-  og.mode_set(S.SCORE_LIMIT, og.clamp(limit, 1, 255))
+  -- Score limit is the PLAN's (request > manifest row > default, clamped);
+  -- the respawn/time knobs resolve here.
+  og.mode_set(S.SCORE_LIMIT, plan.score_limit)
   local respawn_ticks = og.match_setting("respawn_ticks")
   if respawn_ticks <= 0 then
     respawn_ticks = T.respawn_ticks
@@ -2321,28 +2351,20 @@ local function on_mode_init(level, row)
   caps.bank_caps(row, S.SPAWN_CAP)
   -- Consume the active teams' start markers (anchors are already banked
   -- engine-side), strip inactive score teams, then roster-only armies on
-  -- request — all BEFORE the census so bot backfill sees the final world.
+  -- request — all BEFORE the plan's squad fills so the spawns land in the
+  -- final world.
   local obs = og.oblist()
+  -- FAIR banking (the plan decided matched-ness and the headcount; the
+  -- power TARGET is measured here, D24) before any squad spawn reads it.
+  match.bank_match_target(plan, obs)
   match.consume_markers(obs, mask)
   match.strip_inactive_teams(obs, mask)
   strip.strip_authored_troops(nil)
-  local fielded = { 0, 0, 0, 0 }
-  for k = 1, #obs do
-    local w = obs[k]
-    if w:dead() == 0 then
-      if w:order() == C.ORDER_LIVING then
-        local team = w:team_num()
-        if team < C.SCORE_TEAM_COUNT then
-          fielded[team + 1] = fielded[team + 1] + 1
-        end
-      end
-    end
-  end
+  -- Bot squads where the plan said so (the empty active teams).
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
-    if core.mask_has(mask, team) then
-      if fielded[team + 1] == 0 then
-        anchors.spawn_bot_squad(team, S.ANCHOR_CURSOR)
-      end
+    local fill = plan.teams[team + 1].fill
+    if fill == "bots" or fill == "matched" then
+      anchors.spawn_bot_squad(team, S.ANCHOR_CURSOR)
     end
   end
   -- og.add_ob for the ball, not og.add_fx_ob: the fx list never acts,
@@ -2436,8 +2458,11 @@ end
 -- authored data, read-only — not the mutable upvalue state R6 bans).
 local function make_hooks(row)
   return {
-    on_mode_init = function(level)
-      on_mode_init(level, row)
+    on_mode_plan = function(level, inputs)
+      return on_mode_plan(level, inputs, row)
+    end,
+    on_mode_init = function(level, plan)
+      on_mode_init(level, plan, row)
     end,
     on_mode_tick = function(level, tick)
       on_mode_tick(level, tick, row)

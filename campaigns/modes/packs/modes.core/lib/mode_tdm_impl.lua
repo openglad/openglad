@@ -65,34 +65,84 @@ end
 -- Init
 -- ---------------------------------------------------------------------------
 
-local function on_mode_init(level)
-  local obs = og.oblist()
-  local authored_mask = match.census_mask(obs)
+-- The pure PLAN phase (on_mode_plan): authored domain (anchor teams plus
+-- teams fielding a live Living — the old census_mask rule over the plan
+-- inputs), activation, fills and the resolved score limit. Runs under the
+-- plan-dispatch fence (no world access) at launch AND at picker preview
+-- time; on_mode_init EXECUTES this plan.
+local function on_mode_plan(level, inputs)
+  local authored_mask = 0
+  for team = 0, C.SCORE_TEAM_COUNT - 1 do
+    local trow = inputs.teams[team + 1]
+    local present = trow.anchors > 0
+    if not present then
+      present = trow.roster > 0
+    end
+    if not present then
+      present = trow.npcs > 0
+    end
+    if present then
+      authored_mask = core.mask_add(authored_mask, team)
+    end
+  end
   -- TROOPS:OWN/FAIR (rosters or all-bot alike): the lobby request wins
   -- the COUNT — roster teams plus authored backfill (issue #218), with
   -- TEAMS: Auto resolving to the authored census count (2026-08-18
-  -- directive); under TROOPS:ALL the lobby request over the authored
-  -- teams.
-  local mask = match.own_roster_activation(authored_mask, obs)
-  if mask == nil then
-    mask = core.activate_teams(authored_mask, og.match_setting("team_count"))
+  -- directive); under TROOPS:ALL the raw lobby request over the authored
+  -- teams (no manifest default — the verified per-mode Auto asymmetry).
+  local mask, starts, matched, matched_size =
+      match.plan_activation(inputs, authored_mask, 0)
+  local row = levels.levels[level]
+  local limit = match.resolve_limit(row, "score_limit", inputs.score_limit,
+                                    T.score_limit)
+  local teams = match.plan_fills(inputs, mask, {
+    matched = matched,
+    matched_size = matched_size,
+  })
+  local reason = nil
+  if not starts then
+    reason = "tdm: fewer than two teams"
   end
-  if core.mask_count(mask) < 2 then
-    error("tdm: fewer than two teams")
+  return {
+    mode = "TDM",
+    starts = starts,
+    reason = reason,
+    authored_mask = authored_mask,
+    active_mask = mask,
+    matched = matched,
+    matched_size = matched_size,
+    score_limit = og.clamp(limit, 1, 255),
+    seeded_squads = false,
+    teams = teams,
+  }
+end
+
+-- Lazy init, first scripted tick — EXECUTES the chained plan (activation,
+-- fills and the score limit are the plan's; the world writes, strips and
+-- spawns are this apply's).
+local function on_mode_init(level, plan)
+  if plan == nil then
+    error("tdm: no match plan for level " .. level)
   end
+  if not plan.starts then
+    error(plan.reason)
+  end
+  local obs = og.oblist()
+  -- FAIR banking (the plan decided matched-ness and the headcount; the
+  -- power TARGET is measured here, D24) before any squad spawn reads it.
+  match.bank_match_target(plan, obs)
+  local mask = plan.active_mask
   og.mode_set(S.TEAM_MASK, mask)
   match.consume_markers(obs, mask)
   match.strip_inactive_teams(obs, mask)
-  -- Roster-only armies on request, before the bot-squad census below, so
-  -- backfill sees the final world.
+  -- Roster-only armies on request, before the plan's squad fills below,
+  -- so the spawns land in the final world.
   strip.strip_authored_troops(nil)
 
-  -- Resolve config: explicit request > manifest row > defaults, per field.
+  -- Score limit is the PLAN's (request > manifest row > default, clamped);
+  -- the time/respawn knobs resolve here.
   local row = levels.levels[level]
-  local limit = match.resolve_limit(row, "score_limit",
-                                    og.match_setting("score_limit"),
-                                    T.score_limit)
-  og.mode_set(S.SCORE_LIMIT, og.clamp(limit, 1, 255))
+  og.mode_set(S.SCORE_LIMIT, plan.score_limit)
   local time_limit = match.resolve_limit(row, "time_limit", 0,
                                          T.time_limit_ticks)
   og.mode_set(S.TIME_LIMIT, time_limit)
@@ -102,24 +152,11 @@ local function on_mode_init(level)
   end
   og.mode_set(S.RESPAWN_TICKS, respawn_ticks)
 
-  -- Bot squads for active teams that field no livings.
-  local per_team = { 0, 0, 0, 0 }
-  for k = 1, #obs do
-    local w = obs[k]
-    if w:dead() == 0 then
-      if w:order() == C.ORDER_LIVING then
-        local team = w:team_num()
-        if team < C.SCORE_TEAM_COUNT then
-          per_team[team + 1] = per_team[team + 1] + 1
-        end
-      end
-    end
-  end
+  -- Bot squads where the plan said so (the empty active teams).
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
-    if core.mask_has(mask, team) then
-      if per_team[team + 1] == 0 then
-        match.spawn_bots(team, T.bot_squad, S.ANCHOR_CURSOR)
-      end
+    local fill = plan.teams[team + 1].fill
+    if fill == "bots" or fill == "matched" then
+      match.spawn_bots(team, T.bot_squad, S.ANCHOR_CURSOR)
     end
   end
 
@@ -402,6 +439,7 @@ end
 return {
   S = S,
   T = T,
+  on_mode_plan = on_mode_plan,
   on_mode_init = on_mode_init,
   on_mode_tick = on_mode_tick,
   on_entity_death = on_entity_death,

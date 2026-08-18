@@ -715,19 +715,78 @@ end
 -- Init (transcribes ctf_initialize_for_level)
 -- ---------------------------------------------------------------------------
 
--- Lazy init, first scripted tick. Raising reports the failed-init shape
--- (fewer than two flag teams): the engine latches inactive and classic
--- rules own the level from the NEXT tick — the surplus-flag kills already
--- made stand, exactly like the C++ early return.
-local function on_mode_init(level)
-  -- Scan authored flags and control points (fxlist, list order). The first
-  -- flag with a stats level above 1 sets the per-map capture limit. The
-  -- shipped maps author wire bytes 13/14, which this pack's families claim
-  -- outright since the core CTF retirement.
+-- The pure PLAN phase (on_mode_plan): the first-flag-per-team fold over
+-- the raw flag rows — out-of-range and surplus rows decide nothing (the
+-- apply scan below performs those kills), and the first KEPT flag with a
+-- stats level above 1 sets the per-map capture limit. Runs under the
+-- plan-dispatch fence (no world access) at launch AND at picker preview
+-- time; on_mode_init EXECUTES this plan.
+local function on_mode_plan(level, inputs)
+  local authored_mask = 0
+  local map_capture_limit = 0
+  for k = 1, #inputs.flags do
+    local flag = inputs.flags[k]
+    if flag.team < C.SCORE_TEAM_COUNT then
+      if not core.mask_has(authored_mask, flag.team) then
+        authored_mask = core.mask_add(authored_mask, flag.team)
+        if map_capture_limit == 0 then
+          if flag.level > 1 then
+            map_capture_limit = flag.level
+          end
+        end
+      end
+    end
+  end
+  -- Under TROOPS:OWN/FAIR the lobby request wins the COUNT — roster flag
+  -- teams plus authored backfill (issue #218), TEAMS: Auto = the authored
+  -- flag-team count (2026-08-18 directive); under TROOPS:ALL the raw
+  -- requested count over the authored flag teams (no manifest default —
+  -- the verified per-mode Auto asymmetry).
+  local mask, starts, matched, matched_size =
+      match.plan_activation(inputs, authored_mask, 0)
+  local limit = T.capture_limit
+  if inputs.score_limit > 0 then
+    limit = inputs.score_limit
+  elseif map_capture_limit > 0 then
+    limit = map_capture_limit
+  end
+  local teams = match.plan_fills(inputs, mask, {
+    matched = matched,
+    matched_size = matched_size,
+  })
+  local reason = nil
+  if not starts then
+    reason = "ctf: fewer than two flag teams"
+  end
+  return {
+    mode = "CTF",
+    starts = starts,
+    reason = reason,
+    authored_mask = authored_mask,
+    active_mask = mask,
+    matched = matched,
+    matched_size = matched_size,
+    score_limit = og.clamp(limit, 1, 255),
+    seeded_squads = false,
+    teams = teams,
+  }
+end
+
+-- Lazy init, first scripted tick — EXECUTES the chained plan. Raising
+-- reports the failed-init shape (fewer than two flag teams): the engine
+-- latches inactive and classic rules own the level from the NEXT tick —
+-- the surplus-flag kills already made stand, exactly like the C++ early
+-- return.
+local function on_mode_init(level, plan)
+  -- Scan authored flags and control points (fxlist, list order) — pure
+  -- EXECUTION of the plan's fold: the same first-flag-per-team rule kills
+  -- the surplus and banks FLAG_ENTITY/HOME/POS; the domain and the
+  -- capture limit were already decided in on_mode_plan over the same
+  -- rows. The shipped maps author wire bytes 13/14, which this pack's
+  -- families claim outright since the core CTF retirement.
   local flag_family = og.family_id("treasure", "modes:flag")
   local point_family = og.family_id("treasure", "modes:waypoint")
   local authored_mask = 0
-  local map_capture_limit = 0
   local cp_count = 0
   local fxlist = og.fxlist()
   for k = 1, #fxlist do
@@ -749,11 +808,6 @@ local function on_mode_init(level)
             local home = core.pos_pack(e:xpos(), e:ypos())
             fset(S.FLAG_HOME, team, home)
             fset(S.FLAG_POS, team, home)
-            if map_capture_limit == 0 then
-              if e:s_level() > 1 then
-                map_capture_limit = e:s_level()
-              end
-            end
           end
         elseif is_point then
           if cp_count >= 4 then
@@ -769,24 +823,24 @@ local function on_mode_init(level)
   end
   og.mode_set(S.CP_COUNT, cp_count)
 
-  -- Anchors were scanned engine-side before this hook (dead markers
-  -- included). Active teams: under TROOPS:OWN/FAIR (rosters or all-bot
-  -- alike) the lobby request wins the COUNT — roster flag teams plus
-  -- authored backfill (issue #218), with TEAMS: Auto resolving to the
-  -- authored flag-team count (2026-08-18 directive); under TROOPS:ALL the
-  -- requested count intersected with authored flag teams, in team index
-  -- order.
+  if plan == nil then
+    error("ctf: no match plan for level " .. level)
+  end
+  -- The fewer-than-two refusal is raised HERE, after the surplus-flag
+  -- kills above, so a failed init leaves them standing exactly like the
+  -- C++ early return. Activation is the PLAN's (on_mode_plan above);
+  -- anchors were scanned engine-side before this hook (dead markers
+  -- included).
+  if not plan.starts then
+    error(plan.reason)
+  end
   local obs = og.oblist()
-  local mask = match.own_roster_activation(authored_mask, obs)
-  if mask == nil then
-    mask = core.activate_teams(authored_mask, og.match_setting("team_count"))
-  end
-  local active_count = core.mask_count(mask)
-  if active_count < 2 then
-    error("ctf: fewer than two flag teams")
-  end
+  -- FAIR banking (the plan decided matched-ness and the headcount; the
+  -- power TARGET is measured here, D24) before any squad spawn reads it.
+  match.bank_match_target(plan, obs)
+  local mask = plan.active_mask
   og.mode_set(S.TEAM_MASK, mask)
-  og.mode_set(S.TEAM_COUNT, active_count)
+  og.mode_set(S.TEAM_COUNT, core.mask_count(mask))
 
   -- Consume the active teams' start markers (their anchor positions are
   -- already recorded) so the marker entities cannot block their own
@@ -856,42 +910,23 @@ local function on_mode_init(level)
   -- world; CTF fields no generators, so it keeps none.
   strip.strip_authored_troops(nil)
 
-  -- Resolve config: explicit request > per-map flag level > defaults.
-  local limit = T.capture_limit
-  local requested_limit = og.match_setting("score_limit")
-  if requested_limit > 0 then
-    limit = requested_limit
-  elseif map_capture_limit > 0 then
-    limit = map_capture_limit
-  end
-  og.mode_set(S.CAPTURE_LIMIT, og.clamp(limit, 1, 255))
+  -- The capture limit is the PLAN's (explicit request > per-map flag
+  -- level > default, clamped); the respawn delay resolves here.
+  og.mode_set(S.CAPTURE_LIMIT, plan.score_limit)
   local respawn_ticks = og.match_setting("respawn_ticks")
   if respawn_ticks <= 0 then
     respawn_ticks = T.respawn_ticks
   end
   og.mode_set(S.RESPAWN_TICKS, respawn_ticks)
 
-  -- Bot squads for active teams that field no livings.
-  local per_team = { 0, 0, 0, 0 }
-  for k = 1, #obs do
-    local w = obs[k]
-    if w:dead() == 0 then
-      if w:order() == C.ORDER_LIVING then
-        local team = w:team_num()
-        if team < C.SCORE_TEAM_COUNT then
-          per_team[team + 1] = per_team[team + 1] + 1
-        end
-      end
-    end
-  end
+  -- Bot squads where the plan said so (the empty active teams).
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
-    if core.mask_has(mask, team) then
-      if per_team[team + 1] == 0 then
-        -- The one shared squad spawner (matched-teams D16), with CTF's own
-        -- placer so blocked anchors still fall back to the flag-home
-        -- square before the teleport draw.
-        match.spawn_bots(team, BOT_SQUAD, S.ANCHOR_CURSOR, place_at_anchor)
-      end
+    local fill = plan.teams[team + 1].fill
+    if fill == "bots" or fill == "matched" then
+      -- The one shared squad spawner (matched-teams D16), with CTF's own
+      -- placer so blocked anchors still fall back to the flag-home
+      -- square before the teleport draw.
+      match.spawn_bots(team, BOT_SQUAD, S.ANCHOR_CURSOR, place_at_anchor)
     end
   end
 
@@ -1028,6 +1063,7 @@ end
 return {
   S = S,
   T = T,
+  on_mode_plan = on_mode_plan,
   on_mode_init = on_mode_init,
   on_mode_tick = on_mode_tick,
   on_respawn = on_respawn,

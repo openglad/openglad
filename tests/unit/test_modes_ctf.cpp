@@ -25,8 +25,9 @@
 //  - authored_flag_teams_scans_live_flags_without_rng /
 //    authored_flag_teams_empty_on_classic_world: RETIRED WITH THE ENGINE.
 //    og::sim::ctf_authored_flag_teams no longer exists in production — the
-//    pack's own census_mask does that job and is pinned by the init cases
-//    here. No twin is needed, and none exists.
+//    pack's own flag fold (on_mode_plan's first-flag-per-team rule) does
+//    that job and is pinned by the init cases here and the MatchPlan
+//    domain rows. No twin is needed, and none exists.
 //  - walk_to_point_crosses_open_map_and_completes /
 //    walk_to_point_routes_around_wall / find_path_to_point_solves_around_
 //    wall: RETIRED HERE ONLY. The C++ COMMAND_GOTO/pathfinder machinery

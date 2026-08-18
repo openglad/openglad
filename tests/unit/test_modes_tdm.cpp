@@ -1414,7 +1414,7 @@ void author_fresh_squad(ModesCtfWorld& fx, int team, int y)
 TEST_F(ModesTdm, matched_power_metric_and_solver_arms)
 {
     ModesCtfWorld fx(kMatchProbeLevel);
-    // Matched requested, so the probe's own_roster_activation call reaches
+    // Matched requested, so the probe's bank_match_target call reaches
     // the census latch: a nonzero stored target is never re-censused.
     fx.arm_matched();
     fx.tick(1);
@@ -1424,17 +1424,20 @@ TEST_F(ModesTdm, matched_power_metric_and_solver_arms)
     const auto latch = matched_log(fx.world(), "census_latch");
     EXPECT_EQ(4242, tab_int(latch, 1))
         << "a stored target must survive a repeat census attempt (D24)";
+    EXPECT_EQ(0, tab_int(latch, 2))
+        << "the TARGET latch guards SIZE too — no repeat bank wrote it";
     EXPECT_EQ(0, fx.var(kSlotMatchedSize))
         << "the TARGET latch guards SIZE too — no repeat census wrote it";
 
-    // Census of a world with no has_guy walker: T = 0, all team sums 0,
-    // headcount 0 (D34: no humans -> nothing to match).
+    // Census of a world with no has_guy walker: T = 0, all team sums 0
+    // (the headcount half of the old census — H — now lives in the plan
+    // alone: plan_activation's matched_size, pinned by the MatchPlan
+    // sweep in test_match_plan.cpp).
     const auto census = matched_log(fx.world(), "census");
-    ASSERT_EQ(7u, census.size());
+    ASSERT_EQ(6u, census.size());
     EXPECT_EQ(0, tab_int(census, 1)) << "no humans -> T = 0 (E1)";
     for (std::size_t i = 2; i < 6; ++i)
         EXPECT_EQ(0, tab_int(census, i));
-    EXPECT_EQ(0, tab_int(census, 6)) << "no humans -> H = 0";
 
     // Zero-offense floor: OFF = 0 collapses f to the pool EHP =
     // hp + mp / 2 (armor is 0 at bot base).
@@ -1564,9 +1567,9 @@ TEST_F(ModesTdm, matched_census_single_team_sum_ignores_guyless_livings)
         EXPECT_EQ(0, tab_int(census, 3));
         EXPECT_EQ(0, tab_int(census, 4));
         EXPECT_EQ(0, tab_int(census, 5));
-        EXPECT_EQ(5, tab_int(census, 6))
-            << "one human team -> H is its headcount, guy-less Livings "
-               "excluded (D34)";
+        // The one-human-team headcount rule (H = 5, guy-less Livings
+        // excluded, D34) moved into the plan: matched_size, pinned by
+        // MatchPlan.fair_matched_size_is_the_min_roster_headcount.
     }
     {
         ModesCtfWorld fx(kMatchProbeLevel);
@@ -1612,10 +1615,9 @@ TEST_F(ModesTdm, matched_census_mean_and_heart_value_rank_oracle)
     const long long archmage = tab_int(census, 4);
     EXPECT_EQ((fresh + mixed + archmage) / 3, mean)
         << "T is the MEAN of the human team f-sums (D11)";
-    EXPECT_EQ(3, tab_int(census, 6))
-        << "H is the MIN of the per-team headcounts (5, 3, 3 -> 3; D34 — "
-           "T averages because power is level-solvable, H mins because "
-           "headcount is the dimension the solver cannot compensate)";
+    // H = MIN of the per-team headcounts (5, 3, 3 -> 3; D34) moved into
+    // the plan: matched_size, pinned by
+    // MatchPlan.fair_matched_size_is_the_min_roster_headcount.
 
     // f-sum rank must agree with the engine's own price of the rosters.
     long long hearts[3] = {0, 0, 0};
@@ -2009,8 +2011,8 @@ TEST_F(ModesTdm, matched_solo_l5_roster_squad_lands_within_fifteen_percent)
 }
 
 // E6, THE flagship MATCH test: TROOPS: FAIR bundles the OWN deployment
-// policy (D26), and the matched census runs at the TOP of
-// own_roster_activation — BEFORE the strip — and is strip-invariant:
+// policy (D26), and the matched census (match.bank_match_target, banked
+// by every apply before its squad fills) is strip-invariant:
 // authored troops carry no guy record, so the has_guy filter keeps them
 // out of T in either order. The solo roster pulls in exactly the FIRST
 // authored non-roster team, and that team's fill is the MATCHED squad —

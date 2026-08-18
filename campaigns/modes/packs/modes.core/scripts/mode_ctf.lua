@@ -6,6 +6,7 @@ local levels = og.use("mode_levels")
 local ctf = og.use("mode_ctf_impl")
 
 core.register_mode(levels, "ctf", {
+  on_mode_plan = ctf.on_mode_plan,
   on_mode_init = ctf.on_mode_init,
   on_mode_tick = ctf.on_mode_tick,
   on_respawn = ctf.on_respawn,
