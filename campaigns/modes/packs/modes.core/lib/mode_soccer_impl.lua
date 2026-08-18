@@ -414,14 +414,44 @@ local function own_goal_beneficiary(mask, team)
   return other
 end
 
+-- Issue #219: a ball entering an AUTHORED goal mouth whose team is not in
+-- the match must not sit there silently — mapgen paints every authored
+-- mouth and activation is decided at match time, so a dead mouth looks
+-- live. Announce the closed goal and re-spot at the kickoff. The
+-- KICKOFF_UNTIL guard is the rate limit: at most one announcement per
+-- freeze window, even if authored geometry parks the kickoff inside a
+-- closed mouth. Init validated row and row.goal_rects (this hook never
+-- runs after a failed init), and inactive rects are deliberately NOT
+-- banked in mode vars (the GOAL_POS == 0 contract stands).
+local function run_closed_goal_check(ball, row, mask, cx, cy)
+  if og.world_tick() < og.mode_get(S.KICKOFF_UNTIL) then
+    return
+  end
+  for team = 0, C.SCORE_TEAM_COUNT - 1 do
+    if not core.mask_has(mask, team) then
+      local rect = row.goal_rects[team]
+      if rect ~= nil then
+        if cx >= rect.x and cx < rect.x + rect.w then
+          if cy >= rect.y and cy < rect.y + rect.h then
+            core.announce(og.team_color_name(team) .. " GOAL CLOSED!", C.SOUND_YO)
+            kickoff_reset(ball)
+            return
+          end
+        end
+      end
+    end
+  end
+end
+
 -- Goal: ball center inside team T's defended rect scores for the last
 -- toucher. A self-goal (the last toucher IS team T) still puts a point on
 -- the board — this supersedes D7's own-goal-no-score arm: the beneficiary
 -- above takes it, or, when no other team ever touched the ball, team T
 -- forfeits one of its own. A ball nobody ever touched still scores
 -- nothing: with no attribution there is no beneficiary. Either way the
--- ball returns to the kickoff spot.
-local function run_goal_check(ball)
+-- ball returns to the kickoff spot. A ball in an authored-but-CLOSED
+-- mouth takes the announce-and-reset arm above instead.
+local function run_goal_check(ball, row)
   local mask = og.mode_get(S.TEAM_MASK)
   local cx, cy = ball_center()
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
@@ -463,6 +493,7 @@ local function run_goal_check(ball)
       end
     end
   end
+  run_closed_goal_check(ball, row, mask, cx, cy)
 end
 
 -- The design §6.2.4 dead ball: a motionless ball with no live Living
@@ -791,9 +822,10 @@ local function on_mode_init(level, row)
       authored_mask = core.mask_add(authored_mask, team)
     end
   end
-  -- TROOPS:OWN with deployed rosters: the rosters are the match (the
-  -- shared rule); otherwise the lobby request (manifest default) over the
-  -- authored anchor teams.
+  -- TROOPS:OWN with deployed rosters at TEAMS: Auto: the rosters are the
+  -- match (the shared rule; an EXPLICIT lobby count overrides the shape —
+  -- roster teams plus authored backfill, issue #218); otherwise the lobby
+  -- request (manifest default) over the authored anchor teams.
   local mask = match.own_roster_activation(authored_mask, og.oblist())
   if mask == nil then
     -- Normalized request: Auto (raw <= 0) means no numeric clamp.
@@ -922,8 +954,10 @@ local function on_mode_init(level, row)
 end
 
 -- Per-tick phases (post-act; the engine already ran the respawn timers
--- and owns the win-latch short-circuit).
-local function on_mode_tick(level, tick)
+-- and owns the win-latch short-circuit). row is the static manifest row
+-- make_hooks closed over — the goal check reads its authored goal_rects
+-- for the closed-mouth arm (issue #219).
+local function on_mode_tick(level, tick, row)
   local obs = og.oblist()
   match.schedule_dead(obs, og.mode_get(S.TEAM_MASK), og.mode_get(S.RESPAWN_TICKS))
   local livings = {}
@@ -954,7 +988,7 @@ local function on_mode_tick(level, tick)
     end
     run_flight(ball, livings)
     run_spin(ball)
-    run_goal_check(ball)
+    run_goal_check(ball, row)
     run_dead_ball(ball, livings)
   end
   if og.mod(og.world_tick(), T.ai_cadence) == 0 then
@@ -974,7 +1008,9 @@ local function make_hooks(row)
     on_mode_init = function(level)
       on_mode_init(level, row)
     end,
-    on_mode_tick = on_mode_tick,
+    on_mode_tick = function(level, tick)
+      on_mode_tick(level, tick, row)
+    end,
     on_respawn = on_respawn,
   }
 end

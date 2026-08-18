@@ -680,6 +680,66 @@ TEST_F(ModesSoccer, explicit_count_three_backfills_the_first_non_roster_team)
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
+TEST_F(ModesSoccer, ball_in_a_closed_authored_mouth_announces_and_resets)
+{
+    // Issue #219, the reporter's shape via TROOPS: ALL — FOURSQUARE at
+    // TEAMS: 2 leaves the south/west mouths authored but dead, and mapgen
+    // paints every mouth identically, so a dead one looks live. A ball
+    // entering one must announce the closed goal and re-spot at the
+    // kickoff instead of sitting there silently.
+    SoccerPitch fx(kSoccerLevelB);
+    for (int team = 0; team < 4; ++team)
+    {
+        fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 448);
+        fx.spawn_living(FAMILY_SOLDIER, team,
+                        static_cast<short>(96 + 64 * team), 96);
+    }
+    fx.world().ctf_requested_team_count = 2;
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    ASSERT_EQ(3, fx.var(kSocTeamMask))
+        << "mouths 2 and 3 are authored but dead";
+
+    fx.thaw_kickoff();
+    fx.world().mode.vars[kSocLastTouch1] = 1;  // attribution must not score
+    fx.set_ball(320, 928, 0, 0);  // center of team 2's south rect
+    fx.tick(1);
+
+    EXPECT_EQ(1, count_notifications(fx.events, "BLUE GOAL CLOSED!"))
+        << "team 2 = BLUE announces the dead mouth";
+    EXPECT_LE(longest_notification(fx.events), 25u);
+    for (int team = 0; team < 4; ++team)
+        EXPECT_EQ(0, fx.team_var(kSocGoals, team)) << "no goal scored";
+    int score_changes = 0;
+    for (const auto& ev : fx.events.events())
+    {
+        if (ev.kind == og::sim::EventKind::ScoreChange)
+            score_changes++;
+    }
+    EXPECT_EQ(0, score_changes);
+    EXPECT_EQ(320, fx.ball_cx()) << "re-spotted at the kickoff";
+    EXPECT_EQ(480, fx.ball_cy());
+    EXPECT_EQ(0, fx.var(kSocLastTouch1))
+        << "the reset wiped the touch history";
+    EXPECT_GT(fx.var(kSocKickoffUntil), 0) << "the reset re-armed the freeze";
+
+    // Rate limit: the kickoff freeze gates the scan, so a ball parked back
+    // in the dead mouth while frozen announces nothing and stays put...
+    fx.set_ball(320, 928, 0, 0);
+    fx.tick(1);
+    EXPECT_EQ(1, count_notifications(fx.events, "GOAL CLOSED!"))
+        << "the freeze window is the rate limit";
+    EXPECT_EQ(928, fx.ball_cy()) << "no silent re-spot while frozen";
+
+    // ...and announces exactly once more after the freeze expires.
+    fx.thaw_kickoff();
+    fx.tick(1);
+    EXPECT_EQ(2, count_notifications(fx.events, "GOAL CLOSED!"));
+    EXPECT_EQ(320, fx.ball_cx());
+    EXPECT_EQ(480, fx.ball_cy());
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
 TEST_F(ModesSoccer, bad_manifest_rows_demote_with_recorded_errors)
 {
     // A row missing an active team's goal rect.
