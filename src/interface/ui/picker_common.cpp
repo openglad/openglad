@@ -3131,6 +3131,13 @@ ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
         // mirrors it through the C++ twin; under TROOPS: ALL, THE one
         // activation clamp (authored teams in index order up to the
         // requested count).
+        //
+        // Networked-lobby caveat (accepted): this save carries only the
+        // LOCAL machine's roster, so a REMOTE peer's roster-only team can
+        // preview as inactive here while the sim — which censuses every
+        // peer's spawned walkers at match start — activates it. The rule is
+        // identical and the sim is authoritative; the preview is exact for
+        // local/solo play and for every roster this machine knows.
         const std::uint8_t effective =
             strip_all_on ? og::sim::roster_effective_team_mask(
                                authored, save_roster_team_mask(save),
