@@ -7,6 +7,7 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/lobby_state.h>
+#include <openglad/gameplay/mode/match_plan.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/save_data.h>
 #include <array>
@@ -837,10 +838,10 @@ struct ScenarioRosterRow {
 
 struct ScenarioRosterReport {
     bool is_versus = false;         // world.type & TYPE_SCRIPTED
-    bool will_activate = false;     // >= 2 authored marker teams
+    bool will_activate = false;     // plan.starts / fallback >= 2 active
     short your_team = 0;            // 0 when allied, else save.my_team
-    std::array<bool, 4> team_authored = {};  // start-marker teams
-    std::array<bool, 4> team_active = {};    // the activation clamp
+    std::array<bool, 4> team_authored = {};  // plan.authored_mask / markers
+    std::array<bool, 4> team_active = {};    // plan.active_mask / the clamp
     std::array<int, 4> team_anchor_count = {};
     std::vector<ScenarioRosterRow> rows; // grouped, team-major
     bool any_inactive = false;
@@ -848,19 +849,55 @@ struct ScenarioRosterReport {
     // FAIR (matched troops) strips exactly like OWN (D26 one-delta rule);
     // the removal footer still names the mode the player actually chose.
     bool strip_is_fair = false;
+    // --- Plan arm (issue #218, append-only) ---
+    // True when a registered on_mode_plan answered for this level: the
+    // activation fields above are the plan's, and the fill columns below
+    // are meaningful. False = the count-only fallback (no packs, no plan
+    // hook, or a plan error — plan_error distinguishes the last).
+    bool plan_valid = false;
+    bool plan_error = false;        // the plan dispatch raised (broken pack)
+    std::string mode_name;          // plan.mode ("SOCCER", ...) when valid
+    std::string starts_reason;      // plan.reason when !will_activate
+    bool seeded_squads = false;     // bot classes drawn at first spawn
+    std::array<og::sim::MatchPlanFill, 4> team_fill = {};
+    std::array<std::string, 4> team_fill_label = {};  // display label
+    std::array<int, 4> team_fill_count = {};
 };
+
+// Deployed roster head-counts per team across a lobby's replicated seats
+// (LobbyPlayer.character_slots, every peer receives every roster). Pure
+// counting — the SDL client passes the result into
+// build_scenario_roster_report for a networked session so the previewed
+// plan sees the EXACT combined roster with no protocol change. Text and
+// curses view_scenario sites hold only a SaveData and keep the save-derived
+// counts (the documented local-roster bound).
+std::array<int, 4> lobby_roster_team_counts(
+    const std::vector<og::sim::LobbyPlayer>& players);
 
 // Scan a (scratch-loaded) world's authored entities into a roster report.
 // Named NPCs get individual rows; unnamed livings group by (team, family,
 // level); generators aggregate per team. Strip annotations mirror the
-// scripted-mode init rules: authored team mask = start markers; activation
-// = og::sim::effective_team_mask under TROOPS: ALL, and
-// og::sim::roster_effective_team_mask under OWN/FAIR with roster teams =
-// distinct DEPLOYED team_list teamnums (both spawn paths use the raw
-// teamnum regardless of allied_mode, so raw teamnums are the exact
-// mirror).
-ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
-                                                  const SaveData& save);
+// scripted-mode init rules.
+//
+// Activation and fills come from the level's own registered on_mode_plan
+// (hooks::level_mode_plan) — the SAME Lua the launch chain executes — over
+// build_match_plan_inputs(world) with the four request knobs overwritten
+// from the save and the per-team roster head-counts from `roster_counts`
+// (the lobby's combined rosters) or, when null, the save's DEPLOYED
+// team_list members (both spawn paths use the raw teamnum regardless of
+// allied_mode, so raw teamnums are the exact mirror). That overwrite is the
+// one sanctioned input-marshaling remnant; every activation/fill RULE lives
+// in the mode Lua. Without a plan (no packs / unregistered / plan error)
+// the count-only og::sim::effective_team_mask clamp answers, with no fill
+// column and no mode name.
+//
+// The world reference is non-const because the preview runs the engine
+// respawn_scan_anchors on the caller's DISPOSABLE scratch world — the exact
+// scan launch step 0 runs — and reads the anchor counts back from
+// world.respawn (no hand re-count).
+ScenarioRosterReport build_scenario_roster_report(
+    GameWorld& world, const SaveData& save,
+    const std::array<int, 4>* roster_counts = nullptr);
 
 // Render the report as display lines, every line <= 48 chars, with '+'/'!'
 // strip suffixes and trailing legend lines.

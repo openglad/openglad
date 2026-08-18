@@ -894,6 +894,7 @@ og_add_unit_group(og_unit_mode FILES
 
 og_add_unit_group(og_unit_modes FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_match_plan.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_scenario_plan_report.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_ctf.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_tdm.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_mutant.cpp

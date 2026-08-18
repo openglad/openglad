@@ -229,9 +229,13 @@ bool level_mode_init(GameWorld* world);
 // preview-side request/roster fields overwritten from the save or lobby).
 // nullopt when no packs are mounted, no hook is registered, the hook
 // errors (recorded in the script-host error store; a broken pack never
-// crashes the lobby) or it answers a non-table.
+// crashes the lobby) or it answers a non-table. `plan_error`, when
+// non-null, reports the dispatch-ERROR arm alone (true only when a
+// registered plan raised) so the preview can render its honest
+// MATCH RULES UNAVAILABLE line instead of a silent fallback.
 std::optional<og::sim::MatchPlanSummary> level_mode_plan(
-    int level_id, const og::sim::MatchPlanInputs& inputs);
+    int level_id, const og::sim::MatchPlanInputs& inputs,
+    bool* plan_error = nullptr);
 // on_mode_tick(level, tick) — post-act slot, called by mode_run_tick.
 void level_mode_tick(GameWorld* world);
 // on_respawn(ent) — dispatched by the respawn engine after an in-place

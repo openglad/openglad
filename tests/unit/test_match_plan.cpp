@@ -168,9 +168,12 @@ TEST_F(MatchPlan, census_projects_the_world)
 TEST_F(MatchPlan, no_hook_answers_nullopt)
 {
     ModesCtfWorld fx(9800);
-    EXPECT_FALSE(og::script::hooks::level_mode_plan(8999, probe_inputs())
+    bool plan_error = true;
+    EXPECT_FALSE(og::script::hooks::level_mode_plan(8999, probe_inputs(),
+                                                    &plan_error)
                      .has_value())
         << "an unregistered level id has no plan";
+    EXPECT_FALSE(plan_error) << "no hook is a fallback, not a script error";
     EXPECT_FALSE(og::script::hooks::level_mode_plan(9806, probe_inputs())
                      .has_value())
         << "an init-only registration has no plan";
@@ -262,8 +265,13 @@ TEST_F(MatchPlan, non_table_plan_answers_nullopt)
 TEST_F(MatchPlan, fence_blocks_oblist_during_planning)
 {
     ModesCtfWorld fx(9801);
-    EXPECT_FALSE(og::script::hooks::level_mode_plan(9801, probe_inputs())
+    bool plan_error = false;
+    EXPECT_FALSE(og::script::hooks::level_mode_plan(9801, probe_inputs(),
+                                                    &plan_error)
                      .has_value());
+    EXPECT_TRUE(plan_error)
+        << "a raised plan reports the error arm (the preview's honest "
+           "MATCH RULES UNAVAILABLE line hangs off this flag)";
     EXPECT_TRUE(has_script_error(
         fx.world(),
         "og.oblist: the world API is not available during match planning"));
@@ -854,8 +862,15 @@ void run_agreement_case(const AgreementMode& mode, int flag_family,
     }
     if (std::string(mode.name) == "ctf")
     {
-        // The banked flag set must equal the plan's active mask (the
-        // authored fold minus the inactive-team teardown).
+        // The apply's kept-flag fold must agree with the plan's fold: the
+        // matrix authors exactly one flag on each of teams 0-2, so
+        // plan.authored_mask is pinned to that exact set (a divergent
+        // apply-side scan would bank a different set below). The banked
+        // FLAG_ENTITY entries are then the authored fold minus the
+        // inactive-team teardown — the plan's active mask, per team.
+        EXPECT_EQ(0b0111, plan->authored_mask)
+            << "the plan's first-flag-per-team fold over the same rows "
+               "the apply scans";
         for (int team = 0; team < 4; ++team)
         {
             const bool active = (plan->active_mask & (1u << team)) != 0;

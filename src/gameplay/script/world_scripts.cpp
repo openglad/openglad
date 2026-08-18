@@ -2662,8 +2662,10 @@ bool level_mode_init(GameWorld* world)
 }
 
 std::optional<og::sim::MatchPlanSummary> level_mode_plan(
-    int level_id, const og::sim::MatchPlanInputs& inputs)
+    int level_id, const og::sim::MatchPlanInputs& inputs, bool* plan_error)
 {
+    if (plan_error != nullptr)
+        *plan_error = false;
     VmState* st =
         level_vm_state(1u << static_cast<unsigned>(LevelHook::ModePlan));
     if (st == nullptr)
@@ -2672,12 +2674,22 @@ std::optional<og::sim::MatchPlanSummary> level_mode_plan(
     lua_State* L = impl.L;
     const std::uint64_t gen = push_dispatch_gen(L);
     std::optional<og::sim::MatchPlanSummary> out;
-    if (dispatch_mode_plan(impl, st, level_id, inputs) == PlanDispatch::Ok) {
+    switch (dispatch_mode_plan(impl, st, level_id, inputs)) {
+    case PlanDispatch::Ok:
         // A plan that answers anything but a table (nil included) reads as
         // "no plan" — same fallback arm as an unregistered hook.
         if (lua_istable(L, -1))
             out = parse_match_plan_summary(L);
         lua_pop(L, 1);
+        break;
+    case PlanDispatch::Error:
+        // The error itself is in the script-host error store; the flag
+        // lets the preview distinguish "broken pack" from "no plan".
+        if (plan_error != nullptr)
+            *plan_error = true;
+        break;
+    case PlanDispatch::NoHook:
+        break;
     }
     pop_dispatch_gen(L, gen);
     return out;

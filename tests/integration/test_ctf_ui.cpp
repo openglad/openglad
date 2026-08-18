@@ -16,6 +16,7 @@
 #include <openglad/interface/render/radar.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/results_screen.h>
 #include <openglad/interface/view_sizes.h>
 #include <openglad/legacy/base.h>
@@ -1138,4 +1139,101 @@ TEST(CtfUi, matchup_pager_face_not_dimmed_by_row_bar)
         << "row readability bar should still darken non-button pixels";
 
     cleanup_picker_state();
+}
+
+// ---------------------------------------------------------------------------
+// VIEW LEVEL refresh guard (issue #218): the report is cached, but the
+// per-frame change key rebuilds it when the match settings move under the
+// open viewer — the stale-joiner hole (a host cycling TEAMS while a joiner
+// is parked in VIEW LEVEL) closed by the plan-phase rewire.
+// ---------------------------------------------------------------------------
+
+struct RefreshFlowState
+{
+    bool started = false;
+    bool finished = false;
+    bool viewer_opened = false;
+    bool refresh_seen = false;
+};
+
+int view_scenario_refresh_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    RefreshFlowState* state = static_cast<RefreshFlowState*>(data);
+    state->started = true;
+
+    wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);
+    interact("continue_game");
+
+    // Team build -> SCENARIO submenu -> VIEW LEVEL.
+    SDL_Delay(500);
+    wait_for_interactable("scenario", 10000);
+    SDL_Delay(750);
+    interact("scenario");
+    wait_for_interactable("view_scenario", 10000);
+    SDL_Delay(300);
+    interact("view_scenario");
+
+    state->viewer_opened = wait_for_interactable_at("back", 10, 170, 10000);
+    SDL_Delay(300);
+
+    // The stale-joiner shape: a settings change lands in the LOBBY and the
+    // per-frame poll rewrites the save under the open viewer (a raw save
+    // write alone would be clobbered by that same poll — the injector
+    // stands in for the host's SettingsChange by updating the lobby the
+    // way the click callbacks do).
+    og::runtime::current_session->myscreen_->save_data.ctf_team_count = 3;
+    picker_lobby_sync_settings_from_save();
+    state->refresh_seen =
+        wait_for_picker_trace("view_scenario refresh lines=", 1, 5000);
+    SDL_Delay(300);
+
+    // Viewer back -> SCENARIO submenu; its back (30,170) -> team build.
+    interact("back");
+    SDL_Delay(300);
+    wait_for_interactable("matchup", 10000);
+    SDL_Delay(300);
+    interact("back");
+
+    SDL_Delay(300);
+    wait_for_interactable("go", 10000);
+    SDL_Delay(300);
+    interact("back");
+
+    state->finished = true;
+    return 0;
+}
+
+TEST(CtfUi, view_scenario_rebuilds_when_settings_change_underneath)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    // The save0 load mounts the versus campaign; its levels start at scen
+    // 500, so the rebuilt report is a real plan-arm report.
+    write_save0_with_two_soldiers("modes", 500);
+
+    RefreshFlowState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        view_scenario_refresh_injector, "view_refresh_flow", &state);
+    ASSERT_NE(nullptr, thread);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_TRUE(state.finished) << "injector should complete the flow";
+    EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open its frame";
+    EXPECT_TRUE(state.refresh_seen)
+        << "a TEAMS change under the open viewer must rebuild the report "
+           "(the refresh trace)";
+    EXPECT_GE(count_picker_trace_containing("view_scenario refresh lines="), 1);
+
+    // The save0 load remounted the versus campaign; restore the default
+    // mount so later (or shuffled) tests load classic levels again.
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    (void)mount_campaign_package_with_error("gladiator");
 }

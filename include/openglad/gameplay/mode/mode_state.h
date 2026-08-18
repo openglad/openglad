@@ -91,20 +91,13 @@ std::uint8_t authored_team_mask(const GameWorld& world);
 // THE one copy of the team-activation clamp rule: authored teams activate in
 // index order until the requested count (<= 0 = all authored; otherwise
 // clamped to [2, SCORE_TEAM_COUNT]). Shared by the lobby's selectable-team
-// mask and the og.effective_team_mask binding.
+// mask, the og.effective_team_mask binding, and the VIEW LEVEL preview's
+// no-plan fallback (a scripted level with no registered on_mode_plan, or no
+// packs mounted). Deliberately count-only (D29): the roster-aware
+// activation rule lives in mode Lua alone (lib/mode_match.lua
+// plan_activation, evaluated through hooks::level_mode_plan) — its one-time
+// C++ twin, roster_effective_team_mask, is deleted (issue #218).
 std::uint8_t effective_team_mask(std::uint8_t authored, int requested) noexcept;
-
-// The roster-aware activation rule under TROOPS: OWN/FAIR — the C++ twin of
-// mode_match.lua own_roster_activation for preview surfaces. roster is
-// masked to authored. Empty roster falls back to effective_team_mask.
-// One rule for every TEAMS value: the request is requested when > 0, else
-// (Auto) the authored team count — the zero sentinel means "as many teams
-// as the map actually has" (2026-08-18 maintainer directive). Roster teams
-// plus authored backfill in index order up to clamp(request, 2,
-// SCORE_TEAM_COUNT), never dropping a roster team (max semantics).
-std::uint8_t roster_effective_team_mask(std::uint8_t authored,
-                                        std::uint8_t roster,
-                                        int requested) noexcept;
 
 // Canonical color name for a score team ("RED"/"GREEN"/"BLUE"/"YELLOW")
 // or an FFA band byte 16-31 (the 16 kFfaRampBases names), matching the

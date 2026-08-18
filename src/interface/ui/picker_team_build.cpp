@@ -1124,14 +1124,132 @@ Sint32 view_scenario_page_flip(Sint32 step)
 // the MATCHUP pattern). Null state = no open screen (the G5 sweep and the
 // gate-lattice sweep drive the spec bare) and presents the single-page
 // shape: pagers hidden, BACK's right-link closed.
+// The change key of everything the VIEW LEVEL report reads that a lobby can
+// move under a parked viewer: the level, the four match-request knobs, the
+// campaign identity (save side + actual mount) and, for networked sessions,
+// the combined lobby roster head-counts. A host cycling TEAMS / TROOPS /
+// SET LEVEL while a joiner sits in the viewer changes this key and the
+// frame tick rebuilds the report (the pre-#218 screen never refreshed).
+struct ViewScenarioKey
+{
+    int level_id = -1;
+    short team_count = 0;
+    short strip_troops = 0;
+    short capture_limit = 0;
+    short respawn_ticks = 0;
+    std::array<int, 4> roster_counts{};
+    std::string save_campaign;
+    std::string mounted_campaign;
+
+    bool operator==(const ViewScenarioKey&) const = default;
+};
+
 struct ViewScenarioEngineState
 {
     og::ui::PageModel pager;
     std::vector<std::string> lines;
     std::string title;
+    // Refresh guard (issue #218): the scratch level owned by the open
+    // screen (reloaded when the key's level/campaign moves) and the key of
+    // the last built report.
+    std::unique_ptr<LevelRuntimeData> scenario;
+    bool networked = false;
+    ViewScenarioKey key;
 };
 
 static ViewScenarioEngineState* g_view_scenario_engine_state = nullptr;
+
+// One key read per frame. The lobby roster is read ONCE here and the same
+// values feed both the comparison and any rebuild, so a mid-poll lobby
+// update can never split the key from the report it stamps.
+static ViewScenarioKey view_scenario_current_key(
+    const SaveData& save, const std::array<int, 4>& roster_counts)
+{
+    ViewScenarioKey key;
+    key.level_id = save.scen_num;
+    key.team_count = save.ctf_team_count;
+    key.strip_troops = save.ctf_strip_scenario_troops;
+    key.capture_limit = save.ctf_capture_limit;
+    key.respawn_ticks = save.ctf_respawn_ticks;
+    key.roster_counts = roster_counts;
+    key.save_campaign = save.current_campaign;
+    key.mounted_campaign = get_mounted_campaign();
+    return key;
+}
+
+// (Re)build the report + lines + pager + title from the loaded scratch
+// world. Shared by screen entry and the per-frame refresh guard.
+static void view_scenario_rebuild(ViewScenarioEngineState& state,
+                                  const SaveData& save,
+                                  const std::array<int, 4>& roster_counts)
+{
+    const og::ui::ScenarioRosterReport report =
+        og::ui::build_scenario_roster_report(
+            state.scenario->world(), save,
+            state.networked ? &roster_counts : nullptr);
+    state.lines = og::ui::format_scenario_report_lines(report);
+    state.pager = og::ui::PageModel::make(
+        static_cast<int>(state.lines.size()), kViewScenarioRowsPerPage);
+    state.title =
+        std::format("SCEN {}: {}", save.scen_num,
+                    state.scenario->world().title);
+    if (state.title.size() > 48)
+        state.title.resize(48);
+}
+
+// Per-frame refresh guard: rebuild the cached report when the change key
+// moved (host SET LEVEL / TEAMS / TROOPS under a parked joiner — the
+// blocking-subscreen level-reload discipline). Never exits the loop.
+bool picker_view_scenario_engine_frame_tick(void* /*screen_state*/,
+                                            int /*frame*/)
+{
+    ViewScenarioEngineState* const state = g_view_scenario_engine_state;
+    if (state == nullptr || state->scenario == nullptr)
+        return true;
+    const SaveData& save =
+        og::runtime::current_session->myscreen_->save_data;
+    std::array<int, 4> roster_counts{};
+    if (state->networked)
+        roster_counts = og::ui::lobby_roster_team_counts(picker_lobby_players());
+    ViewScenarioKey key = view_scenario_current_key(save, roster_counts);
+    if (key == state->key)
+        return true;
+    const bool level_moved =
+        key.level_id != state->key.level_id ||
+        key.save_campaign != state->key.save_campaign ||
+        key.mounted_campaign != state->key.mounted_campaign;
+    state->key = std::move(key);
+    if (level_moved)
+    {
+        // Mirror the entry guards without popups (mid-frame): an unmounted
+        // campaign or a failed load renders its refusal as the report.
+        if (get_mounted_campaign() != save.current_campaign)
+        {
+            state->lines = {"CAMPAIGN NOT MOUNTED"};
+            state->pager = og::ui::PageModel::make(
+                static_cast<int>(state->lines.size()),
+                kViewScenarioRowsPerPage);
+            state->title = std::format("SCEN {}:", save.scen_num);
+            return true;
+        }
+        auto fresh = std::make_unique<LevelRuntimeData>(
+            save.scen_num, false, &sdl_level_data_hooks());
+        if (!fresh->load())
+        {
+            state->lines = {"COULD NOT LOAD LEVEL"};
+            state->pager = og::ui::PageModel::make(
+                static_cast<int>(state->lines.size()),
+                kViewScenarioRowsPerPage);
+            state->title = std::format("SCEN {}:", save.scen_num);
+            return true;
+        }
+        state->scenario = std::move(fresh);
+    }
+    view_scenario_rebuild(*state, save, state->key.roster_counts);
+    TRACE("picker", "view_scenario refresh lines=%d page=%d",
+          static_cast<int>(state->lines.size()), state->pager.page);
+    return true;
+}
 
 // PREV/NEXT visibility: the legacy entry-time `hidden = !multi_page()`,
 // re-derived per frame (page count never changes while the screen is open).
@@ -1224,28 +1342,30 @@ Sint32 create_view_scenario_menu(Sint32 arg1)
 
     // Scratch load with the SDL hooks: the hook-less default loader lacks the
     // CTF treasure families (FAMILY_FLAG / FAMILY_CTF_POINT).
-    LevelRuntimeData scenario(save.scen_num, false, &sdl_level_data_hooks());
-    if (!scenario.load())
+    ViewScenarioEngineState state;
+    state.scenario = std::make_unique<LevelRuntimeData>(
+        save.scen_num, false, &sdl_level_data_hooks());
+    if (!state.scenario->load())
     {
         popup_dialog("VIEW LEVEL", "COULD NOT\nLOAD LEVEL");
         return MENU_REDRAW;
     }
 
-    const og::ui::ScenarioRosterReport report =
-        og::ui::build_scenario_roster_report(scenario.world(), save);
-    ViewScenarioEngineState state;
-    state.lines = og::ui::format_scenario_report_lines(report);
+    // Networked sessions preview the EXACT combined roster: every peer
+    // already receives every seat's deployed slots (LobbyPlayer
+    // .character_slots), so the plan's roster inputs come from the lobby
+    // instead of the local save — no protocol change. Read once here; the
+    // frame tick re-reads once per frame for its change key.
+    state.networked = picker_lobby_is_networked();
+    std::array<int, 4> roster_counts{};
+    if (state.networked)
+        roster_counts = og::ui::lobby_roster_team_counts(picker_lobby_players());
+    state.key = view_scenario_current_key(save, roster_counts);
     // The pinned VIEW LEVEL pager runs on the engine PageModel (G6): page
     // count, clamped flips, hidden-when-one-page, and the "p/N" indicator
     // all come from the model; the oracle test in tests/unit/test_menu_spec
     // pins its equivalence to the legacy arithmetic this replaced.
-    state.pager = og::ui::PageModel::make(
-        static_cast<int>(state.lines.size()), kViewScenarioRowsPerPage);
-
-    state.title =
-        std::format("SCEN {}: {}", save.scen_num, scenario.world().title);
-    if (state.title.size() > 48)
-        state.title.resize(48);
+    view_scenario_rebuild(state, save, roster_counts);
 
     TRACE("picker", "view_scenario lines=%d page=%d",
           static_cast<int>(state.lines.size()), state.pager.page);

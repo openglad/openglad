@@ -790,7 +790,11 @@ void teams_screen(Menu& menu, SaveData& save)
 }
 
 // Read-only roster report of the current level from a scratch headless load
-// (the same shared report the SDL VIEW LEVEL screen renders).
+// (the same shared report the SDL VIEW LEVEL screen renders). Roster inputs
+// for the match plan come from THIS save (the builder's default) — the
+// documented local-roster bound: this site holds only a SaveData; plumbing
+// curses_network's replicated players through would make it exact (the SDL
+// client passes lobby_roster_team_counts).
 void view_scenario(Menu& menu, const SaveData& save)
 {
     if (get_mounted_campaign() != save.current_campaign) {

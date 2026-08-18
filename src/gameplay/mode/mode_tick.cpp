@@ -110,46 +110,6 @@ std::uint8_t effective_team_mask(std::uint8_t authored, int requested) noexcept
     return effective;
 }
 
-std::uint8_t roster_effective_team_mask(std::uint8_t authored,
-                                        std::uint8_t roster,
-                                        int requested) noexcept
-{
-    const auto all_mask =
-        static_cast<std::uint8_t>((1u << SCORE_TEAM_COUNT) - 1u);
-    authored = static_cast<std::uint8_t>(authored & all_mask);
-    roster = static_cast<std::uint8_t>(roster & authored);
-    // All-bot OWN/FAIR (zero roster): the plain activation clamp IS the
-    // one rule applied to an empty roster — at Auto (requested <= 0) it
-    // yields the full authored mask (= the authored count), at an explicit
-    // N the first N authored teams, exactly what the backfill loop below
-    // would produce from mask = 0. The Lua twin (own_roster_activation)
-    // runs its one-rule arm for this shape and lands on the same mask.
-    if (roster == 0)
-        return effective_team_mask(authored, requested);
-    // The lobby TEAMS request wins (issue #218): roster teams all stay
-    // (max semantics), authored non-roster teams backfill in index order
-    // until the mask holds clamp(request, 2, 4) teams. TEAMS: Auto is the
-    // zero sentinel ("the map's own value") and resolves to the AUTHORED
-    // team count, riding the same arm as an explicit count (2026-08-18
-    // maintainer directive superseding D26's Auto scope; the Lua twin is
-    // mode_match.lua own_roster_activation).
-    if (requested <= 0)
-        requested = std::popcount(authored);
-    const int target =
-        std::clamp(requested, 2, static_cast<int>(SCORE_TEAM_COUNT));
-    std::uint8_t mask = roster;
-    for (int team = 0; team < SCORE_TEAM_COUNT; ++team)
-    {
-        if (std::popcount(mask) >= target)
-            break;
-        const auto bit =
-            static_cast<std::uint8_t>(1u << static_cast<unsigned>(team));
-        if ((authored & bit) != 0)
-            mask = static_cast<std::uint8_t>(mask | bit);
-    }
-    return mask;
-}
-
 void mode_end_level(GameWorld& world, int ending, int next_level)
 {
     // First arming flushes the respawn engine (D2): every queued entry

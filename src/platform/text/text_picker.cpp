@@ -931,6 +931,10 @@ private:
 
     // Read-only roster report of the current level from a scratch headless
     // load (the same shared report the SDL VIEW LEVEL screen renders).
+    // Roster inputs for the match plan come from THIS save (the builder's
+    // default) — the documented local-roster bound: this site holds only a
+    // SaveData, so a remote peer's company teams preview as backfilled.
+    // The SDL client passes lobby_roster_team_counts for exactness.
     void view_scenario()
     {
         if (get_mounted_campaign() != save_data_.current_campaign) {

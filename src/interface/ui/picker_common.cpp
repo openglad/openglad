@@ -20,6 +20,9 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_state.h>
+#include <openglad/gameplay/mode/match_plan.h>
+#include <openglad/gameplay/respawn/respawn_state.h>
+#include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -3065,96 +3068,168 @@ const char* strip_suffix(ScenarioStripReason reason)
     }
 }
 
-// Save-side roster teams: distinct teamnums of DEPLOYED company members —
-// the exact set both spawn paths (game.cpp / headless spawn_team_from_save)
-// field as has_guy walkers at level entry.
-std::uint8_t save_roster_team_mask(const SaveData& save)
+// Save-side roster head-counts: DEPLOYED company members per teamnum — the
+// exact walkers both spawn paths (game.cpp / headless spawn_team_from_save)
+// field as has_guy walkers at level entry. Pure input marshaling for the
+// plan: no mask math, no backfill — every activation rule lives in the mode
+// Lua (lib/mode_match.lua plan_activation).
+std::array<int, 4> save_roster_team_counts(const SaveData& save)
 {
-    std::uint8_t mask = 0;
+    std::array<int, 4> counts{};
     for (const auto& member : save.team_list)
     {
         if (member == nullptr || !member->deployed)
             continue;
         const int team = member->teamnum;
         if (is_score_team_index(team))
-        {
-            mask = static_cast<std::uint8_t>(
-                mask | (1u << static_cast<unsigned>(team)));
-        }
+            counts[static_cast<std::size_t>(team)]++;
     }
-    return mask;
+    return counts;
+}
+
+// Display label for a plan fill row (the honesty rules: seeded squads never
+// list families — one legend line covers them; matched bots show headcount
+// only, never levels). Unknown vocabulary keeps the plan's own label.
+std::string fill_display_label(og::sim::MatchPlanFill fill,
+                               const std::string& raw_label)
+{
+    switch (fill)
+    {
+        case og::sim::MatchPlanFill::Company: return "COMPANY";
+        case og::sim::MatchPlanFill::Troops: return "MAP TROOPS";
+        case og::sim::MatchPlanFill::Bots: return "BOT SQUAD";
+        case og::sim::MatchPlanFill::Matched: return "MATCHED BOTS";
+        case og::sim::MatchPlanFill::Generators: return "GENERATORS";
+        case og::sim::MatchPlanFill::Empty: return "NO FORCES";
+        case og::sim::MatchPlanFill::Other: break;
+    }
+    return raw_label.empty() ? std::string("UNKNOWN") : raw_label;
 }
 
 } // namespace
 
-ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
-                                                  const SaveData& save)
+std::array<int, 4> lobby_roster_team_counts(
+    const std::vector<og::sim::LobbyPlayer>& players)
+{
+    std::array<int, 4> counts{};
+    for (const auto& player : players)
+    {
+        for (const auto& slot : player.character_slots)
+        {
+            if (!slot.deployed)
+                continue;
+            const int team = slot.character.teamnum;
+            if (is_score_team_index(team))
+                counts[static_cast<std::size_t>(team)]++;
+        }
+    }
+    return counts;
+}
+
+ScenarioRosterReport build_scenario_roster_report(
+    GameWorld& world, const SaveData& save,
+    const std::array<int, 4>* roster_counts)
 {
     ScenarioRosterReport report;
     report.is_versus = (world.type & GameWorld::TYPE_SCRIPTED) != 0;
     report.your_team = save.my_team;
 
     // Any stored value above 0 means TROOPS: OWN (FAIR bundles it) — the
-    // one flag both the activation mirror and the strip annotations key on.
+    // flag the strip annotations key on.
     const bool strip_all_on = save.ctf_strip_scenario_troops > 0;
 
     if (report.is_versus)
     {
-        // Authored team domain = start markers (dead ones included — the
-        // level bootstrap kills consumed markers), the same scan the mode
-        // init + anchor machinery run.
-        const std::uint8_t authored = og::sim::authored_team_mask(world);
-        for (int t = 0; t < 4; ++t)
-            report.team_authored[static_cast<std::size_t>(t)] = (authored & (1u << t)) != 0;
-
-        // Respawn anchors per team (the same markers, counted).
-        for (const auto& uptr : world.oblist)
-        {
-            walker* w = uptr.get();
-            if (w == nullptr || w->query_order() != Order::Special ||
-                w->family() != FAMILY_RESERVED_TEAM)
-            {
-                continue;
-            }
-            const int team = w->team_num();
-            if (is_score_team_index(team) &&
-                report.team_anchor_count[static_cast<std::size_t>(team)] <
-                    og::sim::kRespawnMaxAnchorsPerTeam)
-            {
-                report.team_anchor_count[static_cast<std::size_t>(team)]++;
-            }
-        }
-
-        // Active teams: under TROOPS: OWN/FAIR the sim applies the roster
-        // rule (roster teams stay; the lobby count — TEAMS: Auto = the
-        // authored count — backfills authored teams in index order, issue
-        // #218), so the preview mirrors it through the C++ twin; under
-        // TROOPS: ALL, THE one activation clamp (authored teams in index
-        // order up to the requested count).
-        //
-        // Networked-lobby caveat (accepted): this save carries only the
-        // LOCAL machine's roster, so a REMOTE peer's roster-only team can
-        // preview as inactive here while the sim — which censuses every
-        // peer's spawned walkers at match start — activates it. The rule is
-        // identical and the sim is authoritative; the preview is exact for
-        // local/solo play and for every roster this machine knows.
-        const std::uint8_t effective =
-            strip_all_on ? og::sim::roster_effective_team_mask(
-                               authored, save_roster_team_mask(save),
-                               save.ctf_team_count)
-                         : og::sim::effective_team_mask(authored,
-                                                        save.ctf_team_count);
-        int active_count = 0;
+        // The engine anchor scan, on the caller's DISPOSABLE scratch world
+        // (the exact scan launch step 0 runs; idempotent, rebuilt from
+        // scratch). The anchor counts read back from world.respawn — the
+        // cap rule has one home, no hand re-count here.
+        og::sim::respawn_scan_anchors(world);
         for (int t = 0; t < 4; ++t)
         {
-            report.team_active[static_cast<std::size_t>(t)] = (effective & (1u << t)) != 0;
-            active_count += report.team_active[static_cast<std::size_t>(t)] ? 1 : 0;
+            report.team_anchor_count[static_cast<std::size_t>(t)] =
+                world.respawn.anchor_count[static_cast<std::size_t>(t)];
         }
-        report.will_activate = active_count >= 2;
-        if (!report.will_activate)
+
+        // Marker-team domain — the no-plan fallback's authored set.
+        const std::uint8_t authored_markers =
+            og::sim::authored_team_mask(world);
+
+        // The plan phase: ONE census (the launch path's own projection)
+        // with the four request knobs and the per-team roster head-counts
+        // overwritten from the save / lobby — the sanctioned
+        // input-marshaling remnant (the scratch world was never synced from
+        // the save and spawns no roster walkers).
+        og::sim::MatchPlanInputs inputs =
+            og::sim::build_match_plan_inputs(world);
+        inputs.team_count = save.ctf_team_count;
+        inputs.strip_troops = save.ctf_strip_scenario_troops;
+        inputs.score_limit = save.ctf_capture_limit;
+        inputs.respawn_ticks = save.ctf_respawn_ticks;
+        const std::array<int, 4> roster = (roster_counts != nullptr)
+            ? *roster_counts
+            : save_roster_team_counts(save);
+        for (int t = 0; t < 4; ++t)
         {
-            for (bool& active : report.team_active)
-                active = false;
+            inputs.teams[static_cast<std::size_t>(t)].roster =
+                roster[static_cast<std::size_t>(t)];
+        }
+
+        bool plan_dispatch_error = false;
+        const std::optional<og::sim::MatchPlanSummary> plan =
+            og::script::hooks::level_mode_plan(world.id, inputs,
+                                               &plan_dispatch_error);
+        report.plan_error = plan_dispatch_error;
+        if (plan.has_value())
+        {
+            // The plan arm: the SAME registered Lua the launch chain runs
+            // answers the preview — authored domain (per-mode: flags,
+            // anchors, livings∪generators, ...), activation, fills.
+            report.plan_valid = true;
+            report.mode_name = plan->mode_name;
+            report.seeded_squads = plan->seeded_squads;
+            report.will_activate = plan->starts;
+            if (!plan->starts)
+                report.starts_reason = plan->reason;
+            for (int t = 0; t < 4; ++t)
+            {
+                const auto ti = static_cast<std::size_t>(t);
+                report.team_authored[ti] =
+                    (plan->authored_mask & (1u << t)) != 0;
+                report.team_active[ti] =
+                    plan->starts && (plan->active_mask & (1u << t)) != 0;
+                const og::sim::MatchPlanTeamSummary& row = plan->teams[ti];
+                report.team_fill[ti] = row.fill;
+                report.team_fill_label[ti] =
+                    fill_display_label(row.fill, row.fill_label);
+                report.team_fill_count[ti] = row.count;
+            }
+        }
+        else
+        {
+            // Count-only fallback: no packs mounted, no plan registered
+            // for this level, or the plan errored (plan_error above; the
+            // formatter adds the honest MATCH RULES UNAVAILABLE line).
+            // og::sim::effective_team_mask is the D29 clamp that survives
+            // regardless; the roster rule lives in mode Lua alone, so with
+            // no plan the preview shows the clamp for every TROOPS value.
+            const std::uint8_t effective = og::sim::effective_team_mask(
+                authored_markers, save.ctf_team_count);
+            int active_count = 0;
+            for (int t = 0; t < 4; ++t)
+            {
+                const auto ti = static_cast<std::size_t>(t);
+                report.team_authored[ti] =
+                    (authored_markers & (1u << t)) != 0;
+                report.team_active[ti] = (effective & (1u << t)) != 0;
+                active_count += report.team_active[ti] ? 1 : 0;
+            }
+            report.will_activate = active_count >= 2;
+            if (!report.will_activate)
+            {
+                for (bool& active : report.team_active)
+                    active = false;
+            }
         }
     }
 
@@ -3282,28 +3357,94 @@ std::vector<std::string> format_scenario_report_lines(
 
     if (report.is_versus)
     {
-        int marker_teams = 0;
-        for (const bool present : report.team_authored)
-            marker_teams += present ? 1 : 0;
-        lines.push_back(clip_line(std::format(
-            "MATCH: {} AUTHORED TEAMS", marker_teams)));
-        if (report.will_activate)
+        if (report.plan_valid)
         {
-            for (int t = 0; t < 4; ++t)
+            // The plan arm (issue #218): mode name, active-of-authored
+            // count, and per-team fills. The MARKERS: n datum moves off
+            // these lines to fit the fill labels in 48 chars (the anchor
+            // counts stay in the report struct).
+            if (report.will_activate)
             {
-                if (!report.team_authored[static_cast<std::size_t>(t)])
-                    continue;
+                int authored_count = 0;
+                int active_count = 0;
+                for (int t = 0; t < 4; ++t)
+                {
+                    authored_count +=
+                        report.team_authored[static_cast<std::size_t>(t)] ? 1 : 0;
+                    active_count +=
+                        report.team_active[static_cast<std::size_t>(t)] ? 1 : 0;
+                }
                 lines.push_back(clip_line(std::format(
-                    "  {} TEAM  MARKERS: {}  {}",
-                    og::sim::team_color_name(t),
-                    report.team_anchor_count[static_cast<std::size_t>(t)],
-                    report.team_active[static_cast<std::size_t>(t)] ? "ACTIVE" : "INACTIVE")));
+                    "MATCH: {} - {} OF {} TEAMS ACTIVE", report.mode_name,
+                    active_count, authored_count)));
+                for (int t = 0; t < 4; ++t)
+                {
+                    const auto ti = static_cast<std::size_t>(t);
+                    if (!report.team_authored[ti])
+                        continue;
+                    if (!report.team_active[ti])
+                    {
+                        lines.push_back(clip_line(std::format(
+                            "  {} TEAM  INACTIVE",
+                            og::sim::team_color_name(t))));
+                        continue;
+                    }
+                    std::string fill = report.team_fill_label[ti];
+                    if (report.team_fill[ti] != og::sim::MatchPlanFill::Empty)
+                    {
+                        fill += std::format(" ({})",
+                                            report.team_fill_count[ti]);
+                    }
+                    lines.push_back(clip_line(std::format(
+                        "  {} TEAM  ACTIVE - {}",
+                        og::sim::team_color_name(t), fill)));
+                }
+                // Honesty where pre-launch knowledge ends: squad classes
+                // are drawn at the first spawn, so one legend line stands
+                // in for any class list.
+                if (report.seeded_squads)
+                    lines.push_back(
+                        clip_line("BOT CLASSES DRAWN AT START"));
+            }
+            else
+            {
+                // The plan can legitimately refuse from >= 2 marker teams
+                // (per-mode domains), so no AUTHORED-TEAMS claim here.
+                lines.push_back(clip_line(
+                    "MATCH WILL NOT START: FEWER THAN 2 TEAMS"));
             }
         }
         else
         {
-            lines.push_back(
-                clip_line("MATCH INACTIVE: FEWER THAN 2 AUTHORED TEAMS"));
+            // Count-only fallback: today's exact lines (the no-pack pins).
+            int marker_teams = 0;
+            for (const bool present : report.team_authored)
+                marker_teams += present ? 1 : 0;
+            lines.push_back(clip_line(std::format(
+                "MATCH: {} AUTHORED TEAMS", marker_teams)));
+            if (report.will_activate)
+            {
+                for (int t = 0; t < 4; ++t)
+                {
+                    if (!report.team_authored[static_cast<std::size_t>(t)])
+                        continue;
+                    lines.push_back(clip_line(std::format(
+                        "  {} TEAM  MARKERS: {}  {}",
+                        og::sim::team_color_name(t),
+                        report.team_anchor_count[static_cast<std::size_t>(t)],
+                        report.team_active[static_cast<std::size_t>(t)] ? "ACTIVE" : "INACTIVE")));
+                }
+            }
+            else
+            {
+                lines.push_back(
+                    clip_line("MATCH INACTIVE: FEWER THAN 2 AUTHORED TEAMS"));
+            }
+            // A broken pack renders the fallback plus one honest line —
+            // never a silent wrong report, never a crashed lobby.
+            if (report.plan_error)
+                lines.push_back(
+                    clip_line("MATCH RULES UNAVAILABLE (SCRIPT ERROR)"));
         }
     }
 

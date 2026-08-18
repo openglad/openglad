@@ -135,6 +135,7 @@ void picker_view_scenario_engine_rewire(button* buttons, int num_buttons,
 Sint32 picker_view_scenario_engine_consume_click(Sint32 retvalue,
                                                  void* screen_state);
 void picker_view_scenario_engine_draw_content(void* screen_state);
+bool picker_view_scenario_engine_frame_tick(void* screen_state, int frame);
 // HELP engine hooks (#168; defined beside the tab content in help.cpp).
 og::ui::RowState help_engine_pager_row_state(
     const og::ui::MenuLabelContext& context);
@@ -6780,6 +6781,11 @@ const MenuScreenSpec& view_scenario_menu_screen_spec()
         .polls_lobby = true,
         .draw_background = &picker_backdrop_draw_background,
         .draw_content = &picker_view_scenario_engine_draw_content,
+        // Refresh guard (issue #218): rebuild the cached report when the
+        // level / match settings / lobby rosters move under a parked
+        // viewer (host SET LEVEL / TEAMS / TROOPS — the stale-joiner
+        // hole the once-per-open cache used to leave).
+        .frame_tick = &picker_view_scenario_engine_frame_tick,
         // The legacy page-step consumption (retvalue-zero + clamped flip +
         // flip trace), at the legacy point in the frame.
         .consume_click = &picker_view_scenario_engine_consume_click,

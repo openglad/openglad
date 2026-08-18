@@ -2287,6 +2287,9 @@ TEST(PickerCommon, scenario_report_troops_own_annotates_every_authored_row)
     // TROOPS: OWN outranks the activation strip: everything authored goes,
     // on every team, wildlife and generators included. Protected named NPCs
     // are the one exemption the sim honours, so the preview keeps them clean.
+    // NO-PACK FALLBACK ARM (issue #218): with no plan registered, activation
+    // is the count-only clamp — here Auto over authored {0, 1}, the same
+    // mask the deleted roster twin produced for this shape.
     ReportWorld fx(true);
     fx.spawn_anchor(0);
     fx.spawn_anchor(1);
@@ -2351,6 +2354,8 @@ TEST(PickerCommon, scenario_report_troops_own_annotates_every_authored_row)
 
 TEST(PickerCommon, scenario_report_preserves_local_team_colors_in_allied_mode)
 {
+    // NO-PACK FALLBACK ARM (issue #218): activation is the count-only
+    // clamp; the strip annotations under test key on the save flag alone.
     ReportWorld fx(true);
     fx.spawn_anchor(0);
     fx.spawn_anchor(1);
@@ -2421,7 +2426,8 @@ TEST(PickerCommon, scenario_report_troops_strip_annotates_outside_versus_campaig
     // The sim consumes ctf_strip_scenario_troops on ANY scripted map (no
     // campaign gate); the preview must mirror it exactly or a custom
     // scripted map outside the shipped campaign strips in-sim with no '!'
-    // in the viewer.
+    // in the viewer. NO-PACK FALLBACK ARM (issue #218): activation is the
+    // count-only clamp (Auto over authored {0, 1}).
     ReportWorld fx(true);
     fx.spawn_anchor(0);
     fx.spawn_anchor(1);
@@ -2450,56 +2456,17 @@ TEST(PickerCommon, scenario_report_troops_strip_annotates_outside_versus_campaig
         << "OWN is not a per-roster-team rule";
 }
 
-TEST(PickerCommon, roster_effective_team_mask_full_precedence_sweep)
+TEST(PickerCommon, scenario_report_no_pack_fallback_is_the_count_clamp)
 {
-    using og::sim::effective_team_mask;
-    using og::sim::roster_effective_team_mask;
-
-    // Empty roster: identical to the count clamp, Auto and numeric alike.
-    EXPECT_EQ(effective_team_mask(0b1111, 0),
-              roster_effective_team_mask(0b1111, 0, 0));
-    EXPECT_EQ(effective_team_mask(0b1111, 3),
-              roster_effective_team_mask(0b1111, 0, 3));
-    EXPECT_EQ(effective_team_mask(0b1101, 2),
-              roster_effective_team_mask(0b1101, 0, 2));
-
-    // Auto resolves to the AUTHORED team count (the zero sentinel means
-    // "as many teams as the map actually has" — issue #218, the
-    // 2026-08-18 directive), so with a roster it always backfills to the
-    // full authored mask...
-    EXPECT_EQ(0b1111, roster_effective_team_mask(0b1111, 0b0001, 0));
-    EXPECT_EQ(0b0101, roster_effective_team_mask(0b0101, 0b0100, 0));
-    // ...unless nothing else is authored (the lone bit stands).
-    EXPECT_EQ(0b0100, roster_effective_team_mask(0b0100, 0b0100, 0));
-    // Auto with two or more rosters still fills to the authored count.
-    EXPECT_EQ(0b1111, roster_effective_team_mask(0b1111, 0b0101, 0));
-    EXPECT_EQ(0b1111, roster_effective_team_mask(0b1111, 0b1110, 0));
-
-    // Explicit count: sparse authored {0, 2, 3}, roster {2}, N = 2 —
-    // the roster stays and team 0 backfills in index order.
-    EXPECT_EQ(0b0101, roster_effective_team_mask(0b1101, 0b0100, 2));
-    // Rosters {0, 3} already meet N = 2: exactly the rosters.
-    EXPECT_EQ(0b1001, roster_effective_team_mask(0b1111, 0b1001, 2));
-    // Solo roster at N = 3: two backfills in index order.
-    EXPECT_EQ(0b0111, roster_effective_team_mask(0b1111, 0b0001, 3));
-    // Max semantics: three rosters outrank N = 2.
-    EXPECT_EQ(0b0111, roster_effective_team_mask(0b1111, 0b0111, 2));
-    // The clamp: N = 1 acts as 2, N = 5+ acts as 4.
-    EXPECT_EQ(0b0011, roster_effective_team_mask(0b1111, 0b0001, 1));
-    EXPECT_EQ(0b1111, roster_effective_team_mask(0b1111, 0b0001, 5));
-    // Roster bits outside the authored domain are masked off first.
-    EXPECT_EQ(0b0011, roster_effective_team_mask(0b0011, 0b1100, 0));
-    EXPECT_EQ(0b0011, roster_effective_team_mask(0b0011, 0b0110, 4));
-}
-
-TEST(PickerCommon, scenario_report_own_mirrors_roster_activation_and_lobby_count)
-{
-    // The preview <-> sim agreement contract (issue #218): under
-    // TROOPS: OWN/FAIR the report's active teams follow the roster rule
-    // plus the lobby count, pinned to the SAME masks the sim-side soccer
-    // tests pin (ModesSoccer.fair_teams_four_with_a_solo_roster_fields_
-    // four_teams, explicit_count_never_strips_a_roster_team,
-    // explicit_count_three_backfills_the_first_non_roster_team).
+    // The documented NO-PACK fallback arm (issue #218): ReportWorld mounts
+    // no campaign, so no on_mode_plan can answer and the preview falls back
+    // to the count-only og::sim::effective_team_mask clamp for EVERY TROOPS
+    // value — the roster rule lives in the mode Lua alone (the C++ twin,
+    // roster_effective_team_mask, is deleted; its activation oracle is
+    // reborn as MatchPlan.activation_precedence_sweep against the real
+    // soccer plan, and the preview <-> sim agreement is the
+    // MatchPlan.agreement_* matrix in og_unit_modes). These pins are
+    // fallback-behavior pins, not activation oracles.
     ReportWorld fx(true);
     for (int team = 0; team < 4; ++team)
         fx.spawn_anchor(team);
@@ -2517,33 +2484,45 @@ TEST(PickerCommon, scenario_report_own_mirrors_roster_activation_and_lobby_count
     save.team_list[2]->deployed = false;  // held back: never in the roster
     save.team_size = 3;
 
-    // TEAMS: Auto — the authored team count (the zero sentinel means "as
-    // many teams as the map actually has", issue #218's 2026-08-18
-    // directive), so every authored side previews live.
+    // TEAMS: Auto — the clamp answers the full authored mask.
     save.ctf_team_count = 0;
     {
         const og::ui::ScenarioRosterReport report =
             og::ui::build_scenario_roster_report(fx.world(), save);
+        EXPECT_FALSE(report.plan_valid) << "no pack = no plan";
+        EXPECT_FALSE(report.plan_error)
+            << "an unregistered plan is a fallback, not a script error";
+        EXPECT_EQ("", report.mode_name);
         EXPECT_TRUE(report.team_active[0]);
         EXPECT_TRUE(report.team_active[1]);
         EXPECT_TRUE(report.team_active[2]);
         EXPECT_TRUE(report.team_active[3]);
         const std::vector<std::string> lines =
             og::ui::format_scenario_report_lines(report);
+        EXPECT_TRUE(any_line_contains(lines, "MATCH: 4 AUTHORED TEAMS"))
+            << "the fallback keeps today's exact lines";
         EXPECT_TRUE(any_line_contains(lines, "GREEN TEAM  MARKERS: 1  ACTIVE"));
         EXPECT_TRUE(any_line_contains(lines, "BLUE TEAM  MARKERS: 1  ACTIVE"));
+        EXPECT_FALSE(any_line_contains(lines, "MATCH RULES UNAVAILABLE"));
     }
 
-    // TEAMS: 4 — the lobby count wins; every authored side previews live.
-    save.ctf_team_count = 4;
+    // TEAMS: 2 — the count clamp takes the first two AUTHORED teams
+    // ({0, 1}); the deployed rosters {0, 2} do not steer the fallback
+    // (the old twin previewed {0, 2} here — that rule now answers only
+    // through a registered plan).
+    save.ctf_team_count = 2;
     {
         const og::ui::ScenarioRosterReport report =
             og::ui::build_scenario_roster_report(fx.world(), save);
-        for (std::size_t t = 0; t < 4; ++t)
-            EXPECT_TRUE(report.team_active[t]) << "team " << t;
+        EXPECT_TRUE(report.team_active[0]);
+        EXPECT_TRUE(report.team_active[1]);
+        EXPECT_FALSE(report.team_active[2])
+            << "count-only fallback: a roster team beyond the clamp count "
+               "previews inactive without a plan";
+        EXPECT_FALSE(report.team_active[3]);
     }
 
-    // TEAMS: 3 — rosters {0, 2} plus the first non-roster team, 1.
+    // TEAMS: 3 — the first three authored teams.
     save.ctf_team_count = 3;
     {
         const og::ui::ScenarioRosterReport report =
@@ -2554,35 +2533,9 @@ TEST(PickerCommon, scenario_report_own_mirrors_roster_activation_and_lobby_count
         EXPECT_FALSE(report.team_active[3]);
     }
 
-    // TEAMS: 2 — max semantics: the rosters already meet the count.
-    save.ctf_team_count = 2;
-    {
-        const og::ui::ScenarioRosterReport report =
-            og::ui::build_scenario_roster_report(fx.world(), save);
-        EXPECT_TRUE(report.team_active[0]);
-        EXPECT_FALSE(report.team_active[1])
-            << "a held-back character is not a roster team";
-        EXPECT_TRUE(report.team_active[2]);
-        EXPECT_FALSE(report.team_active[3]);
-    }
-
-    // FAIR previews byte-identically to OWN (the D26/D33 twin).
+    // FAIR falls back identically to OWN (both are plan-side rules).
     save.ctf_strip_scenario_troops = og::sim::kTroopsMatched;
-    save.ctf_team_count = 4;
-    {
-        const og::ui::ScenarioRosterReport report =
-            og::ui::build_scenario_roster_report(fx.world(), save);
-        for (std::size_t t = 0; t < 4; ++t)
-            EXPECT_TRUE(report.team_active[t]) << "team " << t;
-    }
-
-    // OWN with an empty company: the plain count clamp stands (all-bot).
-    save.ctf_strip_scenario_troops = 2;
     save.ctf_team_count = 2;
-    save.team_list[0].reset();
-    save.team_list[1].reset();
-    save.team_list[2].reset();
-    save.team_size = 0;
     {
         const og::ui::ScenarioRosterReport report =
             og::ui::build_scenario_roster_report(fx.world(), save);
@@ -2591,6 +2544,38 @@ TEST(PickerCommon, scenario_report_own_mirrors_roster_activation_and_lobby_count
         EXPECT_FALSE(report.team_active[2]);
         EXPECT_FALSE(report.team_active[3]);
     }
+}
+
+TEST(PickerCommon, lobby_roster_team_counts_counts_deployed_slots)
+{
+    // The networked preview's roster marshaling: deployed slots per
+    // teamnum across ALL seats (every peer receives every roster), held
+    // back and out-of-range slots skipped.
+    std::vector<og::sim::LobbyPlayer> players(2);
+    og::sim::LobbyCharacterSlot slot;
+    slot.character.teamnum = 0;
+    players[0].character_slots.push_back(slot);
+    players[0].character_slots.push_back(slot);
+    slot.character.teamnum = 2;
+    players[0].character_slots.push_back(slot);
+    slot.deployed = false;  // held back: never counted
+    players[0].character_slots.push_back(slot);
+    slot.deployed = true;
+    slot.character.teamnum = 2;
+    players[1].character_slots.push_back(slot);
+    slot.character.teamnum = 7;  // out of the score range: skipped
+    players[1].character_slots.push_back(slot);
+
+    const std::array<int, 4> counts =
+        og::ui::lobby_roster_team_counts(players);
+    EXPECT_EQ(2, counts[0]);
+    EXPECT_EQ(0, counts[1]);
+    EXPECT_EQ(2, counts[2]) << "seats combine per team";
+    EXPECT_EQ(0, counts[3]);
+
+    EXPECT_EQ((std::array<int, 4>{}),
+              og::ui::lobby_roster_team_counts({}))
+        << "an empty lobby counts nobody";
 }
 
 // --- MATCHUP detail pagination (the per-team '>' pager) ---------------------
