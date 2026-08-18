@@ -20,6 +20,7 @@
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/mode/match_plan.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/living.h>
 #include <openglad/gameplay/weap.h>
@@ -1046,6 +1047,7 @@ constexpr LevelHookName kLevelHookNames[] = {
     {"on_mode_tick", LevelHook::ModeTick},
     {"on_damage", LevelHook::Damage},
     {"on_respawn", LevelHook::Respawn},
+    {"on_mode_plan", LevelHook::ModePlan},
 };
 
 // og.register_level_hooks(level_id, { on_load=, on_tick=, on_entity_death=,
@@ -2270,6 +2272,199 @@ bool push_level_hook_fn(lua_State* L, VmState* st, LevelHook kind,
     return false;
 }
 
+// ---------------------------------------------------------------------------
+// on_mode_plan dispatch (the pure PLAN phase)
+// ---------------------------------------------------------------------------
+
+// RAII arm of the plan-dispatch fence (VmState::plan_dispatch) around the
+// on_mode_plan pcall. The CampaignDispatchScope discipline: never arms at
+// nested entry depth — a plan dispatched from inside another Lua entry
+// would share that frame's budget and un-fence on the inner scope's exit —
+// so nesting is a caller bug: assert, refuse to arm, and the dispatcher
+// treats the plan as failed.
+class PlanDispatchScope {
+public:
+    PlanDispatchScope(VmState& st, ScriptHost::Impl& impl) : st_(st)
+    {
+        assert(impl.entry_depth == 0 && !st.plan_dispatch);
+        if (impl.entry_depth == 0 && !st.plan_dispatch) {
+            st_.plan_dispatch = true;
+            armed_ = true;
+        }
+    }
+    ~PlanDispatchScope()
+    {
+        if (armed_)
+            st_.plan_dispatch = false;
+    }
+    PlanDispatchScope(const PlanDispatchScope&) = delete;
+    PlanDispatchScope& operator=(const PlanDispatchScope&) = delete;
+    bool armed() const { return armed_; }
+
+private:
+    VmState& st_;
+    bool armed_ = false;
+};
+
+// Marshals the census into the plan's inputs table (numbers and tables
+// only — no handle ever reaches a plan; the fence closes the rest).
+void push_match_plan_inputs(lua_State* L,
+                            const og::sim::MatchPlanInputs& in)
+{
+    lua_createtable(L, 0, 6);
+    lua_pushinteger(L, in.team_count);
+    lua_setfield(L, -2, "team_count");
+    lua_pushinteger(L, in.strip_troops);
+    lua_setfield(L, -2, "strip_troops");
+    lua_pushinteger(L, in.score_limit);
+    lua_setfield(L, -2, "score_limit");
+    lua_pushinteger(L, in.respawn_ticks);
+    lua_setfield(L, -2, "respawn_ticks");
+    lua_createtable(L, static_cast<int>(in.teams.size()), 0);
+    for (std::size_t t = 0; t < in.teams.size(); ++t) {
+        const og::sim::MatchPlanTeamInputs& row = in.teams[t];
+        lua_createtable(L, 0, 4);
+        lua_pushinteger(L, row.anchors);
+        lua_setfield(L, -2, "anchors");
+        lua_pushinteger(L, row.roster);
+        lua_setfield(L, -2, "roster");
+        lua_pushinteger(L, row.npcs);
+        lua_setfield(L, -2, "npcs");
+        lua_pushinteger(L, row.generators);
+        lua_setfield(L, -2, "generators");
+        lua_rawseti(L, -2, static_cast<lua_Integer>(t) + 1);
+    }
+    lua_setfield(L, -2, "teams");
+    lua_createtable(L, static_cast<int>(in.flags.size()), 0);
+    for (std::size_t k = 0; k < in.flags.size(); ++k) {
+        lua_createtable(L, 0, 2);
+        lua_pushinteger(L, in.flags[k].team);
+        lua_setfield(L, -2, "team");
+        lua_pushinteger(L, in.flags[k].level);
+        lua_setfield(L, -2, "level");
+        lua_rawseti(L, -2, static_cast<lua_Integer>(k) + 1);
+    }
+    lua_setfield(L, -2, "flags");
+}
+
+int plan_field_int(lua_State* L, int idx, const char* name)
+{
+    lua_getfield(L, idx, name);
+    const int v = lua_isnumber(L, -1)
+                      ? static_cast<int>(lua_tointeger(L, -1))
+                      : 0;
+    lua_pop(L, 1);
+    return v;
+}
+
+bool plan_field_bool(lua_State* L, int idx, const char* name)
+{
+    lua_getfield(L, idx, name);
+    const bool v = lua_toboolean(L, -1) != 0;
+    lua_pop(L, 1);
+    return v;
+}
+
+std::string plan_field_string(lua_State* L, int idx, const char* name)
+{
+    lua_getfield(L, idx, name);
+    std::string v;
+    if (lua_type(L, -1) == LUA_TSTRING)
+        v = lua_tostring(L, -1);
+    lua_pop(L, 1);
+    return v;
+}
+
+og::sim::MatchPlanFill plan_fill_from_label(const std::string& label)
+{
+    using og::sim::MatchPlanFill;
+    if (label == "company")
+        return MatchPlanFill::Company;
+    if (label == "troops")
+        return MatchPlanFill::Troops;
+    if (label == "bots")
+        return MatchPlanFill::Bots;
+    if (label == "matched")
+        return MatchPlanFill::Matched;
+    if (label == "generators")
+        return MatchPlanFill::Generators;
+    if (label == "empty")
+        return MatchPlanFill::Empty;
+    return MatchPlanFill::Other;
+}
+
+// Parses the plan table at the top of the stack into the engine summary.
+// Defensive throughout: a missing or mistyped field reads as its default,
+// an unknown fill string is carried verbatim (clipped) as Fill::Other, and
+// masks are clamped to the four score-team bits.
+og::sim::MatchPlanSummary parse_match_plan_summary(lua_State* L)
+{
+    og::sim::MatchPlanSummary out;
+    const int idx = lua_gettop(L);
+    out.mode_name = plan_field_string(L, idx, "mode");
+    out.starts = plan_field_bool(L, idx, "starts");
+    out.reason = plan_field_string(L, idx, "reason");
+    out.authored_mask =
+        static_cast<std::uint8_t>(plan_field_int(L, idx, "authored_mask") & 0xF);
+    out.active_mask =
+        static_cast<std::uint8_t>(plan_field_int(L, idx, "active_mask") & 0xF);
+    out.matched = plan_field_bool(L, idx, "matched");
+    out.matched_size = plan_field_int(L, idx, "matched_size");
+    out.score_limit = plan_field_int(L, idx, "score_limit");
+    out.seeded_squads = plan_field_bool(L, idx, "seeded_squads");
+    lua_getfield(L, idx, "teams");
+    if (lua_istable(L, -1)) {
+        for (std::size_t t = 0; t < out.teams.size(); ++t) {
+            lua_rawgeti(L, -1, static_cast<lua_Integer>(t) + 1);
+            if (lua_istable(L, -1)) {
+                const int row = lua_gettop(L);
+                og::sim::MatchPlanTeamSummary& team = out.teams[t];
+                team.active = plan_field_bool(L, row, "active");
+                team.count = plan_field_int(L, row, "count");
+                team.fill_label = plan_field_string(L, row, "fill");
+                if (team.fill_label.size() > og::sim::kMatchPlanFillLabelMax)
+                    team.fill_label.resize(og::sim::kMatchPlanFillLabelMax);
+                team.fill = plan_fill_from_label(team.fill_label);
+            }
+            lua_pop(L, 1);
+        }
+    }
+    lua_pop(L, 1);
+    return out;
+}
+
+enum class PlanDispatch { NoHook, Error, Ok };
+
+// The one on_mode_plan pcall site, shared by the launch chaining
+// (level_mode_init) and the preview (level_mode_plan). Ok leaves the
+// hook's single result value on the stack for the caller; NoHook and
+// Error leave the stack exactly as found.
+PlanDispatch dispatch_mode_plan(ScriptHost::Impl& impl, VmState* st,
+                                int level_id,
+                                const og::sim::MatchPlanInputs& inputs)
+{
+    lua_State* L = impl.L;
+    if ((st->level_hook_kinds &
+         (1u << static_cast<unsigned>(LevelHook::ModePlan))) == 0)
+        return PlanDispatch::NoHook;
+    if (!push_level_hook_fn(L, st, LevelHook::ModePlan, level_id))
+        return PlanDispatch::NoHook;
+    lua_pushinteger(L, level_id);
+    push_match_plan_inputs(L, inputs);
+    bool ok = false;
+    {
+        PlanDispatchScope fence(*st, impl);
+        if (fence.armed()) {
+            ok = impl.protected_call("level:on_mode_plan", 2, 1);
+        } else {
+            // Refuse to run a plan unfenced (nested-entry caller bug);
+            // deterministic on every peer, reads as a failed plan.
+            lua_pop(L, 3);
+        }
+    }
+    return ok ? PlanDispatch::Ok : PlanDispatch::Error;
+}
+
 }  // namespace
 
 std::uint32_t level_hook_kinds_for(int level_id)
@@ -2429,17 +2624,63 @@ bool level_mode_init(GameWorld* world)
     if (st == nullptr || world == nullptr)
         return false;
     ScriptHost::Impl& impl = st->owner->host().impl();
-    if (!push_level_hook_fn(impl.L, st, LevelHook::ModeInit, world->id))
+    lua_State* L = impl.L;
+    if (!push_level_hook_fn(L, st, LevelHook::ModeInit, world->id))
         return false;
-    const std::uint64_t gen = push_dispatch_gen(impl.L);
-    lua_pushinteger(impl.L, world->id);
+    const std::uint64_t gen = push_dispatch_gen(L);
+    lua_pushinteger(L, world->id);
+    // The PLAN phase, chained through the stack: when this level registered
+    // on_mode_plan, its plan table becomes on_mode_init's second argument —
+    // the plan value is never marshaled into C++ at launch, so plan and
+    // apply consume the exact same Lua table. Each protected_call is
+    // outermost and gets the full instruction budget. No hook pushes nil
+    // (FFA/Mutant and third-party packs ignore the extra argument).
+    const og::sim::MatchPlanInputs inputs =
+        og::sim::build_match_plan_inputs(*world);
+    switch (dispatch_mode_plan(impl, st, world->id, inputs)) {
+    case PlanDispatch::NoHook:
+        lua_pushnil(L);
+        break;
+    case PlanDispatch::Error:
+        // A plan error at launch is the failed-init shape: mode inactive,
+        // classic rules next tick. protected_call cleaned its own frame
+        // and recorded the error; drop the init fn + level argument.
+        lua_pop(L, 2);
+        pop_dispatch_gen(L, gen);
+        return false;
+    case PlanDispatch::Ok:
+        // The plan value stays on the stack as init's second argument.
+        break;
+    }
     // A failing init reports false so mode_run_tick leaves the mode
     // inactive and the level falls to classic rules next tick (the CTF
     // fewer-than-two-flag-teams shape). The error itself is recorded by
     // protected_call (script host error store).
-    const bool ok = impl.protected_call("level:on_mode_init", 1, 0);
-    pop_dispatch_gen(impl.L, gen);
+    const bool ok = impl.protected_call("level:on_mode_init", 2, 0);
+    pop_dispatch_gen(L, gen);
     return ok;
+}
+
+std::optional<og::sim::MatchPlanSummary> level_mode_plan(
+    int level_id, const og::sim::MatchPlanInputs& inputs)
+{
+    VmState* st =
+        level_vm_state(1u << static_cast<unsigned>(LevelHook::ModePlan));
+    if (st == nullptr)
+        return std::nullopt;
+    ScriptHost::Impl& impl = st->owner->host().impl();
+    lua_State* L = impl.L;
+    const std::uint64_t gen = push_dispatch_gen(L);
+    std::optional<og::sim::MatchPlanSummary> out;
+    if (dispatch_mode_plan(impl, st, level_id, inputs) == PlanDispatch::Ok) {
+        // A plan that answers anything but a table (nil included) reads as
+        // "no plan" — same fallback arm as an unregistered hook.
+        if (lua_istable(L, -1))
+            out = parse_match_plan_summary(L);
+        lua_pop(L, 1);
+    }
+    pop_dispatch_gen(L, gen);
+    return out;
 }
 
 void level_mode_tick(GameWorld* world)

@@ -136,6 +136,13 @@ struct VmState {
     // og.campaign_* bindings and the pure helpers stay legal
     // (docs/campaign-scripting-design.md, "The campaign-dispatch fence").
     bool campaign_dispatch = false;
+    // TRUE while an on_mode_plan dispatch is on the stack. Same closure as
+    // the campaign fence (load_fenced_call), its own message: the plan
+    // phase is a pure function of (level, inputs, manifest row), so every
+    // world og.* entry errors. Handles never reach a plan (its inputs are
+    // numbers and tables only — build_match_plan_inputs), which closes the
+    // unfenced walker-method surface by construction.
+    bool plan_dispatch = false;
 };
 
 // Level-script hook kinds (bit positions in level_hook_kinds and the kind
@@ -146,10 +153,11 @@ enum class LevelHook : int {
     EntityDeath = 2,
     EntitySpawn = 3,
     // Scripted-mode (TYPE_SCRIPTED) hooks:
-    ModeInit = 4,     // on_mode_init(level) — once, at activation
+    ModeInit = 4,     // on_mode_init(level, plan) — once, at activation
     ModeTick = 5,     // on_mode_tick(level, tick) — post-act, every tick
     Damage = 6,       // on_damage(target, attacker, amount) -> number|false|nil
     Respawn = 7,      // on_respawn(ent) — engine revive -> Lua placement
+    ModePlan = 8,     // on_mode_plan(level, inputs) -> plan — pure, fenced
 };
 
 VmState* get_vm_state(lua_State* L);

@@ -800,6 +800,28 @@ LEVEL_HOOK_ARG_OVERRIDES: Dict[str, List[Tuple[str, str]]] = {
         ("killer", "og.Walker?"),
         ("killer_team", "integer"),
     ],
+    # on_mode_init(level, plan); plan is the same table this level's
+    # on_mode_plan answered (chained through the Lua stack at launch), or
+    # nil when the level registers no plan hook.
+    "level:on_mode_init": [
+        ("level", "integer"),
+        ("plan", "og.MatchPlan?"),
+    ],
+    # on_mode_plan(level, inputs) -> plan. Pure and fenced: every world
+    # og.* entry errors during the dispatch, so the answer must be a
+    # function of (level, inputs, manifest row). Allowed surface: the
+    # sandbox arithmetic (og.div/mod/f*/i*/trunc/log), og.max/min/clamp/
+    # sign, og.C, og.api, pure lib helpers and the closed-over row.
+    "level:on_mode_plan": [
+        ("level", "integer"),
+        ("inputs", "og.MatchPlanInputs"),
+    ],
+}
+
+# Hook return types the body inference cannot see (the dispatcher reads the
+# result C++-side). Keyed like LEVEL_HOOK_ARG_OVERRIDES.
+LEVEL_HOOK_RETURNS: Dict[str, List[str]] = {
+    "level:on_mode_plan": ["og.MatchPlan?"],
 }
 
 
@@ -1227,10 +1249,57 @@ def generate(repo_root: Path) -> str:
     rows = []
     for name in level_names:
         args = level_sigs.get("level:" + name)
-        sig = Signature(params=args or [], todo=args is None)
+        sig = Signature(params=args or [],
+                        returns=LEVEL_HOOK_RETURNS.get("level:" + name, []),
+                        todo=args is None)
         rows.append(field_line(name, fun_type(sig, None), "", sig.todo,
                                optional=True))
     out.extend(sorted(rows))
+    out.append("")
+
+    out.append("-- on_mode_plan census (build_match_plan_inputs, match_plan.h):")
+    out.append("-- request knobs raw (0 = Auto/unset), one row per score team,")
+    out.append("-- raw {team, level} flag rows in fx-list order (unfiltered —")
+    out.append("-- the first-flag-per-team rule stays in the plan).")
+    out.append("---@class og.MatchPlanInputs")
+    out.append("---@field team_count integer")
+    out.append("---@field strip_troops integer")
+    out.append("---@field score_limit integer")
+    out.append("---@field respawn_ticks integer")
+    out.append("---@field teams og.MatchPlanTeamInputs[]")
+    out.append("---@field flags og.MatchPlanFlag[]")
+    out.append("")
+    out.append("---@class og.MatchPlanTeamInputs")
+    out.append("---@field anchors integer")
+    out.append("---@field roster integer")
+    out.append("---@field npcs integer")
+    out.append("---@field generators integer")
+    out.append("")
+    out.append("---@class og.MatchPlanFlag")
+    out.append("---@field team integer")
+    out.append("---@field level integer")
+    out.append("")
+    out.append("-- The plan on_mode_plan answers: consumed verbatim by")
+    out.append("-- on_mode_init (apply EXECUTES the plan) and parsed by the")
+    out.append("-- engine preview (MatchPlanSummary). fill vocabulary:")
+    out.append('-- "company"|"troops"|"bots"|"matched"|"generators"|"empty"')
+    out.append("-- (unknown strings render verbatim).")
+    out.append("---@class og.MatchPlan")
+    out.append("---@field mode string")
+    out.append("---@field starts boolean")
+    out.append("---@field reason? string")
+    out.append("---@field authored_mask integer")
+    out.append("---@field active_mask integer")
+    out.append("---@field matched boolean")
+    out.append("---@field matched_size integer")
+    out.append("---@field score_limit integer")
+    out.append("---@field seeded_squads boolean")
+    out.append("---@field teams og.MatchPlanTeam[]")
+    out.append("")
+    out.append("---@class og.MatchPlanTeam")
+    out.append("---@field active boolean")
+    out.append("---@field fill string")
+    out.append("---@field count integer")
     out.append("")
 
     out.append("-- Per-entity hook table for og.set_entity_hooks (one-shot:")
