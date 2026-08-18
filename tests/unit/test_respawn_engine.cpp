@@ -561,6 +561,51 @@ TEST(RespawnEngine, ai_fire_does_not_consume_an_adjacent_pending_ai_stain)
     EXPECT_EQ(0, live_stains_for_team(arena.world(), 1));
 }
 
+TEST(RespawnEngine, ai_fire_leaves_the_stain_of_a_neighbor_that_died_this_tick)
+{
+    RespawnArena arena;
+    walker* bot = arena.fx.spawn_living(FAMILY_ARCHER, 1, 480, 700);
+    walker* bot2 = arena.fx.spawn_living(FAMILY_ARCHER, 1, 484, 700);
+
+    arena.kill(bot);
+    ASSERT_TRUE(arena.schedule(bot, 1));
+    // The neighbor falls on the very tick the timer expires: dead walkers
+    // leave the obmap, so the bodies overlap within the 8px scrub window,
+    // and the mode's schedule_dead has not run yet — mode_run_tick fires
+    // the engine timers (step 2) BEFORE dispatching on_mode_tick (step 3).
+    arena.kill(bot2);
+    ASSERT_EQ(1, live_stains_for_character(arena.world(), 1, 0, nullptr, bot));
+    ASSERT_EQ(1, live_stains_for_character(arena.world(), 1, 0, nullptr,
+                                           bot2));
+
+    og::sim::respawn_run_timers(arena.world());
+
+    EXPECT_EQ(0, live_stains_for_character(arena.world(), 1, 0, nullptr, bot))
+        << "the firing corpse's own stain is scrubbed";
+    EXPECT_EQ(1,
+              live_stains_for_character(arena.world(), 1, 0, nullptr, bot2))
+        << "a neighbor that died this very tick — not yet queued — keeps "
+           "its stain for its own countdown (#221)";
+
+    // Step 3 equivalent: the mode schedules the fresh corpse the same tick.
+    ASSERT_TRUE(arena.schedule(bot2, 3));
+    // Clear the pad so the second fire can place its replacement.
+    walker* fresh = find_alive_with(arena.world(), FAMILY_ARCHER, 1);
+    ASSERT_NE(nullptr, fresh);
+    fresh->setxy(480, 600);
+
+    arena.fx.tick(2);
+    EXPECT_EQ(1,
+              live_stains_for_character(arena.world(), 1, 0, nullptr, bot2))
+        << "the stain stays raisable through the countdown";
+
+    arena.fx.tick();
+    EXPECT_EQ(0,
+              live_stains_for_character(arena.world(), 1, 0, nullptr, bot2))
+        << "the neighbor's own fire retires its stain in turn";
+    EXPECT_EQ(0, live_stains_for_team(arena.world(), 1));
+}
+
 TEST(RespawnEngine, positional_scrub_preserves_pending_ai_stains)
 {
     RespawnArena arena;

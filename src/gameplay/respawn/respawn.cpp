@@ -220,6 +220,34 @@ enum class CorpseDropScrub
     return false;
 }
 
+// True when this stain pairs with a dead body other than the firing corpse
+// that is still in the world. At fire time such a neighbor is either a
+// queued corpse mid-countdown (the dead sweep holds it for its entry) or a
+// fighter that fell this very tick (mode_run_tick fires the timers before
+// on_mode_tick can schedule it; classic mode 2 orders its scan the same
+// way), and both keep their stain until their own fire. Pairing is the
+// pending rule's: identity, team, floor, exact corner.
+[[nodiscard]] bool stain_belongs_to_another_corpse(const GameWorld& world,
+                                                   const walker* stain,
+                                                   const walker* firing)
+{
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* other = uptr.get();
+        if (other != nullptr && other != firing && other->dead() &&
+            other->query_order() == Order::Living &&
+            stain_matches_corpse_identity(stain, other) &&
+            stain->team_num() == other->team_num() &&
+            stain->floor() == other->floor() &&
+            stain->xpos() == other->xpos() &&
+            stain->ypos() == other->ypos())
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 // LIFE_GEM hearts are retired as soon as any corpse is scheduled: repeated
 // respawns must not farm the time-limit tiebreaker (gems only ever drop for
 // myguy corpses, so that arm is a no-op for AI). Every fighter's stain —
@@ -253,11 +281,14 @@ void scrub_corpse_drops_in(const GameWorld& world,
             continue;
         }
         // Guy-less stains all match each other, so identity alone cannot
-        // shield a NEIGHBORING pending fighter's stain from this fire. The
-        // queue can: an entry is erased before its fire runs, so the firing
-        // corpse's own stain is never pending here and still gets scrubbed.
+        // shield a NEIGHBORING fighter's stain from this fire. Its body
+        // can: a dead neighbor still in the world — queued mid-countdown,
+        // or fallen this very tick with no entry yet (the death scan and
+        // the mode's schedule_dead run after the timers) — keeps its stain
+        // until its own fire. The firing corpse itself is excluded, so its
+        // own stain still gets scrubbed.
         if (fx->family() == FAMILY_STAIN &&
-            stain_belongs_to_pending_respawn(world, fx))
+            stain_belongs_to_another_corpse(world, fx, corpse))
         {
             continue;
         }
@@ -290,8 +321,11 @@ void schedule_respawn(GameWorld& world, walker* corpse)
             [](const RespawnEntry& entry) { return entry.kind == 1; });
         if (victim == respawn.respawn_queue.end())
             return;
-        // Fire the evicted bot immediately instead of dropping it: its corpse
-        // is already swept, so a plain erase would shrink the roster forever.
+        // Fire the evicted bot immediately instead of dropping it: the dead
+        // sweep has been holding its corpse for this entry, so a plain erase
+        // would hand the body to the end-of-tick sweep with its stain
+        // stranded — and would shrink the roster forever. The fire disposes
+        // of the held body and fields the replacement in one step.
         // Scripted modes take the RNG-free classic fire; NO on_respawn
         // dispatch here — scheduling can run inside a Lua binding call, and
         // a nested hook dispatch from an eviction is a re-entrancy the
@@ -302,9 +336,10 @@ void schedule_respawn(GameWorld& world, walker* corpse)
         // A blocked classic AI fire re-enqueues itself: if the queue is full
         // again, drop that just-appended retry rather than the incoming
         // corpse. Either way one AI entry is permanently lost (a non-myguy
-        // corpse is swept this same tick and never re-scanned), but the
-        // retry's spot is currently occupied while the incoming corpse's may
-        // be clear — and the cap must hold for the snapshot serializer.
+        // corpse with no pending entry is released to the end-of-tick sweep
+        // and never re-scanned), but the retry's spot is currently occupied
+        // while the incoming corpse's may be clear — and the cap must hold
+        // for the snapshot serializer.
         if (respawn.respawn_queue.size() >=
             static_cast<std::size_t>(kRespawnMaxQueueEntries))
         {
