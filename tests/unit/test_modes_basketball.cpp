@@ -664,6 +664,26 @@ TEST_F(ModesBasketball, incomplete_manifest_rows_refuse_the_match)
     }
 }
 
+TEST_F(ModesBasketball, all_bot_own_auto_matches_the_explicit_count_shape)
+{
+    // Soccer's twin (see test_modes_soccer.cpp, same name): all-bot
+    // TROOPS: OWN on a FOUR-anchor court whose manifest row declares
+    // teams = 2 with two hoops (kBballLevelA). TEAMS: Auto = the authored
+    // count (the 2026-08-18 directive, #218 review), so init refuses like
+    // explicit TEAMS: 4 would (no hoop for team 2) instead of silently
+    // fielding two teams off the manifest default.
+    ModesCtfWorld fx(kBballLevelA);
+    fx.world().ctf_requested_strip_scenario_troops = 2;
+    for (int team = 0; team < 4; ++team)
+        fx.spawn_anchor(team, static_cast<short>(128 + 64 * team), 700);
+    fx.tick(1);
+
+    EXPECT_TRUE(fx.world().mode.init_attempted);
+    EXPECT_FALSE(fx.world().mode.active)
+        << "Auto rides the explicit-count arm, not the manifest default";
+    EXPECT_TRUE(has_script_error(fx.world(), "no hoop for team 2"));
+}
+
 TEST_F(ModesBasketball, four_hoop_court_and_the_limit_rows_bank)
 {
     ModesCtfWorld four(kBballLevelB);

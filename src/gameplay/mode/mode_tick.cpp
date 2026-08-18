@@ -118,6 +118,12 @@ std::uint8_t roster_effective_team_mask(std::uint8_t authored,
         static_cast<std::uint8_t>((1u << SCORE_TEAM_COUNT) - 1u);
     authored = static_cast<std::uint8_t>(authored & all_mask);
     roster = static_cast<std::uint8_t>(roster & authored);
+    // All-bot OWN/FAIR (zero roster): the plain activation clamp IS the
+    // one rule applied to an empty roster — at Auto (requested <= 0) it
+    // yields the full authored mask (= the authored count), at an explicit
+    // N the first N authored teams, exactly what the backfill loop below
+    // would produce from mask = 0. The Lua twin (own_roster_activation)
+    // runs its one-rule arm for this shape and lands on the same mask.
     if (roster == 0)
         return effective_team_mask(authored, requested);
     // The lobby TEAMS request wins (issue #218): roster teams all stay

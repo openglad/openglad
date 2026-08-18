@@ -668,17 +668,17 @@ local function on_mode_init(level, row)
       end
     end
   end
-  -- TROOPS:OWN with deployed rosters: the lobby request wins the COUNT —
-  -- roster teams plus authored backfill (issue #218), with TEAMS: Auto
-  -- resolving to the authored count (2026-08-18 directive); a
+  -- TROOPS:OWN/FAIR (rosters or all-bot alike): the lobby request wins
+  -- the COUNT — roster teams plus authored backfill (issue #218), with
+  -- TEAMS: Auto resolving to the authored count (2026-08-18 directive); a
   -- count-backfilled team here fields no bots (D17) but keeps its
   -- generators under OWN's keep_generators arm, so gen-authored teams
-  -- self-populate. Otherwise the lobby request (manifest default) over the
-  -- authored generator/living teams.
+  -- self-populate. Only TROOPS:ALL falls through to the lobby request
+  -- (manifest default at Auto) over the authored generator/living teams.
   local mask = match.own_roster_activation(authored_mask, obs)
   if mask == nil then
-    -- Normalized request: Auto (raw <= 0) means no numeric clamp — matched
-    -- POWER is out of scope for Onslaught entirely (D17).
+    -- TROOPS:ALL. Normalized request: Auto (raw <= 0) takes the manifest
+    -- default — matched POWER is out of scope for Onslaught entirely (D17).
     local requested = core.team_count_request()
     if requested <= 0 then
       requested = row.teams or 0

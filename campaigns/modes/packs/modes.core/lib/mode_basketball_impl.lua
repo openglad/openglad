@@ -2259,10 +2259,11 @@ local function on_mode_init(level, row)
     error("basketball: no manifest row for level " .. level)
   end
   -- Active teams: anchor-marker teams (the versus authoring contract)
-  -- clamped by the lobby request; the manifest team count is the default
-  -- request; under TROOPS:OWN the lobby request wins the COUNT — roster
-  -- teams plus authored backfill (issue #218), TEAMS: Auto = the authored
-  -- count (2026-08-18 directive).
+  -- clamped by the lobby request. Under TROOPS:OWN/FAIR (rosters or
+  -- all-bot alike) the lobby request wins the COUNT — roster teams plus
+  -- authored backfill (issue #218), TEAMS: Auto = the authored count
+  -- (2026-08-18 directive); only under TROOPS:ALL is the manifest team
+  -- count the default request.
   local authored_mask = 0
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
     if og.respawn_anchor_count(team) > 0 then
@@ -2271,7 +2272,8 @@ local function on_mode_init(level, row)
   end
   local mask = match.own_roster_activation(authored_mask, og.oblist())
   if mask == nil then
-    -- Normalized request: Auto (raw <= 0) means no numeric clamp.
+    -- TROOPS:ALL. Normalized request: Auto (raw <= 0) takes the manifest
+    -- default.
     local requested = core.team_count_request()
     if requested <= 0 then
       requested = row.teams or 0

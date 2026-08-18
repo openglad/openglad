@@ -338,27 +338,31 @@ end
 -- TROOPS:OWN activation, the shared ruling all six modes apply: under OWN
 -- (and FAIR, which bundles it) the deployed rosters seed the match.
 -- Returns the replacement active mask, or nil when the standard requested
--- activation stands (TROOPS:ALL, or an all-bot match with no rosters
--- anywhere). Precedence, in evaluation order:
+-- activation stands (TROOPS:ALL only). Precedence, in evaluation order:
 --
---   zero roster teams         nil — a bot match keeps today's shape (the
---                             lobby count / manifest default clamps via
---                             activate_teams at the call site).
---   any roster                ONE rule for every TEAMS value: the request
---                             is the explicit lobby count N, or at
---                             TEAMS: Auto the AUTHORED team count — the
---                             zero sentinel means "as many teams as the
---                             map actually has" (2026-08-18 maintainer
---                             directive, matched-teams-design.md). Roster
---                             teams all stay; authored non-roster teams
---                             backfill in index order until the mask holds
+--   TROOPS: ALL               nil — the call site's requested activation
+--                             (lobby count / manifest default) stands.
+--   OWN/FAIR, any roster      ONE rule for every TEAMS value AND every
+--   shape (empty included)    roster shape: the request is the explicit
+--                             lobby count N, or at TEAMS: Auto the
+--                             AUTHORED team count — the zero sentinel
+--                             means "as many teams as the map actually
+--                             has" (2026-08-18 maintainer directive,
+--                             matched-teams-design.md). Roster teams all
+--                             stay; authored non-roster teams backfill in
+--                             index order until the mask holds
 --                             clamp(request, 2, 4) teams; a roster already
 --                             at or past the count stays exactly the
 --                             roster (max semantics — a deployed side is
 --                             never stripped to satisfy a count). Issue
---                             #218. A solo roster on a map authoring
---                             nobody else comes back alone and trips the
---                             mode's fewer-than-two check.
+--                             #218. An all-bot match (zero rosters
+--                             anywhere) backfills from empty, so its mask
+--                             equals the plain activation clamp of the
+--                             same request — which keeps the C++ preview
+--                             twin (roster_effective_team_mask's
+--                             roster == 0 arm) exact. A solo roster on a
+--                             map authoring nobody else comes back alone
+--                             and trips the mode's fewer-than-two check.
 local function own_roster_activation(authored_mask, obs)
   -- The TROOPS: FAIR census (D15) rides this call — the one walk of the
   -- oblist every mode's on_mode_init shares — so activation and matching
@@ -385,9 +389,6 @@ local function own_roster_activation(authored_mask, obs)
         end
       end
     end
-  end
-  if core.mask_count(roster) == 0 then
-    return nil
   end
   -- The lobby TEAMS request wins (issue #218): it fields that many sides —
   -- TROOPS: OWN/FAIR decide squad COMPOSITION, never the number of teams.

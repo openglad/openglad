@@ -591,6 +591,40 @@ TEST_F(ModesSoccer, troops_own_at_auto_activates_the_authored_team_count)
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
+TEST_F(ModesSoccer, all_bot_own_auto_matches_the_explicit_count_shape)
+{
+    // The 2026-08-18 Auto directive in the ALL-BOT shape (#218 review):
+    // TROOPS: OWN with no roster deployed, on a FOUR-anchor pitch whose
+    // manifest row declares teams = 2 and authors two goal mouths
+    // (kSoccerLevelA). TEAMS: Auto must behave exactly like explicit
+    // TEAMS: 4 — here that is the malformed-authoring refusal (four anchor
+    // teams, two authored mouths), NOT a silent 2-team match riding the
+    // manifest default. Twin worlds prove the equivalence from both sides.
+    auto author = [](ModesCtfWorld& fx) {
+        for (int team = 0; team < 4; ++team)
+            fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 448);
+    };
+    ModesCtfWorld explicit_four(kSoccerLevelA);
+    explicit_four.world().ctf_requested_strip_scenario_troops = 2;
+    explicit_four.world().ctf_requested_team_count = 4;
+    author(explicit_four);
+    explicit_four.tick(1);
+    ModesCtfWorld at_auto(kSoccerLevelA);
+    at_auto.world().ctf_requested_strip_scenario_troops = 2;
+    author(at_auto);
+    at_auto.tick(1);
+
+    EXPECT_TRUE(explicit_four.world().mode.init_attempted);
+    EXPECT_FALSE(explicit_four.world().mode.active);
+    EXPECT_TRUE(has_script_error(explicit_four.world(),
+                                 "no goal rect for team 2"));
+    EXPECT_TRUE(at_auto.world().mode.init_attempted);
+    EXPECT_FALSE(at_auto.world().mode.active)
+        << "Auto rides the explicit-count arm, not the manifest default";
+    EXPECT_TRUE(has_script_error(at_auto.world(), "no goal rect for team 2"))
+        << "same refusal as the explicit TEAMS: 4 twin";
+}
+
 TEST_F(ModesSoccer, fair_teams_four_with_a_solo_roster_fields_four_teams)
 {
     // Issue #218, the reporter's scenario: TROOPS: FAIR + TEAMS: 4 on the
