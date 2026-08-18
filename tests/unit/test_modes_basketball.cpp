@@ -273,6 +273,28 @@ int alive_on_team(GameWorld& world, int team)
     return count;
 }
 
+// Retires a team's dead guy-less bodies, simulating the engine sweep for
+// corpses whose entries were genuinely lost (a full all-player queue). With
+// corpse persistence (#221) a body whose entry is merely hand-cleared is
+// re-adopted by the always-on scan next tick, so the zero-live-zero-pending
+// watchdog edge needs the drained entries' bodies gone too.
+void retire_dead_guyless(GameWorld& world, int team)
+{
+    std::vector<walker*> corpses;
+    for (const auto& uptr : world.oblist)
+    {
+        walker* w = uptr.get();
+        if (w != nullptr && w->dead() && w->myguy == nullptr &&
+            w->query_order() == Order::Living &&
+            w->team_num() == static_cast<unsigned char>(team))
+        {
+            corpses.push_back(w);
+        }
+    }
+    for (walker* w : corpses)
+        world.retire_corpse(w);
+}
+
 // Full behavior digest: mode vars, RNG, oblist positions and command
 // queues, AND the fxlist (the shadow lives there — §11.2 #23 extends the
 // soccer digest to walk it).
@@ -1710,6 +1732,7 @@ TEST_F(ModesBasketball, dead_ball_resets_and_revives_wiped_team)
         EXPECT_EQ(1, ai_entries_for_team(fx.world(), 1))
             << "the corpse scheduled the tick it fell — always-on";
         fx.world().respawn.respawn_queue.clear();
+        retire_dead_guyless(fx.world(), 1);
         fx.tick(597);
         EXPECT_EQ(0, count_notifications(fx.events, "BALL RESET"));
         fx.tick(6);
@@ -3224,9 +3247,11 @@ TEST_F(ModesBasketball, wipe_watchdog_resets_and_revives)
     fx.green->set_dead(1);
     fx.tick(1);
     ASSERT_EQ(0, alive_on_team(fx.world(), 1));
-    // The always-on revive would own this comeback; drain it — the
-    // watchdog arms only for a side with zero live AND zero pending.
+    // The always-on revive would own this comeback; drain it (entry AND
+    // body, the full-queue swept state) — the watchdog arms only for a
+    // side with zero live AND zero pending.
     fx.world().respawn.respawn_queue.clear();
+    retire_dead_guyless(fx.world(), 1);
     fx.tick(1);
     const std::int32_t since = fx.var(kBbStallSince);
     ASSERT_GT(since, 0) << "the wipe watchdog armed";
@@ -4312,11 +4337,14 @@ TEST_F(ModesBasketball, wipe_watchdog_refields_a_matched_team_at_strength)
             w->query_order() == Order::Living && w->team_num() == 1)
             w->set_dead(1);
     }
-    fx.tick(2);  // corpses sweep; their revive entries ride the queue
+    fx.tick(2);  // the corpses persist; their revive entries ride the queue
     ASSERT_EQ(0, alive_on_team(fx.world(), 1));
-    // The D39 reprovision arm guards the drained-queue edge: clear the
-    // in-flight revives so the watchdog reset refields from the plan.
+    // The D39 reprovision arm guards the drained-queue edge (entries
+    // genuinely lost, bodies swept — a full all-player queue): clear the
+    // in-flight revives and their bodies so the watchdog reset refields
+    // from the plan.
     fx.world().respawn.respawn_queue.clear();
+    retire_dead_guyless(fx.world(), 1);
 
     fx.tick(598);
     for (int i = 0;

@@ -188,6 +188,22 @@ void align_before_cadence(GameWorld& world)
     world.tick_count_ = next - 1;
 }
 
+// A live STAIN treasure whose top-left sits at (x, y).
+bool stain_alive_at(GameWorld& world, int x, int y)
+{
+    for (const auto& uptr : world.fxlist)
+    {
+        const walker* w = uptr.get();
+        if (w != nullptr && !w->dead() &&
+            w->query_order() == Order::Treasure &&
+            w->family() == FAMILY_STAIN && w->xpos() == x && w->ypos() == y)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 int alive_on_team(GameWorld& world, int team)
 {
     int count = 0;
@@ -202,6 +218,28 @@ int alive_on_team(GameWorld& world, int team)
         }
     }
     return count;
+}
+
+// Retires a team's dead guy-less bodies, simulating the engine sweep for
+// corpses whose entries were genuinely lost (a full all-player queue). With
+// corpse persistence (#221) a body whose entry is merely hand-cleared is
+// re-adopted by the always-on scan next tick, so the no-revives-in-flight
+// kickoff edge needs the drained entries' bodies gone too.
+void retire_dead_guyless(GameWorld& world, int team)
+{
+    std::vector<walker*> corpses;
+    for (const auto& uptr : world.oblist)
+    {
+        walker* w = uptr.get();
+        if (w != nullptr && w->dead() && w->myguy == nullptr &&
+            w->query_order() == Order::Living &&
+            w->team_num() == static_cast<unsigned char>(team))
+        {
+            corpses.push_back(w);
+        }
+    }
+    for (walker* w : corpses)
+        world.retire_corpse(w);
 }
 
 // Full behavior digest: mode vars, RNG, positions, command queues.
@@ -1247,8 +1285,11 @@ TEST_F(ModesSoccer, goal_kickoff_reprovisions_a_wiped_bot_team)
     ASSERT_EQ(0, alive_on_team(fx.world(), 1));
 
     // The B1 reprovision arm still guards the no-revives-in-flight edge
-    // (evicted or flushed entries): drain the queue, then score.
+    // (entries genuinely lost, bodies swept — a full all-player queue):
+    // drain the queue AND the drained corpses, then score.
     fx.world().respawn.respawn_queue.clear();
+    retire_dead_guyless(fx.world(), 1);
+    retire_dead_guyless(fx.world(), 0);
     fx.world().mode.vars[kSocLastTouch1] = 1;  // team 0 touched last
     fx.set_ball(600, 464, 4 * 256, 0);         // into team 1's strip
     fx.tick(1);
@@ -1434,6 +1475,46 @@ TEST_F(ModesSoccer, submenu_team_gate_is_ignored_every_hero_returns)
     EXPECT_TRUE(player_revive_pending(fx.world(), green_hero->entity_id()))
         << "the Team 1-only choice no longer strands other teams";
     EXPECT_EQ(1, ai_entries_for_team(fx.world(), 0));
+}
+
+// Issue #221 (the playtest report): a slain soccer bot must leave its
+// corpse on the pitch — visible and cleric-raisable — for the whole
+// respawn countdown; the fire then retires it with the replacement.
+TEST_F(ModesSoccer, slain_bot_leaves_a_raisable_corpse_until_respawn)
+{
+    SoccerRespawnWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    ASSERT_EQ(3, alive_on_team(fx.world(), 0)) << "red + hero + bot";
+
+    // The reporter's scenario: a fielded team-0 fighter falls in play,
+    // through the real death path (bloodspot and all).
+    walker* bot = fx.bot;
+    const std::uint32_t corpse_id = bot->entity_id();
+    bot->set_dead(1);
+    bot->death();
+    fx.tick(1);  // the always-on scan queues the corpse
+
+    ASSERT_TRUE(og::sim::respawn_pending_for(fx.world(), bot));
+    EXPECT_TRUE(stain_alive_at(fx.world(), 160, 480))
+        << "the corpse must stay on the pitch through the countdown";
+
+    // The cleric's corpse-discovery seam: nearby_corpse() resolves through
+    // find_nearest_blood, so a raise can reach this body mid-countdown.
+    fx.hero->setxy(184, 480);
+    walker* blood = fx.world().find_nearest_blood(fx.hero);
+    ASSERT_NE(nullptr, blood)
+        << "a cleric beside the fallen bot must find the corpse";
+    EXPECT_EQ(160, blood->xpos());
+    EXPECT_EQ(480, blood->ypos());
+
+    fx.tick(70);  // respawn delay 60 + slack
+    EXPECT_FALSE(stain_alive_at(fx.world(), 160, 480))
+        << "the fire retires the stain along with the corpse";
+    EXPECT_EQ(nullptr, fx.world().find_by_id(corpse_id));
+    EXPECT_EQ(3, alive_on_team(fx.world(), 0))
+        << "the replacement restores the census";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
 TEST_F(ModesSoccer, camped_anchors_cannot_stall_a_respawn)
@@ -2148,13 +2229,15 @@ TEST_F(ModesSoccer, kickoff_reprovisions_a_wiped_matched_team_at_strength)
             w->query_order() == Order::Living && w->team_num() == 1)
             w->set_dead(1);
     }
-    fx.tick(2);  // corpses sweep; their revive entries ride the queue
+    fx.tick(2);  // the corpses persist; their revive entries ride the queue
     ASSERT_EQ(0, alive_on_team(fx.world(), 1));
     EXPECT_EQ(1, ai_entries_for_team(fx.world(), 1))
         << "always-on scheduling covers the matched bot too";
     // The D39 reprovision arm still guards the no-revives-in-flight edge
-    // (evicted or flushed entries): drain the queue, then score.
+    // (entries genuinely lost, bodies swept — a full all-player queue):
+    // drain the queue AND the drained corpses, then score.
     fx.world().respawn.respawn_queue.clear();
+    retire_dead_guyless(fx.world(), 1);
 
     fx.world().mode.vars[kSocLastTouch1] = 1;  // team 0 touched last
     fx.set_ball(600, 464, 4 * 256, 0);         // into team 1's strip
@@ -2212,8 +2295,11 @@ TEST_F(ModesSoccer, kickoff_backstop_matches_a_wiped_human_team_to_target)
     ASSERT_EQ(0, alive_on_team(fx.world(), 1));
     // The guyless corpse scheduled as a plain AI revive under the
     // always-on scan; the D24 measure-and-solve arm guards the
-    // drained-queue edge — clear it so the backstop refields.
+    // drained-queue edge (entries genuinely lost, bodies swept — a full
+    // all-player queue) — clear the queue and the body so the backstop
+    // refields.
     fx.world().respawn.respawn_queue.clear();
+    retire_dead_guyless(fx.world(), 1);
 
     fx.world().mode.vars[kSocLastTouch1] = 1;
     fx.set_ball(600, 464, 4 * 256, 0);

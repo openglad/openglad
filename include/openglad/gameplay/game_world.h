@@ -295,6 +295,10 @@ public:
     walker* add_fx_ob(Order order, std::int32_t family);
     walker* add_weap_ob(Order order, std::int32_t family);
     short remove_ob(walker* ob);
+    // Fire-path disposal of a corpse the dead sweep held in oblist while its
+    // respawn entry was pending: unindex it and move it to dead_list (never a
+    // hard erase — raw borrows and Lua walker handles stay valid).
+    void retire_corpse(walker* ob);
     walker* find_by_id(std::uint32_t entity_id);
     const walker* find_by_id(std::uint32_t entity_id) const;
     std::uint32_t tracked_entity_id(const walker* entity) const;

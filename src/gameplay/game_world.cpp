@@ -1974,7 +1974,11 @@ void GameWorld::tick()
     for (auto e = objects.begin(); e != objects.end();)
     {
         walker* ob = e->get();
-        if (ob && ob->dead() && ob->myguy == nullptr)
+        // A corpse whose respawn entry is still pending stays in the world:
+        // the fire path resolves it by id and a cleric can still raise its
+        // stain. retire_corpse() disposes of it on the fire tick.
+        if (ob && ob->dead() && ob->myguy == nullptr &&
+            !og::sim::respawn_pending_for(*this, ob))
         {
             remove_from_id_index(ob);
             dead.push_back(std::move(*e));
@@ -2211,7 +2215,7 @@ bool GameWorld::has_save_all_protected() const
 // Formats: "" (single-floor non-tower, and the Gate); "FLR: f/n" (normal
 // multifloor, 1-indexed); "FLR: N" (tower single-story floor N); "F N: f/n"
 // as "F{N}: {f}/{n}" (tower multi-story). Appended at EOF: the parity canary
-// pins in this file (1620/1622/1710) sit far above and must never shift.
+// pins in this file (1680/1682/1803) sit far above and must never shift.
 std::string floor_hud_label(const GameWorld& world, int walker_floor)
 {
     const int floors = world.floor_count();
@@ -2230,4 +2234,27 @@ std::string floor_hud_label(const GameWorld& world, int walker_floor)
         return std::format("FLR: {}", world.id - og::kTowerGateLevel);
     return std::format("F{}: {}/{}", world.id - og::kTowerGateLevel,
                        f + 1, floors);
+}
+
+// Fire-path disposal of a corpse the dead sweep left in oblist while its
+// respawn entry was pending (contract in game_world.h): the sweep's exact
+// motion, run on the fire tick instead — unindex, move the body to
+// dead_list so raw borrows and Lua walker handles stay valid, and keep
+// living_count honest. Appended at EOF so the parity canary pins above
+// never shift.
+void GameWorld::retire_corpse(walker* ob)
+{
+    auto& objects = oblist.raw_mutable();
+    auto& dead = dead_list.raw_mutable();
+    for (auto e = objects.begin(); e != objects.end(); ++e)
+    {
+        if (e->get() != ob)
+            continue;
+        remove_from_id_index(ob);
+        dead.push_back(std::move(*e));
+        if (ob->query_order() == Order::Living)
+            living_count--;
+        objects.erase(e);
+        return;
+    }
 }

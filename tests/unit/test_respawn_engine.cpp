@@ -312,18 +312,37 @@ TEST(RespawnEngine, ai_respawn_spawns_fresh_walker_of_same_family_level_team)
     ASSERT_TRUE(arena.world().respawn.respawn_queue.empty());
 }
 
-TEST(RespawnEngine, ai_scheduling_scrubs_the_fresh_corpse_stain)
+TEST(RespawnEngine, ai_corpse_stain_survives_until_the_respawn_fires)
 {
     RespawnArena arena;
-    walker* bot = arena.fx.spawn_living(FAMILY_SOLDIER, 1, 480, 700);
+    walker* bot = arena.fx.spawn_living(FAMILY_ARCHER, 1, 480, 700);
+    const std::uint32_t corpse_id = bot->entity_id();
 
     arena.kill(bot);
     ASSERT_EQ(1, live_stains_for_team(arena.world(), 1))
-        << "death must leave a bloodstain before the scrub";
+        << "death must leave a bloodstain before scheduling";
 
     ASSERT_TRUE(arena.schedule(bot));
+    ASSERT_EQ(1, live_stains_for_team(arena.world(), 1))
+        << "a queued AI fighter must leave its corpse behind";
+
+    arena.fx.tick(5);
+    ASSERT_EQ(1, live_stains_for_team(arena.world(), 1))
+        << "the corpse must remain for the whole respawn countdown";
+
+    arena.fx.tick();
     ASSERT_EQ(0, live_stains_for_team(arena.world(), 1))
-        << "scheduling a respawn must kill the corpse stain";
+        << "the fire retires the now-stale corpse stain";
+    const walker* fresh =
+        find_alive_with(arena.world(), FAMILY_ARCHER, 1, corpse_id);
+    ASSERT_NE(nullptr, fresh) << "the replacement must be fielded";
+    ASSERT_EQ(nullptr, arena.world().find_by_id(corpse_id))
+        << "the fired corpse leaves the id index with its entry";
+    const bool corpse_in_dead_list = std::any_of(
+        arena.world().dead_list.begin(), arena.world().dead_list.end(),
+        [bot](const auto& uptr) { return uptr.get() == bot; });
+    ASSERT_TRUE(corpse_in_dead_list)
+        << "the fired corpse retires to dead_list, not a hard erase";
 }
 
 TEST(RespawnEngine, player_corpse_stain_survives_until_the_respawn_fires)
@@ -432,7 +451,7 @@ TEST(RespawnEngine, respawn_fire_scrubs_only_the_corpses_floor)
                      arena.world(), 0, 1, upper->myguy));
 }
 
-TEST(RespawnEngine, ai_scheduling_does_not_scrub_a_nearby_player_stain)
+TEST(RespawnEngine, ai_scheduling_leaves_both_nearby_stains)
 {
     RespawnArena arena;
     walker* player = arena.runner;
@@ -447,11 +466,155 @@ TEST(RespawnEngine, ai_scheduling_does_not_scrub_a_nearby_player_stain)
 
     ASSERT_TRUE(arena.schedule(bot, 2));
 
-    EXPECT_EQ(0, live_stains_for_character(arena.world(), 0, 0, nullptr))
-        << "AI scheduling still retires its own stain";
+    EXPECT_EQ(1, live_stains_for_character(arena.world(), 0, 0, nullptr))
+        << "AI scheduling keeps its own stain until the fire";
     EXPECT_EQ(1, live_stains_for_character(
                      arena.world(), 0, 0, player->myguy))
         << "an AI corpse must not sweep a nearby player's stain";
+}
+
+TEST(RespawnEngine, pending_ai_corpse_stays_resolvable_through_the_countdown)
+{
+    RespawnArena arena;
+    walker* bot = arena.fx.spawn_living(FAMILY_ARCHER, 1, 480, 700);
+    const std::uint32_t corpse_id = bot->entity_id();
+
+    arena.kill(bot);
+    ASSERT_TRUE(arena.schedule(bot));
+    arena.fx.tick(3);
+
+    walker* corpse = arena.world().find_by_id(corpse_id);
+    ASSERT_EQ(bot, corpse)
+        << "a pending AI corpse must survive the dead sweep, resolvable "
+           "by id for the fire path and the stain protections";
+    ASSERT_TRUE(corpse->dead());
+    ASSERT_TRUE(og::sim::respawn_pending_for(arena.world(), corpse));
+}
+
+TEST(RespawnEngine, raised_ai_stain_leaves_nothing_for_the_fire_to_scrub)
+{
+    RespawnArena arena;
+    walker* bot = arena.fx.spawn_living(FAMILY_ARCHER, 1, 480, 700);
+    const std::uint32_t corpse_id = bot->entity_id();
+
+    arena.kill(bot);
+    ASSERT_TRUE(arena.schedule(bot));
+    arena.fx.tick(2);
+
+    // A cleric raise's terminal write consumes the stain mid-countdown.
+    walker* stain = nullptr;
+    for (const auto& uptr : arena.world().fxlist)
+    {
+        walker* fxw = uptr.get();
+        if (fxw != nullptr && !fxw->dead() &&
+            fxw->query_order() == Order::Treasure &&
+            fxw->family() == FAMILY_STAIN && fxw->team_num() == 1)
+        {
+            stain = fxw;
+        }
+    }
+    ASSERT_NE(nullptr, stain) << "the pending stain must still be raisable";
+    stain->set_dead(1);
+
+    arena.fx.tick(4);
+    ASSERT_NE(nullptr,
+              find_alive_with(arena.world(), FAMILY_ARCHER, 1, corpse_id))
+        << "a consumed stain must not block the queued replacement";
+    ASSERT_EQ(0, live_stains_for_team(arena.world(), 1));
+    ASSERT_EQ(nullptr, arena.world().find_by_id(corpse_id))
+        << "the fire still retires the corpse";
+    ASSERT_TRUE(arena.world().respawn.respawn_queue.empty());
+}
+
+TEST(RespawnEngine, ai_fire_does_not_consume_an_adjacent_pending_ai_stain)
+{
+    RespawnArena arena;
+    walker* bot = arena.fx.spawn_living(FAMILY_ARCHER, 1, 480, 700);
+    walker* bot2 = arena.fx.spawn_living(FAMILY_ARCHER, 1, 484, 700);
+
+    arena.kill(bot);
+    ASSERT_TRUE(arena.schedule(bot, 2));
+    arena.kill(bot2);
+    ASSERT_TRUE(arena.schedule(bot2, 5));
+    ASSERT_EQ(1, live_stains_for_character(arena.world(), 1, 0, nullptr, bot));
+    ASSERT_EQ(1, live_stains_for_character(arena.world(), 1, 0, nullptr,
+                                           bot2));
+
+    arena.fx.tick(2);
+
+    EXPECT_EQ(0,
+              live_stains_for_character(arena.world(), 1, 0, nullptr, bot))
+        << "the firing corpse's own stain is scrubbed";
+    EXPECT_EQ(1,
+              live_stains_for_character(arena.world(), 1, 0, nullptr, bot2))
+        << "an adjacent PENDING fighter's stain survives the neighbor's fire";
+
+    // Clear the pad so the second fire can place its replacement.
+    walker* fresh = find_alive_with(arena.world(), FAMILY_ARCHER, 1);
+    ASSERT_NE(nullptr, fresh);
+    fresh->setxy(480, 600);
+
+    arena.fx.tick(3);
+    EXPECT_EQ(0,
+              live_stains_for_character(arena.world(), 1, 0, nullptr, bot2))
+        << "the second fire retires its own stain in turn";
+    EXPECT_EQ(0, live_stains_for_team(arena.world(), 1));
+}
+
+TEST(RespawnEngine, positional_scrub_preserves_pending_ai_stains)
+{
+    RespawnArena arena;
+    walker* pending_bot = arena.fx.spawn_living(FAMILY_ARCHER, 1, 480, 700);
+    walker* permanent = arena.fx.spawn_living(FAMILY_ARCHER, 1, 484, 700);
+
+    arena.kill(pending_bot);
+    ASSERT_TRUE(arena.schedule(pending_bot, 5));
+    arena.kill(permanent);
+    ASSERT_EQ(1, live_stains_for_character(arena.world(), 1, 0, nullptr,
+                                           pending_bot));
+    ASSERT_EQ(1, live_stains_for_character(arena.world(), 1, 0, nullptr,
+                                           permanent));
+
+    og::sim::respawn_scrub_stains_at(arena.world(), permanent->xpos(),
+                                     permanent->ypos(), permanent->floor());
+
+    EXPECT_EQ(1, live_stains_for_character(arena.world(), 1, 0, nullptr,
+                                           pending_bot))
+        << "a nearby mode scrub must preserve the queued AI corpse";
+    EXPECT_EQ(0, live_stains_for_character(arena.world(), 1, 0, nullptr,
+                                           permanent))
+        << "the unscheduled permanent corpse is still scrubbed";
+}
+
+TEST(RespawnEngine, fired_entry_for_a_live_walker_id_does_not_retire_it)
+{
+    RespawnArena arena;
+    walker* live = arena.enemy;
+
+    // A crafted/restored kind-1 entry naming a LIVE walker's id: the fire
+    // must field its replacement without retiring the live walker.
+    og::sim::RespawnEntry entry;
+    entry.kind = 1;
+    entry.team = 1;
+    entry.family = FAMILY_ARCHER;
+    entry.level = 1;
+    entry.ticks_left = 2;
+    entry.walker_entity_id = live->entity_id();
+    entry.x = 224;
+    entry.y = 128;
+    entry.floor = 0;
+    arena.world().respawn.respawn_queue.push_back(entry);
+
+    arena.fx.tick(2);
+
+    ASSERT_FALSE(live->dead());
+    ASSERT_EQ(live, arena.world().find_by_id(live->entity_id()))
+        << "a live walker named by a fired entry stays in the world";
+    const walker* fresh = find_alive_with(arena.world(), FAMILY_ARCHER, 1);
+    ASSERT_NE(nullptr, fresh) << "the entry still fields its replacement";
+    ASSERT_EQ(224, fresh->xpos());
+    ASSERT_EQ(128, fresh->ypos());
+    ASSERT_TRUE(arena.world().respawn.respawn_queue.empty());
 }
 
 TEST(RespawnEngine, positional_scrub_preserves_only_pending_player_stains)
