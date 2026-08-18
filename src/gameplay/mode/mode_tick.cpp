@@ -120,37 +120,28 @@ std::uint8_t roster_effective_team_mask(std::uint8_t authored,
     roster = static_cast<std::uint8_t>(roster & authored);
     if (roster == 0)
         return effective_team_mask(authored, requested);
-    if (requested > 0)
-    {
-        // The lobby TEAMS count wins (issue #218): roster teams all stay
-        // (max semantics), authored non-roster teams backfill in index
-        // order until the mask holds clamp(requested, 2, 4) teams.
-        const int target =
-            std::clamp(requested, 2, static_cast<int>(SCORE_TEAM_COUNT));
-        std::uint8_t mask = roster;
-        for (int team = 0; team < SCORE_TEAM_COUNT; ++team)
-        {
-            if (std::popcount(mask) >= target)
-                break;
-            const auto bit =
-                static_cast<std::uint8_t>(1u << static_cast<unsigned>(team));
-            if ((authored & bit) != 0)
-                mask = static_cast<std::uint8_t>(mask | bit);
-        }
-        return mask;
-    }
-    if (std::popcount(roster) >= 2)
-        return roster;
-    // Auto with a solo roster: that team plus the FIRST authored non-roster
-    // team in index order (a solo group needs an opponent).
+    // The lobby TEAMS request wins (issue #218): roster teams all stay
+    // (max semantics), authored non-roster teams backfill in index order
+    // until the mask holds clamp(request, 2, 4) teams. TEAMS: Auto is the
+    // zero sentinel ("the map's own value") and resolves to the AUTHORED
+    // team count, riding the same arm as an explicit count (2026-08-18
+    // maintainer directive superseding D26's Auto scope; the Lua twin is
+    // mode_match.lua own_roster_activation).
+    if (requested <= 0)
+        requested = std::popcount(authored);
+    const int target =
+        std::clamp(requested, 2, static_cast<int>(SCORE_TEAM_COUNT));
+    std::uint8_t mask = roster;
     for (int team = 0; team < SCORE_TEAM_COUNT; ++team)
     {
+        if (std::popcount(mask) >= target)
+            break;
         const auto bit =
             static_cast<std::uint8_t>(1u << static_cast<unsigned>(team));
-        if ((authored & bit) != 0 && (roster & bit) == 0)
-            return static_cast<std::uint8_t>(roster | bit);
+        if ((authored & bit) != 0)
+            mask = static_cast<std::uint8_t>(mask | bit);
     }
-    return roster;
+    return mask;
 }
 
 void mode_end_level(GameWorld& world, int ending, int next_level)

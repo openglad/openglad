@@ -68,10 +68,10 @@ end
 local function on_mode_init(level)
   local obs = og.oblist()
   local authored_mask = match.census_mask(obs)
-  -- TROOPS:OWN with deployed rosters at TEAMS: Auto: the rosters are the
-  -- match (the shared rule; an explicit lobby count overrides the shape —
-  -- roster teams plus authored backfill, issue #218); otherwise the lobby
-  -- request over the authored teams.
+  -- TROOPS:OWN with deployed rosters: the lobby request wins the COUNT —
+  -- roster teams plus authored backfill (issue #218), with TEAMS: Auto
+  -- resolving to the authored census count (2026-08-18 directive);
+  -- otherwise the lobby request over the authored teams.
   local mask = match.own_roster_activation(authored_mask, obs)
   if mask == nil then
     mask = core.activate_teams(authored_mask, og.match_setting("team_count"))

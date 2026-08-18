@@ -832,10 +832,10 @@ local function on_mode_init(level, row)
       authored_mask = core.mask_add(authored_mask, team)
     end
   end
-  -- TROOPS:OWN with deployed rosters at TEAMS: Auto: the rosters are the
-  -- match (the shared rule; an EXPLICIT lobby count overrides the shape —
-  -- roster teams plus authored backfill, issue #218); otherwise the lobby
-  -- request (manifest default) over the authored anchor teams.
+  -- TROOPS:OWN with deployed rosters: the lobby request wins the COUNT —
+  -- roster teams plus authored backfill (issue #218), with TEAMS: Auto
+  -- resolving to the authored count (2026-08-18 directive); otherwise the
+  -- lobby request (manifest default) over the authored anchor teams.
   local mask = match.own_roster_activation(authored_mask, og.oblist())
   if mask == nil then
     -- Normalized request: Auto (raw <= 0) means no numeric clamp.

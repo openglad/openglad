@@ -3126,11 +3126,11 @@ ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
         }
 
         // Active teams: under TROOPS: OWN/FAIR the sim applies the roster
-        // rule (roster teams stay; an explicit lobby count backfills
-        // authored teams in index order — issue #218), so the preview
-        // mirrors it through the C++ twin; under TROOPS: ALL, THE one
-        // activation clamp (authored teams in index order up to the
-        // requested count).
+        // rule (roster teams stay; the lobby count — TEAMS: Auto = the
+        // authored count — backfills authored teams in index order, issue
+        // #218), so the preview mirrors it through the C++ twin; under
+        // TROOPS: ALL, THE one activation clamp (authored teams in index
+        // order up to the requested count).
         //
         // Networked-lobby caveat (accepted): this save carries only the
         // LOCAL machine's roster, so a REMOTE peer's roster-only team can

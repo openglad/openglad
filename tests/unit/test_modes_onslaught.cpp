@@ -362,13 +362,15 @@ TEST_F(ModesOnslaught, scenario_troops_strip_spares_the_foundries)
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
-TEST_F(ModesOnslaught, troops_own_activates_only_the_roster_teams)
+TEST_F(ModesOnslaught, troops_own_at_auto_activates_the_authored_team_count)
 {
-    // The scen-841 shape on Onslaught: three authored generator teams,
-    // rosters on 0 and 2 under OWN. The roster teams keep their foundries
-    // (the mid-match armies those spawn are not init backfill), the
-    // unrostered team strips like any inactive side, and no init infantry
-    // appears beyond the rosters.
+    // The scen-841 shape on Onslaught at TEAMS: Auto: Auto is the zero
+    // sentinel ("as many teams as the map actually has"), so three
+    // authored generator teams with rosters on 0 and 2 under OWN all
+    // activate — the unrostered team keeps its foundry (keep_generators)
+    // and self-populates from it mid-match (D17: no init bot squads), the
+    // rosters stay untouched (issue #218; the 2026-08-18 directive
+    // superseding D26's Auto scope).
     ModesCtfWorld fx(kOnsLevelB);
     fx.world().ctf_requested_strip_scenario_troops = 2;
     fx.spawn_anchor(0, 96, 128);
@@ -382,17 +384,20 @@ TEST_F(ModesOnslaught, troops_own_activates_only_the_roster_teams)
     fx.tick(1);
 
     ASSERT_TRUE(fx.world().mode.active);
-    EXPECT_EQ(1 + 4, fx.var(kOnsTeamMask))
-        << "exactly the two roster teams activate";
-    EXPECT_FALSE(gen0->dead()) << "roster teams keep their foundries";
+    EXPECT_EQ(1 + 2 + 4, fx.var(kOnsTeamMask))
+        << "Auto resolves to the authored team count: all three sides";
+    EXPECT_FALSE(gen0->dead()) << "active teams keep their foundries";
     EXPECT_FALSE(gen2->dead());
-    EXPECT_TRUE(gen1->dead()) << "the unrostered team strips away";
+    EXPECT_FALSE(gen1->dead())
+        << "the backfilled team keeps its foundry too (keep_generators)";
     EXPECT_FALSE(soldier->dead());
     EXPECT_FALSE(barbarian->dead());
     EXPECT_EQ(1, fx.team_var(kOnsGenCount, 0));
+    EXPECT_EQ(1, fx.team_var(kOnsGenCount, 1));
     EXPECT_EQ(1, fx.team_var(kOnsGenCount, 2));
     EXPECT_EQ(1, alive_on_team(fx.world(), 0));
-    EXPECT_EQ(0, alive_on_team(fx.world(), 1)) << "no init infantry under OWN";
+    EXPECT_EQ(0, alive_on_team(fx.world(), 1))
+        << "no init infantry under OWN (D17) — the foundry fields it later";
     EXPECT_EQ(1, alive_on_team(fx.world(), 2));
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
@@ -446,11 +451,12 @@ TEST_F(ModesOnslaught, matched_request_masks_like_own_and_ignores_power)
     ASSERT_EQ(kModeIdOnslaught, matched.var(kOnsModeId));
     ASSERT_EQ(kModeIdOnslaught, own.var(kOnsModeId));
 
-    // The solo roster (team 0) pairs with the first authored non-roster
-    // generator team under OWN's activation — identically for strip 2 and
-    // strip 3, the D26 invariant applied where no squad seam exists.
-    EXPECT_EQ(3, matched.var(kOnsTeamMask))
-        << "solo roster: team 0 plus the first authored non-roster team";
+    // TEAMS: Auto resolves to the authored team count (issue #218, the
+    // 2026-08-18 directive): the solo roster plus BOTH authored non-roster
+    // generator teams — identically for strip 2 and strip 3, the D26/D33
+    // twin invariant applied where no squad seam exists.
+    EXPECT_EQ(7, matched.var(kOnsTeamMask))
+        << "Auto fields every authored generator team";
     EXPECT_EQ(own.var(kOnsTeamMask), matched.var(kOnsTeamMask))
         << "FAIR-mask == OWN-mask (D26/D33/E8)";
     EXPECT_EQ(own.var(kOnsTeamCount), matched.var(kOnsTeamCount));
@@ -470,10 +476,10 @@ TEST_F(ModesOnslaught, matched_request_masks_like_own_and_ignores_power)
     };
     EXPECT_EQ(foundries_alive(own.world()), foundries_alive(matched.world()))
         << "FAIR and OWN keep the same foundries";
-    EXPECT_EQ(2, foundries_alive(matched.world()))
+    EXPECT_EQ(3, foundries_alive(matched.world()))
         << "the FAIR strip keeps the ACTIVE teams' generators "
-           "(keep_generators, E8); the team-2 tent goes with its inactive "
-           "team, not with the troops strip";
+           "(keep_generators, E8) — and at TEAMS: Auto every authored "
+           "generator team is active, so all three tents stand";
 
     EXPECT_GT(matched.var(kSlotMatchedTarget), 0)
         << "the shared census still runs (matched request + a human)";

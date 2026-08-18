@@ -347,11 +347,14 @@ TEST_F(ModesTdm, scenario_troops_strip_runs_before_the_bot_census)
         << "the census behind the strip backfills the emptied team";
 }
 
-TEST_F(ModesTdm, troops_own_activates_only_the_roster_teams)
+TEST_F(ModesTdm, troops_own_at_auto_activates_the_authored_team_count)
 {
-    // The scen-841 shape on TDM: OWN with rosters deployed on teams 0 and 2
-    // activates exactly those two — the third authored team neither joins
-    // the match nor receives a bot squad.
+    // The scen-841 shape on TDM at TEAMS: Auto: Auto is the zero sentinel
+    // ("as many teams as the map actually has"), so OWN with rosters on
+    // teams 0 and 2 fields all THREE authored sides — the rosters stay
+    // untouched and the unrostered team backfills with the legacy bot
+    // squad, exactly like an explicit TEAMS: 3 (issue #218; the 2026-08-18
+    // directive superseding D26's Auto scope).
     ModesCtfWorld fx(kTdmLevelA);
     fx.world().ctf_requested_strip_scenario_troops = 2;
     fx.spawn_anchor(0, 96, 96);
@@ -362,13 +365,13 @@ TEST_F(ModesTdm, troops_own_activates_only_the_roster_teams)
     fx.tick(1);
 
     ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
-    EXPECT_EQ(1 + 4, fx.var(kTdmSlotTeamMask))
-        << "exactly the two roster teams activate";
+    EXPECT_EQ(1 + 2 + 4, fx.var(kTdmSlotTeamMask))
+        << "Auto resolves to the authored team count: all three sides";
     EXPECT_FALSE(soldier->dead());
     EXPECT_FALSE(barbarian->dead());
-    EXPECT_EQ(1, alive_on_team(fx.world(), 0));
-    EXPECT_EQ(0, alive_on_team(fx.world(), 1))
-        << "no bot squad on the unrostered authored team";
+    EXPECT_EQ(1, alive_on_team(fx.world(), 0)) << "the rosters stay as-is";
+    EXPECT_EQ(5, alive_on_team(fx.world(), 1))
+        << "the empty-team census fields the legacy squad";
     EXPECT_EQ(1, alive_on_team(fx.world(), 2));
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
@@ -1863,16 +1866,18 @@ TEST_F(ModesTdm, matched_differs_from_own_only_in_generated_squad_levels)
 
     EXPECT_EQ(own.var(kTdmSlotTeamMask), fair.var(kTdmSlotTeamMask))
         << "FAIR's masks are OWN's masks, always (D26/D33)";
-    EXPECT_EQ(3, fair.var(kTdmSlotTeamMask))
-        << "solo roster: team 0 plus the FIRST authored non-roster team";
+    EXPECT_EQ(7, fair.var(kTdmSlotTeamMask))
+        << "TEAMS: Auto resolves to the authored team count (issue #218, "
+           "the 2026-08-18 directive): all three authored sides";
     for (int team = 0; team < 3; ++team)
     {
         EXPECT_EQ(alive_on_team(own.world(), team),
                   alive_on_team(fair.world(), team))
             << "fill sites must not differ on team " << team;
     }
-    EXPECT_EQ(0, alive_on_team(fair.world(), 2))
-        << "no pile-on: the third authored team stays empty under both";
+    EXPECT_EQ(5, alive_on_team(fair.world(), 2))
+        << "the third authored side backfills under both (Auto = authored "
+           "count)";
 
     // The one delta: OWN fields the legacy formula squad (percent 100 ->
     // uniform L2), FAIR solves T = 6520 to L1 with a k = 1 prefix.
@@ -1884,6 +1889,8 @@ TEST_F(ModesTdm, matched_differs_from_own_only_in_generated_squad_levels)
     EXPECT_EQ(2, own_levels.thief);
     EXPECT_EQ(6520, fair.var(kSlotMatchedTarget));
     EXPECT_EQ(11, matched_plan_code(fair.var(kSlotMatchedPlan), 1));
+    EXPECT_EQ(11, matched_plan_code(fair.var(kSlotMatchedPlan), 2))
+        << "the backfilled third side solves to the same plan";
     const SquadLevels fair_levels = squad_levels_on_team(fair.world(), 1);
     EXPECT_EQ(2, fair_levels.soldier) << "the k = 1 upgrade prefix";
     EXPECT_EQ(1, fair_levels.archer);
@@ -2023,9 +2030,9 @@ TEST_F(ModesTdm, matched_troops_own_solo_roster_gets_a_matched_opponent)
     fx.tick(1);
     ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
 
-    EXPECT_EQ(3, fx.var(kTdmSlotTeamMask))
-        << "solo roster under OWN: team 0 plus the first authored "
-           "non-roster team";
+    EXPECT_EQ(7, fx.var(kTdmSlotTeamMask))
+        << "solo roster under OWN at TEAMS: Auto: the authored team count "
+           "(issue #218, the 2026-08-18 directive) — all three sides";
     EXPECT_EQ(6520, fx.var(kSlotMatchedTarget))
         << "stripped authored troops never pollute the census (E6)";
     EXPECT_EQ(5, fx.var(kSlotMatchedSize))
@@ -2037,8 +2044,14 @@ TEST_F(ModesTdm, matched_troops_own_solo_roster_gets_a_matched_opponent)
     EXPECT_EQ(2, levels.soldier) << "the k = 1 upgrade prefix";
     EXPECT_EQ(1, levels.archer);
     EXPECT_EQ(1, levels.thief);
-    EXPECT_EQ(0, alive_on_team(fx.world(), 2))
-        << "the team outside the OWN mask stays stripped and unfilled";
+    EXPECT_EQ(11, matched_plan_code(fx.var(kSlotMatchedPlan), 2))
+        << "the backfilled third side solves to the same plan";
+    EXPECT_EQ(5, alive_on_team(fx.world(), 2))
+        << "its stripped authored orc is replaced by a matched squad";
+    const SquadLevels third = squad_levels_on_team(fx.world(), 2);
+    EXPECT_EQ(2, third.soldier) << "the same k = 1 upgrade prefix";
+    EXPECT_EQ(1, third.archer);
+    EXPECT_EQ(1, third.thief);
     EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"));
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }

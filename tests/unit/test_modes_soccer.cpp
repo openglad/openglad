@@ -559,14 +559,15 @@ TEST_F(ModesSoccer, scenario_troops_strip_takes_the_pitch_generators_too)
         << "and the emptied team is backfilled by the census behind the strip";
 }
 
-TEST_F(ModesSoccer, troops_own_activates_only_the_roster_teams)
+TEST_F(ModesSoccer, troops_own_at_auto_activates_the_authored_team_count)
 {
-    // The scen-841 shape on the FOURSQUARE pitch at TEAMS: Auto: OWN with
-    // rosters deployed on the north and south mouths activates exactly
-    // those two teams — no five-bot squads on the east/west sides, and the
-    // manifest row's teams = 4 default is not a backfill mandate. (An
-    // EXPLICIT lobby count is a different signal and wins the count —
-    // issue #218, the fair_teams_four/explicit_count tests below.)
+    // The scen-841 shape on the FOURSQUARE pitch at TEAMS: Auto: Auto is
+    // the zero sentinel ("as many teams as the map actually has"), so OWN
+    // with rosters on the north and south mouths fields all FOUR authored
+    // sides — the rosters stay untouched and the east/west teams backfill
+    // with the OWN legacy five-bot squads, exactly like an explicit
+    // TEAMS: 4 (issue #218; the 2026-08-18 directive superseding D26's
+    // Auto scope).
     SoccerPitch fx(kSoccerLevelB);
     fx.world().ctf_requested_strip_scenario_troops = 2;
     for (int team = 0; team < 4; ++team)
@@ -576,17 +577,17 @@ TEST_F(ModesSoccer, troops_own_activates_only_the_roster_teams)
     fx.tick(1);
 
     ASSERT_TRUE(fx.soccer_active());
-    EXPECT_EQ(1 + 4, fx.var(kSocTeamMask))
-        << "exactly the two roster teams activate";
-    EXPECT_EQ(2, fx.var(kSocTeamCount));
+    EXPECT_EQ(15, fx.var(kSocTeamMask))
+        << "Auto resolves to the authored team count: all four sides";
+    EXPECT_EQ(4, fx.var(kSocTeamCount));
     EXPECT_NE(nullptr, fx.ball()) << "the match still gets its ball";
     EXPECT_FALSE(soldier->dead());
     EXPECT_FALSE(barbarian->dead());
-    EXPECT_EQ(1, alive_on_team(fx.world(), 0));
-    EXPECT_EQ(0, alive_on_team(fx.world(), 1))
-        << "no five-bot squads under OWN";
+    EXPECT_EQ(1, alive_on_team(fx.world(), 0)) << "the rosters stay as-is";
+    EXPECT_EQ(5, alive_on_team(fx.world(), 1))
+        << "the empty-team census fields the OWN legacy squad";
     EXPECT_EQ(1, alive_on_team(fx.world(), 2));
-    EXPECT_EQ(0, alive_on_team(fx.world(), 3));
+    EXPECT_EQ(5, alive_on_team(fx.world(), 3));
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
@@ -611,6 +612,45 @@ TEST_F(ModesSoccer, fair_teams_four_with_a_solo_roster_fields_four_teams)
     ASSERT_TRUE(fx.soccer_active());
     EXPECT_EQ(15, fx.var(kSocTeamMask))
         << "the explicit TEAMS: 4 request fields all four sides";
+    EXPECT_EQ(4, fx.var(kSocTeamCount));
+    EXPECT_FALSE(hero->dead());
+    EXPECT_EQ(1, alive_on_team(fx.world(), 0)) << "the roster is untouched";
+    EXPECT_EQ(1, fx.var(kSlotMatchedSize));
+    for (int team = 1; team < 4; ++team)
+    {
+        EXPECT_EQ(1, alive_on_team(fx.world(), team))
+            << "FAIR fields a matched-headcount squad on team " << team;
+        EXPECT_NE(0, matched_plan_code(fx.var(kSlotMatchedPlan), team))
+            << "team " << team << " was solved";
+    }
+    EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"));
+    EXPECT_EQ(pos_pack(256, 16), fx.team_var(kSocGoalPos, 0));
+    EXPECT_EQ(pos_pack(592, 256), fx.team_var(kSocGoalPos, 1));
+    EXPECT_EQ(pos_pack(256, 912), fx.team_var(kSocGoalPos, 2));
+    EXPECT_EQ(pos_pack(16, 256), fx.team_var(kSocGoalPos, 3));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesSoccer, fair_teams_auto_with_a_solo_roster_fields_four_teams)
+{
+    // The Auto twin of the explicit TEAMS: 4 test above: TEAMS: Auto is
+    // the zero sentinel ("as many teams as the map actually has"), so on
+    // the FOURSQUARE pitch a solo FAIR roster fields all four authored
+    // sides through the SAME backfill arm as the explicit count — and all
+    // four goal mouths bank (2026-08-18 maintainer directive, issue #218).
+    BudgetOverride budget(500000);
+    SoccerPitch fx(kSoccerLevelB);
+    for (int team = 0; team < 4; ++team)
+        fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
+    arm_matched(fx.world());
+    ASSERT_EQ(0, fx.world().ctf_requested_team_count) << "TEAMS: Auto";
+    walker* hero = fx.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
+    ASSERT_NE(nullptr, hero);
+    fx.tick(1);
+
+    ASSERT_TRUE(fx.soccer_active());
+    EXPECT_EQ(15, fx.var(kSocTeamMask))
+        << "Auto resolves to the authored team count: all four sides";
     EXPECT_EQ(4, fx.var(kSocTeamCount));
     EXPECT_FALSE(hero->dead());
     EXPECT_EQ(1, alive_on_team(fx.world(), 0)) << "the roster is untouched";
@@ -752,7 +792,10 @@ TEST_F(ModesSoccer, ball_in_a_closed_authored_mouth_announces_and_resets)
     // TEAMS: 2 leaves the south/west mouths authored but dead, and mapgen
     // paints every mouth identically, so a dead one looks live. A ball
     // entering one must announce the closed goal and re-spot at the
-    // kickoff instead of sitting there silently.
+    // kickoff instead of sitting there silently. (Since the 2026-08-18
+    // Auto-resolves-to-authored-count directive, a dead mouth is reachable
+    // ONLY through an explicit TEAMS below the authored count — the shape
+    // this test constructs explicitly; TEAMS: Auto activates every mouth.)
     SoccerPitch fx(kSoccerLevelB);
     for (int team = 0; team < 4; ++team)
     {

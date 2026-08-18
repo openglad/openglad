@@ -97,10 +97,11 @@ std::uint8_t effective_team_mask(std::uint8_t authored, int requested) noexcept;
 // The roster-aware activation rule under TROOPS: OWN/FAIR — the C++ twin of
 // mode_match.lua own_roster_activation for preview surfaces. roster is
 // masked to authored. Empty roster falls back to effective_team_mask.
-// Explicit requested > 0: roster teams plus authored backfill in index
-// order up to clamp(requested, 2, SCORE_TEAM_COUNT), never dropping a
-// roster team (max semantics). Auto: all roster teams when >= 2, else
-// roster plus the first authored non-roster team.
+// One rule for every TEAMS value: the request is requested when > 0, else
+// (Auto) the authored team count — the zero sentinel means "as many teams
+// as the map actually has" (2026-08-18 maintainer directive). Roster teams
+// plus authored backfill in index order up to clamp(request, 2,
+// SCORE_TEAM_COUNT), never dropping a roster team (max semantics).
 std::uint8_t roster_effective_team_mask(std::uint8_t authored,
                                         std::uint8_t roster,
                                         int requested) noexcept;

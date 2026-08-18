@@ -770,11 +770,11 @@ local function on_mode_init(level)
   og.mode_set(S.CP_COUNT, cp_count)
 
   -- Anchors were scanned engine-side before this hook (dead markers
-  -- included). Active teams: TROOPS:OWN with deployed rosters at
-  -- TEAMS: Auto takes exactly the roster flag teams (the shared rule; an
-  -- explicit lobby count overrides the shape — roster teams plus authored
-  -- backfill, issue #218); otherwise the requested count intersected with
-  -- authored flag teams, in team index order.
+  -- included). Active teams: under TROOPS:OWN with deployed rosters the
+  -- lobby request wins the COUNT — roster flag teams plus authored
+  -- backfill (issue #218), with TEAMS: Auto resolving to the authored
+  -- flag-team count (2026-08-18 directive); otherwise the requested count
+  -- intersected with authored flag teams, in team index order.
   local obs = og.oblist()
   local mask = match.own_roster_activation(authored_mask, obs)
   if mask == nil then

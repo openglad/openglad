@@ -2463,13 +2463,17 @@ TEST(PickerCommon, roster_effective_team_mask_full_precedence_sweep)
     EXPECT_EQ(effective_team_mask(0b1101, 2),
               roster_effective_team_mask(0b1101, 0, 2));
 
-    // Auto: a solo roster takes the first authored non-roster team...
-    EXPECT_EQ(0b0011, roster_effective_team_mask(0b1111, 0b0001, 0));
+    // Auto resolves to the AUTHORED team count (the zero sentinel means
+    // "as many teams as the map actually has" — issue #218, the
+    // 2026-08-18 directive), so with a roster it always backfills to the
+    // full authored mask...
+    EXPECT_EQ(0b1111, roster_effective_team_mask(0b1111, 0b0001, 0));
+    EXPECT_EQ(0b0101, roster_effective_team_mask(0b0101, 0b0100, 0));
     // ...unless nothing else is authored (the lone bit stands).
     EXPECT_EQ(0b0100, roster_effective_team_mask(0b0100, 0b0100, 0));
-    // Auto with two or more rosters: exactly the rosters.
-    EXPECT_EQ(0b0101, roster_effective_team_mask(0b1111, 0b0101, 0));
-    EXPECT_EQ(0b1110, roster_effective_team_mask(0b1111, 0b1110, 0));
+    // Auto with two or more rosters still fills to the authored count.
+    EXPECT_EQ(0b1111, roster_effective_team_mask(0b1111, 0b0101, 0));
+    EXPECT_EQ(0b1111, roster_effective_team_mask(0b1111, 0b1110, 0));
 
     // Explicit count: sparse authored {0, 2, 3}, roster {2}, N = 2 —
     // the roster stays and team 0 backfills in index order.
@@ -2513,20 +2517,20 @@ TEST(PickerCommon, scenario_report_own_mirrors_roster_activation_and_lobby_count
     save.team_list[2]->deployed = false;  // held back: never in the roster
     save.team_size = 3;
 
-    // TEAMS: Auto — exactly the two DEPLOYED roster teams.
+    // TEAMS: Auto — the authored team count (the zero sentinel means "as
+    // many teams as the map actually has", issue #218's 2026-08-18
+    // directive), so every authored side previews live.
     save.ctf_team_count = 0;
     {
         const og::ui::ScenarioRosterReport report =
             og::ui::build_scenario_roster_report(fx.world(), save);
         EXPECT_TRUE(report.team_active[0]);
-        EXPECT_FALSE(report.team_active[1])
-            << "a held-back character is not a roster team";
+        EXPECT_TRUE(report.team_active[1]);
         EXPECT_TRUE(report.team_active[2]);
-        EXPECT_FALSE(report.team_active[3]);
+        EXPECT_TRUE(report.team_active[3]);
         const std::vector<std::string> lines =
             og::ui::format_scenario_report_lines(report);
-        EXPECT_TRUE(
-            any_line_contains(lines, "GREEN TEAM  MARKERS: 1  INACTIVE"));
+        EXPECT_TRUE(any_line_contains(lines, "GREEN TEAM  MARKERS: 1  ACTIVE"));
         EXPECT_TRUE(any_line_contains(lines, "BLUE TEAM  MARKERS: 1  ACTIVE"));
     }
 
@@ -2556,7 +2560,8 @@ TEST(PickerCommon, scenario_report_own_mirrors_roster_activation_and_lobby_count
         const og::ui::ScenarioRosterReport report =
             og::ui::build_scenario_roster_report(fx.world(), save);
         EXPECT_TRUE(report.team_active[0]);
-        EXPECT_FALSE(report.team_active[1]);
+        EXPECT_FALSE(report.team_active[1])
+            << "a held-back character is not a roster team";
         EXPECT_TRUE(report.team_active[2]);
         EXPECT_FALSE(report.team_active[3]);
     }
