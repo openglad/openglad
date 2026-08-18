@@ -790,7 +790,8 @@ og.register_level_hooks(level_id, {   -- level_id -1 = every level
   on_entity_death = function(ent) ... end,
   on_entity_spawn = function(ent) ... end,
   on_damage       = function(target, attacker, amount) ... end,
-  on_mode_init    = function(level) ... end,           -- scripted modes
+  on_mode_plan    = function(level, inputs) ... end,   -- scripted modes (pure)
+  on_mode_init    = function(level, plan) ... end,     -- scripted modes
   on_mode_tick    = function(level, tick) ... end,     -- scripted modes
   on_respawn      = function(ent) ... end,             -- scripted modes
 })
@@ -827,6 +828,29 @@ og.set_entity_hooks(ent, { on_death = function(ent) ... end })
   activation condition; `on_mode_tick` runs after entity acts each tick; and
   `on_respawn` runs after the respawn engine revives an entity in place, so
   the hook can reposition it.
+- `on_mode_plan(level, inputs) -> plan` is the optional PURE match-plan
+  phase. **The world API is fenced off while it runs** — every world `og.*`
+  entry (`og.oblist`, `og.rand`, `og.mode_set`, `og.match_setting`, ...)
+  raises `"the world API is not available during match planning"` — so a
+  plan is a pure function of `(level, inputs)` plus whatever the registering
+  script closed over. Allowed surface: the sandbox arithmetic
+  (`og.div/mod/f*/i*/trunc/log`), `og.max/min/clamp/sign`, `og.C`, `og.api`,
+  and pure `og.use` lib helpers. `inputs` is plain data (numbers and tables
+  only, never an entity handle): the request knobs
+  (`team_count`/`strip_troops`/`score_limit`/`respawn_ticks`, 0 = unset/
+  Auto), `teams[1..4] = {anchors, roster, npcs, generators}`, and raw CTF
+  `flags = {{team, level}, ...}` rows in fx order. The returned plan table
+  (`mode`, `starts`, `reason`, `authored_mask`, `active_mask`, `matched`,
+  `matched_size`, `score_limit`, `seeded_squads`,
+  `teams[1..4] = {active, fill, count}`) is chained as `on_mode_init`'s
+  second argument at launch — init EXECUTES the decisions — and the VIEW
+  LEVEL preview evaluates the same hook before launch, so plan and apply
+  can never disagree about the rules. A mode with no `on_mode_plan` needs
+  no edits: its `on_mode_init` receives `nil` and the preview shows the
+  count-only fallback. A plan that errors is contained: at preview the
+  report renders the fallback plus `MATCH RULES UNAVAILABLE (SCRIPT
+  ERROR)`; at launch it is the failed-init shape (mode inactive, classic
+  rules).
 - An exact-level registration shadows a wildcard (`-1`) one **per hook kind**.
 - `og.set_entity_hooks` requires a tracked entity (`og.entity_id(h) ~= 0`).
   The registration is consumed when it fires, so a dead entity id never fires
