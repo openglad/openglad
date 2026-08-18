@@ -105,13 +105,17 @@ enum BballSlot : int {
     kBbThrowWatermark = 60,
     kBbPossessSince = 61,
     kBbDunkOk = 62,
-    kBbSpare = 63,      // the LAST spare (R4) — must never be written
+    kBbItemLast = 63,   // #225 claimed the former R4 spare
+    kBbItemCursor = 7,  // shared header band (mode_match's precedent)
 };
 
-// R4 slot-budget headroom: 62 is the highest claimed slot; 63 is spare.
+// The private slot map is FULL: 62 was the last private claim before #225
+// spent 63 on the item clock (the R4 slot review), which is why the pad
+// cursor had to go into the shared header band alongside MATCHED (2-5) and
+// mode_anchors' squad seed (6).
 static_assert(kBbDunkOk == og::sim::kModeVarCount - 2,
               "slot map must top out one below the var count");
-static_assert(kBbSpare == og::sim::kModeVarCount - 1);
+static_assert(kBbItemLast == og::sim::kModeVarCount - 1);
 
 inline constexpr int kModeIdBasketball = 6;  // mode_core.MODE.BASKETBALL
 
@@ -2501,8 +2505,12 @@ TEST_F(ModesBasketball, determinism_digest)
         << "same seed + same court must reproduce throws, arcs and roles";
 }
 
-// R4: a full bot match never touches slot 63 — the last spare stays spare.
-TEST_F(ModesBasketball, slot_budget_leaves_63_spare)
+// The slot map is exactly full: #225 did the slot review R4 asked for and
+// spent 63 on the item clock, so what used to be "nothing may write 63" is
+// now "the item clock owns 63, seeded once at init". 9702 authors no pads,
+// so the clock is written by init and never again — which also pins that a
+// pad-free row costs the header cursor nothing.
+TEST_F(ModesBasketball, slot_budget_is_exactly_full_item_clock_owns_63)
 {
     ModesCtfWorld fx(kBballLevelB);
     for (int team = 0; team < 4; ++team)
@@ -2511,10 +2519,15 @@ TEST_F(ModesBasketball, slot_budget_leaves_63_spare)
         fx.spawn_anchor(team, x, 680);
         fx.spawn_anchor(team, x, 720);
     }
-    fx.tick(150);
+    fx.tick(1);
     ASSERT_TRUE(fx.world().mode.active);
-    EXPECT_EQ(0, fx.var(kBbSpare))
-        << "slot 63 is the LAST spare (R4) — nothing may write it";
+    EXPECT_EQ(1, fx.var(kBbItemLast))
+        << "init seeds the item clock with the world tick it ran on";
+    fx.tick(150);
+    EXPECT_EQ(1, fx.var(kBbItemLast))
+        << "9702 authors no pads, so no firing ever restarts the clock";
+    EXPECT_EQ(0, fx.var(kBbItemCursor))
+        << "and the header-band pad cursor stays untouched";
 }
 
 // ===========================================================================

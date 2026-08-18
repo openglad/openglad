@@ -1,15 +1,16 @@
-// The respawning-pickup suite (lib/mode_items.lua + the TDM/CTF/Mutant
-// impl wiring), over the shared modes-pack fixture. Rule spec: the
-// PR #174 playtest ruling — manifest item_pads drive a deterministic
-// 30-tick-cadence respawner with a per-level interval (Mutant 180,
-// TDM/CTF 300), a mode-var rotation cursor, and ONE spawn per firing;
-// only drumstick/magic/invis/speed ever respawn (never gold), livings
-// parked on a pad deny the spawn, and Soccer/Onslaught stay OFF.
+// The respawning-pickup suite (lib/mode_items.lua + the impl wiring), over
+// the shared modes-pack fixture. Rule spec: the PR #174 playtest ruling —
+// manifest item_pads drive a deterministic 30-tick-cadence respawner with
+// a per-level interval (Mutant/FFA 180, soccer 180, basketball 240,
+// TDM/CTF 300), a mode-var rotation cursor, and ONE spawn per firing; only
+// drumstick/magic/invis/speed ever respawn (never gold), livings parked on
+// a pad deny the spawn, and Onslaught stays OFF (#225 moved soccer and
+// basketball off that list).
 //
 // Levels: 9601/9602 drive items.run directly with synthetic rows (slots
 // 40/41); 840/500 bind the SHIPPED mutant/ctf registrations over the
-// committed manifest rows; the real-campaign TDM case loads the shipped
-// scen300 package end to end.
+// committed manifest rows; the real-campaign cases load the shipped
+// scen300/scen820/scen824 packages end to end.
 
 #include <gtest/gtest.h>
 
@@ -27,8 +28,11 @@
 
 #include "../modes_pack_fixture.h"
 
+#include <cstddef>
 #include <format>
 #include <string>
+#include <utility>
+#include <vector>
 
 using namespace og::modes_test;
 
@@ -45,6 +49,13 @@ inline constexpr int kMutItemCursor = 49;  // band slot map, ffa-design §8
 inline constexpr int kMutItemLast = 50;
 [[maybe_unused]] inline constexpr int kCtfItemCursor = 62;
 inline constexpr int kCtfItemLast = 63;
+inline constexpr int kSoccerItemCursor = 46;
+inline constexpr int kSoccerItemLast = 47;
+// Basketball's pair is SPLIT: its private band was full, so the cursor
+// lives in the shared header band (mode_match's MATCHED precedent) and the
+// clock took the last private slot.
+inline constexpr int kBballItemCursor = 7;
+inline constexpr int kBballItemLast = 63;
 
 struct ItemCensus
 {
@@ -474,6 +485,80 @@ struct LoadedRealLevel
     GameWorld& world() { return level.world(); }
 };
 
+// Park one ACT_CONTROL soldier per team on that team's first authored
+// marker, before the first tick. An active team with no livings gets a
+// five-bot backfill at init, and bots wander onto pads and eat what
+// respawns — a seated team keeps the world still enough to read the
+// respawner. Returns the seated-team bitmask.
+int seat_teams_at_markers(GameWorld& world, int teams)
+{
+    std::vector<std::pair<short, short>> seats(
+        static_cast<std::size_t>(teams), {-1, -1});
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* ob = uptr.get();
+        if (ob == nullptr || ob->query_order() != Order::Special ||
+            ob->family() != FAMILY_RESERVED_TEAM)
+        {
+            continue;
+        }
+        const int team = ob->team_num();
+        if (team < 0 || team >= teams)
+            continue;
+        if (seats[static_cast<std::size_t>(team)].first >= 0)
+            continue;
+        seats[static_cast<std::size_t>(team)] = {ob->xpos(), ob->ypos()};
+    }
+    int seated = 0;
+    for (int team = 0; team < teams; ++team)
+    {
+        const auto& spot = seats[static_cast<std::size_t>(team)];
+        if (spot.first < 0)
+            continue;
+        walker* seat = world.add_ob(Order::Living, FAMILY_SOLDIER);
+        if (seat == nullptr)
+            return -1;
+        seat->setxy(spot.first, spot.second);
+        seat->set_team_num(static_cast<unsigned char>(team));
+        seat->set_real_team_num(255);
+        seat->set_act_type(ACT_CONTROL);
+        seated |= 1 << team;
+    }
+    return seated;
+}
+
+// The first live drumstick no living is standing on — eating a camped one
+// would leave its pad denied at the next firing (pad_blocked), which is a
+// different rule than the one under test.
+walker* first_uncamped_drumstick(GameWorld& world)
+{
+    for (const auto& uptr : world.fxlist)
+    {
+        walker* fxob = uptr.get();
+        if (fxob == nullptr || fxob->dead() ||
+            fxob->query_order() != Order::Treasure ||
+            fxob->family() != FAMILY_DRUMSTICK)
+        {
+            continue;
+        }
+        bool camped = false;
+        for (const auto& obptr : world.oblist)
+        {
+            const walker* ob = obptr.get();
+            if (ob != nullptr && !ob->dead() &&
+                ob->query_order() == Order::Living &&
+                ob->xpos() / GRID_SIZE == fxob->xpos() / GRID_SIZE &&
+                ob->ypos() / GRID_SIZE == fxob->ypos() / GRID_SIZE)
+            {
+                camped = true;
+            }
+        }
+        if (!camped)
+            return fxob;
+    }
+    return nullptr;
+}
+
 }  // namespace
 
 TEST(ModesItemsRealCampaign, tdm_scen300_eaten_drumstick_respawns_on_its_pad)
@@ -489,27 +574,8 @@ TEST(ModesItemsRealCampaign, tdm_scen300_eaten_drumstick_respawns_on_its_pad)
 
         // Seat all four teams before the first tick so init fields no bot
         // squads (parked ACT_CONTROL heroes at their own lead markers).
-        int seated = 0;
-        for (const auto& uptr : fx.world().oblist)
-        {
-            walker* ob = uptr.get();
-            if (ob == nullptr || ob->query_order() != Order::Special ||
-                ob->family() != FAMILY_RESERVED_TEAM)
-            {
-                continue;
-            }
-            const int team = ob->team_num();
-            if (team < 0 || team > 3 || (seated & (1 << team)) != 0)
-                continue;
-            walker* seat = fx.world().add_ob(Order::Living, FAMILY_SOLDIER);
-            ASSERT_NE(nullptr, seat);
-            seat->setxy(ob->xpos(), ob->ypos());
-            seat->set_team_num(static_cast<unsigned char>(team));
-            seat->set_real_team_num(255);
-            seat->set_act_type(ACT_CONTROL);
-            seated |= 1 << team;
-        }
-        ASSERT_EQ(15, seated) << "all four TDM teams must be seatable";
+        ASSERT_EQ(15, seat_teams_at_markers(fx.world(), 4))
+            << "all four TDM teams must be seatable";
 
         fx.world().tick();
         ASSERT_TRUE(fx.world().mode.active)
@@ -522,34 +588,7 @@ TEST(ModesItemsRealCampaign, tdm_scen300_eaten_drumstick_respawns_on_its_pad)
         // Eat one drumstick that no seat is parked on; its pad is then the
         // only free pad of a family in deficit, so the respawn must land
         // exactly on its tile.
-        walker* victim = nullptr;
-        for (const auto& uptr : fx.world().fxlist)
-        {
-            walker* fxob = uptr.get();
-            if (fxob == nullptr || fxob->dead() ||
-                fxob->query_order() != Order::Treasure ||
-                fxob->family() != FAMILY_DRUMSTICK)
-            {
-                continue;
-            }
-            bool camped = false;
-            for (const auto& obptr : fx.world().oblist)
-            {
-                const walker* ob = obptr.get();
-                if (ob != nullptr && !ob->dead() &&
-                    ob->query_order() == Order::Living &&
-                    ob->xpos() / GRID_SIZE == fxob->xpos() / GRID_SIZE &&
-                    ob->ypos() / GRID_SIZE == fxob->ypos() / GRID_SIZE)
-                {
-                    camped = true;
-                }
-            }
-            if (!camped)
-            {
-                victim = fxob;
-                break;
-            }
-        }
+        walker* victim = first_uncamped_drumstick(fx.world());
         ASSERT_NE(nullptr, victim);
         const int pad_tx = victim->xpos() / GRID_SIZE;
         const int pad_ty = victim->ypos() / GRID_SIZE;
@@ -573,6 +612,142 @@ TEST(ModesItemsRealCampaign, tdm_scen300_eaten_drumstick_respawns_on_its_pad)
         // index after the eaten pad, which may legitimately wrap to 0.
         EXPECT_LT(fx.world().mode.vars[kTdmItemCursor], 28)
             << "the rotation cursor (slot 17) stays inside the pad list";
+        expect_no_script_errors(fx.world());
+        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+    }
+    const std::string now = get_mounted_campaign();
+    if (now == "modes")
+        (void)unmount_campaign_package_with_error(now);
+    if (previous.empty())
+    {
+        const std::string still = get_mounted_campaign();
+        if (!still.empty())
+            (void)unmount_campaign_package_with_error(still);
+    }
+    else if (get_mounted_campaign() != previous)
+    {
+        (void)mount_campaign_package_with_error(previous);
+    }
+}
+
+// ===========================================================================
+// Real campaign: the ball modes adopt the respawner (#225)
+// ===========================================================================
+//
+// The playtest complaint was a pitch and a court where the authored food
+// is eaten once and never comes back, so every match turns into a hunt for
+// the last chicken. Both bands now carry drumstick pads on their manifest
+// rows; these two cases prove the round trip on the SHIPPED geometry, and
+// together they cover both halves of basketball's split slot pair (the
+// cursor in the shared header band, the clock on the last private slot).
+
+TEST(ModesItemsRealCampaign, soccer_scen820_eaten_drumstick_respawns_on_its_pad)
+{
+    restore_default_campaigns();
+    const std::string previous = get_mounted_campaign();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"))
+        << "builtin/modes.glad should restore and mount";
+    {
+        LoadedRealLevel fx(820);
+        ASSERT_TRUE(fx.loaded) << "scen820 must load from the package";
+        ASSERT_EQ(3, seat_teams_at_markers(fx.world(), 2))
+            << "both pitch teams must be seatable";
+
+        fx.world().tick();
+        ASSERT_TRUE(fx.world().mode.active)
+            << "the manifest registration must activate soccer on scen820";
+        EXPECT_EQ(1, fx.world().mode.vars[kSoccerItemLast])
+            << "the soccer impl seeds ITEM_LAST (slot 47) at init";
+        ASSERT_EQ(12, census(fx.world()).drum)
+            << "THE PITCH authors 12 drumstick pads";
+
+        walker* victim = first_uncamped_drumstick(fx.world());
+        ASSERT_NE(nullptr, victim);
+        const int pad_tx = victim->xpos() / GRID_SIZE;
+        const int pad_ty = victim->ypos() / GRID_SIZE;
+        victim->set_dead(1);
+        ASSERT_EQ(11, census(fx.world()).drum);
+
+        // Interval 180 (the manifest row): tick 210 is the first 30-tick
+        // cadence boundary at or past the interval from the init seed.
+        for (int i = 1; i < 210; ++i)
+            fx.world().tick();
+        EXPECT_EQ(12, census(fx.world()).drum)
+            << "the eaten drumstick must respawn within one interval";
+        EXPECT_NE(nullptr,
+                  live_item_at(fx.world(), FAMILY_DRUMSTICK,
+                               static_cast<short>(pad_tx * GRID_SIZE),
+                               static_cast<short>(pad_ty * GRID_SIZE)))
+            << "the respawn centers on the eaten pad (" << pad_tx << ", "
+            << pad_ty << ")";
+        EXPECT_EQ(210, fx.world().mode.vars[kSoccerItemLast])
+            << "the firing restarts the interval clock";
+        EXPECT_LT(fx.world().mode.vars[kSoccerItemCursor], 12)
+            << "the rotation cursor (slot 46) stays inside the pad list";
+        expect_no_script_errors(fx.world());
+        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+    }
+    const std::string now = get_mounted_campaign();
+    if (now == "modes")
+        (void)unmount_campaign_package_with_error(now);
+    if (previous.empty())
+    {
+        const std::string still = get_mounted_campaign();
+        if (!still.empty())
+            (void)unmount_campaign_package_with_error(still);
+    }
+    else if (get_mounted_campaign() != previous)
+    {
+        (void)mount_campaign_package_with_error(previous);
+    }
+}
+
+TEST(ModesItemsRealCampaign,
+     basketball_scen824_eaten_drumstick_respawns_on_its_pad)
+{
+    restore_default_campaigns();
+    const std::string previous = get_mounted_campaign();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"))
+        << "builtin/modes.glad should restore and mount";
+    {
+        LoadedRealLevel fx(824);
+        ASSERT_TRUE(fx.loaded) << "scen824 must load from the package";
+        ASSERT_EQ(3, seat_teams_at_markers(fx.world(), 2))
+            << "both court teams must be seatable";
+
+        fx.world().tick();
+        ASSERT_TRUE(fx.world().mode.active)
+            << "the manifest registration must activate basketball on scen824";
+        EXPECT_EQ(1, fx.world().mode.vars[kBballItemLast])
+            << "the basketball impl seeds ITEM_LAST (slot 63) at init";
+        ASSERT_EQ(10, census(fx.world()).drum)
+            << "CENTER COURT authors 10 drumstick pads";
+
+        walker* victim = first_uncamped_drumstick(fx.world());
+        ASSERT_NE(nullptr, victim);
+        const int pad_tx = victim->xpos() / GRID_SIZE;
+        const int pad_ty = victim->ypos() / GRID_SIZE;
+        victim->set_dead(1);
+        ASSERT_EQ(9, census(fx.world()).drum);
+
+        // Interval 240 (the manifest row): tick 270 is the first cadence
+        // boundary at or past the interval from the init seed.
+        for (int i = 1; i < 270; ++i)
+            fx.world().tick();
+        EXPECT_EQ(10, census(fx.world()).drum)
+            << "the eaten drumstick must respawn within one interval";
+        EXPECT_NE(nullptr,
+                  live_item_at(fx.world(), FAMILY_DRUMSTICK,
+                               static_cast<short>(pad_tx * GRID_SIZE),
+                               static_cast<short>(pad_ty * GRID_SIZE)))
+            << "the respawn centers on the eaten pad (" << pad_tx << ", "
+            << pad_ty << ")";
+        EXPECT_EQ(270, fx.world().mode.vars[kBballItemLast])
+            << "the firing restarts the interval clock on the private slot";
+        EXPECT_LT(fx.world().mode.vars[kBballItemCursor], 10)
+            << "the header-band cursor (slot 7) stays inside the pad list";
         expect_no_script_errors(fx.world());
         EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
     }

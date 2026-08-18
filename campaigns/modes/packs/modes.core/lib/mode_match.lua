@@ -56,7 +56,8 @@ end
 -- (D20) does not fit repo reality: CTF and Onslaught use every mode-private
 -- slot 8..63 and Basketball leaves only 63, so the solved plan is PACKED
 -- into the shared header band (slots 0-7, mode-neutral by convention:
--- MATCHED owns 2-5, mode_anchors' squad seed owns 6 (#235), 7 is free)
+-- MATCHED owns 2-5, mode_anchors' squad seed owns 6 (#235), and
+-- basketball's item cursor owns 7 (#225) — the band is now full)
 -- instead. TARGET is the capped mean human-team f (0 =
 -- census not run, or no human power — both mean "legacy"); PLAN carries one
 -- base-100 code per team, code = L * 10 + k (0 = unsolved, L in 1..9,

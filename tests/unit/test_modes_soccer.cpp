@@ -65,6 +65,8 @@ enum SoccerSlot : int {
     kSocStallSince = 43,
     kSocBallSpin = 44,
     kSocLastTouch2 = 45,
+    kSocItemCursor = 46,
+    kSocItemLast = 47,
 };
 
 inline constexpr int kModeIdSoccer = 4;  // mode_core.MODE.SOCCER
@@ -134,6 +136,47 @@ bool has_script_error(GameWorld& world, const std::string& needle)
             return true;
     }
     return false;
+}
+
+void expect_no_soccer_script_errors(GameWorld& world)
+{
+    for (const auto& err : world.scripts().host().errors())
+        ADD_FAILURE() << "script error: " << err.where << ": " << err.message;
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+// Respawned pickups live in the fx list (lib/mode_items spawns them with
+// og.add_fx_ob so the engine's walk-on eat scan finds them).
+int live_treasures(GameWorld& world, int family)
+{
+    int count = 0;
+    for (const auto& uptr : world.fxlist)
+    {
+        const walker* w = uptr.get();
+        if (w != nullptr && !w->dead() &&
+            w->query_order() == Order::Treasure && w->family() == family)
+        {
+            count++;
+        }
+    }
+    return count;
+}
+
+// A live pickup whose TOP-LEFT is (x, y) — a pad's spawn subtracts 8 from
+// its authored pixel center.
+walker* item_at(GameWorld& world, int family, int x, int y)
+{
+    for (const auto& uptr : world.fxlist)
+    {
+        walker* w = uptr.get();
+        if (w != nullptr && !w->dead() &&
+            w->query_order() == Order::Treasure && w->family() == family &&
+            w->xpos() == x && w->ypos() == y)
+        {
+            return w;
+        }
+    }
+    return nullptr;
 }
 
 bool front_command_is(const walker* w, std::int32_t type, std::int32_t com1,
@@ -1500,6 +1543,51 @@ TEST_F(ModesSoccer, short_manifest_time_limit_is_honored)
     EXPECT_EQ(120, fx.var(kSocTimeLimit));
     fx.tick(125);
     EXPECT_TRUE(fx.world().game_ended) << "manifest time limit decides";
+}
+
+// ===========================================================================
+// Respawning pickups (#225): the pitch runs lib/mode_items over its row
+// ===========================================================================
+
+// A pitch's pads are fed through the make_hooks(row) closure, not
+// mode_levels — the fixture rows are synthetic and never enter the
+// manifest module — so this also pins that the closure reaches items.run.
+// 9301 carries two drumstick pads (tiles (10,10) and (14,10)) on a 30-tick
+// interval and authors no food, so both pads start in deficit.
+TEST_F(ModesSoccer, item_pad_denies_while_camped_then_fills_the_free_pad)
+{
+    SoccerWorld fx;
+    // Camp pad 1 exactly: pad center (168, 168) means the item's top-left
+    // is (160, 160), and a 16x16 living there overlaps it entirely. The
+    // camper is ACT_CONTROL like the fixture's own two livings, so the
+    // director never commands it off the pad.
+    walker* camper = fx.spawn_living(FAMILY_SOLDIER, 0, 160, 160);
+    ASSERT_NE(nullptr, camper);
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    ASSERT_EQ(1, fx.var(kSocItemLast)) << "init seeds the item clock";
+    ASSERT_EQ(0, live_treasures(fx.world(), FAMILY_DRUMSTICK))
+        << "the synthetic pitch authors no food — both pads start empty";
+
+    // Tick 60 is the first 30-tick cadence boundary at or past the row's
+    // 30-tick interval from the init seed.
+    fx.tick(59);
+    EXPECT_EQ(1, live_treasures(fx.world(), FAMILY_DRUMSTICK))
+        << "exactly one item per firing";
+    EXPECT_EQ(nullptr, item_at(fx.world(), FAMILY_DRUMSTICK, 160, 160))
+        << "the camped pad is denied (pad_blocked)";
+    EXPECT_NE(nullptr, item_at(fx.world(), FAMILY_DRUMSTICK, 224, 160))
+        << "the rotation falls through to the free pad";
+    EXPECT_EQ(60, fx.var(kSocItemLast));
+
+    // The camper dies; the next firing fills the pad it was sitting on.
+    camper->set_dead(1);
+    fx.tick(30);
+    EXPECT_EQ(2, live_treasures(fx.world(), FAMILY_DRUMSTICK));
+    EXPECT_NE(nullptr, item_at(fx.world(), FAMILY_DRUMSTICK, 160, 160))
+        << "an uncamped pad fills on the next firing";
+    EXPECT_EQ(90, fx.var(kSocItemLast));
+    expect_no_soccer_script_errors(fx.world());
 }
 
 // ===========================================================================

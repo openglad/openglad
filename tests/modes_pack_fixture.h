@@ -312,8 +312,14 @@ inline constexpr const char* kTestRegistrationLua =
     "})\n"
     "local soccer = og.use(\"mode_soccer_impl\")\n"
     "local soccer_rows = {\n"
+    // 9301 is the item-pad probe row: two drumstick pads on the tiles the
+    // 9601 timeline already proves spawnable, far up-field of the goals
+    // and the kickoff spot, on a 30-tick interval so a short run fires.
     "  { id = 9301, mode = \"soccer\", teams = 2, time_limit = 10800,\n"
     "    score_limit = 3,\n"
+    "    item_pads = { { x = 168, y = 168, family = \"drumstick\" },\n"
+    "                  { x = 232, y = 168, family = \"drumstick\" } },\n"
+    "    item_interval = 30,\n"
     "    goal_rects = { [0] = { x = 16, y = 400, w = 32, h = 128 },\n"
     "                   [1] = { x = 592, y = 400, w = 32, h = 128 } },\n"
     "    kickoff = { x = 320, y = 464 } },\n"
@@ -421,8 +427,13 @@ inline constexpr const char* kTestRegistrationLua =
     "})\n"
     "local bball = og.use(\"mode_basketball_impl\")\n"
     "local bball_rows = {\n"
+    // 9701 is the item-pad probe row (soccer 9301's twin): two drumstick
+    // pads well clear of the hoops and the jump tile, interval 30.
     "  { id = 9701, mode = \"basketball\", teams = 2, time_limit = 7200,\n"
     "    score_limit = 6, arc_radius = 128,\n"
+    "    item_pads = { { x = 168, y = 168, family = \"drumstick\" },\n"
+    "                  { x = 232, y = 168, family = \"drumstick\" } },\n"
+    "    item_interval = 30,\n"
     "    hoops = { [0] = { x = 64, y = 480 },\n"
     "              [1] = { x = 576, y = 480 } },\n"
     "    jump_ball = { x = 320, y = 480 } },\n"

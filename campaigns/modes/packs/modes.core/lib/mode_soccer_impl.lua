@@ -6,6 +6,7 @@ local core = og.use("mode_core")
 local ai = og.use("mode_ai")
 local anchors = og.use("mode_anchors")
 local caps = og.use("mode_caps")
+local items = og.use("mode_items")
 local match = og.use("mode_match")
 local strip = og.use("mode_strip")
 
@@ -34,6 +35,8 @@ local S = {
   STALL_SINCE = 43, -- world tick the dead-ball clock started, 0 = running play
   BALL_SPIN = 44, -- rolling-spin phase, 0..spin_cycle-1 (see run_spin)
   LAST_TOUCH2 = 45, -- last DISTINCT other score team + 1, 0 = none
+  ITEM_CURSOR = 46, -- lib/mode_items pad rotation cursor (#225)
+  ITEM_LAST = 47, -- world tick of the last item spawn, seeded at init
 }
 
 local T = {
@@ -70,6 +73,13 @@ local T = {
   spin_cycle = 2048,
   spin_divisor = 8,
   ai_cadence = 15,
+  -- Respawning pickups (lib/mode_items): fallback interval when the
+  -- manifest row carries none. mode_items refills ONE pad per interval
+  -- whatever the pad count, so the interval tracks mouths fed, not pads:
+  -- a pitch fields 24-48 livings (12 markers per team over 2-4 teams,
+  -- plus 823's skeletons), the campaign's heaviest headcount, so soccer
+  -- sits at the FFA/Mutant floor of 180 rather than TDM's 300 (#225).
+  item_interval = 180,
   -- Keeper geometry. The intercept line sits goalie_standoff px in front
   -- of the goal mouth's open face; the defensive box is the defended rect
   -- grown by goalie_box on every side — a ball inside it is charged and
@@ -946,6 +956,7 @@ local function on_mode_init(level, row)
   kickoff_reset(ball)
 
   og.set_mode_name("SOCCER")
+  og.mode_set(S.ITEM_LAST, og.world_tick())
   og.mode_set(core.SLOT.PHASE, 1)
   -- The activation latch: written LAST, so hooks observe a fully
   -- initialized match or nothing.
@@ -997,6 +1008,10 @@ local function on_mode_tick(level, tick, row)
       run_director(livings, ball)
     end
   end
+  -- Post-death-scan, pre-HUD (the mode_items contract). The row arrives
+  -- through the make_hooks closure, not mode_levels: unit fixtures
+  -- register synthetic rows that never enter the manifest module.
+  items.run(row, S.ITEM_CURSOR, S.ITEM_LAST, T.item_interval)
   run_win_check(tick)
   update_hud(ball)
 end

@@ -237,6 +237,10 @@ a dropped flag). Carriers run home and fight only when cornered.
   drives when pressed and passes when covered, two cutters working the wings,
   a rim protector in the dunk lane, and an on-ball defender hunting the
   fumble.
+- **The drumsticks come back.** Ball contact chips everyone all match long, so
+  every court's food returns to its own spot on a twenty-second trickle — one
+  drumstick per refill, and a fighter standing on a spot holds it empty until
+  they move.
 
 ## The basketball courts
 
@@ -347,7 +351,9 @@ than the number above and they all play, up to sixteen.
   the clock runs out. Last team standing wins.
 - **Soccer** (820-823): hit the ball to send it flying; a fast ball hurts
   and bounces off whoever it hits. Fully inside the enemy goal strip = a
-  goal for the last-touching team. Dead heroes respawn.
+  goal for the last-touching team. Dead heroes respawn, and the pitch's
+  drumsticks come back to their own spots on a fifteen-second trickle — a
+  full pitch is the hungriest field in the campaign.
 - **Mutant** (840-843): a true free-for-all until the first kill crowns
   the Mutant. Every deployed character enters as its own competitor in a
   color of its own — up to sixteen of them, whatever teams the lobby put

@@ -299,32 +299,32 @@ const std::vector<ShippedModeLevel>& shipped_levels()
          {5, 5, 0, 0, 0, 0, 0, 2}, 0, 20, 8, 0, 44, false, 6,
          {0, 0, 0, 0}, 0},
         {820, "soccer", "Soccer: THE PITCH", 6, 44, 28, 2, 12, 0, 0,
-         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 8, 0, 0, 0, false, 4,
-         {0, 0, 0, 0}, 0},
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 12, 0, 0, 0, false, 4,
+         {12, 0, 0, 0}, 180},
         {821, "soccer", "Soccer: THE MUDBOWL", 8, 50, 30, 2, 12, 0, 0,
-         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 10, 0, 0, 0, false, 4,
-         {0, 0, 0, 0}, 0},
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 14, 0, 0, 0, false, 4,
+         {12, 0, 0, 0}, 180},
         {822, "soccer", "Soccer: FOURSQUARE", 8, 40, 40, 4, 12, 0, 0,
-         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 8, 0, 0, 0, false, 8,
-         {0, 0, 0, 0}, 0},
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 12, 0, 0, 0, false, 8,
+         {12, 0, 0, 0}, 180},
         {823, "soccer", "Soccer: BONEYARD CUP", 10, 46, 30, 2, 12, 0, 0,
-         {1, 1, 0, 0, 0, 0, 0, 0}, 0, 8, 0, 0, 12, false, 8,
-         {0, 0, 0, 0}, 0},
+         {1, 1, 0, 0, 0, 0, 0, 0}, 0, 12, 0, 0, 12, false, 8,
+         {12, 0, 0, 0}, 180},
         {824, "basketball", "Basketball: CENTER COURT", 6, 45, 25, 2, 5, 0, 0,
-         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 6, 0, 0, 0, false, 4,
-         {0, 0, 0, 0}, 0},
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 10, 0, 0, 0, false, 4,
+         {10, 0, 0, 0}, 240},
         {825, "basketball", "Basketball: THE PLAYGROUND", 6, 31, 19, 2, 5, 0, 0,
-         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 2, 0, 0, 0, false, 4,
-         {0, 0, 0, 0}, 0},
-        {826, "basketball", "Basketball: FOUR HOOPS", 8, 41, 41, 4, 5, 0, 0,
-         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 8, 0, 0, 0, false, 8,
-         {0, 0, 0, 0}, 0},
-        {827, "basketball", "Basketball: THE BANKHOUSE", 8, 45, 27, 2, 5, 0, 0,
          {0, 0, 0, 0, 0, 0, 0, 0}, 0, 6, 0, 0, 0, false, 4,
-         {0, 0, 0, 0}, 0},
+         {6, 0, 0, 0}, 240},
+        {826, "basketball", "Basketball: FOUR HOOPS", 8, 41, 41, 4, 5, 0, 0,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 12, 0, 0, 0, false, 8,
+         {12, 0, 0, 0}, 240},
+        {827, "basketball", "Basketball: THE BANKHOUSE", 8, 45, 27, 2, 5, 0, 0,
+         {0, 0, 0, 0, 0, 0, 0, 0}, 0, 10, 0, 0, 0, false, 4,
+         {10, 0, 0, 0}, 240},
         {828, "basketball", "Basketball: BENCHWARMERS", 10, 47, 29, 2, 5, 0, 0,
-         {1, 1, 0, 0, 0, 0, 0, 0}, 0, 6, 0, 0, 8, false, 6,
-         {0, 0, 0, 0}, 0},
+         {1, 1, 0, 0, 0, 0, 0, 0}, 0, 10, 0, 0, 8, false, 6,
+         {10, 0, 0, 0}, 240},
         {840, "mutant", "Mutant: THE PIT", 6, 30, 30, 4, 12, 0, 0,
          {0, 0, 0, 0, 0, 0, 0, 0}, 0, 8, 0, 0, 0, false, 4,
          {6, 0, 0, 2}, 180, 4},
@@ -972,15 +972,12 @@ TEST_F(ModesLevels, basketball_courts_match_the_manifest)
             << "scen" << pin.id << " jump_ball x";
         EXPECT_EQ(pin.jump_ty * GRID_SIZE + GRID_SIZE / 2, *jy)
             << "scen" << pin.id << " jump_ball y";
-
-        // No basketball court authors item pads (the mode ships no
-        // respawning pickups); the drumsticks are static food.
-        const auto no_pads = host.eval_boolean(
-            expr_prefix +
-            std::format("M.levels[{}].item_pads == nil end)()", pin.id));
-        ASSERT_TRUE(no_pads.has_value()) << "scen" << pin.id;
-        EXPECT_TRUE(*no_pads) << "scen" << pin.id;
     }
+
+    // Every court's drumsticks are respawning pads now (#225 reversed the
+    // "no item_pads ever" ruling); the per-row pads and interval are pinned
+    // in the shipped_levels table and checked against the loaded world by
+    // item_pads_mirror_the_world_and_the_off_modes_stay_off.
 
     // Only the five authored courts are basketball rows: an unauthored id
     // in the band carries no manifest entry at all.
@@ -1138,8 +1135,9 @@ TEST_F(ModesLevels, manifest_module_matches_package_and_executes)
 // Respawning pickups: the manifest item_pads must mirror the world's live
 // respawnable treasures EXACTLY (same multiset of family + tile — the
 // same pin the mapgen self-check enforces at generation), the per-family
-// counts must match the row table above, and the OFF modes (soccer,
-// onslaught) must ship no pads at all.
+// counts must match the row table above, and the one remaining OFF mode
+// (onslaught, whose spawn attrition IS the mode) must ship no pads at all.
+// Soccer and basketball were OFF too until the #225 playtest.
 TEST_F(ModesLevels, item_pads_mirror_the_world_and_the_off_modes_stay_off)
 {
     const std::vector<std::uint8_t> member = og::resources::read_file(

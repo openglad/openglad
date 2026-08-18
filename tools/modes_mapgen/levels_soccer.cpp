@@ -66,6 +66,15 @@ void place_markers(GameWorld& world, int team,
         place_at(world, Order::Special, FAMILY_RESERVED_TEAM, team, t);
 }
 
+// Author the row's respawnable food/potion scatter (D8 single source: the
+// same pads drive the manifest, lib/mode_items' respawner and the
+// self-check pin). Authoring order is the row list order.
+void place_item_pads(GameWorld& world, const ExpectedLevel& row)
+{
+    for (const ItemPad& pad : row.item_pads)
+        place_at(world, Order::Treasure, pad.family, 0, pad.at);
+}
+
 // West/east pitch shell shared by 820/821/823: border ring, two-deep end
 // walls whose middle rows are the carpet goal recesses, grass field,
 // cobble halfway columns + center circle, and column-decor goal posts.
@@ -136,10 +145,7 @@ void build_the_pitch(const ExpectedLevel& row)
     place_markers(world, 0, west);
     place_markers(world, 1, mirror_x(west, 44));
 
-    for (const TilePos t :
-         {TilePos{10, 2}, TilePos{17, 2}, TilePos{26, 2}, TilePos{33, 2},
-          TilePos{10, 25}, TilePos{17, 25}, TilePos{26, 25}, TilePos{33, 25}})
-        place_at(world, Order::Treasure, FAMILY_DRUMSTICK, 0, t);
+    place_item_pads(world, row);
 
     emit_painted(world, row);
 }
@@ -162,10 +168,9 @@ void build_the_mudbowl(const ExpectedLevel& row)
     place_markers(world, 0, west);
     place_markers(world, 1, mirror_x(west, 50));
 
-    for (const TilePos t :
-         {TilePos{10, 2}, TilePos{20, 2}, TilePos{30, 2}, TilePos{40, 2},
-          TilePos{10, 27}, TilePos{20, 27}, TilePos{30, 27}, TilePos{40, 27}})
-        place_at(world, Order::Treasure, FAMILY_DRUMSTICK, 0, t);
+    place_item_pads(world, row);
+    // The flight potions are one-shot rewards for gambling on the pools,
+    // not sustain — they stay out of item_pads and never respawn.
     place_at(world, Order::Treasure, FAMILY_FLIGHT_POTION, 0, {19, 6});
     place_at(world, Order::Treasure, FAMILY_FLIGHT_POTION, 0, {30, 23});
 
@@ -220,10 +225,7 @@ void build_foursquare(const ExpectedLevel& row)
             p = {static_cast<short>(39 - p.ty), p.tx};
     }
 
-    for (const TilePos t :
-         {TilePos{8, 8}, TilePos{31, 8}, TilePos{8, 31}, TilePos{31, 31},
-          TilePos{8, 19}, TilePos{31, 19}, TilePos{19, 8}, TilePos{19, 31}})
-        place_at(world, Order::Treasure, FAMILY_DRUMSTICK, 0, t);
+    place_item_pads(world, row);
 
     emit_painted(world, row);
 }
@@ -266,16 +268,20 @@ void build_boneyard_cup(const ExpectedLevel& row)
     place_markers(world, 0, west);
     place_markers(world, 1, mirror_x(west, 46));
 
-    for (const TilePos t :
-         {TilePos{17, 2}, TilePos{28, 2}, TilePos{12, 7}, TilePos{22, 7},
-          TilePos{33, 7}, TilePos{12, 22}, TilePos{22, 22}, TilePos{33, 22}})
-        place_at(world, Order::Treasure, FAMILY_DRUMSTICK, 0, t);
+    place_item_pads(world, row);
 
     emit_painted(world, row);
 }
 
+// Every soccer drumstick is a respawnable pad (#225): the pad list IS the
+// food scatter, the builders place from it, and row.treasures must equal
+// its length (821 adds its two static flight potions on top). Interval
+// 180 (15 s) matches the FFA/Mutant trickle — mode_items refills ONE item
+// per interval whatever the pad count, and a soccer pitch fields 24-48
+// livings (12 markers per team over 2-4 teams, plus 823's skeletons),
+// the heaviest headcount in the campaign, so it sits at the shipped floor.
 ExpectedLevel soccer_row(int id, const char* title, int par, int w, int h,
-                         int teams, int treasures,
+                         int teams, std::vector<ItemPad> pads,
                          std::vector<GoalRect> goals, TilePos kickoff,
                          std::vector<std::string> briefing)
 {
@@ -288,7 +294,9 @@ ExpectedLevel soccer_row(int id, const char* title, int par, int w, int h,
     row.grid_h = h;
     row.team_count = teams;
     row.markers_per_team = 12;
-    row.treasures = treasures;
+    row.treasures = static_cast<int>(pads.size());
+    row.item_pads = std::move(pads);
+    row.item_interval = 180;
     row.time_limit = 10800;
     row.score_limit = 3;
     row.goal_rects = std::move(goals);
@@ -303,8 +311,25 @@ std::vector<ExpectedLevel> soccer_expectations()
 {
     std::vector<ExpectedLevel> out;
 
+    // Touchline food (the authored scatter) plus four halfway-column pads
+    // so the middle third feeds too — the #225 complaint was a pitch whose
+    // only chicken sat on the sidelines. 180-degree symmetric.
     ExpectedLevel pitch = soccer_row(
-        820, "Soccer: THE PITCH", 6, 44, 28, 2, 8,
+        820, "Soccer: THE PITCH", 6, 44, 28, 2,
+        {
+            {FAMILY_DRUMSTICK, {10, 2}},
+            {FAMILY_DRUMSTICK, {17, 2}},
+            {FAMILY_DRUMSTICK, {26, 2}},
+            {FAMILY_DRUMSTICK, {33, 2}},
+            {FAMILY_DRUMSTICK, {10, 25}},
+            {FAMILY_DRUMSTICK, {17, 25}},
+            {FAMILY_DRUMSTICK, {26, 25}},
+            {FAMILY_DRUMSTICK, {33, 25}},
+            {FAMILY_DRUMSTICK, {21, 6}},
+            {FAMILY_DRUMSTICK, {21, 10}},
+            {FAMILY_DRUMSTICK, {22, 17}},
+            {FAMILY_DRUMSTICK, {22, 21}},
+        },
         {{1, 10, 2, 17}, {41, 10, 42, 17}}, {21, 13},
         {
             "A GENTLER GAME? HARDLY.",
@@ -319,8 +344,24 @@ std::vector<ExpectedLevel> soccer_expectations()
     pitch.decor_cells = 4;
     out.push_back(std::move(pitch));
 
+    // Halfway columns 24/25 thread between the two pools (x 20-23 and
+    // 26-29), so the midfield pads stay on dry cobble.
     ExpectedLevel mudbowl = soccer_row(
-        821, "Soccer: THE MUDBOWL", 8, 50, 30, 2, 10,
+        821, "Soccer: THE MUDBOWL", 8, 50, 30, 2,
+        {
+            {FAMILY_DRUMSTICK, {10, 2}},
+            {FAMILY_DRUMSTICK, {20, 2}},
+            {FAMILY_DRUMSTICK, {30, 2}},
+            {FAMILY_DRUMSTICK, {40, 2}},
+            {FAMILY_DRUMSTICK, {10, 27}},
+            {FAMILY_DRUMSTICK, {20, 27}},
+            {FAMILY_DRUMSTICK, {30, 27}},
+            {FAMILY_DRUMSTICK, {40, 27}},
+            {FAMILY_DRUMSTICK, {24, 5}},
+            {FAMILY_DRUMSTICK, {24, 10}},
+            {FAMILY_DRUMSTICK, {25, 19}},
+            {FAMILY_DRUMSTICK, {25, 24}},
+        },
         {{1, 11, 2, 18}, {47, 11, 48, 18}}, {24, 14},
         {
             "THE MUDBOWL, CONTENDERS. TWO",
@@ -332,10 +373,29 @@ std::vector<ExpectedLevel> soccer_expectations()
             "-- THE GAMESMASTER",
         });
     mudbowl.decor_cells = 4;
+    // The two flight potions are static one-shots, so they are treasures
+    // the world carries but never pads the respawner refills.
+    mudbowl.treasures += 2;
     out.push_back(std::move(mudbowl));
 
+    // Four teams, so the midfield pads are 90-degree symmetric under
+    // (x, y) -> (39 - y, x), the same rotation the markers use.
     ExpectedLevel foursquare = soccer_row(
-        822, "Soccer: FOURSQUARE", 8, 40, 40, 4, 8,
+        822, "Soccer: FOURSQUARE", 8, 40, 40, 4,
+        {
+            {FAMILY_DRUMSTICK, {8, 8}},
+            {FAMILY_DRUMSTICK, {31, 8}},
+            {FAMILY_DRUMSTICK, {8, 31}},
+            {FAMILY_DRUMSTICK, {31, 31}},
+            {FAMILY_DRUMSTICK, {8, 19}},
+            {FAMILY_DRUMSTICK, {31, 19}},
+            {FAMILY_DRUMSTICK, {19, 8}},
+            {FAMILY_DRUMSTICK, {19, 31}},
+            {FAMILY_DRUMSTICK, {19, 14}},
+            {FAMILY_DRUMSTICK, {25, 19}},
+            {FAMILY_DRUMSTICK, {20, 25}},
+            {FAMILY_DRUMSTICK, {14, 20}},
+        },
         {{16, 1, 23, 2}, {37, 16, 38, 23}, {16, 37, 23, 38}, {1, 16, 2, 23}},
         {19, 19},
         {
@@ -350,8 +410,24 @@ std::vector<ExpectedLevel> soccer_expectations()
     foursquare.decor_cells = 8;
     out.push_back(std::move(foursquare));
 
+    // Skeleton reinforcements eat too: halfway-line pads plus a pair of
+    // center-circle flanks, all clear of the kickoff tile (22, 14).
     ExpectedLevel boneyard = soccer_row(
-        823, "Soccer: BONEYARD CUP", 10, 46, 30, 2, 8,
+        823, "Soccer: BONEYARD CUP", 10, 46, 30, 2,
+        {
+            {FAMILY_DRUMSTICK, {17, 2}},
+            {FAMILY_DRUMSTICK, {28, 2}},
+            {FAMILY_DRUMSTICK, {12, 7}},
+            {FAMILY_DRUMSTICK, {22, 7}},
+            {FAMILY_DRUMSTICK, {33, 7}},
+            {FAMILY_DRUMSTICK, {12, 22}},
+            {FAMILY_DRUMSTICK, {22, 22}},
+            {FAMILY_DRUMSTICK, {33, 22}},
+            {FAMILY_DRUMSTICK, {22, 11}},
+            {FAMILY_DRUMSTICK, {23, 18}},
+            {FAMILY_DRUMSTICK, {17, 14}},
+            {FAMILY_DRUMSTICK, {28, 15}},
+        },
         {{1, 11, 2, 18}, {43, 11, 44, 18}}, {22, 14},
         {
             "THE BONEYARD CUP. EACH SIDE'S",

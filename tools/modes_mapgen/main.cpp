@@ -526,18 +526,24 @@ void self_check_level(const ExpectedLevel& row)
                          "hold-post", where, guard_violations));
 
     // Respawnable-item pads (D8 single source): on the item-respawning
-    // modes (TDM/CTF/Mutant) the world's live treasures of the four
-    // respawnable families must be EXACTLY the row's item_pads (same
-    // multiset of (family, tile)). This is what keeps the vendored
-    // CTF/arenas transcriptions honest and prevents canvas-builder drift —
-    // on mismatch the actual multiset is printed as a paste-ready
-    // initializer. Soccer and Onslaught are OFF by ruling (Soccer's short
-    // respawn already regulates attrition; Onslaught's spawn attrition IS
-    // the mode and its var budget is full), so their rows must stay
-    // pad-free even though their maps author food. Basketball extends the
-    // ruling (D2): its rows carry no pads either.
-    if (row.mode == ModeKind::Soccer || row.mode == ModeKind::Onslaught ||
-        row.mode == ModeKind::Basketball)
+    // modes the world's live treasures of the four respawnable families
+    // must be EXACTLY the row's item_pads (same multiset of (family,
+    // tile)). This is what keeps the vendored CTF/arenas transcriptions
+    // honest and prevents canvas-builder drift — on mismatch the actual
+    // multiset is printed as a paste-ready initializer.
+    //
+    // Soccer and Basketball used to be OFF here alongside Onslaught, on
+    // the ruling that "Soccer's short respawn already regulates
+    // attrition" (Basketball extended it as D2). The #225 playtest
+    // reversed that: both ball games turned into a constant hunt for the
+    // chicken, because the ball keeps everyone moving and fighting while
+    // the authored food is eaten once and never returns. Both bands now
+    // carry drumstick pads and join the exact-multiset pin, so every
+    // authored drumstick on 820-828 must appear in its row.
+    //
+    // Onslaught stays OFF with its original rationale intact: its spawn
+    // attrition IS the mode, and its mode-var budget is full.
+    if (row.mode == ModeKind::Onslaught)
     {
         if (!row.item_pads.empty() || row.item_interval != 0)
             fail(std::format("{}: {} mode ships no item respawns; drop the "
