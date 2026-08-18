@@ -515,7 +515,8 @@ static void draw_beacon_arrow(screen* s, Sint32 x, Sint32 y, int dx, int dy,
 // entities; an in-view beacon gets a pulsing underline bar. Render-only and
 // RNG-free: the pulse phase derives from the replicated tick, never from a
 // rng draw (the radar jitter-0 discipline).
-static void draw_mode_beacons(screen* s, viewscreen* view, Sint32 lm,
+static void draw_mode_beacons(screen* s, viewscreen* view,
+                              const GameplayUiProjector& proj, Sint32 lm,
                               Sint32 tm, Sint32 rm, Sint32 bm)
 {
     const GameWorld& world = s->world_;
@@ -545,13 +546,21 @@ static void draw_mode_beacons(screen* s, viewscreen* view, Sint32 lm,
                 ? og::sim::team_ramp_base(static_cast<int>(beacon.team))
                 : target->query_team_color();
 
-        // Project the entity center into this viewport's screen space.
-        const Sint32 cx = view->xloc +
-            (static_cast<Sint32>(target->xpos()) +
-             target->sizex() / 2 - view->topx);
-        const Sint32 cy = view->yloc +
-            (static_cast<Sint32>(target->ypos()) +
-             target->sizey() / 2 - view->topy);
+        // Project the entity center into the stable gameplay-UI pane. The
+        // caller's ScopedGameplayUiViewLayout already swapped xloc/xview to
+        // UI values while topx/topy stayed WORLD (issue #220: mixing them
+        // raw put the marker 1/zoom too far out and flipped an on-screen
+        // ball to an edge arrow), so the projection runs through the
+        // projector captured before the scope.
+        const float world_cx = static_cast<float>(target->xpos()) +
+            static_cast<float>(target->sizex() / 2) -
+            static_cast<float>(view->topx) +
+            static_cast<float>(proj.world_xloc());
+        const float world_cy = static_cast<float>(target->ypos()) +
+            static_cast<float>(target->sizey() / 2) -
+            static_cast<float>(view->topy) +
+            static_cast<float>(proj.world_yloc());
+        const auto [cx, cy] = proj.project(world_cx, world_cy);
 
         // Clamp into the viewport interior; a binding clamp = off-view.
         const Sint32 clamped_x = std::clamp(cx, lm + 4, rm - 5);
@@ -566,12 +575,20 @@ static void draw_mode_beacons(screen* s, viewscreen* view, Sint32 lm,
             const int phase =
                 static_cast<int>(world.tick_count_ % 12u);
             const int half = (phase < 6) ? phase : (11 - phase);
-            const Sint32 bar_w = static_cast<Sint32>(8 + 2 * half);
+            const Sint32 bar_w = proj.scale_w(
+                static_cast<Sint32>(8 + 2 * half), 1);
+            // The classic pulse is 2 rows tall; scale by the vertical pane
+            // ratio, floored at one drawable row (fastbox takes a row
+            // COUNT, unlike draw_box's inclusive corners).
+            const Sint32 bar_h = proj.scale_h(2, 1);
             const Sint32 bar_x =
                 std::clamp(cx - bar_w / 2, lm, rm - bar_w);
-            const Sint32 bar_y = std::min(
-                cy + target->sizey() / 2 + 1, bm - 2);
-            s->fastbox(bar_x, bar_y, bar_w, 2, color, 1);
+            const Sint32 bottom_cy = proj.project(
+                world_cx,
+                world_cy +
+                    static_cast<float>(target->sizey() / 2)).second;
+            const Sint32 bar_y = std::min(bottom_cy + 1, bm - bar_h);
+            s->fastbox(bar_x, bar_y, bar_w, bar_h, color, 1);
             TRACE("mode_hud", "beacon_pulse slot=%d w=%d x=%d y=%d", slot,
                   static_cast<int>(bar_w), static_cast<int>(bar_x),
                   static_cast<int>(bar_y));
@@ -627,6 +644,10 @@ short new_score_panel(screen* s, short /*do_it*/)
 
     for (players = 0; players < s->numviews; players++)
     {
+		// Captured BEFORE the layout scope: inside it xloc/xview are already
+		// UI-pane values and the world->UI projection would degenerate to
+		// the identity (issue #220).
+		const GameplayUiProjector beacon_proj(*s->viewob[players]);
 		ScopedGameplayUiViewLayout gameplay_ui_layout(
 			*s->viewob[players], *s);
         control = s->viewob[players]->control;
@@ -643,7 +664,8 @@ short new_score_panel(screen* s, short /*do_it*/)
         if (scripted_mode_hud)
         {
             draw_mode_panel(s, s->viewob[players].get(), lm, tm, rm);
-            draw_mode_beacons(s, s->viewob[players].get(), lm, tm, rm, bm);
+            draw_mode_beacons(s, s->viewob[players].get(), beacon_proj,
+                              lm, tm, rm, bm);
         }
         if (og::sim::classic_respawn_active(s->world_) || scripted_mode_hud)
             draw_respawn_countdown(s, control, lm, tm);

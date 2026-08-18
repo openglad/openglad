@@ -5854,6 +5854,102 @@ TEST(GameLoop, zoom_half_mini_hp_bar_matches_projected_sprite_width)
         << "nothing may be drawn out at the unprojected sprite width";
 }
 
+// Issue #244: the mini HP bar's HEIGHT was hardcoded (bar_h = 1, a 2-row fill
+// through draw_box's inclusive corners) while its width and anchor were
+// pane-projected, so at zoom 0.5 the bar towered 2x over the shrunken sprite
+// it labels. The fill now scales by the vertical pane ratio, floored at one
+// drawable UI row.
+TEST(GameLoop, zoom_half_mini_hp_bar_height_matches_pane_ratio)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(s != nullptr);
+
+    canvas_zoom_gameplay::WorldZoomGameGuard guard(s);
+    canvas_zoom_gameplay::MiniHpBarCfgGuard hp_bar_on;
+
+    gameplay_rec::build_save(s, "gladiator", 1, 1,
+                             {FAMILY_SOLDIER}, 4);
+    s->set_active_canvas(CanvasTarget::UI);
+    glad_init();
+    ASSERT_TRUE(s->gameplay_ui_canvas_available())
+        << "the fixed overlay must exist for the pane projection to apply";
+    ASSERT_EQ(1, static_cast<int>(s->numviews));
+
+    viewscreen* const vs = s->viewob[0].get();
+    ASSERT_TRUE(vs != nullptr);
+    walker* const w = vs->control;
+    ASSERT_TRUE(w != nullptr);
+
+    w->stats()->set_max_hitpoints(100.0f);
+    w->stats()->set_hitpoints(50.0f);
+    w->set_last_hitpoints(50.0f);
+
+    // Settle the camera and allocate/clear the overlay before sampling it.
+    s->redraw();
+
+    const og::view_layout::ViewLayout ui =
+        og::view_layout::compute_view_layout(
+            s->numviews, vs->mynum, vs->prefs[PREF_VIEW],
+            s->gameplay_ui_canvas_w(), s->gameplay_ui_canvas_h());
+    ASSERT_TRUE(ui.applies);
+    const Sint32 sprite_w = w->sizex();
+    const Sint32 expected_bar_w = sprite_w * ui.w / vs->xview;
+    ASSERT_EQ(sprite_w, expected_bar_w * 2)
+        << "the harness must produce a 2x world canvas (window 640x400, zoom 0.5)";
+
+    // project_world_point_to_gameplay_ui only projects while the gameplay-UI
+    // canvas is the active one, so enter the same scope the renderer uses
+    // before computing the anchor.
+    ScopedGameplayUiCanvas gameplay_ui(*s);
+
+    const WalkerRenderPosition draw_pos =
+        resolve_walker_render_position(*w, vs->interpolation_alpha);
+    const float world_x = draw_pos.xpos - static_cast<float>(vs->topx) +
+        static_cast<float>(vs->xloc);
+    const float world_y = draw_pos.ypos - static_cast<float>(vs->topy) +
+        static_cast<float>(vs->yloc);
+    const auto [bar_x, walker_bottom] =
+        vs->project_world_point_to_gameplay_ui(
+            world_x, world_y + static_cast<float>(w->sizey()));
+    const Sint32 bar_y = walker_bottom + 1;
+    ASSERT_LT(bar_x + sprite_w + 8, ui.x + ui.w)
+        << "the sampled columns must stay inside the gameplay-UI pane";
+    ASSERT_GT(bar_x, ui.x) << "the bar must start inside the pane";
+    ASSERT_GT(bar_y - 1, ui.y)
+        << "the outline's top row must sit inside the pane";
+    ASSERT_LT(bar_y + 2, ui.y + ui.h)
+        << "the sampled rows below the bar must stay inside the pane";
+
+    s->clearbuffer();
+    const int background_index =
+        canvas_zoom_gameplay::pixel_index(s, bar_x + sprite_w + 8, bar_y);
+    draw_small_health_bar(w, vs);
+
+    const int hp_index = canvas_zoom_gameplay::pixel_index(s, bar_x, bar_y);
+    ASSERT_NE(background_index, hp_index) << "the bar must have been drawn";
+    int vrun = 0;
+    while (bar_y + vrun < ui.y + ui.h &&
+           canvas_zoom_gameplay::pixel_index(s, bar_x, bar_y + vrun) ==
+               hp_index)
+        ++vrun;
+    EXPECT_EQ(1, vrun)
+        << "at zoom 0.5 the fill must be one UI row — half the classic "
+           "2-row fill, within rounding — not the unscaled 2 (issue #244)";
+    const int outline_index =
+        canvas_zoom_gameplay::pixel_index(s, bar_x - 1, bar_y);
+    ASSERT_NE(background_index, outline_index) << "the outline must be drawn";
+    EXPECT_EQ(outline_index,
+              canvas_zoom_gameplay::pixel_index(s, bar_x, bar_y - 1))
+        << "the outline's top row must sit directly above the fill";
+    EXPECT_EQ(outline_index,
+              canvas_zoom_gameplay::pixel_index(s, bar_x, bar_y + 1))
+        << "the bottom outline must sit directly under the single fill row "
+           "(pre-#244 this row was fill)";
+    EXPECT_EQ(background_index,
+              canvas_zoom_gameplay::pixel_index(s, bar_x, bar_y + 2))
+        << "the block must end after 3 UI rows at zoom 0.5";
+}
+
 // --- Mid-game local player add/remove (pause-menu design §5) ---------------
 //
 // These drive the real local shadow built by glad_init (the idiom of
