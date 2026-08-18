@@ -62,10 +62,10 @@ to every client:
 
 - **Match Teams** — `Auto` fields every team the map authors (2, 3, or 4);
   or force 2/3/4. Teams without human players get AI squads. Under
-  `TROOPS: OWN`/`FAIR`, `Auto` instead fields only the teams your deployed
-  company sits on (a solo company gets one opponent), while an explicit
-  count always fields that many sides — your teams stay, and the rest
-  backfill in team order.
+  `TROOPS: OWN`/`FAIR` the count works the same way — `Auto` means the
+  map's own team count, an explicit count fields that many sides — with
+  your deployed company's teams always staying and the rest backfilling in
+  team order (TROOPS only decides what the AI squads are made of).
 - **Score Limit** — `Map default` uses the map's authored limit (each mode
   reads it as its own win threshold: captures, frags, goals), or force
   1–10.
