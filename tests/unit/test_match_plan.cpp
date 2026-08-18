@@ -298,6 +298,43 @@ TEST_F(MatchPlan, fence_blocks_mode_set_during_planning)
     EXPECT_EQ(0, fx.var(0)) << "the fenced write must not have landed";
 }
 
+// The registrars sit outside the load fence, so each carries its own plan
+// arm: a plan that could rewrite hook tables (including on_mode_plan /
+// on_mode_init themselves) from a picker-time preview dispatch would let a
+// broken pack silently change later previews and launches.
+TEST_F(MatchPlan, fence_blocks_register_level_hooks_during_planning)
+{
+    ModesCtfWorld fx(9809);
+    EXPECT_FALSE(og::script::hooks::level_mode_plan(9809, probe_inputs())
+                     .has_value());
+    EXPECT_TRUE(has_script_error(
+        fx.world(),
+        "og.register_level_hooks: hook registration is not available during "
+        "match planning"));
+}
+
+TEST_F(MatchPlan, fence_blocks_register_hooks_during_planning)
+{
+    ModesCtfWorld fx(9810);
+    EXPECT_FALSE(og::script::hooks::level_mode_plan(9810, probe_inputs())
+                     .has_value());
+    EXPECT_TRUE(has_script_error(
+        fx.world(),
+        "og.register_hooks: hook registration is not available during "
+        "match planning"));
+}
+
+TEST_F(MatchPlan, fence_blocks_register_campaign_hooks_during_planning)
+{
+    ModesCtfWorld fx(9811);
+    EXPECT_FALSE(og::script::hooks::level_mode_plan(9811, probe_inputs())
+                     .has_value());
+    EXPECT_TRUE(has_script_error(
+        fx.world(),
+        "og.register_campaign_hooks: hook registration is not available "
+        "during match planning"));
+}
+
 TEST_F(MatchPlan, fence_disarms_after_the_dispatch)
 {
     ModesCtfWorld fx(9801);

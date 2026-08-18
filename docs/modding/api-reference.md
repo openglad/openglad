@@ -831,9 +831,12 @@ og.set_entity_hooks(ent, { on_death = function(ent) ... end })
 - `on_mode_plan(level, inputs) -> plan` is the optional PURE match-plan
   phase. **The world API is fenced off while it runs** — every world `og.*`
   entry (`og.oblist`, `og.rand`, `og.mode_set`, `og.match_setting`, ...)
-  raises `"the world API is not available during match planning"` — so a
-  plan is a pure function of `(level, inputs)` plus whatever the registering
-  script closed over. Allowed surface: the sandbox arithmetic
+  raises `"the world API is not available during match planning"`, and the
+  three registrars (`og.register_hooks`, `og.register_level_hooks`,
+  `og.register_campaign_hooks`) refuse with `"hook registration is not
+  available during match planning"` — so a plan is a pure function of
+  `(level, inputs)` plus whatever the registering script closed over, and it
+  cannot rewrite hook tables from a preview dispatch. Allowed surface: the sandbox arithmetic
   (`og.div/mod/f*/i*/trunc/log`), `og.max/min/clamp/sign`, `og.C`, `og.api`,
   and pure `og.use` lib helpers. `inputs` is plain data (numbers and tables
   only, never an entity handle): the request knobs

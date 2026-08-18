@@ -591,7 +591,10 @@ inline constexpr const char* kTestRegistrationLua =
     // the plan-fence arms (one fenced world binding each). 9804/9805 are
     // the nil-plan and plan-error interleavings; 9806 is the no-plan-hook
     // init; 9807 covers the remaining fill vocabulary + starts=false;
-    // 9808 answers a non-table.
+    // 9808 answers a non-table. 9809-9811 are the registrar fence arms: a
+    // plan must not rewrite hook tables (level, family, campaign — one
+    // probe each), or a broken pack could re-register on_mode_plan /
+    // on_mode_init from a picker-time preview dispatch.
     "og.register_level_hooks(9800, {\n"
     "  on_mode_plan = function(level, inputs)\n"
     "    if type(inputs) ~= \"table\" then\n"
@@ -722,6 +725,24 @@ inline constexpr const char* kTestRegistrationLua =
     "og.register_level_hooks(9808, {\n"
     "  on_mode_plan = function(level, inputs)\n"
     "    return 42\n"
+    "  end,\n"
+    "})\n"
+    "og.register_level_hooks(9809, {\n"
+    "  on_mode_plan = function(level, inputs)\n"
+    "    og.register_level_hooks(9809, { on_mode_plan = function() end })\n"
+    "    return { mode = \"X\", starts = false }\n"
+    "  end,\n"
+    "})\n"
+    "og.register_level_hooks(9810, {\n"
+    "  on_mode_plan = function(level, inputs)\n"
+    "    og.register_hooks(\"weapon\", \"knife\", {})\n"
+    "    return { mode = \"X\", starts = false }\n"
+    "  end,\n"
+    "})\n"
+    "og.register_level_hooks(9811, {\n"
+    "  on_mode_plan = function(level, inputs)\n"
+    "    og.register_campaign_hooks({})\n"
+    "    return { mode = \"X\", starts = false }\n"
     "  end,\n"
     "})\n";
 

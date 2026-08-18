@@ -718,14 +718,18 @@ namespace {
 
 int og_register_hooks(lua_State* L)
 {
-    // Deliberately outside the load fence, but NOT outside the campaign
-    // fence: a menu script must not rewrite sim hook tables. Checked before
-    // any argument check so the fence-walk test sees this error, not an
-    // argument error.
+    // Deliberately outside the load fence, but NOT outside the campaign or
+    // plan fences: neither a menu script nor a match plan may rewrite sim
+    // hook tables. Checked before any argument check so the fence-walk test
+    // sees this error, not an argument error.
     if (const VmState* fence_st = get_vm_state(L);
         fence_st != nullptr && fence_st->campaign_dispatch)
         return luaL_error(L, "og.register_hooks: hook registration is not "
                              "available during campaign hooks");
+    if (const VmState* fence_st = get_vm_state(L);
+        fence_st != nullptr && fence_st->plan_dispatch)
+        return luaL_error(L, "og.register_hooks: hook registration is not "
+                             "available during match planning");
     const char* order_str = luaL_checkstring(L, 1);
     const char* family_str = luaL_checkstring(L, 2);
     luaL_checktype(L, 3, LUA_TTABLE);
@@ -1054,12 +1058,17 @@ constexpr LevelHookName kLevelHookNames[] = {
 // on_entity_spawn= }). level_id -1 registers for every level.
 int og_register_level_hooks(lua_State* L)
 {
-    // Same campaign fence as og.register_hooks (menu scripts must not
-    // rewrite sim hook tables), before any argument check.
+    // Same campaign and plan fences as og.register_hooks (neither menu
+    // scripts nor match plans may rewrite sim hook tables), before any
+    // argument check.
     if (const VmState* fence_st = get_vm_state(L);
         fence_st != nullptr && fence_st->campaign_dispatch)
         return luaL_error(L, "og.register_level_hooks: hook registration is "
                              "not available during campaign hooks");
+    if (const VmState* fence_st = get_vm_state(L);
+        fence_st != nullptr && fence_st->plan_dispatch)
+        return luaL_error(L, "og.register_level_hooks: hook registration is "
+                             "not available during match planning");
     const int level_id = static_cast<int>(luaL_checkinteger(L, 1));
     luaL_checktype(L, 2, LUA_TTABLE);
     VmState* st = get_vm_state(L);
@@ -1154,11 +1163,14 @@ std::string campaign_caller_source(lua_State* L)
 int og_register_campaign_hooks(lua_State* L)
 {
     VmState* st = get_vm_state(L);
-    // Campaign fence first (before any argument check): a campaign hook
-    // must not re-register hooks.
+    // Campaign and plan fences first (before any argument check): neither a
+    // campaign hook nor a match plan may re-register hooks.
     if (st != nullptr && st->campaign_dispatch)
         return luaL_error(L, "og.register_campaign_hooks: hook registration "
                              "is not available during campaign hooks");
+    if (st != nullptr && st->plan_dispatch)
+        return luaL_error(L, "og.register_campaign_hooks: hook registration "
+                             "is not available during match planning");
     luaL_checktype(L, 1, LUA_TTABLE);
     // The reads below use absolute stack indices 2/3/4 — drop any extra
     // arguments so a stray second argument cannot shadow them.

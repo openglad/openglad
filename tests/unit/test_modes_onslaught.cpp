@@ -407,8 +407,8 @@ TEST_F(ModesOnslaught, troops_own_at_auto_activates_the_authored_team_count)
 // with keep_generators — the foundries stay — and ignores matched POWER
 // entirely: no plan is solved, nothing announces, and the generators field
 // the same armies as the OWN twin (D33(a): FAIR's twin is OWN, the strip
-// states being identical apart from power). Only the shared census (which
-// rides own_roster_activation on every mode) latches a target.
+// states being identical apart from power). Only the shared census (now
+// match.bank_match_target, run by every mode's apply) latches a target.
 TEST_F(ModesOnslaught, matched_request_masks_like_own_and_ignores_power)
 {
     auto author = [](ModesCtfWorld& fx) {
