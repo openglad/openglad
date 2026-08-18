@@ -495,10 +495,12 @@ TEST_F(ModesSoccer, scenario_troops_strip_takes_the_pitch_generators_too)
 
 TEST_F(ModesSoccer, troops_own_activates_only_the_roster_teams)
 {
-    // The scen-841 shape on the FOURSQUARE pitch: OWN with rosters deployed
-    // on the north and south mouths activates exactly those two teams — no
-    // five-bot squads on the east/west sides, and the manifest row's
-    // teams = 4 default is not a backfill mandate.
+    // The scen-841 shape on the FOURSQUARE pitch at TEAMS: Auto: OWN with
+    // rosters deployed on the north and south mouths activates exactly
+    // those two teams — no five-bot squads on the east/west sides, and the
+    // manifest row's teams = 4 default is not a backfill mandate. (An
+    // EXPLICIT lobby count is a different signal and wins the count —
+    // issue #218, the fair_teams_four/explicit_count tests below.)
     SoccerPitch fx(kSoccerLevelB);
     fx.world().ctf_requested_strip_scenario_troops = 2;
     for (int team = 0; team < 4; ++team)
@@ -519,6 +521,162 @@ TEST_F(ModesSoccer, troops_own_activates_only_the_roster_teams)
         << "no five-bot squads under OWN";
     EXPECT_EQ(1, alive_on_team(fx.world(), 2));
     EXPECT_EQ(0, alive_on_team(fx.world(), 3));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesSoccer, fair_teams_four_with_a_solo_roster_fields_four_teams)
+{
+    // Issue #218, the reporter's scenario: TROOPS: FAIR + TEAMS: 4 on the
+    // FOURSQUARE pitch with a solo deployed roster. The EXPLICIT lobby
+    // count wins the team COUNT — roster team 0 stays, teams 1..3 backfill
+    // in index order and each fields a FAIR matched squad through the
+    // empty-team census behind the strip. The tenth-budget override also
+    // proves init with three matched-squad solves fits the headroom.
+    BudgetOverride budget(500000);
+    SoccerPitch fx(kSoccerLevelB);
+    for (int team = 0; team < 4; ++team)
+        fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
+    arm_matched(fx.world());
+    fx.world().ctf_requested_team_count = 4;
+    walker* hero = fx.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
+    ASSERT_NE(nullptr, hero);
+    fx.tick(1);
+
+    ASSERT_TRUE(fx.soccer_active());
+    EXPECT_EQ(15, fx.var(kSocTeamMask))
+        << "the explicit TEAMS: 4 request fields all four sides";
+    EXPECT_EQ(4, fx.var(kSocTeamCount));
+    EXPECT_FALSE(hero->dead());
+    EXPECT_EQ(1, alive_on_team(fx.world(), 0)) << "the roster is untouched";
+    EXPECT_EQ(1, fx.var(kSlotMatchedSize));
+    for (int team = 1; team < 4; ++team)
+    {
+        EXPECT_EQ(1, alive_on_team(fx.world(), team))
+            << "FAIR fields a matched-headcount squad on team " << team;
+        EXPECT_NE(0, matched_plan_code(fx.var(kSlotMatchedPlan), team))
+            << "team " << team << " was solved";
+    }
+    EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"));
+    EXPECT_EQ(pos_pack(256, 16), fx.team_var(kSocGoalPos, 0));
+    EXPECT_EQ(pos_pack(592, 256), fx.team_var(kSocGoalPos, 1));
+    EXPECT_EQ(pos_pack(256, 912), fx.team_var(kSocGoalPos, 2));
+    EXPECT_EQ(pos_pack(16, 256), fx.team_var(kSocGoalPos, 3));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesSoccer, own_and_fair_masks_agree_at_an_explicit_count)
+{
+    // The D26/D33 twin invariant extended to explicit counts: FAIR's mask
+    // is byte-identical to OWN's at TEAMS: 4, and the delta stays confined
+    // to the generated squads (legacy five-bot vs one matched bot).
+    // Sequentially scoped worlds — script bindings resolve against the
+    // last-constructed live world (the two-live-fixtures trap).
+    std::int32_t own_mask = 0;
+    std::int32_t fair_mask = 0;
+    {
+        SoccerPitch own(kSoccerLevelB);
+        for (int team = 0; team < 4; ++team)
+            own.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
+        own.world().ctf_requested_strip_scenario_troops = 2;  // the OWN twin
+        own.world().ctf_requested_team_count = 4;
+        own.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
+        own.tick(1);
+        ASSERT_TRUE(own.soccer_active());
+        own_mask = own.var(kSocTeamMask);
+        EXPECT_EQ(15, own_mask);
+        for (int team = 1; team < 4; ++team)
+        {
+            EXPECT_EQ(5, alive_on_team(own.world(), team))
+                << "OWN backfill keeps the legacy five-bot squad on team "
+                << team;
+        }
+        EXPECT_EQ(0, own.var(kSlotMatchedPlan)) << "OWN never solves";
+        EXPECT_EQ(0, count_notifications(own.events, "TEAMS MATCHED"));
+    }
+    {
+        SoccerPitch fair(kSoccerLevelB);
+        for (int team = 0; team < 4; ++team)
+            fair.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
+        arm_matched(fair.world());
+        fair.world().ctf_requested_team_count = 4;
+        fair.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
+        fair.tick(1);
+        ASSERT_TRUE(fair.soccer_active());
+        fair_mask = fair.var(kSocTeamMask);
+        for (int team = 1; team < 4; ++team)
+        {
+            EXPECT_EQ(1, alive_on_team(fair.world(), team))
+                << "FAIR's one delta: matched headcount on team " << team;
+        }
+    }
+    EXPECT_EQ(own_mask, fair_mask) << "FAIR-mask == OWN-mask (D26/D33)";
+}
+
+TEST_F(ModesSoccer, explicit_count_never_strips_a_roster_team)
+{
+    // (a) Rosters at their authored seats beat index order: TEAMS: 2 with
+    // rosters {0, 2} fields exactly {0, 2}, never the first-two clamp's
+    // {0, 1}.
+    {
+        SoccerPitch fx(kSoccerLevelB);
+        for (int team = 0; team < 4; ++team)
+            fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
+        fx.world().ctf_requested_strip_scenario_troops = 2;
+        fx.world().ctf_requested_team_count = 2;
+        fx.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
+        fx.spawn_hero(FAMILY_BARBARIAN, 2, 300, 860, 2);
+        fx.tick(1);
+        ASSERT_TRUE(fx.soccer_active());
+        EXPECT_EQ(1 + 4, fx.var(kSocTeamMask))
+            << "roster placement beats index order";
+        EXPECT_EQ(2, fx.var(kSocTeamCount));
+    }
+    // (b) Max semantics: three rosters outrank TEAMS: 2 — a deployed side
+    // is never stripped to satisfy a count.
+    {
+        SoccerPitch fx(kSoccerLevelB);
+        for (int team = 0; team < 4; ++team)
+            fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
+        fx.world().ctf_requested_strip_scenario_troops = 2;
+        fx.world().ctf_requested_team_count = 2;
+        fx.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
+        fx.spawn_hero(FAMILY_BARBARIAN, 1, 300, 700, 2);
+        fx.spawn_hero(FAMILY_ELF, 2, 300, 860, 3);
+        fx.tick(1);
+        ASSERT_TRUE(fx.soccer_active());
+        EXPECT_EQ(1 + 2 + 4, fx.var(kSocTeamMask));
+        EXPECT_EQ(3, fx.var(kSocTeamCount));
+        EXPECT_EQ(0, alive_on_team(fx.world(), 3));
+        EXPECT_EQ(0, fx.team_var(kSocGoalPos, 3))
+            << "the left-out fourth mouth stays dead";
+    }
+}
+
+TEST_F(ModesSoccer, explicit_count_three_backfills_the_first_non_roster_team)
+{
+    // Rosters {0, 2} at TEAMS: 3: both roster teams stay, and team 1 (the
+    // first authored non-roster team in index order) joins with OWN's
+    // legacy squad; team 3 stays dead and banks no mouth.
+    SoccerPitch fx(kSoccerLevelB);
+    for (int team = 0; team < 4; ++team)
+        fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
+    fx.world().ctf_requested_strip_scenario_troops = 2;
+    fx.world().ctf_requested_team_count = 3;
+    fx.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
+    fx.spawn_hero(FAMILY_BARBARIAN, 2, 300, 860, 2);
+    fx.tick(1);
+
+    ASSERT_TRUE(fx.soccer_active());
+    EXPECT_EQ(1 + 2 + 4, fx.var(kSocTeamMask))
+        << "rosters {0, 2} plus the first non-roster team, 1";
+    EXPECT_EQ(3, fx.var(kSocTeamCount));
+    EXPECT_EQ(5, alive_on_team(fx.world(), 1))
+        << "the backfilled team gets OWN's legacy squad";
+    EXPECT_EQ(0, alive_on_team(fx.world(), 3));
+    EXPECT_EQ(pos_pack(592, 256), fx.team_var(kSocGoalPos, 1))
+        << "a backfilled team banks its goal mouth";
+    EXPECT_EQ(0, fx.team_var(kSocGoalPos, 3))
+        << "the left-out mouth stays dead";
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 

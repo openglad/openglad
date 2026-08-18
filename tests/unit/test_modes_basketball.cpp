@@ -713,6 +713,46 @@ TEST_F(ModesBasketball, four_hoop_court_and_the_limit_rows_bank)
     EXPECT_EQ(21, shortgame.var(kBbScoreLimit));
 }
 
+TEST_F(ModesBasketball, fair_teams_four_with_a_solo_roster_fields_four_hoops)
+{
+    // Issue #218 on the four-hoop court: TROOPS: FAIR + TEAMS: 4 with a
+    // solo roster fields all four sides — the explicit lobby count wins
+    // the COUNT, FAIR only the composition. All four hoops bank and all
+    // four rims hang (the basketball half of issue #219's audit, positive
+    // direction: a live goal always has its rim).
+    ModesCtfWorld fx(kBballLevelB);
+    for (int team = 0; team < 4; ++team)
+        fx.spawn_anchor(team, static_cast<short>(128 + 64 * team), 700);
+    arm_matched(fx.world());
+    fx.world().ctf_requested_team_count = 4;
+    walker* hero = fx.spawn_hero(FAMILY_SOLDIER, 0, 128, 640, 1);
+    ASSERT_NE(nullptr, hero);
+    fx.tick(1);
+
+    ASSERT_TRUE(fx.world().mode.active);
+    EXPECT_EQ(15, fx.var(kBbTeamMask))
+        << "the explicit TEAMS: 4 request fields all four sides";
+    EXPECT_EQ(4, fx.var(kBbTeamCount));
+    const int hoop_x[4] = {320, 576, 320, 64};
+    const int hoop_y[4] = {64, 480, 896, 480};
+    for (int team = 0; team < 4; ++team)
+    {
+        EXPECT_EQ(pos_pack(hoop_x[team], hoop_y[team]),
+                  fx.team_var(kBbHoopPos, team)) << "hoop " << team;
+    }
+    const int hoop_family = hoop_family_byte();
+    ASSERT_GE(hoop_family, 0) << "modes:hoop must install on mount";
+    EXPECT_EQ(4, count_hoop_fx(fx.world(), hoop_family))
+        << "every activated goal hangs its rim";
+    EXPECT_EQ(1, alive_on_team(fx.world(), 0)) << "the roster is untouched";
+    for (int team = 1; team < 4; ++team)
+    {
+        EXPECT_EQ(1, alive_on_team(fx.world(), team))
+            << "FAIR fields a matched-headcount squad on team " << team;
+    }
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
 TEST_F(ModesBasketball, shipped_manifest_registers_the_basketball_levels)
 {
     // scripts/mode_basketball.lua scans the committed manifest: scen824

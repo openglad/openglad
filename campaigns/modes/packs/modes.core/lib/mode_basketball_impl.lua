@@ -2240,7 +2240,9 @@ local function on_mode_init(level, row)
   end
   -- Active teams: anchor-marker teams (the versus authoring contract)
   -- clamped by the lobby request; the manifest team count is the default
-  -- request; TROOPS:OWN rosters override both.
+  -- request; TROOPS:OWN rosters override the shape at TEAMS: Auto (an
+  -- explicit lobby count wins the COUNT — roster teams plus authored
+  -- backfill, issue #218).
   local authored_mask = 0
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
     if og.respawn_anchor_count(team) > 0 then

@@ -94,6 +94,17 @@ std::uint8_t authored_team_mask(const GameWorld& world);
 // mask and the og.effective_team_mask binding.
 std::uint8_t effective_team_mask(std::uint8_t authored, int requested) noexcept;
 
+// The roster-aware activation rule under TROOPS: OWN/FAIR — the C++ twin of
+// mode_match.lua own_roster_activation for preview surfaces. roster is
+// masked to authored. Empty roster falls back to effective_team_mask.
+// Explicit requested > 0: roster teams plus authored backfill in index
+// order up to clamp(requested, 2, SCORE_TEAM_COUNT), never dropping a
+// roster team (max semantics). Auto: all roster teams when >= 2, else
+// roster plus the first authored non-roster team.
+std::uint8_t roster_effective_team_mask(std::uint8_t authored,
+                                        std::uint8_t roster,
+                                        int requested) noexcept;
+
 // Canonical color name for a score team ("RED"/"GREEN"/"BLUE"/"YELLOW")
 // or an FFA band byte 16-31 (the 16 kFfaRampBases names), matching the
 // rendered palette ramps. Default stays YELLOW. ctf_team_color_name

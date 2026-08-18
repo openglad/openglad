@@ -61,7 +61,11 @@ networked play, only the host can change them, and the lobby synchronizes them
 to every client:
 
 - **Match Teams** — `Auto` fields every team the map authors (2, 3, or 4);
-  or force 2/3/4. Teams without human players get AI squads.
+  or force 2/3/4. Teams without human players get AI squads. Under
+  `TROOPS: OWN`/`FAIR`, `Auto` instead fields only the teams your deployed
+  company sits on (a solo company gets one opponent), while an explicit
+  count always fields that many sides — your teams stay, and the rest
+  backfill in team order.
 - **Score Limit** — `Map default` uses the map's authored limit (each mode
   reads it as its own win threshold: captures, frags, goals), or force
   1–10.

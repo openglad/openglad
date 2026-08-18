@@ -17,6 +17,7 @@
 #include <openglad/gameplay/walker.h>
 
 #include <algorithm>
+#include <bit>
 
 namespace og::sim {
 
@@ -107,6 +108,49 @@ std::uint8_t effective_team_mask(std::uint8_t authored, int requested) noexcept
         --remaining;
     }
     return effective;
+}
+
+std::uint8_t roster_effective_team_mask(std::uint8_t authored,
+                                        std::uint8_t roster,
+                                        int requested) noexcept
+{
+    const auto all_mask =
+        static_cast<std::uint8_t>((1u << SCORE_TEAM_COUNT) - 1u);
+    authored = static_cast<std::uint8_t>(authored & all_mask);
+    roster = static_cast<std::uint8_t>(roster & authored);
+    if (roster == 0)
+        return effective_team_mask(authored, requested);
+    if (requested > 0)
+    {
+        // The lobby TEAMS count wins (issue #218): roster teams all stay
+        // (max semantics), authored non-roster teams backfill in index
+        // order until the mask holds clamp(requested, 2, 4) teams.
+        const int target =
+            std::clamp(requested, 2, static_cast<int>(SCORE_TEAM_COUNT));
+        std::uint8_t mask = roster;
+        for (int team = 0; team < SCORE_TEAM_COUNT; ++team)
+        {
+            if (std::popcount(mask) >= target)
+                break;
+            const auto bit =
+                static_cast<std::uint8_t>(1u << static_cast<unsigned>(team));
+            if ((authored & bit) != 0)
+                mask = static_cast<std::uint8_t>(mask | bit);
+        }
+        return mask;
+    }
+    if (std::popcount(roster) >= 2)
+        return roster;
+    // Auto with a solo roster: that team plus the FIRST authored non-roster
+    // team in index order (a solo group needs an opponent).
+    for (int team = 0; team < SCORE_TEAM_COUNT; ++team)
+    {
+        const auto bit =
+            static_cast<std::uint8_t>(1u << static_cast<unsigned>(team));
+        if ((authored & bit) != 0 && (roster & bit) == 0)
+            return static_cast<std::uint8_t>(roster | bit);
+    }
+    return roster;
 }
 
 void mode_end_level(GameWorld& world, int ending, int next_level)

@@ -3065,6 +3065,26 @@ const char* strip_suffix(ScenarioStripReason reason)
     }
 }
 
+// Save-side roster teams: distinct teamnums of DEPLOYED company members —
+// the exact set both spawn paths (game.cpp / headless spawn_team_from_save)
+// field as has_guy walkers at level entry.
+std::uint8_t save_roster_team_mask(const SaveData& save)
+{
+    std::uint8_t mask = 0;
+    for (const auto& member : save.team_list)
+    {
+        if (member == nullptr || !member->deployed)
+            continue;
+        const int team = member->teamnum;
+        if (is_score_team_index(team))
+        {
+            mask = static_cast<std::uint8_t>(
+                mask | (1u << static_cast<unsigned>(team)));
+        }
+    }
+    return mask;
+}
+
 } // namespace
 
 ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
@@ -3073,6 +3093,10 @@ ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
     ScenarioRosterReport report;
     report.is_versus = (world.type & GameWorld::TYPE_SCRIPTED) != 0;
     report.your_team = save.my_team;
+
+    // Any stored value above 0 means TROOPS: OWN (FAIR bundles it) — the
+    // one flag both the activation mirror and the strip annotations key on.
+    const bool strip_all_on = save.ctf_strip_scenario_troops > 0;
 
     if (report.is_versus)
     {
@@ -3101,10 +3125,18 @@ ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
             }
         }
 
-        // Active teams: THE one activation clamp (authored teams in index
-        // order up to the requested count).
+        // Active teams: under TROOPS: OWN/FAIR the sim applies the roster
+        // rule (roster teams stay; an explicit lobby count backfills
+        // authored teams in index order — issue #218), so the preview
+        // mirrors it through the C++ twin; under TROOPS: ALL, THE one
+        // activation clamp (authored teams in index order up to the
+        // requested count).
         const std::uint8_t effective =
-            og::sim::effective_team_mask(authored, save.ctf_team_count);
+            strip_all_on ? og::sim::roster_effective_team_mask(
+                               authored, save_roster_team_mask(save),
+                               save.ctf_team_count)
+                         : og::sim::effective_team_mask(authored,
+                                                        save.ctf_team_count);
         int active_count = 0;
         for (int t = 0; t < 4; ++t)
         {
@@ -3124,8 +3156,7 @@ ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
     // including wildlife — the sim adds no campaign gate, so neither does the
     // preview. Protected named NPCs are the one exemption (the engine sweep
     // and the mode helper both honour it), so the preview shows exactly what
-    // survives. Any stored value above 0 means OWN.
-    const bool strip_all_on = save.ctf_strip_scenario_troops > 0;
+    // survives.
     auto strip_reason_for_team = [&](int team, bool protected_npc) {
         if (strip_all_on)
         {

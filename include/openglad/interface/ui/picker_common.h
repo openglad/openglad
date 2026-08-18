@@ -853,9 +853,12 @@ struct ScenarioRosterReport {
 // Scan a (scratch-loaded) world's authored entities into a roster report.
 // Named NPCs get individual rows; unnamed livings group by (team, family,
 // level); generators aggregate per team. Strip annotations mirror the
-// scripted-mode init rules (authored team mask = start markers, activation
-// = og::sim::effective_team_mask) using save-side knowledge (roster teams =
-// distinct team_list teamnums, collapsed to {0} when allied).
+// scripted-mode init rules: authored team mask = start markers; activation
+// = og::sim::effective_team_mask under TROOPS: ALL, and
+// og::sim::roster_effective_team_mask under OWN/FAIR with roster teams =
+// distinct DEPLOYED team_list teamnums (both spawn paths use the raw
+// teamnum regardless of allied_mode, so raw teamnums are the exact
+// mirror).
 ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
                                                   const SaveData& save);
 

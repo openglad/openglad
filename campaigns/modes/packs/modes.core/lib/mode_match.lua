@@ -334,23 +334,32 @@ local function census_mask(obs)
 end
 
 -- TROOPS:OWN activation, the shared ruling all six modes apply: under OWN
--- the deployed rosters ARE the match. Returns the replacement active mask,
--- or nil when the standard requested activation stands (TROOPS:ALL, or an
--- all-bot match with no rosters anywhere).
+-- (and FAIR, which bundles it) the deployed rosters seed the match.
+-- Returns the replacement active mask, or nil when the standard requested
+-- activation stands (TROOPS:ALL, or an all-bot match with no rosters
+-- anywhere). Precedence, in evaluation order:
 --
---   two or more roster teams  exactly those teams — init manufactures no
+--   zero roster teams         nil — a bot match keeps today's shape (the
+--                             lobby count / manifest default clamps via
+--                             activate_teams at the call site).
+--   explicit lobby count N    roster teams PLUS authored non-roster teams
+--                             in index order until the mask holds
+--                             clamp(N, 2, 4) teams; a roster already at
+--                             or past the count stays exactly the roster
+--                             (max semantics — a deployed side is never
+--                             stripped to satisfy a count). Issue #218.
+--   Auto, >= 2 roster teams   exactly those teams — init manufactures no
 --                             extra sides. The authored domain still
 --                             clamps (Soccer two on a two-goal pitch, four
 --                             on FOURSQUARE): a roster seated outside it
 --                             cannot score there and does not count, so a
 --                             three-roster group on a two-team pitch
 --                             activates the first two in index order.
---   exactly one roster team   that team plus the FIRST authored non-roster
+--   Auto, one roster team     that team plus the FIRST authored non-roster
 --                             team in index order — a solo group needs an
 --                             opponent, and the mode's own empty-team
 --                             census behind the strip backfills exactly
 --                             that one side.
---   zero roster teams         nil — a bot match keeps today's shape.
 local function own_roster_activation(authored_mask, obs)
   -- The TROOPS: FAIR census (D15) rides this call — the one walk of the
   -- oblist every mode's on_mode_init shares — so activation and matching
@@ -381,6 +390,27 @@ local function own_roster_activation(authored_mask, obs)
   local count = core.mask_count(roster)
   if count == 0 then
     return nil
+  end
+  -- The lobby TEAMS count wins (issue #218): an EXPLICIT numeric request
+  -- fields that many sides — TROOPS: OWN/FAIR decide squad COMPOSITION,
+  -- never the number of teams. Roster teams all stay (a deployed human
+  -- side is never stripped to satisfy a count); authored non-roster teams
+  -- backfill in index order, and each mode's empty-team census behind the
+  -- strip fields their squads. TEAMS: Auto keeps the roster shape below
+  -- (D26 adjudicated Auto only; the count override is the 2026-08-17
+  -- maintainer ruling recorded in matched-teams-design.md).
+  local requested = core.team_count_request()
+  if requested > 0 then
+    local target = og.clamp(requested, 2, C.SCORE_TEAM_COUNT)
+    local mask = roster
+    for team = 0, C.SCORE_TEAM_COUNT - 1 do
+      if core.mask_count(mask) < target then
+        if core.mask_has(authored_mask, team) then
+          mask = core.mask_add(mask, team)
+        end
+      end
+    end
+    return mask
   end
   if count >= 2 then
     return roster

@@ -12,6 +12,7 @@
 #include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/resources/campaign_metadata.h>
@@ -2447,6 +2448,144 @@ TEST(PickerCommon, scenario_report_troops_strip_annotates_outside_versus_campaig
     ASSERT_TRUE(bot_troops != nullptr);
     EXPECT_EQ(og::ui::ScenarioStripReason::StripAll, bot_troops->strip_reason)
         << "OWN is not a per-roster-team rule";
+}
+
+TEST(PickerCommon, roster_effective_team_mask_full_precedence_sweep)
+{
+    using og::sim::effective_team_mask;
+    using og::sim::roster_effective_team_mask;
+
+    // Empty roster: identical to the count clamp, Auto and numeric alike.
+    EXPECT_EQ(effective_team_mask(0b1111, 0),
+              roster_effective_team_mask(0b1111, 0, 0));
+    EXPECT_EQ(effective_team_mask(0b1111, 3),
+              roster_effective_team_mask(0b1111, 0, 3));
+    EXPECT_EQ(effective_team_mask(0b1101, 2),
+              roster_effective_team_mask(0b1101, 0, 2));
+
+    // Auto: a solo roster takes the first authored non-roster team...
+    EXPECT_EQ(0b0011, roster_effective_team_mask(0b1111, 0b0001, 0));
+    // ...unless nothing else is authored (the lone bit stands).
+    EXPECT_EQ(0b0100, roster_effective_team_mask(0b0100, 0b0100, 0));
+    // Auto with two or more rosters: exactly the rosters.
+    EXPECT_EQ(0b0101, roster_effective_team_mask(0b1111, 0b0101, 0));
+    EXPECT_EQ(0b1110, roster_effective_team_mask(0b1111, 0b1110, 0));
+
+    // Explicit count: sparse authored {0, 2, 3}, roster {2}, N = 2 —
+    // the roster stays and team 0 backfills in index order.
+    EXPECT_EQ(0b0101, roster_effective_team_mask(0b1101, 0b0100, 2));
+    // Rosters {0, 3} already meet N = 2: exactly the rosters.
+    EXPECT_EQ(0b1001, roster_effective_team_mask(0b1111, 0b1001, 2));
+    // Solo roster at N = 3: two backfills in index order.
+    EXPECT_EQ(0b0111, roster_effective_team_mask(0b1111, 0b0001, 3));
+    // Max semantics: three rosters outrank N = 2.
+    EXPECT_EQ(0b0111, roster_effective_team_mask(0b1111, 0b0111, 2));
+    // The clamp: N = 1 acts as 2, N = 5+ acts as 4.
+    EXPECT_EQ(0b0011, roster_effective_team_mask(0b1111, 0b0001, 1));
+    EXPECT_EQ(0b1111, roster_effective_team_mask(0b1111, 0b0001, 5));
+    // Roster bits outside the authored domain are masked off first.
+    EXPECT_EQ(0b0011, roster_effective_team_mask(0b0011, 0b1100, 0));
+    EXPECT_EQ(0b0011, roster_effective_team_mask(0b0011, 0b0110, 4));
+}
+
+TEST(PickerCommon, scenario_report_own_mirrors_roster_activation_and_lobby_count)
+{
+    // The preview <-> sim agreement contract (issue #218): under
+    // TROOPS: OWN/FAIR the report's active teams follow the roster rule
+    // plus the lobby count, pinned to the SAME masks the sim-side soccer
+    // tests pin (ModesSoccer.fair_teams_four_with_a_solo_roster_fields_
+    // four_teams, explicit_count_never_strips_a_roster_team,
+    // explicit_count_three_backfills_the_first_non_roster_team).
+    ReportWorld fx(true);
+    for (int team = 0; team < 4; ++team)
+        fx.spawn_anchor(team);
+
+    SaveData save;
+    save.current_campaign = "modes";
+    save.my_team = 0;
+    save.ctf_strip_scenario_troops = 2;  // TROOPS: OWN
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 0;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_ARCHER);
+    save.team_list[1]->teamnum = 2;
+    save.team_list[2] = std::make_unique<guy>(FAMILY_ELF);
+    save.team_list[2]->teamnum = 1;
+    save.team_list[2]->deployed = false;  // held back: never in the roster
+    save.team_size = 3;
+
+    // TEAMS: Auto — exactly the two DEPLOYED roster teams.
+    save.ctf_team_count = 0;
+    {
+        const og::ui::ScenarioRosterReport report =
+            og::ui::build_scenario_roster_report(fx.world(), save);
+        EXPECT_TRUE(report.team_active[0]);
+        EXPECT_FALSE(report.team_active[1])
+            << "a held-back character is not a roster team";
+        EXPECT_TRUE(report.team_active[2]);
+        EXPECT_FALSE(report.team_active[3]);
+        const std::vector<std::string> lines =
+            og::ui::format_scenario_report_lines(report);
+        EXPECT_TRUE(
+            any_line_contains(lines, "GREEN TEAM  MARKERS: 1  INACTIVE"));
+        EXPECT_TRUE(any_line_contains(lines, "BLUE TEAM  MARKERS: 1  ACTIVE"));
+    }
+
+    // TEAMS: 4 — the lobby count wins; every authored side previews live.
+    save.ctf_team_count = 4;
+    {
+        const og::ui::ScenarioRosterReport report =
+            og::ui::build_scenario_roster_report(fx.world(), save);
+        for (std::size_t t = 0; t < 4; ++t)
+            EXPECT_TRUE(report.team_active[t]) << "team " << t;
+    }
+
+    // TEAMS: 3 — rosters {0, 2} plus the first non-roster team, 1.
+    save.ctf_team_count = 3;
+    {
+        const og::ui::ScenarioRosterReport report =
+            og::ui::build_scenario_roster_report(fx.world(), save);
+        EXPECT_TRUE(report.team_active[0]);
+        EXPECT_TRUE(report.team_active[1]);
+        EXPECT_TRUE(report.team_active[2]);
+        EXPECT_FALSE(report.team_active[3]);
+    }
+
+    // TEAMS: 2 — max semantics: the rosters already meet the count.
+    save.ctf_team_count = 2;
+    {
+        const og::ui::ScenarioRosterReport report =
+            og::ui::build_scenario_roster_report(fx.world(), save);
+        EXPECT_TRUE(report.team_active[0]);
+        EXPECT_FALSE(report.team_active[1]);
+        EXPECT_TRUE(report.team_active[2]);
+        EXPECT_FALSE(report.team_active[3]);
+    }
+
+    // FAIR previews byte-identically to OWN (the D26/D33 twin).
+    save.ctf_strip_scenario_troops = og::sim::kTroopsMatched;
+    save.ctf_team_count = 4;
+    {
+        const og::ui::ScenarioRosterReport report =
+            og::ui::build_scenario_roster_report(fx.world(), save);
+        for (std::size_t t = 0; t < 4; ++t)
+            EXPECT_TRUE(report.team_active[t]) << "team " << t;
+    }
+
+    // OWN with an empty company: the plain count clamp stands (all-bot).
+    save.ctf_strip_scenario_troops = 2;
+    save.ctf_team_count = 2;
+    save.team_list[0].reset();
+    save.team_list[1].reset();
+    save.team_list[2].reset();
+    save.team_size = 0;
+    {
+        const og::ui::ScenarioRosterReport report =
+            og::ui::build_scenario_roster_report(fx.world(), save);
+        EXPECT_TRUE(report.team_active[0]);
+        EXPECT_TRUE(report.team_active[1]);
+        EXPECT_FALSE(report.team_active[2]);
+        EXPECT_FALSE(report.team_active[3]);
+    }
 }
 
 // --- MATCHUP detail pagination (the per-team '>' pager) ---------------------
