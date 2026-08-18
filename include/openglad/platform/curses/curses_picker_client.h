@@ -23,6 +23,7 @@ struct CompanyInfo;
 namespace og::curses {
 
 class CursesLobby;
+struct GameRunResult;
 
 // Tunables / launch configuration for the curses picker.
 struct CursesPickerOptions {
@@ -43,6 +44,9 @@ public:
     CursesPickerClient(ITerminal& term, IClock& clock,
                        og::ui::TextPickerConfig& config,
                        const CursesPickerOptions& options);
+    // #206: clears the og.campaign_* providers the constructor installed
+    // over save_data_ (they borrow it and must not outlive it).
+    ~CursesPickerClient() override;
 
     // --- og::ui::IPickerClient ---
     const og::ui::PickerMenuItem* present_menu(og::ui::PickerMenuId menu_id) override;
@@ -60,6 +64,14 @@ public:
     bool save_game() override;
     bool show_company_list() override;
     og::ui::PickerScreen screen_after_game() const override;
+
+    // The picker tail of one networked round (#207 design point 5): a
+    // networked game folds into the SESSION's own save copy and never
+    // copies back into this client's save, so an armed REPLAY excursion is
+    // still armed when the round returns and the cursor comes home here.
+    // run_network_lobby's second half; called directly by tests, which have
+    // no way to stand up a real lobby.
+    void finish_network_round(const GameRunResult& result);
 
     // Accessors for tests.
     const SaveData& save_data() const { return save_data_; }
@@ -88,7 +100,8 @@ private:
     // on failure — the show_company_list discipline).
     bool open_downloaded_company(const std::string& slot);
 
-    // Drive a host/join lobby to a started game, then run the networked level.
+    // Drive a host/join lobby to a started game, then run the networked
+    // level and hand the result to finish_network_round.
     void run_network_lobby(std::unique_ptr<CursesLobby> lobby);
 };
 

@@ -26,9 +26,15 @@ TEST(MenuModel, main_definition_and_lookup)
     const PickerMenuDefinition& def = picker_menu_definition(PickerMenuId::Main);
 
     ASSERT_EQ(static_cast<int>(PickerMenuId::Main), static_cast<int>(def.id)) << "main menu definition should report main id";
-    ASSERT_EQ(9u, def.items.size())
-        << "terminal main menu has no player-count rows (8 classic items + "
-           "the #155 cloud door)";
+    ASSERT_EQ(8u, def.items.size())
+        << "terminal main menu has no player-count rows and no difficulty "
+           "door (7 classic items + the #155 cloud door)";
+
+    const PickerMenuItem* cloud_row =
+        find_picker_menu_item(PickerMenuId::Main, "cloud");
+    ASSERT_TRUE(cloud_row != nullptr);
+    EXPECT_EQ("Cloud Saves", cloud_row->label)
+        << "the terminal label matches the SDL CLOUD SAVES face";
 
     const PickerMenuItem* begin = find_picker_menu_item(PickerMenuId::Main, "begin_new_game");
     ASSERT_TRUE(begin != nullptr) << "begin_new_game id should resolve";
@@ -85,33 +91,34 @@ TEST(MenuModel, team_build_lookup)
         PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, 99);
     ASSERT_TRUE(wrong_arg == nullptr) << "unknown arg variant should return nullptr";
 
-    const PickerMenuItem* ctf_teams =
-        find_picker_menu_item(PickerMenuId::TeamBuild, "ctf_teams");
-    ASSERT_TRUE(ctf_teams != nullptr) << "ctf_teams id should resolve in team build";
-    ASSERT_EQ(static_cast<int>(PickerMenuCommand::CycleCtfTeamCount),
-              static_cast<int>(ctf_teams->command))
-        << "ctf_teams should map to CycleCtfTeamCount";
+    // The flat CTF trio left the team build menu for the modes camp's MATCH
+    // SETUP page (docs/camp-controls-design.md); the DIFFICULTY door took
+    // their place, appended so nothing above it moved.
+    for (const char* retired_id : {"ctf_teams", "ctf_caps", "ctf_troops"}) {
+        ASSERT_TRUE(find_picker_menu_item(PickerMenuId::TeamBuild,
+                                          retired_id) == nullptr)
+            << retired_id << " belongs to the camp's MATCH SETUP page now";
+        ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, retired_id) ==
+                    nullptr)
+            << retired_id << " never lived in the main menu";
+    }
 
-    const PickerMenuItem* ctf_caps =
-        find_picker_menu_item(PickerMenuId::TeamBuild, "ctf_caps");
-    ASSERT_TRUE(ctf_caps != nullptr) << "ctf_caps id should resolve in team build";
-    ASSERT_EQ(static_cast<int>(PickerMenuCommand::CycleCtfCaptureLimit),
-              static_cast<int>(ctf_caps->command))
-        << "ctf_caps should map to CycleCtfCaptureLimit";
+    ASSERT_EQ(11u, def.items.size())
+        << "team build is the core team items + the zone's Camp door + "
+           "networking + scenario + the DIFFICULTY door";
 
-    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "ctf_teams") == nullptr)
-        << "the CTF items live in the team build menu only";
-
-    ASSERT_EQ(12u, def.items.size())
-        << "team build is the core team items + networking + scenario + the "
-           "CTF settings trio";
-
-    const PickerMenuItem* ctf_troops =
-        find_picker_menu_item(PickerMenuId::TeamBuild, "ctf_troops");
-    ASSERT_TRUE(ctf_troops != nullptr) << "ctf_troops id should resolve in team build";
-    ASSERT_EQ(static_cast<int>(PickerMenuCommand::ToggleCtfScenarioTroops),
-              static_cast<int>(ctf_troops->command))
-        << "ctf_troops should map to ToggleCtfScenarioTroops";
+    const PickerMenuItem* difficulty =
+        find_picker_menu_item(PickerMenuId::TeamBuild, "difficulty");
+    ASSERT_TRUE(difficulty != nullptr)
+        << "difficulty id should resolve in team build";
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::OpenDifficultyMenu),
+              static_cast<int>(difficulty->command))
+        << "difficulty should map to the OpenDifficultyMenu door";
+    ASSERT_TRUE(&def.items[10] == difficulty)
+        << "difficulty is appended last, at 1-based position 11";
+    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "difficulty") ==
+                nullptr)
+        << "the difficulty door left the main menu";
 
     const PickerMenuItem* scenario =
         find_picker_menu_item(PickerMenuId::TeamBuild, "scenario");
@@ -150,6 +157,23 @@ TEST(MenuModel, team_build_lookup)
     ASSERT_TRUE(&def.items[4] == ready)
         << "ready holds save_team's old 1-based position 5";
 
+    // docs/basecamp-zones-design.md "Terminals": the zone's Camp door sits
+    // between GO! and Back — 1-based position 7, the last ordinal inside the
+    // curses digit-jump budget that leaves the gameplay rows where they were.
+    const PickerMenuItem* camp =
+        find_picker_menu_item(PickerMenuId::TeamBuild, "camp");
+    ASSERT_TRUE(camp != nullptr) << "camp id should resolve in team build";
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::CampaignCamp),
+              static_cast<int>(camp->command))
+        << "camp should map to the CampaignCamp command";
+    ASSERT_TRUE(&def.items[6] == camp)
+        << "camp takes 1-based position 7, before Back";
+    ASSERT_TRUE(&def.items[7] == back)
+        << "Back shifted one ordinal down for the Camp door";
+    ASSERT_TRUE(&def.items[8] == networking)
+        << "networking follows Back at 1-based position 9 — the last row a "
+           "curses digit can address";
+
     // The scenario-shaped commands moved OUT of the team-build menu, and
     // the §2.5 substitution retired the view/slot ids entirely.
     for (const char* moved_id :
@@ -163,8 +187,6 @@ TEST(MenuModel, team_build_lookup)
 
     ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "matchup") == nullptr)
         << "matchup never lives in the main menu";
-    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "ctf_troops") == nullptr)
-        << "ctf_troops lives in the team build menu only";
 }
 
 
@@ -176,9 +198,10 @@ TEST(MenuModel, scenario_menu_lookup)
 
     ASSERT_EQ(static_cast<int>(PickerMenuId::Scenario), static_cast<int>(def.id))
         << "scenario definition should report scenario id";
-    ASSERT_EQ(7u, def.items.size())
-        << "scenario menu: campaign/level/viewer/matchup/progress/troops + "
-           "back";
+    ASSERT_EQ(8u, def.items.size())
+        << "scenario menu: campaign/level/viewer/matchup/progress/troops/"
+           "replay (#207) + back (the missions door retired into the Base "
+           "Camp zone)";
 
     const struct
     {
@@ -191,6 +214,7 @@ TEST(MenuModel, scenario_menu_lookup)
         {"matchup", PickerMenuCommand::Teams},
         {"progress", PickerMenuCommand::ShowProgress},
         {"troops", PickerMenuCommand::ToggleCtfScenarioTroops},
+        {"replay_level", PickerMenuCommand::ReplayLevel},
         {"back", PickerMenuCommand::Back},
     };
     for (const auto& want : kExpected)
@@ -201,6 +225,13 @@ TEST(MenuModel, scenario_menu_lookup)
         ASSERT_EQ(static_cast<int>(want.command), static_cast<int>(item->command))
             << want.id;
     }
+
+    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Scenario, "missions") ==
+                nullptr)
+        << "the missions door retired: the book is a room inside the camp";
+    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::TeamBuild, "missions") ==
+                nullptr)
+        << "the missions door was excised, not moved to the base camp";
 
     ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Scenario, "go") == nullptr)
         << "GO stays on the team-build screen";
@@ -394,22 +425,31 @@ TEST(MenuModel, difficulty_menu_definition_and_lookup)
 {
     using namespace og::ui;
 
-    // The main-menu DIFFICULTY entry became a door into the DIFFICULTY
-    // submenu: same id, same list shape, new command.
+    // The DIFFICULTY door lives in TEAM BUILD now
+    // (docs/camp-controls-design.md): the main menu keeps only the settings
+    // that are about the program, not about the company's next fight.
     const PickerMenuDefinition& main_def = picker_menu_definition(PickerMenuId::Main);
-    ASSERT_EQ(9u, main_def.items.size())
+    ASSERT_EQ(8u, main_def.items.size())
         << "main menu exposes both Help and Quit plus the company loader "
-           "and the cloud door, without the retired player-count or "
-           "seat-mode rows";
+           "and the cloud door, without the retired player-count, seat-mode "
+           "or difficulty rows";
 
-    const PickerMenuItem* door = find_picker_menu_item(PickerMenuId::Main, "difficulty");
-    ASSERT_TRUE(door != nullptr) << "difficulty id should still resolve in main";
+    const PickerMenuItem* door =
+        find_picker_menu_item(PickerMenuId::TeamBuild, "difficulty");
+    ASSERT_TRUE(door != nullptr)
+        << "difficulty id should resolve in team build";
     ASSERT_EQ(static_cast<int>(PickerMenuCommand::OpenDifficultyMenu),
               static_cast<int>(door->command))
-        << "main difficulty entry should open the submenu now";
-    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main,
-                                      PickerMenuCommand::SetDifficulty) == nullptr)
-        << "the in-place difficulty cycle moved into the submenu";
+        << "the team-build difficulty entry opens the submenu";
+    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "difficulty") ==
+                nullptr)
+        << "no difficulty door survives on the main menu";
+    for (const PickerMenuId menu : {PickerMenuId::Main,
+                                    PickerMenuId::TeamBuild}) {
+        ASSERT_TRUE(find_picker_menu_item(
+                        menu, PickerMenuCommand::SetDifficulty) == nullptr)
+            << "the in-place difficulty cycle lives in the submenu only";
+    }
 
     const PickerMenuDefinition& def = picker_menu_definition(PickerMenuId::Difficulty);
     ASSERT_EQ(static_cast<int>(PickerMenuId::Difficulty), static_cast<int>(def.id))
@@ -555,25 +595,27 @@ TEST(MenuModel, company_screens_cancel_to_back_and_leak_nowhere)
     }
 
     // §2.1: load_company remains after the classic items; the #155 cloud
-    // door is appended last. Main exposes both stable Help and Quit actions.
-    // TeamBuild is unchanged (its ctf_troops row stays resolvable but
-    // dormant); Scenario grew the appended troops row; Difficulty grew the
-    // appended infinite-gold row.
-    ASSERT_EQ(9u, picker_menu_definition(PickerMenuId::Main).items.size());
-    ASSERT_EQ(12u, picker_menu_definition(PickerMenuId::TeamBuild).items.size());
-    ASSERT_EQ(7u, picker_menu_definition(PickerMenuId::Scenario).items.size());
+    // door is appended last. Main exposes both stable Help and Quit actions,
+    // and lost its difficulty door to Team Build. TeamBuild grew the #206
+    // Camp door and that difficulty door, and lost the flat CTF trio to the
+    // camp's MATCH SETUP page; Scenario grew the appended troops row, the
+    // #207 replay-level row, and gave the missions door back; Difficulty
+    // grew the appended infinite-gold row.
+    ASSERT_EQ(8u, picker_menu_definition(PickerMenuId::Main).items.size());
+    ASSERT_EQ(11u, picker_menu_definition(PickerMenuId::TeamBuild).items.size());
+    ASSERT_EQ(8u, picker_menu_definition(PickerMenuId::Scenario).items.size());
     ASSERT_EQ(7u, picker_menu_definition(PickerMenuId::Difficulty).items.size());
 
-    // load_company resolves by id and by command and keeps its 1-based
-    // position 8 (the text-drive index contract); the appended cloud door is
-    // the last Main item.
+    // load_company resolves by id and by command and keeps its place in the
+    // appended tail (1-based position 7 since difficulty left); the appended
+    // cloud door is the last Main item.
     const PickerMenuItem* load_company =
         find_picker_menu_item(PickerMenuId::Main, "load_company");
     ASSERT_TRUE(load_company != nullptr);
     ASSERT_EQ(static_cast<int>(PickerMenuCommand::LoadGame),
               static_cast<int>(load_company->command));
     ASSERT_EQ(load_company,
-              &picker_menu_definition(PickerMenuId::Main).items[7]);
+              &picker_menu_definition(PickerMenuId::Main).items[6]);
     const PickerMenuItem* cloud =
         find_picker_menu_item(PickerMenuId::Main, "cloud");
     ASSERT_TRUE(cloud != nullptr);

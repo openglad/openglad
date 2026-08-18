@@ -53,7 +53,6 @@ enum class MenuGate : std::uint8_t {
     HostOnly,
     NetworkedOnly,
     LocalOnly,
-    VersusCampaignOnly,
     Custom,
 };
 

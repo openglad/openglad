@@ -580,6 +580,7 @@ rule above.
   glyph_transparent = false,    -- the curses "draw nothing here" flag
   radar_color = 40,             -- palette index, or "none" / "team"
   radar_jitter = 2,             -- adds rand(jitter); 0 = NO rng call
+  radar_ping = true,            -- draw LOUD (default false; issue #209)
 ```
 
 `sprite` is nullable (`og.NIL` clears it) and its value is passed to the
@@ -615,6 +616,11 @@ entity's team colour". `radar_color` has two sentinels: `none`
 (`og::kRadarColorNone`, draw no blip) and `team` (`og::kRadarColorTeam`).
 `radar_jitter = 0` means *make no RNG call*, matching the legacy draw path
 where only flickering families rolled — the call count is observable.
+`radar_ping = true` (default false, all five orders) marks a family every
+player must be able to track — mode objectives like the soccer and
+basketball balls: the SDL radar draws it as an oversized blip pulsing on a
+render-side counter (never the game rng, so the sim stream is untouched),
+and the curses client promotes the family glyph to bold.
 
 Presentation is cosmetic, so a malformed value (a multi-character `glyph`, an
 unknown `glyph_color`, a negative `radar_jitter`) warns and keeps the current

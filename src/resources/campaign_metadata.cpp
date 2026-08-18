@@ -16,6 +16,7 @@
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_file_io.h>
+#include <openglad/resources/level_selection.h>
 
 #include <format>
 #include <map>
@@ -38,12 +39,15 @@ std::map<std::pair<std::string, int>, std::string>& scenario_name_cache()
     return cache;
 }
 
-// The two campaign.yaml identity axes, cached together (one yaml read fills
-// both): `mode:` drives IProgression, `matchup:` drives the versus surfaces.
+// The campaign.yaml identity axes, cached together (one yaml read fills
+// all three): `mode:` drives IProgression, `matchup:` drives the versus
+// surfaces, `first_level:` seeds the earned-roads frontier and the
+// reset-campaign rewind (absent -> 1, the classic entry level).
 struct CampaignModeMatchup
 {
     std::string mode;
     std::string matchup;
+    int first_level = 1;
 };
 
 std::map<std::string, CampaignModeMatchup>& campaign_mode_cache()
@@ -118,6 +122,8 @@ CampaignModeMatchup read_campaign_mode_matchup(const char* yaml_path)
         out.mode = metadata.mode;
     if (metadata.saw_matchup)
         out.matchup = metadata.matchup;
+    if (metadata.saw_first_level)
+        out.first_level = metadata.first_level;
     return out;
 }
 
@@ -205,6 +211,11 @@ std::string campaign_matchup(const std::string& campaign_id)
     return lookup_campaign_mode_matchup(campaign_id).matchup;
 }
 
+int campaign_first_level(const std::string& campaign_id)
+{
+    return lookup_campaign_mode_matchup(campaign_id).first_level;
+}
+
 std::string mounted_campaign_mode()
 {
     // The mode drives the ACTIVE session's progression, so the mounted
@@ -223,6 +234,9 @@ void forget_campaign_display_title(const std::string& campaign_id)
 {
     campaign_title_cache().erase(campaign_id);
     campaign_mode_cache().erase(campaign_id);
+    // Exit scans have no per-campaign eviction; a heal here is as rare as a
+    // package install, so the whole road-graph cache re-derives.
+    clear_level_exit_cache();
 }
 
 void clear_campaign_metadata_cache()
@@ -230,6 +244,7 @@ void clear_campaign_metadata_cache()
     campaign_title_cache().clear();
     scenario_name_cache().clear();
     campaign_mode_cache().clear();
+    clear_level_exit_cache();
 }
 
 } // namespace og::data

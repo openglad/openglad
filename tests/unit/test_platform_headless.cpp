@@ -2,6 +2,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/walker.h>
@@ -9,6 +10,7 @@
 #include <openglad/interface/level_render.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/ui/cloud_save_client.h>
 #include <openglad/interface/ui/picker.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -890,6 +892,33 @@ TEST(PlatformHeadless, text_protocol_emits_mode_block_for_scripted_levels)
     fs::remove(grid_png, ec);
 }
 
+TEST(PlatformHeadless, text_protocol_campaign_state_seed_validates_keys)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    {
+        StdinRedirect input("quit\n");
+        CoutRedirect output;
+        og::ui::TextProtocolArgs args;
+        args.level = 1;
+        args.team_families = {FAMILY_SOLDIER};
+        args.campaign_state = {{"delve_counted", 1}, {"watch_paid", 900}};
+        EXPECT_EQ(0, og::ui::run_text_protocol_session(args))
+            << "safe-charset keys must seed and start the session";
+    }
+    {
+        StdinRedirect input("quit\n");
+        CoutRedirect output;
+        og::ui::TextProtocolArgs args;
+        args.level = 1;
+        args.team_families = {FAMILY_SOLDIER};
+        args.campaign_state = {{"BadKey", 1}};
+        EXPECT_EQ(1, og::ui::run_text_protocol_session(args))
+            << "a key outside [a-z0-9_] must reject the session";
+    }
+}
+
 TEST(PlatformHeadless, text_protocol_event_text_is_valid_json_escaped)
 {
     const std::string encoded = og::ui::text_protocol_testing_format_event_text(
@@ -907,29 +936,27 @@ TEST(PlatformHeadless, text_protocol_event_text_is_valid_json_escaped)
 
 TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
 {
-    // Team Build is 12 items (§2.5 in-place substitution: 1=roster,
-    // 4=deploy, 5=ready; 7=back, 8=networking, 9=Scenario); the
-    // scenario-shaped commands nest under the Scenario submenu
-    // (1=set_campaign, 2=set_level, 3=view_scenario, 4=matchup, 5=progress,
-    // 6=troops, 7=back). Main 3=difficulty opens the DIFFICULTY submenu
+    // Team Build is 11 items (§2.5 in-place substitution: 1=roster,
+    // 4=deploy, 5=ready, 6=GO!; #206 inserted 7=camp before Back, shifting
+    // 8=back, 9=networking, 10=Scenario; the flat CTF trio left for the
+    // camp's MATCH SETUP page and 11=difficulty was appended in its place —
+    // docs/camp-controls-design.md); the scenario-shaped commands nest
+    // under the Scenario submenu (1=set_campaign, 2=set_level,
+    // 3=view_scenario, 4=matchup, 5=progress, 6=troops, 7=replay level
+    // (#207), 8=back — the missions door retired into the camp). Team
+    // Build 11=difficulty opens
+    // the DIFFICULTY submenu
     // (1=difficulty, 2=respawns, 3=respawn delay, 4=permadeath,
-    // 5=generators, 6=infinite gold, 7=back).
+    // 5=generators, 6=infinite gold, 7=back). Main is 8 items now:
+    // 1=begin, 2=continue, 3=level edit, 4=options, 5=help, 6=quit,
+    // 7=load company, 8=cloud.
     const std::string input =
         "bad\r\n"   // main: invalid choice; terminal CR is trimmed
-        "3\n"       // main: difficulty -> DIFFICULTY submenu
-        "1\n"       // difficulty: cycle difficulty
-        "2\n"       // difficulty: cycle respawns
-        "3\n"       // difficulty: cycle respawn delay
-        "4\n"       // difficulty: toggle permadeath
-        "5\n"       // difficulty: cycle generators
-        "6\n"       // difficulty: toggle infinite gold
-        "6\n"       // difficulty: toggle infinite gold back off
-        "7\n"       // difficulty: back -> main
-        "4\n"       // main: level edit (unavailable)
-        "5\n"       // main: options
+        "3\n"       // main: level edit (unavailable)
+        "4\n"       // main: options
         "newslot\n"
         "not-a-seed\n"
-        "5\n"       // main: options again
+        "4\n"       // main: options again
         "textslot\n"
         "123\n"
         "2\n"       // main: continue -> team build (base camp)
@@ -955,11 +982,11 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "5\n"       // base camp: ready (guarded outside networked lobbies)
         "4\n"       // base camp: deploy prompt
         "2\n"       //   toggle display row 2
-        "9\n"       // team build: Scenario submenu
+        "10\n"      // team build: Scenario submenu
         "5\n"       // scenario: progress
         "2\n"       // scenario: set level (invalid value)
         "0\n"
-        "2\n"       // scenario: set level -> 2
+        "2\n"       // scenario: set level -> 2 (unearned: the gate refuses)
         "2\n"
         "1\n"       // scenario: set campaign (invalid selection)
         "999\n"
@@ -967,10 +994,19 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "\n"
         "6\n"       // scenario: cycle scenario troops (ALL -> OWN)
         "6\n"       // scenario: cycle scenario troops (OWN -> ALL)
-        "7\n"       // scenario: back -> team build
-        "8\n"       // team build: networking (unavailable)
-        "7\n"       // team build: back -> main
-        "7\n";      // main: quit
+        "8\n"       // scenario: back -> team build (#207: Replay Level joined at 7)
+        "11\n"      // team build: difficulty -> DIFFICULTY submenu
+        "1\n"       // difficulty: cycle difficulty
+        "2\n"       // difficulty: cycle respawns
+        "3\n"       // difficulty: cycle respawn delay
+        "4\n"       // difficulty: toggle permadeath
+        "5\n"       // difficulty: cycle generators
+        "6\n"       // difficulty: toggle infinite gold
+        "6\n"       // difficulty: toggle infinite gold back off
+        "7\n"       // difficulty: back -> team build
+        "9\n"       // team build: networking (unavailable)
+        "8\n"       // team build: back -> main
+        "6\n";      // main: quit
 
     restore_default_campaigns(); // order-independent: install the packages
 
@@ -985,19 +1021,57 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
 
     EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
     EXPECT_EQ("textslot", config.save_name);
-    EXPECT_EQ(2, config.level);
+    EXPECT_EQ(1, config.level)
+        << "the earned-roads gate must refuse the unearned forward jump";
     ASSERT_GE(config.team_families.size(), 2u);
+}
+
+// The raw Set Level prompt under the earned-roads gate: a fresh gladiator
+// company's free-typed forward jump refuses in the campaign's voice and the
+// cursor stays put. (The versus exemption on the same predicate is driven
+// through the curses prompt and the terminal camp tests.)
+TEST(PlatformHeadless, text_picker_set_level_prompt_rides_the_gate)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    {
+        const std::string input =
+            "2\n"    // main: continue -> team build
+            "10\n"   // team build: Scenario submenu
+            "2\n"    // scenario: set level -> 15 (unearned: refused)
+            "15\n"
+            "8\n"    // scenario: back -> team build (#207: Replay Level joined at 7)
+            "8\n"    // team build: back -> main
+            "6\n";   // main: quit
+        StdinRedirect stdin_redirect(input);
+        CoutRedirect cout_redirect;
+        StdoutCapture stdout_capture;
+
+        og::ui::TextPickerConfig config;
+        config.team_families = {FAMILY_SOLDIER};
+        og::ui::TextPickerError error;
+        og::ui::run_text_picker(config, &error);
+
+        const std::string out = stdout_capture.restore();
+        EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+        EXPECT_EQ(1, config.level)
+            << "the free-typed forward jump must not move the cursor";
+        EXPECT_NE(std::string::npos,
+                  out.find(std::string(og::ui::kCampaignLevelClosedMessage)))
+            << "the prompt refuses in the campaign's voice";
+    }
 }
 
 TEST(PlatformHeadless, text_picker_drives_the_cloud_submenu)
 {
-    // #155: Main 9=cloud (appended after load_company, so positions 1-8 are
-    // untouched); the submenu is 1=passphrase, 2=upload, 3=download, 4=back.
+    // #155: Main 8=cloud (last, after load_company); the submenu is
+    // 1=passphrase, 2=upload, 3=download, 4=back.
     // The headless bridge installs no cloud HTTP callbacks, so upload and
     // download degrade with the D8 unavailable line.
     cfg.data.erase("cloud");
     const std::string input =
-        "9\n"                      // main: cloud -> CLOUD submenu
+        "8\n"                      // main: cloud -> CLOUD submenu
         "1\n"                      // cloud: passphrase
         "\n"                       //   blank cancels (unchanged)
         "1\n"                      // cloud: passphrase
@@ -1007,7 +1081,7 @@ TEST(PlatformHeadless, text_picker_drives_the_cloud_submenu)
         "2\n"                      // cloud: upload -> unavailable
         "3\n"                      // cloud: download -> unavailable
         "4\n"                      // cloud: back -> main
-        "7\n";                     // main: quit
+        "6\n";                     // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1059,8 +1133,8 @@ TEST(PlatformHeadless, text_picker_reports_protocol_start_failure)
     StdinRedirect input(
         "2\n"  // main: continue -> team build
         "6\n"  // team build: GO! attempts the invalid level
-        "7\n"  // failed session returns to team build: back
-        "7\n"); // main: quit
+        "8\n"  // failed session returns to team build: back
+        "6\n"); // main: quit
     CoutRedirect output;
     StdoutSilencer stdout_silencer;
 
@@ -1090,8 +1164,8 @@ TEST(PlatformHeadless, text_picker_new_game_resets_campaign_and_mount)
         "1\n"       // main: begin new game -> §2.2 name entry
         "\n"        //   name entry: blank accepts the generated company name
         "\n"        //   campaign select: blank keeps current (= default reset)
-        "7\n"       // team build: back -> main
-        "7\n";      // main: quit
+        "8\n"       // team build: back -> main
+        "6\n";      // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1190,13 +1264,13 @@ TEST(PlatformHeadless, text_picker_company_list_open_delete_and_guards)
 
     // Rows (most-recent-first): 1 = wp3hlb, 2 = wp3hla, 3 = wp3hlc (corrupt).
     const std::string input =
-        "8\n"       // main: load company -> the company list
+        "7\n"       // main: load company -> the company list
         "1\n"       //   list: open company...
         "3\n"       //     #3 = corrupt -> damaged message, never switches
         "1\n"       //   list: open company...
         "1\n"       //     #1 = wp3hlb -> loads, slot follows -> team build
-        "7\n"       // team build: back -> main
-        "8\n"       // main: load company again (active is now wp3hlb)
+        "8\n"       // team build: back -> main
+        "7\n"       // main: load company again (active is now wp3hlb)
         "3\n"       //   list: delete company...
         "1\n"       //     #1 = wp3hlb = ACTIVE -> refused (switch first)
         "3\n"       //   list: delete company...
@@ -1208,7 +1282,7 @@ TEST(PlatformHeadless, text_picker_company_list_open_delete_and_guards)
         "2\n"       //   list: backups...
         "1\n"       //     #1 = wp3hlb: no snapshots yet -> backs out (§2.4)
         "4\n"       //   list: back -> main
-        "7\n";      // main: quit
+        "6\n";      // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1294,13 +1368,13 @@ TEST(PlatformHeadless, text_picker_cloud_download_confirms_installs_and_opens)
     set_platform_bridge(faked);
 
     const std::string input =
-        "9\n"                      // main: cloud -> CLOUD submenu
+        "8\n"                      // main: cloud -> CLOUD submenu
         "1\n"                      // cloud: passphrase
         "correct horse battery\n"
         "3\n"                      // cloud: download
         "y\n"                      //   NO-first overwrite confirm -> yes
         "4\n"                      // cloud: back -> main
-        "7\n";                     // main: quit
+        "6\n";                     // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1365,7 +1439,7 @@ TEST(PlatformHeadless, text_picker_backups_delete_and_restore_round_trip)
     // Snapshot rows (seq desc): 1 = seq 9 (corrupt), 2 = seq 2 (MID),
     // 3 = seq 1 (OLD).
     const std::string input =
-        "8\n"       // main: load company -> the company list
+        "7\n"       // main: load company -> the company list
         "2\n"       //   list: backups...
         "1\n"       //     #1 = wp3hlr (the only company)
         "1\n"       //     backups: restore...
@@ -1382,8 +1456,8 @@ TEST(PlatformHeadless, text_picker_backups_delete_and_restore_round_trip)
         "1\n"       //     backups: restore...
         "2\n"       //       #2 = seq 1 (OLD)...
         "y\n"       //       explicit yes -> rewound -> team build
-        "7\n"       // team build: back -> main
-        "7\n";      // main: quit
+        "8\n"       // team build: back -> main
+        "6\n";      // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1486,12 +1560,12 @@ TEST(PlatformHeadless, text_picker_campaign_select_mounts_selection)
 
     const std::string input =
         "2\n"       // main: continue -> team build
-        "9\n"       // team build: Scenario submenu
+        "10\n"      // team build: Scenario submenu
         "1\n"       // scenario: set campaign
         "1\n"       //   entry 1 is always the default campaign
-        "7\n"       // scenario: back -> team build
-        "7\n"       // team build: back -> main
-        "7\n";      // main: quit
+        "8\n"       // scenario: back -> team build (#207: Replay Level joined at 7)
+        "8\n"       // team build: back -> main
+        "6\n";      // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1522,7 +1596,7 @@ TEST(PlatformHeadless, text_picker_shows_display_titles_when_campaign_mounted)
 
     const std::string input =
         "2\n"       // main: continue -> team build
-        "9\n"       // team build: Scenario submenu (labels print)
+        "10\n"      // team build: Scenario submenu (labels print)
         "5\n"       // scenario: progress
         "2\n"       // scenario: set level (blank keeps current)
         "\n"
@@ -1530,9 +1604,9 @@ TEST(PlatformHeadless, text_picker_shows_display_titles_when_campaign_mounted)
         "\n"
         "6\n"       // scenario: cycle scenario troops (ALL -> OWN)
         "6\n"       // scenario: cycle scenario troops (OWN -> ALL)
-        "7\n"       // scenario: back -> team build
-        "7\n"       // team build: back -> main
-        "7\n";      // main: quit
+        "8\n"       // scenario: back -> team build (#207: Replay Level joined at 7)
+        "8\n"       // team build: back -> main
+        "6\n";      // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1577,11 +1651,11 @@ TEST(PlatformHeadless, text_picker_level_display_falls_back_when_mount_differs)
 
     const std::string input =
         "2\n"       // main: continue -> team build
-        "9\n"       // team build: Scenario submenu (labels print)
+        "10\n"      // team build: Scenario submenu (labels print)
         "5\n"       // scenario: progress
-        "7\n"       // scenario: back -> team build
-        "7\n"       // team build: back -> main
-        "7\n";      // main: quit
+        "8\n"       // scenario: back -> team build (#207: Replay Level joined at 7)
+        "8\n"       // team build: back -> main
+        "6\n";      // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1623,8 +1697,8 @@ TEST(PlatformHeadless, text_picker_roster_train_row_opens_seeded_member)
         "a\n"        //   train: accept (autosaves the active slot)
         "b\n"        //   train: back to the roster
         "\n"         //   roster: blank exits
-        "7\n"        // base camp: back -> main
-        "7\n";       // main: quit
+        "8\n"        // base camp: back -> main
+        "6\n";       // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1650,6 +1724,137 @@ TEST(PlatformHeadless, text_picker_roster_train_row_opens_seeded_member)
     og::data::set_active_company_slot("save0");
 }
 
+// #207: the SCENARIO submenu's Replay Level prompt on the text client —
+// the invalid-id, earned-roads and cleared refusals, then the cleared arm:
+// the cursor moves onto the level, the answer speaks in the replay voice,
+// and PROGRESS confirms the moved cursor.
+TEST(PlatformHeadless, text_picker_replay_level_prompt_gates_and_arms)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    HeadlessSaveDirSandbox sandbox;
+    {
+        SaveData seed;
+        seed.reset();
+        seed.save_name = "REPLAY BAND";
+        seed.current_campaign = "gladiator";
+        seed.scen_num = 3;
+        seed.add_level_completed("gladiator", 1);
+        seed.add_level_completed("gladiator", 2);
+        seed.last_played_unix_s = 9000;
+        ASSERT_EQ(SaveDataIoError::None, seed.save_with_error("replaytc"));
+    }
+
+    const std::string input =
+        "7\n"       // main: load company -> the company list
+        "1\n"       //   list: open company...
+        "1\n"       //     row 1 = REPLAY BAND -> team build
+        "10\n"      // team build: Scenario submenu
+        "7\n"       // scenario: replay level (invalid value)
+        "abc\n"
+        "7\n"       // scenario: replay level (unearned forward id)
+        "15\n"
+        "7\n"       // scenario: replay level (in frontier but uncleared)
+        "3\n"
+        "7\n"       // scenario: replay level -> 1 (cleared: ARMS)
+        "1\n"
+        "5\n"       // scenario: progress (prints the moved cursor)
+        "8\n"       // scenario: back -> team build
+        "8\n"       // team build: back -> main
+        "6\n";      // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    const std::string out = stdout_capture.restore();
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_NE(std::string::npos, out.find("Replay level (must be cleared): "));
+    EXPECT_NE(std::string::npos, out.find("Invalid level.\n"));
+    EXPECT_NE(std::string::npos, out.find("That road is not open yet.\n"));
+    EXPECT_NE(std::string::npos, out.find("That level is not cleared yet.\n"));
+    EXPECT_NE(std::string::npos,
+              out.find("Replaying SOUTH OF TALWOOD (BEGINNING). "
+                       "GO when ready.\n"))
+        << "the cleared arm answers in the replay voice";
+    EXPECT_NE(std::string::npos,
+              out.find("Current campaign progress: campaign=Gladiator "
+                       "level=1. SOUTH OF TALWOOD (BEGINNING).\n"))
+        << "arming moved the cursor onto the level";
+    EXPECT_EQ(1, config.level);
+
+    (void)remove_user_file("save/replaytc.gtl");
+    og::data::set_active_company_slot("save0");
+}
+
+// #207 arm lifecycle on the text client: a campaign SWITCH after Replay
+// Level abandons the excursion (the shared rule is pinned behaviorally on
+// the curses twin and at apply_campaign_selection; the text tail has its
+// own clear because its select writes the save directly). This drives the
+// text chain end-to-end — arm, then switch to a NON-default campaign — so
+// the switch-side clear executes on this client, with the switch itself
+// asserted through the selection and mount state.
+TEST(PlatformHeadless, text_picker_campaign_switch_after_replay_arm)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    HeadlessSaveDirSandbox sandbox;
+    {
+        SaveData seed;
+        seed.reset();
+        seed.save_name = "SWITCH BAND";
+        seed.current_campaign = "gladiator";
+        seed.scen_num = 3;
+        seed.add_level_completed("gladiator", 1);
+        seed.add_level_completed("gladiator", 2);
+        seed.last_played_unix_s = 9000;
+        ASSERT_EQ(SaveDataIoError::None, seed.save_with_error("switchtc"));
+    }
+
+    const std::string input =
+        "7\n"       // main: load company -> the company list
+        "1\n"       //   list: open company...
+        "1\n"       //     row 1 = SWITCH BAND -> team build
+        "10\n"      // team build: Scenario submenu
+        "7\n"       // scenario: replay level -> 1 (cleared: ARMS)
+        "1\n"
+        "1\n"       // scenario: set campaign
+        "2\n"       //   entry 2 = the first NON-default campaign (SWITCH)
+        "8\n"       // scenario: back -> team build
+        "8\n"       // team build: back -> main
+        "6\n";      // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    const std::string out = stdout_capture.restore();
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_NE(std::string::npos, out.find("Replaying"))
+        << "the excursion armed before the switch";
+    EXPECT_NE("gladiator", config.campaign)
+        << "entry 2 must be a real switch off the default campaign";
+    EXPECT_EQ(config.campaign, get_mounted_campaign())
+        << "the switch re-points the mount";
+
+    (void)remove_user_file("save/switchtc.gtl");
+    og::data::set_active_company_slot("save0");
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
 // §2.5 MATCHUP sub-prompt: the historical 'play N' spelling changes
 // preferred-team metadata only, while 'move SLOT N' moves a roster slot
 // across teams (the §3.8 move autosave rides the valid move). The former TEAMS
@@ -1668,7 +1873,7 @@ TEST(PlatformHeadless, text_picker_matchup_screen_play_and_move_commands)
         "\n"            //   roster: blank exits
         "4\n"           // base camp: deploy prompt
         "abc\n"         //   non-numeric row rejected
-        "9\n"           // base camp: Scenario submenu
+        "10\n"          // base camp: Scenario submenu
         "4\n"           // scenario: matchup -> matchup sub-prompt
         "play 9\n"      //   team out of range
         "play 4\n"      //   in range but no heroes on team 4
@@ -1680,9 +1885,9 @@ TEST(PlatformHeadless, text_picker_matchup_screen_play_and_move_commands)
         "move 1 1\n"    //   valid: back to team 1
         "gibberish\n"   //   unrecognized command
         "\n"            //   blank exits matchup
-        "7\n"           // scenario: back -> team build
-        "7\n"           // base camp: back -> main
-        "7\n";          // main: quit
+        "8\n"           // scenario: back -> team build (#207: Replay Level joined at 7)
+        "8\n"           // base camp: back -> main
+        "6\n";          // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -1728,4 +1933,288 @@ TEST(PlatformHeadless, text_picker_matchup_screen_play_and_move_commands)
     // company-listing tests stay order-independent.
     (void)remove_user_file("save/" + config.save_name + ".gtl");
     og::data::set_active_company_slot("save0");
+}
+
+// --- #206 CAMP: the scripted Base Camp zone, text projection ---------------
+
+namespace {
+
+// Registers a throwaway scripted campaign for one test and restores the
+// pack-script registry (and the gameplay context campaign dispatch resolves)
+// afterwards — the test_campaign_picker_session fixture approach. The chunk
+// name deliberately does NOT start with `packs/`: that prefix declares the
+// bytes to the pack-Lua coverage inventory, and this throwaway chunk exists
+// nowhere in the repository (the test_classpack_lua_decl discipline).
+class ScopedSyntheticCampaignPicker
+{
+public:
+    explicit ScopedSyntheticCampaignPicker(const std::string& source)
+        : previous_game_(current_game)
+        , scripts_(og::script::pack_scripts())
+    {
+        current_game = nullptr;  // dispatch resolves the shared UI VM
+        og::script::register_pack_script(
+            {"test.textcamp", "textcamp/scripts/c.lua", source});
+    }
+
+    ~ScopedSyntheticCampaignPicker()
+    {
+        og::script::clear_pack_scripts();
+        for (const og::script::PackScript& script : scripts_)
+            og::script::register_pack_script(script);
+        current_game = previous_game_;
+    }
+
+private:
+    GameplayContext* previous_game_;
+    std::vector<og::script::PackScript> scripts_;
+};
+
+} // namespace
+
+// The Team Build CAMP row (ordinal 7) opens the scripted Base Camp zone: the
+// composition renders through the shared driver (byte-identical with curses)
+// — the hoisted readout as the panel heading, a text widget CLIPPED to its
+// declared band, the docket in the shared row vocabulary, and the roster
+// block with the deploy padlock and its reason inline. og.campaign_gold
+// proves the providers point at THIS picker's live save; an action
+// debits/toasts/autosaves, a page row opens the book rooted at that page, a
+// level row runs the text set-level tail, and the oath row cycles a hero's
+// campaign_tag with the full-word toast. 0 at the camp closes it.
+TEST(PlatformHeadless, text_picker_camp_drive_runs_the_scripted_zone)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    // The earned-roads gate closes unearned docket rows, so the company this
+    // drive opens has already cleared THE PIT (level 9) — the level row
+    // under test is a REPLAY, the state the camp's set-level tail serves.
+    HeadlessSaveDirSandbox sandbox;
+    {
+        SaveData sd;
+        sd.reset();
+        sd.save_name = "CAMP BAND";
+        sd.current_campaign = "gladiator";
+        sd.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+        sd.team_list[0]->name = "Arthur";
+        sd.team_list[0]->teamnum = 0;
+        sd.team_list[0]->deployed = true;
+        sd.team_size = 1;
+        sd.scen_num = 1;
+        sd.add_level_completed("gladiator", 9);
+        ASSERT_EQ(SaveDataIoError::None, sd.save_with_error("campgate"));
+    }
+    ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return {
+      widgets = {
+        { kind = "readout", items = {
+            { label = "PURSE", value = og.campaign_gold() .. "g" },
+            { label = "ROAD", value = "OPEN" },
+          } },
+        { kind = "text", weight = 1, lines = {
+            "The company waits at the fire.",
+            "CLIPPED: a one-unit band holds one line.",
+          } },
+        { kind = "actions", entries = {
+            { id = "300", label = "THE CIRCLE", kind = "level", level = 300, note = "4 teams" },
+            { id = "9", label = "THE PIT", kind = "level", level = 9 },
+            { id = "kit", label = "FIELD KIT", kind = "action", cost = 100 },
+            { id = "stores", label = "KETTLE'S STORES", kind = "page" },
+            { id = "gone", kind = "level", level = 4242 },
+          } },
+        { kind = "roster",
+          locks = { { unset = true, reason = "Swear first." } },
+          assign = { key = "muster", labels = { "WAR", "BURDEN" } } },
+      },
+    }
+  end,
+  picker_menu = function(page_id)
+    return {
+      title = "KETTLE'S STORES",
+      lines = { "Purse " .. og.campaign_gold() .. "g." },
+      entries = {
+        { id = "bread", label = "BREAD", kind = "action", cost = 10 },
+      },
+    }
+  end,
+  picker_action = function(entry_id)
+    og.campaign_state_set("kit", 1)
+    return { message = "Stowed for the road." }
+  end,
+}))LUA");
+
+    const std::string input =
+        "7\n"          // main: load company -> the company list
+        "1\n"          //   list: open company...
+        "1\n"          //     #1 = campgate (the cleared-9 band) -> team build
+        "1\n"          // base camp: roster
+        "deploy 1\n"   //   bench the soldier: benching is never refused
+        "deploy 1\n"   //   deploying him back is: the camp's lock binds the
+                       //   client's OWN roster row, not just the camp screen
+        "\n"           //   roster: blank exits
+        "7\n"          // team build: camp -> the scripted zone
+        "99\n"         //   camp: out-of-range row -> invalid notice
+        "1\n"          //   camp: a LABELLED road this campaign does not
+                       //   carry -> refused (never "Level set to")
+        "5\n"          //   camp: an unlabelled missing road -> refused too
+        "3\n"          //   camp: FIELD KIT -> debit + toast + autosave
+        "4\n"          //   camp: KETTLE'S STORES -> the book rooted at the page
+        "1\n"          //     page: BREAD -> debit + toast
+        "0\n"          //     page: back at the door's root -> the camp
+        "6\n"          //   camp: SWEAR MUSTER -> the swear prompt
+        "9\n"          //     swear: out-of-range roster row -> invalid notice
+        "1\n"          //     swear: cycle row 1 (unset -> WAR)
+        "1\n"          //     swear: cycle row 1 again (WAR -> BURDEN)
+        "0\n"          //     swear: done -> the camp
+        "2\n"          //   camp: THE PIT (level 9) -> the text set-level tail
+        "2\n"          //   camp: THE PIT again -> the cursor is already
+                       //   there, so the click is refused in the same words
+                       //   the SDL camp uses (never a second confirmation)
+        "0\n"          //   camp: back -> team build
+        "8\n"          // team build: back -> main
+        "6\n";         // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    const std::string out = stdout_capture.restore();
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_EQ(9, config.level)
+        << "a camp level row must run the text set-level tail";
+
+    EXPECT_NE(std::string::npos, out.find("--- Camp ---"));
+    // The readout is ONE line of label/value cells, hoisted to the top
+    // because the roster does not lead the composition.
+    EXPECT_NE(std::string::npos, out.find("PURSE 5000g | ROAD OPEN\n"))
+        << "og.campaign_gold must read the picker client's live save";
+    EXPECT_NE(std::string::npos, out.find("The company waits at the fire.\n"));
+    EXPECT_EQ(std::string::npos, out.find("CLIPPED:"))
+        << "a widget weighed smaller than its lines CLIPS on the terminal "
+           "exactly as it does on the panel";
+    // The docket composes through the shared campaign_picker_row_text helper:
+    // page rows wear the door marker, costed rows quote their price, and a
+    // road the campaign does not carry reads CLOSED before the click —
+    // whether the BOOK named the row (row 1) or the engine had to (row 5).
+    EXPECT_NE(std::string::npos,
+              out.find("   1. THE CIRCLE - 4 teams  [CLOSED]\n"))
+        << "a labelled row must still declare a road the campaign lacks";
+    EXPECT_NE(std::string::npos, out.find("   3. FIELD KIT  100g\n"));
+    EXPECT_NE(std::string::npos, out.find("   4. KETTLE'S STORES  >\n"));
+    EXPECT_NE(std::string::npos, out.find("   5. SCEN 4242  [CLOSED]\n"));
+    EXPECT_NE(std::string::npos, out.find("Camp # [1-6] (0 = back): "));
+    EXPECT_NE(std::string::npos, out.find("Invalid camp row."));
+    EXPECT_EQ(std::string::npos, out.find("Level set to THE CIRCLE."))
+        << "a CLOSED road must never answer with a confirmation";
+    EXPECT_EQ(std::string::npos, out.find("scen4242"))
+        << "the loader's own diagnostics never reach the campaign's voice";
+    EXPECT_NE(std::string::npos,
+              out.find(std::string(og::ui::kCampaignLevelClosedMessage)))
+        << "a CLOSED road refuses in the campaign's voice, not the loader's";
+    // The action debited the acting wallet (visible in the refetched
+    // readout) and its toast printed.
+    EXPECT_NE(std::string::npos, out.find("PURSE 4900g | ROAD OPEN\n"))
+        << "the 100g action debit must land before the zone refetch";
+    EXPECT_NE(std::string::npos, out.find("Stowed for the road."));
+    // The page row opened the BOOK rooted at that page, and its own action
+    // debited the same wallet; closing it refetched the camp.
+    EXPECT_NE(std::string::npos, out.find("--- KETTLE'S STORES ---"));
+    EXPECT_NE(std::string::npos, out.find("Camp # [1-1] (0 = back): "))
+        << "the book page asks for a camp row: the word 'mission' is retired";
+    EXPECT_EQ(std::string::npos, out.find("Mission #"))
+        << "no player-visible terminal surface keeps the v1 noun";
+    EXPECT_NE(std::string::npos, out.find("PURSE 4890g | ROAD OPEN\n"))
+        << "the camp refetches when a page door closes";
+    // The C++-owned header strip: the purse is on the camp screen AND on
+    // the shop page that quotes prices, never only on Team Build. The oath
+    // heading is padded out to sit OVER the oath cell (column 49), not
+    // parked beside the summary facts.
+    EXPECT_NE(std::string::npos,
+              out.find("COMPANY  DEP 0/1  GOLD 5000"
+                       "                       MUSTER\n"))
+        << "the camp header carries the purse and heads the oath column";
+    EXPECT_NE(std::string::npos, out.find("COMPANY  DEP 0/1  GOLD 4900\n"))
+        << "the book page carries the same strip while it quotes prices";
+    // The roster block: the shared camp row composer, the padlock in the
+    // deploy cell and the lock's reason inline (a terminal cannot draw a
+    // glyph in a cell nobody clicks).
+    EXPECT_NE(std::string::npos, out.find("      [L] "))
+        << "an unsworn hero wears the deploy padlock";
+    EXPECT_NE(std::string::npos, out.find("  Swear first.\n"))
+        << "the lock's reason reads inline, before any refusal";
+    EXPECT_EQ(std::string::npos, out.find("- - Swear first."))
+        << "the unsworn oath cell must not stutter into the reason";
+    // The lock is not decoration: the Team Build roster's own 'deploy N'
+    // asks the camp first and prints the campaign's reason (the SDL panel
+    // refuses the same toggle with the same words).
+    EXPECT_NE(std::string::npos, out.find("blank line exits: Swear first.\n"))
+        << "a locked deploy must be refused on the client's own roster row, "
+           "answering that row's prompt in the campaign's words";
+    EXPECT_EQ(std::string::npos, out.find(" deployed.\n"))
+        << "the refused toggle must never report a deploy";
+    // The oath door and its prompt.
+    EXPECT_NE(std::string::npos, out.find("   6. SWEAR MUSTER  >\n"));
+    EXPECT_NE(std::string::npos, out.find("Swear # [1-1] (0 = done): "));
+    EXPECT_NE(std::string::npos, out.find("Invalid roster row."));
+    EXPECT_NE(std::string::npos, out.find("Sworn to WAR."));
+    EXPECT_NE(std::string::npos, out.find("Sworn to BURDEN."))
+        << "the cycle runs unset -> WAR -> BURDEN, never back to unset";
+    EXPECT_NE(std::string::npos, out.find("   1. [ ] "))
+        << "the sworn hero's row lost the padlock (the unset lock stopped "
+           "matching) and the swear prompt numbers the roster";
+    // The set-level tail re-derives the CURRENT marker on the refetch, and
+    // the row that now reads [CURRENT] answers the next click with the
+    // refusal instead of confirming a move that never happens.
+    EXPECT_NE(std::string::npos, out.find("Level set to THE PIT."));
+    EXPECT_NE(std::string::npos, out.find("   2. THE PIT  [CURRENT]\n"));
+    EXPECT_NE(std::string::npos,
+              out.find(std::string(og::ui::kCampaignLevelUnchangedMessage)))
+        << "a click on the row the cursor is parked on must be refused, in "
+           "the words the SDL camp uses for the same click";
+
+    // Hygiene: the Acted arm autosaved the text client's slot; reap it so
+    // company-listing tests stay order-independent.
+    (void)remove_user_file("save/" + config.save_name + ".gtl");
+    og::data::set_active_company_slot("save0");
+}
+
+// With no og.register_campaign_hooks anywhere the camp door refuses with the
+// shared guard line — pinned verbatim here, exactly once. The DEFAULT
+// composition is a full-capability roster, and both terminals already carry
+// that on their own Team Build rows, so the door says so instead of opening
+// a second copy of the roster.
+TEST(PlatformHeadless, text_picker_camp_without_a_zone_prints_the_guard)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+
+    const std::string input =
+        "2\n"       // main: continue -> team build
+        "7\n"       // team build: camp -> guard line, straight back
+        "8\n"       // team build: back -> main
+        "6\n";      // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    const std::string out = stdout_capture.restore();
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_NE(std::string::npos,
+              out.find("This campaign keeps no camp.\n"))
+        << "a campaign that composed no camp must print the guard line";
+    EXPECT_EQ(std::string::npos, out.find("Camp # "))
+        << "the guard path must never open the camp prompt";
 }

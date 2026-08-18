@@ -5,11 +5,13 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/campaign_io.h>
+#include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/progression.h>
@@ -67,6 +69,9 @@ std::unique_ptr<guy> make_guy_from_lobby_character(
     // v8: the deploy flag rides the lobby SLOT, not the guy payload; roster
     // assembly only materializes deployed slots, so mark the guy explicitly.
     result->deployed = true;
+    // GTL v16 campaign_tag stays 0: the dedicated server holds no private
+    // company, so it has no record to read a tag off and never persists one.
+    // Each owning machine re-stamps its own tags on its own merge (guy.h).
     return result;
 }
 
@@ -102,6 +107,24 @@ void sync_world_from_save_data(GameWorld& world, const SaveData& save)
         world.completed_levels = completed_it->second;
     else
         world.completed_levels.clear();
+
+    // Campaign scripting (issue #206): replace, never merge — copy the
+    // current campaign's decision book filtered to the registered var
+    // names, so stale values cannot leak across levels or campaigns.
+    // Applied in BOTH sync_world_from_save_data twins (see screen.cpp).
+    world.campaign_vars.clear();
+    const auto state_it = save.campaign_state.find(save.current_campaign);
+    if (state_it != save.campaign_state.end())
+    {
+        const std::vector<std::string> registered =
+            og::script::hooks::campaign_registered_vars();
+        for (const auto& entry : state_it->second)
+        {
+            if (std::find(registered.begin(), registered.end(),
+                          entry.first) != registered.end())
+                world.campaign_vars.push_back(entry);
+        }
+    }
 
     world.withdraw_requested = false;
     world.withdraw_level = -1;
@@ -246,11 +269,6 @@ void clear_completed_level_entities(EntityList& entities)
 
 void apply_completed_level_cleanup(GameWorld& world)
 {
-    // Scripted rematches replay the full map: mode objectives and bot
-    // squads must survive a "level already completed" reload.
-    if (world.type & GameWorld::TYPE_SCRIPTED)
-        return;
-
     clear_completed_level_entities(world.oblist);
     clear_completed_level_entities(world.weaplist);
     clear_completed_level_entities(world.fxlist);
@@ -323,6 +341,18 @@ void copy_headless_server_save_data(SaveData& destination,
     // the company's recency to 0 (the documented dropped-field bug class,
     // design §3.4). The per-guy deploy flag rides the guy copies below.
     destination.last_played_unix_s = source.last_played_unix_s;
+    // Campaign scripting decision book (GTL v15): the session save is
+    // GTL-round-tripped through the netsession slot and the server copy
+    // must carry it, or og.campaign_var reads 0 on the authoritative sim
+    // (the documented dropped-field bug class).
+    destination.campaign_state = source.campaign_state;
+    // Replay arm (#207): transient session state, never serialized — the
+    // same dropped-field rule. The curses client builds its authoritative
+    // session save through this copy; a dropped pair would purge an armed
+    // replay back to the empty walk-through and skip the fold's
+    // origin-restore.
+    destination.replay_level = source.replay_level;
+    destination.replay_origin = source.replay_origin;
 
     for (std::size_t index = 0; index < destination.team_list.size(); ++index)
     {
@@ -336,13 +366,47 @@ void copy_headless_server_save_data(SaveData& destination,
 
 void apply_headless_lobby_game_start_config(
     SaveData& save,
-    const og::sim::LobbySaveDataEquivalent& config_save)
+    const og::sim::LobbySaveDataEquivalent& config_save,
+    LobbyStartReplayArm arm_policy)
 {
+    // #207 design point 7 (the dedicated server) / V5 point 3 (the trap).
+    // AdoptCompletedLanding: a start onto a level the save marks completed
+    // loads RESTORED — the networked table re-fights. Capture the
+    // pre-config position, arm below once the cursor lands on a completed
+    // level of the SAME campaign (a campaign switch has no origin to
+    // restore to), and clear any stale arm otherwise — every round starts
+    // its own excursion or none.
+    // SeededIntent: the save is a PLAYER's seeded company copy and its arm
+    // state IS the intent — keep an arm that covers the negotiated level,
+    // clear anything stale, and never auto-arm (unarmed + completed means
+    // VISIT; the adopt rule would silently convert it into a replay).
+    const std::string previous_campaign = save.current_campaign;
+    const short previous_scen_num = save.scen_num;
+    const short seeded_replay_level = save.replay_level;
+    const short seeded_replay_origin = save.replay_origin;
+    save.clear_replay_arm();
+
     save.current_campaign = config_save.current_campaign.empty()
         ? std::string("gladiator")
         : config_save.current_campaign;
     save.scen_num = config_save.scen_num > 0 ? config_save.scen_num : 1;
     save.current_levels[save.current_campaign] = save.scen_num;
+    if (arm_policy == LobbyStartReplayArm::AdoptCompletedLanding)
+    {
+        if (previous_campaign == save.current_campaign &&
+            save.is_level_completed(save.scen_num))
+        {
+            save.replay_level = save.scen_num;
+            save.replay_origin = previous_scen_num;
+        }
+    }
+    else if (seeded_replay_level != 0 &&
+             seeded_replay_level == save.scen_num &&
+             previous_campaign == save.current_campaign)
+    {
+        save.replay_level = seeded_replay_level;
+        save.replay_origin = seeded_replay_origin;
+    }
     save.numplayers = config_save.numplayers;
     save.allied_mode = static_cast<short>(config_save.allied_mode);
     save.ctf_team_count = static_cast<short>(config_save.ctf_team_count);
@@ -459,8 +523,18 @@ bool load_headless_level_from_save(LevelRuntimeData& level_data,
     }
 
     spawn_team_from_save(world, save);
-    if (save.is_level_completed(save.scen_num))
+    // The completed-level purge, keyed on CAMPAIGN policy rather than the
+    // level's TYPE_SCRIPTED bit: a `matchup: versus` campaign is an arena
+    // whose rematches always replay the full map (mode objectives and bot
+    // squads stay). #207 replay excursion: an armed replay of exactly this
+    // level loads the authored census too — the purge is the VISIT (plain
+    // cursor write) face.
+    if (save.is_level_completed(save.scen_num) &&
+        og::data::campaign_matchup(save.current_campaign) != "versus" &&
+        !save.replay_armed_for(save.scen_num))
+    {
         apply_completed_level_cleanup(world);
+    }
 
     prepare_world_for_gameplay(level_data, events);
     // The dedicated server (and any headless host) rolls this level's

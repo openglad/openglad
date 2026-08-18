@@ -22,13 +22,17 @@
  */
 #include <gtest/gtest.h>
 
+#include <openglad/platform/curses/curses_game_runtime.h>
 #include <openglad/platform/curses/curses_picker_client.h>
 #include <openglad/platform/curses/headless_terminal.h>
 
 #include <openglad/core/constants.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_state.h>
+#include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/ui/cloud_save_client.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -63,16 +67,19 @@ using og::ui::TextPickerConfig;
 namespace {
 
 // Bundles the terminal/clock/config + client so each test reads compactly.
-// A generous 40x100 grid leaves room for every menu the picker draws.
+// A generous 40x100 grid leaves room for every menu the picker draws; the
+// dimensions are a parameter so a test can put a screen on the stock 24x80
+// terminal a real player has (the camp composes more lines than that holds).
 struct PickerFixture {
-    HeadlessTerminal term{40, 100};
+    HeadlessTerminal term;
     FakeClock clock;
     TextPickerConfig config;
     CursesPickerOptions options;
     CursesPickerClient client;
 
-    explicit PickerFixture(CursesPickerOptions initial_options = {})
-        : options(std::move(initial_options)),
+    explicit PickerFixture(CursesPickerOptions initial_options = {},
+                           int rows = 40, int cols = 100)
+        : term(rows, cols), options(std::move(initial_options)),
           client(term, clock, config, options)
     {
     }
@@ -101,6 +108,18 @@ void pick(HeadlessTerminal& term, int n)
     ASSERT_GE(n, 0);
     ASSERT_LE(n, 8) << "digit-jump only addresses the first 9 selectable items";
     term.push_char(static_cast<char32_t>(U'1' + static_cast<char32_t>(n)));
+    term.push_special(KeyCode::Enter);
+}
+
+// Select the item at 0-based selectable index `n` by walking the cursor down
+// from the top of the list and confirming. Unlike pick(), this reaches rows
+// past the digit-jump ceiling — the #206 Camp door pushed Team Build's
+// Scenario/CTF rows out of digit range.
+void step_to(HeadlessTerminal& term, int n)
+{
+    ASSERT_GE(n, 0);
+    for (int i = 0; i < n; ++i)
+        term.push_special(KeyCode::Down);
     term.push_special(KeyCode::Enter);
 }
 
@@ -171,6 +190,19 @@ int team_count(const SaveData& save)
 int main_menu_item_index(PickerMenuCommand command, int arg = 0)
 {
     const auto& def = og::ui::picker_menu_definition(PickerMenuId::Main);
+    for (int i = 0; i < static_cast<int>(def.items.size()); ++i)
+        if (def.items[static_cast<size_t>(i)].command == command &&
+            def.items[static_cast<size_t>(i)].arg == arg)
+            return i;
+    return -1;
+}
+
+// The same lookup for a Team Build item. Team Build prints context header
+// rows above the list, but the digit jump and the arrow walk both count
+// selectable entries only, so this is the index both helpers take.
+int team_build_item_index(PickerMenuCommand command, int arg = 0)
+{
+    const auto& def = og::ui::picker_menu_definition(PickerMenuId::TeamBuild);
     for (int i = 0; i < static_cast<int>(def.items.size()); ++i)
         if (def.items[static_cast<size_t>(i)].command == command &&
             def.items[static_cast<size_t>(i)].arg == arg)
@@ -254,14 +286,17 @@ TEST(CursesPickerClient, present_menu_cancel_maps_to_quit_or_back)
 TEST(CursesPickerClient, present_menu_digit_and_arrow_navigation)
 {
     PickerFixture f;
-    // Jump to the 7th selectable item (the Difficulty door) and select it.
-    const int diff_idx = main_menu_item_index(PickerMenuCommand::OpenDifficultyMenu);
-    ASSERT_GE(diff_idx, 0);
-    f.t().push_char(static_cast<char32_t>(U'1' + static_cast<char32_t>(diff_idx)));
+    // Jump to the LAST selectable item (the Cloud door) and select it: with
+    // the difficulty door gone to Team Build, Main is 8 rows and every one
+    // of them is digit-addressable.
+    const int cloud_idx = main_menu_item_index(PickerMenuCommand::OpenCloudMenu);
+    ASSERT_GE(cloud_idx, 0);
+    ASSERT_LE(cloud_idx, 8) << "digit-jump addresses the first 9 items";
+    f.t().push_char(static_cast<char32_t>(U'1' + static_cast<char32_t>(cloud_idx)));
     f.t().push_special(KeyCode::Enter);
     const auto* item = f.client.present_menu(PickerMenuId::Main);
     ASSERT_NE(item, nullptr);
-    EXPECT_EQ(item->command, PickerMenuCommand::OpenDifficultyMenu);
+    EXPECT_EQ(item->command, PickerMenuCommand::OpenCloudMenu);
 
     // From the top item, Down once then Enter selects the 2nd item.
     f.t().push_special(KeyCode::Down);
@@ -500,71 +535,74 @@ TEST(CursesPickerClient, level_edit_notice_renders)
     EXPECT_NE(f.t().dump().find("openscen"), std::string::npos);
 }
 
-// CTF settings cycle only inside the CTF campaign; elsewhere they notify.
-TEST(CursesPickerClient, ctf_settings_cycle_on_ctf_campaign_only)
-{
-    PickerFixture f;
-    const auto* teams_item = og::ui::find_picker_menu_item(
-        PickerMenuId::TeamBuild, PickerMenuCommand::CycleCtfTeamCount);
-    const auto* caps_item = og::ui::find_picker_menu_item(
-        PickerMenuId::TeamBuild, PickerMenuCommand::CycleCtfCaptureLimit);
-    ASSERT_NE(teams_item, nullptr);
-    ASSERT_NE(caps_item, nullptr);
-
-    // Classic campaign: settings stay put and the notice renders.
-    f.save().current_campaign = "gladiator";
-    dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::TeamBuild, *teams_item);
-    EXPECT_EQ(0, (int)f.save().ctf_team_count);
-    EXPECT_NE(f.t().dump().find("versus maps only"), std::string::npos);
-
-    // Versus campaign: both settings cycle (Auto -> 2).
-    f.save().current_campaign = "modes";
-    dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::TeamBuild, *teams_item);
-    EXPECT_EQ(2, (int)f.save().ctf_team_count);
-
-    dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::TeamBuild, *caps_item);
-    EXPECT_EQ(1, (int)f.save().ctf_capture_limit);
-}
-
-// The team-build labels surface the live CTF settings.
-TEST(CursesPickerClient, ctf_menu_labels_format_from_save)
-{
-    PickerFixture f;
-    f.save().ctf_team_count = 4;
-    f.save().ctf_capture_limit = 0;
-    const auto* teams_item = og::ui::find_picker_menu_item(
-        PickerMenuId::TeamBuild, PickerMenuCommand::CycleCtfTeamCount);
-    const auto* caps_item = og::ui::find_picker_menu_item(
-        PickerMenuId::TeamBuild, PickerMenuCommand::CycleCtfCaptureLimit);
-    ASSERT_NE(teams_item, nullptr);
-    ASSERT_NE(caps_item, nullptr);
-
-    // Drive present_menu so the dynamic labels render in the list.
-    f.t().push_special(KeyCode::Escape);
-    (void)f.client.present_menu(PickerMenuId::TeamBuild);
-    const std::string dump = f.t().dump();
-    EXPECT_NE(dump.find("Teams: 4"), std::string::npos) << dump;
-    EXPECT_NE(dump.find("Limit: Map"), std::string::npos) << dump;
-}
+// The flat match-rule rows (match teams, target score) left Team Build for
+// the camp's MATCH SETUP page (docs/camp-controls-design.md): one place, in
+// plain words, on every client. Nothing in the curses surface carries them
+// any more — see team_build_lists_the_difficulty_door_last below for the
+// list, and MenuSpec.terminal_gate_messages_guard_the_ctf_trio_verbatim for
+// the shared versus guard that still names them. The curses guard-rendering
+// branch itself stays covered by the READY row's networked-only guard.
 
 // Matched troops (design D28): the sentinel value 3 renders the shared
-// formatter's "TROOPS: FAIR" label in the terminal list too.
+// formatter's "TROOPS: FAIR" label in the terminal list too. The troops row
+// is the one match rule that stayed a menu item — it lives in SCENARIO,
+// because stripping authored troops is meaningful on classic campaigns.
 TEST(CursesPickerClient, ctf_menu_labels_render_matched_sentinel)
 {
     PickerFixture f;
     f.save().ctf_strip_scenario_troops = og::sim::kTroopsMatched;
     const auto* troops_item = og::ui::find_picker_menu_item(
-        PickerMenuId::TeamBuild, PickerMenuCommand::ToggleCtfScenarioTroops);
+        PickerMenuId::Scenario, PickerMenuCommand::ToggleCtfScenarioTroops);
     ASSERT_NE(troops_item, nullptr);
 
     // Drive present_menu so the dynamic label renders in the list.
     f.t().push_special(KeyCode::Escape);
-    (void)f.client.present_menu(PickerMenuId::TeamBuild);
+    (void)f.client.present_menu(PickerMenuId::Scenario);
     const std::string dump = f.t().dump();
     EXPECT_NE(dump.find("TROOPS: FAIR"), std::string::npos) << dump;
+}
+
+// The Team Build list renders the appended DIFFICULTY door with its fixed
+// label, past the digit ceiling and reachable by the arrow walk.
+TEST(CursesPickerClient, team_build_lists_the_difficulty_door_last)
+{
+    PickerFixture f;
+    const int door_idx =
+        team_build_item_index(PickerMenuCommand::OpenDifficultyMenu);
+    ASSERT_EQ(static_cast<int>(og::ui::picker_menu_definition(
+                                  PickerMenuId::TeamBuild).items.size()) - 1,
+              door_idx)
+        << "the door is appended last, so nothing above it moved";
+
+    f.t().push_special(KeyCode::Escape);
+    (void)f.client.present_menu(PickerMenuId::TeamBuild);
+    const std::string dump = f.t().dump();
+    // "Difficulty" must be the LAST row the list draws: the curses screen is
+    // where an appended row silently falls off the bottom, so the rendered
+    // tail is the thing worth pinning, not just membership.
+    std::vector<std::string> rows;
+    for (std::size_t start = 0; start < dump.size();) {
+        std::size_t end = dump.find('\n', start);
+        if (end == std::string::npos)
+            end = dump.size();
+        std::string row = dump.substr(start, end - start);
+        while (!row.empty() && row.back() == ' ')
+            row.pop_back();
+        if (!row.empty())
+            rows.push_back(row);
+        start = end + 1;
+    }
+    // The trailing key-hint line is chrome, not a row.
+    ASSERT_FALSE(rows.empty()) << dump;
+    ASSERT_NE(std::string::npos, rows.back().find("Esc/q back"))
+        << "expected the key-hint footer as the last line:\n" << dump;
+    rows.pop_back();
+    ASSERT_FALSE(rows.empty()) << dump;
+    EXPECT_EQ("  Difficulty", rows.back())
+        << "the appended door must be the last rendered row:\n" << dump;
+    EXPECT_EQ(dump.find("Match Teams"), std::string::npos)
+        << "the flat match-rule rows are gone from Team Build:\n" << dump;
+    EXPECT_EQ(dump.find("Score Limit"), std::string::npos) << dump;
 }
 
 // --- view roster ---------------------------------------------------------
@@ -887,10 +925,15 @@ TEST(CursesPickerClient, train_rejects_changes_when_gold_is_insufficient)
 
 // --- set level -----------------------------------------------------------
 
-// Set Level updates both the config and the save's scenario number.
+// Set Level updates both the config and the save's scenario number — for a
+// road the company has earned (the earned-roads gate closes the rest).
 TEST(CursesPickerClient, set_level_updates_config_and_save)
 {
+    ScopedCursesPickerMountRestore mount_restore;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
     PickerFixture f;
+    f.save().add_level_completed("gladiator", 4);
     const auto* item =
         og::ui::find_picker_menu_item(PickerMenuId::Scenario, PickerMenuCommand::SetLevel);
     ASSERT_NE(item, nullptr);
@@ -903,6 +946,48 @@ TEST(CursesPickerClient, set_level_updates_config_and_save)
 
     EXPECT_EQ(f.config.level, 4);
     EXPECT_EQ(static_cast<int>(f.save().scen_num), 4);
+}
+
+// The same prompt refuses an unearned forward id in the campaign's voice —
+// and stays free on a versus campaign, whose arena picking is the point.
+TEST(CursesPickerClient, set_level_rides_the_earned_roads_gate)
+{
+    ScopedCursesPickerMountRestore mount_restore;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    PickerFixture f;
+    const auto* item =
+        og::ui::find_picker_menu_item(PickerMenuId::Scenario, PickerMenuCommand::SetLevel);
+    ASSERT_NE(item, nullptr);
+
+    f.t().push_special(KeyCode::Backspace); // erase the prefilled "1"
+    f.t().push_char(U'1');
+    f.t().push_char(U'5');
+    f.t().push_special(KeyCode::Enter);
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Scenario, *item);
+
+    EXPECT_EQ(f.config.level, 1)
+        << "an unearned forward id must not move the cursor";
+    EXPECT_EQ(static_cast<int>(f.save().scen_num), 1);
+    EXPECT_NE(f.t().dump().find("That road is not open yet."),
+              std::string::npos);
+
+    // Versus exemption: the modes campaign sets any shipped arena freely.
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    f.save().current_campaign = "modes";
+    f.config.campaign = "modes";
+    f.t().push_special(KeyCode::Backspace); // erase the prefilled "1"
+    f.t().push_char(U'3');
+    f.t().push_char(U'0');
+    f.t().push_char(U'1');
+    f.t().push_special(KeyCode::Enter);
+    f.client.handle_menu_item(PickerMenuId::Scenario, *item);
+
+    EXPECT_EQ(f.config.level, 301)
+        << "a versus campaign's prompt stays freely selectable";
+    EXPECT_EQ(static_cast<int>(f.save().scen_num), 301);
 }
 
 TEST(CursesPickerClient, set_level_rejects_invalid_value)
@@ -920,6 +1005,97 @@ TEST(CursesPickerClient, set_level_rejects_invalid_value)
 
     EXPECT_EQ(f.config.level, 1);
     EXPECT_NE(f.t().dump().find("Invalid level"), std::string::npos);
+}
+
+// --- replay level (#207) -------------------------------------------------
+
+// The SCENARIO submenu's Replay Level prompt: Set Level's gates plus the
+// cleared check, and the write is the ARM — cursor onto the level, origin
+// remembered for the fold/re-entry restore.
+TEST(CursesPickerClient, replay_level_arms_only_cleared_levels)
+{
+    ScopedCursesPickerMountRestore mount_restore;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    PickerFixture f;
+    f.save().current_campaign = "gladiator";
+    f.save().scen_num = 3;
+    f.config.level = 3;
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::Scenario, PickerMenuCommand::ReplayLevel);
+    ASSERT_NE(item, nullptr);
+
+    // An uncleared (but in-frontier) id refuses with the cleared check.
+    f.t().push_char(U'1');
+    f.t().push_special(KeyCode::Enter);
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Scenario, *item);
+    EXPECT_EQ(3, static_cast<int>(f.save().scen_num))
+        << "an uncleared level must not arm or move the cursor";
+    EXPECT_EQ(0, static_cast<int>(f.save().replay_level));
+    EXPECT_NE(f.t().dump().find("That level is not cleared yet."),
+              std::string::npos);
+
+    // An unearned forward id refuses at the earned-roads gate first.
+    f.t().push_char(U'1');
+    f.t().push_char(U'5');
+    f.t().push_special(KeyCode::Enter);
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Scenario, *item);
+    EXPECT_EQ(0, static_cast<int>(f.save().replay_level));
+    EXPECT_NE(f.t().dump().find("That road is not open yet."),
+              std::string::npos);
+
+    // A cleared level arms: cursor moves, origin remembered, the click
+    // answers in the replay voice.
+    f.save().add_level_completed("gladiator", 1);
+    f.t().push_char(U'1');
+    f.t().push_special(KeyCode::Enter);
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Scenario, *item);
+    EXPECT_EQ(1, f.config.level);
+    EXPECT_EQ(1, static_cast<int>(f.save().scen_num));
+    EXPECT_EQ(1, static_cast<int>(f.save().replay_level));
+    EXPECT_EQ(3, static_cast<int>(f.save().replay_origin));
+    EXPECT_NE(f.t().dump().find("Replaying"), std::string::npos);
+    f.save().clear_replay_arm();
+}
+
+// #207 arm lifecycle: a plain Set Level after Replay Level abandons the
+// excursion — even for the very level the arm names. A surviving arm would
+// skip the purge the plain set promises and a later win would restore an
+// abandoned origin.
+TEST(CursesPickerClient, plain_set_level_abandons_the_replay_arm)
+{
+    ScopedCursesPickerMountRestore mount_restore;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    PickerFixture f;
+    f.save().current_campaign = "gladiator";
+    f.save().add_level_completed("gladiator", 1);
+    f.save().scen_num = 3;
+    f.config.level = 3;
+
+    const auto* replay_item = og::ui::find_picker_menu_item(
+        PickerMenuId::Scenario, PickerMenuCommand::ReplayLevel);
+    ASSERT_NE(replay_item, nullptr);
+    f.t().push_char(U'1');
+    f.t().push_special(KeyCode::Enter);
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Scenario, *replay_item);
+    ASSERT_TRUE(f.save().replay_armed_for(1));
+
+    const auto* set_item = og::ui::find_picker_menu_item(
+        PickerMenuId::Scenario, PickerMenuCommand::SetLevel);
+    ASSERT_NE(set_item, nullptr);
+    f.t().push_special(KeyCode::Backspace); // erase the prefilled "1"
+    f.t().push_char(U'1');
+    f.t().push_special(KeyCode::Enter);
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Scenario, *set_item);
+    EXPECT_EQ(1, static_cast<int>(f.save().scen_num));
+    EXPECT_EQ(0, static_cast<int>(f.save().replay_level))
+        << "the plain Set Level must abandon the excursion";
 }
 
 // --- campaign select -----------------------------------------------------
@@ -941,6 +1117,34 @@ TEST(CursesPickerClient, campaign_select_updates_and_cancel_keeps_current)
     EXPECT_FALSE(chosen.empty());
     EXPECT_EQ(f.config.campaign, chosen);
     EXPECT_EQ(f.save().current_campaign, chosen);
+}
+
+// #207 arm lifecycle: a campaign SWITCH abandons the replay excursion (the
+// arm's origin is a cursor in the previous campaign — restoring it into the
+// new one could plant an unearned cursor there). Re-selecting the CURRENT
+// campaign changes nothing and keeps the arm.
+TEST(CursesPickerClient, campaign_switch_clears_the_replay_arm)
+{
+    ScopedCursesPickerMountRestore mount_restore;
+    PickerFixture f;
+    const std::string original = f.save().current_campaign;
+    f.save().add_level_completed(original, 1);
+    f.save().scen_num = 3;
+    f.save().arm_replay(1);
+
+    // Confirm the highlighted (current) campaign: no switch, arm kept.
+    f.t().push_special(KeyCode::Enter);
+    EXPECT_EQ(f.client.show_campaign_select(), original);
+    EXPECT_TRUE(f.save().replay_armed_for(1))
+        << "re-selecting the current campaign must keep the excursion";
+
+    // A real switch clears it.
+    f.t().push_special(KeyCode::Down);
+    f.t().push_special(KeyCode::Enter);
+    const std::string switched = f.client.show_campaign_select();
+    ASSERT_NE(switched, original) << "the list must offer a second campaign";
+    EXPECT_EQ(0, static_cast<int>(f.save().replay_level))
+        << "the campaign switch must abandon the excursion";
 }
 
 // --- save / load round-trip ----------------------------------------------
@@ -1943,6 +2147,130 @@ TEST(CursesPickerClient, run_game_starts_real_session_and_withdraws)
     EXPECT_GT(f.t().present_count(), 0);
 }
 
+// #207 design point 5 on the curses client: quitting an armed replay
+// restores the campaign cursor at picker re-entry (the run_game tail) and
+// clears the arm — the excursion never strands the cursor on the replayed
+// level.
+TEST(CursesPickerClient, run_game_quit_of_armed_replay_restores_cursor)
+{
+    ScopedCursesPickerMountRestore mount_restore;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    PickerFixture f;
+    f.save().current_campaign = "gladiator";
+    f.save().scen_num = 3;
+    f.save().add_level_completed("gladiator", 1);
+    f.save().arm_replay(1);
+    f.config.campaign = "gladiator";
+    f.config.level = 1;
+    f.config.team_families.clear();
+    f.t().push_special(KeyCode::Escape);  // quit the level immediately
+
+    f.client.run_game();
+
+    EXPECT_EQ(3, static_cast<int>(f.save().scen_num))
+        << "a quit excursion restores the origin cursor on re-entry";
+    EXPECT_EQ(3, f.config.level) << "the session config follows the restore";
+    EXPECT_EQ(0, static_cast<int>(f.save().replay_level));
+}
+
+// #207 design point 5 on the NETWORKED path (V5 Option A). A networked round
+// folds into the session's OWN save copy and never copies back into the
+// picker's, so a hosted REPLAY that ends any way but a win comes back with the
+// arm still live. Left alone it would seed the next hosted round (V5 seeds the
+// authoritative save from this very SaveData) into a second replay, and the
+// next base-camp autosave would bank the replayed level as the campaign
+// cursor.
+TEST(CursesPickerClient, network_round_loss_of_armed_replay_restores_cursor)
+{
+    ScopedCursesPickerMountRestore mount_restore;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    PickerFixture f;
+    f.save().current_campaign = "gladiator";
+    f.save().scen_num = 3;
+    f.save().add_level_completed("gladiator", 1);
+    f.save().arm_replay(1);
+    f.config.campaign = "gladiator";
+    f.config.level = 1;
+    ASSERT_TRUE(f.save().replay_armed_for(1));
+
+    GameRunResult lost;
+    lost.ended = true;
+    lost.ending = 1;
+    dismiss(f.t()); // the "Mission complete" screen eats one key
+
+    f.client.finish_network_round(lost);
+
+    EXPECT_EQ(0, static_cast<int>(f.save().replay_level))
+        << "a hosted loss must not leave the arm live for the next round";
+    EXPECT_EQ(3, static_cast<int>(f.save().scen_num))
+        << "the cursor comes home when the picker takes the save back";
+    EXPECT_EQ(3, f.config.level) << "the session config follows the restore";
+
+    SaveData reloaded;
+    ASSERT_EQ(SaveDataIoError::None,
+              reloaded.load_with_error(og::data::active_company_slot()))
+        << "the heal persists like any other picker mutation (§3.8)";
+    EXPECT_EQ(3, static_cast<int>(reloaded.scen_num))
+        << "the company file must never keep the replayed level as its cursor";
+}
+
+// The win half of the same tail. persist_networked_win already wrote the
+// merged company file (restored cursor, banked share, completion mark) while
+// this picker's save is a PRE-round copy — so the heal is memory-only there:
+// autosaving the stale copy would erase the win it just earned.
+TEST(CursesPickerClient, network_round_win_heals_memory_without_clobbering_disk)
+{
+    ScopedCursesPickerMountRestore mount_restore;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    PickerFixture f;
+    f.save().current_campaign = "gladiator";
+    f.save().scen_num = 3;
+    f.save().add_level_completed("gladiator", 1);
+    f.save().m_totalcash[0] = 100;
+    f.save().arm_replay(1);
+    f.config.campaign = "gladiator";
+    f.config.level = 1;
+
+    // What the networked win already banked on disk: the restored cursor, a
+    // second cleared level and the fold's gold.
+    {
+        SaveData persisted;
+        persisted.reset();
+        persisted.current_campaign = "gladiator";
+        persisted.scen_num = 3;
+        persisted.add_level_completed("gladiator", 1);
+        persisted.add_level_completed("gladiator", 2);
+        persisted.m_totalcash[0] = 900;
+        ASSERT_EQ(SaveDataIoError::None,
+                  persisted.save_with_error(og::data::active_company_slot()));
+    }
+
+    GameRunResult won;
+    won.ended = true;
+    won.ending = 0;
+    won.next_level = 4;
+    dismiss(f.t());
+
+    f.client.finish_network_round(won);
+
+    EXPECT_EQ(0, static_cast<int>(f.save().replay_level))
+        << "the consumed arm clears on the win path too";
+    EXPECT_EQ(3, static_cast<int>(f.save().scen_num))
+        << "memory agrees with the cursor the fold already persisted";
+
+    SaveData reloaded;
+    ASSERT_EQ(SaveDataIoError::None,
+              reloaded.load_with_error(og::data::active_company_slot()));
+    EXPECT_EQ(900u, reloaded.m_totalcash[0])
+        << "the pre-round picker copy must never be autosaved over the win";
+    EXPECT_TRUE(reloaded.is_level_completed(2))
+        << "the win's completion mark must survive the picker tail";
+    EXPECT_EQ(3, static_cast<int>(reloaded.scen_num));
+}
+
 TEST(CursesPickerClient, run_game_reports_real_session_load_failure)
 {
     HeadlessTerminal term{40, 100};
@@ -1973,25 +2301,31 @@ TEST(CursesPickerClient, run_game_reports_real_session_load_failure)
     EXPECT_EQ(mounted_before, get_mounted_campaign());
 }
 
-// A richer run_picker: cycle difficulty through the Main menu's Difficulty
-// door, then quit. Asserts the side effect persisted and the loop unwound.
-TEST(CursesPickerClient, run_picker_main_action_then_quit)
+// A richer run_picker: cycle difficulty through Team Build's Difficulty door
+// (it left the Main menu — docs/camp-controls-design.md), then quit. Asserts
+// the side effect persisted and the loop unwound.
+TEST(CursesPickerClient, run_picker_team_build_action_then_quit)
 {
     PickerFixture f;
     const int before = f.client.difficulty();
 
-    const int diff_idx = main_menu_item_index(PickerMenuCommand::OpenDifficultyMenu);
+    const int cont_idx = main_menu_item_index(PickerMenuCommand::ContinueGame);
+    ASSERT_GE(cont_idx, 0);
+    // Main pass 1: "Continue Game" -> Team Build.
+    pick(f.t(), cont_idx);
+    // Team Build: the appended Difficulty door sits past the digit ceiling,
+    // so this route walks the cursor to it.
+    const int diff_idx =
+        team_build_item_index(PickerMenuCommand::OpenDifficultyMenu);
     ASSERT_GE(diff_idx, 0);
-    // First Main menu pass: open the Difficulty submenu (digit+Enter).
-    f.t().push_char(static_cast<char32_t>(U'1' + static_cast<char32_t>(diff_idx)));
-    f.t().push_special(KeyCode::Enter);
+    step_to(f.t(), diff_idx);
     // Submenu: the Difficulty row starts highlighted; select it, dismiss its
     // notice, then Esc backs out of the submenu (-> Back).
     f.t().push_special(KeyCode::Enter);
     dismiss(f.t());
     f.t().push_special(KeyCode::Escape);
-    // Second Main menu pass (show_main_menu loops on non-terminal commands):
-    // Esc to Quit and end the program.
+    // Team Build q (-> Back), then Main menu Esc (-> Quit).
+    f.t().push_char(U'q');
     f.t().push_special(KeyCode::Escape);
 
     og::ui::run_picker(f.client);
@@ -2329,7 +2663,9 @@ TEST(CursesPickerClient, run_picker_through_scenario_submenu_then_quit)
     // Main pass 1: "Continue Game" -> Team Build.
     f.t().push_char(static_cast<char32_t>(U'1' + static_cast<char32_t>(cont_idx)));
     f.t().push_special(KeyCode::Enter);
-    // Team Build: the "Scenario" item opens the submenu.
+    // Team Build: the "Scenario" item opens the submenu. The #206 Camp door
+    // pushed Scenario past the digit-jump ceiling (only the first 9
+    // selectable rows carry digits), so this route walks the cursor.
     int scenario_idx = -1;
     {
         const auto& def = og::ui::picker_menu_definition(PickerMenuId::TeamBuild);
@@ -2339,11 +2675,7 @@ TEST(CursesPickerClient, run_picker_through_scenario_submenu_then_quit)
                 scenario_idx = i;
     }
     ASSERT_GE(scenario_idx, 0);
-    // The Team Build list shows non-selectable context headers, but digit
-    // jump counts selectable entries only, so the item index maps 1:1.
-    ASSERT_LE(scenario_idx, 8) << "digit-jump addresses the first 9 items";
-    f.t().push_char(static_cast<char32_t>(U'1' + static_cast<char32_t>(scenario_idx)));
-    f.t().push_special(KeyCode::Enter);
+    step_to(f.t(), scenario_idx);
     // Scenario submenu: leave with Esc (-> Back), then Team Build Esc,
     // then Main menu Esc (-> Quit).
     f.t().push_special(KeyCode::Escape);
@@ -2353,6 +2685,347 @@ TEST(CursesPickerClient, run_picker_through_scenario_submenu_then_quit)
     og::ui::run_picker(f.client);
     EXPECT_TRUE(f.t().input_exhausted())
         << "the scenario submenu round trip should consume the whole script";
+}
+
+// --- #206 Camp (the scripted Base Camp gameplay zone) -----------------------
+
+namespace {
+
+// Registers a throwaway scripted campaign for one test and restores the
+// pack-script registry (and the gameplay context campaign dispatch
+// resolves) afterwards — the test_campaign_picker_session fixture approach.
+// The chunk name deliberately does NOT start with `packs/`: that prefix
+// declares the bytes to the pack-Lua coverage inventory, and this throwaway
+// chunk exists nowhere in the repository.
+class ScopedSyntheticCampaignPicker
+{
+public:
+    explicit ScopedSyntheticCampaignPicker(const std::string& source)
+        : previous_game_(current_game)
+        , scripts_(og::script::pack_scripts())
+    {
+        current_game = nullptr;  // dispatch resolves the shared UI VM
+        og::script::register_pack_script(
+            {"test.cursescamp", "cursescamp/scripts/c.lua", source});
+    }
+
+    ~ScopedSyntheticCampaignPicker()
+    {
+        og::script::clear_pack_scripts();
+        for (const og::script::PackScript& script : scripts_)
+            og::script::register_pack_script(script);
+        current_game = previous_game_;
+    }
+
+private:
+    GameplayContext* previous_game_;
+    std::vector<og::script::PackScript> scripts_;
+};
+
+} // namespace
+
+// run_picker reaches the scripted camp by ordinal: Team Build -> Camp
+// (0-based selectable index 6, ordinal 7). That position is load-bearing —
+// the camp is the door into everything a campaign composes, so it has to
+// stay inside the digit-jump budget. Choosing a level row runs the curses
+// set-level tail; Esc at the camp prompt closes it back to Team Build.
+TEST(CursesPickerClient, run_picker_camp_sets_level_from_the_zone)
+{
+    PickerFixture f;
+    // The earned-roads gate closes unearned rows; THE PIT is a replay of a
+    // cleared level, the state the camp's set-level tail serves.
+    f.save().add_level_completed("gladiator", 9);
+    ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return {
+      widgets = {
+        { kind = "actions", entries = {
+            { id = "300", label = "THE CIRCLE", kind = "level", level = 300 },
+            { id = "9", label = "THE PIT", kind = "level", level = 9 },
+          } },
+        { kind = "roster" },
+      },
+    }
+  end,
+}))LUA");
+
+    const int cont_idx = main_menu_item_index(PickerMenuCommand::ContinueGame);
+    ASSERT_GE(cont_idx, 0);
+    pick(f.t(), cont_idx); // Main: Continue -> Team Build
+    // Team Build: the Camp door. Digit jump counts selectable entries only,
+    // so the item index maps 1:1 past the context header rows.
+    int camp_idx = -1;
+    {
+        const auto& def =
+            og::ui::picker_menu_definition(PickerMenuId::TeamBuild);
+        for (int i = 0; i < static_cast<int>(def.items.size()); ++i)
+            if (def.items[static_cast<size_t>(i)].command ==
+                PickerMenuCommand::CampaignCamp)
+                camp_idx = i;
+    }
+    ASSERT_GE(camp_idx, 0);
+    ASSERT_LE(camp_idx, 8)
+        << "the Camp door must stay inside the digit-jump budget";
+    pick(f.t(), camp_idx); // Team Build -> the scripted camp
+    // Camp prompt: row 2 = THE PIT (level 9) -> the set-level tail.
+    f.t().push_char(U'2');
+    f.t().push_special(KeyCode::Enter);
+    dismiss(f.t()); // the "Level set to THE PIT." notice screen
+    // Camp prompt again: Esc cancels the prompt = back, closing the camp.
+    f.t().push_special(KeyCode::Escape);
+    // Unwind: Team Build q (Back), Main Esc (Quit).
+    f.t().push_char(U'q');
+    f.t().push_special(KeyCode::Escape);
+
+    og::ui::run_picker(f.client);
+
+    EXPECT_EQ(9, (int)f.save().scen_num)
+        << "a camp level row must run the curses set-level tail";
+    EXPECT_EQ(9, f.config.level)
+        << "the tail also updates the session config level";
+    EXPECT_TRUE(f.t().input_exhausted())
+        << "the camp round trip should consume the whole script";
+}
+
+// A camp composes as many lines as the campaign wants — a full company alone
+// is 25 roster lines — and every line carries a live ordinal the prompt still
+// accepts. On the stock 24x80 terminal the block outruns the screen, so it
+// scrolls: the marker says how much is off-screen and the arrows reach the
+// tail, where the oath door sits. Truncating it would hide controls the
+// player is expected to type.
+TEST(CursesPickerClient, camp_prompt_scrolls_a_composition_past_the_screen)
+{
+    PickerFixture f({}, 24, 80);  // the stock terminal, not the test's 40x100
+    ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    local docket = {}
+    for i = 1, 14 do
+      docket[i] = { id = "job" .. i, label = "JOB " .. i, kind = "action" }
+    end
+    return {
+      widgets = {
+        { kind = "text", weight = 2, lines = {
+            "The company waits at the fire.",
+            "The road east is open.",
+            "The bearer keeps the coin.",
+          } },
+        { kind = "actions", weight = 2, entries = docket },
+        { kind = "roster",
+          assign = { key = "muster", labels = { "WAR", "BURDEN" } } },
+      },
+    }
+  end,
+}))LUA");
+
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::CampaignCamp);
+    ASSERT_NE(item, nullptr);
+    // Page to the bottom, step back up, page home, then back to the bottom:
+    // the offset clamps at both ends and the last frame shows the tail. Esc
+    // then closes the prompt and the camp.
+    f.t().push_special(KeyCode::PageDown);
+    f.t().push_special(KeyCode::Up);
+    f.t().push_special(KeyCode::PageUp);
+    f.t().push_special(KeyCode::PageDown);
+    f.t().push_special(KeyCode::Escape);
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("SWEAR MUSTER"), std::string::npos)
+        << "the oath door is the LAST composed line — a prompt that cannot "
+           "scroll hides it while still accepting its ordinal:\n"
+        << dump;
+    EXPECT_NE(dump.find("Up/Down scroll"), std::string::npos)
+        << "an overflowing block must say so on screen:\n" << dump;
+    // The prompt line survives the scroll: 14 docket rows + the oath door.
+    EXPECT_NE(dump.find("Camp # [1-15]"), std::string::npos) << dump;
+}
+
+// #207: a camp docket row marked `replay = true` on a CLEARED level arms
+// the excursion through the curses tail — arm_replay (origin remembered,
+// cursor onto the level) instead of the plain write, answered in the
+// replay voice.
+TEST(CursesPickerClient, camp_replay_row_arms_through_the_curses_tail)
+{
+    ScopedCursesPickerMountRestore mount_restore;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    PickerFixture f;
+    f.save().current_campaign = "gladiator";
+    f.save().scen_num = 3;
+    f.config.level = 3;
+    f.save().add_level_completed("gladiator", 1);
+    ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = {
+      { kind = "actions", entries = {
+          { id = "1", label = "THE FIRST ROAD", kind = "level", level = 1, replay = true },
+        } },
+      { kind = "roster" },
+    } }
+  end,
+}))LUA");
+
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::CampaignCamp);
+    ASSERT_NE(item, nullptr);
+    f.t().push_char(U'1');
+    f.t().push_special(KeyCode::Enter);
+    dismiss(f.t());                       // the "Replaying ..." notice
+    f.t().push_special(KeyCode::Escape);  // close the camp
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    EXPECT_EQ(1, f.config.level);
+    EXPECT_EQ(1, static_cast<int>(f.save().scen_num));
+    EXPECT_EQ(1, static_cast<int>(f.save().replay_level))
+        << "the curses camp tail arms a cleared replay row";
+    EXPECT_EQ(3, static_cast<int>(f.save().replay_origin));
+    // (The "Replaying <label>. GO when ready." notice itself is pinned in
+    // the shared-driver tests — dump() is the FINAL frame only, and the
+    // camp re-prompt overpaints the notice after its dismissal.)
+    f.save().clear_replay_arm();
+}
+
+// A benched, unsworn, LOCKED hero on the stock 24x80 terminal: one readable
+// row of columns — the padlock letter, the oath cell and the reason — with
+// the oath heading directly over its cell. The reason used to arrive behind
+// a " - " separator that collided with the unsworn cell's own "-", printing
+// "- - " mid-row; and the heading used to sit at column 18 in the summary
+// strip while the values it named sat at 49.
+TEST(CursesPickerClient, camp_roster_row_reads_as_columns_at_24x80)
+{
+    PickerFixture f({}, 24, 80);  // the stock terminal, not the test's 40x100
+    ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = { { kind = "roster",
+      locks = { { unset = true, reason = "Swear at the Falls first." } },
+      assign = { key = "muster", labels = { "WAR", "BURDEN" } } } } }
+  end,
+}))LUA");
+
+    for (std::unique_ptr<guy>& member : f.save().team_list) {
+        if (member != nullptr) {
+            member->name = "Tom";
+            member->deployed = false;  // benched: the padlock shows
+            member->campaign_tag = 0;  // unsworn: the oath cell is "-"
+        }
+    }
+
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::CampaignCamp);
+    ASSERT_NE(item, nullptr);
+    f.t().push_special(KeyCode::Escape);
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    const std::string dump = f.t().dump();
+    EXPECT_EQ(std::string::npos, dump.find("- - "))
+        << "the unsworn oath cell must not stutter into the reason:\n"
+        << dump;
+    EXPECT_NE(std::string::npos, dump.find("[L] Tom"))
+        << "the padlock is a letter on a prompt:\n" << dump;
+    EXPECT_NE(std::string::npos, dump.find("-  Swear at the Falls first."))
+        << "the reason is a trailing column, space-separated:\n" << dump;
+    // The heading sits over the cell it names, in the SAME rendered frame.
+    {
+        std::vector<std::string> rows;
+        for (std::size_t start = 0, end = dump.find('\n');
+             start < dump.size();
+             start = end + 1, end = dump.find('\n', start)) {
+            if (end == std::string::npos)
+                end = dump.size();
+            rows.push_back(dump.substr(start, end - start));
+        }
+        std::size_t heading_col = std::string::npos;
+        std::size_t cell_col = std::string::npos;
+        for (const std::string& row : rows) {
+            if (heading_col == std::string::npos &&
+                row.find("COMPANY") != std::string::npos)
+                heading_col = row.find("MUSTER");
+            const std::size_t hero = row.find("[L] Tom");
+            if (hero != std::string::npos && cell_col == std::string::npos)
+                cell_col = row.find('-', row.find("XP=", hero));
+        }
+        ASSERT_NE(std::string::npos, heading_col) << dump;
+        ASSERT_NE(std::string::npos, cell_col) << dump;
+        EXPECT_EQ(heading_col, cell_col)
+            << "MUSTER must head the oath column, not trail the summary:\n"
+            << dump;
+    }
+    // The purse is on the camp screen, not only back on Team Build.
+    EXPECT_NE(std::string::npos, dump.find("GOLD "))
+        << "a camp with no gold on it cannot price anything:\n" << dump;
+}
+
+// With no registered campaign, the Camp row shows the shared guard line.
+// (The literal bytes are pinned once, by the text drive; the exported
+// constant proves the same line reaches the curses surface.)
+TEST(CursesPickerClient, camp_without_a_zone_shows_the_guard_line)
+{
+    PickerFixture f;
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::CampaignCamp);
+    ASSERT_NE(item, nullptr);
+
+    dismiss(f.t()); // the guard notice renders as a show_text screen
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+    EXPECT_NE(f.t().dump().find(
+                  std::string(og::ui::kCampaignCampNoZoneMessage)),
+              std::string::npos)
+        << "a campaign that composed no camp must show the guard line";
+}
+
+// The camp's rules bind this client's OWN Team Build commands, not just its
+// Camp screen: a deploy lock, a cleared can_train and a cleared can_hire each
+// refuse in the campaign's words. (The SDL panel hides the retired control
+// instead; a prompt cannot hide, so it answers.)
+TEST(CursesPickerClient, roster_commands_obey_the_camps_rules)
+{
+    PickerFixture f;
+    ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = { { kind = "roster",
+      can_train = false,
+      can_hire = false,
+      locks = { { unset = true, reason = "Swear first." } } } } }
+  end,
+}))LUA");
+
+    // Bench the starting soldier: benching is never refused, so the locked
+    // path is the deploy back.
+    for (std::unique_ptr<guy>& member : f.save().team_list)
+        if (member != nullptr)
+            member->deployed = false;
+
+    const auto* deploy = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::ToggleDeploy);
+    ASSERT_NE(deploy, nullptr);
+    f.t().push_special(KeyCode::Enter);  // accept the prompt's default row 1
+    dismiss(f.t());  // the refusal renders as a show_text screen
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *deploy);
+    EXPECT_NE(f.t().dump().find("Swear first."), std::string::npos)
+        << "the lock's own reason answers the deploy prompt";
+    EXPECT_EQ(0, og::ui::count_deployed_members(f.save()))
+        << "a refused toggle must not deploy";
+
+    const auto* train = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::TrainTeam);
+    ASSERT_NE(train, nullptr);
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *train);
+    EXPECT_NE(f.t().dump().find(
+                  std::string(og::ui::kCampaignRosterTrainClosedMessage)),
+              std::string::npos)
+        << "a camp that retired training says so";
+
+    const auto* hire = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::HireTroops);
+    ASSERT_NE(hire, nullptr);
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *hire);
+    EXPECT_NE(f.t().dump().find(
+                  std::string(og::ui::kCampaignRosterHireClosedMessage)),
+              std::string::npos)
+        << "can_hire is the flag that hides HIRE on the panel";
 }
 
 // --- Campaign ordering -------------------------------------------------------
@@ -2535,24 +3208,34 @@ TEST(CursesPickerClient, difficulty_submenu_labels_format_from_save)
     EXPECT_NE(dump.find("Infinite Gold: On"), std::string::npos) << dump;
 }
 
-// run_picker reaches the nested Difficulty submenu from the Main menu door and
-// unwinds cleanly: Difficulty -> cycle Respawns -> Back -> Quit (the curses
-// analogue of run_picker_through_scenario_submenu_then_quit above).
+// run_picker reaches the nested Difficulty submenu from the Team Build door
+// and unwinds cleanly: Difficulty -> cycle Respawns -> Back -> Quit (the
+// curses analogue of run_picker_through_scenario_submenu_then_quit above).
 TEST(CursesPickerClient, run_picker_through_difficulty_submenu_then_quit)
 {
     PickerFixture f;
 
-    const int door_idx = main_menu_item_index(PickerMenuCommand::OpenDifficultyMenu);
+    const int cont_idx = main_menu_item_index(PickerMenuCommand::ContinueGame);
+    ASSERT_GE(cont_idx, 0);
+    pick(f.t(), cont_idx); // Main pass 1: Continue -> Team Build
+    const int door_idx =
+        team_build_item_index(PickerMenuCommand::OpenDifficultyMenu);
     ASSERT_GE(door_idx, 0);
-    ASSERT_LE(door_idx, 8) << "digit-jump addresses the first 9 items";
-    // Main pass 1: the Difficulty door opens the submenu.
-    f.t().push_char(static_cast<char32_t>(U'1' + static_cast<char32_t>(door_idx)));
-    f.t().push_special(KeyCode::Enter);
+    ASSERT_GT(door_idx, 8)
+        << "the appended door is past the digit ceiling by design — the "
+           "arrow walk below is the only way in, so it must be tested";
+    ASSERT_EQ(nullptr, og::ui::find_picker_menu_item(
+                           PickerMenuId::Main,
+                           PickerMenuCommand::OpenDifficultyMenu))
+        << "no difficulty door survives on the Main menu";
+    step_to(f.t(), door_idx);
     // Difficulty submenu: cycle Respawns (2nd selectable row), dismiss the
-    // notice, then leave with Esc (-> Back), then Main menu Esc (-> Quit).
+    // notice, then leave with Esc (-> Back), Team Build q (-> Back), then
+    // Main menu Esc (-> Quit).
     pick(f.t(), 1);
     dismiss(f.t());
     f.t().push_special(KeyCode::Escape);
+    f.t().push_char(U'q');
     f.t().push_special(KeyCode::Escape);
 
     og::ui::run_picker(f.client);

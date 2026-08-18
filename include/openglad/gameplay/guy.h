@@ -98,4 +98,25 @@ class guy
         // clobber deployment); the defaulted copy constructor DOES, so it
         // rides guy objects through the update/merge paths.
         bool deployed = true;
+        // Per-hero campaign assignment channel (GTL v16,
+        // docs/basecamp-zones-design.md "Per-hero identity"): the byte a
+        // base_camp zone's assign chip writes and its locks match on.
+        // 0 = unassigned (every hire starts here). Persisted as a u8 at guy
+        // record offset +51 (the reserved byte after the v14 deployed
+        // flag). Campaign/save-layer state ONLY — sim code must never read
+        // it, and campaign_state never keys on per-guy ids (ids regenerate;
+        // the tag travels with the record instead). Like `deployed`,
+        // statscopy must not copy it (train/rename must not clobber an
+        // assignment); the defaulted copy constructor DOES, so it rides
+        // update_guys (the solo win path, both passes).
+        //
+        // It does NOT ride any session: LobbyCharacterData and GuySnapshot
+        // have no tag field, so every roster rebuilt from a wire — the
+        // mission roster in glad_gameplay/headless_server_runtime, the local
+        // lobby echo in picker_lobby_client, a joiner's mirror world — starts
+        // at 0. The rule is therefore "the record the tag is stored on wins":
+        // merge_owned_guys_from re-stamps each survivor from the DISK slot,
+        // and the lobby round-trip re-stamps from the pre-reset roster slot.
+        // Any new wire-fed roster rebuild must do the same.
+        std::uint8_t campaign_tag = 0;
 };

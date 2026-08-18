@@ -1,6 +1,7 @@
 #include <openglad/interface/ui/campaign_picker.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/level_picker.h>
+#include <openglad/interface/button.h>
 #include <openglad/interface/ui/results_screen.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -1367,6 +1368,107 @@ TEST(CampaignAndLevelPicker, level_picker_enter_id_returns_valid_prompt_value)
         << "ENTER ID must accept a positive integer even when it is not listed";
 }
 
+// do_set_scen_level is the single choke for the browser click AND the
+// free-typed ENTER ID: an unearned forward id refuses at the gate (in the
+// campaign's voice, before any load) and the cursor stays put.
+TEST(CampaignAndLevelPicker, set_scen_level_gate_refuses_unearned_enter_id)
+{
+    ViewportGuard viewport_guard;
+    og::runtime::current_session->window_w_ = 320;
+    og::runtime::current_session->window_h_ = 200;
+    og::runtime::current_session->viewport_offset_x_ = 0;
+    og::runtime::current_session->viewport_offset_y_ = 0;
+    og::runtime::current_session->viewport_w_ = 320;
+    og::runtime::current_session->viewport_h_ = 200;
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    og::runtime::current_session->myscreen_->world().id = 1;
+
+    PromptQueueGuard prompt_queue;
+    prompt_queue.push("15");
+
+    char& end = og::runtime::current_session->myscreen_->world().end;
+    WorldEndGuard end_guard(end);
+    end = 0;
+
+    trace_clear();
+    level_picker_testing_input_reset();
+    SDL_Thread* thread = SDL_CreateThread(
+        level_picker_enter_id_injector, "level_picker_enter_id_gate", nullptr);
+    ASSERT_TRUE(thread != nullptr);
+    const Sint32 ret = do_set_scen_level(0);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+
+    EXPECT_EQ(0, thread_result);
+    EXPECT_EQ(2, (int)ret) << "the refusal returns MENU_REDRAW";
+    EXPECT_EQ(1, (int)save.scen_num)
+        << "the refused ENTER ID must not move the cursor";
+    EXPECT_EQ(1, (int)og::runtime::current_session->myscreen_->world().id)
+        << "the refusal must land before any load";
+    EXPECT_TRUE(trace_contains("picker", "set_level_denied_gate 15"));
+    EXPECT_TRUE(trace_contains("popup", "That road is not open yet."))
+        << "the refusal speaks the campaign's closed-road line";
+}
+
+// The accepted half of the same choke, plus the #207 arm rule: SET LEVEL is
+// a plain cursor write, so an accepted ENTER ID abandons any replay
+// excursion in flight — a stale arm must neither skip the chosen level's
+// purge nor restore an abandoned origin later.
+TEST(CampaignAndLevelPicker, set_scen_level_accepts_earned_id_and_abandons_replay_arm)
+{
+    ViewportGuard viewport_guard;
+    og::runtime::current_session->window_w_ = 320;
+    og::runtime::current_session->window_h_ = 200;
+    og::runtime::current_session->viewport_offset_x_ = 0;
+    og::runtime::current_session->viewport_offset_y_ = 0;
+    og::runtime::current_session->viewport_w_ = 320;
+    og::runtime::current_session->viewport_h_ = 200;
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.add_level_completed("gladiator", 1);
+    save.scen_num = 3;
+    save.arm_replay(1);  // an excursion in flight
+    og::runtime::current_session->myscreen_->world().id = 1;
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->load_level());
+
+    PromptQueueGuard prompt_queue;
+    prompt_queue.push("2");  // an exit of cleared level 1: in the frontier
+
+    char& end = og::runtime::current_session->myscreen_->world().end;
+    WorldEndGuard end_guard(end);
+    end = 0;
+
+    trace_clear();
+    level_picker_testing_input_reset();
+    SDL_Thread* thread = SDL_CreateThread(
+        level_picker_enter_id_injector, "level_picker_enter_id_ok", nullptr);
+    ASSERT_TRUE(thread != nullptr);
+    const Sint32 ret = do_set_scen_level(0);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+
+    EXPECT_EQ(0, thread_result);
+    EXPECT_EQ(2, (int)ret) << "the accepted set returns MENU_REDRAW";
+    EXPECT_EQ(2, (int)save.scen_num) << "the accepted ENTER ID moves the cursor";
+    EXPECT_EQ(0, (int)save.replay_level)
+        << "the plain SET LEVEL write must abandon the excursion";
+
+    // Put the world back where the neighbouring tests expect it.
+    og::runtime::current_session->myscreen_->world().id = 1;
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->load_level());
+    save.reset();
+}
+
 TEST(CampaignAndLevelPicker, level_picker_delete_removes_only_selected_level)
 {
     ViewportGuard viewport_guard;
@@ -1546,6 +1648,48 @@ TEST(CampaignAndLevelPicker, apply_campaign_selection_commits_or_rolls_back)
     EXPECT_EQ(std::string("modes"), get_mounted_campaign())
         << "a failed load must remount the previous package";
 
+    save.current_campaign = old_campaign;
+    save.scen_num = old_scen;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(old_mounted));
+}
+
+// #207 arm lifecycle: a campaign SWITCH abandons the replay excursion. The
+// arm's origin is a cursor in the PREVIOUS campaign — carried across the
+// switch it would make a later replay's fold write that origin into the NEW
+// campaign's cursor, a level the company may never have earned there (the
+// gate guards selection, not the launch). A FAILED selection rolls back and
+// keeps the excursion untouched.
+TEST(CampaignAndLevelPicker, campaign_switch_clears_the_replay_arm)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const std::string old_mounted = get_mounted_campaign();
+    const std::string old_campaign = save.current_campaign;
+    const short old_scen = save.scen_num;
+
+    save.reset();
+    save.current_campaign = "gladiator";
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    save.add_level_completed("gladiator", 3);
+    save.scen_num = 8;
+    save.arm_replay(3);
+    ASSERT_TRUE(save.replay_armed_for(3));
+
+    // A failed switch keeps everything, the arm included.
+    ASSERT_FALSE(og::ui::apply_campaign_selection(
+        save, "this_campaign_should_not_exist", 1));
+    EXPECT_TRUE(save.replay_armed_for(3))
+        << "a refused switch must not abandon the excursion";
+
+    // A real switch clears it: no gladiator origin may ever be restored
+    // into westlands.
+    ASSERT_TRUE(og::ui::apply_campaign_selection(save, "westlands", 1));
+    EXPECT_EQ(0, static_cast<int>(save.replay_level))
+        << "the campaign switch must clear the arm";
+    EXPECT_EQ(0, static_cast<int>(save.replay_origin));
+
+    save.reset();
     save.current_campaign = old_campaign;
     save.scen_num = old_scen;
     ASSERT_EQ(CampaignPackageIoError::None,

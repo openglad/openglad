@@ -427,6 +427,18 @@ void toggle_infinite_gold(SaveData& save);
 // decimal balance otherwise.
 std::string format_wallet_amount(const SaveData& save, int team);
 
+// Scripted campaign picker wallet (issue #206): affordability and debit for
+// priced picker actions, over the ACTING team — the lowest team present on
+// the roster, my_team fallback (the same rule og::data::make_campaign_providers
+// applies to og.campaign_gold). can_afford is infinite-gold aware; the debit
+// is skipped entirely under infinite gold (the hire/train free-purchase
+// discipline) and clamps rather than underflows.
+[[nodiscard]] bool campaign_picker_can_afford(const SaveData& save, int cost);
+void campaign_picker_debit(SaveData& save, int cost);
+// Inverse of the debit, for an action row no registered picker_action can
+// honor (saturating; no-op under infinite gold, matching the debit).
+void campaign_picker_refund(SaveData& save, int cost);
+
 // --- Team choice helpers (local seats) ---
 
 // True when any roster slot is on the given team.
@@ -526,8 +538,17 @@ unsigned char base_camp_family_ramp_start(short family);
 // §2.5 header line A right block: "GOLD {n}" (clipped to the 11-char block).
 std::string format_base_camp_gold_label(const SaveData& save);
 
+// A display string that must lose characters, cut so a player can SEE that
+// it was cut: whole words where a word boundary survives past half the
+// budget, then the ".." marker inside the budget. "THE RASPBERRY ISLE" at 17
+// reads "THE RASPBERRY.." — never "THE RASPBERRY IS", which reads as a
+// corrupted title rather than a shortened one. Budgets under 4 have no room
+// for the marker and clip hard.
+std::string clip_with_ellipsis(std::string value, std::size_t max_chars);
+
 // §2.5 header line B, solo shape: "SCEN {n}: {title}  DEP {dep}/{total}",
-// title clipped so the whole line fits the 34-char budget.
+// title cut with the ellipsis marker so the whole line fits the 34-char
+// budget.
 std::string format_base_camp_scen_line(const SaveData& save,
                                        std::string_view level_title);
 
@@ -602,17 +623,45 @@ BaseCampSessionCensus count_base_camp_session_census(
 std::string base_camp_host_display_name(
     const std::vector<og::sim::LobbyPlayer>& players);
 
+// --- §9.12 header line-B character budgets ---
+//
+// The band's ink starts at x=10 and its readability strip pads 2px on each
+// side, so N characters occupy [8, 10 + 6N + 2). Two walls stand to its
+// right: the roster header band's HIRE command while a composition shows
+// it, and the roster pager cluster while it does not. The budget is a
+// DERIVED quantity — menu_screen_specs static_asserts its own geometry
+// against the wall constants here, so relocating HIRE breaks the build
+// instead of quietly amputating the line.
+inline constexpr int kBaseCampLineBTextX = 10;
+inline constexpr int kBaseCampLineBGlyphAdvance = 6;
+inline constexpr int kBaseCampLineBStripPad = 2;
+inline constexpr int kBaseCampLineBHireWallX = 220;
+inline constexpr int kBaseCampLineBPagerWallX = 258;
+inline constexpr int base_camp_line_b_budget(int wall_x)
+{
+    return (wall_x - kBaseCampLineBTextX - kBaseCampLineBStripPad) /
+        kBaseCampLineBGlyphAdvance;
+}
+inline constexpr int kBaseCampLineBCharsHireVisible =
+    base_camp_line_b_budget(kBaseCampLineBHireWallX);   // 34
+inline constexpr int kBaseCampLineBCharsHireHidden =
+    base_camp_line_b_budget(kBaseCampLineBPagerWallX);  // 41
+
 // §9.12 header line B, networked HEALTHY shape — the G5 session status
-// (role + room code + census), clipped to the 42-char line-B band:
+// (role + room code + census), SHAPED to fit `max_chars`:
 //   host:   "HOSTING <ROOM> - <n> MACH / <p> PLYR"  (no room: the census
 //           alone after HOSTING)
 //   joiner: "IN <ROOM> - HOST: <name16>"  (no room: "JOINED - HOST: ...";
 //           host not yet known: the room half alone)
-// Room codes display-clip at 12 chars (relay codes are "GLAD-XXXX").
+// A narrow band takes compact spellings rather than a byte cut: the census
+// abbreviates to "<n>M / <p>P", the joiner drops "HOST: " (the company is
+// what names the lobby), and a company that still over-runs loses whole
+// words. Room codes display-clip at 12 chars (relay codes are "GLAD-XXXX").
 std::string format_base_camp_session_status(
     bool is_host,
     std::string_view room_code,
-    const std::vector<og::sim::LobbyPlayer>& players);
+    const std::vector<og::sim::LobbyPlayer>& players,
+    int max_chars);
 
 // The §2.5/§9.12 networked line-B priority stack: a degraded-link
 // connection_alert takes the slot (and the ORANGE color) over the healthy
@@ -625,11 +674,12 @@ BaseCampLineB compose_base_camp_line_b(
     const std::optional<std::string>& alert,
     bool is_host,
     std::string_view room_code,
-    const std::vector<og::sim::LobbyPlayer>& players);
+    const std::vector<og::sim::LobbyPlayer>& players,
+    int max_chars);
 
 // --- §2.6 GO / READY slot (the base-camp dual-role button) ---
 
-// The six presentation states of the shared (244,178,68,18) slot: the host
+// The six presentation states of the shared (262,178,50,18) slot: the host
 // keeps GO (grey solo, colored networked), clients get the READY toggle in
 // the SAME rect (exactly one of the two same-rect buttons is visible).
 enum class ReadyGoState : std::uint8_t {

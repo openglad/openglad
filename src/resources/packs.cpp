@@ -685,6 +685,8 @@ void apply_presentation(const og::data::ClasspackPresentation& p,
     }
     if (p.radar_landmark)
         radar.landmark = *p.radar_landmark;
+    if (p.radar_ping)
+        radar.ping = *p.radar_ping;
 }
 
 // Folds a `specials =` list onto the three parallel slot arrays.

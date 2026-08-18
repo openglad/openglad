@@ -90,6 +90,37 @@ Color team_color(unsigned char team_num)
     return kRamp[team_num % kRamp.size()];
 }
 
+// #209 radar_ping: the character-cell client has no minimap to make a
+// pinged family loud on, so the promotion lands on the entity glyph
+// itself — one attribute, bold.
+static bool family_radar_ping(Order order, int family)
+{
+    switch (order) {
+    case Order::Living: {
+        const auto* d = get_family_descriptor(family);
+        return d != nullptr && d->radar.ping;
+    }
+    case Order::Treasure: {
+        const auto* d = get_treasure_family_descriptor(family);
+        return d != nullptr && d->radar.ping;
+    }
+    case Order::Weapon: {
+        const auto* d = get_weapon_family_descriptor(family);
+        return d != nullptr && d->radar.ping;
+    }
+    case Order::Generator: {
+        const auto* d = get_generator_family_descriptor(family);
+        return d != nullptr && d->radar.ping;
+    }
+    case Order::FX: {
+        const auto* d = get_effect_family_descriptor(family);
+        return d != nullptr && d->radar.ping;
+    }
+    default:
+        return false;
+    }
+}
+
 Glyph entity_glyph(Order order, int family, unsigned char team_num,
                    bool is_followed_avatar, unsigned char my_team)
 {
@@ -98,37 +129,44 @@ Glyph entity_glyph(Order order, int family, unsigned char team_num,
 
     const Color team = team_color(team_num);
 
-    switch (order) {
-    case Order::Living: {
-        // Shape identifies the family, colour identifies the side. Default
-        // means "paint me in the team colour" for these two orders, which is
-        // what the whole core pack ships; a pack family that names a colour
-        // keeps it.
-        Glyph g = living_glyph(family);
-        if (g.fg == Color::Default)
-            g.fg = team;
-        g.bold = (team_num == my_team);
-        return g;
-    }
-    case Order::Treasure:
-        // CTF entities tint by team ('F' = flag, 'O' = control point): their
-        // descriptors carry GlyphColor::Team, which to_glyph resolves here.
-        return glyph_of(get_treasure_family_descriptor(family), team);
-    case Order::Weapon:
-        return glyph_of(get_weapon_family_descriptor(family), team);
-    case Order::Generator: {
-        Glyph g = glyph_of(get_generator_family_descriptor(family), team);
-        if (g.fg == Color::Default)
-            g.fg = team;
-        return g;
-    }
-    case Order::FX:
-        return effect_glyph(family);
-    case Order::Special:
-    case Order::Button1:
-    default:
-        return Glyph{U' ', ' ', Color::Default, false, true};
-    }
+    Glyph resolved = [&]() -> Glyph {
+        switch (order) {
+        case Order::Living: {
+            // Shape identifies the family, colour identifies the side.
+            // Default means "paint me in the team colour" for these two
+            // orders, which is what the whole core pack ships; a pack
+            // family that names a colour keeps it.
+            Glyph g = living_glyph(family);
+            if (g.fg == Color::Default)
+                g.fg = team;
+            g.bold = (team_num == my_team);
+            return g;
+        }
+        case Order::Treasure:
+            // CTF entities tint by team ('F' = flag, 'O' = control point):
+            // their descriptors carry GlyphColor::Team, which to_glyph
+            // resolves here.
+            return glyph_of(get_treasure_family_descriptor(family), team);
+        case Order::Weapon:
+            return glyph_of(get_weapon_family_descriptor(family), team);
+        case Order::Generator: {
+            Glyph g = glyph_of(get_generator_family_descriptor(family), team);
+            if (g.fg == Color::Default)
+                g.fg = team;
+            return g;
+        }
+        case Order::FX:
+            return effect_glyph(family);
+        case Order::Special:
+        case Order::Button1:
+        default:
+            return Glyph{U' ', ' ', Color::Default, false, true};
+        }
+    }();
+
+    if (family_radar_ping(order, family))
+        resolved.bold = true;
+    return resolved;
 }
 
 Glyph border_glyph()

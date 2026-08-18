@@ -33,7 +33,10 @@ Frames and the site are build artifacts — regenerate them; don't commit them.
      Warm Mint). `OG_FX_CAPTURE_ONLY=<level id>` records a single scene.
    - `OptionsMenu.zz_capture_menu_tour` / `zz_capture_menu_effects` /
      `zz_capture_menu_difficulty`
-     (`tests/integration/test_options_menu.cpp`) — injector-driven menu walkthroughs.
+     (`tests/integration/test_options_menu.cpp`) — injector-driven menu
+     walkthroughs. The difficulty walkthrough enters through Base Camp: the
+     DIFFICULTY door is on the command strip, not the main menu
+     (docs/camp-controls-design.md).
 2. **TESTING hooks** make the blocking menu flows filmable:
    - `screen::buffer_to_screen` dumps every 3rd presented frame when
      `OG_DUMP_DIR` is set (`src/interface/screen.cpp`).

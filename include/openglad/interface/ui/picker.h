@@ -19,6 +19,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace og::ui {
@@ -49,6 +50,9 @@ struct TextPickerConfig
     // Protocol-mode only: upgrade each spawned team guy to this level
     // (0 = leave loader-default stats). See TextProtocolArgs::team_level.
     int team_level = 0;
+    // Protocol-mode only: pre-seeded campaign decision state; see
+    // TextProtocolArgs::campaign_state.
+    std::vector<std::pair<std::string, std::int32_t>> campaign_state;
     std::string save_name = "text_quicksave";
 };
 

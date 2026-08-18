@@ -623,6 +623,60 @@ TEST(ModeUi, score_panel_small_panes_keep_only_the_local_team_segment)
     s->initialize_views();
 }
 
+// #210: the basketball complaint — a split-screen pane too narrow for the
+// joined "7/21 - 3/21" row used to fall straight to the local team's score,
+// hiding the opponent's. The compact tier keeps every team visible as bare
+// scores ("7-3") before local-only ever fires.
+TEST(ModeUi, score_panel_narrow_pane_keeps_the_opposing_score_compact)
+{
+    ClassicModeHudCanvasGuard classic_canvas;
+    ModeScreenWorld mode;
+    screen* s = mode.s;
+
+    auto control = make_control(0);
+    ASSERT_NE(nullptr, control);
+
+    s->numviews = 2;
+    s->initialize_views();
+    viewscreen* left = s->viewob[0].get();
+    viewscreen* right = s->viewob[1].get();
+    ASSERT_NE(nullptr, right);
+    left->control = nullptr;
+    right->control = control.get();
+    silence_hud_prefs(left);
+    silence_hud_prefs(right);
+
+    // Basketball-shaped rows: the joined form "117/121 - 113/121"
+    // (17 chars) must overflow the pane while the compact "117-113"
+    // (7 chars) fits.
+    mode.set_hud(0, "RED 117/121", 0);
+    mode.set_hud(1, "BLUE 113/121", 2);
+    mode.set_hud(2, "", 255);
+    mode.set_hud(3, "", 255);
+
+    const int tm = right->yloc;
+    const ModeRowWindow win = mode_row_window(right);
+    ASSERT_GE(win.budget, 7) << "the pane must hold the compact row";
+    ASSERT_LT(win.budget, 17) << "the pane must overflow the joined row";
+
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+
+    EXPECT_TRUE(trace_contains(
+        "mode_hud",
+        std::format("row y={} x={} budget={} text=117-113", tm + 4, win.left,
+                    win.budget).c_str()))
+        << "both teams' bare scores must draw in the narrow pane";
+    EXPECT_TRUE(trace_contains("mode_hud", "seg team=2"))
+        << "the opposing team's segment must be present";
+    expect_mode_row_confined_to_its_pane(s);
+
+    s->viewob[1].reset();
+    s->numviews = 1;
+    s->initialize_views();
+}
+
 // og.set_hud_line accepts 25 characters; a 2-view right pane has room for
 // fewer. Nothing downstream clips to the pane (write_xy passes the
 // whole-canvas port), so the row has to clamp itself — it starts at a bound
@@ -1092,6 +1146,81 @@ TEST(ModeUi, radar_landmark_families_blip_without_treasure_sight)
     EXPECT_FALSE(trace_contains("radar", "landmark_blip"))
         << "without the flag the family follows the treasure-sight rule";
 
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
+    pop_test_context();
+}
+
+// #209 radar_ping: a ping-flagged family takes the oversized-pulsing-blip
+// draw path (proven by its trace); without the flag the plain single-pixel
+// path draws and the ping trace stays silent.
+TEST(ModeUi, radar_ping_families_take_the_loud_blip_path)
+{
+    FixedRandom fixed_rng(1);
+    GameContext c;
+    c.rng = &fixed_rng;
+    push_test_context(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+
+    walker* control = d.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    control->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
+    control->set_team_num(0);
+
+    // A ping-flagged treasure family (the soccer/basketball-ball class):
+    // copy a live descriptor, flag it, restore afterwards. landmark keeps
+    // it visible without treasure sight; jitter 0 keeps the rng silent.
+    const TreasureFamilyDescriptor* live =
+        get_treasure_family_descriptor(FAMILY_LIFE_GEM);
+    ASSERT_NE(nullptr, live);
+    const TreasureFamilyDescriptor original = *live;
+    TreasureFamilyDescriptor flagged = original;
+    flagged.radar.color = 100;
+    flagged.radar.jitter = 0;
+    flagged.radar.landmark = true;
+    flagged.radar.ping = true;
+    ASSERT_TRUE(set_treasure_family_descriptor(FAMILY_LIFE_GEM, flagged));
+
+    {
+        auto fx = std::make_unique<walker>();
+        fx->set_order_family(Order::Treasure, FAMILY_LIFE_GEM);
+        fx->set_dead(0);
+        fx->setxy(GRID_SIZE * 3, GRID_SIZE * 2);
+        d.world().fxlist.push_back(std::move(fx));
+    }
+
+    viewscreen* vs = test_screen()->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    walker* saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
+    vs->control = control;
+    vs->radarstart = 0;
+
+    radar r(vs, test_screen(), 0);
+    r.force_lower_position = true;
+    r.start(&d);
+
+    trace_clear();
+    ASSERT_EQ(1, static_cast<int>(r.draw(&d)));
+    const std::string expected_trace =
+        "ping_blip fam=" + std::to_string(static_cast<int>(FAMILY_LIFE_GEM));
+    EXPECT_TRUE(trace_contains("radar", expected_trace.c_str()))
+        << "a ping-flagged family must take the oversized blip path";
+
+    // Same family without ping: landmark still blips, but on the plain
+    // single-pixel path.
+    flagged.radar.ping = false;
+    ASSERT_TRUE(set_treasure_family_descriptor(FAMILY_LIFE_GEM, flagged));
+    trace_clear();
+    ASSERT_EQ(1, static_cast<int>(r.draw(&d)));
+    EXPECT_FALSE(trace_contains("radar", "ping_blip"))
+        << "without the flag the plain blip path draws";
+    EXPECT_TRUE(trace_contains("radar", "landmark_blip"))
+        << "the landmark rule is untouched by the ping flag";
+
+    ASSERT_TRUE(set_treasure_family_descriptor(FAMILY_LIFE_GEM, original));
     vs->control = saved_control;
     vs->radarstart = saved_radarstart;
     pop_test_context();

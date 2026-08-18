@@ -1,13 +1,22 @@
 #include <openglad/interface/screen.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
+#include <openglad/resources/io_common.h>
+#include <openglad/core/test_trace.h>
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <optional>
 #include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 // From picker.cpp
 std::vector<int> get_accessible_levels();
+// From picker_team_build.cpp: the PROGRESS GO/VISIT/REPLAY click-time
+// answer (replay_arm swaps the plain write for the #207 arm), and whether
+// the report offers that click at all.
+bool progress_row_click_applies(int hit_id, bool replay_arm);
+bool progress_rows_actionable();
 
 static bool contains(const std::vector<int>& v, int x)
 {
@@ -62,3 +71,167 @@ TEST(PickerAccessibleLevels, picker_get_accessible_levels_handles_missing_leveld
     ASSERT_TRUE(contains(levels, 9999)) << "bogus completed level id should still be included as accessible";
 }
 
+
+// The PROGRESS GO/REPLAY click rides the earned-roads gate: an id outside
+// the frontier refuses (the report's own rows are always inside it, so this
+// guards stale clicks and future row sources) and an in-frontier id writes
+// the cursor exactly as before.
+TEST(PickerAccessibleLevels, progress_row_click_applies_gate)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.scen_num = 3;
+
+    trace_clear();
+    EXPECT_FALSE(progress_row_click_applies(15, false))
+        << "an unearned forward id must refuse";
+    EXPECT_EQ(3, (int)save.scen_num);
+    EXPECT_TRUE(trace_contains("picker", "progress_row_denied_gate 15"));
+    EXPECT_TRUE(trace_contains("popup", "That road is not open yet."));
+
+    EXPECT_TRUE(progress_row_click_applies(1, false))
+        << "the campaign's entry level is always in the frontier";
+    EXPECT_EQ(1, (int)save.scen_num);
+    EXPECT_EQ(0, (int)save.replay_level) << "VISIT never arms";
+}
+
+// The REPLAY half of the same click (#207): identical gates, and the write
+// is the arm — scen_num moves onto the level AND the origin is remembered
+// for the fold/picker-re-entry restore.
+TEST(PickerAccessibleLevels, progress_row_replay_click_arms)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.add_level_completed("gladiator", 1);
+    save.add_level_completed("gladiator", 2);
+    save.scen_num = 3;
+
+    trace_clear();
+    EXPECT_FALSE(progress_row_click_applies(15, true))
+        << "REPLAY rides the same earned-roads gate";
+    EXPECT_EQ(3, (int)save.scen_num);
+    EXPECT_EQ(0, (int)save.replay_level) << "a refused click never arms";
+
+    EXPECT_TRUE(progress_row_click_applies(1, true));
+    EXPECT_TRUE(trace_contains("picker", "progress_row_replay_armed 1"));
+    EXPECT_EQ(1, (int)save.scen_num)
+        << "arming moves the cursor like a plain set";
+    EXPECT_EQ(1, (int)save.replay_level);
+    EXPECT_EQ(3, (int)save.replay_origin)
+        << "origin = the cursor the player left";
+    save.clear_replay_arm();
+}
+
+// The same-level VISIT hijack, pinned: REPLAY arms an excursion, the player
+// re-opens the report and clicks VISIT on the SAME row. The plain write must
+// abandon the excursion — a surviving arm would skip the purge VISIT
+// promises AND make a win restore the origin instead of following the
+// walked exit, blocking exactly the re-branching VISIT exists for.
+TEST(PickerAccessibleLevels, visit_after_replay_arm_abandons_the_excursion)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.add_level_completed("gladiator", 1);
+    save.add_level_completed("gladiator", 2);
+    save.scen_num = 3;
+
+    ASSERT_TRUE(progress_row_click_applies(1, true));  // REPLAY arms {1, 3}
+    ASSERT_TRUE(save.replay_armed_for(1));
+
+    ASSERT_TRUE(progress_row_click_applies(1, false)); // VISIT the same row
+    EXPECT_EQ(1, (int)save.scen_num);
+    EXPECT_EQ(0, (int)save.replay_level)
+        << "the plain write must clear the arm";
+    EXPECT_FALSE(save.replay_armed_for(1))
+        << "no purge skip and no origin restore can hijack this VISIT";
+}
+
+namespace {
+
+// A joiner lobby client (host_controls_visible false): the PROGRESS screen
+// had NO host gate — this pins the one progress_row_click_applies adds.
+struct JoinerProgressLobbyClient final : og::ui::IPickerLobbyClient
+{
+    void initialize_from_save() override {}
+    void shutdown() override {}
+    void sync_from_save() override {}
+    void sync_roster_from_save() override {}
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override {}
+    void set_player_mode(int) override {}
+    bool request_start_game() override { return false; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override { return std::nullopt; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override { return std::nullopt; }
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
+    [[nodiscard]] bool is_networked_session() const noexcept override
+    {
+        return true;
+    }
+    [[nodiscard]] bool host_controls_visible() const noexcept override
+    {
+        return false;
+    }
+};
+
+} // namespace
+
+TEST(PickerAccessibleLevels, progress_row_click_refuses_joiners)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.scen_num = 3;
+
+    JoinerProgressLobbyClient lobby;
+    og::ui::IPickerLobbyClient* const saved_client =
+        og::ui::active_picker_lobby_client();
+    og::ui::install_active_picker_lobby_client(&lobby);
+
+    trace_clear();
+    EXPECT_FALSE(progress_row_click_applies(1, false))
+        << "a joiner's click must not write scen_num";
+    EXPECT_EQ(3, (int)save.scen_num);
+    EXPECT_TRUE(trace_contains("picker", "progress_row_denied_nonhost 1"));
+    EXPECT_TRUE(trace_contains("popup", "Only the host may set the level."));
+
+    og::ui::install_active_picker_lobby_client(saved_client);
+}
+
+// ... and the row never invites that click in the first place. The refusal
+// above is a popup, and popup_dialog owns its event loop with no lobby poll
+// in it: every row of this report used to offer a joiner a click whose only
+// possible answer was that popup, and a joiner sitting behind its OK button
+// applies no lobby messages and cannot follow the host's GO. So the
+// affordance itself is host-only — the joiner reads the report, which is
+// what the joiner opened it for.
+TEST(PickerAccessibleLevels, progress_rows_offer_no_click_to_a_joiner)
+{
+    EXPECT_TRUE(progress_rows_actionable())
+        << "a solo or hosting player keeps GO/REPLAY";
+
+    JoinerProgressLobbyClient lobby;
+    og::ui::IPickerLobbyClient* const saved_client =
+        og::ui::active_picker_lobby_client();
+    og::ui::install_active_picker_lobby_client(&lobby);
+    EXPECT_FALSE(progress_rows_actionable())
+        << "a joiner's rows wear (HOST), not a button";
+    og::ui::install_active_picker_lobby_client(saved_client);
+
+    EXPECT_TRUE(progress_rows_actionable()) << "and the seam restores";
+}

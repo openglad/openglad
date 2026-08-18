@@ -182,6 +182,10 @@ bool og::runtime::initialize_replay_screen(screen& game_screen,
     game_screen.save_data.allied_mode = game_screen.world().allied_mode;
     assign_replay_views(game_screen, initial_snapshot);
     game_screen.world().timer_wait = header.timer_wait;
+    // v15: the recorded campaign vars replace whatever the local save
+    // synced (a replay save_data.reset() leaves none) BEFORE the first
+    // tick, so decision-gated level hooks replay the recorded branch.
+    game_screen.world().campaign_vars = header.campaign_vars;
     player.reset();
     og::runtime::current_session->replay_playback_active_ = true;
     return true;
@@ -211,6 +215,9 @@ void og::runtime::begin_replay_recording(screen& game_screen)
         .allied_mode = game_screen.save_data.allied_mode,
         .difficulty = game_screen.world().difficulty,
         .campaign_id = campaign_id,
+        // v15: the registered campaign vars at record start (the sync
+        // sites already replaced-not-merged them from the save).
+        .campaign_vars = game_screen.world().campaign_vars,
     });
     og::runtime::current_session->replay_recorder_->record_initial_world(
         game_screen.world());

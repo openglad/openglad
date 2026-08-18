@@ -9,6 +9,8 @@
 #include <openglad/platform/local_transport_shadow.h>
 
 #include <openglad/core/util.h> // LogError
+#include <openglad/gameplay/script/campaign_hooks.h> // #206 provider seam
+#include <openglad/resources/campaign_state_providers.h> // #206 provider glue
 #include <openglad/resources/gparser.h> // cfg_store, ::cfg
 #include <algorithm>            // std::copy
 #include <openglad/gameplay/guy.h> // complete type for unique_ptr<guy> destructor
@@ -24,6 +26,7 @@
 #include <openglad/interface/game_context.h>
 #include <openglad/interface/input.h> // provides MouseState, JoyData + includes input_hardware_state.h
 #include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/ui/picker_lobby_client.h> // #212 host predicate
 #include <openglad/interface/ui/picker_lobby_network_client.h>
 #include <openglad/platform/picker_lobby_network_runtime.h>
 #include <SDL3/SDL.h>
@@ -222,6 +225,21 @@ GameSession::GameSession(const Config& session_cfg)
         // rendering with this session active uses correct colors.
         std::copy(screen_owner_->ourpalette.begin(),
                   screen_owner_->ourpalette.end(), curpal_.begin());
+
+        // Campaign scripting (#206): point the process-global og.campaign_*
+        // providers at THIS screen's SaveData — the same object the picker
+        // mutates — so campaign hooks always read/write the live save.
+        // Primary session only: demo sub-sessions must not repoint the
+        // process-global seam away from the picker's save. The host
+        // predicate (#212) is the SET LEVEL gate: joiners' match_set
+        // writes answer false instead of drifting from the host's knobs.
+        if (cfg_.install_legacy_globals) {
+            og::script::hooks::install_campaign_providers(
+                og::data::make_campaign_providers(
+                    myscreen_->save_data,
+                    [] { return picker_lobby_host_controls_visible(); }));
+            campaign_providers_installed_ = true;
+        }
     }
 
     // Create per-session render surface for sub-sessions sharing a display.
@@ -245,6 +263,11 @@ bool GameSession::has_local_transport_runtime() const noexcept
 GameSession::~GameSession()
 {
     clear_local_transport_shadow(*this);
+
+    // #206: the campaign providers borrow this session's SaveData — clear
+    // them before screen_owner_ (and the save inside it) is destroyed.
+    if (campaign_providers_installed_)
+        og::script::hooks::clear_campaign_providers();
 
     if (cfg_.install_legacy_globals) {
         if (current_session == this)

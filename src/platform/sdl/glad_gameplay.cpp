@@ -81,6 +81,12 @@ std::unique_ptr<guy> make_guy_from_lobby_character(
     // v8: the deploy flag rides the lobby SLOT, not the guy payload; roster
     // assembly only materializes deployed slots, so mark the guy explicitly.
     result->deployed = true;
+    // GTL v16 campaign_tag deliberately stays 0 here: this is a MISSION
+    // roster, whose slot_index is a compacted combined-roster position rather
+    // than any machine's private save slot, so there is no record to read the
+    // tag off. Assignment is menu-authored and nothing in a level touches it;
+    // merge_owned_guys_from re-stamps every survivor from the disk slot on the
+    // way back (see guy.h).
     return result;
 }
 

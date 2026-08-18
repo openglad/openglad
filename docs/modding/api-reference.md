@@ -967,6 +967,10 @@ og.family("living", {
   glyph_bold = true,
   radar_color = 228,
   radar_jitter = 3,                   -- adds rand(3) — a real RNG call
+  -- radar_ping = true,               -- objective families draw LOUD: an
+                                      -- oversized pulsing SDL radar blip
+                                      -- (render-side counter, rng-free)
+                                      -- and a bold curses glyph (#209)
   tuning = {                          -- balance data, read by the hooks
     flare_cost = 6.0,                 -- decimal → Lua float
     burn_floor = 10,                  -- integer → Lua integer

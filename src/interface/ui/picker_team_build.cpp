@@ -17,6 +17,7 @@
 
 #include <openglad/core/text_wrap.h>
 #include <openglad/core/version.h>
+#include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
@@ -44,9 +45,11 @@
 #include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/game_mode.h>
 #include <openglad/resources/level_data_hooks.h>
+#include <openglad/resources/level_selection.h>
 #include <openglad/core/test_trace.h>
 #include <algorithm>
 #include <array>
@@ -318,6 +321,10 @@ void picker_wire_scenario_menu_nav(button* buttons,
     buttons[kScenarioMenuTeamsIndex].nav.down =
         host_controls_visible ? kScenarioMenuTroopsIndex
                               : kScenarioMenuBackIndex;
+    buttons[kScenarioMenuViewScenarioIndex].nav.down =
+        kScenarioMenuBackIndex;
+    buttons[kScenarioMenuBackIndex].nav.up =
+        kScenarioMenuViewScenarioIndex;
 }
 
 void sync_scenario_menu_host_control_visibility(button* buttons,
@@ -347,7 +354,8 @@ void sync_scenario_menu_host_control_visibility(button* buttons,
         og::runtime::current_session->allbuttons_[kScenarioMenuTroopsIndex]
             ->label = buttons[kScenarioMenuTroopsIndex].label;
     }
-    picker_wire_scenario_menu_nav(buttons, num_buttons, host_controls_visible);
+    picker_wire_scenario_menu_nav(buttons, num_buttons,
+                                  host_controls_visible);
 
     ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
 }
@@ -377,6 +385,18 @@ void sync_difficulty_menu_visibility(button* buttons,
         host_controls_visible ? kDifficultyMenuDifficultyIndex : -1;
 
     ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
+}
+
+// ... and the word that goes where those rows were. Hiding all six leaves a
+// joiner looking at a heading over an empty panel with no clue why, and the
+// door is one click off the Base Camp strip now — the screen a networked
+// joiner lives on. Every sibling surface says whose call it is (the modes
+// book prints "The host calls the rules."), so this one does too.
+std::string difficulty_panel_caption()
+{
+    if (picker_lobby_host_controls_visible())
+        return std::string();
+    return std::string("The host sets these for everyone.");
 }
 
 // Per-session picker message buffer: access via current_session->message_.
@@ -1295,6 +1315,138 @@ struct ProgressEngineState
 constexpr UiRect kProgressPrevBtn = {30, 170, 40, 20};
 constexpr UiRect kProgressNextBtn = {80, 170, 40, 20};
 
+// #207: the per-row action hit-test, shared by the frame_tick dispatch and
+// the coverage harness. Uncleared rows keep the legacy GO rect; cleared
+// rows carry TWO buttons — VISIT (the classic plain cursor write: the
+// purged empty walk-through, kept deliberately for cleared-road traversal
+// and re-branching) and REPLAY (the arm: the level loads with its authored
+// census restored and a win returns the cursor home). REPLAY stays
+// right-aligned with BACK at x=310; VISIT sits left of it on the same row
+// grid. The Foes column moved left (206/210, was 250/258) and the title
+// budget dropped to 17 chars to clear the two-button column — cleared rows
+// now show the AUTHORED foe count (the honest REPLAY number; the old
+// hardcoded 0 was only accidentally true while the purge emptied every
+// replay, and SET LEVEL's browser already advertises the authored count).
+constexpr int kProgressRowY = 36;
+constexpr int kProgressRowHeight = 13;
+constexpr int kProgressTitleChars = 17;   // 14 + "..." — ends x=202
+constexpr int kProgressFoesHeaderX = 206;
+constexpr int kProgressFoesNumberX = 210;
+constexpr int kProgressGoHitX = 295, kProgressGoHitW = 20;
+constexpr int kProgressVisitHitX = 230, kProgressVisitHitW = 36;
+constexpr int kProgressReplayHitX = 270, kProgressReplayHitW = 40;
+
+// What a row click means (#207): GO on the frontier, VISIT (plain write)
+// or REPLAY (arm) on a cleared row.
+enum class ProgressRowAction
+{
+    None,
+    Go,
+    Visit,
+    Replay,
+};
+
+struct ProgressRowHit
+{
+    int id = -1;
+    ProgressRowAction action = ProgressRowAction::None;
+};
+
+// Whether this report's rows carry a GO/REPLAY affordance at all. They are
+// the SET LEVEL write in another shape, so a joiner does not get one: the
+// report stays open to read (that is the screen's whole job), but no row
+// invites a click whose only possible answer is a refusal. The refusal is a
+// popup, and popup_dialog runs its own event loop with no lobby poll in it
+// — a joiner behind that OK button stops applying lobby messages and cannot
+// follow the host's GO until they dismiss it. The rows say "(HOST)" where
+// the button was, the same word the Base Camp level rows wear.
+bool progress_rows_actionable()
+{
+    return picker_lobby_host_controls_visible();
+}
+
+// The click-time answer behind GO, VISIT and REPLAY, shared with the tests:
+// the SET LEVEL host gate (this screen had none — a networked joiner could
+// write scen_num here; the rows no longer offer a joiner the click, and this
+// stays as the write's own guard) and the earned-roads predicate, each
+// refusing with the popup (trace-only under TESTING) before any cursor
+// write. `replay_arm` (#207) swaps the plain cursor write for the replay
+// arm — same gates, and arm_replay moves scen_num itself so the lobby
+// publish and go_menu behave identically either way. True = the write
+// landed and the report exits.
+bool progress_row_click_applies(int hit_id, bool replay_arm)
+{
+    if (!picker_lobby_host_controls_visible())
+    {
+        TRACE("picker", "progress_row_denied_nonhost %d", hit_id);
+        popup_dialog(
+            "PROGRESS",
+            std::string(og::ui::kCampaignPickerHostGuardMessage).c_str());
+        return false;
+    }
+    if (!og::data::level_selection_allowed(
+            og::runtime::current_session->myscreen_->save_data, hit_id))
+    {
+        TRACE("picker", "progress_row_denied_gate %d", hit_id);
+        popup_dialog(
+            "PROGRESS",
+            std::string(og::ui::kCampaignLevelClosedMessage).c_str());
+        return false;
+    }
+    if (replay_arm)
+    {
+        // REPLAY: arm the excursion (this also sets scen_num) — the level
+        // loads restored and the win fold returns the cursor to the
+        // position the player left.
+        og::runtime::current_session->myscreen_->save_data.arm_replay(
+            static_cast<short>(hit_id));
+        TRACE("picker", "progress_row_replay_armed %d", hit_id);
+    }
+    else
+    {
+        // A plain cursor write (VISIT, or GO on an uncleared row) abandons
+        // any excursion in flight: the stale arm must not hijack this
+        // level's purge or restore a cursor the player just re-pointed.
+        og::runtime::current_session->myscreen_->save_data.clear_replay_arm();
+        // Set current level and exit
+        og::runtime::current_session->myscreen_->save_data.scen_num =
+            static_cast<short>(hit_id);
+    }
+    picker_lobby_sync_settings_from_save();
+    return true;
+}
+
+ProgressRowHit progress_row_action_hit(const ProgressEngineState& state,
+                                       int mx, int my)
+{
+    if (!progress_rows_actionable())
+        return {};  // no affordance drawn, no hit to answer
+    int row_y = kProgressRowY;
+    for (int i = state.scroll_offset;
+         i < static_cast<int>(state.levels.size()) &&
+         i < state.scroll_offset + state.visible_rows;
+         i++) {
+        const LevelProgress& lp = state.levels[static_cast<std::size_t>(i)];
+        if (my >= row_y && my <= row_y + kProgressRowHeight) {
+            if (lp.is_cleared) {
+                if (mx >= kProgressVisitHitX &&
+                    mx <= kProgressVisitHitX + kProgressVisitHitW) {
+                    return {lp.id, ProgressRowAction::Visit};
+                }
+                if (mx >= kProgressReplayHitX &&
+                    mx <= kProgressReplayHitX + kProgressReplayHitW) {
+                    return {lp.id, ProgressRowAction::Replay};
+                }
+            } else if (mx >= kProgressGoHitX &&
+                       mx <= kProgressGoHitX + kProgressGoHitW) {
+                return {lp.id, ProgressRowAction::Go};
+            }
+        }
+        row_y += kProgressRowHeight;
+    }
+    return {};
+}
+
 void picker_progress_menu_engine_draw_background(void* /*screen_state*/)
 {
     og::runtime::current_session->myscreen_->clearbuffer();
@@ -1344,26 +1496,20 @@ bool picker_progress_menu_engine_frame_tick(void* screen_state, int /*frame*/)
         state->scroll_offset++;
     }
 
-    // Check for GO button clicks on level rows
+    // Check for GO/VISIT/REPLAY button clicks on level rows (#207: cleared
+    // rows are selectable two ways — VISIT is the classic plain cursor
+    // write onto the purged walk-through, REPLAY arms the excursion so the
+    // level loads restored and a win returns the cursor home; completion
+    // marking stays idempotent and only the first win pays a time bonus).
     if (clicked) {
-        int row_y = 36;
-        int row_height = 13;
-        int go_btn_x = 295;
-        int go_btn_w = 20;
-        for (int i = state->scroll_offset; i < static_cast<int>(state->levels.size()) && i < state->scroll_offset + state->visible_rows; i++) {
-            LevelProgress& lp = state->levels[static_cast<std::size_t>(i)];
-            if (!lp.is_cleared) {
-                // Check if click is on this row's GO button
-                if (mx >= go_btn_x && mx <= go_btn_x + go_btn_w &&
-                    my >= row_y && my <= row_y + row_height) {
-                    // Set current level and exit
-                    og::runtime::current_session->myscreen_->save_data.scen_num = static_cast<short>(lp.id);
-                    picker_lobby_sync_settings_from_save();
-                    og::runtime::current_session->myscreen_->clearbuffer();
-                    return false;
-                }
-            }
-            row_y += row_height;
+        const ProgressRowHit hit = progress_row_action_hit(*state, mx, my);
+        if (hit.id >= 0) {
+            if (!progress_row_click_applies(
+                    hit.id, hit.action == ProgressRowAction::Replay))
+                return true;  // refused: stay on the report
+            og::runtime::current_session->myscreen_->clearbuffer();
+            TRACE("picker", "progress_row_go level=%d", hit.id);
+            return false;
         }
     }
 
@@ -1385,14 +1531,15 @@ void picker_progress_menu_engine_draw_content(void* screen_state)
              state->num_cleared, static_cast<int>(state->levels.size()));
     mytext.write_xy(160 - static_cast<int>(header.size()) * 3, 8, header.c_str(), DARK_GREEN, 1);
 
-    // Column headers
+    // Column headers (#207: Foes moved left of the two-button column)
     og::runtime::current_session->myscreen_->draw_text_bar(10, 22, 310, 32);
     mytext.write_xy(12, 24, "ID", DARK_BLUE, 1);
     mytext.write_xy(36, 24, "Status", DARK_BLUE, 1);
     mytext.write_xy(100, 24, "Title", DARK_BLUE, 1);
-    mytext.write_xy(250, 24, "Foes", DARK_BLUE, 1);
+    mytext.write_xy(kProgressFoesHeaderX, 24, "Foes", DARK_BLUE, 1);
 
     // Level rows
+    const bool rows_actionable = progress_rows_actionable();
     int y = 36;
     int row_height = 13;
     for (int i = state->scroll_offset; i < static_cast<int>(state->levels.size()) && i < state->scroll_offset + state->visible_rows; i++) {
@@ -1420,13 +1567,36 @@ void picker_progress_menu_engine_draw_content(void* screen_state)
         // Title
         mytext.write_xy(100, y + 2, lp.title.c_str(), WHITE, 1);
 
-        // Enemy count
-        if (lp.is_cleared) {
-            mytext.write_xy(258, y + 2, "0", DARK_GREEN, 1);
-        } else {
-            buf = std::format("{}", lp.num_enemies);
-            mytext.write_xy(258, y + 2, buf.c_str(), WHITE, 1);
+        // Enemy count — the authored number on every row (#207: REPLAY
+        // restores the census, so the hardcoded 0 on cleared rows became a
+        // lie; VISIT still walks the purged level, but the authored count
+        // is what SET LEVEL's browser already advertises).
+        buf = std::format("{}", lp.num_enemies);
+        mytext.write_xy(kProgressFoesNumberX, y + 2, buf.c_str(),
+                        lp.is_cleared ? DARK_GREEN : WHITE, 1);
 
+        // The row's action. A joiner reads the report but does not set the
+        // level, so the button is replaced by the word that says whose call
+        // it is — no button, no click, no refusal popup.
+        if (!rows_actionable) {
+            mytext.write_xy(274, y + 2, "(HOST)", GREY, 1);
+        } else if (lp.is_cleared) {
+            // #207: a cleared row is selectable two ways — VISIT is the
+            // classic plain cursor write (the purged walk-through, for
+            // traversal and re-branching), REPLAY arms the excursion
+            // (restored census, cursor returns home on the win). REPLAY
+            // keeps its right edge aligned with BACK at x=310.
+            og::runtime::current_session->myscreen_->draw_button(
+                kProgressVisitHitX, y + 1,
+                kProgressVisitHitX + kProgressVisitHitW, y + 10, 1, 1);
+            mytext.write_xy(kProgressVisitHitX + 3, y + 2, "VISIT",
+                            DARK_BLUE, 1);
+            og::runtime::current_session->myscreen_->draw_button(
+                kProgressReplayHitX, y + 1,
+                kProgressReplayHitX + kProgressReplayHitW, y + 10, 1, 1);
+            mytext.write_xy(kProgressReplayHitX + 2, y + 2, "REPLAY",
+                            DARK_BLUE, 1);
+        } else {
             // GO button for non-cleared levels (right edge aligns with BACK button at x=310)
             og::runtime::current_session->myscreen_->draw_button(292, y + 1, 310, y + 10, 1, 1);
             mytext.write_xy(296, y + 2, "GO", DARK_BLUE, 1);
@@ -1475,17 +1645,21 @@ Sint32 create_progress_menu(Sint32 arg1)
         // Load level to get title and enemy count
         LevelRuntimeData ld(level_id);
         if (ld.load()) {
-            if (ld.world().title.size() > 20) {
-                lp.title = ld.world().title.substr(0, 17) + "...";
+            // #207: the title budget dropped 20 -> 17 chars so the Foes
+            // column clears the VISIT/REPLAY button pair.
+            if (ld.world().title.size() > kProgressTitleChars) {
+                lp.title =
+                    ld.world().title.substr(0, kProgressTitleChars - 3) +
+                    "...";
             } else {
                 lp.title = ld.world().title;
             }
 
-            // Count enemies
+            // Count enemies — the authored number on every row (#207).
             int num_enemies = 0;
             std::list<int> unused_exits;
             getLevelStats(ld, nullptr, nullptr, &num_enemies, nullptr, unused_exits);
-            lp.num_enemies = lp.is_cleared ? 0 : num_enemies;
+            lp.num_enemies = num_enemies;
         } else {
             lp.title = std::format("Level {}", level_id);
             lp.num_enemies = 0;
@@ -2726,11 +2900,36 @@ Sint32 go_menu(Sint32 arg1)
         auto loadgame = og::io::og_open_read("save/", slot_file.c_str());
         if (loadgame)
         {
+            // #207: SaveData::load clears the transient replay arm; carry a
+            // live one across the reload when the disk cursor still points
+            // at the armed level — a RETRY of a lost replay must relaunch
+            // ARMED (the retried level loads restored), and the loss/quit
+            // restore below still needs the origin. A won replay already
+            // cleared the arm in the fold, so nothing carries.
+            const short armed_level = og::runtime::current_session
+                ->myscreen_->save_data.replay_level;
+            const short armed_origin = og::runtime::current_session
+                ->myscreen_->save_data.replay_origin;
             og::runtime::current_session->myscreen_->save_data.load(
                 og::data::active_company_slot());
+            if (armed_level != 0 &&
+                og::runtime::current_session->myscreen_->save_data.scen_num ==
+                    armed_level)
+            {
+                og::runtime::current_session->myscreen_->save_data
+                    .replay_level = armed_level;
+                og::runtime::current_session->myscreen_->save_data
+                    .replay_origin = armed_origin;
+            }
         }
     }
     while(retry_level);
+
+    // #207 design point 5: an armed replay that ended without a win (loss,
+    // quit-to-menu) restores the campaign cursor here, on picker re-entry;
+    // the next disk write persists it.
+    (void)og::ui::replay_reentry_restore(
+        og::runtime::current_session->myscreen_->save_data);
 
     picker_reinitialize_lobby_after_game();
 

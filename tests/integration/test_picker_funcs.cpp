@@ -3255,6 +3255,73 @@ TEST(PickerFuncs, local_lobby_rejects_every_uncontrollable_seat_shape)
     g_start_game_requested = orig_start_requested;
 }
 
+// GTL v16: campaign_tag has no LobbyCharacterData field, so the local lobby
+// round-trip must re-stamp it from the private save slot it overwrites, the
+// way it already re-stamps `deployed` from the slot. This is a SOLO path —
+// the standalone local client exists as soon as Base Camp syncs — and the
+// Base Camp mutation tail autosaves right after the sync, so a lost tag is
+// lost on disk too.
+TEST(PickerFuncs, local_lobby_round_trip_preserves_campaign_tags)
+{
+    picker_lobby_shutdown();
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> orig_list;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        orig_list[static_cast<std::size_t>(i)] = std::move(save.team_list[static_cast<std::size_t>(i)]);
+    const unsigned char orig_size = save.team_size;
+    const short orig_my_team = save.my_team;
+    const unsigned char orig_numplayers = save.numplayers;
+    const short orig_allied = save.allied_mode;
+
+    for (auto& member : save.team_list)
+        member.reset();
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Sworn";
+    save.team_list[0]->teamnum = 0;
+    save.team_list[0]->deployed = true;
+    save.team_list[0]->campaign_tag = 1;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[1]->name = "Benched";
+    save.team_list[1]->teamnum = 0;
+    save.team_list[1]->deployed = false;
+    save.team_list[1]->campaign_tag = 3;
+    save.team_size = 2;
+    save.my_team = 0;
+    save.numplayers = 1;
+    save.allied_mode = 1;
+
+    // The Base Camp roster-mutation tail: sync the lobby, then autosave.
+    picker_lobby_sync_roster_from_save();
+
+    ASSERT_TRUE(save.team_list[0] != nullptr);
+    ASSERT_TRUE(save.team_list[1] != nullptr);
+    EXPECT_EQ(1, static_cast<int>(save.team_list[0]->campaign_tag))
+        << "a deployed hero must keep its assignment through the sync";
+    EXPECT_EQ(3, static_cast<int>(save.team_list[1]->campaign_tag))
+        << "a benched hero must keep its assignment through the sync";
+    // Pinned alongside the tag: the two re-stamps share one mechanism, so a
+    // rebuild that drops either is the same bug.
+    EXPECT_TRUE(save.team_list[0]->deployed);
+    EXPECT_FALSE(save.team_list[1]->deployed);
+
+    // The assign-chip shape: the provider writes the tag into the live
+    // roster, then an ordinary menu frame polls the lobby.
+    save.team_list[0]->campaign_tag = 5;
+    picker_lobby_poll();
+    EXPECT_EQ(5, static_cast<int>(save.team_list[0]->campaign_tag))
+        << "a just-written assignment must survive the next menu frame";
+    EXPECT_EQ(3, static_cast<int>(save.team_list[1]->campaign_tag));
+
+    picker_lobby_shutdown();
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[static_cast<std::size_t>(i)] = std::move(orig_list[static_cast<std::size_t>(i)]);
+    save.team_size = orig_size;
+    save.my_team = orig_my_team;
+    save.numplayers = orig_numplayers;
+    save.allied_mode = orig_allied;
+}
+
 // Player seats are control assignments, not roster filters. A one-player
 // local mission must carry deployed and benched members from every company
 // color into its isolated start seed, preserving their original private slots.

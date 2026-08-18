@@ -187,6 +187,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_scenarios.cpp
     ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_coverage_gate.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_ctf_ui.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_campaign_zone_ui.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_mode_ui.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_tower_run.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_menu_pins.cpp
@@ -622,6 +623,7 @@ og_add_test_group(og_test_parity FILES
 og_add_test_group(og_test_matchup FILES
     test_ctf_ui.cpp
     test_mode_ui.cpp
+    test_campaign_zone_ui.cpp
 )
 target_include_directories(og_test_parity PRIVATE
     ${CMAKE_SOURCE_DIR}/tests/parity
@@ -802,6 +804,7 @@ og_add_unit_group(og_unit_script FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_script_bindings_props.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_script_hooks.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_level_scripts.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_hooks.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_lua_bind.cpp
 )
 # The P8-A tests forge REAL stripped Lua bytecode through the C API
@@ -842,14 +845,18 @@ og_add_unit_group(og_unit_data FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_game_mode.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_progression.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_win_shares.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_state_providers.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_physfs_wrappers.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_input_actions.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_spectator_mode.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_concept_levels.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_westlands_levels.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_longseason_levels.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_longseason_ledger.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_levels.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_book.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_imaginations_levels.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_imaginations_dream_log.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_builtin_archives.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_decor_format.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_level_file_io_coverage.cpp
@@ -862,6 +869,16 @@ og_add_unit_group(og_unit_data FILES
 # modes pack sources for its manifest checks.
 target_compile_definitions(og_unit_data PRIVATE
     OG_CAMPAIGNS_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns"
+)
+
+# The Company Fire pack (campaigns/westlands/packs/westlands.fire): the
+# scripted-camp page gates, quartermaster actions and ledger over the
+# shipped westlands.glad, plus the decision-consequence sims (var==0
+# byte-identity against a pack-less baseline, taken-path spawns, footing).
+# Its own group beside og_unit_data so the 300-tick identity runs keep
+# their own time budget.
+og_add_unit_group(og_unit_westlands_fire FILES
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_westlands_fire.cpp
 )
 
 og_add_unit_group(og_unit_respawn FILES
@@ -959,6 +976,8 @@ add_executable(og_unit_headless_platform
     ${CMAKE_SOURCE_DIR}/tests/unit/headless_unit_main.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_platform_headless.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_text_campaign_sprites.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_picker_session.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_zone_session.cpp
     ${SRC_DIR}/core/test_trace.cpp
     ${HEADLESS_TEST_SOURCES}
 )

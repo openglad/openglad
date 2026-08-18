@@ -59,6 +59,32 @@ TEST(GlyphMap, followed_avatar_is_at_sign_and_bold)
     EXPECT_FALSE(g.skip);
 }
 
+// #209 radar_ping: the terminal client's "loud" treatment is one attribute
+// — the family glyph promotes to bold. Restore the descriptor afterwards
+// (registry hygiene under shuffle).
+TEST(GlyphMap, radar_ping_promotes_the_glyph_to_bold)
+{
+    // Silver bars ship a non-bold glyph, so the promotion is observable.
+    const TreasureFamilyDescriptor* live =
+        get_treasure_family_descriptor(FAMILY_SILVER_BAR);
+    ASSERT_NE(nullptr, live);
+    const TreasureFamilyDescriptor original = *live;
+
+    Glyph plain = entity_glyph(Order::Treasure, FAMILY_SILVER_BAR, 0, false, 0);
+    ASSERT_FALSE(plain.bold) << "silver bars ship a non-bold glyph";
+
+    TreasureFamilyDescriptor flagged = original;
+    flagged.radar.ping = true;
+    ASSERT_TRUE(set_treasure_family_descriptor(FAMILY_SILVER_BAR, flagged));
+
+    Glyph loud = entity_glyph(Order::Treasure, FAMILY_SILVER_BAR, 0, false, 0);
+    EXPECT_TRUE(loud.bold) << "a pinged family's glyph promotes to bold";
+    EXPECT_EQ(plain.ascii, loud.ascii) << "only the attribute changes";
+    EXPECT_EQ(plain.fg, loud.fg);
+
+    ASSERT_TRUE(set_treasure_family_descriptor(FAMILY_SILVER_BAR, original));
+}
+
 TEST(GlyphMap, living_entity_takes_team_color)
 {
     Glyph red = entity_glyph(Order::Living, FAMILY_SOLDIER, 0, false, 0);

@@ -159,6 +159,9 @@ int picker_cloud_save_button_count();
 // #168 full-screen HELP — engine screen.
 button* picker_help_buttons();
 int picker_help_button_count();
+// Campaign zone submenu (the scripted page chassis) — engine screen.
+button* picker_zone_submenu_buttons();
+int picker_zone_submenu_button_count();
 
 // --- Base camp (team build) layout contract (design §2.5 as amended §9.5,
 // regridded §9.10) -----------------------------------------------------------
@@ -166,9 +169,12 @@ int picker_help_button_count();
 // clear top/bottom margins): 8 roster rows/page (deploy toggle at x=23, team
 // color/cycler at x=61, row-body train zone at x=84..297, and move-up at
 // x=303, y=45+14r — flush with the panel's right inner edge, like the roster
-// pager '>', the seat rail's '+' and GO), the page cluster top-right,
-// and the bottom command strip BACK | HIRE | SCENARIO | NETWORK | GO at
-// y=178. Spec ordinals group by kind so the MenuSpecRow arg (== ordinal, G3)
+// pager '>', the seat rail's '>' and GO), the page cluster top-right,
+// and the bottom command strip BACK | DIFFICULTY | SCENARIO | NETWORK |
+// GO at y=178 (HIRE moved up to the roster band header; the slot it left
+// became the DIFFICULTY door when that setting came off the main menu, and
+// the strip re-gridded so the full word inks). Spec ordinals group by kind
+// so the MenuSpecRow arg (== ordinal, G3)
 // decodes as row/kind directly. GO is the only host-gated button. Cap-24
 // roster = 3 pages; the 40-slot defensive shape pages to 5.
 inline constexpr int kBaseCampRosterRowsPerPage = 8; // roster_dep_r = 0..7
@@ -189,16 +195,21 @@ inline constexpr int kCreateMenuHireIndex = 28;
 inline constexpr int kCreateMenuScenarioIndex = 29;
 inline constexpr int kCreateMenuNetworkingIndex = 30;
 inline constexpr int kCreateMenuGoIndex = 31;
-// §2.6: the READY twin shares GO's exact rect (244,178,68,18); exactly one
+// §2.6: the READY twin shares GO's exact rect (262,178,50,18); exactly one
 // of the pair is visible per frame (host => GO, networked joiner => READY).
 inline constexpr int kCreateMenuReadyIndex = 32;
 // Per-level player-seat assignment rail. Appended after the original
 // ordinals so every established Base Camp action index stays stable.
-inline constexpr int kBaseCampSeatsLabelIndex = 33;
+// #236: the rail reads [+] | < | four cards | >. The ordinal that used to
+// carry the SEATS label — a second, worse-placed door to the MATCHUP screen
+// the SCENARIO submenu already owns — carries the '+' now, at the rail's
+// left edge; the right-end ordinal the '+' vacated parks as a hidden spare
+// so no established index moved.
+inline constexpr int kBaseCampAddSeatIndex = 33;
 inline constexpr int kBaseCampSeatPagePrevIndex = 34;
 inline constexpr int kBaseCampSeatCardBase = 35; // seat_card_0..3 = 35..38
 inline constexpr int kBaseCampSeatPageNextIndex = 39;
-inline constexpr int kBaseCampAddSeatIndex = 40;
+inline constexpr int kBaseCampSeatRailSpareIndex = 40;
 // Per-row move-up controls are appended so every established Base Camp
 // ordinal remains stable. Only owned rows after the first owned roster member
 // expose one; activating it swaps that member with its predecessor.
@@ -207,7 +218,32 @@ inline constexpr int kBaseCampSeatCardsPerPage = 4;
 // The compact 57px seat card is drawn without the beveled inset, so its
 // budget is the full face: 57 / 6 = 9 characters, trailing pad included.
 inline constexpr int kBaseCampSeatCardLabelBudget = 9;
-inline constexpr int kCreateMenuButtonCount = 49;
+// The compact seat-rail/move-up band's ordinal bounds: draw_menu_highlight
+// keeps its interior focus ring INSIDE this range so a card's ring can never
+// paint over its numbered team chip — appended zone rows past it take the
+// normal exterior ring.
+inline constexpr int kBaseCampInteriorRingFirstIndex = kBaseCampAddSeatIndex;
+inline constexpr int kBaseCampInteriorRingLastIndex = 48;
+// --- The appended gameplay-zone band (docs/basecamp-zones-design.md
+// "Bounds arithmetic"): ordinals 49..71, statically PARKED at zero-size
+// rects with empty labels (gate-lattice safe) and re-banded per frame by the
+// rewire when a composition uses them. 16 action rows split 8 per actions
+// widget (zone widget w, window row r -> ordinal base + 8w + r), one
+// prev/next pager pair per actions widget, 3 spares.
+inline constexpr int kBaseCampZoneActionBase = 49;    // zone_action_0..15
+inline constexpr int kBaseCampZoneActionsPerWidget = 8;
+inline constexpr int kBaseCampZoneActionRows = 16;
+inline constexpr int kBaseCampZonePagerBase = 65;     // prev/next per widget
+inline constexpr int kBaseCampZonePagerCount = 4;
+inline constexpr int kBaseCampZoneSpareBase = 69;     // zone_spare_0..2
+inline constexpr int kBaseCampZoneSpareCount = 3;
+// The DIFFICULTY strip door (docs/camp-controls-design.md). Appended past the
+// zone band rather than carved out of a spare: every established ordinal
+// stays where it is, and the three spares stay a reserve. Its rect lives on
+// the y=178 strip with the other doors — the ordinal ordering is the table's
+// growth history, not the reading order.
+inline constexpr int kCreateMenuDifficultyIndex = 72;
+inline constexpr int kCreateMenuButtonCount = 73;
 
 // --- LOCAL SEAT SETTINGS subscreen -----------------------------------------
 // A clicked owned Base Camp seat resolves its stable LobbySeatId to a dense
@@ -351,6 +387,35 @@ inline constexpr int kScenarioMenuProgressIndex = 5;
 inline constexpr int kScenarioMenuTroopsIndex = 6;
 inline constexpr int kScenarioMenuButtonCount = 7;
 
+// --- Campaign zone submenu (docs/basecamp-zones-design.md) -----------------
+// The scripted page chassis opened by page-kind zone action rows, which
+// dispatch through the Base Camp's on_spec_row and name their own page (no
+// ButtonAction id: nothing opens this at the book ROOT). It is a ROOM
+// INSIDE the Base Camp, not a different game's menu: the same header lines
+// (COMPANY + GOLD — you can see your purse while you shop), the same panel
+// at (8,28)-(311,160), the same message-line toasts. Only the footer band at
+// y=169 is its own (title + Escape-hotkeyed BACK + PREV/NEXT), so this
+// screen's "back" shares no other screen's geometry (injector
+// disambiguation rule).
+inline constexpr int kZoneSubmenuRowsPerPage = 8;
+inline constexpr int kZoneSubmenuBackIndex = 8;
+inline constexpr int kZoneSubmenuPrevIndex = 9;
+inline constexpr int kZoneSubmenuNextIndex = 10;
+inline constexpr int kZoneSubmenuButtonCount = 11;
+// Row faces run the panel's inner width (12..307) on a 12px pitch; the
+// narrative lines above them take the panel's header band, so a page with
+// many lines shows fewer rows per window rather than overrunning the panel.
+inline constexpr int kZoneSubmenuRowX = 12;
+inline constexpr int kZoneSubmenuRowWidth = 296;
+inline constexpr int kZoneSubmenuRowPitch = 12;
+inline constexpr int kZoneSubmenuLineY0 = 33;
+// A page with no narrative lines starts its rows on the Base Camp zone's
+// own grid anchor, so stepping into a submenu does not shift the eye.
+inline constexpr int kZoneSubmenuRowY0 = 45;
+inline constexpr int kZoneSubmenuPanelBottomY = 158;
+inline constexpr std::size_t kZoneSubmenuRowLabelChars =
+    (kZoneSubmenuRowWidth - 8) / 6;  // 48
+
 // --- MATCHUP subscreen layout contract ------------------------------------
 // Positional indices into k_teamsmenu_buttons / picker_teamsmenu_buttons().
 inline constexpr int kTeamsMenuBackIndex = 0;
@@ -396,7 +461,7 @@ void picker_wire_teams_menu_nav(button* buttons, int count,
 // never links to a hidden button). The base camp rewires its full roster
 // graph per frame (pattern b — the rewire lives on the spec and reads the
 // installed BaseCampScreenState); the SCENARIO subscreen gates
-// SET CAMPAIGN / SET LEVEL.
+// SET CAMPAIGN / SET LEVEL / TROOPS on the host axis.
 void picker_wire_scenario_menu_nav(button* buttons, int count,
                                    bool host_controls_visible);
 
@@ -508,6 +573,14 @@ inline constexpr int kDifficultyMenuButtonCount = 7;
 // BACK; BACK's vertical cycle is rewired so nav never targets a hidden row.
 void sync_difficulty_menu_visibility(button* buttons, int num_buttons,
                                      int& highlighted_button);
+
+// The line the DIFFICULTY panel prints under its heading. Empty for a host
+// or a solo player — their rows say everything. A joiner's rows are all
+// hidden by the gate above, so without this the door they can reach from
+// the Base Camp strip opens on a heading over an empty panel; the caption
+// says whose call it is, the way the modes book says "The host calls the
+// rules." Drawn by difficulty_draw_content.
+std::string difficulty_panel_caption();
 
 // A remote (host) GO landing while this peer is parked on the main menu or
 // one of its subscreens: select the Main CONTINUE item and exit, so the

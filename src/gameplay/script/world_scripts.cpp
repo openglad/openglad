@@ -32,6 +32,7 @@
 #include "script_internal.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
@@ -716,6 +717,14 @@ namespace {
 
 int og_register_hooks(lua_State* L)
 {
+    // Deliberately outside the load fence, but NOT outside the campaign
+    // fence: a menu script must not rewrite sim hook tables. Checked before
+    // any argument check so the fence-walk test sees this error, not an
+    // argument error.
+    if (const VmState* fence_st = get_vm_state(L);
+        fence_st != nullptr && fence_st->campaign_dispatch)
+        return luaL_error(L, "og.register_hooks: hook registration is not "
+                             "available during campaign hooks");
     const char* order_str = luaL_checkstring(L, 1);
     const char* family_str = luaL_checkstring(L, 2);
     luaL_checktype(L, 3, LUA_TTABLE);
@@ -1043,6 +1052,12 @@ constexpr LevelHookName kLevelHookNames[] = {
 // on_entity_spawn= }). level_id -1 registers for every level.
 int og_register_level_hooks(lua_State* L)
 {
+    // Same campaign fence as og.register_hooks (menu scripts must not
+    // rewrite sim hook tables), before any argument check.
+    if (const VmState* fence_st = get_vm_state(L);
+        fence_st != nullptr && fence_st->campaign_dispatch)
+        return luaL_error(L, "og.register_level_hooks: hook registration is "
+                             "not available during campaign hooks");
     const int level_id = static_cast<int>(luaL_checkinteger(L, 1));
     luaL_checktype(L, 2, LUA_TTABLE);
     VmState* st = get_vm_state(L);
@@ -1100,6 +1115,189 @@ int og_set_entity_hooks(lua_State* L)
     lua_rawseti(L, -2, static_cast<lua_Integer>(h->entity_id));
     lua_pop(L, 1);
     st->has_entity_hooks = true;
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Campaign hooks (og.register_campaign_hooks)
+// ---------------------------------------------------------------------------
+
+// The hook-function keys og.register_campaign_hooks accepts ('vars' is the
+// one non-hook key). Parsed by scripts/modding/gen_api_stubs.py — keep the
+// spelling and location.
+constexpr const char* kCampaignHookNames[] = {"picker_menu", "picker_action",
+                                              "base_camp"};
+
+// Slots of the campaign_hooks_ref registry table.
+constexpr lua_Integer kCampaignMenuSlot = 1;
+constexpr lua_Integer kCampaignActionSlot = 2;
+constexpr lua_Integer kCampaignZoneSlot = 3;
+
+// "chunkname:line" of the caller, for the duplicate-registration record.
+std::string campaign_caller_source(lua_State* L)
+{
+    luaL_where(L, 1);
+    std::string where = lua_tostring(L, -1);
+    lua_pop(L, 1);
+    while (!where.empty() && (where.back() == ' ' || where.back() == ':'))
+        where.pop_back();
+    if (where.empty()) where = "og.register_campaign_hooks";  // no debug info
+    return where;
+}
+
+// og.register_campaign_hooks({ vars = {...}, picker_menu = fn,
+// picker_action = fn, base_camp = fn }) — load-time only, one campaign
+// book per VM (docs/campaign-scripting-design.md;
+// docs/basecamp-zones-design.md for the base_camp zone hook).
+int og_register_campaign_hooks(lua_State* L)
+{
+    VmState* st = get_vm_state(L);
+    // Campaign fence first (before any argument check): a campaign hook
+    // must not re-register hooks.
+    if (st != nullptr && st->campaign_dispatch)
+        return luaL_error(L, "og.register_campaign_hooks: hook registration "
+                             "is not available during campaign hooks");
+    luaL_checktype(L, 1, LUA_TTABLE);
+    // The reads below use absolute stack indices 2/3/4 — drop any extra
+    // arguments so a stray second argument cannot shadow them.
+    lua_settop(L, 1);
+
+    // Every validation below is a property of the call alone, so it runs
+    // BEFORE the declaration pass bows out — the pass that can still reject
+    // the pack is the one that should catch the typo (the og.register_hooks
+    // discipline).
+    {
+        std::vector<const char*> names(std::begin(kCampaignHookNames),
+                                       std::end(kCampaignHookNames));
+        names.push_back("vars");
+        lua_pushnil(L);
+        while (lua_next(L, 1) != 0) {
+            lua_pop(L, 1);  // value; the key stays for the next iteration
+            if (lua_type(L, -1) != LUA_TSTRING)
+                return luaL_error(
+                    L, "og.register_campaign_hooks: keys are 'vars', "
+                       "'picker_menu', 'picker_action' and 'base_camp' "
+                       "(got a %s key)",
+                    luaL_typename(L, -1));
+            const std::string key = lua_tostring(L, -1);
+            bool known = false;
+            for (const char* n : names)
+                known = known || key == n;
+            if (!known) {
+                const std::string hint = did_you_mean(key, names);
+                return luaL_error(
+                    L, "og.register_campaign_hooks: unknown key '%s'%s",
+                    key.c_str(), hint.c_str());
+            }
+        }
+    }
+    lua_getfield(L, 1, "picker_menu");    // abs index 2
+    const bool has_menu = !lua_isnil(L, 2);
+    if (has_menu && !lua_isfunction(L, 2))
+        return luaL_error(
+            L, "og.register_campaign_hooks: 'picker_menu' must be a function");
+    lua_getfield(L, 1, "picker_action");  // abs index 3
+    const bool has_action = !lua_isnil(L, 3);
+    if (has_action && !lua_isfunction(L, 3))
+        return luaL_error(L, "og.register_campaign_hooks: 'picker_action' "
+                             "must be a function");
+    lua_getfield(L, 1, "base_camp");      // abs index 4
+    const bool has_zone = !lua_isnil(L, 4);
+    if (has_zone && !lua_isfunction(L, 4))
+        return luaL_error(L, "og.register_campaign_hooks: 'base_camp' "
+                             "must be a function");
+    if (!has_menu && !has_action && !has_zone)
+        return luaL_error(L, "og.register_campaign_hooks: register at least "
+                             "one of 'picker_menu' / 'picker_action' / "
+                             "'base_camp'");
+
+    std::vector<std::string> vars;
+    lua_getfield(L, 1, "vars");
+    if (!lua_isnil(L, -1)) {
+        if (!lua_istable(L, -1))
+            return luaL_error(L, "og.register_campaign_hooks: 'vars' must "
+                                 "be an array of names");
+        const lua_Integer count =
+            static_cast<lua_Integer>(lua_rawlen(L, -1));
+        if (count > hooks::kCampaignVarsMax)
+            return luaL_error(
+                L, "og.register_campaign_hooks: 'vars' names %d variables "
+                   "(max %d)",
+                static_cast<int>(count), hooks::kCampaignVarsMax);
+        for (lua_Integer i = 1; i <= count; i++) {
+            lua_rawgeti(L, -1, i);
+            if (lua_type(L, -1) != LUA_TSTRING)
+                return luaL_error(
+                    L, "og.register_campaign_hooks: vars[%d] must be a "
+                       "string",
+                    static_cast<int>(i));
+            std::size_t len = 0;
+            const char* name = lua_tolstring(L, -1, &len);
+            if (!hooks::valid_campaign_var_name({name, len}))
+                return luaL_error(
+                    L, "og.register_campaign_hooks: vars[%d] '%s' must be "
+                       "1-%d chars of [a-z0-9_]",
+                    static_cast<int>(i), name, hooks::kCampaignVarNameMax);
+            vars.emplace_back(name, len);
+            lua_pop(L, 1);
+        }
+        // A hash-keyed table (vars = {watch_paid = 1}) has rawlen 0 and
+        // would silently register nothing — reject any non-array key.
+        lua_pushnil(L);
+        while (lua_next(L, -2) != 0) {
+            lua_pop(L, 1);  // value
+            lua_Integer index = 0;
+            if (lua_type(L, -1) == LUA_TNUMBER && lua_isinteger(L, -1))
+                index = lua_tointeger(L, -1);
+            if (index < 1 || index > count) {
+                return luaL_error(
+                    L, "og.register_campaign_hooks: 'vars' must be an "
+                       "ARRAY of names (found a non-array key)");
+            }
+        }
+    }
+    lua_pop(L, 1);  // vars
+
+    // Declaration pass: silent no-op, the og.register_hooks precedent — a
+    // family chunk calling this neither rejects the pack nor registers.
+    if (st != nullptr && st->mode == VmMode::Declare)
+        return 0;
+    if (st == nullptr || st->owner == nullptr)
+        return luaL_error(L, "og.register_campaign_hooks: no world scripts");
+
+    if (st->campaign_registered) {
+        // One campaign, one book, or none: never raise (that would kill
+        // this chunk's unrelated level hooks and make the winner an
+        // accident of pack-id sort order). The query side answers "no
+        // scripted picker" and reports the conflict once.
+        if (st->campaign_conflict_source.empty())
+            st->campaign_conflict_source = campaign_caller_source(L);
+        return 0;
+    }
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, st->campaign_hooks_ref);
+    if (has_menu) {
+        lua_pushvalue(L, 2);
+        if (coverage::enabled())
+            coverage_declare_hook(L, "campaign/picker_menu");
+        lua_rawseti(L, -2, kCampaignMenuSlot);
+    }
+    if (has_action) {
+        lua_pushvalue(L, 3);
+        if (coverage::enabled())
+            coverage_declare_hook(L, "campaign/picker_action");
+        lua_rawseti(L, -2, kCampaignActionSlot);
+    }
+    if (has_zone) {
+        lua_pushvalue(L, 4);
+        if (coverage::enabled())
+            coverage_declare_hook(L, "campaign/base_camp");
+        lua_rawseti(L, -2, kCampaignZoneSlot);
+    }
+    lua_pop(L, 1);
+    st->campaign_vars = std::move(vars);
+    st->campaign_registered = true;
+    st->campaign_source = campaign_caller_source(L);
     return 0;
 }
 
@@ -1244,6 +1442,8 @@ void install_vm_scaffolding(ScriptHost::Impl& impl, VmState& st)
     lua_newtable(L);
     st.entity_hooks_ref = luaL_ref(L, LUA_REGISTRYINDEX);
     lua_newtable(L);
+    st.campaign_hooks_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+    lua_newtable(L);
     st.lib_exports_ref = luaL_ref(L, LUA_REGISTRYINDEX);
     lua_newtable(L);
     st.lib_status_ref = luaL_ref(L, LUA_REGISTRYINDEX);
@@ -1262,6 +1462,8 @@ void install_vm_scaffolding(ScriptHost::Impl& impl, VmState& st)
     lua_setfield(L, -2, "register_hooks");
     lua_pushcfunction(L, og_register_level_hooks);
     lua_setfield(L, -2, "register_level_hooks");
+    lua_pushcfunction(L, og_register_campaign_hooks);
+    lua_setfield(L, -2, "register_campaign_hooks");
     lua_pushcfunction(L, og_set_entity_hooks);
     lua_setfield(L, -2, "set_entity_hooks");
     lua_pushcfunction(L, og_rand);
@@ -1295,9 +1497,10 @@ void install_vm_scaffolding(ScriptHost::Impl& impl, VmState& st)
     lua_setfield(L, -2, "api");
     // The world entry points registered by hand above, behind the same
     // load-time fence the table-driven ones got. og.use and the three
-    // register_* seams are load-time BY DESIGN and stay open; og.family_id
-    // answers a deferred token in the declaration pass, so it handles its
-    // own case.
+    // register_* seams are load-time BY DESIGN and stay open (each
+    // registrar carries its own campaign-dispatch error instead);
+    // og.family_id answers a deferred token in the declaration pass, so it
+    // handles its own case.
     for (const char* name : {"rand", "is_alive", "entity_id",
                              "set_entity_hooks"})
         fence_world_entry(L, &st, name);
@@ -2321,6 +2524,902 @@ short level_damage_gate(walker* target, walker* attacker, short amount)
     }
     pop_dispatch_gen(L, gen);
     return result;
+}
+
+// ---------------------------------------------------------------------------
+// Campaign-hook dispatch (docs/campaign-scripting-design.md)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// RAII arm of the campaign-dispatch fence around a protected call. Never
+// arms at nested entry depth: a campaign hook dispatched from inside
+// another Lua entry would share that frame's budget and un-fence on the
+// inner scope's exit, so nesting is a caller bug — assert, refuse to arm,
+// and the dispatcher answers "no scripted picker".
+class CampaignDispatchScope {
+public:
+    CampaignDispatchScope(VmState& st, ScriptHost::Impl& impl) : st_(st)
+    {
+        assert(impl.entry_depth == 0 && !st.campaign_dispatch);
+        if (impl.entry_depth == 0 && !st.campaign_dispatch) {
+            st_.campaign_dispatch = true;
+            armed_ = true;
+        }
+    }
+    ~CampaignDispatchScope()
+    {
+        if (armed_)
+            st_.campaign_dispatch = false;
+    }
+    CampaignDispatchScope(const CampaignDispatchScope&) = delete;
+    CampaignDispatchScope& operator=(const CampaignDispatchScope&) = delete;
+    bool armed() const { return armed_; }
+
+private:
+    VmState& st_;
+    bool armed_ = false;
+};
+
+// Gate shared by every campaign query/dispatch: no packs → nothing; a
+// conflicted registration answers "no scripted picker" and records the
+// conflict as a script error ONCE (the once-latch lives in the VmState, so
+// a VM rebuild that replays the same conflict reports again — correctly,
+// since the replay re-created it).
+VmState* campaign_vm_state()
+{
+    if (pack_scripts().empty())
+        return nullptr;
+    WorldScripts& ws = active_world_scripts();
+    ScriptHost::Impl& impl = ws.host().impl();
+    VmState* st = get_vm_state(impl.L);
+    if (st == nullptr || !st->campaign_registered)
+        return nullptr;
+    if (!st->campaign_conflict_source.empty()) {
+        if (!st->campaign_conflict_reported) {
+            st->campaign_conflict_reported = true;
+            const std::string message =
+                "duplicate og.register_campaign_hooks (first: " +
+                st->campaign_source + ", second: " +
+                st->campaign_conflict_source +
+                ") — one campaign, one book: no scripted picker will be "
+                "served";
+            LogError("class pack: {}\n", message);
+            impl.record_error("og.register_campaign_hooks", message.c_str());
+        }
+        return nullptr;
+    }
+    return st;
+}
+
+// Pushes the registered hook fn for `slot`, or returns false, stack clean.
+bool push_campaign_hook_fn(lua_State* L, VmState* st, lua_Integer slot)
+{
+    lua_rawgeti(L, LUA_REGISTRYINDEX, st->campaign_hooks_ref);
+    lua_rawgeti(L, -1, slot);
+    if (lua_isfunction(L, -1)) {
+        lua_remove(L, -2);
+        return true;
+    }
+    lua_pop(L, 2);
+    return false;
+}
+
+bool malformed_page(ScriptHost::Impl& impl, const std::string& what)
+{
+    const std::string message =
+        "campaign picker_menu returned a malformed page: " + what;
+    LogError("class pack: {}\n", message);
+    impl.record_error("campaign:picker_menu", message.c_str());
+    return false;
+}
+
+// Raw string field read: false = present but not a string (nil answers
+// true with `out` untouched). Raw accessors throughout the parse — the
+// page came back from an untrusted chunk, and a metamethod firing inside
+// an unprotected lua_getfield would raise with no handler.
+bool read_string_field(lua_State* L, int idx, const char* key,
+                       std::string& out, bool& present)
+{
+    lua_pushstring(L, key);
+    lua_rawget(L, idx > 0 ? idx : idx - 1);
+    present = !lua_isnil(L, -1);
+    if (!present) {
+        lua_pop(L, 1);
+        return true;
+    }
+    if (lua_type(L, -1) != LUA_TSTRING) {
+        lua_pop(L, 1);
+        return false;
+    }
+    std::size_t len = 0;
+    const char* s = lua_tolstring(L, -1, &len);
+    out.assign(s, len);
+    lua_pop(L, 1);
+    return true;
+}
+
+// Raw integer field read (integer subtype required); nil answers true with
+// `present` false and `out` untouched.
+bool read_int_field_opt(lua_State* L, int idx, const char* key, int& out,
+                        bool& present)
+{
+    lua_pushstring(L, key);
+    lua_rawget(L, idx > 0 ? idx : idx - 1);
+    present = !lua_isnil(L, -1);
+    if (!present) {
+        lua_pop(L, 1);
+        return true;
+    }
+    if (!lua_isinteger(L, -1)) {
+        lua_pop(L, 1);
+        return false;
+    }
+    out = static_cast<int>(lua_tointeger(L, -1));
+    lua_pop(L, 1);
+    return true;
+}
+
+// Raw integer field read (integer subtype required); nil answers true and
+// leaves `out` at its default.
+bool read_int_field(lua_State* L, int idx, const char* key, int& out)
+{
+    bool present = false;
+    return read_int_field_opt(L, idx, key, out, present);
+}
+
+// Raw boolean field read; nil answers true and leaves `out` at its default.
+bool read_bool_field(lua_State* L, int idx, const char* key, bool& out)
+{
+    lua_pushstring(L, key);
+    lua_rawget(L, idx > 0 ? idx : idx - 1);
+    if (lua_isnil(L, -1)) {
+        lua_pop(L, 1);
+        return true;
+    }
+    if (!lua_isboolean(L, -1)) {
+        lua_pop(L, 1);
+        return false;
+    }
+    out = lua_toboolean(L, -1) != 0;
+    lua_pop(L, 1);
+    return true;
+}
+
+bool parse_entry_kind(const std::string& s, CampaignPageEntry::Kind& out)
+{
+    if (s == "level") {
+        out = CampaignPageEntry::Kind::Level;
+        return true;
+    }
+    if (s == "page") {
+        out = CampaignPageEntry::Kind::Page;
+        return true;
+    }
+    if (s == "action") {
+        out = CampaignPageEntry::Kind::Action;
+        return true;
+    }
+    return false;
+}
+
+// Reads one page-entry table (stack top) into `entry` — the field
+// vocabulary shared by picker pages and zone actions widgets. False sets
+// `bad` to the malformed-message tail; the caller owns the stack cleanup.
+bool read_page_entry(lua_State* L, const std::string& at,
+                     CampaignPageEntry& entry, std::string& bad)
+{
+    bool present = false;
+    if (!read_string_field(L, -1, "id", entry.id, present) || !present ||
+        entry.id.empty()) {
+        bad = at + ".id is missing or not a string";
+        return false;
+    }
+    std::string kind;
+    if (!read_string_field(L, -1, "kind", kind, present) || !present ||
+        !parse_entry_kind(kind, entry.kind)) {
+        bad = at + ".kind must be \"level\", \"page\" or \"action\"";
+        return false;
+    }
+    if (!read_string_field(L, -1, "label", entry.label, present)) {
+        bad = at + ".label is not a string";
+        return false;
+    }
+    if (!read_string_field(L, -1, "note", entry.note, present)) {
+        bad = at + ".note is not a string";
+        return false;
+    }
+    if (!read_int_field(L, -1, "level", entry.level)) {
+        bad = at + ".level is not an integer";
+        return false;
+    }
+    if (!read_int_field(L, -1, "cost", entry.cost)) {
+        bad = at + ".cost is not an integer";
+        return false;
+    }
+    if (!read_bool_field(L, -1, "done", entry.done)) {
+        bad = at + ".done is not a boolean";
+        return false;
+    }
+    // #207: the replay mark (level rows; arm-only-when-cleared is the
+    // engine's check, not the script's).
+    if (!read_bool_field(L, -1, "replay", entry.replay)) {
+        bad = at + ".replay is not a boolean";
+        return false;
+    }
+    return true;
+}
+
+// Parses the page table at the top of the stack into `out` (stack left
+// unchanged). C++ owns the bounds: entries clip at kCampaignPageMaxEntries,
+// lines at kCampaignPageMaxLines; a missing/mistyped required field is
+// malformed → false, recorded with the field's name.
+bool parse_campaign_page(lua_State* L, ScriptHost::Impl& impl,
+                         CampaignPage& out)
+{
+    if (!lua_istable(L, -1))
+        return malformed_page(impl, std::string("returned a ") +
+                                        luaL_typename(L, -1) +
+                                        ", not a page table");
+    bool present = false;
+    if (!read_string_field(L, -1, "title", out.title, present) || !present)
+        return malformed_page(impl, "'title' is missing or not a string");
+
+    lua_pushstring(L, "lines");
+    lua_rawget(L, -2);
+    if (!lua_isnil(L, -1)) {
+        if (!lua_istable(L, -1)) {
+            lua_pop(L, 1);
+            return malformed_page(impl, "'lines' is not an array");
+        }
+        const lua_Integer count = std::min<lua_Integer>(
+            static_cast<lua_Integer>(lua_rawlen(L, -1)),
+            kCampaignPageMaxLines);
+        for (lua_Integer i = 1; i <= count; i++) {
+            lua_rawgeti(L, -1, i);
+            if (lua_type(L, -1) != LUA_TSTRING) {
+                lua_pop(L, 2);
+                return malformed_page(
+                    impl, "lines[" + std::to_string(i) + "] is not a string");
+            }
+            std::size_t len = 0;
+            const char* s = lua_tolstring(L, -1, &len);
+            out.lines.emplace_back(s, len);
+            lua_pop(L, 1);
+        }
+    }
+    lua_pop(L, 1);
+
+    lua_pushstring(L, "entries");
+    lua_rawget(L, -2);
+    if (!lua_isnil(L, -1)) {
+        if (!lua_istable(L, -1)) {
+            lua_pop(L, 1);
+            return malformed_page(impl, "'entries' is not an array");
+        }
+        const lua_Integer count = std::min<lua_Integer>(
+            static_cast<lua_Integer>(lua_rawlen(L, -1)),
+            kCampaignPageMaxEntries);
+        for (lua_Integer i = 1; i <= count; i++) {
+            const std::string at = "entries[" + std::to_string(i) + "]";
+            lua_rawgeti(L, -1, i);
+            if (!lua_istable(L, -1)) {
+                lua_pop(L, 2);
+                return malformed_page(impl, at + " is not a table");
+            }
+            CampaignPageEntry entry;
+            std::string bad;
+            if (!read_page_entry(L, at, entry, bad)) {
+                lua_pop(L, 2);
+                return malformed_page(impl, bad);
+            }
+            out.entries.push_back(std::move(entry));
+            lua_pop(L, 1);
+        }
+    }
+    lua_pop(L, 1);
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Base Camp zone parse (docs/basecamp-zones-design.md "The widget contract")
+// ---------------------------------------------------------------------------
+
+bool malformed_zone(ScriptHost::Impl& impl, const std::string& what)
+{
+    const std::string message =
+        "campaign base_camp returned a malformed zone: " + what;
+    LogError("class pack: {}\n", message);
+    impl.record_error("campaign:base_camp", message.c_str());
+    return false;
+}
+
+bool parse_zone_kind(const std::string& s, CampaignZoneWidget::Kind& out)
+{
+    if (s == "roster") {
+        out = CampaignZoneWidget::Kind::Roster;
+        return true;
+    }
+    if (s == "text") {
+        out = CampaignZoneWidget::Kind::Text;
+        return true;
+    }
+    if (s == "actions") {
+        out = CampaignZoneWidget::Kind::Actions;
+        return true;
+    }
+    if (s == "readout") {
+        out = CampaignZoneWidget::Kind::Readout;
+        return true;
+    }
+    return false;
+}
+
+// The roster widget's `locks` array (widget table at stack top). Each lock
+// addresses heroes by campaign_tag (1..255) or unset = true — exactly one
+// of the two — never by guy id (ids regenerate every mission).
+bool parse_zone_locks(lua_State* L, const std::string& at,
+                      CampaignZoneWidget& widget, std::string& bad)
+{
+    lua_pushstring(L, "locks");
+    lua_rawget(L, -2);
+    if (lua_isnil(L, -1)) {
+        lua_pop(L, 1);
+        return true;
+    }
+    if (!lua_istable(L, -1)) {
+        lua_pop(L, 1);
+        bad = at + ".locks is not an array";
+        return false;
+    }
+    const lua_Integer count = static_cast<lua_Integer>(lua_rawlen(L, -1));
+    if (count > kCampaignZoneMaxRosterLocks) {
+        lua_pop(L, 1);
+        bad = at + ".locks lists " + std::to_string(count) + " locks (max " +
+              std::to_string(kCampaignZoneMaxRosterLocks) + ")";
+        return false;
+    }
+    for (lua_Integer j = 1; j <= count; j++) {
+        const std::string lock_at = at + ".locks[" + std::to_string(j) + "]";
+        lua_rawgeti(L, -1, j);
+        if (!lua_istable(L, -1)) {
+            lua_pop(L, 2);
+            bad = lock_at + " is not a table";
+            return false;
+        }
+        CampaignRosterLock lock;
+        bool tag_present = false;
+        int tag = 0;
+        if (!read_int_field_opt(L, -1, "tag", tag, tag_present)) {
+            lua_pop(L, 2);
+            bad = lock_at + ".tag is not an integer";
+            return false;
+        }
+        if (!read_bool_field(L, -1, "unset", lock.unset)) {
+            lua_pop(L, 2);
+            bad = lock_at + ".unset is not a boolean";
+            return false;
+        }
+        if (tag_present == lock.unset) {
+            lua_pop(L, 2);
+            bad = lock_at + " needs exactly one of tag / unset = true";
+            return false;
+        }
+        if (tag_present) {
+            if (tag < 1 || tag > 255) {
+                lua_pop(L, 2);
+                bad = lock_at + ".tag must be 1..255 (0 is the unset state "
+                                "— lock it with unset = true)";
+                return false;
+            }
+            lock.tag = tag;
+        }
+        bool present = false;
+        if (!read_string_field(L, -1, "reason", lock.reason, present)) {
+            lua_pop(L, 2);
+            bad = lock_at + ".reason is not a string";
+            return false;
+        }
+        widget.locks.push_back(std::move(lock));
+        lua_pop(L, 1);
+    }
+    lua_pop(L, 1);
+    return true;
+}
+
+// The roster widget's optional `assign` chip spec (widget table at stack
+// top): key (safe-id charset), exactly two non-empty labels, optional
+// frozen reason.
+bool parse_zone_assign(lua_State* L, const std::string& at,
+                       CampaignZoneWidget& widget, std::string& bad)
+{
+    lua_pushstring(L, "assign");
+    lua_rawget(L, -2);
+    if (lua_isnil(L, -1)) {
+        lua_pop(L, 1);
+        return true;
+    }
+    if (!lua_istable(L, -1)) {
+        lua_pop(L, 1);
+        bad = at + ".assign is not a table";
+        return false;
+    }
+    bool present = false;
+    if (!read_string_field(L, -1, "key", widget.assign.key, present) ||
+        !present || !valid_campaign_var_name(widget.assign.key)) {
+        lua_pop(L, 1);
+        bad = at + ".assign.key must be 1-" +
+              std::to_string(kCampaignVarNameMax) + " chars of [a-z0-9_]";
+        return false;
+    }
+    lua_pushstring(L, "labels");
+    lua_rawget(L, -2);
+    if (!lua_istable(L, -1) ||
+        static_cast<lua_Integer>(lua_rawlen(L, -1)) != 2) {
+        lua_pop(L, 2);
+        bad = at + ".assign.labels must list exactly 2 labels";
+        return false;
+    }
+    for (lua_Integer k = 1; k <= 2; k++) {
+        lua_rawgeti(L, -1, k);
+        std::size_t len = 0;
+        const char* s = lua_type(L, -1) == LUA_TSTRING
+                            ? lua_tolstring(L, -1, &len)
+                            : nullptr;
+        if (s == nullptr || len == 0) {
+            lua_pop(L, 3);
+            bad = at + ".assign.labels[" + std::to_string(k) +
+                  "] must be a non-empty string";
+            return false;
+        }
+        widget.assign.labels.emplace_back(s, len);
+        lua_pop(L, 1);
+    }
+    lua_pop(L, 1);  // labels
+    if (!read_string_field(L, -1, "frozen", widget.assign.frozen, present)) {
+        lua_pop(L, 1);
+        bad = at + ".assign.frozen is not a string";
+        return false;
+    }
+    widget.assign.active = true;
+    lua_pop(L, 1);  // assign
+    return true;
+}
+
+bool parse_zone_roster(lua_State* L, const std::string& at,
+                       CampaignZoneWidget& widget, std::string& bad)
+{
+    const struct {
+        const char* key;
+        bool CampaignZoneWidget::* member;
+    } caps[] = {
+        {"can_deploy", &CampaignZoneWidget::can_deploy},
+        {"can_train", &CampaignZoneWidget::can_train},
+        {"can_reorder", &CampaignZoneWidget::can_reorder},
+        {"can_team", &CampaignZoneWidget::can_team},
+        {"can_hire", &CampaignZoneWidget::can_hire},
+    };
+    for (const auto& cap : caps) {
+        if (!read_bool_field(L, -1, cap.key, widget.*(cap.member))) {
+            bad = at + "." + cap.key + " is not a boolean";
+            return false;
+        }
+    }
+    if (!parse_zone_locks(L, at, widget, bad))
+        return false;
+    return parse_zone_assign(L, at, widget, bad);
+}
+
+bool parse_zone_text(lua_State* L, const std::string& at,
+                     CampaignZoneWidget& widget, std::string& bad)
+{
+    lua_pushstring(L, "lines");
+    lua_rawget(L, -2);
+    if (lua_isnil(L, -1)) {
+        lua_pop(L, 1);
+        return true;
+    }
+    if (!lua_istable(L, -1)) {
+        lua_pop(L, 1);
+        bad = at + ".lines is not an array";
+        return false;
+    }
+    const lua_Integer count = static_cast<lua_Integer>(lua_rawlen(L, -1));
+    if (count > kCampaignZoneMaxTextLines) {
+        lua_pop(L, 1);
+        bad = at + " lists " + std::to_string(count) + " lines (max " +
+              std::to_string(kCampaignZoneMaxTextLines) + ")";
+        return false;
+    }
+    for (lua_Integer j = 1; j <= count; j++) {
+        lua_rawgeti(L, -1, j);
+        if (lua_type(L, -1) != LUA_TSTRING) {
+            lua_pop(L, 2);
+            bad = at + ".lines[" + std::to_string(j) + "] is not a string";
+            return false;
+        }
+        std::size_t len = 0;
+        const char* s = lua_tolstring(L, -1, &len);
+        widget.lines.emplace_back(s, len);
+        lua_pop(L, 1);
+    }
+    lua_pop(L, 1);
+    return true;
+}
+
+// `total_entries` accumulates the ZONE-wide action-row count: the 16-row
+// cap is what keeps the appended ordinal band 49..71 sufficient (16 rows +
+// 4 pagers + 3 spare), so it binds across widgets, not per widget.
+bool parse_zone_actions(lua_State* L, const std::string& at,
+                        CampaignZoneWidget& widget, int& total_entries,
+                        std::string& bad)
+{
+    lua_pushstring(L, "entries");
+    lua_rawget(L, -2);
+    if (lua_isnil(L, -1)) {
+        lua_pop(L, 1);
+        return true;
+    }
+    if (!lua_istable(L, -1)) {
+        lua_pop(L, 1);
+        bad = at + ".entries is not an array";
+        return false;
+    }
+    const lua_Integer count = static_cast<lua_Integer>(lua_rawlen(L, -1));
+    if (count > kCampaignZoneMaxActionEntries ||
+        static_cast<int>(count) + total_entries >
+            kCampaignZoneMaxActionEntries) {
+        lua_pop(L, 1);
+        bad = "the zone lists more than " +
+              std::to_string(kCampaignZoneMaxActionEntries) +
+              " action rows in total";
+        return false;
+    }
+    total_entries += static_cast<int>(count);
+    for (lua_Integer j = 1; j <= count; j++) {
+        const std::string entry_at =
+            at + ".entries[" + std::to_string(j) + "]";
+        lua_rawgeti(L, -1, j);
+        if (!lua_istable(L, -1)) {
+            lua_pop(L, 2);
+            bad = entry_at + " is not a table";
+            return false;
+        }
+        CampaignPageEntry entry;
+        if (!read_page_entry(L, entry_at, entry, bad)) {
+            lua_pop(L, 2);
+            return false;
+        }
+        widget.entries.push_back(std::move(entry));
+        lua_pop(L, 1);
+    }
+    lua_pop(L, 1);
+    return true;
+}
+
+bool parse_zone_readout(lua_State* L, const std::string& at,
+                        CampaignZoneWidget& widget, std::string& bad)
+{
+    lua_pushstring(L, "items");
+    lua_rawget(L, -2);
+    if (lua_isnil(L, -1)) {
+        lua_pop(L, 1);
+        return true;
+    }
+    if (!lua_istable(L, -1)) {
+        lua_pop(L, 1);
+        bad = at + ".items is not an array";
+        return false;
+    }
+    const lua_Integer count = static_cast<lua_Integer>(lua_rawlen(L, -1));
+    if (count > kCampaignZoneMaxReadoutItems) {
+        lua_pop(L, 1);
+        bad = at + " lists " + std::to_string(count) +
+              " readout items (max " +
+              std::to_string(kCampaignZoneMaxReadoutItems) + ")";
+        return false;
+    }
+    for (lua_Integer j = 1; j <= count; j++) {
+        const std::string item_at =
+            at + ".items[" + std::to_string(j) + "]";
+        lua_rawgeti(L, -1, j);
+        if (!lua_istable(L, -1)) {
+            lua_pop(L, 2);
+            bad = item_at + " is not a table";
+            return false;
+        }
+        CampaignZoneWidget::ReadoutItem item;
+        bool present = false;
+        if (!read_string_field(L, -1, "label", item.label, present) ||
+            !present) {
+            lua_pop(L, 2);
+            bad = item_at + ".label is missing or not a string";
+            return false;
+        }
+        if (!read_string_field(L, -1, "value", item.value, present) ||
+            !present) {
+            lua_pop(L, 2);
+            bad = item_at + ".value is missing or not a string";
+            return false;
+        }
+        widget.items.push_back(std::move(item));
+        lua_pop(L, 1);
+    }
+    lua_pop(L, 1);
+    return true;
+}
+
+// Parses widgets[i] (stack top) into `widget`. Only the declared kind's
+// fields are read — the rest keep their defaults, matching the page
+// parser's known-keys-only discipline. False sets `bad`.
+bool parse_zone_widget(lua_State* L, const std::string& at,
+                       CampaignZoneWidget& widget, int& total_entries,
+                       std::string& bad)
+{
+    bool present = false;
+    std::string kind;
+    if (!read_string_field(L, -1, "kind", kind, present) || !present ||
+        !parse_zone_kind(kind, widget.kind)) {
+        bad = at + ".kind must be \"roster\", \"text\", \"actions\" or "
+                   "\"readout\"";
+        return false;
+    }
+    if (!read_int_field(L, -1, "weight", widget.weight)) {
+        bad = at + ".weight is not an integer";
+        return false;
+    }
+    if (widget.weight < 0) {
+        bad = at + ".weight is negative";
+        return false;
+    }
+    if (widget.weight > kCampaignZoneMaxWeight) {
+        bad = at + ".weight is " + std::to_string(widget.weight) +
+              " row units (max " + std::to_string(kCampaignZoneMaxWeight) +
+              ")";
+        return false;
+    }
+    switch (widget.kind) {
+    case CampaignZoneWidget::Kind::Roster:
+        return parse_zone_roster(L, at, widget, bad);
+    case CampaignZoneWidget::Kind::Text:
+        return parse_zone_text(L, at, widget, bad);
+    case CampaignZoneWidget::Kind::Actions:
+        return parse_zone_actions(L, at, widget, total_entries, bad);
+    case CampaignZoneWidget::Kind::Readout:
+        return parse_zone_readout(L, at, widget, bad);
+    }
+    return false;
+}
+
+// Parses the zone table at the top of the stack into `out` (stack left
+// unchanged). Unlike parse_campaign_page, every bound is a hard rejection
+// — a clip would silently re-shape a composition the author counted on —
+// so an over-budget zone is malformed and the caller renders the DEFAULT
+// zone (docs/basecamp-zones-design.md "Bounds arithmetic").
+bool parse_campaign_zone(lua_State* L, ScriptHost::Impl& impl,
+                         CampaignZone& out)
+{
+    if (!lua_istable(L, -1))
+        return malformed_zone(impl, std::string("returned a ") +
+                                        luaL_typename(L, -1) +
+                                        ", not a zone table");
+    lua_pushstring(L, "widgets");
+    lua_rawget(L, -2);
+    if (!lua_istable(L, -1)) {
+        lua_pop(L, 1);
+        return malformed_zone(impl, "'widgets' is missing or not an array");
+    }
+    const lua_Integer count = static_cast<lua_Integer>(lua_rawlen(L, -1));
+    if (count > kCampaignZoneMaxWidgets) {
+        lua_pop(L, 1);
+        return malformed_zone(
+            impl, "lists " + std::to_string(count) + " widgets (max " +
+                      std::to_string(kCampaignZoneMaxWidgets) + ")");
+    }
+    int roster_widgets = 0;
+    int readout_widgets = 0;
+    int actions_widgets = 0;
+    int text_widgets = 0;
+    int total_entries = 0;
+    for (lua_Integer i = 1; i <= count; i++) {
+        const std::string at = "widgets[" + std::to_string(i) + "]";
+        lua_rawgeti(L, -1, i);
+        if (!lua_istable(L, -1)) {
+            lua_pop(L, 2);
+            return malformed_zone(impl, at + " is not a table");
+        }
+        CampaignZoneWidget widget;
+        std::string bad;
+        if (!parse_zone_widget(L, at, widget, total_entries, bad)) {
+            lua_pop(L, 2);
+            return malformed_zone(impl, bad);
+        }
+        switch (widget.kind) {
+        case CampaignZoneWidget::Kind::Roster:
+            roster_widgets++;
+            break;
+        case CampaignZoneWidget::Kind::Readout:
+            readout_widgets++;
+            break;
+        case CampaignZoneWidget::Kind::Actions:
+            actions_widgets++;
+            break;
+        case CampaignZoneWidget::Kind::Text:
+            text_widgets++;
+            break;
+        }
+        out.widgets.push_back(std::move(widget));
+        lua_pop(L, 1);
+    }
+    lua_pop(L, 1);  // widgets
+    // Per-kind caps: the roster/readout are singleton hardware (one set of
+    // deploy/chip/move-up ordinals, one readout row); actions/text split
+    // the remaining band at most two ways each.
+    if (roster_widgets != 1)
+        return malformed_zone(
+            impl, "declares " + std::to_string(roster_widgets) +
+                      " roster widgets (exactly one required)");
+    if (readout_widgets > kCampaignZoneMaxReadoutWidgets)
+        return malformed_zone(
+            impl, "declares " + std::to_string(readout_widgets) +
+                      " readout widgets (max " +
+                      std::to_string(kCampaignZoneMaxReadoutWidgets) + ")");
+    if (actions_widgets > kCampaignZoneMaxActionsWidgets)
+        return malformed_zone(
+            impl, "declares " + std::to_string(actions_widgets) +
+                      " actions widgets (max " +
+                      std::to_string(kCampaignZoneMaxActionsWidgets) + ")");
+    if (text_widgets > kCampaignZoneMaxTextWidgets)
+        return malformed_zone(
+            impl, "declares " + std::to_string(text_widgets) +
+                      " text widgets (max " +
+                      std::to_string(kCampaignZoneMaxTextWidgets) + ")");
+    return true;
+}
+
+}  // namespace
+
+bool campaign_picker_registered()
+{
+    return campaign_vm_state() != nullptr;
+}
+
+std::vector<std::string> campaign_registered_vars()
+{
+    VmState* st = campaign_vm_state();
+    if (st == nullptr)
+        return {};
+    return st->campaign_vars;
+}
+
+bool campaign_picker_page(const std::string& page_id, CampaignPage& out)
+{
+    VmState* st = campaign_vm_state();
+    if (st == nullptr)
+        return false;
+    ScriptHost::Impl& impl = st->owner->host().impl();
+    lua_State* L = impl.L;
+    if (!push_campaign_hook_fn(L, st, kCampaignMenuSlot))
+        return false;
+    CampaignDispatchScope scope(*st, impl);
+    if (!scope.armed()) {
+        lua_pop(L, 1);
+        return false;
+    }
+    const std::uint64_t gen = push_dispatch_gen(L);
+    lua_pushlstring(L, page_id.data(), page_id.size());
+    bool ok = impl.protected_call("campaign:picker_menu", 1, 1);
+    if (ok) {
+        out = CampaignPage{};
+        ok = parse_campaign_page(L, impl, out);
+        lua_pop(L, 1);
+    }
+    pop_dispatch_gen(L, gen);
+    return ok;
+}
+
+bool campaign_picker_action(const std::string& entry_id,
+                            CampaignActionResult& out)
+{
+    VmState* st = campaign_vm_state();
+    if (st == nullptr)
+        return false;
+    ScriptHost::Impl& impl = st->owner->host().impl();
+    lua_State* L = impl.L;
+    if (!push_campaign_hook_fn(L, st, kCampaignActionSlot))
+        return false;
+    CampaignDispatchScope scope(*st, impl);
+    if (!scope.armed()) {
+        lua_pop(L, 1);
+        return false;
+    }
+    out = CampaignActionResult{};
+    const std::uint64_t gen = push_dispatch_gen(L);
+    lua_pushlstring(L, entry_id.data(), entry_id.size());
+    // A hook ERROR answers ok=false but still counts as dispatched: a spend
+    // already applied sticks, so the caller must refresh the page either
+    // way rather than fall back to the stock UI.
+    if (impl.protected_call("campaign:picker_action", 1, 1)) {
+        out.ok = true;
+        // nil (or any non-table) = no toast; a table's optional `message`
+        // string is the toast. Raw access: untrusted result value.
+        if (lua_istable(L, -1)) {
+            bool present = false;
+            read_string_field(L, -1, "message", out.message, present);
+            // Optional `level` (D3): the scenario the action answers with.
+            // Read at 64-bit width so an oversized value cannot wrap into
+            // the loader's id range; anything outside 0..32767 — or a
+            // non-integer — stays the "no level carried" default (-1).
+            lua_pushstring(L, "level");
+            lua_rawget(L, -2);
+            if (lua_isinteger(L, -1)) {
+                const lua_Integer level = lua_tointeger(L, -1);
+                if (level >= 0 && level <= 32767)
+                    out.level = static_cast<int>(level);
+            }
+            lua_pop(L, 1);
+        }
+        lua_pop(L, 1);
+    }
+    pop_dispatch_gen(L, gen);
+    return true;
+}
+
+bool campaign_zone_registered()
+{
+    VmState* st = campaign_vm_state();
+    if (st == nullptr)
+        return false;
+    ScriptHost::Impl& impl = st->owner->host().impl();
+    lua_State* L = impl.L;
+    if (!push_campaign_hook_fn(L, st, kCampaignZoneSlot))
+        return false;
+    lua_pop(L, 1);
+    return true;
+}
+
+bool campaign_zone(CampaignZone& out)
+{
+    VmState* st = campaign_vm_state();
+    if (st == nullptr)
+        return false;
+    ScriptHost::Impl& impl = st->owner->host().impl();
+    lua_State* L = impl.L;
+    if (!push_campaign_hook_fn(L, st, kCampaignZoneSlot))
+        return false;
+    CampaignDispatchScope scope(*st, impl);
+    if (!scope.armed()) {
+        lua_pop(L, 1);
+        return false;
+    }
+    const std::uint64_t gen = push_dispatch_gen(L);
+    bool ok = impl.protected_call("campaign:base_camp", 0, 1);
+    if (ok) {
+        out = CampaignZone{};
+        ok = parse_campaign_zone(L, impl, out);
+        lua_pop(L, 1);
+    }
+    pop_dispatch_gen(L, gen);
+    return ok;
+}
+
+std::vector<std::string> og_function_names()
+{
+    WorldScripts& ws = active_world_scripts();
+    ScriptHost::Impl& impl = ws.host().impl();
+    lua_State* L = impl.L;
+    impl.push_sandbox_root();
+    lua_getfield(L, -1, "og");
+    std::vector<std::string> names;
+    lua_pushnil(L);
+    while (lua_next(L, -2) != 0) {
+        if (lua_isfunction(L, -1) && lua_type(L, -2) == LUA_TSTRING)
+            names.emplace_back(lua_tostring(L, -2));
+        lua_pop(L, 1);
+    }
+    lua_pop(L, 2);
+    std::sort(names.begin(), names.end());
+    return names;
 }
 
 }  // namespace hooks

@@ -25,6 +25,7 @@
 #include <openglad/interface/ui/campaign_picker.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/render/view.h>
+#include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/screen.h>
@@ -73,6 +74,17 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 
     if (filename != nullptr && filename[0] != '\0')
     {
+        // #207: the replay arm is transient session state, so the disk
+        // round-trip below drops it (SaveData::load clears the pair). Carry
+        // it across when the loaded save still points at the armed level —
+        // the launch and the retry loop both reload the slot the picker
+        // just saved, and the excursion must survive that reload or the
+        // purge below empties the replayed level. A load that lands
+        // anywhere else keeps the cleared arm (a different company, a
+        // fallback level).
+        const short armed_level = screenp->save_data.replay_level;
+        const short armed_origin = screenp->save_data.replay_origin;
+
         // First load the team list ..
         const SaveDataIoError load_error =
             screenp->save_data.load_with_error(filename);
@@ -82,6 +94,11 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
                      filename,
                      static_cast<int>(load_error));
             return LoadSavedGameError::SaveDataLoadFailed;
+        }
+        if (armed_level != 0 && screenp->save_data.scen_num == armed_level)
+        {
+            screenp->save_data.replay_level = armed_level;
+            screenp->save_data.replay_origin = armed_origin;
         }
     }
 
@@ -213,10 +230,16 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	const std::vector<short> view_teams =
 		og::ui::derive_local_gameplay_seat_teams(screenp->save_data);
 
-	// Have we already done this scenario? Scripted maps skip the purge:
-	// rematches replay the full map (mode objectives and bot squads stay).
+	// Have we already done this scenario? The purge exemption is CAMPAIGN
+	// policy, not the level's TYPE_SCRIPTED bit (that bit only means "level
+	// carries scripts"): a `matchup: versus` campaign is an arena, so its
+	// rematches always replay the full map (mode objectives and bot squads
+	// stay). So does an armed replay of exactly this level (#207): REPLAY
+	// loads the authored census; the purge is VISIT's classic empty
+	// walk-through.
 	if (og::runtime::current_session->myscreen_->save_data.is_level_completed(og::runtime::current_session->myscreen_->save_data.scen_num) &&
-	    !(og::runtime::current_session->myscreen_->world().type & GameWorld::TYPE_SCRIPTED))
+	    og::data::campaign_matchup(og::runtime::current_session->myscreen_->save_data.current_campaign) != "versus" &&
+	    !og::runtime::current_session->myscreen_->save_data.replay_armed_for(og::runtime::current_session->myscreen_->save_data.scen_num))
 	{
 		//                Log("already done level\n");
 		for(auto& uptr : og::runtime::current_session->myscreen_->world().oblist)

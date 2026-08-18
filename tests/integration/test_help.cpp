@@ -46,7 +46,8 @@ struct MainMenuButtonState {
     bool started;
     bool finished;
     bool has_options;
-    bool has_difficulty;
+    bool has_main_difficulty;
+    bool has_camp_difficulty;
     bool has_help;
     bool has_quit;
 };
@@ -62,7 +63,7 @@ static int mainmenu_button_injector(void* data)
 
     // Check which buttons exist on the main menu
     state->has_options = has_interactable("options");
-    state->has_difficulty = has_interactable("difficulty");
+    state->has_main_difficulty = has_interactable("difficulty");
     state->has_help = has_interactable("help");
     state->has_quit = has_interactable("quit");
 
@@ -73,6 +74,10 @@ static int mainmenu_button_injector(void* data)
     SDL_Delay(500);
     wait_for_interactable("back", 10000);
     SDL_Delay(750);
+
+    // The DIFFICULTY door lives on the Base Camp command strip now
+    // (docs/camp-controls-design.md).
+    state->has_camp_difficulty = has_interactable("difficulty");
 
     fprintf(stderr, "  [test] clicking back\n");
     interact("back");
@@ -89,7 +94,8 @@ TEST(Help, mainmenu_buttons_exist) {
     og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    MainMenuButtonState state = { false, false, false, false, false, false };
+    MainMenuButtonState state = { false, false, false, false, false, false,
+                                  false };
     SDL_Thread* thread = SDL_CreateThread(mainmenu_button_injector, "btn_test", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
@@ -106,7 +112,10 @@ TEST(Help, mainmenu_buttons_exist) {
 
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
     ASSERT_TRUE(state.has_options) << "Game Settings should exist on main menu";
-    ASSERT_TRUE(state.has_difficulty) << "difficulty button should exist on main menu";
+    ASSERT_FALSE(state.has_main_difficulty)
+        << "difficulty belongs to the Base Camp strip, not the main menu";
+    ASSERT_TRUE(state.has_camp_difficulty)
+        << "the Base Camp command strip carries the difficulty door";
     ASSERT_TRUE(state.has_help) << "help should exist beside quit";
     ASSERT_TRUE(state.has_quit) << "native quit should remain interactable";
 }

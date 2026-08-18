@@ -40,14 +40,20 @@ static void cleanup_picker_state()
     pks().main_title_logo_data.free();
 }
 
-// Test: The main-menu DIFFICULTY button is a DOOR into the blocking
-// DIFFICULTY subscreen (unique BACK id "difficulty_back"), which holds the
-// difficulty cycler plus the five match-rule settings.
+// Test: the DIFFICULTY button on the Base Camp command strip is a DOOR into
+// the blocking DIFFICULTY subscreen (unique BACK id "difficulty_back"), which
+// holds the difficulty cycler plus the five match-rule settings.
 //
-// Flow: Main Menu -> DIFFICULTY door -> cycle every setting a full cycle
-// (difficulty x3, respawns x3, delay x3, permadeath x2, generators x3,
-// infinite gold x2 — all back to their defaults) -> BACK -> GAME SETTINGS
-// -> BACK -> return
+// Flow: Main Menu -> CONTINUE -> Base Camp -> DIFFICULTY door -> cycle every
+// setting a full cycle (difficulty x3, respawns x4, delay x3, permadeath x2,
+// generators x3, infinite gold x2 — all back to their defaults) -> BACK ->
+// Base Camp still live -> BACK -> main menu -> GAME SETTINGS -> BACK
+//
+// The door used to sit on the main menu; it moved to the camp with the rest
+// of the "what is this fight like" controls (docs/camp-controls-design.md).
+// The nested return is the point of the middle assertion: the subscreen's
+// MENU_REDRAW has to be consumed by Base Camp's loop, not mistaken for an
+// exit.
 //
 // This used to tour PLAYER SETTINGS and all four player-count outlines here,
 // and later the global CONTROLS door. Seat lifecycle lives in Base Camp now,
@@ -55,16 +61,18 @@ static void cleanup_picker_state()
 // SETTINGS keeps only the game-wide rows.
 //
 // Verifies:
-//   1. The door opens the subscreen (its rows become interactable)
+//   1. The strip door opens the subscreen (its rows become interactable)
 //   2. Every settings row is clickable and a full cycle restores defaults
-//   3. BACK returns to a working main menu, and GAME SETTINGS opens and
-//      closes cleanly after it
+//   3. BACK returns to a LIVE Base Camp, whose own BACK reaches a working
+//      main menu, where GAME SETTINGS opens and closes cleanly
 
 struct DifficultyState {
     bool started;
     bool finished;
     bool entered_submenu;
     bool cycled_settings;
+    bool reached_base_camp;
+    bool returned_to_base_camp;
 };
 
 // Click `id` `times` times, spacing the clicks so each press/release pair is
@@ -84,7 +92,16 @@ static int difficulty_injector(void* data)
     DifficultyState* state = static_cast<DifficultyState*>(data);
     state->started = true;
 
-    wait_for_interactable("difficulty", 5000);
+    // The door lives in Base Camp now, so the flow starts with CONTINUE.
+    wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);
+    interact("continue_game");
+    SDL_Delay(500);
+    if (!wait_for_interactable("difficulty", 10000)) {
+        fprintf(stderr, "  [test] Base Camp never showed the DIFFICULTY door\n");
+        return 0;
+    }
+    state->reached_base_camp = true;
     SDL_Delay(750);
 
     // Open the DIFFICULTY door.
@@ -106,12 +123,30 @@ static int difficulty_injector(void* data)
     interact_times("infinite_gold", 2);  // Off -> On -> Off
     state->cycled_settings = true;
 
-    // Leave the subscreen.
+    // Leave the subscreen: the nested MENU_REDRAW must land back on a LIVE
+    // Base Camp, not unwind it.
     fprintf(stderr, "  [test] clicking difficulty_back\n");
     interact("difficulty_back");
+    if (!wait_for_interactable("go", 5000)) {
+        fprintf(stderr, "  [test] Base Camp did not survive the nested BACK\n");
+        return 0;
+    }
+    state->returned_to_base_camp = true;
+    SDL_Delay(300);
+    EXPECT_TRUE(has_interactable("difficulty"))
+        << "the strip door must still be live after its own subscreen closes";
+    EXPECT_TRUE(has_interactable("scenario"))
+        << "the whole strip must still be live after the nested BACK";
+
+    // Base Camp's own BACK reaches the main menu, which no longer carries a
+    // DIFFICULTY door of its own.
+    fprintf(stderr, "  [test] clicking base camp back\n");
+    interact("back");
     wait_for_interactable("continue_game", 5000);
     SDL_Delay(300);
 
+    EXPECT_FALSE(has_interactable("difficulty"))
+        << "DIFFICULTY belongs to the Base Camp strip, not the main menu";
     EXPECT_FALSE(has_interactable("player_settings"))
         << "seat lifecycle belongs to the live Base Camp roster";
     fprintf(stderr, "  [test] clicking GAME SETTINGS\n");
@@ -145,12 +180,14 @@ TEST(Difficulty, submenu_door_flow) {
     save.save("save0");
     og::runtime::current_session->current_difficulty_ = 1;
 
-    DifficultyState state = { false, false, false, false };
+    DifficultyState state = { false, false, false, false, false, false };
     SDL_Thread* thread = SDL_CreateThread(difficulty_injector, "difficulty_test", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     g_picker_mainmenu_calls = 0;
-    g_picker_max_mainmenu_calls = 1;
+    // Two passes: the first opens Base Camp, the second is the main menu the
+    // camp's BACK returns to (where GAME SETTINGS is checked).
+    g_picker_max_mainmenu_calls = 2;
 
     picker_main(0, nullptr);
 
@@ -161,8 +198,12 @@ TEST(Difficulty, submenu_door_flow) {
     g_picker_max_mainmenu_calls = 0;
 
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_TRUE(state.reached_base_camp)
+        << "CONTINUE should reach a Base Camp carrying the DIFFICULTY door";
     ASSERT_TRUE(state.entered_submenu) << "DIFFICULTY door should open the subscreen";
     ASSERT_TRUE(state.cycled_settings) << "should have cycled every setting";
+    ASSERT_TRUE(state.returned_to_base_camp)
+        << "the subscreen's BACK should return to a live Base Camp";
 
     // Full cycles restore every setting to its default.
     SaveData& after = og::runtime::current_session->myscreen_->save_data;

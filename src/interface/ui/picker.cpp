@@ -32,8 +32,10 @@
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/web_back_key.h>
 #include <openglad/core/util.h>
+#include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/level_selection.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/sound.h>
@@ -1588,6 +1590,7 @@ void picker_cleanup_resources()
     pks().company_backups_buttons.clear();
     pks().cloud_save_buttons.clear();
     pks().help_buttons.clear();
+    pks().zone_submenu_buttons.clear();
 }
 
 void picker_quit()
@@ -2723,6 +2726,19 @@ Sint32 do_set_scen_level(Sint32 arg1)
    // Have some feedback if the level changed
    if(templevel != og::runtime::current_session->myscreen_->world().id)
    {
+       // The earned-roads gate — the single choke for the browser click AND
+       // the free-typed ENTER ID. Refuses before the load, before any
+       // cursor write (and long before any autosave tail).
+       if (!og::data::level_selection_allowed(
+               og::runtime::current_session->myscreen_->save_data, templevel))
+       {
+           og::runtime::current_session->myscreen_->clearbuffer();
+           TRACE("picker", "set_level_denied_gate %d", templevel);
+           popup_dialog(
+               "SET LEVEL",
+               std::string(og::ui::kCampaignLevelClosedMessage).c_str());
+           return MENU_REDRAW;
+       }
        int old_id = og::runtime::current_session->myscreen_->world().id;
        og::runtime::current_session->myscreen_->world().id = templevel;
        if (templevel < 0 || !og::runtime::current_session->myscreen_->load_level())
@@ -2739,6 +2755,10 @@ Sint32 do_set_scen_level(Sint32 arg1)
        }
        else  // We're good
        {
+           // SET LEVEL is a plain cursor write: it abandons any replay
+           // excursion in flight (the stale arm must never skip a purge or
+           // restore a cursor the player just re-pointed).
+           og::runtime::current_session->myscreen_->save_data.clear_replay_arm();
            og::runtime::current_session->myscreen_->save_data.scen_num = static_cast<short>(templevel);
            picker_lobby_sync_settings_from_save();
            Log("Set level to {}\n", templevel);

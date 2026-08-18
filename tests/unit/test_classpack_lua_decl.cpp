@@ -129,7 +129,7 @@ og.family("living", {
   playable = true, playable_order = 0,
   glyph = "S", glyph_ascii = "S", glyph_color = "default",
   glyph_bold = false, glyph_transparent = false,
-  radar_color = "none", radar_jitter = 0,
+  radar_color = "none", radar_jitter = 0, radar_ping = true,
   tuning = { charge_speed = 4, whirl_scale = 1.5, chatty = true,
              flavour = "gruff" },
 })
@@ -225,6 +225,9 @@ TEST_F(LuaFamilyDeclTest, a_full_living_declaration_lands_every_block)
     ASSERT_TRUE(e.presentation.radar_color.has_value());
     EXPECT_EQ(og::kRadarColorNone, *e.presentation.radar_color)
         << "\"none\" is the sentinel spelling, folded in at harvest";
+    ASSERT_TRUE(e.presentation.radar_ping.has_value())
+        << "radar_ping (#209) rides the shared presentation harvest";
+    EXPECT_TRUE(*e.presentation.radar_ping);
 
     // Tuning keeps the author's scalar SUBTYPE: 4 stays an integer, 1.5 a
     // float, so Lua-side arithmetic rounds the way the author wrote it.

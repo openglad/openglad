@@ -64,6 +64,7 @@
 #include <format>
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <numeric>
 #include <random>
 #include <stdexcept>
@@ -519,6 +520,24 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng,
     s->save_data.numplayers = 0; // spectator mode
     s->save_data.scen_num = static_cast<short>(scen_id);
     s->save_data.current_campaign = campaign;
+
+    // OPENGLAD_DEMO_CAMPAIGN_STATE=key=value[,key=value...] pre-seeds the
+    // campaign decision store so captures can film og.campaign_var
+    // consequences (mirrors openglad_text --campaign-state).
+    if (const char* state_env = std::getenv("OPENGLAD_DEMO_CAMPAIGN_STATE")) {
+        std::istringstream ss(state_env);
+        std::string tok;
+        while (std::getline(ss, tok, ',')) {
+            size_t eq = tok.find('=');
+            if (eq == std::string::npos || eq == 0 ||
+                !s->save_data.campaign_state_set(campaign, tok.substr(0, eq),
+                    static_cast<std::int32_t>(
+                        std::atol(tok.c_str() + eq + 1)))) {
+                throw std::runtime_error(std::format(
+                    "OPENGLAD_DEMO_CAMPAIGN_STATE rejected entry '{}'", tok));
+            }
+        }
+    }
 
     // The demo never selects a company, so this is the default "save0" slot
     // and the bootstrap stays byte-identical (§3.9).

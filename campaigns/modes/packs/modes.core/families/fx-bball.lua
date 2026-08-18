@@ -33,6 +33,7 @@ og.family("effect", {
   radar_color = 88, -- COLOR_YELLOW, the nearest radar band to the orange art
   radar_jitter = 0,
   radar_landmark = true,
+  radar_ping = true, -- #209: the ball is the objective — draw it LOUD
 
   on_act = on_act,
 })

@@ -59,6 +59,8 @@ struct NullableString {
 //   radar_jitter:     rng(N) span added to radar_color (0 = no rng call)
 //   radar_landmark:   blip without treasure sight (treasure/fx orders only —
 //                     the EXIT/TELEPORTER class of map furniture)
+//   radar_ping:       oversized pulsing SDL blip + bold curses glyph (#209 —
+//                     mode objectives like the soccer/basketball balls)
 struct ClasspackPresentation {
     std::optional<std::string> glyph;        // UTF-8, exactly one codepoint
     std::optional<std::string> glyph_ascii;  // exactly one byte
@@ -68,6 +70,7 @@ struct ClasspackPresentation {
     std::optional<std::int32_t> radar_color;  // sentinels already folded in
     std::optional<std::int32_t> radar_jitter;
     std::optional<bool> radar_landmark;       // treasure/fx declarations only
+    std::optional<bool> radar_ping;           // oversized pulsing blip (#209)
 };
 
 // One scalar value of a family entry's `tuning` map. The kind preserves

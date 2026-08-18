@@ -336,6 +336,117 @@
 ---@class og.EntityHooks
 ---@field on_death? fun(entity: og.Walker, entity: og.Walker, value: integer)
 
+-- One row of a scripted picker page. Shape enforced
+-- C++-side (world_scripts.cpp parse_campaign_page):
+-- id and kind are required; a missing label is filled
+-- from the scenario title for level rows (and a level the
+-- campaign does not carry then renders CLOSED).
+-- `done = true` retires a costed action the book has
+-- already honored: the row stops quoting its price, draws
+-- spent, and refuses instead of charging twice.
+---@class og.CampaignPageEntry
+---@field id string
+---@field kind "level"|"page"|"action"
+---@field label? string
+---@field note? string
+---@field level? integer
+---@field cost? integer
+---@field done? boolean
+
+-- The page table picker_menu returns: <= 24 entries,
+-- <= 6 lines (clipped C++-side); title is required.
+---@class og.CampaignPage
+---@field title string
+---@field lines? string[]
+---@field entries? og.CampaignPageEntry[]
+
+-- picker_action's optional return: `message` is the toast.
+---@class og.CampaignActionResult
+---@field message? string
+
+-- One deploy refusal on the base_camp roster widget.
+-- Heroes are addressed by the persisted campaign_tag byte
+-- (tag 1..255) or unset = true (tag still 0) — exactly one
+-- of the two, never a guy id (ids regenerate every
+-- mission). `reason` is toasted on the refused deploy.
+---@class og.CampaignRosterLock
+---@field tag? integer
+---@field unset? boolean
+---@field reason? string
+
+-- The roster widget's assignment chip: cycling writes the
+-- clicked row's campaign_tag unset(0) -> 1 -> 2 -> 1;
+-- labels[1]/[2] name tags 1/2. A non-empty `frozen` keeps
+-- chips visible but refuses cycling with that reason.
+---@class og.CampaignAssignSpec
+---@field key string
+---@field labels string[]
+---@field frozen? string
+
+-- One widget of the Base Camp gameplay zone. `kind` picks
+-- which fields are read (the rest are ignored); `weight`
+-- is integer row units, 0..8 (0 = the kind's default
+-- share; 8 is the whole band). Bounds are HARD rejections
+-- (never clips): <= 6 text lines per widget, <= 16 action
+-- entries across the whole zone, <= 3 readout items,
+-- <= 24 locks. Roster capability flags default true.
+-- A text widget weighed SMALLER than its lines need is
+-- legal and clips its ink to its own band.
+---@class og.CampaignZoneWidget
+---@field kind "roster"|"text"|"actions"|"readout"
+---@field weight? integer
+---@field can_deploy? boolean
+---@field can_train? boolean
+---@field can_reorder? boolean
+---@field can_team? boolean
+---@field can_hire? boolean
+---@field locks? og.CampaignRosterLock[]
+---@field assign? og.CampaignAssignSpec
+---@field lines? string[]
+---@field entries? og.CampaignPageEntry[]
+---@field items? {label: string, value: string}[]
+
+-- The base_camp hook's answer: per-kind caps (exactly one
+-- roster, <= 1 readout, <= 2 actions, <= 2 text, <= 6
+-- total); a malformed or over-budget zone falls to the
+-- C++ default zone.
+---@class og.CampaignZone
+---@field widgets og.CampaignZoneWidget[]
+
+-- One og.campaign_team() roster row: plain values, not
+-- handles; `family` is the display-name string, `team` is
+-- clamped to [0,3] by the provider. `tag` is the persisted
+-- campaign_tag byte (GTL v16, 0 = unassigned) and
+-- `save_slot` the owning save slot — the address the
+-- engine's assign write takes; neither is a guy id.
+-- `deployed` is tonight's sortie: a camp that counts a
+-- march party must count who is standing, not who swore.
+---@class og.CampaignRosterEntry
+---@field name string
+---@field family string
+---@field level integer
+---@field exp integer
+---@field strength integer
+---@field dexterity integer
+---@field constitution integer
+---@field intelligence integer
+---@field armor integer
+---@field team integer
+---@field tag integer
+---@field save_slot integer
+---@field deployed boolean
+
+-- Hook table for og.register_campaign_hooks. `vars` names
+-- the campaign state keys (max 64, each 1-32 chars of
+-- [a-z0-9_]) that level scripts may read via
+-- og.campaign_var; the hooks run under the campaign fence
+-- (only og.campaign_* and the pure helpers are legal).
+---@class og.CampaignHooks
+---@field vars? string[]
+---@field base_camp? fun(): og.CampaignZone?
+---@field picker_action? fun(entry_id: string): og.CampaignActionResult?
+---@field picker_menu? fun(page_id: string): og.CampaignPage?
+
 -- Engine constants (og.C.*), names from the kConstants
 -- table in bindings_entity.cpp; every value is an integer.
 ---@class og.Constants
@@ -496,6 +607,20 @@
 ---@field apply_level_up fun(self: og.Guy|og.Walker, diff: integer, arg3: integer, arg4: integer, arg5: integer, arg6: integer, arg7: integer)
 ---@field authored_team_mask fun(): integer # og.authored_team_mask() — bitmask of teams with authored start markers (dead ones included; the versus-map team domain).
 ---@field award_score fun(team: integer, points: integer) # og.award_score(team, points) — the treasure families' score credit: bump GameWorld::m_score and emit ScoreChange with the same payload.
+---@field campaign_current_level fun(): integer
+---@field campaign_gold fun(): integer
+---@field campaign_grant_gold fun(amount: integer)
+---@field campaign_is_host fun(): boolean # og.campaign_is_host() → true/false — so a script can shape host-only pages (level rows and match presets) without tripping the refusal.
+---@field campaign_level_completed fun(id: integer): boolean # og.campaign_level_completed(id) — the menu-time twin of the sim's og.level_completed.
+---@field campaign_match_get fun(name: string): integer # og.campaign_match_get(name) → int32 — the menu-time twin of the sim's read-only og.match_setting, over the persisted MATCHUP knobs ("team_count", "score_limi...
+---@field campaign_match_set fun(name: string, value: integer): boolean # og.campaign_match_set(name, value) → true/false — write-through to the MATCHUP knobs.
+---@field campaign_random fun(n: integer): integer # og.campaign_random(n) → integer in 1..n — the menu-time roll.
+---@field campaign_scenario_title fun(id: integer): string # og.campaign_scenario_title(id) → title string, "" when absent.
+---@field campaign_spend_gold fun(amount: integer): boolean # og.campaign_spend_gold(amount) → true/false — the affordability-checked debit for variable-priced flows inside actions (fixed `cost` debits are owned by C++...
+---@field campaign_state_get fun(key: string): integer
+---@field campaign_state_set fun(key: string, v: integer) # og.campaign_state_set(key, v) — the binding is the bounds-enforcement point: a bad key raises BEFORE the provider runs, and the provider's own check-then-wri...
+---@field campaign_team fun(): og.CampaignRosterEntry[] # og.campaign_team() → array of plain tables (values, not handles — the roster outlives any dispatch, so handle semantics would be a trap).
+---@field campaign_var fun(name: string): integer # og.campaign_var(name) → the campaign decision value copied into this world at level load (0 when absent — the var==0 rule is what keeps a dedicated server, w...
 ---@field charm_duration fun(arg1: integer): integer
 ---@field check_special_ai_distance fun(lv: og.Walker, threshold: integer): boolean
 ---@field clamp fun(v: number, lo: number, hi: number): number # og.clamp(v, lo, hi) — std::clamp: lo when v < lo, else hi when hi < v, else v itself (so ties answer v: math.type(og.clamp(5, 5.0, 6.0)) is 'integer').
@@ -563,6 +688,7 @@
 ---@field query_passable fun(x: number, y: number, entity: og.Walker, arg4: integer?): boolean
 ---@field rand fun(n: integer): integer # og.rand(n) → deterministic sim RNG (world-owned).
 ---@field rand0 fun(n: integer): integer # og.rand0(n) — the world RNG's `next(n)` with IRandom's real n <= 0 contract instead of og.rand's error: next(0) answers 0 WITHOUT advancing the generator (Si...
+---@field register_campaign_hooks fun(hooks: og.CampaignHooks) # og.register_campaign_hooks({ vars = {...}, picker_menu = fn, picker_action = fn, base_camp = fn }) — load-time only, one campaign book per VM (docs/campaign-...
 ---@field register_hooks fun(order_str: og.OrderName, family_str: string, hooks: og.FxHooks|og.GeneratorHooks|og.LivingHooks|og.TreasureHooks|og.WeaponHooks)
 ---@field register_level_hooks fun(level_id: integer, hooks: og.LevelHooks) # og.register_level_hooks(level_id, { on_load=, on_tick=, on_entity_death=, on_entity_spawn= }).
 ---@field remaining_foes fun(entity: og.Walker): integer

@@ -218,10 +218,11 @@ async function continueToTeamBuildMenu(page) {
 }
 
 // From the base-camp (team-build) menu: open the NETWORKING menu.
-// §2.5/§2.10: the command strip moved to y=178 — NETWORK is (182,178,56,18),
-// center (210,187).
+// §2.5/§2.10: the command strip moved to y=178. It re-gridded again when
+// DIFFICULTY joined it (docs/camp-controls-design.md) — NETWORK is
+// (200,178,56,18) now, center (228,187).
 async function openNetworkingFromTeamBuild(page) {
-  await clickCanvasGameCoord(page, 210, 187);
+  await clickCanvasGameCoord(page, 228, 187);
   await page.waitForTimeout(1_500);
 }
 
@@ -235,9 +236,9 @@ async function startSeededSinglePlayerFromPicker(page, options = {}) {
     preStartSettlingMs = 5_000,
     expectedCaptureProfileId = null,
     continueButton = { x: 114, y: 85 },
-    // §2.5/§2.10: GO is (244,178,68,18) on the base-camp strip, center
-    // (278,187).
-    goButton = { x: 278, y: 187 },
+    // §2.5/§2.10: GO is (262,178,50,18) on the re-gridded base-camp strip
+    // (docs/camp-controls-design.md), center (287,187).
+    goButton = { x: 287, y: 187 },
     onTeamBuildReady = null,
   } = options;
 

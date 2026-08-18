@@ -38,11 +38,17 @@
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/pathfinding_grid.h>
+#include <openglad/gameplay/script/campaign_hooks.h>
+#include <openglad/gameplay/script/family_hooks.h>
+#include <openglad/gameplay/script/pack_scripts.h>
+#include <openglad/gameplay/script/script_host.h>
+#include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/smooth.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/session_state.h>
+#include <openglad/resources/campaign_state_providers.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
@@ -1473,6 +1479,214 @@ void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
     current_game->world = prev_world;
 }
 
+// Kettle's Book (packs/longseason.ledger) must actually register and
+// dispatch, not merely ride along in the zip. With the produced campaign
+// mounted: the pack script registry carries the ledger pack, the scripted
+// picker AND the Base Camp zone registered with the four sim-visible vars,
+// every camp composition and the one surviving room fit the content
+// budgets (<= 6 lines of <= 38 chars, <= 24 entries, labels <= 24, notes
+// <= 20, and the zone's own per-kind widget caps), and one var-injected
+// tick of The Long Toll spawns the two Collectors. This catches Lua syntax
+// slips, hook-name typos, budget overruns and dispatch wiring at
+// generation time.
+void self_check_book_script()
+{
+    constexpr const char* kLedgerPackId = "longseason.ledger";
+    bool pack_registered = false;
+    for (const og::script::PackScript& ps : og::script::pack_scripts())
+        if (ps.pack_id == kLedgerPackId)
+            pack_registered = true;
+    if (!pack_registered)
+    {
+        fail("self-check: ledger pack script not registered on mount");
+        return;
+    }
+
+    if (!og::script::hooks::campaign_picker_registered())
+    {
+        fail("self-check: Kettle's Book registered no campaign picker");
+        return;
+    }
+    if (!og::script::hooks::campaign_zone_registered())
+    {
+        fail("self-check: Kettle's Book composed no Base Camp");
+        return;
+    }
+    const std::vector<std::string> expected_vars = {
+        "coin_kept", "advance_debt", "provisions", "fair_round"};
+    if (og::script::hooks::campaign_registered_vars() != expected_vars)
+        fail("self-check: the book's registered vars drifted");
+
+    // Composition budgets across the camp faces the book morphs through.
+    struct BookState
+    {
+        const char* name;
+        int cursor;
+        int completed_to;
+        bool debt;
+        bool settled;
+        bool coin_waiting;
+    };
+    const BookState states[] = {
+        {"ordinary week", 6, 5, false, false, false},
+        {"coin waiting", 6, 5, false, false, true},
+        {"debt outstanding", 14, 13, true, false, false},
+        {"settlement", 19, 18, true, false, false},
+        {"new-season", 19, 19, false, true, false},
+    };
+    const auto check_entry = [](const og::script::hooks::CampaignPageEntry& e,
+                                const char* where) {
+        if (e.label.size() > 24)
+            fail(std::format("self-check: label over 24 chars in {}: '{}'",
+                             where, e.label));
+        if (e.note.size() > 20)
+            fail(std::format("self-check: note over 20 chars in {}: '{}'",
+                             where, e.note));
+    };
+    for (const BookState& s : states)
+    {
+        SaveData book;
+        book.current_campaign = "longseason";
+        book.my_team = 0;
+        book.scen_num = static_cast<short>(s.cursor);
+        book.m_totalcash[0] = 5000;
+        for (int lvl = 1; lvl <= s.completed_to; ++lvl)
+            book.add_level_completed("longseason", lvl);
+        if (!s.coin_waiting)
+        {
+            std::int32_t kept = 0;
+            for (int lvl = 2; lvl <= std::min(s.completed_to, 18); ++lvl)
+                kept += 1 << lvl;
+            (void)book.campaign_state_set("longseason", "coin_kept", kept);
+        }
+        if (s.debt)
+            (void)book.campaign_state_set("longseason", "advance_debt", 900);
+        if (s.settled)
+            (void)book.campaign_state_set("longseason", "settled", 1);
+        (void)book.campaign_state_set("longseason", "kettle_asked", 2);
+        (void)book.campaign_state_set("longseason", "provisions",
+                                      3 + 8 * s.cursor);
+        og::script::hooks::install_campaign_providers(
+            og::data::make_campaign_providers(book));
+
+        // The camp itself: it must compose, stay inside the widget caps,
+        // and keep every row and line inside the content budgets.
+        og::script::hooks::CampaignZone zone;
+        if (!og::script::hooks::campaign_zone(zone))
+        {
+            fail(std::format("self-check: camp state '{}' did not compose",
+                             s.name));
+        }
+        else
+        {
+            if (zone.widgets.size() > 5)
+                fail(std::format("self-check: camp state '{}' composes {} "
+                                 "widgets (5 is the ceiling)", s.name,
+                                 zone.widgets.size()));
+            int rows = 0;
+            for (const og::script::hooks::CampaignZoneWidget& widget :
+                 zone.widgets)
+            {
+                rows += static_cast<int>(widget.entries.size());
+                for (const std::string& line : widget.lines)
+                    if (line.size() > 38)
+                        fail(std::format("self-check: camp line over 38 "
+                                         "chars: '{}'", line));
+                for (const og::script::hooks::CampaignPageEntry& entry :
+                     widget.entries)
+                    check_entry(entry, s.name);
+            }
+            if (rows > 16)
+                fail(std::format("self-check: camp state '{}' composes {} "
+                                 "action rows (16 is the cap)", s.name, rows));
+        }
+
+        for (const char* page_id : {"stores"})
+        {
+            og::script::hooks::CampaignPage page;
+            if (!og::script::hooks::campaign_picker_page(page_id, page))
+            {
+                fail(std::format("self-check: book state '{}' page '{}' did "
+                                 "not parse", s.name, page_id));
+                continue;
+            }
+            if (page.title.empty())
+                fail(std::format("self-check: page '{}' has no title",
+                                 page_id));
+            if (page.lines.size() > 6)
+                fail(std::format("self-check: page '{}' overruns 6 lines "
+                                 "({} in state '{}')", page_id,
+                                 page.lines.size(), s.name));
+            for (const std::string& line : page.lines)
+                if (line.size() > 38)
+                    fail(std::format("self-check: page '{}' line over 38 "
+                                     "chars: '{}'", page_id, line));
+            if (page.entries.size() > 24)
+                fail(std::format("self-check: page '{}' overruns 24 entries",
+                                 page_id));
+            for (const og::script::hooks::CampaignPageEntry& entry :
+                 page.entries)
+            {
+                if (entry.label.size() > 24)
+                    fail(std::format("self-check: label over 24 chars: '{}'",
+                                     entry.label));
+                if (entry.note.size() > 20)
+                    fail(std::format("self-check: note over 20 chars: '{}'",
+                                     entry.note));
+            }
+        }
+        og::script::hooks::clear_campaign_providers();
+    }
+
+    // One var-injected tick: the unpaid advance sends the Collectors up
+    // The Long Toll's west road.
+    LevelRuntimeData level(14, true, &headless_level_data_hooks());
+    SaveData save;
+    og::sim::SimEventLog events;
+    FixedRandom script_rng{0};
+    level.set_sim_context(&save, &level.world().enemy_freeze, &events,
+                          &script_rng, &cfg);
+    GameplayContext script_ctx;
+    script_ctx.world = &level.world();
+    script_ctx.save = &save;
+    script_ctx.sim_events = &events;
+    script_ctx.config = &cfg;
+    GameplayContext* prev = current_game;
+    current_game = &script_ctx;
+
+    if (!level.load())
+    {
+        fail("self-check: scen14 failed to load for the book script check");
+        current_game = prev;
+        return;
+    }
+    const auto count_t2_livings = [&level] {
+        int count = 0;
+        for (const auto& uptr : level.world().oblist)
+        {
+            walker* ob = uptr.get();
+            if (ob != nullptr && ob->query_order() == Order::Living &&
+                ob->team_num() == 2)
+                ++count;
+        }
+        return count;
+    };
+    const int t2_before = count_t2_livings();
+    level.world().campaign_vars.emplace_back("advance_debt", 900);
+    level.world().tick();
+    if (count_t2_livings() != t2_before + 2)
+        fail(std::format("self-check: advance_debt did not field the two "
+                         "Collectors ({} -> {})", t2_before,
+                         count_t2_livings()));
+
+    for (const og::script::ScriptError& err :
+         level.world().scripts().host().errors())
+        fail(std::format("self-check: script error at {}: {}", err.where,
+                         err.message));
+
+    current_game = prev;
+}
+
 } // namespace
 } // namespace longseason
 
@@ -1527,6 +1741,14 @@ int main(int argc, char* argv[])
     create_dir(user + "temp/pix/");
     write_campaign_yaml(user + "temp/campaign.yaml");
     write_icon(user + "temp/icon.png");
+    // Kettle's Book rides inside the archive; staging it here lets the
+    // self-check audit the package players actually get (the committed
+    // pack source itself is hand-authored and preserved by the export).
+    if (!og::toolexport::stage_pack_tree(
+            "campaigns/longseason/packs/"
+            "longseason.ledger",
+            user + "temp/", "longseason.ledger"))
+        fail("failed to stage the embedded ledger pack");
 
     const LevelDataHooks& hooks = headless_level_data_hooks();
     build_spring(hooks);
@@ -1568,6 +1790,7 @@ int main(int argc, char* argv[])
         {
             for (const ExpectedLevel& e : expectations)
                 self_check_level(e, registered);
+            self_check_book_script();
             (void)unmount_campaign_package_with_error("longseason");
         }
     }

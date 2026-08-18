@@ -27,6 +27,7 @@
 #include <openglad/interface/button.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/level_selection.h>
 #include <openglad/core/text_wrap.h>
 #include <algorithm>
 #include <array>
@@ -283,6 +284,7 @@ class BrowserEntry
     float difficulty;
     bool is_cleared;               // PROGRESS-report derivation (issue #186)
     bool is_current;
+    bool is_locked;                // earned-roads gate (versus/tower exempt)
     std::list<int> exits;
     std::array<std::string, 80> scentext;           // Array to hold scenario information
     int scentextlines = 0;                 // How many lines of text in scenario info
@@ -321,6 +323,9 @@ BrowserEntry::BrowserEntry(screen* screenp, int index, int scen_num)
     const SaveData& save = og::runtime::current_session->myscreen_->save_data;
     is_cleared = save.is_level_completed(scen_num);
     is_current = (scen_num == save.scen_num);
+    // Cleared and current rows are always in the frontier, so LOCKED only
+    // ever fills the blank status cell.
+    is_locked = !og::data::level_selection_allowed(save, scen_num);
 
     // Store this level's info
     level_name = og::ui::fit_text_to_chars(level_data.world().title,
@@ -363,11 +368,14 @@ void BrowserEntry::draw(screen* screenp)
     text& loadtext = og::runtime::current_session->myscreen_->text_normal;
     loadtext.write_xy(mapAreas.x, mapAreas.y, level_name.c_str(), DARK_BLUE, 1);
 
-    // CLEARED/CURRENT column on the title line (PROGRESS's colors).
+    // CLEARED/CURRENT column on the title line (PROGRESS's colors), with
+    // LOCKED (dim) beside them for a road the company has not earned.
     const char* status = og::ui::level_row_status_label(is_cleared, is_current);
     if(status[0] != '\0')
         loadtext.write_xy(layout.status_x, mapAreas.y, status,
                           is_cleared ? DARK_GREEN : YELLOW, 1);
+    else if(is_locked)
+        loadtext.write_xy(layout.status_x, mapAreas.y, "LOCKED", GREY, 1);
 
     // Stats share one column (layout.stats_x) regardless of this row's
     // radar width, so the three rows read as a grid.

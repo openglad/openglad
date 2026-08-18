@@ -536,7 +536,7 @@ TEST(CompanyScan, scan_does_not_mount_and_roundtrips_real_saves)
     EXPECT_EQ("Roundtrip Company", info->display_name);
     EXPECT_EQ(4, info->scen_num);
     EXPECT_EQ(999u, info->totalcash);
-    EXPECT_EQ(14, info->version);
+    EXPECT_EQ(16, info->version);
     EXPECT_EQ(424242, info->last_played_unix_s);
     EXPECT_EQ(mounted_before, get_mounted_campaign())
         << "the header scan must never mount the save's campaign (§3.5)";
@@ -1159,7 +1159,7 @@ TEST(CompanyBackups, header_scan_reads_backup_identity_without_mounting)
     EXPECT_EQ("Snapshot Co", backups[0].header.display_name);
     EXPECT_EQ(4242u, backups[0].header.totalcash);
     EXPECT_EQ(777, backups[0].header.last_played_unix_s);
-    EXPECT_EQ(14, backups[0].header.version);
+    EXPECT_EQ(16, backups[0].header.version);
     EXPECT_EQ(mounted_before, get_mounted_campaign())
         << "the Backups view scan must never mount (§3.7)";
 }
@@ -1535,6 +1535,10 @@ TEST(CompanyAutosave, networked_lobby_merge_preserves_private_state)
         priv.team_size = 2;
         priv.add_level_completed("gladiator", 1);
         priv.add_level_completed("gladiator", 2);
+        // Disk decision book A: a stale value plus a campaign the session
+        // dropped — the merge must overlay the SESSION's book wholesale.
+        ASSERT_TRUE(priv.campaign_state_set("gladiator", "watch_paid", 1));
+        ASSERT_TRUE(priv.campaign_state_set("oldcamp", "stale_key", 9));
         ASSERT_TRUE(priv.save("save0"));
     }
 
@@ -1562,6 +1566,11 @@ TEST(CompanyAutosave, networked_lobby_merge_preserves_private_state)
     session.team_list[2] = make_test_guy(FAMILY_SOLDIER, "Carol", 2, true);
     session.team_size = 3;
     session.add_level_completed("ctf", 500); // host history
+    // Session decision book B: this machine's own decisions (GTL v15) —
+    // the lobby sync never touches campaign_state, so the session copy is
+    // authoritative and must reach the disk company.
+    ASSERT_TRUE(session.campaign_state_set("gladiator", "watch_paid", 3));
+    ASSERT_TRUE(session.campaign_state_set("gladiator", "kit", 1));
 
     const og::data::CompanyAutosaveContext context =
         og::ui::company_autosave_context(session, /*networked_lobby=*/true);
@@ -1632,6 +1641,16 @@ TEST(CompanyAutosave, networked_lobby_merge_preserves_private_state)
         << "lobby hires must persist";
     EXPECT_EQ(3, static_cast<int>(reloaded.team_size));
     EXPECT_EQ(999, reloaded.last_played_unix_s);
+    // Campaign scripting decision book (GTL v15): the SESSION's book wins,
+    // wholesale — the stale disk value is replaced, the disk-only campaign
+    // dropped (the session save was loaded from this very company at lobby
+    // entry, so a wholesale overlay loses nothing).
+    EXPECT_EQ(session.campaign_state, reloaded.campaign_state)
+        << "the merge must overlay the session's decision book";
+    EXPECT_EQ(3, reloaded.campaign_state_get("gladiator", "watch_paid"));
+    EXPECT_EQ(1, reloaded.campaign_state_get("gladiator", "kit"));
+    EXPECT_EQ(0u, reloaded.campaign_state.count("oldcamp"))
+        << "the overlay replaces the disk book, it never merges";
 }
 
 // Matched-teams D27 (amendment): the TROOPS: FAIR sentinel

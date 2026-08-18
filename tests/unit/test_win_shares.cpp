@@ -10,6 +10,10 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/resources/campaign_io.h>
+#include <openglad/resources/company.h>
+#include <openglad/resources/io_common.h>
+#include <openglad/resources/progression.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/win_shares.h>
 
@@ -17,14 +21,19 @@
 
 #include <array>
 #include <cstdint>
+#include <map>
+#include <memory>
 #include <numeric>
+#include <optional>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace {
 
 using og::progression::NetWinFoldCapture;
 using og::progression::NetWinShareTable;
+using og::progression::WinFoldContext;
 using og::progression::WinShareContributor;
 using og::progression::apply_networked_win_shares;
 using og::progression::compute_networked_win_shares;
@@ -241,6 +250,175 @@ TEST(WinShares, collect_reads_owner_and_team_from_owned_walkers)
     EXPECT_EQ(0, contributors[0].owner);
     EXPECT_EQ(1, contributors[1].owner);
     EXPECT_EQ(0, contributors[0].team);
+}
+
+// ---------------------------------------------------------------------------
+// persist_networked_win: the campaign_state session overlay (GTL v15).
+
+namespace {
+
+// Restores whatever campaign mount the test found — the full SaveData loads
+// below mount the save's campaign, and a leaked mount breaks shuffled
+// siblings (the test_company ScopedMountRestore pattern).
+class ScopedMountRestore
+{
+public:
+    ScopedMountRestore() : before_(get_mounted_campaign()) {}
+    ~ScopedMountRestore()
+    {
+        const std::string after = get_mounted_campaign();
+        if (after == before_)
+            return;
+        if (before_.empty())
+        {
+            (void)unmount_campaign_package_with_error(after);
+        }
+        else
+        {
+            std::map<std::string, int> scratch;
+            (void)load_campaign(before_, scratch);
+        }
+    }
+
+private:
+    std::string before_;
+};
+
+} // namespace
+
+// The documented dropped-field bug class (design "must never become
+// session-only"): the networked win persist overlays the SESSION's decision
+// book onto the merged disk company — the machine that made the decisions
+// persists its own book, replacing whatever stale book the disk copy held.
+TEST(WinShares, persist_networked_win_overlays_session_campaign_state)
+{
+    ScopedMountRestore mount_guard;
+    restore_default_campaigns();
+    og::data::ScopedActiveCompany active("netwinbook");
+    ASSERT_TRUE(active.applied());
+
+    // Disk baseline: book A (a stale value plus a key the session dropped).
+    {
+        SaveData disk;
+        disk.save_name = "NET WIN CO";
+        disk.current_campaign = "gladiator";
+        disk.scen_num = 1;
+        disk.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+        disk.team_list[0]->name = "NETGUY";
+        disk.team_size = 1;
+        ASSERT_TRUE(disk.campaign_state_set("gladiator", "watch_paid", 1));
+        ASSERT_TRUE(disk.campaign_state_set("oldcamp", "stale_key", 9));
+        ASSERT_TRUE(disk.save("netwinbook"));
+    }
+
+    // The session save carries book B — the decisions this machine made.
+    SaveData session;
+    session.current_campaign = "gladiator";
+    session.scen_num = 2;
+    session.add_level_completed("gladiator", 1);
+    ASSERT_TRUE(session.campaign_state_set("gladiator", "watch_paid", 3));
+    ASSERT_TRUE(session.campaign_state_set("gladiator", "kit", 1));
+
+    // One owned deployed hero so the merge arm runs.
+    TestGameWorld fx;
+    GameWorld& world = fx.world();
+    walker* hero = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, hero);
+    hero->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    hero->myguy->owner_player_index = 0;
+    hero->myguy->owner_save_slot = 0;
+    hero->myguy->name = "NETGUY";
+
+    NetWinFoldCapture capture;
+    add_contributors(capture, /*owner=*/0, /*team=*/0, /*count=*/1);
+
+    const std::array<std::uint8_t, 1> own = {0};
+    ASSERT_TRUE(og::progression::persist_networked_win(
+        "netwinbook", session, world, std::span<const std::uint8_t>(own),
+        std::optional<std::size_t>(0), capture, /*completed_level=*/1));
+
+    SaveData reloaded;
+    ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("netwinbook"));
+    EXPECT_EQ(session.campaign_state, reloaded.campaign_state)
+        << "the merged file must carry the SESSION's book";
+    EXPECT_EQ(3, reloaded.campaign_state_get("gladiator", "watch_paid"))
+        << "the session decision overlays the stale disk value";
+    EXPECT_EQ(1, reloaded.campaign_state_get("gladiator", "kit"));
+    EXPECT_EQ(0u, reloaded.campaign_state.count("oldcamp"))
+        << "the overlay replaces the disk book, it never merges";
+
+    // Reap the scratch slot and its LevelWin backup snapshot.
+    for (const og::data::CompanyBackupInfo& info :
+         og::data::list_company_backups("netwinbook"))
+        (void)remove_user_file("save/backups/" + info.filename);
+    (void)remove_user_file("save/netwinbook.gtl");
+}
+
+// #207: the networked cursor restore. The session fold (progression.cpp
+// step 5b) has already restored an armed replay's cursor before any
+// persist runs, so persist_networked_win writes the RESTORED cursor into
+// this machine's company file — a networked replay no longer rewrites the
+// table's campaign position.
+TEST(WinShares, persist_networked_win_carries_the_restored_replay_cursor)
+{
+    ScopedMountRestore mount_guard;
+    restore_default_campaigns();
+    og::data::ScopedActiveCompany active("netwinreplay");
+    ASSERT_TRUE(active.applied());
+
+    // Disk baseline: the machine's campaign position is level 9.
+    {
+        SaveData disk;
+        disk.save_name = "NET REPLAY CO";
+        disk.current_campaign = "gladiator";
+        disk.scen_num = 9;
+        disk.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+        disk.team_list[0]->name = "NETGUY";
+        disk.team_size = 1;
+        ASSERT_TRUE(disk.save("netwinreplay"));
+    }
+
+    // The session replays completed level 3 (armed at origin 9), wins, and
+    // the fold restores the cursor before the persist reads it.
+    TestGameWorld fx;
+    SaveData session;
+    session.current_campaign = "gladiator";
+    session.scen_num = 9;
+    session.add_level_completed("gladiator", 3);
+    session.arm_replay(3);
+    WinFoldContext fold_ctx;
+    fold_ctx.outcome.ending = 0;
+    fold_ctx.outcome.next_level = 2;  // the walked exit — a backtrack
+    fold_ctx.finished_level = session.scen_num;
+    og::progression::apply_win_fold(session, fx.world(), fold_ctx);
+    ASSERT_EQ(9, session.scen_num) << "the fold restored the origin";
+
+    GameWorld& world = fx.world();
+    walker* hero = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, hero);
+    hero->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    hero->myguy->owner_player_index = 0;
+    hero->myguy->owner_save_slot = 0;
+    hero->myguy->name = "NETGUY";
+
+    NetWinFoldCapture capture;
+    add_contributors(capture, /*owner=*/0, /*team=*/0, /*count=*/1);
+    const std::array<std::uint8_t, 1> own = {0};
+    ASSERT_TRUE(og::progression::persist_networked_win(
+        "netwinreplay", session, world, std::span<const std::uint8_t>(own),
+        std::optional<std::size_t>(0), capture, /*completed_level=*/3));
+
+    SaveData reloaded;
+    ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("netwinreplay"));
+    EXPECT_EQ(9, reloaded.scen_num)
+        << "the machine's campaign position survives the replay win";
+    EXPECT_TRUE(reloaded.is_level_completed(3))
+        << "completion credit still lands (idempotent mark)";
+
+    for (const og::data::CompanyBackupInfo& info :
+         og::data::list_company_backups("netwinreplay"))
+        (void)remove_user_file("save/backups/" + info.filename);
+    (void)remove_user_file("save/netwinreplay.gtl");
 }
 
 } // namespace

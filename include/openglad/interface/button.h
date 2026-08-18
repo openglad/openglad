@@ -120,7 +120,15 @@ class vbutton
         bool no_draw;  // Does not draw but still accepts clicks
 };
 
-inline constexpr int MAX_BUTTONS = 50;  // max buttons per screen
+// Max buttons per screen. Raised 50 -> 72 for the Base Camp gameplay zone
+// (docs/basecamp-zones-design.md "Bounds arithmetic"): 49 classic ordinals +
+// 16 zone action rows + 4 zone pagers + 3 spares. Raised again 72 -> 73 when
+// DIFFICULTY moved off the main menu into the Base Camp command strip
+// (docs/camp-controls-design.md): the three parked spares are a documented
+// reserve for scripted compositions, so the strip door was appended instead
+// of carved out of them. Mirrored by GameSession::kMaxButtons
+// (session_state.h) — a static_assert in button.cpp ties the two literals.
+inline constexpr int MAX_BUTTONS = 73;
 // allbuttons lives in GameSession — access via current_session->allbuttons_.
 void clear_allbuttons();
 
@@ -371,6 +379,12 @@ enum class ButtonAction : Sint32
     CycleGameSpeed = 103,
     ToggleColorCycling = 104,
     BrightnessAdjust = 105,
+    // 106 is FREE. The Base Camp zone submenu (issue #206 /
+    // docs/basecamp-zones-design.md) needs no action id: page-kind zone
+    // action rows arrive through the Base Camp's on_spec_row dispatch, which
+    // calls og::ui::run_campaign_zone_submenu with the clicked row's own
+    // page id. A do_call case that only ever opened the book's ROOT page had
+    // no caller and no shipped surface to give it one.
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

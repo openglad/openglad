@@ -1,5 +1,8 @@
 #include <openglad/platform/sai2x.h>
 
+#include <cstdio>
+#include <filesystem>
+
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
 int picker_testing_yes_or_no_queue_remaining();
@@ -367,6 +370,98 @@ int picker_team_build_testing_exercise_internal_paths()
     picker_progress_menu_engine_draw_content(nullptr);
     picker_progress_menu_engine_draw_background(nullptr);
     picker_progress_menu_engine_draw_content(&progress_state);
+    // #207 row-action hit-test: uncleared rows keep the legacy GO rect;
+    // cleared rows answer through TWO rects — VISIT (x 230..266, the plain
+    // write) and REPLAY (x 270..310, the arm). Row 0 = id 1
+    // uncleared/current at y 36..49, row 1 = id 2 cleared at y 49..62.
+    // The rects belong to the host: the teams-menu arm above left this
+    // client a joiner, and a joiner's report draws no buttons at all.
+    client.host_visible = true;
+    check(progress_rows_actionable());
+    check(progress_row_action_hit(progress_state, 300, 40).id == 1 &&
+          progress_row_action_hit(progress_state, 300, 40).action ==
+              ProgressRowAction::Go);
+    check(progress_row_action_hit(progress_state, 300, 55).id == 2 &&
+          progress_row_action_hit(progress_state, 300, 55).action ==
+              ProgressRowAction::Replay);
+    check(progress_row_action_hit(progress_state, 271, 55).id == 2 &&
+          progress_row_action_hit(progress_state, 271, 55).action ==
+              ProgressRowAction::Replay);
+    check(progress_row_action_hit(progress_state, 240, 55).id == 2 &&
+          progress_row_action_hit(progress_state, 240, 55).action ==
+              ProgressRowAction::Visit);
+    check(progress_row_action_hit(progress_state, 268, 55).id == -1);
+    check(progress_row_action_hit(progress_state, 270, 40).id == -1);
+    check(progress_row_action_hit(progress_state, 240, 40).id == -1);
+    check(progress_row_action_hit(progress_state, 5, 40).id == -1);
+    // A joiner's report draws "(HOST)" where the buttons were, so the same
+    // coordinates answer nothing at all: no click, no refusal popup, no
+    // event loop parked in front of a joiner waiting on the host's GO.
+    client.host_visible = false;
+    check(!progress_rows_actionable());
+    check(progress_row_action_hit(progress_state, 300, 40).id == -1);
+    check(progress_row_action_hit(progress_state, 271, 55).id == -1);
+    check(progress_row_action_hit(progress_state, 240, 55).id == -1);
+    picker_progress_menu_engine_draw_content(&progress_state);
+    check(picker_progress_menu_engine_frame_tick(&progress_state, 0));
+
+    // #207 visual pin, read back from the drawn frame (a green geometry
+    // table can pin a crooked layout; ink-in-rect relations cannot): the
+    // cleared row wears BOTH buttons with a clean gutter between them, the
+    // uncleared row wears only GO, and the Foes number moved to the new
+    // column (the old x=258 spot is bare canvas on the row band).
+    {
+        client.host_visible = true;
+        auto ink_in = [](int x0, int y0, int x1, int y1) {
+            int count = 0;
+            screen* const scr = og::runtime::current_session->myscreen_;
+            for (int y = y0; y <= y1; ++y)
+            {
+                for (int x = x0; x <= x1; ++x)
+                {
+                    Uint8 r = 0, g = 0, b = 0;
+                    scr->get_pixel(x, y, &r, &g, &b);
+                    if (r != 0 || g != 0 || b != 0)
+                        ++count;
+                }
+            }
+            return count;
+        };
+        picker_progress_menu_engine_draw_background(&progress_state);
+        picker_progress_menu_engine_draw_content(&progress_state);
+        // Row 1 (id 2, cleared, band y 50..59): VISIT + REPLAY, gutter bare.
+        check(ink_in(230, 50, 266, 59) > 0);   // VISIT face
+        check(ink_in(270, 50, 310, 59) > 0);   // REPLAY face
+        check(ink_in(267, 50, 269, 59) == 0);  // the 3px gutter between them
+        // Row 0 (id 1, uncleared, band y 37..46): GO only.
+        check(ink_in(292, 37, 310, 46) > 0);   // GO face
+        check(ink_in(230, 37, 268, 46) == 0);  // no VISIT/REPLAY on GO rows
+        // The Foes number: new column inked, the old x=258 spot bare.
+        check(ink_in(kProgressFoesNumberX, 37, kProgressFoesNumberX + 18, 46) > 0);
+        check(ink_in(250, 37, 280, 46) == 0);  // the pre-#207 number column
+        // Read-back artifact for human review (gitignored build/media).
+        std::filesystem::create_directories("build/media");
+        FILE* const shot = fopen("build/media/progress_replay_rows.ppm", "wb");
+        if (shot != nullptr)
+        {
+            fprintf(shot, "P6\n320 200\n255\n");
+            screen* const scr = og::runtime::current_session->myscreen_;
+            for (int y = 0; y < 200; ++y)
+            {
+                for (int x = 0; x < 320; ++x)
+                {
+                    Uint8 r = 0, g = 0, b = 0;
+                    scr->get_pixel(x, y, &r, &g, &b);
+                    fputc(r, shot);
+                    fputc(g, shot);
+                    fputc(b, shot);
+                }
+            }
+            fclose(shot);
+        }
+        client.host_visible = false;
+    }
+    // ... and the arm leaves the client as it found it.
 
     button hire_buttons[] = {
         button("prev", "PREV", KEYSTATE_UNKNOWN, 0, 0, 10, 10, 0, 0,

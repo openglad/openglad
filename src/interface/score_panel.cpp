@@ -309,10 +309,12 @@ static std::string hud_display_name(const walker* control)
 // separator would run the scores together.
 //
 // Narrow panes: the old rule suppressed slots by view count. The budget
-// says it better — if the joined row does not fit, fall back to the LOCAL
-// team's segment alone (the only score a cramped pane's owner needs), then
-// truncate end-first to the remaining characters, and draw nothing at all
-// below three characters.
+// says it better — if the joined row does not fit, first try the compact
+// tier (#210): every team's bare score joined by a dash ("7-3"), so a
+// split-screen pane still shows the opposing side. Only when even that
+// overflows fall back to the LOCAL team's segment alone, then truncate
+// end-first to the remaining characters, and draw nothing at all below
+// three characters.
 inline constexpr std::string_view kModeRowSeparator = " - ";
 inline constexpr Sint32 kModeRowOffsetY = 4;
 inline constexpr Sint32 kModeRowMinChars = 3;
@@ -377,6 +379,36 @@ static std::vector<ModeRowSegment> compose_mode_row(
     return segments;
 }
 
+// The compact tier (#210): every team's segment cut to its bare score —
+// the prefix before the first '/' or space — joined by a 1-char dash, so
+// a narrow split-screen pane shows EVERY team's number ("7-3") before the
+// local-only fallback ever hides a rival's score.
+static std::vector<ModeRowSegment> compact_mode_row(
+    const std::vector<ModeRowSegment>& segments)
+{
+    std::vector<ModeRowSegment> compact;
+    int team_segments = 0;
+    for (const ModeRowSegment& segment : segments)
+    {
+        if (segment.team == 255)
+            continue; // separators are re-authored below
+        ++team_segments;
+        const std::size_t cut = segment.text.find_first_of("/ ");
+        std::string score = segment.text.substr(
+            0, cut == std::string::npos ? segment.text.size() : cut);
+        if (score.empty())
+            continue;
+        if (!compact.empty())
+            compact.push_back({"-", mode_hud_color(255), 255});
+        compact.push_back({std::move(score), segment.color, segment.team});
+    }
+    // With one team on the row there is no rival to keep visible —
+    // end-first truncation of the full text serves better than its stub.
+    if (team_segments < 2)
+        compact.clear();
+    return compact;
+}
+
 static Sint32 mode_row_length(const std::vector<ModeRowSegment>& segments)
 {
     Sint32 total = 0;
@@ -416,13 +448,21 @@ static void draw_mode_panel(screen* s, viewscreen* view, Sint32 lm, Sint32 tm,
     }
 
     std::vector<ModeRowSegment> segments = compose_mode_row(mode, -1);
-    if (mode_row_length(segments) > budget && classic_hud &&
-        control->team_num() < SCORE_TEAM_COUNT)
+    if (mode_row_length(segments) > budget)
     {
-        std::vector<ModeRowSegment> local =
-            compose_mode_row(mode, static_cast<int>(control->team_num()));
-        if (!local.empty())
-            segments = std::move(local);
+        // #210: before hiding rivals, try every team's bare score ("7-3").
+        std::vector<ModeRowSegment> compact = compact_mode_row(segments);
+        if (!compact.empty() && mode_row_length(compact) <= budget)
+        {
+            segments = std::move(compact);
+        }
+        else if (classic_hud && control->team_num() < SCORE_TEAM_COUNT)
+        {
+            std::vector<ModeRowSegment> local =
+                compose_mode_row(mode, static_cast<int>(control->team_num()));
+            if (!local.empty())
+                segments = std::move(local);
+        }
     }
     if (segments.empty())
         return;

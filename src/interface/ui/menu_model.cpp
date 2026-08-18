@@ -13,12 +13,15 @@
 namespace og::ui {
 namespace {
 
-constexpr std::array<PickerMenuItem, 9> kMainMenuItems = {{
+// The DIFFICULTY door left this menu for Team Build
+// (docs/camp-controls-design.md): difficulty, respawns and permadeath are
+// settings about the company's next fight, so they now sit where the company
+// is. Every row below it moved up one 1-based position — re-pinned in the
+// same commit across the positional drivers (the headless drives, the
+// interactive script, the curses route tests).
+constexpr std::array<PickerMenuItem, 8> kMainMenuItems = {{
     {"begin_new_game", "Begin New Game", PickerMenuCommand::BeginNewGame},
     {"continue_game", "Continue Game", PickerMenuCommand::ContinueGame},
-    // The DIFFICULTY entry is a door into the DIFFICULTY submenu
-    // (kDifficultyMenuItems below); the in-place cycle moved in there.
-    {"difficulty", "Difficulty", PickerMenuCommand::OpenDifficultyMenu},
     {"level_edit", "Level Editor", PickerMenuCommand::LevelEdit},
     {"options", "Game Settings", PickerMenuCommand::Options},
     // HELP and QUIT are separate, stable footer actions on the graphical
@@ -29,38 +32,53 @@ constexpr std::array<PickerMenuItem, 9> kMainMenuItems = {{
     // §2.1: the LOAD half of the CONTINUE|LOAD split remains at the end of
     // the terminal model; the SDL surface positions it beside CONTINUE.
     {"load_company", "Load Company", PickerMenuCommand::LoadGame},
-    // #155: the CLOUD door — appended so the 1-based text-drive positions
-    // of every older row stay stable.
-    {"cloud", "Cloud", PickerMenuCommand::OpenCloudMenu},
+    // #155: the CLOUD door — last, matching the SDL surface's CLOUD SAVES.
+    {"cloud", "Cloud Saves", PickerMenuCommand::OpenCloudMenu},
 }};
 
-// §2.5 base camp: the TeamBuild model stays 12 items by IN-PLACE substitution
-// (minimizes 1-based churn for the text/curses index contract): 1 roster (was
-// view_team), 4 deploy (was load_team), 5 ready (was save_team). Save/Load
-// left the base camp entirely — saving is automatic (§3.8).
-constexpr std::array<PickerMenuItem, 12> kTeamBuildItems = {{
+// §2.5 base camp: the TeamBuild model stayed 12 items by IN-PLACE
+// substitution (minimizes 1-based churn for the text/curses index contract):
+// 1 roster (was view_team), 4 deploy (was load_team), 5 ready (was
+// save_team). Save/Load left the base camp entirely — saving is automatic
+// (§3.8). The 13th row is the zone's Camp door
+// (docs/basecamp-zones-design.md "Terminals"), inserted before Back rather
+// than appended: it has to stay inside the curses digit-jump budget (the
+// first 9 selectable rows), and a door only the arrow keys reach is a door
+// most players never open. That costs back/networking/scenario/the CTF trio
+// one ordinal each — re-pinned in the same commit across the three
+// positional drivers (the headless drives, the interactive script, the
+// curses route tests).
+// The flat CTF trio then LEFT (docs/camp-controls-design.md): teams, target
+// score and troops are the modes camp's MATCH SETUP page now, one place that
+// speaks them in plain words on every client. DIFFICULTY arrived in their
+// place, appended so nothing above it moved. It is past the digit-jump
+// budget, like Scenario before it — the arrow keys reach it, and unlike a
+// match rule it is not something a player retunes every round.
+constexpr std::array<PickerMenuItem, 11> kTeamBuildItems = {{
     {"roster", "Roster", PickerMenuCommand::ViewTeam},
     {"train_team", "Train Team", PickerMenuCommand::TrainTeam},
     {"hire_troops", "Hire Troops", PickerMenuCommand::HireTroops},
     {"deploy", "Deploy", PickerMenuCommand::ToggleDeploy},
     {"ready", "Ready", PickerMenuCommand::ToggleReady},
     {"go", "GO!", PickerMenuCommand::StartGame},
+    // The Lua-composable gameplay zone's terminal face. Not gated at the
+    // model layer — terminals list every row; opening it on a campaign that
+    // composed no camp prints the guard line (the SDL surface renders the
+    // default zone in place instead, from its own spec table).
+    {"camp", "Camp", PickerMenuCommand::CampaignCamp},
     {"back", "Back", PickerMenuCommand::Back},
     {"networking", "Networking", PickerMenuCommand::Networking},
     // The scenario-shaped commands (campaign/level/viewer/matchup/progress)
     // live in the SCENARIO submenu now (kScenarioItems below).
     {"scenario", "Scenario", PickerMenuCommand::Scenario},
-    // The SDL picker groups the CTF match settings into MATCHUP;
-    // terminal clients keep them as flat team-build items.
-    {"ctf_teams", "Match Teams", PickerMenuCommand::CycleCtfTeamCount},
-    {"ctf_caps", "Score Limit", PickerMenuCommand::CycleCtfCaptureLimit},
-    {"ctf_troops", "Scenario Troops", PickerMenuCommand::ToggleCtfScenarioTroops},
+    // The door into the DIFFICULTY submenu (kDifficultyMenuItems below).
+    {"difficulty", "Difficulty", PickerMenuCommand::OpenDifficultyMenu},
 }};
 
 // The SCENARIO submenu: everything that chooses or inspects the scenario.
 // SET CAMPAIGN / SET LEVEL stay host-gated on the SDL surface; the terminal
 // clients present the submenu as a nested flat list.
-constexpr std::array<PickerMenuItem, 7> kScenarioItems = {{
+constexpr std::array<PickerMenuItem, 8> kScenarioItems = {{
     {"set_campaign", "Set Campaign", PickerMenuCommand::SetCampaign},
     {"set_level", "Set Level", PickerMenuCommand::SetLevel},
     {"view_scenario", "View Scenario", PickerMenuCommand::ViewScenario},
@@ -71,6 +89,16 @@ constexpr std::array<PickerMenuItem, 7> kScenarioItems = {{
     // test_platform_headless.cpp) select by ordinal, so growth stays
     // append-only and Back keeps its "last item" reading.
     {"troops", "Scenario Troops", PickerMenuCommand::ToggleCtfScenarioTroops},
+    // #207: the terminal replay prompt — a CLEARED level re-fought with its
+    // authored census, the cursor coming home on the win. Appended before
+    // Back like troops above (the 1-based position consumers again); the
+    // SDL surface carries the arm on PROGRESS's per-row REPLAY instead.
+    {"replay_level", "Replay Level", PickerMenuCommand::ReplayLevel},
+    // The v1 MISSIONS row is gone, not moved: the scripted book is a room
+    // inside the Base Camp now, reached from a camp page row, so a fourth
+    // level-selection door in SCENARIO would restructure nothing
+    // (docs/basecamp-zones-design.md "Retirement ledger"). Back returns to
+    // its "last item" reading, at 8 now.
     {"back", "Back", PickerMenuCommand::Back},
 }};
 

@@ -15,6 +15,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/save_data.h>
 
@@ -191,7 +192,13 @@ bool persist_networked_win(const std::string& slot, const SaveData& session,
         // Deliberately persisted below with the rest of the merged save (like
         // the campaign cursor), so the company reflects the last session's rules.
         merged.keep_fallen_heroes = session.keep_fallen_heroes;
-        merged.merge_owned_guys_from(world.oblist, own_player_indices);
+        // #213: versus arenas persist no XP — the merged roster keeps the
+        // DISK exp/level (the local fold's update_guys arm applies the same
+        // rule; see progression.cpp).
+        const bool versus_no_xp =
+            og::data::campaign_matchup(session.current_campaign) == "versus";
+        merged.merge_owned_guys_from(world.oblist, own_player_indices,
+                                     versus_no_xp);
 
         // §4.6 Edit 2: bank the disk baseline PLUS only this machine's
         // deploy-ratio share of the fold delta (never the whole session pot).
@@ -213,9 +220,23 @@ bool persist_networked_win(const std::string& slot, const SaveData& session,
 
     // Advance this machine's OWN campaign cursor whether it owns characters or
     // is spectating, so a zero-seat host/client still rejoins at the next
-    // destination.
+    // destination. #207: when THIS machine's session save is armed — a
+    // hosting player by its REPLAY click (the SDL and curses hosts both
+    // seed the authoritative session from their own company save, arm
+    // included), the dedicated server and the curses joiner by the
+    // lobby-config adoption arm, the SDL joiner by synced-apply adoption —
+    // the fold has already RESTORED session.scen_num to that machine's own
+    // pre-excursion position (progression.cpp step 5b runs before any
+    // persist), so the write below carries the restored cursor. A machine
+    // arms only for a level completed in its OWN save (same campaign): one
+    // that never cleared the level follows the walked exit and earns it.
     merged.current_campaign = session.current_campaign;
     merged.scen_num = session.scen_num;
+
+    // Campaign scripting decision book (GTL v15): per-machine, like the
+    // cursor above — the machine that made the decisions persists its own
+    // book, so the session state overlays whatever the disk copy held.
+    merged.campaign_state = session.campaign_state;
 
     // §3.8: persist through the LevelWin choke point (stamp last_played, atomic
     // write, exactly one backup snapshot per machine per win). `merged` is the

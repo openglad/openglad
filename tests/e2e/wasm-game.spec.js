@@ -267,8 +267,10 @@ async function openWebDisplayOptions(page) {
 
   // Picker nav uses player 1's bindings: S/A/W and Z, not browser arrow
   // keys and Enter. With no company the top row links straight to LEVEL
-  // EDITOR, and the GAME door (leading the settings group's GAME | CLOUD
-  // pair) is two downward steps in the web layout.
+  // EDITOR, and the GAME SETTINGS door (the settings group's first
+  // full-width row, over CLOUD SAVES) is two downward steps in the web
+  // layout. DIFFICULTY leaving this menu for the Base Camp strip
+  // (docs/camp-controls-design.md) deliberately kept that chain intact.
   for (let i = 0; i < 2; ++i) {
     await pressPickerKey(page, 's');
   }

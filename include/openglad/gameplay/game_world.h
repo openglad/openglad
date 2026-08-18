@@ -475,6 +475,13 @@ public:
     bool paused = false;
     std::uint8_t pause_player_index = 0xff;
     std::set<int> completed_levels;
+    // Campaign decision values (og.campaign_var, read-only from the sim).
+    // The authoritative level-load sync sites clear-then-copy the campaign's
+    // registered var names from the save — replace, never merge — so
+    // GameWorld::clear() needs no edit and stale values cannot leak across
+    // levels or campaigns. Deliberately NOT in WorldSnapshot: mirrors never
+    // run Lua (docs/campaign-scripting-design.md).
+    std::vector<std::pair<std::string, std::int32_t>> campaign_vars;
     std::function<std::unique_ptr<walker>(Order, std::int32_t)> entity_factory;
     std::function<const PixieData*(walker&, Order, std::int32_t)> entity_configurator;
     std::function<void(walker*, Order, std::int32_t)> entity_derived_stats;

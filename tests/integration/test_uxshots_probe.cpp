@@ -970,9 +970,10 @@ TEST(UxShots, l_basecamp_net_alert) {
 }
 
 // Seven authoritative seats exercise the compact four-card rail, its pager,
-// and the MATCHUP overview reached through the SEATS label. Internal network
-// names intentionally differ from public company names so the screenshots
-// catch any accidental transport-identity leak.
+// and the MATCHUP overview reached through SCENARIO (#236 retired the rail's
+// duplicate SEATS door). Internal network names intentionally differ from
+// public company names so the screenshots catch any accidental
+// transport-identity leak.
 int basecamp_many_seats_injector(void *data) {
   og::runtime::ensure_thread_session();
   ShotState *state = static_cast<ShotState *>(data);
@@ -984,11 +985,21 @@ int basecamp_many_seats_injector(void *data) {
       SDL_Delay(750);
       state->captures += capture_frame("basecamp_net_seats_p2");
     }
-    interact("seats");
+    interact("scenario");
+    if (wait_for_interactable("matchup", 5000)) {
+      SDL_Delay(300);
+      interact("matchup");
+    }
     if (wait_for_interactable("cross_control", 5000)) {
       SDL_Delay(1000);
       state->captures += capture_frame("matchup_network_seats");
+      // MATCHUP back lands on the SCENARIO submenu; its back returns to
+      // Base Camp, whose back leaves the screen.
       interact("back");
+      if (wait_for_interactable("view_scenario", 5000)) {
+        SDL_Delay(300);
+        interact("back");
+      }
       if (wait_for_team_menu(5000)) {
         SDL_Delay(250);
         interact("back");

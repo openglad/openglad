@@ -57,6 +57,7 @@ struct GuyRecord
     int32_t total_shots = 9;
     short teamnum = 1;
     unsigned char deployed = 1; // v14+: 0 = held back (guy offset +50)
+    unsigned char campaign_tag = 0; // v16+: assignment channel (guy offset +51)
 };
 
 static void write_guy(SDL_IOStream* out, const GuyRecord& g, char version = 13)
@@ -84,7 +85,13 @@ static void write_guy(SDL_IOStream* out, const GuyRecord& g, char version = 13)
     rw_write_val(out, g.total_shots);
     rw_write_val(out, g.teamnum);
 
-    if (version >= 14) {
+    if (version >= 16) {
+        // v16+ reinterprets the second reserved byte as the campaign tag.
+        rw_write_val(out, g.deployed);
+        rw_write_val(out, g.campaign_tag);
+        char filler6[6] = {0};
+        rw_write(out, filler6, sizeof(filler6));
+    } else if (version >= 14) {
         // v14+ reinterprets the first reserved byte as the deploy flag.
         rw_write_val(out, g.deployed);
         char filler7[7] = {0};
@@ -246,6 +253,13 @@ static void write_save_file(const std::string& filename_no_ext,
             static_cast<short>(static_cast<uint16_t>(tower_run_seed >> 16));
         rw_write_val(out, seed_lo);
         rw_write_val(out, seed_hi);
+    }
+
+    // Version 15+ appends the campaign scripted-state block (empty here;
+    // the state-carrying fixtures round-trip through SaveData itself).
+    if (version >= 15) {
+        short num_state_campaigns = 0;
+        rw_write_val(out, num_state_campaigns);
     }
 
     SDL_CloseIO(out);
@@ -561,7 +575,7 @@ TEST(SaveDataVersions, save_data_v11_roundtrip_preserves_strip_flag_and_version_
               static_cast<int>(src.save_with_error("typed_save_strip_roundtrip")))
         << "v11 writer should succeed";
 
-    // The writer must stamp version 14 in the GTL header.
+    // The writer must stamp version 16 in the GTL header.
     SDL_IOStream* in = open_read_file("save/", "typed_save_strip_roundtrip.gtl");
     ASSERT_TRUE(in != nullptr) << "saved file should be readable";
     char header[3] = {};
@@ -570,7 +584,7 @@ TEST(SaveDataVersions, save_data_v11_roundtrip_preserves_strip_flag_and_version_
     SDL_ReadIO(in, &version_byte, 1);
     SDL_CloseIO(in);
     ASSERT_EQ(0, std::memcmp(header, "GTL", 3)) << "GTL header expected";
-    ASSERT_EQ(14, (int)version_byte) << "writer should stamp version 14";
+    ASSERT_EQ(16, (int)version_byte) << "writer should stamp version 16";
 
     SaveData loaded;
     ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
@@ -757,7 +771,7 @@ TEST(SaveDataVersions, save_data_v13_roundtrip_preserves_tower_fields)
               static_cast<int>(src.save_with_error("typed_save_tower_roundtrip")))
         << "v13 writer should succeed";
 
-    // The writer must stamp version 14 in the GTL header.
+    // The writer must stamp version 16 in the GTL header.
     SDL_IOStream* in = open_read_file("save/", "typed_save_tower_roundtrip.gtl");
     ASSERT_TRUE(in != nullptr) << "saved file should be readable";
     char header[3] = {};
@@ -766,7 +780,7 @@ TEST(SaveDataVersions, save_data_v13_roundtrip_preserves_tower_fields)
     SDL_ReadIO(in, &version_byte, 1);
     SDL_CloseIO(in);
     ASSERT_EQ(0, std::memcmp(header, "GTL", 3)) << "GTL header expected";
-    ASSERT_EQ(14, (int)version_byte) << "writer should stamp version 14";
+    ASSERT_EQ(16, (int)version_byte) << "writer should stamp version 16";
 
     SaveData loaded;
     ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
@@ -1277,6 +1291,50 @@ TEST(SaveDataVersions, save_data_round9_reset_campaign_missing_entry_is_noop)
 }
 
 
+// The earned-roads gate keys the frontier off the cursor, so a RESET must
+// rewind it: a company parked past its wiped completions would find every
+// road closed. The current campaign rewinds to its declared first_level;
+// any other campaign just forgets its stored cursor (the next switch falls
+// back to first_level through load_campaign).
+TEST(SaveDataVersions, save_data_reset_campaign_rewinds_the_cursor)
+{
+    restore_default_campaigns();
+    const std::string previous_mount = get_mounted_campaign();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    SaveData data;
+    data.reset();
+    data.current_campaign = "modes";
+    data.scen_num = 815;
+    data.current_levels["modes"] = 815;
+    data.current_levels["gladiator"] = 12;
+    data.add_level_completed("modes", 815);
+    data.add_level_completed("gladiator", 12);
+
+    // Resetting the CURRENT campaign rewinds to its campaign.yaml
+    // first_level (modes declares 300).
+    data.reset_campaign("modes");
+    ASSERT_EQ(0, data.get_num_levels_completed("modes"));
+    ASSERT_EQ(300, (int)data.scen_num)
+        << "resetting the current campaign must rewind the live cursor";
+    ASSERT_EQ(300, data.current_levels.at("modes"));
+
+    // Resetting another campaign leaves the live cursor alone and erases
+    // only that campaign's stored cursor.
+    data.reset_campaign("gladiator");
+    ASSERT_EQ(300, (int)data.scen_num)
+        << "resetting another campaign must not move the live cursor";
+    ASSERT_EQ(0u, data.current_levels.count("gladiator"))
+        << "the stored cursor is forgotten so the next switch re-enters at "
+           "first_level";
+
+    (void)unmount_campaign_package_with_error("modes");
+    if (!previous_mount.empty() && previous_mount != "modes")
+        (void)mount_campaign_package_with_error(previous_mount);
+}
+
+
 // --- GTL v14: reserved-block embedding (docs/company-basecamp-design.md §3.1) ---
 
 // Reads an entire "save/<name>" file into a byte vector for raw offset checks.
@@ -1327,7 +1385,7 @@ TEST(SaveDataVersions,
     const std::vector<uint8_t> canonical =
         read_save_bytes("typed_save_v14_boundary_seed.gtl");
     ASSERT_GT(canonical.size(), kFirstLevelCountOffset + sizeof(std::int16_t));
-    ASSERT_EQ(14, static_cast<int>(canonical[3]));
+    ASSERT_EQ(16, static_cast<int>(canonical[3]));
 
     const auto expect_read_failure =
         [&](const char* slot, std::vector<uint8_t> bytes) {
@@ -1453,7 +1511,7 @@ TEST(SaveDataVersions,
             in.read(reinterpret_cast<char*>(header.data()),
                     static_cast<std::streamsize>(header.size()));
             ASSERT_TRUE(in.good());
-            EXPECT_EQ((std::array<unsigned char, 4>{'G', 'T', 'L', 14}),
+            EXPECT_EQ((std::array<unsigned char, 4>{'G', 'T', 'L', 16}),
                       header);
         };
 
@@ -1522,7 +1580,7 @@ TEST(SaveDataVersions, save_data_v14_writer_retires_company_player_count)
         const std::vector<uint8_t> bytes =
             read_save_bytes((slot + ".gtl").c_str());
         ASSERT_GT(bytes.size(), 132u) << "complete GTL header expected";
-        EXPECT_EQ(14, static_cast<int>(bytes[3]))
+        EXPECT_EQ(16, static_cast<int>(bytes[3]))
             << "retiring the field does not change the GTL layout version";
         EXPECT_EQ(1, static_cast<int>(bytes[132]))
             << "old readers still need the canonical one-player marker";
@@ -1599,15 +1657,16 @@ TEST(SaveDataVersions, save_data_v14_roundtrip_preserves_timestamp_and_deploy_fl
         << "v14 writer should succeed";
 
     // RAW offset spot-checks (§3.1 fixed offsets):
-    //   3        version byte = 14
+    //   3        version byte = 16
     //   133..140 last_played_unix_s (host-endian i64)
     //   141..163 reserved, zero-filled
-    //   164      first guy record; guy+50 deployed flag, guy+51..57 zero
+    //   164      first guy record; guy+50 deployed flag, guy+51 campaign
+    //            tag (v16), guy+52..57 zero
     const std::vector<uint8_t> bytes = read_save_bytes("typed_save_v14_roundtrip.gtl");
     constexpr size_t kHeaderSize = 164;
     constexpr size_t kGuySize = 58;
     ASSERT_GE(bytes.size(), kHeaderSize + 2 * kGuySize) << "file too small";
-    ASSERT_EQ(14, (int)bytes[3]) << "version byte at offset 3";
+    ASSERT_EQ(16, (int)bytes[3]) << "version byte at offset 3";
 
     std::int64_t raw_ts = 0;
     std::memcpy(&raw_ts, bytes.data() + 133, 8);
@@ -1621,6 +1680,8 @@ TEST(SaveDataVersions, save_data_v14_roundtrip_preserves_timestamp_and_deploy_fl
     const size_t guy1 = kHeaderSize + kGuySize;
     ASSERT_EQ(1, (int)bytes[guy0 + 50]) << "deployed flag at guy+50";
     ASSERT_EQ(0, (int)bytes[guy1 + 50]) << "held-back flag at guy+50";
+    // Unassigned characters write tag 0 at guy+51 (GTL v16), so the whole
+    // former reserved range still reads zero here.
     for (size_t i = 51; i < kGuySize; ++i) {
         ASSERT_EQ(0, (int)bytes[guy0 + i]) << "guy0 reserved byte " << i;
         ASSERT_EQ(0, (int)bytes[guy1 + i]) << "guy1 reserved byte " << i;
@@ -1734,7 +1795,7 @@ TEST(SaveDataVersions, save_data_v13_shaped_reader_tolerance_proxy)
 
     std::vector<uint8_t> bytes = read_save_bytes("typed_save_v14_as_v13.gtl");
     ASSERT_GT(bytes.size(), (size_t)164) << "readable v14 file expected";
-    ASSERT_EQ(14, (int)bytes[3]);
+    ASSERT_EQ(16, (int)bytes[3]);
     bytes[3] = 13; // re-label: v13-shaped reader sees reserved filler
 
     SDL_IOStream* out = open_write_file("save/", "typed_save_v14_as_v13.gtl");
@@ -1863,7 +1924,7 @@ TEST(SaveDataVersions, save_data_v13_gtl_filler_first_autosave_upgrades_in_place
     const std::vector<uint8_t> upgraded =
         read_save_bytes("ver13_upgrade_company.gtl");
     ASSERT_GE(upgraded.size(), kHeaderSize + kGuySize);
-    ASSERT_EQ(14, (int)upgraded[3]) << "in-place upgrade rewrites version 14";
+    ASSERT_EQ(16, (int)upgraded[3]) << "in-place upgrade rewrites version 16";
     std::int64_t raw_ts = 0;
     std::memcpy(&raw_ts, upgraded.data() + 133, 8);
     ASSERT_EQ(1700000123LL, raw_ts) << "upgrade stamps the pinned clock";
@@ -1880,7 +1941,7 @@ TEST(SaveDataVersions, save_data_v13_gtl_filler_first_autosave_upgrades_in_place
         og::data::read_company_header("ver13_upgrade_company");
     ASSERT_TRUE(header.has_value() && header->valid)
         << "upgraded file must header-scan clean";
-    ASSERT_EQ(14, (int)header->version);
+    ASSERT_EQ(16, (int)header->version);
     ASSERT_EQ(1700000123LL, header->last_played_unix_s);
     ASSERT_TRUE(og::data::list_company_backups("ver13_upgrade_company").empty())
         << "a mutation autosave must not snapshot a backup";
@@ -1942,4 +2003,457 @@ TEST(SaveDataVersions, save_data_v13_resave_of_v14_drops_company_fields)
     ASSERT_TRUE(rounded.team_list[0]->name == "ROUNDTRIP");
     ASSERT_EQ(9999u, rounded.team_list[0]->exp);
     ASSERT_EQ(7777u, rounded.totalcash) << "non-company fields intact";
+}
+
+
+// --- GTL v15: campaign scripted state (docs/campaign-scripting-design.md,
+// "Persistent campaign state") ---
+
+TEST(SaveDataVersions, save_data_v15_roundtrip_preserves_campaign_state)
+{
+    SaveData src;
+    src.current_campaign = "gladiator";
+    // Insert in deliberately unsorted order: the entry lists must come out
+    // sorted by key (the deterministic-serialization invariant).
+    ASSERT_TRUE(src.campaign_state_set("gladiator", "watch_paid", 3));
+    ASSERT_TRUE(src.campaign_state_set("gladiator", "advance_debt", -60));
+    ASSERT_TRUE(src.campaign_state_set("gladiator", "delve_counted", 0));
+    ASSERT_TRUE(src.campaign_state_set("other_campaign", "zz_key", 7));
+
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(src.save_with_error("typed_save_v15_roundtrip")))
+        << "v15 writer should succeed";
+
+    SaveData loaded;
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(loaded.load_with_error("typed_save_v15_roundtrip")))
+        << "v15 reader should succeed";
+    ASSERT_EQ(3, loaded.campaign_state_get("gladiator", "watch_paid"))
+        << "campaign state value should roundtrip";
+    ASSERT_EQ(-60, loaded.campaign_state_get("gladiator", "advance_debt"))
+        << "negative values should roundtrip";
+    ASSERT_EQ(0, loaded.campaign_state_get("gladiator", "delve_counted"));
+    ASSERT_EQ(7, loaded.campaign_state_get("other_campaign", "zz_key"))
+        << "a second campaign's state should roundtrip";
+    ASSERT_EQ(0, loaded.campaign_state_get("gladiator", "missing_key"))
+        << "absent keys read 0";
+
+    // The explicitly-set-to-0 entry KEEPS its slot through the roundtrip
+    // (presence never depends on value history).
+    const auto& entries = loaded.campaign_state.at("gladiator");
+    ASSERT_EQ(3u, entries.size()) << "all three entries persisted";
+    ASSERT_EQ("advance_debt", entries[0].first) << "entries sorted by key";
+    ASSERT_EQ("delve_counted", entries[1].first) << "entries sorted by key";
+    ASSERT_EQ("watch_paid", entries[2].first) << "entries sorted by key";
+
+    // Deterministic files: a load-then-resave is byte-identical.
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(loaded.save_with_error("typed_save_v15_resave")));
+    const std::vector<uint8_t> first =
+        read_save_bytes("typed_save_v15_roundtrip.gtl");
+    const std::vector<uint8_t> second =
+        read_save_bytes("typed_save_v15_resave.gtl");
+    ASSERT_FALSE(first.empty());
+    ASSERT_EQ(16, (int)first[3]) << "version byte at offset 3";
+    ASSERT_EQ(first, second)
+        << "sorted-by-key storage must make a re-save byte-identical";
+}
+
+TEST(SaveDataVersions, save_data_load_v14_payload_defaults_campaign_state)
+{
+    write_save_file("ver14_no_campaign_state",
+                    /*version=*/14,
+                    /*campaign_id=*/"gladiator",
+                    /*scen_num=*/1,
+                    /*cash=*/100,
+                    /*score=*/200,
+                    /*allied_mode=*/1,
+                    /*numplayers=*/1,
+                    /*guys=*/nullptr,
+                    /*listsize=*/0,
+                    /*use_v8plus_campaigns=*/true,
+                    /*v5plus_levelstatus=*/true,
+                    /*levelstatus_500=*/nullptr,
+                    /*levelstatus_200=*/nullptr,
+                    /*ctf_team_count=*/2,
+                    /*ctf_capture_limit=*/0,
+                    /*ctf_respawn_ticks=*/0,
+                    /*ctf_strip_scenario_troops=*/0,
+                    /*respawn_mode=*/0,
+                    /*generator_rate=*/0,
+                    /*keep_fallen_heroes=*/0,
+                    /*tower_best_floor=*/0,
+                    /*tower_run_seed=*/0,
+                    /*last_played_unix_s=*/42LL);
+
+    SaveData tmp;
+    // Poison the in-memory field: a v14 payload must leave it empty.
+    ASSERT_TRUE(tmp.campaign_state_set("gladiator", "stale_key", 9));
+    ASSERT_TRUE(tmp.load("ver14_no_campaign_state")) << "v14 load should succeed";
+    ASSERT_TRUE(tmp.campaign_state.empty())
+        << "a v14 file (no campaign-state block) loads with empty state";
+    ASSERT_EQ(0, tmp.campaign_state_get("gladiator", "stale_key"));
+}
+
+// Byte-level bounds rejections on the v15 tail. The state block is the
+// LAST block in the file, so its offsets are computed from the file end:
+// seed state = one campaign ("gladiator") with entries "alpha"(1) and
+// "beta"(2) -> block = 2 (count) + 40 (id) + 2 (entries) + (1+5+4) +
+// (1+4+4) = 63 bytes.
+TEST(SaveDataVersions, save_data_v15_rejects_invalid_campaign_state_boundaries)
+{
+    SaveData seed;
+    seed.save_name = "STATE BOUNDARY SEED";
+    seed.current_campaign = "gladiator";
+    ASSERT_TRUE(seed.campaign_state_set("gladiator", "alpha", 1));
+    ASSERT_TRUE(seed.campaign_state_set("gladiator", "beta", 2));
+    ASSERT_EQ(SaveDataIoError::None,
+              seed.save_with_error("typed_save_v15_boundary_seed"));
+
+    const std::vector<uint8_t> canonical =
+        read_save_bytes("typed_save_v15_boundary_seed.gtl");
+    constexpr std::size_t kStateBlockSize = 2 + 40 + 2 + (1 + 5 + 4) + (1 + 4 + 4);
+    ASSERT_GT(canonical.size(), kStateBlockSize);
+    ASSERT_EQ(16, static_cast<int>(canonical[3]));
+    const std::size_t state_start = canonical.size() - kStateBlockSize;
+
+    // Verify the computed offset really is the block start (campaign count
+    // == 1) before mutating around it.
+    std::int16_t stored_count = 0;
+    std::memcpy(&stored_count, canonical.data() + state_start, 2);
+    ASSERT_EQ(1, stored_count) << "state block offset arithmetic";
+
+    const auto expect_read_failure =
+        [&](const char* slot, std::vector<uint8_t> bytes) {
+            rewrite_save_bytes((std::string(slot) + ".gtl").c_str(), bytes);
+            SaveData loaded;
+            EXPECT_EQ(SaveDataIoError::ReadFailed,
+                      loaded.load_with_error(slot))
+                << slot;
+            EXPECT_EQ(SaveDataIoError::ReadFailed, loaded.last_io_error())
+                << slot;
+        };
+
+    {
+        // >128 campaigns with state.
+        std::vector<uint8_t> bytes = canonical;
+        const std::int16_t invalid_count = 129;
+        std::memcpy(bytes.data() + state_start, &invalid_count, 2);
+        expect_read_failure("typed_save_v15_too_many_state_campaigns",
+                            std::move(bytes));
+    }
+
+    {
+        // Unsafe campaign id inside the state block.
+        std::vector<uint8_t> bytes = canonical;
+        std::fill_n(bytes.begin() +
+                        static_cast<std::ptrdiff_t>(state_start + 2),
+                    40, uint8_t{0});
+        constexpr std::string_view unsafe_id = "../outside";
+        std::copy(unsafe_id.begin(), unsafe_id.end(),
+                  bytes.begin() +
+                      static_cast<std::ptrdiff_t>(state_start + 2));
+        expect_read_failure("typed_save_v15_unsafe_state_campaign",
+                            std::move(bytes));
+    }
+
+    {
+        // >128 entries in one campaign.
+        std::vector<uint8_t> bytes = canonical;
+        const std::int16_t invalid_entries = 129;
+        std::memcpy(bytes.data() + state_start + 42, &invalid_entries, 2);
+        expect_read_failure("typed_save_v15_too_many_state_entries",
+                            std::move(bytes));
+    }
+
+    {
+        // Oversized key length (33 > kCampaignVarNameMax).
+        std::vector<uint8_t> bytes = canonical;
+        bytes[state_start + 44] = 33;
+        expect_read_failure("typed_save_v15_oversized_state_key",
+                            std::move(bytes));
+    }
+
+    {
+        // Key charset violation ('A' is outside [a-z0-9_]).
+        std::vector<uint8_t> bytes = canonical;
+        bytes[state_start + 45] = static_cast<uint8_t>('A');
+        expect_read_failure("typed_save_v15_bad_charset_state_key",
+                            std::move(bytes));
+    }
+}
+
+TEST(SaveDataVersions, save_data_campaign_state_set_refuses_without_mutating)
+{
+    SaveData data;
+
+    // Bad charset (uppercase, dash, space) and empty keys.
+    ASSERT_FALSE(data.campaign_state_set("gladiator", "BadKey", 1));
+    ASSERT_FALSE(data.campaign_state_set("gladiator", "with-dash", 1));
+    ASSERT_FALSE(data.campaign_state_set("gladiator", "with space", 1));
+    ASSERT_FALSE(data.campaign_state_set("gladiator", "", 1));
+    ASSERT_TRUE(data.campaign_state.empty())
+        << "a refused set must not create the campaign's entry list";
+
+    // A campaign id longer than the serialized 40-byte field would silently
+    // truncate on disk and detach the state from its campaign on reload —
+    // the write choke refuses it with no mutation. The 40-char boundary id
+    // is accepted (on a scratch SaveData so the cap arithmetic below stays
+    // exact).
+    ASSERT_FALSE(data.campaign_state_set(std::string(41, 'c'), "seed", 1));
+    ASSERT_TRUE(data.campaign_state.empty())
+        << "a refused campaign id must not create an entry list";
+    {
+        SaveData boundary;
+        const std::string campaign40(40, 'c');
+        ASSERT_TRUE(boundary.campaign_state_set(campaign40, "seed", 1));
+        ASSERT_EQ(1, boundary.campaign_state_get(campaign40, "seed"));
+    }
+
+    // 33-char key refused, 32-char key accepted.
+    const std::string key32(32, 'k');
+    const std::string key33(33, 'k');
+    ASSERT_FALSE(data.campaign_state_set("gladiator", key33, 1));
+    ASSERT_TRUE(data.campaign_state.empty());
+    ASSERT_TRUE(data.campaign_state_set("gladiator", key32, 5));
+    ASSERT_EQ(5, data.campaign_state_get("gladiator", key32));
+
+    // Fill to the 128-entry cap; the 129th NEW key is refused with no
+    // mutation, while existing keys stay writable — including a write of 0,
+    // which KEEPS the entry.
+    for (int i = 1; i < 128; ++i)
+    {
+        char name[16];
+        std::snprintf(name, sizeof(name), "k%03d", i);
+        ASSERT_TRUE(data.campaign_state_set("gladiator", name, i)) << name;
+    }
+    ASSERT_EQ(128u, data.campaign_state.at("gladiator").size());
+    ASSERT_FALSE(data.campaign_state_set("gladiator", "one_too_many", 1))
+        << "129th entry refused";
+    ASSERT_EQ(128u, data.campaign_state.at("gladiator").size())
+        << "refusal must not mutate";
+    ASSERT_TRUE(data.campaign_state_set("gladiator", "k001", 0))
+        << "existing keys stay writable at the cap";
+    ASSERT_EQ(128u, data.campaign_state.at("gladiator").size())
+        << "setting an existing key to 0 keeps the entry";
+    ASSERT_EQ(0, data.campaign_state_get("gladiator", "k001"));
+
+    // Fill to the 128-campaign cap; state for a 129th campaign is refused.
+    for (int i = 1; i < 128; ++i)
+    {
+        const std::string campaign = "camp" + std::to_string(i);
+        ASSERT_TRUE(data.campaign_state_set(campaign, "seed", i)) << campaign;
+    }
+    ASSERT_EQ(128u, data.campaign_state.size());
+    ASSERT_FALSE(data.campaign_state_set("camp129", "seed", 1))
+        << "129th campaign refused";
+    ASSERT_EQ(128u, data.campaign_state.size()) << "refusal must not mutate";
+    ASSERT_TRUE(data.campaign_state_set("camp1", "seed2", 2))
+        << "existing campaigns stay writable at the cap";
+}
+
+// The writer re-checks every campaign-state bound the choke enforces:
+// direct field manipulation (the only way past campaign_state_set) must
+// refuse to WRITE rather than emit a file the reader rejects.
+TEST(SaveDataVersions, save_data_writer_refuses_direct_campaign_state_abuse)
+{
+    const auto expect_write_refused = [](SaveData& data, const char* slot) {
+        namespace fs = std::filesystem;
+        const fs::path path =
+            fs::path(get_user_path()) / "save" / (std::string(slot) + ".gtl");
+        og::test::ScopedPhysicalFileState file_state(path);
+        ASSERT_TRUE(file_state.ready()) << file_state.error().message();
+        EXPECT_EQ(SaveDataIoError::WriteFailed, data.save_with_error(slot))
+            << slot;
+        EXPECT_EQ(SaveDataIoError::WriteFailed, data.last_io_error()) << slot;
+    };
+
+    {
+        SaveData data;
+        data.current_campaign = "gladiator";
+        for (int i = 0; i < SaveData::kCampaignStateMaxCampaigns + 1; ++i)
+            data.campaign_state["camp" + std::to_string(i)] = {{"seed", 1}};
+        expect_write_refused(data, "typed_state_too_many_campaigns");
+    }
+    {
+        SaveData data;
+        data.current_campaign = "gladiator";
+        data.campaign_state["../escape"] = {{"seed", 1}};
+        expect_write_refused(data, "typed_state_unsafe_campaign_id");
+    }
+    {
+        SaveData data;
+        data.current_campaign = "gladiator";
+        auto& entries = data.campaign_state["gladiator"];
+        for (int i = 0; i < SaveData::kCampaignStateMaxEntries + 1; ++i)
+            entries.emplace_back("k" + std::to_string(1000 + i), i);
+        expect_write_refused(data, "typed_state_too_many_entries");
+    }
+    {
+        SaveData data;
+        data.current_campaign = "gladiator";
+        data.campaign_state["gladiator"] = {{"Bad Key", 1}};
+        expect_write_refused(data, "typed_state_invalid_key");
+    }
+}
+
+TEST(SaveDataVersions, save_data_reset_and_reset_campaign_clear_campaign_state)
+{
+    SaveData data;
+    ASSERT_TRUE(data.campaign_state_set("camp_a", "key_a", 1));
+    ASSERT_TRUE(data.campaign_state_set("camp_b", "key_b", 2));
+
+    // reset_campaign erases exactly that campaign's decision book.
+    data.reset_campaign("camp_a");
+    ASSERT_EQ(0u, data.campaign_state.count("camp_a"))
+        << "reset_campaign erases the campaign's state";
+    ASSERT_EQ(2, data.campaign_state_get("camp_b", "key_b"))
+        << "other campaigns keep their state";
+
+    // reset clears everything.
+    ASSERT_TRUE(data.campaign_state_set("camp_a", "key_a", 3));
+    data.reset();
+    ASSERT_TRUE(data.campaign_state.empty())
+        << "reset() clears campaign_state beside completed_levels";
+}
+
+
+// --- GTL v16: per-hero campaign tag (docs/basecamp-zones-design.md,
+// "Per-hero identity") ---
+
+TEST(SaveDataVersions, save_data_v16_roundtrip_preserves_campaign_tags)
+{
+    SaveData src;
+    src.current_campaign = "gladiator";
+    src.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    src.team_list[0]->name = "SWORN";
+    src.team_list[0]->campaign_tag = 1;
+    src.team_list[1] = std::make_unique<guy>(FAMILY_ELF);
+    src.team_list[1]->name = "BURDENED";
+    src.team_list[1]->campaign_tag = 255;
+    src.team_list[1]->deployed = false;
+    src.team_list[2] = std::make_unique<guy>(FAMILY_MAGE);
+    src.team_list[2]->name = "UNSWORN";
+    src.team_size = 3;
+
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(src.save_with_error("typed_save_v16_tags")))
+        << "v16 writer should succeed";
+
+    // RAW offsets: version byte 16; guy+50 deployed, guy+51 campaign tag,
+    // guy+52..57 zero-filled reserved.
+    const std::vector<uint8_t> bytes = read_save_bytes("typed_save_v16_tags.gtl");
+    constexpr size_t kHeaderSize = 164;
+    constexpr size_t kGuySize = 58;
+    ASSERT_GE(bytes.size(), kHeaderSize + 3 * kGuySize) << "file too small";
+    ASSERT_EQ(16, (int)bytes[3]) << "version byte at offset 3";
+    const size_t guy0 = kHeaderSize;
+    const size_t guy1 = kHeaderSize + kGuySize;
+    const size_t guy2 = kHeaderSize + 2 * kGuySize;
+    ASSERT_EQ(1, (int)bytes[guy0 + 50]) << "deployed flag at guy+50";
+    ASSERT_EQ(1, (int)bytes[guy0 + 51]) << "campaign tag at guy+51";
+    ASSERT_EQ(0, (int)bytes[guy1 + 50]) << "held-back flag rides beside tag";
+    ASSERT_EQ(255, (int)bytes[guy1 + 51]) << "the full byte range persists";
+    ASSERT_EQ(0, (int)bytes[guy2 + 51]) << "unassigned writes tag 0";
+    for (size_t i = 52; i < kGuySize; ++i) {
+        ASSERT_EQ(0, (int)bytes[guy0 + i]) << "guy0 reserved byte " << i;
+        ASSERT_EQ(0, (int)bytes[guy1 + i]) << "guy1 reserved byte " << i;
+    }
+
+    SaveData loaded;
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(loaded.load_with_error("typed_save_v16_tags")))
+        << "v16 reader should succeed";
+    ASSERT_EQ(3, (int)loaded.team_size);
+    ASSERT_EQ(1, (int)loaded.team_list[0]->campaign_tag);
+    ASSERT_EQ(255, (int)loaded.team_list[1]->campaign_tag);
+    ASSERT_FALSE(loaded.team_list[1]->deployed)
+        << "the deploy flag still roundtrips beside the tag";
+    ASSERT_EQ(0, (int)loaded.team_list[2]->campaign_tag);
+}
+
+TEST(SaveDataVersions, save_data_load_v15_payload_defaults_campaign_tags)
+{
+    // A v15 fixture file (deployed flag + 7 filler bytes per guy, empty
+    // campaign-state tail): the reader must honor the deploy flag and
+    // default every tag to 0 — the GuyRecord campaign_tag member is
+    // IGNORED for version < 16.
+    GuyRecord guys[2];
+    guys[0].name = "SENT";
+    guys[0].deployed = 1;
+    guys[0].campaign_tag = 9; // must not be written by a v15-shaped fixture
+    guys[1].name = "HELD";
+    guys[1].deployed = 0;
+    write_save_file("ver15_no_tags",
+                    /*version=*/15,
+                    /*campaign_id=*/"gladiator",
+                    /*scen_num=*/1,
+                    /*cash=*/100,
+                    /*score=*/200,
+                    /*allied_mode=*/1,
+                    /*numplayers=*/1,
+                    /*guys=*/guys,
+                    /*listsize=*/2,
+                    /*use_v8plus_campaigns=*/true,
+                    /*v5plus_levelstatus=*/true,
+                    /*levelstatus_500=*/nullptr,
+                    /*levelstatus_200=*/nullptr,
+                    /*ctf_team_count=*/2,
+                    /*ctf_capture_limit=*/0,
+                    /*ctf_respawn_ticks=*/0,
+                    /*ctf_strip_scenario_troops=*/0,
+                    /*respawn_mode=*/0,
+                    /*generator_rate=*/0,
+                    /*keep_fallen_heroes=*/0,
+                    /*tower_best_floor=*/0,
+                    /*tower_run_seed=*/0,
+                    /*last_played_unix_s=*/42LL);
+
+    SaveData tmp;
+    ASSERT_TRUE(tmp.load("ver15_no_tags")) << "v15 load should succeed";
+    ASSERT_EQ(2, (int)tmp.team_size);
+    ASSERT_EQ(0, (int)tmp.team_list[0]->campaign_tag)
+        << "a v15 file loads with zero tags";
+    ASSERT_EQ(0, (int)tmp.team_list[1]->campaign_tag);
+    ASSERT_TRUE(tmp.team_list[0]->deployed);
+    ASSERT_FALSE(tmp.team_list[1]->deployed)
+        << "the v14 deploy flag still reads under a v15 label";
+}
+
+TEST(SaveDataVersions, save_data_v15_shaped_reader_never_sniffs_the_tag_byte)
+{
+    // Write a REAL v16 file with a non-zero tag at guy+51, then re-label
+    // it v15: the tag byte must read as filler (tag = 0), never sniffed
+    // from content. The v15 tail (campaign-state block) parses unchanged.
+    SaveData src;
+    src.current_campaign = "gladiator";
+    ASSERT_TRUE(src.campaign_state_set("gladiator", "watch_paid", 3));
+    src.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    src.team_list[0]->name = "TAGGED";
+    src.team_list[0]->campaign_tag = 7;
+    src.team_size = 1;
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(src.save_with_error("typed_save_v16_as_v15")));
+
+    std::vector<uint8_t> bytes = read_save_bytes("typed_save_v16_as_v15.gtl");
+    constexpr size_t kHeaderSize = 164;
+    ASSERT_GT(bytes.size(), kHeaderSize + 58u);
+    ASSERT_EQ(16, (int)bytes[3]);
+    ASSERT_EQ(7, (int)bytes[kHeaderSize + 51]) << "tag really on disk";
+    bytes[3] = 15; // re-label: v15-shaped reader sees reserved filler
+
+    SDL_IOStream* out = open_write_file("save/", "typed_save_v16_as_v15.gtl");
+    ASSERT_TRUE(out != nullptr);
+    rw_write(out, bytes.data(), bytes.size());
+    SDL_CloseIO(out);
+
+    SaveData loaded;
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(loaded.load_with_error("typed_save_v16_as_v15")))
+        << "a v15-labeled v16 file must load cleanly";
+    ASSERT_EQ(1, (int)loaded.team_size);
+    ASSERT_EQ(0, (int)loaded.team_list[0]->campaign_tag)
+        << "the tag byte is hard-gated on version >= 16, never sniffed";
+    ASSERT_EQ(3, loaded.campaign_state_get("gladiator", "watch_paid"))
+        << "the v15 state tail still parses after the re-label";
 }

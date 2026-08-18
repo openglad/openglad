@@ -23,6 +23,7 @@ set(OG_SCRIPT_SOURCES
     ${SRC_DIR}/gameplay/script/pack_scripts.cpp
     ${SRC_DIR}/gameplay/script/world_scripts.cpp
     ${SRC_DIR}/gameplay/script/bindings_entity.cpp
+    ${SRC_DIR}/gameplay/script/campaign_hooks.cpp
     ${SRC_DIR}/gameplay/script/family_decl.cpp
 )
 
@@ -111,9 +112,11 @@ set(OG_RESOURCES_DATA_SOURCES
     ${SRC_DIR}/resources/tower_progression.cpp
     ${SRC_DIR}/resources/mapgen/tower_floor_gen.cpp
     ${SRC_DIR}/resources/level_file_io.cpp
+    ${SRC_DIR}/resources/level_selection.cpp
     ${SRC_DIR}/resources/our_palette.cpp
     ${SRC_DIR}/resources/pixie_data.cpp
     ${SRC_DIR}/resources/save_data.cpp
+    ${SRC_DIR}/resources/campaign_state_providers.cpp
     ${SRC_DIR}/resources/company.cpp
     ${SRC_DIR}/resources/packs.cpp
     ${SRC_DIR}/resources/pack_transfer_io.cpp
@@ -172,6 +175,7 @@ set(OG_INTERFACE_COMPONENT_SOURCES
     ${SRC_DIR}/interface/session_state.cpp
     ${SRC_DIR}/interface/ui/button.cpp
     ${SRC_DIR}/interface/ui/campaign_picker.cpp
+    ${SRC_DIR}/interface/ui/campaign_picker_session.cpp
     ${SRC_DIR}/interface/ui/cloud_save_client.cpp
     ${SRC_DIR}/interface/ui/help.cpp
     ${SRC_DIR}/interface/ui/intro.cpp

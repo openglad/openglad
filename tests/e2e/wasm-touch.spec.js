@@ -32,10 +32,11 @@ const QUIT_MISSION_BUTTON = { x: 160, y: 75 };
 // CONTINUE | LOAD split — and the team-build NETWORKING button (both on the
 // 320x200 grid; same coords the wasm helpers navigate with; §2.10 ledger).
 const CONTINUE_BUTTON = { x: 114, y: 85 };
-// §2.5/§2.10: NETWORK is (182,178,56,18) on the base-camp strip.
-const NETWORKING_BUTTON = { x: 210, y: 187 };
+// §2.5/§2.10: NETWORK is (200,178,56,18) on the base-camp strip, which
+// re-gridded when DIFFICULTY joined it (docs/camp-controls-design.md).
+const NETWORKING_BUTTON = { x: 228, y: 187 };
 const NETWORKING_TITLE_REGION = { x: 60, y: 18, w: 200, h: 18 };
-const TEAM_BUILD_NETWORKING_REGION = { x: 182, y: 178, w: 56, h: 18 };
+const TEAM_BUILD_NETWORKING_REGION = { x: 200, y: 178, w: 56, h: 18 };
 
 // Web relay-first networking-menu ROOM CODE field (button id
 // "network_room_value" in src/interface/ui/picker.cpp).
@@ -645,7 +646,7 @@ test.describe('Touch gameplay controls', () => {
     // CONTINUE on the main menu, then GO on the team-build menu — all taps.
     await tapCanvasGameCoord(page, CONTINUE_BUTTON.x, CONTINUE_BUTTON.y);
     await page.waitForTimeout(1_500);
-    await tapCanvasGameCoord(page, 278, 187); // base-camp GO (244,178,68,18)
+    await tapCanvasGameCoord(page, 287, 187); // base-camp GO (262,178,50,18)
     // Level load ends on the blocking SCENARIO INFORMATION dialog
     // ("TAP OR BACKSPACE TO CONTINUE" on web); a tap dismisses it. Harmless
     // if timing skipped the dialog — it is just a tap into the world.

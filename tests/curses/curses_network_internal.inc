@@ -559,7 +559,8 @@ int curses_network_testing_exercise_internal_helpers()
     server->accept_connections();
     auto host_client = server->create_client_transport();
     std::string err;
-    check(HostCursesSession::create({}, {}, 1, nullptr, host_client, 0, &err) ==
+    check(HostCursesSession::create({}, {}, 1, nullptr, host_client, 0,
+                                    /*host_company_save=*/nullptr, &err) ==
             nullptr &&
         !err.empty());
 
@@ -585,7 +586,7 @@ int curses_network_testing_exercise_internal_helpers()
     };
     std::unique_ptr<HostCursesSession> host =
         HostCursesSession::create(equivalent, bindings, 1, server, host_client,
-                                  0, &err);
+                                  0, /*host_company_save=*/nullptr, &err);
     check(host != nullptr);
     if (host != nullptr) {
         GameWorld& mirror = host->mirror_world();
@@ -754,6 +755,143 @@ int curses_network_testing_exercise_internal_helpers()
         join->request_abort();
         join->advance();
         check(stable_before_abort && !join->ended());
+    }
+
+    // #207 design point 4 ("every machine"): the joiner seeds its session
+    // save from THIS machine's own company file before the lobby-config
+    // apply, so a negotiated landing on a level this machine has cleared
+    // (same campaign) arms an excursion whose origin is this machine's own
+    // cursor — the fold then restores it before the per-player persist.
+    {
+        const std::string seed_slot = make_network_player_name() + "-jseed";
+        const std::string seed_file = "save/" + seed_slot + ".gtl";
+        const std::string seed_temp = "save/" + seed_slot + ".tmp.gtl";
+        const bool seed_probe_available =
+            !user_file_exists(seed_file) && !user_file_exists(seed_temp);
+        check(seed_probe_available);
+        if (seed_probe_available) {
+            {
+                og::data::ScopedActiveCompany seed_company(seed_slot);
+                check(seed_company.applied());
+                if (seed_company.applied()) {
+                    SaveData own;
+                    own.reset();
+                    own.save_name = "JOIN SEED";
+                    own.current_campaign = "gladiator";
+                    own.scen_num = 3;
+                    own.add_level_completed("gladiator", 1);
+                    check(own.save(seed_slot));
+
+                    auto seed_server =
+                        og::sim::InProcessTransport::create_server();
+                    seed_server->accept_connections();
+                    auto seed_client = seed_server->create_client_transport();
+                    err.clear();
+                    std::unique_ptr<JoinCursesSession> seeded =
+                        JoinCursesSession::create(
+                            equivalent, 1, seed_client,
+                            seed_client->local_peer_id(), 0, &err);
+                    check(seeded != nullptr);
+                    if (seeded != nullptr) {
+                        const SaveData& session_save =
+                            seeded->testing_client_save();
+                        check(session_save.replay_level == 1 &&
+                            session_save.replay_origin == 3 &&
+                            session_save.scen_num == 1);
+                    }
+                }
+            }
+            (void)remove_user_file(seed_file);
+            (void)remove_user_file(seed_temp);
+        }
+    }
+
+    // V5 Option A (host history) at the internal seam: HostCursesSession
+    // seeds its authoritative save from the host machine's company save.
+    // REPLAY intent (the arm) survives into server_save_ AND the mirror
+    // client_save_ copy, alongside the completed set and the campaign
+    // decision book; the VISIT twin (unarmed + completed) stays unarmed —
+    // the dedicated auto-arm must not run for a player-seeded session —
+    // and its authoritative world loads purged.
+    {
+        SaveData host_company;
+        host_company.reset();
+        host_company.current_campaign = "gladiator";
+        host_company.add_level_completed("gladiator", 1);
+        host_company.scen_num = 3;
+        check(host_company.campaign_state_set("gladiator", "watch_paid", 900));
+        host_company.arm_replay(1);
+
+        auto replay_server = og::sim::InProcessTransport::create_server();
+        replay_server->accept_connections();
+        auto replay_client = replay_server->create_client_transport();
+        std::vector<og::sim::LobbyPlayerBinding> replay_bindings{
+            og::sim::LobbyPlayerBinding{
+                .peer_id = replay_client->local_peer_id(),
+                .player_index = 0,
+                .team = 0,
+            },
+        };
+        err.clear();
+        std::unique_ptr<HostCursesSession> replay_host =
+            HostCursesSession::create(equivalent, replay_bindings, 1,
+                                      replay_server, replay_client, 0,
+                                      &host_company, &err);
+        check(replay_host != nullptr);
+        if (replay_host != nullptr) {
+            const SaveData& server_save = replay_host->testing_server_save();
+            check(server_save.replay_armed_for(1) &&
+                server_save.replay_origin == 3 &&
+                server_save.is_level_completed(1) &&
+                server_save.campaign_state_get("gladiator", "watch_paid") ==
+                    900);
+            // The mirror copy carries the same seeded history (the
+            // dropped-field pattern through copy_headless_server_save_data).
+            int living_count = 0;
+            for (const auto& up : replay_host->server_world_ref().oblist) {
+                const walker* w = up.get();
+                if (w != nullptr && !w->dead() &&
+                    w->query_order() == Order::Living &&
+                    w->team_num() != 0 && w->myguy == nullptr)
+                    ++living_count;
+            }
+            check(living_count > 0);
+        }
+
+        // The VISIT twin: same history, no arm — stays a visit (no
+        // auto-arm) and the authoritative world loads purged.
+        host_company.clear_replay_arm();
+        host_company.scen_num = 1;
+        auto visit_server = og::sim::InProcessTransport::create_server();
+        visit_server->accept_connections();
+        auto visit_client = visit_server->create_client_transport();
+        std::vector<og::sim::LobbyPlayerBinding> visit_bindings{
+            og::sim::LobbyPlayerBinding{
+                .peer_id = visit_client->local_peer_id(),
+                .player_index = 0,
+                .team = 0,
+            },
+        };
+        err.clear();
+        std::unique_ptr<HostCursesSession> visit_host =
+            HostCursesSession::create(equivalent, visit_bindings, 1,
+                                      visit_server, visit_client, 0,
+                                      &host_company, &err);
+        check(visit_host != nullptr);
+        if (visit_host != nullptr) {
+            const SaveData& server_save = visit_host->testing_server_save();
+            check(server_save.replay_level == 0 &&
+                server_save.is_level_completed(1));
+            int hostile_count = 0;
+            for (const auto& up : visit_host->server_world_ref().oblist) {
+                const walker* w = up.get();
+                if (w != nullptr && !w->dead() &&
+                    w->query_order() == Order::Living &&
+                    w->team_num() != 0 && w->myguy == nullptr)
+                    ++hostile_count;
+            }
+            check(hostile_count == 0);
+        }
     }
 
     // The authored-team helper reads only from the save's mounted campaign.

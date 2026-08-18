@@ -63,6 +63,49 @@ Two more engine rules from the epic rework:
   wall-sliding; two-wide mouths on a double-walled castle starved the
   funnel and unattended runs stalled short of the 6000-tick budget.
 
+## The dream log (the campaign's camp and book)
+
+`packs/imaginations.dreams/scripts/dream_log.lua` registers the campaign's
+Base Camp composition and its scripted picker (issues #206, #207,
+docs/basecamp-zones-design.md, docs/campaign-scripting-design.md). The camp
+is the log: one line of its own voice ("Every dream can be dreamed
+again."), then a docket of `kind = "level"` rows, one per scen, then the
+plain company roster — so a dream already had can be picked again from the
+screen the player lives on, which is what the kids asked for.
+
+The book page (THE DREAM LOG) is the log's spare face, not a second room a
+player visits: a book opens from a camp page row, this camp composes none,
+so nothing opens it while the camp composes. It exists for the case where
+the camp does not — a malformed or over-budget composition makes the engine
+build a door onto the book's root page instead — and it lists the same rows
+from the same builder, so the spare cannot drift from the face in use.
+
+The rows are found rather than listed: `og.campaign_scenario_title(id)`
+answers "" for an id the campaign does not ship, so a new scen shows up the
+day its level lands. Labels are left to the engine (it fills them from the
+scen header), and the note re-derives from the save on every fetch —
+`dreamed` for a cleared dream, `tonight?` for the campaign cursor, `not
+yet` otherwise. Nothing here spends gold, keeps campaign state, locks a
+hero or swears an oath: every roster capability stays on.
+
+The two faces scan different distances because they hold different amounts.
+A book page holds 24 entries and clips past them; the camp zone holds 16
+action rows in total and **refuses** a composition that overruns them. Each
+face scans as far as it can hold, so a camp that is ever refused falls back
+to a book door listing further than the camp could.
+
+Sixteen dreams is where the camp stops growing, and that is a decision
+deferred, not solved: at dream 17 the camp keeps composing but stops
+listing the newest dream, so it stops showing `tonight?` the moment the
+cursor moves there. Somebody has to choose then — page the docket, or let
+the camp carry the newest 16 and leave the rest to the book. The unit test
+asserts the two faces list the same dreams, so it goes red at dream 17 and
+the choice cannot be shipped past.
+
+`tests/unit/test_imaginations_dream_log.cpp` drives both faces over the
+shipped archive and pins the ledger above: when a new scen lands, that test
+goes red until its id joins both the table and the test's own list.
+
 ## Difficulty curve (campaign_meta)
 
 Fresh teams are the audience: every level must be clearable by a new

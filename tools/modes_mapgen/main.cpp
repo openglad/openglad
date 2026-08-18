@@ -127,7 +127,7 @@ void write_campaign_yaml(const std::string& path)
         << "    fields old and new. The bots\n"
         << "    know the rules. Respawns honor\n"
         << "    your difficulty. First to the\n"
-        << "    posted score takes the purse.\n";
+        << "    target score takes the purse.\n";
     if (!out)
         fail(std::format("cannot write {}", path));
 }

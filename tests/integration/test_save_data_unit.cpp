@@ -1,4 +1,5 @@
 #include <openglad/resources/save_data.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/legacy/base.h>
@@ -250,4 +251,192 @@ TEST(SaveDataUnit, guy_copy_constructor_propagates_deployed)
     ASSERT_FALSE(copy.deployed)
         << "guy::guy(const guy&) = default must carry the deploy flag "
            "through update_guys/merge_owned_guys_from";
+}
+
+// --- GTL v16 campaign_tag carriage (docs/basecamp-zones-design.md,
+// "Per-hero identity": copied wherever the record is copied) ---
+
+TEST(SaveDataUnit, guy_copy_constructor_propagates_campaign_tag)
+{
+    guy source(FAMILY_SOLDIER);
+    source.campaign_tag = 7;
+    guy copy(source);
+    ASSERT_EQ(7, static_cast<int>(copy.campaign_tag))
+        << "guy::guy(const guy&) = default must carry campaign_tag "
+           "through update_guys/merge_owned_guys_from and the "
+           "headless-server save clone";
+}
+
+TEST(SaveDataUnit, update_guys_carries_campaign_tag_through_both_passes)
+{
+    SaveData save;
+    save.team_list[0] = make_roster_guy("HELD", 777, /*deployed=*/false);
+    save.team_list[0]->campaign_tag = 2;
+    save.team_list[1] = make_roster_guy("SENT", 100, /*deployed=*/true);
+    save.team_list[1]->campaign_tag = 1;
+    save.team_size = 2;
+
+    // The deployed character survived; its walker's myguy is a copy of the
+    // roster entry, so it carries the tag into pass 1's rebuild copy.
+    std::list<std::unique_ptr<walker>> oblist;
+    {
+        guy sent(FAMILY_SOLDIER);
+        sent.name = "SENT";
+        sent.exp = 500;
+        sent.campaign_tag = 1;
+        oblist.push_back(make_survivor_walker(sent));
+    }
+
+    save.update_guys(oblist);
+
+    ASSERT_EQ(2, static_cast<int>(save.team_size));
+    ASSERT_EQ(std::string("SENT"), save.team_list[0]->name);
+    ASSERT_EQ(1, static_cast<int>(save.team_list[0]->campaign_tag))
+        << "pass 1 (survivor copy) carries the tag";
+    ASSERT_EQ(std::string("HELD"), save.team_list[1]->name);
+    ASSERT_EQ(2, static_cast<int>(save.team_list[1]->campaign_tag))
+        << "pass 2 (held-back move-append) carries the tag";
+}
+
+TEST(SaveDataUnit, merge_owned_guys_restores_the_disk_tag_for_every_slot)
+{
+    // Overlay rule: the DISK slot's tag always wins. A session roster is
+    // rebuilt from LobbyCharacterData (mission entry) or GuySnapshot (a
+    // joiner's mirror), neither of which carries the byte, so a survivor
+    // reaches this merge with tag 0. Trusting it would un-assign the whole
+    // deployed company on every won level while benched heroes kept theirs.
+    SaveData save;
+    save.team_list[0] = make_roster_guy("KEPT", 30, /*deployed=*/true);
+    save.team_list[0]->campaign_tag = 5;
+    save.team_list[1] = make_roster_guy("BROUGHT", 100, /*deployed=*/true);
+    save.team_list[1]->campaign_tag = 1;
+    save.team_list[2] = make_roster_guy("STAMPED", 100, /*deployed=*/true);
+    save.team_list[2]->campaign_tag = 4;
+    save.team_size = 3;
+
+    std::list<std::unique_ptr<walker>> level;
+    {
+        // The realistic wire shape: the session guy lost the tag entirely.
+        guy brought(FAMILY_SOLDIER);
+        brought.name = "BROUGHT";
+        brought.exp = 400;
+        brought.campaign_tag = 0;
+        brought.owner_player_index = 1;
+        brought.owner_save_slot = 1;
+        level.push_back(make_survivor_walker(brought));
+    }
+    {
+        // A nonzero session tag loses to the disk record just the same —
+        // nothing inside a level is allowed to author an assignment.
+        guy stamped(FAMILY_SOLDIER);
+        stamped.name = "STAMPED";
+        stamped.exp = 400;
+        stamped.campaign_tag = 2;
+        stamped.owner_player_index = 1;
+        stamped.owner_save_slot = 2;
+        level.push_back(make_survivor_walker(stamped));
+    }
+
+    save.merge_owned_guys_from(level, std::uint8_t{1});
+
+    ASSERT_EQ(3, static_cast<int>(save.team_size));
+    ASSERT_EQ(std::string("KEPT"), save.team_list[0]->name);
+    ASSERT_EQ(5, static_cast<int>(save.team_list[0]->campaign_tag))
+        << "a kept (not brought) slot preserves the disk tag";
+    ASSERT_EQ(std::string("BROUGHT"), save.team_list[1]->name);
+    ASSERT_EQ(1, static_cast<int>(save.team_list[1]->campaign_tag))
+        << "a survivor that came back tagless keeps its disk assignment";
+    ASSERT_EQ(std::string("STAMPED"), save.team_list[2]->name);
+    ASSERT_EQ(4, static_cast<int>(save.team_list[2]->campaign_tag))
+        << "the disk tag wins even over a nonzero session tag";
+}
+
+// ---------------------------------------------------------------------------
+// #207 replay excursion arm: transient, never serialized.
+
+TEST(SaveDataUnit, replay_arm_remembers_origin_and_moves_the_cursor)
+{
+    SaveData save;
+    save.reset();
+    save.scen_num = 9;
+
+    save.arm_replay(3);
+    ASSERT_EQ(3, static_cast<int>(save.scen_num))
+        << "arming moves the cursor onto the level";
+    ASSERT_EQ(3, static_cast<int>(save.replay_level));
+    ASSERT_EQ(9, static_cast<int>(save.replay_origin));
+    ASSERT_TRUE(save.replay_armed_for(3));
+    ASSERT_FALSE(save.replay_armed_for(9));
+
+    // A re-arm before the excursion resolves keeps the FIRST origin —
+    // scen_num already points into the excursion.
+    save.arm_replay(5);
+    ASSERT_EQ(5, static_cast<int>(save.replay_level));
+    ASSERT_EQ(9, static_cast<int>(save.replay_origin))
+        << "the origin is the campaign position, not the prior arm";
+
+    save.clear_replay_arm();
+    ASSERT_EQ(0, static_cast<int>(save.replay_level));
+    ASSERT_EQ(0, static_cast<int>(save.replay_origin));
+    ASSERT_FALSE(save.replay_armed_for(5));
+    ASSERT_FALSE(save.replay_armed_for(0)) << "unarmed answers no level";
+}
+
+TEST(SaveDataUnit, replay_arm_is_cleared_by_reset_and_load)
+{
+    // reset() clears the pair (a reset company has no excursion in flight).
+    SaveData save;
+    save.reset();
+    save.scen_num = 4;
+    save.arm_replay(2);
+    save.reset();
+    ASSERT_EQ(0, static_cast<int>(save.replay_level));
+    ASSERT_EQ(0, static_cast<int>(save.replay_origin));
+
+    // load() clears it too, and the arm is never serialized: a save taken
+    // while armed round-trips to an UNARMED file (no GTL change) — the
+    // launch sites that need the arm across a disk round-trip re-carry it
+    // explicitly. (SaveData::load mounts the file's campaign, so this leg
+    // needs the default packages installed. restore_default_campaigns
+    // rewrites the .glad files — NEVER call it over a live mount, it
+    // desyncs PhysFS from the mount bookkeeping and every later title
+    // lookup in the binary answers the raw id. Unmount first, restore the
+    // caller's mount after.)
+    const std::string mounted_before = get_mounted_campaign();
+    if (!mounted_before.empty())
+    {
+        ASSERT_EQ(CampaignPackageIoError::None,
+                  unmount_campaign_package_with_error(mounted_before));
+    }
+    restore_default_campaigns();
+    save.reset();
+    save.scen_num = 6;
+    save.arm_replay(6);
+    ASSERT_TRUE(save.save("replayarm_scratch"));
+    SaveData loaded;
+    loaded.arm_replay(1);  // a live arm on the destination must not survive
+    ASSERT_TRUE(loaded.load("replayarm_scratch"));
+    ASSERT_EQ(6, static_cast<int>(loaded.scen_num))
+        << "the armed cursor position itself IS serialized";
+    ASSERT_EQ(0, static_cast<int>(loaded.replay_level))
+        << "the arm is transient: load() answers the file, never a session";
+    ASSERT_EQ(0, static_cast<int>(loaded.replay_origin));
+    (void)remove_user_file("save/replayarm_scratch.gtl");
+    // Leave the mount state EXACTLY as found — including the nothing-mounted
+    // case (a leaked mount desyncs against suites that re-init PhysFS, e.g.
+    // CompanyScan, and every later title lookup answers the raw id).
+    if (get_mounted_campaign() != mounted_before)
+    {
+        if (!get_mounted_campaign().empty())
+        {
+            ASSERT_EQ(CampaignPackageIoError::None,
+                      unmount_campaign_package_with_error(
+                          get_mounted_campaign()));
+        }
+        if (!mounted_before.empty())
+        {
+            ASSERT_EQ(CampaignPackageIoError::None,
+                      mount_campaign_package_with_error(mounted_before));
+        }
+    }
 }

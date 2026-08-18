@@ -3334,3 +3334,55 @@ TEST(WorldSnapshot, unsent_new_entity_removed_before_delta_leaves_no_tombstone)
     EXPECT_TRUE(delta.oblist.empty());
     EXPECT_TRUE(delta.removed_entity_ids.empty());
 }
+
+// GTL v16 campaign_tag has no GuySnapshot field, so a networked joiner's
+// mirror world rebuilds every guy tagless. The win merge must therefore take
+// the tag off the DISK slot; if it trusted the session guy, one won level
+// would un-swear the joiner's whole deployed company.
+TEST(WorldSnapshot, campaign_tag_does_not_ride_the_snapshot_wire_but_survives_the_merge)
+{
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    configure_snapshot_test_services(source);
+
+    walker* actor = source.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, actor);
+    actor->setworldxy(48.0f, 64.0f);
+
+    auto player_guy = std::make_unique<guy>(FAMILY_SOLDIER);
+    player_guy->name = "Sworn";
+    player_guy->exp = 400;
+    player_guy->campaign_tag = 3;
+    player_guy->owner_player_index = 1;
+    player_guy->owner_save_slot = 0;
+    actor->set_owned_myguy(std::move(player_guy));
+
+    const og::sim::WorldSnapshot snapshot = og::sim::capture_snapshot(source);
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+    og::sim::apply_snapshot(mirror, snapshot);
+
+    walker* mirror_actor = mirror.find_by_id(actor->entity_id());
+    ASSERT_NE(nullptr, mirror_actor);
+    ASSERT_NE(nullptr, mirror_actor->myguy);
+    EXPECT_EQ(0, static_cast<int>(mirror_actor->myguy->campaign_tag))
+        << "the snapshot wire carries no tag — the merge must not trust it";
+    EXPECT_EQ(1, static_cast<int>(mirror_actor->myguy->owner_player_index))
+        << "ownership DOES ride the wire, so the merge finds the slot";
+
+    SaveData disk;
+    disk.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    disk.team_list[0]->name = "Sworn";
+    disk.team_list[0]->exp = 400;
+    disk.team_list[0]->campaign_tag = 3;
+    disk.team_size = 1;
+
+    disk.merge_owned_guys_from(mirror.oblist, std::uint8_t{1});
+
+    ASSERT_EQ(1, static_cast<int>(disk.team_size));
+    ASSERT_NE(nullptr, disk.team_list[0]);
+    EXPECT_EQ(3, static_cast<int>(disk.team_list[0]->campaign_tag))
+        << "a joiner's won level must not un-assign its own company";
+}

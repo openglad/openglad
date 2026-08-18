@@ -30,6 +30,7 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/interface/ui/picker_ui_state.h>
+#include <openglad/interface/session_state.h>
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -39,6 +40,11 @@
 // The shared auto-dismissing dialog (picker_dialogs.cpp), used by the SPEED
 // row's relay warning.
 void timed_dialog(const char* message, float delay_seconds = 3.0f);
+
+// The two per-screen button-cap literals must never drift apart: the runner
+// checks MAX_BUTTONS while the session arrays size kMaxButtons.
+static_assert(og::runtime::SessionState::kMaxButtons == MAX_BUTTONS,
+              "GameSession::kMaxButtons must equal MAX_BUTTONS");
 
 // Per-session picker state accessor.
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }

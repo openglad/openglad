@@ -1331,25 +1331,35 @@ void run_capture_flow(const char* scene, int (*injector)(void*),
     g_picker_max_mainmenu_calls = 0;
 }
 
-// menu_difficulty: main menu -> DIFFICULTY door -> cycle every setting through
-// a FULL loop (3-value cycles get 3 clicks, permadeath 2) so each row visibly
-// changes and every setting ends exactly where it started, then back and quit.
+// menu_difficulty: main menu -> CONTINUE -> Base Camp -> the DIFFICULTY door
+// on the command strip -> cycle every setting through a FULL loop (3-value
+// cycles get 3 clicks, permadeath 2) so each row visibly changes and every
+// setting ends exactly where it started, then back and quit.
 int menu_difficulty_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     CaptureState* state = static_cast<CaptureState*>(data);
     state->started = true;
 
+    if (!wait_for_interactable("continue_game", 10000)) {
+        state->finished = true;
+        return 0;
+    }
+    SDL_Delay(1000);
+    interact("continue_game");
+    SDL_Delay(500);
     if (!wait_for_interactable("difficulty", 10000)) {
         state->finished = true;
         return 0;
     }
     SDL_Delay(1000);
 
-    // Highlight walk down to the DIFFICULTY door before opening it.
+    // Highlight walk along the Base Camp strip before opening the door: the
+    // roster is the default highlight, so DOWN reaches the strip and RIGHT
+    // steps BACK -> DIFFICULTY.
     g_test_menu_nav_key = KEY_DOWN;
     SDL_Delay(480);
-    g_test_menu_nav_key = KEY_DOWN;
+    g_test_menu_nav_key = KEY_RIGHT;
     SDL_Delay(480);
 
     bool in_menu = click_until_interactable("difficulty", "difficulty_back", 10000);
@@ -1383,6 +1393,8 @@ int menu_difficulty_injector(void* data)
             SDL_Delay(400);
             interact("difficulty_back");
             state->used_options_back = true;
+            // Dwell on the Base Camp the nested BACK returns to.
+            wait_for_interactable("go", 5000);
             SDL_Delay(700);
         }
     }

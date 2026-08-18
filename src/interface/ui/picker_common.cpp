@@ -324,6 +324,10 @@ bool apply_campaign_selection(SaveData& save, const std::string& campaign_id,
                             static_cast<int>(save.scen_num));
         return false;
     }
+    // A campaign switch abandons any replay excursion in flight: the arm's
+    // origin is a cursor in the PREVIOUS campaign, and restoring it after a
+    // foreign replay would plant an unearned cursor there (#207).
+    save.clear_replay_arm();
     save.current_campaign = campaign_id;
     save.scen_num = static_cast<short>(level);
     return true;
@@ -881,6 +885,65 @@ std::string format_wallet_amount(const SaveData& save, int team)
                            save.m_totalcash[static_cast<std::size_t>(wallet_team)]));
 }
 
+// --- Scripted campaign picker wallet (issue #206) ---
+
+// The acting team mirrors og::data::make_campaign_providers (the Base Camp
+// gold-label rule): the lowest team present on the roster, my_team fallback,
+// clamped to [0,3]. In a networked lobby the autosave merge persists only
+// owned teams' wallets, so this rule keeps every scripted debit durable.
+static int campaign_acting_team(const SaveData& save)
+{
+    int team = MAX_PLAYERS;
+    for (const auto& member : save.team_list)
+    {
+        if (member != nullptr && member->teamnum >= 0 &&
+            member->teamnum < MAX_PLAYERS)
+        {
+            team = std::min(team, static_cast<int>(member->teamnum));
+        }
+    }
+    if (team == MAX_PLAYERS)
+    {
+        team = (save.my_team >= 0 && save.my_team < MAX_PLAYERS)
+            ? save.my_team
+            : 0;
+    }
+    return team;
+}
+
+bool campaign_picker_can_afford(const SaveData& save, int cost)
+{
+    if (cost <= 0)
+        return true;
+    return can_afford(save, campaign_acting_team(save),
+                      static_cast<std::uint32_t>(cost));
+}
+
+void campaign_picker_debit(SaveData& save, int cost)
+{
+    // Infinite gold makes the purchase FREE (the hire/train free_purchase
+    // rule): the wallet is never written, so no autosave can bake a cheat
+    // balance into the .gtl file.
+    if (cost <= 0 || gold_is_infinite(save))
+        return;
+    std::uint32_t& wallet =
+        save.m_totalcash[static_cast<std::size_t>(campaign_acting_team(save))];
+    wallet -= std::min(wallet, static_cast<std::uint32_t>(cost));
+}
+
+void campaign_picker_refund(SaveData& save, int cost)
+{
+    // The exact inverse of campaign_picker_debit, for the one case a debit
+    // must not stick: an action row served by no registered picker_action.
+    // Under infinite gold the debit wrote nothing, so neither does this.
+    if (cost <= 0 || gold_is_infinite(save))
+        return;
+    std::uint32_t& wallet =
+        save.m_totalcash[static_cast<std::size_t>(campaign_acting_team(save))];
+    const std::uint32_t amount = static_cast<std::uint32_t>(cost);
+    wallet = wallet > UINT32_MAX - amount ? UINT32_MAX : wallet + amount;
+}
+
 // --- GRAPHICS FX depth selector (cfg effects/depth_fx) ---
 
 // Out-of-set values (including the empty string an absent key reads as)
@@ -1415,7 +1478,46 @@ std::string clip_chars(std::string value, std::size_t max_chars)
     return value;
 }
 
+// A mid-word cut on a status line reads as corruption ("IRON KETTLE B"), so
+// a name that must lose characters loses whole words — as long as half the
+// budget survives; below that the whole-word remainder says less than the
+// bytes do.
+std::string clip_words(std::string value, std::size_t max_chars)
+{
+    if (value.size() <= max_chars)
+        return value;
+    const std::size_t space = value.find_last_of(' ', max_chars);
+    if (space != std::string::npos && space * 2 >= max_chars)
+        value.resize(space);
+    else
+        value.resize(max_chars);
+    return value;
+}
+
 } // namespace
+
+std::string clip_with_ellipsis(std::string value, std::size_t max_chars)
+{
+    if (value.size() <= max_chars)
+        return value;
+    constexpr std::size_t kMarker = 2;  // ".."
+    if (max_chars <= kMarker + 1)
+        return clip_chars(std::move(value), max_chars);
+    const std::size_t body = max_chars - kMarker;
+    // Prefer a whole-word cut, but only while it keeps two thirds of the
+    // room: "SOUTH OF TALWOOD FOREST" in 17 would otherwise collapse to
+    // "SOUTH OF..", throwing away a word that nearly fits. Below that
+    // threshold the marker alone carries the honesty and the cut goes
+    // mid-word ("SOUTH OF TALWOO..").
+    const std::size_t space = value.find_last_of(' ', body);
+    if (space != std::string::npos && space * 3 >= body * 2)
+        value.resize(space);
+    else
+        value.resize(body);
+    while (!value.empty() && value.back() == ' ')
+        value.pop_back();
+    return value + "..";
+}
 
 BaseCampRowText format_base_camp_row(const guy& member)
 {
@@ -1470,13 +1572,22 @@ std::string format_base_camp_scen_line(const SaveData& save,
     const std::string dep_part =
         std::format("  DEP {}/{}", count_deployed_members(save),
                     static_cast<int>(collect_base_camp_slots(save).size()));
-    std::string scen_part =
-        std::format("SCEN {}: {}", save.scen_num, level_title);
-    const std::size_t budget = 34;
+    const std::string prefix = std::format("SCEN {}: ", save.scen_num);
+    // The conservative line-B budget: the solo header renders under every
+    // composition, including the ones that show HIRE beside it.
+    const std::size_t budget =
+        static_cast<std::size_t>(kBaseCampLineBCharsHireVisible);
     const std::size_t scen_budget =
         dep_part.size() < budget ? budget - dep_part.size() : 0;
-    scen_part = clip_chars(std::move(scen_part), scen_budget);
-    return scen_part + dep_part;
+    // The level's NAME is the one piece of story on this screen, so the
+    // title takes the ellipsis cut ("SCEN 1: THE RASPBERRY..") instead of
+    // stopping mid-word; the SCEN id itself never loses digits.
+    if (prefix.size() >= scen_budget)
+        return clip_chars(prefix, scen_budget) + dep_part;
+    return prefix +
+        clip_with_ellipsis(std::string(level_title),
+                           scen_budget - prefix.size()) +
+        dep_part;
 }
 
 std::vector<BaseCampDisplaySlot> collect_base_camp_display_slots(
@@ -1625,48 +1736,79 @@ std::string base_camp_host_display_name(
 std::string format_base_camp_session_status(
     bool is_host,
     std::string_view room_code,
-    const std::vector<og::sim::LobbyPlayer>& players)
+    const std::vector<og::sim::LobbyPlayer>& players,
+    int max_chars)
 {
+    const std::size_t budget =
+        max_chars > 0 ? static_cast<std::size_t>(max_chars) : 0u;
     // Room codes display-clip at 12 (relay codes are 9-char "GLAD-XXXX";
     // the NETWORKING screen keeps the authoritative full form).
     const std::string room = clip_chars(std::string(room_code), 12);
-    std::string status;
     if (is_host) {
         // §9.12 budget note: "MACH / PLYR" is the recorded "shape like"
-        // latitude call — the spelled-out census overruns the 42-char band
-        // at double-digit counts ("HOSTING GLAD-XXXX - 16 MACHINES / 16
-        // PLAYERS" = 44); the abbreviated worst case is 37.
+        // latitude call — the spelled-out census overruns even the wide
+        // band at double-digit counts ("HOSTING GLAD-XXXX - 16 MACHINES /
+        // 16 PLAYERS" = 44). Beside HIRE the band is 34 and the everyday
+        // "HOSTING GLAD-7Q2F - 2 MACH / 3 PLYR" (35) no longer fits, so
+        // the census has a compact spelling too: "2M / 3P" says what
+        // "3 PLY" cannot.
         const BaseCampSessionCensus census =
             count_base_camp_session_census(players);
-        const std::string census_part = std::format(
-            "{} MACH / {} PLYR", census.machines, census.players);
-        status = room.empty()
-            ? std::format("HOSTING {}", census_part)
-            : std::format("HOSTING {} - {}", room, census_part);
-    } else {
-        const std::string host_name = base_camp_host_display_name(players);
-        const std::string room_part =
-            room.empty() ? std::string("JOINED")
-                         : std::format("IN {}", room);
-        status = host_name.empty()
-            ? room_part
-            : std::format("{} - HOST: {}", room_part, host_name);
+        const std::string tight =
+            std::format("{}M / {}P", census.machines, census.players);
+        const auto compose = [&room](const std::string& census_part) {
+            return room.empty()
+                ? std::format("HOSTING {}", census_part)
+                : std::format("HOSTING {} - {}", room, census_part);
+        };
+        std::string status = compose(std::format(
+            "{} MACH / {} PLYR", census.machines, census.players));
+        if (status.size() > budget)
+            status = compose(tight);
+        // A pathological room code can still over-run: the census is the
+        // half that changes, so the room code (authoritative on the
+        // NETWORKING screen) is the half that goes.
+        if (status.size() > budget)
+            status = std::format("HOSTING {}", tight);
+        return clip_chars(std::move(status), budget);
     }
-    return clip_chars(std::move(status), 42);
+    const std::string host_name = base_camp_host_display_name(players);
+    const std::string room_part =
+        room.empty() ? std::string("JOINED") : std::format("IN {}", room);
+    if (host_name.empty())
+        return clip_chars(room_part, budget);
+    std::string status = std::format("{} - HOST: {}", room_part, host_name);
+    if (status.size() <= budget)
+        return status;
+    // Tight band: "HOST: " is the label, the company is the information —
+    // drop the label first, then shed whole words off the company.
+    const std::size_t prefix = room_part.size() + 3;  // "<room> - "
+    status = std::format(
+        "{} - {}", room_part,
+        clip_words(host_name, prefix < budget ? budget - prefix : 0u));
+    return clip_chars(std::move(status), budget);
 }
 
 BaseCampLineB compose_base_camp_line_b(
     const std::optional<std::string>& alert,
     bool is_host,
     std::string_view room_code,
-    const std::vector<og::sim::LobbyPlayer>& players)
+    const std::vector<og::sim::LobbyPlayer>& players,
+    int max_chars)
 {
     // Degraded links outrank the healthy session status: the alert takes
     // the §2.5 line-B slot (and the ORANGE color) until the link heals.
-    if (alert.has_value())
-        return {.text = *alert, .alert = true};
+    // Alert text is transport prose (a pack-install failure can be long),
+    // so it takes the same band budget.
+    if (alert.has_value()) {
+        return {.text = clip_chars(*alert,
+                                   max_chars > 0
+                                       ? static_cast<std::size_t>(max_chars)
+                                       : 0u),
+                .alert = true};
+    }
     return {.text = format_base_camp_session_status(is_host, room_code,
-                                                    players),
+                                                    players, max_chars),
             .alert = false};
 }
 

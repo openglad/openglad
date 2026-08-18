@@ -17,6 +17,11 @@
 
 #pragma once
 
+// Shared campaign-state bounds + key charset (kCampaignVarNameMax,
+// valid_campaign_var_name): the write choke campaign_state_set and the
+// GTL v15 load rejection enforce the same rules as og.campaign_state_set.
+#include <openglad/gameplay/script/campaign_hooks.h>
+
 #include <cstdint>
 #include <array>
 #include <span>
@@ -25,6 +30,8 @@
 #include <set>
 #include <list>
 #include <memory>
+#include <utility>
+#include <vector>
 
 class guy;
 class walker;
@@ -110,13 +117,45 @@ public:
     // and stamped ONLY by company_autosave — save() just serializes it, so
     // SaveData::save() itself stays deterministic (§3.2).
     std::int64_t last_played_unix_s = 0;
+    // Campaign scripting persistent state (GTL v15; issue #206,
+    // docs/campaign-scripting-design.md "Persistent campaign state").
+    // Per-campaign named int32 decisions, keyed by campaign id. Each
+    // campaign's entry list is kept SORTED BY KEY inside the vector —
+    // insertion order would not survive a save/load/save cycle, sorted
+    // storage makes re-serialization byte-identical. All writes funnel
+    // through campaign_state_set (the bounds choke below).
+    std::map<std::string, std::vector<std::pair<std::string, std::int32_t>>>
+        campaign_state;
+
+    // Campaign scripted-state bounds, matching the existing
+    // campaign-list bound (128) on both axes.
+    static constexpr int kCampaignStateMaxCampaigns = 128;
+    static constexpr int kCampaignStateMaxEntries = 128;
+
+    // Replay excursion arm (#207; docs/camp-controls-design.md "Replay").
+    // TRANSIENT session state, never serialized (no GTL change): reset()
+    // and load() clear the pair, and the launch sites that round-trip a
+    // session save through disk re-carry it explicitly (game.cpp,
+    // local_transport_shadow, copy_headless_server_save_data — the
+    // documented dropped-field pattern). replay_level == 0 means unarmed;
+    // replay_origin is the campaign cursor as it stood when the arm was
+    // set, the position a finished excursion restores.
+    short replay_level = 0;
+    short replay_origin = 0;
 
     SaveData();
     ~SaveData();
     
     void reset();
     
-    void update_guys(const std::list<std::unique_ptr<walker>>& oblist);  // Copy team from the guys in an oblist (dead heroes dropped unless keep_fallen_heroes)
+    // Copy team from the guys in an oblist (dead heroes dropped unless
+    // keep_fallen_heroes). preserve_exp_level (#213, versus arenas): a
+    // rebuilt entry keeps the PRIOR roster entry's exp and level (matched
+    // by guy::id; the re-level-from-exp step is skipped, so level-up stat
+    // gains never apply either) — cash/score folding is untouched. Guys
+    // with no prior entry (mid-level recruits) re-level normally.
+    void update_guys(const std::list<std::unique_ptr<walker>>& oblist,
+                     bool preserve_exp_level = false);
     // Networked "as if played alone" save: overlay only the characters owned by
     // owner_player_index (matched via guy::owner_player_index) back into their
     // own save slots (guy::owner_save_slot), updating progress while leaving
@@ -124,23 +163,58 @@ public:
     // not-brought characters — untouched. Keeps the roster dense; campaign and
     // score fields are intentionally left as-is (only character growth persists).
     void merge_owned_guys_from(const std::list<std::unique_ptr<walker>>& oblist,
-                               std::uint8_t owner_player_index);
+                               std::uint8_t owner_player_index,
+                               bool preserve_exp_level = false);
     // Multi-seat variant: overlay the characters owned by ANY of the given
     // player indices in ONE load/merge/save cycle (a machine with N local
     // seats owns N players' characters). Entries equal to guy::kNoOwner are
-    // ignored; an effectively empty list is a no-op.
+    // ignored; an effectively empty list is a no-op. preserve_exp_level
+    // (#213): a surviving overlay keeps the DISK slot's exp/level instead
+    // of re-leveling from the session exp.
     void merge_owned_guys_from(const std::list<std::unique_ptr<walker>>& oblist,
-                               std::span<const std::uint8_t> owner_player_indices);
+                               std::span<const std::uint8_t> owner_player_indices,
+                               bool preserve_exp_level = false);
     bool load(const std::string& filename);
     bool save(const std::string& filename);
     [[nodiscard]] SaveDataIoError load_with_error(const std::string& filename);
     [[nodiscard]] SaveDataIoError save_with_error(const std::string& filename);
     [[nodiscard]] SaveDataIoError last_io_error() const { return last_io_error_; }
     
+    // Arm a replay of `level` (#207): remembers the current cursor as
+    // replay_origin (a re-arm before the first excursion resolves keeps the
+    // FIRST origin — scen_num already points into the excursion) and moves
+    // scen_num onto the level so go_menu, the lobby publish and joiner
+    // mounts work unchanged. The win fold restores the origin and clears
+    // the arm; any other end restores at picker re-entry.
+    void arm_replay(short level);
+    void clear_replay_arm();
+    // True when the arm covers `level`. The arm only means anything for
+    // the level it names, and every plain cursor-set choke (PROGRESS
+    // VISIT/GO, SET LEVEL, the camp's plain level rows, the terminal Set
+    // Level tails) and every campaign switch calls clear_replay_arm() —
+    // abandoning the excursion — before writing the cursor, so a stale arm
+    // never skips a purge and an origin never leaks across campaigns. The
+    // level check here is the backstop for writes outside those chokes.
+    [[nodiscard]] bool replay_armed_for(int level) const;
+
     bool is_level_completed(int level_index) const;
     int get_num_levels_completed(const std::string& campaign) const;
     void add_level_completed(const std::string& campaign, int level_index);
     void reset_campaign(const std::string& campaign);
+
+    // Scripted campaign state (GTL v15). get answers 0 when the campaign
+    // or key is absent. set is the WRITE choke (og.campaign_state_set
+    // raises when it answers false): it returns false WITHOUT mutating
+    // when the key fails og::script::hooks::valid_campaign_var_name, when
+    // the campaign already holds kCampaignStateMaxEntries entries and the
+    // key is new, or when kCampaignStateMaxCampaigns campaigns hold state
+    // and this campaign is new. Setting an existing key to 0 KEEPS the
+    // entry — the simplest deterministic rule: an entry's presence never
+    // depends on its value history.
+    std::int32_t campaign_state_get(const std::string& campaign,
+                                    const std::string& key) const;
+    bool campaign_state_set(const std::string& campaign,
+                            const std::string& key, std::int32_t value);
 
 private:
     SaveDataIoError last_io_error_ = SaveDataIoError::None;

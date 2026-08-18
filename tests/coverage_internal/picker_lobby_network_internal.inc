@@ -639,6 +639,50 @@ int picker_lobby_network_testing_exercise_internal_helpers()
           benched_equivalent.team_list[0].owner_player_index == 2);
     applied_save.team_list[0]->deployed = true;
 
+    // #207 adopt_replay_arm (design point 4, "every machine"): the JOINER
+    // passes true — a synced landing that MOVES the cursor onto a level
+    // completed in this machine's own save arms an excursion with origin =
+    // the pre-sync cursor; a host re-pick keeps the FIRST origin; an
+    // unchanged pair keeps the arm exactly; an uncompleted landing or a
+    // campaign switch clears it. The HOST default (false) never touches a
+    // pre-set arm: its own REPLAY/VISIT clicks own the arm and a stale
+    // echo must not overrule them.
+    og::sim::LobbyState adopt_state = state;
+    adopt_state.settings.campaign_id = kDefaultCampaignId;
+    adopt_state.settings.scenario_id = 2;
+    applied_save.current_campaign = kDefaultCampaignId;
+    applied_save.completed_levels[std::string(kDefaultCampaignId)] = {2, 4};
+    applied_save.scen_num = 9;
+    applied_save.replay_level = 4;   // a host-authored arm
+    applied_save.replay_origin = 9;
+    apply_lobby_state_to_save(adopt_state, applied_save, true, 4, 1u);
+    check(applied_save.replay_level == 4 && applied_save.replay_origin == 9);
+    applied_save.clear_replay_arm();
+    applied_save.scen_num = 9;
+    // Joiner: a completed landing arms, origin = the pre-sync cursor.
+    apply_lobby_state_to_save(adopt_state, applied_save, true, 4, 1u, true);
+    check(applied_save.scen_num == 2 && applied_save.replay_level == 2 &&
+          applied_save.replay_origin == 9);
+    // A repeat application of the same state keeps the arm exactly.
+    apply_lobby_state_to_save(adopt_state, applied_save, true, 4, 1u, true);
+    check(applied_save.replay_level == 2 && applied_save.replay_origin == 9);
+    // A host re-pick onto another completed level keeps the FIRST origin.
+    adopt_state.settings.scenario_id = 4;
+    apply_lobby_state_to_save(adopt_state, applied_save, true, 4, 1u, true);
+    check(applied_save.replay_level == 4 && applied_save.replay_origin == 9);
+    // An uncompleted landing is a plain set.
+    adopt_state.settings.scenario_id = 3;
+    apply_lobby_state_to_save(adopt_state, applied_save, true, 4, 1u, true);
+    check(applied_save.scen_num == 3 && applied_save.replay_level == 0);
+    // A campaign switch clears (no origin to restore to).
+    adopt_state.settings.scenario_id = 4;
+    apply_lobby_state_to_save(adopt_state, applied_save, true, 4, 1u, true);
+    check(applied_save.replay_level == 4);
+    adopt_state.settings.campaign_id = "adopt_other_campaign";
+    apply_lobby_state_to_save(adopt_state, applied_save, true, 4, 1u, true);
+    check(applied_save.current_campaign == "adopt_other_campaign" &&
+          applied_save.replay_level == 0);
+
     class RawTransport final : public og::sim::ITransport {
     public:
         std::vector<og::sim::ReceivedMessage> incoming;

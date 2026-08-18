@@ -10,13 +10,18 @@
 #include <openglad/core/util.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/resources/campaign_metadata.h>
+#include <openglad/resources/campaign_state_providers.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
+#include <openglad/resources/level_file_io.h>
+#include <openglad/resources/level_selection.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/ui/cloud_save_client.h>
 #include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/menu_model.h>
@@ -31,6 +36,7 @@
 #include <cstdio>
 #include <format>
 #include <iostream>
+#include <optional>
 #ifdef TESTING
 #include <cstdint>
 #include <filesystem>
@@ -76,6 +82,7 @@ int run_text_picker_protocol_session(const TextPickerConfig& config)
     protocol_args.team_families = config.team_families;
     protocol_args.seed = config.seed;
     protocol_args.team_level = config.team_level;
+    protocol_args.campaign_state = config.campaign_state;
     return run_text_protocol_session(protocol_args);
 }
 
@@ -92,6 +99,19 @@ public:
         // the previous active slot in place (the save itself would fail the
         // same validation).
         assert_company_slot_authority();
+        // Campaign scripting (#206): point the process-global og.campaign_*
+        // providers at THIS client's SaveData — the same object the picker
+        // mutates — so campaign hooks always read/write the live save (the
+        // design doc's install-site list: the text picker's init, beside
+        // the [SAVE-R2] slot repoint).
+        og::script::hooks::install_campaign_providers(
+            og::data::make_campaign_providers(save_data_));
+    }
+
+    ~TextPickerClient() override
+    {
+        // #206: the providers borrow save_data_ — clear before it dies.
+        og::script::hooks::clear_campaign_providers();
     }
 
     const PickerMenuItem* present_menu(PickerMenuId menu_id) override
@@ -249,6 +269,12 @@ public:
         }
 
         config_.campaign = entries[static_cast<size_t>(*choice - 1)];
+        // A campaign SWITCH abandons any replay excursion in flight — the
+        // arm's origin is a cursor in the previous campaign and must never
+        // be restored into this one (#207). Re-selecting the current
+        // campaign changes nothing and keeps the arm.
+        if (save_data_.current_campaign != config_.campaign)
+            save_data_.clear_replay_arm();
         save_data_.current_campaign = config_.campaign;
         // GO loads levels straight from the mounted package; selecting a
         // campaign without mounting it would silently play the old one.
@@ -262,7 +288,10 @@ public:
     void show_options() override
     {
         std::string line;
-        std::printf("\n--- Options ---\n");
+        // The page wears the name of the door that opened it: the main
+        // menu row is GAME SETTINGS on every client, and a heading that
+        // still said "Options" read as a different screen.
+        std::printf("\n--- Game Settings ---\n");
 
         std::printf("Current save slot: %s. New slot (blank keeps current): ", config_.save_name.c_str());
         std::fflush(stdout);
@@ -307,6 +336,12 @@ public:
             set_error(TextPickerErrorCode::Unsupported,
                 std::string("protocol session failed with code ") + std::to_string(result));
         }
+
+        // #207 design point 5: the protocol session folds nothing back into
+        // this picker's save, so an armed excursion resolves here on every
+        // end — restore the origin cursor and clear the arm.
+        if (og::ui::replay_reentry_restore(save_data_))
+            config_.level = save_data_.scen_num;
     }
 
     PickerScreen screen_after_game() const override
@@ -316,6 +351,7 @@ public:
 
 #ifdef TESTING
     const SaveData& testing_save_data() const;
+    SaveData& testing_save_data_mutable();
 #endif
 
     bool load_game() override
@@ -648,11 +684,6 @@ private:
     void handle_main_menu_item(const PickerMenuItem& item)
     {
         switch (item.command) {
-        case PickerMenuCommand::OpenDifficultyMenu:
-            // The DIFFICULTY submenu: the shared nested presentation loop
-            // (show_submenu in picker_state) until Back.
-            show_submenu(PickerMenuId::Difficulty);
-            break;
         case PickerMenuCommand::SetPlayerMode:
             if (item.arg > 1) {
                 set_player_count(save_data_, 1);
@@ -817,19 +848,22 @@ private:
         case PickerMenuCommand::SetLevel:
             set_level();
             break;
+        case PickerMenuCommand::ReplayLevel:
+            // #207: the SCENARIO submenu's replay prompt (cleared + gate).
+            replay_level();
+            break;
         case PickerMenuCommand::SetCampaign:
             (void)show_campaign_select();
             break;
-        case PickerMenuCommand::CycleCtfTeamCount:
-            cycle_ctf_team_count(save_data_);
-            std::printf("%s\n", format_ctf_teams_label(save_data_).c_str());
-            autosave_company_after_mutation(); // §3.8 settings tail
+        case PickerMenuCommand::OpenDifficultyMenu:
+            // The DIFFICULTY submenu: the shared nested presentation loop
+            // (show_submenu in picker_state) until Back. It answers here now
+            // — the door moved off the main menu to Team Build.
+            show_submenu(PickerMenuId::Difficulty);
             break;
-        case PickerMenuCommand::CycleCtfCaptureLimit:
-            cycle_ctf_capture_limit(save_data_);
-            std::printf("%s\n", format_ctf_caps_label(save_data_).c_str());
-            autosave_company_after_mutation(); // §3.8 settings tail
-            break;
+        // Match teams and target score left the flat team-build list for the
+        // modes camp's MATCH SETUP page; the SCENARIO submenu still routes
+        // its troops row through here.
         case PickerMenuCommand::ToggleCtfScenarioTroops:
             toggle_ctf_scenario_troops(save_data_);
             std::printf("%s\n", format_ctf_troops_label(save_data_).c_str());
@@ -840,6 +874,11 @@ private:
             break;
         case PickerMenuCommand::Teams:
             teams_screen();
+            break;
+        case PickerMenuCommand::CampaignCamp:
+            // #206: the Base Camp gameplay zone (guard + flow live in the
+            // shared terminal driver).
+            campaign_camp_flow();
             break;
         default:
             break;
@@ -1090,6 +1129,14 @@ private:
             return;
         }
         const int slot = slots[static_cast<std::size_t>(value - 1)];
+        // The camp's deploy rules bind this row too: the Camp screen shows
+        // the padlock and its reason, and a client that then deploys the
+        // locked hero anyway is a different campaign from the SDL one.
+        if (const std::optional<std::string> refused = terminal_roster_refusal(
+                save_data_, TerminalRosterCommand::Deploy, slot)) {
+            std::printf("%s\n", refused->c_str());
+            return;
+        }
         const bool deployed = toggle_deploy_slot(save_data_, slot);
         std::printf("%s %s.\n", save_data_.team_list[static_cast<std::size_t>(slot)]->name.c_str(),
             deployed ? "deployed" : "benched");
@@ -1129,6 +1176,13 @@ private:
 
     void train_team(int seed_slot = -1)
     {
+        // A camp that retired training refuses in words: the SDL panel just
+        // has no train affordance to click, but a prompt cannot hide.
+        if (const std::optional<std::string> refused = terminal_roster_refusal(
+                save_data_, TerminalRosterCommand::Train, -1)) {
+            std::printf("%s\n", refused->c_str());
+            return;
+        }
         TrainSession session(save_data_);
         if (session.empty()) {
             std::printf("No team members available to train.\n");
@@ -1199,6 +1253,13 @@ private:
 
     void hire_troops()
     {
+        // The camp's can_hire capability — the flag that hides HIRE on the
+        // SDL panel — answers this row too.
+        if (const std::optional<std::string> refused = terminal_roster_refusal(
+                save_data_, TerminalRosterCommand::Hire, -1)) {
+            std::printf("%s\n", refused->c_str());
+            return;
+        }
         HireSession session(save_data_, 0);
         if (session.team_full()) {
             std::printf("Team is already at max size (%d).\n", MAX_TEAM_SIZE);
@@ -1250,6 +1311,51 @@ private:
         }
     }
 
+    // #206 CAMP, text projection: the shared terminal driver over this
+    // client's save — the printf banner and the read_line prompt are the
+    // only client-specific parts (every camp line, docket ordinal and roster
+    // row is composed by the driver, byte-identical with curses).
+    void campaign_camp_flow()
+    {
+        TerminalCampaignPickerIo io;
+        io.prompt = [this](const std::string& title,
+                           const std::vector<std::string>& lines,
+                           const std::string& label)
+            -> std::optional<std::string> {
+            std::printf("\n--- %s ---\n", title.c_str());
+            for (const std::string& line : lines)
+                std::printf("%s\n", line.c_str());
+            std::printf("%s", label.c_str());
+            std::fflush(stdout);
+            std::string line;
+            if (!read_line(line))
+                return std::nullopt;
+            return line;
+        };
+        io.notice = [](const std::string& line) {
+            std::printf("%s\n", line.c_str());
+        };
+        // The SET LEVEL host predicate: the text picker holds no networked
+        // lobby (configure_networking is a stub), so the shared context
+        // always answers host here.
+        io.is_host = [this] { return label_context().is_host; };
+        io.apply_level = [this](int level, bool replay_arm) {
+            // The text "Set level" tail: session config + save cursor. The
+            // replay arm (#207) re-checks cleared at the write choke — the
+            // row decoration is fetch-time state. A plain write abandons any
+            // excursion in flight (a stale arm must never skip a purge).
+            config_.level = level;
+            if (replay_arm && save_data_.is_level_completed(level))
+                save_data_.arm_replay(static_cast<short>(level));
+            else
+            {
+                save_data_.clear_replay_arm();
+                save_data_.scen_num = static_cast<short>(level);
+            }
+        };
+        run_terminal_campaign_camp(save_data_, io);
+    }
+
     void set_level()
     {
         std::printf("Set level (current %s): ",
@@ -1266,8 +1372,64 @@ private:
             return;
         }
 
+        // Existence + the earned-roads gate: a free-typed id gets the same
+        // answer the camp's docket gives the same road, and the refusal
+        // returns before the cursor (or any autosave tail) moves.
+        std::string title;
+        if (og::data::load_scenario_title_with_error(
+                ("scen" + std::to_string(*level)).c_str(), title) !=
+                og::data::LevelFileIoError::None ||
+            !og::data::level_selection_allowed(save_data_, *level)) {
+            std::printf("%s\n",
+                std::string(og::ui::kCampaignLevelClosedMessage).c_str());
+            return;
+        }
+
         config_.level = *level;
+        // A plain Set Level abandons any replay excursion in flight.
+        save_data_.clear_replay_arm();
         save_data_.scen_num = static_cast<short>(*level);
+    }
+
+    // #207: the terminal replay prompt — set_level's shape with one more
+    // gate: the level must already be CLEARED (a replay re-fights a beaten
+    // level; the frontier is GO's job). Arming moves the cursor itself, so
+    // everything downstream behaves like a set.
+    void replay_level()
+    {
+        std::printf("Replay level (must be cleared): ");
+        std::fflush(stdout);
+
+        std::string line;
+        if (!read_line(line) || line.empty())
+            return;
+
+        const auto level = parse_int_strict(line);
+        if (!level || *level < 1) {
+            std::printf("Invalid level.\n");
+            return;
+        }
+
+        std::string title;
+        if (og::data::load_scenario_title_with_error(
+                ("scen" + std::to_string(*level)).c_str(), title) !=
+                og::data::LevelFileIoError::None ||
+            !og::data::level_selection_allowed(save_data_, *level)) {
+            std::printf("%s\n",
+                std::string(og::ui::kCampaignLevelClosedMessage).c_str());
+            return;
+        }
+        if (!save_data_.is_level_completed(*level)) {
+            std::printf("That level is not cleared yet.\n");
+            return;
+        }
+
+        config_.level = *level;
+        save_data_.arm_replay(static_cast<short>(*level));
+        std::printf("%s\n",
+            og::ui::campaign_replay_set_message(
+                title.empty() ? std::format("SCEN {}", *level) : title)
+                .c_str());
     }
 
     void clear_error()

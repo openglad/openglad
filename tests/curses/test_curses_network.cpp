@@ -31,6 +31,7 @@
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/sim_control_policy.h>
+#include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/platform/net_transport_websocket_client.h>
@@ -90,6 +91,9 @@ int curses_network_testing_force_server_win(CursesGameSession& session,
                                             std::uint32_t pinned_team0_score);
 int curses_network_testing_clear_server_team(CursesGameSession& session,
                                              short team);
+GameWorld* curses_network_testing_server_world(CursesGameSession& session);
+const SaveData* curses_network_testing_host_server_save(
+    CursesGameSession& session);
 } // namespace og::curses
 
 namespace {
@@ -1353,6 +1357,327 @@ TEST(CursesNetwork, networked_win_persists_deploy_share_to_company_save)
         EXPECT_TRUE(after_both.is_level_completed(1));
         EXPECT_EQ(2, static_cast<int>(after_both.scen_num));
     }
+}
+
+// ---------------------------------------------------------------------------
+// V5 Option A — the curses networked HOST plays under its own history. The
+// authoritative session save is seeded from the host machine's active company
+// save (completed set, campaign decision book, cursor, and the transient
+// replay arm), so a hosting player means the same thing from every client:
+// VISIT purges, REPLAY restores, campaign vars reach the hosted world, and
+// completion in another campaign never bleeds through.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+int count_hostile_livings(const GameWorld& world)
+{
+    int hostiles = 0;
+    for (const auto& up : world.oblist) {
+        const walker* e = up.get();
+        if (e != nullptr && !e->dead() && e->query_order() == Order::Living &&
+            e->team_num() != 0 && e->myguy == nullptr)
+            ++hostiles;
+    }
+    return hostiles;
+}
+
+const walker* find_living_named(const GameWorld& world, const std::string& name,
+                                int nth = 0)
+{
+    int seen = 0;
+    for (const auto& up : world.oblist) {
+        const walker* e = up.get();
+        if (e != nullptr && e->query_order() == Order::Living &&
+            e->stats() != nullptr && e->stats()->name == name) {
+            if (seen == nth)
+                return e;
+            ++seen;
+        }
+    }
+    return nullptr;
+}
+
+// Restore the process campaign mount exactly (the .inc's pattern), so
+// shuffled neighbors see their original package after a test that hosts a
+// non-default campaign.
+struct MountRestore {
+    std::string before = get_mounted_campaign();
+    ~MountRestore()
+    {
+        const std::string after = get_mounted_campaign();
+        if (after == before)
+            return;
+        if (before.empty())
+            (void)unmount_campaign_package_with_error(after);
+        else
+            (void)mount_campaign_package_with_error(before);
+    }
+};
+
+} // namespace
+
+// V5 consequence (a) + the point-3 trap's curses direction: a host whose
+// company save marks the negotiated level completed, UNARMED, hosts the
+// classic cleared walk-through — the purge fires on the authoritative world
+// and the seeded save stays unarmed (VISIT means VISIT from a curses host;
+// the dedicated server's auto-arm must not run for a player-seeded session).
+TEST(CursesNetwork, host_history_completed_unarmed_landing_purges_for_the_table)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+    // The host cleared level 1 and its cursor sits on it via a plain write —
+    // the VISIT posture.
+    host_save.add_level_completed("gladiator", 1);
+    host_save.scen_num = 1;
+
+    StartedGame game = negotiate_and_start(host_save, join_save);
+    ASSERT_NE(game.host_session, nullptr);
+    ASSERT_NE(game.join_session, nullptr);
+
+    const SaveData* const server_save =
+        curses_network_testing_host_server_save(*game.host_session);
+    ASSERT_NE(nullptr, server_save);
+    EXPECT_TRUE(server_save->is_level_completed(1))
+        << "the host's completed set must reach the authoritative session";
+    EXPECT_EQ(0, static_cast<int>(server_save->replay_level))
+        << "point-3 trap: a player-seeded session must NOT auto-arm — "
+           "unarmed + completed is a VISIT";
+
+    GameWorld* const server_world =
+        curses_network_testing_server_world(*game.host_session);
+    ASSERT_NE(nullptr, server_world);
+    EXPECT_EQ(0, count_hostile_livings(*server_world))
+        << "the completed-level purge fires for the whole table";
+
+    advance_all(*game.host_session, *game.join_session, 30);
+    EXPECT_EQ(0, count_hostile_livings(game.host_session->mirror_world()));
+    EXPECT_EQ(0, count_hostile_livings(game.join_session->mirror_world()))
+        << "the joiner sees the host's cleared walk-through";
+}
+
+// V5 consequence (b): the host's REPLAY arm reaches the authoritative load
+// (restored census), the win fold restores the origin, and the networked
+// persist writes the restored cursor to every machine's company file — the
+// host's own write must already carry it (the joiner-side arm alone must not
+// mask a host that follows the walked exit).
+TEST(CursesNetwork, host_history_replay_restores_census_and_cursor_home)
+{
+    namespace fs = std::filesystem;
+    ASSERT_EQ("save0", og::data::active_company_slot());
+
+    const fs::path save0_path =
+        fs::path(get_user_path()) / "save" / "save0.gtl";
+    std::error_code ec;
+    fs::create_directories(save0_path.parent_path(), ec);
+    const bool had_save0 = fs::exists(save0_path, ec);
+    if (had_save0)
+        fs::copy_file(save0_path, save0_path.string() + ".replaybak",
+                      fs::copy_options::overwrite_existing, ec);
+    struct RestoreGuard {
+        fs::path save0_path;
+        bool had_save0;
+        ~RestoreGuard()
+        {
+            std::error_code ec2;
+            if (had_save0) {
+                fs::copy_file(save0_path.string() + ".replaybak", save0_path,
+                              fs::copy_options::overwrite_existing, ec2);
+                fs::remove(save0_path.string() + ".replaybak", ec2);
+            } else {
+                fs::remove(save0_path, ec2);
+            }
+        }
+    } restore{save0_path, had_save0};
+
+    // The shared on-disk company: level 1 beaten, campaign position at 3.
+    // The host machine persists into it AND the joiner seeds from it.
+    SaveData base;
+    base.reset();
+    base.current_campaign = "gladiator";
+    base.add_level_completed("gladiator", 1);
+    base.scen_num = 3;
+    base.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    base.team_list[0]->name = "Stale Host";
+    base.team_list[0]->teamnum = 0;
+    base.team_list[1] = std::make_unique<guy>(FAMILY_ELF);
+    base.team_list[1]->name = "Stale Join";
+    base.team_list[1]->teamnum = 0;
+    base.team_size = 2;
+    ASSERT_TRUE(base.save("save0"));
+
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host Hero");
+    init_team_save(join_save, 0, FAMILY_ELF, "Join Hero");
+    host_save.allied_mode = 1;
+    join_save.team_list[1] = std::move(join_save.team_list[0]);
+    // The host's own history + the REPLAY press: cleared 1, cursor at 3,
+    // arm moves the cursor onto the level with origin = 3.
+    host_save.add_level_completed("gladiator", 1);
+    host_save.scen_num = 3;
+    host_save.arm_replay(1);
+    ASSERT_EQ(1, static_cast<int>(host_save.scen_num));
+
+    StartedGame game = negotiate_and_start(host_save, join_save);
+    ASSERT_NE(game.host_session, nullptr);
+    ASSERT_NE(game.join_session, nullptr);
+
+    // The arm reached the authoritative session and the census is restored.
+    const SaveData* const server_save =
+        curses_network_testing_host_server_save(*game.host_session);
+    ASSERT_NE(nullptr, server_save);
+    EXPECT_TRUE(server_save->replay_armed_for(1))
+        << "the host's REPLAY intent must reach the authoritative load";
+    EXPECT_EQ(3, static_cast<int>(server_save->replay_origin));
+    GameWorld* const server_world =
+        curses_network_testing_server_world(*game.host_session);
+    ASSERT_NE(nullptr, server_world);
+    EXPECT_EQ(12, count_hostile_livings(*server_world))
+        << "an armed replay re-fights the restored level";
+
+    advance_all(*game.host_session, *game.join_session, 30);
+
+    // Win the excursion and commit each machine through the production tail.
+    const int slain =
+        curses_network_testing_force_server_win(*game.host_session, 123u);
+    ASSERT_GT(slain, 0);
+    bool both_ended = false;
+    for (int round = 0; round < 400 && !both_ended; ++round) {
+        advance_all(*game.host_session, *game.join_session, 5);
+        both_ended =
+            game.host_session->ended() && game.join_session->ended();
+    }
+    ASSERT_TRUE(both_ended);
+    ASSERT_EQ(0, game.host_session->ending());
+
+    HeadlessTerminal term(24, 80);
+    FakeClock clock;
+    CursesInput input;
+    CursesRenderer renderer;
+    const GameRunResult host_result = run_level_loop(
+        *game.host_session, term, clock, input, renderer,
+        LevelLoopOptions{.max_frames = 20, .no_pacing = true, .render = false});
+    ASSERT_TRUE(host_result.ended);
+    {
+        SaveData after_host;
+        ASSERT_EQ(SaveDataIoError::None, after_host.load_with_error("save0"));
+        EXPECT_EQ(3, static_cast<int>(after_host.scen_num))
+            << "the HOST machine's persist must already carry the restored "
+               "cursor — a replay never rewrites the campaign position";
+        EXPECT_TRUE(after_host.is_level_completed(1));
+    }
+
+    const GameRunResult join_result = run_level_loop(
+        *game.join_session, term, clock, input, renderer,
+        LevelLoopOptions{.max_frames = 20, .no_pacing = true, .render = false});
+    ASSERT_TRUE(join_result.ended);
+    {
+        SaveData after_both;
+        ASSERT_EQ(SaveDataIoError::None, after_both.load_with_error("save0"));
+        EXPECT_EQ(3, static_cast<int>(after_both.scen_num))
+            << "the joiner's own lobby-config arm restores the same origin "
+               "(cursor home on every machine)";
+        EXPECT_TRUE(after_both.is_level_completed(1));
+    }
+}
+
+// V5 consequence (c), the SDL-host-parity feature: the host company's
+// campaign decision book reaches the hosted authoritative world — westlands
+// watch_paid=900 spawns the Watch (Wall-Warden + two Watchmen, team 0)
+// through the hosted path, and the ledger line reaches the host's display.
+TEST(CursesNetwork, host_history_campaign_vars_reach_the_hosted_world)
+{
+    MountRestore mount_restore;
+
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+    host_save.current_campaign = "westlands";
+    host_save.scen_num = 15;
+    ASSERT_TRUE(host_save.campaign_state_set("westlands", "watch_paid", 900));
+    join_save.current_campaign = "westlands";
+    join_save.scen_num = 15;
+
+    StartedGame game = negotiate_and_start(host_save, join_save);
+    ASSERT_NE(game.host_session, nullptr);
+    ASSERT_NE(game.join_session, nullptr);
+
+    GameWorld* const server_world =
+        curses_network_testing_server_world(*game.host_session);
+    ASSERT_NE(nullptr, server_world);
+    const auto& vars = server_world->campaign_vars;
+    EXPECT_NE(vars.end(),
+              std::find(vars.begin(), vars.end(),
+                        std::pair<std::string, std::int32_t>("watch_paid",
+                                                             900)))
+        << "the seeded decision book must reach the authoritative world";
+
+    advance_all(*game.host_session, *game.join_session, 10);
+
+    const walker* const warden = find_living_named(*server_world,
+                                                   "Wall-Warden");
+    ASSERT_NE(nullptr, warden)
+        << "the paid Watch musters on the hosted authoritative sim";
+    EXPECT_EQ(0, static_cast<int>(warden->team_num()));
+    EXPECT_NE(nullptr, find_living_named(*server_world, "Watchman", 0));
+    EXPECT_NE(nullptr, find_living_named(*server_world, "Watchman", 1));
+
+    // The spawned Watch replicates to the table: every mirror holds the same
+    // count of team-0 NPC livings (guy names do not ride snapshots, so pin
+    // the census, not the names). The tick-1 notification TEXT predates the
+    // initial-keyframe handshake and is not deliverable to any networked
+    // client — the entities themselves are the consequence.
+    const auto count_team0_npcs = [](const GameWorld& world) {
+        int count = 0;
+        for (const auto& up : world.oblist) {
+            const walker* e = up.get();
+            if (e != nullptr && !e->dead() &&
+                e->query_order() == Order::Living && e->team_num() == 0 &&
+                e->myguy == nullptr)
+                ++count;
+        }
+        return count;
+    };
+    const int authoritative_npcs = count_team0_npcs(*server_world);
+    EXPECT_GE(authoritative_npcs, 3) << "the Watch itself is three swords";
+    EXPECT_EQ(authoritative_npcs,
+              count_team0_npcs(game.host_session->mirror_world()));
+    EXPECT_EQ(authoritative_npcs,
+              count_team0_npcs(game.join_session->mirror_world()))
+        << "the joiner's table shows the host's consequence";
+}
+
+// V5 consequence (d): completed_levels is campaign-keyed — a level id
+// completed in ANOTHER campaign never purges this one on the hosted path.
+TEST(CursesNetwork, host_history_foreign_campaign_completion_never_purges)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+    // Level id 1 cleared in the imaginations campaign; hosting GLADIATOR 1.
+    host_save.add_level_completed("imaginations", 1);
+    host_save.scen_num = 1;
+
+    StartedGame game = negotiate_and_start(host_save, join_save);
+    ASSERT_NE(game.host_session, nullptr);
+    ASSERT_NE(game.join_session, nullptr);
+
+    const SaveData* const server_save =
+        curses_network_testing_host_server_save(*game.host_session);
+    ASSERT_NE(nullptr, server_save);
+    EXPECT_FALSE(server_save->is_level_completed(1))
+        << "completion is campaign-keyed";
+    EXPECT_EQ(0, static_cast<int>(server_save->replay_level));
+    GameWorld* const server_world =
+        curses_network_testing_server_world(*game.host_session);
+    ASSERT_NE(nullptr, server_world);
+    EXPECT_EQ(12, count_hostile_livings(*server_world))
+        << "a foreign campaign's completion must not purge this one";
 }
 
 TEST(CursesNetwork, both_players_follow_distinct_avatars)

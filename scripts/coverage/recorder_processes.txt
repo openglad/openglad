@@ -60,6 +60,7 @@ og_unit_soccer
 og_unit_tower_calibration
 og_unit_tower_gen
 og_unit_tower_progression
+og_unit_westlands_fire
 openglad
 openglad_curses
 openglad_demo

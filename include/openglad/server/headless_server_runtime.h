@@ -15,9 +15,29 @@ namespace og::server {
 
 void copy_headless_server_save_data(SaveData& destination,
                                     const SaveData& source);
+
+// #207 replay-arm policy for apply_headless_lobby_game_start_config.
+enum class LobbyStartReplayArm {
+    // Adopt a completed landing: a same-campaign start onto a level this
+    // save marks completed auto-arms a replay excursion. For sessions with
+    // no way to read the hosting player's intent — the dedicated server
+    // (no player UI) and networked joiners (who cannot see whether the
+    // host pressed VISIT or REPLAY) — any completed landing protects the
+    // machine's own campaign position.
+    AdoptCompletedLanding,
+    // Seeded intent (V5 Option A): the save was seeded from a PLAYER's
+    // company save and already says what that player meant — armed =
+    // REPLAY, unarmed + completed = VISIT. Keep an arm that covers the
+    // negotiated level of the same campaign; clear anything else; never
+    // auto-arm (the auto-arm would silently convert every hosted VISIT
+    // into a replay).
+    SeededIntent,
+};
+
 void apply_headless_lobby_game_start_config(
     SaveData& save,
-    const og::sim::LobbySaveDataEquivalent& config_save);
+    const og::sim::LobbySaveDataEquivalent& config_save,
+    LobbyStartReplayArm arm_policy = LobbyStartReplayArm::AdoptCompletedLanding);
 void sync_headless_server_save_data_from_world(SaveData& save,
                                                const GameWorld& world);
 // `authoritative` marks a SERVER world load: it rolls the per-level weather

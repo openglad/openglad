@@ -10,3 +10,8 @@ any diff.
 
 This file is repo documentation: `scripts/make_glad.py` excludes README.md
 from the composed `.glad` archive.
+
+`packs/westlands.fire/` is HAND-AUTHORED (The Company Fire — the scripted
+camp, quartermaster and decision consequences): `export_campaign_tree`
+never touches `packs/`, and the generator stages it into its self-checked
+package via `og::toolexport::stage_pack_tree`. See that pack's README.

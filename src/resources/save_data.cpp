@@ -24,6 +24,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/resources/campaign_io.h>
+#include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/filesystem_sync.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/og_file.h>
@@ -78,7 +79,7 @@ void SaveData::reset()
     current_levels.clear();
     completed_levels.insert(std::make_pair(kDefaultCampaign, std::set<int>()));
     current_levels.insert(std::make_pair(kDefaultCampaign, 1));
-
+    campaign_state.clear();
 
 	score = totalcash = totalscore = 0;
     for (size_t i = 0; i < std::size(m_score); i++)
@@ -96,6 +97,8 @@ void SaveData::reset()
 
 	scen_num = 1;
 	my_team = 0;
+	// #207: a reset company has no excursion in flight.
+	clear_replay_arm();
     //numplayers = 1;
 	//allied_mode = 1;
 }
@@ -103,6 +106,11 @@ void SaveData::reset()
 bool SaveData::load(const std::string& filename)
 {
     last_io_error_ = SaveDataIoError::None;
+    // #207: the arm is transient session state — a load from disk answers
+    // the file's campaign position, never a live excursion. Launch sites
+    // that round-trip a session save through disk re-carry the pair
+    // explicitly (the dropped-field pattern).
+    clear_replay_arm();
 	TRACE("load", "SaveData::load file=%s", filename.c_str());
     if (!is_safe_virtual_basename(filename))
     {
@@ -147,6 +155,7 @@ bool SaveData::load(const std::string& filename)
 	std::int16_t temp_registered = 0;        // v.7+
 	std::int64_t temp_last_played = 0;       // v.14+
 	std::uint8_t temp_deployed = 1;          // v.14+
+	std::uint8_t temp_campaign_tag = 0;      // v.16+
 
 	// Format of a team list file is:
 	// 3-byte header: 'GTL'
@@ -192,7 +201,10 @@ bool SaveData::load(const std::string& filename)
 	// 2-bytes team number
 	// 2*4 = 8 bytes RESERVED, reinterpreted by version 14+ as:
 	//   1-byte deployed flag (0 = held back), guy offset +50  // Version 14+
-	//   7-bytes RESERVED (zero-filled by v14+ writers)
+	//   1-byte campaign tag (0 = unassigned), guy offset +51  // Version 16+
+	//   6-bytes RESERVED (zero-filled by v16+ writers)
+	// (v14/v15 files carry filler at guy offset +51 — the tag is hard-gated
+	// on temp_version >= 16 and never sniffed from content)
 	// List of 200 or 500 (max levels) 1-byte scenario-level status  // Versions 1-7
 	// 2-bytes Number of campaigns in list      // Version 8+
 	// List of n campaigns                      // Version 8+
@@ -211,6 +223,14 @@ bool SaveData::load(const std::string& filename)
 	// 2-bytes Tower best floor climbed         // Version 13+
 	// 2-bytes Tower run seed, low 16 bits      // Version 13+
 	// 2-bytes Tower run seed, high 16 bits     // Version 13+
+	// 2-bytes Number of campaigns with scripted state  // Version 15+
+	// List of n campaign-state blocks          // Version 15+
+	//   40-bytes Campaign ID string
+	//   2-bytes Number of key/value entries (sorted by key)
+	//   List of n entries
+	//     1-byte key length (1..32)
+	//     N-bytes key ([a-z0-9_], no NUL, no padding)
+	//     4-bytes (Sint32) value
 
     Log("Loading save: {}\n", filename);
 	std::string temp_filename = std::format("{}.gtl", filename); // gladiator team list
@@ -234,6 +254,7 @@ bool SaveData::load(const std::string& filename)
 
     completed_levels.clear();
     current_levels.clear();
+    campaign_state.clear();
 
 	for(int i = 0; i < team_size; i++)
     {
@@ -402,9 +423,17 @@ bool SaveData::load(const std::string& filename)
 
 		// "And the filler," as the 2002 reader put it. Version 14+
 		// reinterprets the first byte as the
-		// mission-deploy flag (guy offset +50); older files hold filler.
+		// mission-deploy flag (guy offset +50); version 16+ the second as
+		// the campaign tag (guy offset +51); older files hold filler.
 		temp_deployed = 1;
-		if (temp_version >= 14)
+		temp_campaign_tag = 0;
+		if (temp_version >= 16)
+		{
+			READ_OR_FAIL(&temp_deployed, 1, 1);
+			READ_OR_FAIL(&temp_campaign_tag, 1, 1);
+			READ_OR_FAIL(filler.data(), 6, 1);
+		}
+		else if (temp_version >= 14)
 		{
 			READ_OR_FAIL(&temp_deployed, 1, 1);
 			READ_OR_FAIL(filler.data(), 7, 1);
@@ -462,6 +491,11 @@ bool SaveData::load(const std::string& filename)
 			    // deployed (every legacy character was always brought)
 			    temp_guy_ptr->deployed =
 			        (temp_version >= 14) ? (temp_deployed != 0) : true;
+			    // v16+ carries the campaign tag; older versions default to
+			    // unassigned (no legacy character ever swore a road)
+			    temp_guy_ptr->campaign_tag =
+			        (temp_version >= 16) ? temp_campaign_tag
+			                             : static_cast<std::uint8_t>(0);
             }
 		}
 
@@ -631,6 +665,90 @@ bool SaveData::load(const std::string& filename)
         tower_run_seed = 0;   // no run in progress
     }
 
+    // Versions 15+ append the per-campaign scripted state block (campaign
+    // scripting, issue #206). Bounds are hard rejections in the existing
+    // style: a hostile count, campaign id or key fails the whole load.
+    // campaign_state was cleared at the top, so older versions stay empty.
+    if (temp_version >= 15)
+    {
+        std::int16_t num_state_campaigns = 0;
+        READ_OR_FAIL(&num_state_campaigns, 2, 1);
+        if (num_state_campaigns < 0 ||
+            num_state_campaigns > kCampaignStateMaxCampaigns)
+        {
+            LogError("save_load_campaign_state_campaigns_invalid file={} count={} max={}\n",
+                filename, num_state_campaigns, kCampaignStateMaxCampaigns);
+            last_io_error_ = SaveDataIoError::ReadFailed;
+            return false;
+        }
+        std::array<char, 41> state_campaign;
+        for (int i = 0; i < num_state_campaigns; i++)
+        {
+            READ_OR_FAIL(state_campaign.data(), 1, 40);
+            state_campaign[40] = '\0';
+            if (!is_safe_campaign_id(state_campaign.data()))
+            {
+                LogError("Rejected unsafe campaign id in save campaign state: {}\n",
+                    state_campaign.data());
+                last_io_error_ = SaveDataIoError::ReadFailed;
+                return false;
+            }
+            std::int16_t num_state_entries = 0;
+            READ_OR_FAIL(&num_state_entries, 2, 1);
+            if (num_state_entries < 0 ||
+                num_state_entries > kCampaignStateMaxEntries)
+            {
+                LogError("save_load_campaign_state_entries_invalid file={} campaign={} count={} max={}\n",
+                    filename, state_campaign.data(), num_state_entries,
+                    kCampaignStateMaxEntries);
+                last_io_error_ = SaveDataIoError::ReadFailed;
+                return false;
+            }
+            auto& state_entries = campaign_state[state_campaign.data()];
+            state_entries.clear();
+            state_entries.reserve(static_cast<std::size_t>(num_state_entries));
+            for (int j = 0; j < num_state_entries; j++)
+            {
+                std::uint8_t key_len = 0;
+                READ_OR_FAIL(&key_len, 1, 1);
+                std::array<char, og::script::hooks::kCampaignVarNameMax>
+                    key_buf;
+                if (key_len == 0 ||
+                    key_len > static_cast<std::uint8_t>(
+                                  og::script::hooks::kCampaignVarNameMax))
+                {
+                    LogError("save_load_campaign_state_key_len_invalid file={} campaign={} len={}\n",
+                        filename, state_campaign.data(), key_len);
+                    last_io_error_ = SaveDataIoError::ReadFailed;
+                    return false;
+                }
+                READ_OR_FAIL(key_buf.data(), 1, key_len);
+                const std::string state_key(key_buf.data(), key_len);
+                if (!og::script::hooks::valid_campaign_var_name(state_key))
+                {
+                    LogError("save_load_campaign_state_key_invalid file={} campaign={}\n",
+                        filename, state_campaign.data());
+                    last_io_error_ = SaveDataIoError::ReadFailed;
+                    return false;
+                }
+                std::int32_t state_value = 0;
+                READ_OR_FAIL(&state_value, 4, 1);
+                // Sorted insert keeps the entry-list invariant; a
+                // duplicated key folds (last one wins), so a re-save is
+                // always deterministic.
+                const auto pos = std::lower_bound(
+                    state_entries.begin(), state_entries.end(), state_key,
+                    [](const std::pair<std::string, std::int32_t>& entry,
+                       const std::string& key) { return entry.first < key; });
+                if (pos != state_entries.end() && pos->first == state_key)
+                    pos->second = state_value;
+                else
+                    state_entries.insert(pos,
+                                         std::make_pair(state_key, state_value));
+            }
+        }
+    }
+
 	Log("Loading campaign: {}\n", current_campaign);
     int current_level = load_campaign(current_campaign, current_levels);
     if(current_level < 0)
@@ -656,8 +774,25 @@ bool SaveData::load(const std::string& filename)
 
 std::int32_t calculate_level(std::uint32_t temp_exp);
 
-void SaveData::update_guys(const std::list<std::unique_ptr<walker>>& oblist)
+void SaveData::update_guys(const std::list<std::unique_ptr<walker>>& oblist,
+                           bool preserve_exp_level)
 {
+    // #213 (versus arenas persist no XP): remember the pre-fold exp/level
+    // per guy id BEFORE the roster is torn down, so the rebuild below can
+    // restore them. The copy constructor preserves guy::id, so a walker's
+    // myguy (a copy of the roster entry) still carries its roster identity.
+    std::map<int, std::pair<std::uint32_t, short>> prior_exp_level;
+    if (preserve_exp_level)
+    {
+        for (int i = 0; i < team_size; i++)
+        {
+            const guy* prior = team_list[static_cast<std::size_t>(i)].get();
+            if (prior != nullptr)
+                prior_exp_level.emplace(prior->id,
+                                        std::make_pair(prior->exp, prior->level));
+        }
+    }
+
     // Pass 0 (docs/company-basecamp-design.md §3.3): held-back characters
     // (deployed == false) never entered the level's oblist, so rebuilding the
     // roster purely from the oblist would silently delete them. Move them
@@ -700,10 +835,24 @@ void SaveData::update_guys(const std::list<std::unique_ptr<walker>>& oblist)
             }
 		    // Take this one
 			team_list[team_size] = std::make_unique<guy>(*ob->myguy);
-			// Update his level from the experience
-			std::uint32_t exp = team_list[team_size]->exp;
-			team_list[team_size]->upgrade_to_level(static_cast<short>(calculate_level(team_list[team_size]->exp)));
-			team_list[team_size]->exp = exp;
+			// #213: in a versus arena a known roster member keeps its prior
+			// exp AND level — the upgrade below (and its stat gains) is
+			// skipped entirely, so the company file reads back byte-identical.
+			const auto prior = preserve_exp_level
+			    ? prior_exp_level.find(team_list[team_size]->id)
+			    : prior_exp_level.end();
+			if (prior != prior_exp_level.end())
+			{
+				team_list[team_size]->exp = prior->second.first;
+				team_list[team_size]->level = prior->second.second;
+			}
+			else
+			{
+				// Update his level from the experience
+				std::uint32_t exp = team_list[team_size]->exp;
+				team_list[team_size]->upgrade_to_level(static_cast<short>(calculate_level(team_list[team_size]->exp)));
+				team_list[team_size]->exp = exp;
+			}
 			team_size++;
 		}
 	}
@@ -720,18 +869,21 @@ void SaveData::update_guys(const std::list<std::unique_ptr<walker>>& oblist)
 
 void SaveData::merge_owned_guys_from(
     const std::list<std::unique_ptr<walker>>& oblist,
-    std::uint8_t owner_player_index)
+    std::uint8_t owner_player_index,
+    bool preserve_exp_level)
 {
     if (owner_player_index == guy::kNoOwner)
         return;
 
     const std::array<std::uint8_t, 1> owners = {owner_player_index};
-    merge_owned_guys_from(oblist, std::span<const std::uint8_t>(owners));
+    merge_owned_guys_from(oblist, std::span<const std::uint8_t>(owners),
+                          preserve_exp_level);
 }
 
 void SaveData::merge_owned_guys_from(
     const std::list<std::unique_ptr<walker>>& oblist,
-    std::span<const std::uint8_t> owner_player_indices)
+    std::span<const std::uint8_t> owner_player_indices,
+    bool preserve_exp_level)
 {
     // A machine with N local seats owns N players' characters; merge them all
     // in one pass so the load/rebuild/save cycle happens exactly once.
@@ -788,10 +940,32 @@ void SaveData::merge_owned_guys_from(
         if (survived[static_cast<std::size_t>(slot)] != nullptr)
         {
             entry = std::make_unique<guy>(*survived[static_cast<std::size_t>(slot)]);
-            const std::uint32_t exp = entry->exp;
-            entry->upgrade_to_level(
-                static_cast<short>(calculate_level(entry->exp)));
-            entry->exp = exp;
+            const guy* disk = team_list[static_cast<std::size_t>(slot)].get();
+            // campaign_tag (GTL v16) is machine-private save state that never
+            // rides a session: this machine's mission roster is rebuilt from
+            // LobbyCharacterData and a joiner's mirror roster from GuySnapshot,
+            // and neither carries the byte, so every survivor arrives here with
+            // tag 0. The DISK slot therefore wins — otherwise every won level
+            // would silently un-assign the whole deployed company while benched
+            // heroes (the kept-slot branch below) kept their assignments.
+            // Assignment is menu-authored anyway; nothing in a level writes it.
+            if (disk != nullptr)
+                entry->campaign_tag = disk->campaign_tag;
+            if (preserve_exp_level && disk != nullptr)
+            {
+                // #213 (versus arenas): the merged roster keeps the DISK
+                // exp/level — the session's growth is not persisted and the
+                // re-level (with its stat gains) never runs.
+                entry->exp = disk->exp;
+                entry->level = disk->level;
+            }
+            else
+            {
+                const std::uint32_t exp = entry->exp;
+                entry->upgrade_to_level(
+                    static_cast<short>(calculate_level(entry->exp)));
+                entry->exp = exp;
+            }
         }
         else if (died[static_cast<std::size_t>(slot)] && keep_fallen_heroes == 0)
         {
@@ -838,7 +1012,7 @@ bool SaveData::save(const std::string& filename)
 	std::fill_n(temp_campaign.data(), temp_campaign.size(), '\0');
 
 	std::array<char, 10> temptext = {'G', 'T', 'L'};
-	std::uint8_t temp_version = 14;
+	std::uint8_t temp_version = 16;
 
 	std::uint32_t newcash = totalcash;
 	std::uint32_t newscore = totalscore;
@@ -907,7 +1081,8 @@ bool SaveData::save(const std::string& filename)
 	// 2-bytes team number, v.5+
 	// 2*4 = 8 bytes RESERVED, reinterpreted by version 14+ as:
 	//   1-byte deployed flag (0 = held back), guy offset +50  // Version 14+
-	//   7-bytes RESERVED (zero-filled)
+	//   1-byte campaign tag (0 = unassigned), guy offset +51  // Version 16+
+	//   6-bytes RESERVED (zero-filled)
 	// List of 500 (max scenarios) 1-byte scenario-level status  // Versions 1-7
 	// 2-bytes Number of campaigns in list      // Version 8+
 	// List of n campaigns                      // Version 8+
@@ -926,6 +1101,14 @@ bool SaveData::save(const std::string& filename)
 	// 2-bytes Tower best floor climbed         // Version 13+
 	// 2-bytes Tower run seed, low 16 bits      // Version 13+
 	// 2-bytes Tower run seed, high 16 bits     // Version 13+
+	// 2-bytes Number of campaigns with scripted state  // Version 15+
+	// List of n campaign-state blocks          // Version 15+
+	//   40-bytes Campaign ID string
+	//   2-bytes Number of key/value entries (sorted by key)
+	//   List of n entries
+	//     1-byte key length (1..32)
+	//     N-bytes key ([a-z0-9_], no NUL, no padding)
+	//     4-bytes (Sint32) value
 
 	//strcpy(temp_filename, scen_directory);
 	Log("Saving save: {}\n", filename);
@@ -1060,12 +1243,15 @@ bool SaveData::save(const std::string& filename)
         WRITE_OR_FAIL(&temp_ts, 4, 1);
         WRITE_OR_FAIL(&temp_teamnum, 2, 1);
         // And the filler: v14+ stores the mission-deploy flag in the first
-        // byte of the former 8-byte guy filler (offset +50), then zero-fills
-        // the other 7.
+        // byte of the former 8-byte guy filler (offset +50), v16+ the
+        // campaign tag in the second (offset +51), then zero-fills the
+        // other 6.
         std::uint8_t temp_deployed = temp_guy->deployed ? 1 : 0;
         WRITE_OR_FAIL(&temp_deployed, 1, 1);
-        std::array<char, 7> reserved_guy{};
-        WRITE_OR_FAIL(reserved_guy.data(), 7, 1);
+        std::uint8_t temp_campaign_tag = temp_guy->campaign_tag;
+        WRITE_OR_FAIL(&temp_campaign_tag, 1, 1);
+        std::array<char, 6> reserved_guy{};
+        WRITE_OR_FAIL(reserved_guy.data(), 6, 1);
 	}
 
 	// Write the completed levels
@@ -1160,6 +1346,66 @@ bool SaveData::save(const std::string& filename)
 	WRITE_OR_FAIL(&temp_tower_seed_lo, 2, 1);
 	WRITE_OR_FAIL(&temp_tower_seed_hi, 2, 1);
 
+	// Versions 15+ append the per-campaign scripted state block. Entry
+	// lists are kept sorted by key (campaign_state_set inserts in order),
+	// so re-serialization is byte-identical. The bounds below can only be
+	// exceeded by direct field manipulation (campaign_state_set is the
+	// choke); refuse to write rather than emit a file the reader rejects.
+	const std::size_t raw_state_campaigns = campaign_state.size();
+	if (raw_state_campaigns >
+	    static_cast<std::size_t>(kCampaignStateMaxCampaigns))
+	{
+	    LogError("save_write_campaign_state_too_many_campaigns {}\n",
+	             raw_state_campaigns);
+	    last_io_error_ = SaveDataIoError::WriteFailed;
+	    return false;
+	}
+	std::int16_t num_state_campaigns =
+	    static_cast<std::int16_t>(raw_state_campaigns);
+	WRITE_OR_FAIL(&num_state_campaigns, 2, 1);
+	for (const auto& state_block : campaign_state)
+	{
+	    if (!is_safe_campaign_id(state_block.first))
+	    {
+	        LogError("Rejected unsafe campaign-state campaign id for save: {}\n",
+	                 state_block.first);
+	        last_io_error_ = SaveDataIoError::WriteFailed;
+	        return false;
+	    }
+	    if (state_block.second.size() >
+	        static_cast<std::size_t>(kCampaignStateMaxEntries))
+	    {
+	        LogError("save_write_campaign_state_too_many_entries campaign={} count={}\n",
+	                 state_block.first, state_block.second.size());
+	        last_io_error_ = SaveDataIoError::WriteFailed;
+	        return false;
+	    }
+	    std::array<char, 41> state_campaign;
+	    std::fill_n(state_campaign.data(), state_campaign.size(), '\0');
+	    snprintf(state_campaign.data(), state_campaign.size(), "%s",
+	             state_block.first.c_str());
+	    WRITE_OR_FAIL(state_campaign.data(), 1, 40);
+	    std::int16_t num_state_entries =
+	        static_cast<std::int16_t>(state_block.second.size());
+	    WRITE_OR_FAIL(&num_state_entries, 2, 1);
+	    for (const auto& state_entry : state_block.second)
+	    {
+	        if (!og::script::hooks::valid_campaign_var_name(state_entry.first))
+	        {
+	            LogError("Rejected invalid campaign-state key for save: {}\n",
+	                     state_entry.first);
+	            last_io_error_ = SaveDataIoError::WriteFailed;
+	            return false;
+	        }
+	        const std::uint8_t key_len =
+	            static_cast<std::uint8_t>(state_entry.first.size());
+	        WRITE_OR_FAIL(&key_len, 1, 1);
+	        WRITE_OR_FAIL(state_entry.first.data(), 1, key_len);
+	        std::int32_t state_value = state_entry.second;
+	        WRITE_OR_FAIL(&state_value, 4, 1);
+	    }
+	}
+
     // unique_ptr auto-closes outfile
 
     // Sync to persistent storage (IDBFS on web)
@@ -1183,6 +1429,28 @@ SaveDataIoError SaveData::save_with_error(const std::string& filename)
     return last_io_error_;
 }
 
+
+void SaveData::arm_replay(short level)
+{
+    // A second arm before the excursion resolves keeps the FIRST origin:
+    // scen_num already points into the excursion, not at the campaign
+    // position the player left.
+    if (replay_level == 0)
+        replay_origin = scen_num;
+    replay_level = level;
+    scen_num = level;
+}
+
+void SaveData::clear_replay_arm()
+{
+    replay_level = 0;
+    replay_origin = 0;
+}
+
+bool SaveData::replay_armed_for(int level) const
+{
+    return replay_level != 0 && level == replay_level;
+}
 
 bool SaveData::is_level_completed(int level_index) const
 {
@@ -1224,4 +1492,86 @@ void SaveData::reset_campaign(const std::string& campaign)
 
     if(e != completed_levels.end())
         e->second.clear();
+
+    // Campaign scripting (issue #206): a campaign RESET also forgets that
+    // campaign's scripted decision book.
+    campaign_state.erase(campaign);
+
+    // The earned-roads gate keys off the cursor, so a reset must rewind it
+    // too — a company parked past its wiped frontier would find every road
+    // closed. The current campaign rewinds to its declared entry level;
+    // any other forgets its stored cursor (the next switch falls back to
+    // first_level through load_campaign).
+    if (campaign == current_campaign)
+    {
+        const short first_level =
+            static_cast<short>(og::data::campaign_first_level(campaign));
+        scen_num = first_level;
+        current_levels[campaign] = first_level;
+    }
+    else
+    {
+        current_levels.erase(campaign);
+    }
+}
+
+std::int32_t SaveData::campaign_state_get(const std::string& campaign,
+                                          const std::string& key) const
+{
+    const auto campaign_it = campaign_state.find(campaign);
+    if (campaign_it == campaign_state.end())
+        return 0;
+
+    const auto& entries = campaign_it->second;
+    const auto entry_it = std::lower_bound(
+        entries.begin(), entries.end(), key,
+        [](const std::pair<std::string, std::int32_t>& entry,
+           const std::string& wanted) { return entry.first < wanted; });
+    if (entry_it == entries.end() || entry_it->first != key)
+        return 0;
+    return entry_it->second;
+}
+
+bool SaveData::campaign_state_set(const std::string& campaign,
+                                  const std::string& key, std::int32_t value)
+{
+    // The WRITE choke (docs/campaign-scripting-design.md "Persistent
+    // campaign state"): every rejection happens BEFORE any mutation, so a
+    // script bug can never brick the save file. Campaign ids longer than
+    // the serialized 40-byte field would silently truncate on disk and
+    // detach the state from its campaign on reload — refuse them here.
+    if (!og::script::hooks::valid_campaign_var_name(key) ||
+        campaign.size() > 40)
+        return false;
+
+    auto campaign_it = campaign_state.find(campaign);
+    if (campaign_it == campaign_state.end())
+    {
+        if (campaign_state.size() >=
+            static_cast<std::size_t>(kCampaignStateMaxCampaigns))
+            return false;
+        campaign_it =
+            campaign_state
+                .emplace(campaign,
+                         std::vector<std::pair<std::string, std::int32_t>>())
+                .first;
+    }
+
+    auto& entries = campaign_it->second;
+    const auto entry_it = std::lower_bound(
+        entries.begin(), entries.end(), key,
+        [](const std::pair<std::string, std::int32_t>& entry,
+           const std::string& wanted) { return entry.first < wanted; });
+    if (entry_it != entries.end() && entry_it->first == key)
+    {
+        // Setting an existing key — 0 included — keeps the entry (the
+        // documented deterministic rule; see save_data.h).
+        entry_it->second = value;
+        return true;
+    }
+    if (entries.size() >= static_cast<std::size_t>(kCampaignStateMaxEntries))
+        return false;
+
+    entries.insert(entry_it, std::make_pair(key, value));
+    return true;
 }

@@ -73,6 +73,12 @@ struct RadarBlip {
     // treasure/fx packs via `radar_landmark = true`; the radar consumption
     // of this flag lands with the generic mode renderers.
     bool landmark = false;
+    // Pinged families (#209, `radar_ping = true`) draw LOUD: the SDL radar
+    // gives them an oversized blip pulsing on a render-side counter
+    // (parity-inert — never the game rng), the curses client promotes the
+    // family glyph to bold. For mode objectives every player must track
+    // (the soccer/basketball balls).
+    bool ping = false;
 
     friend constexpr bool operator==(const RadarBlip&,
                                      const RadarBlip&) = default;

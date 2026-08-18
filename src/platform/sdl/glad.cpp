@@ -54,8 +54,10 @@
 #include <openglad/interface/input.h>
 #include <openglad/resources/io.h>
 #include <openglad/interface/render/text.h>
+#include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/results_screen.h>
+#include <openglad/resources/company.h>
 #include <openglad/interface/game_context.h>
 // theprefs is now a macro defined in view.h (via game_session.h)
 
@@ -265,6 +267,34 @@ bool picker_check_start_requested();
 void picker_cleanup_for_game();
 void picker_reinit_after_game();
 
+// #207 design point 5 on the web: the native go_menu tail (reload +
+// og::ui::replay_reentry_restore) never runs here — the browser unwinds
+// gameplay through this state machine — so a lost or quit replay restores
+// its origin cursor at the Playing -> Picker edge instead. The picker
+// re-entry then RELOADS the company from disk (picker_reinit_after_game ->
+// picker_load_default_save_if_present), which would drop an in-memory-only
+// restore, so a restore that fired is persisted to the active slot before
+// that reload. A won replay already restored + cleared in the fold, so this
+// is a no-op there; the retry re-entry into Playing never comes through
+// here (its branch breaks before the transition), so a retried replay
+// keeps its arm.
+static void web_restore_replay_origin_on_picker_return(screen* current_screen) {
+	if (current_screen == nullptr)
+		return;
+	if (!og::ui::replay_reentry_restore(current_screen->save_data))
+		return;
+	// Persist for the solo/local session only, where the session save IS
+	// the company (the GO path wrote it to the active slot at launch, so
+	// the replayed level sits on disk until this restore overwrites it). A
+	// NETWORKED session's display save is netsession-shaped (a combined
+	// roster that must never replace the private company), and its save0
+	// needs no heal: a networked loss never wrote the cursor, and a win's
+	// per-player persist already carried the fold-restored one.
+	if (og::runtime::current_session != nullptr &&
+	    !og::runtime::current_session->networked_session_)
+		current_screen->save_data.save(og::data::active_company_slot());
+}
+
 // Emscripten frame wrapper with timing control
 // The browser calls this at ~60 FPS via requestAnimationFrame
 // The wrapper keeps gameplay on the browser cadence helper while letting
@@ -396,6 +426,7 @@ static void emscripten_frame_wrapper() {
 					    *og::runtime::current_game_session);
 				clear_keyboard();
 				current_screen->world().delete_objects();
+				web_restore_replay_origin_on_picker_return(current_screen);
 				g_web_game_start_config.reset();
 				g_game_state = GameState::Picker;
 				g_state_initialized = false;
@@ -415,6 +446,8 @@ static void emscripten_frame_wrapper() {
 				clear_keyboard();
 				if (current_screen != nullptr)
 					current_screen->world().delete_objects();
+				// An error unwind is "any other end" too (#207 point 5).
+				web_restore_replay_origin_on_picker_return(current_screen);
 				g_web_game_start_config.reset();
 				g_game_state = GameState::Picker;
 				g_state_initialized = false;

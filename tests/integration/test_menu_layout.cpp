@@ -1,7 +1,9 @@
 #include <openglad/interface/button.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/input_hardware_state.h>
 #include <openglad/interface/input_mappings.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
@@ -239,7 +241,7 @@ TEST(MenuLayout, mainmenu_buttons_no_overlap)
     check_no_overlaps(buttons, count, "mainmenu");
     check_bounds(buttons, count, "mainmenu");
     check_nav_in_range(buttons, count, "mainmenu");
-    ASSERT_GE(count, 9);
+    ASSERT_GE(count, 8);
 
     // The primary action group retains its classic 4px vertical gutter.
     constexpr int kWithinGroupGutter = 4;
@@ -251,56 +253,65 @@ TEST(MenuLayout, mainmenu_buttons_no_overlap)
     EXPECT_EQ(kWithinGroupGutter,
               buttons[2].y - (buttons[1].y + buttons[1].sizey));
 
-    // SETTINGS: the GAME | CLOUD 68px pair leads the group directly under
-    // the grey SETTINGS heading (which owns the y=119..134 band), with
-    // full-width DIFFICULTY on the row below — narrow-pair-over-full-width,
-    // mirrored by the HELP | QUIT footer.
-    EXPECT_EQ("difficulty", buttons[3].id);
-    EXPECT_EQ("options", buttons[4].id);
-    EXPECT_EQ(buttons[2].x, buttons[4].x);
-    EXPECT_EQ(68, buttons[4].sizex);
-    EXPECT_EQ("GAME", buttons[4].label);
-    EXPECT_EQ(buttons[4].x, buttons[3].x);
+    // SETTINGS: two full-width doors named in full, GAME SETTINGS over
+    // CLOUD SAVES. DIFFICULTY left this screen for the Base Camp command
+    // strip (docs/camp-controls-design.md) and the grey SETTINGS caption
+    // that captioned the old narrow pair went with it — so the band it
+    // reserved is ordinary canvas again, and the settings group is a plain
+    // stack sharing the primary group's column.
+    EXPECT_EQ("options", buttons[3].id);
+    EXPECT_EQ(buttons[2].x, buttons[3].x);
     EXPECT_EQ(140, buttons[3].sizex);
-    EXPECT_EQ(kWithinGroupGutter,
-              buttons[3].y - (buttons[4].y + buttons[4].sizey));
+    EXPECT_EQ("GAME SETTINGS", buttons[3].label);
 
-    // Tightening within groups does not collapse the category breaks.
-    EXPECT_EQ(17, buttons[4].y - (buttons[2].y + buttons[2].sizey));
+    // Tightening within groups does not collapse the category breaks. The
+    // settings pair is centered in the canvas the caption left behind: the
+    // break above it equals the footer break below it (checked at the CLOUD
+    // row), so the group reads as floating between the two neighbours rather
+    // than clinging to either.
+    constexpr int kCategoryBreak = 13;
+    EXPECT_EQ(kCategoryBreak, buttons[3].y - (buttons[2].y + buttons[2].sizey));
 
     // HELP and QUIT are a stable, aligned footer pair.
-    EXPECT_EQ("help", buttons[5].id);
-    EXPECT_EQ("quit", buttons[6].id);
-    EXPECT_EQ(buttons[5].y, buttons[6].y);
-    EXPECT_EQ(buttons[5].sizex, buttons[6].sizex);
-    EXPECT_EQ(4, buttons[6].x - (buttons[5].x + buttons[5].sizex));
-    // Footer break measured from DIFFICULTY, the settings group's last row.
-    EXPECT_EQ(9, buttons[5].y - (buttons[3].y + buttons[3].sizey));
+    EXPECT_EQ("help", buttons[4].id);
+    EXPECT_EQ("quit", buttons[5].id);
+    EXPECT_EQ(buttons[4].y, buttons[5].y);
+    EXPECT_EQ(buttons[4].sizex, buttons[5].sizex);
+    EXPECT_EQ(4, buttons[5].x - (buttons[4].x + buttons[4].sizex));
 
-    // #155: the CLOUD door shares the GAME row as an aligned 68px pair
-    // (always visible — reachable with zero companies), first row of the
-    // settings group. Both build variants share the geometry (the tables
-    // differ only in the QUIT fork). No button may sit in the y=119..134
-    // band — main_menu_draw_content paints the grey SETTINGS heading
-    // there, over any button face.
-    ASSERT_EQ(10, count);
-    EXPECT_EQ("cloud", buttons[9].id);
-    EXPECT_EQ(152, buttons[9].x);
-    EXPECT_EQ(buttons[4].y, buttons[9].y);
-    EXPECT_EQ(buttons[4].sizex, buttons[9].sizex);
-    EXPECT_EQ(15, buttons[9].sizey);
-    EXPECT_EQ(4, buttons[9].x - (buttons[4].x + buttons[4].sizex));
-    EXPECT_EQ(2, buttons[9].nav.up);
-    EXPECT_EQ(3, buttons[9].nav.down) << "cloud links down to DIFFICULTY";
-    EXPECT_EQ(4, buttons[9].nav.left) << "cloud links left to GAME";
-    EXPECT_EQ(9, buttons[4].nav.right) << "GAME links right to CLOUD";
-    EXPECT_EQ(3, buttons[6].nav.up) << "QUIT links up to DIFFICULTY";
-    EXPECT_EQ(4, buttons[2].nav.down) << "level_edit links down to GAME";
-    EXPECT_EQ(4, buttons[3].nav.up) << "difficulty links up to GAME";
-    // 5-char label within the 68px face's 11-char budget.
-    EXPECT_EQ("CLOUD", buttons[9].label);
-    EXPECT_LE(buttons[9].label.size() * 6,
-              static_cast<std::size_t>(buttons[9].sizex));
+    // #155: the CLOUD door (always visible — reachable with zero companies)
+    // is the settings group's second row, the same full width and column as
+    // GAME SETTINGS at the group's 4px gutter. Both build variants share the
+    // geometry (the tables differ only in the QUIT fork).
+    ASSERT_EQ(9, count);
+    EXPECT_EQ("cloud", buttons[8].id);
+    EXPECT_EQ(buttons[3].x, buttons[8].x);
+    EXPECT_EQ(buttons[3].sizex, buttons[8].sizex);
+    EXPECT_EQ(15, buttons[8].sizey);
+    EXPECT_EQ(kWithinGroupGutter,
+              buttons[8].y - (buttons[3].y + buttons[3].sizey));
+    // Footer break measured from CLOUD SAVES, the settings group's last row,
+    // and equal to the break above GAME SETTINGS — that equality is what
+    // centers the pair.
+    EXPECT_EQ(kCategoryBreak, buttons[4].y - (buttons[8].y + buttons[8].sizey));
+    EXPECT_EQ(3, buttons[8].nav.up) << "cloud links up to GAME SETTINGS";
+    EXPECT_EQ(4, buttons[8].nav.down) << "cloud links down to HELP";
+    EXPECT_EQ(8, buttons[3].nav.down) << "GAME SETTINGS links down to CLOUD";
+    EXPECT_EQ(8, buttons[5].nav.up) << "QUIT links up to CLOUD SAVES";
+    EXPECT_EQ(8, buttons[4].nav.up) << "HELP links up to CLOUD SAVES";
+    // The wasm E6 contract: two down-steps from the default highlight
+    // (continue_game, ordinal 1) must still land on the GAME door.
+    EXPECT_EQ(3, buttons[2].nav.down) << "level_edit links down to GAME";
+    EXPECT_EQ(2, buttons[1].nav.down) << "continue links down to level_edit";
+    // 11 and 13 characters within the 140px faces' 23-char budget.
+    EXPECT_EQ("CLOUD SAVES", buttons[8].label);
+    EXPECT_LE(buttons[8].label.size() * 6,
+              static_cast<std::size_t>(buttons[8].sizex));
+    EXPECT_LE(buttons[3].label.size() * 6,
+              static_cast<std::size_t>(buttons[3].sizex));
+    // No DIFFICULTY door survives on this screen.
+    for (int i = 0; i < count; ++i)
+        EXPECT_NE("difficulty", buttons[i].id);
 }
 
 // #155 CLOUD SAVE screen: geometry table, label budgets, the static nav
@@ -400,6 +411,146 @@ TEST(MenuLayout, cloud_save_screen_layout_states_and_nav)
     EXPECT_STREQ("cloud_save", spec.name);
 }
 
+// #206 zone submenu: static table pins, the empty (null-state) shape,
+// and the pattern-b rewire's visibility variants — a partial page and a
+// full 24-entry page whose PageModel window shows the pagers.
+TEST(MenuLayout, zone_submenu_screen_layout_states_and_nav)
+{
+    button* buttons = picker_zone_submenu_buttons();
+    const int count = picker_zone_submenu_button_count();
+    ASSERT_EQ(kZoneSubmenuButtonCount, count);
+    check_no_overlaps(buttons, count, "campaign_zone_submenu");
+    check_bounds(buttons, count, "campaign_zone_submenu");
+
+    const Sint32 spec_row = button_action_id(ButtonAction::MenuSpecRow);
+    for (int r = 0; r < kZoneSubmenuRowsPerPage; ++r)
+    {
+        EXPECT_EQ(std::format("zone_row_{}", r), buttons[r].id);
+        // Rows sit inside the Base Camp panel (the submenu is a room in the
+        // camp, not a screen of its own); the rewire re-bands them under
+        // the page's narrative lines.
+        EXPECT_EQ(kZoneSubmenuRowX, buttons[r].x) << r;
+        EXPECT_EQ(kZoneSubmenuRowY0 + kZoneSubmenuRowPitch * r, buttons[r].y)
+            << r;
+        EXPECT_EQ(kZoneSubmenuRowWidth, buttons[r].sizex) << r;
+        EXPECT_EQ(10, buttons[r].sizey) << r;
+        EXPECT_EQ(spec_row, buttons[r].myfun) << r;
+        EXPECT_EQ(r, buttons[r].arg1) << "MenuSpecRow arg == ordinal";
+    }
+    EXPECT_EQ("back", buttons[kZoneSubmenuBackIndex].id);
+    EXPECT_EQ(10, buttons[kZoneSubmenuBackIndex].x);
+    EXPECT_EQ(169, buttons[kZoneSubmenuBackIndex].y);
+    EXPECT_EQ(KEYSTATE_ESCAPE, buttons[kZoneSubmenuBackIndex].hotkey);
+    EXPECT_EQ("zone_page_prev", buttons[kZoneSubmenuPrevIndex].id);
+    EXPECT_EQ("zone_page_next", buttons[kZoneSubmenuNextIndex].id);
+    EXPECT_TRUE(buttons[kZoneSubmenuPrevIndex].hidden)
+        << "pagers start hidden; the rewire shows them on a multi-page";
+    EXPECT_TRUE(buttons[kZoneSubmenuNextIndex].hidden);
+
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::zone_submenu_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.nav.rewire);
+    ASSERT_NE(nullptr, spec.on_spec_row);
+    EXPECT_TRUE(spec.polls_lobby);
+    EXPECT_EQ(static_cast<int>(og::ui::RemoteStartScope::TeamBuildScope),
+              static_cast<int>(spec.remote_start));
+    EXPECT_STREQ("campaign_zone_submenu", spec.name);
+
+    // Null state: the empty shape — every row and pager hidden, BACK alone.
+    og::ui::install_zone_submenu_state_for_screen(nullptr);
+    int highlighted = kZoneSubmenuBackIndex;
+    spec.nav.rewire(buttons, count, highlighted);
+    for (int r = 0; r < kZoneSubmenuRowsPerPage; ++r)
+        EXPECT_TRUE(buttons[r].hidden) << "null state hides row " << r;
+    EXPECT_TRUE(buttons[kZoneSubmenuPrevIndex].hidden);
+    EXPECT_TRUE(buttons[kZoneSubmenuNextIndex].hidden);
+    check_nav_closed_and_reachable(buttons, count, kZoneSubmenuBackIndex,
+                                   "zone_submenu_empty");
+
+    // Scripted-session variants: a 2-row page (no pagers) and a 24-entry
+    // page (the cap) whose 8-row window shows the pagers on every page.
+    const std::vector<og::script::PackScript> saved_scripts =
+        og::script::pack_scripts();
+    og::script::register_pack_script(
+        {"test.zonelayout", "zonelayout/scripts/c.lua",
+         R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id)
+    if page_id == "big" then
+      local entries = {}
+      for i = 1, 24 do
+        entries[i] = { id = "e" .. i, label = "ENTRY " .. i, kind = "page" }
+      end
+      return { title = "BIG", entries = entries }
+    end
+    return { title = "SMALL",
+             entries = {
+               { id = "a", label = "ALPHA", kind = "page" },
+               { id = "big", label = "BIG", kind = "page" },
+             } }
+  end,
+}))LUA"});
+
+    {
+        SaveData save;
+        og::ui::CampaignPickerSession session(save);
+        ASSERT_TRUE(session.open());
+        og::ui::ZoneSubmenuScreenState state;
+        state.session = &session;
+        state.page = og::ui::PageModel::make(
+            static_cast<int>(session.page().rows.size()),
+            kZoneSubmenuRowsPerPage);
+        og::ui::install_zone_submenu_state_for_screen(&state);
+
+        // Partial page: two visible rows, labels composed, no pagers.
+        spec.nav.rewire(buttons, count, highlighted);
+        EXPECT_FALSE(buttons[0].hidden);
+        EXPECT_FALSE(buttons[1].hidden);
+        EXPECT_TRUE(buttons[2].hidden);
+        // Page rows wear the door marker (the repo's "TEAM >" grammar):
+        // a row that opens a page must not look like a row that acts.
+        EXPECT_EQ("ALPHA  >", buttons[0].label);
+        EXPECT_EQ("BIG  >", buttons[1].label);
+        EXPECT_TRUE(buttons[kZoneSubmenuPrevIndex].hidden);
+        EXPECT_TRUE(buttons[kZoneSubmenuNextIndex].hidden);
+        check_nav_closed_and_reachable(buttons, count,
+                                       kZoneSubmenuBackIndex,
+                                       "zone_submenu_partial");
+
+        // The 24-entry cap page: full window + pagers on both pages.
+        ASSERT_EQ(og::ui::CampaignPickerSession::OutcomeKind::OpenedPage,
+                  session.choose(1).kind);
+        state.page = og::ui::PageModel::make(
+            static_cast<int>(session.page().rows.size()),
+            kZoneSubmenuRowsPerPage);
+        ASSERT_EQ(24, state.page.item_count);
+        spec.nav.rewire(buttons, count, highlighted);
+        for (int r = 0; r < kZoneSubmenuRowsPerPage; ++r)
+            EXPECT_FALSE(buttons[r].hidden) << "full window row " << r;
+        EXPECT_FALSE(buttons[kZoneSubmenuPrevIndex].hidden);
+        EXPECT_FALSE(buttons[kZoneSubmenuNextIndex].hidden);
+        EXPECT_EQ("ENTRY 1  >", buttons[0].label);
+        check_nav_closed_and_reachable(buttons, count,
+                                       kZoneSubmenuBackIndex,
+                                       "zone_submenu_paged");
+
+        ASSERT_TRUE(state.page.step(2));
+        EXPECT_EQ(2, state.page.page) << "24 entries page to exactly 3 windows";
+        spec.nav.rewire(buttons, count, highlighted);
+        EXPECT_EQ("ENTRY 17  >", buttons[0].label);
+        EXPECT_EQ("ENTRY 24  >", buttons[7].label)
+            << "the cap page's last window is exactly full";
+        check_nav_closed_and_reachable(buttons, count,
+                                       kZoneSubmenuBackIndex,
+                                       "zone_submenu_lastpage");
+
+        og::ui::install_zone_submenu_state_for_screen(nullptr);
+    }
+
+    og::script::clear_pack_scripts();
+    for (const og::script::PackScript& script : saved_scripts)
+        og::script::register_pack_script(script);
+}
+
 TEST(MenuLayout, createmenu_buttons_no_overlap)
 {
     button* buttons = picker_createmenu_buttons();
@@ -469,15 +620,20 @@ void check_nav_closed_and_reachable(button* buttons, int count,
 // 14px pitch from y=45 (padded grey roster panel (8,28)..(311,160) —
 // outside-to-outside with the command strip), the page cluster top-right at
 // y=15 beside the relocated line B, and the bottom
-// command strip BACK | HIRE | SCENARIO | NETWORK | GO at y=178. The TRAIN
+// command strip BACK | DIFFICULTY | SCENARIO | NETWORK | GO at y=178 (HIRE
+// moved to the roster band header; DIFFICULTY took the slot it left and the
+// strip re-gridded so the full word inks — its ordinal is 72, appended past
+// the zone band so no established ordinal moved). The TRAIN
 // column is DELETED: the TEAM chip (61,y,10,10) cycles team, the row body
 // (84,y,214,10) opens training, and ^ at x=301 moves a member up. Spec
 // ordinals group by kind (dep
 // 0-7, row body 8-15, team chip 16-23, pagers 24/25, scenario-line 26,
 // strip 27-31, ready twin 32) so MenuSpecRow args decode positionally. The
 // seat-assignment rail is appended at 33-40, followed by move-up controls
-// 41-48, preserving every old ordinal. The layout is identical for classic
-// and CTF campaigns.
+// 41-48, preserving every old ordinal. #236 repurposed the rail's ordinals
+// in place rather than shifting the table: 33 (the retired SEATS door) is
+// the '+' at the rail's left edge and 40 (the '+' it replaced) is a parked
+// spare. The layout is identical for classic and CTF campaigns.
 TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
@@ -495,7 +651,7 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         bool no_draw = false;
     };
     static const ExpectedButton kExpected[] = {
-        {"roster_dep_0", "", 23, 45, 14, 10, MenuNav{.down = 1, .right = 16}, false},
+        {"roster_dep_0", "", 23, 45, 14, 10, MenuNav{.up = 28, .down = 1, .right = 16}, false},
         {"roster_dep_1", "", 23, 59, 14, 10, MenuNav{.up = 0, .down = 2, .right = 17}, false},
         {"roster_dep_2", "", 23, 73, 14, 10, MenuNav{.up = 1, .down = 3, .right = 18}, false},
         {"roster_dep_3", "", 23, 87, 14, 10, MenuNav{.up = 2, .down = 4, .right = 19}, false},
@@ -503,7 +659,7 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         {"roster_dep_5", "", 23, 115, 14, 10, MenuNav{.up = 4, .down = 6, .right = 21}, false},
         {"roster_dep_6", "", 23, 129, 14, 10, MenuNav{.up = 5, .down = 7, .right = 22}, false},
         {"roster_dep_7", "", 23, 143, 14, 10, MenuNav{.up = 6, .down = 27, .right = 23}, false},
-        {"roster_row_0", "", 84, 45, 214, 10, MenuNav{.down = 9, .left = 16}, false, true},
+        {"roster_row_0", "", 84, 45, 214, 10, MenuNav{.up = 28, .down = 9, .left = 16}, false, true},
         {"roster_row_1", "", 84, 59, 214, 10, MenuNav{.up = 8, .down = 10, .left = 17}, false, true},
         {"roster_row_2", "", 84, 73, 214, 10, MenuNav{.up = 9, .down = 11, .left = 18}, false, true},
         {"roster_row_3", "", 84, 87, 214, 10, MenuNav{.up = 10, .down = 12, .left = 19}, false, true},
@@ -521,33 +677,38 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         {"roster_team_7", "", 61, 143, 10, 10, MenuNav{.up = 22, .down = 31, .left = 7, .right = 15}, false, true},
         {"roster_page_prev", "<", 258, 15, 14, 10, MenuNav{.down = 8, .right = 25}, true},
         {"roster_page_next", ">", 298, 15, 14, 10, MenuNav{.down = 8, .left = 24}, true},
-        {"scenario_line", "", 8, 14, 206, 12, MenuNav{.down = 29}, false, true},
-        {"back", "BACK", 8, 178, 44, 18, MenuNav{.up = 7, .right = 28}, false},
-        {"hire_troops", "HIRE", 58, 178, 50, 18, MenuNav{.up = 7, .left = 27, .right = 29}, false},
-        {"scenario", "SCENARIO", 114, 178, 62, 18, MenuNav{.up = 26, .left = 28, .right = 30}, false},
-        {"networking", "NETWORK", 182, 178, 56, 18, MenuNav{.up = 15, .left = 29, .right = 31}, false},
-        {"go", "GO", 244, 178, 68, 18, MenuNav{.up = 15, .left = 30}, false},
+        {"scenario_line", "", 8, 14, 206, 12, MenuNav{.down = 29, .right = 28}, false, true},
+        {"back", "BACK", 8, 178, 44, 18, MenuNav{.up = 7, .right = 72}, false},
+        // The roster band header's HIRE (docs/basecamp-zones-design.md):
+        // same id/ordinal, relocated beside the pager cluster; the slot it
+        // left on the strip is the DIFFICULTY door at ordinal 72.
+        {"hire_troops", "HIRE", 220, 14, 34, 12, MenuNav{.down = 0, .left = 26}, false},
+        {"scenario", "SCENARIO", 132, 178, 62, 18, MenuNav{.up = 26, .left = 72, .right = 30}, false},
+        {"networking", "NETWORK", 200, 178, 56, 18, MenuNav{.up = 15, .left = 29, .right = 31}, false},
+        {"go", "GO", 262, 178, 50, 18, MenuNav{.up = 15, .left = 30}, false},
         // §2.6: the READY twin shares GO's exact rect; statically hidden
         // (the rewire shows exactly one of the pair — GO for hosts, READY
         // for networked joiners).
-        {"ready", "READY", 244, 178, 68, 18, MenuNav{.up = 15, .left = 30},
+        {"ready", "READY", 262, 178, 50, 18, MenuNav{.up = 15, .left = 30},
          true},
-        {"seats", "SEATS", 8, 164, 34, 10,
+        // #236: the '+' opens the rail at the left edge (the SEATS door it
+        // replaced duplicated SCENARIO's MATCHUP button), and the retired
+        // right-end ordinal parks like a zone spare.
+        {"add_seat", "+", 8, 164, 14, 10,
          MenuNav{.down = 27, .right = 34}, false},
-        {"seat_page_prev", "<", 44, 164, 8, 10,
-         MenuNav{.left = 33, .right = 35}, true},
-        {"seat_card_0", "", 54, 164, 57, 10,
+        {"seat_page_prev", "<", 29, 164, 10, 10,
+         MenuNav{.down = 27, .left = 33, .right = 35}, true},
+        {"seat_card_0", "", 46, 164, 57, 10,
          MenuNav{.left = 34, .right = 36}, false},
-        {"seat_card_1", "", 112, 164, 57, 10,
+        {"seat_card_1", "", 110, 164, 57, 10,
          MenuNav{.left = 35, .right = 37}, false},
-        {"seat_card_2", "", 170, 164, 57, 10,
+        {"seat_card_2", "", 174, 164, 57, 10,
          MenuNav{.left = 36, .right = 38}, false},
-        {"seat_card_3", "", 228, 164, 57, 10,
+        {"seat_card_3", "", 238, 164, 57, 10,
          MenuNav{.left = 37, .right = 39}, false},
-        {"seat_page_next", ">", 287, 164, 8, 10,
+        {"seat_page_next", ">", 302, 164, 10, 10,
          MenuNav{.down = 31, .left = 38}, true},
-        {"add_seat", "+", 298, 164, 14, 10,
-         MenuNav{.down = 31, .left = 39}, false},
+        {"seat_rail_spare", "", 0, 0, 0, 0, MenuNav{}, true},
         {"roster_up_0", "^", 301, 45, 9, 10,
          MenuNav{.left = 8}, true},
         {"roster_up_1", "^", 301, 59, 9, 10,
@@ -574,11 +735,15 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         const int count = picker_createmenu_button_count();
         ASSERT_EQ(kCreateMenuButtonCount, count)
             << "base camp: 24 roster controls + 2 pagers + the SCEN line "
-               "hit zone + 5 strip buttons + the hidden READY twin + "
-               "8 seat-rail controls + 8 move-up controls";
-        ASSERT_EQ(49, count);
+               "hit zone + HIRE + 4 strip buttons + the hidden READY twin + "
+               "8 seat-rail controls + 8 move-up controls + the 23-row "
+               "parked zone band + the appended DIFFICULTY strip door";
+        ASSERT_EQ(73, count);
+        ASSERT_EQ(static_cast<int>(std::size(kExpected)),
+                  kBaseCampZoneActionBase)
+            << "the exact table covers the classic ordinals 0..48";
 
-        for (int i = 0; i < count; ++i)
+        for (int i = 0; i < static_cast<int>(std::size(kExpected)); ++i)
         {
             const ExpectedButton& want = kExpected[i];
             const button& got = buttons[i];
@@ -597,11 +762,104 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
             // The compact rail uses the full face; established beveled
             // controls retain their eight-pixel inset budget.
             const int label_budget =
-                i < kBaseCampSeatsLabelIndex
+                i < kBaseCampAddSeatIndex
                 ? (got.sizex - 8) / 6
                 : got.sizex / 6;
             EXPECT_LE(static_cast<int>(got.label.size()), label_budget)
                 << got.id << " '" << got.label << "'";
+        }
+
+        // The appended zone band 49..71 (docs/basecamp-zones-design.md
+        // "Bounds arithmetic"): statically PARKED — zero-size rects, empty
+        // labels, hidden, keyboard-live MenuSpecRow args == ordinals, no
+        // static nav — until a scripted composition re-bands them.
+        const Sint32 spec_row_action =
+            button_action_id(ButtonAction::MenuSpecRow);
+        for (int i = kBaseCampZoneActionBase;
+             i < kCreateMenuDifficultyIndex; ++i)
+        {
+            const button& got = buttons[i];
+            std::string want_id;
+            if (i < kBaseCampZonePagerBase)
+            {
+                want_id = std::format("zone_action_{}",
+                                      i - kBaseCampZoneActionBase);
+            }
+            else if (i < kBaseCampZoneSpareBase)
+            {
+                const int pager = i - kBaseCampZonePagerBase;
+                want_id = std::format("zone_pager_{}_{}",
+                                      pager % 2 == 0 ? "prev" : "next",
+                                      pager / 2);
+            }
+            else
+            {
+                want_id = std::format("zone_spare_{}",
+                                      i - kBaseCampZoneSpareBase);
+            }
+            EXPECT_EQ(want_id, got.id) << campaign << " index " << i;
+            EXPECT_TRUE(got.hidden) << got.id;
+            EXPECT_TRUE(got.label.empty()) << got.id;
+            EXPECT_EQ(0, got.x) << got.id;
+            EXPECT_EQ(0, got.y) << got.id;
+            EXPECT_EQ(0, got.sizex) << got.id;
+            EXPECT_EQ(0, got.sizey) << got.id;
+            EXPECT_EQ(spec_row_action, got.myfun) << got.id;
+            EXPECT_EQ(i, got.arg1) << "MenuSpecRow arg == ordinal " << got.id;
+            EXPECT_EQ(-1, got.nav.up) << got.id;
+            EXPECT_EQ(-1, got.nav.down) << got.id;
+            EXPECT_EQ(-1, got.nav.left) << got.id;
+            EXPECT_EQ(-1, got.nav.right) << got.id;
+        }
+
+        // The appended DIFFICULTY strip door at ordinal 72: a real
+        // ButtonAction like its strip peers, always visible, drawn, on the
+        // strip's y and height, and inking its full word at the beveled
+        // budget ((sizex - 8) / 6 == 10 glyphs for exactly "DIFFICULTY").
+        {
+            const button& diff = buttons[kCreateMenuDifficultyIndex];
+            EXPECT_EQ("difficulty", diff.id);
+            EXPECT_EQ("DIFFICULTY", diff.label);
+            EXPECT_FALSE(diff.hidden);
+            EXPECT_FALSE(diff.no_draw);
+            EXPECT_EQ(58, diff.x);
+            EXPECT_EQ(178, diff.y);
+            EXPECT_EQ(68, diff.sizex);
+            EXPECT_EQ(18, diff.sizey);
+            EXPECT_EQ(button_action_id(ButtonAction::OpenDifficultyMenu),
+                      diff.myfun);
+            EXPECT_EQ(-1, diff.arg1);
+            EXPECT_EQ(7, diff.nav.up);
+            EXPECT_EQ(-1, diff.nav.down);
+            EXPECT_EQ(kCreateMenuBackIndex, diff.nav.left);
+            EXPECT_EQ(kCreateMenuScenarioIndex, diff.nav.right);
+            EXPECT_EQ(10, static_cast<int>(diff.label.size()));
+            EXPECT_LE(static_cast<int>(diff.label.size()),
+                      (diff.sizex - 8) / 6)
+                << "the full word must ink inside the bevel";
+        }
+
+        // The re-gridded strip: five doors, one 6px gutter, closing flush on
+        // the panel's right rail. Read as relations so a future width edit
+        // cannot quietly reopen a hole.
+        {
+            const int strip[] = {kCreateMenuBackIndex,
+                                 kCreateMenuDifficultyIndex,
+                                 kCreateMenuScenarioIndex,
+                                 kCreateMenuNetworkingIndex,
+                                 kCreateMenuGoIndex};
+            for (const int i : strip) {
+                EXPECT_EQ(178, buttons[i].y) << buttons[i].id;
+                EXPECT_EQ(18, buttons[i].sizey) << buttons[i].id;
+            }
+            for (std::size_t s = 1; s < std::size(strip); ++s) {
+                const button& left = buttons[strip[s - 1]];
+                const button& right = buttons[strip[s]];
+                EXPECT_EQ(6, right.x - (left.x + left.sizex))
+                    << "strip gutter before " << right.id;
+            }
+            EXPECT_EQ(312, buttons[kCreateMenuGoIndex].x +
+                               buttons[kCreateMenuGoIndex].sizex);
         }
 
         // G13 drift pins: spec ordinals == picker_sdl_defs.h constants.
@@ -616,13 +874,24 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         EXPECT_EQ(kCreateMenuNetworkingIndex, 30);
         EXPECT_EQ(kCreateMenuGoIndex, 31);
         EXPECT_EQ(kCreateMenuReadyIndex, 32);
-        EXPECT_EQ(kBaseCampSeatsLabelIndex, 33);
+        EXPECT_EQ(kBaseCampAddSeatIndex, 33);
         EXPECT_EQ(kBaseCampSeatPagePrevIndex, 34);
         EXPECT_EQ(kBaseCampSeatCardBase, 35);
         EXPECT_EQ(kBaseCampSeatPageNextIndex, 39);
-        EXPECT_EQ(kBaseCampAddSeatIndex, 40);
+        EXPECT_EQ(kBaseCampSeatRailSpareIndex, 40);
+        EXPECT_EQ(kBaseCampInteriorRingFirstIndex, 33);
         EXPECT_EQ(kBaseCampMoveUpBase, 41);
-        EXPECT_EQ(kCreateMenuButtonCount, 49);
+        EXPECT_EQ(kBaseCampInteriorRingLastIndex, 48);
+        EXPECT_EQ(kBaseCampZoneActionBase, 49);
+        EXPECT_EQ(kBaseCampZoneActionsPerWidget, 8);
+        EXPECT_EQ(kBaseCampZoneActionRows, 16);
+        EXPECT_EQ(kBaseCampZonePagerBase, 65);
+        EXPECT_EQ(kBaseCampZonePagerCount, 4);
+        EXPECT_EQ(kBaseCampZoneSpareBase, 69);
+        EXPECT_EQ(kBaseCampZoneSpareCount, 3);
+        EXPECT_EQ(kCreateMenuDifficultyIndex, 72);
+        EXPECT_EQ(kCreateMenuButtonCount, 73);
+        EXPECT_EQ(MAX_BUTTONS, 73);
         // §2.6 same-geometry pair: the two rects are IDENTICAL by design
         // (the mutually-exclusive-gate allowance the gate-lattice sweep
         // validates structurally).
@@ -635,8 +904,9 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         EXPECT_EQ(buttons[kCreateMenuGoIndex].sizey,
                   buttons[kCreateMenuReadyIndex].sizey);
         EXPECT_EQ(buttons[kCreateMenuBackIndex].x,
-                  buttons[kBaseCampSeatsLabelIndex].x)
-            << "SEATS and BACK share the base-camp left alignment line";
+                  buttons[kBaseCampAddSeatIndex].x)
+            << "the rail's + and BACK share the base-camp left alignment "
+               "line";
         // Each row's three actions have deliberate non-overlapping gutters:
         // deploy, TEAM color, then name/train.
         for (int r = 0; r < kBaseCampRosterRowsPerPage; ++r)
@@ -654,16 +924,30 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
                 << "training zone needs a gutter before move-up on row " << r;
         }
 
-        // The compact rail uses an interior keyboard-focus ring; its one- and
-        // two-pixel horizontal gutters therefore remain clear between every
-        // adjacent control, including the new far-right +.
-        for (int left = kBaseCampSeatsLabelIndex;
-             left < kBaseCampAddSeatIndex; ++left)
+        // #236: one gutter across the whole rail, from the '+' at the left
+        // edge to the '>' closing the right rail. The cards used to sit 1px
+        // apart; the freed SEATS width bought every neighbour the same
+        // seven pixels.
+        for (int left = kBaseCampAddSeatIndex;
+             left < kBaseCampSeatPageNextIndex; ++left)
         {
-            EXPECT_LT(buttons[left].x + buttons[left].sizex,
-                      buttons[left + 1].x)
-                << "seat rail needs a visible focus-safe gutter";
+            EXPECT_EQ(7, buttons[left + 1].x -
+                             (buttons[left].x + buttons[left].sizex))
+                << "seat rail gutter after " << buttons[left].id;
+            EXPECT_EQ(buttons[kBaseCampAddSeatIndex].y, buttons[left + 1].y)
+                << "seat rail baseline at " << buttons[left + 1].id;
+            EXPECT_EQ(buttons[kBaseCampAddSeatIndex].sizey,
+                      buttons[left + 1].sizey)
+                << "seat rail height at " << buttons[left + 1].id;
         }
+        EXPECT_EQ(312, buttons[kBaseCampSeatPageNextIndex].x +
+                           buttons[kBaseCampSeatPageNextIndex].sizex)
+            << "the seat rail closes on the panel's right rail";
+        // The retired ordinal keeps its slot in the 73-button table and
+        // nothing else: a parked spare cannot be clicked or navigated to.
+        EXPECT_TRUE(buttons[kBaseCampSeatRailSpareIndex].hidden);
+        EXPECT_EQ(0, buttons[kBaseCampSeatRailSpareIndex].sizex);
+        EXPECT_EQ(0, buttons[kBaseCampSeatRailSpareIndex].sizey);
 
         check_no_overlaps(buttons, count, "createmenu_basecamp");
         check_bounds(buttons, count, "createmenu_basecamp");
@@ -690,7 +974,8 @@ TEST(MenuLayout, createmenu_basecamp_grid_relations)
     const button& go = buttons[kCreateMenuGoIndex];
     const int rail_right = go.x + go.sizex;
     EXPECT_EQ(312, rail_right) << "GO closes the panel's outer right edge";
-    const std::vector<int> rail{kBaseCampPageNextIndex, kBaseCampAddSeatIndex,
+    const std::vector<int> rail{kBaseCampPageNextIndex,
+                                kBaseCampSeatPageNextIndex,
                                 kCreateMenuReadyIndex};
     for (const int index : rail)
     {
@@ -710,12 +995,15 @@ TEST(MenuLayout, createmenu_basecamp_grid_relations)
     }
 
     // (b) The seat cards are one uniform run: equal widths, equal pitch, one
-    // baseline.
+    // baseline. #236 widened the pitch from 58 (a 1px hairline between
+    // faces) to 64 — the 57px card plus the rail's 7px gutter.
     for (int card = 0; card + 1 < kBaseCampSeatCardsPerPage; ++card)
     {
         const button& left = buttons[kBaseCampSeatCardBase + card];
         const button& right = buttons[kBaseCampSeatCardBase + card + 1];
-        EXPECT_EQ(58, right.x - left.x) << "seat card pitch at card " << card;
+        EXPECT_EQ(64, right.x - left.x) << "seat card pitch at card " << card;
+        EXPECT_EQ(left.sizex + 7, right.x - left.x)
+            << "the card pitch is the card face plus the rail gutter";
         EXPECT_EQ(left.sizex, right.sizex)
             << "seat card width at card " << card;
         EXPECT_EQ(left.y, right.y) << "seat card baseline at card " << card;
@@ -730,6 +1018,656 @@ TEST(MenuLayout, createmenu_basecamp_grid_relations)
     EXPECT_EQ(prev.y, next.y) << "roster pagers share the header-B baseline";
     EXPECT_EQ((3 * 6 + 4) + 2 * 2, next.x - (prev.x + prev.sizex))
         << "pager cluster: strip slot + a 2px gutter on each side";
+    // HIRE rides the roster header band: right-aligned before the pager
+    // cluster with a 4px gutter, clear of the scenario_line hit zone.
+    const button& hire = buttons[kCreateMenuHireIndex];
+    EXPECT_EQ(prev.x - 4, hire.x + hire.sizex)
+        << "HIRE co-terminates 4px before the pager cluster";
+    const button& scen_line = buttons[kBaseCampScenarioLineIndex];
+    EXPECT_LT(scen_line.x + scen_line.sizex, hire.x)
+        << "HIRE clears the scenario_line hit zone";
+
+    // HIRE's face (y=14..25) overlaps header line B's strip (y=16..23), so
+    // its left edge IS the line-B wall while a composition shows it. Tie
+    // the composer's character budget to the LIVE button rect: relocating
+    // HIRE without re-deriving the budget must fail here, not silently
+    // amputate a networked status line under the button.
+    EXPECT_LT(hire.y, 17 + 7);
+    EXPECT_GT(hire.y + hire.sizey, 17 - 1)
+        << "HIRE and line B share the header band";
+    EXPECT_EQ(hire.x, og::ui::kBaseCampLineBHireWallX);
+    EXPECT_EQ(prev.x, og::ui::kBaseCampLineBPagerWallX);
+    const auto ink_right_edge = [](int chars) {
+        return og::ui::kBaseCampLineBTextX +
+            og::ui::kBaseCampLineBGlyphAdvance * chars +
+            og::ui::kBaseCampLineBStripPad;
+    };
+    EXPECT_LE(ink_right_edge(og::ui::kBaseCampLineBCharsHireVisible), hire.x)
+        << "the line-B budget beside HIRE must clear the button face";
+    EXPECT_GT(ink_right_edge(og::ui::kBaseCampLineBCharsHireVisible + 1),
+              hire.x)
+        << "the budget must be the widest that clears HIRE, not a "
+           "conservative guess";
+    EXPECT_LE(ink_right_edge(og::ui::kBaseCampLineBCharsHireHidden), prev.x)
+        << "the HIRE-hidden budget must clear the roster pager cluster";
+    EXPECT_GT(ink_right_edge(og::ui::kBaseCampLineBCharsHireHidden + 1),
+              prev.x);
+}
+
+// The scripted gameplay zone (docs/basecamp-zones-design.md): a synthetic
+// composition adopted straight into the session (no Lua) drives the
+// production rewire — the parked action rows re-band into their widgets'
+// whole-row-unit bands, the roster's controls re-band below them, the
+// capability gates hide the classic sub-rows, the widget pagers window an
+// overflowing actions widget, and the whole graph stays closed + reachable.
+TEST(MenuLayout, createmenu_basecamp_scripted_zone_bands_and_nav)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> saved_team;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        saved_team[static_cast<std::size_t>(i)] =
+            std::move(save.team_list[static_cast<std::size_t>(i)]);
+    const unsigned char old_team_size = save.team_size;
+    for (int i = 0; i < 4; ++i)
+    {
+        save.team_list[static_cast<std::size_t>(i)] =
+            std::make_unique<guy>(FAMILY_SOLDIER);
+        save.team_list[static_cast<std::size_t>(i)]->name =
+            std::format("Z{}", i);
+    }
+    save.team_size = 4;
+
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, spec.nav.rewire);
+
+    // readout (hoisted into the panel's header band, 0 units) + text
+    // (1 line -> 1) + actions (weight 2, 5 entries -> paged) + roster
+    // (header 1 + rows 4) = 8 units.
+    og::script::hooks::CampaignZone raw;
+    {
+        og::script::hooks::CampaignZoneWidget readout;
+        readout.kind = og::script::hooks::CampaignZoneWidget::Kind::Readout;
+        readout.items.push_back({"COIN", "1000"});
+        raw.widgets.push_back(readout);
+        og::script::hooks::CampaignZoneWidget text;
+        text.kind = og::script::hooks::CampaignZoneWidget::Kind::Text;
+        text.lines = {"The camp fire crackles."};
+        raw.widgets.push_back(text);
+        og::script::hooks::CampaignZoneWidget actions;
+        actions.kind = og::script::hooks::CampaignZoneWidget::Kind::Actions;
+        actions.weight = 2;
+        for (int i = 0; i < 5; ++i)
+        {
+            og::script::hooks::CampaignPageEntry entry;
+            entry.id = std::format("act{}", i);
+            entry.label = std::format("ACT {}", i);
+            entry.kind = og::script::hooks::CampaignPageEntry::Kind::Action;
+            actions.entries.push_back(std::move(entry));
+        }
+        raw.widgets.push_back(actions);
+        og::script::hooks::CampaignZoneWidget roster;
+        roster.kind = og::script::hooks::CampaignZoneWidget::Kind::Roster;
+        roster.can_reorder = false;
+        roster.can_team = false;
+        raw.widgets.push_back(roster);
+    }
+    og::ui::CampaignZoneSession zone(save);
+    ASSERT_TRUE(zone.adopt(raw));
+    ASSERT_EQ(1u, zone.actions().size());
+    ASSERT_NE(nullptr, zone.readout());
+    EXPECT_TRUE(zone.readout()->in_header_band);
+    EXPECT_EQ(1, zone.actions()[0].start_unit);
+    EXPECT_EQ(3, zone.roster().start_unit);
+    EXPECT_EQ(4, zone.roster().row_start_unit);
+    EXPECT_EQ(4, zone.roster().rows_per_page);
+
+    og::ui::BaseCampScreenState state;
+    state.zone = &zone;
+    og::ui::base_camp_refresh_rows(state);
+    ASSERT_EQ(4, state.page.rows_per_page)
+        << "the roster window derives from the zone band";
+    og::ui::install_base_camp_state_for_screen(&state);
+
+    button* buttons = picker_createmenu_buttons();
+    const int count = picker_createmenu_button_count();
+    int highlighted = kBaseCampRowBodyBase;
+    spec.nav.rewire(buttons, count, highlighted);
+
+    // The actions band: 2 visible windows of the 5 entries at the band's
+    // units, labels composed, pagers shown on the band's first row.
+    EXPECT_FALSE(buttons[kBaseCampZoneActionBase].hidden);
+    EXPECT_FALSE(buttons[kBaseCampZoneActionBase + 1].hidden);
+    EXPECT_TRUE(buttons[kBaseCampZoneActionBase + 2].hidden)
+        << "a 2-unit band shows 2 window rows";
+    EXPECT_EQ("ACT 0", buttons[kBaseCampZoneActionBase].label);
+    EXPECT_EQ("ACT 1", buttons[kBaseCampZoneActionBase + 1].label);
+    EXPECT_EQ(12, buttons[kBaseCampZoneActionBase].x);
+    EXPECT_EQ(45 + 14 * 1, buttons[kBaseCampZoneActionBase].y)
+        << "the band anchors on its start unit";
+    EXPECT_EQ(45 + 14 * 2, buttons[kBaseCampZoneActionBase + 1].y);
+    EXPECT_FALSE(buttons[kBaseCampZonePagerBase].hidden)
+        << "5 entries over 2 rows page in place";
+    EXPECT_FALSE(buttons[kBaseCampZonePagerBase + 1].hidden);
+    EXPECT_EQ("<", buttons[kBaseCampZonePagerBase].label);
+    EXPECT_EQ(">", buttons[kBaseCampZonePagerBase + 1].label);
+    EXPECT_EQ(310, buttons[kBaseCampZonePagerBase + 1].x +
+                       buttons[kBaseCampZonePagerBase + 1].sizex)
+        << "the widget pagers close the panel's inner right rail";
+    // The second widget's pager pair stays parked.
+    EXPECT_TRUE(buttons[kBaseCampZonePagerBase + 2].hidden);
+    EXPECT_TRUE(buttons[kBaseCampZonePagerBase + 3].hidden);
+
+    // The roster re-bands below the actions: rows at the band's units, the
+    // capability gates hide the chip/move-up columns.
+    for (int r = 0; r < 4; ++r)
+    {
+        EXPECT_FALSE(buttons[r].hidden) << "roster row " << r;
+        EXPECT_EQ(45 + 14 * (4 + r), buttons[r].y) << "roster row " << r;
+        EXPECT_EQ(45 + 14 * (4 + r),
+                  buttons[kBaseCampRowBodyBase + r].y);
+        EXPECT_TRUE(buttons[kBaseCampTeamChipBase + r].hidden)
+            << "can_team=false hides the chip column";
+        EXPECT_TRUE(buttons[kBaseCampMoveUpBase + r].hidden)
+            << "can_reorder=false hides the move-up column";
+    }
+    for (int r = 4; r < kBaseCampRosterRowsPerPage; ++r)
+    {
+        EXPECT_TRUE(buttons[r].hidden)
+            << "rows past the band stay hidden " << r;
+    }
+
+    check_no_overlaps(buttons, count, "basecamp_scripted_zone");
+    check_bounds(buttons, count, "basecamp_scripted_zone");
+    check_nav_closed_and_reachable(buttons, count, kCreateMenuBackIndex,
+                                   "basecamp_scripted_zone");
+
+    // The spine: HIRE drops into the topmost interactive band (the actions
+    // rows), the actions band chains into the roster, and the roster
+    // bottoms out on the rail.
+    EXPECT_EQ(kBaseCampZoneActionBase,
+              buttons[kCreateMenuHireIndex].nav.down);
+    EXPECT_EQ(kCreateMenuHireIndex,
+              buttons[kBaseCampZoneActionBase].nav.up);
+    EXPECT_EQ(0, buttons[kBaseCampZoneActionBase + 1].nav.down)
+        << "the band's last row drops onto the roster's dep column";
+    EXPECT_EQ(kBaseCampZoneActionBase + 1, buttons[0].nav.up);
+    EXPECT_EQ(kBaseCampAddSeatIndex, buttons[3].nav.down)
+        << "the roster's last row bottoms out on the seat rail";
+
+    // Pager stepping through the production dispatch windows the band.
+    ASSERT_NE(nullptr, spec.on_spec_row);
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kBaseCampZonePagerBase + 1, &state));
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("ACT 2", buttons[kBaseCampZoneActionBase].label)
+        << "the widget's own pager steps its window";
+
+    // A capability-gated composition with a frozen assign shows chips on
+    // own rows even networked (the visibility fork is pinned by the zone
+    // UI flows; here: assign-active solo keeps the chip column visible
+    // while can_team=false would have hidden it).
+    raw.widgets.back().can_team = false;
+    raw.widgets.back().assign.active = true;
+    raw.widgets.back().assign.key = "road";
+    raw.widgets.back().assign.labels = {"WAR", "BURDEN"};
+    ASSERT_TRUE(zone.adopt(raw));
+    buttons = picker_createmenu_buttons();
+    spec.nav.rewire(buttons, count, highlighted);
+    for (int r = 0; r < 3; ++r)
+    {
+        EXPECT_FALSE(buttons[kBaseCampTeamChipBase + r].hidden)
+            << "an active assign shows the chip column on own rows " << r;
+    }
+    check_nav_closed_and_reachable(buttons, count, kCreateMenuBackIndex,
+                                   "basecamp_scripted_zone_assign");
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[static_cast<std::size_t>(i)] =
+            std::move(saved_team[static_cast<std::size_t>(i)]);
+    save.team_size = old_team_size;
+    (void)picker_createmenu_buttons();
+}
+
+// The spine with BOTH actions widgets on one side of the roster, and with
+// no roster rows at all (an empty company is a real camp — you hire your
+// first hero here): the bands sort by start unit and chain top-to-bottom,
+// and every roster-less shape still lands its exits on HIRE, the other
+// band, or the seat rail.
+TEST(MenuLayout, createmenu_basecamp_zone_two_bands_and_empty_company_spine)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> saved_team;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        saved_team[static_cast<std::size_t>(i)] =
+            std::move(save.team_list[static_cast<std::size_t>(i)]);
+    const unsigned char old_team_size = save.team_size;
+    const auto set_team = [&save](int size) {
+        for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        {
+            if (i < size)
+            {
+                save.team_list[static_cast<std::size_t>(i)] =
+                    std::make_unique<guy>(FAMILY_SOLDIER);
+                save.team_list[static_cast<std::size_t>(i)]->name =
+                    std::format("S{}", i);
+            }
+            else
+            {
+                save.team_list[static_cast<std::size_t>(i)].reset();
+            }
+        }
+        save.team_size = static_cast<unsigned char>(size);
+    };
+
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, spec.nav.rewire);
+
+    // Three widget orders: both actions widgets above the roster, both
+    // below, and one on each side. Each actions widget is one unit / one
+    // entry, so its band is a single row (top == bottom).
+    const auto one_row_actions = [](const char* id, const char* label) {
+        og::script::hooks::CampaignZoneWidget actions;
+        actions.kind = og::script::hooks::CampaignZoneWidget::Kind::Actions;
+        actions.weight = 1;
+        og::script::hooks::CampaignPageEntry entry;
+        entry.id = id;
+        entry.label = label;
+        entry.kind = og::script::hooks::CampaignPageEntry::Kind::Action;
+        actions.entries.push_back(std::move(entry));
+        return actions;
+    };
+    const auto roster_widget = [] {
+        og::script::hooks::CampaignZoneWidget roster;
+        roster.kind = og::script::hooks::CampaignZoneWidget::Kind::Roster;
+        return roster;
+    };
+    og::script::hooks::CampaignZone both_above;
+    both_above.widgets.push_back(one_row_actions("first", "FIRST"));
+    both_above.widgets.push_back(one_row_actions("second", "SECOND"));
+    both_above.widgets.push_back(roster_widget());
+    og::script::hooks::CampaignZone both_below;
+    both_below.widgets.push_back(roster_widget());
+    both_below.widgets.push_back(one_row_actions("first", "FIRST"));
+    both_below.widgets.push_back(one_row_actions("second", "SECOND"));
+    og::script::hooks::CampaignZone sandwich;
+    sandwich.widgets.push_back(one_row_actions("first", "FIRST"));
+    sandwich.widgets.push_back(roster_widget());
+    sandwich.widgets.push_back(one_row_actions("second", "SECOND"));
+
+    og::ui::CampaignZoneSession zone(save);
+    og::ui::BaseCampScreenState state;
+    state.zone = &zone;
+    og::ui::install_base_camp_state_for_screen(&state);
+    button* buttons = picker_createmenu_buttons();
+    const int count = picker_createmenu_button_count();
+    const auto rewire = [&](const og::script::hooks::CampaignZone& raw,
+                            const char* variant) {
+        ASSERT_TRUE(zone.adopt(raw)) << variant;
+        ASSERT_EQ(2u, zone.actions().size()) << variant;
+        og::ui::base_camp_refresh_rows(state);
+        buttons = picker_createmenu_buttons();
+        int highlighted = kCreateMenuBackIndex;
+        spec.nav.rewire(buttons, count, highlighted);
+        check_nav_closed_and_reachable(buttons, count, kCreateMenuBackIndex,
+                                       variant);
+    };
+    const int band0 = kBaseCampZoneActionBase;
+    const int band1 = kBaseCampZoneActionBase + kBaseCampZoneActionsPerWidget;
+
+    // Both bands above a manned roster: HIRE -> first -> second -> roster.
+    set_team(4);
+    rewire(both_above, "zone_two_bands_above");
+    EXPECT_EQ(band0, buttons[kCreateMenuHireIndex].nav.down);
+    EXPECT_EQ(kCreateMenuHireIndex, buttons[band0].nav.up);
+    EXPECT_EQ(band1, buttons[band0].nav.down)
+        << "stacked bands chain in start-unit order";
+    EXPECT_EQ(band0, buttons[band1].nav.up);
+    EXPECT_EQ(0, buttons[band1].nav.down)
+        << "the lower band drops onto the roster's dep column";
+
+    // Both bands below: roster -> first -> second -> seat rail.
+    rewire(both_below, "zone_two_bands_below");
+    EXPECT_EQ(band0, buttons[3].nav.down)
+        << "the roster's last row drops into the upper band";
+    EXPECT_EQ(3, buttons[band0].nav.up);
+    EXPECT_EQ(band1, buttons[band0].nav.down);
+    EXPECT_EQ(band0, buttons[band1].nav.up);
+    EXPECT_EQ(kBaseCampAddSeatIndex, buttons[band1].nav.down)
+        << "the bottom band lands on the seat rail";
+
+    // An empty company between two bands: the bands bridge straight across
+    // the rowless roster.
+    set_team(0);
+    rewire(sandwich, "zone_empty_company_sandwich");
+    EXPECT_EQ(band0, buttons[kCreateMenuHireIndex].nav.down);
+    EXPECT_EQ(band1, buttons[band0].nav.down)
+        << "the band above bridges over an empty roster";
+    EXPECT_EQ(band0, buttons[band1].nav.up)
+        << "the band below climbs back over the empty roster";
+    EXPECT_EQ(kBaseCampAddSeatIndex, buttons[band1].nav.down);
+
+    // Empty company, both bands below: the spine opens on the first band
+    // and its top row climbs to HIRE.
+    rewire(both_below, "zone_empty_company_below");
+    EXPECT_EQ(band0, buttons[kCreateMenuHireIndex].nav.down);
+    EXPECT_EQ(kCreateMenuHireIndex, buttons[band0].nav.up)
+        << "with no roster rows the first band's up-exit is HIRE";
+    EXPECT_EQ(band1, buttons[band0].nav.down);
+    EXPECT_EQ(kBaseCampAddSeatIndex, buttons[band1].nav.down);
+
+    // Empty company, both bands above: the last band bottoms out on the
+    // seat rail.
+    rewire(both_above, "zone_empty_company_above");
+    EXPECT_EQ(band0, buttons[kCreateMenuHireIndex].nav.down);
+    EXPECT_EQ(band1, buttons[band0].nav.down);
+    EXPECT_EQ(kBaseCampAddSeatIndex, buttons[band1].nav.down)
+        << "no roster rows and nothing below: the band exits to the rail";
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[static_cast<std::size_t>(i)] =
+            std::move(saved_team[static_cast<std::size_t>(i)]);
+    save.team_size = old_team_size;
+    (void)picker_createmenu_buttons();
+}
+
+// A text widget's band is a HARD boundary. Its explicit weight may be
+// SMALLER than ceil(lines*8/14) — the parser refuses over-weight, never
+// under-weight, so an under-weighted stanza is a legal composition — and the
+// draw must then CLIP rather than ink over the rows the next widget owns.
+// This pins the arithmetic the draw runs against the real 14px grid, plus
+// the teeth: the same fixture unclipped would have painted into the roster.
+TEST(MenuLayout, basecamp_zone_text_ink_clips_to_its_own_band)
+{
+    namespace hooks = og::script::hooks;
+    using og::ui::CampaignZoneSession;
+    // The Base Camp row grid the zone lays out on (menu_screen_specs.cpp
+    // kBaseCampRowY0; its pitch is static_asserted against kZoneRowPitch).
+    constexpr int kRowY0 = 45;
+
+    // A DEFAULT share never clips: whatever the line count, the units the
+    // layout hands an unweighted widget hold every one of its lines. The
+    // clip therefore only ever fires on a deliberate under-weight.
+    for (int lines = 1; lines <= hooks::kCampaignZoneMaxTextLines; ++lines)
+    {
+        const int units =
+            (lines * CampaignZoneSession::kTextLinePitch +
+             CampaignZoneSession::kZoneRowPitch - 1) /
+            CampaignZoneSession::kZoneRowPitch;
+        EXPECT_GE(CampaignZoneSession::text_lines_in_band(units), lines)
+            << lines << " lines must all fit their default share";
+    }
+
+    SaveData save;
+    save.current_campaign = "gladiator";
+    save.my_team = 0;
+
+    // One unit for six lines: the widget asks for 14px and wants 48.
+    hooks::CampaignZone raw;
+    {
+        hooks::CampaignZoneWidget text;
+        text.kind = hooks::CampaignZoneWidget::Kind::Text;
+        text.weight = 1;
+        for (int i = 0; i < hooks::kCampaignZoneMaxTextLines; ++i)
+            text.lines.push_back(std::format("stanza line {}", i));
+        raw.widgets.push_back(std::move(text));
+        raw.widgets.emplace_back();  // roster: takes the remaining band
+    }
+    og::ui::CampaignZoneSession zone(save);
+    ASSERT_TRUE(zone.adopt(raw));
+    ASSERT_EQ(1u, zone.texts().size());
+    const og::ui::CampaignZoneSession::TextLayout& band = zone.texts()[0];
+    EXPECT_EQ(0, band.start_unit);
+    EXPECT_EQ(1, band.units) << "the explicit weight is honored as-is";
+
+    const int drawn = CampaignZoneSession::text_lines_in_band(band.units);
+    ASSERT_GT(drawn, 0) << "a one-unit band still shows its first line";
+    ASSERT_LT(drawn, static_cast<int>(band.lines.size()))
+        << "the fixture must actually engage the clip";
+
+    const int band_y = kRowY0 + CampaignZoneSession::kZoneRowPitch *
+                                    band.start_unit;
+    const int band_bottom =
+        kRowY0 + CampaignZoneSession::kZoneRowPitch *
+                     (band.start_unit + band.units);
+    const int ink_bottom =
+        band_y + drawn * CampaignZoneSession::kTextLinePitch;
+    EXPECT_LE(ink_bottom, band_bottom)
+        << "the clipped ink escapes its own band";
+
+    // The band below belongs to the roster (its header unit, then its rows):
+    // the clipped ink must stop at or before it, and the UNCLIPPED draw
+    // would not have.
+    const int roster_y =
+        kRowY0 + CampaignZoneSession::kZoneRowPitch * zone.roster().start_unit;
+    EXPECT_LE(ink_bottom, roster_y) << "text ink overpaints the roster band";
+    const int unclipped_bottom =
+        band_y + static_cast<int>(band.lines.size()) *
+                     CampaignZoneSession::kTextLinePitch;
+    EXPECT_GT(unclipped_bottom, roster_y)
+        << "the fixture no longer proves the clip does anything";
+}
+
+namespace
+{
+// Every pixel index of a rect, straight off the composed canvas.
+std::vector<int> snapshot_canvas_rect(int x0, int y0, int x1, int y1)
+{
+    screen* const game = og::runtime::current_session->myscreen_;
+    std::vector<int> pixels;
+    pixels.reserve(static_cast<std::size_t>((x1 - x0) * (y1 - y0)));
+    for (int y = y0; y < y1; ++y)
+    {
+        for (int x = x0; x < x1; ++x)
+        {
+            int index = 0;
+            game->get_pixel(x, y, &index);
+            pixels.push_back(index);
+        }
+    }
+    return pixels;
+}
+} // namespace
+
+// The clip, proved on PIXELS through the production content pass. A text
+// widget parked on the band's LAST unit with six lines would ink 48px into a
+// 14px band — straight through the panel's bottom bevel and over the seat
+// rail. Three renders of the same screen settle it: the widget's first line
+// paints, the five that do not fit change nothing, and the rows below the
+// band are byte-identical to a composition with no text at all.
+TEST(MenuLayout, basecamp_zone_text_ink_never_escapes_below_its_band)
+{
+    namespace hooks = og::script::hooks;
+    screen* const game = og::runtime::current_session->myscreen_;
+    SaveData& save = game->save_data;
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> saved_team;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        saved_team[static_cast<std::size_t>(i)] =
+            std::move(save.team_list[static_cast<std::size_t>(i)]);
+    const unsigned char old_team_size = save.team_size;
+    for (int i = 0; i < 3; ++i)
+    {
+        save.team_list[static_cast<std::size_t>(i)] =
+            std::make_unique<guy>(FAMILY_SOLDIER);
+        save.team_list[static_cast<std::size_t>(i)]->name =
+            std::format("INK{}", i);
+    }
+    save.team_size = 3;
+
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, spec.draw_content);
+
+    // Roster FIRST (7 rows, classic header at y=33), text last on the band's
+    // final unit: y=143..156, with the panel's inner face ending at 158.
+    const auto compose = [](int line_count) {
+        hooks::CampaignZone raw;
+        hooks::CampaignZoneWidget roster;
+        roster.kind = hooks::CampaignZoneWidget::Kind::Roster;
+        roster.weight = 7;
+        raw.widgets.push_back(std::move(roster));
+        hooks::CampaignZoneWidget text;
+        text.kind = hooks::CampaignZoneWidget::Kind::Text;
+        text.weight = 1;
+        for (int i = 0; i < line_count; ++i)
+            text.lines.push_back(std::format("ESCAPING STANZA LINE {}", i));
+        raw.widgets.push_back(std::move(text));
+        return raw;
+    };
+
+    const auto render = [&](int line_count) {
+        og::ui::CampaignZoneSession zone(save);
+        EXPECT_TRUE(zone.adopt(compose(line_count)));
+        EXPECT_EQ(7, zone.roster().rows_per_page);
+        og::ui::BaseCampScreenState state;
+        state.zone = &zone;
+        og::ui::base_camp_refresh_rows(state);
+        og::ui::install_base_camp_state_for_screen(&state);
+        // The zone's narrative ink is PURE_BLACK, which IS palette index 0 —
+        // the value clearbuffer leaves behind. Lay a non-zero face over the
+        // whole canvas first so text ink reads as a difference anywhere it
+        // lands, inside the band or past it.
+        game->clearbuffer();
+        game->draw_button(0, 0, 319, 199, 2, 1);
+        spec.draw_content(&state);
+        og::ui::install_base_camp_state_for_screen(nullptr);
+    };
+
+    // y=143..157 is the text widget's own band; y=158..199 is everything
+    // the panel does not own (bottom bevel, seat rail, command strip).
+    constexpr int kBandY0 = 143;
+    constexpr int kBandY1 = 157;
+    render(0);
+    const std::vector<int> band_empty =
+        snapshot_canvas_rect(10, kBandY0, 310, kBandY1);
+    const std::vector<int> below_empty = snapshot_canvas_rect(0, 158, 320, 200);
+    render(1);
+    const std::vector<int> band_one =
+        snapshot_canvas_rect(10, kBandY0, 310, kBandY1);
+    render(hooks::kCampaignZoneMaxTextLines);
+    const std::vector<int> band_six =
+        snapshot_canvas_rect(10, kBandY0, 310, kBandY1);
+    const std::vector<int> below_six = snapshot_canvas_rect(0, 158, 320, 200);
+
+    EXPECT_NE(band_empty, band_one)
+        << "the widget's first line must actually ink its band";
+    EXPECT_EQ(band_one, band_six)
+        << "a one-unit band draws exactly one line, whatever it was handed";
+    EXPECT_EQ(below_empty, below_six)
+        << "text ink escaped the zone band and painted the rail below it";
+
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[static_cast<std::size_t>(i)] =
+            std::move(saved_team[static_cast<std::size_t>(i)]);
+    save.team_size = old_team_size;
+    game->clearbuffer();
+}
+
+// The roster capability lattice: a composition may clear any subset of
+// can_deploy / can_train / can_reorder / can_team, and each cleared bit
+// hides a whole roster column. Every surviving column must still be
+// keyboard-reachable — a visible control with no incoming nav link is
+// mouse-only, and nothing else in the suite would notice. (The chip
+// column's own visibility fork is `own && (assign_mode || (can_team &&
+// !networked))`, so the {can_team} x {assign} axes below cover every
+// networked chip shape too: networked-without-assign is the can_team=false
+// shape, networked-with-assign is the assign=true shape.)
+TEST(MenuLayout, createmenu_basecamp_roster_capability_lattice_reachable)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> saved_team;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        saved_team[static_cast<std::size_t>(i)] =
+            std::move(save.team_list[static_cast<std::size_t>(i)]);
+    const unsigned char old_team_size = save.team_size;
+    // Three owned members: rows 1 and 2 carry a move-up control (row 0
+    // never does — nothing above it to swap with).
+    for (int i = 0; i < 3; ++i)
+    {
+        save.team_list[static_cast<std::size_t>(i)] =
+            std::make_unique<guy>(FAMILY_SOLDIER);
+        save.team_list[static_cast<std::size_t>(i)]->name =
+            std::format("L{}", i);
+    }
+    save.team_size = 3;
+
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, spec.nav.rewire);
+
+    for (int caps = 0; caps < 16; ++caps)
+    {
+        for (int assign = 0; assign < 2; ++assign)
+        {
+            og::script::hooks::CampaignZone raw;
+            og::script::hooks::CampaignZoneWidget roster;
+            roster.kind =
+                og::script::hooks::CampaignZoneWidget::Kind::Roster;
+            roster.can_deploy = (caps & 1) != 0;
+            roster.can_train = (caps & 2) != 0;
+            roster.can_reorder = (caps & 4) != 0;
+            roster.can_team = (caps & 8) != 0;
+            if (assign != 0)
+            {
+                roster.assign.active = true;
+                roster.assign.key = "road";
+                roster.assign.labels = {"WAR", "BURDEN"};
+            }
+            raw.widgets.push_back(roster);
+
+            og::ui::CampaignZoneSession zone(save);
+            ASSERT_TRUE(zone.adopt(raw)) << "caps=" << caps;
+            og::ui::BaseCampScreenState state;
+            state.zone = &zone;
+            og::ui::base_camp_refresh_rows(state);
+            og::ui::install_base_camp_state_for_screen(&state);
+
+            button* buttons = picker_createmenu_buttons();
+            const int count = picker_createmenu_button_count();
+            int highlighted = kCreateMenuBackIndex;
+            spec.nav.rewire(buttons, count, highlighted);
+
+            const std::string variant =
+                std::format("caps={} assign={}", caps, assign);
+            check_nav_closed_and_reachable(buttons, count,
+                                           kCreateMenuBackIndex,
+                                           variant.c_str());
+
+            // The specific shape that stranded the move-up column: the row
+            // body gone (can_train cleared) with the chip column still
+            // standing between it and the deploy zone.
+            for (int r = 0; r < kBaseCampRosterRowsPerPage; ++r)
+            {
+                if (buttons[kBaseCampMoveUpBase + r].hidden)
+                    continue;
+                bool linked = false;
+                for (int i = 0; i < count && !linked; ++i)
+                {
+                    if (buttons[i].hidden)
+                        continue;
+                    const MenuNav& n = buttons[i].nav;
+                    linked = n.up == kBaseCampMoveUpBase + r ||
+                        n.down == kBaseCampMoveUpBase + r ||
+                        n.left == kBaseCampMoveUpBase + r ||
+                        n.right == kBaseCampMoveUpBase + r;
+                }
+                EXPECT_TRUE(linked)
+                    << variant << ": roster_up_" << r
+                    << " is visible with no incoming nav link";
+            }
+
+            og::ui::install_base_camp_state_for_screen(nullptr);
+        }
+    }
+
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[static_cast<std::size_t>(i)] =
+            std::move(saved_team[static_cast<std::size_t>(i)]);
+    save.team_size = old_team_size;
+    (void)picker_createmenu_buttons();
 }
 
 // The seat rail has its own four-card pager, independent of the eight-row
@@ -850,7 +1788,7 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
             state.seat_page.page = page;
             button* buttons = picker_createmenu_buttons();
             const int count = picker_createmenu_button_count();
-            int highlighted = kBaseCampSeatsLabelIndex;
+            int highlighted = kBaseCampAddSeatIndex;
             spec.nav.rewire(buttons, count, highlighted);
 
             const std::string variant = std::format(
@@ -865,6 +1803,13 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
                 << variant;
             EXPECT_EQ(!kAddSeatCompiledIn,
                       buttons[kBaseCampAddSeatIndex].hidden)
+                << variant;
+            // The rewire re-parks the retired ordinal every frame.
+            EXPECT_TRUE(buttons[kBaseCampSeatRailSpareIndex].hidden)
+                << variant;
+            EXPECT_EQ(-1, buttons[kBaseCampSeatRailSpareIndex].nav.left)
+                << variant;
+            EXPECT_EQ(-1, buttons[kBaseCampSeatRailSpareIndex].nav.right)
                 << variant;
             ASSERT_NE(nullptr,
                       spec.rows[kBaseCampAddSeatIndex].state_override);
@@ -890,7 +1835,10 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
             const int visible =
                 std::min(kBaseCampSeatCardsPerPage,
                          seat_count - first);
-            std::vector<int> rail{kBaseCampSeatsLabelIndex};
+            // #236 rail order: [+] | < | cards | >.
+            std::vector<int> rail;
+            if (kAddSeatCompiledIn)
+                rail.push_back(kBaseCampAddSeatIndex);
             if (paged)
                 rail.push_back(kBaseCampSeatPagePrevIndex);
             for (int card = 0; card < kBaseCampSeatCardsPerPage; ++card)
@@ -943,8 +1891,11 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
             }
             if (paged)
                 rail.push_back(kBaseCampSeatPageNextIndex);
-            if (kAddSeatCompiledIn)
-                rail.push_back(kBaseCampAddSeatIndex);
+            ASSERT_FALSE(rail.empty()) << variant;
+            // Links from above enter at the rail's left end; the strip's
+            // right end climbs to its right end.
+            const int rail_first = rail.front();
+            const int rail_last = rail.back();
 
             for (std::size_t i = 0; i < rail.size(); ++i)
             {
@@ -956,26 +1907,26 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
                     << variant << " " << control.id;
             }
 
-            const auto visible_card_or_label = [visible](int card) {
+            const auto visible_card_or_rail = [visible, rail_first](int card) {
                 return card < visible
                     ? kBaseCampSeatCardBase + card
-                    : kBaseCampSeatsLabelIndex;
+                    : rail_first;
             };
-            EXPECT_EQ(visible_card_or_label(0),
-                      buttons[kCreateMenuHireIndex].nav.up)
-                << variant;
-            EXPECT_EQ(visible_card_or_label(1),
+            // HIRE lives in the roster header band now: its up-link is
+            // closed and the empty-roster rail climbs back up to it.
+            EXPECT_EQ(-1, buttons[kCreateMenuHireIndex].nav.up) << variant;
+            EXPECT_EQ(rail_first,
+                      buttons[kCreateMenuHireIndex].nav.down)
+                << variant << " (empty roster: HIRE drops to the rail)";
+            EXPECT_EQ(rail_first, buttons[kCreateMenuBackIndex].nav.up)
+                << variant << " (BACK climbs to the rail's left end)";
+            EXPECT_EQ(visible_card_or_rail(1),
                       buttons[kCreateMenuScenarioIndex].nav.up)
                 << variant;
-            EXPECT_EQ(visible_card_or_label(2),
+            EXPECT_EQ(visible_card_or_rail(2),
                       buttons[kCreateMenuNetworkingIndex].nav.up)
                 << variant;
-            EXPECT_EQ(kAddSeatCompiledIn
-                          ? kBaseCampAddSeatIndex
-                          : (paged
-                                 ? kBaseCampSeatPageNextIndex
-                                 : visible_card_or_label(3)),
-                      buttons[kCreateMenuGoIndex].nav.up)
+            EXPECT_EQ(rail_last, buttons[kCreateMenuGoIndex].nav.up)
                 << variant;
 
             check_no_overlaps(buttons, count, variant.c_str());
@@ -984,13 +1935,13 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
                 buttons, count, kCreateMenuBackIndex, variant.c_str());
 
             // The same rail page must close over READY for a joiner with an
-            // active seat: GO hides, the fourth card, next arrow, and + point
-            // down to READY, and READY points back up to the far-right +.
-            // A zero-seat spectator has no READY target; + remains the route
-            // back down to NETWORK until it activates a seat.
+            // active seat: GO hides, the fourth card and the next arrow point
+            // down to READY, and READY points back up to the rail's right
+            // end. The '+' sits over BACK at the rail's left end now (#236),
+            // so it drops there in every shape.
             lobby.host = false;
             buttons = picker_createmenu_buttons();
-            highlighted = kBaseCampSeatsLabelIndex;
+            highlighted = kBaseCampAddSeatIndex;
             spec.nav.rewire(buttons, count, highlighted);
             EXPECT_TRUE(buttons[kCreateMenuGoIndex].hidden) << variant;
             EXPECT_EQ(seat_count == 0,
@@ -1014,19 +1965,13 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
             }
             if (kAddSeatCompiledIn)
             {
-                EXPECT_EQ(seat_count > 0
-                              ? kCreateMenuReadyIndex
-                              : kCreateMenuNetworkingIndex,
+                EXPECT_EQ(kCreateMenuBackIndex,
                           buttons[kBaseCampAddSeatIndex].nav.down)
                     << variant;
             }
             if (seat_count > 0)
             {
-                EXPECT_EQ(kAddSeatCompiledIn
-                              ? kBaseCampAddSeatIndex
-                              : (paged
-                                     ? kBaseCampSeatPageNextIndex
-                                     : visible_card_or_label(3)),
+                EXPECT_EQ(rail_last,
                           buttons[kCreateMenuReadyIndex].nav.up)
                     << variant;
             }
@@ -1071,7 +2016,7 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
             lobby.host = host;
             button* buttons = picker_createmenu_buttons();
             const int count = picker_createmenu_button_count();
-            int highlighted = kBaseCampSeatsLabelIndex;
+            int highlighted = kBaseCampAddSeatIndex;
             spec.nav.rewire(buttons, count, highlighted);
             const std::string variant = std::format(
                 "zero-seat {} remote-cards={}",
@@ -1081,9 +2026,13 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
                 << variant;
             EXPECT_TRUE(buttons[kCreateMenuReadyIndex].hidden)
                 << variant;
+            // Each card drops onto the strip door under its face; the
+            // re-gridded strip put DIFFICULTY under card zero. Card three
+            // still falls back one door to NETWORK when its GO/READY slot
+            // has no visible half.
             constexpr std::array<int, kBaseCampSeatCardsPerPage>
                 kCardStripTargets{
-                    kCreateMenuHireIndex,
+                    kCreateMenuDifficultyIndex,
                     kCreateMenuScenarioIndex,
                     kCreateMenuNetworkingIndex,
                     kCreateMenuNetworkingIndex,
@@ -1100,8 +2049,7 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
             }
             if (kAddSeatCompiledIn)
             {
-                EXPECT_EQ(host ? kCreateMenuGoIndex
-                               : kCreateMenuNetworkingIndex,
+                EXPECT_EQ(kCreateMenuBackIndex,
                           buttons[kBaseCampAddSeatIndex].nav.down)
                     << variant;
             }
@@ -1327,14 +2275,15 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_keyboard_reachable)
                                 kCreateMenuGoIndex
                             ? kCreateMenuNetworkingIndex
                             : buttons[kBaseCampPageNextIndex].nav.down;
-                    // The far-right + inherited GO as its native host down
-                    // target. This matrix's synthetic joiner hides GO by
-                    // hand, so close that final rail link as well.
-                    buttons[kBaseCampAddSeatIndex].nav.down =
-                        buttons[kBaseCampAddSeatIndex].nav.down ==
-                                kCreateMenuGoIndex
-                            ? kCreateMenuNetworkingIndex
-                            : buttons[kBaseCampAddSeatIndex].nav.down;
+                    // Rail controls over the strip's right end inherit GO as
+                    // their native host down target. This matrix's synthetic
+                    // joiner hides GO by hand, so close those links too.
+                    for (int i = kBaseCampAddSeatIndex;
+                         i <= kBaseCampSeatPageNextIndex; ++i)
+                    {
+                        if (buttons[i].nav.down == kCreateMenuGoIndex)
+                            buttons[i].nav.down = kCreateMenuNetworkingIndex;
+                    }
                 }
                 const std::string variant = std::format(
                     "basecamp roster={} page={} {}", roster_size, page,
@@ -1671,6 +2620,7 @@ TEST(MenuLayout, scenariomenu_static_layout)
     EXPECT_EQ(kScenarioMenuTeamsIndex, 4);
     EXPECT_EQ(kScenarioMenuProgressIndex, 5);
     EXPECT_EQ(kScenarioMenuTroopsIndex, 6);
+    EXPECT_EQ(kScenarioMenuButtonCount, 7);
 
     // The campaign-name / level-title strips draw from x=116 (32-char clip,
     // 6px/char): they must clear the x=30 button column's right edge.
@@ -1701,9 +2651,10 @@ TEST(MenuLayout, scenariomenu_static_layout)
                                    "scenariomenu_static");
 }
 
-// Host-gating variants for the SCENARIO subscreen: SET CAMPAIGN / SET LEVEL /
-// TROOPS hide for joiners and the row's up-links (plus MATCHUP's down-link)
-// rewire around them.
+// Gating variants for the SCENARIO subscreen: SET CAMPAIGN / SET LEVEL /
+// TROOPS hide for joiners, and the nav graph rewires around every hidden
+// combination. (The MISSIONS door retired into the Base Camp zone —
+// docs/basecamp-zones-design.md.)
 TEST(MenuLayout, scenariomenu_nav_variants_keyboard_reachable)
 {
     for (const bool host_visible : {true, false})
@@ -1716,7 +2667,9 @@ TEST(MenuLayout, scenariomenu_nav_variants_keyboard_reachable)
         picker_wire_scenario_menu_nav(buttons, count, host_visible);
         check_nav_closed_and_reachable(
             buttons, count, kScenarioMenuBackIndex,
-            host_visible ? "scenariomenu_host" : "scenariomenu_joiner");
+            std::format("scenariomenu_{}",
+                        host_visible ? "host" : "joiner")
+                .c_str());
     }
 }
 
@@ -2312,14 +3265,22 @@ TEST(MenuLayout, difficulty_menu_layout_and_nav)
     for (int i = kDifficultyMenuDifficultyIndex; i < count; ++i)
         EXPECT_TRUE(buttons[i].hidden) << buttons[i].id;
     EXPECT_FALSE(buttons[kDifficultyMenuBackIndex].hidden);
+    // With every row hidden the panel would be a heading over nothing —
+    // and this door is one click off the Base Camp strip, where a joiner
+    // spends the whole lobby. The caption takes the rows' place.
+    EXPECT_EQ("The host sets these for everyone.", difficulty_panel_caption())
+        << "a joiner's empty panel must say whose call it is";
     EXPECT_EQ(kDifficultyMenuBackIndex, highlighted)
         << "the highlight must be pulled off the hidden rows";
     check_nav_closed_and_reachable(buttons, count, kDifficultyMenuBackIndex,
                                    "difficulty_menu_joiner");
 
-    // Host / local variant restores the full column.
+    // Host / local variant restores the full column — and drops the
+    // caption: six rows that answer to this player need no explanation.
     lobby.host = true;
     sync_difficulty_menu_visibility(buttons, count, highlighted);
+    EXPECT_EQ("", difficulty_panel_caption())
+        << "the host's panel is its own explanation";
     og::ui::install_active_picker_lobby_client(saved_client);
     for (int i = 0; i < count; ++i)
         EXPECT_FALSE(buttons[i].hidden) << buttons[i].id;

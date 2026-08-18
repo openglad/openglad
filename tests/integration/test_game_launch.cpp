@@ -5,10 +5,87 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
 #include <gtest/gtest.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 short load_saved_game(const char *filename, screen *scr);
+
+namespace {
+
+// Live hostile livings across the world's three lists — the number the
+// completed-level purge zeroes and an armed replay restores (#207).
+int count_live_hostile_livings(GameWorld& world)
+{
+    int hostiles = 0;
+    const auto count_list = [&hostiles](auto& list) {
+        for (auto& uptr : list)
+        {
+            walker* const w = uptr.get();
+            if (w == nullptr || w->dead())
+                continue;
+            if (w->query_order() == Order::Living && w->team_num() != 0 &&
+                w->myguy == nullptr)
+                ++hostiles;
+        }
+    };
+    count_list(world.oblist);
+    count_list(world.weaplist);
+    count_list(world.fxlist);
+    return hostiles;
+}
+
+} // namespace
+
+// #207 on the SDL production launch path (the headless twin is pinned in
+// test_headless_server_runtime): load_saved_game is the load the shipped
+// game takes — camp row -> GO -> shadow install -> load_saved_game — and
+// its completed-level purge, purge-skip conjunct and arm carry across the
+// disk round-trip had no executing test.
+TEST(GameLaunch, armed_replay_load_restores_completed_level_census)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    screen* const game = og::runtime::current_session->myscreen_;
+    SaveData& save = game->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.current_levels["gladiator"] = 1;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.add_level_completed("gladiator", 1);
+    ASSERT_TRUE(save.save("test_replay_launch"));
+
+    // Control: the unarmed load of a completed level keeps the classic
+    // purge (the VISIT walk-through).
+    ASSERT_NE(0, load_saved_game("test_replay_launch", game));
+    EXPECT_EQ(0, count_live_hostile_livings(game->world()))
+        << "an unarmed completed load must purge";
+    game->world().delete_objects();
+
+    // Armed: SaveData::load clears the transient pair, so this executes the
+    // carry (the loaded cursor still points at the armed level) AND the
+    // purge-skip conjunct — the authored census loads.
+    save.arm_replay(1);
+    ASSERT_NE(0, load_saved_game("test_replay_launch", game));
+    EXPECT_EQ(1, static_cast<int>(save.replay_level))
+        << "the arm must survive the disk round-trip";
+    EXPECT_EQ(12, count_live_hostile_livings(game->world()))
+        << "SOUTH OF TALWOOD's 12 elves are back on an armed replay";
+    game->world().delete_objects();
+
+    // A stale arm for ANOTHER level dies at the reload (the loaded cursor
+    // does not match), and the purge applies as on any plain visit.
+    save.clear_replay_arm();
+    save.replay_level = 3;   // stale by hand: the disk cursor stays 1
+    save.replay_origin = 5;
+    ASSERT_NE(0, load_saved_game("test_replay_launch", game));
+    EXPECT_EQ(0, static_cast<int>(save.replay_level))
+        << "the carry must drop an arm the loaded cursor does not cover";
+    EXPECT_EQ(0, count_live_hostile_livings(game->world()));
+    game->world().delete_objects();
+    save.reset();
+}
 
 TEST(GameLaunch, level_loading) {
     // Set up save_data for scenario 1

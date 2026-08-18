@@ -27,8 +27,10 @@
 #include <openglad/core/text_wrap.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/ui/cloud_save_client.h>
 #include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/menu_model.h>
@@ -39,10 +41,13 @@
 #include <openglad/platform/curses/curses_network.h>
 #include <openglad/platform/curses/curses_renderer.h>
 #include <openglad/resources/campaign_metadata.h>
+#include <openglad/resources/campaign_state_providers.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
+#include <openglad/resources/level_file_io.h>
+#include <openglad/resources/level_selection.h>
 #include <openglad/resources/save_data.h>
 
 #include <algorithm>
@@ -50,6 +55,7 @@
 #include <format>
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -182,18 +188,61 @@ public:
 
     // Prompt for a single line of text. On Enter, sets `accepted` and returns the
     // buffer; on Esc (or exhausted input), returns `initial` with `accepted`
-    // false. Backspace erases the last character.
+    // false. Backspace erases the last character. `context` lines (optional)
+    // render between the title and the input row — the scripted camp/book
+    // page surface (#206, the Company List "rows above the prompt" shape).
+    //
+    // The context block SCROLLS (Up/Down, PageUp/PageDown) and wraps like
+    // show_text: a camp composes as many lines as the campaign wants — a
+    // 24-row roster alone outruns a stock 24x80 terminal — and every one of
+    // those lines carries a live ordinal the prompt still accepts. Cutting
+    // the tail off silently would hide controls the player is expected to
+    // type. The arrow keys are free here: the prompt appends only printable
+    // characters, so scrolling never touches the typed buffer.
     std::string prompt(std::string_view title, std::string_view label,
-                       std::string_view initial, bool& accepted)
+                       std::string_view initial, bool& accepted,
+                       const std::vector<std::string>& context = {})
     {
         std::string buffer(initial);
         accepted = false;
+        int scroll = 0;
         term_.set_cursor_visible(true);
+        std::vector<std::string> wrapped;
+        for (const std::string& line : context) {
+            if (line.empty()) {
+                wrapped.emplace_back();
+                continue;
+            }
+            for (std::string& piece : og::core::wrap_text(line, term_.cols()))
+                wrapped.push_back(std::move(piece));
+        }
         for (;;) {
             term_.clear();
             int row = 0;
             term_.put_str(row++, 0, title, kTitleColor, Color::Default, true);
             ++row;
+            const int input_limit = term_.rows() - 2;
+            const int total = static_cast<int>(wrapped.size());
+            const int capacity = std::max(0, input_limit - row);
+            // An overflowing block spends its last visible row on the marker:
+            // a truncation the player cannot see is the whole bug.
+            const bool overflow = total > capacity;
+            const int shown = overflow ? std::max(0, capacity - 1)
+                                       : std::min(total, capacity);
+            scroll = std::clamp(scroll, 0, std::max(0, total - shown));
+            for (int i = scroll; i < scroll + shown; ++i) {
+                term_.put_str(row++, 0,
+                              wrapped[static_cast<std::size_t>(i)],
+                              kNormalColor, Color::Default, false);
+            }
+            if (overflow && shown > 0) {
+                term_.put_str(row++, 0,
+                              std::format("-- {}-{} of {} | Up/Down scroll --",
+                                          scroll + 1, scroll + shown, total),
+                              kHintColor, Color::Default, false);
+            }
+            if (!context.empty() && row < input_limit)
+                ++row;
             term_.put_str(row, 0, std::string(label) + buffer,
                           kNormalColor, Color::Default, false);
             term_.put_str(term_.rows() - 1, 0,
@@ -208,6 +257,24 @@ public:
             if (key.is_none() || key.code == KeyCode::Escape || key.is_char(U'\x1b')) {
                 term_.set_cursor_visible(false);
                 return std::string(initial);
+            }
+            // Scrolling is arrows-only ('j'/'k' are letters a player may be
+            // typing, unlike in choose()).
+            if (key.code == KeyCode::Up) {
+                --scroll;
+                continue;
+            }
+            if (key.code == KeyCode::Down) {
+                ++scroll;
+                continue;
+            }
+            if (key.code == KeyCode::PageUp) {
+                scroll -= std::max(1, shown);
+                continue;
+            }
+            if (key.code == KeyCode::PageDown) {
+                scroll += std::max(1, shown);
+                continue;
             }
             if (key.is_enter()) {
                 term_.set_cursor_visible(false);
@@ -431,6 +498,15 @@ void view_team_roster(Menu& menu, SaveData& save)
         const int slot = slots[static_cast<std::size_t>(choice)];
 
         if (key == U'd' || key == U'D') {
+            // The camp's deploy rules bind this key too (the Camp screen
+            // shows the padlock and its reason; deploying the locked hero
+            // from the roster anyway would be a different campaign).
+            if (const std::optional<std::string> refused =
+                    og::ui::terminal_roster_refusal(
+                        save, og::ui::TerminalRosterCommand::Deploy, slot)) {
+                menu.show_text("Deploy", {*refused});
+                continue;
+            }
             const bool deployed = og::ui::toggle_deploy_slot(save, slot);
             (void)deployed;
             autosave_company_after_mutation(save);
@@ -450,6 +526,14 @@ void view_team_roster(Menu& menu, SaveData& save)
 // Returns the updated team_families so the caller can re-sync config.
 void hire_troops(Menu& menu, SaveData& save, TextPickerConfig& config)
 {
+    // The camp's can_hire capability — the flag that hides HIRE on the SDL
+    // panel — answers this row too.
+    if (const std::optional<std::string> refused =
+            og::ui::terminal_roster_refusal(
+                save, og::ui::TerminalRosterCommand::Hire, -1)) {
+        menu.show_text("Hire Troops", {*refused});
+        return;
+    }
     og::ui::HireSession session(save, 0);
     if (session.team_full()) {
         menu.show_text("Hire Troops",
@@ -539,6 +623,12 @@ void deploy_prompt(Menu& menu, SaveData& save)
         return;
     }
     const int slot = slots[static_cast<std::size_t>(*value - 1)];
+    if (const std::optional<std::string> refused =
+            og::ui::terminal_roster_refusal(
+                save, og::ui::TerminalRosterCommand::Deploy, slot)) {
+        menu.show_text("Deploy", {*refused});
+        return;
+    }
     const bool deployed = og::ui::toggle_deploy_slot(save, slot);
     menu.show_text("Deploy", {std::format("{} {}.",
         save.team_list[static_cast<std::size_t>(slot)]->name,
@@ -548,6 +638,14 @@ void deploy_prompt(Menu& menu, SaveData& save)
 
 void train_team(Menu& menu, SaveData& save, int seed_slot)
 {
+    // A camp that retired training refuses in words: the SDL panel simply
+    // has no train affordance to click, but a prompt cannot hide.
+    if (const std::optional<std::string> refused =
+            og::ui::terminal_roster_refusal(
+                save, og::ui::TerminalRosterCommand::Train, -1)) {
+        menu.show_text("Train Team", {*refused});
+        return;
+    }
     og::ui::TrainSession session(save);
     if (session.empty()) {
         menu.show_text("Train Team", {"No team members available to train."});
@@ -768,6 +866,54 @@ og::ui::cloud::CloudHooks curses_cloud_hooks(Menu& menu, bool& notified)
     return hooks;
 }
 
+// #206 CAMP, curses projection: the shared terminal driver over this
+// client's save. The camp renders as prompt context lines (the Company List
+// "dynamic rows + prompt" shape — never Menu::choose, whose digit jump
+// stops at row 9) and notices ride show_text; every camp line, docket
+// ordinal and roster row is composed by the driver, byte-identical with the
+// text client.
+void campaign_camp_flow(Menu& menu, SaveData& save,
+                        TextPickerConfig& config,
+                        const CursesPickerOptions& options)
+{
+    og::ui::TerminalCampaignPickerIo io;
+    io.prompt = [&menu](const std::string& title,
+                        const std::vector<std::string>& lines,
+                        const std::string& label)
+        -> std::optional<std::string> {
+        bool accepted = false;
+        const std::string entered = menu.prompt(title, label, "", accepted,
+                                                lines);
+        if (!accepted)
+            return std::nullopt;
+        return entered;
+    };
+    io.notice = [&menu](const std::string& line) {
+        menu.show_text("Camp", {line});
+    };
+    // The SET LEVEL host predicate: this picker screen is only reachable
+    // locally (the curses network lobby is a separate flow), so the shared
+    // context always answers host here.
+    io.is_host = [&config, &options, &save] {
+        return label_context(config, options, save).is_host;
+    };
+    io.apply_level = [&config, &save](int level, bool replay_arm) {
+        // The curses "Set level" tail: session config + save cursor. The
+        // replay arm (#207) re-checks cleared at the write choke — the row
+        // decoration is fetch-time state. A plain write abandons any
+        // excursion in flight (a stale arm must never skip a purge).
+        config.level = level;
+        if (replay_arm && save.is_level_completed(level))
+            save.arm_replay(static_cast<short>(level));
+        else
+        {
+            save.clear_replay_arm();
+            save.scen_num = static_cast<short>(level);
+        }
+    };
+    og::ui::run_terminal_campaign_camp(save, io);
+}
+
 } // namespace
 
 // --- construction --------------------------------------------------------
@@ -785,6 +931,19 @@ CursesPickerClient::CursesPickerClient(ITerminal& term, IClock& clock,
     // this client's chosen slot, never save0. An unsafe name is rejected by
     // the setter and leaves the previous active slot in place.
     assert_company_slot_authority();
+    // Campaign scripting (#206): point the process-global og.campaign_*
+    // providers at THIS client's SaveData — the same object the picker
+    // mutates — so campaign hooks always read/write the live save (the
+    // design doc's install-site list: the curses picker's session, beside
+    // the [SAVE-R2] slot repoint).
+    og::script::hooks::install_campaign_providers(
+        og::data::make_campaign_providers(save_data_));
+}
+
+CursesPickerClient::~CursesPickerClient()
+{
+    // #206: the providers borrow save_data_ — clear before it dies.
+    og::script::hooks::clear_campaign_providers();
 }
 
 void CursesPickerClient::assert_company_slot_authority() const
@@ -830,11 +989,6 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
     Menu menu(term_, clock_);
     if (menu_id == PickerMenuId::Main) {
         switch (item.command) {
-        case PickerMenuCommand::OpenDifficultyMenu:
-            // The DIFFICULTY submenu: the shared nested presentation loop
-            // (show_submenu in picker_state) until Back.
-            show_submenu(PickerMenuId::Difficulty);
-            break;
         case PickerMenuCommand::SetPlayerMode:
             if (item.arg > 1) {
                 og::ui::set_player_count(save_data_, 1);
@@ -973,8 +1127,8 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
         return;
     }
 
-    // Team Build menu. Gated items (the CTF match settings outside the CTF
-    // campaign) show their shared guard message instead of acting.
+    // Team Build menu. Gated items (READY outside a networked lobby) show
+    // their shared guard message instead of acting.
     const std::string_view guard = og::ui::terminal_gate_message(
         item, label_context(config_, options_, save_data_));
     if (!guard.empty()) {
@@ -1013,11 +1167,56 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
             std::to_string(config_.level), accepted);
         if (accepted && !entered.empty()) {
             const auto level = parse_int_strict(entered);
+            std::string title;
             if (!level || *level < 1)
                 menu.show_text("Set Level", {"Invalid level."});
+            // Existence + the earned-roads gate: the free-typed id gets the
+            // same answer the camp's docket gives the same road, before the
+            // cursor (or any autosave tail) moves.
+            else if (og::data::load_scenario_title_with_error(
+                         ("scen" + std::to_string(*level)).c_str(), title) !=
+                         og::data::LevelFileIoError::None ||
+                     !og::data::level_selection_allowed(save_data_, *level))
+                menu.show_text("Set Level",
+                    {std::string(og::ui::kCampaignLevelClosedMessage)});
             else {
                 config_.level = *level;
+                // A plain Set Level abandons any replay excursion in flight.
+                save_data_.clear_replay_arm();
                 save_data_.scen_num = static_cast<short>(*level);
+            }
+        }
+        break;
+    }
+    case PickerMenuCommand::ReplayLevel: {
+        // #207: the terminal replay prompt — Set Level's gates plus one
+        // more: the level must already be CLEARED (a replay re-fights a
+        // beaten level; the frontier is GO's job). Arming moves the cursor
+        // itself, so everything downstream behaves like a set.
+        bool accepted = false;
+        const std::string entered = menu.prompt("Replay Level",
+            "Level (must be cleared): ", std::string(), accepted);
+        if (accepted && !entered.empty()) {
+            const auto level = parse_int_strict(entered);
+            std::string title;
+            if (!level || *level < 1)
+                menu.show_text("Replay Level", {"Invalid level."});
+            else if (og::data::load_scenario_title_with_error(
+                         ("scen" + std::to_string(*level)).c_str(), title) !=
+                         og::data::LevelFileIoError::None ||
+                     !og::data::level_selection_allowed(save_data_, *level))
+                menu.show_text("Replay Level",
+                    {std::string(og::ui::kCampaignLevelClosedMessage)});
+            else if (!save_data_.is_level_completed(*level))
+                menu.show_text("Replay Level",
+                    {"That level is not cleared yet."});
+            else {
+                config_.level = *level;
+                save_data_.arm_replay(static_cast<short>(*level));
+                menu.show_text("Replay Level",
+                    {og::ui::campaign_replay_set_message(
+                        title.empty() ? std::format("SCEN {}", *level)
+                                      : title)});
             }
         }
         break;
@@ -1025,17 +1224,15 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
     case PickerMenuCommand::SetCampaign:
         (void)show_campaign_select();
         break;
-    case PickerMenuCommand::CycleCtfTeamCount:
-        og::ui::cycle_ctf_team_count(save_data_);
-        menu.show_text("CTF Teams", {og::ui::format_ctf_teams_label(save_data_)});
-        autosave_company_after_mutation(save_data_); // §3.8 settings tail
+    case PickerMenuCommand::OpenDifficultyMenu:
+        // The DIFFICULTY submenu: the shared nested presentation loop
+        // (show_submenu in picker_state) until Back. It answers here now —
+        // the door moved off the main menu to Team Build.
+        show_submenu(PickerMenuId::Difficulty);
         break;
-    case PickerMenuCommand::CycleCtfCaptureLimit:
-        og::ui::cycle_ctf_capture_limit(save_data_);
-        menu.show_text("Capture Limit",
-            {og::ui::format_ctf_caps_label(save_data_)});
-        autosave_company_after_mutation(save_data_); // §3.8 settings tail
-        break;
+    // Match teams and target score left the flat team-build list for the
+    // modes camp's MATCH SETUP page; the SCENARIO submenu still routes its
+    // troops row through here.
     case PickerMenuCommand::ToggleCtfScenarioTroops:
         og::ui::toggle_ctf_scenario_troops(save_data_);
         menu.show_text("Scenario Troops",
@@ -1048,6 +1245,11 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
     case PickerMenuCommand::Teams:
         teams_screen(menu, save_data_);
         config_.team_families = og::ui::collect_team_families(save_data_);
+        break;
+    case PickerMenuCommand::CampaignCamp:
+        // #206: the Base Camp gameplay zone (guard + flow live in the shared
+        // terminal driver).
+        campaign_camp_flow(menu, save_data_, config_, options_);
         break;
     default:
         break;
@@ -1149,6 +1351,12 @@ std::string CursesPickerClient::show_campaign_select()
         return config_.campaign; // cancel keeps current
 
     config_.campaign = ids[static_cast<size_t>(choice)];
+    // A campaign SWITCH abandons any replay excursion in flight — the arm's
+    // origin is a cursor in the previous campaign and must never be
+    // restored into this one (#207). Re-selecting the current campaign
+    // changes nothing and keeps the arm.
+    if (save_data_.current_campaign != config_.campaign)
+        save_data_.clear_replay_arm();
     save_data_.current_campaign = config_.campaign;
     // The launch path self-heals the mount, but the in-picker scenario
     // viewer reads the mounted package directly — follow the selection now.
@@ -1162,8 +1370,10 @@ void CursesPickerClient::show_options()
 {
     Menu menu(term_, clock_);
 
+    // Titled after the door that opened it (GAME SETTINGS on the main
+    // menu), not after the command's internal name.
     bool accepted = false;
-    const std::string slot = menu.prompt("Options", "Save slot: ",
+    const std::string slot = menu.prompt("Game Settings", "Save slot: ",
         config_.save_name, accepted);
     if (accepted && !slot.empty())
     {
@@ -1172,12 +1382,13 @@ void CursesPickerClient::show_options()
     }
 
     accepted = false;
-    const std::string seed = menu.prompt("Options", "Seed: ",
+    const std::string seed = menu.prompt("Game Settings", "Seed: ",
         std::to_string(static_cast<unsigned>(config_.seed)), accepted);
     if (accepted && !seed.empty()) {
         const auto value = parse_int_strict(seed);
         if (!value || *value < 0)
-            menu.show_text("Options", {"Invalid seed; keeping current."});
+            menu.show_text("Game Settings",
+                           {"Invalid seed; keeping current."});
         else
             config_.seed = static_cast<std::uint32_t>(*value);
     }
@@ -1235,6 +1446,15 @@ void CursesPickerClient::run_game()
         assert_company_slot_authority(); // [SAVE-R2]
         (void)og::data::company_autosave(
             save_data_, og::data::CompanyAutosaveKind::LevelWin);
+    }
+
+    // #207 design point 5: a lost/quit replay restores the campaign cursor
+    // on picker re-entry (a win already restored it inside the fold and the
+    // commit copy-back carried the cleared arm). Persist the healed cursor
+    // like any other picker mutation (§3.8).
+    if (og::ui::replay_reentry_restore(save_data_)) {
+        config_.level = save_data_.scen_num;
+        autosave_company_after_mutation(save_data_);
     }
 
     if (result.ended) {
@@ -1638,7 +1858,33 @@ bool CursesPickerClient::join_game()
 // negotiated networked level and report the result.
 void CursesPickerClient::run_network_lobby(std::unique_ptr<CursesLobby> lobby)
 {
-    const GameRunResult result = run_curses_lobby(*lobby, term_, clock_);
+    finish_network_round(run_curses_lobby(*lobby, term_, clock_));
+}
+
+// #207 design point 5 on the networked path. A networked round folds into the
+// SESSION's own save copy (the host's authoritative server_save_, the joiner's
+// mirror client_save_) and persists straight to disk; unlike the solo session
+// it never copies back into this picker's save_data_. So an armed REPLAY
+// excursion is STILL armed here when the round returns, and without this heal
+// the next hosted round would seed that stale arm and re-fight the same level
+// (V5 Option A seeds the authoritative save from this very SaveData) while any
+// later base-camp autosave would bank the replayed level as the campaign
+// cursor.
+//
+// After a win the heal is memory-only: the fold already restored the cursor
+// and persist_networked_win wrote the merged company file, so autosaving this
+// PRE-round copy over it would drop the win's gold, roster and completion
+// mark. On every other end nothing was written, so the healed cursor persists
+// like any other picker mutation (§3.8), matching run_game's solo tail.
+void CursesPickerClient::finish_network_round(const GameRunResult& result)
+{
+    const bool won = result.ended && result.ending == 0 && !result.mode_rematch;
+    if (og::ui::replay_reentry_restore(save_data_)) {
+        config_.level = save_data_.scen_num;
+        if (!won)
+            autosave_company_after_mutation(save_data_);
+    }
+
     if (result.ended) {
         Menu menu(term_, clock_);
         // CTF-aware verdict (see run_game): the local player's team vs the

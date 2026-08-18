@@ -54,10 +54,6 @@ std::string menu_item_label(const PickerMenuItem& item,
     switch (item.command) {
     case PickerMenuCommand::ToggleAlliedMode:
         return format_allied_mode_label(save);
-    case PickerMenuCommand::CycleCtfTeamCount:
-        return format_ctf_teams_label(save);
-    case PickerMenuCommand::CycleCtfCaptureLimit:
-        return format_ctf_caps_label(save);
     case PickerMenuCommand::ToggleCtfScenarioTroops:
         return format_ctf_troops_label(save);
     case PickerMenuCommand::CycleRespawnMode:
@@ -86,10 +82,6 @@ RowState gate_state(GateBinding binding, const MenuLabelContext& context)
         return context.is_networked ? RowState::Visible : RowState::Hidden;
     case MenuGate::LocalOnly:
         return context.is_networked ? RowState::Hidden : RowState::Visible;
-    case MenuGate::VersusCampaignOnly:
-        return (context.save != nullptr && is_versus_campaign(*context.save))
-            ? RowState::Visible
-            : RowState::Hidden;
     case MenuGate::Custom:
         return (binding.custom == nullptr || binding.custom(context))
             ? RowState::Visible
