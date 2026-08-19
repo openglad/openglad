@@ -1,6 +1,7 @@
 #include <openglad/gameplay/lobby_server.h>
 
 #include <openglad/core/campaign_ids.h>
+#include <openglad/core/util.h>
 #include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/core/tower_constants.h>
 
@@ -132,12 +133,23 @@ std::vector<og::sim::LobbyCharacterSlot> sanitize_character_slots(
     {
         if (sanitized.size() >= kMaxLobbyTeamSize)
             break;
+        // A slot with a family no loader could have produced is dropped at
+        // the merge: under lobby staging, rosters become world-construction
+        // inputs. Stats/exp stay accepted-as-sent — the same trust extended
+        // to a local save file.
+        if (slot.character.family < 0 ||
+            slot.character.family >= NUM_FAMILY_SLOTS)
+        {
+            continue;
+        }
         if (!seen_slot_indices.insert(slot.slot_index).second)
             continue;
 
         og::sim::LobbyCharacterSlot next = slot;
         if (next.character.teamnum < 0 || next.character.teamnum >= MAX_PLAYERS)
             next.character.teamnum = team;
+        if (next.character.level < 1)
+            next.character.level = 1;
         sanitized.push_back(std::move(next));
     }
 
@@ -689,7 +701,7 @@ void LobbyServer::send_state(PeerId peer_id) const
         peer_state->local_peer_is_host =
             host_peer_id_.has_value() && *host_peer_id_ == peer_id;
     }
-    transport_.send_lobby_state(peer_id, std::move(peer_state));
+    send_state_guarded(peer_id, std::move(peer_state));
 }
 
 void LobbyServer::broadcast_state() const
@@ -703,7 +715,27 @@ void LobbyServer::broadcast_state() const
         peer_state->last_join_request_id = peer.last_join_request_id;
         peer_state->local_peer_is_host =
             host_peer_id_.has_value() && *host_peer_id_ == peer_id;
+        send_state_guarded(peer_id, std::move(peer_state));
+    }
+}
+
+void LobbyServer::send_state_guarded(
+    PeerId peer_id, std::shared_ptr<LobbyState> peer_state) const
+{
+    // Serialize guard: an oversize LobbyState (u16 transport cap) must log
+    // and skip the send, never throw out of poll_incoming_messages — on the
+    // dedicated server the only handler above is main()'s outer try, i.e. a
+    // process exit. The read-side name clamps make oversize unreachable from
+    // the wire; this guards content that bypasses them (typed in-process
+    // messages) and any future growth.
+    try
+    {
         transport_.send_lobby_state(peer_id, std::move(peer_state));
+    }
+    catch (const std::exception& error)
+    {
+        LogError("lobby_state_send_failed peer={} error={}\n", peer_id,
+                 error.what());
     }
 }
 

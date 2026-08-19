@@ -162,6 +162,10 @@ private:
     [[nodiscard]] LobbyMachineId allocate_machine_id();
     void send_state(PeerId peer_id) const;
     void broadcast_state() const;
+    // Shared throw barrier for the two senders above (oversize serialize
+    // guard; see the implementation comment).
+    void send_state_guarded(PeerId peer_id,
+                            std::shared_ptr<LobbyState> peer_state) const;
     void broadcast_start_game(std::uint8_t player_index,
                               std::uint32_t request_id) const;
     void reassign_host_peer();

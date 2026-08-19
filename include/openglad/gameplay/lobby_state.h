@@ -18,6 +18,14 @@ namespace og::sim {
 // reader clamps longer strings instead of rejecting them.
 inline constexpr std::size_t kMaxLobbyCompanyNameLength = 40;
 
+// Maximum guy name length preserved by the wire (the 12-byte SaveData disk
+// field holds 11 chars + NUL). The shared guy reader clamps longer strings
+// instead of rejecting them: under lobby staging, roster payloads become
+// world-construction inputs, and unbounded names let hostile peers push the
+// merged LobbyState past the u16 transport cap (a serialize throw that would
+// otherwise exit a dedicated server).
+inline constexpr std::size_t kMaxLobbyGuyNameLength = 11;
+
 // Server-issued identity for one lobby seat. Unlike player_index (the dense
 // P#/gameplay ordinal), this token survives unrelated peers leaving and the
 // resulting player-index rebuild. Zero is reserved for unjoined/client-authored

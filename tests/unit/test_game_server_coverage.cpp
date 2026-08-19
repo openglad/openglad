@@ -461,7 +461,8 @@ TEST(GameServerCoverage, consuming_initial_snapshot_deduplicates_guy_records)
 
     guy shared(FAMILY_SOLDIER);
     shared.id = 31415;
-    shared.name = "Shared Record";
+    // 11-char max: guy names over the disk width clamp on the wire read.
+    shared.name = "Shared Rec";
     walker* first = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
     walker* second = fixture.world().add_ob(Order::Living, FAMILY_ELF);
     ASSERT_NE(nullptr, first);

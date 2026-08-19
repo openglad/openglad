@@ -555,6 +555,50 @@ TEST(NetTransport, v8_deploy_company_cross_control_and_denial_fields_round_trip)
               clamped.company);
 }
 
+// Staged-lobby hardening (#218): guy and player names clamp on READ to their
+// honest widths (guy = the 11-char disk field, player = the same 40-char cap
+// company already has). Unbounded names let two hostile peers push the merged
+// LobbyState past the u16 wire cap, and the resulting serialize throw
+// escaped LobbyServer::broadcast_state — a process exit on openglad_server.
+TEST(NetTransport, guy_and_player_names_clamp_on_read)
+{
+    og::sim::LobbyPlayer player;
+    player.player_index = 0u;
+    player.name = std::string(50, 'N');
+    og::sim::LobbyCharacterSlot slot;
+    slot.slot_index = 0u;
+    slot.deployed = true;
+    slot.character.name = std::string(64, 'G');
+    player.character_slots.push_back(slot);
+
+    og::sim::LobbyMessage message;
+    message.payload = og::sim::LobbyJoinMessage{.player = player};
+    const auto bytes = og::sim::serialize_lobby_message(message);
+    const auto decoded = og::sim::deserialize_lobby_message(bytes);
+    ASSERT_TRUE(decoded.has_value());
+    const auto& read_player =
+        std::get<og::sim::LobbyJoinMessage>(decoded->payload).player;
+    EXPECT_EQ(std::string(og::sim::kMaxLobbyCompanyNameLength, 'N'),
+              read_player.name);
+    ASSERT_EQ(1u, read_player.character_slots.size());
+    EXPECT_EQ(std::string(og::sim::kMaxLobbyGuyNameLength, 'G'),
+              read_player.character_slots.front().character.name);
+
+    // The shared guy reader guards InitialSetup rosters identically.
+    og::sim::InitialSetupMessage setup;
+    og::sim::InitialSetupGuyData guy;
+    guy.guy_id = 4;
+    guy.name = std::string(64, 'S');
+    setup.guys.push_back(guy);
+    const auto setup_bytes = og::sim::serialize_initial_setup_message(setup);
+    const auto setup_decoded =
+        og::sim::deserialize_initial_setup_message(setup_bytes);
+    ASSERT_TRUE(setup_decoded.has_value());
+    ASSERT_EQ(1u, setup_decoded->guys.size());
+    EXPECT_EQ(std::string(og::sim::kMaxLobbyGuyNameLength, 'S'),
+              setup_decoded->guys.front().name);
+}
+
 TEST(NetTransport, lightweight_message_roundtrips_and_decode)
 {
     const auto expect_client_ready = [] {

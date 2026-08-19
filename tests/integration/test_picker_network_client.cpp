@@ -2668,7 +2668,7 @@ TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_
         }
     }
     ASSERT_LT(local_slot_index, save.team_list.size());
-    save.team_list[local_slot_index]->name = "Joiner Prime";
+    save.team_list[local_slot_index]->name = "JoinerPrime";
     join_client->sync_from_save();
     og::sim::LobbyMessage sync_message;
     join_client->sync_settings_from_save();
@@ -2697,7 +2697,7 @@ TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_
     const auto& synced_join =
         std::get<og::sim::LobbyJoinMessage>(sync_message.payload);
     ASSERT_EQ(1u, synced_join.player.character_slots.size());
-    EXPECT_EQ("Joiner Prime",
+    EXPECT_EQ("JoinerPrime",
               synced_join.player.character_slots.front().character.name);
 
     state.players.resize(1u);
@@ -8529,7 +8529,7 @@ TEST(PickerNetworkClient,
     {
         auto join_scope = join_session.activate();
         ASSERT_NE(nullptr, join_save.team_list[0]);
-        join_save.team_list[0]->name = "Advanced Joiner";
+        join_save.team_list[0]->name = "AdvJoiner";
         join_client->resume_after_level();
         EXPECT_FALSE(join_client->set_ready(true))
             << "an early next-round Ready must not reuse the completed "
@@ -8551,7 +8551,7 @@ TEST(PickerNetworkClient,
         [](const og::sim::LobbyPlayer& player) {
             return !player.character_slots.empty() &&
                 player.character_slots.front().character.name ==
-                    "Advanced Joiner";
+                    "AdvJoiner";
         })) << "the early declaration must remain hidden while the old round "
                "is locked";
 
@@ -8570,7 +8570,7 @@ TEST(PickerNetworkClient,
             {
                 if (!player.character_slots.empty() &&
                     player.character_slots.front().character.name ==
-                        "Advanced Joiner")
+                        "AdvJoiner")
                 {
                     join_has_advanced_roster = true;
                 }
@@ -8583,7 +8583,7 @@ TEST(PickerNetworkClient,
         {
             if (!player.character_slots.empty() &&
                 player.character_slots.front().character.name ==
-                    "Advanced Joiner")
+                    "AdvJoiner")
             {
                 host_has_advanced_roster = true;
             }
