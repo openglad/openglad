@@ -634,9 +634,13 @@ int curses_network_testing_exercise_internal_helpers()
                 });
         const bool stable_before_abort =
             initial_worlds_valid &&
-            initial_tick > 0 &&
+            // Staged lobby (#218): the constructor burns ZERO sim ticks —
+            // the world is untensed until the session loop's first step
+            // opens the launch gate (the old shape burned 6 handshake
+            // ticks, so this pinned initial_tick > 0).
+            initial_tick == 0 &&
             initial_next_input_tick == initial_tick + 1 &&
-            advanced_tick >= initial_tick &&
+            advanced_tick >= 1 &&
             host->next_input_tick() == authoritative.tick_count_ + 1 &&
             !host->ended() &&
             host->ending() == 0 &&

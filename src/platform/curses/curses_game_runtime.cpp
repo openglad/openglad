@@ -34,6 +34,7 @@
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/progression.h>
 #include <openglad/resources/save_data.h>
+#include <openglad/server/match_stage.h>
 #include <openglad/server/headless_server_runtime.h>
 #include <openglad/server/headless_tick_interval.h>
 
@@ -289,16 +290,44 @@ std::unique_ptr<LocalCursesSession> LocalCursesSession::create(SaveData& save,
 
     // factory: private ctor — make_unique not applicable
     std::unique_ptr<LocalCursesSession> s(new LocalCursesSession(save));
-    og::server::copy_headless_server_save_data(s->server_save_, save);
-    og::server::copy_headless_server_save_data(s->client_save_, save);
+
+    // --- Server world: staged through the one pipeline (#218) and adopted
+    // by object handoff. A lobby-less local session owns a one-shot
+    // MatchStage: same dedicated-server load/spawn/on_load/mode-init, run
+    // dormant at stage time, then the staged world object BECOMES the live
+    // server world (no rebuild, no snapshot transfer, no latch surgery).
+    og::server::MatchStage stage({
+        .networked = false,
+        .arm_policy = og::server::LobbyStartReplayArm::SeededIntent,
+        .host_company_save = &save,
+    });
+    og::server::MatchStageInputs stage_inputs;
+    stage_inputs.equivalent = og::server::build_local_save_equivalent(save);
+    stage_inputs.difficulty = difficulty;
+    stage_inputs.match_seed = og::server::draw_match_seed();
+    stage_inputs.replay_level = save.replay_level;
+    stage_inputs.replay_origin = save.replay_origin;
+    stage.observe_inputs(stage_inputs, og::server::stage_clock_now_ms());
+    if (stage.status() != og::server::StageStatus::Staged)
+        return set_error("failed to load level for local game");
+
+    og::server::copy_headless_server_save_data(s->server_save_,
+                                               stage.staged_save());
+    // The session's primary team is the player's (the wire equivalent
+    // carries none, so the staged save holds the headless 0 — the classic
+    // completion scan keys on it).
+    s->server_save_.my_team = save.my_team;
+    og::server::copy_headless_server_save_data(s->client_save_, s->server_save_);
 
     const short level = s->server_save_.scen_num > 0 ? s->server_save_.scen_num : 1;
 
-    // --- Server world: load level + spawn team (authoritative) ---
-    s->server_level_ = std::make_unique<LevelRuntimeData>(
-        level, true, &headless_level_data_hooks());
+    og::server::MatchStage::TakenStage taken = stage.take();
+    s->server_level_ = std::move(taken.level);
     GameWorld& sw = s->server_level_->world();
+    sw.my_team = s->server_save_.my_team;
     s->server_rng_ptr_ = &sw.rng_;
+    // Rewire the adopted level's sim context from the stage's private
+    // save/events onto this session's.
     s->server_level_->set_sim_context(&s->server_save_, &sw.enemy_freeze,
                                       &s->server_events_, s->server_rng_ptr_, &cfg);
     s->server_ctx_.world = &sw;
@@ -307,17 +336,12 @@ std::unique_ptr<LocalCursesSession> LocalCursesSession::create(SaveData& save,
     s->server_ctx_.config = &cfg;
     s->server_ctx_.session_rng_ref = &s->server_rng_ptr_;
     s->server_ctx_.gameplay_active_ref = &s->server_active_;
+    // The staged announcements (level on_load — tick-1 stamped) ride into
+    // the live log; the launch gate holds the first drain until the local
+    // client confirms ready.
+    s->server_events_.append(std::move(taken.events));
 
-    // Activate the server context for the level load (spawns run sim code).
     s->saved_game_ = current_game;
-    current_game = &s->server_ctx_;
-
-    if (!og::server::load_headless_level_from_save(*s->server_level_, s->server_save_,
-                                                   difficulty, s->server_events_,
-                                                   /*authoritative=*/true)) {
-        current_game = s->saved_game_;
-        return set_error("failed to load level for local game");
-    }
 
     // --- Client mirror world: load the same level (grid + smoother), entities
     // are then replaced by the authoritative keyframe ---
@@ -395,14 +419,13 @@ std::unique_ptr<LocalCursesSession> LocalCursesSession::create(SaveData& save,
     current_game = &s->server_ctx_;
     s->server_->send_initial_snapshots(og::sim::SnapshotCaptureMode::Peek);
 
-    // Exchange the initial keyframe so the mirror world is populated before the
-    // first render, swapping contexts so each side touches its own obmap.
-    for (int i = 0; i < 4; ++i) {
-        current_game = &s->server_ctx_;
-        s->server_->step();
-        current_game = &s->client_ctx_;
-        s->client_->poll_messages();
-    }
+    // Deliver the seeded pair into the mirror before the first render — one
+    // client poll, ZERO server steps: the burned handshake ticks are gone
+    // (#218 dormancy). The ready this re-queues (plus the one above) is
+    // processed by the session loop's FIRST step, which opens the launch
+    // gate and runs tick 1 straight into a ready client.
+    current_game = &s->client_ctx_;
+    s->client_->poll_messages();
 
     return s;
 }

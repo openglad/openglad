@@ -327,11 +327,6 @@ int main(int argc, char* argv[])
                 std::chrono::milliseconds(args.lobby_poll_ms));
         }
 
-        // Coexistence window (C6): the GO block below still builds the live
-        // world itself; release the staged copy before that build. C8 makes
-        // the launch adopt the staged LevelRuntimeData instead.
-        stage.dispose();
-
         if (g_shutdown_requested.load(std::memory_order_acquire))
         {
             if (io_initialized)
@@ -339,23 +334,38 @@ int main(int argc, char* argv[])
             return 0;
         }
 
-        const og::sim::LobbySaveDataEquivalent lobby_save =
-            lobby_server.build_save_data_equivalent();
         const std::vector<og::sim::LobbyPlayerBinding> player_bindings =
             lobby_server.build_player_bindings();
 
+        // GO adopts the staged world by OBJECT HANDOFF (#218): the start
+        // gate forced ensure_current at StartGame, so the stage is current
+        // here — the staged world object becomes the live server world, no
+        // rebuild, no snapshot transfer, no latch surgery. Defensive
+        // re-check anyway (a gate bypass would otherwise launch nothing).
+        if (!stage.ensure_current(og::server::stage_clock_now_ms()))
+        {
+            LogError("headless_server_stage_failed error={}\n", stage.error());
+            if (io_initialized)
+                io_exit();
+            return 1;
+        }
+
         SaveData active_save;
-        og::server::apply_headless_lobby_game_start_config(active_save, lobby_save);
+        og::server::copy_headless_server_save_data(active_save,
+                                                   stage.staged_save());
         SaveData checkpoint_save;
         og::server::copy_headless_server_save_data(checkpoint_save, active_save);
 
         session.current_difficulty_ = static_cast<std::int32_t>(
             lobby_server.state().settings.difficulty);
 
-        LevelRuntimeData level_data(
-            active_save.scen_num,
-            true,
-            &headless_level_data_hooks());
+        og::server::MatchStage::TakenStage taken = stage.take();
+        std::unique_ptr<LevelRuntimeData> level_data_owner =
+            std::move(taken.level);
+        LevelRuntimeData& level_data = *level_data_owner;
+        // Rewire the adopted level's sim context from the stage's private
+        // save/events onto this session's (the stage's context died with
+        // take()).
         level_data.set_sim_context(
             &active_save,
             &level_data.world().enemy_freeze,
@@ -367,27 +377,14 @@ int main(int argc, char* argv[])
 
         GameplayActiveScope gameplay_active(session);
         GameplayContextGuard gameplay_guard(&session.game_);
-        if (!og::server::load_headless_level_from_save(
-                level_data,
-                active_save,
-                session.current_difficulty_,
-                *session.ctx_.sim_events,
-                /*authoritative=*/true))
-        {
-            if (io_initialized)
-                io_exit();
-            return 1;
-        }
 
-        // §4.4 control-policy install: derive owner-locked from the
-        // negotiated lobby config (session-only cross_control rides the
-        // equivalent) and stamp the machine map BEFORE bind_player scans run
-        // below; snapshot v9 replicates both scalars to every joiner mirror.
-        og::sim::install_control_policy(level_data.world(),
-                                        /*networked=*/true,
-                                        active_save.cross_control != 0,
-                                        player_bindings,
-                                        active_save.team_list);
+        // Control policy: already staged (MatchStage step 5, from the SAME
+        // bindings the gate's change-key refresh captured at StartGame).
+
+        // The staged announcements (level on_load, mode init — tick-1
+        // stamped) ride into the live log; the level-start gate holds the
+        // first drain until every seeded client confirms ready.
+        session.ctx_.sim_events->append(std::move(taken.events));
 
         og::sim::GameServer game_server(
             level_data.world(),
@@ -422,6 +419,13 @@ int main(int argc, char* argv[])
             checkpoint_save,
             session.current_difficulty_,
             *session.ctx_.sim_events);
+
+        // Seed every connected peer's initial setup + keyframe BEFORE the
+        // step loop (#239): the level-start gate then holds tick 1 (and the
+        // staged announcement drain) until each seeded peer confirms ready,
+        // instead of relying on the first steps' catch-up arm to seed them
+        // while the gate was already open on a clientless first step.
+        game_server.send_initial_snapshots(og::sim::SnapshotCaptureMode::Peek);
 
         Log("headless_server_tick_interval_ms {}\n", frame_interval_ms);
 

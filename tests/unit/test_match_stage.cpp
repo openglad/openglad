@@ -737,6 +737,131 @@ TEST_F(MatchStageTest, adopted_world_keyframe_is_byte_identical_to_preview)
     EXPECT_EQ(og::server::StageStatus::Empty, stage.status());
 }
 
+// C8: object handoff (the dedicated server / curses sessions). take() moves
+// the staged LevelRuntimeData and the tick-1-stamped announcements out; the
+// staged world OBJECT is the live server world. The stage is left Empty and
+// a second take yields nothing.
+TEST_F(MatchStageTest, take_hands_over_the_staged_level_and_events_once)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("westlands"));
+
+    SaveData host_save;
+    host_save.current_campaign = "westlands";
+    host_save.scen_num = 15;
+    ASSERT_TRUE(host_save.campaign_state_set("westlands", "watch_paid", 900));
+
+    og::server::MatchStage stage({
+        .networked = false,
+        .arm_policy = og::server::LobbyStartReplayArm::SeededIntent,
+        .host_company_save = &host_save,
+    });
+    og::server::MatchStageInputs inputs;
+    inputs.equivalent = og::server::build_local_save_equivalent(host_save);
+    inputs.equivalent.numplayers = 1;
+    inputs.equivalent.team_list = {
+        make_slot(0u, 100, "Host", FAMILY_SOLDIER, 0),
+    };
+    inputs.difficulty = 1;
+    inputs.match_seed = 7u;
+    stage.observe_inputs(inputs, /*now_ms=*/0);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+    const GameWorld* const staged_world = stage.world();
+    ASSERT_NE(nullptr, staged_world);
+
+    // The caller's contract: copy the save out FIRST, then take.
+    SaveData session_save;
+    og::server::copy_headless_server_save_data(session_save,
+                                               stage.staged_save());
+    EXPECT_EQ(15, session_save.scen_num);
+
+    og::server::MatchStage::TakenStage taken = stage.take();
+    ASSERT_NE(nullptr, taken.level);
+    EXPECT_EQ(staged_world, &taken.level->world())
+        << "handoff moves the OBJECT — no rebuild, no snapshot transfer";
+    EXPECT_FALSE(taken.level->world().oblist.empty());
+    EXPECT_FALSE(taken.level->world().owes_level_on_load())
+        << "the staged world ran on_load; the object carries the real latch";
+    int ledger_lines = 0;
+    for (const og::sim::Event& event : taken.events)
+    {
+        if (event.kind == og::sim::EventKind::Notification &&
+            event.text == "The Watch remembers its wages.")
+        {
+            ++ledger_lines;
+            EXPECT_EQ(1u, event.tick);
+        }
+    }
+    EXPECT_EQ(1, ledger_lines);
+
+    EXPECT_EQ(og::server::StageStatus::Empty, stage.status());
+    EXPECT_EQ(nullptr, stage.world());
+    og::server::MatchStage::TakenStage second = stage.take();
+    EXPECT_EQ(nullptr, second.level);
+    EXPECT_TRUE(second.events.empty());
+}
+
+// The staged pipeline is the LOCAL sessions' assembly filter too: a local
+// equivalent keeps benched members (build_local_save_equivalent), the apply
+// preserves their deploy flags, and spawn skips them — a benched fighter
+// must never march into the staged world (the force-deploy regression).
+TEST_F(MatchStageTest, local_equivalent_keeps_benched_members_out_of_the_world)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+
+    SaveData company_save;
+    company_save.current_campaign = "gladiator";
+    company_save.scen_num = 1;
+    company_save.numplayers = 1;
+    company_save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    company_save.team_list[0]->id = 100;
+    company_save.team_list[0]->name = "Marching";
+    company_save.team_list[0]->level = 3;
+    company_save.team_list[0]->deployed = true;
+    company_save.team_list[1] = std::make_unique<guy>(FAMILY_ARCHER);
+    company_save.team_list[1]->id = 200;
+    company_save.team_list[1]->name = "Benched";
+    company_save.team_list[1]->level = 3;
+    company_save.team_list[1]->deployed = false;
+    company_save.team_size = 2;
+
+    og::server::MatchStageInputs inputs;
+    inputs.equivalent = og::server::build_local_save_equivalent(company_save);
+    inputs.difficulty = 1;
+    inputs.match_seed = 11u;
+    ASSERT_EQ(2u, inputs.equivalent.team_list.size())
+        << "the local equivalent keeps the benched slot";
+    EXPECT_FALSE(inputs.equivalent.team_list[1].deployed);
+
+    og::server::MatchStage stage({
+        .networked = false,
+        .arm_policy = og::server::LobbyStartReplayArm::SeededIntent,
+        .host_company_save = &company_save,
+    });
+    stage.observe_inputs(inputs, /*now_ms=*/0);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+
+    const auto find_guy_walker = [](const GameWorld& world,
+                                    const std::string& name) -> const walker* {
+        for (const auto& entry : world.oblist)
+        {
+            const walker* const entity = entry.get();
+            if (entity != nullptr && entity->myguy != nullptr &&
+                entity->myguy->name == name)
+                return entity;
+        }
+        return nullptr;
+    };
+    EXPECT_NE(nullptr, find_guy_walker(*stage.world(), "Marching"));
+    EXPECT_EQ(nullptr, find_guy_walker(*stage.world(), "Benched"))
+        << "a benched member must never spawn into the staged world";
+    // ...but STAYS in the staged save (the local seed rule): the session
+    // copy keeps the whole company.
+    ASSERT_NE(nullptr, stage.staged_save().team_list[1]);
+    EXPECT_FALSE(stage.staged_save().team_list[1]->deployed);
+}
+
 // mark_failed (the owner's change-key throw funnel): repeat failures do not
 // churn the generation; the key is poisoned so a lobby that recovers back to
 // the LAST GOOD key restages instead of no-oping; a Failed stage delivers

@@ -38,6 +38,14 @@ void apply_headless_lobby_game_start_config(
     SaveData& save,
     const og::sim::LobbySaveDataEquivalent& config_save,
     LobbyStartReplayArm arm_policy = LobbyStartReplayArm::AdoptCompletedLanding);
+// The LOCAL (no-lobby) change-key equivalent: the save's own knobs + its
+// FULL roster (benched members kept with their deploy flags — the local
+// session's assembly filter is spawn-time, exactly like
+// LobbyServer::build_save_data_equivalent's local branch). Feeds the
+// lobby-less MatchStage owners (the curses local session; the text picker's
+// local stage) so every launch shape runs the one staging pipeline.
+[[nodiscard]] og::sim::LobbySaveDataEquivalent build_local_save_equivalent(
+    const SaveData& save);
 void sync_headless_server_save_data_from_world(SaveData& save,
                                                const GameWorld& world);
 // Spawn the save's deployed roster into the world: one walker per deployed

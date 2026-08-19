@@ -685,6 +685,10 @@ public:
     // authoritative session save before the lobby config applies, so a
     // hosting player means the same thing from every client. May be null
     // (tests): the session then plays a fresh history.
+    // `stage` (#218): the lobby owner's MatchStage — when it can become
+    // current, the session adopts its staged world by object handoff and the
+    // lobby_save/host_company_save rebuild below is skipped. nullptr (tests,
+    // defensive fallback) keeps the legacy in-place build.
     static std::unique_ptr<HostCursesSession> create(
         const og::sim::LobbySaveDataEquivalent& lobby_save,
         const std::vector<og::sim::LobbyPlayerBinding>& bindings,
@@ -693,7 +697,8 @@ public:
         std::shared_ptr<og::sim::InProcessTransport> host_client_transport,
         std::uint8_t host_player_index,
         const SaveData* host_company_save,
-        std::string* error);
+        std::string* error,
+        og::server::MatchStage* stage = nullptr);
 
     ~HostCursesSession() override { current_game = saved_game_; }
 
@@ -931,7 +936,8 @@ std::unique_ptr<HostCursesSession> HostCursesSession::create(
     std::shared_ptr<og::sim::InProcessTransport> host_client_transport,
     std::uint8_t host_player_index,
     const SaveData* host_company_save,
-    std::string* error)
+    std::string* error,
+    og::server::MatchStage* stage)
 {
     auto set_error = [&](const char* msg) -> std::unique_ptr<HostCursesSession> {
         if (error)
@@ -947,32 +953,76 @@ std::unique_ptr<HostCursesSession> HostCursesSession::create(
     s->server_transport_ = std::move(server_transport);
     s->host_client_transport_ = std::move(host_client_transport);
 
-    // V5 Option A (SDL host parity): the authoritative session plays under
-    // the HOST machine's own history. Seed from the host's active company
-    // save through the server copy — it carries completed_levels, the
-    // campaign_state decision book, scen_num/current_levels, the team, and
-    // (explicitly, since it is never serialized) the transient replay-arm
-    // pair — then apply the negotiated lobby roster/settings on top. The
-    // SeededIntent policy keeps the player's explicit arm (REPLAY) and
-    // never auto-arms an unarmed completed landing (VISIT means VISIT from
-    // a curses host); the dedicated server keeps its adopt-on-landing rule.
-    if (host_company_save != nullptr)
+    // Staged adoption (#218): the lobby staged the match through the SAME
+    // seed/apply pipeline below (V5 Option A host seed, SeededIntent, the
+    // §4.4 control policy from these bindings — the start gate refreshed the
+    // change key at StartGame), so GO adopts the staged world by object
+    // handoff instead of rebuilding it.
+    const bool adopt_stage = stage != nullptr &&
+        stage->ensure_current(og::server::stage_clock_now_ms());
+
+    GameWorld* adopted_world = nullptr;
+    if (adopt_stage)
+    {
         og::server::copy_headless_server_save_data(s->server_save_,
-                                                   *host_company_save);
-    og::server::apply_headless_lobby_game_start_config(
-        s->server_save_, lobby_save,
-        og::server::LobbyStartReplayArm::SeededIntent);
-    og::server::copy_headless_server_save_data(s->client_save_, s->server_save_);
+                                                   stage->staged_save());
+        og::server::MatchStage::TakenStage taken = stage->take();
+        s->server_level_ = std::move(taken.level);
+        adopted_world = &s->server_level_->world();
+        s->server_rng_ptr_ = &adopted_world->rng_;
+        // Rewire the adopted level's sim context from the stage's private
+        // save/events onto this session's.
+        s->server_level_->set_sim_context(&s->server_save_,
+                                          &adopted_world->enemy_freeze,
+                                          &s->server_events_,
+                                          s->server_rng_ptr_, &cfg);
+        // The staged announcements (level on_load, mode init — tick-1
+        // stamped) ride into the live log; the launch gate holds the first
+        // drain until every seeded peer confirms ready.
+        s->server_events_.append(std::move(taken.events));
+        og::server::copy_headless_server_save_data(s->client_save_,
+                                                   s->server_save_);
+    }
+    else
+    {
+        // Legacy in-place build (tests / defensive fallback).
+        //
+        // V5 Option A (SDL host parity): the authoritative session plays
+        // under the HOST machine's own history. Seed from the host's active
+        // company save through the server copy — it carries
+        // completed_levels, the campaign_state decision book,
+        // scen_num/current_levels, the team, and (explicitly, since it is
+        // never serialized) the transient replay-arm pair — then apply the
+        // negotiated lobby roster/settings on top. The SeededIntent policy
+        // keeps the player's explicit arm (REPLAY) and never auto-arms an
+        // unarmed completed landing (VISIT means VISIT from a curses host);
+        // the dedicated server keeps its adopt-on-landing rule.
+        if (host_company_save != nullptr)
+            og::server::copy_headless_server_save_data(s->server_save_,
+                                                       *host_company_save);
+        og::server::apply_headless_lobby_game_start_config(
+            s->server_save_, lobby_save,
+            og::server::LobbyStartReplayArm::SeededIntent);
+        og::server::copy_headless_server_save_data(s->client_save_,
+                                                   s->server_save_);
+    }
 
     const short level = s->server_save_.scen_num > 0 ? s->server_save_.scen_num : 1;
 
-    // --- Server world: load level + spawn team (authoritative) ---
-    s->server_level_ = std::make_unique<LevelRuntimeData>(
-        level, true, &headless_level_data_hooks());
+    if (!adopt_stage)
+    {
+        // --- Server world: load level + spawn team (authoritative) ---
+        s->server_level_ = std::make_unique<LevelRuntimeData>(
+            level, true, &headless_level_data_hooks());
+    }
     GameWorld& sw = s->server_level_->world();
-    s->server_rng_ptr_ = &sw.rng_;
-    s->server_level_->set_sim_context(&s->server_save_, &sw.enemy_freeze,
-                                      &s->server_events_, s->server_rng_ptr_, &cfg);
+    if (!adopt_stage)
+    {
+        s->server_rng_ptr_ = &sw.rng_;
+        s->server_level_->set_sim_context(&s->server_save_, &sw.enemy_freeze,
+                                          &s->server_events_,
+                                          s->server_rng_ptr_, &cfg);
+    }
     s->server_ctx_.world = &sw;
     s->server_ctx_.save = &s->server_save_;
     s->server_ctx_.sim_events = &s->server_events_;
@@ -982,23 +1032,29 @@ std::unique_ptr<HostCursesSession> HostCursesSession::create(
 
     s->saved_game_ = current_game;
     current_game = &s->server_ctx_;
-    if (!og::server::load_headless_level_from_save(*s->server_level_, s->server_save_,
-                                                   difficulty, s->server_events_,
-                                                   /*authoritative=*/true)) {
-        current_game = s->saved_game_;
-        return set_error("failed to load level for host game");
-    }
+    if (!adopt_stage)
+    {
+        if (!og::server::load_headless_level_from_save(
+                *s->server_level_, s->server_save_, difficulty,
+                s->server_events_, /*authoritative=*/true))
+        {
+            current_game = s->saved_game_;
+            return set_error("failed to load level for host game");
+        }
 
-    // §4.4 control-policy install: derive owner-locked from the negotiated
-    // lobby config (session-only cross_control rides the equivalent, never a
-    // disk round-trip) and stamp the machine map BEFORE bind_player scans run
-    // below; snapshot v9 replicates both scalars to every mirror, including
-    // the host's own.
-    og::sim::install_control_policy(sw,
-                                    /*networked=*/true,
-                                    s->server_save_.cross_control != 0,
-                                    bindings,
-                                    s->server_save_.team_list);
+        // §4.4 control-policy install: derive owner-locked from the
+        // negotiated lobby config (session-only cross_control rides the
+        // equivalent, never a disk round-trip) and stamp the machine map
+        // BEFORE bind_player scans run below; snapshot v9 replicates both
+        // scalars to every mirror, including the host's own. (The staged
+        // world arrives with the policy already installed — MatchStage
+        // step 5, same bindings.)
+        og::sim::install_control_policy(sw,
+                                        /*networked=*/true,
+                                        s->server_save_.cross_control != 0,
+                                        bindings,
+                                        s->server_save_.team_list);
+    }
 
     // --- Client mirror world: load the same level (grid + smoother) ---
     s->client_level_ = std::make_unique<LevelRuntimeData>(
@@ -1086,14 +1142,13 @@ std::unique_ptr<HostCursesSession> HostCursesSession::create(
     current_game = &s->server_ctx_;
     s->server_->send_initial_snapshots(og::sim::SnapshotCaptureMode::Peek);
 
-    // Exchange the initial keyframe so the mirror world is populated before the
-    // first render, swapping contexts so each side touches its own obmap.
-    for (int i = 0; i < 6; ++i) {
-        current_game = &s->server_ctx_;
-        s->server_->step();
-        current_game = &s->client_ctx_;
-        s->client_->poll_messages();
-    }
+    // Deliver the seeded pair into the host's mirror before the first render
+    // — one client poll, ZERO server steps: the burned handshake ticks are
+    // gone (#218 dormancy). The readies (the loopback's above and the remote
+    // joiners' over the wire) are processed by the session loop's steps,
+    // where the launch gate holds tick 1 until every seeded peer confirmed.
+    current_game = &s->client_ctx_;
+    s->client_->poll_messages();
 
     return s;
 }
@@ -2135,10 +2190,13 @@ private:
             // V5 Option A: the lobby's save_ IS the host machine's active
             // company save (the picker hands its live SaveData to
             // make_host_lobby), so the authoritative session seeds from it —
-            // history, decision book, and any REPLAY arm included.
+            // history, decision book, and any REPLAY arm included. The
+            // session adopts the lobby's staged world (#218) — the start
+            // gate already forced it current at StartGame.
             session_ = HostCursesSession::create(lobby_save, bindings, difficulty_,
                                                  combined_transport_, host_client_transport_,
-                                                 host_index, &save_, &err);
+                                                 host_index, &save_, &err,
+                                                 &stage_);
         } else {
             if (!state_.has_value() || transport_ == nullptr) {
                 session_built_failed_ = true;

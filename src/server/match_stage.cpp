@@ -83,6 +83,23 @@ std::vector<og::sim::Event> MatchStage::take_events()
     return staged_events_.drain();
 }
 
+MatchStage::TakenStage MatchStage::take()
+{
+    TakenStage taken;
+    if (status_ != StageStatus::Staged || !staged_level_)
+        return taken;
+
+    taken.events = staged_events_.drain();
+    taken.level = std::move(staged_level_);
+    // The moved-out level still points at this stage's save/events/rng
+    // through its sim context; the caller MUST rewire set_sim_context to its
+    // own session before anything touches the world. dispose() resets the
+    // remaining bookkeeping (the level pointer is already null, so nothing
+    // is destroyed).
+    dispose();
+    return taken;
+}
+
 void MatchStage::observe_inputs(const MatchStageInputs& inputs,
                                 std::uint64_t now_ms)
 {

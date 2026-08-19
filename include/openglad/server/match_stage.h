@@ -154,6 +154,20 @@ public:
     [[nodiscard]] GameWorld* world() noexcept;
     [[nodiscard]] const GameWorld* world() const noexcept;
 
+    // Launch adoption by OBJECT HANDOFF (the dedicated server and the curses
+    // sessions own their LevelRuntimeData outright): move the staged level
+    // runtime and the tick-1-stamped announcement queue out — the staged
+    // world object IS the live server world, no snapshot transfer, no latch
+    // surgery. The caller copies staged_save() out FIRST (SaveData is not
+    // movable — copy_headless_server_save_data), rewires set_sim_context to
+    // its own save/events/rng, and appends the events into its live log.
+    // The stage is left Empty. level is null unless status() was Staged.
+    struct TakenStage {
+        std::unique_ptr<LevelRuntimeData> level;
+        std::vector<og::sim::Event> events;
+    };
+    [[nodiscard]] TakenStage take();
+
     // The undrained init/on_load announcement queue. Every event is stamped
     // tick 1 (the tick those announcements carry when init runs lazily), so
     // adoption appends them into the live session's log verbatim
