@@ -49,6 +49,7 @@ og_unit_entity
 og_unit_families
 og_unit_headless_platform
 og_unit_mapgen
+og_unit_matchplan
 og_unit_mode
 og_unit_modes
 og_unit_onslaught

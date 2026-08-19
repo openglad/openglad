@@ -892,9 +892,19 @@ og_add_unit_group(og_unit_mode FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_mode_tick.cpp
 )
 
-og_add_unit_group(og_unit_modes FILES
+# The plan-phase suites (engine seam, agreement matrix, preview report)
+# run ~100 real world inits; under coverage instrumentation that plus the
+# mode suites overran og_unit_modes' 180 s ctest ceiling, so they live in
+# their own group — parallel with, not on top of, the mode suites.
+og_add_unit_group(og_unit_matchplan FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_match_plan.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_scenario_plan_report.cpp
+)
+target_compile_definitions(og_unit_matchplan PRIVATE
+    OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/modes/packs/modes.core"
+)
+
+og_add_unit_group(og_unit_modes FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_ctf.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_tdm.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_mutant.cpp
