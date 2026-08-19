@@ -36,6 +36,7 @@
 
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/lobby_server.h>
+#include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/server/headless_server_runtime.h>
@@ -43,6 +44,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 class GameWorld;
@@ -122,6 +124,12 @@ public:
     // latches).
     void dispose();
 
+    // Owner-side failure funnel: the change-key BUILD can throw before any
+    // inputs reach observe_inputs (LobbyServer::build_save_data_equivalent's
+    // 24-roster cap). The owner catches and lands here — dispose + Failed +
+    // a generation bump — never a process exit out of the poll loop.
+    void mark_failed(std::string_view failure);
+
     [[nodiscard]] StageStatus status() const noexcept { return status_; }
     [[nodiscard]] const std::string& error() const noexcept { return error_; }
     [[nodiscard]] std::uint32_t stage_generation() const noexcept
@@ -156,9 +164,32 @@ public:
         return staged_save_;
     }
 
+    // The serialized broadcast pair (protocol v13), rebuilt on every
+    // successful stage: a COMPLETE InitialSetup wire message (the level
+    // metadata a snapshot cannot carry; my_team is the owner's — the launch
+    // still sends each peer its own per-seat setup) and a COMPLETE keyframe
+    // SnapshotMessage of the dormant tick-0 world (Peek — a staged capture
+    // must never consume dirty masks). Host pane, joiner mirror and the wire
+    // all read these same bytes. A staged world whose keyframe cannot fit
+    // the u16 wire cap FAILS the stage with a legible error instead of
+    // throwing out of the owner's poll loop.
+    [[nodiscard]] const std::vector<std::uint8_t>& staged_setup_bytes()
+        const noexcept
+    {
+        return staged_setup_bytes_;
+    }
+    [[nodiscard]] const std::vector<std::uint8_t>& staged_keyframe_bytes()
+        const noexcept
+    {
+        return staged_keyframe_bytes_;
+    }
+
 private:
     void stage_now(std::uint64_t now_ms);
     void wire_stage_context();
+    // False = the staged world cannot fit the u16 wire cap (status Failed,
+    // legible error set).
+    [[nodiscard]] bool build_staged_wire_bytes(GameWorld& staged_world);
 
     MatchStageConfig config_;
     MatchStageInputs inputs_;
@@ -172,6 +203,8 @@ private:
     SaveData staged_save_;
     og::sim::SimEventLog staged_events_;
     std::unique_ptr<LevelRuntimeData> staged_level_;
+    std::vector<std::uint8_t> staged_setup_bytes_;
+    std::vector<std::uint8_t> staged_keyframe_bytes_;
 
     // The stage's own GameplayContext (the obmap/current_game discipline):
     // installed via save/restore swap for every stage/dispose, exactly like
@@ -180,5 +213,39 @@ private:
     IRandom* stage_rng_ptr_ = nullptr;
     bool stage_active_ = false;
 };
+
+// The match-id latch source: non-sim entropy (std::random_device xor the
+// steady clock), drawn by each owner ONCE per round — at lobby open and again
+// at every resume_after_level (each round is a fresh match; every restage
+// WITHIN a round reuses the latched seed, so identical inputs cannot flicker
+// the preview).
+[[nodiscard]] std::uint32_t draw_match_seed();
+
+// The owners' debounce clock (SDL-free steady clock, milliseconds).
+[[nodiscard]] std::uint64_t stage_clock_now_ms();
+
+// Owner-side delivery bookkeeping for the staged pair (protocol v13).
+struct StageBroadcastState {
+    std::uint32_t last_sent_generation = 0;
+    std::vector<og::sim::PeerId> known_peers;
+};
+
+// Delivery half of an owner poll step: broadcast the staged pair when the
+// stage generation moved since the last delivery, plus per-peer catch-up
+// sends for newly connected peers (a spectator connect changes no stage
+// input, so it would otherwise never see a pair). `transport` may be null:
+// the solo owner reads its stage in-process and puts nothing on the wire.
+void deliver_staged_pair(MatchStage& stage,
+                         og::sim::ITransport* transport,
+                         StageBroadcastState& broadcast);
+
+// One whole owner poll step: record the change key, run the trailing-edge
+// debounce, then deliver (deliver_staged_pair). Owners that hit the
+// change-key build throw call stage.mark_failed() instead of this.
+void drive_lobby_stage(MatchStage& stage,
+                       const MatchStageInputs& inputs,
+                       std::uint64_t now_ms,
+                       og::sim::ITransport* transport,
+                       StageBroadcastState& broadcast);
 
 } // namespace og::server

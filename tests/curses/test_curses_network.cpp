@@ -2153,8 +2153,19 @@ TEST(CursesNetwork, lobby_level_title_requires_matching_mount)
 
     EXPECT_TRUE(status_contains(*lobby, "Campaign: Multiplayer Game Modes"));
     EXPECT_TRUE(status_contains(*lobby, "Level: 1"));
-    EXPECT_FALSE(status_contains(*lobby, "Level: 1."))
-        << "a mismatched mount must not serve another campaign's scen1 title";
+    // The guarded hazard: gladiator's scen1 title must never label a modes
+    // lobby's level number.
+    EXPECT_FALSE(status_contains(*lobby, "SOUTH OF TALWOOD"))
+        << "another campaign's scen1 title must not serve a modes lobby";
+    // Staged lobby (#218): hosting STAGES the negotiated campaign during the
+    // first poll, which mounts it — the mount converges to the lobby's own
+    // campaign, so the titled form resolves under the RIGHT campaign from
+    // then on. modes has no scen 1, so the title is modes' own synthetic
+    // fallback, not a foreign level's name.
+    EXPECT_EQ("modes", get_mounted_campaign())
+        << "staging converges the mount onto the lobby's campaign";
+    EXPECT_TRUE(status_contains(*lobby, "Level: 1. Level 1"))
+        << "the converged mount serves modes' own (synthetic) scen1 title";
 }
 
 TEST(CursesNetwork, malformed_join_url_reports_error)

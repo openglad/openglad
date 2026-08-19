@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -474,6 +475,240 @@ TEST_F(MatchStageTest, take_events_drains_the_staged_queue_once)
         << "take_events must leave the staged queue empty";
     EXPECT_NE(nullptr, stage.world())
         << "taking the events must not disturb the staged world";
+}
+
+// --- C6: owner staging drive + staged-pair delivery (#218) ------------------
+
+class RecordingTransport final : public og::sim::ITransport
+{
+public:
+    void send(og::sim::PeerId peer_id,
+              const std::uint8_t* data,
+              std::size_t len) override
+    {
+        sent_.push_back({peer_id, std::vector<std::uint8_t>(data, data + len)});
+    }
+
+    std::vector<og::sim::ReceivedMessage> poll() override { return {}; }
+    void accept_connections() override {}
+    void disconnect(og::sim::PeerId) override {}
+    [[nodiscard]] std::vector<og::sim::PeerId> connected_peers() const override
+    {
+        return peers_;
+    }
+
+    void set_peers(std::vector<og::sim::PeerId> peers)
+    {
+        peers_ = std::move(peers);
+    }
+    [[nodiscard]] const std::vector<og::sim::ReceivedMessage>& sent() const
+    {
+        return sent_;
+    }
+
+private:
+    std::vector<og::sim::PeerId> peers_;
+    std::vector<og::sim::ReceivedMessage> sent_;
+};
+
+// The owner poll driver: the first key broadcasts one generation-stamped
+// setup+keyframe pair to every peer; an unchanged key sends nothing; a knob
+// change coalesces through the trailing-edge debounce into exactly one more
+// restage and one more pair.
+TEST_F(MatchStageTest, drive_lobby_stage_broadcasts_one_pair_per_restage)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    og::server::MatchStage stage({.networked = true});
+    og::server::StageBroadcastState broadcast;
+    RecordingTransport transport;
+    transport.set_peers({7u, 9u});
+
+    og::server::MatchStageInputs inputs = make_modes_inputs(1001u);
+    og::server::drive_lobby_stage(stage, inputs, /*now_ms=*/0, &transport,
+                                  broadcast);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+    EXPECT_EQ(1u, stage.stage_generation());
+    // ITransport's default broadcast fans out per connected peer: 2 peers x
+    // (setup + keyframe) = 4 sends, setup before keyframe for each peer.
+    ASSERT_EQ(4u, transport.sent().size());
+    const auto first_setup =
+        og::sim::decode_received_message(transport.sent()[0]);
+    ASSERT_EQ(og::sim::TypedReceivedMessageKind::StagedMatchSetup,
+              first_setup.kind);
+    EXPECT_EQ(1u, first_setup.staged_match_setup->stage_generation);
+    EXPECT_EQ(stage.staged_setup_bytes(),
+              first_setup.staged_match_setup->setup_bytes);
+    const auto first_keyframe =
+        og::sim::decode_received_message(transport.sent()[2]);
+    ASSERT_EQ(og::sim::TypedReceivedMessageKind::StagedMatchKeyframe,
+              first_keyframe.kind);
+    EXPECT_EQ(1u, first_keyframe.staged_match_keyframe->stage_generation);
+    EXPECT_EQ(stage.staged_keyframe_bytes(),
+              first_keyframe.staged_match_keyframe->snapshot_bytes);
+
+    // Unchanged key: nothing restages, nothing is sent.
+    og::server::drive_lobby_stage(stage, inputs, /*now_ms=*/50, &transport,
+                                  broadcast);
+    EXPECT_EQ(1u, stage.stage_generation());
+    EXPECT_EQ(4u, transport.sent().size());
+
+    // Knob churn coalesces: two capture-limit writes inside the window are
+    // one restage and one broadcast pair, on the trailing edge.
+    inputs.equivalent.ctf_capture_limit = 3;
+    og::server::drive_lobby_stage(stage, inputs, /*now_ms=*/100, &transport,
+                                  broadcast);
+    inputs.equivalent.ctf_capture_limit = 5;
+    og::server::drive_lobby_stage(stage, inputs, /*now_ms=*/200, &transport,
+                                  broadcast);
+    EXPECT_EQ(1u, stage.stage_generation());
+    EXPECT_EQ(4u, transport.sent().size());
+    og::server::drive_lobby_stage(
+        stage, inputs, /*now_ms=*/200 + og::server::kStageDebounceMs - 1,
+        &transport, broadcast);
+    EXPECT_EQ(1u, stage.stage_generation()) << "trailing edge not reached";
+    og::server::drive_lobby_stage(
+        stage, inputs, /*now_ms=*/200 + og::server::kStageDebounceMs,
+        &transport, broadcast);
+    EXPECT_EQ(2u, stage.stage_generation());
+    ASSERT_EQ(8u, transport.sent().size());
+    const auto second_setup =
+        og::sim::decode_received_message(transport.sent()[4]);
+    ASSERT_EQ(og::sim::TypedReceivedMessageKind::StagedMatchSetup,
+              second_setup.kind);
+    EXPECT_EQ(2u, second_setup.staged_match_setup->stage_generation);
+}
+
+// A peer that connects between restages (a spectator connect changes no
+// stage input) gets the CURRENT pair per-peer — and only that peer does.
+TEST_F(MatchStageTest, drive_lobby_stage_serves_catchup_pair_to_new_peer)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    og::server::MatchStage stage({.networked = true});
+    og::server::StageBroadcastState broadcast;
+    RecordingTransport transport;
+    transport.set_peers({7u});
+
+    const og::server::MatchStageInputs inputs = make_modes_inputs(1001u);
+    og::server::drive_lobby_stage(stage, inputs, /*now_ms=*/0, &transport,
+                                  broadcast);
+    ASSERT_EQ(2u, transport.sent().size()) << "one pair to the lone peer";
+
+    transport.set_peers({7u, 9u});
+    og::server::drive_lobby_stage(stage, inputs, /*now_ms=*/10, &transport,
+                                  broadcast);
+    ASSERT_EQ(4u, transport.sent().size());
+    EXPECT_EQ(9u, transport.sent()[2].peer_id)
+        << "catch-up goes to the NEW peer only";
+    EXPECT_EQ(9u, transport.sent()[3].peer_id);
+    const auto catchup_setup =
+        og::sim::decode_received_message(transport.sent()[2]);
+    ASSERT_EQ(og::sim::TypedReceivedMessageKind::StagedMatchSetup,
+              catchup_setup.kind);
+    EXPECT_EQ(stage.stage_generation(),
+              catchup_setup.staged_match_setup->stage_generation);
+    const auto catchup_keyframe =
+        og::sim::decode_received_message(transport.sent()[3]);
+    ASSERT_EQ(og::sim::TypedReceivedMessageKind::StagedMatchKeyframe,
+              catchup_keyframe.kind);
+
+    // Once known, the peer never receives the same generation again.
+    og::server::drive_lobby_stage(stage, inputs, /*now_ms=*/20, &transport,
+                                  broadcast);
+    EXPECT_EQ(4u, transport.sent().size());
+}
+
+// The cached wire pair IS the staged world: the setup carries the level
+// metadata + roster (controlled ids deliberately empty — the launch server
+// still sends per-seat setups) and the keyframe bytes equal a fresh Peek
+// serialization of the staged world.
+TEST_F(MatchStageTest, staged_wire_pair_matches_the_staged_world)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    og::server::MatchStage stage({.networked = true});
+    stage.observe_inputs(make_modes_inputs(1001u), /*now_ms=*/0);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+    ASSERT_NE(nullptr, stage.world());
+
+    const auto setup =
+        og::sim::deserialize_initial_setup_message(stage.staged_setup_bytes());
+    ASSERT_TRUE(setup.has_value());
+    EXPECT_EQ(stage.world()->id, setup->level_id);
+    EXPECT_EQ(stage.world()->pixmaxx, setup->pixmaxx);
+    EXPECT_EQ(stage.world()->pixmaxy, setup->pixmaxy);
+    EXPECT_EQ(820, setup->current_scenario);
+    bool found_striker = false;
+    for (const og::sim::InitialSetupGuyData& guy_data : setup->guys)
+        found_striker = found_striker || guy_data.name == "Striker";
+    EXPECT_TRUE(found_striker) << "the roster rides the staged setup";
+    for (const std::uint32_t controlled : setup->controlled_entity_ids)
+        EXPECT_EQ(0u, controlled);
+
+    EXPECT_EQ(staged_keyframe_bytes(stage), stage.staged_keyframe_bytes())
+        << "the cached keyframe must be byte-identical to a fresh Peek";
+    const og::sim::WorldSnapshot inner =
+        og::sim::deserialize_snapshot(stage.staged_keyframe_bytes());
+    EXPECT_EQ(0u, inner.tick_count);
+    EXPECT_EQ(0u, inner.level_tick_count);
+}
+
+// mark_failed (the owner's change-key throw funnel): repeat failures do not
+// churn the generation; the key is poisoned so a lobby that recovers back to
+// the LAST GOOD key restages instead of no-oping; a Failed stage delivers
+// nothing.
+TEST_F(MatchStageTest, mark_failed_poisons_key_and_recovers_on_identical_key)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    og::server::MatchStage stage({.networked = true});
+    og::server::StageBroadcastState broadcast;
+    RecordingTransport transport;
+    transport.set_peers({7u});
+
+    const og::server::MatchStageInputs inputs = make_modes_inputs(1001u);
+    og::server::drive_lobby_stage(stage, inputs, /*now_ms=*/0, &transport,
+                                  broadcast);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+    ASSERT_EQ(2u, transport.sent().size());
+
+    testing::internal::CaptureStderr();
+    stage.mark_failed("combined roster exceeds the lobby cap");
+    (void)testing::internal::GetCapturedStderr();
+    EXPECT_EQ(og::server::StageStatus::Failed, stage.status());
+    EXPECT_EQ("combined roster exceeds the lobby cap", stage.error());
+    EXPECT_EQ(nullptr, stage.world());
+    EXPECT_EQ(2u, stage.stage_generation());
+    EXPECT_TRUE(stage.staged_setup_bytes().empty());
+    EXPECT_TRUE(stage.staged_keyframe_bytes().empty());
+
+    // The owner re-marks the same failure every poll while the roster stays
+    // over the cap: no generation churn.
+    stage.mark_failed("combined roster exceeds the lobby cap");
+    EXPECT_EQ(2u, stage.stage_generation());
+
+    // A Failed stage never puts anything on the wire.
+    og::server::deliver_staged_pair(stage, &transport, broadcast);
+    EXPECT_EQ(2u, transport.sent().size());
+
+    // Recovery back to EXACTLY the last good key must restage (the throwing
+    // build never reached observe_inputs, so the stored key is stale-good).
+    og::server::drive_lobby_stage(stage, inputs, /*now_ms=*/1'000, &transport,
+                                  broadcast);
+    EXPECT_EQ(og::server::StageStatus::Failed, stage.status())
+        << "recovery waits out the debounce";
+    og::server::drive_lobby_stage(stage, inputs,
+                                  /*now_ms=*/1'000 + og::server::kStageDebounceMs,
+                                  &transport, broadcast);
+    EXPECT_EQ(og::server::StageStatus::Staged, stage.status());
+    EXPECT_EQ(3u, stage.stage_generation());
+    EXPECT_EQ(4u, transport.sent().size())
+        << "the recovered stage broadcasts one fresh pair";
 }
 
 } // namespace

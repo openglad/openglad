@@ -669,56 +669,6 @@ og::sim::WorldSnapshot capture_server_keyframe(GameWorld& world,
     return og::sim::capture_keyframe_snapshot(world);
 }
 
-std::vector<og::sim::InitialSetupGuyData> collect_initial_setup_guys(
-    const GameWorld& world)
-{
-    std::unordered_set<std::int32_t> seen_ids;
-    std::vector<og::sim::InitialSetupGuyData> guys;
-
-    const auto collect = [&seen_ids, &guys](const auto& entities) {
-        for (const auto& entry : entities)
-        {
-            const walker* const entity = entry.get();
-            if (entity == nullptr || entity->myguy == nullptr)
-                continue;
-
-            const guy& source = *entity->myguy;
-            if (!seen_ids.insert(source.id).second)
-                continue;
-
-            og::sim::InitialSetupGuyData data;
-            data.guy_id = source.id;
-            data.name = source.name;
-            data.family = source.family;
-            data.strength = source.strength;
-            data.dexterity = source.dexterity;
-            data.constitution = source.constitution;
-            data.intelligence = source.intelligence;
-            data.armor = source.armor;
-            data.exp = source.exp;
-            data.kills = source.kills;
-            data.level_kills = source.level_kills;
-            data.total_damage = source.total_damage;
-            data.total_hits = source.total_hits;
-            data.total_shots = source.total_shots;
-            data.teamnum = source.teamnum;
-            data.scen_damage = source.scen_damage;
-            data.scen_kills = source.scen_kills;
-            data.scen_damage_taken = source.scen_damage_taken;
-            data.scen_min_hp = source.scen_min_hp;
-            data.scen_shots = source.scen_shots;
-            data.scen_hits = source.scen_hits;
-            data.level = source.level;
-            guys.push_back(std::move(data));
-        }
-    };
-
-    collect(world.oblist);
-    collect(world.fxlist);
-    collect(world.weaplist);
-    return guys;
-}
-
 bool has_living_member_for_any_bound_team(
     const GameWorld& world,
     const std::unordered_map<og::sim::PeerId, og::sim::ConnectedClientState>& clients,
@@ -792,6 +742,59 @@ bool session_tokens_equal(const og::sim::SessionToken& lhs,
 } // namespace
 
 namespace og::sim {
+
+// Shared with the staged-lobby stager (og::server::MatchStage builds the
+// broadcast InitialSetup from its dormant world), so the staged setup and the
+// launch setup can never fork their roster payloads.
+std::vector<og::sim::InitialSetupGuyData> collect_initial_setup_guys(
+    const GameWorld& world)
+{
+    std::unordered_set<std::int32_t> seen_ids;
+    std::vector<og::sim::InitialSetupGuyData> guys;
+
+    const auto collect = [&seen_ids, &guys](const auto& entities) {
+        for (const auto& entry : entities)
+        {
+            const walker* const entity = entry.get();
+            if (entity == nullptr || entity->myguy == nullptr)
+                continue;
+
+            const guy& source = *entity->myguy;
+            if (!seen_ids.insert(source.id).second)
+                continue;
+
+            og::sim::InitialSetupGuyData data;
+            data.guy_id = source.id;
+            data.name = source.name;
+            data.family = source.family;
+            data.strength = source.strength;
+            data.dexterity = source.dexterity;
+            data.constitution = source.constitution;
+            data.intelligence = source.intelligence;
+            data.armor = source.armor;
+            data.exp = source.exp;
+            data.kills = source.kills;
+            data.level_kills = source.level_kills;
+            data.total_damage = source.total_damage;
+            data.total_hits = source.total_hits;
+            data.total_shots = source.total_shots;
+            data.teamnum = source.teamnum;
+            data.scen_damage = source.scen_damage;
+            data.scen_kills = source.scen_kills;
+            data.scen_damage_taken = source.scen_damage_taken;
+            data.scen_min_hp = source.scen_min_hp;
+            data.scen_shots = source.scen_shots;
+            data.scen_hits = source.scen_hits;
+            data.level = source.level;
+            guys.push_back(std::move(data));
+        }
+    };
+
+    collect(world.oblist);
+    collect(world.fxlist);
+    collect(world.weaplist);
+    return guys;
+}
 
 void reset_client_snapshot_state(PerClientState& client_state) noexcept
 {

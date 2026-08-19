@@ -707,6 +707,23 @@ int count_picker_trace_containing(const char* substring)
     return count;
 }
 
+// Staged lobby (#218): MatchStage emits TRACE("stage", "restaged gen=...")
+// on every completed restage.
+int count_stage_trace_containing(const char* substring)
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    int count = 0;
+    for (const TraceEntry& entry : g_trace_buffer)
+    {
+        if (entry.category == "stage" &&
+            entry.message.find(substring) != std::string::npos)
+        {
+            ++count;
+        }
+    }
+    return count;
+}
+
 struct PagerFlowState
 {
     bool started = false;
@@ -1168,6 +1185,11 @@ struct RefreshFlowState
     bool finished = false;
     bool viewer_opened = false;
     bool refresh_seen = false;
+    // Staged lobby (#218): the settings change must restage the owner's
+    // MatchStage exactly once (debounce-coalesced).
+    int restages_before_change = -1;
+    int restages_after_change = -1;
+    bool restage_after_change_seen = false;
 };
 
 int view_scenario_refresh_injector(void* data)
@@ -1197,11 +1219,27 @@ int view_scenario_refresh_injector(void* data)
     // write alone would be clobbered by that same poll — the injector
     // stands in for the host's SettingsChange by updating the lobby the
     // way the click callbacks do).
+    state->restages_before_change = count_stage_trace_containing("restaged");
     og::runtime::current_session->myscreen_->save_data.ctf_team_count = 3;
     picker_lobby_sync_settings_from_save();
     state->refresh_seen =
         wait_for_picker_trace("view_scenario refresh lines=", 1, 5000);
     SDL_Delay(300);
+
+    // Staged lobby (#218): the same settings change moves the owner's change
+    // key, so exactly ONE debounce-coalesced restage must land (the trailing
+    // edge is 250 ms behind the change; poll for it).
+    for (int waited_ms = 0; waited_ms < 5000; waited_ms += 50)
+    {
+        state->restages_after_change =
+            count_stage_trace_containing("restaged");
+        if (state->restages_after_change > state->restages_before_change)
+        {
+            state->restage_after_change_seen = true;
+            break;
+        }
+        SDL_Delay(50);
+    }
 
     // Viewer back -> SCENARIO submenu; its back (30,170) -> team build.
     interact("back");
@@ -1245,6 +1283,16 @@ TEST(CtfUi, view_scenario_rebuilds_when_settings_change_underneath)
         << "a TEAMS change under the open viewer must rebuild the report "
            "(the refresh trace)";
     EXPECT_GE(count_picker_trace_containing("view_scenario refresh lines="), 1);
+
+    // Staged lobby (#218): the solo owner staged on lobby entry and restaged
+    // exactly once for the settings change (debounce coalescing) — the
+    // restage-trigger half of the C6 contract.
+    EXPECT_GE(state.restages_before_change, 1)
+        << "lobby entry stages the initial world";
+    EXPECT_TRUE(state.restage_after_change_seen)
+        << "the settings change must trigger a restage";
+    EXPECT_EQ(state.restages_before_change + 1, state.restages_after_change)
+        << "one knob change coalesces into exactly one restage";
 
     // The save0 load remounted the versus campaign; restore the default
     // mount so later (or shuffled) tests load classic levels again.

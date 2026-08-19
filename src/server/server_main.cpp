@@ -23,6 +23,7 @@
 #include <openglad/resources/pack_transfer_io.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/server/headless_server_runtime.h>
+#include <openglad/server/match_stage.h>
 #include <openglad/server/headless_tick_interval.h>
 
 #include <algorithm>
@@ -270,15 +271,66 @@ int main(int argc, char* argv[])
         // Offer this host's mounted non-core class packs for automatic
         // transfer to joiners (protocol v10).
         lobby_server.set_hosted_packs(og::resources::build_transferable_packs());
+
+        // Staged lobby (#218): the dedicated owner stages the match world
+        // in the lobby through the same pipeline the GO block below runs
+        // (fresh-save shape — no player company on a headless host). The
+        // seed is latched once for this match; joiners receive the staged
+        // pair after every debounced restage. GO consults the stage through
+        // the start gate — the gate recomputes the change key AT StartGame
+        // time and forces the synchronous restage, so a stale or Failed
+        // stage denies the start (StageFailed) instead of launching.
+        og::server::MatchStage stage(og::server::MatchStageConfig{
+            .networked = true,
+            .arm_policy = og::server::LobbyStartReplayArm::AdoptCompletedLanding,
+            .host_company_save = nullptr,
+        });
+        og::server::StageBroadcastState stage_broadcast;
+        const std::uint32_t match_seed = og::server::draw_match_seed();
+        const auto refresh_stage_inputs = [&stage, &lobby_server, match_seed] {
+            try
+            {
+                og::server::MatchStageInputs inputs;
+                inputs.equivalent = lobby_server.build_save_data_equivalent();
+                inputs.bindings = lobby_server.build_player_bindings();
+                inputs.difficulty = lobby_server.state().settings.difficulty;
+                inputs.match_seed = match_seed;
+                stage.observe_inputs(inputs,
+                                     og::server::stage_clock_now_ms());
+            }
+            catch (const std::exception& stage_error)
+            {
+                // The 24-roster equivalent cap lands as a Failed stage (GO
+                // denied via StageFailed), never a process exit.
+                stage.mark_failed(stage_error.what());
+            }
+        };
+        lobby_server.set_start_gate([&stage, &refresh_stage_inputs] {
+            refresh_stage_inputs();
+            return stage.ensure_current(og::server::stage_clock_now_ms())
+                ? og::sim::StartDenialReason::None
+                : og::sim::StartDenialReason::StageFailed;
+        });
+
         while (!g_shutdown_requested.load(std::memory_order_acquire))
         {
             lobby_server.poll_incoming_messages();
             if (lobby_server.consume_start_game_requested())
                 break;
 
+            refresh_stage_inputs();
+            stage.maintain(og::server::stage_clock_now_ms());
+            og::server::deliver_staged_pair(stage, &transport,
+                                            stage_broadcast);
+
             std::this_thread::sleep_for(
                 std::chrono::milliseconds(args.lobby_poll_ms));
         }
+
+        // Coexistence window (C6): the GO block below still builds the live
+        // world itself; release the staged copy before that build. C8 makes
+        // the launch adopt the staged LevelRuntimeData instead.
+        stage.dispose();
 
         if (g_shutdown_requested.load(std::memory_order_acquire))
         {

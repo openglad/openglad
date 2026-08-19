@@ -52,6 +52,7 @@
 #include <openglad/platform/net_transport_websocket_server.h>
 #include <openglad/platform/curses/curses_game_runtime.h>
 #include <openglad/resources/campaign_metadata.h>
+#include <openglad/server/match_stage.h>
 
 #include <cstring>
 #include <openglad/resources/company.h>
@@ -1304,6 +1305,17 @@ class CursesLobbyImpl final : public CursesLobby
 public:
     CursesLobbyImpl(LobbyRole role, SaveData& save, int difficulty)
         : role_(role), save_(save), difficulty_(difficulty)
+        // Staged lobby (#218): the curses host stages through the dedicated
+        // pipeline, seeded from the host machine's live company save (V5
+        // Option A — history, decision book, replay-arm intent). Each lobby
+        // object is one round, so the seed latches at construction. The Join
+        // role never drives the stage.
+        , stage_(og::server::MatchStageConfig{
+              .networked = true,
+              .arm_policy = og::server::LobbyStartReplayArm::SeededIntent,
+              .host_company_save = &save,
+          })
+        , match_seed_(og::server::draw_match_seed())
     {
         local_team_ = resolve_initial_local_team(save);
         player_name_ = make_network_player_name();
@@ -1363,6 +1375,7 @@ public:
         server_ = std::make_unique<og::sim::LobbyServer>(*combined_transport_);
         // Offer this host's mounted non-core class packs (protocol v10).
         server_->set_hosted_packs(og::resources::build_transferable_packs());
+        wire_start_gate();
 
         // Seed the host's own settings + join over the loopback client transport.
         send_lobby_message(*host_client_transport_,
@@ -1422,6 +1435,7 @@ public:
         combined_transport_->accept_connections();
         server_ = std::make_unique<og::sim::LobbyServer>(*combined_transport_);
         server_->set_hosted_packs(og::resources::build_transferable_packs());
+        wire_start_gate();
 
         send_lobby_message(*host_client_transport_,
                            host_client_transport_->local_peer_id(),
@@ -2010,10 +2024,55 @@ private:
         }
     }
 
+    // Staged lobby (#218): change-key recompute from the live LobbyServer
+    // (the SAME functions build_session_if_needed consumes at GO). Also run
+    // by the start gate at StartGame time so a same-batch roster edit
+    // reaches the launched world.
+    void refresh_stage_inputs()
+    {
+        if (server_ == nullptr)
+            return;
+        try
+        {
+            og::server::MatchStageInputs inputs;
+            inputs.equivalent = server_->build_save_data_equivalent();
+            inputs.bindings = server_->build_player_bindings();
+            inputs.difficulty = server_->state().settings.difficulty;
+            inputs.match_seed = match_seed_;
+            stage_.observe_inputs(inputs, og::server::stage_clock_now_ms());
+        }
+        catch (const std::exception& stage_error)
+        {
+            // The 24-roster equivalent cap lands as a Failed stage (GO
+            // denied via StageFailed), never an escape out of the pump.
+            stage_.mark_failed(stage_error.what());
+        }
+    }
+
+    void wire_start_gate()
+    {
+        server_->set_start_gate([this] {
+            refresh_stage_inputs();
+            return stage_.ensure_current(og::server::stage_clock_now_ms())
+                ? og::sim::StartDenialReason::None
+                : og::sim::StartDenialReason::StageFailed;
+        });
+    }
+
     void pump_once()
     {
         if (server_ != nullptr)
             server_->poll_incoming_messages();
+
+        // Owner staging: debounce + staged-pair delivery on the host role.
+        if (role_ == LobbyRole::Host && server_ != nullptr)
+        {
+            refresh_stage_inputs();
+            stage_.maintain(og::server::stage_clock_now_ms());
+            og::server::deliver_staged_pair(stage_,
+                                            combined_transport_.get(),
+                                            stage_broadcast_);
+        }
 
         // The host listens on its loopback client transport; the joiner on its
         // remote transport. Send the joiner's join once it has a peer.
@@ -2108,6 +2167,8 @@ private:
     void teardown()
     {
         session_.reset();
+        stage_.dispose();
+        stage_broadcast_ = {};
         server_.reset();
         state_.reset();
         combined_transport_.reset();
@@ -2127,6 +2188,12 @@ private:
     LobbyRole role_;
     SaveData& save_;
     int difficulty_ = 1;
+    // Staged lobby (#218): the curses host's MatchStage + delivery
+    // bookkeeping + per-round match-id latch (drawn at construction — one
+    // lobby object is one round).
+    og::server::MatchStage stage_;
+    og::server::StageBroadcastState stage_broadcast_;
+    std::uint32_t match_seed_ = 0;
     short local_team_ = 0;
     // 't'-cycle bookkeeping: selected/pending seats use server-issued tokens
     // so dense P# changes cannot redirect an in-flight team choice.

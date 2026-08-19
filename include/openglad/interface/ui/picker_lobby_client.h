@@ -10,6 +10,12 @@
 #include <string>
 #include <vector>
 
+class GameWorld;
+
+namespace og::server {
+class MatchStage;
+} // namespace og::server
+
 namespace og::ui {
 
 struct PickerLobbyGameStartConfig
@@ -212,6 +218,28 @@ public:
     [[nodiscard]] virtual bool is_networked_session() const noexcept
     {
         return false;
+    }
+    // --- Staged lobby (#218) ------------------------------------------------
+    // The staged authoritative world this client can show: the owner's real
+    // MatchStage world (host/local), or a joiner's preview mirror (C9).
+    // nullptr while nothing is staged (default for clients without staging).
+    [[nodiscard]] virtual const GameWorld* staged_world() const
+    {
+        return nullptr;
+    }
+    // Monotonic per-restage counter (0 = never staged). Preview refresh keys
+    // on it.
+    [[nodiscard]] virtual std::uint32_t stage_generation() const
+    {
+        return 0;
+    }
+    // The launch adoption seam: owners (host/local) hand their MatchStage to
+    // glad_init's transport-shadow install; joiners return nullptr (their
+    // install stays the client shadow). Non-owning — the lobby client keeps
+    // ownership and the adopter disposes the stage's content after adoption.
+    [[nodiscard]] virtual og::server::MatchStage* take_match_stage()
+    {
+        return nullptr;
     }
 };
 

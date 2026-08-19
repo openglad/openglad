@@ -9,6 +9,7 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/server/match_stage.h>
 
 #include <algorithm>
 #include <array>
@@ -225,6 +226,19 @@ public:
             og::runtime::current_session->myscreen_->save_data.numplayers == 0;
 
         const SaveData& save = og::runtime::current_session->myscreen_->save_data;
+        // Staged lobby (#218): the solo/split owner stages through the same
+        // dedicated-server pipeline as every other owner. Seeded from the
+        // player's live company save (V5 Option A: history, decision book,
+        // replay-arm intent), legacy shared control pool (never owner-locked
+        // locally). The seed is latched once per round.
+        stage_ = std::make_unique<og::server::MatchStage>(
+            og::server::MatchStageConfig{
+                .networked = false,
+                .arm_policy = og::server::LobbyStartReplayArm::SeededIntent,
+                .host_company_save = &save,
+            });
+        stage_broadcast_ = {};
+        match_seed_ = og::server::draw_match_seed();
         seat_teams_ = build_peer_team_mapping(save, spectator_mode_);
         ensure_peer_count(static_cast<int>(seat_teams_.size()));
         commit_from_save(true, true);
@@ -243,6 +257,13 @@ public:
         start_request_pending_ = false;
         pending_start_request_id_ = 0;
         pending_game_start_config_.reset();
+        // Each round is a fresh match: dispose any leftover stage and latch a
+        // FRESH seed (retry re-rolls fresh weather/squads across rounds while
+        // every restage WITHIN the round stays byte-identical).
+        if (stage_)
+            stage_->dispose();
+        stage_broadcast_ = {};
+        match_seed_ = og::server::draw_match_seed();
         server_->unlock_for_new_round();
         commit_from_save(true, true);
     }
@@ -259,6 +280,8 @@ public:
         state_.reset();
         server_.reset();
         server_transport_.reset();
+        stage_.reset();
+        stage_broadcast_ = {};
         seat_teams_.clear();
         spectator_mode_ = false;
         start_request_pending_ = false;
@@ -288,6 +311,24 @@ public:
 
         poll_messages();
         apply_state_to_save();
+        drive_stage();
+    }
+
+    [[nodiscard]] const GameWorld* staged_world() const override
+    {
+        return stage_ && stage_->status() == og::server::StageStatus::Staged
+            ? stage_->world()
+            : nullptr;
+    }
+
+    [[nodiscard]] std::uint32_t stage_generation() const override
+    {
+        return stage_ ? stage_->stage_generation() : 0;
+    }
+
+    [[nodiscard]] og::server::MatchStage* take_match_stage() override
+    {
+        return stage_.get();
     }
 
     void set_player_mode(int player_count) override
@@ -992,8 +1033,38 @@ private:
         restore_preserved_save_slots(save, std::move(preserved_slots));
     }
 
+    // Staged lobby (#218): the owner's change-key recompute + debounce driver.
+    // Solo/local owns no wire — the staged pair is read in-process by the
+    // preview and the launch adoption; nothing is broadcast (transport null).
+    void drive_stage()
+    {
+        if (!stage_ || !server_)
+            return;
+        const std::uint64_t now = og::server::stage_clock_now_ms();
+        try
+        {
+            og::server::MatchStageInputs inputs;
+            inputs.equivalent = server_->build_save_data_equivalent();
+            inputs.bindings = server_->build_player_bindings();
+            inputs.difficulty = server_->state().settings.difficulty;
+            inputs.match_seed = match_seed_;
+            og::server::drive_lobby_stage(*stage_, inputs, now,
+                                          /*transport=*/nullptr,
+                                          stage_broadcast_);
+        }
+        catch (const std::exception& error)
+        {
+            // The 24-roster equivalent cap (and any future key-build throw)
+            // lands as a Failed stage, never an escape out of the menu poll.
+            stage_->mark_failed(error.what());
+        }
+    }
+
     std::shared_ptr<og::sim::InProcessTransport> server_transport_;
     std::unique_ptr<og::sim::LobbyServer> server_;
+    std::unique_ptr<og::server::MatchStage> stage_;
+    og::server::StageBroadcastState stage_broadcast_;
+    std::uint32_t match_seed_ = 0;
     std::vector<LocalLobbyPeer> peers_;
     std::vector<short> seat_teams_;
     std::optional<og::sim::LobbyState> state_;

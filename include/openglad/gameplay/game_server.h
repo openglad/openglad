@@ -57,6 +57,12 @@ struct PerClientState {
 };
 
 void reset_client_snapshot_state(PerClientState& client_state) noexcept;
+// The roster payload of an InitialSetup, collected from a world's entity
+// lists (one entry per distinct guy). Shared by GameServer::build_initial_setup
+// and the staged-lobby stager (og::server::MatchStage) so the staged and
+// launch setups can never fork their roster payloads.
+[[nodiscard]] std::vector<InitialSetupGuyData> collect_initial_setup_guys(
+    const GameWorld& world);
 void seed_client_snapshot_baseline(PerClientState& client_state,
                                    const WorldSnapshot& keyframe);
 void accumulate_snapshot_for_client(PerClientState& client_state,
