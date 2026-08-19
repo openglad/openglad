@@ -1076,6 +1076,15 @@ std::unique_ptr<HostCursesSession> HostCursesSession::create(
     // controlled-entity map the client receives is keyed by global player index.
     s->local_player_index_ = host_player_index;
 
+    // Seed EVERY connected peer's initial setup + keyframe BEFORE the first
+    // step (#239): the launch gate then holds tick 1 until each seeded peer
+    // (the host's own loopback AND the remote joiners) confirms ready, so the
+    // tick-1 batch — level on_load announcements, mode-init text — reaches
+    // the whole table instead of draining while the joiners were still
+    // mid-handshake.
+    current_game = &s->server_ctx_;
+    s->server_->send_initial_snapshots(og::sim::SnapshotCaptureMode::Peek);
+
     // Exchange the initial keyframe so the mirror world is populated before the
     // first render, swapping contexts so each side touches its own obmap.
     for (int i = 0; i < 6; ++i) {

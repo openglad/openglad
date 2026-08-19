@@ -108,6 +108,13 @@ struct ConnectedClientState {
     SessionToken session_token = kZeroSessionToken;
     std::uint64_t last_received_input_ms = 0;
     std::uint64_t last_pause_request_ms = 0;
+    // Ready handshake deadline, stamped whenever an initial/catch-up keyframe
+    // resets client_ready. While the level-start launch gate holds tick 1 for
+    // this client (see GameServer::step), a seeded client that never confirms
+    // within DISCONNECT_TIMEOUT_MS is cut by the starvation machinery so the
+    // gate is always bounded. 0 = no keyframe outstanding. Local (same-
+    // process) peers are exempt, as with every liveness cut.
+    std::uint64_t ready_deadline_ms = 0;
 
     [[nodiscard]] bool has_player_binding() const noexcept
     {
@@ -314,6 +321,22 @@ private:
     [[nodiscard]] bool should_send_to_client(const ConnectedClientState& client) const;
     [[nodiscard]] bool should_send_keyframe(const ConnectedClientState& client,
                                             const WorldSnapshot& snapshot) const;
+    // LEVEL-START LAUNCH GATE (#239). True while this level has never ticked
+    // (level_tick_count == 0) and any client is still mid-handshake — seeded
+    // but not ready, or re-setup but still owed its keyframe (the level-
+    // transition limbo prepare_clients_for_loaded_level leaves behind). While
+    // closed, step() holds world_.tick() AND the event drain, so the tick-1
+    // batch (level on_load announcements, mode-init text) is drained only
+    // when every seeded client is past should_send_to_client. Mid-level
+    // joins never close it (the gate is level-start-only), and a client that
+    // never readies is cut at ready_deadline_ms, so the gate is bounded.
+    [[nodiscard]] bool launch_gate_closed() const;
+    // The narrow broadcast used while the launch gate is closed: serve
+    // initial setups + catch-up keyframes to clients that lack one (the
+    // existing send_initial_snapshot / catch-up shapes, Peek capture) and
+    // send NOTHING to already-seeded clients — no per-step tick-0 keyframe
+    // storm, and never an event drain.
+    void broadcast_launch_handshake();
     [[nodiscard]] PlayerInput select_effective_input(BoundPlayer& seat,
                                                      std::uint32_t expected_tick);
 

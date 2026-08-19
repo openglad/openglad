@@ -4,6 +4,7 @@
 #include <openglad/gameplay/input_state_net.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/net_transport.h>
+#include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/world_snapshot.h>
 #include <openglad/core/sound_ids.h>
@@ -716,6 +717,100 @@ TEST(GameServerCoverage, disconnecting_pause_owner_clears_authoritative_pause)
     ASSERT_EQ(1u, server.disconnected_players().size());
     EXPECT_EQ(0u, server.disconnected_players().front().player_index);
     EXPECT_EQ(control, server.disconnected_players().front().control);
+}
+
+// #239 launch gate bound: a seeded client that never confirms ready holds the
+// level start, so it must be CUT exactly one DISCONNECT_TIMEOUT_MS window
+// after its keyframe — even while its heartbeats keep refreshing the input
+// starvation clock (which is why the starvation clause alone cannot bound
+// the gate). Local (same-process) peers stay exempt, as with every cut.
+TEST(GameServerCoverage, launch_gate_ready_deadline_cuts_a_dead_handshake)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    std::uint64_t now_ms = 1'000;
+    server.set_wall_clock_ms_source([&] { return now_ms; });
+    transport.set_connected({91u, 92u});
+    server.poll_incoming_messages();
+
+    walker* const remote_control =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* const local_control =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, remote_control);
+    ASSERT_NE(nullptr, local_control);
+    server.bind_player(91u, 0u, fixture.world().my_team, remote_control);
+    server.bind_player(92u, 1u, fixture.world().my_team, local_control);
+    server.mark_peer_local(92u);
+
+    // Seed both at level start; neither confirms.
+    server.send_initial_snapshot(91u, og::sim::SnapshotCaptureMode::Peek);
+    server.send_initial_snapshot(92u, og::sim::SnapshotCaptureMode::Peek);
+
+    // The gate holds tick 1 while the handshakes are outstanding.
+    server.step();
+    server.step();
+    EXPECT_EQ(0u, fixture.world().tick_count_)
+        << "seeded-but-unready clients must hold the level start";
+
+    // A heartbeat keeps 91's input-starvation clock fresh but must not feed
+    // the ready deadline.
+    now_ms = 6'000;
+    transport.queue_raw(
+        91u, og::sim::serialize_heartbeat_message(og::sim::HeartbeatMessage{}));
+    server.step();
+    EXPECT_EQ(0u, fixture.world().tick_count_);
+    EXPECT_TRUE(transport.disconnected().empty());
+
+    // One full window after the keyframe (stamped at now=1000), the dead
+    // handshake is cut; the local peer survives.
+    now_ms = 1'000 + og::sim::DISCONNECT_TIMEOUT_MS;
+    server.step();
+    EXPECT_EQ((std::vector<og::sim::PeerId>{91u}), transport.disconnected())
+        << "the ready deadline must cut the remote dead handshake only";
+
+    // The surviving local peer confirms; the gate opens and tick 1 runs.
+    transport.queue_raw(
+        92u,
+        og::sim::serialize_client_ready_message(og::sim::ClientReadyMessage{}));
+    server.step();
+    EXPECT_EQ(1u, fixture.world().tick_count_)
+        << "the confirmed handshake must release the level start";
+}
+
+// The staged-lobby adoption seam: SimEventLog::append transfers already-
+// stamped events verbatim — each keeps its own tick stamp (never restamped to
+// current_tick_), suppression does not apply (adoption is an explicit
+// transfer, not a gameplay push), and an empty append is a no-op.
+TEST(GameServerCoverage, sim_event_log_append_preserves_event_stamps)
+{
+    og::sim::SimEventLog log;
+    log.current_tick_ = 7;
+    log.push_notification("live line", 40);
+
+    std::vector<og::sim::Event> staged;
+    og::sim::Event staged_event;
+    staged_event.tick = 1;
+    staged_event.kind = og::sim::EventKind::Notification;
+    staged_event.a = 80;
+    staged_event.text = "staged line";
+    staged.push_back(staged_event);
+
+    {
+        og::sim::SimEventLogSuppressGuard guard(log);
+        log.append(std::move(staged));
+    }
+
+    ASSERT_EQ(2u, log.size());
+    EXPECT_EQ(7u, log.events()[0].tick);
+    EXPECT_EQ("live line", log.events()[0].text);
+    EXPECT_EQ(1u, log.events()[1].tick);
+    EXPECT_EQ("staged line", log.events()[1].text);
+    EXPECT_EQ(80u, log.events()[1].a);
+
+    log.append({});
+    EXPECT_EQ(2u, log.size());
 }
 
 TEST(GameServerCoverage, disconnecting_withdraw_owner_clears_targeted_prompt)

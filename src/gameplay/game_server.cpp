@@ -992,6 +992,11 @@ void GameServer::restamp_input_freshness()
     {
         (void)peer_id;
         client.last_received_input_ms = now;
+        // An outstanding ready handshake gets the same treatment: the
+        // suspension window must not count against the ready deadline — a
+        // genuinely dead handshake still times out one full window later.
+        if (client.ready_deadline_ms != 0)
+            client.ready_deadline_ms = now + DISCONNECT_TIMEOUT_MS;
     }
 }
 
@@ -1928,6 +1933,7 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
 
         case TypedReceivedMessageKind::ClientReady:
             client.client_ready = true;
+            client.ready_deadline_ms = 0;
             client.allow_initial_keyframe_without_ready = false;
             client.budget_pending_keyframe = false;
             client.force_keyframe = true;
@@ -2159,6 +2165,19 @@ void GameServer::update_timeouts()
         // transport whose next local send throws (see mark_peer_local).
         if (is_local_peer(peer_id))
             continue;
+
+        // Ready-deadline cut: a seeded client that never confirms its
+        // keyframe would hold the level-start launch gate forever (its
+        // heartbeats keep refreshing last_received_input_ms, so the
+        // starvation clause below never fires). The gate must be bounded:
+        // cut the dead handshake through the same disconnect machinery.
+        if (client.has_initial_snapshot && !client.client_ready &&
+            client.ready_deadline_ms != 0 && now >= client.ready_deadline_ms)
+        {
+            timed_out_peers.push_back(
+                {peer_id, client.ready_deadline_ms - DISCONNECT_TIMEOUT_MS});
+            continue;
+        }
 
         if (client.last_received_input_ms == 0 || now < client.last_received_input_ms)
             continue;
@@ -2658,6 +2677,7 @@ void GameServer::send_initial_snapshot(PeerId peer_id,
     seed_client_snapshot_baseline(client.snapshot_state, keyframe);
     client.has_initial_snapshot = true;
     client.client_ready = false;
+    client.ready_deadline_ms = now_ms() + DISCONNECT_TIMEOUT_MS;
     client.allow_initial_keyframe_without_ready = false;
     client.budget_pending_keyframe = false;
     client.force_keyframe = false;
@@ -3068,6 +3088,7 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
             seed_client_snapshot_baseline(client.snapshot_state, full);
             client.has_initial_snapshot = true;
             client.client_ready = false;
+            client.ready_deadline_ms = now_ms() + DISCONNECT_TIMEOUT_MS;
             client.allow_initial_keyframe_without_ready = false;
             client.budget_pending_keyframe = false;
             client.force_keyframe = false;
@@ -3184,6 +3205,87 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
             "game_server", "broadcast_current_state_end"));
 }
 
+bool GameServer::launch_gate_closed() const
+{
+    // Level-start only: once tick 1 has run this level, the gate is open for
+    // good (mid-level joins and spectators heal through the normal catch-up
+    // arms without freezing the world).
+    if (world_.level_tick_count() != 0)
+        return false;
+
+    for (const auto& [peer_id, client] : clients_)
+    {
+        (void)peer_id;
+        // Seeded but unconfirmed: draining now would drop the tick-1 batch
+        // at the should_send_to_client refusal (#239).
+        if (client.has_initial_snapshot && !client.client_ready)
+            return true;
+        // Level-transition limbo: prepare_clients_for_loaded_level re-sent
+        // the InitialSetup but reset the snapshot seed, so this client is
+        // still owed its keyframe. The dedicated server's level 2+ first
+        // tick historically drained into exactly this window.
+        if (client.initial_setup_sent && !client.has_initial_snapshot)
+            return true;
+    }
+    return false;
+}
+
+void GameServer::broadcast_launch_handshake()
+{
+    std::vector<PeerId> ordered_peers;
+    ordered_peers.reserve(clients_.size());
+    for (const auto& [peer_id, client] : clients_)
+    {
+        (void)client;
+        ordered_peers.push_back(peer_id);
+    }
+    std::sort(ordered_peers.begin(), ordered_peers.end());
+
+    std::size_t keyframe_budget_remaining = kMaxKeyframesPerTick;
+    for (const PeerId peer_id : ordered_peers)
+    {
+        ConnectedClientState& client = clients_.at(peer_id);
+        if (!client.initial_setup_sent)
+        {
+            if (!client.has_player_binding() && !client.spectator_admitted)
+                continue;
+            send_initial_snapshot(peer_id, SnapshotCaptureMode::Peek);
+            continue;
+        }
+
+        if (client.has_initial_snapshot)
+            continue;
+
+        // The catch-up keyframe for a re-setup client (level transition):
+        // same shape and budget as broadcast_current_state's arm, Peek-only.
+        if (!client.client_ready && !client.allow_initial_keyframe_without_ready)
+            continue;
+        const bool budgeted_initial_keyframe =
+            client.allow_initial_keyframe_without_ready ||
+            client.budget_pending_keyframe;
+        if (budgeted_initial_keyframe && keyframe_budget_remaining == 0)
+        {
+            client.force_keyframe = true;
+            continue;
+        }
+        WorldSnapshot full =
+            capture_server_keyframe(world_, SnapshotCaptureMode::Peek);
+        seed_client_snapshot_baseline(client.snapshot_state, full);
+        client.has_initial_snapshot = true;
+        client.client_ready = false;
+        client.ready_deadline_ms = now_ms() + DISCONNECT_TIMEOUT_MS;
+        client.allow_initial_keyframe_without_ready = false;
+        client.budget_pending_keyframe = false;
+        client.force_keyframe = false;
+        remember_snapshot_hash(client, full);
+        transport_.send_snapshot(
+            peer_id,
+            std::make_shared<WorldSnapshot>(std::move(full)));
+        if (budgeted_initial_keyframe && keyframe_budget_remaining > 0)
+            --keyframe_budget_remaining;
+    }
+}
+
 void GameServer::step()
 {
     og::runtime::emit_runtime_trace(
@@ -3193,6 +3295,23 @@ void GameServer::step()
     events_.current_tick_ = next_tick;
     poll_incoming_messages();
     process_non_input_messages(next_tick);
+
+    // LEVEL-START LAUNCH GATE (#239): while any seeded client has not
+    // confirmed ready, tick 1 must not run and the event log must not drain —
+    // the tick-1 batch (level on_load announcements, mode-init text) plays
+    // for everyone or not yet. Message polling and timeouts above still run
+    // every step, and the narrow handshake broadcast below serves initial
+    // snapshots so the gate makes progress; the ready deadline bounds it.
+    if (launch_gate_closed())
+    {
+        broadcast_launch_handshake();
+        og::runtime::RuntimeTraceRecord gate_trace =
+            og::runtime::make_runtime_trace_record(
+                "game_server", "step_launch_gate_held");
+        gate_trace.tick = world_.tick_count_;
+        og::runtime::emit_runtime_trace(std::move(gate_trace));
+        return;
+    }
 
     bool should_tick_world =
         !pending_exit_prompt_state_.has_value() && !pending_pause_state_.has_value();

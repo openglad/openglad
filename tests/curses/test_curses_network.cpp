@@ -1628,9 +1628,9 @@ TEST(CursesNetwork, host_history_campaign_vars_reach_the_hosted_world)
 
     // The spawned Watch replicates to the table: every mirror holds the same
     // count of team-0 NPC livings (guy names do not ride snapshots, so pin
-    // the census, not the names). The tick-1 notification TEXT predates the
-    // initial-keyframe handshake and is not deliverable to any networked
-    // client — the entities themselves are the consequence.
+    // the census, not the names). The tick-1 notification TEXT arrives too
+    // since the level-start launch gate (#239) — pinned separately by
+    // tick_one_script_notifications_reach_the_hosted_table below.
     const auto count_team0_npcs = [](const GameWorld& world) {
         int count = 0;
         for (const auto& up : world.oblist) {
@@ -1649,6 +1649,78 @@ TEST(CursesNetwork, host_history_campaign_vars_reach_the_hosted_world)
     EXPECT_EQ(authoritative_npcs,
               count_team0_npcs(game.join_session->mirror_world()))
         << "the joiner's table shows the host's consequence";
+}
+
+// #239 (the reporter's flagship): notifications fired by a level script on
+// its first tick must reach every participant of a hosted table. The Deeping
+// Wall with watch_paid=900 spawns the Watch AND prints the ledger line; the
+// entities always rode the initial keyframe, but the tick-1 text was drained
+// while every client was still mid-handshake and silently dropped. The
+// level-start launch gate holds tick 1 (and the batch) until each seeded
+// client confirms ready, so the line now reaches host and joiner alike.
+TEST(CursesNetwork, tick_one_script_notifications_reach_the_hosted_table)
+{
+    MountRestore mount_restore;
+
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+    host_save.current_campaign = "westlands";
+    host_save.scen_num = 15;
+    ASSERT_TRUE(host_save.campaign_state_set("westlands", "watch_paid", 900));
+    join_save.current_campaign = "westlands";
+    join_save.scen_num = 15;
+
+    StartedGame game = negotiate_and_start(host_save, join_save);
+    ASSERT_NE(game.host_session, nullptr);
+    ASSERT_NE(game.join_session, nullptr);
+
+    advance_all(*game.host_session, *game.join_session, 10);
+
+    const std::string ledger_line = "The Watch remembers its wages.";
+    const std::vector<std::string> host_messages =
+        game.host_session->drain_messages();
+    const std::vector<std::string> join_messages =
+        game.join_session->drain_messages();
+    EXPECT_NE(host_messages.end(),
+              std::find(host_messages.begin(), host_messages.end(),
+                        ledger_line))
+        << "the host display must show the tick-1 ledger line";
+    EXPECT_NE(join_messages.end(),
+              std::find(join_messages.begin(), join_messages.end(),
+                        ledger_line))
+        << "the joiner must show the tick-1 ledger line";
+}
+
+// #239, the curses-local variant: a single machine with no network at all
+// also dropped tick-1 script notifications — the constructor's first pumped
+// step ticked, seeded the mirror during its broadcast (resetting the early
+// client_ready), and drained the batch into nobody. With the pre-pump seed
+// plus the launch gate, the mirror is confirmed before tick 1 drains.
+TEST(CursesNetwork, tick_one_script_notifications_reach_the_local_session)
+{
+    MountRestore mount_restore;
+
+    SaveData save;
+    init_team_save(save, 0, FAMILY_SOLDIER, "Solo");
+    save.current_campaign = "westlands";
+    save.scen_num = 15;
+    ASSERT_TRUE(save.campaign_state_set("westlands", "watch_paid", 900));
+
+    std::string err;
+    std::unique_ptr<CursesGameSession> session =
+        make_local_session(save, /*difficulty=*/1, &err);
+    ASSERT_NE(session, nullptr) << "make_local_session failed: " << err;
+
+    for (int i = 0; i < 6; ++i)
+        session->advance();
+
+    const std::string ledger_line = "The Watch remembers its wages.";
+    const std::vector<std::string> messages = session->drain_messages();
+    EXPECT_NE(messages.end(),
+              std::find(messages.begin(), messages.end(), ledger_line))
+        << "the local mirror must show the tick-1 ledger line";
 }
 
 // V5 consequence (d): completed_levels is campaign-keyed — a level id

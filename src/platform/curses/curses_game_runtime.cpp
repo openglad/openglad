@@ -386,6 +386,15 @@ std::unique_ptr<LocalCursesSession> LocalCursesSession::create(SaveData& save,
         });
     s->client_->send_client_ready();
 
+    // Seed the mirror's initial setup + keyframe BEFORE the first step (#239):
+    // the old shape let step 1 tick first and seed during its broadcast, which
+    // reset client_ready and drained the tick-1 batch (level on_load
+    // announcements) into nobody. With the seed already sent, the queued
+    // ready above completes the handshake at step 1's poll and the launch
+    // gate releases tick 1 straight into a ready client.
+    current_game = &s->server_ctx_;
+    s->server_->send_initial_snapshots(og::sim::SnapshotCaptureMode::Peek);
+
     // Exchange the initial keyframe so the mirror world is populated before the
     // first render, swapping contexts so each side touches its own obmap.
     for (int i = 0; i < 4; ++i) {

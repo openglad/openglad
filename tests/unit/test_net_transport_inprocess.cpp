@@ -1107,6 +1107,169 @@ TEST(NetTransportInProcess,
     fixture.expect_clients_match_server();
 }
 
+// #239: the tick-1 event batch (level on_load announcements, mode-init text)
+// must reach a client whose ClientReady is still in flight when the server
+// starts stepping. Before the level-start launch gate, the first step ticked
+// and drained the batch while every client was seeded-but-unready, dropping
+// it at the should_send_to_client refusal — every networked session, every
+// time (the reporter's Westlands ledger line).
+TEST(NetTransportInProcess, launch_gate_holds_tick_one_for_a_slow_ready_client)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+
+    // Seed the initial snapshot WITHOUT letting the client poll: its
+    // ClientReady is "slow", as over a real wire round trip. Queue the
+    // announcement the first drain would deliver.
+    fixture.with_server_context([&] {
+        fixture.server().send_initial_snapshots(
+            og::sim::SnapshotCaptureMode::Peek);
+        fixture.server_events().push_notification(
+            "The Watch remembers its wages.", 80);
+    });
+
+    for (int i = 0; i < 3; ++i)
+    {
+        fixture.with_server_context([&] { fixture.server().step(); });
+    }
+    EXPECT_EQ(0u, fixture.server_world().tick_count_)
+        << "the launch gate must hold tick 1 for a seeded-but-unready client";
+    EXPECT_EQ(1u, fixture.server_events().size())
+        << "the queued announcement must not drain while the gate is closed";
+
+    std::vector<std::string> delivered;
+    fixture.client(0).set_sim_event_batch_callback(
+        [&](const og::sim::SimEventBatch& batch) {
+            for (const og::sim::Event& event : batch.events)
+            {
+                if (event.kind == og::sim::EventKind::Notification)
+                    delivered.push_back(event.text);
+            }
+        });
+
+    // The client polls (applies setup + keyframe, auto-sends ready); the next
+    // step opens the gate, runs tick 1, and forwards the drained batch.
+    fixture.poll_client_messages(0);
+    fixture.with_server_context([&] { fixture.server().step(); });
+    fixture.poll_client_messages(0);
+
+    EXPECT_EQ(1u, fixture.server_world().tick_count_)
+        << "the confirmed ready must open the gate on the next step";
+    ASSERT_EQ(1u, delivered.size())
+        << "the tick-1 batch must reach the late-ready client";
+    EXPECT_EQ("The Watch remembers its wages.", delivered[0]);
+}
+
+// #239, the level-transition shape (the dedicated server's level 2+ gap):
+// after a server-driven transition, prepare_clients_for_loaded_level resets
+// every client's snapshot seed and ready, and the destination level's first
+// drain historically ran while every client was still re-handshaking —
+// transition-time announcements vanished. The launch gate holds the new
+// level's tick 1 (and the queued batch) through the re-handshake limbo.
+TEST(NetTransportInProcess,
+     launch_gate_delivers_destination_tick_one_events_after_transition)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+
+    fixture.server().on_withdraw_accepted = [&](int destination) {
+        GameWorld& w = fixture.server_world();
+        w.id = static_cast<short>(destination);
+        w.current_scenario = static_cast<short>(destination);
+        w.tick_count_ = 0;
+        w.reset_level_progress();
+        w.game_ended = false;
+        w.next_level = -1;
+        w.ending = 0;
+        w.level_done = 0;
+        w.end = 0;
+        w.withdraw_requested = false;
+        w.withdraw_level = -1;
+        w.pending_exit_prompt = false;
+        for (auto& uptr : w.oblist)
+        {
+            walker* const control = uptr.get();
+            if (control == nullptr)
+                continue;
+            control->set_user(-1);
+            control->restore_act_type();
+        }
+        return true;
+    };
+
+    // Withdraw to level 1; accepting runs the transition + client re-setup.
+    fixture.with_server_context([&] {
+        fixture.server_events().push_with_text(
+            og::sim::EventKind::RequestExitConfirmation, "Withdraw?",
+            /*a=destination*/ 1u, /*b=withdraw*/ 1u);
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+    ASSERT_TRUE(fixture.server().pending_exit_prompt());
+    fixture.client(0).send_exit_prompt_response(true);
+    fixture.with_server_context([&] { fixture.server().step(); });
+    ASSERT_FALSE(fixture.server().pending_exit_prompt());
+    ASSERT_EQ(0u, fixture.server_world().tick_count_);
+
+    // The destination level owes its clients an announcement (as a level
+    // on_load would queue at its first tick). The client is in transition
+    // limbo (setup re-sent, keyframe still owed): the gate must hold the
+    // batch, not drain it into the should_send_to_client refusal.
+    fixture.with_server_context([&] {
+        fixture.server_events().push_notification("Destination ledger.", 80);
+    });
+    for (int i = 0; i < 3; ++i)
+    {
+        fixture.with_server_context([&] { fixture.server().step(); });
+    }
+    EXPECT_EQ(0u, fixture.server_world().tick_count_)
+        << "transition limbo must hold the destination's tick 1";
+    EXPECT_EQ(1u, fixture.server_events().size())
+        << "the destination announcement must survive the limbo";
+
+    std::vector<std::string> delivered;
+    fixture.client(0).set_sim_event_batch_callback(
+        [&](const og::sim::SimEventBatch& batch) {
+            for (const og::sim::Event& event : batch.events)
+            {
+                if (event.kind == og::sim::EventKind::Notification)
+                    delivered.push_back(event.text);
+            }
+        });
+
+    // Complete the re-handshake: explicit ready (the display callback's role)
+    // -> catch-up keyframe -> re-ready -> the gate opens and tick 1 drains to
+    // a confirmed client.
+    fixture.client(0).send_client_ready();
+    for (int i = 0; i < 3; ++i)
+    {
+        fixture.with_server_context([&] { fixture.server().step(); });
+        fixture.poll_client_messages(0);
+    }
+
+    EXPECT_EQ(2u, fixture.server_world().tick_count_)
+        << "the completed re-handshake (ready -> keyframe -> re-ready) must "
+           "release the destination level on the second pumped step";
+    ASSERT_EQ(1u, delivered.size())
+        << "the destination's first batch must reach the re-readied client";
+    EXPECT_EQ("Destination ledger.", delivered[0]);
+}
+
 // Return-to-lobby mode (networked single-player parity): accepting an exit-portal
 // prompt must NOT auto-advance into the next level in-session. Instead the server
 // finalizes the campaign cursor (on_exit_accepted) and FORWARDS A TERMINAL ENDGAME
@@ -1923,14 +2086,21 @@ TEST(NetTransportInProcess,
     EXPECT_FALSE(fixture.server().pending_exit_prompt());
 
     // The freshly loaded level must actually tick again (players can move).
+    // The level-start launch gate (#239) holds tick 1 until each client's
+    // full re-handshake lands (ready -> catch-up keyframe -> re-ready), so
+    // pump the handshake to completion; three rounds are deterministic
+    // in-process.
     fixture.client(0).send_client_ready();
     fixture.client(1).send_client_ready();
     const std::uint32_t tick_before = fixture.server_world().tick_count_;
-    fixture.with_server_context([&] {
-        fixture.server().step();
-    });
-    fixture.poll_client_messages(0);
-    fixture.poll_client_messages(1);
+    for (int i = 0; i < 3; ++i)
+    {
+        fixture.with_server_context([&] {
+            fixture.server().step();
+        });
+        fixture.poll_client_messages(0);
+        fixture.poll_client_messages(1);
+    }
     EXPECT_GT(fixture.server_world().tick_count_, tick_before)
         << "world must tick after the transition; lingering pause froze it";
 }

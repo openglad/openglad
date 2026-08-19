@@ -2175,6 +2175,13 @@ TEST(GameLoop, networked_zero_seat_host_and_remote_spectator_install)
     og::sim::GameClient remote_spectator(
         *remote_spectator_transport,
         remote_spectator_transport->local_peer_id());
+    // The bound remote player must be a LIVE client: the level-start launch
+    // gate (#239) holds tick 1 until every seeded client confirms ready, so a
+    // binding whose peer never polls would (correctly) freeze the level start
+    // until its ready deadline. Production bound peers always poll.
+    og::sim::GameClient remote_player(
+        *remote_player_transport,
+        remote_player_transport->local_peer_id());
     const std::vector<og::sim::LobbyPlayerBinding> player_bindings = {
         og::sim::LobbyPlayerBinding{
             .peer_id = remote_player_transport->local_peer_id(),
@@ -2196,6 +2203,7 @@ TEST(GameLoop, networked_zero_seat_host_and_remote_spectator_install)
     ASSERT_NE(nullptr, view);
     ASSERT_TRUE(wait_until([&] {
         og::runtime::local_transport_shadow_finish_tick(gameplay_session);
+        remote_player.poll_messages();
         remote_spectator.poll_messages();
         const og::sim::GameClient* const display_client =
             game_screen->render_interpolation_client();
@@ -2222,6 +2230,7 @@ TEST(GameLoop, networked_zero_seat_host_and_remote_spectator_install)
         remote_spectator.last_seen_server_tick();
     ASSERT_TRUE(wait_until([&] {
         og::runtime::local_transport_shadow_finish_tick(gameplay_session);
+        remote_player.poll_messages();
         remote_spectator.poll_messages();
         return remote_spectator.last_seen_server_tick() >
                 spectator_initial_tick &&
