@@ -2039,6 +2039,10 @@ private:
             inputs.bindings = server_->build_player_bindings();
             inputs.difficulty = server_->state().settings.difficulty;
             inputs.match_seed = match_seed_;
+            // Replay-arm intent is a launch input (#207): key on the live
+            // save's arm so a VISIT/REPLAY flip restages the census.
+            inputs.replay_level = save_.replay_level;
+            inputs.replay_origin = save_.replay_origin;
             stage_.observe_inputs(inputs, og::server::stage_clock_now_ms());
         }
         catch (const std::exception& stage_error)

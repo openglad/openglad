@@ -344,8 +344,15 @@ void glad_init(bool preserve_frame_timing,
             *gameplay_session,
             *current_screen))
     {
+        // Staged lobby (#218): the solo/local owner's staged world rides
+        // into the install (nullptr when no lobby client exists — direct
+        // launches and legacy fixtures keep the display-seed path).
+        og::ui::IPickerLobbyClient* const lobby_client =
+            og::ui::active_picker_lobby_client();
         og::runtime::reset_local_transport_shadow(
-            *gameplay_session, *current_screen);
+            *gameplay_session, *current_screen,
+            lobby_client != nullptr ? lobby_client->take_match_stage()
+                                    : nullptr);
     }
     current_screen->redrawme = 1;
     current_screen->framecount = 0;

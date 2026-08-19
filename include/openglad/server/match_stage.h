@@ -65,6 +65,14 @@ struct MatchStageInputs {
     // per round (re-latched at resume_after_level); it never rides the wire —
     // its consequences ride the staged keyframe (rng_state is replicated).
     std::uint32_t match_seed = 0;
+    // Replay-arm intent (#207): VISIT vs REPLAY changes the staged CENSUS
+    // (the completed-level purge reads the arm), so it must be a change-key
+    // member — the stage reads the live arm through host_company_save, and
+    // without these an arm flipped after the last restage would launch the
+    // stale census. 0 = unarmed. The dedicated server (fresh save,
+    // AdoptCompletedLanding) leaves the defaults.
+    short replay_level = 0;
+    short replay_origin = 0;
 
     bool operator==(const MatchStageInputs&) const = default;
 };
@@ -247,5 +255,24 @@ void drive_lobby_stage(MatchStage& stage,
                        std::uint64_t now_ms,
                        og::sim::ITransport* transport,
                        StageBroadcastState& broadcast);
+
+// Launch adoption (the SDL transport shadow): MOVE the staged world's content
+// into the live authoritative world (screen::world_ is a reference — content
+// transfer through replace_loaded_world_state, never an object swap), then
+// transfer what the move cannot carry: the world id, the sim RNG stream (tick
+// 1 continues exactly where the staged preview froze), control policy +
+// machine map (stamped at stage time), guy_id_counter, keep_fallen_heroes,
+// campaign_vars (deliberately non-replicated; on_load may have written them
+// at stage time), the level on_load latch (claimed TRUTHFULLY — the staged
+// world ran on_load and the destination IS that world's state), and the
+// staged SaveData (copied into the session save; cross_control and the
+// replay arm included). The caller runs its prep-clear
+// (prepare_server_session_for_gameplay) BEFORE this, appends
+// stage.take_events() into the live log AFTER, then disposes the stage.
+// Returns false when nothing is staged (the caller falls back to the legacy
+// display-seed path — replay playback uses that path by design).
+[[nodiscard]] bool adopt_staged_world(LevelRuntimeData& dst_level,
+                                      SaveData& dst_save,
+                                      MatchStage& stage);
 
 } // namespace og::server

@@ -3035,7 +3035,8 @@ public:
             gameplay_screen,
             combined_transport_,
             local_client_transport_,
-            player_bindings_);
+            player_bindings_,
+            stage_.get());
 
         // §2.8 follow caption: stamp each global player's company display
         // name (from the final lobby state) onto the installed runtime.
@@ -3330,6 +3331,13 @@ private:
             inputs.bindings = server_->build_player_bindings();
             inputs.difficulty = server_->state().settings.difficulty;
             inputs.match_seed = match_seed_;
+            // Replay-arm intent is a launch input (#207): key on the live
+            // save's arm so a VISIT/REPLAY flip restages the census.
+            if (const SaveData* const live_save = current_picker_save())
+            {
+                inputs.replay_level = live_save->replay_level;
+                inputs.replay_origin = live_save->replay_origin;
+            }
             stage_->observe_inputs(inputs, og::server::stage_clock_now_ms());
         }
         catch (const std::exception& error)

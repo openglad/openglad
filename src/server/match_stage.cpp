@@ -369,6 +369,44 @@ bool MatchStage::build_staged_wire_bytes(GameWorld& staged_world)
     return true;
 }
 
+bool adopt_staged_world(LevelRuntimeData& dst_level,
+                        SaveData& dst_save,
+                        MatchStage& stage)
+{
+    if (stage.status() != StageStatus::Staged || stage.world() == nullptr)
+        return false;
+
+    GameWorld& staged = *stage.world();
+    GameWorld& dst = dst_level.world();
+
+    // Content transfer through the load pipeline's own commit step: entities
+    // (with their owned guys), grid/decor/obmap/floors, mode + respawn
+    // latches, level scalars. The world id rides beside it (the load path
+    // sets it before its own load; the latch claim below keys on it).
+    dst.id = staged.id;
+    replace_loaded_world_state(&dst_level, staged);
+
+    // What the move deliberately leaves to the caller:
+    dst.control_policy = staged.control_policy;
+    dst.player_machine = staged.player_machine;
+    dst.guy_id_counter = staged.guy_id_counter;
+    dst.keep_fallen_heroes = staged.keep_fallen_heroes;
+    dst.campaign_vars = staged.campaign_vars;
+    // Tick 1 continues the exact RNG stream the staged preview froze at.
+    dst.rng_.state_ = staged.rng_.state_;
+    // The REAL latch transferred truthfully: the staged world ran on_load
+    // and dst IS that world's state — the first tick must not re-run it.
+    // (Must run after the caller's reset_level_progress, which re-arms it.)
+    dst.claim_level_load_latch();
+
+    // The staged save becomes the session save (team_list, cross_control,
+    // replay arm, campaign_state — the launch inputs the wire equivalent
+    // materialized at stage time).
+    copy_headless_server_save_data(dst_save, stage.staged_save());
+
+    return true;
+}
+
 std::uint32_t draw_match_seed()
 {
     std::random_device device;

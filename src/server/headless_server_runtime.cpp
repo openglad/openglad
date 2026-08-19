@@ -337,6 +337,12 @@ void copy_headless_server_save_data(SaveData& destination,
     destination.cross_control = source.cross_control;
     // Infinite gold (protocol v11): same session-only dropped-field rule.
     destination.infinite_gold = source.infinite_gold;
+    // Difficulty submenu (protocol v6): same lobby-negotiated rule — the
+    // staged-lobby adoption copies the staged save through here, and a copy
+    // that dropped these would launch with default respawns/permadeath.
+    destination.respawn_mode = source.respawn_mode;
+    destination.generator_rate = source.generator_rate;
+    destination.keep_fallen_heroes = source.keep_fallen_heroes;
     // Tower run state (GTL v13) must ride the server/checkpoint copies:
     // advance_cursor regenerates floors from tower_run_seed and merges
     // tower_best_floor, and on_run_ended re-writes both to save0 — a copy

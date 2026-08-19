@@ -295,5 +295,17 @@ private:
 // Read a scenario title from a .fss file. Returns "none" on failure.
 std::string get_scenario_title(const char* filename);
 
+// Move a fully-loaded world's content into `level`'s attached world: entity
+// lists (with their owned guys), grid + decor + obmap + stacked floors, mode/
+// respawn state and the level scalars. This is LevelRuntimeData::load()'s own
+// commit step, exported for the staged-lobby adoption (og::server::
+// adopt_staged_world): screen::world_ is a reference, so a launch can only
+// adopt a staged world by CONTENT transfer through this same primitive.
+// Deliberately not moved (callers own these): rng_ state, tick counters, the
+// level on_load latch, campaign_vars, control_policy/player_machine,
+// keep_fallen_heroes, guy_id_counter, world id.
+void replace_loaded_world_state(LevelRuntimeData* level,
+                                GameWorld& loaded_world);
+
 // Count living foes not friendly to the given walker.
 short remaining_foes(LevelRuntimeData& level, walker* myguy);

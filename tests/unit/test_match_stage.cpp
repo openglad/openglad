@@ -12,13 +12,18 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/weather.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_server.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/world_snapshot.h>
+#include <openglad/interface/level_runtime_data.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/server/match_stage.h>
 
@@ -655,6 +660,81 @@ TEST_F(MatchStageTest, staged_wire_pair_matches_the_staged_world)
         og::sim::deserialize_snapshot(stage.staged_keyframe_bytes());
     EXPECT_EQ(0u, inner.tick_count);
     EXPECT_EQ(0u, inner.level_tick_count);
+}
+
+// C7: launch == preview, as a byte identity. Adopt the staged world into a
+// fresh destination (the SDL shadow's shape: content transfer through
+// replace_loaded_world_state + the explicit carries) and the adopted tick-0
+// keyframe serializes BYTE-IDENTICAL to the staged pair the preview shows.
+TEST_F(MatchStageTest, adopted_world_keyframe_is_byte_identical_to_preview)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    og::server::MatchStage stage({.networked = true});
+    stage.observe_inputs(make_modes_inputs(1001u), /*now_ms=*/0);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+    const std::vector<std::uint8_t> preview_bytes =
+        stage.staged_keyframe_bytes();
+    ASSERT_FALSE(preview_bytes.empty());
+    const std::vector<og::sim::Event> staged_events =
+        std::vector<og::sim::Event>(stage.staged_events().events());
+    ASSERT_FALSE(staged_events.empty())
+        << "the staged soccer init queues announcements";
+
+    // The destination: a fresh headless level runtime + save, bracketed by
+    // its own context exactly like the shadow's server session.
+    LevelRuntimeData dst_level(820, /*headless=*/true,
+                               &headless_level_data_hooks());
+    SaveData dst_save;
+    GameWorld& dst = dst_level.world();
+    og::sim::SimEventLog dst_events;
+    IRandom* dst_rng = &dst.rng_;
+    bool dst_active = false;
+    GameplayContext dst_ctx;
+    dst_ctx.world = &dst;
+    dst_ctx.save = &dst_save;
+    dst_ctx.sim_events = &dst_events;
+    dst_ctx.config = &cfg;
+    dst_ctx.session_rng_ref = &dst_rng;
+    dst_ctx.gameplay_active_ref = &dst_active;
+    GameplayContext* const previous_context = current_game;
+    current_game = &dst_ctx;
+
+    // The shadow's order: prep-clear (tick 0 + reset_level_progress, which
+    // re-arms the on_load latch) BEFORE the adopt (which claims it back).
+    dst.tick_count_ = 0;
+    dst.reset_level_progress();
+    ASSERT_TRUE(og::server::adopt_staged_world(dst_level, dst_save, stage));
+    dst_events.append(stage.take_events());
+    stage.dispose();
+    current_game = previous_context;
+
+    const std::vector<std::uint8_t> adopted_bytes =
+        og::sim::serialize_snapshot(og::sim::peek_keyframe_snapshot(dst));
+    EXPECT_EQ(preview_bytes, adopted_bytes)
+        << "adoption must not perturb a single replicated byte";
+
+    // The explicit carries the snapshot cannot prove: the on_load latch is
+    // claimed (the first tick must not re-run on_load) and the staged
+    // announcements landed in the live log with their tick-1 stamps.
+    EXPECT_FALSE(dst.owes_level_on_load())
+        << "the adopter claims the on_load latch truthfully";
+    EXPECT_EQ(staged_events.size(), dst_events.events().size());
+    for (const og::sim::Event& event : dst_events.events())
+        EXPECT_EQ(1u, event.tick);
+
+    // The staged save became the session save.
+    EXPECT_EQ(820, dst_save.scen_num);
+    EXPECT_EQ("modes", dst_save.current_campaign);
+    bool found_striker = false;
+    for (const auto& member : dst_save.team_list)
+        found_striker = found_striker ||
+            (member != nullptr && member->name == "Striker");
+    EXPECT_TRUE(found_striker);
+
+    // Nothing staged after the adopt+dispose; a fresh key restages cleanly.
+    EXPECT_EQ(og::server::StageStatus::Empty, stage.status());
 }
 
 // mark_failed (the owner's change-key throw funnel): repeat failures do not

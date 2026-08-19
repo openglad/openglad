@@ -1048,6 +1048,12 @@ private:
             inputs.bindings = server_->build_player_bindings();
             inputs.difficulty = server_->state().settings.difficulty;
             inputs.match_seed = match_seed_;
+            // Replay-arm intent is a launch input (#207): key on the live
+            // save's arm so a VISIT/REPLAY flip restages the census.
+            const SaveData& live_save =
+                og::runtime::current_session->myscreen_->save_data;
+            inputs.replay_level = live_save.replay_level;
+            inputs.replay_origin = live_save.replay_origin;
             og::server::drive_lobby_stage(*stage_, inputs, now,
                                           /*transport=*/nullptr,
                                           stage_broadcast_);

@@ -422,6 +422,14 @@ public:
     // tick-0 branch, PR #195) — they never tick, so it stays inert there.
     void claim_level_load_latch() noexcept { last_level_id_ = id; }
 
+    // True while the level on_load dispatch is still owed for the current
+    // world id (the latch is armed). Adoption tests pin the truthful-claim
+    // contract through this read.
+    [[nodiscard]] bool owes_level_on_load() const noexcept
+    {
+        return last_level_id_ != id;
+    }
+
     std::uint32_t tick_count_ = 0;
     og::sim::SimRandom rng_;
 
