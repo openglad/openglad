@@ -48,6 +48,11 @@ enum class StartDenialReason : std::uint8_t {
     NotHost = 1,
     MachinesNotReady = 2,
     NoDeployedCharacters = 3,
+    // Protocol v13 (#218): the owner's staged world is in the Failed state
+    // (unloadable level, oversize keyframe, roster over the 24-cap), so GO
+    // cannot adopt it. Reported through the owner-injected start gate; the
+    // host fixes the blocker (level/roster/settings) and retries.
+    StageFailed = 4,
 };
 
 constexpr std::uint8_t start_denial_reason_value(StartDenialReason reason) noexcept

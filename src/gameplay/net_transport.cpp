@@ -1131,6 +1131,77 @@ std::optional<PackTransferDoneMessage> deserialize_pack_transfer_done_message(
         });
 }
 
+namespace {
+
+// Shared v13 staged-wrapper writer: u32 generation + length-prefixed inner
+// message bytes. Refuses (empty result, never a throw) when the inner
+// message would push the wrapper payload past the u16 transport cap, so the
+// owner's poll loop can never die on an oversize staged world — it reports
+// StageStatus::Failed instead (#218).
+std::vector<std::uint8_t> serialize_staged_wrapper(
+    std::uint8_t message_type,
+    std::uint32_t stage_generation,
+    const std::vector<std::uint8_t>& inner_bytes)
+{
+    if (inner_bytes.empty() ||
+        inner_bytes.size() > kMaxStagedInnerMessageBytes)
+    {
+        return {};
+    }
+
+    std::vector<std::uint8_t> payload;
+    payload.reserve(8 + inner_bytes.size());
+    append_u32(payload, stage_generation);
+    append_bytes(payload, inner_bytes);
+    return wrap_transport_message(message_type, payload);
+}
+
+} // namespace
+
+std::vector<std::uint8_t> serialize_staged_match_setup_message(
+    const StagedMatchSetupMessage& message)
+{
+    return serialize_staged_wrapper(kStagedMatchSetupMessageType,
+                                    message.stage_generation,
+                                    message.setup_bytes);
+}
+
+std::optional<StagedMatchSetupMessage> deserialize_staged_match_setup_message(
+    std::span<const std::uint8_t> bytes)
+{
+    return deserialize_message<StagedMatchSetupMessage>(
+        bytes, kStagedMatchSetupMessageType,
+        [](PayloadReader& reader, StagedMatchSetupMessage& message) {
+            message.stage_generation = reader.read_u32();
+            message.setup_bytes =
+                reader.read_bytes(kMaxStagedInnerMessageBytes);
+            if (message.setup_bytes.empty())
+                reader.fail();
+        });
+}
+
+std::vector<std::uint8_t> serialize_staged_match_keyframe_message(
+    const StagedMatchKeyframeMessage& message)
+{
+    return serialize_staged_wrapper(kStagedMatchKeyframeMessageType,
+                                    message.stage_generation,
+                                    message.snapshot_bytes);
+}
+
+std::optional<StagedMatchKeyframeMessage>
+deserialize_staged_match_keyframe_message(std::span<const std::uint8_t> bytes)
+{
+    return deserialize_message<StagedMatchKeyframeMessage>(
+        bytes, kStagedMatchKeyframeMessageType,
+        [](PayloadReader& reader, StagedMatchKeyframeMessage& message) {
+            message.stage_generation = reader.read_u32();
+            message.snapshot_bytes =
+                reader.read_bytes(kMaxStagedInnerMessageBytes);
+            if (message.snapshot_bytes.empty())
+                reader.fail();
+        });
+}
+
 bool ITransport::supports_typed_messages() const noexcept
 {
     return false;
@@ -1390,6 +1461,34 @@ void ITransport::send_pack_transfer_done(
     send(peer_id, bytes.data(), bytes.size());
 }
 
+void ITransport::send_staged_match_setup(
+    PeerId peer_id,
+    std::shared_ptr<StagedMatchSetupMessage> message)
+{
+    if (!message)
+        return;
+
+    const std::vector<std::uint8_t> bytes =
+        serialize_staged_match_setup_message(*message);
+    if (bytes.empty()) // oversize refusal — the owner gates this pre-send
+        return;
+    send(peer_id, bytes.data(), bytes.size());
+}
+
+void ITransport::send_staged_match_keyframe(
+    PeerId peer_id,
+    std::shared_ptr<StagedMatchKeyframeMessage> message)
+{
+    if (!message)
+        return;
+
+    const std::vector<std::uint8_t> bytes =
+        serialize_staged_match_keyframe_message(*message);
+    if (bytes.empty()) // oversize refusal — the owner gates this pre-send
+        return;
+    send(peer_id, bytes.data(), bytes.size());
+}
+
 TypedReceivedMessage decode_received_message(const ReceivedMessage& message)
 {
     TransportEnvelope envelope;
@@ -1646,6 +1745,33 @@ TypedReceivedMessage decode_received_message(const ReceivedMessage& message)
             typed_message.kind = TypedReceivedMessageKind::PackTransferDone;
             typed_message.pack_transfer_done =
                 std::make_shared<PackTransferDoneMessage>(std::move(*decoded));
+            return typed_message;
+        }
+
+        case kStagedMatchSetupMessageType:
+        {
+            const auto decoded =
+                deserialize_staged_match_setup_message(message.data);
+            if (!decoded.has_value())
+                return malformed_typed_message(message.peer_id);
+
+            typed_message.kind = TypedReceivedMessageKind::StagedMatchSetup;
+            typed_message.staged_match_setup =
+                std::make_shared<StagedMatchSetupMessage>(std::move(*decoded));
+            return typed_message;
+        }
+
+        case kStagedMatchKeyframeMessageType:
+        {
+            const auto decoded =
+                deserialize_staged_match_keyframe_message(message.data);
+            if (!decoded.has_value())
+                return malformed_typed_message(message.peer_id);
+
+            typed_message.kind = TypedReceivedMessageKind::StagedMatchKeyframe;
+            typed_message.staged_match_keyframe =
+                std::make_shared<StagedMatchKeyframeMessage>(
+                    std::move(*decoded));
             return typed_message;
         }
 

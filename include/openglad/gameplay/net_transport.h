@@ -43,6 +43,8 @@ enum class NetMessageType : std::uint8_t {
     PackRequest = 20,
     PackFileChunk = 21,
     PackTransferDone = 22,
+    StagedMatchSetup = 23,
+    StagedMatchKeyframe = 24,
 };
 
 constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexcept
@@ -124,7 +126,22 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 // sanitized to {0,1}), appended after infinite_gold — the lobby's
 // shared-teams rule now rides the wire instead of comparing campaign ids.
 // Replay format moves to v14.
-inline constexpr std::uint8_t kNetworkProtocolVersion = 12;
+// v13: staged lobby (#218). Two new message types deliver the lobby OWNER's
+// staged world to joiners during the lobby phase: StagedMatchSetup (23,
+// u32 stage_generation + a length-prefixed complete InitialSetup message)
+// and StagedMatchKeyframe (24, u32 stage_generation + a length-prefixed
+// complete keyframe SnapshotMessage of the staged tick-0 world). Pairs are
+// generation-stamped; a keyframe whose generation differs from the last
+// received setup's is dropped by the client. The serializers REFUSE (empty
+// result, no throw) when the inner message would push the wrapper past the
+// u16 payload cap. StartDenialReason gains StageFailed (4) — the owner's
+// start gate denies GO while its stage is Failed. Reader-side hardening
+// rides along: read_serialized_guy clamps guy names to the 11-char disk
+// width and read_lobby_player clamps player names to the 40-char company
+// cap. Snapshot format stays v10 and replay stays v15 (no world-state or
+// recording layout change; the v14→v15 replay bump already broke the
+// versions-move-in-lockstep convention).
+inline constexpr std::uint8_t kNetworkProtocolVersion = 13;
 
 // Global networked player-index cap (seats across ALL peers). Distinct from
 // MAX_PLAYERS, which stays 4 and caps the seats of ONE machine (input slots,
@@ -190,6 +207,10 @@ inline constexpr std::uint8_t kPackFileChunkMessageType =
     net_message_type_value(NetMessageType::PackFileChunk);
 inline constexpr std::uint8_t kPackTransferDoneMessageType =
     net_message_type_value(NetMessageType::PackTransferDone);
+inline constexpr std::uint8_t kStagedMatchSetupMessageType =
+    net_message_type_value(NetMessageType::StagedMatchSetup);
+inline constexpr std::uint8_t kStagedMatchKeyframeMessageType =
+    net_message_type_value(NetMessageType::StagedMatchKeyframe);
 
 // Hello payload wire format:
 // - byte 0: current protocol version
@@ -396,6 +417,43 @@ struct PackTransferDoneMessage {
     bool operator==(const PackTransferDoneMessage&) const = default;
 };
 
+// --- Staged-lobby messages (protocol v13, #218) -----------------------------
+// The lobby OWNER broadcasts its staged world to joiners after every
+// completed restage: a StagedMatchSetup followed by a StagedMatchKeyframe,
+// both stamped with the stage generation so a client can pair them (a
+// keyframe whose generation differs from the last received setup's is
+// dropped; restage races resolve to the newest pair). The inner bytes are
+// COMPLETE existing wire messages — an InitialSetup and a keyframe
+// SnapshotMessage respectively — so receivers reuse the existing
+// deserializers verbatim and the payloads never fork from the launch wire.
+
+// The wrapper payload is u32 generation + u32 inner length + inner bytes;
+// the inner message may occupy at most the u16 transport cap minus those
+// eight bytes. The staged serializers REFUSE (empty result) beyond this so
+// an oversize staged world can never throw out of the owner's poll loop —
+// the owner reports StageStatus::Failed instead.
+inline constexpr std::size_t kMaxStagedInnerMessageBytes = 65527;
+
+// Owner → client: the staged world's level identity/metadata (the fields a
+// snapshot cannot carry). `setup_bytes` is a complete serialized
+// InitialSetupMessage (deserialize_initial_setup_message applies).
+struct StagedMatchSetupMessage {
+    std::uint32_t stage_generation = 0;
+    std::vector<std::uint8_t> setup_bytes;
+
+    bool operator==(const StagedMatchSetupMessage&) const = default;
+};
+
+// Owner → client: the staged world itself. `snapshot_bytes` is a complete
+// serialized keyframe SnapshotMessage of the dormant tick-0 staged world
+// (deserialize_snapshot applies).
+struct StagedMatchKeyframeMessage {
+    std::uint32_t stage_generation = 0;
+    std::vector<std::uint8_t> snapshot_bytes;
+
+    bool operator==(const StagedMatchKeyframeMessage&) const = default;
+};
+
 struct ReceivedMessage {
     PeerId peer_id = 0;
     std::vector<std::uint8_t> data;
@@ -424,6 +482,8 @@ enum class TypedReceivedMessageKind : std::uint8_t {
     PackRequest,
     PackFileChunk,
     PackTransferDone,
+    StagedMatchSetup,
+    StagedMatchKeyframe,
     Malformed,
 };
 
@@ -450,6 +510,8 @@ struct TypedReceivedMessage {
     std::shared_ptr<PackRequestMessage> pack_request;
     std::shared_ptr<PackFileChunkMessage> pack_file_chunk;
     std::shared_ptr<PackTransferDoneMessage> pack_transfer_done;
+    std::shared_ptr<StagedMatchSetupMessage> staged_match_setup;
+    std::shared_ptr<StagedMatchKeyframeMessage> staged_match_keyframe;
     std::uint32_t tick = 0;
 };
 
@@ -516,6 +578,16 @@ std::vector<std::uint8_t> serialize_pack_transfer_done_message(
     const PackTransferDoneMessage& message);
 std::optional<PackTransferDoneMessage> deserialize_pack_transfer_done_message(
     std::span<const std::uint8_t> bytes);
+// Staged serializers refuse oversize (empty result — see
+// kMaxStagedInnerMessageBytes) instead of throwing.
+std::vector<std::uint8_t> serialize_staged_match_setup_message(
+    const StagedMatchSetupMessage& message);
+std::optional<StagedMatchSetupMessage> deserialize_staged_match_setup_message(
+    std::span<const std::uint8_t> bytes);
+std::vector<std::uint8_t> serialize_staged_match_keyframe_message(
+    const StagedMatchKeyframeMessage& message);
+std::optional<StagedMatchKeyframeMessage>
+deserialize_staged_match_keyframe_message(std::span<const std::uint8_t> bytes);
 TypedReceivedMessage decode_received_message(const ReceivedMessage& message);
 
 // Coarse health of a transport's upstream link, for client-side status UI.
@@ -610,6 +682,18 @@ public:
     virtual void send_pack_transfer_done(
         PeerId peer_id,
         std::shared_ptr<PackTransferDoneMessage> message);
+    // Staged-lobby sends (v13): like the pack-transfer sends, deliberately no
+    // typed fast path — they always serialize and go through send(), so every
+    // transport (including the in-process pair) exercises the real wire
+    // encoding. An oversize inner message serializes to nothing and is
+    // silently skipped here; the OWNER detects that shape before sending
+    // (stage status Failed), never mid-broadcast.
+    virtual void send_staged_match_setup(
+        PeerId peer_id,
+        std::shared_ptr<StagedMatchSetupMessage> message);
+    virtual void send_staged_match_keyframe(
+        PeerId peer_id,
+        std::shared_ptr<StagedMatchKeyframeMessage> message);
 
     [[nodiscard]] virtual std::vector<ReceivedMessage> poll() = 0;
     [[nodiscard]] virtual std::vector<TypedReceivedMessage> poll_typed();

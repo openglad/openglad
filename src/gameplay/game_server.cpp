@@ -2110,6 +2110,10 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
         case TypedReceivedMessageKind::PackRequest:
         case TypedReceivedMessageKind::PackFileChunk:
         case TypedReceivedMessageKind::PackTransferDone:
+        // Staged-lobby broadcasts (v13) likewise belong to the lobby phase;
+        // an upstream client cannot stage anything on the server.
+        case TypedReceivedMessageKind::StagedMatchSetup:
+        case TypedReceivedMessageKind::StagedMatchKeyframe:
             break;
         }
     }

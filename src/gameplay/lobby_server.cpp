@@ -459,6 +459,19 @@ bool LobbyServer::start_allowed(PeerId requester,
         return false;
     }
 
+    // Rule 5 (protocol v13, #218): the owner-injected start gate. The owner
+    // wires it to its MatchStage — a failed stage denies GO (StageFailed)
+    // instead of launching a world that cannot exist.
+    if (start_gate_)
+    {
+        const StartDenialReason gate_reason = start_gate_();
+        if (gate_reason != StartDenialReason::None)
+        {
+            reason = gate_reason;
+            return false;
+        }
+    }
+
     return true;
 }
 

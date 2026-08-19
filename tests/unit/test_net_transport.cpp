@@ -256,7 +256,7 @@ TEST(NetTransport, header_helpers_roundtrip_envelope)
     std::vector<std::uint8_t> bytes;
     og::sim::append_transport_header(bytes, og::sim::kHelloMessageType, 0x2211u);
 
-    const std::vector<std::uint8_t> expected = {0x0c, 0x01, 0x11, 0x22};
+    const std::vector<std::uint8_t> expected = {0x0d, 0x01, 0x11, 0x22};
     EXPECT_EQ(expected, bytes);
 
     og::sim::TransportEnvelope envelope;
@@ -597,6 +597,182 @@ TEST(NetTransport, guy_and_player_names_clamp_on_read)
     ASSERT_EQ(1u, setup_decoded->guys.size());
     EXPECT_EQ(std::string(og::sim::kMaxLobbyGuyNameLength, 'S'),
               setup_decoded->guys.front().name);
+}
+
+// --- Staged-lobby wire messages (protocol v13, #218) ------------------------
+
+TEST(NetTransport, staged_match_setup_roundtrips_and_decodes)
+{
+    og::sim::InitialSetupMessage setup;
+    setup.level_id = 822;
+    setup.level_title = "SOCCER PITCH";
+    setup.level_type = 4;
+    setup.pixmaxx = 640;
+    setup.pixmaxy = 960;
+    setup.current_scenario = 822;
+
+    og::sim::StagedMatchSetupMessage expected;
+    expected.stage_generation = 7u;
+    expected.setup_bytes = og::sim::serialize_initial_setup_message(setup);
+
+    const auto bytes = og::sim::serialize_staged_match_setup_message(expected);
+    ASSERT_FALSE(bytes.empty());
+    const auto decoded = og::sim::deserialize_staged_match_setup_message(bytes);
+    ASSERT_TRUE(decoded.has_value());
+    EXPECT_EQ(expected, *decoded);
+
+    const auto typed =
+        og::sim::decode_received_message({.peer_id = 3u, .data = bytes});
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::StagedMatchSetup, typed.kind);
+    ASSERT_NE(nullptr, typed.staged_match_setup);
+    EXPECT_EQ(expected, *typed.staged_match_setup);
+
+    // The inner bytes are a COMPLETE InitialSetup wire message — the existing
+    // deserializer applies verbatim on the receiving side.
+    const auto inner =
+        og::sim::deserialize_initial_setup_message(
+            typed.staged_match_setup->setup_bytes);
+    ASSERT_TRUE(inner.has_value());
+    EXPECT_EQ(setup, *inner);
+}
+
+TEST(NetTransport, staged_match_keyframe_roundtrips_and_decodes)
+{
+    og::sim::WorldSnapshot snapshot;
+    snapshot.tick_count = 0;
+    snapshot.level_tick_count = 0;
+    snapshot.rng_state = 0xdeadbeefu;
+    snapshot.weather = 2;
+
+    og::sim::StagedMatchKeyframeMessage expected;
+    expected.stage_generation = 12u;
+    expected.snapshot_bytes = og::sim::serialize_snapshot(snapshot);
+
+    const auto bytes =
+        og::sim::serialize_staged_match_keyframe_message(expected);
+    ASSERT_FALSE(bytes.empty());
+    const auto decoded =
+        og::sim::deserialize_staged_match_keyframe_message(bytes);
+    ASSERT_TRUE(decoded.has_value());
+    EXPECT_EQ(expected, *decoded);
+
+    const auto typed =
+        og::sim::decode_received_message({.peer_id = 3u, .data = bytes});
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::StagedMatchKeyframe,
+              typed.kind);
+    ASSERT_NE(nullptr, typed.staged_match_keyframe);
+    EXPECT_EQ(expected, *typed.staged_match_keyframe);
+
+    // The inner bytes are a COMPLETE keyframe SnapshotMessage; a tick-0
+    // staged keyframe must survive with its rng/weather intact.
+    const og::sim::WorldSnapshot inner = og::sim::deserialize_snapshot(
+        typed.staged_match_keyframe->snapshot_bytes);
+    EXPECT_EQ(0u, inner.tick_count);
+    EXPECT_EQ(0u, inner.level_tick_count);
+    EXPECT_EQ(0xdeadbeefu, inner.rng_state);
+    EXPECT_EQ(2, inner.weather);
+}
+
+TEST(NetTransport, staged_wrapper_layout_pins_generation_and_inner_offsets)
+{
+    // Locate the generation field structurally by diffing two serializations
+    // that differ only in stage_generation (the slot_flags pattern): the u32
+    // generation must occupy payload offset 0 — wire bytes 4..7 after the
+    // 4-byte envelope — followed by the u32 inner length at bytes 8..11.
+    const std::vector<std::uint8_t> inner = {0xaa, 0xbb, 0xcc};
+    const auto serialize_with_generation = [&inner](std::uint32_t generation) {
+        return og::sim::serialize_staged_match_setup_message(
+            {.stage_generation = generation, .setup_bytes = inner});
+    };
+    const auto low = serialize_with_generation(0x01020304u);
+    const auto high = serialize_with_generation(0xf1f2f3f4u);
+    ASSERT_EQ(low.size(), high.size());
+    ASSERT_EQ(og::sim::kTransportHeaderSize + 8u + inner.size(), low.size());
+    std::vector<std::size_t> diff_offsets;
+    for (std::size_t i = 0; i < low.size(); ++i)
+    {
+        if (low[i] != high[i])
+            diff_offsets.push_back(i);
+    }
+    EXPECT_EQ((std::vector<std::size_t>{4u, 5u, 6u, 7u}), diff_offsets)
+        << "only the generation u32 at payload offset 0 may differ";
+    // Little-endian generation, then the inner length prefix, then the bytes.
+    EXPECT_EQ(0x04u, low[4]);
+    EXPECT_EQ(0x03u, low[5]);
+    EXPECT_EQ(0x02u, low[6]);
+    EXPECT_EQ(0x01u, low[7]);
+    EXPECT_EQ(0x03u, low[8]);
+    EXPECT_EQ(0x00u, low[9]);
+    EXPECT_EQ(0x00u, low[10]);
+    EXPECT_EQ(0x00u, low[11]);
+    EXPECT_EQ(0xaau, low[12]);
+    EXPECT_EQ(0xbbu, low[13]);
+    EXPECT_EQ(0xccu, low[14]);
+
+    // The keyframe wrapper shares the identical layout.
+    const auto keyframe_bytes =
+        og::sim::serialize_staged_match_keyframe_message(
+            {.stage_generation = 0x01020304u, .snapshot_bytes = inner});
+    ASSERT_EQ(low.size(), keyframe_bytes.size());
+    EXPECT_TRUE(std::equal(low.begin() + 4, low.end(),
+                           keyframe_bytes.begin() + 4))
+        << "setup and keyframe wrappers differ only in message type";
+    EXPECT_EQ(og::sim::kStagedMatchSetupMessageType, low[1]);
+    EXPECT_EQ(og::sim::kStagedMatchKeyframeMessageType, keyframe_bytes[1]);
+}
+
+TEST(NetTransport, staged_wrapper_refuses_oversize_or_empty_inner_without_throwing)
+{
+    // At the cap: 65527 inner bytes + 8 wrapper bytes = the exact u16 payload
+    // maximum — still serializable.
+    og::sim::StagedMatchKeyframeMessage at_cap;
+    at_cap.stage_generation = 1u;
+    at_cap.snapshot_bytes.assign(og::sim::kMaxStagedInnerMessageBytes, 0x5a);
+    const auto at_cap_bytes =
+        og::sim::serialize_staged_match_keyframe_message(at_cap);
+    ASSERT_FALSE(at_cap_bytes.empty());
+    EXPECT_EQ(og::sim::kTransportHeaderSize + 65535u, at_cap_bytes.size());
+    const auto at_cap_decoded =
+        og::sim::deserialize_staged_match_keyframe_message(at_cap_bytes);
+    ASSERT_TRUE(at_cap_decoded.has_value());
+    EXPECT_EQ(at_cap, *at_cap_decoded);
+
+    // One past the cap: REFUSED (empty result), never a throw — the owner's
+    // poll loop reports StageStatus::Failed instead of dying (the
+    // wrap_transport_message process-exit hazard class).
+    og::sim::StagedMatchKeyframeMessage oversize = at_cap;
+    oversize.snapshot_bytes.push_back(0x5a);
+    EXPECT_TRUE(
+        og::sim::serialize_staged_match_keyframe_message(oversize).empty());
+    og::sim::StagedMatchSetupMessage oversize_setup;
+    oversize_setup.setup_bytes.assign(
+        og::sim::kMaxStagedInnerMessageBytes + 1u, 0x5a);
+    EXPECT_TRUE(
+        og::sim::serialize_staged_match_setup_message(oversize_setup).empty());
+
+    // An empty inner message is meaningless — also refused on write and
+    // rejected on read.
+    EXPECT_TRUE(og::sim::serialize_staged_match_setup_message({}).empty());
+
+    // The default transport send path skips a refused serialization instead
+    // of putting a malformed frame on the wire.
+    MockTransport transport;
+    transport.send_staged_match_keyframe(
+        1u, std::make_shared<og::sim::StagedMatchKeyframeMessage>(oversize));
+    EXPECT_TRUE(transport.sent_messages().empty());
+
+    // A well-formed message reaches the wire through the same default path.
+    og::sim::StagedMatchSetupMessage small;
+    small.stage_generation = 9u;
+    small.setup_bytes = {0x01};
+    transport.send_staged_match_setup(
+        1u, std::make_shared<og::sim::StagedMatchSetupMessage>(small));
+    ASSERT_EQ(1u, transport.sent_messages().size());
+    const auto typed = og::sim::decode_received_message(
+        transport.sent_messages().front());
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::StagedMatchSetup, typed.kind);
+    ASSERT_NE(nullptr, typed.staged_match_setup);
+    EXPECT_EQ(small, *typed.staged_match_setup);
 }
 
 TEST(NetTransport, lightweight_message_roundtrips_and_decode)
@@ -971,7 +1147,7 @@ TEST(NetTransport, decode_received_message_reports_malformed_typed_payloads)
         return bytes;
     };
 
-    const std::array<std::pair<std::uint8_t, std::uint16_t>, 22> cases = {
+    const std::array<std::pair<std::uint8_t, std::uint16_t>, 24> cases = {
         std::pair{og::sim::kSnapshotMessageType, 1u},
         std::pair{og::sim::kDeltaSnapshotMessageType, 1u},
         std::pair{og::sim::kInputMessageType, 1u},
@@ -994,6 +1170,8 @@ TEST(NetTransport, decode_received_message_reports_malformed_typed_payloads)
         std::pair{og::sim::kPackRequestMessageType, 1u},
         std::pair{og::sim::kPackFileChunkMessageType, 1u},
         std::pair{og::sim::kPackTransferDoneMessageType, 1u},
+        std::pair{og::sim::kStagedMatchSetupMessageType, 1u},
+        std::pair{og::sim::kStagedMatchKeyframeMessageType, 1u},
     };
 
     for (const auto& [message_type, payload_length] : cases)
@@ -1024,8 +1202,8 @@ TEST(NetTransport, serialize_hello_emits_expected_wire_format)
 
     constexpr std::array<std::uint8_t, og::sim::kSerializedHelloMessageSize>
         expected = {
-            0x0c, 0x01, 0x17, 0x00,
-            0x0c, 0x0c, 0x03,
+            0x0d, 0x01, 0x17, 0x00,
+            0x0d, 0x0d, 0x03,
             0x00, 0x01, 0x02, 0x03,
             0x04, 0x05, 0x06, 0x07,
             0x08, 0x09, 0x0a, 0x0b,

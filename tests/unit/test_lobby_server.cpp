@@ -3209,6 +3209,104 @@ TEST(LobbyServer, local_session_start_bypasses_ready_and_deploy_gates)
     EXPECT_EQ(0u, server.state().last_start_denial);
 }
 
+// Protocol v13 (#218): the owner-injected start gate is start_allowed's final
+// rule. A Failed MatchStage denies GO with StageFailed, the lobby stays live
+// (never locked), and a recovered stage lets the retry through.
+TEST(LobbyServer, start_gate_stage_failed_denies_go_and_recovery_admits_retry)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    ready_two_peer_lobby(transport, server);
+
+    int gate_calls = 0;
+    og::sim::StartDenialReason gate_reason =
+        og::sim::StartDenialReason::StageFailed;
+    server.set_start_gate([&gate_calls, &gate_reason] {
+        ++gate_calls;
+        return gate_reason;
+    });
+
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(11u, make_start_message(0u, 301u));
+    server.poll_incoming_messages();
+    EXPECT_EQ(1, gate_calls) << "rules 2-4 pass, so the gate is consulted";
+    EXPECT_FALSE(server.start_game_requested())
+        << "a failed stage must never lock the lobby";
+    EXPECT_EQ(start_denial_reason_value(
+                  og::sim::StartDenialReason::StageFailed),
+              server.state().last_start_denial);
+    EXPECT_EQ(301u, server.state().last_start_request_id);
+    ASSERT_FALSE(transport.sent_messages().empty())
+        << "the StageFailed denial is echoed like every other reason";
+
+    // The owner restages successfully; the retry passes through the gate.
+    gate_reason = og::sim::StartDenialReason::None;
+    transport.queue_lobby_message(11u, make_start_message(0u, 302u));
+    server.poll_incoming_messages();
+    EXPECT_EQ(2, gate_calls);
+    EXPECT_TRUE(server.start_game_requested());
+    EXPECT_EQ(0u, server.state().last_start_denial)
+        << "acceptance clears the denial";
+}
+
+TEST(LobbyServer, start_gate_runs_after_ready_rule_and_never_for_nonhost)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+    transport.queue_lobby_message(
+        11u, make_join_message("Host", 0, {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        22u, make_join_message("Guest", 1, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    int gate_calls = 0;
+    server.set_start_gate([&gate_calls] {
+        ++gate_calls;
+        return og::sim::StartDenialReason::StageFailed;
+    });
+
+    // Guest not ready: rule 3 denies FIRST — the gate is never consulted, so
+    // the denial reads MachinesNotReady, not StageFailed.
+    transport.queue_lobby_message(11u, make_start_message(0u, 401u));
+    server.poll_incoming_messages();
+    EXPECT_EQ(0, gate_calls);
+    EXPECT_EQ(start_denial_reason_value(
+                  og::sim::StartDenialReason::MachinesNotReady),
+              server.state().last_start_denial);
+
+    // A non-host StartGame stays silently ignored — no gate consult either.
+    transport.queue_lobby_message(22u, make_start_message(1u, 402u));
+    server.poll_incoming_messages();
+    EXPECT_EQ(0, gate_calls);
+    EXPECT_FALSE(server.start_game_requested());
+}
+
+TEST(LobbyServer, local_session_start_ignores_start_gate)
+{
+    // Rule 1 outranks the gate: solo/split-screen GO keeps its unconditional
+    // pass (today's first-level load fallback covers a failed local stage).
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport, /*local_session=*/true);
+    server.connect_client(11u);
+    transport.queue_lobby_message(
+        11u, make_join_message("P1", 0, {make_slot(0u, 100, "A", FAMILY_SOLDIER)}));
+    server.poll_incoming_messages();
+
+    int gate_calls = 0;
+    server.set_start_gate([&gate_calls] {
+        ++gate_calls;
+        return og::sim::StartDenialReason::StageFailed;
+    });
+
+    transport.queue_lobby_message(11u, make_start_message(0u));
+    server.poll_incoming_messages();
+    EXPECT_EQ(0, gate_calls) << "local sessions never consult the gate";
+    EXPECT_TRUE(server.start_game_requested());
+    EXPECT_EQ(0u, server.state().last_start_denial);
+}
+
 TEST(LobbyServer, unlock_for_new_round_clears_all_ready)
 {
     MockLobbyTransport transport(true);

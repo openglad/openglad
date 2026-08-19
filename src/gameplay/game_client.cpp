@@ -1233,6 +1233,10 @@ void GameClient::poll_messages_impl(float first_snapshot_prior_alpha,
         case TypedReceivedMessageKind::PackRequest:
         case TypedReceivedMessageKind::PackFileChunk:
         case TypedReceivedMessageKind::PackTransferDone:
+        // Staged-lobby broadcasts (v13) belong to the lobby pollers; the
+        // gameplay client ignores a straggling pair.
+        case TypedReceivedMessageKind::StagedMatchSetup:
+        case TypedReceivedMessageKind::StagedMatchKeyframe:
         case TypedReceivedMessageKind::Malformed:
             break;
         }
