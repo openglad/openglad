@@ -68,6 +68,17 @@ struct ModeState
 // on_mode_tick, win-latch fold.
 void mode_run_tick(GameWorld& world);
 
+// The once-only mode activation (mode_run_tick's step 0, factored so a
+// staged lobby world can init before its first tick): latch init_attempted
+// FIRST, resolve respawn_ticks from the lobby request, scan team start
+// markers into the anchor arrays while consumed markers are still in oblist,
+// dispatch on_mode_init, and set active on success. Latch-guarded on
+// init_attempted — mode_run_tick's lazy arm calls the SAME function for
+// un-staged worlds (unit tests, openglad_text, dedicated levels 2+), so
+// init exists exactly once per world whichever site reaches it first. Both
+// latch bytes replicate in ModeState, so adoption never re-inits.
+void mode_stage_init(GameWorld& world);
+
 // True when this world is a scripted level with a successfully initialized
 // mode — the gate every scripted-only engine behavior keys on.
 bool mode_scripted_active(const GameWorld& world);

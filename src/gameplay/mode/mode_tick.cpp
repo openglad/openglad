@@ -162,25 +162,37 @@ void assert_win_shape(GameWorld& world)
 
 } // namespace
 
+void mode_stage_init(GameWorld& world)
+{
+    // The CTF activation discipline: latch init_attempted FIRST,
+    // unconditionally; a failed init leaves the level to classic completion
+    // rules. The latch also makes this callable from both the stager and
+    // mode_run_tick's lazy arm without a second dispatch.
+    if (world.mode.init_attempted)
+        return;
+    world.mode.init_attempted = true;
+    // Engine-side prep BEFORE the Lua hook: resolve the respawn delay
+    // (lobby request > default) and scan the team start markers into the
+    // anchor arrays while the consumed-marker corpses are still in oblist
+    // (at tick time the dead sweep runs after the completion fork; at stage
+    // time dead-marked markers wait in oblist for the first tick's sweep).
+    const short requested = world.ctf_requested_respawn_ticks;
+    world.respawn.respawn_ticks =
+        (requested > 0) ? static_cast<std::uint16_t>(requested)
+                        : kRespawnDefaultTicks;
+    respawn_scan_anchors(world);
+    if (og::script::hooks::level_mode_init(&world))
+        world.mode.active = true;
+}
+
 void mode_run_tick(GameWorld& world)
 {
-    // 0. Lazy init (the CTF activation discipline: latch init_attempted
-    //    FIRST, unconditionally; a failed init owns its tick and the level
-    //    falls to classic completion rules starting the NEXT tick).
+    // 0. Lazy init (a failed init owns its tick and the level falls to
+    //    classic completion rules starting the NEXT tick). Staged worlds
+    //    arrive with init_attempted already latched and skip this arm.
     if (!world.mode.active && !world.mode.init_attempted)
     {
-        world.mode.init_attempted = true;
-        // Engine-side prep BEFORE the Lua hook: resolve the respawn delay
-        // (lobby request > default) and scan the team start markers into the
-        // anchor arrays while this tick's consumed-marker corpses are still
-        // in oblist (the dead sweep runs after the completion fork).
-        const short requested = world.ctf_requested_respawn_ticks;
-        world.respawn.respawn_ticks =
-            (requested > 0) ? static_cast<std::uint16_t>(requested)
-                            : kRespawnDefaultTicks;
-        respawn_scan_anchors(world);
-        if (og::script::hooks::level_mode_init(&world))
-            world.mode.active = true;
+        mode_stage_init(world);
         if (!world.mode.active)
             return;
     }

@@ -419,6 +419,64 @@ TEST_F(HeadlessServerRuntimeTest, spawn_skips_benched_members_but_save_keeps_the
     EXPECT_EQ("Reserve", active_save_.team_list[1]->name);
 }
 
+// Staged-lobby seam (#218): spawn_team_from_save is exported as THE roster
+// spawn rule so the stager (and eventually every launch shape) shares one
+// copy. Prove the exported symbol runs the full contract standalone:
+// deployed filter, exact-marker consumption, spawn-point recording, and the
+// leftover-marker kill.
+TEST_F(HeadlessServerRuntimeTest, exported_spawn_team_from_save_runs_standalone)
+{
+    og::sim::LobbySaveDataEquivalent lobby_save;
+    lobby_save.current_campaign = "gladiator";
+    lobby_save.scen_num = 1;
+    lobby_save.numplayers = 1;
+    lobby_save.allied_mode = 0;
+    lobby_save.team_list = {make_slot(0u, 100, "Front", FAMILY_SOLDIER, 0)};
+    initialize_from_lobby(lobby_save);
+
+    GameWorld& world = level_data_->world();
+    SaveData reinforcement;
+    auto deployed_member = std::make_unique<guy>(FAMILY_ARCHER);
+    deployed_member->id = 900;
+    deployed_member->name = "Late";
+    deployed_member->teamnum = 2;
+    deployed_member->level = 2;
+    deployed_member->deployed = true;
+    reinforcement.team_list[0] = std::move(deployed_member);
+    auto benched_member = std::make_unique<guy>(FAMILY_ELF);
+    benched_member->id = 901;
+    benched_member->name = "Benched";
+    benched_member->teamnum = 2;
+    benched_member->level = 2;
+    benched_member->deployed = false;
+    reinforcement.team_list[1] = std::move(benched_member);
+
+    with_context([&] {
+        walker* consumed = world.add_ob(Order::Special, FAMILY_RESERVED_TEAM);
+        ASSERT_NE(nullptr, consumed);
+        consumed->set_team_num(2);
+        consumed->setxy(160, 160);
+        walker* leftover = world.add_ob(Order::Special, FAMILY_RESERVED_TEAM);
+        ASSERT_NE(nullptr, leftover);
+        leftover->set_team_num(3);
+        leftover->setxy(200, 200);
+
+        og::server::spawn_team_from_save(world, reinforcement);
+
+        walker* const late = find_team_member(world, 900);
+        ASSERT_NE(nullptr, late) << "the deployed member spawns";
+        EXPECT_EQ(160, late->xpos()) << "consumed the exact team-2 marker";
+        EXPECT_EQ(160, late->ypos());
+        EXPECT_EQ(2, late->team_num());
+        EXPECT_EQ(160, late->spawn_x()) << "level-entry spawn point recorded";
+        EXPECT_EQ(160, late->spawn_y());
+        EXPECT_EQ(nullptr, find_team_member(world, 901))
+            << "the benched member must never enter the level";
+        EXPECT_TRUE(consumed->dead()) << "consumed marker is killed";
+        EXPECT_TRUE(leftover->dead()) << "leftover markers are killed";
+    });
+}
+
 TEST_F(HeadlessServerRuntimeTest,
        lobby_start_preserves_distinct_owners_with_same_private_save_slot)
 {

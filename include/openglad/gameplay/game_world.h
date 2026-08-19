@@ -408,6 +408,20 @@ public:
     // Run one simulation tick.
     void tick();
 
+    // The level on_load dispatch, factored out of tick() so a staged lobby
+    // world can run it before the first tick (spawns land in the preview,
+    // announcements queue in the staged event log). Latch-guarded on
+    // last_level_id_ — tick() calls the same method, so on_load exists
+    // exactly once per (world, level) whichever site reaches it first.
+    void run_pending_level_on_load();
+
+    // Mark the level on_load dispatch as already delivered WITHOUT running
+    // it: the authoritative adopter of a staged world transfers the latch
+    // truthfully (the staged world ran on_load and the adopted state IS that
+    // world's state). Mirrors keep the latch armed instead (apply_snapshot's
+    // tick-0 branch, PR #195) — they never tick, so it stays inert there.
+    void claim_level_load_latch() noexcept { last_level_id_ = id; }
+
     std::uint32_t tick_count_ = 0;
     og::sim::SimRandom rng_;
 

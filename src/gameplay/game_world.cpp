@@ -1681,15 +1681,7 @@ void GameWorld::tick()
 
     tick_count_++;
     events.current_tick_ = tick_count_;
-    if (last_level_id_ != id)
-    {
-        last_level_id_ = id;
-        level_tick_count_ = 0;
-        // Level-script on_load: fires on each peer's first tick of a level
-        // (fresh start or mid-level join alike — scripts derive state from
-        // the world, not from "how long the level existed elsewhere").
-        og::script::hooks::level_load(this);
-    }
+    run_pending_level_on_load();
     level_tick_count_++;
 
     std::uint32_t max_level_ticks = 36000;
@@ -2007,6 +1999,20 @@ void GameWorld::tick()
         remove_from_id_index(ob);
         return true;
     });
+}
+
+void GameWorld::run_pending_level_on_load()
+{
+    if (last_level_id_ == id)
+        return;
+    last_level_id_ = id;
+    level_tick_count_ = 0;
+    // Level-script on_load: fires on each peer's first tick of a level
+    // (fresh start or mid-level join alike — scripts derive state from
+    // the world, not from "how long the level existed elsewhere"). A staged
+    // lobby world runs this before its first tick instead; the latch above
+    // keeps the dispatch once-only either way.
+    og::script::hooks::level_load(this);
 }
 
 // --- Floor-transition landing probe (Z-axis / multi-floor) ------------------

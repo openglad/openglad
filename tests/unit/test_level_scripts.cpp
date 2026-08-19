@@ -78,6 +78,66 @@ TEST_F(LevelScriptsTest, load_and_tick_hooks_fire_in_order)
     EXPECT_EQ("tick\t42\t2", vm_log()[2]);
 }
 
+// Staged-lobby seam (#218): run_pending_level_on_load is the tick-side
+// on_load dispatch factored behind its latch, so a staged world can run it
+// before the first tick. One dispatch path, two call sites.
+TEST_F(LevelScriptsTest, run_pending_level_on_load_dispatches_once_untensed)
+{
+    register_pack_script(
+        {"test.level", "lvl.lua",
+         "og.register_level_hooks(42, {\n"
+         "  on_load = function(level) og.log('load', level) end,\n"
+         "  on_tick = function(level, tick) og.log('tick', level, tick) end,\n"
+         "})\n"});
+    world.run_pending_level_on_load();
+    EXPECT_EQ(0u, world.tick_count_) << "staged on_load must not tick";
+    EXPECT_EQ(0u, world.level_tick_count());
+    ASSERT_EQ(1u, vm_log().size());
+    EXPECT_EQ("load\t42", vm_log()[0]);
+
+    // Latch-guarded: a second staged call is a no-op.
+    world.run_pending_level_on_load();
+    ASSERT_EQ(1u, vm_log().size());
+
+    // The first tick after staging dispatches on_tick only — the latch
+    // keeps on_load once-only across the seam's two call sites.
+    world.tick();
+    ASSERT_EQ(2u, vm_log().size());
+    EXPECT_EQ("tick\t42\t1", vm_log()[1]);
+    EXPECT_EQ(1u, world.level_tick_count());
+}
+
+// Adoption seam (#218): claim_level_load_latch marks on_load as already
+// delivered WITHOUT running it — the authoritative adopter of a staged
+// world transfers the latch truthfully instead of re-dispatching.
+TEST_F(LevelScriptsTest, claim_level_load_latch_suppresses_the_tick_dispatch)
+{
+    register_pack_script(
+        {"test.level", "lvl.lua",
+         "og.register_level_hooks(42, {\n"
+         "  on_load = function(level) og.log('load', level) end,\n"
+         "  on_tick = function(level, tick) og.log('tick', level, tick) end,\n"
+         "})\n"});
+    register_pack_script(
+        {"test.level2", "lvl2.lua",
+         "og.register_level_hooks(43, {\n"
+         "  on_load = function(level) og.log('load', level) end,\n"
+         "})\n"});
+    world.claim_level_load_latch();
+    EXPECT_TRUE(vm_log().empty()) << "claiming must not dispatch";
+
+    world.tick();
+    ASSERT_EQ(1u, vm_log().size());
+    EXPECT_EQ("tick\t42\t1", vm_log()[0])
+        << "the claimed latch suppresses the tick-side on_load";
+
+    // A LEVEL CHANGE re-opens the latch: on_load is owed to the new level.
+    world.id = 43;
+    world.run_pending_level_on_load();
+    ASSERT_EQ(2u, vm_log().size());
+    EXPECT_EQ("load\t43", vm_log()[1]);
+}
+
 TEST_F(LevelScriptsTest, wildcard_level_hooks_fire_for_any_level)
 {
     register_pack_script(

@@ -3235,7 +3235,7 @@ inline constexpr FactPredicate kFacts_event_set_end_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_event_set_end_emission = {
-    "src/gameplay/game_world.cpp", 1803,
+    "src/gameplay/game_world.cpp", 1795,
     "level_done = 0;",
     "level_done = 2;",
     "Neuters the enemy-alive guard in GameWorld::tick's normal living-act loop (the branch that runs for awake enemies; the sibling guards cover dormant, frozen, and weapon walkers): instead of resetting level_done to 0 when a live non-friendly Living enemy acts, it forces level_done to stay 2. With enemies still alive the level_done==2 completion check latches game_ended and the server layer pushes EventKind::SetEnd, so the arena's set_end suppression is broken and the event sneaks through. (Re-anchored after the dormant-guard feature added an earlier textual twin the pin had silently drifted onto.)"

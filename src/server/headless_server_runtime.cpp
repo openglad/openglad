@@ -177,6 +177,10 @@ walker* create_team_walker(GameWorld& world, const guy& source)
     return created;
 }
 
+} // namespace
+
+namespace og::server {
+
 void spawn_team_from_save(GameWorld& world, const SaveData& save)
 {
     for (const auto& member : save.team_list)
@@ -235,6 +239,10 @@ void spawn_team_from_save(GameWorld& world, const SaveData& save)
         marker->set_dead(1);
     }
 }
+
+} // namespace og::server
+
+namespace {
 
 bool should_preserve_completed_level_entity(const walker& entity)
 {
