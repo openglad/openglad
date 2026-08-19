@@ -58,6 +58,7 @@ og_unit_script
 og_unit_server
 og_unit_sim
 og_unit_soccer
+og_unit_stage
 og_unit_tower_calibration
 og_unit_tower_gen
 og_unit_tower_progression

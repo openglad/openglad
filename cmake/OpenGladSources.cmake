@@ -156,6 +156,14 @@ set(OG_INTERFACE_COMPONENT_SOURCES
     ${SRC_DIR}/interface/input/input_mappings.cpp
     ${SRC_DIR}/interface/input/input_state.cpp
     ${SRC_DIR}/interface/level_runtime_data.cpp
+    # Staged lobby (#218): the headless level pipeline + MatchStage are
+    # dual-listed here AND in the headless source lists (the
+    # level_runtime_data.cpp precedent — no headless binary links
+    # og_interface, so no duplicate symbols). Their headers keep their
+    # include/openglad/server/ paths; see match_stage.h "dual residency".
+    ${SRC_DIR}/server/headless_level_hooks.cpp
+    ${SRC_DIR}/server/headless_server_runtime.cpp
+    ${SRC_DIR}/server/match_stage.cpp
     ${SRC_DIR}/interface/platform_bridge.cpp
     ${SRC_DIR}/interface/render/depth_fx.cpp
     ${SRC_DIR}/interface/render/effects.cpp

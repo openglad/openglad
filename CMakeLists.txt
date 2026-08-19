@@ -628,8 +628,13 @@ if(NOT EMSCRIPTEN)
         core gameplay)
     prepare_component_include_root(OG_RESOURCES_INCLUDE_ROOT resources
         core gameplay resources)
+    # `server` is visible to og_interface for the staged lobby (#218): the
+    # headless level pipeline + MatchStage are dual-listed into og_interface
+    # (see cmake/OpenGladSources.cmake) while their headers deliberately keep
+    # their include/openglad/server/ paths — the level_runtime_data.cpp
+    # dual-residency precedent, documented in match_stage.h.
     prepare_component_include_root(OG_INTERFACE_INCLUDE_ROOT interface
-        core gameplay resources interface)
+        core gameplay resources interface server)
 
     add_library(og_core STATIC ${OG_CORE_SOURCES})
     configure_component_library(og_core "${OG_CORE_INCLUDE_ROOT}")
@@ -841,12 +846,19 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/interface/session_state.cpp
         ${SRC_DIR}/interface/level_runtime_data.cpp
         ${SRC_DIR}/interface/platform_bridge.cpp
+        # staged lobby (#218): headless level pipeline + MatchStage (the text
+        # picker stages its preview locally through the same one function)
+        ${SRC_DIR}/server/headless_level_hooks.cpp
+        ${SRC_DIR}/server/headless_server_runtime.cpp
+        ${SRC_DIR}/server/match_stage.cpp
         # platform (SDL-free subset)
         ${SRC_DIR}/platform/game_context.cpp
     )
 
     set(HEADLESS_SERVER_RUNTIME_SOURCES
         ${SRC_DIR}/server/headless_server_runtime.cpp
+        ${SRC_DIR}/server/headless_level_hooks.cpp
+        ${SRC_DIR}/server/match_stage.cpp
         ${SRC_DIR}/server/headless_tick_interval.cpp
         ${SRC_DIR}/platform/text/platform_headless.cpp
         ${SRC_DIR}/platform/text/walker_headless.cpp

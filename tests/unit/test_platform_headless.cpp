@@ -46,14 +46,12 @@
 #include <vector>
 #include <unistd.h>
 
-void headless_clear_stale_view_controls(LevelRuntimeData*);
+// The headless hooks table members are file-local to
+// src/server/headless_level_hooks.cpp now (the SDL platform keeps a
+// wire_world_with_loader twin, so the names must not leak) — reach them
+// through headless_level_data_hooks() / headless_entity_loader() only.
 void clear_keyboard();
-void headless_level_data_draw(LevelRuntimeData*, screen*);
-std::unique_ptr<LevelRender> headless_create_level_render(PixieData[]);
-EntityFactory headless_create_entity_factory();
 loader* headless_entity_loader();
-void wire_world_with_loader(GameWorld* world, loader* game_loader);
-void headless_wire_world_entity_services(GameWorld* world, LevelRuntimeData* level);
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 int get_input_events();
 walker* find_follow_leader();
@@ -300,13 +298,15 @@ TEST(PlatformHeadless, hooks_and_entity_services_are_wired)
     ASSERT_NE(nullptr, hooks.create_entity_factory);
     ASSERT_NE(nullptr, hooks.wire_world_entity_services);
 
+    // Call each warn-stub twice through the table: the std::call_once-backed
+    // warnings must emit only once per process.
     hooks.clear_stale_view_controls(nullptr);
-    headless_clear_stale_view_controls(nullptr);
+    hooks.clear_stale_view_controls(nullptr);
     clear_keyboard();
     hooks.draw(nullptr, nullptr);
-    headless_level_data_draw(nullptr, nullptr);
+    hooks.draw(nullptr, nullptr);
     EXPECT_EQ(nullptr, hooks.create_level_render(nullptr));
-    EXPECT_EQ(nullptr, headless_create_level_render(nullptr));
+    EXPECT_EQ(nullptr, hooks.create_level_render(nullptr));
 
     EntityFactory factory = hooks.create_entity_factory();
     EXPECT_FALSE(static_cast<bool>(factory.attach_render));
@@ -318,8 +318,8 @@ TEST(PlatformHeadless, hooks_and_entity_services_are_wired)
               mount_campaign_package_with_error("gladiator"));
 
     GameWorld world(0);
-    wire_world_with_loader(nullptr, headless_entity_loader());
-    wire_world_with_loader(&world, nullptr);
+    // A null world flows through the wiring guard untouched.
+    hooks.wire_world_entity_services(nullptr, nullptr);
     hooks.wire_world_entity_services(&world, nullptr);
     ASSERT_TRUE(static_cast<bool>(world.entity_factory));
     ASSERT_TRUE(static_cast<bool>(world.entity_configurator));
@@ -334,7 +334,7 @@ TEST(PlatformHeadless, hooks_and_entity_services_are_wired)
     world.entity_derived_stats(nullptr, Order::Living, FAMILY_SOLDIER);
 
     GameWorld world_two(0);
-    headless_wire_world_entity_services(&world_two, nullptr);
+    hooks.wire_world_entity_services(&world_two, nullptr);
     EXPECT_TRUE(static_cast<bool>(world_two.entity_factory));
 
     LevelRender render;

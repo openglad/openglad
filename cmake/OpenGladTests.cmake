@@ -904,6 +904,18 @@ target_compile_definitions(og_unit_matchplan PRIVATE
     OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/modes/packs/modes.core"
 )
 
+# Staged-lobby MatchStage suites (#218): every case is a full dispose-and-
+# rebuild stage (real level load + per-world Lua VM), the same cost class
+# that forced og_unit_matchplan's own group — kept separate for the 180 s
+# coverage ceiling. Absorbs the renamed plan suites when the plan phase
+# retires.
+og_add_unit_group(og_unit_stage FILES
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_match_stage.cpp
+)
+target_compile_definitions(og_unit_stage PRIVATE
+    OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/modes/packs/modes.core"
+)
+
 og_add_unit_group(og_unit_modes FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_ctf.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_tdm.cpp
