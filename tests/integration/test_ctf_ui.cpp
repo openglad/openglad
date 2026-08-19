@@ -353,6 +353,26 @@ bool wait_for_interactable_label(const std::string& id, const std::string& want,
     return false;
 }
 
+// Click `id` until its label reads `want`. A press and release that both
+// land inside one stretched picker frame are swallowed whole (no
+// down-transition to poll — the same race the settle delays guard), and
+// under ASan's slowdown a single blind click can lose that race outright.
+// Bounded retries keep the teeth: a cycler that genuinely skips or breaks
+// the target label still fails every attempt, and the save-value pins at
+// the end of each flow back this up.
+bool click_until_label(const std::string& id, const std::string& want,
+                       int attempts = 3, int wait_ms = 2500)
+{
+    for (int i = 0; i < attempts; ++i) {
+        interact(id);
+        if (wait_for_interactable_label(id, want, wait_ms))
+            return true;
+        fprintf(stderr, "  [interact] retry %d: '%s' has not reached '%s'\n",
+                i + 1, id.c_str(), want.c_str());
+    }
+    return false;
+}
+
 // Wait until a (visible) interactable `id` exists at game coords (x, y) —
 // disambiguates the per-screen "back" buttons by their geometry.
 bool wait_for_interactable_at(const std::string& id, int x, int y,
@@ -572,17 +592,11 @@ int teams_ctf_settings_flow_injector(void* data)
     state->troops_row_seen =
         wait_for_interactable_label("troops", "TROOPS: ALL", 5000);
     SDL_Delay(300);
-    interact("troops");
-    state->troops_own_seen =
-        wait_for_interactable_label("troops", "TROOPS: OWN", 5000);
+    state->troops_own_seen = click_until_label("troops", "TROOPS: OWN");
     SDL_Delay(300);
-    interact("troops");
-    state->troops_fair_seen =
-        wait_for_interactable_label("troops", "TROOPS: FAIR", 5000);
+    state->troops_fair_seen = click_until_label("troops", "TROOPS: FAIR");
     SDL_Delay(300);
-    interact("troops");
-    state->troops_all_seen =
-        wait_for_interactable_label("troops", "TROOPS: ALL", 5000);
+    state->troops_all_seen = click_until_label("troops", "TROOPS: ALL");
     SDL_Delay(300);
 
     // VIEW LEVEL on the loaded CTF map (the save0 load mounted the CTF
