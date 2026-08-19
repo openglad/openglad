@@ -916,4 +916,199 @@ TEST_F(MatchStageTest, mark_failed_poisons_key_and_recovers_on_identical_key)
         << "the recovered stage broadcasts one fresh pair";
 }
 
+// --- C9: the joiner's staged preview mirror ---------------------------------
+
+og::sim::StagedMatchSetupMessage make_setup_message(
+    const og::server::MatchStage& stage)
+{
+    return {.stage_generation = stage.stage_generation(),
+            .setup_bytes = stage.staged_setup_bytes()};
+}
+
+og::sim::StagedMatchKeyframeMessage make_keyframe_message(
+    const og::server::MatchStage& stage)
+{
+    return {.stage_generation = stage.stage_generation(),
+            .snapshot_bytes = stage.staged_keyframe_bytes()};
+}
+
+// The networked-exactness oracle at the byte level: a mirror healed from the
+// owner's broadcast pair re-serializes the IDENTICAL tick-0 keyframe — the
+// joiner's preview world IS the host's staged world, not a re-derivation.
+TEST_F(MatchStageTest, mirror_heals_byte_identical_from_the_staged_pair)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    og::server::MatchStage stage({.networked = true});
+    stage.observe_inputs(make_modes_inputs(1001u), /*now_ms=*/0);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+    ASSERT_NE(nullptr, stage.world());
+
+    og::server::StagedPreviewMirror mirror;
+    EXPECT_EQ(og::server::MirrorStatus::Empty, mirror.status());
+    mirror.receive_setup(make_setup_message(stage));
+    mirror.receive_keyframe(make_keyframe_message(stage));
+    mirror.ensure_applied("modes", /*difficulty=*/1, /*now_ms=*/0);
+
+    ASSERT_EQ(og::server::MirrorStatus::Staged, mirror.status());
+    ASSERT_NE(nullptr, mirror.world());
+    EXPECT_EQ(stage.stage_generation(), mirror.applied_generation());
+    EXPECT_EQ(1u, mirror.refresh_serial());
+
+    GameWorld& mirrored = *mirror.world();
+    EXPECT_EQ(stage.world()->id, mirrored.id);
+    EXPECT_EQ(stage.world()->title, mirrored.title);
+    EXPECT_EQ(0u, mirrored.tick_count_) << "mirrors never tick";
+    EXPECT_TRUE(mirrored.mode.active)
+        << "the replicated mode block carries the staged init";
+    EXPECT_EQ(stage.world()->mode.vars[6], mirrored.mode.vars[6])
+        << "the latched squad code reaches the mirror (#235)";
+    EXPECT_EQ(og::sim::serialize_snapshot(
+                  og::sim::peek_keyframe_snapshot(mirrored)),
+              stage.staged_keyframe_bytes())
+        << "the mirror world must re-serialize byte-identical to the pair";
+
+    // Late-open retention: the same wire bytes stay readable for a preview
+    // pane opened long after the broadcast.
+    std::uint32_t retained_generation = 0;
+    const std::vector<std::uint8_t>* retained_setup = nullptr;
+    const std::vector<std::uint8_t>* retained_keyframe = nullptr;
+    ASSERT_TRUE(mirror.retained_pair(retained_generation, retained_setup,
+                                     retained_keyframe));
+    EXPECT_EQ(stage.stage_generation(), retained_generation);
+    ASSERT_NE(nullptr, retained_setup);
+    ASSERT_NE(nullptr, retained_keyframe);
+    EXPECT_EQ(stage.staged_setup_bytes(), *retained_setup);
+    EXPECT_EQ(stage.staged_keyframe_bytes(), *retained_keyframe);
+}
+
+// Generation pairing: a keyframe that does not match the last received
+// setup's generation is dropped; a setup for a NEW generation invalidates the
+// previous pair's keyframe while the last APPLIED world keeps presenting
+// until the fresh pair completes (no flicker to Empty mid-restage).
+TEST_F(MatchStageTest, mirror_drops_generation_mismatched_keyframes)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    og::server::MatchStage stage({.networked = true});
+    stage.observe_inputs(make_modes_inputs(1001u), /*now_ms=*/0);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+    ASSERT_EQ(1u, stage.stage_generation());
+
+    og::server::StagedPreviewMirror mirror;
+    mirror.receive_setup(make_setup_message(stage));
+
+    // A stale keyframe (previous generation) must not pair with this setup.
+    og::sim::StagedMatchKeyframeMessage stale = make_keyframe_message(stage);
+    stale.stage_generation = 0u;
+    mirror.receive_keyframe(stale);
+    mirror.ensure_applied("modes", /*difficulty=*/1, /*now_ms=*/0);
+    EXPECT_EQ(og::server::MirrorStatus::Empty, mirror.status());
+    EXPECT_EQ(nullptr, mirror.world());
+    EXPECT_EQ(0u, mirror.refresh_serial())
+        << "an incomplete pair is not an apply attempt";
+
+    // The matching keyframe completes the pair.
+    mirror.receive_keyframe(make_keyframe_message(stage));
+    mirror.ensure_applied("modes", /*difficulty=*/1, /*now_ms=*/0);
+    ASSERT_EQ(og::server::MirrorStatus::Staged, mirror.status());
+    EXPECT_EQ(1u, mirror.applied_generation());
+
+    // A restage's setup (generation 2) arrives; its keyframe is still in
+    // flight. The applied generation-1 world keeps presenting, and a stale
+    // generation-1 keyframe re-delivery cannot pair with the new setup.
+    og::server::MatchStageInputs moved = make_modes_inputs(1001u);
+    moved.equivalent.team_list.push_back(
+        make_slot(1u, 200, "Winger", FAMILY_ELF, 1));
+    stage.observe_inputs(moved, /*now_ms=*/1'000);
+    stage.maintain(/*now_ms=*/1'000 + og::server::kStageDebounceMs);
+    ASSERT_EQ(2u, stage.stage_generation());
+
+    mirror.receive_setup(make_setup_message(stage));
+    og::sim::StagedMatchKeyframeMessage old_generation =
+        make_keyframe_message(stage);
+    old_generation.stage_generation = 1u;
+    mirror.receive_keyframe(old_generation);
+    mirror.ensure_applied("modes", /*difficulty=*/1, /*now_ms=*/2'000);
+    EXPECT_EQ(og::server::MirrorStatus::Staged, mirror.status());
+    EXPECT_EQ(1u, mirror.applied_generation())
+        << "the generation-1 world presents until the fresh pair completes";
+
+    mirror.receive_keyframe(make_keyframe_message(stage));
+    mirror.ensure_applied("modes", /*difficulty=*/1, /*now_ms=*/2'000);
+    ASSERT_EQ(og::server::MirrorStatus::Staged, mirror.status());
+    EXPECT_EQ(2u, mirror.applied_generation());
+    ASSERT_NE(nullptr, mirror.world());
+    EXPECT_EQ(og::sim::serialize_snapshot(
+                  og::sim::peek_keyframe_snapshot(*mirror.world())),
+              stage.staged_keyframe_bytes());
+}
+
+// Apply-failure honesty: an undecodable pair reports Unavailable (never a
+// stale or half-applied world), a level this machine cannot load locally
+// reports Unavailable, and the campaign catching up retries the RETAINED
+// pair immediately — the owner never has to resend.
+TEST_F(MatchStageTest, mirror_apply_failure_is_honest_and_retries)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    og::server::MatchStage stage({.networked = true});
+    stage.observe_inputs(make_modes_inputs(1001u), /*now_ms=*/0);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+
+    og::server::StagedPreviewMirror mirror;
+
+    // Undecodable setup bytes: honest Unavailable, refresh serial moves so a
+    // keyed preview repaints into the degradation line.
+    testing::internal::CaptureStderr();
+    mirror.receive_setup({.stage_generation = stage.stage_generation(),
+                          .setup_bytes = {0x01u, 0x02u, 0x03u}});
+    mirror.receive_keyframe(make_keyframe_message(stage));
+    mirror.ensure_applied("modes", /*difficulty=*/1, /*now_ms=*/0);
+    (void)testing::internal::GetCapturedStderr();
+    EXPECT_EQ(og::server::MirrorStatus::Unavailable, mirror.status());
+    EXPECT_EQ("staged setup decode failed", mirror.error());
+    EXPECT_EQ(nullptr, mirror.world());
+    EXPECT_EQ(1u, mirror.refresh_serial());
+
+    // The good pair is a fresh apply attempt for the same generation (the
+    // owner's catch-up resend shape): receive_setup for the same generation
+    // re-opens the pair.
+    mirror.receive_setup(make_setup_message(stage));
+    mirror.receive_keyframe(make_keyframe_message(stage));
+    // The failed attempt recorded campaign "modes" at now_ms=0; the good
+    // bytes re-arm the attempt directly (attempted_pending_ cleared).
+    mirror.ensure_applied("modes", /*difficulty=*/1, /*now_ms=*/1);
+    ASSERT_EQ(og::server::MirrorStatus::Staged, mirror.status());
+    EXPECT_EQ(2u, mirror.refresh_serial());
+
+    // A pair whose level this client cannot load locally (wrong campaign
+    // mounted/synced): honest Unavailable — the first-level fallback must
+    // not masquerade as the staged level — then the campaign catch-up
+    // retries the retained pair immediately and heals.
+    og::server::StagedPreviewMirror raced;
+    raced.receive_setup(make_setup_message(stage));
+    raced.receive_keyframe(make_keyframe_message(stage));
+    testing::internal::CaptureStderr();
+    raced.ensure_applied("gladiator", /*difficulty=*/1, /*now_ms=*/0);
+    (void)testing::internal::GetCapturedStderr();
+    EXPECT_EQ(og::server::MirrorStatus::Unavailable, raced.status());
+    EXPECT_EQ("staged preview level load failed", raced.error());
+    EXPECT_EQ(nullptr, raced.world());
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    raced.ensure_applied("modes", /*difficulty=*/1, /*now_ms=*/1);
+    ASSERT_EQ(og::server::MirrorStatus::Staged, raced.status());
+    ASSERT_NE(nullptr, raced.world());
+    EXPECT_EQ(og::sim::serialize_snapshot(
+                  og::sim::peek_keyframe_snapshot(*raced.world())),
+              stage.staged_keyframe_bytes());
+    EXPECT_EQ(2u, raced.refresh_serial())
+        << "one failed attempt + one campaign-moved retry";
+}
+
 } // namespace

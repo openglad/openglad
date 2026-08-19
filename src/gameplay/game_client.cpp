@@ -38,27 +38,6 @@ float lerp(float start, float end, float alpha) noexcept
     return start + (end - start) * alpha;
 }
 
-void apply_initial_setup_to_world(GameWorld& world,
-                                  const og::sim::InitialSetupMessage& message)
-{
-    world.id = message.level_id;
-    world.title = message.level_title;
-    world.type = static_cast<char>(message.level_type);
-    world.par_value = message.par_value;
-    world.time_bonus_limit = message.time_bonus_limit;
-    world.difficulty = message.difficulty;
-    world.pixmaxx = message.pixmaxx;
-    world.pixmaxy = message.pixmaxy;
-    world.my_team = message.my_team;
-    world.allied_mode = message.allied_mode;
-    world.current_scenario = message.current_scenario;
-    world.respawn_mode = message.respawn_mode;
-    world.generator_rate = message.generator_rate;
-    world.completed_levels.clear();
-    for (const std::int32_t level_id : message.completed_levels)
-        world.completed_levels.insert(level_id);
-}
-
 struct ClientPollResult {
     std::vector<og::sim::TypedReceivedMessage> messages;
     bool malformed_server_message = false;
@@ -343,6 +322,31 @@ ClientPollResult poll_client_messages(
 } // namespace
 
 namespace og::sim {
+
+// Promoted out of this file's anonymous namespace for the staged-lobby
+// preview mirror (C9): the joiner's mirror and the gameplay client's own
+// setup apply must never fork their level-metadata semantics (the same rule
+// that promoted collect_initial_setup_guys on the server side).
+void apply_initial_setup_to_world(GameWorld& world,
+                                  const InitialSetupMessage& message)
+{
+    world.id = message.level_id;
+    world.title = message.level_title;
+    world.type = static_cast<char>(message.level_type);
+    world.par_value = message.par_value;
+    world.time_bonus_limit = message.time_bonus_limit;
+    world.difficulty = message.difficulty;
+    world.pixmaxx = message.pixmaxx;
+    world.pixmaxy = message.pixmaxy;
+    world.my_team = message.my_team;
+    world.allied_mode = message.allied_mode;
+    world.current_scenario = message.current_scenario;
+    world.respawn_mode = message.respawn_mode;
+    world.generator_rate = message.generator_rate;
+    world.completed_levels.clear();
+    for (const std::int32_t level_id : message.completed_levels)
+        world.completed_levels.insert(level_id);
+}
 
 void GameClient::poll_messages()
 {

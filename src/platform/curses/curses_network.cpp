@@ -613,6 +613,30 @@ std::vector<og::sim::TypedReceivedMessage> poll_lobby_transport_messages(
                 std::make_shared<og::sim::PackTransferDoneMessage>(*decoded);
             break;
         }
+        // Staged lobby (#218, protocol v13): joiner-bound staged-world pair.
+        case og::sim::kStagedMatchSetupMessageType: {
+            const auto decoded =
+                og::sim::deserialize_staged_match_setup_message(message.data);
+            if (!decoded.has_value())
+                continue;
+            typed_message.kind =
+                og::sim::TypedReceivedMessageKind::StagedMatchSetup;
+            typed_message.staged_match_setup =
+                std::make_shared<og::sim::StagedMatchSetupMessage>(*decoded);
+            break;
+        }
+        case og::sim::kStagedMatchKeyframeMessageType: {
+            const auto decoded =
+                og::sim::deserialize_staged_match_keyframe_message(
+                    message.data);
+            if (!decoded.has_value())
+                continue;
+            typed_message.kind =
+                og::sim::TypedReceivedMessageKind::StagedMatchKeyframe;
+            typed_message.staged_match_keyframe =
+                std::make_shared<og::sim::StagedMatchKeyframeMessage>(*decoded);
+            break;
+        }
         default:
             continue;
         }
@@ -1901,6 +1925,35 @@ public:
         return state_->players;
     }
 
+    // Staged lobby (#218, C9): host reads its own MatchStage; a joiner reads
+    // its preview mirror healed from the broadcast pair.
+    const GameWorld* staged_world() const override
+    {
+        if (role_ == LobbyRole::Host)
+            return stage_.status() == og::server::StageStatus::Staged
+                ? stage_.world()
+                : nullptr;
+        return preview_mirror_.world();
+    }
+
+    std::uint32_t stage_generation() const override
+    {
+        return role_ == LobbyRole::Host ? stage_.stage_generation()
+                                        : preview_mirror_.refresh_serial();
+    }
+
+    std::string stage_failure_line() const override
+    {
+        if (role_ == LobbyRole::Host)
+            return stage_.status() == og::server::StageStatus::Failed
+                ? "STAGING FAILED"
+                : std::string{};
+        return preview_mirror_.status() ==
+                og::server::MirrorStatus::Unavailable
+            ? "STAGING PREVIEW UNAVAILABLE"
+            : std::string{};
+    }
+
     // --- test accessors -------------------------------------------------------
     const std::optional<og::sim::LobbyState>& state() const { return state_; }
     std::size_t player_count() const
@@ -2074,6 +2127,18 @@ private:
                 start_negotiated_ = true;
             }
             break;
+        // Staged lobby (#218, C9): a JOINER retains the owner's staged pair
+        // for its preview mirror; the host ignores its own loopback copy
+        // (it reads stage_ directly).
+        case og::sim::TypedReceivedMessageKind::StagedMatchSetup:
+            if (role_ == LobbyRole::Join && message.staged_match_setup)
+                preview_mirror_.receive_setup(*message.staged_match_setup);
+            break;
+        case og::sim::TypedReceivedMessageKind::StagedMatchKeyframe:
+            if (role_ == LobbyRole::Join && message.staged_match_keyframe)
+                preview_mirror_.receive_keyframe(
+                    *message.staged_match_keyframe);
+            break;
         default:
             break;
         }
@@ -2159,6 +2224,21 @@ private:
             handle_typed_message(message);
         }
 
+        // Staged lobby (#218, C9): apply the joiner's retained pair into the
+        // headless preview mirror on the pump cadence. The negotiated state's
+        // campaign is the local level-load source (build_join_save_equivalent
+        // reads the same field at session build).
+        if (role_ == LobbyRole::Join && state_.has_value())
+        {
+            const std::string campaign = state_->settings.campaign_id.empty()
+                ? get_mounted_campaign()
+                : state_->settings.campaign_id;
+            preview_mirror_.ensure_applied(
+                campaign,
+                static_cast<int>(state_->settings.difficulty),
+                og::server::stage_clock_now_ms());
+        }
+
         // The host's LobbyServer reports the start request locally too.
         if (role_ == LobbyRole::Host && server_ != nullptr &&
             server_->start_game_requested()) {
@@ -2230,6 +2310,7 @@ private:
     {
         session_.reset();
         stage_.dispose();
+        preview_mirror_.dispose();
         stage_broadcast_ = {};
         server_.reset();
         state_.reset();
@@ -2255,6 +2336,9 @@ private:
     // lobby object is one round).
     og::server::MatchStage stage_;
     og::server::StageBroadcastState stage_broadcast_;
+    // Staged lobby (#218, C9): the JOINER's preview mirror (unused on the
+    // host role, which reads stage_ directly).
+    og::server::StagedPreviewMirror preview_mirror_;
     std::uint32_t match_seed_ = 0;
     short local_team_ = 0;
     // 't'-cycle bookkeeping: selected/pending seats use server-issued tokens

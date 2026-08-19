@@ -29,6 +29,7 @@
 #include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/win_shares.h>
+#include <openglad/server/match_stage.h>
 
 #include <gtest/gtest.h>
 
@@ -2559,6 +2560,127 @@ TEST(PickerNetworkClient, join_settings_apply_arms_replay_for_own_completed_leve
         << "origin = the joiner's own pre-sync cursor";
 
     join_client->shutdown();
+}
+
+// Staged lobby #218 (C9): the joiner's preview mirror. The owner's broadcast
+// StagedMatchSetup/StagedMatchKeyframe pair heals a headless local mirror
+// world that re-serializes BYTE-IDENTICAL to the host's staged keyframe (the
+// preview a joiner shows IS the world GO adopts), and a host roster edit
+// restages (debounced) with the mirror following the fresh generation.
+TEST(PickerNetworkClient, joiner_preview_mirror_heals_byte_identical_pair)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(host_save, 0, "Host");
+    g_start_game_requested = false;
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    SaveData& join_save = join_session.myscreen_->save_data;
+    prepare_single_member_network_save(join_save, 1, "Joiner");
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* join_session = nullptr;
+        og::ui::IPickerLobbyClient* host_client = nullptr;
+        og::ui::IPickerLobbyClient* join_client = nullptr;
+
+        ~CleanupGuard()
+        {
+            if (join_session != nullptr)
+            {
+                auto join_scope = join_session->activate();
+                if (join_client != nullptr)
+                    join_client->shutdown();
+            }
+            if (host_client != nullptr)
+                host_client->shutdown();
+        }
+    } cleanup{
+        .join_session = &join_session,
+        .host_client = host_client.get(),
+        .join_client = join_client.get(),
+    };
+
+    og::server::MatchStage* const host_stage = host_client->take_match_stage();
+    ASSERT_NE(nullptr, host_stage) << "the host owns the MatchStage";
+
+    // The joiner heals its mirror from the owner's broadcast/catch-up pair.
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        auto join_scope = join_session.activate();
+        join_client->poll_and_apply();
+        return join_client->staged_world() != nullptr;
+    })) << "the joiner's staged preview mirror never healed";
+
+    ASSERT_EQ(og::server::StageStatus::Staged, host_stage->status());
+    ASSERT_NE(nullptr, host_stage->world());
+    const std::uint32_t generation_before = [&] {
+        auto join_scope = join_session.activate();
+        const GameWorld* const mirrored = join_client->staged_world();
+        EXPECT_NE(nullptr, mirrored);
+        EXPECT_EQ(host_stage->world()->id, mirrored->id);
+        EXPECT_EQ(host_stage->world()->title, mirrored->title);
+        EXPECT_EQ(0u, mirrored->tick_count_) << "mirrors never tick";
+        // Byte identity: the joiner's preview IS the staged world (Peek is
+        // non-consuming, so re-serializing the mirror is side-effect free).
+        EXPECT_EQ(host_stage->staged_keyframe_bytes(),
+                  og::sim::serialize_snapshot(og::sim::peek_keyframe_snapshot(
+                      *const_cast<GameWorld*>(mirrored))));
+        return join_client->stage_generation();
+    }();
+    ASSERT_NE(0u, generation_before);
+
+    // A host roster edit changes the equivalent -> debounced restage -> one
+    // fresh broadcast pair -> the mirror follows.
+    host_save.team_list[0]->name = "RenamedHost";
+    host_client->sync_roster_from_save();
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        auto join_scope = join_session.activate();
+        join_client->poll_and_apply();
+        return join_client->stage_generation() != generation_before &&
+            join_client->staged_world() != nullptr;
+    })) << "the mirror never followed the restage";
+
+    {
+        auto join_scope = join_session.activate();
+        const GameWorld* const mirrored = join_client->staged_world();
+        ASSERT_NE(nullptr, mirrored);
+        EXPECT_EQ(host_stage->staged_keyframe_bytes(),
+                  og::sim::serialize_snapshot(og::sim::peek_keyframe_snapshot(
+                      *const_cast<GameWorld*>(mirrored))))
+            << "the restaged pair heals byte-identically too";
+    }
+    const auto setup = og::sim::deserialize_initial_setup_message(
+        host_stage->staged_setup_bytes());
+    ASSERT_TRUE(setup.has_value());
+    bool found_renamed = false;
+    for (const og::sim::InitialSetupGuyData& guy_data : setup->guys)
+        found_renamed = found_renamed || guy_data.name == "RenamedHost";
+    EXPECT_TRUE(found_renamed)
+        << "the restage consumed the edited roster";
 }
 
 TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_roster)

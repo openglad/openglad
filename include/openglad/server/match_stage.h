@@ -236,6 +236,135 @@ private:
     bool stage_active_ = false;
 };
 
+// --- Joiner preview mirror (C9) ---------------------------------------------
+
+enum class MirrorStatus : std::uint8_t {
+    // No complete generation-paired setup+keyframe received yet ("WAITING
+    // FOR HOST PREVIEW").
+    Empty,
+    // The retained pair is applied; world() presents the mirrored staged
+    // world.
+    Staged,
+    // The retained pair could not be applied locally (undecodable bytes,
+    // level not installed/mounted here, snapshot apply refusal). The preview
+    // must say so honestly ("STAGING PREVIEW UNAVAILABLE"), never lie with a
+    // stale or half-applied world.
+    Unavailable,
+};
+
+// A failed apply retries at most this often (the retained pair is kept): the
+// common causes — the lobby save's campaign catching up to the setup, or a
+// class-pack transfer finishing its mount — heal without the owner having to
+// restage. A campaign change retries immediately.
+inline constexpr std::uint64_t kMirrorRetryMs = 2000;
+
+// The joiner's staged preview mirror: a headless local level load healed by
+// the owner's broadcast StagedMatchSetup/StagedMatchKeyframe pair. The local
+// load is mandatory — a snapshot cannot rebuild a level (no decor plane, no
+// extra floors, no level file) — and it is HEADLESS-hooked on every platform
+// (#162: lobby-poll mirror rebuilds must never touch the SDL loader).
+//
+// Reception is retention + generation pairing only (cheap, wire-poll
+// context); the heavy apply happens in ensure_applied() on the owner poll
+// cadence. The pair is RETAINED across application so a preview pane opened
+// long after the broadcast still heals from the same bytes the host pane
+// reads (networked-exactness is byte-level, not re-derived).
+//
+// Mirrors never tick, never drain events, never manufacture announcements
+// (apply_snapshot self-installs its suppression guard); the tick-0 apply
+// re-arms the level on_load latch, which is inert here.
+class StagedPreviewMirror
+{
+public:
+    StagedPreviewMirror();
+    ~StagedPreviewMirror();
+
+    StagedPreviewMirror(const StagedPreviewMirror&) = delete;
+    StagedPreviewMirror& operator=(const StagedPreviewMirror&) = delete;
+
+    // Wire reception. A setup for a NEW generation invalidates any retained
+    // keyframe (a keyframe pairs only with ITS setup); a keyframe whose
+    // generation differs from the last received setup's is dropped (restage
+    // races resolve to the newest pair — owners send setup first on a
+    // per-peer ordered transport).
+    void receive_setup(const og::sim::StagedMatchSetupMessage& message);
+    void receive_keyframe(const og::sim::StagedMatchKeyframeMessage& message);
+
+    // Apply the retained pair when complete and not yet applied (or when an
+    // Unavailable apply is due a retry). `current_campaign` is the client's
+    // lobby-synced campaign (the local level-load source); `difficulty` its
+    // lobby-known setting (cosmetic here — the keyframe overwrites every
+    // replicated stat).
+    void ensure_applied(std::string_view current_campaign,
+                        int difficulty,
+                        std::uint64_t now_ms);
+
+    // Drop the mirror world and the retained pair (lobby teardown / new
+    // round). The refresh serial stays monotonic across disposal.
+    void dispose();
+
+    [[nodiscard]] MirrorStatus status() const noexcept { return status_; }
+    [[nodiscard]] const std::string& error() const noexcept { return error_; }
+    // The mirrored staged world (nullptr unless status() == Staged).
+    [[nodiscard]] const GameWorld* world() const noexcept;
+    [[nodiscard]] GameWorld* world() noexcept;
+    // Monotonic preview refresh counter: moves on EVERY apply attempt
+    // (success or honest failure), so a preview keyed on it refreshes into
+    // the Unavailable state too. 0 = no attempt yet.
+    [[nodiscard]] std::uint32_t refresh_serial() const noexcept
+    {
+        return refresh_serial_;
+    }
+    // The owner generation of the applied pair (0 = never applied).
+    [[nodiscard]] std::uint32_t applied_generation() const noexcept
+    {
+        return applied_generation_;
+    }
+    // The retained newest generation-paired wire pair (inner bytes), for
+    // late-opening preview panes. False until a complete pair is retained.
+    [[nodiscard]] bool retained_pair(
+        std::uint32_t& generation,
+        const std::vector<std::uint8_t>*& setup_bytes,
+        const std::vector<std::uint8_t>*& keyframe_bytes) const;
+
+private:
+    void apply_retained_pair(std::string_view current_campaign,
+                             int difficulty);
+    void wire_mirror_context();
+    void dispose_level();
+    void fail(std::string_view why);
+
+    std::uint32_t pending_generation_ = 0;
+    std::vector<std::uint8_t> pending_setup_bytes_;
+    std::vector<std::uint8_t> pending_keyframe_bytes_;
+    bool attempted_pending_ = false;
+    std::uint64_t last_attempt_ms_ = 0;
+    std::string last_attempt_campaign_;
+
+    MirrorStatus status_ = MirrorStatus::Empty;
+    std::string error_;
+    std::uint32_t refresh_serial_ = 0;
+    std::uint32_t applied_generation_ = 0;
+
+    // The loaded mirror level's identity; a setup that moves any of these
+    // forces a dispose-and-rebuild of the local load. level id -1 = poisoned
+    // (a failed apply left the world half-written; the retry must rebuild).
+    std::int32_t loaded_level_id_ = -1;
+    std::int16_t loaded_scenario_ = -1;
+    std::string loaded_campaign_;
+
+    SaveData mirror_save_;
+    og::sim::SimEventLog mirror_events_;
+    std::unique_ptr<LevelRuntimeData> mirror_level_;
+
+    // The mirror's own GameplayContext (the same obmap/current_game
+    // discipline as MatchStage): installed via save/restore swap for every
+    // load/apply/dispose.
+    GameplayContext mirror_ctx_;
+    IRandom* mirror_rng_ptr_ = nullptr;
+    bool mirror_active_ = false;
+};
+
 // The match-id latch source: non-sim entropy (std::random_device xor the
 // steady clock), drawn by each owner ONCE per round — at lobby open and again
 // at every resume_after_level (each round is a fresh match; every restage

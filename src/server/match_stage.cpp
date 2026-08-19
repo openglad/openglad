@@ -14,6 +14,7 @@
 #include <openglad/core/test_trace.h>
 #include <openglad/core/util.h>
 #include <openglad/core/weather.h>
+#include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/mode/mode_state.h>
@@ -422,6 +423,274 @@ bool adopt_staged_world(LevelRuntimeData& dst_level,
     copy_headless_server_save_data(dst_save, stage.staged_save());
 
     return true;
+}
+
+// --- StagedPreviewMirror (C9) ------------------------------------------------
+
+StagedPreviewMirror::StagedPreviewMirror() = default;
+
+StagedPreviewMirror::~StagedPreviewMirror()
+{
+    dispose();
+}
+
+const GameWorld* StagedPreviewMirror::world() const noexcept
+{
+    if (status_ != MirrorStatus::Staged || !mirror_level_)
+        return nullptr;
+    return &mirror_level_->world();
+}
+
+GameWorld* StagedPreviewMirror::world() noexcept
+{
+    if (status_ != MirrorStatus::Staged || !mirror_level_)
+        return nullptr;
+    return &mirror_level_->world();
+}
+
+bool StagedPreviewMirror::retained_pair(
+    std::uint32_t& generation,
+    const std::vector<std::uint8_t>*& setup_bytes,
+    const std::vector<std::uint8_t>*& keyframe_bytes) const
+{
+    if (pending_setup_bytes_.empty() || pending_keyframe_bytes_.empty())
+        return false;
+    generation = pending_generation_;
+    setup_bytes = &pending_setup_bytes_;
+    keyframe_bytes = &pending_keyframe_bytes_;
+    return true;
+}
+
+void StagedPreviewMirror::receive_setup(
+    const og::sim::StagedMatchSetupMessage& message)
+{
+    if (message.setup_bytes.empty())
+        return;
+    if (message.stage_generation != pending_generation_ ||
+        pending_setup_bytes_.empty())
+    {
+        // A setup for a new generation opens a fresh pair: any retained
+        // keyframe belonged to the previous setup and can no longer pair.
+        pending_generation_ = message.stage_generation;
+        pending_keyframe_bytes_.clear();
+        attempted_pending_ = false;
+    }
+    else if (pending_setup_bytes_ != message.setup_bytes)
+    {
+        // Same generation, different bytes (an owner-side resend replacing a
+        // corrupted delivery): fresh content re-arms the apply.
+        attempted_pending_ = false;
+    }
+    pending_setup_bytes_ = message.setup_bytes;
+}
+
+void StagedPreviewMirror::receive_keyframe(
+    const og::sim::StagedMatchKeyframeMessage& message)
+{
+    // Generation pairing: a keyframe that does not match the last received
+    // setup's generation is dropped — owners send setup first on a per-peer
+    // ordered transport, so a mismatch means a restage raced this pair and
+    // the newest pair is (or will shortly be) on the wire.
+    if (message.snapshot_bytes.empty() || pending_setup_bytes_.empty() ||
+        message.stage_generation != pending_generation_)
+    {
+        TRACE("stage", "mirror dropped unpaired keyframe gen=%u pending=%u",
+              static_cast<unsigned>(message.stage_generation),
+              static_cast<unsigned>(pending_generation_));
+        return;
+    }
+    if (attempted_pending_ && pending_keyframe_bytes_ == message.snapshot_bytes)
+        return; // broadcast + per-peer catch-up duplicate of the same pair
+    pending_keyframe_bytes_ = message.snapshot_bytes;
+    attempted_pending_ = false;
+}
+
+void StagedPreviewMirror::ensure_applied(std::string_view current_campaign,
+                                         int difficulty,
+                                         std::uint64_t now_ms)
+{
+    if (pending_setup_bytes_.empty() || pending_keyframe_bytes_.empty())
+        return;
+    if (attempted_pending_)
+    {
+        if (status_ != MirrorStatus::Unavailable)
+            return;
+        // Retry an honest failure when the local campaign catches up to the
+        // setup (the lobby-sync race) or on the slow clock (a class-pack
+        // transfer finishing its mount) — the owner never resends on OUR
+        // account.
+        const bool campaign_moved = current_campaign != last_attempt_campaign_;
+        const bool retry_due = now_ms >= last_attempt_ms_ + kMirrorRetryMs;
+        if (!campaign_moved && !retry_due)
+            return;
+    }
+    attempted_pending_ = true;
+    last_attempt_ms_ = now_ms;
+    last_attempt_campaign_ = current_campaign;
+    // Every attempt — success or honest failure — is a preview refresh.
+    ++refresh_serial_;
+    apply_retained_pair(current_campaign, difficulty);
+}
+
+void StagedPreviewMirror::wire_mirror_context()
+{
+    GameWorld& mirror_world = mirror_level_->world();
+    mirror_rng_ptr_ = &mirror_world.rng_;
+    mirror_level_->set_sim_context(&mirror_save_,
+                                   &mirror_world.enemy_freeze,
+                                   &mirror_events_,
+                                   mirror_rng_ptr_,
+                                   &cfg);
+    mirror_ctx_ = {};
+    mirror_ctx_.world = &mirror_world;
+    mirror_ctx_.save = &mirror_save_;
+    mirror_ctx_.sim_events = &mirror_events_;
+    mirror_ctx_.config = &cfg;
+    mirror_ctx_.session_rng_ref = &mirror_rng_ptr_;
+    mirror_ctx_.gameplay_active_ref = &mirror_active_;
+}
+
+void StagedPreviewMirror::dispose_level()
+{
+    if (mirror_level_)
+    {
+        ScopedStageContext context_guard(&mirror_ctx_);
+        mirror_level_.reset();
+    }
+    mirror_ctx_ = {};
+    mirror_rng_ptr_ = nullptr;
+    mirror_active_ = false;
+    mirror_events_.clear();
+    loaded_level_id_ = -1;
+    loaded_scenario_ = -1;
+    loaded_campaign_.clear();
+}
+
+void StagedPreviewMirror::dispose()
+{
+    dispose_level();
+    pending_generation_ = 0;
+    pending_setup_bytes_.clear();
+    pending_keyframe_bytes_.clear();
+    attempted_pending_ = false;
+    last_attempt_ms_ = 0;
+    last_attempt_campaign_.clear();
+    status_ = MirrorStatus::Empty;
+    error_.clear();
+    applied_generation_ = 0;
+    // refresh_serial_ stays monotonic: disposal is itself a state a keyed
+    // preview must not confuse with the last applied generation.
+}
+
+void StagedPreviewMirror::fail(std::string_view why)
+{
+    // Poison the loaded-level identity: a failed apply may have left the
+    // world half-written, so the retry (or the next pair) must rebuild.
+    loaded_level_id_ = -1;
+    status_ = MirrorStatus::Unavailable;
+    error_ = why;
+    LogError("staged_preview_mirror_unavailable error={}\n", error_);
+}
+
+void StagedPreviewMirror::apply_retained_pair(std::string_view current_campaign,
+                                              int difficulty)
+{
+    const std::optional<og::sim::InitialSetupMessage> setup =
+        og::sim::deserialize_initial_setup_message(pending_setup_bytes_);
+    if (!setup.has_value())
+    {
+        fail("staged setup decode failed");
+        return;
+    }
+
+    og::sim::WorldSnapshot snapshot;
+    try
+    {
+        snapshot = og::sim::deserialize_snapshot(pending_keyframe_bytes_);
+    }
+    catch (const std::exception&)
+    {
+        fail("staged keyframe decode failed");
+        return;
+    }
+
+    try
+    {
+        const bool rebuild = !mirror_level_ ||
+            loaded_level_id_ != setup->level_id ||
+            loaded_scenario_ != setup->current_scenario ||
+            loaded_campaign_ != current_campaign;
+        if (rebuild)
+        {
+            dispose_level();
+            // A minimal roster-less save: the local load exists for the grid,
+            // decor and authored entities (named NPCs survive only through
+            // it); every replicated fact is healed by the keyframe apply.
+            mirror_save_.reset();
+            og::sim::LobbySaveDataEquivalent equivalent;
+            equivalent.current_campaign = std::string(current_campaign);
+            equivalent.scen_num = static_cast<short>(setup->level_id);
+            equivalent.numplayers = 1;
+            apply_headless_lobby_game_start_config(
+                mirror_save_, equivalent,
+                LobbyStartReplayArm::AdoptCompletedLanding);
+            mirror_level_ = std::make_unique<LevelRuntimeData>(
+                static_cast<short>(setup->level_id),
+                /*headless=*/true,
+                &headless_level_data_hooks());
+            wire_mirror_context();
+            ScopedStageContext context_guard(&mirror_ctx_);
+            if (!load_headless_level_from_save(*mirror_level_,
+                                               mirror_save_,
+                                               difficulty,
+                                               mirror_events_,
+                                               /*authoritative=*/false) ||
+                mirror_save_.scen_num != setup->level_id)
+            {
+                // The second clause is the first-level fallback: a level this
+                // machine cannot load locally must not masquerade as the
+                // staged one (the keyframe grid would not even fit it).
+                mirror_level_.reset();
+                mirror_rng_ptr_ = nullptr;
+                fail("staged preview level load failed");
+                return;
+            }
+            loaded_level_id_ = setup->level_id;
+            loaded_scenario_ = setup->current_scenario;
+            loaded_campaign_ = current_campaign;
+        }
+
+        GameWorld& mirror_world = mirror_level_->world();
+        ScopedStageContext context_guard(&mirror_ctx_);
+        og::sim::apply_initial_setup_to_world(mirror_world, *setup);
+        // apply_snapshot self-installs its snapshot context and event
+        // suppression guard: a mirror can never manufacture announcements,
+        // and the tick-0 apply's on_load re-arm is inert (mirrors never
+        // tick).
+        if (!og::sim::apply_snapshot(mirror_world, snapshot))
+        {
+            fail("staged keyframe apply failed");
+            return;
+        }
+
+        status_ = MirrorStatus::Staged;
+        error_.clear();
+        applied_generation_ = pending_generation_;
+        TRACE("stage", "mirror applied gen=%u level=%d",
+              static_cast<unsigned>(applied_generation_),
+              static_cast<int>(mirror_world.id));
+    }
+    catch (const std::exception& apply_error)
+    {
+        if (mirror_level_)
+        {
+            ScopedStageContext dispose_guard(&mirror_ctx_);
+            mirror_level_.reset();
+        }
+        mirror_ctx_ = {};
+        mirror_rng_ptr_ = nullptr;
+        fail(apply_error.what());
+    }
 }
 
 std::uint32_t draw_match_seed()

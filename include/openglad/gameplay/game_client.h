@@ -31,6 +31,12 @@ struct RenderInterpolationPosition {
     float ypos = 0.0f;
 };
 
+// Apply an InitialSetupMessage's level metadata to a world. ONE rule for the
+// gameplay client and the staged-lobby preview mirror (C9): the joiner's
+// mirror heal and the launch-time setup apply must never fork.
+void apply_initial_setup_to_world(GameWorld& world,
+                                  const InitialSetupMessage& message);
+
 class GameClient
 {
 public:

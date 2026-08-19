@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+class GameWorld;
 class SaveData;
 
 namespace og::curses {
@@ -75,6 +76,19 @@ public:
     virtual bool local_ready() const = 0;
     // The replicated lobby roster (empty before any state broadcast).
     virtual std::vector<og::sim::LobbyPlayer> players() const = 0;
+    // --- Staged lobby (#218, C9) --------------------------------------------
+    // The staged world this client's preview reads: the host's own MatchStage
+    // world, or the joiner's preview mirror healed from the broadcast pair.
+    // nullptr while nothing is staged/applied.
+    virtual const GameWorld* staged_world() const { return nullptr; }
+    // Monotonic preview refresh counter (moves on every restage / mirror
+    // apply attempt, honest failures included). 0 = nothing yet.
+    virtual std::uint32_t stage_generation() const { return 0; }
+    // The honest degradation line when staged_world() is null: empty while
+    // nothing has been attempted, "STAGING FAILED" for a host whose stage
+    // failed, "STAGING PREVIEW UNAVAILABLE" for a joiner whose mirror could
+    // not apply the retained pair.
+    virtual std::string stage_failure_line() const { return {}; }
 };
 
 // Construct a hosting lobby from the local save (team + settings). Builds the

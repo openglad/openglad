@@ -33,6 +33,7 @@
 #include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/world_snapshot.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/platform/net_transport_websocket_client.h>
 #include <openglad/resources/company.h>
@@ -580,6 +581,68 @@ TEST(CursesNetwork, roster_reflects_two_players)
             join_sees_lobby = true;
     }
     EXPECT_TRUE(join_sees_lobby) << "the joiner should observe the lobby roster";
+}
+
+// Staged lobby #218 (C9): the curses joiner's preview mirror. The host lobby
+// stages at construction and broadcasts the pair over the shared in-process
+// transport; the joiner heals a headless mirror whose tick-0 keyframe
+// re-serializes byte-identical to the host's staged world — the preview both
+// terminals show is the SAME world, and neither side has ticked it.
+TEST(CursesNetwork, join_preview_mirror_matches_the_host_stage)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto join_client = server->create_client_transport();
+
+    auto host_lobby = make_host_lobby_over_transport_for_testing(
+        host_save, 1, server, host_client);
+    auto join_lobby = make_join_lobby_over_transport_for_testing(
+        join_save, 1, join_client, join_client->local_peer_id());
+    ASSERT_NE(nullptr, host_lobby);
+    ASSERT_NE(nullptr, join_lobby);
+
+    HeadlessTerminal host_term(24, 80);
+    HeadlessTerminal join_term(24, 80);
+    FakeClock clock;
+
+    // The host reads its own stage; the joiner heals its mirror from the
+    // broadcast/catch-up pair.
+    bool both_staged = false;
+    for (int i = 0; i < 200 && !both_staged; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+        both_staged = host_lobby->staged_world() != nullptr &&
+            join_lobby->staged_world() != nullptr;
+    }
+    ASSERT_TRUE(both_staged)
+        << "host stage + joiner mirror must both present a staged world";
+
+    const GameWorld* const host_staged = host_lobby->staged_world();
+    const GameWorld* const join_staged = join_lobby->staged_world();
+    EXPECT_EQ(host_staged->id, join_staged->id);
+    EXPECT_EQ(host_staged->title, join_staged->title);
+    EXPECT_EQ(0u, host_staged->tick_count_) << "the staged world is dormant";
+    EXPECT_EQ(0u, join_staged->tick_count_) << "mirrors never tick";
+    EXPECT_NE(0u, host_lobby->stage_generation());
+    EXPECT_NE(0u, join_lobby->stage_generation());
+    EXPECT_EQ(std::string{}, host_lobby->stage_failure_line());
+    EXPECT_EQ(std::string{}, join_lobby->stage_failure_line());
+
+    // Byte identity (Peek is non-consuming): the joiner's preview IS the
+    // host's staged world, not a local re-derivation.
+    EXPECT_EQ(og::sim::serialize_snapshot(og::sim::peek_keyframe_snapshot(
+                  *const_cast<GameWorld*>(host_staged))),
+              og::sim::serialize_snapshot(og::sim::peek_keyframe_snapshot(
+                  *const_cast<GameWorld*>(join_staged))));
+
+    host_lobby->cancel();
+    join_lobby->cancel();
 }
 
 // A joining terminal client must not claim readiness while a class-pack

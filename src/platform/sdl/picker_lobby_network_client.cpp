@@ -2084,6 +2084,36 @@ std::vector<og::sim::TypedReceivedMessage> poll_lobby_transport_messages(
             break;
         }
 
+        // Staged lobby (#218, protocol v13): the owner's staged-world pair,
+        // joiner-bound on the same raw lobby transport.
+        case og::sim::kStagedMatchSetupMessageType:
+        {
+            const auto decoded =
+                og::sim::deserialize_staged_match_setup_message(message.data);
+            if (!decoded.has_value())
+                continue;
+            typed_message.kind =
+                og::sim::TypedReceivedMessageKind::StagedMatchSetup;
+            typed_message.staged_match_setup =
+                std::make_shared<og::sim::StagedMatchSetupMessage>(*decoded);
+            break;
+        }
+
+        case og::sim::kStagedMatchKeyframeMessageType:
+        {
+            const auto decoded =
+                og::sim::deserialize_staged_match_keyframe_message(
+                    message.data);
+            if (!decoded.has_value())
+                continue;
+            typed_message.kind =
+                og::sim::TypedReceivedMessageKind::StagedMatchKeyframe;
+            typed_message.staged_match_keyframe =
+                std::make_shared<og::sim::StagedMatchKeyframeMessage>(
+                    *decoded);
+            break;
+        }
+
         default:
             continue;
         }
@@ -3505,6 +3535,7 @@ public:
         server_peer_id_adopted_ = false;
         awaiting_round_ready_reset_ = false;
         pending_local_seats_.clear();
+        preview_mirror_.dispose();
     }
 
     void sync_from_save() override
@@ -3576,6 +3607,7 @@ public:
 
         drain_messages();
         apply_state_to_current_save();
+        maintain_preview_mirror();
         maybe_dispatch_deferred_start();
         rebuild_status_lines();
     }
@@ -4129,6 +4161,19 @@ public:
         return true;
     }
 
+    // Staged lobby (#218, C9): the joiner's preview surface is its mirror —
+    // a headless local load healed by the owner's broadcast pair. The
+    // install seam stays the client shadow (take_match_stage stays nullptr).
+    [[nodiscard]] const GameWorld* staged_world() const override
+    {
+        return preview_mirror_.world();
+    }
+
+    [[nodiscard]] std::uint32_t stage_generation() const override
+    {
+        return preview_mirror_.refresh_serial();
+    }
+
     bool install_gameplay_runtime(og::runtime::GameSession& session,
                                   screen& gameplay_screen)
     {
@@ -4245,6 +4290,12 @@ public:
         // round's declarations, and handle_typed_message releases this guard
         // only after that authoritative reset reaches this peer.
         awaiting_round_ready_reset_ = true;
+
+        // A new round is a fresh match: the previous round's mirror is stale
+        // by construction (the host re-latches a fresh seed and restages).
+        // Empty is the honest between-rounds preview state until the fresh
+        // pair lands.
+        preview_mirror_.dispose();
 
         // Reuse the still-open socket: this explicitly marked resume Join is
         // the only declaration a still-locked LobbyServer may retain for the
@@ -4545,6 +4596,20 @@ private:
             }
             break;
 
+        // Staged lobby (#218, C9): retain the owner's generation-paired
+        // staged pair; the heavy apply runs in maintain_preview_mirror() on
+        // the poll cadence.
+        case og::sim::TypedReceivedMessageKind::StagedMatchSetup:
+            if (message.staged_match_setup)
+                preview_mirror_.receive_setup(*message.staged_match_setup);
+            break;
+
+        case og::sim::TypedReceivedMessageKind::StagedMatchKeyframe:
+            if (message.staged_match_keyframe)
+                preview_mirror_.receive_keyframe(
+                    *message.staged_match_keyframe);
+            break;
+
         default:
             break;
         }
@@ -4558,6 +4623,23 @@ private:
         for (const og::sim::TypedReceivedMessage& message :
              poll_lobby_transport_messages(*transport_))
             handle_typed_message(message);
+    }
+
+    // Staged lobby (#218, C9): apply the retained pair into the headless
+    // preview mirror. Runs AFTER apply_state_to_current_save so the local
+    // level load reads the lobby-synced campaign (the same-batch ordering
+    // race the mirror's campaign-moved retry also covers).
+    void maintain_preview_mirror()
+    {
+        const SaveData* const save = current_picker_save();
+        if (save == nullptr)
+            return;
+        const int difficulty = state_.has_value()
+            ? static_cast<int>(state_->settings.difficulty)
+            : 1;
+        preview_mirror_.ensure_applied(save->current_campaign,
+                                       difficulty,
+                                       og::server::stage_clock_now_ms());
     }
 
     void update_server_peer_id()
@@ -4730,6 +4812,8 @@ private:
     // merge our seats into echoed states that predate our join.
     std::vector<og::sim::LobbyPlayer> pending_local_seats_;
     std::optional<og::ui::PickerLobbyGameStartConfig> pending_game_start_config_;
+    // Staged lobby (#218, C9): the joiner's staged preview mirror.
+    og::server::StagedPreviewMirror preview_mirror_;
 };
 
 } // namespace
