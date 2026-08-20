@@ -161,6 +161,17 @@ public:
     // created on first use; separate instances per world keep server and
     // mirror script state isolated (same rule as obmap).
     og::script::WorldScripts& scripts();
+    // Staged-lobby adoption (#218): MOVE `source`'s scripting VM into this
+    // world, replacing any VM this world had. The VM binds its world through
+    // the thread-local gameplay context at dispatch time
+    // (active_world_scripts), never a stored pointer, so it follows the
+    // content transfer safely — and it MUST: dynamic registry state the
+    // staged on_load created (og.set_entity_hooks tables keyed by the moved
+    // entity ids, module-local state) exists nowhere else, and the adopted
+    // world's claimed on_load latch correctly prevents re-registration. The
+    // built-generation staleness check in scripts() still applies to the
+    // moved VM afterwards.
+    void adopt_scripts_from(GameWorld& source) noexcept;
     GameWorld& operator=(GameWorld&&) = delete;
 
     // Level metadata

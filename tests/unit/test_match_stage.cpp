@@ -16,6 +16,9 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_server.h>
 #include <openglad/gameplay/mode/mode_state.h>
+#include <openglad/gameplay/script/family_hooks.h>
+#include <openglad/gameplay/script/pack_scripts.h>
+#include <openglad/gameplay/script/script_host.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -736,6 +739,222 @@ TEST_F(MatchStageTest, adopted_world_keyframe_is_byte_identical_to_preview)
 
     // Nothing staged after the adopt+dispose; a fresh key restages cleanly.
     EXPECT_EQ(og::server::StageStatus::Empty, stage.status());
+}
+
+namespace {
+
+// The court.lua shape, as a fixture probe: the level's on_load spawns a
+// marked target and registers its on_death through og.set_entity_hooks. The
+// hook banks an exact value in a spare mode var; the target's entity id is
+// banked beside it so the test can find the walker after adoption. (This
+// stages a CLASSIC level, so the whole shared var band is free.)
+constexpr const char* kAdoptHookProbeLua =
+    "og.register_level_hooks(1, {\n"
+    "  on_load = function(level)\n"
+    "    local ent = og.add_ob('living', og.family_id('living', "
+    "'core:soldier'))\n"
+    "    ent:setxy(160, 160)\n"
+    "    ent:set_team_num(1)\n"
+    "    og.set_entity_hooks(ent, { on_death = function(e, killer, team)\n"
+    "      og.mode_set(48, 31337)\n"
+    "    end })\n"
+    "    og.mode_set(47, og.entity_id(ent))\n"
+    "  end,\n"
+    "})\n";
+
+struct AdoptHookProbeScript
+{
+    AdoptHookProbeScript()
+    {
+        og::script::register_pack_script(
+            {"test.staged", "zz_adopt_hook_probe.lua", kAdoptHookProbeLua});
+    }
+    ~AdoptHookProbeScript()
+    {
+        og::script::register_pack_script(
+            {"test.staged", "zz_adopt_hook_probe.lua", ""});
+    }
+};
+
+}  // namespace
+
+// Staged-lobby review finding: the staged on_load's DYNAMIC VM state —
+// per-entity hooks registered with og.set_entity_hooks (the court.lua boss
+// shape), module-local writes — lives in the stage world's WorldScripts VM
+// and nowhere else. The SDL shadow adopts by content transfer
+// (replace_loaded_world_state), which used to leave the destination to
+// lazily build a FRESH VM with an empty entity-hook table, while the claimed
+// on_load latch (correctly) prevented re-registration — so killing the
+// hooked entity dispatched nothing and the level's scripted victory logic
+// silently never fired. Adoption must MOVE the staged VM with the content;
+// the VM binds its world through the thread-local context at dispatch time,
+// so the moved VM serves the adopted world.
+TEST_F(MatchStageTest, adoption_carries_on_load_entity_hooks_into_the_vm)
+{
+    // Mount FIRST: pack (re)installation clears every registered script
+    // (packs.cpp clear_pack_scripts), so the probe must register after it.
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    AdoptHookProbeScript probe;
+
+    og::server::MatchStage stage({.networked = false});
+    og::server::MatchStageInputs inputs;
+    inputs.equivalent.current_campaign = "gladiator";
+    inputs.equivalent.scen_num = 1;
+    inputs.equivalent.numplayers = 1;
+    inputs.equivalent.team_list = {
+        make_slot(0u, 100, "Host", FAMILY_SOLDIER, 0),
+    };
+    inputs.difficulty = 1;
+    inputs.match_seed = 7u;
+    stage.observe_inputs(inputs, /*now_ms=*/0);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+    GameWorld* const staged_world = stage.world();
+    ASSERT_NE(nullptr, staged_world);
+
+    // The probe's on_load ran at stage time: target banked, hook armed but
+    // not yet fired.
+    EXPECT_EQ(1, staged_world->id);
+    ASSERT_TRUE(staged_world->scripts().host().errors().empty())
+        << staged_world->scripts().host().errors().back().message;
+    const std::int32_t target_id = staged_world->mode.vars[47];
+    ASSERT_NE(0, target_id) << "the on_load probe banked its target id";
+    ASSERT_EQ(0, staged_world->mode.vars[48]);
+
+    // The SDL shadow's adoption shape (the byte-identity test's fixture).
+    LevelRuntimeData dst_level(1, /*headless=*/true,
+                               &headless_level_data_hooks());
+    SaveData dst_save;
+    GameWorld& dst = dst_level.world();
+    og::sim::SimEventLog dst_events;
+    IRandom* dst_rng = &dst.rng_;
+    bool dst_active = false;
+    GameplayContext dst_ctx;
+    dst_ctx.world = &dst;
+    dst_ctx.save = &dst_save;
+    dst_ctx.sim_events = &dst_events;
+    dst_ctx.config = &cfg;
+    dst_ctx.session_rng_ref = &dst_rng;
+    dst_ctx.gameplay_active_ref = &dst_active;
+    GameplayContext* const previous_context = current_game;
+    current_game = &dst_ctx;
+    dst.tick_count_ = 0;
+    dst.reset_level_progress();
+    ASSERT_TRUE(og::server::adopt_staged_world(dst_level, dst_save, stage));
+    dst_events.append(stage.take_events());
+    stage.dispose();
+
+    // The adopted world must NOT re-run on_load (the latch is claimed) —
+    // the registration made at stage time is the only copy in existence.
+    EXPECT_FALSE(dst.owes_level_on_load());
+    EXPECT_EQ(target_id, dst.mode.vars[47]);
+    EXPECT_EQ(0, dst.mode.vars[48]);
+
+    // Kill the hooked entity IN THE ADOPTED WORLD: the staged on_death must
+    // dispatch (per-entity hooks live in the VM registry, keyed by the
+    // entity ids the content transfer preserved).
+    walker* const target =
+        dst.find_by_id(static_cast<std::uint32_t>(target_id));
+    ASSERT_NE(nullptr, target);
+    target->set_dead(1);
+    target->death();
+    EXPECT_TRUE(dst.scripts().host().errors().empty())
+        << (dst.scripts().host().errors().empty()
+                ? std::string()
+                : dst.scripts().host().errors().back().message);
+    current_game = previous_context;
+
+    EXPECT_EQ(31337, dst.mode.vars[48])
+        << "the staged og.set_entity_hooks on_death must dispatch in the "
+           "adopted world (the VM moves with the content)";
+}
+
+// Staged-lobby review finding: the change key omitted the campaign-state
+// inputs a reactive level's on_load reads live (og.campaign_var — the #206
+// decision book). A mid-lobby og.campaign_state_set write (a base-camp zone
+// action, persisted into the live host save through
+// company_autosave_after_mutation) left the owner's key bytes unchanged, so
+// the stage stayed clean-by-key and GO adopted the PRE-decision world.
+// observe_inputs now stamps a host-save digest into the key every poll, and
+// ensure_current re-checks it at GO — the Westlands watch_paid shape both
+// ways.
+TEST_F(MatchStageTest, mid_lobby_campaign_state_write_restages_at_go)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("westlands"));
+
+    SaveData host_save;
+    host_save.current_campaign = "westlands";
+    host_save.scen_num = 15;
+
+    og::server::MatchStage stage({
+        .networked = false,
+        .arm_policy = og::server::LobbyStartReplayArm::SeededIntent,
+        .host_company_save = &host_save,
+    });
+    og::server::MatchStageInputs inputs;
+    inputs.equivalent.current_campaign = "westlands";
+    inputs.equivalent.scen_num = 15;
+    inputs.equivalent.numplayers = 1;
+    inputs.equivalent.team_list = {
+        make_slot(0u, 100, "Host", FAMILY_SOLDIER, 0),
+    };
+    inputs.difficulty = 1;
+    inputs.match_seed = 7u;
+
+    // The debt is UNPAID when the lobby opens: no Watch in the stage.
+    stage.observe_inputs(inputs, /*now_ms=*/0);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+    ASSERT_EQ(nullptr, find_living_named(*stage.world(), "Wall-Warden"));
+    const std::uint32_t unpaid_generation = stage.stage_generation();
+
+    // Mid-lobby, the base camp pays the Watch — a write into the LIVE host
+    // save, with every lobby knob/roster byte unchanged.
+    ASSERT_TRUE(host_save.campaign_state_set("westlands", "watch_paid", 900));
+
+    // The next owner poll (identical owner key) must dirty the stage, and
+    // the debounced restage must reflect the decision.
+    stage.observe_inputs(inputs, /*now_ms=*/1'000);
+    stage.maintain(/*now_ms=*/1'000 + og::server::kStageDebounceMs);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+    EXPECT_NE(unpaid_generation, stage.stage_generation())
+        << "a campaign-state write must move the change key";
+    EXPECT_NE(nullptr, find_living_named(*stage.world(), "Wall-Warden"))
+        << "the restaged world must muster the paid Watch";
+
+    // Revoke the payment right before GO — no poll in between. GO's
+    // ensure_current must catch the moved digest and restage synchronously;
+    // the ADOPTED world reflects the latest decision.
+    ASSERT_TRUE(host_save.campaign_state_set("westlands", "watch_paid", 0));
+    ASSERT_TRUE(stage.ensure_current(/*now_ms=*/10'000));
+
+    LevelRuntimeData dst_level(15, /*headless=*/true,
+                               &headless_level_data_hooks());
+    SaveData dst_save;
+    GameWorld& dst = dst_level.world();
+    og::sim::SimEventLog dst_events;
+    IRandom* dst_rng = &dst.rng_;
+    bool dst_active = false;
+    GameplayContext dst_ctx;
+    dst_ctx.world = &dst;
+    dst_ctx.save = &dst_save;
+    dst_ctx.sim_events = &dst_events;
+    dst_ctx.config = &cfg;
+    dst_ctx.session_rng_ref = &dst_rng;
+    dst_ctx.gameplay_active_ref = &dst_active;
+    GameplayContext* const previous_context = current_game;
+    current_game = &dst_ctx;
+    dst.tick_count_ = 0;
+    dst.reset_level_progress();
+    ASSERT_TRUE(og::server::adopt_staged_world(dst_level, dst_save, stage));
+    dst_events.append(stage.take_events());
+    stage.dispose();
+    current_game = previous_context;
+
+    EXPECT_EQ(nullptr, find_living_named(dst, "Wall-Warden"))
+        << "GO must adopt the post-decision world, never the stale stage";
+    EXPECT_EQ(0, dst_save.campaign_state_get("westlands", "watch_paid"))
+        << "the adopted session save carries the latest decision book";
 }
 
 // C8: object handoff (the dedicated server / curses sessions). take() moves

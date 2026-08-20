@@ -2264,3 +2264,13 @@ void GameWorld::retire_corpse(walker* ob)
         return;
     }
 }
+
+// Staged-lobby adoption (#218): the destination takes the staged world's
+// scripting VM wholesale — see the header comment. Appended at EOF so the
+// parity canary pins above never shift.
+void GameWorld::adopt_scripts_from(GameWorld& source) noexcept
+{
+    if (&source == this)
+        return;
+    scripts_ = std::move(source.scripts_);
+}

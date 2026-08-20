@@ -59,6 +59,51 @@ private:
 
 } // namespace
 
+std::uint64_t host_save_stage_digest(const SaveData* save)
+{
+    if (save == nullptr)
+        return 0;
+
+    // FNV-1a 64. Order-stable by construction: campaign_state is a std::map
+    // whose per-campaign entry lists are kept sorted by key (the
+    // campaign_state_set write choke), and completed_levels is a map of
+    // sorted sets.
+    std::uint64_t hash = 14695981039346656037ull;
+    const auto fold_byte = [&hash](std::uint8_t byte) {
+        hash ^= byte;
+        hash *= 1099511628211ull;
+    };
+    const auto fold_i32 = [&fold_byte](std::int32_t value) {
+        const auto raw = static_cast<std::uint32_t>(value);
+        fold_byte(static_cast<std::uint8_t>(raw & 0xffu));
+        fold_byte(static_cast<std::uint8_t>((raw >> 8) & 0xffu));
+        fold_byte(static_cast<std::uint8_t>((raw >> 16) & 0xffu));
+        fold_byte(static_cast<std::uint8_t>((raw >> 24) & 0xffu));
+    };
+    const auto fold_string = [&fold_byte, &fold_i32](const std::string& s) {
+        fold_i32(static_cast<std::int32_t>(s.size()));
+        for (const char c : s)
+            fold_byte(static_cast<std::uint8_t>(c));
+    };
+
+    for (const auto& [campaign, entries] : save->campaign_state)
+    {
+        fold_string(campaign);
+        for (const auto& [key, value] : entries)
+        {
+            fold_string(key);
+            fold_i32(value);
+        }
+    }
+    for (const auto& [campaign, levels] : save->completed_levels)
+    {
+        fold_string(campaign);
+        for (const int level : levels)
+            fold_i32(level);
+    }
+    return hash;
+}
+
 MatchStage::MatchStage(MatchStageConfig config)
     : config_(config)
 {
@@ -104,10 +149,16 @@ MatchStage::TakenStage MatchStage::take()
 void MatchStage::observe_inputs(const MatchStageInputs& inputs,
                                 std::uint64_t now_ms)
 {
-    if (has_inputs_ && inputs == inputs_ && status_ != StageStatus::Empty)
+    // The owner's key deliberately omits what the stage can read itself:
+    // stamp the live host-save digest here, every poll, so a mid-lobby
+    // og.campaign_state_set write moves the key even though no lobby
+    // knob/roster byte changed.
+    MatchStageInputs stamped = inputs;
+    stamped.host_save_digest = host_save_stage_digest(config_.host_company_save);
+    if (has_inputs_ && stamped == inputs_ && status_ != StageStatus::Empty)
         return;
 
-    inputs_ = inputs;
+    inputs_ = stamped;
     has_inputs_ = true;
     if (status_ == StageStatus::Empty)
     {
@@ -133,6 +184,19 @@ void MatchStage::maintain(std::uint64_t now_ms)
 
 bool MatchStage::ensure_current(std::uint64_t now_ms)
 {
+    // GO re-checks the host-save digest directly: a campaign-state write can
+    // land between the last poll's observe_inputs and the GO click, and a
+    // stale stage must never launch.
+    if (has_inputs_)
+    {
+        const std::uint64_t digest =
+            host_save_stage_digest(config_.host_company_save);
+        if (digest != inputs_.host_save_digest)
+        {
+            inputs_.host_save_digest = digest;
+            dirty_ = true;
+        }
+    }
     if (has_inputs_ && (dirty_ || status_ == StageStatus::Empty))
         stage_now(now_ms);
     return status_ == StageStatus::Staged;
@@ -403,6 +467,15 @@ bool adopt_staged_world(LevelRuntimeData& dst_level,
     // sets it before its own load; the latch claim below keys on it).
     dst.id = staged.id;
     replace_loaded_world_state(&dst_level, staged);
+
+    // The staged VM moves WITH the content: the staged on_load's dynamic
+    // registrations — og.set_entity_hooks tables keyed by the just-moved
+    // entity ids, module-local state — live in the world's WorldScripts VM
+    // and nowhere else. A fresh destination VM would replay pack scripts but
+    // hold none of them, and the claimed on_load latch below (correctly)
+    // prevents re-registration — the court.lua boss on_death shape would
+    // silently never fire on the SDL launch path.
+    dst.adopt_scripts_from(staged);
 
     // What the move deliberately leaves to the caller:
     dst.control_policy = staged.control_policy;

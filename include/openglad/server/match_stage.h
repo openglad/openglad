@@ -73,9 +73,25 @@ struct MatchStageInputs {
     // AdoptCompletedLanding) leaves the defaults.
     short replay_level = 0;
     short replay_origin = 0;
+    // Digest of the campaign-state-affecting save inputs the staged on_load
+    // reads live (host_save_stage_digest over host_company_save: the
+    // campaign_state decision book + completed_levels). Owners leave it 0 —
+    // observe_inputs stamps it from MatchStageConfig::host_company_save on
+    // every poll, and ensure_current re-checks it at GO, so a mid-lobby
+    // og.campaign_state_set write (a base-camp zone action persisting via
+    // company_autosave_after_mutation) dirties the stage instead of letting
+    // GO adopt the pre-decision world.
+    std::uint64_t host_save_digest = 0;
 
     bool operator==(const MatchStageInputs&) const = default;
 };
+
+// The MatchStageInputs::host_save_digest input: an order-stable FNV-1a fold
+// of the save's campaign_state book (SORTED by construction) and its
+// completed_levels — exactly the reactive-level inputs a staged on_load can
+// reach through og.campaign_var / og.campaign_level_completed. nullptr (the
+// dedicated server's fresh-save shape) digests to 0.
+[[nodiscard]] std::uint64_t host_save_stage_digest(const SaveData* save);
 
 enum class StageStatus : std::uint8_t {
     Empty,
