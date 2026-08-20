@@ -366,6 +366,13 @@ private:
     std::size_t snapshot_hash_mismatch_count_ = 0;
     std::uint32_t next_sim_event_sequence_ = 1;
     std::uint32_t next_game_flow_event_sequence_ = 1;
+    // The ready-resetting setup generation stamped into every InitialSetup
+    // (v13). Bumped once per prepare_clients_for_loaded_level: clients detect
+    // a re-setup that expects a fresh ClientReady even when the level id is
+    // unchanged (same-level reload after "Quit this mission"), while
+    // mid-level resends (control mapping, reconnect) keep the generation and
+    // stay non-transitional.
+    std::uint32_t setup_generation_ = 1;
     std::optional<PeerId> host_peer_id_ = std::nullopt;
     // Sorted peer ids living in this process (see mark_peer_local).
     std::vector<PeerId> local_peer_ids_;

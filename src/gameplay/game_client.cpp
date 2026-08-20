@@ -922,11 +922,19 @@ void GameClient::update_render_interpolation(const WorldSnapshot& snapshot,
 
 void GameClient::apply_initial_setup(const InitialSetupMessage& message)
 {
+    // A transition is any setup the server marked ready-resetting: a moved
+    // level id/scenario, or (v13) a bumped setup_generation — the same level
+    // reloaded fresh (quit-mission withdraw reloads the CURRENT level;
+    // prepare_clients_for_loaded_level reset our client_ready either way, so
+    // the platform callbacks must re-ready or the launch gate never opens).
+    // Mid-level resends (control mapping, reconnect catch-up) keep the
+    // generation and stay non-transitional.
     const bool is_level_transition =
         baseline_.has_value() &&
         (!initial_setup_.has_value() ||
          initial_setup_->level_id != message.level_id ||
-         initial_setup_->current_scenario != message.current_scenario);
+         initial_setup_->current_scenario != message.current_scenario ||
+         initial_setup_->setup_generation != message.setup_generation);
     initial_setup_ = message;
     controlled_entity_ids_ = message.controlled_entity_ids;
     initial_setup_guys_.clear();

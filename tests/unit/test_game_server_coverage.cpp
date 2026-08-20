@@ -779,6 +779,98 @@ TEST(GameServerCoverage, launch_gate_ready_deadline_cuts_a_dead_handshake)
         << "the confirmed handshake must release the level start";
 }
 
+// The TRANSITION-limbo bound (staged-lobby review finding): after a level
+// reload, prepare_clients_for_loaded_level re-sends InitialSetup and resets
+// has_initial_snapshot — the client is owed a ClientReady BEFORE any keyframe
+// goes out, so the seeded-client deadline (stamped only at keyframe send)
+// never started for it, and its heartbeats kept the input-starvation clock
+// fresh. One wedged or hostile peer could freeze every level transition
+// forever for everyone. The deadline is now stamped at the re-setup itself:
+// a limbo peer that heartbeats but never re-readies is cut one full
+// DISCONNECT_TIMEOUT_MS window after the reload, and the reloaded level's
+// tick 1 runs for the survivors.
+TEST(GameServerCoverage,
+     launch_gate_transition_limbo_deadline_cuts_a_wedged_peer)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    std::uint64_t now_ms = 1'000;
+    server.set_wall_clock_ms_source([&] { return now_ms; });
+    transport.set_connected({91u, 92u});
+    server.poll_incoming_messages();
+
+    walker* const wedged_control =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* const benign_control =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, wedged_control);
+    ASSERT_NE(nullptr, benign_control);
+    server.bind_player(91u, 0u, fixture.world().my_team, wedged_control);
+    server.bind_player(92u, 1u, fixture.world().my_team, benign_control);
+
+    // Level start: both peers complete the handshake and tick 1 runs.
+    server.send_initial_snapshot(91u, og::sim::SnapshotCaptureMode::Peek);
+    server.send_initial_snapshot(92u, og::sim::SnapshotCaptureMode::Peek);
+    transport.queue_raw(
+        91u,
+        og::sim::serialize_client_ready_message(og::sim::ClientReadyMessage{}));
+    transport.queue_raw(
+        92u,
+        og::sim::serialize_client_ready_message(og::sim::ClientReadyMessage{}));
+    server.step();
+    ASSERT_EQ(1u, fixture.world().level_tick_count());
+
+    // Peer 92's "quit this mission" reloads the current level; the hook
+    // resets it to its start (the dedicated withdraw_headless_level shape).
+    server.on_withdraw_accepted = [&](int /*destination*/) {
+        fixture.world().tick_count_ = 0;
+        fixture.world().reset_level_progress();
+        return true;
+    };
+    now_ms = 2'000;
+    transport.queue_raw(
+        92u,
+        og::sim::serialize_exit_prompt_response_message(
+            {.accepted = true, .abort_request = true}));
+    server.step();
+    ASSERT_EQ(0u, fixture.world().level_tick_count())
+        << "the reload must be back at its level start, gate closed";
+
+    // 92 completes the re-handshake (ready -> catch-up keyframe -> re-ready).
+    transport.queue_raw(
+        92u,
+        og::sim::serialize_client_ready_message(og::sim::ClientReadyMessage{}));
+    server.step();
+    transport.queue_raw(
+        92u,
+        og::sim::serialize_client_ready_message(og::sim::ClientReadyMessage{}));
+    server.step();
+    EXPECT_EQ(0u, fixture.world().level_tick_count())
+        << "peer 91's outstanding re-handshake must still hold the reload";
+
+    // Both peers heartbeat just inside the window: the starvation clocks are
+    // fresh, so ONLY the transition-limbo ready deadline can bound peer 91.
+    now_ms = 2'000 + og::sim::DISCONNECT_TIMEOUT_MS - 1;
+    transport.queue_raw(
+        91u, og::sim::serialize_heartbeat_message(og::sim::HeartbeatMessage{}));
+    transport.queue_raw(
+        92u, og::sim::serialize_heartbeat_message(og::sim::HeartbeatMessage{}));
+    server.step();
+    EXPECT_TRUE(transport.disconnected().empty())
+        << "inside the window nothing may be cut";
+    EXPECT_EQ(0u, fixture.world().level_tick_count());
+
+    // One full window after the re-setup, the wedged limbo handshake is cut
+    // and the reloaded level starts for the survivor.
+    now_ms = 2'000 + og::sim::DISCONNECT_TIMEOUT_MS;
+    server.step();
+    EXPECT_EQ((std::vector<og::sim::PeerId>{91u}), transport.disconnected())
+        << "the re-setup deadline must cut the never-readying limbo peer";
+    EXPECT_EQ(1u, fixture.world().level_tick_count())
+        << "cutting the limbo peer must open the gate for the ready survivor";
+}
+
 // The staged-lobby adoption seam: SimEventLog::append transfers already-
 // stamped events verbatim — each keeps its own tick stamp (never restamped to
 // current_tick_), suppression does not apply (adoption is an explicit

@@ -1256,14 +1256,17 @@ TEST(NetTransport, deserialize_initial_setup_rejects_oversized_counts)
     const auto bytes = og::sim::serialize_initial_setup_message(
         og::sim::InitialSetupMessage{});
 
+    // Offsets: the guy-count u32 sits after the fixed scalar block, which
+    // v13 grew by the 4-byte setup_generation (37 -> 41); the level-count
+    // u32 follows the (empty) guy list.
     auto oversized_guy_count = std::vector<std::uint8_t>(bytes.begin(), bytes.end());
-    write_u32_le(oversized_guy_count, 37, 0xffffffffu);
+    write_u32_le(oversized_guy_count, 41, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_initial_setup_message(oversized_guy_count)
             .has_value());
 
     auto oversized_level_count = std::vector<std::uint8_t>(bytes.begin(), bytes.end());
-    write_u32_le(oversized_level_count, 41, 0xffffffffu);
+    write_u32_le(oversized_level_count, 45, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_initial_setup_message(oversized_level_count)
             .has_value());

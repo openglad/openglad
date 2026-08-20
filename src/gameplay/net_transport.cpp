@@ -503,6 +503,8 @@ std::vector<std::uint8_t> serialize_initial_setup_message(
     append_i16(payload, message.current_scenario);
     append_i16(payload, message.respawn_mode);
     append_i16(payload, message.generator_rate);
+    // v13: the ready-resetting setup generation (see net_transport.h).
+    append_u32(payload, message.setup_generation);
     append_u32(payload, static_cast<std::uint32_t>(message.guys.size()));
     for (const auto& guy : message.guys)
         append_initial_setup_guy(payload, guy);
@@ -536,6 +538,7 @@ std::optional<InitialSetupMessage> deserialize_initial_setup_message(
             message.current_scenario = reader.read_i16();
             message.respawn_mode = reader.read_i16();
             message.generator_rate = reader.read_i16();
+            message.setup_generation = reader.read_u32();
             const std::uint32_t guy_count = reader.read_u32();
             if (!reader.ok() ||
                 guy_count >

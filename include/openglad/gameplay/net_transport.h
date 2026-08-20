@@ -138,8 +138,13 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 // start gate denies GO while its stage is Failed. Reader-side hardening
 // rides along: read_serialized_guy clamps guy names to the 11-char disk
 // width and read_lobby_player clamps player names to the 40-char company
-// cap. Snapshot format stays v10 and replay stays v15 (no world-state or
-// recording layout change; the v14→v15 replay bump already broke the
+// cap. InitialSetup gains a u32 setup_generation (after generator_rate,
+// before the guy list): the server bumps it every time it resets client_ready
+// for a loaded level (prepare_clients_for_loaded_level), so a client can tell
+// a ready-resetting re-setup from a mid-level control-mapping resend even
+// when the level id is unchanged (same-level reload after "Quit this
+// mission"). Snapshot format stays v10 and replay stays v15 (no world-state
+// or recording layout change; the v14→v15 replay bump already broke the
 // versions-move-in-lockstep convention).
 inline constexpr std::uint8_t kNetworkProtocolVersion = 13;
 
@@ -269,6 +274,13 @@ struct InitialSetupMessage {
     std::int16_t current_scenario = 0;
     std::int16_t respawn_mode = 0;
     std::int16_t generator_rate = 0;
+    // v13: the server's ready-resetting generation. Bumped once per
+    // prepare_clients_for_loaded_level, so a re-setup that expects a fresh
+    // ClientReady is detectable even when level_id/current_scenario are
+    // unchanged (a same-level reload). Mid-level resends (control mapping,
+    // reconnect catch-up) carry the unchanged generation and must not make a
+    // display client reload its level.
+    std::uint32_t setup_generation = 0;
     std::vector<InitialSetupGuyData> guys;
     std::vector<std::int32_t> completed_levels;
     // Keyed by GLOBAL player index (u8-count-prefixed on the wire).

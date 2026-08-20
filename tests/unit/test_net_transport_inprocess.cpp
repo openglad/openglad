@@ -1270,6 +1270,90 @@ TEST(NetTransportInProcess,
     EXPECT_EQ("Destination ledger.", delivered[0]);
 }
 
+// Same-level re-setup limbo (staged-lobby review finding): a dedicated-server
+// "Quit this mission" reloads the CURRENT level (abort_level_for_all's
+// destination is world.current_scenario), and prepare_clients_for_loaded_level
+// resets every client_ready before re-sending InitialSetup with an UNCHANGED
+// level id. The client-side transition detection used to key on level id /
+// current_scenario alone, so this re-setup looked non-transitional, the
+// platform ready callbacks never fired, and every all-benign client sat in
+// launch-gate limbo forever — a permanent whole-server freeze on the reloaded
+// level. The v13 setup_generation stamp (bumped by every ready-resetting
+// re-setup) makes the reload transition-marked: the platform-shaped callback
+// re-readies, the re-handshake completes, and the reloaded level's tick 1
+// runs.
+TEST(NetTransportInProcess,
+     same_level_quit_mission_reload_re_readies_and_ticks)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+
+    // The platform ready gate (local_transport_shadow's display/background
+    // initial-setup callbacks): send ClientReady on every transition-marked
+    // setup, and ONLY on those.
+    int transition_setups = 0;
+    fixture.client(0).set_initial_setup_callback(
+        [&](const og::sim::InitialSetupMessage&, bool is_level_transition) {
+            if (!is_level_transition)
+                return;
+            ++transition_setups;
+            fixture.client(0).send_client_ready();
+        });
+
+    // The dedicated server's withdraw_headless_level shape: reload the SAME
+    // level fresh — id and current_scenario do not move.
+    const short scenario_before = fixture.server_world().current_scenario;
+    fixture.server().on_withdraw_accepted = [&](int destination) {
+        GameWorld& w = fixture.server_world();
+        EXPECT_EQ(static_cast<int>(scenario_before), destination)
+            << "quit-mission must target the CURRENT level";
+        w.tick_count_ = 0;
+        w.reset_level_progress();
+        w.game_ended = false;
+        w.next_level = -1;
+        w.ending = 0;
+        w.level_done = 0;
+        w.end = 0;
+        w.withdraw_requested = false;
+        w.withdraw_level = -1;
+        w.pending_exit_prompt = false;
+        return true;
+    };
+
+    // Run a tick so the reload is a genuine mid-level re-setup, then quit.
+    fixture.step_ticks(1);
+    ASSERT_GE(fixture.server_world().tick_count_, 1u);
+    fixture.client(0).request_level_abort();
+    fixture.with_server_context([&] { fixture.server().step(); });
+    ASSERT_EQ(0u, fixture.server_world().level_tick_count())
+        << "the withdraw hook must have reset the level to its start";
+
+    // Pump the re-handshake: setup (-> ready #1 from the callback) ->
+    // catch-up keyframe -> re-ready -> gate opens -> tick 1.
+    for (int i = 0; i < 4; ++i)
+    {
+        fixture.poll_client_messages(0);
+        fixture.with_server_context([&] { fixture.server().step(); });
+    }
+    fixture.poll_client_messages(0);
+
+    EXPECT_EQ(1, transition_setups)
+        << "a same-level quit-mission re-setup must be transition-marked "
+           "exactly once (the ready-resetting setup_generation moved)";
+    EXPECT_GE(fixture.server_world().level_tick_count(), 1u)
+        << "the re-readied client must open the launch gate on the reloaded "
+           "level";
+    fixture.expect_clients_match_server();
+}
+
 // Return-to-lobby mode (networked single-player parity): accepting an exit-portal
 // prompt must NOT auto-advance into the next level in-session. Instead the server
 // finalizes the campaign cursor (on_exit_accepted) and FORWARDS A TERMINAL ENDGAME

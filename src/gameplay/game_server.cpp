@@ -1382,6 +1382,7 @@ InitialSetupMessage GameServer::build_initial_setup(PeerId peer_id) const
     message.current_scenario = world_.current_scenario;
     message.respawn_mode = world_.respawn_mode;
     message.generator_rate = world_.generator_rate;
+    message.setup_generation = setup_generation_;
     message.guys = collect_initial_setup_guys(world_);
     message.completed_levels.assign(world_.completed_levels.begin(),
                                     world_.completed_levels.end());
@@ -2173,12 +2174,16 @@ void GameServer::update_timeouts()
         if (is_local_peer(peer_id))
             continue;
 
-        // Ready-deadline cut: a seeded client that never confirms its
-        // keyframe would hold the level-start launch gate forever (its
-        // heartbeats keep refreshing last_received_input_ms, so the
-        // starvation clause below never fires). The gate must be bounded:
-        // cut the dead handshake through the same disconnect machinery.
-        if (client.has_initial_snapshot && !client.client_ready &&
+        // Ready-deadline cut: a client that never confirms its handshake
+        // would hold the level-start launch gate forever (its heartbeats
+        // keep refreshing last_received_input_ms, so the starvation clause
+        // below never fires). This covers BOTH gate-closing states: seeded
+        // but unready (keyframe sent, ready owed) and transition limbo
+        // (setup re-sent by prepare_clients_for_loaded_level, ready + then
+        // keyframe owed — has_initial_snapshot false, so the deadline is
+        // stamped at the re-setup). The gate must be bounded: cut the dead
+        // handshake through the same disconnect machinery.
+        if (!client.client_ready &&
             client.ready_deadline_ms != 0 && now >= client.ready_deadline_ms)
         {
             timed_out_peers.push_back(
@@ -2405,6 +2410,12 @@ void GameServer::prepare_clients_for_loaded_level()
     player_input_debounce_ = {};
     world_.control_hp = 0.0f;
 
+    // Every client below gets its client_ready reset: the re-sent setups
+    // carry a fresh generation so clients treat them as transitions (and
+    // re-ready) even when the destination is the SAME level (quit-mission
+    // reload).
+    ++setup_generation_;
+
     const std::uint64_t now = now_ms();
     for (auto& [peer_id, client] : clients_)
     {
@@ -2413,6 +2424,14 @@ void GameServer::prepare_clients_for_loaded_level()
         client.has_initial_snapshot = false;
         client.client_ready = false;
         client.allow_initial_keyframe_without_ready = false;
+        // Bound the transition limbo: this client is owed a ClientReady (then
+        // a keyframe, then a re-ready) before the launch gate can open, and
+        // its heartbeats keep the input-starvation clock fresh — so the ready
+        // deadline must start counting NOW, not at the (never-sent-without-
+        // ready) keyframe. update_timeouts cuts an unready client one full
+        // window after this stamp; the pause-suspension restamp extends any
+        // nonzero deadline, so suspensions never count against it.
+        client.ready_deadline_ms = now + DISCONNECT_TIMEOUT_MS;
         client.budget_pending_keyframe = false;
         client.force_keyframe = true;
         for (BoundPlayer& seat : client.bound_players)
