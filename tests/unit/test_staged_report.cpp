@@ -421,3 +421,58 @@ TEST_F(ScenarioStagedReport, dormant_walkers_are_excluded_from_the_census)
     }
     EXPECT_TRUE(found_troop_row);
 }
+
+// The count-only fallback's activation clamp: a hook-less scripted level
+// with a single authored marker team cannot start, and the clamp folds
+// every team to inactive — the pane never shows a one-team "match".
+TEST_F(ScenarioStagedReport, hookless_single_marker_level_clamps_inactive)
+{
+    ModesCtfWorld fx(9999);  // no registration anywhere for this id
+    fx.spawn_anchor(0, 96, 96);  // ONE marker team only
+    fx.world().ctf_requested_strip_scenario_troops = 0;
+    fx.world().ctf_requested_team_count = 0;
+
+    stage_fixture_world(fx);
+    ASSERT_FALSE(fx.world().mode.active);
+    ASSERT_TRUE(fx.world().mode.init_attempted);
+
+    SaveData save;
+    const og::ui::ScenarioRosterReport report = staged_report(fx, save);
+
+    EXPECT_TRUE(report.staged);
+    EXPECT_FALSE(report.refusing) << "no hook = no mode, not a refusal";
+    EXPECT_FALSE(report.will_activate);
+    EXPECT_TRUE(report.team_authored[0]);
+    for (int t = 0; t < 4; ++t)
+        EXPECT_FALSE(report.team_active[static_cast<std::size_t>(t)])
+            << "the sub-2-team clamp folds every team inactive, team " << t;
+
+    const std::vector<std::string> lines =
+        og::ui::format_scenario_report_lines(report);
+    EXPECT_TRUE(any_line_is(lines, "MATCH: 1 AUTHORED TEAMS"));
+    EXPECT_TRUE(any_line_is(lines,
+                            "MATCH INACTIVE: FEWER THAN 2 AUTHORED TEAMS"));
+}
+
+// The formatter's closed fill vocabulary: ScenarioFill::Empty renders the
+// NO FORCES label with no count suffix. The census never produces an
+// active-but-empty team today (activity IS the census), so the display
+// contract is pinned directly over the public report struct.
+TEST_F(ScenarioStagedReport, empty_fill_renders_the_no_forces_row)
+{
+    og::ui::ScenarioRosterReport report;
+    report.staged = true;
+    report.is_versus = true;
+    report.will_activate = true;
+    report.mode_census = true;
+    report.mode_name = "CTF";
+    report.team_active[0] = true;
+    report.team_fill[0] = ScenarioFill::Empty;
+    report.team_fill_count[0] = 0;
+
+    const std::vector<std::string> lines =
+        og::ui::format_scenario_report_lines(report);
+    EXPECT_TRUE(any_line_is(lines, "MATCH: CTF - 1 TEAMS ACTIVE"));
+    EXPECT_TRUE(any_line_is(lines, "  RED TEAM  ACTIVE - NO FORCES"))
+        << "Empty must label NO FORCES, count suffix omitted";
+}

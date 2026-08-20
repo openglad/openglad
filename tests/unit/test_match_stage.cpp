@@ -33,6 +33,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -1417,6 +1418,223 @@ TEST_F(MatchStageTest, mirror_apply_failure_is_honest_and_retries)
               stage.staged_keyframe_bytes());
     EXPECT_EQ(2u, raced.refresh_serial())
         << "one failed attempt + one campaign-moved retry";
+}
+
+// Wire hardening: an empty setup payload and a keyframe with no setup are
+// both refused at reception — nothing is retained, no apply is attempted,
+// and retained_pair keeps reporting "no pair" without touching its outputs.
+TEST_F(MatchStageTest, mirror_rejects_empty_setup_and_setupless_keyframe)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    og::server::MatchStage stage({.networked = true});
+    stage.observe_inputs(make_modes_inputs(1001u), /*now_ms=*/0);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+
+    og::server::StagedPreviewMirror mirror;
+
+    std::uint32_t generation = 77u;
+    const std::vector<std::uint8_t>* setup_bytes = nullptr;
+    const std::vector<std::uint8_t>* keyframe_bytes = nullptr;
+    EXPECT_FALSE(mirror.retained_pair(generation, setup_bytes,
+                                      keyframe_bytes));
+    EXPECT_EQ(77u, generation) << "a refused pair writes none of the outputs";
+    EXPECT_EQ(nullptr, setup_bytes);
+    EXPECT_EQ(nullptr, keyframe_bytes);
+
+    // A keyframe with NO setup received yet cannot pair — dropped.
+    mirror.receive_keyframe(make_keyframe_message(stage));
+    mirror.ensure_applied("modes", /*difficulty=*/1, /*now_ms=*/0);
+    EXPECT_EQ(og::server::MirrorStatus::Empty, mirror.status());
+    EXPECT_EQ(0u, mirror.refresh_serial())
+        << "a setupless keyframe is not an apply attempt";
+
+    // An empty setup payload is refused outright, so the keyframe that
+    // follows it still has nothing to pair with.
+    og::sim::StagedMatchSetupMessage empty_setup = make_setup_message(stage);
+    empty_setup.setup_bytes.clear();
+    mirror.receive_setup(empty_setup);
+    mirror.receive_keyframe(make_keyframe_message(stage));
+    mirror.ensure_applied("modes", /*difficulty=*/1, /*now_ms=*/0);
+    EXPECT_EQ(og::server::MirrorStatus::Empty, mirror.status());
+    EXPECT_EQ(0u, mirror.refresh_serial());
+    EXPECT_FALSE(mirror.retained_pair(generation, setup_bytes,
+                                      keyframe_bytes));
+}
+
+// Corrupt keyframe bytes: the deserialize throw lands as the honest
+// "staged keyframe decode failed" Unavailable, the timed retry gate holds
+// inside kMirrorRetryMs on an unchanged campaign, the slow clock reopens
+// exactly one retry, and a fresh delivery of the real bytes re-arms the
+// apply and heals.
+TEST_F(MatchStageTest, mirror_keyframe_decode_failure_gates_the_timed_retry)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    og::server::MatchStage stage({.networked = true});
+    stage.observe_inputs(make_modes_inputs(1001u), /*now_ms=*/0);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+
+    og::server::StagedPreviewMirror mirror;
+    mirror.receive_setup(make_setup_message(stage));
+    og::sim::StagedMatchKeyframeMessage corrupt = make_keyframe_message(stage);
+    corrupt.snapshot_bytes.assign(64, std::uint8_t{0x5A});
+    mirror.receive_keyframe(corrupt);
+
+    testing::internal::CaptureStderr();
+    mirror.ensure_applied("modes", /*difficulty=*/1, /*now_ms=*/1'000);
+    const std::string diagnostics = testing::internal::GetCapturedStderr();
+    EXPECT_EQ(og::server::MirrorStatus::Unavailable, mirror.status());
+    EXPECT_EQ("staged keyframe decode failed", mirror.error());
+    EXPECT_EQ(nullptr, mirror.world());
+    EXPECT_EQ(1u, mirror.refresh_serial());
+    EXPECT_NE(std::string::npos,
+              diagnostics.find("staged_preview_mirror_unavailable"));
+
+    // Unchanged campaign inside the retry window: gated, no new attempt.
+    mirror.ensure_applied("modes", /*difficulty=*/1,
+                          /*now_ms=*/1'000 + og::server::kMirrorRetryMs - 1);
+    EXPECT_EQ(1u, mirror.refresh_serial())
+        << "the owner never resends on our account — the gate must hold";
+
+    // The slow clock reopens exactly one retry of the same corrupt pair.
+    testing::internal::CaptureStderr();
+    mirror.ensure_applied("modes", /*difficulty=*/1,
+                          /*now_ms=*/1'000 + og::server::kMirrorRetryMs);
+    (void)testing::internal::GetCapturedStderr();
+    EXPECT_EQ(2u, mirror.refresh_serial());
+    EXPECT_EQ(og::server::MirrorStatus::Unavailable, mirror.status());
+
+    // A fresh keyframe delivery with the REAL bytes re-arms and heals.
+    mirror.receive_keyframe(make_keyframe_message(stage));
+    mirror.ensure_applied("modes", /*difficulty=*/1,
+                          /*now_ms=*/1'000 + og::server::kMirrorRetryMs + 1);
+    ASSERT_EQ(og::server::MirrorStatus::Staged, mirror.status());
+    ASSERT_NE(nullptr, mirror.world());
+    EXPECT_EQ(3u, mirror.refresh_serial());
+    EXPECT_EQ(stage.stage_generation(), mirror.applied_generation());
+}
+
+// The broadcast + per-peer catch-up duplicate: a re-delivery of the SAME
+// generation-paired keyframe after a successful apply must not re-arm the
+// apply — the refresh serial (the preview's re-render key) stays put.
+TEST_F(MatchStageTest, mirror_ignores_duplicate_keyframe_redelivery)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    og::server::MatchStage stage({.networked = true});
+    stage.observe_inputs(make_modes_inputs(1001u), /*now_ms=*/0);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+
+    og::server::StagedPreviewMirror mirror;
+    mirror.receive_setup(make_setup_message(stage));
+    mirror.receive_keyframe(make_keyframe_message(stage));
+    mirror.ensure_applied("modes", /*difficulty=*/1, /*now_ms=*/0);
+    ASSERT_EQ(og::server::MirrorStatus::Staged, mirror.status());
+    ASSERT_EQ(1u, mirror.refresh_serial());
+
+    mirror.receive_keyframe(make_keyframe_message(stage));
+    mirror.ensure_applied("modes", /*difficulty=*/1, /*now_ms=*/10);
+    EXPECT_EQ(og::server::MirrorStatus::Staged, mirror.status());
+    EXPECT_EQ(1u, mirror.refresh_serial())
+        << "a duplicate of the applied pair re-applies nothing";
+    EXPECT_EQ(stage.stage_generation(), mirror.applied_generation());
+}
+
+// The u16 wire cap, refused legibly: a host company save whose completed-
+// levels ledger inflates the staged InitialSetup past the inner-message cap
+// fails the stage with the size-refusal error (GO denied through
+// ensure_current), and shrinking the ledger restages clean through the GO
+// re-check — the refusal is a generation like any other.
+TEST_F(MatchStageTest, oversize_staged_setup_fails_legibly_and_recovers)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    SaveData host_save;
+    std::set<int>& ledger = host_save.completed_levels["modes"];
+    for (int level = 100'000; level < 117'000; ++level)
+        ledger.insert(level);
+
+    og::server::MatchStage stage({.networked = true,
+                                  .host_company_save = &host_save});
+    testing::internal::CaptureStderr();
+    stage.observe_inputs(make_modes_inputs(1001u), /*now_ms=*/0);
+    const std::string diagnostics = testing::internal::GetCapturedStderr();
+
+    EXPECT_EQ(og::server::StageStatus::Failed, stage.status());
+    EXPECT_EQ("staged world exceeds the wire message size cap", stage.error());
+    EXPECT_EQ(nullptr, stage.world());
+    EXPECT_TRUE(stage.staged_setup_bytes().empty());
+    EXPECT_TRUE(stage.staged_keyframe_bytes().empty());
+    EXPECT_EQ(1u, stage.stage_generation())
+        << "a size refusal is a generation too — the preview must notice";
+    EXPECT_FALSE(stage.ensure_current(/*now_ms=*/1))
+        << "GO must be refused while the stage is Failed";
+    EXPECT_NE(std::string::npos, diagnostics.find("match_stage_failed"));
+
+    // Shrinking the ledger moves the host-save digest; the GO re-check
+    // restages synchronously and the same inputs now fit the wire.
+    ledger.clear();
+    EXPECT_TRUE(stage.ensure_current(/*now_ms=*/2));
+    EXPECT_EQ(og::server::StageStatus::Staged, stage.status());
+    ASSERT_NE(nullptr, stage.world());
+    EXPECT_TRUE(stage.error().empty());
+    EXPECT_EQ(2u, stage.stage_generation());
+    EXPECT_FALSE(stage.staged_setup_bytes().empty());
+    EXPECT_FALSE(stage.staged_keyframe_bytes().empty());
+}
+
+// Adoption refuses an unstaged stage: Empty and Failed stages hand nothing
+// over, and the destination world is untouched (the caller falls back to
+// the legacy display-seed path by contract).
+TEST_F(MatchStageTest, adoption_refuses_an_unstaged_stage)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    LevelRuntimeData dst_level(820, /*headless=*/true,
+                               &headless_level_data_hooks());
+    SaveData dst_save;
+    const std::int32_t untouched_id = dst_level.world().id;
+
+    og::server::MatchStage empty_stage({.networked = true});
+    ASSERT_EQ(og::server::StageStatus::Empty, empty_stage.status());
+    EXPECT_FALSE(og::server::adopt_staged_world(dst_level, dst_save,
+                                                empty_stage));
+
+    og::server::MatchStage failed_stage({.networked = true});
+    testing::internal::CaptureStderr();
+    failed_stage.mark_failed("refused for the test");
+    (void)testing::internal::GetCapturedStderr();
+    ASSERT_EQ(og::server::StageStatus::Failed, failed_stage.status());
+    EXPECT_FALSE(og::server::adopt_staged_world(dst_level, dst_save,
+                                                failed_stage));
+    EXPECT_EQ(untouched_id, dst_level.world().id)
+        << "a refused adoption must not touch the destination world";
+}
+
+// GameWorld::adopt_scripts_from self-adoption guard: adopting a world's own
+// VM is a no-op — the scripts stay live and the staged keyframe still
+// re-serializes byte-identical afterwards.
+TEST_F(MatchStageTest, self_script_adoption_is_a_no_op)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    og::server::MatchStage stage({.networked = true});
+    stage.observe_inputs(make_modes_inputs(1001u), /*now_ms=*/0);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+    GameWorld* const staged_world = stage.world();
+    ASSERT_NE(nullptr, staged_world);
+    const std::vector<std::uint8_t> before = staged_keyframe_bytes(stage);
+
+    staged_world->adopt_scripts_from(*staged_world);
+    EXPECT_EQ(before, staged_keyframe_bytes(stage))
+        << "self-adoption must not move the VM out from under the world";
 }
 
 } // namespace

@@ -816,6 +816,42 @@ TEST(NetTransport, staged_wrapper_refuses_oversize_or_empty_inner_without_throwi
     EXPECT_EQ(small, *typed.staged_match_setup);
 }
 
+TEST(NetTransport, staged_send_paths_guard_null_and_refused_messages)
+{
+    MockTransport transport;
+
+    // Null messages: both staged send paths refuse before serializing.
+    transport.send_staged_match_setup(1u, nullptr);
+    transport.send_staged_match_keyframe(1u, nullptr);
+    EXPECT_TRUE(transport.sent_messages().empty())
+        << "a null staged message must never reach the wire";
+
+    // An oversize SETUP through the send path: the serializer refuses
+    // (empty bytes) and the send is skipped — the keyframe twin of this arm
+    // is covered beside the wrapper-refusal test above.
+    og::sim::StagedMatchSetupMessage oversize_setup;
+    oversize_setup.stage_generation = 3u;
+    oversize_setup.setup_bytes.assign(
+        og::sim::kMaxStagedInnerMessageBytes + 1u, 0x5a);
+    transport.send_staged_match_setup(
+        1u, std::make_shared<og::sim::StagedMatchSetupMessage>(oversize_setup));
+    EXPECT_TRUE(transport.sent_messages().empty());
+
+    // A well-formed KEYFRAME reaches the wire and decodes back exactly.
+    og::sim::StagedMatchKeyframeMessage keyframe;
+    keyframe.stage_generation = 4u;
+    keyframe.snapshot_bytes = {0x0a, 0x0b};
+    transport.send_staged_match_keyframe(
+        1u, std::make_shared<og::sim::StagedMatchKeyframeMessage>(keyframe));
+    ASSERT_EQ(1u, transport.sent_messages().size());
+    const auto typed = og::sim::decode_received_message(
+        transport.sent_messages().front());
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::StagedMatchKeyframe,
+              typed.kind);
+    ASSERT_NE(nullptr, typed.staged_match_keyframe);
+    EXPECT_EQ(keyframe, *typed.staged_match_keyframe);
+}
+
 TEST(NetTransport, lightweight_message_roundtrips_and_decode)
 {
     const auto expect_client_ready = [] {

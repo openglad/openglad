@@ -2626,6 +2626,15 @@ TEST(PickerNetworkClient, joiner_preview_mirror_heals_byte_identical_pair)
     og::server::MatchStage* const host_stage = host_client->take_match_stage();
     ASSERT_NE(nullptr, host_stage) << "the host owns the MatchStage";
 
+    {
+        // Before any pair lands, the joiner reports the honest None health
+        // ("WAITING FOR HOST PREVIEW") — an empty mirror, never a stale one.
+        auto join_scope = join_session.activate();
+        EXPECT_EQ(og::ui::IPickerLobbyClient::StagedPreviewHealth::None,
+                  join_client->staged_preview_health());
+        EXPECT_EQ(nullptr, join_client->staged_world());
+    }
+
     // The joiner heals its mirror from the owner's broadcast/catch-up pair.
     ASSERT_TRUE(wait_until([&] {
         host_client->poll_and_apply();
@@ -2680,6 +2689,11 @@ TEST(PickerNetworkClient, joiner_preview_mirror_heals_byte_identical_pair)
     // the broadcast heals from these bytes; no resend needed).
     using Health = og::ui::IPickerLobbyClient::StagedPreviewHealth;
     EXPECT_EQ(Health::Staged, host_client->staged_preview_health());
+    // The host pane reads its own stage through the SAME IPickerLobbyClient
+    // surface the joiner pane reads its mirror through.
+    EXPECT_EQ(host_stage->world(), host_client->staged_world())
+        << "the host client's staged_world IS the MatchStage world";
+    EXPECT_EQ(host_stage->stage_generation(), host_client->stage_generation());
     std::uint32_t host_pair_generation = 0;
     const std::vector<std::uint8_t>* host_setup_bytes = nullptr;
     const std::vector<std::uint8_t>* host_keyframe_bytes = nullptr;
@@ -2714,6 +2728,71 @@ TEST(PickerNetworkClient, joiner_preview_mirror_heals_byte_identical_pair)
         found_renamed = found_renamed || guy_data.name == "RenamedHost";
     EXPECT_TRUE(found_renamed)
         << "the restage consumed the edited roster";
+}
+
+// The host pane's honest degradation surface: a stage refused at the wire
+// cap (an oversize completed-levels ledger inflates the staged
+// InitialSetup) reports Failed health, no staged world and no retained
+// pair through the same IPickerLobbyClient surface the pane reads — then
+// recovers to Staged when the ledger shrinks back (the host-save digest
+// moves the change key both ways).
+TEST(PickerNetworkClient, host_stage_failure_reports_honest_preview_health)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(host_save, 0, "Host");
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    using Health = og::ui::IPickerLobbyClient::StagedPreviewHealth;
+    // Before the first stage lands, the host surface is honest-empty.
+    EXPECT_EQ(Health::None, host_client->staged_preview_health());
+    EXPECT_EQ(nullptr, host_client->staged_world());
+    host_client->initialize_from_save();
+
+    og::server::MatchStage* const host_stage = host_client->take_match_stage();
+    ASSERT_NE(nullptr, host_stage);
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        return host_client->staged_preview_health() == Health::Staged;
+    })) << "the host stage never staged";
+
+    // Inflate the ledger: the host-save digest moves the change key, the
+    // restage refuses at the wire cap, and every pane surface degrades
+    // honestly.
+    std::set<int>& ledger =
+        host_save.completed_levels[host_save.current_campaign];
+    for (int level = 100'000; level < 117'000; ++level)
+        ledger.insert(level);
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        return host_client->staged_preview_health() == Health::Failed;
+    })) << "the oversize restage never landed as Failed";
+    EXPECT_EQ("staged world exceeds the wire message size cap",
+              host_stage->error());
+    EXPECT_EQ(nullptr, host_client->staged_world())
+        << "a Failed stage presents no world to the pane";
+    std::uint32_t pair_generation = 0;
+    const std::vector<std::uint8_t>* setup_bytes = nullptr;
+    const std::vector<std::uint8_t>* keyframe_bytes = nullptr;
+    EXPECT_FALSE(host_client->staged_keyframe_bytes(
+        pair_generation, setup_bytes, keyframe_bytes))
+        << "a Failed stage retains no wire pair";
+
+    // Shrinking the ledger moves the digest again; the stage recovers.
+    ledger.clear();
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        return host_client->staged_preview_health() == Health::Staged;
+    })) << "the stage never recovered after the ledger shrank";
+    EXPECT_NE(nullptr, host_client->staged_world());
+    EXPECT_EQ(host_client->stage_generation(), host_stage->stage_generation());
+
+    host_client->shutdown();
 }
 
 TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_roster)

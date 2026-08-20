@@ -308,6 +308,45 @@ int curses_network_testing_exercise_internal_helpers()
         decoded[0].kind == og::sim::TypedReceivedMessageKind::LobbyMessage &&
         decoded[1].kind == og::sim::TypedReceivedMessageKind::LobbyState);
 
+    // Staged lobby (#218, protocol v13) over a RAW transport: the joiner's
+    // envelope pump must decode the staged pair and drop undecodable staged
+    // frames — the in-process typed path never exercises this decode.
+    const og::sim::StagedMatchSetupMessage staged_setup{
+        .stage_generation = 5u, .setup_bytes = {0x01, 0x02, 0x03}};
+    const og::sim::StagedMatchKeyframeMessage staged_keyframe{
+        .stage_generation = 5u, .snapshot_bytes = {0x04, 0x05}};
+    RawTransport staged_raw({
+        og::sim::ReceivedMessage{
+            .peer_id = 1,
+            .data = malformed_payload(og::sim::kStagedMatchSetupMessageType),
+        },
+        og::sim::ReceivedMessage{
+            .peer_id = 1,
+            .data = og::sim::serialize_staged_match_setup_message(staged_setup),
+        },
+        og::sim::ReceivedMessage{
+            .peer_id = 1,
+            .data =
+                malformed_payload(og::sim::kStagedMatchKeyframeMessageType),
+        },
+        og::sim::ReceivedMessage{
+            .peer_id = 1,
+            .data = og::sim::serialize_staged_match_keyframe_message(
+                staged_keyframe),
+        },
+    });
+    const std::vector<og::sim::TypedReceivedMessage> staged_decoded =
+        poll_lobby_transport_messages(staged_raw);
+    check(staged_decoded.size() == 2 &&
+        staged_decoded[0].kind ==
+            og::sim::TypedReceivedMessageKind::StagedMatchSetup &&
+        staged_decoded[0].staged_match_setup != nullptr &&
+        *staged_decoded[0].staged_match_setup == staged_setup &&
+        staged_decoded[1].kind ==
+            og::sim::TypedReceivedMessageKind::StagedMatchKeyframe &&
+        staged_decoded[1].staged_match_keyframe != nullptr &&
+        *staged_decoded[1].staged_match_keyframe == staged_keyframe);
+
     // A lobby before any transport/state attachment must expose a coherent
     // empty public state, reject mutations, and render/cancel safely.
     class ScriptedTerminal final : public ITerminal {

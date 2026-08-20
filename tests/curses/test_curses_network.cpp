@@ -671,6 +671,68 @@ TEST(CursesNetwork, join_preview_mirror_matches_the_host_stage)
     join_lobby->cancel();
 }
 
+// Staged lobby #218 at the 24-slot capacity boundary: 13 + 13 deployed
+// slots exceed SaveData's wire equivalent, so the server's [NET-F2]
+// convergence force-benches the overflow in seat/slot order — the combined
+// deploy census reads 24/26, the stage still builds (the equivalent lands
+// exactly AT the cap, never past it), and no STAGING FAILED line appears.
+// The equivalent build's own 24-slot throw stays defense-in-depth behind
+// this trim.
+TEST(CursesNetwork, oversize_combined_roster_force_benches_to_the_cap)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+    for (int slot = 1; slot < 13; ++slot) {
+        auto host_member = std::make_unique<guy>(FAMILY_SOLDIER);
+        host_member->name = std::format("Host{}", slot);
+        host_member->teamnum = 0;
+        host_save.team_list[static_cast<std::size_t>(slot)] =
+            std::move(host_member);
+        ++host_save.team_size;
+        auto join_member = std::make_unique<guy>(FAMILY_ELF);
+        join_member->name = std::format("Join{}", slot);
+        join_member->teamnum = 1;
+        join_save.team_list[static_cast<std::size_t>(slot)] =
+            std::move(join_member);
+        ++join_save.team_size;
+    }
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto join_client = server->create_client_transport();
+
+    auto host_lobby = make_host_lobby_over_transport_for_testing(
+        host_save, 1, server, host_client);
+    auto join_lobby = make_join_lobby_over_transport_for_testing(
+        join_save, 1, join_client, join_client->local_peer_id());
+
+    HeadlessTerminal host_term(24, 80);
+    HeadlessTerminal join_term(24, 80);
+    FakeClock clock;
+
+    bool converged = false;
+    for (int i = 0; i < 200 && !converged; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+        converged = host_lobby->staged_world() != nullptr &&
+            status_contains(*host_lobby, "Deployed: 24/26");
+    }
+
+    EXPECT_TRUE(converged)
+        << "13 + 13 deployed slots must converge to the 24-slot cap with a "
+           "staged world";
+    EXPECT_EQ(std::string{}, host_lobby->stage_failure_line())
+        << "the at-cap equivalent must stage clean, never STAGING FAILED";
+    EXPECT_TRUE(status_contains(*join_lobby, "Deployed: 24/26"))
+        << "the force-benched census must replicate to the joiner";
+
+    host_lobby->cancel();
+    join_lobby->cancel();
+}
+
 // C10: small-terminal degradation — a lobby on a terminal under 16 rows
 // renders the plain text lobby (no glyph band), with the status lines
 // starting immediately below the title.

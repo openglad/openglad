@@ -26,6 +26,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -2577,6 +2578,94 @@ TEST(PickerFuncs, local_lobby_hoists_my_team_to_player_one)
     save.my_team = orig_my_team;
     save.numplayers = orig_numplayers;
     save.allied_mode = orig_allied;
+}
+
+// Staged lobby (#218): the LOCAL client's honest preview-health arms — a
+// solo stage refused at the wire cap (oversize completed-levels ledger)
+// reports Failed with no staged world and no retained pair through the
+// same IPickerLobbyClient surface the preview pane reads, then recovers to
+// Staged when the ledger shrinks (the host-save digest moves the change
+// key both ways).
+TEST(PickerFuncs, local_lobby_stage_failure_reports_honest_preview_health)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+
+    // Stash what this test mutates.
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> orig_list;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        orig_list[static_cast<std::size_t>(i)] =
+            std::move(save.team_list[static_cast<std::size_t>(i)]);
+    const unsigned char orig_size = save.team_size;
+    const short orig_my_team = save.my_team;
+    const unsigned char orig_numplayers = save.numplayers;
+    const short orig_allied = save.allied_mode;
+    const std::string orig_campaign = save.current_campaign;
+    const short orig_scen = save.scen_num;
+    const auto orig_completed = save.completed_levels;
+
+    for (auto& member : save.team_list)
+        member.reset();
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Solo";
+    save.team_list[0]->teamnum = 0;
+    save.team_size = 1;
+    save.my_team = 0;
+    save.numplayers = 1;
+    save.allied_mode = 0;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+
+    {
+        auto client = og::ui::create_local_picker_lobby_client();
+        client->initialize_from_save();
+        using Health = og::ui::IPickerLobbyClient::StagedPreviewHealth;
+        const auto poll_until = [&](Health wanted) {
+            for (int i = 0; i < 200; ++i)
+            {
+                client->poll_and_apply();
+                if (client->staged_preview_health() == wanted)
+                    return true;
+                SDL_Delay(20);
+            }
+            return false;
+        };
+        ASSERT_TRUE(poll_until(Health::Staged))
+            << "the solo stage never staged";
+        EXPECT_NE(nullptr, client->staged_world());
+        EXPECT_NE(0u, client->stage_generation());
+
+        std::set<int>& ledger = save.completed_levels["gladiator"];
+        for (int level = 100'000; level < 117'000; ++level)
+            ledger.insert(level);
+        ASSERT_TRUE(poll_until(Health::Failed))
+            << "the oversize restage never landed as Failed";
+        EXPECT_EQ(nullptr, client->staged_world())
+            << "a Failed stage presents no world to the pane";
+        std::uint32_t pair_generation = 0;
+        const std::vector<std::uint8_t>* setup_bytes = nullptr;
+        const std::vector<std::uint8_t>* keyframe_bytes = nullptr;
+        EXPECT_FALSE(client->staged_keyframe_bytes(
+            pair_generation, setup_bytes, keyframe_bytes))
+            << "a Failed stage retains no wire pair";
+
+        ledger.clear();
+        ASSERT_TRUE(poll_until(Health::Staged))
+            << "the stage never recovered after the ledger shrank";
+        EXPECT_NE(nullptr, client->staged_world());
+        client->shutdown();
+    }
+
+    // Restore.
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[static_cast<std::size_t>(i)] =
+            std::move(orig_list[static_cast<std::size_t>(i)]);
+    save.team_size = orig_size;
+    save.my_team = orig_my_team;
+    save.numplayers = orig_numplayers;
+    save.allied_mode = orig_allied;
+    save.current_campaign = orig_campaign;
+    save.scen_num = orig_scen;
+    save.completed_levels = orig_completed;
 }
 
 TEST(PickerFuncs,

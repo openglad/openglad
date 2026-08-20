@@ -34,6 +34,7 @@
 
 #include <array>
 #include <memory>
+#include <set>
 #include <span>
 #include <string>
 #include <vector>
@@ -1293,6 +1294,153 @@ TEST(CtfUi, view_scenario_rebuilds_when_settings_change_underneath)
         << "the settings change must trigger a restage";
     EXPECT_EQ(state.restages_before_change + 1, state.restages_after_change)
         << "one knob change coalesces into exactly one restage";
+
+    // The save0 load remounted the versus campaign; restore the default
+    // mount so later (or shuffled) tests load classic levels again.
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    (void)mount_campaign_package_with_error("gladiator");
+}
+
+// VIEW LEVEL degradation + recovery (#218): a hostile/stale level id landing
+// under the open viewer (the SET LEVEL half of the stale-joiner hole) must
+// degrade honestly — the refusal report replaces the census, the render copy
+// drops its healed claim (the band renders degradation text, STAGING FAILED
+// while the owner's restage is refused) — and the next honest level id heals
+// the whole surface back. Re-entering the viewer while the level is still
+// unloadable is refused at the entry guard (popup + MENU_REDRAW).
+// ---------------------------------------------------------------------------
+
+struct DegradeFlowState
+{
+    bool started = false;
+    bool finished = false;
+    bool viewer_opened = false;
+    bool failed_health_seen = false;
+    bool recovery_refresh_seen = false;
+    bool reentry_refused = false;
+};
+
+int view_scenario_degrade_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    DegradeFlowState* state = static_cast<DegradeFlowState*>(data);
+    state->started = true;
+
+    wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);
+    interact("continue_game");
+
+    // Team build -> SCENARIO submenu -> VIEW LEVEL (loads scen 500).
+    SDL_Delay(500);
+    wait_for_interactable("scenario", 10000);
+    SDL_Delay(750);
+    interact("scenario");
+    wait_for_interactable("view_scenario", 10000);
+    SDL_Delay(300);
+    interact("view_scenario");
+    state->viewer_opened = wait_for_interactable_at("back", 10, 170, 10000);
+    SDL_Delay(300);
+
+    // A stage REFUSAL lands under the open viewer: an oversize completed-
+    // levels ledger (host-save digest, stamped every poll — no lobby sync
+    // needed, and the per-frame poll does not clobber company history)
+    // fails the debounced restage at the wire cap. The pane must degrade
+    // honestly — Failed health, STAGING FAILED band text, the healed claim
+    // dropped — while the viewer stays parked.
+    std::set<int>& degrade_ledger = og::runtime::current_session
+        ->myscreen_->save_data.completed_levels["modes"];
+    for (int level = 100000; level < 117000; ++level)
+        degrade_ledger.insert(level);
+    for (int waited_ms = 0; waited_ms < 5000; waited_ms += 50)
+    {
+        og::ui::IPickerLobbyClient* const lobby =
+            og::ui::active_picker_lobby_client();
+        if (lobby != nullptr &&
+            lobby->staged_preview_health() ==
+                og::ui::IPickerLobbyClient::StagedPreviewHealth::Failed)
+        {
+            state->failed_health_seen = true;
+            break;
+        }
+        SDL_Delay(50);
+    }
+    SDL_Delay(400);  // Failed-health frames: band text + keyed re-tick
+
+    // Shrinking the ledger heals the stage; then an unloadable level id
+    // lands (the SET LEVEL half of the stale-joiner hole): the one-shot
+    // rebuild shows the load refusal, and the next honest id heals the
+    // viewer end to end (fresh scratch load, render-copy heal, census).
+    degrade_ledger.clear();
+    SDL_Delay(600);
+    const int refreshes_before_moves =
+        count_picker_trace_containing("view_scenario refresh lines=");
+    og::runtime::current_session->myscreen_->save_data.scen_num = 9999;
+    picker_lobby_sync_settings_from_save();
+    SDL_Delay(600);
+    og::runtime::current_session->myscreen_->save_data.scen_num = 500;
+    picker_lobby_sync_settings_from_save();
+    state->recovery_refresh_seen = wait_for_picker_trace(
+        "view_scenario refresh lines=", refreshes_before_moves + 1, 5000);
+    SDL_Delay(300);
+
+    // Leave the viewer, land the unloadable id again, and try to re-enter:
+    // the entry guard refuses (popup is a TESTING no-op; MENU_REDRAW keeps
+    // the SCENARIO submenu up, so VIEW LEVEL stays interactable).
+    interact("back");
+    SDL_Delay(300);
+    wait_for_interactable("view_scenario", 10000);
+    og::runtime::current_session->myscreen_->save_data.scen_num = 9999;
+    picker_lobby_sync_settings_from_save();
+    SDL_Delay(600);
+    interact("view_scenario");
+    SDL_Delay(300);
+    state->reentry_refused = wait_for_interactable("view_scenario", 5000);
+
+    // Restore a loadable id, then unwind to the main menu.
+    og::runtime::current_session->myscreen_->save_data.scen_num = 500;
+    picker_lobby_sync_settings_from_save();
+    SDL_Delay(400);
+    wait_for_interactable("matchup", 10000);
+    SDL_Delay(300);
+    interact("back");
+
+    SDL_Delay(300);
+    wait_for_interactable("go", 10000);
+    SDL_Delay(300);
+    interact("back");
+
+    state->finished = true;
+    return 0;
+}
+
+TEST(CtfUi, view_scenario_degrades_and_recovers_on_level_moves)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    write_save0_with_two_soldiers("modes", 500);
+
+    DegradeFlowState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        view_scenario_degrade_injector, "view_degrade_flow", &state);
+    ASSERT_NE(nullptr, thread);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_TRUE(state.finished) << "injector should complete the flow";
+    EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open its frame";
+    EXPECT_TRUE(state.failed_health_seen)
+        << "the unloadable level's restage must land as Failed health "
+           "while the viewer is parked";
+    EXPECT_TRUE(state.recovery_refresh_seen)
+        << "the honest level id must rebuild the report after the refusal";
+    EXPECT_TRUE(state.reentry_refused)
+        << "entering VIEW LEVEL on an unloadable level must keep the "
+           "SCENARIO submenu up (popup + MENU_REDRAW)";
 
     // The save0 load remounted the versus campaign; restore the default
     // mount so later (or shuffled) tests load classic levels again.

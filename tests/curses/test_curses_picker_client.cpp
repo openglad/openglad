@@ -49,6 +49,7 @@
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -975,6 +976,82 @@ TEST(CursesPickerClient, view_scenario_degrades_to_text_on_small_terminals)
     EXPECT_NE(std::string::npos, f.t().text_row(0).find("View Scenario"));
     EXPECT_EQ(0u, f.t().text_row(2).find("SCEN 1:"))
         << "no band under 16 rows — the census starts at row 2:\n"
+        << f.t().dump();
+}
+
+// The 16-row band squeeze: only three census rows fit under the band, so
+// the overflow census lines (and their wrapped continuations on a narrow
+// terminal) stop at the footer, which keeps its dismissal prompt. The
+// held-key rule holds for show_preview too: two key RELEASES must not
+// dismiss the screen — only the fresh press does.
+TEST(CursesPickerClient, view_scenario_band_overflow_stops_at_the_footer)
+{
+    ScopedCursesPickerMountRestore mount_restore;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    // 18 columns: wide enough for the footer prompt, narrow enough that a
+    // census line WRAPS across the footer (the wrapped-continuation break
+    // beside the whole-line break).
+    PickerFixture f({}, /*rows=*/16, /*cols=*/18);
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::Scenario, PickerMenuCommand::ViewScenario);
+    ASSERT_NE(item, nullptr);
+
+    f.t().push_key(Key::character(U'x', KeyEvent::Release));
+    f.t().push_key(Key::character(U'x', KeyEvent::Release));
+    f.t().push_special(KeyCode::Enter);
+    f.client.handle_menu_item(PickerMenuId::Scenario, *item);
+
+    EXPECT_TRUE(f.t().input_exhausted())
+        << "both releases and the fresh press must be consumed";
+    EXPECT_NE(std::string::npos, f.t().text_row(0).find("View Scenario"));
+    EXPECT_EQ(0u, f.t().text_row(15).find("[ press any key ]"))
+        << "the footer keeps its prompt when the census overflows:\n"
+        << f.t().dump();
+    EXPECT_NE(std::string::npos, f.t().text_row(12).find_first_not_of(' '))
+        << "the first census row under the band must be filled:\n"
+        << f.t().dump();
+}
+
+// Solo staged VIEW LEVEL degradation: a local stage that cannot fit the
+// wire cap (an oversize completed-levels ledger inflates the staged
+// InitialSetup) degrades to the fallback census with the honest STAGING
+// FAILED line — never a crash, never a stale band presented as the stage.
+TEST(CursesPickerClient, view_scenario_staging_failure_degrades_to_fallback)
+{
+    ScopedCursesPickerMountRestore mount_restore;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    PickerFixture f;
+    std::set<int>& ledger = f.save().completed_levels["gladiator"];
+    for (int level = 100'000; level < 117'000; ++level)
+        ledger.insert(level);
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::Scenario, PickerMenuCommand::ViewScenario);
+    ASSERT_NE(item, nullptr);
+
+    f.t().push_special(KeyCode::Enter);
+    testing::internal::CaptureStderr();
+    f.client.handle_menu_item(PickerMenuId::Scenario, *item);
+    const std::string diagnostics = testing::internal::GetCapturedStderr();
+
+    EXPECT_NE(std::string::npos, f.t().text_row(0).find("View Scenario"));
+    EXPECT_NE(std::string::npos, diagnostics.find("match_stage_failed"));
+    bool found_failed_line = false;
+    bool found_scen_line = false;
+    for (int row = 0; row < 16; ++row)
+    {
+        if (f.t().text_row(row).find("STAGING FAILED") != std::string::npos)
+            found_failed_line = true;
+        if (f.t().text_row(row).find("SCEN 1:") != std::string::npos)
+            found_scen_line = true;
+    }
+    EXPECT_TRUE(found_failed_line)
+        << "the fallback census must lead with the honest STAGING FAILED "
+           "line:\n"
+        << f.t().dump();
+    EXPECT_TRUE(found_scen_line)
+        << "the fallback census still names the level:\n"
         << f.t().dump();
 }
 

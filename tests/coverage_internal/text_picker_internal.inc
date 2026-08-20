@@ -998,6 +998,23 @@ int text_picker_testing_staged_view_scenario()
     check(!first.empty());
     check(first == second);
 
+    // Degradation (#218): an oversize completed-levels ledger refuses the
+    // stage at the wire cap, so VIEW LEVEL degrades to the fallback census
+    // over the scratch load, led by the honest STAGING FAILED line — no
+    // mode census, never a stale staged world. Shrinking the ledger heals
+    // the viewer back to the byte-identical staged census.
+    std::set<int>& ledger =
+        client.testing_save_data_mutable().completed_levels["modes"];
+    for (int level = 100000; level < 117000; ++level)
+        ledger.insert(level);
+    const std::string degraded = run_view_scenario();
+    check(degraded.find("STAGING FAILED") != std::string::npos);
+    check(degraded.find("--- SCEN 820:") != std::string::npos);
+    check(degraded.find("MATCH: SOCCER") == std::string::npos);
+    ledger.clear();
+    const std::string healed = run_view_scenario();
+    check(healed == first);
+
     check(state_restore.restore());
     return failed ? -failed_check : 0;
 }
