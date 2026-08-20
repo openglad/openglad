@@ -929,6 +929,9 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/interface/session_state.cpp
         ${SRC_DIR}/interface/level_runtime_data.cpp
         ${SRC_DIR}/interface/platform_bridge.cpp
+        # Headless level-data hooks (C4 extraction): platform_headless.cpp
+        # calls headless_level_data_hooks(), which now lives here.
+        ${SRC_DIR}/server/headless_level_hooks.cpp
     )
     configure_openglad_library(concept_mapgen)
     target_link_libraries(concept_mapgen PRIVATE
@@ -955,6 +958,9 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/interface/session_state.cpp
         ${SRC_DIR}/interface/level_runtime_data.cpp
         ${SRC_DIR}/interface/platform_bridge.cpp
+        # Headless level-data hooks (C4 extraction): platform_headless.cpp
+        # calls headless_level_data_hooks(), which now lives here.
+        ${SRC_DIR}/server/headless_level_hooks.cpp
     )
     configure_openglad_library(imaginations_mapgen)
     target_link_libraries(imaginations_mapgen PRIVATE
@@ -993,6 +999,9 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/interface/session_state.cpp
         ${SRC_DIR}/interface/level_runtime_data.cpp
         ${SRC_DIR}/interface/platform_bridge.cpp
+        # Headless level-data hooks (C4 extraction): platform_headless.cpp
+        # calls headless_level_data_hooks(), which now lives here.
+        ${SRC_DIR}/server/headless_level_hooks.cpp
     )
     configure_openglad_library(modes_mapgen)
     target_link_libraries(modes_mapgen PRIVATE
@@ -1023,6 +1032,9 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/interface/session_state.cpp
         ${SRC_DIR}/interface/level_runtime_data.cpp
         ${SRC_DIR}/interface/platform_bridge.cpp
+        # Headless level-data hooks (C4 extraction): platform_headless.cpp
+        # calls headless_level_data_hooks(), which now lives here.
+        ${SRC_DIR}/server/headless_level_hooks.cpp
     )
     configure_openglad_library(westlands_mapgen)
     target_link_libraries(westlands_mapgen PRIVATE
@@ -1054,6 +1066,9 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/interface/session_state.cpp
         ${SRC_DIR}/interface/level_runtime_data.cpp
         ${SRC_DIR}/interface/platform_bridge.cpp
+        # Headless level-data hooks (C4 extraction): platform_headless.cpp
+        # calls headless_level_data_hooks(), which now lives here.
+        ${SRC_DIR}/server/headless_level_hooks.cpp
     )
     configure_openglad_library(longseason_mapgen)
     target_link_libraries(longseason_mapgen PRIVATE
@@ -1081,6 +1096,9 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/interface/session_state.cpp
         ${SRC_DIR}/interface/level_runtime_data.cpp
         ${SRC_DIR}/interface/platform_bridge.cpp
+        # Headless level-data hooks (C4 extraction): platform_headless.cpp
+        # calls headless_level_data_hooks(), which now lives here.
+        ${SRC_DIR}/server/headless_level_hooks.cpp
     )
     configure_openglad_library(tower_mapgen)
     target_link_libraries(tower_mapgen PRIVATE
@@ -1110,6 +1128,9 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/interface/session_state.cpp
         ${SRC_DIR}/interface/level_runtime_data.cpp
         ${SRC_DIR}/interface/platform_bridge.cpp
+        # Headless level-data hooks (C4 extraction): platform_headless.cpp
+        # calls headless_level_data_hooks(), which now lives here.
+        ${SRC_DIR}/server/headless_level_hooks.cpp
     )
     configure_openglad_library(grid_migrate)
     target_link_libraries(grid_migrate PRIVATE
