@@ -136,6 +136,7 @@ Sint32 picker_view_scenario_engine_consume_click(Sint32 retvalue,
                                                  void* screen_state);
 void picker_view_scenario_engine_draw_content(void* screen_state);
 bool picker_view_scenario_engine_frame_tick(void* screen_state, int frame);
+void picker_view_scenario_staged_draw_background(void* screen_state);
 // HELP engine hooks (#168; defined beside the tab content in help.cpp).
 og::ui::RowState help_engine_pager_row_state(
     const og::ui::MenuLabelContext& context);
@@ -6779,10 +6780,13 @@ const MenuScreenSpec& view_scenario_menu_screen_spec()
         // position (before the page-step consumption).
         .exit_on_redraw = true,
         .polls_lobby = true,
-        .draw_background = &picker_backdrop_draw_background,
+        // The staged-preview band (#218): backdrop + report frame + the
+        // STAGED world (or its honest degradation text) rendered above the
+        // census rows. Every other consumer keeps the shared backdrop.
+        .draw_background = &picker_view_scenario_staged_draw_background,
         .draw_content = &picker_view_scenario_engine_draw_content,
         // Refresh guard (issue #218): rebuild the cached report when the
-        // level / match settings / lobby rosters move under a parked
+        // level / match settings / stage generation move under a parked
         // viewer (host SET LEVEL / TEAMS / TROOPS — the stale-joiner
         // hole the once-per-open cache used to leave).
         .frame_tick = &picker_view_scenario_engine_frame_tick,

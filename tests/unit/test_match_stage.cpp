@@ -24,6 +24,7 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
+#include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/server/match_stage.h>
 
@@ -1044,6 +1045,94 @@ TEST_F(MatchStageTest, mirror_drops_generation_mismatched_keyframes)
     EXPECT_EQ(og::sim::serialize_snapshot(
                   og::sim::peek_keyframe_snapshot(*mirror.world())),
               stage.staged_keyframe_bytes());
+}
+
+// C10: the staged report carries the COMBINED lobby roster with no
+// marshaling — both slots' companies are spawned walkers in the staged
+// world, so the census labels both teams COMPANY with exact counts (the
+// old lobby_roster_team_counts marshaling is gone with the plan arm).
+TEST_F(MatchStageTest, staged_report_carries_the_combined_roster)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    og::server::MatchStage stage({.networked = true});
+    og::server::MatchStageInputs inputs = make_modes_inputs(1001u);
+    inputs.equivalent.team_list.push_back(
+        make_slot(1u, 200, "Winger", FAMILY_ELF, 1));
+    inputs.equivalent.team_list.push_back(
+        make_slot(2u, 201, "Keeper", FAMILY_ARCHER, 1));
+    stage.observe_inputs(inputs, /*now_ms=*/0);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+
+    SaveData display_save;
+    display_save.my_team = 0;
+    const og::ui::ScenarioRosterReport report =
+        og::ui::build_scenario_roster_report(
+            stage.world(), og::ui::StagePreviewStatus::Staged, display_save,
+            nullptr);
+    EXPECT_TRUE(report.staged);
+    EXPECT_EQ("SOCCER", report.mode_name);
+    EXPECT_EQ(og::ui::ScenarioFill::Company, report.team_fill[0]);
+    EXPECT_EQ(1, report.team_fill_count[0]);
+    EXPECT_EQ(og::ui::ScenarioFill::Company, report.team_fill[1]);
+    EXPECT_EQ(2, report.team_fill_count[1])
+        << "a remote seat's two deployed fighters census exactly";
+
+    // The row loop groups company fighters by (team, family, level) — the
+    // shared roster rows every client renders identically.
+    const std::vector<std::string> lines =
+        og::ui::format_scenario_report_lines(report);
+    bool soldier_row = false;
+    bool elf_row = false;
+    bool archer_row = false;
+    for (const std::string& line : lines)
+    {
+        soldier_row = soldier_row || line == "  1x SOLDIER Lv 3";
+        elf_row = elf_row || line == "  1x ELF Lv 3";
+        archer_row = archer_row || line == "  1x ARCHER Lv 3";
+    }
+    EXPECT_TRUE(soldier_row) << "the host company rides the staged rows";
+    EXPECT_TRUE(elf_row) << "the joiner company rides the staged rows";
+    EXPECT_TRUE(archer_row);
+}
+
+// C10: the networked-exactness oracle at the LINE level — a mirror healed
+// from the owner's broadcast pair builds the IDENTICAL report, line for
+// line, so the host pane and every joiner pane say the same thing.
+TEST_F(MatchStageTest, mirror_report_equals_host_report_line_for_line)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    og::server::MatchStage stage({.networked = true});
+    stage.observe_inputs(make_modes_inputs(1001u), /*now_ms=*/0);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+
+    og::server::StagedPreviewMirror mirror;
+    mirror.receive_setup(make_setup_message(stage));
+    mirror.receive_keyframe(make_keyframe_message(stage));
+    mirror.ensure_applied("modes", /*difficulty=*/1, /*now_ms=*/0);
+    ASSERT_EQ(og::server::MirrorStatus::Staged, mirror.status());
+
+    SaveData display_save;
+    const std::vector<std::string> host_lines =
+        og::ui::format_scenario_report_lines(
+            og::ui::build_scenario_roster_report(
+                stage.world(), og::ui::StagePreviewStatus::Staged,
+                display_save, nullptr));
+    const std::vector<std::string> mirror_lines =
+        og::ui::format_scenario_report_lines(
+            og::ui::build_scenario_roster_report(
+                mirror.world(), og::ui::StagePreviewStatus::Staged,
+                display_save, nullptr));
+    ASSERT_FALSE(host_lines.empty());
+    EXPECT_TRUE(std::find(host_lines.begin(), host_lines.end(),
+                          "  RED TEAM  ACTIVE - COMPANY (1)") !=
+                host_lines.end())
+        << "the host report reads the staged census";
+    EXPECT_EQ(host_lines, mirror_lines)
+        << "host pane and joiner pane must say the identical thing";
 }
 
 // Apply-failure honesty: an undecodable pair reports Unavailable (never a

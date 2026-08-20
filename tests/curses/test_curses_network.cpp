@@ -641,8 +641,75 @@ TEST(CursesNetwork, join_preview_mirror_matches_the_host_stage)
               og::sim::serialize_snapshot(og::sim::peek_keyframe_snapshot(
                   *const_cast<GameWorld*>(join_staged))));
 
+    // C10: the lobby PRESENTS the staged world as a glyph band (rows 2..11
+    // on a 24-row terminal: 10 band rows above the status lines, static
+    // center camera). Both terminals render the same dormant world through
+    // the same renderer at the same size, so the band must be CELL-IDENTICAL
+    // — glyphs and team color pairs alike — the networked-exactness oracle
+    // made visual.
+    host_lobby->poll(host_term, clock);
+    join_lobby->poll(join_term, clock);
+    bool any_band_glyph = false;
+    for (int row = 2; row < 12; ++row) {
+        for (int col = 0; col < host_term.cols(); ++col) {
+            const Cell& host_cell = host_term.cell_at(row, col);
+            const Cell& join_cell = join_term.cell_at(row, col);
+            EXPECT_EQ(host_cell.ch, join_cell.ch)
+                << "band glyph diverged at (" << row << "," << col << ")";
+            EXPECT_EQ(static_cast<int>(host_cell.fg),
+                      static_cast<int>(join_cell.fg))
+                << "band color diverged at (" << row << "," << col << ")";
+            if (host_cell.ch != U' ')
+                any_band_glyph = true;
+        }
+    }
+    EXPECT_TRUE(any_band_glyph)
+        << "the staged pitch must render terrain/entity glyphs in the band:\n"
+        << host_term.dump();
+
     host_lobby->cancel();
     join_lobby->cancel();
+}
+
+// C10: small-terminal degradation — a lobby on a terminal under 16 rows
+// renders the plain text lobby (no glyph band), with the status lines
+// starting immediately below the title.
+TEST(CursesNetwork, lobby_preview_band_degrades_on_small_terminals)
+{
+    SaveData host_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+
+    auto host_lobby = make_host_lobby_over_transport_for_testing(
+        host_save, 1, server, host_client);
+    ASSERT_NE(nullptr, host_lobby);
+
+    HeadlessTerminal small_term(12, 60);
+    FakeClock clock;
+    bool staged = false;
+    for (int i = 0; i < 200 && !staged; ++i) {
+        host_lobby->poll(small_term, clock);
+        staged = host_lobby->staged_world() != nullptr;
+    }
+    ASSERT_TRUE(staged);
+    host_lobby->poll(small_term, clock);
+
+    // Row 0 = title, row 1 = blank, row 2 = the FIRST status line (the band
+    // is skipped below 16 rows; a staged healthy lobby has no degradation
+    // line either).
+    EXPECT_EQ("Hosting Game",
+              small_term.text_row(0).substr(0, 12));
+    const std::vector<std::string> status = host_lobby->status_lines();
+    ASSERT_FALSE(status.empty());
+    EXPECT_EQ(status[0],
+              small_term.text_row(2).substr(0, status[0].size()))
+        << "under 16 rows the status lines start right below the title:\n"
+        << small_term.dump();
+
+    host_lobby->cancel();
 }
 
 // A joining terminal client must not claim readiness while a class-pack

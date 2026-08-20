@@ -48,6 +48,15 @@ public:
     // Convert an entity pixel position to a tile cell (GRID_SIZE == 16).
     static void world_to_tile(int xpos, int ypos, int& tile_x, int& tile_y);
 
+    // Staged-lobby preview band (#218): draw ONLY the glyph viewport into an
+    // explicit terminal rect for an arbitrary (foreign, dormant) world — no
+    // clear, no HUD, no log, no present; the caller composes the screen.
+    // followed_id 0 centers on the map middle (the staged camera). A plain
+    // public forwarder to draw_viewport, which already takes a foreign
+    // const GameWorld& with zero session coupling.
+    void draw_preview(ITerminal& term, const GameWorld& world, int top,
+                      int left, int height, int width);
+
 private:
     // Sub-regions (computed from terminal size each frame).
     void draw_viewport(ITerminal& term, const GameWorld& world,

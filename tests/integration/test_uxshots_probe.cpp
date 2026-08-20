@@ -1010,6 +1010,119 @@ int basecamp_many_seats_injector(void *data) {
   return 0;
 }
 
+// --- VIEW LEVEL staged preview (#218, C10) ---------------------------------
+
+// The band region the staged world renders into: (8,16)-(310,91) in classic
+// coordinates (picker_sdl_defs kViewScenarioPreviewBand*). A healed staged
+// pitch fills the band with terrain, so a blank band means the pane died.
+bool check_view_level_staged_band(const FramePixels &rgb) {
+  std::size_t nonblack = 0;
+  for (int y = 16; y < 16 + 76; ++y) {
+    for (int x = 8; x < 8 + 303; ++x) {
+      const std::size_t i = (static_cast<std::size_t>(y) * 320 +
+                             static_cast<std::size_t>(x)) * 3;
+      if (rgb[i] != 0 || rgb[i + 1] != 0 || rgb[i + 2] != 0)
+        ++nonblack;
+    }
+  }
+  if (nonblack < 1000) {
+    fprintf(stderr, "  [uxshot] staged band nearly blank: %zu nonblack\n",
+            nonblack);
+    return false;
+  }
+  return true;
+}
+
+int view_level_staged_injector(void *data) {
+  og::runtime::ensure_thread_session();
+  ShotState *state = static_cast<ShotState *>(data);
+  wait_for_interactable("continue_game", 5000);
+  SDL_Delay(1500);
+  interact("continue_game");
+  if (wait_for_team_menu()) {
+    SDL_Delay(500);
+    interact("scenario");
+    if (wait_for_interactable("view_scenario", 5000)) {
+      SDL_Delay(300);
+      interact("view_scenario");
+      // The pane-heal trace is the "viewer is up and staged" signal.
+      bool pane_up = false;
+      for (int waited = 0; waited < 10000 && !pane_up; waited += 100) {
+        pane_up = trace_contains("picker", "view_scenario pane gen=");
+        SDL_Delay(100);
+      }
+      if (pane_up) {
+        // Let the pan settle a few frames before freezing one.
+        SDL_Delay(800);
+        state->captures +=
+            capture_frame("view_level_staged", &check_view_level_staged_band);
+        SDL_Delay(200);
+        interact("back");
+      }
+      if (wait_for_interactable("matchup", 5000)) {
+        SDL_Delay(300);
+        interact("back");
+      }
+    }
+    if (wait_for_team_menu(5000)) {
+      SDL_Delay(250);
+      interact("back");
+    }
+  }
+  if (wait_for_interactable("begin_new_game", 10000)) {
+    SDL_Delay(750);
+    interact("quit");
+  }
+  state->finished = true;
+  return 0;
+}
+
+// The staged-lobby headline still: VIEW LEVEL's preview band presents the
+// dormant staged soccer pitch above the census rows. Doubles as proof media
+// (UXSHOTS_DIR) and the blank-frame guard for the pane.
+TEST(UxShots, n_view_level_staged) {
+  trace_clear();
+  CompanySlotCleanup cleanup{{"save0"}};
+  {
+    SaveData sd;
+    sd.reset();
+    sd.save_name = "IRON KETTLE BAND";
+    sd.current_campaign = "modes";
+    sd.scen_num = 820;
+    sd.current_levels["modes"] = 820;
+    auto gort = std::make_unique<guy>(FAMILY_SOLDIER);
+    gort->name = "GORT";
+    gort->upgrade_to_level(3, true);
+    gort->deployed = true;
+    sd.team_list[0] = std::move(gort);
+    auto sylva = std::make_unique<guy>(FAMILY_ELF);
+    sylva->name = "SYLVA";
+    sylva->upgrade_to_level(4, true);
+    sylva->deployed = true;
+    sd.team_list[1] = std::move(sylva);
+    sd.team_size = 2;
+    ASSERT_EQ(SaveDataIoError::None, sd.save_with_error("save0"));
+  }
+  ASSERT_TRUE(og::data::set_active_company_slot("save0"));
+
+  ShotState state;
+  SDL_Thread *thread =
+      SDL_CreateThread(view_level_staged_injector, "ux_staged", &state);
+  ASSERT_TRUE(thread != nullptr);
+  g_picker_mainmenu_calls = 0;
+  g_picker_max_mainmenu_calls = 2;
+  picker_main(0, nullptr);
+  SDL_WaitThread(thread, nullptr);
+  cleanup_picker_state();
+  g_picker_max_mainmenu_calls = 0;
+  ASSERT_TRUE(state.finished);
+  ASSERT_GE(state.captures, 1);
+
+  // The save0 load mounted the modes campaign; restore the default.
+  (void)unmount_campaign_package_with_error(get_mounted_campaign());
+  (void)mount_campaign_package_with_error("gladiator");
+}
+
 TEST(UxShots, m_basecamp_many_seats_and_matchup) {
   trace_clear();
   seed_session_save_for_net();

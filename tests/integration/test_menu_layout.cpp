@@ -2655,6 +2655,42 @@ TEST(MenuLayout, scenariomenu_static_layout)
 // TROOPS hide for joiners, and the nav graph rewires around every hidden
 // combination. (The MISSIONS door retired into the Base Camp zone —
 // docs/basecamp-zones-design.md.)
+// VIEW LEVEL's staged-preview band (#218, C10): the band and census rows
+// are a declared grid, pinned both as exact values and as RELATIONS (the
+// menus discipline: exact tables pin self-consistency; the relations pin
+// that the band sits inside the frame with the census fitting below it).
+TEST(MenuLayout, view_scenario_staged_band_geometry)
+{
+    // Exact values (the classic UI-canvas grid).
+    EXPECT_EQ(5, kViewScenarioFrameX);
+    EXPECT_EQ(5, kViewScenarioFrameY);
+    EXPECT_EQ(314, kViewScenarioFrameW);
+    EXPECT_EQ(160, kViewScenarioFrameH);
+    EXPECT_EQ(8, kViewScenarioPreviewBandX);
+    EXPECT_EQ(16, kViewScenarioPreviewBandY);
+    EXPECT_EQ(303, kViewScenarioPreviewBandW);
+    EXPECT_EQ(76, kViewScenarioPreviewBandH);
+    EXPECT_EQ(96, kViewScenarioCensusTopY);
+    EXPECT_EQ(6, kViewScenarioRowPitch);
+    EXPECT_EQ(10, kViewScenarioRowsPerPage);
+
+    // Relations: the band nests strictly inside the frame.
+    EXPECT_GT(kViewScenarioPreviewBandX, kViewScenarioFrameX);
+    EXPECT_LT(kViewScenarioPreviewBandX + kViewScenarioPreviewBandW,
+              kViewScenarioFrameX + kViewScenarioFrameW);
+    EXPECT_GT(kViewScenarioPreviewBandY, kViewScenarioFrameY);
+    EXPECT_LT(kViewScenarioPreviewBandY + kViewScenarioPreviewBandH,
+              kViewScenarioFrameY + kViewScenarioFrameH);
+    // Title row (y=8) sits above the band; census rows start 4px under it.
+    EXPECT_LT(8, kViewScenarioPreviewBandY);
+    EXPECT_EQ(4, kViewScenarioCensusTopY - (kViewScenarioPreviewBandY +
+                                            kViewScenarioPreviewBandH));
+    // A full census page ends inside the frame, above the y>=170 buttons.
+    EXPECT_LE(kViewScenarioCensusTopY +
+                  kViewScenarioRowsPerPage * kViewScenarioRowPitch,
+              kViewScenarioFrameY + kViewScenarioFrameH);
+}
+
 TEST(MenuLayout, scenariomenu_nav_variants_keyboard_reachable)
 {
     for (const bool host_visible : {true, false})

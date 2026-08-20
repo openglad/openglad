@@ -141,6 +141,14 @@ void CursesRenderer::draw(ITerminal& term, const GameWorld& world,
     term.present();
 }
 
+void CursesRenderer::draw_preview(ITerminal& term, const GameWorld& world,
+                                  int top, int left, int height, int width)
+{
+    if (height <= 0 || width <= 0)
+        return;
+    draw_viewport(term, world, /*followed_id=*/0, top, left, height, width);
+}
+
 void CursesRenderer::draw_viewport(ITerminal& term, const GameWorld& world,
                                    std::uint32_t followed_id,
                                    int top, int left, int height, int width)

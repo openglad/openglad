@@ -627,6 +627,7 @@ local function add_squad_member(team, family_name)
   end
   w:set_team_num(team)
   w:set_real_team_num(255)
+  caps.mark_bot(w)
   return w
 end
 

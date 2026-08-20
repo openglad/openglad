@@ -1299,3 +1299,104 @@ TEST(CtfUi, view_scenario_rebuilds_when_settings_change_underneath)
     (void)unmount_campaign_package_with_error(get_mounted_campaign());
     (void)mount_campaign_package_with_error("gladiator");
 }
+
+// --- The staged preview pane (#218, C10) ------------------------------------
+
+struct StagedPaneFlowState
+{
+    bool started = false;
+    bool finished = false;
+    bool viewer_opened = false;
+    bool pane_trace_seen = false;
+    bool company_line_seen = false;
+    bool matched_line_seen = false;
+};
+
+int view_scenario_staged_pane_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    StagedPaneFlowState* state = static_cast<StagedPaneFlowState*>(data);
+    state->started = true;
+
+    wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);
+    interact("continue_game");
+
+    SDL_Delay(500);
+    wait_for_interactable("scenario", 10000);
+    SDL_Delay(750);
+    interact("scenario");
+    wait_for_interactable("view_scenario", 10000);
+    SDL_Delay(300);
+    interact("view_scenario");
+
+    state->viewer_opened = wait_for_interactable_at("back", 10, 170, 10000);
+    SDL_Delay(300);
+
+    // The render copy heals from the owner's serialized pair (the heal
+    // trace), and the staged reader lists the company census.
+    state->pane_trace_seen =
+        wait_for_picker_trace("view_scenario pane gen=", 1, 5000);
+    state->company_line_seen = wait_for_picker_trace(
+        "view_scenario line   RED TEAM  ACTIVE - COMPANY (2)", 1, 5000);
+
+    // Cycle TROOPS to FAIR through the lobby (the sync path a host click
+    // takes): the owner's change key moves, ONE debounced restage lands,
+    // and the refreshed report shows the min-headcount matched squads.
+    og::runtime::current_session->myscreen_->save_data
+        .ctf_strip_scenario_troops = og::sim::kTroopsMatched;
+    picker_lobby_sync_settings_from_save();
+    state->matched_line_seen = wait_for_picker_trace(
+        "MATCHED BOTS (2)", 1, 5000);
+    SDL_Delay(300);
+
+    // Viewer back -> SCENARIO -> team build -> main.
+    interact("back");
+    SDL_Delay(300);
+    wait_for_interactable("matchup", 10000);
+    SDL_Delay(300);
+    interact("back");
+    SDL_Delay(300);
+    wait_for_interactable("go", 10000);
+    SDL_Delay(300);
+    interact("back");
+
+    state->finished = true;
+    return 0;
+}
+
+// The staged pane shows the world GO adopts, refreshed once per debounced
+// restage: the heal trace fires, the census lists the save's deployed
+// company, and a TROOPS -> FAIR flip under the OPEN viewer re-heals into
+// matched squads (the restage-trigger contract, made visible).
+TEST(CtfUi, view_scenario_staged_pane_shows_the_staged_census)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    write_save0_with_two_soldiers("modes", 500);
+
+    StagedPaneFlowState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        view_scenario_staged_pane_injector, "view_staged_pane", &state);
+    ASSERT_NE(nullptr, thread);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_TRUE(state.finished) << "injector should complete the flow";
+    EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open its frame";
+    EXPECT_TRUE(state.pane_trace_seen)
+        << "the render copy must heal from the staged pair bytes";
+    EXPECT_TRUE(state.company_line_seen)
+        << "the staged census must list the deployed company exactly";
+    EXPECT_TRUE(state.matched_line_seen)
+        << "a TROOPS: FAIR flip under the open viewer must restage into "
+           "matched squads";
+
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    (void)mount_campaign_package_with_error("gladiator");
+}

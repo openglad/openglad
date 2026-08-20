@@ -30,6 +30,7 @@
 #include <openglad/interface/ui/picker_state.h>
 #include <openglad/interface/ui/terminal_menu_model.h>
 #include <openglad/interface/ui/text_protocol.h>
+#include <openglad/server/match_stage.h>
 
 #include <algorithm>
 #include <array>
@@ -929,17 +930,51 @@ private:
         }
     }
 
-    // Read-only roster report of the current level from a scratch headless
-    // load (the same shared report the SDL VIEW LEVEL screen renders).
-    // Roster inputs for the match plan come from THIS save (the builder's
-    // default) — the documented local-roster bound: this site holds only a
-    // SaveData, so a remote peer's company teams preview as backfilled.
-    // The SDL client passes lobby_roster_team_counts for exactness.
+    // Read-only roster report of the current level, STAGED locally through
+    // the one launch pipeline (#218): a one-shot MatchStage over this save
+    // with the session-latched seed (config_.seed — the --seed CLI), so the
+    // census lists the real assembled match (merged roster spawns, mode
+    // init, seeded squads) and the same seed prints the same census. Stage
+    // failure degrades to the scratch-load fallback census plus the honest
+    // STAGING FAILED line.
     void view_scenario()
     {
         if (get_mounted_campaign() != save_data_.current_campaign) {
             std::printf("Campaign '%s' is not mounted.\n",
                 save_data_.current_campaign.c_str());
+            return;
+        }
+
+        og::server::MatchStage stage({
+            .networked = false,
+            .arm_policy = og::server::LobbyStartReplayArm::SeededIntent,
+            .host_company_save = &save_data_,
+        });
+        og::server::MatchStageInputs inputs;
+        inputs.equivalent = og::server::build_local_save_equivalent(save_data_);
+        inputs.difficulty =
+            og::runtime::current_session->current_difficulty_;
+        inputs.match_seed = config_.seed;
+        inputs.replay_level = save_data_.replay_level;
+        inputs.replay_origin = save_data_.replay_origin;
+        stage.observe_inputs(inputs, og::server::stage_clock_now_ms());
+        // The staged pipeline keeps the launch's first-level fallback; a
+        // stage that fell back must not masquerade as the requested level
+        // (the mirror applies the same rule) — the honest load failure
+        // prints through the fallback arm below instead.
+        if (stage.status() == og::server::StageStatus::Staged &&
+            stage.world()->id == save_data_.scen_num) {
+            const ScenarioRosterReport report =
+                build_scenario_roster_report(stage.world(),
+                                             og::ui::StagePreviewStatus::Staged,
+                                             save_data_, nullptr);
+            std::printf("\n--- SCEN %d: %s ---\n",
+                static_cast<int>(save_data_.scen_num),
+                stage.world()->title.c_str());
+            for (const std::string& line :
+                 format_scenario_report_lines(report))
+                std::printf("%s\n", line.c_str());
+            wait_for_enter();
             return;
         }
 
@@ -951,8 +986,9 @@ private:
             return;
         }
 
-        const ScenarioRosterReport report =
-            build_scenario_roster_report(scenario.world(), save_data_);
+        const ScenarioRosterReport report = build_scenario_roster_report(
+            nullptr, og::ui::StagePreviewStatus::Failed, save_data_,
+            &scenario.world());
         std::printf("\n--- SCEN %d: %s ---\n",
             static_cast<int>(save_data_.scen_num),
             scenario.world().title.c_str());

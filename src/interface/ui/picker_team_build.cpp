@@ -40,6 +40,12 @@
 #include <openglad/interface/ui/campaign_picker.h>
 #include <openglad/interface/ui/level_picker.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
+#include <openglad/gameplay/game_client.h>
+#include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/world_snapshot.h>
+#include <openglad/resources/gparser.h>
+#include <openglad/interface/render/video.h>
 #include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
@@ -1126,8 +1132,11 @@ Sint32 view_scenario_page_flip(Sint32 step)
 // shape: pagers hidden, BACK's right-link closed.
 // The change key of everything the VIEW LEVEL report reads that a lobby can
 // move under a parked viewer: the level, the four match-request knobs, the
-// campaign identity (save side + actual mount) and, for networked sessions,
-// the combined lobby roster head-counts. A host cycling TEAMS / TROOPS /
+// campaign identity (save side + actual mount) and the STAGE GENERATION —
+// the heavy world rebuild lives in MatchStage behind its 250 ms debounce
+// (roster edits and knob turns move the owner's change key, restage, and
+// bump the generation), so the frame tick's job is only the cheap
+// deserialize + apply + line rebuild. A host cycling TEAMS / TROOPS /
 // SET LEVEL while a joiner sits in the viewer changes this key and the
 // frame tick rebuilds the report (the pre-#218 screen never refreshed).
 struct ViewScenarioKey
@@ -1137,7 +1146,7 @@ struct ViewScenarioKey
     short strip_troops = 0;
     short capture_limit = 0;
     short respawn_ticks = 0;
-    std::array<int, 4> roster_counts{};
+    std::uint32_t stage_generation = 0;
     std::string save_campaign;
     std::string mounted_campaign;
 
@@ -1149,21 +1158,34 @@ struct ViewScenarioEngineState
     og::ui::PageModel pager;
     std::vector<std::string> lines;
     std::string title;
-    // Refresh guard (issue #218): the scratch level owned by the open
-    // screen (reloaded when the key's level/campaign moves) and the key of
-    // the last built report.
+    // The SDL-hooked scratch level: the RENDER COPY the staged preview band
+    // heals from the broadcast pair bytes (the mandatory local load — a
+    // snapshot cannot rebuild a level), and the fallback census world when
+    // nothing is staged. Reloaded when the key's level/campaign moves.
     std::unique_ptr<LevelRuntimeData> scenario;
-    bool networked = false;
+    // Render-copy heal bookkeeping: the generation whose pair the copy
+    // holds, and whether the copy currently presents a healed staged world
+    // (false = degradation text in the band).
+    std::uint32_t healed_generation = 0;
+    bool render_healed = false;
+    // The heal's own GameplayContext (the obmap/current_game discipline the
+    // mirror uses): apply_snapshot requires a bound context whose world IS
+    // the target, so the heal swaps this in around the applies and restores
+    // the picker's context after.
+    GameplayContext heal_ctx;
+    SaveData heal_save;
+    og::sim::SimEventLog heal_events;
+    IRandom* heal_rng_ptr = nullptr;
+    bool heal_active = false;
     ViewScenarioKey key;
 };
 
 static ViewScenarioEngineState* g_view_scenario_engine_state = nullptr;
 
-// One key read per frame. The lobby roster is read ONCE here and the same
-// values feed both the comparison and any rebuild, so a mid-poll lobby
-// update can never split the key from the report it stamps.
-static ViewScenarioKey view_scenario_current_key(
-    const SaveData& save, const std::array<int, 4>& roster_counts)
+// One key read per frame; the same values feed both the comparison and any
+// rebuild, so a mid-poll lobby update can never split the key from the
+// report it stamps.
+static ViewScenarioKey view_scenario_current_key(const SaveData& save)
 {
     ViewScenarioKey key;
     key.level_id = save.scen_num;
@@ -1171,22 +1193,107 @@ static ViewScenarioKey view_scenario_current_key(
     key.strip_troops = save.ctf_strip_scenario_troops;
     key.capture_limit = save.ctf_capture_limit;
     key.respawn_ticks = save.ctf_respawn_ticks;
-    key.roster_counts = roster_counts;
     key.save_campaign = save.current_campaign;
     key.mounted_campaign = get_mounted_campaign();
+    og::ui::IPickerLobbyClient* const lobby =
+        og::ui::active_picker_lobby_client();
+    key.stage_generation = lobby != nullptr ? lobby->stage_generation() : 0;
     return key;
 }
 
-// (Re)build the report + lines + pager + title from the loaded scratch
-// world. Shared by screen entry and the per-frame refresh guard.
-static void view_scenario_rebuild(ViewScenarioEngineState& state,
-                                  const SaveData& save,
-                                  const std::array<int, 4>& roster_counts)
+// Heal the RENDER COPY from the lobby client's serialized staged pair: the
+// host pane and every joiner pane deserialize the SAME bytes the wire
+// carries (networked exactness is byte-level, not re-derived). apply runs
+// only when the generation moved; failure is honest (the band renders the
+// degradation text, never a stale half-applied world claiming to be the
+// stage). The pair's level must match the loaded scratch level — a restage
+// to a different level heals after the lobby-synced save reloads the copy.
+static void view_scenario_heal_render_copy(ViewScenarioEngineState& state)
 {
+    og::ui::IPickerLobbyClient* const lobby =
+        og::ui::active_picker_lobby_client();
+    std::uint32_t generation = 0;
+    const std::vector<std::uint8_t>* setup_bytes = nullptr;
+    const std::vector<std::uint8_t>* keyframe_bytes = nullptr;
+    if (lobby == nullptr || state.scenario == nullptr ||
+        !lobby->staged_keyframe_bytes(generation, setup_bytes,
+                                      keyframe_bytes))
+    {
+        state.render_healed = false;
+        state.healed_generation = 0;
+        return;
+    }
+    if (state.render_healed && state.healed_generation == generation)
+        return;
+    state.render_healed = false;
+    state.healed_generation = generation;
+    const std::optional<og::sim::InitialSetupMessage> setup =
+        og::sim::deserialize_initial_setup_message(*setup_bytes);
+    if (!setup.has_value() ||
+        setup->level_id != state.scenario->world().id)
+        return;
+    og::sim::WorldSnapshot snapshot;
+    try
+    {
+        snapshot = og::sim::deserialize_snapshot(*keyframe_bytes);
+    }
+    catch (const std::exception&)
+    {
+        return;
+    }
+    // The apply discipline the preview mirror uses: apply_snapshot requires
+    // a bound GameplayContext whose world IS the target, so the heal swaps
+    // its own context in and restores the picker's after. The apply runs
+    // under its own event suppression guard — the pane can never
+    // manufacture announcements, and the tick-0 apply's on_load re-arm is
+    // inert (the pane never ticks). Stripped troops reconcile away;
+    // snapshot-created bots get sprites through the same
+    // create_missing_entities + SDL loader wiring a mid-game joiner uses.
+    GameWorld& render_world = state.scenario->world();
+    state.heal_ctx.world = &render_world;
+    state.heal_ctx.save = &state.heal_save;
+    state.heal_ctx.sim_events = &state.heal_events;
+    state.heal_ctx.config = &cfg;
+    state.heal_rng_ptr = &render_world.rng_;
+    state.heal_ctx.session_rng_ref = &state.heal_rng_ptr;
+    state.heal_ctx.gameplay_active_ref = &state.heal_active;
+    GameplayContext* const previous_context = current_game;
+    current_game = &state.heal_ctx;
+    og::sim::apply_initial_setup_to_world(render_world, *setup);
+    const bool applied = og::sim::apply_snapshot(render_world, snapshot);
+    current_game = previous_context;
+    if (!applied)
+        return;
+    state.render_healed = true;
+    TRACE("picker", "view_scenario pane gen=%u",
+          static_cast<unsigned>(generation));
+}
+
+// (Re)build the report + lines + pager + title: the STAGED reader (host
+// stage / joiner mirror through the lobby client), with the scratch level
+// as the count-only fallback world when nothing is staged.
+static void view_scenario_rebuild(ViewScenarioEngineState& state,
+                                  const SaveData& save)
+{
+    og::ui::IPickerLobbyClient* const lobby =
+        og::ui::active_picker_lobby_client();
+    const GameWorld* staged =
+        lobby != nullptr ? lobby->staged_world() : nullptr;
+    og::ui::StagePreviewStatus status = og::ui::StagePreviewStatus::None;
+    if (lobby != nullptr &&
+        lobby->staged_preview_health() ==
+            og::ui::IPickerLobbyClient::StagedPreviewHealth::Failed)
+        status = og::ui::StagePreviewStatus::Failed;
+    else if (staged != nullptr)
+        status = og::ui::StagePreviewStatus::Staged;
+    // A staged pair for a DIFFERENT level than the save's (a restage racing
+    // the lobby save sync) must not caption this level's screen.
+    if (staged != nullptr && staged->id != save.scen_num)
+        staged = nullptr;
     const og::ui::ScenarioRosterReport report =
         og::ui::build_scenario_roster_report(
-            state.scenario->world(), save,
-            state.networked ? &roster_counts : nullptr);
+            staged, status, save,
+            state.scenario != nullptr ? &state.scenario->world() : nullptr);
     state.lines = og::ui::format_scenario_report_lines(report);
     state.pager = og::ui::PageModel::make(
         static_cast<int>(state.lines.size()), kViewScenarioRowsPerPage);
@@ -1195,11 +1302,22 @@ static void view_scenario_rebuild(ViewScenarioEngineState& state,
                     state.scenario->world().title);
     if (state.title.size() > 48)
         state.title.resize(48);
+    // Test seam (no-op in production): the match block — the lines above
+    // the first blank separator — so injector flows assert exact staged
+    // census lines without racing the menu thread.
+    for (const std::string& line : state.lines)
+    {
+        if (line.empty())
+            break;
+        TRACE("picker", "view_scenario line %s", line.c_str());
+    }
 }
 
 // Per-frame refresh guard: rebuild the cached report when the change key
 // moved (host SET LEVEL / TEAMS / TROOPS under a parked joiner — the
-// blocking-subscreen level-reload discipline). Never exits the loop.
+// blocking-subscreen level-reload discipline; a stage-generation move —
+// the owner's debounced restage or a joiner mirror refresh — re-heals the
+// render copy first). Never exits the loop.
 bool picker_view_scenario_engine_frame_tick(void* /*screen_state*/,
                                             int /*frame*/)
 {
@@ -1208,10 +1326,7 @@ bool picker_view_scenario_engine_frame_tick(void* /*screen_state*/,
         return true;
     const SaveData& save =
         og::runtime::current_session->myscreen_->save_data;
-    std::array<int, 4> roster_counts{};
-    if (state->networked)
-        roster_counts = og::ui::lobby_roster_team_counts(picker_lobby_players());
-    ViewScenarioKey key = view_scenario_current_key(save, roster_counts);
+    ViewScenarioKey key = view_scenario_current_key(save);
     if (key == state->key)
         return true;
     const bool level_moved =
@@ -1230,6 +1345,7 @@ bool picker_view_scenario_engine_frame_tick(void* /*screen_state*/,
                 static_cast<int>(state->lines.size()),
                 kViewScenarioRowsPerPage);
             state->title = std::format("SCEN {}:", save.scen_num);
+            state->render_healed = false;
             return true;
         }
         auto fresh = std::make_unique<LevelRuntimeData>(
@@ -1241,11 +1357,15 @@ bool picker_view_scenario_engine_frame_tick(void* /*screen_state*/,
                 static_cast<int>(state->lines.size()),
                 kViewScenarioRowsPerPage);
             state->title = std::format("SCEN {}:", save.scen_num);
+            state->render_healed = false;
             return true;
         }
         state->scenario = std::move(fresh);
+        state->render_healed = false;
+        state->healed_generation = 0;
     }
-    view_scenario_rebuild(*state, save, state->key.roster_counts);
+    view_scenario_heal_render_copy(*state);
+    view_scenario_rebuild(*state, save);
     TRACE("picker", "view_scenario refresh lines=%d page=%d",
           static_cast<int>(state->lines.size()), state->pager.page);
     return true;
@@ -1300,21 +1420,24 @@ Sint32 picker_view_scenario_engine_consume_click(Sint32 retvalue,
     return retvalue;
 }
 
-// The legacy per-frame content pass, verbatim (runs after draw_buttons —
-// the report frame at (5,5,314,160) never covers the y>=170 buttons).
+// The per-frame content pass (runs after draw_buttons — the report frame at
+// (5,5,314,160) never covers the y>=170 buttons). The census rows sit BELOW
+// the staged preview band the background pass painted; the band region
+// itself is never overdrawn here.
 void picker_view_scenario_engine_draw_content(void* /*screen_state*/)
 {
     const ViewScenarioEngineState* const state = g_view_scenario_engine_state;
     if (state == nullptr)
         return;
     text& mytext = og::runtime::current_session->myscreen_->text_normal;
-    og::runtime::current_session->myscreen_->draw_button(5, 5, 314, 160, 2, 1);
     mytext.write_xy(10, 8, state->title.c_str(), static_cast<unsigned char>(BLACK), 1);
     const int first_line = state->pager.first_index();
     for (int line_index = first_line; line_index < state->pager.end_index();
          ++line_index)
     {
-        mytext.write_xy(10, 18 + (line_index - first_line) * 6,
+        mytext.write_xy(10,
+                        kViewScenarioCensusTopY +
+                            (line_index - first_line) * kViewScenarioRowPitch,
                         state->lines[static_cast<std::size_t>(line_index)].c_str(),
                         static_cast<unsigned char>(BLACK), 1);
     }
@@ -1322,6 +1445,100 @@ void picker_view_scenario_engine_draw_content(void* /*screen_state*/)
     {
         mytext.write_xy(140, 176, state->pager.indicator().c_str(), WHITE, 1);
     }
+}
+
+// Deterministic render-only ping-pong in [0, span]: a triangle wave over the
+// classic UI clock (query_timer, ~13.6 ms grain). Wall-clock cosmetic —
+// zero sim contact, zero RNG; tests assert band content, never pan phase.
+static Sint32 preview_pan_offset(Sint32 span, Sint32 ticks_per_px)
+{
+    if (span <= 0 || ticks_per_px <= 0)
+        return 0;
+    const Sint32 phase = (query_timer() / ticks_per_px) % (span * 2);
+    return phase < span ? phase : span * 2 - phase;
+}
+
+// The staged-preview background pass (#218): the classic backdrop, then the
+// STAGED world rendered into the preview band through the borrowed viewob[0]
+// (the demo Center-camera shape: direct-geometry resize, control-less free
+// camera from the level's own LevelVisuals — TRAP B dangling-control never
+// applies because the pane never points control at a staged walker). Slow
+// horizontal pan surveys pitches wider than the band (direct-geometry views
+// have no zoom); geometry is restored via relayout_views after every draw.
+// Degradation states render text into the band — never a crash, never a
+// stale world presented as the stage; the census fallback lines still render
+// below through the content pass.
+void picker_view_scenario_staged_draw_background(void* screen_state)
+{
+    (void)screen_state;
+    screen* const scr = og::runtime::current_session->myscreen_;
+    // The classic picker frame first (the shared backdrop pass's shape).
+    scr->clearbuffer();
+    draw_backdrop();
+    text& mytext = scr->text_normal;
+    scr->draw_button(kViewScenarioFrameX, kViewScenarioFrameY,
+                     kViewScenarioFrameW, kViewScenarioFrameH, 2, 1);
+    const ViewScenarioEngineState* const state = g_view_scenario_engine_state;
+    if (state != nullptr && state->render_healed && state->scenario != nullptr &&
+        state->scenario->level_visuals().renderer_ != nullptr &&
+        scr->viewob[0] != nullptr)
+    {
+        viewscreen* const view = scr->viewob[0].get();
+        view->control = nullptr;
+        view->following_ = false;
+        // TRAP C: redraw(data,...) draws the view's message strip
+        // unconditionally; staging never writes it, and this clears any
+        // gameplay residue.
+        view->clear_text();
+        GameWorld& staged_world = state->scenario->world();
+        LevelVisuals& visuals = state->scenario->level_visuals();
+        const Sint32 span_x = std::max(
+            0, static_cast<int>(staged_world.pixmaxx) -
+                   kViewScenarioPreviewBandW);
+        const Sint32 span_y = std::max(
+            0, static_cast<int>(staged_world.pixmaxy) -
+                   kViewScenarioPreviewBandH);
+        // ~4 timer ticks (~55 ms) per pixel horizontally; the vertical
+        // wave is 4x slower and centered, so the pan surveys the whole
+        // staged world without racing it.
+        visuals.topx = preview_pan_offset(span_x, 4);
+        visuals.topy = span_y / 2 +
+            (span_y > 0 ? preview_pan_offset(span_y, 16) - span_y / 2 : 0);
+        {
+            ScopedUiCanvas ui_canvas(*scr);
+            view->resize(kViewScenarioPreviewBandX, kViewScenarioPreviewBandY,
+                         kViewScenarioPreviewBandW, kViewScenarioPreviewBandH);
+            (void)view->redraw(state->scenario.get(), /*draw_radar=*/false);
+        }
+        scr->relayout_views();
+        return;
+    }
+
+    // Degradation text centered in the band (6 px font, 6 px per char).
+    const char* band_text = "PREVIEW UNAVAILABLE";
+    if (state != nullptr)
+    {
+        og::ui::IPickerLobbyClient* const lobby =
+            og::ui::active_picker_lobby_client();
+        using Health = og::ui::IPickerLobbyClient::StagedPreviewHealth;
+        const Health health = lobby != nullptr
+            ? lobby->staged_preview_health()
+            : Health::None;
+        if (health == Health::Failed)
+            band_text = "STAGING FAILED";
+        else if (health == Health::None &&
+                 picker_lobby_is_networked() &&
+                 !picker_lobby_host_controls_visible())
+            band_text = "WAITING FOR HOST PREVIEW";
+        else if (health == Health::Unavailable || health == Health::None)
+            band_text = "STAGING PREVIEW UNAVAILABLE";
+    }
+    const int text_w = static_cast<int>(std::strlen(band_text)) * 6;
+    mytext.write_xy(
+        kViewScenarioPreviewBandX +
+            std::max(0, (kViewScenarioPreviewBandW - text_w) / 2),
+        kViewScenarioPreviewBandY + kViewScenarioPreviewBandH / 2 - 3,
+        band_text, static_cast<unsigned char>(BLACK), 1);
 }
 
 // VIEW LEVEL, engine-hosted (the legacy loop is gone). The pre-loop guards,
@@ -1351,21 +1568,17 @@ Sint32 create_view_scenario_menu(Sint32 arg1)
         return MENU_REDRAW;
     }
 
-    // Networked sessions preview the EXACT combined roster: every peer
-    // already receives every seat's deployed slots (LobbyPlayer
-    // .character_slots), so the plan's roster inputs come from the lobby
-    // instead of the local save — no protocol change. Read once here; the
-    // frame tick re-reads once per frame for its change key.
-    state.networked = picker_lobby_is_networked();
-    std::array<int, 4> roster_counts{};
-    if (state.networked)
-        roster_counts = og::ui::lobby_roster_team_counts(picker_lobby_players());
-    state.key = view_scenario_current_key(save, roster_counts);
+    // The staged reader needs no roster marshaling: the staged world (host
+    // stage / joiner mirror) already CONTAINS the combined lobby rosters as
+    // spawned walkers, and the render copy heals from the same broadcast
+    // bytes. Read the key once here; the frame tick re-reads per frame.
+    state.key = view_scenario_current_key(save);
+    view_scenario_heal_render_copy(state);
     // The pinned VIEW LEVEL pager runs on the engine PageModel (G6): page
     // count, clamped flips, hidden-when-one-page, and the "p/N" indicator
     // all come from the model; the oracle test in tests/unit/test_menu_spec
     // pins its equivalence to the legacy arithmetic this replaced.
-    view_scenario_rebuild(state, save, roster_counts);
+    view_scenario_rebuild(state, save);
 
     TRACE("picker", "view_scenario lines=%d page=%d",
           static_cast<int>(state.lines.size()), state.pager.page);

@@ -222,6 +222,14 @@ void sdl_wire_world_entity_services(GameWorld* world, LevelRuntimeData* level)
     // the main menu or TRAIN a level-loading frame_tick (a preview on a live
     // menu), re-opens the #162 use-after-free with no other code change. A
     // new flow of either shape must re-init its buttons after the wiring.
+    //
+    // Staged lobby (#218): MatchStage::maintain() restages inside
+    // picker_lobby_poll on EVERY polls_lobby screen — TRAIN included, which
+    // owns art_family rows — and stays safe because staged/mirror loads are
+    // HEADLESS-hooked only (they never reach this free-er). The only
+    // SDL-hooked load stays inside VIEW LEVEL's own handler/frame_tick
+    // (facts 1 + 2 above). Keep it that way: a MatchStage that ever loads
+    // through the SDL hooks re-opens #162 on TRAIN with no other change.
     sdl_entity_loader()->reload_graphics_if_stale();
     wire_world_with_loader(world, sdl_entity_loader());
 }

@@ -251,6 +251,7 @@ PixieData make_pixie(unsigned char frames = 3, unsigned char w = 2, unsigned cha
 
 namespace og::ui {
 int text_picker_testing_exercise_internal_paths();
+int text_picker_testing_staged_view_scenario();
 std::string text_protocol_testing_format_event_text(std::string_view text);
 std::string text_protocol_testing_json_mode(const GameWorld& world);
 }
@@ -1122,6 +1123,19 @@ TEST(PlatformHeadless, text_picker_internal_help_and_error_paths)
     ASSERT_EQ(1u, default_config.team_families.size());
     EXPECT_EQ(FAMILY_SOLDIER, default_config.team_families.front())
         << "an empty text-client team must receive the documented default";
+}
+
+// Staged VIEW LEVEL (#218, C10): the text census is the locally staged
+// world — exact staged lines, and byte-identical on a reopen with the same
+// session seed (the exerciser returns the negated index of the first
+// failed check; 0 = every check passed).
+TEST(PlatformHeadless, text_picker_staged_view_scenario_census)
+{
+    restore_default_campaigns();
+    StdoutSilencer stdout_silencer;
+    EXPECT_EQ(0, og::ui::text_picker_testing_staged_view_scenario());
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
 }
 
 TEST(PlatformHeadless, text_picker_reports_protocol_start_failure)

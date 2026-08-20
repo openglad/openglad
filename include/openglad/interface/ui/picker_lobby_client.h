@@ -233,6 +233,38 @@ public:
     {
         return 0;
     }
+    // The preview's honest degradation states, mapped by each client from
+    // its own machinery: owners from MatchStage::status(), joiners from
+    // MirrorStatus. None = nothing staged yet (a joiner still waiting for
+    // its first pair reads None too); Unavailable = the joiner's retained
+    // pair could not be applied locally.
+    enum class StagedPreviewHealth : std::uint8_t {
+        None = 0,
+        Staged,
+        Failed,
+        Unavailable,
+    };
+    [[nodiscard]] virtual StagedPreviewHealth staged_preview_health() const
+    {
+        return staged_world() != nullptr ? StagedPreviewHealth::Staged
+                                         : StagedPreviewHealth::None;
+    }
+    // The serialized generation-paired StagedMatchSetup/StagedMatchKeyframe
+    // inner bytes (host/local: MatchStage's cached broadcast pair; joiner:
+    // the retained newest received pair — retained so a preview pane opened
+    // long after the broadcast still heals from the SAME bytes the host
+    // pane reads). False while no complete pair exists. Pointers borrow the
+    // client's storage and are valid until the next poll.
+    [[nodiscard]] virtual bool staged_keyframe_bytes(
+        std::uint32_t& generation,
+        const std::vector<std::uint8_t>*& setup_bytes,
+        const std::vector<std::uint8_t>*& keyframe_bytes) const
+    {
+        (void)generation;
+        (void)setup_bytes;
+        (void)keyframe_bytes;
+        return false;
+    }
     // The launch adoption seam: owners (host/local) hand their MatchStage to
     // glad_init's transport-shadow install; joiners return nullptr (their
     // install stays the client shadow). Non-owning — the lobby client keeps

@@ -2161,9 +2161,11 @@ TEST(PickerCommon, scenario_report_groups_classic_roster)
     SaveData save;
     save.my_team = 0;
     const og::ui::ScenarioRosterReport report =
-        og::ui::build_scenario_roster_report(fx.world(), save);
+        og::ui::build_scenario_roster_report(
+            nullptr, og::ui::StagePreviewStatus::None, save, &fx.world());
 
     EXPECT_FALSE(report.is_versus);
+    EXPECT_FALSE(report.staged);
     EXPECT_EQ(0, report.your_team);
 
     const auto* grouped = find_group_row(report, 0, FAMILY_SOLDIER, 3);
@@ -2203,7 +2205,7 @@ TEST(PickerCommon, scenario_report_groups_classic_roster)
         EXPECT_LE(line.size(), 48u) << line;
 }
 
-TEST(PickerCommon, scenario_report_versus_sections_and_strip_annotations)
+TEST(PickerCommon, scenario_report_versus_sections_fallback)
 {
     ReportWorld fx(true);
     fx.spawn_anchor(0);
@@ -2212,21 +2214,23 @@ TEST(PickerCommon, scenario_report_versus_sections_and_strip_annotations)
     fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr); // roster team troops
     fx.spawn_generator(FAMILY_TENT, 0);
     fx.spawn_living_named(FAMILY_ORC, 1, 4, nullptr);     // bot team, kept
-    fx.spawn_living_named(FAMILY_ELF, 2, 2, nullptr);     // no flag: inactive
+    fx.spawn_living_named(FAMILY_ELF, 2, 2, nullptr);     // no marker team
     fx.spawn_living_named(FAMILY_ELF, 5, 9, nullptr);     // non-score team
 
     SaveData save;
     save.current_campaign = "modes";
     save.my_team = 0;
-    save.ctf_strip_scenario_troops = 0; // TROOPS: ALL — only activation strips
+    save.ctf_strip_scenario_troops = 0; // TROOPS: ALL
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
     save.team_list[0]->teamnum = 0;
     save.team_size = 1;
 
     const og::ui::ScenarioRosterReport report =
-        og::ui::build_scenario_roster_report(fx.world(), save);
+        og::ui::build_scenario_roster_report(
+            nullptr, og::ui::StagePreviewStatus::None, save, &fx.world());
 
     EXPECT_TRUE(report.is_versus);
+    EXPECT_FALSE(report.staged);
     EXPECT_TRUE(report.will_activate);
     EXPECT_TRUE(report.team_authored[0]);
     EXPECT_TRUE(report.team_authored[1]);
@@ -2237,30 +2241,11 @@ TEST(PickerCommon, scenario_report_versus_sections_and_strip_annotations)
     EXPECT_EQ(2, report.team_anchor_count[0]);
     EXPECT_EQ(1, report.team_anchor_count[1]);
 
-    const auto* roster_troops = find_group_row(report, 0, FAMILY_SOLDIER, 3);
-    ASSERT_TRUE(roster_troops != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::None, roster_troops->strip_reason);
-    const auto* roster_gen = find_generator_row(report, 0);
-    ASSERT_TRUE(roster_gen != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::None, roster_gen->strip_reason);
-
-    const auto* bot_troops = find_group_row(report, 1, FAMILY_ORC, 4);
-    ASSERT_TRUE(bot_troops != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::None, bot_troops->strip_reason);
-
-    const auto* inactive = find_group_row(report, 2, FAMILY_ELF, 2);
-    ASSERT_TRUE(inactive != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::InactiveTeam, inactive->strip_reason);
-
-    // The sim's inactive-team strip also removes non-score teams (>= 4) on
-    // an activating map; the preview must annotate them the same way.
-    const auto* non_score = find_group_row(report, 5, FAMILY_ELF, 9);
-    ASSERT_TRUE(non_score != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::InactiveTeam,
-              non_score->strip_reason);
-
-    EXPECT_TRUE(report.any_inactive);
-    EXPECT_FALSE(report.any_strip_all);
+    ASSERT_TRUE(find_group_row(report, 0, FAMILY_SOLDIER, 3) != nullptr);
+    ASSERT_TRUE(find_generator_row(report, 0) != nullptr);
+    ASSERT_TRUE(find_group_row(report, 1, FAMILY_ORC, 4) != nullptr);
+    ASSERT_TRUE(find_group_row(report, 2, FAMILY_ELF, 2) != nullptr);
+    ASSERT_TRUE(find_group_row(report, 5, FAMILY_ELF, 9) != nullptr);
 
     const std::vector<std::string> lines =
         og::ui::format_scenario_report_lines(report);
@@ -2272,90 +2257,25 @@ TEST(PickerCommon, scenario_report_versus_sections_and_strip_annotations)
     EXPECT_TRUE(any_line_contains(lines, "TEAM 5"))
         << "non-score teams keep the raw index header";
     EXPECT_TRUE(any_line_contains(lines, "1x SOLDIER Lv 3"));
-    EXPECT_FALSE(any_line_contains(lines, "1x SOLDIER Lv 3!"))
-        << "TROOPS: ALL leaves the authored cast unannotated";
-    EXPECT_TRUE(any_line_contains(lines, "1x ELF Lv 2+"));
-    EXPECT_TRUE(any_line_contains(lines, "1x ELF Lv 9+"))
-        << "non-score teams carry the inactive strip suffix";
-    EXPECT_TRUE(any_line_contains(lines, "+ REMOVED: INACTIVE TEAM"));
+    // The strip-annotation machinery died with the plan phase (#218): a
+    // STAGED world already contains the stripped truth, and the fallback
+    // arm never re-derives the strip rule — no '+'/'!' suffix, no legend.
     for (const auto& line : lines)
-        EXPECT_LE(line.size(), 48u) << line;
-}
-
-TEST(PickerCommon, scenario_report_troops_own_annotates_every_authored_row)
-{
-    // TROOPS: OWN outranks the activation strip: everything authored goes,
-    // on every team, wildlife and generators included. Protected named NPCs
-    // are the one exemption the sim honours, so the preview keeps them clean.
-    // NO-PACK FALLBACK ARM (issue #218): with no plan registered, activation
-    // is the count-only clamp — here Auto over authored {0, 1}, the same
-    // mask the deleted roster twin produced for this shape.
-    ReportWorld fx(true);
-    fx.spawn_anchor(0);
-    fx.spawn_anchor(1);
-    fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
-    fx.spawn_generator(FAMILY_TENT, 0);
-    fx.spawn_living_named(FAMILY_ORC, 1, 4, nullptr);
-    fx.spawn_living_named(FAMILY_ELF, 2, 2, nullptr); // no flag: inactive team
-    fx.spawn_living_named(FAMILY_ELF, 5, 9, nullptr); // non-score team
-    walker* const protected_npc =
-        fx.spawn_living_named(FAMILY_ARCHER, 1, 6, "REEVE");
-    ASSERT_TRUE(protected_npc != nullptr);
-    protected_npc->set_save_all_protected(true);
-
-    SaveData save;
-    save.current_campaign = "modes";
-    save.my_team = 0;
-    save.ctf_strip_scenario_troops = 2;
-    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
-    save.team_list[0]->teamnum = 0;
-    save.team_size = 1;
-
-    const og::ui::ScenarioRosterReport report =
-        og::ui::build_scenario_roster_report(fx.world(), save);
-
-    for (const auto& row : report.rows)
     {
-        if (row.named)
-            continue;
-        EXPECT_EQ(og::ui::ScenarioStripReason::StripAll, row.strip_reason)
-            << "team " << row.team << " family " << row.family;
+        EXPECT_EQ(std::string::npos, line.find('+')) << line;
+        EXPECT_EQ(std::string::npos, line.find('!')) << line;
     }
-    const auto* reeve = find_named_row(report, "REEVE");
-    ASSERT_TRUE(reeve != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::None, reeve->strip_reason)
-        << "the protected bit is the exemption";
-
-    EXPECT_TRUE(report.any_strip_all);
-    EXPECT_FALSE(report.any_inactive)
-        << "the OWN sweep subsumes the inactive-team strip";
-
-    const std::vector<std::string> lines =
-        og::ui::format_scenario_report_lines(report);
-    EXPECT_TRUE(any_line_contains(lines, "1x SOLDIER Lv 3!"));
-    EXPECT_TRUE(any_line_contains(lines, "1x GENERATOR!"));
-    EXPECT_TRUE(any_line_contains(lines, "! REMOVED: TROOPS OWN"));
-    EXPECT_FALSE(any_line_contains(lines, "+ REMOVED: INACTIVE TEAM"));
+    EXPECT_FALSE(any_line_contains(lines, "REMOVED:"));
     for (const auto& line : lines)
         EXPECT_LE(line.size(), 48u) << line;
-
-    // FAIR strips identically (D26) but the footer must name the mode the
-    // player chose, not report OWN for a FAIR lobby.
-    save.ctf_strip_scenario_troops = og::sim::kTroopsMatched;
-    const og::ui::ScenarioRosterReport fair_report =
-        og::ui::build_scenario_roster_report(fx.world(), save);
-    EXPECT_TRUE(fair_report.any_strip_all);
-    EXPECT_TRUE(fair_report.strip_is_fair);
-    const std::vector<std::string> fair_lines =
-        og::ui::format_scenario_report_lines(fair_report);
-    EXPECT_TRUE(any_line_contains(fair_lines, "! REMOVED: TROOPS FAIR"));
-    EXPECT_FALSE(any_line_contains(fair_lines, "! REMOVED: TROOPS OWN"));
 }
 
 TEST(PickerCommon, scenario_report_preserves_local_team_colors_in_allied_mode)
 {
     // NO-PACK FALLBACK ARM (issue #218): activation is the count-only
-    // clamp; the strip annotations under test key on the save flag alone.
+    // clamp; the fallback census lists the authored cast verbatim (strip
+    // outcomes are visible only in a STAGED world — the machinery that
+    // re-derived them here died with the plan phase).
     ReportWorld fx(true);
     fx.spawn_anchor(0);
     fx.spawn_anchor(1);
@@ -2375,22 +2295,15 @@ TEST(PickerCommon, scenario_report_preserves_local_team_colors_in_allied_mode)
     save.team_size = 1;
 
     const og::ui::ScenarioRosterReport report =
-        og::ui::build_scenario_roster_report(fx.world(), save);
+        og::ui::build_scenario_roster_report(
+            nullptr, og::ui::StagePreviewStatus::None, save, &fx.world());
 
     EXPECT_EQ(2, report.your_team)
         << "local Together mode keeps the selected playing team";
 
-    // The save carries the retired middle state; every team's authored cast
-    // goes, which is what the sim does with any value above 0.
-    const auto* team0 = find_group_row(report, 0, FAMILY_SOLDIER, 3);
-    ASSERT_TRUE(team0 != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::StripAll, team0->strip_reason);
-    const auto* team1 = find_group_row(report, 1, FAMILY_ORC, 4);
-    ASSERT_TRUE(team1 != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::StripAll, team1->strip_reason);
-    const auto* team3 = find_group_row(report, 3, FAMILY_ARCHER, 5);
-    ASSERT_TRUE(team3 != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::StripAll, team3->strip_reason);
+    ASSERT_TRUE(find_group_row(report, 0, FAMILY_SOLDIER, 3) != nullptr);
+    ASSERT_TRUE(find_group_row(report, 1, FAMILY_ORC, 4) != nullptr);
+    ASSERT_TRUE(find_group_row(report, 3, FAMILY_ARCHER, 5) != nullptr);
 }
 
 TEST(PickerCommon, scenario_report_non_activating_ctf_keeps_classic_rules)
@@ -2407,66 +2320,26 @@ TEST(PickerCommon, scenario_report_non_activating_ctf_keeps_classic_rules)
     save.team_size = 1;
 
     const og::ui::ScenarioRosterReport report =
-        og::ui::build_scenario_roster_report(fx.world(), save);
+        og::ui::build_scenario_roster_report(
+            nullptr, og::ui::StagePreviewStatus::None, save, &fx.world());
 
     EXPECT_TRUE(report.is_versus);
     EXPECT_FALSE(report.will_activate);
-    const auto* troops = find_group_row(report, 0, FAMILY_SOLDIER, 3);
-    ASSERT_TRUE(troops != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::None, troops->strip_reason)
-        << "the activation strip is inert on non-activating versus maps";
+    ASSERT_TRUE(find_group_row(report, 0, FAMILY_SOLDIER, 3) != nullptr);
 
     const std::vector<std::string> lines =
         og::ui::format_scenario_report_lines(report);
     EXPECT_TRUE(any_line_contains(lines, "MATCH INACTIVE"));
 }
 
-TEST(PickerCommon, scenario_report_troops_strip_annotates_outside_versus_campaign)
-{
-    // The sim consumes ctf_strip_scenario_troops on ANY scripted map (no
-    // campaign gate); the preview must mirror it exactly or a custom
-    // scripted map outside the shipped campaign strips in-sim with no '!'
-    // in the viewer. NO-PACK FALLBACK ARM (issue #218): activation is the
-    // count-only clamp (Auto over authored {0, 1}).
-    ReportWorld fx(true);
-    fx.spawn_anchor(0);
-    fx.spawn_anchor(1);
-    fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
-    fx.spawn_living_named(FAMILY_ORC, 1, 4, nullptr);
-
-    SaveData save;
-    save.current_campaign = std::string(og::kDefaultCampaignId);
-    save.my_team = 0;
-    save.ctf_strip_scenario_troops = 1;
-    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
-    save.team_list[0]->teamnum = 0;
-    save.team_size = 1;
-
-    const og::ui::ScenarioRosterReport report =
-        og::ui::build_scenario_roster_report(fx.world(), save);
-
-    EXPECT_TRUE(report.is_versus);
-    EXPECT_TRUE(report.will_activate);
-    const auto* troops = find_group_row(report, 0, FAMILY_SOLDIER, 3);
-    ASSERT_TRUE(troops != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::StripAll, troops->strip_reason);
-    const auto* bot_troops = find_group_row(report, 1, FAMILY_ORC, 4);
-    ASSERT_TRUE(bot_troops != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::StripAll, bot_troops->strip_reason)
-        << "OWN is not a per-roster-team rule";
-}
-
 TEST(PickerCommon, scenario_report_no_pack_fallback_is_the_count_clamp)
 {
-    // The documented NO-PACK fallback arm (issue #218): ReportWorld mounts
-    // no campaign, so no on_mode_plan can answer and the preview falls back
-    // to the count-only og::sim::effective_team_mask clamp for EVERY TROOPS
-    // value — the roster rule lives in the mode Lua alone (the C++ twin,
-    // roster_effective_team_mask, is deleted; its activation oracle is
-    // reborn as MatchPlan.activation_precedence_sweep against the real
-    // soccer plan, and the preview <-> sim agreement is the
-    // MatchPlan.agreement_* matrix in og_unit_modes). These pins are
-    // fallback-behavior pins, not activation oracles.
+    // The documented NO-PACK fallback arm (issue #218): with no STAGED
+    // world the preview falls back to the count-only
+    // og::sim::effective_team_mask clamp for EVERY TROOPS value — the
+    // roster rule lives in the mode Lua alone and answers only through a
+    // real staged init (the staged-report suite pins those shapes). These
+    // pins are fallback-behavior pins, not activation oracles.
     ReportWorld fx(true);
     for (int team = 0; team < 4; ++team)
         fx.spawn_anchor(team);
@@ -2488,10 +2361,11 @@ TEST(PickerCommon, scenario_report_no_pack_fallback_is_the_count_clamp)
     save.ctf_team_count = 0;
     {
         const og::ui::ScenarioRosterReport report =
-            og::ui::build_scenario_roster_report(fx.world(), save);
-        EXPECT_FALSE(report.plan_valid) << "no pack = no plan";
-        EXPECT_FALSE(report.plan_error)
-            << "an unregistered plan is a fallback, not a script error";
+            og::ui::build_scenario_roster_report(
+                nullptr, og::ui::StagePreviewStatus::None, save, &fx.world());
+        EXPECT_FALSE(report.staged) << "no staged world = the fallback";
+        EXPECT_FALSE(report.stage_failed)
+            << "no staging session is a fallback, not a failure";
         EXPECT_EQ("", report.mode_name);
         EXPECT_TRUE(report.team_active[0]);
         EXPECT_TRUE(report.team_active[1]);
@@ -2513,7 +2387,8 @@ TEST(PickerCommon, scenario_report_no_pack_fallback_is_the_count_clamp)
     save.ctf_team_count = 2;
     {
         const og::ui::ScenarioRosterReport report =
-            og::ui::build_scenario_roster_report(fx.world(), save);
+            og::ui::build_scenario_roster_report(
+                nullptr, og::ui::StagePreviewStatus::None, save, &fx.world());
         EXPECT_TRUE(report.team_active[0]);
         EXPECT_TRUE(report.team_active[1]);
         EXPECT_FALSE(report.team_active[2])
@@ -2526,7 +2401,8 @@ TEST(PickerCommon, scenario_report_no_pack_fallback_is_the_count_clamp)
     save.ctf_team_count = 3;
     {
         const og::ui::ScenarioRosterReport report =
-            og::ui::build_scenario_roster_report(fx.world(), save);
+            og::ui::build_scenario_roster_report(
+                nullptr, og::ui::StagePreviewStatus::None, save, &fx.world());
         EXPECT_TRUE(report.team_active[0]);
         EXPECT_TRUE(report.team_active[1]);
         EXPECT_TRUE(report.team_active[2]);
@@ -2538,7 +2414,8 @@ TEST(PickerCommon, scenario_report_no_pack_fallback_is_the_count_clamp)
     save.ctf_team_count = 2;
     {
         const og::ui::ScenarioRosterReport report =
-            og::ui::build_scenario_roster_report(fx.world(), save);
+            og::ui::build_scenario_roster_report(
+                nullptr, og::ui::StagePreviewStatus::None, save, &fx.world());
         EXPECT_TRUE(report.team_active[0]);
         EXPECT_TRUE(report.team_active[1]);
         EXPECT_FALSE(report.team_active[2]);
@@ -2546,36 +2423,52 @@ TEST(PickerCommon, scenario_report_no_pack_fallback_is_the_count_clamp)
     }
 }
 
-TEST(PickerCommon, lobby_roster_team_counts_counts_deployed_slots)
+TEST(PickerCommon, scenario_report_degradation_lines_are_honest)
 {
-    // The networked preview's roster marshaling: deployed slots per
-    // teamnum across ALL seats (every peer receives every roster), held
-    // back and out-of-range slots skipped.
-    std::vector<og::sim::LobbyPlayer> players(2);
-    og::sim::LobbyCharacterSlot slot;
-    slot.character.teamnum = 0;
-    players[0].character_slots.push_back(slot);
-    players[0].character_slots.push_back(slot);
-    slot.character.teamnum = 2;
-    players[0].character_slots.push_back(slot);
-    slot.deployed = false;  // held back: never counted
-    players[0].character_slots.push_back(slot);
-    slot.deployed = true;
-    slot.character.teamnum = 2;
-    players[1].character_slots.push_back(slot);
-    slot.character.teamnum = 7;  // out of the score range: skipped
-    players[1].character_slots.push_back(slot);
+    // The staged preview's degradation shapes (#218): a failed owner stage
+    // leads with STAGING FAILED over the fallback census; no world at all
+    // renders the refusal lines only.
+    ReportWorld fx(true);
+    fx.spawn_anchor(0);
+    fx.spawn_anchor(1);
+    fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
 
-    const std::array<int, 4> counts =
-        og::ui::lobby_roster_team_counts(players);
-    EXPECT_EQ(2, counts[0]);
-    EXPECT_EQ(0, counts[1]);
-    EXPECT_EQ(2, counts[2]) << "seats combine per team";
-    EXPECT_EQ(0, counts[3]);
+    SaveData save;
+    save.current_campaign = "modes";
+    save.ctf_team_count = 0;
 
-    EXPECT_EQ((std::array<int, 4>{}),
-              og::ui::lobby_roster_team_counts({}))
-        << "an empty lobby counts nobody";
+    const og::ui::ScenarioRosterReport failed =
+        og::ui::build_scenario_roster_report(
+            nullptr, og::ui::StagePreviewStatus::Failed, save, &fx.world());
+    EXPECT_FALSE(failed.staged);
+    EXPECT_TRUE(failed.stage_failed);
+    EXPECT_TRUE(failed.will_activate) << "the count clamp still answers";
+    const std::vector<std::string> failed_lines =
+        og::ui::format_scenario_report_lines(failed);
+    ASSERT_FALSE(failed_lines.empty());
+    EXPECT_EQ("STAGING FAILED", failed_lines[0])
+        << "the failure announcement leads the report";
+    EXPECT_TRUE(any_line_contains(failed_lines, "MATCH: 2 AUTHORED TEAMS"))
+        << "the fallback census still renders below";
+    EXPECT_TRUE(any_line_contains(failed_lines, "1x SOLDIER Lv 3"));
+
+    const og::ui::ScenarioRosterReport nothing =
+        og::ui::build_scenario_roster_report(
+            nullptr, og::ui::StagePreviewStatus::None, save, nullptr);
+    EXPECT_TRUE(nothing.unavailable);
+    const std::vector<std::string> nothing_lines =
+        og::ui::format_scenario_report_lines(nothing);
+    ASSERT_EQ(1u, nothing_lines.size());
+    EXPECT_EQ("PREVIEW UNAVAILABLE", nothing_lines[0]);
+
+    const og::ui::ScenarioRosterReport failed_nothing =
+        og::ui::build_scenario_roster_report(
+            nullptr, og::ui::StagePreviewStatus::Failed, save, nullptr);
+    const std::vector<std::string> failed_nothing_lines =
+        og::ui::format_scenario_report_lines(failed_nothing);
+    ASSERT_EQ(2u, failed_nothing_lines.size());
+    EXPECT_EQ("STAGING FAILED", failed_nothing_lines[0]);
+    EXPECT_EQ("PREVIEW UNAVAILABLE", failed_nothing_lines[1]);
 }
 
 // --- MATCHUP detail pagination (the per-team '>' pager) ---------------------

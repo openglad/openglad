@@ -326,6 +326,37 @@ public:
         return stage_ ? stage_->stage_generation() : 0;
     }
 
+    [[nodiscard]] StagedPreviewHealth staged_preview_health() const override
+    {
+        if (!stage_)
+            return StagedPreviewHealth::None;
+        switch (stage_->status())
+        {
+            case og::server::StageStatus::Staged:
+                return StagedPreviewHealth::Staged;
+            case og::server::StageStatus::Failed:
+                return StagedPreviewHealth::Failed;
+            case og::server::StageStatus::Empty:
+                break;
+        }
+        return StagedPreviewHealth::None;
+    }
+
+    [[nodiscard]] bool staged_keyframe_bytes(
+        std::uint32_t& generation,
+        const std::vector<std::uint8_t>*& setup_bytes,
+        const std::vector<std::uint8_t>*& keyframe_bytes) const override
+    {
+        if (!stage_ || stage_->status() != og::server::StageStatus::Staged ||
+            stage_->staged_setup_bytes().empty() ||
+            stage_->staged_keyframe_bytes().empty())
+            return false;
+        generation = stage_->stage_generation();
+        setup_bytes = &stage_->staged_setup_bytes();
+        keyframe_bytes = &stage_->staged_keyframe_bytes();
+        return true;
+    }
+
     [[nodiscard]] og::server::MatchStage* take_match_stage() override
     {
         return stage_.get();

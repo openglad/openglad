@@ -927,6 +927,57 @@ TEST(CursesPickerClient, train_rejects_changes_when_gold_is_insufficient)
 
 // Set Level updates both the config and the save's scenario number — for a
 // road the company has earned (the earned-roads gate closes the rest).
+// Staged VIEW LEVEL (#218, C10): the solo picker stages the level locally
+// through the one launch pipeline and presents the staged world as a glyph
+// band (rows 2..13 on a 40-row terminal) above the census lines.
+TEST(CursesPickerClient, view_scenario_renders_the_staged_glyph_band)
+{
+    ScopedCursesPickerMountRestore mount_restore;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    PickerFixture f;
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::Scenario, PickerMenuCommand::ViewScenario);
+    ASSERT_NE(item, nullptr);
+
+    f.t().push_special(KeyCode::Enter);  // dismiss the preview screen
+    f.client.handle_menu_item(PickerMenuId::Scenario, *item);
+
+    EXPECT_NE(std::string::npos, f.t().text_row(0).find("View Scenario"));
+    // The band: min(12, rows - 6) = 12 glyph rows starting at row 2, drawn
+    // from the STAGED world (terrain glyphs at the level-1 map center).
+    bool any_glyph = false;
+    for (int row = 2; row < 14 && !any_glyph; ++row)
+        any_glyph =
+            f.t().text_row(row).find_first_not_of(' ') != std::string::npos;
+    EXPECT_TRUE(any_glyph)
+        << "the staged world must render glyphs in the band:\n"
+        << f.t().dump();
+    // The census lines start right below the band.
+    EXPECT_EQ(0u, f.t().text_row(14).find("SCEN 1:")) << f.t().dump();
+}
+
+// Small-terminal degradation: under 16 rows the preview screen is pure
+// show_text — no band, census lines right below the title.
+TEST(CursesPickerClient, view_scenario_degrades_to_text_on_small_terminals)
+{
+    ScopedCursesPickerMountRestore mount_restore;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    PickerFixture f({}, /*rows=*/12, /*cols=*/60);
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::Scenario, PickerMenuCommand::ViewScenario);
+    ASSERT_NE(item, nullptr);
+
+    f.t().push_special(KeyCode::Enter);
+    f.client.handle_menu_item(PickerMenuId::Scenario, *item);
+
+    EXPECT_NE(std::string::npos, f.t().text_row(0).find("View Scenario"));
+    EXPECT_EQ(0u, f.t().text_row(2).find("SCEN 1:"))
+        << "no band under 16 rows — the census starts at row 2:\n"
+        << f.t().dump();
+}
+
 TEST(CursesPickerClient, set_level_updates_config_and_save)
 {
     ScopedCursesPickerMountRestore mount_restore;

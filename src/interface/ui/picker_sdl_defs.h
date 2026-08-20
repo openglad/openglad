@@ -481,7 +481,23 @@ inline constexpr int kTrainMenuSellIndex = 19;
 inline constexpr int kViewScenarioBackIndex = 0;
 inline constexpr int kViewScenarioPrevIndex = 1;
 inline constexpr int kViewScenarioNextIndex = 2;
-inline constexpr int kViewScenarioRowsPerPage = 23;
+// The staged-preview band (#218): the STAGED world renders inside the
+// (5,5,314,160) report frame, above the census rows. Classic UI-canvas
+// coordinates; the band is ALWAYS reserved (degradation states render
+// their text into it — no dynamic page size).
+inline constexpr int kViewScenarioFrameX = 5;
+inline constexpr int kViewScenarioFrameY = 5;
+inline constexpr int kViewScenarioFrameW = 314;
+inline constexpr int kViewScenarioFrameH = 160;
+inline constexpr int kViewScenarioPreviewBandX = 8;
+inline constexpr int kViewScenarioPreviewBandY = 16;
+inline constexpr int kViewScenarioPreviewBandW = 303;
+inline constexpr int kViewScenarioPreviewBandH = 76;
+// Census rows sit below the band at a 6 px pitch; 10 rows end at y=156,
+// inside the frame's y extent (5..165).
+inline constexpr int kViewScenarioCensusTopY = 96;
+inline constexpr int kViewScenarioRowPitch = 6;
+inline constexpr int kViewScenarioRowsPerPage = 10;
 
 // --- HELP (full-screen, #168) layout contract --------------------------------
 // The screen is three bands: the tab strip (three tab buttons on one

@@ -1970,6 +1970,23 @@ private:
         term.put_str(row++, 0, role_ == LobbyRole::Host ? "Hosting Game" : "Joining Game",
                      Color::White, Color::Default, true);
         ++row;
+        // Staged-lobby preview band (#218, C10): the world the launch will
+        // adopt (host: the MatchStage; joiner: the healed mirror) rendered
+        // as glyphs above the status lines whenever the terminal is tall
+        // enough. Small terminals degrade to the plain text lobby; a
+        // failed/unavailable stage shows its honest line among the status
+        // rows instead of a band.
+        const GameWorld* const staged = staged_world();
+        if (staged != nullptr && term.rows() >= 16) {
+            const int band_rows = std::min(10, term.rows() - 10);
+            preview_renderer_.draw_preview(term, *staged, row, 0, band_rows,
+                                           term.cols());
+            row += band_rows;
+        }
+        const std::string degradation = stage_failure_line();
+        if (!degradation.empty() && row < term.rows() - 1)
+            term.put_str(row++, 0, degradation, Color::Red, Color::Default,
+                         false);
         for (const std::string& line : status_lines()) {
             if (row >= term.rows() - 1)
                 break;
@@ -2339,6 +2356,10 @@ private:
     // Staged lobby (#218, C9): the JOINER's preview mirror (unused on the
     // host role, which reads stage_ directly).
     og::server::StagedPreviewMirror preview_mirror_;
+    // The lobby's glyph-band renderer (#218 preview): stateless drawing
+    // over whatever staged world the role exposes; owned here so the log
+    // deque never reallocates per frame.
+    CursesRenderer preview_renderer_;
     std::uint32_t match_seed_ = 0;
     short local_team_ = 0;
     // 't'-cycle bookkeeping: selected/pending seats use server-issued tokens
