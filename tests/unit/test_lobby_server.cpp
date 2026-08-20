@@ -130,7 +130,7 @@ private:
 og::sim::LobbyCharacterSlot make_slot(std::uint8_t slot_index,
                                       std::int32_t guy_id,
                                       const char* name,
-                                      std::int8_t family,
+                                      std::int16_t family,
                                       std::int16_t team = 0)
 {
     og::sim::LobbyCharacterData character;
@@ -175,7 +175,7 @@ og::sim::LobbyMessage make_join_message(
 std::vector<og::sim::LobbyCharacterSlot> make_slots(std::uint8_t first_slot_index,
                                                     std::size_t count,
                                                     std::int32_t first_guy_id,
-                                                    std::int8_t family)
+                                                    std::int16_t family)
 {
     std::vector<og::sim::LobbyCharacterSlot> slots;
     slots.reserve(count);
@@ -3464,7 +3464,7 @@ TEST(LobbyServer, next_round_join_received_while_locked_is_applied_on_unlock)
 
     og::sim::LobbyMessage resume_join = make_join_message(
         "Guest", 1,
-        {make_slot(1u, 201, "Advanced Guest", FAMILY_ARCHER)},
+        {make_slot(1u, 201, "AdvGuest", FAMILY_ARCHER)},
         false,
         303u);
     std::get<og::sim::LobbyJoinMessage>(
@@ -3481,7 +3481,7 @@ TEST(LobbyServer, next_round_join_received_while_locked_is_applied_on_unlock)
     server.unlock_for_new_round();
     ASSERT_EQ(2u, server.state().players.size());
     ASSERT_EQ(1u, server.state().players[1].character_slots.size());
-    EXPECT_EQ("Advanced Guest",
+    EXPECT_EQ("AdvGuest",
               server.state().players[1].character_slots[0].character.name)
         << "unlock must apply the early resume declaration";
     for (const og::sim::LobbyPlayer& player : server.state().players)
@@ -3959,70 +3959,134 @@ TEST(LobbyServer, oversize_hostile_names_cannot_throw_out_of_broadcast)
 // Defense in depth: content that bypasses the wire readers entirely (typed
 // in-process messages) can still assemble an oversize state. The serialize
 // guard in broadcast_state/send_state must log and skip the send — never
-// throw out of poll_incoming_messages.
+// throw out of poll_incoming_messages. Names no longer work as the oversize
+// vehicle (the merge clamps them for typed content too), so drive it through
+// the one string sanitize leaves unbounded: a host-authored campaign id.
 TEST(LobbyServer, broadcast_serialize_guard_swallows_oversize_state)
 {
     MockLobbyTransport transport(true);
     og::sim::LobbyServer server(transport);
-    transport.set_connected_peers({1u, 2u});
+    server.connect_client(1u);
+    server.connect_client(2u);
 
-    const std::string huge_name(40000, 'B');
-    for (const og::sim::PeerId peer : {1u, 2u})
-    {
-        transport.queue_lobby_message(
-            peer,
-            make_join_message(huge_name.c_str(), peer == 1u ? 0 : 1,
+    transport.queue_lobby_message(
+        1u, make_join_message("Host", 0,
                               {make_slot(0u, 1, "Guy", FAMILY_SOLDIER)}));
-    }
+    transport.queue_lobby_message(
+        2u, make_join_message("Guest", 1,
+                              {make_slot(0u, 2, "Guy", FAMILY_SOLDIER)}));
+    ASSERT_NO_THROW(server.poll_incoming_messages());
+    ASSERT_EQ(2u, server.state().players.size());
+    transport.clear_sent_messages();
+
+    og::sim::LobbySettings oversize = server.state().settings;
+    oversize.campaign_id = std::string(70000, 'B');
+    og::sim::LobbyMessage settings_message;
+    settings_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = oversize,
+    };
+    transport.queue_lobby_message(1u, settings_message);
     ASSERT_NO_THROW(server.poll_incoming_messages());
 
-    // Both seats merged; the oversize two-seat broadcast was skipped, not
-    // sent and not fatal.
-    ASSERT_EQ(2u, server.state().players.size());
-    std::size_t two_seat_states_sent = 0;
+    // The vehicle worked: the merged state really is oversize...
+    ASSERT_EQ(70000u, server.state().settings.campaign_id.size());
+    // ...and its broadcast was skipped, not sent and not fatal.
+    std::size_t states_sent = 0;
     for (const og::sim::ReceivedMessage& sent : transport.sent_messages())
     {
-        const auto decoded = og::sim::deserialize_lobby_state_message(sent.data);
-        if (decoded.has_value() && decoded->players.size() == 2u)
-            ++two_seat_states_sent;
+        if (og::sim::deserialize_lobby_state_message(sent.data).has_value())
+            ++states_sent;
     }
-    EXPECT_EQ(0u, two_seat_states_sent);
+    EXPECT_EQ(0u, states_sent);
     EXPECT_TRUE(transport.disconnected_peers().empty());
 }
 
 // Family and level become world-construction inputs at stage time: a slot
 // whose family is outside [0, NUM_FAMILY_SLOTS) is dropped at the merge and
 // a non-positive level clamps to 1. Stats/exp stay accepted-as-sent (the
-// same trust as a local save file).
+// same trust as a local save file). The out-of-range families only exist on
+// the typed in-process channel (the wire byte is always in range), which is
+// exactly why the merge must bound them itself — and why the bound must
+// compare at a width that can actually hold a value >= NUM_FAMILY_SLOTS
+// (an int8_t field made the upper arm a tautology and aliased real pack
+// slots >= 128 to negatives).
 TEST(LobbyServer, sanitize_drops_invalid_family_and_clamps_level)
 {
-    MockLobbyTransport transport;
+    // Typed delivery: the raw path's wire byte can never carry an
+    // out-of-range family, so the merge bound is only observable here.
+    MockLobbyTransport transport(true);
     og::sim::LobbyServer server(transport);
     transport.set_connected_peers({1u});
 
     og::sim::LobbyCharacterSlot bad_family =
-        make_slot(0u, 1, "BadFam", static_cast<std::int8_t>(-3));
+        make_slot(0u, 1, "BadFam", -3);
     og::sim::LobbyCharacterSlot zero_level =
         make_slot(1u, 2, "ZeroLvl", FAMILY_SOLDIER);
     zero_level.character.level = 0;
     og::sim::LobbyCharacterSlot negative_level =
         make_slot(2u, 3, "NegLvl", FAMILY_ELF);
     negative_level.character.level = -7;
+    // Above the registry capacity: must be DROPPED by the upper bound.
+    og::sim::LobbyCharacterSlot oversized_family =
+        make_slot(3u, 4, "BigFam",
+                  static_cast<std::int16_t>(NUM_FAMILY_SLOTS + 44));
+    // A class-pack loader slot in the 128..255 half of the byte: must be
+    // KEPT, at its real id.
+    og::sim::LobbyCharacterSlot pack_family = make_slot(4u, 5, "PackFam", 200);
 
     transport.queue_lobby_message(
         1u,
         make_join_message("Player", 0,
-                          {bad_family, zero_level, negative_level}));
+                          {bad_family, zero_level, negative_level,
+                           oversized_family, pack_family}));
     server.poll_incoming_messages();
 
     const og::sim::LobbyState& state = server.state();
     ASSERT_EQ(1u, state.players.size());
     const auto& slots = state.players.front().character_slots;
-    ASSERT_EQ(2u, slots.size());
+    ASSERT_EQ(3u, slots.size());
     EXPECT_EQ("ZeroLvl", slots[0].character.name);
     EXPECT_EQ(1, slots[0].character.level);
     EXPECT_EQ("NegLvl", slots[1].character.name);
     EXPECT_EQ(1, slots[1].character.level);
+    EXPECT_EQ("PackFam", slots[2].character.name);
+    EXPECT_EQ(200, slots[2].character.family);
+}
+
+// Typed in-process joins never meet the wire readers, so the merge itself
+// must bound the display strings the state re-serializes to every peer
+// (unbounded names can push the merged LobbyState past the u16 transport
+// cap).
+TEST(LobbyServer, typed_join_clamps_guy_and_player_names_at_the_merge)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    transport.set_connected_peers({1u});
+
+    og::sim::LobbyCharacterSlot long_named =
+        make_slot(0u, 1, "Guy", FAMILY_SOLDIER);
+    long_named.character.name = std::string(64, 'G');
+
+    og::sim::LobbyMessage join =
+        make_join_message("Player", 0, {long_named});
+    auto& join_player = std::get<og::sim::LobbyJoinMessage>(join.payload).player;
+    join_player.name = std::string(50, 'N');
+    join_player.company = std::string(50, 'C');
+
+    transport.queue_lobby_message(1u, join);
+    server.poll_incoming_messages();
+
+    const og::sim::LobbyState& state = server.state();
+    ASSERT_EQ(1u, state.players.size());
+    const og::sim::LobbyPlayer& stored = state.players.front();
+    EXPECT_EQ(std::string(og::sim::kMaxLobbyCompanyNameLength, 'N'),
+              stored.name);
+    EXPECT_EQ(std::string(og::sim::kMaxLobbyCompanyNameLength, 'C'),
+              stored.company);
+    ASSERT_EQ(1u, stored.character_slots.size());
+    EXPECT_EQ(std::string(og::sim::kMaxLobbyGuyNameLength, 'G'),
+              stored.character_slots.front().character.name);
 }
 
 // Restage determinism input: preview and launch derive gameplay guy ids

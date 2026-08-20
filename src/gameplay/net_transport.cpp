@@ -304,13 +304,15 @@ GuyLike read_serialized_guy(PayloadReader& reader)
 {
     GuyLike guy;
     guy.guy_id = reader.read_i32();
-    guy.name = reader.read_string();
     // Clamp to the 11-char disk width (SaveData's 12-byte name field) instead
     // of trusting the sender: unbounded names re-serialize into the merged
-    // LobbyState and can push it past the u16 transport cap.
-    if (guy.name.size() > og::sim::kMaxLobbyGuyNameLength)
-        guy.name.resize(og::sim::kMaxLobbyGuyNameLength);
-    guy.family = static_cast<std::int8_t>(reader.read_u8());
+    // LobbyState and can push it past the u16 transport cap. Honest writers
+    // pre-clamp (the builders run clamp_lobby_guy_name), so this only alters
+    // crafted payloads.
+    guy.name = og::sim::clamp_lobby_guy_name(reader.read_string());
+    // The family byte is unsigned on the wire (0..255): widen it as-is so
+    // pack families >= 128 keep their id instead of aliasing negative.
+    guy.family = reader.read_u8();
     guy.strength = reader.read_i16();
     guy.dexterity = reader.read_i16();
     guy.constitution = reader.read_i16();
@@ -438,12 +440,8 @@ og::sim::LobbyPlayer read_lobby_player(PayloadReader& reader)
     player.player_index = reader.read_u8();
     player.seat_id = reader.read_u32();
     player.machine_id = reader.read_u32();
-    player.name = reader.read_string();
-    if (player.name.size() > og::sim::kMaxLobbyCompanyNameLength)
-        player.name.resize(og::sim::kMaxLobbyCompanyNameLength);
-    player.company = reader.read_string();
-    if (player.company.size() > og::sim::kMaxLobbyCompanyNameLength)
-        player.company.resize(og::sim::kMaxLobbyCompanyNameLength);
+    player.name = og::sim::clamp_lobby_player_label(reader.read_string());
+    player.company = og::sim::clamp_lobby_player_label(reader.read_string());
     player.team = reader.read_i16();
     player.ready = reader.read_bool();
     player.is_host = reader.read_bool();

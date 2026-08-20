@@ -151,8 +151,11 @@ og::sim::LobbyCharacterData make_lobby_character_data(const guy& source)
 {
     og::sim::LobbyCharacterData character;
     character.guy_id = source.id;
-    character.name = source.name;
-    character.family = static_cast<std::int8_t>(source.family);
+    // Writer-side clamp: the wire preserves 11 chars, and the reader would
+    // truncate anyway — pre-clamping keeps serialize/deserialize lossless
+    // (the VALIDATE_SERIALIZATION lanes fail on any field a reader alters).
+    character.name = og::sim::clamp_lobby_guy_name(source.name);
+    character.family = source.family;
     character.strength = source.strength;
     character.dexterity = source.dexterity;
     character.constitution = source.constitution;
@@ -203,9 +206,11 @@ og::sim::LobbyPlayer build_local_lobby_player(const SaveData& save,
                                               short local_team)
 {
     og::sim::LobbyPlayer player;
-    player.name = std::string(player_name);
+    // Writer-side label clamps mirror read_lobby_player's, keeping the
+    // serializers lossless for anything an honest client sends.
+    player.name = og::sim::clamp_lobby_player_label(std::string(player_name));
     // v8: advertise the active company's display name (SaveData::save_name).
-    player.company = save.save_name;
+    player.company = og::sim::clamp_lobby_player_label(save.save_name);
     player.team = local_team;
     player.ready = false;
     player.is_host = false;

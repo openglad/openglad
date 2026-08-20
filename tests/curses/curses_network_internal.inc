@@ -110,9 +110,12 @@ int curses_network_testing_exercise_internal_helpers()
 
     og::sim::LobbyPlayer player =
         build_local_lobby_player(save, "local-player", 2);
+    // "Curses Soldier" (14 chars) exceeds the 11-char wire width on purpose:
+    // the builder must pre-clamp it, or the VALIDATE_SERIALIZATION round-trip
+    // (reader clamps, writer didn't) rejects every message this roster rides.
     check(player.name == "local-player" && player.team == 2 &&
         player.character_slots.size() == 1 &&
-        player.character_slots.front().character.name == "Curses Soldier");
+        player.character_slots.front().character.name == "Curses Sold");
     // Downstream helper probes need a valid slot even when the assertion above
     // catches a build_local_lobby_player regression.  Construct it from the
     // known test-owned save instead of dereferencing a possibly empty vector.

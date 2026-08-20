@@ -412,8 +412,10 @@ og::sim::LobbySaveDataEquivalent build_local_save_equivalent(
 
         og::sim::LobbyCharacterData character;
         character.guy_id = member->id;
-        character.name = member->name;
-        character.family = static_cast<std::int8_t>(member->family);
+        // Writer-side clamp: keeps serialize/deserialize lossless (see
+        // clamp_lobby_guy_name in lobby_state.h).
+        character.name = og::sim::clamp_lobby_guy_name(member->name);
+        character.family = member->family;
         character.strength = member->strength;
         character.dexterity = member->dexterity;
         character.constitution = member->constitution;

@@ -1162,7 +1162,7 @@ TEST(GameLoop, local_two_player_ally_mode_claims_two_team_one_heroes)
     // The hostile-color hero is deliberately between the two Team 1 heroes.
     // Roster order must never make Player 2 claim it.
     save.team_list[0] = make_named_soldier("Red One", 0);
-    save.team_list[1] = make_named_soldier("Yellow Middle", 1);
+    save.team_list[1] = make_named_soldier("Yellow Mid", 1);
     save.team_list[2] = make_named_soldier("Red Two", 0);
     save.team_size = 3;
 
@@ -1180,7 +1180,7 @@ TEST(GameLoop, local_two_player_ally_mode_claims_two_team_one_heroes)
     glad_init(false, &*config);
     ASSERT_NE(nullptr, og::runtime::current_game_session);
     walker* const yellow = find_named_team_member(
-        game_screen->world(), "Yellow Middle", 1);
+        game_screen->world(), "Yellow Mid", 1);
     ASSERT_NE(nullptr, yellow)
         << "the non-player color still belongs in the mission";
     ASSERT_NE(nullptr, game_screen->viewob[0]);
@@ -1195,7 +1195,7 @@ TEST(GameLoop, local_two_player_ally_mode_claims_two_team_one_heroes)
               game_screen->viewob[1]->control);
     EXPECT_EQ("Red One", game_screen->viewob[0]->control->myguy->name);
     EXPECT_EQ("Red Two", game_screen->viewob[1]->control->myguy->name);
-    EXPECT_NE("Yellow Middle",
+    EXPECT_NE("Yellow Mid",
               game_screen->viewob[1]->control->myguy->name);
     EXPECT_FALSE(game_screen->viewob[0]->control->is_friendly(yellow))
         << "a yellow company hero must remain attackable by red in Together mode";
@@ -1208,6 +1208,39 @@ TEST(GameLoop, local_two_player_ally_mode_claims_two_team_one_heroes)
     og::runtime::clear_local_transport_shadow(
         *og::runtime::current_game_session);
     game_screen->world().delete_objects();
+}
+
+// The local picker lobby's slot builder must pre-clamp guy names to the
+// 11-char wire width: the wire readers truncate anyway, and an unclamped
+// writer makes every roster message fail the VALIDATE_SERIALIZATION
+// round-trip. The consumed game-start config is where the clamp lands.
+TEST(GameLoop, local_lobby_clamps_oversized_guy_names_to_wire_width)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game_screen);
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.save_name = "Clamp Co";
+    save.current_campaign = "gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.my_team = 0;
+    save.team_list[0] = make_named_soldier("Maximilian Longname", 0);
+    save.team_size = 1;
+
+    picker_lobby_shutdown();
+    picker_lobby_initialize_from_save();
+    ASSERT_TRUE(picker_lobby_request_start());
+    std::optional<og::ui::PickerLobbyGameStartConfig> config =
+        picker_lobby_consume_game_start_config();
+    picker_lobby_shutdown();
+    ASSERT_TRUE(config.has_value());
+    ASSERT_EQ(1u, config->save_data.team_list.size());
+    EXPECT_EQ("Maximilian ",
+              config->save_data.team_list[0].character.name)
+        << "the wire copy of the roster must carry the clamped name";
 }
 
 TEST(GameLoop, local_gameplay_spawns_and_controls_every_selected_team_color)

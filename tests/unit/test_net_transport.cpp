@@ -316,6 +316,9 @@ TEST(NetTransport, initial_setup_full_roundtrip_and_decode_received_message)
     expected.allied_mode = 0;
     expected.respawn_mode = 3;
     expected.current_scenario = 6;
+    // Deliberately nonzero: a zero here matches a decoder that silently
+    // skipped the v13 field, so it would pass by zero-luck.
+    expected.setup_generation = 9u;
     expected.guys.push_back(make_initial_setup_guy_for_test());
     expected.completed_levels = {1, 2, 3};
     expected.controlled_entity_ids[0] = 101u;
@@ -597,6 +600,44 @@ TEST(NetTransport, guy_and_player_names_clamp_on_read)
     ASSERT_EQ(1u, setup_decoded->guys.size());
     EXPECT_EQ(std::string(og::sim::kMaxLobbyGuyNameLength, 'S'),
               setup_decoded->guys.front().name);
+}
+
+// The family wire byte is unsigned (0..255 — every loader slot id). A
+// class-pack family in the 128..255 half must decode at its real id, not
+// aliased through int8_t into a negative the sanitizers then drop.
+TEST(NetTransport, guy_family_byte_stays_unsigned_through_the_wire)
+{
+    og::sim::LobbyPlayer player;
+    player.player_index = 0u;
+    og::sim::LobbyCharacterSlot slot;
+    slot.slot_index = 0u;
+    slot.deployed = true;
+    slot.character.name = "PackGuy";
+    slot.character.family = 200;
+    player.character_slots.push_back(slot);
+
+    og::sim::LobbyMessage message;
+    message.payload = og::sim::LobbyJoinMessage{.player = player};
+    const auto bytes = og::sim::serialize_lobby_message(message);
+    const auto decoded = og::sim::deserialize_lobby_message(bytes);
+    ASSERT_TRUE(decoded.has_value());
+    const auto& read_player =
+        std::get<og::sim::LobbyJoinMessage>(decoded->payload).player;
+    ASSERT_EQ(1u, read_player.character_slots.size());
+    EXPECT_EQ(200, read_player.character_slots.front().character.family);
+
+    og::sim::InitialSetupMessage setup;
+    og::sim::InitialSetupGuyData guy;
+    guy.guy_id = 4;
+    guy.name = "PackGuy";
+    guy.family = 200;
+    setup.guys.push_back(guy);
+    const auto setup_bytes = og::sim::serialize_initial_setup_message(setup);
+    const auto setup_decoded =
+        og::sim::deserialize_initial_setup_message(setup_bytes);
+    ASSERT_TRUE(setup_decoded.has_value());
+    ASSERT_EQ(1u, setup_decoded->guys.size());
+    EXPECT_EQ(200, setup_decoded->guys.front().family);
 }
 
 // --- Staged-lobby wire messages (protocol v13, #218) ------------------------

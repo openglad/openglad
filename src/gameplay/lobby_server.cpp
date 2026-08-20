@@ -136,16 +136,22 @@ std::vector<og::sim::LobbyCharacterSlot> sanitize_character_slots(
         // A slot with a family no loader could have produced is dropped at
         // the merge: under lobby staging, rosters become world-construction
         // inputs. Stats/exp stay accepted-as-sent — the same trust extended
-        // to a local save file.
-        if (slot.character.family < 0 ||
-            slot.character.family >= NUM_FAMILY_SLOTS)
-        {
+        // to a local save file. Widen before comparing: the wire delivers an
+        // unsigned byte (always in range), so this bound only bites typed
+        // in-process content that skipped the wire readers — which is exactly
+        // the content that can carry an out-of-range value.
+        const int family = slot.character.family;
+        if (family < 0 || family >= NUM_FAMILY_SLOTS)
             continue;
-        }
         if (!seen_slot_indices.insert(slot.slot_index).second)
             continue;
 
         og::sim::LobbyCharacterSlot next = slot;
+        // Same reader-bypass hole for names: typed in-process rosters never
+        // met read_serialized_guy's clamp, so bound them here before they
+        // re-serialize into the merged LobbyState.
+        next.character.name =
+            og::sim::clamp_lobby_guy_name(std::move(next.character.name));
         if (next.character.teamnum < 0 || next.character.teamnum >= MAX_PLAYERS)
             next.character.teamnum = team;
         if (next.character.level < 1)
@@ -897,6 +903,11 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
                     seat.name = default_player_name(state_.players.size() + 1);
                 }
             }
+            // Typed in-process joins bypass read_lobby_player's clamps, so
+            // bound the display labels here before they enter the state the
+            // server re-serializes to every peer.
+            seat.name = clamp_lobby_player_label(std::move(seat.name));
+            seat.company = clamp_lobby_player_label(std::move(seat.company));
 
             seat.team = team;
             seat.player_index = 0xff;

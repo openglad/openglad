@@ -56,8 +56,10 @@ og::sim::LobbyCharacterData make_lobby_character_data(const guy& source)
 {
     og::sim::LobbyCharacterData character;
     character.guy_id = source.id;
-    character.name = source.name;
-    character.family = static_cast<std::int8_t>(source.family);
+    // Writer-side clamp: keeps serialize/deserialize lossless (see
+    // clamp_lobby_guy_name in lobby_state.h).
+    character.name = og::sim::clamp_lobby_guy_name(source.name);
+    character.family = source.family;
     character.strength = source.strength;
     character.dexterity = source.dexterity;
     character.constitution = source.constitution;
@@ -793,10 +795,12 @@ private:
                 peer.name = std::format("Player {}", peer_index + 1);
 
             og::sim::LobbyPlayer& player = players[peer_index];
-            player.name = peer.name;
+            // Writer-side label clamps mirror read_lobby_player's, keeping
+            // the serializers lossless for anything an honest client sends.
+            player.name = og::sim::clamp_lobby_player_label(peer.name);
             // v8: every seat of one machine advertises the same active
             // company display name (SaveData::save_name).
-            player.company = save.save_name;
+            player.company = og::sim::clamp_lobby_player_label(save.save_name);
             player.team = peer.team;
             player.ready = false;
             player.is_host = peer_index == 0;

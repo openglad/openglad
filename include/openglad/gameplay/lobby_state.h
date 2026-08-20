@@ -26,6 +26,27 @@ inline constexpr std::size_t kMaxLobbyCompanyNameLength = 40;
 // otherwise exit a dedicated server).
 inline constexpr std::size_t kMaxLobbyGuyNameLength = 11;
 
+// Writer-side twin of the read clamps above: every builder that stamps a name
+// into a lobby/setup wire struct must run it through these, so serialize →
+// deserialize is lossless for any message an honest peer sends. (The
+// VALIDATE_SERIALIZATION lanes round-trip every in-process typed message and
+// fail on the first field the readers would alter; the read clamps alone made
+// oversized names exactly such a field.) The branch lives here so call sites
+// stay straight-line.
+[[nodiscard]] inline std::string clamp_lobby_guy_name(std::string name)
+{
+    if (name.size() > kMaxLobbyGuyNameLength)
+        name.resize(kMaxLobbyGuyNameLength);
+    return name;
+}
+
+[[nodiscard]] inline std::string clamp_lobby_player_label(std::string label)
+{
+    if (label.size() > kMaxLobbyCompanyNameLength)
+        label.resize(kMaxLobbyCompanyNameLength);
+    return label;
+}
+
 // Server-issued identity for one lobby seat. Unlike player_index (the dense
 // P#/gameplay ordinal), this token survives unrelated peers leaving and the
 // resulting player-index rebuild. Zero is reserved for unjoined/client-authored
@@ -70,7 +91,14 @@ constexpr std::uint8_t start_denial_reason_value(StartDenialReason reason) noexc
 struct LobbyCharacterData {
     std::int32_t guy_id = 0;
     std::string name;
-    std::int8_t family = 0;
+    // Family id. The wire carries one unsigned byte (0..255 — every value a
+    // loader slot can hold, NUM_FAMILY_SLOTS == 256), so the field must be
+    // wider than the byte: an int8_t here aliased wire families 128..255 to
+    // negatives AND made the merge's `family >= NUM_FAMILY_SLOTS` guard a
+    // clang-diagnosed tautology (an int8_t can never reach 256), leaving the
+    // in-process typed channel — which skips the wire readers entirely —
+    // without any live upper bound.
+    std::int16_t family = 0;
     std::int16_t strength = 0;
     std::int16_t dexterity = 0;
     std::int16_t constitution = 0;

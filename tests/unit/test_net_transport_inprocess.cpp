@@ -453,6 +453,44 @@ TEST(NetTransportInProcess,
         << "the other player should be left without a direct control instead of ending the match";
 }
 
+// The serialization-validating lanes round-trip every typed message and fail
+// on the first field the wire readers would alter. A world guy may carry a
+// name longer than the 11-char wire width (test fixtures do; the world copy
+// is not the wire copy), so collect_initial_setup_guys must pre-clamp the
+// wire copy or every InitialSetup carrying such a roster throws in those
+// lanes. Validation is forced ON here so this holds under every build config.
+TEST(NetTransportInProcess, initial_setup_clamps_oversized_guy_names_at_build)
+{
+    TestGameWorld fixture;
+    auto server_transport = og::sim::InProcessTransport::create_server(
+        og::sim::InProcessTransport::Options{.validate_serialization = true});
+    server_transport->accept_connections();
+    auto client = server_transport->create_client_transport();
+
+    walker* const hero = add_network_player_character(
+        fixture.world(), FAMILY_SOLDIER, 0, "Maximilian Longname");
+    ASSERT_NE(nullptr, hero);
+
+    og::sim::GameServer server(fixture.world(), fixture.events,
+                               *server_transport);
+    server.connect_client(client->local_peer_id());
+    server.bind_player(client->local_peer_id(), 0u, 0);
+    server.broadcast_current_state(og::sim::SnapshotCaptureMode::Peek,
+                                   og::sim::EventDeliveryMode::Skip);
+
+    const std::vector<og::sim::TypedReceivedMessage> messages =
+        client->poll_typed();
+    ASSERT_FALSE(messages.empty());
+    ASSERT_EQ(og::sim::TypedReceivedMessageKind::InitialSetup,
+              messages[0].kind);
+    ASSERT_NE(nullptr, messages[0].initial_setup);
+    ASSERT_EQ(1u, messages[0].initial_setup->guys.size());
+    EXPECT_EQ("Maximilian ", messages[0].initial_setup->guys.front().name)
+        << "the wire copy must carry the clamped name";
+    EXPECT_EQ("Maximilian Longname", hero->myguy->name)
+        << "the world guy keeps its full name; only the wire copy clamps";
+}
+
 TEST(NetTransportInProcess,
      game_server_applies_set_palette_event_to_authoritative_state)
 {

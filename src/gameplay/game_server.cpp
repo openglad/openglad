@@ -765,7 +765,10 @@ std::vector<og::sim::InitialSetupGuyData> collect_initial_setup_guys(
 
             og::sim::InitialSetupGuyData data;
             data.guy_id = source.id;
-            data.name = source.name;
+            // Writer-side clamp: the world guy keeps its full name; the wire
+            // copy is bounded so serialize/deserialize stays lossless (see
+            // clamp_lobby_guy_name in lobby_state.h).
+            data.name = og::sim::clamp_lobby_guy_name(source.name);
             data.family = source.family;
             data.strength = source.strength;
             data.dexterity = source.dexterity;

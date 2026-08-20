@@ -236,7 +236,9 @@ struct HelloMessage {
 struct InitialSetupGuyData {
     std::int32_t guy_id = 0;
     std::string name;
-    std::int8_t family = 0;
+    // Wire byte 0..255; wider than the byte for the same reason as
+    // LobbyCharacterData::family (see lobby_state.h).
+    std::int16_t family = 0;
     std::int16_t strength = 0;
     std::int16_t dexterity = 0;
     std::int16_t constitution = 0;
