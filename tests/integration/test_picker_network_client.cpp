@@ -2673,6 +2673,39 @@ TEST(PickerNetworkClient, joiner_preview_mirror_heals_byte_identical_pair)
                       *const_cast<GameWorld*>(mirrored))))
             << "the restaged pair heals byte-identically too";
     }
+
+    // The C10 preview surfaces: host and joiner both report Staged health,
+    // and staged_keyframe_bytes hands the pane the SAME retained wire pair
+    // on both sides (late-open retention — a VIEW LEVEL opened long after
+    // the broadcast heals from these bytes; no resend needed).
+    using Health = og::ui::IPickerLobbyClient::StagedPreviewHealth;
+    EXPECT_EQ(Health::Staged, host_client->staged_preview_health());
+    std::uint32_t host_pair_generation = 0;
+    const std::vector<std::uint8_t>* host_setup_bytes = nullptr;
+    const std::vector<std::uint8_t>* host_keyframe_bytes = nullptr;
+    ASSERT_TRUE(host_client->staged_keyframe_bytes(
+        host_pair_generation, host_setup_bytes, host_keyframe_bytes));
+    EXPECT_EQ(host_stage->stage_generation(), host_pair_generation);
+    ASSERT_NE(nullptr, host_setup_bytes);
+    ASSERT_NE(nullptr, host_keyframe_bytes);
+    EXPECT_EQ(host_stage->staged_setup_bytes(), *host_setup_bytes);
+    EXPECT_EQ(host_stage->staged_keyframe_bytes(), *host_keyframe_bytes);
+    {
+        auto join_scope = join_session.activate();
+        EXPECT_EQ(Health::Staged, join_client->staged_preview_health());
+        std::uint32_t join_pair_generation = 0;
+        const std::vector<std::uint8_t>* join_setup_bytes = nullptr;
+        const std::vector<std::uint8_t>* join_keyframe_bytes = nullptr;
+        ASSERT_TRUE(join_client->staged_keyframe_bytes(
+            join_pair_generation, join_setup_bytes, join_keyframe_bytes));
+        EXPECT_EQ(host_pair_generation, join_pair_generation)
+            << "the retained pair carries the owner's generation";
+        ASSERT_NE(nullptr, join_setup_bytes);
+        ASSERT_NE(nullptr, join_keyframe_bytes);
+        EXPECT_EQ(*host_setup_bytes, *join_setup_bytes)
+            << "host pane and joiner pane are byte-fed identically";
+        EXPECT_EQ(*host_keyframe_bytes, *join_keyframe_bytes);
+    }
     const auto setup = og::sim::deserialize_initial_setup_message(
         host_stage->staged_setup_bytes());
     ASSERT_TRUE(setup.has_value());

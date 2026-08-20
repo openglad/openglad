@@ -554,12 +554,15 @@ contribute up to 4 local seats, with up to 16 seats lobby-wide. The same
 machinery also runs single-player and local split-screen — see [Local Transport
 Shadow](#local-transport-shadow).
 
-The current network compatibility line is lobby/gameplay protocol **v12**, world
-snapshot format **v10**, and replay format **v14**. Protocol v12 replaces the
-flattened CTF snapshot block with the generic RespawnState + ModeState blocks
-(every scripted mode replicates through them) and appends
-`LobbySettings.shared_teams`; v9 added stable, server-issued lobby seat
-identity and authoritative per-recipient ownership on top of the
+The current network compatibility line is lobby/gameplay protocol **v13**, world
+snapshot format **v10**, and replay format **v15**. Protocol v13 adds the
+staged-lobby channel (#218): `StagedMatchSetup`/`StagedMatchKeyframe` wrap a
+complete InitialSetup / keyframe snapshot of the host's staged world so every
+peer previews the exact match before GO, plus `StartDenialReason::StageFailed`.
+Protocol v12 replaced the flattened CTF snapshot block with the generic
+RespawnState + ModeState blocks (every scripted mode replicates through them)
+and appended `LobbySettings.shared_teams`; v9 added stable, server-issued
+lobby seat identity and authoritative per-recipient ownership on top of the
 Company/Base Camp multiplayer state introduced by v8. Team changes
 and exact-seat removal use that identity rather than the mutable dense `P#`.
 Peers reject incompatible versions during the handshake, while snapshot and
@@ -622,18 +625,38 @@ seat cannot retarget a command to one of its siblings.
 - `HostPickerLobbyClient` — hosts a `LobbyServer` over a `MultiplexTransport`
 - `JoinPickerLobbyClient` — connects to a remote host
 
+**The staged lobby (#218).** Every lobby OWNER (the local client, the SDL/
+curses hosts, the dedicated server) owns an `og::server::MatchStage`
+(`src/server/match_stage.cpp`, SDL-free, dual-listed into `og_interface`
+beside `headless_server_runtime.cpp` — the `level_runtime_data.cpp`
+precedent): the match's REAL world is assembled in the lobby, before GO,
+through the dedicated-server pipeline (level load, roster spawn, level
+`on_load`, mode init), pinned to a per-round match seed, rebuilt behind a
+250 ms trailing-edge debounce whenever the launch inputs change, and held
+dormant (nothing constructs a GameServer over it, so nothing can tick it).
+The serialized setup+keyframe pair broadcasts to joiners, whose
+`StagedPreviewMirror` heals a headless local load from the same bytes; VIEW
+LEVEL renders and censuses that world on every client identically. At GO the
+launch ADOPTS the staged world — object handoff for the dedicated server and
+curses sessions, content transfer for the SDL shadow — so preview == launch
+is a byte identity, and `GameServer::step`'s level-start gate holds tick 1
+(and its event drain) until every seeded client is ready (#239).
+
 ```
 Base Camp / picker_team_build (lobby)     each peer
   ├── poll lobby, show status lines
+  ├── MatchStage: observe change key → debounced restage → broadcast pair
   ├── add/remove local seats and edit owned seats
   ├── host: request_start_game() ──┐
   └── join: wait for handoff       │   StartGame broadcast
                                    ▼
   install_gameplay_runtime() → reset_network_{host,client}_transport_shadow()
-        creates the per-level GameServer / GameClient on the live transport
+        creates the per-level GameServer / GameClient on the live transport,
+        ADOPTING the staged world (the display stays a keyframe-healed mirror)
   glad_main()  ── play the level ──
   glad_main returns (world.end != 0) → back to Base Camp
-  resume_after_level()  reuse the SAME connection for the next level
+  resume_after_level()  reuse the SAME connection; a fresh match seed and the
+        advanced cursor restage the next round's world in the lobby
 ```
 
 Between levels every peer returns to Base Camp (single-player parity).
@@ -727,7 +750,7 @@ modes schedule through `og.respawn_schedule` (eligibility is Lua's) and repositi
 survive, and team wipes never end an undecided scripted match.
 
 `RespawnState` and `ModeState` replicate as their own `WorldSnapshot` blocks (snapshot v10,
-protocol v12, replay v14), so mirrors, late joiners, replays, and the curses/text HUDs need no
+protocol v13, replay v15), so mirrors, late joiners, replays, and the curses/text HUDs need no
 extra wire messages — a mid-join keyframe restore carries a running match. Match settings
 (`ctf_team_count`/`ctf_capture_limit`/`ctf_respawn_ticks`/`ctf_strip_scenario_troops` — the
 storage names keep their historical prefix; Lua reads them as `og.match_setting`) follow the
