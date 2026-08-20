@@ -1354,7 +1354,8 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
         // Solo picker: stage the level locally through the one launch
         // pipeline (#218) with the session seed (config_.seed — the same
         // --seed the text client latches), so the glyph preview shows the
-        // real assembled match.
+        // real assembled match. run_game() hands the SAME seed to
+        // make_local_session, so the previewed world is the launched world.
         view_scenario_locally_staged(menu, save_data_, options_.difficulty,
                                      config_.seed);
         break;
@@ -1537,8 +1538,13 @@ void CursesPickerClient::run_game()
 
     Menu menu(term_, clock_);
     std::string error;
+    // The session-latched match seed (config_.seed — the --seed CLI and the
+    // Game Settings row) is what VIEW LEVEL staged its preview with, so the
+    // launch stages the identical world (#218): preview == launch on the solo
+    // shape, exactly as the SDL shapes adopt the world their preview showed.
     std::unique_ptr<CursesGameSession> session =
-        make_local_session(save_data_, options_.difficulty, &error);
+        make_local_session(save_data_, options_.difficulty, &error,
+                           config_.seed);
     if (!session) {
         // make_local_session may be unimplemented (nullptr) in a concurrent
         // build; fail gracefully rather than crashing.

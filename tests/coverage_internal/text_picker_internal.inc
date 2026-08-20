@@ -1001,3 +1001,96 @@ int text_picker_testing_staged_view_scenario()
     check(state_restore.restore());
     return failed ? -failed_check : 0;
 }
+
+// One seed, both consumers (#218 §1.3): VIEW LEVEL stages its preview on
+// TextPickerConfig::seed and the GO path runs the protocol session on the
+// SAME latch, so the text preview is never a differently seeded world than
+// the text launch. The protocol session reports the seed it ran with in its
+// ready line — the observable that splits the moment either side starts
+// drawing its own. Returns 0, or the negated 1-based index of the first
+// failed check.
+int text_picker_testing_launch_seed_matches_the_preview()
+{
+    ScopedTextPickerInternalState state_restore;
+    if (!state_restore.ready())
+        return -1;
+    if (mount_campaign_package_with_error("modes") !=
+        CampaignPackageIoError::None)
+        return -2;
+
+    int check_index = 0;
+    int failed_check = 0;
+    bool failed = false;
+    const auto check = [&check_index, &failed_check, &failed](bool condition) {
+        ++check_index;
+        if (!condition) {
+            failed = true;
+            if (failed_check == 0)
+                failed_check = check_index;
+        }
+    };
+
+    // Both halves of one session at a given latch: the previewed census and
+    // the launch's ready line.
+    const auto preview_and_launch =
+        [](std::uint32_t seed) -> std::pair<std::string, std::string> {
+        TextPickerConfig config;
+        config.campaign = "modes";
+        config.level = 820;
+        config.seed = seed;
+        config.team_families = {FAMILY_SOLDIER};
+        config.save_name = "helper-slot";
+        TextPickerError error;
+        TextPickerClient client(config, &error);
+        client.testing_save_data_mutable().current_campaign = "modes";
+        client.testing_save_data_mutable().scen_num = 820;
+
+        const PickerMenuItem* const item = find_picker_menu_item(
+            PickerMenuId::Scenario, PickerMenuCommand::ViewScenario);
+        if (item == nullptr)
+            return {};
+
+        std::string preview;
+        {
+            ScopedTextPickerStdoutCapture output;
+            if (!output.ready())
+                return {};
+            ScopedCinRedirect input("\n");
+            client.handle_menu_item(PickerMenuId::Scenario, *item);
+            preview = output.finish();
+            if (!output.finish_ok())
+                return {};
+        }
+
+        std::string launch;
+        {
+            ScopedTextPickerStdoutCapture output;
+            if (!output.ready())
+                return {};
+            // EOF stdin: the protocol session prints its ready line (seed
+            // included) and returns without entering the command loop.
+            ScopedCinRedirect input("");
+            (void)run_text_picker_protocol_session(config);
+            launch = output.finish();
+            if (!output.finish_ok())
+                return {};
+        }
+        return {preview, launch};
+    };
+
+    const auto [preview_777, launch_777] = preview_and_launch(777u);
+    const auto [preview_4242, launch_4242] = preview_and_launch(4242u);
+
+    check(launch_777.find("\"seed\":777") != std::string::npos);
+    check(launch_4242.find("\"seed\":4242") != std::string::npos);
+    // The previews are seed-sensitive (staged squads are drawn at stage
+    // time), so a preview that ignored the latch would print the same census
+    // for both.
+    check(!preview_777.empty());
+    check(preview_777.find("--- SCEN 820:") != std::string::npos);
+    check(preview_4242.find("--- SCEN 820:") != std::string::npos);
+    check(preview_777 != preview_4242);
+
+    check(state_restore.restore());
+    return failed ? -failed_check : 0;
+}

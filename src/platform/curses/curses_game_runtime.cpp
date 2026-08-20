@@ -40,6 +40,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 
 namespace og::curses {
 
@@ -106,8 +107,9 @@ void update_primary_team_totals(SaveData& save)
 class LocalCursesSession final : public CursesGameSession
 {
 public:
-    static std::unique_ptr<LocalCursesSession> create(SaveData& save, int difficulty,
-                                                      std::string* error);
+    static std::unique_ptr<LocalCursesSession> create(
+        SaveData& save, int difficulty, std::string* error,
+        std::optional<std::uint32_t> match_seed);
 
     ~LocalCursesSession() override
     {
@@ -232,6 +234,7 @@ public:
 #ifdef TESTING
     bool inject_exit_prompt_for_testing(std::string prompt,
                                         std::uint32_t synchronized_score);
+    const GameWorld& server_world_for_testing() const;
 #endif
 
 private:
@@ -278,9 +281,9 @@ private:
     std::string exit_prompt_text_;
 };
 
-std::unique_ptr<LocalCursesSession> LocalCursesSession::create(SaveData& save,
-                                                               int difficulty,
-                                                               std::string* error)
+std::unique_ptr<LocalCursesSession> LocalCursesSession::create(
+    SaveData& save, int difficulty, std::string* error,
+    std::optional<std::uint32_t> match_seed)
 {
     auto set_error = [&](const char* msg) {
         if (error)
@@ -304,7 +307,12 @@ std::unique_ptr<LocalCursesSession> LocalCursesSession::create(SaveData& save,
     og::server::MatchStageInputs stage_inputs;
     stage_inputs.equivalent = og::server::build_local_save_equivalent(save);
     stage_inputs.difficulty = difficulty;
-    stage_inputs.match_seed = og::server::draw_match_seed();
+    // The session-latched match seed: the solo picker hands over the seed its
+    // VIEW LEVEL preview staged with, so this launch re-stages the identical
+    // world (identical inputs ⇒ identical stage) instead of a differently
+    // seeded one. Callers with no preview to honour draw a fresh round seed.
+    stage_inputs.match_seed =
+        match_seed.value_or(og::server::draw_match_seed());
     stage_inputs.replay_level = save.replay_level;
     stage_inputs.replay_origin = save.replay_origin;
     stage.observe_inputs(stage_inputs, og::server::stage_clock_now_ms());
@@ -432,12 +440,13 @@ std::unique_ptr<LocalCursesSession> LocalCursesSession::create(SaveData& save,
 
 } // namespace
 
-std::unique_ptr<CursesGameSession> make_local_session(SaveData& save, int difficulty,
-                                                      std::string* error)
+std::unique_ptr<CursesGameSession> make_local_session(
+    SaveData& save, int difficulty, std::string* error,
+    std::optional<std::uint32_t> match_seed)
 {
     if (error)
         error->clear();
-    return LocalCursesSession::create(save, difficulty, error);
+    return LocalCursesSession::create(save, difficulty, error, match_seed);
 }
 
 #ifdef TESTING

@@ -332,6 +332,10 @@ public:
         ensure_team_initialized();
         sync_config_from_save();
 
+        // The GO path runs on config_.seed — the same session latch
+        // view_scenario() staged its preview with (#218 §1.3). The two must
+        // never split: TextPickerConfig::seed is the one seed the text
+        // session owns, set once by --seed or the Game Settings row.
         const int result = run_text_picker_protocol_session(config_);
         if (result != 0) {
             set_error(TextPickerErrorCode::Unsupported,

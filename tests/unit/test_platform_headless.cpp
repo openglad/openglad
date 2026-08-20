@@ -252,6 +252,7 @@ PixieData make_pixie(unsigned char frames = 3, unsigned char w = 2, unsigned cha
 namespace og::ui {
 int text_picker_testing_exercise_internal_paths();
 int text_picker_testing_staged_view_scenario();
+int text_picker_testing_launch_seed_matches_the_preview();
 std::string text_protocol_testing_format_event_text(std::string_view text);
 std::string text_protocol_testing_json_mode(const GameWorld& world);
 }
@@ -1134,6 +1135,19 @@ TEST(PlatformHeadless, text_picker_staged_view_scenario_census)
     restore_default_campaigns();
     StdoutSilencer stdout_silencer;
     EXPECT_EQ(0, og::ui::text_picker_testing_staged_view_scenario());
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// #218 §1.3: the text session owns ONE match seed — VIEW LEVEL stages the
+// preview with it and the GO path runs the protocol session with it. The
+// launch's ready line reports the seed it ran with, so a GO that started
+// drawing its own would show a seed the preview never staged.
+TEST(PlatformHeadless, text_picker_launch_seed_matches_the_preview)
+{
+    restore_default_campaigns();
+    StdoutSilencer stdout_silencer;
+    EXPECT_EQ(0, og::ui::text_picker_testing_launch_seed_matches_the_preview());
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
 }

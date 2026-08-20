@@ -26,8 +26,10 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_file_io.h>
 #include <openglad/resources/save_data.h>
+#include <openglad/server/match_stage.h>
 
 #include <filesystem>
+#include <tuple>
 #include <memory>
 #include <string>
 #include <utility>
@@ -38,6 +40,8 @@ namespace og::curses {
 bool curses_game_runtime_testing_inject_exit_prompt(
     CursesGameSession& session, std::string prompt,
     std::uint32_t synchronized_score);
+const GameWorld* curses_game_runtime_testing_local_server_world(
+    const CursesGameSession& session);
 } // namespace og::curses
 
 namespace {
@@ -178,6 +182,62 @@ TEST(CursesGameRuntimeLocal, session_loads_level_and_populates_mirror)
         << "a fresh level has no requested transition";
     EXPECT_TRUE(session->exit_prompt_text().empty());
     session->respond_to_exit_prompt(false);
+}
+
+// #218: the solo picker's VIEW LEVEL stages the level locally on the session
+// latch (config_.seed) and GO hands the SAME latch to make_local_session, so
+// the world the preview showed IS the world the launch ticks. Before the fix
+// the launch drew its own draw_match_seed(), so the previewed squads/weather
+// were never the ones that played.
+TEST(CursesGameRuntimeLocal, solo_launch_stages_the_previewed_seed)
+{
+    SaveData save;
+    init_test_save(save);
+
+    constexpr std::uint32_t kSessionSeed = 4242u;
+    og::server::MatchStage preview({
+        .networked = false,
+        .arm_policy = og::server::LobbyStartReplayArm::SeededIntent,
+        .host_company_save = &save,
+    });
+    og::server::MatchStageInputs inputs;
+    inputs.equivalent = og::server::build_local_save_equivalent(save);
+    inputs.difficulty = 1;
+    inputs.match_seed = kSessionSeed;
+    inputs.replay_level = save.replay_level;
+    inputs.replay_origin = save.replay_origin;
+    preview.observe_inputs(inputs, og::server::stage_clock_now_ms());
+    ASSERT_EQ(og::server::StageStatus::Staged, preview.status());
+
+    // (id, family, x, y, team) over the live staged entities — the census the
+    // preview renders, reduced to comparable facts.
+    using EntityFact = std::tuple<std::uint32_t, int, int, int, int>;
+    auto facts = [](const GameWorld& world) {
+        std::vector<EntityFact> out;
+        for (const auto& entity : world.oblist) {
+            const walker* const w = entity.get();
+            if (w == nullptr || w->dead())
+                continue;
+            out.emplace_back(w->entity_id(), w->family(), w->xpos(), w->ypos(),
+                             static_cast<int>(w->team_num()));
+        }
+        return out;
+    };
+    const std::uint32_t previewed_rng = preview.world()->rng_.state_;
+    const std::vector<EntityFact> previewed = facts(*preview.world());
+    ASSERT_FALSE(previewed.empty()) << "the staged preview should hold walkers";
+
+    std::string err;
+    auto session = make_local_session(save, /*difficulty=*/1, &err, kSessionSeed);
+    ASSERT_NE(session, nullptr) << "make_local_session failed: " << err;
+    const GameWorld* launched =
+        og::curses::curses_game_runtime_testing_local_server_world(*session);
+    ASSERT_NE(launched, nullptr);
+
+    EXPECT_EQ(previewed_rng, launched->rng_.state_)
+        << "the launch drew its own match seed instead of the previewed latch";
+    EXPECT_EQ(previewed, facts(*launched))
+        << "the launched world is not the world the preview showed";
 }
 
 TEST(CursesGameRuntimeLocal,
