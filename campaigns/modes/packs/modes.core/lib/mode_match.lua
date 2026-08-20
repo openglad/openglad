@@ -311,10 +311,14 @@ end
 -- retired C++ plan census produced (match_plan.cpp), rebuilt from the LIVE
 -- world at the top of every on_mode_init. Under staging init runs ONCE per
 -- stage in a REAL world — the census IS the world, so no marshaling layer
--- survives. Live livings split by has_guy, live generators, raw flag rows
--- in fx order (out-of-range and surplus included — the fold decides), the
--- engine anchor counts (banked by mode_stage_init before this hook, dead
--- markers included) and the four request knobs.
+-- survives. Live NON-DORMANT livings split by has_guy, live non-dormant
+-- generators, raw flag rows in fx order (out-of-range and surplus included
+-- — the fold decides), the engine anchor counts (banked by mode_stage_init
+-- before this hook, dead markers included) and the four request knobs.
+-- The dormancy carve-out matches the C++ staged report census
+-- (picker_common.cpp): delayed-spawn walkers are outside snapshot capture,
+-- so a team the census counted but the pane could not see would activate
+-- with a fill nobody rendered.
 local function census_inputs()
   local inputs = {
     team_count = og.match_setting("team_count"),
@@ -335,7 +339,11 @@ local function census_inputs()
   local obs = og.oblist()
   for k = 1, #obs do
     local w = obs[k]
-    if w:dead() == 0 then
+    -- Dormant (delayed-spawn) walkers are skipped alongside dead ones: they
+    -- are excluded from snapshot capture, so the C++ staged report censuses
+    -- the non-dormant world only. Counting them here would activate a team
+    -- and bank a fill the preview pane renders as absent (#218).
+    if w:dead() == 0 and not w:dormant() then
       local team = w:team_num()
       if team < C.SCORE_TEAM_COUNT then
         local trow = inputs.teams[team + 1]

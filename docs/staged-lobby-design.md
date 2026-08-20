@@ -73,7 +73,11 @@ attempted-and-refused `on_mode_init` keeps the verbatim
 "MATCH WILL NOT START: FEWER THAN 2 TEAMS"; a hook-less scripted level takes
 the count-only `effective_team_mask` fallback. Dormant (delayed-spawn)
 walkers are excluded exactly as the keyframe capture excludes them — the
-documented carve-out; they reveal at their authored tick after launch.
+documented carve-out; they reveal at their authored tick after launch. The
+carve-out runs on BOTH sides of the pane: `match.census_inputs`
+(mode_match.lua) skips dormant walkers too, through the read-only
+`w:dormant()` binding, so the activation decision and the rendered census
+never disagree about a delayed-spawn team.
 
 Surfaces: SDL VIEW LEVEL renders the staged world in a 303x76 band (the
 render copy is the SDL-hooked scratch level healed from the SAME serialized

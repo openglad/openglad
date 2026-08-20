@@ -293,6 +293,9 @@ W_GET_BOOL(summoned)
 W_SET_BOOL(summoned)
 W_GET_BOOL(save_all_protected)
 W_SET_BOOL(save_all_protected)
+// Read-only on purpose: walker::set_dormant maintains obmap membership, so
+// waking or sleeping a walker is an engine decision, never a script's.
+W_GET_BOOL(dormant)
 
 // do_bounce lives on weap.
 int m_do_bounce(lua_State* L)
@@ -2997,6 +3000,7 @@ const luaL_Reg kWalkerMethods[] = {
     {"clear_myguy", m_clear_myguy},
     {"move_myguy_to", m_move_myguy_to},
     {"has_guy", m_has_guy},
+    {"dormant", m_dormant},
     {"set_difficulty", m_set_difficulty},
     {"facing", m_facing},
     // statistics (flattened, s_ prefix)

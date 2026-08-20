@@ -438,6 +438,9 @@ keying rule).
 `dead()/set_dead(v)` `death_called()/set_death_called(v)`
 `summoned()/set_summoned(bool)`
 `save_all_protected()/set_save_all_protected(bool)`
+`dormant() → bool` (read-only: a delayed-spawn walker that has not woken
+yet — outside the obmap, outside snapshot capture, and skipped by every
+census; waking it is the engine's decision)
 `is_friendly(other) → bool`.
 
 ### Timers and charges

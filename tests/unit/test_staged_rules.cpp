@@ -477,6 +477,44 @@ TEST_F(StagedRules, tdm_domain_is_anchors_union_livings)
     EXPECT_TRUE(has_script_error(lone.world(), "tdm: fewer than two teams"));
 }
 
+// The dormancy carve-out, both halves of it (#218): a delayed-spawn walker
+// is excluded from snapshot capture, so the C++ staged report census skips
+// it (picker_common.cpp) — and the Lua census must skip it too. Otherwise
+// the mode activates a team, banks it a fill, and the preview pane renders
+// that same team as absent.
+TEST_F(StagedRules, dormant_troops_are_uncensused_like_the_staged_report)
+{
+    ModesCtfWorld fx(kTdmLevelA);
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_living(FAMILY_ORC, 1, 300, 300);
+    walker* const delayed = fx.spawn_living(FAMILY_ORC, 2, 400, 300);
+    ASSERT_NE(delayed, nullptr);
+    delayed->set_spawn_delay(120);
+    delayed->set_dormant(true);
+    fx.world().ctf_requested_strip_scenario_troops = 0;
+    fx.world().ctf_requested_team_count = 0;
+
+    stage_init(fx);
+    ASSERT_TRUE(fx.world().mode.active);
+    EXPECT_EQ(0b0011, fx.var(kTdmSlots.mask))
+        << "a delayed-spawn team the preview cannot see must not author the "
+           "domain";
+
+    // The identical cohort AWAKE authors team 2 — the only difference is
+    // dormancy, so this pins the carve-out rather than an empty world.
+    ModesCtfWorld awake(kTdmLevelA);
+    awake.spawn_anchor(0, 96, 96);
+    awake.spawn_living(FAMILY_ORC, 1, 300, 300);
+    awake.spawn_living(FAMILY_ORC, 2, 400, 300);
+    awake.world().ctf_requested_strip_scenario_troops = 0;
+    awake.world().ctf_requested_team_count = 0;
+
+    stage_init(awake);
+    ASSERT_TRUE(awake.world().mode.active);
+    EXPECT_EQ(0b0111, awake.var(kTdmSlots.mask))
+        << "an awake troop on the same team authors normally";
+}
+
 TEST_F(StagedRules, onslaught_domain_and_generator_fills)
 {
     ModesCtfWorld fx(kOnsLevelB);

@@ -75,6 +75,7 @@
 ---@field do_bounce fun(self: og.Walker): integer # do_bounce lives on weap.
 ---@field do_heal_effects fun(self: og.Walker, healer: og.Walker?, target: og.Walker, amount: integer)
 ---@field do_summon fun(self: og.Walker, fam: integer, life: integer): og.Walker?
+---@field dormant fun(self: og.Walker): boolean
 ---@field drawcycle fun(self: og.Walker): integer
 ---@field facing fun(self: og.Walker, x: integer, y: integer): integer
 ---@field family fun(self: og.Walker): integer
