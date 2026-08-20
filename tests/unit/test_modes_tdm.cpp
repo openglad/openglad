@@ -1152,18 +1152,19 @@ namespace {
 // the slots its init writes — no mode impl runs on this level, so the
 // whole var file belongs to the probe.
 inline constexpr int kHelperProbeLevel = 9091;
-inline constexpr int kProbeSlotCount = 60;
 inline constexpr int kProbeSlotMatched = 61;
 inline constexpr int kProbeSlotConstant = 62;
 inline constexpr int kProbeSlotMask = 63;
 
 // RAII registration of the helper probe, under the RULES pack id so
-// og.use resolves the mounted mode_core module. Init reports
-// core.team_count_request() and feeds the RAW og.match_setting value to
-// core.activate_teams over the sparse authored mask 13 = {0, 2, 3} (the
-// same domain the 9090 probe pins). The dtor swaps in an empty chunk so
-// no later world in this binary re-registers level 9091 (the next test's
-// mount clears the registry outright).
+// og.use resolves the mounted mode_core module. Init classifies the FAIR
+// sentinel off the strip field (matched-teams D29 — matching never rides
+// the team count; core.team_count_request, the last knob-reading rule
+// twin, is retired with the plan phase) and feeds the RAW
+// og.match_setting count to core.activate_teams over the sparse authored
+// mask 13 = {0, 2, 3} (the same domain the 9090 probe pins). The dtor
+// swaps in an empty chunk so no later world in this binary re-registers
+// level 9091 (the next test's mount clears the registry outright).
 struct TeamCountProbeScript
 {
     TeamCountProbeScript()
@@ -1173,8 +1174,8 @@ struct TeamCountProbeScript
              "local core = og.use(\"mode_core\")\n"
              "og.register_level_hooks(9091, {\n"
              "  on_mode_init = function(level)\n"
-             "    local count, matched = core.team_count_request()\n"
-             "    og.mode_set(60, count)\n"
+             "    local matched =\n"
+             "        og.match_setting(\"strip_troops\") == core.MATCHED_TROOPS\n"
              "    og.mode_set(61, matched and 1 or 0)\n"
              "    og.mode_set(62, core.MATCHED_TROOPS)\n"
              "    og.mode_set(63, core.activate_teams(13,\n"
@@ -1191,75 +1192,6 @@ struct TeamCountProbeScript
 };
 
 }  // namespace
-
-TEST_F(ModesTdm, team_count_request_auto_arm_reports_no_clamp)
-{
-    TeamCountProbeScript probe;
-    ModesCtfWorld fx(kHelperProbeLevel);
-    fx.tick(1);
-
-    ASSERT_TRUE(fx.world().mode.active) << "the probe init must succeed";
-    EXPECT_EQ(0, fx.var(kProbeSlotCount))
-        << "Auto (raw 0) normalizes to count 0";
-    EXPECT_EQ(0, fx.var(kProbeSlotMatched)) << "Auto is not Matched";
-    EXPECT_EQ(13, fx.var(kProbeSlotMask))
-        << "activate_teams over raw 0 takes every authored team";
-    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
-}
-
-TEST_F(ModesTdm, team_count_request_numeric_arm_passes_through)
-{
-    TeamCountProbeScript probe;
-    ModesCtfWorld fx(kHelperProbeLevel);
-    fx.world().ctf_requested_team_count = 2;
-    fx.tick(1);
-
-    ASSERT_TRUE(fx.world().mode.active) << "the probe init must succeed";
-    EXPECT_EQ(2, fx.var(kProbeSlotCount)) << "2..4 pass through unchanged";
-    EXPECT_EQ(0, fx.var(kProbeSlotMatched)) << "a numeric request is not Matched";
-    EXPECT_EQ(5, fx.var(kProbeSlotMask))
-        << "activate_teams(13, 2) takes the first two authored teams {0, 2}";
-    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
-}
-
-TEST_F(ModesTdm, team_count_request_matched_arm_rides_the_troops_field)
-{
-    TeamCountProbeScript probe;
-    ModesCtfWorld fx(kHelperProbeLevel);
-    fx.arm_matched();  // TROOPS: FAIR — the team count stays Auto
-    fx.tick(1);
-
-    ASSERT_TRUE(fx.world().mode.active) << "the probe init must succeed";
-    EXPECT_EQ(0, fx.var(kProbeSlotCount))
-        << "an Auto team count normalizes to count 0 regardless of matching";
-    EXPECT_EQ(1, fx.var(kProbeSlotMatched))
-        << "the matched flag is derived from strip_troops == FAIR (D29)";
-    EXPECT_EQ(og::sim::kTroopsMatched, fx.var(kProbeSlotConstant))
-        << "core.MATCHED_TROOPS must equal the C++ sentinel";
-    EXPECT_EQ(13, fx.var(kProbeSlotMask))
-        << "the strip field feeds no mask — activation is Auto's (D29)";
-    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
-}
-
-TEST_F(ModesTdm, team_count_request_matched_composes_with_a_numeric_count)
-{
-    // The old TEAMS: Match sentinel could not coexist with a numeric count;
-    // the TROOPS: FAIR trigger is orthogonal to it by construction (D25) —
-    // the count clamps the mask exactly as unmatched 2 does while the
-    // matched flag still reports the power request.
-    TeamCountProbeScript probe;
-    ModesCtfWorld fx(kHelperProbeLevel);
-    fx.arm_matched();
-    fx.world().ctf_requested_team_count = 2;
-    fx.tick(1);
-
-    ASSERT_TRUE(fx.world().mode.active) << "the probe init must succeed";
-    EXPECT_EQ(2, fx.var(kProbeSlotCount)) << "the numeric count passes through";
-    EXPECT_EQ(1, fx.var(kProbeSlotMatched)) << "matched rides the troops field";
-    EXPECT_EQ(5, fx.var(kProbeSlotMask))
-        << "activate_teams(13, 2) takes the first two authored teams {0, 2}";
-    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
-}
 
 TEST_F(ModesTdm, matched_mask_equals_own_mask_at_every_numeric_count)
 {
@@ -1290,6 +1222,8 @@ TEST_F(ModesTdm, matched_mask_equals_own_mask_at_every_numeric_count)
         EXPECT_EQ(own_mask, fair.var(kProbeSlotMask))
             << "FAIR must clamp identically to OWN at count " << count;
         EXPECT_EQ(1, fair.var(kProbeSlotMatched)) << "count " << count;
+        EXPECT_EQ(og::sim::kTroopsMatched, fair.var(kProbeSlotConstant))
+            << "core.MATCHED_TROOPS must equal the C++ sentinel";
         EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
     }
 }
@@ -1430,9 +1364,9 @@ TEST_F(ModesTdm, matched_power_metric_and_solver_arms)
         << "the TARGET latch guards SIZE too — no repeat census wrote it";
 
     // Census of a world with no has_guy walker: T = 0, all team sums 0
-    // (the headcount half of the old census — H — now lives in the plan
-    // alone: plan_activation's matched_size, pinned by the MatchPlan
-    // sweep in test_match_plan.cpp).
+    // (the headcount half of the old census — H — lives in the shared
+    // activation rule alone: match.activation's matched_size, pinned by
+    // the staged-rules suite in test_staged_rules.cpp).
     const auto census = matched_log(fx.world(), "census");
     ASSERT_EQ(6u, census.size());
     EXPECT_EQ(0, tab_int(census, 1)) << "no humans -> T = 0 (E1)";
@@ -1568,8 +1502,8 @@ TEST_F(ModesTdm, matched_census_single_team_sum_ignores_guyless_livings)
         EXPECT_EQ(0, tab_int(census, 4));
         EXPECT_EQ(0, tab_int(census, 5));
         // The one-human-team headcount rule (H = 5, guy-less Livings
-        // excluded, D34) moved into the plan: matched_size, pinned by
-        // MatchPlan.fair_matched_size_is_the_min_roster_headcount.
+        // excluded, D34) lives in match.activation: matched_size, pinned
+        // by StagedRules.fair_matched_size_is_the_min_roster_headcount.
     }
     {
         ModesCtfWorld fx(kMatchProbeLevel);
@@ -1615,9 +1549,9 @@ TEST_F(ModesTdm, matched_census_mean_and_heart_value_rank_oracle)
     const long long archmage = tab_int(census, 4);
     EXPECT_EQ((fresh + mixed + archmage) / 3, mean)
         << "T is the MEAN of the human team f-sums (D11)";
-    // H = MIN of the per-team headcounts (5, 3, 3 -> 3; D34) moved into
-    // the plan: matched_size, pinned by
-    // MatchPlan.fair_matched_size_is_the_min_roster_headcount.
+    // H = MIN of the per-team headcounts (5, 3, 3 -> 3; D34) lives in
+    // match.activation: matched_size, pinned by
+    // StagedRules.fair_matched_size_is_the_min_roster_headcount.
 
     // f-sum rank must agree with the engine's own price of the rosters.
     long long hearts[3] = {0, 0, 0};

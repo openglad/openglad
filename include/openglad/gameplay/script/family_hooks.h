@@ -24,7 +24,6 @@
 // operators.
 
 #include <openglad/core/order.h>
-#include <openglad/gameplay/mode/match_plan.h>
 
 #include <array>
 #include <cstdint>
@@ -211,31 +210,14 @@ void level_entity_death(walker* self);
 void level_entity_spawn(walker* spawned);  // sim-authored living/generator
 
 // Scripted-mode level hooks (TYPE_SCRIPTED):
-// on_mode_init(level, plan) dispatch; true iff a hook was registered for
-// this level (exact or wildcard) AND it ran without error — the mode
-// activation condition. When the level also registered on_mode_plan, the
-// plan runs FIRST (under the plan-dispatch fence, over
-// build_match_plan_inputs) and its result table is chained through the Lua
-// stack as init's second argument; a plan ERROR is the failed-init shape
-// (returns false, mode inactive, classic rules next tick). With no plan
-// hook, init receives nil — FFA/Mutant and third-party packs need no edit.
+// on_mode_init(level) dispatch; true iff a hook was registered for this
+// level (exact or wildcard) AND it ran without error — the mode activation
+// condition. Runs ONCE, at staging (mode_stage_init; the lazy tick-1 arm
+// serves un-staged worlds), in a REAL world: the hook builds its own
+// census over the live oblist/fxlist (mode_match.lua census_inputs) and
+// folds its activation decision in-body — the plan phase and its
+// marshaling layer are retired (#218 staged lobby).
 bool level_mode_init(GameWorld* world);
-// The pure PLAN phase on its own, for pre-launch preview surfaces:
-// dispatches on_mode_plan(level, inputs) for level_id (exact or -1
-// wildcard) under the plan-dispatch fence — every world og.* entry errors,
-// so the answer is a pure function of (level, inputs, manifest row) and
-// which world the serving VM happens to be bound to is irrelevant. The
-// caller builds inputs (build_match_plan_inputs on a loaded world, with
-// preview-side request/roster fields overwritten from the save or lobby).
-// nullopt when no packs are mounted, no hook is registered, the hook
-// errors (recorded in the script-host error store; a broken pack never
-// crashes the lobby) or it answers a non-table. `plan_error`, when
-// non-null, reports the dispatch-ERROR arm alone (true only when a
-// registered plan raised) so the preview can render its honest
-// MATCH RULES UNAVAILABLE line instead of a silent fallback.
-std::optional<og::sim::MatchPlanSummary> level_mode_plan(
-    int level_id, const og::sim::MatchPlanInputs& inputs,
-    bool* plan_error = nullptr);
 // on_mode_tick(level, tick) — post-act slot, called by mode_run_tick.
 void level_mode_tick(GameWorld* world);
 // on_respawn(ent) — dispatched by the respawn engine after an in-place

@@ -816,12 +816,12 @@ local function update_hud(ball)
   og.set_beacon(0, ball)
 end
 
--- The pure PLAN phase (on_mode_plan): authored domain (anchor-marker
--- teams — the versus authoring contract, read from the engine anchor
--- census), activation, per-team fills and the resolved score limit.
--- Runs under the plan-dispatch fence (no world access) at launch AND at
--- picker preview time; on_mode_init below EXECUTES the returned plan.
-local function on_mode_plan(level, inputs, row)
+-- The decide fold (#218 staged lobby — the old on_mode_plan body,
+-- verbatim, now a local consumed by on_mode_init directly): authored
+-- domain (anchor-marker teams — the versus authoring contract, read from
+-- the engine anchor census), activation, per-team fills and the resolved
+-- score limit. Pure over the census inputs; only the inputs decide.
+local function decide(level, inputs, row)
   if row == nil then
     error("soccer: no manifest row for level " .. level)
   end
@@ -837,7 +837,7 @@ local function on_mode_plan(level, inputs, row)
   -- Only TROOPS:ALL falls through to the lobby request (manifest default
   -- at Auto) over the authored anchor teams.
   local mask, starts, matched, matched_size =
-      match.plan_activation(inputs, authored_mask, row.teams or 0)
+      match.activation(inputs, authored_mask, row.teams or 0)
   local limit = T.score_limit
   if inputs.score_limit > 0 then
     limit = inputs.score_limit
@@ -846,7 +846,7 @@ local function on_mode_plan(level, inputs, row)
       limit = row.score_limit
     end
   end
-  local teams, seeded = match.plan_fills(inputs, mask, {
+  local teams, seeded = match.fills(inputs, mask, {
     matched = matched,
     matched_size = matched_size,
   })
@@ -868,22 +868,20 @@ local function on_mode_plan(level, inputs, row)
   }
 end
 
--- Lazy init, first scripted tick — EXECUTES the chained plan (activation,
--- fills and the score limit are the plan's; the world writes, strips and
--- spawns are this apply's). Raising reports the failed-init shape: the
--- engine latches inactive and classic rules own the level from the next
--- tick (the CTF discipline).
-local function on_mode_init(level, plan, row)
+-- Init (runs once, at staging): the census + the decide fold first, then
+-- the world writes, strips and spawns. Raising reports the failed-init
+-- shape: the engine latches inactive and classic rules own the level (the
+-- CTF discipline).
+local function on_mode_init(level, row)
   if row == nil then
     error("soccer: no manifest row for level " .. level)
   end
-  if plan == nil then
-    error("soccer: no match plan for level " .. level)
+  local inputs = match.census_inputs()
+  local decision = decide(level, inputs, row)
+  if not decision.starts then
+    error(decision.reason)
   end
-  if not plan.starts then
-    error(plan.reason)
-  end
-  local mask = plan.active_mask
+  local mask = decision.active_mask
   local active_count = core.mask_count(mask)
   if row.goal_rects == nil then
     error("soccer: manifest row has no goal_rects")
@@ -905,9 +903,9 @@ local function on_mode_init(level, plan, row)
   og.mode_set(S.TEAM_MASK, mask)
   og.mode_set(S.TEAM_COUNT, active_count)
 
-  -- Score limit is the PLAN's (request > manifest row > default, clamped);
-  -- the respawn/time knobs resolve here.
-  og.mode_set(S.SCORE_LIMIT, plan.score_limit)
+  -- Score limit is the decision's (request > manifest row > default,
+  -- clamped); the respawn/time knobs resolve here.
+  og.mode_set(S.SCORE_LIMIT, decision.score_limit)
   local respawn_ticks = og.match_setting("respawn_ticks")
   if respawn_ticks <= 0 then
     respawn_ticks = T.respawn_ticks
@@ -920,9 +918,9 @@ local function on_mode_init(level, plan, row)
   -- recorded engine-side) and strip inactive score teams' livings,
   -- generators and markers; roster walkers are never stripped.
   local obs = og.oblist()
-  -- FAIR banking (the plan decided matched-ness and the headcount; the
+  -- FAIR banking (the fold decided matched-ness and the headcount; the
   -- power TARGET is measured here, D24) before any squad spawn reads it.
-  match.bank_match_target(plan, obs)
+  match.bank_match_target(decision, obs)
   for k = 1, #obs do
     local w = obs[k]
     if w:dead() == 0 then
@@ -955,9 +953,9 @@ local function on_mode_init(level, plan, row)
   -- so the spawns land in the final world.
   strip.strip_authored_troops(nil)
 
-  -- Bot squads where the plan said so (the empty active teams).
+  -- Bot squads where the decision said so (the empty active teams).
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
-    local fill = plan.teams[team + 1].fill
+    local fill = decision.teams[team + 1].fill
     if fill == "bots" or fill == "matched" then
       anchors.spawn_bot_squad(team, S.ANCHOR_CURSOR)
     end
@@ -1039,11 +1037,8 @@ end
 -- authored data, read-only — not the mutable upvalue state R6 bans).
 local function make_hooks(row)
   return {
-    on_mode_plan = function(level, inputs)
-      return on_mode_plan(level, inputs, row)
-    end,
-    on_mode_init = function(level, plan)
-      on_mode_init(level, plan, row)
+    on_mode_init = function(level)
+      on_mode_init(level, row)
     end,
     on_mode_tick = function(level, tick)
       on_mode_tick(level, tick, row)

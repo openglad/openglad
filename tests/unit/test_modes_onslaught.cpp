@@ -494,10 +494,10 @@ TEST_F(ModesOnslaught, matched_request_masks_like_own_and_ignores_power)
 // TROOPS: OWN or FAIR armed but no roster deployed anywhere, TEAMS: Auto
 // still means "as many teams as the map actually has" — the authored
 // generator teams, NOT the manifest row.teams default (kOnsLevelA declares
-// teams = 2). The rule's one home is the plan phase (lib/mode_match.lua
-// plan_activation, dispatched through on_mode_plan for the preview AND
-// chained into this init at launch — the one-time C++ preview twin is
-// deleted). Only TROOPS: ALL keeps the manifest default at Auto.
+// teams = 2). The rule's one home is lib/mode_match.lua match.activation,
+// consumed by the decide fold at the top of this init (the one-time C++
+// preview twin is deleted). Only TROOPS: ALL keeps the manifest default
+// at Auto.
 TEST_F(ModesOnslaught, all_bot_own_and_fair_auto_field_every_authored_team)
 {
     auto author = [](ModesCtfWorld& fx) {

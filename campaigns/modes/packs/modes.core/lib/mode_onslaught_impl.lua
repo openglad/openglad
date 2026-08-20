@@ -638,14 +638,14 @@ local function update_hud(gen_count)
   end
 end
 
--- The pure PLAN phase (on_mode_plan): authored domain (a score team is in
--- the match when it fields a live generator or a living), activation and
--- fills — generators-only fills here (D17: no bots ever; keep_generators
--- keeps the foundries through the strip, so a count-backfilled
--- gen-authored team self-populates). Runs under the plan-dispatch fence
--- (no world access) at launch AND at picker preview time; on_mode_init
--- EXECUTES this plan.
-local function on_mode_plan(level, inputs, row)
+-- The decide fold (#218 staged lobby — the old on_mode_plan body,
+-- verbatim, now a local consumed by on_mode_init directly): authored
+-- domain (a score team is in the match when it fields a live generator or
+-- a living), activation and fills — generators-only fills here (D17: no
+-- bots ever; keep_generators keeps the foundries through the strip, so a
+-- count-backfilled gen-authored team self-populates). Pure over the
+-- census inputs; only the inputs decide.
+local function decide(level, inputs, row)
   if row == nil then
     error("onslaught: no manifest row for level " .. level)
   end
@@ -670,8 +670,8 @@ local function on_mode_plan(level, inputs, row)
   -- at Auto) over the authored generator/living teams; matched POWER is
   -- out of scope for Onslaught entirely (D17).
   local mask, starts, matched, matched_size =
-      match.plan_activation(inputs, authored_mask, row.teams or 0)
-  local teams = match.plan_fills(inputs, mask, {
+      match.activation(inputs, authored_mask, row.teams or 0)
+  local teams = match.fills(inputs, mask, {
     keep_generators = true,
     no_bots = true,
     matched = matched,
@@ -695,17 +695,15 @@ local function on_mode_plan(level, inputs, row)
   }
 end
 
--- Lazy init, first scripted tick — EXECUTES the chained plan (activation
--- is the plan's; the world writes, waypoint banking, strips and grace
--- clocks are this apply's). Raising reports the failed-init shape: the
--- engine latches inactive and classic rules own the level from the next
--- tick (the CTF discipline).
-local function on_mode_init(level, plan, row)
-  if plan == nil then
-    error("onslaught: no match plan for level " .. level)
-  end
-  if not plan.starts then
-    error(plan.reason)
+-- Init (runs once, at staging): the census + the decide fold first, then
+-- the world writes, waypoint banking, strips and grace clocks. Raising
+-- reports the failed-init shape: the engine latches inactive and classic
+-- rules own the level (the CTF discipline).
+local function on_mode_init(level, row)
+  local inputs = match.census_inputs()
+  local decision = decide(level, inputs, row)
+  if not decision.starts then
+    error(decision.reason)
   end
   -- Per-team live generator counts (the grace-clock inputs banked below).
   local obs = og.oblist()
@@ -721,11 +719,11 @@ local function on_mode_init(level, plan, row)
       end
     end
   end
-  -- FAIR banking (the plan decided matched-ness and the headcount; the
+  -- FAIR banking (the fold decided matched-ness and the headcount; the
   -- power TARGET is measured here, D24) — Onslaught fields no squads
   -- (D17), so only the shared census latch is at stake.
-  match.bank_match_target(plan, obs)
-  local mask = plan.active_mask
+  match.bank_match_target(decision, obs)
+  local mask = decision.active_mask
   og.mode_set(S.TEAM_MASK, mask)
   og.mode_set(S.TEAM_COUNT, core.mask_count(mask))
 
@@ -865,11 +863,8 @@ end
 -- authored data, read-only — not the mutable upvalue state R6 bans).
 local function make_hooks(row)
   return {
-    on_mode_plan = function(level, inputs)
-      return on_mode_plan(level, inputs, row)
-    end,
-    on_mode_init = function(level, plan)
-      on_mode_init(level, plan, row)
+    on_mode_init = function(level)
+      on_mode_init(level, row)
     end,
     on_mode_tick = on_mode_tick,
     on_respawn = on_respawn,

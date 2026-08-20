@@ -1704,6 +1704,22 @@ TEST_F(ModesSoccer, goal_kickoff_reprovisions_a_wiped_bot_team)
         << "the kickoff backstop refields the wiped team (B1)";
     EXPECT_EQ(1, alive_on_team(fx.world(), 0))
         << "a team with a live member is left alone";
+    // BOT_MARK provenance (#218 staged preview): the revive spawns go
+    // through the same add_squad_member choke point as the init squads, so
+    // every refielded bot carries the mark (mode_caps BOT_MARK_BIT).
+    int marked = 0;
+    for (const auto& uptr : fx.world().oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        if (w->team_num() != 1 || w->stats() == nullptr)
+            continue;
+        if ((w->stats()->bit_flags() & 65536) != 0)
+            ++marked;
+    }
+    EXPECT_EQ(5, marked)
+        << "every wiped-team revive spawn carries the bot mark";
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 

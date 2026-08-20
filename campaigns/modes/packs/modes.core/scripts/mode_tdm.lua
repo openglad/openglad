@@ -7,7 +7,6 @@ local levels = og.use("mode_levels")
 local tdm = og.use("mode_tdm_impl")
 
 core.register_mode(match.rows_for(levels), "tdm", {
-  on_mode_plan = tdm.on_mode_plan,
   on_mode_init = tdm.on_mode_init,
   on_mode_tick = tdm.on_mode_tick,
   on_entity_death = tdm.on_entity_death,

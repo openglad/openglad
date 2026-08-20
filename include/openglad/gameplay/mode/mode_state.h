@@ -103,11 +103,11 @@ std::uint8_t authored_team_mask(const GameWorld& world);
 // index order until the requested count (<= 0 = all authored; otherwise
 // clamped to [2, SCORE_TEAM_COUNT]). Shared by the lobby's selectable-team
 // mask, the og.effective_team_mask binding, and the VIEW LEVEL preview's
-// no-plan fallback (a scripted level with no registered on_mode_plan, or no
-// packs mounted). Deliberately count-only (D29): the roster-aware
+// count-only fallback (a scripted level with no staged world or no
+// on_mode_init hook). Deliberately count-only (D29): the roster-aware
 // activation rule lives in mode Lua alone (lib/mode_match.lua
-// plan_activation, evaluated through hooks::level_mode_plan) — its one-time
-// C++ twin, roster_effective_team_mask, is deleted (issue #218).
+// match.activation, consumed by each mode's decide fold at staged init) —
+// its one-time C++ twin, roster_effective_team_mask, is deleted (#218).
 std::uint8_t effective_team_mask(std::uint8_t authored, int requested) noexcept;
 
 // Canonical color name for a score team ("RED"/"GREEN"/"BLUE"/"YELLOW")

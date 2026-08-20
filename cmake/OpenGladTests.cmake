@@ -892,25 +892,16 @@ og_add_unit_group(og_unit_mode FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_mode_tick.cpp
 )
 
-# The plan-phase suites (engine seam, agreement matrix, preview report)
-# run ~100 real world inits; under coverage instrumentation that plus the
-# mode suites overran og_unit_modes' 180 s ctest ceiling, so they live in
-# their own group — parallel with, not on top of, the mode suites.
-og_add_unit_group(og_unit_matchplan FILES
-    ${CMAKE_SOURCE_DIR}/tests/unit/test_match_plan.cpp
-    ${CMAKE_SOURCE_DIR}/tests/unit/test_scenario_plan_report.cpp
-)
-target_compile_definitions(og_unit_matchplan PRIVATE
-    OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/modes/packs/modes.core"
-)
-
-# Staged-lobby MatchStage suites (#218): every case is a full dispose-and-
-# rebuild stage (real level load + per-world Lua VM), the same cost class
-# that forced og_unit_matchplan's own group — kept separate for the 180 s
-# coverage ceiling. Absorbs the renamed plan suites when the plan phase
-# retires.
+# Staged-lobby suites (#218): every MatchStage case is a full dispose-and-
+# rebuild stage (real level load + per-world Lua VM) and the staged
+# rule/report suites run ~100 real world inits — the cost class that
+# overran og_unit_modes' 180 s coverage ceiling, so they live in their own
+# group, parallel with (not on top of) the mode suites. Absorbed the
+# retired plan-phase group (og_unit_matchplan) when the plan phase died.
 og_add_unit_group(og_unit_stage FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_match_stage.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_staged_report.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_staged_rules.cpp
 )
 target_compile_definitions(og_unit_stage PRIVATE
     OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/modes/packs/modes.core"

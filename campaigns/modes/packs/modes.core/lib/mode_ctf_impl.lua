@@ -715,13 +715,14 @@ end
 -- Init (transcribes ctf_initialize_for_level)
 -- ---------------------------------------------------------------------------
 
--- The pure PLAN phase (on_mode_plan): the first-flag-per-team fold over
--- the raw flag rows — out-of-range and surplus rows decide nothing (the
--- apply scan below performs those kills), and the first KEPT flag with a
--- stats level above 1 sets the per-map capture limit. Runs under the
--- plan-dispatch fence (no world access) at launch AND at picker preview
--- time; on_mode_init EXECUTES this plan.
-local function on_mode_plan(level, inputs)
+-- The decide fold (#218 staged lobby — the old on_mode_plan body,
+-- verbatim, now a local consumed by on_mode_init directly): the
+-- first-flag-per-team fold over the raw flag rows — out-of-range and
+-- surplus rows decide nothing (the apply scan below performs those
+-- kills), and the first KEPT flag with a stats level above 1 sets the
+-- per-map capture limit. Pure over the census inputs; only the inputs
+-- decide.
+local function decide(level, inputs)
   local authored_mask = 0
   local map_capture_limit = 0
   for k = 1, #inputs.flags do
@@ -743,14 +744,14 @@ local function on_mode_plan(level, inputs)
   -- requested count over the authored flag teams (no manifest default —
   -- the verified per-mode Auto asymmetry).
   local mask, starts, matched, matched_size =
-      match.plan_activation(inputs, authored_mask, 0)
+      match.activation(inputs, authored_mask, 0)
   local limit = T.capture_limit
   if inputs.score_limit > 0 then
     limit = inputs.score_limit
   elseif map_capture_limit > 0 then
     limit = map_capture_limit
   end
-  local teams = match.plan_fills(inputs, mask, {
+  local teams = match.fills(inputs, mask, {
     matched = matched,
     matched_size = matched_size,
   })
@@ -772,18 +773,22 @@ local function on_mode_plan(level, inputs)
   }
 end
 
--- Lazy init, first scripted tick — EXECUTES the chained plan. Raising
--- reports the failed-init shape (fewer than two flag teams): the engine
--- latches inactive and classic rules own the level from the NEXT tick —
--- the surplus-flag kills already made stand, exactly like the C++ early
--- return.
-local function on_mode_init(level, plan)
+-- Init (runs once, at staging). Raising reports the failed-init shape
+-- (fewer than two flag teams): the engine latches inactive and classic
+-- rules own the level — the surplus-flag kills already made stand,
+-- exactly like the C++ early return.
+local function on_mode_init(level)
+  -- The census + the decide fold FIRST, over the pre-kill world (the fold
+  -- and the kill scan implement the same first-flag-per-team rule over
+  -- the same fx order, so they agree by construction).
+  local inputs = match.census_inputs()
+  local decision = decide(level, inputs)
   -- Scan authored flags and control points (fxlist, list order) — pure
-  -- EXECUTION of the plan's fold: the same first-flag-per-team rule kills
-  -- the surplus and banks FLAG_ENTITY/HOME/POS; the domain and the
-  -- capture limit were already decided in on_mode_plan over the same
-  -- rows. The shipped maps author wire bytes 13/14, which this pack's
-  -- families claim outright since the core CTF retirement.
+  -- EXECUTION of the decision's fold: the same first-flag-per-team rule
+  -- kills the surplus and banks FLAG_ENTITY/HOME/POS; the domain and the
+  -- capture limit were already decided in the fold over the same rows.
+  -- The shipped maps author wire bytes 13/14, which this pack's families
+  -- claim outright since the core CTF retirement.
   local flag_family = og.family_id("treasure", "modes:flag")
   local point_family = og.family_id("treasure", "modes:waypoint")
   local authored_mask = 0
@@ -823,22 +828,18 @@ local function on_mode_init(level, plan)
   end
   og.mode_set(S.CP_COUNT, cp_count)
 
-  if plan == nil then
-    error("ctf: no match plan for level " .. level)
-  end
   -- The fewer-than-two refusal is raised HERE, after the surplus-flag
   -- kills above, so a failed init leaves them standing exactly like the
-  -- C++ early return. Activation is the PLAN's (on_mode_plan above);
-  -- anchors were scanned engine-side before this hook (dead markers
-  -- included).
-  if not plan.starts then
-    error(plan.reason)
+  -- C++ early return. Activation is the decide fold's; anchors were
+  -- scanned engine-side before this hook (dead markers included).
+  if not decision.starts then
+    error(decision.reason)
   end
   local obs = og.oblist()
-  -- FAIR banking (the plan decided matched-ness and the headcount; the
+  -- FAIR banking (the fold decided matched-ness and the headcount; the
   -- power TARGET is measured here, D24) before any squad spawn reads it.
-  match.bank_match_target(plan, obs)
-  local mask = plan.active_mask
+  match.bank_match_target(decision, obs)
+  local mask = decision.active_mask
   og.mode_set(S.TEAM_MASK, mask)
   og.mode_set(S.TEAM_COUNT, core.mask_count(mask))
 
@@ -910,18 +911,18 @@ local function on_mode_init(level, plan)
   -- world; CTF fields no generators, so it keeps none.
   strip.strip_authored_troops(nil)
 
-  -- The capture limit is the PLAN's (explicit request > per-map flag
+  -- The capture limit is the decision's (explicit request > per-map flag
   -- level > default, clamped); the respawn delay resolves here.
-  og.mode_set(S.CAPTURE_LIMIT, plan.score_limit)
+  og.mode_set(S.CAPTURE_LIMIT, decision.score_limit)
   local respawn_ticks = og.match_setting("respawn_ticks")
   if respawn_ticks <= 0 then
     respawn_ticks = T.respawn_ticks
   end
   og.mode_set(S.RESPAWN_TICKS, respawn_ticks)
 
-  -- Bot squads where the plan said so (the empty active teams).
+  -- Bot squads where the decision said so (the empty active teams).
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
-    local fill = plan.teams[team + 1].fill
+    local fill = decision.teams[team + 1].fill
     if fill == "bots" or fill == "matched" then
       -- The one shared squad spawner (matched-teams D16), with CTF's own
       -- placer so blocked anchors still fall back to the flag-home
@@ -1063,7 +1064,6 @@ end
 return {
   S = S,
   T = T,
-  on_mode_plan = on_mode_plan,
   on_mode_init = on_mode_init,
   on_mode_tick = on_mode_tick,
   on_respawn = on_respawn,

@@ -3416,16 +3416,6 @@ int load_fenced_call(lua_State* L)
             L, "og.%s: the world API is not available during campaign hooks",
             lua_tostring(L, lua_upvalueindex(3)));
     }
-    // The plan-dispatch fence (on_mode_plan): a match plan is a pure
-    // function of its inputs table, evaluated at picker time and at launch
-    // alike, so it may never read or write the world — not even through a
-    // "read-only" binding, since the preview VM's bound world is not the
-    // previewed level.
-    if (st != nullptr && st->plan_dispatch) {
-        return luaL_error(
-            L, "og.%s: the world API is not available during match planning",
-            lua_tostring(L, lua_upvalueindex(3)));
-    }
     if (st != nullptr && st->loading) {
         return luaL_error(
             L,

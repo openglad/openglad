@@ -1,4 +1,4 @@
--- Shared match toolkit — manifest row adapter, team census, the pure PLAN-phase activation/fill rules all five mask modes apply (on_mode_plan), marker consumption, anchor-cursor placement, bot fielding with the TROOPS: FAIR power model, dead-competitor scheduling, timeout ladder (cookbook: docs/lua-classpacks-design.md §3).
+-- Shared match toolkit — manifest row adapter, the staged-init census (census_inputs) and the shared activation/fill rules all five mask modes apply at on_mode_init, marker consumption, anchor-cursor placement, bot fielding with the TROOPS: FAIR power model, dead-competitor scheduling, timeout ladder (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C
@@ -168,7 +168,7 @@ end
 -- predicate — every g_/stat read stays behind the has_guy guard). Returns
 -- (T, per-team sums); T = 0 means no human power server-side. The
 -- headcount half of the old census (H, the D34 min-roster rule) now lives
--- in the PLAN alone (plan_activation's matched_size below) — no residual
+-- in the DECISION alone (activation's matched_size below) — no residual
 -- twin of that rule survives here.
 local function census_power(obs)
   local sums = { 0, 0, 0, 0 }
@@ -267,17 +267,16 @@ local function store_plan(team, level, up)
   og.mode_set(MATCHED.PLAN, plan)
 end
 
--- Apply-side half of the FAIR census split (D15/D24): the PLAN decided
--- matched-ness and the headcount (plan.matched_size, the D34 min-roster
--- rule), and every mode's on_mode_init banks them here; the power TARGET
--- stays a launch-time measurement because bot strength is measure-and-
--- solve by design (D24) and is never claimed by the preview. Latched
--- through MATCHED.TARGET so mid-match spawns never re-census the live
--- battle. The has_guy census is immune to the troops strip (authored
--- troops carry no guy record) and the roster is already in the oblist
--- (spawn_team_from_save precedes the first tick).
-local function bank_match_target(plan, obs)
-  if not plan.matched then
+-- Apply-side half of the FAIR census split (D15/D24): each mode's decide
+-- fold settled matched-ness and the headcount (decision.matched_size, the
+-- D34 min-roster rule), and every mode's on_mode_init banks them here; the
+-- power TARGET stays an init-time measurement because bot strength is
+-- measure-and-solve by design (D24). Latched through MATCHED.TARGET so
+-- mid-match spawns never re-census the live battle. The has_guy census is
+-- immune to the troops strip (authored troops carry no guy record) and the
+-- roster is already in the oblist (spawn_team_from_save precedes init).
+local function bank_match_target(decision, obs)
+  if not decision.matched then
     return
   end
   if og.mode_get(MATCHED.TARGET) ~= 0 then
@@ -285,7 +284,7 @@ local function bank_match_target(plan, obs)
   end
   local target = census_power(obs)
   og.mode_set(MATCHED.TARGET, og.min(target, TARGET_CAP))
-  og.mode_set(MATCHED.SIZE, plan.matched_size)
+  og.mode_set(MATCHED.SIZE, decision.matched_size)
 end
 
 -- Per-member spawn level (§5.4): a stored plan answers L (or L + 1 for the
@@ -305,13 +304,75 @@ local function bot_level_for(team, index)
 end
 
 -- ---------------------------------------------------------------------------
--- The PLAN phase (on_mode_plan) — pure helpers over the inputs census
+-- The staged-init census and the shared activation/fill rules
 -- ---------------------------------------------------------------------------
 
--- Team activation over the plan inputs, the shared ruling all five mask
--- modes apply (issue #218): the ONE copy of the rule, evaluated at launch
--- (chained into on_mode_init) and at picker preview time alike, under the
--- plan-dispatch fence (no world access — only the inputs decide).
+-- The init-time census (#218 staged lobby): the identical inputs shape the
+-- retired C++ plan census produced (match_plan.cpp), rebuilt from the LIVE
+-- world at the top of every on_mode_init. Under staging init runs ONCE per
+-- stage in a REAL world — the census IS the world, so no marshaling layer
+-- survives. Live livings split by has_guy, live generators, raw flag rows
+-- in fx order (out-of-range and surplus included — the fold decides), the
+-- engine anchor counts (banked by mode_stage_init before this hook, dead
+-- markers included) and the four request knobs.
+local function census_inputs()
+  local inputs = {
+    team_count = og.match_setting("team_count"),
+    strip_troops = og.match_setting("strip_troops"),
+    score_limit = og.match_setting("score_limit"),
+    respawn_ticks = og.match_setting("respawn_ticks"),
+    teams = {},
+    flags = {},
+  }
+  for team = 0, C.SCORE_TEAM_COUNT - 1 do
+    inputs.teams[team + 1] = {
+      anchors = og.respawn_anchor_count(team),
+      roster = 0,
+      npcs = 0,
+      generators = 0,
+    }
+  end
+  local obs = og.oblist()
+  for k = 1, #obs do
+    local w = obs[k]
+    if w:dead() == 0 then
+      local team = w:team_num()
+      if team < C.SCORE_TEAM_COUNT then
+        local trow = inputs.teams[team + 1]
+        local order = w:order()
+        if order == C.ORDER_LIVING then
+          if w:has_guy() then
+            trow.roster = trow.roster + 1
+          else
+            trow.npcs = trow.npcs + 1
+          end
+        elseif order == C.ORDER_GENERATOR then
+          trow.generators = trow.generators + 1
+        end
+      end
+    end
+  end
+  local flag_family = og.family_id("treasure", "modes:flag")
+  local fxlist = og.fxlist()
+  for k = 1, #fxlist do
+    local e = fxlist[k]
+    if e:dead() == 0 then
+      if e:order() == C.ORDER_TREASURE then
+        if e:family() == flag_family then
+          inputs.flags[#inputs.flags + 1] = {
+            team = e:team_num(),
+            level = e:s_level(),
+          }
+        end
+      end
+    end
+  end
+  return inputs
+end
+
+-- Team activation over the census inputs, the shared ruling all five mask
+-- modes apply (issue #218): the ONE copy of the rule, consumed by each
+-- mode's decide fold at the top of on_mode_init (only the inputs decide).
 -- Precedence, in evaluation order:
 --
 --   TROOPS: ALL               the call site's requested activation stands:
@@ -346,7 +407,7 @@ end
 -- matched_size is the D34 headcount rule — one roster team = its deployed
 -- count, several = the MIN across them, authored or not (mirroring the
 -- census, which prices every has_guy walker on a score team).
-local function plan_activation(inputs, authored_mask, auto_default)
+local function activation(inputs, authored_mask, auto_default)
   local matched = false
   local matched_size = 0
   if inputs.strip_troops == core.MATCHED_TROOPS then
@@ -394,20 +455,18 @@ local function plan_activation(inputs, authored_mask, auto_default)
   return mask, core.mask_count(mask) >= 2, matched, matched_size
 end
 
--- Per-team fill rows for the plan: what fields each team once the apply
--- has consumed markers, stripped and backfilled — precomputed from the
--- same counts the strips reduce to (under strip-on only has_guy walkers
--- survive, mode_strip; under KEEP an active team keeps roster + npcs), so
--- the apply spawns exactly where a row says "bots"/"matched" and the
--- preview can say so before launch. opts:
+-- Per-team fill rows: what fields each team once the apply has consumed
+-- markers, stripped and backfilled — precomputed from the same counts the
+-- strips reduce to (under strip-on only has_guy walkers survive,
+-- mode_strip; under KEEP an active team keeps roster + npcs), so the
+-- apply spawns exactly where a row says "bots"/"matched". opts:
 --   keep_generators   (onslaught) generators survive the strip
 --   no_bots           (onslaught D17) never field a squad
---   matched, matched_size   plan_activation's answers (the FAIR seam)
--- Returns (teams, wants_bots): teams is the plan's [1..4] row array
--- ({active, fill, count}); wants_bots reports any "bots"/"matched" row —
--- soccer/basketball feed it to plan.seeded_squads, their squad classes
--- being drawn at the first spawn (mode_anchors squad_code).
-local function plan_fills(inputs, active_mask, opts)
+--   matched, matched_size   activation's answers (the FAIR seam)
+-- Returns (teams, wants_bots): teams is the decision's [1..4] row array
+-- ({active, fill, count}); wants_bots reports any "bots"/"matched" row
+-- (squad classes are drawn at spawn — mode_anchors squad_code).
+local function fills(inputs, active_mask, opts)
   -- Every shipped squad table fields five bots (D35 soldier-first); a
   -- matched squad truncates to the headcount prefix (D39).
   local squad_size = 5
@@ -931,8 +990,9 @@ return {
   census_power = census_power,
   solve_matched_levels = solve_matched_levels,
   bot_level_for = bot_level_for,
-  plan_activation = plan_activation,
-  plan_fills = plan_fills,
+  census_inputs = census_inputs,
+  activation = activation,
+  fills = fills,
   bank_match_target = bank_match_target,
   consume_markers = consume_markers,
   strip_inactive_teams = strip_inactive_teams,

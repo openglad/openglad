@@ -65,12 +65,12 @@ end
 -- Init
 -- ---------------------------------------------------------------------------
 
--- The pure PLAN phase (on_mode_plan): authored domain (anchor teams plus
--- teams fielding a live Living — the old census_mask rule over the plan
--- inputs), activation, fills and the resolved score limit. Runs under the
--- plan-dispatch fence (no world access) at launch AND at picker preview
--- time; on_mode_init EXECUTES this plan.
-local function on_mode_plan(level, inputs)
+-- The decide fold (#218 staged lobby — the old on_mode_plan body,
+-- verbatim, now a local consumed by on_mode_init directly): authored
+-- domain (anchor teams plus teams fielding a live Living — the old
+-- census_mask rule over the census inputs), activation, fills and the
+-- resolved score limit. Pure over the inputs; only the inputs decide.
+local function decide(level, inputs)
   local authored_mask = 0
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
     local trow = inputs.teams[team + 1]
@@ -91,11 +91,11 @@ local function on_mode_plan(level, inputs)
   -- directive); under TROOPS:ALL the raw lobby request over the authored
   -- teams (no manifest default — the verified per-mode Auto asymmetry).
   local mask, starts, matched, matched_size =
-      match.plan_activation(inputs, authored_mask, 0)
+      match.activation(inputs, authored_mask, 0)
   local row = levels.levels[level]
   local limit = match.resolve_limit(row, "score_limit", inputs.score_limit,
                                     T.score_limit)
-  local teams = match.plan_fills(inputs, mask, {
+  local teams = match.fills(inputs, mask, {
     matched = matched,
     matched_size = matched_size,
   })
@@ -117,21 +117,19 @@ local function on_mode_plan(level, inputs)
   }
 end
 
--- Lazy init, first scripted tick — EXECUTES the chained plan (activation,
--- fills and the score limit are the plan's; the world writes, strips and
--- spawns are this apply's).
-local function on_mode_init(level, plan)
-  if plan == nil then
-    error("tdm: no match plan for level " .. level)
-  end
-  if not plan.starts then
-    error(plan.reason)
+-- Init (runs once, at staging): the census + the decide fold first, then
+-- the world writes, strips and spawns.
+local function on_mode_init(level)
+  local inputs = match.census_inputs()
+  local decision = decide(level, inputs)
+  if not decision.starts then
+    error(decision.reason)
   end
   local obs = og.oblist()
-  -- FAIR banking (the plan decided matched-ness and the headcount; the
+  -- FAIR banking (the fold decided matched-ness and the headcount; the
   -- power TARGET is measured here, D24) before any squad spawn reads it.
-  match.bank_match_target(plan, obs)
-  local mask = plan.active_mask
+  match.bank_match_target(decision, obs)
+  local mask = decision.active_mask
   og.mode_set(S.TEAM_MASK, mask)
   match.consume_markers(obs, mask)
   match.strip_inactive_teams(obs, mask)
@@ -139,10 +137,10 @@ local function on_mode_init(level, plan)
   -- so the spawns land in the final world.
   strip.strip_authored_troops(nil)
 
-  -- Score limit is the PLAN's (request > manifest row > default, clamped);
-  -- the time/respawn knobs resolve here.
+  -- Score limit is the decision's (request > manifest row > default,
+  -- clamped); the time/respawn knobs resolve here.
   local row = levels.levels[level]
-  og.mode_set(S.SCORE_LIMIT, plan.score_limit)
+  og.mode_set(S.SCORE_LIMIT, decision.score_limit)
   local time_limit = match.resolve_limit(row, "time_limit", 0,
                                          T.time_limit_ticks)
   og.mode_set(S.TIME_LIMIT, time_limit)
@@ -152,9 +150,9 @@ local function on_mode_init(level, plan)
   end
   og.mode_set(S.RESPAWN_TICKS, respawn_ticks)
 
-  -- Bot squads where the plan said so (the empty active teams).
+  -- Bot squads where the decision said so (the empty active teams).
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
-    local fill = plan.teams[team + 1].fill
+    local fill = decision.teams[team + 1].fill
     if fill == "bots" or fill == "matched" then
       match.spawn_bots(team, T.bot_squad, S.ANCHOR_CURSOR)
     end
@@ -439,7 +437,6 @@ end
 return {
   S = S,
   T = T,
-  on_mode_plan = on_mode_plan,
   on_mode_init = on_mode_init,
   on_mode_tick = on_mode_tick,
   on_entity_death = on_entity_death,

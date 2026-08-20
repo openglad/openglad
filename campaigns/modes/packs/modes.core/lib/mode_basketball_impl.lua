@@ -2251,12 +2251,12 @@ local function spawn_hoops()
   end
 end
 
--- The pure PLAN phase (on_mode_plan): authored domain (anchor-marker
--- teams — the versus authoring contract, read from the engine anchor
--- census), activation, per-team fills and the resolved score limit.
--- Runs under the plan-dispatch fence (no world access) at launch AND at
--- picker preview time; on_mode_init below EXECUTES the returned plan.
-local function on_mode_plan(level, inputs, row)
+-- The decide fold (#218 staged lobby — the old on_mode_plan body,
+-- verbatim, now a local consumed by on_mode_init directly): authored
+-- domain (anchor-marker teams — the versus authoring contract, read from
+-- the engine anchor census), activation, per-team fills and the resolved
+-- score limit. Pure over the census inputs; only the inputs decide.
+local function decide(level, inputs, row)
   if row == nil then
     error("basketball: no manifest row for level " .. level)
   end
@@ -2271,10 +2271,10 @@ local function on_mode_plan(level, inputs, row)
   -- TEAMS: Auto = the authored count (2026-08-18 directive); only under
   -- TROOPS:ALL is the manifest team count the default request.
   local mask, starts, matched, matched_size =
-      match.plan_activation(inputs, authored_mask, row.teams or 0)
+      match.activation(inputs, authored_mask, row.teams or 0)
   local limit = match.resolve_limit(row, "score_limit", inputs.score_limit,
                                     T.score_limit)
-  local teams, seeded = match.plan_fills(inputs, mask, {
+  local teams, seeded = match.fills(inputs, mask, {
     matched = matched,
     matched_size = matched_size,
   })
@@ -2296,22 +2296,20 @@ local function on_mode_plan(level, inputs, row)
   }
 end
 
--- Lazy init, first scripted tick — EXECUTES the chained plan (activation,
--- fills and the score limit are the plan's; the world writes, strips and
--- spawns are this apply's). Raising reports the failed-init shape: the
--- engine latches inactive and classic rules own the level from the next
--- tick (the CTF discipline).
-local function on_mode_init(level, plan, row)
+-- Init (runs once, at staging): the census + the decide fold first, then
+-- the world writes, strips and spawns. Raising reports the failed-init
+-- shape: the engine latches inactive and classic rules own the level (the
+-- CTF discipline).
+local function on_mode_init(level, row)
   if row == nil then
     error("basketball: no manifest row for level " .. level)
   end
-  if plan == nil then
-    error("basketball: no match plan for level " .. level)
+  local inputs = match.census_inputs()
+  local decision = decide(level, inputs, row)
+  if not decision.starts then
+    error(decision.reason)
   end
-  if not plan.starts then
-    error(plan.reason)
-  end
-  local mask = plan.active_mask
+  local mask = decision.active_mask
   local active_count = core.mask_count(mask)
   if row.hoops == nil then
     error("basketball: manifest row has no hoops")
@@ -2339,9 +2337,9 @@ local function on_mode_init(level, plan, row)
   og.mode_set(S.JUMP_POS, core.pos_pack(row.jump_ball.x, row.jump_ball.y))
   og.mode_set(S.TEAM_MASK, mask)
   og.mode_set(S.TEAM_COUNT, active_count)
-  -- Score limit is the PLAN's (request > manifest row > default, clamped);
-  -- the respawn/time knobs resolve here.
-  og.mode_set(S.SCORE_LIMIT, plan.score_limit)
+  -- Score limit is the decision's (request > manifest row > default,
+  -- clamped); the respawn/time knobs resolve here.
+  og.mode_set(S.SCORE_LIMIT, decision.score_limit)
   local respawn_ticks = og.match_setting("respawn_ticks")
   if respawn_ticks <= 0 then
     respawn_ticks = T.respawn_ticks
@@ -2354,15 +2352,15 @@ local function on_mode_init(level, plan, row)
   -- request — all BEFORE the plan's squad fills so the spawns land in the
   -- final world.
   local obs = og.oblist()
-  -- FAIR banking (the plan decided matched-ness and the headcount; the
+  -- FAIR banking (the fold decided matched-ness and the headcount; the
   -- power TARGET is measured here, D24) before any squad spawn reads it.
-  match.bank_match_target(plan, obs)
+  match.bank_match_target(decision, obs)
   match.consume_markers(obs, mask)
   match.strip_inactive_teams(obs, mask)
   strip.strip_authored_troops(nil)
-  -- Bot squads where the plan said so (the empty active teams).
+  -- Bot squads where the decision said so (the empty active teams).
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
-    local fill = plan.teams[team + 1].fill
+    local fill = decision.teams[team + 1].fill
     if fill == "bots" or fill == "matched" then
       anchors.spawn_bot_squad(team, S.ANCHOR_CURSOR)
     end
@@ -2458,11 +2456,8 @@ end
 -- authored data, read-only — not the mutable upvalue state R6 bans).
 local function make_hooks(row)
   return {
-    on_mode_plan = function(level, inputs)
-      return on_mode_plan(level, inputs, row)
-    end,
-    on_mode_init = function(level, plan)
-      on_mode_init(level, plan, row)
+    on_mode_init = function(level)
+      on_mode_init(level, row)
     end,
     on_mode_tick = function(level, tick)
       on_mode_tick(level, tick, row)
