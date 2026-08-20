@@ -3053,7 +3053,7 @@ constexpr std::int32_t kBotMarkBit = 65536;
 
 // The shared MATCHED header-band mode var (lib/mode_match.lua MATCHED.SIZE,
 // slot 5, mode-neutral by convention): non-zero exactly when the FAIR
-// census ran with a roster, banked at staged init — the plan_fills rule
+// census ran with a roster, banked at staged init — the match.fills rule
 // "matched with zero headcount is the plain squad" read back as a fact.
 constexpr std::size_t kModeVarMatchedSize = 5;
 
@@ -3293,7 +3293,7 @@ ScenarioRosterReport build_scenario_roster_report(
                     const bool any = company[ti] > 0 || troops[ti] > 0 ||
                         bots[ti] > 0 || generators[ti] > 0;
                     report.team_active[ti] = any;
-                    // The plan_fills display priority, read as facts: a
+                    // The match.fills display priority, read as facts: a
                     // mixed company+troops team labels COMPANY exactly as
                     // the plan did.
                     if (company[ti] > 0)

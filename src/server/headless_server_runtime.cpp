@@ -183,6 +183,7 @@ namespace og::server {
 
 void spawn_team_from_save(GameWorld& world, const SaveData& save)
 {
+    // Cycle through the team list ..
     for (const auto& member : save.team_list)
     {
         if (!member)
@@ -201,6 +202,7 @@ void spawn_team_from_save(GameWorld& world, const SaveData& save)
         if (created == nullptr || created->myguy == nullptr)
             continue;
 
+        // Clear the new guy's battle data
         clear_battle_stats(*created->myguy);
 
         // Start markers are team-owned. A missing/exhausted exact marker
@@ -222,6 +224,7 @@ void spawn_team_from_save(GameWorld& world, const SaveData& save)
         }
         else
         {
+            // Scatter the overflowing characters..
             created->teleport();
         }
         // Record the level-entry spawn point (the classic respawn feature
@@ -231,6 +234,7 @@ void spawn_team_from_save(GameWorld& world, const SaveData& save)
                                  static_cast<std::uint8_t>(created->floor()));
     }
 
+    // Destroy all player markers (by setting them to dead)
     while (walker* marker = find_first_of(
                world,
                Order::Special,
