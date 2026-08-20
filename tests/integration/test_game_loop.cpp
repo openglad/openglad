@@ -36,6 +36,7 @@
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/platform/local_transport_shadow.h>
 #include <openglad/resources/save_data.h>
+#include <openglad/server/match_stage.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/interface/input.h>
 #include <openglad/gameplay/walker.h>
@@ -955,6 +956,169 @@ TEST(GameLoop, local_transport_shadow_seeds_replay_arm_into_server_screen)
     og::runtime::clear_local_transport_shadow(gameplay_session);
     game_screen->world().delete_objects();
     save.reset();
+}
+
+namespace {
+
+// One-soldier lobby inputs for `scen_num`, the minimal stageable key.
+og::server::MatchStageInputs make_gladiator_stage_inputs(std::int16_t scen_num)
+{
+    og::sim::LobbyCharacterData character;
+    character.guy_id = 100;
+    character.name = "Stage Soldier";
+    character.family = FAMILY_SOLDIER;
+    character.strength = 10;
+    character.dexterity = 11;
+    character.constitution = 12;
+    character.intelligence = 13;
+    character.armor = 14;
+    character.level = 3;
+    character.teamnum = 0;
+
+    og::server::MatchStageInputs inputs;
+    inputs.equivalent.current_campaign = "gladiator";
+    inputs.equivalent.scen_num = scen_num;
+    inputs.equivalent.numplayers = 1;
+    inputs.equivalent.allied_mode = 0;
+    inputs.equivalent.team_list = {
+        og::sim::LobbyCharacterSlot{.slot_index = 0u, .character = character},
+    };
+    inputs.difficulty = 1;
+    inputs.match_seed = 1234u;
+    return inputs;
+}
+
+bool world_has_living_named(const GameWorld& world, const std::string& name)
+{
+    for (const auto& entry : world.oblist)
+    {
+        const walker* const entity = entry.get();
+        if (entity == nullptr || entity->dead() ||
+            entity->query_order() != Order::Living)
+            continue;
+        if (entity->myguy != nullptr && entity->myguy->name == name)
+            return true;
+        if (entity->stats() != nullptr && entity->stats()->name == name)
+            return true;
+    }
+    return false;
+}
+
+// Load `scen_num` into the display screen through the save0 round-trip.
+void load_display_level_for_stage_test(screen& game_screen,
+                                       std::int16_t scen_num)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SaveData& save = game_screen.save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.current_levels["gladiator"] = scen_num;
+    save.scen_num = scen_num;
+    save.numplayers = 1;
+    ASSERT_TRUE(save.save("save0"));
+    ASSERT_NE(0, load_saved_game("save0", &game_screen));
+}
+
+} // namespace
+
+// #218 web-jitter regression: GO can consume a start config that names
+// a DIFFERENT level than the staged world (the emscripten jitter-capture
+// profile overrides scen_num AFTER the lobby staged). Adopting that stage is
+// a guaranteed soft-lock — the display runs one map, the authority another,
+// every full-grid keyframe is rejected (size mismatch) and the client
+// fatally desyncs into the "Connection Lost" popup. The install must detect
+// the identity mismatch, dispose the stage, and take the legacy
+// display-seed path, which cannot diverge.
+TEST(GameLoop, local_transport_shadow_rejects_stage_for_different_level)
+{
+    trace_clear();
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    load_display_level_for_stage_test(*game_screen, 2);
+
+    // The lobby staged scen 1; the launch config (already applied to the
+    // display save above) names scen 2.
+    og::server::MatchStageConfig stage_config;
+    stage_config.networked = false;
+    og::server::MatchStage stage(stage_config);
+    stage.observe_inputs(make_gladiator_stage_inputs(1),
+                         og::server::stage_clock_now_ms());
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+
+    og::runtime::GameSession& gameplay_session =
+        *og::runtime::current_game_session;
+    og::runtime::reset_local_transport_shadow(
+        gameplay_session, *game_screen, &stage);
+    ASSERT_TRUE(og::runtime::local_transport_active(gameplay_session));
+
+    EXPECT_TRUE(trace_contains("net", "stage_level_mismatch"))
+        << "the install must refuse a stage for a different level";
+    EXPECT_EQ(og::server::StageStatus::Empty, stage.status())
+        << "the mismatched stage must be disposed, not left staged";
+
+    // The fallback seeded the authoritative world FROM the display: the two
+    // sides run the same map, so keyframes apply instead of desyncing.
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(
+            gameplay_session);
+    ASSERT_NE(nullptr, server_screen);
+    EXPECT_EQ(2, static_cast<int>(server_screen->save_data.scen_num));
+    EXPECT_EQ(game_screen->world().grid.w, server_screen->world().grid.w);
+    EXPECT_EQ(game_screen->world().grid.h, server_screen->world().grid.h);
+    EXPECT_FALSE(
+        world_has_living_named(server_screen->world(), "Stage Soldier"))
+        << "no half-adopted roster: the fallback world is display-seeded";
+
+    og::runtime::clear_local_transport_shadow(gameplay_session);
+    game_screen->world().delete_objects();
+    game_screen->save_data.reset();
+}
+
+// Companion pin: a stage for the SAME level the display loaded still adopts
+// (the guard must never push a healthy launch off the staged path).
+TEST(GameLoop, local_transport_shadow_adopts_stage_for_matching_level)
+{
+    trace_clear();
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    load_display_level_for_stage_test(*game_screen, 1);
+
+    og::server::MatchStageConfig stage_config;
+    stage_config.networked = false;
+    og::server::MatchStage stage(stage_config);
+    stage.observe_inputs(make_gladiator_stage_inputs(1),
+                         og::server::stage_clock_now_ms());
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+    const GameWorld* const staged_world = stage.world();
+    ASSERT_NE(nullptr, staged_world);
+    ASSERT_TRUE(world_has_living_named(*staged_world, "Stage Soldier"));
+
+    og::runtime::GameSession& gameplay_session =
+        *og::runtime::current_game_session;
+    og::runtime::reset_local_transport_shadow(
+        gameplay_session, *game_screen, &stage);
+    ASSERT_TRUE(og::runtime::local_transport_active(gameplay_session));
+
+    EXPECT_FALSE(trace_contains("net", "stage_level_mismatch"))
+        << "a matching stage must not trip the mismatch guard";
+    EXPECT_EQ(og::server::StageStatus::Empty, stage.status())
+        << "adoption consumes the stage";
+
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(
+            gameplay_session);
+    ASSERT_NE(nullptr, server_screen);
+    EXPECT_TRUE(
+        world_has_living_named(server_screen->world(), "Stage Soldier"))
+        << "the authoritative world is the adopted staged world (it carries "
+           "the lobby roster's spawn, which the display-seed path cannot)";
+
+    og::runtime::clear_local_transport_shadow(gameplay_session);
+    game_screen->world().delete_objects();
+    game_screen->save_data.reset();
 }
 
 TEST(GameLoop, glad_init_applies_lobby_start_config_before_level_load)

@@ -2109,6 +2109,42 @@ bool local_transport_shadow_remove_local_player(GameSession& session,
     return true;
 }
 
+// Staged adoption is only valid for the level the launch actually loads.
+// The stage tracks the LOBBY's inputs; a start config mutated after
+// consumption (the web jitter-capture profile overrides scen_num at GO) can
+// name a different level than the staged world. Adopting anyway is a
+// guaranteed soft-lock: the display runs one map, the authoritative world
+// another, so every full-grid keyframe is rejected (size mismatch) until the
+// client fatally desyncs into the "Connection Lost" popup. A mismatched
+// stage is a stale stage ensure_current could not see — the caller disposes
+// it and takes the legacy display-seed path, which seeds the authoritative
+// world FROM the display and therefore cannot diverge.
+static bool stage_matches_launch_level(const og::server::MatchStage& stage,
+                                       const SaveData& launch_save)
+{
+    return stage.staged_save().scen_num == launch_save.scen_num &&
+        stage.staged_save().current_campaign == launch_save.current_campaign;
+}
+
+static bool consume_mismatched_stage(og::server::MatchStage& stage,
+                                     const SaveData& launch_save)
+{
+    if (stage_matches_launch_level(stage, launch_save))
+        return false;
+    LogError(
+        "transport_shadow_stage_level_mismatch staged={}:{} launch={}:{} "
+        "— taking the display-seed fallback\n",
+        stage.staged_save().current_campaign,
+        stage.staged_save().scen_num,
+        launch_save.current_campaign,
+        launch_save.scen_num);
+    TRACE("net", "stage_level_mismatch staged=%d launch=%d",
+          static_cast<int>(stage.staged_save().scen_num),
+          static_cast<int>(launch_save.scen_num));
+    stage.dispose();
+    return true;
+}
+
 void reset_local_transport_shadow(GameSession& session,
                                   screen& gameplay_screen,
                                   og::server::MatchStage* match_stage)
@@ -2125,10 +2161,12 @@ void reset_local_transport_shadow(GameSession& session,
     // recording's initial snapshot IS a staged world of its era, and staging
     // would re-derive a different world from a fresh seed. ensure_current is
     // the GO force: a dirty stage restages synchronously here; a Failed or
-    // missing stage falls back to the legacy path.
+    // missing stage falls back to the legacy path, and so does a stage for a
+    // different level than the display loaded (consume_mismatched_stage).
     const bool adopt_stage = match_stage != nullptr &&
         !session.replay_playback_active_ &&
-        match_stage->ensure_current(og::server::stage_clock_now_ms());
+        match_stage->ensure_current(og::server::stage_clock_now_ms()) &&
+        !consume_mismatched_stage(*match_stage, gameplay_screen.save_data);
 
     gameplay_screen.set_render_interpolation_client(nullptr);
     session.local_transport_runtime_.reset();
@@ -2440,11 +2478,13 @@ void reset_network_host_transport_shadow(
     }
 
     // Staged lobby (#218): see reset_local_transport_shadow — the staged
-    // world becomes the authoritative world; replay playback and a Failed/
-    // missing stage keep the legacy display-seed path.
+    // world becomes the authoritative world; replay playback, a Failed/
+    // missing stage, and a stage for a different level than the display
+    // loaded (consume_mismatched_stage) keep the legacy display-seed path.
     const bool adopt_stage = match_stage != nullptr &&
         !session.replay_playback_active_ &&
-        match_stage->ensure_current(og::server::stage_clock_now_ms());
+        match_stage->ensure_current(og::server::stage_clock_now_ms()) &&
+        !consume_mismatched_stage(*match_stage, gameplay_screen.save_data);
 
     gameplay_screen.set_render_interpolation_client(nullptr);
     session.local_transport_runtime_.reset();
