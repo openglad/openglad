@@ -31,12 +31,17 @@ squad permutation is drawn once from the pinned stream and latched in a
 replicated mode var.
 
 **The change key** is exactly the launch inputs — the lobby save equivalent,
-the player bindings, the difficulty, the seed, and the replay arm — computed
-per poll from the SAME functions the launch consumes. Ready bits and denials
-are deliberately excluded (a ready-up flip never restages). Restage is always
-dispose-and-rebuild behind a 250 ms trailing-edge debounce; GO forces
-`ensure_current()` so a stale stage can never launch; a failed stage denies
-GO through `StartDenialReason::StageFailed` (`LobbyServer::set_start_gate`).
+the player bindings, the difficulty, the seed, the replay arm, and a digest
+of the host save's campaign-state book + completed levels
+(`host_save_stage_digest`; stamped by `observe_inputs` each poll and
+re-checked by `ensure_current` at GO, so a mid-lobby `og.campaign_state_set`
+write restages a reactive level instead of launching the pre-decision world)
+— computed per poll from the SAME functions the launch consumes. Ready bits
+and denials are deliberately excluded (a ready-up flip never restages).
+Restage is always dispose-and-rebuild behind a 250 ms trailing-edge debounce;
+GO forces `ensure_current()` so a stale stage can never launch; a failed
+stage denies GO through `StartDenialReason::StageFailed`
+(`LobbyServer::set_start_gate`).
 
 **Dormancy.** Nothing constructs a `GameServer` over the staged world, so
 nothing can tick it or drain its announcement queue. `on_load`/init
@@ -85,8 +90,12 @@ are HEADLESS-hooked only — lobby-poll restaging never touches the SDL loader
   — the staged `LevelRuntimeData` IS the live server world.
 - **SDL shadow**: content transfer (`adopt_staged_world` over
   `replace_loaded_world_state`) plus the explicit carries a move cannot make
-  — world id, RNG stream, control policy/machine map, guy id counter,
-  campaign vars, the TRUTHFULLY claimed on_load latch, the staged SaveData.
+  — world id, the staged WorldScripts VM (`adopt_scripts_from`: the staged
+  on_load's `og.set_entity_hooks` registrations and module state live in the
+  VM registry and nowhere else; the VM binds its world through the
+  thread-local context at dispatch, so it follows the content), RNG stream,
+  control policy/machine map, guy id counter, campaign vars, the TRUTHFULLY
+  claimed on_load latch, the staged SaveData.
   The display world stays an ordinary keyframe-healed client (LevelVisuals
   are not snapshot-carried, so every client loads its own level for art).
 - **Replay playback** keeps the legacy display-seed path: the recording's
@@ -99,8 +108,16 @@ are HEADLESS-hooked only — lobby-poll restaging never touches the SDL loader
 **#239 dies structurally**: `GameServer::step` holds tick 1 (and the event
 drain) while any seeded client is unready at level start — hosted, dedicated,
 joiner, curses-local, and the dedicated server's in-session transitions all
-ride the same gate, bounded by the ready deadline. The curses sessions' 4/6
-burned handshake ticks are gone; every launch begins at a dormant tick 0.
+ride the same gate, bounded by the ready deadline. The deadline covers BOTH
+gate-closing states: it is stamped at every keyframe send AND at the re-setup
+itself (`prepare_clients_for_loaded_level`), so a transition-limbo peer that
+heartbeats but never re-readies is cut one window after the reload instead of
+freezing everyone. InitialSetup carries a v13 `setup_generation` (bumped per
+ready-resetting re-setup) so clients treat a SAME-level reload (quit-mission
+withdraw) as a transition and re-ready, while mid-level resends (control
+mapping, reconnect catch-up) keep the generation and stay non-transitional.
+The curses sessions' 4/6 burned handshake ticks are gone; every launch begins
+at a dormant tick 0.
 
 ## The plan phase is retired (D42)
 
