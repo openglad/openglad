@@ -42,11 +42,13 @@ og_test_view
 og_test_walker_combat
 og_test_walker_core
 og_test_walker_move
+og_unit_basketball
 og_unit_core
 og_unit_data
 og_unit_emscripten_transport
 og_unit_entity
 og_unit_families
+og_unit_ffa
 og_unit_headless_platform
 og_unit_mapgen
 og_unit_mode
