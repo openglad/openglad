@@ -25,6 +25,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -1033,6 +1034,37 @@ bool check_view_level_staged_band(const FramePixels &rgb) {
   return true;
 }
 
+// The HIRE portrait box, sampled strictly inside its bevel: show_guy draws the
+// bar at (77,30)-(125,64) for the HIRE layout (description_box {11,71,180,90}
+// puts centerx at 101, centery at 47) and then draws the walker through
+// viewob[0]. The bar interior is a flat fill, so "is the guy in the box" is
+// exactly "how many distinct colors are in the box". Measured on this flow:
+// 19 distinct with the portrait drawn (stable across runs), 1 when VIEW LEVEL
+// leaked its camera onto viewob[0] and the sprite was clipped off the box —
+// an empty box fails this check, so the threshold is an oracle, not a floor
+// for its own sake.
+// No byte golden is possible here: show_guy picks its direction and animation
+// frame from query_timer(), so two good frames differ.
+bool check_hire_portrait(const FramePixels &rgb) {
+  std::set<std::uint32_t> colors;
+  for (int y = 31; y <= 63; ++y) {
+    for (int x = 78; x <= 124; ++x) {
+      const std::size_t i = (static_cast<std::size_t>(y) * 320 +
+                             static_cast<std::size_t>(x)) * 3;
+      colors.insert((static_cast<std::uint32_t>(rgb[i]) << 16) |
+                    (static_cast<std::uint32_t>(rgb[i + 1]) << 8) |
+                    static_cast<std::uint32_t>(rgb[i + 2]));
+    }
+  }
+  if (colors.size() < 10) {
+    fprintf(stderr,
+            "  [uxshot] hire portrait box nearly flat: %zu distinct colors\n",
+            colors.size());
+    return false;
+  }
+  return true;
+}
+
 int view_level_staged_injector(void *data) {
   og::runtime::ensure_thread_session();
   ShotState *state = static_cast<ShotState *>(data);
@@ -1061,6 +1093,20 @@ int view_level_staged_injector(void *data) {
       }
       if (wait_for_interactable("matchup", 5000)) {
         SDL_Delay(300);
+        interact("back");
+      }
+    }
+    // The reported symptom rides the SAME menu session: with the preview
+    // camera left on viewob[0], the HIRE portrait walker draws off its box
+    // and only the canvas-direct bevel survives.
+    if (wait_for_team_menu(5000)) {
+      SDL_Delay(250);
+      interact("hire_troops");
+      if (wait_for_interactable("hire_me", 10000)) {
+        SDL_Delay(800);
+        state->captures +=
+            capture_frame("hire_after_view_level", &check_hire_portrait);
+        SDL_Delay(200);
         interact("back");
       }
     }
@@ -1116,7 +1162,9 @@ TEST(UxShots, n_view_level_staged) {
   cleanup_picker_state();
   g_picker_max_mainmenu_calls = 0;
   ASSERT_TRUE(state.finished);
-  ASSERT_GE(state.captures, 1);
+  // Both shots: the staged band, then the HIRE portrait drawn in the same
+  // menu session right after the viewer closed.
+  ASSERT_EQ(2, state.captures);
 
   // The save0 load mounted the modes campaign; restore the default.
   (void)unmount_campaign_package_with_error(get_mounted_campaign());

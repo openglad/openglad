@@ -1301,6 +1301,113 @@ TEST(CtfUi, view_scenario_rebuilds_when_settings_change_underneath)
     (void)mount_campaign_package_with_error("gladiator");
 }
 
+// The staged preview borrows viewob[0] to render the pitch, and the borrow
+// used to leave the pan camera behind on it: every later pixie draw in the
+// menu session (backdrop, graphic buttons, and the HIRE/TRAIN portrait
+// walker, whose canvas-direct bevel stayed put — "an empty box") landed
+// shifted by the leaked offset until a level started.
+// ---------------------------------------------------------------------------
+
+struct ViewCameraFlowState
+{
+    bool started = false;
+    bool finished = false;
+    bool viewer_opened = false;
+    bool pane_healed = false;
+    bool back_at_scenario_menu = false;
+};
+
+int view_scenario_camera_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    ViewCameraFlowState* state = static_cast<ViewCameraFlowState*>(data);
+    state->started = true;
+
+    wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);
+    interact("continue_game");
+
+    // Team build -> SCENARIO submenu -> VIEW LEVEL.
+    SDL_Delay(500);
+    wait_for_interactable("scenario", 10000);
+    SDL_Delay(750);
+    interact("scenario");
+    wait_for_interactable("view_scenario", 10000);
+    SDL_Delay(300);
+    interact("view_scenario");
+
+    state->viewer_opened = wait_for_interactable_at("back", 10, 170, 10000);
+    state->pane_healed =
+        wait_for_picker_trace("view_scenario pane gen=", 1, 10000);
+    // The camera the pane leaves behind is preview_pan_offset() sampled at
+    // whatever frame the viewer closed on, and that wave passes through 0
+    // once per period. Let the pan run well into its sweep so the unfixed
+    // build parks on a nonzero offset.
+    SDL_Delay(800);
+
+    // Viewer back -> SCENARIO submenu; its back -> team build; its back
+    // leaves the picker.
+    interact("back");
+    SDL_Delay(300);
+    state->back_at_scenario_menu = wait_for_interactable("matchup", 10000);
+    SDL_Delay(300);
+    interact("back");
+
+    SDL_Delay(300);
+    wait_for_interactable("go", 10000);
+    SDL_Delay(300);
+    interact("back");
+
+    state->finished = true;
+    return 0;
+}
+
+TEST(CtfUi, view_scenario_restores_the_borrowed_view_camera)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    // scen 500 is wider than the 303 px preview band, so the pane really
+    // pans and the pre-fix leak is a nonzero camera.
+    write_save0_with_two_soldiers("modes", 500);
+
+    ViewCameraFlowState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        view_scenario_camera_injector, "view_camera_flow", &state);
+    ASSERT_NE(nullptr, thread);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_TRUE(state.finished) << "injector should complete the flow";
+    EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open its frame";
+    EXPECT_TRUE(state.pane_healed)
+        << "the preview pane should heal while the viewer is open";
+    EXPECT_TRUE(state.back_at_scenario_menu)
+        << "BACK should land on the SCENARIO submenu";
+    // Mandatory guard: only the HEALED branch borrows the view, so without
+    // a real staged pane this pin has no teeth.
+    ASSERT_TRUE(trace_contains("picker", "view_scenario pane gen="))
+        << "the staged pane must heal for the camera borrow to happen";
+
+    viewscreen* const view = test_screen()->viewob[0].get();
+    ASSERT_NE(nullptr, view);
+    // Assert the restored value, never "not 118": the leaked offset is
+    // arbitrary in [0, pixmaxx - band width].
+    EXPECT_EQ(0, view->topx)
+        << "VIEW LEVEL must leave no pan camera on the borrowed view";
+    EXPECT_EQ(0, view->topy)
+        << "VIEW LEVEL must leave no pan camera on the borrowed view";
+
+    // The save0 load remounted the versus campaign; restore the default
+    // mount so later (or shuffled) tests load classic levels again.
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    (void)mount_campaign_package_with_error("gladiator");
+}
+
 // VIEW LEVEL degradation + recovery (#218): a hostile/stale level id landing
 // under the open viewer (the SET LEVEL half of the stale-joiner hole) must
 // degrade honestly — the refusal report replaces the census, the render copy

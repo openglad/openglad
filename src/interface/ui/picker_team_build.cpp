@@ -1458,13 +1458,56 @@ static Sint32 preview_pan_offset(Sint32 span, Sint32 ticks_per_px)
     return phase < span ? phase : span * 2 - phase;
 }
 
+// Borrowing the picker's viewob[0] must leave no residue on it. Nulling
+// control makes viewscreen::redraw take its control-less branch, which copies
+// the staged level's camera ONTO THE VIEW (render/view.cpp: topx =
+// data->level_visuals().topx). screen::relayout_views() then restores the
+// view's RECT and nothing else — viewscreen::resize never writes topx/topy,
+// which are set exactly once at construction — so the pan offset used to
+// survive the whole menu session and shift every pixie draw that goes through
+// the view: the picker backdrop, the graphic buttons, the main-menu logo and
+// the HIRE/TRAIN portrait walker (whose canvas-direct bevel stayed put, hence
+// "an empty box"). Destructor-based restore because the healed branch below
+// early-returns; a restore written at the end of the function never runs.
+namespace
+{
+class ScopedBorrowedView
+{
+public:
+    explicit ScopedBorrowedView(viewscreen& view)
+        : view_(view), topx_(view.topx), topy_(view.topy),
+          control_(view.control), following_(view.following_)
+    {
+    }
+
+    ~ScopedBorrowedView()
+    {
+        view_.topx = topx_;
+        view_.topy = topy_;
+        view_.control = control_;
+        view_.following_ = following_;
+    }
+
+    ScopedBorrowedView(const ScopedBorrowedView&) = delete;
+    ScopedBorrowedView& operator=(const ScopedBorrowedView&) = delete;
+
+private:
+    viewscreen& view_;
+    Sint32 topx_;
+    Sint32 topy_;
+    walker* control_;
+    bool following_;
+};
+}  // namespace
+
 // The staged-preview background pass (#218): the classic backdrop, then the
 // STAGED world rendered into the preview band through the borrowed viewob[0]
 // (the demo Center-camera shape: direct-geometry resize, control-less free
 // camera from the level's own LevelVisuals — TRAP B dangling-control never
 // applies because the pane never points control at a staged walker). Slow
 // horizontal pan surveys pitches wider than the band (direct-geometry views
-// have no zoom); geometry is restored via relayout_views after every draw.
+// have no zoom); geometry is restored via relayout_views after every draw and
+// the camera by ScopedBorrowedView.
 // Degradation states render text into the band — never a crash, never a
 // stale world presented as the stage; the census fallback lines still render
 // below through the content pass.
@@ -1484,6 +1527,7 @@ void picker_view_scenario_staged_draw_background(void* screen_state)
         scr->viewob[0] != nullptr)
     {
         viewscreen* const view = scr->viewob[0].get();
+        const ScopedBorrowedView borrowed(*view);
         view->control = nullptr;
         view->following_ = false;
         // TRAP C: redraw(data,...) draws the view's message strip
