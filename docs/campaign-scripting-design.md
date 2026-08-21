@@ -326,8 +326,8 @@ static flag only where the declarative metadata already exists).
 Menu-time twins of the sim's read-only `og.match_setting`:
 
 - `og.campaign_match_get(name)` / `og.campaign_match_set(name, value)`
-  over the same name vocabulary, mapped to the persisted knobs the
-  MATCHUP screen edits: `team_count`, `score_limit`, `respawn_ticks`,
+  over the same name vocabulary, mapped to the persisted match knobs the
+  menus edit: `team_count`, `score_limit`, `respawn_ticks`,
   `strip_troops`, `respawn_mode`, `generator_rate`.
 - `og.campaign_is_host()` — so a script can shape host-only pages.
 - **Policy lives in the provider, not the script**: `match_set` clamps

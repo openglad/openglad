@@ -134,8 +134,6 @@ button* picker_hiremenu_buttons();
 int picker_hiremenu_button_count();
 button* picker_networking_buttons();
 int picker_networking_button_count();
-button* picker_teamsmenu_buttons();
-int picker_teamsmenu_button_count();
 button* picker_viewscenario_buttons();
 int picker_viewscenario_button_count();
 button* picker_progressmenu_buttons();
@@ -201,8 +199,8 @@ inline constexpr int kCreateMenuReadyIndex = 32;
 // Per-level player-seat assignment rail. Appended after the original
 // ordinals so every established Base Camp action index stays stable.
 // #236: the rail reads [+] | < | four cards | >. The ordinal that used to
-// carry the SEATS label — a second, worse-placed door to the MATCHUP screen
-// the SCENARIO submenu already owns — carries the '+' now, at the rail's
+// carry the SEATS label — a second, worse-placed door to the team overview
+// the SCENARIO submenu already owned — carries the '+' now, at the rail's
 // left edge; the right-end ordinal the '+' vacated parks as a hidden spare
 // so no established index moved.
 inline constexpr int kBaseCampAddSeatIndex = 33;
@@ -426,47 +424,6 @@ inline constexpr int kZoneSubmenuPanelBottomY = 158;
 inline constexpr std::size_t kZoneSubmenuRowLabelChars =
     (kZoneSubmenuRowWidth - 8) / 6;  // 48
 
-// --- MATCHUP subscreen layout contract ------------------------------------
-// Positional indices into k_teamsmenu_buttons / picker_teamsmenu_buttons().
-inline constexpr int kTeamsMenuBackIndex = 0;
-inline constexpr int kTeamsMenuCtfTeamsIndex = 1;
-inline constexpr int kTeamsMenuCtfCapsIndex = 2;
-inline constexpr int kTeamsMenuJoinFirstIndex = 3; // join_team_0..3 = 3..6
-inline constexpr int kTeamsMenuGuyPrevIndex = 7;
-inline constexpr int kTeamsMenuGuyNextIndex = 8;
-inline constexpr int kTeamsMenuGuyTeamIndex = 9;
-inline constexpr int kTeamsMenuReadyIndex = 10;
-inline constexpr int kTeamsMenuCtfTroopsIndex = 11;
-inline constexpr int kTeamsMenuPageFirstIndex = 12; // team_page_0..3 = 12..15
-// §2.7: cross-control reuses the guy-row slot (150,146,70,12) that is
-// vacant when networked — the same-rect mutually-exclusive-gate pattern as
-// the base camp's GO/READY pair. Visible to ALL peers when networked;
-// host-only actionable.
-inline constexpr int kTeamsMenuCrossControlIndex = 16;
-inline constexpr int kTeamsMenuButtonCount = 17;
-
-// One frame's visibility state for the MATCHUP subscreen. Keyboard nav does not
-// skip hidden buttons, so the nav graph is rewired from this state every
-// frame (picker_wire_teams_menu_nav) instead of routing around statically.
-struct TeamsMenuWiring
-{
-    bool show_ctf = false;        // CTF campaign + lobby host
-    bool networked = false;       // genuine networked session (READY shown)
-    bool guy_row = false;         // local session with a non-empty roster
-    // §2.7: shown to ALL peers when networked (mutually exclusive with the
-    // guy row — same rect); host-only actionable.
-    bool cross_control = false;
-    std::array<bool, 4> join_visible = {false, false, false, false};
-    // Per-team member pager ('>' at the row's right edge): shown only when
-    // the team's detail line does not fit one slice.
-    std::array<bool, 4> pager_visible = {false, false, false, false};
-};
-
-// Deterministically rewires the MATCHUP nav graph so every visible
-// button is keyboard-reachable and no link points at a hidden button.
-void picker_wire_teams_menu_nav(button* buttons, int count,
-                                const TeamsMenuWiring& wiring);
-
 // Conditional rewiring for the host-gated buttons (same convention: nav
 // never links to a hidden button). The base camp rewires its full roster
 // graph per frame (pattern b — the rewire lives on the spec and reads the
@@ -486,10 +443,6 @@ void picker_wire_scenario_menu_nav(button* buttons, int count,
 void sync_scenario_menu_host_control_visibility(button* buttons,
                                                 int num_buttons,
                                                 int& highlighted_button);
-
-// The retired MATCHUP roster cursor, normalized onto an occupied
-// slot (-1 when the roster is empty).
-int teams_menu_selected_guy_slot();
 
 // --- TRAIN screen layout contract ------------------------------------------
 // Positional index of the team cycler ("Playing on Team N") in

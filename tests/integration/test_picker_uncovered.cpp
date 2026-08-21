@@ -76,7 +76,6 @@ struct SaveRosterGuard
     unsigned char team_size = save.team_size;
     unsigned char numplayers = save.numplayers;
     short my_team = save.my_team;
-    int teams_menu_guy_slot = pks().teams_menu_guy_slot;
 
     SaveRosterGuard()
     {
@@ -92,7 +91,6 @@ struct SaveRosterGuard
         save.team_size = team_size;
         save.numplayers = numplayers;
         save.my_team = my_team;
-        pks().teams_menu_guy_slot = teams_menu_guy_slot;
     }
 };
 
@@ -244,7 +242,7 @@ TEST(PickerUncovered, picker_team_build_internal_paths)
     ASSERT_EQ(0, picker_team_build_testing_exercise_internal_paths());
 }
 
-TEST(PickerUncovered, matchup_team_selection_and_roster_cursor_use_lobby_state)
+TEST(PickerUncovered, start_game_request_and_team_view_use_lobby_state)
 {
     SaveRosterGuard guard;
     SaveData& save = guard.save;
@@ -267,19 +265,6 @@ TEST(PickerUncovered, matchup_team_selection_and_roster_cursor_use_lobby_state)
     picker_lobby_initialize_from_save();
 
     trace_clear();
-    EXPECT_EQ(MENU_OK, teams_join_team(-1));
-    EXPECT_EQ(MENU_OK, teams_join_team(1));
-    EXPECT_TRUE(trace_contains("popup", "NO HEROES"));
-    EXPECT_EQ(MENU_OK, teams_join_team(2));
-    EXPECT_EQ(2, save.my_team)
-        << "an accepted first-seat change must update the compatibility team";
-
-    pks().teams_menu_guy_slot = 0;
-    EXPECT_EQ(MENU_OK, teams_cycle_guy(1));
-    EXPECT_EQ(3, pks().teams_menu_guy_slot);
-    EXPECT_EQ(MENU_OK, teams_cycle_guy(-1));
-    EXPECT_EQ(0, pks().teams_menu_guy_slot);
-
     g_start_game_requested = false;
     picker_request_start_game();
     EXPECT_TRUE(g_start_game_requested);

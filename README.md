@@ -49,7 +49,8 @@ not stored in a company save.
 
 Player numbers are shared across the lobby. Your cards say **YOU**; cards
 owned by another network client show its company abbreviation and are
-read-only. Open **SCENARIO → MATCHUP** for the complete team overview and the
-host's CTF and cross-control settings. See
+read-only. Open **SCENARIO → VIEW LEVEL** for the complete seat and team
+overview; the host's match settings sit on **SCENARIO** itself and
+cross-control on **DIFFICULTY**. See
 [Companies and Base Camp](docs/company-basecamp-design.md) for the full
 multiplayer behavior.

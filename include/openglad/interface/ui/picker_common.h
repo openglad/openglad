@@ -359,8 +359,8 @@ void cycle_ctf_capture_limit(SaveData& save);
 
 // True when the save's current campaign declares `matchup: versus` in its
 // campaign.yaml — the generic competitive-matchup predicate. New scripted-mode
-// surfaces key on this; the retired CTF campaign-id compares (the
-// MATCHUP settings gate, the lobby shared-teams rule) stay untouched until
+// surfaces key on this; the retired CTF campaign-id compares (the match
+// settings gate, the lobby shared-teams rule) stay untouched until
 // the CTF engine retirement swaps them over.
 bool is_versus_campaign(const SaveData& save);
 
@@ -743,8 +743,8 @@ std::string format_go_blockers(
 
 // §2.7 cross-control toggle label: "CTRL: OWN" (only the owner machine
 // controls its characters) / "CTRL: ALL" (players may control others'
-// characters in-level). Shared by the SDL MATCHUP row and the curses lobby
-// status line.
+// characters in-level). Shared by the SDL DIFFICULTY row and the curses
+// lobby status line.
 std::string format_cross_control_label(bool cross_control_enabled);
 
 // One §2.5 roster row's text columns, networked shape (U7: CLASS dropped,
@@ -765,7 +765,7 @@ BaseCampNetRowText format_base_camp_net_row(std::string_view name,
 std::unique_ptr<guy> make_base_camp_display_guy(
     const og::sim::LobbyCharacterData& character);
 
-// One MATCHUP-screen row label, <= 30 chars:
+// One team row label, <= 30 chars (the text and curses Matchup screens):
 // "{COLOR} TEAM {seat_tag} {status}"
 // where status is "NOT ON MAP" (CTF, no authored flag), "BOTS" (CTF authored
 // team with no humans and no local heroes), or "{n} HEROES".
@@ -775,15 +775,6 @@ std::string format_team_row_label(short team,
                                   bool authored,
                                   bool has_humans,
                                   std::string_view seat_tag);
-
-// Greedy ", "-joined pagination of a team's member/player names into slices
-// of at most max_chars characters each. An item longer than max_chars is
-// clipped inside the budget with a trailing '..' marker (so truncation stays
-// visible even when everything fits one unpaged slice; budgets of <= 2 chars
-// just clip). Always returns at least one (possibly empty) page, so page
-// math never divides by zero. Drives the MATCHUP screen's per-team pager.
-std::vector<std::string> paginate_team_detail_pages(
-    const std::vector<std::string>& items, int max_chars);
 
 // --- Campaign ordering ---
 
@@ -883,7 +874,8 @@ struct ScenarioSeatContext {
 std::string company_abbreviation(std::string_view company);
 
 // "P{n} {YOU|ABC}" + optional " [RDY]" — the shared seat identity label
-// (MATCHUP's vocabulary, now the View Level seat block's home). The row
+// (the retired MATCHUP screen's vocabulary, now the View Level seat block's
+// home). The row
 // overload is the single format authority; the LobbyPlayer overload
 // resolves is_local against this machine's seat indices first.
 std::string seat_identity_label(const ScenarioSeatRow& seat);
@@ -896,8 +888,9 @@ std::string seat_identity_label(
 std::string format_seat_summary(
     const std::vector<og::sim::LobbyPlayer>& players);
 
-// The shared local/solo seat synthesis (the empty-lobby fallback MATCHUP
-// and Base Camp both used, deduplicated; also the text/curses seat source —
+// The shared local/solo seat synthesis (the empty-lobby fallback the
+// retired MATCHUP screen and Base Camp both used, deduplicated; also the
+// text/curses seat source —
 // their View Level paths stage locally, so save-derived seats ARE their
 // staging input): one seat per save.numplayers, teams from
 // derive_local_gameplay_seat_teams, company = save_name, P1 host. Empty

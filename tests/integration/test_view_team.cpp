@@ -1030,7 +1030,7 @@ TEST(ViewTeam, create_team_menu_hides_host_only_controls_for_non_host_client)
 }
 
 // The SCENARIO subscreen keeps SET CAMPAIGN / SET LEVEL host-only while
-// VIEW LEVEL / MATCHUP / PROGRESS stay visible; BACK returns MENU_REDRAW.
+// VIEW LEVEL / PROGRESS stay visible; BACK returns MENU_REDRAW.
 TEST(ViewTeam, create_scenario_menu_hides_host_only_controls_for_non_host_client)
 {
     trace_clear();
@@ -1414,49 +1414,13 @@ TEST(ViewTeam, base_camp_deploy_toggle_debounces_same_row_taps)
 }
 
 // ---------------------------------------------------------------------------
-// §3.8 hook inventory row "team cycle": the former TEAMS per-character cycler
-// mutates the persisted roster (teamnum), so it runs the shared mutation
-// tail — the new team round-trips from the active company file with no
-// manual save. Solo-only surface (networked lobbies hide the button).
+// §3.8 hook inventory row "team cycle": cycling a character's team mutates
+// the persisted roster (teamnum), so it runs the shared mutation tail — the
+// new team round-trips from the active company file with no manual save.
+// The Base Camp exposes that mutation directly on each rendered team color
+// chip. Its MenuSpecRow ordinal must target the visible character, cycle the
+// team, and run the shared autosave tail without opening TRAIN.
 // ---------------------------------------------------------------------------
-TEST(ViewTeam, teams_cycle_guy_team_autosaves_solo_team_change)
-{
-    trace_clear();
-    struct LobbyShutdownGuard {
-        ~LobbyShutdownGuard() { picker_lobby_shutdown(); }
-    } lobby_guard;
-    og::data::set_active_company_slot("save0");
-
-    SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    save.reset();
-    save.numplayers = 1;
-    save.current_campaign = "gladiator";
-    auto member = std::make_unique<guy>(FAMILY_SOLDIER);
-    member->name = "CYCLER";
-    member->teamnum = 0;
-    save.team_list[0] = std::move(member);
-    save.team_size = 1;
-    pks().teams_menu_guy_slot = 0;
-
-    ASSERT_EQ(MENU_OK, teams_cycle_guy_team(1));
-    ASSERT_TRUE(save.team_list[0] != nullptr);
-    EXPECT_EQ(1, (int)save.team_list[0]->teamnum);
-
-    // §3.8: the cycle AUTOSAVED — the team change must be on disk without
-    // any manual save.
-    SaveData reloaded;
-    ASSERT_TRUE(reloaded.load("save0"))
-        << "the team-cycle autosave must have written the active slot";
-    ASSERT_TRUE(reloaded.team_list[0] != nullptr);
-    EXPECT_EQ(1, (int)reloaded.team_list[0]->teamnum)
-        << "the cycled team must persist via the mutation autosave";
-
-    save.reset();
-}
-
-// The Base Camp exposes that same mutation directly on each rendered team
-// color chip. Its MenuSpecRow ordinal must target the visible character,
-// cycle the team, and run the shared autosave tail without opening TRAIN.
 TEST(ViewTeam, base_camp_team_chip_cycles_and_autosaves_solo_team_change)
 {
     trace_clear();
@@ -3481,7 +3445,7 @@ TEST(ViewTeam, base_camp_ready_twin_toggles_and_gates)
 
     // Deployed roster: the toggle acts directly through the Base Camp
     // twin's own ordinal.
-    EXPECT_EQ(MENU_OK, teams_toggle_ready(kCreateMenuReadyIndex));
+    EXPECT_EQ(MENU_OK, teams_toggle_ready());
     ASSERT_EQ(1u, lobby.ready_calls.size());
     EXPECT_TRUE(lobby.ready_calls[0]);
     EXPECT_TRUE(lobby.ready_state);
@@ -3495,7 +3459,7 @@ TEST(ViewTeam, base_camp_ready_twin_toggles_and_gates)
     spec.nav.rewire(buttons, count, highlighted);
     EXPECT_EQ("UNREADY", buttons[kCreateMenuReadyIndex].label)
         << "the rewire stamps the presentation label on the descriptor";
-    EXPECT_EQ(MENU_OK, teams_toggle_ready(kCreateMenuReadyIndex));
+    EXPECT_EQ(MENU_OK, teams_toggle_ready());
     ASSERT_EQ(2u, lobby.ready_calls.size());
     EXPECT_FALSE(lobby.ready_calls[1]);
 
@@ -3504,14 +3468,14 @@ TEST(ViewTeam, base_camp_ready_twin_toggles_and_gates)
     save.team_list[0]->deployed = false;
     save.cross_control = 0;
     trace_clear();
-    EXPECT_EQ(MENU_OK, teams_toggle_ready(kCreateMenuReadyIndex));
+    EXPECT_EQ(MENU_OK, teams_toggle_ready());
     EXPECT_TRUE(trace_contains("basecamp", "ready_gated"));
     EXPECT_TRUE(trace_contains("popup", "DEPLOY AT LEAST ONE"));
     EXPECT_EQ(2u, lobby.ready_calls.size()) << "gated click sends nothing";
 
     // Cross-control ON removes the per-machine minimum.
     save.cross_control = 1;
-    EXPECT_EQ(MENU_OK, teams_toggle_ready(kCreateMenuReadyIndex));
+    EXPECT_EQ(MENU_OK, teams_toggle_ready());
     ASSERT_EQ(3u, lobby.ready_calls.size());
     EXPECT_TRUE(lobby.ready_calls[2]);
     lobby.ready_state = false;
@@ -3527,7 +3491,7 @@ TEST(ViewTeam, base_camp_ready_twin_toggles_and_gates)
     EXPECT_FALSE(buttons[kCreateMenuReadyIndex].hidden)
         << "[NET-R9]: the active empty-roster seat keeps the READY button";
     trace_clear();
-    EXPECT_EQ(MENU_OK, teams_toggle_ready(kCreateMenuReadyIndex));
+    EXPECT_EQ(MENU_OK, teams_toggle_ready());
     ASSERT_EQ(4u, lobby.ready_calls.size());
     EXPECT_TRUE(lobby.ready_calls[3]);
     EXPECT_FALSE(trace_contains("popup", "DEPLOY AT LEAST ONE"));
@@ -3551,17 +3515,14 @@ TEST(ViewTeam, base_camp_ready_twin_toggles_and_gates)
     EXPECT_EQ(og::ui::kReadyGoFaceGrey, go_row.color(binding_context))
         << "GO keeps the default face while hidden on a joiner";
 
-    // MATCHUP retains the old READY ordinal only as dormant table history;
-    // Base Camp is the sole ready affordance.
-    button* matchup = picker_teamsmenu_buttons();
-    const og::ui::MenuScreenSpec& matchup_spec =
-        *og::ui::menu_screen_host(og::ui::MenuScreenId::Teams).spec;
-    int matchup_highlight = kTeamsMenuBackIndex;
-    matchup_spec.nav.rewire(
-        matchup, picker_teamsmenu_button_count(), matchup_highlight);
-    EXPECT_TRUE(matchup[kTeamsMenuReadyIndex].hidden);
+    // Base Camp is the sole ready affordance: re-running its own rewire
+    // (the MATCHUP READY mirror retired with that screen, #218) must not
+    // touch the lobby flag.
+    int rewire_highlight = kCreateMenuReadyIndex;
+    spec.nav.rewire(buttons, count, rewire_highlight);
+    EXPECT_FALSE(buttons[kCreateMenuReadyIndex].hidden);
     EXPECT_EQ(4u, lobby.ready_calls.size())
-        << "opening MATCHUP must not toggle readiness";
+        << "a visibility rewire must not toggle readiness";
 
     og::ui::install_base_camp_state_for_screen(nullptr);
     save.reset();
@@ -3712,96 +3673,12 @@ TEST(ViewTeam, base_camp_go_uses_explicit_local_seat_teams_for_control_gate)
 }
 
 // ---------------------------------------------------------------------------
-// §2.7 cross-control (MATCHUP): visible to ALL peers when networked in the
-// bottom command row; host-only actionable (non-host click popups HOST
-// CONTROLS THIS SETTING); a host toggle sanitizes to {0,1}, TRACEs, and
-// syncs settings (the server clears every non-host machine's ready — §4.5).
-// ---------------------------------------------------------------------------
-TEST(ViewTeam, teams_cross_control_toggle_host_gates_and_syncs)
-{
-    trace_clear();
-
-    SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    save.reset();
-    save.numplayers = 1;
-    save.current_campaign = "gladiator";
-    save.scen_num = 1;
-    save.cross_control = 0;
-
-    NetworkedRosterLobbyClient lobby;
-    lobby.host = false;
-    ActivePickerLobbyClientGuard client_guard(&lobby);
-
-    const og::ui::MenuScreenSpec& spec =
-        *og::ui::menu_screen_host(og::ui::MenuScreenId::Teams).spec;
-    ASSERT_NE(nullptr, spec.on_spec_row)
-        << "§2.7: cross-control is MATCHUP's one MenuSpecRow";
-
-    // Visible to every networked peer, with retired JOIN/guy/READY controls
-    // staying hidden and the label supplied by the shared formatter.
-    button* buttons = picker_teamsmenu_buttons();
-    const int count = picker_teamsmenu_button_count();
-    int highlighted = 0;
-    ASSERT_NE(nullptr, spec.nav.rewire);
-    spec.nav.rewire(buttons, count, highlighted);
-    EXPECT_FALSE(buttons[kTeamsMenuCrossControlIndex].hidden)
-        << "§2.7: joiners must SEE the mode that changes their rights";
-    EXPECT_TRUE(buttons[kTeamsMenuGuyTeamIndex].hidden)
-        << "the retired guy cycler must remain hidden";
-    EXPECT_TRUE(buttons[kTeamsMenuReadyIndex].hidden)
-        << "READY belongs only to Base Camp";
-    EXPECT_EQ(120, buttons[kTeamsMenuCrossControlIndex].x);
-    EXPECT_EQ(170, buttons[kTeamsMenuCrossControlIndex].y);
-    EXPECT_EQ(80, buttons[kTeamsMenuCrossControlIndex].sizex);
-    EXPECT_EQ(20, buttons[kTeamsMenuCrossControlIndex].sizey);
-    EXPECT_EQ("CTRL: OWN", buttons[kTeamsMenuCrossControlIndex].label);
-
-    // Non-host click: popup, no change, no settings sync.
-    trace_clear();
-    EXPECT_EQ(MENU_OK,
-              spec.on_spec_row(kTeamsMenuCrossControlIndex, nullptr));
-    EXPECT_TRUE(trace_contains("teams", "cross_control_denied"));
-    EXPECT_TRUE(trace_contains("popup", "HOST CONTROLS THIS SETTING"));
-    EXPECT_EQ(0, save.cross_control);
-    EXPECT_EQ(0, lobby.settings_syncs);
-
-    // Host click: toggles, TRACEs, and syncs settings (server-side that
-    // clears every non-host machine's ready — pinned e2e in
-    // test_picker_network_client).
-    lobby.host = true;
-    trace_clear();
-    EXPECT_EQ(MENU_OK,
-              spec.on_spec_row(kTeamsMenuCrossControlIndex, nullptr));
-    EXPECT_TRUE(trace_contains("teams", "cross_control 1"));
-    EXPECT_EQ(1, save.cross_control);
-    EXPECT_EQ(1, lobby.settings_syncs);
-    spec.nav.rewire(buttons, count, highlighted);
-    EXPECT_EQ("CTRL: ALL", buttons[kTeamsMenuCrossControlIndex].label);
-
-    EXPECT_EQ(MENU_OK,
-              spec.on_spec_row(kTeamsMenuCrossControlIndex, nullptr));
-    EXPECT_EQ(0, save.cross_control);
-
-    // Sanitization: junk counts as ON and lands on exactly 0.
-    save.cross_control = 7;
-    EXPECT_EQ(MENU_OK,
-              spec.on_spec_row(kTeamsMenuCrossControlIndex, nullptr));
-    EXPECT_EQ(0, save.cross_control);
-
-    // Other rows are not this screen's spec rows.
-    EXPECT_EQ(0, spec.on_spec_row(kTeamsMenuBackIndex, nullptr));
-
-    save.cross_control = 0;
-    save.reset();
-}
-
-// ---------------------------------------------------------------------------
 // §2.7 cross-control at its re-homed DIFFICULTY row (#218): the same gate
-// shape as the MATCHUP original — visible to ALL networked peers, host-only
-// actionable with the HOST CONTROLS popup, sanitize-to-{0,1}, settings sync
-// on a host toggle — now driven through change_cross_control() (the single
-// implementation; the MATCHUP spec row forwards here) and the DIFFICULTY
-// descriptor label surface.
+// shape the retired MATCHUP row carried — visible to ALL networked peers,
+// host-only actionable with the HOST CONTROLS popup, sanitize-to-{0,1},
+// settings sync on a host toggle — driven through change_cross_control(),
+// the rule's one implementation, and the DIFFICULTY descriptor label
+// surface.
 // ---------------------------------------------------------------------------
 TEST(ViewTeam, difficulty_cross_control_row_gates_and_syncs)
 {

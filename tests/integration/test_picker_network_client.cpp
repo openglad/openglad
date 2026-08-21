@@ -1816,8 +1816,15 @@ TEST(PickerNetworkClient,
         host_client->poll_and_apply();
         auto join_scope = join_session.activate();
         join_client->poll_and_apply();
+        // local_seat_count() answers from the pre-state local request count
+        // when no snapshot has landed yet (the client's own fallback), so it
+        // alone can go true a poll before the seats are addressable. The
+        // body below reads local_player_indices(), which needs the snapshot
+        // — wait on THAT too or the joiner reports three seats and zero
+        // indices.
         return host_client->lobby_players().size() == 4u &&
-            join_client->local_seat_count() == 3u;
+            join_client->local_seat_count() == 3u &&
+            join_client->local_player_indices().size() == 3u;
     }));
 
     const auto run_join_request = [&](auto request) {
@@ -9443,10 +9450,10 @@ TEST(PickerNetworkClient,
 // §2.6/§2.7 (stage ready-go-slot) over a REAL direct lobby: the host's GO
 // pre-check popups WAITING FOR: <the joiner's company> and sends NO start
 // request; the joiner readies through the PRODUCTION base-camp READY twin
-// (teams_toggle_ready with the twin's index) and sees the flip in the same
-// call (the §2.5 same-frame contract — set_ready blocks on the echo); the
-// host's presentation flips yellow -> green; a host cross-control toggle
-// through the production MATCHUP dispatch propagates to the joiner's save AND
+// (teams_toggle_ready) and sees the flip in the same call (the §2.5
+// same-frame contract — set_ready blocks on the echo); the host's
+// presentation flips yellow -> green; a host cross-control toggle through
+// the production DIFFICULTY dispatch propagates to the joiner's save AND
 // clears the joiner's ready (§4.5 settings-clear-ready).
 TEST(PickerNetworkClient,
      base_camp_ready_go_slot_and_cross_control_clear_ready)
@@ -9562,7 +9569,7 @@ TEST(PickerNetworkClient,
         EXPECT_EQ(og::ui::ReadyGoState::ClientUnready, before.state);
         EXPECT_EQ("READY", before.label);
         EXPECT_EQ(og::ui::kReadyGoFaceUnready, before.face_color);
-        EXPECT_EQ(MENU_OK, teams_toggle_ready(kCreateMenuReadyIndex));
+        EXPECT_EQ(MENU_OK, teams_toggle_ready());
     }
     ASSERT_TRUE(wait_until([&] {
         host_client->poll_and_apply();
@@ -9588,20 +9595,18 @@ TEST(PickerNetworkClient,
             og::ui::ReadyGoState::HostGo;
     })) << "all-ready + deployed must gate the host GO green";
 
-    // §2.7: the host toggles cross-control through the production MATCHUP
-    // dispatch — the wire carries it to the joiner's session save AND the
-    // settings change clears the joiner's ready (§4.5), flipping the
-    // host's GO back to gated.
-    const og::ui::MenuScreenSpec* const teams_spec =
-        og::ui::menu_screen_host(og::ui::MenuScreenId::Teams).spec;
-    ASSERT_NE(nullptr, teams_spec);
-    ASSERT_NE(nullptr, teams_spec->on_spec_row);
+    // §2.7: the host toggles cross-control through the production
+    // DIFFICULTY dispatch (ButtonAction::ToggleCrossControl, the row's real
+    // action id since #218 re-homed the control) — the wire carries it to
+    // the joiner's session save AND the settings change clears the joiner's
+    // ready (§4.5), flipping the host's GO back to gated.
     {
         ActivePickerLobbyClientGuard active_guard(host_client.get());
         trace_clear();
+        vbutton cross_control_dispatcher;
         EXPECT_EQ(MENU_OK,
-                  teams_spec->on_spec_row(kTeamsMenuCrossControlIndex,
-                                          nullptr));
+                  cross_control_dispatcher.do_call(
+                      button_action_id(ButtonAction::ToggleCrossControl), -1));
         EXPECT_TRUE(trace_contains("teams", "cross_control 1"));
         EXPECT_EQ(1, host_save.cross_control);
     }

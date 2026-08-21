@@ -1980,56 +1980,6 @@ std::string format_team_row_label(short team,
     return label;
 }
 
-std::vector<std::string> paginate_team_detail_pages(
-    const std::vector<std::string>& items, int max_chars)
-{
-    std::vector<std::string> pages;
-    if (max_chars < 1)
-        max_chars = 1;
-
-    std::string current;
-    for (const std::string& raw_item : items)
-    {
-        std::string item = raw_item;
-        if (static_cast<int>(item.size()) > max_chars)
-        {
-            // Keep the truncation visible even when the result is a single
-            // page (no '>' pager, no p/N indicator): clip inside the budget
-            // and mark the cut with '..'. Degenerate budgets (<= 2 chars)
-            // have no room for the marker and just clip.
-            if (max_chars > 2)
-            {
-                item.resize(static_cast<std::size_t>(max_chars - 2));
-                item += "..";
-            }
-            else
-            {
-                item.resize(static_cast<std::size_t>(max_chars));
-            }
-        }
-
-        if (current.empty())
-        {
-            current = item;
-            continue;
-        }
-        const std::size_t joined_size = current.size() + 2 + item.size();
-        if (static_cast<int>(joined_size) <= max_chars)
-        {
-            current += ", ";
-            current += item;
-        }
-        else
-        {
-            pages.push_back(std::move(current));
-            current = item;
-        }
-    }
-    if (!current.empty() || pages.empty())
-        pages.push_back(std::move(current));
-    return pages;
-}
-
 // --- Campaign ordering ---
 
 void order_campaigns_for_select(std::list<std::string>& campaign_ids)
@@ -3621,8 +3571,9 @@ std::vector<std::string> format_scenario_report_lines(
             if (!first_team || !lines.empty())
                 lines.emplace_back();
             first_team = false;
-            // Score teams get their color name (matching the MATCHUP screen
-            // and the CTF flag lines); anything beyond keeps the raw index.
+            // Score teams get their color name (matching the terminal team
+            // rows and the CTF flag lines); anything beyond keeps the raw
+            // index.
             std::string header = (current_team >= 0 && current_team < 4)
                 ? std::format("{} TEAM",
                               og::sim::team_color_name(current_team))

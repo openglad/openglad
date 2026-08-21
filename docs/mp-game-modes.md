@@ -53,12 +53,11 @@ clients, the dedicated server, and the web build.
 
 ## Match setup
 
-Two match settings appear in **MATCHUP**
-(Base Camp → SCENARIO → MATCHUP) when a versus campaign (one whose
-campaign.yaml carries `matchup: versus`) is active; the curses client still
-titles that screen `CTF Teams`, from when the versus campaign was CTF only. In
-networked play, only the host can change them, and the lobby synchronizes them
-to every client:
+Two match settings appear on the **SCENARIO** screen
+(Base Camp → SCENARIO) when a versus campaign (one whose campaign.yaml
+carries `matchup: versus`) is active. In networked play, only the host can
+change them — a joiner sees the current values as read-only labels — and the
+lobby synchronizes them to every client:
 
 - **Match Teams** — `Auto` fields every team the map authors (2, 3, or 4);
   or force 2/3/4. Teams without human players get AI squads. Under
@@ -70,9 +69,9 @@ to every client:
   reads it as its own win threshold: captures, frags, goals), or force
   1–10.
 
-**TROOPS** sits one screen up, on **SCENARIO**, because it applies to every
-campaign rather than only the versus ones. It is host-only and lobby-synced
-like the pair above, and has three states:
+**TROOPS** sits between them on the same band, and shows for every campaign
+rather than only the versus ones. It is host-only and lobby-synced like the
+pair above, and has three states:
 
 - **TROOPS: ALL** — keep the level exactly as authored (the default).
 - **TROOPS: OWN** — remove every fighter and generator the level ships, on
@@ -263,8 +262,8 @@ with no rim standing on it, so the live baskets are obvious at a glance.
   lobby: at the gate every deployed character — yours, your ally's, and the
   second one you seated on your own team — is put on a color of its own,
   and from there everyone is hostile to everyone. The hero you drive fights
-  the rest of your own company, and MATCHUP's Match Teams has nothing to
-  say about it.
+  the rest of your own company, and Match Teams has nothing to say about
+  it.
 - **Sixteen fighters, controlled heroes first.** Every seat's controlled
   hero takes a slot before any benchwarmer does, so a full lobby never
   loses a player to the cap; anyone past sixteen is turned away at the gate
@@ -282,8 +281,8 @@ with no rim standing on it, so the live baskets are obvious at a glance.
   count can go below zero. Wildlife, your own summons, and deaths the map
   hands out score nothing; a kill your generator or your summon lands
   counts as yours.
-- **First to 15 kills wins** — the limit every arena authors; MATCHUP's
-  Score Limit forces 1-10 as it does everywhere else. If the ten minutes
+- **First to 15 kills wins** — the limit every arena authors; the Score
+  Limit setting forces 1-10 as it does everywhere else. If the ten minutes
   run out first the most kills wins, and a tie goes to the earlier color in
   the list above.
 - **You come back in seven and a half seconds, anywhere.** A start marker

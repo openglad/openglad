@@ -45,9 +45,6 @@ void picker_main(Sint32 argc, char **argv);
 Sint32 create_team_menu(Sint32 arg1);
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
-// TESTING hook (picker_team_build.cpp): render one MATCHUP frame in
-// the real draw order so pixel probes can run without the blocking loop.
-void picker_test_render_teams_menu_frame();
 
 loader* sdl_entity_loader();
 short new_score_panel(screen* s, short do_it);
@@ -238,8 +235,8 @@ TEST(CtfUi, team_build_row_and_scenario_settings_cycle)
 
     // Match Teams and Score Limit are SCENARIO rows now (#218, re-homed
     // from MATCHUP): their handlers cycle the save fields and refresh the
-    // SCENARIO descriptor labels — like the scenario-troops control, whose
-    // MATCHUP row went dormant when it moved.
+    // SCENARIO descriptor labels — like the scenario-troops control, which
+    // moved to the same band before it.
     save.current_campaign = "modes";
     save.ctf_team_count = 2;
     save.ctf_capture_limit = 0;
@@ -306,8 +303,8 @@ TEST(CtfUi, results_helpers_format_winner_banner)
 }
 
 // ---------------------------------------------------------------------------
-// Injector-driven picker flows for MATCHUP and the VIEW LEVEL
-// viewer (test_back_to_mainmenu's continue_game pattern: save0 is written
+// Injector-driven picker flows for the SCENARIO subscreen and the VIEW
+// LEVEL viewer (test_back_to_mainmenu's continue_game pattern: save0 is written
 // first so CONTINUE lands straight in team build without prompts).
 // ---------------------------------------------------------------------------
 
@@ -990,55 +987,11 @@ TEST(CtfUi, view_scenario_pager_flips_by_mouse_and_keyboard)
         << "keyboard FIRE on PREV must flip back (entry trace + flip trace)";
 }
 
-// (The MATCHUP per-team detail-pager flow test died with the screen's only
-// door — SCENARIO ordinal 4 is a parked spare since the #218 re-home. The
-// pager mechanism itself and its draw-order guard below go with the screen
-// body in the deletion commit.)
-
-// Draw-order regression: the per-team '>' pager is the only MATCHUP button
-// whose face sits inside a row readability bar (8..312 x row band). The bars
-// must render BENEATH the buttons — when they were painted after
-// draw_buttons, every visible pager was dimmed to ~41% brightness (PURE_BLACK
-// alpha 150) unlike every other button. Renders one real frame via the
-// TESTING hook and compares the pager's face pixels against the same
-// BUTTON_FACING face style on buttons outside the bars.
-TEST(CtfUi, matchup_pager_face_not_dimmed_by_row_bar)
-{
-    SavedPickerSave save_guard;
-    // Same 8-name roster as the pager flow: team 0's detail line overflows,
-    // so team_page_0 is visible.
-    write_save0_with_soldiers(
-        "gladiator", 1,
-        {"Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf",
-         "Hotel"});
-
-    picker_test_render_teams_menu_frame();
-
-    screen* s = test_screen();
-    // Face-interior probes: inside each button, clear of the 1px borders and
-    // of the centered 1-char '>' label (glyph starts at x=(x+xend)/2).
-    // team_page_0: (297,39,14x12), with the glyph centered near x=304.
-    int pager_face = -1;
-    s->get_pixel(299, 44, &pager_face);
-    // BACK is a visible button outside every row bar and uses the same
-    // BUTTON_FACING face style.
-    int reference_face = -1;
-    s->get_pixel(13, 174, &reference_face);
-
-    EXPECT_EQ(reference_face, pager_face)
-        << "pager face inside the row bar must match the undimmed button "
-           "face style (bar painted over the button?)";
-
-    // And the bar itself still dims the backdrop around the button: a bar
-    // pixel just below the pager (row band is y 30..51; the pager ends at
-    // y=50) must not be the button-face color.
-    int bar_pixel = -1;
-    s->get_pixel(299, 51, &bar_pixel);
-    EXPECT_NE(bar_pixel, pager_face)
-        << "row readability bar should still darken non-button pixels";
-
-    cleanup_picker_state();
-}
+// The MATCHUP screen retired with #218 — its seat/team overview is VIEW
+// LEVEL's seat block and its knobs are SCENARIO's TEAMS/LIMIT rows and
+// DIFFICULTY's cross-control row. Its per-team detail pager, the row
+// readability bars beneath it, and the draw-order regression guard that
+// pinned the two apart went with the screen body.
 
 // ---------------------------------------------------------------------------
 // VIEW LEVEL refresh guard (issue #218): the report is cached, but the

@@ -687,18 +687,6 @@ bool sweep_keyboard_dead_is_legacy_faithful(const std::string& screen,
     return screen == "progress" && (id == "prev" || id == "next");
 }
 
-// MATCHUP retains these former TEAMS ordinals only as migration landmarks.
-// They are permanently hidden, so they are not live gate variants and do
-// not participate in same-geometry or keyboard-liveness bookkeeping.
-bool sweep_row_is_permanently_dormant(const std::string& screen,
-                                      const std::string& id)
-{
-    if (screen != "teams_menu")
-        return false;
-    return id == "ready" || id == "guy_prev" || id == "guy_next" ||
-        id == "guy_team" || id.starts_with("join_team_");
-}
-
 } // namespace
 
 TEST(MenuEngine, engine_screen_gate_lattice_sweep)
@@ -724,7 +712,7 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
     // G13 lattice axes: {host} x {networked}. host=false without a network
     // session is the degenerate legacy shape; production non-hosts are
     // always networked — that variant drives the Base Camp READY twin and
-    // MATCHUP cross-control.
+    // the DIFFICULTY cross-control row.
     struct SweepVariant {
         bool host;
         bool networked;
@@ -770,9 +758,6 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
                 for (int j = i + 1; j < fresh_count; ++j) {
                     const button& a = fresh[i];
                     const button& b = fresh[j];
-                    if (sweep_row_is_permanently_dormant(spec.name, a.id) ||
-                        sweep_row_is_permanently_dormant(spec.name, b.id))
-                        continue;
                     const bool overlap = a.x < b.x + b.sizex &&
                         b.x < a.x + a.sizex && a.y < b.y + b.sizey &&
                         b.y < a.y + a.sizey;
@@ -947,11 +932,12 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
     sweep_save.team_size = sweep_old_team_size;
     // Mandatory restore (the shared-sweep contract): (true, "").
     og::ui::set_main_menu_company_view_for_tests(true, "");
-    EXPECT_GE(engine_screens, 14)
-        << "difficulty + the FX trio + display + controls + main options + "
-           "main menu + the team-build cluster (base camp, SCENARIO, MATCHUP) "
-           "+ hire + train + progress + view level must be engine-hosted "
-           "(VIEW TEAM and the slot menus RETIRED with WP4's base camp)";
+    EXPECT_GE(engine_screens, 16)
+        << "difficulty + the FX trio + display + seat settings + main "
+           "options + main menu + the team-build cluster (base camp, "
+           "SCENARIO) + hire + train + progress + view level + help + the "
+           "zone submenu must be engine-hosted (VIEW TEAM, MATCHUP and the "
+           "slot menus RETIRED)";
 }
 
 // The G13 sweep above materializes Base Camp with NO zone state installed,
@@ -1737,8 +1723,8 @@ TEST(MenuEngine, options_family_registry_hosts)
 
 // ---------------------------------------------------------------------------
 // §1.8 step 5 registry state: the team-build cluster. VIEW TEAM and the
-// SAVE/LOAD slot menus RETIRED with WP4's base camp (§2.5/§3.8) — their
-// MenuScreenId rows are gone entirely.
+// SAVE/LOAD slot menus RETIRED with WP4's base camp (§2.5/§3.8), MATCHUP
+// with #218 — their MenuScreenId rows are gone entirely.
 TEST(MenuEngine, team_build_cluster_registry_hosts)
 {
     using Kind = og::ui::MenuScreenHost::Kind;
@@ -1747,7 +1733,7 @@ TEST(MenuEngine, team_build_cluster_registry_hosts)
     EXPECT_EQ(Kind::Engine,
               og::ui::menu_screen_host(og::ui::MenuScreenId::Scenario).kind);
     EXPECT_EQ(Kind::Engine,
-              og::ui::menu_screen_host(og::ui::MenuScreenId::Teams).kind);
+              og::ui::menu_screen_host(og::ui::MenuScreenId::ViewScenario).kind);
 }
 
 TEST(MenuEngine, base_camp_reload_publishes_authored_teams_after_level_load)
@@ -1809,14 +1795,20 @@ TEST(MenuEngine, base_camp_reload_publishes_authored_teams_after_level_load)
 // keeps running), while MENU_EXIT-bearing exits still propagate.
 TEST(MenuEngine, team_build_cluster_exit_semantics_pins)
 {
-    // MATCHUP: BACK carries MENU_REDRAW (redraw-exit); MENU_EXIT propagates.
-    const og::ui::MenuScreenSpec* teams =
-        og::ui::menu_screen_host(og::ui::MenuScreenId::Teams).spec;
-    ASSERT_NE(nullptr, teams);
-    EXPECT_TRUE(teams->exit_on_redraw);
-    EXPECT_EQ(MENU_EXIT, teams->exit_value);
-    EXPECT_EQ(og::ui::RemoteStartScope::TeamBuildScope, teams->remote_start);
-    EXPECT_NE(nullptr, teams->frame_tick) << "MATCHUP level-reload guard";
+    // VIEW LEVEL: BACK carries MENU_REDRAW and ENDS the screen (redraw-exit),
+    // while a remote start still propagates its MENU_EXIT through
+    // remote_start_exit. Its own exit_value is MENU_REDRAW — the parent
+    // team-build loop keeps running. (MATCHUP held the redraw-exit half of
+    // this contract until #218 retired it.)
+    const og::ui::MenuScreenSpec* viewer =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::ViewScenario).spec;
+    ASSERT_NE(nullptr, viewer);
+    EXPECT_TRUE(viewer->exit_on_redraw);
+    EXPECT_EQ(MENU_REDRAW, viewer->exit_value);
+    EXPECT_EQ(og::ui::RemoteStartScope::TeamBuildScope, viewer->remote_start);
+    EXPECT_EQ(og::ui::RemoteStartExit::ReturnMenuExit,
+              viewer->remote_start_exit);
+    EXPECT_NE(nullptr, viewer->frame_tick) << "VIEW LEVEL refresh guard";
 
     // SCENARIO: nested subscreens return MENU_REDRAW for reset_buttons to
     // consume — exit_on_redraw must stay FALSE or every nested return would
@@ -3464,7 +3456,7 @@ TEST(MenuEngine, seat_settings_hud_and_zoom_rows_toggle_and_persist)
     og::ui::install_seat_settings_state_for_screen(nullptr);
 }
 
-TEST(MenuEngine, networked_seat_editor_and_matchup_propagate_remote_start)
+TEST(MenuEngine, networked_seat_editor_and_scenario_propagate_remote_start)
 {
     EngineTestGuard engine_guard;
     MenuCallbackStateGuard callback_guard;
@@ -3495,8 +3487,8 @@ TEST(MenuEngine, networked_seat_editor_and_matchup_propagate_remote_start)
               pks().selected_menu_item->command);
 
     pks().selected_menu_item = nullptr;
-    EXPECT_EQ(MENU_EXIT, create_teams_menu(0))
-        << "the MATCHUP wrapper must preserve a remote structural exit";
+    EXPECT_EQ(MENU_EXIT, create_scenario_menu(0))
+        << "the SCENARIO wrapper must preserve a remote structural exit";
     ASSERT_NE(nullptr, pks().selected_menu_item);
     EXPECT_EQ(og::ui::PickerMenuCommand::StartGame,
               pks().selected_menu_item->command);

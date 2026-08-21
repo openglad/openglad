@@ -1783,7 +1783,7 @@ public:
                 role_ == LobbyRole::Host, {}, state_->players,
                 og::ui::kBaseCampLineBCharsHireHidden));
             // §2.7: every peer sees the mode that changes its own rights
-            // (the SDL MATCHUP row's shared label formatter).
+            // (the SDL DIFFICULTY row's shared label formatter).
             lines.push_back(
                 "Control: " + og::ui::format_cross_control_label(
                                   state_->settings.cross_control != 0));

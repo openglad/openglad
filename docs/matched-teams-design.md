@@ -750,6 +750,9 @@ re-verified at 30fb2664 (the branch has WP-A..WP-H fully landed, so the
   (menu_screen_specs.cpp:1291-1295; static label also pinned at
   test_menu_layout.cpp:1400); MATCHUP's `ctf_troops` row is dormant-hidden
   (menu_screen_specs.cpp:1419-1423, picker_team_build.cpp:469, :789).
+  **(#218: the SDL MATCHUP screen is deleted — that dormant row went with
+  it, and Match Teams / Score Limit joined TROOPS on the SCENARIO y=140
+  band.)**
 - **Host gating:** hidden for non-hosts with SET CAMPAIGN / SET LEVEL
   (`sync_scenario_menu_host_control_visibility`,
   picker_team_build.cpp:323-341, nav re-target :312-319); label re-derived

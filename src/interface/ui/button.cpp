@@ -726,26 +726,14 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return change_ctf_caps();
     case ButtonAction::CycleCtfScenarioTroops:
         return change_ctf_troops();
-    case ButtonAction::CreateTeamsMenu:
-        return create_teams_menu(call_arg);
     case ButtonAction::ViewScenario:
         return create_view_scenario_menu(call_arg);
     case ButtonAction::ViewScenarioPageFlip:
         return view_scenario_page_flip(call_arg);
     case ButtonAction::CreateScenarioMenu:
         return create_scenario_menu(call_arg);
-    case ButtonAction::TeamsPageFlip:
-        return teams_page_flip(call_arg);
-    case ButtonAction::JoinTeam:
-        return teams_join_team(call_arg);
-    case ButtonAction::TeamsCycleGuy:
-        return teams_cycle_guy(call_arg);
-    case ButtonAction::TeamsCycleGuyTeam:
-        return teams_cycle_guy_team(call_arg);
     case ButtonAction::ToggleLobbyReady:
-        // arg -1 = the retired MATCHUP mirror; the Base Camp READY twin passes
-        // own button index (§2.6).
-        return teams_toggle_ready(call_arg);
+        return teams_toggle_ready();
     case ButtonAction::DoLevelEdit:
         return level_editor();
     case ButtonAction::YesOrNo:

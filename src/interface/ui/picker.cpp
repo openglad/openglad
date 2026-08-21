@@ -1580,7 +1580,6 @@ void picker_cleanup_resources()
     pks().trainmenu_buttons.clear();
     pks().hiremenu_buttons.clear();
     pks().networking_buttons.clear();
-    pks().teamsmenu_buttons.clear();
     pks().viewscenario_buttons.clear();
     pks().progressmenu_buttons.clear();
     pks().scenariomenu_buttons.clear();
@@ -1678,11 +1677,6 @@ static const button k_networking_menu_buttons[] =
 
 // SAVE / LOAD slot menus: engine-hosted — specs, accessor shims, and
 // create_save_menu / create_load_menu live in menu_screen_specs.cpp
-// (docs/menu-engine.md).
-
-// MATCHUP subscreen (create_teams_menu): engine-hosted — the spec, accessor
-// shim, and entry wrapper live in menu_screen_specs.cpp; the per-frame
-// machinery (compute/sync/draw hooks) lives in picker_team_build.cpp
 // (docs/menu-engine.md).
 
 // VIEW LEVEL (create_view_scenario_menu) and PROGRESS (create_progress_menu):
@@ -1814,9 +1808,6 @@ int picker_networking_button_count()
 {
     return static_cast<int>(pks().networking_buttons.size());
 }
-
-// picker_teamsmenu_buttons()/picker_teamsmenu_button_count(): engine-hosted
-// screen — the D3 materialization shims live in menu_screen_specs.cpp.
 
 // picker_viewscenario_buttons()/picker_progressmenu_buttons() (+ counts):
 // engine-hosted screens — the D3 materialization shims live in
@@ -2923,19 +2914,8 @@ Sint32 change_allied()
    return MENU_OK;
 }
 
-// Refresh a MATCHUP settings button's label in both the live vbutton
-// array and the mutable descriptor row that backs later redraws.
-static void refresh_teamsmenu_button_label(int button_index,
-                                           const std::string& label)
-{
-   if (og::runtime::current_session->allbuttons_[static_cast<std::size_t>(button_index)] != nullptr)
-       og::runtime::current_session->allbuttons_[static_cast<std::size_t>(button_index)]->label = label;
-   if (static_cast<int>(pks().teamsmenu_buttons.size()) > button_index)
-       pks().teamsmenu_buttons[static_cast<std::size_t>(button_index)].label = label;
-}
-
-// Refresh a SCENARIO settings button's label in both surfaces. Same recipe
-// as refresh_teamsmenu_button_label, against the scenario descriptor rows.
+// Refresh a SCENARIO settings button's label in both surfaces: the live
+// vbutton array and the mutable descriptor row that backs later redraws.
 static void refresh_scenariomenu_button_label(int button_index,
                                               const std::string& label)
 {
@@ -2997,7 +2977,7 @@ Sint32 change_ctf_troops()
    SaveData& save = og::runtime::current_session->myscreen_->save_data;
    og::ui::toggle_ctf_scenario_troops(save);
 
-   // The control lives on SCENARIO now; MATCHUP's row is dormant-hidden.
+   // The control lives on SCENARIO now.
    refresh_scenariomenu_button_label(kScenarioMenuTroopsIndex,
                                      og::ui::format_ctf_troops_label(save));
 
@@ -3286,104 +3266,11 @@ Sint32 change_resolution()
 // block are gone — the spec's Rewire program carries the platform fork.
 // docs/menu-engine.md).
 
-Sint32 teams_join_team(Sint32 team)
-{
-   if (team < 0 || team >= MAX_PLAYERS)
-       return MENU_OK;
-
-   SaveData& save = og::runtime::current_session->myscreen_->save_data;
-   if (!picker_lobby_is_networked() &&
-       !og::ui::team_has_members(save, static_cast<short>(team)))
-   {
-       popup_dialog("MATCHUP", "NO HEROES ON\nTHIS TEAM");
-       return MENU_OK;
-   }
-
-   if (!picker_lobby_request_team_change(static_cast<short>(team)))
-       popup_dialog("MATCHUP", "CHANGE DENIED");
-
-   return MENU_OK;
-}
-
-// Advance the retired MATCHUP roster cursor to the next occupied
-// slot in `whichway` (+1/-1), wrapping. Returns the new slot, or -1 when the
-// roster is empty.
-static int advance_teams_menu_guy_slot(const SaveData& save, int whichway)
-{
-   if (save.team_size <= 0)
-       return -1;
-
-   const int slot_count = static_cast<int>(save.team_list.size());
-   int slot = std::clamp(pks().teams_menu_guy_slot, 0, slot_count - 1);
-   for (int step = 0; step < slot_count; ++step)
-   {
-       slot = ((slot + whichway) % slot_count + slot_count) % slot_count;
-       if (save.team_list[static_cast<std::size_t>(slot)])
-           return slot;
-   }
-   return -1;
-}
-
-// The selected slot, normalized onto an occupied roster slot (-1 when empty).
-int teams_menu_selected_guy_slot()
-{
-   const SaveData& save = og::runtime::current_session->myscreen_->save_data;
-   if (save.team_size <= 0)
-       return -1;
-
-   const int slot_count = static_cast<int>(save.team_list.size());
-   const int slot = std::clamp(pks().teams_menu_guy_slot, 0, slot_count - 1);
-   if (save.team_list[static_cast<std::size_t>(slot)])
-       return slot;
-   return advance_teams_menu_guy_slot(save, 1);
-}
-
-Sint32 teams_cycle_guy(Sint32 whichway)
-{
-   const SaveData& save = og::runtime::current_session->myscreen_->save_data;
-   const int slot = advance_teams_menu_guy_slot(save, whichway >= 0 ? 1 : -1);
-   if (slot >= 0)
-       pks().teams_menu_guy_slot = slot;
-   return MENU_OK;
-}
-
-Sint32 teams_cycle_guy_team(Sint32 whichway)
-{
-   // Per-character moves are a local-session surface; the button stays hidden
-   // in networked lobbies, where roster ownership is server-authoritative.
-   if (picker_lobby_is_networked())
-       return MENU_OK;
-
-   SaveData& save = og::runtime::current_session->myscreen_->save_data;
-   const int slot = teams_menu_selected_guy_slot();
-   if (slot < 0)
-       return MENU_OK;
-   if (!picker_lobby_save_slot_editable(slot))
-   {
-       popup_dialog("TEAM", "LOCKED");
-       return MENU_OK;
-   }
-
-   pks().teams_menu_guy_slot = slot;
-   if (og::ui::cycle_guy_team(save, slot, static_cast<int>(whichway)) >= 0)
-   {
-       // §3.8 hook inventory row "team cycle": the cycler mutates the
-       // persisted roster (teamnum), so it takes the full mutation tail —
-       // solo-only surface (the networked early-return above), so the ready
-       // drop inside is a no-op and the autosave is a plain company write.
-       picker_base_camp_after_roster_mutation();
-   }
-
-   return MENU_OK;
-}
-
-// Shared by the retired MATCHUP mirror (origin_button_index < 0) and the
-// base-camp READY twin (origin = kCreateMenuReadyIndex, §2.6): both drive the
-// same lobby flag. The compatibility mirror refreshes its label by index for
-// the same-frame flip; the base-camp twin is re-derived by the engine
-// label/color pass the same frame (a cross-screen index write here would
-// stamp a roster row instead).
-Sint32 teams_toggle_ready(Sint32 origin_button_index)
+// The base-camp READY twin (§2.6) drives the lobby ready flag. Its label is
+// re-derived by the engine label/color pass the same frame, so nothing is
+// written by index here (the retired MATCHUP mirror was the only caller that
+// needed that, and a cross-screen index write would stamp a roster row).
+Sint32 teams_toggle_ready()
 {
    const bool ready = !picker_lobby_local_ready();
    if (ready)
@@ -3404,22 +3291,6 @@ Sint32 teams_toggle_ready(Sint32 origin_button_index)
        }
    }
    (void)picker_lobby_set_ready(ready);
-   if (origin_button_index < 0)
-   {
-       refresh_teamsmenu_button_label(kTeamsMenuReadyIndex,
-                                      ready ? "UNREADY" : "READY");
-   }
-   return MENU_OK;
-}
-
-// MATCHUP per-team detail pager: advance the team's detail slice. The frame
-// loop (compute_teams_menu_state) wraps the raw counter onto the current
-// page count, so a shrinking roster can never strand the page out of range.
-Sint32 teams_page_flip(Sint32 team)
-{
-   if (team < 0 || team >= 4)
-       return MENU_OK;
-   pks().teams_menu_team_page[static_cast<std::size_t>(team)] += 1;
    return MENU_OK;
 }
 

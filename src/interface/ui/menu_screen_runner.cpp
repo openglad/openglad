@@ -529,8 +529,8 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
             break;
         }
 
-        // Subscreens whose BACK carries MENU_REDRAW (view team / MATCHUP /
-        // the slot menus) END here — the same point the legacy loops
+        // Subscreens whose BACK carries MENU_REDRAW (view team, MATCHUP and
+        // the slot menus, all retired now) END here — the same point the legacy loops
         // checked, before reset_buttons could consume the value — and
         // return MENU_REDRAW to the parent loop. MENU_EXIT-bearing exits
         // (remote start, an intercepted GO) still return spec.exit_value /

@@ -175,18 +175,12 @@ Sint32 change_allied();
 Sint32 change_ctf_teams();
 Sint32 change_ctf_caps();
 Sint32 change_ctf_troops();
-Sint32 create_teams_menu(Sint32 arg1); // MATCHUP overview/settings subscreen
 Sint32 create_view_scenario_menu(Sint32 arg1); // Read-only level roster viewer
 Sint32 view_scenario_page_flip(Sint32 step);   // PREV/NEXT inside the viewer
-Sint32 create_scenario_menu(Sint32 arg1); // Campaign/level/matchup/progress subscreen
-Sint32 teams_page_flip(Sint32 team);      // MATCHUP per-team member pager
-Sint32 teams_join_team(Sint32 team);
-Sint32 teams_cycle_guy(Sint32 whichway);
-Sint32 teams_cycle_guy_team(Sint32 whichway);
-// origin_button_index < 0: the legacy MATCHUP READY mirror (index-refreshes its own
-// label); >= 0: the base-camp READY twin (§2.6 — the engine label/color
-// pass re-derives its surfaces, so no index write happens here).
-Sint32 teams_toggle_ready(Sint32 origin_button_index);
+Sint32 create_scenario_menu(Sint32 arg1); // Campaign/level/viewer/progress subscreen
+// The base-camp READY twin (§2.6). The engine label/color pass re-derives
+// its surfaces every frame, so this writes no button label itself.
+Sint32 teams_toggle_ready();
 Sint32 level_editor();
 Sint32 main_options();
 Sint32 gameplay_fx_options();
@@ -199,8 +193,7 @@ Sint32 change_permadeath();
 Sint32 change_generator_rate();
 Sint32 change_infinite_gold(); // DIFFICULTY infinite-gold toggle (session-only)
 // DIFFICULTY §2.7 cross-control toggle (session-only, host-actionable with
-// a joiner popup). The single implementation of the rule — the coexisting
-// MATCHUP spec row forwards here until that screen is deleted.
+// a joiner popup). The single implementation of the rule.
 Sint32 change_cross_control();
 Sint32 change_depth_fx(); // GRAPHICS FX depth selector (cfg effects/depth_fx)
 Sint32 change_resolution(); // DISPLAY resolution selector (cfg graphics/width+height)
@@ -299,16 +292,22 @@ enum class ButtonAction : Sint32
     SubmitNetworkJoin = 59,
     CycleCtfTeamCount = 60,
     CycleCtfCaptureLimit = 61,
-    CreateTeamsMenu = 62,
+    // 62 was CreateTeamsMenu — the SCENARIO door to the MATCHUP subscreen.
+    // The screen retired with #218 (its seat/team overview is VIEW LEVEL's
+    // seat block; its knobs are SCENARIO's TEAMS/LIMIT rows and DIFFICULTY's
+    // cross-control row). Value retired, do not reuse.
     ViewScenario = 63,
     CycleCtfScenarioTroops = 64,
-    JoinTeam = 65,
-    TeamsCycleGuy = 66,
-    TeamsCycleGuyTeam = 67,
+    // 65/66/67 were JoinTeam / TeamsCycleGuy / TeamsCycleGuyTeam: the MATCHUP
+    // screen's per-seat JOIN column and local-guy cyclers. They were already
+    // permanently hidden before #218 deleted the screen — seat->team
+    // assignment is the Base Camp seat rail's and per-character team cycling
+    // is TRAIN's / the Base Camp team chip's. Values retired, do not reuse.
     ToggleLobbyReady = 68,
     ViewScenarioPageFlip = 69,
     CreateScenarioMenu = 70,
-    TeamsPageFlip = 71,
+    // 71 was TeamsPageFlip — the MATCHUP per-team detail pager, deleted with
+    // the screen (#218). Value retired, do not reuse.
     PickSpriteSheet = 72,
     // 73 was ToggleFloorGhosting: the graphics/floor_ghost cfg toggle was
     // removed — the ghost view is now hold-look-up only (KEY_LOOKUP).

@@ -23,7 +23,7 @@ struct CampaignYaml {
     std::string mode;
     // Matchup axis (orthogonal to `mode`): absent/"" -> cooperative,
     // "versus" -> competitive multi-team matchup (lobby shared teams +
-    // MATCHUP settings). Same only-when-non-empty emit rule as `mode`.
+    // match settings). Same only-when-non-empty emit rule as `mode`.
     std::string matchup;
     int suggested_power = 0;
     int first_level = 1;

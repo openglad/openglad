@@ -2023,7 +2023,7 @@ bool known_match_setting(const char* name)
 }
 
 // og.campaign_match_get(name) → int32 — the menu-time twin of the sim's
-// read-only og.match_setting, over the persisted MATCHUP knobs
+// read-only og.match_setting, over the persisted match knobs
 // ("team_count", "score_limit", "respawn_ticks", "strip_troops",
 // "respawn_mode", "generator_rate"). Unknown names error, like the twin.
 int og_campaign_match_get(lua_State* L)
@@ -2042,7 +2042,7 @@ int og_campaign_match_get(lua_State* L)
 }
 
 // og.campaign_match_set(name, value) → true/false — write-through to the
-// MATCHUP knobs. Policy lives in the provider: it clamps like the lobby
+// match knobs. Policy lives in the provider: it clamps like the lobby
 // sanitizer and answers false for unknown names or when this machine is
 // not the host (local play is always host).
 int og_campaign_match_set(lua_State* L)

@@ -102,7 +102,6 @@ struct PickerState {
     std::vector<button> trainmenu_buttons;
     std::vector<button> hiremenu_buttons;
     std::vector<button> networking_buttons;
-    std::vector<button> teamsmenu_buttons;
     std::vector<button> viewscenario_buttons;
     std::vector<button> progressmenu_buttons;
     std::vector<button> scenariomenu_buttons;
@@ -119,13 +118,6 @@ struct PickerState {
     std::vector<button> help_buttons;
     // Campaign zone submenu (the scripted page chassis) — engine screen.
     std::vector<button> zone_submenu_buttons;
-
-    // MATCHUP subscreen: roster slot selected by the legacy local guy row.
-    int teams_menu_guy_slot = 0;
-
-    // MATCHUP subscreen: per-team member-detail page (the '>' pager). Session
-    // state only — reset every time the subscreen opens, never persisted.
-    std::array<int, 4> teams_menu_team_page{};
 
     // VIEW LEVEL: page step requested by the PREV/NEXT ButtonAction handler
     // (-1/+1), consumed by the engine screen's consume_click hook
