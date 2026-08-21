@@ -212,13 +212,20 @@ std::string infinite_gold_row_label(const MenuLabelContext& context)
         : std::string("Infinite Gold: Off");
 }
 
+std::string cross_control_row_label(const MenuLabelContext& context)
+{
+    return format_cross_control_label(
+        context.save != nullptr && context.save->cross_control != 0);
+}
+
 constexpr GateBinding kHostOnlyGate{.gate = MenuGate::HostOnly};
+constexpr GateBinding kNetworkedOnlyGate{.gate = MenuGate::NetworkedOnly};
 
 constexpr MenuButtonSpec kDifficultyRows[] = {
     {.id = "difficulty_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 10, .y = 10, .w = 50, .h = 15,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 5, .down = 1}},
+     .nav = {.up = 7, .down = 1}},
     {.id = "difficulty", .label = "Difficulty: Battle",
      .x = 90, .y = 35, .w = 140, .h = 15,
      .action = ButtonAction::SetDifficulty, .arg = -1,
@@ -252,9 +259,21 @@ constexpr MenuButtonSpec kDifficultyRows[] = {
     {.id = "infinite_gold", .label = "Infinite Gold: Off",
      .x = 90, .y = 150, .w = 140, .h = 15,
      .action = ButtonAction::ToggleInfiniteGold, .arg = -1,
-     .nav = {.up = 5, .down = 0},
+     .nav = {.up = 5, .down = 7},
      .label_binding = {.formatter = &infinite_gold_row_label},
      .gate = kHostOnlyGate},
+    // §2.7 cross-control, re-homed from MATCHUP (#218) on the band pitch
+    // (y=150+23=173; the face bottom at 188 clears the panel bevel at 196).
+    // Deliberately NOT host-gated like its siblings: a networked JOINER
+    // keeps sight of the mode that changes their rights (the gate hides it
+    // only in local sessions), while change_cross_control() popups for a
+    // non-host click. Session-only value — never in the .gtl.
+    {.id = "cross_control", .label = "CTRL: OWN",
+     .x = 90, .y = 173, .w = 140, .h = 15,
+     .action = ButtonAction::ToggleCrossControl, .arg = -1,
+     .nav = {.up = 6, .down = 0},
+     .label_binding = {.formatter = &cross_control_row_label},
+     .gate = kNetworkedOnlyGate},
 };
 
 // The options-family panel chrome, shared by DIFFICULTY and every options
@@ -272,9 +291,10 @@ void difficulty_draw_content(void* /*screen_state*/)
 {
     og::runtime::current_session->myscreen_->text_normal.write_xy(
         80, 13, DARK_BLUE, "%s", "DIFFICULTY");
-    // A joiner's rows are all hidden (sync_difficulty_menu_visibility), so
-    // the panel says who does own them instead of standing empty. Centered
-    // where the rows would have been, at 6px a glyph.
+    // A joiner's settings rows are hidden (sync_difficulty_menu_visibility;
+    // only the read-only CTRL row at y=173 may remain), so the panel says
+    // who does own them instead of standing empty. Centered where the rows
+    // would have been, at 6px a glyph.
     const std::string caption = difficulty_panel_caption();
     if (!caption.empty()) {
         const int x = 160 - static_cast<int>(caption.size()) * 3;
@@ -1220,21 +1240,21 @@ bool level_reload_guard_frame_tick(void* screen_state, int /*frame*/)
 // ---------------------------------------------------------------------------
 // SCENARIO subscreen (§1.8 step 5): the column at x=30 stacks the host-gated
 // SET CAMPAIGN / SET LEVEL (their name strips draw alongside) over the
-// always-visible VIEW LEVEL | MATCHUP | PROGRESS row; BACK sits apart at
+// always-visible VIEW LEVEL | PROGRESS row and the versus-gated y=140
+// match-settings band (TEAMS | TROOPS | LIMIT, #218); BACK sits apart at
 // (30,170) so no other screen's "back" shares its geometry (injector tests
-// disambiguate the per-screen "back" buttons by position). Rows transcribed
-// VERBATIM from the deleted k_scenariomenu_buttons; static nav encodes the
-// host variant and the legacy sync (hide + up-link rewire) is the spec's
-// Rewire program (G1). Nested screens return MENU_REDRAW for reset_buttons
-// to consume (exit_on_redraw stays FALSE); BACK carries MENU_EXIT and the
-// create_scenario_menu wrapper folds it to MENU_REDRAW unless a start was
-// selected.
+// disambiguate the per-screen "back" buttons by position). Static nav
+// encodes the host+versus (all-visible) variant; the sync (hide + rewire)
+// is the spec's Rewire program (G1). Nested screens return MENU_REDRAW for
+// reset_buttons to consume (exit_on_redraw stays FALSE); BACK carries
+// MENU_EXIT and the create_scenario_menu wrapper folds it to MENU_REDRAW
+// unless a start was selected.
 
 constexpr MenuButtonSpec kScenarioMenuRows[] = {
     {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 30, .y = 170, .w = 60, .h = 20,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 3}},
+     .nav = {.up = 7}},
     {.id = "set_campaign", .label = "SET CAMPAIGN",
      .x = 30, .y = 40, .w = 80, .h = 15,
      .action = ButtonAction::DoPickCampaign, .arg = -1,
@@ -1246,26 +1266,48 @@ constexpr MenuButtonSpec kScenarioMenuRows[] = {
     {.id = "view_scenario", .label = "VIEW LEVEL",
      .x = 30, .y = 100, .w = 80, .h = 15,
      .action = ButtonAction::ViewScenario, .arg = -1,
-     .nav = {.up = 2, .down = 0, .right = 4}},
-    {.id = "matchup", .label = "MATCHUP",
-     .x = 120, .y = 100, .w = 80, .h = 15,
-     .action = ButtonAction::CreateTeamsMenu, .arg = -1,
-     .nav = {.up = 2, .down = 6, .left = 3, .right = 5}},
+     .nav = {.up = 2, .down = 7, .right = 5}},
+    // The ordinal the MATCHUP door vacated (#218): the screen's seat/team
+    // overview lives in VIEW LEVEL now and its knobs re-homed below (TEAMS /
+    // LIMIT) and onto DIFFICULTY (cross-control). Parked exactly like the
+    // Base Camp's seat_rail_spare — zero-size rect, empty label, hidden, no
+    // nav — so kScenarioMenuProgressIndex and every pin below never shifted.
+    {.id = "scenario_spare", .label = "",
+     .x = 0, .y = 0, .w = 0, .h = 0,
+     .action = ButtonAction::MenuSpecRow, .arg = kScenarioMenuSpareIndex,
+     .hidden = true},
+    // PROGRESS left-packs into the vacated middle cell so the y=100 row
+    // reads VIEW LEVEL | PROGRESS on the declared 30/120/210 grid.
     {.id = "progress", .label = "PROGRESS",
-     .x = 210, .y = 100, .w = 80, .h = 15,
+     .x = 120, .y = 100, .w = 80, .h = 15,
      .action = ButtonAction::CreateProgressMenu, .arg = -1,
-     .nav = {.up = 2, .down = 0, .left = 4}},
+     .nav = {.up = 2, .down = 6, .left = 3}},
     // Scenario troops: keep the authored cast, or strip all of it.
     // Host-gated like SET CAMPAIGN and SET LEVEL; joiners read the label off
     // the lobby-synced save. It sits at (120,140) rather than the y=70 cell
     // beside SET LEVEL because scenario_menu_draw_content paints the level
     // title strip from x=114 across that whole row AFTER draw_buttons, so a
-    // button there would be overprinted. (120,140) is the free grid cell
-    // directly under MATCHUP, which keeps it grouped with the match settings.
+    // button there would be overprinted. (120,140) is the free grid cell of
+    // the y=140 match-settings band, between TEAMS and LIMIT.
     {.id = "troops", .label = "TROOPS: ALL",
      .x = 120, .y = 140, .w = 80, .h = 15,
      .action = ButtonAction::CycleCtfScenarioTroops, .arg = -1,
-     .nav = {.up = 4, .down = 0}},
+     .nav = {.up = 5, .down = 0, .left = 7, .right = 8}},
+    // Match Teams / Score Limit, re-homed from MATCHUP (#218): match rules
+    // belong on the scenario axis (the TEAMS -> TROOPS migration precedent),
+    // and this keeps third-party versus packs' access (docs/
+    // camp-controls-design.md). They complete the y=140 band around TROOPS.
+    // Versus campaigns only; joiners see the read-only label (the lobby-
+    // synced save feeds the per-frame re-derive) while the host acts.
+    // Static labels are the formatters' defaults (both re-derive per frame).
+    {.id = "ctf_teams", .label = "Teams: Auto",
+     .x = 30, .y = 140, .w = 80, .h = 15,
+     .action = ButtonAction::CycleCtfTeamCount, .arg = -1,
+     .nav = {.up = 3, .down = 0, .right = 6}},
+    {.id = "ctf_caps", .label = "Limit: Map",
+     .x = 210, .y = 140, .w = 80, .h = 15,
+     .action = ButtonAction::CycleCtfCaptureLimit, .arg = -1,
+     .nav = {.up = 5, .down = 0, .left = 6}},
 };
 
 // The campaign-name / level-title strips sit beside the buttons that change

@@ -200,7 +200,7 @@ TEST(CtfUi, classic_respawn_shows_only_the_shared_countdown)
     v->control = old_control;
 }
 
-TEST(CtfUi, team_build_row_and_matchup_settings_cycle)
+TEST(CtfUi, team_build_row_and_scenario_settings_cycle)
 {
     screen* s = test_screen();
     SaveData& save = s->save_data;
@@ -218,35 +218,32 @@ TEST(CtfUi, team_build_row_and_matchup_settings_cycle)
         ASSERT_EQ(kCreateMenuButtonCount, picker_createmenu_button_count());
         EXPECT_EQ("scenario", row[kCreateMenuScenarioIndex].id) << campaign;
         EXPECT_FALSE(row[kCreateMenuScenarioIndex].hidden) << campaign;
-        // MATCHUP and VIEW LEVEL live in the SCENARIO subscreen.
+        // VIEW LEVEL and the match-settings band live in the SCENARIO
+        // subscreen; the retired MATCHUP door's ordinal is a parked spare.
         button* scenario = picker_scenariomenu_buttons();
         ASSERT_EQ(kScenarioMenuButtonCount,
                   picker_scenariomenu_button_count());
-        EXPECT_EQ("matchup", scenario[kScenarioMenuTeamsIndex].id)
+        EXPECT_EQ("scenario_spare", scenario[kScenarioMenuSpareIndex].id)
             << campaign;
-        EXPECT_EQ("MATCHUP", scenario[kScenarioMenuTeamsIndex].label)
-            << campaign;
+        EXPECT_TRUE(scenario[kScenarioMenuSpareIndex].hidden) << campaign;
         EXPECT_EQ("view_scenario",
                   scenario[kScenarioMenuViewScenarioIndex].id) << campaign;
-        EXPECT_FALSE(scenario[kScenarioMenuTeamsIndex].hidden) << campaign;
+        EXPECT_EQ("ctf_teams", scenario[kScenarioMenuCtfTeamsIndex].id)
+            << campaign;
+        EXPECT_EQ("ctf_caps", scenario[kScenarioMenuCtfCapsIndex].id)
+            << campaign;
         EXPECT_FALSE(scenario[kScenarioMenuViewScenarioIndex].hidden)
             << campaign;
     }
 
-    // Match Teams and Score Limit live in MATCHUP; their handlers cycle the
-    // save fields and refresh the subscreen's descriptor labels. The
-    // scenario-troops control moved to SCENARIO, so its MATCHUP row is
-    // dormant: the ordinal still resolves, but the row never shows and
-    // change_ctf_troops writes the SCENARIO descriptor instead.
+    // Match Teams and Score Limit are SCENARIO rows now (#218, re-homed
+    // from MATCHUP): their handlers cycle the save fields and refresh the
+    // SCENARIO descriptor labels — like the scenario-troops control, whose
+    // MATCHUP row went dormant when it moved.
     save.current_campaign = "modes";
     save.ctf_team_count = 2;
     save.ctf_capture_limit = 0;
     save.ctf_strip_scenario_troops = 0;
-    button* teams_menu = picker_teamsmenu_buttons();
-    ASSERT_EQ(kTeamsMenuButtonCount, picker_teamsmenu_button_count());
-    EXPECT_EQ("ctf_teams", teams_menu[kTeamsMenuCtfTeamsIndex].id);
-    EXPECT_EQ("ctf_caps", teams_menu[kTeamsMenuCtfCapsIndex].id);
-    EXPECT_EQ("ctf_troops", teams_menu[kTeamsMenuCtfTroopsIndex].id);
 
     button* scenario_rows = picker_scenariomenu_buttons();
     EXPECT_EQ("troops", scenario_rows[kScenarioMenuTroopsIndex].id);
@@ -258,15 +255,12 @@ TEST(CtfUi, team_build_row_and_matchup_settings_cycle)
     (void)change_ctf_troops();
     EXPECT_EQ(2, (int)save.ctf_strip_scenario_troops);
 
-    const auto& live_rows = og::runtime::current_session->picker_->teamsmenu_buttons;
-    ASSERT_EQ(static_cast<std::size_t>(kTeamsMenuButtonCount), live_rows.size());
-    EXPECT_EQ("Teams: 3", live_rows[kTeamsMenuCtfTeamsIndex].label);
-    EXPECT_EQ("Limit: 1", live_rows[kTeamsMenuCtfCapsIndex].label);
-
     const auto& live_scenario =
         og::runtime::current_session->picker_->scenariomenu_buttons;
     ASSERT_EQ(static_cast<std::size_t>(kScenarioMenuButtonCount),
               live_scenario.size());
+    EXPECT_EQ("Teams: 3", live_scenario[kScenarioMenuCtfTeamsIndex].label);
+    EXPECT_EQ("Limit: 1", live_scenario[kScenarioMenuCtfCapsIndex].label);
     EXPECT_EQ("TROOPS: OWN", live_scenario[kScenarioMenuTroopsIndex].label);
 
     (void)change_ctf_troops();
@@ -476,7 +470,6 @@ struct TeamsFlowState
     bool finished = false;
     bool subscreen_opened = false;
     bool ctf_buttons_hidden = false;
-    bool retired_controls_hidden = false;
     bool you_on_team_0 = false;
     bool you_on_team_1 = false;
     bool viewer_opened = false;
@@ -498,35 +491,20 @@ int teams_local_flow_injector(void* data)
     SDL_Delay(750);
     interact("continue_game");
 
-    // MATCHUP has one door, on the SCENARIO submenu: #236 retired the Base
-    // Camp SEATS button that duplicated it.
+    // The match-settings band lives on the SCENARIO submenu (#218 — the
+    // MATCHUP screen's door is a parked spare).
     SDL_Delay(500);
     wait_for_interactable("scenario", 10000);
     SDL_Delay(750);
     interact("scenario");
-    wait_for_interactable("matchup", 10000);
-    SDL_Delay(300);
-    interact("matchup");
 
-    // Classic MATCHUP is overview-only: no JOIN, hero cycler, duplicate
-    // READY, or CTF settings.
-    state->subscreen_opened =
-        wait_for_interactable_at("back", 10, 170, 10000);
+    // Classic campaign: TROOPS shows for the host, but the versus-only
+    // TEAMS / LIMIT rows stay hidden — the re-homed rows keep MATCHUP's
+    // classic-campaign gate.
+    state->subscreen_opened = wait_for_interactable("troops", 10000);
     SDL_Delay(300);
     state->ctf_buttons_hidden = !has_interactable("ctf_teams") &&
-        !has_interactable("ctf_caps") && !has_interactable("ctf_troops");
-    state->retired_controls_hidden =
-        !has_interactable("join_team_0") &&
-        !has_interactable("guy_prev") &&
-        !has_interactable("guy_next") &&
-        !has_interactable("guy_team") &&
-        !has_interactable("ready");
-
-    // MATCHUP back returns to the SCENARIO submenu.
-    interact("back");
-    SDL_Delay(300);
-    wait_for_interactable("view_scenario", 10000);
-    SDL_Delay(300);
+        !has_interactable("ctf_caps");
 
     // VIEW LEVEL: framed report over a scratch load; BACK returns.
     interact("view_scenario");
@@ -536,7 +514,7 @@ int teams_local_flow_injector(void* data)
 
     // Viewer back -> SCENARIO submenu; its back (30,170) -> team build.
     SDL_Delay(300);
-    wait_for_interactable("matchup", 10000);
+    wait_for_interactable("progress", 10000);
     SDL_Delay(300);
     interact("back");
 
@@ -559,16 +537,14 @@ int teams_ctf_settings_flow_injector(void* data)
     SDL_Delay(750);
     interact("continue_game");
 
-    // Team build -> SCENARIO submenu -> MATCHUP.
+    // Team build -> SCENARIO submenu, where the whole match-settings band
+    // lives now (#218): TEAMS | TROOPS | LIMIT at y=140.
     SDL_Delay(500);
     wait_for_interactable("scenario", 10000);
     SDL_Delay(750);
     interact("scenario");
-    wait_for_interactable("matchup", 10000);
-    SDL_Delay(300);
-    interact("matchup");
 
-    // CTF campaign + local host: the match-settings trio lives here.
+    // CTF campaign + local host: the versus-gated TEAMS / LIMIT rows show.
     state->subscreen_opened = wait_for_interactable("ctf_teams", 10000);
     SDL_Delay(300);
 
@@ -583,13 +559,7 @@ int teams_ctf_settings_flow_injector(void* data)
         wait_for_interactable_label("ctf_caps", "Limit: 1", 5000);
     SDL_Delay(300);
 
-    // MATCHUP back returns to the SCENARIO submenu.
-    interact("back");
-    SDL_Delay(300);
-    wait_for_interactable("view_scenario", 10000);
-    SDL_Delay(300);
-
-    // TROOPS is a SCENARIO row now, host-gated like SET CAMPAIGN. The cycle
+    // TROOPS shares the band, host-gated like SET CAMPAIGN. The cycle
     // walks ALL -> OWN -> FAIR -> ALL on every campaign (matched-teams
     // D28), and every label is the shared formatter's on the live surface.
     state->troops_row_seen =
@@ -611,7 +581,7 @@ int teams_ctf_settings_flow_injector(void* data)
 
     // Viewer back -> SCENARIO submenu; its back (30,170) -> team build.
     SDL_Delay(300);
-    wait_for_interactable("matchup", 10000);
+    wait_for_interactable("progress", 10000);
     SDL_Delay(300);
     interact("back");
 
@@ -793,7 +763,7 @@ int view_scenario_pager_injector(void* data)
     // Viewer back -> SCENARIO submenu; its back (30,170) -> team build.
     interact("back");
     SDL_Delay(300);
-    wait_for_interactable("matchup", 10000);
+    wait_for_interactable("progress", 10000);
     SDL_Delay(300);
     interact("back");
 
@@ -821,73 +791,13 @@ bool wait_for_picker_trace(const char* substring, int count, int timeout_ms)
     return false;
 }
 
-struct TeamsPagerFlowState
-{
-    bool started = false;
-    bool finished = false;
-    bool subscreen_opened = false;
-    bool pager_team0_visible = false;
-    bool pager_team1_hidden = false;
-    bool page2_seen = false;
-    bool page3_seen = false;
-};
-
-// MATCHUP per-team pager: an 8-hero RED team overflows the detail line, so
-// team_page_0 shows and cycles the slice; empty GREEN has no pager.
-int teams_pager_flow_injector(void* data)
-{
-    og::runtime::ensure_thread_session();
-    TeamsPagerFlowState* state = static_cast<TeamsPagerFlowState*>(data);
-    state->started = true;
-
-    wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
-    interact("continue_game");
-
-    SDL_Delay(500);
-    wait_for_interactable("scenario", 10000);
-    SDL_Delay(750);
-    interact("scenario");
-    wait_for_interactable("matchup", 10000);
-    SDL_Delay(300);
-    interact("matchup");
-
-    state->subscreen_opened =
-        wait_for_interactable_at("back", 10, 170, 10000);
-    SDL_Delay(300);
-    state->pager_team0_visible = wait_for_interactable("team_page_0", 5000);
-    state->pager_team1_hidden = !has_interactable("team_page_1");
-    SDL_Delay(300);
-
-    // Flip twice: 1/3 -> 2/3 -> 3/3. Each flip is confirmed through the
-    // page trace before the next click (the label itself never changes).
-    interact("team_page_0");
-    state->page2_seen =
-        wait_for_picker_trace("teams_detail t=0 page=2/", 1, 5000);
-    SDL_Delay(300);
-    interact("team_page_0");
-    state->page3_seen =
-        wait_for_picker_trace("teams_detail t=0 page=3/", 1, 5000);
-    SDL_Delay(300);
-
-    // Unwind: MATCHUP -> SCENARIO -> team build -> main menu.
-    interact("back");
-    SDL_Delay(300);
-    wait_for_interactable("view_scenario", 10000);
-    SDL_Delay(300);
-    interact("back");
-    SDL_Delay(300);
-    wait_for_interactable("go", 10000);
-    SDL_Delay(300);
-    interact("back");
-
-    state->finished = true;
-    return 0;
-}
-
 } // namespace
 
-TEST(CtfUi, matchup_local_overview_and_viewer_flow)
+// Classic-campaign SCENARIO flow (#218 — transformed from the retired
+// MATCHUP overview flow): the versus-only TEAMS / LIMIT rows keep their
+// classic-campaign gate at the new home, VIEW LEVEL still opens its frame,
+// and walking the screens mutates no team assignment.
+TEST(CtfUi, scenario_classic_hides_match_settings_and_viewer_flow)
 {
     trace_clear();
     SavedPickerSave save_guard;
@@ -907,15 +817,14 @@ TEST(CtfUi, matchup_local_overview_and_viewer_flow)
 
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     EXPECT_TRUE(state.finished) << "injector should complete the flow";
-    EXPECT_TRUE(state.subscreen_opened) << "MATCHUP should open from SEATS";
+    EXPECT_TRUE(state.subscreen_opened)
+        << "SCENARIO should show TROOPS to the host";
     EXPECT_TRUE(state.ctf_buttons_hidden)
-        << "classic campaigns hide the CTF settings trio";
-    EXPECT_TRUE(state.retired_controls_hidden)
-        << "MATCHUP must not expose JOIN, hero cycling, or duplicate READY";
+        << "classic campaigns hide the versus-only TEAMS / LIMIT rows";
     EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open its frame";
 
     EXPECT_EQ(0, save.my_team)
-        << "the overview must not mutate the player's assigned team";
+        << "the flow must not mutate the player's assigned team";
     const guy* alpha = nullptr;
     for (const auto& member : save.team_list)
     {
@@ -924,15 +833,16 @@ TEST(CtfUi, matchup_local_overview_and_viewer_flow)
     }
     ASSERT_NE(nullptr, alpha);
     EXPECT_EQ(0, alpha->teamnum)
-        << "the overview must not mutate roster allegiance";
+        << "the flow must not mutate roster allegiance";
 
-    EXPECT_FALSE(trace_contains("popup", "NO HEROES"))
-        << "retired JOIN actions must not run";
     EXPECT_TRUE(trace_contains("picker", "view_scenario lines="))
         << "the viewer should trace its report";
 }
 
-TEST(CtfUi, matchup_ctf_settings_flow)
+// The CTF settings flow at the knobs' new home (#218 — transformed from
+// the retired MATCHUP flow, same knob assertions): a versus campaign + host
+// shows TEAMS / TROOPS / LIMIT on SCENARIO and each cycler relabels live.
+TEST(CtfUi, scenario_ctf_settings_flow)
 {
     trace_clear();
     SavedPickerSave save_guard;
@@ -954,7 +864,7 @@ TEST(CtfUi, matchup_ctf_settings_flow)
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     EXPECT_TRUE(state.finished) << "injector should complete the flow";
     EXPECT_TRUE(state.subscreen_opened)
-        << "CTF campaign + host shows the settings in the subscreen";
+        << "CTF campaign + host shows TEAMS / LIMIT on SCENARIO";
     EXPECT_TRUE(state.you_on_team_0) << "Teams cycle should relabel";
     EXPECT_TRUE(state.you_on_team_1) << "Limit cycle should relabel";
     EXPECT_TRUE(state.troops_row_seen)
@@ -1080,55 +990,10 @@ TEST(CtfUi, view_scenario_pager_flips_by_mouse_and_keyboard)
         << "keyboard FIRE on PREV must flip back (entry trace + flip trace)";
 }
 
-// MATCHUP per-team detail paging: a seat and eight heroes overflow the
-// 39-character paged detail budget, so the row gets a '>' pager plus p/N,
-// and the slices rotate through every member. An empty team has no pager.
-TEST(CtfUi, matchup_member_pager_cycles_slices)
-{
-    trace_clear();
-    SavedPickerSave save_guard;
-    // The seat identity and HEROES prefix consume part of page one; the
-    // widened row then packs the remaining names into three visible slices.
-    write_save0_with_soldiers(
-        "gladiator", 1,
-        {"Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf",
-         "Hotel"});
-
-    TeamsPagerFlowState state;
-    SDL_Thread* thread = SDL_CreateThread(
-        teams_pager_flow_injector, "teams_pager_flow", &state);
-    ASSERT_NE(nullptr, thread);
-
-    g_picker_mainmenu_calls = 0;
-    g_picker_max_mainmenu_calls = 1;
-    picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
-    cleanup_picker_state();
-    g_picker_max_mainmenu_calls = 0;
-
-    EXPECT_TRUE(state.finished) << "injector should complete the flow";
-    EXPECT_TRUE(state.subscreen_opened) << "MATCHUP should open";
-    EXPECT_TRUE(state.pager_team0_visible)
-        << "the overflowing RED team must show its '>' pager";
-    EXPECT_TRUE(state.pager_team1_hidden)
-        << "the empty GREEN team must not show a pager";
-    EXPECT_TRUE(state.page2_seen) << "first flip should reach page 2/3";
-    EXPECT_TRUE(state.page3_seen) << "second flip should reach page 3/3";
-
-    // The traces carry the rendered indicator (p/N) and the slice text:
-    // each page shows a different run of member names.
-    EXPECT_GE(count_picker_trace_containing(
-                  "teams_detail t=0 page=1/3 SEATS: P1 YOU, HEROES: Alpha, Bravo"),
-              1)
-        << "entry slice should identify the seat and first heroes";
-    EXPECT_GE(count_picker_trace_containing(
-                  "teams_detail t=0 page=2/3 Charlie, Delta, Echo, Foxtrot, Golf"),
-              1)
-        << "page 2 should rotate to the middle members";
-    EXPECT_GE(count_picker_trace_containing(
-                  "teams_detail t=0 page=3/3 Hotel"), 1)
-        << "page 3 should show the overflow tail";
-}
+// (The MATCHUP per-team detail-pager flow test died with the screen's only
+// door — SCENARIO ordinal 4 is a parked spare since the #218 re-home. The
+// pager mechanism itself and its draw-order guard below go with the screen
+// body in the deletion commit.)
 
 // Draw-order regression: the per-team '>' pager is the only MATCHUP button
 // whose face sits inside a row readability bar (8..312 x row band). The bars
@@ -1247,7 +1112,7 @@ int view_scenario_refresh_injector(void* data)
     // Viewer back -> SCENARIO submenu; its back (30,170) -> team build.
     interact("back");
     SDL_Delay(300);
-    wait_for_interactable("matchup", 10000);
+    wait_for_interactable("progress", 10000);
     SDL_Delay(300);
     interact("back");
 
@@ -1351,7 +1216,7 @@ int view_scenario_camera_injector(void* data)
     // leaves the picker.
     interact("back");
     SDL_Delay(300);
-    state->back_at_scenario_menu = wait_for_interactable("matchup", 10000);
+    state->back_at_scenario_menu = wait_for_interactable("progress", 10000);
     SDL_Delay(300);
     interact("back");
 
@@ -1509,7 +1374,7 @@ int view_scenario_degrade_injector(void* data)
     og::runtime::current_session->myscreen_->save_data.scen_num = 500;
     picker_lobby_sync_settings_from_save();
     SDL_Delay(400);
-    wait_for_interactable("matchup", 10000);
+    wait_for_interactable("progress", 10000);
     SDL_Delay(300);
     interact("back");
 
@@ -1619,7 +1484,7 @@ int view_scenario_staged_pane_injector(void* data)
     // Viewer back -> SCENARIO -> team build -> main.
     interact("back");
     SDL_Delay(300);
-    wait_for_interactable("matchup", 10000);
+    wait_for_interactable("progress", 10000);
     SDL_Delay(300);
     interact("back");
     SDL_Delay(300);

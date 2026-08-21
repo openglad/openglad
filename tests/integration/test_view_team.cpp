@@ -3795,6 +3795,186 @@ TEST(ViewTeam, teams_cross_control_toggle_host_gates_and_syncs)
     save.reset();
 }
 
+// ---------------------------------------------------------------------------
+// §2.7 cross-control at its re-homed DIFFICULTY row (#218): the same gate
+// shape as the MATCHUP original — visible to ALL networked peers, host-only
+// actionable with the HOST CONTROLS popup, sanitize-to-{0,1}, settings sync
+// on a host toggle — now driven through change_cross_control() (the single
+// implementation; the MATCHUP spec row forwards here) and the DIFFICULTY
+// descriptor label surface.
+// ---------------------------------------------------------------------------
+TEST(ViewTeam, difficulty_cross_control_row_gates_and_syncs)
+{
+    trace_clear();
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    save.cross_control = 0;
+
+    NetworkedRosterLobbyClient lobby;
+    lobby.host = false;
+    ActivePickerLobbyClientGuard client_guard(&lobby);
+
+    // Networked joiner: the six LobbySettings rows hide, the CTRL row shows
+    // read-only at its appended band slot.
+    button* buttons = picker_difficulty_menu_buttons();
+    const int count = picker_difficulty_menu_button_count();
+    ASSERT_EQ(kDifficultyMenuButtonCount, count);
+    int highlighted = kDifficultyMenuGeneratorRateIndex;
+    sync_difficulty_menu_visibility(buttons, count, highlighted);
+    EXPECT_FALSE(buttons[kDifficultyMenuCrossControlIndex].hidden)
+        << "§2.7: joiners must SEE the mode that changes their rights";
+    for (int i = kDifficultyMenuDifficultyIndex;
+         i < kDifficultyMenuCrossControlIndex; ++i)
+        EXPECT_TRUE(buttons[i].hidden) << buttons[i].id;
+    EXPECT_EQ(kDifficultyMenuBackIndex, highlighted)
+        << "the highlight must be pulled off the hidden rows";
+    EXPECT_EQ(90, buttons[kDifficultyMenuCrossControlIndex].x);
+    EXPECT_EQ(173, buttons[kDifficultyMenuCrossControlIndex].y);
+    EXPECT_EQ(140, buttons[kDifficultyMenuCrossControlIndex].sizex);
+    EXPECT_EQ(15, buttons[kDifficultyMenuCrossControlIndex].sizey);
+    EXPECT_EQ("CTRL: OWN", buttons[kDifficultyMenuCrossControlIndex].label);
+    EXPECT_EQ(kDifficultyMenuCrossControlIndex,
+              buttons[kDifficultyMenuBackIndex].nav.up);
+    EXPECT_EQ(kDifficultyMenuBackIndex,
+              buttons[kDifficultyMenuCrossControlIndex].nav.up);
+
+    // Non-host click: popup, no change, no settings sync.
+    trace_clear();
+    EXPECT_EQ(MENU_OK, change_cross_control());
+    EXPECT_TRUE(trace_contains("teams", "cross_control_denied"));
+    EXPECT_TRUE(trace_contains("popup", "HOST CONTROLS THIS SETTING"));
+    EXPECT_EQ(0, save.cross_control);
+    EXPECT_EQ(0, lobby.settings_syncs);
+
+    // Host click: toggles, TRACEs, syncs settings, and writes the
+    // DIFFICULTY descriptor label surface the same frame.
+    lobby.host = true;
+    trace_clear();
+    EXPECT_EQ(MENU_OK, change_cross_control());
+    EXPECT_TRUE(trace_contains("teams", "cross_control 1"));
+    EXPECT_EQ(1, save.cross_control);
+    EXPECT_EQ(1, lobby.settings_syncs);
+    ASSERT_GT(static_cast<int>(pks().difficulty_menu_buttons.size()),
+              kDifficultyMenuCrossControlIndex);
+    EXPECT_EQ("CTRL: ALL",
+              pks().difficulty_menu_buttons[kDifficultyMenuCrossControlIndex]
+                  .label);
+
+    EXPECT_EQ(MENU_OK, change_cross_control());
+    EXPECT_EQ(0, save.cross_control);
+    EXPECT_EQ("CTRL: OWN",
+              pks().difficulty_menu_buttons[kDifficultyMenuCrossControlIndex]
+                  .label);
+
+    // Sanitization: junk counts as ON and lands on exactly 0.
+    save.cross_control = 7;
+    EXPECT_EQ(MENU_OK, change_cross_control());
+    EXPECT_EQ(0, save.cross_control);
+
+    // Local session: cross-control decides nothing, so the row hides and
+    // the classic vertical cycle returns.
+    lobby.networked = false;
+    lobby.host = true;
+    sync_difficulty_menu_visibility(buttons, count, highlighted);
+    EXPECT_TRUE(buttons[kDifficultyMenuCrossControlIndex].hidden);
+    EXPECT_EQ(kDifficultyMenuInfiniteGoldIndex,
+              buttons[kDifficultyMenuBackIndex].nav.up);
+    EXPECT_EQ(kDifficultyMenuBackIndex,
+              buttons[kDifficultyMenuInfiniteGoldIndex].nav.down);
+
+    save.cross_control = 0;
+    save.reset();
+}
+
+// ---------------------------------------------------------------------------
+// Match Teams / Score Limit at their re-homed SCENARIO rows (#218): visible
+// to a networked joiner as read-only labels on versus campaigns (the TROOPS
+// treatment plus joiner visibility), with the §2.7 denial in the callbacks
+// — a joiner click popups and cycles nothing, a host click cycles and syncs.
+// ---------------------------------------------------------------------------
+TEST(ViewTeam, scenario_match_settings_joiner_readonly_host_actionable)
+{
+    trace_clear();
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    // The shipped modes campaign carries matchup: versus.
+    save.current_campaign = "modes";
+    save.scen_num = 500;
+    save.ctf_team_count = 0;
+    save.ctf_capture_limit = 0;
+
+    NetworkedRosterLobbyClient lobby;
+    lobby.host = false;
+    ActivePickerLobbyClientGuard client_guard(&lobby);
+
+    button* buttons = picker_scenariomenu_buttons();
+    const int count = picker_scenariomenu_button_count();
+    ASSERT_EQ(kScenarioMenuButtonCount, count);
+    int highlighted = kScenarioMenuBackIndex;
+    sync_scenario_menu_host_control_visibility(buttons, count, highlighted);
+
+    // Joiner + versus: TEAMS / LIMIT visible read-only; the host-gated
+    // SET CAMPAIGN / SET LEVEL / TROOPS hide; labels are the formatters'.
+    EXPECT_FALSE(buttons[kScenarioMenuCtfTeamsIndex].hidden);
+    EXPECT_FALSE(buttons[kScenarioMenuCtfCapsIndex].hidden);
+    EXPECT_TRUE(buttons[kScenarioMenuTroopsIndex].hidden);
+    EXPECT_TRUE(buttons[kScenarioMenuSetCampaignIndex].hidden);
+    EXPECT_TRUE(buttons[kScenarioMenuSetLevelIndex].hidden);
+    EXPECT_TRUE(buttons[kScenarioMenuSpareIndex].hidden);
+    EXPECT_EQ("Teams: Auto", buttons[kScenarioMenuCtfTeamsIndex].label);
+    EXPECT_EQ("Limit: Map", buttons[kScenarioMenuCtfCapsIndex].label);
+
+    // Joiner clicks: §2.7 denial — popup, TRACE, no cycle, no sync.
+    trace_clear();
+    EXPECT_EQ(MENU_OK, change_ctf_teams());
+    EXPECT_TRUE(trace_contains("teams", "ctf_teams_denied"));
+    EXPECT_TRUE(trace_contains("popup", "HOST CONTROLS THIS SETTING"));
+    EXPECT_EQ(0, (int)save.ctf_team_count);
+    EXPECT_EQ(0, lobby.settings_syncs);
+    trace_clear();
+    EXPECT_EQ(MENU_OK, change_ctf_caps());
+    EXPECT_TRUE(trace_contains("teams", "ctf_caps_denied"));
+    EXPECT_TRUE(trace_contains("popup", "HOST CONTROLS THIS SETTING"));
+    EXPECT_EQ(0, (int)save.ctf_capture_limit);
+    EXPECT_EQ(0, lobby.settings_syncs);
+
+    // A host's lobby-synced turn reaches the joiner's read-only label
+    // through the same per-frame re-derive TROOPS uses.
+    save.ctf_team_count = 3;
+    sync_scenario_menu_host_control_visibility(buttons, count, highlighted);
+    EXPECT_EQ("Teams: 3", buttons[kScenarioMenuCtfTeamsIndex].label);
+
+    // Host clicks: cycle + sync + both-surface refresh.
+    lobby.host = true;
+    save.ctf_team_count = 2;
+    EXPECT_EQ(MENU_OK, change_ctf_teams());
+    EXPECT_EQ(3, (int)save.ctf_team_count);
+    EXPECT_EQ(1, lobby.settings_syncs);
+    EXPECT_EQ("Teams: 3",
+              pks().scenariomenu_buttons[kScenarioMenuCtfTeamsIndex].label);
+    EXPECT_EQ(MENU_OK, change_ctf_caps());
+    EXPECT_EQ(1, (int)save.ctf_capture_limit);
+    EXPECT_EQ(2, lobby.settings_syncs);
+    EXPECT_EQ("Limit: 1",
+              pks().scenariomenu_buttons[kScenarioMenuCtfCapsIndex].label);
+
+    // Non-versus campaign: the pair hides for host and joiner alike.
+    save.current_campaign = "gladiator";
+    sync_scenario_menu_host_control_visibility(buttons, count, highlighted);
+    EXPECT_TRUE(buttons[kScenarioMenuCtfTeamsIndex].hidden);
+    EXPECT_TRUE(buttons[kScenarioMenuCtfCapsIndex].hidden);
+    EXPECT_FALSE(buttons[kScenarioMenuTroopsIndex].hidden)
+        << "TROOPS keeps its host-axis gate on classic campaigns";
+
+    save.reset();
+}
+
 // §2.6 state 2 wording (solo reword pin): a solo hired-but-benched roster
 // gets the DEPLOY AT LEAST ONE popup (was NO ONE DEPLOYED).
 TEST(ViewTeam, solo_go_benched_roster_popups_deploy_at_least_one)

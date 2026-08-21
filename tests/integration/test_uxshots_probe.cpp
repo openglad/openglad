@@ -1021,6 +1021,18 @@ int many_seats_view_level_injector(void *data) {
         SDL_Delay(300);
         interact("back");
       }
+      // The networked DIFFICULTY screen (#218): all six host rows plus the
+      // re-homed CTRL row on the appended y=173 band slot.
+      if (wait_for_team_menu(5000)) {
+        SDL_Delay(250);
+        interact("difficulty");
+        if (wait_for_interactable("cross_control", 5000)) {
+          SDL_Delay(750);
+          state->captures += capture_frame("difficulty_networked");
+          SDL_Delay(200);
+          interact("difficulty_back");
+        }
+      }
       if (wait_for_team_menu(5000)) {
         SDL_Delay(250);
         interact("back");
@@ -1096,6 +1108,13 @@ int view_level_staged_injector(void *data) {
     interact("scenario");
     if (wait_for_interactable("view_scenario", 5000)) {
       SDL_Delay(300);
+      // The reshaped SCENARIO screen first (#218): a versus host shows the
+      // full y=140 match-settings band TEAMS | TROOPS | LIMIT under the
+      // left-packed VIEW LEVEL | PROGRESS row.
+      if (wait_for_interactable("ctf_teams", 5000)) {
+        SDL_Delay(300);
+        state->captures += capture_frame("scenario_match_band");
+      }
       interact("view_scenario");
       // The pane-heal trace is the "viewer is up and staged" signal.
       bool pane_up = false;
@@ -1111,7 +1130,7 @@ int view_level_staged_injector(void *data) {
         SDL_Delay(200);
         interact("back");
       }
-      if (wait_for_interactable("matchup", 5000)) {
+      if (wait_for_interactable("progress", 5000)) {
         SDL_Delay(300);
         interact("back");
       }
@@ -1182,9 +1201,10 @@ TEST(UxShots, n_view_level_staged) {
   cleanup_picker_state();
   g_picker_max_mainmenu_calls = 0;
   ASSERT_TRUE(state.finished);
-  // Both shots: the staged band, then the HIRE portrait drawn in the same
-  // menu session right after the viewer closed.
-  ASSERT_EQ(2, state.captures);
+  // All three shots: the reshaped SCENARIO screen (#218 match-settings
+  // band), the staged band, then the HIRE portrait drawn in the same menu
+  // session right after the viewer closed.
+  ASSERT_EQ(3, state.captures);
 
   // The save0 load mounted the modes campaign; restore the default.
   (void)unmount_campaign_package_with_error(get_mounted_campaign());
@@ -1220,7 +1240,9 @@ TEST(UxShots, n_view_level_seats) {
   SDL_WaitThread(thread, nullptr);
   cleanup_picker_state();
   ASSERT_TRUE(state.finished);
-  ASSERT_EQ(3, state.captures);
+  // Rail p1/p2, the VIEW LEVEL seat block, and the networked DIFFICULTY
+  // screen with the re-homed CTRL row (#218).
+  ASSERT_EQ(4, state.captures);
 }
 
 // --- 13. full-screen help (#168): all three tabs plus a paged state -------

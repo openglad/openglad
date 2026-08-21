@@ -308,29 +308,69 @@ void ensure_highlighted_button_visible(const button* buttons,
 // The §2.5 base camp rewires its full roster graph per frame (pattern b) —
 // the rewire lives on the spec in menu_screen_specs.cpp.
 
-// Rewire the always-visible VIEW LEVEL | MATCHUP | PROGRESS row's up-links
-// around the host-gated SET CAMPAIGN / SET LEVEL column.
+// Full-graph rewire for the SCENARIO subscreen (pattern b): two visibility
+// axes — SET CAMPAIGN / SET LEVEL / TROOPS gate on the host,
+// TEAMS / LIMIT (#218, re-homed from MATCHUP) gate on the versus campaign
+// and stay visible to joiners as read-only labels. Every link is written on
+// every call so no variant inherits a stale one; the parked spare (the
+// retired MATCHUP door's ordinal) never participates.
 void picker_wire_scenario_menu_nav(button* buttons,
                                    int count,
-                                   bool host_controls_visible)
+                                   bool host_controls_visible,
+                                   bool match_settings_visible)
 {
     if (buttons == nullptr || count < kScenarioMenuButtonCount)
         return;
 
-    const int row_up =
-        host_controls_visible ? kScenarioMenuSetLevelIndex : -1;
-    buttons[kScenarioMenuViewScenarioIndex].nav.up = row_up;
-    buttons[kScenarioMenuTeamsIndex].nav.up = row_up;
-    buttons[kScenarioMenuProgressIndex].nav.up = row_up;
-    // TROOPS hangs off MATCHUP's down-link and is host-gated too, so the
-    // link has to fall back to BACK for joiners.
-    buttons[kScenarioMenuTeamsIndex].nav.down =
-        host_controls_visible ? kScenarioMenuTroopsIndex
-                              : kScenarioMenuBackIndex;
-    buttons[kScenarioMenuViewScenarioIndex].nav.down =
-        kScenarioMenuBackIndex;
-    buttons[kScenarioMenuBackIndex].nav.up =
-        kScenarioMenuViewScenarioIndex;
+    const bool host = host_controls_visible;
+    const bool match = match_settings_visible;
+
+    // Host column: SET CAMPAIGN over SET LEVEL over VIEW LEVEL.
+    buttons[kScenarioMenuSetCampaignIndex].nav =
+        {.down = kScenarioMenuSetLevelIndex};
+    buttons[kScenarioMenuSetLevelIndex].nav =
+        {.up = kScenarioMenuSetCampaignIndex,
+         .down = kScenarioMenuViewScenarioIndex};
+
+    // y=100 row: VIEW LEVEL <-> PROGRESS; up-links close for joiners.
+    const int row_up = host ? kScenarioMenuSetLevelIndex : -1;
+    buttons[kScenarioMenuViewScenarioIndex].nav =
+        {.up = row_up,
+         .down = match ? kScenarioMenuCtfTeamsIndex : kScenarioMenuBackIndex,
+         .right = kScenarioMenuProgressIndex};
+    buttons[kScenarioMenuProgressIndex].nav =
+        {.up = row_up,
+         .down = host ? kScenarioMenuTroopsIndex
+                      : (match ? kScenarioMenuCtfCapsIndex
+                               : kScenarioMenuBackIndex),
+         .left = kScenarioMenuViewScenarioIndex};
+
+    // y=140 match-settings band: TEAMS (30) | TROOPS (120) | LIMIT (210).
+    // TROOPS is host-gated, TEAMS/LIMIT versus-gated, so the horizontal
+    // chain skips whichever member is hidden this frame.
+    buttons[kScenarioMenuCtfTeamsIndex].nav =
+        {.up = kScenarioMenuViewScenarioIndex,
+         .down = kScenarioMenuBackIndex,
+         .right = host ? kScenarioMenuTroopsIndex
+                       : kScenarioMenuCtfCapsIndex};
+    buttons[kScenarioMenuTroopsIndex].nav =
+        {.up = kScenarioMenuProgressIndex,
+         .down = kScenarioMenuBackIndex,
+         .left = match ? kScenarioMenuCtfTeamsIndex : -1,
+         .right = match ? kScenarioMenuCtfCapsIndex : -1};
+    buttons[kScenarioMenuCtfCapsIndex].nav =
+        {.up = kScenarioMenuProgressIndex,
+         .down = kScenarioMenuBackIndex,
+         .left = host ? kScenarioMenuTroopsIndex
+                      : kScenarioMenuCtfTeamsIndex};
+
+    // BACK climbs into the nearest visible x=30 column member.
+    buttons[kScenarioMenuBackIndex].nav =
+        {.up = match ? kScenarioMenuCtfTeamsIndex
+                     : kScenarioMenuViewScenarioIndex};
+
+    // The parked spare: no links in, no links out (#236 precedent).
+    buttons[kScenarioMenuSpareIndex].nav = {};
 }
 
 void sync_scenario_menu_host_control_visibility(button* buttons,
@@ -341,8 +381,9 @@ void sync_scenario_menu_host_control_visibility(button* buttons,
         return;
 
     // SET CAMPAIGN / SET LEVEL keep their host-only visibility inside the
-    // subscreen; VIEW LEVEL / MATCHUP / PROGRESS stay visible for everyone.
+    // subscreen; VIEW LEVEL / PROGRESS stay visible for everyone.
     const bool host_controls_visible = picker_lobby_host_controls_visible();
+    const SaveData& save = og::runtime::current_session->myscreen_->save_data;
     buttons[kScenarioMenuSetCampaignIndex].hidden = !host_controls_visible;
     buttons[kScenarioMenuSetLevelIndex].hidden = !host_controls_visible;
     buttons[kScenarioMenuTroopsIndex].hidden = !host_controls_visible;
@@ -351,8 +392,8 @@ void sync_scenario_menu_host_control_visibility(button* buttons,
     // Re-derive the label from the save every frame: a host cycling TROOPS
     // reaches a joiner through the lobby settings, which land in the save
     // under the open menu (both label surfaces, per the menu skill).
-    buttons[kScenarioMenuTroopsIndex].label = og::ui::format_ctf_troops_label(
-        og::runtime::current_session->myscreen_->save_data);
+    buttons[kScenarioMenuTroopsIndex].label =
+        og::ui::format_ctf_troops_label(save);
     sync_button_hidden_state(buttons, kScenarioMenuTroopsIndex);
     if (og::runtime::current_session->allbuttons_[kScenarioMenuTroopsIndex] !=
         nullptr)
@@ -360,8 +401,35 @@ void sync_scenario_menu_host_control_visibility(button* buttons,
         og::runtime::current_session->allbuttons_[kScenarioMenuTroopsIndex]
             ->label = buttons[kScenarioMenuTroopsIndex].label;
     }
+    // TEAMS / LIMIT (#218, re-homed from MATCHUP): versus campaigns only,
+    // and — unlike TROOPS — visible to JOINERS as read-only labels (the
+    // host's turns land in the lobby-synced save and the same re-derive
+    // shows them; change_ctf_teams/change_ctf_caps popup for a non-host).
+    const bool match_settings_visible = og::ui::is_versus_campaign(save);
+    for (const int index :
+         {kScenarioMenuCtfTeamsIndex, kScenarioMenuCtfCapsIndex})
+    {
+        buttons[index].hidden = !match_settings_visible;
+        buttons[index].label = index == kScenarioMenuCtfTeamsIndex
+            ? og::ui::format_ctf_teams_label(save)
+            : og::ui::format_ctf_caps_label(save);
+        sync_button_hidden_state(buttons, index);
+        if (og::runtime::current_session
+                ->allbuttons_[static_cast<std::size_t>(index)] != nullptr)
+        {
+            og::runtime::current_session
+                ->allbuttons_[static_cast<std::size_t>(index)]
+                ->label = buttons[index].label;
+        }
+    }
+    // The retired MATCHUP door's ordinal stays parked: hidden, zero-size,
+    // no nav (the #236 seat_rail_spare precedent) — re-asserted per frame
+    // because the engine's gate pass marks ungated rows visible.
+    buttons[kScenarioMenuSpareIndex].hidden = true;
+    sync_button_hidden_state(buttons, kScenarioMenuSpareIndex);
     picker_wire_scenario_menu_nav(buttons, num_buttons,
-                                  host_controls_visible);
+                                  host_controls_visible,
+                                  match_settings_visible);
 
     ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
 }
@@ -373,22 +441,40 @@ void sync_difficulty_menu_visibility(button* buttons,
     if (buttons == nullptr || num_buttons < kDifficultyMenuButtonCount)
         return;
 
-    // Every settings row on this screen is LobbySettings-backed (difficulty
-    // included): a joiner's click would be rejected by the server and the
-    // per-frame label re-derive would immediately restore the host's value.
-    // Hide the rows for non-hosts (the GO / SET LEVEL precedent) and rewire
-    // BACK's vertical cycle so nav never lands on a hidden button.
+    // The six settings rows are LobbySettings-backed (difficulty included):
+    // a joiner's click would be rejected by the server and the per-frame
+    // label re-derive would immediately restore the host's value. Hide them
+    // for non-hosts (the GO / SET LEVEL precedent). The CTRL row (#218,
+    // §2.7) instead gates on the NETWORK axis: visible to every peer of a
+    // networked lobby — a joiner keeps sight of the mode that changes their
+    // rights (change_cross_control popups for them) — and hidden outright
+    // in local sessions, where cross-control decides nothing.
     const bool host_controls_visible = picker_lobby_host_controls_visible();
+    const bool networked = picker_lobby_is_networked();
     for (int index = kDifficultyMenuDifficultyIndex;
-         index < kDifficultyMenuButtonCount; ++index)
+         index < kDifficultyMenuCrossControlIndex; ++index)
     {
         buttons[index].hidden = !host_controls_visible;
         sync_button_hidden_state(buttons, index);
     }
-    buttons[kDifficultyMenuBackIndex].nav.up =
-        host_controls_visible ? kDifficultyMenuInfiniteGoldIndex : -1;
-    buttons[kDifficultyMenuBackIndex].nav.down =
-        host_controls_visible ? kDifficultyMenuDifficultyIndex : -1;
+    buttons[kDifficultyMenuCrossControlIndex].hidden = !networked;
+    sync_button_hidden_state(buttons, kDifficultyMenuCrossControlIndex);
+
+    // Vertical cycle around whichever tail rows are visible this frame.
+    buttons[kDifficultyMenuInfiniteGoldIndex].nav.down =
+        networked ? kDifficultyMenuCrossControlIndex
+                  : kDifficultyMenuBackIndex;
+    buttons[kDifficultyMenuCrossControlIndex].nav.up =
+        host_controls_visible ? kDifficultyMenuInfiniteGoldIndex
+                              : kDifficultyMenuBackIndex;
+    buttons[kDifficultyMenuCrossControlIndex].nav.down =
+        kDifficultyMenuBackIndex;
+    buttons[kDifficultyMenuBackIndex].nav.up = networked
+        ? kDifficultyMenuCrossControlIndex
+        : (host_controls_visible ? kDifficultyMenuInfiniteGoldIndex : -1);
+    buttons[kDifficultyMenuBackIndex].nav.down = host_controls_visible
+        ? kDifficultyMenuDifficultyIndex
+        : (networked ? kDifficultyMenuCrossControlIndex : -1);
 
     ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
 }
@@ -977,42 +1063,16 @@ void picker_teams_menu_engine_draw_content(void* /*screen_state*/)
 }
 
 // §2.7 cross-control dispatch (the MATCHUP screen's one MenuSpecRow, G3).
-// Visible to every peer; host-only actionable. A host toggle is a SETTINGS
-// change: the sync propagates it over the wire and the server clears every
-// non-host machine's ready (§4.5 — the settings-clear-ready rule). The value
-// is sanitized on toggle ({0,1}; any junk counts as ON and lands on 0);
-// cross_control is SESSION-ONLY (never in the GTL file), so no company
-// autosave fires here. Both label surfaces update the same frame; the
-// per-frame sync re-derives them from the save thereafter.
+// The rule itself lives in change_cross_control() — the DIFFICULTY row 7
+// callback that re-homed it (#218) — and this forwards there so exactly one
+// implementation exists during the coexistence window. This screen's own
+// label surfaces heal on the next frame's sync (compute_teams_menu_state
+// re-derives them from the save).
 Sint32 picker_teams_menu_engine_on_spec_row(int row, void* /*screen_state*/)
 {
     if (row != kTeamsMenuCrossControlIndex)
         return 0;
-    SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    if (!picker_lobby_host_controls_visible())
-    {
-        TRACE("teams", "cross_control_denied");
-        popup_dialog("HOST CONTROLS THIS SETTING",
-                     "Only the host may\nchange cross-control");
-        return MENU_OK;
-    }
-    save.cross_control =
-        static_cast<std::int16_t>(save.cross_control != 0 ? 0 : 1);
-    TRACE("teams", "cross_control %d", static_cast<int>(save.cross_control));
-    picker_lobby_sync_settings_from_save();
-
-    const std::string label =
-        og::ui::format_cross_control_label(save.cross_control != 0);
-    if (static_cast<int>(pks().teamsmenu_buttons.size()) >
-        kTeamsMenuCrossControlIndex)
-    {
-        pks().teamsmenu_buttons[kTeamsMenuCrossControlIndex].label = label;
-    }
-    vbutton* const live = og::runtime::current_session
-                              ->allbuttons_[kTeamsMenuCrossControlIndex];
-    if (live != nullptr)
-        live->label = label;
-    return MENU_OK;
+    return change_cross_control();
 }
 
 #ifdef TESTING

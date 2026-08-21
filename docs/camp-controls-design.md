@@ -217,7 +217,9 @@ rule it is not something a player retunes every round. The flat CTF trio
 (`ctf_teams`, `ctf_caps`, `ctf_troops`) left Team Build in the same change:
 teams and target score are the Modes camp's MATCH SETUP page now (§4), one
 source of truth in plain words, and scenario troops keeps its SCENARIO row.
-The SDL MATCHUP screen keeps its own copies for legacy versus packs.
+The SDL SCENARIO screen keeps its own copies for legacy versus packs
+(`Teams:` / `Limit:` rows on the y=140 match-settings band beside TROOPS,
+visible read-only to joiners, host-actionable).
 
 The difficulty submenu itself is unchanged and returns to whatever screen
 pushed it; from the strip that is a nested `MENU_REDRAW` the Base Camp loop

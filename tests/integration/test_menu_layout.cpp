@@ -2570,8 +2570,12 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_networked_ownership)
 
 // SCENARIO subscreen static table: the x=30 column stacks the host-gated
 // SET CAMPAIGN / SET LEVEL (their name strips draw alongside) over the
-// always-visible VIEW LEVEL | MATCHUP | PROGRESS row; BACK sits at (30,170)
-// so no other screen's "back" shares its geometry.
+// always-visible VIEW LEVEL | PROGRESS row and the y=140 match-settings
+// band TEAMS | TROOPS | LIMIT (#218 — ctf_teams/ctf_caps re-homed from
+// MATCHUP; the retired MATCHUP door's ordinal 4 is a parked zero-size
+// spare so every index below it kept its value); BACK sits at (30,170)
+// so no other screen's "back" shares its geometry. Static nav encodes the
+// host+versus (all-visible) variant.
 TEST(MenuLayout, scenariomenu_static_layout)
 {
     button* buttons = picker_scenariomenu_buttons();
@@ -2584,15 +2588,18 @@ TEST(MenuLayout, scenariomenu_static_layout)
         const char* label;
         int x, y, w, h;
         MenuNav nav;
+        bool hidden = false;
     };
     static const ExpectedButton kExpected[] = {
-        {"back", "BACK", 30, 170, 60, 20, MenuNav{.up = 3}},
+        {"back", "BACK", 30, 170, 60, 20, MenuNav{.up = 7}},
         {"set_campaign", "SET CAMPAIGN", 30, 40, 80, 15, MenuNav{.down = 2}},
         {"set_level", "SET LEVEL", 30, 70, 80, 15, MenuNav{.up = 1, .down = 3}},
-        {"view_scenario", "VIEW LEVEL", 30, 100, 80, 15, MenuNav{.up = 2, .down = 0, .right = 4}},
-        {"matchup", "MATCHUP", 120, 100, 80, 15, MenuNav{.up = 2, .down = 6, .left = 3, .right = 5}},
-        {"progress", "PROGRESS", 210, 100, 80, 15, MenuNav{.up = 2, .down = 0, .left = 4}},
-        {"troops", "TROOPS: ALL", 120, 140, 80, 15, MenuNav{.up = 4, .down = 0}},
+        {"view_scenario", "VIEW LEVEL", 30, 100, 80, 15, MenuNav{.up = 2, .down = 7, .right = 5}},
+        {"scenario_spare", "", 0, 0, 0, 0, MenuNav{}, true},
+        {"progress", "PROGRESS", 120, 100, 80, 15, MenuNav{.up = 2, .down = 6, .left = 3}},
+        {"troops", "TROOPS: ALL", 120, 140, 80, 15, MenuNav{.up = 5, .down = 0, .left = 7, .right = 8}},
+        {"ctf_teams", "Teams: Auto", 30, 140, 80, 15, MenuNav{.up = 3, .down = 0, .right = 6}},
+        {"ctf_caps", "Limit: Map", 210, 140, 80, 15, MenuNav{.up = 5, .down = 0, .left = 6}},
     };
 
     for (int i = 0; i < count; ++i)
@@ -2601,7 +2608,7 @@ TEST(MenuLayout, scenariomenu_static_layout)
         const button& got = buttons[i];
         EXPECT_EQ(want.id, got.id) << "index " << i;
         EXPECT_EQ(want.label, got.label) << got.id;
-        EXPECT_FALSE(got.hidden) << got.id;
+        EXPECT_EQ(want.hidden, got.hidden) << got.id;
         EXPECT_EQ(want.x, got.x) << got.id;
         EXPECT_EQ(want.y, got.y) << got.id;
         EXPECT_EQ(want.w, got.sizex) << got.id;
@@ -2617,10 +2624,42 @@ TEST(MenuLayout, scenariomenu_static_layout)
     EXPECT_EQ(kScenarioMenuSetCampaignIndex, 1);
     EXPECT_EQ(kScenarioMenuSetLevelIndex, 2);
     EXPECT_EQ(kScenarioMenuViewScenarioIndex, 3);
-    EXPECT_EQ(kScenarioMenuTeamsIndex, 4);
+    EXPECT_EQ(kScenarioMenuSpareIndex, 4);
     EXPECT_EQ(kScenarioMenuProgressIndex, 5);
     EXPECT_EQ(kScenarioMenuTroopsIndex, 6);
-    EXPECT_EQ(kScenarioMenuButtonCount, 7);
+    EXPECT_EQ(kScenarioMenuCtfTeamsIndex, 7);
+    EXPECT_EQ(kScenarioMenuCtfCapsIndex, 8);
+    EXPECT_EQ(kScenarioMenuButtonCount, 9);
+
+    // Grid RELATIONS (the menus discipline: exact tables pin
+    // self-consistency, relations pin alignment). Declared columns
+    // x=30/120/210; the x=30 column stacks five faces; the y=100 row and
+    // the y=140 band each share one baseline; all six grid faces are 80x15.
+    for (const int left_col : {kScenarioMenuBackIndex,
+                               kScenarioMenuSetCampaignIndex,
+                               kScenarioMenuSetLevelIndex,
+                               kScenarioMenuViewScenarioIndex,
+                               kScenarioMenuCtfTeamsIndex})
+        EXPECT_EQ(30, buttons[left_col].x) << buttons[left_col].id;
+    EXPECT_EQ(buttons[kScenarioMenuProgressIndex].x,
+              buttons[kScenarioMenuTroopsIndex].x)
+        << "PROGRESS left-packs into the x=120 column over TROOPS";
+    EXPECT_EQ(210, buttons[kScenarioMenuCtfCapsIndex].x);
+    EXPECT_EQ(buttons[kScenarioMenuViewScenarioIndex].y,
+              buttons[kScenarioMenuProgressIndex].y);
+    EXPECT_EQ(buttons[kScenarioMenuCtfTeamsIndex].y,
+              buttons[kScenarioMenuTroopsIndex].y);
+    EXPECT_EQ(buttons[kScenarioMenuTroopsIndex].y,
+              buttons[kScenarioMenuCtfCapsIndex].y);
+    for (const int face : {kScenarioMenuViewScenarioIndex,
+                           kScenarioMenuProgressIndex,
+                           kScenarioMenuTroopsIndex,
+                           kScenarioMenuCtfTeamsIndex,
+                           kScenarioMenuCtfCapsIndex})
+    {
+        EXPECT_EQ(80, buttons[face].sizex) << buttons[face].id;
+        EXPECT_EQ(15, buttons[face].sizey) << buttons[face].id;
+    }
 
     // The campaign-name / level-title strips draw from x=116 (32-char clip,
     // 6px/char): they must clear the x=30 button column's right edge.
@@ -2628,21 +2667,28 @@ TEST(MenuLayout, scenariomenu_static_layout)
                        buttons[kScenarioMenuSetCampaignIndex].sizex);
     EXPECT_LE(116 + 32 * 6, SCREEN_W);
 
-    // ...and so must the TROOPS row, which is why it sits at y=140 instead
-    // of the y=70 cell beside SET LEVEL: the strips are drawn AFTER
-    // draw_buttons, so anything under them is overprinted. The two strip
-    // bands are 8px tall at each host-gated button's y+4-1.
+    // ...and so must every row that reaches past x=114 (the strips are
+    // drawn AFTER draw_buttons, so anything under them is overprinted; the
+    // two strip bands are 8px tall at each host-gated button's y+4-1).
+    // That is why the whole match-settings band sits at y=140 and PROGRESS
+    // at y=100 rather than beside SET LEVEL.
     for (const int strip_index :
          {kScenarioMenuSetCampaignIndex, kScenarioMenuSetLevelIndex})
     {
         const int strip_top = buttons[strip_index].y + 3;
-        const button& troops = buttons[kScenarioMenuTroopsIndex];
-        const bool vertically_clear = troops.y + troops.sizey <= strip_top ||
-                                      troops.y >= strip_top + 8;
-        const bool horizontally_clear = troops.x + troops.sizex <= 114;
-        EXPECT_TRUE(vertically_clear || horizontally_clear)
-            << "TROOPS is drawn under the strip beside button "
-            << buttons[strip_index].id;
+        for (const int row_index : {kScenarioMenuProgressIndex,
+                                    kScenarioMenuTroopsIndex,
+                                    kScenarioMenuCtfTeamsIndex,
+                                    kScenarioMenuCtfCapsIndex})
+        {
+            const button& row = buttons[row_index];
+            const bool vertically_clear = row.y + row.sizey <= strip_top ||
+                                          row.y >= strip_top + 8;
+            const bool horizontally_clear = row.x + row.sizex <= 114;
+            EXPECT_TRUE(vertically_clear || horizontally_clear)
+                << row.id << " is drawn under the strip beside button "
+                << buttons[strip_index].id;
+        }
     }
 
     check_no_overlaps(buttons, count, "scenariomenu");
@@ -2691,21 +2737,37 @@ TEST(MenuLayout, view_scenario_staged_band_geometry)
               kViewScenarioFrameY + kViewScenarioFrameH);
 }
 
+// Two visibility axes since the MATCHUP re-home (#218): SET CAMPAIGN /
+// SET LEVEL / TROOPS hide on the host axis, TEAMS / LIMIT on the
+// versus-campaign axis (visible to joiners as read-only labels). Every
+// {host} x {versus} combination must leave the visible graph closed and
+// fully keyboard-reachable — TROOPS lost its only static .up when the
+// MATCHUP door parked, so the rewire is what keeps the whole y=140 band
+// reachable in every variant.
 TEST(MenuLayout, scenariomenu_nav_variants_keyboard_reachable)
 {
     for (const bool host_visible : {true, false})
     {
-        button* buttons = picker_scenariomenu_buttons();
-        const int count = picker_scenariomenu_button_count();
-        buttons[kScenarioMenuSetCampaignIndex].hidden = !host_visible;
-        buttons[kScenarioMenuSetLevelIndex].hidden = !host_visible;
-        buttons[kScenarioMenuTroopsIndex].hidden = !host_visible;
-        picker_wire_scenario_menu_nav(buttons, count, host_visible);
-        check_nav_closed_and_reachable(
-            buttons, count, kScenarioMenuBackIndex,
-            std::format("scenariomenu_{}",
-                        host_visible ? "host" : "joiner")
-                .c_str());
+        for (const bool match_visible : {true, false})
+        {
+            button* buttons = picker_scenariomenu_buttons();
+            const int count = picker_scenariomenu_button_count();
+            buttons[kScenarioMenuSetCampaignIndex].hidden = !host_visible;
+            buttons[kScenarioMenuSetLevelIndex].hidden = !host_visible;
+            buttons[kScenarioMenuTroopsIndex].hidden = !host_visible;
+            buttons[kScenarioMenuCtfTeamsIndex].hidden = !match_visible;
+            buttons[kScenarioMenuCtfCapsIndex].hidden = !match_visible;
+            picker_wire_scenario_menu_nav(buttons, count, host_visible,
+                                          match_visible);
+            check_nav_closed_and_reachable(
+                buttons, count, kScenarioMenuBackIndex,
+                std::format("scenariomenu_{}_{}",
+                            host_visible ? "host" : "joiner",
+                            match_visible ? "versus" : "classic")
+                    .c_str());
+            EXPECT_TRUE(buttons[kScenarioMenuSpareIndex].hidden)
+                << "the parked MATCHUP-door spare must never show";
+        }
     }
 }
 
@@ -3199,8 +3261,10 @@ TEST(MenuLayout, graphics_fx_options_grid_geometry_and_nav)
     EXPECT_EQ("fog", value) << "five clicks must restore the selector";
 }
 
-// DIFFICULTY subscreen (the main-menu DIFFICULTY door): unique BACK id + the
-// six match-rule rows in one centered 140px column on the FX row pitch.
+// DIFFICULTY subscreen (the Base Camp DIFFICULTY door): unique BACK id + the
+// six match-rule rows and the §2.7 CTRL row (#218, re-homed from MATCHUP)
+// in one centered 140px column on the FX row pitch (35 + 23n; the CTRL face
+// bottom at 188 clears the 4..196 panel bevel).
 // Static labels are the default-state formatter outputs; the screen re-derives
 // every row from session/save each frame, so also pin that every label the
 // formatters can produce fits the 140px face (23 chars at 6px/char).
@@ -3214,6 +3278,7 @@ TEST(MenuLayout, difficulty_menu_layout_and_nav)
         {"permadeath", "Permadeath: On", 90, 104},
         {"generator_rate", "Generators: Normal", 90, 127},
         {"infinite_gold", "Infinite Gold: Off", 90, 150},
+        {"cross_control", "CTRL: OWN", 90, 173},
     };
     button* buttons = picker_difficulty_menu_buttons();
     const int count = picker_difficulty_menu_button_count();
@@ -3229,6 +3294,20 @@ TEST(MenuLayout, difficulty_menu_layout_and_nav)
     EXPECT_EQ("permadeath", buttons[kDifficultyMenuPermadeathIndex].id);
     EXPECT_EQ("generator_rate", buttons[kDifficultyMenuGeneratorRateIndex].id);
     EXPECT_EQ("infinite_gold", buttons[kDifficultyMenuInfiniteGoldIndex].id);
+    EXPECT_EQ("cross_control", buttons[kDifficultyMenuCrossControlIndex].id);
+
+    // Column + band-pitch relations (the menus discipline): every settings
+    // row shares the x=90 column and the 23px pitch runs unbroken through
+    // the appended CTRL row.
+    for (int i = kDifficultyMenuDifficultyIndex;
+         i <= kDifficultyMenuCrossControlIndex; ++i)
+    {
+        EXPECT_EQ(90, buttons[i].x) << buttons[i].id;
+        if (i > kDifficultyMenuDifficultyIndex)
+        {
+            EXPECT_EQ(23, buttons[i].y - buttons[i - 1].y) << buttons[i].id;
+        }
+    }
 
     // Every dynamic label across the full value cycles stays within the
     // 140px face budget.
@@ -3255,6 +3334,13 @@ TEST(MenuLayout, difficulty_menu_layout_and_nav)
         EXPECT_LE(static_cast<int>(og::ui::format_infinite_gold_label(save).size()) * 6,
                   face_width)
             << og::ui::format_infinite_gold_label(save);
+        for (const bool cross : {false, true})
+        {
+            EXPECT_LE(static_cast<int>(
+                          og::ui::format_cross_control_label(cross).size()) * 6,
+                      face_width)
+                << og::ui::format_cross_control_label(cross);
+        }
         og::ui::cycle_respawn_mode(save);
         og::ui::cycle_respawn_delay(save);
         og::ui::toggle_permadeath(save);
@@ -3269,6 +3355,7 @@ TEST(MenuLayout, difficulty_menu_layout_and_nav)
     struct FakeLobbyClient final : og::ui::IPickerLobbyClient
     {
         bool host = false;
+        bool networked = false;
         void initialize_from_save() override {}
         void shutdown() override {}
         void sync_from_save() override {}
@@ -3289,13 +3376,20 @@ TEST(MenuLayout, difficulty_menu_layout_and_nav)
         {
             return host;
         }
+        [[nodiscard]] bool is_networked_session() const noexcept override
+        {
+            return networked;
+        }
     };
     FakeLobbyClient lobby;
     og::ui::IPickerLobbyClient* saved_client =
         og::ui::active_picker_lobby_client();
     og::ui::install_active_picker_lobby_client(&lobby);
 
+    // Degenerate non-host non-networked variant: everything but BACK hides
+    // (the CTRL row needs a networked session too).
     lobby.host = false;
+    lobby.networked = false;
     int highlighted = kDifficultyMenuGeneratorRateIndex;
     sync_difficulty_menu_visibility(buttons, count, highlighted);
     for (int i = kDifficultyMenuDifficultyIndex; i < count; ++i)
@@ -3311,15 +3405,50 @@ TEST(MenuLayout, difficulty_menu_layout_and_nav)
     check_nav_closed_and_reachable(buttons, count, kDifficultyMenuBackIndex,
                                    "difficulty_menu_joiner");
 
-    // Host / local variant restores the full column — and drops the
-    // caption: six rows that answer to this player need no explanation.
+    // Networked joiner: the six LobbySettings rows stay hidden, but the
+    // §2.7 CTRL row shows read-only — a joiner keeps SIGHT of the mode
+    // that changes their rights (host-only actionable via
+    // change_cross_control's popup).
+    lobby.host = false;
+    lobby.networked = true;
+    highlighted = kDifficultyMenuGeneratorRateIndex;
+    sync_difficulty_menu_visibility(buttons, count, highlighted);
+    for (int i = kDifficultyMenuDifficultyIndex;
+         i < kDifficultyMenuCrossControlIndex; ++i)
+        EXPECT_TRUE(buttons[i].hidden) << buttons[i].id;
+    EXPECT_FALSE(buttons[kDifficultyMenuCrossControlIndex].hidden)
+        << "§2.7: joiners must SEE the mode that changes their rights";
+    EXPECT_EQ("The host sets these for everyone.", difficulty_panel_caption());
+    EXPECT_EQ(kDifficultyMenuBackIndex, highlighted);
+    check_nav_closed_and_reachable(buttons, count, kDifficultyMenuBackIndex,
+                                   "difficulty_menu_networked_joiner");
+
+    // Networked host: the full column plus the CTRL row, one closed cycle.
     lobby.host = true;
+    lobby.networked = true;
+    sync_difficulty_menu_visibility(buttons, count, highlighted);
+    for (int i = 0; i < count; ++i)
+        EXPECT_FALSE(buttons[i].hidden) << buttons[i].id;
+    EXPECT_EQ(kDifficultyMenuCrossControlIndex,
+              buttons[kDifficultyMenuBackIndex].nav.up);
+    EXPECT_EQ(kDifficultyMenuCrossControlIndex,
+              buttons[kDifficultyMenuInfiniteGoldIndex].nav.down);
+    check_nav_closed_and_reachable(buttons, count, kDifficultyMenuBackIndex,
+                                   "difficulty_menu_networked_host");
+
+    // Host / local variant restores the classic column — CTRL hides (it
+    // decides nothing in a local session) — and drops the caption: rows
+    // that answer to this player need no explanation.
+    lobby.host = true;
+    lobby.networked = false;
     sync_difficulty_menu_visibility(buttons, count, highlighted);
     EXPECT_EQ("", difficulty_panel_caption())
         << "the host's panel is its own explanation";
     og::ui::install_active_picker_lobby_client(saved_client);
-    for (int i = 0; i < count; ++i)
+    for (int i = 0; i < kDifficultyMenuCrossControlIndex; ++i)
         EXPECT_FALSE(buttons[i].hidden) << buttons[i].id;
+    EXPECT_TRUE(buttons[kDifficultyMenuCrossControlIndex].hidden)
+        << "cross-control is meaningless without a networked lobby";
     check_nav_closed_and_reachable(buttons, count, kDifficultyMenuBackIndex,
                                    "difficulty_menu_host");
 }

@@ -770,6 +770,8 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return change_generator_rate();
     case ButtonAction::ToggleInfiniteGold:
         return change_infinite_gold();
+    case ButtonAction::ToggleCrossControl:
+        return change_cross_control();
     case ButtonAction::HostGame:
     case ButtonAction::JoinGame:
     case ButtonAction::Networking:

@@ -198,6 +198,10 @@ Sint32 change_respawn_delay();
 Sint32 change_permadeath();
 Sint32 change_generator_rate();
 Sint32 change_infinite_gold(); // DIFFICULTY infinite-gold toggle (session-only)
+// DIFFICULTY §2.7 cross-control toggle (session-only, host-actionable with
+// a joiner popup). The single implementation of the rule — the coexisting
+// MATCHUP spec row forwards here until that screen is deleted.
+Sint32 change_cross_control();
 Sint32 change_depth_fx(); // GRAPHICS FX depth selector (cfg effects/depth_fx)
 Sint32 change_resolution(); // DISPLAY resolution selector (cfg graphics/width+height)
 Sint32 change_zoom(); // DISPLAY zoom selector (cfg graphics/zoom)
@@ -379,12 +383,15 @@ enum class ButtonAction : Sint32
     CycleGameSpeed = 103,
     ToggleColorCycling = 104,
     BrightnessAdjust = 105,
-    // 106 is FREE. The Base Camp zone submenu (issue #206 /
-    // docs/basecamp-zones-design.md) needs no action id: page-kind zone
-    // action rows arrive through the Base Camp's on_spec_row dispatch, which
-    // calls og::ui::run_campaign_zone_submenu with the clicked row's own
-    // page id. A do_call case that only ever opened the book's ROOT page had
-    // no caller and no shipped surface to give it one.
+    // DIFFICULTY subscreen §2.7 cross-control toggle, re-homed from the
+    // MATCHUP screen's MenuSpecRow (#218): visible to every networked peer,
+    // host-only actionable, session-only value (never in the .gtl).
+    // (The Base Camp zone submenu — issue #206 /
+    // docs/basecamp-zones-design.md — still needs no action id of its own:
+    // page-kind zone action rows arrive through the Base Camp's on_spec_row
+    // dispatch, which calls og::ui::run_campaign_zone_submenu with the
+    // clicked row's own page id.)
+    ToggleCrossControl = 106,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

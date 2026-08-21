@@ -2934,13 +2934,36 @@ static void refresh_teamsmenu_button_label(int button_index,
        pks().teamsmenu_buttons[static_cast<std::size_t>(button_index)].label = label;
 }
 
+// Refresh a SCENARIO settings button's label in both surfaces. Same recipe
+// as refresh_teamsmenu_button_label, against the scenario descriptor rows.
+static void refresh_scenariomenu_button_label(int button_index,
+                                              const std::string& label)
+{
+   if (og::runtime::current_session->allbuttons_[static_cast<std::size_t>(button_index)] != nullptr)
+       og::runtime::current_session->allbuttons_[static_cast<std::size_t>(button_index)]->label = label;
+   if (static_cast<int>(pks().scenariomenu_buttons.size()) > button_index)
+       pks().scenariomenu_buttons[static_cast<std::size_t>(button_index)].label = label;
+}
+
+// Match Teams / Score Limit live on the SCENARIO screen now (#218, re-homed
+// from MATCHUP). Their rows stay VISIBLE to networked joiners as read-only
+// labels — so unlike the old hidden-for-joiners MATCHUP rows, the callbacks
+// carry the §2.7 host gate themselves (popup + TRACE, no local cycle: a
+// joiner-side cycle would show a lie until the next settings broadcast).
 Sint32 change_ctf_teams()
 {
    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+   if (!picker_lobby_host_controls_visible())
+   {
+       TRACE("teams", "ctf_teams_denied");
+       popup_dialog("HOST CONTROLS THIS SETTING",
+                    "Only the host may\nchange match teams");
+       return MENU_OK;
+   }
    og::ui::cycle_ctf_team_count(save);
 
-   refresh_teamsmenu_button_label(kTeamsMenuCtfTeamsIndex,
-                                  og::ui::format_ctf_teams_label(save));
+   refresh_scenariomenu_button_label(kScenarioMenuCtfTeamsIndex,
+                                     og::ui::format_ctf_teams_label(save));
 
    picker_lobby_sync_settings_from_save();
    picker_settings_autosave();
@@ -2951,26 +2974,22 @@ Sint32 change_ctf_teams()
 Sint32 change_ctf_caps()
 {
    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+   if (!picker_lobby_host_controls_visible())
+   {
+       TRACE("teams", "ctf_caps_denied");
+       popup_dialog("HOST CONTROLS THIS SETTING",
+                    "Only the host may\nchange the score limit");
+       return MENU_OK;
+   }
    og::ui::cycle_ctf_capture_limit(save);
 
-   refresh_teamsmenu_button_label(kTeamsMenuCtfCapsIndex,
-                                  og::ui::format_ctf_caps_label(save));
+   refresh_scenariomenu_button_label(kScenarioMenuCtfCapsIndex,
+                                     og::ui::format_ctf_caps_label(save));
 
    picker_lobby_sync_settings_from_save();
    picker_settings_autosave();
 
    return MENU_OK;
-}
-
-// Refresh a SCENARIO settings button's label in both surfaces. Same recipe
-// as refresh_teamsmenu_button_label, against the scenario descriptor rows.
-static void refresh_scenariomenu_button_label(int button_index,
-                                              const std::string& label)
-{
-   if (og::runtime::current_session->allbuttons_[static_cast<std::size_t>(button_index)] != nullptr)
-       og::runtime::current_session->allbuttons_[static_cast<std::size_t>(button_index)]->label = label;
-   if (static_cast<int>(pks().scenariomenu_buttons.size()) > button_index)
-       pks().scenariomenu_buttons[static_cast<std::size_t>(button_index)].label = label;
 }
 
 Sint32 change_ctf_troops()
@@ -3060,6 +3079,37 @@ Sint32 change_infinite_gold()
                                         og::ui::format_infinite_gold_label(save));
 
    picker_lobby_sync_settings_from_save();
+
+   return MENU_OK;
+}
+
+// §2.7 cross-control (DIFFICULTY row 7 — re-homed from MATCHUP, #218).
+// Visible to every networked peer; host-only actionable. A host toggle is a
+// SETTINGS change: the sync propagates it over the wire and the server
+// clears every non-host machine's ready (§4.5 — the settings-clear-ready
+// rule). The value is sanitized on toggle ({0,1}; any junk counts as ON and
+// lands on 0); cross_control is SESSION-ONLY (never in the GTL file), so no
+// company autosave fires here — the infinite-gold precedent. Both label
+// surfaces update the same frame; the row's LabelBinding re-derives them
+// from the save thereafter.
+Sint32 change_cross_control()
+{
+   SaveData& save = og::runtime::current_session->myscreen_->save_data;
+   if (!picker_lobby_host_controls_visible())
+   {
+       TRACE("teams", "cross_control_denied");
+       popup_dialog("HOST CONTROLS THIS SETTING",
+                    "Only the host may\nchange cross-control");
+       return MENU_OK;
+   }
+   save.cross_control =
+       static_cast<std::int16_t>(save.cross_control != 0 ? 0 : 1);
+   TRACE("teams", "cross_control %d", static_cast<int>(save.cross_control));
+   picker_lobby_sync_settings_from_save();
+
+   refresh_difficulty_menu_button_label(
+       kDifficultyMenuCrossControlIndex,
+       og::ui::format_cross_control_label(save.cross_control != 0));
 
    return MENU_OK;
 }

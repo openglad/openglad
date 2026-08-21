@@ -374,18 +374,28 @@ std::string format_binding_panel_line(const char* label,
 
 // --- SCENARIO subscreen layout contract ------------------------------------
 // Positional indices into k_scenariomenu_buttons / picker_scenariomenu_buttons().
-// SET CAMPAIGN / SET LEVEL keep their host-only visibility here (per-frame
-// sync_scenario_menu_host_control_visibility); the rest are always visible.
+// SET CAMPAIGN / SET LEVEL / TROOPS keep their host-only visibility here and
+// the re-homed TEAMS / LIMIT rows their versus-only visibility (per-frame
+// sync_scenario_menu_host_control_visibility); BACK / VIEW LEVEL / PROGRESS
+// are always visible and the spare is never visible.
 inline constexpr int kScenarioMenuBackIndex = 0;
 inline constexpr int kScenarioMenuSetCampaignIndex = 1;
 inline constexpr int kScenarioMenuSetLevelIndex = 2;
 inline constexpr int kScenarioMenuViewScenarioIndex = 3;
-inline constexpr int kScenarioMenuTeamsIndex = 4;
+// The retired MATCHUP door's ordinal (#218), parked as a permanently-hidden
+// zero-size spare (the kBaseCampSeatRailSpareIndex precedent) so every
+// index below keeps its value.
+inline constexpr int kScenarioMenuSpareIndex = 4;
 inline constexpr int kScenarioMenuProgressIndex = 5;
 // Appended (index contract: growth is append-only). Host-gated like
 // SET CAMPAIGN / SET LEVEL.
 inline constexpr int kScenarioMenuTroopsIndex = 6;
-inline constexpr int kScenarioMenuButtonCount = 7;
+// Match Teams / Score Limit, re-homed from MATCHUP (#218): they complete
+// the y=140 match-settings band around TROOPS. Versus campaigns only;
+// joiners get the read-only label (visible, host-actionable).
+inline constexpr int kScenarioMenuCtfTeamsIndex = 7;
+inline constexpr int kScenarioMenuCtfCapsIndex = 8;
+inline constexpr int kScenarioMenuButtonCount = 9;
 
 // --- Campaign zone submenu (docs/basecamp-zones-design.md) -----------------
 // The scripted page chassis opened by page-kind zone action rows, which
@@ -460,10 +470,22 @@ void picker_wire_teams_menu_nav(button* buttons, int count,
 // Conditional rewiring for the host-gated buttons (same convention: nav
 // never links to a hidden button). The base camp rewires its full roster
 // graph per frame (pattern b — the rewire lives on the spec and reads the
-// installed BaseCampScreenState); the SCENARIO subscreen gates
-// SET CAMPAIGN / SET LEVEL / TROOPS on the host axis.
+// installed BaseCampScreenState); the SCENARIO subscreen has two visibility
+// axes: SET CAMPAIGN / SET LEVEL / TROOPS gate on the host axis, and the
+// re-homed TEAMS / LIMIT rows (#218) gate on the versus-campaign axis
+// (match_settings_visible) — visible to joiners too, read-only there.
 void picker_wire_scenario_menu_nav(button* buttons, int count,
-                                   bool host_controls_visible);
+                                   bool host_controls_visible,
+                                   bool match_settings_visible);
+
+// The SCENARIO screen's per-frame visibility/label/nav sync (the spec's
+// Rewire program): host-gates SET CAMPAIGN / SET LEVEL / TROOPS,
+// versus-gates TEAMS / LIMIT (visible read-only for joiners), re-derives
+// the three settings labels from the save on both surfaces, parks the
+// spare, and rewires the graph through picker_wire_scenario_menu_nav.
+void sync_scenario_menu_host_control_visibility(button* buttons,
+                                                int num_buttons,
+                                                int& highlighted_button);
 
 // The retired MATCHUP roster cursor, normalized onto an occupied
 // slot (-1 when the roster is empty).
@@ -582,11 +604,18 @@ inline constexpr int kDifficultyMenuRespawnDelayIndex = 3;
 inline constexpr int kDifficultyMenuPermadeathIndex = 4;
 inline constexpr int kDifficultyMenuGeneratorRateIndex = 5;
 inline constexpr int kDifficultyMenuInfiniteGoldIndex = 6;
-inline constexpr int kDifficultyMenuButtonCount = 7;
+// §2.7 cross-control, re-homed from MATCHUP (#218). Unlike its host-gated
+// siblings it is NETWORKED-gated: visible to every peer of a networked
+// lobby (joiners keep sight of the mode that changes their rights),
+// host-only actionable, hidden entirely in local sessions.
+inline constexpr int kDifficultyMenuCrossControlIndex = 7;
+inline constexpr int kDifficultyMenuButtonCount = 8;
 
-// Per-frame host gating for the DIFFICULTY subscreen: every settings row is
-// LobbySettings-backed (difficulty included), so a non-host joiner sees only
-// BACK; BACK's vertical cycle is rewired so nav never targets a hidden row.
+// Per-frame gating for the DIFFICULTY subscreen: the six settings rows are
+// LobbySettings-backed (difficulty included) and hide for a non-host
+// joiner; the CTRL row instead shows for every peer of a networked lobby
+// and hides in local sessions. BACK's vertical cycle is rewired so nav
+// never targets a hidden row.
 void sync_difficulty_menu_visibility(button* buttons, int num_buttons,
                                      int& highlighted_button);
 
