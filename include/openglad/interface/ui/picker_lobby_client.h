@@ -132,23 +132,17 @@ public:
         (void)slot_index;
         return true;
     }
-    // Compatibility shorthand for changing this machine's first seat.
-    virtual bool request_team_change(short team)
-    {
-        (void)team;
-        return false;
-    }
     // Ask the lobby to assign one owned seat to a gameplay team. The global
     // player_index is the current display handle; network clients resolve it
     // to the server-issued LobbySeatId granted in their personalized state
     // before sending, and reject foreign/stale indexes. Returns true when the
-    // lobby echo confirms the requested assignment.
+    // lobby echo confirms the requested assignment. A client with no lobby
+    // behind it refuses.
     virtual bool request_seat_team_change(std::uint8_t player_index, short team)
     {
-        const std::vector<std::uint8_t> local_indices = local_player_indices();
-        if (!local_indices.empty() && local_indices.front() != player_index)
-            return false;
-        return request_team_change(team);
+        (void)player_index;
+        (void)team;
+        return false;
     }
     // Stable-token form used by live seat controls. Both values come from the
     // same displayed LobbyPlayer; if a disconnect/rejoin reindexed the lobby
@@ -305,7 +299,6 @@ std::vector<std::string> picker_lobby_status_lines();
 std::optional<std::string> picker_lobby_connection_alert();
 std::string picker_lobby_session_room_code();
 bool picker_lobby_host_controls_visible();
-bool picker_lobby_request_team_change(short team);
 bool picker_lobby_request_seat_team_change(std::uint8_t player_index,
                                            short team);
 bool picker_lobby_request_seat_team_change(std::uint8_t player_index,

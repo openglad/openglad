@@ -403,7 +403,6 @@ int curses_network_testing_exercise_internal_helpers()
         unattached_host.local_player_indices().empty() &&
         !unattached_host.local_ready() &&
         unattached_host.players().empty() &&
-        !unattached_host.request_team_change(1) &&
         !unattached_host.request_seat_team_change(0, 1) &&
         !unattached_host.request_seat_team_change(
             0, static_cast<og::sim::LobbySeatId>(123), 1) &&
@@ -470,7 +469,6 @@ int curses_network_testing_exercise_internal_helpers()
         std::vector<std::string> status_lines() const override { return {}; }
         void cancel() override { cancelled_ = true; }
         bool cancelled() const override { return cancelled_; }
-        bool request_team_change(short) override { return false; }
         bool request_seat_team_change(std::uint8_t, short) override
         {
             return false;

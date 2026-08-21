@@ -3786,6 +3786,13 @@ TEST(PickerNetworkClient, host_escape_abort_signals_join_runtime_to_end_session)
 
     screen* const host_gameplay_screen = cleanup.host_session->myscreen_;
     ASSERT_NE(nullptr, host_gameplay_screen);
+    // Wait past the level-start launch gate (#239), not merely for the first
+    // keyframe: while the real-socket joiner still owes its ready confirm,
+    // GameServer::step() broadcasts the launch handshake and returns BEFORE
+    // broadcast_current_state, so a pause taken in that window is set on the
+    // server world and never reaches this mirror. A nonzero mirrored
+    // level_tick_count is exactly "tick 1 ran and a post-tick snapshot landed"
+    // (apply_snapshot only adopts level_tick_count > 0).
     ASSERT_TRUE(wait_until([&] {
         bool host_ready = false;
         {
@@ -3794,7 +3801,9 @@ TEST(PickerNetworkClient, host_escape_abort_signals_join_runtime_to_end_session)
             const og::sim::GameClient* const display_client =
                 cleanup.host_session->myscreen_->render_interpolation_client();
             host_ready =
-                display_client != nullptr && display_client->baseline().has_value();
+                display_client != nullptr &&
+                display_client->baseline().has_value() &&
+                cleanup.host_session->myscreen_->world().level_tick_count() > 0;
         }
 
         bool join_ready = false;
@@ -3804,11 +3813,13 @@ TEST(PickerNetworkClient, host_escape_abort_signals_join_runtime_to_end_session)
             const og::sim::GameClient* const display_client =
                 join_session.myscreen_->render_interpolation_client();
             join_ready =
-                display_client != nullptr && display_client->baseline().has_value();
+                display_client != nullptr &&
+                display_client->baseline().has_value() &&
+                join_session.myscreen_->world().level_tick_count() > 0;
         }
 
         return host_ready && join_ready;
-    })) << "both runtimes should receive their initial gameplay snapshots";
+    })) << "both runtimes should be past the launch gate with a live snapshot";
 
     struct EscapeFrameOutcome
     {
@@ -4119,13 +4130,15 @@ TEST(PickerNetworkClient, host_and_join_real_win_returns_both_peers_to_menu)
 
     // The headline contract: a win ENDS both peers' display sessions so each
     // returns to the menu — it must NOT auto-advance into level 2 in-session.
-    bool both_ended = false;
-    for (int round = 0; round < 80 && !both_ended; ++round)
-    {
+    // Wall-clock bounded rather than a fixed round count: the joiner is a real
+    // socket peer, so under load all 80 rounds can burn through before its
+    // terminal broadcast has crossed the wire. The predicate is unchanged, so a
+    // real break still fails.
+    const bool both_ended = wait_until([&] {
         pump(5);
-        both_ended = peer_finished(*cleanup.host_session) &&
+        return peer_finished(*cleanup.host_session) &&
             peer_finished(join_session);
-    }
+    });
     EXPECT_TRUE(both_ended)
         << "a networked win must end BOTH peers' display sessions (world.end=1) "
            "so each glad_main returns to the team-build menu";
@@ -4354,13 +4367,15 @@ TEST(PickerNetworkClient, host_and_join_real_exit_returns_both_peers_to_menu)
         return session.myscreen_->world().end != 0;
     };
 
-    bool both_ended = false;
-    for (int round = 0; round < 80 && !both_ended; ++round)
-    {
+    // Wall-clock bounded rather than a fixed round count: the joiner is a real
+    // socket peer, so under load all 80 rounds can burn through before its
+    // terminal broadcast has crossed the wire. The predicate is unchanged, so a
+    // real break still fails.
+    const bool both_ended = wait_until([&] {
         pump(5);
-        both_ended = peer_finished(*cleanup.host_session) &&
+        return peer_finished(*cleanup.host_session) &&
             peer_finished(join_session);
-    }
+    });
     picker_testing_yes_or_no_queue_clear();
     EXPECT_TRUE(both_ended)
         << "a networked exit must end BOTH peers' display sessions (world.end=1) "
@@ -4665,13 +4680,15 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
         auto scope = session.activate();
         return session.myscreen_->world().end != 0;
     };
-    bool both_ended = false;
-    for (int round = 0; round < 80 && !both_ended; ++round)
-    {
+    // Wall-clock bounded rather than a fixed round count: the joiner is a real
+    // socket peer, so under load all 80 rounds can burn through before its
+    // terminal broadcast has crossed the wire. The predicate is unchanged, so a
+    // real break still fails.
+    const bool both_ended = wait_until([&] {
         pump(5);
-        both_ended = peer_finished(*cleanup.host_session) &&
+        return peer_finished(*cleanup.host_session) &&
             peer_finished(join_session);
-    }
+    });
     ASSERT_TRUE(both_ended) << "both peers must return to the menu after the win";
 
     // §4.6: derive each peer's team-0 fold delta from its own display save
@@ -6894,13 +6911,15 @@ TEST(PickerNetworkClient, host_and_join_client_quit_mission_withdraws_both_peers
         return session.myscreen_->world().end != 0;
     };
 
-    bool both_ended = false;
-    for (int round = 0; round < 80 && !both_ended; ++round)
-    {
+    // Wall-clock bounded rather than a fixed round count: the joiner is a real
+    // socket peer, so under load all 80 rounds can burn through before its
+    // terminal broadcast has crossed the wire. The predicate is unchanged, so a
+    // real break still fails.
+    const bool both_ended = wait_until([&] {
         pump(5);
-        both_ended = peer_finished(*cleanup.host_session) &&
+        return peer_finished(*cleanup.host_session) &&
             peer_finished(join_session);
-    }
+    });
     EXPECT_TRUE(both_ended)
         << "a client's 'Quit this mission' must withdraw BOTH peers (the host's "
            "level must end too) — not just leave the client behind as AI";
@@ -7905,7 +7924,7 @@ TEST(PickerNetworkClient, validation_helpers_reject_invalid_network_picker_input
     EXPECT_TRUE(host_client->local_player_indices().empty());
     EXPECT_FALSE(host_client->build_game_start_config().has_value());
     EXPECT_FALSE(host_client->request_start_game());
-    EXPECT_FALSE(host_client->request_team_change(0));
+    EXPECT_FALSE(host_client->request_seat_team_change(0, 0));
     EXPECT_FALSE(host_client->set_ready(true));
     host_client->sync_from_save();
     EXPECT_TRUE(host_client->status_lines().empty());
@@ -7918,7 +7937,7 @@ TEST(PickerNetworkClient, validation_helpers_reject_invalid_network_picker_input
     EXPECT_TRUE(join_client->local_player_indices().empty());
     EXPECT_FALSE(join_client->build_game_start_config().has_value());
     EXPECT_FALSE(join_client->request_start_game());
-    EXPECT_FALSE(join_client->request_team_change(0));
+    EXPECT_FALSE(join_client->request_seat_team_change(0, 0));
     EXPECT_FALSE(join_client->set_ready(true));
     join_client->poll_and_apply();
     ASSERT_TRUE(join_client->connection_alert().has_value());
@@ -8010,14 +8029,6 @@ TEST(PickerNetworkClient,
             join_lobby_ready;
     })) << "host and two-seat joiner should converge on three players";
 
-    ASSERT_TRUE(host_client->authoritative_team_mask().has_value());
-    EXPECT_TRUE(host_client->request_team_change(0));
-    {
-        auto join_scope = join_session.activate();
-        ASSERT_TRUE(join_client->authoritative_team_mask().has_value());
-        EXPECT_TRUE(join_client->request_team_change(1));
-    }
-
     const std::vector<std::uint8_t> host_indices =
         host_client->local_player_indices();
     ASSERT_EQ(1u, host_indices.size());
@@ -8027,6 +8038,17 @@ TEST(PickerNetworkClient,
         join_indices = join_client->local_player_indices();
     }
     ASSERT_EQ(2u, join_indices.size());
+
+    // Each machine moves its own FIRST seat — the case that also writes the
+    // my_team compatibility field.
+    ASSERT_TRUE(host_client->authoritative_team_mask().has_value());
+    EXPECT_TRUE(host_client->request_seat_team_change(host_indices.front(), 0));
+    {
+        auto join_scope = join_session.activate();
+        ASSERT_TRUE(join_client->authoritative_team_mask().has_value());
+        EXPECT_TRUE(
+            join_client->request_seat_team_change(join_indices.front(), 1));
+    }
 
     const auto team_for = [](const std::vector<og::sim::LobbyPlayer>& players,
                              std::uint8_t player_index)

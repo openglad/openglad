@@ -2979,11 +2979,6 @@ public:
             state_.has_value() ? &*state_ : nullptr);
     }
 
-    bool request_team_change(short team) override
-    {
-        return request_seat_team_change(local_player_index(), team);
-    }
-
     bool request_seat_team_change(std::uint8_t player_index,
                                   short team) override
     {
@@ -4036,11 +4031,6 @@ public:
             slot_index,
             current_picker_save(),
             state_.has_value() ? &*state_ : nullptr);
-    }
-
-    bool request_team_change(short team) override
-    {
-        return request_seat_team_change(local_player_index(), team);
     }
 
     bool request_seat_team_change(std::uint8_t player_index,

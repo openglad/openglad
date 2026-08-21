@@ -2551,8 +2551,10 @@ og::sim::LobbyPlayer make_seat_player(std::uint8_t index, short team,
 } // namespace
 
 // The ported seat vocabulary, pinned exactly: the 3-letter public company
-// abbreviation with its "NET" fallback, the "P{n} YOU/ABC [RDY]" identity
-// (both overloads agree), and the match-shape summary strings.
+// abbreviation with its "NET" fallback, the "P{n} YOU/ABC [RDY]" identity,
+// and the match-shape summary strings. The LobbyPlayer -> row resolution
+// (is_local decides YOU) is pinned through the production builder in
+// seat_block_you_vs_abbreviation_is_per_client below.
 TEST(PickerCommon, seat_vocabulary_labels_pin)
 {
     EXPECT_EQ("BLU", og::ui::company_abbreviation("blue-company"));
@@ -2562,14 +2564,21 @@ TEST(PickerCommon, seat_vocabulary_labels_pin)
         << "no alphanumerics falls back to NET, never the net-<hex> name";
     EXPECT_EQ("NET", og::ui::company_abbreviation(""));
 
-    const og::sim::LobbyPlayer local =
-        make_seat_player(0, 0, "Iron Kettle", true);
-    const og::sim::LobbyPlayer remote =
-        make_seat_player(3, 1, "Delta Guild", false);
-    const std::vector<std::uint8_t> locals = {0};
-    EXPECT_EQ("P1 YOU [RDY]", og::ui::seat_identity_label(local, locals));
-    EXPECT_EQ("P4 DEL", og::ui::seat_identity_label(remote, locals));
-    // The row overload is the single format authority the formatter uses.
+    // The row is the single format authority the formatter uses.
+    EXPECT_EQ("P1 YOU [RDY]", og::ui::seat_identity_label(og::ui::ScenarioSeatRow{
+                  .player_index = 0,
+                  .company = "Iron Kettle",
+                  .team = 0,
+                  .ready = true,
+                  .is_local = true,
+              }));
+    EXPECT_EQ("P4 DEL", og::ui::seat_identity_label(og::ui::ScenarioSeatRow{
+                  .player_index = 3,
+                  .company = "Delta Guild",
+                  .team = 1,
+                  .ready = false,
+                  .is_local = false,
+              }));
     EXPECT_EQ("P4 DEL [RDY]",
               og::ui::seat_identity_label(og::ui::ScenarioSeatRow{
                   .player_index = 3,

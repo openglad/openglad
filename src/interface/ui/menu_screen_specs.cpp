@@ -47,7 +47,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <chrono>
 #include <cstddef>
 #include <cstring>
@@ -2804,20 +2803,6 @@ static_assert(static_cast<int>(std::size(kBaseCampRows))
                   == kCreateMenuButtonCount,
               "base camp spec ordinals are the layout contract");
 
-std::string base_camp_company_abbreviation(std::string_view company)
-{
-    std::string result;
-    result.reserve(3);
-    for (const char ch : company) {
-        if (!std::isalnum(static_cast<unsigned char>(ch)))
-            continue;
-        result.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(ch))));
-        if (result.size() == 3)
-            break;
-    }
-    return result.empty() ? "NET" : result;
-}
-
 // A card's controller profile is its POSITION in this machine's local seat
 // list, never the card index and never the global P# (menu_system.md §3.1 —
 // displayed P1 once drove profile 3). Seat settings resolves it the same way
@@ -2848,7 +2833,7 @@ std::string base_camp_seat_label(const BaseCampScreenState& state,
                     og::ui::current_input_selection(local_slot).name)
               : (local_slot >= 0
                      ? std::string("SPEC")
-                     : base_camp_company_abbreviation(seat.company));
+                     : company_abbreviation(seat.company));
     // The trailing visual pad shifts the visible centered ink one half-cell
     // left, keeping the 8px numbered team chip clear on the compact 57px face.
     // The pad is part of the 9-char face budget, and so is a two-digit P#:

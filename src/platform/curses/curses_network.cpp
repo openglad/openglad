@@ -1805,11 +1805,6 @@ public:
     }
     bool cancelled() const override { return cancelled_; }
 
-    bool request_team_change(short team) override
-    {
-        return request_seat_team_change(local_player_index(), team);
-    }
-
     bool request_seat_team_change(std::uint8_t player_index,
                                   short team) override
     {

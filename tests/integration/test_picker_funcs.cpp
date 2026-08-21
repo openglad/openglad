@@ -1541,7 +1541,6 @@ TEST(PickerFuncs, local_lobby_client_without_screen_has_exact_empty_contract)
     client->set_player_mode(2);
     EXPECT_FALSE(client->add_local_seat());
     EXPECT_FALSE(client->request_start_game());
-    EXPECT_FALSE(client->request_team_change(1));
     EXPECT_FALSE(client->request_seat_team_change(0, 1));
     EXPECT_FALSE(client->build_game_start_config().has_value());
     EXPECT_TRUE(client->lobby_players().empty());
@@ -2716,18 +2715,22 @@ TEST(PickerFuncs,
         EXPECT_TRUE(picker_lobby_status_lines().empty())
             << "the local lobby intentionally has no network status banner";
 
-        // The compatibility request targets this machine's first seat and
-        // updates SaveData::my_team only after the authoritative echo lands.
-        EXPECT_TRUE(picker_lobby_request_team_change(2));
+        // A request against this machine's FIRST seat updates
+        // SaveData::my_team, and only after the authoritative echo lands.
         std::vector<og::sim::LobbyPlayer> players = client->lobby_players();
-        std::sort(players.begin(), players.end(),
-                  [](const auto& lhs, const auto& rhs) {
-                      return lhs.player_index < rhs.player_index;
-                  });
+        const auto by_player_index = [](const auto& lhs, const auto& rhs) {
+            return lhs.player_index < rhs.player_index;
+        };
+        std::sort(players.begin(), players.end(), by_player_index);
+        ASSERT_EQ(3u, players.size());
+        const std::uint8_t first_seat = players[0].player_index;
+        EXPECT_TRUE(picker_lobby_request_seat_team_change(first_seat, 2));
+        players = client->lobby_players();
+        std::sort(players.begin(), players.end(), by_player_index);
         ASSERT_EQ(3u, players.size());
         EXPECT_EQ(2, players[0].team);
         EXPECT_EQ(2, save.my_team);
-        EXPECT_TRUE(picker_lobby_request_team_change(0));
+        EXPECT_TRUE(picker_lobby_request_seat_team_change(first_seat, 0));
 
         players = client->lobby_players();
         std::sort(players.begin(), players.end(),

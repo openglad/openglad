@@ -875,13 +875,9 @@ std::string company_abbreviation(std::string_view company);
 
 // "P{n} {YOU|ABC}" + optional " [RDY]" — the shared seat identity label
 // (the retired MATCHUP screen's vocabulary, now the View Level seat block's
-// home). The row
-// overload is the single format authority; the LobbyPlayer overload
-// resolves is_local against this machine's seat indices first.
+// home). The row is the single format authority; build_scenario_roster_report
+// resolves is_local from the caller's ScenarioSeatContext before this runs.
 std::string seat_identity_label(const ScenarioSeatRow& seat);
-std::string seat_identity_label(
-    const og::sim::LobbyPlayer& player,
-    const std::vector<std::uint8_t>& local_indices);
 
 // The match-shape summary over the lobby seats: "CO-OP" / "2 VS 2" /
 // "FREE-FOR-ALL" / "MIXED TEAMS", or "NO PLAYER SEATS" for an empty list.

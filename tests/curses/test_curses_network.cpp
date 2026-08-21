@@ -477,6 +477,16 @@ bool status_contains(const CursesLobby& lobby, std::string_view needle)
     return false;
 }
 
+// Move this machine's FIRST seat to `team` — the single-seat shape of the
+// exact-seat request the terminal lobby's 't' team cycler dispatches for the
+// currently selected seat.
+bool request_first_seat_team(CursesLobby& lobby, short team)
+{
+    const std::vector<std::uint8_t> local = lobby.local_player_indices();
+    return !local.empty() &&
+        lobby.request_seat_team_change(local.front(), team);
+}
+
 } // namespace
 
 TEST(CursesNetwork, host_lobby_builds_over_inprocess_transport)
@@ -2404,7 +2414,7 @@ TEST(CursesNetwork, classic_lobby_allows_shared_team_request)
     }
     ASSERT_TRUE(two_players);
 
-    (void)join_lobby->request_team_change(0);
+    (void)request_first_seat_team(*join_lobby, 0);
     for (int i = 0; i < 50; ++i) {
         host_lobby->poll(host_term, clock);
         join_lobby->poll(join_term, clock);
@@ -2623,7 +2633,7 @@ TEST(CursesNetwork, ctf_lobby_team_change_and_ready_round_trip)
     ASSERT_TRUE(two_players);
 
     // Joiner moves onto the host's team (asynchronous: poll both sides).
-    (void)join_lobby->request_team_change(0);
+    (void)request_first_seat_team(*join_lobby, 0);
     bool shared = false;
     for (int i = 0; i < 200 && !shared; ++i) {
         host_lobby->poll(host_term, clock);
@@ -2635,7 +2645,7 @@ TEST(CursesNetwork, ctf_lobby_team_change_and_ready_round_trip)
     EXPECT_TRUE(shared) << "CTF lobbies allow two humans on one team";
 
     // The host's own request is synchronous over the loopback link.
-    EXPECT_TRUE(host_lobby->request_team_change(1));
+    EXPECT_TRUE(request_first_seat_team(*host_lobby, 1));
 
     // Ready round trip + the [ready] status tag.
     EXPECT_FALSE(host_lobby->local_ready());
@@ -2657,7 +2667,7 @@ TEST(CursesNetwork, ctf_lobby_team_change_and_ready_round_trip)
 
     // Any exact team change clears every ready seat on that machine.
     EXPECT_TRUE(host_lobby->local_ready());
-    EXPECT_TRUE(host_lobby->request_team_change(0));
+    EXPECT_TRUE(request_first_seat_team(*host_lobby, 0));
     EXPECT_FALSE(host_lobby->local_ready());
 
     host_lobby->cancel();

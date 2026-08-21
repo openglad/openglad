@@ -588,25 +588,6 @@ public:
         return true;
     }
 
-    bool request_team_change(short team) override
-    {
-        if (!ensure_initialized() || peers_.empty())
-            return false;
-        std::uint8_t player_index = 0xffu;
-        if (state_.has_value())
-        {
-            const auto player_it = std::find_if(
-                state_->players.begin(), state_->players.end(),
-                [seat_id = peers_.front().seat_id](
-                    const og::sim::LobbyPlayer& player) {
-                    return player.seat_id == seat_id;
-                });
-            if (player_it != state_->players.end())
-                player_index = player_it->player_index;
-        }
-        return request_seat_team_change(player_index, team);
-    }
-
     bool request_seat_team_change(std::uint8_t player_index,
                                   short team) override
     {
@@ -1311,11 +1292,6 @@ bool picker_lobby_host_controls_visible()
     if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
         return client->host_controls_visible();
     return true;
-}
-
-bool picker_lobby_request_team_change(short team)
-{
-    return resolve_picker_lobby_client().request_team_change(team);
 }
 
 bool picker_lobby_request_seat_team_change(std::uint8_t player_index,

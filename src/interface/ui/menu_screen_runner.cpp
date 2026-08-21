@@ -529,12 +529,14 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
             break;
         }
 
-        // Subscreens whose BACK carries MENU_REDRAW (view team, MATCHUP and
-        // the slot menus, all retired now) END here — the same point the legacy loops
-        // checked, before reset_buttons could consume the value — and
-        // return MENU_REDRAW to the parent loop. MENU_EXIT-bearing exits
-        // (remote start, an intercepted GO) still return spec.exit_value /
-        // the remote MENU_EXIT through their own paths above.
+        // Subscreens whose BACK carries MENU_REDRAW END here — the same point
+        // the legacy loops checked, before reset_buttons could consume the
+        // value — and return MENU_REDRAW to the parent loop. VIEW LEVEL is the
+        // one this position was preserved for (its page-step consumption sits
+        // directly below); HELP, SEAT SETTINGS and the pause player card ride
+        // the same flag. MENU_EXIT-bearing exits (remote start, an intercepted
+        // GO) still return spec.exit_value / the remote MENU_EXIT through their
+        // own paths above.
         if (spec.exit_on_redraw && (retvalue & MENU_REDRAW))
             return MENU_REDRAW;
 

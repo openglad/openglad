@@ -3016,20 +3016,6 @@ std::string seat_identity_label(const ScenarioSeatRow& seat)
     return result;
 }
 
-std::string seat_identity_label(
-    const og::sim::LobbyPlayer& player,
-    const std::vector<std::uint8_t>& local_indices)
-{
-    return seat_identity_label(ScenarioSeatRow{
-        .player_index = static_cast<int>(player.player_index),
-        .company = player.company,
-        .team = static_cast<short>(player.team),
-        .ready = player.ready,
-        .is_local = std::find(local_indices.begin(), local_indices.end(),
-                              player.player_index) != local_indices.end(),
-    });
-}
-
 std::string format_seat_summary(
     const std::vector<og::sim::LobbyPlayer>& players)
 {

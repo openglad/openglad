@@ -58,8 +58,6 @@ public:
     virtual void cancel() = 0;
     // True once the user has cancelled (so the lobby loop can stop polling).
     virtual bool cancelled() const { return false; }
-    // Compatibility shorthand for moving this machine's first seat.
-    virtual bool request_team_change(short team) = 0;
     // Move one owned seat to `team`. player_index is the current display
     // handle; implementations resolve it to the server-issued stable seat ID
     // from the recipient-specific LobbyState and reject foreign/stale values.
