@@ -970,12 +970,31 @@ TEST(UxShots, l_basecamp_net_alert) {
                         std::optional<std::string>("Status: connection lost"));
 }
 
+// Wait until a (visible) interactable `id` exists at game coords (x, y) —
+// disambiguates the per-screen "back" buttons by their geometry (the
+// test_ctf_ui helper, local to this binary).
+bool wait_for_interactable_at(const std::string &id, int x, int y,
+                              int timeout_ms) {
+  int elapsed = 0;
+  while (elapsed < timeout_ms) {
+    for (const Interactable &item : get_interactables()) {
+      if (item.id == id && !item.hidden && item.x == x && item.y == y)
+        return true;
+    }
+    SDL_Delay(50);
+    elapsed += 50;
+  }
+  fprintf(stderr, "  [uxshot] TIMEOUT waiting for '%s' at (%d,%d)\n",
+          id.c_str(), x, y);
+  return false;
+}
+
 // Seven authoritative seats exercise the compact four-card rail, its pager,
-// and the MATCHUP overview reached through SCENARIO (#236 retired the rail's
-// duplicate SEATS door). Internal network names intentionally differ from
-// public company names so the screenshots catch any accidental
-// transport-identity leak.
-int basecamp_many_seats_injector(void *data) {
+// and the VIEW LEVEL seat block reached through SCENARIO (#218 — the
+// surviving home of the seat->team overview). Internal network names
+// intentionally differ from public company names so the screenshots catch
+// any accidental transport-identity leak.
+int many_seats_view_level_injector(void *data) {
   og::runtime::ensure_thread_session();
   ShotState *state = static_cast<ShotState *>(data);
   if (wait_for_team_menu()) {
@@ -987,16 +1006,17 @@ int basecamp_many_seats_injector(void *data) {
       state->captures += capture_frame("basecamp_net_seats_p2");
     }
     interact("scenario");
-    if (wait_for_interactable("matchup", 5000)) {
+    if (wait_for_interactable("view_scenario", 5000)) {
       SDL_Delay(300);
-      interact("matchup");
-    }
-    if (wait_for_interactable("cross_control", 5000)) {
-      SDL_Delay(1000);
-      state->captures += capture_frame("matchup_network_seats");
-      // MATCHUP back lands on the SCENARIO submenu; its back returns to
-      // Base Camp, whose back leaves the screen.
-      interact("back");
+      interact("view_scenario");
+      if (wait_for_interactable_at("back", 10, 170, 10000)) {
+        SDL_Delay(1000);
+        state->captures += capture_frame("view_level_seats");
+        SDL_Delay(200);
+        // Viewer back lands on the SCENARIO submenu; its back returns to
+        // Base Camp, whose back leaves the screen.
+        interact("back");
+      }
       if (wait_for_interactable("view_scenario", 5000)) {
         SDL_Delay(300);
         interact("back");
@@ -1171,8 +1191,14 @@ TEST(UxShots, n_view_level_staged) {
   (void)mount_campaign_package_with_error("gladiator");
 }
 
-TEST(UxShots, m_basecamp_many_seats_and_matchup) {
+TEST(UxShots, n_view_level_seats) {
   trace_clear();
+  // The viewer's entry guard needs the save's campaign mounted; a shuffled
+  // neighbor may have left another package up.
+  if (get_mounted_campaign() != "gladiator") {
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    (void)mount_campaign_package_with_error("gladiator");
+  }
   seed_session_save_for_net();
   FakeNetLobbyClient client;
   client.players = {
@@ -1188,7 +1214,7 @@ TEST(UxShots, m_basecamp_many_seats_and_matchup) {
   ActiveLobbyGuard guard(&client);
   ShotState state;
   SDL_Thread *thread =
-      SDL_CreateThread(basecamp_many_seats_injector, "ux_seats", &state);
+      SDL_CreateThread(many_seats_view_level_injector, "ux_seats", &state);
   ASSERT_TRUE(thread != nullptr);
   create_team_menu(0);
   SDL_WaitThread(thread, nullptr);

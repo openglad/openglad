@@ -2531,6 +2531,282 @@ TEST(PickerCommon, scenario_report_degradation_lines_are_honest)
     EXPECT_EQ("PREVIEW UNAVAILABLE", failed_nothing_lines[1]);
 }
 
+// --- Player seats in the View Level report (#218 seat block) ----------------
+
+namespace {
+
+og::sim::LobbyPlayer make_seat_player(std::uint8_t index, short team,
+                                      std::string company, bool ready)
+{
+    og::sim::LobbyPlayer player;
+    player.player_index = index;
+    player.name = std::format("net-{:016x}", index);  // opaque, never shown
+    player.company = std::move(company);
+    player.team = team;
+    player.ready = ready;
+    player.is_host = index == 0;
+    return player;
+}
+
+} // namespace
+
+// The ported seat vocabulary, pinned exactly: the 3-letter public company
+// abbreviation with its "NET" fallback, the "P{n} YOU/ABC [RDY]" identity
+// (both overloads agree), and the match-shape summary strings.
+TEST(PickerCommon, seat_vocabulary_labels_pin)
+{
+    EXPECT_EQ("BLU", og::ui::company_abbreviation("blue-company"));
+    EXPECT_EQ("IRO", og::ui::company_abbreviation("Iron kettle band"))
+        << "first three alphanumerics, upper-cased — not initials";
+    EXPECT_EQ("NET", og::ui::company_abbreviation("  --  "))
+        << "no alphanumerics falls back to NET, never the net-<hex> name";
+    EXPECT_EQ("NET", og::ui::company_abbreviation(""));
+
+    const og::sim::LobbyPlayer local =
+        make_seat_player(0, 0, "Iron Kettle", true);
+    const og::sim::LobbyPlayer remote =
+        make_seat_player(3, 1, "Delta Guild", false);
+    const std::vector<std::uint8_t> locals = {0};
+    EXPECT_EQ("P1 YOU [RDY]", og::ui::seat_identity_label(local, locals));
+    EXPECT_EQ("P4 DEL", og::ui::seat_identity_label(remote, locals));
+    // The row overload is the single format authority the formatter uses.
+    EXPECT_EQ("P4 DEL [RDY]",
+              og::ui::seat_identity_label(og::ui::ScenarioSeatRow{
+                  .player_index = 3,
+                  .company = "Delta Guild",
+                  .team = 1,
+                  .ready = true,
+                  .is_local = false,
+              }));
+    EXPECT_EQ("P1 YOU", og::ui::seat_identity_label(og::ui::ScenarioSeatRow{
+                  .player_index = 0,
+                  .company = "Iron Kettle",
+                  .team = 0,
+                  .ready = false,
+                  .is_local = true,
+              }));
+
+    EXPECT_EQ("NO PLAYER SEATS", og::ui::format_seat_summary({}));
+    EXPECT_EQ("CO-OP", og::ui::format_seat_summary(
+                           {make_seat_player(0, 2, "A", false),
+                            make_seat_player(1, 2, "B", false)}));
+    EXPECT_EQ("2 VS 2", og::ui::format_seat_summary(
+                            {make_seat_player(0, 0, "A", false),
+                             make_seat_player(1, 0, "B", false),
+                             make_seat_player(2, 1, "C", false),
+                             make_seat_player(3, 1, "D", false)}));
+    EXPECT_EQ("FREE-FOR-ALL", og::ui::format_seat_summary(
+                                  {make_seat_player(0, 0, "A", false),
+                                   make_seat_player(1, 1, "B", false),
+                                   make_seat_player(2, 2, "C", false)}));
+    EXPECT_EQ("MIXED TEAMS", og::ui::format_seat_summary(
+                                 {make_seat_player(0, 0, "A", false),
+                                  make_seat_player(1, 0, "B", false),
+                                  make_seat_player(2, 1, "C", false)}));
+}
+
+// The shared local/solo seat synthesis (the deduplicated empty-lobby
+// fallback and the text/curses seat source): one seat per numplayers, teams
+// from derive_local_gameplay_seat_teams, company = save_name, P1 host.
+TEST(PickerCommon, synthesize_local_lobby_players_pins)
+{
+    SaveData save;
+    save.save_name = "Iron Kettle Band";
+    save.numplayers = 2;
+    save.allied_mode = 0;
+    save.my_team = 0;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 0;
+    save.team_list[0]->deployed = true;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_ELF);
+    save.team_list[1]->teamnum = 1;
+    save.team_list[1]->deployed = true;
+    save.team_size = 2;
+
+    const std::vector<short> expected_teams =
+        og::ui::derive_local_gameplay_seat_teams(save);
+    ASSERT_EQ(2u, expected_teams.size());
+
+    const std::vector<og::sim::LobbyPlayer> players =
+        og::ui::synthesize_local_lobby_players(save);
+    ASSERT_EQ(2u, players.size());
+    for (std::size_t i = 0; i < players.size(); ++i)
+    {
+        EXPECT_EQ(static_cast<std::uint8_t>(i), players[i].player_index);
+        EXPECT_EQ(std::format("Player {}", i + 1), players[i].name);
+        EXPECT_EQ("Iron Kettle Band", players[i].company)
+            << "the synthesized company is the save's display name";
+        EXPECT_EQ(expected_teams[i], players[i].team)
+            << "seat teams come from derive_local_gameplay_seat_teams";
+        EXPECT_FALSE(players[i].ready);
+        EXPECT_EQ(i == 0, players[i].is_host) << "P1 is the host seat";
+    }
+
+    save.numplayers = 0;
+    EXPECT_TRUE(og::ui::synthesize_local_lobby_players(save).empty())
+        << "spectator/autoplay saves synthesize no seats";
+}
+
+// The builder resolves a seat context into the report and the formatter
+// leads the non-versus report with it: "SEATS: {summary}" then one P#-sorted
+// line per seat, then the existing blank + roster block. Exact positions —
+// this is the seat block's shape contract.
+TEST(PickerCommon, scenario_report_seat_block_leads_non_versus_reports)
+{
+    ReportWorld fx(false);
+    fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
+
+    SaveData save;
+    save.my_team = 0;
+
+    og::ui::ScenarioSeatContext seats;
+    // Deliberately unsorted: the report is P#-sorted regardless of the
+    // lobby list's arrival order.
+    seats.players = {
+        make_seat_player(3, 1, "Blue Banners", true),
+        make_seat_player(0, 0, "Iron Kettle", false),
+        make_seat_player(2, 1, "Blue Banners", false),
+        make_seat_player(1, 0, "Keepers Rest", true),
+    };
+    seats.local_player_indices = {0};
+
+    const og::ui::ScenarioRosterReport report =
+        og::ui::build_scenario_roster_report(
+            nullptr, og::ui::StagePreviewStatus::None, save, &fx.world(),
+            &seats);
+    ASSERT_EQ(4u, report.seats.size());
+    EXPECT_EQ("2 VS 2", report.seat_summary);
+    EXPECT_EQ(0, report.seats[0].player_index);
+    EXPECT_EQ(3, report.seats[3].player_index) << "P#-sorted";
+    EXPECT_TRUE(report.seats[0].is_local);
+    EXPECT_FALSE(report.seats[1].is_local);
+
+    const std::vector<std::string> lines =
+        og::ui::format_scenario_report_lines(report);
+    ASSERT_GE(lines.size(), 7u);
+    EXPECT_EQ("SEATS: 2 VS 2", lines[0]);
+    EXPECT_EQ("  P1 YOU - RED TEAM", lines[1]);
+    EXPECT_EQ("  P2 KEE [RDY] - RED TEAM", lines[2]);
+    EXPECT_EQ("  P3 BLU - GREEN TEAM", lines[3]);
+    EXPECT_EQ("  P4 BLU [RDY] - GREEN TEAM", lines[4]);
+    EXPECT_EQ("", lines[5])
+        << "the roster block keeps its blank separation below the seats";
+    EXPECT_EQ("RED TEAM (YOURS)", lines[6]);
+    for (const auto& line : lines)
+        EXPECT_LE(line.size(), 48u) << line;
+}
+
+// Production host and joiner pass the SAME replicated seat records with
+// DIFFERENT local_player_indices: the YOU-vs-abbreviation asymmetry is
+// per-client presentation by design, never a replication divergence — only
+// the seat FACTS (P#, team, ready, company) are shared state.
+TEST(PickerCommon, seat_block_you_vs_abbreviation_is_per_client)
+{
+    ReportWorld host_world(false);
+    ReportWorld joiner_world(false);
+
+    SaveData save;
+    const std::vector<og::sim::LobbyPlayer> shared_players = {
+        make_seat_player(0, 0, "Iron Kettle", false),
+        make_seat_player(1, 0, "Keepers Rest", true),
+    };
+
+    og::ui::ScenarioSeatContext host_seats;
+    host_seats.players = shared_players;
+    host_seats.local_player_indices = {0};
+    og::ui::ScenarioSeatContext joiner_seats;
+    joiner_seats.players = shared_players;
+    joiner_seats.local_player_indices = {1};
+
+    const std::vector<std::string> host_lines =
+        og::ui::format_scenario_report_lines(
+            og::ui::build_scenario_roster_report(
+                nullptr, og::ui::StagePreviewStatus::None, save,
+                &host_world.world(), &host_seats));
+    const std::vector<std::string> joiner_lines =
+        og::ui::format_scenario_report_lines(
+            og::ui::build_scenario_roster_report(
+                nullptr, og::ui::StagePreviewStatus::None, save,
+                &joiner_world.world(), &joiner_seats));
+
+    ASSERT_GE(host_lines.size(), 3u);
+    ASSERT_GE(joiner_lines.size(), 3u);
+    EXPECT_EQ("  P1 YOU - RED TEAM", host_lines[1]);
+    EXPECT_EQ("  P2 KEE [RDY] - RED TEAM", host_lines[2]);
+    EXPECT_EQ("  P1 IRO - RED TEAM", joiner_lines[1])
+        << "the joiner sees the host's seat abbreviated, never YOU";
+    EXPECT_EQ("  P2 YOU [RDY] - RED TEAM", joiner_lines[2]);
+    EXPECT_EQ(host_lines[0], joiner_lines[0])
+        << "the summary is a fact of the shared seats";
+}
+
+// No seat context (the defaulted parameter) and an EMPTY context are both
+// byte-identical to the pre-seat report — the guard that every existing
+// exact-line and exact-size pin keeps holding.
+TEST(PickerCommon, scenario_report_without_seats_is_byte_identical)
+{
+    ReportWorld fx(false);
+    fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
+    fx.spawn_living_named(FAMILY_ARCHER, 1, 5, "GONZO");
+
+    SaveData save;
+    save.my_team = 0;
+
+    const std::vector<std::string> defaulted =
+        og::ui::format_scenario_report_lines(
+            og::ui::build_scenario_roster_report(
+                nullptr, og::ui::StagePreviewStatus::None, save,
+                &fx.world()));
+    const og::ui::ScenarioSeatContext empty_seats;
+    const std::vector<std::string> with_empty_context =
+        og::ui::format_scenario_report_lines(
+            og::ui::build_scenario_roster_report(
+                nullptr, og::ui::StagePreviewStatus::None, save, &fx.world(),
+                &empty_seats));
+    const std::vector<std::string> with_null_context =
+        og::ui::format_scenario_report_lines(
+            og::ui::build_scenario_roster_report(
+                nullptr, og::ui::StagePreviewStatus::None, save, &fx.world(),
+                nullptr));
+    ASSERT_FALSE(defaulted.empty());
+    EXPECT_EQ(defaulted, with_empty_context);
+    EXPECT_EQ(defaulted, with_null_context);
+    for (const auto& line : defaulted)
+        EXPECT_EQ(std::string::npos, line.find("SEATS:")) << line;
+}
+
+// The 48-char sweep at the seat block's widest shape: a full 16-seat global
+// lobby on YELLOW, every seat ready and remote — the worst-case line is 29
+// chars ("  P16 ABC [RDY] - YELLOW TEAM") and every line clears the budget.
+TEST(PickerCommon, seat_block_sixteen_seat_worst_case_fits_the_budget)
+{
+    ReportWorld fx(false);
+    fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
+
+    SaveData save;
+    og::ui::ScenarioSeatContext seats;
+    for (std::uint8_t index = 0; index < 16; ++index)
+    {
+        seats.players.push_back(make_seat_player(
+            index, 3, "Absurdly Long Company Name Overflow", true));
+    }
+
+    const std::vector<std::string> lines =
+        og::ui::format_scenario_report_lines(
+            og::ui::build_scenario_roster_report(
+                nullptr, og::ui::StagePreviewStatus::None, save, &fx.world(),
+                &seats));
+    bool worst_case_seen = false;
+    for (const auto& line : lines)
+    {
+        EXPECT_LE(line.size(), 48u) << line;
+        worst_case_seen =
+            worst_case_seen || line == "  P16 ABS [RDY] - YELLOW TEAM";
+    }
+    EXPECT_TRUE(worst_case_seen)
+        << "the two-digit P# + [RDY] + YELLOW TEAM worst case renders";
+}
+
 // --- MATCHUP detail pagination (the per-team '>' pager) ---------------------
 
 TEST(PickerCommon, paginate_team_detail_packs_greedily_and_never_overflows)

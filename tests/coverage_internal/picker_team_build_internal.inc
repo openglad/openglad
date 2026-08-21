@@ -278,19 +278,23 @@ int picker_team_build_testing_exercise_internal_paths()
         network_matchup,
         og::runtime::current_session->myscreen_->text_normal);
 
-    check(matchup_company_abbreviation("  --  ") == "NET");
-    check(matchup_company_abbreviation("blue-company") == "BLU");
-    check(matchup_seat_identity(client.players[1], client.local_indices) ==
+    // The seat vocabulary lives in og::ui now (#218 seat block); MATCHUP
+    // consumes the shared helpers, so the pins ride the shared names.
+    check(og::ui::company_abbreviation("  --  ") == "NET");
+    check(og::ui::company_abbreviation("blue-company") == "BLU");
+    check(og::ui::seat_identity_label(client.players[1],
+                                      client.local_indices) ==
           "P1 YOU [RDY]");
-    check(matchup_seat_identity(client.players[0], client.local_indices) ==
+    check(og::ui::seat_identity_label(client.players[0],
+                                      client.local_indices) ==
           "P4 DEL");
-    check(matchup_summary({}) == "NO PLAYER SEATS");
-    check(matchup_summary({make_player(0, 0, "A", false),
-                           make_player(1, 1, "B", false)}) ==
+    check(og::ui::format_seat_summary({}) == "NO PLAYER SEATS");
+    check(og::ui::format_seat_summary({make_player(0, 0, "A", false),
+                                       make_player(1, 1, "B", false)}) ==
           "FREE-FOR-ALL");
-    check(matchup_summary({make_player(0, 0, "A", false),
-                           make_player(1, 0, "B", false),
-                           make_player(2, 1, "C", false)}) ==
+    check(og::ui::format_seat_summary({make_player(0, 0, "A", false),
+                                       make_player(1, 0, "B", false),
+                                       make_player(2, 1, "C", false)}) ==
           "MIXED TEAMS");
     check(clip_to_width("abcdefgh", 4) == "abcd");
     check(clip_to_width("abc", 4) == "abc");

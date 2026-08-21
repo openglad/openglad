@@ -962,6 +962,15 @@ private:
         inputs.replay_level = save_data_.replay_level;
         inputs.replay_origin = save_data_.replay_origin;
         stage.observe_inputs(inputs, og::server::stage_clock_now_ms());
+
+        // Seat block (#218): the text View Level stages locally, so the
+        // save-derived seat synthesis IS its staging input; every seat is
+        // this machine's (all-local -> YOU). Pure over the save, keeping
+        // the census a function of (save, knobs, seed).
+        ScenarioSeatContext seats;
+        seats.players = synthesize_local_lobby_players(save_data_);
+        for (const og::sim::LobbyPlayer& player : seats.players)
+            seats.local_player_indices.push_back(player.player_index);
         // The staged pipeline keeps the launch's first-level fallback; a
         // stage that fell back must not masquerade as the requested level
         // (the mirror applies the same rule) — the honest load failure
@@ -971,7 +980,7 @@ private:
             const ScenarioRosterReport report =
                 build_scenario_roster_report(stage.world(),
                                              og::ui::StagePreviewStatus::Staged,
-                                             save_data_, nullptr);
+                                             save_data_, nullptr, &seats);
             std::printf("\n--- SCEN %d: %s ---\n",
                 static_cast<int>(save_data_.scen_num),
                 stage.world()->title.c_str());
@@ -992,7 +1001,7 @@ private:
 
         const ScenarioRosterReport report = build_scenario_roster_report(
             nullptr, og::ui::StagePreviewStatus::Failed, save_data_,
-            &scenario.world());
+            &scenario.world(), &seats);
         std::printf("\n--- SCEN %d: %s ---\n",
             static_cast<int>(save_data_.scen_num),
             scenario.world().title.c_str());

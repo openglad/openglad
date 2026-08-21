@@ -454,6 +454,62 @@ TEST_F(ScenarioStagedReport, hookless_single_marker_level_clamps_inactive)
                             "MATCH INACTIVE: FEWER THAN 2 AUTHORED TEAMS"));
 }
 
+// The seat block (#218) on a STAGED versus report: "SEATS: {summary}" and
+// the per-seat lines land IMMEDIATELY after the match block with no blank
+// between (the first-block TRACE seam carries them), and the roster block
+// keeps its blank separation below. Exact indices pin the placement.
+TEST_F(ScenarioStagedReport, seat_block_follows_the_match_block_directly)
+{
+    ModesCtfWorld fx(kSoccerLevelB);  // teams = 4
+    for (int team = 0; team < 4; ++team)
+        fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+    fx.spawn_hero(FAMILY_SOLDIER, 0, 96, 700, 1);
+    fx.spawn_hero(FAMILY_SOLDIER, 0, 128, 700, 2);
+    fx.world().ctf_requested_strip_scenario_troops =
+        static_cast<short>(og::sim::kTroopsMatched);  // FAIR
+    fx.world().ctf_requested_team_count = 0;
+
+    stage_fixture_world(fx);
+    ASSERT_TRUE(fx.world().mode.active);
+
+    SaveData save;
+    save.my_team = 0;
+    og::ui::ScenarioSeatContext seats;
+    og::sim::LobbyPlayer host_seat;
+    host_seat.player_index = 0;
+    host_seat.company = "Iron Kettle";
+    host_seat.team = 0;
+    og::sim::LobbyPlayer joiner_seat;
+    joiner_seat.player_index = 1;
+    joiner_seat.company = "Keepers Rest";
+    joiner_seat.team = 0;
+    joiner_seat.ready = true;
+    seats.players = {host_seat, joiner_seat};
+    seats.local_player_indices = {0};
+
+    const og::ui::ScenarioRosterReport report =
+        og::ui::build_scenario_roster_report(
+            &fx.world(), og::ui::StagePreviewStatus::Staged, save, nullptr,
+            &seats);
+    const std::vector<std::string> lines =
+        og::ui::format_scenario_report_lines(report);
+    ASSERT_GE(lines.size(), 10u);
+    EXPECT_EQ("MATCH: SOCCER - 4 TEAMS ACTIVE", lines[0]);
+    EXPECT_EQ("  RED TEAM  ACTIVE - COMPANY (2)", lines[1]);
+    EXPECT_EQ("  GREEN TEAM  ACTIVE - MATCHED BOTS (2)", lines[2]);
+    EXPECT_EQ("  BLUE TEAM  ACTIVE - MATCHED BOTS (2)", lines[3]);
+    EXPECT_EQ("  YELLOW TEAM  ACTIVE - MATCHED BOTS (2)", lines[4]);
+    EXPECT_EQ("SEATS: CO-OP", lines[5])
+        << "no blank between the match block and the seat block — the "
+           "first-block trace seam must carry the seats";
+    EXPECT_EQ("  P1 YOU - RED TEAM", lines[6]);
+    EXPECT_EQ("  P2 KEE [RDY] - RED TEAM", lines[7]);
+    EXPECT_EQ("", lines[8]);
+    EXPECT_EQ("RED TEAM (YOURS)", lines[9]);
+    for (const auto& line : lines)
+        EXPECT_LE(line.size(), 48u) << line;
+}
+
 // The formatter's closed fill vocabulary: ScenarioFill::Empty renders the
 // NO FORCES label with no count suffix. The census never produces an
 // active-but-empty team today (activity IS the census), so the display

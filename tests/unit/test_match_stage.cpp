@@ -1355,6 +1355,42 @@ TEST_F(MatchStageTest, mirror_report_equals_host_report_line_for_line)
         << "the host report reads the staged census";
     EXPECT_EQ(host_lines, mirror_lines)
         << "host pane and joiner pane must say the identical thing";
+
+    // Seat block (#218): the SAME seat context on both sides keeps the
+    // vectors identical. In production, host and joiner pass the same
+    // replicated seat records with DIFFERENT local_player_indices — the
+    // YOU-vs-abbreviation asymmetry is per-client presentation by design
+    // (pinned in test_picker_common), not a mirror divergence; only the
+    // seat facts (P#, team, ready, company) are shared state, which is
+    // exactly why the seats are an explicit builder parameter.
+    og::ui::ScenarioSeatContext seats;
+    og::sim::LobbyPlayer host_seat;
+    host_seat.player_index = 0;
+    host_seat.company = "Iron Kettle";
+    host_seat.team = 0;
+    og::sim::LobbyPlayer joiner_seat;
+    joiner_seat.player_index = 1;
+    joiner_seat.company = "Keepers Rest";
+    joiner_seat.team = 1;
+    joiner_seat.ready = true;
+    seats.players = {host_seat, joiner_seat};
+    seats.local_player_indices = {0};
+    const std::vector<std::string> host_seat_lines =
+        og::ui::format_scenario_report_lines(
+            og::ui::build_scenario_roster_report(
+                stage.world(), og::ui::StagePreviewStatus::Staged,
+                display_save, nullptr, &seats));
+    const std::vector<std::string> mirror_seat_lines =
+        og::ui::format_scenario_report_lines(
+            og::ui::build_scenario_roster_report(
+                mirror.world(), og::ui::StagePreviewStatus::Staged,
+                display_save, nullptr, &seats));
+    EXPECT_TRUE(std::find(host_seat_lines.begin(), host_seat_lines.end(),
+                          "  P2 KEE [RDY] - GREEN TEAM") !=
+                host_seat_lines.end())
+        << "the seat block rides the staged report";
+    EXPECT_EQ(host_seat_lines, mirror_seat_lines)
+        << "identical seat context => identical lines on both panes";
 }
 
 // Apply-failure honesty: an undecodable pair reports Unavailable (never a

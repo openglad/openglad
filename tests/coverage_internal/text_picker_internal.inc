@@ -992,6 +992,13 @@ int text_picker_testing_staged_view_scenario()
     check(first.find("MATCH: SOCCER - 2 TEAMS ACTIVE") != std::string::npos);
     check(first.find("ACTIVE - COMPANY (1)") != std::string::npos);
     check(first.find("ACTIVE - BOT SQUAD (5)") != std::string::npos);
+    // Seat block (#218): the text client stages locally, so the seat lines
+    // are the save-derived synthesis — one all-local seat, directly after
+    // the match block.
+    check(first.find("SEATS: CO-OP") != std::string::npos);
+    check(first.find("  P1 YOU - RED TEAM") != std::string::npos);
+    check(first.find("MATCH: SOCCER - 2 TEAMS ACTIVE") <
+          first.find("SEATS: CO-OP"));
     // Determinism: the session-latched seed makes the census a pure
     // function of (save, knobs, seed) — reopening the viewer never
     // flickers a single byte.

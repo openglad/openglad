@@ -851,6 +851,60 @@ struct ScenarioRosterRow {
     int count = 1;
 };
 
+// --- Player seats (#218 seat block) ---
+
+// One seat line of the View Level report: the display-relevant facts of a
+// replicated lobby seat, resolved for THIS client (is_local decides YOU vs
+// the company abbreviation — a per-client presentation, not lobby state).
+struct ScenarioSeatRow {
+    int player_index = 0;   // dense lobby-wide P# ordinal
+    std::string company;    // the displayable identity (never the net name)
+    short team = 0;
+    bool ready = false;
+    bool is_local = false;  // one of this machine's seats
+};
+
+// The seat inputs a client passes to build_scenario_roster_report: the
+// replicated og::sim::LobbyPlayer list — the SAME seat records
+// LobbyServer::build_player_bindings derives the launch bindings from, so
+// showing them is display of an existing fact, never a rule twin — plus
+// this machine's seat indices. Seats are an explicit parameter because the
+// presentation is per-client: host and joiner hold identical seat records
+// but different local_player_indices (YOU vs the abbreviation).
+struct ScenarioSeatContext {
+    std::vector<og::sim::LobbyPlayer> players;
+    std::vector<std::uint8_t> local_player_indices;
+};
+
+// The public 3-letter company abbreviation for seat labels: first three
+// alphanumerics, upper-cased; "NET" when the name has none. Networked seat
+// display never falls back to LobbyPlayer::name (an opaque net-<hex>
+// transport identity).
+std::string company_abbreviation(std::string_view company);
+
+// "P{n} {YOU|ABC}" + optional " [RDY]" — the shared seat identity label
+// (MATCHUP's vocabulary, now the View Level seat block's home). The row
+// overload is the single format authority; the LobbyPlayer overload
+// resolves is_local against this machine's seat indices first.
+std::string seat_identity_label(const ScenarioSeatRow& seat);
+std::string seat_identity_label(
+    const og::sim::LobbyPlayer& player,
+    const std::vector<std::uint8_t>& local_indices);
+
+// The match-shape summary over the lobby seats: "CO-OP" / "2 VS 2" /
+// "FREE-FOR-ALL" / "MIXED TEAMS", or "NO PLAYER SEATS" for an empty list.
+std::string format_seat_summary(
+    const std::vector<og::sim::LobbyPlayer>& players);
+
+// The shared local/solo seat synthesis (the empty-lobby fallback MATCHUP
+// and Base Camp both used, deduplicated; also the text/curses seat source —
+// their View Level paths stage locally, so save-derived seats ARE their
+// staging input): one seat per save.numplayers, teams from
+// derive_local_gameplay_seat_teams, company = save_name, P1 host. Empty
+// when numplayers == 0.
+std::vector<og::sim::LobbyPlayer> synthesize_local_lobby_players(
+    const SaveData& save);
+
 struct ScenarioRosterReport {
     bool is_versus = false;         // world.type & TYPE_SCRIPTED
     bool will_activate = false;     // staged: mode.active / fallback >= 2
@@ -881,6 +935,11 @@ struct ScenarioRosterReport {
     std::string mode_name;          // ModeState::name when staged + active
     std::array<ScenarioFill, 4> team_fill = {};
     std::array<int, 4> team_fill_count = {};
+    // --- Seat block (#218): the caller's lobby seats, P#-sorted, with the
+    // format_seat_summary match shape. Both empty when the caller passed no
+    // seat context — every seatless report is byte-identical to before.
+    std::string seat_summary;
+    std::vector<ScenarioSeatRow> seats;
 };
 
 // Read a STAGED world (host MatchStage world, joiner preview mirror, or a
@@ -903,9 +962,13 @@ struct ScenarioRosterReport {
 // engine respawn_scan_anchors runs on it — the exact scan launch step 0
 // runs), preceded by the honest STAGING FAILED line when status == Failed.
 // Both worlds null => refusal lines only ("PREVIEW UNAVAILABLE").
+//
+// `seats` (#218 seat block): the caller's lobby seat context; nullptr or an
+// empty player list emits no seat lines and leaves every line byte-identical
+// to the seatless report.
 ScenarioRosterReport build_scenario_roster_report(
     const GameWorld* staged, StagePreviewStatus status, const SaveData& save,
-    GameWorld* fallback_world);
+    GameWorld* fallback_world, const ScenarioSeatContext* seats = nullptr);
 
 // Render the report as display lines, every line <= 48 chars.
 std::vector<std::string> format_scenario_report_lines(

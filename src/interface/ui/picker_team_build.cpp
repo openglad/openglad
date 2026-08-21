@@ -588,62 +588,10 @@ namespace
 constexpr int kTeamsDetailCharsUnpaged = 47;
 constexpr int kTeamsDetailCharsPaged = 39;
 
-std::string matchup_company_abbreviation(std::string_view company)
-{
-    std::string result;
-    result.reserve(3);
-    for (const char ch : company)
-    {
-        if (!std::isalnum(static_cast<unsigned char>(ch)))
-            continue;
-        result.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(ch))));
-        if (result.size() == 3)
-            break;
-    }
-    return result.empty() ? "NET" : result;
-}
-
-std::string matchup_seat_identity(
-    const og::sim::LobbyPlayer& player,
-    const std::vector<std::uint8_t>& local_indices)
-{
-    const bool local =
-        std::find(local_indices.begin(), local_indices.end(),
-                  player.player_index) != local_indices.end();
-    std::string result = std::format(
-        "P{} {}",
-        static_cast<int>(player.player_index) + 1,
-        local ? std::string("YOU")
-              : matchup_company_abbreviation(player.company));
-    if (player.ready)
-        result += " [RDY]";
-    return result;
-}
-
-std::string matchup_summary(const std::vector<og::sim::LobbyPlayer>& players)
-{
-    if (players.empty())
-        return "NO PLAYER SEATS";
-    std::array<int, SCORE_TEAM_COUNT> counts{};
-    for (const og::sim::LobbyPlayer& player : players)
-    {
-        if (player.team >= 0 && player.team < SCORE_TEAM_COUNT)
-            ++counts[static_cast<std::size_t>(player.team)];
-    }
-    const int occupied = static_cast<int>(std::count_if(
-        counts.begin(), counts.end(), [](int count) { return count > 0; }));
-    const int player_count = static_cast<int>(players.size());
-    if (occupied == 1)
-        return "CO-OP";
-    if (player_count == 4 && occupied == 2 &&
-        std::count(counts.begin(), counts.end(), 2) == 2)
-    {
-        return "2 VS 2";
-    }
-    if (occupied == player_count)
-        return "FREE-FOR-ALL";
-    return "MIXED TEAMS";
-}
+// The seat vocabulary (company abbreviation, "P{n} YOU/ABC [RDY]", the
+// CO-OP/2v2/FFA summary) moved to og::ui (picker_common) — the View Level
+// seat block is its surviving home (#218); this screen consumes the shared
+// helpers.
 
 // One frame's full MATCHUP state: the nav wiring inputs plus the CTF
 // map context (authored marker teams from the LIVE picker world).
@@ -680,23 +628,8 @@ TeamsMenuFrameState compute_teams_menu_state()
     // show only the public company name, never the internal net-<hex>
     // transport identity.
     std::vector<og::sim::LobbyPlayer> players = picker_lobby_players();
-    if (players.empty() && save.numplayers > 0)
-    {
-        const std::vector<short> teams =
-            og::ui::derive_local_gameplay_seat_teams(save);
-        for (std::size_t index = 0; index < teams.size(); ++index)
-        {
-            players.push_back(og::sim::LobbyPlayer{
-                .player_index = static_cast<std::uint8_t>(index),
-                .name = std::format("Player {}", index + 1),
-                .company = save.save_name,
-                .team = teams[index],
-                .character_slots = {},
-                .ready = false,
-                .is_host = index == 0,
-            });
-        }
-    }
+    if (players.empty())
+        players = og::ui::synthesize_local_lobby_players(save);
     std::sort(players.begin(), players.end(),
               [](const og::sim::LobbyPlayer& lhs,
                  const og::sim::LobbyPlayer& rhs) {
@@ -710,7 +643,7 @@ TeamsMenuFrameState compute_teams_menu_state()
         for (const og::sim::LobbyPlayer& player : players)
             local_indices.push_back(player.player_index);
     }
-    state.summary = matchup_summary(players);
+    state.summary = og::ui::format_seat_summary(players);
 
     // Seats group by LobbyPlayer::team. Heroes group independently by their
     // character teamnum: changing a seat assignment must never appear to
@@ -723,7 +656,7 @@ TeamsMenuFrameState compute_teams_menu_state()
         for (const og::sim::LobbyPlayer& player : players)
         {
             if (player.team == t)
-                seat_items.push_back(matchup_seat_identity(
+                seat_items.push_back(og::ui::seat_identity_label(
                     player, local_indices));
             if (state.wiring.networked)
             {
@@ -1147,6 +1080,11 @@ struct ViewScenarioKey
     short capture_limit = 0;
     short respawn_ticks = 0;
     std::uint32_t stage_generation = 0;
+    // Seat block (#218): digest of the displayed seat facts. REQUIRED as a
+    // key member because ready flips deliberately never restage
+    // (MatchStageInputs excludes ready bits), so without it a parked viewer
+    // would show stale [RDY]/team seat lines.
+    std::uint64_t seat_digest = 0;
     std::string save_campaign;
     std::string mounted_campaign;
 
@@ -1182,6 +1120,57 @@ struct ViewScenarioEngineState
 
 static ViewScenarioEngineState* g_view_scenario_engine_state = nullptr;
 
+// The seat context every VIEW LEVEL key read and rebuild consumes: the
+// replicated lobby seats (falling back to the shared local synthesis when
+// no lobby list exists — solo shows its own seats), plus this machine's
+// seat indices. Non-networked sessions mark every seat local (the same
+// rule compute_teams_menu_state applies): every seat reads YOU.
+static og::ui::ScenarioSeatContext view_scenario_seat_context(
+    const SaveData& save)
+{
+    og::ui::ScenarioSeatContext context;
+    context.players = picker_lobby_players();
+    if (context.players.empty())
+        context.players = og::ui::synthesize_local_lobby_players(save);
+    context.local_player_indices = picker_lobby_local_player_indices();
+    if (!picker_lobby_is_networked())
+    {
+        context.local_player_indices.clear();
+        for (const og::sim::LobbyPlayer& player : context.players)
+            context.local_player_indices.push_back(player.player_index);
+    }
+    return context;
+}
+
+// FNV-1a over exactly the seat facts the report displays (player_index,
+// team, ready, company, is_local) — the ViewScenarioKey member that makes
+// restage-less seat changes (a ready flip) refresh a parked viewer.
+static std::uint64_t view_scenario_seat_digest(
+    const og::ui::ScenarioSeatContext& context)
+{
+    std::uint64_t hash = 14695981039346656037ull;
+    const auto mix = [&hash](std::uint64_t value) {
+        hash ^= value;
+        hash *= 1099511628211ull;
+    };
+    for (const og::sim::LobbyPlayer& player : context.players)
+    {
+        mix(player.player_index);
+        mix(static_cast<std::uint16_t>(player.team));
+        mix(player.ready ? 1u : 0u);
+        const bool local =
+            std::find(context.local_player_indices.begin(),
+                      context.local_player_indices.end(),
+                      player.player_index) !=
+            context.local_player_indices.end();
+        mix(local ? 1u : 0u);
+        for (const char ch : player.company)
+            mix(static_cast<std::uint8_t>(ch));
+        mix(0xffu);  // field terminator: company bytes never bleed across
+    }
+    return hash;
+}
+
 // One key read per frame; the same values feed both the comparison and any
 // rebuild, so a mid-poll lobby update can never split the key from the
 // report it stamps.
@@ -1198,6 +1187,8 @@ static ViewScenarioKey view_scenario_current_key(const SaveData& save)
     og::ui::IPickerLobbyClient* const lobby =
         og::ui::active_picker_lobby_client();
     key.stage_generation = lobby != nullptr ? lobby->stage_generation() : 0;
+    key.seat_digest =
+        view_scenario_seat_digest(view_scenario_seat_context(save));
     return key;
 }
 
@@ -1290,10 +1281,13 @@ static void view_scenario_rebuild(ViewScenarioEngineState& state,
     // the lobby save sync) must not caption this level's screen.
     if (staged != nullptr && staged->id != save.scen_num)
         staged = nullptr;
+    const og::ui::ScenarioSeatContext seat_context =
+        view_scenario_seat_context(save);
     const og::ui::ScenarioRosterReport report =
         og::ui::build_scenario_roster_report(
             staged, status, save,
-            state.scenario != nullptr ? &state.scenario->world() : nullptr);
+            state.scenario != nullptr ? &state.scenario->world() : nullptr,
+            &seat_context);
     state.lines = og::ui::format_scenario_report_lines(report);
     state.pager = og::ui::PageModel::make(
         static_cast<int>(state.lines.size()), kViewScenarioRowsPerPage);

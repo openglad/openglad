@@ -33,6 +33,7 @@
 #include <SDL3/SDL.h>
 
 #include <array>
+#include <atomic>
 #include <memory>
 #include <set>
 #include <span>
@@ -41,6 +42,7 @@
 
 // Picker entry points for the injector-driven flows.
 void picker_main(Sint32 argc, char **argv);
+Sint32 create_team_menu(Sint32 arg1);
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
 // TESTING hook (picker_team_build.cpp): render one MATCHUP frame in
@@ -1564,6 +1566,8 @@ struct StagedPaneFlowState
     bool viewer_opened = false;
     bool pane_trace_seen = false;
     bool company_line_seen = false;
+    bool seats_block_seen = false;
+    bool seat_identity_seen = false;
     bool matched_line_seen = false;
 };
 
@@ -1594,6 +1598,13 @@ int view_scenario_staged_pane_injector(void* data)
         wait_for_picker_trace("view_scenario pane gen=", 1, 5000);
     state->company_line_seen = wait_for_picker_trace(
         "view_scenario line   RED TEAM  ACTIVE - COMPANY (2)", 1, 5000);
+
+    // Seat block (#218): the solo session's one seat, directly after the
+    // match block — inside the first-block trace seam.
+    state->seats_block_seen = wait_for_picker_trace(
+        "view_scenario line SEATS: CO-OP", 1, 5000);
+    state->seat_identity_seen = wait_for_picker_trace(
+        "view_scenario line   P1 YOU - RED TEAM", 1, 5000);
 
     // Cycle TROOPS to FAIR through the lobby (the sync path a host click
     // takes): the owner's change key moves, ONE debounced restage lands,
@@ -1648,10 +1659,193 @@ TEST(CtfUi, view_scenario_staged_pane_shows_the_staged_census)
         << "the render copy must heal from the staged pair bytes";
     EXPECT_TRUE(state.company_line_seen)
         << "the staged census must list the deployed company exactly";
+    EXPECT_TRUE(state.seats_block_seen)
+        << "the seat block must follow the match block inside the trace "
+           "seam";
+    EXPECT_TRUE(state.seat_identity_seen)
+        << "the solo seat renders as P1 YOU on its save-derived team";
     EXPECT_TRUE(state.matched_line_seen)
         << "a TROOPS: FAIR flip under the open viewer must restage into "
            "matched squads";
 
     (void)unmount_campaign_package_with_error(get_mounted_campaign());
     (void)mount_campaign_package_with_error("gladiator");
+}
+
+// --- Seat-line refresh on restage-less lobby changes (#218 seat block) ------
+
+// A fake networked lobby whose joiner seat's READY bit the injector thread
+// can flip atomically: lobby_players() rebuilds the list per call, so the
+// menu thread and the injector never share mutable vector storage. No
+// staging (stage_generation stays 0) — the ONLY key member a ready flip can
+// move is the seat digest.
+class SeatFlipLobbyClient final : public og::ui::IPickerLobbyClient
+{
+public:
+    void initialize_from_save() override {}
+    void shutdown() override {}
+    void sync_from_save() override {}
+    void sync_roster_from_save() override {}
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override {}
+    void set_player_mode(int) override {}
+    bool request_start_game() override { return false; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override
+    {
+        return std::nullopt;
+    }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override
+    {
+        return std::nullopt;
+    }
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
+    [[nodiscard]] bool host_controls_visible() const noexcept override
+    {
+        return true;
+    }
+    [[nodiscard]] bool is_networked_session() const noexcept override
+    {
+        return true;
+    }
+    [[nodiscard]] std::vector<og::sim::LobbyPlayer>
+    lobby_players() const override
+    {
+        og::sim::LobbyPlayer host;
+        host.player_index = 0;
+        host.name = "net-0000000000000000";  // opaque, never displayed
+        host.company = "Iron Kettle";
+        host.team = 0;
+        host.is_host = true;
+        og::sim::LobbyPlayer joiner;
+        joiner.player_index = 1;
+        joiner.name = "net-0000000000000001";
+        joiner.company = "Keepers Rest";
+        joiner.team = 0;
+        joiner.ready = joiner_ready.load();
+        return {host, joiner};
+    }
+    [[nodiscard]] std::vector<std::uint8_t>
+    local_player_indices() const override
+    {
+        return {0};
+    }
+
+    std::atomic<bool> joiner_ready{false};
+};
+
+struct SeatReadyFlipState
+{
+    SeatFlipLobbyClient* lobby = nullptr;
+    bool started = false;
+    bool finished = false;
+    bool viewer_opened = false;
+    bool seats_block_seen = false;
+    bool unready_line_seen = false;
+    bool ready_refresh_seen = false;
+    bool ready_line_seen = false;
+};
+
+int view_scenario_seat_ready_flip_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    SeatReadyFlipState* state = static_cast<SeatReadyFlipState*>(data);
+    state->started = true;
+
+    // Base Camp -> SCENARIO -> VIEW LEVEL (create_team_menu entry, no main
+    // menu in front of it).
+    wait_for_interactable("scenario", 10000);
+    SDL_Delay(750);
+    interact("scenario");
+    wait_for_interactable("view_scenario", 10000);
+    SDL_Delay(300);
+    interact("view_scenario");
+
+    state->viewer_opened = wait_for_interactable_at("back", 10, 170, 10000);
+    SDL_Delay(300);
+    state->seats_block_seen =
+        wait_for_picker_trace("view_scenario line SEATS: CO-OP", 1, 5000);
+    state->unready_line_seen = wait_for_picker_trace(
+        "view_scenario line   P2 KEE - RED TEAM", 1, 5000);
+
+    // The digest tooth: a READY flip changes no restage input
+    // (MatchStageInputs excludes ready bits) and moves no other key member
+    // — only ViewScenarioKey::seat_digest can refresh the parked viewer.
+    const int refreshes_before =
+        count_picker_trace_containing("view_scenario refresh lines=");
+    state->lobby->joiner_ready.store(true);
+    state->ready_refresh_seen = wait_for_picker_trace(
+        "view_scenario refresh lines=", refreshes_before + 1, 5000);
+    state->ready_line_seen = wait_for_picker_trace(
+        "view_scenario line   P2 KEE [RDY] - RED TEAM", 1, 5000);
+    SDL_Delay(300);
+
+    // Viewer back -> SCENARIO -> team build -> leave.
+    interact("back");
+    SDL_Delay(300);
+    wait_for_interactable("view_scenario", 10000);
+    SDL_Delay(300);
+    interact("back");
+    SDL_Delay(300);
+    wait_for_interactable("go", 10000);
+    SDL_Delay(300);
+    interact("back");
+
+    state->finished = true;
+    return 0;
+}
+
+// Ready flips deliberately never restage, so with the viewer parked the
+// ONLY refresh path for its seat lines is the ViewScenarioKey seat digest —
+// remove that member and this test fails (no refresh trace, no [RDY] line).
+TEST(CtfUi, view_scenario_refreshes_seat_lines_on_a_ready_flip)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    if (get_mounted_campaign() != "gladiator") {
+        (void)unmount_campaign_package_with_error(get_mounted_campaign());
+        (void)mount_campaign_package_with_error("gladiator");
+    }
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    for (auto& slot : save.team_list)
+        slot.reset();
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "GORT";
+    save.team_list[0]->teamnum = 0;
+    save.team_size = 1;
+    save.my_team = 0;
+    save.numplayers = 1;
+    save.scen_num = 1;
+    save.current_campaign = "gladiator";
+
+    SeatFlipLobbyClient lobby;
+    og::ui::IPickerLobbyClient* const saved_client =
+        og::ui::active_picker_lobby_client();
+    og::ui::install_active_picker_lobby_client(&lobby);
+
+    SeatReadyFlipState state;
+    state.lobby = &lobby;
+    SDL_Thread* thread = SDL_CreateThread(
+        view_scenario_seat_ready_flip_injector, "seat_ready_flip", &state);
+    ASSERT_NE(nullptr, thread);
+    create_team_menu(0);
+    SDL_WaitThread(thread, nullptr);
+    og::ui::install_active_picker_lobby_client(saved_client);
+    cleanup_picker_state();
+
+    EXPECT_TRUE(state.finished) << "injector should complete the flow";
+    EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open its frame";
+    EXPECT_TRUE(state.seats_block_seen)
+        << "the networked seats lead the non-versus report";
+    EXPECT_TRUE(state.unready_line_seen)
+        << "the joiner seat starts without [RDY]";
+    EXPECT_TRUE(state.ready_refresh_seen)
+        << "a restage-less ready flip must move the seat digest and rebuild "
+           "the parked viewer's report";
+    EXPECT_TRUE(state.ready_line_seen)
+        << "the refreshed report must carry the [RDY] seat line";
 }

@@ -6936,21 +6936,8 @@ void base_camp_refresh_rows(BaseCampScreenState& state)
         std::clamp(page_before, 0, state.page.page_count() - 1);
 
     state.seats = picker_lobby_players();
-    if (state.seats.empty() && !networked && save.numplayers > 0) {
-        const std::vector<short> seeded =
-            derive_local_gameplay_seat_teams(save);
-        for (std::size_t index = 0; index < seeded.size(); ++index) {
-            state.seats.push_back(og::sim::LobbyPlayer{
-                .player_index = static_cast<std::uint8_t>(index),
-                .name = std::format("Player {}", index + 1),
-                .company = save.save_name,
-                .team = seeded[index],
-                .character_slots = {},
-                .ready = false,
-                .is_host = index == 0,
-            });
-        }
-    }
+    if (state.seats.empty() && !networked)
+        state.seats = synthesize_local_lobby_players(save);
     std::sort(state.seats.begin(), state.seats.end(),
               [](const og::sim::LobbyPlayer& lhs,
                  const og::sim::LobbyPlayer& rhs) {

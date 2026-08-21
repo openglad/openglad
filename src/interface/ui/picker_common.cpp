@@ -3038,6 +3038,97 @@ void TrainSession::clamp_working_stats()
         working_->upgrade_to_level(original->level);
 }
 
+// --- Player seats (#218 seat block) ---
+
+std::string company_abbreviation(std::string_view company)
+{
+    std::string result;
+    result.reserve(3);
+    for (const char ch : company)
+    {
+        if (!std::isalnum(static_cast<unsigned char>(ch)))
+            continue;
+        result.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(ch))));
+        if (result.size() == 3)
+            break;
+    }
+    return result.empty() ? "NET" : result;
+}
+
+std::string seat_identity_label(const ScenarioSeatRow& seat)
+{
+    std::string result = std::format(
+        "P{} {}", seat.player_index + 1,
+        seat.is_local ? std::string("YOU")
+                      : company_abbreviation(seat.company));
+    if (seat.ready)
+        result += " [RDY]";
+    return result;
+}
+
+std::string seat_identity_label(
+    const og::sim::LobbyPlayer& player,
+    const std::vector<std::uint8_t>& local_indices)
+{
+    return seat_identity_label(ScenarioSeatRow{
+        .player_index = static_cast<int>(player.player_index),
+        .company = player.company,
+        .team = static_cast<short>(player.team),
+        .ready = player.ready,
+        .is_local = std::find(local_indices.begin(), local_indices.end(),
+                              player.player_index) != local_indices.end(),
+    });
+}
+
+std::string format_seat_summary(
+    const std::vector<og::sim::LobbyPlayer>& players)
+{
+    if (players.empty())
+        return "NO PLAYER SEATS";
+    std::array<int, SCORE_TEAM_COUNT> counts{};
+    for (const og::sim::LobbyPlayer& player : players)
+    {
+        if (player.team >= 0 && player.team < SCORE_TEAM_COUNT)
+            ++counts[static_cast<std::size_t>(player.team)];
+    }
+    const int occupied = static_cast<int>(std::count_if(
+        counts.begin(), counts.end(), [](int count) { return count > 0; }));
+    const int player_count = static_cast<int>(players.size());
+    if (occupied == 1)
+        return "CO-OP";
+    if (player_count == 4 && occupied == 2 &&
+        std::count(counts.begin(), counts.end(), 2) == 2)
+    {
+        return "2 VS 2";
+    }
+    if (occupied == player_count)
+        return "FREE-FOR-ALL";
+    return "MIXED TEAMS";
+}
+
+std::vector<og::sim::LobbyPlayer> synthesize_local_lobby_players(
+    const SaveData& save)
+{
+    std::vector<og::sim::LobbyPlayer> players;
+    if (save.numplayers <= 0)
+        return players;
+    const std::vector<short> teams =
+        derive_local_gameplay_seat_teams(save);
+    for (std::size_t index = 0; index < teams.size(); ++index)
+    {
+        players.push_back(og::sim::LobbyPlayer{
+            .player_index = static_cast<std::uint8_t>(index),
+            .name = std::format("Player {}", index + 1),
+            .company = save.save_name,
+            .team = teams[index],
+            .character_slots = {},
+            .ready = false,
+            .is_host = index == 0,
+        });
+    }
+    return players;
+}
+
 // --- Scenario roster report (View Level) ---
 
 namespace {
@@ -3219,11 +3310,41 @@ void scan_roster_rows(ScenarioRosterReport& report, const GameWorld& world)
 
 ScenarioRosterReport build_scenario_roster_report(
     const GameWorld* staged, StagePreviewStatus status, const SaveData& save,
-    GameWorld* fallback_world)
+    GameWorld* fallback_world, const ScenarioSeatContext* seats)
 {
     ScenarioRosterReport report;
     report.your_team = save.my_team;
     report.stage_failed = status == StagePreviewStatus::Failed;
+
+    // The seat block (#218): resolve the caller's lobby seats into P#-sorted
+    // display rows. Reading LobbyPlayer::team reads the record the launch
+    // bindings are built FROM — display of an existing fact. is_local is
+    // per-client presentation (YOU vs abbreviation), resolved here so the
+    // formatter stays a pure function of the report.
+    if (seats != nullptr && !seats->players.empty())
+    {
+        std::vector<og::sim::LobbyPlayer> players = seats->players;
+        std::sort(players.begin(), players.end(),
+                  [](const og::sim::LobbyPlayer& lhs,
+                     const og::sim::LobbyPlayer& rhs) {
+                      return lhs.player_index < rhs.player_index;
+                  });
+        report.seat_summary = format_seat_summary(players);
+        for (const og::sim::LobbyPlayer& player : players)
+        {
+            report.seats.push_back(ScenarioSeatRow{
+                .player_index = static_cast<int>(player.player_index),
+                .company = player.company,
+                .team = static_cast<short>(player.team),
+                .ready = player.ready,
+                .is_local =
+                    std::find(seats->local_player_indices.begin(),
+                              seats->local_player_indices.end(),
+                              player.player_index) !=
+                    seats->local_player_indices.end(),
+            });
+        }
+    }
 
     if (staged != nullptr)
     {
@@ -3467,6 +3588,26 @@ std::vector<std::string> format_scenario_report_lines(
                 lines.push_back(
                     clip_line("MATCH INACTIVE: FEWER THAN 2 AUTHORED TEAMS"));
             }
+        }
+    }
+
+    // The seat block (#218): the lobby seats against their teams, directly
+    // after the match block with no blank between — the first-block TRACE
+    // seam carries it, and on non-versus reports it leads. One line per
+    // seat (worst case 29 chars) avoids all wrapping; a 16-seat lobby rides
+    // the existing pager.
+    if (!report.seats.empty())
+    {
+        lines.push_back(clip_line("SEATS: " + report.seat_summary));
+        for (const ScenarioSeatRow& seat : report.seats)
+        {
+            const std::string team_label =
+                (seat.team >= 0 && seat.team < 4)
+                    ? std::format("{} TEAM",
+                                  og::sim::team_color_name(seat.team))
+                    : std::format("TEAM {}", seat.team);
+            lines.push_back(clip_line(std::format(
+                "  {} - {}", seat_identity_label(seat), team_label)));
         }
     }
 

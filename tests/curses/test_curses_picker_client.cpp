@@ -956,6 +956,12 @@ TEST(CursesPickerClient, view_scenario_renders_the_staged_glyph_band)
         << f.t().dump();
     // The census lines start right below the band.
     EXPECT_EQ(0u, f.t().text_row(14).find("SCEN 1:")) << f.t().dump();
+    // Seat block (#218): the curses viewer stages locally, so the seat
+    // lines are the save-derived synthesis — one all-local seat leading the
+    // non-versus census, directly under the title line.
+    EXPECT_EQ(0u, f.t().text_row(15).find("SEATS: CO-OP")) << f.t().dump();
+    EXPECT_EQ(0u, f.t().text_row(16).find("  P1 YOU - RED TEAM"))
+        << f.t().dump();
 }
 
 // Small-terminal degradation: under 16 rows the preview screen is pure

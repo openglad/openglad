@@ -860,10 +860,18 @@ void view_scenario(Menu& menu, const SaveData& save, const GameWorld* staged,
         return;
     }
 
+    // Seat block (#218): the curses View Level stages locally, so the
+    // save-derived seat synthesis IS its staging input; every seat is this
+    // machine's (all-local -> YOU).
+    og::ui::ScenarioSeatContext seats;
+    seats.players = og::ui::synthesize_local_lobby_players(save);
+    for (const og::sim::LobbyPlayer& player : seats.players)
+        seats.local_player_indices.push_back(player.player_index);
+
     if (staged != nullptr) {
         const og::ui::ScenarioRosterReport report =
             og::ui::build_scenario_roster_report(staged, status, save,
-                                                 nullptr);
+                                                 nullptr, &seats);
         std::vector<std::string> lines =
             og::ui::format_scenario_report_lines(report);
         lines.insert(lines.begin(), std::format("SCEN {}: {}",
@@ -882,7 +890,7 @@ void view_scenario(Menu& menu, const SaveData& save, const GameWorld* staged,
 
     const og::ui::ScenarioRosterReport report =
         og::ui::build_scenario_roster_report(nullptr, status, save,
-                                             &scenario.world());
+                                             &scenario.world(), &seats);
     std::vector<std::string> lines =
         og::ui::format_scenario_report_lines(report);
     lines.insert(lines.begin(), std::format("SCEN {}: {}",
