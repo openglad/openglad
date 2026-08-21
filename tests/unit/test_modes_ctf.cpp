@@ -25,8 +25,9 @@
 //  - authored_flag_teams_scans_live_flags_without_rng /
 //    authored_flag_teams_empty_on_classic_world: RETIRED WITH THE ENGINE.
 //    og::sim::ctf_authored_flag_teams no longer exists in production — the
-//    pack's own census_mask does that job and is pinned by the init cases
-//    here. No twin is needed, and none exists.
+//    pack's own flag fold (the decide fold's first-flag-per-team rule)
+//    does that job and is pinned by the init cases here and the
+//    StagedRules domain rows. No twin is needed, and none exists.
 //  - walk_to_point_crosses_open_map_and_completes /
 //    walk_to_point_routes_around_wall / find_path_to_point_solves_around_
 //    wall: RETIRED HERE ONLY. The C++ COMMAND_GOTO/pathfinder machinery
@@ -509,11 +510,15 @@ TEST_F(ModesCtf, strip_scenario_troops_removes_every_authored_entity)
     }
 }
 
-TEST_F(ModesCtf, troops_own_activates_only_the_roster_flag_teams)
+TEST_F(ModesCtf, troops_own_at_auto_activates_the_authored_flag_teams)
 {
-    // The scen-841 shape on CTF: a four-flag map under OWN with rosters on
-    // teams 0 and 2 fields exactly those two sides. The unrostered flag
-    // teams strip with their flags, and no bot squads appear.
+    // The scen-841 shape on CTF at TEAMS: Auto: Auto is the zero sentinel
+    // ("as many teams as the map actually has"), so a four-flag map under
+    // OWN with rosters on teams 0 and 2 fields all FOUR flag sides — the
+    // rosters stay untouched, the unrostered flags stay banked, and the
+    // empty active teams backfill with the legacy bot squads, exactly like
+    // an explicit TEAMS: 4 (issue #218; the 2026-08-18 directive
+    // superseding D26's Auto scope).
     ModesCtfWorld fx;
     fx.world().ctf_requested_strip_scenario_troops = 2;
     fx.spawn_flag(flag_family_, 0, 96, 96);
@@ -525,18 +530,19 @@ TEST_F(ModesCtf, troops_own_activates_only_the_roster_flag_teams)
     fx.tick(1);
 
     ASSERT_TRUE(fx.ctf_active());
-    EXPECT_EQ(1 + 4, fx.var(kSlotTeamMask))
-        << "exactly the two roster flag teams activate";
-    EXPECT_EQ(2, fx.var(kSlotTeamCount));
-    EXPECT_EQ(0, fx.team_var(kSlotFlagEntity, 1))
-        << "the unrostered teams' flags strip with them";
-    EXPECT_EQ(0, fx.team_var(kSlotFlagEntity, 3));
+    EXPECT_EQ(15, fx.var(kSlotTeamMask))
+        << "Auto resolves to the authored flag-team count: all four sides";
+    EXPECT_EQ(4, fx.var(kSlotTeamCount));
+    EXPECT_NE(0, fx.team_var(kSlotFlagEntity, 1))
+        << "the backfilled teams keep their flags";
+    EXPECT_NE(0, fx.team_var(kSlotFlagEntity, 3));
     EXPECT_FALSE(soldier->dead());
     EXPECT_FALSE(barbarian->dead());
-    EXPECT_EQ(1, alive_on_team(fx.world(), 0));
-    EXPECT_EQ(0, alive_on_team(fx.world(), 1)) << "no CTF bot squads under OWN";
+    EXPECT_EQ(1, alive_on_team(fx.world(), 0)) << "the rosters stay as-is";
+    EXPECT_EQ(5, alive_on_team(fx.world(), 1))
+        << "the empty-team census fields the legacy squad";
     EXPECT_EQ(1, alive_on_team(fx.world(), 2));
-    EXPECT_EQ(0, alive_on_team(fx.world(), 3));
+    EXPECT_EQ(5, alive_on_team(fx.world(), 3));
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 

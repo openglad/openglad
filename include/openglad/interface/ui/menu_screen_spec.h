@@ -162,8 +162,8 @@ struct MenuScreenSpec {
     EnterTransition enter = EnterTransition::None;
     int default_highlight = 0;
     bool right_click_enabled = false;
-    // Subscreens whose BACK carries MENU_REDRAW (VIEW TEAM / MATCHUP / the
-    // retired slot menus): the loop must END on a redraw-bearing retvalue — checked
+    // Subscreens whose BACK carries MENU_REDRAW (VIEW TEAM, MATCHUP and the
+    // slot menus, all retired now): the loop must END on a redraw-bearing retvalue — checked
     // right where the legacy loops checked, after handle_menu_nav and
     // BEFORE reset_buttons could consume it — and run_menu_screen returns
     // MENU_REDRAW from that break. Screens whose nested subscreens return
@@ -258,7 +258,9 @@ enum class MenuScreenId : std::uint8_t {
     Progress,
     ViewScenario,
     Scenario,
-    Teams,
+    // Teams (the MATCHUP subscreen) RETIRED (#218): its seat/team overview
+    // is the VIEW LEVEL seat block and its knobs re-homed onto SCENARIO
+    // (TEAMS / LIMIT) and DIFFICULTY (cross-control).
     Networking,
     Help,
     // The Base Camp zone submenu (the scripted page chassis) — registered

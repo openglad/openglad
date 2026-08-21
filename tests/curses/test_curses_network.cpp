@@ -33,6 +33,7 @@
 #include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/world_snapshot.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/platform/net_transport_websocket_client.h>
 #include <openglad/resources/company.h>
@@ -476,6 +477,16 @@ bool status_contains(const CursesLobby& lobby, std::string_view needle)
     return false;
 }
 
+// Move this machine's FIRST seat to `team` — the single-seat shape of the
+// exact-seat request the terminal lobby's 't' team cycler dispatches for the
+// currently selected seat.
+bool request_first_seat_team(CursesLobby& lobby, short team)
+{
+    const std::vector<std::uint8_t> local = lobby.local_player_indices();
+    return !local.empty() &&
+        lobby.request_seat_team_change(local.front(), team);
+}
+
 } // namespace
 
 TEST(CursesNetwork, host_lobby_builds_over_inprocess_transport)
@@ -580,6 +591,197 @@ TEST(CursesNetwork, roster_reflects_two_players)
             join_sees_lobby = true;
     }
     EXPECT_TRUE(join_sees_lobby) << "the joiner should observe the lobby roster";
+}
+
+// Staged lobby #218 (C9): the curses joiner's preview mirror. The host lobby
+// stages at construction and broadcasts the pair over the shared in-process
+// transport; the joiner heals a headless mirror whose tick-0 keyframe
+// re-serializes byte-identical to the host's staged world — the preview both
+// terminals show is the SAME world, and neither side has ticked it.
+TEST(CursesNetwork, join_preview_mirror_matches_the_host_stage)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto join_client = server->create_client_transport();
+
+    auto host_lobby = make_host_lobby_over_transport_for_testing(
+        host_save, 1, server, host_client);
+    auto join_lobby = make_join_lobby_over_transport_for_testing(
+        join_save, 1, join_client, join_client->local_peer_id());
+    ASSERT_NE(nullptr, host_lobby);
+    ASSERT_NE(nullptr, join_lobby);
+
+    HeadlessTerminal host_term(24, 80);
+    HeadlessTerminal join_term(24, 80);
+    FakeClock clock;
+
+    // The host reads its own stage; the joiner heals its mirror from the
+    // broadcast/catch-up pair.
+    bool both_staged = false;
+    for (int i = 0; i < 200 && !both_staged; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+        both_staged = host_lobby->staged_world() != nullptr &&
+            join_lobby->staged_world() != nullptr;
+    }
+    ASSERT_TRUE(both_staged)
+        << "host stage + joiner mirror must both present a staged world";
+
+    const GameWorld* const host_staged = host_lobby->staged_world();
+    const GameWorld* const join_staged = join_lobby->staged_world();
+    EXPECT_EQ(host_staged->id, join_staged->id);
+    EXPECT_EQ(host_staged->title, join_staged->title);
+    EXPECT_EQ(0u, host_staged->tick_count_) << "the staged world is dormant";
+    EXPECT_EQ(0u, join_staged->tick_count_) << "mirrors never tick";
+    EXPECT_NE(0u, host_lobby->stage_generation());
+    EXPECT_NE(0u, join_lobby->stage_generation());
+    EXPECT_EQ(std::string{}, host_lobby->stage_failure_line());
+    EXPECT_EQ(std::string{}, join_lobby->stage_failure_line());
+
+    // Byte identity (Peek is non-consuming): the joiner's preview IS the
+    // host's staged world, not a local re-derivation.
+    EXPECT_EQ(og::sim::serialize_snapshot(og::sim::peek_keyframe_snapshot(
+                  *const_cast<GameWorld*>(host_staged))),
+              og::sim::serialize_snapshot(og::sim::peek_keyframe_snapshot(
+                  *const_cast<GameWorld*>(join_staged))));
+
+    // C10: the lobby PRESENTS the staged world as a glyph band (rows 2..11
+    // on a 24-row terminal: 10 band rows above the status lines, static
+    // center camera). Both terminals render the same dormant world through
+    // the same renderer at the same size, so the band must be CELL-IDENTICAL
+    // — glyphs and team color pairs alike — the networked-exactness oracle
+    // made visual.
+    host_lobby->poll(host_term, clock);
+    join_lobby->poll(join_term, clock);
+    bool any_band_glyph = false;
+    for (int row = 2; row < 12; ++row) {
+        for (int col = 0; col < host_term.cols(); ++col) {
+            const Cell& host_cell = host_term.cell_at(row, col);
+            const Cell& join_cell = join_term.cell_at(row, col);
+            EXPECT_EQ(host_cell.ch, join_cell.ch)
+                << "band glyph diverged at (" << row << "," << col << ")";
+            EXPECT_EQ(static_cast<int>(host_cell.fg),
+                      static_cast<int>(join_cell.fg))
+                << "band color diverged at (" << row << "," << col << ")";
+            if (host_cell.ch != U' ')
+                any_band_glyph = true;
+        }
+    }
+    EXPECT_TRUE(any_band_glyph)
+        << "the staged pitch must render terrain/entity glyphs in the band:\n"
+        << host_term.dump();
+
+    host_lobby->cancel();
+    join_lobby->cancel();
+}
+
+// Staged lobby #218 at the 24-slot capacity boundary: 13 + 13 deployed
+// slots exceed SaveData's wire equivalent, so the server's [NET-F2]
+// convergence force-benches the overflow in seat/slot order — the combined
+// deploy census reads 24/26, the stage still builds (the equivalent lands
+// exactly AT the cap, never past it), and no STAGING FAILED line appears.
+// The equivalent build's own 24-slot throw stays defense-in-depth behind
+// this trim.
+TEST(CursesNetwork, oversize_combined_roster_force_benches_to_the_cap)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+    for (int slot = 1; slot < 13; ++slot) {
+        auto host_member = std::make_unique<guy>(FAMILY_SOLDIER);
+        host_member->name = std::format("Host{}", slot);
+        host_member->teamnum = 0;
+        host_save.team_list[static_cast<std::size_t>(slot)] =
+            std::move(host_member);
+        ++host_save.team_size;
+        auto join_member = std::make_unique<guy>(FAMILY_ELF);
+        join_member->name = std::format("Join{}", slot);
+        join_member->teamnum = 1;
+        join_save.team_list[static_cast<std::size_t>(slot)] =
+            std::move(join_member);
+        ++join_save.team_size;
+    }
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto join_client = server->create_client_transport();
+
+    auto host_lobby = make_host_lobby_over_transport_for_testing(
+        host_save, 1, server, host_client);
+    auto join_lobby = make_join_lobby_over_transport_for_testing(
+        join_save, 1, join_client, join_client->local_peer_id());
+
+    HeadlessTerminal host_term(24, 80);
+    HeadlessTerminal join_term(24, 80);
+    FakeClock clock;
+
+    bool converged = false;
+    for (int i = 0; i < 200 && !converged; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+        converged = host_lobby->staged_world() != nullptr &&
+            status_contains(*host_lobby, "Deployed: 24/26");
+    }
+
+    EXPECT_TRUE(converged)
+        << "13 + 13 deployed slots must converge to the 24-slot cap with a "
+           "staged world";
+    EXPECT_EQ(std::string{}, host_lobby->stage_failure_line())
+        << "the at-cap equivalent must stage clean, never STAGING FAILED";
+    EXPECT_TRUE(status_contains(*join_lobby, "Deployed: 24/26"))
+        << "the force-benched census must replicate to the joiner";
+
+    host_lobby->cancel();
+    join_lobby->cancel();
+}
+
+// C10: small-terminal degradation — a lobby on a terminal under 16 rows
+// renders the plain text lobby (no glyph band), with the status lines
+// starting immediately below the title.
+TEST(CursesNetwork, lobby_preview_band_degrades_on_small_terminals)
+{
+    SaveData host_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+
+    auto host_lobby = make_host_lobby_over_transport_for_testing(
+        host_save, 1, server, host_client);
+    ASSERT_NE(nullptr, host_lobby);
+
+    HeadlessTerminal small_term(12, 60);
+    FakeClock clock;
+    bool staged = false;
+    for (int i = 0; i < 200 && !staged; ++i) {
+        host_lobby->poll(small_term, clock);
+        staged = host_lobby->staged_world() != nullptr;
+    }
+    ASSERT_TRUE(staged);
+    host_lobby->poll(small_term, clock);
+
+    // Row 0 = title, row 1 = blank, row 2 = the FIRST status line (the band
+    // is skipped below 16 rows; a staged healthy lobby has no degradation
+    // line either).
+    EXPECT_EQ("Hosting Game",
+              small_term.text_row(0).substr(0, 12));
+    const std::vector<std::string> status = host_lobby->status_lines();
+    ASSERT_FALSE(status.empty());
+    EXPECT_EQ(status[0],
+              small_term.text_row(2).substr(0, status[0].size()))
+        << "under 16 rows the status lines start right below the title:\n"
+        << small_term.dump();
+
+    host_lobby->cancel();
 }
 
 // A joining terminal client must not claim readiness while a class-pack
@@ -1628,9 +1830,9 @@ TEST(CursesNetwork, host_history_campaign_vars_reach_the_hosted_world)
 
     // The spawned Watch replicates to the table: every mirror holds the same
     // count of team-0 NPC livings (guy names do not ride snapshots, so pin
-    // the census, not the names). The tick-1 notification TEXT predates the
-    // initial-keyframe handshake and is not deliverable to any networked
-    // client — the entities themselves are the consequence.
+    // the census, not the names). The tick-1 notification TEXT arrives too
+    // since the level-start launch gate (#239) — pinned separately by
+    // tick_one_script_notifications_reach_the_hosted_table below.
     const auto count_team0_npcs = [](const GameWorld& world) {
         int count = 0;
         for (const auto& up : world.oblist) {
@@ -1649,6 +1851,78 @@ TEST(CursesNetwork, host_history_campaign_vars_reach_the_hosted_world)
     EXPECT_EQ(authoritative_npcs,
               count_team0_npcs(game.join_session->mirror_world()))
         << "the joiner's table shows the host's consequence";
+}
+
+// #239 (the reporter's flagship): notifications fired by a level script on
+// its first tick must reach every participant of a hosted table. The Deeping
+// Wall with watch_paid=900 spawns the Watch AND prints the ledger line; the
+// entities always rode the initial keyframe, but the tick-1 text was drained
+// while every client was still mid-handshake and silently dropped. The
+// level-start launch gate holds tick 1 (and the batch) until each seeded
+// client confirms ready, so the line now reaches host and joiner alike.
+TEST(CursesNetwork, tick_one_script_notifications_reach_the_hosted_table)
+{
+    MountRestore mount_restore;
+
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+    host_save.current_campaign = "westlands";
+    host_save.scen_num = 15;
+    ASSERT_TRUE(host_save.campaign_state_set("westlands", "watch_paid", 900));
+    join_save.current_campaign = "westlands";
+    join_save.scen_num = 15;
+
+    StartedGame game = negotiate_and_start(host_save, join_save);
+    ASSERT_NE(game.host_session, nullptr);
+    ASSERT_NE(game.join_session, nullptr);
+
+    advance_all(*game.host_session, *game.join_session, 10);
+
+    const std::string ledger_line = "The Watch remembers its wages.";
+    const std::vector<std::string> host_messages =
+        game.host_session->drain_messages();
+    const std::vector<std::string> join_messages =
+        game.join_session->drain_messages();
+    EXPECT_NE(host_messages.end(),
+              std::find(host_messages.begin(), host_messages.end(),
+                        ledger_line))
+        << "the host display must show the tick-1 ledger line";
+    EXPECT_NE(join_messages.end(),
+              std::find(join_messages.begin(), join_messages.end(),
+                        ledger_line))
+        << "the joiner must show the tick-1 ledger line";
+}
+
+// #239, the curses-local variant: a single machine with no network at all
+// also dropped tick-1 script notifications — the constructor's first pumped
+// step ticked, seeded the mirror during its broadcast (resetting the early
+// client_ready), and drained the batch into nobody. With the pre-pump seed
+// plus the launch gate, the mirror is confirmed before tick 1 drains.
+TEST(CursesNetwork, tick_one_script_notifications_reach_the_local_session)
+{
+    MountRestore mount_restore;
+
+    SaveData save;
+    init_team_save(save, 0, FAMILY_SOLDIER, "Solo");
+    save.current_campaign = "westlands";
+    save.scen_num = 15;
+    ASSERT_TRUE(save.campaign_state_set("westlands", "watch_paid", 900));
+
+    std::string err;
+    std::unique_ptr<CursesGameSession> session =
+        make_local_session(save, /*difficulty=*/1, &err);
+    ASSERT_NE(session, nullptr) << "make_local_session failed: " << err;
+
+    for (int i = 0; i < 6; ++i)
+        session->advance();
+
+    const std::string ledger_line = "The Watch remembers its wages.";
+    const std::vector<std::string> messages = session->drain_messages();
+    EXPECT_NE(messages.end(),
+              std::find(messages.begin(), messages.end(), ledger_line))
+        << "the local mirror must show the tick-1 ledger line";
 }
 
 // V5 consequence (d): completed_levels is campaign-keyed — a level id
@@ -2081,8 +2355,19 @@ TEST(CursesNetwork, lobby_level_title_requires_matching_mount)
 
     EXPECT_TRUE(status_contains(*lobby, "Campaign: Multiplayer Game Modes"));
     EXPECT_TRUE(status_contains(*lobby, "Level: 1"));
-    EXPECT_FALSE(status_contains(*lobby, "Level: 1."))
-        << "a mismatched mount must not serve another campaign's scen1 title";
+    // The guarded hazard: gladiator's scen1 title must never label a modes
+    // lobby's level number.
+    EXPECT_FALSE(status_contains(*lobby, "SOUTH OF TALWOOD"))
+        << "another campaign's scen1 title must not serve a modes lobby";
+    // Staged lobby (#218): hosting STAGES the negotiated campaign during the
+    // first poll, which mounts it — the mount converges to the lobby's own
+    // campaign, so the titled form resolves under the RIGHT campaign from
+    // then on. modes has no scen 1, so the title is modes' own synthetic
+    // fallback, not a foreign level's name.
+    EXPECT_EQ("modes", get_mounted_campaign())
+        << "staging converges the mount onto the lobby's campaign";
+    EXPECT_TRUE(status_contains(*lobby, "Level: 1. Level 1"))
+        << "the converged mount serves modes' own (synthetic) scen1 title";
 }
 
 TEST(CursesNetwork, malformed_join_url_reports_error)
@@ -2129,7 +2414,7 @@ TEST(CursesNetwork, classic_lobby_allows_shared_team_request)
     }
     ASSERT_TRUE(two_players);
 
-    (void)join_lobby->request_team_change(0);
+    (void)request_first_seat_team(*join_lobby, 0);
     for (int i = 0; i < 50; ++i) {
         host_lobby->poll(host_term, clock);
         join_lobby->poll(join_term, clock);
@@ -2348,7 +2633,7 @@ TEST(CursesNetwork, ctf_lobby_team_change_and_ready_round_trip)
     ASSERT_TRUE(two_players);
 
     // Joiner moves onto the host's team (asynchronous: poll both sides).
-    (void)join_lobby->request_team_change(0);
+    (void)request_first_seat_team(*join_lobby, 0);
     bool shared = false;
     for (int i = 0; i < 200 && !shared; ++i) {
         host_lobby->poll(host_term, clock);
@@ -2360,7 +2645,7 @@ TEST(CursesNetwork, ctf_lobby_team_change_and_ready_round_trip)
     EXPECT_TRUE(shared) << "CTF lobbies allow two humans on one team";
 
     // The host's own request is synchronous over the loopback link.
-    EXPECT_TRUE(host_lobby->request_team_change(1));
+    EXPECT_TRUE(request_first_seat_team(*host_lobby, 1));
 
     // Ready round trip + the [ready] status tag.
     EXPECT_FALSE(host_lobby->local_ready());
@@ -2382,7 +2667,7 @@ TEST(CursesNetwork, ctf_lobby_team_change_and_ready_round_trip)
 
     // Any exact team change clears every ready seat on that machine.
     EXPECT_TRUE(host_lobby->local_ready());
-    EXPECT_TRUE(host_lobby->request_team_change(0));
+    EXPECT_TRUE(request_first_seat_team(*host_lobby, 0));
     EXPECT_FALSE(host_lobby->local_ready());
 
     host_lobby->cancel();

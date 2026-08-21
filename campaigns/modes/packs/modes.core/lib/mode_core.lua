@@ -98,16 +98,6 @@ local function normalize_team_count(raw)
   return raw
 end
 
--- The lobby team-count request, normalized: (count, matched) with count 0
--- for Auto. The matched boolean reports a TROOPS: FAIR request for the
--- power seam (matched-teams D29): matching rides the scenario-troops
--- setting, not the team count, so it strips and roster-activates exactly
--- like TROOPS: OWN and differs only in generated-squad strength (D26).
-local function team_count_request()
-  local count = normalize_team_count(og.match_setting("team_count"))
-  return count, og.match_setting("strip_troops") == MATCHED_TROOPS
-end
-
 -- The team-activation clamp (og.effective_team_mask's rule applied to an
 -- arbitrary authored domain — CTF activates flag teams, not marker teams):
 -- a normalized count of 0 (requested <= 0) takes every authored team;
@@ -190,7 +180,6 @@ return {
   MODE = MODE,
   TEAM_BIT = TEAM_BIT,
   MATCHED_TROOPS = MATCHED_TROOPS,
-  team_count_request = team_count_request,
   pos_pack = pos_pack,
   pos_x = pos_x,
   pos_y = pos_y,

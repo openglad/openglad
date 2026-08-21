@@ -1118,3 +1118,25 @@ TEST(CursesRenderer, mode_beacon_entity_glyph_renders_bold)
         EXPECT_FALSE(c.bold) << "clearing the slot restores the plain glyph";
     }
 }
+
+// The staged-preview band guard: a zero-area band draws nothing at all,
+// while the same call with a real area fills its rows (the degenerate
+// geometry a resizing terminal can hand the lobby preview).
+TEST(CursesRenderer, draw_preview_refuses_zero_area_bands)
+{
+    HandWorld hw(8, 8);
+    HeadlessTerminal term(20, 30);
+    CursesRenderer renderer;
+
+    renderer.draw_preview(term, hw.world(), 0, 0, /*height=*/0, /*width=*/30);
+    renderer.draw_preview(term, hw.world(), 0, 0, /*height=*/10, /*width=*/0);
+    EXPECT_EQ(0, term.count_char(U'.'))
+        << "a zero-area band must not draw any tile glyphs";
+    EXPECT_EQ(0, term.count_char(U'▓'))
+        << "a zero-area band must not draw the off-grid border either";
+
+    renderer.draw_preview(term, hw.world(), 0, 0, /*height=*/10,
+                          /*width=*/30);
+    EXPECT_GT(term.count_char(U'.'), 0)
+        << "the same call with real geometry must fill the band";
+}

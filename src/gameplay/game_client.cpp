@@ -38,27 +38,6 @@ float lerp(float start, float end, float alpha) noexcept
     return start + (end - start) * alpha;
 }
 
-void apply_initial_setup_to_world(GameWorld& world,
-                                  const og::sim::InitialSetupMessage& message)
-{
-    world.id = message.level_id;
-    world.title = message.level_title;
-    world.type = static_cast<char>(message.level_type);
-    world.par_value = message.par_value;
-    world.time_bonus_limit = message.time_bonus_limit;
-    world.difficulty = message.difficulty;
-    world.pixmaxx = message.pixmaxx;
-    world.pixmaxy = message.pixmaxy;
-    world.my_team = message.my_team;
-    world.allied_mode = message.allied_mode;
-    world.current_scenario = message.current_scenario;
-    world.respawn_mode = message.respawn_mode;
-    world.generator_rate = message.generator_rate;
-    world.completed_levels.clear();
-    for (const std::int32_t level_id : message.completed_levels)
-        world.completed_levels.insert(level_id);
-}
-
 struct ClientPollResult {
     std::vector<og::sim::TypedReceivedMessage> messages;
     bool malformed_server_message = false;
@@ -343,6 +322,31 @@ ClientPollResult poll_client_messages(
 } // namespace
 
 namespace og::sim {
+
+// Promoted out of this file's anonymous namespace for the staged-lobby
+// preview mirror (C9): the joiner's mirror and the gameplay client's own
+// setup apply must never fork their level-metadata semantics (the same rule
+// that promoted collect_initial_setup_guys on the server side).
+void apply_initial_setup_to_world(GameWorld& world,
+                                  const InitialSetupMessage& message)
+{
+    world.id = message.level_id;
+    world.title = message.level_title;
+    world.type = static_cast<char>(message.level_type);
+    world.par_value = message.par_value;
+    world.time_bonus_limit = message.time_bonus_limit;
+    world.difficulty = message.difficulty;
+    world.pixmaxx = message.pixmaxx;
+    world.pixmaxy = message.pixmaxy;
+    world.my_team = message.my_team;
+    world.allied_mode = message.allied_mode;
+    world.current_scenario = message.current_scenario;
+    world.respawn_mode = message.respawn_mode;
+    world.generator_rate = message.generator_rate;
+    world.completed_levels.clear();
+    for (const std::int32_t level_id : message.completed_levels)
+        world.completed_levels.insert(level_id);
+}
 
 void GameClient::poll_messages()
 {
@@ -918,11 +922,19 @@ void GameClient::update_render_interpolation(const WorldSnapshot& snapshot,
 
 void GameClient::apply_initial_setup(const InitialSetupMessage& message)
 {
+    // A transition is any setup the server marked ready-resetting: a moved
+    // level id/scenario, or (v13) a bumped setup_generation — the same level
+    // reloaded fresh (quit-mission withdraw reloads the CURRENT level;
+    // prepare_clients_for_loaded_level reset our client_ready either way, so
+    // the platform callbacks must re-ready or the launch gate never opens).
+    // Mid-level resends (control mapping, reconnect catch-up) keep the
+    // generation and stay non-transitional.
     const bool is_level_transition =
         baseline_.has_value() &&
         (!initial_setup_.has_value() ||
          initial_setup_->level_id != message.level_id ||
-         initial_setup_->current_scenario != message.current_scenario);
+         initial_setup_->current_scenario != message.current_scenario ||
+         initial_setup_->setup_generation != message.setup_generation);
     initial_setup_ = message;
     controlled_entity_ids_ = message.controlled_entity_ids;
     initial_setup_guys_.clear();
@@ -1233,6 +1245,10 @@ void GameClient::poll_messages_impl(float first_snapshot_prior_alpha,
         case TypedReceivedMessageKind::PackRequest:
         case TypedReceivedMessageKind::PackFileChunk:
         case TypedReceivedMessageKind::PackTransferDone:
+        // Staged-lobby broadcasts (v13) belong to the lobby pollers; the
+        // gameplay client ignores a straggling pair.
+        case TypedReceivedMessageKind::StagedMatchSetup:
+        case TypedReceivedMessageKind::StagedMatchKeyframe:
         case TypedReceivedMessageKind::Malformed:
             break;
         }

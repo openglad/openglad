@@ -892,18 +892,50 @@ og_add_unit_group(og_unit_mode FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_mode_tick.cpp
 )
 
+# Staged-lobby suites (#218): every MatchStage case is a full dispose-and-
+# rebuild stage (real level load + per-world Lua VM) and the staged
+# rule/report suites run ~100 real world inits — the cost class that
+# overran og_unit_modes' 180 s coverage ceiling, so they live in their own
+# group, parallel with (not on top of) the mode suites. Absorbed the
+# retired plan-phase group (og_unit_matchplan) when the plan phase died.
+og_add_unit_group(og_unit_stage FILES
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_match_stage.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_staged_report.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_staged_rules.cpp
+)
+target_compile_definitions(og_unit_stage PRIVATE
+    OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/modes/packs/modes.core"
+)
+
 og_add_unit_group(og_unit_modes FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_ctf.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_tdm.cpp
-    ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_mutant.cpp
-    ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_ffa.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_strip.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_items.cpp
-    ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_basketball.cpp
 )
 # The modes-pack fixture zips the CURRENT repo pack sources into its
 # temp .glad so the tests always exercise the shipped bytes.
 target_compile_definitions(og_unit_modes PRIVATE
+    OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/modes/packs/modes.core"
+)
+
+# FFA and its Mutant variant (the shared fighter band) split out of
+# og_unit_modes: the coverage lane's og_unit_modes run sat at 162 s of its
+# 180 s ceiling on the 4-slot CI runner and timed out on a loaded first
+# attempt, so the deathmatch suites run beside the ctf/tdm/strip/items half
+# instead of on top of it.
+og_add_unit_group(og_unit_ffa FILES
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_ffa.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_mutant.cpp
+)
+target_compile_definitions(og_unit_ffa PRIVATE
+    OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/modes/packs/modes.core"
+)
+
+og_add_unit_group(og_unit_basketball FILES
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_basketball.cpp
+)
+target_compile_definitions(og_unit_basketball PRIVATE
     OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/modes/packs/modes.core"
 )
 

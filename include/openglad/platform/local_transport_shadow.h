@@ -25,6 +25,10 @@ namespace og::sim {
 class GameServer;
 }
 
+namespace og::server {
+class MatchStage;
+}
+
 namespace og::runtime {
 
 class GameSession;
@@ -54,7 +58,13 @@ struct DisplayFollowState {
 bool local_transport_active(const SessionState& session) noexcept;
 std::size_t local_transport_client_count(const GameSession& session) noexcept;
 bool local_transport_shadow_is_paused(const GameSession& session) noexcept;
-void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen);
+// `match_stage` (staged lobby, #218): the owner's staged world to adopt as
+// the authoritative world. nullptr — or a stage that cannot become current,
+// or an active replay playback (the recording's initial snapshot is the
+// truth) — falls back to the legacy display-seed install.
+void reset_local_transport_shadow(GameSession& session,
+                                  screen& gameplay_screen,
+                                  og::server::MatchStage* match_stage = nullptr);
 
 namespace detail {
 
@@ -128,7 +138,8 @@ void reset_network_host_transport_shadow(
     screen& gameplay_screen,
     std::shared_ptr<og::sim::ITransport> server_transport,
     std::shared_ptr<og::sim::InProcessTransport> local_client_transport,
-    const std::vector<og::sim::LobbyPlayerBinding>& player_bindings);
+    const std::vector<og::sim::LobbyPlayerBinding>& player_bindings,
+    og::server::MatchStage* match_stage = nullptr);
 void reset_network_client_transport_shadow(
     GameSession& session,
     screen& gameplay_screen,

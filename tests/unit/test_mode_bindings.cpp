@@ -439,9 +439,9 @@ TEST(ModeBindings, matched_constant_equals_the_mode_core_lua_constant)
     // The D29 constant-equality pin: the world field is stamped from the
     // C++ og::sim::kTroopsMatched sentinel and round-tripped through
     // og.match_setting('strip_troops'); the SHIPPED mode_core.lua must
-    // (a) carry the same value in core.MATCHED_TROOPS and (b) classify it
-    // as matched — matched true, with the team count independently Auto —
-    // in core.team_count_request().
+    // carry the same value in core.MATCHED_TROOPS. (Its one-time
+    // classification helper, core.team_count_request, retired with the
+    // plan phase — the strip-field read lives in match.activation now.)
     ShippedModeCoreModule mode_core;
     ASSERT_TRUE(mode_core.loaded)
         << "mode_core.lua unreadable — run from the repo root (ctest does)";
@@ -456,8 +456,6 @@ TEST(ModeBindings, matched_constant_equals_the_mode_core_lua_constant)
          "    og.log('constant', core.MATCHED_TROOPS)\n"
          "    og.log('pin', core.MATCHED_TROOPS ==\n"
          "           og.match_setting('strip_troops') and 1 or 0)\n"
-         "    local count, matched = core.team_count_request()\n"
-         "    og.log('req', count, matched and 1 or 0)\n"
          "  end,\n"
          "})\n"});
     fx.world().tick();
@@ -465,7 +463,6 @@ TEST(ModeBindings, matched_constant_equals_the_mode_core_lua_constant)
         "constant\t" + std::to_string(og::sim::kTroopsMatched)))
         << fx.script_errors();
     EXPECT_TRUE(fx.logged("pin\t1")) << fx.script_errors();
-    EXPECT_TRUE(fx.logged("req\t0\t1")) << fx.script_errors();
 }
 
 TEST(ModeBindings, team_masks_follow_markers_and_requested_count)

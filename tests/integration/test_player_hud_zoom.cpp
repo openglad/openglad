@@ -25,6 +25,7 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <cstdlib>
@@ -36,6 +37,7 @@
 #include <vector>
 
 extern cfg_store cfg;
+short new_score_panel(screen* s, short do_it);
 
 namespace
 {
@@ -442,6 +444,177 @@ TEST(PerViewZoomHud, projection_maps_window_onto_the_stable_ui_pane)
         EXPECT_LE(std::abs(oy - ui.y), 1);
     }
     E_Screen->discard_gameplay_ui_frame(); // no stale overlay for later swaps
+}
+
+namespace
+{
+
+// RAII scripted-mode stamp: TYPE_SCRIPTED + an active ModeState, restored
+// even when an assertion aborts the test body (the beacon test mutates
+// shared screen state inside og_test_view).
+struct ScriptedModeStamp
+{
+    GameWorld& world;
+    char saved_type;
+
+    explicit ScriptedModeStamp(GameWorld& w) : world(w), saved_type(w.type)
+    {
+        world.type |= GameWorld::TYPE_SCRIPTED;
+        world.mode = og::sim::ModeState{};
+        world.mode.active = true;
+        world.mode.init_attempted = true;
+    }
+    ~ScriptedModeStamp()
+    {
+        world.type = saved_type;
+        world.mode = og::sim::ModeState{};
+        world.tick_count_ = 0;
+    }
+    ScriptedModeStamp(const ScriptedModeStamp&) = delete;
+    ScriptedModeStamp& operator=(const ScriptedModeStamp&) = delete;
+};
+
+// RAII overlay-frame discard: survives assertion aborts, so a failing test
+// cannot leak a live overlay frame into later canvas swaps.
+struct GameplayUiFrameDiscard
+{
+    GameplayUiFrameDiscard() = default;
+    ~GameplayUiFrameDiscard() { E_Screen->discard_gameplay_ui_frame(); }
+    GameplayUiFrameDiscard(const GameplayUiFrameDiscard&) = delete;
+    GameplayUiFrameDiscard& operator=(const GameplayUiFrameDiscard&) = delete;
+};
+
+} // namespace
+
+// Issue #220: draw_mode_beacons mixed the WORLD-pane camera (topx/topy) with
+// the UI-pane origin (xloc, already swapped by the caller's layout scope), so
+// a zoomed view drew the marker 1/zoom too far from the pane origin and an
+// on-screen ball flipped to an edge arrow. The projection must run through a
+// GameplayUiProjector captured BEFORE the layout scope opens.
+TEST(PerViewZoomHud, beacon_pulse_tracks_ball_at_zoom_step_5)
+{
+    ASSERT_TRUE(E_Screen);
+    ZoomPipelineGuard guard;
+
+    scr()->numviews = 1;
+    scr()->initialize_views();
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    GameWorld& world = scr()->world();
+    ScriptedModeStamp mode_stamp(world);
+
+    walker* const hero = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, hero);
+    hero->setxy(160, 120);
+    vs->control = hero;
+    vs->prefs[PREF_OVERLAY] = PREF_OVERLAY_OFF;
+    vs->prefs[PREF_LIFE] = PREF_LIFE_OFF;
+    vs->prefs[PREF_SCORE] = PREF_SCORE_OFF;
+    vs->prefs[PREF_FOES] = PREF_FOES_OFF;
+
+    vs->view_zoom_step_ = 5;
+    scr()->relayout_views();
+    vs = view0();
+    ASSERT_TRUE(do_redraw(vs)); // settle the camera BEFORE projecting
+
+    // Deterministic identity-arm probe: the World canvas is still active and
+    // at step 5 it is twice the overlay, so the projector must refuse to
+    // project (the overlay-alias fallback) and answer bit-identically.
+    {
+        const GameplayUiProjector fallback(*vs);
+        EXPECT_EQ(123, fallback.project(123.0f, 45.0f).first);
+        EXPECT_EQ(45, fallback.project(123.0f, 45.0f).second);
+        EXPECT_EQ(10, fallback.scale_w(10, 1));
+        EXPECT_EQ(10, fallback.scale_h(10, 1));
+    }
+
+    // Place the ball ON SCREEN in world terms (3/4 across the visible pane)
+    // but past the UI pane under the broken math (0.75 * xview = 1.5 * ui.w).
+    walker* const ball = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, ball);
+    const Sint32 target_cx_world = vs->topx + (vs->xview * 3) / 4;
+    const Sint32 target_cy_world = vs->topy + vs->yview / 2;
+    ball->setxy(static_cast<short>(target_cx_world - ball->sizex() / 2),
+                static_cast<short>(target_cy_world - ball->sizey() / 2));
+    world.mode.beacons[0].entity_id =
+        static_cast<std::int32_t>(ball->entity_id());
+    world.mode.beacons[0].team = 2;
+    world.tick_count_ = 0; // phase 0 -> the narrowest pulse
+
+    const og::view_layout::ViewLayout ui =
+        og::view_layout::compute_view_layout(
+            1, 0, vs->prefs[PREF_VIEW],
+            scr()->gameplay_ui_canvas_w(), scr()->gameplay_ui_canvas_h());
+    ASSERT_TRUE(ui.applies);
+    ASSERT_EQ(2 * ui.w, vs->xview) << "zoom step 5 must double the world pane";
+
+    scr()->begin_gameplay_frame();
+    GameplayUiFrameDiscard discard_overlay_on_exit;
+    Sint32 exp_cx = 0;
+    Sint32 exp_cy = 0;
+    Sint32 exp_bottom = 0;
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*scr());
+        ASSERT_EQ(scr()->canvas_w(), scr()->gameplay_ui_canvas_w())
+            << "the fixed overlay must be active for HUD projection";
+        // Exactly production's anchor inputs: world-canvas screen coordinates
+        // (outside any layout scope vs->xloc IS the world pane origin).
+        const float wx = static_cast<float>(
+            static_cast<Sint32>(ball->xpos()) + ball->sizex() / 2 -
+            vs->topx + vs->xloc);
+        const float wy = static_cast<float>(
+            static_cast<Sint32>(ball->ypos()) + ball->sizey() / 2 -
+            vs->topy + vs->yloc);
+        const auto [px, py] = vs->project_world_point_to_gameplay_ui(wx, wy);
+        exp_cx = px;
+        exp_cy = py;
+        exp_bottom = vs->project_world_point_to_gameplay_ui(
+            wx, wy + static_cast<float>(ball->sizey() / 2)).second;
+        scr()->clearbuffer(); // a clean overlay for the pixel probe
+    }
+
+    // Setup self-check: the projected center is interior, so the correct
+    // outcome is a pulse marker, not an edge arrow.
+    ASSERT_GT(exp_cx, ui.x + 4);
+    ASSERT_LT(exp_cx, ui.x + ui.w - 5);
+
+    trace_clear();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(scr(), 1)));
+
+    const Sint32 exp_w = 8 * ui.w / vs->xview;
+    const Sint32 exp_h = 2 * ui.h / vs->yview;
+    const Sint32 exp_x =
+        std::clamp(exp_cx - exp_w / 2, ui.x, ui.x + ui.w - exp_w);
+    const Sint32 exp_y = std::min(exp_bottom + 1, ui.y + ui.h - exp_h);
+    char expected[96];
+    std::snprintf(expected, sizeof expected,
+                  "beacon_pulse slot=0 w=%d x=%d y=%d",
+                  static_cast<int>(exp_w), static_cast<int>(exp_x),
+                  static_cast<int>(exp_y));
+    EXPECT_TRUE(trace_contains("mode_hud", expected)) << expected;
+    EXPECT_FALSE(trace_contains("mode_hud", "beacon_edge"))
+        << "an on-screen ball must not flip to an edge arrow (issue #220)";
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*scr());
+        int index = -1;
+        scr()->get_pixel(exp_x, exp_y, &index);
+        EXPECT_EQ(72, index)
+            << "the pulse must actually paint the team-2 ramp at the "
+               "projected spot";
+    }
+
+    // Genuinely off the world pane: the fix must not kill real edge arrows.
+    ball->setxy(static_cast<short>(vs->topx + vs->xview + 200),
+                static_cast<short>(target_cy_world - ball->sizey() / 2));
+    trace_clear();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(scr(), 1)));
+    std::snprintf(expected, sizeof expected,
+                  "beacon_edge slot=0 dx=1 dy=0 x=%d y=%d",
+                  static_cast<int>(ui.x + ui.w - 5), static_cast<int>(exp_cy));
+    EXPECT_TRUE(trace_contains("mode_hud", expected)) << expected;
+    EXPECT_FALSE(trace_contains("mode_hud", "beacon_pulse"))
+        << "a genuinely off-pane ball must still get an edge arrow";
 }
 
 // ---------------------------------------------------------------------------

@@ -49,6 +49,7 @@
 #include <openglad/resources/level_file_io.h>
 #include <openglad/resources/level_selection.h>
 #include <openglad/resources/save_data.h>
+#include <openglad/server/match_stage.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -179,6 +180,60 @@ public:
         // repeat: when a level ends because the player walked into the exit, the
         // movement key is still held, and its auto-repeat would otherwise dismiss
         // this "press any key" prompt instantly (the modal would never be seen).
+        for (;;) {
+            const Key key = term_.poll_key(true);
+            if (key.is_none() || key.is_press())
+                break;
+        }
+    }
+
+    // The staged-preview variant of show_text (#218): when `staged` is
+    // non-null and the terminal has at least 16 rows, the top
+    // min(12, rows - 6) rows render the staged world as a glyph band
+    // (CursesRenderer::draw_preview — static center camera; terminals do
+    // not pan well) with the census lines below. Otherwise pure show_text
+    // (small-terminal degradation, or nothing staged).
+    void show_preview(std::string_view title, const GameWorld* staged,
+                      const std::vector<std::string>& lines)
+    {
+        const int rows = term_.rows();
+        if (staged == nullptr || rows < 16) {
+            show_text(title, lines);
+            return;
+        }
+        term_.clear();
+        int row = 0;
+        if (!title.empty()) {
+            term_.put_str(row++, 0, title, kTitleColor, Color::Default, true);
+            ++row;
+        }
+        const int band_rows = std::min(12, rows - 6);
+        CursesRenderer renderer;
+        renderer.draw_preview(term_, *staged, row, 0, band_rows,
+                              term_.cols());
+        row += band_rows;
+        const int footer = term_.rows() - 1;
+        for (const std::string& line : lines) {
+            if (row >= footer)
+                break;
+            if (line.empty()) {
+                ++row;
+                continue;
+            }
+            for (const std::string& wrapped :
+                 og::core::wrap_text(line, term_.cols())) {
+                if (row >= footer)
+                    break;
+                term_.put_str(row++, 0, wrapped, kNormalColor, Color::Default,
+                              false);
+            }
+        }
+        if (footer >= 0)
+            term_.put_str(footer, 0, "[ press any key ]", kHintColor,
+                          Color::Default, false);
+        term_.present();
+        (void)clock_.now_ms();
+        // Dismiss on a FRESH press only (the show_text held-key rule).
         for (;;) {
             const Key key = term_.poll_key(true);
             if (key.is_none() || key.is_press())
@@ -789,13 +844,39 @@ void teams_screen(Menu& menu, SaveData& save)
     }
 }
 
-// Read-only roster report of the current level from a scratch headless load
-// (the same shared report the SDL VIEW LEVEL screen renders).
-void view_scenario(Menu& menu, const SaveData& save)
+// Read-only roster report of the current level: the STAGED reader (#218).
+// `staged` is the world the launch will adopt — the host's MatchStage
+// world, a joiner's preview mirror, or the solo picker's locally staged
+// world — and it already CONTAINS the merged rosters as spawned walkers,
+// so the old "documented local-roster bound" is gone with the scratch
+// marshaling. The scratch headless load survives only as the fallback
+// census world for a null stage.
+void view_scenario(Menu& menu, const SaveData& save, const GameWorld* staged,
+                   og::ui::StagePreviewStatus status)
 {
     if (get_mounted_campaign() != save.current_campaign) {
         menu.show_text("View Scenario", {std::format(
             "Campaign '{}' is not mounted.", save.current_campaign)});
+        return;
+    }
+
+    // Seat block (#218): the curses View Level stages locally, so the
+    // save-derived seat synthesis IS its staging input; every seat is this
+    // machine's (all-local -> YOU).
+    og::ui::ScenarioSeatContext seats;
+    seats.players = og::ui::synthesize_local_lobby_players(save);
+    for (const og::sim::LobbyPlayer& player : seats.players)
+        seats.local_player_indices.push_back(player.player_index);
+
+    if (staged != nullptr) {
+        const og::ui::ScenarioRosterReport report =
+            og::ui::build_scenario_roster_report(staged, status, save,
+                                                 nullptr, &seats);
+        std::vector<std::string> lines =
+            og::ui::format_scenario_report_lines(report);
+        lines.insert(lines.begin(), std::format("SCEN {}: {}",
+            static_cast<int>(save.scen_num), staged->title));
+        menu.show_preview("View Scenario", staged, lines);
         return;
     }
 
@@ -808,12 +889,50 @@ void view_scenario(Menu& menu, const SaveData& save)
     }
 
     const og::ui::ScenarioRosterReport report =
-        og::ui::build_scenario_roster_report(scenario.world(), save);
+        og::ui::build_scenario_roster_report(nullptr, status, save,
+                                             &scenario.world(), &seats);
     std::vector<std::string> lines =
         og::ui::format_scenario_report_lines(report);
     lines.insert(lines.begin(), std::format("SCEN {}: {}",
         static_cast<int>(save.scen_num), scenario.world().title));
     menu.show_text("View Scenario", lines);
+}
+
+// The solo picker's staged arm: a one-shot local MatchStage over the live
+// save (the LocalCursesSession launch shape — same pipeline, same
+// assembly), keyed by the session-latched seed so reopening the viewer
+// never flickers. Stage failure degrades to the fallback census plus the
+// honest STAGING FAILED line.
+void view_scenario_locally_staged(Menu& menu, SaveData& save, int difficulty,
+                                  std::uint32_t match_seed)
+{
+    if (get_mounted_campaign() != save.current_campaign) {
+        menu.show_text("View Scenario", {std::format(
+            "Campaign '{}' is not mounted.", save.current_campaign)});
+        return;
+    }
+    og::server::MatchStage stage({
+        .networked = false,
+        .arm_policy = og::server::LobbyStartReplayArm::SeededIntent,
+        .host_company_save = &save,
+    });
+    og::server::MatchStageInputs inputs;
+    inputs.equivalent = og::server::build_local_save_equivalent(save);
+    inputs.difficulty = difficulty;
+    inputs.match_seed = match_seed;
+    inputs.replay_level = save.replay_level;
+    inputs.replay_origin = save.replay_origin;
+    stage.observe_inputs(inputs, og::server::stage_clock_now_ms());
+    // The staged pipeline keeps the launch's first-level fallback; a stage
+    // that fell back must not masquerade as the requested level (the
+    // mirror applies the same rule) — degrade to the honest fallback arm.
+    if (stage.status() == og::server::StageStatus::Staged &&
+        stage.world()->id == save.scen_num) {
+        view_scenario(menu, save, stage.world(),
+                      og::ui::StagePreviewStatus::Staged);
+        return;
+    }
+    view_scenario(menu, save, nullptr, og::ui::StagePreviewStatus::Failed);
 }
 
 // Split a popup-shaped message ('\n' separated) into list lines.
@@ -1240,7 +1359,13 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
         autosave_company_after_mutation(save_data_); // §3.8 settings tail
         break;
     case PickerMenuCommand::ViewScenario:
-        view_scenario(menu, save_data_);
+        // Solo picker: stage the level locally through the one launch
+        // pipeline (#218) with the session seed (config_.seed — the same
+        // --seed the text client latches), so the glyph preview shows the
+        // real assembled match. run_game() hands the SAME seed to
+        // make_local_session, so the previewed world is the launched world.
+        view_scenario_locally_staged(menu, save_data_, options_.difficulty,
+                                     config_.seed);
         break;
     case PickerMenuCommand::Teams:
         teams_screen(menu, save_data_);
@@ -1421,8 +1546,13 @@ void CursesPickerClient::run_game()
 
     Menu menu(term_, clock_);
     std::string error;
+    // The session-latched match seed (config_.seed — the --seed CLI and the
+    // Game Settings row) is what VIEW LEVEL staged its preview with, so the
+    // launch stages the identical world (#218): preview == launch on the solo
+    // shape, exactly as the SDL shapes adopt the world their preview showed.
     std::unique_ptr<CursesGameSession> session =
-        make_local_session(save_data_, options_.difficulty, &error);
+        make_local_session(save_data_, options_.difficulty, &error,
+                           config_.seed);
     if (!session) {
         // make_local_session may be unimplemented (nullptr) in a concurrent
         // build; fail gracefully rather than crashing.

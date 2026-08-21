@@ -70,6 +70,15 @@ void place_markers(GameWorld& world, int team,
         place_at(world, Order::Special, FAMILY_RESERVED_TEAM, team, t);
 }
 
+// Author the row's respawnable food/potion scatter (D8 single source: the
+// same pads drive the manifest, lib/mode_items' respawner and the
+// self-check pin). Authoring order is the row list order.
+void place_item_pads(GameWorld& world, const ExpectedLevel& row)
+{
+    for (const ItemPad& pad : row.item_pads)
+        place_at(world, Order::Treasure, pad.family, 0, pad.at);
+}
+
 std::vector<TilePos> mirror_x(const std::vector<TilePos>& pts, int w)
 {
     std::vector<TilePos> out;
@@ -133,10 +142,7 @@ void build_center_court(const ExpectedLevel& row)
     place_markers(world, 0, west);
     place_markers(world, 1, mirror_x(west, 45));
 
-    for (const TilePos t :
-         {TilePos{12, 2}, TilePos{22, 2}, TilePos{32, 2}, TilePos{12, 22},
-          TilePos{22, 22}, TilePos{32, 22}})
-        place_at(world, Order::Treasure, FAMILY_DRUMSTICK, 0, t);
+    place_item_pads(world, row);
 
     emit_painted(world, row);
 }
@@ -178,8 +184,7 @@ void build_the_playground(const ExpectedLevel& row)
     place_markers(world, 0, west);
     place_markers(world, 1, mirror_x(west, 31));
 
-    for (const TilePos t : {TilePos{15, 2}, TilePos{15, 16}})
-        place_at(world, Order::Treasure, FAMILY_DRUMSTICK, 0, t);
+    place_item_pads(world, row);
 
     emit_painted(world, row);
 }
@@ -237,11 +242,7 @@ void build_four_hoops(const ExpectedLevel& row)
             p = {static_cast<short>(40 - p.ty), p.tx};
     }
 
-    for (const TilePos t :
-         {TilePos{5, 5}, TilePos{35, 5}, TilePos{35, 35}, TilePos{5, 35},
-          TilePos{12, 12}, TilePos{28, 12}, TilePos{28, 28},
-          TilePos{12, 28}})
-        place_at(world, Order::Treasure, FAMILY_DRUMSTICK, 0, t);
+    place_item_pads(world, row);
 
     emit_painted(world, row);
 }
@@ -298,10 +299,7 @@ void build_the_bankhouse(const ExpectedLevel& row)
     place_markers(world, 0, west);
     place_markers(world, 1, mirror_x(west, 45));
 
-    for (const TilePos t :
-         {TilePos{12, 2}, TilePos{22, 2}, TilePos{32, 2}, TilePos{12, 24},
-          TilePos{22, 24}, TilePos{32, 24}})
-        place_at(world, Order::Treasure, FAMILY_DRUMSTICK, 0, t);
+    place_item_pads(world, row);
 
     emit_painted(world, row);
 }
@@ -368,16 +366,19 @@ void build_benchwarmers(const ExpectedLevel& row)
     place_markers(world, 0, west);
     place_markers(world, 1, mirror_x(west, 47));
 
-    for (const TilePos t :
-         {TilePos{17, 2}, TilePos{23, 2}, TilePos{29, 2}, TilePos{17, 26},
-          TilePos{23, 26}, TilePos{29, 26}})
-        place_at(world, Order::Treasure, FAMILY_DRUMSTICK, 0, t);
+    place_item_pads(world, row);
 
     emit_painted(world, row);
 }
 
+// Every court drumstick is a respawnable pad (#225, reversing D2's "no
+// item_pads ever"): the pad list IS the food scatter and row.treasures is
+// its length. Interval 240 (20 s) sits between the TDM/CTF 300 and the
+// FFA/Mutant 180 — a court fields 10-20 livings (five-a-side over 2-4
+// teams), TDM's band, but ball contact chips everyone all match long, so
+// the trickle runs faster than a deathmatch's.
 ExpectedLevel basketball_row(int id, const char* title, int par, int w,
-                             int h, int teams, int treasures,
+                             int h, int teams, std::vector<ItemPad> pads,
                              std::vector<TilePos> hoops, int arc_radius,
                              TilePos jump_ball,
                              std::vector<std::string> briefing)
@@ -391,7 +392,9 @@ ExpectedLevel basketball_row(int id, const char* title, int par, int w,
     row.grid_h = h;
     row.team_count = teams;
     row.markers_per_team = 5; // D8: five-a-side, one bot per anchor
-    row.treasures = treasures;
+    row.treasures = static_cast<int>(pads.size());
+    row.item_pads = std::move(pads);
+    row.item_interval = 240;
     row.time_limit = 7200;   // D10 (825 overrides to 5400)
     row.score_limit = 21;    // D9 (825 overrides to 11)
     row.hoops = std::move(hoops);
@@ -407,8 +410,22 @@ std::vector<ExpectedLevel> basketball_expectations()
 {
     std::vector<ExpectedLevel> out;
 
+    // Baseline food plus half-court and free-throw-flank pads, clear of
+    // the jump tile (22, 12). 180-degree symmetric.
     ExpectedLevel center_court = basketball_row(
-        824, "Basketball: CENTER COURT", 6, 45, 25, 2, 6,
+        824, "Basketball: CENTER COURT", 6, 45, 25, 2,
+        {
+            {FAMILY_DRUMSTICK, {12, 2}},
+            {FAMILY_DRUMSTICK, {22, 2}},
+            {FAMILY_DRUMSTICK, {32, 2}},
+            {FAMILY_DRUMSTICK, {12, 22}},
+            {FAMILY_DRUMSTICK, {22, 22}},
+            {FAMILY_DRUMSTICK, {32, 22}},
+            {FAMILY_DRUMSTICK, {22, 7}},
+            {FAMILY_DRUMSTICK, {22, 17}},
+            {FAMILY_DRUMSTICK, {11, 12}},
+            {FAMILY_DRUMSTICK, {33, 12}},
+        },
         {{3, 12}, {41, 12}}, 160, {22, 12},
         {
             "A NEW GAME, CONTENDERS.",
@@ -423,8 +440,18 @@ std::vector<ExpectedLevel> basketball_expectations()
     center_court.decor_cells = 4;
     out.push_back(std::move(center_court));
 
+    // The cramped court shipped with only two drumsticks; four more on the
+    // half-court line and the elbows keep a brawl fed without crowding it.
     ExpectedLevel playground = basketball_row(
-        825, "Basketball: THE PLAYGROUND", 6, 31, 19, 2, 2,
+        825, "Basketball: THE PLAYGROUND", 6, 31, 19, 2,
+        {
+            {FAMILY_DRUMSTICK, {15, 2}},
+            {FAMILY_DRUMSTICK, {15, 16}},
+            {FAMILY_DRUMSTICK, {15, 6}},
+            {FAMILY_DRUMSTICK, {15, 12}},
+            {FAMILY_DRUMSTICK, {8, 9}},
+            {FAMILY_DRUMSTICK, {22, 9}},
+        },
         {{3, 9}, {27, 9}}, 96, {15, 9},
         {
             "THE PLAYGROUND. A CRAMPED",
@@ -439,8 +466,24 @@ std::vector<ExpectedLevel> basketball_expectations()
     playground.decor_cells = 4;
     out.push_back(std::move(playground));
 
+    // Four teams, so the new pads are 90-degree symmetric under
+    // (x, y) -> (40 - y, x), the marker rotation; jump tile (20, 20) clear.
     ExpectedLevel four_hoops = basketball_row(
-        826, "Basketball: FOUR HOOPS", 8, 41, 41, 4, 8,
+        826, "Basketball: FOUR HOOPS", 8, 41, 41, 4,
+        {
+            {FAMILY_DRUMSTICK, {5, 5}},
+            {FAMILY_DRUMSTICK, {35, 5}},
+            {FAMILY_DRUMSTICK, {35, 35}},
+            {FAMILY_DRUMSTICK, {5, 35}},
+            {FAMILY_DRUMSTICK, {12, 12}},
+            {FAMILY_DRUMSTICK, {28, 12}},
+            {FAMILY_DRUMSTICK, {28, 28}},
+            {FAMILY_DRUMSTICK, {12, 28}},
+            {FAMILY_DRUMSTICK, {20, 13}},
+            {FAMILY_DRUMSTICK, {27, 20}},
+            {FAMILY_DRUMSTICK, {20, 27}},
+            {FAMILY_DRUMSTICK, {13, 20}},
+        },
         {{20, 3}, {37, 20}, {20, 37}, {3, 20}}, 144, {20, 20},
         {
             "FOUR HOOPS, FOUR BANDS, ONE",
@@ -453,8 +496,22 @@ std::vector<ExpectedLevel> basketball_expectations()
     four_hoops.decor_cells = 8;
     out.push_back(std::move(four_hoops));
 
+    // Half-court pads sit between the mid-court pillar rows (x 17 and 27)
+    // and the wing pads outside the key, clear of every pillar and stub.
     ExpectedLevel bankhouse = basketball_row(
-        827, "Basketball: THE BANKHOUSE", 8, 45, 27, 2, 6,
+        827, "Basketball: THE BANKHOUSE", 8, 45, 27, 2,
+        {
+            {FAMILY_DRUMSTICK, {12, 2}},
+            {FAMILY_DRUMSTICK, {22, 2}},
+            {FAMILY_DRUMSTICK, {32, 2}},
+            {FAMILY_DRUMSTICK, {12, 24}},
+            {FAMILY_DRUMSTICK, {22, 24}},
+            {FAMILY_DRUMSTICK, {32, 24}},
+            {FAMILY_DRUMSTICK, {22, 8}},
+            {FAMILY_DRUMSTICK, {22, 18}},
+            {FAMILY_DRUMSTICK, {12, 13}},
+            {FAMILY_DRUMSTICK, {32, 13}},
+        },
         {{3, 13}, {41, 13}}, 176, {22, 13},
         {
             "THE BANKHOUSE. WALLS JUT AND",
@@ -467,8 +524,22 @@ std::vector<ExpectedLevel> basketball_expectations()
     bankhouse.decor_cells = 4;
     out.push_back(std::move(bankhouse));
 
+    // The bench skeletons eat too; the new pads clear both alcoves
+    // (x 8-12 and 34-38, y 1-5) and the jump tile (23, 14).
     ExpectedLevel benchwarmers = basketball_row(
-        828, "Basketball: BENCHWARMERS", 10, 47, 29, 2, 6,
+        828, "Basketball: BENCHWARMERS", 10, 47, 29, 2,
+        {
+            {FAMILY_DRUMSTICK, {17, 2}},
+            {FAMILY_DRUMSTICK, {23, 2}},
+            {FAMILY_DRUMSTICK, {29, 2}},
+            {FAMILY_DRUMSTICK, {17, 26}},
+            {FAMILY_DRUMSTICK, {23, 26}},
+            {FAMILY_DRUMSTICK, {29, 26}},
+            {FAMILY_DRUMSTICK, {23, 8}},
+            {FAMILY_DRUMSTICK, {23, 20}},
+            {FAMILY_DRUMSTICK, {13, 14}},
+            {FAMILY_DRUMSTICK, {33, 14}},
+        },
         {{3, 14}, {43, 14}}, 160, {23, 14},
         {
             "BENCHWARMERS. EACH SIDE'S OLD",

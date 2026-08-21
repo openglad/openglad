@@ -42,6 +42,16 @@ public:
     // Drain all events (returns them and clears the internal buffer).
     std::vector<Event> drain();
 
+    // Append already-stamped events behind whatever is queued, preserving
+    // each event's own tick stamp (never restamped to current_tick_). This
+    // is the staged-lobby adoption seam: a MatchStage queues its init/on_load
+    // announcements at stage time with the tick-1 stamp they carry today, and
+    // the launch appends them into the live session's log AFTER the
+    // level-start clears, so the first ticked drain delivers them once.
+    // Ignores the suppressed_ flag: adoption is an explicit transfer, not a
+    // gameplay push.
+    void append(std::vector<Event> events);
+
     // Clear without returning.
     void clear() { events_.clear(); }
 

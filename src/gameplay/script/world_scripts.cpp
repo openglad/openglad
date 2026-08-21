@@ -718,7 +718,7 @@ namespace {
 int og_register_hooks(lua_State* L)
 {
     // Deliberately outside the load fence, but NOT outside the campaign
-    // fence: a menu script must not rewrite sim hook tables. Checked before
+    // fence: a menu script may not rewrite sim hook tables. Checked before
     // any argument check so the fence-walk test sees this error, not an
     // argument error.
     if (const VmState* fence_st = get_vm_state(L);
@@ -1052,7 +1052,7 @@ constexpr LevelHookName kLevelHookNames[] = {
 // on_entity_spawn= }). level_id -1 registers for every level.
 int og_register_level_hooks(lua_State* L)
 {
-    // Same campaign fence as og.register_hooks (menu scripts must not
+    // The same campaign fence as og.register_hooks (menu scripts may not
     // rewrite sim hook tables), before any argument check.
     if (const VmState* fence_st = get_vm_state(L);
         fence_st != nullptr && fence_st->campaign_dispatch)
@@ -1152,8 +1152,8 @@ std::string campaign_caller_source(lua_State* L)
 int og_register_campaign_hooks(lua_State* L)
 {
     VmState* st = get_vm_state(L);
-    // Campaign fence first (before any argument check): a campaign hook
-    // must not re-register hooks.
+    // Campaign and plan fences first (before any argument check): neither a
+    // campaign hook nor a match plan may re-register hooks.
     if (st != nullptr && st->campaign_dispatch)
         return luaL_error(L, "og.register_campaign_hooks: hook registration "
                              "is not available during campaign hooks");
@@ -2429,16 +2429,19 @@ bool level_mode_init(GameWorld* world)
     if (st == nullptr || world == nullptr)
         return false;
     ScriptHost::Impl& impl = st->owner->host().impl();
-    if (!push_level_hook_fn(impl.L, st, LevelHook::ModeInit, world->id))
+    lua_State* L = impl.L;
+    if (!push_level_hook_fn(L, st, LevelHook::ModeInit, world->id))
         return false;
-    const std::uint64_t gen = push_dispatch_gen(impl.L);
-    lua_pushinteger(impl.L, world->id);
-    // A failing init reports false so mode_run_tick leaves the mode
-    // inactive and the level falls to classic rules next tick (the CTF
-    // fewer-than-two-flag-teams shape). The error itself is recorded by
-    // protected_call (script host error store).
+    const std::uint64_t gen = push_dispatch_gen(L);
+    lua_pushinteger(L, world->id);
+    // A failing init reports false so the mode stays inactive and the
+    // level falls to classic rules (the CTF fewer-than-two-flag-teams
+    // shape). The error itself is recorded by protected_call (script host
+    // error store). The hook builds its own census over the live world
+    // (mode_match.lua census_inputs) — the plan phase and its marshaling
+    // layer are retired (#218 staged lobby).
     const bool ok = impl.protected_call("level:on_mode_init", 1, 0);
-    pop_dispatch_gen(impl.L, gen);
+    pop_dispatch_gen(L, gen);
     return ok;
 }
 

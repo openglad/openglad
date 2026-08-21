@@ -40,6 +40,12 @@
 #include <openglad/interface/ui/campaign_picker.h>
 #include <openglad/interface/ui/level_picker.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
+#include <openglad/gameplay/game_client.h>
+#include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/world_snapshot.h>
+#include <openglad/resources/gparser.h>
+#include <openglad/interface/render/video.h>
 #include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
@@ -302,29 +308,69 @@ void ensure_highlighted_button_visible(const button* buttons,
 // The §2.5 base camp rewires its full roster graph per frame (pattern b) —
 // the rewire lives on the spec in menu_screen_specs.cpp.
 
-// Rewire the always-visible VIEW LEVEL | MATCHUP | PROGRESS row's up-links
-// around the host-gated SET CAMPAIGN / SET LEVEL column.
+// Full-graph rewire for the SCENARIO subscreen (pattern b): two visibility
+// axes — SET CAMPAIGN / SET LEVEL / TROOPS gate on the host,
+// TEAMS / LIMIT (#218, re-homed from MATCHUP) gate on the versus campaign
+// and stay visible to joiners as read-only labels. Every link is written on
+// every call so no variant inherits a stale one; the parked spare (the
+// retired MATCHUP door's ordinal) never participates.
 void picker_wire_scenario_menu_nav(button* buttons,
                                    int count,
-                                   bool host_controls_visible)
+                                   bool host_controls_visible,
+                                   bool match_settings_visible)
 {
     if (buttons == nullptr || count < kScenarioMenuButtonCount)
         return;
 
-    const int row_up =
-        host_controls_visible ? kScenarioMenuSetLevelIndex : -1;
-    buttons[kScenarioMenuViewScenarioIndex].nav.up = row_up;
-    buttons[kScenarioMenuTeamsIndex].nav.up = row_up;
-    buttons[kScenarioMenuProgressIndex].nav.up = row_up;
-    // TROOPS hangs off MATCHUP's down-link and is host-gated too, so the
-    // link has to fall back to BACK for joiners.
-    buttons[kScenarioMenuTeamsIndex].nav.down =
-        host_controls_visible ? kScenarioMenuTroopsIndex
-                              : kScenarioMenuBackIndex;
-    buttons[kScenarioMenuViewScenarioIndex].nav.down =
-        kScenarioMenuBackIndex;
-    buttons[kScenarioMenuBackIndex].nav.up =
-        kScenarioMenuViewScenarioIndex;
+    const bool host = host_controls_visible;
+    const bool match = match_settings_visible;
+
+    // Host column: SET CAMPAIGN over SET LEVEL over VIEW LEVEL.
+    buttons[kScenarioMenuSetCampaignIndex].nav =
+        {.down = kScenarioMenuSetLevelIndex};
+    buttons[kScenarioMenuSetLevelIndex].nav =
+        {.up = kScenarioMenuSetCampaignIndex,
+         .down = kScenarioMenuViewScenarioIndex};
+
+    // y=100 row: VIEW LEVEL <-> PROGRESS; up-links close for joiners.
+    const int row_up = host ? kScenarioMenuSetLevelIndex : -1;
+    buttons[kScenarioMenuViewScenarioIndex].nav =
+        {.up = row_up,
+         .down = match ? kScenarioMenuCtfTeamsIndex : kScenarioMenuBackIndex,
+         .right = kScenarioMenuProgressIndex};
+    buttons[kScenarioMenuProgressIndex].nav =
+        {.up = row_up,
+         .down = host ? kScenarioMenuTroopsIndex
+                      : (match ? kScenarioMenuCtfCapsIndex
+                               : kScenarioMenuBackIndex),
+         .left = kScenarioMenuViewScenarioIndex};
+
+    // y=140 match-settings band: TEAMS (30) | TROOPS (120) | LIMIT (210).
+    // TROOPS is host-gated, TEAMS/LIMIT versus-gated, so the horizontal
+    // chain skips whichever member is hidden this frame.
+    buttons[kScenarioMenuCtfTeamsIndex].nav =
+        {.up = kScenarioMenuViewScenarioIndex,
+         .down = kScenarioMenuBackIndex,
+         .right = host ? kScenarioMenuTroopsIndex
+                       : kScenarioMenuCtfCapsIndex};
+    buttons[kScenarioMenuTroopsIndex].nav =
+        {.up = kScenarioMenuProgressIndex,
+         .down = kScenarioMenuBackIndex,
+         .left = match ? kScenarioMenuCtfTeamsIndex : -1,
+         .right = match ? kScenarioMenuCtfCapsIndex : -1};
+    buttons[kScenarioMenuCtfCapsIndex].nav =
+        {.up = kScenarioMenuProgressIndex,
+         .down = kScenarioMenuBackIndex,
+         .left = host ? kScenarioMenuTroopsIndex
+                      : kScenarioMenuCtfTeamsIndex};
+
+    // BACK climbs into the nearest visible x=30 column member.
+    buttons[kScenarioMenuBackIndex].nav =
+        {.up = match ? kScenarioMenuCtfTeamsIndex
+                     : kScenarioMenuViewScenarioIndex};
+
+    // The parked spare: no links in, no links out (#236 precedent).
+    buttons[kScenarioMenuSpareIndex].nav = {};
 }
 
 void sync_scenario_menu_host_control_visibility(button* buttons,
@@ -335,8 +381,9 @@ void sync_scenario_menu_host_control_visibility(button* buttons,
         return;
 
     // SET CAMPAIGN / SET LEVEL keep their host-only visibility inside the
-    // subscreen; VIEW LEVEL / MATCHUP / PROGRESS stay visible for everyone.
+    // subscreen; VIEW LEVEL / PROGRESS stay visible for everyone.
     const bool host_controls_visible = picker_lobby_host_controls_visible();
+    const SaveData& save = og::runtime::current_session->myscreen_->save_data;
     buttons[kScenarioMenuSetCampaignIndex].hidden = !host_controls_visible;
     buttons[kScenarioMenuSetLevelIndex].hidden = !host_controls_visible;
     buttons[kScenarioMenuTroopsIndex].hidden = !host_controls_visible;
@@ -345,8 +392,8 @@ void sync_scenario_menu_host_control_visibility(button* buttons,
     // Re-derive the label from the save every frame: a host cycling TROOPS
     // reaches a joiner through the lobby settings, which land in the save
     // under the open menu (both label surfaces, per the menu skill).
-    buttons[kScenarioMenuTroopsIndex].label = og::ui::format_ctf_troops_label(
-        og::runtime::current_session->myscreen_->save_data);
+    buttons[kScenarioMenuTroopsIndex].label =
+        og::ui::format_ctf_troops_label(save);
     sync_button_hidden_state(buttons, kScenarioMenuTroopsIndex);
     if (og::runtime::current_session->allbuttons_[kScenarioMenuTroopsIndex] !=
         nullptr)
@@ -354,8 +401,35 @@ void sync_scenario_menu_host_control_visibility(button* buttons,
         og::runtime::current_session->allbuttons_[kScenarioMenuTroopsIndex]
             ->label = buttons[kScenarioMenuTroopsIndex].label;
     }
+    // TEAMS / LIMIT (#218, re-homed from MATCHUP): versus campaigns only,
+    // and — unlike TROOPS — visible to JOINERS as read-only labels (the
+    // host's turns land in the lobby-synced save and the same re-derive
+    // shows them; change_ctf_teams/change_ctf_caps popup for a non-host).
+    const bool match_settings_visible = og::ui::is_versus_campaign(save);
+    for (const int index :
+         {kScenarioMenuCtfTeamsIndex, kScenarioMenuCtfCapsIndex})
+    {
+        buttons[index].hidden = !match_settings_visible;
+        buttons[index].label = index == kScenarioMenuCtfTeamsIndex
+            ? og::ui::format_ctf_teams_label(save)
+            : og::ui::format_ctf_caps_label(save);
+        sync_button_hidden_state(buttons, index);
+        if (og::runtime::current_session
+                ->allbuttons_[static_cast<std::size_t>(index)] != nullptr)
+        {
+            og::runtime::current_session
+                ->allbuttons_[static_cast<std::size_t>(index)]
+                ->label = buttons[index].label;
+        }
+    }
+    // The retired MATCHUP door's ordinal stays parked: hidden, zero-size,
+    // no nav (the #236 seat_rail_spare precedent) — re-asserted per frame
+    // because the engine's gate pass marks ungated rows visible.
+    buttons[kScenarioMenuSpareIndex].hidden = true;
+    sync_button_hidden_state(buttons, kScenarioMenuSpareIndex);
     picker_wire_scenario_menu_nav(buttons, num_buttons,
-                                  host_controls_visible);
+                                  host_controls_visible,
+                                  match_settings_visible);
 
     ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
 }
@@ -367,22 +441,40 @@ void sync_difficulty_menu_visibility(button* buttons,
     if (buttons == nullptr || num_buttons < kDifficultyMenuButtonCount)
         return;
 
-    // Every settings row on this screen is LobbySettings-backed (difficulty
-    // included): a joiner's click would be rejected by the server and the
-    // per-frame label re-derive would immediately restore the host's value.
-    // Hide the rows for non-hosts (the GO / SET LEVEL precedent) and rewire
-    // BACK's vertical cycle so nav never lands on a hidden button.
+    // The six settings rows are LobbySettings-backed (difficulty included):
+    // a joiner's click would be rejected by the server and the per-frame
+    // label re-derive would immediately restore the host's value. Hide them
+    // for non-hosts (the GO / SET LEVEL precedent). The CTRL row (#218,
+    // §2.7) instead gates on the NETWORK axis: visible to every peer of a
+    // networked lobby — a joiner keeps sight of the mode that changes their
+    // rights (change_cross_control popups for them) — and hidden outright
+    // in local sessions, where cross-control decides nothing.
     const bool host_controls_visible = picker_lobby_host_controls_visible();
+    const bool networked = picker_lobby_is_networked();
     for (int index = kDifficultyMenuDifficultyIndex;
-         index < kDifficultyMenuButtonCount; ++index)
+         index < kDifficultyMenuCrossControlIndex; ++index)
     {
         buttons[index].hidden = !host_controls_visible;
         sync_button_hidden_state(buttons, index);
     }
-    buttons[kDifficultyMenuBackIndex].nav.up =
-        host_controls_visible ? kDifficultyMenuInfiniteGoldIndex : -1;
-    buttons[kDifficultyMenuBackIndex].nav.down =
-        host_controls_visible ? kDifficultyMenuDifficultyIndex : -1;
+    buttons[kDifficultyMenuCrossControlIndex].hidden = !networked;
+    sync_button_hidden_state(buttons, kDifficultyMenuCrossControlIndex);
+
+    // Vertical cycle around whichever tail rows are visible this frame.
+    buttons[kDifficultyMenuInfiniteGoldIndex].nav.down =
+        networked ? kDifficultyMenuCrossControlIndex
+                  : kDifficultyMenuBackIndex;
+    buttons[kDifficultyMenuCrossControlIndex].nav.up =
+        host_controls_visible ? kDifficultyMenuInfiniteGoldIndex
+                              : kDifficultyMenuBackIndex;
+    buttons[kDifficultyMenuCrossControlIndex].nav.down =
+        kDifficultyMenuBackIndex;
+    buttons[kDifficultyMenuBackIndex].nav.up = networked
+        ? kDifficultyMenuCrossControlIndex
+        : (host_controls_visible ? kDifficultyMenuInfiniteGoldIndex : -1);
+    buttons[kDifficultyMenuBackIndex].nav.down = host_controls_visible
+        ? kDifficultyMenuDifficultyIndex
+        : (networked ? kDifficultyMenuCrossControlIndex : -1);
 
     ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
 }
@@ -465,645 +557,6 @@ static void draw_derived_stats_block(text& mytext, const og::ui::DerivedStats& d
 // into the roster view.
 
 // ---------------------------------------------------------------------------
-// MATCHUP subscreen: a detailed overview of player-seat assignments and
-// character allegiances, with host-gated CTF settings and cross-control.
-// Assignment itself lives in the Base Camp seat rail.
-// ---------------------------------------------------------------------------
-
-void picker_wire_teams_menu_nav(button* buttons, int count,
-                                const TeamsMenuWiring& wiring)
-{
-    if (buttons == nullptr || count < kTeamsMenuButtonCount)
-        return;
-
-    // One vertical chain of row anchors through visible team-detail pagers.
-    std::vector<int> mids;
-    for (int t = 0; t < 4; ++t)
-    {
-        if (wiring.pager_visible[static_cast<std::size_t>(t)])
-            mids.push_back(kTeamsMenuPageFirstIndex + t);
-    }
-    const int first_mid = mids.empty() ? -1 : mids.front();
-    const int last_mid = mids.empty() ? -1 : mids.back();
-    const int bottom_mid = -1;
-    // Dormant: the scenario-troops row lives on the SCENARIO screen now, so
-    // nothing on MATCHUP may link to it.
-    const int bottom_right = -1;
-    (void)kTeamsMenuCtfTroopsIndex;
-    // §2.7 cross-control remains visible to every network peer and now sits
-    // in the bottom command row vacated by the duplicate READY control.
-    const int cross =
-        wiring.cross_control ? kTeamsMenuCrossControlIndex : -1;
-
-    for (int index = 0; index < kTeamsMenuButtonCount; ++index)
-        buttons[index].nav = MenuNav{};
-
-    // Bottom row: BACK | CROSS-CONTROL (networked) | TROOPS (CTF host).
-    buttons[kTeamsMenuBackIndex].nav.right =
-        bottom_mid >= 0 ? bottom_mid : bottom_right;
-    if (bottom_mid >= 0)
-    {
-        buttons[bottom_mid].nav.left = kTeamsMenuBackIndex;
-        buttons[bottom_mid].nav.right = bottom_right;
-    }
-    if (bottom_right >= 0)
-    {
-        buttons[bottom_right].nav.left =
-            bottom_mid >= 0 ? bottom_mid : kTeamsMenuBackIndex;
-    }
-
-    // Row-anchor chain (visible rows only, top to bottom).
-    const int below_mids = cross >= 0
-        ? cross
-        : (bottom_right >= 0 ? bottom_right : kTeamsMenuBackIndex);
-    for (std::size_t mid_order = 0; mid_order < mids.size(); ++mid_order)
-    {
-        buttons[mids[mid_order]].nav.up = mid_order == 0
-            ? (wiring.show_ctf ? kTeamsMenuCtfTeamsIndex : -1)
-            : mids[mid_order - 1];
-        buttons[mids[mid_order]].nav.down = mid_order + 1 < mids.size()
-            ? mids[mid_order + 1]
-            : below_mids;
-    }
-
-    // CTF settings row.
-    if (wiring.show_ctf)
-    {
-        buttons[kTeamsMenuCtfTeamsIndex].nav.right = kTeamsMenuCtfCapsIndex;
-        buttons[kTeamsMenuCtfCapsIndex].nav.left = kTeamsMenuCtfTeamsIndex;
-        buttons[kTeamsMenuCtfTeamsIndex].nav.down = first_mid >= 0
-            ? first_mid
-            : (cross >= 0 ? cross : kTeamsMenuBackIndex);
-        buttons[kTeamsMenuCtfCapsIndex].nav.down = first_mid >= 0
-            ? first_mid
-            : (cross >= 0 ? cross : bottom_right);
-    }
-
-    // §2.7 cross-control row: chained between the team rows and the bottom
-    // row, exactly where the guy row sits locally.
-    if (cross >= 0)
-    {
-        buttons[cross].nav.up = last_mid >= 0
-            ? last_mid
-            : (wiring.show_ctf ? kTeamsMenuCtfCapsIndex : -1);
-        buttons[cross].nav.left = kTeamsMenuBackIndex;
-        buttons[cross].nav.right = bottom_right;
-        buttons[cross].nav.down = -1;
-        buttons[kTeamsMenuBackIndex].nav.right = cross;
-        if (bottom_right >= 0)
-            buttons[bottom_right].nav.left = cross;
-    }
-
-    // Bottom-row up links.
-    buttons[kTeamsMenuBackIndex].nav.up = first_mid >= 0
-        ? first_mid
-        : (wiring.show_ctf ? kTeamsMenuCtfTeamsIndex : -1);
-    if (bottom_mid >= 0)
-    {
-        buttons[bottom_mid].nav.up = cross >= 0
-            ? cross
-            : (last_mid >= 0
-                   ? last_mid
-                   : (wiring.show_ctf ? kTeamsMenuCtfTeamsIndex : -1));
-    }
-    if (bottom_right >= 0)
-    {
-        buttons[bottom_right].nav.up = cross >= 0
-            ? cross
-            : (last_mid >= 0 ? last_mid : kTeamsMenuCtfCapsIndex);
-    }
-}
-
-namespace
-{
-
-// MATCHUP's wide team bars use the full 304px panel. A paged slice stops
-// short of its page indicator and the in-row '>' button at x=297.
-constexpr int kTeamsDetailCharsUnpaged = 47;
-constexpr int kTeamsDetailCharsPaged = 39;
-
-std::string matchup_company_abbreviation(std::string_view company)
-{
-    std::string result;
-    result.reserve(3);
-    for (const char ch : company)
-    {
-        if (!std::isalnum(static_cast<unsigned char>(ch)))
-            continue;
-        result.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(ch))));
-        if (result.size() == 3)
-            break;
-    }
-    return result.empty() ? "NET" : result;
-}
-
-std::string matchup_seat_identity(
-    const og::sim::LobbyPlayer& player,
-    const std::vector<std::uint8_t>& local_indices)
-{
-    const bool local =
-        std::find(local_indices.begin(), local_indices.end(),
-                  player.player_index) != local_indices.end();
-    std::string result = std::format(
-        "P{} {}",
-        static_cast<int>(player.player_index) + 1,
-        local ? std::string("YOU")
-              : matchup_company_abbreviation(player.company));
-    if (player.ready)
-        result += " [RDY]";
-    return result;
-}
-
-std::string matchup_summary(const std::vector<og::sim::LobbyPlayer>& players)
-{
-    if (players.empty())
-        return "NO PLAYER SEATS";
-    std::array<int, SCORE_TEAM_COUNT> counts{};
-    for (const og::sim::LobbyPlayer& player : players)
-    {
-        if (player.team >= 0 && player.team < SCORE_TEAM_COUNT)
-            ++counts[static_cast<std::size_t>(player.team)];
-    }
-    const int occupied = static_cast<int>(std::count_if(
-        counts.begin(), counts.end(), [](int count) { return count > 0; }));
-    const int player_count = static_cast<int>(players.size());
-    if (occupied == 1)
-        return "CO-OP";
-    if (player_count == 4 && occupied == 2 &&
-        std::count(counts.begin(), counts.end(), 2) == 2)
-    {
-        return "2 VS 2";
-    }
-    if (occupied == player_count)
-        return "FREE-FOR-ALL";
-    return "MIXED TEAMS";
-}
-
-// One frame's full MATCHUP state: the nav wiring inputs plus the CTF
-// map context (authored marker teams from the LIVE picker world).
-struct TeamsMenuFrameState
-{
-    bool is_ctf = false;   // versus campaign selected
-    bool ctf_map = false;  // loaded picker world is a TYPE_SCRIPTED level
-    bool campaign_mounted = true; // mounted campaign matches the save's
-    bool authored[4] = {};
-    // Per-team member/player detail line, paginated; detail_page is the
-    // normalized current slice (the raw counter lives in PickerState).
-    std::array<std::vector<std::string>, 4> detail_pages;
-    std::array<int, 4> detail_page = {};
-    std::array<int, 4> hero_count = {};
-    std::array<int, 4> seat_count = {};
-    std::string summary;
-    TeamsMenuWiring wiring;
-};
-
-TeamsMenuFrameState compute_teams_menu_state()
-{
-    TeamsMenuFrameState state;
-    const SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    state.is_ctf = og::ui::is_versus_campaign(save);
-    state.wiring.show_ctf =
-        state.is_ctf && picker_lobby_host_controls_visible();
-    state.wiring.networked = picker_lobby_is_networked();
-    state.wiring.guy_row = false;
-    // §2.7: shown to ALL peers when networked (host-only actionable).
-    state.wiring.cross_control = state.wiring.networked;
-
-    // P# is the current lobby-wide display ordinal and may be redensified;
-    // exact local ownership comes from server-issued seat tokens. Remote cards
-    // show only the public company name, never the internal net-<hex>
-    // transport identity.
-    std::vector<og::sim::LobbyPlayer> players = picker_lobby_players();
-    if (players.empty() && save.numplayers > 0)
-    {
-        const std::vector<short> teams =
-            og::ui::derive_local_gameplay_seat_teams(save);
-        for (std::size_t index = 0; index < teams.size(); ++index)
-        {
-            players.push_back(og::sim::LobbyPlayer{
-                .player_index = static_cast<std::uint8_t>(index),
-                .name = std::format("Player {}", index + 1),
-                .company = save.save_name,
-                .team = teams[index],
-                .character_slots = {},
-                .ready = false,
-                .is_host = index == 0,
-            });
-        }
-    }
-    std::sort(players.begin(), players.end(),
-              [](const og::sim::LobbyPlayer& lhs,
-                 const og::sim::LobbyPlayer& rhs) {
-                  return lhs.player_index < rhs.player_index;
-              });
-    std::vector<std::uint8_t> local_indices =
-        picker_lobby_local_player_indices();
-    if (!state.wiring.networked)
-    {
-        local_indices.clear();
-        for (const og::sim::LobbyPlayer& player : players)
-            local_indices.push_back(player.player_index);
-    }
-    state.summary = matchup_summary(players);
-
-    // Seats group by LobbyPlayer::team. Heroes group independently by their
-    // character teamnum: changing a seat assignment must never appear to
-    // recolor or move that machine's company roster.
-    for (int t = 0; t < 4; ++t)
-    {
-        std::vector<std::string> items;
-        std::vector<std::string> seat_items;
-        std::vector<std::string> hero_items;
-        for (const og::sim::LobbyPlayer& player : players)
-        {
-            if (player.team == t)
-                seat_items.push_back(matchup_seat_identity(
-                    player, local_indices));
-            if (state.wiring.networked)
-            {
-                for (const og::sim::LobbyCharacterSlot& slot :
-                     player.character_slots)
-                {
-                    if (slot.character.teamnum == t)
-                        hero_items.push_back(slot.character.name);
-                }
-            }
-        }
-        if (!state.wiring.networked)
-        {
-            for (const auto& member : save.team_list)
-            {
-                if (member && member->teamnum == t)
-                    hero_items.push_back(member->name);
-            }
-        }
-        state.seat_count[static_cast<std::size_t>(t)] =
-            static_cast<int>(seat_items.size());
-        state.hero_count[static_cast<std::size_t>(t)] =
-            static_cast<int>(hero_items.size());
-        if (!seat_items.empty())
-        {
-            items.push_back("SEATS: " + seat_items.front());
-            items.insert(items.end(), seat_items.begin() + 1,
-                         seat_items.end());
-        }
-        if (!hero_items.empty())
-        {
-            items.push_back("HEROES: " + hero_items.front());
-            items.insert(items.end(), hero_items.begin() + 1,
-                         hero_items.end());
-        }
-
-        // Fits one slice -> no pager; otherwise repack with room for the
-        // "p/N" indicator and the '>' button at the row's right edge.
-        std::vector<std::string> pages =
-            og::ui::paginate_team_detail_pages(items, kTeamsDetailCharsUnpaged);
-        if (pages.size() > 1)
-        {
-            pages = og::ui::paginate_team_detail_pages(
-                items, kTeamsDetailCharsPaged);
-        }
-        state.wiring.pager_visible[static_cast<std::size_t>(t)] = pages.size() > 1;
-
-        // Normalize the session's raw flip counter onto this page count and
-        // write it back, so a shrinking roster can't strand the page.
-        const int page_count = static_cast<int>(pages.size());
-        int& raw_page = pks().teams_menu_team_page[static_cast<std::size_t>(t)];
-        raw_page = ((raw_page % page_count) + page_count) % page_count;
-        state.detail_page[static_cast<std::size_t>(t)] = raw_page;
-        state.detail_pages[static_cast<std::size_t>(t)] = std::move(pages);
-    }
-
-    // A joiner without the host's campaign mounted has some OTHER level
-    // loaded: never let authored-flag gating act on a wrong world.
-    state.campaign_mounted =
-        get_mounted_campaign() == save.current_campaign;
-
-    const GameWorld& world = og::runtime::current_session->myscreen_->world();
-    state.ctf_map = state.campaign_mounted &&
-        (world.type & GameWorld::TYPE_SCRIPTED) != 0;
-    if (state.ctf_map)
-    {
-        const std::uint8_t authored = og::sim::authored_team_mask(world);
-        for (int t = 0; t < 4; ++t)
-            state.authored[t] = (authored & (1u << t)) != 0;
-    }
-
-    for (int t = 0; t < 4; ++t)
-        state.wiring.join_visible[static_cast<std::size_t>(t)] = false;
-    return state;
-}
-
-void sync_teams_menu_visibility(button* buttons,
-                                int num_buttons,
-                                int& highlighted_button,
-                                const TeamsMenuFrameState& state)
-{
-    if (buttons == nullptr || num_buttons < kTeamsMenuButtonCount)
-        return;
-
-    const SaveData& save = og::runtime::current_session->myscreen_->save_data;
-
-    buttons[kTeamsMenuCtfTeamsIndex].hidden = !state.wiring.show_ctf;
-    buttons[kTeamsMenuCtfCapsIndex].hidden = !state.wiring.show_ctf;
-    // The scenario-troops control moved to the SCENARIO screen (it applies to
-    // classic campaigns too, which never see MATCHUP). The row keeps its
-    // ordinal so every positional index below it stays put, but it is dormant:
-    // permanently hidden and never relabeled.
-    buttons[kTeamsMenuCtfTroopsIndex].hidden = true;
-    if (state.wiring.show_ctf)
-    {
-        buttons[kTeamsMenuCtfTeamsIndex].label =
-            og::ui::format_ctf_teams_label(save);
-        buttons[kTeamsMenuCtfCapsIndex].label =
-            og::ui::format_ctf_caps_label(save);
-    }
-
-    for (int t = 0; t < 4; ++t)
-    {
-        button& join = buttons[kTeamsMenuJoinFirstIndex + t];
-        join.hidden = true;
-    }
-
-    buttons[kTeamsMenuGuyPrevIndex].hidden = true;
-    buttons[kTeamsMenuGuyNextIndex].hidden = true;
-    buttons[kTeamsMenuGuyTeamIndex].hidden = true;
-
-    for (int t = 0; t < 4; ++t)
-    {
-        buttons[kTeamsMenuPageFirstIndex + t].hidden =
-            !state.wiring.pager_visible[static_cast<std::size_t>(t)];
-    }
-
-    buttons[kTeamsMenuReadyIndex].hidden = true;
-
-    buttons[kTeamsMenuCrossControlIndex].hidden =
-        !state.wiring.cross_control;
-    if (state.wiring.cross_control)
-    {
-        buttons[kTeamsMenuCrossControlIndex].label =
-            og::ui::format_cross_control_label(save.cross_control != 0);
-    }
-
-    picker_wire_teams_menu_nav(buttons, num_buttons, state.wiring);
-
-    auto& allbuttons = og::runtime::current_session->allbuttons_;
-    for (int index = 0; index < kTeamsMenuButtonCount; ++index)
-    {
-        sync_button_hidden_state(buttons, index);
-        if (allbuttons[static_cast<std::size_t>(index)] != nullptr)
-            allbuttons[static_cast<std::size_t>(index)]->label = buttons[index].label;
-    }
-    ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
-}
-
-// Clip a drawn line to the 6px/char budget of the given pixel width.
-std::string clip_to_width(std::string line, int max_chars)
-{
-    if (static_cast<int>(line.size()) > max_chars)
-        line.resize(static_cast<std::size_t>(max_chars));
-    return line;
-}
-
-// Pre-pass: the translucent row readability bars. These must render BENEATH
-// the buttons — the per-team '>' pager (297, 39+30t) is the only button whose
-// face sits inside a bar, and a bar painted after draw_buttons would dim it
-// to ~41% brightness unlike every other button. The frame loop draws this
-// before draw_buttons; all text/content stays in draw_teams_menu_content
-// (drawn after the buttons) so it still reads on top of the bars.
-void draw_teams_menu_row_bars()
-{
-    screen* const myscreen = og::runtime::current_session->myscreen_;
-    for (int t = 0; t < 4; ++t)
-    {
-        const int row_y = 32 + 30 * t;
-        myscreen->draw_rect_filled(8, row_y - 2, 304, 22, PURE_BLACK, 150);
-    }
-}
-
-void draw_teams_menu_content(const TeamsMenuFrameState& state, text& mytext)
-{
-    screen* const myscreen = og::runtime::current_session->myscreen_;
-    mytext.write_xy(10, 8, "MATCHUP", WHITE, 1);
-
-    for (int t = 0; t < 4; ++t)
-    {
-        const int row_y = 32 + 30 * t;
-
-        // The team's palette swatch (the row's readability bar is drawn by
-        // draw_teams_menu_row_bars before the buttons).
-        myscreen->draw_rect_filled(
-            10, row_y, 10, 10, static_cast<unsigned char>(t * 16 + 40), 255);
-
-        const int hero_count =
-            state.hero_count[static_cast<std::size_t>(t)];
-        const bool has_humans =
-            state.seat_count[static_cast<std::size_t>(t)] > 0;
-
-        // The pager column ('>' at x=297 and the p/N indicator ending at
-        // x=295) narrows both the label row and the detail line.
-        const bool paged = state.wiring.pager_visible[static_cast<std::size_t>(t)];
-        const std::string row_label = og::ui::format_team_row_label(
-            static_cast<short>(t),
-            hero_count,
-            state.is_ctf && state.ctf_map,
-            state.authored[t],
-            has_humans,
-            {});
-        mytext.write_xy(24, row_y,
-                        clip_to_width(row_label, paged ? 44 : 47).c_str(),
-                        WHITE, 1);
-
-        // Member-detail line: the current pre-clipped slice from the frame
-        // state; the indicator makes any truncation visible.
-        const std::vector<std::string>& pages =
-            state.detail_pages[static_cast<std::size_t>(t)];
-        const int page = state.detail_page[static_cast<std::size_t>(t)];
-        const std::string& detail = pages[static_cast<std::size_t>(page)];
-        if (!detail.empty())
-            mytext.write_xy(24, row_y + 9, detail.c_str(), DARK_BLUE, 1);
-        if (paged)
-        {
-            const std::string indicator = std::format(
-                "{}/{}", page + 1, static_cast<int>(pages.size()));
-            mytext.write_xy(295 - 6 * static_cast<int>(indicator.size()),
-                            row_y + 9, indicator.c_str(), WHITE, 1);
-        }
-    }
-
-    // Banner band above the team rows: the y=8 buttons fill rows 8..22
-    // (height 15) and the rows' readability bars start at y=30 (row_y-2
-    // with row_y=32), so the 23..29 band is free of buttons, row bars,
-    // and detail lines (draw_rect_filled fills [y, y+h)).
-    if (!state.campaign_mounted)
-    {
-        // The loaded picker world is some other map, so authored flag/team
-        // details cannot be verified against the real level.
-        myscreen->draw_rect_filled(8, 23, 304, 7, PURE_BLACK, 150);
-        mytext.write_xy(10, 24, "TEAM LIST UNVERIFIED", YELLOW, 1);
-    }
-    else
-    {
-        myscreen->draw_rect_filled(8, 23, 304, 7, PURE_BLACK, 150);
-        mytext.write_xy(10, 24, state.summary.c_str(), YELLOW, 1);
-    }
-}
-
-} // namespace
-
-// create_teams_menu (the MATCHUP subscreen): engine-hosted — the spec and the
-// entry wrapper live in menu_screen_specs.cpp; the per-frame machinery stays
-// here beside its helpers (compute_teams_menu_state and the draw passes are
-// file-local). One open screen's state is shared between the hooks: the
-// frame state the rewire computes and the draw hooks read, the per-team
-// trace dedup, and the level-reload guard cursor.
-static TeamsMenuFrameState g_teams_engine_state;
-static std::array<int, 4> g_teams_engine_traced_page = {-1, -1, -1, -1};
-static short g_teams_engine_last_level_id = -1;
-
-// Trace each paged team's slice on entry and on every flip (tests pin the
-// indicator and the rotating member names through these).
-static void teams_engine_trace_paged_rows(const TeamsMenuFrameState& frame)
-{
-    for (int t = 0; t < 4; ++t)
-    {
-        const auto& pages = frame.detail_pages[static_cast<std::size_t>(t)];
-        if (pages.size() <= 1)
-            continue;
-        const int page = frame.detail_page[static_cast<std::size_t>(t)];
-        if (g_teams_engine_traced_page[static_cast<std::size_t>(t)] == page)
-            continue;
-        g_teams_engine_traced_page[static_cast<std::size_t>(t)] = page;
-        TRACE("picker", "teams_detail t=%d page=%d/%d %s", t, page + 1,
-              static_cast<int>(pages.size()),
-              pages[static_cast<std::size_t>(page)].c_str());
-    }
-}
-
-// Per-open reset, called by the create_teams_menu wrapper before the runner:
-// pager pages are session state and reset every open; the reload cursor
-// starts at the current level (no reload on entry — the parent team-build
-// loop already loaded it).
-void picker_teams_menu_engine_reset_open_state()
-{
-    pks().teams_menu_team_page.fill(0);
-    g_teams_engine_traced_page = {-1, -1, -1, -1};
-    g_teams_engine_last_level_id =
-        og::runtime::current_session->myscreen_->save_data.scen_num;
-}
-
-// The spec's Rewire program (G1): the legacy per-frame compute + sync +
-// trace, verbatim — visibility for every conditional row, both label
-// surfaces, the full nav rewire, and the highlight pull.
-void picker_teams_menu_engine_rewire(button* buttons, int num_buttons,
-                                     int& highlighted_button)
-{
-    g_teams_engine_state = compute_teams_menu_state();
-    sync_teams_menu_visibility(buttons, num_buttons, highlighted_button,
-                               g_teams_engine_state);
-    teams_engine_trace_paged_rows(g_teams_engine_state);
-}
-
-// Mirror the parent team-build loop's level-reload guard: a host SET LEVEL
-// synced into save.scen_num while parked here must reload the picker world
-// so JOIN gating reflects the real map. Engine placement note (V1): the
-// legacy loop reloaded at loop-top BEFORE the frame's compute; frame_tick
-// runs after reset and before the draw, so the recompute lands one frame
-// (10ms) later — the flows that watch this poll with timeouts.
-bool picker_teams_menu_engine_frame_tick(void* /*screen_state*/, int /*frame*/)
-{
-    screen* const myscreen = og::runtime::current_session->myscreen_;
-    if (g_teams_engine_last_level_id != myscreen->save_data.scen_num)
-    {
-        g_teams_engine_last_level_id = myscreen->save_data.scen_num;
-        myscreen->world().id = g_teams_engine_last_level_id;
-        myscreen->load_level();
-    }
-    return true;
-}
-
-// Draw split: row bars go BENEATH the buttons (the in-row pager must keep
-// the standard button face); all text content goes on top of both.
-void picker_teams_menu_engine_draw_background(void* /*screen_state*/)
-{
-    og::runtime::current_session->myscreen_->clearbuffer();
-    draw_backdrop();
-    draw_teams_menu_row_bars();
-}
-
-void picker_teams_menu_engine_draw_content(void* /*screen_state*/)
-{
-    draw_teams_menu_content(g_teams_engine_state,
-                            og::runtime::current_session->myscreen_->text_normal);
-}
-
-// §2.7 cross-control dispatch (the MATCHUP screen's one MenuSpecRow, G3).
-// Visible to every peer; host-only actionable. A host toggle is a SETTINGS
-// change: the sync propagates it over the wire and the server clears every
-// non-host machine's ready (§4.5 — the settings-clear-ready rule). The value
-// is sanitized on toggle ({0,1}; any junk counts as ON and lands on 0);
-// cross_control is SESSION-ONLY (never in the GTL file), so no company
-// autosave fires here. Both label surfaces update the same frame; the
-// per-frame sync re-derives them from the save thereafter.
-Sint32 picker_teams_menu_engine_on_spec_row(int row, void* /*screen_state*/)
-{
-    if (row != kTeamsMenuCrossControlIndex)
-        return 0;
-    SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    if (!picker_lobby_host_controls_visible())
-    {
-        TRACE("teams", "cross_control_denied");
-        popup_dialog("HOST CONTROLS THIS SETTING",
-                     "Only the host may\nchange cross-control");
-        return MENU_OK;
-    }
-    save.cross_control =
-        static_cast<std::int16_t>(save.cross_control != 0 ? 0 : 1);
-    TRACE("teams", "cross_control %d", static_cast<int>(save.cross_control));
-    picker_lobby_sync_settings_from_save();
-
-    const std::string label =
-        og::ui::format_cross_control_label(save.cross_control != 0);
-    if (static_cast<int>(pks().teamsmenu_buttons.size()) >
-        kTeamsMenuCrossControlIndex)
-    {
-        pks().teamsmenu_buttons[kTeamsMenuCrossControlIndex].label = label;
-    }
-    vbutton* const live = og::runtime::current_session
-                              ->allbuttons_[kTeamsMenuCrossControlIndex];
-    if (live != nullptr)
-        live->label = label;
-    return MENU_OK;
-}
-
-#ifdef TESTING
-// Test hook: set up and render exactly one MATCHUP frame (the real
-// draw order: backdrop -> row bars -> buttons -> content) and present it, so
-// pixel tests can probe button faces against the translucent row bars
-// without racing the blocking frame loop.
-void picker_test_render_teams_menu_frame()
-{
-    text& mytext = og::runtime::current_session->myscreen_->text_normal;
-    button* buttons = picker_teamsmenu_buttons();
-    int num_buttons = picker_teamsmenu_button_count();
-    int highlighted_button = kTeamsMenuBackIndex;
-    pks().teams_menu_team_page.fill(0);
-    TeamsMenuFrameState state = compute_teams_menu_state();
-    og::runtime::current_session->localbuttons_ =
-        init_buttons(buttons, num_buttons);
-    sync_teams_menu_visibility(buttons, num_buttons, highlighted_button, state);
-
-    og::runtime::current_session->myscreen_->clearbuffer();
-    draw_backdrop();
-    draw_teams_menu_row_bars();
-    draw_buttons(buttons, num_buttons);
-    draw_teams_menu_content(state, mytext);
-    draw_highlight(buttons[highlighted_button]);
-    og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
-}
-#endif
-
-// ---------------------------------------------------------------------------
 // VIEW LEVEL: read-only roster report of the current scenario, rendered from
 // a scratch headless level load (never touches the live picker world).
 // ---------------------------------------------------------------------------
@@ -1120,18 +573,311 @@ Sint32 view_scenario_page_flip(Sint32 step)
 // VIEW LEVEL: engine-hosted (§1.8 step 6; the spec lives in
 // menu_screen_specs.cpp, docs/menu-engine.md). The open screen's report and
 // PageModel live in the wrapper; the hooks read them through a file-static
-// pointer (the rewire and state-override signatures carry no screen_state —
-// the MATCHUP pattern). Null state = no open screen (the G5 sweep and the
+// pointer (the rewire and state-override signatures carry no screen_state).
+// Null state = no open screen (the G5 sweep and the
 // gate-lattice sweep drive the spec bare) and presents the single-page
 // shape: pagers hidden, BACK's right-link closed.
+// The change key of everything the VIEW LEVEL report reads that a lobby can
+// move under a parked viewer: the level, the four match-request knobs, the
+// campaign identity (save side + actual mount) and the STAGE GENERATION —
+// the heavy world rebuild lives in MatchStage behind its 250 ms debounce
+// (roster edits and knob turns move the owner's change key, restage, and
+// bump the generation), so the frame tick's job is only the cheap
+// deserialize + apply + line rebuild. A host cycling TEAMS / TROOPS /
+// SET LEVEL while a joiner sits in the viewer changes this key and the
+// frame tick rebuilds the report (the pre-#218 screen never refreshed).
+struct ViewScenarioKey
+{
+    int level_id = -1;
+    short team_count = 0;
+    short strip_troops = 0;
+    short capture_limit = 0;
+    short respawn_ticks = 0;
+    std::uint32_t stage_generation = 0;
+    // Seat block (#218): digest of the displayed seat facts. REQUIRED as a
+    // key member because ready flips deliberately never restage
+    // (MatchStageInputs excludes ready bits), so without it a parked viewer
+    // would show stale [RDY]/team seat lines.
+    std::uint64_t seat_digest = 0;
+    std::string save_campaign;
+    std::string mounted_campaign;
+
+    bool operator==(const ViewScenarioKey&) const = default;
+};
+
 struct ViewScenarioEngineState
 {
     og::ui::PageModel pager;
     std::vector<std::string> lines;
     std::string title;
+    // The SDL-hooked scratch level: the RENDER COPY the staged preview band
+    // heals from the broadcast pair bytes (the mandatory local load — a
+    // snapshot cannot rebuild a level), and the fallback census world when
+    // nothing is staged. Reloaded when the key's level/campaign moves.
+    std::unique_ptr<LevelRuntimeData> scenario;
+    // Render-copy heal bookkeeping: the generation whose pair the copy
+    // holds, and whether the copy currently presents a healed staged world
+    // (false = degradation text in the band).
+    std::uint32_t healed_generation = 0;
+    bool render_healed = false;
+    // The heal's own GameplayContext (the obmap/current_game discipline the
+    // mirror uses): apply_snapshot requires a bound context whose world IS
+    // the target, so the heal swaps this in around the applies and restores
+    // the picker's context after.
+    GameplayContext heal_ctx;
+    SaveData heal_save;
+    og::sim::SimEventLog heal_events;
+    IRandom* heal_rng_ptr = nullptr;
+    bool heal_active = false;
+    ViewScenarioKey key;
 };
 
 static ViewScenarioEngineState* g_view_scenario_engine_state = nullptr;
+
+// The seat context every VIEW LEVEL key read and rebuild consumes: the
+// replicated lobby seats (falling back to the shared local synthesis when
+// no lobby list exists — solo shows its own seats), plus this machine's
+// seat indices. Non-networked sessions mark every seat local: every seat
+// reads YOU.
+static og::ui::ScenarioSeatContext view_scenario_seat_context(
+    const SaveData& save)
+{
+    og::ui::ScenarioSeatContext context;
+    context.players = picker_lobby_players();
+    if (context.players.empty())
+        context.players = og::ui::synthesize_local_lobby_players(save);
+    context.local_player_indices = picker_lobby_local_player_indices();
+    if (!picker_lobby_is_networked())
+    {
+        context.local_player_indices.clear();
+        for (const og::sim::LobbyPlayer& player : context.players)
+            context.local_player_indices.push_back(player.player_index);
+    }
+    return context;
+}
+
+// FNV-1a over exactly the seat facts the report displays (player_index,
+// team, ready, company, is_local) — the ViewScenarioKey member that makes
+// restage-less seat changes (a ready flip) refresh a parked viewer.
+static std::uint64_t view_scenario_seat_digest(
+    const og::ui::ScenarioSeatContext& context)
+{
+    std::uint64_t hash = 14695981039346656037ull;
+    const auto mix = [&hash](std::uint64_t value) {
+        hash ^= value;
+        hash *= 1099511628211ull;
+    };
+    for (const og::sim::LobbyPlayer& player : context.players)
+    {
+        mix(player.player_index);
+        mix(static_cast<std::uint16_t>(player.team));
+        mix(player.ready ? 1u : 0u);
+        const bool local =
+            std::find(context.local_player_indices.begin(),
+                      context.local_player_indices.end(),
+                      player.player_index) !=
+            context.local_player_indices.end();
+        mix(local ? 1u : 0u);
+        for (const char ch : player.company)
+            mix(static_cast<std::uint8_t>(ch));
+        mix(0xffu);  // field terminator: company bytes never bleed across
+    }
+    return hash;
+}
+
+// One key read per frame; the same values feed both the comparison and any
+// rebuild, so a mid-poll lobby update can never split the key from the
+// report it stamps.
+static ViewScenarioKey view_scenario_current_key(const SaveData& save)
+{
+    ViewScenarioKey key;
+    key.level_id = save.scen_num;
+    key.team_count = save.ctf_team_count;
+    key.strip_troops = save.ctf_strip_scenario_troops;
+    key.capture_limit = save.ctf_capture_limit;
+    key.respawn_ticks = save.ctf_respawn_ticks;
+    key.save_campaign = save.current_campaign;
+    key.mounted_campaign = get_mounted_campaign();
+    og::ui::IPickerLobbyClient* const lobby =
+        og::ui::active_picker_lobby_client();
+    key.stage_generation = lobby != nullptr ? lobby->stage_generation() : 0;
+    key.seat_digest =
+        view_scenario_seat_digest(view_scenario_seat_context(save));
+    return key;
+}
+
+// Heal the RENDER COPY from the lobby client's serialized staged pair: the
+// host pane and every joiner pane deserialize the SAME bytes the wire
+// carries (networked exactness is byte-level, not re-derived). apply runs
+// only when the generation moved; failure is honest (the band renders the
+// degradation text, never a stale half-applied world claiming to be the
+// stage). The pair's level must match the loaded scratch level — a restage
+// to a different level heals after the lobby-synced save reloads the copy.
+static void view_scenario_heal_render_copy(ViewScenarioEngineState& state)
+{
+    og::ui::IPickerLobbyClient* const lobby =
+        og::ui::active_picker_lobby_client();
+    std::uint32_t generation = 0;
+    const std::vector<std::uint8_t>* setup_bytes = nullptr;
+    const std::vector<std::uint8_t>* keyframe_bytes = nullptr;
+    if (lobby == nullptr || state.scenario == nullptr ||
+        !lobby->staged_keyframe_bytes(generation, setup_bytes,
+                                      keyframe_bytes))
+    {
+        state.render_healed = false;
+        state.healed_generation = 0;
+        return;
+    }
+    if (state.render_healed && state.healed_generation == generation)
+        return;
+    state.render_healed = false;
+    state.healed_generation = generation;
+    const std::optional<og::sim::InitialSetupMessage> setup =
+        og::sim::deserialize_initial_setup_message(*setup_bytes);
+    if (!setup.has_value() ||
+        setup->level_id != state.scenario->world().id)
+        return;
+    og::sim::WorldSnapshot snapshot;
+    try
+    {
+        snapshot = og::sim::deserialize_snapshot(*keyframe_bytes);
+    }
+    catch (const std::exception&)
+    {
+        return;
+    }
+    // The apply discipline the preview mirror uses: apply_snapshot requires
+    // a bound GameplayContext whose world IS the target, so the heal swaps
+    // its own context in and restores the picker's after. The apply runs
+    // under its own event suppression guard — the pane can never
+    // manufacture announcements, and the tick-0 apply's on_load re-arm is
+    // inert (the pane never ticks). Stripped troops reconcile away;
+    // snapshot-created bots get sprites through the same
+    // create_missing_entities + SDL loader wiring a mid-game joiner uses.
+    GameWorld& render_world = state.scenario->world();
+    state.heal_ctx.world = &render_world;
+    state.heal_ctx.save = &state.heal_save;
+    state.heal_ctx.sim_events = &state.heal_events;
+    state.heal_ctx.config = &cfg;
+    state.heal_rng_ptr = &render_world.rng_;
+    state.heal_ctx.session_rng_ref = &state.heal_rng_ptr;
+    state.heal_ctx.gameplay_active_ref = &state.heal_active;
+    GameplayContext* const previous_context = current_game;
+    current_game = &state.heal_ctx;
+    og::sim::apply_initial_setup_to_world(render_world, *setup);
+    const bool applied = og::sim::apply_snapshot(render_world, snapshot);
+    current_game = previous_context;
+    if (!applied)
+        return;
+    state.render_healed = true;
+    TRACE("picker", "view_scenario pane gen=%u",
+          static_cast<unsigned>(generation));
+}
+
+// (Re)build the report + lines + pager + title: the STAGED reader (host
+// stage / joiner mirror through the lobby client), with the scratch level
+// as the count-only fallback world when nothing is staged.
+static void view_scenario_rebuild(ViewScenarioEngineState& state,
+                                  const SaveData& save)
+{
+    og::ui::IPickerLobbyClient* const lobby =
+        og::ui::active_picker_lobby_client();
+    const GameWorld* staged =
+        lobby != nullptr ? lobby->staged_world() : nullptr;
+    og::ui::StagePreviewStatus status = og::ui::StagePreviewStatus::None;
+    if (lobby != nullptr &&
+        lobby->staged_preview_health() ==
+            og::ui::IPickerLobbyClient::StagedPreviewHealth::Failed)
+        status = og::ui::StagePreviewStatus::Failed;
+    else if (staged != nullptr)
+        status = og::ui::StagePreviewStatus::Staged;
+    // A staged pair for a DIFFERENT level than the save's (a restage racing
+    // the lobby save sync) must not caption this level's screen.
+    if (staged != nullptr && staged->id != save.scen_num)
+        staged = nullptr;
+    const og::ui::ScenarioSeatContext seat_context =
+        view_scenario_seat_context(save);
+    const og::ui::ScenarioRosterReport report =
+        og::ui::build_scenario_roster_report(
+            staged, status, save,
+            state.scenario != nullptr ? &state.scenario->world() : nullptr,
+            &seat_context);
+    state.lines = og::ui::format_scenario_report_lines(report);
+    state.pager = og::ui::PageModel::make(
+        static_cast<int>(state.lines.size()), kViewScenarioRowsPerPage);
+    state.title =
+        std::format("SCEN {}: {}", save.scen_num,
+                    state.scenario->world().title);
+    if (state.title.size() > 48)
+        state.title.resize(48);
+    // Test seam (no-op in production): the match block — the lines above
+    // the first blank separator — so injector flows assert exact staged
+    // census lines without racing the menu thread.
+    for (const std::string& line : state.lines)
+    {
+        if (line.empty())
+            break;
+        TRACE("picker", "view_scenario line %s", line.c_str());
+    }
+}
+
+// Per-frame refresh guard: rebuild the cached report when the change key
+// moved (host SET LEVEL / TEAMS / TROOPS under a parked joiner — the
+// blocking-subscreen level-reload discipline; a stage-generation move —
+// the owner's debounced restage or a joiner mirror refresh — re-heals the
+// render copy first). Never exits the loop.
+bool picker_view_scenario_engine_frame_tick(void* /*screen_state*/,
+                                            int /*frame*/)
+{
+    ViewScenarioEngineState* const state = g_view_scenario_engine_state;
+    if (state == nullptr || state->scenario == nullptr)
+        return true;
+    const SaveData& save =
+        og::runtime::current_session->myscreen_->save_data;
+    ViewScenarioKey key = view_scenario_current_key(save);
+    if (key == state->key)
+        return true;
+    const bool level_moved =
+        key.level_id != state->key.level_id ||
+        key.save_campaign != state->key.save_campaign ||
+        key.mounted_campaign != state->key.mounted_campaign;
+    state->key = std::move(key);
+    if (level_moved)
+    {
+        // Mirror the entry guards without popups (mid-frame): an unmounted
+        // campaign or a failed load renders its refusal as the report.
+        if (get_mounted_campaign() != save.current_campaign)
+        {
+            state->lines = {"CAMPAIGN NOT MOUNTED"};
+            state->pager = og::ui::PageModel::make(
+                static_cast<int>(state->lines.size()),
+                kViewScenarioRowsPerPage);
+            state->title = std::format("SCEN {}:", save.scen_num);
+            state->render_healed = false;
+            return true;
+        }
+        auto fresh = std::make_unique<LevelRuntimeData>(
+            save.scen_num, false, &sdl_level_data_hooks());
+        if (!fresh->load())
+        {
+            state->lines = {"COULD NOT LOAD LEVEL"};
+            state->pager = og::ui::PageModel::make(
+                static_cast<int>(state->lines.size()),
+                kViewScenarioRowsPerPage);
+            state->title = std::format("SCEN {}:", save.scen_num);
+            state->render_healed = false;
+            return true;
+        }
+        state->scenario = std::move(fresh);
+        state->render_healed = false;
+        state->healed_generation = 0;
+    }
+    view_scenario_heal_render_copy(*state);
+    view_scenario_rebuild(*state, save);
+    TRACE("picker", "view_scenario refresh lines=%d page=%d",
+          static_cast<int>(state->lines.size()), state->pager.page);
+    return true;
+}
 
 // PREV/NEXT visibility: the legacy entry-time `hidden = !multi_page()`,
 // re-derived per frame (page count never changes while the screen is open).
@@ -1182,21 +928,24 @@ Sint32 picker_view_scenario_engine_consume_click(Sint32 retvalue,
     return retvalue;
 }
 
-// The legacy per-frame content pass, verbatim (runs after draw_buttons —
-// the report frame at (5,5,314,160) never covers the y>=170 buttons).
+// The per-frame content pass (runs after draw_buttons — the report frame at
+// (5,5,314,160) never covers the y>=170 buttons). The census rows sit BELOW
+// the staged preview band the background pass painted; the band region
+// itself is never overdrawn here.
 void picker_view_scenario_engine_draw_content(void* /*screen_state*/)
 {
     const ViewScenarioEngineState* const state = g_view_scenario_engine_state;
     if (state == nullptr)
         return;
     text& mytext = og::runtime::current_session->myscreen_->text_normal;
-    og::runtime::current_session->myscreen_->draw_button(5, 5, 314, 160, 2, 1);
     mytext.write_xy(10, 8, state->title.c_str(), static_cast<unsigned char>(BLACK), 1);
     const int first_line = state->pager.first_index();
     for (int line_index = first_line; line_index < state->pager.end_index();
          ++line_index)
     {
-        mytext.write_xy(10, 18 + (line_index - first_line) * 6,
+        mytext.write_xy(10,
+                        kViewScenarioCensusTopY +
+                            (line_index - first_line) * kViewScenarioRowPitch,
                         state->lines[static_cast<std::size_t>(line_index)].c_str(),
                         static_cast<unsigned char>(BLACK), 1);
     }
@@ -1204,6 +953,144 @@ void picker_view_scenario_engine_draw_content(void* /*screen_state*/)
     {
         mytext.write_xy(140, 176, state->pager.indicator().c_str(), WHITE, 1);
     }
+}
+
+// Deterministic render-only ping-pong in [0, span]: a triangle wave over the
+// classic UI clock (query_timer, ~13.6 ms grain). Wall-clock cosmetic —
+// zero sim contact, zero RNG; tests assert band content, never pan phase.
+static Sint32 preview_pan_offset(Sint32 span, Sint32 ticks_per_px)
+{
+    if (span <= 0 || ticks_per_px <= 0)
+        return 0;
+    const Sint32 phase = (query_timer() / ticks_per_px) % (span * 2);
+    return phase < span ? phase : span * 2 - phase;
+}
+
+// Borrowing the picker's viewob[0] must leave no residue on it. Nulling
+// control makes viewscreen::redraw take its control-less branch, which copies
+// the staged level's camera ONTO THE VIEW (render/view.cpp: topx =
+// data->level_visuals().topx). screen::relayout_views() then restores the
+// view's RECT and nothing else — viewscreen::resize never writes topx/topy,
+// which are set exactly once at construction — so the pan offset used to
+// survive the whole menu session and shift every pixie draw that goes through
+// the view: the picker backdrop, the graphic buttons, the main-menu logo and
+// the HIRE/TRAIN portrait walker (whose canvas-direct bevel stayed put, hence
+// "an empty box"). Destructor-based restore because the healed branch below
+// early-returns; a restore written at the end of the function never runs.
+namespace
+{
+class ScopedBorrowedView
+{
+public:
+    explicit ScopedBorrowedView(viewscreen& view)
+        : view_(view), topx_(view.topx), topy_(view.topy),
+          control_(view.control), following_(view.following_)
+    {
+    }
+
+    ~ScopedBorrowedView()
+    {
+        view_.topx = topx_;
+        view_.topy = topy_;
+        view_.control = control_;
+        view_.following_ = following_;
+    }
+
+    ScopedBorrowedView(const ScopedBorrowedView&) = delete;
+    ScopedBorrowedView& operator=(const ScopedBorrowedView&) = delete;
+
+private:
+    viewscreen& view_;
+    Sint32 topx_;
+    Sint32 topy_;
+    walker* control_;
+    bool following_;
+};
+}  // namespace
+
+// The staged-preview background pass (#218): the classic backdrop, then the
+// STAGED world rendered into the preview band through the borrowed viewob[0]
+// (the demo Center-camera shape: direct-geometry resize, control-less free
+// camera from the level's own LevelVisuals — TRAP B dangling-control never
+// applies because the pane never points control at a staged walker). Slow
+// horizontal pan surveys pitches wider than the band (direct-geometry views
+// have no zoom); geometry is restored via relayout_views after every draw and
+// the camera by ScopedBorrowedView.
+// Degradation states render text into the band — never a crash, never a
+// stale world presented as the stage; the census fallback lines still render
+// below through the content pass.
+void picker_view_scenario_staged_draw_background(void* screen_state)
+{
+    (void)screen_state;
+    screen* const scr = og::runtime::current_session->myscreen_;
+    // The classic picker frame first (the shared backdrop pass's shape).
+    scr->clearbuffer();
+    draw_backdrop();
+    text& mytext = scr->text_normal;
+    scr->draw_button(kViewScenarioFrameX, kViewScenarioFrameY,
+                     kViewScenarioFrameW, kViewScenarioFrameH, 2, 1);
+    const ViewScenarioEngineState* const state = g_view_scenario_engine_state;
+    if (state != nullptr && state->render_healed && state->scenario != nullptr &&
+        state->scenario->level_visuals().renderer_ != nullptr &&
+        scr->viewob[0] != nullptr)
+    {
+        viewscreen* const view = scr->viewob[0].get();
+        const ScopedBorrowedView borrowed(*view);
+        view->control = nullptr;
+        view->following_ = false;
+        // TRAP C: redraw(data,...) draws the view's message strip
+        // unconditionally; staging never writes it, and this clears any
+        // gameplay residue.
+        view->clear_text();
+        GameWorld& staged_world = state->scenario->world();
+        LevelVisuals& visuals = state->scenario->level_visuals();
+        const Sint32 span_x = std::max(
+            0, static_cast<int>(staged_world.pixmaxx) -
+                   kViewScenarioPreviewBandW);
+        const Sint32 span_y = std::max(
+            0, static_cast<int>(staged_world.pixmaxy) -
+                   kViewScenarioPreviewBandH);
+        // ~4 timer ticks (~55 ms) per pixel horizontally; the vertical
+        // wave is 4x slower and centered, so the pan surveys the whole
+        // staged world without racing it.
+        visuals.topx = preview_pan_offset(span_x, 4);
+        visuals.topy = span_y / 2 +
+            (span_y > 0 ? preview_pan_offset(span_y, 16) - span_y / 2 : 0);
+        {
+            ScopedUiCanvas ui_canvas(*scr);
+            view->resize(kViewScenarioPreviewBandX, kViewScenarioPreviewBandY,
+                         kViewScenarioPreviewBandW, kViewScenarioPreviewBandH);
+            (void)view->redraw(state->scenario.get(), /*draw_radar=*/false);
+        }
+        scr->relayout_views();
+        return;
+    }
+
+    // Degradation text centered in the band (6 px font, 6 px per char).
+    const char* band_text = "PREVIEW UNAVAILABLE";
+    if (state != nullptr)
+    {
+        og::ui::IPickerLobbyClient* const lobby =
+            og::ui::active_picker_lobby_client();
+        using Health = og::ui::IPickerLobbyClient::StagedPreviewHealth;
+        const Health health = lobby != nullptr
+            ? lobby->staged_preview_health()
+            : Health::None;
+        if (health == Health::Failed)
+            band_text = "STAGING FAILED";
+        else if (health == Health::None &&
+                 picker_lobby_is_networked() &&
+                 !picker_lobby_host_controls_visible())
+            band_text = "WAITING FOR HOST PREVIEW";
+        else if (health == Health::Unavailable || health == Health::None)
+            band_text = "STAGING PREVIEW UNAVAILABLE";
+    }
+    const int text_w = static_cast<int>(std::strlen(band_text)) * 6;
+    mytext.write_xy(
+        kViewScenarioPreviewBandX +
+            std::max(0, (kViewScenarioPreviewBandW - text_w) / 2),
+        kViewScenarioPreviewBandY + kViewScenarioPreviewBandH / 2 - 3,
+        band_text, static_cast<unsigned char>(BLACK), 1);
 }
 
 // VIEW LEVEL, engine-hosted (the legacy loop is gone). The pre-loop guards,
@@ -1224,28 +1111,26 @@ Sint32 create_view_scenario_menu(Sint32 arg1)
 
     // Scratch load with the SDL hooks: the hook-less default loader lacks the
     // CTF treasure families (FAMILY_FLAG / FAMILY_CTF_POINT).
-    LevelRuntimeData scenario(save.scen_num, false, &sdl_level_data_hooks());
-    if (!scenario.load())
+    ViewScenarioEngineState state;
+    state.scenario = std::make_unique<LevelRuntimeData>(
+        save.scen_num, false, &sdl_level_data_hooks());
+    if (!state.scenario->load())
     {
         popup_dialog("VIEW LEVEL", "COULD NOT\nLOAD LEVEL");
         return MENU_REDRAW;
     }
 
-    const og::ui::ScenarioRosterReport report =
-        og::ui::build_scenario_roster_report(scenario.world(), save);
-    ViewScenarioEngineState state;
-    state.lines = og::ui::format_scenario_report_lines(report);
+    // The staged reader needs no roster marshaling: the staged world (host
+    // stage / joiner mirror) already CONTAINS the combined lobby rosters as
+    // spawned walkers, and the render copy heals from the same broadcast
+    // bytes. Read the key once here; the frame tick re-reads per frame.
+    state.key = view_scenario_current_key(save);
+    view_scenario_heal_render_copy(state);
     // The pinned VIEW LEVEL pager runs on the engine PageModel (G6): page
     // count, clamped flips, hidden-when-one-page, and the "p/N" indicator
     // all come from the model; the oracle test in tests/unit/test_menu_spec
     // pins its equivalence to the legacy arithmetic this replaced.
-    state.pager = og::ui::PageModel::make(
-        static_cast<int>(state.lines.size()), kViewScenarioRowsPerPage);
-
-    state.title =
-        std::format("SCEN {}: {}", save.scen_num, scenario.world().title);
-    if (state.title.size() > 48)
-        state.title.resize(48);
+    view_scenario_rebuild(state, save);
 
     TRACE("picker", "view_scenario lines=%d page=%d",
           static_cast<int>(state.lines.size()), state.pager.page);
@@ -1269,7 +1154,7 @@ Sint32 create_view_scenario_menu(Sint32 arg1)
 // ---------------------------------------------------------------------------
 // SCENARIO subscreen: SET CAMPAIGN / SET LEVEL (host-gated) with the
 // campaign-name / level-title strips alongside, plus the always-visible
-// VIEW LEVEL | MATCHUP | PROGRESS row. Blocking-subscreen pattern: per-frame
+// VIEW LEVEL | PROGRESS row. Blocking-subscreen pattern: per-frame
 // picker_lobby_poll, joiner remote-start honored (propagates MENU_EXIT with
 // the StartGame item), BACK returns MENU_REDRAW to the team-build screen.
 // ---------------------------------------------------------------------------

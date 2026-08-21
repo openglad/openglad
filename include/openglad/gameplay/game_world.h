@@ -161,6 +161,17 @@ public:
     // created on first use; separate instances per world keep server and
     // mirror script state isolated (same rule as obmap).
     og::script::WorldScripts& scripts();
+    // Staged-lobby adoption (#218): MOVE `source`'s scripting VM into this
+    // world, replacing any VM this world had. The VM binds its world through
+    // the thread-local gameplay context at dispatch time
+    // (active_world_scripts), never a stored pointer, so it follows the
+    // content transfer safely — and it MUST: dynamic registry state the
+    // staged on_load created (og.set_entity_hooks tables keyed by the moved
+    // entity ids, module-local state) exists nowhere else, and the adopted
+    // world's claimed on_load latch correctly prevents re-registration. The
+    // built-generation staleness check in scripts() still applies to the
+    // moved VM afterwards.
+    void adopt_scripts_from(GameWorld& source) noexcept;
     GameWorld& operator=(GameWorld&&) = delete;
 
     // Level metadata
@@ -295,6 +306,10 @@ public:
     walker* add_fx_ob(Order order, std::int32_t family);
     walker* add_weap_ob(Order order, std::int32_t family);
     short remove_ob(walker* ob);
+    // Fire-path disposal of a corpse the dead sweep held in oblist while its
+    // respawn entry was pending: unindex it and move it to dead_list (never a
+    // hard erase — raw borrows and Lua walker handles stay valid).
+    void retire_corpse(walker* ob);
     walker* find_by_id(std::uint32_t entity_id);
     const walker* find_by_id(std::uint32_t entity_id) const;
     std::uint32_t tracked_entity_id(const walker* entity) const;
@@ -403,6 +418,28 @@ public:
 
     // Run one simulation tick.
     void tick();
+
+    // The level on_load dispatch, factored out of tick() so a staged lobby
+    // world can run it before the first tick (spawns land in the preview,
+    // announcements queue in the staged event log). Latch-guarded on
+    // last_level_id_ — tick() calls the same method, so on_load exists
+    // exactly once per (world, level) whichever site reaches it first.
+    void run_pending_level_on_load();
+
+    // Mark the level on_load dispatch as already delivered WITHOUT running
+    // it: the authoritative adopter of a staged world transfers the latch
+    // truthfully (the staged world ran on_load and the adopted state IS that
+    // world's state). Mirrors keep the latch armed instead (apply_snapshot's
+    // tick-0 branch, PR #195) — they never tick, so it stays inert there.
+    void claim_level_load_latch() noexcept { last_level_id_ = id; }
+
+    // True while the level on_load dispatch is still owed for the current
+    // world id (the latch is armed). Adoption tests pin the truthful-claim
+    // contract through this read.
+    [[nodiscard]] bool owes_level_on_load() const noexcept
+    {
+        return last_level_id_ != id;
+    }
 
     std::uint32_t tick_count_ = 0;
     og::sim::SimRandom rng_;

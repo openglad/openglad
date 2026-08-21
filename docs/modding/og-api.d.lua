@@ -75,6 +75,7 @@
 ---@field do_bounce fun(self: og.Walker): integer # do_bounce lives on weap.
 ---@field do_heal_effects fun(self: og.Walker, healer: og.Walker?, target: og.Walker, amount: integer)
 ---@field do_summon fun(self: og.Walker, fam: integer, life: integer): og.Walker?
+---@field dormant fun(self: og.Walker): boolean
 ---@field drawcycle fun(self: og.Walker): integer
 ---@field facing fun(self: og.Walker, x: integer, y: integer): integer
 ---@field family fun(self: og.Walker): integer
@@ -612,8 +613,8 @@
 ---@field campaign_grant_gold fun(amount: integer)
 ---@field campaign_is_host fun(): boolean # og.campaign_is_host() → true/false — so a script can shape host-only pages (level rows and match presets) without tripping the refusal.
 ---@field campaign_level_completed fun(id: integer): boolean # og.campaign_level_completed(id) — the menu-time twin of the sim's og.level_completed.
----@field campaign_match_get fun(name: string): integer # og.campaign_match_get(name) → int32 — the menu-time twin of the sim's read-only og.match_setting, over the persisted MATCHUP knobs ("team_count", "score_limi...
----@field campaign_match_set fun(name: string, value: integer): boolean # og.campaign_match_set(name, value) → true/false — write-through to the MATCHUP knobs.
+---@field campaign_match_get fun(name: string): integer # og.campaign_match_get(name) → int32 — the menu-time twin of the sim's read-only og.match_setting, over the persisted match knobs ("team_count", "score_limit"...
+---@field campaign_match_set fun(name: string, value: integer): boolean # og.campaign_match_set(name, value) → true/false — write-through to the match knobs.
 ---@field campaign_random fun(n: integer): integer # og.campaign_random(n) → integer in 1..n — the menu-time roll.
 ---@field campaign_scenario_title fun(id: integer): string # og.campaign_scenario_title(id) → title string, "" when absent.
 ---@field campaign_spend_gold fun(amount: integer): boolean # og.campaign_spend_gold(amount) → true/false — the affordability-checked debit for variable-priced flows inside actions (fixed `cost` debits are owned by C++...
@@ -696,11 +697,11 @@
 ---@field respawn_anchor_count fun(team: integer): integer # og.respawn_anchor_count(team) — authored start-marker anchors recorded for a team (filled at CTF init / the first scripted tick).
 ---@field respawn_pending fun(entity: og.Walker): boolean # og.respawn_pending(ent) — true while an engine respawn entry (player revive or AI replacement) is queued for this entity id.
 ---@field respawn_pending_count fun(team: integer): integer # og.respawn_pending_count(team) — queued entries for a team (error outside [0, 3]).
----@field respawn_schedule fun(entity: og.Walker, ticks: integer?): boolean # og.respawn_schedule(ent [, ticks]) — queue a dead Living; player stains survive until fire, while life gems and AI stains scrub at schedule.
+---@field respawn_schedule fun(entity: og.Walker, ticks: integer?): boolean # og.respawn_schedule(ent [, ticks]) — queue a dead Living; every stain — player and AI — survives until fire, while life gems scrub at schedule.
 ---@field scare_duration fun(arg1: integer): integer
 ---@field scare_radius fun(arg1: integer): integer
 ---@field scenario_title fun(name: string): string # og.scenario_title(name) → title string ("none" when unreadable).
----@field scrub_corpse_stain fun(x: integer, y: integer, floor: integer?) # og.scrub_corpse_stain(x, y [, floor]) — preserve pending-player STAIN drops; otherwise kill fresh STAIN/LIFE_GEM drops at a corpse position (its top-left) so...
+---@field scrub_corpse_stain fun(x: integer, y: integer, floor: integer?) # og.scrub_corpse_stain(x, y [, floor]) — preserve pending-respawn STAIN drops (player or AI); otherwise kill fresh STAIN/LIFE_GEM drops at a corpse position (...
 ---@field set_beacon fun(slot: integer, entity: og.Walker?, t: integer?) # og.set_beacon(slot, entity_or_nil [, team]) — mark an entity for the off-screen/radar beacon channel (the Mutant marker, a flag carrier).
 ---@field set_enemy_freeze fun(enemy_freeze: integer)
 ---@field set_entity_hooks fun(entity: og.Walker, hooks: og.EntityHooks) # og.set_entity_hooks(handle, { on_death = fn }) — per-entity overrides, registered from a level script (typically in on_load after finding the entity).

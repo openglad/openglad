@@ -99,8 +99,8 @@ level, and experience fields.
   company that controls them.
 - Multiple seats may deliberately choose the same team for co-op or team
   matchups. Seats on different teams oppose one another.
-- The full **MATCHUP** overview lives on the Scenario menu, beside the level
-  it describes.
+- The full seat and team overview lives in **VIEW LEVEL**, on the Scenario
+  menu beside the level it describes.
 - Tap the scenario summary to open the Scenario menu.
 - Network guests may inspect foreign rows but cannot mutate them.
 
@@ -138,10 +138,9 @@ confirmation can hold it there; the player must choose **READY** again.
 ### 2.7 Cross-control
 
 The host may allow players to control eligible characters owned by other
-machines from **MATCHUP**. Changing this session-only setting clears guest
-readiness. It does not alter character colors or company ownership.
-
-![Matchup overview](media/team-selection/matchup.png)
+machines from **DIFFICULTY**. Changing this session-only setting clears guest
+readiness. It does not alter character colors or company ownership. Every
+networked peer sees the setting; only the host may change it.
 
 ### 2.8 Follow mode
 
@@ -344,9 +343,9 @@ window between **<** and **>**. Every neighbour on the row is seven pixels
 apart, the **+** starts on BACK's left edge, and the **>** closes on the
 panel's right rail. The scenario summary is a direct click target.
 
-The rail once opened with a **SEATS** label that led to the MATCHUP overview.
+The rail once opened with a **SEATS** label that led to the team overview.
 That was a second, worse-placed door to a screen the Scenario menu already
-owns, and it cost the cards their breathing room — the four faces sat a
+owned, and it cost the cards their breathing room — the four faces sat a
 single pixel apart. Issue #236 spent the label's width on the gutters and
 gave its ordinal to the **+**.
 

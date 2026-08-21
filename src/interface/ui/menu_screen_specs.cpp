@@ -47,7 +47,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <chrono>
 #include <cstddef>
 #include <cstring>
@@ -97,15 +96,6 @@ void picker_testing_cloud_passphrase_queue_clear();
 void picker_testing_cloud_passphrase_queue_push(const char* value);
 bool picker_testing_cloud_passphrase_queue_pop(std::string& out);
 #endif
-// MATCHUP engine hooks (defined beside their file-local helpers in
-// picker_team_build.cpp).
-void picker_teams_menu_engine_reset_open_state();
-void picker_teams_menu_engine_rewire(button* buttons, int num_buttons,
-                                     int& highlighted_button);
-bool picker_teams_menu_engine_frame_tick(void* screen_state, int frame);
-void picker_teams_menu_engine_draw_background(void* screen_state);
-void picker_teams_menu_engine_draw_content(void* screen_state);
-Sint32 picker_teams_menu_engine_on_spec_row(int row, void* screen_state);
 // picker_compute_ready_go_presentation (§2.6) is declared in
 // picker_sdl_defs.h and defined in picker_team_build.cpp.
 // HIRE / TRAIN engine hooks (§1.8 step 6; defined beside their file-local
@@ -135,6 +125,8 @@ void picker_view_scenario_engine_rewire(button* buttons, int num_buttons,
 Sint32 picker_view_scenario_engine_consume_click(Sint32 retvalue,
                                                  void* screen_state);
 void picker_view_scenario_engine_draw_content(void* screen_state);
+bool picker_view_scenario_engine_frame_tick(void* screen_state, int frame);
+void picker_view_scenario_staged_draw_background(void* screen_state);
 // HELP engine hooks (#168; defined beside the tab content in help.cpp).
 og::ui::RowState help_engine_pager_row_state(
     const og::ui::MenuLabelContext& context);
@@ -210,13 +202,20 @@ std::string infinite_gold_row_label(const MenuLabelContext& context)
         : std::string("Infinite Gold: Off");
 }
 
+std::string cross_control_row_label(const MenuLabelContext& context)
+{
+    return format_cross_control_label(
+        context.save != nullptr && context.save->cross_control != 0);
+}
+
 constexpr GateBinding kHostOnlyGate{.gate = MenuGate::HostOnly};
+constexpr GateBinding kNetworkedOnlyGate{.gate = MenuGate::NetworkedOnly};
 
 constexpr MenuButtonSpec kDifficultyRows[] = {
     {.id = "difficulty_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 10, .y = 10, .w = 50, .h = 15,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 5, .down = 1}},
+     .nav = {.up = 7, .down = 1}},
     {.id = "difficulty", .label = "Difficulty: Battle",
      .x = 90, .y = 35, .w = 140, .h = 15,
      .action = ButtonAction::SetDifficulty, .arg = -1,
@@ -250,9 +249,21 @@ constexpr MenuButtonSpec kDifficultyRows[] = {
     {.id = "infinite_gold", .label = "Infinite Gold: Off",
      .x = 90, .y = 150, .w = 140, .h = 15,
      .action = ButtonAction::ToggleInfiniteGold, .arg = -1,
-     .nav = {.up = 5, .down = 0},
+     .nav = {.up = 5, .down = 7},
      .label_binding = {.formatter = &infinite_gold_row_label},
      .gate = kHostOnlyGate},
+    // §2.7 cross-control, re-homed from MATCHUP (#218) on the band pitch
+    // (y=150+23=173; the face bottom at 188 clears the panel bevel at 196).
+    // Deliberately NOT host-gated like its siblings: a networked JOINER
+    // keeps sight of the mode that changes their rights (the gate hides it
+    // only in local sessions), while change_cross_control() popups for a
+    // non-host click. Session-only value — never in the .gtl.
+    {.id = "cross_control", .label = "CTRL: OWN",
+     .x = 90, .y = 173, .w = 140, .h = 15,
+     .action = ButtonAction::ToggleCrossControl, .arg = -1,
+     .nav = {.up = 6, .down = 0},
+     .label_binding = {.formatter = &cross_control_row_label},
+     .gate = kNetworkedOnlyGate},
 };
 
 // The options-family panel chrome, shared by DIFFICULTY and every options
@@ -270,9 +281,10 @@ void difficulty_draw_content(void* /*screen_state*/)
 {
     og::runtime::current_session->myscreen_->text_normal.write_xy(
         80, 13, DARK_BLUE, "%s", "DIFFICULTY");
-    // A joiner's rows are all hidden (sync_difficulty_menu_visibility), so
-    // the panel says who does own them instead of standing empty. Centered
-    // where the rows would have been, at 6px a glyph.
+    // A joiner's settings rows are hidden (sync_difficulty_menu_visibility;
+    // only the read-only CTRL row at y=173 may remain), so the panel says
+    // who does own them instead of standing empty. Centered where the rows
+    // would have been, at 6px a glyph.
     const std::string caption = difficulty_panel_caption();
     if (!caption.empty()) {
         const int x = 160 - static_cast<int>(caption.size()) * 3;
@@ -1218,21 +1230,21 @@ bool level_reload_guard_frame_tick(void* screen_state, int /*frame*/)
 // ---------------------------------------------------------------------------
 // SCENARIO subscreen (§1.8 step 5): the column at x=30 stacks the host-gated
 // SET CAMPAIGN / SET LEVEL (their name strips draw alongside) over the
-// always-visible VIEW LEVEL | MATCHUP | PROGRESS row; BACK sits apart at
+// always-visible VIEW LEVEL | PROGRESS row and the versus-gated y=140
+// match-settings band (TEAMS | TROOPS | LIMIT, #218); BACK sits apart at
 // (30,170) so no other screen's "back" shares its geometry (injector tests
-// disambiguate the per-screen "back" buttons by position). Rows transcribed
-// VERBATIM from the deleted k_scenariomenu_buttons; static nav encodes the
-// host variant and the legacy sync (hide + up-link rewire) is the spec's
-// Rewire program (G1). Nested screens return MENU_REDRAW for reset_buttons
-// to consume (exit_on_redraw stays FALSE); BACK carries MENU_EXIT and the
-// create_scenario_menu wrapper folds it to MENU_REDRAW unless a start was
-// selected.
+// disambiguate the per-screen "back" buttons by position). Static nav
+// encodes the host+versus (all-visible) variant; the sync (hide + rewire)
+// is the spec's Rewire program (G1). Nested screens return MENU_REDRAW for
+// reset_buttons to consume (exit_on_redraw stays FALSE); BACK carries
+// MENU_EXIT and the create_scenario_menu wrapper folds it to MENU_REDRAW
+// unless a start was selected.
 
 constexpr MenuButtonSpec kScenarioMenuRows[] = {
     {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 30, .y = 170, .w = 60, .h = 20,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 3}},
+     .nav = {.up = 7}},
     {.id = "set_campaign", .label = "SET CAMPAIGN",
      .x = 30, .y = 40, .w = 80, .h = 15,
      .action = ButtonAction::DoPickCampaign, .arg = -1,
@@ -1244,26 +1256,48 @@ constexpr MenuButtonSpec kScenarioMenuRows[] = {
     {.id = "view_scenario", .label = "VIEW LEVEL",
      .x = 30, .y = 100, .w = 80, .h = 15,
      .action = ButtonAction::ViewScenario, .arg = -1,
-     .nav = {.up = 2, .down = 0, .right = 4}},
-    {.id = "matchup", .label = "MATCHUP",
-     .x = 120, .y = 100, .w = 80, .h = 15,
-     .action = ButtonAction::CreateTeamsMenu, .arg = -1,
-     .nav = {.up = 2, .down = 6, .left = 3, .right = 5}},
+     .nav = {.up = 2, .down = 7, .right = 5}},
+    // The ordinal the MATCHUP door vacated (#218): the screen's seat/team
+    // overview lives in VIEW LEVEL now and its knobs re-homed below (TEAMS /
+    // LIMIT) and onto DIFFICULTY (cross-control). Parked exactly like the
+    // Base Camp's seat_rail_spare — zero-size rect, empty label, hidden, no
+    // nav — so kScenarioMenuProgressIndex and every pin below never shifted.
+    {.id = "scenario_spare", .label = "",
+     .x = 0, .y = 0, .w = 0, .h = 0,
+     .action = ButtonAction::MenuSpecRow, .arg = kScenarioMenuSpareIndex,
+     .hidden = true},
+    // PROGRESS left-packs into the vacated middle cell so the y=100 row
+    // reads VIEW LEVEL | PROGRESS on the declared 30/120/210 grid.
     {.id = "progress", .label = "PROGRESS",
-     .x = 210, .y = 100, .w = 80, .h = 15,
+     .x = 120, .y = 100, .w = 80, .h = 15,
      .action = ButtonAction::CreateProgressMenu, .arg = -1,
-     .nav = {.up = 2, .down = 0, .left = 4}},
+     .nav = {.up = 2, .down = 6, .left = 3}},
     // Scenario troops: keep the authored cast, or strip all of it.
     // Host-gated like SET CAMPAIGN and SET LEVEL; joiners read the label off
     // the lobby-synced save. It sits at (120,140) rather than the y=70 cell
     // beside SET LEVEL because scenario_menu_draw_content paints the level
     // title strip from x=114 across that whole row AFTER draw_buttons, so a
-    // button there would be overprinted. (120,140) is the free grid cell
-    // directly under MATCHUP, which keeps it grouped with the match settings.
+    // button there would be overprinted. (120,140) is the free grid cell of
+    // the y=140 match-settings band, between TEAMS and LIMIT.
     {.id = "troops", .label = "TROOPS: ALL",
      .x = 120, .y = 140, .w = 80, .h = 15,
      .action = ButtonAction::CycleCtfScenarioTroops, .arg = -1,
-     .nav = {.up = 4, .down = 0}},
+     .nav = {.up = 5, .down = 0, .left = 7, .right = 8}},
+    // Match Teams / Score Limit, re-homed from MATCHUP (#218): match rules
+    // belong on the scenario axis (the TEAMS -> TROOPS migration precedent),
+    // and this keeps third-party versus packs' access (docs/
+    // camp-controls-design.md). They complete the y=140 band around TROOPS.
+    // Versus campaigns only; joiners see the read-only label (the lobby-
+    // synced save feeds the per-frame re-derive) while the host acts.
+    // Static labels are the formatters' defaults (both re-derive per frame).
+    {.id = "ctf_teams", .label = "Teams: Auto",
+     .x = 30, .y = 140, .w = 80, .h = 15,
+     .action = ButtonAction::CycleCtfTeamCount, .arg = -1,
+     .nav = {.up = 3, .down = 0, .right = 6}},
+    {.id = "ctf_caps", .label = "Limit: Map",
+     .x = 210, .y = 140, .w = 80, .h = 15,
+     .action = ButtonAction::CycleCtfCaptureLimit, .arg = -1,
+     .nav = {.up = 5, .down = 0, .left = 6}},
 };
 
 // The campaign-name / level-title strips sit beside the buttons that change
@@ -1817,7 +1851,7 @@ Sint32 zone_submenu_on_spec_row(int row, void* screen_state)
                                            std::string(),
                                            chosen_replay_arms);
     case Outcome::Acted: {
-        // #212: an action that wrote a MATCHUP knob through
+        // #212: an action that wrote a match knob through
         // og.campaign_match_set armed the providers' dirty flag; run the
         // standard sync-settings-from-save tail so joiners follow.
         if (og::data::consume_match_settings_dirty()) {
@@ -1865,135 +1899,6 @@ Sint32 zone_submenu_on_spec_row(int row, void* screen_state)
 // zone_submenu_menu_screen_spec() and the install seam have external
 // linkage (declared in menu_screen_spec.h) and are therefore defined in the
 // externally-linked og::ui region below, beside the Company List's.
-
-// ---------------------------------------------------------------------------
-// MATCHUP subscreen (§1.8 step 5) descends from the former TEAMS rows
-// transcribed VERBATIM from the deleted k_teamsmenu_buttons. Player JOIN,
-// local-guy cycling, and the duplicate READY affordance retired when explicit
-// per-seat assignment moved into Base Camp; their stable ordinals remain
-// dormant so old action IDs and the migration history stay legible. MATCHUP
-// retains the four wide team summaries, per-team detail pagers, host-gated CTF
-// settings, cross-control, and the legacy redraw/exit behavior.
-
-constexpr MenuButtonSpec kTeamsMenuRows[] = {
-    {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
-     .x = 10, .y = 170, .w = 40, .h = 20,
-     .action = ButtonAction::ReturnMenu, .arg = MENU_REDRAW,
-     .nav = {.up = 7}},
-    {.id = "ctf_teams", .label = "Teams: Auto",
-     .x = 120, .y = 8, .w = 80, .h = 15,
-     .action = ButtonAction::CycleCtfTeamCount, .arg = -1,
-     .nav = {.down = 3, .right = 2},
-     .hidden = true},
-    {.id = "ctf_caps", .label = "Limit: Map",
-     .x = 210, .y = 8, .w = 80, .h = 15,
-     .action = ButtonAction::CycleCtfCaptureLimit, .arg = -1,
-     .nav = {.down = 3, .left = 1},
-     .hidden = true},
-    {.id = "join_team_0", .label = "JOIN",
-     .x = 240, .y = 32, .w = 50, .h = 12,
-     .action = ButtonAction::JoinTeam, .arg = 0,
-     .nav = {.down = 4},
-     .hidden = true},
-    {.id = "join_team_1", .label = "JOIN",
-     .x = 240, .y = 62, .w = 50, .h = 12,
-     .action = ButtonAction::JoinTeam, .arg = 1,
-     .nav = {.up = 3, .down = 5},
-     .hidden = true},
-    {.id = "join_team_2", .label = "JOIN",
-     .x = 240, .y = 92, .w = 50, .h = 12,
-     .action = ButtonAction::JoinTeam, .arg = 2,
-     .nav = {.up = 4, .down = 6},
-     .hidden = true},
-    {.id = "join_team_3", .label = "JOIN",
-     .x = 240, .y = 122, .w = 50, .h = 12,
-     .action = ButtonAction::JoinTeam, .arg = 3,
-     .nav = {.up = 5, .down = 9},
-     .hidden = true},
-    {.id = "guy_prev", .label = "<",
-     .x = 10, .y = 146, .w = 16, .h = 12,
-     .action = ButtonAction::TeamsCycleGuy, .arg = -1,
-     .nav = {.up = 3, .down = 0, .right = 8},
-     .hidden = true},
-    {.id = "guy_next", .label = ">",
-     .x = 120, .y = 146, .w = 16, .h = 12,
-     .action = ButtonAction::TeamsCycleGuy, .arg = 1,
-     .nav = {.up = 3, .down = 0, .left = 7, .right = 9},
-     .hidden = true},
-    {.id = "guy_team", .label = "TEAM >",
-     .x = 150, .y = 146, .w = 70, .h = 12,
-     .action = ButtonAction::TeamsCycleGuyTeam, .arg = 1,
-     .nav = {.up = 6, .down = 0, .left = 8},
-     .hidden = true},
-    {.id = "ready", .label = "READY",
-     .x = 120, .y = 170, .w = 80, .h = 20,
-     .action = ButtonAction::ToggleLobbyReady, .arg = -1,
-     .nav = {.up = 6, .left = 0},
-     .hidden = true},
-    {.id = "ctf_troops", .label = "TROOPS: ALL",
-     .x = 210, .y = 170, .w = 80, .h = 20,
-     .action = ButtonAction::CycleCtfScenarioTroops, .arg = -1,
-     .nav = {.up = 9, .left = 0},
-     .hidden = true},
-    // Per-team member pagers: a '>' at the right edge of each team row's
-    // readability bar (8..234), left of the JOIN column at x=240. Hidden
-    // unless that team's detail line needs more than one slice; nav is
-    // fully rewired per frame like every other conditional button here.
-    {.id = "team_page_0", .label = ">",
-     .x = 297, .y = 39, .w = 14, .h = 12,
-     .action = ButtonAction::TeamsPageFlip, .arg = 0,
-     .hidden = true},
-    {.id = "team_page_1", .label = ">",
-     .x = 297, .y = 69, .w = 14, .h = 12,
-     .action = ButtonAction::TeamsPageFlip, .arg = 1,
-     .hidden = true},
-    {.id = "team_page_2", .label = ">",
-     .x = 297, .y = 99, .w = 14, .h = 12,
-     .action = ButtonAction::TeamsPageFlip, .arg = 2,
-     .hidden = true},
-    {.id = "team_page_3", .label = ">",
-     .x = 297, .y = 129, .w = 14, .h = 12,
-     .action = ButtonAction::TeamsPageFlip, .arg = 3,
-     .hidden = true},
-    // §2.7 cross-control toggle: reuses the guy-row slot that is vacant when
-    // networked (guy_prev/next/team are local-only — the same-rect
-    // mutually-exclusive-gate pattern as the base camp's GO/READY pair).
-    // Visible to ALL peers when networked (a mode that changes a client's
-    // own rights must be visible to that client, §8 resolution 6);
-    // host-only actionable — the MenuSpecRow dispatch popups for non-hosts.
-    {.id = "cross_control", .label = "CTRL: OWN",
-     .x = 120, .y = 170, .w = 80, .h = 20,
-     .action = ButtonAction::MenuSpecRow, .arg = kTeamsMenuCrossControlIndex,
-     .hidden = true},
-};
-
-const MenuScreenSpec& teams_menu_screen_spec()
-{
-    static const MenuScreenSpec spec{
-        .name = "teams_menu",
-        .rows = kTeamsMenuRows,
-        .row_count = static_cast<int>(std::size(kTeamsMenuRows)),
-        .buttons_accessor = &picker_teamsmenu_buttons,
-        .count_accessor = &picker_teamsmenu_button_count,
-        .nav = {.kind = NavProgramKind::Rewire,
-                .rewire = &picker_teams_menu_engine_rewire},
-        // A joiner parked here still follows the host's GO.
-        .remote_start = RemoteStartScope::TeamBuildScope,
-        .remote_start_exit = RemoteStartExit::ReturnMenuExit,
-        .default_highlight = kTeamsMenuBackIndex,
-        // BACK returns MENU_REDRAW to signal "go back to team menu" — end
-        // the loop before reset_buttons could consume it (legacy check).
-        .exit_on_redraw = true,
-        .polls_lobby = true,
-        .draw_background = &picker_teams_menu_engine_draw_background,
-        .draw_content = &picker_teams_menu_engine_draw_content,
-        .frame_tick = &picker_teams_menu_engine_frame_tick,
-        // §2.7: the cross-control row is the screen's one MenuSpecRow (G3).
-        .on_spec_row = &picker_teams_menu_engine_on_spec_row,
-        .exit_value = MENU_EXIT,
-    };
-    return spec;
-}
 
 // ---------------------------------------------------------------------------
 // HIRE (§1.8 step 6): PREV/NEXT candidate cyclers over the recruit portrait,
@@ -2469,7 +2374,7 @@ constexpr int kBaseCampFamilySwatchWidth = kBaseCampFamilySwatchRampWidth + 2;
 constexpr int kBaseCampFamilySwatchHeight = 8;
 // The player-seat rail (#236), one row of controls across the panel's full
 // width: [+] | < | card 0..3 | >. The SEATS label that used to open the rail
-// is gone — it was a duplicate of the SCENARIO submenu's MATCHUP door — and
+// is gone — it duplicated the SCENARIO submenu's team-overview door — and
 // the '+' took its place at the left edge so the cards can breathe.
 // Arithmetic across x=8..311 (304px): the '+' (14) plus two pager faces (10
 // each) plus four cards (57 each) is 262px of face, leaving 42px for the six
@@ -2762,7 +2667,9 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
     {.id = "ready", .label = "READY",
      .x = kBaseCampStripGoX, .y = kBaseCampStripY,
      .w = kBaseCampStripGoWidth, .h = kBaseCampStripHeight,
-     .action = ButtonAction::ToggleLobbyReady, .arg = kCreateMenuReadyIndex,
+     // arg is inert: the action took an origin ordinal only while the
+     // retired MATCHUP screen mirrored this control (#218).
+     .action = ButtonAction::ToggleLobbyReady, .arg = -1,
      .nav = {.up = kBaseCampRowBodyBase + 7,
              .left = kCreateMenuNetworkingIndex},
      .label_binding = {.formatter = &base_camp_ready_label},
@@ -2896,20 +2803,6 @@ static_assert(static_cast<int>(std::size(kBaseCampRows))
                   == kCreateMenuButtonCount,
               "base camp spec ordinals are the layout contract");
 
-std::string base_camp_company_abbreviation(std::string_view company)
-{
-    std::string result;
-    result.reserve(3);
-    for (const char ch : company) {
-        if (!std::isalnum(static_cast<unsigned char>(ch)))
-            continue;
-        result.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(ch))));
-        if (result.size() == 3)
-            break;
-    }
-    return result.empty() ? "NET" : result;
-}
-
 // A card's controller profile is its POSITION in this machine's local seat
 // list, never the card index and never the global P# (menu_system.md §3.1 —
 // displayed P1 once drove profile 3). Seat settings resolves it the same way
@@ -2940,7 +2833,7 @@ std::string base_camp_seat_label(const BaseCampScreenState& state,
                     og::ui::current_input_selection(local_slot).name)
               : (local_slot >= 0
                      ? std::string("SPEC")
-                     : base_camp_company_abbreviation(seat.company));
+                     : company_abbreviation(seat.company));
     // The trailing visual pad shifts the visible centered ink one half-cell
     // left, keeping the 8px numbered team chip clear on the compact 57px face.
     // The pad is part of the 9-char face budget, and so is a two-digit P#:
@@ -4421,7 +4314,8 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
 // View Team menu. Lines A/B keep their own translucent black strips in the
 // content pass — but the zone's text/readout READABILITY STRIPS paint HERE:
 // they sit adjacent to button rows, and a strip painted in draw_content
-// would dim the neighboring faces (the MATCHUP pager lesson).
+// would dim the neighboring faces (the retired MATCHUP screen's pager
+// lesson).
 void base_camp_draw_background(void* screen_state)
 {
     picker_backdrop_draw_background(nullptr);
@@ -5262,7 +5156,7 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
             }
             if (outcome.kind != Outcome::Acted)
                 return 0;
-            // #212: a MATCHUP knob written through og.campaign_match_set
+            // #212: a match knob written through og.campaign_match_set
             // armed the providers' dirty flag; run the settings sync so
             // joiners follow.
             if (og::data::consume_match_settings_dirty()) {
@@ -6778,8 +6672,16 @@ const MenuScreenSpec& view_scenario_menu_screen_spec()
         // position (before the page-step consumption).
         .exit_on_redraw = true,
         .polls_lobby = true,
-        .draw_background = &picker_backdrop_draw_background,
+        // The staged-preview band (#218): backdrop + report frame + the
+        // STAGED world (or its honest degradation text) rendered above the
+        // census rows. Every other consumer keeps the shared backdrop.
+        .draw_background = &picker_view_scenario_staged_draw_background,
         .draw_content = &picker_view_scenario_engine_draw_content,
+        // Refresh guard (issue #218): rebuild the cached report when the
+        // level / match settings / stage generation move under a parked
+        // viewer (host SET LEVEL / TEAMS / TROOPS — the stale-joiner
+        // hole the once-per-open cache used to leave).
+        .frame_tick = &picker_view_scenario_engine_frame_tick,
         // The legacy page-step consumption (retvalue-zero + clamped flip +
         // flip trace), at the legacy point in the frame.
         .consume_click = &picker_view_scenario_engine_consume_click,
@@ -6926,21 +6828,8 @@ void base_camp_refresh_rows(BaseCampScreenState& state)
         std::clamp(page_before, 0, state.page.page_count() - 1);
 
     state.seats = picker_lobby_players();
-    if (state.seats.empty() && !networked && save.numplayers > 0) {
-        const std::vector<short> seeded =
-            derive_local_gameplay_seat_teams(save);
-        for (std::size_t index = 0; index < seeded.size(); ++index) {
-            state.seats.push_back(og::sim::LobbyPlayer{
-                .player_index = static_cast<std::uint8_t>(index),
-                .name = std::format("Player {}", index + 1),
-                .company = save.save_name,
-                .team = seeded[index],
-                .character_slots = {},
-                .ready = false,
-                .is_host = index == 0,
-            });
-        }
-    }
+    if (state.seats.empty() && !networked)
+        state.seats = synthesize_local_lobby_players(save);
     std::sort(state.seats.begin(), state.seats.end(),
               [](const og::sim::LobbyPlayer& lhs,
                  const og::sim::LobbyPlayer& rhs) {
@@ -7155,8 +7044,6 @@ const MenuScreenHost& menu_screen_host(MenuScreenId id)
                  .spec = &view_scenario_menu_screen_spec()});
             set(MenuScreenId::Scenario,
                 {.kind = Kind::Engine, .spec = &scenario_menu_screen_spec()});
-            set(MenuScreenId::Teams,
-                {.kind = Kind::Engine, .spec = &teams_menu_screen_spec()});
             // NETWORKING is owned by the SdlPickerClient state machine
             // (configure_networking is a client method) and stays LEGACY:
             // valve V2 was exercised at Layer E closeout — the
@@ -7289,18 +7176,6 @@ button* picker_scenariomenu_buttons()
 int picker_scenariomenu_button_count()
 {
     return static_cast<int>(pks().scenariomenu_buttons.size());
-}
-
-button* picker_teamsmenu_buttons()
-{
-    og::ui::materialize_menu_buttons(og::ui::teams_menu_screen_spec(),
-                                     pks().teamsmenu_buttons);
-    return pks().teamsmenu_buttons.data();
-}
-
-int picker_teamsmenu_button_count()
-{
-    return static_cast<int>(pks().teamsmenu_buttons.size());
 }
 
 button* picker_hiremenu_buttons()
@@ -7462,22 +7337,6 @@ Sint32 create_scenario_menu(Sint32 arg1)
         og::ui::run_menu_screen(og::ui::scenario_menu_screen_spec(), &guard);
     og::runtime::current_session->myscreen_->clearbuffer();
     if ((retvalue & MENU_EXIT) && team_build_start_selected())
-        return retvalue;
-    return MENU_REDRAW;
-}
-
-// The MATCHUP subscreen, engine-hosted (the legacy loop is gone). Pager pages
-// and the trace/reload cursors reset every open; the exit fold is the legacy
-// shape, verbatim.
-Sint32 create_teams_menu(Sint32 arg1)
-{
-    (void)arg1;
-    og::runtime::current_session->myscreen_->clearbuffer();
-    picker_teams_menu_engine_reset_open_state();
-    const Sint32 retvalue =
-        og::ui::run_menu_screen(og::ui::teams_menu_screen_spec());
-    og::runtime::current_session->myscreen_->clearbuffer();
-    if (retvalue & MENU_EXIT)
         return retvalue;
     return MENU_REDRAW;
 }

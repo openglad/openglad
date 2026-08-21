@@ -347,11 +347,14 @@ TEST_F(ModesTdm, scenario_troops_strip_runs_before_the_bot_census)
         << "the census behind the strip backfills the emptied team";
 }
 
-TEST_F(ModesTdm, troops_own_activates_only_the_roster_teams)
+TEST_F(ModesTdm, troops_own_at_auto_activates_the_authored_team_count)
 {
-    // The scen-841 shape on TDM: OWN with rosters deployed on teams 0 and 2
-    // activates exactly those two — the third authored team neither joins
-    // the match nor receives a bot squad.
+    // The scen-841 shape on TDM at TEAMS: Auto: Auto is the zero sentinel
+    // ("as many teams as the map actually has"), so OWN with rosters on
+    // teams 0 and 2 fields all THREE authored sides — the rosters stay
+    // untouched and the unrostered team backfills with the legacy bot
+    // squad, exactly like an explicit TEAMS: 3 (issue #218; the 2026-08-18
+    // directive superseding D26's Auto scope).
     ModesCtfWorld fx(kTdmLevelA);
     fx.world().ctf_requested_strip_scenario_troops = 2;
     fx.spawn_anchor(0, 96, 96);
@@ -362,13 +365,13 @@ TEST_F(ModesTdm, troops_own_activates_only_the_roster_teams)
     fx.tick(1);
 
     ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
-    EXPECT_EQ(1 + 4, fx.var(kTdmSlotTeamMask))
-        << "exactly the two roster teams activate";
+    EXPECT_EQ(1 + 2 + 4, fx.var(kTdmSlotTeamMask))
+        << "Auto resolves to the authored team count: all three sides";
     EXPECT_FALSE(soldier->dead());
     EXPECT_FALSE(barbarian->dead());
-    EXPECT_EQ(1, alive_on_team(fx.world(), 0));
-    EXPECT_EQ(0, alive_on_team(fx.world(), 1))
-        << "no bot squad on the unrostered authored team";
+    EXPECT_EQ(1, alive_on_team(fx.world(), 0)) << "the rosters stay as-is";
+    EXPECT_EQ(5, alive_on_team(fx.world(), 1))
+        << "the empty-team census fields the legacy squad";
     EXPECT_EQ(1, alive_on_team(fx.world(), 2));
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
@@ -1149,18 +1152,19 @@ namespace {
 // the slots its init writes — no mode impl runs on this level, so the
 // whole var file belongs to the probe.
 inline constexpr int kHelperProbeLevel = 9091;
-inline constexpr int kProbeSlotCount = 60;
 inline constexpr int kProbeSlotMatched = 61;
 inline constexpr int kProbeSlotConstant = 62;
 inline constexpr int kProbeSlotMask = 63;
 
 // RAII registration of the helper probe, under the RULES pack id so
-// og.use resolves the mounted mode_core module. Init reports
-// core.team_count_request() and feeds the RAW og.match_setting value to
-// core.activate_teams over the sparse authored mask 13 = {0, 2, 3} (the
-// same domain the 9090 probe pins). The dtor swaps in an empty chunk so
-// no later world in this binary re-registers level 9091 (the next test's
-// mount clears the registry outright).
+// og.use resolves the mounted mode_core module. Init classifies the FAIR
+// sentinel off the strip field (matched-teams D29 — matching never rides
+// the team count; core.team_count_request, the last knob-reading rule
+// twin, is retired with the plan phase) and feeds the RAW
+// og.match_setting count to core.activate_teams over the sparse authored
+// mask 13 = {0, 2, 3} (the same domain the 9090 probe pins). The dtor
+// swaps in an empty chunk so no later world in this binary re-registers
+// level 9091 (the next test's mount clears the registry outright).
 struct TeamCountProbeScript
 {
     TeamCountProbeScript()
@@ -1170,8 +1174,8 @@ struct TeamCountProbeScript
              "local core = og.use(\"mode_core\")\n"
              "og.register_level_hooks(9091, {\n"
              "  on_mode_init = function(level)\n"
-             "    local count, matched = core.team_count_request()\n"
-             "    og.mode_set(60, count)\n"
+             "    local matched =\n"
+             "        og.match_setting(\"strip_troops\") == core.MATCHED_TROOPS\n"
              "    og.mode_set(61, matched and 1 or 0)\n"
              "    og.mode_set(62, core.MATCHED_TROOPS)\n"
              "    og.mode_set(63, core.activate_teams(13,\n"
@@ -1188,75 +1192,6 @@ struct TeamCountProbeScript
 };
 
 }  // namespace
-
-TEST_F(ModesTdm, team_count_request_auto_arm_reports_no_clamp)
-{
-    TeamCountProbeScript probe;
-    ModesCtfWorld fx(kHelperProbeLevel);
-    fx.tick(1);
-
-    ASSERT_TRUE(fx.world().mode.active) << "the probe init must succeed";
-    EXPECT_EQ(0, fx.var(kProbeSlotCount))
-        << "Auto (raw 0) normalizes to count 0";
-    EXPECT_EQ(0, fx.var(kProbeSlotMatched)) << "Auto is not Matched";
-    EXPECT_EQ(13, fx.var(kProbeSlotMask))
-        << "activate_teams over raw 0 takes every authored team";
-    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
-}
-
-TEST_F(ModesTdm, team_count_request_numeric_arm_passes_through)
-{
-    TeamCountProbeScript probe;
-    ModesCtfWorld fx(kHelperProbeLevel);
-    fx.world().ctf_requested_team_count = 2;
-    fx.tick(1);
-
-    ASSERT_TRUE(fx.world().mode.active) << "the probe init must succeed";
-    EXPECT_EQ(2, fx.var(kProbeSlotCount)) << "2..4 pass through unchanged";
-    EXPECT_EQ(0, fx.var(kProbeSlotMatched)) << "a numeric request is not Matched";
-    EXPECT_EQ(5, fx.var(kProbeSlotMask))
-        << "activate_teams(13, 2) takes the first two authored teams {0, 2}";
-    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
-}
-
-TEST_F(ModesTdm, team_count_request_matched_arm_rides_the_troops_field)
-{
-    TeamCountProbeScript probe;
-    ModesCtfWorld fx(kHelperProbeLevel);
-    fx.arm_matched();  // TROOPS: FAIR — the team count stays Auto
-    fx.tick(1);
-
-    ASSERT_TRUE(fx.world().mode.active) << "the probe init must succeed";
-    EXPECT_EQ(0, fx.var(kProbeSlotCount))
-        << "an Auto team count normalizes to count 0 regardless of matching";
-    EXPECT_EQ(1, fx.var(kProbeSlotMatched))
-        << "the matched flag is derived from strip_troops == FAIR (D29)";
-    EXPECT_EQ(og::sim::kTroopsMatched, fx.var(kProbeSlotConstant))
-        << "core.MATCHED_TROOPS must equal the C++ sentinel";
-    EXPECT_EQ(13, fx.var(kProbeSlotMask))
-        << "the strip field feeds no mask — activation is Auto's (D29)";
-    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
-}
-
-TEST_F(ModesTdm, team_count_request_matched_composes_with_a_numeric_count)
-{
-    // The old TEAMS: Match sentinel could not coexist with a numeric count;
-    // the TROOPS: FAIR trigger is orthogonal to it by construction (D25) —
-    // the count clamps the mask exactly as unmatched 2 does while the
-    // matched flag still reports the power request.
-    TeamCountProbeScript probe;
-    ModesCtfWorld fx(kHelperProbeLevel);
-    fx.arm_matched();
-    fx.world().ctf_requested_team_count = 2;
-    fx.tick(1);
-
-    ASSERT_TRUE(fx.world().mode.active) << "the probe init must succeed";
-    EXPECT_EQ(2, fx.var(kProbeSlotCount)) << "the numeric count passes through";
-    EXPECT_EQ(1, fx.var(kProbeSlotMatched)) << "matched rides the troops field";
-    EXPECT_EQ(5, fx.var(kProbeSlotMask))
-        << "activate_teams(13, 2) takes the first two authored teams {0, 2}";
-    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
-}
 
 TEST_F(ModesTdm, matched_mask_equals_own_mask_at_every_numeric_count)
 {
@@ -1287,6 +1222,8 @@ TEST_F(ModesTdm, matched_mask_equals_own_mask_at_every_numeric_count)
         EXPECT_EQ(own_mask, fair.var(kProbeSlotMask))
             << "FAIR must clamp identically to OWN at count " << count;
         EXPECT_EQ(1, fair.var(kProbeSlotMatched)) << "count " << count;
+        EXPECT_EQ(og::sim::kTroopsMatched, fair.var(kProbeSlotConstant))
+            << "core.MATCHED_TROOPS must equal the C++ sentinel";
         EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
     }
 }
@@ -1411,7 +1348,7 @@ void author_fresh_squad(ModesCtfWorld& fx, int team, int y)
 TEST_F(ModesTdm, matched_power_metric_and_solver_arms)
 {
     ModesCtfWorld fx(kMatchProbeLevel);
-    // Matched requested, so the probe's own_roster_activation call reaches
+    // Matched requested, so the probe's bank_match_target call reaches
     // the census latch: a nonzero stored target is never re-censused.
     fx.arm_matched();
     fx.tick(1);
@@ -1421,17 +1358,20 @@ TEST_F(ModesTdm, matched_power_metric_and_solver_arms)
     const auto latch = matched_log(fx.world(), "census_latch");
     EXPECT_EQ(4242, tab_int(latch, 1))
         << "a stored target must survive a repeat census attempt (D24)";
+    EXPECT_EQ(0, tab_int(latch, 2))
+        << "the TARGET latch guards SIZE too — no repeat bank wrote it";
     EXPECT_EQ(0, fx.var(kSlotMatchedSize))
         << "the TARGET latch guards SIZE too — no repeat census wrote it";
 
-    // Census of a world with no has_guy walker: T = 0, all team sums 0,
-    // headcount 0 (D34: no humans -> nothing to match).
+    // Census of a world with no has_guy walker: T = 0, all team sums 0
+    // (the headcount half of the old census — H — lives in the shared
+    // activation rule alone: match.activation's matched_size, pinned by
+    // the staged-rules suite in test_staged_rules.cpp).
     const auto census = matched_log(fx.world(), "census");
-    ASSERT_EQ(7u, census.size());
+    ASSERT_EQ(6u, census.size());
     EXPECT_EQ(0, tab_int(census, 1)) << "no humans -> T = 0 (E1)";
     for (std::size_t i = 2; i < 6; ++i)
         EXPECT_EQ(0, tab_int(census, i));
-    EXPECT_EQ(0, tab_int(census, 6)) << "no humans -> H = 0";
 
     // Zero-offense floor: OFF = 0 collapses f to the pool EHP =
     // hp + mp / 2 (armor is 0 at bot base).
@@ -1561,9 +1501,9 @@ TEST_F(ModesTdm, matched_census_single_team_sum_ignores_guyless_livings)
         EXPECT_EQ(0, tab_int(census, 3));
         EXPECT_EQ(0, tab_int(census, 4));
         EXPECT_EQ(0, tab_int(census, 5));
-        EXPECT_EQ(5, tab_int(census, 6))
-            << "one human team -> H is its headcount, guy-less Livings "
-               "excluded (D34)";
+        // The one-human-team headcount rule (H = 5, guy-less Livings
+        // excluded, D34) lives in match.activation: matched_size, pinned
+        // by StagedRules.fair_matched_size_is_the_min_roster_headcount.
     }
     {
         ModesCtfWorld fx(kMatchProbeLevel);
@@ -1609,10 +1549,9 @@ TEST_F(ModesTdm, matched_census_mean_and_heart_value_rank_oracle)
     const long long archmage = tab_int(census, 4);
     EXPECT_EQ((fresh + mixed + archmage) / 3, mean)
         << "T is the MEAN of the human team f-sums (D11)";
-    EXPECT_EQ(3, tab_int(census, 6))
-        << "H is the MIN of the per-team headcounts (5, 3, 3 -> 3; D34 — "
-           "T averages because power is level-solvable, H mins because "
-           "headcount is the dimension the solver cannot compensate)";
+    // H = MIN of the per-team headcounts (5, 3, 3 -> 3; D34) lives in
+    // match.activation: matched_size, pinned by
+    // StagedRules.fair_matched_size_is_the_min_roster_headcount.
 
     // f-sum rank must agree with the engine's own price of the rosters.
     long long hearts[3] = {0, 0, 0};
@@ -1863,16 +1802,18 @@ TEST_F(ModesTdm, matched_differs_from_own_only_in_generated_squad_levels)
 
     EXPECT_EQ(own.var(kTdmSlotTeamMask), fair.var(kTdmSlotTeamMask))
         << "FAIR's masks are OWN's masks, always (D26/D33)";
-    EXPECT_EQ(3, fair.var(kTdmSlotTeamMask))
-        << "solo roster: team 0 plus the FIRST authored non-roster team";
+    EXPECT_EQ(7, fair.var(kTdmSlotTeamMask))
+        << "TEAMS: Auto resolves to the authored team count (issue #218, "
+           "the 2026-08-18 directive): all three authored sides";
     for (int team = 0; team < 3; ++team)
     {
         EXPECT_EQ(alive_on_team(own.world(), team),
                   alive_on_team(fair.world(), team))
             << "fill sites must not differ on team " << team;
     }
-    EXPECT_EQ(0, alive_on_team(fair.world(), 2))
-        << "no pile-on: the third authored team stays empty under both";
+    EXPECT_EQ(5, alive_on_team(fair.world(), 2))
+        << "the third authored side backfills under both (Auto = authored "
+           "count)";
 
     // The one delta: OWN fields the legacy formula squad (percent 100 ->
     // uniform L2), FAIR solves T = 6520 to L1 with a k = 1 prefix.
@@ -1884,6 +1825,8 @@ TEST_F(ModesTdm, matched_differs_from_own_only_in_generated_squad_levels)
     EXPECT_EQ(2, own_levels.thief);
     EXPECT_EQ(6520, fair.var(kSlotMatchedTarget));
     EXPECT_EQ(11, matched_plan_code(fair.var(kSlotMatchedPlan), 1));
+    EXPECT_EQ(11, matched_plan_code(fair.var(kSlotMatchedPlan), 2))
+        << "the backfilled third side solves to the same plan";
     const SquadLevels fair_levels = squad_levels_on_team(fair.world(), 1);
     EXPECT_EQ(2, fair_levels.soldier) << "the k = 1 upgrade prefix";
     EXPECT_EQ(1, fair_levels.archer);
@@ -2002,8 +1945,8 @@ TEST_F(ModesTdm, matched_solo_l5_roster_squad_lands_within_fifteen_percent)
 }
 
 // E6, THE flagship MATCH test: TROOPS: FAIR bundles the OWN deployment
-// policy (D26), and the matched census runs at the TOP of
-// own_roster_activation — BEFORE the strip — and is strip-invariant:
+// policy (D26), and the matched census (match.bank_match_target, banked
+// by every apply before its squad fills) is strip-invariant:
 // authored troops carry no guy record, so the has_guy filter keeps them
 // out of T in either order. The solo roster pulls in exactly the FIRST
 // authored non-roster team, and that team's fill is the MATCHED squad —
@@ -2023,9 +1966,9 @@ TEST_F(ModesTdm, matched_troops_own_solo_roster_gets_a_matched_opponent)
     fx.tick(1);
     ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
 
-    EXPECT_EQ(3, fx.var(kTdmSlotTeamMask))
-        << "solo roster under OWN: team 0 plus the first authored "
-           "non-roster team";
+    EXPECT_EQ(7, fx.var(kTdmSlotTeamMask))
+        << "solo roster under OWN at TEAMS: Auto: the authored team count "
+           "(issue #218, the 2026-08-18 directive) — all three sides";
     EXPECT_EQ(6520, fx.var(kSlotMatchedTarget))
         << "stripped authored troops never pollute the census (E6)";
     EXPECT_EQ(5, fx.var(kSlotMatchedSize))
@@ -2037,8 +1980,14 @@ TEST_F(ModesTdm, matched_troops_own_solo_roster_gets_a_matched_opponent)
     EXPECT_EQ(2, levels.soldier) << "the k = 1 upgrade prefix";
     EXPECT_EQ(1, levels.archer);
     EXPECT_EQ(1, levels.thief);
-    EXPECT_EQ(0, alive_on_team(fx.world(), 2))
-        << "the team outside the OWN mask stays stripped and unfilled";
+    EXPECT_EQ(11, matched_plan_code(fx.var(kSlotMatchedPlan), 2))
+        << "the backfilled third side solves to the same plan";
+    EXPECT_EQ(5, alive_on_team(fx.world(), 2))
+        << "its stripped authored orc is replaced by a matched squad";
+    const SquadLevels third = squad_levels_on_team(fx.world(), 2);
+    EXPECT_EQ(2, third.soldier) << "the same k = 1 upgrade prefix";
+    EXPECT_EQ(1, third.archer);
+    EXPECT_EQ(1, third.thief);
     EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"));
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }

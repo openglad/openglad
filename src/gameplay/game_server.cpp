@@ -669,56 +669,6 @@ og::sim::WorldSnapshot capture_server_keyframe(GameWorld& world,
     return og::sim::capture_keyframe_snapshot(world);
 }
 
-std::vector<og::sim::InitialSetupGuyData> collect_initial_setup_guys(
-    const GameWorld& world)
-{
-    std::unordered_set<std::int32_t> seen_ids;
-    std::vector<og::sim::InitialSetupGuyData> guys;
-
-    const auto collect = [&seen_ids, &guys](const auto& entities) {
-        for (const auto& entry : entities)
-        {
-            const walker* const entity = entry.get();
-            if (entity == nullptr || entity->myguy == nullptr)
-                continue;
-
-            const guy& source = *entity->myguy;
-            if (!seen_ids.insert(source.id).second)
-                continue;
-
-            og::sim::InitialSetupGuyData data;
-            data.guy_id = source.id;
-            data.name = source.name;
-            data.family = source.family;
-            data.strength = source.strength;
-            data.dexterity = source.dexterity;
-            data.constitution = source.constitution;
-            data.intelligence = source.intelligence;
-            data.armor = source.armor;
-            data.exp = source.exp;
-            data.kills = source.kills;
-            data.level_kills = source.level_kills;
-            data.total_damage = source.total_damage;
-            data.total_hits = source.total_hits;
-            data.total_shots = source.total_shots;
-            data.teamnum = source.teamnum;
-            data.scen_damage = source.scen_damage;
-            data.scen_kills = source.scen_kills;
-            data.scen_damage_taken = source.scen_damage_taken;
-            data.scen_min_hp = source.scen_min_hp;
-            data.scen_shots = source.scen_shots;
-            data.scen_hits = source.scen_hits;
-            data.level = source.level;
-            guys.push_back(std::move(data));
-        }
-    };
-
-    collect(world.oblist);
-    collect(world.fxlist);
-    collect(world.weaplist);
-    return guys;
-}
-
 bool has_living_member_for_any_bound_team(
     const GameWorld& world,
     const std::unordered_map<og::sim::PeerId, og::sim::ConnectedClientState>& clients,
@@ -792,6 +742,62 @@ bool session_tokens_equal(const og::sim::SessionToken& lhs,
 } // namespace
 
 namespace og::sim {
+
+// Shared with the staged-lobby stager (og::server::MatchStage builds the
+// broadcast InitialSetup from its dormant world), so the staged setup and the
+// launch setup can never fork their roster payloads.
+std::vector<og::sim::InitialSetupGuyData> collect_initial_setup_guys(
+    const GameWorld& world)
+{
+    std::unordered_set<std::int32_t> seen_ids;
+    std::vector<og::sim::InitialSetupGuyData> guys;
+
+    const auto collect = [&seen_ids, &guys](const auto& entities) {
+        for (const auto& entry : entities)
+        {
+            const walker* const entity = entry.get();
+            if (entity == nullptr || entity->myguy == nullptr)
+                continue;
+
+            const guy& source = *entity->myguy;
+            if (!seen_ids.insert(source.id).second)
+                continue;
+
+            og::sim::InitialSetupGuyData data;
+            data.guy_id = source.id;
+            // Writer-side clamp: the world guy keeps its full name; the wire
+            // copy is bounded so serialize/deserialize stays lossless (see
+            // clamp_lobby_guy_name in lobby_state.h).
+            data.name = og::sim::clamp_lobby_guy_name(source.name);
+            data.family = source.family;
+            data.strength = source.strength;
+            data.dexterity = source.dexterity;
+            data.constitution = source.constitution;
+            data.intelligence = source.intelligence;
+            data.armor = source.armor;
+            data.exp = source.exp;
+            data.kills = source.kills;
+            data.level_kills = source.level_kills;
+            data.total_damage = source.total_damage;
+            data.total_hits = source.total_hits;
+            data.total_shots = source.total_shots;
+            data.teamnum = source.teamnum;
+            data.scen_damage = source.scen_damage;
+            data.scen_kills = source.scen_kills;
+            data.scen_damage_taken = source.scen_damage_taken;
+            data.scen_min_hp = source.scen_min_hp;
+            data.scen_shots = source.scen_shots;
+            data.scen_hits = source.scen_hits;
+            data.level = source.level;
+            guys.push_back(std::move(data));
+        }
+    };
+
+    collect(world.oblist);
+    collect(world.fxlist);
+    collect(world.weaplist);
+    return guys;
+}
 
 void reset_client_snapshot_state(PerClientState& client_state) noexcept
 {
@@ -992,6 +998,11 @@ void GameServer::restamp_input_freshness()
     {
         (void)peer_id;
         client.last_received_input_ms = now;
+        // An outstanding ready handshake gets the same treatment: the
+        // suspension window must not count against the ready deadline — a
+        // genuinely dead handshake still times out one full window later.
+        if (client.ready_deadline_ms != 0)
+            client.ready_deadline_ms = now + DISCONNECT_TIMEOUT_MS;
     }
 }
 
@@ -1374,6 +1385,7 @@ InitialSetupMessage GameServer::build_initial_setup(PeerId peer_id) const
     message.current_scenario = world_.current_scenario;
     message.respawn_mode = world_.respawn_mode;
     message.generator_rate = world_.generator_rate;
+    message.setup_generation = setup_generation_;
     message.guys = collect_initial_setup_guys(world_);
     message.completed_levels.assign(world_.completed_levels.begin(),
                                     world_.completed_levels.end());
@@ -1928,6 +1940,7 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
 
         case TypedReceivedMessageKind::ClientReady:
             client.client_ready = true;
+            client.ready_deadline_ms = 0;
             client.allow_initial_keyframe_without_ready = false;
             client.budget_pending_keyframe = false;
             client.force_keyframe = true;
@@ -2104,6 +2117,10 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
         case TypedReceivedMessageKind::PackRequest:
         case TypedReceivedMessageKind::PackFileChunk:
         case TypedReceivedMessageKind::PackTransferDone:
+        // Staged-lobby broadcasts (v13) likewise belong to the lobby phase;
+        // an upstream client cannot stage anything on the server.
+        case TypedReceivedMessageKind::StagedMatchSetup:
+        case TypedReceivedMessageKind::StagedMatchKeyframe:
             break;
         }
     }
@@ -2159,6 +2176,23 @@ void GameServer::update_timeouts()
         // transport whose next local send throws (see mark_peer_local).
         if (is_local_peer(peer_id))
             continue;
+
+        // Ready-deadline cut: a client that never confirms its handshake
+        // would hold the level-start launch gate forever (its heartbeats
+        // keep refreshing last_received_input_ms, so the starvation clause
+        // below never fires). This covers BOTH gate-closing states: seeded
+        // but unready (keyframe sent, ready owed) and transition limbo
+        // (setup re-sent by prepare_clients_for_loaded_level, ready + then
+        // keyframe owed — has_initial_snapshot false, so the deadline is
+        // stamped at the re-setup). The gate must be bounded: cut the dead
+        // handshake through the same disconnect machinery.
+        if (!client.client_ready &&
+            client.ready_deadline_ms != 0 && now >= client.ready_deadline_ms)
+        {
+            timed_out_peers.push_back(
+                {peer_id, client.ready_deadline_ms - DISCONNECT_TIMEOUT_MS});
+            continue;
+        }
 
         if (client.last_received_input_ms == 0 || now < client.last_received_input_ms)
             continue;
@@ -2379,6 +2413,12 @@ void GameServer::prepare_clients_for_loaded_level()
     player_input_debounce_ = {};
     world_.control_hp = 0.0f;
 
+    // Every client below gets its client_ready reset: the re-sent setups
+    // carry a fresh generation so clients treat them as transitions (and
+    // re-ready) even when the destination is the SAME level (quit-mission
+    // reload).
+    ++setup_generation_;
+
     const std::uint64_t now = now_ms();
     for (auto& [peer_id, client] : clients_)
     {
@@ -2387,6 +2427,14 @@ void GameServer::prepare_clients_for_loaded_level()
         client.has_initial_snapshot = false;
         client.client_ready = false;
         client.allow_initial_keyframe_without_ready = false;
+        // Bound the transition limbo: this client is owed a ClientReady (then
+        // a keyframe, then a re-ready) before the launch gate can open, and
+        // its heartbeats keep the input-starvation clock fresh — so the ready
+        // deadline must start counting NOW, not at the (never-sent-without-
+        // ready) keyframe. update_timeouts cuts an unready client one full
+        // window after this stamp; the pause-suspension restamp extends any
+        // nonzero deadline, so suspensions never count against it.
+        client.ready_deadline_ms = now + DISCONNECT_TIMEOUT_MS;
         client.budget_pending_keyframe = false;
         client.force_keyframe = true;
         for (BoundPlayer& seat : client.bound_players)
@@ -2658,6 +2706,7 @@ void GameServer::send_initial_snapshot(PeerId peer_id,
     seed_client_snapshot_baseline(client.snapshot_state, keyframe);
     client.has_initial_snapshot = true;
     client.client_ready = false;
+    client.ready_deadline_ms = now_ms() + DISCONNECT_TIMEOUT_MS;
     client.allow_initial_keyframe_without_ready = false;
     client.budget_pending_keyframe = false;
     client.force_keyframe = false;
@@ -3068,6 +3117,7 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
             seed_client_snapshot_baseline(client.snapshot_state, full);
             client.has_initial_snapshot = true;
             client.client_ready = false;
+            client.ready_deadline_ms = now_ms() + DISCONNECT_TIMEOUT_MS;
             client.allow_initial_keyframe_without_ready = false;
             client.budget_pending_keyframe = false;
             client.force_keyframe = false;
@@ -3184,6 +3234,87 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
             "game_server", "broadcast_current_state_end"));
 }
 
+bool GameServer::launch_gate_closed() const
+{
+    // Level-start only: once tick 1 has run this level, the gate is open for
+    // good (mid-level joins and spectators heal through the normal catch-up
+    // arms without freezing the world).
+    if (world_.level_tick_count() != 0)
+        return false;
+
+    for (const auto& [peer_id, client] : clients_)
+    {
+        (void)peer_id;
+        // Seeded but unconfirmed: draining now would drop the tick-1 batch
+        // at the should_send_to_client refusal (#239).
+        if (client.has_initial_snapshot && !client.client_ready)
+            return true;
+        // Level-transition limbo: prepare_clients_for_loaded_level re-sent
+        // the InitialSetup but reset the snapshot seed, so this client is
+        // still owed its keyframe. The dedicated server's level 2+ first
+        // tick historically drained into exactly this window.
+        if (client.initial_setup_sent && !client.has_initial_snapshot)
+            return true;
+    }
+    return false;
+}
+
+void GameServer::broadcast_launch_handshake()
+{
+    std::vector<PeerId> ordered_peers;
+    ordered_peers.reserve(clients_.size());
+    for (const auto& [peer_id, client] : clients_)
+    {
+        (void)client;
+        ordered_peers.push_back(peer_id);
+    }
+    std::sort(ordered_peers.begin(), ordered_peers.end());
+
+    std::size_t keyframe_budget_remaining = kMaxKeyframesPerTick;
+    for (const PeerId peer_id : ordered_peers)
+    {
+        ConnectedClientState& client = clients_.at(peer_id);
+        if (!client.initial_setup_sent)
+        {
+            if (!client.has_player_binding() && !client.spectator_admitted)
+                continue;
+            send_initial_snapshot(peer_id, SnapshotCaptureMode::Peek);
+            continue;
+        }
+
+        if (client.has_initial_snapshot)
+            continue;
+
+        // The catch-up keyframe for a re-setup client (level transition):
+        // same shape and budget as broadcast_current_state's arm, Peek-only.
+        if (!client.client_ready && !client.allow_initial_keyframe_without_ready)
+            continue;
+        const bool budgeted_initial_keyframe =
+            client.allow_initial_keyframe_without_ready ||
+            client.budget_pending_keyframe;
+        if (budgeted_initial_keyframe && keyframe_budget_remaining == 0)
+        {
+            client.force_keyframe = true;
+            continue;
+        }
+        WorldSnapshot full =
+            capture_server_keyframe(world_, SnapshotCaptureMode::Peek);
+        seed_client_snapshot_baseline(client.snapshot_state, full);
+        client.has_initial_snapshot = true;
+        client.client_ready = false;
+        client.ready_deadline_ms = now_ms() + DISCONNECT_TIMEOUT_MS;
+        client.allow_initial_keyframe_without_ready = false;
+        client.budget_pending_keyframe = false;
+        client.force_keyframe = false;
+        remember_snapshot_hash(client, full);
+        transport_.send_snapshot(
+            peer_id,
+            std::make_shared<WorldSnapshot>(std::move(full)));
+        if (budgeted_initial_keyframe && keyframe_budget_remaining > 0)
+            --keyframe_budget_remaining;
+    }
+}
+
 void GameServer::step()
 {
     og::runtime::emit_runtime_trace(
@@ -3193,6 +3324,23 @@ void GameServer::step()
     events_.current_tick_ = next_tick;
     poll_incoming_messages();
     process_non_input_messages(next_tick);
+
+    // LEVEL-START LAUNCH GATE (#239): while any seeded client has not
+    // confirmed ready, tick 1 must not run and the event log must not drain —
+    // the tick-1 batch (level on_load announcements, mode-init text) plays
+    // for everyone or not yet. Message polling and timeouts above still run
+    // every step, and the narrow handshake broadcast below serves initial
+    // snapshots so the gate makes progress; the ready deadline bounds it.
+    if (launch_gate_closed())
+    {
+        broadcast_launch_handshake();
+        og::runtime::RuntimeTraceRecord gate_trace =
+            og::runtime::make_runtime_trace_record(
+                "game_server", "step_launch_gate_held");
+        gate_trace.tick = world_.tick_count_;
+        og::runtime::emit_runtime_trace(std::move(gate_trace));
+        return;
+    }
 
     bool should_tick_world =
         !pending_exit_prompt_state_.has_value() && !pending_pause_state_.has_value();

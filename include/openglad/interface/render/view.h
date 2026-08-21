@@ -333,3 +333,37 @@ class ScopedGameplayUiViewLayout final
 		Sint32 endy_ = 0;
 		bool applied_ = false;
 };
+
+// World-pane -> gameplay-UI-pane projection, captured as a value.
+// Construct while the GameplayUI overlay is the ACTIVE canvas (inside
+// ScopedGameplayUiCanvas) and BEFORE any ScopedGameplayUiViewLayout swaps the
+// view onto the UI pane — inside that scope the live xloc/xview already hold
+// UI values and the capture degenerates to the identity (the issue-#220 bug).
+// project() maps world-canvas screen coordinates (world_px - topx +
+// world_xloc()) to UI-pane coordinates; it is bit-identical to
+// viewscreen::project_world_point_to_gameplay_ui, which delegates here.
+// scale_w()/scale_h() scale a world-canvas length by the pane ratio with
+// integer floor division (int64 numerator): exact identity at zoom 1.0, on
+// the overlay-allocation fallback, and on the classic-pinned canvas.
+class GameplayUiProjector final
+{
+	public:
+		explicit GameplayUiProjector(const viewscreen& view);
+
+		std::pair<Sint32, Sint32> project(float x, float y) const;
+		Sint32 scale_w(Sint32 len, Sint32 min_len) const;
+		Sint32 scale_h(Sint32 len, Sint32 min_len) const;
+		Sint32 world_xloc() const { return world_xloc_; }
+		Sint32 world_yloc() const { return world_yloc_; }
+
+	private:
+		bool applies_ = false;
+		Sint32 world_xloc_ = 0;
+		Sint32 world_yloc_ = 0;
+		Sint32 world_xview_ = 0;
+		Sint32 world_yview_ = 0;
+		Sint32 ui_x_ = 0;
+		Sint32 ui_y_ = 0;
+		Sint32 ui_w_ = 0;
+		Sint32 ui_h_ = 0;
+};

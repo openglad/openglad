@@ -304,8 +304,15 @@ GuyLike read_serialized_guy(PayloadReader& reader)
 {
     GuyLike guy;
     guy.guy_id = reader.read_i32();
-    guy.name = reader.read_string();
-    guy.family = static_cast<std::int8_t>(reader.read_u8());
+    // Clamp to the 11-char disk width (SaveData's 12-byte name field) instead
+    // of trusting the sender: unbounded names re-serialize into the merged
+    // LobbyState and can push it past the u16 transport cap. Honest writers
+    // pre-clamp (the builders run clamp_lobby_guy_name), so this only alters
+    // crafted payloads.
+    guy.name = og::sim::clamp_lobby_guy_name(reader.read_string());
+    // The family byte is unsigned on the wire (0..255): widen it as-is so
+    // pack families >= 128 keep their id instead of aliasing negative.
+    guy.family = reader.read_u8();
     guy.strength = reader.read_i16();
     guy.dexterity = reader.read_i16();
     guy.constitution = reader.read_i16();
@@ -433,10 +440,8 @@ og::sim::LobbyPlayer read_lobby_player(PayloadReader& reader)
     player.player_index = reader.read_u8();
     player.seat_id = reader.read_u32();
     player.machine_id = reader.read_u32();
-    player.name = reader.read_string();
-    player.company = reader.read_string();
-    if (player.company.size() > og::sim::kMaxLobbyCompanyNameLength)
-        player.company.resize(og::sim::kMaxLobbyCompanyNameLength);
+    player.name = og::sim::clamp_lobby_player_label(reader.read_string());
+    player.company = og::sim::clamp_lobby_player_label(reader.read_string());
     player.team = reader.read_i16();
     player.ready = reader.read_bool();
     player.is_host = reader.read_bool();
@@ -496,6 +501,8 @@ std::vector<std::uint8_t> serialize_initial_setup_message(
     append_i16(payload, message.current_scenario);
     append_i16(payload, message.respawn_mode);
     append_i16(payload, message.generator_rate);
+    // v13: the ready-resetting setup generation (see net_transport.h).
+    append_u32(payload, message.setup_generation);
     append_u32(payload, static_cast<std::uint32_t>(message.guys.size()));
     for (const auto& guy : message.guys)
         append_initial_setup_guy(payload, guy);
@@ -529,6 +536,7 @@ std::optional<InitialSetupMessage> deserialize_initial_setup_message(
             message.current_scenario = reader.read_i16();
             message.respawn_mode = reader.read_i16();
             message.generator_rate = reader.read_i16();
+            message.setup_generation = reader.read_u32();
             const std::uint32_t guy_count = reader.read_u32();
             if (!reader.ok() ||
                 guy_count >
@@ -1124,6 +1132,77 @@ std::optional<PackTransferDoneMessage> deserialize_pack_transfer_done_message(
         });
 }
 
+namespace {
+
+// Shared v13 staged-wrapper writer: u32 generation + length-prefixed inner
+// message bytes. Refuses (empty result, never a throw) when the inner
+// message would push the wrapper payload past the u16 transport cap, so the
+// owner's poll loop can never die on an oversize staged world — it reports
+// StageStatus::Failed instead (#218).
+std::vector<std::uint8_t> serialize_staged_wrapper(
+    std::uint8_t message_type,
+    std::uint32_t stage_generation,
+    const std::vector<std::uint8_t>& inner_bytes)
+{
+    if (inner_bytes.empty() ||
+        inner_bytes.size() > kMaxStagedInnerMessageBytes)
+    {
+        return {};
+    }
+
+    std::vector<std::uint8_t> payload;
+    payload.reserve(8 + inner_bytes.size());
+    append_u32(payload, stage_generation);
+    append_bytes(payload, inner_bytes);
+    return wrap_transport_message(message_type, payload);
+}
+
+} // namespace
+
+std::vector<std::uint8_t> serialize_staged_match_setup_message(
+    const StagedMatchSetupMessage& message)
+{
+    return serialize_staged_wrapper(kStagedMatchSetupMessageType,
+                                    message.stage_generation,
+                                    message.setup_bytes);
+}
+
+std::optional<StagedMatchSetupMessage> deserialize_staged_match_setup_message(
+    std::span<const std::uint8_t> bytes)
+{
+    return deserialize_message<StagedMatchSetupMessage>(
+        bytes, kStagedMatchSetupMessageType,
+        [](PayloadReader& reader, StagedMatchSetupMessage& message) {
+            message.stage_generation = reader.read_u32();
+            message.setup_bytes =
+                reader.read_bytes(kMaxStagedInnerMessageBytes);
+            if (message.setup_bytes.empty())
+                reader.fail();
+        });
+}
+
+std::vector<std::uint8_t> serialize_staged_match_keyframe_message(
+    const StagedMatchKeyframeMessage& message)
+{
+    return serialize_staged_wrapper(kStagedMatchKeyframeMessageType,
+                                    message.stage_generation,
+                                    message.snapshot_bytes);
+}
+
+std::optional<StagedMatchKeyframeMessage>
+deserialize_staged_match_keyframe_message(std::span<const std::uint8_t> bytes)
+{
+    return deserialize_message<StagedMatchKeyframeMessage>(
+        bytes, kStagedMatchKeyframeMessageType,
+        [](PayloadReader& reader, StagedMatchKeyframeMessage& message) {
+            message.stage_generation = reader.read_u32();
+            message.snapshot_bytes =
+                reader.read_bytes(kMaxStagedInnerMessageBytes);
+            if (message.snapshot_bytes.empty())
+                reader.fail();
+        });
+}
+
 bool ITransport::supports_typed_messages() const noexcept
 {
     return false;
@@ -1383,6 +1462,34 @@ void ITransport::send_pack_transfer_done(
     send(peer_id, bytes.data(), bytes.size());
 }
 
+void ITransport::send_staged_match_setup(
+    PeerId peer_id,
+    std::shared_ptr<StagedMatchSetupMessage> message)
+{
+    if (!message)
+        return;
+
+    const std::vector<std::uint8_t> bytes =
+        serialize_staged_match_setup_message(*message);
+    if (bytes.empty()) // oversize refusal — the owner gates this pre-send
+        return;
+    send(peer_id, bytes.data(), bytes.size());
+}
+
+void ITransport::send_staged_match_keyframe(
+    PeerId peer_id,
+    std::shared_ptr<StagedMatchKeyframeMessage> message)
+{
+    if (!message)
+        return;
+
+    const std::vector<std::uint8_t> bytes =
+        serialize_staged_match_keyframe_message(*message);
+    if (bytes.empty()) // oversize refusal — the owner gates this pre-send
+        return;
+    send(peer_id, bytes.data(), bytes.size());
+}
+
 TypedReceivedMessage decode_received_message(const ReceivedMessage& message)
 {
     TransportEnvelope envelope;
@@ -1639,6 +1746,33 @@ TypedReceivedMessage decode_received_message(const ReceivedMessage& message)
             typed_message.kind = TypedReceivedMessageKind::PackTransferDone;
             typed_message.pack_transfer_done =
                 std::make_shared<PackTransferDoneMessage>(std::move(*decoded));
+            return typed_message;
+        }
+
+        case kStagedMatchSetupMessageType:
+        {
+            const auto decoded =
+                deserialize_staged_match_setup_message(message.data);
+            if (!decoded.has_value())
+                return malformed_typed_message(message.peer_id);
+
+            typed_message.kind = TypedReceivedMessageKind::StagedMatchSetup;
+            typed_message.staged_match_setup =
+                std::make_shared<StagedMatchSetupMessage>(std::move(*decoded));
+            return typed_message;
+        }
+
+        case kStagedMatchKeyframeMessageType:
+        {
+            const auto decoded =
+                deserialize_staged_match_keyframe_message(message.data);
+            if (!decoded.has_value())
+                return malformed_typed_message(message.peer_id);
+
+            typed_message.kind = TypedReceivedMessageKind::StagedMatchKeyframe;
+            typed_message.staged_match_keyframe =
+                std::make_shared<StagedMatchKeyframeMessage>(
+                    std::move(*decoded));
             return typed_message;
         }
 

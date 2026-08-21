@@ -4,6 +4,7 @@
 #include <openglad/gameplay/input_state_net.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/net_transport.h>
+#include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/world_snapshot.h>
 #include <openglad/core/sound_ids.h>
@@ -461,7 +462,8 @@ TEST(GameServerCoverage, consuming_initial_snapshot_deduplicates_guy_records)
 
     guy shared(FAMILY_SOLDIER);
     shared.id = 31415;
-    shared.name = "Shared Record";
+    // 11-char max: guy names over the disk width clamp on the wire read.
+    shared.name = "Shared Rec";
     walker* first = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
     walker* second = fixture.world().add_ob(Order::Living, FAMILY_ELF);
     ASSERT_NE(nullptr, first);
@@ -715,6 +717,300 @@ TEST(GameServerCoverage, disconnecting_pause_owner_clears_authoritative_pause)
     ASSERT_EQ(1u, server.disconnected_players().size());
     EXPECT_EQ(0u, server.disconnected_players().front().player_index);
     EXPECT_EQ(control, server.disconnected_players().front().control);
+}
+
+// #239 launch gate bound: a seeded client that never confirms ready holds the
+// level start, so it must be CUT exactly one DISCONNECT_TIMEOUT_MS window
+// after its keyframe — even while its heartbeats keep refreshing the input
+// starvation clock (which is why the starvation clause alone cannot bound
+// the gate). Local (same-process) peers stay exempt, as with every cut.
+TEST(GameServerCoverage, launch_gate_ready_deadline_cuts_a_dead_handshake)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    std::uint64_t now_ms = 1'000;
+    server.set_wall_clock_ms_source([&] { return now_ms; });
+    transport.set_connected({91u, 92u});
+    server.poll_incoming_messages();
+
+    walker* const remote_control =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* const local_control =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, remote_control);
+    ASSERT_NE(nullptr, local_control);
+    server.bind_player(91u, 0u, fixture.world().my_team, remote_control);
+    server.bind_player(92u, 1u, fixture.world().my_team, local_control);
+    server.mark_peer_local(92u);
+
+    // Seed both at level start; neither confirms.
+    server.send_initial_snapshot(91u, og::sim::SnapshotCaptureMode::Peek);
+    server.send_initial_snapshot(92u, og::sim::SnapshotCaptureMode::Peek);
+
+    // The gate holds tick 1 while the handshakes are outstanding.
+    server.step();
+    server.step();
+    EXPECT_EQ(0u, fixture.world().tick_count_)
+        << "seeded-but-unready clients must hold the level start";
+
+    // A heartbeat keeps 91's input-starvation clock fresh but must not feed
+    // the ready deadline.
+    now_ms = 6'000;
+    transport.queue_raw(
+        91u, og::sim::serialize_heartbeat_message(og::sim::HeartbeatMessage{}));
+    server.step();
+    EXPECT_EQ(0u, fixture.world().tick_count_);
+    EXPECT_TRUE(transport.disconnected().empty());
+
+    // One full window after the keyframe (stamped at now=1000), the dead
+    // handshake is cut; the local peer survives.
+    now_ms = 1'000 + og::sim::DISCONNECT_TIMEOUT_MS;
+    server.step();
+    EXPECT_EQ((std::vector<og::sim::PeerId>{91u}), transport.disconnected())
+        << "the ready deadline must cut the remote dead handshake only";
+
+    // The surviving local peer confirms; the gate opens and tick 1 runs.
+    transport.queue_raw(
+        92u,
+        og::sim::serialize_client_ready_message(og::sim::ClientReadyMessage{}));
+    server.step();
+    EXPECT_EQ(1u, fixture.world().tick_count_)
+        << "the confirmed handshake must release the level start";
+}
+
+// The TRANSITION-limbo bound (staged-lobby review finding): after a level
+// reload, prepare_clients_for_loaded_level re-sends InitialSetup and resets
+// has_initial_snapshot — the client is owed a ClientReady BEFORE any keyframe
+// goes out, so the seeded-client deadline (stamped only at keyframe send)
+// never started for it, and its heartbeats kept the input-starvation clock
+// fresh. One wedged or hostile peer could freeze every level transition
+// forever for everyone. The deadline is now stamped at the re-setup itself:
+// a limbo peer that heartbeats but never re-readies is cut one full
+// DISCONNECT_TIMEOUT_MS window after the reload, and the reloaded level's
+// tick 1 runs for the survivors.
+TEST(GameServerCoverage,
+     launch_gate_transition_limbo_deadline_cuts_a_wedged_peer)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    std::uint64_t now_ms = 1'000;
+    server.set_wall_clock_ms_source([&] { return now_ms; });
+    transport.set_connected({91u, 92u});
+    server.poll_incoming_messages();
+
+    walker* const wedged_control =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* const benign_control =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, wedged_control);
+    ASSERT_NE(nullptr, benign_control);
+    server.bind_player(91u, 0u, fixture.world().my_team, wedged_control);
+    server.bind_player(92u, 1u, fixture.world().my_team, benign_control);
+
+    // Level start: both peers complete the handshake and tick 1 runs.
+    server.send_initial_snapshot(91u, og::sim::SnapshotCaptureMode::Peek);
+    server.send_initial_snapshot(92u, og::sim::SnapshotCaptureMode::Peek);
+    transport.queue_raw(
+        91u,
+        og::sim::serialize_client_ready_message(og::sim::ClientReadyMessage{}));
+    transport.queue_raw(
+        92u,
+        og::sim::serialize_client_ready_message(og::sim::ClientReadyMessage{}));
+    server.step();
+    ASSERT_EQ(1u, fixture.world().level_tick_count());
+
+    // Peer 92's "quit this mission" reloads the current level; the hook
+    // resets it to its start (the dedicated withdraw_headless_level shape).
+    server.on_withdraw_accepted = [&](int /*destination*/) {
+        fixture.world().tick_count_ = 0;
+        fixture.world().reset_level_progress();
+        return true;
+    };
+    now_ms = 2'000;
+    transport.queue_raw(
+        92u,
+        og::sim::serialize_exit_prompt_response_message(
+            {.accepted = true, .abort_request = true}));
+    server.step();
+    ASSERT_EQ(0u, fixture.world().level_tick_count())
+        << "the reload must be back at its level start, gate closed";
+
+    // 92 completes the re-handshake (ready -> catch-up keyframe -> re-ready).
+    transport.queue_raw(
+        92u,
+        og::sim::serialize_client_ready_message(og::sim::ClientReadyMessage{}));
+    server.step();
+    transport.queue_raw(
+        92u,
+        og::sim::serialize_client_ready_message(og::sim::ClientReadyMessage{}));
+    server.step();
+    EXPECT_EQ(0u, fixture.world().level_tick_count())
+        << "peer 91's outstanding re-handshake must still hold the reload";
+
+    // Both peers heartbeat just inside the window: the starvation clocks are
+    // fresh, so ONLY the transition-limbo ready deadline can bound peer 91.
+    now_ms = 2'000 + og::sim::DISCONNECT_TIMEOUT_MS - 1;
+    transport.queue_raw(
+        91u, og::sim::serialize_heartbeat_message(og::sim::HeartbeatMessage{}));
+    transport.queue_raw(
+        92u, og::sim::serialize_heartbeat_message(og::sim::HeartbeatMessage{}));
+    server.step();
+    EXPECT_TRUE(transport.disconnected().empty())
+        << "inside the window nothing may be cut";
+    EXPECT_EQ(0u, fixture.world().level_tick_count());
+
+    // One full window after the re-setup, the wedged limbo handshake is cut
+    // and the reloaded level starts for the survivor.
+    now_ms = 2'000 + og::sim::DISCONNECT_TIMEOUT_MS;
+    server.step();
+    EXPECT_EQ((std::vector<og::sim::PeerId>{91u}), transport.disconnected())
+        << "the re-setup deadline must cut the never-readying limbo peer";
+    EXPECT_EQ(1u, fixture.world().level_tick_count())
+        << "cutting the limbo peer must open the gate for the ready survivor";
+}
+
+// The launch-gate handshake pump's budget arms: budgeted catch-up keyframes
+// (a KeyframeRequest raised mid-transition) are bounded at
+// kMaxKeyframesPerTick per gate step — the third requester is deferred with
+// force_keyframe latched and served the very next step — and a NEW bound
+// peer arriving mid-gate is seeded with its full initial snapshot through
+// the same pump.
+TEST(GameServerCoverage, launch_gate_budgets_catchup_keyframes_per_step)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    std::uint64_t now_ms = 1'000;
+    server.set_wall_clock_ms_source([&] { return now_ms; });
+    transport.set_connected({91u, 92u, 93u});
+    server.poll_incoming_messages();
+
+    std::array<walker*, 3> controls{};
+    for (std::size_t i = 0; i < controls.size(); ++i)
+    {
+        controls[i] = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, controls[i]);
+        server.bind_player(static_cast<og::sim::PeerId>(91u + i),
+                           static_cast<std::uint8_t>(i),
+                           fixture.world().my_team, controls[i]);
+    }
+
+    // Level start: all three complete the handshake and tick 1 runs.
+    for (og::sim::PeerId peer = 91u; peer <= 93u; ++peer)
+    {
+        server.send_initial_snapshot(peer, og::sim::SnapshotCaptureMode::Peek);
+        transport.queue_raw(peer, og::sim::serialize_client_ready_message(
+                                      og::sim::ClientReadyMessage{}));
+    }
+    server.step();
+    ASSERT_EQ(1u, fixture.world().level_tick_count());
+
+    // A quit-mission reload puts every client into the transition limbo
+    // (setup re-sent, keyframe owed).
+    server.on_withdraw_accepted = [&](int /*destination*/) {
+        fixture.world().tick_count_ = 0;
+        fixture.world().reset_level_progress();
+        return true;
+    };
+    now_ms = 2'000;
+    transport.queue_raw(
+        91u,
+        og::sim::serialize_exit_prompt_response_message(
+            {.accepted = true, .abort_request = true}));
+    server.step();
+    ASSERT_EQ(0u, fixture.world().level_tick_count());
+
+    // All three raise ready + an explicit KeyframeRequest in the same poll
+    // batch: every catch-up keyframe this step is BUDGETED, and the budget
+    // is two — the pump must serve 91 and 92 and defer 93.
+    const auto count_snapshots_for = [&](og::sim::PeerId peer) {
+        int count = 0;
+        for (const auto& sent : transport.sent())
+        {
+            if (sent.peer_id == peer && sent.data.size() > 1 &&
+                sent.data[1] == og::sim::kSnapshotMessageType)
+                ++count;
+        }
+        return count;
+    };
+    transport.clear_sent();
+    for (og::sim::PeerId peer = 91u; peer <= 93u; ++peer)
+    {
+        transport.queue_raw(peer, og::sim::serialize_client_ready_message(
+                                      og::sim::ClientReadyMessage{}));
+        transport.queue_raw(peer, og::sim::serialize_keyframe_request_message(
+                                      {.last_seen_tick = 0u}));
+    }
+    server.step();
+    EXPECT_EQ(1, count_snapshots_for(91u));
+    EXPECT_EQ(1, count_snapshots_for(92u));
+    EXPECT_EQ(0, count_snapshots_for(93u))
+        << "the third budgeted keyframe must be deferred, not sent";
+    EXPECT_EQ(0u, fixture.world().level_tick_count())
+        << "the gate stays closed while a keyframe is owed";
+
+    // The deferred peer is served on the very next gate step.
+    server.step();
+    EXPECT_EQ(1, count_snapshots_for(93u))
+        << "the deferred keyframe must go out one step later";
+
+    // A NEW bound peer arriving mid-gate is seeded (setup + keyframe)
+    // through the handshake pump itself.
+    transport.set_connected({91u, 92u, 93u, 94u});
+    server.poll_incoming_messages();
+    walker* const late_control =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, late_control);
+    server.bind_player(94u, 3u, fixture.world().my_team, late_control);
+    server.step();
+    EXPECT_EQ(1, count_snapshots_for(94u))
+        << "a mid-gate join must be seeded by the handshake pump";
+
+    // Everyone re-readies; the reloaded level's tick 1 runs.
+    for (og::sim::PeerId peer = 91u; peer <= 94u; ++peer)
+    {
+        transport.queue_raw(peer, og::sim::serialize_client_ready_message(
+                                      og::sim::ClientReadyMessage{}));
+    }
+    server.step();
+    EXPECT_EQ(1u, fixture.world().level_tick_count())
+        << "serving every owed keyframe must reopen the launch gate";
+}
+
+// The staged-lobby adoption seam: SimEventLog::append transfers already-
+// stamped events verbatim — each keeps its own tick stamp (never restamped to
+// current_tick_), suppression does not apply (adoption is an explicit
+// transfer, not a gameplay push), and an empty append is a no-op.
+TEST(GameServerCoverage, sim_event_log_append_preserves_event_stamps)
+{
+    og::sim::SimEventLog log;
+    log.current_tick_ = 7;
+    log.push_notification("live line", 40);
+
+    std::vector<og::sim::Event> staged;
+    og::sim::Event staged_event;
+    staged_event.tick = 1;
+    staged_event.kind = og::sim::EventKind::Notification;
+    staged_event.a = 80;
+    staged_event.text = "staged line";
+    staged.push_back(staged_event);
+
+    {
+        og::sim::SimEventLogSuppressGuard guard(log);
+        log.append(std::move(staged));
+    }
+
+    ASSERT_EQ(2u, log.size());
+    EXPECT_EQ(7u, log.events()[0].tick);
+    EXPECT_EQ("live line", log.events()[0].text);
+    EXPECT_EQ(1u, log.events()[1].tick);
+    EXPECT_EQ("staged line", log.events()[1].text);
+    EXPECT_EQ(80u, log.events()[1].a);
+
+    log.append({});
+    EXPECT_EQ(2u, log.size());
 }
 
 TEST(GameServerCoverage, disconnecting_withdraw_owner_clears_targeted_prompt)

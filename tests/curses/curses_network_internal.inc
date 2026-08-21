@@ -110,9 +110,12 @@ int curses_network_testing_exercise_internal_helpers()
 
     og::sim::LobbyPlayer player =
         build_local_lobby_player(save, "local-player", 2);
+    // "Curses Soldier" (14 chars) exceeds the 11-char wire width on purpose:
+    // the builder must pre-clamp it, or the VALIDATE_SERIALIZATION round-trip
+    // (reader clamps, writer didn't) rejects every message this roster rides.
     check(player.name == "local-player" && player.team == 2 &&
         player.character_slots.size() == 1 &&
-        player.character_slots.front().character.name == "Curses Soldier");
+        player.character_slots.front().character.name == "Curses Sold");
     // Downstream helper probes need a valid slot even when the assertion above
     // catches a build_local_lobby_player regression.  Construct it from the
     // known test-owned save instead of dereferencing a possibly empty vector.
@@ -305,6 +308,45 @@ int curses_network_testing_exercise_internal_helpers()
         decoded[0].kind == og::sim::TypedReceivedMessageKind::LobbyMessage &&
         decoded[1].kind == og::sim::TypedReceivedMessageKind::LobbyState);
 
+    // Staged lobby (#218, protocol v13) over a RAW transport: the joiner's
+    // envelope pump must decode the staged pair and drop undecodable staged
+    // frames — the in-process typed path never exercises this decode.
+    const og::sim::StagedMatchSetupMessage staged_setup{
+        .stage_generation = 5u, .setup_bytes = {0x01, 0x02, 0x03}};
+    const og::sim::StagedMatchKeyframeMessage staged_keyframe{
+        .stage_generation = 5u, .snapshot_bytes = {0x04, 0x05}};
+    RawTransport staged_raw({
+        og::sim::ReceivedMessage{
+            .peer_id = 1,
+            .data = malformed_payload(og::sim::kStagedMatchSetupMessageType),
+        },
+        og::sim::ReceivedMessage{
+            .peer_id = 1,
+            .data = og::sim::serialize_staged_match_setup_message(staged_setup),
+        },
+        og::sim::ReceivedMessage{
+            .peer_id = 1,
+            .data =
+                malformed_payload(og::sim::kStagedMatchKeyframeMessageType),
+        },
+        og::sim::ReceivedMessage{
+            .peer_id = 1,
+            .data = og::sim::serialize_staged_match_keyframe_message(
+                staged_keyframe),
+        },
+    });
+    const std::vector<og::sim::TypedReceivedMessage> staged_decoded =
+        poll_lobby_transport_messages(staged_raw);
+    check(staged_decoded.size() == 2 &&
+        staged_decoded[0].kind ==
+            og::sim::TypedReceivedMessageKind::StagedMatchSetup &&
+        staged_decoded[0].staged_match_setup != nullptr &&
+        *staged_decoded[0].staged_match_setup == staged_setup &&
+        staged_decoded[1].kind ==
+            og::sim::TypedReceivedMessageKind::StagedMatchKeyframe &&
+        staged_decoded[1].staged_match_keyframe != nullptr &&
+        *staged_decoded[1].staged_match_keyframe == staged_keyframe);
+
     // A lobby before any transport/state attachment must expose a coherent
     // empty public state, reject mutations, and render/cancel safely.
     class ScriptedTerminal final : public ITerminal {
@@ -361,7 +403,6 @@ int curses_network_testing_exercise_internal_helpers()
         unattached_host.local_player_indices().empty() &&
         !unattached_host.local_ready() &&
         unattached_host.players().empty() &&
-        !unattached_host.request_team_change(1) &&
         !unattached_host.request_seat_team_change(0, 1) &&
         !unattached_host.request_seat_team_change(
             0, static_cast<og::sim::LobbySeatId>(123), 1) &&
@@ -428,7 +469,6 @@ int curses_network_testing_exercise_internal_helpers()
         std::vector<std::string> status_lines() const override { return {}; }
         void cancel() override { cancelled_ = true; }
         bool cancelled() const override { return cancelled_; }
-        bool request_team_change(short) override { return false; }
         bool request_seat_team_change(std::uint8_t, short) override
         {
             return false;
@@ -634,9 +674,13 @@ int curses_network_testing_exercise_internal_helpers()
                 });
         const bool stable_before_abort =
             initial_worlds_valid &&
-            initial_tick > 0 &&
+            // Staged lobby (#218): the constructor burns ZERO sim ticks —
+            // the world is untensed until the session loop's first step
+            // opens the launch gate (the old shape burned 6 handshake
+            // ticks, so this pinned initial_tick > 0).
+            initial_tick == 0 &&
             initial_next_input_tick == initial_tick + 1 &&
-            advanced_tick >= initial_tick &&
+            advanced_tick >= 1 &&
             host->next_input_tick() == authoritative.tick_count_ + 1 &&
             !host->ended() &&
             host->ending() == 0 &&

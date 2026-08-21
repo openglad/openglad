@@ -5,6 +5,7 @@
 #include <openglad/gameplay/pack_transfer.h>
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <unordered_map>
 #include <vector>
@@ -105,6 +106,19 @@ public:
         return pack_host_;
     }
 
+    // Staged-lobby GO gate (protocol v13, #218). The lobby OWNER — the only
+    // thing that can load a level; LobbyServer lives below og_resources and
+    // cannot — injects a callback consulted by start_allowed as its final
+    // rule. Returning StartDenialReason::None passes; any other value denies
+    // the StartGame with that reason (the owner wires it to its MatchStage:
+    // a Failed stage returns StageFailed, and the callback is the natural
+    // place to force the GO-time ensure_current()). local_session lobbies
+    // keep their unconditional pass and never consult the gate.
+    void set_start_gate(std::function<StartDenialReason()> gate)
+    {
+        start_gate_ = std::move(gate);
+    }
+
 private:
     void synchronize_transport_peers(
         const std::vector<std::pair<PeerId, LobbyMessage>>& messages,
@@ -152,7 +166,9 @@ private:
     //   3. every non-host peer with joined seats must be ready (else
     //      MachinesNotReady);
     //   4. at least one deployed character across all machines (else
-    //      NoDeployedCharacters).
+    //      NoDeployedCharacters);
+    //   5. the owner-injected start gate, when set, must return None (else
+    //      its reason — StageFailed for a failed MatchStage).
     // On denial the lobby lock is NEVER engaged; the caller records the reason
     // in LobbyState::last_start_denial and echoes it.
     [[nodiscard]] bool start_allowed(PeerId requester,
@@ -162,6 +178,10 @@ private:
     [[nodiscard]] LobbyMachineId allocate_machine_id();
     void send_state(PeerId peer_id) const;
     void broadcast_state() const;
+    // Shared throw barrier for the two senders above (oversize serialize
+    // guard; see the implementation comment).
+    void send_state_guarded(PeerId peer_id,
+                            std::shared_ptr<LobbyState> peer_state) const;
     void broadcast_start_game(std::uint8_t player_index,
                               std::uint32_t request_id) const;
     void reassign_host_peer();
@@ -184,6 +204,7 @@ private:
     bool start_game_requested_ = false;
     bool lobby_locked_ = false;
     PackTransferHost pack_host_;
+    std::function<StartDenialReason()> start_gate_;
 };
 
 } // namespace og::sim

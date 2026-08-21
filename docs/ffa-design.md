@@ -357,9 +357,10 @@ provably unchanged and the coverage denominator is additive):
   forced FFA must override, not expect a big count through the [2,4] clamp).
 - Seats keep lobby teams 0–3 (wallets, saves, results economy unchanged).
   MATCHUP unchanged — its 4 rows still truthfully describe seat/economy
-  grouping; the level title prefix + briefing carry FFA identity, plus an
-  init toast (`"FREE FOR ALL"` / `"{n} FIGHTERS ENTER"`). **Zero menu test
-  re-pins** (matchup_static_layout, nav BFS, label cycles, text ordinals all
+  grouping (#218 has since deleted that screen; VIEW LEVEL's seat block
+  carries the same grouping); the level title prefix + briefing carry FFA
+  identity, plus an init toast (`"FREE FOR ALL"` /
+  `"{n} FIGHTERS ENTER"`). **Zero menu test re-pins** (matchup_static_layout, nav BFS, label cycles, text ordinals all
   untouched). A locked `Teams: FFA` label is an explicitly deferred
   follow-up.
 - **Version triple (protocol 12 / snapshot 10 / replay 14): untouched.** Team

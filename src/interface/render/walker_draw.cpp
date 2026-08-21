@@ -383,15 +383,14 @@ void draw_small_health_bar(walker* w, viewscreen* view_buf)
 		static_cast<float>(view_buf->xloc);
 	const float world_y = draw_pos.ypos - static_cast<float>(view_buf->topy) +
 		static_cast<float>(view_buf->yloc);
-	const auto [walkerstartx, walkerstarty] =
-		view_buf->project_world_point_to_gameplay_ui(world_x, world_y);
+	// Captured BEFORE the layout scope: inside it xloc/xview already hold
+	// UI-pane values and both the projection and the pane-ratio scaling
+	// would degenerate to the identity.
+	const GameplayUiProjector proj(*view_buf);
+	const auto [walkerstartx, walkerstarty] = proj.project(world_x, world_y);
 	const auto [unused_x, walkerbottom] =
-		view_buf->project_world_point_to_gameplay_ui(
-			world_x, world_y + static_cast<float>(w->sizey()));
+		proj.project(world_x, world_y + static_cast<float>(w->sizey()));
 	(void)unused_x;
-	// Read the WORLD pane width before the layout scope swaps view_buf over to
-	// the gameplay-UI pane; afterwards view_buf->xview is already ui.w.
-	const Sint32 world_pane_w = view_buf->xview;
 	ScopedGameplayUiViewLayout gameplay_ui_layout(
 		*view_buf, *og::runtime::current_session->myscreen_);
 	const Sint32 portstartx = view_buf->xloc;
@@ -407,12 +406,17 @@ void draw_small_health_bar(walker* w, viewscreen* view_buf)
     // projection uses: exactly identity at zoom 1.0 (the UI pane and the world
     // pane are the same rectangle), and identity again on the overlay-allocation
     // fallback and the classic-pinned editor canvas, where the layout scope is a
-    // no-op. Integer math keeps len*n/n == len bit-exact.
-    const Sint32 bar_w = std::max<Sint32>(
-        1, static_cast<Sint32>(static_cast<std::int64_t>(w->sizex()) *
-                               view_buf->xview /
-                               std::max<Sint32>(1, world_pane_w)));
-    const Sint32 bar_h = 1;
+    // no-op. GameplayUiProjector's integer math keeps len*n/n == len bit-exact.
+    const Sint32 bar_w = proj.scale_w(w->sizex(), 1);
+	// draw_box corners are INCLUSIVE, so bar_y..bar_y+bar_h paints bar_h+1
+	// rows: the classic fill is 2 rows tall. Scale that 2-row fill by the
+	// vertical pane ratio (issue #244: the unscaled fill towered 2x over the
+	// shrunken sprite at zoom 0.5), floored at one row — the overlay renders
+	// at fixed zoom-1.0 density, so one UI row is the thinnest drawable bar.
+	// The +1 sprite gap and the 1-px outline stay unscaled: they are already
+	// at the 1-UI-pixel floor, and a gap scaled to 0 would overdraw the
+	// sprite's bottom row with the outline.
+	const Sint32 bar_h = proj.scale_h(2, 1) - 1;
     if(bar_x < portstartx || bar_x > portendx || bar_y < portstarty || bar_y > portendy)
         return;
 

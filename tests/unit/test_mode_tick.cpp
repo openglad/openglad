@@ -135,6 +135,120 @@ constexpr const char* kMinimalModeScript =
 }  // namespace
 
 // ---------------------------------------------------------------------------
+// Staged init seam (#218): mode_stage_init is mode_run_tick's step 0
+// factored behind the init_attempted latch, so a staged lobby world can
+// activate its mode before the first tick. One rule, two call sites.
+// ---------------------------------------------------------------------------
+
+TEST(ModeTick, stage_init_activates_without_a_tick)
+{
+    ModeWorld fx;
+    fx.register_script(kMinimalModeScript);
+    // Two team start markers + a lobby respawn request: the staged init runs
+    // the SAME engine prep as the tick-side arm (respawn delay resolution +
+    // anchor scan while markers are still in oblist).
+    walker* anchor_one = fx.world().add_ob(Order::Special, FAMILY_RESERVED_TEAM);
+    ASSERT_NE(nullptr, anchor_one);
+    anchor_one->setxy(320, 320);
+    anchor_one->set_team_num(1);
+    walker* anchor_two = fx.world().add_ob(Order::Special, FAMILY_RESERVED_TEAM);
+    ASSERT_NE(nullptr, anchor_two);
+    anchor_two->setxy(400, 400);
+    anchor_two->set_team_num(2);
+    fx.world().ctf_requested_respawn_ticks = 60;
+
+    og::sim::mode_stage_init(fx.world());
+    EXPECT_EQ(0u, fx.world().tick_count_) << "staging must not tick";
+    EXPECT_TRUE(fx.world().mode.init_attempted);
+    EXPECT_TRUE(fx.world().mode.active);
+    EXPECT_EQ(1, fx.log_count("mode_init\t42"));
+    EXPECT_EQ(60u, fx.world().respawn.respawn_ticks);
+    EXPECT_EQ(1u, fx.world().respawn.anchor_count[1]);
+    EXPECT_EQ(1u, fx.world().respawn.anchor_count[2]);
+
+    // Latch-guarded once-only: a restage-time repeat and the first tick's
+    // lazy arm both skip a second dispatch.
+    og::sim::mode_stage_init(fx.world());
+    EXPECT_EQ(1, fx.log_count("mode_init\t42"));
+    fx.spawn_living(FAMILY_ORC, 1, 320, 320);
+    fx.tick(1);
+    EXPECT_EQ(1, fx.log_count("mode_init\t42"));
+    EXPECT_TRUE(fx.logged("mode_tick\t1"));
+}
+
+TEST(ModeTick, stage_init_failed_shape_defaults_and_stays_classic)
+{
+    ModeWorld fx;
+    // No pack scripts: staged init latches the attempt, banks the default
+    // respawn delay, and leaves the mode inactive — the honest failed-init
+    // shape (classic rules), not a stage failure.
+    og::sim::mode_stage_init(fx.world());
+    EXPECT_TRUE(fx.world().mode.init_attempted);
+    EXPECT_FALSE(fx.world().mode.active);
+    EXPECT_EQ(og::sim::kRespawnDefaultTicks, fx.world().respawn.respawn_ticks);
+
+    // The staged attempt already owned the failure: unlike the lazy-arm
+    // shape (whose failing init owns its first tick), the empty world falls
+    // to classic completion on tick 1.
+    fx.tick(1);
+    EXPECT_TRUE(fx.world().game_ended) << "classic rules after a staged refusal";
+}
+
+TEST(ModeTick, staged_init_parity_with_ticked_init)
+{
+    // Two identical worlds, identical RNG state, an init that draws from
+    // the stream and banks engine state. A: stage then tick. B: plain tick
+    // (the lazy arm). The factored step 0 is the SAME code, so the worlds
+    // must agree exactly. (The arena has no act-phase RNG consumers, so the
+    // stream position at init is identical on both paths.)
+    constexpr const char* kStatefulInitScript =
+        "og.register_level_hooks(42, {\n"
+        "  on_mode_init = function(level)\n"
+        "    og.set_mode_name('STG')\n"
+        "    og.mode_set(3, og.rand(1000))\n"
+        "    og.mode_set(4, og.respawn_anchor_count(1))\n"
+        "  end,\n"
+        "})\n";
+    const auto build = [](ModeWorld& fx) {
+        walker* anchor = fx.world().add_ob(Order::Special, FAMILY_RESERVED_TEAM);
+        ASSERT_NE(nullptr, anchor);
+        anchor->setxy(320, 320);
+        anchor->set_team_num(1);
+        // Dead markers still bank (respawn_scan_anchors reads dead ones by
+        // design — the level bootstrap kills consumed markers) but never
+        // act, keeping the arena free of act-phase RNG draws so the stream
+        // position at init is identical on both paths.
+        anchor->set_dead(1);
+        fx.world().ctf_requested_respawn_ticks = 48;
+        fx.world().rng_.state_ = 0xC0FFEEu;
+    };
+
+    ModeWorld staged;
+    staged.register_script(kStatefulInitScript);
+    build(staged);
+    og::sim::mode_stage_init(staged.world());
+    staged.tick(1);
+
+    ModeWorld ticked;
+    ticked.register_script(kStatefulInitScript);
+    build(ticked);
+    ticked.tick(1);
+
+    EXPECT_EQ(ticked.world().mode.active, staged.world().mode.active);
+    EXPECT_TRUE(staged.world().mode.active);
+    EXPECT_EQ(ticked.world().mode.name, staged.world().mode.name);
+    EXPECT_EQ(ticked.world().mode.vars, staged.world().mode.vars);
+    EXPECT_NE(0, staged.world().mode.vars[3]) << "init drew from the stream";
+    EXPECT_EQ(1, staged.world().mode.vars[4]) << "init saw the banked anchor";
+    EXPECT_EQ(ticked.world().respawn.respawn_ticks,
+              staged.world().respawn.respawn_ticks);
+    EXPECT_EQ(48u, staged.world().respawn.respawn_ticks);
+    EXPECT_EQ(ticked.world().respawn.anchor_count[1],
+              staged.world().respawn.anchor_count[1]);
+    EXPECT_EQ(ticked.world().rng_.state_, staged.world().rng_.state_);
+}
+
+// ---------------------------------------------------------------------------
 // Activation truth table
 // ---------------------------------------------------------------------------
 

@@ -24,6 +24,10 @@ struct LobbyPlayerBinding;
 using PeerId = std::uint32_t;
 }
 
+namespace og::server {
+class MatchStage;
+}
+
 namespace og::runtime {
 
 struct LocalTransportRuntime;
@@ -79,14 +83,17 @@ private:
         const GameSession& session) noexcept;
     friend bool local_transport_shadow_is_paused(
         const GameSession& session) noexcept;
-    friend void reset_local_transport_shadow(GameSession& session,
-                                             screen& gameplay_screen);
+    friend void reset_local_transport_shadow(
+        GameSession& session,
+        screen& gameplay_screen,
+        og::server::MatchStage* match_stage);
     friend void reset_network_host_transport_shadow(
         GameSession& session,
         screen& gameplay_screen,
         std::shared_ptr<og::sim::ITransport> server_transport,
         std::shared_ptr<og::sim::InProcessTransport> local_client_transport,
-        const std::vector<og::sim::LobbyPlayerBinding>& player_bindings);
+        const std::vector<og::sim::LobbyPlayerBinding>& player_bindings,
+        og::server::MatchStage* match_stage);
     friend void reset_network_client_transport_shadow(
         GameSession& session,
         screen& gameplay_screen,

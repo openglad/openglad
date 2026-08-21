@@ -57,6 +57,12 @@ struct PerClientState {
 };
 
 void reset_client_snapshot_state(PerClientState& client_state) noexcept;
+// The roster payload of an InitialSetup, collected from a world's entity
+// lists (one entry per distinct guy). Shared by GameServer::build_initial_setup
+// and the staged-lobby stager (og::server::MatchStage) so the staged and
+// launch setups can never fork their roster payloads.
+[[nodiscard]] std::vector<InitialSetupGuyData> collect_initial_setup_guys(
+    const GameWorld& world);
 void seed_client_snapshot_baseline(PerClientState& client_state,
                                    const WorldSnapshot& keyframe);
 void accumulate_snapshot_for_client(PerClientState& client_state,
@@ -108,6 +114,13 @@ struct ConnectedClientState {
     SessionToken session_token = kZeroSessionToken;
     std::uint64_t last_received_input_ms = 0;
     std::uint64_t last_pause_request_ms = 0;
+    // Ready handshake deadline, stamped whenever an initial/catch-up keyframe
+    // resets client_ready. While the level-start launch gate holds tick 1 for
+    // this client (see GameServer::step), a seeded client that never confirms
+    // within DISCONNECT_TIMEOUT_MS is cut by the starvation machinery so the
+    // gate is always bounded. 0 = no keyframe outstanding. Local (same-
+    // process) peers are exempt, as with every liveness cut.
+    std::uint64_t ready_deadline_ms = 0;
 
     [[nodiscard]] bool has_player_binding() const noexcept
     {
@@ -314,6 +327,22 @@ private:
     [[nodiscard]] bool should_send_to_client(const ConnectedClientState& client) const;
     [[nodiscard]] bool should_send_keyframe(const ConnectedClientState& client,
                                             const WorldSnapshot& snapshot) const;
+    // LEVEL-START LAUNCH GATE (#239). True while this level has never ticked
+    // (level_tick_count == 0) and any client is still mid-handshake — seeded
+    // but not ready, or re-setup but still owed its keyframe (the level-
+    // transition limbo prepare_clients_for_loaded_level leaves behind). While
+    // closed, step() holds world_.tick() AND the event drain, so the tick-1
+    // batch (level on_load announcements, mode-init text) is drained only
+    // when every seeded client is past should_send_to_client. Mid-level
+    // joins never close it (the gate is level-start-only), and a client that
+    // never readies is cut at ready_deadline_ms, so the gate is bounded.
+    [[nodiscard]] bool launch_gate_closed() const;
+    // The narrow broadcast used while the launch gate is closed: serve
+    // initial setups + catch-up keyframes to clients that lack one (the
+    // existing send_initial_snapshot / catch-up shapes, Peek capture) and
+    // send NOTHING to already-seeded clients — no per-step tick-0 keyframe
+    // storm, and never an event drain.
+    void broadcast_launch_handshake();
     [[nodiscard]] PlayerInput select_effective_input(BoundPlayer& seat,
                                                      std::uint32_t expected_tick);
 
@@ -337,6 +366,13 @@ private:
     std::size_t snapshot_hash_mismatch_count_ = 0;
     std::uint32_t next_sim_event_sequence_ = 1;
     std::uint32_t next_game_flow_event_sequence_ = 1;
+    // The ready-resetting setup generation stamped into every InitialSetup
+    // (v13). Bumped once per prepare_clients_for_loaded_level: clients detect
+    // a re-setup that expects a fresh ClientReady even when the level id is
+    // unchanged (same-level reload after "Quit this mission"), while
+    // mid-level resends (control mapping, reconnect) keep the generation and
+    // stay non-transitional.
+    std::uint32_t setup_generation_ = 1;
     std::optional<PeerId> host_peer_id_ = std::nullopt;
     // Sorted peer ids living in this process (see mark_peer_local).
     std::vector<PeerId> local_peer_ids_;

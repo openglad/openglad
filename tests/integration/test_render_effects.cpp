@@ -784,6 +784,81 @@ TEST_F(RenderEffects, mini_health_bar_width_matches_sprite_at_zoom_one)
         << "the outline's right edge must land at bar_x + sizex + 1";
 }
 
+// Issue #244 zoom-1.0 identity pin. The bar's fill height is now scaled by the
+// vertical pane ratio, which must be the exact identity at zoom 1.0: the
+// classic block stays 2 fill rows + a 1-px outline above and below, 4
+// scanlines total, to the pixel.
+TEST_F(RenderEffects, mini_health_bar_height_matches_classic_at_zoom_one)
+{
+    viewscreen* const vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    RenderSceneGuard scene_guard(vs);
+    EffectsCfgGuard guard;
+    cfg.apply_setting("effects", "mini_hp_bar", "on");
+
+    ASSERT_EQ(scr()->world_canvas_w(), scr()->gameplay_ui_canvas_w())
+        << "this pin assumes the default zoom-1.0 canvas";
+
+    walker* const w = scr()->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w);
+    w->setxy(160, 120);
+    w->stats()->set_max_hitpoints(100.0f);
+    w->stats()->set_hitpoints(94.0f);
+    w->set_last_hitpoints(94.0f);
+    vs->control = w;
+    ASSERT_TRUE(do_redraw(vs));
+
+    const Sint32 sprite_w = w->sizex();
+    const float world_x = w->worldx() - static_cast<float>(vs->topx) +
+        static_cast<float>(vs->xloc);
+    const float world_bottom = w->worldy() - static_cast<float>(vs->topy) +
+        static_cast<float>(vs->yloc + w->sizey());
+    const auto [bar_x, walker_bottom] =
+        vs->project_world_point_to_gameplay_ui(world_x, world_bottom);
+    const Sint32 bar_y = walker_bottom + 1;
+    ASSERT_LT(bar_x + sprite_w + 8, vs->endx)
+        << "the sampled columns must stay inside the pane";
+
+    ScopedGameplayUiCanvas gameplay_ui(*scr());
+    scr()->clearbuffer();
+    int background_index = -1;
+    scr()->get_pixel(bar_x + sprite_w + 8, bar_y, &background_index);
+    draw_small_health_bar(w, vs);
+
+    int hp_index = -1;
+    scr()->get_pixel(bar_x, bar_y, &hp_index);
+    ASSERT_NE(background_index, hp_index) << "the bar must have been drawn";
+
+    int vrun = 0;
+    while (bar_y + vrun < vs->endy)
+    {
+        int sample = -1;
+        scr()->get_pixel(bar_x, bar_y + vrun, &sample);
+        if (sample != hp_index)
+            break;
+        ++vrun;
+    }
+    EXPECT_EQ(2, vrun)
+        << "at zoom 1.0 the classic fill must stay exactly 2 rows tall";
+
+    int outline_index = -1;
+    scr()->get_pixel(bar_x - 1, bar_y, &outline_index);
+    ASSERT_NE(background_index, outline_index) << "the outline must be drawn";
+    int top_row = -1;
+    scr()->get_pixel(bar_x, bar_y - 1, &top_row);
+    EXPECT_EQ(outline_index, top_row)
+        << "the outline's top row must sit directly above the fill";
+    int bottom_row = -1;
+    scr()->get_pixel(bar_x, bar_y + 2, &bottom_row);
+    EXPECT_EQ(outline_index, bottom_row)
+        << "the outline's bottom row must close the classic 4-scanline block";
+    int below_block = -1;
+    scr()->get_pixel(bar_x, bar_y + 3, &below_block);
+    EXPECT_EQ(background_index, below_block)
+        << "nothing may be drawn below the classic block";
+}
+
 TEST_F(RenderEffects, damage_number_visibility_and_expiration_preserve_cache)
 {
     viewscreen* const vs = view0();

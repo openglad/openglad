@@ -38,8 +38,24 @@ void apply_headless_lobby_game_start_config(
     SaveData& save,
     const og::sim::LobbySaveDataEquivalent& config_save,
     LobbyStartReplayArm arm_policy = LobbyStartReplayArm::AdoptCompletedLanding);
+// The LOCAL (no-lobby) change-key equivalent: the save's own knobs + its
+// FULL roster (benched members kept with their deploy flags — the local
+// session's assembly filter is spawn-time, exactly like
+// LobbyServer::build_save_data_equivalent's local branch). Feeds the
+// lobby-less MatchStage owners (the curses local session; the text picker's
+// local stage) so every launch shape runs the one staging pipeline.
+[[nodiscard]] og::sim::LobbySaveDataEquivalent build_local_save_equivalent(
+    const SaveData& save);
 void sync_headless_server_save_data_from_world(SaveData& save,
                                                const GameWorld& world);
+// Spawn the save's deployed roster into the world: one walker per deployed
+// member (battle stats cleared), consuming that team's FAMILY_RESERVED_TEAM
+// start marker (neutral-teleport fallback when exhausted — draws from the
+// world RNG), recording the level-entry spawn point, then killing every
+// leftover marker. Exported as THE roster-spawn rule so the staged lobby and
+// every launch shape share one copy (the SDL and text clients' inline twins
+// collapse onto this).
+void spawn_team_from_save(GameWorld& world, const SaveData& save);
 // `authoritative` marks a SERVER world load: it rolls the per-level weather
 // after the level is prepared. Client mirror worlds (curses/text displays
 // that reuse this loader) MUST pass false — they receive the weather kind

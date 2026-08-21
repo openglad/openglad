@@ -142,7 +142,8 @@ seat settings, minus TEAM):
 short name (≤5 chars: `WASD`, `ARROW`, `IJKL`, `TFGH`, `JOY1`, or the derived
 movement cluster for customs). Budget: the 57px card face is exactly 9 chars
 and the trailing space is load-bearing (team chip clearance): `"P2 ARROW "` =
-9. Foreign seats keep `"P3 {ABBR} "`. MATCHUP identity strings are unchanged.
+9. Foreign seats keep `"P3 {ABBR} "`. The shared seat identity strings are
+unchanged.
 
 ## 3. Named mappings
 
@@ -376,7 +377,11 @@ screen share one geometry)
     render/geometry only, the sim and transports are never touched.
   - HUD/radar projection is unchanged: `ScopedGameplayUiViewLayout` +
     `project_world_point_to_gameplay_ui` already map the (now larger) window
-    onto the stable zoom-1.0 pane. The editor's classic-canvas pin forces
+    onto the stable zoom-1.0 pane. (`draw_mode_beacons` was the exception —
+    it mixed the world `topx` with the swapped UI `xloc` until issue #220;
+    it now projects through the shared `GameplayUiProjector`, which
+    `draw_small_health_bar` also uses for its width/height pane-ratio
+    scaling, issue #244.) The editor's classic-canvas pin forces
     per-view zoom inert (window == slot). When the platform has no partition
     seam (`world_present_partition_supported` false) the row is disabled,
     never wrong.

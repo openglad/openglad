@@ -1681,15 +1681,7 @@ void GameWorld::tick()
 
     tick_count_++;
     events.current_tick_ = tick_count_;
-    if (last_level_id_ != id)
-    {
-        last_level_id_ = id;
-        level_tick_count_ = 0;
-        // Level-script on_load: fires on each peer's first tick of a level
-        // (fresh start or mid-level join alike — scripts derive state from
-        // the world, not from "how long the level existed elsewhere").
-        og::script::hooks::level_load(this);
-    }
+    run_pending_level_on_load();
     level_tick_count_++;
 
     std::uint32_t max_level_ticks = 36000;
@@ -1974,7 +1966,11 @@ void GameWorld::tick()
     for (auto e = objects.begin(); e != objects.end();)
     {
         walker* ob = e->get();
-        if (ob && ob->dead() && ob->myguy == nullptr)
+        // A corpse whose respawn entry is still pending stays in the world:
+        // the fire path resolves it by id and a cleric can still raise its
+        // stain. retire_corpse() disposes of it on the fire tick.
+        if (ob && ob->dead() && ob->myguy == nullptr &&
+            !og::sim::respawn_pending_for(*this, ob))
         {
             remove_from_id_index(ob);
             dead.push_back(std::move(*e));
@@ -2003,6 +1999,20 @@ void GameWorld::tick()
         remove_from_id_index(ob);
         return true;
     });
+}
+
+void GameWorld::run_pending_level_on_load()
+{
+    if (last_level_id_ == id)
+        return;
+    last_level_id_ = id;
+    level_tick_count_ = 0;
+    // Level-script on_load: fires on each peer's first tick of a level
+    // (fresh start or mid-level join alike — scripts derive state from
+    // the world, not from "how long the level existed elsewhere"). A staged
+    // lobby world runs this before its first tick instead; the latch above
+    // keeps the dispatch once-only either way.
+    og::script::hooks::level_load(this);
 }
 
 // --- Floor-transition landing probe (Z-axis / multi-floor) ------------------
@@ -2211,7 +2221,7 @@ bool GameWorld::has_save_all_protected() const
 // Formats: "" (single-floor non-tower, and the Gate); "FLR: f/n" (normal
 // multifloor, 1-indexed); "FLR: N" (tower single-story floor N); "F N: f/n"
 // as "F{N}: {f}/{n}" (tower multi-story). Appended at EOF: the parity canary
-// pins in this file (1620/1622/1710) sit far above and must never shift.
+// pins in this file (1680/1682/1803) sit far above and must never shift.
 std::string floor_hud_label(const GameWorld& world, int walker_floor)
 {
     const int floors = world.floor_count();
@@ -2230,4 +2240,37 @@ std::string floor_hud_label(const GameWorld& world, int walker_floor)
         return std::format("FLR: {}", world.id - og::kTowerGateLevel);
     return std::format("F{}: {}/{}", world.id - og::kTowerGateLevel,
                        f + 1, floors);
+}
+
+// Fire-path disposal of a corpse the dead sweep left in oblist while its
+// respawn entry was pending (contract in game_world.h): the sweep's exact
+// motion, run on the fire tick instead — unindex, move the body to
+// dead_list so raw borrows and Lua walker handles stay valid, and keep
+// living_count honest. Appended at EOF so the parity canary pins above
+// never shift.
+void GameWorld::retire_corpse(walker* ob)
+{
+    auto& objects = oblist.raw_mutable();
+    auto& dead = dead_list.raw_mutable();
+    for (auto e = objects.begin(); e != objects.end(); ++e)
+    {
+        if (e->get() != ob)
+            continue;
+        remove_from_id_index(ob);
+        dead.push_back(std::move(*e));
+        if (ob->query_order() == Order::Living)
+            living_count--;
+        objects.erase(e);
+        return;
+    }
+}
+
+// Staged-lobby adoption (#218): the destination takes the staged world's
+// scripting VM wholesale — see the header comment. Appended at EOF so the
+// parity canary pins above never shift.
+void GameWorld::adopt_scripts_from(GameWorld& source) noexcept
+{
+    if (&source == this)
+        return;
+    scripts_ = std::move(source.scripts_);
 }

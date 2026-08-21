@@ -27,6 +27,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/server/headless_server_runtime.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/screen.h>
 #include <algorithm>
@@ -103,8 +104,6 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
     }
 
 	TRACE("game", "load_saved_game file=%s scen=%d", filename, screenp->save_data.scen_num);
-	guy           *temp_guy;
-	walker        *temp_walker,  *replace_walker;
 	Order         myord{};
 	short         myfam;
 	bool used_fallback_level = false;
@@ -166,62 +165,15 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 			w->set_difficulty(static_cast<Uint32>(w->stats()->level()));
 	}
 
-	// Cycle through the team list ..
-	for(int guy_idx = 0; guy_idx < screenp->save_data.team_size; guy_idx++)
-    {
-	    temp_guy = screenp->save_data.team_list[static_cast<std::size_t>(guy_idx)].get();
-	    if (!temp_guy) continue;
-	    // §4.2: benched members stay in the save but never enter the level —
-	    // must match spawn_team_from_save (the authoritative server world) or
-	    // the display would show a hero the sim never spawned.
-	    if (!temp_guy->deployed) continue;
-	    temp_walker = guy_create_and_add_walker(*temp_guy, screenp);
-	    if (!temp_walker) continue;
-	    // Clear the new guy's battle data
-	    temp_walker->myguy->scen_damage = 0;
-	    temp_walker->myguy->scen_kills = 0;
-	    temp_walker->myguy->scen_damage_taken = 0;
-	    temp_walker->myguy->scen_min_hp = 5000000;
-	    temp_walker->myguy->scen_shots = 0;
-	    temp_walker->myguy->scen_hits = 0;
-
-		// A start marker belongs to exactly one team. Never fall through to a
-		// foreign marker: selectable roster teams made the old "grab any marker"
-		// fallback visibly deploy yellow/green/blue heroes from red starts. If a
-		// map has no marker for this team (or its markers are exhausted), use the
-		// neutral teleport fallback below.
-			replace_walker = screenp->first_of(Order::Special,
-			                                    FAMILY_RESERVED_TEAM,
-			                                    static_cast<int>(temp_guy->teamnum));
-		if (replace_walker)
-		{
-			// Inherit the start marker's floor so the player spawns on the
-			// authored floor in multi-floor levels. set_floor MUST precede setxy:
-			// setxy re-buckets the floor-keyed obmap at the walker's current
-			// floor. Single-floor safe: legacy markers are floor 0 (a no-op).
-			temp_walker->set_floor(replace_walker->floor());
-			temp_walker->setxy(replace_walker->xpos(), replace_walker->ypos());
-			replace_walker->set_dead(1);
-		}
-		else
-		{
-			// Scatter the overflowing characters..
-			temp_walker->teleport();
-		}
-		// Record the level-entry spawn point (the classic respawn feature
-		// revives heroes here). Read back from the walker so the RNG teleport
-		// fallback position is captured exactly.
-		temp_walker->set_spawn_point(temp_walker->xpos(), temp_walker->ypos(),
-		                             static_cast<std::uint8_t>(temp_walker->floor()));
-	}
-    
-	    // Destroy all player markers (by setting them to dead)
-	replace_walker = screenp->first_of(Order::Special, FAMILY_RESERVED_TEAM);
-	while (replace_walker)
-	{
-		replace_walker->set_dead(1);
-		replace_walker = screenp->first_of(Order::Special, FAMILY_RESERVED_TEAM);
-	}
+	// Spawn the deployed roster through the ONE production spawn path
+	// (#218 spawn-triplet collapse): benched members skipped, battle stats
+	// cleared, team-owned start markers consumed (never a foreign marker —
+	// exhausted teams take the neutral teleport fallback), spawn points
+	// recorded, leftover markers destroyed. The display world's spawn is
+	// non-authoritative under staging (the staged keyframe overwrites it at
+	// install), and the legacy display-seed paths (replay playback, direct
+	// shadows) get exactly the walkers the headless server would field.
+	og::server::spawn_team_from_save(screenp->world(), screenp->save_data);
 
 	// Use the same deployed-only seat plan validated by the picker. This keeps
 	// the pre-intro control assignment in lockstep with the transport install:

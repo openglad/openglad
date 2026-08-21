@@ -359,8 +359,8 @@ void cycle_ctf_capture_limit(SaveData& save);
 
 // True when the save's current campaign declares `matchup: versus` in its
 // campaign.yaml — the generic competitive-matchup predicate. New scripted-mode
-// surfaces key on this; the retired CTF campaign-id compares (the
-// MATCHUP settings gate, the lobby shared-teams rule) stay untouched until
+// surfaces key on this; the retired CTF campaign-id compares (the match
+// settings gate, the lobby shared-teams rule) stay untouched until
 // the CTF engine retirement swaps them over.
 bool is_versus_campaign(const SaveData& save);
 
@@ -743,8 +743,8 @@ std::string format_go_blockers(
 
 // §2.7 cross-control toggle label: "CTRL: OWN" (only the owner machine
 // controls its characters) / "CTRL: ALL" (players may control others'
-// characters in-level). Shared by the SDL MATCHUP row and the curses lobby
-// status line.
+// characters in-level). Shared by the SDL DIFFICULTY row and the curses
+// lobby status line.
 std::string format_cross_control_label(bool cross_control_enabled);
 
 // One §2.5 roster row's text columns, networked shape (U7: CLASS dropped,
@@ -765,7 +765,7 @@ BaseCampNetRowText format_base_camp_net_row(std::string_view name,
 std::unique_ptr<guy> make_base_camp_display_guy(
     const og::sim::LobbyCharacterData& character);
 
-// One MATCHUP-screen row label, <= 30 chars:
+// One team row label, <= 30 chars (the text and curses Matchup screens):
 // "{COLOR} TEAM {seat_tag} {status}"
 // where status is "NOT ON MAP" (CTF, no authored flag), "BOTS" (CTF authored
 // team with no humans and no local heroes), or "{n} HEROES".
@@ -775,15 +775,6 @@ std::string format_team_row_label(short team,
                                   bool authored,
                                   bool has_humans,
                                   std::string_view seat_tag);
-
-// Greedy ", "-joined pagination of a team's member/player names into slices
-// of at most max_chars characters each. An item longer than max_chars is
-// clipped inside the budget with a trailing '..' marker (so truncation stays
-// visible even when everything fits one unpaged slice; budgets of <= 2 chars
-// just clip). Always returns at least one (possibly empty) page, so page
-// math never divides by zero. Drives the MATCHUP screen's per-team pager.
-std::vector<std::string> paginate_team_detail_pages(
-    const std::vector<std::string>& items, int max_chars);
 
 // --- Campaign ordering ---
 
@@ -818,10 +809,27 @@ bool sync_campaign_mount_to_save(const SaveData& save);
 
 // --- Scenario roster report (View Level) ---
 
-enum class ScenarioStripReason : std::uint8_t {
-    None = 0,
-    InactiveTeam,  // removed by the CTF inactive-team strip ('+')
-    StripAll,      // removed by TROOPS: OWN ('!'), versus AND classic
+// How the caller's staged world (or the lack of one) should be presented.
+// A picker_common-local enum so this header stays free of the match_stage
+// header: SDL/curses/text callers map og::server::StageStatus (owners) or
+// MirrorStatus (joiners) onto it identically.
+enum class StagePreviewStatus : std::uint8_t {
+    None = 0,   // nothing staged yet (waiting / not a staging session)
+    Staged,     // the staged world answers
+    Failed,     // the owner's stage failed ("STAGING FAILED")
+};
+
+// The closed display vocabulary for a staged team's fill, censused from the
+// staged world's observable facts (has_guy / BOT_MARK provenance /
+// generators). The pack-extensible label channel died with the plan phase:
+// the staged world IS the answer, so there is nothing verbatim to forward.
+enum class ScenarioFill : std::uint8_t {
+    Company = 0,   // any live has_guy walker (player rosters)
+    Troops,        // guy-less unmarked livings (authored map troops)
+    Bots,          // BOT_MARK-tagged squad, legacy difficulty shape
+    Matched,       // BOT_MARK-tagged squad, FAIR-matched (MATCHED.SIZE > 0)
+    Generators,    // generators only (onslaught foundries)
+    Empty,         // an active team with no forces at all
 };
 
 struct ScenarioRosterRow {
@@ -832,35 +840,126 @@ struct ScenarioRosterRow {
     short family = 0;
     int level = 1;
     int count = 1;
-    ScenarioStripReason strip_reason = ScenarioStripReason::None;
 };
+
+// --- Player seats (#218 seat block) ---
+
+// One seat line of the View Level report: the display-relevant facts of a
+// replicated lobby seat, resolved for THIS client (is_local decides YOU vs
+// the company abbreviation — a per-client presentation, not lobby state).
+struct ScenarioSeatRow {
+    int player_index = 0;   // dense lobby-wide P# ordinal
+    std::string company;    // the displayable identity (never the net name)
+    short team = 0;
+    bool ready = false;
+    bool is_local = false;  // one of this machine's seats
+};
+
+// The seat inputs a client passes to build_scenario_roster_report: the
+// replicated og::sim::LobbyPlayer list — the SAME seat records
+// LobbyServer::build_player_bindings derives the launch bindings from, so
+// showing them is display of an existing fact, never a rule twin — plus
+// this machine's seat indices. Seats are an explicit parameter because the
+// presentation is per-client: host and joiner hold identical seat records
+// but different local_player_indices (YOU vs the abbreviation).
+struct ScenarioSeatContext {
+    std::vector<og::sim::LobbyPlayer> players;
+    std::vector<std::uint8_t> local_player_indices;
+};
+
+// The public 3-letter company abbreviation for seat labels: first three
+// alphanumerics, upper-cased; "NET" when the name has none. Networked seat
+// display never falls back to LobbyPlayer::name (an opaque net-<hex>
+// transport identity).
+std::string company_abbreviation(std::string_view company);
+
+// "P{n} {YOU|ABC}" + optional " [RDY]" — the shared seat identity label
+// (the retired MATCHUP screen's vocabulary, now the View Level seat block's
+// home). The row is the single format authority; build_scenario_roster_report
+// resolves is_local from the caller's ScenarioSeatContext before this runs.
+std::string seat_identity_label(const ScenarioSeatRow& seat);
+
+// The match-shape summary over the lobby seats: "CO-OP" / "2 VS 2" /
+// "FREE-FOR-ALL" / "MIXED TEAMS", or "NO PLAYER SEATS" for an empty list.
+std::string format_seat_summary(
+    const std::vector<og::sim::LobbyPlayer>& players);
+
+// The shared local/solo seat synthesis (the empty-lobby fallback the
+// retired MATCHUP screen and Base Camp both used, deduplicated; also the
+// text/curses seat source —
+// their View Level paths stage locally, so save-derived seats ARE their
+// staging input): one seat per save.numplayers, teams from
+// derive_local_gameplay_seat_teams, company = save_name, P1 host. Empty
+// when numplayers == 0.
+std::vector<og::sim::LobbyPlayer> synthesize_local_lobby_players(
+    const SaveData& save);
 
 struct ScenarioRosterReport {
     bool is_versus = false;         // world.type & TYPE_SCRIPTED
-    bool will_activate = false;     // >= 2 authored marker teams
+    bool will_activate = false;     // staged: mode.active / fallback >= 2
     short your_team = 0;            // 0 when allied, else save.my_team
-    std::array<bool, 4> team_authored = {};  // start-marker teams
-    std::array<bool, 4> team_active = {};    // the activation clamp
+    std::array<bool, 4> team_authored = {};  // fallback arm only (markers)
+    std::array<bool, 4> team_active = {};    // staged census / the clamp
     std::array<int, 4> team_anchor_count = {};
     std::vector<ScenarioRosterRow> rows; // grouped, team-major
-    bool any_inactive = false;
-    bool any_strip_all = false;
-    // FAIR (matched troops) strips exactly like OWN (D26 one-delta rule);
-    // the removal footer still names the mode the player actually chose.
-    bool strip_is_fair = false;
+    // --- Staged arm (#218): observations of the staged world -------------
+    // True when a staged world answered: team_active is the live census,
+    // the fill columns are meaningful and mode_name is ModeState::name.
+    // False = the count-only fallback over the caller's scratch world.
+    bool staged = false;
+    // StagePreviewStatus::Failed — the formatter leads with the honest
+    // "STAGING FAILED" line over the fallback census.
+    bool stage_failed = false;
+    // The staged MODE is active and the fill census answered (mode_name +
+    // team_fill are meaningful). False for a staged hook-less scripted
+    // level, whose count-only fallback block renders instead.
+    bool mode_census = false;
+    // The staged mode attempted init and refused (init_attempted && !active
+    // with a registered on_mode_init): the verbatim refusal sentence. A
+    // scripted level with NO on_mode_init hook is not refusing — it has no
+    // mode, and the count-only fallback answers instead.
+    bool refusing = false;
+    // Neither a staged world nor a fallback world: refusal lines only.
+    bool unavailable = false;
+    std::string mode_name;          // ModeState::name when staged + active
+    std::array<ScenarioFill, 4> team_fill = {};
+    std::array<int, 4> team_fill_count = {};
+    // --- Seat block (#218): the caller's lobby seats, P#-sorted, with the
+    // format_seat_summary match shape. Both empty when the caller passed no
+    // seat context — every seatless report is byte-identical to before.
+    std::string seat_summary;
+    std::vector<ScenarioSeatRow> seats;
 };
 
-// Scan a (scratch-loaded) world's authored entities into a roster report.
+// Read a STAGED world (host MatchStage world, joiner preview mirror, or a
+// locally staged world — all carry the same bytes) into the roster report.
 // Named NPCs get individual rows; unnamed livings group by (team, family,
-// level); generators aggregate per team. Strip annotations mirror the
-// scripted-mode init rules (authored team mask = start markers, activation
-// = og::sim::effective_team_mask) using save-side knowledge (roster teams =
-// distinct team_list teamnums, collapsed to {0} when allied).
-ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
-                                                  const SaveData& save);
+// level); generators aggregate per team. Dormant (delayed-spawn) walkers
+// are excluded exactly as the keyframe capture excludes them, so every
+// client censuses the identical non-dormant world; they reveal at their
+// authored tick after launch (the documented preview carve-out).
+//
+// Fill provenance is observable fact, never a rule twin: COMPANY = any live
+// has_guy walker; MAP TROOPS = guy-less unmarked livings; BOT SQUAD /
+// MATCHED BOTS = livings carrying the modes.core BOT_MARK stat bit (matched
+// when the shared MATCHED.SIZE mode var is banked non-zero); GENERATORS =
+// generators alone. Anchor counts read back from world.respawn — banked by
+// the REAL mode_stage_init scan at stage time.
+//
+// staged == nullptr: the count-only og::sim::effective_team_mask fallback
+// answers over `fallback_world` (the caller's disposable scratch load; the
+// engine respawn_scan_anchors runs on it — the exact scan launch step 0
+// runs), preceded by the honest STAGING FAILED line when status == Failed.
+// Both worlds null => refusal lines only ("PREVIEW UNAVAILABLE").
+//
+// `seats` (#218 seat block): the caller's lobby seat context; nullptr or an
+// empty player list emits no seat lines and leaves every line byte-identical
+// to the seatless report.
+ScenarioRosterReport build_scenario_roster_report(
+    const GameWorld* staged, StagePreviewStatus status, const SaveData& save,
+    GameWorld* fallback_world, const ScenarioSeatContext* seats = nullptr);
 
-// Render the report as display lines, every line <= 48 chars, with '+'/'!'
-// strip suffixes and trailing legend lines.
+// Render the report as display lines, every line <= 48 chars.
 std::vector<std::string> format_scenario_report_lines(
     const ScenarioRosterReport& report);
 

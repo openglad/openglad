@@ -192,7 +192,7 @@ void sdl_wire_world_entity_services(GameWorld* world, LevelRuntimeData* level)
     (void)level;
     // #162 chokepoint: wiring runs at every SDL LevelRuntimeData
     // construction AND load(), so every scratch/preview level build (the
-    // picker's VIEW LEVEL and MATCHUP loads included) gets a loader that
+    // picker's VIEW LEVEL loads included) gets a loader that
     // matches the currently mounted campaign — the modes campaign ships
     // pack families (flag/waypoint on wire 13/14) whose sprites only exist
     // after its mount. Safe here: the walkers of THIS world are created
@@ -210,18 +210,26 @@ void sdl_wire_world_entity_services(GameWorld* world, LevelRuntimeData* level)
     //      ends in reset_buttons() re-creating every button pixie
     //      (menu_screen_runner.cpp, picker_input.cpp).
     //   2. spec.frame_tick runs AFTER reset_buttons and BEFORE draw_buttons,
-    //      with no re-init in between — and SCENARIO, Base Camp and MATCHUP
-    //      all load a level from exactly there (they poll the lobby, whose
+    //      with no re-init in between — and SCENARIO and Base Camp both
+    //      load a level from exactly there (they poll the lobby, whose
     //      campaign sync deliberately leaves the loader stale, #162). That is
-    //      safe ONLY because none of those three specs carries an art_family
+    //      safe ONLY because neither of those specs carries an art_family
     //      row: their buttons are text+rect and borrow no loader pixels. The
     //      only art_family rows in the tree are the main menu's NEW GAME and
     //      TRAIN's +/- buttons, and neither screen loads a level.
     //
-    // So: giving SCENARIO / Base Camp / MATCHUP an art_family row, or giving
+    // So: giving SCENARIO / Base Camp an art_family row, or giving
     // the main menu or TRAIN a level-loading frame_tick (a preview on a live
     // menu), re-opens the #162 use-after-free with no other code change. A
     // new flow of either shape must re-init its buttons after the wiring.
+    //
+    // Staged lobby (#218): MatchStage::maintain() restages inside
+    // picker_lobby_poll on EVERY polls_lobby screen — TRAIN included, which
+    // owns art_family rows — and stays safe because staged/mirror loads are
+    // HEADLESS-hooked only (they never reach this free-er). The only
+    // SDL-hooked load stays inside VIEW LEVEL's own handler/frame_tick
+    // (facts 1 + 2 above). Keep it that way: a MatchStage that ever loads
+    // through the SDL hooks re-opens #162 on TRAIN with no other change.
     sdl_entity_loader()->reload_graphics_if_stale();
     wire_world_with_loader(world, sdl_entity_loader());
 }

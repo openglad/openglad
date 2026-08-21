@@ -12,6 +12,7 @@
 #include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/resources/campaign_metadata.h>
@@ -2160,9 +2161,11 @@ TEST(PickerCommon, scenario_report_groups_classic_roster)
     SaveData save;
     save.my_team = 0;
     const og::ui::ScenarioRosterReport report =
-        og::ui::build_scenario_roster_report(fx.world(), save);
+        og::ui::build_scenario_roster_report(
+            nullptr, og::ui::StagePreviewStatus::None, save, &fx.world());
 
     EXPECT_FALSE(report.is_versus);
+    EXPECT_FALSE(report.staged);
     EXPECT_EQ(0, report.your_team);
 
     const auto* grouped = find_group_row(report, 0, FAMILY_SOLDIER, 3);
@@ -2202,7 +2205,67 @@ TEST(PickerCommon, scenario_report_groups_classic_roster)
         EXPECT_LE(line.size(), 48u) << line;
 }
 
-TEST(PickerCommon, scenario_report_versus_sections_and_strip_annotations)
+// The census names entities through the shared precedence helper
+// (entity_display_name, walker.cpp): the fighter's own myguy name first, the
+// authored stats name second. A company fighter therefore gets its own row
+// instead of grouping into a "3x SOLDIER" line, an authored NPC is unchanged,
+// and a walker with neither name still groups.
+TEST(PickerCommon, scenario_report_names_follow_the_shared_precedence)
+{
+    ReportWorld fx(false);
+    // Both names present: the myguy name wins.
+    walker* company = fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, "BARRACKS");
+    auto owned = std::make_unique<guy>(FAMILY_SOLDIER);
+    owned->name = "Striker";
+    company->set_owned_myguy(std::move(owned));
+    // Stats name only: the authored-NPC shape, unchanged.
+    fx.spawn_living_named(FAMILY_ARCHER, 0, 5, "GONZO");
+    // Neither name: still grouped by (team, family, level).
+    fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
+    fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
+    // The 11-char wire clamp against the longest family word — the widest
+    // named row the report can produce.
+    walker* widest = fx.spawn_living_named(FAMILY_BIG_ORC, 1, 12, nullptr);
+    auto widest_guy = std::make_unique<guy>(FAMILY_BIG_ORC);
+    widest_guy->name = "MOONSHADOWS"; // 11 chars, the clamp ceiling
+    widest->set_owned_myguy(std::move(widest_guy));
+
+    SaveData save;
+    save.my_team = 0;
+    const og::ui::ScenarioRosterReport report =
+        og::ui::build_scenario_roster_report(
+            nullptr, og::ui::StagePreviewStatus::None, save, &fx.world());
+
+    const auto* company_row = find_named_row(report, "Striker");
+    ASSERT_TRUE(company_row != nullptr)
+        << "the myguy name wins over the stats name";
+    EXPECT_EQ(1, company_row->count) << "a named fighter never groups";
+    EXPECT_EQ(0, company_row->team);
+    EXPECT_EQ(3, company_row->level);
+    EXPECT_EQ(FAMILY_SOLDIER, company_row->family);
+    EXPECT_TRUE(find_named_row(report, "BARRACKS") == nullptr)
+        << "the stats name is the SECOND choice, not an extra row";
+
+    const auto* npc_row = find_named_row(report, "GONZO");
+    ASSERT_TRUE(npc_row != nullptr) << "an authored NPC still names itself";
+    EXPECT_EQ(FAMILY_ARCHER, npc_row->family);
+
+    const auto* grouped = find_group_row(report, 0, FAMILY_SOLDIER, 3);
+    ASSERT_TRUE(grouped != nullptr) << "nameless walkers still group";
+    EXPECT_EQ(2, grouped->count)
+        << "the named fighter is not part of the grouped row";
+
+    const std::vector<std::string> lines =
+        og::ui::format_scenario_report_lines(report);
+    EXPECT_TRUE(any_line_contains(lines, "  Striker - SOLDIER Lv 3"));
+    EXPECT_TRUE(any_line_contains(lines, "  GONZO - ARCHER Lv 5"));
+    EXPECT_TRUE(any_line_contains(lines, "  2x SOLDIER Lv 3"));
+    EXPECT_TRUE(any_line_contains(lines, "  MOONSHADOWS - ORC CAPTAIN Lv 12"));
+    for (const auto& line : lines)
+        EXPECT_LE(line.size(), 48u) << line;
+}
+
+TEST(PickerCommon, scenario_report_versus_sections_fallback)
 {
     ReportWorld fx(true);
     fx.spawn_anchor(0);
@@ -2211,21 +2274,23 @@ TEST(PickerCommon, scenario_report_versus_sections_and_strip_annotations)
     fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr); // roster team troops
     fx.spawn_generator(FAMILY_TENT, 0);
     fx.spawn_living_named(FAMILY_ORC, 1, 4, nullptr);     // bot team, kept
-    fx.spawn_living_named(FAMILY_ELF, 2, 2, nullptr);     // no flag: inactive
+    fx.spawn_living_named(FAMILY_ELF, 2, 2, nullptr);     // no marker team
     fx.spawn_living_named(FAMILY_ELF, 5, 9, nullptr);     // non-score team
 
     SaveData save;
     save.current_campaign = "modes";
     save.my_team = 0;
-    save.ctf_strip_scenario_troops = 0; // TROOPS: ALL — only activation strips
+    save.ctf_strip_scenario_troops = 0; // TROOPS: ALL
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
     save.team_list[0]->teamnum = 0;
     save.team_size = 1;
 
     const og::ui::ScenarioRosterReport report =
-        og::ui::build_scenario_roster_report(fx.world(), save);
+        og::ui::build_scenario_roster_report(
+            nullptr, og::ui::StagePreviewStatus::None, save, &fx.world());
 
     EXPECT_TRUE(report.is_versus);
+    EXPECT_FALSE(report.staged);
     EXPECT_TRUE(report.will_activate);
     EXPECT_TRUE(report.team_authored[0]);
     EXPECT_TRUE(report.team_authored[1]);
@@ -2236,30 +2301,11 @@ TEST(PickerCommon, scenario_report_versus_sections_and_strip_annotations)
     EXPECT_EQ(2, report.team_anchor_count[0]);
     EXPECT_EQ(1, report.team_anchor_count[1]);
 
-    const auto* roster_troops = find_group_row(report, 0, FAMILY_SOLDIER, 3);
-    ASSERT_TRUE(roster_troops != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::None, roster_troops->strip_reason);
-    const auto* roster_gen = find_generator_row(report, 0);
-    ASSERT_TRUE(roster_gen != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::None, roster_gen->strip_reason);
-
-    const auto* bot_troops = find_group_row(report, 1, FAMILY_ORC, 4);
-    ASSERT_TRUE(bot_troops != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::None, bot_troops->strip_reason);
-
-    const auto* inactive = find_group_row(report, 2, FAMILY_ELF, 2);
-    ASSERT_TRUE(inactive != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::InactiveTeam, inactive->strip_reason);
-
-    // The sim's inactive-team strip also removes non-score teams (>= 4) on
-    // an activating map; the preview must annotate them the same way.
-    const auto* non_score = find_group_row(report, 5, FAMILY_ELF, 9);
-    ASSERT_TRUE(non_score != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::InactiveTeam,
-              non_score->strip_reason);
-
-    EXPECT_TRUE(report.any_inactive);
-    EXPECT_FALSE(report.any_strip_all);
+    ASSERT_TRUE(find_group_row(report, 0, FAMILY_SOLDIER, 3) != nullptr);
+    ASSERT_TRUE(find_generator_row(report, 0) != nullptr);
+    ASSERT_TRUE(find_group_row(report, 1, FAMILY_ORC, 4) != nullptr);
+    ASSERT_TRUE(find_group_row(report, 2, FAMILY_ELF, 2) != nullptr);
+    ASSERT_TRUE(find_group_row(report, 5, FAMILY_ELF, 9) != nullptr);
 
     const std::vector<std::string> lines =
         og::ui::format_scenario_report_lines(report);
@@ -2271,85 +2317,25 @@ TEST(PickerCommon, scenario_report_versus_sections_and_strip_annotations)
     EXPECT_TRUE(any_line_contains(lines, "TEAM 5"))
         << "non-score teams keep the raw index header";
     EXPECT_TRUE(any_line_contains(lines, "1x SOLDIER Lv 3"));
-    EXPECT_FALSE(any_line_contains(lines, "1x SOLDIER Lv 3!"))
-        << "TROOPS: ALL leaves the authored cast unannotated";
-    EXPECT_TRUE(any_line_contains(lines, "1x ELF Lv 2+"));
-    EXPECT_TRUE(any_line_contains(lines, "1x ELF Lv 9+"))
-        << "non-score teams carry the inactive strip suffix";
-    EXPECT_TRUE(any_line_contains(lines, "+ REMOVED: INACTIVE TEAM"));
+    // The strip-annotation machinery died with the plan phase (#218): a
+    // STAGED world already contains the stripped truth, and the fallback
+    // arm never re-derives the strip rule — no '+'/'!' suffix, no legend.
     for (const auto& line : lines)
-        EXPECT_LE(line.size(), 48u) << line;
-}
-
-TEST(PickerCommon, scenario_report_troops_own_annotates_every_authored_row)
-{
-    // TROOPS: OWN outranks the activation strip: everything authored goes,
-    // on every team, wildlife and generators included. Protected named NPCs
-    // are the one exemption the sim honours, so the preview keeps them clean.
-    ReportWorld fx(true);
-    fx.spawn_anchor(0);
-    fx.spawn_anchor(1);
-    fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
-    fx.spawn_generator(FAMILY_TENT, 0);
-    fx.spawn_living_named(FAMILY_ORC, 1, 4, nullptr);
-    fx.spawn_living_named(FAMILY_ELF, 2, 2, nullptr); // no flag: inactive team
-    fx.spawn_living_named(FAMILY_ELF, 5, 9, nullptr); // non-score team
-    walker* const protected_npc =
-        fx.spawn_living_named(FAMILY_ARCHER, 1, 6, "REEVE");
-    ASSERT_TRUE(protected_npc != nullptr);
-    protected_npc->set_save_all_protected(true);
-
-    SaveData save;
-    save.current_campaign = "modes";
-    save.my_team = 0;
-    save.ctf_strip_scenario_troops = 2;
-    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
-    save.team_list[0]->teamnum = 0;
-    save.team_size = 1;
-
-    const og::ui::ScenarioRosterReport report =
-        og::ui::build_scenario_roster_report(fx.world(), save);
-
-    for (const auto& row : report.rows)
     {
-        if (row.named)
-            continue;
-        EXPECT_EQ(og::ui::ScenarioStripReason::StripAll, row.strip_reason)
-            << "team " << row.team << " family " << row.family;
+        EXPECT_EQ(std::string::npos, line.find('+')) << line;
+        EXPECT_EQ(std::string::npos, line.find('!')) << line;
     }
-    const auto* reeve = find_named_row(report, "REEVE");
-    ASSERT_TRUE(reeve != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::None, reeve->strip_reason)
-        << "the protected bit is the exemption";
-
-    EXPECT_TRUE(report.any_strip_all);
-    EXPECT_FALSE(report.any_inactive)
-        << "the OWN sweep subsumes the inactive-team strip";
-
-    const std::vector<std::string> lines =
-        og::ui::format_scenario_report_lines(report);
-    EXPECT_TRUE(any_line_contains(lines, "1x SOLDIER Lv 3!"));
-    EXPECT_TRUE(any_line_contains(lines, "1x GENERATOR!"));
-    EXPECT_TRUE(any_line_contains(lines, "! REMOVED: TROOPS OWN"));
-    EXPECT_FALSE(any_line_contains(lines, "+ REMOVED: INACTIVE TEAM"));
+    EXPECT_FALSE(any_line_contains(lines, "REMOVED:"));
     for (const auto& line : lines)
         EXPECT_LE(line.size(), 48u) << line;
-
-    // FAIR strips identically (D26) but the footer must name the mode the
-    // player chose, not report OWN for a FAIR lobby.
-    save.ctf_strip_scenario_troops = og::sim::kTroopsMatched;
-    const og::ui::ScenarioRosterReport fair_report =
-        og::ui::build_scenario_roster_report(fx.world(), save);
-    EXPECT_TRUE(fair_report.any_strip_all);
-    EXPECT_TRUE(fair_report.strip_is_fair);
-    const std::vector<std::string> fair_lines =
-        og::ui::format_scenario_report_lines(fair_report);
-    EXPECT_TRUE(any_line_contains(fair_lines, "! REMOVED: TROOPS FAIR"));
-    EXPECT_FALSE(any_line_contains(fair_lines, "! REMOVED: TROOPS OWN"));
 }
 
 TEST(PickerCommon, scenario_report_preserves_local_team_colors_in_allied_mode)
 {
+    // NO-PACK FALLBACK ARM (issue #218): activation is the count-only
+    // clamp; the fallback census lists the authored cast verbatim (strip
+    // outcomes are visible only in a STAGED world — the machinery that
+    // re-derived them here died with the plan phase).
     ReportWorld fx(true);
     fx.spawn_anchor(0);
     fx.spawn_anchor(1);
@@ -2369,22 +2355,15 @@ TEST(PickerCommon, scenario_report_preserves_local_team_colors_in_allied_mode)
     save.team_size = 1;
 
     const og::ui::ScenarioRosterReport report =
-        og::ui::build_scenario_roster_report(fx.world(), save);
+        og::ui::build_scenario_roster_report(
+            nullptr, og::ui::StagePreviewStatus::None, save, &fx.world());
 
     EXPECT_EQ(2, report.your_team)
         << "local Together mode keeps the selected playing team";
 
-    // The save carries the retired middle state; every team's authored cast
-    // goes, which is what the sim does with any value above 0.
-    const auto* team0 = find_group_row(report, 0, FAMILY_SOLDIER, 3);
-    ASSERT_TRUE(team0 != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::StripAll, team0->strip_reason);
-    const auto* team1 = find_group_row(report, 1, FAMILY_ORC, 4);
-    ASSERT_TRUE(team1 != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::StripAll, team1->strip_reason);
-    const auto* team3 = find_group_row(report, 3, FAMILY_ARCHER, 5);
-    ASSERT_TRUE(team3 != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::StripAll, team3->strip_reason);
+    ASSERT_TRUE(find_group_row(report, 0, FAMILY_SOLDIER, 3) != nullptr);
+    ASSERT_TRUE(find_group_row(report, 1, FAMILY_ORC, 4) != nullptr);
+    ASSERT_TRUE(find_group_row(report, 3, FAMILY_ARCHER, 5) != nullptr);
 }
 
 TEST(PickerCommon, scenario_report_non_activating_ctf_keeps_classic_rules)
@@ -2401,108 +2380,440 @@ TEST(PickerCommon, scenario_report_non_activating_ctf_keeps_classic_rules)
     save.team_size = 1;
 
     const og::ui::ScenarioRosterReport report =
-        og::ui::build_scenario_roster_report(fx.world(), save);
+        og::ui::build_scenario_roster_report(
+            nullptr, og::ui::StagePreviewStatus::None, save, &fx.world());
 
     EXPECT_TRUE(report.is_versus);
     EXPECT_FALSE(report.will_activate);
-    const auto* troops = find_group_row(report, 0, FAMILY_SOLDIER, 3);
-    ASSERT_TRUE(troops != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::None, troops->strip_reason)
-        << "the activation strip is inert on non-activating versus maps";
+    ASSERT_TRUE(find_group_row(report, 0, FAMILY_SOLDIER, 3) != nullptr);
 
     const std::vector<std::string> lines =
         og::ui::format_scenario_report_lines(report);
     EXPECT_TRUE(any_line_contains(lines, "MATCH INACTIVE"));
 }
 
-TEST(PickerCommon, scenario_report_troops_strip_annotates_outside_versus_campaign)
+TEST(PickerCommon, scenario_report_no_pack_fallback_is_the_count_clamp)
 {
-    // The sim consumes ctf_strip_scenario_troops on ANY scripted map (no
-    // campaign gate); the preview must mirror it exactly or a custom
-    // scripted map outside the shipped campaign strips in-sim with no '!'
-    // in the viewer.
+    // The documented NO-PACK fallback arm (issue #218): with no STAGED
+    // world the preview falls back to the count-only
+    // og::sim::effective_team_mask clamp for EVERY TROOPS value — the
+    // roster rule lives in the mode Lua alone and answers only through a
+    // real staged init (the staged-report suite pins those shapes). These
+    // pins are fallback-behavior pins, not activation oracles.
+    ReportWorld fx(true);
+    for (int team = 0; team < 4; ++team)
+        fx.spawn_anchor(team);
+
+    SaveData save;
+    save.current_campaign = "modes";
+    save.my_team = 0;
+    save.ctf_strip_scenario_troops = 2;  // TROOPS: OWN
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 0;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_ARCHER);
+    save.team_list[1]->teamnum = 2;
+    save.team_list[2] = std::make_unique<guy>(FAMILY_ELF);
+    save.team_list[2]->teamnum = 1;
+    save.team_list[2]->deployed = false;  // held back: never in the roster
+    save.team_size = 3;
+
+    // TEAMS: Auto — the clamp answers the full authored mask.
+    save.ctf_team_count = 0;
+    {
+        const og::ui::ScenarioRosterReport report =
+            og::ui::build_scenario_roster_report(
+                nullptr, og::ui::StagePreviewStatus::None, save, &fx.world());
+        EXPECT_FALSE(report.staged) << "no staged world = the fallback";
+        EXPECT_FALSE(report.stage_failed)
+            << "no staging session is a fallback, not a failure";
+        EXPECT_EQ("", report.mode_name);
+        EXPECT_TRUE(report.team_active[0]);
+        EXPECT_TRUE(report.team_active[1]);
+        EXPECT_TRUE(report.team_active[2]);
+        EXPECT_TRUE(report.team_active[3]);
+        const std::vector<std::string> lines =
+            og::ui::format_scenario_report_lines(report);
+        EXPECT_TRUE(any_line_contains(lines, "MATCH: 4 AUTHORED TEAMS"))
+            << "the fallback keeps today's exact lines";
+        EXPECT_TRUE(any_line_contains(lines, "GREEN TEAM  MARKERS: 1  ACTIVE"));
+        EXPECT_TRUE(any_line_contains(lines, "BLUE TEAM  MARKERS: 1  ACTIVE"));
+        EXPECT_FALSE(any_line_contains(lines, "MATCH RULES UNAVAILABLE"));
+    }
+
+    // TEAMS: 2 — the count clamp takes the first two AUTHORED teams
+    // ({0, 1}); the deployed rosters {0, 2} do not steer the fallback
+    // (the old twin previewed {0, 2} here — that rule now answers only
+    // through a registered plan).
+    save.ctf_team_count = 2;
+    {
+        const og::ui::ScenarioRosterReport report =
+            og::ui::build_scenario_roster_report(
+                nullptr, og::ui::StagePreviewStatus::None, save, &fx.world());
+        EXPECT_TRUE(report.team_active[0]);
+        EXPECT_TRUE(report.team_active[1]);
+        EXPECT_FALSE(report.team_active[2])
+            << "count-only fallback: a roster team beyond the clamp count "
+               "previews inactive without a plan";
+        EXPECT_FALSE(report.team_active[3]);
+    }
+
+    // TEAMS: 3 — the first three authored teams.
+    save.ctf_team_count = 3;
+    {
+        const og::ui::ScenarioRosterReport report =
+            og::ui::build_scenario_roster_report(
+                nullptr, og::ui::StagePreviewStatus::None, save, &fx.world());
+        EXPECT_TRUE(report.team_active[0]);
+        EXPECT_TRUE(report.team_active[1]);
+        EXPECT_TRUE(report.team_active[2]);
+        EXPECT_FALSE(report.team_active[3]);
+    }
+
+    // FAIR falls back identically to OWN (both are plan-side rules).
+    save.ctf_strip_scenario_troops = og::sim::kTroopsMatched;
+    save.ctf_team_count = 2;
+    {
+        const og::ui::ScenarioRosterReport report =
+            og::ui::build_scenario_roster_report(
+                nullptr, og::ui::StagePreviewStatus::None, save, &fx.world());
+        EXPECT_TRUE(report.team_active[0]);
+        EXPECT_TRUE(report.team_active[1]);
+        EXPECT_FALSE(report.team_active[2]);
+        EXPECT_FALSE(report.team_active[3]);
+    }
+}
+
+TEST(PickerCommon, scenario_report_degradation_lines_are_honest)
+{
+    // The staged preview's degradation shapes (#218): a failed owner stage
+    // leads with STAGING FAILED over the fallback census; no world at all
+    // renders the refusal lines only.
     ReportWorld fx(true);
     fx.spawn_anchor(0);
     fx.spawn_anchor(1);
     fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
-    fx.spawn_living_named(FAMILY_ORC, 1, 4, nullptr);
 
     SaveData save;
-    save.current_campaign = std::string(og::kDefaultCampaignId);
+    save.current_campaign = "modes";
+    save.ctf_team_count = 0;
+
+    const og::ui::ScenarioRosterReport failed =
+        og::ui::build_scenario_roster_report(
+            nullptr, og::ui::StagePreviewStatus::Failed, save, &fx.world());
+    EXPECT_FALSE(failed.staged);
+    EXPECT_TRUE(failed.stage_failed);
+    EXPECT_TRUE(failed.will_activate) << "the count clamp still answers";
+    const std::vector<std::string> failed_lines =
+        og::ui::format_scenario_report_lines(failed);
+    ASSERT_FALSE(failed_lines.empty());
+    EXPECT_EQ("STAGING FAILED", failed_lines[0])
+        << "the failure announcement leads the report";
+    EXPECT_TRUE(any_line_contains(failed_lines, "MATCH: 2 AUTHORED TEAMS"))
+        << "the fallback census still renders below";
+    EXPECT_TRUE(any_line_contains(failed_lines, "1x SOLDIER Lv 3"));
+
+    const og::ui::ScenarioRosterReport nothing =
+        og::ui::build_scenario_roster_report(
+            nullptr, og::ui::StagePreviewStatus::None, save, nullptr);
+    EXPECT_TRUE(nothing.unavailable);
+    const std::vector<std::string> nothing_lines =
+        og::ui::format_scenario_report_lines(nothing);
+    ASSERT_EQ(1u, nothing_lines.size());
+    EXPECT_EQ("PREVIEW UNAVAILABLE", nothing_lines[0]);
+
+    const og::ui::ScenarioRosterReport failed_nothing =
+        og::ui::build_scenario_roster_report(
+            nullptr, og::ui::StagePreviewStatus::Failed, save, nullptr);
+    const std::vector<std::string> failed_nothing_lines =
+        og::ui::format_scenario_report_lines(failed_nothing);
+    ASSERT_EQ(2u, failed_nothing_lines.size());
+    EXPECT_EQ("STAGING FAILED", failed_nothing_lines[0]);
+    EXPECT_EQ("PREVIEW UNAVAILABLE", failed_nothing_lines[1]);
+}
+
+// --- Player seats in the View Level report (#218 seat block) ----------------
+
+namespace {
+
+og::sim::LobbyPlayer make_seat_player(std::uint8_t index, short team,
+                                      std::string company, bool ready)
+{
+    og::sim::LobbyPlayer player;
+    player.player_index = index;
+    player.name = std::format("net-{:016x}", index);  // opaque, never shown
+    player.company = std::move(company);
+    player.team = team;
+    player.ready = ready;
+    player.is_host = index == 0;
+    return player;
+}
+
+} // namespace
+
+// The ported seat vocabulary, pinned exactly: the 3-letter public company
+// abbreviation with its "NET" fallback, the "P{n} YOU/ABC [RDY]" identity,
+// and the match-shape summary strings. The LobbyPlayer -> row resolution
+// (is_local decides YOU) is pinned through the production builder in
+// seat_block_you_vs_abbreviation_is_per_client below.
+TEST(PickerCommon, seat_vocabulary_labels_pin)
+{
+    EXPECT_EQ("BLU", og::ui::company_abbreviation("blue-company"));
+    EXPECT_EQ("IRO", og::ui::company_abbreviation("Iron kettle band"))
+        << "first three alphanumerics, upper-cased — not initials";
+    EXPECT_EQ("NET", og::ui::company_abbreviation("  --  "))
+        << "no alphanumerics falls back to NET, never the net-<hex> name";
+    EXPECT_EQ("NET", og::ui::company_abbreviation(""));
+
+    // The row is the single format authority the formatter uses.
+    EXPECT_EQ("P1 YOU [RDY]", og::ui::seat_identity_label(og::ui::ScenarioSeatRow{
+                  .player_index = 0,
+                  .company = "Iron Kettle",
+                  .team = 0,
+                  .ready = true,
+                  .is_local = true,
+              }));
+    EXPECT_EQ("P4 DEL", og::ui::seat_identity_label(og::ui::ScenarioSeatRow{
+                  .player_index = 3,
+                  .company = "Delta Guild",
+                  .team = 1,
+                  .ready = false,
+                  .is_local = false,
+              }));
+    EXPECT_EQ("P4 DEL [RDY]",
+              og::ui::seat_identity_label(og::ui::ScenarioSeatRow{
+                  .player_index = 3,
+                  .company = "Delta Guild",
+                  .team = 1,
+                  .ready = true,
+                  .is_local = false,
+              }));
+    EXPECT_EQ("P1 YOU", og::ui::seat_identity_label(og::ui::ScenarioSeatRow{
+                  .player_index = 0,
+                  .company = "Iron Kettle",
+                  .team = 0,
+                  .ready = false,
+                  .is_local = true,
+              }));
+
+    EXPECT_EQ("NO PLAYER SEATS", og::ui::format_seat_summary({}));
+    EXPECT_EQ("CO-OP", og::ui::format_seat_summary(
+                           {make_seat_player(0, 2, "A", false),
+                            make_seat_player(1, 2, "B", false)}));
+    EXPECT_EQ("2 VS 2", og::ui::format_seat_summary(
+                            {make_seat_player(0, 0, "A", false),
+                             make_seat_player(1, 0, "B", false),
+                             make_seat_player(2, 1, "C", false),
+                             make_seat_player(3, 1, "D", false)}));
+    EXPECT_EQ("FREE-FOR-ALL", og::ui::format_seat_summary(
+                                  {make_seat_player(0, 0, "A", false),
+                                   make_seat_player(1, 1, "B", false),
+                                   make_seat_player(2, 2, "C", false)}));
+    EXPECT_EQ("MIXED TEAMS", og::ui::format_seat_summary(
+                                 {make_seat_player(0, 0, "A", false),
+                                  make_seat_player(1, 0, "B", false),
+                                  make_seat_player(2, 1, "C", false)}));
+}
+
+// The shared local/solo seat synthesis (the deduplicated empty-lobby
+// fallback and the text/curses seat source): one seat per numplayers, teams
+// from derive_local_gameplay_seat_teams, company = save_name, P1 host.
+TEST(PickerCommon, synthesize_local_lobby_players_pins)
+{
+    SaveData save;
+    save.save_name = "Iron Kettle Band";
+    save.numplayers = 2;
+    save.allied_mode = 0;
     save.my_team = 0;
-    save.ctf_strip_scenario_troops = 1;
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
     save.team_list[0]->teamnum = 0;
-    save.team_size = 1;
+    save.team_list[0]->deployed = true;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_ELF);
+    save.team_list[1]->teamnum = 1;
+    save.team_list[1]->deployed = true;
+    save.team_size = 2;
+
+    const std::vector<short> expected_teams =
+        og::ui::derive_local_gameplay_seat_teams(save);
+    ASSERT_EQ(2u, expected_teams.size());
+
+    const std::vector<og::sim::LobbyPlayer> players =
+        og::ui::synthesize_local_lobby_players(save);
+    ASSERT_EQ(2u, players.size());
+    for (std::size_t i = 0; i < players.size(); ++i)
+    {
+        EXPECT_EQ(static_cast<std::uint8_t>(i), players[i].player_index);
+        EXPECT_EQ(std::format("Player {}", i + 1), players[i].name);
+        EXPECT_EQ("Iron Kettle Band", players[i].company)
+            << "the synthesized company is the save's display name";
+        EXPECT_EQ(expected_teams[i], players[i].team)
+            << "seat teams come from derive_local_gameplay_seat_teams";
+        EXPECT_FALSE(players[i].ready);
+        EXPECT_EQ(i == 0, players[i].is_host) << "P1 is the host seat";
+    }
+
+    save.numplayers = 0;
+    EXPECT_TRUE(og::ui::synthesize_local_lobby_players(save).empty())
+        << "spectator/autoplay saves synthesize no seats";
+}
+
+// The builder resolves a seat context into the report and the formatter
+// leads the non-versus report with it: "SEATS: {summary}" then one P#-sorted
+// line per seat, then the existing blank + roster block. Exact positions —
+// this is the seat block's shape contract.
+TEST(PickerCommon, scenario_report_seat_block_leads_non_versus_reports)
+{
+    ReportWorld fx(false);
+    fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
+
+    SaveData save;
+    save.my_team = 0;
+
+    og::ui::ScenarioSeatContext seats;
+    // Deliberately unsorted: the report is P#-sorted regardless of the
+    // lobby list's arrival order.
+    seats.players = {
+        make_seat_player(3, 1, "Blue Banners", true),
+        make_seat_player(0, 0, "Iron Kettle", false),
+        make_seat_player(2, 1, "Blue Banners", false),
+        make_seat_player(1, 0, "Keepers Rest", true),
+    };
+    seats.local_player_indices = {0};
 
     const og::ui::ScenarioRosterReport report =
-        og::ui::build_scenario_roster_report(fx.world(), save);
+        og::ui::build_scenario_roster_report(
+            nullptr, og::ui::StagePreviewStatus::None, save, &fx.world(),
+            &seats);
+    ASSERT_EQ(4u, report.seats.size());
+    EXPECT_EQ("2 VS 2", report.seat_summary);
+    EXPECT_EQ(0, report.seats[0].player_index);
+    EXPECT_EQ(3, report.seats[3].player_index) << "P#-sorted";
+    EXPECT_TRUE(report.seats[0].is_local);
+    EXPECT_FALSE(report.seats[1].is_local);
 
-    EXPECT_TRUE(report.is_versus);
-    EXPECT_TRUE(report.will_activate);
-    const auto* troops = find_group_row(report, 0, FAMILY_SOLDIER, 3);
-    ASSERT_TRUE(troops != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::StripAll, troops->strip_reason);
-    const auto* bot_troops = find_group_row(report, 1, FAMILY_ORC, 4);
-    ASSERT_TRUE(bot_troops != nullptr);
-    EXPECT_EQ(og::ui::ScenarioStripReason::StripAll, bot_troops->strip_reason)
-        << "OWN is not a per-roster-team rule";
+    const std::vector<std::string> lines =
+        og::ui::format_scenario_report_lines(report);
+    ASSERT_GE(lines.size(), 7u);
+    EXPECT_EQ("SEATS: 2 VS 2", lines[0]);
+    EXPECT_EQ("  P1 YOU - RED TEAM", lines[1]);
+    EXPECT_EQ("  P2 KEE [RDY] - RED TEAM", lines[2]);
+    EXPECT_EQ("  P3 BLU - GREEN TEAM", lines[3]);
+    EXPECT_EQ("  P4 BLU [RDY] - GREEN TEAM", lines[4]);
+    EXPECT_EQ("", lines[5])
+        << "the roster block keeps its blank separation below the seats";
+    EXPECT_EQ("RED TEAM (YOURS)", lines[6]);
+    for (const auto& line : lines)
+        EXPECT_LE(line.size(), 48u) << line;
 }
 
-// --- MATCHUP detail pagination (the per-team '>' pager) ---------------------
-
-TEST(PickerCommon, paginate_team_detail_packs_greedily_and_never_overflows)
+// Production host and joiner pass the SAME replicated seat records with
+// DIFFERENT local_player_indices: the YOU-vs-abbreviation asymmetry is
+// per-client presentation by design, never a replication divergence — only
+// the seat FACTS (P#, team, ready, company) are shared state.
+TEST(PickerCommon, seat_block_you_vs_abbreviation_is_per_client)
 {
-    const std::vector<std::string> names = {
-        "Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf",
-        "Hotel"};
+    ReportWorld host_world(false);
+    ReportWorld joiner_world(false);
 
-    // 56 joined chars fit one 56-char slice...
-    const auto one = og::ui::paginate_team_detail_pages(names, 56);
-    ASSERT_EQ(1u, one.size());
-    EXPECT_EQ("Alpha, Bravo, Charlie, Delta, Echo, Foxtrot, Golf, Hotel",
-              one[0]);
+    SaveData save;
+    const std::vector<og::sim::LobbyPlayer> shared_players = {
+        make_seat_player(0, 0, "Iron Kettle", false),
+        make_seat_player(1, 0, "Keepers Rest", true),
+    };
 
-    // ... and split greedily at a narrower 26-character budget.
-    const auto pages = og::ui::paginate_team_detail_pages(names, 26);
-    ASSERT_EQ(3u, pages.size());
-    EXPECT_EQ("Alpha, Bravo, Charlie", pages[0]);
-    EXPECT_EQ("Delta, Echo, Foxtrot, Golf", pages[1]);
-    EXPECT_EQ("Hotel", pages[2]);
-    for (const std::string& page : pages)
-        EXPECT_LE(page.size(), 26u) << page;
+    og::ui::ScenarioSeatContext host_seats;
+    host_seats.players = shared_players;
+    host_seats.local_player_indices = {0};
+    og::ui::ScenarioSeatContext joiner_seats;
+    joiner_seats.players = shared_players;
+    joiner_seats.local_player_indices = {1};
+
+    const std::vector<std::string> host_lines =
+        og::ui::format_scenario_report_lines(
+            og::ui::build_scenario_roster_report(
+                nullptr, og::ui::StagePreviewStatus::None, save,
+                &host_world.world(), &host_seats));
+    const std::vector<std::string> joiner_lines =
+        og::ui::format_scenario_report_lines(
+            og::ui::build_scenario_roster_report(
+                nullptr, og::ui::StagePreviewStatus::None, save,
+                &joiner_world.world(), &joiner_seats));
+
+    ASSERT_GE(host_lines.size(), 3u);
+    ASSERT_GE(joiner_lines.size(), 3u);
+    EXPECT_EQ("  P1 YOU - RED TEAM", host_lines[1]);
+    EXPECT_EQ("  P2 KEE [RDY] - RED TEAM", host_lines[2]);
+    EXPECT_EQ("  P1 IRO - RED TEAM", joiner_lines[1])
+        << "the joiner sees the host's seat abbreviated, never YOU";
+    EXPECT_EQ("  P2 YOU [RDY] - RED TEAM", joiner_lines[2]);
+    EXPECT_EQ(host_lines[0], joiner_lines[0])
+        << "the summary is a fact of the shared seats";
 }
 
-TEST(PickerCommon, paginate_team_detail_edge_cases)
+// No seat context (the defaulted parameter) and an EMPTY context are both
+// byte-identical to the pre-seat report — the guard that every existing
+// exact-line and exact-size pin keeps holding.
+TEST(PickerCommon, scenario_report_without_seats_is_byte_identical)
 {
-    // Empty input still yields exactly one (empty) page: page math never
-    // divides by zero and the screen draws nothing.
-    const auto empty = og::ui::paginate_team_detail_pages({}, 26);
-    ASSERT_EQ(1u, empty.size());
-    EXPECT_TRUE(empty[0].empty());
+    ReportWorld fx(false);
+    fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
+    fx.spawn_living_named(FAMILY_ARCHER, 1, 5, "GONZO");
 
-    // A single oversized item is clipped inside the budget with a visible
-    // '..' marker — this is the one truncation the unpaged screen would
-    // otherwise hide (one page means no '>' pager and no p/N indicator).
-    const auto truncated = og::ui::paginate_team_detail_pages(
-        {"AbsurdlyLongLobbyPlayerName [RDY]"}, 10);
-    ASSERT_EQ(1u, truncated.size());
-    EXPECT_EQ("Absurdly..", truncated[0]);
-    EXPECT_LE(truncated[0].size(), 10u);
+    SaveData save;
+    save.my_team = 0;
 
-    // Items exactly at the budget each take their own page.
-    const auto exact = og::ui::paginate_team_detail_pages(
-        {"0123456789", "abcdefghij"}, 10);
-    ASSERT_EQ(2u, exact.size());
-    EXPECT_EQ("0123456789", exact[0]);
-    EXPECT_EQ("abcdefghij", exact[1]);
+    const std::vector<std::string> defaulted =
+        og::ui::format_scenario_report_lines(
+            og::ui::build_scenario_roster_report(
+                nullptr, og::ui::StagePreviewStatus::None, save,
+                &fx.world()));
+    const og::ui::ScenarioSeatContext empty_seats;
+    const std::vector<std::string> with_empty_context =
+        og::ui::format_scenario_report_lines(
+            og::ui::build_scenario_roster_report(
+                nullptr, og::ui::StagePreviewStatus::None, save, &fx.world(),
+                &empty_seats));
+    const std::vector<std::string> with_null_context =
+        og::ui::format_scenario_report_lines(
+            og::ui::build_scenario_roster_report(
+                nullptr, og::ui::StagePreviewStatus::None, save, &fx.world(),
+                nullptr));
+    ASSERT_FALSE(defaulted.empty());
+    EXPECT_EQ(defaulted, with_empty_context);
+    EXPECT_EQ(defaulted, with_null_context);
+    for (const auto& line : defaulted)
+        EXPECT_EQ(std::string::npos, line.find("SEATS:")) << line;
+}
 
-    // A degenerate budget still terminates with one truncated char per item
-    // (budgets of <= 2 chars have no room for the '..' marker).
-    const auto tiny = og::ui::paginate_team_detail_pages({"ab", "cd"}, 0);
-    ASSERT_EQ(2u, tiny.size());
-    EXPECT_EQ("a", tiny[0]);
-    EXPECT_EQ("c", tiny[1]);
+// The 48-char sweep at the seat block's widest shape: a full 16-seat global
+// lobby on YELLOW, every seat ready and remote — the worst-case line is 29
+// chars ("  P16 ABC [RDY] - YELLOW TEAM") and every line clears the budget.
+TEST(PickerCommon, seat_block_sixteen_seat_worst_case_fits_the_budget)
+{
+    ReportWorld fx(false);
+    fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
+
+    SaveData save;
+    og::ui::ScenarioSeatContext seats;
+    for (std::uint8_t index = 0; index < 16; ++index)
+    {
+        seats.players.push_back(make_seat_player(
+            index, 3, "Absurdly Long Company Name Overflow", true));
+    }
+
+    const std::vector<std::string> lines =
+        og::ui::format_scenario_report_lines(
+            og::ui::build_scenario_roster_report(
+                nullptr, og::ui::StagePreviewStatus::None, save, &fx.world(),
+                &seats));
+    bool worst_case_seen = false;
+    for (const auto& line : lines)
+    {
+        EXPECT_LE(line.size(), 48u) << line;
+        worst_case_seen =
+            worst_case_seen || line == "  P16 ABS [RDY] - YELLOW TEAM";
+    }
+    EXPECT_TRUE(worst_case_seen)
+        << "the two-digit P# + [RDY] + YELLOW TEAM worst case renders";
 }
 
 // --- Difficulty submenu match rules (cyclers + exact label pins) ---

@@ -65,6 +65,8 @@ enum SoccerSlot : int {
     kSocStallSince = 43,
     kSocBallSpin = 44,
     kSocLastTouch2 = 45,
+    kSocItemCursor = 46,
+    kSocItemLast = 47,
 };
 
 inline constexpr int kModeIdSoccer = 4;  // mode_core.MODE.SOCCER
@@ -136,6 +138,47 @@ bool has_script_error(GameWorld& world, const std::string& needle)
     return false;
 }
 
+void expect_no_soccer_script_errors(GameWorld& world)
+{
+    for (const auto& err : world.scripts().host().errors())
+        ADD_FAILURE() << "script error: " << err.where << ": " << err.message;
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+// Respawned pickups live in the fx list (lib/mode_items spawns them with
+// og.add_fx_ob so the engine's walk-on eat scan finds them).
+int live_treasures(GameWorld& world, int family)
+{
+    int count = 0;
+    for (const auto& uptr : world.fxlist)
+    {
+        const walker* w = uptr.get();
+        if (w != nullptr && !w->dead() &&
+            w->query_order() == Order::Treasure && w->family() == family)
+        {
+            count++;
+        }
+    }
+    return count;
+}
+
+// A live pickup whose TOP-LEFT is (x, y) — a pad's spawn subtracts 8 from
+// its authored pixel center.
+walker* item_at(GameWorld& world, int family, int x, int y)
+{
+    for (const auto& uptr : world.fxlist)
+    {
+        walker* w = uptr.get();
+        if (w != nullptr && !w->dead() &&
+            w->query_order() == Order::Treasure && w->family() == family &&
+            w->xpos() == x && w->ypos() == y)
+        {
+            return w;
+        }
+    }
+    return nullptr;
+}
+
 bool front_command_is(const walker* w, std::int32_t type, std::int32_t com1,
                       std::int32_t com2)
 {
@@ -188,6 +231,22 @@ void align_before_cadence(GameWorld& world)
     world.tick_count_ = next - 1;
 }
 
+// A live STAIN treasure whose top-left sits at (x, y).
+bool stain_alive_at(GameWorld& world, int x, int y)
+{
+    for (const auto& uptr : world.fxlist)
+    {
+        const walker* w = uptr.get();
+        if (w != nullptr && !w->dead() &&
+            w->query_order() == Order::Treasure &&
+            w->family() == FAMILY_STAIN && w->xpos() == x && w->ypos() == y)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 int alive_on_team(GameWorld& world, int team)
 {
     int count = 0;
@@ -202,6 +261,49 @@ int alive_on_team(GameWorld& world, int team)
         }
     }
     return count;
+}
+
+// The shared mode_anchors squad-seed header slot (#235): the latched
+// squad-order code + 1, drawn once per match by the first bot-squad spawn.
+inline constexpr int kSlotSquadSeed = 6;
+
+// A team's live Living family bytes in oblist (spawn) order.
+std::vector<int> team_families_in_order(GameWorld& world, int team)
+{
+    std::vector<int> families;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w != nullptr && !w->dead() &&
+            w->query_order() == Order::Living &&
+            w->team_num() == static_cast<unsigned char>(team))
+        {
+            families.push_back(static_cast<int>(w->family()));
+        }
+    }
+    return families;
+}
+
+// Retires a team's dead guy-less bodies, simulating the engine sweep for
+// corpses whose entries were genuinely lost (a full all-player queue). With
+// corpse persistence (#221) a body whose entry is merely hand-cleared is
+// re-adopted by the always-on scan next tick, so the no-revives-in-flight
+// kickoff edge needs the drained entries' bodies gone too.
+void retire_dead_guyless(GameWorld& world, int team)
+{
+    std::vector<walker*> corpses;
+    for (const auto& uptr : world.oblist)
+    {
+        walker* w = uptr.get();
+        if (w != nullptr && w->dead() && w->myguy == nullptr &&
+            w->query_order() == Order::Living &&
+            w->team_num() == static_cast<unsigned char>(team))
+        {
+            corpses.push_back(w);
+        }
+    }
+    for (walker* w : corpses)
+        world.retire_corpse(w);
 }
 
 // Full behavior digest: mode vars, RNG, positions, command queues.
@@ -402,7 +504,9 @@ TEST_F(ModesSoccer, empty_active_teams_get_bot_squads)
     fx.spawn_anchor(0, 96, 448);
     fx.spawn_anchor(1, 528, 448);
     // Team 1's only anchor is blocked by a parked generator: its bots
-    // fall back to the RNG teleport (the one init-time draw, D1).
+    // fall back to the RNG teleport. Init-time draws: the #235 squad-order
+    // seed (one og.rand inside the first squad spawn, before placement),
+    // then the blocked-anchor teleports (D1).
     fx.spawn_generator(FAMILY_TENT, 1, 528, 448);
     fx.tick(1);
 
@@ -455,12 +559,15 @@ TEST_F(ModesSoccer, scenario_troops_strip_takes_the_pitch_generators_too)
         << "and the emptied team is backfilled by the census behind the strip";
 }
 
-TEST_F(ModesSoccer, troops_own_activates_only_the_roster_teams)
+TEST_F(ModesSoccer, troops_own_at_auto_activates_the_authored_team_count)
 {
-    // The scen-841 shape on the FOURSQUARE pitch: OWN with rosters deployed
-    // on the north and south mouths activates exactly those two teams — no
-    // five-bot squads on the east/west sides, and the manifest row's
-    // teams = 4 default is not a backfill mandate.
+    // The scen-841 shape on the FOURSQUARE pitch at TEAMS: Auto: Auto is
+    // the zero sentinel ("as many teams as the map actually has"), so OWN
+    // with rosters on the north and south mouths fields all FOUR authored
+    // sides — the rosters stay untouched and the east/west teams backfill
+    // with the OWN legacy five-bot squads, exactly like an explicit
+    // TEAMS: 4 (issue #218; the 2026-08-18 directive superseding D26's
+    // Auto scope).
     SoccerPitch fx(kSoccerLevelB);
     fx.world().ctf_requested_strip_scenario_troops = 2;
     for (int team = 0; team < 4; ++team)
@@ -470,17 +577,309 @@ TEST_F(ModesSoccer, troops_own_activates_only_the_roster_teams)
     fx.tick(1);
 
     ASSERT_TRUE(fx.soccer_active());
-    EXPECT_EQ(1 + 4, fx.var(kSocTeamMask))
-        << "exactly the two roster teams activate";
-    EXPECT_EQ(2, fx.var(kSocTeamCount));
+    EXPECT_EQ(15, fx.var(kSocTeamMask))
+        << "Auto resolves to the authored team count: all four sides";
+    EXPECT_EQ(4, fx.var(kSocTeamCount));
     EXPECT_NE(nullptr, fx.ball()) << "the match still gets its ball";
     EXPECT_FALSE(soldier->dead());
     EXPECT_FALSE(barbarian->dead());
-    EXPECT_EQ(1, alive_on_team(fx.world(), 0));
-    EXPECT_EQ(0, alive_on_team(fx.world(), 1))
-        << "no five-bot squads under OWN";
+    EXPECT_EQ(1, alive_on_team(fx.world(), 0)) << "the rosters stay as-is";
+    EXPECT_EQ(5, alive_on_team(fx.world(), 1))
+        << "the empty-team census fields the OWN legacy squad";
     EXPECT_EQ(1, alive_on_team(fx.world(), 2));
+    EXPECT_EQ(5, alive_on_team(fx.world(), 3));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesSoccer, all_bot_own_auto_matches_the_explicit_count_shape)
+{
+    // The 2026-08-18 Auto directive in the ALL-BOT shape (#218 review):
+    // TROOPS: OWN with no roster deployed, on a FOUR-anchor pitch whose
+    // manifest row declares teams = 2 and authors two goal mouths
+    // (kSoccerLevelA). TEAMS: Auto must behave exactly like explicit
+    // TEAMS: 4 — here that is the malformed-authoring refusal (four anchor
+    // teams, two authored mouths), NOT a silent 2-team match riding the
+    // manifest default. Twin worlds prove the equivalence from both sides.
+    auto author = [](ModesCtfWorld& fx) {
+        for (int team = 0; team < 4; ++team)
+            fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 448);
+    };
+    ModesCtfWorld explicit_four(kSoccerLevelA);
+    explicit_four.world().ctf_requested_strip_scenario_troops = 2;
+    explicit_four.world().ctf_requested_team_count = 4;
+    author(explicit_four);
+    explicit_four.tick(1);
+    ModesCtfWorld at_auto(kSoccerLevelA);
+    at_auto.world().ctf_requested_strip_scenario_troops = 2;
+    author(at_auto);
+    at_auto.tick(1);
+
+    EXPECT_TRUE(explicit_four.world().mode.init_attempted);
+    EXPECT_FALSE(explicit_four.world().mode.active);
+    EXPECT_TRUE(has_script_error(explicit_four.world(),
+                                 "no goal rect for team 2"));
+    EXPECT_TRUE(at_auto.world().mode.init_attempted);
+    EXPECT_FALSE(at_auto.world().mode.active)
+        << "Auto rides the explicit-count arm, not the manifest default";
+    EXPECT_TRUE(has_script_error(at_auto.world(), "no goal rect for team 2"))
+        << "same refusal as the explicit TEAMS: 4 twin";
+}
+
+TEST_F(ModesSoccer, fair_teams_four_with_a_solo_roster_fields_four_teams)
+{
+    // Issue #218, the reporter's scenario: TROOPS: FAIR + TEAMS: 4 on the
+    // FOURSQUARE pitch with a solo deployed roster. The EXPLICIT lobby
+    // count wins the team COUNT — roster team 0 stays, teams 1..3 backfill
+    // in index order and each fields a FAIR matched squad through the
+    // empty-team census behind the strip. The tenth-budget override also
+    // proves init with three matched-squad solves fits the headroom.
+    BudgetOverride budget(500000);
+    SoccerPitch fx(kSoccerLevelB);
+    for (int team = 0; team < 4; ++team)
+        fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
+    arm_matched(fx.world());
+    fx.world().ctf_requested_team_count = 4;
+    walker* hero = fx.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
+    ASSERT_NE(nullptr, hero);
+    fx.tick(1);
+
+    ASSERT_TRUE(fx.soccer_active());
+    EXPECT_EQ(15, fx.var(kSocTeamMask))
+        << "the explicit TEAMS: 4 request fields all four sides";
+    EXPECT_EQ(4, fx.var(kSocTeamCount));
+    EXPECT_FALSE(hero->dead());
+    EXPECT_EQ(1, alive_on_team(fx.world(), 0)) << "the roster is untouched";
+    EXPECT_EQ(1, fx.var(kSlotMatchedSize));
+    for (int team = 1; team < 4; ++team)
+    {
+        EXPECT_EQ(1, alive_on_team(fx.world(), team))
+            << "FAIR fields a matched-headcount squad on team " << team;
+        EXPECT_NE(0, matched_plan_code(fx.var(kSlotMatchedPlan), team))
+            << "team " << team << " was solved";
+    }
+    EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"));
+    EXPECT_EQ(pos_pack(256, 16), fx.team_var(kSocGoalPos, 0));
+    EXPECT_EQ(pos_pack(592, 256), fx.team_var(kSocGoalPos, 1));
+    EXPECT_EQ(pos_pack(256, 912), fx.team_var(kSocGoalPos, 2));
+    EXPECT_EQ(pos_pack(16, 256), fx.team_var(kSocGoalPos, 3));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesSoccer, fair_teams_auto_with_a_solo_roster_fields_four_teams)
+{
+    // The Auto twin of the explicit TEAMS: 4 test above: TEAMS: Auto is
+    // the zero sentinel ("as many teams as the map actually has"), so on
+    // the FOURSQUARE pitch a solo FAIR roster fields all four authored
+    // sides through the SAME backfill arm as the explicit count — and all
+    // four goal mouths bank (2026-08-18 maintainer directive, issue #218).
+    BudgetOverride budget(500000);
+    SoccerPitch fx(kSoccerLevelB);
+    for (int team = 0; team < 4; ++team)
+        fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
+    arm_matched(fx.world());
+    ASSERT_EQ(0, fx.world().ctf_requested_team_count) << "TEAMS: Auto";
+    walker* hero = fx.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
+    ASSERT_NE(nullptr, hero);
+    fx.tick(1);
+
+    ASSERT_TRUE(fx.soccer_active());
+    EXPECT_EQ(15, fx.var(kSocTeamMask))
+        << "Auto resolves to the authored team count: all four sides";
+    EXPECT_EQ(4, fx.var(kSocTeamCount));
+    EXPECT_FALSE(hero->dead());
+    EXPECT_EQ(1, alive_on_team(fx.world(), 0)) << "the roster is untouched";
+    EXPECT_EQ(1, fx.var(kSlotMatchedSize));
+    for (int team = 1; team < 4; ++team)
+    {
+        EXPECT_EQ(1, alive_on_team(fx.world(), team))
+            << "FAIR fields a matched-headcount squad on team " << team;
+        EXPECT_NE(0, matched_plan_code(fx.var(kSlotMatchedPlan), team))
+            << "team " << team << " was solved";
+    }
+    EXPECT_EQ(1, count_notifications(fx.events, "TEAMS MATCHED"));
+    EXPECT_EQ(pos_pack(256, 16), fx.team_var(kSocGoalPos, 0));
+    EXPECT_EQ(pos_pack(592, 256), fx.team_var(kSocGoalPos, 1));
+    EXPECT_EQ(pos_pack(256, 912), fx.team_var(kSocGoalPos, 2));
+    EXPECT_EQ(pos_pack(16, 256), fx.team_var(kSocGoalPos, 3));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesSoccer, own_and_fair_masks_agree_at_an_explicit_count)
+{
+    // The D26/D33 twin invariant extended to explicit counts: FAIR's mask
+    // is byte-identical to OWN's at TEAMS: 4, and the delta stays confined
+    // to the generated squads (legacy five-bot vs one matched bot).
+    // Sequentially scoped worlds — script bindings resolve against the
+    // last-constructed live world (the two-live-fixtures trap).
+    std::int32_t own_mask = 0;
+    std::int32_t fair_mask = 0;
+    {
+        SoccerPitch own(kSoccerLevelB);
+        for (int team = 0; team < 4; ++team)
+            own.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
+        own.world().ctf_requested_strip_scenario_troops = 2;  // the OWN twin
+        own.world().ctf_requested_team_count = 4;
+        own.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
+        own.tick(1);
+        ASSERT_TRUE(own.soccer_active());
+        own_mask = own.var(kSocTeamMask);
+        EXPECT_EQ(15, own_mask);
+        for (int team = 1; team < 4; ++team)
+        {
+            EXPECT_EQ(5, alive_on_team(own.world(), team))
+                << "OWN backfill keeps the legacy five-bot squad on team "
+                << team;
+        }
+        EXPECT_EQ(0, own.var(kSlotMatchedPlan)) << "OWN never solves";
+        EXPECT_EQ(0, count_notifications(own.events, "TEAMS MATCHED"));
+    }
+    {
+        SoccerPitch fair(kSoccerLevelB);
+        for (int team = 0; team < 4; ++team)
+            fair.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
+        arm_matched(fair.world());
+        fair.world().ctf_requested_team_count = 4;
+        fair.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
+        fair.tick(1);
+        ASSERT_TRUE(fair.soccer_active());
+        fair_mask = fair.var(kSocTeamMask);
+        for (int team = 1; team < 4; ++team)
+        {
+            EXPECT_EQ(1, alive_on_team(fair.world(), team))
+                << "FAIR's one delta: matched headcount on team " << team;
+        }
+    }
+    EXPECT_EQ(own_mask, fair_mask) << "FAIR-mask == OWN-mask (D26/D33)";
+}
+
+TEST_F(ModesSoccer, explicit_count_never_strips_a_roster_team)
+{
+    // (a) Rosters at their authored seats beat index order: TEAMS: 2 with
+    // rosters {0, 2} fields exactly {0, 2}, never the first-two clamp's
+    // {0, 1}.
+    {
+        SoccerPitch fx(kSoccerLevelB);
+        for (int team = 0; team < 4; ++team)
+            fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
+        fx.world().ctf_requested_strip_scenario_troops = 2;
+        fx.world().ctf_requested_team_count = 2;
+        fx.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
+        fx.spawn_hero(FAMILY_BARBARIAN, 2, 300, 860, 2);
+        fx.tick(1);
+        ASSERT_TRUE(fx.soccer_active());
+        EXPECT_EQ(1 + 4, fx.var(kSocTeamMask))
+            << "roster placement beats index order";
+        EXPECT_EQ(2, fx.var(kSocTeamCount));
+    }
+    // (b) Max semantics: three rosters outrank TEAMS: 2 — a deployed side
+    // is never stripped to satisfy a count.
+    {
+        SoccerPitch fx(kSoccerLevelB);
+        for (int team = 0; team < 4; ++team)
+            fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
+        fx.world().ctf_requested_strip_scenario_troops = 2;
+        fx.world().ctf_requested_team_count = 2;
+        fx.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
+        fx.spawn_hero(FAMILY_BARBARIAN, 1, 300, 700, 2);
+        fx.spawn_hero(FAMILY_ELF, 2, 300, 860, 3);
+        fx.tick(1);
+        ASSERT_TRUE(fx.soccer_active());
+        EXPECT_EQ(1 + 2 + 4, fx.var(kSocTeamMask));
+        EXPECT_EQ(3, fx.var(kSocTeamCount));
+        EXPECT_EQ(0, alive_on_team(fx.world(), 3));
+        EXPECT_EQ(0, fx.team_var(kSocGoalPos, 3))
+            << "the left-out fourth mouth stays dead";
+    }
+}
+
+TEST_F(ModesSoccer, explicit_count_three_backfills_the_first_non_roster_team)
+{
+    // Rosters {0, 2} at TEAMS: 3: both roster teams stay, and team 1 (the
+    // first authored non-roster team in index order) joins with OWN's
+    // legacy squad; team 3 stays dead and banks no mouth.
+    SoccerPitch fx(kSoccerLevelB);
+    for (int team = 0; team < 4; ++team)
+        fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 700);
+    fx.world().ctf_requested_strip_scenario_troops = 2;
+    fx.world().ctf_requested_team_count = 3;
+    fx.spawn_hero(FAMILY_SOLDIER, 0, 300, 100, 1);
+    fx.spawn_hero(FAMILY_BARBARIAN, 2, 300, 860, 2);
+    fx.tick(1);
+
+    ASSERT_TRUE(fx.soccer_active());
+    EXPECT_EQ(1 + 2 + 4, fx.var(kSocTeamMask))
+        << "rosters {0, 2} plus the first non-roster team, 1";
+    EXPECT_EQ(3, fx.var(kSocTeamCount));
+    EXPECT_EQ(5, alive_on_team(fx.world(), 1))
+        << "the backfilled team gets OWN's legacy squad";
     EXPECT_EQ(0, alive_on_team(fx.world(), 3));
+    EXPECT_EQ(pos_pack(592, 256), fx.team_var(kSocGoalPos, 1))
+        << "a backfilled team banks its goal mouth";
+    EXPECT_EQ(0, fx.team_var(kSocGoalPos, 3))
+        << "the left-out mouth stays dead";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+TEST_F(ModesSoccer, ball_in_a_closed_authored_mouth_announces_and_resets)
+{
+    // Issue #219, the reporter's shape via TROOPS: ALL — FOURSQUARE at
+    // TEAMS: 2 leaves the south/west mouths authored but dead, and mapgen
+    // paints every mouth identically, so a dead one looks live. A ball
+    // entering one must announce the closed goal and re-spot at the
+    // kickoff instead of sitting there silently. (Since the 2026-08-18
+    // Auto-resolves-to-authored-count directive, a dead mouth is reachable
+    // ONLY through an explicit TEAMS below the authored count — the shape
+    // this test constructs explicitly; TEAMS: Auto activates every mouth.)
+    SoccerPitch fx(kSoccerLevelB);
+    for (int team = 0; team < 4; ++team)
+    {
+        fx.spawn_anchor(team, static_cast<short>(96 + 64 * team), 448);
+        fx.spawn_living(FAMILY_SOLDIER, team,
+                        static_cast<short>(96 + 64 * team), 96);
+    }
+    fx.world().ctf_requested_team_count = 2;
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    ASSERT_EQ(3, fx.var(kSocTeamMask))
+        << "mouths 2 and 3 are authored but dead";
+
+    fx.thaw_kickoff();
+    fx.world().mode.vars[kSocLastTouch1] = 1;  // attribution must not score
+    fx.set_ball(320, 928, 0, 0);  // center of team 2's south rect
+    fx.tick(1);
+
+    EXPECT_EQ(1, count_notifications(fx.events, "BLUE GOAL CLOSED!"))
+        << "team 2 = BLUE announces the dead mouth";
+    EXPECT_LE(longest_notification(fx.events), 25u);
+    for (int team = 0; team < 4; ++team)
+        EXPECT_EQ(0, fx.team_var(kSocGoals, team)) << "no goal scored";
+    int score_changes = 0;
+    for (const auto& ev : fx.events.events())
+    {
+        if (ev.kind == og::sim::EventKind::ScoreChange)
+            score_changes++;
+    }
+    EXPECT_EQ(0, score_changes);
+    EXPECT_EQ(320, fx.ball_cx()) << "re-spotted at the kickoff";
+    EXPECT_EQ(480, fx.ball_cy());
+    EXPECT_EQ(0, fx.var(kSocLastTouch1))
+        << "the reset wiped the touch history";
+    EXPECT_GT(fx.var(kSocKickoffUntil), 0) << "the reset re-armed the freeze";
+
+    // Rate limit: the kickoff freeze gates the scan, so a ball parked back
+    // in the dead mouth while frozen announces nothing and stays put...
+    fx.set_ball(320, 928, 0, 0);
+    fx.tick(1);
+    EXPECT_EQ(1, count_notifications(fx.events, "GOAL CLOSED!"))
+        << "the freeze window is the rate limit";
+    EXPECT_EQ(928, fx.ball_cy()) << "no silent re-spot while frozen";
+
+    // ...and announces exactly once more after the freeze expires.
+    fx.thaw_kickoff();
+    fx.tick(1);
+    EXPECT_EQ(2, count_notifications(fx.events, "GOAL CLOSED!"));
+    EXPECT_EQ(320, fx.ball_cx());
+    EXPECT_EQ(480, fx.ball_cy());
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
@@ -1224,6 +1623,51 @@ TEST_F(ModesSoccer, short_manifest_time_limit_is_honored)
 }
 
 // ===========================================================================
+// Respawning pickups (#225): the pitch runs lib/mode_items over its row
+// ===========================================================================
+
+// A pitch's pads are fed through the make_hooks(row) closure, not
+// mode_levels — the fixture rows are synthetic and never enter the
+// manifest module — so this also pins that the closure reaches items.run.
+// 9301 carries two drumstick pads (tiles (10,10) and (14,10)) on a 30-tick
+// interval and authors no food, so both pads start in deficit.
+TEST_F(ModesSoccer, item_pad_denies_while_camped_then_fills_the_free_pad)
+{
+    SoccerWorld fx;
+    // Camp pad 1 exactly: pad center (168, 168) means the item's top-left
+    // is (160, 160), and a 16x16 living there overlaps it entirely. The
+    // camper is ACT_CONTROL like the fixture's own two livings, so the
+    // director never commands it off the pad.
+    walker* camper = fx.spawn_living(FAMILY_SOLDIER, 0, 160, 160);
+    ASSERT_NE(nullptr, camper);
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    ASSERT_EQ(1, fx.var(kSocItemLast)) << "init seeds the item clock";
+    ASSERT_EQ(0, live_treasures(fx.world(), FAMILY_DRUMSTICK))
+        << "the synthetic pitch authors no food — both pads start empty";
+
+    // Tick 60 is the first 30-tick cadence boundary at or past the row's
+    // 30-tick interval from the init seed.
+    fx.tick(59);
+    EXPECT_EQ(1, live_treasures(fx.world(), FAMILY_DRUMSTICK))
+        << "exactly one item per firing";
+    EXPECT_EQ(nullptr, item_at(fx.world(), FAMILY_DRUMSTICK, 160, 160))
+        << "the camped pad is denied (pad_blocked)";
+    EXPECT_NE(nullptr, item_at(fx.world(), FAMILY_DRUMSTICK, 224, 160))
+        << "the rotation falls through to the free pad";
+    EXPECT_EQ(60, fx.var(kSocItemLast));
+
+    // The camper dies; the next firing fills the pad it was sitting on.
+    camper->set_dead(1);
+    fx.tick(30);
+    EXPECT_EQ(2, live_treasures(fx.world(), FAMILY_DRUMSTICK));
+    EXPECT_NE(nullptr, item_at(fx.world(), FAMILY_DRUMSTICK, 160, 160))
+        << "an uncamped pad fills on the next firing";
+    EXPECT_EQ(90, fx.var(kSocItemLast));
+    expect_no_soccer_script_errors(fx.world());
+}
+
+// ===========================================================================
 // B1: the kickoff backstop (design §6.3) + dead-ball reset (§6.2.4)
 // ===========================================================================
 
@@ -1247,8 +1691,11 @@ TEST_F(ModesSoccer, goal_kickoff_reprovisions_a_wiped_bot_team)
     ASSERT_EQ(0, alive_on_team(fx.world(), 1));
 
     // The B1 reprovision arm still guards the no-revives-in-flight edge
-    // (evicted or flushed entries): drain the queue, then score.
+    // (entries genuinely lost, bodies swept — a full all-player queue):
+    // drain the queue AND the drained corpses, then score.
     fx.world().respawn.respawn_queue.clear();
+    retire_dead_guyless(fx.world(), 1);
+    retire_dead_guyless(fx.world(), 0);
     fx.world().mode.vars[kSocLastTouch1] = 1;  // team 0 touched last
     fx.set_ball(600, 464, 4 * 256, 0);         // into team 1's strip
     fx.tick(1);
@@ -1257,6 +1704,70 @@ TEST_F(ModesSoccer, goal_kickoff_reprovisions_a_wiped_bot_team)
         << "the kickoff backstop refields the wiped team (B1)";
     EXPECT_EQ(1, alive_on_team(fx.world(), 0))
         << "a team with a live member is left alone";
+    // BOT_MARK provenance (#218 staged preview): the revive spawns go
+    // through the same add_squad_member choke point as the init squads, so
+    // every refielded bot carries the mark (mode_caps BOT_MARK_BIT).
+    int marked = 0;
+    for (const auto& uptr : fx.world().oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        if (w->team_num() != 1 || w->stats() == nullptr)
+            continue;
+        if ((w->stats()->bit_flags() & 65536) != 0)
+            ++marked;
+    }
+    EXPECT_EQ(5, marked)
+        << "every wiped-team revive spawn carries the bot mark";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+// Issue #235 latch agreement: the squad order is drawn ONCE per match and
+// latched in the shared header var, so a wiped bot side comes back as the
+// SAME squad — the mid-match revive backstop decodes the latched code with
+// zero RNG draws instead of re-rolling a new order. (Green before the
+// seeded permutation too — the fixed table trivially agreed with itself —
+// but post-#235 this pins the init/mid-match latch agreement.)
+TEST_F(ModesSoccer, wiped_bot_team_revives_with_the_same_match_squad)
+{
+    SoccerPitch fx(kSoccerLevelA);
+    fx.spawn_anchor(0, 96, 448);
+    fx.spawn_anchor(1, 528, 448);
+    walker* red = fx.spawn_living(FAMILY_SOLDIER, 0, 96, 96);
+    fx.world().respawn_mode = 0;
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    ASSERT_FALSE(red->dead());
+    const std::vector<int> at_init = team_families_in_order(fx.world(), 1);
+    ASSERT_EQ(5u, at_init.size()) << "the empty side fields a five-bot squad";
+    const std::int32_t seed_at_init = fx.var(kSlotSquadSeed);
+
+    fx.thaw_kickoff();
+    for (const auto& uptr : fx.world().oblist)
+    {
+        walker* w = uptr.get();
+        if (w != nullptr && !w->dead() &&
+            w->query_order() == Order::Living && w->team_num() == 1)
+            w->set_dead(1);
+    }
+    fx.tick(2);
+    ASSERT_EQ(0, alive_on_team(fx.world(), 1));
+    // The B1 reprovision arm guards the no-revives-in-flight edge (the
+    // goal_kickoff_reprovisions_a_wiped_bot_team shape): drain the queue
+    // and the drained corpses, then score to trigger the kickoff.
+    fx.world().respawn.respawn_queue.clear();
+    retire_dead_guyless(fx.world(), 1);
+    fx.world().mode.vars[kSocLastTouch1] = 1;  // team 0 touched last
+    fx.set_ball(600, 464, 4 * 256, 0);         // into team 1's strip
+    fx.tick(1);
+    ASSERT_EQ(5, alive_on_team(fx.world(), 1))
+        << "the kickoff backstop refields the wiped side (B1)";
+
+    EXPECT_EQ(at_init, team_families_in_order(fx.world(), 1))
+        << "a wiped side must come back as the SAME match squad (#235)";
+    EXPECT_EQ(seed_at_init, fx.var(kSlotSquadSeed))
+        << "the latched squad-order code survives the wipe";
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
@@ -1434,6 +1945,46 @@ TEST_F(ModesSoccer, submenu_team_gate_is_ignored_every_hero_returns)
     EXPECT_TRUE(player_revive_pending(fx.world(), green_hero->entity_id()))
         << "the Team 1-only choice no longer strands other teams";
     EXPECT_EQ(1, ai_entries_for_team(fx.world(), 0));
+}
+
+// Issue #221 (the playtest report): a slain soccer bot must leave its
+// corpse on the pitch — visible and cleric-raisable — for the whole
+// respawn countdown; the fire then retires it with the replacement.
+TEST_F(ModesSoccer, slain_bot_leaves_a_raisable_corpse_until_respawn)
+{
+    SoccerRespawnWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    ASSERT_EQ(3, alive_on_team(fx.world(), 0)) << "red + hero + bot";
+
+    // The reporter's scenario: a fielded team-0 fighter falls in play,
+    // through the real death path (bloodspot and all).
+    walker* bot = fx.bot;
+    const std::uint32_t corpse_id = bot->entity_id();
+    bot->set_dead(1);
+    bot->death();
+    fx.tick(1);  // the always-on scan queues the corpse
+
+    ASSERT_TRUE(og::sim::respawn_pending_for(fx.world(), bot));
+    EXPECT_TRUE(stain_alive_at(fx.world(), 160, 480))
+        << "the corpse must stay on the pitch through the countdown";
+
+    // The cleric's corpse-discovery seam: nearby_corpse() resolves through
+    // find_nearest_blood, so a raise can reach this body mid-countdown.
+    fx.hero->setxy(184, 480);
+    walker* blood = fx.world().find_nearest_blood(fx.hero);
+    ASSERT_NE(nullptr, blood)
+        << "a cleric beside the fallen bot must find the corpse";
+    EXPECT_EQ(160, blood->xpos());
+    EXPECT_EQ(480, blood->ypos());
+
+    fx.tick(70);  // respawn delay 60 + slack
+    EXPECT_FALSE(stain_alive_at(fx.world(), 160, 480))
+        << "the fire retires the stain along with the corpse";
+    EXPECT_EQ(nullptr, fx.world().find_by_id(corpse_id));
+    EXPECT_EQ(3, alive_on_team(fx.world(), 0))
+        << "the replacement restores the census";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
 TEST_F(ModesSoccer, camped_anchors_cannot_stall_a_respawn)
@@ -2148,13 +2699,15 @@ TEST_F(ModesSoccer, kickoff_reprovisions_a_wiped_matched_team_at_strength)
             w->query_order() == Order::Living && w->team_num() == 1)
             w->set_dead(1);
     }
-    fx.tick(2);  // corpses sweep; their revive entries ride the queue
+    fx.tick(2);  // the corpses persist; their revive entries ride the queue
     ASSERT_EQ(0, alive_on_team(fx.world(), 1));
     EXPECT_EQ(1, ai_entries_for_team(fx.world(), 1))
         << "always-on scheduling covers the matched bot too";
     // The D39 reprovision arm still guards the no-revives-in-flight edge
-    // (evicted or flushed entries): drain the queue, then score.
+    // (entries genuinely lost, bodies swept — a full all-player queue):
+    // drain the queue AND the drained corpses, then score.
     fx.world().respawn.respawn_queue.clear();
+    retire_dead_guyless(fx.world(), 1);
 
     fx.world().mode.vars[kSocLastTouch1] = 1;  // team 0 touched last
     fx.set_ball(600, 464, 4 * 256, 0);         // into team 1's strip
@@ -2201,6 +2754,8 @@ TEST_F(ModesSoccer, kickoff_backstop_matches_a_wiped_human_team_to_target)
     ASSERT_EQ(0, fx.var(kSlotMatchedPlan));
     ASSERT_EQ(0, count_notifications(fx.events, "TEAMS MATCHED"));
     ASSERT_EQ(1, alive_on_team(fx.world(), 1));
+    ASSERT_EQ(0, fx.var(kSlotSquadSeed))
+        << "no bot squad spawned at init, so no squad-order draw yet (#235)";
 
     fx.thaw_kickoff();
     park_away(red_hero);
@@ -2212,8 +2767,11 @@ TEST_F(ModesSoccer, kickoff_backstop_matches_a_wiped_human_team_to_target)
     ASSERT_EQ(0, alive_on_team(fx.world(), 1));
     // The guyless corpse scheduled as a plain AI revive under the
     // always-on scan; the D24 measure-and-solve arm guards the
-    // drained-queue edge — clear it so the backstop refields.
+    // drained-queue edge (entries genuinely lost, bodies swept — a full
+    // all-player queue) — clear the queue and the body so the backstop
+    // refields.
     fx.world().respawn.respawn_queue.clear();
+    retire_dead_guyless(fx.world(), 1);
 
     fx.world().mode.vars[kSocLastTouch1] = 1;
     fx.set_ball(600, 464, 4 * 256, 0);
@@ -2222,16 +2780,26 @@ TEST_F(ModesSoccer, kickoff_backstop_matches_a_wiped_human_team_to_target)
     EXPECT_EQ(1, alive_on_team(fx.world(), 1))
         << "the formerly-human team is refielded (today's behavior, D24) "
            "at the min headcount — the survivor stays un-outnumbered";
-    // T = 2306 is INTERIOR to the single soldier's [B(1), B(9)] =
-    // [1643, ...] now that the squad is the 1-prefix (D37): the D24
-    // measure-and-solve arm answers L1/k0 — visibly NOT the legacy L2
-    // squad the pre-matched backstop fielded.
-    EXPECT_EQ(10, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
+    // This first squad spawn of the match draws the #235 squad-order seed
+    // (latched mid-match here — no fill happened at init), and the 1-prefix
+    // (D37) is the seeded order's first member: with this world's
+    // deterministic stream that is the MAGE, whose far weaker base solves
+    // the stored T = 2306 to L3/k0 — visibly NOT the legacy L2 squad the
+    // pre-matched backstop fielded. (Re-adjudicated for #235: the
+    // pre-permutation prefix was always the soldier, which solved L1/k0.)
+    EXPECT_GE(fx.var(kSlotSquadSeed), 1);
+    EXPECT_LE(fx.var(kSlotSquadSeed), 120);
+    const std::vector<int> squad_families =
+        team_families_in_order(fx.world(), 1);
+    ASSERT_EQ(1u, squad_families.size());
+    EXPECT_EQ(FAMILY_MAGE, squad_families.front())
+        << "the refield takes the seeded order's first member";
+    EXPECT_EQ(30, matched_plan_code(fx.var(kSlotMatchedPlan), 1))
         << "the backstop solved NOW against the stored target and "
            "persisted the plan";
     const std::vector<int> levels = team_levels_sorted(fx.world(), 1);
     ASSERT_EQ(1u, levels.size());
-    EXPECT_EQ(1, levels.front());
+    EXPECT_EQ(3, levels.front());
     EXPECT_EQ(0, count_notifications(fx.events, "TEAMS MATCHED"))
         << "the mid-match D24 solve never announces (§7)";
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);

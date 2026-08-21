@@ -130,7 +130,7 @@ private:
 og::sim::LobbyCharacterSlot make_slot(std::uint8_t slot_index,
                                       std::int32_t guy_id,
                                       const char* name,
-                                      std::int8_t family,
+                                      std::int16_t family,
                                       std::int16_t team = 0)
 {
     og::sim::LobbyCharacterData character;
@@ -175,7 +175,7 @@ og::sim::LobbyMessage make_join_message(
 std::vector<og::sim::LobbyCharacterSlot> make_slots(std::uint8_t first_slot_index,
                                                     std::size_t count,
                                                     std::int32_t first_guy_id,
-                                                    std::int8_t family)
+                                                    std::int16_t family)
 {
     std::vector<og::sim::LobbyCharacterSlot> slots;
     slots.reserve(count);
@@ -992,7 +992,7 @@ TEST(LobbyServer,
             "Joiner",
             1,
             {make_slot(0u, 6, "Join Six", FAMILY_MAGE),
-             make_slot(1u, -1, "Join Invalid", FAMILY_CLERIC)}));
+             make_slot(1u, -1, "JoinInvalid", FAMILY_CLERIC)}));
     server.poll_incoming_messages();
 
     const og::sim::LobbySaveDataEquivalent equivalent =
@@ -1026,7 +1026,7 @@ TEST(LobbyServer,
     EXPECT_EQ(1, id_for("Host One"))
         << "an already-unique valid id must never be stolen by a remap";
     EXPECT_NE(6, id_for("Join Six"));
-    EXPECT_GE(id_for("Join Invalid"), 0);
+    EXPECT_GE(id_for("JoinInvalid"), 0);
 }
 
 // §4.2 [NET-F2]: a join whose deployed total would exceed the 24-slot match
@@ -3209,6 +3209,104 @@ TEST(LobbyServer, local_session_start_bypasses_ready_and_deploy_gates)
     EXPECT_EQ(0u, server.state().last_start_denial);
 }
 
+// Protocol v13 (#218): the owner-injected start gate is start_allowed's final
+// rule. A Failed MatchStage denies GO with StageFailed, the lobby stays live
+// (never locked), and a recovered stage lets the retry through.
+TEST(LobbyServer, start_gate_stage_failed_denies_go_and_recovery_admits_retry)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    ready_two_peer_lobby(transport, server);
+
+    int gate_calls = 0;
+    og::sim::StartDenialReason gate_reason =
+        og::sim::StartDenialReason::StageFailed;
+    server.set_start_gate([&gate_calls, &gate_reason] {
+        ++gate_calls;
+        return gate_reason;
+    });
+
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(11u, make_start_message(0u, 301u));
+    server.poll_incoming_messages();
+    EXPECT_EQ(1, gate_calls) << "rules 2-4 pass, so the gate is consulted";
+    EXPECT_FALSE(server.start_game_requested())
+        << "a failed stage must never lock the lobby";
+    EXPECT_EQ(start_denial_reason_value(
+                  og::sim::StartDenialReason::StageFailed),
+              server.state().last_start_denial);
+    EXPECT_EQ(301u, server.state().last_start_request_id);
+    ASSERT_FALSE(transport.sent_messages().empty())
+        << "the StageFailed denial is echoed like every other reason";
+
+    // The owner restages successfully; the retry passes through the gate.
+    gate_reason = og::sim::StartDenialReason::None;
+    transport.queue_lobby_message(11u, make_start_message(0u, 302u));
+    server.poll_incoming_messages();
+    EXPECT_EQ(2, gate_calls);
+    EXPECT_TRUE(server.start_game_requested());
+    EXPECT_EQ(0u, server.state().last_start_denial)
+        << "acceptance clears the denial";
+}
+
+TEST(LobbyServer, start_gate_runs_after_ready_rule_and_never_for_nonhost)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+    transport.queue_lobby_message(
+        11u, make_join_message("Host", 0, {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        22u, make_join_message("Guest", 1, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    int gate_calls = 0;
+    server.set_start_gate([&gate_calls] {
+        ++gate_calls;
+        return og::sim::StartDenialReason::StageFailed;
+    });
+
+    // Guest not ready: rule 3 denies FIRST — the gate is never consulted, so
+    // the denial reads MachinesNotReady, not StageFailed.
+    transport.queue_lobby_message(11u, make_start_message(0u, 401u));
+    server.poll_incoming_messages();
+    EXPECT_EQ(0, gate_calls);
+    EXPECT_EQ(start_denial_reason_value(
+                  og::sim::StartDenialReason::MachinesNotReady),
+              server.state().last_start_denial);
+
+    // A non-host StartGame stays silently ignored — no gate consult either.
+    transport.queue_lobby_message(22u, make_start_message(1u, 402u));
+    server.poll_incoming_messages();
+    EXPECT_EQ(0, gate_calls);
+    EXPECT_FALSE(server.start_game_requested());
+}
+
+TEST(LobbyServer, local_session_start_ignores_start_gate)
+{
+    // Rule 1 outranks the gate: solo/split-screen GO keeps its unconditional
+    // pass (today's first-level load fallback covers a failed local stage).
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport, /*local_session=*/true);
+    server.connect_client(11u);
+    transport.queue_lobby_message(
+        11u, make_join_message("P1", 0, {make_slot(0u, 100, "A", FAMILY_SOLDIER)}));
+    server.poll_incoming_messages();
+
+    int gate_calls = 0;
+    server.set_start_gate([&gate_calls] {
+        ++gate_calls;
+        return og::sim::StartDenialReason::StageFailed;
+    });
+
+    transport.queue_lobby_message(11u, make_start_message(0u));
+    server.poll_incoming_messages();
+    EXPECT_EQ(0, gate_calls) << "local sessions never consult the gate";
+    EXPECT_TRUE(server.start_game_requested());
+    EXPECT_EQ(0u, server.state().last_start_denial);
+}
+
 TEST(LobbyServer, unlock_for_new_round_clears_all_ready)
 {
     MockLobbyTransport transport(true);
@@ -3366,7 +3464,7 @@ TEST(LobbyServer, next_round_join_received_while_locked_is_applied_on_unlock)
 
     og::sim::LobbyMessage resume_join = make_join_message(
         "Guest", 1,
-        {make_slot(1u, 201, "Advanced Guest", FAMILY_ARCHER)},
+        {make_slot(1u, 201, "AdvGuest", FAMILY_ARCHER)},
         false,
         303u);
     std::get<og::sim::LobbyJoinMessage>(
@@ -3383,7 +3481,7 @@ TEST(LobbyServer, next_round_join_received_while_locked_is_applied_on_unlock)
     server.unlock_for_new_round();
     ASSERT_EQ(2u, server.state().players.size());
     ASSERT_EQ(1u, server.state().players[1].character_slots.size());
-    EXPECT_EQ("Advanced Guest",
+    EXPECT_EQ("AdvGuest",
               server.state().players[1].character_slots[0].character.name)
         << "unlock must apply the early resume declaration";
     for (const og::sim::LobbyPlayer& player : server.state().players)
@@ -3822,4 +3920,198 @@ TEST(LobbyServer, shared_team_fallback_handles_invalid_and_benched_leaders)
     benched.deployed = false;
     state.players.front().character_slots = {benched};
     EXPECT_EQ(3, og::sim::shared_allied_gameplay_team(state));
+}
+
+// Staged-lobby hardening (#218): under staging, lobby rosters become
+// world-construction inputs, so the merge must bound what it accepts.
+
+// Two hostile peers with ~33 KB player names each used to push the merged
+// LobbyState past the u16 transport cap; serialize_lobby_state_message then
+// threw out of broadcast_state — on openglad_server, a process exit. The
+// read-side clamps shrink hostile names before they ever merge.
+TEST(LobbyServer, oversize_hostile_names_cannot_throw_out_of_broadcast)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    transport.set_connected_peers({1u, 2u});
+
+    const std::string huge_name(33000, 'A');
+    for (const og::sim::PeerId peer : {1u, 2u})
+    {
+        og::sim::LobbyPlayer player;
+        player.name = huge_name;
+        player.team = peer == 1u ? 0 : 1;
+        player.character_slots = {make_slot(0u, 1, "Guy", FAMILY_SOLDIER)};
+        og::sim::LobbyMessage message;
+        message.payload = og::sim::LobbyJoinMessage{.player = player};
+        transport.queue_lobby_message(peer, message);
+    }
+    ASSERT_NO_THROW(server.poll_incoming_messages());
+
+    const og::sim::LobbyState& state = server.state();
+    ASSERT_EQ(2u, state.players.size());
+    for (const og::sim::LobbyPlayer& seat : state.players)
+        EXPECT_EQ(std::string(og::sim::kMaxLobbyCompanyNameLength, 'A'),
+                  seat.name);
+    EXPECT_TRUE(transport.disconnected_peers().empty());
+}
+
+// Defense in depth: content that bypasses the wire readers entirely (typed
+// in-process messages) can still assemble an oversize state. The serialize
+// guard in broadcast_state/send_state must log and skip the send — never
+// throw out of poll_incoming_messages. Names no longer work as the oversize
+// vehicle (the merge clamps them for typed content too), so drive it through
+// the one string sanitize leaves unbounded: a host-authored campaign id.
+TEST(LobbyServer, broadcast_serialize_guard_swallows_oversize_state)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    server.connect_client(1u);
+    server.connect_client(2u);
+
+    transport.queue_lobby_message(
+        1u, make_join_message("Host", 0,
+                              {make_slot(0u, 1, "Guy", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        2u, make_join_message("Guest", 1,
+                              {make_slot(0u, 2, "Guy", FAMILY_SOLDIER)}));
+    ASSERT_NO_THROW(server.poll_incoming_messages());
+    ASSERT_EQ(2u, server.state().players.size());
+    transport.clear_sent_messages();
+
+    og::sim::LobbySettings oversize = server.state().settings;
+    oversize.campaign_id = std::string(70000, 'B');
+    og::sim::LobbyMessage settings_message;
+    settings_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = oversize,
+    };
+    transport.queue_lobby_message(1u, settings_message);
+    ASSERT_NO_THROW(server.poll_incoming_messages());
+
+    // The vehicle worked: the merged state really is oversize...
+    ASSERT_EQ(70000u, server.state().settings.campaign_id.size());
+    // ...and its broadcast was skipped, not sent and not fatal.
+    std::size_t states_sent = 0;
+    for (const og::sim::ReceivedMessage& sent : transport.sent_messages())
+    {
+        if (og::sim::deserialize_lobby_state_message(sent.data).has_value())
+            ++states_sent;
+    }
+    EXPECT_EQ(0u, states_sent);
+    EXPECT_TRUE(transport.disconnected_peers().empty());
+}
+
+// Family and level become world-construction inputs at stage time: a slot
+// whose family is outside [0, NUM_FAMILY_SLOTS) is dropped at the merge and
+// a non-positive level clamps to 1. Stats/exp stay accepted-as-sent (the
+// same trust as a local save file). The out-of-range families only exist on
+// the typed in-process channel (the wire byte is always in range), which is
+// exactly why the merge must bound them itself — and why the bound must
+// compare at a width that can actually hold a value >= NUM_FAMILY_SLOTS
+// (an int8_t field made the upper arm a tautology and aliased real pack
+// slots >= 128 to negatives).
+TEST(LobbyServer, sanitize_drops_invalid_family_and_clamps_level)
+{
+    // Typed delivery: the raw path's wire byte can never carry an
+    // out-of-range family, so the merge bound is only observable here.
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    transport.set_connected_peers({1u});
+
+    og::sim::LobbyCharacterSlot bad_family =
+        make_slot(0u, 1, "BadFam", -3);
+    og::sim::LobbyCharacterSlot zero_level =
+        make_slot(1u, 2, "ZeroLvl", FAMILY_SOLDIER);
+    zero_level.character.level = 0;
+    og::sim::LobbyCharacterSlot negative_level =
+        make_slot(2u, 3, "NegLvl", FAMILY_ELF);
+    negative_level.character.level = -7;
+    // Above the registry capacity: must be DROPPED by the upper bound.
+    og::sim::LobbyCharacterSlot oversized_family =
+        make_slot(3u, 4, "BigFam",
+                  static_cast<std::int16_t>(NUM_FAMILY_SLOTS + 44));
+    // A class-pack loader slot in the 128..255 half of the byte: must be
+    // KEPT, at its real id.
+    og::sim::LobbyCharacterSlot pack_family = make_slot(4u, 5, "PackFam", 200);
+
+    transport.queue_lobby_message(
+        1u,
+        make_join_message("Player", 0,
+                          {bad_family, zero_level, negative_level,
+                           oversized_family, pack_family}));
+    server.poll_incoming_messages();
+
+    const og::sim::LobbyState& state = server.state();
+    ASSERT_EQ(1u, state.players.size());
+    const auto& slots = state.players.front().character_slots;
+    ASSERT_EQ(3u, slots.size());
+    EXPECT_EQ("ZeroLvl", slots[0].character.name);
+    EXPECT_EQ(1, slots[0].character.level);
+    EXPECT_EQ("NegLvl", slots[1].character.name);
+    EXPECT_EQ(1, slots[1].character.level);
+    EXPECT_EQ("PackFam", slots[2].character.name);
+    EXPECT_EQ(200, slots[2].character.family);
+}
+
+// Typed in-process joins never meet the wire readers, so the merge itself
+// must bound the display strings the state re-serializes to every peer
+// (unbounded names can push the merged LobbyState past the u16 transport
+// cap).
+TEST(LobbyServer, typed_join_clamps_guy_and_player_names_at_the_merge)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    transport.set_connected_peers({1u});
+
+    og::sim::LobbyCharacterSlot long_named =
+        make_slot(0u, 1, "Guy", FAMILY_SOLDIER);
+    long_named.character.name = std::string(64, 'G');
+
+    og::sim::LobbyMessage join =
+        make_join_message("Player", 0, {long_named});
+    auto& join_player = std::get<og::sim::LobbyJoinMessage>(join.payload).player;
+    join_player.name = std::string(50, 'N');
+    join_player.company = std::string(50, 'C');
+
+    transport.queue_lobby_message(1u, join);
+    server.poll_incoming_messages();
+
+    const og::sim::LobbyState& state = server.state();
+    ASSERT_EQ(1u, state.players.size());
+    const og::sim::LobbyPlayer& stored = state.players.front();
+    EXPECT_EQ(std::string(og::sim::kMaxLobbyCompanyNameLength, 'N'),
+              stored.name);
+    EXPECT_EQ(std::string(og::sim::kMaxLobbyCompanyNameLength, 'C'),
+              stored.company);
+    ASSERT_EQ(1u, stored.character_slots.size());
+    EXPECT_EQ(std::string(og::sim::kMaxLobbyGuyNameLength, 'G'),
+              stored.character_slots.front().character.name);
+}
+
+// Restage determinism input: preview and launch derive gameplay guy ids
+// independently, so the canonicalization must be a pure function of the
+// stable slot order — same input, same output, and idempotent.
+TEST(LobbyState, canonicalize_guy_ids_is_deterministic_and_exact)
+{
+    std::vector<og::sim::LobbyCharacterSlot> slots = {
+        make_slot(0u, 5, "A", FAMILY_SOLDIER),
+        make_slot(1u, 5, "B", FAMILY_SOLDIER),
+        make_slot(2u, -1, "C", FAMILY_SOLDIER),
+        make_slot(3u, 3, "D", FAMILY_SOLDIER),
+    };
+    std::vector<og::sim::LobbyCharacterSlot> twin = slots;
+
+    og::sim::canonicalize_lobby_gameplay_guy_ids(slots);
+    og::sim::canonicalize_lobby_gameplay_guy_ids(twin);
+    ASSERT_EQ(4u, slots.size());
+    EXPECT_EQ(5, slots[0].character.guy_id);
+    EXPECT_EQ(0, slots[1].character.guy_id);
+    EXPECT_EQ(1, slots[2].character.guy_id);
+    EXPECT_EQ(3, slots[3].character.guy_id);
+    EXPECT_EQ(slots, twin);
+
+    std::vector<og::sim::LobbyCharacterSlot> again = slots;
+    og::sim::canonicalize_lobby_gameplay_guy_ids(again);
+    EXPECT_EQ(slots, again);
 }

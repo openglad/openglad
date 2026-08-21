@@ -54,6 +54,7 @@
 #include <openglad/interface/render/view_layout.h>
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <optional>
@@ -1902,12 +1903,13 @@ void viewscreen::resize(char whatmode)
 	slot_h_ = r.h;
 } // end of resize(whatmode)
 
-std::pair<Sint32, Sint32>
-viewscreen::project_world_point_to_gameplay_ui(float x, float y) const
+GameplayUiProjector::GameplayUiProjector(const viewscreen& view)
+	: world_xloc_(view.xloc), world_yloc_(view.yloc),
+	  world_xview_(view.xview), world_yview_(view.yview)
 {
 	const screen* const output = active_screen();
-	if (output == nullptr || xview <= 0 || yview <= 0)
-		return {static_cast<Sint32>(x), static_cast<Sint32>(y)};
+	if (output == nullptr || view.xview <= 0 || view.yview <= 0)
+		return;
 	// If the fixed overlay allocation failed, GameplayUI deliberately aliases
 	// the full World surface. Keep world-screen coordinates in that fallback;
 	// projecting into the unavailable smaller canvas would bunch HUD effects
@@ -1915,23 +1917,61 @@ viewscreen::project_world_point_to_gameplay_ui(float x, float y) const
 	if (output->canvas_w() != output->gameplay_ui_canvas_w() ||
 	    output->canvas_h() != output->gameplay_ui_canvas_h())
 	{
-		return {static_cast<Sint32>(x), static_cast<Sint32>(y)};
+		return;
 	}
 	const og::view_layout::ViewLayout ui =
 		og::view_layout::compute_view_layout(
-			output->numviews, mynum, prefs[PREF_VIEW],
+			output->numviews, view.mynum, view.prefs[PREF_VIEW],
 			output->gameplay_ui_canvas_w(), output->gameplay_ui_canvas_h());
 	if (!ui.applies)
-		return {static_cast<Sint32>(x), static_cast<Sint32>(y)};
+		return;
+	ui_x_ = ui.x;
+	ui_y_ = ui.y;
+	ui_w_ = ui.w;
+	ui_h_ = ui.h;
+	applies_ = true;
+}
 
-	const float projected_x = static_cast<float>(ui.x) +
-		(x - static_cast<float>(xloc)) * static_cast<float>(ui.w) /
-		static_cast<float>(xview);
-	const float projected_y = static_cast<float>(ui.y) +
-		(y - static_cast<float>(yloc)) * static_cast<float>(ui.h) /
-		static_cast<float>(yview);
+std::pair<Sint32, Sint32> GameplayUiProjector::project(float x, float y) const
+{
+	if (!applies_)
+		return {static_cast<Sint32>(x), static_cast<Sint32>(y)};
+	const float projected_x = static_cast<float>(ui_x_) +
+		(x - static_cast<float>(world_xloc_)) * static_cast<float>(ui_w_) /
+		static_cast<float>(world_xview_);
+	const float projected_y = static_cast<float>(ui_y_) +
+		(y - static_cast<float>(world_yloc_)) * static_cast<float>(ui_h_) /
+		static_cast<float>(world_yview_);
 	return {static_cast<Sint32>(projected_x),
 	        static_cast<Sint32>(projected_y)};
+}
+
+// world_xview_ > 0 is guaranteed whenever applies_ (the ctor's first guard),
+// so the divisions below are safe.
+Sint32 GameplayUiProjector::scale_w(Sint32 len, Sint32 min_len) const
+{
+	if (!applies_)
+		return std::max(min_len, len);
+	return std::max<Sint32>(min_len, static_cast<Sint32>(
+		static_cast<std::int64_t>(len) * ui_w_ / world_xview_));
+}
+
+Sint32 GameplayUiProjector::scale_h(Sint32 len, Sint32 min_len) const
+{
+	if (!applies_)
+		return std::max(min_len, len);
+	return std::max<Sint32>(min_len, static_cast<Sint32>(
+		static_cast<std::int64_t>(len) * ui_h_ / world_yview_));
+}
+
+std::pair<Sint32, Sint32>
+viewscreen::project_world_point_to_gameplay_ui(float x, float y) const
+{
+	// Guards, fallback semantics and the float expression all live in
+	// GameplayUiProjector (the single home for world->UI pane math);
+	// constructing from the live view keeps this bit-identical to the
+	// historical inline implementation.
+	return GameplayUiProjector(*this).project(x, y);
 }
 
 ScopedGameplayUiViewLayout::ScopedGameplayUiViewLayout(

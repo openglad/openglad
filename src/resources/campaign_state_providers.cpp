@@ -70,7 +70,7 @@ const char* family_display_name(int family)
 // after each Acted outcome (the sync-settings-from-save tail).
 bool g_match_settings_dirty = false;
 
-// The MATCHUP knob a match-setting name maps to, or nullptr for a name
+// The save knob a match-setting name maps to, or nullptr for a name
 // outside the vocabulary (kCampaignMatchSettingNames).
 short* match_setting_slot(SaveData& save, const std::string& name)
 {
@@ -261,7 +261,7 @@ og::script::hooks::CampaignProviders make_campaign_providers(
         return title;
     };
 
-    // #212: menu-time MATCHUP knobs. Reads are open to every machine;
+    // #212: menu-time match knobs. Reads are open to every machine;
     // writes are host-only (the SET LEVEL predicate) and clamp like the
     // lobby sanitizer, so a scripted preset can never publish a value the
     // server would bounce.

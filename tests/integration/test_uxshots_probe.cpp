@@ -25,6 +25,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -969,12 +970,31 @@ TEST(UxShots, l_basecamp_net_alert) {
                         std::optional<std::string>("Status: connection lost"));
 }
 
+// Wait until a (visible) interactable `id` exists at game coords (x, y) —
+// disambiguates the per-screen "back" buttons by their geometry (the
+// test_ctf_ui helper, local to this binary).
+bool wait_for_interactable_at(const std::string &id, int x, int y,
+                              int timeout_ms) {
+  int elapsed = 0;
+  while (elapsed < timeout_ms) {
+    for (const Interactable &item : get_interactables()) {
+      if (item.id == id && !item.hidden && item.x == x && item.y == y)
+        return true;
+    }
+    SDL_Delay(50);
+    elapsed += 50;
+  }
+  fprintf(stderr, "  [uxshot] TIMEOUT waiting for '%s' at (%d,%d)\n",
+          id.c_str(), x, y);
+  return false;
+}
+
 // Seven authoritative seats exercise the compact four-card rail, its pager,
-// and the MATCHUP overview reached through SCENARIO (#236 retired the rail's
-// duplicate SEATS door). Internal network names intentionally differ from
-// public company names so the screenshots catch any accidental
-// transport-identity leak.
-int basecamp_many_seats_injector(void *data) {
+// and the VIEW LEVEL seat block reached through SCENARIO (#218 — the
+// surviving home of the seat->team overview). Internal network names
+// intentionally differ from public company names so the screenshots catch
+// any accidental transport-identity leak.
+int many_seats_view_level_injector(void *data) {
   og::runtime::ensure_thread_session();
   ShotState *state = static_cast<ShotState *>(data);
   if (wait_for_team_menu()) {
@@ -986,19 +1006,32 @@ int basecamp_many_seats_injector(void *data) {
       state->captures += capture_frame("basecamp_net_seats_p2");
     }
     interact("scenario");
-    if (wait_for_interactable("matchup", 5000)) {
+    if (wait_for_interactable("view_scenario", 5000)) {
       SDL_Delay(300);
-      interact("matchup");
-    }
-    if (wait_for_interactable("cross_control", 5000)) {
-      SDL_Delay(1000);
-      state->captures += capture_frame("matchup_network_seats");
-      // MATCHUP back lands on the SCENARIO submenu; its back returns to
-      // Base Camp, whose back leaves the screen.
-      interact("back");
+      interact("view_scenario");
+      if (wait_for_interactable_at("back", 10, 170, 10000)) {
+        SDL_Delay(1000);
+        state->captures += capture_frame("view_level_seats");
+        SDL_Delay(200);
+        // Viewer back lands on the SCENARIO submenu; its back returns to
+        // Base Camp, whose back leaves the screen.
+        interact("back");
+      }
       if (wait_for_interactable("view_scenario", 5000)) {
         SDL_Delay(300);
         interact("back");
+      }
+      // The networked DIFFICULTY screen (#218): all six host rows plus the
+      // re-homed CTRL row on the appended y=173 band slot.
+      if (wait_for_team_menu(5000)) {
+        SDL_Delay(250);
+        interact("difficulty");
+        if (wait_for_interactable("cross_control", 5000)) {
+          SDL_Delay(750);
+          state->captures += capture_frame("difficulty_networked");
+          SDL_Delay(200);
+          interact("difficulty_back");
+        }
       }
       if (wait_for_team_menu(5000)) {
         SDL_Delay(250);
@@ -1010,8 +1043,182 @@ int basecamp_many_seats_injector(void *data) {
   return 0;
 }
 
-TEST(UxShots, m_basecamp_many_seats_and_matchup) {
+// --- VIEW LEVEL staged preview (#218, C10) ---------------------------------
+
+// The band region the staged world renders into: (8,16)-(310,91) in classic
+// coordinates (picker_sdl_defs kViewScenarioPreviewBand*). A healed staged
+// pitch fills the band with terrain, so a blank band means the pane died.
+bool check_view_level_staged_band(const FramePixels &rgb) {
+  std::size_t nonblack = 0;
+  for (int y = 16; y < 16 + 76; ++y) {
+    for (int x = 8; x < 8 + 303; ++x) {
+      const std::size_t i = (static_cast<std::size_t>(y) * 320 +
+                             static_cast<std::size_t>(x)) * 3;
+      if (rgb[i] != 0 || rgb[i + 1] != 0 || rgb[i + 2] != 0)
+        ++nonblack;
+    }
+  }
+  if (nonblack < 1000) {
+    fprintf(stderr, "  [uxshot] staged band nearly blank: %zu nonblack\n",
+            nonblack);
+    return false;
+  }
+  return true;
+}
+
+// The HIRE portrait box, sampled strictly inside its bevel: show_guy draws the
+// bar at (77,30)-(125,64) for the HIRE layout (description_box {11,71,180,90}
+// puts centerx at 101, centery at 47) and then draws the walker through
+// viewob[0]. The bar interior is a flat fill, so "is the guy in the box" is
+// exactly "how many distinct colors are in the box". Measured on this flow:
+// 19 distinct with the portrait drawn (stable across runs), 1 when VIEW LEVEL
+// leaked its camera onto viewob[0] and the sprite was clipped off the box —
+// an empty box fails this check, so the threshold is an oracle, not a floor
+// for its own sake.
+// No byte golden is possible here: show_guy picks its direction and animation
+// frame from query_timer(), so two good frames differ.
+bool check_hire_portrait(const FramePixels &rgb) {
+  std::set<std::uint32_t> colors;
+  for (int y = 31; y <= 63; ++y) {
+    for (int x = 78; x <= 124; ++x) {
+      const std::size_t i = (static_cast<std::size_t>(y) * 320 +
+                             static_cast<std::size_t>(x)) * 3;
+      colors.insert((static_cast<std::uint32_t>(rgb[i]) << 16) |
+                    (static_cast<std::uint32_t>(rgb[i + 1]) << 8) |
+                    static_cast<std::uint32_t>(rgb[i + 2]));
+    }
+  }
+  if (colors.size() < 10) {
+    fprintf(stderr,
+            "  [uxshot] hire portrait box nearly flat: %zu distinct colors\n",
+            colors.size());
+    return false;
+  }
+  return true;
+}
+
+int view_level_staged_injector(void *data) {
+  og::runtime::ensure_thread_session();
+  ShotState *state = static_cast<ShotState *>(data);
+  wait_for_interactable("continue_game", 5000);
+  SDL_Delay(1500);
+  interact("continue_game");
+  if (wait_for_team_menu()) {
+    SDL_Delay(500);
+    interact("scenario");
+    if (wait_for_interactable("view_scenario", 5000)) {
+      SDL_Delay(300);
+      // The reshaped SCENARIO screen first (#218): a versus host shows the
+      // full y=140 match-settings band TEAMS | TROOPS | LIMIT under the
+      // left-packed VIEW LEVEL | PROGRESS row.
+      if (wait_for_interactable("ctf_teams", 5000)) {
+        SDL_Delay(300);
+        state->captures += capture_frame("scenario_match_band");
+      }
+      interact("view_scenario");
+      // The pane-heal trace is the "viewer is up and staged" signal.
+      bool pane_up = false;
+      for (int waited = 0; waited < 10000 && !pane_up; waited += 100) {
+        pane_up = trace_contains("picker", "view_scenario pane gen=");
+        SDL_Delay(100);
+      }
+      if (pane_up) {
+        // Let the pan settle a few frames before freezing one.
+        SDL_Delay(800);
+        state->captures +=
+            capture_frame("view_level_staged", &check_view_level_staged_band);
+        SDL_Delay(200);
+        interact("back");
+      }
+      if (wait_for_interactable("progress", 5000)) {
+        SDL_Delay(300);
+        interact("back");
+      }
+    }
+    // The reported symptom rides the SAME menu session: with the preview
+    // camera left on viewob[0], the HIRE portrait walker draws off its box
+    // and only the canvas-direct bevel survives.
+    if (wait_for_team_menu(5000)) {
+      SDL_Delay(250);
+      interact("hire_troops");
+      if (wait_for_interactable("hire_me", 10000)) {
+        SDL_Delay(800);
+        state->captures +=
+            capture_frame("hire_after_view_level", &check_hire_portrait);
+        SDL_Delay(200);
+        interact("back");
+      }
+    }
+    if (wait_for_team_menu(5000)) {
+      SDL_Delay(250);
+      interact("back");
+    }
+  }
+  if (wait_for_interactable("begin_new_game", 10000)) {
+    SDL_Delay(750);
+    interact("quit");
+  }
+  state->finished = true;
+  return 0;
+}
+
+// The staged-lobby headline still: VIEW LEVEL's preview band presents the
+// dormant staged soccer pitch above the census rows. Doubles as proof media
+// (UXSHOTS_DIR) and the blank-frame guard for the pane.
+TEST(UxShots, n_view_level_staged) {
   trace_clear();
+  CompanySlotCleanup cleanup{{"save0"}};
+  {
+    SaveData sd;
+    sd.reset();
+    sd.save_name = "IRON KETTLE BAND";
+    sd.current_campaign = "modes";
+    sd.scen_num = 820;
+    sd.current_levels["modes"] = 820;
+    auto gort = std::make_unique<guy>(FAMILY_SOLDIER);
+    gort->name = "GORT";
+    gort->upgrade_to_level(3, true);
+    gort->deployed = true;
+    sd.team_list[0] = std::move(gort);
+    auto sylva = std::make_unique<guy>(FAMILY_ELF);
+    sylva->name = "SYLVA";
+    sylva->upgrade_to_level(4, true);
+    sylva->deployed = true;
+    sd.team_list[1] = std::move(sylva);
+    sd.team_size = 2;
+    ASSERT_EQ(SaveDataIoError::None, sd.save_with_error("save0"));
+  }
+  ASSERT_TRUE(og::data::set_active_company_slot("save0"));
+
+  ShotState state;
+  SDL_Thread *thread =
+      SDL_CreateThread(view_level_staged_injector, "ux_staged", &state);
+  ASSERT_TRUE(thread != nullptr);
+  g_picker_mainmenu_calls = 0;
+  g_picker_max_mainmenu_calls = 2;
+  picker_main(0, nullptr);
+  SDL_WaitThread(thread, nullptr);
+  cleanup_picker_state();
+  g_picker_max_mainmenu_calls = 0;
+  ASSERT_TRUE(state.finished);
+  // All three shots: the reshaped SCENARIO screen (#218 match-settings
+  // band), the staged band, then the HIRE portrait drawn in the same menu
+  // session right after the viewer closed.
+  ASSERT_EQ(3, state.captures);
+
+  // The save0 load mounted the modes campaign; restore the default.
+  (void)unmount_campaign_package_with_error(get_mounted_campaign());
+  (void)mount_campaign_package_with_error("gladiator");
+}
+
+TEST(UxShots, n_view_level_seats) {
+  trace_clear();
+  // The viewer's entry guard needs the save's campaign mounted; a shuffled
+  // neighbor may have left another package up.
+  if (get_mounted_campaign() != "gladiator") {
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    (void)mount_campaign_package_with_error("gladiator");
+  }
   seed_session_save_for_net();
   FakeNetLobbyClient client;
   client.players = {
@@ -1027,13 +1234,15 @@ TEST(UxShots, m_basecamp_many_seats_and_matchup) {
   ActiveLobbyGuard guard(&client);
   ShotState state;
   SDL_Thread *thread =
-      SDL_CreateThread(basecamp_many_seats_injector, "ux_seats", &state);
+      SDL_CreateThread(many_seats_view_level_injector, "ux_seats", &state);
   ASSERT_TRUE(thread != nullptr);
   create_team_menu(0);
   SDL_WaitThread(thread, nullptr);
   cleanup_picker_state();
   ASSERT_TRUE(state.finished);
-  ASSERT_EQ(3, state.captures);
+  // Rail p1/p2, the VIEW LEVEL seat block, and the networked DIFFICULTY
+  // screen with the re-homed CTRL row (#218).
+  ASSERT_EQ(4, state.captures);
 }
 
 // --- 13. full-screen help (#168): all three tabs plus a paged state -------

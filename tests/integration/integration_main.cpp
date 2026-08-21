@@ -152,6 +152,11 @@ void reset_integration_ui_state()
             if (view == nullptr)
                 continue;
             view->control = nullptr;
+            // The camera too, not just the control walker: a test that leaves
+            // a panned camera on a shared view would otherwise displace every
+            // pixie draw in the tests declared after it.
+            view->topx = 0;
+            view->topy = 0;
         }
     }
 

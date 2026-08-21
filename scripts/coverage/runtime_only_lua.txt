@@ -47,7 +47,7 @@ e252b49ea5557e8c47a78f47173044d327aac6ea8a4be9a362d4a67ebc44e421  tests/unit/tes
 a7b9463971d495234d7080dcc3ae819af2e5a8eb5c03bf6c7102416588c9ffe8  tests/unit/test_pack_transfer.cpp kE2eFamilyDecl — declaration streamed over the multiplayer wire
 4dc043b19d6869f22fc97b81cc1bd6216399d4e5945a3a517b694bfc0121e699  tests/unit/test_pack_transfer.cpp — og.pack header served out of the on-disk pack cache
 b9e440a99a5d8a35fbd51f34068bbe4ddbf81eb4b9fd862309a93456fecc3b04  tests/unit/test_classpack_install.cpp make_scratch_lib_pack families/tuned.lua — tuning reaches the store from a mounted pack
-b413ed5e0db27d8f42bc2e43b8ab3b3adb38c2257f6f0f7c11219a242c232354  tests/modes_pack_fixture.h kTestRegistrationLua — test-only mode/level bindings zipped into the og_unit_modes campaign
+93cbe7598a93974d5e1a2eaa118f18a065685fee2f3d4b27d9466f946c3a8359  tests/modes_pack_fixture.h kTestRegistrationLua — test-only mode/level bindings zipped into the og_unit_modes campaign
 e0623910f02af7f286955cddf9db1cc03385e88f989872e2aa9200e9bf8ca1d1  tests/campaign_sprite_fixture.h kBallFamilyLua — sprite-carrier family declaration in the generated sprite162 campaign
 9207879bebc78a1a366cc62daa562c0aded578fa901850440d09f7fdaecc8585  tests/unit/test_classpack_install.cpp make_scratch_split_pack families/aa.lua — first of two declaration files
 f8d2a6f9be555a45a78e177a0041ae50e7959e9714d1c027b37c64efe6baa331  tests/unit/test_classpack_install.cpp make_scratch_split_pack families/bb.lua — second file, re-declaring aa.lua's wire slot

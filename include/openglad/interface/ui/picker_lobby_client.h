@@ -10,6 +10,12 @@
 #include <string>
 #include <vector>
 
+class GameWorld;
+
+namespace og::server {
+class MatchStage;
+} // namespace og::server
+
 namespace og::ui {
 
 struct PickerLobbyGameStartConfig
@@ -126,23 +132,17 @@ public:
         (void)slot_index;
         return true;
     }
-    // Compatibility shorthand for changing this machine's first seat.
-    virtual bool request_team_change(short team)
-    {
-        (void)team;
-        return false;
-    }
     // Ask the lobby to assign one owned seat to a gameplay team. The global
     // player_index is the current display handle; network clients resolve it
     // to the server-issued LobbySeatId granted in their personalized state
     // before sending, and reject foreign/stale indexes. Returns true when the
-    // lobby echo confirms the requested assignment.
+    // lobby echo confirms the requested assignment. A client with no lobby
+    // behind it refuses.
     virtual bool request_seat_team_change(std::uint8_t player_index, short team)
     {
-        const std::vector<std::uint8_t> local_indices = local_player_indices();
-        if (!local_indices.empty() && local_indices.front() != player_index)
-            return false;
-        return request_team_change(team);
+        (void)player_index;
+        (void)team;
+        return false;
     }
     // Stable-token form used by live seat controls. Both values come from the
     // same displayed LobbyPlayer; if a disconnect/rejoin reindexed the lobby
@@ -213,6 +213,60 @@ public:
     {
         return false;
     }
+    // --- Staged lobby (#218) ------------------------------------------------
+    // The staged authoritative world this client can show: the owner's real
+    // MatchStage world (host/local), or a joiner's preview mirror (C9).
+    // nullptr while nothing is staged (default for clients without staging).
+    [[nodiscard]] virtual const GameWorld* staged_world() const
+    {
+        return nullptr;
+    }
+    // Monotonic per-restage counter (0 = never staged). Preview refresh keys
+    // on it.
+    [[nodiscard]] virtual std::uint32_t stage_generation() const
+    {
+        return 0;
+    }
+    // The preview's honest degradation states, mapped by each client from
+    // its own machinery: owners from MatchStage::status(), joiners from
+    // MirrorStatus. None = nothing staged yet (a joiner still waiting for
+    // its first pair reads None too); Unavailable = the joiner's retained
+    // pair could not be applied locally.
+    enum class StagedPreviewHealth : std::uint8_t {
+        None = 0,
+        Staged,
+        Failed,
+        Unavailable,
+    };
+    [[nodiscard]] virtual StagedPreviewHealth staged_preview_health() const
+    {
+        return staged_world() != nullptr ? StagedPreviewHealth::Staged
+                                         : StagedPreviewHealth::None;
+    }
+    // The serialized generation-paired StagedMatchSetup/StagedMatchKeyframe
+    // inner bytes (host/local: MatchStage's cached broadcast pair; joiner:
+    // the retained newest received pair — retained so a preview pane opened
+    // long after the broadcast still heals from the SAME bytes the host
+    // pane reads). False while no complete pair exists. Pointers borrow the
+    // client's storage and are valid until the next poll.
+    [[nodiscard]] virtual bool staged_keyframe_bytes(
+        std::uint32_t& generation,
+        const std::vector<std::uint8_t>*& setup_bytes,
+        const std::vector<std::uint8_t>*& keyframe_bytes) const
+    {
+        (void)generation;
+        (void)setup_bytes;
+        (void)keyframe_bytes;
+        return false;
+    }
+    // The launch adoption seam: owners (host/local) hand their MatchStage to
+    // glad_init's transport-shadow install; joiners return nullptr (their
+    // install stays the client shadow). Non-owning — the lobby client keeps
+    // ownership and the adopter disposes the stage's content after adoption.
+    [[nodiscard]] virtual og::server::MatchStage* take_match_stage()
+    {
+        return nullptr;
+    }
 };
 
 std::unique_ptr<IPickerLobbyClient> create_local_picker_lobby_client();
@@ -245,7 +299,6 @@ std::vector<std::string> picker_lobby_status_lines();
 std::optional<std::string> picker_lobby_connection_alert();
 std::string picker_lobby_session_room_code();
 bool picker_lobby_host_controls_visible();
-bool picker_lobby_request_team_change(short team);
 bool picker_lobby_request_seat_team_change(std::uint8_t player_index,
                                            short team);
 bool picker_lobby_request_seat_team_change(std::uint8_t player_index,

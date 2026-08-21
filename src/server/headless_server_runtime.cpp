@@ -177,8 +177,13 @@ walker* create_team_walker(GameWorld& world, const guy& source)
     return created;
 }
 
+} // namespace
+
+namespace og::server {
+
 void spawn_team_from_save(GameWorld& world, const SaveData& save)
 {
+    // Cycle through the team list ..
     for (const auto& member : save.team_list)
     {
         if (!member)
@@ -197,6 +202,7 @@ void spawn_team_from_save(GameWorld& world, const SaveData& save)
         if (created == nullptr || created->myguy == nullptr)
             continue;
 
+        // Clear the new guy's battle data
         clear_battle_stats(*created->myguy);
 
         // Start markers are team-owned. A missing/exhausted exact marker
@@ -218,6 +224,7 @@ void spawn_team_from_save(GameWorld& world, const SaveData& save)
         }
         else
         {
+            // Scatter the overflowing characters..
             created->teleport();
         }
         // Record the level-entry spawn point (the classic respawn feature
@@ -227,6 +234,7 @@ void spawn_team_from_save(GameWorld& world, const SaveData& save)
                                  static_cast<std::uint8_t>(created->floor()));
     }
 
+    // Destroy all player markers (by setting them to dead)
     while (walker* marker = find_first_of(
                world,
                Order::Special,
@@ -235,6 +243,10 @@ void spawn_team_from_save(GameWorld& world, const SaveData& save)
         marker->set_dead(1);
     }
 }
+
+} // namespace og::server
+
+namespace {
 
 bool should_preserve_completed_level_entity(const walker& entity)
 {
@@ -329,6 +341,12 @@ void copy_headless_server_save_data(SaveData& destination,
     destination.cross_control = source.cross_control;
     // Infinite gold (protocol v11): same session-only dropped-field rule.
     destination.infinite_gold = source.infinite_gold;
+    // Difficulty submenu (protocol v6): same lobby-negotiated rule — the
+    // staged-lobby adoption copies the staged save through here, and a copy
+    // that dropped these would launch with default respawns/permadeath.
+    destination.respawn_mode = source.respawn_mode;
+    destination.generator_rate = source.generator_rate;
+    destination.keep_fallen_heroes = source.keep_fallen_heroes;
     // Tower run state (GTL v13) must ride the server/checkpoint copies:
     // advance_cursor regenerates floors from tower_run_seed and merges
     // tower_best_floor, and on_run_ended re-writes both to save0 — a copy
@@ -362,6 +380,70 @@ void copy_headless_server_save_data(SaveData& destination,
         else
             destination.team_list[index].reset();
     }
+}
+
+og::sim::LobbySaveDataEquivalent build_local_save_equivalent(
+    const SaveData& save)
+{
+    og::sim::LobbySaveDataEquivalent equivalent;
+    equivalent.current_campaign = save.current_campaign;
+    equivalent.scen_num = save.scen_num > 0 ? save.scen_num : 1;
+    equivalent.numplayers = save.numplayers;
+    equivalent.allied_mode = save.allied_mode;
+    equivalent.ctf_team_count = save.ctf_team_count;
+    equivalent.ctf_capture_limit = save.ctf_capture_limit;
+    equivalent.ctf_respawn_ticks = save.ctf_respawn_ticks;
+    equivalent.ctf_strip_scenario_troops = save.ctf_strip_scenario_troops;
+    equivalent.respawn_mode = save.respawn_mode;
+    equivalent.generator_rate = save.generator_rate;
+    equivalent.keep_fallen_heroes = save.keep_fallen_heroes;
+    equivalent.cross_control = save.cross_control;
+    equivalent.infinite_gold = save.infinite_gold;
+
+    // Full roster, benched kept (the local rule): campaign_tag stays off the
+    // equivalent by the documented GTL v16 rule — the record it is stored on
+    // wins at merge time; the session copy never persists.
+    for (std::size_t slot_index = 0; slot_index < save.team_list.size();
+         ++slot_index)
+    {
+        const auto& member = save.team_list[slot_index];
+        if (member == nullptr)
+            continue;
+
+        og::sim::LobbyCharacterData character;
+        character.guy_id = member->id;
+        // Writer-side clamp: keeps serialize/deserialize lossless (see
+        // clamp_lobby_guy_name in lobby_state.h).
+        character.name = og::sim::clamp_lobby_guy_name(member->name);
+        character.family = member->family;
+        character.strength = member->strength;
+        character.dexterity = member->dexterity;
+        character.constitution = member->constitution;
+        character.intelligence = member->intelligence;
+        character.armor = member->armor;
+        character.exp = member->exp;
+        character.kills = member->kills;
+        character.level_kills = member->level_kills;
+        character.total_damage = member->total_damage;
+        character.total_hits = member->total_hits;
+        character.total_shots = member->total_shots;
+        character.teamnum = member->teamnum;
+        character.scen_damage = member->scen_damage;
+        character.scen_kills = member->scen_kills;
+        character.scen_damage_taken = member->scen_damage_taken;
+        character.scen_min_hp = member->scen_min_hp;
+        character.scen_shots = member->scen_shots;
+        character.scen_hits = member->scen_hits;
+        character.level = member->level;
+
+        equivalent.team_list.push_back(og::sim::LobbyCharacterSlot{
+            .slot_index = static_cast<std::uint8_t>(slot_index),
+            .character = character,
+            .deployed = member->deployed,
+        });
+    }
+
+    return equivalent;
 }
 
 void apply_headless_lobby_game_start_config(
@@ -434,6 +516,13 @@ void apply_headless_lobby_game_start_config(
             make_guy_from_lobby_character(slot.character);
         member->owner_player_index = slot.owner_player_index;
         member->owner_save_slot = slot.owner_save_slot;
+        // v8: the deploy flag rides the SLOT. Networked equivalents arrive
+        // pre-filtered (every slot deployed), but LOCAL equivalents keep
+        // benched members by rule (build_local_save_equivalent /
+        // LobbyServer's local branch) — spawn_team_from_save is their
+        // assembly filter, so the flag must survive this rebuild or a
+        // benched fighter marches into the staged world.
+        member->deployed = slot.deployed;
         save.team_list[slot.slot_index] = std::move(member);
         ++save.team_size;
     }

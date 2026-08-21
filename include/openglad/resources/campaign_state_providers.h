@@ -32,7 +32,7 @@ og::script::hooks::CampaignProviders make_campaign_providers(
     SaveData& save, std::function<bool()> is_host = {});
 
 // #212 session tail: a successful match_set (a write-through to the
-// MATCHUP knobs) arms this flag; the missions surface checks-and-clears
+// match knobs) arms this flag; the missions surface checks-and-clears
 // it after each Acted outcome and runs the standard
 // sync-settings-from-save tail so joiners follow.
 bool consume_match_settings_dirty();

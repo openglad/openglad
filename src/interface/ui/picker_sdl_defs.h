@@ -134,8 +134,6 @@ button* picker_hiremenu_buttons();
 int picker_hiremenu_button_count();
 button* picker_networking_buttons();
 int picker_networking_button_count();
-button* picker_teamsmenu_buttons();
-int picker_teamsmenu_button_count();
 button* picker_viewscenario_buttons();
 int picker_viewscenario_button_count();
 button* picker_progressmenu_buttons();
@@ -201,8 +199,8 @@ inline constexpr int kCreateMenuReadyIndex = 32;
 // Per-level player-seat assignment rail. Appended after the original
 // ordinals so every established Base Camp action index stays stable.
 // #236: the rail reads [+] | < | four cards | >. The ordinal that used to
-// carry the SEATS label — a second, worse-placed door to the MATCHUP screen
-// the SCENARIO submenu already owns — carries the '+' now, at the rail's
+// carry the SEATS label — a second, worse-placed door to the team overview
+// the SCENARIO submenu already owned — carries the '+' now, at the rail's
 // left edge; the right-end ordinal the '+' vacated parks as a hidden spare
 // so no established index moved.
 inline constexpr int kBaseCampAddSeatIndex = 33;
@@ -374,18 +372,28 @@ std::string format_binding_panel_line(const char* label,
 
 // --- SCENARIO subscreen layout contract ------------------------------------
 // Positional indices into k_scenariomenu_buttons / picker_scenariomenu_buttons().
-// SET CAMPAIGN / SET LEVEL keep their host-only visibility here (per-frame
-// sync_scenario_menu_host_control_visibility); the rest are always visible.
+// SET CAMPAIGN / SET LEVEL / TROOPS keep their host-only visibility here and
+// the re-homed TEAMS / LIMIT rows their versus-only visibility (per-frame
+// sync_scenario_menu_host_control_visibility); BACK / VIEW LEVEL / PROGRESS
+// are always visible and the spare is never visible.
 inline constexpr int kScenarioMenuBackIndex = 0;
 inline constexpr int kScenarioMenuSetCampaignIndex = 1;
 inline constexpr int kScenarioMenuSetLevelIndex = 2;
 inline constexpr int kScenarioMenuViewScenarioIndex = 3;
-inline constexpr int kScenarioMenuTeamsIndex = 4;
+// The retired MATCHUP door's ordinal (#218), parked as a permanently-hidden
+// zero-size spare (the kBaseCampSeatRailSpareIndex precedent) so every
+// index below keeps its value.
+inline constexpr int kScenarioMenuSpareIndex = 4;
 inline constexpr int kScenarioMenuProgressIndex = 5;
 // Appended (index contract: growth is append-only). Host-gated like
 // SET CAMPAIGN / SET LEVEL.
 inline constexpr int kScenarioMenuTroopsIndex = 6;
-inline constexpr int kScenarioMenuButtonCount = 7;
+// Match Teams / Score Limit, re-homed from MATCHUP (#218): they complete
+// the y=140 match-settings band around TROOPS. Versus campaigns only;
+// joiners get the read-only label (visible, host-actionable).
+inline constexpr int kScenarioMenuCtfTeamsIndex = 7;
+inline constexpr int kScenarioMenuCtfCapsIndex = 8;
+inline constexpr int kScenarioMenuButtonCount = 9;
 
 // --- Campaign zone submenu (docs/basecamp-zones-design.md) -----------------
 // The scripted page chassis opened by page-kind zone action rows, which
@@ -416,58 +424,25 @@ inline constexpr int kZoneSubmenuPanelBottomY = 158;
 inline constexpr std::size_t kZoneSubmenuRowLabelChars =
     (kZoneSubmenuRowWidth - 8) / 6;  // 48
 
-// --- MATCHUP subscreen layout contract ------------------------------------
-// Positional indices into k_teamsmenu_buttons / picker_teamsmenu_buttons().
-inline constexpr int kTeamsMenuBackIndex = 0;
-inline constexpr int kTeamsMenuCtfTeamsIndex = 1;
-inline constexpr int kTeamsMenuCtfCapsIndex = 2;
-inline constexpr int kTeamsMenuJoinFirstIndex = 3; // join_team_0..3 = 3..6
-inline constexpr int kTeamsMenuGuyPrevIndex = 7;
-inline constexpr int kTeamsMenuGuyNextIndex = 8;
-inline constexpr int kTeamsMenuGuyTeamIndex = 9;
-inline constexpr int kTeamsMenuReadyIndex = 10;
-inline constexpr int kTeamsMenuCtfTroopsIndex = 11;
-inline constexpr int kTeamsMenuPageFirstIndex = 12; // team_page_0..3 = 12..15
-// §2.7: cross-control reuses the guy-row slot (150,146,70,12) that is
-// vacant when networked — the same-rect mutually-exclusive-gate pattern as
-// the base camp's GO/READY pair. Visible to ALL peers when networked;
-// host-only actionable.
-inline constexpr int kTeamsMenuCrossControlIndex = 16;
-inline constexpr int kTeamsMenuButtonCount = 17;
-
-// One frame's visibility state for the MATCHUP subscreen. Keyboard nav does not
-// skip hidden buttons, so the nav graph is rewired from this state every
-// frame (picker_wire_teams_menu_nav) instead of routing around statically.
-struct TeamsMenuWiring
-{
-    bool show_ctf = false;        // CTF campaign + lobby host
-    bool networked = false;       // genuine networked session (READY shown)
-    bool guy_row = false;         // local session with a non-empty roster
-    // §2.7: shown to ALL peers when networked (mutually exclusive with the
-    // guy row — same rect); host-only actionable.
-    bool cross_control = false;
-    std::array<bool, 4> join_visible = {false, false, false, false};
-    // Per-team member pager ('>' at the row's right edge): shown only when
-    // the team's detail line does not fit one slice.
-    std::array<bool, 4> pager_visible = {false, false, false, false};
-};
-
-// Deterministically rewires the MATCHUP nav graph so every visible
-// button is keyboard-reachable and no link points at a hidden button.
-void picker_wire_teams_menu_nav(button* buttons, int count,
-                                const TeamsMenuWiring& wiring);
-
 // Conditional rewiring for the host-gated buttons (same convention: nav
 // never links to a hidden button). The base camp rewires its full roster
 // graph per frame (pattern b — the rewire lives on the spec and reads the
-// installed BaseCampScreenState); the SCENARIO subscreen gates
-// SET CAMPAIGN / SET LEVEL / TROOPS on the host axis.
+// installed BaseCampScreenState); the SCENARIO subscreen has two visibility
+// axes: SET CAMPAIGN / SET LEVEL / TROOPS gate on the host axis, and the
+// re-homed TEAMS / LIMIT rows (#218) gate on the versus-campaign axis
+// (match_settings_visible) — visible to joiners too, read-only there.
 void picker_wire_scenario_menu_nav(button* buttons, int count,
-                                   bool host_controls_visible);
+                                   bool host_controls_visible,
+                                   bool match_settings_visible);
 
-// The retired MATCHUP roster cursor, normalized onto an occupied
-// slot (-1 when the roster is empty).
-int teams_menu_selected_guy_slot();
+// The SCENARIO screen's per-frame visibility/label/nav sync (the spec's
+// Rewire program): host-gates SET CAMPAIGN / SET LEVEL / TROOPS,
+// versus-gates TEAMS / LIMIT (visible read-only for joiners), re-derives
+// the three settings labels from the save on both surfaces, parks the
+// spare, and rewires the graph through picker_wire_scenario_menu_nav.
+void sync_scenario_menu_host_control_visibility(button* buttons,
+                                                int num_buttons,
+                                                int& highlighted_button);
 
 // --- TRAIN screen layout contract ------------------------------------------
 // Positional index of the team cycler ("Playing on Team N") in
@@ -481,7 +456,23 @@ inline constexpr int kTrainMenuSellIndex = 19;
 inline constexpr int kViewScenarioBackIndex = 0;
 inline constexpr int kViewScenarioPrevIndex = 1;
 inline constexpr int kViewScenarioNextIndex = 2;
-inline constexpr int kViewScenarioRowsPerPage = 23;
+// The staged-preview band (#218): the STAGED world renders inside the
+// (5,5,314,160) report frame, above the census rows. Classic UI-canvas
+// coordinates; the band is ALWAYS reserved (degradation states render
+// their text into it — no dynamic page size).
+inline constexpr int kViewScenarioFrameX = 5;
+inline constexpr int kViewScenarioFrameY = 5;
+inline constexpr int kViewScenarioFrameW = 314;
+inline constexpr int kViewScenarioFrameH = 160;
+inline constexpr int kViewScenarioPreviewBandX = 8;
+inline constexpr int kViewScenarioPreviewBandY = 16;
+inline constexpr int kViewScenarioPreviewBandW = 303;
+inline constexpr int kViewScenarioPreviewBandH = 76;
+// Census rows sit below the band at a 6 px pitch; 10 rows end at y=156,
+// inside the frame's y extent (5..165).
+inline constexpr int kViewScenarioCensusTopY = 96;
+inline constexpr int kViewScenarioRowPitch = 6;
+inline constexpr int kViewScenarioRowsPerPage = 10;
 
 // --- HELP (full-screen, #168) layout contract --------------------------------
 // The screen is three bands: the tab strip (three tab buttons on one
@@ -566,11 +557,18 @@ inline constexpr int kDifficultyMenuRespawnDelayIndex = 3;
 inline constexpr int kDifficultyMenuPermadeathIndex = 4;
 inline constexpr int kDifficultyMenuGeneratorRateIndex = 5;
 inline constexpr int kDifficultyMenuInfiniteGoldIndex = 6;
-inline constexpr int kDifficultyMenuButtonCount = 7;
+// §2.7 cross-control, re-homed from MATCHUP (#218). Unlike its host-gated
+// siblings it is NETWORKED-gated: visible to every peer of a networked
+// lobby (joiners keep sight of the mode that changes their rights),
+// host-only actionable, hidden entirely in local sessions.
+inline constexpr int kDifficultyMenuCrossControlIndex = 7;
+inline constexpr int kDifficultyMenuButtonCount = 8;
 
-// Per-frame host gating for the DIFFICULTY subscreen: every settings row is
-// LobbySettings-backed (difficulty included), so a non-host joiner sees only
-// BACK; BACK's vertical cycle is rewired so nav never targets a hidden row.
+// Per-frame gating for the DIFFICULTY subscreen: the six settings rows are
+// LobbySettings-backed (difficulty included) and hide for a non-host
+// joiner; the CTRL row instead shows for every peer of a networked lobby
+// and hides in local sessions. BACK's vertical cycle is rewired so nav
+// never targets a hidden row.
 void sync_difficulty_menu_visibility(button* buttons, int num_buttons,
                                      int& highlighted_button);
 

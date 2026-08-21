@@ -29,6 +29,7 @@
 #include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/win_shares.h>
+#include <openglad/server/match_stage.h>
 
 #include <gtest/gtest.h>
 
@@ -1815,8 +1816,15 @@ TEST(PickerNetworkClient,
         host_client->poll_and_apply();
         auto join_scope = join_session.activate();
         join_client->poll_and_apply();
+        // local_seat_count() answers from the pre-state local request count
+        // when no snapshot has landed yet (the client's own fallback), so it
+        // alone can go true a poll before the seats are addressable. The
+        // body below reads local_player_indices(), which needs the snapshot
+        // — wait on THAT too or the joiner reports three seats and zero
+        // indices.
         return host_client->lobby_players().size() == 4u &&
-            join_client->local_seat_count() == 3u;
+            join_client->local_seat_count() == 3u &&
+            join_client->local_player_indices().size() == 3u;
     }));
 
     const auto run_join_request = [&](auto request) {
@@ -2561,6 +2569,239 @@ TEST(PickerNetworkClient, join_settings_apply_arms_replay_for_own_completed_leve
     join_client->shutdown();
 }
 
+// Staged lobby #218 (C9): the joiner's preview mirror. The owner's broadcast
+// StagedMatchSetup/StagedMatchKeyframe pair heals a headless local mirror
+// world that re-serializes BYTE-IDENTICAL to the host's staged keyframe (the
+// preview a joiner shows IS the world GO adopts), and a host roster edit
+// restages (debounced) with the mirror following the fresh generation.
+TEST(PickerNetworkClient, joiner_preview_mirror_heals_byte_identical_pair)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(host_save, 0, "Host");
+    g_start_game_requested = false;
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    SaveData& join_save = join_session.myscreen_->save_data;
+    prepare_single_member_network_save(join_save, 1, "Joiner");
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* join_session = nullptr;
+        og::ui::IPickerLobbyClient* host_client = nullptr;
+        og::ui::IPickerLobbyClient* join_client = nullptr;
+
+        ~CleanupGuard()
+        {
+            if (join_session != nullptr)
+            {
+                auto join_scope = join_session->activate();
+                if (join_client != nullptr)
+                    join_client->shutdown();
+            }
+            if (host_client != nullptr)
+                host_client->shutdown();
+        }
+    } cleanup{
+        .join_session = &join_session,
+        .host_client = host_client.get(),
+        .join_client = join_client.get(),
+    };
+
+    og::server::MatchStage* const host_stage = host_client->take_match_stage();
+    ASSERT_NE(nullptr, host_stage) << "the host owns the MatchStage";
+
+    {
+        // Before any pair lands, the joiner reports the honest None health
+        // ("WAITING FOR HOST PREVIEW") — an empty mirror, never a stale one.
+        auto join_scope = join_session.activate();
+        EXPECT_EQ(og::ui::IPickerLobbyClient::StagedPreviewHealth::None,
+                  join_client->staged_preview_health());
+        EXPECT_EQ(nullptr, join_client->staged_world());
+    }
+
+    // The joiner heals its mirror from the owner's broadcast/catch-up pair.
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        auto join_scope = join_session.activate();
+        join_client->poll_and_apply();
+        return join_client->staged_world() != nullptr;
+    })) << "the joiner's staged preview mirror never healed";
+
+    ASSERT_EQ(og::server::StageStatus::Staged, host_stage->status());
+    ASSERT_NE(nullptr, host_stage->world());
+    const std::uint32_t generation_before = [&] {
+        auto join_scope = join_session.activate();
+        const GameWorld* const mirrored = join_client->staged_world();
+        EXPECT_NE(nullptr, mirrored);
+        EXPECT_EQ(host_stage->world()->id, mirrored->id);
+        EXPECT_EQ(host_stage->world()->title, mirrored->title);
+        EXPECT_EQ(0u, mirrored->tick_count_) << "mirrors never tick";
+        // Byte identity: the joiner's preview IS the staged world (Peek is
+        // non-consuming, so re-serializing the mirror is side-effect free).
+        EXPECT_EQ(host_stage->staged_keyframe_bytes(),
+                  og::sim::serialize_snapshot(og::sim::peek_keyframe_snapshot(
+                      *const_cast<GameWorld*>(mirrored))));
+        return join_client->stage_generation();
+    }();
+    ASSERT_NE(0u, generation_before);
+
+    // A host roster edit changes the equivalent -> debounced restage -> one
+    // fresh broadcast pair -> the mirror follows.
+    host_save.team_list[0]->name = "RenamedHost";
+    host_client->sync_roster_from_save();
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        auto join_scope = join_session.activate();
+        join_client->poll_and_apply();
+        return join_client->stage_generation() != generation_before &&
+            join_client->staged_world() != nullptr;
+    })) << "the mirror never followed the restage";
+
+    {
+        auto join_scope = join_session.activate();
+        const GameWorld* const mirrored = join_client->staged_world();
+        ASSERT_NE(nullptr, mirrored);
+        EXPECT_EQ(host_stage->staged_keyframe_bytes(),
+                  og::sim::serialize_snapshot(og::sim::peek_keyframe_snapshot(
+                      *const_cast<GameWorld*>(mirrored))))
+            << "the restaged pair heals byte-identically too";
+    }
+
+    // The C10 preview surfaces: host and joiner both report Staged health,
+    // and staged_keyframe_bytes hands the pane the SAME retained wire pair
+    // on both sides (late-open retention — a VIEW LEVEL opened long after
+    // the broadcast heals from these bytes; no resend needed).
+    using Health = og::ui::IPickerLobbyClient::StagedPreviewHealth;
+    EXPECT_EQ(Health::Staged, host_client->staged_preview_health());
+    // The host pane reads its own stage through the SAME IPickerLobbyClient
+    // surface the joiner pane reads its mirror through.
+    EXPECT_EQ(host_stage->world(), host_client->staged_world())
+        << "the host client's staged_world IS the MatchStage world";
+    EXPECT_EQ(host_stage->stage_generation(), host_client->stage_generation());
+    std::uint32_t host_pair_generation = 0;
+    const std::vector<std::uint8_t>* host_setup_bytes = nullptr;
+    const std::vector<std::uint8_t>* host_keyframe_bytes = nullptr;
+    ASSERT_TRUE(host_client->staged_keyframe_bytes(
+        host_pair_generation, host_setup_bytes, host_keyframe_bytes));
+    EXPECT_EQ(host_stage->stage_generation(), host_pair_generation);
+    ASSERT_NE(nullptr, host_setup_bytes);
+    ASSERT_NE(nullptr, host_keyframe_bytes);
+    EXPECT_EQ(host_stage->staged_setup_bytes(), *host_setup_bytes);
+    EXPECT_EQ(host_stage->staged_keyframe_bytes(), *host_keyframe_bytes);
+    {
+        auto join_scope = join_session.activate();
+        EXPECT_EQ(Health::Staged, join_client->staged_preview_health());
+        std::uint32_t join_pair_generation = 0;
+        const std::vector<std::uint8_t>* join_setup_bytes = nullptr;
+        const std::vector<std::uint8_t>* join_keyframe_bytes = nullptr;
+        ASSERT_TRUE(join_client->staged_keyframe_bytes(
+            join_pair_generation, join_setup_bytes, join_keyframe_bytes));
+        EXPECT_EQ(host_pair_generation, join_pair_generation)
+            << "the retained pair carries the owner's generation";
+        ASSERT_NE(nullptr, join_setup_bytes);
+        ASSERT_NE(nullptr, join_keyframe_bytes);
+        EXPECT_EQ(*host_setup_bytes, *join_setup_bytes)
+            << "host pane and joiner pane are byte-fed identically";
+        EXPECT_EQ(*host_keyframe_bytes, *join_keyframe_bytes);
+    }
+    const auto setup = og::sim::deserialize_initial_setup_message(
+        host_stage->staged_setup_bytes());
+    ASSERT_TRUE(setup.has_value());
+    bool found_renamed = false;
+    for (const og::sim::InitialSetupGuyData& guy_data : setup->guys)
+        found_renamed = found_renamed || guy_data.name == "RenamedHost";
+    EXPECT_TRUE(found_renamed)
+        << "the restage consumed the edited roster";
+}
+
+// The host pane's honest degradation surface: a stage refused at the wire
+// cap (an oversize completed-levels ledger inflates the staged
+// InitialSetup) reports Failed health, no staged world and no retained
+// pair through the same IPickerLobbyClient surface the pane reads — then
+// recovers to Staged when the ledger shrinks back (the host-save digest
+// moves the change key both ways).
+TEST(PickerNetworkClient, host_stage_failure_reports_honest_preview_health)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(host_save, 0, "Host");
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    using Health = og::ui::IPickerLobbyClient::StagedPreviewHealth;
+    // Before the first stage lands, the host surface is honest-empty.
+    EXPECT_EQ(Health::None, host_client->staged_preview_health());
+    EXPECT_EQ(nullptr, host_client->staged_world());
+    host_client->initialize_from_save();
+
+    og::server::MatchStage* const host_stage = host_client->take_match_stage();
+    ASSERT_NE(nullptr, host_stage);
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        return host_client->staged_preview_health() == Health::Staged;
+    })) << "the host stage never staged";
+
+    // Inflate the ledger: the host-save digest moves the change key, the
+    // restage refuses at the wire cap, and every pane surface degrades
+    // honestly.
+    std::set<int>& ledger =
+        host_save.completed_levels[host_save.current_campaign];
+    for (int level = 100'000; level < 117'000; ++level)
+        ledger.insert(level);
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        return host_client->staged_preview_health() == Health::Failed;
+    })) << "the oversize restage never landed as Failed";
+    EXPECT_EQ("staged world exceeds the wire message size cap",
+              host_stage->error());
+    EXPECT_EQ(nullptr, host_client->staged_world())
+        << "a Failed stage presents no world to the pane";
+    std::uint32_t pair_generation = 0;
+    const std::vector<std::uint8_t>* setup_bytes = nullptr;
+    const std::vector<std::uint8_t>* keyframe_bytes = nullptr;
+    EXPECT_FALSE(host_client->staged_keyframe_bytes(
+        pair_generation, setup_bytes, keyframe_bytes))
+        << "a Failed stage retains no wire pair";
+
+    // Shrinking the ledger moves the digest again; the stage recovers.
+    ledger.clear();
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        return host_client->staged_preview_health() == Health::Staged;
+    })) << "the stage never recovered after the ledger shrank";
+    EXPECT_NE(nullptr, host_client->staged_world());
+    EXPECT_EQ(host_client->stage_generation(), host_stage->stage_generation());
+
+    host_client->shutdown();
+}
+
 TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_roster)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
@@ -2668,7 +2909,7 @@ TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_
         }
     }
     ASSERT_LT(local_slot_index, save.team_list.size());
-    save.team_list[local_slot_index]->name = "Joiner Prime";
+    save.team_list[local_slot_index]->name = "JoinerPrime";
     join_client->sync_from_save();
     og::sim::LobbyMessage sync_message;
     join_client->sync_settings_from_save();
@@ -2697,7 +2938,7 @@ TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_
     const auto& synced_join =
         std::get<og::sim::LobbyJoinMessage>(sync_message.payload);
     ASSERT_EQ(1u, synced_join.player.character_slots.size());
-    EXPECT_EQ("Joiner Prime",
+    EXPECT_EQ("JoinerPrime",
               synced_join.player.character_slots.front().character.name);
 
     state.players.resize(1u);
@@ -3545,6 +3786,13 @@ TEST(PickerNetworkClient, host_escape_abort_signals_join_runtime_to_end_session)
 
     screen* const host_gameplay_screen = cleanup.host_session->myscreen_;
     ASSERT_NE(nullptr, host_gameplay_screen);
+    // Wait past the level-start launch gate (#239), not merely for the first
+    // keyframe: while the real-socket joiner still owes its ready confirm,
+    // GameServer::step() broadcasts the launch handshake and returns BEFORE
+    // broadcast_current_state, so a pause taken in that window is set on the
+    // server world and never reaches this mirror. A nonzero mirrored
+    // level_tick_count is exactly "tick 1 ran and a post-tick snapshot landed"
+    // (apply_snapshot only adopts level_tick_count > 0).
     ASSERT_TRUE(wait_until([&] {
         bool host_ready = false;
         {
@@ -3553,7 +3801,9 @@ TEST(PickerNetworkClient, host_escape_abort_signals_join_runtime_to_end_session)
             const og::sim::GameClient* const display_client =
                 cleanup.host_session->myscreen_->render_interpolation_client();
             host_ready =
-                display_client != nullptr && display_client->baseline().has_value();
+                display_client != nullptr &&
+                display_client->baseline().has_value() &&
+                cleanup.host_session->myscreen_->world().level_tick_count() > 0;
         }
 
         bool join_ready = false;
@@ -3563,11 +3813,13 @@ TEST(PickerNetworkClient, host_escape_abort_signals_join_runtime_to_end_session)
             const og::sim::GameClient* const display_client =
                 join_session.myscreen_->render_interpolation_client();
             join_ready =
-                display_client != nullptr && display_client->baseline().has_value();
+                display_client != nullptr &&
+                display_client->baseline().has_value() &&
+                join_session.myscreen_->world().level_tick_count() > 0;
         }
 
         return host_ready && join_ready;
-    })) << "both runtimes should receive their initial gameplay snapshots";
+    })) << "both runtimes should be past the launch gate with a live snapshot";
 
     struct EscapeFrameOutcome
     {
@@ -3878,13 +4130,15 @@ TEST(PickerNetworkClient, host_and_join_real_win_returns_both_peers_to_menu)
 
     // The headline contract: a win ENDS both peers' display sessions so each
     // returns to the menu — it must NOT auto-advance into level 2 in-session.
-    bool both_ended = false;
-    for (int round = 0; round < 80 && !both_ended; ++round)
-    {
+    // Wall-clock bounded rather than a fixed round count: the joiner is a real
+    // socket peer, so under load all 80 rounds can burn through before its
+    // terminal broadcast has crossed the wire. The predicate is unchanged, so a
+    // real break still fails.
+    const bool both_ended = wait_until([&] {
         pump(5);
-        both_ended = peer_finished(*cleanup.host_session) &&
+        return peer_finished(*cleanup.host_session) &&
             peer_finished(join_session);
-    }
+    });
     EXPECT_TRUE(both_ended)
         << "a networked win must end BOTH peers' display sessions (world.end=1) "
            "so each glad_main returns to the team-build menu";
@@ -4113,13 +4367,15 @@ TEST(PickerNetworkClient, host_and_join_real_exit_returns_both_peers_to_menu)
         return session.myscreen_->world().end != 0;
     };
 
-    bool both_ended = false;
-    for (int round = 0; round < 80 && !both_ended; ++round)
-    {
+    // Wall-clock bounded rather than a fixed round count: the joiner is a real
+    // socket peer, so under load all 80 rounds can burn through before its
+    // terminal broadcast has crossed the wire. The predicate is unchanged, so a
+    // real break still fails.
+    const bool both_ended = wait_until([&] {
         pump(5);
-        both_ended = peer_finished(*cleanup.host_session) &&
+        return peer_finished(*cleanup.host_session) &&
             peer_finished(join_session);
-    }
+    });
     picker_testing_yes_or_no_queue_clear();
     EXPECT_TRUE(both_ended)
         << "a networked exit must end BOTH peers' display sessions (world.end=1) "
@@ -4424,13 +4680,15 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
         auto scope = session.activate();
         return session.myscreen_->world().end != 0;
     };
-    bool both_ended = false;
-    for (int round = 0; round < 80 && !both_ended; ++round)
-    {
+    // Wall-clock bounded rather than a fixed round count: the joiner is a real
+    // socket peer, so under load all 80 rounds can burn through before its
+    // terminal broadcast has crossed the wire. The predicate is unchanged, so a
+    // real break still fails.
+    const bool both_ended = wait_until([&] {
         pump(5);
-        both_ended = peer_finished(*cleanup.host_session) &&
+        return peer_finished(*cleanup.host_session) &&
             peer_finished(join_session);
-    }
+    });
     ASSERT_TRUE(both_ended) << "both peers must return to the menu after the win";
 
     // §4.6: derive each peer's team-0 fold delta from its own display save
@@ -6653,13 +6911,15 @@ TEST(PickerNetworkClient, host_and_join_client_quit_mission_withdraws_both_peers
         return session.myscreen_->world().end != 0;
     };
 
-    bool both_ended = false;
-    for (int round = 0; round < 80 && !both_ended; ++round)
-    {
+    // Wall-clock bounded rather than a fixed round count: the joiner is a real
+    // socket peer, so under load all 80 rounds can burn through before its
+    // terminal broadcast has crossed the wire. The predicate is unchanged, so a
+    // real break still fails.
+    const bool both_ended = wait_until([&] {
         pump(5);
-        both_ended = peer_finished(*cleanup.host_session) &&
+        return peer_finished(*cleanup.host_session) &&
             peer_finished(join_session);
-    }
+    });
     EXPECT_TRUE(both_ended)
         << "a client's 'Quit this mission' must withdraw BOTH peers (the host's "
            "level must end too) — not just leave the client behind as AI";
@@ -7664,7 +7924,7 @@ TEST(PickerNetworkClient, validation_helpers_reject_invalid_network_picker_input
     EXPECT_TRUE(host_client->local_player_indices().empty());
     EXPECT_FALSE(host_client->build_game_start_config().has_value());
     EXPECT_FALSE(host_client->request_start_game());
-    EXPECT_FALSE(host_client->request_team_change(0));
+    EXPECT_FALSE(host_client->request_seat_team_change(0, 0));
     EXPECT_FALSE(host_client->set_ready(true));
     host_client->sync_from_save();
     EXPECT_TRUE(host_client->status_lines().empty());
@@ -7677,7 +7937,7 @@ TEST(PickerNetworkClient, validation_helpers_reject_invalid_network_picker_input
     EXPECT_TRUE(join_client->local_player_indices().empty());
     EXPECT_FALSE(join_client->build_game_start_config().has_value());
     EXPECT_FALSE(join_client->request_start_game());
-    EXPECT_FALSE(join_client->request_team_change(0));
+    EXPECT_FALSE(join_client->request_seat_team_change(0, 0));
     EXPECT_FALSE(join_client->set_ready(true));
     join_client->poll_and_apply();
     ASSERT_TRUE(join_client->connection_alert().has_value());
@@ -7769,14 +8029,6 @@ TEST(PickerNetworkClient,
             join_lobby_ready;
     })) << "host and two-seat joiner should converge on three players";
 
-    ASSERT_TRUE(host_client->authoritative_team_mask().has_value());
-    EXPECT_TRUE(host_client->request_team_change(0));
-    {
-        auto join_scope = join_session.activate();
-        ASSERT_TRUE(join_client->authoritative_team_mask().has_value());
-        EXPECT_TRUE(join_client->request_team_change(1));
-    }
-
     const std::vector<std::uint8_t> host_indices =
         host_client->local_player_indices();
     ASSERT_EQ(1u, host_indices.size());
@@ -7786,6 +8038,17 @@ TEST(PickerNetworkClient,
         join_indices = join_client->local_player_indices();
     }
     ASSERT_EQ(2u, join_indices.size());
+
+    // Each machine moves its own FIRST seat — the case that also writes the
+    // my_team compatibility field.
+    ASSERT_TRUE(host_client->authoritative_team_mask().has_value());
+    EXPECT_TRUE(host_client->request_seat_team_change(host_indices.front(), 0));
+    {
+        auto join_scope = join_session.activate();
+        ASSERT_TRUE(join_client->authoritative_team_mask().has_value());
+        EXPECT_TRUE(
+            join_client->request_seat_team_change(join_indices.front(), 1));
+    }
 
     const auto team_for = [](const std::vector<og::sim::LobbyPlayer>& players,
                              std::uint8_t player_index)
@@ -8529,7 +8792,7 @@ TEST(PickerNetworkClient,
     {
         auto join_scope = join_session.activate();
         ASSERT_NE(nullptr, join_save.team_list[0]);
-        join_save.team_list[0]->name = "Advanced Joiner";
+        join_save.team_list[0]->name = "AdvJoiner";
         join_client->resume_after_level();
         EXPECT_FALSE(join_client->set_ready(true))
             << "an early next-round Ready must not reuse the completed "
@@ -8551,7 +8814,7 @@ TEST(PickerNetworkClient,
         [](const og::sim::LobbyPlayer& player) {
             return !player.character_slots.empty() &&
                 player.character_slots.front().character.name ==
-                    "Advanced Joiner";
+                    "AdvJoiner";
         })) << "the early declaration must remain hidden while the old round "
                "is locked";
 
@@ -8570,7 +8833,7 @@ TEST(PickerNetworkClient,
             {
                 if (!player.character_slots.empty() &&
                     player.character_slots.front().character.name ==
-                        "Advanced Joiner")
+                        "AdvJoiner")
                 {
                     join_has_advanced_roster = true;
                 }
@@ -8583,7 +8846,7 @@ TEST(PickerNetworkClient,
         {
             if (!player.character_slots.empty() &&
                 player.character_slots.front().character.name ==
-                    "Advanced Joiner")
+                    "AdvJoiner")
             {
                 host_has_advanced_roster = true;
             }
@@ -9209,10 +9472,10 @@ TEST(PickerNetworkClient,
 // §2.6/§2.7 (stage ready-go-slot) over a REAL direct lobby: the host's GO
 // pre-check popups WAITING FOR: <the joiner's company> and sends NO start
 // request; the joiner readies through the PRODUCTION base-camp READY twin
-// (teams_toggle_ready with the twin's index) and sees the flip in the same
-// call (the §2.5 same-frame contract — set_ready blocks on the echo); the
-// host's presentation flips yellow -> green; a host cross-control toggle
-// through the production MATCHUP dispatch propagates to the joiner's save AND
+// (teams_toggle_ready) and sees the flip in the same call (the §2.5
+// same-frame contract — set_ready blocks on the echo); the host's
+// presentation flips yellow -> green; a host cross-control toggle through
+// the production DIFFICULTY dispatch propagates to the joiner's save AND
 // clears the joiner's ready (§4.5 settings-clear-ready).
 TEST(PickerNetworkClient,
      base_camp_ready_go_slot_and_cross_control_clear_ready)
@@ -9328,7 +9591,7 @@ TEST(PickerNetworkClient,
         EXPECT_EQ(og::ui::ReadyGoState::ClientUnready, before.state);
         EXPECT_EQ("READY", before.label);
         EXPECT_EQ(og::ui::kReadyGoFaceUnready, before.face_color);
-        EXPECT_EQ(MENU_OK, teams_toggle_ready(kCreateMenuReadyIndex));
+        EXPECT_EQ(MENU_OK, teams_toggle_ready());
     }
     ASSERT_TRUE(wait_until([&] {
         host_client->poll_and_apply();
@@ -9354,20 +9617,18 @@ TEST(PickerNetworkClient,
             og::ui::ReadyGoState::HostGo;
     })) << "all-ready + deployed must gate the host GO green";
 
-    // §2.7: the host toggles cross-control through the production MATCHUP
-    // dispatch — the wire carries it to the joiner's session save AND the
-    // settings change clears the joiner's ready (§4.5), flipping the
-    // host's GO back to gated.
-    const og::ui::MenuScreenSpec* const teams_spec =
-        og::ui::menu_screen_host(og::ui::MenuScreenId::Teams).spec;
-    ASSERT_NE(nullptr, teams_spec);
-    ASSERT_NE(nullptr, teams_spec->on_spec_row);
+    // §2.7: the host toggles cross-control through the production
+    // DIFFICULTY dispatch (ButtonAction::ToggleCrossControl, the row's real
+    // action id since #218 re-homed the control) — the wire carries it to
+    // the joiner's session save AND the settings change clears the joiner's
+    // ready (§4.5), flipping the host's GO back to gated.
     {
         ActivePickerLobbyClientGuard active_guard(host_client.get());
         trace_clear();
+        vbutton cross_control_dispatcher;
         EXPECT_EQ(MENU_OK,
-                  teams_spec->on_spec_row(kTeamsMenuCrossControlIndex,
-                                          nullptr));
+                  cross_control_dispatcher.do_call(
+                      button_action_id(ButtonAction::ToggleCrossControl), -1));
         EXPECT_TRUE(trace_contains("teams", "cross_control 1"));
         EXPECT_EQ(1, host_save.cross_control);
     }

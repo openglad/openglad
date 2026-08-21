@@ -6,13 +6,17 @@ local core = og.use("mode_core")
 local ai = og.use("mode_ai")
 local anchors = og.use("mode_anchors")
 local caps = og.use("mode_caps")
+local items = og.use("mode_items")
 local match = og.use("mode_match")
 local strip = og.use("mode_strip")
 
 -- Mode-private slot map (8+; header 0-7 is mode_core.SLOT). Ball ground
 -- position, velocity AND height z are x256 fixed point ("fp"): 256 fp =
 -- 1 px, tick rate 12/s (design §2.1-2.2, decisions D6/D19/D21/D23/D24).
--- Slot 63 is the LAST spare (R4) — any future claim needs a slot review.
+-- The private band is now FULL: #225 spent slot 63 (the R4 last spare,
+-- after the slot review R4 asked for) on the item clock and had to reach
+-- into the shared header band for its second slot. A further claim means
+-- repacking DUNK_OK/GRACE_TEAM1/SHOT_VALUE into one bitfield var.
 local S = {
   SCORE_LIMIT = 8, -- points to win (post-clamp), 1..255
   RESPAWN_TICKS = 9, -- resolved respawn delay
@@ -68,6 +72,14 @@ local S = {
   POSSESS_SINCE = 61, -- tick the current possession began (D21 fumble grace)
   DUNK_OK = 62, -- 1 = presence dunk armed; 0 after a catch inside an
   -- enemy box until exit + re-entry (D23)
+  ITEM_LAST = 63, -- world tick of the last item spawn, seeded at init
+  -- (#225 — the former R4 spare)
+  ITEM_CURSOR = 7, -- lib/mode_items pad rotation cursor. In the SHARED
+  -- header band (slots 0-7 are mode-neutral by
+  -- convention; mode_match's MATCHED owns 2-5 and
+  -- mode_anchors' squad seed owns 6) because the
+  -- private band 8..62 was already spent — the same
+  -- squeeze, and the same escape, mode_match documents
 }
 
 -- PHASE stays 1 for the whole match; BALL_STATE is the real machine.
@@ -215,6 +227,14 @@ local T = {
   point_score = 100, -- og.award_score delta per point (200/2pt, 300/3pt)
   time_limit_ticks = 7200,
   respawn_ticks = 60,
+
+  -- Respawning pickups (lib/mode_items): fallback interval when the
+  -- manifest row carries none. mode_items refills ONE pad per interval
+  -- whatever the pad count, so the interval tracks mouths fed: a court
+  -- fields 10-20 livings (five-a-side over 2-4 teams), TDM's band at 300,
+  -- but ball contact chips everyone all match long, so the trickle runs
+  -- faster (#225).
+  item_interval = 240,
 
   -- AI director (§4; ranges re-derived from the D20 curve per D23).
   ai_cadence = 15,
@@ -2231,35 +2251,66 @@ local function spawn_hoops()
   end
 end
 
--- Lazy init, first scripted tick. Raising reports the failed-init shape:
--- the engine latches inactive and classic rules own the level from the
--- next tick (the CTF discipline).
+-- The decide fold (#218 staged lobby — the old on_mode_plan body,
+-- verbatim, now a local consumed by on_mode_init directly): authored
+-- domain (anchor-marker teams — the versus authoring contract, read from
+-- the engine anchor census), activation, per-team fills and the resolved
+-- score limit. Pure over the census inputs; only the inputs decide.
+local function decide(level, inputs, row)
+  if row == nil then
+    error("basketball: no manifest row for level " .. level)
+  end
+  local authored_mask = 0
+  for team = 0, C.SCORE_TEAM_COUNT - 1 do
+    if inputs.teams[team + 1].anchors > 0 then
+      authored_mask = core.mask_add(authored_mask, team)
+    end
+  end
+  -- Under TROOPS:OWN/FAIR (rosters or all-bot alike) the lobby request
+  -- wins the COUNT — roster teams plus authored backfill (issue #218),
+  -- TEAMS: Auto = the authored count (2026-08-18 directive); only under
+  -- TROOPS:ALL is the manifest team count the default request.
+  local mask, starts, matched, matched_size =
+      match.activation(inputs, authored_mask, row.teams or 0)
+  local limit = match.resolve_limit(row, "score_limit", inputs.score_limit,
+                                    T.score_limit)
+  local teams, seeded = match.fills(inputs, mask, {
+    matched = matched,
+    matched_size = matched_size,
+  })
+  local reason = nil
+  if not starts then
+    reason = "basketball: fewer than two anchor teams"
+  end
+  return {
+    mode = "BASKETBALL",
+    starts = starts,
+    reason = reason,
+    authored_mask = authored_mask,
+    active_mask = mask,
+    matched = matched,
+    matched_size = matched_size,
+    score_limit = og.clamp(limit, 1, 255),
+    seeded_squads = seeded,
+    teams = teams,
+  }
+end
+
+-- Init (runs once, at staging): the census + the decide fold first, then
+-- the world writes, strips and spawns. Raising reports the failed-init
+-- shape: the engine latches inactive and classic rules own the level (the
+-- CTF discipline).
 local function on_mode_init(level, row)
   if row == nil then
     error("basketball: no manifest row for level " .. level)
   end
-  -- Active teams: anchor-marker teams (the versus authoring contract)
-  -- clamped by the lobby request; the manifest team count is the default
-  -- request; TROOPS:OWN rosters override both.
-  local authored_mask = 0
-  for team = 0, C.SCORE_TEAM_COUNT - 1 do
-    if og.respawn_anchor_count(team) > 0 then
-      authored_mask = core.mask_add(authored_mask, team)
-    end
+  local inputs = match.census_inputs()
+  local decision = decide(level, inputs, row)
+  if not decision.starts then
+    error(decision.reason)
   end
-  local mask = match.own_roster_activation(authored_mask, og.oblist())
-  if mask == nil then
-    -- Normalized request: Auto (raw <= 0) means no numeric clamp.
-    local requested = core.team_count_request()
-    if requested <= 0 then
-      requested = row.teams or 0
-    end
-    mask = core.activate_teams(authored_mask, requested)
-  end
+  local mask = decision.active_mask
   local active_count = core.mask_count(mask)
-  if active_count < 2 then
-    error("basketball: fewer than two anchor teams")
-  end
   if row.hoops == nil then
     error("basketball: manifest row has no hoops")
   end
@@ -2286,8 +2337,9 @@ local function on_mode_init(level, row)
   og.mode_set(S.JUMP_POS, core.pos_pack(row.jump_ball.x, row.jump_ball.y))
   og.mode_set(S.TEAM_MASK, mask)
   og.mode_set(S.TEAM_COUNT, active_count)
-  local limit = match.resolve_limit(row, "score_limit", og.match_setting("score_limit"), T.score_limit)
-  og.mode_set(S.SCORE_LIMIT, og.clamp(limit, 1, 255))
+  -- Score limit is the decision's (request > manifest row > default,
+  -- clamped); the respawn/time knobs resolve here.
+  og.mode_set(S.SCORE_LIMIT, decision.score_limit)
   local respawn_ticks = og.match_setting("respawn_ticks")
   if respawn_ticks <= 0 then
     respawn_ticks = T.respawn_ticks
@@ -2297,28 +2349,20 @@ local function on_mode_init(level, row)
   caps.bank_caps(row, S.SPAWN_CAP)
   -- Consume the active teams' start markers (anchors are already banked
   -- engine-side), strip inactive score teams, then roster-only armies on
-  -- request — all BEFORE the census so bot backfill sees the final world.
+  -- request — all BEFORE the plan's squad fills so the spawns land in the
+  -- final world.
   local obs = og.oblist()
+  -- FAIR banking (the fold decided matched-ness and the headcount; the
+  -- power TARGET is measured here, D24) before any squad spawn reads it.
+  match.bank_match_target(decision, obs)
   match.consume_markers(obs, mask)
   match.strip_inactive_teams(obs, mask)
   strip.strip_authored_troops(nil)
-  local fielded = { 0, 0, 0, 0 }
-  for k = 1, #obs do
-    local w = obs[k]
-    if w:dead() == 0 then
-      if w:order() == C.ORDER_LIVING then
-        local team = w:team_num()
-        if team < C.SCORE_TEAM_COUNT then
-          fielded[team + 1] = fielded[team + 1] + 1
-        end
-      end
-    end
-  end
+  -- Bot squads where the decision said so (the empty active teams).
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
-    if core.mask_has(mask, team) then
-      if fielded[team + 1] == 0 then
-        anchors.spawn_bot_squad(team, S.ANCHOR_CURSOR)
-      end
+    local fill = decision.teams[team + 1].fill
+    if fill == "bots" or fill == "matched" then
+      anchors.spawn_bot_squad(team, S.ANCHOR_CURSOR)
     end
   end
   -- og.add_ob for the ball, not og.add_fx_ob: the fx list never acts,
@@ -2341,6 +2385,7 @@ local function on_mode_init(level, row)
   spawn_hoops()
   center_reset(ball)
   og.set_mode_name("BASKETBALL")
+  og.mode_set(S.ITEM_LAST, og.world_tick())
   og.mode_set(core.SLOT.PHASE, 1)
   -- The activation latch: written LAST, so hooks observe a fully
   -- initialized match or nothing.
@@ -2351,8 +2396,9 @@ end
 -- Per-tick phases (post-act; the engine already ran the respawn timers
 -- and owns the win-latch short-circuit). One oblist walk feeds every
 -- consumer; a ball or shadow handle that fails to resolve skips all ball
--- logic this tick (§9 #13).
-local function on_mode_tick(level, tick)
+-- logic this tick (§9 #13). row is the static manifest row make_hooks
+-- closed over — the item respawner reads its authored pads (#225).
+local function on_mode_tick(level, tick, row)
   local obs = og.oblist()
   match.schedule_dead(obs, og.mode_get(S.TEAM_MASK), og.mode_get(S.RESPAWN_TICKS))
   local livings = {}
@@ -2394,6 +2440,10 @@ local function on_mode_tick(level, tick)
       run_director(ball, livings)
     end
   end
+  -- Post-death-scan, pre-HUD (the mode_items contract). The row arrives
+  -- through the make_hooks closure, not mode_levels: unit fixtures
+  -- register synthetic rows that never enter the manifest module.
+  items.run(row, S.ITEM_CURSOR, S.ITEM_LAST, T.item_interval)
   run_win_check(tick, handles)
   update_hud()
   run_hoop_anims()
@@ -2409,7 +2459,9 @@ local function make_hooks(row)
     on_mode_init = function(level)
       on_mode_init(level, row)
     end,
-    on_mode_tick = on_mode_tick,
+    on_mode_tick = function(level, tick)
+      on_mode_tick(level, tick, row)
+    end,
     on_respawn = on_respawn,
     on_damage = on_damage,
   }

@@ -146,7 +146,7 @@ enum class LevelHook : int {
     EntityDeath = 2,
     EntitySpawn = 3,
     // Scripted-mode (TYPE_SCRIPTED) hooks:
-    ModeInit = 4,     // on_mode_init(level) — once, at activation
+    ModeInit = 4,     // on_mode_init(level) — once, at staging
     ModeTick = 5,     // on_mode_tick(level, tick) — post-act, every tick
     Damage = 6,       // on_damage(target, attacker, amount) -> number|false|nil
     Respawn = 7,      // on_respawn(ent) — engine revive -> Lua placement

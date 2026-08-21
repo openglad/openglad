@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -108,8 +109,14 @@ public:
 // Build a local single-player session: an in-process GameServer + GameClient,
 // the level loaded and the team spawned from `save`. Returns nullptr and fills
 // `error` on failure.
-std::unique_ptr<CursesGameSession> make_local_session(SaveData& save, int difficulty,
-                                                      std::string* error);
+//
+// `match_seed` is the session's latched match seed (#218): the solo picker
+// passes the same seed its VIEW LEVEL preview staged with, so the world this
+// launch adopts IS the world the preview showed. Left empty (tests, and any
+// caller with no preview to honour) the session draws a fresh per-round seed.
+std::unique_ptr<CursesGameSession> make_local_session(
+    SaveData& save, int difficulty, std::string* error,
+    std::optional<std::uint32_t> match_seed = std::nullopt);
 
 struct LevelLoopOptions {
     // Stop after this many advanced frames regardless of world.end (-1 = unlimited).

@@ -68,6 +68,17 @@ struct ModeState
 // on_mode_tick, win-latch fold.
 void mode_run_tick(GameWorld& world);
 
+// The once-only mode activation (mode_run_tick's step 0, factored so a
+// staged lobby world can init before its first tick): latch init_attempted
+// FIRST, resolve respawn_ticks from the lobby request, scan team start
+// markers into the anchor arrays while consumed markers are still in oblist,
+// dispatch on_mode_init, and set active on success. Latch-guarded on
+// init_attempted — mode_run_tick's lazy arm calls the SAME function for
+// un-staged worlds (unit tests, openglad_text, dedicated levels 2+), so
+// init exists exactly once per world whichever site reaches it first. Both
+// latch bytes replicate in ModeState, so adoption never re-inits.
+void mode_stage_init(GameWorld& world);
+
 // True when this world is a scripted level with a successfully initialized
 // mode — the gate every scripted-only engine behavior keys on.
 bool mode_scripted_active(const GameWorld& world);
@@ -91,7 +102,12 @@ std::uint8_t authored_team_mask(const GameWorld& world);
 // THE one copy of the team-activation clamp rule: authored teams activate in
 // index order until the requested count (<= 0 = all authored; otherwise
 // clamped to [2, SCORE_TEAM_COUNT]). Shared by the lobby's selectable-team
-// mask and the og.effective_team_mask binding.
+// mask, the og.effective_team_mask binding, and the VIEW LEVEL preview's
+// count-only fallback (a scripted level with no staged world or no
+// on_mode_init hook). Deliberately count-only (D29): the roster-aware
+// activation rule lives in mode Lua alone (lib/mode_match.lua
+// match.activation, consumed by each mode's decide fold at staged init) —
+// its one-time C++ twin, roster_effective_team_mask, is deleted (#218).
 std::uint8_t effective_team_mask(std::uint8_t authored, int requested) noexcept;
 
 // Canonical color name for a score team ("RED"/"GREEN"/"BLUE"/"YELLOW")

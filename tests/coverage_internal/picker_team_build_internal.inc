@@ -126,8 +126,6 @@ int picker_team_build_testing_exercise_internal_paths()
             picker.selected_menu_item;
         og::ui::HireSession* hire_session = picker.hire_session;
         og::ui::TrainSession* train_session = picker.train_session;
-        std::array<int, 4> teams_menu_team_page =
-            picker.teams_menu_team_page;
         int view_scenario_page_step = picker.view_scenario_page_step;
         bool start_game_requested = g_start_game_requested;
 
@@ -159,7 +157,6 @@ int picker_team_build_testing_exercise_internal_paths()
             picker.selected_menu_item = selected_menu_item;
             picker.hire_session = hire_session;
             picker.train_session = train_session;
-            picker.teams_menu_team_page = teams_menu_team_page;
             picker.view_scenario_page_step = view_scenario_page_step;
             g_start_game_requested = start_game_requested;
         }
@@ -206,111 +203,13 @@ int picker_team_build_testing_exercise_internal_paths()
     client.editable = true;
     check(save_has_trainable_team_member(save));
 
-    // MATCHUP's frame model is derived from lobby seats and roster colors,
-    // which are intentionally independent domains. Exercise both the local
-    // compatibility fallback and the real replicated-lobby shape.
-    for (auto& member : save.team_list)
-        member.reset();
-    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
-    save.team_list[0]->name = "LOCAL HERO";
-    save.team_list[0]->teamnum = 0;
-    save.team_size = 1;
-    save.numplayers = 1;
-    save.my_team = 0;
-    save.save_name = "Local Company";
-    save.current_campaign = get_mounted_campaign();
-    client.networked = false;
-    client.players.clear();
-    client.local_indices.clear();
-    pks().teams_menu_team_page = {0, 0, 0, 0};
-    TeamsMenuFrameState local_matchup = compute_teams_menu_state();
-    check(!local_matchup.wiring.networked &&
-          local_matchup.seat_count[0] == 1 &&
-          local_matchup.hero_count[0] == 1 &&
-          local_matchup.summary == "CO-OP" &&
-          local_matchup.campaign_mounted);
-
-    auto make_player = [](std::uint8_t index, short team,
-                          std::string company, bool ready) {
-        og::sim::LobbyPlayer player;
-        player.player_index = index;
-        player.name = std::format("Player {}", static_cast<int>(index) + 1);
-        player.company = std::move(company);
-        player.team = team;
-        player.ready = ready;
-        return player;
-    };
-    client.networked = true;
-    client.local_indices = {0};
-    client.players = {
-        make_player(3, 1, "Delta Guild", false),
-        make_player(0, 0, "Local Company", true),
-        make_player(2, 1, "Crimson Order", true),
-        make_player(1, 0, "Blue Company", false),
-    };
-    for (int slot = 0; slot < 10; ++slot)
-    {
-        og::sim::LobbyCharacterSlot character_slot;
-        character_slot.slot_index = static_cast<std::uint8_t>(slot);
-        character_slot.character.name =
-            std::format("LONG HERO NAME {}", slot);
-        character_slot.character.teamnum = 0;
-        character_slot.deployed = true;
-        client.players[0].character_slots.push_back(character_slot);
-    }
-    pks().teams_menu_team_page[0] = -1;
-    TeamsMenuFrameState network_matchup = compute_teams_menu_state();
-    check(network_matchup.wiring.networked &&
-          network_matchup.summary == "2 VS 2" &&
-          network_matchup.seat_count[0] == 2 &&
-          network_matchup.seat_count[1] == 2 &&
-          network_matchup.hero_count[0] == 10 &&
-          network_matchup.wiring.pager_visible[0] &&
-          network_matchup.detail_pages[0].size() > 1 &&
-          network_matchup.detail_page[0] >= 0);
-    draw_teams_menu_row_bars();
-    network_matchup.campaign_mounted = false;
-    draw_teams_menu_content(
-        network_matchup,
-        og::runtime::current_session->myscreen_->text_normal);
-    network_matchup.campaign_mounted = true;
-    draw_teams_menu_content(
-        network_matchup,
-        og::runtime::current_session->myscreen_->text_normal);
-
-    check(matchup_company_abbreviation("  --  ") == "NET");
-    check(matchup_company_abbreviation("blue-company") == "BLU");
-    check(matchup_seat_identity(client.players[1], client.local_indices) ==
-          "P1 YOU [RDY]");
-    check(matchup_seat_identity(client.players[0], client.local_indices) ==
-          "P4 DEL");
-    check(matchup_summary({}) == "NO PLAYER SEATS");
-    check(matchup_summary({make_player(0, 0, "A", false),
-                           make_player(1, 1, "B", false)}) ==
-          "FREE-FOR-ALL");
-    check(matchup_summary({make_player(0, 0, "A", false),
-                           make_player(1, 0, "B", false),
-                           make_player(2, 1, "C", false)}) ==
-          "MIXED TEAMS");
-    check(clip_to_width("abcdefgh", 4) == "abcd");
-    check(clip_to_width("abc", 4) == "abc");
-
-    TeamsMenuWiring no_wiring;
-    picker_wire_teams_menu_nav(nullptr, 0, no_wiring);
-    int ignored_highlight = 0;
-    sync_teams_menu_visibility(nullptr, 0, ignored_highlight,
-                               network_matchup);
-    check(picker_teams_menu_engine_on_spec_row(-1, nullptr) == 0);
-    client.host_visible = false;
-    check(picker_teams_menu_engine_on_spec_row(
-              kTeamsMenuCrossControlIndex, nullptr) == MENU_OK);
-
     // Engine VIEW LEVEL hooks: cover the no-screen shape and a real multi-page
     // model without entering a blocking menu or touching the framebuffer.
     ViewScenarioEngineState* const saved_view_state =
         g_view_scenario_engine_state;
     g_view_scenario_engine_state = nullptr;
     og::ui::MenuLabelContext label_context;
+    int ignored_highlight = 0;
     check(picker_view_scenario_engine_pager_row_state(label_context) ==
           og::ui::RowState::Hidden);
     picker_view_scenario_engine_rewire(nullptr, 0, ignored_highlight);
@@ -540,7 +439,8 @@ int picker_team_build_testing_exercise_internal_paths()
     check(buttons[kScenarioMenuSetCampaignIndex].hidden &&
         buttons[kScenarioMenuSetLevelIndex].hidden &&
         buttons[kScenarioMenuViewScenarioIndex].nav.up == -1 &&
-        buttons[kScenarioMenuTeamsIndex].nav.up == -1 &&
+        buttons[kScenarioMenuSpareIndex].nav.up == -1 &&
+        buttons[kScenarioMenuSpareIndex].hidden &&
         buttons[kScenarioMenuProgressIndex].nav.up == -1);
     client.host_visible = true;
     sync_scenario_menu_host_control_visibility(buttons, 11, highlighted);

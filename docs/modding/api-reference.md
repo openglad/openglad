@@ -438,6 +438,9 @@ keying rule).
 `dead()/set_dead(v)` `death_called()/set_death_called(v)`
 `summoned()/set_summoned(bool)`
 `save_all_protected()/set_save_all_protected(bool)`
+`dormant() → bool` (read-only: a delayed-spawn walker that has not woken
+yet — outside the obmap, outside snapshot capture, and skipped by every
+census; waking it is the engine's decision)
 `is_friendly(other) → bool`.
 
 ### Timers and charges
@@ -823,8 +826,16 @@ og.set_entity_hooks(ent, { on_death = function(ent) ... end })
   classic hit fully absorbed by damage reduction reaches it the same way with
   no hook registered.)
 - `on_mode_init`, `on_mode_tick` and `on_respawn` are the scripted-mode hooks.
-  `on_mode_init` runs once when a mode level activates and its success is the
-  activation condition; `on_mode_tick` runs after entity acts each tick; and
+  `on_mode_init` runs once, when the host stages the match (#218 staged
+  lobby: the lobby assembles the real world before GO and the VIEW LEVEL
+  preview reads that world; worlds that never stage — unit fixtures, the
+  dedicated server's later levels — run the same hook lazily at their first
+  tick). Its success is the activation condition, and it builds its own
+  census over the live world (`og.oblist`/`og.fxlist`/
+  `og.respawn_anchor_count`/`og.match_setting`; the shipped modes share
+  `mode_match.census_inputs`) and folds its activation decision in-body —
+  an init that errors is contained: the mode stays inactive and classic
+  rules own the level. `on_mode_tick` runs after entity acts each tick; and
   `on_respawn` runs after the respawn engine revives an entity in place, so
   the hook can reposition it.
 - An exact-level registration shadows a wildcard (`-1`) one **per hook kind**.

@@ -51,7 +51,7 @@ Later sections cite decisions by id.
 | D3 | Hoop geometry | **A's paint grammar**: hoop tile = `PIX_CARPET_M2` (id 34, verified passable) centered in a 3x3 `PIX_CARPET_M` dunk carpet inside a cosmetic cobble key; backboard = perimeter wall / authored stubs. Dunk zone = Chebyshev box `|dx| <= 24 and |dy| <= 24` matching the painted carpet exactly, replacing M's L1 radius 20. |
 | D4 | Arc metric | **Euclidean, integer d²** (A+S over M's L1 diamond): 3 points when release `dx*dx + dy*dy > arc_radius²`. The painted ring is a circle; the predicate matches the paint. Per-court shot range = `arc_radius + 64` px (A's rule), same d² compare, replacing M's fixed 192. Contact radii stay L1 (soccer parity). Flight-time distances stay L1 (cheap; the solver hits the target exactly regardless). |
 | D5 | Rules depth | **M's state machine adopted wholesale**: FREE/CARRIED/SHOT/PASS/REBOUND, timer-based shot resolution, pass targeting with catch/intercept, grace bars, goaltending awards the basket, rebound rim-plane crossings score tip-ins/banks with soccer's LAST_TOUCH1/2 attribution ladder. S's simplifications (block-only rule, "attribution-trivial" no-ladder §1.5) rejected — the approved concept names goaltending explicitly, and the crossing rule IS the bank-shot mechanism the BANKHOUSE arena is built on. |
-| D6 | Slot map | **M's map** (slots 8-58) — it fits precisely because D2 dropped KEY_POS/KEY_SIZE. Slot 39 renamed JUMP_POS to match the manifest field. The red-team fixes claim the former spares: 59 GRACE_ENTITY (D24), 60 THROW_WATERMARK (D19), 61 POSSESS_SINCE (D21), 62 DUNK_OK (D23); 63 is the LAST spare (R4 escalated). Full map in §2.2. |
+| D6 | Slot map | **M's map** (slots 8-58) — it fits precisely because D2 dropped KEY_POS/KEY_SIZE. Slot 39 renamed JUMP_POS to match the manifest field. The red-team fixes claim the former spares: 59 GRACE_ENTITY (D24), 60 THROW_WATERMARK (D19), 61 POSSESS_SINCE (D21), 62 DUNK_OK (D23); 63 was the LAST spare (R4 escalated) until #225 spent it on ITEM_LAST. Full map in §2.2. |
 | D7 | Shot clock | **420 ticks (35 s)**, red-team amended from S's 288 (M's 120 stays rejected). Sizing: the worst defensive-stop advance is 828 — hoops 640 px apart, shot range 224, a rebound behind the own rim needs ~430+ px of BALL advance; at the 1 px/tick slow-family floor, 288 forced structural turnovers on every stop, while 420 clears it with one completed upcourt pass (chest 8 px/tick) in the chain. Clock lifecycle (the anti-launder rule, D25): the deadline is cleared ONLY by SHOT release, the turnover itself, and center resets; it PERSISTS across every loose-ball transition and every same-team regain — an uncaught own pass, a fumble scoop or a rolled-dead flat throw never refreshes it, and any clock-team regain at `now >= CLOCK_UNTIL` is an immediate turnover at the gain point. A possession gain by a DIFFERENT team re-arms fresh. HUD countdown suffix at <= 120 remaining, one-shot "SHOT CLOCK!" announce at exactly 36 remaining. |
 | D8 | Spawns | **`markers_per_team = 5`** (A) over S's 12 — five-a-side, and `anchors.spawn_bot_squad`'s 5-family squad maps one bot per anchor exactly. |
 | D9 | Score values | `score_limit = 21` default (825 plays to 11), **`point_score = 100`** (M) — `og.award_score` deltas 200/2pt, 300/3pt — over S's 150. |
@@ -143,7 +143,7 @@ Later sections cite decisions by id.
   shadow (`modes:bshadow`, `og.add_fx_ob`) is the drawn ground spot. Sim truth
   is the mode vars alone (I4).
 
-### 2.2 Mode-private slot map `S` (slots 8-62; 63 spare)
+### 2.2 Mode-private slot map `S` (slots 8-63; the band is FULL)
 
 ```lua
 local S = {
@@ -197,8 +197,17 @@ local S = {
   POSSESS_SINCE   = 61, -- tick the current possession began (D21 fumble grace)
   DUNK_OK         = 62, -- 1 = presence dunk armed; 0 after a catch inside an
                         -- enemy box until exit + re-entry (D23)
-  -- 63 spare (LAST one — R4; repack candidates: DUNK_OK, GRACE_TEAM1,
-  -- SHOT_VALUE are all sub-byte)
+  ITEM_LAST       = 63, -- world tick of the last lib/mode_items spawn,
+                        -- seeded at init (#225 — the former R4 spare,
+                        -- claimed after the slot review R4 prescribed)
+  ITEM_CURSOR     = 7,  -- the pad rotation cursor. NOT private: the band
+                        -- above is full, so it sits in the SHARED header
+                        -- band (slots 0-7, mode-neutral by convention —
+                        -- mode_match's MATCHED owns 2-5, mode_anchors'
+                        -- squad seed owns 6), exactly the packing
+                        -- precedent mode_match documents.
+  -- No spare left. The next claim repacks: DUNK_OK, GRACE_TEAM1 and
+  -- SHOT_VALUE are all sub-byte and can share one slot behind fget/fset.
 }
 ```
 
@@ -889,9 +898,20 @@ hooks: `on_mode_init`, `on_mode_tick`, `on_respawn`, `on_damage` — hook mask
 },
 ```
 
-No `item_pads`/`item_interval` ever (soccer/onslaught ruling extended; the
-levels-sweep invariant then enforces pad-free rows automatically). Emission is
-gated on populated fields, so the 28 existing rows stay byte-identical.
+**D2 originally ruled: no `item_pads`/`item_interval` ever** (extending the
+soccer/onslaught ruling, with the levels-sweep invariant enforcing pad-free
+rows automatically). Emission is gated on populated fields, so the 28
+pre-existing rows stay byte-identical.
+
+**Reversed by the #225 playtest.** The courts turned into a hunt for the last
+chicken: the ball keeps everyone moving and trading contact damage all match,
+while the authored food is eaten once and never returns. Every court drumstick
+is now a respawnable pad, `item_interval = 240`, and the five rows join the
+mapgen's exact-(family, tile) multiset pin. 240 sits between the TDM/CTF 300
+and the FFA/Mutant 180: `mode_items` refills ONE pad per interval whatever the
+pad count, so the interval tracks mouths fed — a court fields 10-20 livings
+(five-a-side over 2-4 teams), TDM's band, but ball contact chips everyone all
+match long, so the trickle runs faster than a deathmatch's.
 
 Consumed semantics: hoop center = arc-shot landing target and dunk-box center;
 `arc_radius` = the 2/3-point release threshold AND (+64) the shot-range bound;
@@ -1926,7 +1946,7 @@ description, `mode_levels.lua`, `scen/scen824-828.fss`,
 | R1 | Walker-speed assumptions (shot clock, AI ranges) miscalibrated — courts too big or clock too tight | medium | D7's 420 was sized against the worst case (828 defensive-stop advance at the 1 px/tick floor, one upcourt pass in the chain); every knob lives in `T` (§2.3, single surface); one human playtest per court before ship — the recorded playtest questions are (a) all-soldier pace on 828, (b) whether drives still under-perform after D20/D21 (fallback: dunk pays 3), (c) PIX_CARPET_M2 legibility (R9); WP10 owns the calibration pass |
 | R2 | `kTestRegistrationLua` digest forgotten → coverage hard-fails with "recorded pack script is not repository content" | high | WP6's own checklist: literal edit + `runtime_only_lua.txt` digest in the same commit |
 | R3 | Instruction budget: basketball's per-tick pipeline is heavier than soccer's (state machine + swat scan + crossings) | medium | one oblist walk per tick, weaplist scan bounded, <= 2 substeps; test #24 proves 10x headroom; if it trips, hoist per-tick work behind state guards before touching the budget |
-| R4 | Mode-var exhaustion — slot 63 is the ONLY spare after the red-team fixes (D19/D21/D23/D24 claimed 59-62) | high | D2 chose the minimal manifest; any future feature must pass a slot review before claiming 63; documented repack candidates if more are ever needed: DUNK_OK, GRACE_TEAM1 and SHOT_VALUE are all sub-byte and can share a slot behind `fget/fset` helpers |
+| R4 | Mode-var exhaustion — slot 63 is the ONLY spare after the red-team fixes (D19/D21/D23/D24 claimed 59-62) | high | D2 chose the minimal manifest; any future feature must pass a slot review before claiming 63; documented repack candidates if more are ever needed: DUNK_OK, GRACE_TEAM1 and SHOT_VALUE are all sub-byte and can share a slot behind `fget/fset` helpers. **RESOLVED, spare spent (#225):** the slot review ran — adopting `lib/mode_items` needs two slots, the repack of DUNK_OK/GRACE_TEAM1/SHOT_VALUE is far more invasive than the alternative, and the shared header band had a free mode-neutral slot. Ruling: ITEM_LAST takes 63, ITEM_CURSOR takes header 7 (mode_match's MATCHED precedent). The private band is now full and the repack is the next escape, not a hypothetical one. |
 | R5 | Family ordinality regression — a future family file sorting before `fx-ball.lua` silently shifts wire ids | high | I5 naming rule + test #22 puts bytes 21/22/23 on the wire every CI run |
 | R6 | `audit_generator_spawn_exits` flags 828's 1-wide alcove mouths | low | BONEYARD-shape copy passes today; documented fallback = widen the mouth to 2 tiles, never a waiver |
 | R7 | Ballistic truncation drift — landing off SHOT_LAND by accumulated `og.div` truncation | low | error bound < 0.06 px per solve (§2.6), absorbed by rim bands; test #7 pins exact landing distances |

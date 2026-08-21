@@ -117,9 +117,6 @@ std::string get_asset_path()
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/gloader.h>
 
-// Safe no-op: view controls are an SDL render concern; headless has no views.
-void headless_clear_stale_view_controls(LevelRuntimeData*) {}
-
 // Safe no-op: keyboard buffer is an SDL input concern.
 void clear_keyboard() {}
 
@@ -127,20 +124,17 @@ void clear_keyboard() {}
 // Category B: Explicit unsupported (one-time warning)
 // ---------------------------------------------------------------------------
 
+// The headless LevelDataHooks table, the headless entity loader and their
+// warn-stub members moved to src/server/headless_level_hooks.cpp so the SDL
+// client can link them too (the staged lobby builds headless-hooked worlds
+// on every platform). Only the true link-time SDL stubs stay here.
+
 namespace {
-std::once_flag warn_draw_impl;
 std::once_flag warn_yes_or_no;
 std::once_flag warn_input_events;
 std::once_flag warn_input_state;
 std::once_flag warn_find_follow;
 } // namespace
-
-void headless_level_data_draw(LevelRuntimeData*, screen*)
-{
-    std::call_once(warn_draw_impl, [] {
-        LogWarn("level_data_draw_impl: not supported in headless mode\n");
-    });
-}
 
 // LevelRender stubs for headless mode.
 // renderer_ is always nullptr in headless, but the linker needs these symbols.
@@ -152,74 +146,6 @@ void LevelRender::reset_tiles(PixieData[]) {}
 void LevelRender::draw_tile(int, int, int, viewscreen*, unsigned char) {}
 void LevelRender::init_decor(PixieData[]) {}
 void LevelRender::draw_decor(int, int, int, viewscreen*, unsigned char) {}
-
-std::unique_ptr<LevelRender> headless_create_level_render(PixieData[])
-{
-    static std::once_flag warn_flag;
-    std::call_once(warn_flag, []() { Log("Warning: create_level_render not supported in headless mode\n"); });
-    return nullptr;
-}
-
-EntityFactory headless_create_entity_factory()
-{
-    EntityFactory factory;
-    // Headless mode intentionally leaves attach_render empty.
-    factory.report_error = [](const std::string& message) {
-        LogError("{}\n", message);
-    };
-    return factory;
-}
-
-loader* headless_entity_loader()
-{
-    static auto game_loader = [] {
-        auto entity_loader =
-            std::make_unique<loader>(headless_create_entity_factory());
-        return entity_loader;
-    }();
-    return game_loader.get();
-}
-
-void wire_world_with_loader(GameWorld* world, loader* game_loader)
-{
-    if (world == nullptr || game_loader == nullptr)
-        return;
-
-    world->entity_factory = [game_loader](Order order, std::int32_t family) -> std::unique_ptr<walker> {
-        return game_loader->create_walker_owned(order, family);
-    };
-
-    world->entity_configurator = [game_loader](walker& entity, Order order, std::int32_t family) -> const PixieData* {
-        game_loader->set_walker(&entity, order, family);
-        return game_loader->graphics_for(entity.query_order(), entity.family());
-    };
-
-    world->entity_derived_stats = [game_loader](walker* entity, Order order, std::int32_t family) {
-        if (entity == nullptr)
-            return;
-        game_loader->set_derived_stats(entity, order, family);
-    };
-}
-
-void headless_wire_world_entity_services(GameWorld* world, LevelRuntimeData* level)
-{
-    (void)level;
-    // #162 chokepoint: wiring runs at every headless LevelRuntimeData
-    // construction AND load(), so every curses/text/server level build gets
-    // a loader that matches the currently mounted campaign. Headless render
-    // components hold no pixie borrows (attach_render is empty; walkers copy
-    // size/frame scalars at attach), so rebuilding here is always safe.
-    headless_entity_loader()->reload_graphics_if_stale();
-    wire_world_with_loader(world, headless_entity_loader());
-}
-
-const LevelDataHooks kHeadlessLevelDataHooks{
-    .clear_stale_view_controls = headless_clear_stale_view_controls,
-    .draw = headless_level_data_draw,
-    .create_level_render = headless_create_level_render,
-    .create_entity_factory = headless_create_entity_factory,
-    .wire_world_entity_services = headless_wire_world_entity_services,
-};
 
 bool yes_or_no_prompt(const char* /*title*/, const char* /*message*/, bool default_value)
 {
@@ -478,10 +404,8 @@ void emit_headless_unsupported_warnings_probe()
     input_state_from_sdl(input);
 }
 
-const LevelDataHooks& headless_level_data_hooks()
-{
-    return kHeadlessLevelDataHooks;
-}
+// headless_level_data_hooks() itself moved to
+// src/server/headless_level_hooks.cpp with the rest of the table.
 
 // SaveData is now provided by the real src/data/save_data.cpp
 // (linked into openglad_text via HEADLESS_SOURCES).

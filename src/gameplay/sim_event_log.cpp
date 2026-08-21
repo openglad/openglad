@@ -7,6 +7,7 @@
  */
 #include <openglad/gameplay/sim_event_log.h>
 
+#include <iterator>
 #include <utility>
 
 namespace og::sim {
@@ -62,6 +63,15 @@ std::vector<Event> SimEventLog::drain()
     std::vector<Event> result;
     result.swap(events_);
     return result;
+}
+
+void SimEventLog::append(std::vector<Event> events)
+{
+    if (events.empty())
+        return;
+    events_.insert(events_.end(),
+                   std::make_move_iterator(events.begin()),
+                   std::make_move_iterator(events.end()));
 }
 
 } // namespace og::sim

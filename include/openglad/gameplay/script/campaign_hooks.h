@@ -187,7 +187,7 @@ struct CampaignRosterEntry {
 };
 
 // The og.campaign_match_get / og.campaign_match_set name vocabulary
-// (#212): the persisted knobs the MATCHUP screen edits, one spelling
+// (#212): the persisted match knobs the menus edit, one spelling
 // shared by the sim's read-only og.match_setting twin (minus its
 // "difficulty", plus generator_rate, which the sim never reads by name).
 // og.campaign_match_get errors on any name outside this list — the sim

@@ -293,6 +293,9 @@ W_GET_BOOL(summoned)
 W_SET_BOOL(summoned)
 W_GET_BOOL(save_all_protected)
 W_SET_BOOL(save_all_protected)
+// Read-only on purpose: walker::set_dormant maintains obmap membership, so
+// waking or sleeping a walker is an engine decision, never a script's.
+W_GET_BOOL(dormant)
 
 // do_bounce lives on weap.
 int m_do_bounce(lua_State* L)
@@ -2020,7 +2023,7 @@ bool known_match_setting(const char* name)
 }
 
 // og.campaign_match_get(name) → int32 — the menu-time twin of the sim's
-// read-only og.match_setting, over the persisted MATCHUP knobs
+// read-only og.match_setting, over the persisted match knobs
 // ("team_count", "score_limit", "respawn_ticks", "strip_troops",
 // "respawn_mode", "generator_rate"). Unknown names error, like the twin.
 int og_campaign_match_get(lua_State* L)
@@ -2039,7 +2042,7 @@ int og_campaign_match_get(lua_State* L)
 }
 
 // og.campaign_match_set(name, value) → true/false — write-through to the
-// MATCHUP knobs. Policy lives in the provider: it clamps like the lobby
+// match knobs. Policy lives in the provider: it clamps like the lobby
 // sanitizer and answers false for unknown names or when this machine is
 // not the host (local play is always host).
 int og_campaign_match_set(lua_State* L)
@@ -2757,11 +2760,11 @@ int og_effective_team_mask(lua_State* L)
     return 1;
 }
 
-// og.respawn_schedule(ent [, ticks]) — queue a dead Living; player stains
-// survive until fire, while life gems and AI stains scrub at schedule. Dedupe
-// is by queued id and live duplicate; queue cap 64 evicts a bot. ticks
-// overrides the resolved match delay (error when not positive). Returns true
-// when a new entry was queued.
+// og.respawn_schedule(ent [, ticks]) — queue a dead Living; every stain —
+// player and AI — survives until fire, while life gems scrub at schedule.
+// Dedupe is by queued id and live duplicate; queue cap 64 evicts a bot.
+// ticks overrides the resolved match delay (error when not positive).
+// Returns true when a new entry was queued.
 int og_respawn_schedule(lua_State* L)
 {
     GameWorld* world = world_arg(L);
@@ -2861,10 +2864,10 @@ int og_spawn_spot_clear(lua_State* L)
     return 1;
 }
 
-// og.scrub_corpse_stain(x, y [, floor]) — preserve pending-player STAIN
-// drops; otherwise kill fresh STAIN/LIFE_GEM drops at a corpse position (its
-// top-left) so a permanent body cannot be resurrected or farm gem score.
-// floor omitted scrubs every floor.
+// og.scrub_corpse_stain(x, y [, floor]) — preserve pending-respawn STAIN
+// drops (player or AI); otherwise kill fresh STAIN/LIFE_GEM drops at a
+// corpse position (its top-left) so a permanent body cannot be resurrected
+// or farm gem score. floor omitted scrubs every floor.
 int og_scrub_corpse_stain(lua_State* L)
 {
     GameWorld* world = world_arg(L);
@@ -2997,6 +3000,7 @@ const luaL_Reg kWalkerMethods[] = {
     {"clear_myguy", m_clear_myguy},
     {"move_myguy_to", m_move_myguy_to},
     {"has_guy", m_has_guy},
+    {"dormant", m_dormant},
     {"set_difficulty", m_set_difficulty},
     {"facing", m_facing},
     // statistics (flattened, s_ prefix)

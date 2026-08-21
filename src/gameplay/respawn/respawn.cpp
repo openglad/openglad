@@ -196,18 +196,19 @@ enum class CorpseDropScrub
     return same_guy_identity(stain->myguy, corpse->myguy);
 }
 
-[[nodiscard]] bool stain_belongs_to_pending_player(const GameWorld& world,
+// True when this stain is the still-pending corpse of ANY queued respawn.
+// Every scheduled corpse — player and AI — stays in oblist until its entry
+// fires, so entry.walker_entity_id resolves it through find_by_id and the
+// stain pairs by the same identity/team/floor/exact-position rule for both
+// kinds (guy triple for players, guy-less matching guy-less for AI).
+[[nodiscard]] bool stain_belongs_to_pending_respawn(const GameWorld& world,
                                                     const walker* stain)
 {
-    if (stain->myguy == nullptr)
-        return false;
     for (const RespawnEntry& entry : world.respawn.respawn_queue)
     {
-        if (entry.kind != 0)
-            continue;
         const walker* corpse = world.find_by_id(entry.walker_entity_id);
         if (corpse != nullptr &&
-            same_guy_identity(stain->myguy, corpse->myguy) &&
+            stain_matches_corpse_identity(stain, corpse) &&
             stain->team_num() == corpse->team_num() &&
             stain->floor() == corpse->floor() &&
             stain->xpos() == corpse->xpos() &&
@@ -219,12 +220,43 @@ enum class CorpseDropScrub
     return false;
 }
 
+// True when this stain pairs with a dead body other than the firing corpse
+// that is still in the world. At fire time such a neighbor is either a
+// queued corpse mid-countdown (the dead sweep holds it for its entry) or a
+// fighter that fell this very tick (mode_run_tick fires the timers before
+// on_mode_tick can schedule it; classic mode 2 orders its scan the same
+// way), and both keep their stain until their own fire. Pairing is the
+// pending rule's: identity, team, floor, exact corner.
+[[nodiscard]] bool stain_belongs_to_another_corpse(const GameWorld& world,
+                                                   const walker* stain,
+                                                   const walker* firing)
+{
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* other = uptr.get();
+        if (other != nullptr && other != firing && other->dead() &&
+            other->query_order() == Order::Living &&
+            stain_matches_corpse_identity(stain, other) &&
+            stain->team_num() == other->team_num() &&
+            stain->floor() == other->floor() &&
+            stain->xpos() == other->xpos() &&
+            stain->ypos() == other->ypos())
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 // LIFE_GEM hearts are retired as soon as any corpse is scheduled: repeated
-// respawns must not farm the time-limit tiebreaker. AI stains go with them,
-// while player stains remain during the countdown for cleric raises and the
-// visible corpse. The player fire paths scrub both drops before reviving (or
-// cancelling for a live duplicate), so no stale stain survives the queue.
-void scrub_corpse_drops_in(const GameWorld::EntityList& list,
+// respawns must not farm the time-limit tiebreaker (gems only ever drop for
+// myguy corpses, so that arm is a no-op for AI). Every fighter's stain —
+// player and AI alike — remains during the countdown for cleric raises and
+// the visible corpse. The fire paths scrub both drops before reviving the
+// player (or cancelling for a live duplicate) or fielding the AI
+// replacement, so no stale stain survives the queue.
+void scrub_corpse_drops_in(const GameWorld& world,
+                           const GameWorld::EntityList& list,
                            const walker* corpse, CorpseDropScrub scrub)
 {
     for (const auto& uptr : list)
@@ -248,6 +280,18 @@ void scrub_corpse_drops_in(const GameWorld::EntityList& list,
         {
             continue;
         }
+        // Guy-less stains all match each other, so identity alone cannot
+        // shield a NEIGHBORING fighter's stain from this fire. Its body
+        // can: a dead neighbor still in the world — queued mid-countdown,
+        // or fallen this very tick with no entry yet (the death scan and
+        // the mode's schedule_dead run after the timers) — keeps its stain
+        // until its own fire. The firing corpse itself is excluded, so its
+        // own stain still gets scrubbed.
+        if (fx->family() == FAMILY_STAIN &&
+            stain_belongs_to_another_corpse(world, fx, corpse))
+        {
+            continue;
+        }
         // Compare sprite centers: the LIFE_GEM is center_on'd the corpse
         // (corner deltas reach 3px per axis for 16px families), the stain
         // shares the corpse's corner.
@@ -263,8 +307,8 @@ void scrub_corpse_drops_in(const GameWorld::EntityList& list,
 void scrub_corpse_drops(GameWorld& world, const walker* corpse,
                         CorpseDropScrub scrub)
 {
-    scrub_corpse_drops_in(world.fxlist, corpse, scrub);
-    scrub_corpse_drops_in(world.oblist, corpse, scrub);
+    scrub_corpse_drops_in(world, world.fxlist, corpse, scrub);
+    scrub_corpse_drops_in(world, world.oblist, corpse, scrub);
 }
 
 void schedule_respawn(GameWorld& world, walker* corpse)
@@ -277,8 +321,11 @@ void schedule_respawn(GameWorld& world, walker* corpse)
             [](const RespawnEntry& entry) { return entry.kind == 1; });
         if (victim == respawn.respawn_queue.end())
             return;
-        // Fire the evicted bot immediately instead of dropping it: its corpse
-        // is already swept, so a plain erase would shrink the roster forever.
+        // Fire the evicted bot immediately instead of dropping it: the dead
+        // sweep has been holding its corpse for this entry, so a plain erase
+        // would hand the body to the end-of-tick sweep with its stain
+        // stranded — and would shrink the roster forever. The fire disposes
+        // of the held body and fields the replacement in one step.
         // Scripted modes take the RNG-free classic fire; NO on_respawn
         // dispatch here — scheduling can run inside a Lua binding call, and
         // a nested hook dispatch from an eviction is a re-entrancy the
@@ -289,9 +336,10 @@ void schedule_respawn(GameWorld& world, walker* corpse)
         // A blocked classic AI fire re-enqueues itself: if the queue is full
         // again, drop that just-appended retry rather than the incoming
         // corpse. Either way one AI entry is permanently lost (a non-myguy
-        // corpse is swept this same tick and never re-scanned), but the
-        // retry's spot is currently occupied while the incoming corpse's may
-        // be clear — and the cap must hold for the snapshot serializer.
+        // corpse with no pending entry is released to the end-of-tick sweep
+        // and never re-scanned), but the retry's spot is currently occupied
+        // while the incoming corpse's may be clear — and the cap must hold
+        // for the snapshot serializer.
         if (respawn.respawn_queue.size() >=
             static_cast<std::size_t>(kRespawnMaxQueueEntries))
         {
@@ -328,10 +376,7 @@ void schedule_respawn(GameWorld& world, walker* corpse)
     }
     respawn.respawn_queue.push_back(entry);
 
-    scrub_corpse_drops(
-        world, corpse,
-        entry.kind == 0 ? CorpseDropScrub::LifeGemOnly
-                        : CorpseDropScrub::All);
+    scrub_corpse_drops(world, corpse, CorpseDropScrub::LifeGemOnly);
 }
 
 } // namespace
@@ -508,6 +553,19 @@ walker* classic_fire_ai_respawn(GameWorld& world, const RespawnEntry& entry)
         // Keep the placement durable: the replacement inherits the spawn
         // point, so its own later deaths respawn at the authored spot.
         w->set_spawn_point(entry.x, entry.y, entry.floor);
+        // The dude respawned: if the corpse it left is still there, delete
+        // it — scrub its stain (a raised or eaten stain is already dead;
+        // the scan then matches nothing) and retire the body the dead sweep
+        // has been holding for this entry. The dead()/Living guards keep a
+        // crafted or restored queue entry naming a live walker's id from
+        // retiring that walker.
+        walker* corpse = world.find_by_id(entry.walker_entity_id);
+        if (corpse != nullptr && corpse->dead() &&
+            corpse->query_order() == Order::Living)
+        {
+            scrub_corpse_drops(world, corpse, CorpseDropScrub::All);
+            world.retire_corpse(corpse);
+        }
         return w;
     }
     world.remove_ob(w);
@@ -627,14 +685,18 @@ void classic_respawn_flush_pending(GameWorld& world)
     // last foe, or a death the synchronous exit-accept path hasn't scanned
     // yet) gets its entry here and revives below. Timer values don't matter.
     classic_run_death_scan(world);
-    // The player fire path never mutates the queue; iterate then clear.
-    for (std::size_t i = 0; i < respawn.respawn_queue.size(); ++i)
+    // Swap the queue out, then fire the player (kind-0) entries from the
+    // local copy: erase-before-fire, so a firing player's own stain is never
+    // protected as "pending" by the scrub. Kind-0 fires never mutate the
+    // queue, so it stays empty; pending AI entries drop with the swap (the
+    // level is over).
+    std::vector<RespawnEntry> pending;
+    pending.swap(respawn.respawn_queue);
+    for (const RespawnEntry& entry : pending)
     {
-        const RespawnEntry entry = respawn.respawn_queue[i];
         if (entry.kind == 0)
             classic_fire_player_respawn(world, entry);
     }
-    respawn.respawn_queue.clear();
 }
 
 bool classic_respawn_pending_hostile_foe(GameWorld& world)
@@ -814,12 +876,12 @@ void respawn_scrub_stains_at(GameWorld& world, short x, short y, int floor)
             const int dy = std::abs((fx->ypos() + fx->sizey() / 2) - (y + 8));
             if (dx + dy > 8)
                 continue;
-            // A mode may scrub a permanent corpse beside a queued hero. The
-            // positional API has no corpse identity, so preserve any player
-            // stain whose copied guy and exact corpse location resolve to a
-            // pending player entry.
+            // A mode may scrub a permanent corpse beside a queued fighter.
+            // The positional API has no corpse identity, so preserve any
+            // stain whose identity and exact corpse location resolve to a
+            // pending respawn entry — player or AI.
             if (fx->family() == FAMILY_STAIN &&
-                stain_belongs_to_pending_player(world, fx))
+                stain_belongs_to_pending_respawn(world, fx))
             {
                 continue;
             }

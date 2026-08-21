@@ -212,7 +212,11 @@ void level_entity_spawn(walker* spawned);  // sim-authored living/generator
 // Scripted-mode level hooks (TYPE_SCRIPTED):
 // on_mode_init(level) dispatch; true iff a hook was registered for this
 // level (exact or wildcard) AND it ran without error — the mode activation
-// condition.
+// condition. Runs ONCE, at staging (mode_stage_init; the lazy tick-1 arm
+// serves un-staged worlds), in a REAL world: the hook builds its own
+// census over the live oblist/fxlist (mode_match.lua census_inputs) and
+// folds its activation decision in-body — the plan phase and its
+// marshaling layer are retired (#218 staged lobby).
 bool level_mode_init(GameWorld* world);
 // on_mode_tick(level, tick) — post-act slot, called by mode_run_tick.
 void level_mode_tick(GameWorld* world);

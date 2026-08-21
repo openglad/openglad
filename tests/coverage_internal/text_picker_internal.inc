@@ -930,3 +930,191 @@ int text_picker_testing_exercise_internal_paths()
 
     return failed ? -failed_check : 0;
 }
+
+// Staged VIEW LEVEL (#218, C10): the text census is a locally STAGED world
+// (one-shot MatchStage over this save, seeded by config.seed), so it lists
+// the real assembled match and the same seed prints the identical census
+// twice. Returns 0, or the negated 1-based index of the first failed check.
+int text_picker_testing_staged_view_scenario()
+{
+    ScopedTextPickerInternalState state_restore;
+    if (!state_restore.ready())
+        return -1;
+    if (mount_campaign_package_with_error("modes") !=
+        CampaignPackageIoError::None)
+        return -2;
+
+    TextPickerConfig config;
+    config.campaign = "modes";
+    config.level = 820;
+    config.seed = 777u;
+    config.team_families = {FAMILY_SOLDIER};
+    config.save_name = "helper-slot";
+    TextPickerError error;
+    TextPickerClient client(config, &error);
+    client.testing_save_data_mutable().current_campaign = "modes";
+    client.testing_save_data_mutable().scen_num = 820;
+
+    int check_index = 0;
+    int failed_check = 0;
+    bool failed = false;
+    const auto check = [&check_index, &failed_check, &failed](bool condition) {
+        ++check_index;
+        if (!condition) {
+            failed = true;
+            if (failed_check == 0)
+                failed_check = check_index;
+        }
+    };
+
+    const auto run_view_scenario = [&]() -> std::string {
+        const PickerMenuItem* item = find_picker_menu_item(
+            PickerMenuId::Scenario, PickerMenuCommand::ViewScenario);
+        if (item == nullptr)
+            return {};
+        ScopedTextPickerStdoutCapture output;
+        if (!output.ready())
+            return {};
+        ScopedCinRedirect input("\n");
+        client.handle_menu_item(PickerMenuId::Scenario, *item);
+        std::string text = output.finish();
+        if (!output.finish_ok())
+            return {};
+        return text;
+    };
+
+    const std::string first = run_view_scenario();
+    const std::string second = run_view_scenario();
+    // The staged census header and the soccer census over the 820 pitch:
+    // one deployed soldier = COMPANY on the roster team, the legacy squad
+    // backfilling the other.
+    check(first.find("--- SCEN 820:") != std::string::npos);
+    check(first.find("MATCH: SOCCER - 2 TEAMS ACTIVE") != std::string::npos);
+    check(first.find("ACTIVE - COMPANY (1)") != std::string::npos);
+    check(first.find("ACTIVE - BOT SQUAD (5)") != std::string::npos);
+    // Seat block (#218): the text client stages locally, so the seat lines
+    // are the save-derived synthesis — one all-local seat, directly after
+    // the match block.
+    check(first.find("SEATS: CO-OP") != std::string::npos);
+    check(first.find("  P1 YOU - RED TEAM") != std::string::npos);
+    check(first.find("MATCH: SOCCER - 2 TEAMS ACTIVE") <
+          first.find("SEATS: CO-OP"));
+    // Determinism: the session-latched seed makes the census a pure
+    // function of (save, knobs, seed) — reopening the viewer never
+    // flickers a single byte.
+    check(!first.empty());
+    check(first == second);
+
+    // Degradation (#218): an oversize completed-levels ledger refuses the
+    // stage at the wire cap, so VIEW LEVEL degrades to the fallback census
+    // over the scratch load, led by the honest STAGING FAILED line — no
+    // mode census, never a stale staged world. Shrinking the ledger heals
+    // the viewer back to the byte-identical staged census.
+    std::set<int>& ledger =
+        client.testing_save_data_mutable().completed_levels["modes"];
+    for (int level = 100000; level < 117000; ++level)
+        ledger.insert(level);
+    const std::string degraded = run_view_scenario();
+    check(degraded.find("STAGING FAILED") != std::string::npos);
+    check(degraded.find("--- SCEN 820:") != std::string::npos);
+    check(degraded.find("MATCH: SOCCER") == std::string::npos);
+    ledger.clear();
+    const std::string healed = run_view_scenario();
+    check(healed == first);
+
+    check(state_restore.restore());
+    return failed ? -failed_check : 0;
+}
+
+// One seed, both consumers (#218 §1.3): VIEW LEVEL stages its preview on
+// TextPickerConfig::seed and the GO path runs the protocol session on the
+// SAME latch, so the text preview is never a differently seeded world than
+// the text launch. The protocol session reports the seed it ran with in its
+// ready line — the observable that splits the moment either side starts
+// drawing its own. Returns 0, or the negated 1-based index of the first
+// failed check.
+int text_picker_testing_launch_seed_matches_the_preview()
+{
+    ScopedTextPickerInternalState state_restore;
+    if (!state_restore.ready())
+        return -1;
+    if (mount_campaign_package_with_error("modes") !=
+        CampaignPackageIoError::None)
+        return -2;
+
+    int check_index = 0;
+    int failed_check = 0;
+    bool failed = false;
+    const auto check = [&check_index, &failed_check, &failed](bool condition) {
+        ++check_index;
+        if (!condition) {
+            failed = true;
+            if (failed_check == 0)
+                failed_check = check_index;
+        }
+    };
+
+    // Both halves of one session at a given latch: the previewed census and
+    // the launch's ready line.
+    const auto preview_and_launch =
+        [](std::uint32_t seed) -> std::pair<std::string, std::string> {
+        TextPickerConfig config;
+        config.campaign = "modes";
+        config.level = 820;
+        config.seed = seed;
+        config.team_families = {FAMILY_SOLDIER};
+        config.save_name = "helper-slot";
+        TextPickerError error;
+        TextPickerClient client(config, &error);
+        client.testing_save_data_mutable().current_campaign = "modes";
+        client.testing_save_data_mutable().scen_num = 820;
+
+        const PickerMenuItem* const item = find_picker_menu_item(
+            PickerMenuId::Scenario, PickerMenuCommand::ViewScenario);
+        if (item == nullptr)
+            return {};
+
+        std::string preview;
+        {
+            ScopedTextPickerStdoutCapture output;
+            if (!output.ready())
+                return {};
+            ScopedCinRedirect input("\n");
+            client.handle_menu_item(PickerMenuId::Scenario, *item);
+            preview = output.finish();
+            if (!output.finish_ok())
+                return {};
+        }
+
+        std::string launch;
+        {
+            ScopedTextPickerStdoutCapture output;
+            if (!output.ready())
+                return {};
+            // EOF stdin: the protocol session prints its ready line (seed
+            // included) and returns without entering the command loop.
+            ScopedCinRedirect input("");
+            (void)run_text_picker_protocol_session(config);
+            launch = output.finish();
+            if (!output.finish_ok())
+                return {};
+        }
+        return {preview, launch};
+    };
+
+    const auto [preview_777, launch_777] = preview_and_launch(777u);
+    const auto [preview_4242, launch_4242] = preview_and_launch(4242u);
+
+    check(launch_777.find("\"seed\":777") != std::string::npos);
+    check(launch_4242.find("\"seed\":4242") != std::string::npos);
+    // The previews are seed-sensitive (staged squads are drawn at stage
+    // time), so a preview that ignored the latch would print the same census
+    // for both.
+    check(!preview_777.empty());
+    check(preview_777.find("--- SCEN 820:") != std::string::npos);
+    check(preview_4242.find("--- SCEN 820:") != std::string::npos);
+    check(preview_777 != preview_4242);
+
+    check(state_restore.restore());
+    return failed ? -failed_check : 0;
+}

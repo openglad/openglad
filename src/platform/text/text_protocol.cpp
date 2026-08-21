@@ -605,9 +605,15 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     }
 
     // Deploy the crew onto the authored team start markers, the way the
-    // production spawn path (spawn_team_from_save) does. Without this the
-    // crew stacks at the add_ob default position, which makes balance runs
-    // meaningless. Falls back to a random teleport when markers run out.
+    // production spawn path (og::server::spawn_team_from_save — since the
+    // #218 collapse also the SDL display's one spawn path) does. This is
+    // DELIBERATELY not that function: the text crew is a CLI family list,
+    // not a save roster — default-guy legacy stats stay byte-identical
+    // (spawn_team_from_save would re-derive them), crew members carry
+    // users/real teams no roster spawn assigns, and the foreign-marker
+    // fallback below is load-bearing for the pinned og_unit_sim baselines
+    // (the roster spawn teleports instead). Falls back to a random teleport
+    // when markers run out.
     auto find_team_marker = [&world](int team) -> walker* {
         for (const auto& entity : world.oblist) {
             walker* const m = entity.get();

@@ -53,6 +53,21 @@ bool LocalCursesSession::inject_exit_prompt_for_testing(
            !ignored_end.ended && ignored_messages.empty();
 }
 
+const GameWorld& LocalCursesSession::server_world_for_testing() const
+{
+    return server_world();
+}
+
+// The world the launch adopted from its MatchStage (#218): tests compare it
+// against the world the solo picker's VIEW LEVEL preview staged, which is an
+// identity only while both consume the same latched match seed.
+const GameWorld* curses_game_runtime_testing_local_server_world(
+    const CursesGameSession& session)
+{
+    const auto* const local = dynamic_cast<const LocalCursesSession*>(&session);
+    return local != nullptr ? &local->server_world_for_testing() : nullptr;
+}
+
 bool curses_game_runtime_testing_inject_exit_prompt(
     CursesGameSession& session, std::string prompt,
     std::uint32_t synchronized_score)

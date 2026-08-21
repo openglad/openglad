@@ -36,6 +36,7 @@
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/platform/local_transport_shadow.h>
 #include <openglad/resources/save_data.h>
+#include <openglad/server/match_stage.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/interface/input.h>
 #include <openglad/gameplay/walker.h>
@@ -957,6 +958,169 @@ TEST(GameLoop, local_transport_shadow_seeds_replay_arm_into_server_screen)
     save.reset();
 }
 
+namespace {
+
+// One-soldier lobby inputs for `scen_num`, the minimal stageable key.
+og::server::MatchStageInputs make_gladiator_stage_inputs(std::int16_t scen_num)
+{
+    og::sim::LobbyCharacterData character;
+    character.guy_id = 100;
+    character.name = "Stage Soldier";
+    character.family = FAMILY_SOLDIER;
+    character.strength = 10;
+    character.dexterity = 11;
+    character.constitution = 12;
+    character.intelligence = 13;
+    character.armor = 14;
+    character.level = 3;
+    character.teamnum = 0;
+
+    og::server::MatchStageInputs inputs;
+    inputs.equivalent.current_campaign = "gladiator";
+    inputs.equivalent.scen_num = scen_num;
+    inputs.equivalent.numplayers = 1;
+    inputs.equivalent.allied_mode = 0;
+    inputs.equivalent.team_list = {
+        og::sim::LobbyCharacterSlot{.slot_index = 0u, .character = character},
+    };
+    inputs.difficulty = 1;
+    inputs.match_seed = 1234u;
+    return inputs;
+}
+
+bool world_has_living_named(const GameWorld& world, const std::string& name)
+{
+    for (const auto& entry : world.oblist)
+    {
+        const walker* const entity = entry.get();
+        if (entity == nullptr || entity->dead() ||
+            entity->query_order() != Order::Living)
+            continue;
+        if (entity->myguy != nullptr && entity->myguy->name == name)
+            return true;
+        if (entity->stats() != nullptr && entity->stats()->name == name)
+            return true;
+    }
+    return false;
+}
+
+// Load `scen_num` into the display screen through the save0 round-trip.
+void load_display_level_for_stage_test(screen& game_screen,
+                                       std::int16_t scen_num)
+{
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SaveData& save = game_screen.save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.current_levels["gladiator"] = scen_num;
+    save.scen_num = scen_num;
+    save.numplayers = 1;
+    ASSERT_TRUE(save.save("save0"));
+    ASSERT_NE(0, load_saved_game("save0", &game_screen));
+}
+
+} // namespace
+
+// #218 web-jitter regression: GO can consume a start config that names
+// a DIFFERENT level than the staged world (the emscripten jitter-capture
+// profile overrides scen_num AFTER the lobby staged). Adopting that stage is
+// a guaranteed soft-lock — the display runs one map, the authority another,
+// every full-grid keyframe is rejected (size mismatch) and the client
+// fatally desyncs into the "Connection Lost" popup. The install must detect
+// the identity mismatch, dispose the stage, and take the legacy
+// display-seed path, which cannot diverge.
+TEST(GameLoop, local_transport_shadow_rejects_stage_for_different_level)
+{
+    trace_clear();
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    load_display_level_for_stage_test(*game_screen, 2);
+
+    // The lobby staged scen 1; the launch config (already applied to the
+    // display save above) names scen 2.
+    og::server::MatchStageConfig stage_config;
+    stage_config.networked = false;
+    og::server::MatchStage stage(stage_config);
+    stage.observe_inputs(make_gladiator_stage_inputs(1),
+                         og::server::stage_clock_now_ms());
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+
+    og::runtime::GameSession& gameplay_session =
+        *og::runtime::current_game_session;
+    og::runtime::reset_local_transport_shadow(
+        gameplay_session, *game_screen, &stage);
+    ASSERT_TRUE(og::runtime::local_transport_active(gameplay_session));
+
+    EXPECT_TRUE(trace_contains("net", "stage_level_mismatch"))
+        << "the install must refuse a stage for a different level";
+    EXPECT_EQ(og::server::StageStatus::Empty, stage.status())
+        << "the mismatched stage must be disposed, not left staged";
+
+    // The fallback seeded the authoritative world FROM the display: the two
+    // sides run the same map, so keyframes apply instead of desyncing.
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(
+            gameplay_session);
+    ASSERT_NE(nullptr, server_screen);
+    EXPECT_EQ(2, static_cast<int>(server_screen->save_data.scen_num));
+    EXPECT_EQ(game_screen->world().grid.w, server_screen->world().grid.w);
+    EXPECT_EQ(game_screen->world().grid.h, server_screen->world().grid.h);
+    EXPECT_FALSE(
+        world_has_living_named(server_screen->world(), "Stage Soldier"))
+        << "no half-adopted roster: the fallback world is display-seeded";
+
+    og::runtime::clear_local_transport_shadow(gameplay_session);
+    game_screen->world().delete_objects();
+    game_screen->save_data.reset();
+}
+
+// Companion pin: a stage for the SAME level the display loaded still adopts
+// (the guard must never push a healthy launch off the staged path).
+TEST(GameLoop, local_transport_shadow_adopts_stage_for_matching_level)
+{
+    trace_clear();
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    load_display_level_for_stage_test(*game_screen, 1);
+
+    og::server::MatchStageConfig stage_config;
+    stage_config.networked = false;
+    og::server::MatchStage stage(stage_config);
+    stage.observe_inputs(make_gladiator_stage_inputs(1),
+                         og::server::stage_clock_now_ms());
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+    const GameWorld* const staged_world = stage.world();
+    ASSERT_NE(nullptr, staged_world);
+    ASSERT_TRUE(world_has_living_named(*staged_world, "Stage Soldier"));
+
+    og::runtime::GameSession& gameplay_session =
+        *og::runtime::current_game_session;
+    og::runtime::reset_local_transport_shadow(
+        gameplay_session, *game_screen, &stage);
+    ASSERT_TRUE(og::runtime::local_transport_active(gameplay_session));
+
+    EXPECT_FALSE(trace_contains("net", "stage_level_mismatch"))
+        << "a matching stage must not trip the mismatch guard";
+    EXPECT_EQ(og::server::StageStatus::Empty, stage.status())
+        << "adoption consumes the stage";
+
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(
+            gameplay_session);
+    ASSERT_NE(nullptr, server_screen);
+    EXPECT_TRUE(
+        world_has_living_named(server_screen->world(), "Stage Soldier"))
+        << "the authoritative world is the adopted staged world (it carries "
+           "the lobby roster's spawn, which the display-seed path cannot)";
+
+    og::runtime::clear_local_transport_shadow(gameplay_session);
+    game_screen->world().delete_objects();
+    game_screen->save_data.reset();
+}
+
 TEST(GameLoop, glad_init_applies_lobby_start_config_before_level_load)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
@@ -1162,7 +1326,7 @@ TEST(GameLoop, local_two_player_ally_mode_claims_two_team_one_heroes)
     // The hostile-color hero is deliberately between the two Team 1 heroes.
     // Roster order must never make Player 2 claim it.
     save.team_list[0] = make_named_soldier("Red One", 0);
-    save.team_list[1] = make_named_soldier("Yellow Middle", 1);
+    save.team_list[1] = make_named_soldier("Yellow Mid", 1);
     save.team_list[2] = make_named_soldier("Red Two", 0);
     save.team_size = 3;
 
@@ -1180,7 +1344,7 @@ TEST(GameLoop, local_two_player_ally_mode_claims_two_team_one_heroes)
     glad_init(false, &*config);
     ASSERT_NE(nullptr, og::runtime::current_game_session);
     walker* const yellow = find_named_team_member(
-        game_screen->world(), "Yellow Middle", 1);
+        game_screen->world(), "Yellow Mid", 1);
     ASSERT_NE(nullptr, yellow)
         << "the non-player color still belongs in the mission";
     ASSERT_NE(nullptr, game_screen->viewob[0]);
@@ -1195,7 +1359,7 @@ TEST(GameLoop, local_two_player_ally_mode_claims_two_team_one_heroes)
               game_screen->viewob[1]->control);
     EXPECT_EQ("Red One", game_screen->viewob[0]->control->myguy->name);
     EXPECT_EQ("Red Two", game_screen->viewob[1]->control->myguy->name);
-    EXPECT_NE("Yellow Middle",
+    EXPECT_NE("Yellow Mid",
               game_screen->viewob[1]->control->myguy->name);
     EXPECT_FALSE(game_screen->viewob[0]->control->is_friendly(yellow))
         << "a yellow company hero must remain attackable by red in Together mode";
@@ -1208,6 +1372,39 @@ TEST(GameLoop, local_two_player_ally_mode_claims_two_team_one_heroes)
     og::runtime::clear_local_transport_shadow(
         *og::runtime::current_game_session);
     game_screen->world().delete_objects();
+}
+
+// The local picker lobby's slot builder must pre-clamp guy names to the
+// 11-char wire width: the wire readers truncate anyway, and an unclamped
+// writer makes every roster message fail the VALIDATE_SERIALIZATION
+// round-trip. The consumed game-start config is where the clamp lands.
+TEST(GameLoop, local_lobby_clamps_oversized_guy_names_to_wire_width)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game_screen);
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.save_name = "Clamp Co";
+    save.current_campaign = "gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.my_team = 0;
+    save.team_list[0] = make_named_soldier("Maximilian Longname", 0);
+    save.team_size = 1;
+
+    picker_lobby_shutdown();
+    picker_lobby_initialize_from_save();
+    ASSERT_TRUE(picker_lobby_request_start());
+    std::optional<og::ui::PickerLobbyGameStartConfig> config =
+        picker_lobby_consume_game_start_config();
+    picker_lobby_shutdown();
+    ASSERT_TRUE(config.has_value());
+    ASSERT_EQ(1u, config->save_data.team_list.size());
+    EXPECT_EQ("Maximilian ",
+              config->save_data.team_list[0].character.name)
+        << "the wire copy of the roster must carry the clamped name";
 }
 
 TEST(GameLoop, local_gameplay_spawns_and_controls_every_selected_team_color)
@@ -2175,6 +2372,13 @@ TEST(GameLoop, networked_zero_seat_host_and_remote_spectator_install)
     og::sim::GameClient remote_spectator(
         *remote_spectator_transport,
         remote_spectator_transport->local_peer_id());
+    // The bound remote player must be a LIVE client: the level-start launch
+    // gate (#239) holds tick 1 until every seeded client confirms ready, so a
+    // binding whose peer never polls would (correctly) freeze the level start
+    // until its ready deadline. Production bound peers always poll.
+    og::sim::GameClient remote_player(
+        *remote_player_transport,
+        remote_player_transport->local_peer_id());
     const std::vector<og::sim::LobbyPlayerBinding> player_bindings = {
         og::sim::LobbyPlayerBinding{
             .peer_id = remote_player_transport->local_peer_id(),
@@ -2196,6 +2400,7 @@ TEST(GameLoop, networked_zero_seat_host_and_remote_spectator_install)
     ASSERT_NE(nullptr, view);
     ASSERT_TRUE(wait_until([&] {
         og::runtime::local_transport_shadow_finish_tick(gameplay_session);
+        remote_player.poll_messages();
         remote_spectator.poll_messages();
         const og::sim::GameClient* const display_client =
             game_screen->render_interpolation_client();
@@ -2222,6 +2427,7 @@ TEST(GameLoop, networked_zero_seat_host_and_remote_spectator_install)
         remote_spectator.last_seen_server_tick();
     ASSERT_TRUE(wait_until([&] {
         og::runtime::local_transport_shadow_finish_tick(gameplay_session);
+        remote_player.poll_messages();
         remote_spectator.poll_messages();
         return remote_spectator.last_seen_server_tick() >
                 spectator_initial_tick &&
@@ -5852,6 +6058,102 @@ TEST(GameLoop, zoom_half_mini_hp_bar_matches_projected_sprite_width)
     EXPECT_EQ(background_index,
               canvas_zoom_gameplay::pixel_index(s, bar_x + sprite_w + 1, bar_y))
         << "nothing may be drawn out at the unprojected sprite width";
+}
+
+// Issue #244: the mini HP bar's HEIGHT was hardcoded (bar_h = 1, a 2-row fill
+// through draw_box's inclusive corners) while its width and anchor were
+// pane-projected, so at zoom 0.5 the bar towered 2x over the shrunken sprite
+// it labels. The fill now scales by the vertical pane ratio, floored at one
+// drawable UI row.
+TEST(GameLoop, zoom_half_mini_hp_bar_height_matches_pane_ratio)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(s != nullptr);
+
+    canvas_zoom_gameplay::WorldZoomGameGuard guard(s);
+    canvas_zoom_gameplay::MiniHpBarCfgGuard hp_bar_on;
+
+    gameplay_rec::build_save(s, "gladiator", 1, 1,
+                             {FAMILY_SOLDIER}, 4);
+    s->set_active_canvas(CanvasTarget::UI);
+    glad_init();
+    ASSERT_TRUE(s->gameplay_ui_canvas_available())
+        << "the fixed overlay must exist for the pane projection to apply";
+    ASSERT_EQ(1, static_cast<int>(s->numviews));
+
+    viewscreen* const vs = s->viewob[0].get();
+    ASSERT_TRUE(vs != nullptr);
+    walker* const w = vs->control;
+    ASSERT_TRUE(w != nullptr);
+
+    w->stats()->set_max_hitpoints(100.0f);
+    w->stats()->set_hitpoints(50.0f);
+    w->set_last_hitpoints(50.0f);
+
+    // Settle the camera and allocate/clear the overlay before sampling it.
+    s->redraw();
+
+    const og::view_layout::ViewLayout ui =
+        og::view_layout::compute_view_layout(
+            s->numviews, vs->mynum, vs->prefs[PREF_VIEW],
+            s->gameplay_ui_canvas_w(), s->gameplay_ui_canvas_h());
+    ASSERT_TRUE(ui.applies);
+    const Sint32 sprite_w = w->sizex();
+    const Sint32 expected_bar_w = sprite_w * ui.w / vs->xview;
+    ASSERT_EQ(sprite_w, expected_bar_w * 2)
+        << "the harness must produce a 2x world canvas (window 640x400, zoom 0.5)";
+
+    // project_world_point_to_gameplay_ui only projects while the gameplay-UI
+    // canvas is the active one, so enter the same scope the renderer uses
+    // before computing the anchor.
+    ScopedGameplayUiCanvas gameplay_ui(*s);
+
+    const WalkerRenderPosition draw_pos =
+        resolve_walker_render_position(*w, vs->interpolation_alpha);
+    const float world_x = draw_pos.xpos - static_cast<float>(vs->topx) +
+        static_cast<float>(vs->xloc);
+    const float world_y = draw_pos.ypos - static_cast<float>(vs->topy) +
+        static_cast<float>(vs->yloc);
+    const auto [bar_x, walker_bottom] =
+        vs->project_world_point_to_gameplay_ui(
+            world_x, world_y + static_cast<float>(w->sizey()));
+    const Sint32 bar_y = walker_bottom + 1;
+    ASSERT_LT(bar_x + sprite_w + 8, ui.x + ui.w)
+        << "the sampled columns must stay inside the gameplay-UI pane";
+    ASSERT_GT(bar_x, ui.x) << "the bar must start inside the pane";
+    ASSERT_GT(bar_y - 1, ui.y)
+        << "the outline's top row must sit inside the pane";
+    ASSERT_LT(bar_y + 2, ui.y + ui.h)
+        << "the sampled rows below the bar must stay inside the pane";
+
+    s->clearbuffer();
+    const int background_index =
+        canvas_zoom_gameplay::pixel_index(s, bar_x + sprite_w + 8, bar_y);
+    draw_small_health_bar(w, vs);
+
+    const int hp_index = canvas_zoom_gameplay::pixel_index(s, bar_x, bar_y);
+    ASSERT_NE(background_index, hp_index) << "the bar must have been drawn";
+    int vrun = 0;
+    while (bar_y + vrun < ui.y + ui.h &&
+           canvas_zoom_gameplay::pixel_index(s, bar_x, bar_y + vrun) ==
+               hp_index)
+        ++vrun;
+    EXPECT_EQ(1, vrun)
+        << "at zoom 0.5 the fill must be one UI row — half the classic "
+           "2-row fill, within rounding — not the unscaled 2 (issue #244)";
+    const int outline_index =
+        canvas_zoom_gameplay::pixel_index(s, bar_x - 1, bar_y);
+    ASSERT_NE(background_index, outline_index) << "the outline must be drawn";
+    EXPECT_EQ(outline_index,
+              canvas_zoom_gameplay::pixel_index(s, bar_x, bar_y - 1))
+        << "the outline's top row must sit directly above the fill";
+    EXPECT_EQ(outline_index,
+              canvas_zoom_gameplay::pixel_index(s, bar_x, bar_y + 1))
+        << "the bottom outline must sit directly under the single fill row "
+           "(pre-#244 this row was fill)";
+    EXPECT_EQ(background_index,
+              canvas_zoom_gameplay::pixel_index(s, bar_x, bar_y + 2))
+        << "the block must end after 3 UI rows at zoom 0.5";
 }
 
 // --- Mid-game local player add/remove (pause-menu design §5) ---------------

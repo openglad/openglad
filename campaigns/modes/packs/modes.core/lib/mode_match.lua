@@ -1,4 +1,4 @@
--- Shared match toolkit — manifest row adapter, team census, the TROOPS:OWN roster activation all six modes apply, marker consumption, anchor-cursor placement, bot fielding with the TROOPS: FAIR power model, dead-competitor scheduling, timeout ladder (cookbook: docs/lua-classpacks-design.md §3).
+-- Shared match toolkit — manifest row adapter, the staged-init census (census_inputs) and the shared activation/fill rules all five mask modes apply at on_mode_init, marker consumption, anchor-cursor placement, bot fielding with the TROOPS: FAIR power model, dead-competitor scheduling, timeout ladder (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C
@@ -55,8 +55,10 @@ end
 -- Mode-var slots. The design's per-team MATCHED_LEVEL/MATCHED_UP footprint
 -- (D20) does not fit repo reality: CTF and Onslaught use every mode-private
 -- slot 8..63 and Basketball leaves only 63, so the solved plan is PACKED
--- into the shared header band (slots 0-7, mode-neutral by convention, 2-7
--- free everywhere) instead. TARGET is the capped mean human-team f (0 =
+-- into the shared header band (slots 0-7, mode-neutral by convention:
+-- MATCHED owns 2-5, mode_anchors' squad seed owns 6 (#235), and
+-- basketball's item cursor owns 7 (#225) — the band is now full)
+-- instead. TARGET is the capped mean human-team f (0 =
 -- census not run, or no human power — both mean "legacy"); PLAN carries one
 -- base-100 code per team, code = L * 10 + k (0 = unsolved, L in 1..9,
 -- k in 0..4, max packed value 94 * 1010101 = 94,949,494 < 2^31); ANNOUNCED
@@ -162,15 +164,14 @@ local function predicted_power(family, base, level)
 end
 
 -- The human census (D11/D15): mean of the human team f-sums, where a human
--- team fields at least one live has_guy Living (the own_roster_activation
+-- team fields at least one live has_guy Living (the plan's roster
 -- predicate — every g_/stat read stays behind the has_guy guard). Returns
--- (T, per-team sums, H); T = 0 means no human power server-side. H is the
--- headcount the same walk counts (D34): one human team = its live has_guy
--- count, several = the MIN across them — the guarantee is per-human-team,
--- and only min keeps every survivor un-outnumbered on the backstop path.
+-- (T, per-team sums); T = 0 means no human power server-side. The
+-- headcount half of the old census (H, the D34 min-roster rule) now lives
+-- in the DECISION alone (activation's matched_size below) — no residual
+-- twin of that rule survives here.
 local function census_power(obs)
   local sums = { 0, 0, 0, 0 }
-  local counts = { 0, 0, 0, 0 }
   for k = 1, #obs do
     local w = obs[k]
     if w:dead() == 0 then
@@ -179,7 +180,6 @@ local function census_power(obs)
           local team = w:team_num()
           if team < C.SCORE_TEAM_COUNT then
             sums[team + 1] = sums[team + 1] + walker_power(w)
-            counts[team + 1] = counts[team + 1] + 1
           end
         end
       end
@@ -187,22 +187,16 @@ local function census_power(obs)
   end
   local total = 0
   local teams = 0
-  local size = 0
   for t = 1, C.SCORE_TEAM_COUNT do
     if sums[t] > 0 then
       total = total + sums[t]
       teams = teams + 1
-      if size == 0 then
-        size = counts[t]
-      elseif counts[t] < size then
-        size = counts[t]
-      end
     end
   end
   if teams == 0 then
-    return 0, sums, 0
+    return 0, sums
   end
-  return og.div(total, teams), sums, size
+  return og.div(total, teams), sums
 end
 
 -- The D22 solver: single argmin of |P(L, k) - T| over the FULL reachable
@@ -273,24 +267,24 @@ local function store_plan(team, level, up)
   og.mode_set(MATCHED.PLAN, plan)
 end
 
--- Census-at-init (D15): runs from own_roster_activation — the one shared
--- call every mode makes in on_mode_init — only when the lobby requested
--- TROOPS: FAIR (the scenario-troops sentinel, D25/D29), and latches through
--- MATCHED.TARGET so mid-match spawns never re-census the live battle (D24).
--- The has_guy census is immune to the troops strip (authored troops carry
--- no guy record) and the roster is already in the oblist
--- (spawn_team_from_save precedes the first tick).
-local function record_match_target(obs)
-  local _, matched = core.team_count_request()
-  if not matched then
+-- Apply-side half of the FAIR census split (D15/D24): each mode's decide
+-- fold settled matched-ness and the headcount (decision.matched_size, the
+-- D34 min-roster rule), and every mode's on_mode_init banks them here; the
+-- power TARGET stays an init-time measurement because bot strength is
+-- measure-and-solve by design (D24). Latched through MATCHED.TARGET so
+-- mid-match spawns never re-census the live battle. The has_guy census is
+-- immune to the troops strip (authored troops carry no guy record) and the
+-- roster is already in the oblist (spawn_team_from_save precedes init).
+local function bank_match_target(decision, obs)
+  if not decision.matched then
     return
   end
   if og.mode_get(MATCHED.TARGET) ~= 0 then
     return
   end
-  local target, _, size = census_power(obs)
+  local target = census_power(obs)
   og.mode_set(MATCHED.TARGET, og.min(target, TARGET_CAP))
-  og.mode_set(MATCHED.SIZE, size)
+  og.mode_set(MATCHED.SIZE, decision.matched_size)
 end
 
 -- Per-member spawn level (§5.4): a stored plan answers L (or L + 1 for the
@@ -309,92 +303,240 @@ local function bot_level_for(team, index)
   return level
 end
 
--- Authored score-team census: a team is authored when it fields a live
--- Living or any respawn anchors (the engine anchor scan ran before
--- on_mode_init and includes dead markers).
-local function census_mask(obs)
-  local mask = 0
+-- ---------------------------------------------------------------------------
+-- The staged-init census and the shared activation/fill rules
+-- ---------------------------------------------------------------------------
+
+-- The init-time census (#218 staged lobby): the identical inputs shape the
+-- retired C++ plan census produced (match_plan.cpp), rebuilt from the LIVE
+-- world at the top of every on_mode_init. Under staging init runs ONCE per
+-- stage in a REAL world — the census IS the world, so no marshaling layer
+-- survives. Live NON-DORMANT livings split by has_guy, live non-dormant
+-- generators, raw flag rows in fx order (out-of-range and surplus included
+-- — the fold decides), the engine anchor counts (banked by mode_stage_init
+-- before this hook, dead markers included) and the four request knobs.
+-- The dormancy carve-out matches the C++ staged report census
+-- (picker_common.cpp): delayed-spawn walkers are outside snapshot capture,
+-- so a team the census counted but the pane could not see would activate
+-- with a fill nobody rendered.
+local function census_inputs()
+  local inputs = {
+    team_count = og.match_setting("team_count"),
+    strip_troops = og.match_setting("strip_troops"),
+    score_limit = og.match_setting("score_limit"),
+    respawn_ticks = og.match_setting("respawn_ticks"),
+    teams = {},
+    flags = {},
+  }
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
-    if og.respawn_anchor_count(team) > 0 then
-      mask = core.mask_add(mask, team)
-    end
+    inputs.teams[team + 1] = {
+      anchors = og.respawn_anchor_count(team),
+      roster = 0,
+      npcs = 0,
+      generators = 0,
+    }
   end
+  local obs = og.oblist()
   for k = 1, #obs do
     local w = obs[k]
-    if w:dead() == 0 then
-      if w:order() == C.ORDER_LIVING then
-        local team = w:team_num()
-        if team < C.SCORE_TEAM_COUNT then
-          mask = core.mask_add(mask, team)
+    -- Dormant (delayed-spawn) walkers are skipped alongside dead ones: they
+    -- are excluded from snapshot capture, so the C++ staged report censuses
+    -- the non-dormant world only. Counting them here would activate a team
+    -- and bank a fill the preview pane renders as absent (#218).
+    if w:dead() == 0 and not w:dormant() then
+      local team = w:team_num()
+      if team < C.SCORE_TEAM_COUNT then
+        local trow = inputs.teams[team + 1]
+        local order = w:order()
+        if order == C.ORDER_LIVING then
+          if w:has_guy() then
+            trow.roster = trow.roster + 1
+          else
+            trow.npcs = trow.npcs + 1
+          end
+        elseif order == C.ORDER_GENERATOR then
+          trow.generators = trow.generators + 1
         end
       end
     end
   end
-  return mask
+  local flag_family = og.family_id("treasure", "modes:flag")
+  local fxlist = og.fxlist()
+  for k = 1, #fxlist do
+    local e = fxlist[k]
+    if e:dead() == 0 then
+      if e:order() == C.ORDER_TREASURE then
+        if e:family() == flag_family then
+          inputs.flags[#inputs.flags + 1] = {
+            team = e:team_num(),
+            level = e:s_level(),
+          }
+        end
+      end
+    end
+  end
+  return inputs
 end
 
--- TROOPS:OWN activation, the shared ruling all six modes apply: under OWN
--- the deployed rosters ARE the match. Returns the replacement active mask,
--- or nil when the standard requested activation stands (TROOPS:ALL, or an
--- all-bot match with no rosters anywhere).
+-- Team activation over the census inputs, the shared ruling all five mask
+-- modes apply (issue #218): the ONE copy of the rule, consumed by each
+-- mode's decide fold at the top of on_mode_init (only the inputs decide).
+-- Precedence, in evaluation order:
 --
---   two or more roster teams  exactly those teams — init manufactures no
---                             extra sides. The authored domain still
---                             clamps (Soccer two on a two-goal pitch, four
---                             on FOURSQUARE): a roster seated outside it
---                             cannot score there and does not count, so a
---                             three-roster group on a two-team pitch
---                             activates the first two in index order.
---   exactly one roster team   that team plus the FIRST authored non-roster
---                             team in index order — a solo group needs an
---                             opponent, and the mode's own empty-team
---                             census behind the strip backfills exactly
---                             that one side.
---   zero roster teams         nil — a bot match keeps today's shape.
-local function own_roster_activation(authored_mask, obs)
-  -- The TROOPS: FAIR census (D15) rides this call — the one walk of the
-  -- oblist every mode's on_mode_init shares — so activation and matching
-  -- can never disagree about which teams are human. It self-gates on the
-  -- matched request and runs before the TROOPS:ALL early return — which
-  -- never fires under FAIR, because the sentinel (3) is itself above KEEP:
-  -- matching implies strip-on (D26/D29).
-  record_match_target(obs)
-  if og.match_setting("strip_troops") <= strip.KEEP then
-    return nil
+--   TROOPS: ALL               the call site's requested activation stands:
+--                             the lobby count, at TEAMS: Auto the caller's
+--                             auto_default (the manifest row.teams for
+--                             soccer/basketball/onslaught; 0 — "every
+--                             authored team" — for CTF/TDM, the verified
+--                             per-mode Auto asymmetry), clamped over the
+--                             authored domain.
+--   OWN/FAIR, any roster      ONE rule for every TEAMS value AND every
+--   shape (empty included)    roster shape: the request is the explicit
+--                             lobby count N, or at TEAMS: Auto the
+--                             AUTHORED team count — the zero sentinel
+--                             means "as many teams as the map actually
+--                             has" (2026-08-18 maintainer directive,
+--                             matched-teams-design.md). Roster teams all
+--                             stay; authored non-roster teams backfill in
+--                             index order until the mask holds
+--                             clamp(request, 2, 4) teams; a roster already
+--                             at or past the count stays exactly the
+--                             roster (max semantics — a deployed side is
+--                             never stripped to satisfy a count). An
+--                             all-bot match (zero rosters anywhere)
+--                             backfills from empty, so its mask equals the
+--                             plain activation clamp of the same request.
+--                             A solo roster on a map authoring nobody else
+--                             comes back alone and reads starts = false.
+--
+-- Returns (active_mask, starts, matched, matched_size): matched reports a
+-- TROOPS: FAIR request with a deployed roster anywhere (the predicted
+-- nonzero census — FAIR with no roster degrades to the legacy squads);
+-- matched_size is the D34 headcount rule — one roster team = its deployed
+-- count, several = the MIN across them, authored or not (mirroring the
+-- census, which prices every has_guy walker on a score team).
+local function activation(inputs, authored_mask, auto_default)
+  local matched = false
+  local matched_size = 0
+  if inputs.strip_troops == core.MATCHED_TROOPS then
+    for t = 1, C.SCORE_TEAM_COUNT do
+      local n = inputs.teams[t].roster
+      if n > 0 then
+        matched = true
+        if matched_size == 0 then
+          matched_size = n
+        elseif n < matched_size then
+          matched_size = n
+        end
+      end
+    end
   end
-  local roster = 0
-  for k = 1, #obs do
-    local w = obs[k]
-    if w:dead() == 0 then
-      if w:order() == C.ORDER_LIVING then
-        if w:has_guy() then
-          local team = w:team_num()
-          if team < C.SCORE_TEAM_COUNT then
-            if core.mask_has(authored_mask, team) then
-              roster = core.mask_add(roster, team)
-            end
+  if inputs.strip_troops <= strip.KEEP then
+    local requested = inputs.team_count
+    if requested <= 0 then
+      requested = auto_default
+    end
+    local mask = core.activate_teams(authored_mask, requested)
+    return mask, core.mask_count(mask) >= 2, matched, matched_size
+  end
+  local roster_mask = 0
+  for team = 0, C.SCORE_TEAM_COUNT - 1 do
+    if inputs.teams[team + 1].roster > 0 then
+      if core.mask_has(authored_mask, team) then
+        roster_mask = core.mask_add(roster_mask, team)
+      end
+    end
+  end
+  local requested = inputs.team_count
+  if requested <= 0 then
+    requested = core.mask_count(authored_mask)
+  end
+  local target = og.clamp(requested, 2, C.SCORE_TEAM_COUNT)
+  local mask = roster_mask
+  for team = 0, C.SCORE_TEAM_COUNT - 1 do
+    if core.mask_count(mask) < target then
+      if core.mask_has(authored_mask, team) then
+        mask = core.mask_add(mask, team)
+      end
+    end
+  end
+  return mask, core.mask_count(mask) >= 2, matched, matched_size
+end
+
+-- Per-team fill rows: what fields each team once the apply has consumed
+-- markers, stripped and backfilled — precomputed from the same counts the
+-- strips reduce to (under strip-on only has_guy walkers survive,
+-- mode_strip; under KEEP an active team keeps roster + npcs), so the
+-- apply spawns exactly where a row says "bots"/"matched". opts:
+--   keep_generators   (onslaught) generators survive the strip
+--   no_bots           (onslaught D17) never field a squad
+--   matched, matched_size   activation's answers (the FAIR seam)
+-- Returns (teams, wants_bots): teams is the decision's [1..4] row array
+-- ({active, fill, count}); wants_bots reports any "bots"/"matched" row
+-- (squad classes are drawn at spawn — mode_anchors squad_code).
+local function fills(inputs, active_mask, opts)
+  -- Every shipped squad table fields five bots (D35 soldier-first); a
+  -- matched squad truncates to the headcount prefix (D39).
+  local squad_size = 5
+  local keep_generators = false
+  local no_bots = false
+  local matched = false
+  local matched_size = 0
+  if opts ~= nil then
+    keep_generators = opts.keep_generators == true
+    no_bots = opts.no_bots == true
+    matched = opts.matched == true
+    matched_size = opts.matched_size or 0
+  end
+  local strip_on = inputs.strip_troops > strip.KEEP
+  local teams = {}
+  local wants_bots = false
+  for team = 0, C.SCORE_TEAM_COUNT - 1 do
+    local row = inputs.teams[team + 1]
+    local active = core.mask_has(active_mask, team)
+    local fill = "empty"
+    local count = 0
+    if active then
+      local troops_stand = row.npcs > 0
+      if strip_on then
+        troops_stand = false
+      end
+      local gens_stand = row.generators > 0
+      if strip_on then
+        if not keep_generators then
+          gens_stand = false
+        end
+      end
+      if row.roster > 0 then
+        fill = "company"
+        count = row.roster
+      elseif troops_stand then
+        fill = "troops"
+        count = row.npcs
+      elseif no_bots then
+        if gens_stand then
+          fill = "generators"
+          count = row.generators
+        end
+      else
+        -- The FAIR -> legacy degrade rides here: matched with a zero
+        -- headcount (no roster anywhere -> predicted TARGET 0) is the
+        -- plain difficulty squad, exactly what spawn_bots does at
+        -- MATCHED.TARGET == 0.
+        fill = "bots"
+        count = squad_size
+        wants_bots = true
+        if matched then
+          if matched_size > 0 then
+            fill = "matched"
+            count = og.min(matched_size, squad_size)
           end
         end
       end
     end
+    teams[team + 1] = { active = active, fill = fill, count = count }
   end
-  local count = core.mask_count(roster)
-  if count == 0 then
-    return nil
-  end
-  if count >= 2 then
-    return roster
-  end
-  for team = 0, C.SCORE_TEAM_COUNT - 1 do
-    if core.mask_has(authored_mask, team) then
-      if not core.mask_has(roster, team) then
-        return core.mask_add(roster, team)
-      end
-    end
-  end
-  -- A solo roster on a map authoring nobody else: hand back the lone team
-  -- and let the mode's fewer-than-two check report the shape.
-  return roster
+  return teams, wants_bots
 end
 
 -- Consume the active teams' start markers (anchor positions are already
@@ -552,6 +694,7 @@ local function add_squad_member(team, family_name)
   end
   w:set_team_num(team)
   w:set_real_team_num(255)
+  caps.mark_bot(w)
   return w
 end
 
@@ -855,8 +998,10 @@ return {
   census_power = census_power,
   solve_matched_levels = solve_matched_levels,
   bot_level_for = bot_level_for,
-  census_mask = census_mask,
-  own_roster_activation = own_roster_activation,
+  census_inputs = census_inputs,
+  activation = activation,
+  fills = fills,
+  bank_match_target = bank_match_target,
   consume_markers = consume_markers,
   strip_inactive_teams = strip_inactive_teams,
   place_at_anchor = place_at_anchor,

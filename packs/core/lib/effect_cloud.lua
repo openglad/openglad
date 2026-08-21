@@ -41,7 +41,28 @@ local function on_act(self)
 
   -- Are we performing some action?
   if self:s_has_commands() then
+    -- do_command hides walkstep's result (stats.cpp keeps result == 1), so
+    -- blockage is read back from state: a tick that moved nothing AND kept
+    -- the facing is the frozen wall-wedge (#233) — a deflected slide moves,
+    -- a pure turn tick changes curdir, and neither draws here, so the
+    -- parity RNG stream on every moving path is byte-identical to C++.
+    local held_x = self:xpos()
+    local held_y = self:ypos()
+    local held_dir = self:curdir()
     self:s_do_command()
+    if self:xpos() == held_x then
+      if self:ypos() == held_y then
+        if self:curdir() == held_dir then
+          self:s_clear_command()
+          local xd, yd = 0, 0
+          while xd == 0 and yd == 0 do
+            xd = og.rand(3) - 1
+            yd = og.rand(3) - 1
+          end
+          self:s_add_command(C.COMMAND_WALK, og.rand(20), xd, yd)
+        end
+      end
+    end
   else
     -- Two separate C++ statements, so the draw order is defined: xd then yd,
     -- re-rolled together until the step is non-zero.

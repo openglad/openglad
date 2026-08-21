@@ -1,0 +1,1018 @@
+// The staged-init rule oracles (#218 plan-phase retirement): the shared
+// activation/fill rules live in lib/mode_match.lua alone (match.activation /
+// match.fills), consumed by each mode's decide fold at the top of
+// on_mode_init — which now runs ONCE, at staging, in a REAL world. These
+// suites pin the rules three ways:
+//
+//  1. The 16-row activation precedence sweep keeps its EXACT coverage
+//     through a direct-Lua harness calling match.activation on synthetic
+//     inputs tables (the inventory-sanctioned shape — the reborn
+//     roster_effective_team_mask sweep, unchanged rows).
+//  2. The per-mode domain/fill/limit oracles become STAGED-WORLD
+//     assertions: build the fixture shape, run the real mode_stage_init
+//     (the exact function MatchStage runs), assert the banked mode vars
+//     and the fielded entities exactly.
+//  3. The old agreement matrix becomes the apply-executes-decision matrix:
+//     the shared Lua rules (via the harness) produce the expected values
+//     and the staged world must bank and field exactly those — plus the
+//     per-mode staged-vs-adopted BYTE-identity oracles over the real
+//     shipped levels (preview == launch as an assertable identity; the
+//     soccer arm lives in test_match_stage.cpp since C4/C7).
+
+#include <gtest/gtest.h>
+
+#include <openglad/core/constants.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/mode/mode_state.h>
+#include <openglad/gameplay/script/family_hooks.h>
+#include <openglad/gameplay/script/pack_scripts.h>
+#include <openglad/gameplay/script/script_host.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/world_snapshot.h>
+#include <openglad/interface/level_runtime_data.h>
+#include <openglad/resources/gparser.h>
+#include <openglad/resources/io_common.h>
+#include <openglad/resources/level_data_hooks.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/server/match_stage.h>
+
+#include "../modes_pack_fixture.h"
+
+#include <array>
+#include <cstdint>
+#include <format>
+#include <string>
+#include <vector>
+
+using namespace og::modes_test;
+
+namespace {
+
+// The modes.core bot provenance tag (mode_caps.lua BOT_MARK_BIT).
+constexpr std::int32_t kBotMarkBit = 65536;
+
+// Per-mode banked-slot map (the tests' standing mode-table knowledge):
+// {mask slot, count slot or -1, score slot or -1}.
+struct ModeSlots
+{
+    int mask = -1;
+    int count = -1;
+    int score = -1;
+};
+constexpr ModeSlots kCtfSlots{11, 10, 8};
+constexpr ModeSlots kTdmSlots{8, -1, 9};
+constexpr ModeSlots kSoccerSlots{11, 10, 8};
+constexpr ModeSlots kBballSlots{11, 10, 8};
+constexpr ModeSlots kOnsSlots{9, 10, -1};
+
+bool has_script_error(GameWorld& world, const std::string& needle)
+{
+    for (const auto& err : world.scripts().host().errors())
+    {
+        if (err.message.find(needle) != std::string::npos)
+            return true;
+    }
+    return false;
+}
+
+int live_livings_on(GameWorld& world, int team)
+{
+    int count = 0;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w != nullptr && !w->dead() &&
+            w->query_order() == Order::Living &&
+            w->team_num() == static_cast<unsigned char>(team))
+        {
+            count++;
+        }
+    }
+    return count;
+}
+
+int marked_bots_on(GameWorld& world, int team)
+{
+    int count = 0;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        if (w->team_num() != static_cast<unsigned char>(team) ||
+            w->myguy != nullptr)
+            continue;
+        if (w->stats() != nullptr &&
+            (w->stats()->bit_flags() & kBotMarkBit) != 0)
+            ++count;
+    }
+    return count;
+}
+
+// The staged init, exactly as MatchStage runs it: respawn resolve + anchor
+// scan + the real on_mode_init, on the dormant tick-0 fixture world.
+void stage_init(ModesCtfWorld& fx)
+{
+    og::sim::mode_stage_init(fx.world());
+    ASSERT_EQ(0u, fx.world().tick_count_) << "staging must not tick";
+}
+
+// --- The direct-Lua harness for the shared rules ---------------------------
+//
+// og.use is load-time-only, so the harness is a registered probe script
+// (the TeamCountProbeScript discipline): it binds mode_match at load time
+// and registers an on_load hook for probe level 9092 that reads the case
+// parameters from mode vars, calls match.activation + match.fills, and
+// banks the packed answers back into mode vars. The harness world runs
+// STRICTLY sequentially with any staged fixture world (two live fixtures
+// resolve script bindings against the last-constructed world — the
+// standing harness trap).
+
+// Parameter slots 40..59, answers 60/63.
+constexpr const char* kRuleProbeLua =
+    "local match = og.use(\"mode_match\")\n"
+    "og.register_level_hooks(9092, {\n"
+    "  on_load = function(level)\n"
+    "    local inputs = {\n"
+    "      team_count = og.mode_get(40),\n"
+    "      strip_troops = og.mode_get(41),\n"
+    "      score_limit = 0,\n"
+    "      respawn_ticks = 0,\n"
+    "      teams = {},\n"
+    "      flags = {},\n"
+    "    }\n"
+    "    for t = 0, 3 do\n"
+    "      inputs.teams[t + 1] = {\n"
+    "        anchors = og.mode_get(42 + t),\n"
+    "        roster = og.mode_get(46 + t),\n"
+    "        npcs = og.mode_get(50 + t),\n"
+    "        generators = og.mode_get(54 + t),\n"
+    "      }\n"
+    "    end\n"
+    "    local mask, starts, matched, matched_size =\n"
+    "        match.activation(inputs, og.mode_get(58), og.mode_get(59))\n"
+    "    local packed = mask\n"
+    "    if starts then\n"
+    "      packed = packed + 16\n"
+    "    end\n"
+    "    if matched then\n"
+    "      packed = packed + 32\n"
+    "    end\n"
+    "    og.mode_set(60, packed + matched_size * 64)\n"
+    "    local rows = match.fills(inputs, mask, {\n"
+    "      keep_generators = og.mode_get(61) == 1,\n"
+    "      no_bots = og.mode_get(62) == 1,\n"
+    "      matched = matched,\n"
+    "      matched_size = matched_size,\n"
+    "    })\n"
+    "    local codes = {\n"
+    "      empty = 0,\n"
+    "      company = 1,\n"
+    "      troops = 2,\n"
+    "      bots = 3,\n"
+    "      matched = 4,\n"
+    "      generators = 5,\n"
+    "    }\n"
+    "    local fills_packed = 0\n"
+    "    local base = 1\n"
+    "    for t = 1, 4 do\n"
+    "      local row = rows[t]\n"
+    "      fills_packed = fills_packed + (codes[row.fill] + row.count * 8) * base\n"
+    "      base = base * 100\n"
+    "    end\n"
+    "    og.mode_set(63, fills_packed)\n"
+    "  end,\n"
+    "})\n";
+
+struct RuleProbeScript
+{
+    RuleProbeScript()
+    {
+        og::script::register_pack_script(
+            {kRulesPackId, "zz_staged_rule_probe.lua", kRuleProbeLua});
+    }
+    ~RuleProbeScript()
+    {
+        og::script::register_pack_script(
+            {kRulesPackId, "zz_staged_rule_probe.lua", ""});
+    }
+};
+
+struct RuleAnswer
+{
+    int mask = -1;
+    bool starts = false;
+    bool matched = false;
+    int matched_size = 0;
+    std::int64_t fills_packed = -1;
+};
+
+// One probe dispatch (its own short-lived world, destroyed before any
+// staged fixture world is built).
+RuleAnswer eval_rules(const std::array<std::array<int, 4>, 4>& teams,
+                      int team_count, int strip, unsigned authored,
+                      int auto_default, bool keep_generators, bool no_bots)
+{
+    RuleProbeScript probe;
+    ModesCtfWorld fx(9092);
+    GameWorld& w = fx.world();
+    w.mode.vars[40] = team_count;
+    w.mode.vars[41] = strip;
+    for (std::size_t t = 0; t < 4; ++t)
+    {
+        w.mode.vars[42 + t] = teams[t][0];
+        w.mode.vars[46 + t] = teams[t][1];
+        w.mode.vars[50 + t] = teams[t][2];
+        w.mode.vars[54 + t] = teams[t][3];
+    }
+    w.mode.vars[58] = static_cast<std::int32_t>(authored);
+    w.mode.vars[59] = auto_default;
+    w.mode.vars[61] = keep_generators ? 1 : 0;
+    w.mode.vars[62] = no_bots ? 1 : 0;
+    w.mode.vars[60] = -1;
+    w.mode.vars[63] = -1;
+    w.run_pending_level_on_load();
+    RuleAnswer answer;
+    EXPECT_TRUE(w.scripts().host().errors().empty())
+        << "rule probe raised: "
+        << (w.scripts().host().errors().empty()
+                ? std::string()
+                : w.scripts().host().errors().back().message);
+    const std::int32_t packed = w.mode.vars[60];
+    EXPECT_NE(-1, packed) << "the rule probe never answered";
+    if (packed < 0)
+        return answer;
+    answer.mask = packed & 0xF;
+    answer.starts = (packed & 16) != 0;
+    answer.matched = (packed & 32) != 0;
+    answer.matched_size = packed >> 6;
+    answer.fills_packed = w.mode.vars[63];
+    return answer;
+}
+
+// The convenience mask-only read the sweep uses: one anchor per authored
+// team, one roster fighter per roster team (the old sweep_inputs shape).
+int activation_mask(unsigned authored, unsigned roster, int team_count,
+                    int strip)
+{
+    std::array<std::array<int, 4>, 4> teams{};
+    for (int t = 0; t < 4; ++t)
+    {
+        if ((authored & (1u << t)) != 0)
+            teams[static_cast<std::size_t>(t)][0] = 1;
+        if ((roster & (1u << t)) != 0)
+            teams[static_cast<std::size_t>(t)][1] = 1;
+    }
+    return eval_rules(teams, team_count, strip, authored, 0, false, false)
+        .mask;
+}
+
+}  // namespace
+
+using StagedRules = ModesPackTest;
+
+// ===========================================================================
+// 1. Activation precedence — the 16 rows, verbatim, through the direct-Lua
+//    harness (the rule's unit-level oracle; auto_default 0 = CTF/TDM's arm,
+//    the manifest-default arm is pinned on staged worlds below).
+// ===========================================================================
+
+TEST_F(StagedRules, activation_precedence_sweep)
+{
+    // Empty roster under OWN: identical to the count clamp, Auto and
+    // numeric alike (Auto = the AUTHORED team count).
+    EXPECT_EQ(0b1111, activation_mask(0b1111, 0, 0, 2));
+    EXPECT_EQ(0b0111, activation_mask(0b1111, 0, 3, 2));
+    EXPECT_EQ(0b0101, activation_mask(0b1101, 0, 2, 2));
+
+    // Auto resolves to the AUTHORED team count (the zero sentinel means
+    // "as many teams as the map actually has" — issue #218, the
+    // 2026-08-18 directive), so with a roster it always backfills to the
+    // full authored mask...
+    EXPECT_EQ(0b1111, activation_mask(0b1111, 0b0001, 0, 2));
+    EXPECT_EQ(0b0101, activation_mask(0b0101, 0b0100, 0, 2));
+    // ...unless nothing else is authored (the lone bit stands, and the
+    // rule reports the not-starting shape).
+    EXPECT_EQ(0b0100, activation_mask(0b0100, 0b0100, 0, 2));
+    // Auto with two or more rosters still fills to the authored count.
+    EXPECT_EQ(0b1111, activation_mask(0b1111, 0b0101, 0, 2));
+    EXPECT_EQ(0b1111, activation_mask(0b1111, 0b1110, 0, 2));
+
+    // Explicit count: sparse authored {0, 2, 3}, roster {2}, N = 2 —
+    // the roster stays and team 0 backfills in index order.
+    EXPECT_EQ(0b0101, activation_mask(0b1101, 0b0100, 2, 2));
+    // Rosters {0, 3} already meet N = 2: exactly the rosters.
+    EXPECT_EQ(0b1001, activation_mask(0b1111, 0b1001, 2, 2));
+    // Solo roster at N = 3: two backfills in index order.
+    EXPECT_EQ(0b0111, activation_mask(0b1111, 0b0001, 3, 2));
+    // Max semantics: three rosters outrank N = 2.
+    EXPECT_EQ(0b0111, activation_mask(0b1111, 0b0111, 2, 2));
+    // The clamp: N = 1 acts as 2, N = 5+ acts as 4.
+    EXPECT_EQ(0b0011, activation_mask(0b1111, 0b0001, 1, 2));
+    EXPECT_EQ(0b1111, activation_mask(0b1111, 0b0001, 5, 2));
+    // Roster bits outside the authored domain are masked off first.
+    EXPECT_EQ(0b0011, activation_mask(0b0011, 0b1100, 0, 2));
+    EXPECT_EQ(0b0011, activation_mask(0b0011, 0b0110, 4, 2));
+}
+
+// ===========================================================================
+// 2. The per-mode staged oracles: real fixture worlds through the real
+//    staged init; banked vars and fielded entities pinned exactly.
+// ===========================================================================
+
+TEST_F(StagedRules, troops_all_auto_asymmetry_is_per_mode)
+{
+    // Soccer/basketball/onslaught: TROOPS:ALL at TEAMS: Auto takes the
+    // manifest default. 9301 declares teams = 2 — with four anchor teams
+    // authored, the staged init fields exactly two.
+    {
+        ModesCtfWorld fx(kSoccerLevelA);
+        for (int team = 0; team < 4; ++team)
+            fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+        fx.world().ctf_requested_strip_scenario_troops = 0;
+        fx.world().ctf_requested_team_count = 0;
+        stage_init(fx);
+        ASSERT_TRUE(fx.world().mode.active);
+        EXPECT_EQ(0b0011, fx.var(kSoccerSlots.mask))
+            << "ALL + Auto = the manifest row.teams default (2), not the "
+               "authored count";
+        EXPECT_EQ(2, fx.var(kSoccerSlots.count));
+    }
+    // 9302 declares teams = 4: three authored anchors clamp to all three.
+    {
+        ModesCtfWorld fx(kSoccerLevelB);
+        for (int team = 0; team < 3; ++team)
+            fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+        fx.world().ctf_requested_strip_scenario_troops = 0;
+        fx.world().ctf_requested_team_count = 0;
+        stage_init(fx);
+        ASSERT_TRUE(fx.world().mode.active);
+        EXPECT_EQ(0b0111, fx.var(kSoccerSlots.mask));
+    }
+    // CTF/TDM pass the RAW request on the ALL arm — Auto = every authored
+    // team, no manifest default.
+    {
+        ModesCtfWorld fx(kTdmLevelA);
+        for (int team = 0; team < 3; ++team)
+            fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+        fx.world().ctf_requested_strip_scenario_troops = 0;
+        fx.world().ctf_requested_team_count = 0;
+        stage_init(fx);
+        ASSERT_TRUE(fx.world().mode.active);
+        EXPECT_EQ(0b0111, fx.var(kTdmSlots.mask))
+            << "TDM ALL + Auto = every authored team (raw request)";
+    }
+    // Onslaught 9401 declares teams = 2: generator domain, Auto -> 2.
+    {
+        ModesCtfWorld fx(kOnsLevelA);
+        fx.spawn_generator(FAMILY_TENT, 0, 128, 320);
+        fx.spawn_generator(FAMILY_TENT, 1, 480, 320);
+        fx.spawn_generator(FAMILY_TENT, 2, 640, 320);
+        fx.world().ctf_requested_strip_scenario_troops = 0;
+        fx.world().ctf_requested_team_count = 0;
+        stage_init(fx);
+        ASSERT_TRUE(fx.world().mode.active);
+        EXPECT_EQ(0b0011, fx.var(kOnsSlots.mask))
+            << "Onslaught ALL + Auto = the manifest row.teams default (2)";
+    }
+}
+
+TEST_F(StagedRules, ctf_domain_is_the_first_flag_per_team_fold)
+{
+    // Rows in fx order: team 1 (kept, level 1), team 1 dup (SURPLUS — its
+    // level 5 must NOT set the map limit), team 7 (out of range), team 0
+    // (kept), team 2 (kept). Anchors on the kept teams so squads field.
+    ModesCtfWorld fx(kCtfLevelA);
+    fx.spawn_flag(flag_family_, 1, 100, 100, 1);
+    fx.spawn_flag(flag_family_, 1, 132, 100, 5);
+    fx.spawn_flag(flag_family_, 7, 164, 100, 9);
+    fx.spawn_flag(flag_family_, 0, 196, 100, 1);
+    fx.spawn_flag(flag_family_, 2, 228, 100, 1);
+    for (int team = 0; team < 3; ++team)
+        fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 200);
+    fx.world().ctf_requested_strip_scenario_troops = 0;
+    fx.world().ctf_requested_team_count = 0;
+
+    stage_init(fx);
+    ASSERT_TRUE(fx.world().mode.active);
+    EXPECT_EQ(0b0111, fx.var(kCtfSlots.mask))
+        << "first flag per in-range team wins the domain";
+    EXPECT_EQ(3, fx.var(kCtfSlots.score))
+        << "no KEPT flag above level 1 -> the T.capture_limit default; a "
+           "surplus flag's level must never leak into the map limit";
+    for (int team = 0; team < 3; ++team)
+    {
+        EXPECT_NE(0, fx.team_var(kSlotFlagEntity, team))
+            << "banked FLAG_ENTITY follows the fold, team " << team;
+    }
+
+    // The kept-flag capture-limit channel: first kept flag above level 1.
+    {
+        ModesCtfWorld leveled(kCtfLevelA);
+        leveled.spawn_flag(flag_family_, 1, 100, 100, 4);
+        leveled.spawn_flag(flag_family_, 0, 196, 100, 1);
+        leveled.spawn_anchor(0, 96, 200);
+        leveled.spawn_anchor(1, 192, 200);
+        leveled.world().ctf_requested_strip_scenario_troops = 0;
+        leveled.world().ctf_requested_team_count = 0;
+        stage_init(leveled);
+        ASSERT_TRUE(leveled.world().mode.active);
+        EXPECT_EQ(4, leveled.var(kCtfSlots.score));
+    }
+    // An explicit request outranks the map.
+    {
+        ModesCtfWorld requested(kCtfLevelA);
+        requested.spawn_flag(flag_family_, 1, 100, 100, 4);
+        requested.spawn_flag(flag_family_, 0, 196, 100, 1);
+        requested.spawn_anchor(0, 96, 200);
+        requested.spawn_anchor(1, 192, 200);
+        requested.world().ctf_requested_strip_scenario_troops = 0;
+        requested.world().ctf_requested_capture_limit = 9;
+        stage_init(requested);
+        ASSERT_TRUE(requested.world().mode.active);
+        EXPECT_EQ(9, requested.var(kCtfSlots.score));
+    }
+    // One flag team = the failed-init shape with CTF's exact sentence,
+    // raised AFTER the surplus kills (a marker team with no flag never
+    // enters the domain).
+    {
+        ModesCtfWorld lone(kCtfLevelA);
+        lone.spawn_flag(flag_family_, 2, 100, 100, 1);
+        lone.spawn_anchor(2, 96, 200);
+        lone.spawn_anchor(3, 192, 200);
+        stage_init(lone);
+        EXPECT_FALSE(lone.world().mode.active);
+        EXPECT_TRUE(lone.world().mode.init_attempted);
+        EXPECT_TRUE(has_script_error(lone.world(),
+                                     "ctf: fewer than two flag teams"));
+    }
+}
+
+TEST_F(StagedRules, tdm_domain_is_anchors_union_livings)
+{
+    ModesCtfWorld fx(kTdmLevelA);
+    fx.spawn_anchor(0, 96, 96);                       // anchors alone author
+    fx.spawn_hero(FAMILY_SOLDIER, 1, 200, 200, 1);    // a roster authors
+    fx.spawn_hero(FAMILY_SOLDIER, 1, 232, 200, 2);
+    fx.spawn_living(FAMILY_ORC, 2, 300, 300);         // troops author
+    fx.world().ctf_requested_strip_scenario_troops = 0;
+    fx.world().ctf_requested_team_count = 0;
+
+    stage_init(fx);
+    ASSERT_TRUE(fx.world().mode.active);
+    EXPECT_EQ(0b0111, fx.var(kTdmSlots.mask));
+    EXPECT_EQ(20, fx.var(kTdmSlots.score))
+        << "no fixture manifest row for 9101 -> the T.score_limit default";
+
+    // The mode's exact failed-init sentence on a lone-team world.
+    ModesCtfWorld lone(kTdmLevelA);
+    lone.spawn_living(FAMILY_ORC, 3, 300, 300);
+    lone.spawn_living(FAMILY_ORC, 3, 332, 300);
+    stage_init(lone);
+    EXPECT_FALSE(lone.world().mode.active);
+    EXPECT_TRUE(has_script_error(lone.world(), "tdm: fewer than two teams"));
+}
+
+// The dormancy carve-out, both halves of it (#218): a delayed-spawn walker
+// is excluded from snapshot capture, so the C++ staged report census skips
+// it (picker_common.cpp) — and the Lua census must skip it too. Otherwise
+// the mode activates a team, banks it a fill, and the preview pane renders
+// that same team as absent.
+TEST_F(StagedRules, dormant_troops_are_uncensused_like_the_staged_report)
+{
+    ModesCtfWorld fx(kTdmLevelA);
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_living(FAMILY_ORC, 1, 300, 300);
+    walker* const delayed = fx.spawn_living(FAMILY_ORC, 2, 400, 300);
+    ASSERT_NE(delayed, nullptr);
+    delayed->set_spawn_delay(120);
+    delayed->set_dormant(true);
+    fx.world().ctf_requested_strip_scenario_troops = 0;
+    fx.world().ctf_requested_team_count = 0;
+
+    stage_init(fx);
+    ASSERT_TRUE(fx.world().mode.active);
+    EXPECT_EQ(0b0011, fx.var(kTdmSlots.mask))
+        << "a delayed-spawn team the preview cannot see must not author the "
+           "domain";
+
+    // The identical cohort AWAKE authors team 2 — the only difference is
+    // dormancy, so this pins the carve-out rather than an empty world.
+    ModesCtfWorld awake(kTdmLevelA);
+    awake.spawn_anchor(0, 96, 96);
+    awake.spawn_living(FAMILY_ORC, 1, 300, 300);
+    awake.spawn_living(FAMILY_ORC, 2, 400, 300);
+    awake.world().ctf_requested_strip_scenario_troops = 0;
+    awake.world().ctf_requested_team_count = 0;
+
+    stage_init(awake);
+    ASSERT_TRUE(awake.world().mode.active);
+    EXPECT_EQ(0b0111, awake.var(kTdmSlots.mask))
+        << "an awake troop on the same team authors normally";
+}
+
+TEST_F(StagedRules, onslaught_domain_and_generator_fills)
+{
+    ModesCtfWorld fx(kOnsLevelB);
+    fx.world().ctf_requested_strip_scenario_troops = 2;  // OWN
+    fx.world().ctf_requested_team_count = 0;
+    fx.spawn_generator(FAMILY_TENT, 0, 128, 320);
+    fx.spawn_generator(FAMILY_TENT, 0, 192, 320);
+    fx.spawn_living(FAMILY_ORC, 1, 300, 640);
+    fx.spawn_hero(FAMILY_SOLDIER, 2, 400, 640, 1);
+
+    stage_init(fx);
+    ASSERT_TRUE(fx.world().mode.active);
+    EXPECT_EQ(0b0111, fx.var(kOnsSlots.mask))
+        << "livings and generators author alike; OWN Auto = the authored "
+           "count";
+    EXPECT_EQ(3, fx.var(kOnsSlots.count));
+    // The fills, fielded: foundries survive OWN, the stripped npc team is
+    // honestly empty (E8), no bots ever (D17), the roster stands.
+    EXPECT_EQ(0, live_livings_on(fx.world(), 0));
+    EXPECT_EQ(0, live_livings_on(fx.world(), 1))
+        << "OWN strips the guy-less npc";
+    EXPECT_EQ(1, live_livings_on(fx.world(), 2));
+    for (int team = 0; team < 4; ++team)
+        EXPECT_EQ(0, marked_bots_on(fx.world(), team))
+            << "onslaught never fields a squad (D17), team " << team;
+}
+
+TEST_F(StagedRules, basketball_domain_and_reason)
+{
+    ModesCtfWorld fx(kBballLevelB);
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(1, 192, 96);
+    fx.world().ctf_requested_strip_scenario_troops = 0;
+    fx.world().ctf_requested_team_count = 0;
+
+    stage_init(fx);
+    ASSERT_TRUE(fx.world().mode.active);
+    EXPECT_EQ(0b0011, fx.var(kBballSlots.mask));
+    EXPECT_EQ(6, fx.var(kBballSlots.score)) << "the 9702 fixture row's limit";
+
+    ModesCtfWorld lone(kBballLevelB);
+    lone.spawn_anchor(1, 96, 96);
+    stage_init(lone);
+    EXPECT_FALSE(lone.world().mode.active);
+    EXPECT_TRUE(has_script_error(
+        lone.world(), "basketball: fewer than two anchor teams"));
+}
+
+TEST_F(StagedRules, fair_matched_size_is_the_min_roster_headcount)
+{
+    // Rosters of 3 and 5 under FAIR: matched, size = min = 3, and the
+    // backfilled teams field MATCHED squads truncated to that headcount.
+    ModesCtfWorld fx(kSoccerLevelB);
+    for (int team = 0; team < 4; ++team)
+        fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+    int guy_id = 1;
+    for (int k = 0; k < 3; ++k)
+        fx.spawn_hero(FAMILY_SOLDIER, 0, static_cast<short>(96 + 32 * k),
+                      700, guy_id++);
+    for (int k = 0; k < 5; ++k)
+        fx.spawn_hero(FAMILY_SOLDIER, 2, static_cast<short>(96 + 32 * k),
+                      760, guy_id++);
+    fx.world().ctf_requested_strip_scenario_troops =
+        static_cast<short>(og::sim::kTroopsMatched);
+    fx.world().ctf_requested_team_count = 0;
+
+    stage_init(fx);
+    ASSERT_TRUE(fx.world().mode.active);
+    EXPECT_EQ(3, fx.var(kSlotMatchedSize))
+        << "several roster teams -> the MIN headcount (D34)";
+    EXPECT_GT(fx.var(kSlotMatchedTarget), 0)
+        << "a live has_guy walker always prices above zero";
+    EXPECT_EQ(3, live_livings_on(fx.world(), 0));
+    EXPECT_EQ(5, live_livings_on(fx.world(), 2));
+    EXPECT_EQ(3, marked_bots_on(fx.world(), 1))
+        << "a matched squad truncates to min(headcount, 5)";
+    EXPECT_EQ(3, marked_bots_on(fx.world(), 3));
+
+    // A deployed roster OUTSIDE the authored domain still sizes the match
+    // (the census prices every has_guy walker) but never activates.
+    ModesCtfWorld outside(kSoccerLevelB);
+    outside.spawn_anchor(0, 96, 96);
+    outside.spawn_anchor(1, 192, 96);
+    guy_id = 1;
+    for (int k = 0; k < 4; ++k)
+        outside.spawn_hero(FAMILY_SOLDIER, 0,
+                           static_cast<short>(96 + 32 * k), 700, guy_id++);
+    outside.spawn_hero(FAMILY_SOLDIER, 3, 96, 760, guy_id++);
+    outside.spawn_hero(FAMILY_SOLDIER, 3, 128, 760, guy_id++);
+    outside.world().ctf_requested_strip_scenario_troops =
+        static_cast<short>(og::sim::kTroopsMatched);
+    outside.world().ctf_requested_team_count = 0;
+    stage_init(outside);
+    ASSERT_TRUE(outside.world().mode.active);
+    EXPECT_EQ(0b0011, outside.var(kSoccerSlots.mask))
+        << "an unauthored roster team never activates";
+    EXPECT_EQ(2, outside.var(kSlotMatchedSize))
+        << "but its headcount still bounds the matched size";
+    EXPECT_EQ(2, marked_bots_on(outside.world(), 1));
+}
+
+TEST_F(StagedRules, fair_with_no_roster_degrades_to_legacy_bots)
+{
+    ModesCtfWorld fx(kSoccerLevelB);
+    for (int team = 0; team < 3; ++team)
+        fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+    fx.world().ctf_requested_strip_scenario_troops =
+        static_cast<short>(og::sim::kTroopsMatched);
+    fx.world().ctf_requested_team_count = 0;
+
+    stage_init(fx);
+    ASSERT_TRUE(fx.world().mode.active);
+    EXPECT_EQ(0, fx.var(kSlotMatchedSize))
+        << "FAIR with zero rosters anywhere predicts TARGET 0";
+    EXPECT_EQ(0, fx.var(kSlotMatchedTarget));
+    for (int team = 0; team < 3; ++team)
+    {
+        EXPECT_EQ(5, marked_bots_on(fx.world(), team))
+            << "the legacy difficulty squad, NOT matched (the degrade), "
+               "team " << team;
+    }
+}
+
+TEST_F(StagedRules, soccer_score_limit_resolution_and_troops_fill)
+{
+    // Request > row > default, clamped into [1, 255]. 9301's row limit: 3.
+    ModesCtfWorld fx(kSoccerLevelA);
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(1, 528, 96);
+    for (int k = 0; k < 4; ++k)
+        fx.spawn_living(FAMILY_ORC, 1, static_cast<short>(300 + 32 * k), 300);
+    fx.world().ctf_requested_strip_scenario_troops = 0;
+    fx.world().ctf_requested_team_count = 0;
+    stage_init(fx);
+    ASSERT_TRUE(fx.world().mode.active);
+    EXPECT_EQ(3, fx.var(kSoccerSlots.score)) << "no request -> the row limit";
+    EXPECT_EQ(4, live_livings_on(fx.world(), 1))
+        << "under ALL the authored troops stand";
+    EXPECT_EQ(0, marked_bots_on(fx.world(), 1));
+    EXPECT_EQ(5, marked_bots_on(fx.world(), 0))
+        << "an active team with nothing at all gets the squad";
+
+    ModesCtfWorld requested(kSoccerLevelA);
+    requested.spawn_anchor(0, 96, 96);
+    requested.spawn_anchor(1, 528, 96);
+    requested.world().ctf_requested_capture_limit = 7;
+    stage_init(requested);
+    ASSERT_TRUE(requested.world().mode.active);
+    EXPECT_EQ(7, requested.var(kSoccerSlots.score))
+        << "the request outranks the row";
+
+    ModesCtfWorld clamped(kSoccerLevelA);
+    clamped.spawn_anchor(0, 96, 96);
+    clamped.spawn_anchor(1, 528, 96);
+    clamped.world().ctf_requested_capture_limit = 999;
+    stage_init(clamped);
+    ASSERT_TRUE(clamped.world().mode.active);
+    EXPECT_EQ(255, clamped.var(kSoccerSlots.score)) << "clamped to [1, 255]";
+}
+
+TEST_F(StagedRules, tdm_matched_fill_truncates_to_the_headcount)
+{
+    // TDM's fixed squad table makes the matched truncation exactly
+    // knowable: min headcount 1 -> the backfilled team fields precisely
+    // one marked soldier (the D35 soldier-first prefix).
+    ModesCtfWorld fx(kTdmLevelA);
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(1, 528, 96);
+    fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1);
+    fx.world().ctf_requested_strip_scenario_troops =
+        static_cast<short>(og::sim::kTroopsMatched);
+    fx.world().ctf_requested_team_count = 0;
+
+    stage_init(fx);
+    ASSERT_TRUE(fx.world().mode.active);
+    EXPECT_EQ(1, fx.var(kSlotMatchedSize));
+    EXPECT_EQ(1, marked_bots_on(fx.world(), 1))
+        << "the matched squad truncates to the min roster headcount";
+    EXPECT_EQ(1, live_livings_on(fx.world(), 1));
+}
+
+// ===========================================================================
+// 3. The apply-executes-decision matrix: the shared rules (via the harness)
+//    produce the expected values; the staged world must bank and field
+//    exactly those. 16 cases per mode, the old agreement matrix's shapes.
+// ===========================================================================
+
+namespace {
+
+struct MatrixMode
+{
+    const char* name;
+    int level_id;
+    ModeSlots slots;
+    int auto_default;   // manifest row.teams (0 = the CTF/TDM raw arm)
+    bool keep_generators;
+    bool no_bots;
+};
+
+// The shared matrix world: the mode's authored domain on teams 0-2, one
+// guy-less npc on team 1, and `roster` heroes per team (roster teams are a
+// subset of {0, 2}, so the authored domain is 0b0111 for every mode — the
+// construction knowledge the old matrix pinned via the plan's fold).
+void author_matrix_world(const MatrixMode& mode, ModesCtfWorld& fx,
+                         int flag_family, const std::array<int, 4>& roster)
+{
+    const bool ctf = std::string(mode.name) == "ctf";
+    const bool ons = std::string(mode.name) == "onslaught";
+    for (int team = 0; team < 3; ++team)
+    {
+        const short x = static_cast<short>(96 + 96 * team);
+        if (ctf)
+            fx.spawn_flag(flag_family, team, x, 96);
+        else if (ons)
+            fx.spawn_generator(FAMILY_TENT, team, x, 320);
+        else
+            fx.spawn_anchor(team, x, 448);
+        if (ctf || ons)
+            fx.spawn_anchor(team, x, 512);  // squads/spawns need anchors
+    }
+    fx.spawn_living(FAMILY_ORC, 1, 300, 640);
+    int guy_id = 1;
+    for (int team = 0; team < 4; ++team)
+    {
+        for (int k = 0; k < roster[static_cast<std::size_t>(team)]; ++k)
+        {
+            fx.spawn_hero(FAMILY_SOLDIER, team,
+                          static_cast<short>(96 + 32 * k),
+                          static_cast<short>(700 + 48 * team), guy_id++);
+        }
+    }
+}
+
+void run_staged_case(const MatrixMode& mode, int flag_family, int strip,
+                     int team_count, const std::array<int, 4>& roster)
+{
+    SCOPED_TRACE(::testing::Message()
+                 << mode.name << " strip=" << strip << " teams="
+                 << team_count << " roster=" << roster[0] << roster[1]
+                 << roster[2] << roster[3]);
+    // The expected decision FIRST, from the ONE shared rule (the harness
+    // probe world lives and dies before the staged fixture world exists —
+    // the strictly-sequential twin-world discipline): the matrix world
+    // authors domain 0b0111 with the census rows below. (activation reads
+    // roster/knobs; fills reads roster/npcs/generators — the anchors
+    // column is inert to both and kept for the inputs shape.)
+    std::array<std::array<int, 4>, 4> teams{};
+    for (int t = 0; t < 3; ++t)
+    {
+        teams[static_cast<std::size_t>(t)][0] = 1;
+        if (std::string(mode.name) == "onslaught")
+            teams[static_cast<std::size_t>(t)][3] = 1;  // the foundry
+    }
+    teams[1][2] = 1;  // the guy-less npc on team 1
+    for (int t = 0; t < 4; ++t)
+        teams[static_cast<std::size_t>(t)][1] =
+            roster[static_cast<std::size_t>(t)];
+
+    const RuleAnswer expected =
+        eval_rules(teams, team_count, strip, 0b0111, mode.auto_default,
+                   mode.keep_generators, mode.no_bots);
+    ASSERT_GE(expected.mask, 0);
+    ASSERT_GE(expected.fills_packed, 0);
+    const int expected_mask = expected.mask;
+    const bool expected_starts = expected.starts;
+    const bool expected_matched = expected.matched;
+    const int expected_size = expected.matched_size;
+    const std::int64_t fills_packed = expected.fills_packed;
+
+    ModesCtfWorld fx(mode.level_id);
+    fx.world().ctf_requested_strip_scenario_troops =
+        static_cast<short>(strip);
+    fx.world().ctf_requested_team_count = static_cast<short>(team_count);
+    author_matrix_world(mode, fx, flag_family, roster);
+    stage_init(fx);
+    if (!expected_starts)
+    {
+        EXPECT_FALSE(fx.world().mode.active)
+            << "the apply must refuse when the rule refuses";
+        return;
+    }
+    ASSERT_TRUE(fx.world().mode.active);
+    EXPECT_EQ(expected_mask, fx.var(mode.slots.mask))
+        << "the apply must bank the rule's mask";
+    if (mode.slots.count >= 0)
+    {
+        int bits = 0;
+        for (int t = 0; t < 4; ++t)
+        {
+            if ((expected_mask & (1 << t)) != 0)
+                bits++;
+        }
+        EXPECT_EQ(bits, fx.var(mode.slots.count));
+    }
+    if (expected_matched && expected_size > 0)
+    {
+        EXPECT_EQ(expected_size, fx.var(kSlotMatchedSize));
+        EXPECT_GT(fx.var(kSlotMatchedTarget), 0)
+            << "a live has_guy walker always prices above zero";
+    }
+    else
+    {
+        EXPECT_EQ(0, fx.var(kSlotMatchedSize));
+        EXPECT_EQ(0, fx.var(kSlotMatchedTarget));
+    }
+    // Fielded entities follow the rule's fill rows exactly (fill codes:
+    // empty 0, company 1, troops 2, bots 3, matched 4, generators 5).
+    std::int64_t remaining = fills_packed;
+    for (int team = 0; team < 4; ++team)
+    {
+        const int digit = static_cast<int>(remaining % 100);
+        remaining /= 100;
+        const int fill_code = digit % 8;
+        const int fill_count = digit / 8;
+        int expected_livings = 0;
+        switch (fill_code)
+        {
+        case 1:  // company: the roster stands; under ALL team 1's npc too
+            expected_livings = fill_count;
+            if (strip == 0 && team == 1)
+                expected_livings += 1;
+            break;
+        case 2:  // troops
+        case 3:  // bots
+        case 4:  // matched
+            expected_livings = fill_count;
+            break;
+        default:  // empty / generators (no infantry at stage time)
+            expected_livings = 0;
+            break;
+        }
+        EXPECT_EQ(expected_livings, live_livings_on(fx.world(), team))
+            << "team " << team << " fill code " << fill_code;
+        const int expected_marks =
+            (fill_code == 3 || fill_code == 4) ? fill_count : 0;
+        EXPECT_EQ(expected_marks, marked_bots_on(fx.world(), team))
+            << "BOT_MARK provenance, team " << team;
+    }
+    if (std::string(mode.name) == "ctf")
+    {
+        // The banked FLAG_ENTITY entries are the authored fold minus the
+        // inactive-team teardown — the rule's active mask, per team.
+        for (int team = 0; team < 4; ++team)
+        {
+            const bool active = (expected_mask & (1 << team)) != 0;
+            EXPECT_EQ(active, fx.team_var(kSlotFlagEntity, team) != 0)
+                << "team " << team
+                << ": banked FLAG_ENTITY must follow the rule";
+        }
+    }
+}
+
+void run_staged_matrix(const MatrixMode& mode, int flag_family)
+{
+    const std::array<int, 4> none{0, 0, 0, 0};
+    const std::array<int, 4> solo{2, 0, 0, 0};
+    const std::array<int, 4> two{2, 0, 1, 0};
+    for (int strip : {0, 2, 3})
+    {
+        for (int count : {0, 2, 3, 4})
+            run_staged_case(mode, flag_family, strip, count, solo);
+    }
+    run_staged_case(mode, flag_family, 2, 0, none);
+    run_staged_case(mode, flag_family, 3, 0, none);
+    run_staged_case(mode, flag_family, 3, 0, two);
+    run_staged_case(mode, flag_family, 3, 4, two);
+}
+
+}  // namespace
+
+TEST_F(StagedRules, staged_world_matrix_soccer)
+{
+    run_staged_matrix({"soccer", kSoccerLevelB, kSoccerSlots, 4, false, false},
+                      flag_family_);
+}
+
+TEST_F(StagedRules, staged_world_matrix_basketball)
+{
+    run_staged_matrix({"basketball", kBballLevelB, kBballSlots, 4, false,
+                       false},
+                      flag_family_);
+}
+
+TEST_F(StagedRules, staged_world_matrix_ctf)
+{
+    run_staged_matrix({"ctf", kCtfLevelA, kCtfSlots, 0, false, false},
+                      flag_family_);
+}
+
+TEST_F(StagedRules, staged_world_matrix_tdm)
+{
+    run_staged_matrix({"tdm", kTdmLevelA, kTdmSlots, 0, false, false},
+                      flag_family_);
+}
+
+TEST_F(StagedRules, staged_world_matrix_onslaught)
+{
+    run_staged_matrix({"onslaught", kOnsLevelB, kOnsSlots, 3, true, true},
+                      flag_family_);
+}
+
+// ===========================================================================
+// 4. Staged-vs-adopted BYTE identity, per mode, over the real shipped
+//    levels: stage through MatchStage, adopt through the SDL shadow's
+//    content-transfer seam, and the adopted tick-0 keyframe must equal the
+//    staged pair byte for byte (preview == launch as an identity; the
+//    soccer arm is MatchStageTest.adopted_world_keyframe_is_byte_identical_
+//    to_preview in test_match_stage.cpp).
+// ===========================================================================
+
+namespace {
+
+og::sim::LobbyCharacterSlot adoption_slot()
+{
+    og::sim::LobbyCharacterData character;
+    character.guy_id = 100;
+    character.name = "Adopter";
+    character.family = FAMILY_SOLDIER;
+    character.strength = 10;
+    character.dexterity = 11;
+    character.constitution = 12;
+    character.intelligence = 13;
+    character.armor = 14;
+    character.level = 3;
+    character.teamnum = 0;
+    return {.slot_index = 0u, .character = character};
+}
+
+void run_adoption_identity(short level_id)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    og::server::MatchStage stage({.networked = true});
+    og::server::MatchStageInputs inputs;
+    inputs.equivalent.current_campaign = "modes";
+    inputs.equivalent.scen_num = level_id;
+    inputs.equivalent.numplayers = 1;
+    inputs.equivalent.team_list = {adoption_slot()};
+    inputs.difficulty = 1;
+    inputs.match_seed = 4242u;
+    stage.observe_inputs(inputs, /*now_ms=*/0);
+    ASSERT_EQ(og::server::StageStatus::Staged, stage.status());
+    const std::vector<std::uint8_t> preview_bytes =
+        stage.staged_keyframe_bytes();
+    ASSERT_FALSE(preview_bytes.empty());
+
+    LevelRuntimeData dst_level(level_id, /*headless=*/true,
+                               &headless_level_data_hooks());
+    SaveData dst_save;
+    GameWorld& dst = dst_level.world();
+    og::sim::SimEventLog dst_events;
+    IRandom* dst_rng = &dst.rng_;
+    bool dst_active = false;
+    GameplayContext dst_ctx;
+    dst_ctx.world = &dst;
+    dst_ctx.save = &dst_save;
+    dst_ctx.sim_events = &dst_events;
+    dst_ctx.config = &cfg;
+    dst_ctx.session_rng_ref = &dst_rng;
+    dst_ctx.gameplay_active_ref = &dst_active;
+    GameplayContext* const previous_context = current_game;
+    current_game = &dst_ctx;
+    dst.tick_count_ = 0;
+    dst.reset_level_progress();
+    ASSERT_TRUE(og::server::adopt_staged_world(dst_level, dst_save, stage));
+    dst_events.append(stage.take_events());
+    stage.dispose();
+    current_game = previous_context;
+
+    EXPECT_EQ(preview_bytes,
+              og::sim::serialize_snapshot(og::sim::peek_keyframe_snapshot(dst)))
+        << "adoption must not perturb a single replicated byte (level "
+        << level_id << ")";
+    EXPECT_FALSE(dst.owes_level_on_load());
+}
+
+}  // namespace
+
+using StagedAdoption = ModesPackTest;
+
+TEST_F(StagedAdoption, staged_adoption_identity_ctf)
+{
+    run_adoption_identity(500);
+}
+
+TEST_F(StagedAdoption, staged_adoption_identity_tdm)
+{
+    run_adoption_identity(300);
+}
+
+TEST_F(StagedAdoption, staged_adoption_identity_basketball)
+{
+    run_adoption_identity(824);
+}
+
+TEST_F(StagedAdoption, staged_adoption_identity_onslaught)
+{
+    run_adoption_identity(800);
+}
