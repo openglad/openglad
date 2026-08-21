@@ -37,6 +37,7 @@
 #include <limits>
 #include <map>
 #include <set>
+#include <string_view>
 
 // Defined in entities/guy.cpp
 std::uint32_t calculate_exp(std::int32_t level);
@@ -3123,9 +3124,10 @@ void fill_fallback_activation(ScenarioRosterReport& report,
     }
 }
 
-// Row scan shared by the staged and fallback arms: named NPCs individually,
-// unnamed livings grouped by (team, family, level), generators aggregated
-// per team, list order, team-major sort. Skips dead walkers always and
+// Row scan shared by the staged and fallback arms: named entities (company
+// fighters and authored NPCs alike) individually, nameless livings grouped
+// by (team, family, level), generators aggregated per team, list order,
+// team-major sort. Skips dead walkers always and
 // dormant (delayed-spawn) walkers exactly as the keyframe capture does —
 // the staged census is identical on every client (the documented preview
 // carve-out; the fallback scratch world spawns nothing dormant-relevant).
@@ -3144,10 +3146,19 @@ void scan_roster_rows(ScenarioRosterReport& report, const GameWorld& world)
             row.team = static_cast<short>(w->team_num());
             row.family = static_cast<short>(w->family());
             row.level = w->stats() != nullptr ? w->stats()->level() : 1;
-            if (w->stats() != nullptr && !w->stats()->name.empty())
+            // The shared display-name precedence (walker.cpp): the fighter's
+            // own myguy name first, an authored stats name second. A company
+            // fighter's name never reached stats — create_team_walker only
+            // stamps the owned guy — so this is what puts real character
+            // names in the census instead of a "3x SOLDIER" group. Guy names
+            // ride the keyframe (GuySnapshot::name), so every client agrees.
+            const std::string_view display_name =
+                w->stats() != nullptr ? entity_display_name(w)
+                                      : std::string_view{};
+            if (!display_name.empty())
             {
                 row.named = true;
-                row.name = w->stats()->name;
+                row.name = display_name;
                 report.rows.push_back(std::move(row));
             }
             else

@@ -2205,6 +2205,66 @@ TEST(PickerCommon, scenario_report_groups_classic_roster)
         EXPECT_LE(line.size(), 48u) << line;
 }
 
+// The census names entities through the shared precedence helper
+// (entity_display_name, walker.cpp): the fighter's own myguy name first, the
+// authored stats name second. A company fighter therefore gets its own row
+// instead of grouping into a "3x SOLDIER" line, an authored NPC is unchanged,
+// and a walker with neither name still groups.
+TEST(PickerCommon, scenario_report_names_follow_the_shared_precedence)
+{
+    ReportWorld fx(false);
+    // Both names present: the myguy name wins.
+    walker* company = fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, "BARRACKS");
+    auto owned = std::make_unique<guy>(FAMILY_SOLDIER);
+    owned->name = "Striker";
+    company->set_owned_myguy(std::move(owned));
+    // Stats name only: the authored-NPC shape, unchanged.
+    fx.spawn_living_named(FAMILY_ARCHER, 0, 5, "GONZO");
+    // Neither name: still grouped by (team, family, level).
+    fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
+    fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
+    // The 11-char wire clamp against the longest family word — the widest
+    // named row the report can produce.
+    walker* widest = fx.spawn_living_named(FAMILY_BIG_ORC, 1, 12, nullptr);
+    auto widest_guy = std::make_unique<guy>(FAMILY_BIG_ORC);
+    widest_guy->name = "MOONSHADOWS"; // 11 chars, the clamp ceiling
+    widest->set_owned_myguy(std::move(widest_guy));
+
+    SaveData save;
+    save.my_team = 0;
+    const og::ui::ScenarioRosterReport report =
+        og::ui::build_scenario_roster_report(
+            nullptr, og::ui::StagePreviewStatus::None, save, &fx.world());
+
+    const auto* company_row = find_named_row(report, "Striker");
+    ASSERT_TRUE(company_row != nullptr)
+        << "the myguy name wins over the stats name";
+    EXPECT_EQ(1, company_row->count) << "a named fighter never groups";
+    EXPECT_EQ(0, company_row->team);
+    EXPECT_EQ(3, company_row->level);
+    EXPECT_EQ(FAMILY_SOLDIER, company_row->family);
+    EXPECT_TRUE(find_named_row(report, "BARRACKS") == nullptr)
+        << "the stats name is the SECOND choice, not an extra row";
+
+    const auto* npc_row = find_named_row(report, "GONZO");
+    ASSERT_TRUE(npc_row != nullptr) << "an authored NPC still names itself";
+    EXPECT_EQ(FAMILY_ARCHER, npc_row->family);
+
+    const auto* grouped = find_group_row(report, 0, FAMILY_SOLDIER, 3);
+    ASSERT_TRUE(grouped != nullptr) << "nameless walkers still group";
+    EXPECT_EQ(2, grouped->count)
+        << "the named fighter is not part of the grouped row";
+
+    const std::vector<std::string> lines =
+        og::ui::format_scenario_report_lines(report);
+    EXPECT_TRUE(any_line_contains(lines, "  Striker - SOLDIER Lv 3"));
+    EXPECT_TRUE(any_line_contains(lines, "  GONZO - ARCHER Lv 5"));
+    EXPECT_TRUE(any_line_contains(lines, "  2x SOLDIER Lv 3"));
+    EXPECT_TRUE(any_line_contains(lines, "  MOONSHADOWS - ORC CAPTAIN Lv 12"));
+    for (const auto& line : lines)
+        EXPECT_LE(line.size(), 48u) << line;
+}
+
 TEST(PickerCommon, scenario_report_versus_sections_fallback)
 {
     ReportWorld fx(true);

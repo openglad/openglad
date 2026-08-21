@@ -1299,8 +1299,10 @@ TEST_F(MatchStageTest, staged_report_carries_the_combined_roster)
     EXPECT_EQ(2, report.team_fill_count[1])
         << "a remote seat's two deployed fighters census exactly";
 
-    // The row loop groups company fighters by (team, family, level) — the
-    // shared roster rows every client renders identically.
+    // Every staged company fighter carries its own name on its myguy, so the
+    // census names them one row each instead of grouping them by family and
+    // level — the shared roster rows every client renders identically, and
+    // the names ride the keyframe (GuySnapshot::name) so joiners agree.
     const std::vector<std::string> lines =
         og::ui::format_scenario_report_lines(report);
     bool soldier_row = false;
@@ -1308,9 +1310,9 @@ TEST_F(MatchStageTest, staged_report_carries_the_combined_roster)
     bool archer_row = false;
     for (const std::string& line : lines)
     {
-        soldier_row = soldier_row || line == "  1x SOLDIER Lv 3";
-        elf_row = elf_row || line == "  1x ELF Lv 3";
-        archer_row = archer_row || line == "  1x ARCHER Lv 3";
+        soldier_row = soldier_row || line == "  Striker - SOLDIER Lv 3";
+        elf_row = elf_row || line == "  Winger - ELF Lv 3";
+        archer_row = archer_row || line == "  Keeper - ARCHER Lv 3";
     }
     EXPECT_TRUE(soldier_row) << "the host company rides the staged rows";
     EXPECT_TRUE(elf_row) << "the joiner company rides the staged rows";
