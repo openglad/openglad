@@ -74,7 +74,36 @@ sign-off, quoted.
    Check `git diff --stat master...HEAD -- '*.md'`; anything named
    *_PLAN.md, *_REPORT.md, *_SUMMARY.md, PHASE*, HANDOFF* is deleted.
    A doc worth keeping goes to docs/ as a human-facing document.
-3. `git status --porcelain` is empty of surprises.
+3. `git status --porcelain` is empty of surprises — audit it BETWEEN the
+   gate run and the commit: `git add -A` has swept stray user files
+   (audio recordings, notes at repo root) into pushed commits before,
+   and a gate audit is stale the moment new files appear.
+4. Branches containing subagent commits: diff the commit list against
+   standing maintainer rulings (accepted failures, rejected fix
+   classes, ordered-reverted changes) before pushing — agents don't
+   know them and generic "make tests pass" prompts point straight at
+   previously-rejected changes.
+
+## GitHub mechanics (each of these burned a session)
+
+- `gh pr edit` is broken on this repo (Projects-classic GraphQL
+  deprecation). Edit PR bodies via
+  `gh api -X PATCH repos/{owner}/{repo}/pulls/N --input file.json`.
+  Never `gh api -f body=@file` — `-f` does not expand `@`; the body
+  becomes the literal string "@file".
+- `gh run watch --exit-status | tail` reads TAIL's exit code — capture
+  gh's own status unpiped, or a failed run reads as green.
+- The OAuth token lacks `workflow` scope: pushes touching
+  `.github/workflows/` are rejected over HTTPS — push those via the SSH
+  remote.
+- A PR that becomes CONFLICTING against master gets NO
+  pull_request-event runs at all (GitHub can't build the merge ref)
+  while push-triggered workflows still run — looks like "CI only runs
+  WASM". Check `gh pr view --json mergeable` first; merge master and
+  the full set fires.
+- Zero CI runs created on a fresh push: check githubstatus.com before
+  debugging — a GitHub Actions outage records events but creates no
+  runs.
 
 ## Web preview delivery paths (know which build the user is playing)
 

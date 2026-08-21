@@ -107,6 +107,20 @@ routing. Consequences for every level layout:
   engine's own act_guard sight test then re-wakes them honestly).
 - Every AI unit follows these rules regardless of origin — placed,
   generator-spawned, or script-converted.
+- Moat/water-ring maps: any roamer whose straight line to the crew
+  crosses the water jitters in place at the edge. On such maps every
+  placed foe must be a posted guard (ambush wake); roamers only where
+  chase ground is open. Gates through wall rings must be ≥3 tiles wide
+  — the beeline AI funnels by wall-sliding and 2-wide mouths stall
+  unattended runs.
+- Teleport-strand rule: NO standable ground across open water anywhere
+  a level has teleporting families (mage/skeleton placed OR
+  generator-spawned) — a boss teleporting onto a decorative islet
+  softlocks kill-all missions. Decorative islets are TREE atolls;
+  bosses that must stay put carry specials_disabled.
+- Diagnosis tool: the `openglad_text` protocol `state` command dumps
+  live entity positions — the fastest way to find a stranded or wedged
+  unit in an unattended run.
 
 Every level whose layout puts ANY blocker between opposing forces must
 ship an unattended-sim stationarity test: run the level headless for
@@ -128,6 +142,44 @@ test per path proven red on a broken tree before the rule ships. A rule
 proven on one construction path and assumed for the rest is the
 standard way levels ship invisible statues, dead triggers, and
 unreachable objectives.
+
+## Palette, art, and font rules
+
+- Palette indices 208–231 are do_cycle-ROTATED every frame (water bands
+  + the fire ramp starting at COLOR_FIRE=224). Static art or effect
+  colors in that range STROBE in-game while headless render tests stay
+  blind (they never run do_cycle). Indices 232–239 are a STATIC copy of
+  the fire ramp — use those for stable warm colors, and pin new effect
+  colors with a test that runs do_cycle in-test.
+- Any `our_palette.cpp` change re-embeds into every generated campaign's
+  PNGs: CI's Campaign Regeneration Drift check regenerates ALL generated
+  campaigns, so run every `scripts/generate_*_campaign.sh` and commit
+  the binary PNG churn, or CI reds. The sprite loader's PLTE contract
+  (og_file.cpp) rejects PNGs whose palette mismatches our_pal_lookup at
+  any entry outside the synthesized-ramp exemption band — don't widen
+  the exemption casually.
+- The bitmap font (pix/text.png) has glyphs 0..124 only, and '&' and '|'
+  are BLANK — briefings and HUD lines using them render holes (use
+  "and", dashes). The apostrophe exists. Budget labels against the
+  actual glyph set, not ASCII.
+
+## Bootstrapping a NEW builtin campaign (the pin list)
+
+- Chicken-and-egg: adding the id to OG_BUILTIN_CAMPAIGN_IDS makes the
+  build compose the tree BEFORE the generator ever ran → "no members
+  collected". Seed a placeholder campaign.yaml once; the generator
+  overwrites the tree.
+- The full registration list (all needed, none optional):
+  OG_BUILTIN_CAMPAIGN_IDS in CMakeLists, the campaign-drift workflow's
+  generator list in .github/workflows/test.yml, test_builtin_archives
+  campaign_ids, picker_common kShelf + its test lists, and the
+  og_add_unit_group registration for the campaign's test file.
+- A 1-level (or newest-level) campaign needs a loop-home exit: no-exit
+  auto-advance targets id+1, which must exist.
+- Generators run FROM REPO ROOT (relative staging paths), and mapgens
+  must build on the shared og::mapgen library — no private helper
+  clones. `og::mapgen::place_living` takes an EXPLICIT hold_post bool;
+  team number never implies guard policy.
 
 ## Story rules (the "story bible" discipline)
 

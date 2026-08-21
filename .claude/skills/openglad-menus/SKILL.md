@@ -130,6 +130,18 @@ in `tests/unit/test_platform_headless.cpp`. Grep both whenever
 (readability bars, backing rects) painted in the content pass lands ON TOP of
 buttons and dims them — the MATCHUP pagers shipped at 41% brightness this way.
 Split background fills into a pre-pass before `draw_buttons`; keep text after.
+Content also OVERDRAWS buttons: the main menu's grey SETTINGS heading band
+(drawn in the content pass) once painted over a button placed in its row —
+layout pins don't see overdraw, only screenshot read-back does.
+
+## Borrowing a viewscreen for previews (camera leak)
+
+`screen::relayout_views()` restores view RECTS but never the CAMERA
+(`topx`/`topy` are set once at construction). Anything that borrows
+`viewob[0]` and lets `redraw` copy level visuals onto it must
+RAII-restore topx/topy/control on EVERY exit path — otherwise every
+subsequent menu pixie/backdrop/portrait draw is displaced until level
+start (the HIRE/TRAIN empty-box bug).
 
 ## Blocking subscreens (the only sanctioned pattern)
 
@@ -164,6 +176,10 @@ GO / SET LEVEL / SET CAMPAIGN.
 - The id `back` is shared by several screens: disambiguate with
   `wait_for_interactable_at("back", x, y)` using each screen's unique
   geometry.
+- Under ASan frame-stretch (and heavy load) single clicks get swallowed
+  by menu transitions: use the bounded-retry `click_until_label` idiom
+  (see test_ctf_ui.cpp) — click, wait briefly for the expected label,
+  retry a capped number of times — instead of one click + long wait.
 - `popup_dialog` under TESTING is trace-only — assert via
   `trace_contains("popup", ...)`, nothing to dismiss.
 - Flow tests overwrite `save/save0.gtl`; write your own save first and restore

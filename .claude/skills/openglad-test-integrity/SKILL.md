@@ -47,6 +47,57 @@ a postcondition, not that the call returned. Every test asserts a
 specific expected value or state transition. Before claiming a coverage
 number, self-audit your new tests against this list.
 
+## Coverage run mechanics (local)
+
+- Judge a change by the local baseline→change DELTA in a worktree, not
+  the absolute number: CI's retried runs accumulate `.gcda` and read
+  higher than any local single pass.
+- Incremental ci-coverage rebuilds leave stale `.gcda` ("overwriting ...
+  different checksum" corrupts the number) — delete them after building,
+  before running tests.
+- Guard style: a one-line `if (!x) return v;` keeps the bad-path return
+  on a covered line; a two-line if/return leaves an uncovered line each.
+- To find CI's exact uncovered functions, read `FNDA:0` records from the
+  run artifact's combined.info; local function HIT/no-hit is reliable
+  even where line counts undercount.
+- A function whose last caller was deleted is dead code that reds the
+  function floor — delete it, don't write a test for it.
+- Coverage-lane unit groups run ~10x slower under instrumentation
+  against a fixed ctest timeout ceiling. When a group nears it, SPLIT
+  the group (new binary + recorder_processes.txt line); never bump the
+  ceiling.
+
+## Entity pointers do not survive the tick (ASan-only bug class)
+
+`GameWorld::tick`'s erase sweep frees dead weapons/effects the same tick
+(living corpses persist). A raw `walker*` held across `tick()` is a
+use-after-free that non-ASan builds "pass" — only the ci-asan preset
+catches it. Idiom: capture `entity_id()` at spawn, judge fate via
+`world().find_by_id(id)` after the tick, and pair a survivor control
+with the reaped entity or the assertion has no teeth. New heavy test
+files run their group under ci-asan locally before push. ASan aborts on
+first error, so after fixing an ASan red, run the WHOLE binary — every
+test after the failure never ran.
+
+## Flaky vs real (adjudication before blame)
+
+- Order-dependence fixes are verified with a ~30-seed `--gtest_shuffle`
+  sweep, not one run. In render tests, compute `world_to_screen_*` only
+  AFTER a settle redraw (the first redraw pans the camera) — the classic
+  passes-in-order, fails-shuffled shape.
+- Known pre-existing shuffle hangs (proven on master; CI runs
+  declaration order and is unaffected): og_test_picker seed 29
+  (promote_orc detail-menu test) and og_test_view seed 7
+  (base_camp_name_tap). Don't attribute these to new tests without
+  reproducing on a clean tree.
+- `Difficulty.submenu_door_flow` (og_test_menu_ui) is load-flaky and DOES
+  hit CI ASan occasionally — a rerun clears it; a missed injector click
+  under load leaves its cycle one short.
+- Never bump a deadline to fix a timing-flaky test: measure the real
+  cost, fix it, then convert the flat delay into a wait-on-condition
+  with a generous ceiling, and prove the wait can still fail by planting
+  a break. Gate cost regressions with counts (call counts), not clocks.
+
 ## Tests that hang (the three known traps)
 
 1. Menu/prompt/picker paths need the injector-thread pattern
@@ -71,3 +122,7 @@ confirm every entry touches only tools/parity_*. A matching
 byte-identical (`cmp`) before any recapture. "All N goldens matched
 after rebasing to a different baseline" is a red flag to investigate,
 never a success report.
+
+For the full parity playbook — running the harness, the drift ledger,
+canary teeth, pin rot modes, and harness blind spots — see the
+openglad-parity skill.
