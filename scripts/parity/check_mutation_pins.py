@@ -28,6 +28,15 @@ kMut_weapon_fire_arrow_emission sat green on an animation-table row for
 which its `from` ("8") was ambiguous, while the EntityDef row it describes
 went unmutated.
 
+WHAT THIS CHECKER DOES NOT OWN: whether an ambiguous pin's context_before
+actually SEPARATES its twins. That rule belongs to the two gates that read the
+whole table — scripts/parity/lint_scenario_facts.py and the C++
+mutation_canary_discriminating_power_gate — and both ask
+_apply_mutation.anchor_lines() for the answer. The self-tests here pin that
+behaviour anyway (a context true above both twins must red the lint), because
+the way a rule like that dies quietly is by being satisfied with any non-empty
+string.
+
 The one exception is a tree the canary itself has mutated. This check is a
 build dependency of og_test_parity and the canary rebuilds that target WITH
 THE MUTATION APPLIED, so the mutated line must be recognisable or the canary
@@ -59,7 +68,8 @@ import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from _apply_mutation import CONTEXT_WINDOW, context_ok  # noqa: E402
+from _apply_mutation import (  # noqa: E402
+    CONTEXT_WINDOW, anchor_lines, context_ok)
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 TABLE = REPO / "tests" / "parity" / "scenario_table.h"
@@ -1009,11 +1019,77 @@ def _self_test_context() -> list[str]:
     return failures
 
 
+_UNIQUENESS_ASSERTIONS = 5
+
+
+def _self_test_context_uniqueness() -> list[str]:
+    """Carrying a context is not the rule; separating the twins is.
+
+    This checker judges the pinned line. The rule that an AMBIGUOUS pin must
+    resolve to exactly one line lives in the two gates that see the whole
+    table — scripts/parity/lint_scenario_facts.py and the C++
+    mutation_canary_discriminating_power_gate — and both ask
+    _apply_mutation.anchor_lines() for the answer. What is proved here is that
+    a context which is true above BOTH twins reds the lint, because the way
+    that rule dies quietly is by being satisfied with any non-empty string.
+    """
+    import lint_scenario_facts as lint  # local: only the self-test needs it
+
+    failures = []
+    # `{` on line 2 sits within the window above both `return 1;` bodies, so
+    # it is a context that anchors nothing. The ACT_DIE label separates them.
+    body = ("int decide(int act)\n"
+            "{\n"
+            "    switch (act)\n"
+            "    {\n"
+            "    case ACT_MOVE:\n"
+            "        return 1;\n"
+            "    case ACT_DIE:\n"
+            "        return 1;\n"
+            "    }\n"
+            "}\n")
+    weak = "{"
+    strong = "    case ACT_DIE:"
+
+    lines = body.splitlines()
+    if anchor_lines(lines, "return 1;", "") != [6, 8]:
+        failures.append("uniqueness/helper-loose: expected both twins")
+    if anchor_lines(lines, "return 1;", weak) != [6, 8]:
+        failures.append("uniqueness/helper-weak: a context true above both "
+                        "twins must return both")
+    if anchor_lines(lines, "return 1;", strong) != [8]:
+        failures.append("uniqueness/helper-strong: expected the DIE arm only")
+
+    def lint_errors(context: str | None) -> list[str]:
+        ctx = f', "{context}"' if context is not None else ""
+        table = ('inline constexpr Mutation kMut_x = {"src/sw.cpp", 8, '
+                 f'"return 1;", "return 0;", "why"{ctx}}};\n')
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / "src").mkdir()
+            (root / "src" / "sw.cpp").write_text(body)
+            saved, lint.REPO_ROOT = lint.REPO_ROOT, root
+            try:
+                return lint.check_mutation_contexts(
+                    lint.parse_mutation_constants(table))
+            finally:
+                lint.REPO_ROOT = saved
+
+    errors = lint_errors(weak)
+    if not any("is true above 2 of them" in e for e in errors):
+        failures.append(f"uniqueness/lint-weak-accepted: {errors!r}")
+    if lint_errors(strong):
+        failures.append(
+            f"uniqueness/lint-strong-rejected: {lint_errors(strong)!r}")
+    return failures
+
+
 def self_test(verbose: bool) -> int:
     cases = _acceptance_cases()
     described = _describe_cases()
     failures = (_self_test_acceptance() + _self_test_describe()
-                + _self_test_end_to_end() + _self_test_context())
+                + _self_test_end_to_end() + _self_test_context()
+                + _self_test_context_uniqueness())
     if failures:
         print(f"check_mutation_pins self-tests: {len(failures)} FAILED",
               file=sys.stderr)
@@ -1022,10 +1098,11 @@ def self_test(verbose: bool) -> int:
         return 1
     if verbose:
         print(f"check_mutation_pins self-tests: "
-              f"{len(cases) + len(described) + _E2E_ASSERTIONS + _CONTEXT_ASSERTIONS}"
+              f"{len(cases) + len(described) + _E2E_ASSERTIONS + _CONTEXT_ASSERTIONS + _UNIQUENESS_ASSERTIONS}"
               f" pass ({len(cases)} acceptance cases, {len(described)} "
               f"rendering, {_E2E_ASSERTIONS} end-to-end, "
-              f"{_CONTEXT_ASSERTIONS} context anchor)")
+              f"{_CONTEXT_ASSERTIONS} context anchor, "
+              f"{_UNIQUENESS_ASSERTIONS} context uniqueness)")
     return 0
 
 

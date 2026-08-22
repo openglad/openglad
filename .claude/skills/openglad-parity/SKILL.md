@@ -141,7 +141,11 @@ a pin whose text repeats in its file says which occurrence it means. The
 window rule lives once in `_apply_mutation.py` (`CONTEXT_WINDOW`,
 `context_ok()`); the applier exits 8 when it fails, the checker imports
 the same routine, and `kMutationContextWindow` in scenario_table.h
-mirrors the number for the in-suite C++ gate.
+mirrors the number for the in-suite C++ gate. Carrying a context is not
+enough: both gates ask `_apply_mutation.anchor_lines()` how many lines of
+the file the pin plus its context could be applied at, and an ambiguous
+pin whose context still leaves more than one is refused exactly like one
+with no context at all.
 `scripts/parity/check_mutation_pins.py` validates anchors and is a
 build dependency of og_test_parity; `--fix` re-points drifted pins — but
 READ THE DIFF after, and know the blind spots:
@@ -166,10 +170,11 @@ READ THE DIFF after, and know the blind spots:
    flip at runtime. A pin whose from-text is applicable on more than one
    line of its file MUST carry a `context_before` — the lint and the
    `mutation_canary_discriminating_power_gate` both hard-fail without
-   one. Pick a context that separates the twins (usually the enclosing
-   `case`/`local function`, but check it is not also within 16 lines
-   above a sibling — for near neighbours it will be, and you have to
-   reach further up).
+   one — and both hard-fail on a context that is true above several of
+   the twins, so the context has to actually separate them. Pick the
+   enclosing `case`/`local function`, but check it is not also within 16
+   lines above a sibling — for near neighbours it will be, and you have
+   to reach further up.
 5. **Lua-syntax-error to-texts** (bare mid-block `return false`) kill the
    whole chunk on apply and flip rows via collateral damage — fake teeth.
    Use `do return false end`.

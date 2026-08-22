@@ -8,7 +8,9 @@ Asserts:
   (c) every row has a non-default discriminating_mutation (file, line>0,
       from, to, rationale all non-empty), and any pin whose from-text is
       applicable on more than one line of its file carries a
-      context_before naming the line above the occurrence it means
+      context_before that narrows the file to EXACTLY ONE line; a context
+      that is equally true above several of the twins narrows nothing and
+      is refused like a missing one
   (d) every special_<family>_<idx>_scen* row with idx >= 2 has a team-0
       caster SpawnSpec with stats_level >= (idx-1)*3+1 AND
       magicpoints >= 600 (cycling gate sim_input_handler.cpp:218 +
@@ -35,6 +37,11 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+# The anchor rule itself, imported rather than re-derived, so this lint and
+# the applier the canary actually runs cannot drift apart.
+from _apply_mutation import anchor_lines  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_TABLE = REPO_ROOT / "tests" / "parity" / "scenario_table.h"
@@ -284,6 +291,12 @@ def check_mutation_contexts(
     an edit that flips nothing. So an ambiguous pin MUST carry a
     context_before — the line above the occurrence it means.
 
+    And it must be a context that WORKS. Carrying one is not the rule; the
+    rule is that the pin, read with its context, names exactly one line of the
+    file. A context that is equally true above both twins — an opening brace,
+    the header of the function both arms sit in — satisfies the applier at
+    either of them and leaves the ambiguity exactly where it was.
+
     Also refuses a context that is itself one of the pin texts in the same
     file: an anchor that moves with the thing it is anchoring is no anchor.
 
@@ -320,17 +333,31 @@ def check_mutation_contexts(
             errors.append(
                 f"{name}: context_before is itself a pin from/to text in "
                 f"{path}; an anchor that a mutation can rewrite is no anchor")
-        if context:
+        loose = anchor_lines(lines, from_text, "")
+        if len(loose) <= 1:
             continue
-        hits = [i + 1 for i, text in enumerate(lines)
-                if text.count(from_text) == 1]
-        if len(hits) > 1:
+        if not context:
             errors.append(
-                f"{name}: from-text is applicable on {len(hits)} lines of "
-                f"{path} ({', '.join(str(h) for h in hits[:8])}"
-                f"{', ...' if len(hits) > 8 else ''}) and the pin carries no "
+                f"{name}: from-text is applicable on {len(loose)} lines of "
+                f"{path} ({', '.join(str(h) for h in loose[:8])}"
+                f"{', ...' if len(loose) > 8 else ''}) and the pin carries no "
                 f"context_before, so nothing says which one it means — add "
                 f"the line above the occurrence it is about")
+            continue
+        # A context that narrows the file to NOTHING is a broken pin rather
+        # than an ambiguous one; check_mutation_pins.py and the C++ gate both
+        # say so, and with a better message. This rule owns the >1 case only.
+        anchored = anchor_lines(lines, from_text, context)
+        if len(anchored) > 1:
+            errors.append(
+                f"{name}: from-text is applicable on {len(loose)} lines of "
+                f"{path} and the context_before is true above "
+                f"{len(anchored)} of them "
+                f"({', '.join(str(h) for h in anchored[:8])}"
+                f"{', ...' if len(anchored) > 8 else ''}), so the pin still "
+                f"does not say which occurrence it means — reach further up "
+                f"for a line that sits above only one of them\n"
+                f"    context_before: {context[:70]}")
     return errors
 
 

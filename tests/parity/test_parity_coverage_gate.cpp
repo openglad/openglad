@@ -1091,13 +1091,33 @@ TEST(Parity, mutation_canary_discriminating_power_gate)
         // that is applicable on several lines of the file cannot say which
         // one the pin means: delete the intended occurrence and a mechanical
         // repin lands on a sibling, green and toothless. An ambiguous pin
-        // must name the line above the occurrence it is about.
-        if (m.context_before.empty())
+        // must name the line above the occurrence it is about — and it must
+        // be a line that NARROWS: a context equally true above both twins
+        // (an opening brace, the header of the function both arms sit in)
+        // satisfies the applier at either of them and leaves the ambiguity
+        // exactly where it was. Mirrors _apply_mutation.anchor_lines(),
+        // which scripts/parity/lint_scenario_facts.py runs on the same rule.
         {
+            const auto anchors_at = [&](int index, bool with_context) {
+                const int line_no = index + 1;
+                if (count_occurrences(source_lines[
+                        static_cast<std::size_t>(index)], m.from) != 1)
+                    return false;
+                if (!with_context || m.context_before.empty()) return true;
+                const int first = std::max(
+                    0, line_no - 1 - og::parity::kMutationContextWindow);
+                for (int i = first; i < line_no - 1; ++i)
+                    if (source_lines[static_cast<std::size_t>(i)] ==
+                        m.context_before)
+                        return true;
+                return false;
+            };
+
             int applicable = 0;
-            for (const auto& text : source_lines)
-                if (count_occurrences(text, m.from) == 1) ++applicable;
-            if (applicable > 1)
+            for (int i = 0; i < line_count; ++i)
+                if (anchors_at(i, false)) ++applicable;
+
+            if (applicable > 1 && m.context_before.empty())
             {
                 std::ostringstream os;
                 os << spec.id << ": mutation from-text is applicable on "
@@ -1105,6 +1125,25 @@ TEST(Parity, mutation_canary_discriminating_power_gate)
                    << " and the pin carries no context_before, so nothing "
                       "says which one it means";
                 failures.push_back(os.str());
+            }
+            else if (applicable > 1)
+            {
+                int anchored = 0;
+                for (int i = 0; i < line_count; ++i)
+                    if (anchors_at(i, true)) ++anchored;
+                // Zero is a broken pin, not an ambiguous one; the context
+                // check below reports that case, and better.
+                if (anchored > 1)
+                {
+                    std::ostringstream os;
+                    os << spec.id << ": mutation from-text is applicable on "
+                       << applicable << " lines of " << m.file
+                       << " and context_before \"" << m.context_before
+                       << "\" is true above " << anchored << " of them, so "
+                          "the pin still does not say which occurrence it "
+                          "means";
+                    failures.push_back(os.str());
+                }
             }
         }
 

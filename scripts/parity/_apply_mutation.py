@@ -13,6 +13,9 @@ back. Validates:
     of the CONTEXT_WINDOW lines above ${line}. A pin's from-text is
     matched within a single line, which for a repeated statement cannot
     say WHICH occurrence the pin means; the context line above it can.
+    `anchor_lines()` below is the same rule asked of a whole file, and is
+    what the two gates use to insist an ambiguous pin's context narrows
+    the file to exactly one line rather than merely being present.
   - The realpath of ${file} resolved against the repo root does NOT live
     under ../openglad-master/ or tests/parity/. Master is pinned at
     master_companion_sha; tests/parity/* headers are consumed via
@@ -83,6 +86,27 @@ def context_ok(lines: list[str], line_no: int, context: str) -> bool:
     lo = max(0, line_no - 1 - CONTEXT_WINDOW)
     return any(line.rstrip("\r\n") == context
                for line in lines[lo:max(lo, line_no - 1)])
+
+
+def anchor_lines(lines: list[str], from_text: str, context: str) -> list[int]:
+    """Every 1-indexed line of the file at which this pin could be applied.
+
+    A pin anchors at line N iff `from_text` occurs EXACTLY once on N — the
+    applier exits 6 on none and 7 on two — and `context`, when non-empty, sits
+    verbatim within CONTEXT_WINDOW lines above N (exit 8).
+
+    THE POINT OF RETURNING A LIST: carrying a context is not the same as being
+    unambiguous. A context that is equally true above both twins — an opening
+    brace, the function header both arms live under — narrows nothing, and this
+    returns both lines. The gates require exactly one entry from an
+    otherwise-ambiguous pin, so "has a context_before" cannot be satisfied by a
+    context that does not separate anything.
+    """
+    if not from_text:
+        return []
+    return [n for n in range(1, len(lines) + 1)
+            if lines[n - 1].rstrip("\r\n").count(from_text) == 1
+            and context_ok(lines, n, context)]
 
 
 def main() -> int:

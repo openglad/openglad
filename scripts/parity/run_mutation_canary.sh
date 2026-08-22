@@ -17,6 +17,12 @@
 # A pin whose from-text repeats in its file carries a context_before, which
 # travels with the other fields to _apply_mutation.py: the applier exits 8
 # rather than mutate a textual twin of the line the pin means.
+#
+# WARNING — the EXIT trap restores SOURCES, not OBJECTS. When this script
+# finishes, build/ci-test still holds the og_test_parity and
+# parity_runner_smoke built from the LAST mutation it applied. Anything you
+# run out of that build dir afterwards — a parity run, a golden capture, a
+# gate — is measuring mutated code. Rebuild before trusting any binary there.
 
 set -euo pipefail
 
