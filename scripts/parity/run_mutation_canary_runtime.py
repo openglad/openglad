@@ -42,6 +42,10 @@ Exit codes:
   2  argv / environment error
   3  no scenarios selected
   4+ tool / build failure (per-scenario; not a hard abort)
+  7  parity_runner_smoke could not produce a predicate trace — it is not
+     built, or it exited nonzero (a broken campaign mount is exit 3). HARD
+     ABORT: an absent measurement is an environment failure, and reporting
+     it as "0 flips" would blame the pin for the environment.
 """
 
 from __future__ import annotations
@@ -68,6 +72,8 @@ PARITY_BIN = BUILD_DIR / "og_test_parity"
 SMOKE_BIN  = BUILD_DIR / "parity_runner_smoke"
 # Declares the applied pin to check_mutation_pins.py; see rebuild_targets().
 MUTATION_IN_FLIGHT_ENV = "OPENGLAD_MUTATION_IN_FLIGHT"
+# Distinct from every per-scenario verdict: the run stopped without measuring.
+SMOKE_ENVIRONMENT_EXIT = 7
 
 
 # Defer the lint-script import until repo-root sys.path is set up.
@@ -166,17 +172,58 @@ def run_gtest(scenario_id: str) -> tuple[str, str]:
     return (verdict, res.stdout + res.stderr)
 
 
+def abort_environment(scenario_id: str, what: str, detail: str) -> None:
+    """Stop the whole run, loudly, with the reason named.
+
+    A smoke capture that does not happen is not a measurement. Returning
+    False here used to leave `predicate_trace` empty, and a row whose only
+    teeth are that trace then tallied as "0 flips" — a broken campaign mount
+    reported as a toothless pin, which is the one conclusion this driver
+    exists to make trustworthy. run_mutation_canary.sh aborts on the same
+    condition; the two must not disagree about what a missing capture means.
+    """
+    config_dir = os.environ.get("OPENGLAD_CONFIG_DIR") or \
+        "<unset — parity_runner_smoke picks a private per-process temp dir>"
+    if detail:
+        sys.stderr.write(detail if detail.endswith("\n") else detail + "\n")
+    sys.stderr.write(
+        f"canary_runtime: ABORT — {what}\n"
+        f"  scenario   : {scenario_id}\n"
+        f"  smoke bin  : {SMOKE_BIN}\n"
+        f"  config dir : {config_dir}\n"
+        "This is an environment failure, not a toothless pin. Nothing was\n"
+        "measured, so nothing is being reported as guarded or unguarded.\n"
+    )
+    sys.exit(SMOKE_ENVIRONMENT_EXIT)
+
+
 def run_smoke_eval(scenario_id: str, out_path: Path) -> bool:
-    """Run parity_runner_smoke --evaluate-facts to capture per-predicate
-    JSON. Returns True iff the smoke binary exists AND ran cleanly."""
+    """Run parity_runner_smoke --evaluate-facts to capture per-predicate JSON.
+
+    Returns True on a clean capture and never returns anything else: every
+    other outcome aborts the run via abort_environment().
+    """
     if not SMOKE_BIN.is_file():
-        return False
+        abort_environment(
+            scenario_id, "parity_runner_smoke is not built",
+            "Build it with: cmake --build --preset "
+            f"{PRESET} --target parity_runner_smoke")
     res = subprocess.run(
         [str(SMOKE_BIN), "--scenario", scenario_id,
          "--evaluate-facts", "--out", str(out_path)],
         capture_output=True, text=True,
     )
-    return res.returncode == 0 and out_path.is_file()
+    if res.returncode != 0:
+        abort_environment(
+            scenario_id,
+            f"parity_runner_smoke exited {res.returncode}",
+            res.stdout + res.stderr)
+    if not out_path.is_file():
+        abort_environment(
+            scenario_id,
+            "parity_runner_smoke exited 0 but wrote no predicate trace",
+            res.stdout + res.stderr)
+    return True
 
 
 def diff_predicate_traces(pre: list[dict] | None,
@@ -291,7 +338,7 @@ def main() -> int:
         post_eval_path = Path("/tmp") / f"canary_runtime_{sid}.post.json"
 
         pre_verdict, pre_log = run_gtest(sid)
-        pre_smoke_ok = run_smoke_eval(sid, pre_eval_path)
+        run_smoke_eval(sid, pre_eval_path)
         print(f"  pre:  gtest={pre_verdict}")
 
         # Apply the mutation. The apply helper refuses to touch
@@ -315,7 +362,7 @@ def main() -> int:
                 zero_flip_log.append(f"{sid}: rebuild failed after mutation")
                 continue
             post_verdict, post_log = run_gtest(sid)
-            post_smoke_ok = run_smoke_eval(sid, post_eval_path)
+            run_smoke_eval(sid, post_eval_path)
             print(f"  post: gtest={post_verdict}")
         finally:
             restore_file(mut["file"])
@@ -326,22 +373,20 @@ def main() -> int:
                     f"canary_runtime: rebuild to baseline failed after {sid}\n"
                 )
 
-        # Per-predicate diff (only available if both smoke captures ran).
-        pre_facts:  list[dict] = []
-        post_facts: list[dict] = []
-        if pre_smoke_ok:
+        # Per-predicate diff. Both captures are guaranteed present — a missing
+        # one aborted the run above rather than quietly emptying this diff.
+        def read_facts(path: Path) -> list[dict]:
             try:
-                pre_facts = json.loads(
-                    pre_eval_path.read_text(encoding="utf-8")).get("facts", [])
-            except Exception:
-                pre_facts = []
-        if post_smoke_ok:
-            try:
-                post_facts = json.loads(
-                    post_eval_path.read_text(encoding="utf-8")).get("facts", [])
-            except Exception:
-                post_facts = []
-        pred_diff = diff_predicate_traces(pre_facts, post_facts)
+                return json.loads(
+                    path.read_text(encoding="utf-8")).get("facts", [])
+            except Exception as exc:
+                abort_environment(
+                    sid, f"predicate trace {path} is not readable JSON",
+                    str(exc))
+                raise  # unreachable; abort_environment exits
+
+        pred_diff = diff_predicate_traces(read_facts(pre_eval_path),
+                                          read_facts(post_eval_path))
 
         # The contract: the gtest verdict MUST flip from PASS to FAIL.
         # Predicate-level flips are advisory; the runtime gate is the

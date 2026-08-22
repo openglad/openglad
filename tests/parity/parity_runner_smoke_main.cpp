@@ -13,10 +13,11 @@
 //   0  dump written
 //   1  bad arguments / unknown scenario id
 //   2  the output file could not be written
-//   3  the scenario's level did not load (broken campaign mount or PhysFS
-//      search path). NOTHING is written in this case — an empty arena
-//      serialises into perfectly valid JSON that disagrees with every
-//      golden, and a silent stub dump is worse than no dump.
+//   3  the tool could not stand up a usable environment, or the scenario's
+//      level did not load (broken campaign mount or PhysFS search path).
+//      NOTHING is written in this case — an empty arena serialises into
+//      perfectly valid JSON that disagrees with every golden, and a silent
+//      stub dump is worse than no dump.
 
 #include "fact_predicate.h"
 #include "parity_bootstrap.h"
@@ -31,6 +32,7 @@
 #include <mutex>
 #include <string>
 #include <string_view>
+#include <unistd.h>
 
 // Provided by tests/integration_main.cpp in the og_test_parity build; the
 // standalone smoke runner needs its own definition because button.cpp
@@ -153,13 +155,36 @@ const og::parity::ScenarioSpec* find_scenario(std::string_view id)
     return nullptr;
 }
 
+// The scratch config dir this process created, if it created one; removed on
+// the way out. Empty whenever OPENGLAD_CONFIG_DIR came from the caller — a
+// directory we were handed is not ours to delete.
+std::string g_owned_config_dir;
+
+void remove_owned_config_dir()
+{
+    if (g_owned_config_dir.empty())
+        return;
+    std::error_code ec;
+    std::filesystem::remove_all(g_owned_config_dir, ec);
+    g_owned_config_dir.clear();
+}
+
 // Where the campaign archives get restored to and the mounted campaign is
 // read from. Unset means `get_user_path()` resolves to the developer's real
 // ~/.openglad, and every smoke run would rewrite the campaign archives in
 // their live install as a side effect of producing a dump. Point it at a
-// private scratch directory instead — stable, not per-PID, so repeat runs
-// reuse the already-restored archives instead of re-copying eight of them.
-std::string ensure_private_config_dir()
+// private scratch directory instead — one PER PROCESS.
+//
+// Per-process is the whole point, not tidiness: `restore_default_campaigns`
+// copies every builtin .glad with `overwrite_existing` on every single run,
+// so two runs sharing one directory truncate and rewrite the archives the
+// other one has mounted. A deliberately concurrent repro — eight runs, no
+// OPENGLAD_CONFIG_DIR — used to red seven of them with exit 3.
+//
+// On failure the path comes back empty and `failure` says why; the caller
+// turns that into the same named refusal a broken mount gets, because a
+// discarded error_code here reappears as an unexplained empty arena later.
+std::string ensure_private_config_dir(std::string& failure)
 {
     if (const char* env = std::getenv("OPENGLAD_CONFIG_DIR");
         env != nullptr && env[0] != '\0')
@@ -168,11 +193,25 @@ std::string ensure_private_config_dir()
     }
 
     const std::filesystem::path dir =
-        std::filesystem::temp_directory_path() / "openglad-parity-smoke-config";
+        std::filesystem::temp_directory_path() /
+        ("openglad-parity-smoke-config-" + std::to_string(::getpid()));
+    // A PID is unique among LIVE processes, so the only way this path already
+    // exists is a previous run that died before its cleanup. Start from bare
+    // ground rather than inheriting whatever state it left behind.
     std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+    ec.clear();
     std::filesystem::create_directories(dir, ec);
-    setenv("OPENGLAD_CONFIG_DIR", dir.string().c_str(), 1);
-    return dir.string();
+    if (ec)
+    {
+        failure = "cannot create private config dir " + dir.string() + ": " +
+                  ec.message();
+        return std::string();
+    }
+    g_owned_config_dir = dir.string();
+    std::atexit(remove_owned_config_dir);
+    setenv("OPENGLAD_CONFIG_DIR", g_owned_config_dir.c_str(), 1);
+    return g_owned_config_dir;
 }
 
 int list_scenarios()
@@ -241,7 +280,18 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    const std::string config_dir = ensure_private_config_dir();
+    std::string config_failure;
+    const std::string config_dir = ensure_private_config_dir(config_failure);
+    if (!config_failure.empty())
+    {
+        std::fprintf(stderr,
+            "parity_runner_smoke: refusing to write a dump for scenario '%s'\n"
+            "  %s\n"
+            "There is nowhere to restore the campaign archives to, so the run\n"
+            "would describe an empty arena rather than the scenario.\n",
+            scenario_id.c_str(), config_failure.c_str());
+        return 3;
+    }
 
     og::parity::BootstrapScope boot(argv[0]);
     const auto outcome = og::parity::run_scenario(*spec);
@@ -254,14 +304,17 @@ int main(int argc, char** argv)
     // run_mutation_canary_runtime.py) already abort on a nonzero exit, and
     // aborting loudly beats a corpus-wide phantom drift.
     //
-    // Branch-internal rows are exempt from the load half, exactly as they are
-    // in test_parity_scenarios: the four scen9301 rows point at a three-byte
-    // header-only fixture on purpose and build their arena from floor paints
-    // and spawns. run_mutation_canary_runtime.py --all walks those rows, so
-    // failing them here would break a driver over a stub that is by design.
-    // A failed bootstrap still refuses for every row — that is the signal
-    // that says the environment, not the row, is broken.
-    if (!boot.ok() || (!outcome.loaded && !spec->is_branch_internal))
+    // Exempt from the load half are the rows that build their own arena from
+    // the header-only stub fixture, exactly as in test_parity_scenarios: the
+    // four scen9301 rows (snapshot dirty bits, the three Z-axis arenas).
+    // run_mutation_canary_runtime.py --all walks those rows, so failing them
+    // here would break a driver over a stub that is by design. Every other
+    // row — branch-internal ones included, since
+    // treasure_exit_open_prompt_scen99 loads the real scen1.fss — must load.
+    // A failed bootstrap still refuses for every row: that is the signal that
+    // says the environment, not the row, is broken.
+    if (!boot.ok() ||
+        (!outcome.loaded && !og::parity::builds_its_own_arena(*spec)))
     {
         std::fprintf(stderr,
             "parity_runner_smoke: refusing to write a dump for scenario '%s'\n"

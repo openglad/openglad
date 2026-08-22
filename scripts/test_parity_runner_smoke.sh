@@ -97,9 +97,11 @@ if grep -Fq '"indeterminate": true' <<<"$facts_output"; then
     fail 'a predicate was indeterminate on a healthy run'
 fi
 
-# A branch-internal row is exempt from the load requirement: the scen9301
-# rows point at a header-only fixture on purpose, and
-# run_mutation_canary_runtime.py --all walks them.
+# A row that builds its own arena is exempt from the load requirement: the
+# four scen9301 rows point at a header-only fixture on purpose, and
+# run_mutation_canary_runtime.py --all walks them. (The exemption is keyed on
+# that fixture, not on is_branch_internal — treasure_exit_open_prompt_scen99
+# is branch-internal and loads a real level.)
 env OPENGLAD_CONFIG_DIR="$healthy_dir" \
     "$smoke_bin" --scenario snapshot_dirty_bits_scen9301 \
     --out "$test_root/internal.json" >/dev/null 2>&1 ||
@@ -136,5 +138,42 @@ env -u OPENGLAD_CONFIG_DIR HOME="$fake_home" \
 if [[ -e "$fake_home/.openglad" ]]; then
     fail 'parity_runner_smoke wrote into $HOME/.openglad'
 fi
+
+# ...and the scratch directory it picked is removed on the way out, so a
+# machine that runs the canary a few hundred times does not accumulate one
+# restored campaign set per run.
+if compgen -G "${TMPDIR:-/tmp}/openglad-parity-smoke-config-*" >/dev/null; then
+    fail 'parity_runner_smoke left its private config dir behind'
+fi
+
+# --- Concurrent runs must not tear each other's mounts ----------------------
+# The scratch dir has to be PER PROCESS. `restore_default_campaigns` copies
+# every builtin .glad with overwrite_existing on every run, so a shared
+# directory means one run truncating the archive another has mounted: eight
+# concurrent runs against the old fixed path failed seven times with exit 3.
+declare -a conc_status=()
+for i in $(seq 1 8); do
+    (
+        env -u OPENGLAD_CONFIG_DIR HOME="$fake_home" \
+            "$smoke_bin" --scenario smoke_nonempty_scen99 \
+            --out "$test_root/conc-$i.json" >/dev/null 2>&1
+        printf '%s\n' "$?" > "$test_root/conc-$i.status"
+    ) &
+done
+wait
+for i in $(seq 1 8); do
+    status=$(cat "$test_root/conc-$i.status")
+    conc_status+=("$status")
+    if [[ "$status" != 0 ]]; then
+        fail "concurrent run $i exited $status; the private config dir is being shared"
+    fi
+    [[ -s "$test_root/conc-$i.json" ]] ||
+        fail "concurrent run $i wrote no dump"
+done
+# Same scenario, same seed, eight processes: the dumps must agree.
+for i in $(seq 2 8); do
+    cmp -s "$test_root/conc-1.json" "$test_root/conc-$i.json" ||
+        fail "concurrent run $i produced a different dump from run 1"
+done
 
 printf 'parity_runner_smoke CLI contract OK\n'

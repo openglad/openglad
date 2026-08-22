@@ -2953,11 +2953,30 @@ void clear_local_transport_shadow(GameSession& session) noexcept
         session.myscreen_->set_render_interpolation_client(nullptr);
     if (session.local_transport_runtime_ != nullptr)
     {
-        // Torn-down runtime, so nothing is stamping the overlay any more: drop
-        // the record with it rather than let a surviving handle believe a
-        // banner is still on someone's feed.
-        session.local_transport_runtime_->pause_overlay_banner.clear();
-        session.local_transport_runtime_->pause_overlay_hint = false;
+        // Torn-down runtime, so nothing is stamping the overlay any more —
+        // and nothing is left to retire what it already stamped either. The
+        // gameplay screen is still standing at this point (the line above
+        // reaches through it), so expire the recorded lines on every view
+        // before the record goes. Dropping the record alone leaves a "PAUSED
+        // by <owner>" banner on a feed with no writer: the sim tick is frozen
+        // for the length of a pause, so the line cannot even age out (#246).
+        auto& runtime = *session.local_transport_runtime_;
+        if (session.myscreen_ != nullptr &&
+            (!runtime.pause_overlay_banner.empty() ||
+             runtime.pause_overlay_hint))
+        {
+            screen& gameplay_screen = *session.myscreen_;
+            for (int index = 0; index < gameplay_screen.numviews; ++index)
+            {
+                viewscreen* const view = gameplay_screen.viewob[index].get();
+                if (view != nullptr)
+                    og::runtime::detail::clear_pause_overlay_text(
+                        *view, runtime.pause_overlay_banner,
+                        runtime.pause_overlay_banner);
+            }
+        }
+        runtime.pause_overlay_banner.clear();
+        runtime.pause_overlay_hint = false;
     }
     session.local_transport_runtime_.reset();
     session.relay_transport_active_ = false;

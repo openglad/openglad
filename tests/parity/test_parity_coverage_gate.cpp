@@ -77,10 +77,12 @@ const ObservedUnion& observed_union()
         for (const auto& spec : og::parity::kScenarios)
         {
             const og::parity::RunOutcome out = og::parity::run_scenario(spec);
-            // Same exemption as test_parity_scenarios: the branch-internal
-            // scen9301 rows deliberately point at a header-only fixture and
-            // build their arena from floor paints + spawns.
-            if (!out.loaded && !spec.is_branch_internal)
+            // Same exemption as test_parity_scenarios: the four scen9301 rows
+            // deliberately point at a header-only fixture and build their
+            // arena from floor paints + spawns. Not the branch-internal set —
+            // treasure_exit_open_prompt_scen99 is in that one and loads a real
+            // level.
+            if (!out.loaded && !og::parity::builds_its_own_arena(spec))
                 u.unloaded.emplace_back(spec.id);
             const auto& c = out.coverage;
             u.obs.walker_families.insert(c.walker_families.begin(),

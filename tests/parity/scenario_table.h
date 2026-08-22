@@ -9733,6 +9733,26 @@ inline constexpr ScenarioSpec kScenarios[] = {
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
 
+// The header-only stub fixture: three bytes of "FSS" magic and nothing else.
+// It has never loaded and is not meant to. The four rows below point at it on
+// purpose and build their whole arena from spawns and floor paints instead —
+// snapshot_dirty_bits_scen9301, z_stair_up_scen9301, z_fall_through_air_scen9301
+// and z_fall_two_story_scen9301.
+inline constexpr std::string_view kStubLevelFixture = "scen/scen9301.fss";
+
+// Is a failed level load expected for this row?
+//
+// Every OTHER row loads a real .fss, so a stub run there means the campaign
+// mount or the PhysFS search path is broken and the dump describes an empty
+// arena. `is_branch_internal` used to stand in for this test and does not
+// answer it: treasure_exit_open_prompt_scen99 is branch-internal AND loads the
+// real scen1.fss, so it was silently exempted from the one check that would
+// have caught its level going missing.
+inline constexpr bool builds_its_own_arena(const ScenarioSpec& s)
+{
+    return s.scenario_file == kStubLevelFixture;
+}
+
 // Number of scenarios that have (or will have) a master-side golden file.
 inline constexpr std::size_t kMasterComparableScenarioCount = []() {
     std::size_t n = 0;

@@ -199,12 +199,30 @@ rebuild_targets() {
 
 # Run a single scenario through the smoke runner with --evaluate-facts;
 # write the per-fact JSON to ${1}.
+#
+# A capture that does not happen is not a measurement, so this aborts the
+# whole run instead of letting the loop record a verdict for a scenario it
+# never evaluated. The tool's own stderr goes out first: exit 3 means the
+# campaign mount is broken, and that is a fact about the environment, not
+# about the pin. run_mutation_canary_runtime.py aborts on the same condition
+# with the same exit code.
 capture_eval() {
     local sid="$1"
     local out="$2"
-    "${SMOKE_BIN}" --scenario "${sid}" --evaluate-facts --out "${out}" \
-        >/dev/null 2>&1 \
-        || { echo "canary: parity_runner_smoke failed for ${sid}" >&2; return 7; }
+    local log status
+    log="$("${SMOKE_BIN}" --scenario "${sid}" --evaluate-facts --out "${out}" 2>&1)" \
+        && return 0
+    status=$?
+    printf '%s\n' "${log}" >&2
+    cat >&2 <<EOF
+canary: ABORT — parity_runner_smoke exited ${status}
+  scenario   : ${sid}
+  smoke bin  : ${SMOKE_BIN}
+  config dir : ${OPENGLAD_CONFIG_DIR:-<unset — parity_runner_smoke picks a private per-process temp dir>}
+This is an environment failure, not a toothless pin. Nothing was measured,
+so nothing is being reported as guarded or unguarded.
+EOF
+    exit 7
 }
 
 # Run the gtest filter for the scenario; print "PASS" or "FAIL".
@@ -340,11 +358,7 @@ for sid in "${scenarios[@]}"; do
     pre_eval="${TMPDIR_CANARY}/${sid}.pre.json"
     post_eval="${TMPDIR_CANARY}/${sid}.post.json"
 
-    if ! capture_eval "${sid}" "${pre_eval}"; then
-        total_zero_flips+=1
-        zero_flip_log+=("${sid}: pre-capture failed")
-        continue
-    fi
+    capture_eval "${sid}" "${pre_eval}"   # aborts the run if it cannot capture
     pre_gtest="$(capture_gtest "${sid}")"
     echo "  pre:  gtest=${pre_gtest}"
 
@@ -375,15 +389,8 @@ for sid in "${scenarios[@]}"; do
         continue
     fi
 
-    if ! capture_eval "${sid}" "${post_eval}"; then
-        git -C "${REPO_ROOT}" checkout -- "${mut_file}" >/dev/null 2>&1 || true
-        MUTATED_FILES=()
-        IN_FLIGHT_JSON=""
-        rebuild_targets >/dev/null 2>&1 || true
-        total_zero_flips+=1
-        zero_flip_log+=("${sid}: post-capture failed")
-        continue
-    fi
+    # Aborts if it cannot capture; the EXIT trap restores the mutated file.
+    capture_eval "${sid}" "${post_eval}"
     post_gtest="$(capture_gtest "${sid}")"
     echo "  post: gtest=${post_gtest}"
 

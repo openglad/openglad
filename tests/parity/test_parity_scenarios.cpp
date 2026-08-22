@@ -54,13 +54,14 @@ void run_one_scenario(const og::parity::ScenarioSpec& spec)
     // search path used to read as every golden drifting at once. Say what
     // actually happened before comparing anything.
     //
-    // Branch-internal rows are exempt on purpose: the four scen9301 rows
-    // (snapshot dirty bits, the three Z-axis arenas) point at a three-byte
-    // "FSS"-header-only fixture that has never loaded, and build their whole
-    // arena from fresh_arena + floor_paints + spawns instead. They also carry
-    // no golden, so a stub there costs nothing. Every golden-bearing row is
-    // covered.
-    ASSERT_TRUE(outcome.loaded || spec.is_branch_internal)
+    // Exempt on purpose are the four rows that point at the three-byte
+    // "FSS"-header-only fixture — snapshot_dirty_bits_scen9301 and the three
+    // Z-axis arenas — which has never loaded and is not meant to: they build
+    // their whole arena from floor_paints + spawns instead. The exemption used
+    // to key on is_branch_internal, which is a different set: there are FIVE
+    // branch-internal rows, and the fifth (treasure_exit_open_prompt_scen99)
+    // loads the real scen1.fss like everything else.
+    ASSERT_TRUE(outcome.loaded || og::parity::builds_its_own_arena(spec))
         << "scenario " << spec.id << " never loaded its level file ("
         << spec.scenario_file << "); the dump below describes an empty arena, "
            "not the scenario. Check the campaign mount / PhysFS search path.";
