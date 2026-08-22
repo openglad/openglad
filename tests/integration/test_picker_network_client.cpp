@@ -3575,6 +3575,21 @@ TEST(PickerNetworkClient,
         }
         return false;
     };
+    // The pause holds the sim tick, so a superseded banner cannot expire on
+    // its own: count every PAUSED line on the feed, not just the current one.
+    const auto banner_lines = [view]() {
+        int count = 0;
+        for (int slot = 0; slot < MAX_MESSAGES; ++slot)
+        {
+            if (view->textlist[slot].starts_with("PAUSED"))
+                ++count;
+        }
+        return count;
+    };
+
+    // The display screen is shared across picker tests: start from a known
+    // feed so every overlay line counted below is one this test wrote.
+    view->clear_text();
 
     // 1. A paused snapshot with NO broadcast: the world freezes and the
     //    overlay shows plain PAUSED, but the pause cannot be attributed to a
@@ -3632,6 +3647,14 @@ TEST(PickerNetworkClient,
                    session) == "Remote Host";
     })) << "a named remote pause should surface the peer's name";
     EXPECT_TRUE(overlay_shown("PAUSED by Remote Host"));
+    // The owner changed hands mid-pause. The anonymous banner steps 1-2 put on
+    // the feed is stale now, and the frozen tick will never retire it.
+    EXPECT_FALSE(overlay_shown("PAUSED"))
+        << "the superseded anonymous banner must be retired";
+    EXPECT_EQ(1, banner_lines())
+        << "an owner change must leave exactly one PAUSED line";
+    EXPECT_TRUE(overlay_shown("ESC: Menu"))
+        << "the hint stays while the pause is still a remote peer's";
 
     // 4. A broadcast owned by this machine's OWN seat is not remote: the
     //    subtitle seam goes quiet again (the local pauser is looking at the
@@ -3654,15 +3677,22 @@ TEST(PickerNetworkClient,
         og::runtime::local_transport_shadow_remote_pause_owner(session)
             .empty())
         << "a pause owned by this machine's own seat is not a remote pause";
+    EXPECT_TRUE(overlay_shown("PAUSED by Joiner"));
+    EXPECT_FALSE(overlay_shown("PAUSED by Remote Host"))
+        << "the previous owner's banner must not survive the handover";
+    EXPECT_EQ(1, banner_lines())
+        << "a second owner change still leaves exactly one PAUSED line";
+    EXPECT_FALSE(overlay_shown("ESC: Menu"))
+        << "the hint must be retired once the pause is this machine's own";
 
     // 5. #246: the overlay is re-stamped every frame while the pause holds,
-    //    so releasing the pause has to retire it explicitly. From a clean feed,
-    //    one paused frame under a REMOTE owner writes both lines; the first
-    //    frame after the pause lifts must take both back off. (Nothing else
-    //    can: a line is only swept by the render path, which is compiled out
-    //    under TESTING, and a level reset would restart the tick clock beneath
-    //    it — the stale-PAUSED bug.)
-    view->clear_text();
+    //    so releasing the pause has to retire it explicitly. Hand the pause
+    //    back to the remote peer (both lines return, the own-seat banner
+    //    goes), then lift it: the first frame after must take everything the
+    //    overlay ever wrote back off. (Nothing else can: a line is only swept
+    //    by the render path, which is compiled out under TESTING, and a level
+    //    reset would restart the tick clock beneath it — the stale-PAUSED
+    //    bug.)
     server_transport->send_pause_broadcast(
         join_peer_id,
         std::make_shared<og::sim::PauseBroadcastMessage>(named_pause));
@@ -3670,7 +3700,11 @@ TEST(PickerNetworkClient,
         og::runtime::local_transport_shadow_finish_tick(session);
         return overlay_shown("PAUSED by Remote Host") &&
             overlay_shown("ESC: Menu");
-    })) << "a remote pause should re-stamp both overlay lines on a clean feed";
+    })) << "a remote pause should re-stamp both overlay lines";
+    EXPECT_FALSE(overlay_shown("PAUSED by Joiner"))
+        << "the own-seat banner must not outlive the handover back";
+    EXPECT_EQ(1, banner_lines())
+        << "handing the pause back must not add a fourth banner";
 
     og::sim::WorldSnapshot resumed_snapshot =
         og::sim::capture_keyframe_snapshot(gameplay_screen->world());
@@ -3692,6 +3726,8 @@ TEST(PickerNetworkClient,
         << "the pause banner must not outlive the pause";
     EXPECT_FALSE(overlay_shown("ESC: Menu"))
         << "the menu hint must not outlive the pause";
+    EXPECT_EQ(0, banner_lines())
+        << "no banner from any owner may outlive the pause";
 
     // The display screen is shared across picker tests: release the pause
     // and the overlay lines before handing it back.

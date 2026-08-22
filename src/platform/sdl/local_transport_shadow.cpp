@@ -121,6 +121,13 @@ struct LocalTransportRuntime {
     // §2.8 follow caption: company display names keyed by GLOBAL player
     // index, stamped from the lobby state after a networked install.
     std::array<std::string, og::sim::kMaxGlobalPlayers> player_company = {};
+    // What the pause overlay last stamped on this machine's views. Both
+    // writers put the SAME strings on every view, so one record per runtime
+    // says what is on the feed. Without it an owner change mid-pause leaves
+    // the previous banner behind for good: the sim tick is frozen for the
+    // whole pause, so a superseded line can never tick-expire.
+    std::string pause_overlay_banner;
+    bool pause_overlay_hint = false;
 
     [[nodiscard]] screen* server_screen() const
     {
@@ -458,9 +465,16 @@ bool persist_private_campaign_cursor_to_save0(
     return true;
 }
 
-void clear_pause_overlay_text(viewscreen& view, const std::string& text)
+void clear_pause_overlay_text(viewscreen& view,
+                              const std::string& text,
+                              std::string_view recorded_banner)
 {
     view.expire_display_text(text);
+    // The banner the write site actually stamped, when the caller kept a
+    // record of it: after an owner change the feed carries "PAUSED by <old
+    // owner>", which neither `text` nor the anonymous fallback names.
+    if (!recorded_banner.empty() && recorded_banner != text)
+        view.expire_display_text(recorded_banner);
     // A pause that arrived after the overlay line was written carries a
     // different owner name, so the line on the feed may be the anonymous
     // fallback rather than `text`.
@@ -994,16 +1008,43 @@ bool pause_owned_by_remote_peer(
         runtime, game_client.last_pause_broadcast()->player_index);
 }
 
-void refresh_pause_overlay_text(viewscreen& view,
+// The one place the pause overlay is written. Both writers — the pause
+// broadcast callback and the per-frame render pass — stamp every view with
+// the same pair of lines, so the runtime's record says what is already on the
+// feed. When the pause changes hands mid-pause the banner text changes with
+// it, and the superseded line has to be retired here: the sim tick is frozen
+// for the whole pause, so nothing else will ever take it down. The hint goes
+// the same way when the pause turns out to be this machine's own.
+void refresh_pause_overlay_text(og::runtime::LocalTransportRuntime& runtime,
+                                screen& gameplay_screen,
                                 const std::string& text,
                                 bool include_menu_hint)
 {
-    view.refresh_display_text(text, 1);
-    if (include_menu_hint)
-        view.refresh_display_text(kPauseOverlayMenuHint, 1);
+    const bool retire_banner = !runtime.pause_overlay_banner.empty() &&
+        runtime.pause_overlay_banner != text;
+    const bool retire_hint = runtime.pause_overlay_hint && !include_menu_hint;
+
+    for (int index = 0; index < gameplay_screen.numviews; ++index)
+    {
+        viewscreen* const view = gameplay_screen.viewob[index].get();
+        if (view == nullptr)
+            continue;
+
+        if (retire_banner)
+            view->expire_display_text(runtime.pause_overlay_banner);
+        if (retire_hint)
+            view->expire_display_text(kPauseOverlayMenuHint);
+        view->refresh_display_text(text, 1);
+        if (include_menu_hint)
+            view->refresh_display_text(kPauseOverlayMenuHint, 1);
+    }
+
+    runtime.pause_overlay_banner = text;
+    runtime.pause_overlay_hint = include_menu_hint;
 }
 
 void render_pause_overlay(screen& gameplay_screen,
+                          og::runtime::LocalTransportRuntime& runtime,
                           const og::sim::GameClient& game_client,
                           bool remote_pause)
 {
@@ -1024,19 +1065,15 @@ void render_pause_overlay(screen& gameplay_screen,
         {
             viewscreen* const view = gameplay_screen.viewob[index].get();
             if (view != nullptr)
-                og::runtime::detail::clear_pause_overlay_text(*view, text);
+                og::runtime::detail::clear_pause_overlay_text(
+                    *view, text, runtime.pause_overlay_banner);
         }
+        runtime.pause_overlay_banner.clear();
+        runtime.pause_overlay_hint = false;
         return;
     }
 
-    for (int index = 0; index < gameplay_screen.numviews; ++index)
-    {
-        viewscreen* const view = gameplay_screen.viewob[index].get();
-        if (view == nullptr)
-            continue;
-
-        refresh_pause_overlay_text(*view, text, remote_pause);
-    }
+    refresh_pause_overlay_text(runtime, gameplay_screen, text, remote_pause);
     gameplay_screen.redrawme = 1;
 }
 
@@ -1258,6 +1295,9 @@ void configure_display_game_client(
                 // Follow targets belong to the wiped level (§4.5); the next
                 // control re-sync re-engages against the new world.
                 runtime_ptr->view_follow = {};
+                // The feed the overlay record described is gone with it.
+                runtime_ptr->pause_overlay_banner.clear();
+                runtime_ptr->pause_overlay_hint = false;
             }
             display_client_ptr->send_client_ready();
         });
@@ -1375,18 +1415,11 @@ void configure_display_game_client(
         [&gameplay_screen,
          runtime_ptr = &runtime](const og::sim::PauseBroadcastMessage& pause) {
             const std::string text = pause_overlay_text(&pause);
-            const bool remote_pause =
-                runtime_ptr != nullptr &&
-                pause_owner_is_remote(*runtime_ptr, pause.player_index);
-            for (int view_index = 0; view_index < gameplay_screen.numviews;
-                 ++view_index)
-            {
-                viewscreen* const view =
-                    gameplay_screen.viewob[view_index].get();
-                if (view == nullptr)
-                    continue;
-                refresh_pause_overlay_text(*view, text, remote_pause);
-            }
+            refresh_pause_overlay_text(
+                *runtime_ptr,
+                gameplay_screen,
+                text,
+                pause_owner_is_remote(*runtime_ptr, pause.player_index));
             gameplay_screen.redrawme = 1;
         });
     display_client.set_palette_sync_callback(
@@ -2918,6 +2951,14 @@ void clear_local_transport_shadow(GameSession& session) noexcept
 {
     if (session.myscreen_ != nullptr)
         session.myscreen_->set_render_interpolation_client(nullptr);
+    if (session.local_transport_runtime_ != nullptr)
+    {
+        // Torn-down runtime, so nothing is stamping the overlay any more: drop
+        // the record with it rather than let a surviving handle believe a
+        // banner is still on someone's feed.
+        session.local_transport_runtime_->pause_overlay_banner.clear();
+        session.local_transport_runtime_->pause_overlay_hint = false;
+    }
     session.local_transport_runtime_.reset();
     session.relay_transport_active_ = false;
     session.relay_speed_warning_shown_ = false;
@@ -3055,6 +3096,7 @@ bool local_transport_shadow_step_and_drain(
                 *runtime->clients[runtime->display_client_index].game_client;
             render_pause_overlay(
                 *session.myscreen_,
+                *runtime,
                 display_client,
                 pause_owned_by_remote_peer(*runtime, display_client));
         }

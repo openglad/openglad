@@ -272,6 +272,16 @@ TEST(ViewFuncs, pause_overlay_off_switch_retires_both_overlay_lines)
     EXPECT_TRUE(vs->textlist[0].empty())
         << "anonymous PAUSED banner must be retired as well";
 
+    // A pause that changed hands leaves a banner naming neither the current
+    // owner nor the anonymous fallback. Only the write site's record knows
+    // that line, so the off-switch takes it as well.
+    vs->clear_text();
+    vs->set_display_text("PAUSED by Bo", 1);
+    og::runtime::detail::clear_pause_overlay_text(
+        *vs, "PAUSED by Ana", "PAUSED by Bo");
+    EXPECT_TRUE(vs->textlist[0].empty())
+        << "the recorded banner must be retired too";
+
     vs->clear_text();
 }
 
