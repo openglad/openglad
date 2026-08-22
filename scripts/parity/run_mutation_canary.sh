@@ -13,6 +13,10 @@
 # Modes are mutually exclusive. The script refuses to start with a dirty
 # worktree, refuses to mutate files under ../openglad-master/ or
 # tests/parity/, and exits non-zero if any scenario records zero flips.
+#
+# A pin whose from-text repeats in its file carries a context_before, which
+# travels with the other fields to _apply_mutation.py: the applier exits 8
+# rather than mutate a textual twin of the line the pin means.
 
 set -euo pipefail
 

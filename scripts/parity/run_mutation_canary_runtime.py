@@ -5,7 +5,9 @@ For every scenario in `tests/parity/scenario_table.h`, this driver:
   1. Captures the baseline `og_test_parity --gtest_filter=Parity.<id>`
      verdict (expected PASS).
   2. Applies the row's `discriminating_mutation` via
-     `scripts/parity/_apply_mutation.py`.
+     `scripts/parity/_apply_mutation.py`, passing the pin's optional
+     `context_before` so the applier refuses (exit 8) rather than
+     mutating a textual twin of the line the pin means.
   3. Rebuilds `og_test_parity`.
   4. Re-runs the same gtest filter.
   5. Restores the worktree (`git checkout --` the mutated file) and

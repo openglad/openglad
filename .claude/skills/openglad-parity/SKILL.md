@@ -135,7 +135,14 @@ It is NOT in CI — CI only validates that pin files/lines exist. Facts:
 ## Pin discipline (the six known rot modes)
 
 Every pin is `{file, LINE, from-text, to-text}` applied on that exact
-line. `scripts/parity/check_mutation_pins.py` validates anchors and is a
+line, plus an optional `context_before`: a line that must sit VERBATIM
+(indentation included) within 16 lines above the pinned one, which is how
+a pin whose text repeats in its file says which occurrence it means. The
+window rule lives once in `_apply_mutation.py` (`CONTEXT_WINDOW`,
+`context_ok()`); the applier exits 8 when it fails, the checker imports
+the same routine, and `kMutationContextWindow` in scenario_table.h
+mirrors the number for the in-suite C++ gate.
+`scripts/parity/check_mutation_pins.py` validates anchors and is a
 build dependency of og_test_parity; `--fix` re-points drifted pins — but
 READ THE DIFF after, and know the blind spots:
 
@@ -156,7 +163,13 @@ READ THE DIFF after, and know the blind spots:
 4. **Same-text multiple occurrences**: a mechanical "+N lines" repin can
    land a pin on the WRONG occurrence of a repeated statement. After any
    mechanical repin of a text appearing on several lines, re-verify the
-   flip at runtime.
+   flip at runtime. A pin whose from-text is applicable on more than one
+   line of its file MUST carry a `context_before` — the lint and the
+   `mutation_canary_discriminating_power_gate` both hard-fail without
+   one. Pick a context that separates the twins (usually the enclosing
+   `case`/`local function`, but check it is not also within 16 lines
+   above a sibling — for near neighbours it will be, and you have to
+   reach further up).
 5. **Lua-syntax-error to-texts** (bare mid-block `return false`) kill the
    whole chunk on apply and flip rows via collateral damage — fake teeth.
    Use `do return false end`.

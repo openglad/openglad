@@ -472,7 +472,9 @@ endfunction()
 # insertion earlier in a pinned file silently shifts them off their anchor, and
 # a pin that no longer matches mutates nothing — the canary then reports a
 # clean run for a scenario it is no longer guarding. Cheap to check, invisible
-# if you do not.
+# if you do not. A pin whose text repeats in its file also names the line
+# ABOVE the occurrence it means, and this check enforces that too: without it,
+# a pin re-pointed at a textual twin resolves perfectly and guards nothing.
 og_add_python_check_target(check_mutation_pins
     "Checking mutation-canary pins still anchor"
     ${CMAKE_SOURCE_DIR}/scripts/parity/check_mutation_pins.py
