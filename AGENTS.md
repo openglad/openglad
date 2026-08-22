@@ -13,6 +13,9 @@ agent, not just Claude.
 | Picker/menu UI changes (buttons, subscreens, labels, menu tests) | [.claude/skills/openglad-menus/SKILL.md](.claude/skills/openglad-menus/SKILL.md) |
 | PR/branch definition of done: riding CI, completion reports, pre-merge sweeps, web previews | [.claude/skills/openglad-pr-workflow/SKILL.md](.claude/skills/openglad-pr-workflow/SKILL.md) |
 | Test and coverage honesty: denominator rules, banned assertions, hang traps, parity goldens | [.claude/skills/openglad-test-integrity/SKILL.md](.claude/skills/openglad-test-integrity/SKILL.md) |
+| Parity harness: goldens, companion, mutation canary, scenario_table.h pins | [.claude/skills/openglad-parity/SKILL.md](.claude/skills/openglad-parity/SKILL.md) |
+| Networking: version bumps, synchronized settings, snapshots, transport/mirror traps | [.claude/skills/openglad-networking/SKILL.md](.claude/skills/openglad-networking/SKILL.md) |
+| Dev environment: local-vs-CI divergence, accepted failures, git/agent traps, new-machine setup | [.claude/skills/openglad-dev-environment/SKILL.md](.claude/skills/openglad-dev-environment/SKILL.md) |
 
 The skill files are plain markdown playbooks — they assume no Claude-specific
 tooling. Follow their checklists and gates exactly; the hard invariants

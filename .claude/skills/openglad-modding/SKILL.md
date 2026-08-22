@@ -340,6 +340,50 @@ ships them in an embedded pack that mounts and unmounts with it.
   death check afterwards, so 0 against a target already at 0 hp kills it.
   Check the target's hp before returning 0.
 
+## Mode/sim scripting traps (paid for across five game-mode builds)
+
+- **`og.add_fx_ob` entities never act**: GameWorld::tick acts oblist +
+  weaplist only; fxlist is passive (exits, stains, flags). An entity
+  needing `on_act` or any per-tick engine act must be spawned with
+  `og.add_ob` (the cloud precedent: oblist FX + NO_COLLIDE). Symptom of
+  getting it wrong: perturbation proofs stay green because the hook
+  never dispatches. Corollary: a never-acting fx entity's replicated
+  `cycle` field is free storage for Lua-driven animation state.
+- **Guard every facing-indexed table**: core specials (soldier
+  whirlwind, archer volley) park `curdir` at a **-1 sentinel**, so
+  `FACING_X[curdir + 1]` indexes nil and kills the script host. Any new
+  facing lookup needs the sentinel guard.
+- **`attack()` refuses friendly fire before the damage gate**
+  (is_friendly early-return), so a same-team `on_damage` arm is
+  unreachable via attack() — test cross-team instead.
+- **Deterministic damage staging**: `compute_base_damage(d) = d -
+  sqrt(d)/2 + rng(floor(sqrt(d)))`; stage `d <= 3.99` so the rng bound
+  is ≤1 and the draw is exactly 0. Reduction = armor/2 capped at
+  amount-1.
+- **ACT_SIT is the directable-but-inert test idiom**; ACT_GUARD
+  self-issues COMMAND_FIRE via find_near_foe and blocks director
+  preemption. The act phase re-faces livings toward `enddir` — stage
+  curdir AND enddir.
+- **Generator pause idiom**: pause = `fire_frequency += 16384` (the
+  authored value rides inside), resume = subtract and clamp `busy`.
+- **Weaplist scans see fire_check probes**: `walker::fire_check` leaves
+  DEAD probe weapons on the weaplist (unpaid, carrier-owned). The
+  discriminator for a genuinely consumed weapon is `death_called()==1`;
+  a naive dead-gate produces phantom releases and mana minting.
+- **Float read boundary**: every walker/stat getter except `s_level`
+  returns FLOAT to Lua, and `og.div` throws "no integer representation"
+  on them — `og.trunc` at the read boundary is part of any metric
+  definition. Also measure engine spawn defaults (e.g. bot base mp is
+  50), never assume loader tables.
+- **No `pairs` means map-shaped manifests need an id-range scan**
+  (`for id = 0, 1023`); array iteration over a map registers nothing —
+  a shipped registration was a silent no-op this way.
+- **Twin-world test fixtures**: two live script-bound worlds resolve
+  bindings against the LAST-constructed one — run twin fixtures
+  strictly sequentially.
+- Palette/art rules for pack sprites (cycled bands, static fire ramp)
+  live in the openglad-campaign-design skill.
+
 ## Gotchas index
 
 - Two RNG draws in one C++ expression: adjudicate per site (above).
