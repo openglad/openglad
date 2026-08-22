@@ -164,10 +164,13 @@ std::vector<std::string> missing_specials(std::uint64_t observed_exercises)
 
 } // namespace
 
-// Runs before every gate below reads observed_union(): if the scenario
-// levels did not load, the coverage numbers are meaningless and the honest
-// diagnosis is "the harness could not find its levels", not sixty separate
-// "family not covered" failures.
+// observed_union() is memoized and built by whichever gate reads it first —
+// gtest order, shuffling and --gtest_filter all decide which one that is, so
+// this test does not run "before" the others in any guaranteed sense. What it
+// does is own the REPORT: if the scenario levels did not load, the coverage
+// numbers are meaningless, and the honest diagnosis is "the harness could not
+// find its levels" said once, here, rather than sixty separate "family not
+// covered" failures said everywhere else.
 TEST(Parity, coverage_gate_every_scenario_loaded_its_level)
 {
     const auto& u = observed_union();
