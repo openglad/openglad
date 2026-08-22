@@ -253,7 +253,15 @@ int main(int argc, char** argv)
     // callers that matter (scripts/parity/run_mutation_canary.sh and
     // run_mutation_canary_runtime.py) already abort on a nonzero exit, and
     // aborting loudly beats a corpus-wide phantom drift.
-    if (!boot.ok() || !outcome.loaded)
+    //
+    // Branch-internal rows are exempt from the load half, exactly as they are
+    // in test_parity_scenarios: the four scen9301 rows point at a three-byte
+    // header-only fixture on purpose and build their arena from floor paints
+    // and spawns. run_mutation_canary_runtime.py --all walks those rows, so
+    // failing them here would break a driver over a stub that is by design.
+    // A failed bootstrap still refuses for every row — that is the signal
+    // that says the environment, not the row, is broken.
+    if (!boot.ok() || (!outcome.loaded && !spec->is_branch_internal))
     {
         std::fprintf(stderr,
             "parity_runner_smoke: refusing to write a dump for scenario '%s'\n"

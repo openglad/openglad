@@ -97,6 +97,31 @@ if grep -Fq '"indeterminate": true' <<<"$facts_output"; then
     fail 'a predicate was indeterminate on a healthy run'
 fi
 
+# A branch-internal row is exempt from the load requirement: the scen9301
+# rows point at a header-only fixture on purpose, and
+# run_mutation_canary_runtime.py --all walks them.
+env OPENGLAD_CONFIG_DIR="$healthy_dir" \
+    "$smoke_bin" --scenario snapshot_dirty_bits_scen9301 \
+    --out "$test_root/internal.json" >/dev/null 2>&1 ||
+    fail 'a branch-internal row was refused over its by-design stub level'
+[[ -s "$test_root/internal.json" ]] ||
+    fail 'no dump was written for a branch-internal row'
+
+# ...but a broken bootstrap still refuses even there: that failure is the
+# environment, not the row.
+set +e
+env OPENGLAD_CONFIG_DIR="$broken_dir" \
+    "$smoke_bin" --scenario snapshot_dirty_bits_scen9301 \
+    --out "$test_root/internal-broken.json" >/dev/null 2>&1
+internal_broken_status=$?
+set -e
+if (( internal_broken_status != 3 )); then
+    fail "expected exit 3 for a branch-internal row under a broken bootstrap, got $internal_broken_status"
+fi
+if [[ -e "$test_root/internal-broken.json" ]]; then
+    fail 'a broken bootstrap still wrote a branch-internal dump'
+fi
+
 # --- With no OPENGLAD_CONFIG_DIR the tool stays out of the real install ------
 # It used to fall through to $HOME/.openglad and rewrite the developer's
 # campaign archives on every single run.

@@ -73,3 +73,4 @@ openglad_curses
 openglad_demo
 openglad_server
 openglad_text
+parity_runner_smoke
