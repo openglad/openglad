@@ -1585,8 +1585,17 @@ bool display_follow_cycle_target(SessionState& session, int view_index,
     GameWorld& world = session.myscreen_->world();
     walker* const current =
         resolve_control_from_entity_id(world, follow.target_entity_id);
-    follow.target_entity_id =
+    const std::uint32_t next_id =
         og::sim::next_follow_target_id(world, current, reverse);
+
+    // A cycle with nowhere to go (an all-dead world) used to stamp entity 0
+    // and blank view->control, dropping the seat onto a static camera without
+    // a word. Refuse instead: the caller keeps the previous target and voices
+    // the refusal.
+    walker* const target = resolve_control_from_entity_id(world, next_id);
+    if (target == nullptr || target->dead())
+        return false;
+    follow.target_entity_id = next_id;
 
     // Reflect the choice immediately (the next control re-sync would land it
     // one frame later): the target rides view->control WITHOUT a user-tag
@@ -1598,10 +1607,7 @@ bool display_follow_cycle_target(SessionState& session, int view_index,
                 .get();
         if (view != nullptr)
         {
-            walker* const target = resolve_control_from_entity_id(
-                world, follow.target_entity_id);
-            view->control =
-                (target != nullptr && !target->dead()) ? target : nullptr;
+            view->control = target;
             view->follow_company_ =
                 follow_company_for_control(runtime.get(), view->control);
         }

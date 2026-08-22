@@ -22,6 +22,66 @@
 
 #include <algorithm>
 
+namespace {
+
+// Ticks a cue silences the next one (#222). Matches the yell cooldown, which
+// is the established "you just heard from this seat" interval.
+constexpr short kCueThrottleTicks = 30;
+
+// What a failed cast says, or nullptr when it says nothing: a corpse, a
+// statless walker or a non-Living body are engine states the player cannot
+// answer, so they stay silent rather than blaming the key.
+const char* special_failure_message(walker::SpecialFailure why)
+{
+    switch (why)
+    {
+        case walker::SpecialFailure::NoMP:           return "NOT ENOUGH MP";
+        case walker::SpecialFailure::Disabled:       return "SPECIALS DISABLED";
+        case walker::SpecialFailure::ScriptDeclined: return "SPECIAL FAILED";
+        case walker::SpecialFailure::None:
+        case walker::SpecialFailure::Dead:
+        case walker::SpecialFailure::NoStats:
+        case walker::SpecialFailure::NotLiving:
+            break;
+    }
+    return nullptr;
+}
+
+// A seat-addressed cue with its clang, dropped while the throttle is warm.
+void emit_throttled_cue(SimInputDebounce& debounce, short player_num,
+                        og::sim::SimEventLog* sim_events, const char* message)
+{
+    if (message == nullptr || debounce.cue_delay > 0)
+        return;
+    debounce.cue_delay = kCueThrottleTicks;
+    og::sim::emit_sound(sim_events, SOUND_CLANG);
+    og::sim::emit_notification(sim_events, message, 0,
+                               static_cast<std::int32_t>(player_num));
+}
+
+// A seat-addressed cue for a key edge the input layer already debounces
+// (character switch, the frozen-input drop): one press, one cue.
+void emit_press_cue(short player_num, og::sim::SimEventLog* sim_events,
+                    const char* message)
+{
+    og::sim::emit_sound(sim_events, SOUND_CLANG);
+    og::sim::emit_notification(sim_events, message, 0,
+                               static_cast<std::int32_t>(player_num));
+}
+
+// Cast a player special and voice the reason when nothing happened.
+void player_cast_special(walker* control, SimInputDebounce& debounce,
+                         short player_num, og::sim::SimEventLog* sim_events)
+{
+    walker::SpecialFailure why = walker::SpecialFailure::None;
+    if (control->special(&why))
+        return;
+    emit_throttled_cue(debounce, player_num, sim_events,
+                       special_failure_message(why));
+}
+
+} // namespace
+
 walker* sim_find_next_control(GameWorld& level, short my_team)
 {
     TRACE("sim_input", "find_next_control for team %d", my_team);
@@ -197,7 +257,12 @@ SimInputResult sim_process_player_input(
         control = sim_cycle_next_character(level.oblist, oldcontrol, reverse, filter);
 
         if (!control)
+        {
+            // #223: the key used to do nothing at all when the company is
+            // down to one body. Say so instead of reading as a dead key.
             control = oldcontrol;
+            emit_press_cue(player_num, sim_events, "NO ONE TO SWITCH TO");
+        }
 
         result.control_hp_changed = true;
         result.control_hp = control->stats()->hitpoints();
@@ -233,6 +298,10 @@ SimInputResult sim_process_player_input(
     // guaranteed to run exactly once each frame)
     if (control->yo_delay() > 0)
         control->set_yo_delay(control->yo_delay() - 1);
+
+    // Same guarantee, same place: the failure-cue throttle (#222).
+    if (debounce.cue_delay > 0)
+        debounce.cue_delay--;
 
     // --- Yell for help ---
     if (pi.was_pressed(InputAction::Yell) && !control->yo_delay()
@@ -329,7 +398,15 @@ SimInputResult sim_process_player_input(
     if (control->dead() || control->stats()->frozen_delay())
     {
         if (control->stats()->frozen_delay())
+        {
+            // #222: every key from here down is dropped on the floor. Tell
+            // the seat its hero is iced rather than letting the pad feel
+            // broken.
+            if (pi.was_pressed(InputAction::Special) ||
+                pi.was_pressed(InputAction::Fire))
+                emit_press_cue(player_num, sim_events, "FROZEN!");
             control->stats()->player_thaw_tick(); // 1 -> 0 writes -kFreezeThawImmunityTicks (runaway-specials §3.3)
+        }
         result.new_control = control;
         return result;
     }
@@ -344,20 +421,33 @@ SimInputResult sim_process_player_input(
         if (pi.was_pressed(InputAction::Shift))
         {
             control->set_shifter_down(1);
-            control->special();
+            player_cast_special(control, debounce, player_num, sim_events);
             control->set_shifter_down(0);
         }
         #endif
 
         if (pi.was_pressed(InputAction::Special))
-            control->special();
+        {
+            // #222 alliance act-freeze: a hostile-to-my_team caster is
+            // skipped by the act phase (game_world.cpp), so the cast fires
+            // but its effects sit still. Voice that, and cast exactly as
+            // before — the cue may not change a single MP.
+            if (level.enemy_freeze > 0 &&
+                !control->is_friendly_to_team(
+                    static_cast<unsigned char>(level.my_team)))
+            {
+                emit_throttled_cue(debounce, player_num, sim_events,
+                                   "SPECIALS FROZEN");
+            }
+            player_cast_special(control, debounce, player_num, sim_events);
+        }
 
         if (pi.was_pressed(InputAction::Fire))
             control->init_fire();
 
         // Holding Special key for rapid use (MP cost naturally rate-limits)
         if (pi.is_held(InputAction::Special))
-            control->special();
+            player_cast_special(control, debounce, player_num, sim_events);
 
         int walkx = pi.move_x();
         int walky = pi.move_y();

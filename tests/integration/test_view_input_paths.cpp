@@ -357,3 +357,55 @@ TEST(ViewInputPaths, view_input_cheat_mode_switch_team_kill_and_level_keys)
     ks.set(SDLK_C, false);
     ctx().input.players[0].held[static_cast<int>(InputAction::Cheat)] = false;
 }
+
+// #223 path 3: a spectator camera with nobody else on the watched team used
+// to eat the key in silence. The refusal is written to THIS view, and the
+// camera stays where it was.
+TEST(ViewInputPaths, view_input_spectator_switch_with_no_target_says_so)
+{
+    TeamListSwap swap;
+    disablePlayerJoystick(0);
+
+    KeyBindingGuard bind_switch(0, KEY_SWITCH, SDLK_TAB);
+    KeyStateGuard ks;
+
+    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_TRUE(v != nullptr) << "view should exist";
+    v->mynum = 0;
+    v->my_team = 0;
+
+    struct SpectatorModeGuard
+    {
+        SaveData& save;
+        unsigned char saved;
+        explicit SpectatorModeGuard(SaveData& s) : save(s), saved(s.numplayers)
+        {
+            save.numplayers = 0;
+        }
+        ~SpectatorModeGuard() { save.numplayers = saved; }
+    } spectator_guard(og::runtime::current_session->myscreen_->save_data);
+
+    auto only = make_living(FAMILY_SOLDIER, 0, 20, 20);
+    ASSERT_TRUE(only != nullptr) << "walker should be created";
+    walker* onlyp = only.get();
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(only));
+
+    InputState empty = {};
+    v->process_input(empty);
+    v->control = onlyp;
+    v->clear_text();
+
+    InputState input = {};
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    input.players[0].held[static_cast<int>(InputAction::SwitchChar)] = true;
+    v->process_input(input);
+    ASSERT_TRUE(v->control == onlyp) << "the camera must stay on its target";
+    bool said = false;
+    for (const std::string& line : v->textlist)
+        said = said || (line == "NO ONE TO WATCH");
+    ASSERT_TRUE(said) << "a refused spectator cycle must say so";
+
+    // Release the debounce for the next test in this binary.
+    v->process_input(empty);
+    v->clear_text();
+}

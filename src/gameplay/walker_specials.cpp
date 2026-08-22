@@ -124,14 +124,22 @@ bool teleport_landing_clear(GameWorld& world, walker* self,
 
 } // namespace
 
-bool walker::special()
+bool walker::special(SpecialFailure* why)
 {
+	auto fail = [why](SpecialFailure reason) {
+		if (why)
+			*why = reason;
+		return false;
+	};
+	if (why)
+		*why = SpecialFailure::None;
+
 	// Per-placed-NPC scenario flag: a specials-disabled walker never executes
 	// its special, whatever the caller (player input, AI act logic, hit
 	// responses, archmage scripting). Bail before the trace and before any
 	// cost is charged so a disabled special simply does not fire.
 	if (specials_disabled())
-		return false;
+		return fail(SpecialFailure::Disabled);
 
 	TRACE("walker", "special: family=%d current_special=%d", family(), current_special());
 
@@ -139,14 +147,14 @@ bool walker::special()
 	if (dead())
 	{
 		Log("Dead guy doing special!\n");
-		return 0;
+		return fail(SpecialFailure::Dead);
 	}
 
 	// Do we have a stats object? If not, freak out and exit :)
 	if (!stats_)
 	{
 		Log("Special with no stats\n");
-		return 0;
+		return fail(SpecialFailure::NoStats);
 	}
 
 		int special_index = static_cast<int>(current_special());
@@ -158,10 +166,10 @@ bool walker::special()
 
 	// Do we have enough for our special ability?
 	if (stats_->magicpoints() < stats_->special_cost(special_index))
-		return 0;
+		return fail(SpecialFailure::NoMP);
 
 	if (query_order() != Order::Living)
-		return 0;
+		return fail(SpecialFailure::NotLiving);
 
 	// Dispatch via scripted hook or family descriptor callback
 	auto* fd = get_family_descriptor(family());
@@ -183,6 +191,8 @@ bool walker::special()
 		      current_game->world->enemy_freeze, og::combat::kEnemyFreezeBankCap);
 		current_game->world->enemy_freeze = og::combat::kEnemyFreezeBankCap;
 	}
+	if (!did_special)
+		return fail(SpecialFailure::ScriptDeclined);
 	return did_special;
 }
 

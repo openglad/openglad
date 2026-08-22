@@ -2300,6 +2300,32 @@ TEST(GameLoop, networked_zero_seat_joiner_follow_cycles_and_survives_full_resync
     EXPECT_EQ(-1, static_cast<int>(foreign_after->user()))
         << "[NET-R6] the resync must not stamp the watched foreign hero";
 
+    // #223 path 4: with nobody left to watch, the cycle refuses. The camera
+    // keeps the target it had (it used to be blanked onto a static view with
+    // no explanation) and THIS view is told why.
+    walker* const watched_before = view->control;
+    ASSERT_NE(nullptr, watched_before);
+    for (auto& uptr : game_screen->world().oblist)
+    {
+        if (uptr)
+            uptr->set_dead(1);
+    }
+    view->clear_text();
+    reset_viewscreen_input_debounce();
+    view->process_input(make_switch_char_input(0u));
+    EXPECT_EQ(watched_before, view->control)
+        << "a refused follow cycle must keep the previous camera target";
+    bool follow_cue = false;
+    for (const std::string& line : view->textlist)
+        follow_cue = follow_cue || (line == "NO ONE TO FOLLOW");
+    EXPECT_TRUE(follow_cue) << "a refused follow cycle must say so";
+    for (auto& uptr : game_screen->world().oblist)
+    {
+        if (uptr)
+            uptr->set_dead(0);
+    }
+    view->clear_text();
+
     // [NET-F1] negative: without the networked shadow the legacy spectator
     // block owns the key again and cycles within my_team only (demo/local
     // behavior unchanged).

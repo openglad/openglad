@@ -161,7 +161,22 @@ class walker : public og::sim::SimEntity
 		// weapon heading that set_weapon_heading() reads).
 		void face_delta(short xdelta, short ydelta);
 		bool query_next_to();
-		bool special();
+		// Why a special() attempt produced nothing. Only the player-input
+		// path asks: a silent no-op there reads as a broken key, while the
+		// AI and Lua callers poll special() constantly and must stay
+		// cue-free. Dead/NoStats/NotLiving are engine-state failures nobody
+		// can act on; the other three are worth voicing.
+		enum class SpecialFailure : std::uint8_t
+		{
+			None,           // the special fired
+			Disabled,       // specials_disabled() placed-NPC flag
+			Dead,           // corpse casting
+			NoStats,        // no statistics object
+			NoMP,           // magicpoints below special_cost
+			NotLiving,      // weapons/FX/treasure have no specials
+			ScriptDeclined, // the family hook ran and returned false
+		};
+		bool special(SpecialFailure* why = nullptr);
 		bool teleport();
 		bool teleport_ranged(std::int32_t range);
 		std::int32_t  turn_undead(std::int32_t range, std::int32_t power);

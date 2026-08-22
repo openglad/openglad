@@ -41,6 +41,12 @@ struct SimInputDebounce
 {
     short changedchar = 0;
     short changedspec = 0;
+    // Throttle for the silent-failure cues (#222). The held-Special path
+    // re-casts every frame, so a failing cast would otherwise write one feed
+    // line per frame. It lives here, not on the walker: walker members ride
+    // the snapshot wire and the parity dump, and a cosmetic cue may not move
+    // either.
+    short cue_delay = 0;
 };
 
 // Process one player's input for the simulation layer.

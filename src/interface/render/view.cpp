@@ -1381,9 +1381,13 @@ void viewscreen::process_input(const InputState& input_state)
 		else if (following_ && !g_viewscreen_debounce[mynum].changedchar)
 		{
 			g_viewscreen_debounce[mynum].changedchar = 1;
-			og::runtime::display_follow_cycle_target(
-			    *og::runtime::current_session, mynum,
-			    pi.is_held(InputAction::Shift));
+			// #223: a refused cycle (nobody left worth watching) keeps the
+			// current camera target, so say so in THIS view — the seat that
+			// pressed the key, never all four.
+			if (!og::runtime::display_follow_cycle_target(
+			        *og::runtime::current_session, mynum,
+			        pi.is_held(InputAction::Shift)))
+				refresh_display_text("NO ONE TO FOLLOW", STANDARD_TEXT_TIME);
 		}
 	}
 	// --- Spectator mode: only allow switching the camera target ---
@@ -1416,6 +1420,10 @@ void viewscreen::process_input(const InputState& input_state)
 				active_screen()->world().oblist, oldcontrol, reverse, filter);
 			if (found)
 				control = found;
+			else
+				// #223: nobody else on the watched team is alive. Keep the
+				// camera where it is and tell this view why it did not move.
+				refresh_display_text("NO ONE TO WATCH", STANDARD_TEXT_TIME);
 			if (control && control->dead())
 				control = find_next_control();
 		}

@@ -446,3 +446,49 @@ TEST(WalkerSpecialsUnit, teleport_probe_keeps_no_collide_and_height_gate)
         << "grounded occupant on the sole clear cell must block the blink";
     EXPECT_EQ(96, mage->xpos());
 }
+
+// #222: a refused cast used to be indistinguishable from a dead key. The
+// out-param names the exit so the player-input path can voice the three
+// reasons a player can act on; the default argument keeps the AI, the hit
+// response and the Lua binding on the old signature.
+TEST(WalkerSpecialsUnit, special_reports_why_it_refused)
+{
+    SpecialsFixture fx;
+    living* w = add_living(fx, FAMILY_SOLDIER, 0);
+    ASSERT_NE(nullptr, w);
+    w->stats()->set_magicpoints(500.0f);
+    walker::SpecialFailure why = walker::SpecialFailure::Disabled;
+
+    w->set_specials_disabled(true);
+    EXPECT_FALSE(w->special(&why));
+    EXPECT_EQ(walker::SpecialFailure::Disabled, why);
+    w->set_specials_disabled(false);
+
+    w->set_dead(1);
+    EXPECT_FALSE(w->special(&why));
+    EXPECT_EQ(walker::SpecialFailure::Dead, why);
+    w->set_dead(0);
+
+    w->stats()->set_magicpoints(-1.0f); // under every special_cost
+    EXPECT_FALSE(w->special(&why));
+    EXPECT_EQ(walker::SpecialFailure::NoMP, why);
+
+    // A cast the family script itself refuses: the soldier's charge declines
+    // when the way forward is blocked (here, the edge of the map).
+    w->stats()->set_magicpoints(500.0f);
+    w->set_current_special(1);
+    w->setxy(0, 0);
+    w->set_curdir(FACE_LEFT);
+    EXPECT_FALSE(w->special(&why));
+    EXPECT_EQ(walker::SpecialFailure::ScriptDeclined, why);
+
+    // A weapon has stats and MP but no special to run.
+    walker* arrow = fx.level.add_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_NE(nullptr, arrow);
+    arrow->set_dead(0);
+    arrow->set_current_special(1);
+    arrow->stats()->set_special_cost(1, 0);
+    arrow->stats()->set_magicpoints(500.0f);
+    EXPECT_FALSE(arrow->special(&why));
+    EXPECT_EQ(walker::SpecialFailure::NotLiving, why);
+}

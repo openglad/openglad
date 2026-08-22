@@ -20,6 +20,33 @@
 #include <openglad/interface/render/pal32.h>
 #include <openglad/interface/base.h>
 
+walker* cheat_cycle_next_team(GameWorld& world, short& team_in_out)
+{
+	short team = static_cast<short>(team_in_out % MAX_TEAM);
+
+	for (short step = 0; step < MAX_TEAM; step++)
+	{
+		team = static_cast<short>((team + 1) % MAX_TEAM);
+
+		for (auto& uptr : world.oblist)
+		{
+			walker* w = uptr.get();
+			// Corpses and dormant (delayed-spawn) bodies are not takeover
+			// candidates: the same rule the normal switch-character scan
+			// applies (sim_input_handler.cpp).
+			if (w && !w->dead() && !w->dormant() &&
+					(w->team_num() == team) &&
+					(w->query_order() == Order::Living))
+			{
+				team_in_out = team;
+				return w;
+			}
+		}
+	}
+
+	return nullptr;
+}
+
 void handle_cheat_keys(walker*& control, short mynum,
                        const void* native_event, const PlayerInput& pi,
                        screen* game_screen)
@@ -40,36 +67,26 @@ void handle_cheat_keys(walker*& control, short mynum,
 		// to debounce keys
 		og::runtime::current_session->changedteam_[static_cast<std::size_t>(mynum)] = 1;
 
-		walker* result = nullptr;
 		control->set_user(-1);
 		// hope this works
 		control->set_act_type(ACT_RANDOM);
 
-		short oldteam = game_screen->save_data.my_team;
-
-		do
-		{
-			game_screen->save_data.my_team++;
-			game_screen->save_data.my_team = static_cast<short>(
-			    game_screen->save_data.my_team % MAX_TEAM);
-
-			for (auto& uptr : game_screen->world().oblist)
-			{
-				walker* w = uptr.get();
-				if ((w->team_num() == game_screen->save_data.my_team) &&
-						(w->query_order() == Order::Living))
-				{
-					result = w;
-					break;
-				}
-			}
-		}
-		while (result == nullptr && game_screen->save_data.my_team != oldteam);
-
-		game_screen->world_.my_team = game_screen->save_data.my_team;
+		short newteam = game_screen->save_data.my_team;
+		walker* result = cheat_cycle_next_team(game_screen->world(), newteam);
 
 		if (result != nullptr)
+		{
+			// Only a hop that landed commits the team: a failed lap used to
+			// leave save_data (and the world) parked on whatever team the
+			// walk stopped at, silently changing whose side the seat is on.
+			game_screen->save_data.my_team = newteam;
+			game_screen->world_.my_team = newteam;
 			control = result;
+		}
+		else
+		{
+			game_screen->do_notify("NO OTHER TEAM", control);
+		}
 
 		control->set_user(static_cast<signed char>(mynum));
 		control->set_act_type(ACT_CONTROL);
