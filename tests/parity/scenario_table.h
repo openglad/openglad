@@ -3236,9 +3236,9 @@ inline constexpr FactPredicate kFacts_event_set_end_emission_scen99[] = {
 
 inline constexpr Mutation kMut_event_set_end_emission = {
     "src/gameplay/game_world.cpp", 1794,
-    "level_done = 0;",
-    "level_done = 2;",
-    "Neuters the enemy-alive guard in GameWorld::tick's normal living-act loop (the branch that runs for awake enemies; the sibling guards cover dormant, frozen, and weapon walkers): instead of resetting level_done to 0 when a live non-friendly Living enemy acts, it forces level_done to stay 2. With enemies still alive the level_done==2 completion check latches game_ended and the server layer pushes EventKind::SetEnd, so the arena's set_end suppression is broken and the event sneaks through. (Re-anchored after the dormant-guard feature added an earlier textual twin the pin had silently drifted onto.)"
+    "level_done = 0; // an awake foe holds the level open",
+    "level_done = 2; // an awake foe holds the level open",
+    "Neuters the enemy-alive guard in GameWorld::tick's normal living-act loop (the branch that runs for awake enemies; the sibling guards cover dormant, frozen, and weapon walkers): instead of resetting level_done to 0 when a live non-friendly Living enemy acts, it forces level_done to stay 2. With enemies still alive the level_done==2 completion check latches game_ended and the server layer pushes EventKind::SetEnd, so the arena's set_end suppression is broken and the event sneaks through. (Re-anchored after the dormant-guard feature added an earlier textual twin the pin had silently drifted onto. The anchor now carries the guard's own trailing comment: `level_done = 0;` alone has four textual twins in this function -- two of them, the frozen and weapon guards, byte-identical including indentation -- so the bare text was one insert away from re-pointing at a sibling guard while the checker stayed green. _apply_mutation.py matches within ONE line, so a unique anchor has to live on the mutated line itself.)"
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_soldier_1_scen99[] = {
@@ -4059,6 +4059,13 @@ inline constexpr FactPredicate kFacts_enemy_freeze_mage_scen99[] = {
     pred::WalkerPositionMoved(FAMILY_ARCHER, 200, 120,
         "consequence: archer is held at its spawn (200,120) for the full 150-tick window because freeze duration 20+11*12=152 > tick budget 150; branch and master agree on the pinned position"),
     pred::EventKindAtLeast(/*play_sound*/1, 3),
+    // #231. The whole reason this row's golden was rebaselined, and the only
+    // fact that reads the value that moved: a frozen team-1 archer is still a
+    // foe, so the level is NOT clear. Without this the row passed against the
+    // stale golden (level_done 2) as happily as against the new one, and the
+    // recapture bought no signal at all.
+    pred::LevelDoneEquals(0,
+        "consequence: the freeze branch's level_done census runs for every live walker, not only for the ones the act gate lets move, so the frozen hostile archer holds the level open for the full window; folding the census back inside the act gate leaves level_done at 2"),
 };
 
 inline constexpr Mutation kMut_enemy_freeze_mage_scen99 = {

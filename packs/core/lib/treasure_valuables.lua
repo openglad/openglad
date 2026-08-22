@@ -71,7 +71,9 @@ local function key_on_eat(self, eater)
     end
     local message = string.format("%s picks up key %d", who, level)
     if eater.team == 0 then  -- only show players picking up keys
-      og.emit_notification(message, 0, eater)
+      -- Broadcast on purpose: keys are per-walker, so "Gorik picks up key 3"
+      -- is the only way the rest of the party learns who can open that door.
+      og.emit_notification(message)
       og.emit_sound(C.SOUND_MONEY)
     end
   end

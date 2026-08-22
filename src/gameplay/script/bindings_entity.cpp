@@ -32,6 +32,7 @@
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/living.h>
+#include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
@@ -1308,7 +1309,10 @@ int og_emit_positional_sound(lua_State* L)
 
 // og.emit_notification(text[, duration[, target]]) — target is either a walker
 // (addressed to whoever controls it) or a global player index; nil/omitted or
-// any negative value broadcasts, as it always did.
+// any index outside [0, kMaxGlobalPlayers) broadcasts, as it always did. The
+// range check is the binding's job: a seat number leaves here as a signed
+// int32 and is narrowed again by every display consumer, so 65536 must not be
+// allowed to arrive as seat 0.
 int og_emit_notification(lua_State* L)
 {
     if (current_game == nullptr)
@@ -1329,7 +1333,8 @@ int og_emit_notification(lua_State* L)
         {
             target = static_cast<std::int32_t>(luaL_checkinteger(L, 3));
         }
-        if (target < 0)
+        if (target < 0 ||
+            target >= static_cast<std::int32_t>(og::sim::kMaxGlobalPlayers))
             target = -1;
     }
     og::sim::emit_notification(current_game->sim_events, std::string(s, len),

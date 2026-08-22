@@ -1005,6 +1005,34 @@ TEST_F(ScriptBindingTest, emit_notification_addresses_a_single_seat)
     EXPECT_EQ(-1, sim_events()[5].target_player);
 }
 
+// A seat number leaves the binding as a signed int32 and is narrowed again by
+// every display consumer, so an index past the global seat cap must not be
+// allowed to survive and alias onto a real seat (65536 & 0xffff == 0). The
+// binding is where the range is known, so the binding clamps.
+TEST_F(ScriptBindingTest, emit_notification_refuses_a_seat_that_cannot_exist)
+{
+    run("og.emit_notification('last seat', 0, 15)\n"
+        "og.emit_notification('one past the cap', 0, 16)\n"
+        "og.emit_notification('u16 max', 0, 65535)\n"
+        "og.emit_notification('wraps to zero', 0, 65536)\n");
+
+    ASSERT_EQ(4u, sim_events().size());
+
+    EXPECT_EQ("last seat", sim_events()[0].text);
+    EXPECT_EQ(15, sim_events()[0].target_player)
+        << "seat 15 is the highest index kMaxGlobalPlayers allows";
+
+    EXPECT_EQ("one past the cap", sim_events()[1].text);
+    EXPECT_EQ(-1, sim_events()[1].target_player);
+
+    EXPECT_EQ("u16 max", sim_events()[2].text);
+    EXPECT_EQ(-1, sim_events()[2].target_player);
+
+    EXPECT_EQ("wraps to zero", sim_events()[3].text);
+    EXPECT_EQ(-1, sim_events()[3].target_player)
+        << "an index that narrows to seat 0 must broadcast, not steal seat 0";
+}
+
 // An unowned walker (user() == -1) as the target keeps the line a broadcast,
 // which is what the treasure emitters rely on for AI-eaten pickups.
 TEST_F(ScriptBindingTest, emit_notification_to_an_unowned_walker_broadcasts)

@@ -1791,7 +1791,7 @@ void GameWorld::tick()
                 {
                     if (!ob->is_friendly_to_team(static_cast<unsigned char>(my_team)) &&
                         ob->query_order() == Order::Living)
-                        level_done = 0;
+                        level_done = 0; // an awake foe holds the level open
                     // Testing .. trying to FORCE foes :)
                     if (ob->foe() == nullptr && ob->leader() == nullptr)
                         ob->set_foe(find_far_foe(ob));
