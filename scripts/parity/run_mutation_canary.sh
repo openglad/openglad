@@ -113,9 +113,12 @@ for i in hits:
 PY
 }
 
-# Map scenario id -> (file, line, from, to, declaration-json) by reusing the
-# lint parser. Writes five NUL-terminated fields to ${2}; aborts the canary if
-# the id has no valid mutation declaration.
+# Map scenario id -> (file, line, from, to, context, declaration-json) by
+# reusing the lint parser. Writes six NUL-terminated fields to ${2}; aborts the
+# canary if the id has no valid mutation declaration. `context` is the pin's
+# optional context_before — empty for most pins — and is handed to
+# _apply_mutation.py, which refuses (exit 8) when the line it names is not
+# above the pinned one.
 #
 # NUL, not tab: pin texts may contain literal tabs (the walker.cpp:1189 group
 # carries two indentation-anchored pins whose from-text opens with four of
@@ -152,7 +155,8 @@ if m is None:
 # write — the two must not be able to disagree, so both come from this record.
 declaration = json.dumps({"file": m["file"], "line": int(m["line"]),
                           "from": m["from"], "to": m["to"]})
-fields = [m["file"], str(m["line"]), m["from"], m["to"], declaration]
+fields = [m["file"], str(m["line"]), m["from"], m["to"],
+          m.get("context_before", ""), declaration]
 Path(sys.argv[3]).write_bytes(
     b"".join(f.encode("utf-8") + b"\0" for f in fields))
 PY
@@ -313,6 +317,7 @@ for sid in "${scenarios[@]}"; do
            IFS= read -r -d '' mut_line
            IFS= read -r -d '' mut_from
            IFS= read -r -d '' mut_to
+           IFS= read -r -d '' mut_ctx
            IFS= read -r -d '' mut_decl
          } < "${mut_record}"; then
         echo "  SKIP: malformed mutation record for ${sid}" >&2
@@ -336,7 +341,8 @@ for sid in "${scenarios[@]}"; do
     # Record file for the trap BEFORE invoking the mutator, so a crash
     # mid-mutation still gets the worktree restored.
     MUTATED_FILES+=("${mut_file}")
-    if ! python3 "${APPLY_MUT}" "${mut_file}" "${mut_line}" "${mut_from}" "${mut_to}"; then
+    if ! python3 "${APPLY_MUT}" "${mut_file}" "${mut_line}" "${mut_from}" \
+             "${mut_to}" "${mut_ctx}"; then
         echo "  SKIP: _apply_mutation refused"
         # File untouched (apply aborted before writing); drop from list.
         MUTATED_FILES=()

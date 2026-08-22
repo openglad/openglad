@@ -210,6 +210,12 @@ struct FloorPaint
     std::int32_t pix;
 };
 
+// How far above the pinned line a Mutation's context_before may sit.
+// Mirrors CONTEXT_WINDOW in scripts/parity/_apply_mutation.py, which is the
+// one definition the applier and the pin checker share; check_mutation_pins.py
+// reds if this number and that one ever drift apart.
+inline constexpr int kMutationContextWindow = 16;
+
 // Discriminating mutation declaration: a single source-line edit that
 // is supposed to flip at least one of the row's expected_facts.
 // Phase 02 applies it via the canary; Phase 01 only records it. The
@@ -222,6 +228,18 @@ struct Mutation
     std::string_view from;
     std::string_view to;
     std::string_view rationale;
+    // Optional disambiguating anchor: a line that must appear VERBATIM —
+    // indentation included — somewhere in the kMutationContextWindow lines
+    // above `line`. Empty asserts nothing.
+    //
+    // `from` is matched within ONE line, so a text that repeats in the file
+    // (weap.cpp carries five identical `return 1;` bodies in one switch)
+    // cannot say which occurrence the pin means: delete the intended one and
+    // a mechanical repin lands on a sibling, green and toothless. The line
+    // above it can say. Trailing and defaulted, so the positional
+    // initializers below stay byte-identical — never insert a member before
+    // `rationale`.
+    std::string_view context_before = {};
 };
 
 } // namespace og::parity

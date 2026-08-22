@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Verify every mutation-canary pin still anchors to the line it names.
 
-Each Mutation in tests/parity/scenario_table.h is {file, line, from, to, why}.
+Each Mutation in tests/parity/scenario_table.h is {file, line, from, to, why}
+plus an optional context_before: a line that must sit VERBATIM within
+CONTEXT_WINDOW lines above the pinned one, which is how a pin whose from-text
+repeats in its file says which occurrence it means.
 The canary applies it by replacing `from` on that exact line, so a pin whose
 line has drifted — or whose text has changed — silently stops mutating
 anything. The canary then reports a clean run and the scenario looks guarded
@@ -13,11 +16,14 @@ Exit 0 when every pin anchors, 1 when one has drifted, 2 when an in-flight
 mutation declaration is malformed. With --fix, a pin whose text moved is
 re-pointed — but only when exactly one line in the file can carry it.
 
-ACCEPTANCE MIRRORS THE APPLIER. A pin is "anchored" iff
-scripts/parity/_apply_mutation.py could apply it at the pinned line, which
-means `from` occurs there EXACTLY ONCE: the applier refuses zero occurrences
-(exit 6) and refuses two or more as ambiguous (exit 7), so a checker that
-accepts either state certifies pins that cannot be applied. That is how
+ACCEPTANCE MIRRORS THE APPLIER — as code, not as a promise: the window rule
+and the routine that evaluates it are IMPORTED from _apply_mutation.py, so
+the two cannot drift. A pin is "anchored" iff that applier could apply it at
+the pinned line, which means `from` occurs there EXACTLY ONCE and its
+context_before, if any, is on the lines above: the applier refuses zero
+occurrences (exit 6), refuses two or more as ambiguous (exit 7), and refuses a
+missing context (exit 8), so a checker that accepts any of those states
+certifies pins that cannot be applied. That is how
 kMut_weapon_fire_arrow_emission sat green on an animation-table row for
 which its `from` ("8") was ambiguous, while the EntityDef row it describes
 went unmutated.
@@ -51,6 +57,10 @@ import subprocess
 import sys
 import tempfile
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
+from _apply_mutation import CONTEXT_WINDOW, context_ok  # noqa: E402
+
 REPO = pathlib.Path(__file__).resolve().parents[2]
 TABLE = REPO / "tests" / "parity" / "scenario_table.h"
 
@@ -60,16 +70,31 @@ TABLE = REPO / "tests" / "parity" / "scenario_table.h"
 # tree — which declares nothing — is judged by the clean-state rule alone.
 IN_FLIGHT_ENV = "OPENGLAD_MUTATION_IN_FLIGHT"
 
-# {"<path>", <line>, "<from>", "<to>", ... — path prefixes match the canary's
-# own allow-list (repo-relative source under src/, packs/ or tools/).
-# Both texts are captured because a pin has two legitimate states: the tree is
-# clean (line holds `from`) or the canary has it mutated (line holds `to`) —
-# see accepts() below.
+# {"<path>", <line>, "<from>", "<to>", "<why>"[, "<context>"]} — path prefixes
+# match the canary's own allow-list (repo-relative source under src/, packs/
+# or tools/). Both texts are captured because a pin has two legitimate states:
+# the tree is clean (line holds `from`) or the canary has it mutated (line
+# holds `to`) — see accepts() below. The rationale is matched but not
+# captured: it is there only so the optional sixth field, context_before, can
+# be reached past it.
 PIN = re.compile(
     r'(\{\s*"((?:src|packs|tools)/[^"]+)"\s*,\s*)(\d+)'
-    r'(\s*,\s*"((?:[^"\\]|\\.)*)"\s*,\s*"((?:[^"\\]|\\.)*)")',
+    r'(\s*,\s*"((?:[^"\\]|\\.)*)"\s*,\s*"((?:[^"\\]|\\.)*)")'
+    r'\s*,\s*"(?:[^"\\]|\\.)*"'
+    r'(\s*,\s*"((?:[^"\\]|\\.)*)")?',
     re.S,
 )
+
+# Every Mutation initializer in the table, whether or not PIN can read it. A
+# pin the regex cannot parse is not a legacy pin, it is an INVISIBLE one: no
+# state is checked and nothing says so. check() insists the two counts agree.
+MUTATION_HEAD = re.compile(r'constexpr\s+Mutation\s+kMut_\w+\s*=?\s*\{')
+
+# The C++ mirror of _apply_mutation.CONTEXT_WINDOW, read back out of the table
+# so the in-suite gate and the applier cannot disagree about how far above the
+# pinned line a context anchor may sit.
+WINDOW_MIRROR = re.compile(
+    r'inline\s+constexpr\s+int\s+kMutationContextWindow\s*=\s*(\d+)\s*;')
 
 # accepts() returns which of these explained the line, or None for "drifted".
 CLEAN = "clean-state"
@@ -96,6 +121,21 @@ def applicable(line: str, from_text: str) -> bool:
     a line carrying two copies of its `from` — green here, unappliable there.
     """
     return bool(from_text) and line.count(from_text) == 1
+
+
+def anchored(lines: list[str], line_no: int, from_text: str,
+             context: str = "") -> bool:
+    """Could the applier apply this pin AT THIS LINE of this file?
+
+    applicable() asks the question of one line in isolation; this asks it of a
+    line in its file, which is the only place the context anchor exists. Used
+    wherever a candidate home for a pin is being judged — the pinned line
+    itself, and the scan for where a drifted pin's text went.
+    """
+    if not 1 <= line_no <= len(lines):
+        return False
+    return (applicable(lines[line_no - 1], from_text)
+            and context_ok(lines, line_no, context))
 
 
 def reverse_one(line: str, from_text: str, to_text: str) -> str | None:
@@ -176,10 +216,11 @@ def accepts(line: str, from_text: str, to_text: str,
     return APPLIED if declared == (from_text, to_text) else SIBLING
 
 
-def collect_pins(source: str) -> list[tuple[str, int, str, str]]:
-    """Every pin in the table as (path, line, from, to)."""
-    return [(path, int(line_text), unescape(from_text), unescape(to_text))
-            for _, path, line_text, _, from_text, to_text
+def collect_pins(source: str) -> list[tuple[str, int, str, str, str]]:
+    """Every pin in the table as (path, line, from, to, context_before)."""
+    return [(path, int(line_text), unescape(from_text), unescape(to_text),
+             unescape(context_text or ""))
+            for _, path, line_text, _, from_text, to_text, _, context_text
             in (m.groups() for m in PIN.finditer(source))]
 
 
@@ -188,12 +229,28 @@ def collect_groups(source: str) -> dict[tuple[str, int],
     """Pins keyed by (path, line): the shared-anchor groups accepts() needs
     to recognise — and to bound — a declared sibling's mid-mutation state."""
     groups: dict[tuple[str, int], list[tuple[str, str]]] = {}
-    for path, line, from_text, to_text in collect_pins(source):
+    for path, line, from_text, to_text, _ in collect_pins(source):
         groups.setdefault((path, line), []).append((from_text, to_text))
     return {key: tuple(value) for key, value in groups.items()}
 
 
-def parse_declarations(raw: str | None, pins: list[tuple[str, int, str, str]]
+def collect_contexts(source: str) -> dict[tuple[str, int], tuple[str, ...]]:
+    """The distinct context anchors asserted on each (path, line).
+
+    Pins sharing an anchor describe the same line and so normally assert the
+    same context; a set is kept rather than one value so that if they ever
+    disagree, every one of them is still enforced.
+    """
+    contexts: dict[tuple[str, int], list[str]] = {}
+    for path, line, _, _, context in collect_pins(source):
+        seen = contexts.setdefault((path, line), [])
+        if context and context not in seen:
+            seen.append(context)
+    return {key: tuple(value) for key, value in contexts.items()}
+
+
+def parse_declarations(raw: str | None,
+                       pins: list[tuple[str, int, str, str, str]]
                        ) -> dict[tuple[str, int], tuple[str, str]]:
     """Parse OPENGLAD_MUTATION_IN_FLIGHT into {(path, line): (from, to)}.
 
@@ -202,6 +259,12 @@ def parse_declarations(raw: str | None, pins: list[tuple[str, int, str, str]]
     what a line may hold. Two declarations on one anchor are refused: the
     canary applies one mutation at a time, and "two at once" describes no
     legitimate state.
+
+    The declaration stays the four keys it always was. context_before is a
+    property of the PIN, checked against the tree on both sides of the
+    mutation; it says nothing about which state the line is in, so putting it
+    on the wire would only give the canary and this file a fifth thing to
+    disagree about. Pins are projected to (file, line, from, to) here.
     """
     if raw is None or not raw.strip():
         return {}
@@ -210,7 +273,7 @@ def parse_declarations(raw: str | None, pins: list[tuple[str, int, str, str]]
     except json.JSONDecodeError as exc:
         raise DeclarationError(f"{IN_FLIGHT_ENV} is not valid JSON: {exc}")
     entries = parsed if isinstance(parsed, list) else [parsed]
-    known = set(pins)
+    known = {pin[:4] for pin in pins}
     out: dict[tuple[str, int], tuple[str, str]] = {}
     for entry in entries:
         if not isinstance(entry, dict):
@@ -331,10 +394,12 @@ def check(fix: bool = False, repo: pathlib.Path = REPO,
     def visit(match: re.Match) -> str:
         nonlocal total
         total += 1
-        head, path, line_text, tail, from_text, to_text = match.groups()
+        (head, path, line_text, _tail, from_text, to_text,
+         _, context_text) = match.groups()
         line = int(line_text)
         wanted = unescape(from_text)
         mutated = unescape(to_text)
+        context = unescape(context_text or "")
 
         lines = lines_of(path)
         if lines is None:
@@ -348,6 +413,16 @@ def check(fix: bool = False, repo: pathlib.Path = REPO,
         if here is not None:
             state = accepts(here, wanted, mutated,
                             groups.get((path, line), ()), declared, baseline)
+        # A mutation rewrites the pinned line and nothing above it, so the
+        # context anchor is asserted in every state, mid-canary included.
+        if state is not None and not context_ok(lines, line, context):
+            problems.append(
+                f"{path}:{line} — the pinned line carries the anchor text, "
+                f"but the context line is not in the {CONTEXT_WINDOW} lines "
+                f"above it, so the applier would refuse it (exit 8); the "
+                f"block this pin names has moved or been re-indented\n"
+                f"    expected above: {context[:70]}")
+            return match.group(0)
         if state is not None:
             tally[state] += 1
             return match.group(0)
@@ -382,12 +457,26 @@ def check(fix: bool = False, repo: pathlib.Path = REPO,
                 f"    wanted: {wanted[:70]}")
             return match.group(0)
 
-        hits = [i + 1 for i, text in enumerate(lines)
-                if applicable(text, wanted)]
+        hits = [i + 1 for i in range(len(lines))
+                if anchored(lines, i + 1, wanted, context)]
         if not hits:
-            problems.append(
-                f"{path}:{line} — anchor text no longer present anywhere\n"
-                f"    wanted: {wanted[:70]}")
+            # With a context in force, "nowhere" has two flavours, and telling
+            # them apart is the difference between "this code is gone" and
+            # "the pin is looking at the wrong copy of it".
+            loose = [i + 1 for i, text in enumerate(lines)
+                     if applicable(text, wanted)]
+            if context and loose:
+                problems.append(
+                    f"{path}:{line} — anchor text is at "
+                    f"{', '.join(str(h) for h in loose[:8])}"
+                    f"{', ...' if len(loose) > 8 else ''}, but none of those "
+                    f"lines has the context line above it\n"
+                    f"    wanted:         {wanted[:70]}\n"
+                    f"    expected above: {context[:70]}")
+            else:
+                problems.append(
+                    f"{path}:{line} — anchor text no longer present anywhere\n"
+                    f"    wanted: {wanted[:70]}")
             return match.group(0)
         if len(hits) > 1:
             # Auto-repair picks the NEAREST match, which for a short or
@@ -413,9 +502,35 @@ def check(fix: bool = False, repo: pathlib.Path = REPO,
         # so: a breakdown whose parts do not sum to the total reads like a
         # counting bug and teaches nobody anything.
         tally[CLEAN] += 1
-        return head + str(nearest) + tail
+        # Only the line number is rewritten; everything the match swallowed
+        # after it — the rationale, and the context field beyond it — is
+        # copied back verbatim.
+        rest = match.group(0)[len(head) + len(line_text):]
+        return head + str(nearest) + rest
 
     updated = PIN.sub(visit, source)
+
+    # A pin the regex cannot read is checked by nothing at all, and looks
+    # exactly like a table with fewer pins in it. Count the initializers
+    # independently and insist the two agree, so a punctuation change that
+    # slips one past PIN is a hard error instead of a silent exemption.
+    heads = len(MUTATION_HEAD.findall(source))
+    if heads != total:
+        problems.append(
+            f"{table}: {heads} Mutation initializer(s) in the table but "
+            f"{total} matched the pin pattern; {abs(heads - total)} pin(s) "
+            f"are being checked by nothing. Fix the initializer's spelling "
+            f"or PIN in this file — do not leave it unread.")
+
+    # The window rule lives in _apply_mutation.py; the C++ gate compiled into
+    # og_test_parity re-states it as a number. Two copies, one meaning.
+    mirror = WINDOW_MIRROR.search(source)
+    if mirror is not None and int(mirror.group(1)) != CONTEXT_WINDOW:
+        problems.append(
+            f"{table}: kMutationContextWindow is {mirror.group(1)} but "
+            f"_apply_mutation.CONTEXT_WINDOW is {CONTEXT_WINDOW}; the "
+            f"in-suite gate and the applier would judge context anchors by "
+            f"different rules")
 
     # Every pin's MUTATED state must be recognisable too. The canary rebuilds
     # og_test_parity with the mutation in the tree, and this check gates that
@@ -424,6 +539,7 @@ def check(fix: bool = False, repo: pathlib.Path = REPO,
     # the failure is a red pin-check rather than a mid-run canary crash.
     # Over the POST-repair table: with --fix off the two are the same text,
     # and with it on the re-pointed anchors are the ones that have to hold up.
+    updated_contexts = collect_contexts(updated)
     for (path, line), group in sorted(collect_groups(updated).items()):
         if (path, line) in declarations:
             continue  # mid-mutation; the per-pin pass already judged it
@@ -433,6 +549,9 @@ def check(fix: bool = False, repo: pathlib.Path = REPO,
         clean = lines[line - 1]
         if any(not applicable(clean, sib_from) for sib_from, _ in group):
             continue  # not a clean anchor; already reported above
+        if any(not context_ok(lines, line, ctx)
+               for ctx in updated_contexts.get((path, line), ())):
+            continue  # context missing; already reported above
         for pin in group:
             mutated_line = clean.replace(pin[0], pin[1], 1)
             unnamed = [sib for sib in group
@@ -460,7 +579,8 @@ def check(fix: bool = False, repo: pathlib.Path = REPO,
               "\nunambiguous line, then re-read the diff: a pin whose"
               "\nsurrounding code changed meaning needs a new anchor, not just"
               "\na new line number, and one whose text is too generic to place"
-              "\nneeds a longer `from` that names the row it mutates."
+              "\nneeds a longer `from` that names the row it mutates, or a"
+              "\ncontext_before naming the line above the occurrence it means."
               f"\n(Mid-canary? The driver must export {IN_FLIGHT_ENV} naming"
               "\nthe applied pin; a mutated line is recognised only against"
               "\nthat declaration and HEAD's copy of the line.)",
@@ -787,11 +907,113 @@ def _self_test_end_to_end() -> list[str]:
     return failures
 
 
+_CONTEXT_ASSERTIONS = 9
+
+
+def _self_test_context() -> list[str]:
+    """The context anchor, over a file whose `from` text has a twin.
+
+    Two identical `return 1;` bodies in one switch — weap.cpp carries five —
+    is the shape the anchor exists for: the pinned line alone cannot say which
+    arm it means, so nothing notices when a mechanical repin lands on the
+    other one.
+    """
+    failures = []
+    body = ("switch (act)\n"
+            "{\n"
+            "    case ACT_MOVE:\n"
+            "        return 1;\n"
+            "    case ACT_DIE:\n"
+            "        return 1;\n"
+            "}\n")
+    head = {"src/sw.cpp": body.splitlines()}
+
+    def run(table_text: str, source: str = body, fix: bool = False
+            ) -> tuple[int, str, str]:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / "src").mkdir()
+            (root / "src" / "sw.cpp").write_text(source)
+            table = root / "table.h"
+            table.write_text(table_text)
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), \
+                    contextlib.redirect_stderr(err):
+                rc = check(fix, root, table, {},
+                           lambda path: head.get(path))
+            return rc, out.getvalue(), err.getvalue()
+
+    def pin(line: int, context: str | None) -> str:
+        ctx = f', "{context}"' if context is not None else ""
+        return (f'constexpr Mutation kMut_x{{"src/sw.cpp", {line}, '
+                f'"return 1;", "return 0;", "why"{ctx}}};\n')
+
+    die = "    case ACT_DIE:"
+
+    # Accepted: the pin names the DIE arm and the DIE label is above it.
+    rc, out, err = run(pin(6, die))
+    if rc != 0 or "1 anchors valid (1 clean-state" not in out:
+        failures.append(f"context/accepted: rc={rc} out={out.strip()!r}")
+
+    # The twin: same text, same file, wrong arm. Applicable — and refused,
+    # which is the whole point of the field.
+    rc, out, err = run(pin(4, die))
+    if rc != 1 or "context line is not in the" not in err:
+        failures.append(f"context/twin-rejected: rc={rc} err={err.strip()!r}")
+
+    # Beyond the window: the label is real, just too far up to anchor to.
+    padded = ("    case ACT_DIE:\n" + "    // filler\n" * CONTEXT_WINDOW
+              + "        return 1;\n")
+    rc, out, err = run(pin(CONTEXT_WINDOW + 2, die), padded)
+    if rc != 1 or "context line is not in the" not in err:
+        failures.append(f"context/beyond-window: rc={rc} err={err.strip()!r}")
+
+    # Re-indented: a block that changed nesting is a block whose pin has to be
+    # re-read by a human, so the comparison is exact, indentation included.
+    rc, out, err = run(pin(6, die.strip()))
+    if rc != 1 or "context line is not in the" not in err:
+        failures.append(f"context/re-indent: rc={rc} err={err.strip()!r}")
+
+    # No context field at all: every pin written before this existed, judged
+    # exactly as it was before — ambiguity in the file is not this check's
+    # business, only the pinned line is.
+    rc, out, err = run(pin(4, None))
+    if rc != 0 or "1 anchors valid (1 clean-state" not in out:
+        failures.append(f"context/legacy-empty: rc={rc} out={out.strip()!r}")
+
+    # Drifted by one line. The context narrows the candidates to the arm the
+    # pin means, so the report names a line — and --fix moves it there —
+    # instead of refusing the choice between two identical bodies.
+    shifted = "int header;\n" + body
+    rc, out, err = run(pin(6, die), shifted)
+    if rc != 1 or "text now at line 7" not in err:
+        failures.append(f"context/drift-report: rc={rc} err={err.strip()!r}")
+    rc, out, err = run(pin(6, None), shifted)
+    if rc != 1 or "too generic to re-point automatically" not in err:
+        failures.append(
+            f"context/drift-without-context: rc={rc} err={err.strip()!r}")
+
+    # An initializer PIN cannot read is not a legacy pin, it is an unchecked
+    # one; the head count is what makes that a failure instead of a shrug.
+    rc, out, err = run(pin(6, die) + 'constexpr Mutation kMut_y{ "src/sw.cpp"'
+                                     ' /* hi */, 6, "return 1;", "return 0;",'
+                                     ' "why"};\n')
+    if rc != 1 or "are being checked by nothing" not in err:
+        failures.append(f"context/head-count: rc={rc} err={err.strip()!r}")
+
+    # The C++ mirror of the window rule, disagreeing with the applier.
+    rc, out, err = run("inline constexpr int kMutationContextWindow = "
+                       f"{CONTEXT_WINDOW + 1};\n" + pin(6, die))
+    if rc != 1 or "judge context anchors by different rules" not in err:
+        failures.append(f"context/window-mirror: rc={rc} err={err.strip()!r}")
+    return failures
+
+
 def self_test(verbose: bool) -> int:
     cases = _acceptance_cases()
     described = _describe_cases()
     failures = (_self_test_acceptance() + _self_test_describe()
-                + _self_test_end_to_end())
+                + _self_test_end_to_end() + _self_test_context())
     if failures:
         print(f"check_mutation_pins self-tests: {len(failures)} FAILED",
               file=sys.stderr)
@@ -800,9 +1022,10 @@ def self_test(verbose: bool) -> int:
         return 1
     if verbose:
         print(f"check_mutation_pins self-tests: "
-              f"{len(cases) + len(described) + _E2E_ASSERTIONS} pass "
-              f"({len(cases)} acceptance cases, {len(described)} rendering, "
-              f"{_E2E_ASSERTIONS} end-to-end)")
+              f"{len(cases) + len(described) + _E2E_ASSERTIONS + _CONTEXT_ASSERTIONS}"
+              f" pass ({len(cases)} acceptance cases, {len(described)} "
+              f"rendering, {_E2E_ASSERTIONS} end-to-end, "
+              f"{_CONTEXT_ASSERTIONS} context anchor)")
     return 0
 
 

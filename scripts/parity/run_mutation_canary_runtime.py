@@ -296,7 +296,8 @@ def main() -> int:
         # tests/parity/* or master companion paths.
         apply = subprocess.run(
             ["python3", str(APPLY_MUT),
-             mut["file"], str(mut["line"]), mut["from"], mut["to"]],
+             mut["file"], str(mut["line"]), mut["from"], mut["to"],
+             mut.get("context_before", "")],
             capture_output=True, text=True,
         )
         if apply.returncode != 0:

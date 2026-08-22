@@ -205,7 +205,8 @@ def parse_mutation_constants(text: str) -> dict[str, dict[str, str]]:
                         break
             i += 1
         body = text[start:i].strip()
-        # Five comma-separated initialisers (top-level commas; strings can't
+        # Five comma-separated initialisers, plus the optional sixth
+        # (context_before) added later (top-level commas; strings can't
         # nest braces here so a simple split-on-comma works after length-
         # preserving string masking).
         masked = re.sub(
@@ -262,6 +263,10 @@ def parse_mutation_constants(text: str) -> dict[str, dict[str, str]]:
                 "from":      unquote(parts[2]),
                 "to":        unquote(parts[3]),
                 "rationale": unquote(parts[4]),
+                # Optional: the line that must sit verbatim above the pinned
+                # one. Absent on every pin whose from-text is unique in its
+                # file, which is most of them.
+                "context_before": unquote(parts[5]) if len(parts) >= 6 else "",
             }
     return out
 

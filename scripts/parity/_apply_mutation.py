@@ -9,6 +9,10 @@ back. Validates:
     checkout.
   - ${from} appears literally on ${line} (exactly once — ambiguous
     multi-occurrences abort).
+  - the optional ${context_before}, when given, appears VERBATIM on one
+    of the CONTEXT_WINDOW lines above ${line}. A pin's from-text is
+    matched within a single line, which for a repeated statement cannot
+    say WHICH occurrence the pin means; the context line above it can.
   - The realpath of ${file} resolved against the repo root does NOT live
     under ../openglad-master/ or tests/parity/. Master is pinned at
     master_companion_sha; tests/parity/* headers are consumed via
@@ -16,7 +20,7 @@ back. Validates:
     full parity-group rebuild that defeats incremental canary runs.
 
 Usage:
-  _apply_mutation.py <file> <line> <from_text> <to_text>
+  _apply_mutation.py <file> <line> <from_text> <to_text> [<context_before>]
 
 Exit codes:
   0  applied
@@ -26,6 +30,8 @@ Exit codes:
   5  line out of range
   6  from-text not on that line
   7  from-text appears multiple times on that line (ambiguous)
+  8  context-before text is not on the lines above (pin is on the wrong
+     occurrence, or the block it names has moved)
 """
 
 from __future__ import annotations
@@ -43,6 +49,17 @@ FORBIDDEN_PREFIXES = [
 ]
 
 
+# How far above the pinned line a context anchor may sit. THE definition:
+# check_mutation_pins.py imports it (and context_ok below) rather than
+# re-deriving the rule, so the acceptance check cannot drift from the applier
+# it is supposed to predict, and tests/parity/scenario_table.h mirrors the
+# number as kMutationContextWindow for the in-suite C++ gate.
+#
+# Sixteen lines is the enclosing `case`, `if` or `local function` of a
+# statement in this codebase without reaching the one before it.
+CONTEXT_WINDOW = 16
+
+
 def _is_under(path_real: str, prefix_real: str) -> bool:
     try:
         return os.path.commonpath([path_real, prefix_real]) == prefix_real
@@ -50,10 +67,29 @@ def _is_under(path_real: str, prefix_real: str) -> bool:
         return False
 
 
+def context_ok(lines: list[str], line_no: int, context: str) -> bool:
+    """Is `context` one of the CONTEXT_WINDOW lines above 1-indexed line_no?
+
+    An empty context asserts nothing — that is every pin written before the
+    field existed, and it stays exactly as applicable as it was.
+
+    The comparison is EXACT once the line terminator is off: indentation is
+    part of the anchor. A re-indented block is a block that moved into or out
+    of something, which is precisely when a pin's claim to know which
+    occurrence it means stops being true.
+    """
+    if not context:
+        return True
+    lo = max(0, line_no - 1 - CONTEXT_WINDOW)
+    return any(line.rstrip("\r\n") == context
+               for line in lines[lo:max(lo, line_no - 1)])
+
+
 def main() -> int:
-    if len(sys.argv) != 5:
+    if len(sys.argv) not in (5, 6):
         sys.stderr.write(
-            "usage: _apply_mutation.py <file> <line> <from_text> <to_text>\n"
+            "usage: _apply_mutation.py <file> <line> <from_text> <to_text> "
+            "[<context_before>]\n"
         )
         return 2
 
@@ -65,6 +101,7 @@ def main() -> int:
         return 2
     from_text = sys.argv[3]
     to_text = sys.argv[4]
+    context_before = sys.argv[5] if len(sys.argv) == 6 else ""
 
     if not from_text:
         sys.stderr.write("_apply_mutation: from-text must not be empty\n")
@@ -122,6 +159,15 @@ def main() -> int:
             f"(ambiguous) in {file_arg}\n"
         )
         return 7
+
+    if not context_ok(lines, line_no, context_before):
+        sys.stderr.write(
+            f"_apply_mutation: context-before text is not on the "
+            f"{CONTEXT_WINDOW} lines above line {line_no} of {file_arg}; "
+            f"refusing to mutate what may be the wrong occurrence\n"
+            f"  expected above: {context_before!r}\n"
+        )
+        return 8
 
     lines[line_no - 1] = line.replace(from_text, to_text, 1)
     new_text = "".join(lines)

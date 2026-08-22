@@ -45,6 +45,8 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <fstream>
 #include <iterator>
@@ -1045,11 +1047,16 @@ TEST(Parity, mutation_canary_discriminating_power_gate)
             continue;
         }
 
-        int line_count = 0;
+        std::vector<std::string> source_lines;
         {
             std::string buf;
-            while (std::getline(in, buf)) ++line_count;
+            while (std::getline(in, buf))
+            {
+                if (!buf.empty() && buf.back() == '\r') buf.pop_back();
+                source_lines.push_back(buf);
+            }
         }
+        const int line_count = static_cast<int>(source_lines.size());
 
         if (m.line < 1 || m.line > line_count)
         {
@@ -1058,6 +1065,31 @@ TEST(Parity, mutation_canary_discriminating_power_gate)
                << " out of range [1," << line_count << "] in \""
                << m.file << "\"";
             failures.push_back(os.str());
+            continue;
+        }
+
+        // The context anchor, judged exactly as scripts/parity/
+        // _apply_mutation.py judges it (exit 8) — this gate is the half of
+        // the rule that runs in CI, where no Python check does.
+        if (!m.context_before.empty())
+        {
+            const int first =
+                std::max(0, m.line - 1 - og::parity::kMutationContextWindow);
+            bool found = false;
+            for (int i = first; i < m.line - 1 && !found; ++i)
+                found = (source_lines[static_cast<std::size_t>(i)] ==
+                         m.context_before);
+            if (!found)
+            {
+                std::ostringstream os;
+                os << spec.id << ": mutation context_before \""
+                   << m.context_before << "\" is not on the "
+                   << og::parity::kMutationContextWindow
+                   << " lines above " << m.file << ":" << m.line
+                   << "; the block this pin names has moved or been "
+                      "re-indented";
+                failures.push_back(os.str());
+            }
         }
 
         if (m.file == "src/resources/save_data.cpp" &&
