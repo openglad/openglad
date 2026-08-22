@@ -480,6 +480,20 @@ og_add_python_check_target(check_mutation_pins
     ${CMAKE_SOURCE_DIR}/scripts/parity/check_mutation_pins.py
 )
 
+# The other half of the pin rules, and until now it ran in no target and no
+# workflow at all. check_mutation_pins asks whether a pin anchors where it
+# says; this lint asks whether the pin could ever have meant that line — the
+# MANDATORY-CONTEXT rule (an ambiguous from-text must carry a context that
+# narrows its file to exactly one line) and the invariant that a context is
+# never itself a pin's from/to text in the same file. Both rules were written
+# down and then left with nothing to enforce them outside a hand-run. It also
+# carries the scenario-table contract checks (paired facts, non-vacuous
+# predicates, caster preconditions).
+og_add_python_check_target(check_scenario_facts
+    "Linting the parity scenario table"
+    ${CMAKE_SOURCE_DIR}/scripts/parity/lint_scenario_facts.py
+)
+
 # Pack Lua: one measurable decision per line. Line coverage counts LINES, so
 # anything sharing a line with something already covered shares its coverage
 # point and new untested logic can be folded on at zero cost — a second

@@ -70,6 +70,9 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from _apply_mutation import (  # noqa: E402
     CONTEXT_WINDOW, anchor_lines, context_ok)
+# The table's OTHER parser. Imported so the two can be held to the same
+# reading of it — see cross_check_contexts().
+import lint_scenario_facts as lint  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 TABLE = REPO / "tests" / "parity" / "scenario_table.h"
@@ -87,10 +90,17 @@ IN_FLIGHT_ENV = "OPENGLAD_MUTATION_IN_FLIGHT"
 # holds `to`) — see accepts() below. The rationale is matched but not
 # captured: it is there only so the optional sixth field, context_before, can
 # be reached past it.
+#
+# The rationale slot has to swallow ADJACENT string literals. A long rationale
+# is naturally written as `"part one " "part two"`, which C++ concatenates and
+# a one-literal slot does not: the match ended at the first closing quote, the
+# optional context field beyond it saw a `"` where it wanted a `,`, and the pin
+# came back context-free — green, and re-pointable by --fix to any line its
+# text fits. cross_check_contexts() below is the belt to this braces.
 PIN = re.compile(
     r'(\{\s*"((?:src|packs|tools)/[^"]+)"\s*,\s*)(\d+)'
     r'(\s*,\s*"((?:[^"\\]|\\.)*)"\s*,\s*"((?:[^"\\]|\\.)*)")'
-    r'\s*,\s*"(?:[^"\\]|\\.)*"'
+    r'\s*,\s*"(?:[^"\\]|\\.)*"(?:\s*"(?:[^"\\]|\\.)*")*'
     r'(\s*,\s*"((?:[^"\\]|\\.)*)")?',
     re.S,
 )
@@ -257,6 +267,53 @@ def collect_contexts(source: str) -> dict[tuple[str, int], tuple[str, ...]]:
         if context and context not in seen:
             seen.append(context)
     return {key: tuple(value) for key, value in contexts.items()}
+
+
+def cross_check_contexts(source: str) -> list[str]:
+    """Both parsers of this table must recover the same context for each pin.
+
+    Two of them read it: the PIN regex above, and
+    lint_scenario_facts.parse_mutation_constants, which balances braces and
+    splits on top-level commas. They already disagreed once — a rationale
+    spelled as adjacent string literals ended PIN's rationale slot early, so
+    the context field beyond it never matched and this checker read the pin as
+    context-free while the lint read it correctly. Nothing said so. A pin with
+    no context is judged by its pinned line alone, and --fix re-points it to
+    any line its text happens to fit.
+
+    So the two readings are compared rather than trusted, and a disagreement
+    is a hard error: the parser that is wrong is not knowable from here, and
+    "one of our two readers of the pin table is broken" is not a state to
+    carry on from. Pins are paired positionally — both parsers walk the table
+    in source order — which also catches one of them seeing a different NUMBER
+    of pins than the other.
+    """
+    regex_pins = collect_pins(source)
+    lint_pins = list(lint.parse_mutation_constants(source).items())
+    problems: list[str] = []
+    if len(regex_pins) != len(lint_pins):
+        return [f"the PIN pattern reads {len(regex_pins)} pin(s) from the "
+                f"table and lint_scenario_facts reads {len(lint_pins)}; one "
+                f"of the two parsers is not seeing the table as written"]
+    for (path, line, from_text, to_text, context), (name, m) in zip(
+            regex_pins, lint_pins):
+        theirs = (m.get("file", ""), str(m.get("line", "")),
+                  m.get("from", ""), m.get("to", ""))
+        mine = (path, str(line), from_text, to_text)
+        if theirs != mine:
+            problems.append(
+                f"{name}: the two table parsers disagree about the pin "
+                f"itself\n    regex: {mine}\n    lint:  {theirs}")
+            continue
+        if m.get("context_before", "") != context:
+            problems.append(
+                f"{name}: the two table parsers disagree about "
+                f"context_before; a pin whose context this file cannot see is "
+                f"judged by its pinned line alone and --fix will re-point it "
+                f"anywhere its text fits\n"
+                f"    regex: {context[:70]!r}\n"
+                f"    lint:  {m.get('context_before', '')[:70]!r}")
+    return problems
 
 
 def parse_declarations(raw: str | None,
@@ -532,10 +589,23 @@ def check(fix: bool = False, repo: pathlib.Path = REPO,
             f"are being checked by nothing. Fix the initializer's spelling "
             f"or PIN in this file — do not leave it unread.")
 
+    problems.extend(cross_check_contexts(source))
+
     # The window rule lives in _apply_mutation.py; the C++ gate compiled into
-    # og_test_parity re-states it as a number. Two copies, one meaning.
+    # og_test_parity re-states it as a number. Two copies, one meaning — and
+    # a missing mirror is a failure, not a pass. Skipping the comparison when
+    # the constant cannot be found is the same shape of hole as an unparsed
+    # pin: renaming or deleting it would silently retire the only check that
+    # the in-suite gate and the applier agree about the window.
     mirror = WINDOW_MIRROR.search(source)
-    if mirror is not None and int(mirror.group(1)) != CONTEXT_WINDOW:
+    if mirror is None:
+        problems.append(
+            f"{table}: kMutationContextWindow not found in the table; the "
+            f"C++ gate's copy of the context window cannot be compared "
+            f"against _apply_mutation.CONTEXT_WINDOW ({CONTEXT_WINDOW}), so "
+            f"the two could judge context anchors by different rules with "
+            f"nothing to say so")
+    elif int(mirror.group(1)) != CONTEXT_WINDOW:
         problems.append(
             f"{table}: kMutationContextWindow is {mirror.group(1)} but "
             f"_apply_mutation.CONTEXT_WINDOW is {CONTEXT_WINDOW}; the "
@@ -762,6 +832,15 @@ def _self_test_describe() -> list[str]:
 
 _E2E_ASSERTIONS = 14
 
+# Every synthetic table below carries the C++ window mirror, because a table
+# without it is now a hard error in its own right (see check()). The pins are
+# spelled the way the real table spells them — `inline constexpr Mutation
+# kMut_x = {...}` — so lint_scenario_facts parses them too and
+# cross_check_contexts() is exercised on every self-test table rather than
+# only on the shipped one.
+_WINDOW_DECL = (f"inline constexpr int kMutationContextWindow = "
+                f"{CONTEXT_WINDOW};\n")
+
 
 def _self_test_end_to_end() -> list[str]:
     """check() over a synthetic table and tree: the states, exits and repairs.
@@ -778,11 +857,12 @@ def _self_test_end_to_end() -> list[str]:
         other = root / "src" / "other.cpp"
         other.write_text("int untouched = 1;\n")
         table_text = (
-            'constexpr Mutation kMut_a{"src/fake.cpp", 2, '
+            _WINDOW_DECL +
+            'inline constexpr Mutation kMut_a = {"src/fake.cpp", 2, '
             '"base * 362.0f", "base * 512.0f", "why"};\n'
-            'constexpr Mutation kMut_b{"src/fake.cpp", 2, '
+            'inline constexpr Mutation kMut_b = {"src/fake.cpp", 2, '
             '"base * 362.0f", "base * 181.0f", "why"};\n'
-            'constexpr Mutation kMut_c{"src/other.cpp", 1, '
+            'inline constexpr Mutation kMut_c = {"src/other.cpp", 1, '
             '"int untouched = 1;", "int untouched = 2;", "why"};\n')
         table = root / "table.h"
         table.write_text(table_text)
@@ -904,8 +984,9 @@ def _self_test_end_to_end() -> list[str]:
         table = root / "table.h"
         # "1" -> "a" turns `int a = 1;` into `int a = a;`, which holds two
         # copies of the `to` text and so inverts to nothing.
-        table.write_text('constexpr Mutation kMut_x{"src/loop.cpp", 2, '
-                         '"1", "a", "why"};\n')
+        table.write_text(_WINDOW_DECL +
+                         'inline constexpr Mutation kMut_x = {"src/loop.cpp", '
+                         '2, "1", "a", "why"};\n')
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             rc = check(False, root, table, {},
@@ -917,7 +998,7 @@ def _self_test_end_to_end() -> list[str]:
     return failures
 
 
-_CONTEXT_ASSERTIONS = 9
+_CONTEXT_ASSERTIONS = 12
 
 
 def _self_test_context() -> list[str]:
@@ -938,14 +1019,14 @@ def _self_test_context() -> list[str]:
             "}\n")
     head = {"src/sw.cpp": body.splitlines()}
 
-    def run(table_text: str, source: str = body, fix: bool = False
-            ) -> tuple[int, str, str]:
+    def run(table_text: str, source: str = body, fix: bool = False,
+            window_decl: str = _WINDOW_DECL) -> tuple[int, str, str]:
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)
             (root / "src").mkdir()
             (root / "src" / "sw.cpp").write_text(source)
             table = root / "table.h"
-            table.write_text(table_text)
+            table.write_text(window_decl + table_text)
             out, err = io.StringIO(), io.StringIO()
             with contextlib.redirect_stdout(out), \
                     contextlib.redirect_stderr(err):
@@ -953,10 +1034,10 @@ def _self_test_context() -> list[str]:
                            lambda path: head.get(path))
             return rc, out.getvalue(), err.getvalue()
 
-    def pin(line: int, context: str | None) -> str:
+    def pin(line: int, context: str | None, rationale: str = '"why"') -> str:
         ctx = f', "{context}"' if context is not None else ""
-        return (f'constexpr Mutation kMut_x{{"src/sw.cpp", {line}, '
-                f'"return 1;", "return 0;", "why"{ctx}}};\n')
+        return (f'inline constexpr Mutation kMut_x = {{"src/sw.cpp", {line}, '
+                f'"return 1;", "return 0;", {rationale}{ctx}}};\n')
 
     die = "    case ACT_DIE:"
 
@@ -1012,10 +1093,36 @@ def _self_test_context() -> list[str]:
         failures.append(f"context/head-count: rc={rc} err={err.strip()!r}")
 
     # The C++ mirror of the window rule, disagreeing with the applier.
-    rc, out, err = run("inline constexpr int kMutationContextWindow = "
-                       f"{CONTEXT_WINDOW + 1};\n" + pin(6, die))
+    rc, out, err = run(pin(6, die), window_decl=(
+        f"inline constexpr int kMutationContextWindow = "
+        f"{CONTEXT_WINDOW + 1};\n"))
     if rc != 1 or "judge context anchors by different rules" not in err:
         failures.append(f"context/window-mirror: rc={rc} err={err.strip()!r}")
+
+    # ...and no mirror at all fails the same way. It used to pass: the
+    # comparison was skipped when the constant could not be found, so renaming
+    # or deleting it retired the check silently.
+    rc, out, err = run(pin(6, die), window_decl="")
+    if rc != 1 or "kMutationContextWindow not found" not in err:
+        failures.append(f"context/window-missing: rc={rc} err={err.strip()!r}")
+
+    # A rationale written as ADJACENT string literals, the way C++ spells a
+    # long one. The regex's rationale slot used to stop at the first closing
+    # quote, so the context field beyond it never matched and the pin came
+    # back context-free — accepted here, and re-pointable to the wrong twin.
+    split_why = '"the DIE arm specifically, " "not the MOVE arm above it"'
+    rc, out, err = run(pin(6, die, split_why))
+    if rc != 0 or "1 anchors valid (1 clean-state" not in out:
+        failures.append(
+            f"context/adjacent-rationale: rc={rc} out={out.strip()!r} "
+            f"err={err.strip()!r}")
+
+    # The same pin on the MOVE arm: with the context recovered, the twin is
+    # refused. Before the fix this was green, which is the whole defect.
+    rc, out, err = run(pin(4, die, split_why))
+    if rc != 1 or "context line is not in the" not in err:
+        failures.append(
+            f"context/adjacent-rationale-twin: rc={rc} err={err.strip()!r}")
     return failures
 
 

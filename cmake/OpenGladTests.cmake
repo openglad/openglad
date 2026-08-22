@@ -682,6 +682,11 @@ add_dependencies(og_test_parity scenario_facts_generated)
 # validating the pins.)
 if(Python3_Interpreter_FOUND)
     add_dependencies(og_test_parity check_mutation_pins)
+    # And the table lint beside it, for the same reason: the mandatory-context
+    # rule has two halves, and this is the one that asks whether an ambiguous
+    # pin's context narrows its file to a single line at all. It had no target
+    # and no workflow, so that half of the rule was documentation.
+    add_dependencies(og_test_parity check_scenario_facts)
 endif()
 
 # Standalone smoke runner — Phase 02 verifier and the launcher
