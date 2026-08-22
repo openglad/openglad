@@ -1009,6 +1009,68 @@ TEST(RuntimeCoveragePaths, screen_dispatch_cosmetic_events_updates_view_state)
         s->viewob[view_index]->clear_text();
 }
 
+// #230: a Notification carrying target_player reaches only the view bound to
+// that GLOBAL player index. Broadcasts (-1) still reach every view, and a
+// spectator view (no seat, index -1) sees broadcasts only.
+TEST(RuntimeCoveragePaths, screen_dispatch_filters_targeted_notifications_per_seat)
+{
+    clear_level_lists();
+
+    screen* s = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(s != nullptr) << "active screen should be available";
+    if (!s)
+        return;
+
+    const short original_views = s->numviews;
+    s->ready_for_battle(2);
+    ASSERT_TRUE(s->viewob[0] != nullptr && s->viewob[1] != nullptr)
+        << "two views should exist for the per-seat dispatch test";
+
+    // Local view 1 holds a non-adjacent global seat on purpose: the filter
+    // must compare the global index, never the local view slot.
+    s->viewob[0]->global_player_index_ = 0;
+    s->viewob[1]->global_player_index_ = 6;
+    for (short view_index = 0; view_index < s->numviews; ++view_index)
+        s->viewob[view_index]->clear_text();
+
+    og::sim::SimEventBatch batch;
+    og::sim::Event to_seat_six;
+    to_seat_six.kind = og::sim::EventKind::Notification;
+    to_seat_six.target_player = 6;
+    to_seat_six.text = "Yours alone";
+    batch.events.push_back(to_seat_six);
+
+    og::sim::Event broadcast;
+    broadcast.kind = og::sim::EventKind::Notification;
+    broadcast.text = "Everyone";
+    batch.events.push_back(broadcast);
+
+    s->dispatch_cosmetic_events(batch);
+
+    ASSERT_EQ(std::string("Everyone"), s->viewob[0]->textlist[0])
+        << "view 0 should see the broadcast and nothing else";
+    ASSERT_TRUE(s->viewob[0]->textlist[1].empty())
+        << "view 0 must not receive a line addressed to global player 6";
+    ASSERT_EQ(std::string("Yours alone"), s->viewob[1]->textlist[0])
+        << "view 1 owns global player 6 and should see the targeted line";
+    ASSERT_EQ(std::string("Everyone"), s->viewob[1]->textlist[1])
+        << "view 1 should also see the broadcast";
+
+    // Spectator seat: no player binding, so targeted lines pass it by.
+    for (short view_index = 0; view_index < s->numviews; ++view_index)
+        s->viewob[view_index]->clear_text();
+    s->viewob[1]->global_player_index_ = -1;
+    s->dispatch_cosmetic_events(batch);
+    ASSERT_EQ(std::string("Everyone"), s->viewob[1]->textlist[0])
+        << "a spectator view sees broadcasts only";
+    ASSERT_TRUE(s->viewob[1]->textlist[1].empty())
+        << "a spectator view must not receive targeted lines";
+
+    for (short view_index = 0; view_index < s->numviews; ++view_index)
+        s->viewob[view_index]->clear_text();
+    s->ready_for_battle(original_views);
+}
+
 TEST(RuntimeCoveragePaths, screen_dispatch_game_flow_events_handles_direct_batches)
 {
     clear_level_lists();

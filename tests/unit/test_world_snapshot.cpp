@@ -2485,6 +2485,16 @@ TEST(WorldSnapshot, event_batch_roundtrip_and_rejects_malformed_frames)
         .b = 3,
         .text = "",
     });
+    // #230: the per-seat addressee rides the wire between b and text; -1
+    // (the default on the two events above) is the broadcast sentinel.
+    batch.events.push_back(og::sim::Event{
+        .tick = 10,
+        .kind = og::sim::EventKind::Notification,
+        .a = 0,
+        .b = 0,
+        .target_player = 6,
+        .text = "for player six",
+    });
 
     const std::vector<std::uint8_t> bytes =
         og::sim::serialize_sim_event_batch(batch);
@@ -2538,6 +2548,7 @@ TEST(WorldSnapshot, event_batch_roundtrip_and_rejects_malformed_frames)
                         static_cast<std::uint32_t>(og::sim::EventKind::Notification));
     append_u32_for_test(oversized_string_payload, 0);
     append_u32_for_test(oversized_string_payload, 0);
+    append_u32_for_test(oversized_string_payload, 0xffffffffu);
     append_u32_for_test(oversized_string_payload, 1025);
     const std::vector<std::uint8_t> oversized_string =
         frame_event_batch_payload_for_test(
@@ -2554,6 +2565,7 @@ TEST(WorldSnapshot, event_batch_roundtrip_and_rejects_malformed_frames)
                         static_cast<std::uint32_t>(og::sim::EventKind::Notification));
     append_u32_for_test(truncated_string_payload, 0);
     append_u32_for_test(truncated_string_payload, 0);
+    append_u32_for_test(truncated_string_payload, 0xffffffffu);
     append_u32_for_test(truncated_string_payload, 4);
     truncated_string_payload.push_back('x');
     const std::vector<std::uint8_t> truncated_string =

@@ -634,7 +634,7 @@
 ---@field elemental_lifetime fun(arg1: integer): integer
 ---@field emit_event fun(kind: integer, a: integer?, b: integer?) # og.emit_event(kind, a, b) — raw sim event (kinds in og.C.EVENT_*).
 ---@field emit_exit_confirmation fun(prompt: string, dest: integer, is_withdraw: integer?) # og.emit_exit_confirmation(prompt, dest_level, is_withdraw) — EventKind::RequestExitConfirmation with the exit pad's payload (a = dest_level, b = 1 for the wi...
----@field emit_notification fun(s: string, duration: integer?)
+---@field emit_notification fun(s: string, duration: integer?, entity: og.Walker?) # og.emit_notification(text[, duration[, target]]) — target is either a walker (addressed to whoever controls it) or a global player index; nil/omitted or any...
 ---@field emit_positional_sound fun(entity: og.Walker, arg2: integer)
 ---@field emit_sound fun(arg1: integer)
 ---@field emit_withdraw_to_level fun(level: integer) # og.emit_withdraw_to_level(level) — EventKind::WithdrawToLevel (a = level).

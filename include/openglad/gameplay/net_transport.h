@@ -146,7 +146,11 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 // mission"). Snapshot format stays v10 and replay stays v15 (no world-state
 // or recording layout change; the v14→v15 replay bump already broke the
 // versions-move-in-lockstep convention).
-inline constexpr std::uint8_t kNetworkProtocolVersion = 13;
+// v14: sim/game-flow event payloads gain a target_player i32 (written as u32)
+// between b and text — the per-seat notification addressee (-1 broadcasts,
+// 0..15 is a global player index). Servers keep broadcasting whole batches;
+// the filtering happens in each display client. Replay format moves to v16.
+inline constexpr std::uint8_t kNetworkProtocolVersion = 14;
 
 // Global networked player-index cap (seats across ALL peers). Distinct from
 // MAX_PLAYERS, which stays 4 and caps the seats of ONE machine (input slots,

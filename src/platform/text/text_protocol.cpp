@@ -111,7 +111,8 @@ static void json_event(std::ostream& os, const og::sim::Event& ev)
     os << "{\"tick\":" << ev.tick
        << ",\"kind\":" << static_cast<int>(ev.kind)
        << ",\"a\":" << ev.a
-       << ",\"b\":" << ev.b;
+       << ",\"b\":" << ev.b
+       << ",\"target\":" << ev.target_player;
     if (!ev.text.empty()) {
         os << ",\"text\":";
         json_string(os, ev.text);
@@ -449,6 +450,7 @@ std::string text_protocol_testing_format_event_text(std::string_view text)
     event.kind = og::sim::EventKind::Notification;
     event.a = 1;
     event.b = 2;
+    event.target_player = 3;
     event.text = text;
 
     std::ostringstream os;

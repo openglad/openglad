@@ -262,7 +262,8 @@ SimInputResult sim_process_player_input(
         // result fields below is unreachable during gameplay (view.cpp early
         // return once the local transport shadow is live).
         og::sim::emit_sound(sim_events, SOUND_YO);
-        og::sim::emit_event_text(sim_events, og::sim::EventKind::Notification, "Yo!");
+        og::sim::emit_notification(sim_events, "Yo!", 0,
+                                   static_cast<std::int32_t>(player_num));
     }
 
     // --- Shift+Yell: summon/release ---
@@ -284,8 +285,8 @@ SimInputResult sim_process_player_input(
                 }
                 result.notify_text = "SUMMONING DEFENSE!";
                 result.notify_source = control;
-                og::sim::emit_event_text(sim_events, og::sim::EventKind::Notification,
-                                         "SUMMONING DEFENSE!");
+                og::sim::emit_notification(sim_events, "SUMMONING DEFENSE!", 0,
+                                           static_cast<std::int32_t>(player_num));
                 break;
             case ACTION_FOLLOW:
                 for (auto& uptr : level.oblist)
@@ -302,8 +303,8 @@ SimInputResult sim_process_player_input(
                 control->set_action(0);
                 result.notify_text = "RELEASING MEN!";
                 result.notify_source = control;
-                og::sim::emit_event_text(sim_events, og::sim::EventKind::Notification,
-                                         "RELEASING MEN!");
+                og::sim::emit_notification(sim_events, "RELEASING MEN!", 0,
+                                           static_cast<std::int32_t>(player_num));
                 break;
             default:
                 control->set_action(0);

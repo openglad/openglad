@@ -39,10 +39,14 @@ inline void emit_positional_sound(SimEventLog* log, const walker* source,
 // Emit a text notification event. The runtime event dispatcher will
 // display the text via the HUD/viewscreen system after the simulation tick.
 // If duration is non-zero, it overrides the default display time.
-inline void emit_notification(SimEventLog* log, const std::string& message, std::uint32_t duration = 0)
+// target_player addresses a single global player index (walker::user());
+// -1 broadcasts to every view.
+inline void emit_notification(SimEventLog* log, const std::string& message,
+                              std::uint32_t duration = 0,
+                              std::int32_t target_player = -1)
 {
     if (log)
-        log->push_notification(message, duration);
+        log->push_notification(message, duration, target_player);
 }
 
 // Emit a generic simulation event.

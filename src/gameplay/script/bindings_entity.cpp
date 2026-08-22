@@ -1306,6 +1306,9 @@ int og_emit_positional_sound(lua_State* L)
     return 0;
 }
 
+// og.emit_notification(text[, duration[, target]]) — target is either a walker
+// (addressed to whoever controls it) or a global player index; nil/omitted or
+// any negative value broadcasts, as it always did.
 int og_emit_notification(lua_State* L)
 {
     if (current_game == nullptr)
@@ -1314,8 +1317,23 @@ int og_emit_notification(lua_State* L)
     const char* s = luaL_checklstring(L, 1, &len);
     const auto duration =
         static_cast<std::uint32_t>(luaL_optinteger(L, 2, 0));
+    std::int32_t target = -1;
+    if (!lua_isnoneornil(L, 3))
+    {
+        if (lua_isuserdata(L, 3))
+        {
+            const walker* w = resolve_walker(L, 3, /*required=*/true);
+            target = w != nullptr ? static_cast<std::int32_t>(w->user()) : -1;
+        }
+        else
+        {
+            target = static_cast<std::int32_t>(luaL_checkinteger(L, 3));
+        }
+        if (target < 0)
+            target = -1;
+    }
     og::sim::emit_notification(current_game->sim_events, std::string(s, len),
-                               duration);
+                               duration, target);
     return 0;
 }
 

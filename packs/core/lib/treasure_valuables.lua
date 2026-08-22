@@ -71,7 +71,7 @@ local function key_on_eat(self, eater)
     end
     local message = string.format("%s picks up key %d", who, level)
     if eater.team == 0 then  -- only show players picking up keys
-      og.emit_notification(message)
+      og.emit_notification(message, 0, eater)
       og.emit_sound(C.SOUND_MONEY)
     end
   end

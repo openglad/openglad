@@ -256,7 +256,7 @@ TEST(NetTransport, header_helpers_roundtrip_envelope)
     std::vector<std::uint8_t> bytes;
     og::sim::append_transport_header(bytes, og::sim::kHelloMessageType, 0x2211u);
 
-    const std::vector<std::uint8_t> expected = {0x0d, 0x01, 0x11, 0x22};
+    const std::vector<std::uint8_t> expected = {0x0e, 0x01, 0x11, 0x22};
     EXPECT_EQ(expected, bytes);
 
     og::sim::TransportEnvelope envelope;
@@ -1279,8 +1279,8 @@ TEST(NetTransport, serialize_hello_emits_expected_wire_format)
 
     constexpr std::array<std::uint8_t, og::sim::kSerializedHelloMessageSize>
         expected = {
-            0x0d, 0x01, 0x17, 0x00,
-            0x0d, 0x0d, 0x03,
+            0x0e, 0x01, 0x17, 0x00,
+            0x0e, 0x0e, 0x03,
             0x00, 0x01, 0x02, 0x03,
             0x04, 0x05, 0x06, 0x07,
             0x08, 0x09, 0x0a, 0x0b,
@@ -3039,7 +3039,7 @@ TEST(NetTransport, lobby_state_and_messages_roundtrip)
 TEST(NetTransport,
      deserialize_lobby_messages_rejects_unknown_kinds_and_oversized_counts)
 {
-    // Wire layout of an empty LobbyState (protocol v12): 4-byte transport
+    // Wire layout of an empty LobbyState (protocol v14): 4-byte transport
     // header, then the settings block (4-byte empty campaign string + 13 i16
     // fields and the authored-team-mask u8 = 31 bytes), then the 1-byte host
     // player id, 1-byte last_start_denial echo, and u32 request correlation —

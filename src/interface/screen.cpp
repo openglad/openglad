@@ -247,7 +247,16 @@ void dispatch_cosmetic_screen_events(screen& self,
                     short duration = ev.a ? static_cast<short>(ev.a)
                                           : STANDARD_TEXT_TIME;
                     for (short vi = 0; vi < self.numviews; vi++)
+                    {
+                        // A targeted line belongs to one global player's own
+                        // view. Spectator views (no seat, index -1) never
+                        // match, so they see only broadcasts.
+                        if (ev.target_player >= 0 &&
+                            self.viewob[vi]->global_player_index_ !=
+                                static_cast<short>(ev.target_player))
+                            continue;
                         self.viewob[vi]->set_display_text(ev.text, duration);
+                    }
                 }
                 break;
             case og::sim::EventKind::SetPalette:

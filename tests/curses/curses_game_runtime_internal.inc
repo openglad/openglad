@@ -44,13 +44,41 @@ bool LocalCursesSession::inject_exit_prompt_for_testing(
     });
     PendingEnd ignored_end;
     std::vector<std::string> ignored_messages;
-    collect_notifications(ignored_batch, ignored_messages);
+    collect_notifications(ignored_batch, ignored_messages, 0);
     apply_game_flow_batch(
-        ignored_batch, ignored_end, ignored_messages);
+        ignored_batch, ignored_end, ignored_messages, 0);
+
+    // Per-seat addressing (#230): a line aimed at another global player is
+    // dropped by this seat on BOTH projections; a broadcast (-1) is kept.
+    og::sim::SimEventBatch addressed_batch;
+    addressed_batch.events.push_back(og::sim::Event{
+        .kind = og::sim::EventKind::Notification,
+        .target_player = 3,
+        .text = "for player three",
+    });
+    addressed_batch.events.push_back(og::sim::Event{
+        .kind = og::sim::EventKind::Notification,
+        .target_player = 0,
+        .text = "for player zero",
+    });
+    addressed_batch.events.push_back(og::sim::Event{
+        .kind = og::sim::EventKind::Notification,
+        .text = "for everyone",
+    });
+    std::vector<std::string> seat_messages;
+    collect_notifications(addressed_batch, seat_messages, 0);
+    PendingEnd seat_end;
+    std::vector<std::string> seat_flow_messages;
+    apply_game_flow_batch(addressed_batch, seat_end, seat_flow_messages, 0);
+    const std::vector<std::string> expected_for_seat_zero = {
+        "for player zero", "for everyone"};
+    const bool seat_filter_ok = seat_messages == expected_for_seat_zero &&
+                                seat_flow_messages == expected_for_seat_zero;
+
     return transition_hooks_accept &&
            server_save_.m_score[0] == synchronized_score &&
            pending_exit_prompt_ && !messages_.empty() &&
-           !ignored_end.ended && ignored_messages.empty();
+           !ignored_end.ended && ignored_messages.empty() && seat_filter_ok;
 }
 
 const GameWorld& LocalCursesSession::server_world_for_testing() const

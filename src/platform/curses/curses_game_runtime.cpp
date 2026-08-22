@@ -47,11 +47,14 @@ namespace og::curses {
 namespace {
 
 // Pull human-readable notification text out of an event batch into `out`.
+// A targeted line (target_player >= 0) is addressed to one global player and
+// is dropped by every other seat.
 void collect_notifications(const og::sim::SimEventBatch& batch,
-                           std::vector<std::string>& out)
+                           std::vector<std::string>& out, int local_player)
 {
     for (const og::sim::Event& ev : batch.events) {
-        if (ev.kind == og::sim::EventKind::Notification && !ev.text.empty())
+        if (ev.kind == og::sim::EventKind::Notification && !ev.text.empty() &&
+            (ev.target_player < 0 || ev.target_player == local_player))
             out.push_back(ev.text);
     }
 }
@@ -71,7 +74,7 @@ struct PendingEnd {
 // Apply terminal game-flow events: latch any level end into `end` and collect
 // notification text. (In the SDL client this is screen::dispatch_sim_event_batch.)
 void apply_game_flow_batch(const og::sim::SimEventBatch& batch, PendingEnd& end,
-                           std::vector<std::string>& messages)
+                           std::vector<std::string>& messages, int local_player)
 {
     for (const og::sim::Event& ev : batch.events) {
         switch (ev.kind) {
@@ -84,7 +87,8 @@ void apply_game_flow_batch(const og::sim::SimEventBatch& batch, PendingEnd& end,
             end.ended = true;
             break;
         case og::sim::EventKind::Notification:
-            if (!ev.text.empty())
+            if (!ev.text.empty() &&
+                (ev.target_player < 0 || ev.target_player == local_player))
                 messages.push_back(ev.text);
             break;
         default:
@@ -402,11 +406,14 @@ std::unique_ptr<LocalCursesSession> LocalCursesSession::create(
     s->client_ = std::make_unique<og::sim::GameClient>(*s->client_transport_,
                                                        s->peer_id_, &cw);
     auto* raw = s.get();
+    // The single-player curses session binds its one seat as global player 0.
     s->client_->set_sim_event_batch_callback(
-        [raw](const og::sim::SimEventBatch& b) { collect_notifications(b, raw->messages_); });
+        [raw](const og::sim::SimEventBatch& b) {
+            collect_notifications(b, raw->messages_, 0);
+        });
     s->client_->set_game_flow_event_batch_callback(
         [raw](const og::sim::SimEventBatch& b) {
-            apply_game_flow_batch(b, raw->pending_end_, raw->messages_);
+            apply_game_flow_batch(b, raw->pending_end_, raw->messages_, 0);
         });
     // Latch exit prompts so the level loop can ask the player y/n (they may
     // DECLINE and keep playing). The server holds the transition until we answer.

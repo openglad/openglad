@@ -87,11 +87,37 @@ int curses_network_testing_exercise_internal_helpers()
         .text = "",
     });
     std::vector<std::string> notifications;
-    collect_notifications(batch, notifications);
+    collect_notifications(batch, notifications, 0);
     PendingEnd pending;
-    apply_game_flow_batch(batch, pending, notifications);
+    apply_game_flow_batch(batch, pending, notifications, 0);
     check(pending.ended && pending.ending == 1 && pending.next_level == 2 &&
         notifications.size() >= 2);
+
+    // Per-seat addressing (#230): this seat keeps its own line and every
+    // broadcast, and drops lines addressed to a different global player.
+    og::sim::SimEventBatch addressed;
+    addressed.events.push_back(og::sim::Event{
+        .kind = og::sim::EventKind::Notification,
+        .target_player = 2,
+        .text = "seat two only",
+    });
+    addressed.events.push_back(og::sim::Event{
+        .kind = og::sim::EventKind::Notification,
+        .target_player = 1,
+        .text = "seat one only",
+    });
+    addressed.events.push_back(og::sim::Event{
+        .kind = og::sim::EventKind::Notification,
+        .text = "everyone",
+    });
+    std::vector<std::string> seat_one;
+    collect_notifications(addressed, seat_one, 1);
+    PendingEnd seat_one_end;
+    std::vector<std::string> seat_one_flow;
+    apply_game_flow_batch(addressed, seat_one_end, seat_one_flow, 1);
+    const std::vector<std::string> expected_seat_one = {"seat one only",
+                                                        "everyone"};
+    check(seat_one == expected_seat_one && seat_one_flow == expected_seat_one);
 
     SaveData save;
     save.current_campaign.clear();

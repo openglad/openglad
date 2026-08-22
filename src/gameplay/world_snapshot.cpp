@@ -2727,6 +2727,7 @@ void serialize_event_payload(std::vector<std::uint8_t>& buffer,
     append_u32(buffer, static_cast<std::uint32_t>(event.kind));
     append_u32(buffer, event.a);
     append_u32(buffer, event.b);
+    append_u32(buffer, static_cast<std::uint32_t>(event.target_player));
     append_string(buffer, event.text);
 }
 
@@ -2743,6 +2744,8 @@ og::sim::Event deserialize_event_payload(ByteReader& reader,
         reader.read_u32((prefix + ".kind").c_str()));
     event.a = reader.read_u32((prefix + ".a").c_str());
     event.b = reader.read_u32((prefix + ".b").c_str());
+    event.target_player = static_cast<std::int32_t>(
+        reader.read_u32((prefix + ".target_player").c_str()));
     event.text = reader.read_string((prefix + ".text").c_str());
     return event;
 }
@@ -2753,7 +2756,7 @@ std::vector<std::uint8_t> serialize_event_batch_message(
     const char* batch_name)
 {
     std::vector<std::uint8_t> payload;
-    payload.reserve(16 + (batch.events.size() * 24));
+    payload.reserve(16 + (batch.events.size() * 28));
     append_u32(payload, batch.sequence);
     if (batch.events.size() > std::numeric_limits<std::uint32_t>::max())
     {

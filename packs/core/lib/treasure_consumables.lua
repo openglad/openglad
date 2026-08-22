@@ -4,10 +4,10 @@
 local C = og.C
 
 -- Shared potion tail: the message is emitted only for a player-controlled
--- eater (user() != -1); the potion always dies.
+-- eater (user() != -1), into that seat's view alone; the potion always dies.
 local function notify_potion_consume(self, eater, name)
   if eater:user() ~= -1 then
-    og.emit_notification(string.format("Potion of %s(%d)!", name, self.level))
+    og.emit_notification(string.format("Potion of %s(%d)!", name, self.level), 0, eater)
   end
   self:set_dead(1)
 end
