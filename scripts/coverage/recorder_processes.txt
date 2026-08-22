@@ -9,6 +9,10 @@
 # names, while a binary that stops reporting (or a new one nobody listed)
 # fails the run in a diff a reviewer reads.
 #
+# The rule that keeps that promise buildable: a ctest entry that is the sole
+# producer of a name listed here may not be lane-gated. Gate it and every lane
+# without the gate fails the population check instead of reporting coverage.
+#
 # Regenerate after adding or removing a test binary:
 #   grep -h '^P' build/ci-coverage/coverage/lua-raw/*.luacov | cut -f2 | sort -u
 og_test_basecamp

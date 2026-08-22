@@ -1419,18 +1419,21 @@ set_tests_properties(openglad_sdl_startup_error PROPERTIES
     TIMEOUT 60
 )
 
-if(ENABLE_COVERAGE)
-    add_test(NAME openglad_demo_smoke
-        COMMAND ${CMAKE_COMMAND} -E env
-            bash
-            ${CMAKE_SOURCE_DIR}/scripts/test_demo_smoke.sh
-            $<TARGET_FILE:openglad_demo>
-    )
-    set_tests_properties(openglad_demo_smoke PROPERTIES
-        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-        TIMEOUT 120
-    )
-endif()
+# openglad_demo is the only process that writes an openglad_demo Lua dump, and
+# scripts/coverage/recorder_processes.txt names it. A ctest entry that is the
+# sole producer of a manifest name may not be lane-gated: gate it and every
+# lane that does not set the gate fails the population check instead of
+# reporting coverage.
+add_test(NAME openglad_demo_smoke
+    COMMAND ${CMAKE_COMMAND} -E env
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/test_demo_smoke.sh
+        $<TARGET_FILE:openglad_demo>
+)
+set_tests_properties(openglad_demo_smoke PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    TIMEOUT 120
+)
 
 add_test(NAME openglad_text_picker_interactive
     COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_text_picker_interactive.sh $<TARGET_FILE:openglad_text>
