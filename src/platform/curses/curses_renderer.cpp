@@ -360,6 +360,12 @@ void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
             if (!flr.empty())
                 line1 += "  " + flr;
         }
+        // Frozen-time countdown (#232): the terminal twin of the SDL HUD's
+        // TIME LEFT cell, read straight off the snapshot-mirrored counter.
+        // Ahead of the mode group so an 80-column clip() eats Score/Sp first.
+        if (world.enemy_freeze > 0)
+            line1 += "  TIME " + std::to_string(
+                static_cast<int>(world.enemy_freeze));
         // Scripted-mode (TYPE_SCRIPTED) group: the mode name + every
         // non-empty ModeState HUD line, then the followed walker's respawn
         // seconds — the terminal twin of the SDL mode panel.

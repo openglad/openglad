@@ -234,6 +234,29 @@ static void draw_respawn_countdown(screen* s, walker* control,
     }
 }
 
+// Frozen-time countdown (#232). enemy_freeze rides the world snapshot, so a
+// client reads it straight off its mirror — no notification traffic. Drawn
+// every frame at a fixed left-anchored cell instead of pushed into the feed,
+// which the old per-tick "TIME LEFT" notification flooded out of existence.
+//
+// Row: bm-34 is the one band left free in the left column. The classic HUD
+// owns tm+2..tm+26 (name + HP/MP) and bm-26..bm-2 (score/special box); the
+// notification banner owns viewport-local 30..59, i.e. at most tm+59. Every
+// layout gives a viewport at least ~100 scanlines, so bm-34 clears both.
+static void draw_freeze_countdown(screen* s, Sint32 lm, Sint32 bm)
+{
+    if (s->world_.enemy_freeze <= 0)
+        return;
+
+    const std::string message =
+        std::format("TIME LEFT: {}", s->world_.enemy_freeze);
+    s->text_normal.write_xy(lm + 4, bm - 34, message.c_str(),
+                            static_cast<unsigned char>(YELLOW),
+                            static_cast<short>(1));
+    TRACE("hud", "freeze_countdown left=%d",
+          static_cast<int>(s->world_.enemy_freeze));
+}
+
 // Ramp color for a mode HUD element: team ramp when a score team is set,
 // else the classic HUD text yellow (the un-overlaid draw_respawn_countdown
 // default). An FFA band byte (16-31) is a scoring identity too and takes its
@@ -669,6 +692,7 @@ short new_score_panel(screen* s, short /*do_it*/)
         }
         if (og::sim::classic_respawn_active(s->world_) || scripted_mode_hud)
             draw_respawn_countdown(s, control, lm, tm);
+        draw_freeze_countdown(s, lm, bm);
 
         // §2.8 follow caption: a follow-engaged view names its watched
         // target on a black strip at the viewport's bottom-center,

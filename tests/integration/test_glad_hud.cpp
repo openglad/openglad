@@ -1848,3 +1848,47 @@ TEST_F(GladHud, fps_overlay_clears_extended_foes_counter)
     v->prefs[PREF_OVERLAY] = old_pref_overlay;
     world.set_floor_count(1);
 }
+
+
+// #232: the frozen-time countdown is HUD state read off world.enemy_freeze
+// every frame, not a notification pushed into the message feed (where it
+// used to evict every other line for the whole freeze). The cell is
+// left-anchored at lm+4 on the bm-34 row — the one band the classic HUD's
+// top-left column, its bottom-left score box, and the notification banner
+// all leave free.
+TEST_F(GladHud, freeze_countdown_cell_draws_from_enemy_freeze)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    viewscreen* const v = s->viewob[0].get();
+    ASSERT_TRUE(v != nullptr);
+
+    GameWorld& world = s->world();
+    const std::int32_t saved_freeze = world.enemy_freeze;
+
+    // "TIME LEFT: 30" at 6px per glyph, on the 6px-tall text row at bm-34.
+    const int cell_x0 = v->xloc + 4;
+    const int cell_x1 = cell_x0 + 13 * 6;
+    const int cell_y0 = v->endy - 34;
+    const int cell_y1 = cell_y0 + 6;
+    const auto cell_has_pixels = [&](const std::array<unsigned char, 64000>& frame) {
+        for (int y = cell_y0; y < cell_y1; ++y)
+            for (int x = cell_x0; x < cell_x1; ++x)
+                if (frame[static_cast<std::size_t>(y * 320 + x)] != 0)
+                    return true;
+        return false;
+    };
+
+    world.enemy_freeze = 0;
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_FALSE(cell_has_pixels(capture_rendered_frame(*s)))
+        << "no countdown cell without an active freeze";
+
+    world.enemy_freeze = 30;
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_TRUE(cell_has_pixels(capture_rendered_frame(*s)))
+        << "an active freeze must draw the countdown cell";
+
+    world.enemy_freeze = saved_freeze;
+}

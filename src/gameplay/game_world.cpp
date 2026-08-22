@@ -1756,7 +1756,6 @@ void GameWorld::tick()
     };
 
     // --- Entity act phase ---
-    bool printed_time = false;
     for (auto& uptr : oblist)
     {
         if (withdraw_requested)
@@ -1801,12 +1800,9 @@ void GameWorld::tick()
         }
         else // enemy livings are frozen
         {
-            if (!(enemy_freeze % 10) && !printed_time)
-            {
-                std::string obmessage = std::format("TIME LEFT: {}", enemy_freeze);
-                events.push_notification(obmessage, 10);
-                printed_time = true;
-            }
+            // The countdown is drawn by the HUD from enemy_freeze (#232); it
+            // used to be pushed into the notification feed every tenth tick,
+            // which evicted every other message for the whole freeze.
             if (ob && !ob->dead())
             {
                 // The act gate is unchanged: frozen enemy Livings and

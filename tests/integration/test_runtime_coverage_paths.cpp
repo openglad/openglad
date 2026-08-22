@@ -1598,7 +1598,7 @@ TEST(RuntimeCoveragePaths, treasure_find_teleport_target_wraparound_and_missing_
 }
 
 
-TEST(RuntimeCoveragePaths, sim_world_freeze_countdown_notification_and_weap_cleanup)
+TEST(RuntimeCoveragePaths, sim_world_freeze_countdown_is_hud_state_and_weap_cleanup)
 {
     clear_level_lists();
 
@@ -1628,13 +1628,21 @@ TEST(RuntimeCoveragePaths, sim_world_freeze_countdown_notification_and_weap_clea
     ASSERT_EQ(0, (int)world.level_done) << "a frozen hostile living still keeps the level active (#231)";
     ASSERT_FALSE(world.game_ended) << "freeze must not complete the level while hostiles live";
 
+    // #232: the countdown is HUD state read off enemy_freeze, not feed
+    // traffic. The old per-tick "TIME LEFT" notification evicted every other
+    // message for the whole freeze; nothing may push one any more.
     int time_left_messages = 0;
     for (const auto& ev : events.events())
     {
         if (ev.kind == og::sim::EventKind::Notification && ev.text.find("TIME LEFT:") != std::string::npos)
             time_left_messages++;
     }
-    ASSERT_EQ(1, time_left_messages) << "freeze countdown should emit only one TIME LEFT notification per tick";
+    ASSERT_EQ(0, time_left_messages) << "freeze countdown must not push notifications (#232)";
+
+    // A modulo-10 tick was the old emitter's trigger; it is now just another
+    // tick of the counter the HUD reads.
+    world.tick();
+    ASSERT_EQ(9, (int)world.enemy_freeze) << "freeze counter keeps counting down for the HUD";
 
     // Weapon cleanup branch: clear dead pointer links and erase dead weapon/fx.
     clear_level_lists();
@@ -1875,13 +1883,14 @@ TEST(RuntimeCoveragePaths, sim_world_freeze_branch_allows_non_living_actions)
     ASSERT_EQ(10, (int)world.enemy_freeze) << "freeze counter should decrement";
     ASSERT_TRUE(world.game_ended) << "no hostile living and no exits should auto-end level";
 
-    bool saw_time_left = false;
+    // #232: enemy_freeze is the countdown. The HUD reads it every frame, and
+    // the freeze branch keeps the feed to itself.
     for (const auto& ev : events.events())
     {
-        if (ev.kind == og::sim::EventKind::Notification && ev.text.find("TIME LEFT:") != std::string::npos)
-            saw_time_left = true;
+        ASSERT_TRUE(ev.kind != og::sim::EventKind::Notification ||
+                    ev.text.find("TIME LEFT:") == std::string::npos)
+            << "freeze branch must not push a countdown notification (#232)";
     }
-    ASSERT_TRUE(saw_time_left) << "freeze branch should emit countdown notification on modulo-10 ticks";
 }
 
 
