@@ -1,6 +1,8 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/web_back_key.h>
 #include <openglad/legacy/colors.h>
+#include <openglad/platform/local_transport_shadow.h>
 #include <SDL3/SDL.h>
 #include <gtest/gtest.h>
 
@@ -186,6 +188,116 @@ TEST(ViewFuncs, viewscreen_shift_text)
     vs->shift_text(0);
     // After shifting from 0, "Second" should now be in slot 0
     ASSERT_EQ(15, (int)vs->textcycles[0]) << "shift should move second to first";
+}
+
+
+// ---------------------------------------------------------------------------
+// Message-feed lifecycle (#246)
+// ---------------------------------------------------------------------------
+
+// The world clock restarts at 0 on every level (re)launch. A line stamped
+// before the reset kept its far-future expiry tick, so it outlived the reset
+// by its whole remaining duration — the stale-PAUSED class of bug. A slot
+// whose stamp is in the future is expired, full stop.
+TEST(ViewFuncs, viewscreen_text_expires_when_the_tick_clock_resets)
+{
+    screen* game = og::runtime::current_session->myscreen_;
+    viewscreen* vs = game->viewob[0].get();
+    ASSERT_TRUE(vs != nullptr) << "viewscreen 0 should exist";
+
+    const std::uint32_t saved_tick = game->world().tick_count_;
+    game->world().tick_count_ = 500;
+    vs->clear_text();
+    vs->set_display_text("STALE", 200);
+    ASSERT_EQ("STALE", vs->textlist[0]) << "line should be on the feed";
+
+    game->world().tick_count_ = 0; // the level relaunch
+    vs->display_text();            // draw gate + garbage collection
+
+    EXPECT_TRUE(vs->textlist[0].empty())
+        << "a line stamped before a tick reset must not outlive it";
+
+    vs->clear_text();
+    game->world().tick_count_ = saved_tick;
+}
+
+
+TEST(ViewFuncs, viewscreen_expire_display_text_removes_only_that_line)
+{
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_TRUE(vs != nullptr) << "viewscreen 0 should exist";
+
+    vs->clear_text();
+    // Never appends: an absent line stays absent (refresh_display_text's
+    // fall-through would have written it).
+    vs->expire_display_text("GHOST");
+    EXPECT_TRUE(vs->textlist[0].empty())
+        << "expiring an absent line must not put it on the feed";
+
+    vs->set_display_text("ALPHA", 10);
+    vs->set_display_text("BETA", 10);
+    vs->expire_display_text("ALPHA");
+    EXPECT_EQ("BETA", vs->textlist[0]) << "surviving line shifts up";
+    EXPECT_TRUE(vs->textlist[1].empty()) << "only one line should remain";
+
+    vs->clear_text();
+}
+
+
+// The pause overlay is re-stamped every frame while the pause holds, so
+// nothing but an explicit off-switch takes it down.
+TEST(ViewFuncs, pause_overlay_off_switch_retires_both_overlay_lines)
+{
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_TRUE(vs != nullptr) << "viewscreen 0 should exist";
+    const std::string hint =
+        og::input::kWebBackKeyMode ? "BKSP: Menu" : "ESC: Menu";
+
+    vs->clear_text();
+    vs->set_display_text("KEEP ME", 40);
+    vs->set_display_text("PAUSED by Ana", 1);
+    vs->set_display_text(hint, 1);
+
+    og::runtime::detail::clear_pause_overlay_text(*vs, "PAUSED by Ana");
+
+    EXPECT_EQ("KEEP ME", vs->textlist[0])
+        << "the off-switch must leave unrelated messages alone";
+    EXPECT_TRUE(vs->textlist[1].empty()) << "banner and hint both retired";
+
+    // The owner name can arrive after the anonymous banner was stamped, so
+    // the fallback line is retired too.
+    vs->clear_text();
+    vs->set_display_text("PAUSED", 1);
+    og::runtime::detail::clear_pause_overlay_text(*vs, "PAUSED by Ana");
+    EXPECT_TRUE(vs->textlist[0].empty())
+        << "anonymous PAUSED banner must be retired as well";
+
+    vs->clear_text();
+}
+
+
+TEST(ViewFuncs, screen_clear_all_view_text_wipes_every_live_view)
+{
+    screen* game = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game != nullptr) << "screen should exist";
+
+    const short views = std::min<short>(
+        game->numviews, static_cast<short>(std::size(game->viewob)));
+    ASSERT_GT(views, 0) << "at least one view expected";
+    for (short i = 0; i < views; ++i)
+        if (game->viewob[i] != nullptr)
+            game->viewob[i]->set_display_text("LEFTOVER", 40);
+
+    game->clear_all_view_text();
+
+    for (short i = 0; i < views; ++i)
+    {
+        if (game->viewob[i] == nullptr)
+            continue;
+        for (int slot = 0; slot < MAX_MESSAGES; ++slot)
+            EXPECT_TRUE(game->viewob[i]->textlist[slot].empty())
+                << "view " << i << " slot " << slot << " should be cleared";
+    }
 }
 
 

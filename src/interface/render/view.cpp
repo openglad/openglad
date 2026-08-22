@@ -389,6 +389,7 @@ viewscreen::viewscreen(short x, short y, short width,
 	{
 		textcycles[i] = 0;
 		text_expire_ticks[i] = 0;
+		text_stamp_ticks[i] = 0;
 		textlist[i].clear(); // null message
 	}
 
@@ -1246,12 +1247,21 @@ void viewscreen::display_text()
 	const std::uint32_t current_tick = active_screen()->world().tick_count_;
 	Sint32 i;
 
+	// A stamp ahead of the clock means the world's tick counter restarted
+	// under a line already on the feed (#246): its expiry tick is now far in
+	// the future, so without this the line would outlive the reset by its
+	// whole remaining duration.
+	const auto slot_expired = [&](Sint32 slot) {
+		return current_tick > text_expire_ticks[slot] ||
+		       current_tick < text_stamp_ticks[slot];
+	};
+
 	for (i=0; i < MAX_MESSAGES; i++)
 	{
 		// Display text if there's any there ..
 		if (textcycles[i] > 0 &&
 		    !textlist[i].empty() &&
-		    current_tick <= text_expire_ticks[i])
+		    !slot_expired(i))
 		{
 			active_screen()->text_normal.write_xy( (xview-static_cast<int>(textlist[i].size())*6)/2,
 			                      30+i*6, textlist[i].c_str(), YELLOW, this );
@@ -1261,7 +1271,7 @@ void viewscreen::display_text()
 	// Clean up any empty slots
 	for (i=0; i < MAX_MESSAGES; i++)
 		if (!textlist[i].empty() &&
-		    (textcycles[i] < 1 || current_tick > text_expire_ticks[i]))
+		    (textcycles[i] < 1 || slot_expired(i)))
 			shift_text(i); // shift text up, starting at position i
 }
 
@@ -1274,10 +1284,12 @@ void viewscreen::shift_text(Sint32 row)
 		textlist[i] = textlist[i+1];
 		textcycles[i] = textcycles[i+1];
 		text_expire_ticks[i] = text_expire_ticks[i+1];
+		text_stamp_ticks[i] = text_stamp_ticks[i+1];
 	}
 	textlist[MAX_MESSAGES-1].clear();
 	textcycles[MAX_MESSAGES-1] = 0;
 	text_expire_ticks[MAX_MESSAGES-1] = 0;
+	text_stamp_ticks[MAX_MESSAGES-1] = 0;
 }
 
 bool viewscreen::refresh()
@@ -1492,6 +1504,7 @@ void viewscreen::set_display_text(std::string_view newtext, short numcycles)
 	}
 	//strcpy(infotext, newtext);
 	textlist[i] = newtext;
+	text_stamp_ticks[i] = current_tick;
 
 	if (numcycles > 0)
 	{
@@ -1515,6 +1528,7 @@ void viewscreen::refresh_display_text(std::string_view newtext, short numcycles)
 
 		const std::uint32_t current_tick =
 		    active_screen()->world().tick_count_;
+		text_stamp_ticks[slot] = current_tick;
 		if (numcycles > 0)
 		{
 			textcycles[slot] = numcycles;
@@ -1532,6 +1546,22 @@ void viewscreen::refresh_display_text(std::string_view newtext, short numcycles)
 	set_display_text(newtext, numcycles);
 }
 
+void viewscreen::expire_display_text(std::string_view oldtext)
+{
+	for (Sint32 slot = 0; slot < MAX_MESSAGES; ++slot)
+	{
+		if (textlist[slot] != oldtext)
+			continue;
+
+		// Drop the line now rather than marking it spent: display_text()
+		// (the only thing that sweeps spent slots) is a render-path call,
+		// and the overlay off-switch must hold even on a frame that never
+		// draws the feed.
+		shift_text(slot);
+		return;
+	}
+}
+
 // Blanks the screen text
 void viewscreen::clear_text()
 {
@@ -1541,6 +1571,7 @@ void viewscreen::clear_text()
 		textlist[i].clear();
 		textcycles[i] = 0;
 		text_expire_ticks[i] = 0;
+		text_stamp_ticks[i] = 0;
 	}
 }
 

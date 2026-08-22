@@ -1789,6 +1789,15 @@ void screen::do_notify(std::string_view message, walker  *who)
 
 }
 
+void screen::clear_all_view_text()
+{
+	const short safe_numviews =
+	    std::min<short>(numviews, static_cast<short>(std::size(viewob)));
+	for (short i = 0; i < safe_numviews; i++)
+		if (viewob[i] != nullptr)
+			viewob[i]->clear_text();
+}
+
 void screen::report_mem()
 {
 	meminfo Memory;

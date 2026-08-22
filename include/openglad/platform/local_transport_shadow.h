@@ -131,6 +131,13 @@ void persist_owned_characters_to_save0(
     const screen& session_screen,
     int destination_level);
 
+// The pause overlay's off-switch (#246): retire the exact feed lines
+// render_pause_overlay writes — the "PAUSED"/"PAUSED by NAME" banner and the
+// menu hint. `text` is the banner the caller would write right now; the
+// anonymous fallback is retired too, since the pause owner's name can arrive
+// after the line was stamped. Exposed so tests can pin the contract.
+void clear_pause_overlay_text(viewscreen& view, const std::string& text);
+
 } // namespace detail
 
 void reset_network_host_transport_shadow(

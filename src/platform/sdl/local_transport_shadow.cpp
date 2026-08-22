@@ -458,6 +458,17 @@ bool persist_private_campaign_cursor_to_save0(
     return true;
 }
 
+void clear_pause_overlay_text(viewscreen& view, const std::string& text)
+{
+    view.expire_display_text(text);
+    // A pause that arrived after the overlay line was written carries a
+    // different owner name, so the line on the feed may be the anonymous
+    // fallback rather than `text`.
+    if (text != "PAUSED")
+        view.expire_display_text("PAUSED");
+    view.expire_display_text(kPauseOverlayMenuHint);
+}
+
 } // namespace og::runtime::detail
 
 namespace
@@ -996,16 +1007,28 @@ void render_pause_overlay(screen& gameplay_screen,
                           const og::sim::GameClient& game_client,
                           bool remote_pause)
 {
-    if (!game_client.baseline().has_value() ||
-        !game_client.baseline()->paused)
-    {
-        return;
-    }
-
     const std::string text =
         pause_overlay_text(game_client.last_pause_broadcast().has_value()
                                ? &*game_client.last_pause_broadcast()
                                : nullptr);
+
+    // Not paused (or no baseline to say so): retire the exact lines this
+    // function writes. The overlay is re-stamped every frame while the pause
+    // holds, so without an explicit off-switch it survives its own end for a
+    // full STANDARD_TEXT_TIME — or forever, when a level reset restarts the
+    // tick clock underneath it (#246).
+    if (!game_client.baseline().has_value() ||
+        !game_client.baseline()->paused)
+    {
+        for (int index = 0; index < gameplay_screen.numviews; ++index)
+        {
+            viewscreen* const view = gameplay_screen.viewob[index].get();
+            if (view != nullptr)
+                og::runtime::detail::clear_pause_overlay_text(*view, text);
+        }
+        return;
+    }
+
     for (int index = 0; index < gameplay_screen.numviews; ++index)
     {
         viewscreen* const view = gameplay_screen.viewob[index].get();
@@ -1220,6 +1243,9 @@ void configure_display_game_client(
 
             // The transition rebuilt the views; restore multi-seat view teams.
             stamp_display_seat_teams(gameplay_screen, display_seats);
+            // The new level restarts the tick clock at 0, so anything still
+            // on the feed would outlive the reset (#246).
+            gameplay_screen.clear_all_view_text();
             if (runtime_ptr != nullptr)
             {
                 // This GameClient/runtime survives dedicated-server in-session

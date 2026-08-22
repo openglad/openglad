@@ -328,6 +328,10 @@ public:
     void draw_panel_chrome(short howmany);
     char damage_tile(short xloc, short yloc); // damage the specified tile
     void do_notify(std::string_view message, walker* who); // printing text
+    // Wipe every live view's message feed. Called by each (re)launcher of a
+    // level so no line survives into a world whose tick clock just restarted
+    // at 0 (#246).
+    void clear_all_view_text();
     void report_mem();
     walker* set_walker(walker* ob, Order order, Sint32 family);
     ScenarioTitleError get_scen_title_with_error(const char* filename, std::string& out_title);

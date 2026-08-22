@@ -116,6 +116,11 @@ class viewscreen
 		void process_input(const InputState& input_state);
 		void set_display_text(std::string_view newtext, short numcycles);
 		void refresh_display_text(std::string_view newtext, short numcycles);
+		// Retire an exact line the caller previously wrote. Unlike
+		// refresh_display_text this NEVER appends: a line that is not on
+		// the feed stays off it (#246 — the overlay off-switch must not
+		// resurrect the message it is trying to clear).
+		void expire_display_text(std::string_view oldtext);
 		void display_text(); // put the text to the buffer, if there
 		void shift_text(Sint32 row); // cycle text upward
 		void clear_text(void); // clear all text in buffer
@@ -222,6 +227,12 @@ class viewscreen
 		std::string textlist[MAX_MESSAGES];
 		short textcycles[MAX_MESSAGES];  // duration in sim ticks
 		std::uint32_t text_expire_ticks[MAX_MESSAGES];
+		// Tick the slot was stamped at. The world clock restarts at 0 on
+		// every level (re)launch, which used to leave an in-flight line with
+		// an expiry far in the future — it then outlived the reset by its
+		// whole duration. A slot whose stamp is in the future relative to
+		// the current tick is treated as expired (#246).
+		std::uint32_t text_stamp_ticks[MAX_MESSAGES];
 
 		short mynum;     // # to id the viewscreen, 0, 1, 2 ...
 		// Global simulation player mapped to this local view. Network joins can
