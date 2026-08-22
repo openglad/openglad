@@ -3519,6 +3519,16 @@ inline constexpr FactPredicate kFacts_special_mage_3_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 3),
     pred::EventKindExactly(/*notification*/2, 0),
     pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 7600, 7800),
+    // #231, same mechanism as kFacts_enemy_freeze_mage_scen99 — but read
+    // through the events rather than through level_done. The freeze here is
+    // 20+11*7 = 97 ticks and expires at tick 117, so the census re-counts
+    // the team-1 soldier well before the 150-tick budget ends and
+    // level_done reads 0 at the final tick with the bug as well as without
+    // it. What the bug leaves behind is the tail: 96 end_game events, one
+    // per frozen tick. This is the only fact here that reads a value the
+    // rebaseline moved.
+    pred::EventKindExactly(/*end_game*/5, 0,
+        "consequence: the freeze branch's level_done census runs for every live walker, not only the ones the act gate lets move, so the frozen team-1 soldier holds the level open and no end_game is emitted; folding the census back inside the act gate ends the level once per frozen tick"),
 };
 
 inline constexpr Mutation kMut_special_mage_3_scen99 = {
@@ -4697,6 +4707,13 @@ inline constexpr FactPredicate kFacts_input_special_switch_wrap_scen99[] = {
     pred::EventKindAtLeast(/*set_palette*/3, 1,
         "consequence: the special-switch wrap lands on FREEZE TIME, whose team-0 cast tints the arena palette and emits SetPalette events; the mutation resets the slot index so TELEPORT fires instead and no palette change is emitted"),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000),
+    // #231, same mechanism as kFacts_enemy_freeze_mage_scen99: the wrap
+    // lands on FREEZE TIME, and the frozen team-1 soldier is still a foe.
+    // This is the only fact here that reads the value the rebaseline moved
+    // (level_done 2 -> 0); without it the row passes against the stale
+    // golden as happily as against the new one.
+    pred::LevelDoneEquals(0,
+        "consequence: the freeze branch's level_done census runs for every live walker, not only the ones the act gate lets move, so the frozen team-1 soldier holds the level open for the whole freeze window; folding the census back inside the act gate leaves level_done at 2"),
 };
 
 inline constexpr Mutation kMut_input_special_switch_wrap_scen99 = {
@@ -5420,6 +5437,11 @@ inline constexpr FactPredicate kFacts_treasure_magic_potion_overfill_scen99[] = 
     pred::WalkerPositionMoved(FAMILY_ARCHER, 200, 120,
         "consequence: the potion's mana overfill (50 * level 10 = 500 on top of the 50-point default pool) is the only thing that funds the mage's 500-cost FREEZE TIME; the resulting enemy_freeze of 152 ticks holds the archer at its (200,120) spawn for the whole budget. With mana_overfill_per_level: 0 the pool stays at 50, walker::special() returns 0 without casting, and the archer steps west below the x floor"),
     pred::EventKindAtLeast(/*notification*/2, 1),
+    // #231, same mechanism as kFacts_enemy_freeze_mage_scen99: the frozen
+    // team-1 archer is still a foe. The only fact here that reads the value
+    // the rebaseline moved (level_done 2 -> 0).
+    pred::LevelDoneEquals(0,
+        "consequence: the freeze branch's level_done census runs for every live walker, not only the ones the act gate lets move, so the frozen team-1 archer holds the level open for the whole freeze window; folding the census back inside the act gate leaves level_done at 2"),
 };
 
 inline constexpr Mutation kMut_treasure_magic_potion_overfill = {
