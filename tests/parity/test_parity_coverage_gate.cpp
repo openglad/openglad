@@ -61,6 +61,11 @@ struct ObservedUnion
 {
     og::parity::CoverageObservation obs;
     std::uint64_t                    exercises = 0;
+    // Rows whose level file never loaded. A stub run still contributes a
+    // (tiny) coverage observation and still serialises as valid JSON, so
+    // without this a broken PhysFS bootstrap reads as mass coverage loss
+    // scattered across every gate below instead of one clear message.
+    std::vector<std::string>         unloaded;
 };
 
 const ObservedUnion& observed_union()
@@ -70,6 +75,11 @@ const ObservedUnion& observed_union()
         for (const auto& spec : og::parity::kScenarios)
         {
             const og::parity::RunOutcome out = og::parity::run_scenario(spec);
+            // Same exemption as test_parity_scenarios: the branch-internal
+            // scen9301 rows deliberately point at a header-only fixture and
+            // build their arena from floor paints + spawns.
+            if (!out.loaded && !spec.is_branch_internal)
+                u.unloaded.emplace_back(spec.id);
             const auto& c = out.coverage;
             u.obs.walker_families.insert(c.walker_families.begin(),
                                           c.walker_families.end());
@@ -149,6 +159,21 @@ std::vector<std::string> missing_specials(std::uint64_t observed_exercises)
 }
 
 } // namespace
+
+// Runs before every gate below reads observed_union(): if the scenario
+// levels did not load, the coverage numbers are meaningless and the honest
+// diagnosis is "the harness could not find its levels", not sixty separate
+// "family not covered" failures.
+TEST(Parity, coverage_gate_every_scenario_loaded_its_level)
+{
+    const auto& u = observed_union();
+    std::ostringstream os;
+    for (const auto& id : u.unloaded)
+        os << "\n  - " << id;
+    EXPECT_TRUE(u.unloaded.empty())
+        << u.unloaded.size() << " scenario(s) ran against an unloaded level"
+        << " (check the campaign mount / PhysFS search path):" << os.str();
+}
 
 TEST(Parity, coverage_gate_walker_families)
 {

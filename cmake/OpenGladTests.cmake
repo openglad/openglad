@@ -1435,6 +1435,21 @@ set_tests_properties(openglad_demo_smoke PROPERTIES
     TIMEOUT 120
 )
 
+# parity_runner_smoke is the harness's only non-gtest binary: the goldens are
+# captured through it and the mutation canary reads its exit code. Nothing
+# else exercises its CLI, which is how it shipped happily writing stub dumps
+# out of a bootstrap that had mounted no campaign.
+add_test(NAME parity_runner_smoke_cli
+    COMMAND ${CMAKE_COMMAND} -E env
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/test_parity_runner_smoke.sh
+        $<TARGET_FILE:parity_runner_smoke>
+)
+set_tests_properties(parity_runner_smoke_cli PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 120
+)
+
 add_test(NAME openglad_text_picker_interactive
     COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_text_picker_interactive.sh $<TARGET_FILE:openglad_text>
 )

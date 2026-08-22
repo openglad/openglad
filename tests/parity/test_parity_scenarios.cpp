@@ -50,6 +50,20 @@ bool read_file(const std::filesystem::path& path, std::string& out)
 void run_one_scenario(const og::parity::ScenarioSpec& spec)
 {
     const og::parity::RunOutcome outcome = og::parity::run_scenario(spec);
+    // An unloaded level still dumps — as an empty arena — so a broken PhysFS
+    // search path used to read as every golden drifting at once. Say what
+    // actually happened before comparing anything.
+    //
+    // Branch-internal rows are exempt on purpose: the four scen9301 rows
+    // (snapshot dirty bits, the three Z-axis arenas) point at a three-byte
+    // "FSS"-header-only fixture that has never loaded, and build their whole
+    // arena from fresh_arena + floor_paints + spawns instead. They also carry
+    // no golden, so a stub there costs nothing. Every golden-bearing row is
+    // covered.
+    ASSERT_TRUE(outcome.loaded || spec.is_branch_internal)
+        << "scenario " << spec.id << " never loaded its level file ("
+        << spec.scenario_file << "); the dump below describes an empty arena, "
+           "not the scenario. Check the campaign mount / PhysFS search path.";
     const std::string actual = og::parity::canonical_serialize(outcome.dump);
 
     if (spec.is_branch_internal ||

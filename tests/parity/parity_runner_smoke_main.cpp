@@ -8,6 +8,15 @@
 //   parity_runner_smoke --scenario <id> [--out <path>]
 //   parity_runner_smoke --list      # Phase 07 will populate this; today it
 //                                   # prints the master-comparable subset.
+//
+// Exit codes:
+//   0  dump written
+//   1  bad arguments / unknown scenario id
+//   2  the output file could not be written
+//   3  the scenario's level did not load (broken campaign mount or PhysFS
+//      search path). NOTHING is written in this case — an empty arena
+//      serialises into perfectly valid JSON that disagrees with every
+//      golden, and a silent stub dump is worse than no dump.
 
 #include "fact_predicate.h"
 #include "parity_bootstrap.h"
@@ -17,6 +26,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <mutex>
 #include <string>
@@ -143,6 +153,28 @@ const og::parity::ScenarioSpec* find_scenario(std::string_view id)
     return nullptr;
 }
 
+// Where the campaign archives get restored to and the mounted campaign is
+// read from. Unset means `get_user_path()` resolves to the developer's real
+// ~/.openglad, and every smoke run would rewrite the campaign archives in
+// their live install as a side effect of producing a dump. Point it at a
+// private scratch directory instead — stable, not per-PID, so repeat runs
+// reuse the already-restored archives instead of re-copying eight of them.
+std::string ensure_private_config_dir()
+{
+    if (const char* env = std::getenv("OPENGLAD_CONFIG_DIR");
+        env != nullptr && env[0] != '\0')
+    {
+        return std::string(env);
+    }
+
+    const std::filesystem::path dir =
+        std::filesystem::temp_directory_path() / "openglad-parity-smoke-config";
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    setenv("OPENGLAD_CONFIG_DIR", dir.string().c_str(), 1);
+    return dir.string();
+}
+
 int list_scenarios()
 {
     for (const auto& s : og::parity::kScenarios)
@@ -209,8 +241,37 @@ int main(int argc, char** argv)
         return 1;
     }
 
+    const std::string config_dir = ensure_private_config_dir();
+
     og::parity::BootstrapScope boot(argv[0]);
     const auto outcome = og::parity::run_scenario(*spec);
+
+    // A scenario whose level never loaded still produces a structurally
+    // valid dump — an empty arena serialises just as happily as a real one —
+    // so a broken bootstrap used to exit 0 with a plausible-looking file that
+    // disagreed with every golden. Refuse to publish anything instead: the
+    // callers that matter (scripts/parity/run_mutation_canary.sh and
+    // run_mutation_canary_runtime.py) already abort on a nonzero exit, and
+    // aborting loudly beats a corpus-wide phantom drift.
+    if (!boot.ok() || !outcome.loaded)
+    {
+        std::fprintf(stderr,
+            "parity_runner_smoke: refusing to write a dump for scenario '%s'\n"
+            "  scenario file : %.*s\n"
+            "  config dir    : %s\n"
+            "  bootstrap     : %s\n"
+            "  level loaded  : %s\n"
+            "The level did not load, so the dump would describe an empty\n"
+            "arena rather than the scenario.\n",
+            scenario_id.c_str(),
+            static_cast<int>(spec->scenario_file.size()),
+            spec->scenario_file.data(),
+            config_dir.c_str(),
+            boot.ok() ? "ok" : boot.failure().c_str(),
+            outcome.loaded ? "yes" : "no");
+        return 3;
+    }
+
     const std::string payload = evaluate_facts
         ? serialize_fact_evaluation(*spec, outcome.dump)
         : og::parity::canonical_serialize(outcome.dump);

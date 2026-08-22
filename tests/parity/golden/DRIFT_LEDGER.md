@@ -120,6 +120,9 @@ old behaviour, because the row is not `is_branch_internal` (marking it so would
 switch `og_test_parity` to the determinism double-run and stop evaluating the
 row's predicates entirely, which would cost the fix its only teeth). Recapture
 these ids one at a time, from the branch, with `parity_runner_smoke --out`.
+The tool exits **3 and writes nothing** when the scenario's level did not load
+(a broken campaign mount): a nonzero exit means the capture never happened, not
+that the golden moved.
 
 | id | what changed | why | golden captured from |
 |---|---|---|---|

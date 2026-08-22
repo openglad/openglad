@@ -30,6 +30,11 @@ against a non-deterministic reference.
   prints the canonical branch StateDump JSON; `--evaluate-facts` runs the
   predicates. `scripts/parity/diff_dumps.py <dump> tests/parity/golden/<id>.json`
   (exit 0 = semantic match) is the authoritative branch-vs-golden check.
+  The smoke tool exits **3 and writes nothing** when the level did not load
+  (broken campaign mount / PhysFS search path) — it used to exit 0 with a
+  valid-looking empty-arena dump that disagreed with every golden. It also
+  points `OPENGLAD_CONFIG_DIR` at a private temp dir when the variable is
+  unset, so a capture never touches `~/.openglad`.
 - **Stale-table trap** (cost hours): `kScenarios` is `inline constexpr` in
   `scenario_table.h`, and incremental builds do not reliably recompile the
   TUs embedding it. Before capturing or measuring, force-clean the dumper

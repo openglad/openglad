@@ -105,11 +105,30 @@ BootstrapScope::BootstrapScope(const char* argv0)
 
     if (owned_physfs_)
     {
+        // `restore_default_campaigns` copies builtin/*.glad with
+        // std::filesystem::copy_file, which does NOT create the destination
+        // directory. io_init() gets `campaigns/` from create_dataopenglad();
+        // an owned bootstrap never runs that, so without this every copy
+        // failed with ENOENT and the mount below found nothing — leaving
+        // the whole scenario corpus loading empty-level stubs whose dumps
+        // are still well-formed JSON.
+        const std::string campaigns_dir = get_user_path() + "campaigns/";
+        if (!create_dir(campaigns_dir))
+            failure_ = "cannot create campaign directory " + campaigns_dir;
+
         restore_default_campaigns();
-        // Best-effort: ignore the error here; later mounts make scen99.fss
-        // resolvable even when the campaign mount fails (e.g. archive
-        // already present from a sibling init).
-        (void)mount_campaign_package_with_error("gladiator");
+
+        const std::string archive = campaigns_dir + "gladiator.glad";
+        if (failure_.empty() && !std::filesystem::exists(archive))
+            failure_ = "default campaign archive was not restored to " + archive;
+
+        if (failure_.empty() &&
+            mount_campaign_package_with_error("gladiator") !=
+                CampaignPackageIoError::None)
+        {
+            failure_ = "cannot mount default campaign archive " + archive +
+                       ": " + og::resources::filesystem_last_error();
+        }
     }
 
     if (install_parity_grid_fixture(parity_write_path_) &&
