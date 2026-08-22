@@ -1217,3 +1217,115 @@ TEST(SimWorldHeadless, foe_search_unchanged_for_non_negative_invisibility)
         << "a cloak roll of 0 acquires the bearer; that is the legacy 1-in-15";
     EXPECT_EQ(rng_bound::kZeroRollPinStepped, lucky.state_after_far);
 }
+
+// --- Freeze-time foe census (#231) ---
+//
+// The freeze branch of GameWorld::tick used to fold the level_done census
+// INSIDE the act gate, so a frozen hostile — the very reason the level is
+// not clear — was never counted. level_done latched at 2 for the whole
+// freeze window and the level read as won.
+
+namespace freeze_census {
+
+walker* hostile_living(TestGameWorld& t, short x, short y)
+{
+    walker* foe = t.world().add_ob(Order::Living, FAMILY_ORC);
+    if (foe == nullptr)
+        return nullptr;
+    foe->setxy(x, y);
+    foe->set_team_num(1);
+    foe->set_act_type(ACT_RANDOM);
+    return foe;
+}
+
+walker* player_hero(TestGameWorld& t, short x, short y)
+{
+    walker* hero = t.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    if (hero == nullptr)
+        return nullptr;
+    hero->setxy(x, y);
+    hero->set_team_num(0);
+    hero->set_act_type(ACT_CONTROL);
+    return hero;
+}
+
+} // namespace freeze_census
+
+// RED-BEFORE: casting freeze-time next to an exit pad opened the "Exit to
+// Level N?" prompt mid-fight, because the frozen orc never reset level_done.
+TEST(SimWorldHeadless, freeze_keeps_level_unfinished_with_a_live_foe)
+{
+    TestGameWorld t;
+    GameWorld& w = t.world();
+    w.my_team = 0;
+
+    walker* pad = exit_latch::make_exit_pad(t, 120, 120, 2);
+    ASSERT_NE(nullptr, pad);
+    walker* hero = freeze_census::player_hero(t, 120, 120);
+    ASSERT_NE(nullptr, hero);
+    walker* foe = freeze_census::hostile_living(t, 200, 200);
+    ASSERT_NE(nullptr, foe);
+
+    w.tick(); // unfrozen baseline: the live orc is counted
+    ASSERT_EQ(0, w.level_done) << "a live hostile keeps the level unfinished";
+
+    w.enemy_freeze = 50;
+    w.tick();
+    ASSERT_FALSE(foe->dead()) << "the orc is frozen, not killed";
+    EXPECT_EQ(1, w.remaining_foes(hero)) << "the HUD census still sees the orc";
+    EXPECT_EQ(0, w.level_done)
+        << "a frozen hostile must still hold level_done at 0";
+
+    ASSERT_TRUE(pad->eat_me(hero));
+    EXPECT_EQ(0, exit_latch::exit_prompts(t.events))
+        << "no exit prompt may be offered while foes stand frozen";
+}
+
+// RED-BEFORE: on a kill-all level (no exit pad) the same latch completed the
+// level outright — freeze-time won the fight by itself.
+TEST(SimWorldHeadless, freeze_does_not_autocomplete_a_kill_all_level)
+{
+    TestGameWorld t;
+    GameWorld& w = t.world();
+    w.my_team = 0;
+
+    walker* hero = freeze_census::player_hero(t, 120, 120);
+    ASSERT_NE(nullptr, hero);
+    walker* foe = freeze_census::hostile_living(t, 200, 200);
+    ASSERT_NE(nullptr, foe);
+
+    w.tick();
+    ASSERT_EQ(0, w.level_done);
+    ASSERT_FALSE(w.game_ended);
+
+    w.enemy_freeze = 50;
+    w.tick();
+    ASSERT_FALSE(foe->dead());
+    EXPECT_EQ(0, w.level_done);
+    EXPECT_FALSE(w.game_ended)
+        << "freeze must not complete a kill-all level with foes alive";
+}
+
+// Companion invariant (green before and after): the dormant branch already
+// counts a delayed-spawn hostile, and it must keep doing so under freeze —
+// the dormant `continue` runs before the freeze branch is ever reached.
+TEST(SimWorldHeadless, freeze_still_counts_a_dormant_hostile)
+{
+    TestGameWorld t;
+    GameWorld& w = t.world();
+    w.my_team = 0;
+
+    walker* hero = freeze_census::player_hero(t, 120, 120);
+    ASSERT_NE(nullptr, hero);
+    walker* foe = freeze_census::hostile_living(t, 200, 200);
+    ASSERT_NE(nullptr, foe);
+    foe->set_spawn_delay(60000);
+    foe->set_dormant(true);
+
+    w.enemy_freeze = 50;
+    w.tick();
+    ASSERT_TRUE(foe->dormant()) << "the wake delay must outlast the tick";
+    EXPECT_EQ(0, w.level_done)
+        << "a dormant hostile counts as alive during freeze too";
+    EXPECT_FALSE(w.game_ended);
+}

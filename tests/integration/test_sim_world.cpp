@@ -137,7 +137,9 @@ TEST(SimWorld, r15_freeze_tick_and_level_done_paths)
 
     world.enemy_freeze = 11;
     world.tick();
-    ASSERT_TRUE(world.level_done == 1);
+    // The frozen orc skips its turn but is still counted (#231), so the
+    // level reads 0 (foes remain) and the exit FX never promotes it to 1.
+    ASSERT_TRUE(world.level_done == 0);
     ASSERT_TRUE(!world.game_ended);
     ASSERT_TRUE(ally->acts > 0);
     ASSERT_TRUE(enemy->acts == 0);
@@ -162,8 +164,10 @@ TEST(SimWorld, r15_freeze_uses_friendliness_not_team_zero)
     world.enemy_freeze = 11;
     world.tick();
 
-    ASSERT_TRUE(world.level_done == 2);
-    ASSERT_TRUE(world.game_ended);
+    // my_team 1: the team-0 orc is the hostile one, so friendliness (not
+    // team zero) decides who is frozen. It still holds the level open (#231).
+    ASSERT_TRUE(world.level_done == 0);
+    ASSERT_TRUE(!world.game_ended);
     ASSERT_TRUE(friendly->acts > 0);
     ASSERT_TRUE(hostile->acts == 0);
 }

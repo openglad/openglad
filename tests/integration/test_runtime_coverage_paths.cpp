@@ -1625,8 +1625,8 @@ TEST(RuntimeCoveragePaths, sim_world_freeze_countdown_notification_and_weap_clea
     world.end = 0;
     world.tick();
     ASSERT_EQ(10, (int)world.enemy_freeze) << "enemy_freeze should decrement from 11 to 10";
-    ASSERT_EQ(2, (int)world.level_done) << "hostile living during freeze should stay frozen and not keep level active";
-    ASSERT_TRUE(world.game_ended) << "when only frozen hostiles remain, tick should report level completion";
+    ASSERT_EQ(0, (int)world.level_done) << "a frozen hostile living still keeps the level active (#231)";
+    ASSERT_FALSE(world.game_ended) << "freeze must not complete the level while hostiles live";
 
     int time_left_messages = 0;
     for (const auto& ev : events.events())

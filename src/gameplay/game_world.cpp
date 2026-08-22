@@ -1807,12 +1807,18 @@ void GameWorld::tick()
                 events.push_notification(obmessage, 10);
                 printed_time = true;
             }
-            if (ob && !ob->dead() &&
-                (((ob->query_order() != Order::Living) &&
-                  (ob->query_order() != Order::Generator)) ||
-                 ob->is_friendly_to_team(static_cast<unsigned char>(my_team))))
+            if (ob && !ob->dead())
             {
-                ob->act();
+                // The act gate is unchanged: frozen enemy Livings and
+                // Generators still skip their turn. Only the census is
+                // hoisted out of it — a foe that is frozen is still a foe,
+                // exactly as the dormant branch above already counts one.
+                const bool may_act =
+                    ((ob->query_order() != Order::Living) &&
+                     (ob->query_order() != Order::Generator)) ||
+                    ob->is_friendly_to_team(static_cast<unsigned char>(my_team));
+                if (may_act)
+                    ob->act();
                 if (ob && !ob->dead())
                 {
                     if (!ob->is_friendly_to_team(static_cast<unsigned char>(my_team)) &&
