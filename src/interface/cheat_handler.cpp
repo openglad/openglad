@@ -22,7 +22,12 @@
 
 walker* cheat_cycle_next_team(GameWorld& world, short& team_in_out)
 {
-	short team = static_cast<short>(team_in_out % MAX_TEAM);
+	// Normalize into 0..MAX_TEAM-1 before the lap. A signed remainder keeps
+	// the sign of its left operand, so a negative my_team (a corrupted save,
+	// a hand-edited slot) would otherwise start the walk on a negative
+	// residue and spend its bounded lap scanning teams no walker can hold.
+	short team = static_cast<short>(
+	    ((team_in_out % MAX_TEAM) + MAX_TEAM) % MAX_TEAM);
 
 	for (short step = 0; step < MAX_TEAM; step++)
 	{

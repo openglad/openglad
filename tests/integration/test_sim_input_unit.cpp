@@ -1115,4 +1115,18 @@ TEST(SimInputUnit, cheat_cycle_next_team_terminates_on_an_ffa_team_number)
     ASSERT_EQ(live, cheat_cycle_next_team(fx.world(), team));
     ASSERT_EQ(4, team);
 }
+
+// A negative my_team (a corrupted save slot) is the FFA band's mirror image:
+// the signed remainder keeps its sign, so the unnormalized walk laps through
+// negative residues and misses the real teams sitting above it.
+TEST(SimInputUnit, cheat_cycle_next_team_normalizes_a_negative_team)
+{
+    SimInputFixture fx;
+    walker* live = add_hero(fx, static_cast<unsigned char>(MAX_TEAM - 1), -1);
+
+    short team = -3;
+    ASSERT_EQ(live, cheat_cycle_next_team(fx.world(), team))
+        << "a negative start team must still visit every real team";
+    ASSERT_EQ(MAX_TEAM - 1, team);
+}
 } // namespace detail_sim_input_cues

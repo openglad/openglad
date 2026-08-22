@@ -3388,6 +3388,14 @@ TEST(PickerNetworkClient,
     og::runtime::local_transport_shadow_finish_tick(*active_game_session());
     EXPECT_NE(0, gameplay_screen->world().end);
 
+    // #246: the next level restarts the tick clock at 0, so any line still on
+    // the feed would outlive its own expiry. Nothing may survive the display
+    // side of a level transition.
+    gameplay_screen->viewob[0]->set_display_text("A LINE FROM LEVEL ONE",
+                                                 STANDARD_TEXT_TIME);
+    ASSERT_EQ(std::string("A LINE FROM LEVEL ONE"),
+              gameplay_screen->viewob[0]->textlist[0]);
+
     og::sim::InitialSetupMessage next_setup;
     next_setup.level_id = 2;
     next_setup.current_scenario = 2;
@@ -3407,6 +3415,18 @@ TEST(PickerNetworkClient,
     og::runtime::local_transport_shadow_finish_tick(*active_game_session());
     EXPECT_EQ(0, gameplay_screen->world().end)
         << "the transition latch must clear after the new level is installed";
+
+    // The feed is empty in the new level. Today the transition rebuilds the
+    // view objects (prepare_display_level_for_initial_setup), and the explicit
+    // clear_all_view_text beside it is the belt-and-braces half of the same
+    // contract; this pins the contract itself, so a transition that starts
+    // REUSING views cannot quietly carry the old level's lines across.
+    for (int slot = 0; slot < MAX_MESSAGES; ++slot)
+    {
+        EXPECT_TRUE(gameplay_screen->viewob[0]->textlist[slot].empty())
+            << "level 1's feed line survived into level 2 at slot " << slot
+            << ": " << gameplay_screen->viewob[0]->textlist[slot];
+    }
 
     og::runtime::clear_local_transport_shadow(*active_game_session());
     join_client->shutdown();
@@ -3634,6 +3654,44 @@ TEST(PickerNetworkClient,
         og::runtime::local_transport_shadow_remote_pause_owner(session)
             .empty())
         << "a pause owned by this machine's own seat is not a remote pause";
+
+    // 5. #246: the overlay is re-stamped every frame while the pause holds,
+    //    so releasing the pause has to retire it explicitly. From a clean feed,
+    //    one paused frame under a REMOTE owner writes both lines; the first
+    //    frame after the pause lifts must take both back off. (Nothing else
+    //    can: a line is only swept by the render path, which is compiled out
+    //    under TESTING, and a level reset would restart the tick clock beneath
+    //    it — the stale-PAUSED bug.)
+    view->clear_text();
+    server_transport->send_pause_broadcast(
+        join_peer_id,
+        std::make_shared<og::sim::PauseBroadcastMessage>(named_pause));
+    ASSERT_TRUE(wait_until([&] {
+        og::runtime::local_transport_shadow_finish_tick(session);
+        return overlay_shown("PAUSED by Remote Host") &&
+            overlay_shown("ESC: Menu");
+    })) << "a remote pause should re-stamp both overlay lines on a clean feed";
+
+    og::sim::WorldSnapshot resumed_snapshot =
+        og::sim::capture_keyframe_snapshot(gameplay_screen->world());
+    resumed_snapshot.my_team = 1;
+    resumed_snapshot.allied_mode = 0;
+    resumed_snapshot.paused = false;
+    resumed_snapshot.pause_player_index = og::sim::kNoPausePlayerIndex;
+    resumed_snapshot.snapshot_hash =
+        og::sim::compute_snapshot_hash(resumed_snapshot);
+    server_transport->send_snapshot(
+        join_peer_id,
+        std::make_shared<og::sim::WorldSnapshot>(resumed_snapshot));
+    ASSERT_TRUE(wait_until([&] {
+        og::runtime::local_transport_shadow_finish_tick(session);
+        return !gameplay_screen->world().paused;
+    })) << "the unpaused snapshot should release the display world";
+    og::runtime::local_transport_shadow_finish_tick(session);
+    EXPECT_FALSE(overlay_shown("PAUSED by Remote Host"))
+        << "the pause banner must not outlive the pause";
+    EXPECT_FALSE(overlay_shown("ESC: Menu"))
+        << "the menu hint must not outlive the pause";
 
     // The display screen is shared across picker tests: release the pause
     // and the overlay lines before handing it back.

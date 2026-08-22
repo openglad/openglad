@@ -136,6 +136,31 @@ private:
     PlatformBridge saved_;
 };
 
+// The per-seat dispatch probes split the shared display into extra views.
+// Restore the count from a destructor: an ASSERT that fires mid-probe would
+// otherwise hand every later test in this binary a two-view screen.
+class ScopedViewCount
+{
+public:
+    explicit ScopedViewCount(screen& game, short views)
+        : game_(game), saved_(game.numviews)
+    {
+        game_.ready_for_battle(views);
+    }
+
+    ~ScopedViewCount()
+    {
+        game_.ready_for_battle(saved_);
+    }
+
+    ScopedViewCount(const ScopedViewCount&) = delete;
+    ScopedViewCount& operator=(const ScopedViewCount&) = delete;
+
+private:
+    screen& game_;
+    short saved_;
+};
+
 struct PhysicalFileImage
 {
     bool exists = false;
@@ -1021,8 +1046,7 @@ TEST(RuntimeCoveragePaths, screen_dispatch_filters_targeted_notifications_per_se
     if (!s)
         return;
 
-    const short original_views = s->numviews;
-    s->ready_for_battle(2);
+    ScopedViewCount two_views(*s, 2);
     ASSERT_TRUE(s->viewob[0] != nullptr && s->viewob[1] != nullptr)
         << "two views should exist for the per-seat dispatch test";
 
@@ -1068,7 +1092,6 @@ TEST(RuntimeCoveragePaths, screen_dispatch_filters_targeted_notifications_per_se
 
     for (short view_index = 0; view_index < s->numviews; ++view_index)
         s->viewob[view_index]->clear_text();
-    s->ready_for_battle(original_views);
 }
 
 // #222/#230: a cue's clang is part of the cue, so it carries the same target
@@ -1085,8 +1108,7 @@ TEST(RuntimeCoveragePaths, screen_dispatch_filters_targeted_sounds_per_machine)
     if (!s)
         return;
 
-    const short original_views = s->numviews;
-    s->ready_for_battle(2);
+    ScopedViewCount two_views(*s, 2);
     ASSERT_TRUE(s->viewob[0] != nullptr && s->viewob[1] != nullptr)
         << "two views should exist for the per-seat dispatch test";
     s->viewob[0]->global_player_index_ = 0;
@@ -1138,7 +1160,6 @@ TEST(RuntimeCoveragePaths, screen_dispatch_filters_targeted_sounds_per_machine)
 
     for (short view_index = 0; view_index < s->numviews; ++view_index)
         s->viewob[view_index]->clear_text();
-    s->ready_for_battle(original_views);
 }
 
 TEST(RuntimeCoveragePaths, screen_dispatch_game_flow_events_handles_direct_batches)

@@ -1614,12 +1614,15 @@ bool display_follow_cycle_target(SessionState& session, int view_index,
     const std::uint32_t next_id =
         og::sim::next_follow_target_id(world, current, reverse);
 
-    // A cycle with nowhere to go (an all-dead world) used to stamp entity 0
-    // and blank view->control, dropping the seat onto a static camera without
-    // a word. Refuse instead: the caller keeps the previous target and voices
-    // the refusal.
+    // A cycle with nowhere to go used to stamp entity 0 and blank
+    // view->control, dropping the seat onto a static camera without a word.
+    // Refuse instead: the caller keeps the previous target and voices the
+    // refusal. The commonest shape of "nowhere to go" is not an all-dead
+    // world at all — with one watchable body left, next_follow_target_id
+    // hands back the CURRENT target's own id, which used to report success
+    // and leave the key silent even though the camera had not moved.
     walker* const target = resolve_control_from_entity_id(world, next_id);
-    if (target == nullptr || target->dead())
+    if (target == nullptr || target->dead() || target == current)
         return false;
     follow.target_entity_id = next_id;
 

@@ -1076,6 +1076,55 @@ struct HudObListSwap {
             og::runtime::current_session->myscreen_->world().oblist.end(), saved);
     }
 };
+
+// The frozen-time probes below drive shared display state (the world's freeze
+// counter, one view's HUD prefs, the split-screen view count). Restore it from
+// destructors so a failing ASSERT cannot leak any of it into the next test.
+struct FreezeGuard
+{
+    GameWorld& world;
+    std::int32_t saved;
+    explicit FreezeGuard(GameWorld& w) : world(w), saved(w.enemy_freeze) {}
+    ~FreezeGuard() { world.enemy_freeze = saved; }
+};
+
+struct ViewHudStateGuard
+{
+    viewscreen& view;
+    walker* control;
+    signed char score_pref;
+    signed char view_pref;
+    explicit ViewHudStateGuard(viewscreen& v)
+        : view(v)
+        , control(v.control)
+        , score_pref(v.prefs[PREF_SCORE])
+        , view_pref(v.prefs[PREF_VIEW])
+    {
+    }
+    ~ViewHudStateGuard()
+    {
+        view.control = control;
+        view.prefs[PREF_SCORE] = score_pref;
+        view.prefs[PREF_VIEW] = view_pref;
+        view.resize(static_cast<char>(view_pref));
+    }
+};
+
+// ready_for_battle rebuilds the view objects, so this guard must outlive
+// every reference to them.
+struct ViewCountGuard
+{
+    screen& game;
+    short saved;
+    explicit ViewCountGuard(screen& s) : game(s), saved(s.numviews) {}
+    ~ViewCountGuard()
+    {
+        if (game.numviews == saved)
+            return;
+        game.ready_for_battle(saved);
+        game.relayout_views();
+    }
+};
 } // namespace
 
 TEST_F(GladHud, pending_hostile_wave_counts_splits_dormant_and_counts_down)
@@ -1853,17 +1902,25 @@ TEST_F(GladHud, fps_overlay_clears_extended_foes_counter)
 // #232: the frozen-time countdown is HUD state read off world.enemy_freeze
 // every frame, not a notification pushed into the message feed (where it
 // used to evict every other line for the whole freeze). The cell is
-// left-anchored at lm+4 on the bm-34 row — the one band the classic HUD's
-// top-left column, its bottom-left score box, and the notification banner
-// all leave free.
+// left-anchored at lm+4 on the bm-34 row — the band the classic HUD's
+// top-left column and its bottom-left score box both leave free.
 TEST_F(GladHud, freeze_countdown_cell_draws_from_enemy_freeze)
 {
+    HudObListSwap swap;
     screen* const s = og::runtime::current_session->myscreen_;
     viewscreen* const v = s->viewob[0].get();
     ASSERT_TRUE(v != nullptr);
 
     GameWorld& world = s->world();
-    const std::int32_t saved_freeze = world.enemy_freeze;
+    FreezeGuard freeze_guard(world);
+    ViewHudStateGuard view_guard(*v);
+
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr);
+    walker* const controlp = control.get();
+    world.oblist.push_back(std::move(control));
+    v->control = controlp;
+    v->prefs[PREF_SCORE] = PREF_SCORE_OFF; // the score count-up uses rng()
 
     // "TIME LEFT: 30" at 6px per glyph, on the 6px-tall text row at bm-34.
     const int cell_x0 = v->xloc + 4;
@@ -1890,5 +1947,144 @@ TEST_F(GladHud, freeze_countdown_cell_draws_from_enemy_freeze)
     EXPECT_TRUE(cell_has_pixels(capture_rendered_frame(*s)))
         << "an active freeze must draw the countdown cell";
 
-    world.enemy_freeze = saved_freeze;
+    // A view with no HUD of its own (a spectator camera watching an AI body)
+    // draws no cell either: it belongs to the classic HUD block.
+    controlp->set_user(-1);
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_FALSE(cell_has_pixels(capture_rendered_frame(*s)))
+        << "the cell rides the classic HUD gate, not the bare viewport";
+    controlp->set_user(0);
+}
+
+// The cell may never land on the notification banner, which owns
+// viewport-local rows 30..59 in EVERY pane however short the pane is. The
+// legacy PREF_VIEW inset modes are the short ones (1p mode 4 leaves 80
+// scanlines, 2p/3p mode 4 leaves 72), and a quadrant pane is narrow enough
+// for the string to reach the radar block in the bottom-right corner.
+TEST_F(GladHud, freeze_countdown_cell_never_lands_on_the_notification_feed)
+{
+    HudObListSwap swap;
+    screen* const s = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(s->viewob[0] != nullptr);
+
+    GameWorld& world = s->world();
+    FreezeGuard freeze_guard(world);
+    ViewCountGuard view_count_guard(*s);
+
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr);
+    walker* const controlp = control.get();
+    world.oblist.push_back(std::move(control));
+
+    // Counts every pixel the freeze adds to the frame and pins each of them
+    // outside the feed band and the radar block of every live pane.
+    int freeze_pixels = 0;
+    const auto probe_freeze_pixels = [&](const char* what,
+                                        std::int32_t freeze_left = 30) {
+        freeze_pixels = 0;
+        for (int i = 0; i < s->numviews; ++i)
+        {
+            ASSERT_TRUE(s->viewob[i] != nullptr) << what;
+            s->viewob[i]->control = controlp;
+            s->viewob[i]->prefs[PREF_SCORE] = PREF_SCORE_OFF;
+        }
+
+        world.enemy_freeze = 0;
+        s->clearbuffer();
+        ASSERT_EQ(1, (int)new_score_panel(s, 1)) << what;
+        const auto without = capture_rendered_frame(*s);
+
+        world.enemy_freeze = freeze_left;
+        s->clearbuffer();
+        ASSERT_EQ(1, (int)new_score_panel(s, 1)) << what;
+        const auto with = capture_rendered_frame(*s);
+
+        for (int y = 0; y < 200; ++y)
+        {
+            for (int x = 0; x < 320; ++x)
+            {
+                const std::size_t i = static_cast<std::size_t>(y * 320 + x);
+                if (with[i] == without[i])
+                    continue;
+                ++freeze_pixels;
+                for (int view = 0; view < s->numviews; ++view)
+                {
+                    const viewscreen& pane = *s->viewob[view];
+                    const bool in_pane = x >= pane.xloc && x <= pane.endx &&
+                                         y >= pane.yloc && y <= pane.endy;
+                    if (!in_pane)
+                        continue;
+                    ASSERT_FALSE(y >= pane.yloc + 30 &&
+                                 y < pane.yloc + 30 + MAX_MESSAGES * 6)
+                        << what << ": freeze pixel at (" << x << "," << y
+                        << ") is inside view " << view
+                        << "'s notification feed band";
+                    ASSERT_FALSE(x > pane.endx - 64 && y > pane.endy - 48)
+                        << what << ": freeze pixel at (" << x << "," << y
+                        << ") is inside view " << view << "'s radar block";
+                }
+            }
+        }
+    };
+
+    // The HUD lays itself out from prefs[PREF_VIEW] (ScopedGameplayUiViewLayout),
+    // so the pref and the view geometry have to be moved together.
+    const auto set_view_mode = [](viewscreen& view, signed char mode) {
+        view.prefs[PREF_VIEW] = mode;
+        view.resize(static_cast<char>(mode));
+    };
+
+    {
+        ViewHudStateGuard view_guard(*s->viewob[0]);
+
+        // Full screen: the cell draws, clear of both.
+        set_view_mode(*s->viewob[0], PREF_VIEW_FULL);
+        probe_freeze_pixels("1p full");
+        EXPECT_GT(freeze_pixels, 0)
+            << "a full-screen pane has room for the cell";
+
+        // 1p PREF_VIEW mode 4: an 80-scanline pane, where the old fixed bm-34
+        // row (y=46) sat squarely on the feed. Nothing may be drawn at all.
+        set_view_mode(*s->viewob[0], PREF_VIEW_3);
+        probe_freeze_pixels("1p view3");
+        EXPECT_EQ(0, freeze_pixels)
+            << "a pane with no clear row between feed and score box draws "
+               "nothing";
+    }
+
+    // Three-way split in PREF_VIEW mode 1: 100px-wide columns, where the full
+    // string would run straight into the radar block. The cell shortens
+    // instead of overlapping it. ready_for_battle rebuilds the views, so
+    // nothing may hold a reference to the old ones from here on.
+    s->ready_for_battle(3);
+    ASSERT_EQ(3, static_cast<int>(s->numviews));
+    for (int i = 0; i < s->numviews; ++i)
+    {
+        ASSERT_TRUE(s->viewob[i] != nullptr);
+        set_view_mode(*s->viewob[i], PREF_VIEW_PANELS);
+    }
+    probe_freeze_pixels("3p panels");
+    EXPECT_GT(freeze_pixels, 0)
+        << "a narrow column still gets the short-form cell";
+
+    // The same column cannot hold a three-digit countdown even shortened
+    // ("T: 300" is 36px against 32px of room), and overlapping the radar is
+    // not an option: it draws nothing until the counter comes back down.
+    probe_freeze_pixels("3p panels, three digits", 300);
+    EXPECT_EQ(0, freeze_pixels)
+        << "a column with no room for the short form draws nothing";
+
+    // Four-way split: 159x99 quadrants, each with its own feed band and its
+    // own radar block in the bottom-right corner.
+    s->ready_for_battle(4);
+    ASSERT_EQ(4, static_cast<int>(s->numviews));
+    for (int i = 0; i < s->numviews; ++i)
+    {
+        ASSERT_TRUE(s->viewob[i] != nullptr);
+        set_view_mode(*s->viewob[i], PREF_VIEW_FULL);
+    }
+    probe_freeze_pixels("4p quadrants");
+    EXPECT_GT(freeze_pixels, 0)
+        << "a quadrant pane still has room for the cell";
 }
