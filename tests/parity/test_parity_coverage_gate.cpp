@@ -1028,6 +1028,25 @@ TEST(Parity, golden_evaluation_gate_all_semanticparity)
         << format_missing("golden evaluation (SemanticParity)", failures);
 }
 
+namespace {
+
+// Non-overlapping occurrences, which is what Python's str.count() reports and
+// therefore what scripts/parity/_apply_mutation.py counts before it refuses an
+// ambiguous line (exit 7). The two have to agree.
+std::size_t count_occurrences(std::string_view haystack,
+                              std::string_view needle)
+{
+    if (needle.empty()) return 0;
+    std::size_t found = 0;
+    for (std::size_t pos = haystack.find(needle);
+         pos != std::string_view::npos;
+         pos = haystack.find(needle, pos + needle.size()))
+        ++found;
+    return found;
+}
+
+} // namespace
+
 TEST(Parity, mutation_canary_discriminating_power_gate)
 {
     std::vector<std::string> failures;
@@ -1066,6 +1085,27 @@ TEST(Parity, mutation_canary_discriminating_power_gate)
                << m.file << "\"";
             failures.push_back(os.str());
             continue;
+        }
+
+        // MANDATORY CONTEXT. `from` is replaced within one line, so a text
+        // that is applicable on several lines of the file cannot say which
+        // one the pin means: delete the intended occurrence and a mechanical
+        // repin lands on a sibling, green and toothless. An ambiguous pin
+        // must name the line above the occurrence it is about.
+        if (m.context_before.empty())
+        {
+            int applicable = 0;
+            for (const auto& text : source_lines)
+                if (count_occurrences(text, m.from) == 1) ++applicable;
+            if (applicable > 1)
+            {
+                std::ostringstream os;
+                os << spec.id << ": mutation from-text is applicable on "
+                   << applicable << " lines of " << m.file
+                   << " and the pin carries no context_before, so nothing "
+                      "says which one it means";
+                failures.push_back(os.str());
+            }
         }
 
         // The context anchor, judged exactly as scripts/parity/
