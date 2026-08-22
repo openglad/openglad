@@ -733,6 +733,12 @@ inline constexpr FactPredicate kFacts_special_mage_scen126[] = {
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
     pred::WalkerPositionMoved(FAMILY_MAGE, 240, 640),
     pred::EventKindAtLeast(/*play_sound*/1, 4),
+    // The value this row's golden was rebaselined for. The team-1 MAGE the
+    // TOWER generator emits is scaled to the level ONCE: 90 base + 7 = 97.
+    // The companion capture read 104, which is 90 + 7 + 7. The player's own
+    // team-0 mage sits at 86, so this range picks out the emitted one.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 9700, 9700,
+        "consequence: emitted walkers take set_difficulty's level-1 scaling exactly once, so the generator's MAGE sits at 90+7=97; applying it twice reads 104"),
 };
 
 inline constexpr FactPredicate kFacts_special_thief_scen789[] = {
@@ -3155,6 +3161,13 @@ inline constexpr FactPredicate kFacts_generator_bones_emission_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_GHOST, 5, 5),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
     pred::WalkerOfTeamAlive(/*team=*/1, 3, 3),
+    // The value this row's golden was rebaselined for. A generator-emitted
+    // GHOST is scaled to the level ONCE: 50 base + 11 = 61. The companion
+    // capture read 72, which is 50 + 11 + 11 — the same scaling applied
+    // twice. Pinning it exactly is what stops a second application from
+    // sliding back in unremarked.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_GHOST, 6100, 6100,
+        "consequence: emitted walkers take set_difficulty's level-1 scaling exactly once, so a GHOST out of the BONES generator sits at 50+11=61; applying it twice reads 72"),
 };
 
 inline constexpr Mutation kMut_generator_bones_emission = {
