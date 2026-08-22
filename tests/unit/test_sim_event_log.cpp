@@ -37,6 +37,13 @@ TEST(SimEventLog, push_sound)
     ASSERT_TRUE(ev.kind == og::sim::EventKind::PlaySound);
     ASSERT_TRUE(ev.a == 42);
     ASSERT_TRUE(ev.tick == 5);
+    ASSERT_TRUE(ev.target_player == -1) << "world sounds are heard by everyone";
+
+    // A cue's clang carries the same seat its line does (#222/#230).
+    log.push_sound(43, 6);
+    ASSERT_TRUE(log.size() == 2);
+    ASSERT_TRUE(log.events()[1].a == 43);
+    ASSERT_TRUE(log.events()[1].target_player == 6);
 }
 
 TEST(SimEventLog, push_notification)

@@ -20,10 +20,14 @@ namespace og::sim {
 
 // Emit a sound event. The runtime event dispatcher will play the
 // sound via the audio subsystem after the simulation tick.
-inline void emit_sound(SimEventLog* log, std::uint32_t sound_id)
+// target_player addresses one global player index (walker::user()); -1
+// broadcasts, which is what every world sound wants. A cue that speaks to a
+// single seat passes its seat here so the clang follows the line.
+inline void emit_sound(SimEventLog* log, std::uint32_t sound_id,
+                       std::int32_t target_player = -1)
 {
     if (log)
-        log->push_sound(sound_id);
+        log->push_sound(sound_id, target_player);
 }
 
 inline void emit_positional_sound(SimEventLog* log, const walker* source,

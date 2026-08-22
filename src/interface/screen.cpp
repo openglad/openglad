@@ -234,6 +234,27 @@ void dispatch_cosmetic_screen_events(screen& self,
         {
             case og::sim::EventKind::PlaySound:
                 {
+                    // A targeted clang belongs to its line: it plays only if
+                    // some view on this machine holds that global seat. The
+                    // audio deck is one per machine, not one per view, so
+                    // "any match" is the whole rule — a split-screen pair
+                    // hears one clang, a machine with no such seat hears none.
+                    if (ev.target_player >= 0)
+                    {
+                        bool addressed_here = false;
+                        for (short vi = 0; vi < self.numviews; vi++)
+                        {
+                            if (static_cast<std::int32_t>(
+                                    self.viewob[vi]->global_player_index_) ==
+                                ev.target_player)
+                            {
+                                addressed_here = true;
+                                break;
+                            }
+                        }
+                        if (!addressed_here)
+                            break;
+                    }
                     const PlatformBridge& bridge = platform_bridge();
                     if (bridge.play_sound)
                         bridge.play_sound(static_cast<int>(ev.a));
@@ -250,10 +271,14 @@ void dispatch_cosmetic_screen_events(screen& self,
                     {
                         // A targeted line belongs to one global player's own
                         // view. Spectator views (no seat, index -1) never
-                        // match, so they see only broadcasts.
+                        // match, so they see only broadcasts. Compare in the
+                        // event's own width: narrowing the target to short
+                        // first would alias an out-of-range value onto a real
+                        // seat (65536 -> seat 0).
                         if (ev.target_player >= 0 &&
-                            self.viewob[vi]->global_player_index_ !=
-                                static_cast<short>(ev.target_player))
+                            static_cast<std::int32_t>(
+                                self.viewob[vi]->global_player_index_) !=
+                                ev.target_player)
                             continue;
                         self.viewob[vi]->set_display_text(ev.text, duration);
                     }

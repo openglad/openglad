@@ -36,7 +36,10 @@ public:
                            std::int32_t target_player = -1);
 
     // Push a sound event.
-    void push_sound(std::uint32_t sound_id);
+    // target_player addresses one global player index; -1 broadcasts. A
+    // seat-addressed cue's clang travels with its line, so a machine that
+    // holds no matching view stays quiet.
+    void push_sound(std::uint32_t sound_id, std::int32_t target_player = -1);
 
     // Access the accumulated events.
     const std::vector<Event>& events() const { return events_; }

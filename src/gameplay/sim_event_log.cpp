@@ -55,9 +55,13 @@ void SimEventLog::push_notification(const std::string& message, std::uint32_t du
     events_.push_back(std::move(ev));
 }
 
-void SimEventLog::push_sound(std::uint32_t sound_id)
+void SimEventLog::push_sound(std::uint32_t sound_id, std::int32_t target_player)
 {
+    if (suppressed_)
+        return;
+
     push(EventKind::PlaySound, sound_id, 0);
+    events_.back().target_player = target_player;
 }
 
 std::vector<Event> SimEventLog::drain()
