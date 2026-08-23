@@ -288,6 +288,7 @@ void replace_loaded_world_state(LevelRuntimeData* level, GameWorld& loaded_world
     dst.ctf_requested_respawn_ticks = loaded_world.ctf_requested_respawn_ticks;
     dst.ctf_requested_strip_scenario_troops =
         loaded_world.ctf_requested_strip_scenario_troops;
+    dst.ctf_requested_time_limit = loaded_world.ctf_requested_time_limit;
     dst.respawn_mode = loaded_world.respawn_mode;
     dst.generator_rate = loaded_world.generator_rate;
     dst.respawn = std::move(loaded_world.respawn);
@@ -638,6 +639,8 @@ void LevelRuntimeData::attach_world(GameWorld* world)
         next_world->ctf_requested_respawn_ticks = old_world->ctf_requested_respawn_ticks;
         next_world->ctf_requested_strip_scenario_troops =
             old_world->ctf_requested_strip_scenario_troops;
+        next_world->ctf_requested_time_limit =
+            old_world->ctf_requested_time_limit;
         next_world->respawn_mode = old_world->respawn_mode;
         next_world->generator_rate = old_world->generator_rate;
         next_world->respawn = std::move(old_world->respawn);

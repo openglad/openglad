@@ -86,6 +86,8 @@ short* match_setting_slot(SaveData& save, const std::string& name)
         return &save.respawn_mode;
     if (name == "generator_rate")
         return &save.generator_rate;
+    if (name == "time_limit")
+        return &save.time_limit;
     return nullptr;
 }
 
@@ -138,6 +140,17 @@ bool clamp_match_setting(const std::string& name, std::int32_t value,
         out = value != 0
             ? static_cast<short>(std::clamp<std::int32_t>(value, 25, 400))
             : static_cast<short>(0); // 0 = default (100)
+        return true;
+    }
+    if (name == "time_limit")
+    {
+        // Sim ticks (12/s); 0 = the map's own value. The deliberate twin of
+        // lobby_server.cpp sanitize_settings' time_limit rule — keep the
+        // numbers identical or a scripted preset can publish a value the
+        // server bounces.
+        out = value != 0
+            ? static_cast<short>(std::clamp<std::int32_t>(value, 360, 21600))
+            : static_cast<short>(0);
         return true;
     }
     return false; // unknown name

@@ -85,6 +85,14 @@ public:
     short ctf_capture_limit = 0;
     short ctf_respawn_ticks = 0;
     short ctf_strip_scenario_troops = 0; // 0 = keep authored troops (classic); 2 = own; 3 = Fair (og::sim::kTroopsMatched)
+    // Match time limit in SIM TICKS (12/s); 0 = the map's own value (#241).
+    // NOT the .glad level field of the same name: that one is the par/time
+    // BONUS clock and lands in GameWorld::time_bonus_limit
+    // (level_file_io.cpp, "2-bytes time limit" v9+). This is the
+    // lobby-negotiated override every scripted mode resolves against its
+    // manifest row. Persisted since GTL v17; sanitize/clamp twins bound a
+    // non-zero request to [360, 21600] ticks (30 s .. 30 min).
+    short time_limit = 0;
     // Difficulty submenu settings (0 = legacy default behavior for all three).
     // 0 = off, 1 = heroes, 2 = everyone, 3 = Team 1 heroes only.
     short respawn_mode = 0;

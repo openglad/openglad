@@ -539,6 +539,13 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng,
         }
     }
 
+    // OPENGLAD_DEMO_MATCH_TIME_LIMIT=<sim ticks> drives the #241 match clock
+    // through a render-real capture, the way a host's MATCH SETUP write
+    // does; 0 (the default) keeps the map's own value. The knob rides the
+    // save into sync_world_from_save_data, so no launch path is special-cased.
+    s->save_data.time_limit = static_cast<short>(
+        env_int("OPENGLAD_DEMO_MATCH_TIME_LIMIT", 0, 0));
+
     // The demo never selects a company, so this is the default "save0" slot
     // and the bootstrap stays byte-identical (§3.9).
     if (!s->save_data.save(og::data::active_company_slot())) {

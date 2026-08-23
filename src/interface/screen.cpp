@@ -1333,6 +1333,7 @@ void screen::sync_world_from_save_data()
     world_.ctf_requested_capture_limit = save_data.ctf_capture_limit;
     world_.ctf_requested_respawn_ticks = save_data.ctf_respawn_ticks;
     world_.ctf_requested_strip_scenario_troops = save_data.ctf_strip_scenario_troops;
+    world_.ctf_requested_time_limit = save_data.time_limit;
     // Modes may clamp world knobs (Classic: identity). Applied in BOTH
     // sync_world_from_save_data twins (see headless_server_runtime.cpp).
     world_.respawn_mode =

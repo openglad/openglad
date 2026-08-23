@@ -688,12 +688,12 @@ bool CampaignZoneSession::settings_fingerprint_changed()
     // through the frame-tick reload guard, and double-triggering would hide
     // a broken guard from the tests.
     const std::string composed = std::format(
-        "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
         save_.current_campaign, save_.allied_mode, save_.ctf_team_count,
         save_.ctf_capture_limit, save_.ctf_respawn_ticks,
         save_.ctf_strip_scenario_troops, save_.respawn_mode,
         save_.generator_rate, save_.keep_fallen_heroes, save_.cross_control,
-        save_.infinite_gold);
+        save_.infinite_gold, save_.time_limit);
     const std::uint64_t fingerprint =
         static_cast<std::uint64_t>(std::hash<std::string>{}(composed));
     if (!fingerprint_seeded_)

@@ -482,6 +482,7 @@ bool compare_world_snapshot(const WorldSnapshot& expected,
     OG_REPLAY_COMPARE(ctf_requested_capture_limit);
     OG_REPLAY_COMPARE(ctf_requested_respawn_ticks);
     OG_REPLAY_COMPARE(ctf_requested_strip_scenario_troops);
+    OG_REPLAY_COMPARE(ctf_requested_time_limit);
     OG_REPLAY_COMPARE(respawn_mode);
     OG_REPLAY_COMPARE(generator_rate);
     OG_REPLAY_COMPARE(grid_width);

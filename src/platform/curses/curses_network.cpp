@@ -280,6 +280,7 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save, int difficulty
     settings.keep_fallen_heroes = save.keep_fallen_heroes;
     settings.cross_control = save.cross_control;
     settings.infinite_gold = save.infinite_gold;
+    settings.time_limit = save.time_limit;
     // Protocol v12: shared-teams rule rides the wire (matchup: versus).
     settings.shared_teams = og::ui::is_versus_campaign(save) ? 1 : 0;
 
@@ -371,6 +372,7 @@ og::sim::LobbySaveDataEquivalent build_join_save_equivalent_from_state(
     equivalent.keep_fallen_heroes = state.settings.keep_fallen_heroes;
     equivalent.cross_control = state.settings.cross_control;
     equivalent.infinite_gold = state.settings.infinite_gold;
+    equivalent.time_limit = state.settings.time_limit;
 
     std::vector<OrderedLobbyGameplaySlot> ordered_slots;
     for (std::size_t player_order = 0; player_order < state.players.size();

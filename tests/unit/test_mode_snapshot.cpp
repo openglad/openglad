@@ -148,6 +148,7 @@ void populate_full_mode_state(GameWorld& world)
     world.ctf_requested_capture_limit = 9;
     world.ctf_requested_respawn_ticks = 55;
     world.ctf_requested_strip_scenario_troops = 1;
+    world.ctf_requested_time_limit = 7200;
 }
 
 // Asserts every snapshot respawn/mode field equals the world's live state.
@@ -220,6 +221,9 @@ void expect_snapshot_matches_world(const og::sim::WorldSnapshot& snapshot,
               snapshot.ctf_requested_respawn_ticks);
     EXPECT_EQ(world.ctf_requested_strip_scenario_troops,
               snapshot.ctf_requested_strip_scenario_troops);
+    EXPECT_EQ(world.ctf_requested_time_limit,
+              snapshot.ctf_requested_time_limit)
+        << "snapshot v11 replicates the match time limit (#241)";
 }
 
 void expect_snapshot_mode_defaults(const og::sim::WorldSnapshot& snapshot)
@@ -333,13 +337,13 @@ std::vector<std::uint8_t> rebuild_patched_snapshot_message(
     return message;
 }
 
-// Self-describing raw-payload offsets for a DEFAULT (empty-state) v10
+// Self-describing raw-payload offsets for a DEFAULT (empty-state) v11
 // snapshot: format byte, then 72 world-scalar bytes, then the respawn block
 // (respawn_ticks u16 at 73, respawn_serial u16 at 75, the four anchor counts
 // at 77..80 — no anchor pairs follow when all counts are zero — and the
 // queue size at 81), then the mode block (8 scalar bytes at 82..89, the
 // 12-byte name at 90, 64 i32 vars at 102, the HUD lines at 358, the beacons
-// at 466), then the four match-knob i16s at 486.
+// at 466), then the five match-knob i16s at 486.
 constexpr std::size_t kFirstAnchorCountOffset = 77;
 constexpr std::size_t kQueueSizeOffset = 81;
 constexpr std::size_t kModeNameOffset = 90;

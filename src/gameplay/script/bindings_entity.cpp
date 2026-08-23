@@ -2737,6 +2737,8 @@ int og_team_color_name(lua_State* L)
 // reader that separates 3 from 2, and classic maps play 3 as plain own;
 // the retired middle state 1 reads as own),
 // "respawn_mode" (the difficulty submenu's classic respawn selector),
+// "time_limit" (the match clock in SIM TICKS; 0 = the map's own value, so
+// modes resolve it against their manifest row through match.resolve_limit),
 // "difficulty" (the session difficulty percent, 100 = normal — the CTF
 // bot-squad level formula reads it).
 int og_match_setting(lua_State* L)
@@ -2754,6 +2756,8 @@ int og_match_setting(lua_State* L)
         value = world->ctf_requested_strip_scenario_troops;
     else if (std::strcmp(s, "respawn_mode") == 0)
         value = world->respawn_mode;
+    else if (std::strcmp(s, "time_limit") == 0)
+        value = world->ctf_requested_time_limit;
     else if (std::strcmp(s, "difficulty") == 0)
         value = world->difficulty;
     else

@@ -1352,9 +1352,9 @@ TEST(CampaignZoneUi, frame_tick_refetches_on_reload_guard_and_settings)
     trace_clear();
 
     // Trigger 4: an applied lobby-settings change (the poll rewrites the
-    // synced knobs under the open screen). The fingerprint hashes eleven
+    // synced knobs under the open screen). The fingerprint hashes twelve
     // knobs and a composition can read any of them, so one knob proving the
-    // trigger would leave ten that could silently drop out of the hash. Ride
+    // trigger would leave eleven that could silently drop out of the hash. Ride
     // a spread of them — a counted knob, a mode knob, a boolean toggle and
     // an allied-mode change — each on its own frame.
     struct SettingsKnob {
@@ -1371,6 +1371,7 @@ TEST(CampaignZoneUi, frame_tick_refetches_on_reload_guard_and_settings)
         {"ctf_team_count", &SaveData::ctf_team_count, 3, 0},
         {"keep_fallen_heroes", &SaveData::keep_fallen_heroes, 1, 0},
         {"allied_mode", &SaveData::allied_mode, 1, 0},
+        {"time_limit", &SaveData::time_limit, 7200, 0},
     };
     static_assert(std::size(kKnobs) >= 3,
                   "at least three hashed knobs must be proven live");

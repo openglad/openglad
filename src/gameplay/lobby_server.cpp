@@ -114,6 +114,17 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
         sanitized.infinite_gold = fallback.infinite_gold;
     if (sanitized.shared_teams != 0 && sanitized.shared_teams != 1)
         sanitized.shared_teams = fallback.shared_teams;
+    // Match time limit in sim ticks; 0 keeps the map's own value. The upper
+    // bound is deliberately below the engine's 36000-tick runaway timeout,
+    // which ends a level as a LOSS ("Mission timed out. Retreating."), and
+    // leaves headroom over the longest shipped manifest row (14400).
+    // campaign_state_providers.cpp clamp_match_setting is the deliberate
+    // twin of this rule — keep the numbers identical.
+    if (sanitized.time_limit != 0)
+    {
+        sanitized.time_limit =
+            std::clamp<std::int16_t>(sanitized.time_limit, 360, 21600);
+    }
     return sanitized;
 }
 
@@ -1398,6 +1409,7 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
     equivalent.keep_fallen_heroes = state_.settings.keep_fallen_heroes;
     equivalent.cross_control = state_.settings.cross_control;
     equivalent.infinite_gold = state_.settings.infinite_gold;
+    equivalent.time_limit = state_.settings.time_limit;
     equivalent.current_campaign = state_.settings.campaign_id.empty()
         ? std::string(kDefaultCampaignId)
         : state_.settings.campaign_id;

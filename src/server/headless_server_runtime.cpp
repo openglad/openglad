@@ -92,6 +92,7 @@ void sync_world_from_save_data(GameWorld& world, const SaveData& save)
     world.ctf_requested_capture_limit = save.ctf_capture_limit;
     world.ctf_requested_respawn_ticks = save.ctf_respawn_ticks;
     world.ctf_requested_strip_scenario_troops = save.ctf_strip_scenario_troops;
+    world.ctf_requested_time_limit = save.time_limit;
     // Modes may clamp world knobs (Classic: identity). Applied in BOTH
     // sync_world_from_save_data twins (see screen.cpp).
     world.respawn_mode =
@@ -341,6 +342,9 @@ void copy_headless_server_save_data(SaveData& destination,
     destination.cross_control = source.cross_control;
     // Infinite gold (protocol v11): same session-only dropped-field rule.
     destination.infinite_gold = source.infinite_gold;
+    // Match time limit (protocol v15 / GTL v17): same rule — a dropped copy
+    // would silently restore the map's own clock across the staged handoff.
+    destination.time_limit = source.time_limit;
     // Difficulty submenu (protocol v6): same lobby-negotiated rule — the
     // staged-lobby adoption copies the staged save through here, and a copy
     // that dropped these would launch with default respawns/permadeath.
@@ -399,6 +403,7 @@ og::sim::LobbySaveDataEquivalent build_local_save_equivalent(
     equivalent.keep_fallen_heroes = save.keep_fallen_heroes;
     equivalent.cross_control = save.cross_control;
     equivalent.infinite_gold = save.infinite_gold;
+    equivalent.time_limit = save.time_limit;
 
     // Full roster, benched kept (the local rule): campaign_tag stays off the
     // equivalent by the documented GTL v16 rule — the record it is stored on
@@ -501,6 +506,7 @@ void apply_headless_lobby_game_start_config(
     save.keep_fallen_heroes = static_cast<short>(config_save.keep_fallen_heroes);
     save.cross_control = static_cast<short>(config_save.cross_control);
     save.infinite_gold = static_cast<short>(config_save.infinite_gold);
+    save.time_limit = static_cast<short>(config_save.time_limit);
     save.my_team = 0;
 
     for (auto& member : save.team_list)
