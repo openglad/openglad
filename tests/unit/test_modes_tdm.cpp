@@ -251,6 +251,21 @@ TEST_F(ModesTdm, shipped_manifest_registration_binds_level_302)
     EXPECT_EQ(7200, rig.fx.var(kTdmSlotTimeLimit)) << "manifest time_limit";
 }
 
+// #241: the lobby TIME LIMIT knob beats the manifest row. Down, here —
+// 302's 7200-tick clock cut to five minutes.
+TEST_F(ModesTdm, time_limit_knob_overrides_the_manifest_row)
+{
+    TdmRig rig(302);
+    rig.fx.world().ctf_requested_time_limit = 3600;
+    rig.fx.tick(1);
+
+    ASSERT_TRUE(rig.active());
+    EXPECT_EQ(3600, rig.fx.var(kTdmSlotTimeLimit))
+        << "the request beats the row's 7200";
+    EXPECT_EQ(20, rig.fx.var(kTdmSlotScoreLimit))
+        << "and moves no other knob";
+}
+
 TEST_F(ModesTdm, playtest_pace_cuts_bind_303_and_304)
 {
     // The B3 sweep verdicts: GATEKEEPERS (5/6 timeouts) and THE CASTLE

@@ -2345,7 +2345,7 @@ local function on_mode_init(level, row)
     respawn_ticks = T.respawn_ticks
   end
   og.mode_set(S.RESPAWN_TICKS, respawn_ticks)
-  og.mode_set(S.TIME_LIMIT, match.resolve_limit(row, "time_limit", 0, T.time_limit_ticks))
+  og.mode_set(S.TIME_LIMIT, match.resolve_time_limit(row, T.time_limit_ticks))
   caps.bank_caps(row, S.SPAWN_CAP)
   -- Consume the active teams' start markers (anchors are already banked
   -- engine-side), strip inactive score teams, then roster-only armies on

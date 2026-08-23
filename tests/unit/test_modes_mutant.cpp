@@ -365,6 +365,20 @@ TEST_F(ModesMutant, shipped_manifest_registration_binds_level_840)
         << "manifest rows 840-843 carry fighters = 4 (pre-conversion feel)";
 }
 
+// #241: the lobby TIME LIMIT knob beats the manifest row.
+TEST_F(ModesMutant, time_limit_knob_overrides_the_manifest_row)
+{
+    MutantRig rig(840);
+    rig.fx.world().ctf_requested_time_limit = 3600;
+    rig.fx.tick(1);
+
+    ASSERT_TRUE(rig.active());
+    EXPECT_EQ(3600, rig.fx.var(kMutSlotTimeLimit))
+        << "the request beats the row's 7200";
+    EXPECT_EQ(10, rig.fx.var(kMutSlotScoreLimit))
+        << "and moves no other knob";
+}
+
 // The #187 acceptance test: two humans seated on one lobby team become
 // separate band competitors and the sim's team-equality hostility rule
 // makes them fight each other — first blood between them crowns.

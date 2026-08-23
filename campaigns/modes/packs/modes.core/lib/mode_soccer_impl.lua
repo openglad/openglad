@@ -838,14 +838,8 @@ local function decide(level, inputs, row)
   -- at Auto) over the authored anchor teams.
   local mask, starts, matched, matched_size =
       match.activation(inputs, authored_mask, row.teams or 0)
-  local limit = T.score_limit
-  if inputs.score_limit > 0 then
-    limit = inputs.score_limit
-  elseif row.score_limit ~= nil then
-    if row.score_limit > 0 then
-      limit = row.score_limit
-    end
-  end
+  local limit = match.resolve_limit(row, "score_limit", inputs.score_limit,
+                                    T.score_limit)
   local teams, seeded = match.fills(inputs, mask, {
     matched = matched,
     matched_size = matched_size,
@@ -911,7 +905,7 @@ local function on_mode_init(level, row)
     respawn_ticks = T.respawn_ticks
   end
   og.mode_set(S.RESPAWN_TICKS, respawn_ticks)
-  og.mode_set(S.TIME_LIMIT, row.time_limit or T.time_limit_ticks)
+  og.mode_set(S.TIME_LIMIT, match.resolve_time_limit(row, T.time_limit_ticks))
   caps.bank_caps(row, S.SPAWN_CAP)
 
   -- Consume the active teams' start markers (anchors are already

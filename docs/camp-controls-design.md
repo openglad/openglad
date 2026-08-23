@@ -154,6 +154,16 @@ is out of scope: there is no `time_limit` key, and wiring one is a
 SaveData + LobbySettings + protocol + per-mode change out of proportion
 to this rework.
 
+**[SUPERSEDED — issue #241.]** The clock is a fourth row now,
+`TIME LIMIT: MAP` — map's own → 5M → 10M → 15M → 20M → map's own, stored
+in sim ticks like the manifests it overrides. The SaveData + LobbySettings
++ protocol + per-mode chain named above is exactly what was built, because
+the manifest clock every mode already ran on was the one match rule the
+lobby could not touch. The two summaries — `rules_line()` and the camp's
+`rules_digest()` — deliberately stayed at three knobs: the digest's 20-char
+note budget has no room for a fourth term, and the row itself is where the
+value is turned and read.
+
 ## 5. DIFFICULTY into Base Camp; main menu split
 
 Difficulty, respawns, permadeath, spawn delay, generator rate and infinite
