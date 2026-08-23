@@ -830,6 +830,7 @@ TEST(SaveDataVersions, save_data_load_v17_reads_time_limit)
                     /*time_limit=*/7200);
 
     SaveData tmp;
+    tmp.time_limit = 999; // poisoned; the load must overwrite it
     ASSERT_TRUE(tmp.load("ver17_time_limit")) << "v17 load should succeed";
     ASSERT_EQ(7200, (int)tmp.time_limit)
         << "v17 should read the match time limit from the file tail";

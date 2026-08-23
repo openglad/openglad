@@ -1,4 +1,4 @@
-// Mode snapshot replication (snapshot v10): capture/apply round trips, wire
+// Mode snapshot replication (snapshot v11): capture/apply round trips, wire
 // serialization in keyframe and delta form, hostile-input count caps and
 // text-termination hardening, and the snapshot-restore equivalence proof
 // that the replicated RespawnState + ModeState blocks are the complete
@@ -909,11 +909,11 @@ TEST(ModeSnapshot, applied_time_limit_is_clamped_into_the_sanitized_band)
         std::int16_t applied;
     };
     const Case cases[] = {
-        {100, 360},     // under the floor
-        {1, 360},
-        {-1000, 360},   // a negative clock is still a request, still bounded
+        {100, 720},     // under the floor
+        {1, 720},
+        {-1000, 720},   // a negative clock is still a request, still bounded
         {30000, 21600}, // over the ceiling, under the 36000-tick loss net
-        {360, 360},     // the floor itself
+        {720, 720},     // the floor itself (exactly one minute)
         {21600, 21600}, // the ceiling itself
         {7200, 7200},   // in band: untouched
         {0, 0},         // the sentinel

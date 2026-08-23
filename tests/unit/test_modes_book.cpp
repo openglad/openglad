@@ -1441,7 +1441,7 @@ TEST_F(ModesBookTest, every_knob_cycles_through_its_values_and_wraps)
         {0, "TROOPS: ALL", "Troops: the map's own."},
     };
     // Ticks in the save (12/s, the manifest's own unit), minutes on the
-    // face. Every value on the cycle survives the provider's [360, 21600]
+    // face. Every value on the cycle survives the provider's [720, 21600]
     // clamp untouched, so what the row says is what the sim gets.
     const std::vector<Step> time = {
         {3600, "TIME LIMIT: 5M", "Clock: 5 minutes."},

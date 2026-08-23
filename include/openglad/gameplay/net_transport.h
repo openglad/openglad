@@ -153,7 +153,7 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 // v15: the match TIME LIMIT knob (#241). LobbySettings gains a fourteenth
 // i16, time_limit (sim ticks, 0 = the map's own value), appended after
 // shared_teams in append/read_lobby_settings; sanitize_settings clamps a
-// non-zero request into [360, 21600]. WorldSnapshot carries the same scalar
+// non-zero request into [720, 21600]. WorldSnapshot carries the same scalar
 // as the fifth match knob, appended after
 // ctf_requested_strip_scenario_troops, so snapshot format moves to v11 and
 // replay format to v17. The knob also persists in the GTL save (v17), which

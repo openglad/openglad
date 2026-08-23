@@ -578,7 +578,7 @@ Sint32 view_scenario_page_flip(Sint32 step)
 // gate-lattice sweep drive the spec bare) and presents the single-page
 // shape: pagers hidden, BACK's right-link closed.
 // The change key of everything the VIEW LEVEL report reads that a lobby can
-// move under a parked viewer: the level, the four match-request knobs, the
+// move under a parked viewer: the level, the five match-request knobs, the
 // campaign identity (save side + actual mount) and the STAGE GENERATION —
 // the heavy world rebuild lives in MatchStage behind its 250 ms debounce
 // (roster edits and knob turns move the owner's change key, restage, and

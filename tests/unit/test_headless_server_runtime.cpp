@@ -845,7 +845,7 @@ TEST_F(HeadlessServerRuntimeTest,
 // Match clock clamp at world entry (#241), server twin: a SaveData whose
 // time_limit was never sanitized — a hand-edited company file is the one
 // route that skips both sanitize_settings and clamp_match_setting — must
-// still reach the sim inside [360, 21600], because the mirror that
+// still reach the sim inside [720, 21600], because the mirror that
 // snapshot-applies this world clamps the same field (world_snapshot.cpp
 // apply_mode_state). Server and mirror disagreeing on a hashed field is a
 // permanent snapshot-hash mismatch, not a cosmetic drift. The screen twin
@@ -865,7 +865,7 @@ TEST_F(HeadlessServerRuntimeTest,
     initialize_from_lobby(lobby_save);
     EXPECT_EQ(100, active_save_.time_limit)
         << "the save carries the crafted value verbatim";
-    EXPECT_EQ(360, level_data_->world().ctf_requested_time_limit)
+    EXPECT_EQ(720, level_data_->world().ctf_requested_time_limit)
         << "world entry lifts a sub-floor clock to the sanitizers' floor";
 
     lobby_save.time_limit = 30000; // over the ceiling

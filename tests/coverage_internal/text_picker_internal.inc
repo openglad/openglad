@@ -1273,6 +1273,9 @@ int text_picker_testing_launch_census_matches_the_preview()
     const Halves fair = preview_and_launch(822, og::sim::kTroopsMatched);
     check(fair.preview.find("MATCHED BOTS (1)") != std::string::npos);
     check(fair.previewed == std::vector<int>({1, 1, 1, 1}));
+    // A harness failure returns two empty censuses, and empty == empty would
+    // read as agreement — pin both halves non-empty before comparing them.
+    check(!fair.previewed.empty() && !fair.launched.empty());
     check(fair.launched == fair.previewed);
 
     // The knob is doing the work, not a pitch that happens to field ones:
@@ -1281,6 +1284,7 @@ int text_picker_testing_launch_census_matches_the_preview()
     const Halves keep = preview_and_launch(822, 0);
     check(keep.preview.find("BOT SQUAD (5)") != std::string::npos);
     check(keep.previewed == std::vector<int>({1, 5, 5, 5}));
+    check(!keep.previewed.empty() && !keep.launched.empty());
     check(keep.launched == keep.previewed);
 
     // (b) TROOPS: ALL keeps the authored cast. The onslaught map is the one

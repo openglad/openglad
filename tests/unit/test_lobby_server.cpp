@@ -387,7 +387,7 @@ TEST(LobbyServer, sanitize_clamps_ctf_settings_and_equivalent_carries_them)
     wild.ctf_team_count = 9;       // -> 4
     wild.ctf_capture_limit = 99;   // -> 50
     wild.ctf_respawn_ticks = 5;    // nonzero -> raised to 12
-    wild.time_limit = 30;          // nonzero -> raised to 360 (#241)
+    wild.time_limit = 30;          // nonzero -> raised to 720 (#241)
     og::sim::LobbyMessage wild_message;
     wild_message.payload = og::sim::LobbySettingsChangeMessage{
         .player_index = 0u,
@@ -400,7 +400,7 @@ TEST(LobbyServer, sanitize_clamps_ctf_settings_and_equivalent_carries_them)
     EXPECT_EQ(4, state.settings.ctf_team_count);
     EXPECT_EQ(50, state.settings.ctf_capture_limit);
     EXPECT_EQ(12, state.settings.ctf_respawn_ticks);
-    EXPECT_EQ(360, state.settings.time_limit);
+    EXPECT_EQ(720, state.settings.time_limit);
 
     // A time limit past the ceiling clamps down rather than reverting.
     og::sim::LobbySettings too_long = wild;

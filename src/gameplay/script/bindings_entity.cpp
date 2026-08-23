@@ -2048,7 +2048,8 @@ bool known_match_setting(const char* name)
 // og.campaign_match_get(name) → int32 — the menu-time twin of the sim's
 // read-only og.match_setting, over the persisted match knobs
 // ("team_count", "score_limit", "respawn_ticks", "strip_troops",
-// "respawn_mode", "generator_rate"). Unknown names error, like the twin.
+// "respawn_mode", "generator_rate", "time_limit"). Unknown names error,
+// like the twin.
 int og_campaign_match_get(lua_State* L)
 {
     campaign_dispatch_arg(L, "campaign_match_get");

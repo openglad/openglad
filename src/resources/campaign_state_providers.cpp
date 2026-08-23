@@ -149,9 +149,10 @@ bool clamp_match_setting(const std::string& name, std::int32_t value,
         // Sim ticks (12/s); 0 = the map's own value. The deliberate twin of
         // lobby_server.cpp sanitize_settings' time_limit rule — keep the
         // numbers identical or a scripted preset can publish a value the
-        // server bounces.
+        // server bounces. The 720-tick floor is one whole minute, so no UI
+        // face can render a 0-minute clock and read as the MAP sentinel.
         out = value != 0
-            ? static_cast<short>(std::clamp<std::int32_t>(value, 360, 21600))
+            ? static_cast<short>(std::clamp<std::int32_t>(value, 720, 21600))
             : static_cast<short>(0);
         return true;
     }

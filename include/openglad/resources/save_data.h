@@ -91,7 +91,7 @@ public:
     // (level_file_io.cpp, "2-bytes time limit" v9+). This is the
     // lobby-negotiated override every scripted mode resolves against its
     // manifest row. Persisted since GTL v17; sanitize/clamp twins bound a
-    // non-zero request to [360, 21600] ticks (30 s .. 30 min).
+    // non-zero request to [720, 21600] ticks (1 min .. 30 min).
     short time_limit = 0;
     // Difficulty submenu settings (0 = legacy default behavior for all three).
     // 0 = off, 1 = heroes, 2 = everyone, 3 = Team 1 heroes only.

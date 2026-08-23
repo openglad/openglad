@@ -2643,7 +2643,7 @@ void apply_mode_state(GameWorld& world, const og::sim::WorldSnapshot& snapshot)
     world.ctf_requested_time_limit =
         snapshot.ctf_requested_time_limit != 0
             ? std::clamp<std::int16_t>(snapshot.ctf_requested_time_limit,
-                                       360, 21600)
+                                       720, 21600)
             : static_cast<std::int16_t>(0);
 }
 

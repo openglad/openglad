@@ -1343,7 +1343,7 @@ void screen::sync_world_from_save_data()
     world_.ctf_requested_time_limit =
         save_data.time_limit != 0
             ? std::clamp<std::int16_t>(
-                  static_cast<std::int16_t>(save_data.time_limit), 360, 21600)
+                  static_cast<std::int16_t>(save_data.time_limit), 720, 21600)
             : static_cast<std::int16_t>(0);
     // Modes may clamp world knobs (Classic: identity). Applied in BOTH
     // sync_world_from_save_data twins (see headless_server_runtime.cpp).

@@ -118,12 +118,15 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
     // bound is deliberately below the engine's 36000-tick runaway timeout,
     // which ends a level as a LOSS ("Mission timed out. Retreating."), and
     // leaves headroom over the longest shipped manifest row (14400).
+    // The floor is one whole minute (720 ticks): every UI face renders the
+    // clock in minutes, so anything shorter would show as a 0-minute limit
+    // and read as the MAP sentinel.
     // campaign_state_providers.cpp clamp_match_setting is the deliberate
     // twin of this rule — keep the numbers identical.
     if (sanitized.time_limit != 0)
     {
         sanitized.time_limit =
-            std::clamp<std::int16_t>(sanitized.time_limit, 360, 21600);
+            std::clamp<std::int16_t>(sanitized.time_limit, 720, 21600);
     }
     return sanitized;
 }

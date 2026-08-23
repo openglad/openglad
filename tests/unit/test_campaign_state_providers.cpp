@@ -316,10 +316,10 @@ TEST(CampaignStateProviders, match_set_clamps_like_the_lobby_sanitizer)
     EXPECT_EQ(0, save.generator_rate);
 
     // time_limit: 0 stays 0 (the map's own value); else clamps into
-    // [360, 21600] — the same numbers lobby_server.cpp sanitize_settings
+    // [720, 21600] — the same numbers lobby_server.cpp sanitize_settings
     // uses, so a scripted preset can never publish a bounced value.
     EXPECT_TRUE(providers.match_set("time_limit", 30));
-    EXPECT_EQ(360, save.time_limit);
+    EXPECT_EQ(720, save.time_limit);
     EXPECT_TRUE(providers.match_set("time_limit", 32000));
     EXPECT_EQ(21600, save.time_limit);
     EXPECT_TRUE(providers.match_set("time_limit", 7200));

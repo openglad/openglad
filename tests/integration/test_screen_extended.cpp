@@ -294,7 +294,7 @@ TEST(ScreenExtended, sync_world_from_save_data_replaces_campaign_vars)
 // Match clock clamp at world entry (#241), screen twin: a SaveData whose
 // time_limit was never sanitized — a hand-edited company file is the one
 // route that skips both sanitize_settings and clamp_match_setting — must
-// still reach the sim inside [360, 21600], because the mirror that
+// still reach the sim inside [720, 21600], because the mirror that
 // snapshot-applies this world clamps the same field (world_snapshot.cpp
 // apply_mode_state). The server twin is pinned by
 // HeadlessServerRuntimeTest.
@@ -306,7 +306,7 @@ TEST(ScreenExtended, sync_world_from_save_data_clamps_time_limit)
 
     scr->save_data.time_limit = 100; // under the floor
     scr->sync_world_from_save_data();
-    EXPECT_EQ(360, scr->world().ctf_requested_time_limit);
+    EXPECT_EQ(720, scr->world().ctf_requested_time_limit);
 
     scr->save_data.time_limit = 30000; // over the ceiling
     scr->sync_world_from_save_data();
