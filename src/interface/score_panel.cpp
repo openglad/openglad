@@ -268,7 +268,8 @@ static void draw_freeze_countdown(screen* s, Sint32 lm, Sint32 tm, Sint32 rm,
         return;
     }
 
-    const Sint32 x = lm + 4;
+    // Same left column as the SPC/XP/SC rows below the cell.
+    const Sint32 x = lm + 2;
     // The radar is only in the way while the cell shares its rows.
     const Sint32 right_limit = (row + 6 > bm - 48) ? (rm - 64) : rm;
     const auto fits = [&](const std::string& text) {

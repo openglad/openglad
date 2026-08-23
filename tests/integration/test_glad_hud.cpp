@@ -1923,7 +1923,7 @@ TEST_F(GladHud, freeze_countdown_cell_draws_from_enemy_freeze)
     v->prefs[PREF_SCORE] = PREF_SCORE_OFF; // the score count-up uses rng()
 
     // "TIME LEFT: 30" at 6px per glyph, on the 6px-tall text row at bm-34.
-    const int cell_x0 = v->xloc + 4;
+    const int cell_x0 = v->xloc + 2; // the classic HUD block's left column
     const int cell_x1 = cell_x0 + 13 * 6;
     const int cell_y0 = v->endy - 34;
     const int cell_y1 = cell_y0 + 6;
