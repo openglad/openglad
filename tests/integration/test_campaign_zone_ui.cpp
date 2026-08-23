@@ -2066,12 +2066,13 @@ bool wait_for_interactable_label_containing(const std::string& id,
     return false;
 }
 
-// MATCH SETUP, the modes camp's page of knobs: three rows that each read
+// MATCH SETUP, the modes camp's page of knobs: four rows that each read
 // out what the match holds and step it on when clicked. The page replaced a
 // row of named presets, so the still that documents it has to show the
-// VALUES on the faces — and the second capture has to show one of them
-// actually moved, since a page of labels that never change would look
-// exactly the same from a screenshot.
+// VALUES on the faces — and the later captures have to show them actually
+// moving, since a page of labels that never change would look exactly the
+// same from a screenshot. The fourth row is the clock (#241), and it gets
+// its own shot: MAP is the map's own limit, 5M is a host overriding it.
 struct MatchSetupShotState
 {
     bool camp_seen = false;
@@ -2079,6 +2080,8 @@ struct MatchSetupShotState
     bool page_opened = false;
     bool teams_row_read_auto = false;
     bool teams_row_stepped_to_two = false;
+    bool time_row_read_map = false;
+    bool time_row_stepped_to_five = false;
     bool finished = false;
 };
 
@@ -2113,6 +2116,19 @@ int match_setup_injector(void* data)
     capture_zone_frame("uxr_match_setup_cycled");
     SDL_Delay(400);
 
+    // Row 3 is the clock. A fresh match wears MAP — the limit the level's
+    // own manifest authored — and one click hands the host the shortest
+    // override the cycle offers.
+    state->time_row_read_map = wait_for_interactable_label_containing(
+        "zone_row_3", "TIME LIMIT: MAP", 10000);
+    SDL_Delay(400);
+    interact("zone_row_3");
+    state->time_row_stepped_to_five = wait_for_interactable_label_containing(
+        "zone_row_3", "TIME LIMIT: 5M", 10000);
+    SDL_Delay(400);
+    capture_zone_frame("uxr_match_setup_time");
+    SDL_Delay(400);
+
     interact("back");
     wait_for_interactable("go", 10000);
     SDL_Delay(300);
@@ -2142,7 +2158,7 @@ TEST(CampaignZoneUi, zzz_uxr_capture_modes_match_setup_page)
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    verify_zone_shots("match_setup", 2);
+    verify_zone_shots("match_setup", 3);
 
     EXPECT_TRUE(state.camp_seen) << "main menu";
     EXPECT_TRUE(state.setup_row_seen)
@@ -2154,6 +2170,12 @@ TEST(CampaignZoneUi, zzz_uxr_capture_modes_match_setup_page)
            "so on its face";
     EXPECT_TRUE(state.teams_row_stepped_to_two)
         << "clicking a knob row steps its cycle and re-labels the row";
+    EXPECT_TRUE(state.time_row_read_map)
+        << "a fresh match runs the map's own clock, and the TIME LIMIT row "
+           "says MAP on its face";
+    EXPECT_TRUE(state.time_row_stepped_to_five)
+        << "clicking the clock row steps it to the cycle's shortest "
+           "override (5M)";
     EXPECT_TRUE(state.finished);
 
     // Leave the default campaign mounted for whatever runs next.
