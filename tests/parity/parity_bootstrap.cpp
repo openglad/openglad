@@ -6,8 +6,10 @@
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/packs.h>
 
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <vector>
@@ -50,6 +52,23 @@ std::string ensure_write_dir()
     std::error_code ec;
     std::filesystem::create_directories(p, ec);
     return p.string();
+}
+
+// Why a filesystem step failed, in words that are worth reading.
+//
+// PhysFS's error slot only speaks for PhysFS calls; `create_dir` can fail in
+// the C library (a `campaigns` path that is already a regular file), and then
+// PHYSFS_getLastErrorCode answers ERRNO_OK, whose message is the string "no
+// error". A diagnostic that ends in ": no error" is worse than no diagnostic:
+// it reads as a contradiction and sends the reader looking in the wrong place.
+std::string describe_fs_failure()
+{
+    const std::string physfs = og::resources::filesystem_last_error();
+    if (!physfs.empty() && physfs != "no error")
+        return physfs;
+    if (errno != 0)
+        return std::strerror(errno);
+    return "PhysFS reported no error";
 }
 
 bool install_parity_grid_fixture(const std::string& write_dir)
@@ -105,11 +124,40 @@ BootstrapScope::BootstrapScope(const char* argv0)
 
     if (owned_physfs_)
     {
-        restore_default_campaigns();
-        // Best-effort: ignore the error here; later mounts make scen99.fss
-        // resolvable even when the campaign mount fails (e.g. archive
-        // already present from a sibling init).
-        (void)mount_campaign_package_with_error("gladiator");
+        // `restore_default_campaigns` copies builtin/*.glad with
+        // std::filesystem::copy_file, which does NOT create the destination
+        // directory. io_init() gets `campaigns/` from create_dataopenglad();
+        // an owned bootstrap never runs that, so without this every copy
+        // failed with ENOENT and the mount below found nothing — leaving
+        // the whole scenario corpus loading empty-level stubs whose dumps
+        // are still well-formed JSON.
+        const std::string campaigns_dir = get_user_path() + "campaigns/";
+        const std::string archive = campaigns_dir + "gladiator.glad";
+        if (!create_dir(campaigns_dir))
+        {
+            // No destination directory means every copy below would fail with
+            // ENOENT and print its own WARN line — eight of them, all of them
+            // consequences, ahead of the one message that says what actually
+            // went wrong. Skip the restore and report.
+            failure_ = "cannot create campaign directory " + campaigns_dir +
+                       ": " + describe_fs_failure();
+        }
+        else
+        {
+            restore_default_campaigns();
+
+            if (!std::filesystem::exists(archive))
+            {
+                failure_ = "default campaign archive was not restored to " +
+                           archive + ": " + describe_fs_failure();
+            }
+            else if (mount_campaign_package_with_error("gladiator") !=
+                     CampaignPackageIoError::None)
+            {
+                failure_ = "cannot mount default campaign archive " + archive +
+                           ": " + describe_fs_failure();
+            }
+        }
     }
 
     if (install_parity_grid_fixture(parity_write_path_) &&

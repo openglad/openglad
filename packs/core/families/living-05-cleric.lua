@@ -21,7 +21,7 @@ local function do_turn_undead(self)
   if self:has_guy() and self:g_intelligence() < t.turn_undead_int_req then
     if self.team == 0 or self:has_guy() then
       og.emit_notification(string.format(
-        "You need %d Int to Turn Undead", t.turn_undead_int_req))
+        "You need %d Int to Turn Undead", t.turn_undead_int_req), 0, self)
     end
     -- busy is a C++ float: per-op rounding
     self:set_busy(og.fadd(self:busy(), 5.0))
@@ -124,7 +124,7 @@ local function heal_or_mace(self)
     -- only players get this
     if self:user() ~= -1 then
       og.emit_notification(string.format(
-        "%d Int required for Mystic Mace!", t.mace_int_req))
+        "%d Int required for Mystic Mace!", t.mace_int_req), 0, self)
     end
     return false
   end

@@ -24,7 +24,10 @@ namespace og::sim {
 // tick — so a replay of a decision-taken run verifies on any machine. The
 // section sits between the campaign-id and snapshot payloads; an empty
 // list writes a zero count (the fixed 32-byte header is unchanged).
-inline constexpr std::uint8_t kReplayFormatVersion = 15;
+// v16 records protocol-v14 snapshots/input frames (event payloads carry the
+// target_player addressee); v15 readers must reject the new protocol byte
+// and vice versa.
+inline constexpr std::uint8_t kReplayFormatVersion = 16;
 inline constexpr std::size_t kReplayHeaderSize = 32;
 
 // First replay format carrying the campaign-vars section (the reader's

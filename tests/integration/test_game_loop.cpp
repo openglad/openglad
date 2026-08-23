@@ -106,6 +106,30 @@ struct SessionKeyStateGuard
     }
 };
 
+// Restores every walker's dead bit on scope exit. A test that stages a
+// wiped-out world must put the world back exactly as it found it: the
+// blanket set_dead(0) this replaces also RESURRECTED bodies that were
+// already corpses when the scope opened.
+struct DeadBitGuard
+{
+    std::vector<std::pair<walker*, short>> saved;
+
+    explicit DeadBitGuard(GameWorld& world)
+    {
+        for (const auto& uptr : world.oblist)
+        {
+            if (uptr)
+                saved.emplace_back(uptr.get(), uptr->dead());
+        }
+    }
+
+    ~DeadBitGuard()
+    {
+        for (const auto& [body, was_dead] : saved)
+            body->set_dead(was_dead);
+    }
+};
+
 struct GameSpeedGuard
 {
     float old_speed = 1.0f;
@@ -2299,6 +2323,58 @@ TEST(GameLoop, networked_zero_seat_joiner_follow_cycles_and_survives_full_resync
     ASSERT_NE(nullptr, foreign_after);
     EXPECT_EQ(-1, static_cast<int>(foreign_after->user()))
         << "[NET-R6] the resync must not stamp the watched foreign hero";
+
+    // #223 path 4: a cycle with nowhere to go refuses. The camera keeps the
+    // target it had (it used to be blanked onto a static view with no
+    // explanation) and THIS view is told why. Two worlds reach the refusal.
+    walker* const watched_before = view->control;
+    ASSERT_NE(nullptr, watched_before);
+    const auto follow_cue_shown = [view] {
+        for (const std::string& line : view->textlist)
+        {
+            if (line == "NO ONE TO FOLLOW")
+                return true;
+        }
+        return false;
+    };
+
+    {
+        // (a) One survivor, and it is the watched target itself: the cycle
+        // resolves back onto the current target rather than dropping to a
+        // static camera. That is still a key that did nothing, so it must be
+        // voiced — this is the shape a real end-of-level world reaches long
+        // before every last body is a corpse.
+        DeadBitGuard corpses(game_screen->world());
+        for (auto& uptr : game_screen->world().oblist)
+        {
+            if (uptr && uptr.get() != watched_before)
+                uptr->set_dead(1);
+        }
+        view->clear_text();
+        reset_viewscreen_input_debounce();
+        view->process_input(make_switch_char_input(0u));
+        EXPECT_EQ(watched_before, view->control)
+            << "a cycle onto the current target must keep the camera put";
+        EXPECT_TRUE(follow_cue_shown())
+            << "a cycle that cannot leave its own target must say so";
+    }
+
+    // (b) Nobody left alive at all.
+    {
+        DeadBitGuard corpses(game_screen->world());
+        for (auto& uptr : game_screen->world().oblist)
+        {
+            if (uptr)
+                uptr->set_dead(1);
+        }
+        view->clear_text();
+        reset_viewscreen_input_debounce();
+        view->process_input(make_switch_char_input(0u));
+        EXPECT_EQ(watched_before, view->control)
+            << "a refused follow cycle must keep the previous camera target";
+        EXPECT_TRUE(follow_cue_shown()) << "a refused follow cycle must say so";
+    }
+    view->clear_text();
 
     // [NET-F1] negative: without the networked shadow the legacy spectator
     // block owns the key again and cycles within my_team only (demo/local

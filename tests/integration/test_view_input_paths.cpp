@@ -357,3 +357,140 @@ TEST(ViewInputPaths, view_input_cheat_mode_switch_team_kill_and_level_keys)
     ks.set(SDLK_C, false);
     ctx().input.players[0].held[static_cast<int>(InputAction::Cheat)] = false;
 }
+
+// #223 path 2: the cheat team-hop is the switch path that can genuinely run
+// out of teams — a Free For All seat carries my_team in the 16-31 band, which
+// the mod-MAX_TEAM lap never lands on, so a lone fighter's Cheat+Switch has
+// nowhere to go. A refused hop must commit NOTHING (neither save_data nor the
+// world team moves, the way a half-committed hop used to park the seat on a
+// team it never reached) and must say so in the pressing seat's feed.
+TEST(ViewInputPaths, view_input_cheat_switch_with_no_other_team_says_so)
+{
+    TeamListSwap swap;
+    disablePlayerJoystick(0);
+
+    KeyBindingGuard bind_switch(0, KEY_SWITCH, SDLK_TAB);
+    KeyBindingGuard bind_cheat(0, KEY_CHEAT, SDLK_C);
+    KeyStateGuard ks;
+
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    viewscreen* v = game_screen->viewob[0].get();
+    ASSERT_TRUE(v != nullptr) << "view should exist";
+    v->mynum = 0;
+
+    struct TeamStateGuard
+    {
+        screen& s;
+        short saved_save_team;
+        short saved_world_team;
+        explicit TeamStateGuard(screen& scr)
+            : s(scr)
+            , saved_save_team(scr.save_data.my_team)
+            , saved_world_team(scr.world().my_team)
+        {
+        }
+        ~TeamStateGuard()
+        {
+            s.save_data.my_team = saved_save_team;
+            s.world().my_team = saved_world_team;
+        }
+    } team_guard(*game_screen);
+
+    // The seat's team is out of the lap's reach; the world team is a distinct
+    // sentinel so a hop that commits either one is visible.
+    game_screen->save_data.my_team = 20;
+    game_screen->world().my_team = 3;
+
+    auto only = make_living(FAMILY_SOLDIER, 20, 20, 20);
+    ASSERT_TRUE(only != nullptr) << "walker should be created";
+    walker* onlyp = only.get();
+    onlyp->set_user(0);
+    onlyp->set_act_type(ACT_CONTROL);
+    game_screen->world().oblist.push_back(std::move(only));
+    v->control = onlyp;
+    v->clear_text();
+
+    ks.set(SDLK_C, true);
+    ctx().input.players[0].held[static_cast<int>(InputAction::Cheat)] = true;
+
+    SDL_Event e{};
+    e.type = SDL_EVENT_KEY_DOWN;
+    e.key.repeat = false;
+    e.key.key = SDLK_TAB;
+
+    // A frame with no press first: it releases any cheat-switch debounce an
+    // earlier test in this binary left set.
+    ctx().input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = false;
+    v->input(e);
+
+    ctx().input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    v->input(e);
+
+    EXPECT_EQ(20, static_cast<int>(game_screen->save_data.my_team))
+        << "a refused cheat hop must leave the seat's team alone";
+    EXPECT_EQ(3, static_cast<int>(game_screen->world().my_team))
+        << "a refused cheat hop must not move the world onto another side";
+    EXPECT_EQ(0, static_cast<int>(onlyp->user()))
+        << "the borrowed body must be handed back to the pressing seat";
+    bool said = false;
+    for (const std::string& line : v->textlist)
+        said = said || (line == "NO OTHER TEAM");
+    EXPECT_TRUE(said) << "a refused cheat hop must say so";
+
+    ctx().input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = false;
+    ctx().input.players[0].held[static_cast<int>(InputAction::Cheat)] = false;
+    ks.set(SDLK_C, false);
+    v->clear_text();
+}
+
+// #223 path 3: a spectator camera with nobody else on the watched team used
+// to eat the key in silence. The refusal is written to THIS view, and the
+// camera stays where it was.
+TEST(ViewInputPaths, view_input_spectator_switch_with_no_target_says_so)
+{
+    TeamListSwap swap;
+    disablePlayerJoystick(0);
+
+    KeyBindingGuard bind_switch(0, KEY_SWITCH, SDLK_TAB);
+    KeyStateGuard ks;
+
+    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_TRUE(v != nullptr) << "view should exist";
+    v->mynum = 0;
+    v->my_team = 0;
+
+    struct SpectatorModeGuard
+    {
+        SaveData& save;
+        unsigned char saved;
+        explicit SpectatorModeGuard(SaveData& s) : save(s), saved(s.numplayers)
+        {
+            save.numplayers = 0;
+        }
+        ~SpectatorModeGuard() { save.numplayers = saved; }
+    } spectator_guard(og::runtime::current_session->myscreen_->save_data);
+
+    auto only = make_living(FAMILY_SOLDIER, 0, 20, 20);
+    ASSERT_TRUE(only != nullptr) << "walker should be created";
+    walker* onlyp = only.get();
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(only));
+
+    InputState empty = {};
+    v->process_input(empty);
+    v->control = onlyp;
+    v->clear_text();
+
+    InputState input = {};
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    input.players[0].held[static_cast<int>(InputAction::SwitchChar)] = true;
+    v->process_input(input);
+    ASSERT_TRUE(v->control == onlyp) << "the camera must stay on its target";
+    bool said = false;
+    for (const std::string& line : v->textlist)
+        said = said || (line == "NO ONE TO WATCH");
+    ASSERT_TRUE(said) << "a refused spectator cycle must say so";
+
+    // Release the debounce for the next test in this binary.
+    v->process_input(empty);
+    v->clear_text();
+}

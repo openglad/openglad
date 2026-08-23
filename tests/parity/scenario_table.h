@@ -210,6 +210,12 @@ struct FloorPaint
     std::int32_t pix;
 };
 
+// How far above the pinned line a Mutation's context_before may sit.
+// Mirrors CONTEXT_WINDOW in scripts/parity/_apply_mutation.py, which is the
+// one definition the applier and the pin checker share; check_mutation_pins.py
+// reds if this number and that one ever drift apart.
+inline constexpr int kMutationContextWindow = 16;
+
 // Discriminating mutation declaration: a single source-line edit that
 // is supposed to flip at least one of the row's expected_facts.
 // Phase 02 applies it via the canary; Phase 01 only records it. The
@@ -222,6 +228,18 @@ struct Mutation
     std::string_view from;
     std::string_view to;
     std::string_view rationale;
+    // Optional disambiguating anchor: a line that must appear VERBATIM —
+    // indentation included — somewhere in the kMutationContextWindow lines
+    // above `line`. Empty asserts nothing.
+    //
+    // `from` is matched within ONE line, so a text that repeats in the file
+    // (weap.cpp carries five identical `return 1;` bodies in one switch)
+    // cannot say which occurrence the pin means: delete the intended one and
+    // a mechanical repin lands on a sibling, green and toothless. The line
+    // above it can say. Trailing and defaulted, so the positional
+    // initializers below stay byte-identical — never insert a member before
+    // `rationale`.
+    std::string_view context_before = {};
 };
 
 } // namespace og::parity
@@ -715,6 +733,12 @@ inline constexpr FactPredicate kFacts_special_mage_scen126[] = {
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
     pred::WalkerPositionMoved(FAMILY_MAGE, 240, 640),
     pred::EventKindAtLeast(/*play_sound*/1, 4),
+    // The value this row's golden was rebaselined for. The team-1 MAGE the
+    // TOWER generator emits is scaled to the level ONCE: 90 base + 7 = 97.
+    // The companion capture read 104, which is 90 + 7 + 7. The player's own
+    // team-0 mage sits at 86, so this range picks out the emitted one.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 9700, 9700,
+        "consequence: emitted walkers take set_difficulty's level-1 scaling exactly once, so the generator's MAGE sits at 90+7=97; applying it twice reads 104"),
 };
 
 inline constexpr FactPredicate kFacts_special_thief_scen789[] = {
@@ -1132,7 +1156,8 @@ inline constexpr Mutation kMut_smoke_tick_freeze = {
     "src/gameplay/game_world.cpp", 1682,
     "tick_count_++;",
     "tick_count_ += 0;",
-    "Stops the per-tick world counter from advancing, freezing the schema-v1 tick field at 0. smoke_empty_scen99 flips TickReached(1) through --evaluate-facts because its Invariant gtest checks capture determinism; smoke_nonempty_scen99 flips TickReached(60) and its SemanticParity result."
+    "Stops the per-tick world counter from advancing, freezing the schema-v1 tick field at 0. smoke_empty_scen99 flips TickReached(1) through --evaluate-facts because its Invariant gtest checks capture determinism; smoke_nonempty_scen99 flips TickReached(60) and its SemanticParity result.",
+    "    completion_events_emitted = false;"
 };
 
 inline constexpr Mutation kMut_effect_lifetime = {
@@ -2406,7 +2431,8 @@ inline constexpr Mutation kMut_weapon_wave2_emission = {
     "src/gameplay/weap.cpp", 142,
     "\t\t\t\treturn 1;",
     "\t\t\t\tif (family() == FAMILY_WAVE2) { setxy(xpos() + 5, ypos() + 0); } return 1;",
-    "Injects a per-tick +5px x-step into FAMILY_WAVE2's ACT_RANDOM act() path; the previously-stationary wave moves, so max_step_centi jumps to 500 and pathlen_centi grows ~74500, flipping WeaponSpeed([0,0]) and WeaponNetTravel(STATIONARY,50). The braces + ypos()+0 keep both setxy args int (unambiguous int32_t overload) and suppress -Wmisleading-indentation."
+    "Injects a per-tick +5px x-step into FAMILY_WAVE2's ACT_RANDOM act() path; the previously-stationary wave moves, so max_step_centi jumps to 500 and pathlen_centi grows ~74500, flipping WeaponSpeed([0,0]) and WeaponNetTravel(STATIONARY,50). The braces + ypos()+0 keep both setxy args int (unambiguous int32_t overload) and suppress -Wmisleading-indentation.",
+    "\t\tcase ACT_RANDOM:"
 };
 
 inline constexpr InputEvent kInputsWeaponWave3Emission[] = {
@@ -3135,6 +3161,13 @@ inline constexpr FactPredicate kFacts_generator_bones_emission_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_GHOST, 5, 5),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
     pred::WalkerOfTeamAlive(/*team=*/1, 3, 3),
+    // The value this row's golden was rebaselined for. A generator-emitted
+    // GHOST is scaled to the level ONCE: 50 base + 11 = 61. The companion
+    // capture read 72, which is 50 + 11 + 11 — the same scaling applied
+    // twice. Pinning it exactly is what stops a second application from
+    // sliding back in unremarked.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_GHOST, 6100, 6100,
+        "consequence: emitted walkers take set_difficulty's level-1 scaling exactly once, so a GHOST out of the BONES generator sits at 50+11=61; applying it twice reads 72"),
 };
 
 inline constexpr Mutation kMut_generator_bones_emission = {
@@ -3235,10 +3268,11 @@ inline constexpr FactPredicate kFacts_event_set_end_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_event_set_end_emission = {
-    "src/gameplay/game_world.cpp", 1795,
+    "src/gameplay/game_world.cpp", 1794,
     "level_done = 0;",
     "level_done = 2;",
-    "Neuters the enemy-alive guard in GameWorld::tick's normal living-act loop (the branch that runs for awake enemies; the sibling guards cover dormant, frozen, and weapon walkers): instead of resetting level_done to 0 when a live non-friendly Living enemy acts, it forces level_done to stay 2. With enemies still alive the level_done==2 completion check latches game_ended and the server layer pushes EventKind::SetEnd, so the arena's set_end suppression is broken and the event sneaks through. (Re-anchored after the dormant-guard feature added an earlier textual twin the pin had silently drifted onto.)"
+    "Neuters the enemy-alive guard in GameWorld::tick's normal living-act loop (the branch that runs for awake enemies; the sibling guards cover dormant, frozen, and weapon walkers): instead of resetting level_done to 0 when a live non-friendly Living enemy acts, it forces level_done to stay 2. With enemies still alive the level_done==2 completion check latches game_ended and the server layer pushes EventKind::SetEnd, so the arena's set_end suppression is broken and the event sneaks through. (`level_done = 0;` has textual twins in this function -- the dormant guard above and the frozen guard below, byte-identical including indentation -- so the pin says which one it means with context_before: only the awake branch runs its foe through set_in_act.)",
+    "                ob->set_in_act(false);"
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_soldier_1_scen99[] = {
@@ -3334,7 +3368,8 @@ inline constexpr Mutation kMut_special_elf_1_scen99 = {
     "packs/core/families/living-01-elf.lua", 18,
     "local rock = self:fire()",
     "local rock = nil",
-    "Suppresses the first of SOME ROCKS' two rock releases, so some_rocks takes its 'if not rock' exit with the MP already refunded and nothing in flight. EventKindAtLeast(play_sound, 16) and WalkerHpRangeAtFinalTick(FAMILY_ELF, 1700, 1700) both fail."
+    "Suppresses the first of SOME ROCKS' two rock releases, so some_rocks takes its 'if not rock' exit with the MP already refunded and nothing in flight. EventKindAtLeast(play_sound, 16) and WalkerHpRangeAtFinalTick(FAMILY_ELF, 1700, 1700) both fail.",
+    "local function some_rocks(self)"
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_elf_2_scen99[] = {
@@ -3435,7 +3470,8 @@ inline constexpr Mutation kMut_special_archer_2_scen99 = {
     "packs/core/families/living-02-archer.lua", 28,
     "if self:busy() ~= 0 then",
     "if true then",
-    "Closes FLURRY's busy gate permanently, so archer slot 2 returns false before its three fire() releases and before the fire_frequency*2 busy charge. WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 3500, 3500) flips."
+    "Closes FLURRY's busy gate permanently, so archer slot 2 returns false before its three fire() releases and before the fire_frequency*2 busy charge. WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 3500, 3500) flips.",
+    "  self:s_add_command(C.COMMAND_RESET_WEAPON, 1, 0, 0)"
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_archer_3_scen99[] = {
@@ -3496,6 +3532,16 @@ inline constexpr FactPredicate kFacts_special_mage_3_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 3),
     pred::EventKindExactly(/*notification*/2, 0),
     pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 7600, 7800),
+    // #231, same mechanism as kFacts_enemy_freeze_mage_scen99 — but read
+    // through the events rather than through level_done. The freeze here is
+    // 20+11*7 = 97 ticks and expires at tick 117, so the census re-counts
+    // the team-1 soldier well before the 150-tick budget ends and
+    // level_done reads 0 at the final tick with the bug as well as without
+    // it. What the bug leaves behind is the tail: 96 end_game events, one
+    // per frozen tick. This is the only fact here that reads a value the
+    // rebaseline moved.
+    pred::EventKindExactly(/*end_game*/5, 0,
+        "consequence: the freeze branch's level_done census runs for every live walker, not only the ones the act gate lets move, so the frozen team-1 soldier holds the level open and no end_game is emitted; folding the census back inside the act gate ends the level once per frozen tick"),
 };
 
 inline constexpr Mutation kMut_special_mage_3_scen99 = {
@@ -3522,7 +3568,8 @@ inline constexpr Mutation kMut_special_mage_4_scen99 = {
     "packs/core/families/living-03-mage.lua", 216,
     "local bolt = self:fire()",
     "local bolt = nil",
-    "Suppresses the seed bolt ENERGY WAVE rides on, so energy_wave takes its 'if not bolt' exit and no FAMILY_WAVE weapon is ever placed. WalkerHpRangeAtFinalTick(FAMILY_MAGE, 3400, 3400) flips."
+    "Suppresses the seed bolt ENERGY WAVE rides on, so energy_wave takes its 'if not bolt' exit and no FAMILY_WAVE weapon is ever placed. WalkerHpRangeAtFinalTick(FAMILY_MAGE, 3400, 3400) flips.",
+    "local function energy_wave(self)"
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_mage_5_scen99[] = {
@@ -3748,7 +3795,8 @@ inline constexpr Mutation kMut_special_thief_3_scen99 = {
     "packs/core/families/living-11-thief.lua", 85,
     "if lc.is_busy(self) then",
     "if true then",
-    "Closes the busy gate on the TAUNT branch of taunt_or_charm, so thief slot 3 returns false before rolling any foe and before the 'Nyah Nyah!' line. EventKindAtLeast(notification, 1) and WalkerHpRangeAtFinalTick(FAMILY_THIEF, 3800, 3800) both fail."
+    "Closes the busy gate on the TAUNT branch of taunt_or_charm, so thief slot 3 returns false before rolling any foe and before the 'Nyah Nyah!' line. EventKindAtLeast(notification, 1) and WalkerHpRangeAtFinalTick(FAMILY_THIEF, 3800, 3800) both fail.",
+    "local function taunt_or_charm(self)"
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_thief_4_scen99[] = {
@@ -3770,7 +3818,8 @@ inline constexpr Mutation kMut_special_thief_4_scen99 = {
     "packs/core/families/living-11-thief.lua", 175,
     "if lc.is_busy(self) then",
     "if true then",
-    "Closes POISON CLOUD's busy gate permanently, so thief slot 4 returns false before FX_CLOUD is summoned and no cloud is ever placed. WalkerHpRangeAtFinalTick(FAMILY_THIEF, 1600, 1600) flips."
+    "Closes POISON CLOUD's busy gate permanently, so thief slot 4 returns false before FX_CLOUD is summoned and no cloud is ever placed. WalkerHpRangeAtFinalTick(FAMILY_THIEF, 1600, 1600) flips.",
+    "local function poison_cloud(self)"
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_ghost_1_scen99[] = {
@@ -3813,7 +3862,8 @@ inline constexpr Mutation kMut_special_druid_1_scen99 = {
     "packs/core/families/living-13-druid.lua", 16,
     "local bolt = self:fire()",
     "local bolt = nil",
-    "Suppresses the seed bolt PLANT TREE grows its tree from, so plant_tree takes its 'if not bolt' exit before the busy charge and before WEAP_TREE is summoned. EventKindAtLeast(play_sound, 15) fails."
+    "Suppresses the seed bolt PLANT TREE grows its tree from, so plant_tree takes its 'if not bolt' exit before the busy charge and before WEAP_TREE is summoned. EventKindAtLeast(play_sound, 15) fails.",
+    "local function plant_tree(self)"
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_druid_2_scen99[] = {
@@ -4059,6 +4109,13 @@ inline constexpr FactPredicate kFacts_enemy_freeze_mage_scen99[] = {
     pred::WalkerPositionMoved(FAMILY_ARCHER, 200, 120,
         "consequence: archer is held at its spawn (200,120) for the full 150-tick window because freeze duration 20+11*12=152 > tick budget 150; branch and master agree on the pinned position"),
     pred::EventKindAtLeast(/*play_sound*/1, 3),
+    // #231. The whole reason this row's golden was rebaselined, and the only
+    // fact that reads the value that moved: a frozen team-1 archer is still a
+    // foe, so the level is NOT clear. Without this the row passed against the
+    // stale golden (level_done 2) as happily as against the new one, and the
+    // recapture bought no signal at all.
+    pred::LevelDoneEquals(0,
+        "consequence: the freeze branch's level_done census runs for every live walker, not only for the ones the act gate lets move, so the frozen hostile archer holds the level open for the full window; folding the census back inside the act gate leaves level_done at 2"),
 };
 
 inline constexpr Mutation kMut_enemy_freeze_mage_scen99 = {
@@ -4663,6 +4720,13 @@ inline constexpr FactPredicate kFacts_input_special_switch_wrap_scen99[] = {
     pred::EventKindAtLeast(/*set_palette*/3, 1,
         "consequence: the special-switch wrap lands on FREEZE TIME, whose team-0 cast tints the arena palette and emits SetPalette events; the mutation resets the slot index so TELEPORT fires instead and no palette change is emitted"),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000),
+    // #231, same mechanism as kFacts_enemy_freeze_mage_scen99: the wrap
+    // lands on FREEZE TIME, and the frozen team-1 soldier is still a foe.
+    // This is the only fact here that reads the value the rebaseline moved
+    // (level_done 2 -> 0); without it the row passes against the stale
+    // golden as happily as against the new one.
+    pred::LevelDoneEquals(0,
+        "consequence: the freeze branch's level_done census runs for every live walker, not only the ones the act gate lets move, so the frozen team-1 soldier holds the level open for the whole freeze window; folding the census back inside the act gate leaves level_done at 2"),
 };
 
 inline constexpr Mutation kMut_input_special_switch_wrap_scen99 = {
@@ -5309,7 +5373,8 @@ inline constexpr Mutation kMut_treasure_gold_bar_team_reject = {
     "packs/core/lib/treasure_valuables.lua", 16,
     "if eater.team == 0 or eater:has_guy() then",
     "if true then",
-    "Forces gold_bar_on_eat's scoring guard open (the line number pins gold_bar_on_eat; silver_bar_on_eat carries the identical text at line 27 and _apply_mutation.py edits the named line only). Unmutated, the team-1 orc that walks onto the bar banks nothing, the bar is never set_dead and no SOUND_MONEY fires. Mutated, the orc cashes it: og.award_score(1, 200*3) puts 600 into m_score[1] (ScoreDelta(1,0,0) fails) and self.dead = 1 marks the bar consumed (WalkerOfTeamAlive(2,1,1) 1->0)."
+    "Forces gold_bar_on_eat's scoring guard open (the line number pins gold_bar_on_eat; silver_bar_on_eat carries the identical text at line 27 and _apply_mutation.py edits the named line only). Unmutated, the team-1 orc that walks onto the bar banks nothing, the bar is never set_dead and no SOUND_MONEY fires. Mutated, the orc cashes it: og.award_score(1, 200*3) puts 600 into m_score[1] (ScoreDelta(1,0,0) fails) and self.dead = 1 marks the bar consumed (WalkerOfTeamAlive(2,1,1) 1->0).",
+    "local C = og.C"
 };
 
 // Life-gem GUARD row: only the gem's own team can claim it
@@ -5385,6 +5450,11 @@ inline constexpr FactPredicate kFacts_treasure_magic_potion_overfill_scen99[] = 
     pred::WalkerPositionMoved(FAMILY_ARCHER, 200, 120,
         "consequence: the potion's mana overfill (50 * level 10 = 500 on top of the 50-point default pool) is the only thing that funds the mage's 500-cost FREEZE TIME; the resulting enemy_freeze of 152 ticks holds the archer at its (200,120) spawn for the whole budget. With mana_overfill_per_level: 0 the pool stays at 50, walker::special() returns 0 without casting, and the archer steps west below the x floor"),
     pred::EventKindAtLeast(/*notification*/2, 1),
+    // #231, same mechanism as kFacts_enemy_freeze_mage_scen99: the frozen
+    // team-1 archer is still a foe. The only fact here that reads the value
+    // the rebaseline moved (level_done 2 -> 0).
+    pred::LevelDoneEquals(0,
+        "consequence: the freeze branch's level_done census runs for every live walker, not only the ones the act gate lets move, so the frozen team-1 archer holds the level open for the whole freeze window; folding the census back inside the act gate leaves level_done at 2"),
 };
 
 inline constexpr Mutation kMut_treasure_magic_potion_overfill = {
@@ -6246,7 +6316,8 @@ inline constexpr Mutation kMut_magic_damage_slime_scen99 = {
     "packs/core/families/living-08-slime.lua", 184,
     "magic_damage_modifier = 2",
     "magic_damage_modifier = 1",
-    "Removes the slime's magic susceptibility at its live source. walker_combat.cpp:291 then multiplies the MAGICAL meteor damage by 1.0 instead of 2.0, so the slime keeps roughly twice the hitpoints and falls outside WalkerHpRangeAtFinalTick(FAMILY_SLIME, ...) while the FAMILY_SOLDIER control band is unchanged."
+    "Removes the slime's magic susceptibility at its live source. walker_combat.cpp:291 then multiplies the MAGICAL meteor damage by 1.0 instead of 2.0, so the slime keeps roughly twice the hitpoints and falls outside WalkerHpRangeAtFinalTick(FAMILY_SLIME, ...) while the FAMILY_SOLDIER control band is unchanged.",
+    "    { id = \"split\", name = \"SPLIT\", mp_cost = 30 },"
 };
 
 // slime_death_split_scen99: the FAMILY_SLIME is the PLAYER-team walker so it
@@ -9661,6 +9732,26 @@ inline constexpr ScenarioSpec kScenarios[] = {
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
+
+// The header-only stub fixture: three bytes of "FSS" magic and nothing else.
+// It has never loaded and is not meant to. The four rows below point at it on
+// purpose and build their whole arena from spawns and floor paints instead —
+// snapshot_dirty_bits_scen9301, z_stair_up_scen9301, z_fall_through_air_scen9301
+// and z_fall_two_story_scen9301.
+inline constexpr std::string_view kStubLevelFixture = "scen/scen9301.fss";
+
+// Is a failed level load expected for this row?
+//
+// Every OTHER row loads a real .fss, so a stub run there means the campaign
+// mount or the PhysFS search path is broken and the dump describes an empty
+// arena. `is_branch_internal` used to stand in for this test and does not
+// answer it: treasure_exit_open_prompt_scen99 is branch-internal AND loads the
+// real scen1.fss, so it was silently exempted from the one check that would
+// have caught its level going missing.
+inline constexpr bool builds_its_own_arena(const ScenarioSpec& s)
+{
+    return s.scenario_file == kStubLevelFixture;
+}
 
 // Number of scenarios that have (or will have) a master-side golden file.
 inline constexpr std::size_t kMasterComparableScenarioCount = []() {

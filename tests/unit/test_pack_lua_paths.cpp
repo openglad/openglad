@@ -132,6 +132,20 @@ int count_notifications(const og::sim::SimEventLog& log, const char* needle)
     return n;
 }
 
+// Who the first notification carrying `needle` was addressed to: a global
+// player index, -1 for a broadcast, or -2 when no such line was emitted at
+// all (so a silent hook cannot be mistaken for a broadcast).
+std::int32_t notification_target(const og::sim::SimEventLog& log,
+                                 const char*                 needle)
+{
+    for (const auto& ev : log.events()) {
+        if (ev.kind == og::sim::EventKind::Notification &&
+            ev.text.find(needle) != std::string::npos)
+            return ev.target_player;
+    }
+    return -2;
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -1448,6 +1462,7 @@ TEST(PackLuaArchmage, a_second_teleport_marker_retires_the_first)
     GameWorld& w = tw.world();
     walker* mage = spawn(w, Order::Living, FAMILY_ARCHMAGE, 10, 10, 0);
     ASSERT_NE(nullptr, mage);
+    mage->set_user(3);           // seat 3 is doing the casting
     mage->stats()->set_level(8);
     mage->stats()->set_max_magicpoints(9000.0f);
     mage->stats()->set_magicpoints(9000.0f);
@@ -1471,6 +1486,91 @@ TEST(PackLuaArchmage, a_second_teleport_marker_retires_the_first)
     EXPECT_NE(0, static_cast<int>(first->dead()))
         << "the previous marker must actually be retired";
     EXPECT_EQ(1, count_notifications(tw.events, "Old Marker Removed"));
+
+    // #230: a marker is one caster's private bookkeeping. Every line the flow
+    // writes names the seat that pressed the key; drop the `self` argument at
+    // any of these og.emit_notification calls and the addressee falls back to
+    // -1 and lands in all four feeds again.
+    EXPECT_EQ(3, notification_target(tw.events, "Teleport Marker Placed"));
+    EXPECT_EQ(3, notification_target(tw.events, "Uses)"));
+    EXPECT_EQ(3, notification_target(tw.events, "Old Marker Removed"));
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// The same rule on the mage, which additionally gates the Int refusal on
+// user() != -1: a roster mage too dim to place a marker is told so privately,
+// and so is every line of the placement that follows.
+TEST(PackLuaMage, the_marker_flow_talks_only_to_the_casting_seat)
+{
+    og::test::mount_core_pack();
+    const FamilyDescriptor& desc = describe_family(FAMILY_MAGE);
+    og::test::ScopedHookFailureGuard guard;
+
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    walker* mage = spawn(w, Order::Living, FAMILY_MAGE, 10, 10, 0);
+    ASSERT_NE(nullptr, mage);
+    mage->set_user(1);
+    mage->stats()->set_level(8);
+    mage->stats()->set_max_magicpoints(9000.0f);
+    mage->stats()->set_magicpoints(9000.0f);
+    mage->set_current_special(1);
+    mage->set_shifter_down(1);   // marker mode, not teleport
+    mage->set_busy(0);
+    mage->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
+    ASSERT_NE(nullptr, mage->myguy);
+    mage->myguy->intelligence = 10;  // below marker_int_req (75)
+
+    EXPECT_FALSE(og::test::do_special(desc, mage))
+        << "10 Int cannot place a marker";
+    ASSERT_EQ(1, count_notifications(tw.events, "Int for Marker!"));
+    EXPECT_EQ(1, notification_target(tw.events, "Int for Marker!"))
+        << "a refusal is for the hand that pressed the key, nobody else";
+
+    mage->myguy->intelligence = 200;
+    mage->set_busy(0);
+    ASSERT_TRUE(og::test::do_special(desc, mage));
+    EXPECT_EQ(1, notification_target(tw.events, "Teleport Marker Placed"));
+    EXPECT_EQ(1, notification_target(tw.events, "Uses)"));
+
+    mage->set_busy(0);
+    ASSERT_TRUE(og::test::do_special(desc, mage));
+    ASSERT_EQ(1, count_notifications(tw.events, "Old Marker Removed"));
+    EXPECT_EQ(1, notification_target(tw.events, "Old Marker Removed"));
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// The cleric's two Int refusals are the same class of line: a private "you
+// cannot do that", never a line about the party's state.
+TEST(PackLuaCleric, an_int_refusal_reaches_only_the_cleric_it_refused)
+{
+    og::test::mount_core_pack();
+    const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
+    og::test::ScopedHookFailureGuard guard;
+
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    walker* cleric = spawn(w, Order::Living, FAMILY_CLERIC, 10, 10, 0);
+    ASSERT_NE(nullptr, cleric);
+    cleric->set_user(2);
+    cleric->stats()->set_level(5);
+    cleric->set_owned_myguy(std::make_unique<guy>(FAMILY_CLERIC));
+    ASSERT_NE(nullptr, cleric->myguy);
+    cleric->myguy->intelligence = 10;  // below both Int requirements
+
+    cleric->set_current_special(2);  // RAISE UNDEAD / TURN UNDEAD
+    cleric->set_shifter_down(1);
+    cleric->set_busy(0);
+    EXPECT_FALSE(og::test::do_special(desc, cleric));
+    ASSERT_EQ(1, count_notifications(tw.events, "Int to Turn Undead"));
+    EXPECT_EQ(2, notification_target(tw.events, "Int to Turn Undead"));
+
+    cleric->set_current_special(1);  // HEAL / MYSTIC MACE
+    cleric->set_shifter_down(1);
+    cleric->set_busy(0);
+    EXPECT_FALSE(og::test::do_special(desc, cleric));
+    ASSERT_EQ(1, count_notifications(tw.events, "Mystic Mace!"));
+    EXPECT_EQ(2, notification_target(tw.events, "Mystic Mace!"));
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
@@ -1888,6 +1988,7 @@ TEST(PackLuaTreasure, a_key_already_held_is_a_silent_no_op)
     walker* eater = spawn(w, Order::Living, FAMILY_SOLDIER, 10, 10, 0);
     ASSERT_NE(nullptr, eater);
     eater->set_keys(0);
+    eater->set_user(2); // a seat owns this walker; the line is still party news
     walker* key = spawn(w, Order::Treasure, FAMILY_KEY, 10, 10, 0);
     ASSERT_NE(nullptr, key);
     key->stats()->set_level(2);
@@ -1895,6 +1996,9 @@ TEST(PackLuaTreasure, a_key_already_held_is_a_silent_no_op)
     (void)og::test::on_eat(*tfd, static_cast<treasure*>(key), eater);
     EXPECT_EQ(1 << 2, eater->keys());
     ASSERT_EQ(1, count_notifications(tw.events, "picks up key 2"));
+    EXPECT_EQ(-1, notification_target(tw.events, "picks up key 2"))
+        << "keys are per-walker: the party must be told who is carrying one, "
+           "so this line stays a broadcast and is never addressed to a seat";
 
     (void)og::test::on_eat(*tfd, static_cast<treasure*>(key), eater);
     EXPECT_EQ(1 << 2, eater->keys()) << "the mask is unchanged";

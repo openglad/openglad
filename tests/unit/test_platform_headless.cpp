@@ -928,6 +928,9 @@ TEST(PlatformHeadless, text_protocol_event_text_is_valid_json_escaped)
 
     EXPECT_NE(std::string::npos, encoded.find("\"tick\":7"));
     EXPECT_NE(std::string::npos, encoded.find("\"kind\":8"));
+    // #230: the per-seat addressee is reported (the text driver runs one
+    // world and never filters, so the key is informational).
+    EXPECT_NE(std::string::npos, encoded.find("\"target\":3"));
     EXPECT_NE(std::string::npos,
               encoded.find("\"text\":\"quote\\\" slash\\\\ backspace\\b formfeed\\f newline\\n tab\\t carriage\\r ctrl\\u0001\""));
     EXPECT_EQ(std::string::npos, encoded.find('\n'))

@@ -50,6 +50,21 @@ bool read_file(const std::filesystem::path& path, std::string& out)
 void run_one_scenario(const og::parity::ScenarioSpec& spec)
 {
     const og::parity::RunOutcome outcome = og::parity::run_scenario(spec);
+    // An unloaded level still dumps — as an empty arena — so a broken PhysFS
+    // search path used to read as every golden drifting at once. Say what
+    // actually happened before comparing anything.
+    //
+    // Exempt on purpose are the four rows that point at the three-byte
+    // "FSS"-header-only fixture — snapshot_dirty_bits_scen9301 and the three
+    // Z-axis arenas — which has never loaded and is not meant to: they build
+    // their whole arena from floor_paints + spawns instead. The exemption used
+    // to key on is_branch_internal, which is a different set: there are FIVE
+    // branch-internal rows, and the fifth (treasure_exit_open_prompt_scen99)
+    // loads the real scen1.fss like everything else.
+    ASSERT_TRUE(outcome.loaded || og::parity::builds_its_own_arena(spec))
+        << "scenario " << spec.id << " never loaded its level file ("
+        << spec.scenario_file << "); the dump below describes an empty arena, "
+           "not the scenario. Check the campaign mount / PhysFS search path.";
     const std::string actual = og::parity::canonical_serialize(outcome.dump);
 
     if (spec.is_branch_internal ||

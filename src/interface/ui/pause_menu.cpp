@@ -1350,11 +1350,22 @@ PauseMenuResult run_pause_menu(const PauseMenuHost& host)
     clear_transient_input_state();
     clear_allbuttons();
 
-    if (state.outcome == PauseMenuResult::Resumed)
+    // Every outcome that hands control back to the game releases the pause.
+    // Restart and Quit tear the mission down: leaving the server suspended
+    // strands the next mission (and every other seat) behind a PAUSED overlay
+    // nobody can clear (#246). SessionEnded is the one exception — there is
+    // no host left to resume.
+    if (state.outcome == PauseMenuResult::Resumed ||
+        state.outcome == PauseMenuResult::Restart ||
+        state.outcome == PauseMenuResult::Quit)
     {
         if (host.resume != nullptr)
             host.resume();
-        if (host.pump_paused != nullptr && !host.pump_paused())
+        // The resume RESPONSE only reaches the server through a pump; without
+        // one it dies in the outbound queue with the pause still standing.
+        const bool session_alive =
+            host.pump_paused == nullptr || host.pump_paused();
+        if (!session_alive && state.outcome == PauseMenuResult::Resumed)
             state.outcome = PauseMenuResult::SessionEnded;
     }
 

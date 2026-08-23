@@ -669,7 +669,7 @@ Row layout matches the built-in tables: `row = ani_type * 8 + curdir`.
 |---|---|
 | `og.emit_sound(id)` | `og.C.SOUND_*`. |
 | `og.emit_positional_sound(self, id)` | |
-| `og.emit_notification(text [, duration])` | Integers and plain strings only — never format a float into sim-visible text. |
+| `og.emit_notification(text [, duration [, target]])` | Integers and plain strings only — never format a float into sim-visible text. `target` is a walker (the line goes to whoever controls it) or a global player index; omitted, or any index outside `0..15`, broadcasts. |
 | `og.emit_event(kind, a, b)` | Raw event; `kind` from `og.C.EVENT_*`. `a`/`b` default to 0. |
 
 ### World state

@@ -1140,3 +1140,29 @@ TEST(CursesRenderer, draw_preview_refuses_zero_area_bands)
     EXPECT_GT(term.count_char(U'.'), 0)
         << "the same call with real geometry must fill the band";
 }
+
+// #232: the frozen-time countdown is HUD state on both clients. The terminal
+// twin reads world.enemy_freeze straight off the mirror, so a frozen level
+// says how long the freeze has left without spending a feed line on it.
+TEST(CursesRenderer, freeze_countdown_shows_on_hud_row_one)
+{
+    HandWorld hw(20, 20);
+    walker* hero = hw.add_creature(10, 10, FAMILY_SOLDIER, 0);
+    ASSERT_NE(nullptr, hero);
+    hero->set_user(0);
+
+    GameWorld& world = hw.world();
+    HeadlessTerminal term(24, 80);
+    CursesRenderer renderer;
+
+    world.enemy_freeze = 0;
+    renderer.draw(term, world, hero->entity_id());
+    EXPECT_EQ(term.text_row(1).find("TIME "), std::string::npos)
+        << "no countdown field without an active freeze; got: "
+        << term.text_row(1);
+
+    world.enemy_freeze = 42;
+    renderer.draw(term, world, hero->entity_id());
+    EXPECT_NE(term.text_row(1).find("TIME 42"), std::string::npos)
+        << "row 1 shows the frozen-time countdown; got: " << term.text_row(1);
+}

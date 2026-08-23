@@ -86,7 +86,7 @@ local function teleport(self)
   if self:has_guy() and self:g_intelligence() < t.marker_int_req then
     if self:user() ~= -1 then
       og.emit_notification(
-        string.format("Need %d Int for Marker!", t.marker_int_req))
+        string.format("Need %d Int for Marker!", t.marker_int_req), 0, self)
     end
     return false
   end
@@ -103,7 +103,7 @@ local function teleport(self)
       ob:death()
       if (self.team == 0 or self:has_guy())
           and self:user() ~= -1 then
-        og.emit_notification("(Old Marker Removed)")
+        og.emit_notification("(Old Marker Removed)", 0, self)
       end
       -- shim kept: busy is a C++ float: per-op float rounding.
       self:set_busy(og.fadd(self:busy(), 8.0))
@@ -127,8 +127,8 @@ local function teleport(self)
   marker.ani_type = C.ANI_SPIN
   if (self.team == 0 or self:has_guy())
       and self:user() ~= -1 then
-    og.emit_notification("Teleport Marker Placed")
-    og.emit_notification(string.format("(%d Uses)", marker:lifetime()))
+    og.emit_notification("Teleport Marker Placed", 0, self)
+    og.emit_notification(string.format("(%d Uses)", marker:lifetime()), 0, self)
   end
   -- shim kept: busy is a C++ float: per-op float rounding.
   self:set_busy(og.fadd(self:busy(), 8.0))

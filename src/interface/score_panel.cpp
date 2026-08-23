@@ -234,6 +234,66 @@ static void draw_respawn_countdown(screen* s, walker* control,
     }
 }
 
+// Frozen-time countdown (#232). enemy_freeze rides the world snapshot, so a
+// client reads it straight off its mirror — no notification traffic. Drawn
+// every frame at a fixed left-anchored cell instead of pushed into the feed,
+// which the old per-tick "TIME LEFT" notification flooded out of existence.
+//
+// Row. The classic HUD owns the top-left column (tm+2..tm+26, name + HP/MP)
+// and the bottom-left score/special box (bm-26..bm-2), which leaves bm-34 —
+// but only in a pane tall enough for it. The notification banner owns
+// viewport-local rows 30..59 no matter how short the pane is, and the legacy
+// PREF_VIEW inset modes cut a 1p pane to 80 scanlines and a 2p/3p pane to 72,
+// where bm-34 lands INSIDE the feed. So the row is clamped below the banner,
+// and a pane with no clear row between banner and score box draws nothing.
+//
+// Column. The radar is the real constraint: a fixed 60x44 block anchored to
+// the bottom-right corner (rm-64..rm across bm-48..bm-2), the same band this
+// cell rides. A pane narrower than ~150px cannot hold the full string left of
+// it, so the cell shortens and then gives up. The block is reserved even for
+// a PREF_RADAR_OFF view, so a seat toggling its radar never moves the cell.
+static void draw_freeze_countdown(screen* s, Sint32 lm, Sint32 tm, Sint32 rm,
+                                  Sint32 bm)
+{
+    if (s->world_.enemy_freeze <= 0)
+        return;
+
+    // First 6px row clear of the notification banner.
+    const Sint32 banner_bottom = tm + 30 + MAX_MESSAGES * 6;
+    const Sint32 row = std::max<Sint32>(bm - 34, banner_bottom);
+    if (row + 6 > bm - 26)
+    {
+        TRACE("hud", "freeze_countdown_suppressed row=%d",
+              static_cast<int>(row));
+        return;
+    }
+
+    // Same left column as the SPC/XP/SC rows below the cell.
+    const Sint32 x = lm + 2;
+    // The radar is only in the way while the cell shares its rows.
+    const Sint32 right_limit = (row + 6 > bm - 48) ? (rm - 64) : rm;
+    const auto fits = [&](const std::string& text) {
+        return x + 6 * static_cast<Sint32>(text.size()) <= right_limit;
+    };
+
+    std::string message = std::format("TIME LEFT: {}", s->world_.enemy_freeze);
+    if (!fits(message))
+        message = std::format("T: {}", s->world_.enemy_freeze);
+    if (!fits(message))
+    {
+        TRACE("hud", "freeze_countdown_suppressed x=%d limit=%d",
+              static_cast<int>(x), static_cast<int>(right_limit));
+        return;
+    }
+
+    s->text_normal.write_xy(x, row, message.c_str(),
+                            static_cast<unsigned char>(YELLOW),
+                            static_cast<short>(1));
+    TRACE("hud", "freeze_countdown left=%d row=%d text=%s",
+          static_cast<int>(s->world_.enemy_freeze), static_cast<int>(row),
+          message.c_str());
+}
+
 // Ramp color for a mode HUD element: team ramp when a score team is set,
 // else the classic HUD text yellow (the un-overlaid draw_respawn_countdown
 // default). An FFA band byte (16-31) is a scoring identity too and takes its
@@ -716,6 +776,11 @@ short new_score_panel(screen* s, short /*do_it*/)
         // a == players check would hide the HUD for every non-host client.
         if (control && !control->dead() && control->user() != -1)
         {
+            // The frozen-time cell is part of the classic HUD block: it rides
+            // the same left column, so a view that draws no HUD (a spectator
+            // camera, a corpse waiting to respawn) must not draw it either.
+            draw_freeze_countdown(s, lm, tm, rm, bm);
+
             // Get the button-drawing info ..
             draw_button = s->viewob[players]->prefs[PREF_OVERLAY];
             if (draw_button)

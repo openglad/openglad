@@ -1932,6 +1932,9 @@ TEST(PauseMenuFlow, real_menu_resume_add_remove_player_and_quit_via_interact)
     EXPECT_TRUE(trace_contains("pause_menu", "remove_player seat=1"));
     EXPECT_TRUE(trace_contains("seats", "remove_player index=1"));
     EXPECT_TRUE(trace_contains("pause_menu", "quit_confirmed"));
+    EXPECT_FALSE(game_screen->world().paused)
+        << "QUIT must release the pause too, or the next mission starts "
+           "behind a PAUSED overlay nobody can clear (#246)";
     EXPECT_EQ(1, static_cast<int>(game_screen->save_data.numplayers))
         << "the added seat must be gone again after REMOVE PLAYER";
 

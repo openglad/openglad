@@ -583,6 +583,11 @@ registered, which is most of them.
 
 ## Manual runs
 
+A full `ci-test` run reports the whole recorder population: no ctest entry
+that is the sole producer of a `recorder_processes.txt` name is gated on the
+coverage lane, so the manual recipe below passes the population check without
+a `--processes-manifest` override.
+
 ```bash
 # Lua only, from an ordinary test build
 rm -rf /tmp/luacov && mkdir -p /tmp/luacov

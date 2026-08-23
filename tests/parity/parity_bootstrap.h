@@ -45,6 +45,19 @@ public:
     // bootstrap or io_init() was already in effect when the scope started.
     bool owned_physfs() const noexcept { return owned_physfs_; }
 
+    // Did the bootstrap end up with the default campaign actually mounted?
+    // Only an owned-PhysFS bootstrap does the restore + mount itself, so a
+    // non-owned scope (inside og_test_parity, where io_init() already did
+    // it and would have thrown on failure) always reports true. When this
+    // is false every scenario that loads a level out of the campaign
+    // archive silently degrades to an empty-level stub whose dump is still
+    // well-formed JSON — so callers must refuse to publish a dump instead
+    // of treating the run as a result.
+    bool ok() const noexcept { return failure_.empty(); }
+
+    // Human-readable reason ok() is false; empty when ok().
+    const std::string& failure() const noexcept { return failure_; }
+
     // The resolved workspace root used to find `temp/scen/` and `scen/`.
     const std::string& workspace_root() const noexcept { return workspace_root_; }
 
@@ -59,6 +72,7 @@ private:
     std::string temp_scen_path_;
     std::string scen_path_;
     std::string builtin_path_;
+    std::string failure_;
 };
 
 // Resolve the workspace root: env `OG_PARITY_WORKSPACE_ROOT` if set,

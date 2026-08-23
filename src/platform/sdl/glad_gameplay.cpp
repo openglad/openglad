@@ -296,13 +296,7 @@ void glad_init(bool preserve_frame_timing,
     og::platform::web::finalize_jitter_capture_profile_after_load(
         *current_screen);
 #endif
-    const short safe_numviews = std::min<short>(
-        current_screen->numviews, static_cast<short>(std::size(current_screen->viewob)));
-    for (short view_index = 0; view_index < safe_numviews; ++view_index)
-    {
-        if (current_screen->viewob[view_index] != nullptr)
-            current_screen->viewob[view_index]->clear_text();
-    }
+    current_screen->clear_all_view_text();
     current_screen->world().tick_count_ = 0;
     current_screen->world().reset_level_progress();
     current_screen->world().clear_removed_entity_ids();

@@ -1,5 +1,7 @@
 #include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/sim_input_handler.h>
+#include <openglad/interface/cheat_handler.h>
+#include <openglad/core/sound_ids.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/gparser.h>
@@ -8,6 +10,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/core/irandom.h>
 #include <openglad/legacy/base.h>
 #include <memory>
@@ -400,9 +403,23 @@ TEST(SimInputUnit, sim_input_switch_char_skips_dormant_and_dead_allies)
     input.clear();
     debounce.changedchar = 0;
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    fx.events.clear();
     sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     ASSERT_EQ(control, a) << "with only dormant/dead allies, control must fall back";
+    // #223 path 1: the key kept the same body, so say why rather than
+    // reading as a dead key. Addressed to the pressing seat only.
+    int switch_cues = 0;
+    for (const og::sim::Event& ev : fx.events.events())
+    {
+        if (ev.kind == og::sim::EventKind::Notification &&
+            ev.text == "NO ONE TO SWITCH TO")
+        {
+            switch_cues++;
+            ASSERT_EQ(0, ev.target_player);
+        }
+    }
+    ASSERT_EQ(1, switch_cues);
 
     // Reverse (Shift) cycle honors the same filter.
     c->set_dead(0);
@@ -681,3 +698,435 @@ TEST(SimInputUnit, sim_control_owner_locked_switch_char_falls_back_to_own)
     ASSERT_TRUE(result.control_hp_changed);
 }
 } // namespace detail_sim_control_enforcement
+
+// --- #222/#223 silent-failure cues: a player key that does nothing must say
+// why, to that seat alone, without touching the simulation. The AI and Lua
+// callers of walker::special() never pass a reason out-param, so nothing
+// here can fire off a player keypress. ---
+namespace detail_sim_input_cues {
+namespace {
+
+struct SimInputFixture {
+    LevelRuntimeData level{1, true};
+    SaveData save;
+    std::int32_t enemy_freeze = 0;
+    og::sim::SimEventLog events;
+    FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
+
+    SimInputFixture()
+        : gameplay(level, save, events, cfg)
+    {
+        level.create_new_grid();
+        save.allied_mode = 0;
+        level.world().allied_mode = save.allied_mode;
+        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+    }
+
+    GameWorld& world() { return level.world(); }
+};
+
+walker* add_hero(SimInputFixture& fx, unsigned char team, signed char user,
+                 char family = FAMILY_SOLDIER)
+{
+    auto w = std::make_unique<walker>();
+    w->set_order_family(Order::Living, family);
+    bind_test_entity_sim_context(fx.level, w.get());
+    w->setxy(80, 80);
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_stepsize(1.0f);
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(0);
+    w->set_user(user);
+    w->set_owned_myguy(std::make_unique<guy>(family));
+    walker* out = w.get();
+    fx.level.world().oblist.push_back(std::move(w));
+    return out;
+}
+
+int count_cue(const og::sim::SimEventLog& log, std::string_view text,
+              std::int32_t target)
+{
+    int found = 0;
+    for (const og::sim::Event& ev : log.events())
+    {
+        if (ev.kind == og::sim::EventKind::Notification && ev.text == text &&
+            ev.target_player == target)
+            found++;
+    }
+    return found;
+}
+
+// Every line addressed to one seat, whatever it says. The cues are the only
+// lines that carry a target, so this is "what this player was told
+// personally" — a cue test that counts one string cannot tell silence from
+// the wrong cue, and a world broadcast (the cleric's own "healed 1 man!") is
+// not a cue at all.
+int count_seat_lines(const og::sim::SimEventLog& log, std::int32_t target)
+{
+    int found = 0;
+    for (const og::sim::Event& ev : log.events())
+    {
+        if (ev.kind == og::sim::EventKind::Notification &&
+            ev.target_player == target)
+            found++;
+    }
+    return found;
+}
+
+int count_clang(const og::sim::SimEventLog& log, std::int32_t target)
+{
+    int found = 0;
+    for (const og::sim::Event& ev : log.events())
+    {
+        if (ev.kind == og::sim::EventKind::PlaySound && ev.a == SOUND_CLANG &&
+            ev.target_player == target)
+            found++;
+    }
+    return found;
+}
+
+SimInputResult process(SimInputFixture& fx, const InputState& input,
+                       walker*& control, short player_num,
+                       SimInputDebounce& debounce)
+{
+    static std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
+    return sim_process_player_input(input.players[player_num], control,
+                                    fx.world(), player_num, 0, debounce,
+                                    special_names, &fx.events);
+}
+
+} // namespace
+
+TEST(SimInputUnit, sim_input_failed_special_cue_is_seat_addressed_and_throttled)
+{
+    SimInputFixture fx;
+    walker* control = add_hero(fx, 0, 1);
+    control->set_act_type(ACT_CONTROL);
+    control->stats()->set_magicpoints(-1.0f); // below every special_cost
+    SimInputDebounce debounce{};
+    InputState input;
+    input.clear();
+    input.players[1].pressed[static_cast<int>(InputAction::Special)] = true;
+
+    process(fx, input, control, 1, debounce);
+    ASSERT_EQ(1, count_cue(fx.events, "NOT ENOUGH MP", 1))
+        << "a cast with no MP must say so, addressed to the pressing seat";
+    ASSERT_EQ(1, count_clang(fx.events, 1))
+        << "the cue carries its clang, addressed to the same seat";
+    ASSERT_EQ(0, count_clang(fx.events, -1))
+        << "a seat's clang must not be broadcast to every machine";
+
+    // The window, to the frame. It is deliberately longer than the feed's own
+    // display time (STANDARD_TEXT_TIME, 75 ticks): a shorter one lets a
+    // mashed key stack copies of a single line in the five-slot feed.
+    for (int frame = 1; frame < kSimCueThrottleTicks; ++frame)
+    {
+        process(fx, input, control, 1, debounce);
+        ASSERT_EQ(1, count_cue(fx.events, "NOT ENOUGH MP", 1))
+            << "cue repeated inside the throttle window at frame " << frame;
+    }
+    process(fx, input, control, 1, debounce);
+    ASSERT_EQ(2, count_cue(fx.events, "NOT ENOUGH MP", 1))
+        << "the cue must speak again on the frame the window closes";
+
+    // Held rather than pressed: same throttle, still one line per window.
+    InputState held;
+    held.clear();
+    held.players[1].held[static_cast<int>(InputAction::Special)] = true;
+    for (int frame = 0; frame < 10; ++frame)
+        process(fx, held, control, 1, debounce);
+    ASSERT_EQ(2, count_cue(fx.events, "NOT ENOUGH MP", 1));
+}
+
+// The throttle drains on every frame the seat is processed, including the
+// frames its hero spends dead: it is a feed-rate limit, not a state of the
+// hero. Decrementing it below the respawn early return froze the counter for
+// the whole death and swallowed the first cue after the revive.
+TEST(SimInputUnit, sim_input_cue_throttle_drains_while_the_seat_is_dead)
+{
+    SimInputFixture fx;
+    walker* control = add_hero(fx, 0, 0);
+    control->set_act_type(ACT_CONTROL);
+    control->stats()->set_magicpoints(-1.0f);
+    fx.world().respawn_mode = og::sim::kRespawnModeHeroes;
+
+    SimInputDebounce debounce{};
+    InputState input;
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::Special)] = true;
+
+    process(fx, input, control, 0, debounce);
+    ASSERT_EQ(1, count_cue(fx.events, "NOT ENOUGH MP", 0));
+
+    // Down, awaiting a respawn: sim_process_player_input returns at the top
+    // with the seat's entity retained.
+    control->set_dead(1);
+    InputState idle;
+    idle.clear();
+    for (int frame = 1; frame < kSimCueThrottleTicks; ++frame)
+    {
+        walker* retained = control;
+        process(fx, idle, retained, 0, debounce);
+        ASSERT_EQ(control, retained) << "the dead seat keeps its hero";
+    }
+
+    control->set_dead(0);
+    process(fx, input, control, 0, debounce);
+    ASSERT_EQ(2, count_cue(fx.events, "NOT ENOUGH MP", 0))
+        << "the window that ran out while the hero was down must be over";
+}
+
+TEST(SimInputUnit, sim_input_specials_disabled_and_frozen_cues)
+{
+    SimInputFixture fx;
+    walker* control = add_hero(fx, 0, 0);
+    control->set_act_type(ACT_CONTROL);
+    control->stats()->set_magicpoints(500.0f);
+    control->set_specials_disabled(true);
+    SimInputDebounce debounce{};
+    InputState input;
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::Special)] = true;
+
+    process(fx, input, control, 0, debounce);
+    ASSERT_EQ(1, count_cue(fx.events, "SPECIALS DISABLED", 0));
+
+    // A personally frozen hero drops every key below the freeze gate; the
+    // seat hears about it instead of feeling a dead pad.
+    fx.events.clear();
+    debounce.cue_delay = 0;
+    control->set_specials_disabled(false);
+    control->stats()->set_frozen_delay(10);
+    process(fx, input, control, 0, debounce);
+    ASSERT_EQ(1, count_cue(fx.events, "FROZEN!", 0));
+    ASSERT_EQ(0, count_cue(fx.events, "SPECIALS DISABLED", 0));
+}
+
+// The alliance act-freeze skips a caster hostile to the world's my_team, so
+// anything the cast leaves on the command queue never runs. A special that
+// finished inline is stranded by nothing, and must not be announced as
+// frozen: the cleric's heal lands during the cast itself.
+TEST(SimInputUnit, sim_input_enemy_freeze_stays_quiet_for_an_inline_cast)
+{
+    // A cleric with a wounded ally in reach: HEAL always has something to do,
+    // so the cast is observable as spent MP and a healed patient.
+    SimInputFixture fx;
+    walker* control = add_hero(fx, 0, 0, FAMILY_CLERIC);
+    walker* patient = add_hero(fx, 0, -1);
+    control->set_act_type(ACT_CONTROL);
+    control->set_current_special(1);
+    control->stats()->set_magicpoints(500.0f);
+    patient->stats()->set_max_hitpoints(100.0f);
+    patient->stats()->set_hitpoints(10.0f);
+    fx.world().my_team = 1; // control (team 0) is frozen out of the act phase
+    fx.world().enemy_freeze = 100;
+
+    SimInputDebounce debounce{};
+    InputState input;
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::Special)] = true;
+
+    const float mp_frozen_before = control->stats()->magicpoints();
+    const float patient_hp_before = patient->stats()->hitpoints();
+    process(fx, input, control, 0, debounce);
+    const float mp_frozen_spent =
+        mp_frozen_before - control->stats()->magicpoints();
+    ASSERT_GT(mp_frozen_spent, 0.0f) << "the cast under freeze still runs";
+    ASSERT_GT(patient->stats()->hitpoints(), patient_hp_before)
+        << "the heal landed inside the cast, freeze or no freeze";
+    ASSERT_TRUE(control->stats()->commands.empty())
+        << "a heal queues nothing for the act phase to strand";
+    ASSERT_EQ(0, count_seat_lines(fx.events, 0))
+        << "a cast that fully worked tells its seat nothing";
+    ASSERT_EQ(0, count_clang(fx.events, 0));
+
+    // The same press with the freeze lifted spends exactly the same MP.
+    SimInputFixture clean;
+    walker* twin = add_hero(clean, 0, 0, FAMILY_CLERIC);
+    walker* twin_patient = add_hero(clean, 0, -1);
+    twin->set_act_type(ACT_CONTROL);
+    twin->set_current_special(1);
+    twin->stats()->set_magicpoints(500.0f);
+    twin_patient->stats()->set_max_hitpoints(100.0f);
+    twin_patient->stats()->set_hitpoints(10.0f);
+    SimInputDebounce clean_debounce{};
+    const float mp_clean_before = twin->stats()->magicpoints();
+    process(clean, input, twin, 0, clean_debounce);
+    ASSERT_EQ(mp_frozen_spent,
+              mp_clean_before - twin->stats()->magicpoints())
+        << "the freeze must leave the cast itself alone";
+    ASSERT_EQ(0, count_seat_lines(clean.events, 0));
+}
+
+// The other half of the same rule: a special that queues work for the act
+// phase (the soldier's charge queues a RUSH) really is stranded by the
+// freeze, because a caster hostile to my_team never gets its act() call. That
+// one is worth voicing — and voicing it may still not change the cast.
+TEST(SimInputUnit, sim_input_enemy_freeze_cue_marks_a_stranded_command_queue)
+{
+    SimInputFixture fx;
+    walker* control = add_hero(fx, 0, 0, FAMILY_SOLDIER);
+    control->set_act_type(ACT_CONTROL);
+    control->set_current_special(1); // CHARGE
+    control->stats()->set_magicpoints(500.0f);
+    fx.world().my_team = 1; // control (team 0) is frozen out of the act phase
+    fx.world().enemy_freeze = 100;
+
+    SimInputDebounce debounce{};
+    InputState input;
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::Special)] = true;
+
+    process(fx, input, control, 0, debounce);
+    ASSERT_EQ(1u, control->stats()->commands.size())
+        << "the charge queued a RUSH the frozen act phase will never run";
+    ASSERT_EQ(1, count_cue(fx.events, "SPECIALS FROZEN", 0));
+    ASSERT_EQ(1, count_seat_lines(fx.events, 0)) << "and says nothing else";
+    ASSERT_EQ(1, count_clang(fx.events, 0));
+
+    // Same press, freeze lifted: same queued command, no cue. The cue is
+    // cosmetic — it may not change one thing the cast did.
+    SimInputFixture clean;
+    walker* twin = add_hero(clean, 0, 0, FAMILY_SOLDIER);
+    twin->set_act_type(ACT_CONTROL);
+    twin->set_current_special(1);
+    twin->stats()->set_magicpoints(500.0f);
+    SimInputDebounce clean_debounce{};
+    process(clean, input, twin, 0, clean_debounce);
+    ASSERT_EQ(control->stats()->commands.size(),
+              twin->stats()->commands.size());
+    ASSERT_EQ(0, count_seat_lines(clean.events, 0));
+}
+
+// #222 A1: a cast that WORKED must never be reported as a failure. The press
+// arm and the held arm both run on the frame the key goes down, so a working
+// special is immediately re-cast into the cooldown it just set; that second
+// refusal used to print "SPECIAL FAILED" over every successful whirlwind, and
+// again on every later frame of the cooldown.
+TEST(SimInputUnit, sim_input_successful_cast_is_never_called_a_failure)
+{
+    SimInputFixture fx;
+    walker* control = add_hero(fx, 0, 0, FAMILY_SOLDIER);
+    control->set_act_type(ACT_CONTROL);
+    control->set_current_special(3); // WHIRLWIND: declines while busy
+    // Enough magic for exactly one cast, so the same-tick re-cast runs out of
+    // it: the second refusal is NOT the "still busy" one, which proves the
+    // success latch itself and not just the held-path rule below it.
+    control->stats()->set_special_cost(3, 300);
+    control->stats()->set_magicpoints(500.0f);
+
+    SimInputDebounce debounce{};
+    InputState input;
+    input.clear();
+    // A real press frame: the key is pressed AND held, so both cast arms run.
+    input.players[0].pressed[static_cast<int>(InputAction::Special)] = true;
+    input.players[0].held[static_cast<int>(InputAction::Special)] = true;
+
+    process(fx, input, control, 0, debounce);
+    ASSERT_NE(0.0f, control->busy())
+        << "the whirlwind fired and set the cooldown the re-cast trips over";
+    ASSERT_FALSE(control->stats()->commands.empty())
+        << "and queued its ring of steps";
+    ASSERT_LT(control->stats()->magicpoints(),
+              static_cast<float>(control->stats()->special_cost(3)))
+        << "the cast drained the pool, so the re-cast could only fail";
+    ASSERT_EQ(0, count_seat_lines(fx.events, 0))
+        << "nothing that follows a working cast may be called a failure";
+    ASSERT_EQ(0, count_clang(fx.events, 0));
+
+    // Holding the key through the cooldown: still the family's own business,
+    // still not a failure the player can answer. Magic is topped back up so
+    // the refusal under test is the script's, not an empty pool.
+    InputState held;
+    held.clear();
+    held.players[0].held[static_cast<int>(InputAction::Special)] = true;
+    control->stats()->set_magicpoints(500.0f);
+    control->stats()->commands.clear(); // the act phase would drain these
+    for (int frame = 0; frame < 12; ++frame)
+        process(fx, held, control, 0, debounce);
+    ASSERT_EQ(0, count_seat_lines(fx.events, 0))
+        << "a held key into a busy script may not fill the feed";
+}
+
+// The press edge is the one place a script's refusal IS an answer: the player
+// asked now, and nothing happened. The soldier's charge declines when the way
+// forward is blocked (here, the edge of the map).
+TEST(SimInputUnit, sim_input_declined_cast_says_special_failed_on_a_press)
+{
+    SimInputFixture fx;
+    walker* control = add_hero(fx, 0, 0, FAMILY_SOLDIER);
+    control->set_act_type(ACT_CONTROL);
+    control->set_current_special(1); // CHARGE
+    control->stats()->set_magicpoints(500.0f);
+    control->setxy(0, 0);
+    control->set_curdir(FACE_LEFT);
+
+    SimInputDebounce debounce{};
+    InputState input;
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::Special)] = true;
+    input.players[0].held[static_cast<int>(InputAction::Special)] = true;
+
+    process(fx, input, control, 0, debounce);
+    ASSERT_EQ(1, count_cue(fx.events, "SPECIAL FAILED", 0))
+        << "a refused cast on a press edge names itself, once";
+    ASSERT_EQ(1, count_seat_lines(fx.events, 0))
+        << "and says nothing else";
+    ASSERT_EQ(1, count_clang(fx.events, 0));
+    ASSERT_EQ(0, count_clang(fx.events, -1))
+        << "the clang belongs to the seat that pressed, not to the room";
+}
+
+// --- #223 path 2: the cheat team-hop cycle. handle_cheat_keys itself is
+// reachable only through raw SDL events, so the cycle it drives lives in a
+// free function beside this file's switch-character cousins. ---
+TEST(SimInputUnit, cheat_cycle_next_team_skips_corpses_and_keeps_team_on_failure)
+{
+    SimInputFixture fx;
+    walker* corpse = add_hero(fx, 1, -1);
+    corpse->set_dead(1);
+    walker* dormant = add_hero(fx, 2, -1);
+    dormant->set_dormant(true);
+
+    short team = 0;
+    ASSERT_EQ(nullptr, cheat_cycle_next_team(fx.world(), team))
+        << "a corpse and a delayed spawn are not takeover candidates";
+    ASSERT_EQ(0, team) << "a failed lap must leave my_team where it was";
+
+    walker* live = add_hero(fx, 3, -1);
+    ASSERT_EQ(live, cheat_cycle_next_team(fx.world(), team));
+    ASSERT_EQ(3, team);
+}
+
+// oldteam comes from save_data.my_team, which a Free For All seat carries in
+// the 16-31 band. The historic cycle compared it against a mod-MAX_TEAM
+// counter that could never reach it and spun forever with no Living around.
+TEST(SimInputUnit, cheat_cycle_next_team_terminates_on_an_ffa_team_number)
+{
+    SimInputFixture fx;
+    short team = 20;
+    ASSERT_EQ(nullptr, cheat_cycle_next_team(fx.world(), team));
+    ASSERT_EQ(20, team);
+
+    walker* live = add_hero(fx, 4, -1);
+    ASSERT_EQ(live, cheat_cycle_next_team(fx.world(), team));
+    ASSERT_EQ(4, team);
+}
+
+// A negative my_team (a corrupted save slot) is the FFA band's mirror image:
+// the signed remainder keeps its sign, so the unnormalized walk laps through
+// negative residues and misses the real teams sitting above it.
+TEST(SimInputUnit, cheat_cycle_next_team_normalizes_a_negative_team)
+{
+    SimInputFixture fx;
+    walker* live = add_hero(fx, static_cast<unsigned char>(MAX_TEAM - 1), -1);
+
+    short team = -3;
+    ASSERT_EQ(live, cheat_cycle_next_team(fx.world(), team))
+        << "a negative start team must still visit every real team";
+    ASSERT_EQ(MAX_TEAM - 1, team);
+}
+} // namespace detail_sim_input_cues

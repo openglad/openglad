@@ -136,6 +136,31 @@ private:
     PlatformBridge saved_;
 };
 
+// The per-seat dispatch probes split the shared display into extra views.
+// Restore the count from a destructor: an ASSERT that fires mid-probe would
+// otherwise hand every later test in this binary a two-view screen.
+class ScopedViewCount
+{
+public:
+    explicit ScopedViewCount(screen& game, short views)
+        : game_(game), saved_(game.numviews)
+    {
+        game_.ready_for_battle(views);
+    }
+
+    ~ScopedViewCount()
+    {
+        game_.ready_for_battle(saved_);
+    }
+
+    ScopedViewCount(const ScopedViewCount&) = delete;
+    ScopedViewCount& operator=(const ScopedViewCount&) = delete;
+
+private:
+    screen& game_;
+    short saved_;
+};
+
 struct PhysicalFileImage
 {
     bool exists = false;
@@ -1009,6 +1034,134 @@ TEST(RuntimeCoveragePaths, screen_dispatch_cosmetic_events_updates_view_state)
         s->viewob[view_index]->clear_text();
 }
 
+// #230: a Notification carrying target_player reaches only the view bound to
+// that GLOBAL player index. Broadcasts (-1) still reach every view, and a
+// spectator view (no seat, index -1) sees broadcasts only.
+TEST(RuntimeCoveragePaths, screen_dispatch_filters_targeted_notifications_per_seat)
+{
+    clear_level_lists();
+
+    screen* s = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(s != nullptr) << "active screen should be available";
+    if (!s)
+        return;
+
+    ScopedViewCount two_views(*s, 2);
+    ASSERT_TRUE(s->viewob[0] != nullptr && s->viewob[1] != nullptr)
+        << "two views should exist for the per-seat dispatch test";
+
+    // Local view 1 holds a non-adjacent global seat on purpose: the filter
+    // must compare the global index, never the local view slot.
+    s->viewob[0]->global_player_index_ = 0;
+    s->viewob[1]->global_player_index_ = 6;
+    for (short view_index = 0; view_index < s->numviews; ++view_index)
+        s->viewob[view_index]->clear_text();
+
+    og::sim::SimEventBatch batch;
+    og::sim::Event to_seat_six;
+    to_seat_six.kind = og::sim::EventKind::Notification;
+    to_seat_six.target_player = 6;
+    to_seat_six.text = "Yours alone";
+    batch.events.push_back(to_seat_six);
+
+    og::sim::Event broadcast;
+    broadcast.kind = og::sim::EventKind::Notification;
+    broadcast.text = "Everyone";
+    batch.events.push_back(broadcast);
+
+    s->dispatch_cosmetic_events(batch);
+
+    ASSERT_EQ(std::string("Everyone"), s->viewob[0]->textlist[0])
+        << "view 0 should see the broadcast and nothing else";
+    ASSERT_TRUE(s->viewob[0]->textlist[1].empty())
+        << "view 0 must not receive a line addressed to global player 6";
+    ASSERT_EQ(std::string("Yours alone"), s->viewob[1]->textlist[0])
+        << "view 1 owns global player 6 and should see the targeted line";
+    ASSERT_EQ(std::string("Everyone"), s->viewob[1]->textlist[1])
+        << "view 1 should also see the broadcast";
+
+    // Spectator seat: no player binding, so targeted lines pass it by.
+    for (short view_index = 0; view_index < s->numviews; ++view_index)
+        s->viewob[view_index]->clear_text();
+    s->viewob[1]->global_player_index_ = -1;
+    s->dispatch_cosmetic_events(batch);
+    ASSERT_EQ(std::string("Everyone"), s->viewob[1]->textlist[0])
+        << "a spectator view sees broadcasts only";
+    ASSERT_TRUE(s->viewob[1]->textlist[1].empty())
+        << "a spectator view must not receive targeted lines";
+
+    for (short view_index = 0; view_index < s->numviews; ++view_index)
+        s->viewob[view_index]->clear_text();
+}
+
+// #222/#230: a cue's clang is part of the cue, so it carries the same target
+// as its line. The audio deck is one per machine, not one per view, so the
+// rule is "play once if ANY local view holds that seat" — and the comparison
+// happens in the event's own 32-bit width, or an out-of-range target would
+// wrap onto a real seat and leak the line to the wrong player.
+TEST(RuntimeCoveragePaths, screen_dispatch_filters_targeted_sounds_per_machine)
+{
+    clear_level_lists();
+
+    screen* s = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(s != nullptr) << "active screen should be available";
+    if (!s)
+        return;
+
+    ScopedViewCount two_views(*s, 2);
+    ASSERT_TRUE(s->viewob[0] != nullptr && s->viewob[1] != nullptr)
+        << "two views should exist for the per-seat dispatch test";
+    s->viewob[0]->global_player_index_ = 0;
+    s->viewob[1]->global_player_index_ = 6;
+    for (short view_index = 0; view_index < s->numviews; ++view_index)
+        s->viewob[view_index]->clear_text();
+
+    ScopedPlatformBridgeState restore_bridge;
+    std::vector<int> played;
+    PlatformBridge recorder = platform_bridge();
+    recorder.play_sound = [&played](int sound_id) { played.push_back(sound_id); };
+    set_platform_bridge(recorder);
+
+    auto sound_to = [](std::int32_t target, std::uint32_t id) {
+        og::sim::Event ev;
+        ev.kind = og::sim::EventKind::PlaySound;
+        ev.a = id;
+        ev.target_player = target;
+        return ev;
+    };
+
+    og::sim::SimEventBatch batch;
+    batch.events.push_back(sound_to(6, 11));   // a seat this machine holds
+    batch.events.push_back(sound_to(3, 12));   // a seat on some other machine
+    batch.events.push_back(sound_to(-1, 13));  // the world's own noise
+    s->dispatch_cosmetic_events(batch);
+
+    ASSERT_EQ(2u, played.size())
+        << "only the addressed cue and the broadcast should play";
+    ASSERT_EQ(11, played[0]) << "the seat this machine holds hears its cue";
+    ASSERT_EQ(13, played[1]) << "and every machine hears a broadcast";
+
+    // Out of range, both kinds: 65536 truncates to 0 in a short and would
+    // hand seat 0 another player's line and clang.
+    played.clear();
+    og::sim::SimEventBatch wrapped;
+    wrapped.events.push_back(sound_to(65536, 14));
+    og::sim::Event wrapped_line;
+    wrapped_line.kind = og::sim::EventKind::Notification;
+    wrapped_line.target_player = 65536;
+    wrapped_line.text = "Nobody's line";
+    wrapped.events.push_back(wrapped_line);
+    s->dispatch_cosmetic_events(wrapped);
+
+    ASSERT_TRUE(played.empty())
+        << "an out-of-range target must not alias onto a local seat";
+    ASSERT_TRUE(s->viewob[0]->textlist[0].empty())
+        << "nor must its line reach seat 0";
+
+    for (short view_index = 0; view_index < s->numviews; ++view_index)
+        s->viewob[view_index]->clear_text();
+}
+
 TEST(RuntimeCoveragePaths, screen_dispatch_game_flow_events_handles_direct_batches)
 {
     clear_level_lists();
@@ -1536,7 +1689,7 @@ TEST(RuntimeCoveragePaths, treasure_find_teleport_target_wraparound_and_missing_
 }
 
 
-TEST(RuntimeCoveragePaths, sim_world_freeze_countdown_notification_and_weap_cleanup)
+TEST(RuntimeCoveragePaths, sim_world_freeze_countdown_is_hud_state_and_weap_cleanup)
 {
     clear_level_lists();
 
@@ -1563,16 +1716,24 @@ TEST(RuntimeCoveragePaths, sim_world_freeze_countdown_notification_and_weap_clea
     world.end = 0;
     world.tick();
     ASSERT_EQ(10, (int)world.enemy_freeze) << "enemy_freeze should decrement from 11 to 10";
-    ASSERT_EQ(2, (int)world.level_done) << "hostile living during freeze should stay frozen and not keep level active";
-    ASSERT_TRUE(world.game_ended) << "when only frozen hostiles remain, tick should report level completion";
+    ASSERT_EQ(0, (int)world.level_done) << "a frozen hostile living still keeps the level active (#231)";
+    ASSERT_FALSE(world.game_ended) << "freeze must not complete the level while hostiles live";
 
+    // #232: the countdown is HUD state read off enemy_freeze, not feed
+    // traffic. The old per-tick "TIME LEFT" notification evicted every other
+    // message for the whole freeze; nothing may push one any more.
     int time_left_messages = 0;
     for (const auto& ev : events.events())
     {
         if (ev.kind == og::sim::EventKind::Notification && ev.text.find("TIME LEFT:") != std::string::npos)
             time_left_messages++;
     }
-    ASSERT_EQ(1, time_left_messages) << "freeze countdown should emit only one TIME LEFT notification per tick";
+    ASSERT_EQ(0, time_left_messages) << "freeze countdown must not push notifications (#232)";
+
+    // A modulo-10 tick was the old emitter's trigger; it is now just another
+    // tick of the counter the HUD reads.
+    world.tick();
+    ASSERT_EQ(9, (int)world.enemy_freeze) << "freeze counter keeps counting down for the HUD";
 
     // Weapon cleanup branch: clear dead pointer links and erase dead weapon/fx.
     clear_level_lists();
@@ -1807,19 +1968,32 @@ TEST(RuntimeCoveragePaths, sim_world_freeze_branch_allows_non_living_actions)
     gen->set_team_num(2);
     gen->set_act_type(ACT_CONTROL); // deterministic no-op-ish act path
 
-    world.enemy_freeze = 11;
+    // Two ticks left: the freeze branch runs this tick AND the unfreeze
+    // palette event fires, which is this test's proof that the log is wired
+    // and listening. Without a positive control the loop below would pass on
+    // an empty log — silence is not evidence.
+    world.enemy_freeze = 2;
     world.end = 0;
     world.tick();
-    ASSERT_EQ(10, (int)world.enemy_freeze) << "freeze counter should decrement";
+    ASSERT_EQ(1, (int)world.enemy_freeze) << "freeze counter should decrement";
     ASSERT_TRUE(world.game_ended) << "no hostile living and no exits should auto-end level";
 
-    bool saw_time_left = false;
+    int palette_events = 0;
+    int countdown_lines = 0;
     for (const auto& ev : events.events())
     {
-        if (ev.kind == og::sim::EventKind::Notification && ev.text.find("TIME LEFT:") != std::string::npos)
-            saw_time_left = true;
+        if (ev.kind == og::sim::EventKind::SetPalette)
+            palette_events++;
+        if (ev.kind == og::sim::EventKind::Notification &&
+            ev.text.find("TIME LEFT:") != std::string::npos)
+            countdown_lines++;
     }
-    ASSERT_TRUE(saw_time_left) << "freeze branch should emit countdown notification on modulo-10 ticks";
+    ASSERT_EQ(1, palette_events)
+        << "the freeze-branch tick must have reached this event log";
+    // #232: enemy_freeze is the countdown. The HUD reads it every frame, and
+    // the freeze branch keeps the feed to itself.
+    ASSERT_EQ(0, countdown_lines)
+        << "freeze branch must not push a countdown notification (#232)";
 }
 
 

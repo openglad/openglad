@@ -1756,7 +1756,6 @@ void GameWorld::tick()
     };
 
     // --- Entity act phase ---
-    bool printed_time = false;
     for (auto& uptr : oblist)
     {
         if (withdraw_requested)
@@ -1792,7 +1791,7 @@ void GameWorld::tick()
                 {
                     if (!ob->is_friendly_to_team(static_cast<unsigned char>(my_team)) &&
                         ob->query_order() == Order::Living)
-                        level_done = 0;
+                        level_done = 0; // an awake foe holds the level open
                     // Testing .. trying to FORCE foes :)
                     if (ob->foe() == nullptr && ob->leader() == nullptr)
                         ob->set_foe(find_far_foe(ob));
@@ -1801,18 +1800,21 @@ void GameWorld::tick()
         }
         else // enemy livings are frozen
         {
-            if (!(enemy_freeze % 10) && !printed_time)
+            // The countdown is drawn by the HUD from enemy_freeze (#232); it
+            // used to be pushed into the notification feed every tenth tick,
+            // which evicted every other message for the whole freeze.
+            if (ob && !ob->dead())
             {
-                std::string obmessage = std::format("TIME LEFT: {}", enemy_freeze);
-                events.push_notification(obmessage, 10);
-                printed_time = true;
-            }
-            if (ob && !ob->dead() &&
-                (((ob->query_order() != Order::Living) &&
-                  (ob->query_order() != Order::Generator)) ||
-                 ob->is_friendly_to_team(static_cast<unsigned char>(my_team))))
-            {
-                ob->act();
+                // The act gate is unchanged: frozen enemy Livings and
+                // Generators still skip their turn. Only the census is
+                // hoisted out of it — a foe that is frozen is still a foe,
+                // exactly as the dormant branch above already counts one.
+                const bool may_act =
+                    ((ob->query_order() != Order::Living) &&
+                     (ob->query_order() != Order::Generator)) ||
+                    ob->is_friendly_to_team(static_cast<unsigned char>(my_team));
+                if (may_act)
+                    ob->act();
                 if (ob && !ob->dead())
                 {
                     if (!ob->is_friendly_to_team(static_cast<unsigned char>(my_team)) &&

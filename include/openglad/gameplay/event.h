@@ -27,6 +27,11 @@ struct Event final {
     EventKind kind = EventKind::None;
     std::uint32_t a = 0;
     std::uint32_t b = 0;
+    // Addressee of a per-seat event. -1 broadcasts to every view (the
+    // historic behavior); 0..15 is a GLOBAL player index — the same number
+    // walker::user() and viewscreen::global_player_index_ carry, never a
+    // team and never a local split-screen view slot.
+    std::int32_t target_player = -1;
     std::string text;  // Optional text payload for Notification events
 
     bool operator==(const Event& o) const = default;

@@ -234,6 +234,27 @@ void dispatch_cosmetic_screen_events(screen& self,
         {
             case og::sim::EventKind::PlaySound:
                 {
+                    // A targeted clang belongs to its line: it plays only if
+                    // some view on this machine holds that global seat. The
+                    // audio deck is one per machine, not one per view, so
+                    // "any match" is the whole rule — a split-screen pair
+                    // hears one clang, a machine with no such seat hears none.
+                    if (ev.target_player >= 0)
+                    {
+                        bool addressed_here = false;
+                        for (short vi = 0; vi < self.numviews; vi++)
+                        {
+                            if (static_cast<std::int32_t>(
+                                    self.viewob[vi]->global_player_index_) ==
+                                ev.target_player)
+                            {
+                                addressed_here = true;
+                                break;
+                            }
+                        }
+                        if (!addressed_here)
+                            break;
+                    }
                     const PlatformBridge& bridge = platform_bridge();
                     if (bridge.play_sound)
                         bridge.play_sound(static_cast<int>(ev.a));
@@ -247,7 +268,20 @@ void dispatch_cosmetic_screen_events(screen& self,
                     short duration = ev.a ? static_cast<short>(ev.a)
                                           : STANDARD_TEXT_TIME;
                     for (short vi = 0; vi < self.numviews; vi++)
+                    {
+                        // A targeted line belongs to one global player's own
+                        // view. Spectator views (no seat, index -1) never
+                        // match, so they see only broadcasts. Compare in the
+                        // event's own width: narrowing the target to short
+                        // first would alias an out-of-range value onto a real
+                        // seat (65536 -> seat 0).
+                        if (ev.target_player >= 0 &&
+                            static_cast<std::int32_t>(
+                                self.viewob[vi]->global_player_index_) !=
+                                ev.target_player)
+                            continue;
                         self.viewob[vi]->set_display_text(ev.text, duration);
+                    }
                 }
                 break;
             case og::sim::EventKind::SetPalette:
@@ -1778,6 +1812,15 @@ void screen::do_notify(std::string_view message, walker  *who)
 		for (i=0; i < numviews; i++)
 			viewob[i]->set_display_text(message,STANDARD_TEXT_TIME);
 
+}
+
+void screen::clear_all_view_text()
+{
+	const short safe_numviews =
+	    std::min<short>(numviews, static_cast<short>(std::size(viewob)));
+	for (short i = 0; i < safe_numviews; i++)
+		if (viewob[i] != nullptr)
+			viewob[i]->clear_text();
 }
 
 void screen::report_mem()

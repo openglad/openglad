@@ -750,7 +750,7 @@ modes schedule through `og.respawn_schedule` (eligibility is Lua's) and repositi
 survive, and team wipes never end an undecided scripted match.
 
 `RespawnState` and `ModeState` replicate as their own `WorldSnapshot` blocks (snapshot v10,
-protocol v13, replay v15), so mirrors, late joiners, replays, and the curses/text HUDs need no
+protocol v14, replay v16), so mirrors, late joiners, replays, and the curses/text HUDs need no
 extra wire messages — a mid-join keyframe restore carries a running match. Match settings
 (`ctf_team_count`/`ctf_capture_limit`/`ctf_respawn_ticks`/`ctf_strip_scenario_troops` — the
 storage names keep their historical prefix; Lua reads them as `og.match_setting`) follow the

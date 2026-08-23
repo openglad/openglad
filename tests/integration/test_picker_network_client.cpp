@@ -3388,6 +3388,14 @@ TEST(PickerNetworkClient,
     og::runtime::local_transport_shadow_finish_tick(*active_game_session());
     EXPECT_NE(0, gameplay_screen->world().end);
 
+    // #246: the next level restarts the tick clock at 0, so any line still on
+    // the feed would outlive its own expiry. Nothing may survive the display
+    // side of a level transition.
+    gameplay_screen->viewob[0]->set_display_text("A LINE FROM LEVEL ONE",
+                                                 STANDARD_TEXT_TIME);
+    ASSERT_EQ(std::string("A LINE FROM LEVEL ONE"),
+              gameplay_screen->viewob[0]->textlist[0]);
+
     og::sim::InitialSetupMessage next_setup;
     next_setup.level_id = 2;
     next_setup.current_scenario = 2;
@@ -3407,6 +3415,18 @@ TEST(PickerNetworkClient,
     og::runtime::local_transport_shadow_finish_tick(*active_game_session());
     EXPECT_EQ(0, gameplay_screen->world().end)
         << "the transition latch must clear after the new level is installed";
+
+    // The feed is empty in the new level. Today the transition rebuilds the
+    // view objects (prepare_display_level_for_initial_setup), and the explicit
+    // clear_all_view_text beside it is the belt-and-braces half of the same
+    // contract; this pins the contract itself, so a transition that starts
+    // REUSING views cannot quietly carry the old level's lines across.
+    for (int slot = 0; slot < MAX_MESSAGES; ++slot)
+    {
+        EXPECT_TRUE(gameplay_screen->viewob[0]->textlist[slot].empty())
+            << "level 1's feed line survived into level 2 at slot " << slot
+            << ": " << gameplay_screen->viewob[0]->textlist[slot];
+    }
 
     og::runtime::clear_local_transport_shadow(*active_game_session());
     join_client->shutdown();
@@ -3555,6 +3575,21 @@ TEST(PickerNetworkClient,
         }
         return false;
     };
+    // The pause holds the sim tick, so a superseded banner cannot expire on
+    // its own: count every PAUSED line on the feed, not just the current one.
+    const auto banner_lines = [view]() {
+        int count = 0;
+        for (int slot = 0; slot < MAX_MESSAGES; ++slot)
+        {
+            if (view->textlist[slot].starts_with("PAUSED"))
+                ++count;
+        }
+        return count;
+    };
+
+    // The display screen is shared across picker tests: start from a known
+    // feed so every overlay line counted below is one this test wrote.
+    view->clear_text();
 
     // 1. A paused snapshot with NO broadcast: the world freezes and the
     //    overlay shows plain PAUSED, but the pause cannot be attributed to a
@@ -3612,6 +3647,14 @@ TEST(PickerNetworkClient,
                    session) == "Remote Host";
     })) << "a named remote pause should surface the peer's name";
     EXPECT_TRUE(overlay_shown("PAUSED by Remote Host"));
+    // The owner changed hands mid-pause. The anonymous banner steps 1-2 put on
+    // the feed is stale now, and the frozen tick will never retire it.
+    EXPECT_FALSE(overlay_shown("PAUSED"))
+        << "the superseded anonymous banner must be retired";
+    EXPECT_EQ(1, banner_lines())
+        << "an owner change must leave exactly one PAUSED line";
+    EXPECT_TRUE(overlay_shown("ESC: Menu"))
+        << "the hint stays while the pause is still a remote peer's";
 
     // 4. A broadcast owned by this machine's OWN seat is not remote: the
     //    subtitle seam goes quiet again (the local pauser is looking at the
@@ -3634,6 +3677,57 @@ TEST(PickerNetworkClient,
         og::runtime::local_transport_shadow_remote_pause_owner(session)
             .empty())
         << "a pause owned by this machine's own seat is not a remote pause";
+    EXPECT_TRUE(overlay_shown("PAUSED by Joiner"));
+    EXPECT_FALSE(overlay_shown("PAUSED by Remote Host"))
+        << "the previous owner's banner must not survive the handover";
+    EXPECT_EQ(1, banner_lines())
+        << "a second owner change still leaves exactly one PAUSED line";
+    EXPECT_FALSE(overlay_shown("ESC: Menu"))
+        << "the hint must be retired once the pause is this machine's own";
+
+    // 5. #246: the overlay is re-stamped every frame while the pause holds,
+    //    so releasing the pause has to retire it explicitly. Hand the pause
+    //    back to the remote peer (both lines return, the own-seat banner
+    //    goes), then lift it: the first frame after must take everything the
+    //    overlay ever wrote back off. (Nothing else can: a line is only swept
+    //    by the render path, which is compiled out under TESTING, and a level
+    //    reset would restart the tick clock beneath it — the stale-PAUSED
+    //    bug.)
+    server_transport->send_pause_broadcast(
+        join_peer_id,
+        std::make_shared<og::sim::PauseBroadcastMessage>(named_pause));
+    ASSERT_TRUE(wait_until([&] {
+        og::runtime::local_transport_shadow_finish_tick(session);
+        return overlay_shown("PAUSED by Remote Host") &&
+            overlay_shown("ESC: Menu");
+    })) << "a remote pause should re-stamp both overlay lines";
+    EXPECT_FALSE(overlay_shown("PAUSED by Joiner"))
+        << "the own-seat banner must not outlive the handover back";
+    EXPECT_EQ(1, banner_lines())
+        << "handing the pause back must not add a fourth banner";
+
+    og::sim::WorldSnapshot resumed_snapshot =
+        og::sim::capture_keyframe_snapshot(gameplay_screen->world());
+    resumed_snapshot.my_team = 1;
+    resumed_snapshot.allied_mode = 0;
+    resumed_snapshot.paused = false;
+    resumed_snapshot.pause_player_index = og::sim::kNoPausePlayerIndex;
+    resumed_snapshot.snapshot_hash =
+        og::sim::compute_snapshot_hash(resumed_snapshot);
+    server_transport->send_snapshot(
+        join_peer_id,
+        std::make_shared<og::sim::WorldSnapshot>(resumed_snapshot));
+    ASSERT_TRUE(wait_until([&] {
+        og::runtime::local_transport_shadow_finish_tick(session);
+        return !gameplay_screen->world().paused;
+    })) << "the unpaused snapshot should release the display world";
+    og::runtime::local_transport_shadow_finish_tick(session);
+    EXPECT_FALSE(overlay_shown("PAUSED by Remote Host"))
+        << "the pause banner must not outlive the pause";
+    EXPECT_FALSE(overlay_shown("ESC: Menu"))
+        << "the menu hint must not outlive the pause";
+    EXPECT_EQ(0, banner_lines())
+        << "no banner from any owner may outlive the pause";
 
     // The display screen is shared across picker tests: release the pause
     // and the overlay lines before handing it back.

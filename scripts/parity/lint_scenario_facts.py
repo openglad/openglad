@@ -6,7 +6,11 @@ Asserts:
   (b) every ByteEqual / SemanticParity row has fact_count > 0 AND at
       least one non-TickReached predicate
   (c) every row has a non-default discriminating_mutation (file, line>0,
-      from, to, rationale all non-empty)
+      from, to, rationale all non-empty), and any pin whose from-text is
+      applicable on more than one line of its file carries a
+      context_before that narrows the file to EXACTLY ONE line; a context
+      that is equally true above several of the twins narrows nothing and
+      is refused like a missing one
   (d) every special_<family>_<idx>_scen* row with idx >= 2 has a team-0
       caster SpawnSpec with stats_level >= (idx-1)*3+1 AND
       magicpoints >= 600 (cycling gate sim_input_handler.cpp:218 +
@@ -33,6 +37,11 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+# The anchor rule itself, imported rather than re-derived, so this lint and
+# the applier the canary actually runs cannot drift apart.
+from _apply_mutation import anchor_lines  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_TABLE = REPO_ROOT / "tests" / "parity" / "scenario_table.h"
@@ -205,7 +214,8 @@ def parse_mutation_constants(text: str) -> dict[str, dict[str, str]]:
                         break
             i += 1
         body = text[start:i].strip()
-        # Five comma-separated initialisers (top-level commas; strings can't
+        # Five comma-separated initialisers, plus the optional sixth
+        # (context_before) added later (top-level commas; strings can't
         # nest braces here so a simple split-on-comma works after length-
         # preserving string masking).
         masked = re.sub(
@@ -262,8 +272,93 @@ def parse_mutation_constants(text: str) -> dict[str, dict[str, str]]:
                 "from":      unquote(parts[2]),
                 "to":        unquote(parts[3]),
                 "rationale": unquote(parts[4]),
+                # Optional: the line that must sit verbatim above the pinned
+                # one. Absent on every pin whose from-text is unique in its
+                # file, which is most of them.
+                "context_before": unquote(parts[5]) if len(parts) >= 6 else "",
             }
     return out
+
+
+def check_mutation_contexts(
+        mutations: dict[str, dict[str, str]]) -> list[str]:
+    """The mandatory-context rule, plus the anchor's own sanity check.
+
+    A pin's from-text is replaced within ONE line, so when that text is
+    applicable on several lines of the file the pin cannot say which one it
+    means. Nothing goes red when a mechanical repin picks the wrong sibling:
+    the anchor resolves, the mutation applies, and the scenario is guarded by
+    an edit that flips nothing. So an ambiguous pin MUST carry a
+    context_before — the line above the occurrence it means.
+
+    And it must be a context that WORKS. Carrying one is not the rule; the
+    rule is that the pin, read with its context, names exactly one line of the
+    file. A context that is equally true above both twins — an opening brace,
+    the header of the function both arms sit in — satisfies the applier at
+    either of them and leaves the ambiguity exactly where it was.
+
+    Also refuses a context that is itself one of the pin texts in the same
+    file: an anchor that moves with the thing it is anchoring is no anchor.
+
+    Files that cannot be read are left to the C++ gate, which fails on a
+    missing mutation source outright.
+    """
+    errors: list[str] = []
+    cache: dict[str, list[str] | None] = {}
+
+    def lines_of(path: str) -> list[str] | None:
+        if path not in cache:
+            target = REPO_ROOT / path
+            try:
+                cache[path] = target.read_text(encoding="utf-8").splitlines()
+            except OSError:
+                cache[path] = None
+        return cache[path]
+
+    texts_by_file: dict[str, set[str]] = {}
+    for m in mutations.values():
+        if m.get("file"):
+            bucket = texts_by_file.setdefault(m["file"], set())
+            bucket.add(m.get("from", ""))
+            bucket.add(m.get("to", ""))
+
+    for name, m in sorted(mutations.items()):
+        path = m.get("file", "")
+        from_text = m.get("from", "")
+        context = m.get("context_before", "")
+        lines = lines_of(path) if path else None
+        if lines is None or not from_text:
+            continue
+        if context and context in texts_by_file.get(path, set()):
+            errors.append(
+                f"{name}: context_before is itself a pin from/to text in "
+                f"{path}; an anchor that a mutation can rewrite is no anchor")
+        loose = anchor_lines(lines, from_text, "")
+        if len(loose) <= 1:
+            continue
+        if not context:
+            errors.append(
+                f"{name}: from-text is applicable on {len(loose)} lines of "
+                f"{path} ({', '.join(str(h) for h in loose[:8])}"
+                f"{', ...' if len(loose) > 8 else ''}) and the pin carries no "
+                f"context_before, so nothing says which one it means — add "
+                f"the line above the occurrence it is about")
+            continue
+        # A context that narrows the file to NOTHING is a broken pin rather
+        # than an ambiguous one; check_mutation_pins.py and the C++ gate both
+        # say so, and with a better message. This rule owns the >1 case only.
+        anchored = anchor_lines(lines, from_text, context)
+        if len(anchored) > 1:
+            errors.append(
+                f"{name}: from-text is applicable on {len(loose)} lines of "
+                f"{path} and the context_before is true above "
+                f"{len(anchored)} of them "
+                f"({', '.join(str(h) for h in anchored[:8])}"
+                f"{', ...' if len(anchored) > 8 else ''}), so the pin still "
+                f"does not say which occurrence it means — reach further up "
+                f"for a line that sits above only one of them\n"
+                f"    context_before: {context[:70]}")
+    return errors
 
 
 def _balanced_block(text: str, marker: str) -> str:
@@ -899,6 +994,7 @@ def main() -> int:
 
     all_errors = (
         errors
+        + check_mutation_contexts(mutations)
         + effect_lint_errors
         + widening_lint_errors
         + dead_predicate_errors

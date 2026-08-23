@@ -13,6 +13,16 @@
 # Modes are mutually exclusive. The script refuses to start with a dirty
 # worktree, refuses to mutate files under ../openglad-master/ or
 # tests/parity/, and exits non-zero if any scenario records zero flips.
+#
+# A pin whose from-text repeats in its file carries a context_before, which
+# travels with the other fields to _apply_mutation.py: the applier exits 8
+# rather than mutate a textual twin of the line the pin means.
+#
+# WARNING — the EXIT trap restores SOURCES, not OBJECTS. When this script
+# finishes, build/ci-test still holds the og_test_parity and
+# parity_runner_smoke built from the LAST mutation it applied. Anything you
+# run out of that build dir afterwards — a parity run, a golden capture, a
+# gate — is measuring mutated code. Rebuild before trusting any binary there.
 
 set -euo pipefail
 
@@ -113,9 +123,12 @@ for i in hits:
 PY
 }
 
-# Map scenario id -> (file, line, from, to, declaration-json) by reusing the
-# lint parser. Writes five NUL-terminated fields to ${2}; aborts the canary if
-# the id has no valid mutation declaration.
+# Map scenario id -> (file, line, from, to, context, declaration-json) by
+# reusing the lint parser. Writes six NUL-terminated fields to ${2}; aborts the
+# canary if the id has no valid mutation declaration. `context` is the pin's
+# optional context_before — empty for most pins — and is handed to
+# _apply_mutation.py, which refuses (exit 8) when the line it names is not
+# above the pinned one.
 #
 # NUL, not tab: pin texts may contain literal tabs (the walker.cpp:1189 group
 # carries two indentation-anchored pins whose from-text opens with four of
@@ -152,7 +165,8 @@ if m is None:
 # write — the two must not be able to disagree, so both come from this record.
 declaration = json.dumps({"file": m["file"], "line": int(m["line"]),
                           "from": m["from"], "to": m["to"]})
-fields = [m["file"], str(m["line"]), m["from"], m["to"], declaration]
+fields = [m["file"], str(m["line"]), m["from"], m["to"],
+          m.get("context_before", ""), declaration]
 Path(sys.argv[3]).write_bytes(
     b"".join(f.encode("utf-8") + b"\0" for f in fields))
 PY
@@ -185,12 +199,30 @@ rebuild_targets() {
 
 # Run a single scenario through the smoke runner with --evaluate-facts;
 # write the per-fact JSON to ${1}.
+#
+# A capture that does not happen is not a measurement, so this aborts the
+# whole run instead of letting the loop record a verdict for a scenario it
+# never evaluated. The tool's own stderr goes out first: exit 3 means the
+# campaign mount is broken, and that is a fact about the environment, not
+# about the pin. run_mutation_canary_runtime.py aborts on the same condition
+# with the same exit code.
 capture_eval() {
     local sid="$1"
     local out="$2"
-    "${SMOKE_BIN}" --scenario "${sid}" --evaluate-facts --out "${out}" \
-        >/dev/null 2>&1 \
-        || { echo "canary: parity_runner_smoke failed for ${sid}" >&2; return 7; }
+    local log status
+    log="$("${SMOKE_BIN}" --scenario "${sid}" --evaluate-facts --out "${out}" 2>&1)" \
+        && return 0
+    status=$?
+    printf '%s\n' "${log}" >&2
+    cat >&2 <<EOF
+canary: ABORT — parity_runner_smoke exited ${status}
+  scenario   : ${sid}
+  smoke bin  : ${SMOKE_BIN}
+  config dir : ${OPENGLAD_CONFIG_DIR:-<unset — parity_runner_smoke picks a private per-process temp dir>}
+This is an environment failure, not a toothless pin. Nothing was measured,
+so nothing is being reported as guarded or unguarded.
+EOF
+    exit 7
 }
 
 # Run the gtest filter for the scenario; print "PASS" or "FAIL".
@@ -313,6 +345,7 @@ for sid in "${scenarios[@]}"; do
            IFS= read -r -d '' mut_line
            IFS= read -r -d '' mut_from
            IFS= read -r -d '' mut_to
+           IFS= read -r -d '' mut_ctx
            IFS= read -r -d '' mut_decl
          } < "${mut_record}"; then
         echo "  SKIP: malformed mutation record for ${sid}" >&2
@@ -325,18 +358,15 @@ for sid in "${scenarios[@]}"; do
     pre_eval="${TMPDIR_CANARY}/${sid}.pre.json"
     post_eval="${TMPDIR_CANARY}/${sid}.post.json"
 
-    if ! capture_eval "${sid}" "${pre_eval}"; then
-        total_zero_flips+=1
-        zero_flip_log+=("${sid}: pre-capture failed")
-        continue
-    fi
+    capture_eval "${sid}" "${pre_eval}"   # aborts the run if it cannot capture
     pre_gtest="$(capture_gtest "${sid}")"
     echo "  pre:  gtest=${pre_gtest}"
 
     # Record file for the trap BEFORE invoking the mutator, so a crash
     # mid-mutation still gets the worktree restored.
     MUTATED_FILES+=("${mut_file}")
-    if ! python3 "${APPLY_MUT}" "${mut_file}" "${mut_line}" "${mut_from}" "${mut_to}"; then
+    if ! python3 "${APPLY_MUT}" "${mut_file}" "${mut_line}" "${mut_from}" \
+             "${mut_to}" "${mut_ctx}"; then
         echo "  SKIP: _apply_mutation refused"
         # File untouched (apply aborted before writing); drop from list.
         MUTATED_FILES=()
@@ -359,15 +389,8 @@ for sid in "${scenarios[@]}"; do
         continue
     fi
 
-    if ! capture_eval "${sid}" "${post_eval}"; then
-        git -C "${REPO_ROOT}" checkout -- "${mut_file}" >/dev/null 2>&1 || true
-        MUTATED_FILES=()
-        IN_FLIGHT_JSON=""
-        rebuild_targets >/dev/null 2>&1 || true
-        total_zero_flips+=1
-        zero_flip_log+=("${sid}: post-capture failed")
-        continue
-    fi
+    # Aborts if it cannot capture; the EXIT trap restores the mutated file.
+    capture_eval "${sid}" "${post_eval}"
     post_gtest="$(capture_gtest "${sid}")"
     echo "  post: gtest=${post_gtest}"
 

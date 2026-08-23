@@ -30,6 +30,11 @@ against a non-deterministic reference.
   prints the canonical branch StateDump JSON; `--evaluate-facts` runs the
   predicates. `scripts/parity/diff_dumps.py <dump> tests/parity/golden/<id>.json`
   (exit 0 = semantic match) is the authoritative branch-vs-golden check.
+  The smoke tool exits **3 and writes nothing** when the level did not load
+  (broken campaign mount / PhysFS search path) — it used to exit 0 with a
+  valid-looking empty-arena dump that disagreed with every golden. It also
+  points `OPENGLAD_CONFIG_DIR` at a private temp dir when the variable is
+  unset, so a capture never touches `~/.openglad`.
 - **Stale-table trap** (cost hours): `kScenarios` is `inline constexpr` in
   `scenario_table.h`, and incremental builds do not reliably recompile the
   TUs embedding it. Before capturing or measuring, force-clean the dumper
@@ -130,7 +135,18 @@ It is NOT in CI — CI only validates that pin files/lines exist. Facts:
 ## Pin discipline (the six known rot modes)
 
 Every pin is `{file, LINE, from-text, to-text}` applied on that exact
-line. `scripts/parity/check_mutation_pins.py` validates anchors and is a
+line, plus an optional `context_before`: a line that must sit VERBATIM
+(indentation included) within 16 lines above the pinned one, which is how
+a pin whose text repeats in its file says which occurrence it means. The
+window rule lives once in `_apply_mutation.py` (`CONTEXT_WINDOW`,
+`context_ok()`); the applier exits 8 when it fails, the checker imports
+the same routine, and `kMutationContextWindow` in scenario_table.h
+mirrors the number for the in-suite C++ gate. Carrying a context is not
+enough: both gates ask `_apply_mutation.anchor_lines()` how many lines of
+the file the pin plus its context could be applied at, and an ambiguous
+pin whose context still leaves more than one is refused exactly like one
+with no context at all.
+`scripts/parity/check_mutation_pins.py` validates anchors and is a
 build dependency of og_test_parity; `--fix` re-points drifted pins — but
 READ THE DIFF after, and know the blind spots:
 
@@ -151,7 +167,14 @@ READ THE DIFF after, and know the blind spots:
 4. **Same-text multiple occurrences**: a mechanical "+N lines" repin can
    land a pin on the WRONG occurrence of a repeated statement. After any
    mechanical repin of a text appearing on several lines, re-verify the
-   flip at runtime.
+   flip at runtime. A pin whose from-text is applicable on more than one
+   line of its file MUST carry a `context_before` — the lint and the
+   `mutation_canary_discriminating_power_gate` both hard-fail without
+   one — and both hard-fail on a context that is true above several of
+   the twins, so the context has to actually separate them. Pick the
+   enclosing `case`/`local function`, but check it is not also within 16
+   lines above a sibling — for near neighbours it will be, and you have
+   to reach further up.
 5. **Lua-syntax-error to-texts** (bare mid-block `return false`) kill the
    whole chunk on apply and flip rows via collateral damage — fake teeth.
    Use `do return false end`.

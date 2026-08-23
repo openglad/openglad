@@ -682,6 +682,11 @@ add_dependencies(og_test_parity scenario_facts_generated)
 # validating the pins.)
 if(Python3_Interpreter_FOUND)
     add_dependencies(og_test_parity check_mutation_pins)
+    # And the table lint beside it, for the same reason: the mandatory-context
+    # rule has two halves, and this is the one that asks whether an ambiguous
+    # pin's context narrows its file to a single line at all. It had no target
+    # and no workflow, so that half of the rule was documentation.
+    add_dependencies(og_test_parity check_scenario_facts)
 endif()
 
 # Standalone smoke runner — Phase 02 verifier and the launcher
@@ -1419,18 +1424,36 @@ set_tests_properties(openglad_sdl_startup_error PROPERTIES
     TIMEOUT 60
 )
 
-if(ENABLE_COVERAGE)
-    add_test(NAME openglad_demo_smoke
-        COMMAND ${CMAKE_COMMAND} -E env
-            bash
-            ${CMAKE_SOURCE_DIR}/scripts/test_demo_smoke.sh
-            $<TARGET_FILE:openglad_demo>
-    )
-    set_tests_properties(openglad_demo_smoke PROPERTIES
-        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-        TIMEOUT 120
-    )
-endif()
+# openglad_demo is the only process that writes an openglad_demo Lua dump, and
+# scripts/coverage/recorder_processes.txt names it. A ctest entry that is the
+# sole producer of a manifest name may not be lane-gated: gate it and every
+# lane that does not set the gate fails the population check instead of
+# reporting coverage.
+add_test(NAME openglad_demo_smoke
+    COMMAND ${CMAKE_COMMAND} -E env
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/test_demo_smoke.sh
+        $<TARGET_FILE:openglad_demo>
+)
+set_tests_properties(openglad_demo_smoke PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    TIMEOUT 120
+)
+
+# parity_runner_smoke is the harness's only non-gtest binary: the goldens are
+# captured through it and the mutation canary reads its exit code. Nothing
+# else exercises its CLI, which is how it shipped happily writing stub dumps
+# out of a bootstrap that had mounted no campaign.
+add_test(NAME parity_runner_smoke_cli
+    COMMAND ${CMAKE_COMMAND} -E env
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/test_parity_runner_smoke.sh
+        $<TARGET_FILE:parity_runner_smoke>
+)
+set_tests_properties(parity_runner_smoke_cli PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 120
+)
 
 add_test(NAME openglad_text_picker_interactive
     COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_text_picker_interactive.sh $<TARGET_FILE:openglad_text>

@@ -45,6 +45,8 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <fstream>
 #include <iterator>
@@ -61,6 +63,11 @@ struct ObservedUnion
 {
     og::parity::CoverageObservation obs;
     std::uint64_t                    exercises = 0;
+    // Rows whose level file never loaded. A stub run still contributes a
+    // (tiny) coverage observation and still serialises as valid JSON, so
+    // without this a broken PhysFS bootstrap reads as mass coverage loss
+    // scattered across every gate below instead of one clear message.
+    std::vector<std::string>         unloaded;
 };
 
 const ObservedUnion& observed_union()
@@ -70,6 +77,13 @@ const ObservedUnion& observed_union()
         for (const auto& spec : og::parity::kScenarios)
         {
             const og::parity::RunOutcome out = og::parity::run_scenario(spec);
+            // Same exemption as test_parity_scenarios: the four scen9301 rows
+            // deliberately point at a header-only fixture and build their
+            // arena from floor paints + spawns. Not the branch-internal set —
+            // treasure_exit_open_prompt_scen99 is in that one and loads a real
+            // level.
+            if (!out.loaded && !og::parity::builds_its_own_arena(spec))
+                u.unloaded.emplace_back(spec.id);
             const auto& c = out.coverage;
             u.obs.walker_families.insert(c.walker_families.begin(),
                                           c.walker_families.end());
@@ -149,6 +163,24 @@ std::vector<std::string> missing_specials(std::uint64_t observed_exercises)
 }
 
 } // namespace
+
+// observed_union() is memoized and built by whichever gate reads it first —
+// gtest order, shuffling and --gtest_filter all decide which one that is, so
+// this test does not run "before" the others in any guaranteed sense. What it
+// does is own the REPORT: if the scenario levels did not load, the coverage
+// numbers are meaningless, and the honest diagnosis is "the harness could not
+// find its levels" said once, here, rather than sixty separate "family not
+// covered" failures said everywhere else.
+TEST(Parity, coverage_gate_every_scenario_loaded_its_level)
+{
+    const auto& u = observed_union();
+    std::ostringstream os;
+    for (const auto& id : u.unloaded)
+        os << "\n  - " << id;
+    EXPECT_TRUE(u.unloaded.empty())
+        << u.unloaded.size() << " scenario(s) ran against an unloaded level"
+        << " (check the campaign mount / PhysFS search path):" << os.str();
+}
 
 TEST(Parity, coverage_gate_walker_families)
 {
@@ -1001,6 +1033,25 @@ TEST(Parity, golden_evaluation_gate_all_semanticparity)
         << format_missing("golden evaluation (SemanticParity)", failures);
 }
 
+namespace {
+
+// Non-overlapping occurrences, which is what Python's str.count() reports and
+// therefore what scripts/parity/_apply_mutation.py counts before it refuses an
+// ambiguous line (exit 7). The two have to agree.
+std::size_t count_occurrences(std::string_view haystack,
+                              std::string_view needle)
+{
+    if (needle.empty()) return 0;
+    std::size_t found = 0;
+    for (std::size_t pos = haystack.find(needle);
+         pos != std::string_view::npos;
+         pos = haystack.find(needle, pos + needle.size()))
+        ++found;
+    return found;
+}
+
+} // namespace
+
 TEST(Parity, mutation_canary_discriminating_power_gate)
 {
     std::vector<std::string> failures;
@@ -1020,11 +1071,16 @@ TEST(Parity, mutation_canary_discriminating_power_gate)
             continue;
         }
 
-        int line_count = 0;
+        std::vector<std::string> source_lines;
         {
             std::string buf;
-            while (std::getline(in, buf)) ++line_count;
+            while (std::getline(in, buf))
+            {
+                if (!buf.empty() && buf.back() == '\r') buf.pop_back();
+                source_lines.push_back(buf);
+            }
         }
+        const int line_count = static_cast<int>(source_lines.size());
 
         if (m.line < 1 || m.line > line_count)
         {
@@ -1033,6 +1089,91 @@ TEST(Parity, mutation_canary_discriminating_power_gate)
                << " out of range [1," << line_count << "] in \""
                << m.file << "\"";
             failures.push_back(os.str());
+            continue;
+        }
+
+        // MANDATORY CONTEXT. `from` is replaced within one line, so a text
+        // that is applicable on several lines of the file cannot say which
+        // one the pin means: delete the intended occurrence and a mechanical
+        // repin lands on a sibling, green and toothless. An ambiguous pin
+        // must name the line above the occurrence it is about — and it must
+        // be a line that NARROWS: a context equally true above both twins
+        // (an opening brace, the header of the function both arms sit in)
+        // satisfies the applier at either of them and leaves the ambiguity
+        // exactly where it was. Mirrors _apply_mutation.anchor_lines(),
+        // which scripts/parity/lint_scenario_facts.py runs on the same rule.
+        {
+            const auto anchors_at = [&](int index, bool with_context) {
+                const int line_no = index + 1;
+                if (count_occurrences(source_lines[
+                        static_cast<std::size_t>(index)], m.from) != 1)
+                    return false;
+                if (!with_context || m.context_before.empty()) return true;
+                const int first = std::max(
+                    0, line_no - 1 - og::parity::kMutationContextWindow);
+                for (int i = first; i < line_no - 1; ++i)
+                    if (source_lines[static_cast<std::size_t>(i)] ==
+                        m.context_before)
+                        return true;
+                return false;
+            };
+
+            int applicable = 0;
+            for (int i = 0; i < line_count; ++i)
+                if (anchors_at(i, false)) ++applicable;
+
+            if (applicable > 1 && m.context_before.empty())
+            {
+                std::ostringstream os;
+                os << spec.id << ": mutation from-text is applicable on "
+                   << applicable << " lines of " << m.file
+                   << " and the pin carries no context_before, so nothing "
+                      "says which one it means";
+                failures.push_back(os.str());
+            }
+            else if (applicable > 1)
+            {
+                int anchored = 0;
+                for (int i = 0; i < line_count; ++i)
+                    if (anchors_at(i, true)) ++anchored;
+                // Zero is a broken pin, not an ambiguous one; the context
+                // check below reports that case, and better.
+                if (anchored > 1)
+                {
+                    std::ostringstream os;
+                    os << spec.id << ": mutation from-text is applicable on "
+                       << applicable << " lines of " << m.file
+                       << " and context_before \"" << m.context_before
+                       << "\" is true above " << anchored << " of them, so "
+                          "the pin still does not say which occurrence it "
+                          "means";
+                    failures.push_back(os.str());
+                }
+            }
+        }
+
+        // The context anchor, judged exactly as scripts/parity/
+        // _apply_mutation.py judges it (exit 8) — this gate is the half of
+        // the rule that runs in CI, where no Python check does.
+        if (!m.context_before.empty())
+        {
+            const int first =
+                std::max(0, m.line - 1 - og::parity::kMutationContextWindow);
+            bool found = false;
+            for (int i = first; i < m.line - 1 && !found; ++i)
+                found = (source_lines[static_cast<std::size_t>(i)] ==
+                         m.context_before);
+            if (!found)
+            {
+                std::ostringstream os;
+                os << spec.id << ": mutation context_before \""
+                   << m.context_before << "\" is not on the "
+                   << og::parity::kMutationContextWindow
+                   << " lines above " << m.file << ":" << m.line
+                   << "; the block this pin names has moved or been "
+                      "re-indented";
+                failures.push_back(os.str());
+            }
         }
 
         if (m.file == "src/resources/save_data.cpp" &&

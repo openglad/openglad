@@ -40,7 +40,8 @@ void SimEventLog::push_with_text(EventKind kind, const std::string& text,
     events_.push_back(std::move(ev));
 }
 
-void SimEventLog::push_notification(const std::string& message, std::uint32_t duration)
+void SimEventLog::push_notification(const std::string& message, std::uint32_t duration,
+                                    std::int32_t target_player)
 {
     if (suppressed_)
         return;
@@ -49,13 +50,18 @@ void SimEventLog::push_notification(const std::string& message, std::uint32_t du
     ev.tick = current_tick_;
     ev.kind = EventKind::Notification;
     ev.a = duration;
+    ev.target_player = target_player;
     ev.text = message;
     events_.push_back(std::move(ev));
 }
 
-void SimEventLog::push_sound(std::uint32_t sound_id)
+void SimEventLog::push_sound(std::uint32_t sound_id, std::int32_t target_player)
 {
+    if (suppressed_)
+        return;
+
     push(EventKind::PlaySound, sound_id, 0);
+    events_.back().target_player = target_player;
 }
 
 std::vector<Event> SimEventLog::drain()

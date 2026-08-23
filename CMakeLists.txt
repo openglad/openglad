@@ -472,10 +472,26 @@ endfunction()
 # insertion earlier in a pinned file silently shifts them off their anchor, and
 # a pin that no longer matches mutates nothing — the canary then reports a
 # clean run for a scenario it is no longer guarding. Cheap to check, invisible
-# if you do not.
+# if you do not. A pin whose text repeats in its file also names the line
+# ABOVE the occurrence it means, and this check enforces that too: without it,
+# a pin re-pointed at a textual twin resolves perfectly and guards nothing.
 og_add_python_check_target(check_mutation_pins
     "Checking mutation-canary pins still anchor"
     ${CMAKE_SOURCE_DIR}/scripts/parity/check_mutation_pins.py
+)
+
+# The other half of the pin rules, and until now it ran in no target and no
+# workflow at all. check_mutation_pins asks whether a pin anchors where it
+# says; this lint asks whether the pin could ever have meant that line — the
+# MANDATORY-CONTEXT rule (an ambiguous from-text must carry a context that
+# narrows its file to exactly one line) and the invariant that a context is
+# never itself a pin's from/to text in the same file. Both rules were written
+# down and then left with nothing to enforce them outside a hand-run. It also
+# carries the scenario-table contract checks (paired facts, non-vacuous
+# predicates, caster preconditions).
+og_add_python_check_target(check_scenario_facts
+    "Linting the parity scenario table"
+    ${CMAKE_SOURCE_DIR}/scripts/parity/lint_scenario_facts.py
 )
 
 # Pack Lua: one measurable decision per line. Line coverage counts LINES, so

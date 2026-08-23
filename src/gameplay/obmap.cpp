@@ -431,7 +431,9 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                             {
                                 std::string message = std::format("Key {} needed!",
                                         w->stats()->level());
-                                og::sim::emit_notification(current_game->sim_events, message);
+                                og::sim::emit_notification(
+                                        current_game->sim_events, message, 0,
+                                        static_cast<std::int32_t>(ob->user()));
                                 ob->set_skip_exit(10);
                             } // end of failed open door notification
                             ob->collide(w);

@@ -80,7 +80,7 @@ local function exit_on_eat(self, eater)
     -- Neither exitable nor withdrawable: foes still stand and the
     -- destination is unearned. Say why; the set_skip_exit(10) throttle
     -- above already bounds the cadence while the player stands on the pad.
-    og.emit_notification("Foes remain!", 30)
+    og.emit_notification("Foes remain!", 30, eater)
   end
   return true
 end

@@ -964,6 +964,85 @@ TEST_F(ScriptBindingTest, exit_flow_bindings_read_and_write_progression)
     EXPECT_EQ(0u, sim_events()[1].b);
 }
 
+// #230: og.emit_notification's optional third argument addresses one seat.
+// A walker resolves to whoever controls it; an integer is taken as a global
+// player index; nil/omitted/negative stays the broadcast sentinel.
+TEST_F(ScriptBindingTest, emit_notification_addresses_a_single_seat)
+{
+    spawn->set_user(4);
+
+    run("og.emit_notification('broadcast')\n"
+        "og.emit_notification('timed', 12)\n"
+        "og.emit_notification('to walker', 0, spawn)\n"
+        "og.emit_notification('to index', 0, 2)\n"
+        "og.emit_notification('negative', 0, -5)\n"
+        "og.emit_notification('explicit nil', 0, nil)\n");
+
+    ASSERT_EQ(6u, sim_events().size());
+    for (const auto& e : sim_events())
+        EXPECT_EQ(og::sim::EventKind::Notification, e.kind);
+
+    EXPECT_EQ("broadcast", sim_events()[0].text);
+    EXPECT_EQ(-1, sim_events()[0].target_player);
+    EXPECT_EQ(0u, sim_events()[0].a);
+
+    EXPECT_EQ("timed", sim_events()[1].text);
+    EXPECT_EQ(12u, sim_events()[1].a);
+    EXPECT_EQ(-1, sim_events()[1].target_player);
+
+    EXPECT_EQ("to walker", sim_events()[2].text);
+    EXPECT_EQ(4, sim_events()[2].target_player)
+        << "a walker argument addresses the player controlling it";
+
+    EXPECT_EQ("to index", sim_events()[3].text);
+    EXPECT_EQ(2, sim_events()[3].target_player);
+
+    EXPECT_EQ("negative", sim_events()[4].text);
+    EXPECT_EQ(-1, sim_events()[4].target_player)
+        << "any negative index collapses to the broadcast sentinel";
+
+    EXPECT_EQ("explicit nil", sim_events()[5].text);
+    EXPECT_EQ(-1, sim_events()[5].target_player);
+}
+
+// A seat number leaves the binding as a signed int32 and is narrowed again by
+// every display consumer, so an index past the global seat cap must not be
+// allowed to survive and alias onto a real seat (65536 & 0xffff == 0). The
+// binding is where the range is known, so the binding clamps.
+TEST_F(ScriptBindingTest, emit_notification_refuses_a_seat_that_cannot_exist)
+{
+    run("og.emit_notification('last seat', 0, 15)\n"
+        "og.emit_notification('one past the cap', 0, 16)\n"
+        "og.emit_notification('u16 max', 0, 65535)\n"
+        "og.emit_notification('wraps to zero', 0, 65536)\n");
+
+    ASSERT_EQ(4u, sim_events().size());
+
+    EXPECT_EQ("last seat", sim_events()[0].text);
+    EXPECT_EQ(15, sim_events()[0].target_player)
+        << "seat 15 is the highest index kMaxGlobalPlayers allows";
+
+    EXPECT_EQ("one past the cap", sim_events()[1].text);
+    EXPECT_EQ(-1, sim_events()[1].target_player);
+
+    EXPECT_EQ("u16 max", sim_events()[2].text);
+    EXPECT_EQ(-1, sim_events()[2].target_player);
+
+    EXPECT_EQ("wraps to zero", sim_events()[3].text);
+    EXPECT_EQ(-1, sim_events()[3].target_player)
+        << "an index that narrows to seat 0 must broadcast, not steal seat 0";
+}
+
+// An unowned walker (user() == -1) as the target keeps the line a broadcast,
+// which is what the treasure emitters rely on for AI-eaten pickups.
+TEST_F(ScriptBindingTest, emit_notification_to_an_unowned_walker_broadcasts)
+{
+    ASSERT_EQ(-1, static_cast<int>(spawn->user()));
+    run("og.emit_notification('unowned', 0, spawn)\n");
+    ASSERT_EQ(1u, sim_events().size());
+    EXPECT_EQ(-1, sim_events()[0].target_player);
+}
+
 TEST_F(ScriptBindingTest, scenario_title_reports_none_without_a_provider)
 {
     ASSERT_FALSE(static_cast<bool>(world.scenario_title_provider));

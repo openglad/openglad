@@ -143,7 +143,7 @@ local function teleport(self)
     return false
   end
   if self:has_guy() and self:g_intelligence() < 75 then
-    og.emit_notification("Need 75 Int for Marker!")
+    og.emit_notification("Need 75 Int for Marker!", 0, self)
     return false
   end
   -- Remove this caster's old marker, if present. (The C++ sets
@@ -160,7 +160,7 @@ local function teleport(self)
       ob.dead = 1
       ob:death()
       if self.team == 0 or self:has_guy() then
-        og.emit_notification("(Old Marker Removed)")
+        og.emit_notification("(Old Marker Removed)", 0, self)
       end
       -- busy is a C++ float: per-op rounding.
       self.busy = og.fadd(self:busy(), 8.0)
@@ -181,8 +181,8 @@ local function teleport(self)
   end
   marker.ani_type = 2  -- raw 2 in the C++ (not ANI_SPIN, which is 1)
   if self.team == 0 or self:has_guy() then
-    og.emit_notification("Teleport Marker Placed")
-    og.emit_notification(string.format("(%d Uses)", marker:lifetime()))
+    og.emit_notification("Teleport Marker Placed", 0, self)
+    og.emit_notification(string.format("(%d Uses)", marker:lifetime()), 0, self)
   end
   -- busy is a C++ float: per-op rounding.
   self.busy = og.fadd(self:busy(), 8.0)

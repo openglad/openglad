@@ -35,12 +35,24 @@ struct SimInputResult
     int play_sound = -1;             // Sound ID to play (-1 = none)
 };
 
+// Ticks one silent-failure cue (#222) silences the next one. Deliberately
+// longer than STANDARD_TEXT_TIME (75), the feed's own display time: at a
+// shorter window a mashed key stacks two or three copies of the same line in
+// the five-slot feed and evicts everything else.
+inline constexpr short kSimCueThrottleTicks = 80;
+
 // Per-player debounce state for input handling.
 // Persists across frames, owned by the viewscreen or caller.
 struct SimInputDebounce
 {
     short changedchar = 0;
     short changedspec = 0;
+    // Throttle for the silent-failure cues (#222). The held-Special path
+    // re-casts every frame, so a failing cast would otherwise write one feed
+    // line per frame. It lives here, not on the walker: walker members ride
+    // the snapshot wire and the parity dump, and a cosmetic cue may not move
+    // either.
+    short cue_delay = 0;
 };
 
 // Process one player's input for the simulation layer.
