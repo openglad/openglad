@@ -91,6 +91,8 @@ short* match_setting_slot(SaveData& save, const std::string& name)
     return nullptr;
 }
 
+} // namespace
+
 // The lobby sanitizer's rules (lobby_server.cpp sanitize_settings),
 // applied per knob: the numeric knobs clamp (with their 0 = default/Auto
 // sentinels preserved), the enum knobs REFUSE an out-of-range value —
@@ -155,8 +157,6 @@ bool clamp_match_setting(const std::string& name, std::int32_t value,
     }
     return false; // unknown name
 }
-
-} // namespace
 
 bool consume_match_settings_dirty()
 {

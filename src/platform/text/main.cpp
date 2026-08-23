@@ -136,8 +136,8 @@ static bool parse_args(int argc, char* argv[], TextClientArgs& args)
                 "  --level <num>       Level number (default: 1)\n"
                 "  --team <f1,f2,...>  Team family IDs, comma-separated (default: 0 = soldier)\n"
                 "  --seed <num>        RNG seed (default: 42)\n"
-                "  --team-level <n>    Upgrade each spawned team guy to level n (default: 0 = family defaults)\n"
-                "  --campaign-state <k=v,...>  Pre-seed campaign decision state (og.campaign_var)\n"
+                "  --team-level <n>    Upgrade each spawned team guy to level n (requires --protocol; default: 0 = family defaults)\n"
+                "  --campaign-state <k=v,...>  Pre-seed campaign decision state (requires --protocol)\n"
                 "  --protocol          Run JSON protocol mode directly (no picker)\n"
                 "  --probe-unsupported-warnings  Emit one-time headless unsupported warnings and exit\n"
                 "\nCommands (stdin):\n"
@@ -168,6 +168,20 @@ int main(int argc, char* argv[])
     TextClientArgs args;
     if (!parse_args(argc, argv, args))
         return 0;
+
+    // #247: --team-level and --campaign-state are inputs to the CLI session
+    // assembler in run_text_protocol_session, which only --protocol reaches.
+    // The picker's GO stages its world from the picker's own live save, and
+    // neither flag ever touches that save — so accepting them here would
+    // drop them silently, the exact dishonesty class #247 closes. Refuse
+    // loudly instead.
+    if (!args.protocol_mode &&
+        (args.team_level > 0 || !args.campaign_state.empty())) {
+        std::fprintf(stderr,
+            "--team-level and --campaign-state require --protocol: the "
+            "picker's GO stages from its own save and cannot apply them.\n");
+        return 1;
+    }
 
     // Initialize filesystem (SDL-free)
     io_init(argc, argv);

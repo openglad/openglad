@@ -227,6 +227,12 @@ public:
         std::string company_name = prompt_new_company_name();
 
         reset_for_new_game(save_data_);
+        // #247 mirror: the reset moved the save's cursor back to level 1,
+        // and the launch reads THAT cursor. Every other level write in this
+        // client pairs the two; without this pairing the Scenario row, the
+        // VIEW LEVEL preview and GO would name three different levels after
+        // a new game started from `--level N`.
+        config_.level = save_data_.scen_num;
         ensure_team_populated(save_data_);
         // The display name lives in the 40-byte save_name; the filename stays
         // this terminal client's own slot (config_.save_name, [SAVE-R2]).

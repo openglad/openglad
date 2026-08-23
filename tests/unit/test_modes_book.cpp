@@ -259,7 +259,9 @@ std::map<int, ManifestRow> parse_manifest()
 }
 
 // The note the script must post for one arena — an independent C++ twin
-// of the script's mode_note, over the same manifest facts.
+// of the script's mode_note, over the same manifest facts. CTF's clock is
+// the one fact a knob can override, so this twin holds while TIME LIMIT is
+// MAP; ModesBookTest.ctf_note_follows_the_time_limit_knob owns the override.
 std::string expected_note(const std::string& tag, const ManifestRow& row)
 {
     if (tag == "tdm")
@@ -1032,6 +1034,54 @@ TEST_F(ModesBookTest, field_pages_match_the_manifest_bands)
         EXPECT_EQ(band[0], pick.level);
         EXPECT_EQ(300, save_.scen_num);
     }
+}
+
+// CTF is the one game whose note states a clock, and the clock is the one
+// fact the TIME LIMIT knob overrides (#241). The note must promise what the
+// field will actually run: the row's own value while the knob is MAP, and
+// the knob's minutes the moment it is turned. A note still advertising the
+// manifest after an override is the same dishonesty this issue set out to
+// close — and it is the only place a player reads the clock before the
+// match, since rules_line/rules_digest deliberately stop at three knobs.
+TEST_F(ModesBookTest, ctf_note_follows_the_time_limit_knob)
+{
+    const DerivedBook book = derive_book();
+    const std::map<int, ManifestRow> manifest = parse_manifest();
+    const std::vector<int>& ctf = book.bands.at("ctf");
+    ASSERT_FALSE(ctf.empty());
+    const int id = ctf[0];
+    const int authored = manifest.at(id).time_limit;
+    ASSERT_GT(authored, 0) << "the shipped CTF rows author a clock";
+    save_.scen_num = static_cast<short>(id);
+
+    // Knob at MAP: the manifest's own minutes, exactly as before.
+    ASSERT_EQ(0, save_.time_limit);
+    EXPECT_EQ(std::format("{} sides, {}m", manifest.at(id).teams,
+                          authored / 720),
+              open_page("ctf").rows[0].note);
+
+    // Knob turned: both surfaces that carry the note follow it.
+    save_.time_limit = 3600; // 5 minutes, off every shipped row's value
+    ASSERT_NE(authored, save_.time_limit);
+    const std::string overridden =
+        std::format("{} sides, 5m", manifest.at(id).teams);
+    EXPECT_EQ(overridden, open_page("ctf").rows[0].note)
+        << "the field page's row promises the resolved clock";
+
+    CampaignZoneSession zone(save_);
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted());
+    EXPECT_EQ(overridden, camp_rows(zone)[kCampFieldRow].note)
+        << "so does the camp docket's FIELD row";
+
+    // And the fields of every OTHER game are untouched — the knob names a
+    // clock, and only CTF's note states one.
+    save_.scen_num = 300;
+    const std::vector<int>& tdm = book.bands.at("tdm");
+    EXPECT_EQ(expected_note("tdm", manifest.at(tdm[0])),
+              open_page("tdm").rows[0].note);
+
+    save_.time_limit = 0;
 }
 
 TEST_F(ModesBookTest, call_line_scans_forward_and_wraps)

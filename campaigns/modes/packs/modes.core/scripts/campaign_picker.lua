@@ -98,19 +98,35 @@ local function stripped_title(id)
   return string.sub(title, cut + 2)
 end
 
+-- The clock the field will actually run, in ticks: the TIME LIMIT knob when
+-- the host turned it, the row's own manifest value while the knob is still
+-- MAP (0). Same precedence mode_match.resolve_time_limit applies in the sim
+-- (`requested > 0` wins), read through the accessor the camp has — the
+-- picker runs outside a world, so og.campaign_match_get is its
+-- og.match_setting. Without this the note advertised a clock the knob had
+-- already overridden (#241).
+local function clock_ticks(row)
+  local requested = og.campaign_match_get("time_limit")
+  if requested > 0 then
+    return requested
+  end
+  return row.time_limit
+end
+
 -- The facts each mode's rows carry, straight from the manifest row: sides
 -- and the arena's own score, minutes for CTF's flag rule, lives for
 -- Onslaught's elimination, heads and shifters for the roster games. Every
 -- note is budgeted against the camp's 42-char panel row carrying its
 -- longest arena name and the door marker, which is why CTF's clock is
 -- "20m" and not "20 min": "FIELD: DUNGEON OF STARS" spends 23 of those
--- characters before the note starts.
+-- characters before the note starts. CTF's clock is the one fact the host
+-- can override, so it reads the resolved value, not the row's.
 local function mode_note(mode, row)
   if mode == "tdm" then
     return row.teams .. " teams, to " .. row.score_limit
   end
   if mode == "ctf" then
-    return row.teams .. " sides, " .. og.div(row.time_limit, 720) .. "m"
+    return row.teams .. " sides, " .. og.div(clock_ticks(row), 720) .. "m"
   end
   if mode == "onslaught" then
     return row.teams .. " sides, " .. row.spawn_caps[0] .. " lives"

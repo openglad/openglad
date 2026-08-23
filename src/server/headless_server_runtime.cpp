@@ -92,7 +92,18 @@ void sync_world_from_save_data(GameWorld& world, const SaveData& save)
     world.ctf_requested_capture_limit = save.ctf_capture_limit;
     world.ctf_requested_respawn_ticks = save.ctf_respawn_ticks;
     world.ctf_requested_strip_scenario_troops = save.ctf_strip_scenario_troops;
-    world.ctf_requested_time_limit = save.time_limit;
+    // World-entry twin of the lobby sanitizer / provider clamp (#241): a
+    // hand-edited save is the one route that reaches the sim unchecked, and
+    // the mirror that snapshot-applies this world clamps the same field
+    // (world_snapshot.cpp apply_mode_state) — so without this the server and
+    // its mirrors hold different values and every snapshot hash check
+    // mismatches. 0 stays 0 (the map's own value). Applied in BOTH
+    // sync_world_from_save_data twins (see screen.cpp).
+    world.ctf_requested_time_limit =
+        save.time_limit != 0
+            ? std::clamp<std::int16_t>(
+                  static_cast<std::int16_t>(save.time_limit), 360, 21600)
+            : static_cast<std::int16_t>(0);
     // Modes may clamp world knobs (Classic: identity). Applied in BOTH
     // sync_world_from_save_data twins (see screen.cpp).
     world.respawn_mode =
