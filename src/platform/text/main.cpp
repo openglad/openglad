@@ -192,7 +192,10 @@ int main(int argc, char* argv[])
 
     int rc = 0;
     if (args.protocol_mode) {
-        rc = og::ui::run_text_picker_protocol_session(picker_config);
+        // --protocol has no picker and therefore no save to stage from: the
+        // CLI shape, with the config scalars and the CLI crew assembler.
+        rc = og::ui::run_text_picker_protocol_session(picker_config,
+            /*session_save=*/nullptr, /*difficulty=*/1);
         io_exit();
         return rc;
     }

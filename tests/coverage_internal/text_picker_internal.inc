@@ -1094,7 +1094,14 @@ int text_picker_testing_launch_seed_matches_the_preview()
             // EOF stdin: the protocol session prints its ready line (seed
             // included) and returns without entering the command loop.
             ScopedCinRedirect input("");
-            (void)run_text_picker_protocol_session(config);
+            // #247: the GO path's own call — this client's save and
+            // difficulty, so the launch stages the world the preview above
+            // just staged instead of building its own.
+            (void)run_text_picker_protocol_session(config,
+                &client.testing_save_data(),
+                og::runtime::current_session != nullptr
+                    ? og::runtime::current_session->current_difficulty_
+                    : 1);
             launch = output.finish();
             if (!output.finish_ok())
                 return {};
@@ -1114,6 +1121,185 @@ int text_picker_testing_launch_seed_matches_the_preview()
     check(preview_777.find("--- SCEN 820:") != std::string::npos);
     check(preview_4242.find("--- SCEN 820:") != std::string::npos);
     check(preview_777 != preview_4242);
+
+    check(state_restore.restore());
+    return failed ? -failed_check : 0;
+}
+
+// #247: GO launches the world VIEW LEVEL promised. The text launch used to
+// copy six scalars out of the session config and build its own world from a
+// fresh default SaveData, so every match knob the picker had written into
+// the save died on the way to the launch: the preview showed MATCHED BOTS
+// (1) per team and the launch fielded the legacy five-strong squads. Both
+// halves now run the one staged pipeline on the one session seed, so the
+// previewed per-team census IS the launched world's headcount.
+//
+// (a) TROOPS: FAIR on the four-team soccer pitch — matched squads in the
+// preview, matched squads in the world. (b) TROOPS: ALL on the onslaught
+// map, which authors a real cast — the launch keeps the authored troops the
+// preview lists, and turning the knob on strips them from BOTH halves.
+// Returns 0, or the negated 1-based index of the first failed check.
+int text_picker_testing_launch_census_matches_the_preview()
+{
+    ScopedTextPickerInternalState state_restore;
+    if (!state_restore.ready())
+        return -1;
+    if (mount_campaign_package_with_error("modes") !=
+        CampaignPackageIoError::None)
+        return -2;
+
+    int check_index = 0;
+    int failed_check = 0;
+    bool failed = false;
+    const auto check = [&check_index, &failed_check, &failed](bool condition) {
+        ++check_index;
+        if (!condition) {
+            failed = true;
+            if (failed_check == 0)
+                failed_check = check_index;
+        }
+    };
+
+    // Digits of the first unsigned integer at or after `from`.
+    const auto scan_int = [](const std::string& text, std::size_t from) {
+        int value = 0;
+        while (from < text.size() && (text[from] < '0' || text[from] > '9'))
+            ++from;
+        while (from < text.size() && text[from] >= '0' && text[from] <= '9')
+            value = value * 10 + (text[from++] - '0');
+        return value;
+    };
+
+    // The previewed per-team headcounts in team order: the parenthesised
+    // count on each "<COLOR> TEAM  ACTIVE - <LABEL> (N)" line.
+    const auto previewed_counts =
+        [&scan_int](const std::string& text) -> std::vector<int> {
+        std::vector<int> counts;
+        for (std::size_t pos = text.find(" TEAM  ACTIVE - ");
+             pos != std::string::npos;
+             pos = text.find(" TEAM  ACTIVE - ", pos + 1)) {
+            const std::size_t open = text.find('(', pos);
+            if (open == std::string::npos)
+                return {};
+            counts.push_back(scan_int(text, open));
+        }
+        return counts;
+    };
+
+    // The launched world's per-team headcounts: the census command's
+    // team_counts array, trimmed of its trailing empty teams.
+    const auto launched_counts =
+        [&scan_int](const std::string& text) -> std::vector<int> {
+        const std::string key = "\"team_counts\":[";
+        const std::size_t open = text.find(key);
+        if (open == std::string::npos)
+            return {};
+        const std::size_t close = text.find(']', open);
+        if (close == std::string::npos)
+            return {};
+        std::vector<int> counts;
+        for (std::size_t pos = open + key.size(); pos < close;) {
+            counts.push_back(scan_int(text, pos));
+            const std::size_t comma = text.find(',', pos);
+            if (comma == std::string::npos || comma > close)
+                break;
+            pos = comma + 1;
+        }
+        while (!counts.empty() && counts.back() == 0)
+            counts.pop_back();
+        return counts;
+    };
+
+    struct Halves {
+        std::string preview;
+        std::vector<int> previewed;
+        std::vector<int> launched;
+    };
+
+    // One session at one knob setting: what VIEW LEVEL promised, and what
+    // GO built.
+    const auto preview_and_launch = [&](int level, short troops) -> Halves {
+        TextPickerConfig config;
+        config.campaign = "modes";
+        config.level = level;
+        config.seed = 1234u;
+        config.team_families = {FAMILY_SOLDIER};
+        config.save_name = "helper-slot";
+        TextPickerError error;
+        TextPickerClient client(config, &error);
+        client.testing_save_data_mutable().current_campaign = "modes";
+        client.testing_save_data_mutable().scen_num =
+            static_cast<short>(level);
+        client.testing_save_data_mutable().ctf_strip_scenario_troops = troops;
+        const int difficulty = og::runtime::current_session != nullptr
+            ? og::runtime::current_session->current_difficulty_
+            : 1;
+
+        const PickerMenuItem* const item = find_picker_menu_item(
+            PickerMenuId::Scenario, PickerMenuCommand::ViewScenario);
+        if (item == nullptr)
+            return {};
+
+        std::string preview;
+        {
+            ScopedTextPickerStdoutCapture output;
+            if (!output.ready())
+                return {};
+            ScopedCinRedirect input("\n");
+            client.handle_menu_item(PickerMenuId::Scenario, *item);
+            preview = output.finish();
+            if (!output.finish_ok())
+                return {};
+        }
+
+        std::string launch;
+        {
+            ScopedTextPickerStdoutCapture output;
+            if (!output.ready())
+                return {};
+            ScopedCinRedirect input("census\nquit\n");
+            (void)run_text_picker_protocol_session(config,
+                &client.testing_save_data(), difficulty);
+            launch = output.finish();
+            if (!output.finish_ok())
+                return {};
+        }
+        return {preview, previewed_counts(preview), launched_counts(launch)};
+    };
+
+    // (a) The four-team soccer pitch under TROOPS: FAIR. Every team is one
+    // fighter — the company on RED, a matched bot on each of the other
+    // three. Before the caller split the launch fielded [1,5,5,5] here.
+    const Halves fair = preview_and_launch(822, og::sim::kTroopsMatched);
+    check(fair.preview.find("MATCHED BOTS (1)") != std::string::npos);
+    check(fair.previewed == std::vector<int>({1, 1, 1, 1}));
+    check(fair.launched == fair.previewed);
+
+    // The knob is doing the work, not a pitch that happens to field ones:
+    // the same level with the strip off keeps the legacy squads on both
+    // sides.
+    const Halves keep = preview_and_launch(822, 0);
+    check(keep.preview.find("BOT SQUAD (5)") != std::string::npos);
+    check(keep.previewed == std::vector<int>({1, 5, 5, 5}));
+    check(keep.launched == keep.previewed);
+
+    // (b) TROOPS: ALL keeps the authored cast. The onslaught map is the one
+    // mode level that ships real map troops (the arenas are empty), so it
+    // is the only place the strip's two states are distinguishable at all:
+    // the two authored fighters the preview lists are alive in the launched
+    // world (RED carries the company plus the map's own two allies).
+    const Halves authored = preview_and_launch(801, 0);
+    check(authored.preview.find("MAP TROOPS (2)") != std::string::npos);
+    check(authored.previewed == std::vector<int>({1, 2}));
+    check(authored.launched == std::vector<int>({3, 2}));
+    // ...and turning the strip on removes exactly them: the enemy team's
+    // preview line falls back to its foundries and the launched world has
+    // no living on that team at all.
+    const Halves stripped =
+        preview_and_launch(801, og::sim::kTroopsMatched);
+    check(stripped.preview.find("MAP TROOPS") == std::string::npos);
+    check(stripped.preview.find("GENERATORS (6)") != std::string::npos);
+    check(stripped.launched == std::vector<int>({1}));
 
     check(state_restore.restore());
     return failed ? -failed_check : 0;

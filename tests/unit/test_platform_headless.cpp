@@ -253,6 +253,7 @@ namespace og::ui {
 int text_picker_testing_exercise_internal_paths();
 int text_picker_testing_staged_view_scenario();
 int text_picker_testing_launch_seed_matches_the_preview();
+int text_picker_testing_launch_census_matches_the_preview();
 std::string text_protocol_testing_format_event_text(std::string_view text);
 std::string text_protocol_testing_json_mode(const GameWorld& world);
 }
@@ -1151,6 +1152,21 @@ TEST(PlatformHeadless, text_picker_launch_seed_matches_the_preview)
     restore_default_campaigns();
     StdoutSilencer stdout_silencer;
     EXPECT_EQ(0, og::ui::text_picker_testing_launch_seed_matches_the_preview());
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// #247: the text picker's GO launches the world VIEW LEVEL promised. The
+// launch used to build its own world from a fresh default save, so the match
+// knobs — TROOPS above all — never reached it: the preview showed matched
+// squads and the launch fielded the legacy five-strong ones. Both halves now
+// stage through the one pipeline on the one session seed.
+TEST(PlatformHeadless, text_picker_launch_census_matches_the_preview)
+{
+    restore_default_campaigns();
+    StdoutSilencer stdout_silencer;
+    EXPECT_EQ(0,
+              og::ui::text_picker_testing_launch_census_matches_the_preview());
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
 }
