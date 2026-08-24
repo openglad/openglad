@@ -138,11 +138,15 @@ enum class RemoteStartExit : std::uint8_t {
 // is a true modal drawn over a live scene (the pause family) and never
 // fades. Whether a Screen actually fades is DERIVED per entry by
 // run_menu_screen — never declared per screen: it fades exactly when the
-// entry is a context switch (menu-stack depth 1, nothing else open) and
-// never when nested under an already-open menu screen. Note: fades are
-// instant under TESTING (FadeBetween skips the animation), so the injector
-// SDL_Delay(750) waits around menu entries are generic settles, not fade
-// timing — several guard transitions that never faded at all.
+// entry crosses the main-menu boundary (menu-stack depth 1, nothing else
+// open) and never when nested under an already-open menu screen. The two
+// doors the depth rule cannot see either way — the main menu's own nested
+// screens (CLOUD SAVES, LEVEL EDITOR) and the Base Camp strip door whose
+// legacy screen runs at depth 0 (NETWORKING) — override the derivation with
+// note_menu_entry_fade() below. Note: fades are instant under TESTING
+// (FadeBetween skips the animation), so the injector SDL_Delay(750) waits
+// around menu entries are generic settles, not fade timing — several guard
+// transitions that never faded at all.
 enum class MenuScreenKind : std::uint8_t {
     Screen,
     Overlay,
@@ -246,17 +250,34 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state = nullptr)
 void note_menu_faded_to_black();
 bool consume_menu_faded_to_black();
 
-// A lateral move inside the open menu cluster (the main menu's SETTINGS /
-// HELP / LOAD / NETWORKING doors, and the way back from them): the next
-// depth-1 entry is not a context switch and must not fade. One-shot, and
-// consumed by every entry — including nested and Overlay entries and
-// begin_legacy_menu_entry_fade — with the same swallow-even-if-unused
-// property as the black note.
-void note_menu_peer_transition();
+// One-shot override for the NEXT menu entry, the escape hatch on both sides
+// of the depth rule. Instant suppresses the fade a depth-0/depth-1 entry
+// would otherwise play (NETWORKING: a Base Camp strip door whose legacy
+// screen runs at depth 0, so the rule would fade it like a main-menu door);
+// Fade forces one on an entry the rule leaves instant (the main menu's own
+// nested doors — see run_nested_menu_door). Consumed by every entry —
+// including nested and Overlay entries and begin_legacy_menu_entry_fade —
+// with the same swallow-even-if-unused property as the black note, so a note
+// nobody used cannot leak one screen forward.
+enum class MenuEntryFade : std::uint8_t {
+    Fade,
+    Instant,
+};
+void note_menu_entry_fade(MenuEntryFade fade);
+
+// The bracket both nested main-menu doors share (CLOUD SAVES from the main
+// menu's own spec-row dispatch, LEVEL EDITOR from ButtonAction::DoLevelEdit):
+// their screens run INSIDE the still-open main menu, so no depth the rule can
+// read distinguishes them from a Base Camp subscreen. Going in it fades the
+// main menu out and notes Fade so the nested entry fades back in; coming back
+// it fades the door out and leaves a black note that the parent loop turns
+// into a fade-in on its next present. Symmetric by construction — the one
+// implementation of the rule for both doors.
+Sint32 run_nested_menu_door(Sint32 (*body)());
 
 // Current menu-stack depth (0 = no engine screen open). run_menu_screen
 // increments it around every entry; the depth-1 entry of a
-// MenuScreenKind::Screen is the context switch that fades.
+// MenuScreenKind::Screen is the main-menu-boundary crossing that fades.
 int menu_screen_depth();
 
 // The hand-applied depth rule for legacy full-screen entries that never call
@@ -265,7 +286,8 @@ int menu_screen_depth();
 // black — skipped when a teardown already left it black — and returns true:
 // the caller must present its FIRST composed frame with fadeblack(1) instead
 // of buffer_to_screen. Nested under an open menu screen (Base Camp's SET
-// CAMPAIGN) it fades nothing and returns false.
+// CAMPAIGN) it fades nothing and returns false. A noted MenuEntryFade
+// overrides both directions.
 bool begin_legacy_menu_entry_fade();
 
 #ifdef TESTING

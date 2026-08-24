@@ -730,13 +730,18 @@ public:
 
     bool configure_networking() override
     {
-        // #237: the NETWORKING door is a lateral menu move (instant), and so
-        // is BACK; only a successful hookup's exit to Base Camp is a context
-        // switch, and Base Camp's own entry fades it.
-        og::ui::note_menu_peer_transition();
+        // #237: NETWORKING is a Base Camp strip door, and everything deeper
+        // than the main menu is instant both ways — but Base Camp EXITS
+        // before this screen runs, so the depth rule would read the entry
+        // (and the re-entry behind it) as a main-menu-boundary crossing and
+        // fade both. Note Instant on each leg to keep the door as snappy as
+        // its HIRE/TRAIN/DIFFICULTY siblings. Only a successful hookup
+        // leaves the lobby-config context, and Base Camp's own entry fades
+        // that one.
+        og::ui::note_menu_entry_fade(og::ui::MenuEntryFade::Instant);
         const bool hooked_up = configure_networking_body();
         if (!hooked_up)
-            og::ui::note_menu_peer_transition();
+            og::ui::note_menu_entry_fade(og::ui::MenuEntryFade::Instant);
         return hooked_up;
     }
 
@@ -760,11 +765,12 @@ public:
         begin_relay_room_list_view();
         // #237 depth rule, applied by hand (this screen stays legacy —
         // MenuEngine.networking_stays_legacy_v2_decision). The wrapper's
-        // peer note classifies this door as instant, and this call is the
-        // note's consumer (the swallow-even-if-unused discipline): it always
-        // returns false here, and the loop below presents plainly. If the
-        // wrapper's note is ever removed, this fades the menu out and the
-        // first presented frame cuts in a beat later — visible, not broken.
+        // Instant note classifies this door as a Base Camp strip door, and
+        // this call is the note's consumer (the swallow-even-if-unused
+        // discipline): it always returns false here, and the loop below
+        // presents plainly. If the wrapper's note is ever removed, this
+        // fades the menu out and the first presented frame cuts in a beat
+        // later — visible, not broken.
         (void)og::ui::begin_legacy_menu_entry_fade();
 
         auto visible_room_count = [&]() -> int {
@@ -1128,20 +1134,19 @@ public:
 
     void show_options() override
     {
-        // #237: SETTINGS is a lateral move inside the menu cluster — neither
-        // its entry nor the main menu's re-entry is a context switch.
-        og::ui::note_menu_peer_transition();
+        // #237: GAME SETTINGS is a main-menu door — Base Camp exits, the
+        // screen runs at depth 1, and the main menu re-enters at depth 1
+        // behind it. Both legs fade by the plain depth rule; no note.
         main_options();
-        og::ui::note_menu_peer_transition();
     }
 
     void show_help() override
     {
-        // #237: HELP's instant entry is a deliberate decision (the old
-        // spec pinned it); the way back stays instant too.
-        og::ui::note_menu_peer_transition();
+        // #237: same shape as SETTINGS — the depth rule fades HELP's entry
+        // and the main menu's re-entry. (Master's explicit "help never
+        // fades" spec field was half of the reported asymmetry: it entered
+        // instantly and faded on the way back.)
         show_general_help();
-        og::ui::note_menu_peer_transition();
     }
 
     void run_game() override
@@ -1151,11 +1156,10 @@ public:
 
     bool load_game() override
     {
-        // #237: same door as show_company_list — a lateral menu move. Only
-        // scripted test clients reach this legacy transition; the return
-        // side keeps run_picker's legacy mapping and fades per the next
-        // screen's own rule.
-        og::ui::note_menu_peer_transition();
+        // #237: same door as show_company_list — a main-menu door, so the
+        // depth rule fades it. Only scripted test clients reach this legacy
+        // transition; the return side keeps run_picker's legacy mapping and
+        // fades per the next screen's own rule.
         // §2.3: the slot menu is retired — loading IS the Company List.
         // (Reached only via run_picker's legacy LoadGame transition; the
         // main-menu LOAD door routes through show_company_list directly.)
@@ -1178,13 +1182,10 @@ public:
         // (a company opened: active slot + save + mount switched) proceeds
         // to team build; false (BACK / list emptied) re-presents the main
         // menu, whose entry refresh re-derives the CONTINUE/LOAD gate.
-        // #237: the door and the BACK path are lateral menu moves; only an
-        // OPENED company is a context switch (Base Camp's entry fades).
-        og::ui::note_menu_peer_transition();
-        const bool opened = og::ui::run_company_list_screen();
-        if (!opened)
-            og::ui::note_menu_peer_transition();
-        return opened;
+        // #237: LOAD is a main-menu door — the depth rule fades the list's
+        // entry, the re-entered main menu behind BACK, and (when a company
+        // opened) Base Camp instead. No note on any leg.
+        return og::ui::run_company_list_screen();
     }
 
     og::ui::PickerScreen screen_after_game() const override

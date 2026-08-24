@@ -329,12 +329,12 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
     // the nearest UI present path instead of filtering the whole browser with
     // the editor map's SAI/Eagle setting.
     // #237 depth rule, applied by hand (legacy blocking browser): the
-    // new-game flow's entry (depth 0) is a context switch and fades; SET
-    // CAMPAIGN from an open Base Camp is nested and does not. The in-game
-    // editor's browser is likewise nested inside the main menu's screen, so
-    // only the standalone editor (openscen) reaches the fade here. The
+    // new-game flow's entry (depth 0, via SdlPickerClient::show_campaign_select
+    // — the live consumer of the fade here) is a context switch and fades. SET
+    // CAMPAIGN from an open Base Camp is nested and does not, and neither is
+    // the in-game editor's browser (nested inside the main menu's screen). The
     // fade-out must run BEFORE the UI-canvas switch below: it fades whatever
-    // canvas is actually presented (openscen presents the World canvas), not
+    // canvas is actually presented (the editor presents the World canvas), not
     // the stale UI surface.
     bool entry_fade_in_pending = og::ui::begin_legacy_menu_entry_fade();
     ScopedUiCanvas canvas_target(*og::runtime::current_session->myscreen_);

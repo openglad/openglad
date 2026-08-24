@@ -197,6 +197,7 @@ struct FlowState {
     // exact assertions in the test body.
     int fades_added_by_load_door = -1;
     int fades_added_by_backups_door = -1;
+    int fades_added_by_load_return = -1;
 };
 
 // Under TESTING every fadeblack lands in FadeBetween's test-mode branch,
@@ -229,8 +230,7 @@ int open_row_injector(void* data)
     fprintf(stderr, "  [test] clicking LOAD\n");
     interact("load_company");
 
-    // The Company List enters instantly (the LOAD door is a #237 peer
-    // transition — no fade).
+    // The Company List fades in (#237: LOAD is a main-menu door).
     if (wait_for_interactable("company_row_0", 5000)) {
         SDL_Delay(750);
         fprintf(stderr, "  [test] opening company row 0\n");
@@ -413,11 +413,12 @@ int backups_and_empty_injector(void* data)
 
     wait_for_interactable("load_company", 5000);
     SDL_Delay(750);
-    // #237: LOAD is a door on the open main menu — a peer transition, so the
-    // Company List enters instantly.
+    // #237: LOAD is a main-menu door — the Company List crosses the boundary
+    // and fades, and the main menu fades again behind it.
     const int fades_before_load = count_fade_between_traces();
     interact("load_company");
 
+    int fades_inside_list = -1;
     if (wait_for_interactable("company_bak_0", 5000)) {
         SDL_Delay(750);
         state->fades_added_by_load_door =
@@ -436,6 +437,10 @@ int backups_and_empty_injector(void* data)
         }
         if (wait_for_interactable("company_del_0", 5000)) {
             SDL_Delay(400);
+            // The return leg of the LOAD door: emptying the list exits the
+            // screen and re-presents the main menu. Nothing between here and
+            // the main menu fades (the confirm is trace-only under TESTING).
+            fades_inside_list = count_fade_between_traces();
             fprintf(stderr,
                     "  [test] deleting the last company (confirm YES)\n");
             interact("company_del_0");  // empties the list -> screen exits
@@ -445,6 +450,10 @@ int backups_and_empty_injector(void* data)
     // Back on a re-entered main menu whose gate must hide CONTINUE/LOAD.
     if (wait_for_interactable("begin_new_game", 10000)) {
         SDL_Delay(750);
+        if (fades_inside_list >= 0) {
+            state->fades_added_by_load_return =
+                count_fade_between_traces() - fades_inside_list;
+        }
         state->saw_load_hidden_after_empty = !has_interactable("load_company");
         state->saw_continue_hidden_after_empty =
             !has_interactable("continue_game");
@@ -1008,16 +1017,18 @@ TEST(CompanyList, backups_door_opens_empty_view_and_empty_delete_exits)
     ASSERT_FALSE(trace_contains("confirm", "REWIND TO THIS BACKUP?"))
         << "an empty backups view has nothing to confirm";
     ASSERT_FALSE(user_file_exists("save/wp3lastd.gtl"));
-    // #237 derivation, on the real doors rather than on a spec field: both
-    // are opened from an already-open menu, so neither fades. (The kind
-    // assertions in test_menu_engine name the screens; these say what the
-    // engine does with them.)
-    EXPECT_EQ(0, state.fades_added_by_load_door)
-        << "#237: the LOAD door is a peer transition — entering the Company "
-           "List from the open main menu must add no fade";
+    // #237 derivation, on the real doors rather than on a spec field. (The
+    // kind assertions in test_menu_engine name the screens; these say what
+    // the engine does with them.)
+    EXPECT_EQ(2, state.fades_added_by_load_door)
+        << "#237: LOAD is a main-menu door — the Company List crosses the "
+           "boundary and fades out + in";
+    EXPECT_EQ(2, state.fades_added_by_load_return)
+        << "#237 symmetry: the way back out of the Company List must fade "
+           "exactly as much as the way in";
     EXPECT_EQ(0, state.fades_added_by_backups_door)
         << "#237: COMPANY BACKUPS is opened from the open Company List — a "
-           "nested entry never fades";
+           "nested entry never fades, in either direction";
     ASSERT_TRUE(state.saw_load_hidden_after_empty)
         << "no companies left: the main-menu gate must hide LOAD";
     ASSERT_TRUE(state.saw_continue_hidden_after_empty)

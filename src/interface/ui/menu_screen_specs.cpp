@@ -1103,7 +1103,10 @@ Sint32 main_menu_on_spec_row(int row, void* /*screen_state*/)
 {
     if (row == kMainMenuCloudSpecArg)
     {
-        (void)run_cloud_save_screen();
+        // #237: CLOUD SAVES is a main-menu door whose screen runs NESTED in
+        // this loop (depth 2), so the depth rule can never see it — the
+        // shared nested-door bracket owns both halves of its fade.
+        (void)run_nested_menu_door(&run_cloud_save_screen);
         return MENU_REDRAW;
     }
     return 0;
@@ -6847,9 +6850,10 @@ const MenuScreenSpec& help_menu_screen_spec()
         .nav = {.kind = NavProgramKind::Rewire, .rewire = &help_engine_rewire},
         // The legacy help loop ran no remote-start check (a joiner parked
         // here launches when the main menu re-enters — the FX-subscreen
-        // precedent). Fading is the #237 derivation's call: the main menu's
-        // HELP door dispatches with a peer note (a lateral menu move) and
-        // Base Camp's is nested — neither entry fades.
+        // precedent). Fading is the #237 derivation's call, not a spec
+        // field: HELP is a main-menu door, so its entry and the main menu's
+        // re-entry behind BACK both fade. (There is no HELP row on Base
+        // Camp — ShowHelp appears only in the two main-menu tables.)
         .default_highlight = kHelpMenuBackIndex,
         // BACK carries MENU_REDRAW and ends the screen there.
         .exit_on_redraw = true,
@@ -6923,9 +6927,9 @@ const MenuScreenSpec& company_list_menu_screen_spec()
         // reports "not opened" and the re-entered main menu launches.
         .remote_start = RemoteStartScope::MainScope,
         .remote_start_exit = RemoteStartExit::ReturnMenuExit,
-        // The LOAD door enters after the main menu returns (depth 1) but
-        // dispatches with a peer note — a lateral menu move, no fade. Only
-        // an OPENED company leaves the cluster (Base Camp's entry fades).
+        // The LOAD door enters after the main menu returns (depth 1), so the
+        // #237 depth rule fades it — and fades the main menu again behind
+        // BACK. An OPENED company lands on Base Camp, whose entry fades too.
         // The retired load loop opened on BACK; keep that keyboard starting
         // point and its BACK -> row 0 -> ... -> BACK vertical cycle.
         .default_highlight = kCompanyListBackIndex,

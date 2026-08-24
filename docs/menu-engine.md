@@ -109,28 +109,40 @@ compiled variants must keep every surviving raw index and link valid.
 
 ## Drawing and transitions
 
-Fades follow one rule (#237): a screen fades exactly when it is entered as a
-context switch — from outside the open menu stack. `run_menu_screen` derives
-the decision; no screen declares a fade:
+Fades follow one rule (#237): a transition fades exactly when it crosses the
+main-menu boundary, and it fades **symmetrically** — the way in and the way
+back. `run_menu_screen` derives the decision; no screen declares a fade:
 
 - `MenuScreenKind::Screen` entered at menu-stack depth 1 fades: the previous
   surface fades out (skipped when a teardown already noted the surface
   black), the cold first frame is composed, and `fadeblack(1)` presents it.
-  The main menu, Base Camp, and name entry (the BEGIN NEW GAME flow's first
-  step) enter this way.
+  Every main-menu door enters this way — GAME SETTINGS, HELP, the LOAD list,
+  BEGIN NEW GAME's name entry, CONTINUE's Base Camp — and so does the main
+  menu itself behind each BACK. That symmetry is the rule's whole point: a
+  door that faded only on the way back was the bug (#237).
 - A nested `run_menu_screen` call (any subscreen door under an open screen)
-  never fades; its cold frame is composed and presented directly.
-- A depth-1 sibling that is really a door on the open menu — SETTINGS, HELP,
-  the LOAD list, NETWORKING, and the way back from each — is a *peer
-  transition*, not a context switch: the dispatch site calls
-  `note_menu_peer_transition()` (a one-shot, swallowed by every entry like
-  the black note) and the entry stays instant. Only an outcome that leaves
-  the cluster (a company opened, a network hookup) fades, at the next
-  context switch's own entry.
+  never fades; its cold frame is composed and presented directly. Base Camp's
+  strip and roster doors, settings' own subscreens, and the company list's
+  BACKUPS view are all instant, both ways.
+- Two doors sit on neither side of that line and take a one-shot
+  `note_menu_entry_fade()` override (swallowed by every entry like the black
+  note, so an unused one cannot leak forward):
+  - **Nested main-menu doors** — CLOUD SAVES and the LEVEL EDITOR run inside
+    the still-open main menu, at a depth the rule reads as "subscreen".
+    `run_nested_menu_door()` is the one bracket both share: it fades the menu
+    out, notes `Fade` so the nested entry fades in, and on the way back fades
+    the door out and leaves a black note that the parent loop turns into a
+    fade-in on its next present.
+  - **NETWORKING** — a Base Camp strip door, but Base Camp *exits* before its
+    legacy screen runs, so the rule would fade both legs. `configure_networking`
+    notes `Instant` on the way in and on a non-hookup return, keeping the door
+    as snappy as its HIRE/TRAIN/DIFFICULTY siblings. A successful hookup notes
+    nothing: that one leaves the lobby-config context and Base Camp's entry
+    fades it.
 - `MenuScreenKind::Overlay` (the pause family) never fades at any depth.
 - Legacy full-screen entries outside the runner — NETWORKING, campaign
   select, the results panel — apply the same rule by hand through
-  `begin_legacy_menu_entry_fade()`.
+  `begin_legacy_menu_entry_fade()`, which honors the same override.
 
 The teardowns that already fade the presented surface to black (the two
 gameplay exits, the intro's last page, the new-game cut) call

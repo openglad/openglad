@@ -531,12 +531,46 @@ bool depth_rule_child_frame_tick(void* /*state*/, int frame)
     return frame < 2;
 }
 
+// Set to force the nested entry below through the Fade override (the shape
+// CLOUD SAVES and the LEVEL EDITOR use).
+bool g_depth_rule_child_fade_override = false;
+
 bool depth_rule_parent_frame_tick(void* /*state*/, int frame)
 {
     if (frame == 1 && g_depth_rule_child_spec != nullptr)
     {
+        if (g_depth_rule_child_fade_override)
+            og::ui::note_menu_entry_fade(og::ui::MenuEntryFade::Fade);
         (void)og::ui::run_menu_screen(*g_depth_rule_child_spec);
         return false;  // end the parent loop after the child returns
+    }
+    return frame < 3;
+}
+
+// The run_nested_menu_door probe: the door body is the nested screen, and
+// the parent loop keeps running afterwards so its next present can turn the
+// bracket's black note into the fade back in.
+int g_nested_door_fades_at_open = -1;
+int g_nested_door_fades_inside_door = -1;
+
+Sint32 nested_door_body()
+{
+    if (g_depth_rule_child_spec != nullptr)
+        (void)og::ui::run_menu_screen(*g_depth_rule_child_spec);
+    // Sampled HERE, inside the door: the bracket's way-back fade-out has not
+    // run yet, so this is exactly the cost of the way in.
+    g_nested_door_fades_inside_door = count_fade_between_traces();
+    return MENU_REDRAW;
+}
+
+bool nested_door_parent_frame_tick(void* /*state*/, int frame)
+{
+    if (frame == 1)
+    {
+        g_nested_door_fades_at_open = count_fade_between_traces();
+        (void)og::ui::run_nested_menu_door(&nested_door_body);
+        // Keep the loop alive: the fade back in happens on the NEXT present.
+        return true;
     }
     return frame < 3;
 }
@@ -637,7 +671,7 @@ TEST(MenuEngine, depth_rule_nested_entry_never_fades)
            "call (a subscreen door) produces ZERO fades";
 }
 
-TEST(MenuEngine, depth_rule_peer_note_keeps_a_lateral_move_instant)
+TEST(MenuEngine, entry_fade_override_instant_suppresses_a_depth_one_fade)
 {
     static constexpr og::ui::MenuButtonSpec kRows[] = {
         {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
@@ -649,40 +683,127 @@ TEST(MenuEngine, depth_rule_peer_note_keeps_a_lateral_move_instant)
     og::ui::install_active_picker_lobby_client(&lobby);
     og::ui::menu_transition_testing_reset();
 
-    og::ui::MenuScreenSpec spec = make_synth_spec(kRows, 1, "depth_peer");
+    og::ui::MenuScreenSpec spec = make_synth_spec(kRows, 1, "entry_instant");
     spec.remote_start = og::ui::RemoteStartScope::TeamBuildScope;
     g_synth_spec = &spec;
     g_start_game_requested = true;
 
-    og::ui::note_menu_peer_transition();
+    og::ui::note_menu_entry_fade(og::ui::MenuEntryFade::Instant);
     trace_clear();
     EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(spec));
     EXPECT_EQ(0, count_fade_between_traces())
-        << "a noted menu-cluster peer entry (SETTINGS/HELP/LOAD/NETWORKING "
-           "doors and the way back) is not a context switch: no fade";
+        << "an Instant override (the NETWORKING door, whose Base Camp parent "
+           "already exited) suppresses the depth-1 fade";
 
     // One-shot: the note was consumed by that entry.
     g_start_game_requested = true;
     trace_clear();
     EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(spec));
     EXPECT_EQ(2, count_fade_between_traces())
-        << "the peer note is one-shot — the next root entry fades again";
+        << "the override is one-shot — the next depth-1 entry fades again";
 
-    // Swallow-even-if-unused: an Overlay entry consumes a stale peer note.
-    og::ui::MenuScreenSpec overlay = make_synth_spec(kRows, 1, "depth_peer_ov");
+    // Swallow-even-if-unused: an Overlay entry consumes a stale override.
+    og::ui::MenuScreenSpec overlay = make_synth_spec(kRows, 1, "entry_ov");
     overlay.kind = og::ui::MenuScreenKind::Overlay;
     overlay.remote_start = og::ui::RemoteStartScope::TeamBuildScope;
     g_synth_spec = &overlay;
     g_start_game_requested = true;
-    og::ui::note_menu_peer_transition();
+    og::ui::note_menu_entry_fade(og::ui::MenuEntryFade::Instant);
     EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(overlay));
     g_synth_spec = &spec;
     g_start_game_requested = true;
     trace_clear();
     EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(spec));
     EXPECT_EQ(2, count_fade_between_traces())
-        << "a non-fading entry must still clear the peer note or it "
-           "suppresses the NEXT context switch's fade";
+        << "a non-fading entry must still clear the override or it "
+           "suppresses the NEXT main-menu crossing's fade";
+}
+
+TEST(MenuEngine, entry_fade_override_fade_forces_a_nested_entry_to_fade)
+{
+    static constexpr og::ui::MenuButtonSpec kRows[] = {
+        {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+         .x = 10, .y = 10, .w = 50, .h = 15,
+         .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT, .nav = {}},
+    };
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    og::ui::menu_transition_testing_reset();
+
+    og::ui::MenuScreenSpec child = make_synth_spec(kRows, 1, "entry_fade_child");
+    child.frame_tick = &depth_rule_child_frame_tick;
+    child.remote_start = og::ui::RemoteStartScope::TeamBuildScope;
+
+    og::ui::MenuScreenSpec parent =
+        make_synth_spec(kRows, 1, "entry_fade_parent");
+    parent.frame_tick = &depth_rule_parent_frame_tick;
+    g_synth_spec = &parent;
+    g_depth_rule_child_spec = &child;
+    g_start_game_requested = false;
+
+    // Control: the same nested entry with NO override adds zero fades.
+    trace_clear();
+    (void)og::ui::run_menu_screen(parent);
+    EXPECT_EQ(2, count_fade_between_traces())
+        << "control: without an override only the parent's depth-1 entry "
+           "fades — the nested door adds nothing";
+
+    // The CLOUD SAVES / LEVEL EDITOR shape: a Fade override makes the same
+    // nested entry fade out and in.
+    g_depth_rule_child_fade_override = true;
+    trace_clear();
+    (void)og::ui::run_menu_screen(parent);
+    g_depth_rule_child_fade_override = false;
+    g_depth_rule_child_spec = nullptr;
+    EXPECT_EQ(4, count_fade_between_traces())
+        << "a Fade override forces the nested entry to fade: the parent's 2 "
+           "plus the door's own fade-out + fade-in";
+}
+
+TEST(MenuEngine, nested_menu_door_bracket_fades_symmetrically)
+{
+    static constexpr og::ui::MenuButtonSpec kRows[] = {
+        {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+         .x = 10, .y = 10, .w = 50, .h = 15,
+         .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT, .nav = {}},
+    };
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    og::ui::menu_transition_testing_reset();
+
+    og::ui::MenuScreenSpec child = make_synth_spec(kRows, 1, "door_child");
+    child.frame_tick = &depth_rule_child_frame_tick;
+    child.remote_start = og::ui::RemoteStartScope::TeamBuildScope;
+
+    og::ui::MenuScreenSpec parent = make_synth_spec(kRows, 1, "door_parent");
+    parent.frame_tick = &nested_door_parent_frame_tick;
+    g_synth_spec = &parent;
+    g_depth_rule_child_spec = &child;
+    g_start_game_requested = false;
+    g_nested_door_fades_at_open = -1;
+    g_nested_door_fades_inside_door = -1;
+
+    trace_clear();
+    (void)og::ui::run_menu_screen(parent);
+    g_depth_rule_child_spec = nullptr;
+
+    // The real CLOUD SAVES / LEVEL EDITOR round trip: parent entry (2), then
+    // the bracket's own two halves, measured as deltas so the symmetry
+    // invariant — fades(in) == fades(back) — is what is asserted.
+    ASSERT_EQ(2, g_nested_door_fades_at_open)
+        << "the parent's own depth-1 entry must have faded before the door";
+    ASSERT_EQ(4, g_nested_door_fades_inside_door)
+        << "the way in is a fade-out plus the nested entry's fade-in";
+    EXPECT_EQ(6, count_fade_between_traces())
+        << "2 (parent entry) + 2 (door in) + 2 (door back)";
+    EXPECT_EQ(2, g_nested_door_fades_inside_door - g_nested_door_fades_at_open)
+        << "#237 symmetry: entering a nested main-menu door fades exactly "
+           "once (out + in)";
+    EXPECT_EQ(2, count_fade_between_traces() - g_nested_door_fades_inside_door)
+        << "#237 symmetry: the way back must fade exactly as much as the way "
+           "in — the door fades out and the parent loop fades back in";
 }
 
 TEST(MenuEngine, depth_rule_overlay_never_fades_and_swallows_black_note)
@@ -713,14 +834,14 @@ TEST(MenuEngine, depth_rule_overlay_never_fades_and_swallows_black_note)
            "black note or it leaks one screen forward";
 }
 
-TEST(MenuEngine, legacy_entry_fade_honors_peer_and_black_notes)
+TEST(MenuEngine, legacy_entry_fade_honors_the_override_and_black_notes)
 {
     EngineTestGuard guard;
     og::ui::menu_transition_testing_reset();
 
-    // Peer-noted door (the NETWORKING shape): no fade, caller presents
+    // Instant-noted door (the NETWORKING shape): no fade, caller presents
     // its first frame directly.
-    og::ui::note_menu_peer_transition();
+    og::ui::note_menu_entry_fade(og::ui::MenuEntryFade::Instant);
     trace_clear();
     EXPECT_FALSE(og::ui::begin_legacy_menu_entry_fade());
     EXPECT_EQ(0, count_fade_between_traces());
@@ -736,6 +857,68 @@ TEST(MenuEngine, legacy_entry_fade_honors_peer_and_black_notes)
     trace_clear();
     EXPECT_TRUE(og::ui::begin_legacy_menu_entry_fade());
     EXPECT_EQ(0, count_fade_between_traces());
+}
+
+// The override's other half at depth 0's mirror: nested under an open menu
+// screen the legacy helper normally declines (Base Camp's SET CAMPAIGN), and
+// a Fade note flips exactly that decision.
+namespace
+{
+
+bool g_legacy_nested_fade_result = false;
+int g_legacy_nested_fade_traces = -1;
+bool g_legacy_nested_note_fade = false;
+
+bool legacy_nested_fade_frame_tick(void* /*state*/, int frame)
+{
+    if (frame == 1)
+    {
+        if (g_legacy_nested_note_fade)
+            og::ui::note_menu_entry_fade(og::ui::MenuEntryFade::Fade);
+        trace_clear();
+        g_legacy_nested_fade_result = og::ui::begin_legacy_menu_entry_fade();
+        g_legacy_nested_fade_traces = count_fade_between_traces();
+        return false;
+    }
+    return frame < 3;
+}
+
+} // namespace
+
+TEST(MenuEngine, legacy_entry_fade_override_reaches_a_nested_depth)
+{
+    static constexpr og::ui::MenuButtonSpec kRows[] = {
+        {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+         .x = 10, .y = 10, .w = 50, .h = 15,
+         .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT, .nav = {}},
+    };
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    og::ui::menu_transition_testing_reset();
+
+    og::ui::MenuScreenSpec parent = make_synth_spec(kRows, 1, "legacy_nested");
+    parent.frame_tick = &legacy_nested_fade_frame_tick;
+    g_synth_spec = &parent;
+    g_start_game_requested = false;
+
+    g_legacy_nested_note_fade = false;
+    g_legacy_nested_fade_result = true;
+    g_legacy_nested_fade_traces = -1;
+    (void)og::ui::run_menu_screen(parent);
+    EXPECT_FALSE(g_legacy_nested_fade_result)
+        << "nested under an open menu screen the legacy helper declines";
+    EXPECT_EQ(0, g_legacy_nested_fade_traces);
+
+    g_legacy_nested_note_fade = true;
+    g_legacy_nested_fade_result = false;
+    g_legacy_nested_fade_traces = -1;
+    (void)og::ui::run_menu_screen(parent);
+    g_legacy_nested_note_fade = false;
+    EXPECT_TRUE(g_legacy_nested_fade_result)
+        << "a Fade override reaches a nested legacy entry too";
+    EXPECT_EQ(1, g_legacy_nested_fade_traces)
+        << "it fades the surface out and hands the caller the fade-in";
 }
 
 // ---------------------------------------------------------------------------
@@ -2317,9 +2500,9 @@ TEST(MenuEngine, help_screen_spec_shape_pins)
     EXPECT_TRUE(spec.exit_on_redraw);
     EXPECT_EQ(MENU_REDRAW, spec.exit_value);
     EXPECT_TRUE(spec.polls_lobby);
-    // Fading is derived (#237): a Screen kind, but the main menu's HELP
-    // door dispatches with a peer note (a lateral menu move) and Base
-    // Camp's HELP door is nested — neither entry fades.
+    // Fading is derived (#237): a Screen kind entered at depth 1 through the
+    // main menu's HELP door, so it fades — and so does the main menu behind
+    // BACK. (HELP has no Base Camp row; ShowHelp is main-menu-only.)
     EXPECT_EQ(og::ui::MenuScreenKind::Screen, spec.kind);
     EXPECT_EQ(kHelpMenuBackIndex, spec.default_highlight);
     EXPECT_NE(nullptr, spec.frame_tick) << "wheel -> page steps";

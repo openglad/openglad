@@ -327,7 +327,11 @@ async function openWebDisplayOptions(page) {
   for (let i = 0; i < 2; ++i) {
     await pressPickerKey(page, 's');
   }
-  await pressPickerKey(page, 'z', 300);
+  // GAME SETTINGS is a main-menu door: on web (no TESTING) that is a real
+  // 500ms fade-out plus a 500ms fade-in, and the fade loop blocks the main
+  // thread and swallows key presses (#237). Settle past both before the next
+  // key, or DISPLAY's chain starts inside the fade.
+  await pressPickerKey(page, 'z', 1_500);
 
   // GAME SETTINGS starts on BACK; DISPLAY is two rows below it. On web the
   // mode/resolution rows are hidden, so DISPLAY jumps BACK -> overscan -> Zoom.
@@ -342,7 +346,9 @@ async function leaveWebDisplayOptions(page) {
   // Backspace is the web back key: physical Escape is swallowed by the engine
   // on web builds (browser-reserved for fullscreen exit).
   await pressPickerKey(page, 'Backspace', 300);
-  await pressPickerKey(page, 'Backspace', 500);
+  // The second Backspace leaves GAME SETTINGS for the main menu — the return
+  // half of the same door, so the same 1000ms of blocking fade (#237).
+  await pressPickerKey(page, 'Backspace', 1_500);
 }
 
 async function restoreDisplayDefaultsDuringGameplay(page, runtimeLogs) {
@@ -1037,6 +1043,11 @@ test.describe('Game Interaction', () => {
     await waitForRenderedFrames(page, 2);
     await page.keyboard.press('Enter');
     await waitForRenderedFrames(page, 6);
+    // Whatever Enter opened is a main-menu door, and on web those fade for a
+    // real second (#237). Capturing inside the fade grabs a solid-black frame
+    // that hasVisualContent() rejects — settle past it first.
+    await page.waitForTimeout(1_500);
+    await waitForRenderedFrames(page, 2);
 
     // Take screenshot after navigation
     const afterScreenshot = await getCanvasScreenshot(page);

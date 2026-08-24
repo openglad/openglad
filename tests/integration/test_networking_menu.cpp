@@ -17,6 +17,7 @@
 #include <functional>
 #include <initializer_list>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -310,6 +311,22 @@ bool interact_until_any_interactable(const std::string& id,
     return wait_for_any_interactable(ids, 0);
 }
 
+// Under TESTING every fadeblack takes FadeBetween's test-mode branch, which
+// traces exactly one "video" line per fade — so counting those lines counts
+// fades.
+int count_fade_between_traces()
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    int fades = 0;
+    for (const TraceEntry& entry : g_trace_buffer)
+    {
+        if (entry.category == "video" &&
+            entry.message.find("FadeBetween") != std::string::npos)
+            ++fades;
+    }
+    return fades;
+}
+
 struct NetworkingJoinState
 {
     bool started = false;
@@ -322,6 +339,12 @@ struct NetworkingJoinState
     bool saw_join_relay_error_popup = false;
     bool stayed_in_submenu_after_join_error = false;
     bool returned_to_main_menu = false;
+    // #237: NETWORKING is a Base Camp strip door — instant, both ways, like
+    // its HIRE/TRAIN/DIFFICULTY siblings. Base Camp exits before the legacy
+    // screen runs, so the depth rule would fade BOTH legs without the
+    // Instant notes in SdlPickerClient::configure_networking.
+    int fades_added_by_networking_door = -1;
+    int fades_added_by_networking_back = -1;
 };
 
 int networking_join_injector(void* data)
@@ -336,7 +359,9 @@ int networking_join_injector(void* data)
         return 0;
     }
 
-    SDL_Delay(300);
+    // Base Camp's own entry fade has to be over before the door is measured.
+    SDL_Delay(750);
+    const int fades_before_door = count_fade_between_traces();
     interact("networking");
 
     if (!wait_for_interactable("network_ip", 10000))
@@ -346,7 +371,9 @@ int networking_join_injector(void* data)
     }
 
     state->saw_networking_menu = true;
-    SDL_Delay(150);
+    SDL_Delay(750);
+    state->fades_added_by_networking_door =
+        count_fade_between_traces() - fades_before_door;
 
     state->updated_ip = interact_until_label_contains(
         "network_ip", "10.24.8.16");
@@ -378,7 +405,15 @@ int networking_join_injector(void* data)
     if (has_interactable("network_back"))
     {
         SDL_Delay(150);
+        const int fades_before_back = count_fade_between_traces();
         interact("network_back");
+        // BACK re-presents Base Camp: the "networking" row is its own.
+        if (wait_for_interactable("networking", 10000))
+        {
+            SDL_Delay(750);
+            state->fades_added_by_networking_back =
+                count_fade_between_traces() - fades_before_back;
+        }
     }
 
     const Uint64 deadline = SDL_GetTicks() + 10000;
@@ -1133,6 +1168,16 @@ TEST(NetworkingMenu, room_code_join_invalid_relay_url_stays_in_submenu)
     ASSERT_TRUE(state.saw_join_relay_error_popup);
     ASSERT_TRUE(state.stayed_in_submenu_after_join_error);
     ASSERT_TRUE(state.returned_to_main_menu);
+    // #237: NETWORKING is a Base Camp strip door — symmetric-INSTANT, like
+    // HIRE/TRAIN/DIFFICULTY. Master faded the way back only; that was one of
+    // the reported asymmetries, and the fix was to make both legs match, not
+    // to fade both. Base Camp exits before the legacy screen runs, so the
+    // depth rule alone would fade them: the Instant notes in
+    // SdlPickerClient::configure_networking are what these two pins hold.
+    EXPECT_EQ(0, state.fades_added_by_networking_door)
+        << "#237: the NETWORKING door must stay instant";
+    EXPECT_EQ(0, state.fades_added_by_networking_back)
+        << "#237 symmetry: and so must BACK to Base Camp";
 }
 
 TEST(NetworkingMenu, submenu_validation_errors_stay_in_place)

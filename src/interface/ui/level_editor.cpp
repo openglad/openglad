@@ -43,6 +43,7 @@
 #include <openglad/interface/ui/campaign_picker.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/interface/ui/level_editor_state.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/session_state.h>
 #include <algorithm>
 #include <array>
@@ -3533,6 +3534,15 @@ EventType handle_basic_editor_event(const void* native_event)
 
 Sint32 level_editor()
 {
+    // #237: the editor is a full-screen entry outside the runner, so it owes
+    // the transition notes the same swallow every entry owes them. Its door
+    // (run_nested_menu_door, ButtonAction::DoLevelEdit) already faded the
+    // menu out and left both notes; consuming them here keeps the Fade note
+    // from reaching the editor's own SET CAMPAIGN browser, which would fade
+    // a subscreen the rule wants instant. The editor's loop draws through
+    // refresh(), not the fade path, so the returned fade-in is discarded.
+    (void)og::ui::begin_legacy_menu_entry_fade();
+
     static LevelEditorData data;
     // Refresh radar pointers in case the session's viewscreen was rebuilt
     // since this static was first constructed (avoids a dangling viewscreen*).

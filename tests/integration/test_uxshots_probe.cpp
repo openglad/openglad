@@ -295,6 +295,12 @@ int count_fade_between_traces() {
   return fades;
 }
 
+// One main-menu-boundary crossing = one fadeblack(0) + one fadeblack(1), and
+// under TESTING each traces exactly one FadeBetween line
+// (menu_screen_runner.cpp run_menu_screen).
+constexpr int kFadesPerCrossing = 2;
+constexpr int kMainMenuEntryFades = kFadesPerCrossing;
+
 // --- 1. main menu, no companies --------------------------------------------
 
 int mainmenu_no_company_injector(void *data) {
@@ -363,17 +369,31 @@ TEST(UxShots, b_mainmenu_with_company) {
 // The global CONTROLS capture retired with that screen: per-player controls
 // are shot from the seat-settings probe below.
 
+// #237 symmetry pin, the second main-menu door driven end to end (HELP is the
+// other): GAME SETTINGS must fade on the way in and on the way back. On
+// master it entered instantly and faded only on the return — the reported bug.
+std::atomic<int> g_settings_fades_at_door{-1};
+std::atomic<int> g_settings_fades_inside_settings{-1};
+std::atomic<int> g_settings_fades_after_return{-1};
+
 int game_settings_injector(void *data) {
   og::runtime::ensure_thread_session();
   ShotState *state = static_cast<ShotState *>(data);
   if (wait_for_interactable("options", 5000)) {
     SDL_Delay(1500);
+    g_settings_fades_at_door = count_fade_between_traces();
     interact("options");
     if (wait_for_interactable("options_back", 5000)) {
       SDL_Delay(1500);
+      g_settings_fades_inside_settings = count_fade_between_traces();
       state->captures += capture_frame("game_settings");
       SDL_Delay(300);
       interact("options_back");
+    }
+    if (wait_for_interactable("begin_new_game", 10000)) {
+      SDL_Delay(750);
+      g_settings_fades_after_return = count_fade_between_traces();
+      interact("quit");
     }
   }
   state->finished = true;
@@ -383,18 +403,31 @@ int game_settings_injector(void *data) {
 TEST(UxShots, b1_game_settings) {
   trace_clear();
   reap_all_companies();
+  g_settings_fades_at_door = -1;
+  g_settings_fades_inside_settings = -1;
+  g_settings_fades_after_return = -1;
   ShotState state;
   SDL_Thread *thread =
       SDL_CreateThread(game_settings_injector, "ux_settings", &state);
   ASSERT_TRUE(thread != nullptr);
   g_picker_mainmenu_calls = 0;
-  g_picker_max_mainmenu_calls = 1;
+  // Two: the SETTINGS round trip re-presents the main menu, and the return
+  // fade is half of what this test pins.
+  g_picker_max_mainmenu_calls = 2;
   picker_main(0, nullptr);
   SDL_WaitThread(thread, nullptr);
   cleanup_picker_state();
   g_picker_max_mainmenu_calls = 0;
   ASSERT_TRUE(state.finished);
   ASSERT_EQ(1, state.captures);
+  ASSERT_EQ(kMainMenuEntryFades, g_settings_fades_at_door.load())
+      << "#237: the main menu's own entry fades once";
+  ASSERT_EQ(kFadesPerCrossing, g_settings_fades_inside_settings.load() -
+                                   g_settings_fades_at_door.load())
+      << "#237: the GAME SETTINGS door must fade on the way IN";
+  ASSERT_EQ(kFadesPerCrossing, g_settings_fades_after_return.load() -
+                                   g_settings_fades_inside_settings.load())
+      << "#237: and exactly as much on the way BACK";
 }
 
 // --- 2b. per-seat settings --------------------------------------------------
@@ -414,7 +447,7 @@ int seat_settings_injector(void *data) {
       SDL_Delay(500);
       // #237: the seat editor is a door on the OPEN Base Camp — a nested
       // run_menu_screen entry, which never fades. (Base Camp's own entry
-      // from the main menu is the context switch, and that one does.)
+      // from the main menu is the boundary crossing, and that one does.)
       fades_before_door = count_fade_between_traces();
       interact("seat_card_0");
     }
@@ -1717,16 +1750,12 @@ void help_park_pointer() {
   SDL_Delay(200);
 }
 
-// #237 wiring pin: the HELP door and the way back are lateral menu-cluster
-// moves (peer transitions) — the round-trip must add zero fades.
+// #237 symmetry pin: HELP is a main-menu door, so it fades on the way in AND
+// on the way back. The round trip is three crossings — the main menu's own
+// entry, the HELP door, and the main menu's re-entry behind BACK.
 std::atomic<int> g_help_fades_at_door{-1};
+std::atomic<int> g_help_fades_inside_help{-1};
 std::atomic<int> g_help_fades_after_return{-1};
-
-// One context-switch entry (see count_fade_between_traces above) = one fadeblack(0) + one fadeblack(1), and under
-// TESTING each traces exactly one FadeBetween line
-// (menu_screen_runner.cpp run_menu_screen). Measured against the main menu,
-// whose entry is the only context switch in the HELP flow below.
-constexpr int kMainMenuEntryFades = 2;
 
 int help_screen_injector(void *data) {
   og::runtime::ensure_thread_session();
@@ -1737,6 +1766,7 @@ int help_screen_injector(void *data) {
   interact("help");
   if (wait_for_interactable("help_tab_classes", 5000)) {
     SDL_Delay(500);
+    g_help_fades_inside_help = count_fade_between_traces();
     state->captures +=
         capture_frame("help_controls", &check_help_controls_merged);
     if (wait_for_interactable("help_page_next", 2000)) {
@@ -1779,6 +1809,7 @@ TEST(UxShots, n_help_screen) {
   // File-scope atomics: re-arm them here so a --gtest_repeat iteration cannot
   // inherit the previous one's counts.
   g_help_fades_at_door = -1;
+  g_help_fades_inside_help = -1;
   g_help_fades_after_return = -1;
   ShotState state;
   SDL_Thread *thread =
@@ -1793,15 +1824,22 @@ TEST(UxShots, n_help_screen) {
   ASSERT_TRUE(state.finished);
   ASSERT_EQ(5, state.captures);
   // Exact, not relative: the trace buffer was cleared at the top of this
-  // test, so everything counted here belongs to this run. kMainMenuEntryFades
-  // is the main menu's own entry — the one context switch in the flow — and
-  // the HELP door and the way back add nothing to it.
+  // test, so everything counted here belongs to this run. Three crossings:
+  // the main menu's own entry, the HELP door, and the main menu's re-entry.
   ASSERT_EQ(kMainMenuEntryFades, g_help_fades_at_door.load())
-      << "#237: entering the main menu is a context switch and must fade "
+      << "#237: entering the main menu is a boundary crossing and must fade "
          "exactly once (fade-out + fade-in)";
-  ASSERT_EQ(kMainMenuEntryFades, g_help_fades_after_return.load())
-      << "#237: the HELP door and the return to the main menu are peer "
-         "transitions — the round-trip must add zero fades";
+  ASSERT_EQ(3 * kFadesPerCrossing, g_help_fades_after_return.load())
+      << "#237: the HELP door and the way back are BOTH main-menu crossings "
+         "— the round trip adds two fades, symmetrically";
+  // The symmetry invariant itself, as two measured deltas.
+  ASSERT_EQ(kFadesPerCrossing,
+            g_help_fades_inside_help.load() - g_help_fades_at_door.load())
+      << "#237: the HELP door must fade on the way IN";
+  ASSERT_EQ(kFadesPerCrossing,
+            g_help_fades_after_return.load() - g_help_fades_inside_help.load())
+      << "#237: and exactly as much on the way BACK — the asymmetry this "
+         "rule exists to kill";
 }
 
 TEST(UxShots, i_basecamp_paged) {

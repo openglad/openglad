@@ -29,6 +29,7 @@
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/interface/session_state.h>
 #include <algorithm>
@@ -735,7 +736,9 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
     case ButtonAction::ToggleLobbyReady:
         return teams_toggle_ready();
     case ButtonAction::DoLevelEdit:
-        return level_editor();
+        // #237: the LEVEL EDITOR is a main-menu door whose loop runs NESTED
+        // inside the open main menu, exactly like CLOUD SAVES — same bracket.
+        return og::ui::run_nested_menu_door(&level_editor);
     case ButtonAction::YesOrNo:
         return yes_or_no(arg);
     case ButtonAction::MainOptions:

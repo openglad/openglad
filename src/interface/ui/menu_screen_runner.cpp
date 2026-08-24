@@ -35,6 +35,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -278,7 +279,8 @@ constexpr MenuBuildVariant kCompiledBuildVariant =
 struct MenuTransitionState {
     int depth = 0;
     bool faded_to_black = false;
-    bool peer_transition = false;
+    // Tri-state: no note / Fade / Instant (see note_menu_entry_fade).
+    std::optional<MenuEntryFade> entry_fade{};
 };
 MenuTransitionState g_menu_transition;
 
@@ -318,18 +320,18 @@ bool consume_menu_faded_to_black()
     return faded;
 }
 
-void note_menu_peer_transition()
+void note_menu_entry_fade(MenuEntryFade fade)
 {
-    g_menu_transition.peer_transition = true;
+    g_menu_transition.entry_fade = fade;
 }
 
 namespace {
 
-bool consume_menu_peer_transition()
+std::optional<MenuEntryFade> consume_menu_entry_fade()
 {
-    const bool peer = g_menu_transition.peer_transition;
-    g_menu_transition.peer_transition = false;
-    return peer;
+    const std::optional<MenuEntryFade> fade = g_menu_transition.entry_fade;
+    g_menu_transition.entry_fade.reset();
+    return fade;
 }
 
 } // namespace
@@ -343,12 +345,40 @@ bool begin_legacy_menu_entry_fade()
 {
     // Swallow-even-if-unused: a nested entry clears stale notes too.
     const bool already_black = consume_menu_faded_to_black();
-    const bool peer = consume_menu_peer_transition();
-    if (g_menu_transition.depth != 0 || peer)
+    const std::optional<MenuEntryFade> override_fade = consume_menu_entry_fade();
+    if (override_fade == MenuEntryFade::Instant)
+        return false;
+    if (g_menu_transition.depth != 0 && override_fade != MenuEntryFade::Fade)
         return false;
     if (!already_black)
         og::runtime::current_session->myscreen_->fadeblack(0);
     return true;
+}
+
+Sint32 run_nested_menu_door(Sint32 (*body)())
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    // Way in. The main menu stays open underneath, so this fade-out belongs
+    // to the door site; the black note lets the nested entry skip a second
+    // one (#200) and the Fade note makes it fade in despite its depth.
+    if (!consume_menu_faded_to_black())
+        scr->fadeblack(0);
+    note_menu_faded_to_black();
+    note_menu_entry_fade(MenuEntryFade::Fade);
+
+    const Sint32 result = body();
+
+    // A legacy door body (the level editor runs its own loop, not the
+    // runner's) consumes neither note. Swallow both here so nothing leaks
+    // onto the next unrelated entry.
+    (void)consume_menu_entry_fade();
+    (void)consume_menu_faded_to_black();
+
+    // Way back, symmetric: fade the door out and hand the still-open parent
+    // loop a black note — its next present turns that into the fade-in.
+    scr->fadeblack(0);
+    note_menu_faded_to_black();
+    return result;
 }
 
 #ifdef TESTING
@@ -411,15 +441,19 @@ void materialize_menu_buttons(const MenuScreenSpec& spec,
 
 Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
 {
-    // #237 depth rule: a Screen fades exactly when this entry is a context
-    // switch — nothing else on the menu stack (depth 1) and not a noted
-    // lateral move between menu-cluster peers (SETTINGS/HELP/LOAD/
-    // NETWORKING and the way back). Nested subscreen entries and Overlay
-    // screens (the pause family) never fade.
+    // #237 depth rule: a Screen fades exactly when this entry crosses the
+    // main-menu boundary — nothing else on the menu stack (depth 1). Every
+    // main-menu door fades symmetrically, the way in and the way back;
+    // everything deeper (Base Camp's strip and roster doors, settings' own
+    // subscreens, the company list's BACKUPS view) is instant both ways, and
+    // Overlay screens (the pause family) never fade. A noted MenuEntryFade
+    // overrides the derivation in either direction for the doors the depth
+    // alone cannot classify.
     const MenuDepthScope depth_scope;
-    const bool peer_entry = consume_menu_peer_transition();
+    const std::optional<MenuEntryFade> override_fade = consume_menu_entry_fade();
     const bool should_fade = spec.kind == MenuScreenKind::Screen
-        && g_menu_transition.depth == 1 && !peer_entry;
+        && override_fade != MenuEntryFade::Instant
+        && (g_menu_transition.depth == 1 || override_fade == MenuEntryFade::Fade);
     // Consumed unconditionally: the black note is a hand-off from whatever
     // ran last, so whichever screen opens next must clear it even when it
     // does not fade around its entry.
@@ -653,7 +687,14 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         if (spec.draw_content != nullptr)
             spec.draw_content(screen_state);
         draw_menu_highlight(spec, buttons, highlighted_button);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
+        // A nested door's return hands this loop a black note (the door
+        // faded its own last frame out on the way back — run_nested_menu_door).
+        // Present THAT frame with fadeblack(1) so the parent screen fades
+        // back in; every other frame presents plainly.
+        if (consume_menu_faded_to_black())
+            og::runtime::current_session->myscreen_->fadeblack(1);
+        else
+            og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
         // The ONE asyncify yield per iteration (emscripten contract).
         og::input_native::sleep_ms(10);
     }
