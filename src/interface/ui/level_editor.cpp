@@ -3534,16 +3534,15 @@ EventType handle_basic_editor_event(const void* native_event)
 
 Sint32 level_editor()
 {
-    // #237: the editor is a full-screen entry outside the runner, so it owes
-    // the transition notes the same swallow every entry owes them. Its door
-    // (run_nested_menu_door, ButtonAction::DoLevelEdit) already faded the
-    // menu out and left both notes; consuming them here keeps the Fade note
-    // from reaching the editor's own SET CAMPAIGN browser, which would fade
-    // a subscreen the rule wants instant. The pending fade-in is honored at
-    // the loop's first present (below): the door owes the same two fades in
-    // as it spends on the way back, so the editor's first composed frame
-    // fades in instead of cutting.
-    bool entry_fade_in_pending = og::ui::begin_legacy_menu_entry_fade();
+    // #237 ownership: the editor is a full-screen entry outside the runner.
+    // Its door (run_nested_menu_door, ButtonAction::DoLevelEdit) noted Fade;
+    // this scope consumes the note — so it cannot reach the editor's own SET
+    // CAMPAIGN browser, a subscreen the rule wants instant — fades the still-
+    // open main menu out NOW (before the canvas pin below switches away from
+    // the surface that menu is on), fades the editor's first composed frame
+    // in at the loop's first present, and fades the editor out at
+    // entry_fade.end() after the loop.
+    og::ui::LegacyMenuFade entry_fade;
 
     static LevelEditorData data;
     // Refresh radar pointers in case the session's viewscreen was rebuilt
@@ -4186,24 +4185,24 @@ Sint32 level_editor()
 			// LevelEditorData::draw prepares one smart-smoothed scenery + crisp
 			// UI transaction. Present only after every layer (including the
 			// controller cursor) is complete: the gameplay overlay is single-use.
-			if (entry_fade_in_pending) {
-				// fadeblack presents the composed buffer itself (#237). The
-				// editor's canvas is pinned classic (shared surface), so this
-				// fades the real first frame, not a stale UI image.
-				entry_fade_in_pending = false;
-				og::runtime::current_session->myscreen_->fadeblack(1);
-			} else {
-				og::runtime::current_session->myscreen_->refresh();
-			}
+			// The first frame fades in (#237): the editor's canvas is pinned
+			// classic (shared surface), so this fades the real first frame,
+			// not a stale UI image. Every later frame presents plainly.
+			entry_fade.present_first(*og::runtime::current_session->myscreen_);
 		}
-        
+
         og::input_native::sleep_ms(10);
-        
+
 	    last_ticks = start_ticks;
 	    start_ticks = og::input_native::ticks_ms();
 
 	}
-	
+
+	// The editor's last presented frame fades out HERE (#237 ownership):
+	// the pinned classic canvas that holds it is still active, and the
+	// reset draw + clear below have not touched the buffer yet.
+	entry_fade.end();
+
 	// Reset the screen position so it doesn't ruin the main menu
     data.level->set_draw_pos(0, 0);
     // Update the screen's position

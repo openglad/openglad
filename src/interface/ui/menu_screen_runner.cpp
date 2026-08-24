@@ -274,11 +274,11 @@ constexpr MenuBuildVariant kCompiledBuildVariant =
 #endif
 
 // #237 depth-rule transition state (session-scoped): the menu-stack depth
-// run_menu_screen brackets around every entry, and the one-shot "presented
-// surface is already black" note the teardowns set.
+// run_menu_screen brackets around every entry, and the one-shot entry-fade
+// override. Whether the window is black is NOT here — the video layer owns
+// that (screen::window_is_black()).
 struct MenuTransitionState {
     int depth = 0;
-    bool faded_to_black = false;
     // Tri-state: no note / Fade / Instant (see note_menu_entry_fade).
     std::optional<MenuEntryFade> entry_fade{};
 };
@@ -291,6 +291,28 @@ struct MenuDepthScope {
     ~MenuDepthScope() { --g_menu_transition.depth; }
     MenuDepthScope(const MenuDepthScope&) = delete;
     MenuDepthScope& operator=(const MenuDepthScope&) = delete;
+};
+
+// Exit-owned fade-out (#237 ownership rule): a fading entry fades its own
+// last frame out on EVERY return path — the remote-start returns, a
+// MENU_REDRAW exit, a MENU_EXIT, a frame_tick veto — while that frame is
+// still the render buffer (every exit leaves the loop above the bottom-of-
+// loop compose/present block, so nothing draws after the last present). An
+// Instant note still pending here means the door being opened is instant
+// (NETWORKING): skip, and leave the note for that door's entry to consume.
+struct ScreenFadeScope {
+    bool active;
+    explicit ScreenFadeScope(bool fades) : active(fades) {}
+    ~ScreenFadeScope()
+    {
+        if (!active)
+            return;
+        if (g_menu_transition.entry_fade == MenuEntryFade::Instant)
+            return;
+        og::runtime::current_session->myscreen_->fadeblack(0);
+    }
+    ScreenFadeScope(const ScreenFadeScope&) = delete;
+    ScreenFadeScope& operator=(const ScreenFadeScope&) = delete;
 };
 
 bool spec_row_survives_build(const MenuButtonSpec& row, MenuBuildVariant variant)
@@ -307,18 +329,6 @@ bool spec_row_survives_build(const MenuButtonSpec& row, MenuBuildVariant variant
 }
 
 } // namespace
-
-void note_menu_faded_to_black()
-{
-    g_menu_transition.faded_to_black = true;
-}
-
-bool consume_menu_faded_to_black()
-{
-    const bool faded = g_menu_transition.faded_to_black;
-    g_menu_transition.faded_to_black = false;
-    return faded;
-}
 
 void note_menu_entry_fade(MenuEntryFade fade)
 {
@@ -341,51 +351,52 @@ int menu_screen_depth()
     return g_menu_transition.depth;
 }
 
-bool begin_legacy_menu_entry_fade()
+LegacyMenuFade::LegacyMenuFade()
 {
-    // Swallow-even-if-unused: a nested entry clears stale notes too.
-    const bool already_black = consume_menu_faded_to_black();
+    // Swallow-even-if-unused: a nested entry clears a stale note too.
     const std::optional<MenuEntryFade> override_fade = consume_menu_entry_fade();
     if (override_fade == MenuEntryFade::Instant)
-        return false;
+        return;
     if (g_menu_transition.depth != 0 && override_fade != MenuEntryFade::Fade)
-        return false;
-    if (!already_black)
-        og::runtime::current_session->myscreen_->fadeblack(0);
-    return true;
+        return;
+    active_ = true;
+    fade_in_pending_ = true;
+    // Idempotent: a window a previous exit already faded to black stays as
+    // it is, and the fade-in below still owes its first frame.
+    og::runtime::current_session->myscreen_->fadeblack(0);
+}
+
+LegacyMenuFade::~LegacyMenuFade()
+{
+    end();
+}
+
+void LegacyMenuFade::present_first(screen& scr)
+{
+    if (active_ && fade_in_pending_) {
+        fade_in_pending_ = false;
+        // fadeblack presents the composed buffer itself.
+        scr.fadeblack(1);
+        return;
+    }
+    scr.buffer_to_screen(0, 0, scr.canvas_w(), scr.canvas_h());
+}
+
+void LegacyMenuFade::end()
+{
+    if (!active_ || ended_)
+        return;
+    ended_ = true;
+    og::runtime::current_session->myscreen_->fadeblack(0);
 }
 
 Sint32 run_nested_menu_door(Sint32 (*body)())
 {
-    screen* const scr = og::runtime::current_session->myscreen_;
-    // Way in. The main menu stays open underneath, so this fade-out belongs
-    // to the door site; the black note lets the nested entry skip a second
-    // one (#200) and the Fade note makes it fade in despite its depth.
-    if (!consume_menu_faded_to_black())
-        scr->fadeblack(0);
-    note_menu_faded_to_black();
+    // The nested entry fades the still-open parent out and itself in; its
+    // own exit fades it out again, and the parent loop's next present finds a
+    // black window and fades back in (run_menu_screen's loop present).
     note_menu_entry_fade(MenuEntryFade::Fade);
-
-    const Sint32 result = body();
-
-    // A legacy door body (the level editor runs its own loop, not the
-    // runner's) consumes neither note. Swallow both here so nothing leaks
-    // onto the next unrelated entry.
-    (void)consume_menu_entry_fade();
-    (void)consume_menu_faded_to_black();
-
-    // Way back, symmetric: fade the door out and hand the still-open parent
-    // loop a black note — its next present turns that into the fade-in.
-    // Precondition (documented on the declaration): the body returns with the
-    // canvas that holds its last frame still active, since fadeblack blends
-    // the active canvas's render surface. The teardown idiom's
-    // set_active_canvas(last_presented_canvas()) is deliberately NOT used
-    // here: the editor body releases its classic world-canvas pin on the way
-    // out, so by now World can name a freshly allocated, never-drawn surface
-    // while the editor's actual last frame lives on the (shared) UI canvas.
-    scr->fadeblack(0);
-    note_menu_faded_to_black();
-    return result;
+    return body();
 }
 
 #ifdef TESTING
@@ -461,10 +472,9 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
     const bool should_fade = spec.kind == MenuScreenKind::Screen
         && override_fade != MenuEntryFade::Instant
         && (g_menu_transition.depth == 1 || override_fade == MenuEntryFade::Fade);
-    // Consumed unconditionally: the black note is a hand-off from whatever
-    // ran last, so whichever screen opens next must clear it even when it
-    // does not fade around its entry.
-    const bool already_black = consume_menu_faded_to_black();
+    // Whoever fades in fades out: declared here, before any return path, so
+    // a fading entry's last presented frame fades out on every exit.
+    const ScreenFadeScope fade_scope(should_fade);
     // Sequence the D3 accessors: buttons() fills the vector count() reads.
     button* buttons = spec.buttons_accessor();
     const int num_buttons = spec.count_accessor();
@@ -514,21 +524,16 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
     if (should_fade) {
         screen* const scr = og::runtime::current_session->myscreen_;
         // The legacy mainmenu entry cadence: settle one timer tick, then
-        // fade the previous screen out — unless a teardown already left
-        // the presented surface black (#200): that fade-out would run
-        // over the stale menu image the UI canvas still holds and play
-        // the same transition a second time.
-        //
-        // fadeblack(0) blends FROM the render buffer, not from the window: a
-        // door body must not draw into it before run_menu_screen, or this
-        // fade-out runs black-to-black and the door hard-cuts (the entry's own
-        // background is composed below, after the fade). Under TESTING the
-        // trace is one line either way, so no pin can see that mistake.
+        // fade whatever is still on the window out. Normally a no-op: the
+        // previous screen's exit already faded out (the ownership rule), and
+        // fadeblack(0) skips a black window. It stays for the entries that
+        // follow a plain present — gameplay's first menu after a hard exit,
+        // a legacy screen that never faded — and under TESTING the video
+        // layer flags it if the buffer no longer matches the window.
         reset_timer();
         while (query_timer() < 1)
             ;
-        if (!already_black)
-            scr->fadeblack(0);
+        scr->fadeblack(0);
         {
             const MenuLabelContext context = build_label_context(spec);
             apply_label_bindings(spec_rows, buttons, num_buttons, context);
@@ -700,11 +705,13 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         if (spec.draw_content != nullptr)
             spec.draw_content(screen_state);
         draw_menu_highlight(spec, buttons, highlighted_button);
-        // A nested door's return hands this loop a black note (the door
-        // faded its own last frame out on the way back — run_nested_menu_door).
-        // Present THAT frame with fadeblack(1) so the parent screen fades
-        // back in; every other frame presents plainly.
-        if (consume_menu_faded_to_black())
+        // A nested door (run_nested_menu_door) faded its own last frame out
+        // on the way back, so this loop's next present finds a black window:
+        // present THAT frame with fadeblack(1) so the parent screen fades
+        // back in. Every other frame presents plainly, and an Overlay never
+        // fades at all.
+        if (spec.kind != MenuScreenKind::Overlay
+            && og::runtime::current_session->myscreen_->window_is_black())
             og::runtime::current_session->myscreen_->fadeblack(1);
         else
             og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);

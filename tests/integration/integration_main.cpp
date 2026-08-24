@@ -44,6 +44,7 @@ extern "C" void __gcov_dump(void);
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
 #include <openglad/platform/screen_lifecycle.h>
+#include <openglad/platform/video_sdl.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io.h>
@@ -59,6 +60,7 @@ extern std::atomic<bool> g_test_in_game;
 extern std::atomic<int> g_test_game_epoch;
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_set_force_real_dialogs(bool enabled);
+void campaign_picker_testing_set_auto_accept(bool enabled);
 #endif
 
 namespace {
@@ -179,9 +181,14 @@ void reset_integration_ui_state()
     g_test_game_epoch.store(0, std::memory_order_release);
     picker_testing_yes_or_no_queue_clear();
     picker_testing_set_force_real_dialogs(false);
-    // #237: a test that noted "faded to black" (or aborted mid-screen) must
-    // not leak transition state into the tests declared after it.
+    // #237: a test that aborted mid-screen (or left an override pending) must
+    // not leak transition state into the tests declared after it — and the
+    // window it left (black after an exit fade, or showing its last frame)
+    // must not either: every canvas counts as presented as it stands.
     og::ui::menu_transition_testing_reset();
+    if (og::runtime::current_session->myscreen_ != nullptr)
+        og::runtime::current_session->myscreen_->testing_reset_window_state();
+    campaign_picker_testing_set_auto_accept(true);
 #endif
     results_screen_testing_set_force_full(false);
 }
@@ -290,13 +297,28 @@ public:
         drain_main_thread_tasks();
         og::ui::g_picker_main_thread_pump = &run_main_thread_tasks;
         reset_integration_ui_state();
+        // After the window reset above: the reset itself never fades.
+        og::video_testing::reset_fade_violations();
     }
 
     void OnTestEnd(const ::testing::TestInfo&) override
     {
         og::ui::g_picker_main_thread_pump = nullptr;
         drain_main_thread_tasks();
+        // Fade-ownership invariants (video_sdl.h): a fade-in over a window
+        // that is not black, or a fade-out of a buffer the window never
+        // showed. Every flow test in this binary is an oracle for the class;
+        // read BEFORE the reset below so a violation always fails the test
+        // that caused it.
+        for (const std::string& violation :
+             og::video_testing::fade_violation_messages())
+        {
+            ADD_FAILURE() << "FADE VIOLATION: " << violation
+                          << " — see docs/menu-engine.md, \"Drawing and "
+                             "transitions\"";
+        }
         reset_integration_ui_state();
+        og::video_testing::reset_fade_violations();
     }
 };
 

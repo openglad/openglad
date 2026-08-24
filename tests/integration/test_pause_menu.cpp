@@ -2513,8 +2513,9 @@ TEST(PauseMenuFlow, restart_mission_relaunches_level_through_picker_loop)
 // menu image; Base Camp's depth-1 entry fade (#237 derivation) then faded
 // THAT out as a second visible transition. On a WIN the results screen
 // presents on the UI canvas, so the second fade was an invisible no-op —
-// hence "only when I quit". The teardown's note_menu_faded_to_black() is
-// what suppresses the entry fade-out today.
+// hence "only when I quit". Today the teardown's fade leaves the WINDOW
+// black (the video layer's single source of truth), and Base Camp's entry
+// fade-out is a no-op on a black window — no note to forget.
 //
 // Under TESTING every fadeblack lands in FadeBetween's test-mode branch, which
 // traces one line per fade. Counting them across the quit is the pin: the

@@ -128,9 +128,11 @@ static int new_game_injector(void* data)
     interact("company_name_accept");
 
     // The campaign intro no longer runs inside picker_prepare_new_game_setup
-    // (issue #186: it moved behind the campaign select, whose TESTING
-    // short-circuit skips it here), so the flow proceeds to the team-build
-    // menu without further input.
+    // (issue #186: it moved behind the campaign select). Under TESTING the
+    // browser auto-accepts the current campaign and the intro scroller
+    // dismisses itself, each after one real presented frame, so the flow
+    // proceeds to the team-build menu without further input (the per-leg
+    // fades of those two screens are pinned in test_fade_ownership.cpp).
     SDL_Delay(500);
     if (wait_for_team_menu()) {
         state->saw_team_menu = true;
@@ -348,10 +350,10 @@ static int name_entry_edit_injector(void* data)
         interact("company_name_accept");
     }
 
-    // No campaign intro here anymore (issue #186: it moved behind the
-    // campaign select, skipped under TESTING) — the flow reaches team build
-    // on its own. Unwind back to the main menu so picker_main can hit its
-    // Quit gate.
+    // The campaign select and intro run un-driven under TESTING (auto-accept
+    // and auto-dismiss after one presented frame each) — the flow reaches
+    // team build on its own. Unwind back to the main menu so picker_main can
+    // hit its Quit gate.
     SDL_Delay(500);
     if (wait_for_team_menu()) {
         state->saw_team_menu = true;
@@ -433,7 +435,8 @@ static int continue_player_count_injector(void* data)
         return 0;
 
     // picker_prepare_new_game_setup no longer blocks on the campaign intro
-    // (issue #186); the flow lands on Base Camp directly.
+    // (issue #186); the campaign select and intro run un-driven under
+    // TESTING and the flow lands on Base Camp on its own.
     if (!wait_for_team_menu())
         return 0;
     state->saw_initial_base_camp = true;

@@ -23,9 +23,29 @@
 #include <SDL3/SDL.h>
 
 #include <array>
+#include <atomic>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
+
+#ifdef TESTING
+namespace og::video_testing
+{
+// Fade-ownership invariants, checked by sdl_video::fadeblack at the fade
+// itself: a fade-in requires a black window ("fade-in without a fade-out"),
+// and a fade-out requires the render buffer to equal the frame the window
+// last showed ("fade-out from a frame that was never presented" — a clear or
+// a stale redraw between the last present and the fade). A violation traces
+// ("video", "FADE VIOLATION: ..."), logs, and lands here. trace_clear() never
+// touches this: the integration listener resets it at test start and fails
+// the test at its end for each message recorded, so every flow test in the
+// tree is an oracle for the class.
+extern std::atomic<int> g_fade_violations;
+std::vector<std::string> fade_violation_messages();
+void reset_fade_violations();
+} // namespace og::video_testing
+#endif
 
 namespace og::platform
 {
@@ -236,6 +256,10 @@ public:
     void fade_between24(void* surface, const Uint8* from, const Uint8* to, int amount) override;
     int fade_between(void* old_surface, void* new_surface, void* dest_surface) override;
     int fadeblack(bool fade_in) override;
+    bool window_is_black() override;
+#ifdef TESTING
+    void testing_reset_window_state() override;
+#endif
 
     std::array<unsigned char, 768>& ourpalette_ref() override { return ourpalette; }
     std::array<unsigned char, 768>& redpalette_ref() override { return redpalette; }

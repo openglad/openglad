@@ -230,6 +230,12 @@ void vbutton::vdisplay(Sint32 status)
     if (!status) // do normal
     {
         vdisplay();
+        // The released face is presented like the pressed one above: an
+        // activation that EXITS its screen never reaches the loop's next
+        // present, and the exit fade reads the buffer — which must hold a
+        // frame the window has shown (#237 ownership; the video layer flags
+        // a released face the window never saw as a stale redraw).
+        og::runtime::current_session->myscreen_->buffer_to_screen(xloc,yloc,xend-xloc,yend-yloc);
         return;
     }
     
@@ -336,7 +342,7 @@ Sint32 vbutton::leftclick(Sint32 whichbutton)
         {
             og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_BOW);
             vdisplay(1);
-            vdisplay();
+            vdisplay(0); // pressed, then released — both presented
             if (myfunc)
             {
                 // Coordinate-free activation: never leave a stale pointer
@@ -359,7 +365,7 @@ Sint32 vbutton::leftclick(Sint32 whichbutton)
         {
             og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_BOW);
             vdisplay(1);
-            vdisplay();
+            vdisplay(0); // pressed, then released — both presented
             if (myfunc)
             {
                 // Pointer activation: stamp the UI-canvas position that hit

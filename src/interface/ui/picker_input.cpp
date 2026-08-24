@@ -222,7 +222,8 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
             if(use_global_vbuttons)
             {
                 og::runtime::current_session->allbuttons_[static_cast<std::size_t>(highlighted_button)]->vdisplay(1);
-                og::runtime::current_session->allbuttons_[static_cast<std::size_t>(highlighted_button)]->vdisplay();
+                // Pressed, then released — both presented (see vbutton::vdisplay).
+                og::runtime::current_session->allbuttons_[static_cast<std::size_t>(highlighted_button)]->vdisplay(0);
                 if(og::runtime::current_session->allbuttons_[static_cast<std::size_t>(highlighted_button)]->myfunc)
                 {
                     // Coordinate-free activation: never leave a stale pointer

@@ -792,14 +792,16 @@ int editor_door_fade_injector(void* /*data*/)
 }
 } // namespace
 
-// #237 flow pin, the LEVEL EDITOR door through the REAL body: the bracket
-// fades the menu out and notes Fade, and level_editor() has to spend that
-// note on a fadeblack(1) present of its first composed frame — discarding it
-// (as the editor once did) left the door at 1 fade in against 2 back, the
-// asymmetry the invariant forbids. Counted here: 2 in, then the bracket's
-// way-back fade-out. Its partner, the parent menu loop's fade-in off the
-// black note, has no parent loop in this test — the note is asserted instead,
-// and MenuEngine.nested_menu_door_bracket_* pins the loop half.
+// #237 flow pin, the LEVEL EDITOR door through the REAL body: the door notes
+// Fade, and level_editor()'s LegacyMenuFade spends it — the still-open menu
+// fades out, the editor's first composed frame fades in, and the editor
+// fades itself out at its exit (before its post-loop reset draw and clear
+// touch the buffer). Dropping the fade-in (as the editor once did) left the
+// door at 1 fade in against 2 back, the asymmetry the invariant forbids.
+// Counted here: 2 in, then the editor's own exit fade-out. Its partner, the
+// parent menu loop's fade-in off the black window, has no parent loop in
+// this test — the black window is asserted instead, and
+// MenuEngine.nested_menu_door_bracket_* pins the loop half.
 TEST(LevelEditorInteractions, level_editor_door_fades_symmetrically)
 {
     og::ui::menu_transition_testing_reset();
@@ -817,10 +819,11 @@ TEST(LevelEditorInteractions, level_editor_door_fades_symmetrically)
 
     const int total = count_fade_between_traces();
     EXPECT_EQ(3, total)
-        << "the door owes 2 fades in (bracket fade-out + the editor's own "
-           "first-frame fade-in) and opens the way back with its fade-out";
-    EXPECT_TRUE(og::ui::consume_menu_faded_to_black())
-        << "the way back hands the still-open parent menu loop a black note; "
-           "its next present is the matching fade-in";
+        << "the door owes 2 fades in (the menu's fade-out + the editor's own "
+           "first-frame fade-in) and the editor opens the way back with its "
+           "own exit fade-out";
+    EXPECT_TRUE(og::runtime::current_session->myscreen_->window_is_black())
+        << "the editor's exit leaves the window black; the still-open parent "
+           "menu loop's next present is the matching fade-in";
     og::ui::menu_transition_testing_reset();
 }

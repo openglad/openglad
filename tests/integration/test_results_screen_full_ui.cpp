@@ -195,9 +195,11 @@ static int results_ui_troops_then_ok_injector(void* data)
     return 0;
 }
 
-// #237: gameplay -> results is a context switch, so the panel entry fades —
-// one fade-out plus one fade-in at the loop's first present. Under TESTING
-// each fadeblack traces exactly one FadeBetween line.
+// #237: gameplay -> results is a context switch, so the panel fades — one
+// fade-out of the mission frame, one fade-in at the loop's first present, and
+// (the ownership rule) one fade-out of its own last frame at exit, so the
+// teardown fade that follows in go_menu finds a black window and skips. Under
+// TESTING each fadeblack that runs traces exactly one FadeBetween line.
 int count_fade_between_traces()
 {
     std::lock_guard<std::mutex> lock(g_trace_mutex);
@@ -321,9 +323,11 @@ TEST(ResultsScreenFullUi, overview_and_troops_paths)
 
     ASSERT_TRUE(st.started && st.finished) << "results UI injector should run";
     ASSERT_TRUE(!retry) << "OK path should not request retry";
-    EXPECT_EQ(2, count_fade_between_traces())
-        << "#237: the results entry is a context switch — exactly one "
-           "fade-out plus the first-frame fade-in, and nothing more";
+    EXPECT_EQ(3, count_fade_between_traces())
+        << "#237: the results panel is a context switch — exactly one "
+           "fade-out, the first-frame fade-in, and its own exit fade-out";
+    EXPECT_TRUE(og::runtime::current_session->myscreen_->window_is_black())
+        << "the panel's exit leaves the window black for go_menu's teardown";
     EXPECT_EQ(CanvasTarget::World, E_Screen->active_canvas());
     EXPECT_EQ(640, E_Screen->render->w);
     EXPECT_EQ(400, E_Screen->render->h);

@@ -35,6 +35,7 @@ int toInt(const std::string& s);
 int campaign_picker_testing_exercise_entry_draw_paths();
 void campaign_picker_testing_input_reset();
 void campaign_picker_testing_abort();
+void campaign_picker_testing_set_auto_accept(bool enabled);
 std::uint64_t campaign_picker_testing_entered_count();
 std::uint64_t campaign_picker_testing_action_count();
 // results_screen.cpp helper
@@ -806,6 +807,9 @@ TEST(CampaignAndLevelPicker, campaign_picker_draw_loop_exits_on_q)
     end = 0;
 
     g_picker_q_release.store(false, std::memory_order_release);
+    // This test drives the browser (q exits it); the un-driven default
+    // would accept the current campaign after the first frame instead.
+    campaign_picker_testing_set_auto_accept(false);
     std::uint64_t entered_baseline = campaign_picker_testing_entered_count();
     ScopedSdlThread thread(SDL_CreateThread(
         hold_q_key_for_picker, "picker_q_hold", &entered_baseline));
@@ -821,8 +825,9 @@ TEST(CampaignAndLevelPicker, campaign_picker_draw_loop_exits_on_q)
     ASSERT_TRUE(out.id.empty()) << "q exit path should not select a campaign";
 
     // #237: entered with no menu screen open (depth 0), campaign select is a
-    // context switch — exactly one fade-out plus the first-frame fade-in.
-    // Under TESTING each fadeblack traces one FadeBetween line.
+    // context switch — one fade-out, the first-frame fade-in, and (the
+    // ownership rule) its own exit fade-out. Under TESTING each fadeblack
+    // that runs traces one FadeBetween line.
     int fades = 0;
     {
         std::lock_guard<std::mutex> lock(g_trace_mutex);
@@ -833,9 +838,11 @@ TEST(CampaignAndLevelPicker, campaign_picker_draw_loop_exits_on_q)
                 ++fades;
         }
     }
-    EXPECT_EQ(2, fades)
-        << "#237: a top-level campaign-select entry must fade out and in "
-           "exactly once";
+    EXPECT_EQ(3, fades)
+        << "#237: a top-level campaign-select entry must fade out, in, and "
+           "out again at its exit — exactly once each";
+    EXPECT_TRUE(og::runtime::current_session->myscreen_->window_is_black())
+        << "the browser's exit leaves the window black for the next screen";
 }
 
 

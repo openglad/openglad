@@ -103,8 +103,17 @@ int main(int argc, char* argv[])
             // exercise the actual timed fade loop with a short, deterministic
             // duration and verify both terminal frames.
             sdl_display->fadeDuration = 60;
+            ok &= require(display->window_is_black(),
+                          "a window that never presented shows black");
+            ok &= require(display->fadeblack(false) == 0,
+                          "fade-to-black of a never-presented window is a no-op");
             sdl_display->clearbuffer();
             sdl_display->pointb(20, 20, 200, 80, 40);
+            // Present the reference frame: a fade-out reads the buffer and
+            // is a no-op until something has been shown.
+            sdl_display->buffer_to_screen(0, 0, 320, 200);
+            ok &= require(!display->window_is_black(),
+                          "a present clears the black-window state");
             Uint8 expected_red = 0;
             Uint8 expected_green = 0;
             Uint8 expected_blue = 0;
@@ -117,6 +126,8 @@ int main(int argc, char* argv[])
                 "fade reference pixel is visible");
             ok &= require(display->fadeblack(false) == 1,
                           "production fade-to-black completes");
+            ok &= require(display->window_is_black(),
+                          "a completed fade-to-black blackens the window");
             Uint8 black_red = 1;
             Uint8 black_green = 1;
             Uint8 black_blue = 1;
@@ -141,6 +152,8 @@ int main(int argc, char* argv[])
                 frame_begin, frame_begin + frame_bytes);
             ok &= require(display->fadeblack(true) == 1,
                           "production fade-from-black completes");
+            ok &= require(!display->window_is_black(),
+                          "the fade-in's terminal present clears the black state");
             ok &= require(
                 std::memcmp(
                     E_Screen->render->pixels,

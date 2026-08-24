@@ -992,6 +992,20 @@ int screen::fadeblack(bool fade_in)
     return video_impl_->fadeblack(fade_in);
 }
 
+bool screen::window_is_black()
+{
+    // A headless session has no window; nothing is ever shown.
+    return video_impl_ == nullptr || video_impl_->window_is_black();
+}
+
+#ifdef TESTING
+void screen::testing_reset_window_state()
+{
+    if (video_impl_ != nullptr)
+        video_impl_->testing_reset_window_state();
+}
+#endif
+
 // ************************************************************
 //  SCREEN -- graphics routines
 //

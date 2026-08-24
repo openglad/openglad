@@ -22,6 +22,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/view_layout.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/resources/gparser.h>
 #include <gtest/gtest.h>
@@ -1273,6 +1274,11 @@ TEST(CanvasScale, level_editor_filters_map_but_keeps_controls_on_crisp_overlay)
     SDL_Thread* stopper = SDL_CreateThread(
         stop_editor_after_render, "editor_overlay_stopper", nullptr);
     ASSERT_NE(nullptr, stopper);
+    // This test reads the editor's LAST present back; a transition would
+    // discard it (a fade owns every World swap and drops the prepared
+    // overlay). Called directly at depth 0 the editor would fade itself in
+    // and out, so classify this entry as instant — the sanctioned override.
+    og::ui::note_menu_entry_fade(og::ui::MenuEntryFade::Instant);
     (void)level_editor();
     SDL_WaitThread(stopper, nullptr);
     s->world().end = 0;
@@ -1404,11 +1410,13 @@ TEST(CanvasScale, fadeblack_matches_the_grown_world_canvas)
     ASSERT_EQ(640, E_Screen->world_w());
     E_Screen->set_active_canvas(CanvasTarget::World);
 
-    // Paint a pixel outside the classic 320x200 area, then fade to black:
+    // Paint a pixel outside the classic 320x200 area, present it (a fade may
+    // only read a frame the window has shown), then fade to black:
     // FadeBetween requires exact dim/pitch matches against the ACTIVE render
     // target, so a hardcoded 320x200 black surface would abort with "width
     // mismatch" and return 0 — and never darken the grown corner.
     s->pointb(639, 399, 47);
+    s->buffer_to_screen(0, 0, s->canvas_w(), s->canvas_h());
     EXPECT_EQ(1, s->fadeblack(false)) << "fade-to-black must run at 640x400";
     Uint8 r = 255, g = 255, b = 255;
     s->get_pixel(639, 399, &r, &g, &b);
@@ -1426,9 +1434,12 @@ TEST(CanvasScale, smart_smoothed_fade_discards_prepared_gameplay_ui)
     E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Sai,
                              320, 200);
     E_Screen->set_active_canvas(CanvasTarget::World);
+    SDL_FillSurfaceRect(E_Screen->render, nullptr, 0x00ffffffu);
+    // The scenery is a presented frame (a fade may only read one); the
+    // overlay prepared AFTER it is exactly what the fade must discard.
+    s->buffer_to_screen(0, 0, s->canvas_w(), s->canvas_h());
     E_Screen->begin_gameplay_frame();
     ASSERT_TRUE(E_Screen->gameplay_ui_overlay_active());
-    SDL_FillSurfaceRect(E_Screen->render, nullptr, 0x00ffffffu);
     {
         ScopedGameplayUiCanvas gameplay_ui(*s);
         const SDL_Rect hud_rect{10, 10, 8, 8};

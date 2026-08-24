@@ -557,7 +557,12 @@ TEST(MassCoverage, video_fade_between) {
     SDL_DestroySurface(d);
 }
 
-TEST(MassCoverage, video_fadeblack) { (void)og::runtime::current_session->myscreen_->fadeblack(true); }
+TEST(MassCoverage, video_fadeblack)
+{
+    // Out first (the window shows a frame at the test boundary), then in.
+    ASSERT_EQ(1, og::runtime::current_session->myscreen_->fadeblack(false));
+    ASSERT_EQ(1, og::runtime::current_session->myscreen_->fadeblack(true));
+}
 TEST(MassCoverage, video_darken_screen) { og::runtime::current_session->myscreen_->darken_screen(); }
 
 // text.cpp uncovered

@@ -31,12 +31,22 @@ static SurfacePtr make_surface_masks(int w, int h, int depth,
 }
 } // namespace
 
-TEST(VideoFade, video_fadeblack_smoke_in_and_out)
+TEST(VideoFade, video_fadeblack_out_then_in_tracks_the_window)
 {
-    // In TESTING, FadeBetween skips animation but still exercises surface checks + blits.
-    int r1 = og::runtime::current_session->myscreen_->fadeblack(true);
-    int r2 = og::runtime::current_session->myscreen_->fadeblack(false);
-    ASSERT_TRUE(r1 >= 0 && r2 >= 0) << "fadeblack should return non-negative status";
+    // In TESTING, FadeBetween skips animation but still exercises surface
+    // checks + blits. The order is the ownership rule's: the frame on the
+    // window (the test boundary presents every canvas) fades OUT, then the
+    // buffer fades IN over the black that left; a fade-in first would be the
+    // "fade-in without a fade-out" violation the listener fails tests on.
+    screen* const scr = og::runtime::current_session->myscreen_;
+    ASSERT_FALSE(scr->window_is_black()) << "the test boundary presents a frame";
+    ASSERT_EQ(1, scr->fadeblack(false)) << "fade-to-black completes";
+    ASSERT_TRUE(scr->window_is_black()) << "a completed fade-out blackens the window";
+    ASSERT_EQ(0, scr->fadeblack(false))
+        << "a second fade-out is a no-op on a black window (returns 0, no fade)";
+    ASSERT_TRUE(scr->window_is_black());
+    ASSERT_EQ(1, scr->fadeblack(true)) << "fade-from-black completes";
+    ASSERT_FALSE(scr->window_is_black()) << "the fade-in's present clears the flag";
 }
 
 

@@ -27,6 +27,7 @@
 #include <openglad/interface/render/text.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/screen.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/core/text_wrap.h>
@@ -59,6 +60,7 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
 bool campaign_picker_testing_take_abort();
 void campaign_picker_testing_mark_entered();
 void campaign_picker_testing_mark_action();
+bool campaign_picker_testing_auto_accept();
 #endif
 
 namespace
@@ -328,15 +330,17 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
     // it while World is active; keep the campaign icon, text and controls on
     // the nearest UI present path instead of filtering the whole browser with
     // the editor map's SAI/Eagle setting.
-    // #237 depth rule, applied by hand (legacy blocking browser): the
+    // #237 ownership rule, applied by hand (legacy blocking browser): the
     // new-game flow's entry (depth 0, via SdlPickerClient::show_campaign_select
-    // — the live consumer of the fade here) is a context switch and fades. SET
-    // CAMPAIGN from an open Base Camp is nested and does not, and neither is
-    // the in-game editor's browser (nested inside the main menu's screen). The
-    // fade-out must run BEFORE the UI-canvas switch below: it fades whatever
-    // canvas is actually presented (the editor presents the World canvas), not
-    // the stale UI surface.
-    bool entry_fade_in_pending = og::ui::begin_legacy_menu_entry_fade();
+    // — the live consumer of the fade here) is a context switch and fades —
+    // out of the previous screen now, in on the first composed frame, and out
+    // again at entry_fade.end() after the loop. SET CAMPAIGN from an open Base
+    // Camp is nested and does not, and neither is the in-game editor's browser
+    // (nested inside the main menu's screen). The entry fade-out must run
+    // BEFORE the UI-canvas switch below: it fades whatever canvas is actually
+    // presented (the editor presents the World canvas), not the stale UI
+    // surface.
+    og::ui::LegacyMenuFade entry_fade;
     ScopedUiCanvas canvas_target(*og::runtime::current_session->myscreen_);
     std::string old_campaign_id = get_mounted_campaign();
     CampaignEntry* result = nullptr;
@@ -519,6 +523,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
     bool done = false;
     int last_highlighted = highlighted_button;
 #ifdef TESTING
+    bool first_frame_presented = false;
     campaign_picker_testing_mark_entered();
 #endif
     while (!done)
@@ -526,6 +531,20 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
 #ifdef TESTING
         if (campaign_picker_testing_take_abort())
             break;
+        // The un-driven browser (every BEGIN NEW GAME flow that never
+        // touches it) accepts the current campaign once its first frame is
+        // on the window — the real screen, its real fades, no injector
+        // clicks. Tests that drive the browser disarm this first.
+        if (first_frame_presented && campaign_picker_testing_auto_accept())
+        {
+            result = ensure_entry(cursor);
+            if (result != nullptr)
+            {
+                TRACE("campaign_picker", "auto-accept %s", result->id.c_str());
+                done = true;
+                break;
+            }
+        }
 #endif
         // Reset the timer count to zero ...
         reset_timer();
@@ -775,15 +794,20 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
             entries[static_cast<std::size_t>(cursor)]->draw(army_power);
 
         draw_highlight(buttons[highlighted_button]);
-        if (entry_fade_in_pending) {
-            // fadeblack presents the composed buffer itself (#237).
-            entry_fade_in_pending = false;
-            og::runtime::current_session->myscreen_->fadeblack(1);
-        } else {
-            og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
-        }
+        // The first frame fades in when this entry fades; every later one
+        // presents plainly (#237).
+        entry_fade.present_first(*og::runtime::current_session->myscreen_);
+#ifdef TESTING
+        if (!first_frame_presented)
+            TRACE("campaign_picker", "first frame presented");
+        first_frame_presented = true;
+#endif
         og::input_native::sleep_ms(10);
     }
+    // The browser's last presented frame fades out HERE — before the key
+    // release wait, the remount and the canvas restore below can touch the
+    // buffer or the active canvas (#237 ownership).
+    entry_fade.end();
 
     wait_for_key_release(KEYSTATE_q, "quit");
 

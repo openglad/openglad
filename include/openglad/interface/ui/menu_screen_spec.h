@@ -28,6 +28,8 @@
 #include <string>
 #include <vector>
 
+class screen;
+
 namespace og::ui {
 
 // Rows that do not apply to the target platform are dropped at
@@ -239,16 +241,31 @@ std::vector<const MenuButtonSpec*> materialized_spec_rows_for(
 // spec.exit_value (or propagates a remote-start MENU_EXIT).
 Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state = nullptr);
 
-// #237 depth-rule transition state. A fade-out semantically belongs to the
-// OUTGOING surface but is executed by the INCOMING screen; when a teardown
-// (the two gameplay exits, the intro's last page, the new-game cut) already
-// left the presented surface black, it notes that here and the next fading
-// entry skips its own fade-out instead of playing black-to-black (#200).
-// Every run_menu_screen entry (and begin_legacy_menu_entry_fade) consumes
-// the note even when it does not fade — the swallow-even-if-unused property
-// that keeps a stale note from leaking one screen forward.
-void note_menu_faded_to_black();
-bool consume_menu_faded_to_black();
+// #237 fade ownership (docs/menu-engine.md, "Drawing and transitions").
+//
+// THE RULE: whoever fades a screen IN fades it OUT, at its own exit, while
+// its last presented frame is still the render buffer. A fade-out is never
+// deferred to the incoming screen — that deferral left arbitrary door-site
+// code (setup, clears, mounts) between the outgoing screen's last present and
+// its fade-out, and every such site was a fresh chance to blacken the buffer
+// and turn the fade into a hard cut (the HELP, new-company and campaign-intro
+// regressions). run_menu_screen brackets a fading entry with an RAII scope
+// whose destructor fades out on EVERY return path; legacy presenters use
+// LegacyMenuFade (below) the same way.
+//
+// THE STATE: the video layer is the single source of truth for "the window
+// is black" (screen::window_is_black(); set by a completed fadeblack(0),
+// cleared by every present). fadeblack(0) on a black window is a no-op, so a
+// teardown or door that already faded out never plays a second, black-to-
+// black fade, and no screen has to be told about it — the "faded to black"
+// note this replaced is gone.
+//
+// THE INVARIANTS (TESTING, checked by the video layer at the fade itself and
+// turned into a test failure by integration_main's listener):
+//   * fadeblack(1) requires a black window — "fade-in without a fade-out";
+//   * fadeblack(0) requires the render buffer to equal the frame the window
+//     last showed — "fade-out from a frame that was never presented" (a
+//     clear or a stale redraw between the last present and the fade).
 
 // One-shot override for the NEXT menu entry, the escape hatch on both sides
 // of the depth rule. Instant suppresses the fade a depth-0/depth-1 entry
@@ -256,9 +273,13 @@ bool consume_menu_faded_to_black();
 // screen runs at depth 0, so the rule would fade it like a main-menu door);
 // Fade forces one on an entry the rule leaves instant (the main menu's own
 // nested doors — see run_nested_menu_door). Consumed by every entry —
-// including nested and Overlay entries and begin_legacy_menu_entry_fade —
-// with the same swallow-even-if-unused property as the black note, so a note
-// nobody used cannot leak one screen forward.
+// including nested and Overlay entries and LegacyMenuFade — with the
+// swallow-even-if-unused property, so a note nobody used cannot leak one
+// screen forward. An Instant note that is still pending when a fading screen
+// EXITS classifies the door being opened as instant: the exit skips its
+// fade-out and leaves the note for that door's entry (NETWORKING again —
+// Base Camp exits before the legacy screen runs, and the door is instant
+// both ways).
 enum class MenuEntryFade : std::uint8_t {
     Fade,
     Instant,
@@ -268,23 +289,15 @@ void note_menu_entry_fade(MenuEntryFade fade);
 // The bracket both nested main-menu doors share (CLOUD SAVES from the main
 // menu's own spec-row dispatch, LEVEL EDITOR from ButtonAction::DoLevelEdit):
 // their screens run INSIDE the still-open main menu, so no depth the rule can
-// read distinguishes them from a Base Camp subscreen. Going in it fades the
-// main menu out and notes Fade so the nested entry fades back in; coming back
-// it fades the door out and leaves a black note that the parent loop turns
-// into a fade-in on its next present. One implementation of the rule for both
-// doors — but the way in is only half here, so two preconditions bind BODY:
-//   * It must spend the Fade note on a fade-in of its own first composed
-//     frame, or the door plays 1 fade in against 2 back. A run_menu_screen
-//     body does that in the runner; a legacy body (the level editor) does it
-//     by hand — begin_legacy_menu_entry_fade() and present the first frame
-//     with fadeblack(1) when it returns true.
-//   * It must return with the canvas holding its last presented frame still
-//     ACTIVE, because the return fadeblack(0) below blends whatever surface
-//     is bound to the active canvas. The editor satisfies this by pinning the
-//     world canvas classic (shared 320x200 storage with the UI canvas) and
-//     restoring UI before returning; note that reading last_presented_canvas()
-//     here instead would be WRONG for it — the pin is already released by
-//     then, so World may name a freshly allocated, never-drawn surface.
+// read distinguishes them from a Base Camp subscreen. It notes Fade so the
+// nested entry fades — out of the still-open menu's frame, and back in on its
+// own first composed frame — and the body's own exit (the runner's scope, or
+// the editor's LegacyMenuFade) fades the door out; the parent loop's next
+// present finds a black window and fades back in. Precondition on a legacy
+// BODY: its exit fade must run while the canvas holding its last presented
+// frame is still ACTIVE (the editor calls LegacyMenuFade::end() before
+// releasing its classic world-canvas pin; reading last_presented_canvas()
+// after that release would name a freshly allocated, never-drawn surface).
 Sint32 run_nested_menu_door(Sint32 (*body)());
 
 // Current menu-stack depth (0 = no engine screen open). run_menu_screen
@@ -292,18 +305,37 @@ Sint32 run_nested_menu_door(Sint32 (*body)());
 // MenuScreenKind::Screen is the main-menu-boundary crossing that fades.
 int menu_screen_depth();
 
-// The hand-applied depth rule for legacy full-screen entries that never call
-// run_menu_screen (NETWORKING, campaign select, the results panel). At a
-// context switch (no engine screen open) it fades the presented surface to
-// black — skipped when a teardown already left it black — and returns true:
-// the caller must present its FIRST composed frame with fadeblack(1) instead
-// of buffer_to_screen. Nested under an open menu screen (Base Camp's SET
-// CAMPAIGN) it fades nothing and returns false. A noted MenuEntryFade
-// overrides both directions.
-bool begin_legacy_menu_entry_fade();
+// The ownership rule for legacy full-screen presenters that never call
+// run_menu_screen (campaign select, the results panel, the level editor, the
+// campaign intro scroller, NETWORKING). The constructor decides whether this
+// entry fades — a context switch (no engine screen open) or a Fade note,
+// never an Instant note — and fades the presented surface out at once (a
+// no-op if the window is already black). present_first() presents the first
+// composed frame: fadeblack(1) when this entry fades, a plain full-frame
+// present otherwise (safe as the loop's every-frame present). end() fades
+// the screen's last presented frame out; the destructor is its backstop on
+// every return path. Call end() explicitly where the last frame must be
+// faded BEFORE later teardown touches the buffer or the active canvas.
+class LegacyMenuFade {
+public:
+    LegacyMenuFade();
+    ~LegacyMenuFade();
+    LegacyMenuFade(const LegacyMenuFade&) = delete;
+    LegacyMenuFade& operator=(const LegacyMenuFade&) = delete;
+
+    bool active() const { return active_; }
+    bool fade_in_pending() const { return active_ && fade_in_pending_; }
+    void present_first(screen& scr);
+    void end();
+
+private:
+    bool active_ = false;
+    bool fade_in_pending_ = false;
+    bool ended_ = false;
+};
 
 #ifdef TESTING
-// Reset the transition state (depth 0, no black note) between tests.
+// Reset the transition state (depth 0, no pending override) between tests.
 void menu_transition_testing_reset();
 #endif
 

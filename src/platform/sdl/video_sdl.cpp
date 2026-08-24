@@ -39,6 +39,7 @@
 #include <openglad/interface/game_context.h>
 #include <memory>
 #include <limits>
+#include <mutex>
 #include <span>
 #include <tuple>
 #include <vector>
@@ -3851,8 +3852,79 @@ int sdl_video::fade_between(void* old_surface, void* new_surface,
                        static_cast<SDL_Surface*>(dest_surface));
 }
 
+#ifdef TESTING
+namespace og::video_testing
+{
+std::atomic<int> g_fade_violations{0};
+
+namespace
+{
+std::mutex s_fade_violation_mutex;
+std::vector<std::string> s_fade_violation_messages;
+
+void report_fade_violation(const char* what)
+{
+    TRACE("video", "FADE VIOLATION: %s", what);
+    LogError("FADE VIOLATION: {}\n", what);
+    ++g_fade_violations;
+    std::lock_guard<std::mutex> lock(s_fade_violation_mutex);
+    s_fade_violation_messages.emplace_back(what);
+}
+} // namespace
+
+std::vector<std::string> fade_violation_messages()
+{
+    std::lock_guard<std::mutex> lock(s_fade_violation_mutex);
+    return s_fade_violation_messages;
+}
+
+void reset_fade_violations()
+{
+    std::lock_guard<std::mutex> lock(s_fade_violation_mutex);
+    s_fade_violation_messages.clear();
+    g_fade_violations.store(0);
+}
+} // namespace og::video_testing
+#endif
+
+bool sdl_video::window_is_black()
+{
+    return E_Screen == nullptr || E_Screen->window_is_black();
+}
+
+#ifdef TESTING
+void sdl_video::testing_reset_window_state()
+{
+    if (E_Screen != nullptr)
+        E_Screen->testing_reset_window_state();
+}
+#endif
+
 int sdl_video::fadeblack(bool fade_in)
 {
+    // Fade ownership (docs/menu-engine.md): a fade-out of a window that
+    // already shows black has nothing to fade. Skipped without touching
+    // FadeBetween, so the trace counts the flow tests pin stay honest.
+    if (!fade_in && E_Screen->window_is_black())
+    {
+        TRACE("video", "fadeblack: window already black, skipped");
+        return 0;
+    }
+#ifdef TESTING
+    // The two invariants, checked at the fade itself (see video_sdl.h).
+    if (fade_in && !E_Screen->window_is_black())
+        og::video_testing::report_fade_violation(
+            "fade-in without a fade-out (the window is not black)");
+    if (!fade_in)
+    {
+        std::string detail;
+        if (!E_Screen->testing_render_matches_presented(&detail))
+            og::video_testing::report_fade_violation(
+                ("fade-out from a frame that was never presented (the render "
+                 "buffer was cleared or redrawn after its last present: " +
+                 detail + ")").c_str());
+    }
+#endif
 	// Sized to the active canvas: FadeBetween requires exact dim matches
 	// with E_Screen->render.
 	SDL_Surface* black = SDL_CreateSurface(active_canvas_w(), active_canvas_h(), SDL_PIXELFORMAT_XRGB8888);
@@ -3867,5 +3939,13 @@ int sdl_video::fadeblack(bool fade_in)
         i = FadeBetween(E_Screen->render, black, E_Screen->render); // fade to black
 
 	SDL_DestroySurface(black);
+	// Stamped AFTER FadeBetween: its terminal swap presents the black frame
+	// and, like every present, clears the flag. A 0 return means the fade
+	// never ran (a precondition failure), so the window keeps its state; an
+	// aborted fade (-1) still presented black.
+	if (!fade_in && i != 0)
+	{
+		E_Screen->set_window_black(true);
+	}
 	return i;
 }

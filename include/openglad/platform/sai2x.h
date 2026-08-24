@@ -5,6 +5,7 @@
 #include <openglad/core/scale_mode.h> // zoom/smoothing canvas settings
 #include <memory>
 #include <span>
+#include <string>
 #include <vector>
 
 enum class RenderEngine
@@ -106,6 +107,27 @@ class Screen
 		int ui_h() const { return kUiCanvasH; }
 		CanvasTarget active_canvas() const { return active_; }
 		CanvasTarget last_presented_canvas() const { return last_presented_; }
+		// --- Window state (fade ownership, docs/menu-engine.md) ---------
+		// True while the physical window shows black: from creation (a
+		// window that has never presented shows nothing) and after a
+		// completed fade-out, until the next present. swap() — the single
+		// present site — clears it; sdl_video::fadeblack(false) sets it and
+		// is a no-op while it holds, so a screen that already faded out can
+		// never be faded out a second time, black-to-black.
+		bool window_is_black() const { return window_is_black_; }
+		void set_window_black(bool black) { window_is_black_ = black; }
+#ifdef TESTING
+		// The fade-out precondition: the active render surface holds
+		// exactly the pixels the window last showed of it (nothing drew or
+		// cleared it since its last present). False for a surface that was
+		// never presented. `detail` (optional) receives where it differs —
+		// the bounding box of the changed pixels, or "never presented".
+		bool testing_render_matches_presented(std::string* detail = nullptr) const;
+		// Test boundary: every canvas counts as presented as it stands and
+		// the window is not black, so a direct-call test never inherits the
+		// previous test's window.
+		void testing_reset_window_state();
+#endif
 		// Repoints render/render_tex at the chosen canvas. Precondition:
 		// never call during a floor-layer redirect (floor_layer_begin/end
 		// bracket their redirect within one viewport draw).
@@ -257,6 +279,20 @@ class Screen
 
 		CanvasTarget active_ = CanvasTarget::UI;
 		CanvasTarget last_presented_ = CanvasTarget::UI;
+		bool window_is_black_ = true;
+#ifdef TESTING
+		// Per canvas surface, a copy of its pixels as of its last present
+		// (keyed by the surface, so the shared classic pair — one surface
+		// under two canvas names — has one snapshot). Production builds
+		// carry none of this.
+		struct PresentedSnapshot {
+			SDL_Surface* surface = nullptr;
+			SDL_Surface* pixels = nullptr;
+		};
+		std::vector<PresentedSnapshot> presented_snapshots_;
+		void testing_snapshot_presented(SDL_Surface* surface);
+		void testing_forget_presented(SDL_Surface* surface);
+#endif
 		// Parsed zoom/smoothing state. Legacy is the byte-identical shared
 		// 320x200 canvas with smoothing off.
 		og::WorldScaleSetting world_scale_{};

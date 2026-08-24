@@ -13,8 +13,11 @@
 #include <openglad/interface/input.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
+#include <algorithm>
 #include <array>
 #include <atomic>
+#include <cstring>
+#include <format>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -853,6 +856,11 @@ void Screen::set_vsync(bool on)
 
 Screen::~Screen()
 {
+#ifdef TESTING
+	for (PresentedSnapshot& snapshot : presented_snapshots_)
+		SDL_DestroySurface(snapshot.pixels);
+	presented_snapshots_.clear();
+#endif
 	destroy_render2();
 	destroy_gameplay_ui_overlay();
 	if (world_tex_ != ui_tex_)
@@ -1106,7 +1114,12 @@ bool Screen::set_world_canvas_size(int w, int h)
 	if (previous_texture != ui_tex_)
 		SDL_DestroyTexture(previous_texture);
 	if (previous_surface != ui_surf_)
+	{
+#ifdef TESTING
+		testing_forget_presented(previous_surface);
+#endif
 		SDL_DestroySurface(previous_surface);
+	}
 	return true;
 }
 
@@ -1394,6 +1407,9 @@ void Screen::destroy_gameplay_ui_overlay()
 		render_tex = world_tex_;
 	}
 	SDL_DestroyTexture(gameplay_ui_tex_);
+#ifdef TESTING
+	testing_forget_presented(gameplay_ui_surf_);
+#endif
 	SDL_DestroySurface(gameplay_ui_surf_);
 	gameplay_ui_tex_ = nullptr;
 	gameplay_ui_surf_ = nullptr;
@@ -1465,6 +1481,9 @@ bool Screen::recreate_render_backend()
 			// pass retries the split allocation transactionally.
 			LogError("recreate_render_backend: world texture creation failed "
 			         "for {}x{}: {}\n", world_w_, world_h_, SDL_GetError());
+#ifdef TESTING
+			testing_forget_presented(world_surf_);
+#endif
 			SDL_DestroySurface(world_surf_);
 			world_surf_ = ui_surf_;
 			world_tex_ = ui_tex_;
@@ -1534,6 +1553,9 @@ bool Screen::ensure_gameplay_ui_overlay()
 	SDL_SetTextureBlendMode(next_texture, SDL_BLENDMODE_BLEND);
 	SDL_SetTextureScaleMode(next_texture, SDL_SCALEMODE_NEAREST);
 	SDL_DestroyTexture(gameplay_ui_tex_);
+#ifdef TESTING
+	testing_forget_presented(gameplay_ui_surf_);
+#endif
 	SDL_DestroySurface(gameplay_ui_surf_);
 	gameplay_ui_surf_ = next_surface;
 	gameplay_ui_tex_ = next_texture;
@@ -1890,6 +1912,12 @@ void Screen::swap(int x, int y, int w, int h)
 		}
     }
     SDL_RenderPresent(renderer);
+	// The single present site: whatever the window showed before, it now
+	// shows this canvas. Only a completed fadeblack(false) sets the flag back.
+	window_is_black_ = false;
+#ifdef TESTING
+	testing_snapshot_presented(render);
+#endif
 	last_presented_ = active_ == CanvasTarget::GameplayUI
 		? CanvasTarget::World
 		: active_;
@@ -1914,6 +1942,147 @@ void Screen::swap(int x, int y, int w, int h)
 		set_active_canvas(active_);
 	}
 }
+
+#ifdef TESTING
+namespace
+{
+std::size_t surface_row_bytes(const SDL_Surface* surface)
+{
+	const SDL_PixelFormatDetails* details =
+		SDL_GetPixelFormatDetails(surface->format);
+	return static_cast<std::size_t>(surface->w) *
+		(details != nullptr ? details->bytes_per_pixel : 4u);
+}
+} // namespace
+
+void Screen::testing_snapshot_presented(SDL_Surface* surface)
+{
+	if (surface == nullptr)
+		return;
+	PresentedSnapshot* slot = nullptr;
+	for (PresentedSnapshot& candidate : presented_snapshots_)
+	{
+		if (candidate.surface == surface)
+		{
+			slot = &candidate;
+			break;
+		}
+	}
+	if (slot == nullptr)
+	{
+		presented_snapshots_.push_back({surface, nullptr});
+		slot = &presented_snapshots_.back();
+	}
+	if (slot->pixels != nullptr &&
+	    (slot->pixels->w != surface->w || slot->pixels->h != surface->h ||
+	     slot->pixels->format != surface->format))
+	{
+		SDL_DestroySurface(slot->pixels);
+		slot->pixels = nullptr;
+	}
+	if (slot->pixels == nullptr)
+	{
+		slot->pixels = SDL_CreateSurface(surface->w, surface->h, surface->format);
+		if (slot->pixels == nullptr)
+			return;
+	}
+	// Row copies (the two pitches need not match), not a blit: a blit may
+	// rewrite the unused X byte and the comparison below is byte-exact.
+	const std::size_t row_bytes = surface_row_bytes(surface);
+	const auto* src = static_cast<const Uint8*>(surface->pixels);
+	auto* dst = static_cast<Uint8*>(slot->pixels->pixels);
+	for (int y = 0; y < surface->h; ++y)
+	{
+		memcpy(dst + static_cast<std::size_t>(y) * static_cast<std::size_t>(slot->pixels->pitch),
+		       src + static_cast<std::size_t>(y) * static_cast<std::size_t>(surface->pitch),
+		       row_bytes);
+	}
+}
+
+void Screen::testing_forget_presented(SDL_Surface* surface)
+{
+	for (auto it = presented_snapshots_.begin(); it != presented_snapshots_.end(); ++it)
+	{
+		if (it->surface != surface)
+			continue;
+		SDL_DestroySurface(it->pixels);
+		presented_snapshots_.erase(it);
+		return;
+	}
+}
+
+bool Screen::testing_render_matches_presented(std::string* detail) const
+{
+	if (detail != nullptr)
+		detail->clear();
+	if (render == nullptr)
+	{
+		if (detail != nullptr)
+			*detail = "no render surface";
+		return false;
+	}
+	for (const PresentedSnapshot& snapshot : presented_snapshots_)
+	{
+		if (snapshot.surface != render)
+			continue;
+		if (snapshot.pixels == nullptr || snapshot.pixels->w != render->w ||
+		    snapshot.pixels->h != render->h ||
+		    snapshot.pixels->format != render->format)
+		{
+			if (detail != nullptr)
+				*detail = "presented at different dimensions";
+			return false;
+		}
+		const std::size_t row_bytes = surface_row_bytes(render);
+		const int bpp = static_cast<int>(row_bytes / static_cast<std::size_t>(render->w));
+		const auto* presented = static_cast<const Uint8*>(snapshot.pixels->pixels);
+		const auto* current = static_cast<const Uint8*>(render->pixels);
+		// Bounding box of every differing pixel: names the culprit draw
+		// (a whole-frame box is a clear; a button-sized one is a stale
+		// widget redraw) without a debugger.
+		int min_x = render->w, min_y = render->h, max_x = -1, max_y = -1;
+		for (int y = 0; y < render->h; ++y)
+		{
+			const Uint8* prow = presented + static_cast<std::size_t>(y) * static_cast<std::size_t>(snapshot.pixels->pitch);
+			const Uint8* crow = current + static_cast<std::size_t>(y) * static_cast<std::size_t>(render->pitch);
+			if (memcmp(prow, crow, row_bytes) == 0)
+				continue;
+			if (detail == nullptr)
+				return false;
+			for (int x = 0; x < render->w; ++x)
+			{
+				if (memcmp(prow + x * bpp, crow + x * bpp, static_cast<std::size_t>(bpp)) == 0)
+					continue;
+				min_x = std::min(min_x, x);
+				max_x = std::max(max_x, x);
+				min_y = std::min(min_y, y);
+				max_y = std::max(max_y, y);
+			}
+		}
+		if (max_x < 0)
+			return true;
+		*detail = std::format("render differs from the presented frame in x {}..{}, y {}..{} of {}x{}",
+		                      min_x, max_x, min_y, max_y, render->w, render->h);
+		return false;
+	}
+	if (detail != nullptr)
+		*detail = "never presented";
+	return false;
+}
+
+void Screen::testing_reset_window_state()
+{
+	window_is_black_ = false;
+	for (PresentedSnapshot& snapshot : presented_snapshots_)
+		SDL_DestroySurface(snapshot.pixels);
+	presented_snapshots_.clear();
+	testing_snapshot_presented(ui_surf_);
+	if (world_surf_ != ui_surf_)
+		testing_snapshot_presented(world_surf_);
+	if (gameplay_ui_surf_ != nullptr)
+		testing_snapshot_presented(gameplay_ui_surf_);
+}
+#endif
 
 void Screen::clear_window()
 {

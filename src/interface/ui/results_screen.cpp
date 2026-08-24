@@ -525,16 +525,23 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 
     // The popup and results panel share the fixed UI surface. Restore the
     // nearest-scaled gameplay backdrop so the closed popup does not remain
-    // visible around the results panel.
+    // visible around the results panel — and PRESENT it: the fade below
+    // reads the buffer, and a fade may only read a frame the window has
+    // shown (#237 ownership). The popup vanishes on this present, exactly as
+    // it did on the fade's first blended frame.
     if (canvas_target.entered_from_world())
+    {
         output.prepare_ui_canvas_from_world();
+        og::runtime::current_session->myscreen_->refresh();
+    }
 
-    // #237 depth rule, applied by hand (this hand-rolled loop never enters
-    // run_menu_screen): gameplay -> results is a context switch — fade the
-    // last mission frame out here, fade the first composed panel frame in at
-    // the loop's first present. The dismissed popup above stays a modal and
-    // never fades.
-    bool entry_fade_in_pending = og::ui::begin_legacy_menu_entry_fade();
+    // #237 ownership rule, applied by hand (this hand-rolled loop never
+    // enters run_menu_screen): gameplay -> results is a context switch — fade
+    // the last mission frame out here, fade the first composed panel frame in
+    // at the loop's first present, and fade the panel out again when this
+    // scope ends (before the canvas restore above it). The dismissed popup
+    // stays a modal and never fades.
+    og::ui::LegacyMenuFade entry_fade;
 
     // Clear any stale input events after popup closes
     // This helps prevent ASYNCIFY state issues in Emscripten
@@ -1112,13 +1119,8 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 	        }
         
         draw_highlight(buttons[highlighted_button]);
-        if (entry_fade_in_pending) {
-            // fadeblack presents the composed buffer itself (#237).
-            entry_fade_in_pending = false;
-            og::runtime::current_session->myscreen_->fadeblack(1);
-        } else {
-            og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
-        }
+        // The first frame fades in; every later one presents plainly (#237).
+        entry_fade.present_first(*og::runtime::current_session->myscreen_);
         og::input_native::sleep_ms(10);
 
         frame++;

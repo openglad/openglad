@@ -230,7 +230,12 @@ static void picker_initialize_shared_menu_state()
     pks().backdrops[3]->setxy(160, 100);
 
     og::runtime::current_session->myscreen_->viewob[0]->resize(PREF_VIEW_FULL);
-    og::runtime::current_session->myscreen_->clearbuffer();
+    // No clear here (#237 ownership): whatever the window shows when the
+    // picker starts (the loading dialog when the intro was skipped, the
+    // previous test's frame) is what the main menu's entry fade-out reads,
+    // and main_menu_draw_background clears before it paints. A clear between
+    // that last present and the fade is the hard-cut class the video layer
+    // flags under TESTING.
 
     pks().main_title_logo_data = read_pixie_file("title.png"); // marbled gladiator title
     pks().main_title_logo_pix = make_picker_pixie(pks().main_title_logo_data);
@@ -349,6 +354,11 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         if (action == ButtonAction::Networking) {
             pks().selected_menu_item = og::ui::find_picker_menu_item(
                 og::ui::PickerMenuId::TeamBuild, og::ui::PickerMenuCommand::Networking);
+            // #237: NETWORKING is an instant Base Camp strip door, but Base
+            // Camp EXITS to open it. Noted before that exit so Base Camp's
+            // exit scope skips its fade-out (the note then rides through to
+            // the legacy screen's entry — configure_networking re-notes it).
+            og::ui::note_menu_entry_fade(og::ui::MenuEntryFade::Instant);
             retvalue = MENU_EXIT;
             return true;
         }
@@ -763,15 +773,16 @@ public:
         clear_keyboard();
         pks().networking_clicked_room_slot = -1;
         begin_relay_room_list_view();
-        // #237 depth rule, applied by hand (this screen stays legacy —
+        // #237 ownership rule, applied by hand (this screen stays legacy —
         // MenuEngine.networking_stays_legacy_v2_decision). The wrapper's
         // Instant note classifies this door as a Base Camp strip door, and
-        // this call is the note's consumer (the swallow-even-if-unused
-        // discipline): it always returns false here, and the loop below
-        // presents plainly. If the wrapper's note is ever removed, this
-        // fades the menu out and the first presented frame cuts in a beat
-        // later — visible, not broken.
-        (void)og::ui::begin_legacy_menu_entry_fade();
+        // this scope is the note's consumer (the swallow-even-if-unused
+        // discipline): it is inactive here, so it fades nothing on entry or
+        // exit and the loop below presents plainly. If the wrapper's note is
+        // ever removed, this fades the menu out and in and out again —
+        // visible, not broken.
+        og::ui::LegacyMenuFade entry_fade;
+        (void)entry_fade;
 
         auto visible_room_count = [&]() -> int {
             if (!networking_settings_.use_room_code ||
@@ -1091,12 +1102,13 @@ public:
 
     std::string show_campaign_select() override
     {
-#ifdef TESTING
-        // Keep legacy menu-injector tests stable: they script Begin New Game ->
-        // Hire menu directly and do not interact with the campaign picker UI.
-        // (This also keeps the blocking intro below out of every test flow.)
-        return og::runtime::current_session->myscreen_->save_data.current_campaign;
-#endif
+        // Under TESTING this leg runs for real too (it used to short-circuit
+        // to current_campaign, which hid the intro's fade regression from
+        // every flow test): the browser auto-accepts the current campaign one
+        // presented frame in unless a test disarms it
+        // (campaign_picker_testing_set_auto_accept), and the intro scroller
+        // dismisses itself after its first frame unless a test forces the
+        // real view (help_testing_set_force_scroll_text).
         screen* game = og::runtime::current_session->myscreen_;
         CampaignResult result = pick_campaign(&game->save_data);
         if (result.id.empty())
@@ -1119,16 +1131,15 @@ public:
 
         // The CHOSEN campaign's intro, now that the selection committed
         // (issue #186 — it used to show the default campaign's intro before
-        // the picker ever ran). #237: the cut to the intro is a context
-        // switch — fade the select screen out instead of hard-cutting. No
-        // black note: the scroller draws right after, and Base Camp's own
-        // entry fade-out owns the scroller's last frame.
+        // the picker ever ran). #237 ownership: campaign select faded its
+        // own last frame out; the intro fades in over that black and fades
+        // itself out on dismissal (read_campaign_intro's LegacyMenuFade), so
+        // Base Camp's entry finds a black window and fades in. Nothing here
+        // may clear the buffer between a screen's last present and its exit
+        // fade — that clear was the reported hard cut.
         release_mouse();
-        game->fadeblack(0);
         read_campaign_intro(game);
-        game->refresh();
         grab_mouse();
-        game->clear();
         return result.id;
     }
 
@@ -3417,10 +3428,10 @@ void picker_reinit_after_game()
     screen* const current_screen = og::runtime::current_session->myscreen_;
     current_screen->set_active_canvas(current_screen->last_presented_canvas());
     current_screen->fadeblack(0);
-    // #200: this IS the fade back to the menu, and it only blackened whichever
-    // canvas was last presented. Clear the other one too, and tell the next
-    // menu entry not to fade the stale image out a second time.
-    og::ui::note_menu_faded_to_black();
+    // #200: this IS the fade back to the menu (a no-op when the last screen
+    // — the results panel — already faded itself out), and it only blackened
+    // whichever canvas was last presented. Clear the other one too; the next
+    // menu entry finds a black window and fades in only.
     current_screen->clearbuffer();
     current_screen->set_active_canvas(CanvasTarget::UI);
     current_screen->clearbuffer();
