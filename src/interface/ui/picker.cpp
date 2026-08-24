@@ -746,6 +746,10 @@ public:
         clear_keyboard();
         pks().networking_clicked_room_slot = -1;
         begin_relay_room_list_view();
+        // #237 depth rule, applied by hand (this screen stays legacy —
+        // MenuEngine.networking_stays_legacy_v2_decision): fade the main
+        // menu out now, fade the first composed frame in below.
+        bool entry_fade_in_pending = og::ui::begin_legacy_menu_entry_fade();
 
         auto visible_room_count = [&]() -> int {
             if (!networking_settings_.use_room_code ||
@@ -1009,8 +1013,14 @@ public:
             }
 
             draw_highlight(buttons[highlighted_button]);
-            og::runtime::current_session->myscreen_->buffer_to_screen(
-                0, 0, 320, 200);
+            if (entry_fade_in_pending) {
+                // fadeblack presents the composed buffer itself (#237).
+                entry_fade_in_pending = false;
+                og::runtime::current_session->myscreen_->fadeblack(1);
+            } else {
+                og::runtime::current_session->myscreen_->buffer_to_screen(
+                    0, 0, 320, 200);
+            }
             og::input_native::sleep_ms(10);
         }
 
@@ -1093,10 +1103,12 @@ public:
 
         // The CHOSEN campaign's intro, now that the selection committed
         // (issue #186 — it used to show the default campaign's intro before
-        // the picker ever ran).
+        // the picker ever ran). #237: the cut to the intro is a context
+        // switch — fade the select screen out instead of hard-cutting. No
+        // black note: the scroller draws right after, and Base Camp's own
+        // entry fade-out owns the scroller's last frame.
         release_mouse();
-        game->clearbuffer();
-        game->swap();
+        game->fadeblack(0);
         read_campaign_intro(game);
         game->refresh();
         grab_mouse();
@@ -3378,7 +3390,7 @@ void picker_reinit_after_game()
     // #200: this IS the fade back to the menu, and it only blackened whichever
     // canvas was last presented. Clear the other one too, and tell the next
     // menu entry not to fade the stale image out a second time.
-    og::ui::suppress_next_menu_entry_fade_out();
+    og::ui::note_menu_faded_to_black();
     current_screen->clearbuffer();
     current_screen->set_active_canvas(CanvasTarget::UI);
     current_screen->clearbuffer();

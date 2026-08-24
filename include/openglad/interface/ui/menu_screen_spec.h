@@ -133,12 +133,19 @@ enum class RemoteStartExit : std::uint8_t {
     BreakWithSelection,
 };
 
-// Per-screen entry transition timing (injector SDL_Delay(750) cadence
-// depends on this being preserved exactly).
-enum class EnterTransition : std::uint8_t {
-    None,
-    FadeAroundEntry,
-    FadeWithInitialDraw,
+// Which transition family a screen belongs to (#237, docs/menu-engine.md
+// "Drawing and transitions"). Screen is a full-window menu surface; Overlay
+// is a true modal drawn over a live scene (the pause family) and never
+// fades. Whether a Screen actually fades is DERIVED per entry by
+// run_menu_screen — never declared per screen: it fades exactly when the
+// entry is a context switch (menu-stack depth 1, nothing else open) and
+// never when nested under an already-open menu screen. Note: fades are
+// instant under TESTING (FadeBetween skips the animation), so the injector
+// SDL_Delay(750) waits around menu entries are generic settles, not fade
+// timing — several guard transitions that never faded at all.
+enum class MenuScreenKind : std::uint8_t {
+    Screen,
+    Overlay,
 };
 
 // Reserved for a future dynamic row-template consumer.
@@ -159,7 +166,7 @@ struct MenuScreenSpec {
     // PickerInterceptScope value the screen runs under; 0 = inherit the
     // ambient scope (subscreens never change it).
     int intercept_scope = 0;
-    EnterTransition enter = EnterTransition::None;
+    MenuScreenKind kind = MenuScreenKind::Screen;
     int default_highlight = 0;
     bool right_click_enabled = false;
     // Subscreens whose BACK carries MENU_REDRAW (VIEW TEAM, MATCHUP and the
@@ -228,13 +235,35 @@ std::vector<const MenuButtonSpec*> materialized_spec_rows_for(
 // spec.exit_value (or propagates a remote-start MENU_EXIT).
 Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state = nullptr);
 
-// Post-game teardown hand-off (#200): the code that ends a mission already
-// fades the presented canvas to black, so the next screen's
-// EnterTransition::FadeAroundEntry must skip its own fade-out instead of
-// fading the stale menu image out a second time. One-shot; the fade-in still
-// runs. consume_* is the runner's own read-and-clear.
-void suppress_next_menu_entry_fade_out();
-bool consume_suppressed_menu_entry_fade_out();
+// #237 depth-rule transition state. A fade-out semantically belongs to the
+// OUTGOING surface but is executed by the INCOMING screen; when a teardown
+// (the two gameplay exits, the intro's last page, the new-game cut) already
+// left the presented surface black, it notes that here and the next fading
+// entry skips its own fade-out instead of playing black-to-black (#200).
+// Every run_menu_screen entry (and begin_legacy_menu_entry_fade) consumes
+// the note even when it does not fade — the swallow-even-if-unused property
+// that keeps a stale note from leaking one screen forward.
+void note_menu_faded_to_black();
+bool consume_menu_faded_to_black();
+
+// Current menu-stack depth (0 = no engine screen open). run_menu_screen
+// increments it around every entry; the depth-1 entry of a
+// MenuScreenKind::Screen is the context switch that fades.
+int menu_screen_depth();
+
+// The hand-applied depth rule for legacy full-screen entries that never call
+// run_menu_screen (NETWORKING, campaign select, the results panel). At a
+// context switch (no engine screen open) it fades the presented surface to
+// black — skipped when a teardown already left it black — and returns true:
+// the caller must present its FIRST composed frame with fadeblack(1) instead
+// of buffer_to_screen. Nested under an open menu screen (Base Camp's SET
+// CAMPAIGN) it fades nothing and returns false.
+bool begin_legacy_menu_entry_fade();
+
+#ifdef TESTING
+// Reset the transition state (depth 0, no black note) between tests.
+void menu_transition_testing_reset();
+#endif
 
 // Registry of picker-screen ownership. Runtime screens carry their spec;
 // legacy screens carry their blocking entry point. NETWORKING is owned by

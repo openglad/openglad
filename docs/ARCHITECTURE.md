@@ -989,7 +989,7 @@ Menu functions block in event loops. Tests use a separate thread to drive naviga
 ```cpp
 static int injector_thread(void* data) {
     wait_for_interactable("button_id", 5000);  // Wait for button to exist
-    SDL_Delay(1500);                            // Wait for fadeblack animation
+    SDL_Delay(1500);                            // Entry settle (fades are instant under TESTING)
     interact("button_id");                      // Click by ID
     return 0;
 }

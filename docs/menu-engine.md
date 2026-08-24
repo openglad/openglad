@@ -77,7 +77,8 @@ Entry performs these steps:
 2. Initialize live buttons and clear keyboard state.
 3. Apply art bindings.
 4. Compute row gates and navigation.
-5. Run the screen's entry transition.
+5. Compose and present the cold first frame — faded in when the entry is a
+   context switch (see "Drawing and transitions").
 
 Each frame then:
 
@@ -108,10 +109,36 @@ compiled variants must keep every surviving raw index and link valid.
 
 ## Drawing and transitions
 
-The runtime supports:
+Fades follow one rule (#237): a screen fades exactly when it is entered as a
+context switch — from outside the open menu stack. `run_menu_screen` derives
+the decision; no screen declares a fade:
 
-- the main menu's initial draw between fade-out and fade-in;
-- Base Camp's fade around its cold first frame;
+- `MenuScreenKind::Screen` entered at menu-stack depth 1 fades: the previous
+  surface fades out (skipped when a teardown already noted the surface
+  black), the cold first frame is composed, and `fadeblack(1)` presents it.
+  The main menu, Base Camp, name entry, the LOAD list, and the main menu's
+  SETTINGS/HELP doors all enter this way.
+- A nested `run_menu_screen` call (any subscreen door under an open screen)
+  never fades; its cold frame is composed and presented directly.
+- `MenuScreenKind::Overlay` (the pause family) never fades at any depth.
+- Legacy full-screen entries outside the runner — NETWORKING, campaign
+  select, the results panel — apply the same rule by hand through
+  `begin_legacy_menu_entry_fade()`.
+
+The teardowns that already fade the presented surface to black (the two
+gameplay exits, the intro's last page, the new-game cut) call
+`note_menu_faded_to_black()`; the next fading entry skips its own fade-out
+instead of playing black-to-black (#200). Every entry consumes the note,
+fading or not, so a stale note cannot leak one screen forward. Purely
+technical fades that mask loads and canvas resets (glad_init, the gameplay
+teardowns) are not entry transitions and stay where they are.
+
+Fades are instant under TESTING (`FadeBetween` blits once and traces instead
+of animating), so injector `SDL_Delay(750)` waits are generic settles, not
+fade timing.
+
+The runtime also supports:
+
 - background drawing below buttons;
 - content drawing above buttons;
 - screens without a backdrop;

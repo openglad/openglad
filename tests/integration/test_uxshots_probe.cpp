@@ -281,7 +281,7 @@ int mainmenu_no_company_injector(void *data) {
   og::runtime::ensure_thread_session();
   ShotState *state = static_cast<ShotState *>(data);
   wait_for_interactable("begin_new_game", 5000);
-  SDL_Delay(1500); // FadeWithInitialDraw settle
+  SDL_Delay(1500); // menu-entry settle
   state->captures += capture_frame("mainmenu_no_company");
   interact("quit");
   state->finished = true;
@@ -475,7 +475,7 @@ int company_list_injector(void *data) {
   SDL_Delay(1500);
   interact("load_company");
   if (wait_for_interactable("company_row_0", 5000)) {
-    SDL_Delay(1500); // FadeAroundEntry settle
+    SDL_Delay(1500); // menu-entry settle
     state->captures += capture_frame("company_list");
     interact("back");
   }
@@ -1596,7 +1596,7 @@ int help_screen_injector(void *data) {
   og::runtime::ensure_thread_session();
   ShotState *state = static_cast<ShotState *>(data);
   wait_for_interactable("help", 5000);
-  SDL_Delay(1500); // FadeWithInitialDraw settle on the main menu
+  SDL_Delay(1500); // menu-entry settle on the main menu
   interact("help");
   if (wait_for_interactable("help_tab_classes", 5000)) {
     SDL_Delay(500);

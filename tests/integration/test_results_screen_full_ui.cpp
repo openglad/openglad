@@ -195,6 +195,24 @@ static int results_ui_troops_then_ok_injector(void* data)
     return 0;
 }
 
+// #237: gameplay -> results is a context switch, so the panel entry fades —
+// one fade-out plus one fade-in at the loop's first present. Under TESTING
+// each fadeblack traces exactly one FadeBetween line.
+int count_fade_between_traces()
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    int fades = 0;
+    for (const TraceEntry& entry : g_trace_buffer)
+    {
+        if (entry.category == "video" &&
+            entry.message.find("FadeBetween") != std::string::npos)
+        {
+            ++fades;
+        }
+    }
+    return fades;
+}
+
 } // namespace
 
 TEST(ResultsScreenFullUi, overview_and_troops_paths)
@@ -292,6 +310,7 @@ TEST(ResultsScreenFullUi, overview_and_troops_paths)
     SDL_Thread* thread = SDL_CreateThread(results_ui_injector, "results_ui_injector", &st);
     ASSERT_TRUE(thread != nullptr) << "failed to create results injector thread";
 
+    trace_clear();
     const bool retry = results_screen(0, 2, before, after);
 
     int rc = 0;
@@ -302,6 +321,9 @@ TEST(ResultsScreenFullUi, overview_and_troops_paths)
 
     ASSERT_TRUE(st.started && st.finished) << "results UI injector should run";
     ASSERT_TRUE(!retry) << "OK path should not request retry";
+    EXPECT_EQ(2, count_fade_between_traces())
+        << "#237: the results entry is a context switch — exactly one "
+           "fade-out plus the first-frame fade-in, and nothing more";
     EXPECT_EQ(CanvasTarget::World, E_Screen->active_canvas());
     EXPECT_EQ(640, E_Screen->render->w);
     EXPECT_EQ(400, E_Screen->render->h);

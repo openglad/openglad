@@ -2792,7 +2792,7 @@ Sint32 go_menu(Sint32 arg1)
         og::runtime::current_session->myscreen_->fadeblack(0);
         // #200: this IS the fade back to the menu. Base Camp's entry must not
         // play a second one over the stale pause-menu image.
-        og::ui::suppress_next_menu_entry_fade_out();
+        og::ui::note_menu_faded_to_black();
 
         // Zardus: PORT: doesn't seem to be neccessary
         og::runtime::current_session->myscreen_->clearbuffer();

@@ -272,8 +272,23 @@ constexpr MenuBuildVariant kCompiledBuildVariant =
     MenuBuildVariant::Native;
 #endif
 
-// One-shot: set by the post-game teardown, consumed by the next screen.
-bool g_suppress_entry_fade_out = false;
+// #237 depth-rule transition state (session-scoped): the menu-stack depth
+// run_menu_screen brackets around every entry, and the one-shot "presented
+// surface is already black" note the teardowns set.
+struct MenuTransitionState {
+    int depth = 0;
+    bool faded_to_black = false;
+};
+MenuTransitionState g_menu_transition;
+
+// RAII depth bracket: every run_menu_screen entry — including the early
+// remote-start returns — restores the depth it found.
+struct MenuDepthScope {
+    MenuDepthScope() { ++g_menu_transition.depth; }
+    ~MenuDepthScope() { --g_menu_transition.depth; }
+    MenuDepthScope(const MenuDepthScope&) = delete;
+    MenuDepthScope& operator=(const MenuDepthScope&) = delete;
+};
 
 bool spec_row_survives_build(const MenuButtonSpec& row, MenuBuildVariant variant)
 {
@@ -290,17 +305,40 @@ bool spec_row_survives_build(const MenuButtonSpec& row, MenuBuildVariant variant
 
 } // namespace
 
-void suppress_next_menu_entry_fade_out()
+void note_menu_faded_to_black()
 {
-    g_suppress_entry_fade_out = true;
+    g_menu_transition.faded_to_black = true;
 }
 
-bool consume_suppressed_menu_entry_fade_out()
+bool consume_menu_faded_to_black()
 {
-    const bool suppressed = g_suppress_entry_fade_out;
-    g_suppress_entry_fade_out = false;
-    return suppressed;
+    const bool faded = g_menu_transition.faded_to_black;
+    g_menu_transition.faded_to_black = false;
+    return faded;
 }
+
+int menu_screen_depth()
+{
+    return g_menu_transition.depth;
+}
+
+bool begin_legacy_menu_entry_fade()
+{
+    // Swallow-even-if-unused: a nested entry clears a stale note too.
+    const bool already_black = consume_menu_faded_to_black();
+    if (g_menu_transition.depth != 0)
+        return false;
+    if (!already_black)
+        og::runtime::current_session->myscreen_->fadeblack(0);
+    return true;
+}
+
+#ifdef TESTING
+void menu_transition_testing_reset()
+{
+    g_menu_transition = {};
+}
+#endif
 
 #ifdef TESTING
 void picker_testing_draw_menu_highlight(const MenuScreenSpec& spec,
@@ -355,10 +393,16 @@ void materialize_menu_buttons(const MenuScreenSpec& spec,
 
 Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
 {
-    // Consumed unconditionally: the flag is a hand-off from the screen that
+    // #237 depth rule: a Screen fades exactly when this entry is a context
+    // switch — nothing else on the menu stack (depth 1). Nested subscreen
+    // entries and Overlay screens (the pause family) never fade.
+    const MenuDepthScope depth_scope;
+    const bool should_fade = spec.kind == MenuScreenKind::Screen
+        && g_menu_transition.depth == 1;
+    // Consumed unconditionally: the black note is a hand-off from whatever
     // ran last, so whichever screen opens next must clear it even when it
     // does not fade around its entry.
-    const bool skip_entry_fade_out = consume_suppressed_menu_entry_fade_out();
+    const bool already_black = consume_menu_faded_to_black();
     // Sequence the D3 accessors: buttons() fills the vector count() reads.
     button* buttons = spec.buttons_accessor();
     const int num_buttons = spec.count_accessor();
@@ -395,41 +439,26 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         apply_nav_program(spec, buttons, num_buttons, highlighted_button);
     }
 
-    if (spec.enter == EnterTransition::FadeAroundEntry) {
-        // The legacy team-build entry, verbatim: fade the previous screen
-        // out, compose the cold first frame, and fade it in (fadeblack
-        // presents the buffer itself; the first highlighted frame follows in
-        // the loop, after the level-reload guard). Content must be present in
-        // this compose: Base Camp's roster ink is a content hook while its
-        // deploy X is a button, and splitting them across the fade makes the
-        // control pop in as the first full frame replaces the partial one.
-        screen* scr = og::runtime::current_session->myscreen_;
-        // ...unless the post-game teardown already faded to black (#200): the
-        // fade-out would run over the stale menu image the UI canvas still
-        // holds and play the same transition a second time.
-        if (!skip_entry_fade_out)
-            scr->fadeblack(0);
-        if (spec.backdrop)
-            draw_backdrop();
-        if (spec.draw_background != nullptr)
-            spec.draw_background(screen_state);
-        draw_buttons(buttons, num_buttons);
-        if (spec.draw_content != nullptr)
-            spec.draw_content(screen_state);
-        scr->fadeblack(1);
-    }
-
-    if (spec.enter == EnterTransition::FadeWithInitialDraw) {
-        // The legacy mainmenu entry, verbatim: settle one timer tick, fade
-        // the previous menu out, compose the first frame in the buffer, and
-        // fade it in (fadeblack presents the buffer itself — no
-        // buffer_to_screen here). Injector SDL_Delay(750) cadence depends on
-        // this exact sequence.
-        reset_timer();
-        while (query_timer() < 1)
-            ;
-        screen* scr = og::runtime::current_session->myscreen_;
-        scr->fadeblack(0);
+    // Cold first frame, every screen: labels bound, full compose, highlight.
+    // Content must be present in this compose: Base Camp's roster ink is a
+    // content hook while its deploy X is a button, and splitting them across
+    // the fade makes the control pop in as the first full frame replaces the
+    // partial one. (Fades are instant under TESTING — FadeBetween skips the
+    // animation — so no injector cadence depends on this sequence.)
+    {
+        screen* const scr = og::runtime::current_session->myscreen_;
+        if (should_fade) {
+            // The legacy mainmenu entry cadence: settle one timer tick, then
+            // fade the previous screen out — unless a teardown already left
+            // the presented surface black (#200): that fade-out would run
+            // over the stale menu image the UI canvas still holds and play
+            // the same transition a second time.
+            reset_timer();
+            while (query_timer() < 1)
+                ;
+            if (!already_black)
+                scr->fadeblack(0);
+        }
         {
             const MenuLabelContext context = build_label_context(spec);
             apply_label_bindings(spec_rows, buttons, num_buttons, context);
@@ -442,9 +471,15 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         if (spec.draw_content != nullptr)
             spec.draw_content(screen_state);
         draw_menu_highlight(spec, buttons, highlighted_button);
-        // Zardus: PORT: fade from black
-        scr->fadeblack(1);
-        grab_mouse();
+        if (should_fade) {
+            // Zardus: PORT: fade from black
+            // fadeblack presents the composed buffer itself.
+            scr->fadeblack(1);
+            grab_mouse();
+        } else {
+            // Without a fade nothing presents the cold frame.
+            scr->buffer_to_screen(0, 0, 320, 200);
+        }
     }
 
     int frame = 0;

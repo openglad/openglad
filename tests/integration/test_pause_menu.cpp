@@ -353,7 +353,9 @@ TEST(PauseMenuPins, pause_menu_exact_table)
     EXPECT_FALSE(spec.polls_lobby);
     EXPECT_FALSE(spec.backdrop);
     EXPECT_EQ(og::ui::RemoteStartScope::None, spec.remote_start);
-    EXPECT_EQ(og::ui::EnterTransition::None, spec.enter);
+    // #237: the pause family are the only Overlay screens — true modals over
+    // the live world, never faded even at depth 1.
+    EXPECT_EQ(og::ui::MenuScreenKind::Overlay, spec.kind);
     EXPECT_FALSE(spec.exit_on_redraw);
 }
 
@@ -411,6 +413,8 @@ TEST(PauseMenuPins, pause_player_exact_table)
     EXPECT_TRUE(spec.exit_on_redraw);
     EXPECT_FALSE(spec.polls_lobby);
     EXPECT_EQ(og::ui::RemoteStartScope::None, spec.remote_start);
+    // #237: pause family = Overlay, never faded.
+    EXPECT_EQ(og::ui::MenuScreenKind::Overlay, spec.kind);
 }
 
 // ---------------------------------------------------------------------------
@@ -2506,10 +2510,11 @@ TEST(PauseMenuFlow, restart_mission_relaunches_level_through_picker_loop)
 // Regression (#200): quitting a scenario faded it out TWICE. The teardown in
 // go_menu fades whichever canvas was last presented (World, after the pause
 // menu's exit dance) and clears it, but the UI canvas still held the pause
-// menu image; Base Camp's EnterTransition::FadeAroundEntry then faded THAT
-// out as a second visible transition. On a WIN the results screen presents on
-// the UI canvas, so the second fade was an invisible no-op — hence "only when
-// I quit".
+// menu image; Base Camp's depth-1 entry fade (#237 derivation) then faded
+// THAT out as a second visible transition. On a WIN the results screen
+// presents on the UI canvas, so the second fade was an invisible no-op —
+// hence "only when I quit". The teardown's note_menu_faded_to_black() is
+// what suppresses the entry fade-out today.
 //
 // Under TESTING every fadeblack lands in FadeBetween's test-mode branch, which
 // traces one line per fade. Counting them across the quit is the pin: the

@@ -579,7 +579,7 @@ static int base_camp_row_train_injector(void* data)
         inject_key_press(SDLK_ESCAPE, 10);
         return 0;
     }
-    SDL_Delay(750);  // FadeAroundEntry eats early clicks
+    SDL_Delay(750);  // entry settle (fades are instant under TESTING)
     // Tap the rendered name itself, not the center of the wide row hit zone.
     // Round 6 places NAME at x=88; row 1 remains y=59..68.
     const auto [mapped_x, mapped_y] =
@@ -737,7 +737,7 @@ static int base_camp_scenario_line_injector(void* data)
         inject_key_press(SDLK_ESCAPE, 10);
         return 0;
     }
-    SDL_Delay(750);  // FadeAroundEntry eats early clicks
+    SDL_Delay(750);  // entry settle (fades are instant under TESTING)
     const auto [mapped_x, mapped_y] =
         ui_canvas_to_window(30.0f, 19.0f);
     inject_click(static_cast<int>(mapped_x), static_cast<int>(mapped_y), 100);
@@ -4129,7 +4129,7 @@ static int base_camp_train_rename_injector(void* data)
         inject_key_press(SDLK_ESCAPE, 10);
         return 0;
     }
-    SDL_Delay(750);  // FadeAroundEntry eats early clicks
+    SDL_Delay(750);  // entry settle (fades are instant under TESTING)
     interact("roster_row_1");
 
     if (!wait_for_interactable("rename", 10000)) {

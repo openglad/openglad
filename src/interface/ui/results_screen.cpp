@@ -6,6 +6,7 @@
  * (at your option) any later version.
  */
 #include <openglad/interface/ui/results_screen.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/base.h>
 #include <openglad/interface/button.h>
@@ -527,6 +528,13 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
     // visible around the results panel.
     if (canvas_target.entered_from_world())
         output.prepare_ui_canvas_from_world();
+
+    // #237 depth rule, applied by hand (this hand-rolled loop never enters
+    // run_menu_screen): gameplay -> results is a context switch — fade the
+    // last mission frame out here, fade the first composed panel frame in at
+    // the loop's first present. The dismissed popup above stays a modal and
+    // never fades.
+    bool entry_fade_in_pending = og::ui::begin_legacy_menu_entry_fade();
 
     // Clear any stale input events after popup closes
     // This helps prevent ASYNCIFY state issues in Emscripten
@@ -1104,9 +1112,15 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 	        }
         
         draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
+        if (entry_fade_in_pending) {
+            // fadeblack presents the composed buffer itself (#237).
+            entry_fade_in_pending = false;
+            og::runtime::current_session->myscreen_->fadeblack(1);
+        } else {
+            og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
+        }
         og::input_native::sleep_ms(10);
-        
+
         frame++;
         if(frame > 1000000)
             frame = 0;

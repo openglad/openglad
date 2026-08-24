@@ -140,7 +140,7 @@ int cloud_flow_injector(void* data)
     FlowState* state = static_cast<FlowState*>(data);
 
     wait_for_interactable("cloud", 10000);
-    SDL_Delay(750);  // FadeWithInitialDraw settle
+    SDL_Delay(750);  // menu-entry settle
     fprintf(stderr, "  [test] clicking CLOUD\n");
     interact("cloud");
 

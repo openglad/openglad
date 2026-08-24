@@ -26,6 +26,7 @@
 #include <openglad/core/util.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <array>
 #include <cstring>
 #ifdef __EMSCRIPTEN__
@@ -303,6 +304,11 @@ int cleanup()
 	release_timer();
 	og::runtime::current_session->myscreen_->clear();
 	og::runtime::current_session->myscreen_->refresh();
+	// #237: every intro exit (last page's fade-to-black or a key abort)
+	// leaves the presented surface black here, so the main menu's depth-1
+	// entry must skip its own fade-out — the cold-start black-to-black
+	// 500ms fade (#200's shape) dies with this note.
+	og::ui::note_menu_faded_to_black();
 
 		for (i = 0; i<256; i++)
 		{

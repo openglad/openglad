@@ -811,6 +811,7 @@ TEST(CampaignAndLevelPicker, campaign_picker_draw_loop_exits_on_q)
         hold_q_key_for_picker, "picker_q_hold", &entered_baseline));
     ASSERT_TRUE(thread.valid()) << "failed to create picker q-hold thread";
 
+    trace_clear();
     CampaignResult out = pick_campaign(&og::runtime::current_session->myscreen_->save_data, false);
     g_picker_q_release.store(true, std::memory_order_release);
 
@@ -818,6 +819,23 @@ TEST(CampaignAndLevelPicker, campaign_picker_draw_loop_exits_on_q)
 
     ASSERT_EQ(0, thread_result);
     ASSERT_TRUE(out.id.empty()) << "q exit path should not select a campaign";
+
+    // #237: entered with no menu screen open (depth 0), campaign select is a
+    // context switch — exactly one fade-out plus the first-frame fade-in.
+    // Under TESTING each fadeblack traces one FadeBetween line.
+    int fades = 0;
+    {
+        std::lock_guard<std::mutex> lock(g_trace_mutex);
+        for (const TraceEntry& entry : g_trace_buffer)
+        {
+            if (entry.category == "video" &&
+                entry.message.find("FadeBetween") != std::string::npos)
+                ++fades;
+        }
+    }
+    EXPECT_EQ(2, fades)
+        << "#237: a top-level campaign-select entry must fade out and in "
+           "exactly once";
 }
 
 

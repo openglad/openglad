@@ -203,11 +203,11 @@ int open_row_injector(void* data)
     state->started = true;
 
     wait_for_interactable("load_company", 5000);
-    SDL_Delay(750);  // FadeWithInitialDraw settle
+    SDL_Delay(750);  // menu-entry settle
     fprintf(stderr, "  [test] clicking LOAD\n");
     interact("load_company");
 
-    // The Company List fades in (FadeAroundEntry).
+    // The Company List fades in (a depth-1 entry under the #237 rule).
     if (wait_for_interactable("company_row_0", 5000)) {
         SDL_Delay(750);
         fprintf(stderr, "  [test] opening company row 0\n");
@@ -234,7 +234,7 @@ int open_other_company_and_toggle_injector(void* data)
     state->started = true;
 
     wait_for_interactable("load_company", 5000);
-    SDL_Delay(750);  // FadeWithInitialDraw settle
+    SDL_Delay(750);  // menu-entry settle
     interact("load_company");
 
     if (wait_for_interactable("company_row_0", 5000)) {
@@ -397,7 +397,7 @@ int backups_and_empty_injector(void* data)
         fprintf(stderr, "  [test] clicking the BK door\n");
         interact("company_bak_0");  // §2.4: opens the (empty) Backups view
         if (wait_for_backups_view()) {
-            SDL_Delay(750);  // FadeAroundEntry settle
+            SDL_Delay(750);  // menu-entry settle
             fprintf(stderr, "  [test] backing out of the empty backups view\n");
             interact("back");
         }
@@ -440,7 +440,7 @@ int restore_backup_injector(void* data)
         fprintf(stderr, "  [test] opening the backups view\n");
         interact("company_bak_0");
         if (wait_for_interactable("backup_row_0", 5000)) {
-            SDL_Delay(750);  // FadeAroundEntry settle
+            SDL_Delay(750);  // menu-entry settle
             // First click: the queued NO leaves everything alone.
             fprintf(stderr, "  [test] restoring row 0 (confirm NO)\n");
             interact("backup_row_0");
@@ -535,14 +535,14 @@ int continue_torn_newest_injector(void* data)
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);  // FadeWithInitialDraw settle
+    SDL_Delay(750);  // menu-entry settle
     fprintf(stderr, "  [test] clicking CONTINUE (torn newest)\n");
     interact("continue_game");
 
     // The failure popup is trace-only under TESTING; CONTINUE falls through
     // to the Company List (rows ts desc: 0 = torn newest, 1 = good previous).
     if (wait_for_interactable("company_row_1", 5000)) {
-        SDL_Delay(750);  // FadeAroundEntry settle
+        SDL_Delay(750);  // menu-entry settle
         fprintf(stderr, "  [test] opening the good row from the fallback list\n");
         interact("company_row_1");
         if (wait_for_team_menu()) {

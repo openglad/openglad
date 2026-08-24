@@ -34,6 +34,7 @@ extern "C" void __gcov_dump(void);
 #include <openglad/interface/input.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/results_screen.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_ui_state.h>
@@ -177,6 +178,9 @@ void reset_integration_ui_state()
     g_test_game_epoch.store(0, std::memory_order_release);
     picker_testing_yes_or_no_queue_clear();
     picker_testing_set_force_real_dialogs(false);
+    // #237: a test that noted "faded to black" (or aborted mid-screen) must
+    // not leak transition state into the tests declared after it.
+    og::ui::menu_transition_testing_reset();
 #endif
     results_screen_testing_set_force_full(false);
 }

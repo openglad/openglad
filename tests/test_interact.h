@@ -186,7 +186,7 @@ inline bool accept_generated_company_name(int timeout_ms = 5000)
 {
     if (!wait_for_interactable("company_name_accept", timeout_ms))
         return false;
-    SDL_Delay(750);  // FadeAroundEntry settle (fadeblack eats events)
+    SDL_Delay(750);  // menu-entry settle (fades are instant under TESTING)
     fprintf(stderr, "  [test] accepting generated company name\n");
     interact("company_name_accept");
     return true;

@@ -394,7 +394,7 @@ TEST(MenuEngine, blocking_control_remap_polls_and_aborts_for_remote_start)
            "sequence as soon as the host start is launchable";
 }
 
-TEST(MenuEngine, fade_around_entry_composes_content_before_fade_in)
+TEST(MenuEngine, depth_one_entry_composes_content_before_fade_in)
 {
     static constexpr og::ui::MenuButtonSpec kRows[] = {
         {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
@@ -405,8 +405,8 @@ TEST(MenuEngine, fade_around_entry_composes_content_before_fade_in)
     FakeLobbyClient lobby;
     og::ui::install_active_picker_lobby_client(&lobby);
 
+    // Default kind (Screen) at depth 1: the #237 derivation fades this entry.
     og::ui::MenuScreenSpec spec = make_synth_spec(kRows, 1, "fade_content");
-    spec.enter = og::ui::EnterTransition::FadeAroundEntry;
     spec.draw_content = &synth_draw_content;
     spec.remote_start = og::ui::RemoteStartScope::TeamBuildScope;
     g_synth_spec = &spec;
@@ -417,6 +417,172 @@ TEST(MenuEngine, fade_around_entry_composes_content_before_fade_in)
     EXPECT_EQ(1, g_synth_content_draws)
         << "the cold fade frame must include content before the loop's first "
            "full draw";
+}
+
+// ---------------------------------------------------------------------------
+// #237 depth rule: whether an entry fades is DERIVED (kind + menu-stack
+// depth), never declared per screen. Under TESTING each fadeblack lands in
+// FadeBetween's test-mode branch, tracing exactly one line per fade.
+namespace
+{
+
+int count_fade_between_traces()
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    int fades = 0;
+    for (const TraceEntry& entry : g_trace_buffer)
+    {
+        if (entry.category == "video" &&
+            entry.message.find("FadeBetween") != std::string::npos)
+        {
+            ++fades;
+        }
+    }
+    return fades;
+}
+
+// Nested-entry probe: the parent's first frame_tick opens the child screen
+// (the subscreen-door shape), then ends the parent loop.
+const og::ui::MenuScreenSpec* g_depth_rule_child_spec = nullptr;
+int g_depth_rule_child_content_draws = 0;
+
+void depth_rule_child_draw_content(void* /*state*/)
+{
+    ++g_depth_rule_child_content_draws;
+}
+
+bool depth_rule_parent_frame_tick(void* /*state*/, int frame)
+{
+    if (frame == 1 && g_depth_rule_child_spec != nullptr)
+    {
+        g_start_game_requested = true;  // preempts the child's loop instantly
+        (void)og::ui::run_menu_screen(*g_depth_rule_child_spec);
+        g_start_game_requested = false;
+        return false;  // end the parent loop after the child returns
+    }
+    return frame < 3;
+}
+
+} // namespace
+
+TEST(MenuEngine, depth_rule_root_entry_fades_out_and_in)
+{
+    static constexpr og::ui::MenuButtonSpec kRows[] = {
+        {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+         .x = 10, .y = 10, .w = 50, .h = 15,
+         .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT, .nav = {}},
+    };
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    og::ui::menu_transition_testing_reset();
+
+    og::ui::MenuScreenSpec spec = make_synth_spec(kRows, 1, "depth_root");
+    spec.remote_start = og::ui::RemoteStartScope::TeamBuildScope;
+    g_synth_spec = &spec;
+    g_start_game_requested = true;
+
+    trace_clear();
+    EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(spec));
+    EXPECT_EQ(2, count_fade_between_traces())
+        << "a depth-1 Screen entry is a context switch: exactly one fade-out "
+           "plus one fade-in";
+    EXPECT_EQ(0, og::ui::menu_screen_depth())
+        << "the RAII depth bracket must restore on exit";
+}
+
+TEST(MenuEngine, depth_rule_already_black_entry_fades_in_only)
+{
+    static constexpr og::ui::MenuButtonSpec kRows[] = {
+        {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+         .x = 10, .y = 10, .w = 50, .h = 15,
+         .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT, .nav = {}},
+    };
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    og::ui::menu_transition_testing_reset();
+
+    og::ui::MenuScreenSpec spec = make_synth_spec(kRows, 1, "depth_black");
+    spec.remote_start = og::ui::RemoteStartScope::TeamBuildScope;
+    g_synth_spec = &spec;
+    g_start_game_requested = true;
+
+    og::ui::note_menu_faded_to_black();
+    trace_clear();
+    EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(spec));
+    EXPECT_EQ(1, count_fade_between_traces())
+        << "a teardown's black note suppresses the entry fade-out (#200); "
+           "only the fade-in runs";
+
+    // One-shot: the note was consumed by that entry.
+    g_start_game_requested = true;
+    trace_clear();
+    EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(spec));
+    EXPECT_EQ(2, count_fade_between_traces())
+        << "the black note is one-shot — the next entry fades fully again";
+}
+
+TEST(MenuEngine, depth_rule_nested_entry_never_fades)
+{
+    static constexpr og::ui::MenuButtonSpec kRows[] = {
+        {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+         .x = 10, .y = 10, .w = 50, .h = 15,
+         .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT, .nav = {}},
+    };
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    og::ui::menu_transition_testing_reset();
+
+    og::ui::MenuScreenSpec child = make_synth_spec(kRows, 1, "depth_child");
+    child.draw_content = &depth_rule_child_draw_content;
+    child.remote_start = og::ui::RemoteStartScope::TeamBuildScope;
+
+    og::ui::MenuScreenSpec parent = make_synth_spec(kRows, 1, "depth_parent");
+    parent.frame_tick = &depth_rule_parent_frame_tick;
+    g_synth_spec = &parent;
+    g_depth_rule_child_spec = &child;
+    g_depth_rule_child_content_draws = 0;
+    g_start_game_requested = false;
+
+    trace_clear();
+    (void)og::ui::run_menu_screen(parent);
+    g_depth_rule_child_spec = nullptr;
+
+    EXPECT_EQ(1, g_depth_rule_child_content_draws)
+        << "the nested child must still compose (and present) its cold frame";
+    EXPECT_EQ(2, count_fade_between_traces())
+        << "only the parent's depth-1 entry fades; a nested run_menu_screen "
+           "call (a subscreen door) produces ZERO fades";
+}
+
+TEST(MenuEngine, depth_rule_overlay_never_fades_and_swallows_black_note)
+{
+    static constexpr og::ui::MenuButtonSpec kRows[] = {
+        {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+         .x = 10, .y = 10, .w = 50, .h = 15,
+         .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT, .nav = {}},
+    };
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    og::ui::menu_transition_testing_reset();
+
+    og::ui::MenuScreenSpec spec = make_synth_spec(kRows, 1, "depth_overlay");
+    spec.kind = og::ui::MenuScreenKind::Overlay;
+    spec.remote_start = og::ui::RemoteStartScope::TeamBuildScope;
+    g_synth_spec = &spec;
+    g_start_game_requested = true;
+
+    og::ui::note_menu_faded_to_black();
+    trace_clear();
+    EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(spec));
+    EXPECT_EQ(0, count_fade_between_traces())
+        << "an Overlay (the pause family) never fades, even at depth 1";
+    EXPECT_FALSE(og::ui::consume_menu_faded_to_black())
+        << "swallow-even-if-unused: a non-fading entry must still clear the "
+           "black note or it leaks one screen forward";
 }
 
 // ---------------------------------------------------------------------------
@@ -1290,12 +1456,13 @@ TEST(MenuEngine, company_list_spec_shape_and_nav_variants)
     const og::ui::MenuScreenSpec& spec = og::ui::company_list_menu_screen_spec();
 
     // Spec obligations (§2.3): main-scope remote start (a host GO launches a
-    // peer parked in the list), lobby poll, fade entry, the old load loop's
-    // BACK-first highlight, generic MenuSpecRow dispatch.
+    // peer parked in the list), lobby poll, the old load loop's BACK-first
+    // highlight, generic MenuSpecRow dispatch. Fading is derived (#237): a
+    // Screen kind, entered at depth 1 through the LOAD door, so it fades.
     EXPECT_EQ(std::string("company_list"), spec.name);
     EXPECT_EQ(og::ui::RemoteStartScope::MainScope, spec.remote_start);
     EXPECT_EQ(og::ui::RemoteStartExit::ReturnMenuExit, spec.remote_start_exit);
-    EXPECT_EQ(og::ui::EnterTransition::FadeAroundEntry, spec.enter);
+    EXPECT_EQ(og::ui::MenuScreenKind::Screen, spec.kind);
     EXPECT_TRUE(spec.polls_lobby);
     EXPECT_EQ(24, spec.default_highlight);
     EXPECT_TRUE(spec.on_spec_row != nullptr);
@@ -1551,12 +1718,13 @@ TEST(MenuEngine, company_backups_spec_shape_and_nav_variants)
         og::ui::company_backups_menu_screen_spec();
 
     // Spec obligations (§2.4): main-scope remote start (a host GO launches a
-    // peer parked in the sub-view), lobby poll, fade entry, row-0 highlight
-    // (the newest snapshot), generic MenuSpecRow dispatch.
+    // peer parked in the sub-view), lobby poll, row-0 highlight (the newest
+    // snapshot), generic MenuSpecRow dispatch. Fading is derived (#237): a
+    // Screen kind opened NESTED under the Company List, so it does not fade.
     EXPECT_EQ(std::string("company_backups"), spec.name);
     EXPECT_EQ(og::ui::RemoteStartScope::MainScope, spec.remote_start);
     EXPECT_EQ(og::ui::RemoteStartExit::ReturnMenuExit, spec.remote_start_exit);
-    EXPECT_EQ(og::ui::EnterTransition::FadeAroundEntry, spec.enter);
+    EXPECT_EQ(og::ui::MenuScreenKind::Screen, spec.kind);
     EXPECT_TRUE(spec.polls_lobby);
     EXPECT_EQ(0, spec.default_highlight);
     EXPECT_TRUE(spec.on_spec_row != nullptr);
@@ -1828,12 +1996,13 @@ TEST(MenuEngine, team_build_cluster_exit_semantics_pins)
     EXPECT_NE(nullptr, scenario->on_reset)
         << "a nested screen's reset must trigger the reload guard";
 
-    // TEAM BUILD: fade-bracketed entry, nested MENU_REDRAWs consumed by
-    // reset_buttons (exit_on_redraw false), reload guard on both hooks.
+    // TEAM BUILD: a Screen (its run_picker top-level entry fades by the #237
+    // derivation), nested MENU_REDRAWs consumed by reset_buttons
+    // (exit_on_redraw false), reload guard on both hooks.
     const og::ui::MenuScreenSpec* team_build =
         og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
     ASSERT_NE(nullptr, team_build);
-    EXPECT_EQ(og::ui::EnterTransition::FadeAroundEntry, team_build->enter);
+    EXPECT_EQ(og::ui::MenuScreenKind::Screen, team_build->kind);
     EXPECT_FALSE(team_build->exit_on_redraw);
     EXPECT_EQ(MENU_EXIT, team_build->exit_value);
     EXPECT_EQ(og::ui::RemoteStartScope::TeamBuildScope,
@@ -1995,9 +2164,9 @@ TEST(MenuEngine, help_screen_spec_shape_pins)
     EXPECT_TRUE(spec.exit_on_redraw);
     EXPECT_EQ(MENU_REDRAW, spec.exit_value);
     EXPECT_TRUE(spec.polls_lobby);
-    // DELIBERATE: today's help has no entry fade (and #200 is reworking the
-    // FadeAroundEntry path).
-    EXPECT_EQ(og::ui::EnterTransition::None, spec.enter);
+    // Fading is derived (#237): a Screen kind — the main menu's HELP door
+    // (depth 1) fades, Base Camp's nested HELP door does not.
+    EXPECT_EQ(og::ui::MenuScreenKind::Screen, spec.kind);
     EXPECT_EQ(kHelpMenuBackIndex, spec.default_highlight);
     EXPECT_NE(nullptr, spec.frame_tick) << "wheel -> page steps";
     EXPECT_NE(nullptr, spec.on_spec_row) << "tab/pager dispatch";
@@ -2341,8 +2510,8 @@ std::vector<ExpectedSpecRow> build_expected_shape(
 } // namespace
 
 // Registry + spec-shape pins. The main menu keeps the legacy remote-start
-// check (MainScope, break-with-selection), fade-bracketed entry, and
-// exit-bearing return. Player-count editing now belongs to Base Camp.
+// check (MainScope, break-with-selection) and exit-bearing return.
+// Player-count editing now belongs to Base Camp.
 TEST(MenuEngine, main_menu_registry_and_spec_shape)
 {
     const og::ui::MenuScreenHost& host =
@@ -2355,7 +2524,10 @@ TEST(MenuEngine, main_menu_registry_and_spec_shape)
     EXPECT_EQ(og::ui::RemoteStartScope::MainScope, spec.remote_start);
     EXPECT_EQ(og::ui::RemoteStartExit::BreakWithSelection,
               spec.remote_start_exit);
-    EXPECT_EQ(og::ui::EnterTransition::FadeWithInitialDraw, spec.enter);
+    // Fading is derived (#237): a Screen kind at a run_picker top-level
+    // entry (depth 1) fades; the intro's black note suppresses the
+    // cold-start fade-out.
+    EXPECT_EQ(og::ui::MenuScreenKind::Screen, spec.kind);
     EXPECT_TRUE(spec.polls_lobby);
     EXPECT_FALSE(spec.right_click_enabled);
     EXPECT_EQ(1, spec.default_highlight);  // continue_game, as the legacy loop

@@ -5557,7 +5557,8 @@ const MenuScreenSpec& team_build_menu_screen_spec()
         // The loop-top host-GO check that launches a joiner parked here.
         .remote_start = RemoteStartScope::TeamBuildScope,
         .remote_start_exit = RemoteStartExit::ReturnMenuExit,
-        .enter = EnterTransition::FadeAroundEntry,
+        // Base Camp is a run_picker top-level entry (depth 1), so the #237
+        // derivation fades it; opened nested it would not.
         // §9.11 (G4): roster-first on row 0's BODY — entering the base camp
         // highlights the first row and Enter trains (the curses roster
         // grammar); the deploy toggle sits one Left away. Empty roster:
@@ -5594,8 +5595,9 @@ constexpr MenuScreenSpec make_main_menu_spec(const MenuButtonSpec* rows,
     // into team build, whose loop-top check launches the game.
     spec.remote_start = RemoteStartScope::MainScope;
     spec.remote_start_exit = RemoteStartExit::BreakWithSelection;
-    // Legacy entry: fade the previous menu out, first draw, fade in.
-    spec.enter = EnterTransition::FadeWithInitialDraw;
+    // A run_picker top-level entry: the #237 derivation fades it (the
+    // fade-out is skipped over the intro's noted black — no more cold-start
+    // black-to-black fade).
     spec.default_highlight = 1;  // continue_game
     // Historical note, kept from PLAYER SETTINGS:
     // "Right-clicking the selected count still enters the long-standing
@@ -6827,11 +6829,11 @@ const MenuScreenSpec& help_menu_screen_spec()
         // Nav closure over the hidden pagers (BACK's right-link), reading
         // the open screen's PageModel.
         .nav = {.kind = NavProgramKind::Rewire, .rewire = &help_engine_rewire},
-        // The legacy help loop entered with no fade and ran no remote-start
-        // check (a joiner parked here launches when the main menu re-enters
-        // — the FX-subscreen precedent). Keep both: DELIBERATELY not
-        // FadeAroundEntry (issue #200 is reworking that path).
-        .enter = EnterTransition::None,
+        // The legacy help loop ran no remote-start check (a joiner parked
+        // here launches when the main menu re-enters — the FX-subscreen
+        // precedent). Fading is the #237 derivation's call: the main menu's
+        // HELP door is a context switch (depth 1) and fades; Base Camp's is
+        // nested and does not.
         .default_highlight = kHelpMenuBackIndex,
         // BACK carries MENU_REDRAW and ends the screen there.
         .exit_on_redraw = true,
@@ -6855,9 +6857,8 @@ const MenuScreenSpec& name_entry_menu_screen_spec()
         .row_count = static_cast<int>(std::size(kNameEntryRows)),
         .buttons_accessor = &picker_name_entry_buttons,
         .count_accessor = &picker_name_entry_button_count,
-        // Fade the main menu out, draw the name screen cold, fade in (the
-        // team-build entry idiom).
-        .enter = EnterTransition::FadeAroundEntry,
+        // Entered after the main menu returns (a depth-1 context switch), so
+        // the #237 derivation fades the main menu out around the cold draw.
         // Initial highlight: ACCEPT (§2.2).
         .default_highlight = kNameEntryAcceptIndex,
         // A joiner can still receive the host's launch while this modal is
@@ -6906,9 +6907,8 @@ const MenuScreenSpec& company_list_menu_screen_spec()
         // reports "not opened" and the re-entered main menu launches.
         .remote_start = RemoteStartScope::MainScope,
         .remote_start_exit = RemoteStartExit::ReturnMenuExit,
-        // Fade the main menu out, draw the list cold, fade in (the name-entry
-        // entry idiom).
-        .enter = EnterTransition::FadeAroundEntry,
+        // The LOAD door enters after the main menu returns (depth 1), so the
+        // #237 derivation fades it.
         // The retired load loop opened on BACK; keep that keyboard starting
         // point and its BACK -> row 0 -> ... -> BACK vertical cycle.
         .default_highlight = kCompanyListBackIndex,
@@ -7046,8 +7046,8 @@ const MenuScreenSpec& company_backups_menu_screen_spec()
         // "not opened" and the re-entered outer screens unwind in turn.
         .remote_start = RemoteStartScope::MainScope,
         .remote_start_exit = RemoteStartExit::ReturnMenuExit,
-        // Fade the Company List out, draw the sub-view cold, fade in.
-        .enter = EnterTransition::FadeAroundEntry,
+        // Opened nested under the Company List, so the #237 derivation does
+        // not fade it (subscreens opened from an open menu never fade).
         // Initial highlight: row 0 — the newest snapshot.
         .default_highlight = 0,
         .polls_lobby = true,
@@ -7238,8 +7238,8 @@ int picker_mainmenu_options_index()
 }
 
 // The main menu, engine-hosted (the legacy loop in picker_main_menu.cpp is
-// gone). The fade-out/first-draw/fade-in entry is the spec's
-// FadeWithInitialDraw transition; every caller (present_menu /
+// gone). Its fade-out/first-draw/fade-in entry comes from the #237
+// derivation (a depth-1 Screen); every caller (present_menu /
 // picker_mainmenu_loop) acts on pks().selected_menu_item and ignores the
 // return value, exactly as it ignored the legacy loop's retvalue.
 Sint32 mainmenu(Sint32 arg1)

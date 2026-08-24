@@ -95,7 +95,7 @@ static int new_game_injector(void* data)
     // §2.2: BEGIN NEW GAME now opens the name-entry screen first. Accept the
     // generated company name to found the company.
     wait_for_interactable("company_name_accept", 5000);
-    SDL_Delay(750);  // FadeAroundEntry settle
+    SDL_Delay(750);  // menu-entry settle
     fprintf(stderr, "  [test] accepting generated company name\n");
     interact("company_name_accept");
 
@@ -187,7 +187,7 @@ static int name_entry_cancel_injector(void* data)
 
     // Name-entry appears. Reroll the suggestion, then BACK out (cancel).
     if (wait_for_interactable("company_name_reroll", 5000)) {
-        SDL_Delay(750);  // FadeAroundEntry settle
+        SDL_Delay(750);  // menu-entry settle
         fprintf(stderr, "  [test] clicking REROLL\n");
         interact("company_name_reroll");
         SDL_Delay(300);  // let the click release before the next press
@@ -281,7 +281,7 @@ static int name_entry_edit_injector(void* data)
     interact("begin_new_game");
 
     if (wait_for_interactable("company_name_value", 5000)) {
-        SDL_Delay(750);  // FadeAroundEntry settle
+        SDL_Delay(750);  // menu-entry settle
         fprintf(stderr, "  [test] clicking the name strip to edit\n");
         interact("company_name_value");  // opens input_string_value (blocks)
         SDL_Delay(400);  // let the engine dispatch + the editor start + clear

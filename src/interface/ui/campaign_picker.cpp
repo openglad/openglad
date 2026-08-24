@@ -16,6 +16,7 @@
  */
 
 #include <openglad/interface/ui/campaign_picker.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/resources/campaign_metadata.h>
@@ -328,6 +329,10 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
     // the nearest UI present path instead of filtering the whole browser with
     // the editor map's SAI/Eagle setting.
     ScopedUiCanvas canvas_target(*og::runtime::current_session->myscreen_);
+    // #237 depth rule, applied by hand (legacy blocking browser): a
+    // top-level entry (the new-game flow, the editor) is a context switch
+    // and fades; SET CAMPAIGN from an open Base Camp is nested and does not.
+    bool entry_fade_in_pending = og::ui::begin_legacy_menu_entry_fade();
     std::string old_campaign_id = get_mounted_campaign();
     CampaignEntry* result = nullptr;
     CampaignResult ret_value;
@@ -765,7 +770,13 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
             entries[static_cast<std::size_t>(cursor)]->draw(army_power);
 
         draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
+        if (entry_fade_in_pending) {
+            // fadeblack presents the composed buffer itself (#237).
+            entry_fade_in_pending = false;
+            og::runtime::current_session->myscreen_->fadeblack(1);
+        } else {
+            og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
+        }
         og::input_native::sleep_ms(10);
     }
 
