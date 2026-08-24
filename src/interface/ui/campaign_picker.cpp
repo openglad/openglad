@@ -328,11 +328,16 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
     // it while World is active; keep the campaign icon, text and controls on
     // the nearest UI present path instead of filtering the whole browser with
     // the editor map's SAI/Eagle setting.
-    ScopedUiCanvas canvas_target(*og::runtime::current_session->myscreen_);
-    // #237 depth rule, applied by hand (legacy blocking browser): a
-    // top-level entry (the new-game flow, the editor) is a context switch
-    // and fades; SET CAMPAIGN from an open Base Camp is nested and does not.
+    // #237 depth rule, applied by hand (legacy blocking browser): the
+    // new-game flow's entry (depth 0) is a context switch and fades; SET
+    // CAMPAIGN from an open Base Camp is nested and does not. The in-game
+    // editor's browser is likewise nested inside the main menu's screen, so
+    // only the standalone editor (openscen) reaches the fade here. The
+    // fade-out must run BEFORE the UI-canvas switch below: it fades whatever
+    // canvas is actually presented (openscen presents the World canvas), not
+    // the stale UI surface.
     bool entry_fade_in_pending = og::ui::begin_legacy_menu_entry_fade();
+    ScopedUiCanvas canvas_target(*og::runtime::current_session->myscreen_);
     std::string old_campaign_id = get_mounted_campaign();
     CampaignEntry* result = nullptr;
     CampaignResult ret_value;

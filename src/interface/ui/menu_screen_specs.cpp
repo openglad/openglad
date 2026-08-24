@@ -2224,6 +2224,9 @@ static_assert(std::size(kHelpMenuRows) == kHelpMenuNextIndex + 1,
 // The company-list seam pattern: the per-frame rewire reads this file-static
 // pointer; run_menu_screen's screen_state points at the SAME object.
 BaseCampScreenState* g_base_camp_state = nullptr;
+// The frame's rail geometry, written by base_camp_rewire (see
+// base_camp_seat_rail_shape) and read by the draw and click consumers.
+og::ui::SeatRailLayout g_base_camp_rail_frame_shape;
 
 // Round-6 vertical rhythm: the panel's inner face is y=30..158. Header ink
 // is y=33..38; rows at y=45+14r leave six clear pixels after the header and
@@ -2543,8 +2546,7 @@ RowState base_camp_add_seat_state(const og::ui::SeatClaimability& claim)
 {
     if (og::ui::seats_still_claimable(claim) > 0)
         return RowState::Visible;
-    if (!claim.multiplayer_enabled)
-        return RowState::Hidden;
+    if (!claim.multiplayer_enabled) return RowState::Hidden;
     if (claim.local_count >= claim.local_seat_cap &&
         claim.local_seat_cap < MAX_PLAYERS)
     {
@@ -3595,12 +3597,14 @@ constexpr MenuScreenSpec make_seat_settings_spec(
     return spec;
 }
 
-// #243: the seat rail's live geometry, recomputed from the same inputs by
-// everything that needs it — the rewire that positions the seven ordinals,
-// the content pass that draws the ghost slots and the team chips, and the
-// pointer predicate that decides whether a click landed on a chip. All three
-// run inside one frame over unchanged lobby state, so recomputing is exact
-// and nothing has to cache a frame-scoped copy.
+// #243: the seat rail's live geometry. Computed ONCE per frame by the rewire
+// (which positions the seven ordinals from it) and cached in
+// g_base_camp_rail_frame_shape for the other two consumers — the content
+// pass (ghost slots, team chips) and the chip click predicate. They must
+// read the CACHE, not recompute: base_camp_frame_tick refreshes the seat
+// page between the rewire and the draw, so a recompute against the newer
+// state can disagree with the button rects already laid out this frame
+// (ghosts painting over real cards on a page flip).
 og::ui::SeatRailLayout base_camp_seat_rail_shape(
     const og::ui::BaseCampScreenState* st)
 {
@@ -3712,6 +3716,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         : (ready_visible ? kCreateMenuReadyIndex : -1);
     const SaveData& save = og::runtime::current_session->myscreen_->save_data;
     const og::ui::SeatRailLayout rail_layout = base_camp_seat_rail_shape(st);
+    g_base_camp_rail_frame_shape = rail_layout;
     const bool add_visible = rail_layout.add_visible;
     buttons[kBaseCampAddSeatIndex].hidden = !add_visible;
     // #236: the rail's retired right-end ordinal stays parked with the zone
@@ -4691,7 +4696,9 @@ void base_camp_draw_content(void* screen_state)
     // draw. They use the same four gameplay-team ramps as character chips,
     // while the P# label identifies the player/view rather than a fighter.
     if (st != nullptr) {
-        const og::ui::SeatRailLayout rail = base_camp_seat_rail_shape(st);
+        // The rewire's cached frame shape — never recomputed here (the seat
+        // page may have refreshed since; the buttons on screen have not).
+        const og::ui::SeatRailLayout& rail = g_base_camp_rail_frame_shape;
         // #243: a slot with no seat in it yet is drawn as an empty recess.
         // It keeps the rail on both of the panel's margins and shows where
         // the next player will land — chrome, not a control: the ordinals
@@ -4704,7 +4711,14 @@ void base_camp_draw_content(void* screen_state)
                 static_cast<Uint32>(kBaseCampSeatRailHeight));
         }
         const int seat_first = st->seat_page.first_index();
-        for (int card = 0; card < rail.shown_cards; ++card) {
+        // Positions come from the frame's laid-out shape; the COUNT must
+        // clamp to the seats st holds right now — the page can refresh
+        // between the rewire and this draw, and a chip may only ever index
+        // a seat that exists.
+        const int chip_cards = std::min(
+            rail.shown_cards,
+            std::max(0, st->seat_page.end_index() - seat_first));
+        for (int card = 0; card < chip_cards; ++card) {
             const og::sim::LobbyPlayer& seat =
                 st->seats[static_cast<std::size_t>(seat_first + card)];
             const int team = std::clamp(
@@ -5178,7 +5192,9 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
         // region. Non-editable seats never reach here (the ownership and
         // spectator gates above popped already).
         {
-            const int card_x = base_camp_seat_rail_shape(st)
+            // The rewire's cached frame shape: the click must be judged
+            // against the rects the player saw, not a fresher recompute.
+            const int card_x = g_base_camp_rail_frame_shape
                                    .slot_x[static_cast<std::size_t>(card)];
             const int click_x = pks().menu_click_x;
             if (click_x >= card_x + kBaseCampSeatChipZoneOffsetX &&
@@ -6832,8 +6848,8 @@ const MenuScreenSpec& help_menu_screen_spec()
         // The legacy help loop ran no remote-start check (a joiner parked
         // here launches when the main menu re-enters — the FX-subscreen
         // precedent). Fading is the #237 derivation's call: the main menu's
-        // HELP door is a context switch (depth 1) and fades; Base Camp's is
-        // nested and does not.
+        // HELP door dispatches with a peer note (a lateral menu move) and
+        // Base Camp's is nested — neither entry fades.
         .default_highlight = kHelpMenuBackIndex,
         // BACK carries MENU_REDRAW and ends the screen there.
         .exit_on_redraw = true,
@@ -6907,8 +6923,9 @@ const MenuScreenSpec& company_list_menu_screen_spec()
         // reports "not opened" and the re-entered main menu launches.
         .remote_start = RemoteStartScope::MainScope,
         .remote_start_exit = RemoteStartExit::ReturnMenuExit,
-        // The LOAD door enters after the main menu returns (depth 1), so the
-        // #237 derivation fades it.
+        // The LOAD door enters after the main menu returns (depth 1) but
+        // dispatches with a peer note — a lateral menu move, no fade. Only
+        // an OPENED company leaves the cluster (Base Camp's entry fades).
         // The retired load loop opened on BACK; keep that keyboard starting
         // point and its BACK -> row 0 -> ... -> BACK vertical cycle.
         .default_highlight = kCompanyListBackIndex,
@@ -6924,6 +6941,10 @@ const MenuScreenSpec& company_list_menu_screen_spec()
 void install_base_camp_state_for_screen(BaseCampScreenState* state)
 {
     g_base_camp_state = state;
+    // Prime the frame shape for the new state: the rewire refreshes it every
+    // frame, but the draw hooks are also driven directly (tests, the first
+    // compose) and must never read a shape left over from another state.
+    g_base_camp_rail_frame_shape = base_camp_seat_rail_shape(state);
 }
 
 void base_camp_refresh_rows(BaseCampScreenState& state)

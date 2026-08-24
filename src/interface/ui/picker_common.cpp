@@ -3023,18 +3023,28 @@ SeatRailLayout base_camp_seat_rail_layout(bool add_visible,
     out.slot_x.fill(kSeatRailX0);
 
     const int slots = out.slot_count();
-    const int elements =
-        (add_visible ? 1 : 0) + (pagers_visible ? 2 : 0) + slots;
-    const int face = (add_visible ? kSeatRailAddWidth : 0) +
-        (pagers_visible ? 2 * kSeatRailPagerWidth : 0) +
+    // The '>' pager anchors the rail's right margin whenever it is shown;
+    // the left-to-right run ([+], '<', slots) lays out against the gutter
+    // before it. A full row of slots justifies across that span (closing
+    // the run on the margin); a short row left-packs at the minimum gutter
+    // instead — stretching two or three controls across the panel reads as
+    // broken, and the anchored '>' keeps the right margin held either way.
+    if (pagers_visible)
+        out.next_x = kSeatRailRightX - kSeatRailPagerWidth;
+    const int run_elements =
+        (add_visible ? 1 : 0) + (pagers_visible ? 1 : 0) + slots;
+    const int run_face = (add_visible ? kSeatRailAddWidth : 0) +
+        (pagers_visible ? kSeatRailPagerWidth : 0) +
         slots * kSeatRailCardWidth;
+    const int run_right = pagers_visible ? out.next_x - kSeatRailGap
+                                         : kSeatRailRightX;
 
     int gap = kSeatRailGap;
     int wide_gutters = 0;  // the leftmost gutters that take the odd pixel
-    if ((slots == kSeatRailSlots || pagers_visible) && elements > 1) {
-        const int slack = std::max(0, kSeatRailRightX - kSeatRailX0 - face);
-        gap = slack / (elements - 1);
-        wide_gutters = slack % (elements - 1);
+    if (slots == kSeatRailSlots && run_elements > 1) {
+        const int slack = std::max(0, run_right - kSeatRailX0 - run_face);
+        gap = slack / (run_elements - 1);
+        wide_gutters = slack % (run_elements - 1);
     }
 
     int pen = kSeatRailX0;
@@ -3051,8 +3061,6 @@ SeatRailLayout base_camp_seat_rail_layout(bool add_visible,
         out.prev_x = place(kSeatRailPagerWidth);
     for (int slot = 0; slot < slots; ++slot)
         out.slot_x[static_cast<std::size_t>(slot)] = place(kSeatRailCardWidth);
-    if (pagers_visible)
-        out.next_x = place(kSeatRailPagerWidth);
     return out;
 }
 

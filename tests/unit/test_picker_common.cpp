@@ -5561,6 +5561,24 @@ TEST(SeatRailLayout, a_phone_puts_its_lone_card_on_the_left_rail)
     EXPECT_FALSE(rail.add_visible);
 }
 
+TEST(SeatRailLayout, a_short_last_page_packs_left_under_an_anchored_pager)
+{
+    // A 5-seat lobby's last page with nothing claimable (4 local seats at
+    // the build cap): one card, no ghosts, both arrows up. The run packs
+    // left at the uniform gutter and the '>' alone holds the right rail —
+    // never three controls stretched across 71px voids.
+    const og::ui::SeatRailLayout rail =
+        og::ui::base_camp_seat_rail_layout(/*add_visible=*/true,
+                                           /*pagers_visible=*/true,
+                                           /*visible_cards=*/1,
+                                           /*ghost_count=*/0);
+    EXPECT_EQ(8, rail.add_x);
+    EXPECT_EQ(29, rail.prev_x);
+    EXPECT_EQ(46, rail.slot_x[0]);
+    EXPECT_EQ(og::ui::kSeatRailRightX - og::ui::kSeatRailPagerWidth,
+              rail.next_x);
+}
+
 TEST(SeatRailLayout, every_shape_keeps_the_rail_ordered_and_inside_the_panel)
 {
     int checked = 0;
@@ -5598,7 +5616,12 @@ TEST(SeatRailLayout, every_shape_keeps_the_rail_ordered_and_inside_the_panel)
                             << shape << " gutter " << i;
                         gutters.push_back(gutter);
                     }
-                    for (std::size_t i = 1; i < gutters.size(); ++i)
+                    // The gutter before an anchored '>' absorbs a short
+                    // row's slack; every gutter within the run itself stays
+                    // even (the leftmost take the odd pixel).
+                    const std::size_t run_gutter_count = gutters.size() -
+                        (rail.pagers_visible && !gutters.empty() ? 1 : 0);
+                    for (std::size_t i = 1; i < run_gutter_count; ++i)
                     {
                         EXPECT_LE(std::abs(gutters[i] - gutters[i - 1]), 1)
                             << shape << " neighbouring gutters " << i;
@@ -5608,21 +5631,23 @@ TEST(SeatRailLayout, every_shape_keeps_the_rail_ordered_and_inside_the_panel)
                               og::ui::kSeatRailRightX)
                         << shape;
 
-                    // Justified shapes close on the right rail; packed ones
-                    // stop at the uniform gutter.
+                    // A full row justifies to the right rail; a paged rail's
+                    // anchored '>' closes on it in every shape. Anything
+                    // else packs at the uniform gutter and stops.
                     const bool justified =
-                        rail.slot_count() == og::ui::kSeatRailSlots ||
-                        rail.pagers_visible;
-                    if (justified && elements.size() > 1)
+                        rail.slot_count() == og::ui::kSeatRailSlots;
+                    if ((justified || rail.pagers_visible) &&
+                        elements.size() > 1)
                     {
                         EXPECT_EQ(og::ui::kSeatRailRightX,
                                   last.first + last.second)
                             << shape << " must close on the right rail";
                     }
-                    else
+                    if (!justified)
                     {
-                        for (const int gutter : gutters)
-                            EXPECT_EQ(og::ui::kSeatRailGap, gutter) << shape;
+                        for (std::size_t i = 0; i < run_gutter_count; ++i)
+                            EXPECT_EQ(og::ui::kSeatRailGap, gutters[i])
+                                << shape << " packed gutter " << i;
                     }
 
                     // Cards never change width: the nine-character label

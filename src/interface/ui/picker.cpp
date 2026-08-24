@@ -760,8 +760,12 @@ public:
         begin_relay_room_list_view();
         // #237 depth rule, applied by hand (this screen stays legacy —
         // MenuEngine.networking_stays_legacy_v2_decision). The wrapper's
-        // peer note makes this consume-and-skip: no fade on the door.
-        bool entry_fade_in_pending = og::ui::begin_legacy_menu_entry_fade();
+        // peer note classifies this door as instant, and this call is the
+        // note's consumer (the swallow-even-if-unused discipline): it always
+        // returns false here, and the loop below presents plainly. If the
+        // wrapper's note is ever removed, this fades the menu out and the
+        // first presented frame cuts in a beat later — visible, not broken.
+        (void)og::ui::begin_legacy_menu_entry_fade();
 
         auto visible_room_count = [&]() -> int {
             if (!networking_settings_.use_room_code ||
@@ -1025,14 +1029,8 @@ public:
             }
 
             draw_highlight(buttons[highlighted_button]);
-            if (entry_fade_in_pending) {
-                // fadeblack presents the composed buffer itself (#237).
-                entry_fade_in_pending = false;
-                og::runtime::current_session->myscreen_->fadeblack(1);
-            } else {
-                og::runtime::current_session->myscreen_->buffer_to_screen(
-                    0, 0, 320, 200);
-            }
+            og::runtime::current_session->myscreen_->buffer_to_screen(
+                0, 0, 320, 200);
             og::input_native::sleep_ms(10);
         }
 
@@ -1153,6 +1151,11 @@ public:
 
     bool load_game() override
     {
+        // #237: same door as show_company_list — a lateral menu move. Only
+        // scripted test clients reach this legacy transition; the return
+        // side keeps run_picker's legacy mapping and fades per the next
+        // screen's own rule.
+        og::ui::note_menu_peer_transition();
         // §2.3: the slot menu is retired — loading IS the Company List.
         // (Reached only via run_picker's legacy LoadGame transition; the
         // main-menu LOAD door routes through show_company_list directly.)

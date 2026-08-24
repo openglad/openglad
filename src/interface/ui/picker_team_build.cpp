@@ -978,7 +978,9 @@ static Sint32 preview_pan_offset(Sint32 span, Sint32 ticks_per_px)
 // geometry this preview leaves on the view displaces the whole menu until
 // level start (the HIRE "empty box" report). Two halves keep it true:
 // draw_backdrop() below must stay ABOVE the borrow, and this guard restores
-// every field the borrow writes.
+// every camera and rect field the borrow writes (resize also restarts the
+// view's radar and sets screen::redrawme — both inert under the picker,
+// which draws no radar and reconstructs every view at launch).
 //
 // It writes more than it looks: nulling control makes viewscreen::redraw take
 // its control-less branch, which copies the staged level's camera onto the

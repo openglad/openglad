@@ -207,7 +207,8 @@ int open_row_injector(void* data)
     fprintf(stderr, "  [test] clicking LOAD\n");
     interact("load_company");
 
-    // The Company List fades in (a depth-1 entry under the #237 rule).
+    // The Company List enters instantly (the LOAD door is a #237 peer
+    // transition — no fade).
     if (wait_for_interactable("company_row_0", 5000)) {
         SDL_Delay(750);
         fprintf(stderr, "  [test] opening company row 0\n");

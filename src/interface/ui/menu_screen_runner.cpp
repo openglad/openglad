@@ -460,26 +460,28 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         apply_nav_program(spec, buttons, num_buttons, highlighted_button);
     }
 
-    // Cold first frame, every screen: labels bound, full compose, highlight.
-    // Content must be present in this compose: Base Camp's roster ink is a
-    // content hook while its deploy X is a button, and splitting them across
-    // the fade makes the control pop in as the first full frame replaces the
-    // partial one. (Fades are instant under TESTING — FadeBetween skips the
-    // animation — so no injector cadence depends on this sequence.)
-    {
+    // Cold first frame, FADING entries only: the fade brackets need a fully
+    // composed frame (labels bound, content, highlight — Base Camp's roster
+    // ink is a content hook while its deploy X is a button, and splitting
+    // them across the fade makes the control pop in as the first full frame
+    // replaces the partial one). Non-fading entries paint nothing here: the
+    // loop's first iteration composes and presents AFTER the frame_tick veto
+    // check, so a screen whose first tick ends it (a dead host's pause, a
+    // vanished seat) never flashes a frame — the pre-#237 behavior. (Fades
+    // are instant under TESTING — FadeBetween skips the animation — so no
+    // injector cadence depends on this sequence.)
+    if (should_fade) {
         screen* const scr = og::runtime::current_session->myscreen_;
-        if (should_fade) {
-            // The legacy mainmenu entry cadence: settle one timer tick, then
-            // fade the previous screen out — unless a teardown already left
-            // the presented surface black (#200): that fade-out would run
-            // over the stale menu image the UI canvas still holds and play
-            // the same transition a second time.
-            reset_timer();
-            while (query_timer() < 1)
-                ;
-            if (!already_black)
-                scr->fadeblack(0);
-        }
+        // The legacy mainmenu entry cadence: settle one timer tick, then
+        // fade the previous screen out — unless a teardown already left
+        // the presented surface black (#200): that fade-out would run
+        // over the stale menu image the UI canvas still holds and play
+        // the same transition a second time.
+        reset_timer();
+        while (query_timer() < 1)
+            ;
+        if (!already_black)
+            scr->fadeblack(0);
         {
             const MenuLabelContext context = build_label_context(spec);
             apply_label_bindings(spec_rows, buttons, num_buttons, context);
@@ -492,15 +494,10 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         if (spec.draw_content != nullptr)
             spec.draw_content(screen_state);
         draw_menu_highlight(spec, buttons, highlighted_button);
-        if (should_fade) {
-            // Zardus: PORT: fade from black
-            // fadeblack presents the composed buffer itself.
-            scr->fadeblack(1);
-            grab_mouse();
-        } else {
-            // Without a fade nothing presents the cold frame.
-            scr->buffer_to_screen(0, 0, 320, 200);
-        }
+        // Zardus: PORT: fade from black
+        // fadeblack presents the composed buffer itself.
+        scr->fadeblack(1);
+        grab_mouse();
     }
 
     int frame = 0;

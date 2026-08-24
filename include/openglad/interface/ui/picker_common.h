@@ -908,12 +908,13 @@ struct SeatRailLayout {
 };
 
 // The rail's per-frame geometry. Elements run left to right: [+] when
-// visible, '<' when the pagers are up, slot_count() slots, then '>'. A full
-// four-slot row — or any paged row, where the arrows already own both ends —
-// JUSTIFIES between the two rails: the slack is split evenly among the
-// gutters and the leftmost ones take the odd pixels. Anything shorter
-// left-packs from x=8 at the uniform 7px gutter, because a two-control row
-// stretched across the whole panel reads as broken rather than as design.
+// visible, '<' when the pagers are up, slot_count() slots, then '>'. The '>'
+// ANCHORS the right rail whenever the pagers are up. A full four-slot row
+// JUSTIFIES the remaining run between the margins: the slack is split evenly
+// among its gutters and the leftmost ones take the odd pixels. A shorter row
+// left-packs from x=8 at the uniform 7px gutter — stretching two or three
+// controls across the whole panel reads as broken rather than as design, and
+// on a paged rail the anchored '>' holds the right margin regardless.
 SeatRailLayout base_camp_seat_rail_layout(bool add_visible,
                                           bool pagers_visible,
                                           int visible_cards, int ghost_count);

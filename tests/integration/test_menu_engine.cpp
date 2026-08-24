@@ -451,13 +451,19 @@ void depth_rule_child_draw_content(void* /*state*/)
     ++g_depth_rule_child_content_draws;
 }
 
+// The child paints its first frame through the LOOP (after the frame_tick
+// veto check — a non-fading entry composes nothing before it, so a screen
+// vetoed on frame 1 flashes nothing) and exits on its second tick.
+bool depth_rule_child_frame_tick(void* /*state*/, int frame)
+{
+    return frame < 2;
+}
+
 bool depth_rule_parent_frame_tick(void* /*state*/, int frame)
 {
     if (frame == 1 && g_depth_rule_child_spec != nullptr)
     {
-        g_start_game_requested = true;  // preempts the child's loop instantly
         (void)og::ui::run_menu_screen(*g_depth_rule_child_spec);
-        g_start_game_requested = false;
         return false;  // end the parent loop after the child returns
     }
     return frame < 3;
@@ -537,6 +543,7 @@ TEST(MenuEngine, depth_rule_nested_entry_never_fades)
 
     og::ui::MenuScreenSpec child = make_synth_spec(kRows, 1, "depth_child");
     child.draw_content = &depth_rule_child_draw_content;
+    child.frame_tick = &depth_rule_child_frame_tick;
     child.remote_start = og::ui::RemoteStartScope::TeamBuildScope;
 
     og::ui::MenuScreenSpec parent = make_synth_spec(kRows, 1, "depth_parent");
@@ -551,7 +558,8 @@ TEST(MenuEngine, depth_rule_nested_entry_never_fades)
     g_depth_rule_child_spec = nullptr;
 
     EXPECT_EQ(1, g_depth_rule_child_content_draws)
-        << "the nested child must still compose (and present) its cold frame";
+        << "the nested child paints exactly its one loop frame — no pre-loop "
+           "cold compose on a non-fading entry, no missed frame either";
     EXPECT_EQ(2, count_fade_between_traces())
         << "only the parent's depth-1 entry fades; a nested run_menu_screen "
            "call (a subscreen door) produces ZERO fades";
