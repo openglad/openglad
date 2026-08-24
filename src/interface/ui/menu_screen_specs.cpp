@@ -2514,8 +2514,17 @@ RowState base_camp_add_seat_row_state(
     return RowState::Hidden;
 #else
     const std::size_t local_count = picker_lobby_local_seat_count();
-    if (local_count >= static_cast<std::size_t>(og::input::local_seat_cap()))
-        return RowState::Disabled;
+    const int seat_cap = og::input::local_seat_cap();
+    if (local_count >= static_cast<std::size_t>(seat_cap))
+    {
+        // A device-capped rail HIDES the button (matching the pause menu's
+        // + ADD PLAYER row): on a phone a dimmed [+] reads as tappable and
+        // explains nothing, while an absent one that appears when a pad is
+        // plugged in explains itself. The ordinary build-limit cap keeps the
+        // dimmed button.
+        return seat_cap < MAX_PLAYERS ? RowState::Hidden
+                                      : RowState::Disabled;
+    }
 
     // A connected spectator owns no published seat. Activating one therefore
     // consumes the same global capacity as every other + request.

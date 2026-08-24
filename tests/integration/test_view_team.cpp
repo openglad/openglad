@@ -3408,8 +3408,9 @@ TEST(ViewTeam, base_camp_single_seat_device_names_screen_and_closes_plus)
               static_cast<std::size_t>(kBaseCampSeatCardLabelBudget));
     EXPECT_EQ(' ', buttons[kBaseCampSeatCardBase].label.back())
         << "the team-chip clearance pad is load-bearing";
-    // Nothing else is attached, so this machine is full at one seat.
-    EXPECT_EQ(og::ui::RowState::Disabled,
+    // Nothing else is attached, so this machine is full at one seat, and
+    // the device-capped rail hides [+] outright (pause-menu consistency).
+    EXPECT_EQ(og::ui::RowState::Hidden,
               spec.rows[kBaseCampAddSeatIndex].state_override(
                   og::ui::MenuLabelContext{}));
     trace_clear();
