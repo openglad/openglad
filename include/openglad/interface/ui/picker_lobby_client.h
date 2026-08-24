@@ -276,6 +276,14 @@ using PickerSaveSlotEditableCallback = bool (*)(int);
 inline PickerSaveSlotEditableCallback g_picker_save_slot_editable_callback =
     nullptr;
 
+// Null in every shipping build: menu screens are single-threaded there.
+// Test injector threads install a pump so their save/config mutations run
+// between menu frames instead of racing the main thread's poll (issue #257 —
+// completed_levels is node-based, so one concurrent insert dangles the
+// digest walk's iterator).
+using PickerMainThreadPump = void (*)();
+inline PickerMainThreadPump g_picker_main_thread_pump = nullptr;
+
 } // namespace og::ui
 
 void picker_lobby_initialize_from_save();

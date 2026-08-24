@@ -450,6 +450,11 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
     int frame = 0;
     Sint32 retvalue = 0;
     while (!(retvalue & MENU_EXIT)) {
+        // Frame-top main-thread work handoff (null outside tests): runs
+        // before the poll so an injector's save write is complete before
+        // anything on this frame reads it.
+        if (g_picker_main_thread_pump != nullptr)
+            g_picker_main_thread_pump();
         if (spec.polls_lobby)
             picker_lobby_poll();
 

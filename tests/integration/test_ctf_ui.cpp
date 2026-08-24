@@ -788,6 +788,18 @@ bool wait_for_picker_trace(const char* substring, int count, int timeout_ms)
     return false;
 }
 
+// Land a level id the way a host's SET LEVEL click does. The raw save write
+// alone would be clobbered by the next poll's apply_state_to_save, and the
+// lobby commit races that same poll from an injector thread — so both halves
+// run as one task on the menu thread (#257).
+bool set_scen_num_through_lobby(short scen_num)
+{
+    return run_on_main_thread([scen_num] {
+        og::runtime::current_session->myscreen_->save_data.scen_num = scen_num;
+        picker_lobby_sync_settings_from_save();
+    });
+}
+
 } // namespace
 
 // Classic-campaign SCENARIO flow (#218 — transformed from the retired
@@ -1041,8 +1053,12 @@ int view_scenario_refresh_injector(void* data)
     // stands in for the host's SettingsChange by updating the lobby the
     // way the click callbacks do).
     state->restages_before_change = count_stage_trace_containing("restaged");
-    og::runtime::current_session->myscreen_->save_data.ctf_team_count = 3;
-    picker_lobby_sync_settings_from_save();
+    // Save write + lobby commit as one menu-thread task (#257): the commit
+    // races the main thread's poll_and_apply from here.
+    (void)run_on_main_thread([] {
+        og::runtime::current_session->myscreen_->save_data.ctf_team_count = 3;
+        picker_lobby_sync_settings_from_save();
+    });
     state->refresh_seen =
         wait_for_picker_trace("view_scenario refresh lines=", 1, 5000);
     SDL_Delay(300);
@@ -1245,7 +1261,16 @@ struct DegradeFlowState
     bool failed_health_seen = false;
     bool recovery_refresh_seen = false;
     bool reentry_refused = false;
+    // Every save mutation this flow makes is handed to the menu thread; a
+    // task the loop never ran would make the phases below meaningless.
+    bool save_edits_ran_on_main_thread = true;
 };
+
+// Levels stuffed into the completed-levels ledger to push the staged setup
+// past the u16 inner-message cap (og::sim::kMaxStagedInnerMessageBytes). The
+// refusal is what the flow proves, so the count must stay far above the cap.
+constexpr int kDegradeLedgerFirstLevel = 100000;
+constexpr int kDegradeLedgerLevels = 17000;
 
 int view_scenario_degrade_injector(void* data)
 {
@@ -1274,10 +1299,17 @@ int view_scenario_degrade_injector(void* data)
     // fails the debounced restage at the wire cap. The pane must degrade
     // honestly — Failed health, STAGING FAILED band text, the healed claim
     // dropped — while the viewer stays parked.
-    std::set<int>& degrade_ledger = og::runtime::current_session
-        ->myscreen_->save_data.completed_levels["modes"];
-    for (int level = 100000; level < 117000; ++level)
-        degrade_ledger.insert(level);
+    //
+    // The ledger is a std::set inside a std::map and the menu thread walks
+    // both every frame (host_save_stage_digest), so the mutation runs THERE,
+    // between two frames — including the map subscript, which is itself a
+    // node insert (#257).
+    state->save_edits_ran_on_main_thread &= run_on_main_thread([] {
+        std::set<int>& ledger = og::runtime::current_session
+            ->myscreen_->save_data.completed_levels["modes"];
+        for (int i = 0; i < kDegradeLedgerLevels; ++i)
+            ledger.insert(kDegradeLedgerFirstLevel + i);
+    });
     for (int waited_ms = 0; waited_ms < 5000; waited_ms += 50)
     {
         og::ui::IPickerLobbyClient* const lobby =
@@ -1297,15 +1329,16 @@ int view_scenario_degrade_injector(void* data)
     // lands (the SET LEVEL half of the stale-joiner hole): the one-shot
     // rebuild shows the load refusal, and the next honest id heals the
     // viewer end to end (fresh scratch load, render-copy heal, census).
-    degrade_ledger.clear();
+    state->save_edits_ran_on_main_thread &= run_on_main_thread([] {
+        og::runtime::current_session->myscreen_->save_data
+            .completed_levels["modes"].clear();
+    });
     SDL_Delay(600);
     const int refreshes_before_moves =
         count_picker_trace_containing("view_scenario refresh lines=");
-    og::runtime::current_session->myscreen_->save_data.scen_num = 9999;
-    picker_lobby_sync_settings_from_save();
+    state->save_edits_ran_on_main_thread &= set_scen_num_through_lobby(9999);
     SDL_Delay(600);
-    og::runtime::current_session->myscreen_->save_data.scen_num = 500;
-    picker_lobby_sync_settings_from_save();
+    state->save_edits_ran_on_main_thread &= set_scen_num_through_lobby(500);
     state->recovery_refresh_seen = wait_for_picker_trace(
         "view_scenario refresh lines=", refreshes_before_moves + 1, 5000);
     SDL_Delay(300);
@@ -1316,16 +1349,14 @@ int view_scenario_degrade_injector(void* data)
     interact("back");
     SDL_Delay(300);
     wait_for_interactable("view_scenario", 10000);
-    og::runtime::current_session->myscreen_->save_data.scen_num = 9999;
-    picker_lobby_sync_settings_from_save();
+    state->save_edits_ran_on_main_thread &= set_scen_num_through_lobby(9999);
     SDL_Delay(600);
     interact("view_scenario");
     SDL_Delay(300);
     state->reentry_refused = wait_for_interactable("view_scenario", 5000);
 
     // Restore a loadable id, then unwind to the main menu.
-    og::runtime::current_session->myscreen_->save_data.scen_num = 500;
-    picker_lobby_sync_settings_from_save();
+    state->save_edits_ran_on_main_thread &= set_scen_num_through_lobby(500);
     SDL_Delay(400);
     wait_for_interactable("progress", 10000);
     SDL_Delay(300);
@@ -1360,6 +1391,8 @@ TEST(CtfUi, view_scenario_degrades_and_recovers_on_level_moves)
 
     EXPECT_TRUE(state.finished) << "injector should complete the flow";
     EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open its frame";
+    EXPECT_TRUE(state.save_edits_ran_on_main_thread)
+        << "every save edit must have run on the menu thread's pump";
     EXPECT_TRUE(state.failed_health_seen)
         << "the unloadable level's restage must land as Failed health "
            "while the viewer is parked";
@@ -1427,9 +1460,11 @@ int view_scenario_staged_pane_injector(void* data)
     // Cycle TROOPS to FAIR through the lobby (the sync path a host click
     // takes): the owner's change key moves, ONE debounced restage lands,
     // and the refreshed report shows the min-headcount matched squads.
-    og::runtime::current_session->myscreen_->save_data
-        .ctf_strip_scenario_troops = og::sim::kTroopsMatched;
-    picker_lobby_sync_settings_from_save();
+    (void)run_on_main_thread([] {
+        og::runtime::current_session->myscreen_->save_data
+            .ctf_strip_scenario_troops = og::sim::kTroopsMatched;
+        picker_lobby_sync_settings_from_save();
+    });
     state->matched_line_seen = wait_for_picker_trace(
         "MATCHED BOTS (2)", 1, 5000);
     SDL_Delay(300);

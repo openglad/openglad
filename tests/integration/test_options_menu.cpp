@@ -502,14 +502,22 @@ static int options_injector(void* data)
             // the per-frame label sync must fall back to the classic
             // defaults, never a blank face.
             {
-                const std::string prev_zoom = cfg.get_setting("graphics", "zoom");
-                const std::string prev_smoothing =
-                    cfg.get_setting("graphics", "smoothing");
-                const std::string prev_render =
-                    cfg.get_setting("graphics", "render");
-                cfg.apply_setting("graphics", "zoom", "");
-                cfg.apply_setting("graphics", "smoothing", "");
-                cfg.apply_setting("graphics", "render", "normal");
+                // cfg is a map of maps the menu thread's label sync reads
+                // every frame, so the save/clear and the restore each run
+                // THERE as one task (#257). Capturing the saved values by
+                // reference is safe: the post is waited on before this scope
+                // ends.
+                std::string prev_zoom;
+                std::string prev_smoothing;
+                std::string prev_render;
+                (void)run_on_main_thread([&] {
+                    prev_zoom = cfg.get_setting("graphics", "zoom");
+                    prev_smoothing = cfg.get_setting("graphics", "smoothing");
+                    prev_render = cfg.get_setting("graphics", "render");
+                    cfg.apply_setting("graphics", "zoom", "");
+                    cfg.apply_setting("graphics", "smoothing", "");
+                    cfg.apply_setting("graphics", "render", "normal");
+                });
                 SDL_Delay(300);  // let the display loop run label-sync frames
                 for (const Interactable& item : get_interactables()) {
                     if (item.id == "display_zoom")
@@ -517,9 +525,11 @@ static int options_injector(void* data)
                     if (item.id == "display_smoothing")
                         state->smoothing_label_when_unset = item.label;
                 }
-                cfg.apply_setting("graphics", "zoom", prev_zoom);
-                cfg.apply_setting("graphics", "smoothing", prev_smoothing);
-                cfg.apply_setting("graphics", "render", prev_render);
+                (void)run_on_main_thread([&] {
+                    cfg.apply_setting("graphics", "zoom", prev_zoom);
+                    cfg.apply_setting("graphics", "smoothing", prev_smoothing);
+                    cfg.apply_setting("graphics", "render", prev_render);
+                });
                 SDL_Delay(150);
             }
             fprintf(stderr, "  [test] cycling display mode\n");
@@ -558,7 +568,8 @@ static int options_injector(void* data)
             // graphics/render value at "sai". Pin this selector to explicit
             // Off so the zoom traces are order-independent and exercise the
             // nearest path before the separate smoothing lap below.
-            cfg.apply_setting("graphics", "smoothing", "off");
+            (void)run_on_main_thread(
+                [] { cfg.apply_setting("graphics", "smoothing", "off"); });
             // Resolution application may have emitted canvas traces using a
             // legacy order-dependent smoothing value. From here onward only
             // the explicit zoom/smoothing laps may satisfy renderer checks.
@@ -633,10 +644,14 @@ static int options_injector(void* data)
                 if (is_gore) {
                     // Bring the loader in line with cfg first, so the click's
                     // direction is known whatever earlier tests left behind.
-                    loader* game_loader =
-                        og::runtime::current_session->myscreen_->myloader;
-                    if (game_loader != nullptr)
-                        game_loader->sync_gore_graphics();
+                    // It repaints sprite pixels the menu thread is drawing
+                    // from, so it runs there (#257).
+                    (void)run_on_main_thread([] {
+                        loader* game_loader =
+                            og::runtime::current_session->myscreen_->myloader;
+                        if (game_loader != nullptr)
+                            game_loader->sync_gore_graphics();
+                    });
                     blood_was_gory = live_blood_is_gory();
                 }
                 state->toggled_fx[s][t] = toggle.cycle

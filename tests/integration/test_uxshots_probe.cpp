@@ -679,13 +679,17 @@ int basecamp_paged_injector(void *data) {
         og::runtime::current_session->myscreen_->save_data.save_name.c_str(),
         has_interactable("roster_page_next") ? 1 : 0);
     {
-      const std::vector<og::sim::LobbyPlayer> players = picker_lobby_players();
-      fprintf(stderr, "  [uxshot] lobby players=%d\n",
-              static_cast<int>(players.size()));
-      for (const auto &p : players)
-        fprintf(stderr, "  [uxshot]   seat team=%d slots=%d company='%s'\n",
-                static_cast<int>(p.team),
-                static_cast<int>(p.character_slots.size()), p.company.c_str());
+      // Reading the seat roster walks LobbyServer state the menu thread's
+      // poll mutates, so the whole diagnostic runs there (#257).
+      (void)run_on_main_thread([] {
+        const std::vector<og::sim::LobbyPlayer> players = picker_lobby_players();
+        fprintf(stderr, "  [uxshot] lobby players=%d\n",
+                static_cast<int>(players.size()));
+        for (const auto &p : players)
+          fprintf(stderr, "  [uxshot]   seat team=%d slots=%d company='%s'\n",
+                  static_cast<int>(p.team),
+                  static_cast<int>(p.character_slots.size()), p.company.c_str());
+      });
     }
     shot->state.captures += capture_frame("basecamp_paged_p1");
     if (has_interactable("roster_page_next")) {

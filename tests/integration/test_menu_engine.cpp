@@ -448,8 +448,12 @@ int dual_surface_injector(void* data)
     SDL_Delay(300);
 
     // The lobby-rewrites-save moment: no click precedes this write, so only
-    // the runner's per-frame label sync can surface it.
-    og::runtime::current_session->myscreen_->save_data.respawn_mode = 2;
+    // the runner's per-frame label sync can surface it. Posting it keeps
+    // that intent — the write still lands with no click, just between two
+    // frames instead of inside one (#257).
+    (void)run_on_main_thread([] {
+        og::runtime::current_session->myscreen_->save_data.respawn_mode = 2;
+    });
 
     const std::string want = "Respawns: Everyone";
     for (int attempt = 0; attempt < 100; ++attempt) {

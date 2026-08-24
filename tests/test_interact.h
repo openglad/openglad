@@ -5,6 +5,8 @@
 #include <openglad/interface/input.h>
 #include <openglad/platform/game_session.h>
 #include "test_input_helpers.h"
+#include <cstdint>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -12,6 +14,37 @@
 // Mutex to synchronize access to allbuttons[] between injector threads
 // and the main thread during menu transitions. Defined in integration_main.cpp.
 std::mutex& get_allbuttons_mutex();
+
+// Main-thread task queue (issue #257). An injector thread that mutates state
+// the menu loop reads every frame (save_data, cfg, the hire session, the live
+// roster) must NOT write it directly: SaveData::completed_levels and cfg are
+// node-based maps, and one concurrent insert dangles an iterator the main
+// thread is walking. Post the mutation instead — the menu runner drains the
+// queue at the top of each frame (og::ui::g_picker_main_thread_pump), so the
+// write lands between frames, ordered against the lobby poll, the stage
+// digest, and the label sync.
+//
+// Only engine-hosted screens (run_menu_screen) pump; a task posted while no
+// menu loop is running waits out its timeout and is discarded between tests.
+// All three are defined in integration_main.cpp.
+using MainThreadTaskTicket = std::uint64_t;
+MainThreadTaskTicket post_main_thread_task(std::function<void()> task);
+// Blocks until the posted task has finished running. Returns false on timeout
+// (the menu loop never got a frame in); the ceiling is generous on purpose.
+bool wait_for_main_thread_task(MainThreadTaskTicket ticket,
+                               int timeout_ms = 15000);
+// Discards every queued-but-unrun task and releases waiters. Runs between
+// tests so a task left behind by a timed-out injector can never execute
+// inside the next test's menu loop.
+void drain_main_thread_tasks();
+
+// Post + wait in one call, the shape nearly every injector wants.
+inline bool run_on_main_thread(std::function<void()> task,
+                               int timeout_ms = 15000)
+{
+    return wait_for_main_thread_task(post_main_thread_task(std::move(task)),
+                                     timeout_ms);
+}
 
 struct AllButtonsLock final
 {

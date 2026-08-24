@@ -2,15 +2,20 @@
 
 #include <SDL3/SDL.h>
 
+#include <chrono>
+#include <condition_variable>
 #include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <format>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <unistd.h>
+#include <utility>
+#include <vector>
 
 #ifdef __linux__
 #include <sys/prctl.h>
@@ -30,6 +35,7 @@ extern "C" void __gcov_dump(void);
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/results_screen.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/legacy/base.h>
 #include <openglad/interface/game_context.h>
@@ -42,6 +48,9 @@ extern "C" void __gcov_dump(void);
 
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
+// Main-thread task queue, declared for injectors in tests/test_interact.h and
+// defined at the bottom of this file.
+void drain_main_thread_tasks();
 #ifdef TESTING
 extern bool g_test_remove_exits;
 extern std::atomic<bool> g_test_in_game;
@@ -180,16 +189,52 @@ void handle_test_signal(int sig)
     _exit(128 + sig);
 }
 
+// --- Main-thread task queue (issue #257) -----------------------------------
+// Injector threads post state mutations here; the menu runner drains them at
+// the top of each frame. See tests/test_interact.h for the contract.
+std::mutex s_main_thread_task_mutex;
+std::condition_variable s_main_thread_task_cv;
+std::vector<std::pair<std::uint64_t, std::function<void()>>>
+    s_main_thread_tasks;
+std::uint64_t s_main_thread_task_next = 0;
+std::uint64_t s_main_thread_task_settled = 0;
+
+// Installed as og::ui::g_picker_main_thread_pump. Tasks run OUTSIDE the queue
+// lock (they re-enter menu/lobby code freely) and settle in post order, so a
+// single high-water mark answers every waiter.
+void run_main_thread_tasks()
+{
+    std::vector<std::pair<std::uint64_t, std::function<void()>>> batch;
+    {
+        std::lock_guard<std::mutex> lock(s_main_thread_task_mutex);
+        batch.swap(s_main_thread_tasks);
+    }
+    for (auto& [ticket, task] : batch)
+    {
+        if (task)
+            task();
+        {
+            std::lock_guard<std::mutex> lock(s_main_thread_task_mutex);
+            s_main_thread_task_settled = ticket;
+        }
+        s_main_thread_task_cv.notify_all();
+    }
+}
+
 class WorldCleanupListener final : public ::testing::EmptyTestEventListener
 {
 public:
     void OnTestStart(const ::testing::TestInfo&) override
     {
+        drain_main_thread_tasks();
+        og::ui::g_picker_main_thread_pump = &run_main_thread_tasks;
         reset_integration_ui_state();
     }
 
     void OnTestEnd(const ::testing::TestInfo&) override
     {
+        og::ui::g_picker_main_thread_pump = nullptr;
+        drain_main_thread_tasks();
         reset_integration_ui_state();
     }
 };
@@ -248,6 +293,38 @@ void seed_stray_company_slots_from_env()
 std::mutex& get_allbuttons_mutex()
 {
     return s_allbuttons_mutex;
+}
+
+std::uint64_t post_main_thread_task(std::function<void()> task)
+{
+    std::lock_guard<std::mutex> lock(s_main_thread_task_mutex);
+    const std::uint64_t ticket = ++s_main_thread_task_next;
+    s_main_thread_tasks.emplace_back(ticket, std::move(task));
+    return ticket;
+}
+
+bool wait_for_main_thread_task(std::uint64_t ticket, int timeout_ms)
+{
+    std::unique_lock<std::mutex> lock(s_main_thread_task_mutex);
+    const bool settled = s_main_thread_task_cv.wait_for(
+        lock, std::chrono::milliseconds(timeout_ms),
+        [ticket] { return s_main_thread_task_settled >= ticket; });
+    if (!settled)
+        std::fprintf(stderr,
+                     "  [interact] TIMEOUT waiting for main-thread task %llu "
+                     "(%d ms)\n",
+                     static_cast<unsigned long long>(ticket), timeout_ms);
+    return settled;
+}
+
+void drain_main_thread_tasks()
+{
+    {
+        std::lock_guard<std::mutex> lock(s_main_thread_task_mutex);
+        s_main_thread_tasks.clear();
+        s_main_thread_task_settled = s_main_thread_task_next;
+    }
+    s_main_thread_task_cv.notify_all();
 }
 
 int main(int argc, char** argv)
