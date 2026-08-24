@@ -1049,10 +1049,100 @@ int many_seats_view_level_injector(void *data) {
 
 // --- VIEW LEVEL staged preview (#218, C10) ---------------------------------
 
+// The first staged frame, kept for the frame-to-frame comparison below.
+FramePixels g_view_level_first_frame;
+// The SCENARIO screen captured before the viewer ever opened: the backdrop as
+// it looks with a camera nobody has borrowed yet.
+FramePixels g_menu_before_viewer_frame;
+
+// The backdrop strip the #251 pin watches: everything under the preview frame,
+// down to the bottom of the canvas.
+constexpr int kBackdropStripTopY = 160;
+
+// The viewer's three button faces (kViewScenarioRows in menu_screen_specs).
+// Their labels are static, but a highlight box pulses up to 3 px OUTSIDE the
+// rect it decorates (picker_input.cpp draw_highlight insets by
+// sin(ticks_ms/300)*3), so the excluded rects carry that pulse as a margin.
+// Everything left in the strip is backdrop or static chrome.
+constexpr int kHighlightPulse = 3;
+struct ShotRect {
+  int x, y, w, h;
+};
+constexpr ShotRect kViewScenarioButtonRects[] = {
+    {10, 170, 44, 20}, {220, 170, 40, 20}, {270, 170, 40, 20}};
+
+bool in_view_scenario_button(int x, int y) {
+  for (const ShotRect &r : kViewScenarioButtonRects) {
+    if (x >= r.x - kHighlightPulse && x <= r.x + r.w + kHighlightPulse &&
+        y >= r.y - kHighlightPulse && y <= r.y + r.h + kHighlightPulse)
+      return true;
+  }
+  return false;
+}
+
+// Rows that carry nothing but backdrop on BOTH the SCENARIO screen and the
+// open viewer: the gap between the viewer's report-frame bevel (its bottom
+// edge is row 160) and the y=170 button band, and everything below both
+// screens' buttons. Comparing these ACROSS the two screens is what catches a
+// camera the borrow left at a fixed offset — a displacement that never
+// changes is identical in both in-viewer frames and invisible to the
+// frame-to-frame half.
+constexpr int kBackdropOnlyBands[][2] = {{161, 170}, {190, 200}};
+
+// Differing pixels between two frames over rows [y0, y1).
+std::size_t frame_diff_count(const FramePixels &a, const FramePixels &b, int y0,
+                             int y1, bool skip_button_rects) {
+  std::size_t differing = 0;
+  for (int y = y0; y < y1; ++y) {
+    for (int x = 0; x < 320; ++x) {
+      if (skip_button_rects && in_view_scenario_button(x, y))
+        continue;
+      const std::size_t i =
+          (static_cast<std::size_t>(y) * 320 + static_cast<std::size_t>(x)) * 3;
+      if (a[i] != b[i] || a[i + 1] != b[i + 1] || a[i + 2] != b[i + 2])
+        ++differing;
+    }
+  }
+  return differing;
+}
+
+// Wait-on-condition for the pan: poll the LIVE preview band through the same
+// presenter handshake capture_frame uses until it differs from the reference
+// frame. The pan is a triangle wave over query_timer at ~55 ms per pixel, so
+// this normally returns on the first poll; the ceiling is generous because a
+// loaded host can deschedule the presenter for seconds.
+bool wait_for_preview_band_pan(const FramePixels &reference, int timeout_ms) {
+  if (reference.size() != static_cast<std::size_t>(320 * 200 * 3))
+    return false;
+  screen *scr = og::runtime::current_session->myscreen_;
+  for (int waited = 0; waited < timeout_ms; waited += 100) {
+    SDL_Delay(100);
+    PresentedFramePause frame_pause;
+    if (!frame_pause.acquired())
+      return false;
+    for (int y = kViewScenarioPreviewBandY;
+         y < kViewScenarioPreviewBandY + kViewScenarioPreviewBandH; ++y) {
+      for (int x = kViewScenarioPreviewBandX;
+           x < kViewScenarioPreviewBandX + kViewScenarioPreviewBandW; ++x) {
+        Uint8 r = 0, g = 0, b = 0;
+        scr->get_pixel(x, y, &r, &g, &b);
+        const std::size_t i = (static_cast<std::size_t>(y) * 320 +
+                               static_cast<std::size_t>(x)) *
+                              3;
+        if (reference[i] != r || reference[i + 1] != g || reference[i + 2] != b)
+          return true;
+      }
+    }
+  }
+  fprintf(stderr, "  [uxshot] preview band never moved within %d ms\n",
+          timeout_ms);
+  return false;
+}
+
 // The band region the staged world renders into: (8,16)-(310,91) in classic
 // coordinates (picker_sdl_defs kViewScenarioPreviewBand*). A healed staged
 // pitch fills the band with terrain, so a blank band means the pane died.
-bool check_view_level_staged_band(const FramePixels &rgb) {
+bool staged_band_is_populated(const FramePixels &rgb) {
   std::size_t nonblack = 0;
   for (int y = 16; y < 16 + 76; ++y) {
     for (int x = 8; x < 8 + 303; ++x) {
@@ -1067,6 +1157,81 @@ bool check_view_level_staged_band(const FramePixels &rgb) {
             nonblack);
     return false;
   }
+  return true;
+}
+
+// The pre-viewer reference frame.
+bool stash_menu_before_viewer(const FramePixels &rgb) {
+  if (rgb.size() != static_cast<std::size_t>(320 * 200 * 3)) {
+    fprintf(stderr, "  [uxshot] pre-viewer frame is the wrong size\n");
+    return false;
+  }
+  g_menu_before_viewer_frame = rgb;
+  return true;
+}
+
+// The first in-viewer frame: checked against the pre-viewer backdrop, then
+// kept as the reference the second one is judged against.
+bool check_view_level_staged_band(const FramePixels &rgb) {
+  if (!staged_band_is_populated(rgb))
+    return false;
+  if (g_menu_before_viewer_frame.size() != rgb.size()) {
+    fprintf(stderr, "  [uxshot] no pre-viewer frame to compare against\n");
+    return false;
+  }
+  for (const auto &band : kBackdropOnlyBands) {
+    const std::size_t moved =
+        frame_diff_count(g_menu_before_viewer_frame, rgb, band[0], band[1],
+                         /*skip_button_rects=*/false);
+    if (moved != 0) {
+      fprintf(stderr,
+              "  [uxshot] backdrop rows %d..%d differ from the pre-viewer "
+              "menu: %zu px\n",
+              band[0], band[1] - 1, moved);
+      return false;
+    }
+  }
+  g_view_level_first_frame = rgb;
+  return true;
+}
+
+// #251, the second half of the intra-screen camera pin. draw_backdrop() paints
+// the four menu quadrants THROUGH viewob[0] at the top of the same hook that
+// then lends the view to the staged preview, so a camera left behind on the
+// view slides the whole menu background by the previous frame's pan offset.
+// Every other pin samples the camera after the viewer has already exited; only
+// frames captured WHILE it is open can see the slide. This one holds the
+// backdrop still between two pan phases; check_view_level_staged_band holds it
+// against the pre-viewer menu.
+bool check_view_level_staged_panned(const FramePixels &rgb) {
+  if (!staged_band_is_populated(rgb))
+    return false;
+  if (g_view_level_first_frame.size() != rgb.size()) {
+    fprintf(stderr, "  [uxshot] no first staged frame to compare against\n");
+    return false;
+  }
+  const std::size_t backdrop_diff =
+      frame_diff_count(g_view_level_first_frame, rgb, kBackdropStripTopY, 200,
+                       /*skip_button_rects=*/true);
+  const std::size_t band_diff = frame_diff_count(
+      g_view_level_first_frame, rgb, kViewScenarioPreviewBandY,
+      kViewScenarioPreviewBandY + kViewScenarioPreviewBandH,
+      /*skip_button_rects=*/false);
+  if (backdrop_diff != 0) {
+    fprintf(stderr,
+            "  [uxshot] backdrop strip moved between staged frames: %zu px\n",
+            backdrop_diff);
+    return false;
+  }
+  // Teeth: without a live pan the identical-backdrop half above would pass on
+  // a frozen screen.
+  if (band_diff == 0) {
+    fprintf(stderr, "  [uxshot] preview band never panned between frames\n");
+    return false;
+  }
+  fprintf(stderr,
+          "  [uxshot] staged pan: backdrop strip %zu px moved, band %zu px\n",
+          backdrop_diff, band_diff);
   return true;
 }
 
@@ -1117,7 +1282,8 @@ int view_level_staged_injector(void *data) {
       // left-packed VIEW LEVEL | PROGRESS row.
       if (wait_for_interactable("ctf_teams", 5000)) {
         SDL_Delay(300);
-        state->captures += capture_frame("scenario_match_band");
+        state->captures +=
+            capture_frame("scenario_match_band", &stash_menu_before_viewer);
       }
       interact("view_scenario");
       // The pane-heal trace is the "viewer is up and staged" signal.
@@ -1131,6 +1297,13 @@ int view_level_staged_injector(void *data) {
         SDL_Delay(800);
         state->captures +=
             capture_frame("view_level_staged", &check_view_level_staged_band);
+        // #251: a second frame from further along the same pan, so the
+        // backdrop can be judged against a frame that is unquestionably a
+        // different pan phase.
+        if (wait_for_preview_band_pan(g_view_level_first_frame, 8000)) {
+          state->captures += capture_frame("view_level_staged_panned",
+                                           &check_view_level_staged_panned);
+        }
         SDL_Delay(200);
         interact("back");
       }
@@ -1171,6 +1344,8 @@ int view_level_staged_injector(void *data) {
 // (UXSHOTS_DIR) and the blank-frame guard for the pane.
 TEST(UxShots, n_view_level_staged) {
   trace_clear();
+  g_view_level_first_frame.clear();
+  g_menu_before_viewer_frame.clear();
   CompanySlotCleanup cleanup{{"save0"}};
   {
     SaveData sd;
@@ -1205,10 +1380,16 @@ TEST(UxShots, n_view_level_staged) {
   cleanup_picker_state();
   g_picker_max_mainmenu_calls = 0;
   ASSERT_TRUE(state.finished);
-  // All three shots: the reshaped SCENARIO screen (#218 match-settings
-  // band), the staged band, then the HIRE portrait drawn in the same menu
-  // session right after the viewer closed.
-  ASSERT_EQ(3, state.captures);
+  // Only the healed branch borrows viewob[0], so a degraded pane would leave
+  // the #251 comparison with nothing to catch.
+  ASSERT_TRUE(trace_contains("picker", "view_scenario pane gen="))
+      << "the staged pane never healed: the camera pin below has no teeth";
+  // All four shots: the reshaped SCENARIO screen (#218 match-settings band),
+  // two staged frames a pan apart (#251), then the HIRE portrait drawn in the
+  // same menu session right after the viewer closed. A shot whose pixel
+  // oracle failed is not counted, so this equality is the pass/fail line for
+  // every check above.
+  ASSERT_EQ(4, state.captures);
 
   // The save0 load mounted the modes campaign; restore the default.
   (void)unmount_campaign_package_with_error(get_mounted_campaign());
