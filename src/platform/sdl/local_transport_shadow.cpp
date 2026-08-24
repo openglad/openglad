@@ -1936,7 +1936,7 @@ bool local_transport_shadow_can_add_player(GameSession& session)
     if (!local_seat_mutation_allowed(runtime.get(), session))
         return false;
     return compute_local_player_count(*session.myscreen_) <
-        static_cast<std::size_t>(MAX_PLAYERS);
+        static_cast<std::size_t>(og::input::local_seat_cap());
 }
 
 bool local_transport_shadow_add_local_player(GameSession& session)

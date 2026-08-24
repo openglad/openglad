@@ -491,8 +491,9 @@
         var fullscreenControlReady = false;
 
         // Same predicate as the landing page's isCtrlReservedBrowser():
-        // Firefox reserves Ctrl+W at browser-chrome level and no page
-        // script can intercept it (Keyboard Lock is Chromium-only).
+        // Firefox delivers the windowed Ctrl+W keydown to the page and closes
+        // the tab anyway, so consuming it would take the fullscreen keyboard
+        // lock this game deliberately does not use.
         if (/(?:Firefox|FxiOS)\//.test(navigator.userAgent)) {
             document.getElementById('firefox-ctrl-note').hidden = false;
         }
@@ -824,6 +825,51 @@
         });
 
         // ------------------------------------------------------------------
+        // Alt containment.
+        //
+        // Left Alt is the default SPECIAL binding, and Firefox activates its
+        // menu bar on an Alt keyup the page has not consumed. SDL prevents
+        // Alt's default only when it actually queues the event, so it stops
+        // doing so while text input is active (non-nav keydowns), when an SDL
+        // event filter swallows the event, and for any keyup whose keydown SDL
+        // never recorded (post-blur, post-reset, or after a synthetic healing
+        // keyup).
+        //
+        // preventDefault is the ONLY thing this may do. SDL's listeners are
+        // bubble-phase on window and never read defaultPrevented, so the key
+        // still reaches the engine; stopPropagation here would starve SPECIAL
+        // and make Alt unbindable in REMAP. The DOM text-entry field is exempt
+        // because the browser owns the keys typed into it.
+        //
+        // The containment is page-wide and lifetime-long on purpose: it also
+        // removes Firefox's keyboard route to its own menu bar on this page
+        // (the mouse still reaches it), which is the accepted price of never
+        // popping that bar mid-fight. Code AltRight is swept in deliberately
+        // — AltGr reports key 'AltGraph', so the key check alone would miss
+        // it — and that costs accent composition nothing: preventDefault on
+        // the modifier does not cancel the dead-key sequence, and the
+        // composed character still arrives on its own later keydown.
+        // ------------------------------------------------------------------
+        (function altContainment() {
+            function containAlt(e) {
+                if (!e.cancelable) {
+                    return;
+                }
+                if (e.key !== 'Alt' && e.code !== 'AltLeft' &&
+                        e.code !== 'AltRight') {
+                    return;
+                }
+                var entry = document.getElementById('og-text-entry');
+                if (entry && document.activeElement === entry) {
+                    return;
+                }
+                e.preventDefault();
+            }
+            window.addEventListener('keydown', containAlt, true);
+            window.addEventListener('keyup', containAlt, true);
+        })();
+
+        // ------------------------------------------------------------------
         // Hardware-keyboard keyup resilience.
         //
         // iPad Safari (and Cocoa browsers generally) can swallow keyup
@@ -945,6 +991,7 @@
 
             var active = false;
             var enableAcked = false;
+            var singleSeatSent = null;
             var wasInGame = false;
             var sawTouchPointer = false;
             var resetVisualFns = [];
@@ -979,6 +1026,28 @@
                 return touchCapable &&
                     typeof window.matchMedia === 'function' &&
                     window.matchMedia('(pointer: coarse)').matches;
+            }
+
+            // A phone offers exactly one built-in seat: its touchscreen.
+            // Tablets are not phone-class, and neither is a desktop with a
+            // touchscreen. screen, not the viewport: a split window or a
+            // summoned keyboard must not reclassify the hardware, and the
+            // shorter edge is the same in both orientations.
+            // screen.* is CSS px — physical pixels divided by
+            // devicePixelRatio — so the line has to clear the smallest
+            // tablet, not the smallest panel: a common 1280x800 Android
+            // tablet at dpr 1.5 reports a 533 CSS-px short edge. 500 keeps
+            // phones under it (iPhone 15 is 393, phablets around 480) and
+            // every 8-inch tablet above it; an iPad mini is 744.
+            function phoneClassDevice() {
+                if (window.__opengladForcePhone === true) {
+                    return true;
+                }
+                if (window.__opengladForcePhone === false) {
+                    return false;
+                }
+                return isTouchDevice() &&
+                    Math.min(screen.width, screen.height) < 500;
             }
 
             function shouldEnable() {
@@ -1517,6 +1586,19 @@
                     }
                 }
 
+                // The seat cap is read from menus that can open before the
+                // module is ready, so keep retrying until the export exists
+                // and resend whenever the classification changes. A build
+                // without the export stays on the desktop cap.
+                var seatFn = bridge('openglad_web_set_single_seat_device');
+                if (seatFn) {
+                    var singleSeat = phoneClassDevice() ? 1 : 0;
+                    if (singleSeat !== singleSeatSent) {
+                        seatFn(singleSeat);
+                        singleSeatSent = singleSeat;
+                    }
+                }
+
                 var runtimeReady = window.__opengladWebBootstrap &&
                     window.__opengladWebBootstrap.runtimeInitialized;
                 var inGame = state === 2;
@@ -1581,6 +1663,13 @@
                 var input = document.getElementById('og-text-entry');
                 var cancelButton =
                     document.getElementById('og-text-entry-cancel');
+                // Fallback bound for the first-mutation buffer clear when a
+                // prompt announces no maxBytes. Every engine prompt does
+                // announce one, and that number is the tight bound, which
+                // matters: pushed keys are drained one per prompt-loop
+                // iteration (each a full redraw), so every excess event in
+                // the burst delays the moment the player's typing shows up.
+                var CLEAR_BUFFER_BACKSPACES = 100;
                 var lastValue = '';
                 var firstMutation = true;
                 var composing = false;
@@ -1718,6 +1807,14 @@
                 });
 
                 function reconcileInput() {
+                    // A closed prompt accepts nothing: with text input off,
+                    // the web back-key filter translates a pushed Backspace
+                    // into Escape, so a stray late reconcile — the close-time
+                    // blur can still fire a compositionend — would push a
+                    // menu Escape instead of an edit.
+                    if (!promptActive) {
+                        return;
+                    }
                     if (composing) {
                         return;
                     }
@@ -1729,12 +1826,24 @@
                     // Backspaces and insertions as text events. C++ selects
                     // a prefilled value until the first edit, so the first
                     // DOM mutation deliberately replaces the whole field.
+                    // A hardware keyboard can have edited the C++ buffer
+                    // while the field was unfocused, with no way to tell the
+                    // field about it, so that replacement must clear the
+                    // WHOLE buffer rather than one codepoint. C++ ignores a
+                    // Backspace on an empty buffer, so the clear can be
+                    // blind — but only up to maxBytes, which is exactly what
+                    // the prompt can hold (see CLEAR_BUFFER_BACKSPACES).
+                    // The blind clear costs up to maxBytes redraw iterations
+                    // on that one edit, and is still preferred over counting
+                    // the unfocused keystrokes: that count is fragile under
+                    // IME, where one buffer edit is not one keystroke.
                     var prev = Array.from(lastValue);
                     var cur = Array.from(normalized);
                     if (firstMutation) {
-                        if (prev.length > 0) {
-                            pushBackspaces(1);
-                        }
+                        var maxBytes = Number(promptDetail.maxBytes) || 0;
+                        pushBackspaces(Math.max(
+                            prev.length,
+                            maxBytes > 0 ? maxBytes : CLEAR_BUFFER_BACKSPACES));
                         pushText(cur.join(''));
                         firstMutation = false;
                         lastValue = normalized;
@@ -1757,6 +1866,16 @@
                 input.addEventListener('compositionend', function() {
                     composing = false;
                     reconcileInput();
+                });
+                input.addEventListener('blur', function() {
+                    // Physical keys typed while the field is unfocused edit
+                    // the C++ buffer with no way to tell the field about it,
+                    // exactly as before the field's first edit — so every
+                    // refocus-then-edit must whole-replace again rather than
+                    // diff against a lastValue the buffer no longer matches.
+                    if (promptActive) {
+                        firstMutation = true;
+                    }
                 });
                 input.addEventListener('pointerdown', function(e) {
                     if (e.pointerType === 'touch' && promptActive &&

@@ -23,8 +23,10 @@
 #include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/session_state.h>
+#include <openglad/interface/device_seats.h>
 #include <openglad/interface/input_hardware_state.h>
 #include <openglad/interface/screen.h> // active canvas dims for pointer mapping
+#include <openglad/gameplay/input_state.h> // MAX_PLAYERS: the local-seat hard cap
 #include <openglad/core/util.h>
 #include <openglad/core/test_trace.h>
 #include <algorithm> //buffers: for std::min when clamping joystick counts
@@ -367,6 +369,16 @@ bool device_held_by_other_seat(int device_index, int player)
             return true;
     return false;
 }
+
+// The web shell classifies the device during page boot, which can land
+// before openglad_web_boot has created the session that owns the hardware
+// block. The latch bridges that boot order only: init_input copies it into
+// the session, and every read goes to the hardware block, so the flag still
+// has exactly one live home. That home is per-session: a scope that
+// activates a different session (e.g. the shadow's server session, which
+// never runs init_input) reads that session's default false — every current
+// door runs under the display session, and a future door must too.
+bool g_pending_single_seat_device = false;
 } // namespace
 
 
@@ -382,6 +394,7 @@ void init_input()
         og::input_native::joystick_init_subsystem();
 
     reset_default_player_controls();
+    input_hardware_state().single_seat_device = g_pending_single_seat_device;
     // On web this installs the Backspace-as-Escape remap at the SDL event
     // source before the first event is queued; a no-op on native builds.
     og::input_native::install_back_key_remap();
@@ -402,6 +415,32 @@ int joystick_device_count()
 {
     return std::min(og::input_native::num_joysticks(), MAX_NUM_JOYSTICKS);
 }
+
+namespace og::input
+{
+
+bool is_single_seat_device()
+{
+    return input_hardware_state().single_seat_device;
+}
+
+void set_single_seat_device(bool single_seat)
+{
+    g_pending_single_seat_device = single_seat;
+    if (og::runtime::current_session != nullptr)
+        input_hardware_state().single_seat_device = single_seat;
+}
+
+int local_seat_cap()
+{
+    // Menus poll this per frame; only a single-seat device needs the
+    // joystick enumeration (an SDL_GetJoysticks alloc), so desktops skip it.
+    if (!is_single_seat_device())
+        return MAX_PLAYERS;
+    return max_local_seats(true, joystick_device_count(), MAX_PLAYERS);
+}
+
+} // namespace og::input
 
 int player_joystick_device(int player)
 {

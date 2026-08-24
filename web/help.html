@@ -158,9 +158,9 @@
     <main>
         <h1>Help & Troubleshooting</h1>
 
-        <h2>Firefox: Ctrl+W Closes the Tab</h2>
+        <h2>Ctrl+W Closes the Tab</h2>
 
-        <p>Firefox reserves <span class="shortcut">Ctrl + W</span> (close tab) at the browser level &mdash; a web page cannot intercept it, even in fullscreen. That is why Openglad's browser defaults bind player 1's attack to <span class="shortcut">Z</span> and special to <span class="shortcut">X</span> instead of the desktop Ctrl/Alt defaults. Only Ctrl is a problem: Alt is safe in the browser.</p>
+        <p>On Windows and Linux the browser owns <span class="shortcut">Ctrl + W</span> (close tab) in windowed play: Firefox closes the tab even when the page handles the key, and Chrome never delivers the key to the page at all. macOS browsers close tabs with <span class="shortcut">Cmd + W</span> instead, so Ctrl+W reaches the page there &mdash; but the browser defaults stay the same on every platform, binding player 1's attack to <span class="shortcut">Z</span> and special to <span class="shortcut">X</span> instead of the desktop Ctrl/Alt defaults. Only Ctrl is beyond reach: <span class="shortcut">Alt</span> stays bound to special because the game page suppresses Firefox's Alt menu-bar shortcut while still passing the key to the game.</p>
 
         <p>If player 1 switches to 8-direction movement, <span class="shortcut">Z</span> and <span class="shortcut">X</span> become diagonal movement keys, so attack moves to <span class="shortcut">S</span> in the middle of the movement keys, special stays on <span class="shortcut">Alt</span>, and yell moves to <span class="shortcut">V</span>. Look-up starts unbound there &mdash; assign it in Options &rarr; Controls if you want it.</p>
 

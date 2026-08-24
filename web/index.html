@@ -112,8 +112,8 @@
         <h1>Openglad</h1>
         <div id="browser-warning" class="warning" hidden role="note">
             <strong>Heads up, Firefox players</strong> &mdash; Firefox reserves
-            Ctrl+W (close tab), and a web page cannot intercept it, even in
-            fullscreen. Openglad's browser defaults therefore use Z to attack
+            Ctrl+W (close tab), and this game cannot intercept it in a
+            browser tab. Openglad's browser defaults therefore use Z to attack
             and X for your special, so you never hold Ctrl while moving. If
             you rebind attack to Ctrl in Options &rarr; Controls, walking up
             will close this tab.
@@ -127,8 +127,9 @@
         <a href="help.html">Help</a>
     </footer>
     <script>
-        // Firefox reserves Ctrl+W at browser-chrome level: page script
-        // cannot preventDefault it, and Keyboard Lock is Chromium-only.
+        // Firefox delivers a windowed Ctrl+W keydown and closes the tab
+        // anyway; capturing it needs the fullscreen keyboard lock the game
+        // deliberately does not use (web_control_defaults.h has the story).
         // UA-based on purpose (Playwright drives it with a UA override);
         // extend the regex if another engine needs the warning.
         function isCtrlReservedBrowser() {

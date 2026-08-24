@@ -1,5 +1,7 @@
 #include <openglad/interface/button.h>
+#include <openglad/interface/device_seats.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/input_hardware_state.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/input_mappings.h>
 #include <openglad/interface/ui/input_cycler.h>
@@ -1094,6 +1096,49 @@ TEST(InputJoystick, input_cycler_enumerates_devices_and_skips_held_elsewhere)
     EXPECT_TRUE(current.is_joystick);
     EXPECT_EQ(d_b, current.joystick_device);
     EXPECT_EQ(std::format("JOY{}", d_b + 1), current.name);
+}
+
+TEST(InputJoystick, phone_with_pad_caps_two_seats_and_claims_the_pad)
+{
+    JoystickSubsystemGuard subsystem_guard;
+    CompleteInputStateGuard input_guard;
+    BackgroundJoystickEventsGuard background_events_guard;
+    VirtualJoystick pad(2, 6, 0, "OpenGlad phone pad");
+    ASSERT_NE(nullptr, pad.get()) << SDL_GetError();
+    JoystickHandleGuard handle_guard;
+    const int d = device_index_of(pad.instance_id());
+    ASSERT_GE(d, 0);
+    ASSERT_LT(d, 10);
+    joysticks[d] = pad.get();
+    reset_default_player_controls();
+    for (int p = 0; p < 4; ++p)
+        clear_player_joystick(p);
+
+    const bool saved_device_class =
+        input_hardware_state().single_seat_device;
+    input_hardware_state().single_seat_device = true;
+
+    // LOCAL store only — never disk (the cfg clobber hazard).
+    cfg_store config;
+
+    // The pad opens exactly one extra seat past the built-in screen seat.
+    EXPECT_EQ(og::input::max_local_seats(true, joystick_device_count(),
+                                         MAX_PLAYERS),
+              og::input::local_seat_cap());
+    EXPECT_GE(og::input::local_seat_cap(), 2);
+
+    // Seat 0 is the screen; the added seat must claim the pad the door
+    // opened for (a keyboard mapping would leave it with no input), and its
+    // label names the pad — never a second SCRN.
+    EXPECT_EQ("INPUT: SCRN", og::ui::input_cycle_button_label(0));
+    ASSERT_TRUE(og::ui::claim_free_joystick_for_seat(config, 1, 2));
+    EXPECT_EQ(d, player_joystick_device(1));
+    EXPECT_EQ(std::format("INPUT: JOY{}", d + 1),
+              og::ui::input_cycle_button_label(1));
+    // A seat already holding a pad is a no-op, not a re-grab.
+    EXPECT_FALSE(og::ui::claim_free_joystick_for_seat(config, 1, 2));
+
+    input_hardware_state().single_seat_device = saved_device_class;
 }
 
 TEST(InputJoystick, input_cycler_cycles_between_keyboard_and_joystick)

@@ -17,6 +17,7 @@
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/input_state.h>
 #include <openglad/interface/button.h>
+#include <openglad/interface/device_seats.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/input_mappings.h>
 #include <openglad/interface/native_input.h>
@@ -1271,9 +1272,16 @@ std::vector<PauseSeatInfo> collect_pause_seats(bool networked)
 
 std::string pause_player_row_label(const PauseSeatInfo& seat)
 {
-    return std::format("P{}: {}", seat.player_number,
-                       og::input::mapping_display_name(
-                           current_input_selection(seat.seat).name));
+    const InputCycleOption selection = current_input_selection(seat.seat);
+    // Same owner-token rule as the seat card and the INPUT cycler
+    // (seat_owner_is_screen): a phone's keyboard-mapped seat is really
+    // driven by the touchscreen, so the row names the screen.
+    const std::string owner = og::input::seat_owner_is_screen(
+                                  og::input::is_single_seat_device(),
+                                  selection.is_joystick, seat.seat)
+        ? std::string(og::input::kScreenSeatOwnerLabel)
+        : og::input::mapping_display_name(selection.name);
+    return std::format("P{}: {}", seat.player_number, owner);
 }
 
 void install_pause_menu_state_for_screen(PauseMenuScreenState* state)

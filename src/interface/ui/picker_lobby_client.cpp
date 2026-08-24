@@ -387,6 +387,9 @@ public:
             return false;
         if (server_->start_game_requested())
             return false;
+        // Build-limit backstop only. The device seat cap
+        // (og::input::local_seat_cap) is enforced by the doors that call
+        // here — a new caller must check it too.
         if (!spectator_mode_ &&
             peers_.size() >= static_cast<std::size_t>(MAX_PLAYERS))
         {

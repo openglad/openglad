@@ -394,6 +394,21 @@ void set_joystick_guid_reattach_hook(void (*hook)());
 // SDL-free (input_state.cpp) so headless UIs and unit tests can use it.
 std::string joy_binding_display_name(int key_type, int key_index);
 
+namespace og::input
+{
+// #249: this machine's device class and the local-seat cap it implies.
+// is_single_seat_device reads the runtime flag
+// (InputHardwareState::single_seat_device); local_seat_cap folds it together
+// with the attached joystick count through max_local_seats (device_seats.h)
+// and is THE local-seat rule — every seat door calls it, none re-derives it.
+bool is_single_seat_device();
+// Latches the device class. Callable before a session exists (the web shell
+// classifies the device during page boot); init_input applies the latch to
+// the session's hardware block.
+void set_single_seat_device(bool single_seat);
+int local_seat_cap();
+} // namespace og::input
+
 struct MouseState
 {
     float x, y;

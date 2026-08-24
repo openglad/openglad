@@ -3352,6 +3352,82 @@ TEST(ViewTeam, base_camp_zero_seat_state_activates_only_through_plus)
     save.reset();
 }
 
+// #249: a phone is a single-seat device — its touchscreen is the only
+// controller it has. The card names the SCREEN (naming a keyboard mapping
+// would name keys the device does not have), [+] goes inert while nothing
+// else is attached, and a seat the player cycled onto a real pad keeps
+// naming that pad.
+TEST(ViewTeam, base_camp_single_seat_device_names_screen_and_closes_plus)
+{
+    FactoryMappingGuard mapping_guard;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "gladiator";
+    save.save_name = "MY COMPANY";
+    auto hero = std::make_unique<guy>(FAMILY_SOLDIER);
+    hero->name = "PHONE HERO";
+    hero->teamnum = 0;
+    save.team_list[0] = std::move(hero);
+    save.team_size = 1;
+
+    NetworkedRosterLobbyClient lobby;
+    lobby.networked = false;
+    lobby.local_indices = {0};
+    lobby.players.push_back(
+        make_foreign_lobby_player(0, "net-me", "MY COMPANY", 0, 0));
+    lobby.active_local_count = 1u;
+    ActivePickerLobbyClientGuard client_guard(&lobby);
+
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, spec.nav.rewire);
+    ASSERT_NE(nullptr, spec.on_spec_row);
+    ASSERT_NE(nullptr, spec.rows[kBaseCampAddSeatIndex].state_override);
+
+    og::ui::BaseCampScreenState state;
+    og::ui::base_camp_refresh_rows(state);
+    ASSERT_EQ(1u, state.seats.size());
+    ASSERT_EQ(1u, state.local_seat_indices.size());
+    og::ui::install_base_camp_state_for_screen(&state);
+
+    int highlighted = kBaseCampSeatCardBase;
+    button* buttons = picker_createmenu_buttons();
+    spec.nav.rewire(buttons, picker_createmenu_button_count(), highlighted);
+    // Desktop: the card names the seat's keyboard mapping, [+] is live.
+    EXPECT_EQ("P1 WASD ", buttons[kBaseCampSeatCardBase].label);
+    EXPECT_EQ(og::ui::RowState::Visible,
+              spec.rows[kBaseCampAddSeatIndex].state_override(
+                  og::ui::MenuLabelContext{}));
+
+    input_hardware_state().single_seat_device = true;
+    buttons = picker_createmenu_buttons();
+    spec.nav.rewire(buttons, picker_createmenu_button_count(), highlighted);
+    EXPECT_EQ("P1 SCRN ", buttons[kBaseCampSeatCardBase].label);
+    EXPECT_LE(buttons[kBaseCampSeatCardBase].label.size(),
+              static_cast<std::size_t>(kBaseCampSeatCardLabelBudget));
+    EXPECT_EQ(' ', buttons[kBaseCampSeatCardBase].label.back())
+        << "the team-chip clearance pad is load-bearing";
+    // Nothing else is attached, so this machine is full at one seat, and
+    // the device-capped rail hides [+] outright (pause-menu consistency).
+    EXPECT_EQ(og::ui::RowState::Hidden,
+              spec.rows[kBaseCampAddSeatIndex].state_override(
+                  og::ui::MenuLabelContext{}));
+    trace_clear();
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampAddSeatIndex, &state));
+    EXPECT_TRUE(trace_contains("popup", "ATTACH A GAMEPAD TO ADD SEATS"));
+    EXPECT_EQ(0, lobby.add_seat_calls);
+
+    // A pad the seat was cycled onto is a real controller: it keeps its name.
+    player_joy[0].index = 0;
+    buttons = picker_createmenu_buttons();
+    spec.nav.rewire(buttons, picker_createmenu_button_count(), highlighted);
+    EXPECT_EQ("P1 JOY1 ", buttons[kBaseCampSeatCardBase].label);
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    save.reset();
+}
+
 // ---------------------------------------------------------------------------
 // Empty-state treatment: the fixed View Team-style grey roster panel remains
 // visible with zero rows and the content pass centers the ORANGE line inside

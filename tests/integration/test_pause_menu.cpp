@@ -426,6 +426,7 @@ TEST(PauseMenuNav, pause_menu_gating_variants_reachable)
         int local_players;                    // save numplayers (local)
         std::vector<std::uint8_t> own_seats;  // own indices (networked)
         std::vector<std::string> expect_visible;
+        bool single_seat_device = false;      // #249 phone class
     };
     const std::vector<Variant> variants = {
         {"local_solo", false, true, true, 1, {},
@@ -441,6 +442,14 @@ TEST(PauseMenuNav, pause_menu_gating_variants_reachable)
          {"pause_resume", "pause_restart", "pause_quit", "pause_view_team",
           "pause_briefing", "pause_player_0", "pause_player_1",
           "pause_player_2", "pause_player_3"}},
+        // #249: a phone is already full at its one built-in seat, so the
+        // seat door (local_transport_shadow_can_add_player, which reads the
+        // same og::input::local_seat_cap()) closes with a single seat
+        // playing and the row hides exactly as it does at four.
+        {"local_single_seat_device", false, true, false, 1, {},
+         {"pause_resume", "pause_restart", "pause_quit", "pause_view_team",
+          "pause_briefing", "pause_player_0"},
+         true},
         {"networked_host", true, false, true, 1, {0, 1},
          {"pause_resume", "pause_quit", "pause_view_team", "pause_briefing",
           "pause_player_0", "pause_player_1"}},
@@ -462,6 +471,20 @@ TEST(PauseMenuNav, pause_menu_gating_variants_reachable)
         og::ui::install_pause_menu_state_for_screen(&state);
         NumplayersGuard numplayers(variant.local_players);
         OwnIndicesGuard own(variant.own_seats);
+        // The device class reaches this row through the host's seat door,
+        // never directly; the flag is set here so the variant describes a
+        // whole machine. Other tests share the process, so it is handed back.
+        struct DeviceClassGuard {
+            bool saved = input_hardware_state().single_seat_device;
+            explicit DeviceClassGuard(bool single_seat)
+            {
+                input_hardware_state().single_seat_device = single_seat;
+            }
+            ~DeviceClassGuard()
+            {
+                input_hardware_state().single_seat_device = saved;
+            }
+        } device_class(variant.single_seat_device);
 
         std::vector<button> buttons;
         og::ui::materialize_menu_buttons(spec, buttons);
@@ -576,6 +599,27 @@ TEST(PauseMenuLabels, seat_collection_and_player_row_labels)
         EXPECT_EQ("P3: WASD", og::ui::pause_player_row_label(seats[0]));
         // 22-char face budget on the 140px row.
         EXPECT_LE(og::ui::pause_player_row_label(seats[0]).size(), 22u);
+    }
+
+    {
+        // #249: a phone's keyboard-mapped FIRST seat names the screen here
+        // too — the pause rows, the INPUT cycler and the seat card all
+        // compose the owner token through the same seat_owner_is_screen
+        // rule. RAII on the flag: an ASSERT return must not leak the phone
+        // class into the rest of the process.
+        NumplayersGuard numplayers(2);
+        struct SingleSeatGuard {
+            bool saved = input_hardware_state().single_seat_device;
+            SingleSeatGuard() { input_hardware_state().single_seat_device = true; }
+            ~SingleSeatGuard() { input_hardware_state().single_seat_device = saved; }
+        } device_class;
+        const std::vector<og::ui::PauseSeatInfo> seats =
+            og::ui::collect_pause_seats(/*networked=*/false);
+        ASSERT_EQ(2u, seats.size());
+        EXPECT_EQ("P1: SCRN", og::ui::pause_player_row_label(seats[0]));
+        // Only local slot 0 is the screen: the overlay drives player 0
+        // alone, so a later seat keeps its real mapping name.
+        EXPECT_NE("P2: SCRN", og::ui::pause_player_row_label(seats[1]));
     }
 }
 

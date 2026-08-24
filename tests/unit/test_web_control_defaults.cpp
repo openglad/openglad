@@ -1,12 +1,13 @@
 // Browser-safe default controls (issue #144): pure-header logic.
 //
 // Player 1's native factory keymap puts FIRE on Left Ctrl, so "attack while
-// walking up" is literally Ctrl+W — the close-tab chord Firefox reserves at
-// browser-chrome level where no page script can intercept it. Ctrl is the
-// only problem key: web builds substitute profile 0's FIRE default (and the
-// keys it displaces) at the table read sites, leave SPECIAL on Left Alt in
-// the 8-direction map, and run a one-shot version-keyed migration over
-// persisted bindings still equal to the old factory default.
+// walking up" is literally Ctrl+W — a close-tab chord the browser owns in
+// windowed play: Firefox delivers the keydown and closes the tab anyway, and
+// Chromium never delivers it to the page at all. Ctrl is the whole problem:
+// web builds substitute profile 0's FIRE default (and the keys it displaces)
+// at the table read sites, leave SPECIAL on Left Alt in the 8-direction map,
+// and run a one-shot version-keyed migration over persisted bindings still
+// equal to the old factory default.
 //
 // This is a native (headless) binary, so both web and native branches are
 // covered by passing web_mode explicitly; input_state.cpp static_asserts
@@ -59,9 +60,10 @@ TEST(WebControlDefaults, web_mode_eight_dir_moves_fire_to_s_and_shifts_yell)
 
 TEST(WebControlDefaults, web_mode_eight_dir_special_stays_left_alt)
 {
-    // Left Alt is not browser-reserved (SDL's Emscripten layer
-    // preventDefaults it), so the 8-direction SPECIAL passes straight
-    // through — no substitution at all.
+    // Left Alt is not browser-reserved the way Ctrl+W is: Firefox activates
+    // its menu bar on an unconsumed Alt keyup, and the game page suppresses
+    // that with a capture-phase preventDefault (web/shell.html). So the
+    // 8-direction SPECIAL passes straight through — no substitution at all.
     ASSERT_EQ(kLAlt, browser_safe_default_key(0, kEight, kSpecial, kLAlt, true));
     // And it passes whatever the native table holds, not a pinned constant.
     ASSERT_EQ(4242, browser_safe_default_key(0, kEight, kSpecial, 4242, true));

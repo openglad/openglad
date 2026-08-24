@@ -6586,6 +6586,21 @@ TEST(GameLoop, midgame_seat_gating_networked_and_count_limits)
         og::runtime::local_transport_shadow_can_remove_player(session, 0));
     EXPECT_TRUE(og::runtime::local_transport_shadow_can_add_player(session));
 
+    // #249: a single-seat device (a phone) is already full at that one seat
+    // — the mid-game door reads the same og::input::local_seat_cap() as Base
+    // Camp's [+], so no gamepad means no second seat.
+    {
+        const bool saved_device_class =
+            input_hardware_state().single_seat_device;
+        input_hardware_state().single_seat_device = true;
+        EXPECT_FALSE(
+            og::runtime::local_transport_shadow_can_add_player(session));
+        EXPECT_FALSE(
+            og::runtime::local_transport_shadow_add_local_player(session));
+        EXPECT_EQ(1u, og::runtime::local_transport_client_count(session));
+        input_hardware_state().single_seat_device = saved_device_class;
+    }
+
     // Networked sessions are out of scope (§5): both gates close.
     session.networked_session_ = true;
     EXPECT_FALSE(og::runtime::local_transport_shadow_can_add_player(session));

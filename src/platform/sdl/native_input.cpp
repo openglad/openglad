@@ -12,6 +12,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstring>
+#include <deque>
 
 namespace og::input_native
 {
@@ -356,13 +357,22 @@ void push_key_event(bool down, int keycode)
 
 void push_text_event(const char* utf8)
 {
-    // SDL3 text events borrow their string. Route the payload through a
-    // static ring so the pointer stays valid until the same-poll copy in
-    // decode_event; 8 slots comfortably outlive one queue drain.
-    static std::array<std::array<char, 64>, 8> ring{};
-    static std::size_t ring_index = 0;
-    std::array<char, 64>& slot = ring[ring_index];
-    ring_index = (ring_index + 1) % ring.size();
+    // SDL3 text events borrow their string, and the prompt loop drains one
+    // event per iteration — a payload can sit queued behind an arbitrarily
+    // long burst (the web overlay clears a whole prompt buffer as one
+    // backspace+text burst), so a fixed-size ring can wrap under a
+    // still-queued event and hand it a later event's text. The pool grows
+    // while any text event is still queued; once none are, everything but a
+    // small tail is reclaimed (poll_event hands out one event at a time
+    // whose payload must survive until decode_event copies it). std::deque
+    // keeps references stable across push_back, and erasing only at the
+    // front leaves the surviving references valid.
+    static std::deque<std::array<char, 64>> pool;
+    constexpr std::size_t kRetainTail = 8;
+    if (pool.size() > kRetainTail && !SDL_HasEvent(SDL_EVENT_TEXT_INPUT))
+        pool.erase(pool.begin(),
+                   pool.end() - static_cast<std::ptrdiff_t>(kRetainTail));
+    std::array<char, 64>& slot = pool.emplace_back();
     SDL_strlcpy(slot.data(), utf8 != nullptr ? utf8 : "", slot.size());
 
     SDL_Event event;
