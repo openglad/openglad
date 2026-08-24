@@ -192,7 +192,29 @@ struct FlowState {
     bool saw_team_menu = false;
     bool saw_load_hidden_after_empty = false;
     bool saw_continue_hidden_after_empty = false;
+    // #237 derivation pins, counted around the real doors this flow already
+    // drives. -1 means the injector never reached the read, which fails the
+    // exact assertions in the test body.
+    int fades_added_by_load_door = -1;
+    int fades_added_by_backups_door = -1;
 };
+
+// Under TESTING every fadeblack lands in FadeBetween's test-mode branch,
+// which traces exactly one "video" line per fade — so counting those lines
+// counts fades. (#237: the rule is derived in run_menu_screen, never
+// declared per screen, so only a real door driven through the real screens
+// can pin which side of it a screen is on.)
+int count_fade_between_traces()
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    int fades = 0;
+    for (const TraceEntry& entry : g_trace_buffer) {
+        if (entry.category == "video" &&
+            entry.message.find("FadeBetween") != std::string::npos)
+            ++fades;
+    }
+    return fades;
+}
 
 // --- open flow -------------------------------------------------------------
 
@@ -391,14 +413,24 @@ int backups_and_empty_injector(void* data)
 
     wait_for_interactable("load_company", 5000);
     SDL_Delay(750);
+    // #237: LOAD is a door on the open main menu — a peer transition, so the
+    // Company List enters instantly.
+    const int fades_before_load = count_fade_between_traces();
     interact("load_company");
 
     if (wait_for_interactable("company_bak_0", 5000)) {
         SDL_Delay(750);
+        state->fades_added_by_load_door =
+            count_fade_between_traces() - fades_before_load;
         fprintf(stderr, "  [test] clicking the BK door\n");
+        // #237: the Backups view is opened from the open Company List — a
+        // nested run_menu_screen, which never fades whatever it is.
+        const int fades_before_backups = count_fade_between_traces();
         interact("company_bak_0");  // §2.4: opens the (empty) Backups view
         if (wait_for_backups_view()) {
             SDL_Delay(750);  // menu-entry settle
+            state->fades_added_by_backups_door =
+                count_fade_between_traces() - fades_before_backups;
             fprintf(stderr, "  [test] backing out of the empty backups view\n");
             interact("back");
         }
@@ -976,6 +1008,16 @@ TEST(CompanyList, backups_door_opens_empty_view_and_empty_delete_exits)
     ASSERT_FALSE(trace_contains("confirm", "REWIND TO THIS BACKUP?"))
         << "an empty backups view has nothing to confirm";
     ASSERT_FALSE(user_file_exists("save/wp3lastd.gtl"));
+    // #237 derivation, on the real doors rather than on a spec field: both
+    // are opened from an already-open menu, so neither fades. (The kind
+    // assertions in test_menu_engine name the screens; these say what the
+    // engine does with them.)
+    EXPECT_EQ(0, state.fades_added_by_load_door)
+        << "#237: the LOAD door is a peer transition — entering the Company "
+           "List from the open main menu must add no fade";
+    EXPECT_EQ(0, state.fades_added_by_backups_door)
+        << "#237: COMPANY BACKUPS is opened from the open Company List — a "
+           "nested entry never fades";
     ASSERT_TRUE(state.saw_load_hidden_after_empty)
         << "no companies left: the main-menu gate must hide LOAD";
     ASSERT_TRUE(state.saw_continue_hidden_after_empty)

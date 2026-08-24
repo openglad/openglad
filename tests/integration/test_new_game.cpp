@@ -77,7 +77,26 @@ struct NewGameState {
     bool finished;
     bool saw_team_menu;
     bool saw_networking_button;
+    // #237 derivation pin: fades counted across the BEGIN NEW GAME door.
+    // -1 means the injector never reached the read.
+    int fades_added_by_name_entry;
 };
+
+// Under TESTING every fadeblack takes FadeBetween's test-mode branch, which
+// traces exactly one "video" line per fade — so counting those lines counts
+// fades. The #237 rule is derived inside run_menu_screen rather than declared
+// on a spec, so only driving the real door proves which side a screen is on.
+static int count_fade_between_traces()
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    int fades = 0;
+    for (const TraceEntry& entry : g_trace_buffer) {
+        if (entry.category == "video" &&
+            entry.message.find("FadeBetween") != std::string::npos)
+            ++fades;
+    }
+    return fades;
+}
 
 static int new_game_injector(void* data)
 {
@@ -90,12 +109,18 @@ static int new_game_injector(void* data)
     SDL_Delay(750);
 
     fprintf(stderr, "  [test] clicking begin_new_game\n");
+    // #237: the new-game cut is a context switch, and name entry is its first
+    // step — so its entry fades, unlike the doors that stay inside the menu
+    // cluster.
+    const int fades_before_new_game = count_fade_between_traces();
     interact("begin_new_game");
 
     // §2.2: BEGIN NEW GAME now opens the name-entry screen first. Accept the
     // generated company name to found the company.
     wait_for_interactable("company_name_accept", 5000);
     SDL_Delay(750);  // menu-entry settle
+    state->fades_added_by_name_entry =
+        count_fade_between_traces() - fades_before_new_game;
     fprintf(stderr, "  [test] accepting generated company name\n");
     interact("company_name_accept");
 
@@ -141,7 +166,7 @@ TEST(NewGame, begin_new_game) {
     og::runtime::current_session->myscreen_->save_data.team_size = 1;
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    NewGameState state = { false, false, false, false };
+    NewGameState state = { false, false, false, false, -1 };
     SDL_Thread* thread = SDL_CreateThread(new_game_injector, "new_game_test", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
@@ -166,6 +191,13 @@ TEST(NewGame, begin_new_game) {
 
     // §2.2: the name-entry ACCEPT founded the company (traced with the chosen
     // display name), and that name landed in the 40-byte save_name field.
+    // #237, derived rather than declared: BEGIN NEW GAME is a context switch
+    // and name entry is its first step, so the entry fades out and back in
+    // exactly once. (Contrast the LOAD / BACKUPS doors, pinned at 0 in
+    // test_company_list.)
+    EXPECT_EQ(2, state.fades_added_by_name_entry)
+        << "#237: the name-entry screen is the new-game context switch — its "
+           "entry must fade out and in exactly once";
     ASSERT_TRUE(trace_contains("name_entry", "accept")) << "name-entry ACCEPT should have fired";
     ASSERT_FALSE(og::runtime::current_session->myscreen_->save_data.save_name.empty())
         << "the founded company's display name should be stamped into save_name";
@@ -212,7 +244,7 @@ TEST(NewGame, name_entry_back_cancels_without_founding) {
         "gladiator";
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    NewGameState state = { false, false, false, false };
+    NewGameState state = { false, false, false, false, -1 };
     SDL_Thread* thread =
         SDL_CreateThread(name_entry_cancel_injector, "name_entry_cancel", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
@@ -313,7 +345,7 @@ static int name_entry_edit_injector(void* data)
 TEST(NewGame, name_entry_edit_strip_sets_company_name) {
     trace_clear();
 
-    NewGameState state = { false, false, false, false };
+    NewGameState state = { false, false, false, false, -1 };
     SDL_Thread* thread =
         SDL_CreateThread(name_entry_edit_injector, "name_entry_edit", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";

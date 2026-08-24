@@ -394,6 +394,78 @@ TEST(MenuEngine, blocking_control_remap_polls_and_aborts_for_remote_start)
            "sequence as soon as the host start is launchable";
 }
 
+// ---------------------------------------------------------------------------
+// #257 queue contract: a ticket whose wait timed out, and a ticket a drain
+// threw away, are both CANCELLED — the pump must never run either one
+// afterwards, and neither may be reported to its waiter as a success. The
+// control task proves the pump really ran during the same frames, so the
+// zero below is a cancellation and not a dead pump.
+namespace
+{
+
+std::atomic<int> g_cancelled_task_runs{0};
+std::atomic<int> g_control_task_runs{0};
+
+bool task_queue_probe_frame_tick(void* /*state*/, int frame)
+{
+    if (frame == 1) {
+        // Posted from the menu thread itself: the NEXT frame's pump runs it.
+        (void)post_main_thread_task([] { ++g_control_task_runs; });
+    }
+    return frame < 4;
+}
+
+} // namespace
+
+TEST(MenuEngine, timed_out_and_drained_main_thread_tasks_never_run)
+{
+    static constexpr og::ui::MenuButtonSpec kRows[] = {
+        {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+         .x = 10, .y = 10, .w = 50, .h = 15,
+         .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT, .nav = {}},
+    };
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    g_cancelled_task_runs = 0;
+    g_control_task_runs = 0;
+
+    og::ui::MenuScreenSpec spec = make_synth_spec(kRows, 1, "task_queue_probe");
+    spec.frame_tick = &task_queue_probe_frame_tick;
+    g_synth_spec = &spec;
+
+    // Case 1 — the wait timed out. No menu loop is running here, so nothing
+    // can pump this ticket: the wait must expire AND take the task out of
+    // the queue with it.
+    const MainThreadTaskTicket timed_out =
+        post_main_thread_task([] { ++g_cancelled_task_runs; });
+    EXPECT_FALSE(wait_for_main_thread_task(timed_out, 250))
+        << "a task no pump can reach must not report success";
+    // Four real frames of pump. The control task (posted from inside the
+    // loop) runs; the cancelled one may not.
+    (void)og::ui::run_menu_screen(spec);
+    EXPECT_EQ(1, g_control_task_runs.load())
+        << "the pump must have run during those frames, or the zero below "
+           "proves nothing";
+    EXPECT_EQ(0, g_cancelled_task_runs.load())
+        << "#257: a timed-out task must never execute later — its captures "
+           "may be gone by then";
+
+    // Case 2 — a drain discards what it clears, and the waiter is released
+    // with false, never with a settled mark the drain moved past it.
+    const MainThreadTaskTicket drained =
+        post_main_thread_task([] { ++g_cancelled_task_runs; });
+    drain_main_thread_tasks();
+    EXPECT_FALSE(wait_for_main_thread_task(drained, 250))
+        << "a drained task must be reported as not run";
+    (void)og::ui::run_menu_screen(spec);
+    EXPECT_EQ(2, g_control_task_runs.load())
+        << "the second run must have pumped too";
+    EXPECT_EQ(0, g_cancelled_task_runs.load())
+        << "#257: a drained task belongs to a scope that is over — the next "
+           "screen's pump must not run it";
+}
+
 TEST(MenuEngine, depth_one_entry_composes_content_before_fade_in)
 {
     static constexpr og::ui::MenuButtonSpec kRows[] = {
@@ -3251,6 +3323,15 @@ struct MenuCallbackStateGuard
 
     ~MenuCallbackStateGuard()
     {
+        // Drop the installed lobby client FIRST. Every test that uses this
+        // guard also stack-allocates a FakeLobbyClient after it, so that
+        // double is already destroyed by the time this runs — and
+        // install_base_camp_state_for_screen re-derives the seat rail, which
+        // reads picker_lobby_players(). Without this the rail walks a dead
+        // double (SIGSEGV copying its player vector). EngineTestGuard, which
+        // is declared before this one, still restores the real client after
+        // us.
+        og::ui::install_active_picker_lobby_client(nullptr);
         og::ui::install_base_camp_state_for_screen(nullptr);
         og::ui::install_seat_settings_state_for_screen(nullptr);
         og::ui::install_company_list_state_for_screen(nullptr);

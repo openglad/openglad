@@ -13,6 +13,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -201,25 +202,81 @@ std::condition_variable s_main_thread_task_cv;
 std::vector<std::pair<std::uint64_t, std::function<void()>>>
     s_main_thread_tasks;
 std::uint64_t s_main_thread_task_next = 0;
+// High-water mark of tickets that actually RAN. Tasks run in post order, so
+// one mark answers every waiter — as long as the discarded set below is
+// consulted FIRST: cancelling ticket N and then running N+1 would otherwise
+// report N as run.
 std::uint64_t s_main_thread_task_settled = 0;
+// Tickets resolved by cancellation instead of execution (a wait that timed
+// out, or a drain at a test boundary). A waiter on one of these gets false.
+std::set<std::uint64_t> s_main_thread_tasks_discarded;
+// Bumped by every drain. A batch the pump already swapped out of the queue
+// re-checks it before each task, so a task belonging to a finished test can
+// never run inside the next one.
+std::uint64_t s_main_thread_task_generation = 0;
+
+// What a waiter sees for its ticket.
+enum class MainThreadTaskFate
+{
+    Pending,
+    Ran,
+    Discarded,
+};
+
+MainThreadTaskFate main_thread_task_fate_locked(std::uint64_t ticket)
+{
+    if (s_main_thread_tasks_discarded.count(ticket) != 0)
+        return MainThreadTaskFate::Discarded;
+    if (s_main_thread_task_settled >= ticket)
+        return MainThreadTaskFate::Ran;
+    return MainThreadTaskFate::Pending;
+}
+
+// Removes a still-queued task and marks it discarded. Returns false when the
+// ticket is no longer in the queue (already run, or mid-flight on the pump).
+bool cancel_queued_main_thread_task_locked(std::uint64_t ticket)
+{
+    for (auto it = s_main_thread_tasks.begin(); it != s_main_thread_tasks.end();
+         ++it)
+    {
+        if (it->first != ticket)
+            continue;
+        s_main_thread_tasks.erase(it);
+        s_main_thread_tasks_discarded.insert(ticket);
+        return true;
+    }
+    return false;
+}
 
 // Installed as og::ui::g_picker_main_thread_pump. Tasks run OUTSIDE the queue
-// lock (they re-enter menu/lobby code freely) and settle in post order, so a
-// single high-water mark answers every waiter.
+// lock (they re-enter menu/lobby code freely) and settle in post order.
 void run_main_thread_tasks()
 {
     std::vector<std::pair<std::uint64_t, std::function<void()>>> batch;
+    std::uint64_t generation = 0;
     {
         std::lock_guard<std::mutex> lock(s_main_thread_task_mutex);
         batch.swap(s_main_thread_tasks);
+        generation = s_main_thread_task_generation;
     }
     for (auto& [ticket, task] : batch)
     {
-        if (task)
+        bool run_it = false;
+        {
+            std::lock_guard<std::mutex> lock(s_main_thread_task_mutex);
+            // A drain (or this ticket's own timeout) landed while the batch
+            // was running: the rest of it belongs to a scope that is over.
+            run_it = s_main_thread_task_generation == generation &&
+                     s_main_thread_tasks_discarded.count(ticket) == 0;
+        }
+        if (run_it && task)
             task();
         {
             std::lock_guard<std::mutex> lock(s_main_thread_task_mutex);
-            s_main_thread_task_settled = ticket;
+            if (run_it)
+                s_main_thread_task_settled = ticket;
+            else
+                s_main_thread_tasks_discarded.insert(ticket);
         }
         s_main_thread_task_cv.notify_all();
     }
@@ -309,16 +366,62 @@ std::uint64_t post_main_thread_task(std::function<void()> task)
 
 bool wait_for_main_thread_task(std::uint64_t ticket, int timeout_ms)
 {
+    const auto ticket_id = static_cast<unsigned long long>(ticket);
     std::unique_lock<std::mutex> lock(s_main_thread_task_mutex);
-    const bool settled = s_main_thread_task_cv.wait_for(
-        lock, std::chrono::milliseconds(timeout_ms),
-        [ticket] { return s_main_thread_task_settled >= ticket; });
-    if (!settled)
+    MainThreadTaskFate fate = MainThreadTaskFate::Pending;
+    const bool resolved = s_main_thread_task_cv.wait_for(
+        lock, std::chrono::milliseconds(timeout_ms), [ticket, &fate] {
+            fate = main_thread_task_fate_locked(ticket);
+            return fate != MainThreadTaskFate::Pending;
+        });
+    if (resolved)
+    {
+        if (fate == MainThreadTaskFate::Ran)
+            return true;
+        std::fprintf(stderr,
+                     "  [interact] main-thread task %llu was DISCARDED before "
+                     "it ran\n",
+                     ticket_id);
+        return false;
+    }
+    // Timed out. Cancel the ticket so it can never run later — against a
+    // caller's stack that has since gone away, or inside the next test.
+    if (cancel_queued_main_thread_task_locked(ticket))
+    {
         std::fprintf(stderr,
                      "  [interact] TIMEOUT waiting for main-thread task %llu "
-                     "(%d ms)\n",
-                     static_cast<unsigned long long>(ticket), timeout_ms);
-    return settled;
+                     "(%d ms); cancelled while still queued\n",
+                     ticket_id, timeout_ms);
+        return false;
+    }
+    // Not in the queue: it either settled in the instant the wait expired, or
+    // the pump is running it right now. A running task cannot be cancelled,
+    // so wait for it to finish rather than returning to a scope it may still
+    // be reading.
+    if (main_thread_task_fate_locked(ticket) == MainThreadTaskFate::Ran)
+        return true;
+    std::fprintf(stderr,
+                 "  [interact] TIMEOUT waiting for main-thread task %llu "
+                 "(%d ms); it is already running — waiting it out\n",
+                 ticket_id, timeout_ms);
+    const bool finished = s_main_thread_task_cv.wait_for(
+        lock, std::chrono::milliseconds(timeout_ms), [ticket, &fate] {
+            fate = main_thread_task_fate_locked(ticket);
+            return fate != MainThreadTaskFate::Pending;
+        });
+    if (finished && fate == MainThreadTaskFate::Ran)
+        return true;
+    if (!finished)
+    {
+        // The pump never came back. Nothing can make this safe; say so loudly
+        // and report the task as not run.
+        s_main_thread_tasks_discarded.insert(ticket);
+        std::fprintf(stderr,
+                     "  [interact] main-thread task %llu NEVER FINISHED (%d "
+                     "ms); its captures may still be read\n",
+                     ticket_id, timeout_ms);
+    }
+    return false;
 }
 
 void drain_main_thread_tasks()
@@ -326,7 +429,16 @@ void drain_main_thread_tasks()
     {
         std::lock_guard<std::mutex> lock(s_main_thread_task_mutex);
         s_main_thread_tasks.clear();
-        s_main_thread_task_settled = s_main_thread_task_next;
+        // Every posted ticket that has not run yet is discarded: the queued
+        // ones cleared just now, plus anything a batch still holds (the
+        // generation bump stops the pump from running those). A task the
+        // pump happens to be executing at this instant is counted with them
+        // — it belongs to a scope that is already over, so its waiter is
+        // told "not run" rather than being handed a result nobody can use.
+        for (std::uint64_t ticket = s_main_thread_task_settled + 1;
+             ticket <= s_main_thread_task_next; ++ticket)
+            s_main_thread_tasks_discarded.insert(ticket);
+        ++s_main_thread_task_generation;
     }
     s_main_thread_task_cv.notify_all();
 }

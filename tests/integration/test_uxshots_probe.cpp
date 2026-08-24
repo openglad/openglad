@@ -273,7 +273,27 @@ void reap_all_companies() {
 struct ShotState {
   bool finished = false;
   int captures = 0;
+  // #237 derivation pin, for the flows that drive a real door: the fades a
+  // door added, or -1 when the injector never reached the read.
+  int fades_added_by_nested_door = -1;
 };
+
+// Under TESTING every fadeblack takes FadeBetween's test-mode branch, which
+// traces exactly one "video" line per fade — so counting those lines counts
+// fades. The #237 rule is derived inside run_menu_screen from the menu-stack
+// depth, so only a real door driven through the real screens can pin which
+// side of the rule a screen is on.
+int count_fade_between_traces() {
+  std::lock_guard<std::mutex> lock(g_trace_mutex);
+  int fades = 0;
+  for (const TraceEntry &entry : g_trace_buffer) {
+    if (entry.category == "video" &&
+        entry.message.find("FadeBetween") != std::string::npos) {
+      ++fades;
+    }
+  }
+  return fades;
+}
 
 // --- 1. main menu, no companies --------------------------------------------
 
@@ -388,13 +408,22 @@ int seat_settings_injector(void *data) {
   if (wait_for_interactable("continue_game", 5000)) {
     SDL_Delay(1500);
     interact("continue_game");
+    int fades_before_door = -1;
     if (wait_for_team_menu() &&
         wait_for_interactable("seat_card_0", 5000)) {
       SDL_Delay(500);
+      // #237: the seat editor is a door on the OPEN Base Camp — a nested
+      // run_menu_screen entry, which never fades. (Base Camp's own entry
+      // from the main menu is the context switch, and that one does.)
+      fades_before_door = count_fade_between_traces();
       interact("seat_card_0");
     }
     if (wait_for_interactable("seat_settings_back", 5000)) {
       SDL_Delay(1500);
+      if (fades_before_door >= 0) {
+        state->fades_added_by_nested_door =
+            count_fade_between_traces() - fades_before_door;
+      }
       state->captures += capture_frame("seat_settings");
       interact("seat_settings_back");
     }
@@ -428,6 +457,9 @@ TEST(UxShots, b2_seat_settings) {
   g_picker_max_mainmenu_calls = 0;
   ASSERT_TRUE(state.finished);
   ASSERT_EQ(1, state.captures);
+  EXPECT_EQ(0, state.fades_added_by_nested_door)
+      << "#237: a door opened from the open Base Camp is a nested entry — it "
+         "must add no fade";
 }
 
 // --- 3. name entry ----------------------------------------------------------
@@ -1071,13 +1103,29 @@ struct ShotRect {
 constexpr ShotRect kViewScenarioButtonRects[] = {
     {10, 170, 44, 20}, {220, 170, 40, 20}, {270, 170, 40, 20}};
 
+bool in_rect_with_pulse(const ShotRect &r, int x, int y) {
+  return x >= r.x - kHighlightPulse && x <= r.x + r.w + kHighlightPulse &&
+         y >= r.y - kHighlightPulse && y <= r.y + r.h + kHighlightPulse;
+}
+
 bool in_view_scenario_button(int x, int y) {
   for (const ShotRect &r : kViewScenarioButtonRects) {
-    if (x >= r.x - kHighlightPulse && x <= r.x + r.w + kHighlightPulse &&
-        y >= r.y - kHighlightPulse && y <= r.y + r.h + kHighlightPulse)
+    if (in_rect_with_pulse(r, x, y))
       return true;
   }
   return false;
+}
+
+// The SCENARIO screen's own BACK face. The cross-screen comparison below
+// straddles two screens, so it has to skip the button chrome of BOTH: the
+// hover ring draw_buttons paints at yloc-1 and the focus box draw_highlight
+// pulses up to 3 px outside the rect land in the same rows as the backdrop
+// bands, at different x on each screen.
+constexpr ShotRect kScenarioBackRect = {30, 170, 60, 20};
+
+bool in_cross_screen_button(int x, int y) {
+  return in_view_scenario_button(x, y) ||
+         in_rect_with_pulse(kScenarioBackRect, x, y);
 }
 
 // Rows that carry nothing but backdrop on BOTH the SCENARIO screen and the
@@ -1089,13 +1137,15 @@ bool in_view_scenario_button(int x, int y) {
 // frame-to-frame half.
 constexpr int kBackdropOnlyBands[][2] = {{161, 170}, {190, 200}};
 
-// Differing pixels between two frames over rows [y0, y1).
+// Differing pixels between two frames over rows [y0, y1). `skip` (optional)
+// names the button chrome to leave out of the comparison.
+using PixelSkip = bool (*)(int, int);
 std::size_t frame_diff_count(const FramePixels &a, const FramePixels &b, int y0,
-                             int y1, bool skip_button_rects) {
+                             int y1, PixelSkip skip) {
   std::size_t differing = 0;
   for (int y = y0; y < y1; ++y) {
     for (int x = 0; x < 320; ++x) {
-      if (skip_button_rects && in_view_scenario_button(x, y))
+      if (skip != nullptr && skip(x, y))
         continue;
       const std::size_t i =
           (static_cast<std::size_t>(y) * 320 + static_cast<std::size_t>(x)) * 3;
@@ -1179,10 +1229,18 @@ bool check_view_level_staged_band(const FramePixels &rgb) {
     fprintf(stderr, "  [uxshot] no pre-viewer frame to compare against\n");
     return false;
   }
+  // The bands skip both screens' button chrome, but a keyboard-navigated
+  // highlight would move the focus box onto a DIFFERENT row than the mouse
+  // cadence this flow uses. State the assumption instead of inheriting it.
+  if (pks().menu_nav_enabled) {
+    fprintf(stderr, "  [uxshot] menu nav is enabled: the backdrop bands would "
+                    "carry a keyboard focus ring\n");
+    return false;
+  }
   for (const auto &band : kBackdropOnlyBands) {
     const std::size_t moved =
         frame_diff_count(g_menu_before_viewer_frame, rgb, band[0], band[1],
-                         /*skip_button_rects=*/false);
+                         &in_cross_screen_button);
     if (moved != 0) {
       fprintf(stderr,
               "  [uxshot] backdrop rows %d..%d differ from the pre-viewer "
@@ -1195,6 +1253,13 @@ bool check_view_level_staged_band(const FramePixels &rgb) {
   return true;
 }
 
+// Set when the ONLY thing wrong with a candidate frame is that it landed on
+// the same pan phase as the reference. The pan is a triangle wave and the
+// frame the wait observed is not the frame the capture handshake freezes, so
+// an apex between the two can hand back an identical band; that draw is worth
+// retrying. Every other failure below is a real one and must not be retried.
+std::atomic<bool> g_view_level_pan_phase_collided{false};
+
 // #251, the second half of the intra-screen camera pin. draw_backdrop() paints
 // the four menu quadrants THROUGH viewob[0] at the top of the same hook that
 // then lends the view to the staged preview, so a camera left behind on the
@@ -1204,6 +1269,7 @@ bool check_view_level_staged_band(const FramePixels &rgb) {
 // backdrop still between two pan phases; check_view_level_staged_band holds it
 // against the pre-viewer menu.
 bool check_view_level_staged_panned(const FramePixels &rgb) {
+  g_view_level_pan_phase_collided = false;
   if (!staged_band_is_populated(rgb))
     return false;
   if (g_view_level_first_frame.size() != rgb.size()) {
@@ -1212,11 +1278,10 @@ bool check_view_level_staged_panned(const FramePixels &rgb) {
   }
   const std::size_t backdrop_diff =
       frame_diff_count(g_view_level_first_frame, rgb, kBackdropStripTopY, 200,
-                       /*skip_button_rects=*/true);
+                       &in_view_scenario_button);
   const std::size_t band_diff = frame_diff_count(
       g_view_level_first_frame, rgb, kViewScenarioPreviewBandY,
-      kViewScenarioPreviewBandY + kViewScenarioPreviewBandH,
-      /*skip_button_rects=*/false);
+      kViewScenarioPreviewBandY + kViewScenarioPreviewBandH, nullptr);
   if (backdrop_diff != 0) {
     fprintf(stderr,
             "  [uxshot] backdrop strip moved between staged frames: %zu px\n",
@@ -1227,6 +1292,7 @@ bool check_view_level_staged_panned(const FramePixels &rgb) {
   // a frozen screen.
   if (band_diff == 0) {
     fprintf(stderr, "  [uxshot] preview band never panned between frames\n");
+    g_view_level_pan_phase_collided = true;
     return false;
   }
   fprintf(stderr,
@@ -1299,10 +1365,28 @@ int view_level_staged_injector(void *data) {
             capture_frame("view_level_staged", &check_view_level_staged_band);
         // #251: a second frame from further along the same pan, so the
         // backdrop can be judged against a frame that is unquestionably a
-        // different pan phase.
-        if (wait_for_preview_band_pan(g_view_level_first_frame, 8000)) {
-          state->captures += capture_frame("view_level_staged_panned",
-                                           &check_view_level_staged_panned);
+        // different pan phase. The wait and the capture freeze two different
+        // frames, so the triangle wave can turn back between them and hand
+        // the check a frame at the reference offset; that collision alone is
+        // retried (bounded, each attempt waiting on the live band again — no
+        // flat delay), and any other failure stands.
+        for (int attempt = 0; attempt < 3; ++attempt) {
+          if (!wait_for_preview_band_pan(g_view_level_first_frame, 8000))
+            break;
+          if (capture_frame("view_level_staged_panned",
+                            &check_view_level_staged_panned)) {
+            state->captures += 1;
+            break;
+          }
+          if (!g_view_level_pan_phase_collided.load()) {
+            fprintf(stderr, "  [uxshot] panned capture failed for a reason "
+                            "other than pan phase; not retrying\n");
+            break;
+          }
+          fprintf(stderr,
+                  "  [uxshot] panned capture landed on the reference pan "
+                  "phase; retrying (attempt %d)\n",
+                  attempt + 1);
         }
         SDL_Delay(200);
         interact("back");
@@ -1346,6 +1430,7 @@ TEST(UxShots, n_view_level_staged) {
   trace_clear();
   g_view_level_first_frame.clear();
   g_menu_before_viewer_frame.clear();
+  g_view_level_pan_phase_collided = false;
   CompanySlotCleanup cleanup{{"save0"}};
   {
     SaveData sd;
@@ -1597,17 +1682,11 @@ void help_park_pointer() {
 std::atomic<int> g_help_fades_at_door{-1};
 std::atomic<int> g_help_fades_after_return{-1};
 
-int count_fade_between_traces() {
-  std::lock_guard<std::mutex> lock(g_trace_mutex);
-  int fades = 0;
-  for (const TraceEntry &entry : g_trace_buffer) {
-    if (entry.category == "video" &&
-        entry.message.find("FadeBetween") != std::string::npos) {
-      ++fades;
-    }
-  }
-  return fades;
-}
+// One context-switch entry (see count_fade_between_traces above) = one fadeblack(0) + one fadeblack(1), and under
+// TESTING each traces exactly one FadeBetween line
+// (menu_screen_runner.cpp run_menu_screen). Measured against the main menu,
+// whose entry is the only context switch in the HELP flow below.
+constexpr int kMainMenuEntryFades = 2;
 
 int help_screen_injector(void *data) {
   og::runtime::ensure_thread_session();
@@ -1657,6 +1736,10 @@ int help_screen_injector(void *data) {
 TEST(UxShots, n_help_screen) {
   trace_clear();
   reap_all_companies();
+  // File-scope atomics: re-arm them here so a --gtest_repeat iteration cannot
+  // inherit the previous one's counts.
+  g_help_fades_at_door = -1;
+  g_help_fades_after_return = -1;
   ShotState state;
   SDL_Thread *thread =
       SDL_CreateThread(help_screen_injector, "ux_help", &state);
@@ -1669,9 +1752,14 @@ TEST(UxShots, n_help_screen) {
   g_picker_max_mainmenu_calls = 0;
   ASSERT_TRUE(state.finished);
   ASSERT_EQ(5, state.captures);
-  ASSERT_GE(g_help_fades_at_door.load(), 0);
-  ASSERT_GE(g_help_fades_after_return.load(), 0);
-  EXPECT_EQ(g_help_fades_at_door.load(), g_help_fades_after_return.load())
+  // Exact, not relative: the trace buffer was cleared at the top of this
+  // test, so everything counted here belongs to this run. kMainMenuEntryFades
+  // is the main menu's own entry — the one context switch in the flow — and
+  // the HELP door and the way back add nothing to it.
+  ASSERT_EQ(kMainMenuEntryFades, g_help_fades_at_door.load())
+      << "#237: entering the main menu is a context switch and must fade "
+         "exactly once (fade-out + fade-in)";
+  ASSERT_EQ(kMainMenuEntryFades, g_help_fades_after_return.load())
       << "#237: the HELP door and the return to the main menu are peer "
          "transitions — the round-trip must add zero fades";
 }

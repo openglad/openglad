@@ -1264,6 +1264,9 @@ struct DegradeFlowState
     // Every save mutation this flow makes is handed to the menu thread; a
     // task the loop never ran would make the phases below meaningless.
     bool save_edits_ran_on_main_thread = true;
+    // The same for the reads: the staged-health poll runs on the pump, and a
+    // poll that never got there must not read as "not failed yet".
+    bool lobby_reads_ran_on_main_thread = true;
 };
 
 // Levels stuffed into the completed-levels ledger to push the staged setup
@@ -1310,13 +1313,22 @@ int view_scenario_degrade_injector(void* data)
         for (int i = 0; i < kDegradeLedgerLevels; ++i)
             ledger.insert(kDegradeLedgerFirstLevel + i);
     });
+    // The staged health lives on the active lobby client, which the menu
+    // thread's per-frame picker_lobby_poll() mutates — and can replace — so
+    // each poll iteration reads it THERE and hands back only the answer
+    // (#257). Same cadence and ceiling as before.
     for (int waited_ms = 0; waited_ms < 5000; waited_ms += 50)
     {
-        og::ui::IPickerLobbyClient* const lobby =
-            og::ui::active_picker_lobby_client();
-        if (lobby != nullptr &&
-            lobby->staged_preview_health() ==
-                og::ui::IPickerLobbyClient::StagedPreviewHealth::Failed)
+        bool failed = false;
+        state->lobby_reads_ran_on_main_thread &=
+            run_on_main_thread([&failed] {
+                og::ui::IPickerLobbyClient* const lobby =
+                    og::ui::active_picker_lobby_client();
+                failed = lobby != nullptr &&
+                    lobby->staged_preview_health() ==
+                        og::ui::IPickerLobbyClient::StagedPreviewHealth::Failed;
+            });
+        if (failed)
         {
             state->failed_health_seen = true;
             break;
@@ -1393,6 +1405,8 @@ TEST(CtfUi, view_scenario_degrades_and_recovers_on_level_moves)
     EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open its frame";
     EXPECT_TRUE(state.save_edits_ran_on_main_thread)
         << "every save edit must have run on the menu thread's pump";
+    EXPECT_TRUE(state.lobby_reads_ran_on_main_thread)
+        << "every staged-health poll must have run on the menu thread's pump";
     EXPECT_TRUE(state.failed_health_seen)
         << "the unloadable level's restage must land as Failed health "
            "while the viewer is parked";

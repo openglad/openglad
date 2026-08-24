@@ -176,6 +176,12 @@ struct OptionsState {
     // string (as in any process that never ran load_settings()).
     std::string zoom_label_when_unset;
     std::string smoothing_label_when_unset;
+    // #257: every cfg/keymap/sprite read and write this injector makes is
+    // handed to the menu thread's pump. A task that never ran there would
+    // leave the checks below judging state nobody changed (or, for the
+    // save/restore pair, leave the display screen on cleared cfg values), so
+    // the whole flow is only meaningful while this stays true.
+    bool main_thread_tasks_all_ran = true;
 };
 
 // blood.png is solid palette index 40 (the red); blood_friendly.png is drawn
@@ -196,6 +202,26 @@ static bool live_blood_is_gory()
                      static_cast<unsigned char>(40)) != blood.data.get() + len;
 }
 
+// #257, the read side. cfg is a map of maps whose nodes the menu thread's
+// per-frame label sync inserts into and whose std::strings it overwrites, so
+// an injector may not walk it either: post a task that copies the value out
+// on the menu thread and use the copy. A read that never reached the pump
+// returns false and fails whatever check asked for it — it never passes a
+// stale or torn value off as the live setting.
+static bool main_thread_cfg_setting(const char* category, const char* key,
+                                    std::string& out)
+{
+    return run_on_main_thread(
+        [&out, category, key] { out = cfg.get_setting(category, key); });
+}
+
+static bool main_thread_cfg_is_on(const char* category, const char* key,
+                                  bool& out)
+{
+    return run_on_main_thread(
+        [&out, category, key] { out = cfg.is_on(category, key); });
+}
+
 // Click an FX-subscreen toggle and report whether its cfg key flipped.
 // Under machine load a single click can be dropped (the press is still held
 // when the handler samples the mouse), so poll for the flip and re-click
@@ -205,14 +231,19 @@ static bool live_blood_is_gory()
 static bool toggle_effect_and_check_flip(const char* button_id, const char* category,
                                          const char* cfg_key)
 {
-    const bool before = cfg.is_on(category, cfg_key);
+    bool before = false;
+    if (!main_thread_cfg_is_on(category, cfg_key, before))
+        return false;
     const Uint64 deadline = SDL_GetTicks() + 5000;
     interact(button_id);
     for (;;) {
         // 300ms per the menu-test discipline: a shorter gap can land the next
         // click while this one's press is still held, and it gets dropped.
         SDL_Delay(300);
-        if (cfg.is_on(category, cfg_key) != before)
+        bool now = before;
+        if (!main_thread_cfg_is_on(category, cfg_key, now))
+            return false;
+        if (now != before)
             return true;
         if (SDL_GetTicks() >= deadline)
             return false;
@@ -225,16 +256,41 @@ static bool toggle_effect_and_check_flip(const char* button_id, const char* cate
 static bool click_cycle_step(const char* button_id, const char* category,
                              const char* cfg_key)
 {
-    const std::string before = cfg.get_setting(category, cfg_key);
+    std::string before;
+    if (!main_thread_cfg_setting(category, cfg_key, before))
+        return false;
     const Uint64 deadline = SDL_GetTicks() + 5000;
     interact(button_id);
     for (;;) {
         SDL_Delay(300);
-        if (cfg.get_setting(category, cfg_key) != before)
+        std::string now;
+        if (!main_thread_cfg_setting(category, cfg_key, now))
+            return false;
+        if (now != before)
             return true;
         if (SDL_GetTicks() >= deadline)
             return false;
         interact(button_id);
+    }
+}
+
+// The poll shape every lap below ends with: re-click until the stored value
+// reaches `expected`, deadline-bounded, reading cfg on the menu thread.
+static bool click_until_cfg_setting(const char* button_id, const char* category,
+                                    const char* cfg_key,
+                                    const std::string& expected)
+{
+    const Uint64 deadline = SDL_GetTicks() + 5000;
+    for (;;) {
+        std::string now;
+        if (!main_thread_cfg_setting(category, cfg_key, now))
+            return false;
+        if (now == expected)
+            return true;
+        if (SDL_GetTicks() >= deadline)
+            return false;
+        interact(button_id);
+        SDL_Delay(300);
     }
 }
 
@@ -246,7 +302,9 @@ static bool click_cycle_step(const char* button_id, const char* category,
 static bool cycle_effect_and_check_lap(const char* button_id, const char* category,
                                        const char* cfg_key)
 {
-    std::string expected = cfg.get_setting(category, cfg_key);
+    std::string expected;
+    if (!main_thread_cfg_setting(category, cfg_key, expected))
+        return false;
     for (int i = 0; i < 5; ++i)
         expected = og::ui::cycle_depth_fx(expected);
 
@@ -254,14 +312,7 @@ static bool cycle_effect_and_check_lap(const char* button_id, const char* catego
         if (!click_cycle_step(button_id, category, cfg_key))
             return false;
 
-    const Uint64 deadline = SDL_GetTicks() + 5000;
-    while (cfg.get_setting(category, cfg_key) != expected) {
-        if (SDL_GetTicks() >= deadline)
-            return false;
-        interact(button_id);
-        SDL_Delay(300);
-    }
-    return true;
+    return click_until_cfg_setting(button_id, category, cfg_key, expected);
 }
 
 // The SPEED cycler's eleven-step lap over cfg gameplay/timer_wait. The
@@ -271,7 +322,9 @@ static bool cycle_effect_and_check_lap(const char* button_id, const char* catego
 static bool cycle_game_speed_and_check_lap(const char* button_id,
                                            OptionsState* state)
 {
-    std::string expected = cfg.get_setting("gameplay", "timer_wait");
+    std::string expected;
+    if (!main_thread_cfg_setting("gameplay", "timer_wait", expected))
+        return false;
     for (int i = 0; i < 11; ++i)
         expected = og::ui::cycle_game_speed(expected);
 
@@ -279,21 +332,23 @@ static bool cycle_game_speed_and_check_lap(const char* button_id,
         if (!click_cycle_step(button_id, "gameplay", "timer_wait"))
             return false;
         if (i == 0) {
-            state->cfg_timer_wait_after_speed_click =
-                og::ui::parse_timer_wait(cfg.get_setting("gameplay", "timer_wait"));
-            state->world_timer_wait_after_speed_click = static_cast<int>(
-                og::runtime::current_session->myscreen_->world().timer_wait);
+            // Both halves of the pair are read on the menu thread, in one
+            // task: cfg is the map, world().timer_wait is the live sim field
+            // the same click writes.
+            if (!run_on_main_thread([state] {
+                    state->cfg_timer_wait_after_speed_click =
+                        og::ui::parse_timer_wait(
+                            cfg.get_setting("gameplay", "timer_wait"));
+                    state->world_timer_wait_after_speed_click =
+                        static_cast<int>(og::runtime::current_session
+                                             ->myscreen_->world().timer_wait);
+                }))
+                return false;
         }
     }
 
-    const Uint64 deadline = SDL_GetTicks() + 5000;
-    while (cfg.get_setting("gameplay", "timer_wait") != expected) {
-        if (SDL_GetTicks() >= deadline)
-            return false;
-        interact(button_id);
-        SDL_Delay(300);
-    }
-    return true;
+    return click_until_cfg_setting(button_id, "gameplay", "timer_wait",
+                                   expected);
 }
 
 // The zoom selector cycles over the resource-safe range for the current
@@ -304,7 +359,9 @@ static bool cycle_zoom_and_check_lap(const char* button_id,
                                      int minimum_steps)
 {
     const int lap_steps = og::kZoomStepsMax - minimum_steps + 1;
-    std::string expected = cfg.get_setting("graphics", "zoom");
+    std::string expected;
+    if (!main_thread_cfg_setting("graphics", "zoom", expected))
+        return false;
     for (int i = 0; i < lap_steps; ++i)
         expected = og::ui::cycle_zoom(expected, minimum_steps);
 
@@ -312,14 +369,7 @@ static bool cycle_zoom_and_check_lap(const char* button_id,
         if (!click_cycle_step(button_id, "graphics", "zoom"))
             return false;
 
-    const Uint64 deadline = SDL_GetTicks() + 5000;
-    while (cfg.get_setting("graphics", "zoom") != expected) {
-        if (SDL_GetTicks() >= deadline)
-            return false;
-        interact(button_id);
-        SDL_Delay(300);
-    }
-    return true;
+    return click_until_cfg_setting(button_id, "graphics", "zoom", expected);
 }
 
 // The smoothing selector's three-way lap (off -> sai -> eagle -> off) over
@@ -327,9 +377,15 @@ static bool cycle_zoom_and_check_lap(const char* button_id,
 // engine (the canvas dims are zoom-owned and stay put).
 static bool cycle_smoothing_and_check_lap(const char* button_id)
 {
-    std::string expected = og::ui::effective_smoothing_setting(
-        cfg.get_setting("graphics", "smoothing"),
-        cfg.get_setting("graphics", "render"));
+    std::string smoothing;
+    std::string render;
+    if (!run_on_main_thread([&smoothing, &render] {
+            smoothing = cfg.get_setting("graphics", "smoothing");
+            render = cfg.get_setting("graphics", "render");
+        }))
+        return false;
+    std::string expected =
+        og::ui::effective_smoothing_setting(smoothing, render);
     for (int i = 0; i < 3; ++i)
         expected = og::ui::cycle_smoothing(expected);
 
@@ -337,14 +393,8 @@ static bool cycle_smoothing_and_check_lap(const char* button_id)
         if (!click_cycle_step(button_id, "graphics", "smoothing"))
             return false;
 
-    const Uint64 deadline = SDL_GetTicks() + 5000;
-    while (cfg.get_setting("graphics", "smoothing") != expected) {
-        if (SDL_GetTicks() >= deadline)
-            return false;
-        interact(button_id);
-        SDL_Delay(300);
-    }
-    return true;
+    return click_until_cfg_setting(button_id, "graphics", "smoothing",
+                                   expected);
 }
 
 // Click the display-mode selector around one observable lap. Drivers without
@@ -352,12 +402,16 @@ static bool cycle_smoothing_and_check_lap(const char* button_id)
 // has two steps there and three where all modes are supported.
 static bool cycle_display_mode_and_check_lap(const char* button_id)
 {
-    const og::ui::DisplayMode start =
-        og::ui::parse_display_mode(cfg.get_setting("graphics", "fullscreen"));
+    std::string raw;
+    if (!main_thread_cfg_setting("graphics", "fullscreen", raw))
+        return false;
+    const og::ui::DisplayMode start = og::ui::parse_display_mode(raw);
     for (int i = 0; i < 3; ++i) {
         if (!click_cycle_step(button_id, "graphics", "fullscreen"))
             return false;
-        if (og::ui::parse_display_mode(cfg.get_setting("graphics", "fullscreen")) == start)
+        if (!main_thread_cfg_setting("graphics", "fullscreen", raw))
+            return false;
+        if (og::ui::parse_display_mode(raw) == start)
             return true;
     }
     return false;
@@ -366,9 +420,10 @@ static bool cycle_display_mode_and_check_lap(const char* button_id)
 static bool select_windowed_mode(const char* button_id)
 {
     for (int i = 0; i < 3; ++i) {
-        if (og::ui::parse_display_mode(
-                cfg.get_setting("graphics", "fullscreen")) ==
-            og::ui::DisplayMode::Windowed)
+        std::string raw;
+        if (!main_thread_cfg_setting("graphics", "fullscreen", raw))
+            return false;
+        if (og::ui::parse_display_mode(raw) == og::ui::DisplayMode::Windowed)
             return true;
         if (!click_cycle_step(button_id, "graphics", "fullscreen"))
             return false;
@@ -389,41 +444,56 @@ static std::string latest_trace_message(const char* category)
 // graphics/width follows the pure next_resolution orbit. Mirrors the
 // picker's resolution_choices(): only real platform modes in Exclusive;
 // otherwise the logical desktop-derived fallback plus the current cfg size.
-static std::vector<std::pair<int, int>> expected_resolution_choices()
+// The whole derivation runs on the menu thread (#257): it walks cfg for four
+// keys and asks the live screen (i.e. SDL) for the platform's mode list, both
+// of which the menu loop owns.
+static bool expected_resolution_choices(std::vector<std::pair<int, int>>& out,
+                                        std::pair<int, int>& current_out)
 {
-    screen* scr = og::runtime::current_session->myscreen_;
-	const og::ui::DisplayMode mode = og::ui::parse_display_mode(
-		cfg.get_setting("graphics", "fullscreen"));
-    const std::pair<int, int> current = og::ui::parse_resolution(
-        cfg.get_setting("graphics", "width"), cfg.get_setting("graphics", "height"));
-	const std::vector<std::pair<int, int>> display_modes =
-		mode == og::ui::DisplayMode::Exclusive
-			? scr->display_resolutions()
-			: std::vector<std::pair<int, int>>{};
-	const std::pair<int, int> desktop =
-		mode == og::ui::DisplayMode::Exclusive
-			? scr->desktop_resolution()
-			: scr->windowed_desktop_resolution();
-    return og::ui::build_resolution_choices(
-		display_modes, desktop, current, mode);
+    return run_on_main_thread([&out, &current_out] {
+        screen* scr = og::runtime::current_session->myscreen_;
+        const og::ui::DisplayMode mode = og::ui::parse_display_mode(
+            cfg.get_setting("graphics", "fullscreen"));
+        const std::pair<int, int> current = og::ui::parse_resolution(
+            cfg.get_setting("graphics", "width"),
+            cfg.get_setting("graphics", "height"));
+        const std::vector<std::pair<int, int>> display_modes =
+            mode == og::ui::DisplayMode::Exclusive
+                ? scr->display_resolutions()
+                : std::vector<std::pair<int, int>>{};
+        const std::pair<int, int> desktop =
+            mode == og::ui::DisplayMode::Exclusive
+                ? scr->desktop_resolution()
+                : scr->windowed_desktop_resolution();
+        current_out = current;
+        out = og::ui::build_resolution_choices(display_modes, desktop, current,
+                                               mode);
+    });
 }
 
 static bool cycle_resolution_and_check_lap(const char* button_id)
 {
     // First click: leaves the (off-list) boot default for its neighbor on
     // the current-inclusive lap.
-    const std::vector<std::pair<int, int>> start_list = expected_resolution_choices();
+    std::vector<std::pair<int, int>> start_list;
+    std::pair<int, int> start_current{0, 0};
+    if (!expected_resolution_choices(start_list, start_current))
+        return false;
     const std::pair<int, int> first = og::ui::next_resolution(
-        start_list, cfg.get_setting("graphics", "width"),
-        cfg.get_setting("graphics", "height"));
+        start_list, std::to_string(start_current.first),
+        std::to_string(start_current.second));
     if (start_list.size() <= 1)
-        return first == og::ui::parse_resolution(
-            cfg.get_setting("graphics", "width"), cfg.get_setting("graphics", "height"));
+        return first == start_current;
     if (!click_cycle_step(button_id, "graphics", "width"))
         return false;
     {
         const Uint64 deadline = SDL_GetTicks() + 5000;
-        while (cfg.get_setting("graphics", "width") != std::to_string(first.first)) {
+        for (;;) {
+            std::string width;
+            if (!main_thread_cfg_setting("graphics", "width", width))
+                return false;
+            if (width == std::to_string(first.first))
+                break;
             if (SDL_GetTicks() >= deadline)
                 return false;
             SDL_Delay(100);
@@ -432,19 +502,17 @@ static bool cycle_resolution_and_check_lap(const char* button_id)
 
     // From an in-list entry the lap is stationary: one full orbit of the
     // base list must return exactly here.
-    const std::vector<std::pair<int, int>> list = expected_resolution_choices();
-    const std::string lap_start = cfg.get_setting("graphics", "width");
+    std::vector<std::pair<int, int>> list;
+    std::pair<int, int> lap_current{0, 0};
+    if (!expected_resolution_choices(list, lap_current))
+        return false;
+    std::string lap_start;
+    if (!main_thread_cfg_setting("graphics", "width", lap_start))
+        return false;
     for (std::size_t i = 0; i < list.size(); ++i)
         if (!click_cycle_step(button_id, "graphics", "width"))
             return false;
-    const Uint64 deadline = SDL_GetTicks() + 5000;
-    while (cfg.get_setting("graphics", "width") != lap_start) {
-        if (SDL_GetTicks() >= deadline)
-            return false;
-        interact(button_id);
-        SDL_Delay(300);
-    }
-    return true;
+    return click_until_cfg_setting(button_id, "graphics", "width", lap_start);
 }
 
 static int options_injector(void* data)
@@ -476,9 +544,18 @@ static int options_injector(void* data)
         // them. Change P1's direction mode exactly as a player screen does
         // (the row calls this function), then check it survives the restore.
         fprintf(stderr, "  [test] changing the P1 direction mode\n");
-        toggle_player_control_mode(0);
+        // The toggle rewrites the live per-player key tables the menu loop
+        // samples every frame (sync_runtime_keys_to_active_mode +
+        // activate_mode_keymap_for_player), so it runs on the menu thread and
+        // reads the new mode back in the same task (#257).
+        int mode_after_toggle = state->initial_control_mode;
+        state->main_thread_tasks_all_ran &=
+            run_on_main_thread([&mode_after_toggle] {
+                toggle_player_control_mode(0);
+                mode_after_toggle = get_player_control_mode(0);
+            });
         state->changed_control_mode =
-            get_player_control_mode(0) != state->initial_control_mode;
+            mode_after_toggle != state->initial_control_mode;
 
         fprintf(stderr, "  [test] toggling sound\n");
         interact("toggle_sound");
@@ -505,19 +582,24 @@ static int options_injector(void* data)
                 // cfg is a map of maps the menu thread's label sync reads
                 // every frame, so the save/clear and the restore each run
                 // THERE as one task (#257). Capturing the saved values by
-                // reference is safe: the post is waited on before this scope
-                // ends.
+                // reference is safe because a wait that times out CANCELS its
+                // ticket (tests/test_interact.h): the restore either ran
+                // while these three strings were alive, or it never runs at
+                // all. Both results are folded into the flag the test asserts
+                // — a swallowed timeout would silently leave the display
+                // screen on the cleared values.
                 std::string prev_zoom;
                 std::string prev_smoothing;
                 std::string prev_render;
-                (void)run_on_main_thread([&] {
-                    prev_zoom = cfg.get_setting("graphics", "zoom");
-                    prev_smoothing = cfg.get_setting("graphics", "smoothing");
-                    prev_render = cfg.get_setting("graphics", "render");
-                    cfg.apply_setting("graphics", "zoom", "");
-                    cfg.apply_setting("graphics", "smoothing", "");
-                    cfg.apply_setting("graphics", "render", "normal");
-                });
+                state->main_thread_tasks_all_ran &=
+                    run_on_main_thread([&] {
+                        prev_zoom = cfg.get_setting("graphics", "zoom");
+                        prev_smoothing = cfg.get_setting("graphics", "smoothing");
+                        prev_render = cfg.get_setting("graphics", "render");
+                        cfg.apply_setting("graphics", "zoom", "");
+                        cfg.apply_setting("graphics", "smoothing", "");
+                        cfg.apply_setting("graphics", "render", "normal");
+                    });
                 SDL_Delay(300);  // let the display loop run label-sync frames
                 for (const Interactable& item : get_interactables()) {
                     if (item.id == "display_zoom")
@@ -525,11 +607,12 @@ static int options_injector(void* data)
                     if (item.id == "display_smoothing")
                         state->smoothing_label_when_unset = item.label;
                 }
-                (void)run_on_main_thread([&] {
-                    cfg.apply_setting("graphics", "zoom", prev_zoom);
-                    cfg.apply_setting("graphics", "smoothing", prev_smoothing);
-                    cfg.apply_setting("graphics", "render", prev_render);
-                });
+                state->main_thread_tasks_all_ran &=
+                    run_on_main_thread([&] {
+                        cfg.apply_setting("graphics", "zoom", prev_zoom);
+                        cfg.apply_setting("graphics", "smoothing", prev_smoothing);
+                        cfg.apply_setting("graphics", "render", prev_render);
+                    });
                 SDL_Delay(150);
             }
             fprintf(stderr, "  [test] cycling display mode\n");
@@ -568,7 +651,7 @@ static int options_injector(void* data)
             // graphics/render value at "sai". Pin this selector to explicit
             // Off so the zoom traces are order-independent and exercise the
             // nearest path before the separate smoothing lap below.
-            (void)run_on_main_thread(
+            state->main_thread_tasks_all_ran &= run_on_main_thread(
                 [] { cfg.apply_setting("graphics", "smoothing", "off"); });
             // Resolution application may have emitted canvas traces using a
             // legacy order-dependent smoothing value. From here onward only
@@ -588,18 +671,28 @@ static int options_injector(void* data)
                 click_cycle_step("brightness_plus", "graphics", "brightness") &&
                 click_cycle_step("brightness_plus", "graphics", "brightness");
             SDL_Delay(300);
-            state->cfg_brightness_after_two_plus =
-                og::ui::parse_brightness_steps(
-                    cfg.get_setting("graphics", "brightness"));
-            state->applied_brightness_after_two_plus =
-                static_cast<int>(display_brightness_steps());
+            // cfg and the applied gamma are both menu-thread state; read the
+            // pair in one task so they describe the same frame (#257).
+            state->main_thread_tasks_all_ran &=
+                run_on_main_thread([state] {
+                    state->cfg_brightness_after_two_plus =
+                        og::ui::parse_brightness_steps(
+                            cfg.get_setting("graphics", "brightness"));
+                    state->applied_brightness_after_two_plus =
+                        static_cast<int>(display_brightness_steps());
+                });
             state->stepped_brightness_down =
                 click_cycle_step("brightness_minus", "graphics", "brightness") &&
                 click_cycle_step("brightness_minus", "graphics", "brightness");
             SDL_Delay(300);
-            state->cfg_brightness_after_return =
-                og::ui::parse_brightness_steps(
-                    cfg.get_setting("graphics", "brightness"));
+            {
+                std::string brightness;
+                state->main_thread_tasks_all_ran &=
+                    main_thread_cfg_setting("graphics", "brightness",
+                                            brightness);
+                state->cfg_brightness_after_return =
+                    og::ui::parse_brightness_steps(brightness);
+            }
 
             // A full verified lap of the zoom cycle: every click steps cfg
             // graphics/zoom AND live-applies it to the world canvas (the
@@ -645,14 +738,17 @@ static int options_injector(void* data)
                     // Bring the loader in line with cfg first, so the click's
                     // direction is known whatever earlier tests left behind.
                     // It repaints sprite pixels the menu thread is drawing
-                    // from, so it runs there (#257).
-                    (void)run_on_main_thread([] {
-                        loader* game_loader =
-                            og::runtime::current_session->myscreen_->myloader;
-                        if (game_loader != nullptr)
-                            game_loader->sync_gore_graphics();
-                    });
-                    blood_was_gory = live_blood_is_gory();
+                    // from, so it runs there — and the sprite is read back in
+                    // the same task, before the next frame can touch it
+                    // (#257).
+                    state->main_thread_tasks_all_ran &=
+                        run_on_main_thread([&blood_was_gory] {
+                            loader* game_loader =
+                                og::runtime::current_session->myscreen_->myloader;
+                            if (game_loader != nullptr)
+                                game_loader->sync_gore_graphics();
+                            blood_was_gory = live_blood_is_gory();
+                        });
                 }
                 state->toggled_fx[s][t] = toggle.cycle
                     ? cycle_effect_and_check_lap(
@@ -661,15 +757,25 @@ static int options_injector(void* data)
                           toggle.button_id, toggle.category, toggle.key);
                 if (is_gore && state->toggled_fx[s][t]) {
                     // The click must repaint the live sprite, not just cfg.
+                    // Sprite pixels and cfg are both menu-thread state, so
+                    // each poll reads the pair THERE, as one frame's truth.
                     const Uint64 deadline = SDL_GetTicks() + 3000;
-                    while (live_blood_is_gory() == blood_was_gory &&
-                           SDL_GetTicks() < deadline) {
+                    bool gory = blood_was_gory;
+                    bool cfg_gore = false;
+                    for (;;) {
+                        state->main_thread_tasks_all_ran &=
+                            run_on_main_thread([&gory, &cfg_gore] {
+                                gory = live_blood_is_gory();
+                                cfg_gore = cfg.is_on("effects", "gore");
+                            });
+                        if (gory != blood_was_gory ||
+                            SDL_GetTicks() >= deadline)
+                            break;
                         SDL_Delay(50);
                     }
                     state->gore_sprite_followed_toggle =
-                        live_blood_is_gory() != blood_was_gory;
-                    state->gore_sprite_matches_cfg =
-                        live_blood_is_gory() == cfg.is_on("effects", "gore");
+                        gory != blood_was_gory;
+                    state->gore_sprite_matches_cfg = gory == cfg_gore;
                 }
             }
 
@@ -685,8 +791,13 @@ static int options_injector(void* data)
         fprintf(stderr, "  [test] restoring settings\n");
         interact("restore_defaults");
         SDL_Delay(300);
+        int mode_after_restore = state->initial_control_mode;
+        state->main_thread_tasks_all_ran &=
+            run_on_main_thread([&mode_after_restore] {
+                mode_after_restore = get_player_control_mode(0);
+            });
         state->settings_restore_preserved_controls =
-            get_player_control_mode(0) != state->initial_control_mode;
+            mode_after_restore != state->initial_control_mode;
 
         // Click BACK to return to main menu
         fprintf(stderr, "  [test] clicking options_back\n");
@@ -1002,6 +1113,10 @@ TEST(OptionsMenu, options_menu) {
     ASSERT_TRUE(state.started) << "injector thread should have started";
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
     ASSERT_TRUE(state.saw_options) << "should have entered the options menu";
+    ASSERT_TRUE(state.main_thread_tasks_all_ran)
+        << "#257: every cfg / keymap / sprite read and write in this flow "
+           "must have run on the menu thread's pump; a timed-out task is "
+           "cancelled, so the checks below would judge state nobody changed";
     ASSERT_TRUE(state.changed_control_mode)
         << "the player-screen mode toggle should change the P1 direction mode";
     ASSERT_TRUE(state.settings_restore_preserved_controls)

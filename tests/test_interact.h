@@ -25,16 +25,21 @@ std::mutex& get_allbuttons_mutex();
 // digest, and the label sync.
 //
 // Only engine-hosted screens (run_menu_screen) pump; a task posted while no
-// menu loop is running waits out its timeout and is discarded between tests.
+// menu loop is running waits out its timeout and is CANCELLED there and then.
 // All three are defined in integration_main.cpp.
 using MainThreadTaskTicket = std::uint64_t;
 MainThreadTaskTicket post_main_thread_task(std::function<void()> task);
-// Blocks until the posted task has finished running. Returns false on timeout
-// (the menu loop never got a frame in); the ceiling is generous on purpose.
+// Blocks until the posted task has finished running. Returns true only when
+// the task actually ran on the menu thread; the ceiling is generous on
+// purpose. On timeout the ticket is cancelled before this returns — a task
+// that missed its window never runs afterwards, so a lambda may capture the
+// caller's locals by reference — and the return is false. False also comes
+// back for a task the between-tests drain threw away unrun; a discarded task
+// is never reported as a success.
 bool wait_for_main_thread_task(MainThreadTaskTicket ticket,
                                int timeout_ms = 15000);
-// Discards every queued-but-unrun task and releases waiters. Runs between
-// tests so a task left behind by a timed-out injector can never execute
+// Discards every queued-but-unrun task and releases its waiters with false.
+// Runs between tests so a task left behind by an injector can never execute
 // inside the next test's menu loop.
 void drain_main_thread_tasks();
 
