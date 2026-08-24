@@ -737,6 +737,22 @@ TEST_F(ModesBasketball, four_hoop_court_and_the_limit_rows_bank)
     EXPECT_EQ(21, shortgame.var(kBbScoreLimit));
 }
 
+// #241: the lobby TIME LIMIT knob beats the manifest row — up, here, from
+// the 120-tick short court. The buzzer rules are untouched: this only
+// changes the number the buzzer waits for.
+TEST_F(ModesBasketball, time_limit_knob_overrides_the_manifest_row)
+{
+    BballCourt fx(kBballLevelShort);
+    fx.world().ctf_requested_time_limit = 3600;
+    fx.tick(1);
+    ASSERT_TRUE(fx.world().mode.active);
+    EXPECT_EQ(3600, fx.var(kBbTimeLimit)) << "the request beats the row";
+    EXPECT_EQ(21, fx.var(kBbScoreLimit)) << "and moves no other knob";
+    fx.world().set_level_tick_count(120 + 8);
+    fx.tick(2);
+    EXPECT_FALSE(fx.world().game_ended) << "the row's 120 no longer decides";
+}
+
 TEST_F(ModesBasketball, fair_teams_four_with_a_solo_roster_fields_four_hoops)
 {
     // Issue #218 on the four-hoop court: TROOPS: FAIR + TEAMS: 4 with a

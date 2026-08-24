@@ -922,6 +922,9 @@ void serialize_match_knobs(std::vector<std::uint8_t>& buffer,
     append_i16(buffer, snapshot.ctf_requested_capture_limit);
     append_i16(buffer, snapshot.ctf_requested_respawn_ticks);
     append_i16(buffer, snapshot.ctf_requested_strip_scenario_troops);
+    // Snapshot v11 appends the time limit LAST: every raw payload-offset pin
+    // that addresses the respawn/mode blocks keeps its number.
+    append_i16(buffer, snapshot.ctf_requested_time_limit);
 }
 
 void deserialize_match_knobs(ByteReader& reader,
@@ -935,6 +938,8 @@ void deserialize_match_knobs(ByteReader& reader,
         reader.read_i16("world.ctf_requested_respawn_ticks");
     snapshot.ctf_requested_strip_scenario_troops =
         reader.read_i16("world.ctf_requested_strip_scenario_troops");
+    snapshot.ctf_requested_time_limit =
+        reader.read_i16("world.ctf_requested_time_limit");
 }
 
 // `snapshot_hash` is passed in rather than read off the snapshot: the hash
@@ -2589,6 +2594,7 @@ void capture_mode_state(const GameWorld& world, og::sim::WorldSnapshot& snapshot
     snapshot.ctf_requested_respawn_ticks = world.ctf_requested_respawn_ticks;
     snapshot.ctf_requested_strip_scenario_troops =
         world.ctf_requested_strip_scenario_troops;
+    snapshot.ctf_requested_time_limit = world.ctf_requested_time_limit;
 }
 
 // Rebuilds the world's RespawnState + ModeState from the snapshot.
@@ -2630,6 +2636,15 @@ void apply_mode_state(GameWorld& world, const og::sim::WorldSnapshot& snapshot)
     world.ctf_requested_respawn_ticks = snapshot.ctf_requested_respawn_ticks;
     world.ctf_requested_strip_scenario_troops =
         snapshot.ctf_requested_strip_scenario_troops;
+    // Sim-side twin of the lobby sanitizer / provider clamp (#241): a
+    // crafted snapshot reaches this field unchecked, and a wild tick count
+    // would let a mode's deadline underflow or outrun the engine's 36000-
+    // tick loss net. 0 stays 0 (the map's own value).
+    world.ctf_requested_time_limit =
+        snapshot.ctf_requested_time_limit != 0
+            ? std::clamp<std::int16_t>(snapshot.ctf_requested_time_limit,
+                                       720, 21600)
+            : static_cast<std::int16_t>(0);
 }
 
 og::sim::WorldSnapshot capture_snapshot_impl(GameWorld& world,
@@ -3231,6 +3246,7 @@ void apply_delta(WorldSnapshot& baseline, const WorldSnapshot& delta)
     baseline.ctf_requested_respawn_ticks = delta.ctf_requested_respawn_ticks;
     baseline.ctf_requested_strip_scenario_troops =
         delta.ctf_requested_strip_scenario_troops;
+    baseline.ctf_requested_time_limit = delta.ctf_requested_time_limit;
     baseline.respawn_mode = delta.respawn_mode;
     baseline.generator_rate = delta.generator_rate;
     baseline.control_policy = delta.control_policy;

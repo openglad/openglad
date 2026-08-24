@@ -48,6 +48,21 @@ local function resolve_limit(row, field, requested, fallback)
   return value
 end
 
+-- The match clock, for every mode that has one. The lobby's TIME LIMIT knob
+-- (0 = "the map's own value") beats the manifest row's time_limit, which
+-- beats the mode's own default -- the same ladder as every other limit, so
+-- the knob's name is spelled exactly once in all of the mode Lua.
+-- The value is read once and is fixed for the level's lifetime everywhere
+-- except CTF, whose mode-var band is full and which therefore re-resolves
+-- at the comparison; both shapes read the same replicated world field, so
+-- peers agree either way.
+-- NOTE: unrelated to the .glad level field also called time_limit -- that
+-- one is the score/par BONUS clock (GameWorld::time_bonus_limit).
+local function resolve_time_limit(row, fallback)
+  return resolve_limit(row, "time_limit", og.match_setting("time_limit"),
+                       fallback)
+end
+
 -- ---------------------------------------------------------------------------
 -- TROOPS: FAIR power model (docs/matched-teams-design.md §4-§5)
 -- ---------------------------------------------------------------------------
@@ -314,7 +329,10 @@ end
 -- survives. Live NON-DORMANT livings split by has_guy, live non-dormant
 -- generators, raw flag rows in fx order (out-of-range and surplus included
 -- — the fold decides), the engine anchor counts (banked by mode_stage_init
--- before this hook, dead markers included) and the four request knobs.
+-- before this hook, dead markers included) and the three request knobs the
+-- staging rules consult. The other knobs (respawn_ticks, time_limit) are
+-- read straight from og.match_setting where they are used -- a request
+-- collected here and consumed nowhere is a field that rots.
 -- The dormancy carve-out matches the C++ staged report census
 -- (picker_common.cpp): delayed-spawn walkers are outside snapshot capture,
 -- so a team the census counted but the pane could not see would activate
@@ -324,7 +342,6 @@ local function census_inputs()
     team_count = og.match_setting("team_count"),
     strip_troops = og.match_setting("strip_troops"),
     score_limit = og.match_setting("score_limit"),
-    respawn_ticks = og.match_setting("respawn_ticks"),
     teams = {},
     flags = {},
   }
@@ -991,6 +1008,7 @@ end
 return {
   rows_for = rows_for,
   resolve_limit = resolve_limit,
+  resolve_time_limit = resolve_time_limit,
   MATCHED = MATCHED,
   measured_base = measured_base,
   walker_power = walker_power,

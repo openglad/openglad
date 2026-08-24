@@ -231,6 +231,7 @@ bool SaveData::load(const std::string& filename)
 	//     1-byte key length (1..32)
 	//     N-bytes key ([a-z0-9_], no NUL, no padding)
 	//     4-bytes (Sint32) value
+	// 2-bytes Match time limit in sim ticks (0 = map) // Version 17+
 
     Log("Loading save: {}\n", filename);
 	std::string temp_filename = std::format("{}.gtl", filename); // gladiator team list
@@ -749,6 +750,19 @@ bool SaveData::load(const std::string& filename)
         }
     }
 
+    // Versions 17+ append the match time limit in sim ticks (0 = the map's
+    // own value, #241). Read-side default only: the writer is unconditional.
+    if (temp_version >= 17)
+    {
+        std::int16_t temp_time_limit = 0;
+        READ_OR_FAIL(&temp_time_limit, 2, 1);
+        time_limit = temp_time_limit;
+    }
+    else
+    {
+        time_limit = 0; // the map's own value
+    }
+
 	Log("Loading campaign: {}\n", current_campaign);
     int current_level = load_campaign(current_campaign, current_levels);
     if(current_level < 0)
@@ -1012,7 +1026,7 @@ bool SaveData::save(const std::string& filename)
 	std::fill_n(temp_campaign.data(), temp_campaign.size(), '\0');
 
 	std::array<char, 10> temptext = {'G', 'T', 'L'};
-	std::uint8_t temp_version = 16;
+	std::uint8_t temp_version = 17;
 
 	std::uint32_t newcash = totalcash;
 	std::uint32_t newscore = totalscore;
@@ -1109,6 +1123,7 @@ bool SaveData::save(const std::string& filename)
 	//     1-byte key length (1..32)
 	//     N-bytes key ([a-z0-9_], no NUL, no padding)
 	//     4-bytes (Sint32) value
+	// 2-bytes Match time limit in sim ticks (0 = map) // Version 17+
 
 	//strcpy(temp_filename, scen_directory);
 	Log("Saving save: {}\n", filename);
@@ -1405,6 +1420,12 @@ bool SaveData::save(const std::string& filename)
 	        WRITE_OR_FAIL(&state_value, 4, 1);
 	    }
 	}
+
+	// Versions 17+ append the match time limit in sim ticks. Written at the
+	// TAIL, after the v15 campaign-state block, so the byte order matches the
+	// reader's append point exactly.
+	std::int16_t temp_time_limit = time_limit;
+	WRITE_OR_FAIL(&temp_time_limit, 2, 1);
 
     // unique_ptr auto-closes outfile
 

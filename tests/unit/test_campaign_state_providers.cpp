@@ -265,6 +265,7 @@ TEST(CampaignStateProviders, match_get_reads_the_matchup_knobs)
     save.ctf_strip_scenario_troops = 2;
     save.respawn_mode = 1;
     save.generator_rate = 200;
+    save.time_limit = 7200;
 
     const CampaignProviders providers = make_campaign_providers(save);
     EXPECT_EQ(3, providers.match_get("team_count"));
@@ -273,6 +274,7 @@ TEST(CampaignStateProviders, match_get_reads_the_matchup_knobs)
     EXPECT_EQ(2, providers.match_get("strip_troops"));
     EXPECT_EQ(1, providers.match_get("respawn_mode"));
     EXPECT_EQ(200, providers.match_get("generator_rate"));
+    EXPECT_EQ(7200, providers.match_get("time_limit"));
     EXPECT_EQ(0, providers.match_get("no_such_knob"))
         << "an unknown name reads 0 (the binding errors before this)";
 }
@@ -312,6 +314,18 @@ TEST(CampaignStateProviders, match_set_clamps_like_the_lobby_sanitizer)
     EXPECT_EQ(400, save.generator_rate);
     EXPECT_TRUE(providers.match_set("generator_rate", 0));
     EXPECT_EQ(0, save.generator_rate);
+
+    // time_limit: 0 stays 0 (the map's own value); else clamps into
+    // [720, 21600] — the same numbers lobby_server.cpp sanitize_settings
+    // uses, so a scripted preset can never publish a bounced value.
+    EXPECT_TRUE(providers.match_set("time_limit", 30));
+    EXPECT_EQ(720, save.time_limit);
+    EXPECT_TRUE(providers.match_set("time_limit", 32000));
+    EXPECT_EQ(21600, save.time_limit);
+    EXPECT_TRUE(providers.match_set("time_limit", 7200));
+    EXPECT_EQ(7200, save.time_limit);
+    EXPECT_TRUE(providers.match_set("time_limit", 0));
+    EXPECT_EQ(0, save.time_limit);
 
     // The enum knobs REFUSE out-of-range values (where the sanitizer
     // reverts to its fallback, a provider write answers false unwritten).

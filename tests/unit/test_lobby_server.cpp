@@ -387,6 +387,7 @@ TEST(LobbyServer, sanitize_clamps_ctf_settings_and_equivalent_carries_them)
     wild.ctf_team_count = 9;       // -> 4
     wild.ctf_capture_limit = 99;   // -> 50
     wild.ctf_respawn_ticks = 5;    // nonzero -> raised to 12
+    wild.time_limit = 30;          // nonzero -> raised to 720 (#241)
     og::sim::LobbyMessage wild_message;
     wild_message.payload = og::sim::LobbySettingsChangeMessage{
         .player_index = 0u,
@@ -399,12 +400,26 @@ TEST(LobbyServer, sanitize_clamps_ctf_settings_and_equivalent_carries_them)
     EXPECT_EQ(4, state.settings.ctf_team_count);
     EXPECT_EQ(50, state.settings.ctf_capture_limit);
     EXPECT_EQ(12, state.settings.ctf_respawn_ticks);
+    EXPECT_EQ(720, state.settings.time_limit);
+
+    // A time limit past the ceiling clamps down rather than reverting.
+    og::sim::LobbySettings too_long = wild;
+    too_long.time_limit = 32000;
+    og::sim::LobbyMessage too_long_message;
+    too_long_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = too_long,
+    };
+    transport.queue_lobby_message(11u, too_long_message);
+    server.poll_incoming_messages();
+    EXPECT_EQ(21600, server.state().settings.time_limit);
 
     // In-range values (and the 0 = map/default sentinels) pass through.
     og::sim::LobbySettings sane = wild;
     sane.ctf_team_count = 3;
     sane.ctf_capture_limit = 0;
     sane.ctf_respawn_ticks = 0;
+    sane.time_limit = 0; // the map's own value survives the sanitizer
     og::sim::LobbyMessage sane_message;
     sane_message.payload = og::sim::LobbySettingsChangeMessage{
         .player_index = 0u,
@@ -417,12 +432,28 @@ TEST(LobbyServer, sanitize_clamps_ctf_settings_and_equivalent_carries_them)
     EXPECT_EQ(3, state.settings.ctf_team_count);
     EXPECT_EQ(0, state.settings.ctf_capture_limit);
     EXPECT_EQ(0, state.settings.ctf_respawn_ticks);
+    EXPECT_EQ(0, state.settings.time_limit);
 
     const og::sim::LobbySaveDataEquivalent equivalent =
         server.build_save_data_equivalent();
     EXPECT_EQ(3, equivalent.ctf_team_count);
     EXPECT_EQ(0, equivalent.ctf_capture_limit);
     EXPECT_EQ(0, equivalent.ctf_respawn_ticks);
+    EXPECT_EQ(0, equivalent.time_limit);
+
+    // And a live limit carries into the launch equivalent (the dropped-field
+    // bug class: build_save_data_equivalent is a hand-written field list).
+    og::sim::LobbySettings timed = sane;
+    timed.time_limit = 7200;
+    og::sim::LobbyMessage timed_message;
+    timed_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = timed,
+    };
+    transport.queue_lobby_message(11u, timed_message);
+    server.poll_incoming_messages();
+    EXPECT_EQ(7200, server.state().settings.time_limit);
+    EXPECT_EQ(7200, server.build_save_data_equivalent().time_limit);
 }
 
 TEST(LobbyServer, sanitize_admits_troops_matched_and_equivalent_carries_it)

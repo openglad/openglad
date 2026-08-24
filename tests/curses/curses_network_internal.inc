@@ -165,6 +165,7 @@ int curses_network_testing_exercise_internal_helpers()
     save.keep_fallen_heroes = 1;
     save.cross_control = 1;
     save.infinite_gold = 1;
+    save.time_limit = 7200; // the #241 match clock
     const og::sim::LobbyMessage rules_message = make_settings_message(save, 5);
     const auto* rules = std::get_if<og::sim::LobbySettingsChangeMessage>(
         &rules_message.payload);
@@ -175,13 +176,15 @@ int curses_network_testing_exercise_internal_helpers()
         rules->settings.generator_rate == 50 &&
         rules->settings.keep_fallen_heroes == 1 &&
         rules->settings.cross_control == 1 &&
-        rules->settings.infinite_gold == 1);
+        rules->settings.infinite_gold == 1 &&
+        rules->settings.time_limit == 7200);
     save.ctf_respawn_ticks = 0;
     save.respawn_mode = 0;
     save.generator_rate = 0;
     save.keep_fallen_heroes = 0;
     save.cross_control = 0;
     save.infinite_gold = 0;
+    save.time_limit = 0;
 
     og::sim::LobbyState state;
     state.settings.campaign_id = "";

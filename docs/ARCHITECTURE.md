@@ -749,12 +749,13 @@ modes schedule through `og.respawn_schedule` (eligibility is Lua's) and repositi
 `on_respawn`; corpses persist in `oblist` so control bindings and per-player save merging
 survive, and team wipes never end an undecided scripted match.
 
-`RespawnState` and `ModeState` replicate as their own `WorldSnapshot` blocks (snapshot v10,
-protocol v14, replay v16), so mirrors, late joiners, replays, and the curses/text HUDs need no
+`RespawnState` and `ModeState` replicate as their own `WorldSnapshot` blocks (snapshot v11,
+protocol v15, replay v17), so mirrors, late joiners, replays, and the curses/text HUDs need no
 extra wire messages — a mid-join keyframe restore carries a running match. Match settings
-(`ctf_team_count`/`ctf_capture_limit`/`ctf_respawn_ticks`/`ctf_strip_scenario_troops` — the
-storage names keep their historical prefix; Lua reads them as `og.match_setting`) follow the
-versioned SaveData (GTL v10) → LobbySettings → game start → `GameWorld::ctf_requested_*` path.
+(`ctf_team_count`/`ctf_capture_limit`/`ctf_respawn_ticks`/`ctf_strip_scenario_troops`, and the
+match clock `time_limit` in sim ticks — the storage names keep their historical prefix; Lua
+reads them as `og.match_setting`) follow the versioned SaveData (GTL v10, `time_limit` v17) →
+LobbySettings → game start → `GameWorld::ctf_requested_*` path.
 `LobbySettings.shared_teams` (v12) carries the versus/shared-teams rule on the wire (the host
 derives it from the campaign's `matchup: versus` yaml key), and the lobby also carries the
 loaded map's authored-team mask (start markers) so every peer agrees on sparse team domains.

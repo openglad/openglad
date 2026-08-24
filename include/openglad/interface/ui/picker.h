@@ -22,6 +22,8 @@
 #include <utility>
 #include <vector>
 
+class SaveData;
+
 namespace og::ui {
 
 enum class TextPickerErrorCode : std::int32_t
@@ -62,6 +64,17 @@ void run_text_picker(TextPickerConfig& config, TextPickerError* error = nullptr)
 
 // Runs the text protocol gameplay session using picker config values.
 // Returns the same status code as run_text_protocol_session().
-int run_text_picker_protocol_session(const TextPickerConfig& config);
+//
+// Split by CALLER, not by rule (#247). A session that owns a picker save
+// hands it over here and launches the STAGED world — the same MatchStage
+// pipeline VIEW LEVEL previewed with, so every match knob, the deployed
+// roster and the campaign decision book reach the launch. session_save ==
+// nullptr is the CLI shape (--protocol): no save exists, so the config
+// scalars and the CLI crew assembler are the whole match. Deliberately NOT
+// defaulted — dropping the save on the way to the launch is the whole of
+// #247, so every caller states which shape it is.
+int run_text_picker_protocol_session(const TextPickerConfig& config,
+                                     const SaveData* session_save,
+                                     int difficulty);
 
 } // namespace og::ui

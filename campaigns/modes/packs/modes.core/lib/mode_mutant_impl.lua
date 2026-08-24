@@ -590,8 +590,7 @@ local function on_mode_init(level)
                                     og.match_setting("score_limit"),
                                     T.score_limit)
   og.mode_set(S.SCORE_LIMIT, og.clamp(limit, 1, 255))
-  local time_limit = match.resolve_limit(row, "time_limit", 0,
-                                         T.time_limit_ticks)
+  local time_limit = match.resolve_time_limit(row, T.time_limit_ticks)
   og.mode_set(S.TIME_LIMIT, time_limit)
   local respawn_ticks = og.match_setting("respawn_ticks")
   if respawn_ticks <= 0 then

@@ -373,7 +373,7 @@ TEST(ModeBindings, ffa_band_constants_exported_on_C)
     EXPECT_TRUE(fx.logged("ffa_c\t16\t16"));
 }
 
-TEST(ModeBindings, match_setting_reads_all_five_knobs)
+TEST(ModeBindings, match_setting_reads_all_six_knobs)
 {
     ModeBindingsWorld fx;
     fx.world().ctf_requested_team_count = 3;
@@ -381,15 +381,17 @@ TEST(ModeBindings, match_setting_reads_all_five_knobs)
     fx.world().ctf_requested_respawn_ticks = 90;
     fx.world().ctf_requested_strip_scenario_troops = 1;
     fx.world().respawn_mode = og::sim::kRespawnModeHeroes;
+    fx.world().ctf_requested_time_limit = 7200;
     fx.run_on_load(
         "    og.log('knobs', og.match_setting('team_count'),\n"
         "           og.match_setting('score_limit'),\n"
         "           og.match_setting('respawn_ticks'),\n"
         "           og.match_setting('strip_troops'),\n"
-        "           og.match_setting('respawn_mode'))\n"
+        "           og.match_setting('respawn_mode'),\n"
+        "           og.match_setting('time_limit'))\n"
         "    local ok = pcall(og.match_setting, 'bogus')\n"
         "    og.log('err', ok and 1 or 0)\n");
-    EXPECT_TRUE(fx.logged("knobs\t3\t5\t90\t1\t1"));
+    EXPECT_TRUE(fx.logged("knobs\t3\t5\t90\t1\t1\t7200"));
     EXPECT_TRUE(fx.logged("err\t0"));
 }
 

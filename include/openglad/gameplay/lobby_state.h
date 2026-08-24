@@ -281,6 +281,10 @@ struct LobbySettings {
     // instead of comparing campaign ids. sanitize_settings keeps it in
     // {0, 1}.
     std::int16_t shared_teams = 0;
+    // Match time limit in SIM TICKS (protocol v15); 0 = the map's own value.
+    // The fourteenth i16, appended LAST in append/read_lobby_settings.
+    // sanitize_settings clamps a non-zero request into [720, 21600].
+    std::int16_t time_limit = 0;
 
     bool operator==(const LobbySettings&) const = default;
 };

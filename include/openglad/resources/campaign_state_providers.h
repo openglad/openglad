@@ -19,7 +19,9 @@
 
 #include <openglad/gameplay/script/campaign_hooks.h>
 
+#include <cstdint>
 #include <functional>
+#include <string>
 
 class SaveData;
 
@@ -30,6 +32,16 @@ namespace og::data {
 // to; the SDL install site passes the live lobby host predicate.
 og::script::hooks::CampaignProviders make_campaign_providers(
     SaveData& save, std::function<bool()> is_host = {});
+
+// The lobby sanitizer's per-knob rules (lobby_server.cpp
+// sanitize_settings) as one callable: writes the sanitized value to `out`
+// and answers true, or answers false (leaving `out` alone) for a name
+// outside kCampaignMatchSettingNames. Every non-lobby producer of a match
+// knob goes through this — og.campaign_match_set and the demo capture
+// seam's OPENGLAD_DEMO_MATCH_TIME_LIMIT — so no route can mint a value the
+// lobby would bounce.
+bool clamp_match_setting(const std::string& name, std::int32_t value,
+                         short& out);
 
 // #212 session tail: a successful match_set (a write-through to the
 // match knobs) arms this flag; the missions surface checks-and-clears

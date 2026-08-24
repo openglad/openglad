@@ -291,6 +291,42 @@ TEST(ScreenExtended, sync_world_from_save_data_replaces_campaign_vars)
 }
 
 
+// Match clock clamp at world entry (#241), screen twin: a SaveData whose
+// time_limit was never sanitized — a hand-edited company file is the one
+// route that skips both sanitize_settings and clamp_match_setting — must
+// still reach the sim inside [720, 21600], because the mirror that
+// snapshot-applies this world clamps the same field (world_snapshot.cpp
+// apply_mode_state). The server twin is pinned by
+// HeadlessServerRuntimeTest.
+// authoritative_sync_clamps_an_out_of_range_save_time_limit.
+TEST(ScreenExtended, sync_world_from_save_data_clamps_time_limit)
+{
+    auto* scr = og::runtime::current_session->myscreen_;
+    const short saved_limit = scr->save_data.time_limit;
+
+    scr->save_data.time_limit = 100; // under the floor
+    scr->sync_world_from_save_data();
+    EXPECT_EQ(720, scr->world().ctf_requested_time_limit);
+
+    scr->save_data.time_limit = 30000; // over the ceiling
+    scr->sync_world_from_save_data();
+    EXPECT_EQ(21600, scr->world().ctf_requested_time_limit);
+
+    scr->save_data.time_limit = 0; // the map's own value
+    scr->sync_world_from_save_data();
+    EXPECT_EQ(0, scr->world().ctf_requested_time_limit)
+        << "0 is the sentinel, never clamped to the floor";
+
+    scr->save_data.time_limit = 7200; // in range, untouched
+    scr->sync_world_from_save_data();
+    EXPECT_EQ(7200, scr->world().ctf_requested_time_limit);
+
+    // Leave no clock behind for shuffled siblings.
+    scr->save_data.time_limit = saved_limit;
+    scr->sync_world_from_save_data();
+}
+
+
 // ---------------------------------------------------------------------------
 // §3.7 level-win backup producer (screen::endgame local-win autosave tail)
 // ---------------------------------------------------------------------------

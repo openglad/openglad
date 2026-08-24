@@ -109,12 +109,17 @@ constexpr int kCampRosterRows = 3;
 // DECK_SIZE, which the roll inherits as og.campaign_random(#rows)).
 constexpr int kArenaCount = 39;
 
-// MATCH SETUP's three knobs (D4 — the presets retired): one row each, in
-// the order the page composes them, each labelled with the value it holds.
+// MATCH SETUP's knobs (D4 — the presets retired): one row each, in the
+// order the page composes them, each labelled with the value it holds.
+// TIME LIMIT joined as the fourth in #241 — the summaries below (the rules
+// line and the camp's digest) deliberately stayed at three, because the
+// digest's 20-char note budget cannot hold a fourth term and the row itself
+// already wears its value where the host turns it.
 constexpr std::size_t kTeamsRow = 0;
 constexpr std::size_t kScoreRow = 1;
 constexpr std::size_t kTroopsRow = 2;
-constexpr const char* kKnobIds[] = {"teams", "score", "troops"};
+constexpr std::size_t kTimeRow = 3;
+constexpr const char* kKnobIds[] = {"teams", "score", "troops", "time"};
 constexpr std::size_t kKnobCount = sizeof(kKnobIds) / sizeof(kKnobIds[0]);
 
 // Display budgets (the imaginations pins).
@@ -254,7 +259,9 @@ std::map<int, ManifestRow> parse_manifest()
 }
 
 // The note the script must post for one arena — an independent C++ twin
-// of the script's mode_note, over the same manifest facts.
+// of the script's mode_note, over the same manifest facts. CTF's clock is
+// the one fact a knob can override, so this twin holds while TIME LIMIT is
+// MAP; ModesBookTest.ctf_note_follows_the_time_limit_knob owns the override.
 std::string expected_note(const std::string& tag, const ManifestRow& row)
 {
     if (tag == "tdm")
@@ -1029,6 +1036,54 @@ TEST_F(ModesBookTest, field_pages_match_the_manifest_bands)
     }
 }
 
+// CTF is the one game whose note states a clock, and the clock is the one
+// fact the TIME LIMIT knob overrides (#241). The note must promise what the
+// field will actually run: the row's own value while the knob is MAP, and
+// the knob's minutes the moment it is turned. A note still advertising the
+// manifest after an override is the same dishonesty this issue set out to
+// close — and it is the only place a player reads the clock before the
+// match, since rules_line/rules_digest deliberately stop at three knobs.
+TEST_F(ModesBookTest, ctf_note_follows_the_time_limit_knob)
+{
+    const DerivedBook book = derive_book();
+    const std::map<int, ManifestRow> manifest = parse_manifest();
+    const std::vector<int>& ctf = book.bands.at("ctf");
+    ASSERT_FALSE(ctf.empty());
+    const int id = ctf[0];
+    const int authored = manifest.at(id).time_limit;
+    ASSERT_GT(authored, 0) << "the shipped CTF rows author a clock";
+    save_.scen_num = static_cast<short>(id);
+
+    // Knob at MAP: the manifest's own minutes, exactly as before.
+    ASSERT_EQ(0, save_.time_limit);
+    EXPECT_EQ(std::format("{} sides, {}m", manifest.at(id).teams,
+                          authored / 720),
+              open_page("ctf").rows[0].note);
+
+    // Knob turned: both surfaces that carry the note follow it.
+    save_.time_limit = 3600; // 5 minutes, off every shipped row's value
+    ASSERT_NE(authored, save_.time_limit);
+    const std::string overridden =
+        std::format("{} sides, 5m", manifest.at(id).teams);
+    EXPECT_EQ(overridden, open_page("ctf").rows[0].note)
+        << "the field page's row promises the resolved clock";
+
+    CampaignZoneSession zone(save_);
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted());
+    EXPECT_EQ(overridden, camp_rows(zone)[kCampFieldRow].note)
+        << "so does the camp docket's FIELD row";
+
+    // And the fields of every OTHER game are untouched — the knob names a
+    // clock, and only CTF's note states one.
+    save_.scen_num = 300;
+    const std::vector<int>& tdm = book.bands.at("tdm");
+    EXPECT_EQ(expected_note("tdm", manifest.at(tdm[0])),
+              open_page("tdm").rows[0].note);
+
+    save_.time_limit = 0;
+}
+
 TEST_F(ModesBookTest, call_line_scans_forward_and_wraps)
 {
     const DerivedBook book = derive_book();
@@ -1302,7 +1357,7 @@ TEST_F(ModesBookTest, joiner_index_offers_no_signature)
 // MATCH SETUP (#212)
 // ---------------------------------------------------------------------------
 
-// The page is three knobs, and every row wears the value it holds at
+// The page is the knob table, and every row wears the value it holds at
 // FETCH: the label is the state, so a player never has to guess what the
 // match is set to before touching it.
 TEST_F(ModesBookTest, match_setup_labels_every_knob_with_what_it_holds)
@@ -1315,9 +1370,10 @@ TEST_F(ModesBookTest, match_setup_labels_every_knob_with_what_it_holds)
     EXPECT_EQ("Auto sides, map score, all.", page.lines[0])
         << "0 spells its MATCHUP meaning, and nothing is 'posted'";
     ASSERT_EQ(kKnobCount, page.rows.size());
-    const char* labels[] = {"TEAMS: AUTO", "TARGET SCORE: MAP", "TROOPS: ALL"};
+    const char* labels[] = {"TEAMS: AUTO", "TARGET SCORE: MAP", "TROOPS: ALL",
+                            "TIME LIMIT: MAP"};
     const char* notes[] = {"auto, 2, 3, 4", "map, 1, 3, 5, 10",
-                           "all, own, fair"};
+                           "all, own, fair", "map, 5, 10, 15, 20m"};
     for (std::size_t i = 0; i < kKnobCount; i++)
     {
         EXPECT_EQ(CampaignPickerSession::Kind::Action, page.rows[i].kind);
@@ -1334,10 +1390,15 @@ TEST_F(ModesBookTest, match_setup_labels_every_knob_with_what_it_holds)
     // lobby) spells itself on the row and in the line rather than lying.
     save_.ctf_strip_scenario_troops = 1;
     save_.ctf_capture_limit = 7;
+    save_.time_limit = 2160;  // 3 minutes, off the cycle
     session.refresh();
-    EXPECT_EQ("Auto sides, to 7, 1.", session.page().lines[0]);
+    EXPECT_EQ("Auto sides, to 7, 1.", session.page().lines[0])
+        << "the line still speaks the three knobs it always did: a fourth "
+           "term does not fit the camp digest that shares its words";
     EXPECT_EQ("TARGET SCORE: 7", session.page().rows[kScoreRow].label);
     EXPECT_EQ("TROOPS: 1", session.page().rows[kTroopsRow].label);
+    EXPECT_EQ("TIME LIMIT: 3M", session.page().rows[kTimeRow].label)
+        << "minutes, from the ticks the modes actually run on";
 
     // And the fetch that reads them writes nothing: the page is a mirror
     // until a row is clicked.
@@ -1346,6 +1407,7 @@ TEST_F(ModesBookTest, match_setup_labels_every_knob_with_what_it_holds)
     EXPECT_EQ(0, save_.ctf_team_count);
     EXPECT_EQ(7, save_.ctf_capture_limit);
     EXPECT_EQ(1, save_.ctf_strip_scenario_troops);
+    EXPECT_EQ(2160, save_.time_limit);
     EXPECT_FALSE(og::data::consume_match_settings_dirty())
         << "a fetch never writes a knob";
 }
@@ -1378,6 +1440,16 @@ TEST_F(ModesBookTest, every_knob_cycles_through_its_values_and_wraps)
         {3, "TROOPS: FAIR", "Troops: fair bots."},
         {0, "TROOPS: ALL", "Troops: the map's own."},
     };
+    // Ticks in the save (12/s, the manifest's own unit), minutes on the
+    // face. Every value on the cycle survives the provider's [720, 21600]
+    // clamp untouched, so what the row says is what the sim gets.
+    const std::vector<Step> time = {
+        {3600, "TIME LIMIT: 5M", "Clock: 5 minutes."},
+        {7200, "TIME LIMIT: 10M", "Clock: 10 minutes."},
+        {10800, "TIME LIMIT: 15M", "Clock: 15 minutes."},
+        {14400, "TIME LIMIT: 20M", "Clock: 20 minutes."},
+        {0, "TIME LIMIT: MAP", "Clock: the map's own."},
+    };
     const struct {
         std::size_t row;
         const char* setting;
@@ -1386,6 +1458,7 @@ TEST_F(ModesBookTest, every_knob_cycles_through_its_values_and_wraps)
         {kTeamsRow, "team_count", &teams},
         {kScoreRow, "score_limit", &score},
         {kTroopsRow, "strip_troops", &troops},
+        {kTimeRow, "time_limit", &time},
     };
 
     for (const auto& knob : knobs)
@@ -1408,10 +1481,11 @@ TEST_F(ModesBookTest, every_knob_cycles_through_its_values_and_wraps)
                 << "the refetched row wears the new value";
         }
         // A whole lap leaves the knob exactly where it started, and the
-        // other two never moved.
+        // other three never moved.
         EXPECT_EQ(0, save_.ctf_team_count);
         EXPECT_EQ(0, save_.ctf_capture_limit);
         EXPECT_EQ(0, save_.ctf_strip_scenario_troops);
+        EXPECT_EQ(0, save_.time_limit);
     }
 }
 
@@ -1423,6 +1497,7 @@ TEST_F(ModesBookTest, an_off_menu_value_rejoins_the_cycle_at_its_head)
     save_.ctf_team_count = 1;   // below the 2..4 the cycle offers
     save_.ctf_capture_limit = 7;
     save_.ctf_strip_scenario_troops = 1;  // the retired middle state
+    save_.time_limit = 5400;    // a 7:30 court, between two cycle stops
 
     CampaignPickerSession session(save_);
     ASSERT_TRUE(session.open_at("setup"));
@@ -1442,6 +1517,13 @@ TEST_F(ModesBookTest, an_off_menu_value_rejoins_the_cycle_at_its_head)
               session.choose(kTroopsRow).kind);
     EXPECT_EQ("Troops: the map's own.", session.take_message());
     EXPECT_EQ(0, save_.ctf_strip_scenario_troops);
+
+    EXPECT_EQ("TIME LIMIT: 7M", session.page().rows[kTimeRow].label)
+        << "5400 ticks is 7 whole minutes, said plainly";
+    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
+              session.choose(kTimeRow).kind);
+    EXPECT_EQ("Clock: the map's own.", session.take_message());
+    EXPECT_EQ(0, save_.time_limit);
 }
 
 TEST_F(ModesBookTest, turning_a_knob_arms_the_dirty_flag_and_the_camp_follows)
@@ -1472,9 +1554,17 @@ TEST_F(ModesBookTest, turning_a_knob_arms_the_dirty_flag_and_the_camp_follows)
         ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
                   session.choose(kTroopsRow).kind);
     }
+    // And one puts the clock on five minutes — which the summaries
+    // deliberately do NOT speak: the line and the camp digest stayed at
+    // three knobs (#241), so the TIME LIMIT row is the only place its value
+    // shows.
+    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
+              session.choose(kTimeRow).kind);
     EXPECT_EQ(5, save_.ctf_capture_limit);
     EXPECT_EQ(3, save_.ctf_strip_scenario_troops);
+    EXPECT_EQ(3600, save_.time_limit);
     EXPECT_EQ("2 sides, to 5, fair.", session.page().lines[0]);
+    EXPECT_EQ("TIME LIMIT: 5M", session.page().rows[kTimeRow].label);
     EXPECT_TRUE(og::data::consume_match_settings_dirty());
 
     // The camp's own row carries the same rules at note length — the whole
@@ -1512,6 +1602,7 @@ TEST_F(ModesBookTest, joiner_setup_page_reads_and_refuses_without_writing)
     EXPECT_EQ(0, save_.ctf_team_count) << "no knob moved";
     EXPECT_EQ(0, save_.ctf_capture_limit);
     EXPECT_EQ(0, save_.ctf_strip_scenario_troops);
+    EXPECT_EQ(0, save_.time_limit);
     EXPECT_FALSE(og::data::consume_match_settings_dirty())
         << "a refusal never arms the session tail";
 }

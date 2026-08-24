@@ -29,6 +29,7 @@
 #include <openglad/core/frame_pacing.h>
 #include <openglad/core/util.h>
 #include <openglad/core/version.h>
+#include <openglad/resources/campaign_state_providers.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/gameplay/gameplay_context.h>
@@ -537,6 +538,21 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng,
                     "OPENGLAD_DEMO_CAMPAIGN_STATE rejected entry '{}'", tok));
             }
         }
+    }
+
+    // OPENGLAD_DEMO_MATCH_TIME_LIMIT=<sim ticks> drives the #241 match clock
+    // through a render-real capture, the way a host's MATCH SETUP write
+    // does; 0 (the default) keeps the map's own value. The knob rides the
+    // save into sync_world_from_save_data, so no launch path is special-cased.
+    // It goes through clamp_match_setting for the same reason
+    // og.campaign_match_set does: the capture tooling must not be the one
+    // producer that can mint a clock the lobby would bounce (a typo'd
+    // 40000 narrows to a negative short otherwise).
+    if (!og::data::clamp_match_setting(
+            "time_limit", env_int("OPENGLAD_DEMO_MATCH_TIME_LIMIT", 0, 0),
+            s->save_data.time_limit)) {
+        throw std::runtime_error(
+            "OPENGLAD_DEMO_MATCH_TIME_LIMIT could not be applied");
     }
 
     // The demo never selects a company, so this is the default "save0" slot

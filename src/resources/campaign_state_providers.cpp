@@ -86,8 +86,12 @@ short* match_setting_slot(SaveData& save, const std::string& name)
         return &save.respawn_mode;
     if (name == "generator_rate")
         return &save.generator_rate;
+    if (name == "time_limit")
+        return &save.time_limit;
     return nullptr;
 }
+
+} // namespace
 
 // The lobby sanitizer's rules (lobby_server.cpp sanitize_settings),
 // applied per knob: the numeric knobs clamp (with their 0 = default/Auto
@@ -140,10 +144,20 @@ bool clamp_match_setting(const std::string& name, std::int32_t value,
             : static_cast<short>(0); // 0 = default (100)
         return true;
     }
+    if (name == "time_limit")
+    {
+        // Sim ticks (12/s); 0 = the map's own value. The deliberate twin of
+        // lobby_server.cpp sanitize_settings' time_limit rule — keep the
+        // numbers identical or a scripted preset can publish a value the
+        // server bounces. The 720-tick floor is one whole minute, so no UI
+        // face can render a 0-minute clock and read as the MAP sentinel.
+        out = value != 0
+            ? static_cast<short>(std::clamp<std::int32_t>(value, 720, 21600))
+            : static_cast<short>(0);
+        return true;
+    }
     return false; // unknown name
 }
-
-} // namespace
 
 bool consume_match_settings_dirty()
 {

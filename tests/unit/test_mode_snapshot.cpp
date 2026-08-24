@@ -1,4 +1,4 @@
-// Mode snapshot replication (snapshot v10): capture/apply round trips, wire
+// Mode snapshot replication (snapshot v11): capture/apply round trips, wire
 // serialization in keyframe and delta form, hostile-input count caps and
 // text-termination hardening, and the snapshot-restore equivalence proof
 // that the replicated RespawnState + ModeState blocks are the complete
@@ -148,6 +148,7 @@ void populate_full_mode_state(GameWorld& world)
     world.ctf_requested_capture_limit = 9;
     world.ctf_requested_respawn_ticks = 55;
     world.ctf_requested_strip_scenario_troops = 1;
+    world.ctf_requested_time_limit = 7200;
 }
 
 // Asserts every snapshot respawn/mode field equals the world's live state.
@@ -220,6 +221,9 @@ void expect_snapshot_matches_world(const og::sim::WorldSnapshot& snapshot,
               snapshot.ctf_requested_respawn_ticks);
     EXPECT_EQ(world.ctf_requested_strip_scenario_troops,
               snapshot.ctf_requested_strip_scenario_troops);
+    EXPECT_EQ(world.ctf_requested_time_limit,
+              snapshot.ctf_requested_time_limit)
+        << "snapshot v11 replicates the match time limit (#241)";
 }
 
 void expect_snapshot_mode_defaults(const og::sim::WorldSnapshot& snapshot)
@@ -262,6 +266,8 @@ void expect_snapshot_mode_defaults(const og::sim::WorldSnapshot& snapshot)
               snapshot.ctf_requested_respawn_ticks);
     EXPECT_EQ(defaults.ctf_requested_strip_scenario_troops,
               snapshot.ctf_requested_strip_scenario_troops);
+    EXPECT_EQ(defaults.ctf_requested_time_limit,
+              snapshot.ctf_requested_time_limit);
 }
 
 std::size_t payload_length_from_header(const std::vector<std::uint8_t>& bytes)
@@ -333,13 +339,13 @@ std::vector<std::uint8_t> rebuild_patched_snapshot_message(
     return message;
 }
 
-// Self-describing raw-payload offsets for a DEFAULT (empty-state) v10
+// Self-describing raw-payload offsets for a DEFAULT (empty-state) v11
 // snapshot: format byte, then 72 world-scalar bytes, then the respawn block
 // (respawn_ticks u16 at 73, respawn_serial u16 at 75, the four anchor counts
 // at 77..80 — no anchor pairs follow when all counts are zero — and the
 // queue size at 81), then the mode block (8 scalar bytes at 82..89, the
 // 12-byte name at 90, 64 i32 vars at 102, the HUD lines at 358, the beacons
-// at 466), then the four match-knob i16s at 486.
+// at 466), then the five match-knob i16s at 486.
 constexpr std::size_t kFirstAnchorCountOffset = 77;
 constexpr std::size_t kQueueSizeOffset = 81;
 constexpr std::size_t kModeNameOffset = 90;
@@ -413,6 +419,7 @@ TEST(ModeSnapshot, apply_clears_stale_mode_state_from_default_snapshot)
     EXPECT_EQ(0, target.world().ctf_requested_capture_limit);
     EXPECT_EQ(0, target.world().ctf_requested_respawn_ticks);
     EXPECT_EQ(0, target.world().ctf_requested_strip_scenario_troops);
+    EXPECT_EQ(0, target.world().ctf_requested_time_limit);
 }
 
 // --- Delta path ------------------------------------------------------------
@@ -838,4 +845,85 @@ TEST(ModeSnapshot, strip_scenario_troops_round_trips_and_changes_hash)
     var_changed.mode.vars[17] = 99;
     EXPECT_NE(og::sim::compute_snapshot_hash(snapshot),
               og::sim::compute_snapshot_hash(var_changed));
+}
+
+// --- Requested match time limit replication (#241) ---------------------------
+
+TEST(ModeSnapshot, time_limit_round_trips_and_changes_hash)
+{
+    ModeWorld fx;
+    GameWorld& world = fx.world();
+    world.ctf_requested_time_limit = 7200;
+
+    // Keyframe capture + serialize + deserialize preserves the field.
+    const og::sim::WorldSnapshot snapshot =
+        og::sim::capture_keyframe_snapshot(world);
+    EXPECT_EQ(7200, snapshot.ctf_requested_time_limit);
+    const std::vector<std::uint8_t> bytes = og::sim::serialize_snapshot(snapshot);
+    const og::sim::WorldSnapshot decoded =
+        og::sim::deserialize_snapshot(bytes);
+    EXPECT_EQ(7200, decoded.ctf_requested_time_limit);
+
+    // Apply writes it back into a fresh world.
+    ModeWorld target;
+    ASSERT_EQ(0, target.world().ctf_requested_time_limit);
+    og::sim::apply_snapshot(target.world(), decoded);
+    EXPECT_EQ(7200, target.world().ctf_requested_time_limit);
+
+    // Delta-merge carries it onto a baseline.
+    og::sim::WorldSnapshot baseline =
+        og::sim::capture_keyframe_snapshot(target.world());
+    baseline.ctf_requested_time_limit = 0;
+    const og::sim::WorldSnapshot delta_source = og::sim::capture_snapshot(world);
+    const std::vector<std::uint8_t> delta_bytes =
+        og::sim::serialize_delta(delta_source);
+    const og::sim::WorldSnapshot decoded_delta =
+        og::sim::deserialize_delta(delta_bytes);
+    og::sim::apply_delta(baseline, decoded_delta);
+    EXPECT_EQ(7200, baseline.ctf_requested_time_limit);
+
+    // The desync detector must SEE the clock: two peers holding different
+    // time limits have to hash differently, or the mismatch that would name
+    // the divergence never fires.
+    og::sim::WorldSnapshot other = snapshot;
+    other.ctf_requested_time_limit = 3600;
+    EXPECT_NE(og::sim::compute_snapshot_hash(snapshot),
+              og::sim::compute_snapshot_hash(other));
+}
+
+// The sim-side clamp apply_mode_state carries for this one knob: a crafted
+// snapshot must not hand the world a clock the lobby sanitizer, the
+// provider and both sync_world_from_save_data twins would all have refused.
+// 0 is the sentinel ("the map's own value"), never a clock, so it is never
+// lifted to the floor.
+TEST(ModeSnapshot, applied_time_limit_is_clamped_into_the_sanitized_band)
+{
+    ModeWorld fx;
+    const og::sim::WorldSnapshot base =
+        og::sim::capture_keyframe_snapshot(fx.world());
+    ModeWorld target;
+
+    struct Case
+    {
+        std::int16_t crafted;
+        std::int16_t applied;
+    };
+    const Case cases[] = {
+        {100, 720},     // under the floor
+        {1, 720},
+        {-1000, 720},   // a negative clock is still a request, still bounded
+        {30000, 21600}, // over the ceiling, under the 36000-tick loss net
+        {720, 720},     // the floor itself (exactly one minute)
+        {21600, 21600}, // the ceiling itself
+        {7200, 7200},   // in band: untouched
+        {0, 0},         // the sentinel
+    };
+    for (const Case& one : cases)
+    {
+        og::sim::WorldSnapshot crafted = base;
+        crafted.ctf_requested_time_limit = one.crafted;
+        og::sim::apply_snapshot(target.world(), crafted);
+        EXPECT_EQ(one.applied, target.world().ctf_requested_time_limit)
+            << "crafted " << one.crafted;
+    }
 }

@@ -364,6 +364,7 @@ void append_lobby_settings(std::vector<std::uint8_t>& payload,
     append_i16(payload, settings.cross_control);
     append_i16(payload, settings.infinite_gold);
     append_i16(payload, settings.shared_teams);
+    append_i16(payload, settings.time_limit);
 }
 
 og::sim::LobbySettings read_lobby_settings(PayloadReader& reader)
@@ -384,6 +385,7 @@ og::sim::LobbySettings read_lobby_settings(PayloadReader& reader)
     settings.cross_control = reader.read_i16();
     settings.infinite_gold = reader.read_i16();
     settings.shared_teams = reader.read_i16();
+    settings.time_limit = reader.read_i16();
     return settings;
 }
 

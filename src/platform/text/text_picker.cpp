@@ -75,8 +75,29 @@ void wait_for_enter()
 
 } // namespace
 
-int run_text_picker_protocol_session(const TextPickerConfig& config)
+int run_text_picker_protocol_session(const TextPickerConfig& config,
+                                     const SaveData* session_save,
+                                     int difficulty)
 {
+    // #247: a session with a save launches the STAGED world. The old text
+    // launch copied six scalars out of the config and built its own world,
+    // so every match knob the picker wrote into save_data_ — TROOPS, teams,
+    // score limit, respawns, generator rate, the time limit — plus the
+    // deployed roster, the completed-level purge, the replay arm and the
+    // difficulty were dropped between the preview and GO. The preview was
+    // never a prediction: it stages a real world. So does this now.
+    if (session_save != nullptr) {
+        TextStagedProtocolArgs staged_args;
+        staged_args.session_save = session_save;
+        staged_args.campaign = config.campaign;
+        staged_args.seed = config.seed;
+        staged_args.difficulty = difficulty;
+        return run_text_staged_protocol_session(staged_args);
+    }
+
+    // The CLI shape (--protocol): no save exists to stage from, so the
+    // config scalars and the CLI crew assembler are the whole match. Every
+    // headless playtest baseline enters here.
     TextProtocolArgs protocol_args;
     protocol_args.campaign = config.campaign;
     protocol_args.level = config.level;
@@ -94,6 +115,11 @@ public:
         : config_(config), error_(error)
     {
         ensure_team_initialized();
+        // #247: the session cursor IS the save's cursor. Both the VIEW LEVEL
+        // preview and (now) the launch read save_data_.scen_num, so the
+        // --level flag has to land there — every in-picker level write (Set
+        // Level, the camp docket, a replay arm) already mirrors both.
+        save_data_.scen_num = static_cast<short>(config_.level);
         // Terminal slot authority ([SAVE-R2]): company-level writes must
         // target this client's chosen slot (default "text_quicksave"), never
         // save0. An unsafe name is rejected by the setter and simply leaves
@@ -201,6 +227,12 @@ public:
         std::string company_name = prompt_new_company_name();
 
         reset_for_new_game(save_data_);
+        // #247 mirror: the reset moved the save's cursor back to level 1,
+        // and the launch reads THAT cursor. Every other level write in this
+        // client pairs the two; without this pairing the Scenario row, the
+        // VIEW LEVEL preview and GO would name three different levels after
+        // a new game started from `--level N`.
+        config_.level = save_data_.scen_num;
         ensure_team_populated(save_data_);
         // The display name lives in the 40-byte save_name; the filename stays
         // this terminal client's own slot (config_.save_name, [SAVE-R2]).
@@ -336,7 +368,12 @@ public:
         // view_scenario() staged its preview with (#218 §1.3). The two must
         // never split: TextPickerConfig::seed is the one seed the text
         // session owns, set once by --seed or the Game Settings row.
-        const int result = run_text_picker_protocol_session(config_);
+        //
+        // #247: hand over this client's live save and difficulty too — the
+        // other half of "the preview and the launch are the same world".
+        // view_scenario() stages on exactly these three inputs.
+        const int result = run_text_picker_protocol_session(config_,
+            &save_data_, og::runtime::current_session->current_difficulty_);
         if (result != 0) {
             set_error(TextPickerErrorCode::Unsupported,
                 std::string("protocol session failed with code ") + std::to_string(result));

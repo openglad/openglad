@@ -80,6 +80,10 @@ inline constexpr int kCtfLevelA = 9001;
 inline constexpr int kCtfLevelB = 9002;
 inline constexpr int kCtfLevelC = 9003;
 inline constexpr int kCtfLevelD = 9004;
+// The one CTF level with a MANIFEST row (registered into mode_levels by the
+// registration script below): time_limit = 120, the short-clock probe that
+// proves CTF reads the row instead of its own T.time_limit_ticks.
+inline constexpr int kCtfLevelShortClock = 9005;
 inline constexpr int kOtherModeLevel = 9050;  // manifest row for ANOTHER mode
 inline constexpr int kProbeLevel = 9090;      // mode_core helper probes
 inline constexpr int kTdmLevelA = 9101;       // TDM behavior levels
@@ -238,12 +242,19 @@ inline constexpr const char* kTestRegistrationLua =
     "-- zz_modes_test -- test-only level bindings for og_unit_modes.\n"
     "local core = og.use(\"mode_core\")\n"
     "local match_lib = og.use(\"mode_match\")\n"
+    "local levels_lib = og.use(\"mode_levels\")\n"
     "local ctf = og.use(\"mode_ctf_impl\")\n"
+    "-- CTF reads its manifest row at tick time (its mode-var band is\n"
+    "-- full), so the short-clock probe needs a row the module answers\n"
+    "-- with -- the id-keyed map is what a shipped row IS.\n"
+    "levels_lib.levels[9005] = { mode = \"ctf\", teams = 2,\n"
+    "                            time_limit = 120 }\n"
     "local rows = {\n"
     "  { id = 9001, mode = \"ctf\" },\n"
     "  { id = 9002, mode = \"ctf\" },\n"
     "  { id = 9003, mode = \"ctf\" },\n"
     "  { id = 9004, mode = \"ctf\" },\n"
+    "  { id = 9005, mode = \"ctf\" },\n"
     "  { id = 9050, mode = \"tdm\" },\n"
     "}\n"
     "core.register_mode(rows, \"ctf\", {\n"

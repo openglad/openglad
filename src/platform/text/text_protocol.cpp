@@ -21,6 +21,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/interface/game_context.h>
+#include <openglad/server/match_stage.h>
 
 #include <openglad/gameplay/pathfinding_grid.h>
 #include <openglad/gameplay/obmap.h>
@@ -440,6 +441,79 @@ static void cmd_events(og::sim::SimEventLog& events)
     std::cout.flush();
 }
 
+// The protocol session's whole observable surface, shared by both session
+// shapes (#247): the ready line, then the JSON command loop over the world
+// the caller built. Neither shape may grow its own dialect — a harness that
+// can drive --protocol must drive the picker's GO the same way.
+static void run_ready_line_and_command_loop(LevelRuntimeData& level,
+                                            og::sim::SimEventLog& events,
+                                            int level_id,
+                                            std::uint32_t seed)
+{
+    GameWorld& world = level.world();
+
+    // Output ready message
+    std::cout << "{\"status\":\"ready\""
+              << ",\"level\":" << level_id
+              << ",\"title\":";
+    json_string(std::cout, level.world().title);
+    std::cout << ",\"num_entities\":" << level.world().oblist.size()
+              << ",\"seed\":" << seed
+              << "}\n";
+    std::cout.flush();
+
+    // Command loop
+    std::string line;
+    while (std::getline(std::cin, line)) {
+        while (!line.empty() && (line.back() == '\r' || line.back() == '\n'))
+            line.pop_back();
+        if (line.empty()) continue;
+
+        std::istringstream iss(line);
+        std::string cmd;
+        iss >> cmd;
+
+        if (cmd == "tick") {
+            int count = 1;
+            iss >> count;
+            if (count < 1) count = 1;
+            cmd_tick(world, count);
+        } else if (cmd == "state") {
+            cmd_state(level);
+        } else if (cmd == "census") {
+            cmd_census(world);
+        } else if (cmd == "path") {
+            std::uint32_t eid = 0;
+            iss >> eid;
+            cmd_path(world, eid);
+        } else if (cmd == "grid") {
+            int floor = 0, x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+            iss >> floor >> x0 >> y0 >> x1 >> y1;
+            cmd_grid(world, floor, x0, y0, x1, y1);
+        } else if (cmd == "obat") {
+            int floor = 0, cx = 0, cy = 0;
+            iss >> floor >> cx >> cy;
+            cmd_obat(world, floor, cx, cy);
+        } else if (cmd == "events") {
+            cmd_events(events);
+        } else if (cmd == "quit") {
+            std::cout << "{\"cmd\":\"quit\",\"status\":\"ok\"}\n";
+            std::cout.flush();
+            break;
+        } else {
+            std::cout << "{\"cmd\":\"error\",\"message\":";
+            json_string(std::cout, std::string("unknown command: ") + cmd);
+            std::cout << "}\n";
+            std::cout.flush();
+        }
+
+        if (world.end) {
+            std::cout << "{\"status\":\"game_over\"}\n";
+            std::cout.flush();
+        }
+    }
+}
+
 } // namespace
 
 #ifdef TESTING
@@ -653,66 +727,108 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     world.enemy_freeze = 0;
     world.end = 0;
 
-    // Output ready message
-    std::cout << "{\"status\":\"ready\""
-              << ",\"level\":" << args.level
-              << ",\"title\":";
-    json_string(std::cout, level.world().title);
-    std::cout << ",\"num_entities\":" << level.world().oblist.size()
-              << ",\"seed\":" << args.seed
-              << "}\n";
-    std::cout.flush();
+    run_ready_line_and_command_loop(level, events, args.level, args.seed);
 
-    // Command loop
-    std::string line;
-    while (std::getline(std::cin, line)) {
-        while (!line.empty() && (line.back() == '\r' || line.back() == '\n'))
-            line.pop_back();
-        if (line.empty()) continue;
+    current_game = prev_game;
+    text_ctx.rng = prev_rng;
+    set_gameplay_rng_override(nullptr);
+    return 0;
+}
 
-        std::istringstream iss(line);
-        std::string cmd;
-        iss >> cmd;
+int run_text_staged_protocol_session(const TextStagedProtocolArgs& args)
+{
+    if (args.session_save == nullptr)
+        return 1;
+    const SaveData& session_save = *args.session_save;
 
-        if (cmd == "tick") {
-            int count = 1;
-            iss >> count;
-            if (count < 1) count = 1;
-            cmd_tick(world, count);
-        } else if (cmd == "state") {
-            cmd_state(level);
-        } else if (cmd == "census") {
-            cmd_census(world);
-        } else if (cmd == "path") {
-            std::uint32_t eid = 0;
-            iss >> eid;
-            cmd_path(world, eid);
-        } else if (cmd == "grid") {
-            int floor = 0, x0 = 0, y0 = 0, x1 = 0, y1 = 0;
-            iss >> floor >> x0 >> y0 >> x1 >> y1;
-            cmd_grid(world, floor, x0, y0, x1, y1);
-        } else if (cmd == "obat") {
-            int floor = 0, cx = 0, cy = 0;
-            iss >> floor >> cx >> cy;
-            cmd_obat(world, floor, cx, cy);
-        } else if (cmd == "events") {
-            cmd_events(events);
-        } else if (cmd == "quit") {
-            std::cout << "{\"cmd\":\"quit\",\"status\":\"ok\"}\n";
-            std::cout.flush();
-            break;
-        } else {
-            std::cout << "{\"cmd\":\"error\",\"message\":";
-            json_string(std::cout, std::string("unknown command: ") + cmd);
-            std::cout << "}\n";
-            std::cout.flush();
-        }
-
-        if (world.end) {
-            std::cout << "{\"status\":\"game_over\"}\n";
-            std::cout.flush();
-        }
+    // MatchStage does NOT mount (it assumes its owner already did — the
+    // preview guards on get_mounted_campaign()), so the mount and the sprite
+    // refresh lead, exactly as they do for the CLI shape above.
+    if (get_mounted_campaign() != args.campaign &&
+        mount_campaign_package_with_error(args.campaign) !=
+            CampaignPackageIoError::None) {
+        std::fprintf(stderr, "Failed to mount campaign %s\n",
+            args.campaign.c_str());
+        return 1;
     }
+    headless_entity_loader()->reload_graphics_if_stale();
+
+    // --- The staged world (#218/#247), adopted by object handoff. A
+    // lobby-less local session owns a one-shot MatchStage — the same
+    // dedicated-server apply-config/load/spawn/on_load/mode-init pipeline
+    // VIEW LEVEL previews with, on the same session-latched seed — and the
+    // staged world object BECOMES this session's world. Everything the old
+    // text launch hand-rolled (knob sync, campaign-var replication, the
+    // placed-walker difficulty pass, the prepare) has exactly one home in
+    // there, so none of it is re-implemented here. Copied in ordering from
+    // LocalCursesSession::create: the context handoff order is load-bearing.
+    og::server::MatchStage stage({
+        .networked = false,
+        .arm_policy = og::server::LobbyStartReplayArm::SeededIntent,
+        .host_company_save = &session_save,
+    });
+    og::server::MatchStageInputs stage_inputs;
+    stage_inputs.equivalent =
+        og::server::build_local_save_equivalent(session_save);
+    stage_inputs.difficulty = args.difficulty;
+    stage_inputs.match_seed = args.seed;
+    stage_inputs.replay_level = session_save.replay_level;
+    stage_inputs.replay_origin = session_save.replay_origin;
+    stage.observe_inputs(stage_inputs, og::server::stage_clock_now_ms());
+    // The staged pipeline keeps the launch's first-level fallback, and a
+    // stage that fell back must not masquerade as the requested level — the
+    // preview applies the identical rule, so an unloadable level fails here
+    // exactly as the old bare level.load() did.
+    if (stage.status() != og::server::StageStatus::Staged ||
+        stage.world()->id != session_save.scen_num) {
+        std::fprintf(stderr, "Failed to load level %d%s%s\n",
+            static_cast<int>(session_save.scen_num),
+            stage.error().empty() ? "" : ": ",
+            stage.error().c_str());
+        return 1;
+    }
+
+    // SaveData is not movable — copy the staged save out BEFORE take().
+    SaveData save;
+    og::server::copy_headless_server_save_data(save, stage.staged_save());
+    // The session's primary team is the player's (the wire equivalent
+    // carries none, so the staged save holds the headless 0).
+    save.my_team = session_save.my_team;
+
+    og::sim::SimEventLog events;
+    GameContext& text_ctx = ctx();
+    IRandom* prev_rng = text_ctx.rng;
+
+    og::server::MatchStage::TakenStage taken = stage.take();
+    std::unique_ptr<LevelRuntimeData> level = std::move(taken.level);
+    GameWorld& world = level->world();
+    world.my_team = save.my_team;
+    text_ctx.rng = &world.rng_;
+    set_gameplay_rng_override(&text_ctx.rng);
+    // Rewire the adopted level's sim context from the stage's private
+    // save/events onto this session's.
+    level->set_sim_context(&save, &world.enemy_freeze, &events, &world.rng_,
+        &cfg);
+
+    // The obmap/current_game discipline (see the long note in the CLI shape
+    // above). The load already happened under the stage's own context, and
+    // the obmap is the WORLD's, so the adopted walkers are registered — but
+    // every later setxy still needs a context pointing at this world, or it
+    // would re-bucket into whatever world the caller left installed.
+    GameplayContext text_game_ctx;
+    text_game_ctx.world = &world;
+    text_game_ctx.save = &save;
+    text_game_ctx.sim_events = &events;
+    text_game_ctx.config = &cfg;
+    GameplayContext* prev_game = current_game;
+    current_game = &text_game_ctx;
+
+    // The staged announcements (level on_load — tick-1 stamped) ride into
+    // the live log, so the first `events` command delivers them once.
+    events.append(std::move(taken.events));
+
+    run_ready_line_and_command_loop(*level, events,
+        static_cast<int>(save.scen_num), args.seed);
 
     current_game = prev_game;
     text_ctx.rng = prev_rng;

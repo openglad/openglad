@@ -1622,6 +1622,25 @@ TEST_F(ModesSoccer, short_manifest_time_limit_is_honored)
     EXPECT_TRUE(fx.world().game_ended) << "manifest time limit decides";
 }
 
+// #241: the lobby TIME LIMIT knob beats the manifest row — up, here, from
+// the 120-tick probe row to a real match length. (It also closes the hole
+// the old `row.time_limit or T.time_limit_ticks` left open: a row carrying
+// time_limit = 0 used to bank 0 and end the match on tick one.)
+TEST_F(ModesSoccer, time_limit_knob_overrides_the_manifest_row)
+{
+    ModesCtfWorld fx(kSoccerLevelC);  // row carries time_limit = 120
+    fx.spawn_anchor(0, 96, 448);
+    fx.spawn_anchor(1, 528, 448);
+    fx.spawn_living(FAMILY_SOLDIER, 0, 96, 96);
+    fx.spawn_living(FAMILY_SOLDIER, 1, 528, 96);
+    fx.world().ctf_requested_time_limit = 3600;
+    fx.tick(1);
+    ASSERT_TRUE(fx.world().mode.active);
+    EXPECT_EQ(3600, fx.var(kSocTimeLimit)) << "the request beats the row";
+    fx.tick(125);
+    EXPECT_FALSE(fx.world().game_ended) << "the row's 120 no longer decides";
+}
+
 // ===========================================================================
 // Respawning pickups (#225): the pitch runs lib/mode_items over its row
 // ===========================================================================

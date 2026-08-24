@@ -430,7 +430,12 @@ end
 -- Capture limit first; the time limit picks the leader (captures, then
 -- m_score, then smaller team index). The engine latch behind
 -- og.declare_winner revives pending corpses before winner_is_player.
-local function run_win_check(level_tick)
+-- The clock resolves HERE, from the manifest row, rather than being banked
+-- at init the way every other mode does it: CTF's mode-var band is full
+-- (ITEM_LAST = 63), so there is no slot to bank it in. The rule is still
+-- the shared one -- only the storage differs -- and both the row and the
+-- world's requested limit are replicated, so peers agree tick for tick.
+local function run_win_check(level_tick, row)
   local mask = active_mask()
   local limit = og.mode_get(S.CAPTURE_LIMIT)
   local winner = -1
@@ -444,7 +449,7 @@ local function run_win_check(level_tick)
     end
   end
   if winner < 0 then
-    if level_tick >= T.time_limit_ticks then
+    if level_tick >= match.resolve_time_limit(row, T.time_limit_ticks) then
       for team = 0, C.SCORE_TEAM_COUNT - 1 do
         if core.mask_has(mask, team) then
           if winner < 0 then
@@ -745,6 +750,10 @@ local function decide(level, inputs)
   -- the verified per-mode Auto asymmetry).
   local mask, starts, matched, matched_size =
       match.activation(inputs, authored_mask, 0)
+  -- Deliberately NOT match.resolve_limit: the middle term here is the
+  -- MAP's own flag count (derived from the board that was just read), not
+  -- a manifest field, so there is no row[field] for the shared ladder to
+  -- look up. Same order, different second reader.
   local limit = T.capture_limit
   if inputs.score_limit > 0 then
     limit = inputs.score_limit
@@ -964,7 +973,7 @@ local function on_mode_tick(level, tick)
     run_director(livings)
   end
   items.run(levels.levels[level], S.ITEM_CURSOR, S.ITEM_LAST, T.item_interval)
-  run_win_check(tick)
+  run_win_check(tick, levels.levels[level])
   update_hud()
 end
 

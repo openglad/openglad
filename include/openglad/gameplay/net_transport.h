@@ -150,7 +150,15 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 // between b and text — the per-seat notification addressee (-1 broadcasts,
 // 0..15 is a global player index). Servers keep broadcasting whole batches;
 // the filtering happens in each display client. Replay format moves to v16.
-inline constexpr std::uint8_t kNetworkProtocolVersion = 14;
+// v15: the match TIME LIMIT knob (#241). LobbySettings gains a fourteenth
+// i16, time_limit (sim ticks, 0 = the map's own value), appended after
+// shared_teams in append/read_lobby_settings; sanitize_settings clamps a
+// non-zero request into [720, 21600]. WorldSnapshot carries the same scalar
+// as the fifth match knob, appended after
+// ctf_requested_strip_scenario_troops, so snapshot format moves to v11 and
+// replay format to v17. The knob also persists in the GTL save (v17), which
+// is versioned separately from the wire.
+inline constexpr std::uint8_t kNetworkProtocolVersion = 15;
 
 // Global networked player-index cap (seats across ALL peers). Distinct from
 // MAX_PLAYERS, which stays 4 and caps the seats of ONE machine (input slots,

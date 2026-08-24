@@ -789,7 +789,7 @@ local function on_mode_init(level, row)
     respawn_ticks = T.respawn_ticks
   end
   og.mode_set(S.RESPAWN_TICKS, respawn_ticks)
-  og.mode_set(S.TIME_LIMIT, row.time_limit or T.time_limit_ticks)
+  og.mode_set(S.TIME_LIMIT, match.resolve_time_limit(row, T.time_limit_ticks))
 
   -- Grace clocks for active teams starting without a generator.
   for team = 0, C.SCORE_TEAM_COUNT - 1 do

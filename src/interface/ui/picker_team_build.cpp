@@ -578,7 +578,7 @@ Sint32 view_scenario_page_flip(Sint32 step)
 // gate-lattice sweep drive the spec bare) and presents the single-page
 // shape: pagers hidden, BACK's right-link closed.
 // The change key of everything the VIEW LEVEL report reads that a lobby can
-// move under a parked viewer: the level, the four match-request knobs, the
+// move under a parked viewer: the level, the five match-request knobs, the
 // campaign identity (save side + actual mount) and the STAGE GENERATION —
 // the heavy world rebuild lives in MatchStage behind its 250 ms debounce
 // (roster edits and knob turns move the owner's change key, restage, and
@@ -593,6 +593,10 @@ struct ViewScenarioKey
     short strip_troops = 0;
     short capture_limit = 0;
     short respawn_ticks = 0;
+    // #241: the staged preview bakes the resolved match clock, so a TIME
+    // LIMIT change must invalidate the cached staged world like any other
+    // knob — without it the viewer keeps promising the old deadline.
+    short time_limit = 0;
     std::uint32_t stage_generation = 0;
     // Seat block (#218): digest of the displayed seat facts. REQUIRED as a
     // key member because ready flips deliberately never restage
@@ -696,6 +700,7 @@ static ViewScenarioKey view_scenario_current_key(const SaveData& save)
     key.strip_troops = save.ctf_strip_scenario_troops;
     key.capture_limit = save.ctf_capture_limit;
     key.respawn_ticks = save.ctf_respawn_ticks;
+    key.time_limit = save.time_limit;
     key.save_campaign = save.current_campaign;
     key.mounted_campaign = get_mounted_campaign();
     og::ui::IPickerLobbyClient* const lobby =

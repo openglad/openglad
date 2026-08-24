@@ -1684,6 +1684,53 @@ TEST_F(ModesCtf, time_limit_win_picks_leader_with_tiebreakers)
     }
 }
 
+// #241: CTF used to compare the clock against its own T.time_limit_ticks
+// and never read the manifest at all — invisible because every shipped CTF
+// row carries exactly 14400, the same number. Level 9005's row carries 120,
+// so this test fails outright against the old comparison.
+TEST_F(ModesCtf, short_manifest_time_limit_is_honored)
+{
+    ModesCtfWorld fx(kCtfLevelShortClock);
+    fx.spawn_flag(flag_family_, 0, 96, 96);
+    fx.spawn_flag(flag_family_, 1, 544, 800);
+    fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
+    fx.spawn_living(FAMILY_SOLDIER, 1, 400, 700);
+    fx.tick(1);
+    ASSERT_TRUE(fx.world().mode.active);
+
+    fx.world().set_level_tick_count(120 - 2);
+    fx.tick(2);
+    EXPECT_TRUE(fx.world().game_ended) << "the manifest row decides";
+    EXPECT_EQ(0, fx.world().mode.winner_team) << "full tie, lowest byte";
+    // A timeout is the WIN exit, never the engine's own 36000-tick net
+    // (ending = 1, next_level = -1, "Mission timed out. Retreating.").
+    EXPECT_EQ(0, fx.world().ending);
+    EXPECT_EQ(kCtfLevelShortClock, fx.world().next_level)
+        << "a bot win replays the same map";
+}
+
+// The knob beats the row, in the direction the row cannot reach: 9005's
+// 120-tick clock stretched to a real match length.
+TEST_F(ModesCtf, time_limit_knob_overrides_the_manifest_row)
+{
+    ModesCtfWorld fx(kCtfLevelShortClock);
+    fx.spawn_flag(flag_family_, 0, 96, 96);
+    fx.spawn_flag(flag_family_, 1, 544, 800);
+    fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
+    fx.spawn_living(FAMILY_SOLDIER, 1, 400, 700);
+    fx.world().ctf_requested_time_limit = 3600;
+    fx.tick(1);
+    ASSERT_TRUE(fx.world().mode.active);
+
+    fx.world().set_level_tick_count(3600 - 130);
+    fx.tick(2);
+    EXPECT_FALSE(fx.world().game_ended)
+        << "the row's 120 no longer decides once the lobby asked";
+    fx.world().set_level_tick_count(3600 - 2);
+    fx.tick(2);
+    EXPECT_TRUE(fx.world().game_ended) << "the requested clock decides";
+}
+
 TEST_F(ModesCtf, decided_match_reasserts_win_shape_every_tick)
 {
     ModesCtfWorld fx;

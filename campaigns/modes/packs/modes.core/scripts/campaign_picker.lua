@@ -98,19 +98,35 @@ local function stripped_title(id)
   return string.sub(title, cut + 2)
 end
 
+-- The clock the field will actually run, in ticks: the TIME LIMIT knob when
+-- the host turned it, the row's own manifest value while the knob is still
+-- MAP (0). Same precedence mode_match.resolve_time_limit applies in the sim
+-- (`requested > 0` wins), read through the accessor the camp has — the
+-- picker runs outside a world, so og.campaign_match_get is its
+-- og.match_setting. Without this the note advertised a clock the knob had
+-- already overridden (#241).
+local function clock_ticks(row)
+  local requested = og.campaign_match_get("time_limit")
+  if requested > 0 then
+    return requested
+  end
+  return row.time_limit
+end
+
 -- The facts each mode's rows carry, straight from the manifest row: sides
 -- and the arena's own score, minutes for CTF's flag rule, lives for
 -- Onslaught's elimination, heads and shifters for the roster games. Every
 -- note is budgeted against the camp's 42-char panel row carrying its
 -- longest arena name and the door marker, which is why CTF's clock is
 -- "20m" and not "20 min": "FIELD: DUNGEON OF STARS" spends 23 of those
--- characters before the note starts.
+-- characters before the note starts. CTF's clock is the one fact the host
+-- can override, so it reads the resolved value, not the row's.
 local function mode_note(mode, row)
   if mode == "tdm" then
     return row.teams .. " teams, to " .. row.score_limit
   end
   if mode == "ctf" then
-    return row.teams .. " sides, " .. og.div(row.time_limit, 720) .. "m"
+    return row.teams .. " sides, " .. og.div(clock_ticks(row), 720) .. "m"
   end
   if mode == "onslaught" then
     return row.teams .. " sides, " .. row.spawn_caps[0] .. " lives"
@@ -282,6 +298,9 @@ end
 
 -- The same rules at note length for the MATCH SETUP row — worst case
 -- "Auto, to 50, fair" at 17 of the 20-char note budget.
+-- Both summaries deliberately stop at three knobs: a fourth term overruns
+-- this note's budget outright, and the TIME LIMIT row already wears its own
+-- value where the host turns it.
 local function rules_digest()
   local _, short_score = score_words()
   local head = teams_word() .. ", " .. short_score
@@ -388,6 +407,16 @@ local function troops_face(value)
   return string.upper(word)
 end
 
+-- The clock is stored in sim ticks (12/s, the manifest's own unit) and worn
+-- in minutes, the way the CTF camp note already spells it. og.div, never
+-- `/`: integer division is the determinism contract.
+local function time_face(value)
+  if value == 0 then
+    return "MAP"
+  end
+  return og.div(value, 720) .. "M"
+end
+
 -- What the click just did, in the plainest words the table has. The three
 -- zeroes say the same thing because they mean the same thing: whatever the
 -- map itself authored.
@@ -417,7 +446,14 @@ local function troops_said(value)
   return TROOPS_SAID[value]
 end
 
--- The three knobs MATCH SETUP turns, each written straight through
+local function time_said(value)
+  if value == 0 then
+    return "Clock: the map's own."
+  end
+  return "Clock: " .. og.div(value, 720) .. " minutes."
+end
+
+-- The four knobs MATCH SETUP turns, each written straight through
 -- og.campaign_match_set: the key it writes, the cycle it steps (the MATCHUP
 -- screen's own orders — cycle_ctf_team_count, cycle_ctf_capture_limit and
 -- the TROOPS toggle), the face it wears and the sentence it speaks. The
@@ -451,6 +487,18 @@ local KNOBS = {
     face = troops_face,
     said = troops_said,
   },
+  -- The clock the modes actually run on (#241). The cycle holds every
+  -- shipped manifest value except basketball's one short court, so a host
+  -- can always dial the map's own number back explicitly.
+  {
+    id = "time",
+    key = "time_limit",
+    title = "TIME LIMIT",
+    note = "map, 5, 10, 15, 20m",
+    cycle = { 0, 3600, 7200, 10800, 14400 },
+    face = time_face,
+    said = time_said,
+  },
 }
 
 -- One step along a knob's cycle, wrapping at the end. A value that is not
@@ -476,7 +524,7 @@ local function knob_by_id(entry_id)
   return nil
 end
 
--- MATCH SETUP: the three knobs as three rows, each labelled with what it
+-- MATCH SETUP: the knobs as rows, each labelled with what it
 -- holds and answering a click by stepping one on. The rows are CUT for a
 -- non-host: the line carries the whole value of the page, and a row whose
 -- only possible answer is a refusal is a row nobody should be offered.

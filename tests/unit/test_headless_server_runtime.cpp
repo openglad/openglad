@@ -842,6 +842,47 @@ TEST_F(HeadlessServerRuntimeTest,
            "posture: byte-identical to Auto)";
 }
 
+// Match clock clamp at world entry (#241), server twin: a SaveData whose
+// time_limit was never sanitized — a hand-edited company file is the one
+// route that skips both sanitize_settings and clamp_match_setting — must
+// still reach the sim inside [720, 21600], because the mirror that
+// snapshot-applies this world clamps the same field (world_snapshot.cpp
+// apply_mode_state). Server and mirror disagreeing on a hashed field is a
+// permanent snapshot-hash mismatch, not a cosmetic drift. The screen twin
+// is pinned by ScreenExtended.sync_world_from_save_data_clamps_time_limit.
+TEST_F(HeadlessServerRuntimeTest,
+       authoritative_sync_clamps_an_out_of_range_save_time_limit)
+{
+    og::sim::LobbySaveDataEquivalent lobby_save;
+    lobby_save.current_campaign = "gladiator";
+    lobby_save.scen_num = 1;
+    lobby_save.numplayers = 1;
+    lobby_save.team_list = {
+        make_slot(0u, 100, "Lead", FAMILY_SOLDIER, 0),
+    };
+
+    lobby_save.time_limit = 100; // under the floor
+    initialize_from_lobby(lobby_save);
+    EXPECT_EQ(100, active_save_.time_limit)
+        << "the save carries the crafted value verbatim";
+    EXPECT_EQ(720, level_data_->world().ctf_requested_time_limit)
+        << "world entry lifts a sub-floor clock to the sanitizers' floor";
+
+    lobby_save.time_limit = 30000; // over the ceiling
+    initialize_from_lobby(lobby_save);
+    EXPECT_EQ(21600, level_data_->world().ctf_requested_time_limit)
+        << "world entry caps below the engine's 36000-tick loss net";
+
+    lobby_save.time_limit = 0; // the map's own value
+    initialize_from_lobby(lobby_save);
+    EXPECT_EQ(0, level_data_->world().ctf_requested_time_limit)
+        << "0 is the sentinel, never clamped to the floor";
+
+    lobby_save.time_limit = 7200; // in range, untouched
+    initialize_from_lobby(lobby_save);
+    EXPECT_EQ(7200, level_data_->world().ctf_requested_time_limit);
+}
+
 // Campaign scripting (issue #206) authoritative sync, server twin: the
 // og::server sync inside load_headless_level_from_save must REPLACE
 // world.campaign_vars with the current campaign's decision book filtered

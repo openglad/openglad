@@ -468,6 +468,14 @@ public:
     short ctf_requested_capture_limit = 0;
     short ctf_requested_respawn_ticks = 0;
     short ctf_requested_strip_scenario_troops = 0; // 0 = keep; 2 = own; 3 = Fair (kTroopsMatched)
+    // Lobby-requested match time limit in SIM TICKS; 0 = the map's own value
+    // (#241). Scripted modes read it as og.match_setting("time_limit") and
+    // resolve it against their manifest row through match.resolve_limit.
+    // NOT the .glad level field of the same name — that one is the par/time
+    // BONUS clock and lives in time_bonus_limit (level_file_io.cpp:238).
+    // Independent of the 36000-tick hard mission timeout below, which is a
+    // runaway-loop safety net and ends the level as a LOSS.
+    short ctf_requested_time_limit = 0;
     // Classic (non-CTF) respawn mode: 0 = off (legacy), 1 = heroes respawn,
     // 2 = heroes + level-authored AI livings respawn ("endless battle"),
     // 3 = only Team 1 heroes respawn (player-facing Team 1 = internal team 0).

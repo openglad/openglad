@@ -281,6 +281,21 @@ TEST_F(ModesFfa, shipped_manifest_registration_binds_rows_850_to_855)
     }
 }
 
+// #241: the lobby TIME LIMIT knob beats the manifest row (FFA banks the
+// resolved value in the slot it calls DEADLINE).
+TEST_F(ModesFfa, time_limit_knob_overrides_the_manifest_row)
+{
+    FfaRig rig(850, 2);
+    rig.fx.world().ctf_requested_time_limit = 3600;
+    rig.fx.tick(1);
+
+    ASSERT_TRUE(rig.active());
+    EXPECT_EQ(3600, rig.fx.var(kFfaSlotDeadline))
+        << "the request beats the row's 7200";
+    EXPECT_EQ(15, rig.fx.var(kFfaSlotScoreLimit))
+        << "and moves no other knob";
+}
+
 TEST_F(ModesFfa, init_assigns_exactly_n_distinct_band_bytes)
 {
     FfaRig rig(850, 3);

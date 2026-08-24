@@ -747,6 +747,7 @@ private:
         settings.keep_fallen_heroes = save.keep_fallen_heroes;
         settings.cross_control = save.cross_control;
         settings.infinite_gold = save.infinite_gold;
+        settings.time_limit = save.time_limit;
         // Protocol v12: the shared-teams rule rides the wire, derived from
         // the campaign's matchup: yaml key (the joiner may lack the package).
         settings.shared_teams = og::ui::is_versus_campaign(save) ? 1 : 0;
@@ -976,6 +977,7 @@ private:
         save.keep_fallen_heroes = state_->settings.keep_fallen_heroes;
         save.cross_control = state_->settings.cross_control;
         save.infinite_gold = state_->settings.infinite_gold;
+        save.time_limit = state_->settings.time_limit;
         save.numplayers = static_cast<unsigned char>(
             spectator_mode_
                 ? 0

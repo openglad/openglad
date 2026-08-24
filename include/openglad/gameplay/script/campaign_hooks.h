@@ -196,6 +196,7 @@ struct CampaignRosterEntry {
 inline constexpr const char* kCampaignMatchSettingNames[] = {
     "team_count",   "score_limit",  "respawn_ticks",
     "strip_troops", "respawn_mode", "generator_rate",
+    "time_limit",
 };
 
 // The menu-time provider seam. og_gameplay cannot see SaveData or the
