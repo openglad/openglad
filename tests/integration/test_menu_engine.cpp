@@ -557,6 +557,54 @@ TEST(MenuEngine, depth_rule_nested_entry_never_fades)
            "call (a subscreen door) produces ZERO fades";
 }
 
+TEST(MenuEngine, depth_rule_peer_note_keeps_a_lateral_move_instant)
+{
+    static constexpr og::ui::MenuButtonSpec kRows[] = {
+        {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+         .x = 10, .y = 10, .w = 50, .h = 15,
+         .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT, .nav = {}},
+    };
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    og::ui::menu_transition_testing_reset();
+
+    og::ui::MenuScreenSpec spec = make_synth_spec(kRows, 1, "depth_peer");
+    spec.remote_start = og::ui::RemoteStartScope::TeamBuildScope;
+    g_synth_spec = &spec;
+    g_start_game_requested = true;
+
+    og::ui::note_menu_peer_transition();
+    trace_clear();
+    EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(spec));
+    EXPECT_EQ(0, count_fade_between_traces())
+        << "a noted menu-cluster peer entry (SETTINGS/HELP/LOAD/NETWORKING "
+           "doors and the way back) is not a context switch: no fade";
+
+    // One-shot: the note was consumed by that entry.
+    g_start_game_requested = true;
+    trace_clear();
+    EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(spec));
+    EXPECT_EQ(2, count_fade_between_traces())
+        << "the peer note is one-shot — the next root entry fades again";
+
+    // Swallow-even-if-unused: an Overlay entry consumes a stale peer note.
+    og::ui::MenuScreenSpec overlay = make_synth_spec(kRows, 1, "depth_peer_ov");
+    overlay.kind = og::ui::MenuScreenKind::Overlay;
+    overlay.remote_start = og::ui::RemoteStartScope::TeamBuildScope;
+    g_synth_spec = &overlay;
+    g_start_game_requested = true;
+    og::ui::note_menu_peer_transition();
+    EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(overlay));
+    g_synth_spec = &spec;
+    g_start_game_requested = true;
+    trace_clear();
+    EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(spec));
+    EXPECT_EQ(2, count_fade_between_traces())
+        << "a non-fading entry must still clear the peer note or it "
+           "suppresses the NEXT context switch's fade";
+}
+
 TEST(MenuEngine, depth_rule_overlay_never_fades_and_swallows_black_note)
 {
     static constexpr og::ui::MenuButtonSpec kRows[] = {
@@ -583,6 +631,31 @@ TEST(MenuEngine, depth_rule_overlay_never_fades_and_swallows_black_note)
     EXPECT_FALSE(og::ui::consume_menu_faded_to_black())
         << "swallow-even-if-unused: a non-fading entry must still clear the "
            "black note or it leaks one screen forward";
+}
+
+TEST(MenuEngine, legacy_entry_fade_honors_peer_and_black_notes)
+{
+    EngineTestGuard guard;
+    og::ui::menu_transition_testing_reset();
+
+    // Peer-noted door (the NETWORKING shape): no fade, caller presents
+    // its first frame directly.
+    og::ui::note_menu_peer_transition();
+    trace_clear();
+    EXPECT_FALSE(og::ui::begin_legacy_menu_entry_fade());
+    EXPECT_EQ(0, count_fade_between_traces());
+
+    // Bare context switch: fade-out now, caller fades its first frame in.
+    trace_clear();
+    EXPECT_TRUE(og::ui::begin_legacy_menu_entry_fade());
+    EXPECT_EQ(1, count_fade_between_traces());
+
+    // Already-black teardown hand-off: no fade-out, but the caller still
+    // owns a fade-in.
+    og::ui::note_menu_faded_to_black();
+    trace_clear();
+    EXPECT_TRUE(og::ui::begin_legacy_menu_entry_fade());
+    EXPECT_EQ(0, count_fade_between_traces());
 }
 
 // ---------------------------------------------------------------------------
@@ -2164,8 +2237,9 @@ TEST(MenuEngine, help_screen_spec_shape_pins)
     EXPECT_TRUE(spec.exit_on_redraw);
     EXPECT_EQ(MENU_REDRAW, spec.exit_value);
     EXPECT_TRUE(spec.polls_lobby);
-    // Fading is derived (#237): a Screen kind — the main menu's HELP door
-    // (depth 1) fades, Base Camp's nested HELP door does not.
+    // Fading is derived (#237): a Screen kind, but the main menu's HELP
+    // door dispatches with a peer note (a lateral menu move) and Base
+    // Camp's HELP door is nested — neither entry fades.
     EXPECT_EQ(og::ui::MenuScreenKind::Screen, spec.kind);
     EXPECT_EQ(kHelpMenuBackIndex, spec.default_highlight);
     EXPECT_NE(nullptr, spec.frame_tick) << "wheel -> page steps";

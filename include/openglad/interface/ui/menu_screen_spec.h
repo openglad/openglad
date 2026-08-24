@@ -246,6 +246,14 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state = nullptr)
 void note_menu_faded_to_black();
 bool consume_menu_faded_to_black();
 
+// A lateral move inside the open menu cluster (the main menu's SETTINGS /
+// HELP / LOAD / NETWORKING doors, and the way back from them): the next
+// depth-1 entry is not a context switch and must not fade. One-shot, and
+// consumed by every entry — including nested and Overlay entries and
+// begin_legacy_menu_entry_fade — with the same swallow-even-if-unused
+// property as the black note.
+void note_menu_peer_transition();
+
 // Current menu-stack depth (0 = no engine screen open). run_menu_screen
 // increments it around every entry; the depth-1 entry of a
 // MenuScreenKind::Screen is the context switch that fades.

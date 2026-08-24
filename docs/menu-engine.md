@@ -116,10 +116,17 @@ the decision; no screen declares a fade:
 - `MenuScreenKind::Screen` entered at menu-stack depth 1 fades: the previous
   surface fades out (skipped when a teardown already noted the surface
   black), the cold first frame is composed, and `fadeblack(1)` presents it.
-  The main menu, Base Camp, name entry, the LOAD list, and the main menu's
-  SETTINGS/HELP doors all enter this way.
+  The main menu, Base Camp, and name entry (the BEGIN NEW GAME flow's first
+  step) enter this way.
 - A nested `run_menu_screen` call (any subscreen door under an open screen)
   never fades; its cold frame is composed and presented directly.
+- A depth-1 sibling that is really a door on the open menu — SETTINGS, HELP,
+  the LOAD list, NETWORKING, and the way back from each — is a *peer
+  transition*, not a context switch: the dispatch site calls
+  `note_menu_peer_transition()` (a one-shot, swallowed by every entry like
+  the black note) and the entry stays instant. Only an outcome that leaves
+  the cluster (a company opened, a network hookup) fades, at the next
+  context switch's own entry.
 - `MenuScreenKind::Overlay` (the pause family) never fades at any depth.
 - Legacy full-screen entries outside the runner — NETWORKING, campaign
   select, the results panel — apply the same rule by hand through

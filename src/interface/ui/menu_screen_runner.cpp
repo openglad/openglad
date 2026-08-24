@@ -278,6 +278,7 @@ constexpr MenuBuildVariant kCompiledBuildVariant =
 struct MenuTransitionState {
     int depth = 0;
     bool faded_to_black = false;
+    bool peer_transition = false;
 };
 MenuTransitionState g_menu_transition;
 
@@ -317,6 +318,22 @@ bool consume_menu_faded_to_black()
     return faded;
 }
 
+void note_menu_peer_transition()
+{
+    g_menu_transition.peer_transition = true;
+}
+
+namespace {
+
+bool consume_menu_peer_transition()
+{
+    const bool peer = g_menu_transition.peer_transition;
+    g_menu_transition.peer_transition = false;
+    return peer;
+}
+
+} // namespace
+
 int menu_screen_depth()
 {
     return g_menu_transition.depth;
@@ -324,9 +341,10 @@ int menu_screen_depth()
 
 bool begin_legacy_menu_entry_fade()
 {
-    // Swallow-even-if-unused: a nested entry clears a stale note too.
+    // Swallow-even-if-unused: a nested entry clears stale notes too.
     const bool already_black = consume_menu_faded_to_black();
-    if (g_menu_transition.depth != 0)
+    const bool peer = consume_menu_peer_transition();
+    if (g_menu_transition.depth != 0 || peer)
         return false;
     if (!already_black)
         og::runtime::current_session->myscreen_->fadeblack(0);
@@ -394,11 +412,14 @@ void materialize_menu_buttons(const MenuScreenSpec& spec,
 Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
 {
     // #237 depth rule: a Screen fades exactly when this entry is a context
-    // switch — nothing else on the menu stack (depth 1). Nested subscreen
-    // entries and Overlay screens (the pause family) never fade.
+    // switch — nothing else on the menu stack (depth 1) and not a noted
+    // lateral move between menu-cluster peers (SETTINGS/HELP/LOAD/
+    // NETWORKING and the way back). Nested subscreen entries and Overlay
+    // screens (the pause family) never fade.
     const MenuDepthScope depth_scope;
+    const bool peer_entry = consume_menu_peer_transition();
     const bool should_fade = spec.kind == MenuScreenKind::Screen
-        && g_menu_transition.depth == 1;
+        && g_menu_transition.depth == 1 && !peer_entry;
     // Consumed unconditionally: the black note is a hand-off from whatever
     // ran last, so whichever screen opens next must clear it even when it
     // does not fade around its entry.

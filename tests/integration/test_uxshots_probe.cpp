@@ -1592,11 +1592,29 @@ void help_park_pointer() {
   SDL_Delay(200);
 }
 
+// #237 wiring pin: the HELP door and the way back are lateral menu-cluster
+// moves (peer transitions) — the round-trip must add zero fades.
+std::atomic<int> g_help_fades_at_door{-1};
+std::atomic<int> g_help_fades_after_return{-1};
+
+int count_fade_between_traces() {
+  std::lock_guard<std::mutex> lock(g_trace_mutex);
+  int fades = 0;
+  for (const TraceEntry &entry : g_trace_buffer) {
+    if (entry.category == "video" &&
+        entry.message.find("FadeBetween") != std::string::npos) {
+      ++fades;
+    }
+  }
+  return fades;
+}
+
 int help_screen_injector(void *data) {
   og::runtime::ensure_thread_session();
   ShotState *state = static_cast<ShotState *>(data);
   wait_for_interactable("help", 5000);
   SDL_Delay(1500); // menu-entry settle on the main menu
+  g_help_fades_at_door = count_fade_between_traces();
   interact("help");
   if (wait_for_interactable("help_tab_classes", 5000)) {
     SDL_Delay(500);
@@ -1629,6 +1647,7 @@ int help_screen_injector(void *data) {
   }
   if (wait_for_interactable("begin_new_game", 10000)) {
     SDL_Delay(750);
+    g_help_fades_after_return = count_fade_between_traces();
     interact("quit");
   }
   state->finished = true;
@@ -1650,6 +1669,11 @@ TEST(UxShots, n_help_screen) {
   g_picker_max_mainmenu_calls = 0;
   ASSERT_TRUE(state.finished);
   ASSERT_EQ(5, state.captures);
+  ASSERT_GE(g_help_fades_at_door.load(), 0);
+  ASSERT_GE(g_help_fades_after_return.load(), 0);
+  EXPECT_EQ(g_help_fades_at_door.load(), g_help_fades_after_return.load())
+      << "#237: the HELP door and the return to the main menu are peer "
+         "transitions — the round-trip must add zero fades";
 }
 
 TEST(UxShots, i_basecamp_paged) {

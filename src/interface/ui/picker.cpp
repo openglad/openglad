@@ -730,6 +730,18 @@ public:
 
     bool configure_networking() override
     {
+        // #237: the NETWORKING door is a lateral menu move (instant), and so
+        // is BACK; only a successful hookup's exit to Base Camp is a context
+        // switch, and Base Camp's own entry fades it.
+        og::ui::note_menu_peer_transition();
+        const bool hooked_up = configure_networking_body();
+        if (!hooked_up)
+            og::ui::note_menu_peer_transition();
+        return hooked_up;
+    }
+
+    bool configure_networking_body()
+    {
 #ifdef __EMSCRIPTEN__
         constexpr std::string_view kRoomCodePlaceholder =
             "(tap to enter room code)";
@@ -747,8 +759,8 @@ public:
         pks().networking_clicked_room_slot = -1;
         begin_relay_room_list_view();
         // #237 depth rule, applied by hand (this screen stays legacy —
-        // MenuEngine.networking_stays_legacy_v2_decision): fade the main
-        // menu out now, fade the first composed frame in below.
+        // MenuEngine.networking_stays_legacy_v2_decision). The wrapper's
+        // peer note makes this consume-and-skip: no fade on the door.
         bool entry_fade_in_pending = og::ui::begin_legacy_menu_entry_fade();
 
         auto visible_room_count = [&]() -> int {
@@ -1118,12 +1130,20 @@ public:
 
     void show_options() override
     {
+        // #237: SETTINGS is a lateral move inside the menu cluster — neither
+        // its entry nor the main menu's re-entry is a context switch.
+        og::ui::note_menu_peer_transition();
         main_options();
+        og::ui::note_menu_peer_transition();
     }
 
     void show_help() override
     {
+        // #237: HELP's instant entry is a deliberate decision (the old
+        // spec pinned it); the way back stays instant too.
+        og::ui::note_menu_peer_transition();
         show_general_help();
+        og::ui::note_menu_peer_transition();
     }
 
     void run_game() override
@@ -1155,7 +1175,13 @@ public:
         // (a company opened: active slot + save + mount switched) proceeds
         // to team build; false (BACK / list emptied) re-presents the main
         // menu, whose entry refresh re-derives the CONTINUE/LOAD gate.
-        return og::ui::run_company_list_screen();
+        // #237: the door and the BACK path are lateral menu moves; only an
+        // OPENED company is a context switch (Base Camp's entry fades).
+        og::ui::note_menu_peer_transition();
+        const bool opened = og::ui::run_company_list_screen();
+        if (!opened)
+            og::ui::note_menu_peer_transition();
+        return opened;
     }
 
     og::ui::PickerScreen screen_after_game() const override
