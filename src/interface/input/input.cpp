@@ -374,7 +374,10 @@ bool device_held_by_other_seat(int device_index, int player)
 // before openglad_web_boot has created the session that owns the hardware
 // block. The latch bridges that boot order only: init_input copies it into
 // the session, and every read goes to the hardware block, so the flag still
-// has exactly one live home.
+// has exactly one live home. That home is per-session: a scope that
+// activates a different session (e.g. the shadow's server session, which
+// never runs init_input) reads that session's default false — every current
+// door runs under the display session, and a future door must too.
 bool g_pending_single_seat_device = false;
 } // namespace
 
@@ -430,8 +433,11 @@ void set_single_seat_device(bool single_seat)
 
 int local_seat_cap()
 {
-    return max_local_seats(is_single_seat_device(), joystick_device_count(),
-                           MAX_PLAYERS);
+    // Menus poll this per frame; only a single-seat device needs the
+    // joystick enumeration (an SDL_GetJoysticks alloc), so desktops skip it.
+    if (!is_single_seat_device())
+        return MAX_PLAYERS;
+    return max_local_seats(true, joystick_device_count(), MAX_PLAYERS);
 }
 
 } // namespace og::input

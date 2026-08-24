@@ -699,6 +699,57 @@ test.describe('Touch overlay activation', () => {
           window.__opengladTextInputDetail.initialValue,
       ),
     ).toBe(submitted);
+
+    // Second leg: the field can also LOSE focus mid-prompt. A first edit
+    // makes it authoritative, but a paired keyboard keeps typing into the
+    // engine the moment focus leaves, so the next edit after a refocus is
+    // in exactly the position the first one was: the field's value is the
+    // only trustworthy state, and the buffer must be replaced whole again.
+    await tapCanvasGameCoord(page, 160, 100); // gesture-focus the input
+    await expect
+      .poll(async () =>
+        page.evaluate(() => document.activeElement && document.activeElement.id),
+      )
+      .toBe('og-text-entry');
+    await input.selectText();
+    await page.keyboard.press('Backspace');
+    await page.keyboard.type('X', { delay: 60 });
+    await expect(input).toHaveValue('X');
+
+    const blurBaseline = await captureRegion(page, PROMPT_INPUT_REGION);
+    await page.evaluate(() => document.getElementById('og-text-entry').blur());
+    await page.keyboard.type('YZ', { delay: 60 });
+    await waitForRegionToLeave(
+      page,
+      PROMPT_INPUT_REGION,
+      blurBaseline,
+      'typing after the field blurs should still reach the in-canvas prompt',
+    );
+    await expect(input).toHaveValue('X');
+
+    await tapCanvasGameCoord(page, 160, 100); // gesture-refocus the input
+    await expect
+      .poll(async () =>
+        page.evaluate(() => document.activeElement && document.activeElement.id),
+      )
+      .toBe('og-text-entry');
+    await page.keyboard.press('End');
+    await page.keyboard.type('W', { delay: 60 });
+    await expect(input).toHaveValue('XW');
+    const submittedAfterBlur = await input.inputValue();
+
+    await page.keyboard.press('Enter');
+    await expect(wrap).toBeHidden({ timeout: 10_000 });
+
+    await tapCanvasGameCoord(page, ROOM_VALUE_CENTER.x, ROOM_VALUE_CENTER.y);
+    await expect(wrap).toBeVisible({ timeout: 10_000 });
+    const readbackAfterBlur = await page.evaluate(
+      () =>
+        window.__opengladTextInputDetail &&
+        window.__opengladTextInputDetail.initialValue,
+    );
+    expect(readbackAfterBlur).not.toContain('YZ');
+    expect(readbackAfterBlur).toBe(submittedAfterBlur);
   });
 });
 

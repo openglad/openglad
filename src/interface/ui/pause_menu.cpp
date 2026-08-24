@@ -1278,7 +1278,7 @@ std::string pause_player_row_label(const PauseSeatInfo& seat)
     // driven by the touchscreen, so the row names the screen.
     const std::string owner = og::input::seat_owner_is_screen(
                                   og::input::is_single_seat_device(),
-                                  selection.is_joystick)
+                                  selection.is_joystick, seat.seat)
         ? std::string(og::input::kScreenSeatOwnerLabel)
         : og::input::mapping_display_name(selection.name);
     return std::format("P{}: {}", seat.player_number, owner);

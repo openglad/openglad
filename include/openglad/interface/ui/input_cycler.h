@@ -69,6 +69,14 @@ std::string cycle_player_input(cfg_store& cfg, int seat, int active_player_count
 // unique by construction and never change.
 bool ensure_unique_seat_mapping(cfg_store& cfg, int seat, int active_player_count);
 
+// Single-seat-device add path only: land the seat on the first free
+// joystick. Everywhere else the uninvited-grab rule stands — a seat with a
+// keyboard behind it never takes a pad the player did not choose. Returns
+// whether the seat changed; the caller persists. No-op on a seat already
+// holding a pad.
+bool claim_free_joystick_for_seat(cfg_store& cfg, int seat,
+                                  int active_player_count);
+
 // "INPUT: {short name}" — fits a 98px button face at 16 chars.
 std::string input_cycle_button_label(int seat);
 

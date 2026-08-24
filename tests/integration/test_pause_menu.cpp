@@ -602,18 +602,24 @@ TEST(PauseMenuLabels, seat_collection_and_player_row_labels)
     }
 
     {
-        // #249: a phone's keyboard-mapped seat names the screen here too —
-        // the pause rows, the INPUT cycler and the seat card all compose the
-        // owner token through the same seat_owner_is_screen rule.
-        NumplayersGuard numplayers(1);
-        const bool saved_device_class =
-            input_hardware_state().single_seat_device;
-        input_hardware_state().single_seat_device = true;
+        // #249: a phone's keyboard-mapped FIRST seat names the screen here
+        // too — the pause rows, the INPUT cycler and the seat card all
+        // compose the owner token through the same seat_owner_is_screen
+        // rule. RAII on the flag: an ASSERT return must not leak the phone
+        // class into the rest of the process.
+        NumplayersGuard numplayers(2);
+        struct SingleSeatGuard {
+            bool saved = input_hardware_state().single_seat_device;
+            SingleSeatGuard() { input_hardware_state().single_seat_device = true; }
+            ~SingleSeatGuard() { input_hardware_state().single_seat_device = saved; }
+        } device_class;
         const std::vector<og::ui::PauseSeatInfo> seats =
             og::ui::collect_pause_seats(/*networked=*/false);
-        ASSERT_EQ(1u, seats.size());
+        ASSERT_EQ(2u, seats.size());
         EXPECT_EQ("P1: SCRN", og::ui::pause_player_row_label(seats[0]));
-        input_hardware_state().single_seat_device = saved_device_class;
+        // Only local slot 0 is the screen: the overlay drives player 0
+        // alone, so a later seat keeps its real mapping name.
+        EXPECT_NE("P2: SCRN", og::ui::pause_player_row_label(seats[1]));
     }
 }
 

@@ -57,10 +57,15 @@ TEST(DeviceSeats, cap_is_a_compile_time_rule)
 TEST(DeviceSeats, screen_owner_token_covers_the_keyboard_seat_only)
 {
     // A phone seat the player cycled onto a real pad keeps naming that pad.
-    EXPECT_TRUE(og::input::seat_owner_is_screen(true, false));
-    EXPECT_FALSE(og::input::seat_owner_is_screen(true, true));
-    EXPECT_FALSE(og::input::seat_owner_is_screen(false, false));
-    EXPECT_FALSE(og::input::seat_owner_is_screen(false, true));
+    EXPECT_TRUE(og::input::seat_owner_is_screen(true, false, 0));
+    EXPECT_FALSE(og::input::seat_owner_is_screen(true, true, 0));
+    EXPECT_FALSE(og::input::seat_owner_is_screen(false, false, 0));
+    EXPECT_FALSE(og::input::seat_owner_is_screen(false, true, 0));
+    // Only local slot 0 is the screen: the overlay drives player 0 alone, so
+    // a phone's later seats (opened by pads) never claim it.
+    EXPECT_FALSE(og::input::seat_owner_is_screen(true, false, 1));
+    EXPECT_FALSE(og::input::seat_owner_is_screen(true, true, 1));
+    EXPECT_FALSE(og::input::seat_owner_is_screen(true, false, 3));
 }
 
 TEST(DeviceSeats, screen_owner_label_fits_the_seat_card_face)

@@ -152,6 +152,26 @@ bool ensure_unique_seat_mapping(cfg_store& cfg, int seat, int active_player_coun
     return false;
 }
 
+bool claim_free_joystick_for_seat(cfg_store& cfg, int seat,
+                                  int active_player_count)
+{
+    // The uninvited-grab rule (cycle_player_input / ensure_unique_seat_mapping
+    // skip joysticks) protects seats that have a keyboard to fall back on. A
+    // single-seat device has none: a seat added there exists only because a
+    // pad opened the cap, so the add path claims the first free one for it.
+    if (current_input_selection(seat).is_joystick)
+        return false;
+    for (const InputCycleOption& option :
+         input_cycle_options(cfg, seat, active_player_count))
+    {
+        if (!option.is_joystick)
+            continue;
+        if (apply_input_cycle_selection(cfg, seat, option))
+            return true;
+    }
+    return false;
+}
+
 std::string input_cycle_button_label(int seat)
 {
     const InputCycleOption selection = current_input_selection(seat);
@@ -161,7 +181,7 @@ std::string input_cycle_button_label(int seat)
     // onto a real pad still names that pad.
     const std::string owner = og::input::seat_owner_is_screen(
                                   og::input::is_single_seat_device(),
-                                  selection.is_joystick)
+                                  selection.is_joystick, seat)
         ? std::string(og::input::kScreenSeatOwnerLabel)
         : og::input::mapping_short_name(selection.name);
     return std::format("INPUT: {}", owner);

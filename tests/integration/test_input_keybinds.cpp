@@ -361,6 +361,18 @@ TEST(InputKeybinds, native_input_push_text_event_burst_survives_queueing)
             << "payload " << i << " must not be overwritten by a later push";
     }
 
+    // The pool now holds 12 dead entries and the queue holds no text events,
+    // so the NEXT push takes the reclaim path (erase down to the retained
+    // tail). The new payload must survive it.
+    og::input_native::push_text_event("post");
+    const void* ev = og::input_native::wait_event();
+    ASSERT_TRUE(ev != nullptr) << "post-reclaim text event should be delivered";
+    og::input_native::EventData out{};
+    ASSERT_TRUE(og::input_native::decode_event(ev, out));
+    ASSERT_EQ((int)og::input_native::EventType::TextInput, (int)out.type);
+    ASSERT_STREQ("post", out.text.data())
+        << "reclaim must not free the payload it just parked";
+
     while (og::input_native::poll_event() != nullptr) {}
 }
 
@@ -1731,13 +1743,15 @@ TEST(InputKeybinds, lookup_key_binding_persists_through_cfg_roundtrip)
 // ---------------------------------------------------------------------------
 // Browser-safe web control defaults (issue #144). Player 1's native factory
 // FIRE is LCtrl, which makes "attack while walking up" the browser-reserved
-// Ctrl+W chord. Ctrl is the only problem key — Left Alt is browser-safe — so
-// web builds substitute Z/X for profile 0's 4-dir FIRE/SPECIAL and, in the
-// 8-dir map where Z/X are P1's own diagonals, move FIRE to S (leaving SPECIAL
-// on Left Alt), YELL off S to V, and look-up off V to unbound. A one-shot
-// version-keyed cfg migration moves persisted bindings still equal to the old
-// factory default. All of it is exercised natively through the web_mode
-// parameter.
+// Ctrl+W chord. Ctrl remains the unreachable one; Left Alt stays bound
+// because the shell contains the browser's Alt default itself (a
+// capture-phase preventDefault, web/shell.html) while leaving the key fully
+// readable by SDL. So web builds substitute Z/X for profile 0's 4-dir
+// FIRE/SPECIAL and, in the 8-dir map where Z/X are P1's own diagonals, move
+// FIRE to S (leaving SPECIAL on Left Alt), YELL off S to V, and look-up off
+// V to unbound. A one-shot version-keyed cfg migration moves persisted
+// bindings still equal to the old factory default. All of it is exercised
+// natively through the web_mode parameter.
 // ---------------------------------------------------------------------------
 
 TEST(InputKeybinds, web_defaults_move_p1_fire_off_ctrl)

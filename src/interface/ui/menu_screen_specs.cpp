@@ -2838,7 +2838,8 @@ std::string base_camp_seat_label(const BaseCampScreenState& state,
         // so the card names the screen instead of keys the device lacks. A
         // seat cycled onto a real pad still names that pad.
         owner = og::input::seat_owner_is_screen(
-                    og::input::is_single_seat_device(), selection.is_joystick)
+                    og::input::is_single_seat_device(), selection.is_joystick,
+                    local_slot)
             ? std::string(og::input::kScreenSeatOwnerLabel)
             : og::input::mapping_short_name(selection.name);
     }
@@ -5007,8 +5008,17 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
         {
             const int seat_count =
                 static_cast<int>(picker_lobby_local_seat_count());
-            if (og::ui::ensure_unique_seat_mapping(cfg, seat_count - 1,
-                                                   seat_count))
+            bool controls_changed = og::ui::ensure_unique_seat_mapping(
+                cfg, seat_count - 1, seat_count);
+            // On a single-seat device the pad IS why this door opened: a
+            // keyboard mapping would leave the seat with no input at all.
+            if (og::input::is_single_seat_device() &&
+                og::ui::claim_free_joystick_for_seat(cfg, seat_count - 1,
+                                                     seat_count))
+            {
+                controls_changed = true;
+            }
+            if (controls_changed)
             {
                 persist_player_controls();
             }

@@ -1,12 +1,13 @@
 // Browser-safe default controls (issue #144): pure-header logic.
 //
 // Player 1's native factory keymap puts FIRE on Left Ctrl, so "attack while
-// walking up" is literally Ctrl+W — the close-tab chord Firefox reserves at
-// browser-chrome level where no page script can intercept it. Ctrl is the
-// only problem key: web builds substitute profile 0's FIRE default (and the
-// keys it displaces) at the table read sites, leave SPECIAL on Left Alt in
-// the 8-direction map, and run a one-shot version-keyed migration over
-// persisted bindings still equal to the old factory default.
+// walking up" is literally Ctrl+W — a close-tab chord the browser owns in
+// windowed play: Firefox delivers the keydown and closes the tab anyway, and
+// Chromium never delivers it to the page at all. Ctrl is the whole problem:
+// web builds substitute profile 0's FIRE default (and the keys it displaces)
+// at the table read sites, leave SPECIAL on Left Alt in the 8-direction map,
+// and run a one-shot version-keyed migration over persisted bindings still
+// equal to the old factory default.
 //
 // This is a native (headless) binary, so both web and native branches are
 // covered by passing web_mode explicitly; input_state.cpp static_asserts

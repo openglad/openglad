@@ -6,6 +6,11 @@
 // attached device. Tablets and desktops are never single-seat — the caller's
 // build limit (MAX_PLAYERS) governs them alone.
 //
+// The device class is a whole-machine boolean, accepted consequences and
+// all: a phone with a Bluetooth KEYBOARD (not a pad) stays one-seat, and
+// seat 0's cycler names every keyboard option SCRN — on that hardware they
+// all are the screen, since the overlay is what actually drives the seat.
+//
 // This header is pure logic (no SDL includes) so headless unit tests can
 // cover the whole cap matrix. The live device class is a runtime flag
 // (InputHardwareState::single_seat_device, set from the web shell through
@@ -30,12 +35,16 @@ constexpr int max_local_seats(bool single_seat_device, int joystick_count,
 // would name keys the device does not have.
 inline constexpr const char* kScreenSeatOwnerLabel = "SCRN";
 
-// A local seat on a single-seat device runs on the on-screen controls unless
-// the player has cycled it onto a real joystick.
+// Only the FIRST local seat runs on the on-screen controls — the overlay is
+// hard-wired to player 0 (web_touch_bridge / tcSetKey). A later seat on a
+// single-seat device exists because a pad opened the cap for it, so a
+// keyboard selection there names the mapping it actually holds; it never
+// claims the screen.
 constexpr bool seat_owner_is_screen(bool single_seat_device,
-                                    bool selection_is_joystick)
+                                    bool selection_is_joystick,
+                                    int local_slot)
 {
-    return single_seat_device && !selection_is_joystick;
+    return single_seat_device && !selection_is_joystick && local_slot == 0;
 }
 
 } // namespace og::input
