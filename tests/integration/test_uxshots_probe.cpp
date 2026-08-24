@@ -795,6 +795,46 @@ TEST(UxShots, g_basecamp_solo) {
   run_basecamp_shot(shot, &basecamp_shot_injector);
 }
 
+// #243: the phone shape — a single-seat device hides [+] and draws no
+// ghosts; the lone seat card opens flush on the panel's left rail.
+int basecamp_phone_shot_injector(void *data) {
+  og::runtime::ensure_thread_session();
+  NamedShot *shot = static_cast<NamedShot *>(data);
+  wait_for_interactable("continue_game", 10000);
+  SDL_Delay(1500);  // menu-entry settle
+  interact("continue_game");
+  if (wait_for_interactable("hire_troops", kTeamMenuTimeoutMs)) {
+    SDL_Delay(1500);
+    shot->state.captures += capture_frame(shot->name);
+    SDL_Delay(200);
+    interact("back");
+  }
+  if (wait_for_interactable("begin_new_game", 10000)) {
+    SDL_Delay(750);
+    interact("quit");
+  }
+  shot->state.finished = true;
+  return 0;
+}
+
+// Restores the desktop device class even when an ASSERT unwinds the test.
+struct SingleSeatDeviceGuard {
+  SingleSeatDeviceGuard() { og::input::set_single_seat_device(true); }
+  ~SingleSeatDeviceGuard() { og::input::set_single_seat_device(false); }
+};
+
+TEST(UxShots, g2_basecamp_phone_single_seat) {
+  trace_clear();
+  CompanySlotCleanup cleanup{{"save0"}};
+  ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
+                                       playtest_roster()));
+  ASSERT_TRUE(og::data::set_active_company_slot("save0"));
+  SingleSeatDeviceGuard phone;
+  NamedShot shot;
+  shot.name = "basecamp_phone_single_seat";
+  run_basecamp_shot(shot, &basecamp_phone_shot_injector);
+}
+
 TEST(UxShots, h_basecamp_empty) {
   trace_clear();
   CompanySlotCleanup cleanup{{"save0"}};
