@@ -8,6 +8,7 @@
 #include <openglad/interface/ui/input_cycler.h>
 
 #include <openglad/gameplay/input_state.h>
+#include <openglad/interface/device_seats.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/input_mappings.h>
 
@@ -153,9 +154,17 @@ bool ensure_unique_seat_mapping(cfg_store& cfg, int seat, int active_player_coun
 
 std::string input_cycle_button_label(int seat)
 {
-    return std::format("INPUT: {}",
-                       og::input::mapping_short_name(
-                           current_input_selection(seat).name));
+    const InputCycleOption selection = current_input_selection(seat);
+    // Same owner-token rule as the seat card (base_camp_seat_label): on a
+    // single-seat device the touchscreen is the controller, so a keyboard
+    // mapping's keys would name hardware the device lacks; a seat cycled
+    // onto a real pad still names that pad.
+    const std::string owner = og::input::seat_owner_is_screen(
+                                  og::input::is_single_seat_device(),
+                                  selection.is_joystick)
+        ? std::string(og::input::kScreenSeatOwnerLabel)
+        : og::input::mapping_short_name(selection.name);
+    return std::format("INPUT: {}", owner);
 }
 
 } // namespace og::ui

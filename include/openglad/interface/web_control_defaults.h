@@ -3,14 +3,20 @@
 // Browser-safe default controls (issue #144).
 //
 // Player 1's native factory keymap binds FIRE to Left Ctrl. In a browser that
-// makes "attack while walking up" literally Ctrl+W — a chord Firefox reserves
-// at browser-chrome level (close tab), so no page script or SDL
-// preventDefault can stop it, fullscreen or not (and Keyboard Lock is
-// Chromium-only). Ctrl is the whole problem: SPECIAL on Left Alt is fine in
-// every browser (SDL's Emscripten layer preventDefaults it). So both FIRE
-// defaults move, SPECIAL follows only in the 4-direction map (to keep it
-// paired with fire next to WASD), and everything else that moves is a
-// knock-on from the key FIRE lands on.
+// makes "attack while walking up" literally Ctrl+W — a chord the browser
+// owns in windowed play: Firefox delivers the keydown and closes the tab
+// anyway (WONTFIX since Firefox 48), and Chromium never delivers it to the
+// page at all. The only escape is JS-initiated fullscreen (Chromium honors
+// preventDefault there; Firefox 151 and Safari 26.4 need
+// requestFullscreen({keyboardLock:"browser"}), which also turns Escape into
+// hold-to-exit) — deliberately not used here, so windowed play decides.
+// Ctrl is the whole problem: SPECIAL stays on Left Alt. A
+// page cannot reach Ctrl+W, but it can reach Alt — Firefox activates its menu
+// bar on an unconsumed Alt keyup, and the game page suppresses that with a
+// capture-phase preventDefault (web/shell.html), which leaves the key itself
+// fully readable by SDL. So both FIRE defaults move, SPECIAL follows only in
+// the 4-direction map (to keep it paired with fire next to WASD), and
+// everything else that moves is a knock-on from the key FIRE lands on.
 //
 //   4-direction map: FIRE = Z, SPECIAL = X (both free next to WASD).
 //

@@ -417,6 +417,15 @@ test.describe('Touch overlay activation', () => {
     await expect(page.locator('#tc-game')).not.toHaveClass(/tc-show/);
     await expect(page.locator('#tc-back')).toBeVisible();
 
+    // #249: the phone classification (touch + short screen edge) must reach
+    // the engine — openglad_web_set_single_seat_device mirrors every
+    // accepted write to window.__opengladSingleSeat, like the touch keys.
+    await expect
+      .poll(() => page.evaluate(() => window.__opengladSingleSeat), {
+        timeout: 15_000,
+      })
+      .toBe(true);
+
     // Same build, desktop context: the overlay must stay dormant. The project
     // runs with the iPhone device descriptor, and this Playwright version
     // injects the project's context options into manual newContext() calls —
@@ -441,6 +450,13 @@ test.describe('Touch overlay activation', () => {
       );
       await expect(desktopPage.locator('#tc-toggle')).toBeHidden();
       await expect(desktopPage.locator('#tc-back')).toBeHidden();
+      // A desktop must be explicitly classified multi-seat (false, not
+      // merely unset — proving the export was called with 0).
+      await expect
+        .poll(() => desktopPage.evaluate(() => window.__opengladSingleSeat), {
+          timeout: 15_000,
+        })
+        .toBe(false);
     } finally {
       await desktop.close();
     }
@@ -607,6 +623,82 @@ test.describe('Touch overlay activation', () => {
       acceptedField,
       'CANCEL should restore the previously accepted room code',
     );
+  });
+
+  test('room-code prompt: physical typing before the field is touched leaves no residue', async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+
+    await page.addInitScript(() => {
+      window.__opengladSkipIntroForTests = true;
+      window.__opengladForceTouchControls = true;
+      window.__opengladSeedSinglePlayerTeam = true;
+      window.__opengladRelayBaseUrlForTests = 'https://relay.test';
+    });
+    await page.route('https://relay.test/api/rooms**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ rooms: [] }),
+      }),
+    );
+    await page.goto('/play.html');
+    await waitForGameLoad(page);
+    await waitForPickerReady(page);
+
+    await tapCanvasGameCoord(page, CONTINUE_BUTTON.x, CONTINUE_BUTTON.y);
+    await page.waitForTimeout(1_500);
+    await tapCanvasGameCoord(page, NETWORKING_BUTTON.x, NETWORKING_BUTTON.y);
+    await page.waitForTimeout(1_500);
+
+    const wrap = page.locator('#og-text-entry-wrap');
+    const input = page.locator('#og-text-entry');
+
+    await tapCanvasGameCoord(page, ROOM_VALUE_CENTER.x, ROOM_VALUE_CENTER.y);
+    await expect(wrap).toBeVisible({ timeout: 10_000 });
+    await expect(input).toHaveValue('');
+
+    // A convertible or a paired keyboard can type straight into the engine
+    // while the DOM field is still untouched. Those keystrokes edit the C++
+    // buffer with no way to tell the field about them.
+    await page.evaluate(() => document.getElementById('og-text-entry').blur());
+    const promptBaseline = await captureRegion(page, PROMPT_INPUT_REGION);
+    await page.keyboard.type('ABC', { delay: 60 });
+    await waitForRegionToLeave(
+      page,
+      PROMPT_INPUT_REGION,
+      promptBaseline,
+      'physically typed characters should reach the in-canvas prompt',
+    );
+    await expect(input).toHaveValue('');
+
+    // The field is now authoritative: its first edit must replace the whole
+    // buffer, so what the player sees is what the prompt accepts.
+    await tapCanvasGameCoord(page, 160, 100); // gesture-focus the input
+    await expect
+      .poll(async () =>
+        page.evaluate(() => document.activeElement && document.activeElement.id),
+      )
+      .toBe('og-text-entry');
+    await page.keyboard.type('X', { delay: 60 });
+    await expect(input).toHaveValue('X');
+    const submitted = await input.inputValue();
+
+    await page.keyboard.press('Enter');
+    await expect(wrap).toBeHidden({ timeout: 10_000 });
+
+    // Reopening the prompt reads the accepted C++ buffer back out through
+    // start_text_input's initialValue.
+    await tapCanvasGameCoord(page, ROOM_VALUE_CENTER.x, ROOM_VALUE_CENTER.y);
+    await expect(wrap).toBeVisible({ timeout: 10_000 });
+    expect(
+      await page.evaluate(
+        () =>
+          window.__opengladTextInputDetail &&
+          window.__opengladTextInputDetail.initialValue,
+      ),
+    ).toBe(submitted);
   });
 });
 

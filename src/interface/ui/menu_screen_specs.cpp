@@ -22,6 +22,7 @@
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/interface/base.h>
 #include <openglad/interface/button.h>
+#include <openglad/interface/device_seats.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/input_mappings.h>
 #include <openglad/interface/render/pal32.h>
@@ -2513,7 +2514,7 @@ RowState base_camp_add_seat_row_state(
     return RowState::Hidden;
 #else
     const std::size_t local_count = picker_lobby_local_seat_count();
-    if (local_count >= static_cast<std::size_t>(MAX_PLAYERS))
+    if (local_count >= static_cast<std::size_t>(og::input::local_seat_cap()))
         return RowState::Disabled;
 
     // A connected spectator owns no published seat. Activating one therefore
@@ -2828,12 +2829,24 @@ std::string base_camp_seat_label(const BaseCampScreenState& state,
     // rail answers "which controller am I?" without opening the editor.
     const bool named = local_slot >= 0 && local_slot < MAX_PLAYERS &&
         picker_lobby_local_seat_count() > 0;
-    std::string owner =
-        named ? og::input::mapping_short_name(
-                    og::ui::current_input_selection(local_slot).name)
-              : (local_slot >= 0
-                     ? std::string("SPEC")
-                     : company_abbreviation(seat.company));
+    std::string owner;
+    if (named)
+    {
+        const og::ui::InputCycleOption selection =
+            og::ui::current_input_selection(local_slot);
+        // #249: on a single-seat device the touchscreen IS the controller,
+        // so the card names the screen instead of keys the device lacks. A
+        // seat cycled onto a real pad still names that pad.
+        owner = og::input::seat_owner_is_screen(
+                    og::input::is_single_seat_device(), selection.is_joystick)
+            ? std::string(og::input::kScreenSeatOwnerLabel)
+            : og::input::mapping_short_name(selection.name);
+    }
+    else
+    {
+        owner = local_slot >= 0 ? std::string("SPEC")
+                                : company_abbreviation(seat.company);
+    }
     // The trailing visual pad shifts the visible centered ink one half-cell
     // left, keeping the 8px numbered team chip clear on the compact 57px face.
     // The pad is part of the 9-char face budget, and so is a two-digit P#:
@@ -4967,8 +4980,14 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
         }
         const std::size_t local_count =
             picker_lobby_local_seat_count();
-        if (local_count >= static_cast<std::size_t>(MAX_PLAYERS)) {
-            popup_dialog("SEATS", "LOCAL LIMIT IS 4");
+        const int seat_cap = og::input::local_seat_cap();
+        if (local_count >= static_cast<std::size_t>(seat_cap)) {
+            // A phone runs out of seats below the build limit, and the way
+            // out is hardware, not a smaller number to argue with.
+            popup_dialog("SEATS",
+                         seat_cap < MAX_PLAYERS
+                             ? "ATTACH A GAMEPAD TO ADD SEATS"
+                             : "LOCAL LIMIT IS 4");
             return MENU_OK;
         }
         if (picker_lobby_players().size() >=

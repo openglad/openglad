@@ -5,6 +5,7 @@ const {
   ensureRenderTicker,
   focusCanvas,
   getCanvasGameRegionScreenshot,
+  navigateToNetworkingMenu,
   startSeededSinglePlayerFromPicker,
   waitForGameLoad,
   waitForGameplayProgress,
@@ -19,6 +20,9 @@ const MIN_NON_TRIVIAL_PNG_BYTES = 2_000;
 const IGNORED_RUNTIME_ERROR_PATTERNS = [/get_asset_path: readlink\(\/proc\/self\/exe\) failed/];
 const WORLD_CANVAS_PIXEL_BUDGET = 8_388_608;
 const SMART_SCALE_SCRATCH_PIXEL_BUDGET = 4_096_000;
+// Networking-menu ROOM CODE field (button id "network_room_value" in
+// src/interface/ui/picker.cpp) on the 320x200 UI reference grid.
+const ROOM_VALUE_CENTER = { x: 190, y: 47 };
 
 function attachRuntimeErrorCollectors(page, errors) {
   page.on('pageerror', (err) => {
@@ -45,6 +49,55 @@ function assertNoRuntimeErrors(errors, context) {
   expect(errors, `Unexpected runtime errors during: ${context}`).toEqual([]);
 }
 
+
+// Record Alt's settled defaultPrevented. These listeners must be registered
+// after boot: same-target, same-phase listeners fire in registration order, so
+// an addInitScript listener runs ahead of both the shell's capture-phase
+// containment and SDL's bubble-phase handlers and reads false for every key.
+// The bubble read is the browser's final answer; the capture read is the only
+// one available while the DOM text field is focused, because that field stops
+// propagation before the event reaches window's bubble listeners.
+async function installAltProbe(page) {
+  await page.evaluate(() => {
+    window.__altProbe = [];
+    const record = (phase) => (e) => {
+      if (e.key !== 'Alt') {
+        return;
+      }
+      window.__altProbe.push({
+        phase,
+        type: e.type,
+        defaultPrevented: e.defaultPrevented,
+      });
+    };
+    window.addEventListener('keydown', record('capture'), true);
+    window.addEventListener('keyup', record('capture'), true);
+    window.addEventListener('keydown', record('bubble'), false);
+    window.addEventListener('keyup', record('bubble'), false);
+  });
+}
+
+async function pressAltAndRead(page, phase) {
+  await page.evaluate(() => {
+    window.__altProbe = [];
+  });
+  // A non-zero hold lets the SDL poll loop observe the press before the
+  // release is queued, matching pressPickerKey.
+  await page.keyboard.press('Alt', { delay: 75 });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (want) => window.__altProbe.filter((r) => r.phase === want).length,
+        phase,
+      ),
+    )
+    .toBe(2);
+  const records = await page.evaluate(
+    (want) => window.__altProbe.filter((r) => r.phase === want),
+    phase,
+  );
+  return records.map((r) => [r.type, r.defaultPrevented]);
+}
 
 // Helper: capture a snapshot of canvas pixel data via screenshot
 // (WebGL canvases don't support getImageData via 2d context)
@@ -996,5 +1049,112 @@ test.describe('Game Interaction', () => {
     // Compare the raw PNG buffers - they should not be identical
     const differ = !menuScreenshot.equals(afterScreenshot);
     expect(differ).toBe(true);
+  });
+});
+
+test.describe('Browser Alt containment', () => {
+  test('Alt keeps its browser default suppressed while a text prompt is open', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+
+    const errors = [];
+    attachRuntimeErrorCollectors(page, errors);
+
+    await page.addInitScript(() => {
+      window.__opengladSkipIntroForTests = true;
+      // The company-era main menu only offers CONTINUE at (114,85) when a
+      // company save exists, which the networking navigation depends on.
+      window.__opengladSeedSinglePlayerTeam = true;
+      window.__opengladRelayBaseUrlForTests = 'https://relay.test';
+    });
+    // Keep relay discovery local: a DNS failure can burn the whole prompt
+    // timeout on some hosts.
+    await page.route('https://relay.test/api/rooms**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ rooms: [] }),
+      }),
+    );
+
+    await page.goto('/play.html');
+    await waitForGameLoad(page);
+    await navigateToNetworkingMenu(page);
+    await installAltProbe(page);
+
+    // Pin: outside text entry SDL preventDefaults both Alt edges itself
+    // (prevent_default is "the event was queued"), so this half is green
+    // with or without the shell listener.
+    expect(await pressAltAndRead(page, 'bubble')).toEqual([
+      ['keydown', true],
+      ['keyup', true],
+    ]);
+
+    // Tapping the ROOM VALUE field opens the real C++ prompt, which turns SDL
+    // text input on. SDL then stops preventing the keydown of every non-nav
+    // key (Alt included), which is the state Firefox turns into a menu-bar
+    // activation. Containment here is the shell's job alone.
+    await clickCanvasGameCoord(page, ROOM_VALUE_CENTER.x, ROOM_VALUE_CENTER.y);
+    await page.waitForFunction(
+      () => window.__opengladTextInputActive === true,
+      null,
+      { timeout: 15_000 },
+    );
+    expect(await pressAltAndRead(page, 'bubble')).toEqual([
+      ['keydown', true],
+      ['keyup', true],
+    ]);
+
+    assertNoRuntimeErrors(errors, 'Alt containment around a text prompt');
+  });
+
+  test('the focused DOM text field keeps the browser default for Alt', async ({
+    page,
+  }) => {
+    const errors = [];
+    attachRuntimeErrorCollectors(page, errors);
+
+    await page.addInitScript(() => {
+      window.__opengladSkipIntroForTests = true;
+      // The DOM text field only surfaces for touch sessions, but the
+      // exemption it needs is a shell rule; force the overlay on so this
+      // desktop project can exercise it.
+      window.__opengladForceTouchControls = true;
+    });
+    await page.goto('/play.html');
+    await waitForGameLoad(page);
+
+    // start_text_input() dispatches this CustomEvent (native_input.cpp);
+    // driving the seam directly keeps the case cheap.
+    await page.evaluate(() => {
+      window.dispatchEvent(
+        new CustomEvent('openglad-text-input', {
+          detail: {
+            active: true,
+            initialValue: '',
+            maxBytes: 28,
+            prompt: 'JOIN ROOM CODE',
+            multiline: false,
+          },
+        }),
+      );
+    });
+    const input = page.locator('#og-text-entry');
+    await expect(input).toBeVisible();
+    await input.focus();
+    await expect
+      .poll(() =>
+        page.evaluate(() => document.activeElement && document.activeElement.id),
+      )
+      .toBe('og-text-entry');
+
+    await installAltProbe(page);
+    expect(await pressAltAndRead(page, 'capture')).toEqual([
+      ['keydown', false],
+      ['keyup', false],
+    ]);
+
+    assertNoRuntimeErrors(errors, 'Alt while the DOM text field is focused');
   });
 });

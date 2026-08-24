@@ -333,6 +333,38 @@ TEST(InputKeybinds, native_input_push_text_event_round_trips_through_the_queue)
 }
 
 
+TEST(InputKeybinds, native_input_push_text_event_burst_survives_queueing)
+{
+    // The web overlay's first-mutation clear queues a long backspace burst
+    // ahead of the retyped text, and the prompt loop drains one event per
+    // iteration — so a text payload can sit queued behind many later pushes.
+    // Every payload must survive however deep the queue gets; a fixed-size
+    // interning ring wraps here and hands early events a later event's text.
+    while (og::input_native::poll_event() != nullptr) {}
+
+    constexpr std::size_t kBurst = 12;
+    std::array<std::array<char, 4>, kBurst> sent{};
+    for (std::size_t i = 0; i < kBurst; ++i)
+    {
+        std::snprintf(sent[i].data(), sent[i].size(), "t%02u", (unsigned)i);
+        og::input_native::push_text_event(sent[i].data());
+    }
+
+    for (std::size_t i = 0; i < kBurst; ++i)
+    {
+        const void* ev = og::input_native::wait_event();
+        ASSERT_TRUE(ev != nullptr) << "queued text event " << i << " should be delivered";
+        og::input_native::EventData out{};
+        ASSERT_TRUE(og::input_native::decode_event(ev, out)) << "text event " << i << " should decode";
+        ASSERT_EQ((int)og::input_native::EventType::TextInput, (int)out.type);
+        ASSERT_STREQ(sent[i].data(), out.text.data())
+            << "payload " << i << " must not be overwritten by a later push";
+    }
+
+    while (og::input_native::poll_event() != nullptr) {}
+}
+
+
 TEST(InputKeybinds, native_input_push_text_cancel_key_requires_active_text_input)
 {
     while (og::input_native::poll_event() != nullptr) {}

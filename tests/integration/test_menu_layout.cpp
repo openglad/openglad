@@ -2069,6 +2069,22 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
     EXPECT_EQ(kAddSeatCompiledIn ? og::ui::RowState::Disabled
                                 : og::ui::RowState::Hidden,
               local_cap_state);
+
+    // #249: a single-seat device (a phone) reaches the same cap three seats
+    // early — its touchscreen is the only controller it has — and the row
+    // takes the identical inert/hidden treatment.
+    {
+        const bool saved_device_class =
+            input_hardware_state().single_seat_device;
+        lobby.players.resize(1u);
+        lobby.local_indices = {0};
+        input_hardware_state().single_seat_device = true;
+        EXPECT_EQ(kAddSeatCompiledIn ? og::ui::RowState::Disabled
+                                    : og::ui::RowState::Hidden,
+                  spec.rows[kBaseCampAddSeatIndex].state_override(
+                      og::ui::MenuLabelContext{}));
+        input_hardware_state().single_seat_device = saved_device_class;
+    }
 }
 
 // Design §2.2: the seat editor's INPUT cycler needed a band of its own —

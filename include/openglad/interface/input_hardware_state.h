@@ -39,6 +39,12 @@ struct InputHardwareState {
 #else
         false;
 #endif
+    // True on a device that offers exactly one built-in seat — a phone,
+    // whose touchscreen is the only controller it has (device_seats.h). Set
+    // from the web shell (openglad_web_set_single_seat_device); false on
+    // every native build, so the seat cap is MAX_PLAYERS there. A plain bool
+    // (not a build constant) so native tests can exercise the phone rule.
+    bool single_seat_device = false;
     std::int32_t mouse_buttons{0};
     bool picker_was_left_down{false};
     bool picker_was_right_down{false};

@@ -50,6 +50,12 @@ EM_JS(void, og_touch_mirror_enable_js, (int on), {
     var m = window.__opengladTouchKeys || (window.__opengladTouchKeys = {});
     m.enabled = !!on;
 });
+
+// Same mirror contract for the device class: e2e asserts the phone rule
+// arrived in C++ rather than re-deriving it in JS.
+EM_JS(void, og_single_seat_mirror_js, (int on), {
+    window.__opengladSingleSeat = !!on;
+});
 } // namespace
 
 extern "C"
@@ -90,6 +96,20 @@ EMSCRIPTEN_KEEPALIVE int openglad_web_touch_enable(int on)
     {
         openglad_web_touch_clear();
     }
+    return 1;
+}
+
+// #249: the shell reports the device class (a phone has one built-in seat —
+// the touchscreen). Deliberately NOT gated on session_ready(): the shell
+// classifies the device during page boot, which can precede
+// openglad_web_boot, and set_single_seat_device latches an early call for
+// init_input. Always returns 1 (recorded) so the shell's retry loop stops on
+// the first call.
+EMSCRIPTEN_KEEPALIVE int openglad_web_set_single_seat_device(int on)
+{
+    const bool single_seat = (on != 0);
+    og::input::set_single_seat_device(single_seat);
+    og_single_seat_mirror_js(single_seat ? 1 : 0);
     return 1;
 }
 

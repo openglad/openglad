@@ -1,8 +1,11 @@
 #include <cstring>
 #include <utility>
 
+#include <openglad/gameplay/input_state.h>
+#include <openglad/interface/device_seats.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/ui/input_cycler.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/sai2x.h>
 #include <gtest/gtest.h>
@@ -310,4 +313,61 @@ TEST(Input, touch_control_layout_stays_bounded_at_fractional_zoom_sizes)
         // edge, so equality is the intended non-overlapping boundary.
         EXPECT_LE(layout.movement_region_right, layout.yell.x);
     }
+}
+
+// #249: the seat cap is one rule with one live home. The setter is the web
+// shell's seam (it can fire before the session exists, so it latches); every
+// reader goes through the session's hardware block.
+TEST(Input, single_seat_device_flag_drives_the_local_seat_cap)
+{
+    const bool saved_device_class =
+        input_hardware_state().single_seat_device;
+
+    og::input::set_single_seat_device(false);
+    EXPECT_FALSE(og::input::is_single_seat_device());
+    EXPECT_EQ(MAX_PLAYERS, og::input::local_seat_cap());
+
+    og::input::set_single_seat_device(true);
+    EXPECT_TRUE(og::input::is_single_seat_device());
+    // The cap grows with attached devices, so this holds for whatever the
+    // test host has plugged in.
+    EXPECT_EQ(og::input::max_local_seats(true, joystick_device_count(),
+                                         MAX_PLAYERS),
+              og::input::local_seat_cap());
+    EXPECT_LE(og::input::local_seat_cap(), MAX_PLAYERS);
+    EXPECT_GE(og::input::local_seat_cap(), 1);
+
+    // The hardware block is the source of truth the doors read.
+    input_hardware_state().single_seat_device = false;
+    EXPECT_FALSE(og::input::is_single_seat_device());
+    EXPECT_EQ(MAX_PLAYERS, og::input::local_seat_cap());
+
+    og::input::set_single_seat_device(saved_device_class);
+    input_hardware_state().single_seat_device = saved_device_class;
+}
+
+TEST(Input, single_seat_device_renames_the_input_cycler_label)
+{
+    const bool saved_device_class =
+        input_hardware_state().single_seat_device;
+    const int saved_joystick = player_joystick_device(0);
+
+    // The INPUT row and the seat card must agree on the owner token: both
+    // compose it through seat_owner_is_screen, so a phone's keyboard-mapped
+    // seat reads SCRN in both places, and a pad-driven seat keeps its pad.
+    input_hardware_state().single_seat_device = false;
+    if (saved_joystick >= 0)
+        clear_player_joystick(0);
+    const std::string desktop_label = og::ui::input_cycle_button_label(0);
+    EXPECT_EQ(0u, desktop_label.find("INPUT: "))
+        << "cycler label shape changed: " << desktop_label;
+    EXPECT_EQ(std::string::npos, desktop_label.find("SCRN"))
+        << "desktop must name the mapping, not the screen";
+
+    input_hardware_state().single_seat_device = true;
+    EXPECT_EQ("INPUT: SCRN", og::ui::input_cycle_button_label(0));
+
+    input_hardware_state().single_seat_device = saved_device_class;
+    if (saved_joystick >= 0)
+        assign_joystick_to_player(0, saved_joystick);
 }
