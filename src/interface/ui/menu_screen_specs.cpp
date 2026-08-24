@@ -2381,17 +2381,31 @@ constexpr int kBaseCampFamilySwatchHeight = 8;
 // each) plus four cards (57 each) is 262px of face, leaving 42px for the six
 // gutters between them — 7px between every neighbour, where the cards used
 // to sit 1px apart with the '+' pinned to the far right.
-constexpr int kBaseCampSeatRailX0 = 8;
+//
+// #243: those numbers are the EVERYTHING-VISIBLE shape and nothing more.
+// The static table below still carries them (they are what the rail looks
+// like with four seats and both arrows up), but the live geometry is
+// recomputed every frame by og::ui::base_camp_seat_rail_layout, which packs
+// or justifies the controls that are actually on screen. The widths are the
+// shared inputs to that function.
+constexpr int kBaseCampSeatRailX0 = og::ui::kSeatRailX0;
 static_assert(kBaseCampSeatRailX0 == kBaseCampStripBackX,
               "the rail's + opens on BACK's left edge");
-constexpr int kBaseCampSeatRailGap = 7;
-constexpr int kBaseCampAddSeatWidth = 14;
+static_assert(og::ui::kSeatRailRightX == kBaseCampPanelRightX,
+              "the rail justifies to the panel's right rail");
+static_assert(og::ui::kSeatRailSlots == kBaseCampSeatCardsPerPage,
+              "one slot per seat card on a page");
+static_assert(og::ui::kSeatRailGlobalSeatCap ==
+                  static_cast<int>(og::sim::kMaxGlobalPlayers),
+              "the rail's ghost slots count against the real lobby ceiling");
+constexpr int kBaseCampSeatRailGap = og::ui::kSeatRailGap;
+constexpr int kBaseCampAddSeatWidth = og::ui::kSeatRailAddWidth;
 constexpr int kBaseCampAddSeatX = kBaseCampSeatRailX0;
-constexpr int kBaseCampSeatPagerWidth = 10;
+constexpr int kBaseCampSeatPagerWidth = og::ui::kSeatRailPagerWidth;
 constexpr int kBaseCampSeatPagePrevX =
     kBaseCampAddSeatX + kBaseCampAddSeatWidth + kBaseCampSeatRailGap;
 // One seat-card table: the button specs and the chip overlay both index it.
-constexpr int kBaseCampSeatCardWidth = 57;
+constexpr int kBaseCampSeatCardWidth = og::ui::kSeatRailCardWidth;
 constexpr int kBaseCampSeatCardPitch =
     kBaseCampSeatCardWidth + kBaseCampSeatRailGap;
 // The 8x8 numbered team chip drawn on each card's right end, and the #202
@@ -2507,34 +2521,47 @@ unsigned char base_camp_ready_face_color(const MenuLabelContext& /*context*/)
     return kReadyGoFaceUnready;
 }
 
-RowState base_camp_add_seat_row_state(
-    const MenuLabelContext& /*context*/)
+// The live seat-claim facts, read once per consumer. A connected spectator
+// owns no published seat, so activating one consumes the same global
+// capacity as every other + request.
+og::ui::SeatClaimability base_camp_seat_claimability()
 {
+    og::ui::SeatClaimability claim;
 #ifdef DISABLE_MULTIPLAYER
-    return RowState::Hidden;
-#else
-    const std::size_t local_count = picker_lobby_local_seat_count();
-    const int seat_cap = og::input::local_seat_cap();
-    if (local_count >= static_cast<std::size_t>(seat_cap))
+    claim.multiplayer_enabled = false;
+#endif
+    claim.local_count = static_cast<int>(picker_lobby_local_seat_count());
+    claim.local_seat_cap = og::input::local_seat_cap();
+    claim.global_count = static_cast<int>(picker_lobby_players().size());
+    return claim;
+}
+
+// The [+] gate, over facts the caller already gathered so the rail's
+// per-frame layout can ask the same question the row state answers (#243)
+// instead of keeping a second copy of the rule — or paying twice to read it.
+RowState base_camp_add_seat_state(const og::ui::SeatClaimability& claim)
+{
+    if (og::ui::seats_still_claimable(claim) > 0)
+        return RowState::Visible;
+    if (!claim.multiplayer_enabled)
+        return RowState::Hidden;
+    if (claim.local_count >= claim.local_seat_cap &&
+        claim.local_seat_cap < MAX_PLAYERS)
     {
         // A device-capped rail HIDES the button (matching the pause menu's
         // + ADD PLAYER row): on a phone a dimmed [+] reads as tappable and
         // explains nothing, while an absent one that appears when a pad is
         // plugged in explains itself. The ordinary build-limit cap keeps the
         // dimmed button.
-        return seat_cap < MAX_PLAYERS ? RowState::Hidden
-                                      : RowState::Disabled;
+        return RowState::Hidden;
     }
+    return RowState::Disabled;
+}
 
-    // A connected spectator owns no published seat. Activating one therefore
-    // consumes the same global capacity as every other + request.
-    const std::size_t global_count = picker_lobby_players().size();
-    if (global_count >= og::sim::kMaxGlobalPlayers)
-    {
-        return RowState::Disabled;
-    }
-    return RowState::Visible;
-#endif
+RowState base_camp_add_seat_row_state(
+    const MenuLabelContext& /*context*/)
+{
+    return base_camp_add_seat_state(base_camp_seat_claimability());
 }
 
 // Static nav encodes the full-page shape (8 visible rows, pagers hidden,
@@ -3568,6 +3595,36 @@ constexpr MenuScreenSpec make_seat_settings_spec(
     return spec;
 }
 
+// #243: the seat rail's live geometry, recomputed from the same inputs by
+// everything that needs it — the rewire that positions the seven ordinals,
+// the content pass that draws the ghost slots and the team chips, and the
+// pointer predicate that decides whether a click landed on a chip. All three
+// run inside one frame over unchanged lobby state, so recomputing is exact
+// and nothing has to cache a frame-scoped copy.
+og::ui::SeatRailLayout base_camp_seat_rail_shape(
+    const og::ui::BaseCampScreenState* st)
+{
+    const int visible_cards = st != nullptr
+        ? std::max(0, st->seat_page.end_index() - st->seat_page.first_index())
+        : 0;
+    const bool pagers = st != nullptr && st->seat_page.multi_page();
+    const bool last_page =
+        st == nullptr || st->seat_page.end_index() >= st->seat_page.item_count;
+    // The [+] gate is RE-EVALUATED rather than read off buttons[].hidden:
+    // apply_row_states has already run in production, but several tests drive
+    // the rewire alone, and a rail that trusted the static `false` would lay
+    // out the desktop shape on a phone.
+    const og::ui::SeatClaimability claim = base_camp_seat_claimability();
+    const bool add_visible =
+        base_camp_add_seat_state(claim) != RowState::Hidden;
+    const int ghosts = og::ui::base_camp_seat_rail_ghost_count(
+        {.claim = claim,
+         .visible_cards = visible_cards,
+         .on_last_page = last_page});
+    return og::ui::base_camp_seat_rail_layout(add_visible, pagers,
+                                              visible_cards, ghosts);
+}
+
 // Per-frame visibility + labels + nav over the live roster state (pattern
 // b): page-window the rows, stamp the deploy glyphs on BOTH label surfaces,
 // host-gate GO, close the strip/pager links, and seed the empty-roster
@@ -3654,10 +3711,9 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         ? kCreateMenuGoIndex
         : (ready_visible ? kCreateMenuReadyIndex : -1);
     const SaveData& save = og::runtime::current_session->myscreen_->save_data;
-#ifdef DISABLE_MULTIPLAYER
-    buttons[kBaseCampAddSeatIndex].hidden = true;
-#endif
-    const bool add_visible = !buttons[kBaseCampAddSeatIndex].hidden;
+    const og::ui::SeatRailLayout rail_layout = base_camp_seat_rail_shape(st);
+    const bool add_visible = rail_layout.add_visible;
+    buttons[kBaseCampAddSeatIndex].hidden = !add_visible;
     // #236: the rail's retired right-end ordinal stays parked with the zone
     // spares — hidden, zero-size, no nav — so nothing can route into it.
     buttons[kBaseCampSeatRailSpareIndex].hidden = true;
@@ -3684,6 +3740,27 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
             live->label = card_button.label;
         }
     }
+    // #243: the rail's x's are a per-frame computation, not table constants.
+    // Every one of the seven ordinals is rewritten unconditionally — the
+    // button array is materialized once at screen entry, so a branch that
+    // skipped a write would leave a stale position from an earlier shape —
+    // and pushed to the live vbutton, which is what actually draws and
+    // hit-tests. Only x and width move; the rail keeps one baseline.
+    buttons[kBaseCampAddSeatIndex].x = rail_layout.add_x;
+    buttons[kBaseCampAddSeatIndex].sizex = kBaseCampAddSeatWidth;
+    buttons[kBaseCampSeatPagePrevIndex].x = rail_layout.prev_x;
+    buttons[kBaseCampSeatPagePrevIndex].sizex = kBaseCampSeatPagerWidth;
+    buttons[kBaseCampSeatPageNextIndex].x = rail_layout.next_x;
+    buttons[kBaseCampSeatPageNextIndex].sizex = kBaseCampSeatPagerWidth;
+    sync_live_rect(kBaseCampAddSeatIndex);
+    sync_live_rect(kBaseCampSeatPagePrevIndex);
+    for (int card = 0; card < kBaseCampSeatCardsPerPage; ++card) {
+        button& face = buttons[kBaseCampSeatCardBase + card];
+        face.x = rail_layout.slot_x[static_cast<std::size_t>(card)];
+        face.sizex = rail_layout.card_w;
+        sync_live_rect(kBaseCampSeatCardBase + card);
+    }
+    sync_live_rect(kBaseCampSeatPageNextIndex);
     std::vector<int> rail;
     if (add_visible)
         rail.push_back(kBaseCampAddSeatIndex);
@@ -4614,16 +4691,27 @@ void base_camp_draw_content(void* screen_state)
     // draw. They use the same four gameplay-team ramps as character chips,
     // while the P# label identifies the player/view rather than a fighter.
     if (st != nullptr) {
+        const og::ui::SeatRailLayout rail = base_camp_seat_rail_shape(st);
+        // #243: a slot with no seat in it yet is drawn as an empty recess.
+        // It keeps the rail on both of the panel's margins and shows where
+        // the next player will land — chrome, not a control: the ordinals
+        // are frozen, so a ghost is never navigable, highlightable or
+        // clickable, and it appears only while a seat is actually claimable.
+        for (int slot = rail.shown_cards; slot < rail.slot_count(); ++slot) {
+            game->draw_button_inverted(
+                rail.slot_x[static_cast<std::size_t>(slot)],
+                kBaseCampSeatRailY, static_cast<Uint32>(rail.card_w),
+                static_cast<Uint32>(kBaseCampSeatRailHeight));
+        }
         const int seat_first = st->seat_page.first_index();
-        const int seat_end = st->seat_page.end_index();
-        for (int card = 0; card < seat_end - seat_first; ++card) {
+        for (int card = 0; card < rail.shown_cards; ++card) {
             const og::sim::LobbyPlayer& seat =
                 st->seats[static_cast<std::size_t>(seat_first + card)];
             const int team = std::clamp(
                 static_cast<int>(seat.team), 0,
                 static_cast<int>(SCORE_TEAM_COUNT) - 1);
             const int chip_x =
-                kBaseCampSeatCardX[static_cast<std::size_t>(card)] +
+                rail.slot_x[static_cast<std::size_t>(card)] +
                 kBaseCampSeatChipOffsetX;
             game->fastbox(chip_x, kBaseCampSeatRailY + 1, 8, 8, PURE_BLACK);
             game->fastbox(
@@ -5090,8 +5178,8 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
         // region. Non-editable seats never reach here (the ownership and
         // spectator gates above popped already).
         {
-            const int card_x =
-                kBaseCampSeatCardX[static_cast<std::size_t>(card)];
+            const int card_x = base_camp_seat_rail_shape(st)
+                                   .slot_x[static_cast<std::size_t>(card)];
             const int click_x = pks().menu_click_x;
             if (click_x >= card_x + kBaseCampSeatChipZoneOffsetX &&
                 click_x < card_x + kBaseCampSeatCardWidth)

@@ -88,7 +88,10 @@ level, and experience fields.
 - Use **+** at the left end of the seat rail to add a local seat. A machine
   may contribute four active seats and a network lobby may contain sixteen.
   Four cards are shown at a time; **<** and **>** page the rail when it grows
-  past the visible window.
+  past the visible window. Slots with no seat in them yet are drawn as empty
+  recesses, showing where the next player will land. They appear only while
+  another seat can actually be claimed, so a device that seats one player
+  shows one card and nothing else.
 - Open an owned seat card to edit that player. The top row contains
   **4-DIRECTION**/**8-DIRECTION**, **REMAP**, and **RESET**. The bottom row
   contains **TEAM** and **REMOVE PLAYER**. In a network lobby the last action
@@ -338,16 +341,33 @@ A degraded-link alert takes the same line and its warning color.
 ### 9.14 Eight-row page
 
 Eight roster rows fit above the independent player-seat rail while leaving the
-column header clear. The rail reads left to right: **+**, then a four-card
-window between **<** and **>**. Every neighbour on the row is seven pixels
-apart, the **+** starts on BACK's left edge, and the **>** closes on the
-panel's right rail. The scenario summary is a direct click target.
+column header clear. The rail reads left to right: **+**, then a four-slot
+window between **<** and **>**. The scenario summary is a direct click target.
+
+The row is laid out every frame from the controls that are actually on it, and
+it always opens on BACK's left edge. Real cards pack left into the slots and
+the slots that follow are drawn as empty recesses — ghosts — as long as
+another seat can be claimed. A row that fills all four slots, and any row
+whose pager arrows are up, justifies between the panel's two rails: the slack
+is split evenly among the gutters, the leftmost ones absorbing the odd pixel.
+A shorter row packs left at the same seven-pixel gutter instead of stretching,
+because two controls spread across the whole panel read as a mistake. The card
+face never changes width; it is a nine-character label budget that the seat
+names and the team chip both depend on.
+
+Three shapes are worth naming. Four seats and both arrows is the widest one,
+and its arithmetic is what the seven-pixel gutter was chosen for: 262 pixels
+of face across 8..312 leaves 42 for six gutters. One seat on a desktop draws
+one card and three ghosts, justified. A single-seat device — a phone with
+nothing attached — hides **+**, offers no ghosts, and puts its lone card flush
+on the left rail rather than floating in from the edge.
 
 The rail once opened with a **SEATS** label that led to the team overview.
 That was a second, worse-placed door to a screen the Scenario menu already
 owned, and it cost the cards their breathing room — the four faces sat a
 single pixel apart. Issue #236 spent the label's width on the gutters and
-gave its ordinal to the **+**.
+gave its ordinal to the **+**; issue #243 stopped the leftover width from
+collecting in the holes those hidden controls left behind.
 
 ### 9.19 Company List geometry
 

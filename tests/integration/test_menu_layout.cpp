@@ -1929,6 +1929,70 @@ TEST(MenuLayout, createmenu_basecamp_seat_rail_paging_labels_and_nav)
             EXPECT_EQ(rail_last, buttons[kCreateMenuGoIndex].nav.up)
                 << variant;
 
+            // #243: the rail is positioned per frame, so pin the RELATIONS
+            // every shape must satisfy rather than a second exact table (the
+            // full-rail coordinates already have one, and the pure layout
+            // function's own values are pinned in the picker_common units).
+            {
+                // The row opens on the panel's left rail — the same edge
+                // BACK starts on, in every shape, with or without the '+'.
+                EXPECT_EQ(8, buttons[rail_first].x) << variant;
+                EXPECT_EQ(buttons[kCreateMenuBackIndex].x,
+                          buttons[rail_first].x)
+                    << variant << " (the rail opens on BACK's edge)";
+
+                // One baseline, one card width, one gutter. The '>' is left
+                // out of the gutter run: on a partly filled last page the
+                // ghost slots sit between it and the final card, and a ghost
+                // is chrome with no button of its own.
+                const int baseline = buttons[rail_first].y;
+                const std::size_t contiguous =
+                    paged ? rail.size() - 1 : rail.size();
+                int widest = -1;
+                int narrowest = -1;
+                for (std::size_t i = 1; i < contiguous; ++i)
+                {
+                    const button& left = buttons[rail[i - 1]];
+                    const button& right = buttons[rail[i]];
+                    const int gap = right.x - (left.x + left.sizex);
+                    widest = widest < 0 ? gap : std::max(widest, gap);
+                    narrowest = narrowest < 0 ? gap : std::min(narrowest, gap);
+                    EXPECT_GE(gap, 7) << variant << " gutter " << i;
+                    EXPECT_EQ(baseline, right.y) << variant << " row " << i;
+                }
+                if (widest >= 0)
+                {
+                    // Justifying leaves a remainder; the leftmost gutters
+                    // absorb it one pixel at a time, so no two gutters on the
+                    // row can differ by more than that pixel.
+                    EXPECT_LE(widest - narrowest, 1)
+                        << variant << " uneven gutters";
+                }
+                for (int card = 0; card < visible; ++card)
+                {
+                    EXPECT_EQ(57, buttons[kBaseCampSeatCardBase + card].sizex)
+                        << variant << " card " << card
+                        << " (the nine-character label budget)";
+                }
+
+                // Justified shapes close on the panel's right rail. With the
+                // arrows up the '>' owns that edge; with four cards on a
+                // single page the fourth card does.
+                if (paged)
+                {
+                    const button& next_arrow =
+                        buttons[kBaseCampSeatPageNextIndex];
+                    EXPECT_EQ(312, next_arrow.x + next_arrow.sizex) << variant;
+                }
+                else if (visible == kBaseCampSeatCardsPerPage)
+                {
+                    const button& last_card =
+                        buttons[kBaseCampSeatCardBase +
+                                kBaseCampSeatCardsPerPage - 1];
+                    EXPECT_EQ(312, last_card.x + last_card.sizex) << variant;
+                }
+            }
+
             check_no_overlaps(buttons, count, variant.c_str());
             check_bounds(buttons, count, variant.c_str());
             check_nav_closed_and_reachable(

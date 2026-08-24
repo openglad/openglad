@@ -6,6 +6,7 @@
 #pragma once
 
 #include <openglad/core/constants.h>
+#include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/lobby_state.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/save_data.h>
@@ -841,6 +842,81 @@ struct ScenarioRosterRow {
     int level = 1;
     int count = 1;
 };
+
+// --- Base Camp player-seat rail geometry (#243) ---
+//
+// The rail is one row of controls across the roster panel's full width:
+// [+] | < | four seat SLOTS | >. A slot with no seat in it yet is a GHOST —
+// an empty recess showing where the next player lands — so the row keeps
+// both of the panel's margins instead of trailing off mid-panel. The card
+// face is a label contract (kBaseCampSeatCardLabelBudget = 57/6 characters)
+// and never changes width; all the slack goes into the gutters.
+inline constexpr int kSeatRailX0 = 8;           // the panel's left rail (BACK's x)
+inline constexpr int kSeatRailRightX = 312;     // exclusive: the panel's right rail
+inline constexpr int kSeatRailGap = 7;          // the packed (under-full) gutter
+inline constexpr int kSeatRailAddWidth = 14;    // the [+] face
+inline constexpr int kSeatRailPagerWidth = 10;  // the '<' and '>' faces
+inline constexpr int kSeatRailCardWidth = 57;
+inline constexpr int kSeatRailSlots = 4;        // seat cards per page
+// og::sim::kMaxGlobalPlayers, restated so this pure header need not pull the
+// transport contract into every picker TU. menu_screen_specs.cpp
+// static_asserts that the two still agree.
+inline constexpr int kSeatRailGlobalSeatCap = 16;
+
+// The one question behind both the [+] gate and the ghost promise: can
+// another seat be claimed right now? Kept as data so the rail's chrome and
+// the button's row state can never disagree about the answer.
+struct SeatClaimability {
+    bool multiplayer_enabled = true;  // false in a DISABLE_MULTIPLAYER build
+    int local_count = 0;              // seats this machine already owns
+    int local_seat_cap = MAX_PLAYERS; // og::input::local_seat_cap()
+    int global_count = 0;             // seats across the whole lobby
+    int global_cap = kSeatRailGlobalSeatCap;
+};
+
+// Seats this machine may still claim: the smaller headroom of the two caps,
+// never negative, and zero when the build has no multiplayer at all.
+int seats_still_claimable(const SeatClaimability& claim);
+
+struct SeatRailGhostInputs {
+    SeatClaimability claim{};
+    int visible_cards = 0;   // real cards on the page being drawn
+    bool on_last_page = true;
+};
+
+// Ghost slots to draw after the real cards. Zero unless a seat is genuinely
+// claimable this instant — an empty recess the player cannot fill would be a
+// promise the rail cannot keep — and, while the rail is paged, only on the
+// last page, where the next seat would actually appear.
+int base_camp_seat_rail_ghost_count(const SeatRailGhostInputs& in);
+
+struct SeatRailLayout {
+    bool add_visible = false;
+    bool pagers_visible = false;
+    int card_w = kSeatRailCardWidth;
+    int add_x = kSeatRailX0;
+    int prev_x = kSeatRailX0;
+    int next_x = kSeatRailX0;
+    // slot_x[0 .. shown_cards) hold real cards and the next ghost_count are
+    // ghosts. Any slot past those is parked at the rail's origin: its button
+    // row is hidden, and draw_buttons/leftmouse both skip hidden rows.
+    std::array<int, kSeatRailSlots> slot_x{};
+    int shown_cards = 0;
+    int ghost_count = 0;
+
+    [[nodiscard]] int slot_count() const { return shown_cards + ghost_count; }
+};
+
+// The rail's per-frame geometry. Elements run left to right: [+] when
+// visible, '<' when the pagers are up, slot_count() slots, then '>'. A full
+// four-slot row — or any paged row, where the arrows already own both ends —
+// JUSTIFIES between the two rails: the slack is split evenly among the
+// gutters and the leftmost ones take the odd pixels. Anything shorter
+// left-packs from x=8 at the uniform 7px gutter, because a two-control row
+// stretched across the whole panel reads as broken rather than as design.
+SeatRailLayout base_camp_seat_rail_layout(bool add_visible,
+                                          bool pagers_visible,
+                                          int visible_cards, int ghost_count);
 
 // --- Player seats (#218 seat block) ---
 

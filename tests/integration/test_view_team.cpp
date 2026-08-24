@@ -2680,9 +2680,20 @@ TEST(ViewTeam, base_camp_seat_chip_pointer_click_cycles_team_in_place)
     const og::ui::MenuScreenSpec& spec =
         *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
     ASSERT_NE(nullptr, spec.on_spec_row);
+    ASSERT_NE(nullptr, spec.nav.rewire);
     button* buttons = picker_createmenu_buttons();
+    // #243: the rail lays itself out per frame, so the chip zone has to be
+    // read off the LIVE card, not the static table. One local seat on an
+    // ordinary desktop fills the grid with three ghost slots, which justifies
+    // the row and pulls the lone card left of the full-rail slot at 46 — the
+    // discriminating shape for "does the chip follow the card".
+    int highlighted = kBaseCampSeatCardBase;
+    spec.nav.rewire(buttons, picker_createmenu_button_count(), highlighted);
     const button& card = buttons[kBaseCampSeatCardBase];
     ASSERT_EQ(57, card.sizex) << "card face width is the chip zone's anchor";
+    ASSERT_EQ(38, card.x) << "one seat + three ghosts justifies the rail";
+    ASSERT_EQ(8, buttons[kBaseCampAddSeatIndex].x)
+        << "the '+' keeps the panel's left rail";
 
     // Chip-body click (the drawn 8x8 chip starts at card_x+48).
     pks().menu_click_x = card.x + 52;
@@ -2769,7 +2780,11 @@ TEST(ViewTeam, base_camp_seat_chip_click_foreign_seat_stays_inert)
 
     const og::ui::MenuScreenSpec& spec =
         *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, spec.nav.rewire);
     button* buttons = picker_createmenu_buttons();
+    // The chip zone rides the live rail (#243), so lay the rail out first.
+    int highlighted = kBaseCampSeatCardBase;
+    spec.nav.rewire(buttons, picker_createmenu_button_count(), highlighted);
     const button& card = buttons[kBaseCampSeatCardBase];
 
     // Card 0 is Iron Host's seat: its chip is read-only for this machine.
@@ -2793,6 +2808,128 @@ TEST(ViewTeam, base_camp_seat_chip_click_foreign_seat_stays_inert)
     EXPECT_TRUE(lobby.seat_team_calls.empty());
 
     og::ui::install_base_camp_state_for_screen(nullptr);
+    save.reset();
+}
+
+// ---------------------------------------------------------------------------
+// #243 ink: with one seat claimed on an ordinary desktop the rail draws three
+// GHOST slots, and the card — with its team chip — moves off the full-rail
+// coordinates the static table carries. The sibling test above proves the
+// click zone follows; this one proves the drawn overlay does, in pixels.
+// ---------------------------------------------------------------------------
+TEST(ViewTeam, base_camp_seat_rail_draws_ghost_slots_and_moves_the_chip)
+{
+    struct ScreenStateGuard {
+        ~ScreenStateGuard()
+        {
+            og::ui::install_base_camp_state_for_screen(nullptr);
+            clear_allbuttons();
+            pks().menu_nav_enabled = false;
+            og::runtime::current_session->myscreen_->save_data.reset();
+        }
+    } guard;
+    FactoryMappingGuard mapping_guard;
+
+    screen* const output = og::runtime::current_session->myscreen_;
+    SaveData& save = output->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "gladiator";
+    save.save_name = "MY COMPANY";
+
+    NetworkedRosterLobbyClient lobby;
+    lobby.local_indices = {0};
+    lobby.players.push_back(
+        make_foreign_lobby_player(0, "net-me", "MY COMPANY", 0, 0));
+    lobby.players.front().team = 0;
+    ActivePickerLobbyClientGuard client_guard(&lobby);
+
+    og::ui::BaseCampScreenState state;
+    og::ui::base_camp_refresh_rows(state);
+    ASSERT_EQ(1u, state.seats.size());
+    og::ui::install_base_camp_state_for_screen(&state);
+
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, spec.nav.rewire);
+    ASSERT_NE(nullptr, spec.draw_background);
+    ASSERT_NE(nullptr, spec.draw_content);
+
+    button* const buttons = picker_createmenu_buttons();
+    const int count = picker_createmenu_button_count();
+    init_buttons(buttons, count);
+    int highlighted = kBaseCampSeatCardBase;
+    spec.nav.rewire(buttons, count, highlighted);
+
+    // One card, three ghosts, the '+' on the left rail: the justified shape
+    // the pure layout pins in the picker_common units.
+    const button& card = buttons[kBaseCampSeatCardBase];
+    ASSERT_EQ(38, card.x);
+    ASSERT_EQ(164, card.y);
+    ASSERT_EQ(57, card.sizex);
+    ASSERT_TRUE(buttons[kBaseCampSeatCardBase + 1].hidden)
+        << "a ghost is chrome, never a button";
+    constexpr int kGhostSlotX = 111;
+    constexpr int kStaleCardX = 46;  // where the static table puts card 0
+
+    output->fastbox(0, 0, 320, 200, PURE_BLACK);
+    spec.draw_background(&state);
+    draw_buttons(buttons, count);
+    spec.draw_content(&state);
+
+    const auto capture_block = [&](int x0, int y0, int w, int h) {
+        std::vector<Uint32> block;
+        block.reserve(static_cast<std::size_t>(w * h));
+        for (int y = y0; y < y0 + h; ++y) {
+            for (int x = x0; x < x0 + w; ++x) {
+                Uint8 red = 0;
+                Uint8 green = 0;
+                Uint8 blue = 0;
+                output->get_pixel(x, y, &red, &green, &blue);
+                block.push_back((static_cast<Uint32>(red) << 16) |
+                                (static_cast<Uint32>(green) << 8) |
+                                static_cast<Uint32>(blue));
+            }
+        }
+        return block;
+    };
+
+    // The chip's 8x8 black surround sits at card_x + 48. Its whole top row
+    // is one solid PURE_BLACK run, which the backdrop and the card face
+    // never produce — so the run is the chip's signature.
+    const auto solid_black_run = [&](int x0, int y) {
+        Uint8 red = 0;
+        Uint8 green = 0;
+        Uint8 blue = 0;
+        output->get_pixel(0, 0, &red, &green, &blue);
+        const Uint32 black = (static_cast<Uint32>(red) << 16) |
+            (static_cast<Uint32>(green) << 8) | static_cast<Uint32>(blue);
+        const std::vector<Uint32> run = capture_block(x0, y, 8, 1);
+        return std::all_of(run.begin(), run.end(),
+                           [black](Uint32 pixel) { return pixel == black; });
+    };
+    // (0,0) is still the PURE_BLACK the frame was cleared to: the menu
+    // backdrop starts below the title band.
+    EXPECT_TRUE(solid_black_run(card.x + 48, card.y + 1))
+        << "the team chip draws on the card the rail actually placed";
+    EXPECT_FALSE(solid_black_run(kStaleCardX + 48, card.y + 1))
+        << "nothing is left behind at the static table's card slot";
+
+    // Each ghost slot is a recessed empty bevel of exactly the card's size.
+    // Compare against one drawn on the spot: byte-equal or the rail is
+    // drawing something else, somewhere else.
+    const std::vector<Uint32> ghost = capture_block(kGhostSlotX, card.y, 57, 10);
+    const std::vector<Uint32> ghost_two =
+        capture_block(kGhostSlotX + 72, card.y, 57, 10);
+    const std::vector<Uint32> offset_by_one =
+        capture_block(kGhostSlotX - 1, card.y, 57, 10);
+    output->draw_button_inverted(8, 100, 57, 10);
+    const std::vector<Uint32> reference = capture_block(8, 100, 57, 10);
+    EXPECT_EQ(reference, ghost) << "ghost slot 1 is an empty recessed bevel";
+    EXPECT_EQ(reference, ghost_two) << "ghost slot 2 is the same bevel";
+    EXPECT_NE(reference, offset_by_one)
+        << "the probe would pass one pixel off, so the match above is real";
+
     save.reset();
 }
 
@@ -3399,11 +3536,27 @@ TEST(ViewTeam, base_camp_single_seat_device_names_screen_and_closes_plus)
     EXPECT_EQ(og::ui::RowState::Visible,
               spec.rows[kBaseCampAddSeatIndex].state_override(
                   og::ui::MenuLabelContext{}));
+    // #243: three more seats are claimable here, so three ghost slots fill
+    // the grid and the row justifies with the '+' on the left rail.
+    EXPECT_EQ(8, buttons[kBaseCampAddSeatIndex].x);
+    EXPECT_EQ(38, buttons[kBaseCampSeatCardBase].x);
 
     input_hardware_state().single_seat_device = true;
     buttons = picker_createmenu_buttons();
     spec.nav.rewire(buttons, picker_createmenu_button_count(), highlighted);
     EXPECT_EQ("P1 SCRN ", buttons[kBaseCampSeatCardBase].label);
+    // The phone's rail is one card and nothing else: no '+' to open the row,
+    // and no ghost slots, because no seat on this device can be claimed. So
+    // the lone card starts where every other left-aligned control does
+    // instead of floating 38px in from the panel's edge.
+    EXPECT_TRUE(buttons[kBaseCampAddSeatIndex].hidden)
+        << "the rewire mirrors the device-capped [+] gate";
+    EXPECT_EQ(8, buttons[kBaseCampSeatCardBase].x);
+    EXPECT_EQ(buttons[kCreateMenuBackIndex].x,
+              buttons[kBaseCampSeatCardBase].x)
+        << "the lone card opens on BACK's left edge";
+    EXPECT_TRUE(buttons[kBaseCampSeatCardBase + 1].hidden)
+        << "no ghost slot claims a card ordinal";
     EXPECT_LE(buttons[kBaseCampSeatCardBase].label.size(),
               static_cast<std::size_t>(kBaseCampSeatCardLabelBudget));
     EXPECT_EQ(' ', buttons[kBaseCampSeatCardBase].label.back())

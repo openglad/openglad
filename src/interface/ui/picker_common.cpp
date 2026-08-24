@@ -2988,6 +2988,74 @@ void TrainSession::clamp_working_stats()
         working_->upgrade_to_level(original->level);
 }
 
+// --- Base Camp player-seat rail geometry (#243) ---
+
+int seats_still_claimable(const SeatClaimability& claim)
+{
+    if (!claim.multiplayer_enabled)
+        return 0;
+    const int local_room = claim.local_seat_cap - claim.local_count;
+    const int global_room = claim.global_cap - claim.global_count;
+    return std::max(0, std::min(local_room, global_room));
+}
+
+int base_camp_seat_rail_ghost_count(const SeatRailGhostInputs& in)
+{
+    if (!in.on_last_page)
+        return 0;
+    const int claimable = seats_still_claimable(in.claim);
+    if (claimable <= 0)
+        return 0;
+    const int cards = std::clamp(in.visible_cards, 0, kSeatRailSlots);
+    return std::min(kSeatRailSlots - cards, claimable);
+}
+
+SeatRailLayout base_camp_seat_rail_layout(bool add_visible,
+                                          bool pagers_visible,
+                                          int visible_cards, int ghost_count)
+{
+    SeatRailLayout out;
+    out.add_visible = add_visible;
+    out.pagers_visible = pagers_visible;
+    out.shown_cards = std::clamp(visible_cards, 0, kSeatRailSlots);
+    out.ghost_count =
+        std::clamp(ghost_count, 0, kSeatRailSlots - out.shown_cards);
+    out.slot_x.fill(kSeatRailX0);
+
+    const int slots = out.slot_count();
+    const int elements =
+        (add_visible ? 1 : 0) + (pagers_visible ? 2 : 0) + slots;
+    const int face = (add_visible ? kSeatRailAddWidth : 0) +
+        (pagers_visible ? 2 * kSeatRailPagerWidth : 0) +
+        slots * kSeatRailCardWidth;
+
+    int gap = kSeatRailGap;
+    int wide_gutters = 0;  // the leftmost gutters that take the odd pixel
+    if ((slots == kSeatRailSlots || pagers_visible) && elements > 1) {
+        const int slack = std::max(0, kSeatRailRightX - kSeatRailX0 - face);
+        gap = slack / (elements - 1);
+        wide_gutters = slack % (elements - 1);
+    }
+
+    int pen = kSeatRailX0;
+    int gutter = 0;
+    const auto place = [&](int width) {
+        const int at = pen;
+        pen += width + gap + (gutter < wide_gutters ? 1 : 0);
+        ++gutter;
+        return at;
+    };
+    if (add_visible)
+        out.add_x = place(kSeatRailAddWidth);
+    if (pagers_visible)
+        out.prev_x = place(kSeatRailPagerWidth);
+    for (int slot = 0; slot < slots; ++slot)
+        out.slot_x[static_cast<std::size_t>(slot)] = place(kSeatRailCardWidth);
+    if (pagers_visible)
+        out.next_x = place(kSeatRailPagerWidth);
+    return out;
+}
+
 // --- Player seats (#218 seat block) ---
 
 std::string company_abbreviation(std::string_view company)

@@ -31,6 +31,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -5457,4 +5458,243 @@ TEST(LevelPickerLayout, status_labels_match_the_progress_report)
     EXPECT_STREQ("CLEARED", og::ui::level_row_status_label(true, true));
     EXPECT_STREQ("CURRENT", og::ui::level_row_status_label(false, true));
     EXPECT_STREQ("", og::ui::level_row_status_label(false, false));
+}
+
+// ---------------------------------------------------------------------------
+// #243: the Base Camp seat rail's per-frame geometry. The rail used to be a
+// static seven-control row, so every shape that hid a control left a hole —
+// a 24px gap where '<' would be, a right margin that stopped wherever the
+// last card happened to end, and on a phone a 38px void to the LEFT of the
+// only card on screen. These pin the replacement rule.
+
+namespace {
+
+// The rail's live elements, left to right, as (x, width) pairs.
+std::vector<std::pair<int, int>> seat_rail_elements(
+    const og::ui::SeatRailLayout& rail)
+{
+    std::vector<std::pair<int, int>> out;
+    if (rail.add_visible)
+        out.emplace_back(rail.add_x, og::ui::kSeatRailAddWidth);
+    if (rail.pagers_visible)
+        out.emplace_back(rail.prev_x, og::ui::kSeatRailPagerWidth);
+    for (int slot = 0; slot < rail.slot_count(); ++slot)
+        out.emplace_back(rail.slot_x[static_cast<std::size_t>(slot)],
+                         rail.card_w);
+    if (rail.pagers_visible)
+        out.emplace_back(rail.next_x, og::ui::kSeatRailPagerWidth);
+    return out;
+}
+
+} // namespace
+
+TEST(SeatRailLayout, the_full_rail_is_the_shape_the_static_table_carries)
+{
+    // Everything visible: '+', both arrows and four cards, at exactly the
+    // coordinates menu_screen_specs.cpp's constants produce. This is the one
+    // shape the exact-rect table in test_menu_layout pins, and it must not
+    // move by a pixel.
+    const og::ui::SeatRailLayout rail =
+        og::ui::base_camp_seat_rail_layout(true, true, 4, 0);
+    EXPECT_EQ(8, rail.add_x);
+    EXPECT_EQ(29, rail.prev_x);
+    EXPECT_EQ(46, rail.slot_x[0]);
+    EXPECT_EQ(110, rail.slot_x[1]);
+    EXPECT_EQ(174, rail.slot_x[2]);
+    EXPECT_EQ(238, rail.slot_x[3]);
+    EXPECT_EQ(302, rail.next_x);
+    EXPECT_EQ(57, rail.card_w);
+    EXPECT_EQ(312, rail.next_x + og::ui::kSeatRailPagerWidth);
+    // Six gutters of exactly the packed width: the justified rail and the
+    // packed rail agree here, which is why the shape is byte-identical.
+    const auto elements = seat_rail_elements(rail);
+    ASSERT_EQ(7u, elements.size());
+    for (std::size_t i = 1; i < elements.size(); ++i)
+    {
+        EXPECT_EQ(og::ui::kSeatRailGap,
+                  elements[i].first - (elements[i - 1].first +
+                                       elements[i - 1].second))
+            << "gutter " << i;
+    }
+}
+
+TEST(SeatRailLayout, a_ghost_filled_desktop_row_justifies_between_both_rails)
+{
+    // Two claimed seats on an ordinary desktop: two cards plus two ghosts
+    // fill the grid, so the row spans 8..312 with gutters that differ by at
+    // most the one odd pixel the leftmost gutters absorb.
+    const og::ui::SeatRailLayout rail =
+        og::ui::base_camp_seat_rail_layout(true, false, 2, 2);
+    EXPECT_EQ(2, rail.shown_cards);
+    EXPECT_EQ(2, rail.ghost_count);
+    EXPECT_EQ(8, rail.add_x);
+    EXPECT_EQ(38, rail.slot_x[0]);
+    EXPECT_EQ(111, rail.slot_x[1]);
+    EXPECT_EQ(183, rail.slot_x[2]);
+    EXPECT_EQ(255, rail.slot_x[3]);
+    EXPECT_EQ(312, rail.slot_x[3] + rail.card_w);
+}
+
+TEST(SeatRailLayout, an_under_full_row_packs_left_at_the_uniform_gutter)
+{
+    // A device that caps at two seats with one claimed: one card, one ghost,
+    // no arrows. Nothing stretches — a two-control row spread across the
+    // whole panel reads as broken, so it packs from the left rail.
+    const og::ui::SeatRailLayout rail =
+        og::ui::base_camp_seat_rail_layout(true, false, 1, 1);
+    EXPECT_EQ(8, rail.add_x);
+    EXPECT_EQ(29, rail.slot_x[0]);
+    EXPECT_EQ(93, rail.slot_x[1]);
+    EXPECT_EQ(2, rail.slot_count());
+}
+
+TEST(SeatRailLayout, a_phone_puts_its_lone_card_on_the_left_rail)
+{
+    // Single-seat device: no '+', no arrows, no ghosts (nothing is
+    // claimable), so the only control on the row starts where every other
+    // left-aligned control on the screen starts.
+    const og::ui::SeatRailLayout rail =
+        og::ui::base_camp_seat_rail_layout(false, false, 1, 0);
+    EXPECT_EQ(og::ui::kSeatRailX0, rail.slot_x[0]);
+    EXPECT_EQ(8, rail.slot_x[0]);
+    EXPECT_EQ(1, rail.slot_count());
+    EXPECT_FALSE(rail.add_visible);
+}
+
+TEST(SeatRailLayout, every_shape_keeps_the_rail_ordered_and_inside_the_panel)
+{
+    int checked = 0;
+    for (int add = 0; add < 2; ++add)
+    {
+        for (int pagers = 0; pagers < 2; ++pagers)
+        {
+            for (int cards = 0; cards <= og::ui::kSeatRailSlots; ++cards)
+            {
+                for (int ghosts = 0;
+                     ghosts <= og::ui::kSeatRailSlots - cards; ++ghosts)
+                {
+                    const og::ui::SeatRailLayout rail =
+                        og::ui::base_camp_seat_rail_layout(
+                            add != 0, pagers != 0, cards, ghosts);
+                    const auto elements = seat_rail_elements(rail);
+                    if (elements.empty())
+                        continue;
+                    ++checked;
+                    const std::string shape =
+                        std::format("add={} pagers={} cards={} ghosts={}",
+                                    add, pagers, cards, ghosts);
+
+                    // The row always opens on the panel's left rail.
+                    EXPECT_EQ(og::ui::kSeatRailX0, elements.front().first)
+                        << shape;
+                    // Monotone, never overlapping, always on screen.
+                    std::vector<int> gutters;
+                    for (std::size_t i = 1; i < elements.size(); ++i)
+                    {
+                        const int gutter =
+                            elements[i].first -
+                            (elements[i - 1].first + elements[i - 1].second);
+                        EXPECT_GE(gutter, og::ui::kSeatRailGap)
+                            << shape << " gutter " << i;
+                        gutters.push_back(gutter);
+                    }
+                    for (std::size_t i = 1; i < gutters.size(); ++i)
+                    {
+                        EXPECT_LE(std::abs(gutters[i] - gutters[i - 1]), 1)
+                            << shape << " neighbouring gutters " << i;
+                    }
+                    const auto& last = elements.back();
+                    EXPECT_LE(last.first + last.second,
+                              og::ui::kSeatRailRightX)
+                        << shape;
+
+                    // Justified shapes close on the right rail; packed ones
+                    // stop at the uniform gutter.
+                    const bool justified =
+                        rail.slot_count() == og::ui::kSeatRailSlots ||
+                        rail.pagers_visible;
+                    if (justified && elements.size() > 1)
+                    {
+                        EXPECT_EQ(og::ui::kSeatRailRightX,
+                                  last.first + last.second)
+                            << shape << " must close on the right rail";
+                    }
+                    else
+                    {
+                        for (const int gutter : gutters)
+                            EXPECT_EQ(og::ui::kSeatRailGap, gutter) << shape;
+                    }
+
+                    // Cards never change width: the nine-character label
+                    // budget and the chip offset both depend on 57.
+                    EXPECT_EQ(og::ui::kSeatRailCardWidth, rail.card_w)
+                        << shape;
+                }
+            }
+        }
+    }
+    EXPECT_EQ(59, checked) << "every non-empty rail shape was exercised";
+}
+
+TEST(SeatRailGhosts, ghosts_appear_only_where_a_seat_can_actually_be_claimed)
+{
+    using og::ui::base_camp_seat_rail_ghost_count;
+    using og::ui::SeatClaimability;
+
+    const SeatClaimability desktop_two{.local_count = 2, .global_count = 2};
+    EXPECT_EQ(2, og::ui::seats_still_claimable(desktop_two));
+    EXPECT_EQ(2, base_camp_seat_rail_ghost_count(
+                     {.claim = desktop_two, .visible_cards = 2}));
+
+    // Four local seats: the machine is full, the [+] is dimmed, and the rail
+    // promises nothing.
+    const SeatClaimability desktop_full{.local_count = 4, .global_count = 4};
+    EXPECT_EQ(0, og::ui::seats_still_claimable(desktop_full));
+    EXPECT_EQ(0, base_camp_seat_rail_ghost_count(
+                     {.claim = desktop_full, .visible_cards = 4}));
+
+    // A phone with nothing attached caps at one seat.
+    const SeatClaimability phone{
+        .local_count = 1, .local_seat_cap = 1, .global_count = 1};
+    EXPECT_EQ(0, base_camp_seat_rail_ghost_count(
+                     {.claim = phone, .visible_cards = 1}));
+
+    // A DISABLE_MULTIPLAYER build has no second seat to offer at all.
+    const SeatClaimability no_multiplayer{.multiplayer_enabled = false};
+    EXPECT_EQ(0, og::ui::seats_still_claimable(no_multiplayer));
+    EXPECT_EQ(0, base_camp_seat_rail_ghost_count(
+                     {.claim = no_multiplayer, .visible_cards = 1}));
+
+    // A two-seat device with one seat claimed offers exactly one more.
+    const SeatClaimability pad_phone{
+        .local_count = 1, .local_seat_cap = 2, .global_count = 1};
+    EXPECT_EQ(1, base_camp_seat_rail_ghost_count(
+                     {.claim = pad_phone, .visible_cards = 1}));
+
+    // The lobby ceiling binds before the local cap does.
+    const SeatClaimability crowded_lobby{
+        .local_count = 1, .global_count = 14};
+    EXPECT_EQ(2, og::ui::seats_still_claimable(crowded_lobby));
+    EXPECT_EQ(2, base_camp_seat_rail_ghost_count(
+                     {.claim = crowded_lobby, .visible_cards = 1}));
+    const SeatClaimability full_lobby{.local_count = 1, .global_count = 16};
+    EXPECT_EQ(0, base_camp_seat_rail_ghost_count(
+                     {.claim = full_lobby, .visible_cards = 1}));
+
+    // While the rail is paged, ghosts belong on the last page only — that is
+    // where a newly claimed seat would appear.
+    const SeatClaimability roomy{.local_count = 1, .global_count = 5};
+    EXPECT_EQ(0, base_camp_seat_rail_ghost_count({.claim = roomy,
+                                                  .visible_cards = 4,
+                                                  .on_last_page = false}));
+    EXPECT_EQ(0, base_camp_seat_rail_ghost_count({.claim = roomy,
+                                                  .visible_cards = 1,
+                                                  .on_last_page = false}));
+    EXPECT_EQ(3, base_camp_seat_rail_ghost_count({.claim = roomy,
+                                                  .visible_cards = 1,
+                                                  .on_last_page = true}));
+
+    // A full page never grows a fifth slot.
+    EXPECT_EQ(0, base_camp_seat_rail_ghost_count(
+                     {.claim = roomy, .visible_cards = 4}));
 }
