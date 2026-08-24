@@ -359,8 +359,9 @@ int networking_join_injector(void* data)
         return 0;
     }
 
-    // Base Camp's own entry fade has to be over before the door is measured.
-    SDL_Delay(750);
+    // Generic settle before the door is measured (fades are instant under
+    // TESTING, so nothing here is waiting on an animation).
+    SDL_Delay(300);
     const int fades_before_door = count_fade_between_traces();
     interact("networking");
 
@@ -371,7 +372,7 @@ int networking_join_injector(void* data)
     }
 
     state->saw_networking_menu = true;
-    SDL_Delay(750);
+    SDL_Delay(150);  // generic settle (fades are instant under TESTING)
     state->fades_added_by_networking_door =
         count_fade_between_traces() - fades_before_door;
 

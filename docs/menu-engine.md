@@ -132,7 +132,12 @@ back. `run_menu_screen` derives the decision; no screen declares a fade:
     `run_nested_menu_door()` is the one bracket both share: it fades the menu
     out, notes `Fade` so the nested entry fades in, and on the way back fades
     the door out and leaves a black note that the parent loop turns into a
-    fade-in on its next present.
+    fade-in on its next present. Half of the way in belongs to the body: it
+    has to spend that `Fade` note on a fade-in of its own first composed
+    frame. CLOUD SAVES gets that from the runner; the level editor runs its
+    own loop, so it calls `begin_legacy_menu_entry_fade()` and presents its
+    first frame with `fadeblack(1)`. A body that discards the note leaves the
+    door at one fade in against two back — the asymmetry #237 is about.
   - **NETWORKING** — a Base Camp strip door, but Base Camp *exits* before its
     legacy screen runs, so the rule would fade both legs. `configure_networking`
     notes `Instant` on the way in and on a non-hookup return, keeping the door

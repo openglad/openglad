@@ -271,8 +271,20 @@ void note_menu_entry_fade(MenuEntryFade fade);
 // read distinguishes them from a Base Camp subscreen. Going in it fades the
 // main menu out and notes Fade so the nested entry fades back in; coming back
 // it fades the door out and leaves a black note that the parent loop turns
-// into a fade-in on its next present. Symmetric by construction — the one
-// implementation of the rule for both doors.
+// into a fade-in on its next present. One implementation of the rule for both
+// doors — but the way in is only half here, so two preconditions bind BODY:
+//   * It must spend the Fade note on a fade-in of its own first composed
+//     frame, or the door plays 1 fade in against 2 back. A run_menu_screen
+//     body does that in the runner; a legacy body (the level editor) does it
+//     by hand — begin_legacy_menu_entry_fade() and present the first frame
+//     with fadeblack(1) when it returns true.
+//   * It must return with the canvas holding its last presented frame still
+//     ACTIVE, because the return fadeblack(0) below blends whatever surface
+//     is bound to the active canvas. The editor satisfies this by pinning the
+//     world canvas classic (shared 320x200 storage with the UI canvas) and
+//     restoring UI before returning; note that reading last_presented_canvas()
+//     here instead would be WRONG for it — the pin is already released by
+//     then, so World may name a freshly allocated, never-drawn surface.
 Sint32 run_nested_menu_door(Sint32 (*body)());
 
 // Current menu-stack depth (0 = no engine screen open). run_menu_screen

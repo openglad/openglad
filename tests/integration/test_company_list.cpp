@@ -198,6 +198,7 @@ struct FlowState {
     int fades_added_by_load_door = -1;
     int fades_added_by_backups_door = -1;
     int fades_added_by_load_return = -1;
+    int fades_added_by_open_row = -1;
 };
 
 // Under TESTING every fadeblack lands in FadeBetween's test-mode branch,
@@ -234,11 +235,17 @@ int open_row_injector(void* data)
     if (wait_for_interactable("company_row_0", 5000)) {
         SDL_Delay(750);
         fprintf(stderr, "  [test] opening company row 0\n");
+        // #237 symmetry leg: opening a company leaves the list for Base Camp
+        // — a main-menu-boundary crossing, so it fades out and in like every
+        // other door off the main menu.
+        const int fades_before_open = count_fade_between_traces();
         interact("company_row_0");
 
         if (wait_for_team_menu()) {
             state->saw_team_menu = true;
             SDL_Delay(750);
+            state->fades_added_by_open_row =
+                count_fade_between_traces() - fades_before_open;
             fprintf(stderr, "  [test] clicking back from team menu\n");
             interact("back");
         }
@@ -715,6 +722,9 @@ TEST(CompanyList, open_row_zero_repoints_active_company)
     ASSERT_TRUE(state.finished);
     ASSERT_TRUE(state.saw_team_menu)
         << "opening a company should land on team build (base camp)";
+    EXPECT_EQ(2, state.fades_added_by_open_row)
+        << "#237: the company list -> Base Camp leg crosses the main-menu "
+           "boundary — it fades out and back in, like every main-menu door";
     ASSERT_TRUE(trace_contains("company_list", "open wp3openb"))
         << "row 0 must be the most-recent company";
     ASSERT_EQ("wp3openb", og::data::active_company_slot())

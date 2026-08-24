@@ -909,15 +909,12 @@ Sint32 show_general_help()
 	HelpScreenState state;
 	help_switch_tab(state, HelpTab::Controls, true);
 
-	og::runtime::current_session->myscreen_->clearbuffer();
 	// A wheel notch queued before entry must not page the first frame.
 	(void)get_and_reset_scroll_amount();
 
 	g_help_screen_state = &state;
 	(void)og::ui::run_menu_screen(og::ui::help_menu_screen_spec(), &state);
 	g_help_screen_state = nullptr;
-
-	og::runtime::current_session->myscreen_->clearbuffer();
 
 	// Drain a still-held Escape: the re-entered main menu's QUIT row carries
 	// KEYSTATE_ESCAPE and would consume the same press.

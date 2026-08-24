@@ -563,12 +563,43 @@ Sint32 nested_door_body()
     return MENU_REDRAW;
 }
 
+// The LEGACY door-body shape (the level editor): the body runs no runner
+// entry at all, so it owes the notes the same swallow by hand and has to
+// spend the Fade note itself — begin_legacy_menu_entry_fade(), then present
+// the first composed frame with fadeblack(1) instead of the plain present.
+// Discarding that return is what left the editor door at 1 fade in / 2 back.
+int g_legacy_door_fades_inside_door = -1;
+
+Sint32 legacy_nested_door_body()
+{
+    bool entry_fade_in_pending = og::ui::begin_legacy_menu_entry_fade();
+    screen* const scr = og::runtime::current_session->myscreen_;
+    // The body's own loop, one frame of it: compose, then present once.
+    if (entry_fade_in_pending)
+    {
+        entry_fade_in_pending = false;
+        scr->fadeblack(1);
+    }
+    else
+    {
+        scr->buffer_to_screen(0, 0, 320, 200);
+    }
+    // Sampled inside the door, before the bracket's way-back fade-out: this
+    // is exactly the cost of the way in.
+    g_legacy_door_fades_inside_door = count_fade_between_traces();
+    return MENU_REDRAW;
+}
+
+// Which body the parent's door opens (the runner-shaped one, or the legacy
+// hand-rolled one). Set by each test before the parent loop runs.
+Sint32 (*g_nested_door_body_fn)() = nullptr;
+
 bool nested_door_parent_frame_tick(void* /*state*/, int frame)
 {
     if (frame == 1)
     {
         g_nested_door_fades_at_open = count_fade_between_traces();
-        (void)og::ui::run_nested_menu_door(&nested_door_body);
+        (void)og::ui::run_nested_menu_door(g_nested_door_body_fn);
         // Keep the loop alive: the fade back in happens on the NEXT present.
         return true;
     }
@@ -784,6 +815,7 @@ TEST(MenuEngine, nested_menu_door_bracket_fades_symmetrically)
     g_start_game_requested = false;
     g_nested_door_fades_at_open = -1;
     g_nested_door_fades_inside_door = -1;
+    g_nested_door_body_fn = &nested_door_body;
 
     trace_clear();
     (void)og::ui::run_menu_screen(parent);
@@ -804,6 +836,54 @@ TEST(MenuEngine, nested_menu_door_bracket_fades_symmetrically)
     EXPECT_EQ(2, count_fade_between_traces() - g_nested_door_fades_inside_door)
         << "#237 symmetry: the way back must fade exactly as much as the way "
            "in — the door fades out and the parent loop fades back in";
+}
+
+// The other half of run_nested_menu_door's contract: the LEVEL EDITOR shape,
+// whose body is a hand-rolled loop rather than a run_menu_screen entry. The
+// bracket alone cannot make that door symmetric — the way in is only complete
+// once the body spends the Fade note on its own first frame. Regression pin
+// for the editor's discarded fade-in (1 in / 2 back).
+TEST(MenuEngine, nested_menu_door_bracket_is_symmetric_for_a_legacy_body)
+{
+    static constexpr og::ui::MenuButtonSpec kRows[] = {
+        {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+         .x = 10, .y = 10, .w = 50, .h = 15,
+         .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT, .nav = {}},
+    };
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    og::ui::menu_transition_testing_reset();
+
+    og::ui::MenuScreenSpec parent = make_synth_spec(kRows, 1, "door_parent");
+    parent.frame_tick = &nested_door_parent_frame_tick;
+    g_synth_spec = &parent;
+    g_depth_rule_child_spec = nullptr;
+    g_start_game_requested = false;
+    g_nested_door_fades_at_open = -1;
+    g_legacy_door_fades_inside_door = -1;
+    g_nested_door_body_fn = &legacy_nested_door_body;
+
+    trace_clear();
+    (void)og::ui::run_menu_screen(parent);
+    g_nested_door_body_fn = nullptr;
+
+    ASSERT_EQ(2, g_nested_door_fades_at_open)
+        << "the parent's own depth-1 entry must have faded before the door";
+    ASSERT_NE(-1, g_legacy_door_fades_inside_door)
+        << "the legacy door body never ran";
+    const int fades_in = g_legacy_door_fades_inside_door -
+        g_nested_door_fades_at_open;
+    const int fades_back = count_fade_between_traces() -
+        g_legacy_door_fades_inside_door;
+    EXPECT_EQ(2, fades_in)
+        << "#237: a legacy door body must honor the Fade note — the bracket's "
+           "fade-out plus the body's own fadeblack(1) first frame";
+    EXPECT_EQ(2, fades_back)
+        << "the door fades out and the parent loop fades back in";
+    EXPECT_EQ(fades_back, fades_in)
+        << "#237 symmetry, the reported bug class: a door that fades once in "
+           "and twice back is exactly what the invariant forbids";
 }
 
 TEST(MenuEngine, depth_rule_overlay_never_fades_and_swallows_black_note)

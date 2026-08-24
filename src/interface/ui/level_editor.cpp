@@ -3539,9 +3539,11 @@ Sint32 level_editor()
     // (run_nested_menu_door, ButtonAction::DoLevelEdit) already faded the
     // menu out and left both notes; consuming them here keeps the Fade note
     // from reaching the editor's own SET CAMPAIGN browser, which would fade
-    // a subscreen the rule wants instant. The editor's loop draws through
-    // refresh(), not the fade path, so the returned fade-in is discarded.
-    (void)og::ui::begin_legacy_menu_entry_fade();
+    // a subscreen the rule wants instant. The pending fade-in is honored at
+    // the loop's first present (below): the door owes the same two fades in
+    // as it spends on the way back, so the editor's first composed frame
+    // fades in instead of cutting.
+    bool entry_fade_in_pending = og::ui::begin_legacy_menu_entry_fade();
 
     static LevelEditorData data;
     // Refresh radar pointers in case the session's viewscreen was rebuilt
@@ -4184,7 +4186,15 @@ Sint32 level_editor()
 			// LevelEditorData::draw prepares one smart-smoothed scenery + crisp
 			// UI transaction. Present only after every layer (including the
 			// controller cursor) is complete: the gameplay overlay is single-use.
-			og::runtime::current_session->myscreen_->refresh();
+			if (entry_fade_in_pending) {
+				// fadeblack presents the composed buffer itself (#237). The
+				// editor's canvas is pinned classic (shared surface), so this
+				// fades the real first frame, not a stale UI image.
+				entry_fade_in_pending = false;
+				og::runtime::current_session->myscreen_->fadeblack(1);
+			} else {
+				og::runtime::current_session->myscreen_->refresh();
+			}
 		}
         
         og::input_native::sleep_ms(10);

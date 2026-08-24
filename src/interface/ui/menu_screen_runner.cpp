@@ -376,6 +376,13 @@ Sint32 run_nested_menu_door(Sint32 (*body)())
 
     // Way back, symmetric: fade the door out and hand the still-open parent
     // loop a black note — its next present turns that into the fade-in.
+    // Precondition (documented on the declaration): the body returns with the
+    // canvas that holds its last frame still active, since fadeblack blends
+    // the active canvas's render surface. The teardown idiom's
+    // set_active_canvas(last_presented_canvas()) is deliberately NOT used
+    // here: the editor body releases its classic world-canvas pin on the way
+    // out, so by now World can name a freshly allocated, never-drawn surface
+    // while the editor's actual last frame lives on the (shared) UI canvas.
     scr->fadeblack(0);
     note_menu_faded_to_black();
     return result;
@@ -511,6 +518,12 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         // the presented surface black (#200): that fade-out would run
         // over the stale menu image the UI canvas still holds and play
         // the same transition a second time.
+        //
+        // fadeblack(0) blends FROM the render buffer, not from the window: a
+        // door body must not draw into it before run_menu_screen, or this
+        // fade-out runs black-to-black and the door hard-cuts (the entry's own
+        // background is composed below, after the fade). Under TESTING the
+        // trace is one line either way, so no pin can see that mistake.
         reset_timer();
         while (query_timer() < 1)
             ;

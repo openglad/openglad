@@ -1,6 +1,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/ui/level_editor_state.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/core/test_trace.h>
 #include <gtest/gtest.h>
@@ -759,4 +760,67 @@ TEST(LevelEditorInteractions, object_brush_team_stays_in_the_authorable_range)
 {
     ASSERT_EQ(0, level_editor_test_object_brush_team_range())
         << "object-brush team range failed at the negated check index";
+}
+
+namespace
+{
+int count_fade_between_traces()
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    int fades = 0;
+    for (const TraceEntry& entry : g_trace_buffer)
+    {
+        if (entry.category == "video" &&
+            entry.message.find("FadeBetween") != std::string::npos)
+            ++fades;
+    }
+    return fades;
+}
+
+// Ends the editor as soon as the door's two way-in fades have landed — or
+// after a bounded wait, so a regression that drops one fails the pin instead
+// of hanging the group.
+int editor_door_fade_injector(void* /*data*/)
+{
+    og::runtime::ensure_thread_session();
+    constexpr int kTimeoutMs = 8000;
+    for (int waited = 0; waited < kTimeoutMs && count_fade_between_traces() < 2;
+         waited += 10)
+        SDL_Delay(10);
+    og::runtime::current_session->myscreen_->world().end = 1;
+    return 0;
+}
+} // namespace
+
+// #237 flow pin, the LEVEL EDITOR door through the REAL body: the bracket
+// fades the menu out and notes Fade, and level_editor() has to spend that
+// note on a fadeblack(1) present of its first composed frame — discarding it
+// (as the editor once did) left the door at 1 fade in against 2 back, the
+// asymmetry the invariant forbids. Counted here: 2 in, then the bracket's
+// way-back fade-out. Its partner, the parent menu loop's fade-in off the
+// black note, has no parent loop in this test — the note is asserted instead,
+// and MenuEngine.nested_menu_door_bracket_* pins the loop half.
+TEST(LevelEditorInteractions, level_editor_door_fades_symmetrically)
+{
+    og::ui::menu_transition_testing_reset();
+    og::runtime::current_session->myscreen_->world().end = 0;
+    trace_clear();
+
+    SDL_Thread* thread = SDL_CreateThread(editor_door_fade_injector,
+                                          "editor_door_fade", nullptr);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    (void)og::ui::run_nested_menu_door(&level_editor);
+
+    SDL_WaitThread(thread, nullptr);
+    og::runtime::current_session->myscreen_->world().end = 0;
+
+    const int total = count_fade_between_traces();
+    EXPECT_EQ(3, total)
+        << "the door owes 2 fades in (bracket fade-out + the editor's own "
+           "first-frame fade-in) and opens the way back with its fade-out";
+    EXPECT_TRUE(og::ui::consume_menu_faded_to_black())
+        << "the way back hands the still-open parent menu loop a black note; "
+           "its next present is the matching fade-in";
+    og::ui::menu_transition_testing_reset();
 }

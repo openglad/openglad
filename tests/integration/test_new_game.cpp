@@ -80,6 +80,9 @@ struct NewGameState {
     // #237 derivation pin: fades counted across the BEGIN NEW GAME door.
     // -1 means the injector never reached the read.
     int fades_added_by_name_entry;
+    // #237 symmetry leg: fades counted across the name-entry BACK, from the
+    // cancel click to the re-presented main menu. -1 = never read.
+    int fades_added_by_name_entry_back;
 };
 
 // Under TESTING every fadeblack takes FadeBetween's test-mode branch, which
@@ -166,7 +169,7 @@ TEST(NewGame, begin_new_game) {
     og::runtime::current_session->myscreen_->save_data.team_size = 1;
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    NewGameState state = { false, false, false, false, -1 };
+    NewGameState state = { false, false, false, false, -1, -1 };
     SDL_Thread* thread = SDL_CreateThread(new_game_injector, "new_game_test", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
@@ -224,8 +227,21 @@ static int name_entry_cancel_injector(void* data)
         interact("company_name_reroll");
         SDL_Delay(300);  // let the click release before the next press
         fprintf(stderr, "  [test] clicking BACK (cancel)\n");
+        // #237 symmetry: the way back out of a main-menu door owes exactly
+        // what the way in cost — the door fades out, the re-entered main menu
+        // fades in.
+        const int fades_before_back = count_fade_between_traces();
         interact("back");
         state->saw_team_menu = true;  // reused flag: reached & left name-entry
+        // The re-entered main menu is a SECOND mainmenu call, so this flow
+        // runs with g_picker_max_mainmenu_calls = 2 and leaves through QUIT.
+        if (wait_for_interactable("begin_new_game", 5000)) {
+            SDL_Delay(750);  // menu-entry settle
+            state->fades_added_by_name_entry_back =
+                count_fade_between_traces() - fades_before_back;
+            fprintf(stderr, "  [test] quitting from the main menu\n");
+            interact("quit");
+        }
     }
 
     state->finished = true;
@@ -244,13 +260,16 @@ TEST(NewGame, name_entry_back_cancels_without_founding) {
         "gladiator";
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    NewGameState state = { false, false, false, false, -1 };
+    NewGameState state = { false, false, false, false, -1, -1 };
     SDL_Thread* thread =
         SDL_CreateThread(name_entry_cancel_injector, "name_entry_cancel", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     g_picker_mainmenu_calls = 0;
-    g_picker_max_mainmenu_calls = 1;
+    // 2: the door's way in is one mainmenu call, the way back re-enters it —
+    // and the #237 return-leg pin can only be measured on a main menu that
+    // actually re-runs (the cap short-circuits present_menu straight to QUIT).
+    g_picker_max_mainmenu_calls = 2;
 
     picker_main(0, nullptr);
 
@@ -264,6 +283,9 @@ TEST(NewGame, name_entry_back_cancels_without_founding) {
     ASSERT_TRUE(state.saw_team_menu) << "should have reached the name-entry screen";
     ASSERT_TRUE(trace_contains("name_entry", "reroll")) << "REROLL should have fired";
     ASSERT_TRUE(trace_contains("name_entry", "cancel")) << "BACK should have cancelled";
+    EXPECT_EQ(2, state.fades_added_by_name_entry_back)
+        << "#237 symmetry: cancelling name entry returns to the main menu — "
+           "the way back must fade exactly as much as the way in (2)";
     // The loaded game survived: cancel founded nothing, so no reset ran.
     ASSERT_EQ(424242u, og::runtime::current_session->myscreen_->save_data.totalcash)
         << "cancel must not reset the loaded game";
@@ -345,7 +367,7 @@ static int name_entry_edit_injector(void* data)
 TEST(NewGame, name_entry_edit_strip_sets_company_name) {
     trace_clear();
 
-    NewGameState state = { false, false, false, false, -1 };
+    NewGameState state = { false, false, false, false, -1, -1 };
     SDL_Thread* thread =
         SDL_CreateThread(name_entry_edit_injector, "name_entry_edit", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
