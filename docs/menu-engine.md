@@ -194,7 +194,10 @@ The third guard is static: every `fadeblack(` call site under `src/` is listed
 with its reason in `scripts/fadeblack_sites.txt`, and
 `scripts/check_fadeblack_sites.sh` (a build dependency of `og_interface` and
 `og_platform_sdl`) fails the build on an unlisted call, so a new ad-hoc fade
-has to be classified before it compiles.
+has to be classified before it compiles. Sites are keyed by path plus enclosing
+function rather than by line number, so editing around a fade never rots the
+list — and an allowlisted key that no longer resolves fails the build too, so a
+renamed or deleted fade site gets reclassified instead of lingering.
 
 The demo compositor (`demo.cpp`) presents through its own `SDL_RenderPresent`
 and never fades; it is documented here rather than hooked.

@@ -1,0 +1,34 @@
+# Every place in src/ allowed to call fadeblack(), one per line, with the
+# reason it owns a fade. Checked by scripts/check_fadeblack_sites.sh, which is
+# a build dependency of og_interface and og_platform_sdl — an unclassified fade
+# fails the build.
+#
+# A key is "<path>::<enclosing function>", never a line number, so unrelated
+# edits do not rot this list. One key covers every fade in that function.
+#
+# The two definition sites (screen::fadeblack in src/interface/screen.cpp and
+# sdl_video::fadeblack in src/platform/sdl/video_sdl.cpp) are excluded by the
+# script itself.
+#
+# The ownership rule (#237): whoever fades in fades out, at its own exit, while
+# its last frame is still the render buffer. Menu screens get that for free
+# from ScreenFadeScope / LegacyMenuFade, so a new entry here should be rare and
+# is either the fade engine itself or a boundary the runner does not cover
+# (process start, the gameplay/menu boundary).
+
+# --- the fade engine: the runner's own entry and exit brackets ---
+src/interface/ui/menu_screen_runner.cpp::~ScreenFadeScope         # exit-owned fade-out; every return path out of run_menu_screen
+src/interface/ui/menu_screen_runner.cpp::run_menu_screen          # entry fade-out, cold first-frame fade-in, loop fade-in after a nested door
+src/interface/ui/menu_screen_runner.cpp::LegacyMenuFade::LegacyMenuFade  # entry fade-out for screens outside the runner (campaign select, results, editor)
+src/interface/ui/menu_screen_runner.cpp::LegacyMenuFade::present_first   # the paired fade-in, presenting the legacy screen's first composed frame
+src/interface/ui/menu_screen_runner.cpp::LegacyMenuFade::end            # the paired exit fade-out (also runs from the destructor)
+
+# --- process start: the intro sequence owns its own pages ---
+src/interface/ui/intro.cpp::intro_main   # fade the cold-start window out before the first intro page composes
+src/interface/ui/intro.cpp::show         # per-page fade-in and fade-out; both returns honour the -1 key abort
+src/interface/ui/intro.cpp::cleanup      # fades an aborted page out so the main menu's entry only ever fades in
+
+# --- the gameplay/menu boundary: outside every menu runner ---
+src/platform/sdl/glad_gameplay.cpp::glad_init          # technical teardown: fade the picker out, then fade the first composed gameplay frame in
+src/interface/ui/picker_team_build.cpp::go_menu        # native return-from-game; fades whichever canvas gameplay last presented
+src/interface/ui/picker.cpp::picker_reinit_after_game  # the same return-from-game fade on the Emscripten state-machine path
