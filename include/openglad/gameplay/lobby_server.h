@@ -137,7 +137,7 @@ private:
         // Removing the final seat leaves the peer connected as a true
         // spectator: it is absent from LobbyState, readiness, capacity, and
         // gameplay bindings. Retain only its stable command token privately so
-        // a later [+] can reactivate the same seat identity.
+        // a later ADD PLAYER can reactivate the same seat identity.
         LobbySeatId dormant_seat_id = kInvalidLobbySeatId;
         // Recipient-specific Join acknowledgement. This is deliberately peer
         // state rather than canonical LobbyState so another client's broadcast

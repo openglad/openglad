@@ -610,12 +610,16 @@ play the server and the single client are both in-process (`InProcessTransport`)
 
 ### Lobby → gameplay → lobby flow
 
-Base Camp coordinates a networked start. Its seat rail is a four-card view of
-the authoritative lobby roster, with paging for larger lobbies and a **+** at
-the rail's left end for adding a local seat. An owned card opens its machine-local control profile and
-next-level team assignment; a foreign card is read-only. The interface keeps
-stable seat tokens behind the dense display ordinals, so removing a middle
-seat cannot retarget a command to one of its siblings.
+Base Camp coordinates a networked start. Its seat rail is a four-slot view of
+**this machine's** seats — never the whole lobby. A slot holding one of them
+opens that seat's machine-local control profile and next-level team
+assignment; a slot with no seat in it is an **ADD PLAYER** button that runs the
+add path (dimmed to **LOBBY FULL** at the sixteen-seat ceiling, and absent
+past what the device can seat). Other machines' seats are counted on the
+header line and listed in VIEW LEVEL's seat report, which is why the rail
+needs no pager. The interface keeps stable seat tokens behind the dense
+display ordinals, so removing a middle seat cannot retarget a command to one
+of its siblings.
 
 `IPickerLobbyClient`
 (`src/interface/ui/picker_lobby_client.cpp`,

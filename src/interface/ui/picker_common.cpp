@@ -1481,22 +1481,6 @@ std::string clip_chars(std::string value, std::size_t max_chars)
     return value;
 }
 
-// A mid-word cut on a status line reads as corruption ("IRON KETTLE B"), so
-// a name that must lose characters loses whole words — as long as half the
-// budget survives; below that the whole-word remainder says less than the
-// bytes do.
-std::string clip_words(std::string value, std::size_t max_chars)
-{
-    if (value.size() <= max_chars)
-        return value;
-    const std::size_t space = value.find_last_of(' ', max_chars);
-    if (space != std::string::npos && space * 2 >= max_chars)
-        value.resize(space);
-    else
-        value.resize(max_chars);
-    return value;
-}
-
 } // namespace
 
 std::string clip_with_ellipsis(std::string value, std::size_t max_chars)
@@ -1723,19 +1707,6 @@ BaseCampSessionCensus count_base_camp_session_census(
     return census;
 }
 
-std::string base_camp_host_display_name(
-    const std::vector<og::sim::LobbyPlayer>& players)
-{
-    for (const og::sim::LobbyPlayer& player : players) {
-        if (!player.is_host)
-            continue;
-        if (!player.company.empty())
-            return clip_chars(player.company, 16);
-        return clip_chars(player.name, 16);
-    }
-    return {};
-}
-
 std::string format_base_camp_session_status(
     bool is_host,
     std::string_view room_code,
@@ -1747,49 +1718,35 @@ std::string format_base_camp_session_status(
     // Room codes display-clip at 12 (relay codes are 9-char "GLAD-XXXX";
     // the NETWORKING screen keeps the authoritative full form).
     const std::string room = clip_chars(std::string(room_code), 12);
-    if (is_host) {
-        // §9.12 budget note: "MACH / PLYR" is the recorded "shape like"
-        // latitude call — the spelled-out census overruns even the wide
-        // band at double-digit counts ("HOSTING GLAD-XXXX - 16 MACHINES /
-        // 16 PLAYERS" = 44). Beside HIRE the band is 34 and the everyday
-        // "HOSTING GLAD-7Q2F - 2 MACH / 3 PLYR" (35) no longer fits, so
-        // the census has a compact spelling too: "2M / 3P" says what
-        // "3 PLY" cannot.
-        const BaseCampSessionCensus census =
-            count_base_camp_session_census(players);
-        const std::string tight =
-            std::format("{}M / {}P", census.machines, census.players);
-        const auto compose = [&room](const std::string& census_part) {
-            return room.empty()
-                ? std::format("HOSTING {}", census_part)
-                : std::format("HOSTING {} - {}", room, census_part);
-        };
-        std::string status = compose(std::format(
-            "{} MACH / {} PLYR", census.machines, census.players));
-        if (status.size() > budget)
-            status = compose(tight);
-        // A pathological room code can still over-run: the census is the
-        // half that changes, so the room code (authoritative on the
-        // NETWORKING screen) is the half that goes.
-        if (status.size() > budget)
-            status = std::format("HOSTING {}", tight);
-        return clip_chars(std::move(status), budget);
+    const BaseCampSessionCensus census =
+        count_base_camp_session_census(players);
+    // PLAYERS FIRST. The rail shows this machine's seats only, so the count
+    // of everyone in the lobby has nowhere else to live; machines are the
+    // second-order fact (how many rooms the noise is coming from). The
+    // joiner's line drops "HOST: <company>" — the host's company already
+    // sits on every one of its roster rows, and the census does not.
+    const std::string head = is_host ? "HOSTING" : "JOINED";
+    const std::string room_part = room.empty()
+        ? head
+        : std::format("{} {}", is_host ? "HOSTING" : "IN", room);
+    // The ladder, widest first: each rung is a whole spelling that either
+    // fits or falls to the next — never a byte cut of the one above.
+    // "PCS" is the everyday word for the thing "MACHINES" names precisely;
+    // at 1-digit counts the two rungs land exactly on the 41 and 34 bands.
+    const std::array<std::string, 3> rungs{
+        std::format("{} PLAYERS / {} MACHINES", census.players,
+                    census.machines),
+        std::format("{} PLAYERS/{} PCS", census.players, census.machines),
+        std::format("{}P/{}M", census.players, census.machines)};
+    for (const std::string& rung : rungs) {
+        std::string status = std::format("{}: {}", room_part, rung);
+        if (status.size() <= budget)
+            return status;
     }
-    const std::string host_name = base_camp_host_display_name(players);
-    const std::string room_part =
-        room.empty() ? std::string("JOINED") : std::format("IN {}", room);
-    if (host_name.empty())
-        return clip_chars(room_part, budget);
-    std::string status = std::format("{} - HOST: {}", room_part, host_name);
-    if (status.size() <= budget)
-        return status;
-    // Tight band: "HOST: " is the label, the company is the information —
-    // drop the label first, then shed whole words off the company.
-    const std::size_t prefix = room_part.size() + 3;  // "<room> - "
-    status = std::format(
-        "{} - {}", room_part,
-        clip_words(host_name, prefix < budget ? budget - prefix : 0u));
-    return clip_chars(std::move(status), budget);
+    // A pathological room code can still over-run: the census is the half
+    // that changes, so the room code (authoritative on the NETWORKING
+    // screen) is the half that goes.
+    return clip_chars(std::format("{}: {}", head, rungs[2]), budget);
 }
 
 BaseCampLineB compose_base_camp_line_b(
@@ -2999,68 +2956,32 @@ int seats_still_claimable(const SeatClaimability& claim)
     return std::max(0, std::min(local_room, global_room));
 }
 
-int base_camp_seat_rail_ghost_count(const SeatRailGhostInputs& in)
+int base_camp_seat_rail_slot_cap(const SeatClaimability& claim)
 {
-    if (!in.on_last_page)
-        return 0;
-    const int claimable = seats_still_claimable(in.claim);
-    if (claimable <= 0)
-        return 0;
-    const int cards = std::clamp(in.visible_cards, 0, kSeatRailSlots);
-    return std::min(kSeatRailSlots - cards, claimable);
+    if (!claim.multiplayer_enabled)
+        return 1;
+    return std::clamp(claim.local_seat_cap, 1, kSeatRailSlots);
 }
 
-SeatRailLayout base_camp_seat_rail_layout(bool add_visible,
-                                          bool pagers_visible,
-                                          int visible_cards, int ghost_count)
+int base_camp_seat_rail_placeholder_count(const SeatClaimability& claim)
+{
+    return std::clamp(base_camp_seat_rail_slot_cap(claim) - claim.local_count,
+                      0, kSeatRailSlots);
+}
+
+SeatRailLayout base_camp_seat_rail_layout(int visible_cards,
+                                          int placeholder_count)
 {
     SeatRailLayout out;
-    out.add_visible = add_visible;
-    out.pagers_visible = pagers_visible;
     out.shown_cards = std::clamp(visible_cards, 0, kSeatRailSlots);
-    out.ghost_count =
-        std::clamp(ghost_count, 0, kSeatRailSlots - out.shown_cards);
-    out.slot_x.fill(kSeatRailX0);
-
-    const int slots = out.slot_count();
-    // The '>' pager anchors the rail's right margin whenever it is shown;
-    // the left-to-right run ([+], '<', slots) lays out against the gutter
-    // before it. A full row of slots justifies across that span (closing
-    // the run on the margin); a short row left-packs at the minimum gutter
-    // instead — stretching two or three controls across the panel reads as
-    // broken, and the anchored '>' keeps the right margin held either way.
-    if (pagers_visible)
-        out.next_x = kSeatRailRightX - kSeatRailPagerWidth;
-    const int run_elements =
-        (add_visible ? 1 : 0) + (pagers_visible ? 1 : 0) + slots;
-    const int run_face = (add_visible ? kSeatRailAddWidth : 0) +
-        (pagers_visible ? kSeatRailPagerWidth : 0) +
-        slots * kSeatRailCardWidth;
-    const int run_right = pagers_visible ? out.next_x - kSeatRailGap
-                                         : kSeatRailRightX;
-
-    int gap = kSeatRailGap;
-    int wide_gutters = 0;  // the leftmost gutters that take the odd pixel
-    if (slots == kSeatRailSlots && run_elements > 1) {
-        const int slack = std::max(0, run_right - kSeatRailX0 - run_face);
-        gap = slack / (run_elements - 1);
-        wide_gutters = slack % (run_elements - 1);
+    out.placeholder_count =
+        std::clamp(placeholder_count, 0, kSeatRailSlots - out.shown_cards);
+    // Every slot keeps its grid x whether or not it is live this frame: the
+    // hidden ones are what a returning player's seat lands back on.
+    for (int slot = 0; slot < kSeatRailSlots; ++slot) {
+        out.slot_x[static_cast<std::size_t>(slot)] =
+            kSeatRailX0 + slot * (kSeatRailCardWidth + kSeatRailGap);
     }
-
-    int pen = kSeatRailX0;
-    int gutter = 0;
-    const auto place = [&](int width) {
-        const int at = pen;
-        pen += width + gap + (gutter < wide_gutters ? 1 : 0);
-        ++gutter;
-        return at;
-    };
-    if (add_visible)
-        out.add_x = place(kSeatRailAddWidth);
-    if (pagers_visible)
-        out.prev_x = place(kSeatRailPagerWidth);
-    for (int slot = 0; slot < slots; ++slot)
-        out.slot_x[static_cast<std::size_t>(slot)] = place(kSeatRailCardWidth);
     return out;
 }
 

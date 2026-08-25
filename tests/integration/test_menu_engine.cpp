@@ -22,6 +22,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/input_hardware_state.h>
 #include <openglad/interface/input_mappings.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
@@ -4116,17 +4117,18 @@ TEST(MenuEngine, base_camp_rail_and_add_seat_boundaries_are_behavioral)
     const int count = spec.count_accessor();
     int highlighted = kBaseCampSeatCardBase;
 
-    // Five seats create the two-page rail. With [+] unavailable, GO's up
-    // link must land on NEXT, and punctuation is ignored in the compact
-    // remote-company abbreviation.
-    buttons[kBaseCampAddSeatIndex].hidden = true;
+    // Five seats in the lobby, ONE of them this machine's (global P5). The
+    // rail shows that one card and three ADD PLAYER slots; GO's up-link lands
+    // on the rail's rightmost slot.
     spec.nav.rewire(buttons, count, highlighted);
-    EXPECT_EQ("P1 IRO ", buttons[kBaseCampSeatCardBase].label);
-    EXPECT_EQ(kBaseCampSeatPageNextIndex,
+    EXPECT_EQ("P5 WASD ", buttons[kBaseCampSeatCardBase].label);
+    EXPECT_EQ("ADD PLAYER", buttons[kBaseCampSeatCardBase + 1].label);
+    EXPECT_EQ(kBaseCampSeatCardBase + kBaseCampSeatCardsPerPage - 1,
               buttons[kCreateMenuGoIndex].nav.up);
 
-    // #236: the ordinal the '+' vacated answers nothing at all.
-    EXPECT_EQ(0, spec.on_spec_row(kBaseCampSeatRailSpareIndex, &state));
+    // The four parked rail ordinals answer nothing at all.
+    for (const int spare : kBaseCampSeatRailSpares)
+        EXPECT_EQ(0, spec.on_spec_row(spare, &state)) << "spare " << spare;
 
     const int untouched_highlight = 123;
     int defensive_highlight = untouched_highlight;
@@ -4136,13 +4138,16 @@ TEST(MenuEngine, base_camp_rail_and_add_seat_boundaries_are_behavioral)
 
 #ifndef DISABLE_MULTIPLAYER
     // Each denial is separately observable and must avoid calling the next
-    // layer. Rewind the debounce stamp so the capacity rule is what decides.
+    // layer — and every one of them is reached THROUGH A SLOT, because the
+    // slot is the door. Rewind the debounce stamp so the capacity rule is
+    // what decides. A slot the rail has no seat for is the add path: with
+    // one local seat that is slot one.
+    constexpr int kBareSlot = kBaseCampSeatCardBase + 1;
     state.last_seat_add_ms = -1;
     lobby.local_seats = MAX_PLAYERS;
     lobby.add_seat_calls = 0;
     trace_clear();
-    EXPECT_EQ(MENU_OK,
-              spec.on_spec_row(kBaseCampAddSeatIndex, &state));
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBareSlot, &state));
     EXPECT_EQ(0, lobby.add_seat_calls);
     EXPECT_TRUE(trace_contains("popup", "LOCAL LIMIT IS 4"));
 
@@ -4154,8 +4159,7 @@ TEST(MenuEngine, base_camp_rail_and_add_seat_boundaries_are_behavioral)
             static_cast<std::uint8_t>(i), "FULL LOBBY"));
     }
     trace_clear();
-    EXPECT_EQ(MENU_OK,
-              spec.on_spec_row(kBaseCampAddSeatIndex, &state));
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBareSlot, &state));
     EXPECT_EQ(0, lobby.add_seat_calls);
     EXPECT_TRUE(trace_contains("popup", "LOBBY FULL"));
 
@@ -4164,10 +4168,29 @@ TEST(MenuEngine, base_camp_rail_and_add_seat_boundaries_are_behavioral)
     lobby.local_indices = {0};
     lobby.add_seat_result = false;
     trace_clear();
-    EXPECT_EQ(MENU_OK,
-              spec.on_spec_row(kBaseCampAddSeatIndex, &state));
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBareSlot, &state));
     EXPECT_EQ(1, lobby.add_seat_calls);
     EXPECT_TRUE(trace_contains("popup", "ADD DENIED"));
+
+    // THE DEVICE CAP IS ENFORCED BY THE DOOR, not by the lobby client behind
+    // it: picker_lobby_add_local_seat is a build-limit backstop only. Drive a
+    // slot on a single-seat device with a seat already claimed and the add
+    // must die at the gate, naming the hardware.
+    {
+        const bool saved_device_class =
+            input_hardware_state().single_seat_device;
+        input_hardware_state().single_seat_device = true;
+        state.last_seat_add_ms = -1;
+        lobby.local_seats = 1;
+        lobby.add_seat_result = true;
+        lobby.add_seat_calls = 0;
+        trace_clear();
+        EXPECT_EQ(MENU_OK, spec.on_spec_row(kBareSlot, &state));
+        EXPECT_EQ(0, lobby.add_seat_calls)
+            << "the device cap must stop the add before the lobby sees it";
+        EXPECT_TRUE(trace_contains("popup", "ATTACH A GAMEPAD TO ADD SEATS"));
+        input_hardware_state().single_seat_device = saved_device_class;
+    }
 #endif
 }
 

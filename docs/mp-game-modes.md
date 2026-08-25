@@ -93,16 +93,20 @@ the control from it returns to **ALL**.
 VIEW LEVEL previews the result: entries the setting will remove are flagged
 in the scenario report.
 
-Assign player teams with the seat rail in Base Camp. Use **+** at its left end
-to add a local seat, then open an owned **P#** card and choose **TEAM** in its
-editor.
-The rail shows four cards at a time and **<**/**>** page through larger network
-lobbies. Put several seats on one team for co-op, or spread them across teams
-for a versus or mixed-team match. Remote cards are read-only.
+Assign player teams with the seat rail in Base Camp. The rail is this
+machine's four seats: tap a slot reading **ADD PLAYER** to claim one, then
+open its **P#** card and choose **TEAM** in the editor. Put several seats on
+one team for co-op, or spread them across teams for a versus or mixed-team
+match. Other machines' seats are not in the rail — the header line counts them
+and **VIEW LEVEL** lists them with their teams.
+
+A slot dims to **LOBBY FULL** when the lobby is at its sixteen-player ceiling,
+and a device that seats fewer than four players shows fewer slots.
 
 The same editor selects 4- or 8-direction movement, remaps that local player's
 keys, resets that player's controls, and removes the seat. Removing a machine's
-last network seat leaves it connected as a spectator; **+** brings it back.
+last network seat leaves it connected as a spectator; any **ADD PLAYER** slot
+brings it back.
 Seat membership and match team choices belong to the current session, not the
 company file. A fighter's color remains its combat allegiance, so changing a
 player-seat assignment does not recolor the company roster. The assignments

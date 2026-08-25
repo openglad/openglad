@@ -577,12 +577,13 @@ TEST(CursesNetwork, roster_reflects_two_players)
         << "the roster must identify teams with their player-facing colors";
 
     // §9.12 (G5) census parity: the terminal lobby carries the same
-    // session-status line as the SDL base camp header — role + machine/
-    // player census for the host, host company for the joiner (the curses
-    // lobby has no relay room code, so the room half stays empty).
-    EXPECT_TRUE(status_contains(*host_lobby, "HOSTING 2 MACH / 2 PLYR"));
+    // session-status line as the SDL base camp header — role plus the
+    // players/machines census on BOTH sides (the curses lobby has no relay
+    // room code, so the room half stays empty).
+    EXPECT_TRUE(status_contains(*host_lobby,
+                                "HOSTING: 2 PLAYERS / 2 MACHINES"));
     EXPECT_TRUE(status_contains(*join_lobby,
-                                "JOINED - HOST: HOST CURSES CO"));
+                                "JOINED: 2 PLAYERS / 2 MACHINES"));
 
     // The joiner should also observe the shared lobby (>=1 player visible).
     bool join_sees_lobby = false;

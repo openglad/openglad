@@ -478,14 +478,16 @@ struct BaseCampScreenState {
     // owned, the replicated wire copy when foreign.
     std::vector<BaseCampDisplaySlot> slots;
     PageModel page{};
-    // The live lobby's globally indexed player seats, sorted by player_index,
-    // plus a four-card page window for the Base Camp assignment rail. Unlike
-    // character TEAM colors above, these assignments are transient per-level
-    // player/view ownership and never rewrite a company roster.
+    // The live lobby's globally indexed player seats, sorted by player_index.
+    // Unlike character TEAM colors above, these assignments are transient
+    // per-level player/view ownership and never rewrite a company roster.
+    // `local_seat_indices` is THIS machine's seats in local-slot order — the
+    // seat rail's four slots read it directly and never page (remote seats
+    // are counted on the header line and listed in VIEW LEVEL's SEATS
+    // report), so there is no seat page window here.
     std::vector<og::sim::LobbyPlayer> seats;
     std::vector<std::uint8_t> local_seat_indices;
-    PageModel seat_page{};
-    // Accepted + activations are debounced like deploy taps: touch click
+    // Accepted ADD PLAYER activations are debounced like deploy taps: touch click
     // collapsing can otherwise create two local seats from one visible tap.
     // Denials never stamp, so retry-after-capacity remains immediate.
     std::int64_t last_seat_add_ms = -1;

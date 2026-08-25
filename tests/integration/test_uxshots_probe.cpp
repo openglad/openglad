@@ -706,6 +706,14 @@ struct NamedShot {
   const char *name;
 };
 
+// The machine's seat declaration is LIVE SESSION state: it survives CONTINUE
+// on purpose (docs §2.5), which means it also survives from one shot in this
+// binary to the next. Every rail shot declares the count it means to film.
+void declare_local_seats(int count) {
+  og::runtime::current_session->myscreen_->save_data.numplayers =
+      static_cast<unsigned char>(count);
+}
+
 int basecamp_shot_injector(void *data) {
   og::runtime::ensure_thread_session();
   NamedShot *shot = static_cast<NamedShot *>(data);
@@ -778,21 +786,33 @@ int basecamp_paged_injector(void *data) {
   return 0;
 }
 
-int basecamp_three_seats_injector(void *data) {
+// A bare slot IS the add door, so growing the rail means clicking slot 1,
+// then slot 2, then slot 3 — each one waits until it stops saying ADD PLAYER
+// before the next click, and the 250 ms debounce is crossed between them.
+struct SeatGrowthShot {
+  ShotState state;
+  const char *name = nullptr;
+  int target_seats = 1;  // seats this machine should end up holding
+};
+
+int basecamp_local_seats_injector(void *data) {
   og::runtime::ensure_thread_session();
-  NamedShot *shot = static_cast<NamedShot *>(data);
+  SeatGrowthShot *shot = static_cast<SeatGrowthShot *>(data);
   wait_for_interactable("continue_game", 5000);
   SDL_Delay(1500);
   interact("continue_game");
-  if (wait_for_team_menu() &&
-      wait_for_interactable("add_seat", 5000)) {
-    SDL_Delay(300);
-    interact("add_seat");
-    if (wait_for_interactable("seat_card_1", 5000)) {
-      SDL_Delay(300);  // cross the intentional 250 ms + debounce
-      interact("add_seat");
+  if (wait_for_team_menu()) {
+    bool grown = true;
+    for (int slot = 1; slot < shot->target_seats && grown; ++slot) {
+      const std::string id = "seat_card_" + std::to_string(slot);
+      grown = wait_for_interactable_label(id, "ADD PLAYER", 5000);
+      if (!grown)
+        break;
+      SDL_Delay(300);  // cross the intentional 250 ms add debounce
+      interact(id);
+      grown = wait_for_interactable_label_change(id, "ADD PLAYER", 5000);
     }
-    if (wait_for_interactable("seat_card_2", 5000)) {
+    if (grown) {
       SDL_Delay(1500);
       shot->state.captures += capture_frame(shot->name);
     }
@@ -807,7 +827,23 @@ int basecamp_three_seats_injector(void *data) {
   return 0;
 }
 
+void run_basecamp_seat_growth_shot(SeatGrowthShot &shot) {
+  declare_local_seats(1);
+  SDL_Thread *thread =
+      SDL_CreateThread(basecamp_local_seats_injector, "ux_bc_seats", &shot);
+  ASSERT_TRUE(thread != nullptr);
+  g_picker_mainmenu_calls = 0;
+  g_picker_max_mainmenu_calls = 2;
+  picker_main(0, nullptr);
+  SDL_WaitThread(thread, nullptr);
+  cleanup_picker_state();
+  g_picker_max_mainmenu_calls = 0;
+  ASSERT_TRUE(shot.state.finished);
+  ASSERT_GE(shot.state.captures, 1);
+}
+
 void run_basecamp_shot(NamedShot &shot, int (*injector)(void *)) {
+  declare_local_seats(1);
   SDL_Thread *thread = SDL_CreateThread(injector, "ux_bc", &shot);
   ASSERT_TRUE(thread != nullptr);
   g_picker_mainmenu_calls = 0;
@@ -831,8 +867,9 @@ TEST(UxShots, g_basecamp_solo) {
   run_basecamp_shot(shot, &basecamp_shot_injector);
 }
 
-// #243: the phone shape — a single-seat device hides [+] and draws no
-// ghosts; the lone seat card opens flush on the panel's left rail.
+// #249: the phone shape — a single-seat device has ONE slot, so the rail is
+// a lone seat card flush on the panel's left rail and nothing else. No ADD
+// PLAYER placeholder: an offer the hardware cannot accept is worse than none.
 int basecamp_phone_shot_injector(void *data) {
   og::runtime::ensure_thread_session();
   NamedShot *shot = static_cast<NamedShot *>(data);
@@ -881,15 +918,44 @@ TEST(UxShots, h_basecamp_empty) {
   run_basecamp_shot(shot, &basecamp_shot_injector);
 }
 
+// The rail's three interesting local shapes. basecamp_solo already shows
+// 1 card + 3 ADD PLAYER; these are 2+2, 3+1, and the full 4+0 — the only
+// shape with no placeholder in it, and the one that proves 4*70 + 3*8 closes
+// on the panel's right rail.
+TEST(UxShots, i_basecamp_two_local_seats) {
+  trace_clear();
+  CompanySlotCleanup cleanup{{"save0"}};
+  ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
+                                       playtest_roster()));
+  ASSERT_TRUE(og::data::set_active_company_slot("save0"));
+  SeatGrowthShot shot;
+  shot.name = "basecamp_two_local_seats";
+  shot.target_seats = 2;
+  run_basecamp_seat_growth_shot(shot);
+}
+
 TEST(UxShots, i_basecamp_three_local_seats) {
   trace_clear();
   CompanySlotCleanup cleanup{{"save0"}};
   ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
                                        playtest_roster()));
   ASSERT_TRUE(og::data::set_active_company_slot("save0"));
-  NamedShot shot;
+  SeatGrowthShot shot;
   shot.name = "basecamp_three_local_seats";
-  run_basecamp_shot(shot, &basecamp_three_seats_injector);
+  shot.target_seats = 3;
+  run_basecamp_seat_growth_shot(shot);
+}
+
+TEST(UxShots, i_basecamp_four_local_seats) {
+  trace_clear();
+  CompanySlotCleanup cleanup{{"save0"}};
+  ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
+                                       playtest_roster()));
+  ASSERT_TRUE(og::data::set_active_company_slot("save0"));
+  SeatGrowthShot shot;
+  shot.name = "basecamp_four_local_seats";
+  shot.target_seats = 4;
+  run_basecamp_seat_growth_shot(shot);
 }
 
 // --- 10-12. networked base camp: host / joiner / degraded alert -------------
@@ -1101,22 +1167,18 @@ bool wait_for_interactable_at(const std::string &id, int x, int y,
   return false;
 }
 
-// Seven authoritative seats exercise the compact four-card rail, its pager,
-// and the VIEW LEVEL seat block reached through SCENARIO (#218 — the
-// surviving home of the seat->team overview). Internal network names
-// intentionally differ from public company names so the screenshots catch
-// any accidental transport-identity leak.
+// Seven authoritative seats across four machines, TWO of them this client's.
+// The rail shows those two and offers two more; the other five live on the
+// header line's census and in the VIEW LEVEL seat block reached through
+// SCENARIO (#218 — the surviving home of the seat->team overview). Internal
+// network names intentionally differ from public company names so the
+// screenshots catch any accidental transport-identity leak.
 int many_seats_view_level_injector(void *data) {
   og::runtime::ensure_thread_session();
   ShotState *state = static_cast<ShotState *>(data);
   if (wait_for_team_menu()) {
     SDL_Delay(1500);
-    state->captures += capture_frame("basecamp_net_seats_p1");
-    if (wait_for_interactable("seat_page_next", 5000)) {
-      interact("seat_page_next");
-      SDL_Delay(750);
-      state->captures += capture_frame("basecamp_net_seats_p2");
-    }
+    state->captures += capture_frame("basecamp_net_seats");
     interact("scenario");
     if (wait_for_interactable("view_scenario", 5000)) {
       SDL_Delay(300);
@@ -1586,9 +1648,40 @@ TEST(UxShots, n_view_level_seats) {
   SDL_WaitThread(thread, nullptr);
   cleanup_picker_state();
   ASSERT_TRUE(state.finished);
-  // Rail p1/p2, the VIEW LEVEL seat block, and the networked DIFFICULTY
-  // screen with the re-homed CTRL row (#218).
-  ASSERT_EQ(4, state.captures);
+  // The two-card rail over a seven-seat lobby, the VIEW LEVEL seat block,
+  // and the networked DIFFICULTY screen with the re-homed CTRL row (#218).
+  ASSERT_EQ(3, state.captures);
+}
+
+// A LOBBY AT THE CEILING. Sixteen seats, one of them this machine's: the rail
+// still shows all four of this machine's slots, and the three it cannot fill
+// wear a dimmed LOBBY FULL face. The header line reads the census that makes
+// it true.
+TEST(UxShots, n_basecamp_lobby_full) {
+  trace_clear();
+  seed_session_save_for_net();
+  FakeNetLobbyClient client;
+  client.host_view = false;
+  client.players.push_back(make_probe_seat(
+      0, "net-host", "IRON KETTLE BAND", true, true, foreign_roster(), 0, 1));
+  for (std::uint8_t index = 1; index < 16; ++index) {
+    client.players.push_back(make_probe_seat(
+        index, "net-crowd", index == 7 ? "JOIN RIVER BAND" : "OTHER BAND",
+        false, index % 2 == 0, {}, static_cast<short>(index % 4),
+        static_cast<og::sim::LobbyMachineId>(index / 2 + 1)));
+  }
+  client.local_indices = {7};
+  ActiveLobbyGuard guard(&client);
+  NamedShot shot;
+  shot.name = "basecamp_lobby_full";
+  SDL_Thread *thread =
+      SDL_CreateThread(basecamp_net_injector, "ux_full", &shot);
+  ASSERT_TRUE(thread != nullptr);
+  create_team_menu(0);
+  SDL_WaitThread(thread, nullptr);
+  cleanup_picker_state();
+  ASSERT_TRUE(shot.state.finished);
+  ASSERT_EQ(1, shot.state.captures);
 }
 
 // --- 13. full-screen help (#168): all three tabs plus a paged state -------

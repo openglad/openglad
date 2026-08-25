@@ -198,24 +198,34 @@ inline constexpr int kCreateMenuGoIndex = 31;
 inline constexpr int kCreateMenuReadyIndex = 32;
 // Per-level player-seat assignment rail. Appended after the original
 // ordinals so every established Base Camp action index stays stable.
-// #236: the rail reads [+] | < | four cards | >. The ordinal that used to
-// carry the SEATS label — a second, worse-placed door to the team overview
-// the SCENARIO submenu already owned — carries the '+' now, at the rail's
-// left edge; the right-end ordinal the '+' vacated parks as a hidden spare
-// so no established index moved.
+// The rail is THIS MACHINE'S four seat slots, 35..38 — slot k IS local
+// controller profile k. A slot with no seat in it is an ADD PLAYER button
+// on the same ordinal, so a placeholder needs no ordinal of its own.
+//
+// PARKED. Ordinals 33, 34 and 39 carried the [+] and the two seat pagers
+// before remote seats left the rail. Ordinals are append-only — a removed
+// row would shift all 40 rows after it — so the three park exactly like
+// ordinal 40 has since #236: zero-size rect, empty label, hidden, no nav,
+// re-parked every frame by the rewire. Their names keep the history.
 inline constexpr int kBaseCampAddSeatIndex = 33;
 inline constexpr int kBaseCampSeatPagePrevIndex = 34;
 inline constexpr int kBaseCampSeatCardBase = 35; // seat_card_0..3 = 35..38
 inline constexpr int kBaseCampSeatPageNextIndex = 39;
 inline constexpr int kBaseCampSeatRailSpareIndex = 40;
+// The four parked rail ordinals, in table order, for the rewire's per-frame
+// re-park (and the layout test's spare sweep).
+inline constexpr std::array<int, 4> kBaseCampSeatRailSpares{
+    kBaseCampAddSeatIndex, kBaseCampSeatPagePrevIndex,
+    kBaseCampSeatPageNextIndex, kBaseCampSeatRailSpareIndex};
 // Per-row move-up controls are appended so every established Base Camp
 // ordinal remains stable. Only owned rows after the first owned roster member
 // expose one; activating it swaps that member with its predecessor.
 inline constexpr int kBaseCampMoveUpBase = 41; // roster_up_0..7 = 41..48
 inline constexpr int kBaseCampSeatCardsPerPage = 4;
-// The compact 57px seat card is drawn without the beveled inset, so its
-// budget is the full face: 57 / 6 = 9 characters, trailing pad included.
-inline constexpr int kBaseCampSeatCardLabelBudget = 9;
+// The 70px seat card is drawn without the beveled inset, so its budget is the
+// full face: 70 / 6 = 11 characters, trailing pad included. Eleven is what
+// makes "ADD PLAYER" and "LOBBY FULL" (10 each) fit a bare slot.
+inline constexpr int kBaseCampSeatCardLabelBudget = 11;
 // The compact seat-rail/move-up band's ordinal bounds: draw_menu_highlight
 // keeps its interior focus ring INSIDE this range so a card's ring can never
 // paint over its numbered team chip — appended zone rows past it take the

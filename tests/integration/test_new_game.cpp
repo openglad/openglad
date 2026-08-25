@@ -415,6 +415,7 @@ struct ContinuePlayerCountState {
     bool saw_three_seats = false;
     unsigned char live_count_after_continue = 0;
     std::array<bool, 4> visible_seat_cards{};
+    bool fourth_slot_offers_a_seat = false;
     std::string founded_slot;
     std::string continued_slot;
 };
@@ -442,24 +443,26 @@ static int continue_player_count_injector(void* data)
     state->saw_initial_base_camp = true;
     state->founded_slot = og::data::active_company_slot();
     SDL_Delay(750);
-    if (!wait_for_interactable("add_seat", 5000))
+    // A slot with no seat in it IS the add door: with one seat claimed, slot
+    // one wears ADD PLAYER, and the click lands when it stops wearing it.
+    if (!wait_for_interactable_label("seat_card_1", "ADD PLAYER", 5000))
         return 0;
     state->saw_seat_add = true;
     SDL_Delay(300);
     fprintf(stderr, "  [test] adding local seat 2 in Base Camp\n");
-    interact("add_seat");
-    if (!wait_for_interactable("seat_card_1", 5000))
+    interact("seat_card_1");
+    if (!wait_for_interactable_label_change("seat_card_1", "ADD PLAYER", 5000))
         return 0;
-    // The + row deliberately rejects a second activation inside 250 ms so a
-    // touch release cannot create two seats. Cross that boundary before the
+    // The add door deliberately rejects a second activation inside 250 ms so
+    // a touch release cannot create two seats. Cross that boundary before the
     // intentional second click.
     SDL_Delay(300);
     fprintf(stderr, "  [test] adding local seat 3 in Base Camp\n");
-    interact("add_seat");
-    if (!wait_for_interactable("seat_card_2", 5000))
+    interact("seat_card_2");
+    if (!wait_for_interactable_label_change("seat_card_2", "ADD PLAYER", 5000))
         return 0;
 
-    // Let the + release edge clear before injecting the next press.
+    // Let the release edge clear before injecting the next press.
     SDL_Delay(300);
     fprintf(stderr, "  [test] backing out of the new company's Base Camp\n");
     interact("back");
@@ -474,15 +477,20 @@ static int continue_player_count_injector(void* data)
         return 0;
     state->saw_continued_base_camp = true;
     state->continued_slot = og::data::active_company_slot();
+    // All four slots are on screen; three of them hold this machine's seats
+    // and the fourth still offers one. "Seat card" now means "a slot that is
+    // not the ADD PLAYER door".
+    const auto seat_card = [](int index) {
+        const std::string label =
+            interactable_label("seat_card_" + std::to_string(index));
+        return !label.empty() && label != "ADD PLAYER" &&
+            label != "LOBBY FULL";
+    };
     const auto wait_for_three_seat_cards = [&] {
         int elapsed = 0;
         constexpr int poll_interval = 50;
         while (elapsed < 5000) {
-            const bool first = has_interactable("seat_card_0");
-            const bool second = has_interactable("seat_card_1");
-            const bool third = has_interactable("seat_card_2");
-            const bool fourth = has_interactable("seat_card_3");
-            if (first && second && third && !fourth)
+            if (seat_card(0) && seat_card(1) && seat_card(2) && !seat_card(3))
                 return true;
             SDL_Delay(poll_interval);
             elapsed += poll_interval;
@@ -492,9 +500,10 @@ static int continue_player_count_injector(void* data)
     state->saw_three_seats = wait_for_three_seat_cards();
     for (std::size_t index = 0; index < state->visible_seat_cards.size();
          ++index) {
-        state->visible_seat_cards[index] =
-            has_interactable("seat_card_" + std::to_string(index));
+        state->visible_seat_cards[index] = seat_card(static_cast<int>(index));
     }
+    state->fourth_slot_offers_a_seat =
+        interactable_label("seat_card_3") == "ADD PLAYER";
 
     // Let CONTINUE's click-release edge clear before clicking BACK; otherwise
     // the synthetic second click can be swallowed and leave picker_main open.
@@ -572,6 +581,8 @@ TEST(NewGame, player_count_survives_back_then_continue)
     EXPECT_TRUE(state.visible_seat_cards[2]);
     EXPECT_FALSE(state.visible_seat_cards[3])
         << "three local players must render exactly three seat cards";
+    EXPECT_TRUE(state.fourth_slot_offers_a_seat)
+        << "the fourth slot stays on screen as the ADD PLAYER door";
 
     // The session setting must not leak into the company file. Offset 132 is
     // retained solely so historical GTL readers see a valid one-player save.

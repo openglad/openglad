@@ -137,6 +137,69 @@ inline bool wait_for_interactable(const std::string& id, int timeout_ms = 5000)
     return false;
 }
 
+// The live label of a visible interactable, or "" when it is absent/hidden.
+// Base Camp's seat slots are one ordinal wearing two faces (a seat card or an
+// ADD PLAYER door), so presence alone no longer tells an injector what a slot
+// IS — the label does.
+inline std::string interactable_label(const std::string& id)
+{
+    og::runtime::ensure_thread_session();
+    AllButtonsLock lock;
+    for (int i = 0; i < MAX_BUTTONS; i++) {
+        vbutton* const live =
+            og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)];
+        if (live == nullptr || live->id != id || live->hidden)
+            continue;
+        return live->label;
+    }
+    return {};
+}
+
+// Block until a visible interactable carries an exact label. The wait-on-
+// condition form of "the click landed": a slot that became a seat card names
+// its controller, and one that did not still says ADD PLAYER.
+inline bool wait_for_interactable_label(const std::string& id,
+                                        const std::string& label,
+                                        int timeout_ms = 5000)
+{
+    int elapsed = 0;
+    const int poll_interval = 50;
+    while (elapsed < timeout_ms) {
+        if (interactable_label(id) == label)
+            return true;
+        SDL_Delay(static_cast<Uint32>(poll_interval));
+        elapsed += poll_interval;
+    }
+    fprintf(stderr,
+            "  [interact] TIMEOUT waiting for '%s' to read '%s' (%d ms; now "
+            "'%s')\n",
+            id.c_str(), label.c_str(), timeout_ms,
+            interactable_label(id).c_str());
+    return false;
+}
+
+// Block until a visible interactable STOPS carrying a label — the "this slot
+// changed identity" wait, for cases where the new text is not known up front.
+inline bool wait_for_interactable_label_change(const std::string& id,
+                                               const std::string& old_label,
+                                               int timeout_ms = 5000)
+{
+    int elapsed = 0;
+    const int poll_interval = 50;
+    while (elapsed < timeout_ms) {
+        const std::string now = interactable_label(id);
+        if (!now.empty() && now != old_label)
+            return true;
+        SDL_Delay(static_cast<Uint32>(poll_interval));
+        elapsed += poll_interval;
+    }
+    fprintf(stderr,
+            "  [interact] TIMEOUT waiting for '%s' to stop reading '%s' "
+            "(%d ms)\n",
+            id.c_str(), old_label.c_str(), timeout_ms);
+    return false;
+}
+
 // Click an interactable by ID. Finds the button, computes center in game coords,
 // converts to window coords, injects SDL click event.
 inline void interact(const std::string& id)

@@ -140,10 +140,11 @@ seat settings, minus TEAM):
 
 `"P1 YOU "` → `"P1 {SHORT} "` for local seats, where SHORT is the mapping
 short name (≤5 chars: `WASD`, `ARROW`, `IJKL`, `TFGH`, `JOY1`, or the derived
-movement cluster for customs). Budget: the 57px card face is exactly 9 chars
-and the trailing space is load-bearing (team chip clearance): `"P2 ARROW "` =
-9. Foreign seats keep `"P3 {ABBR} "`. The shared seat identity strings are
-unchanged.
+movement cluster for customs). Budget: the seat card face is exactly 11 chars
+(70px / 6) and the trailing space is load-bearing (team chip clearance):
+`"P2 ARROW "` = 9, well inside it. The rail holds only this machine's seats,
+so no card carries a foreign company abbreviation any more. The shared seat
+identity strings are unchanged.
 
 ## 3. Named mappings
 
@@ -248,7 +249,7 @@ inserts, zero parity-golden movement, zero protocol bump):
    every frame; it was just unrouted.
 5. Team choice: the team of view 0 in allied/co-op saves (the common case);
    the new seat's controls come from the rotated profile pool exactly as a
-   Base Camp `[+]` would.
+   Base Camp **ADD PLAYER** slot would.
 6. The local lobby seat count is synced at level end so the added player
    survives the return to Base Camp.
 

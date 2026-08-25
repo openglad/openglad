@@ -2379,37 +2379,29 @@ constexpr int kBaseCampFamilySwatchGap = 1;
 constexpr int kBaseCampFamilySwatchRampWidth = 8;
 constexpr int kBaseCampFamilySwatchWidth = kBaseCampFamilySwatchRampWidth + 2;
 constexpr int kBaseCampFamilySwatchHeight = 8;
-// The player-seat rail (#236), one row of controls across the panel's full
-// width: [+] | < | card 0..3 | >. The SEATS label that used to open the rail
-// is gone — it duplicated the SCENARIO submenu's team-overview door — and
-// the '+' took its place at the left edge so the cards can breathe.
-// Arithmetic across x=8..311 (304px): the '+' (14) plus two pager faces (10
-// each) plus four cards (57 each) is 262px of face, leaving 42px for the six
-// gutters between them — 7px between every neighbour, where the cards used
-// to sit 1px apart with the '+' pinned to the far right.
+// The player-seat rail: THIS MACHINE'S four seat slots, and nothing else on
+// the row. Remote seats are counted on the header line and listed in VIEW
+// LEVEL's SEATS report — they never took a slot the local player could act
+// on, and windowing them here cost the rail a [+] at its left end and two
+// pager arrows in the middle of it. All three are retired (their ordinals
+// park); a slot with no seat in it is now a real ADD PLAYER button.
 //
-// #243: those numbers are the EVERYTHING-VISIBLE shape and nothing more.
-// The static table below still carries them (they are what the rail looks
-// like with four seats and both arrows up), but the live geometry is
-// recomputed every frame by og::ui::base_camp_seat_rail_layout, which packs
-// or justifies the controls that are actually on screen. The widths are the
-// shared inputs to that function.
+// Arithmetic across x=8..311 (304px): four 70px faces and three 8px gutters
+// are 304 exactly, so the row opens on BACK's left edge and closes on the
+// panel's right rail with no remainder to distribute. The grid is FIXED —
+// slot k sits at 8 + 78k whether or not its neighbours are on screen — so a
+// card never slides sideways when a player joins or leaves.
 constexpr int kBaseCampSeatRailX0 = og::ui::kSeatRailX0;
 static_assert(kBaseCampSeatRailX0 == kBaseCampStripBackX,
-              "the rail's + opens on BACK's left edge");
+              "the rail's first slot opens on BACK's left edge");
 static_assert(og::ui::kSeatRailRightX == kBaseCampPanelRightX,
-              "the rail justifies to the panel's right rail");
+              "the rail closes on the panel's right rail");
 static_assert(og::ui::kSeatRailSlots == kBaseCampSeatCardsPerPage,
-              "one slot per seat card on a page");
+              "one slot per local seat");
 static_assert(og::ui::kSeatRailGlobalSeatCap ==
                   static_cast<int>(og::sim::kMaxGlobalPlayers),
-              "the rail's ghost slots count against the real lobby ceiling");
+              "a bare slot's LOBBY FULL face counts the real lobby ceiling");
 constexpr int kBaseCampSeatRailGap = og::ui::kSeatRailGap;
-constexpr int kBaseCampAddSeatWidth = og::ui::kSeatRailAddWidth;
-constexpr int kBaseCampAddSeatX = kBaseCampSeatRailX0;
-constexpr int kBaseCampSeatPagerWidth = og::ui::kSeatRailPagerWidth;
-constexpr int kBaseCampSeatPagePrevX =
-    kBaseCampAddSeatX + kBaseCampAddSeatWidth + kBaseCampSeatRailGap;
 // One seat-card table: the button specs and the chip overlay both index it.
 constexpr int kBaseCampSeatCardWidth = og::ui::kSeatRailCardWidth;
 constexpr int kBaseCampSeatCardPitch =
@@ -2418,23 +2410,32 @@ constexpr int kBaseCampSeatCardPitch =
 // pointer zone that cycles it in place: the chip plus 2px of grace on its
 // left, running to the card's right edge. Pointer clicks inside the zone
 // cycle the seat's team; the rest of the card (and every coordinate-free
-// activation) opens the seat editor.
-constexpr int kBaseCampSeatChipOffsetX = 48;
+// activation) opens the seat editor. DERIVED from the face so a width change
+// carries the chip with it: the chip owns the last nine pixels, which is
+// also the half-cell the label's trailing pad buys back.
+constexpr int kBaseCampSeatChipOffsetX = kBaseCampSeatCardWidth - 9;
 constexpr int kBaseCampSeatChipZoneOffsetX = kBaseCampSeatChipOffsetX - 2;
-constexpr int kBaseCampSeatCardX0 =
-    kBaseCampSeatPagePrevX + kBaseCampSeatPagerWidth + kBaseCampSeatRailGap;
+constexpr int kBaseCampSeatCardX0 = kBaseCampSeatRailX0;
 constexpr std::array<int, kBaseCampSeatCardsPerPage> kBaseCampSeatCardX{
     kBaseCampSeatCardX0, kBaseCampSeatCardX0 + kBaseCampSeatCardPitch,
     kBaseCampSeatCardX0 + 2 * kBaseCampSeatCardPitch,
     kBaseCampSeatCardX0 + 3 * kBaseCampSeatCardPitch};
-constexpr int kBaseCampSeatPageNextX =
-    kBaseCampSeatCardX[kBaseCampSeatCardsPerPage - 1] +
-    kBaseCampSeatCardWidth + kBaseCampSeatRailGap;
-static_assert(kBaseCampSeatPageNextX + kBaseCampSeatPagerWidth ==
+static_assert(kBaseCampSeatCardX[kBaseCampSeatCardsPerPage - 1] +
+                      kBaseCampSeatCardWidth ==
                   kBaseCampPanelRightX,
               "the seat rail closes on the panel's right rail");
 constexpr int kBaseCampSeatRailY = 164;
 constexpr int kBaseCampSeatRailHeight = 10;
+// The two labels a bare slot wears. Both are 10 characters — one under the
+// 11-char face budget, which is what the 70px width bought.
+constexpr const char* kBaseCampAddPlayerLabel = "ADD PLAYER";
+constexpr const char* kBaseCampLobbyFullLabel = "LOBBY FULL";
+static_assert(std::string_view(kBaseCampAddPlayerLabel).size() <=
+                  static_cast<std::size_t>(kBaseCampSeatCardLabelBudget),
+              "a bare slot's label fits its face");
+static_assert(std::string_view(kBaseCampLobbyFullLabel).size() <=
+                  static_cast<std::size_t>(kBaseCampSeatCardLabelBudget),
+              "a full lobby's label fits its face");
 // §9.5.4 + graft (a): non-identity fields on benched rows dim to palette
 // shade 21 — GREY(23)'s glyph ramp overlaps WHITE(24) by all but one step,
 // so 23-vs-24 dimming was nearly invisible. §9.23 uses it for benched
@@ -2529,7 +2530,7 @@ unsigned char base_camp_ready_face_color(const MenuLabelContext& /*context*/)
 
 // The live seat-claim facts, read once per consumer. A connected spectator
 // owns no published seat, so activating one consumes the same global
-// capacity as every other + request.
+// capacity as every other ADD PLAYER request.
 og::ui::SeatClaimability base_camp_seat_claimability()
 {
     og::ui::SeatClaimability claim;
@@ -2542,31 +2543,110 @@ og::ui::SeatClaimability base_camp_seat_claimability()
     return claim;
 }
 
-// The [+] gate, over facts the caller already gathered so the rail's
-// per-frame layout can ask the same question the row state answers (#243)
-// instead of keeping a second copy of the rule — or paying twice to read it.
-RowState base_camp_add_seat_state(const og::ui::SeatClaimability& claim)
+// The rail's seats: this machine's own, in local-slot order, capped at the
+// four slots. The inverse of base_camp_seat_local_slot — slot k is the seat
+// whose player_index is local_seat_indices[k]. A local index the roster does
+// not (yet) carry stops the list rather than leaving a hole: the rail never
+// shows a card it cannot name, and the slots after it fall back to ADD
+// PLAYER, which is what the lobby is about to say anyway.
+struct BaseCampRailSeats {
+    std::array<const og::sim::LobbyPlayer*, kBaseCampSeatCardsPerPage> seat{};
+    int count = 0;
+};
+
+BaseCampRailSeats base_camp_rail_seats(const BaseCampScreenState* state)
 {
-    if (og::ui::seats_still_claimable(claim) > 0)
-        return RowState::Visible;
-    if (!claim.multiplayer_enabled) return RowState::Hidden;
-    if (claim.local_count >= claim.local_seat_cap &&
-        claim.local_seat_cap < MAX_PLAYERS)
-    {
-        // A device-capped rail HIDES the button (matching the pause menu's
-        // + ADD PLAYER row): on a phone a dimmed [+] reads as tappable and
-        // explains nothing, while an absent one that appears when a pad is
-        // plugged in explains itself. The ordinary build-limit cap keeps the
-        // dimmed button.
-        return RowState::Hidden;
+    BaseCampRailSeats out;
+    if (state == nullptr)
+        return out;
+    for (int slot = 0; slot < kBaseCampSeatCardsPerPage; ++slot) {
+        if (slot >= static_cast<int>(state->local_seat_indices.size()))
+            break;
+        const std::uint8_t player_index =
+            state->local_seat_indices[static_cast<std::size_t>(slot)];
+        const auto found = std::find_if(
+            state->seats.begin(), state->seats.end(),
+            [player_index](const og::sim::LobbyPlayer& player) {
+                return player.player_index == player_index;
+            });
+        if (found == state->seats.end())
+            break;
+        out.seat[static_cast<std::size_t>(slot)] = &*found;
+        ++out.count;
     }
-    return RowState::Disabled;
+    return out;
 }
 
-RowState base_camp_add_seat_row_state(
-    const MenuLabelContext& /*context*/)
+// The claim the RAIL answers to. Identical to the lobby's, except that
+// local_count is the seats the rail can actually name: the lobby and the
+// screen's collected roster can disagree for one frame after a join, and a
+// slot that said "card" while the rewire had nothing to write in it would
+// draw a blank face.
+og::ui::SeatClaimability base_camp_rail_claimability()
 {
-    return base_camp_add_seat_state(base_camp_seat_claimability());
+    og::ui::SeatClaimability claim = base_camp_seat_claimability();
+    claim.local_count = base_camp_rail_seats(g_base_camp_state).count;
+    return claim;
+}
+
+// What slot k of the rail IS this frame. One function, four thunks (the
+// pause menu's pause_player_row_state<K> precedent) so the row state, the
+// label, the layout and the click dispatch can never hold four opinions
+// about the same slot.
+enum class BaseCampSlotKind {
+    Card,        // one of this machine's seats
+    Hidden,      // past what the device can seat (#249)
+    LobbyFull,   // a real slot the lobby has no room to fill
+    AddPlayer,   // a real slot, and the door to claiming it
+};
+
+BaseCampSlotKind base_camp_seat_slot_kind(const og::ui::SeatClaimability& claim,
+                                          int slot)
+{
+    // Order is the rule: a seat this machine already holds always draws its
+    // card, whatever the caps now say (a pad unplugged under a live seat
+    // must not erase the player sitting in it).
+    if (slot < claim.local_count)
+        return BaseCampSlotKind::Card;
+    if (slot >= og::ui::base_camp_seat_rail_slot_cap(claim))
+    {
+        // A device-capped rail HIDES the slot (matching the pause menu's
+        // + ADD PLAYER row): on a phone a dimmed offer reads as tappable and
+        // explains nothing, while a slot that appears when a pad is plugged
+        // in explains itself.
+        return BaseCampSlotKind::Hidden;
+    }
+    if (og::ui::seats_still_claimable(claim) <= 0)
+        return BaseCampSlotKind::LobbyFull;
+    return BaseCampSlotKind::AddPlayer;
+}
+
+RowState base_camp_slot_row_state(BaseCampSlotKind kind)
+{
+    switch (kind) {
+    case BaseCampSlotKind::Hidden:
+        return RowState::Hidden;
+    case BaseCampSlotKind::LobbyFull:
+        return RowState::Disabled;
+    case BaseCampSlotKind::Card:
+    case BaseCampSlotKind::AddPlayer:
+        break;
+    }
+    return RowState::Visible;
+}
+
+template <int Slot>
+RowState base_camp_seat_slot_state(const MenuLabelContext& /*context*/)
+{
+    return base_camp_slot_row_state(
+        base_camp_seat_slot_kind(base_camp_rail_claimability(), Slot));
+}
+
+// A bare slot's face. Cards get theirs from base_camp_seat_label.
+const char* base_camp_slot_placeholder_label(BaseCampSlotKind kind)
+{
+    return kind == BaseCampSlotKind::LobbyFull ? kBaseCampLobbyFullLabel
+                                               : kBaseCampAddPlayerLabel;
 }
 
 // Static nav encodes the full-page shape (8 visible rows, pagers hidden,
@@ -2717,59 +2797,58 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
      .label_binding = {.formatter = &base_camp_ready_label},
      .color = &base_camp_ready_face_color,
      .hidden = true},
-    // Per-level player-seat assignments, left to right: [+] | < | four
-    // cards | >. The four-card window is independent of the character-roster
-    // pager above; the rewire fills authoritative P# labels, ownership,
-    // visibility, and navigation every frame.
-    {.id = "add_seat", .label = "+",
-     .x = kBaseCampAddSeatX, .y = kBaseCampSeatRailY,
-     .w = kBaseCampAddSeatWidth, .h = kBaseCampSeatRailHeight,
+    // The retired [+] and '<' (ordinals 33/34). Ordinals are append-only, so
+    // they park exactly like a zone spare — zero-size rect, empty label,
+    // hidden, no nav — and the 73-button table never shifted.
+    {.id = "seat_rail_spare_0", .label = "",
+     .x = 0, .y = 0, .w = 0, .h = 0,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampAddSeatIndex,
-     .nav = {.down = kCreateMenuBackIndex,
-             .right = kBaseCampSeatPagePrevIndex},
-     .state_override = &base_camp_add_seat_row_state},
-    {.id = "seat_page_prev", .label = "<",
-     .x = kBaseCampSeatPagePrevX, .y = kBaseCampSeatRailY,
-     .w = kBaseCampSeatPagerWidth, .h = kBaseCampSeatRailHeight,
-     .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatPagePrevIndex,
-     .nav = {.down = kCreateMenuBackIndex,
-             .left = kBaseCampAddSeatIndex,
-             .right = kBaseCampSeatCardBase},
      .hidden = true},
-    {.id = "seat_card_0", .label = "",
+    {.id = "seat_rail_spare_1", .label = "",
+     .x = 0, .y = 0, .w = 0, .h = 0,
+     .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatPagePrevIndex,
+     .hidden = true},
+    // This machine's four seat slots, on a fixed grid across the panel. Slot
+    // k IS local controller profile k, so a card and its editor always name
+    // one profile. A slot with no seat in it wears the static ADD PLAYER
+    // label and activates the add path on the same ordinal — the placeholder
+    // is the button, not a second button behind it. The rewire fills
+    // authoritative P# labels, ownership and navigation every frame.
+    {.id = "seat_card_0", .label = kBaseCampAddPlayerLabel,
      .x = kBaseCampSeatCardX[0], .y = kBaseCampSeatRailY,
      .w = kBaseCampSeatCardWidth, .h = kBaseCampSeatRailHeight,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatCardBase,
-     .nav = {.left = kBaseCampSeatPagePrevIndex,
-             .right = kBaseCampSeatCardBase + 1}},
-    {.id = "seat_card_1", .label = "",
+     .nav = {.down = kCreateMenuDifficultyIndex,
+             .right = kBaseCampSeatCardBase + 1},
+     .state_override = &base_camp_seat_slot_state<0>},
+    {.id = "seat_card_1", .label = kBaseCampAddPlayerLabel,
      .x = kBaseCampSeatCardX[1], .y = kBaseCampSeatRailY,
      .w = kBaseCampSeatCardWidth, .h = kBaseCampSeatRailHeight,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatCardBase + 1,
-     .nav = {.left = kBaseCampSeatCardBase,
-             .right = kBaseCampSeatCardBase + 2}},
-    {.id = "seat_card_2", .label = "",
+     .nav = {.down = kCreateMenuScenarioIndex,
+             .left = kBaseCampSeatCardBase,
+             .right = kBaseCampSeatCardBase + 2},
+     .state_override = &base_camp_seat_slot_state<1>},
+    {.id = "seat_card_2", .label = kBaseCampAddPlayerLabel,
      .x = kBaseCampSeatCardX[2], .y = kBaseCampSeatRailY,
      .w = kBaseCampSeatCardWidth, .h = kBaseCampSeatRailHeight,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatCardBase + 2,
-     .nav = {.left = kBaseCampSeatCardBase + 1,
-             .right = kBaseCampSeatCardBase + 3}},
-    {.id = "seat_card_3", .label = "",
+     .nav = {.down = kCreateMenuNetworkingIndex,
+             .left = kBaseCampSeatCardBase + 1,
+             .right = kBaseCampSeatCardBase + 3},
+     .state_override = &base_camp_seat_slot_state<2>},
+    {.id = "seat_card_3", .label = kBaseCampAddPlayerLabel,
      .x = kBaseCampSeatCardX[3], .y = kBaseCampSeatRailY,
      .w = kBaseCampSeatCardWidth, .h = kBaseCampSeatRailHeight,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatCardBase + 3,
-     .nav = {.left = kBaseCampSeatCardBase + 2,
-             .right = kBaseCampSeatPageNextIndex}},
-    {.id = "seat_page_next", .label = ">",
-     .x = kBaseCampSeatPageNextX, .y = kBaseCampSeatRailY,
-     .w = kBaseCampSeatPagerWidth, .h = kBaseCampSeatRailHeight,
-     .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatPageNextIndex,
      .nav = {.down = kCreateMenuGoIndex,
-             .left = kBaseCampSeatCardBase + 3},
+             .left = kBaseCampSeatCardBase + 2},
+     .state_override = &base_camp_seat_slot_state<3>},
+    // The retired '>' (ordinal 39) and the ordinal the '+' vacated in #236.
+    {.id = "seat_rail_spare_2", .label = "",
+     .x = 0, .y = 0, .w = 0, .h = 0,
+     .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatPageNextIndex,
      .hidden = true},
-    // The ordinal the '+' vacated when it moved to the rail's left end
-    // (#236). Parked exactly like a zone spare — zero-size rect, empty
-    // label, hidden, no nav — so the 73-button table never shifted.
     {.id = "seat_rail_spare", .label = "",
      .x = 0, .y = 0, .w = 0, .h = 0,
      .action = ButtonAction::MenuSpecRow, .arg = kBaseCampSeatRailSpareIndex,
@@ -2890,8 +2969,8 @@ std::string base_camp_seat_label(const BaseCampScreenState& state,
                                 : company_abbreviation(seat.company);
     }
     // The trailing visual pad shifts the visible centered ink one half-cell
-    // left, keeping the 8px numbered team chip clear on the compact 57px face.
-    // The pad is part of the 9-char face budget, and so is a two-digit P#:
+    // left, keeping the 8px numbered team chip clear on the 70px face.
+    // The pad is part of the 11-char face budget, and so is a two-digit P#:
     // a global P16 seat keeps its mapping name one character shorter.
     const std::string prefix =
         std::format("P{} ", static_cast<int>(seat.player_index) + 1);
@@ -3600,36 +3679,25 @@ constexpr MenuScreenSpec make_seat_settings_spec(
     return spec;
 }
 
-// #243: the seat rail's live geometry. Computed ONCE per frame by the rewire
-// (which positions the seven ordinals from it) and cached in
+// The seat rail's live geometry. Computed ONCE per frame by the rewire
+// (which positions the slots from it) and cached in
 // g_base_camp_rail_frame_shape for the other two consumers — the content
-// pass (ghost slots, team chips) and the chip click predicate. They must
-// read the CACHE, not recompute: base_camp_frame_tick refreshes the seat
-// page between the rewire and the draw, so a recompute against the newer
-// state can disagree with the button rects already laid out this frame
-// (ghosts painting over real cards on a page flip).
+// pass (team chips) and the chip click predicate. They must read the CACHE,
+// not recompute: base_camp_frame_tick refreshes the seats between the rewire
+// and the draw, so a recompute against the newer state can disagree with the
+// button rects already laid out this frame.
 og::ui::SeatRailLayout base_camp_seat_rail_shape(
     const og::ui::BaseCampScreenState* st)
 {
-    const int visible_cards = st != nullptr
-        ? std::max(0, st->seat_page.end_index() - st->seat_page.first_index())
-        : 0;
-    const bool pagers = st != nullptr && st->seat_page.multi_page();
-    const bool last_page =
-        st == nullptr || st->seat_page.end_index() >= st->seat_page.item_count;
-    // The [+] gate is RE-EVALUATED rather than read off buttons[].hidden:
+    // The caps are RE-EVALUATED rather than read off buttons[].hidden:
     // apply_row_states has already run in production, but several tests drive
-    // the rewire alone, and a rail that trusted the static `false` would lay
-    // out the desktop shape on a phone.
-    const og::ui::SeatClaimability claim = base_camp_seat_claimability();
-    const bool add_visible =
-        base_camp_add_seat_state(claim) != RowState::Hidden;
-    const int ghosts = og::ui::base_camp_seat_rail_ghost_count(
-        {.claim = claim,
-         .visible_cards = visible_cards,
-         .on_last_page = last_page});
-    return og::ui::base_camp_seat_rail_layout(add_visible, pagers,
-                                              visible_cards, ghosts);
+    // the rewire alone, and a rail that trusted the static shape would lay
+    // out the desktop row on a phone.
+    og::ui::SeatClaimability claim = base_camp_seat_claimability();
+    claim.local_count = base_camp_rail_seats(st).count;
+    const int placeholders =
+        og::ui::base_camp_seat_rail_placeholder_count(claim);
+    return og::ui::base_camp_seat_rail_layout(claim.local_count, placeholders);
 }
 
 // Per-frame visibility + labels + nav over the live roster state (pattern
@@ -3699,11 +3767,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         if (live != nullptr)
             live->color = face;
     };
-    const int seat_first = st != nullptr ? st->seat_page.first_index() : 0;
-    const int seat_end = st != nullptr ? st->seat_page.end_index() : 0;
-    const int seat_visible = std::max(0, seat_end - seat_first);
-    const bool seat_pagers =
-        st != nullptr && st->seat_page.multi_page();
+    const BaseCampRailSeats rail_seats = base_camp_rail_seats(st);
     const bool networked = picker_lobby_is_networked();
     const bool host_visible = picker_lobby_host_controls_visible();
     // §2.6: the GO/READY pair shares one rect with mutually exclusive gates
@@ -3720,75 +3784,70 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     const SaveData& save = og::runtime::current_session->myscreen_->save_data;
     const og::ui::SeatRailLayout rail_layout = base_camp_seat_rail_shape(st);
     g_base_camp_rail_frame_shape = rail_layout;
-    const bool add_visible = rail_layout.add_visible;
-    buttons[kBaseCampAddSeatIndex].hidden = !add_visible;
-    // #236: the rail's retired right-end ordinal stays parked with the zone
-    // spares — hidden, zero-size, no nav — so nothing can route into it.
-    buttons[kBaseCampSeatRailSpareIndex].hidden = true;
-    buttons[kBaseCampSeatRailSpareIndex].nav = {};
+    // The retired [+], '<' and '>' stay parked with the zone spares —
+    // hidden, zero-size, no nav — so nothing can route into them.
+    for (const int spare : kBaseCampSeatRailSpares) {
+        buttons[spare].hidden = true;
+        buttons[spare].nav = {};
+    }
 
-    // Player-seat rail: P# is the current dense authoritative lobby position
-    // and may change when seats leave; YOU is derived from exact current local
-    // ownership, while remote cards carry a compact company prefix. Both pager
-    // arrows appear together only when more than four seats exist.
-    buttons[kBaseCampSeatPagePrevIndex].hidden = !seat_pagers;
-    buttons[kBaseCampSeatPageNextIndex].hidden = !seat_pagers;
-    for (int card = 0; card < kBaseCampSeatCardsPerPage; ++card) {
-        button& card_button = buttons[kBaseCampSeatCardBase + card];
-        card_button.hidden = card >= seat_visible;
-        if (card_button.hidden)
-            continue;
-        const og::sim::LobbyPlayer& seat =
-            st->seats[static_cast<std::size_t>(seat_first + card)];
-        card_button.label = base_camp_seat_label(*st, seat);
+    // Player-seat rail: THIS MACHINE'S seats, slot k == local controller
+    // profile k. A slot past them is a real ADD PLAYER button (LOBBY FULL and
+    // dimmed when the lobby has no room), and a slot past what the device can
+    // seat is hidden outright (#249). Labels go to BOTH surfaces — the
+    // descriptor row backs later redraws, the live vbutton is what draws.
+    og::ui::SeatClaimability slot_claim = base_camp_seat_claimability();
+    slot_claim.local_count = rail_seats.count;
+    const int seat_visible = rail_layout.slot_count();
+    for (int slot = 0; slot < kBaseCampSeatCardsPerPage; ++slot) {
+        button& slot_button = buttons[kBaseCampSeatCardBase + slot];
+        const BaseCampSlotKind kind =
+            base_camp_seat_slot_kind(slot_claim, slot);
+        slot_button.hidden = slot >= seat_visible ||
+            kind == BaseCampSlotKind::Hidden;
+        if (kind == BaseCampSlotKind::Card &&
+            rail_seats.seat[static_cast<std::size_t>(slot)] != nullptr)
+        {
+            slot_button.label = base_camp_seat_label(
+                *st, *rail_seats.seat[static_cast<std::size_t>(slot)]);
+        }
+        else
+        {
+            slot_button.label = base_camp_slot_placeholder_label(kind);
+        }
         if (vbutton* const live =
                 og::runtime::current_session
-                    ->allbuttons_[static_cast<std::size_t>(kBaseCampSeatCardBase + card)])
+                    ->allbuttons_[static_cast<std::size_t>(
+                        kBaseCampSeatCardBase + slot)])
         {
-            live->label = card_button.label;
+            live->label = slot_button.label;
         }
     }
-    // #243: the rail's x's are a per-frame computation, not table constants.
-    // Every one of the seven ordinals is rewritten unconditionally — the
-    // button array is materialized once at screen entry, so a branch that
-    // skipped a write would leave a stale position from an earlier shape —
-    // and pushed to the live vbutton, which is what actually draws and
-    // hit-tests. Only x and width move; the rail keeps one baseline.
-    buttons[kBaseCampAddSeatIndex].x = rail_layout.add_x;
-    buttons[kBaseCampAddSeatIndex].sizex = kBaseCampAddSeatWidth;
-    buttons[kBaseCampSeatPagePrevIndex].x = rail_layout.prev_x;
-    buttons[kBaseCampSeatPagePrevIndex].sizex = kBaseCampSeatPagerWidth;
-    buttons[kBaseCampSeatPageNextIndex].x = rail_layout.next_x;
-    buttons[kBaseCampSeatPageNextIndex].sizex = kBaseCampSeatPagerWidth;
-    sync_live_rect(kBaseCampAddSeatIndex);
-    sync_live_rect(kBaseCampSeatPagePrevIndex);
-    for (int card = 0; card < kBaseCampSeatCardsPerPage; ++card) {
-        button& face = buttons[kBaseCampSeatCardBase + card];
-        face.x = rail_layout.slot_x[static_cast<std::size_t>(card)];
+    // The rail's x's are a per-frame computation, not table constants. Every
+    // slot is rewritten unconditionally — the button array is materialized
+    // once at screen entry, so a branch that skipped a write would leave a
+    // stale position from an earlier shape — and pushed to the live vbutton,
+    // which is what actually draws and hit-tests. Only x and width move; the
+    // rail keeps one baseline.
+    for (int slot = 0; slot < kBaseCampSeatCardsPerPage; ++slot) {
+        button& face = buttons[kBaseCampSeatCardBase + slot];
+        face.x = rail_layout.slot_x[static_cast<std::size_t>(slot)];
         face.sizex = rail_layout.card_w;
-        sync_live_rect(kBaseCampSeatCardBase + card);
+        sync_live_rect(kBaseCampSeatCardBase + slot);
     }
-    sync_live_rect(kBaseCampSeatPageNextIndex);
     std::vector<int> rail;
-    if (add_visible)
-        rail.push_back(kBaseCampAddSeatIndex);
-    if (seat_pagers)
-        rail.push_back(kBaseCampSeatPagePrevIndex);
-    for (int card = 0; card < seat_visible; ++card)
-        rail.push_back(kBaseCampSeatCardBase + card);
-    if (seat_pagers)
-        rail.push_back(kBaseCampSeatPageNextIndex);
-    // Every vertical link into the rail lands on its leftmost visible
-    // control, and the strip's right end climbs to its rightmost. That is
-    // the '+' and the '>' in a normal build; a no-multiplayer build hides
-    // the '+', so the ends walk inward to the first live control. With no
-    // rail at all, links from above skip it to BACK.
+    for (int slot = 0; slot < kBaseCampSeatCardsPerPage; ++slot) {
+        if (!buttons[kBaseCampSeatCardBase + slot].hidden)
+            rail.push_back(kBaseCampSeatCardBase + slot);
+    }
+    // Every vertical link into the rail lands on its leftmost visible slot,
+    // and the strip's right end climbs to its rightmost. On a phone that is
+    // the same single slot; with no rail at all (a build with neither seats
+    // nor a door to one), links from above skip it to BACK.
     const int rail_first = rail.empty() ? -1 : rail.front();
     const int rail_last = rail.empty() ? -1 : rail.back();
     const int rail_entry =
         rail_first >= 0 ? rail_first : kCreateMenuBackIndex;
-    const int seat_card_anchor =
-        seat_visible > 0 ? kBaseCampSeatCardBase : rail_entry;
     for (std::size_t index = 0; index < rail.size(); ++index) {
         button& control = buttons[rail[index]];
         control.nav.left = index > 0 ? rail[index - 1] : -1;
@@ -4158,9 +4217,11 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     const int dep_down_exit = band_below_roster_top >= 0
         ? band_below_roster_top
         : rail_entry;
+    // The roster's body column drops onto the rail's leftmost live slot —
+    // which IS the rail's entry now that no [+] or pager sits left of it.
     const int body_down_exit = band_below_roster_top >= 0
         ? band_below_roster_top
-        : seat_card_anchor;
+        : rail_entry;
 
     // Roster nav (the classic chains, walked over the presence arrays so a
     // capability-hidden column never strands a link).
@@ -4313,39 +4374,38 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         ? bands_below.back().bottom
         : (last_body >= 0 ? kBaseCampRowBodyBase + last_body
                           : (last_dep >= 0 ? last_dep : spine_last));
-    // The rail's left end — the '+' and the '<' — sits over BACK.
-    buttons[kBaseCampAddSeatIndex].nav.up = rail_up_left;
-    buttons[kBaseCampAddSeatIndex].nav.down = kCreateMenuBackIndex;
-    buttons[kBaseCampSeatPagePrevIndex].nav.up = rail_up_left;
-    buttons[kBaseCampSeatPagePrevIndex].nav.down = kCreateMenuBackIndex;
-    // Each card drops onto the strip door under its face. The re-gridded
-    // strip put DIFFICULTY under card one, so the doubled SCENARIO link the
-    // empty slot forced is gone.
+    // Each slot drops onto its strip door, the column relationship the rail
+    // has always had. (The four faces widened over BACK..GO, but re-pointing
+    // slot one at BACK would leave the whole strip one door short of a
+    // keyboard route down from the rail.) The rail's LEFT end climbs into
+    // the roster's left column and the rest into its body column — the split
+    // the retired '+' used to make at exactly this x.
     constexpr std::array<int, kBaseCampSeatCardsPerPage> card_down{
         kCreateMenuDifficultyIndex,
         kCreateMenuScenarioIndex,
         kCreateMenuNetworkingIndex,
         kCreateMenuGoIndex};
-    for (int card = 0; card < seat_visible; ++card) {
-        button& card_button = buttons[kBaseCampSeatCardBase + card];
-        card_button.nav.up = rail_up_right;
-        if (card == kBaseCampSeatCardsPerPage - 1) {
-            // Card four historically lands on the GO/READY slot. A connected
+    for (int slot = 0; slot < kBaseCampSeatCardsPerPage; ++slot) {
+        button& slot_button = buttons[kBaseCampSeatCardBase + slot];
+        if (slot_button.hidden)
+            continue;
+        slot_button.nav.up =
+            slot == 0 ? rail_up_left : rail_up_right;
+        if (slot == kBaseCampSeatCardsPerPage - 1) {
+            // Slot four historically lands on the GO/READY slot. A connected
             // zero-seat guest has neither half of that slot, so keep the old
             // strip-column relationship but fall back one door to NETWORK
             // instead of leaving keyboard focus pointed at a hidden row.
-            card_button.nav.down =
+            slot_button.nav.down =
                 strip_end >= 0 ? strip_end : kCreateMenuNetworkingIndex;
         } else {
-            card_button.nav.down =
-                card_down[static_cast<std::size_t>(card)];
+            slot_button.nav.down =
+                card_down[static_cast<std::size_t>(slot)];
         }
     }
-    buttons[kBaseCampSeatPageNextIndex].nav.up = rail_up_right;
-    buttons[kBaseCampSeatPageNextIndex].nav.down =
-        strip_end >= 0 ? strip_end : kCreateMenuNetworkingIndex;
-    const auto visible_card_or_rail = [seat_visible, rail_entry](int card) {
-        return card >= 0 && card < seat_visible
+    const auto visible_card_or_rail = [buttons, rail_entry](int card) {
+        return card >= 0 && card < kBaseCampSeatCardsPerPage &&
+                !buttons[kBaseCampSeatCardBase + card].hidden
             ? kBaseCampSeatCardBase + card
             : rail_entry;
     };
@@ -4699,31 +4759,22 @@ void base_camp_draw_content(void* screen_state)
     // draw. They use the same four gameplay-team ramps as character chips,
     // while the P# label identifies the player/view rather than a fighter.
     if (st != nullptr) {
-        // The rewire's cached frame shape — never recomputed here (the seat
-        // page may have refreshed since; the buttons on screen have not).
+        // The rewire's cached frame shape — never recomputed here (the
+        // roster may have refreshed since; the buttons on screen have not).
         const og::ui::SeatRailLayout& rail = g_base_camp_rail_frame_shape;
-        // #243: a slot with no seat in it yet is drawn as an empty recess.
-        // It keeps the rail on both of the panel's margins and shows where
-        // the next player will land — chrome, not a control: the ordinals
-        // are frozen, so a ghost is never navigable, highlightable or
-        // clickable, and it appears only while a seat is actually claimable.
-        for (int slot = rail.shown_cards; slot < rail.slot_count(); ++slot) {
-            game->draw_button_inverted(
-                rail.slot_x[static_cast<std::size_t>(slot)],
-                kBaseCampSeatRailY, static_cast<Uint32>(rail.card_w),
-                static_cast<Uint32>(kBaseCampSeatRailHeight));
-        }
-        const int seat_first = st->seat_page.first_index();
+        // A slot with no seat in it is a real ADD PLAYER button now, drawn by
+        // draw_buttons like every other row — there is no chrome left for
+        // this pass to paint. Only the chips are ours.
+        //
         // Positions come from the frame's laid-out shape; the COUNT must
-        // clamp to the seats st holds right now — the page can refresh
+        // clamp to the seats st holds right now — the roster can refresh
         // between the rewire and this draw, and a chip may only ever index
         // a seat that exists.
-        const int chip_cards = std::min(
-            rail.shown_cards,
-            std::max(0, st->seat_page.end_index() - seat_first));
+        const BaseCampRailSeats chip_seats = base_camp_rail_seats(st);
+        const int chip_cards = std::min(rail.shown_cards, chip_seats.count);
         for (int card = 0; card < chip_cards; ++card) {
             const og::sim::LobbyPlayer& seat =
-                st->seats[static_cast<std::size_t>(seat_first + card)];
+                *chip_seats.seat[static_cast<std::size_t>(card)];
             const int team = std::clamp(
                 static_cast<int>(seat.team), 0,
                 static_cast<int>(SCORE_TEAM_COUNT) - 1);
@@ -5068,137 +5119,103 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
         return MENU_OK;
     }
 
-    if (row == kBaseCampSeatPagePrevIndex ||
-        row == kBaseCampSeatPageNextIndex)
-    {
-        if (st->seat_page.step(
-                row == kBaseCampSeatPagePrevIndex ? -1 : 1))
-        {
-            TRACE("basecamp", "seat_page %s",
-                  st->seat_page.indicator().c_str());
-        }
-        return MENU_OK;
-    }
-
-#ifndef DISABLE_MULTIPLAYER
-    if (row == kBaseCampAddSeatIndex) {
-        const std::int64_t now_ms =
-            std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now().time_since_epoch())
-                .count();
-        constexpr std::int64_t kSeatAddDebounceMs = 250;
-        if (st->last_seat_add_ms >= 0 &&
-            now_ms - st->last_seat_add_ms < kSeatAddDebounceMs)
-        {
-            TRACE("basecamp", "seat_add_debounced");
-            return MENU_OK;
-        }
-        const std::size_t local_count =
-            picker_lobby_local_seat_count();
-        const int seat_cap = og::input::local_seat_cap();
-        if (local_count >= static_cast<std::size_t>(seat_cap)) {
-            // A phone runs out of seats below the build limit, and the way
-            // out is hardware, not a smaller number to argue with.
-            popup_dialog("SEATS",
-                         seat_cap < MAX_PLAYERS
-                             ? "ATTACH A GAMEPAD TO ADD SEATS"
-                             : "LOCAL LIMIT IS 4");
-            return MENU_OK;
-        }
-        if (picker_lobby_players().size() >=
-                og::sim::kMaxGlobalPlayers)
-        {
-            popup_dialog("SEATS", "LOBBY FULL");
-            return MENU_OK;
-        }
-        if (!picker_lobby_add_local_seat()) {
-            popup_dialog("SEATS", "ADD DENIED");
-            return MENU_OK;
-        }
-        st->last_seat_add_ms = now_ms;
-        // The new seat reads profile-pool slot N, which can duplicate a
-        // mapping an existing seat already cycled onto (the mid-game ADD
-        // PLAYER shares this rule): land it on the first unchosen one.
-        {
-            const int seat_count =
-                static_cast<int>(picker_lobby_local_seat_count());
-            bool controls_changed = og::ui::ensure_unique_seat_mapping(
-                cfg, seat_count - 1, seat_count);
-            // On a single-seat device the pad IS why this door opened: a
-            // keyboard mapping would leave the seat with no input at all.
-            if (og::input::is_single_seat_device() &&
-                og::ui::claim_free_joystick_for_seat(cfg, seat_count - 1,
-                                                     seat_count))
-            {
-                controls_changed = true;
-            }
-            if (controls_changed)
-            {
-                persist_player_controls();
-            }
-        }
-        base_camp_refresh_rows(*st);
-        if (!st->local_seat_indices.empty()) {
-            const std::uint8_t added_player =
-                st->local_seat_indices.back();
-            const auto added = std::find_if(
-                st->seats.begin(), st->seats.end(),
-                [added_player](const og::sim::LobbyPlayer& player) {
-                    return player.player_index == added_player;
-                });
-            if (added != st->seats.end()) {
-                const int position = static_cast<int>(
-                    std::distance(st->seats.begin(), added));
-                st->seat_page.page =
-                    position / kBaseCampSeatCardsPerPage;
-            }
-        }
-        TRACE("basecamp", "seat_add local_count=%zu",
-              picker_lobby_local_seat_count());
-        return MENU_OK;
-    }
-#endif
-
     if (row >= kBaseCampSeatCardBase &&
         row < kBaseCampSeatCardBase + kBaseCampSeatCardsPerPage)
     {
-        const int card = row - kBaseCampSeatCardBase;
-        const int seat_index = st->seat_page.first_index() + card;
-        if (seat_index < 0 ||
-            seat_index >= static_cast<int>(st->seats.size()))
-        {
+        const int slot = row - kBaseCampSeatCardBase;
+        const BaseCampRailSeats rail_seats = base_camp_rail_seats(st);
+        const og::sim::LobbyPlayer* const held =
+            slot < rail_seats.count
+            ? rail_seats.seat[static_cast<std::size_t>(slot)]
+            : nullptr;
+
+        if (held == nullptr) {
+            // A BARE SLOT IS THE ADD DOOR. This is the [+]'s whole body,
+            // moved here unchanged — one implementation of the rule, gates
+            // included. picker_lobby_add_local_seat is a build-limit
+            // backstop only; the device cap is enforced HERE, by the door.
+#ifndef DISABLE_MULTIPLAYER
+            const std::int64_t now_ms =
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now().time_since_epoch())
+                    .count();
+            constexpr std::int64_t kSeatAddDebounceMs = 250;
+            if (st->last_seat_add_ms >= 0 &&
+                now_ms - st->last_seat_add_ms < kSeatAddDebounceMs)
+            {
+                TRACE("basecamp", "seat_add_debounced");
+                return MENU_OK;
+            }
+            const std::size_t local_count =
+                picker_lobby_local_seat_count();
+            const int seat_cap = og::input::local_seat_cap();
+            if (local_count >= static_cast<std::size_t>(seat_cap)) {
+                // A phone runs out of seats below the build limit, and the
+                // way out is hardware, not a smaller number to argue with.
+                popup_dialog("SEATS",
+                             seat_cap < MAX_PLAYERS
+                                 ? "ATTACH A GAMEPAD TO ADD SEATS"
+                                 : "LOCAL LIMIT IS 4");
+                return MENU_OK;
+            }
+            if (picker_lobby_players().size() >=
+                    og::sim::kMaxGlobalPlayers)
+            {
+                popup_dialog("SEATS", "LOBBY FULL");
+                return MENU_OK;
+            }
+            if (!picker_lobby_add_local_seat()) {
+                popup_dialog("SEATS", "ADD DENIED");
+                return MENU_OK;
+            }
+            st->last_seat_add_ms = now_ms;
+            // The new seat reads profile-pool slot N, which can duplicate a
+            // mapping an existing seat already cycled onto (the mid-game ADD
+            // PLAYER shares this rule): land it on the first unchosen one.
+            {
+                const int seat_count =
+                    static_cast<int>(picker_lobby_local_seat_count());
+                bool controls_changed = og::ui::ensure_unique_seat_mapping(
+                    cfg, seat_count - 1, seat_count);
+                // On a single-seat device the pad IS why this door opened: a
+                // keyboard mapping would leave the seat with no input at all.
+                if (og::input::is_single_seat_device() &&
+                    og::ui::claim_free_joystick_for_seat(cfg, seat_count - 1,
+                                                         seat_count))
+                {
+                    controls_changed = true;
+                }
+                if (controls_changed)
+                {
+                    persist_player_controls();
+                }
+            }
+            base_camp_refresh_rows(*st);
+            TRACE("basecamp", "seat_add local_count=%zu",
+                  picker_lobby_local_seat_count());
+#endif
             return MENU_OK;
         }
 
-        const og::sim::LobbyPlayer& seat =
-            st->seats[static_cast<std::size_t>(seat_index)];
-        const int local_slot =
-            base_camp_seat_local_slot(*st, seat.player_index);
-        if (local_slot < 0) {
-            const std::string owner = std::format(
-                "P{}  {}",
-                static_cast<int>(seat.player_index) + 1,
-                seat.company.empty() ? "ANOTHER COMPANY" : seat.company);
-            popup_dialog("CONTROLLED BY", owner.c_str());
-            return MENU_OK;
-        }
-
-        if (picker_lobby_local_seat_count() == 0) {
-            popup_dialog("SPECTATOR", "PRESS + TO ADD A PLAYER");
-            return MENU_OK;
-        }
+        // SLOT k IS LOCAL CONTROLLER PROFILE k. base_camp_rail_seats built
+        // this entry out of local_seat_indices[slot], so the editor's
+        // profile is the slot index itself — no second lookup, and no way
+        // for the card and the editor to name different profiles (the
+        // menu_system.md §3.1 hazard, where displayed P1 once drove
+        // profile 3).
+        const og::sim::LobbyPlayer& seat = *held;
+        const int local_slot = slot;
 
         // #202: a pointer click on the card's team-square region cycles the
         // seat's team in place through the seat editor's exact mutation
         // path. Keyboard FIRE / hotkey dispatches stamp menu_click_x = -1
         // and fall through to the editor, as do clicks on the P#/name
-        // region. Non-editable seats never reach here (the ownership and
-        // spectator gates above popped already).
+        // region.
         {
             // The rewire's cached frame shape: the click must be judged
             // against the rects the player saw, not a fresher recompute.
             const int card_x = g_base_camp_rail_frame_shape
-                                   .slot_x[static_cast<std::size_t>(card)];
+                                   .slot_x[static_cast<std::size_t>(slot)];
             const int click_x = pks().menu_click_x;
             if (click_x >= card_x + kBaseCampSeatChipZoneOffsetX &&
                 click_x < card_x + kBaseCampSeatCardWidth)
@@ -6994,12 +7011,6 @@ void base_camp_refresh_rows(BaseCampScreenState& state)
         for (const og::sim::LobbyPlayer& seat : state.seats)
             state.local_seat_indices.push_back(seat.player_index);
     }
-    const int seat_page_before = state.seat_page.page;
-    state.seat_page = PageModel::make(
-        static_cast<int>(state.seats.size()),
-        kBaseCampSeatCardsPerPage);
-    state.seat_page.page = std::clamp(
-        seat_page_before, 0, state.seat_page.page_count() - 1);
 }
 
 void install_company_list_state_for_screen(CompanyListScreenState* state)
