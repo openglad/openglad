@@ -9,6 +9,7 @@ const {
   startSeededSinglePlayerFromPicker,
   waitForGameLoad,
   waitForGameplayProgress,
+  waitForPickerReady,
   waitForGameplayRenderSamples,
   waitForRenderedFrames,
 } = require('./wasm_helpers');
@@ -313,6 +314,12 @@ async function pressPickerKey(page, key, settlingMs = 150) {
 }
 
 async function openWebDisplayOptions(page) {
+  // waitForGameLoad only sees the DOM loading overlay, which the emscripten
+  // runtime clears before main() reaches the picker; the in-canvas loading
+  // dialog then fades out (#237 ownership) and the main menu fades in, so
+  // keys sent on the overlay's disappearance land before any menu exists.
+  // Wait for the picker itself, as every other picker-driving flow does.
+  await waitForPickerReady(page);
   // Emscripten starts forwarding keyboard input after a real canvas click.
   // Use an inert corner rather than focusCanvas(). Its center used to land
   // on the old player-count buttons and still sits among live menu faces.
