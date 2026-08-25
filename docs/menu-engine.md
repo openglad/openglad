@@ -140,12 +140,22 @@ back. `run_menu_screen` derives the decision; no screen declares a fade:
   - **NETWORKING** — a Base Camp strip door, but Base Camp *exits* before its
     legacy screen runs, so the rule would fade both legs. The click intercept
     notes `Instant` before Base Camp exits (its exit scope skips the fade-out
-    on a pending `Instant`), `configure_networking` notes it again on the way
+    on a pending `Instant` and traces `exit fade skipped: Instant note
+    pending` — the networking flow pins hold that trace to exactly one
+    occurrence, this door), `configure_networking` notes it again on the way
     in and on a non-hookup return, keeping the door as snappy as its
-    HIRE/TRAIN/DIFFICULTY siblings. A successful hookup notes nothing: that
-    one leaves the lobby-config context and Base Camp's entry fades it.
-- `MenuScreenKind::Overlay` (the pause family) never fades at any depth, not
-  even when its loop's present finds a black window.
+    HIRE/TRAIN/DIFFICULTY siblings. An `Instant` note suppresses only that
+    entry's fade-in: Base Camp re-entered under it still owns its exit
+    fade, so BACK to the main menu fades like every boundary crossing
+    (only a fresh `Instant` pending at that exit skips it). A successful hookup leaves the
+    lobby-config context, so that exit is the legacy screen's own: it calls
+    `LegacyMenuFade::fade_out_at_exit()` and fades its last frame out
+    (instant-in, fade-out-to-Base-Camp), and Base Camp's fading re-entry
+    finds the black window it expects.
+- `MenuScreenKind::Overlay` (the pause family) never fades at any depth, and
+  neither does any other non-fading entry whose loop finds a black window: the
+  loop's fade-in is gated on the entry's own fade scope, so only a screen
+  whose exit will fade out again ever fades in.
 - Legacy full-screen presenters outside the runner — campaign select, the
   results panel, the level editor, the campaign intro scroller, NETWORKING —
   apply the same rule by hand through `og::ui::LegacyMenuFade`, which honors
@@ -178,26 +188,56 @@ canvas resets (`glad_init`, the gameplay teardowns) are not entry transitions
 and stay where they are; idempotency makes them harmless when the last screen
 already faded.
 
-Two invariants make the class structurally impossible rather than merely
-fixed. Under TESTING the video layer checks them at the fade itself and
-records a violation (`og::video_testing::g_fade_violations`, traced as
-`("video", "FADE VIOLATION: ...")`); `integration_main`'s listener fails the
-running test on every violation, so every flow test in the tree is an oracle:
+Three TESTING invariants back the rule. Each records a violation
+(`og::video_testing::g_fade_violations`, traced as `("video", "FADE VIOLATION:
+...")`), and `integration_main`'s listener fails the running test on every one,
+so every flow test in the tree is an oracle. Exactly these three things fire:
 
-- `fadeblack(1)` requires a black window — **"fade-in without a fade-out"**;
-- `fadeblack(0)` requires the render buffer to equal the frame the window last
-  showed (a per-surface snapshot taken at every present) — **"fade-out from a
-  frame that was never presented"**, which catches both a clear and a stale
-  redraw between the last present and the fade.
+- `fadeblack(1)` on a window that is not black — **"fade-in without a
+  fade-out"** (the video layer, at the fade);
+- `fadeblack(0)` when the render buffer differs from what the window last
+  showed — **"fade-out from a frame that was never presented"** (the video
+  layer, at the fade). "Showed" is the rect each present *declared*:
+  `Screen::swap` snapshots only its `x,y,w,h` (a full-frame present snapshots
+  everything), so a clear, a stale redraw, or a draw outside every present's
+  rect all count. The nearest present path happens to upload the whole
+  surface; the SAI/Eagle path refreshes only the rect of its scaled scratch —
+  the declared rect is the honest lower bound and callers are held to it;
+- a fading **entry** — `run_menu_screen` at depth 1, or an active
+  `LegacyMenuFade` — that finds the window not black — **"entry found an
+  unfaded window: the previous surface exited without its fade-out (<screen
+  name>)"** (the runner, before its entry fade-out). The entry still fades
+  out, because production must never hard-cut; under TESTING the missing exit
+  fade is the failure. A nested main-menu door under a `Fade` note is the one
+  entry exempt by definition: its parent has not exited, and fading the
+  still-open parent out is the door's own job.
 
-The third guard is static: every `fadeblack(` call site under `src/` is listed
-with its reason in `scripts/fadeblack_sites.txt`, and
+Nothing else is checked. A missing fade-in, or a fade at a door the depth rule
+says is instant, shows up only in the per-leg count pins.
+
+The entry invariant is what makes the deferred fade-out impossible to
+reintroduce silently: an entry's own `fadeblack(0)` is a no-op on the black
+window a correct exit leaves, so a screen that forgets its exit fade would
+otherwise be faded out by the *next* entry — invisibly. Every producer is
+therefore ownership-correct rather than exempted: the intro fades the loading
+dialog out (and the intro-skipped web start fades it out where the skip
+happens), the networking screen fades itself out on hookup, the results panel
+fades the mission's tail (its last frame with the ending popup dismissed) out
+before its own entry, and the test boundary leaves the window **black** —
+what an exit fade leaves and what a process starts with — so a direct-call
+test that presents a frame of its own owes that frame's fade-out like any
+other screen.
+
+The fourth guard is static: every function under `src/` that calls
+`fadeblack(` is listed in `scripts/fadeblack_sites.txt` as
+`<path>::<function>=<count>` with its reason, and
 `scripts/check_fadeblack_sites.sh` (a build dependency of `og_interface` and
-`og_platform_sdl`) fails the build on an unlisted call, so a new ad-hoc fade
-has to be classified before it compiles. Sites are keyed by path plus enclosing
-function rather than by line number, so editing around a fade never rots the
-list — and an allowlisted key that no longer resolves fails the build too, so a
-renamed or deleted fade site gets reclassified instead of lingering.
+`og_platform_sdl`) fails the build on an unlisted function, on a listed
+function whose call count changed, and on a listed function that no longer
+fades. The count is the point: a door-site fade planted beside an existing
+teardown fade in `go_menu` or `glad_init` is exactly the shape the rule
+forbids, and a per-function count is what makes it fail to build. Keys carry
+no line numbers, so editing around a fade never rots the list.
 
 The demo compositor (`demo.cpp`) presents through its own `SDL_RenderPresent`
 and never fades; it is documented here rather than hooked.
@@ -208,7 +248,8 @@ fade timing. Two TESTING hooks keep the campaign-intro leg inside every BEGIN
 NEW GAME flow: the un-driven campaign browser accepts the current campaign one
 presented frame in (`campaign_picker_testing_set_auto_accept`, re-armed at
 every test start; a test that drives the browser disarms it — every
-`campaign_picker_testing_input_reset()` does), and the un-driven text scroller
+`campaign_picker_testing_input_reset()` does — and with nothing listed it
+returns empty at once rather than blocking), and the un-driven text scroller
 dismisses itself after its first frame unless a test forces the real view
 (`help_testing_set_force_scroll_text`).
 

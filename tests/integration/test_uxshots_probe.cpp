@@ -297,9 +297,12 @@ int count_fade_between_traces() {
 
 // One main-menu-boundary crossing = one fadeblack(0) + one fadeblack(1), and
 // under TESTING each traces exactly one FadeBetween line
-// (menu_screen_runner.cpp run_menu_screen).
+// (menu_screen_runner.cpp run_menu_screen). The main menu's FIRST entry
+// finds the window already black — a process starts black, and the test
+// boundary resets it black — so only its fade-in runs (fade ownership: a
+// fade-out belongs to the surface that leaves, and nothing left).
 constexpr int kFadesPerCrossing = 2;
-constexpr int kMainMenuEntryFades = kFadesPerCrossing;
+constexpr int kMainMenuEntryFades = 1;
 
 // --- 1. main menu, no companies --------------------------------------------
 
@@ -421,7 +424,7 @@ TEST(UxShots, b1_game_settings) {
   ASSERT_TRUE(state.finished);
   ASSERT_EQ(1, state.captures);
   ASSERT_EQ(kMainMenuEntryFades, g_settings_fades_at_door.load())
-      << "#237: the main menu's own entry fades once";
+      << "#237: the main menu's first entry fades in over the black window";
   ASSERT_EQ(kFadesPerCrossing, g_settings_fades_inside_settings.load() -
                                    g_settings_fades_at_door.load())
       << "#237: the GAME SETTINGS door must fade on the way IN";
@@ -1827,9 +1830,10 @@ TEST(UxShots, n_help_screen) {
   // test, so everything counted here belongs to this run. Three crossings:
   // the main menu's own entry, the HELP door, and the main menu's re-entry.
   ASSERT_EQ(kMainMenuEntryFades, g_help_fades_at_door.load())
-      << "#237: entering the main menu is a boundary crossing and must fade "
-         "exactly once (fade-out + fade-in)";
-  ASSERT_EQ(3 * kFadesPerCrossing, g_help_fades_after_return.load())
+      << "#237: the main menu's first entry fades in over the black window "
+         "(nothing left, so nothing fades out)";
+  ASSERT_EQ(kMainMenuEntryFades + 2 * kFadesPerCrossing,
+            g_help_fades_after_return.load())
       << "#237: the HELP door and the way back are BOTH main-menu crossings "
          "— the round trip adds two fades, symmetrically";
   // The symmetry invariant itself, as two measured deltas.

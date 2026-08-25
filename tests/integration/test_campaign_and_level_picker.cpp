@@ -825,9 +825,10 @@ TEST(CampaignAndLevelPicker, campaign_picker_draw_loop_exits_on_q)
     ASSERT_TRUE(out.id.empty()) << "q exit path should not select a campaign";
 
     // #237: entered with no menu screen open (depth 0), campaign select is a
-    // context switch — one fade-out, the first-frame fade-in, and (the
-    // ownership rule) its own exit fade-out. Under TESTING each fadeblack
-    // that runs traces one FadeBetween line.
+    // context switch — the first-frame fade-in and (the ownership rule) its
+    // own exit fade-out. The test boundary leaves the window black, so the
+    // entry's fade-out has nothing to fade and is skipped (no trace). Under
+    // TESTING each fadeblack that runs traces one FadeBetween line.
     int fades = 0;
     {
         std::lock_guard<std::mutex> lock(g_trace_mutex);
@@ -838,9 +839,9 @@ TEST(CampaignAndLevelPicker, campaign_picker_draw_loop_exits_on_q)
                 ++fades;
         }
     }
-    EXPECT_EQ(3, fades)
-        << "#237: a top-level campaign-select entry must fade out, in, and "
-           "out again at its exit — exactly once each";
+    EXPECT_EQ(2, fades)
+        << "#237: over a black window a top-level campaign-select entry fades "
+           "in, and out again at its exit — exactly once each";
     EXPECT_TRUE(og::runtime::current_session->myscreen_->window_is_black())
         << "the browser's exit leaves the window black for the next screen";
 }

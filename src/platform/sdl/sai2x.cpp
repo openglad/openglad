@@ -1916,7 +1916,11 @@ void Screen::swap(int x, int y, int w, int h)
 	// shows this canvas. Only a completed fadeblack(false) sets the flag back.
 	window_is_black_ = false;
 #ifdef TESTING
-	testing_snapshot_presented(render);
+	// Only the rect this present declared: a partial present (a pressed
+	// button face, the help scroller's dialog) vouches for nothing outside
+	// it, so a stale full-frame redraw followed by a small present still
+	// reads as never presented at the next fade-out.
+	testing_snapshot_presented(render, x, y, w, h);
 #endif
 	last_presented_ = active_ == CanvasTarget::GameplayUI
 		? CanvasTarget::World
@@ -1955,7 +1959,8 @@ std::size_t surface_row_bytes(const SDL_Surface* surface)
 }
 } // namespace
 
-void Screen::testing_snapshot_presented(SDL_Surface* surface)
+void Screen::testing_snapshot_presented(SDL_Surface* surface, int x, int y,
+                                        int w, int h)
 {
 	if (surface == nullptr)
 		return;
@@ -1985,17 +1990,35 @@ void Screen::testing_snapshot_presented(SDL_Surface* surface)
 		slot->pixels = SDL_CreateSurface(surface->w, surface->h, surface->format);
 		if (slot->pixels == nullptr)
 			return;
+		// A fresh snapshot is black everywhere the first present does not
+		// cover: nothing outside its rect has been shown yet.
+		memset(slot->pixels->pixels, 0,
+		       static_cast<std::size_t>(slot->pixels->pitch) *
+		           static_cast<std::size_t>(slot->pixels->h));
 	}
+	// Clip the declared rect to the surface. The rect is what the present
+	// vouches for: the nearest path happens to upload the whole surface,
+	// but the SAI/Eagle path refreshes only this rect of its scaled scratch,
+	// so callers are held to what they declared.
+	const int x0 = std::max(0, x);
+	const int y0 = std::max(0, y);
+	const int x1 = std::min(surface->w, x + w);
+	const int y1 = std::min(surface->h, y + h);
+	if (x0 >= x1 || y0 >= y1)
+		return;
 	// Row copies (the two pitches need not match), not a blit: a blit may
 	// rewrite the unused X byte and the comparison below is byte-exact.
-	const std::size_t row_bytes = surface_row_bytes(surface);
+	const std::size_t bpp = surface_row_bytes(surface) /
+		static_cast<std::size_t>(surface->w);
+	const std::size_t span = static_cast<std::size_t>(x1 - x0) * bpp;
+	const std::size_t offset_x = static_cast<std::size_t>(x0) * bpp;
 	const auto* src = static_cast<const Uint8*>(surface->pixels);
 	auto* dst = static_cast<Uint8*>(slot->pixels->pixels);
-	for (int y = 0; y < surface->h; ++y)
+	for (int row = y0; row < y1; ++row)
 	{
-		memcpy(dst + static_cast<std::size_t>(y) * static_cast<std::size_t>(slot->pixels->pitch),
-		       src + static_cast<std::size_t>(y) * static_cast<std::size_t>(surface->pitch),
-		       row_bytes);
+		memcpy(dst + static_cast<std::size_t>(row) * static_cast<std::size_t>(slot->pixels->pitch) + offset_x,
+		       src + static_cast<std::size_t>(row) * static_cast<std::size_t>(surface->pitch) + offset_x,
+		       span);
 	}
 }
 
@@ -2072,15 +2095,22 @@ bool Screen::testing_render_matches_presented(std::string* detail) const
 
 void Screen::testing_reset_window_state()
 {
-	window_is_black_ = false;
+	// Black, as a completed exit fade leaves it (and as a process starts):
+	// the next fading entry finds the ownership rule's promised state, and
+	// a test that presents a frame of its own then owes that frame's
+	// fade-out like any other screen.
+	window_is_black_ = true;
 	for (PresentedSnapshot& snapshot : presented_snapshots_)
 		SDL_DestroySurface(snapshot.pixels);
 	presented_snapshots_.clear();
-	testing_snapshot_presented(ui_surf_);
+	const auto snapshot_whole = [this](SDL_Surface* surface) {
+		if (surface != nullptr)
+			testing_snapshot_presented(surface, 0, 0, surface->w, surface->h);
+	};
+	snapshot_whole(ui_surf_);
 	if (world_surf_ != ui_surf_)
-		testing_snapshot_presented(world_surf_);
-	if (gameplay_ui_surf_ != nullptr)
-		testing_snapshot_presented(gameplay_ui_surf_);
+		snapshot_whole(world_surf_);
+	snapshot_whole(gameplay_ui_surf_);
 }
 #endif
 

@@ -37,8 +37,11 @@ PlatformBridge make_sdl_platform_bridge()
     PlatformBridge bridge;
 
     bridge.present_frame = [] {
+        // The whole ACTIVE canvas: a zoomed World canvas is wider than the
+        // classic 320x200, and a present must declare exactly what it shows
+        // (the fade-ownership invariant compares against that rect).
         if (E_Screen)
-            E_Screen->swap(0, 0, 320, 200);
+            E_Screen->swap(0, 0, E_Screen->canvas_w(), E_Screen->canvas_h());
     };
 
     bridge.play_sound = [](int sound_id) {

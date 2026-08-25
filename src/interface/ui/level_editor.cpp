@@ -3542,7 +3542,7 @@ Sint32 level_editor()
     // the surface that menu is on), fades the editor's first composed frame
     // in at the loop's first present, and fades the editor out at
     // entry_fade.end() after the loop.
-    og::ui::LegacyMenuFade entry_fade;
+    og::ui::LegacyMenuFade entry_fade("level editor");
 
     static LevelEditorData data;
     // Refresh radar pointers in case the session's viewscreen was rebuilt

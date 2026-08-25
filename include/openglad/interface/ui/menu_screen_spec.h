@@ -260,12 +260,26 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state = nullptr)
 // black fade, and no screen has to be told about it — the "faded to black"
 // note this replaced is gone.
 //
-// THE INVARIANTS (TESTING, checked by the video layer at the fade itself and
-// turned into a test failure by integration_main's listener):
-//   * fadeblack(1) requires a black window — "fade-in without a fade-out";
-//   * fadeblack(0) requires the render buffer to equal the frame the window
-//     last showed — "fade-out from a frame that was never presented" (a
-//     clear or a stale redraw between the last present and the fade).
+// THE INVARIANTS (TESTING; each one traces ("video", "FADE VIOLATION: ..."),
+// counts in og::video_testing::g_fade_violations, and fails the running test
+// through integration_main's listener). Exactly three things fire:
+//   * fadeblack(1) on a window that is not black — "fade-in without a
+//     fade-out" (checked by the video layer at the fade);
+//   * fadeblack(0) when the render buffer differs from what the window last
+//     showed — "fade-out from a frame that was never presented" (checked by
+//     the video layer at the fade; "showed" is the rect each present
+//     declared, so a clear, a stale redraw, or a draw outside every present's
+//     rect all count);
+//   * a fading ENTRY (run_menu_screen at depth 1, or an active
+//     LegacyMenuFade) that finds the window not black — "entry found an
+//     unfaded window: the previous surface exited without its fade-out"
+//     (checked by the runner before its entry fade-out, which still runs so
+//     production never hard-cuts). The one entry exempt by definition is a
+//     nested main-menu door under a Fade note: its parent has not exited,
+//     and fading the still-open parent out is that door's own job.
+// Nothing else is checked: in particular a missing fade-in, or a fade at a
+// door the depth rule says should be instant, is caught only by the per-leg
+// count pins.
 
 // One-shot override for the NEXT menu entry, the escape hatch on both sides
 // of the depth rule. Instant suppresses the fade a depth-0/depth-1 entry
@@ -279,7 +293,10 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state = nullptr)
 // EXITS classifies the door being opened as instant: the exit skips its
 // fade-out and leaves the note for that door's entry (NETWORKING again —
 // Base Camp exits before the legacy screen runs, and the door is instant
-// both ways).
+// both ways). Instant suppresses ONLY that entry's fade-in: a screen entered
+// under it still OWNS its exit fade (Base Camp back from NETWORKING fades
+// out on its way to the main menu like any boundary surface) unless a fresh
+// Instant note is pending at that exit.
 enum class MenuEntryFade : std::uint8_t {
     Fade,
     Instant,
@@ -310,15 +327,24 @@ int menu_screen_depth();
 // campaign intro scroller, NETWORKING). The constructor decides whether this
 // entry fades — a context switch (no engine screen open) or a Fade note,
 // never an Instant note — and fades the presented surface out at once (a
-// no-op if the window is already black). present_first() presents the first
+// no-op if the window is already black; an unfaded window is the entry
+// invariant's violation under TESTING). present_first() presents the first
 // composed frame: fadeblack(1) when this entry fades, a plain full-frame
 // present otherwise (safe as the loop's every-frame present). end() fades
 // the screen's last presented frame out; the destructor is its backstop on
 // every return path. Call end() explicitly where the last frame must be
 // faded BEFORE later teardown touches the buffer or the active canvas.
+//
+// fade_out_at_exit(): a screen that entered INSTANTLY but leaves its context
+// still owns its exit. NETWORKING is the case: an instant Base Camp strip
+// door on the way in and on BACK, but a successful hookup leaves the
+// lobby-config context for Base Camp's fading re-entry, and that re-entry
+// must find a black window. The screen calls this on that exit path, and
+// end() then fades its last frame out exactly as an active scope would.
+// The screen name is for the violation message only.
 class LegacyMenuFade {
 public:
-    LegacyMenuFade();
+    explicit LegacyMenuFade(const char* screen_name = "legacy screen");
     ~LegacyMenuFade();
     LegacyMenuFade(const LegacyMenuFade&) = delete;
     LegacyMenuFade& operator=(const LegacyMenuFade&) = delete;
@@ -326,11 +352,13 @@ public:
     bool active() const { return active_; }
     bool fade_in_pending() const { return active_ && fade_in_pending_; }
     void present_first(screen& scr);
+    void fade_out_at_exit();
     void end();
 
 private:
     bool active_ = false;
     bool fade_in_pending_ = false;
+    bool exit_fade_owed_ = false;
     bool ended_ = false;
 };
 

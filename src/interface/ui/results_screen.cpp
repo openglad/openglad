@@ -535,13 +535,21 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         og::runtime::current_session->myscreen_->refresh();
     }
 
+    // #237 ownership: the mission's tail — its last frame with the ending
+    // popup dismissed over it, re-presented just above — is this function's
+    // surface, and it exits HERE: fade it out now, while that frame is still
+    // the buffer, so the results panel's entry below finds the black window
+    // the ownership rule promises every entry. (Idempotent for a caller that
+    // already faded to black.) The dismissed popup stays a modal and never
+    // fades.
+    output.fadeblack(0);
+
     // #237 ownership rule, applied by hand (this hand-rolled loop never
-    // enters run_menu_screen): gameplay -> results is a context switch — fade
-    // the last mission frame out here, fade the first composed panel frame in
-    // at the loop's first present, and fade the panel out again when this
-    // scope ends (before the canvas restore above it). The dismissed popup
-    // stays a modal and never fades.
-    og::ui::LegacyMenuFade entry_fade;
+    // enters run_menu_screen): gameplay -> results is a context switch — the
+    // first composed panel frame fades in at the loop's first present, and
+    // the panel fades out again when this scope ends (before the canvas
+    // restore above it).
+    og::ui::LegacyMenuFade entry_fade("results");
 
     // Clear any stale input events after popup closes
     // This helps prevent ASYNCIFY state issues in Emscripten

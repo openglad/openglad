@@ -3,6 +3,7 @@
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/picker_ui_state.h>
+#include <openglad/platform/video_sdl.h>
 
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
@@ -325,6 +326,24 @@ int count_fade_between_traces()
             ++fades;
     }
     return fades;
+}
+
+// #237: a fading screen's exit scope skips its fade-out when an Instant note
+// is pending — the door being opened is instant. Traced by the runner; the
+// NETWORKING door (Base Camp exits to open it) is the ONLY door that shape
+// is for, and these flows hold it to exactly that one occurrence.
+int count_instant_exit_skips()
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    int skips = 0;
+    for (const TraceEntry& entry : g_trace_buffer)
+    {
+        if (entry.category == "video" &&
+            entry.message.find("exit fade skipped: Instant note pending") !=
+                std::string::npos)
+            ++skips;
+    }
+    return skips;
 }
 
 struct NetworkingJoinState
@@ -1179,6 +1198,12 @@ TEST(NetworkingMenu, room_code_join_invalid_relay_url_stays_in_submenu)
         << "#237: the NETWORKING door must stay instant";
     EXPECT_EQ(0, state.fades_added_by_networking_back)
         << "#237 symmetry: and so must BACK to Base Camp";
+    // The mechanism behind the 0 on the way in: Base Camp's exit scope
+    // skipped its fade-out for the pending Instant note — once, on this
+    // door, and nowhere else in the flow (CONTINUE in, BACK out, QUIT).
+    EXPECT_EQ(1, count_instant_exit_skips())
+        << "#237: the Instant-note exit skip happens exactly on the "
+           "NETWORKING door";
 }
 
 TEST(NetworkingMenu, submenu_validation_errors_stay_in_place)
@@ -1602,5 +1627,16 @@ TEST(NetworkingMenu, host_flow_enters_team_build_and_returns_to_main_menu)
     ASSERT_TRUE(state.returned_to_main_menu);
     ASSERT_EQ(0, trace_count("popup"))
         << "successful hosting should enter the lobby directly without an intermediate status popup";
+    // #237: the door in is the one Instant-note exit skip; the hookup exit
+    // is the legacy screen's OWN fade-out (fade_out_at_exit), so Base Camp's
+    // fading re-entry finds a black window — the listener holds that no
+    // entry in this flow found an unfaded one.
+    EXPECT_EQ(1, count_instant_exit_skips())
+        << "#237: the Instant-note exit skip happens exactly on the "
+           "NETWORKING door";
+    EXPECT_EQ(0, og::video_testing::g_fade_violations.load())
+        << (og::video_testing::fade_violation_messages().empty()
+                ? std::string()
+                : og::video_testing::fade_violation_messages().front());
 }
 #endif

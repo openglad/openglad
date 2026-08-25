@@ -491,7 +491,7 @@ short read_campaign_intro(screen *s)
 	// select (which faded itself out) and Base Camp — it fades its first
 	// frame in over black and fades itself out on dismissal, while its last
 	// frame is still the buffer. Base Camp then finds a black window.
-	og::ui::LegacyMenuFade entry_fade;
+	og::ui::LegacyMenuFade entry_fade("campaign intro");
 	return scroll_campaign_description(s, s->save_data.current_campaign,
 	                                   &entry_fade);
 }

@@ -300,6 +300,7 @@ public:
     bool window_is_black() override;
 #ifdef TESTING
     void testing_reset_window_state() override;
+    void testing_report_fade_violation(const char* what) override;
 #endif
     std::array<unsigned char, 768>& ourpalette_ref() override { return ourpalette; }
     std::array<unsigned char, 768>& redpalette_ref() override { return redpalette; }

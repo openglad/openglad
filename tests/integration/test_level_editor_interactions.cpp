@@ -798,9 +798,11 @@ int editor_door_fade_injector(void* /*data*/)
 // fades itself out at its exit (before its post-loop reset draw and clear
 // touch the buffer). Dropping the fade-in (as the editor once did) left the
 // door at 1 fade in against 2 back, the asymmetry the invariant forbids.
-// Counted here: 2 in, then the editor's own exit fade-out. Its partner, the
-// parent menu loop's fade-in off the black window, has no parent loop in
-// this test — the black window is asserted instead, and
+// Counted here: the editor's first-frame fade-in (the test boundary leaves
+// the window black, so the door's fade-out of the "menu" is a traceless
+// no-op), then the editor's own exit fade-out. Its partner, the parent menu
+// loop's fade-in off the black window, has no parent loop in this test —
+// the black window is asserted instead, and
 // MenuEngine.nested_menu_door_bracket_* pins the loop half.
 TEST(LevelEditorInteractions, level_editor_door_fades_symmetrically)
 {
@@ -818,10 +820,9 @@ TEST(LevelEditorInteractions, level_editor_door_fades_symmetrically)
     og::runtime::current_session->myscreen_->world().end = 0;
 
     const int total = count_fade_between_traces();
-    EXPECT_EQ(3, total)
-        << "the door owes 2 fades in (the menu's fade-out + the editor's own "
-           "first-frame fade-in) and the editor opens the way back with its "
-           "own exit fade-out";
+    EXPECT_EQ(2, total)
+        << "over a black window the door fades the editor's first frame in, "
+           "and the editor opens the way back with its own exit fade-out";
     EXPECT_TRUE(og::runtime::current_session->myscreen_->window_is_black())
         << "the editor's exit leaves the window black; the still-open parent "
            "menu loop's next present is the matching fade-in";

@@ -235,7 +235,15 @@ void bootstrap_runtime(int argc, char* argv[])
     cfg.save_settings();
 #if defined(__EMSCRIPTEN__) && !defined(TESTING)
     if (og::platform::web::should_skip_intro_for_tests())
+    {
+        // #237 ownership: the loading dialog is the surface on the window,
+        // and skipping the intro means it exits here. The intro would have
+        // faded it out (intro_main's first fade); without the intro, the
+        // main menu's entry would find it unfaded — so fade it out now,
+        // where it exits.
+        og::runtime::current_session->myscreen_->fadeblack(0);
         return;
+    }
     EM_ASM({
         window.__opengladIntroActive = true;
         window.__opengladIntroTapPending = false;

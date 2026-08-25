@@ -746,8 +746,8 @@ public:
         // (and the re-entry behind it) as a main-menu-boundary crossing and
         // fade both. Note Instant on each leg to keep the door as snappy as
         // its HIRE/TRAIN/DIFFICULTY siblings. Only a successful hookup
-        // leaves the lobby-config context, and Base Camp's own entry fades
-        // that one.
+        // leaves the lobby-config context: the legacy screen fades its own
+        // last frame out on that exit and Base Camp's entry fades in.
         og::ui::note_menu_entry_fade(og::ui::MenuEntryFade::Instant);
         const bool hooked_up = configure_networking_body();
         if (!hooked_up)
@@ -777,12 +777,16 @@ public:
         // MenuEngine.networking_stays_legacy_v2_decision). The wrapper's
         // Instant note classifies this door as a Base Camp strip door, and
         // this scope is the note's consumer (the swallow-even-if-unused
-        // discipline): it is inactive here, so it fades nothing on entry or
-        // exit and the loop below presents plainly. If the wrapper's note is
-        // ever removed, this fades the menu out and in and out again —
-        // visible, not broken.
-        og::ui::LegacyMenuFade entry_fade;
-        (void)entry_fade;
+        // discipline): it is inactive here, so it fades nothing on entry,
+        // the loop below presents plainly, and BACK leaves the frame for
+        // Base Camp's instant re-entry. A successful hookup is different:
+        // it leaves the lobby-config context, Base Camp re-enters FADING,
+        // and that entry must find a black window — so this screen fades
+        // its own last frame out on the hookup exits (fade_out_at_exit),
+        // instant-in / fade-out-to-Base-Camp. If the wrapper's note is ever
+        // removed, this fades the menu out and in and out again — visible,
+        // not broken.
+        og::ui::LegacyMenuFade entry_fade("networking");
 
         auto visible_room_count = [&]() -> int {
             if (!networking_settings_.use_room_code ||
@@ -915,6 +919,7 @@ public:
                 if (submit_network_host())
                 {
                     cancel_relay_room_list_request();
+                    entry_fade.fade_out_at_exit();
                     return true;
                 }
                 reinitialize_buttons();
@@ -924,6 +929,7 @@ public:
                     submit_network_join())
                 {
                     cancel_relay_room_list_request();
+                    entry_fade.fade_out_at_exit();
                     return true;
                 }
                 reinitialize_buttons();
@@ -941,6 +947,7 @@ public:
                     if (submit_network_join())
                     {
                         cancel_relay_room_list_request();
+                        entry_fade.fade_out_at_exit();
                         return true;
                     }
                 }

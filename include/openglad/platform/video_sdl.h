@@ -32,18 +32,24 @@
 #ifdef TESTING
 namespace og::video_testing
 {
-// Fade-ownership invariants, checked by sdl_video::fadeblack at the fade
-// itself: a fade-in requires a black window ("fade-in without a fade-out"),
-// and a fade-out requires the render buffer to equal the frame the window
-// last showed ("fade-out from a frame that was never presented" — a clear or
-// a stale redraw between the last present and the fade). A violation traces
-// ("video", "FADE VIOLATION: ..."), logs, and lands here. trace_clear() never
-// touches this: the integration listener resets it at test start and fails
-// the test at its end for each message recorded, so every flow test in the
-// tree is an oracle for the class.
+// Fade-ownership invariants. Two are checked by sdl_video::fadeblack at the
+// fade itself: a fade-in requires a black window ("fade-in without a
+// fade-out"), and a fade-out requires the render buffer to equal the frame
+// the window last showed ("fade-out from a frame that was never presented" —
+// a clear or a stale redraw between the last present and the fade, or a draw
+// no present's rect ever covered). The third is reported by the menu runner
+// at a fading ENTRY that found the window not black ("entry found an unfaded
+// window: the previous surface exited without its fade-out") — the entry
+// still fades out, so production never hard-cuts, but under TESTING the
+// missing exit fade is a failure. A violation traces ("video", "FADE
+// VIOLATION: ..."), logs, and lands here. trace_clear() never touches this:
+// the integration listener resets it at test start and fails the test at its
+// end for each message recorded, so every flow test in the tree is an oracle
+// for the class.
 extern std::atomic<int> g_fade_violations;
 std::vector<std::string> fade_violation_messages();
 void reset_fade_violations();
+void report_fade_violation(const char* what);
 } // namespace og::video_testing
 #endif
 
@@ -259,6 +265,7 @@ public:
     bool window_is_black() override;
 #ifdef TESTING
     void testing_reset_window_state() override;
+    void testing_report_fade_violation(const char* what) override;
 #endif
 
     std::array<unsigned char, 768>& ourpalette_ref() override { return ourpalette; }

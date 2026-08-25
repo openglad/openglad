@@ -3861,6 +3861,7 @@ namespace
 {
 std::mutex s_fade_violation_mutex;
 std::vector<std::string> s_fade_violation_messages;
+} // namespace
 
 void report_fade_violation(const char* what)
 {
@@ -3870,7 +3871,6 @@ void report_fade_violation(const char* what)
     std::lock_guard<std::mutex> lock(s_fade_violation_mutex);
     s_fade_violation_messages.emplace_back(what);
 }
-} // namespace
 
 std::vector<std::string> fade_violation_messages()
 {
@@ -3898,6 +3898,11 @@ void sdl_video::testing_reset_window_state()
     if (E_Screen != nullptr)
         E_Screen->testing_reset_window_state();
 }
+
+void sdl_video::testing_report_fade_violation(const char* what)
+{
+    og::video_testing::report_fade_violation(what);
+}
 #endif
 
 int sdl_video::fadeblack(bool fade_in)
@@ -3911,7 +3916,8 @@ int sdl_video::fadeblack(bool fade_in)
         return 0;
     }
 #ifdef TESTING
-    // The two invariants, checked at the fade itself (see video_sdl.h).
+    // The two fade-site invariants (see video_sdl.h; the entry invariant
+    // lives in the menu runner, which knows what an entry is).
     if (fade_in && !E_Screen->window_is_black())
         og::video_testing::report_fade_violation(
             "fade-in without a fade-out (the window is not black)");

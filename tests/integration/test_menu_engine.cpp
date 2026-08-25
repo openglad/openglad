@@ -33,6 +33,7 @@
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_ui_state.h>
+#include <openglad/platform/video_sdl.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
@@ -616,7 +617,7 @@ bool nested_door_parent_frame_tick(void* /*state*/, int frame)
 
 } // namespace
 
-TEST(MenuEngine, depth_rule_root_entry_fades_out_and_in)
+TEST(MenuEngine, depth_rule_root_entry_fades_in_and_out_at_exit)
 {
     static constexpr og::ui::MenuButtonSpec kRows[] = {
         {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
@@ -633,19 +634,24 @@ TEST(MenuEngine, depth_rule_root_entry_fades_out_and_in)
     g_synth_spec = &spec;
     g_start_game_requested = true;
 
+    // The test boundary leaves the window black — what every exit fade
+    // leaves, and what the ownership rule promises every entry.
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->window_is_black());
     trace_clear();
     EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(spec));
-    EXPECT_EQ(3, count_fade_between_traces())
-        << "a depth-1 Screen entry is a context switch: one fade-out on "
-           "entry, one fade-in — and, the ownership rule, one fade-out of "
-           "its own last frame at exit";
+    EXPECT_EQ(2, count_fade_between_traces())
+        << "a depth-1 Screen entry is a context switch: the entry fade-out "
+           "is a no-op on the black window the previous exit left, then one "
+           "fade-in — and, the ownership rule, one fade-out of its own last "
+           "frame at exit";
     EXPECT_TRUE(og::runtime::current_session->myscreen_->window_is_black())
         << "the exit fade-out leaves the window black for whatever opens next";
     EXPECT_EQ(0, og::ui::menu_screen_depth())
         << "the RAII depth bracket must restore on exit";
+    EXPECT_EQ(0, og::video_testing::g_fade_violations.load());
 }
 
-TEST(MenuEngine, depth_rule_already_black_entry_fades_in_only)
+TEST(MenuEngine, depth_rule_entry_over_an_unfaded_window_is_a_violation)
 {
     static constexpr og::ui::MenuButtonSpec kRows[] = {
         {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
@@ -664,8 +670,9 @@ TEST(MenuEngine, depth_rule_already_black_entry_fades_in_only)
     g_start_game_requested = true;
 
     // A teardown (a gameplay exit, the intro's last page) genuinely faded
-    // the window to black — no note, the video layer knows.
-    scr->fadeblack(0);
+    // the window to black — no note, the video layer knows. (The boundary
+    // already left it black; the fade is the no-op that proves it.)
+    EXPECT_EQ(0, scr->fadeblack(0));
     ASSERT_TRUE(scr->window_is_black());
     trace_clear();
     EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(spec));
@@ -673,16 +680,32 @@ TEST(MenuEngine, depth_rule_already_black_entry_fades_in_only)
         << "a black window suppresses the entry fade-out (#200: fadeblack(0) "
            "is a no-op on a black window); the fade-in and the exit "
            "fade-out remain";
+    EXPECT_EQ(0, og::video_testing::g_fade_violations.load());
 
-    // The state is the WINDOW's, not a one-shot note: put a frame on it and
-    // the next entry fades fully again.
+    // The state is the WINDOW's, not a one-shot note: put a frame on it
+    // that nobody fades out, and the next entry finds it unfaded. The entry
+    // still fades it out (production never hard-cuts) — and under TESTING
+    // that deferred fade-out is the entry invariant's violation: the surface
+    // on the window exited without its own fade-out.
     scr->buffer_to_screen(0, 0, 320, 200);
     ASSERT_FALSE(scr->window_is_black());
     g_start_game_requested = true;
     trace_clear();
     EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(spec));
     EXPECT_EQ(3, count_fade_between_traces())
-        << "a presented frame is faded out on entry, in, and out at exit";
+        << "an unfaded frame is still faded out on entry, then in, and out "
+           "at exit";
+    EXPECT_EQ(1, og::video_testing::g_fade_violations.load())
+        << "the entry that absorbed the missing exit fade must report it";
+    const std::vector<std::string> violations =
+        og::video_testing::fade_violation_messages();
+    ASSERT_EQ(1u, violations.size());
+    EXPECT_EQ("entry found an unfaded window: the previous surface exited "
+              "without its fade-out (depth_black)",
+              violations.front());
+    // This test triggered the violation on purpose; the listener would
+    // otherwise fail it at OnTestEnd.
+    og::video_testing::reset_fade_violations();
 }
 
 TEST(MenuEngine, depth_rule_nested_entry_never_fades)
@@ -716,10 +739,11 @@ TEST(MenuEngine, depth_rule_nested_entry_never_fades)
     EXPECT_EQ(1, g_depth_rule_child_content_draws)
         << "the nested child paints exactly its one loop frame — no pre-loop "
            "cold compose on a non-fading entry, no missed frame either";
-    EXPECT_EQ(3, count_fade_between_traces())
-        << "only the parent's depth-1 entry fades (out, in, and out again at "
-           "its exit); a nested run_menu_screen call (a subscreen door) "
-           "produces ZERO fades on either side";
+    EXPECT_EQ(2, count_fade_between_traces())
+        << "only the parent's depth-1 entry fades (in over the black window "
+           "the boundary left, and out again at its exit); a nested "
+           "run_menu_screen call (a subscreen door) produces ZERO fades on "
+           "either side";
 }
 
 TEST(MenuEngine, entry_fade_override_instant_suppresses_a_depth_one_fade)
@@ -750,9 +774,9 @@ TEST(MenuEngine, entry_fade_override_instant_suppresses_a_depth_one_fade)
     g_start_game_requested = true;
     trace_clear();
     EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(spec));
-    EXPECT_EQ(3, count_fade_between_traces())
+    EXPECT_EQ(2, count_fade_between_traces())
         << "the override is one-shot — the next depth-1 entry fades again "
-           "(out, in, and out at its exit)";
+           "(in over the black window, and out at its exit)";
 
     // Swallow-even-if-unused: an Overlay entry consumes a stale override.
     og::ui::MenuScreenSpec overlay = make_synth_spec(kRows, 1, "entry_ov");
@@ -765,12 +789,12 @@ TEST(MenuEngine, entry_fade_override_instant_suppresses_a_depth_one_fade)
     g_synth_spec = &spec;
     g_start_game_requested = true;
     // The overlay's remote-start return presented nothing, so the window is
-    // still black from the previous exit; put a frame on it so the next
-    // crossing has something to fade out.
-    og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
+    // still black from the previous exit — the state every fading entry
+    // expects. A leaked Instant note would make this crossing 0.
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->window_is_black());
     trace_clear();
     EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(spec));
-    EXPECT_EQ(3, count_fade_between_traces())
+    EXPECT_EQ(2, count_fade_between_traces())
         << "a non-fading entry must still clear the override or it "
            "suppresses the NEXT main-menu crossing's fade";
 }
@@ -811,21 +835,30 @@ TEST(MenuEngine, instant_note_pending_at_exit_skips_the_exit_fade)
 
     trace_clear();
     (void)og::ui::run_menu_screen(spec);
-    EXPECT_EQ(2, count_fade_between_traces())
-        << "entry out + in only: an Instant note pending at exit means the "
+    EXPECT_EQ(1, count_fade_between_traces())
+        << "entry fade-in only: an Instant note pending at exit means the "
            "door being opened is instant, so the exit fade-out is skipped";
+    EXPECT_TRUE(trace_contains("video", "exit fade skipped: Instant note pending"))
+        << "the skipped exit fade is traced, so flow pins can hold it to the "
+           "one door it is for";
     EXPECT_FALSE(scr->window_is_black())
         << "the screen's last frame stays on the window for the instant door";
 
-    // The note survives the exit for the door's own entry to consume.
+    // The note survives the exit for the door's own entry to consume: that
+    // entry fades nothing IN. It still OWNS its exit — a screen entered
+    // instantly (Base Camp back from the NETWORKING door) fades its last
+    // frame out when it leaves for a boundary crossing, unless another
+    // Instant note is pending at that exit.
     g_start_game_requested = true;
     spec.frame_tick = nullptr;
     spec.remote_start = og::ui::RemoteStartScope::TeamBuildScope;
     trace_clear();
     EXPECT_EQ(MENU_EXIT, og::ui::run_menu_screen(spec));
-    EXPECT_EQ(0, count_fade_between_traces())
-        << "the pending Instant note reaches the next entry and makes it "
-           "instant both ways";
+    EXPECT_EQ(1, count_fade_between_traces())
+        << "the pending Instant note makes the entry instant (no fade-in); "
+           "the exit fade-out is still owed and runs";
+    EXPECT_TRUE(scr->window_is_black())
+        << "the instantly-entered screen fades its last frame out on exit";
 }
 
 TEST(MenuEngine, entry_fade_override_fade_forces_a_nested_entry_to_fade)
@@ -854,25 +887,30 @@ TEST(MenuEngine, entry_fade_override_fade_forces_a_nested_entry_to_fade)
     // Control: the same nested entry with NO override adds zero fades.
     trace_clear();
     (void)og::ui::run_menu_screen(parent);
-    EXPECT_EQ(3, count_fade_between_traces())
+    EXPECT_EQ(2, count_fade_between_traces())
         << "control: without an override only the parent's depth-1 entry "
-           "fades (out, in, out at exit) — the nested door adds nothing";
+           "fades (in over the black window, out at exit) — the nested door "
+           "adds nothing";
 
     // The CLOUD SAVES / LEVEL EDITOR shape: a Fade override makes the same
     // nested entry fade out, in, and — owning its exit — out again. The
     // parent ends right after the child returns, so its own exit fade-out
     // finds the window already black and is a no-op. (The control run's exit
-    // left the window black too; present a frame so this run starts from a
-    // visible one, like the control did.)
-    og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
+    // left the window black, exactly as the boundary did before it.)
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->window_is_black());
     g_depth_rule_child_fade_override = true;
     trace_clear();
     (void)og::ui::run_menu_screen(parent);
     g_depth_rule_child_fade_override = false;
     g_depth_rule_child_spec = nullptr;
-    EXPECT_EQ(5, count_fade_between_traces())
-        << "a Fade override forces the nested entry to fade: the parent's 2 "
-           "plus the door's own fade-out + fade-in + exit fade-out";
+    EXPECT_EQ(4, count_fade_between_traces())
+        << "a Fade override forces the nested entry to fade: the parent's "
+           "fade-in plus the door's own fade-out (of the still-open parent — "
+           "not a violation, the parent has not exited) + fade-in + exit "
+           "fade-out";
+    EXPECT_EQ(0, og::video_testing::g_fade_violations.load())
+        << "a nested door's fade-out of its still-open parent is the door's "
+           "by contract";
 }
 
 TEST(MenuEngine, nested_menu_door_bracket_fades_symmetrically)
@@ -905,19 +943,20 @@ TEST(MenuEngine, nested_menu_door_bracket_fades_symmetrically)
     (void)og::ui::run_menu_screen(parent);
     g_depth_rule_child_spec = nullptr;
 
-    // The real CLOUD SAVES / LEVEL EDITOR round trip: parent entry (2), then
-    // the door's two halves, measured as deltas so the symmetry invariant —
-    // fades(in) == fades(back) — is what is asserted. Under the ownership
-    // rule the way back is the nested screen's OWN exit fade-out plus the
-    // parent loop's fade-in off the black window it finds.
-    ASSERT_EQ(2, g_nested_door_fades_at_open)
-        << "the parent's own depth-1 entry must have faded before the door";
-    ASSERT_EQ(4, g_nested_door_fades_inside_door)
+    // The real CLOUD SAVES / LEVEL EDITOR round trip: parent entry (1, in
+    // over the black window the boundary left), then the door's two halves,
+    // measured as deltas so the symmetry invariant — fades(in) ==
+    // fades(back) — is what is asserted. Under the ownership rule the way
+    // back is the nested screen's OWN exit fade-out plus the parent loop's
+    // fade-in off the black window it finds.
+    ASSERT_EQ(1, g_nested_door_fades_at_open)
+        << "the parent's own depth-1 entry must have faded in before the door";
+    ASSERT_EQ(3, g_nested_door_fades_inside_door)
         << "the way in is a fade-out plus the nested entry's fade-in";
     ASSERT_NE(-1, g_nested_door_fades_after_return)
         << "the parent loop never ran a frame after the door";
-    EXPECT_EQ(7, count_fade_between_traces())
-        << "2 (parent entry) + 2 (door in) + 2 (door back) + 1 (the parent's "
+    EXPECT_EQ(6, count_fade_between_traces())
+        << "1 (parent entry) + 2 (door in) + 2 (door back) + 1 (the parent's "
            "own exit fade-out)";
     EXPECT_EQ(2, g_nested_door_fades_inside_door - g_nested_door_fades_at_open)
         << "#237 symmetry: entering a nested main-menu door fades exactly "
@@ -959,8 +998,8 @@ TEST(MenuEngine, nested_menu_door_bracket_is_symmetric_for_a_legacy_body)
     (void)og::ui::run_menu_screen(parent);
     g_nested_door_body_fn = nullptr;
 
-    ASSERT_EQ(2, g_nested_door_fades_at_open)
-        << "the parent's own depth-1 entry must have faded before the door";
+    ASSERT_EQ(1, g_nested_door_fades_at_open)
+        << "the parent's own depth-1 entry must have faded in before the door";
     ASSERT_NE(-1, g_legacy_door_fades_inside_door)
         << "the legacy door body never ran";
     ASSERT_NE(-1, g_nested_door_fades_after_return)
@@ -978,8 +1017,8 @@ TEST(MenuEngine, nested_menu_door_bracket_is_symmetric_for_a_legacy_body)
     EXPECT_EQ(fades_back, fades_in)
         << "#237 symmetry, the reported bug class: a door that fades once in "
            "and twice back is exactly what the invariant forbids";
-    EXPECT_EQ(7, count_fade_between_traces())
-        << "2 (parent entry) + 2 (in) + 2 (back) + 1 (the parent's own exit)";
+    EXPECT_EQ(6, count_fade_between_traces())
+        << "1 (parent entry) + 2 (in) + 2 (back) + 1 (the parent's own exit)";
 }
 
 TEST(MenuEngine, depth_rule_overlay_never_fades_even_over_a_black_window)
@@ -1033,16 +1072,32 @@ TEST(MenuEngine, legacy_menu_fade_owns_out_in_and_out_again)
     EXPECT_EQ(0, count_fade_between_traces());
     EXPECT_FALSE(scr->window_is_black());
 
-    // Bare context switch (depth 0): fade-out at construction, the first
-    // present fades in, the scope's end fades out again.
+    // Bare context switch (depth 0) over a frame nobody faded out (the
+    // instant screen's plain present above): the construction fade-out
+    // still runs — production never hard-cuts — and under TESTING it is
+    // the entry invariant's violation, named after the screen. Then the
+    // first present fades in and the scope's end fades out again.
     trace_clear();
+    ASSERT_FALSE(scr->window_is_black());
     {
-        og::ui::LegacyMenuFade entry_fade;
+        og::ui::LegacyMenuFade entry_fade("legacy_test");
         EXPECT_TRUE(entry_fade.active());
         EXPECT_TRUE(entry_fade.fade_in_pending());
         EXPECT_EQ(1, count_fade_between_traces())
             << "the previous frame fades out at construction";
         EXPECT_TRUE(scr->window_is_black());
+        EXPECT_EQ(1, og::video_testing::g_fade_violations.load())
+            << "that fade-out was the previous surface's job";
+        {
+            const std::vector<std::string> violations =
+                og::video_testing::fade_violation_messages();
+            ASSERT_EQ(1u, violations.size());
+            EXPECT_EQ("entry found an unfaded window: the previous surface "
+                      "exited without its fade-out (legacy_test)",
+                      violations.front());
+        }
+        // Triggered on purpose; the listener would otherwise fail this test.
+        og::video_testing::reset_fade_violations();
         entry_fade.present_first(*scr);
         EXPECT_EQ(2, count_fade_between_traces())
             << "the first present fades in";
@@ -1075,6 +1130,26 @@ TEST(MenuEngine, legacy_menu_fade_owns_out_in_and_out_again)
     }
     EXPECT_EQ(2, count_fade_between_traces())
         << "the destructor adds nothing after an explicit end()";
+
+    // Instant-in, fade-out-at-exit (the NETWORKING hookup shape): an
+    // Instant-noted scope fades nothing on entry and presents plainly, but
+    // the screen leaves its context on a successful hookup and owns that
+    // exit — fade_out_at_exit() makes end() fade its last frame out, so the
+    // fading entry behind it finds a black window.
+    og::ui::note_menu_entry_fade(og::ui::MenuEntryFade::Instant);
+    trace_clear();
+    {
+        og::ui::LegacyMenuFade entry_fade("legacy_hookup");
+        EXPECT_FALSE(entry_fade.active());
+        entry_fade.present_first(*scr);
+        EXPECT_EQ(0, count_fade_between_traces()) << "instant in";
+        EXPECT_FALSE(scr->window_is_black());
+        entry_fade.fade_out_at_exit();
+    }
+    EXPECT_EQ(1, count_fade_between_traces())
+        << "the exit fade-out runs even though the entry did not fade in";
+    EXPECT_TRUE(scr->window_is_black());
+    EXPECT_EQ(0, og::video_testing::g_fade_violations.load());
 }
 
 // The override's other half at depth 0's mirror: nested under an open menu

@@ -340,7 +340,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
     // BEFORE the UI-canvas switch below: it fades whatever canvas is actually
     // presented (the editor presents the World canvas), not the stale UI
     // surface.
-    og::ui::LegacyMenuFade entry_fade;
+    og::ui::LegacyMenuFade entry_fade("campaign select");
     ScopedUiCanvas canvas_target(*og::runtime::current_session->myscreen_);
     std::string old_campaign_id = get_mounted_campaign();
     CampaignEntry* result = nullptr;
@@ -544,6 +544,11 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
                 done = true;
                 break;
             }
+            // Nothing listed (unmounted or broken assets): an un-driven
+            // browser must return empty, not block until the test times out.
+            TRACE("campaign_picker", "auto-accept: no campaigns listed");
+            done = true;
+            break;
         }
 #endif
         // Reset the timer count to zero ...

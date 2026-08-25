@@ -262,10 +262,16 @@ TEST(FadeOwnership, new_game_flow_fades_every_leg_symmetrically)
     EXPECT_EQ(8, count_fades(traces) - state.fades_at_new_game_click)
         << "four legs, two fades each";
 
+    // No door in this flow is the NETWORKING shape, so no exit scope may
+    // have skipped its fade-out for a pending Instant note.
+    EXPECT_FALSE(trace_contains("video", "exit fade skipped: Instant note pending"))
+        << "an Instant note leaked into the new-game flow";
+
     // The other half of the pin: no fade in this flow read a frame the
-    // window never showed, and no fade-in ran over a non-black window. The
-    // listener fails this test on any violation; asserted here too so the
-    // count above can never pass on a black-to-black fade.
+    // window never showed, no fade-in ran over a non-black window, and no
+    // entry found a window the previous screen left unfaded. The listener
+    // fails this test on any violation; asserted here too so the count above
+    // can never pass on a black-to-black fade.
     EXPECT_EQ(0, og::video_testing::g_fade_violations.load())
         << "fade-ownership invariant violated: "
         << (og::video_testing::fade_violation_messages().empty()

@@ -10,24 +10,19 @@
 # into black.
 #
 # So the set of places allowed to call fadeblack() is small, deliberate, and
-# checked in: scripts/fadeblack_sites.txt, one site per line with the reason it
-# is allowed to fade. A new call fails the build until somebody classifies it.
+# checked in: scripts/fadeblack_sites.txt, one function per line with HOW MANY
+# fades it makes and the reason. A new call fails the build until somebody
+# classifies it — including a call added next to an existing, classified fade
+# in the same function (the count changes), which is exactly where a door-site
+# fade tends to get planted.
 #
-# Sites are keyed by path + enclosing function, never by line number, so that
-# edits elsewhere in a file do not rot the list.
+# Sites are keyed by path + enclosing function + count, never by line number,
+# so that edits elsewhere in a file do not rot the list.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SRC_DIR="${ROOT}/src"
 ALLOWLIST="${ROOT}/scripts/fadeblack_sites.txt"
-
-# The two definition sites: screen::fadeblack (the pure delegate) and
-# sdl_video::fadeblack (the implementation, plus the FadeBetween prose around
-# it). Everything else in src/ is a caller and must be classified.
-EXCLUDED_FILES=(
-    "src/interface/screen.cpp"
-    "src/platform/sdl/video_sdl.cpp"
-)
 
 if [[ ! -d "${SRC_DIR}" ]]; then
     echo "ERROR: cannot find ${SRC_DIR}" >&2
@@ -38,11 +33,13 @@ if [[ ! -f "${ALLOWLIST}" ]]; then
     exit 2
 fi
 
-# Keys a call site to "<path>::<enclosing function>". Comments and string
-# literals are stripped first, so commented-out and merely-mentioned fades do
-# not count. A function definition is an identifier followed by a balanced
-# parameter list followed by `{` (rather than `;`), which distinguishes it from
-# a declaration and from a multi-line call.
+# Prints "<path>::<enclosing function>" once per fadeblack() call. Comments
+# and string literals are stripped first, so commented-out and merely-mentioned
+# fades do not count; the definition line of a function itself named fadeblack
+# (screen::fadeblack, sdl_video::fadeblack) is a definition, not a call. A
+# function definition is an identifier followed by a balanced parameter list
+# followed by `{` (rather than `;`), which distinguishes it from a declaration
+# and from a multi-line call.
 read -r -d '' SITE_KEY_AWK <<'AWK' || true
 {
     raw[NR] = $0
@@ -72,10 +69,14 @@ END {
         name = definition_name(i)
         if (name != "")
             current = name
-        if (code[i] ~ /(^|[^A-Za-z0-9_])fadeblack[ \t]*\(/) {
+        if (name ~ /(^|::)fadeblack$/)
+            continue
+        line = code[i]
+        while (match(line, /(^|[^A-Za-z0-9_])fadeblack[ \t]*\(/)) {
             if (current == "")
                 current = "<file scope>"
             print rel "::" current
+            line = substr(line, RSTART + RLENGTH)
         }
     }
 }
@@ -148,39 +149,64 @@ status=0
 FOUND_KEYS_FILE="$(mktemp)"
 trap 'rm -f "${FOUND_KEYS_FILE}"' EXIT
 
+# One line per call, then "<path>::<function>=<count>" per function.
 {
     while IFS= read -r file; do
         rel="${file#"${ROOT}"/}"
-        skip=0
-        for excluded in "${EXCLUDED_FILES[@]}"; do
-            [[ "${rel}" == "${excluded}" ]] && skip=1
-        done
-        [[ "${skip}" -eq 1 ]] && continue
         awk -v rel="${rel}" "${SITE_KEY_AWK}" "${file}"
     done < <(grep -rlE '(^|[^A-Za-z0-9_])fadeblack[[:space:]]*\(' "${SRC_DIR}" | sort)
-} | sort -u > "${FOUND_KEYS_FILE}"
+} | sort | uniq -c | awk '{ print $2 "=" $1 }' | sort > "${FOUND_KEYS_FILE}"
 
 ALLOWED_KEYS_FILE="$(mktemp)"
 trap 'rm -f "${FOUND_KEYS_FILE}" "${ALLOWED_KEYS_FILE}"' EXIT
 sed -E 's/#.*//; s/[[:space:]]+$//; s/^[[:space:]]+//' "${ALLOWLIST}" \
     | { grep -v '^$' || true; } | sort -u > "${ALLOWED_KEYS_FILE}"
 
-UNLISTED="$(comm -23 "${FOUND_KEYS_FILE}" "${ALLOWED_KEYS_FILE}")"
-STALE="$(comm -13 "${FOUND_KEYS_FILE}" "${ALLOWED_KEYS_FILE}")"
+# A key is "<path>::<function>=<count>". Three ways to disagree: a function
+# that fades but is not listed, a listed function whose fade count changed,
+# and a listed function that no longer fades (or no longer exists).
+FOUND_ONLY="$(comm -23 "${FOUND_KEYS_FILE}" "${ALLOWED_KEYS_FILE}")"
+ALLOWED_ONLY="$(comm -13 "${FOUND_KEYS_FILE}" "${ALLOWED_KEYS_FILE}")"
+
+UNLISTED=""
+MISMATCH=""
+STALE=""
+# Keys never contain "=" except before the count, so field 1 is the function.
+listed_count() { awk -F= -v fn="$1" '$1 == fn { print $2 }' "${ALLOWED_KEYS_FILE}"; }
+found_count()  { awk -F= -v fn="$1" '$1 == fn { print $2 }' "${FOUND_KEYS_FILE}"; }
+while IFS= read -r key; do
+    [[ -z "${key}" ]] && continue
+    fn="${key%=*}"
+    listed="$(listed_count "${fn}")"
+    if [[ -n "${listed}" ]]; then
+        MISMATCH+="  ${fn}: found ${key#*=} fadeblack() call(s), allowlist says ${listed}"$'\n'
+    else
+        UNLISTED+="  ${key}"$'\n'
+    fi
+done <<< "${FOUND_ONLY}"
+while IFS= read -r key; do
+    [[ -z "${key}" ]] && continue
+    fn="${key%=*}"
+    if [[ -z "$(found_count "${fn}")" ]]; then
+        STALE+="  ${key}"$'\n'
+    fi
+done <<< "${ALLOWED_ONLY}"
 
 if [[ -n "${UNLISTED}" ]]; then
     echo "ERROR: unclassified fadeblack() call site(s):" >&2
-    while IFS= read -r key; do
-        echo "  ${key}" >&2
-    done <<< "${UNLISTED}"
+    printf '%s' "${UNLISTED}" >&2
+    status=1
+fi
+
+if [[ -n "${MISMATCH}" ]]; then
+    echo "ERROR: fadeblack() call count changed in classified function(s):" >&2
+    printf '%s' "${MISMATCH}" >&2
     status=1
 fi
 
 if [[ -n "${STALE}" ]]; then
     echo "ERROR: allowlisted fadeblack() call site(s) that no longer exist:" >&2
-    while IFS= read -r key; do
-        echo "  ${key}" >&2
-    done <<< "${STALE}"
+    printf '%s' "${STALE}" >&2
     status=1
 fi
 
@@ -200,9 +226,12 @@ key with the reason to:
 
   ${ALLOWLIST}
 
-Keys are "<path>::<enclosing function>" — the same key the errors above print.
+Keys are "<path>::<enclosing function>=<count>" — the count is how many
+fadeblack() calls that function makes, so a fade added beside an existing one
+has to be classified too. The errors above print the exact key.
 EOF
     exit 2
 fi
 
-echo "OK: $(wc -l < "${FOUND_KEYS_FILE}") classified fadeblack() call site(s)."
+TOTAL_CALLS="$(awk -F= '{ s += $2 } END { print s + 0 }' "${FOUND_KEYS_FILE}")"
+echo "OK: ${TOTAL_CALLS} classified fadeblack() call(s) in $(wc -l < "${FOUND_KEYS_FILE}") function(s)."
