@@ -27,6 +27,7 @@
 #include <openglad/interface/game_context.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/game_client.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/sound.h>
 #include <openglad/gameplay/statistics.h>
@@ -1365,6 +1366,20 @@ void screen::sync_world_from_save_data()
             ? std::clamp<std::int16_t>(
                   static_cast<std::int16_t>(save_data.time_limit), 720, 21600)
             : static_cast<std::int16_t>(0);
+    // World-entry twin of the same shared clamp for the eight bot knobs
+    // (LINEUP §3.1): a hand-edited save is the one route that reaches the sim
+    // unchecked, and the mirror that snapshot-applies this world clamps the
+    // same fields (world_snapshot.cpp apply_mode_state) — so without this the
+    // server and its mirrors hold different values and every snapshot hash
+    // check mismatches. 0 stays 0 (AUTO: the map's own value).
+    for (std::size_t team = 0; team < world_.ctf_requested_bot_squad.size();
+         ++team)
+    {
+        world_.ctf_requested_bot_squad[team] = static_cast<short>(
+            og::sim::clamp_bot_squad(save_data.bot_squad[team]));
+        world_.ctf_requested_bot_level[team] = static_cast<short>(
+            og::sim::clamp_bot_level(save_data.bot_level[team]));
+    }
     // Modes may clamp world knobs (Classic: identity). Applied in BOTH
     // sync_world_from_save_data twins (see headless_server_runtime.cpp).
     world_.respawn_mode =

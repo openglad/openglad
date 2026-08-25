@@ -193,10 +193,15 @@ struct CampaignRosterEntry {
 // og.campaign_match_get errors on any name outside this list — the sim
 // twin's unknown-name rule — while match_set answers false (policy lives
 // in the provider).
+// The eight per-team bot knobs (LINEUP §3.1) join the list: "bot_squad_N"
+// is a preset ordinal (0 = AUTO, 1 = NONE, 2.. = the campaign's preset) and
+// "bot_level_N" a bot level (0 = AUTO, 1..9), N being the 1-based team.
 inline constexpr const char* kCampaignMatchSettingNames[] = {
     "team_count",   "score_limit",  "respawn_ticks",
     "strip_troops", "respawn_mode", "generator_rate",
     "time_limit",
+    "bot_squad_1",  "bot_squad_2",  "bot_squad_3",  "bot_squad_4",
+    "bot_level_1",  "bot_level_2",  "bot_level_3",  "bot_level_4",
 };
 
 // The menu-time provider seam. og_gameplay cannot see SaveData or the

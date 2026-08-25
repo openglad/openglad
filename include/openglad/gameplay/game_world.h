@@ -476,6 +476,14 @@ public:
     // Independent of the 36000-tick hard mission timeout below, which is a
     // runaway-loop safety net and ends the level as a LOSS.
     short ctf_requested_time_limit = 0;
+    // Lobby-requested per-team bot squad preset ordinal and bot level
+    // (LINEUP §3.1). Index is the team (0..3). 0 = AUTO on both — the map's
+    // own value — so an all-zero pair reproduces today's fills byte for byte.
+    // bot_squad: 1 = NONE, 2.. = the campaign's preset ordinal. bot_level:
+    // 1..9 = that level exactly. Scripted modes read them as
+    // og.match_setting("bot_squad_1") .. ("bot_level_4").
+    std::array<short, 4> ctf_requested_bot_squad = {};
+    std::array<short, 4> ctf_requested_bot_level = {};
     // Classic (non-CTF) respawn mode: 0 = off (legacy), 1 = heroes respawn,
     // 2 = heroes + level-authored AI livings respawn ("endless battle"),
     // 3 = only Team 1 heroes respawn (player-facing Team 1 = internal team 0).

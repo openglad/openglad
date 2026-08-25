@@ -32,7 +32,7 @@ namespace og::sim {
 inline constexpr std::size_t kEntitySnapshotDirtyMaskWords = 2;
 inline constexpr std::int32_t kNoGuyId = -1;
 inline constexpr std::uint8_t kNoPausePlayerIndex = 0xff;
-inline constexpr std::uint8_t kSnapshotFormatVersion = 11;
+inline constexpr std::uint8_t kSnapshotFormatVersion = 12;
 inline constexpr std::uint8_t kSnapshotProtocolVersion = kNetworkProtocolVersion;
 inline constexpr std::uint8_t kDeltaPayloadUncompressedFlag = 0x01;
 inline constexpr std::size_t kDeltaPayloadHeaderSize = 1;
@@ -254,6 +254,11 @@ struct WorldSnapshot {
     // value), appended LAST in serialize_match_knobs so every earlier
     // payload-offset pin survives.
     std::int16_t ctf_requested_time_limit = 0;
+    // Snapshot v12: the eight per-team bot knobs (LINEUP §3.1), appended
+    // after the time limit in serialize_match_knobs so every earlier
+    // payload-offset pin survives.
+    std::array<std::int16_t, 4> ctf_requested_bot_squad = {};
+    std::array<std::int16_t, 4> ctf_requested_bot_level = {};
     // Classic respawn / generator knobs (GameWorld scalars).
     std::int16_t respawn_mode = 0;
     std::int16_t generator_rate = 0;

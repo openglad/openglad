@@ -93,6 +93,12 @@ public:
     // manifest row. Persisted since GTL v17; sanitize/clamp twins bound a
     // non-zero request to [720, 21600] ticks (1 min .. 30 min).
     short time_limit = 0;
+    // Per-team bot squad preset ordinal and bot level (LINEUP §3.1, GTL v18).
+    // Index is the team (0..3). 0 = AUTO on both (the map's own value), so an
+    // all-zero pair is today's behaviour byte for byte. bot_squad: 1 = NONE,
+    // 2.. = the campaign's preset ordinal. bot_level: 1..9 = that level.
+    std::array<short, 4> bot_squad = {};
+    std::array<short, 4> bot_level = {};
     // Difficulty submenu settings (0 = legacy default behavior for all three).
     // 0 = off, 1 = heroes, 2 = everyone, 3 = Team 1 heroes only.
     short respawn_mode = 0;

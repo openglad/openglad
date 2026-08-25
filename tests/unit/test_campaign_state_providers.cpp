@@ -8,6 +8,7 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/resources/campaign_state_providers.h>
 #include <openglad/resources/save_data.h>
@@ -343,6 +344,101 @@ TEST(CampaignStateProviders, match_set_clamps_like_the_lobby_sanitizer)
 
     EXPECT_FALSE(providers.match_set("no_such_knob", 1))
         << "unknown names answer false";
+    (void)og::data::consume_match_settings_dirty();
+}
+
+TEST(CampaignStateProviders, match_get_and_set_cover_the_per_team_bot_knobs)
+{
+    SaveData save;
+    (void)og::data::consume_match_settings_dirty();
+    save.bot_squad = {0, 2, 1, 9};
+    save.bot_level = {0, 5, 9, 1};
+
+    const CampaignProviders providers = make_campaign_providers(save);
+    // Each name reads its OWN team's slot: a transposed slot map would still
+    // pass a test that only checked one index.
+    EXPECT_EQ(0, providers.match_get("bot_squad_1"));
+    EXPECT_EQ(2, providers.match_get("bot_squad_2"));
+    EXPECT_EQ(1, providers.match_get("bot_squad_3"));
+    EXPECT_EQ(9, providers.match_get("bot_squad_4"));
+    EXPECT_EQ(0, providers.match_get("bot_level_1"));
+    EXPECT_EQ(5, providers.match_get("bot_level_2"));
+    EXPECT_EQ(9, providers.match_get("bot_level_3"));
+    EXPECT_EQ(1, providers.match_get("bot_level_4"));
+
+    // Team 0 and team 5 are outside the 1..4 vocabulary.
+    EXPECT_EQ(0, providers.match_get("bot_squad_0"));
+    EXPECT_EQ(0, providers.match_get("bot_squad_5"));
+    EXPECT_FALSE(providers.match_set("bot_squad_0", 3));
+    EXPECT_FALSE(providers.match_set("bot_level_5", 3));
+    EXPECT_FALSE(providers.match_set("bot_squad_", 3));
+
+    // Both knobs CLAMP (0 = AUTO is legal, so neither refuses), with the same
+    // bounds the lobby sanitizer applies.
+    EXPECT_TRUE(providers.match_set("bot_squad_1", -3));
+    EXPECT_EQ(0, save.bot_squad[0]);
+    EXPECT_TRUE(providers.match_set("bot_squad_1", 999));
+    EXPECT_EQ(og::sim::kMaxBotSquad, save.bot_squad[0]);
+    EXPECT_TRUE(providers.match_set("bot_squad_1", 4));
+    EXPECT_EQ(4, save.bot_squad[0]);
+
+    EXPECT_TRUE(providers.match_set("bot_level_4", -1));
+    EXPECT_EQ(0, save.bot_level[3]);
+    EXPECT_TRUE(providers.match_set("bot_level_4", 400));
+    EXPECT_EQ(og::sim::kMaxBotLevel, save.bot_level[3]);
+    EXPECT_TRUE(providers.match_set("bot_level_4", 6));
+    EXPECT_EQ(6, save.bot_level[3]);
+
+    // A write to team 3 must not disturb its neighbours.
+    EXPECT_TRUE(providers.match_set("bot_squad_3", 7));
+    EXPECT_EQ(4, save.bot_squad[0]);
+    EXPECT_EQ(2, save.bot_squad[1]);
+    EXPECT_EQ(7, save.bot_squad[2]);
+    EXPECT_EQ(9, save.bot_squad[3]);
+    (void)og::data::consume_match_settings_dirty();
+}
+
+TEST(CampaignStateProviders, bot_knob_names_are_in_the_campaign_vocabulary)
+{
+    // og.campaign_match_get errors on any name outside this list, so a knob
+    // that reached the provider but not the vocabulary would be unreachable
+    // from Lua.
+    const auto listed = [](const char* wanted) {
+        for (const char* name :
+             og::script::hooks::kCampaignMatchSettingNames)
+        {
+            if (std::string(name) == wanted)
+                return true;
+        }
+        return false;
+    };
+    for (int team = 1; team <= 4; ++team)
+    {
+        EXPECT_TRUE(listed(("bot_squad_" + std::to_string(team)).c_str()))
+            << "bot_squad_" << team;
+        EXPECT_TRUE(listed(("bot_level_" + std::to_string(team)).c_str()))
+            << "bot_level_" << team;
+    }
+}
+
+TEST(CampaignStateProviders, bot_knob_writes_are_refused_for_non_hosts)
+{
+    SaveData save;
+    save.bot_squad = {0, 0, 0, 0};
+    (void)og::data::consume_match_settings_dirty();
+
+    bool host = false;
+    const CampaignProviders providers =
+        make_campaign_providers(save, [&host] { return host; });
+    EXPECT_FALSE(providers.match_set("bot_squad_2", 3));
+    EXPECT_EQ(0, save.bot_squad[1]) << "the refusal never writes";
+    EXPECT_FALSE(og::data::consume_match_settings_dirty());
+    EXPECT_EQ(0, providers.match_get("bot_squad_2"))
+        << "reads stay open to every machine";
+
+    host = true;
+    EXPECT_TRUE(providers.match_set("bot_squad_2", 3));
+    EXPECT_EQ(3, save.bot_squad[1]);
     (void)og::data::consume_match_settings_dirty();
 }
 

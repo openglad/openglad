@@ -6,8 +6,10 @@
 
 #include <algorithm>
 #include <array>
+#include <limits>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -56,6 +58,11 @@ public:
 
     void disconnect(og::sim::PeerId peer_id) override
     {
+        // Record HOW MANY messages had already been handed to the transport
+        // when this peer was dropped. A kick notice is only useful if it was
+        // queued before the disconnect, and the two live in different logs,
+        // so the send count is the ordering witness.
+        disconnect_marks_.emplace_back(peer_id, sent_messages_.size());
         disconnected_peers_.push_back(peer_id);
     }
 
@@ -118,6 +125,19 @@ public:
         return disconnected_peers_;
     }
 
+    // Messages already queued when peer_id was disconnected, or nullopt when
+    // it never was.
+    [[nodiscard]] std::optional<std::size_t> sent_count_at_disconnect(
+        og::sim::PeerId peer_id) const noexcept
+    {
+        for (const auto& [dropped, count] : disconnect_marks_)
+        {
+            if (dropped == peer_id)
+                return count;
+        }
+        return std::nullopt;
+    }
+
 private:
     bool typed_messages_ = false;
     std::vector<og::sim::ReceivedMessage> sent_messages_;
@@ -125,6 +145,7 @@ private:
     std::vector<og::sim::TypedReceivedMessage> received_typed_;
     std::vector<og::sim::PeerId> connected_peers_;
     std::vector<og::sim::PeerId> disconnected_peers_;
+    std::vector<std::pair<og::sim::PeerId, std::size_t>> disconnect_marks_;
 };
 
 og::sim::LobbyCharacterSlot make_slot(std::uint8_t slot_index,
@@ -4145,4 +4166,374 @@ TEST(LobbyState, canonicalize_guy_ids_is_deterministic_and_exact)
     std::vector<og::sim::LobbyCharacterSlot> again = slots;
     og::sim::canonicalize_lobby_gameplay_guy_ids(again);
     EXPECT_EQ(slots, again);
+}
+
+// --- LINEUP §3.1: the eight per-team bot knobs ---------------------------
+
+TEST(LobbyServer, sanitize_clamps_bot_knobs_and_equivalent_carries_them)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    server.poll_incoming_messages();
+
+    og::sim::LobbySettings wild;
+    wild.campaign_id = "modes";
+    wild.scenario_id = 820;
+    wild.difficulty = 1;
+    wild.allied_mode = 1;
+    // Out of range in both directions, and one legal value per array so a
+    // clamp that flattened everything would be caught.
+    wild.bot_squad = {-4, 3, 99, 0};
+    wild.bot_level = {-1, 4, 400, 0};
+    og::sim::LobbyMessage wild_message;
+    wild_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = wild,
+    };
+    transport.queue_lobby_message(11u, wild_message);
+    server.poll_incoming_messages();
+
+    const og::sim::LobbyState state = server.state();
+    // bot_squad clamps into [0, 1 + kMaxBotPresets]; bot_level into [0, 9].
+    const std::array<std::int16_t, 4> expected_squad = {
+        0, 3, og::sim::kMaxBotSquad, 0};
+    const std::array<std::int16_t, 4> expected_level = {
+        0, 4, og::sim::kMaxBotLevel, 0};
+    EXPECT_EQ(expected_squad, state.settings.bot_squad);
+    EXPECT_EQ(expected_level, state.settings.bot_level);
+
+    // The launch equivalent is a hand-written field list — the documented
+    // dropped-field bug class.
+    const og::sim::LobbySaveDataEquivalent equivalent =
+        server.build_save_data_equivalent();
+    EXPECT_EQ(expected_squad, equivalent.bot_squad);
+    EXPECT_EQ(expected_level, equivalent.bot_level);
+}
+
+TEST(LobbyServer, bot_knobs_replicate_to_joiners_and_a_joiner_change_is_dropped)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u); // first connection is elected host
+    server.connect_client(12u);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        12u,
+        make_join_message("Guest", 1,
+                          {make_slot(0u, 200, "Archer", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    og::sim::LobbySettings hosted;
+    hosted.campaign_id = "modes";
+    hosted.scenario_id = 820;
+    hosted.difficulty = 1;
+    hosted.allied_mode = 1;
+    hosted.bot_squad = {0, 2, 1, 0};
+    hosted.bot_level = {0, 5, 0, 0};
+    og::sim::LobbyMessage hosted_message;
+    hosted_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = hosted,
+    };
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(11u, hosted_message);
+    server.poll_incoming_messages();
+
+    // The joiner's replicated copy comes off the wire, not the server's
+    // in-memory struct: this is the round trip a missing serializer field
+    // would break.
+    bool guest_saw_the_knobs = false;
+    for (const og::sim::ReceivedMessage& sent : transport.sent_messages())
+    {
+        if (sent.peer_id != 12u)
+            continue;
+        const auto decoded =
+            og::sim::deserialize_lobby_state_message(sent.data);
+        if (!decoded.has_value())
+            continue;
+        guest_saw_the_knobs =
+            decoded->settings.bot_squad == hosted.bot_squad &&
+            decoded->settings.bot_level == hosted.bot_level;
+        if (guest_saw_the_knobs)
+            break;
+    }
+    EXPECT_TRUE(guest_saw_the_knobs)
+        << "the host's bot knobs must reach the joiner over the wire";
+
+    // A non-host SettingsChange is ignored outright (the historic rule).
+    og::sim::LobbySettings guest_attempt = hosted;
+    guest_attempt.bot_squad = {9, 9, 9, 9};
+    guest_attempt.bot_level = {9, 9, 9, 9};
+    og::sim::LobbyMessage guest_message;
+    guest_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 1u,
+        .settings = guest_attempt,
+    };
+    transport.queue_lobby_message(12u, guest_message);
+    server.poll_incoming_messages();
+    EXPECT_EQ(hosted.bot_squad, server.state().settings.bot_squad);
+    EXPECT_EQ(hosted.bot_level, server.state().settings.bot_level);
+}
+
+// --- LINEUP §6: kick by machine id ---------------------------------------
+
+namespace {
+
+og::sim::LobbyMessage make_kick_message(og::sim::LobbyMachineId machine_id)
+{
+    og::sim::LobbyMessage message;
+    message.payload = og::sim::LobbyKickMessage{.machine_id = machine_id};
+    return message;
+}
+
+// The machine id the server issued to the peer whose seats carry `name`.
+og::sim::LobbyMachineId machine_id_of(const og::sim::LobbyState& state,
+                                      const std::string& name)
+{
+    for (const og::sim::LobbyPlayer& player : state.players)
+    {
+        if (player.name == name)
+            return player.machine_id;
+    }
+    return og::sim::kInvalidLobbyMachineId;
+}
+
+std::size_t index_of_kicked_message(const MockLobbyTransport& transport,
+                                    og::sim::PeerId peer_id)
+{
+    const std::vector<og::sim::ReceivedMessage>& sent =
+        transport.sent_messages();
+    for (std::size_t i = 0; i < sent.size(); ++i)
+    {
+        if (sent[i].peer_id != peer_id)
+            continue;
+        const auto decoded = og::sim::deserialize_lobby_message(sent[i].data);
+        if (decoded.has_value() &&
+            decoded->kind() == og::sim::LobbyMessageKind::Kicked)
+        {
+            return i;
+        }
+    }
+    return std::numeric_limits<std::size_t>::max();
+}
+
+} // namespace
+
+TEST(LobbyServer, host_kick_removes_every_seat_of_the_machine_and_reindexes)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u); // host
+    server.connect_client(12u); // guest with TWO seats
+    server.connect_client(13u); // bystander
+
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    og::sim::LobbyMessage guest_join =
+        make_join_message("Guest", 1,
+                          {make_slot(0u, 200, "Archer", FAMILY_ARCHER)});
+    {
+        og::sim::LobbyPlayer second_seat;
+        second_seat.name = "Guest";
+        second_seat.team = 1;
+        second_seat.character_slots = {
+            make_slot(1u, 201, "Mage", FAMILY_MAGE)};
+        std::get<og::sim::LobbyJoinMessage>(guest_join.payload)
+            .extra_players.push_back(std::move(second_seat));
+    }
+    transport.queue_lobby_message(12u, guest_join);
+    transport.queue_lobby_message(
+        13u,
+        make_join_message("Third", 2,
+                          {make_slot(0u, 300, "Thief", FAMILY_THIEF)}));
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(4u, server.state().players.size())
+        << "host + two guest seats + bystander";
+    const og::sim::LobbyMachineId guest_machine =
+        machine_id_of(server.state(), "Guest");
+    ASSERT_NE(og::sim::kInvalidLobbyMachineId, guest_machine);
+
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(11u, make_kick_message(guest_machine));
+    server.poll_incoming_messages();
+
+    const og::sim::LobbyState after = server.state();
+    EXPECT_EQ(2u, after.players.size()) << "both guest seats leave together";
+    for (const og::sim::LobbyPlayer& player : after.players)
+        EXPECT_NE("Guest", player.name);
+    // The survivors re-index densely: the bystander inherits P2.
+    ASSERT_EQ(2u, after.players.size());
+    EXPECT_EQ(0u, after.players[0].player_index);
+    EXPECT_EQ(1u, after.players[1].player_index);
+    EXPECT_EQ("Third", after.players[1].name);
+
+    EXPECT_NE(transport.disconnected_peers().end(),
+              std::find(transport.disconnected_peers().begin(),
+                        transport.disconnected_peers().end(),
+                        og::sim::PeerId{12u}))
+        << "the kicked machine's transport connection is dropped";
+}
+
+TEST(LobbyServer, kicked_notice_precedes_the_disconnect)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(12u);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        12u,
+        make_join_message("Guest", 1,
+                          {make_slot(0u, 200, "Archer", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    const og::sim::LobbyMachineId guest_machine =
+        machine_id_of(server.state(), "Guest");
+    ASSERT_NE(og::sim::kInvalidLobbyMachineId, guest_machine);
+
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(11u, make_kick_message(guest_machine));
+    server.poll_incoming_messages();
+
+    const std::size_t kicked_index = index_of_kicked_message(transport, 12u);
+    ASSERT_NE(std::numeric_limits<std::size_t>::max(), kicked_index)
+        << "the kicked peer must receive a Kicked notice";
+    const std::optional<std::size_t> sent_at_disconnect =
+        transport.sent_count_at_disconnect(12u);
+    ASSERT_TRUE(sent_at_disconnect.has_value());
+    EXPECT_LT(kicked_index, *sent_at_disconnect)
+        << "the notice must be queued BEFORE the disconnect, or the peer "
+           "never receives it and can only render a bare link failure";
+}
+
+TEST(LobbyServer, non_host_kick_is_denied_and_echoes_state)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u); // host
+    server.connect_client(12u); // guest
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        12u,
+        make_join_message("Guest", 1,
+                          {make_slot(0u, 200, "Archer", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    const og::sim::LobbyMachineId host_machine =
+        machine_id_of(server.state(), "Host");
+    ASSERT_NE(og::sim::kInvalidLobbyMachineId, host_machine);
+
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(12u, make_kick_message(host_machine));
+    server.poll_incoming_messages();
+
+    EXPECT_EQ(2u, server.state().players.size())
+        << "a guest cannot kick the host";
+    EXPECT_TRUE(transport.disconnected_peers().empty());
+    EXPECT_EQ(std::numeric_limits<std::size_t>::max(),
+              index_of_kicked_message(transport, 11u));
+
+    // The refusal answers with a state echo to the requester, so a client
+    // detects the bounce without waiting on a timeout.
+    bool echoed_to_requester = false;
+    for (const og::sim::ReceivedMessage& sent : transport.sent_messages())
+    {
+        if (sent.peer_id == 12u &&
+            og::sim::deserialize_lobby_state_message(sent.data).has_value())
+        {
+            echoed_to_requester = true;
+        }
+    }
+    EXPECT_TRUE(echoed_to_requester);
+}
+
+TEST(LobbyServer, kick_of_self_or_unknown_machine_echoes_state_only)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(12u);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        12u,
+        make_join_message("Guest", 1,
+                          {make_slot(0u, 200, "Archer", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    const og::sim::LobbyMachineId host_machine =
+        machine_id_of(server.state(), "Host");
+
+    // Kicking yourself is not a kick — leaving is DISCONNECT.
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(11u, make_kick_message(host_machine));
+    server.poll_incoming_messages();
+    EXPECT_EQ(2u, server.state().players.size());
+    EXPECT_TRUE(transport.disconnected_peers().empty());
+
+    // An id nobody holds (including the invalid sentinel) is a no-op echo.
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(11u, make_kick_message(0x7fffffffu));
+    transport.queue_lobby_message(
+        11u, make_kick_message(og::sim::kInvalidLobbyMachineId));
+    server.poll_incoming_messages();
+    EXPECT_EQ(2u, server.state().players.size());
+    EXPECT_TRUE(transport.disconnected_peers().empty());
+    bool echoed = false;
+    for (const og::sim::ReceivedMessage& sent : transport.sent_messages())
+    {
+        if (sent.peer_id == 11u &&
+            og::sim::deserialize_lobby_state_message(sent.data).has_value())
+        {
+            echoed = true;
+        }
+    }
+    EXPECT_TRUE(echoed);
+}
+
+TEST(LobbyServer, a_kicked_message_reaching_the_server_is_ignored)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(12u);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        12u,
+        make_join_message("Guest", 1,
+                          {make_slot(0u, 200, "Archer", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    // Kicked is a server->peer notice. A peer echoing it back must not
+    // disturb the lobby (a crafted client is the only sender).
+    og::sim::LobbyMessage kicked;
+    kicked.payload = og::sim::LobbyKickedMessage{};
+    transport.queue_lobby_message(12u, kicked);
+    transport.queue_lobby_message(11u, kicked);
+    server.poll_incoming_messages();
+
+    EXPECT_EQ(2u, server.state().players.size());
+    EXPECT_TRUE(transport.disconnected_peers().empty());
 }

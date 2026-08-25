@@ -2,6 +2,7 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/guy.h>
@@ -104,6 +105,20 @@ void sync_world_from_save_data(GameWorld& world, const SaveData& save)
             ? std::clamp<std::int16_t>(
                   static_cast<std::int16_t>(save.time_limit), 720, 21600)
             : static_cast<std::int16_t>(0);
+    // World-entry twin of the same shared clamp for the eight bot knobs
+    // (LINEUP §3.1): a hand-edited save is the one route that reaches the sim
+    // unchecked, and the mirror that snapshot-applies this world clamps the
+    // same fields (world_snapshot.cpp apply_mode_state) — so without this the
+    // server and its mirrors hold different values and every snapshot hash
+    // check mismatches. 0 stays 0 (AUTO: the map's own value).
+    for (std::size_t team = 0; team < world.ctf_requested_bot_squad.size();
+         ++team)
+    {
+        world.ctf_requested_bot_squad[team] = static_cast<short>(
+            og::sim::clamp_bot_squad(save.bot_squad[team]));
+        world.ctf_requested_bot_level[team] = static_cast<short>(
+            og::sim::clamp_bot_level(save.bot_level[team]));
+    }
     // Modes may clamp world knobs (Classic: identity). Applied in BOTH
     // sync_world_from_save_data twins (see screen.cpp).
     world.respawn_mode =
@@ -356,6 +371,10 @@ void copy_headless_server_save_data(SaveData& destination,
     // Match time limit (protocol v15 / GTL v17): same rule — a dropped copy
     // would silently restore the map's own clock across the staged handoff.
     destination.time_limit = source.time_limit;
+    // Per-team bot knobs (protocol v16 / GTL v18): same rule — a dropped copy
+    // would silently restore the map's own fills across the staged handoff.
+    destination.bot_squad = source.bot_squad;
+    destination.bot_level = source.bot_level;
     // Difficulty submenu (protocol v6): same lobby-negotiated rule — the
     // staged-lobby adoption copies the staged save through here, and a copy
     // that dropped these would launch with default respawns/permadeath.
@@ -415,6 +434,11 @@ og::sim::LobbySaveDataEquivalent build_local_save_equivalent(
     equivalent.cross_control = save.cross_control;
     equivalent.infinite_gold = save.infinite_gold;
     equivalent.time_limit = save.time_limit;
+    for (std::size_t team = 0; team < equivalent.bot_squad.size(); ++team)
+    {
+        equivalent.bot_squad[team] = save.bot_squad[team];
+        equivalent.bot_level[team] = save.bot_level[team];
+    }
 
     // Full roster, benched kept (the local rule): campaign_tag stays off the
     // equivalent by the documented GTL v16 rule — the record it is stored on
@@ -518,6 +542,13 @@ void apply_headless_lobby_game_start_config(
     save.cross_control = static_cast<short>(config_save.cross_control);
     save.infinite_gold = static_cast<short>(config_save.infinite_gold);
     save.time_limit = static_cast<short>(config_save.time_limit);
+    for (std::size_t team = 0; team < save.bot_squad.size(); ++team)
+    {
+        save.bot_squad[team] =
+            static_cast<short>(config_save.bot_squad[team]);
+        save.bot_level[team] =
+            static_cast<short>(config_save.bot_level[team]);
+    }
     save.my_team = 0;
 
     for (auto& member : save.team_list)

@@ -30,7 +30,10 @@ namespace og::sim {
 // v17 records protocol-v15 snapshots/input frames (snapshot v11: the match
 // knobs gain the time-limit i16, #241); v16 readers must reject the new
 // protocol byte and vice versa.
-inline constexpr std::uint8_t kReplayFormatVersion = 17;
+// v18 records protocol-v16 snapshots/input frames (snapshot v12: the match
+// knobs gain the eight per-team bot i16s, LINEUP §3.1); v17 readers must
+// reject the new protocol byte and vice versa.
+inline constexpr std::uint8_t kReplayFormatVersion = 18;
 inline constexpr std::size_t kReplayHeaderSize = 32;
 
 // First replay format carrying the campaign-vars section (the reader's

@@ -4,6 +4,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/sim_event_log.h>
@@ -925,6 +926,13 @@ void serialize_match_knobs(std::vector<std::uint8_t>& buffer,
     // Snapshot v11 appends the time limit LAST: every raw payload-offset pin
     // that addresses the respawn/mode blocks keeps its number.
     append_i16(buffer, snapshot.ctf_requested_time_limit);
+    // Snapshot v12 appends the eight per-team bot knobs LAST, for the same
+    // reason v11 appended the time limit: every raw payload-offset pin that
+    // addresses the respawn/mode blocks keeps its number.
+    for (const std::int16_t squad : snapshot.ctf_requested_bot_squad)
+        append_i16(buffer, squad);
+    for (const std::int16_t level : snapshot.ctf_requested_bot_level)
+        append_i16(buffer, level);
 }
 
 void deserialize_match_knobs(ByteReader& reader,
@@ -940,6 +948,10 @@ void deserialize_match_knobs(ByteReader& reader,
         reader.read_i16("world.ctf_requested_strip_scenario_troops");
     snapshot.ctf_requested_time_limit =
         reader.read_i16("world.ctf_requested_time_limit");
+    for (std::int16_t& squad : snapshot.ctf_requested_bot_squad)
+        squad = reader.read_i16("world.ctf_requested_bot_squad");
+    for (std::int16_t& level : snapshot.ctf_requested_bot_level)
+        level = reader.read_i16("world.ctf_requested_bot_level");
 }
 
 // `snapshot_hash` is passed in rather than read off the snapshot: the hash
@@ -2595,6 +2607,14 @@ void capture_mode_state(const GameWorld& world, og::sim::WorldSnapshot& snapshot
     snapshot.ctf_requested_strip_scenario_troops =
         world.ctf_requested_strip_scenario_troops;
     snapshot.ctf_requested_time_limit = world.ctf_requested_time_limit;
+    for (std::size_t team = 0; team < snapshot.ctf_requested_bot_squad.size();
+         ++team)
+    {
+        snapshot.ctf_requested_bot_squad[team] =
+            static_cast<std::int16_t>(world.ctf_requested_bot_squad[team]);
+        snapshot.ctf_requested_bot_level[team] =
+            static_cast<std::int16_t>(world.ctf_requested_bot_level[team]);
+    }
 }
 
 // Rebuilds the world's RespawnState + ModeState from the snapshot.
@@ -2645,6 +2665,18 @@ void apply_mode_state(GameWorld& world, const og::sim::WorldSnapshot& snapshot)
             ? std::clamp<std::int16_t>(snapshot.ctf_requested_time_limit,
                                        720, 21600)
             : static_cast<std::int16_t>(0);
+    // Same crafted-snapshot rule for the bot knobs: a wild preset ordinal
+    // would index past the campaign's preset list, and a wild level past the
+    // difficulty table. The bound is the shared og::sim clamp, so the mirror
+    // lands on exactly the value the lobby authority holds.
+    for (std::size_t team = 0; team < world.ctf_requested_bot_squad.size();
+         ++team)
+    {
+        world.ctf_requested_bot_squad[team] = static_cast<short>(
+            og::sim::clamp_bot_squad(snapshot.ctf_requested_bot_squad[team]));
+        world.ctf_requested_bot_level[team] = static_cast<short>(
+            og::sim::clamp_bot_level(snapshot.ctf_requested_bot_level[team]));
+    }
 }
 
 og::sim::WorldSnapshot capture_snapshot_impl(GameWorld& world,
@@ -3247,6 +3279,8 @@ void apply_delta(WorldSnapshot& baseline, const WorldSnapshot& delta)
     baseline.ctf_requested_strip_scenario_troops =
         delta.ctf_requested_strip_scenario_troops;
     baseline.ctf_requested_time_limit = delta.ctf_requested_time_limit;
+    baseline.ctf_requested_bot_squad = delta.ctf_requested_bot_squad;
+    baseline.ctf_requested_bot_level = delta.ctf_requested_bot_level;
     baseline.respawn_mode = delta.respawn_mode;
     baseline.generator_rate = delta.generator_rate;
     baseline.control_policy = delta.control_policy;

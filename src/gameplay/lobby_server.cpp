@@ -128,6 +128,19 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
         sanitized.time_limit =
             std::clamp<std::int16_t>(sanitized.time_limit, 720, 21600);
     }
+    // Per-team bot knobs (LINEUP §3.1). Both clamp rather than revert: 0
+    // (AUTO) is a legal value, and the ceilings are engine constants a
+    // joiner can enforce without owning the campaign's preset list. The ONE
+    // implementation lives in lobby_state.h and is shared with
+    // clamp_match_setting, both sync_world_from_save_data twins and
+    // world_snapshot apply_mode_state.
+    for (std::size_t team = 0; team < sanitized.bot_squad.size(); ++team)
+    {
+        sanitized.bot_squad[team] =
+            og::sim::clamp_bot_squad(sanitized.bot_squad[team]);
+        sanitized.bot_level[team] =
+            og::sim::clamp_bot_level(sanitized.bot_level[team]);
+    }
     return sanitized;
 }
 
@@ -1104,6 +1117,58 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
         }
         break;
 
+    case LobbyMessageKind::Kick:
+    {
+        // LINEUP §6. The host removes a MACHINE, not a seat: every seat the
+        // target owns goes with the connection, and rebuild_state re-indexes
+        // the survivors. A non-host sender is refused outright (the historic
+        // non-host StartGame rule, but with an echo so a confused client can
+        // see the refusal instead of waiting on a timeout); so are the host's
+        // own machine (leaving is DISCONNECT) and any id nobody holds.
+        if (!host_peer_id_.has_value() || *host_peer_id_ != peer_id)
+        {
+            send_state(peer_id);
+            break;
+        }
+        const auto& kick = std::get<LobbyKickMessage>(message.payload);
+        std::optional<PeerId> target = std::nullopt;
+        if (kick.machine_id != kInvalidLobbyMachineId)
+        {
+            for (const auto& [other_peer_id, peer] : peers_)
+            {
+                if (peer.machine_id == kick.machine_id)
+                {
+                    target = other_peer_id;
+                    break;
+                }
+            }
+        }
+        if (!target.has_value() || *target == peer_id)
+        {
+            send_state(peer_id);
+            break;
+        }
+        // The notice must precede the disconnect: after disconnect_client the
+        // transport will not carry another byte to that peer, so a Kicked sent
+        // afterwards is a message nobody receives and the client can only
+        // render a bare "connection lost".
+        LobbyMessage kicked;
+        kicked.payload = LobbyKickedMessage{};
+        transport_.send_lobby_message(
+            *target, std::make_shared<LobbyMessage>(std::move(kicked)));
+        // disconnect_client runs its own rebuild + broadcast, so return
+        // instead of falling into the trailing echo (which would compare
+        // against a previous_state the disconnect already superseded and
+        // broadcast the same state twice).
+        disconnect_client(*target);
+        return;
+    }
+
+    // A Kicked reaching the SERVER is a crafted/echoed message: it is a
+    // server->peer notice and carries no request. Ignore it silently.
+    case LobbyMessageKind::Kicked:
+        break;
+
     case LobbyMessageKind::StartGame:
         if (host_peer_id_.has_value() && *host_peer_id_ == peer_id)
         {
@@ -1413,6 +1478,8 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
     equivalent.cross_control = state_.settings.cross_control;
     equivalent.infinite_gold = state_.settings.infinite_gold;
     equivalent.time_limit = state_.settings.time_limit;
+    equivalent.bot_squad = state_.settings.bot_squad;
+    equivalent.bot_level = state_.settings.bot_level;
     equivalent.current_campaign = state_.settings.campaign_id.empty()
         ? std::string(kDefaultCampaignId)
         : state_.settings.campaign_id;

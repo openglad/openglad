@@ -763,6 +763,30 @@ bool SaveData::load(const std::string& filename)
         time_limit = 0; // the map's own value
     }
 
+    // Versions 18+ append the eight per-team bot knobs (LINEUP §3.1): four
+    // squad ordinals then four levels. Read-side default only (all AUTO);
+    // the writer is unconditional.
+    if (temp_version >= 18)
+    {
+        for (short& squad : bot_squad)
+        {
+            std::int16_t temp_bot_squad = 0;
+            READ_OR_FAIL(&temp_bot_squad, 2, 1);
+            squad = temp_bot_squad;
+        }
+        for (short& level : bot_level)
+        {
+            std::int16_t temp_bot_level = 0;
+            READ_OR_FAIL(&temp_bot_level, 2, 1);
+            level = temp_bot_level;
+        }
+    }
+    else
+    {
+        bot_squad.fill(0); // AUTO: the map's own value
+        bot_level.fill(0);
+    }
+
 	Log("Loading campaign: {}\n", current_campaign);
     int current_level = load_campaign(current_campaign, current_levels);
     if(current_level < 0)
@@ -1026,7 +1050,7 @@ bool SaveData::save(const std::string& filename)
 	std::fill_n(temp_campaign.data(), temp_campaign.size(), '\0');
 
 	std::array<char, 10> temptext = {'G', 'T', 'L'};
-	std::uint8_t temp_version = 17;
+	std::uint8_t temp_version = 18;
 
 	std::uint32_t newcash = totalcash;
 	std::uint32_t newscore = totalscore;
@@ -1426,6 +1450,19 @@ bool SaveData::save(const std::string& filename)
 	// reader's append point exactly.
 	std::int16_t temp_time_limit = time_limit;
 	WRITE_OR_FAIL(&temp_time_limit, 2, 1);
+
+	// Versions 18+ append the eight per-team bot knobs, after the v17 time
+	// limit, in the reader's order: four squad ordinals then four levels.
+	for (const short squad : bot_squad)
+	{
+	    std::int16_t temp_bot_squad = squad;
+	    WRITE_OR_FAIL(&temp_bot_squad, 2, 1);
+	}
+	for (const short level : bot_level)
+	{
+	    std::int16_t temp_bot_level = level;
+	    WRITE_OR_FAIL(&temp_bot_level, 2, 1);
+	}
 
     // unique_ptr auto-closes outfile
 

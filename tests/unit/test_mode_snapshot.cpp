@@ -1,4 +1,4 @@
-// Mode snapshot replication (snapshot v11): capture/apply round trips, wire
+// Mode snapshot replication (snapshot v12): capture/apply round trips, wire
 // serialization in keyframe and delta form, hostile-input count caps and
 // text-termination hardening, and the snapshot-restore equivalence proof
 // that the replicated RespawnState + ModeState blocks are the complete
@@ -9,6 +9,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/replay.h>
 #include <openglad/gameplay/respawn/respawn_state.h>
@@ -339,13 +340,14 @@ std::vector<std::uint8_t> rebuild_patched_snapshot_message(
     return message;
 }
 
-// Self-describing raw-payload offsets for a DEFAULT (empty-state) v11
+// Self-describing raw-payload offsets for a DEFAULT (empty-state) v12
 // snapshot: format byte, then 72 world-scalar bytes, then the respawn block
 // (respawn_ticks u16 at 73, respawn_serial u16 at 75, the four anchor counts
 // at 77..80 — no anchor pairs follow when all counts are zero — and the
 // queue size at 81), then the mode block (8 scalar bytes at 82..89, the
 // 12-byte name at 90, 64 i32 vars at 102, the HUD lines at 358, the beacons
-// at 466), then the five match-knob i16s at 486.
+// at 466), then the thirteen match-knob i16s at 486 (v12 appended the eight
+// per-team bot knobs LAST, which is why every offset above is unchanged).
 constexpr std::size_t kFirstAnchorCountOffset = 77;
 constexpr std::size_t kQueueSizeOffset = 81;
 constexpr std::size_t kModeNameOffset = 90;
@@ -925,5 +927,124 @@ TEST(ModeSnapshot, applied_time_limit_is_clamped_into_the_sanitized_band)
         og::sim::apply_snapshot(target.world(), crafted);
         EXPECT_EQ(one.applied, target.world().ctf_requested_time_limit)
             << "crafted " << one.crafted;
+    }
+}
+
+// --- Per-team bot knob replication (LINEUP §3.1) ---------------------------
+
+TEST(ModeSnapshot, bot_knobs_round_trip_and_change_hash)
+{
+    ModeWorld fx;
+    GameWorld& world = fx.world();
+    // Distinct per team and distinct between squad and level, so a
+    // transposed loop in serialize/deserialize/capture/apply fails loudly
+    // instead of silently swapping two equal values.
+    world.ctf_requested_bot_squad = {0, 2, 1, 9};
+    world.ctf_requested_bot_level = {3, 0, 9, 1};
+
+    const og::sim::WorldSnapshot snapshot =
+        og::sim::capture_keyframe_snapshot(world);
+    const std::array<std::int16_t, 4> expected_squad = {0, 2, 1, 9};
+    const std::array<std::int16_t, 4> expected_level = {3, 0, 9, 1};
+    EXPECT_EQ(expected_squad, snapshot.ctf_requested_bot_squad);
+    EXPECT_EQ(expected_level, snapshot.ctf_requested_bot_level);
+
+    const std::vector<std::uint8_t> bytes =
+        og::sim::serialize_snapshot(snapshot);
+    const og::sim::WorldSnapshot decoded = og::sim::deserialize_snapshot(bytes);
+    EXPECT_EQ(expected_squad, decoded.ctf_requested_bot_squad);
+    EXPECT_EQ(expected_level, decoded.ctf_requested_bot_level);
+
+    ModeWorld target;
+    ASSERT_EQ(0, target.world().ctf_requested_bot_squad[1]);
+    og::sim::apply_snapshot(target.world(), decoded);
+    for (std::size_t team = 0; team < 4; ++team)
+    {
+        EXPECT_EQ(expected_squad[team],
+                  target.world().ctf_requested_bot_squad[team])
+            << "squad team " << team;
+        EXPECT_EQ(expected_level[team],
+                  target.world().ctf_requested_bot_level[team])
+            << "level team " << team;
+    }
+
+    // Delta-merge carries them onto a baseline.
+    og::sim::WorldSnapshot baseline =
+        og::sim::capture_keyframe_snapshot(target.world());
+    baseline.ctf_requested_bot_squad = {};
+    baseline.ctf_requested_bot_level = {};
+    const og::sim::WorldSnapshot delta_source = og::sim::capture_snapshot(world);
+    const std::vector<std::uint8_t> delta_bytes =
+        og::sim::serialize_delta(delta_source);
+    const og::sim::WorldSnapshot decoded_delta =
+        og::sim::deserialize_delta(delta_bytes);
+    og::sim::apply_delta(baseline, decoded_delta);
+    EXPECT_EQ(expected_squad, baseline.ctf_requested_bot_squad);
+    EXPECT_EQ(expected_level, baseline.ctf_requested_bot_level);
+
+    // Every one of the eight must move the hash on its own, or a peer that
+    // disagreed about exactly that team's squad would never be detected.
+    for (std::size_t team = 0; team < 4; ++team)
+    {
+        og::sim::WorldSnapshot other_squad = snapshot;
+        other_squad.ctf_requested_bot_squad[team] =
+            static_cast<std::int16_t>(other_squad
+                                          .ctf_requested_bot_squad[team] +
+                                      1);
+        EXPECT_NE(og::sim::compute_snapshot_hash(snapshot),
+                  og::sim::compute_snapshot_hash(other_squad))
+            << "bot_squad team " << team;
+
+        og::sim::WorldSnapshot other_level = snapshot;
+        other_level.ctf_requested_bot_level[team] =
+            static_cast<std::int16_t>(other_level
+                                          .ctf_requested_bot_level[team] +
+                                      1);
+        EXPECT_NE(og::sim::compute_snapshot_hash(snapshot),
+                  og::sim::compute_snapshot_hash(other_level))
+            << "bot_level team " << team;
+    }
+}
+
+// The sim-side twin of the lobby sanitizer / provider clamp: a crafted
+// snapshot must not hand a mirror a preset ordinal past the campaign's list
+// or a level past the difficulty table. 0 is AUTO and is never lifted.
+TEST(ModeSnapshot, applied_bot_knobs_are_clamped_into_the_sanitized_band)
+{
+    ModeWorld fx;
+    const og::sim::WorldSnapshot base =
+        og::sim::capture_keyframe_snapshot(fx.world());
+    ModeWorld target;
+
+    struct Case
+    {
+        std::int16_t crafted;
+        std::int16_t applied_squad;
+        std::int16_t applied_level;
+    };
+    const Case cases[] = {
+        {0, 0, 0},                                              // AUTO
+        {-1, 0, 0},                                             // below zero
+        {-30000, 0, 0},
+        {1, 1, 1},                                              // in band
+        {og::sim::kMaxBotSquad, og::sim::kMaxBotSquad,
+         og::sim::kMaxBotLevel},
+        {32000, og::sim::kMaxBotSquad, og::sim::kMaxBotLevel},  // over
+    };
+    for (const Case& one : cases)
+    {
+        og::sim::WorldSnapshot crafted = base;
+        crafted.ctf_requested_bot_squad.fill(one.crafted);
+        crafted.ctf_requested_bot_level.fill(one.crafted);
+        og::sim::apply_snapshot(target.world(), crafted);
+        for (std::size_t team = 0; team < 4; ++team)
+        {
+            EXPECT_EQ(one.applied_squad,
+                      target.world().ctf_requested_bot_squad[team])
+                << "crafted squad " << one.crafted << " team " << team;
+            EXPECT_EQ(one.applied_level,
+                      target.world().ctf_requested_bot_level[team])
+                << "crafted level " << one.crafted << " team " << team;
+        }
     }
 }

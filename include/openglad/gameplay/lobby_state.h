@@ -3,6 +3,8 @@
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/mode/mode_state.h>
 
+#include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <set>
@@ -243,6 +245,43 @@ inline bool lobby_join_seats_content_identical(
 // it at publish, and their toggle cycles it back to ALL.
 inline constexpr std::int16_t kTroopsMatched = 3;
 
+// Per-team bot squad knobs (LINEUP design §3.1). Eight scalars — one squad
+// preset ordinal and one level per team — carried through the whole match-knob
+// chain beside the older ctf_* knobs.
+//
+//   bot_squad[t]: 0 = AUTO (the map's own value — the PR #245 sentinel rule,
+//                 so all-zero reproduces today's fills byte for byte),
+//                 1 = NONE (never fill this team),
+//                 2.. = the campaign's preset ordinal (index + 2).
+//   bot_level[t]: 0 = AUTO (today's source: the difficulty formula, or the
+//                 FAIR solve), 1..9 = that level exactly.
+//
+// The preset ordinal ceiling is a FIXED engine number, not the campaign's
+// actual preset count: a joiner clamps a host's request without owning the
+// campaign package, so the bound cannot depend on a list only the host has.
+inline constexpr std::int16_t kMaxBotPresets = 8;
+inline constexpr std::int16_t kMaxBotSquad =
+    static_cast<std::int16_t>(1 + kMaxBotPresets);
+inline constexpr std::int16_t kMaxBotLevel = 9;
+
+// The ONE implementation of each bot-knob bound. Every clamp home calls
+// these — sanitize_settings (lobby authority), clamp_match_setting (the
+// menu/script provider), both sync_world_from_save_data twins (the
+// hand-edited-save route into the sim) and world_snapshot apply_mode_state
+// (the crafted-snapshot route into a mirror). A divergent copy is a
+// host/mirror hash mismatch, so there are no copies.
+[[nodiscard]] inline std::int16_t clamp_bot_squad(std::int32_t value) noexcept
+{
+    return static_cast<std::int16_t>(
+        std::clamp<std::int32_t>(value, 0, kMaxBotSquad));
+}
+
+[[nodiscard]] inline std::int16_t clamp_bot_level(std::int32_t value) noexcept
+{
+    return static_cast<std::int16_t>(
+        std::clamp<std::int32_t>(value, 0, kMaxBotLevel));
+}
+
 struct LobbySettings {
     std::string campaign_id;
     std::int16_t scenario_id = 0;
@@ -285,6 +324,11 @@ struct LobbySettings {
     // The fourteenth i16, appended LAST in append/read_lobby_settings.
     // sanitize_settings clamps a non-zero request into [720, 21600].
     std::int16_t time_limit = 0;
+    // Per-team bot squad / bot level (protocol v16, LINEUP §3.1). Eight i16s
+    // appended LAST in append/read_lobby_settings, after time_limit.
+    // sanitize_settings clamps through clamp_bot_squad / clamp_bot_level.
+    std::array<std::int16_t, SCORE_TEAM_COUNT> bot_squad = {};
+    std::array<std::int16_t, SCORE_TEAM_COUNT> bot_level = {};
 
     bool operator==(const LobbySettings&) const = default;
 };
@@ -415,6 +459,12 @@ enum class LobbyMessageKind : std::uint8_t {
     StartGame = 5,
     SettingsChange = 6,
     RemoveSeat = 7,
+    // Protocol v16 (LINEUP §6): host -> server, "remove that machine from my
+    // lobby"; and the server -> peer courtesy notice that precedes the
+    // disconnect, so the kicked client can say WHY its link died instead of
+    // rendering a bare "connection lost".
+    Kick = 8,
+    Kicked = 9,
 };
 
 constexpr std::uint8_t lobby_message_kind_value(LobbyMessageKind kind) noexcept
@@ -490,6 +540,24 @@ struct LobbySettingsChangeMessage {
     bool operator==(const LobbySettingsChangeMessage&) const = default;
 };
 
+// Host -> server (protocol v16). The target is a MACHINE, not a seat: a kick
+// removes every seat that machine owns and drops its transport connection.
+// The server refuses a non-host sender, and refuses the host's own machine
+// (leaving is DISCONNECT, not a kick) — a refusal answers with a state echo
+// so the requester never waits on a timeout.
+struct LobbyKickMessage {
+    LobbyMachineId machine_id = kInvalidLobbyMachineId;
+
+    bool operator==(const LobbyKickMessage&) const = default;
+};
+
+// Server -> peer (protocol v16). Sent immediately BEFORE the disconnect so it
+// is still deliverable on the live link; carries no payload because the only
+// fact it conveys is "the host removed you".
+struct LobbyKickedMessage {
+    bool operator==(const LobbyKickedMessage&) const = default;
+};
+
 using LobbyMessagePayload =
     std::variant<LobbyJoinMessage,
                  LobbyLeaveMessage,
@@ -497,7 +565,9 @@ using LobbyMessagePayload =
                  LobbyTeamChangeMessage,
                  LobbyRemoveSeatMessage,
                  LobbyStartGameMessage,
-                 LobbySettingsChangeMessage>;
+                 LobbySettingsChangeMessage,
+                 LobbyKickMessage,
+                 LobbyKickedMessage>;
 
 struct LobbyMessage {
     LobbyMessagePayload payload = LobbyJoinMessage{};
@@ -519,6 +589,10 @@ struct LobbyMessage {
                     return LobbyMessageKind::RemoveSeat;
                 if constexpr (std::is_same_v<Message, LobbyStartGameMessage>)
                     return LobbyMessageKind::StartGame;
+                if constexpr (std::is_same_v<Message, LobbyKickMessage>)
+                    return LobbyMessageKind::Kick;
+                if constexpr (std::is_same_v<Message, LobbyKickedMessage>)
+                    return LobbyMessageKind::Kicked;
                 return LobbyMessageKind::SettingsChange;
             },
             payload);
