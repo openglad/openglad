@@ -674,6 +674,9 @@ void clear_transient_input_state();
 void wait_for_key(int somekey);
 inline short query_key_press_event() { return input_key_press_event_ref(); }
 inline void clear_key_press_event() { input_key_press_event_ref() = 0; }
+// Monotonic count of key presses seen (never cleared): compare two readings
+// to ask "was a key pressed BETWEEN them" without disturbing the latch.
+unsigned query_key_press_serial();
 inline short query_text_input_event() { return input_text_input_event_ref(); }
 inline void clear_text_input_event() { input_text_input_event_ref() = 0; input_raw_text_input_ref().clear(); }
 void init_input();

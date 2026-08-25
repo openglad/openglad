@@ -1,5 +1,6 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/input.h>
+#include "test_input_helpers.h"
 #include <openglad/platform/video_sdl.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
@@ -55,25 +56,37 @@ TEST(VideoFade, video_fadeblack_out_then_in_tracks_the_window)
     ASSERT_FALSE(scr->window_is_black()) << "the fade-in's present clears the flag";
 }
 
-// A fade's key-press abort means a press DURING the fade, never one left over
-// from the screen that just exited: the tap that dismissed the campaign intro
-// (Backspace/Esc) used to end the scroller's own fade-out on its first frame.
-// FadeBetween clears the sticky press flag when the fade starts (the same
-// path both branches take), so a pending press is spent, not inherited.
-TEST(VideoFade, video_fade_start_spends_a_pending_key_press)
+// A fade's key-press abort means a press DURING the fade — an edge on the
+// press serial — never the latch left over from the screen that just exited:
+// the tap that dismissed the campaign intro (Backspace/Esc) used to end the
+// scroller's own fade-out on its first frame. The latch itself is untouched
+// by a fade: the intro's pages read it to abort, and a fade must not spend
+// it for them.
+TEST(VideoFade, video_fade_leaves_the_key_latch_alone_and_counts_presses)
 {
     screen* const scr = og::runtime::current_session->myscreen_;
     scr->buffer_to_screen(0, 0, 320, 200);
     clear_key_press_event();
-    input_key_press_event_ref() = 1;  // the dismissal tap, still remembered
+    input_key_press_event_ref() = 1;  // the dismissal tap, still latched
+    const unsigned serial_before = query_key_press_serial();
     ASSERT_EQ(1, scr->fadeblack(false)) << "the fade-out runs";
-    ASSERT_EQ(0, query_key_press_event())
-        << "starting a fade clears the stale press so the animation cannot "
-           "abort on a key the previous screen already consumed";
+    ASSERT_EQ(1, query_key_press_event())
+        << "a fade never clears the latch — the intro's abort reads it";
+    ASSERT_EQ(serial_before, query_key_press_serial())
+        << "no key was pressed during the fade, so the serial is unchanged";
     ASSERT_TRUE(scr->window_is_black());
-    input_key_press_event_ref() = 1;
     ASSERT_EQ(1, scr->fadeblack(true)) << "the fade-in runs";
-    ASSERT_EQ(0, query_key_press_event()) << "the fade-in clears it too";
+    ASSERT_EQ(1, query_key_press_event()) << "still latched after the fade-in";
+
+    // A real press advances the serial (the edge the animation aborts on).
+    clear_key_press_event();
+    inject_key_down(SDLK_SPACE);
+    get_input_events(POLL);
+    ASSERT_EQ(1, query_key_press_event()) << "the press latched";
+    ASSERT_EQ(serial_before + 1, query_key_press_serial())
+        << "and advanced the serial exactly once";
+    clear_key_press_event();
+    clear_events();
 }
 
 // The "never presented" invariant holds a present to the rect it DECLARED: a

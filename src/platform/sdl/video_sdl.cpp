@@ -3788,12 +3788,14 @@ int sdl_video::FadeBetween(
 		old_locked = false;
 	}
 
-	// The animation below aborts on a key press, and key_press_event_ is a
-	// sticky "pressed since the last clear" flag — the tap that dismissed
-	// the previous screen would still be set here and end this fade on its
-	// first frame. Clear it now so the abort means a press DURING the fade
-	// (a held key keeps skipping: OS key repeat re-sets it mid-fade).
-	clear_key_press_event();
+	// The animation below aborts on a key pressed DURING the fade — an edge
+	// on the press serial, never the sticky key_press_event_ latch (the tap
+	// that dismissed the previous screen is still latched here and would
+	// end this fade on its first frame; the intro's pages read that latch
+	// to abort, so it must not be cleared either). A held key still skips:
+	// OS key repeat advances the serial mid-fade.
+	const unsigned press_serial_at_start = query_key_press_serial();
+	(void)press_serial_at_start;  // the TESTING branch runs no animation
 
 	//Fade from old to new surface.  Effect takes constant time.
 #ifdef TESTING
@@ -3812,7 +3814,7 @@ int sdl_video::FadeBetween(
 		dwNow = SDL_GetTicks();
 
 		get_input_events(POLL);
-		if (query_key_press_event())
+		if (query_key_press_serial() != press_serial_at_start)
 		{
 			i = -1;
 			break;

@@ -45,6 +45,9 @@ struct SessionState {
     int raw_key_ = 0;
     std::string raw_text_input_;
     short key_press_event_ = 0;
+    // Counts every key press; a fade aborts on a CHANGE during the fade
+    // (an edge), while key_press_event_ stays the latch everyone else reads.
+    unsigned key_press_serial_ = 0;
     // used to signal text input
     short text_input_event_ = 0;
     // for scrolling up and down text popups
